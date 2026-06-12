@@ -71,6 +71,7 @@ func newAPIHandler(config Config) *apiHandler {
 	settingsRepos, settingsReposErr := repository.OpenSettingsRepositories(settingsDBPath)
 	workspaceRepos, workspaceReposErr := repository.OpenWorkspaceRepositories(workspaceState.DatabasePath())
 	settings := servicesettings.NewSettingsWithAgentModelProfiles(settingsRepos.APIKeys, settingsRepos.AgentModelProfiles)
+	settings.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
 	if configurableRunner, ok := runner.(interface {
 		SetProcessConfigProvider(serviceacp.ProcessConfigProvider)
 	}); ok {
@@ -94,6 +95,7 @@ func newAPIHandler(config Config) *apiHandler {
 	mediaAssets.SetMediaToolPaths(config.FFmpegPath, config.FFmpegBinDir)
 	previewStreamer := servicemedia.NewFFmpegPreviewStreamer(config.FFmpegPath, config.FFmpegBinDir)
 	generationService := servicegeneration.NewGenerationService(settings, generationTasks, mediaAssets, generationPreferences)
+	generationService.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
 	generationService.SetGenerationNotifications(generationNotifications)
 	promptLibrary := servicepromptlibrary.NewServiceFromRepository(settingsRepos.PromptLibrary, settingsReposErr)
 	capabilityRegistry := corecapability.Default()

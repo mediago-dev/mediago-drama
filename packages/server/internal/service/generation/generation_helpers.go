@@ -263,6 +263,9 @@ func RequireGenerationRouteConfigured(route coregeneration.ModelRoute, configure
 	if configured {
 		return nil
 	}
+	if route.Provider == coregeneration.ProviderJimeng {
+		return errors.New("即梦尚未登录，请先在设置的 API 密钥页完成即梦登录")
+	}
 	return fmt.Errorf("%s API Key 尚未配置", credentialLabel)
 }
 

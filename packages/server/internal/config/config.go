@@ -18,6 +18,7 @@ type ServerConfig struct {
 	ACPCommand   string            `yaml:"acp_command"`
 	Agent        AgentConfig       `yaml:"agent"`
 	FFmpeg       FFmpegConfig      `yaml:"ffmpeg"`
+	Jimeng       JimengConfig      `yaml:"jimeng"`
 	Billing      BillingConfig     `yaml:"billing"`
 	Prompt       PromptConfig      `yaml:"prompt"`
 	InternalAPI  InternalAPIConfig `yaml:"internal_api"`
@@ -32,6 +33,12 @@ type AgentConfig struct {
 
 // FFmpegConfig contains ffmpeg binary selection and vendored bin settings.
 type FFmpegConfig struct {
+	Path   string `yaml:"path"`
+	BinDir string `yaml:"bin_dir"`
+}
+
+// JimengConfig contains Dreamina/Jimeng CLI binary selection and vendored bin settings.
+type JimengConfig struct {
 	Path   string `yaml:"path"`
 	BinDir string `yaml:"bin_dir"`
 }
@@ -92,6 +99,7 @@ func normalize(config ServerConfig) ServerConfig {
 	config.ACPCommand = strings.TrimSpace(config.ACPCommand)
 	config.Agent = normalizeAgentConfig(config.Agent)
 	config.FFmpeg = normalizeFFmpegConfig(config.FFmpeg)
+	config.Jimeng = normalizeJimengConfig(config.Jimeng)
 	config.Billing = normalizeBillingConfig(config.Billing)
 	config.InternalAPI = normalizeInternalAPIConfig(config.InternalAPI)
 	config.DocumentMCP = normalizeDocumentMCPConfig(config.DocumentMCP)
@@ -108,6 +116,12 @@ func normalizeAgentConfig(config AgentConfig) AgentConfig {
 }
 
 func normalizeFFmpegConfig(config FFmpegConfig) FFmpegConfig {
+	config.Path = strings.TrimSpace(config.Path)
+	config.BinDir = strings.TrimSpace(config.BinDir)
+	return config
+}
+
+func normalizeJimengConfig(config JimengConfig) JimengConfig {
 	config.Path = strings.TrimSpace(config.Path)
 	config.BinDir = strings.TrimSpace(config.BinDir)
 	return config

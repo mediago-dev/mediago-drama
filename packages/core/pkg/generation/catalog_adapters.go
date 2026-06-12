@@ -6,6 +6,7 @@ const (
 	ProviderVolcengine = "volcengine"
 	ProviderDMX        = "dmx"
 	ProviderOpenRouter = "openrouter"
+	ProviderJimeng     = "jimeng"
 
 	AdapterOfficialPlanned         = "official.planned"
 	AdapterOfficialOpenAIImage     = "official.openai.image"
@@ -21,4 +22,6 @@ const (
 	AdapterDMXImagesGenerations    = "dmx.images.generations"
 	AdapterDMXGeminiGenerate       = "dmx.gemini.generate_content"
 	AdapterDMXResponsesVideo       = "dmx.responses.video"
+	AdapterJimengCLIImage          = "jimeng.cli.image"
+	AdapterJimengCLIVideo          = "jimeng.cli.video"
 )

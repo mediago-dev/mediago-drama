@@ -20,6 +20,7 @@ task prepare AGENT=codex
 task prepare AGENT=opencode
 task prepare:tool TOOL=ffmpeg
 task prepare:tool TOOL=ffprobe
+task prepare:tool TOOL=dreamina
 task prepare:media-tools
 task prepare:all
 task prepare:clean

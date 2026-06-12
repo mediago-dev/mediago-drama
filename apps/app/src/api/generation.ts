@@ -25,8 +25,9 @@ export type GenerationProvider =
 	| "google"
 	| "volcengine"
 	| "dmx"
-	| "openrouter";
-export type GenerationProviderType = "official" | "aggregator";
+	| "openrouter"
+	| "jimeng";
+export type GenerationProviderType = "official" | "aggregator" | "local";
 export type GenerationRouteStatus = "available" | "planned" | "gated";
 
 export interface GenerationProviderInfo {
@@ -304,7 +305,9 @@ const generationMessagePayload = (request: GenerationMessageRequest) => {
 		request.sessionId?.trim() ||
 		request.conversationId?.trim() ||
 		defaultGenerationConversationScopeId;
-	const { conversationId: _conversationId, scopeId: _scopeId, ...payload } = request;
+	const payload = { ...request };
+	delete payload.conversationId;
+	delete payload.scopeId;
 	return { ...payload, sessionId };
 };
 

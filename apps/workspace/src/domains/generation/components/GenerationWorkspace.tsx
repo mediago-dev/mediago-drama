@@ -1,13 +1,9 @@
-import { Box, ExternalLink, Scan, SendHorizontal, Sparkles } from "lucide-react";
+import { Box, ExternalLink, SendHorizontal, Sparkles } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-	type GenerationAsset,
-	type GenerationKind,
-	type GenerationParam,
-} from "@/domains/generation/api/generation";
+import { type GenerationAsset, type GenerationKind } from "@/domains/generation/api/generation";
 import { GenerationChatPanel } from "@/domains/generation/components/GenerationChatPanel";
 import {
 	GenerationInspectorResizeHandle,
@@ -18,6 +14,11 @@ import {
 	InspectorHeading,
 	ModeToggle,
 } from "@/domains/generation/components/GenerationSetupNotice";
+import {
+	filterImageGenerationSpecParams,
+	resolveImageGenerationSpec,
+} from "@/domains/generation/components/imageGenerationSpec";
+import { ImageGenerationSpecControl } from "@/domains/generation/components/ImageGenerationSpecControl";
 import { MaterialLibrary } from "@/domains/generation/components/MaterialLibrary";
 import { ModelParamControls } from "@/domains/generation/components/ModelParamControls";
 import { PromptLibraryPicker } from "@/domains/generation/components/PromptLibraryPicker";
@@ -31,10 +32,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui
 import { Textarea } from "@/shared/components/ui/textarea";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import { useGeneratedResultActions } from "@/domains/generation/components/generatedResultActions";
-import {
-	paramLabel,
-	paramOptionLabel,
-} from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useToast } from "@/hooks/useToast";
 import { settingsInsetRowClassName } from "@/lib/settings-layout";
 import { cn } from "@/shared/lib/utils";
@@ -203,6 +200,17 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	const generationSummary = isTextGeneration
 		? ws.selectedRoute.model
 		: `${ws.selectedRoute.model} · ${ws.referenceCount} 个参考素材`;
+	const imageSpec = useMemo(
+		() =>
+			activeGenerationKind === "image"
+				? resolveImageGenerationSpec(ws.selectedRoute.params, ws.selectedParams)
+				: null,
+		[activeGenerationKind, ws.selectedParams, ws.selectedRoute.params],
+	);
+	const paramsWithoutImageSpec = useMemo(
+		() => filterImageGenerationSpecParams(ws.selectedRoute.params, imageSpec),
+		[imageSpec, ws.selectedRoute.params],
+	);
 	const routeGenerationCountParam = ws.selectedRoute.params.find(
 		(param) => param.name === "n" && param.type === "number",
 	);
@@ -221,14 +229,6 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 		generationCountMin,
 		generationCountMax,
 	);
-	const composerParamSummary = ws.hasConfiguredRoutesForKind
-		? generationParamControlSummary(
-				routeGenerationCountParam
-					? ws.selectedRoute.params.filter((param) => param.name !== routeGenerationCountParam.name)
-					: ws.selectedRoute.params,
-				ws.selectedParams,
-			)
-		: "参数未配置";
 	const composerModelLabel = ws.hasConfiguredRoutesForKind
 		? compactModelLabel(ws.selectedVersion.label || ws.selectedRoute.model)
 		: "暂无模型";
@@ -413,19 +413,13 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 									))}
 								</SelectContent>
 							</Select>
-							<GenerationComposerButton
-								icon={<Scan />}
-								label={composerParamSummary}
-								onClick={() => setInspectorTab("settings")}
-							/>
-							{isTextGeneration ? null : (
-								<PromptLibraryPicker
-									kind={promptLibraryKind}
-									prompt={ws.prompt}
-									triggerVariant="toolbar"
-									onPromptChange={ws.setPrompt}
+							{imageSpec ? (
+								<ImageGenerationSpecControl
+									spec={imageSpec}
+									variant="toolbar"
+									onChange={ws.updateParam}
 								/>
-							)}
+							) : null}
 							{isTextGeneration || !routeGenerationCountParam ? null : (
 								<Select
 									value={String(selectedGenerationCount)}
@@ -483,14 +477,14 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 						onRouteChange={ws.updateRoute}
 						showKindToggle={!lockKind}
 					/>
-					{ws.selectedRoute.params.length > 0 || documentationField ? (
+					{paramsWithoutImageSpec.length > 0 || documentationField ? (
 						<div className="border-t border-border pt-4">
 							<Label className="mb-2 block text-xs text-muted-foreground">参数</Label>
 							<div className="grid gap-3">
 								{documentationField}
 								<ModelParamControls
 									compact
-									params={ws.selectedRoute.params}
+									params={paramsWithoutImageSpec}
 									values={ws.selectedParams}
 									onChange={ws.updateParam}
 								/>
@@ -641,28 +635,6 @@ const generationComposerSelectClassName = (toneClassName?: string) =>
 		toneClassName,
 	);
 
-const GenerationComposerButton: React.FC<{
-	icon: React.ReactNode;
-	label: string;
-	onClick: () => void;
-	tone?: "default" | "primary";
-	trailingIcon?: React.ReactNode;
-}> = ({ icon, label, onClick, tone = "default", trailingIcon }) => (
-	<button
-		type="button"
-		className={cn(
-			"inline-flex h-9 max-w-60 shrink-0 items-center gap-1.5 rounded-md border border-border bg-ide-editor px-3 text-xs font-medium shadow-none transition-colors hover:bg-ide-list-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-			tone === "primary" ? "text-primary" : "text-foreground",
-		)}
-		title={label}
-		onClick={onClick}
-	>
-		<span className="shrink-0 [&_svg]:size-4">{icon}</span>
-		<span className="min-w-0 truncate">{label}</span>
-		{trailingIcon ? <span className="shrink-0 [&_svg]:size-4">{trailingIcon}</span> : null}
-	</button>
-);
-
 const compactModelLabel = (label: string) => label.replace(/\s+/g, " ").trim();
 
 const normalizeGenerationCount = (value: number, min: number, max: number) => {
@@ -681,29 +653,4 @@ const generationCountOptionValues = (min: number, max: number) => {
 		{ length: normalizedMax - normalizedMin + 1 },
 		(_, index) => normalizedMin + index,
 	);
-};
-
-const generationParamControlSummary = (
-	params: GenerationParam[],
-	selectedParams: Record<string, unknown>,
-) => {
-	const details = params
-		.map((param) => {
-			const value = paramDisplayValue(param, selectedParams);
-			return value ? `${paramLabel(param.label)}: ${value}` : "";
-		})
-		.filter(Boolean);
-
-	return details.length > 0 ? details.join(" | ") : "默认参数";
-};
-
-const paramDisplayValue = (param: GenerationParam, selectedParams: Record<string, unknown>) => {
-	const rawValue = selectedParams[param.name] ?? param.default;
-	if (rawValue === undefined || rawValue === null || rawValue === "") return "";
-
-	const option = param.options?.find((item) => item.value === String(rawValue));
-	if (option) return paramOptionLabel(option.label);
-
-	if (typeof rawValue === "boolean") return rawValue ? "开启" : "关闭";
-	return paramOptionLabel(String(rawValue));
 };

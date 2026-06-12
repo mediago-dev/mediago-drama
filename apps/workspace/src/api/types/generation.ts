@@ -87,6 +87,7 @@ export interface CredentialSpec {
 	credentialLabel?: string;
 	placeholder?: string;
 	help?: string;
+	credentialKind?: string;
 }
 
 export type FailureReason =
@@ -97,7 +98,7 @@ export type FailureReason =
 	| "authentication"
 	| "timeout";
 
-export type ProviderType = "official" | "aggregator";
+export type ProviderType = "official" | "aggregator" | "local";
 
 export interface ProviderInfo {
 	id: string;

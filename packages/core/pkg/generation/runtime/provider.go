@@ -11,6 +11,7 @@ import (
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/dmx"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/jimeng"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/official"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/openrouter"
 )
@@ -47,6 +48,8 @@ type Config struct {
 	OpenAIBaseURL     string
 	GoogleBaseURL     string
 	VolcengineBaseURL string
+	JimengBinPath     string
+	JimengBinDir      string
 }
 
 // Provider routes generation requests to the route's configured provider.
@@ -176,11 +179,32 @@ func (provider *Provider) providerForRoute(ctx context.Context, route generation
 		default:
 			return nil, fmt.Errorf("generation provider %q is not implemented", route.Provider)
 		}
+	case generation.ProviderTypeLocal:
+		switch route.Provider {
+		case generation.ProviderJimeng:
+			return provider.jimengProvider()
+		default:
+			return nil, fmt.Errorf("generation provider %q is not implemented", route.Provider)
+		}
 	case "":
 		return nil, fmt.Errorf("generation provider %q is not registered", route.Provider)
 	default:
 		return nil, fmt.Errorf("generation provider %q has unsupported type %q", route.Provider, generation.ProviderTypeOf(route.Provider))
 	}
+}
+
+func (provider *Provider) jimengProvider() (generation.Provider, error) {
+	cacheKey := provider.cacheKey(
+		generation.ProviderJimeng,
+		provider.config.JimengBinPath,
+		provider.config.JimengBinDir,
+	)
+	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
+		return jimeng.NewProvider(jimeng.Config{
+			BinPath: provider.config.JimengBinPath,
+			BinDir:  provider.config.JimengBinDir,
+		})
+	})
 }
 
 func (provider *Provider) dmxProvider(ctx context.Context) (generation.Provider, error) {

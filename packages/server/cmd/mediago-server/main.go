@@ -111,6 +111,8 @@ func run(args []string) error {
 		AgentBinDir:           config.Agent.BinDir,
 		FFmpegPath:            config.FFmpeg.Path,
 		FFmpegBinDir:          config.FFmpeg.BinDir,
+		JimengBinPath:         config.Jimeng.Path,
+		JimengBinDir:          config.Jimeng.BinDir,
 		DocumentMCPConfigPath: configPath,
 		AgentBridgeURL:        internalAPIURL + "/api/v1/internal/agent/spawn",
 		AgentBridgeToken:      bridgeToken,
@@ -200,6 +202,12 @@ func applyEnvOverrides(config *serverconfig.ServerConfig) error {
 	}
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_FFMPEG_BIN_DIR")); value != "" {
 		config.FFmpeg.BinDir = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MEDIAGO_JIMENG_PATH")); value != "" {
+		config.Jimeng.Path = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MEDIAGO_JIMENG_BIN_DIR")); value != "" {
+		config.Jimeng.BinDir = value
 	}
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_SERVER_PORT")); value != "" {
 		port, err := parseServerPort(value)

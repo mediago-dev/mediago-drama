@@ -8,6 +8,7 @@ const (
 	FamilySeedance   = "seedance"
 
 	VersionSeedream5Lite  = "seedream-5-lite"
+	VersionSeedream47     = "seedream-4.7"
 	VersionGPT41MiniText  = "gpt-4.1-mini-text"
 	VersionGPT5MiniText   = "gpt-5-mini-text"
 	VersionSeedream45     = "seedream-4.5"
@@ -21,6 +22,8 @@ const (
 	VersionSeedance15Pro  = "seedance-1.5-pro"
 
 	ModelSeedream5Lite       = "seedream-5-lite"
+	ModelSeedream50          = "seedream-5.0"
+	ModelSeedream47          = "seedream-4.7"
 	ModelGPT41MiniText       = "gpt-4.1-mini-text"
 	ModelGPT5MiniText        = "gpt-5-mini-text"
 	ModelGPTImage2           = "gpt-image-2"

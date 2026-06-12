@@ -10,10 +10,23 @@ export interface APIKeyProvider {
 	credentialLabel?: string;
 	placeholder?: string;
 	help?: string;
+	credentialKind?: "apiKey" | "oauth" | string;
 }
 
 export interface APIKeyListResponse {
 	providers: APIKeyProvider[];
+}
+
+export interface APIKeyLoginChallenge {
+	status: "pending" | "completed" | string;
+	verificationUri?: string;
+	userCode?: string;
+	deviceCode?: string;
+	message?: string;
+}
+
+export interface APIKeyLoginResponse extends APIKeyListResponse {
+	login: APIKeyLoginChallenge;
 }
 
 export interface AgentModelProfileAPIKeyStatus {
@@ -90,6 +103,22 @@ export const saveAPIKey = async (providerID: string, apiKey: string) => {
 	const response = await httpClient.put<APIKeyListResponse>(
 		`/settings/api-keys/${encodeURIComponent(providerID)}`,
 		{ apiKey },
+	);
+	return response.data;
+};
+
+export const beginProviderLogin = async (providerID: string, force = false) => {
+	const response = await httpClient.post<APIKeyLoginResponse>(
+		`/settings/api-keys/${encodeURIComponent(providerID)}/login`,
+		{ force },
+	);
+	return response.data;
+};
+
+export const completeProviderLogin = async (providerID: string, deviceCode: string) => {
+	const response = await httpClient.post<APIKeyLoginResponse>(
+		`/settings/api-keys/${encodeURIComponent(providerID)}/login/check`,
+		{ deviceCode },
 	);
 	return response.data;
 };

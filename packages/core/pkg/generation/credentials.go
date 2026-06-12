@@ -8,6 +8,7 @@ type CredentialSpec struct {
 	CredentialLabel string `json:"credentialLabel,omitempty"`
 	Placeholder     string `json:"placeholder,omitempty"`
 	Help            string `json:"help,omitempty"`
+	CredentialKind  string `json:"credentialKind,omitempty"`
 }
 
 // CredentialSpecs returns the credential slots referenced by the catalog.
@@ -37,6 +38,13 @@ func CredentialSpecs() []CredentialSpec {
 			ID:          ProviderVolcengine,
 			Label:       "Volcengine",
 			Description: "Seedream and Seedance official routes",
+		},
+		{
+			ID:             ProviderJimeng,
+			Label:          "即梦",
+			Description:    "Jimeng CLI local OAuth session",
+			CredentialKind: "oauth",
+			Help:           "使用本地打包的即梦 CLI 登录，生成会消耗当前即梦账号额度。",
 		},
 	}
 

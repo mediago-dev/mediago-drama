@@ -18,6 +18,9 @@ acp_command: " codex-acp --model test "
 ffmpeg:
   path: " /opt/ffmpeg "
   bin_dir: " /opt/vendor/ffmpeg "
+jimeng:
+  path: " /opt/dreamina "
+  bin_dir: " /opt/vendor/tools "
 billing:
   price_overlay_path: " ./pricing.json "
 prompt:
@@ -50,6 +53,8 @@ document_mcp:
 		config.ACPCommand != "codex-acp --model test" ||
 		config.FFmpeg.Path != "/opt/ffmpeg" ||
 		config.FFmpeg.BinDir != "/opt/vendor/ffmpeg" ||
+		config.Jimeng.Path != "/opt/dreamina" ||
+		config.Jimeng.BinDir != "/opt/vendor/tools" ||
 		config.Billing.PriceOverlayPath != "./pricing.json" ||
 		config.Prompt.MaxSectionChars != 9000 ||
 		config.InternalAPI.URL != "http://internal.test" ||

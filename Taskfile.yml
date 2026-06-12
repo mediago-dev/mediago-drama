@@ -58,6 +58,7 @@ tasks:
         MEDIAGO_AGENT_ID="$AGENT" \
         MEDIAGO_AGENT_BIN_DIR="$(pwd)/packages/vendor/dist" \
         MEDIAGO_FFMPEG_BIN_DIR="$(pwd)/packages/vendor/dist/tools" \
+        MEDIAGO_JIMENG_BIN_DIR="$(pwd)/packages/vendor/dist/tools" \
           go run ./packages/server/cmd/mediago-server --config packages/server/configs/server.yaml &
         SERVER_PID=$!
         trap 'kill $SERVER_PID 2>/dev/null' EXIT INT TERM
@@ -75,6 +76,7 @@ tasks:
         MEDIAGO_AGENT_ID="$AGENT" \
         MEDIAGO_AGENT_BIN_DIR="$(pwd)/packages/vendor/dist" \
         MEDIAGO_FFMPEG_BIN_DIR="$(pwd)/packages/vendor/dist/tools" \
+        MEDIAGO_JIMENG_BIN_DIR="$(pwd)/packages/vendor/dist/tools" \
           go run ./packages/server/cmd/mediago-server --config packages/server/configs/server.yaml
 
   build:server:

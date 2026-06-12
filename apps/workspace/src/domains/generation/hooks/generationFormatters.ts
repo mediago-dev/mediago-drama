@@ -202,6 +202,8 @@ export const providerLabel = (provider: string) => {
 			return "DMX";
 		case "openrouter":
 			return "OpenRouter";
+		case "jimeng":
+			return "即梦";
 		default:
 			return provider;
 	}
@@ -213,6 +215,8 @@ export const providerTypeLabel = (providerType?: GenerationProviderType) => {
 			return "官方";
 		case "aggregator":
 			return "第三方";
+		case "local":
+			return "本地";
 		default:
 			return "未知类型";
 	}
@@ -264,6 +268,8 @@ export const paramLabel = (label: string) => {
 		Ratio: "比例",
 		Resolution: "分辨率",
 		Duration: "时长",
+		"Model version": "模型通道",
+		"Poll seconds": "等待秒数",
 		"Generate audio": "生成音频",
 		Seed: "种子",
 		"Return last frame": "返回最后一帧",

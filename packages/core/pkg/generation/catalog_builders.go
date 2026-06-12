@@ -54,6 +54,38 @@ func dmxRoute(
 	}
 }
 
+func jimengRoute(
+	id string,
+	familyID string,
+	versionID string,
+	label string,
+	model string,
+	adapter string,
+	docURL string,
+	params []ParamSpec,
+	async bool,
+	supportsReferenceURLs bool,
+	legacyModelID string,
+) ModelRoute {
+	return ModelRoute{
+		ID:                    id,
+		FamilyID:              familyID,
+		VersionID:             versionID,
+		Label:                 label,
+		Kind:                  kindForFamily(familyID),
+		Provider:              ProviderJimeng,
+		Model:                 model,
+		Adapter:               adapter,
+		DocURL:                docURL,
+		Async:                 async,
+		SupportsReferenceURLs: supportsReferenceURLs,
+		Status:                RouteStatusAvailable,
+		AuthKeys:              []string{ProviderJimeng},
+		Params:                params,
+		LegacyModelID:         legacyModelID,
+	}
+}
+
 func openRouterRoute(
 	id string,
 	familyID string,

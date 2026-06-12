@@ -18,6 +18,7 @@ export const MediaGenerationInputPanel: React.FC<{
 	canSubmit: boolean;
 	error?: string | null;
 	generationCountControl?: MediaGenerationCountControlConfig | null;
+	imageSpecControl?: React.ReactNode;
 	isSubmitting: boolean;
 	modelSummary: string;
 	onCopyPrompt?: () => void;
@@ -39,6 +40,7 @@ export const MediaGenerationInputPanel: React.FC<{
 	canSubmit,
 	error,
 	generationCountControl,
+	imageSpecControl,
 	isSubmitting,
 	modelSummary,
 	layeredComposer,
@@ -115,6 +117,7 @@ export const MediaGenerationInputPanel: React.FC<{
 					<p className="truncate text-xs text-muted-foreground">{modelSummary}</p>
 				</div>
 				<div className="flex min-w-0 shrink-0 items-center gap-2">
+					{imageSpecControl}
 					{generationCountControl ? (
 						<GenerationCountControl
 							max={generationCountControl.max}

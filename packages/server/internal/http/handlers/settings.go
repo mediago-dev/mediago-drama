@@ -27,6 +27,16 @@ type APIKeyUpdateRequest struct {
 	APIKey string `json:"apiKey"`
 }
 
+// ProviderLoginStartRequest starts a provider login flow.
+type ProviderLoginStartRequest struct {
+	Force bool `json:"force"`
+}
+
+// ProviderLoginCheckRequest checks a provider login challenge.
+type ProviderLoginCheckRequest struct {
+	DeviceCode string `json:"deviceCode"`
+}
+
 // HandleAPIKeys lists API key provider configuration state.
 func (handler Settings) HandleAPIKeys(context *gin.Context) {
 	list, err := handler.service.ListAPIKeys(context.Request.Context())
@@ -64,6 +74,48 @@ func (handler Settings) HandleDeleteAPIKey(context *gin.Context) {
 	}
 
 	httpresponse.OK(context, list)
+}
+
+// HandlePostProviderLogin starts a provider-specific login flow.
+func (handler Settings) HandlePostProviderLogin(context *gin.Context) {
+	payload, err := decodeOptionalJSON[ProviderLoginStartRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+
+	switch context.Param("provider") {
+	case "jimeng":
+		result, err := handler.service.BeginJimengLogin(context.Request.Context(), payload.Force)
+		if err != nil {
+			writeSettingsError(context, err)
+			return
+		}
+		httpresponse.OK(context, result)
+	default:
+		httpresponse.ErrorFromStatus(context, http.StatusNotFound, service.ErrAPIKeyProviderNotFound)
+	}
+}
+
+// HandlePostProviderLoginCheck checks a provider-specific login flow.
+func (handler Settings) HandlePostProviderLoginCheck(context *gin.Context) {
+	payload, err := decodeJSON[ProviderLoginCheckRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+
+	switch context.Param("provider") {
+	case "jimeng":
+		result, err := handler.service.CompleteJimengLogin(context.Request.Context(), payload.DeviceCode)
+		if err != nil {
+			writeSettingsError(context, err)
+			return
+		}
+		httpresponse.OK(context, result)
+	default:
+		httpresponse.ErrorFromStatus(context, http.StatusNotFound, service.ErrAPIKeyProviderNotFound)
+	}
 }
 
 // HandleAgentModelProfiles lists global agent model profiles.
@@ -166,6 +218,8 @@ func writeSettingsError(context *gin.Context, err error) {
 	case errors.Is(err, service.ErrAPIKeyProviderNotFound):
 		httpresponse.ErrorFromStatus(context, http.StatusNotFound, err)
 	case errors.Is(err, service.ErrAPIKeyRequired):
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+	case errors.Is(err, service.ErrProviderLoginRequired):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 	case errors.Is(err, service.ErrAgentModelNotFound):
 		httpresponse.ErrorFromStatus(context, http.StatusNotFound, err)
