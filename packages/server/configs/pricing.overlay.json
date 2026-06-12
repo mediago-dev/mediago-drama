@@ -13,6 +13,18 @@
       "perCallPrice": 0.22
     },
     {
+      "routeId": "jimeng.seedream-5.0",
+      "currency": "CNY",
+      "unit": "per_call",
+      "perCallPrice": 0
+    },
+    {
+      "routeId": "jimeng.seedream-4.7",
+      "currency": "CNY",
+      "unit": "per_call",
+      "perCallPrice": 0
+    },
+    {
       "routeId": "openrouter.seedream-4.5",
       "currency": "USD",
       "unit": "per_call",
@@ -117,6 +129,12 @@
       "currency": "CNY",
       "unit": "per_call",
       "perCallPrice": 4
+    },
+    {
+      "routeId": "jimeng.seedance-2.0-fast",
+      "currency": "CNY",
+      "unit": "per_call",
+      "perCallPrice": 0
     },
     {
       "routeId": "official.seedance-2.0-fast",

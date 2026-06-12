@@ -73,6 +73,7 @@ const fallbackProviderTypes: Record<string, GenerationProviderType> = {
 	volcengine: "official",
 	dmx: "aggregator",
 	openrouter: "aggregator",
+	jimeng: "local",
 };
 
 export const providerTypeOf = (

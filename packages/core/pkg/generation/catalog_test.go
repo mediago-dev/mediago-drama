@@ -44,6 +44,7 @@ func TestCatalogRoutesReferenceKnownFamiliesAndVersions(t *testing.T) {
 		ProviderVolcengine,
 		ProviderDMX,
 		ProviderOpenRouter,
+		ProviderJimeng,
 	} {
 		if !providers[provider] {
 			t.Fatalf("catalog does not expose provider %q", provider)
@@ -419,6 +420,20 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 
 	seedanceDuration := mustParam(t, dmxSeedance, "duration")
 	assertHasOptions(t, seedanceDuration, "-1", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15")
+
+	jimengSeedream := mustRoute(t, RouteJimengSeedream50)
+	assertHasParams(t, jimengSeedream, "ratio", "resolutionType", "poll")
+	if !jimengSeedream.SupportsReferenceURLs {
+		t.Fatal("jimeng seedream route should support reference images")
+	}
+	jimengSeedream47 := mustRoute(t, RouteJimengSeedream47)
+	assertHasParams(t, jimengSeedream47, "ratio", "resolutionType", "poll")
+
+	jimengSeedance := mustRoute(t, RouteJimengSeedance20Fast)
+	assertHasParams(t, jimengSeedance, "ratio", "videoResolution", "duration", "modelVersion", "poll")
+	if !jimengSeedance.SupportsReferenceURLs {
+		t.Fatal("jimeng seedance route should support reference images")
+	}
 }
 
 func TestRouteParamsDefaultToLowestCostOptions(t *testing.T) {

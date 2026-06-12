@@ -28,11 +28,14 @@ vi.mock("@/domains/generation/components/useMediaGenerationWorkspaceLayout", () 
 
 vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 	MediaGenerationInputPanel: ({
+		imageSpecControl,
 		previewReferenceAssets = [],
 	}: {
+		imageSpecControl?: React.ReactNode;
 		previewReferenceAssets?: MediaAsset[];
 	}) => (
 		<div data-testid="generation-input-panel">
+			{imageSpecControl}
 			{previewReferenceAssets.map((asset) => (
 				<span key={asset.id}>{asset.filename}</span>
 			))}
@@ -41,7 +44,15 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 }));
 
 vi.mock("@/domains/generation/components/MediaGenerationWorkspaceDialogs", () => ({
-	MediaGenerationWorkspaceDialogs: () => null,
+	MediaGenerationWorkspaceDialogs: ({
+		advancedRouteParams,
+	}: {
+		advancedRouteParams: Array<{ name: string }>;
+	}) => (
+		<div data-testid="generation-dialog-params">
+			{advancedRouteParams.map((param) => param.name).join(",")}
+		</div>
+	),
 }));
 
 vi.mock("react-photo-view", () => ({
@@ -329,5 +340,55 @@ describe("MediaGenerationWorkspace", () => {
 		expect(
 			referenceUrls.some((url) => url.endsWith("/api/v1/media-assets/reference-a/content")),
 		).toBe(true);
+	});
+
+	it("passes image spec control to the input panel and filters advanced params", () => {
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			selectedParams: {
+				aspectRatio: "1:1",
+				imageSize: "2K",
+				n: 1,
+				quality: "high",
+			},
+			selectedRoute: {
+				...workspaceDefaults.selectedRoute,
+				params: [
+					{
+						name: "aspectRatio",
+						label: "画幅比例",
+						type: "select",
+						default: "1:1",
+						options: [
+							{ label: "1:1", value: "1:1" },
+							{ label: "16:9", value: "16:9" },
+						],
+					},
+					{
+						name: "imageSize",
+						label: "图像尺寸",
+						type: "select",
+						default: "2K",
+						options: [
+							{ label: "2K", value: "2K" },
+							{ label: "4K", value: "4K" },
+						],
+					},
+					{ name: "quality", label: "质量", type: "select", default: "high" },
+					{ name: "n", label: "图像数量", type: "number", default: 1, min: 1, max: 4 },
+				],
+			},
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+			/>,
+		);
+
+		expect(screen.getByRole("button", { name: /图像规格/ })).toBeTruthy();
+		expect(screen.getByTestId("generation-dialog-params").textContent).toBe("quality");
 	});
 });

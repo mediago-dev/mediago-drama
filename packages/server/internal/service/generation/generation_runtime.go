@@ -24,6 +24,8 @@ type GenerationService struct {
 	mediaAssets                   *media.MediaAssets
 	generationProviderFactory     func(coregeneration.ModelRoute) (coregeneration.Provider, error)
 	multimodalTextProviderFactory runtime.MultimodalTextProviderFactory
+	jimengBinPath                 string
+	jimengBinDir                  string
 }
 
 type generationModelsResponse = GenerationModelsResponse
@@ -45,6 +47,12 @@ func NewGenerationService(settings *settings.Settings, generationTasks *Generati
 		mediaAssets:                   mediaAssets,
 		multimodalTextProviderFactory: defaultMultimodalTextProviderFactory,
 	}
+}
+
+// SetJimengCLIPaths configures the local Jimeng CLI lookup paths.
+func (workflow *GenerationService) SetJimengCLIPaths(binPath string, binDir string) {
+	workflow.jimengBinPath = strings.TrimSpace(binPath)
+	workflow.jimengBinDir = strings.TrimSpace(binDir)
 }
 
 // SetGenerationNotifications sets the notification service used by generation workflows.

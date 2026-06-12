@@ -9,6 +9,11 @@ import type {
 } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import { HistoryGenerationList } from "@/domains/generation/components/MediaGenerationHistory";
+import {
+	filterImageGenerationSpecParams,
+	resolveImageGenerationSpec,
+} from "@/domains/generation/components/imageGenerationSpec";
+import { ImageGenerationSpecControl } from "@/domains/generation/components/ImageGenerationSpecControl";
 import { MediaGenerationInputPanel } from "@/domains/generation/components/MediaGenerationInputPanel";
 import { MediaGenerationWorkspaceDialogs } from "@/domains/generation/components/MediaGenerationWorkspaceDialogs";
 import { PromptLibraryPicker } from "@/domains/generation/components/PromptLibraryPicker";
@@ -263,6 +268,17 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		params: ws.selectedRoute.params,
 		selectedParams: ws.selectedParams,
 	});
+	const imageSpec = useMemo(
+		() =>
+			kind === "image"
+				? resolveImageGenerationSpec(ws.selectedRoute.params, ws.selectedParams)
+				: null,
+		[kind, ws.selectedParams, ws.selectedRoute.params],
+	);
+	const filteredAdvancedRouteParams = useMemo(
+		() => filterImageGenerationSpecParams(advancedRouteParams, imageSpec),
+		[advancedRouteParams, imageSpec],
+	);
 	const previewReferenceAssets = useMemo(
 		() => mergeReferencePreviewAssets(ws.selectedReferenceAssets, resolvedReferencePreviewAssets),
 		[resolvedReferencePreviewAssets, ws.selectedReferenceAssets],
@@ -521,6 +537,11 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 						canSubmit={ws.canSubmit}
 						error={ws.error}
 						generationCountControl={generationCountControl}
+						imageSpecControl={
+							imageSpec ? (
+								<ImageGenerationSpecControl spec={imageSpec} onChange={ws.updateParam} />
+							) : null
+						}
 						isSubmitting={ws.isSubmitting}
 						modelSummary={modelSummary}
 						previewReferenceAssets={previewReferenceAssets}
@@ -552,7 +573,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 
 			<MediaGenerationWorkspaceDialogs
 				advancedOpen={advancedOpen}
-				advancedRouteParams={advancedRouteParams}
+				advancedRouteParams={filteredAdvancedRouteParams}
 				generationEntries={generationEntries}
 				modelSummary={modelSummary}
 				referenceDialogOpen={referenceDialogOpen}

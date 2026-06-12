@@ -1,12 +1,25 @@
-import { FolderOpen, KeyRound, Loader2, Save, SlidersHorizontal, Trash2 } from "lucide-react";
+import {
+	Check,
+	ExternalLink,
+	FolderOpen,
+	KeyRound,
+	Loader2,
+	LogIn,
+	Save,
+	SlidersHorizontal,
+	Trash2,
+} from "lucide-react";
 import type React from "react";
 import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import useSWR from "swr";
 import {
+	type APIKeyLoginChallenge,
 	type APIKeyProvider,
 	apiKeysKey,
+	beginProviderLogin,
 	clearAPIKey,
+	completeProviderLogin,
 	getAPIKeys,
 	saveAPIKey,
 } from "@/domains/settings/api/settings";
@@ -83,6 +96,9 @@ const APIKeysPanel: React.FC = () => {
 	const [apiKeys, setAPIKeys] = useState<Record<string, string>>({});
 	const [savingID, setSavingID] = useState<string>();
 	const [clearingID, setClearingID] = useState<string>();
+	const [loggingInID, setLoggingInID] = useState<string>();
+	const [checkingLoginID, setCheckingLoginID] = useState<string>();
+	const [loginChallenges, setLoginChallenges] = useState<Record<string, APIKeyLoginChallenge>>({});
 
 	const updateAPIKey = (providerID: string, value: string) => {
 		setAPIKeys((current) => ({ ...current, [providerID]: value }));
@@ -121,6 +137,62 @@ const APIKeysPanel: React.FC = () => {
 		}
 	};
 
+	const login = async (provider: APIKeyProvider) => {
+		setLoggingInID(provider.id);
+		try {
+			const nextData = await beginProviderLogin(provider.id, provider.configured);
+			await mutate(nextData, false);
+			if (nextData.login.status === "pending") {
+				setLoginChallenges((current) => ({ ...current, [provider.id]: nextData.login }));
+				if (nextData.login.verificationUri) {
+					await openExternalURL(nextData.login.verificationUri);
+				}
+				toast.info("即梦授权已打开", {
+					description: nextData.login.userCode
+						? `验证码：${nextData.login.userCode}`
+						: provider.label,
+				});
+				return;
+			}
+			setLoginChallenges((current) => withoutRecordKey(current, provider.id));
+			toast.success("登录已完成", { description: provider.label });
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "登录失败。";
+			toast.error("登录失败", { description: message });
+		} finally {
+			setLoggingInID(undefined);
+		}
+	};
+
+	const openLoginChallenge = async (provider: APIKeyProvider) => {
+		const challenge = loginChallenges[provider.id];
+		if (!challenge?.verificationUri) return;
+		try {
+			await openExternalURL(challenge.verificationUri);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "打开即梦授权页失败。";
+			toast.error("打开失败", { description: message });
+		}
+	};
+
+	const completeLogin = async (provider: APIKeyProvider) => {
+		const challenge = loginChallenges[provider.id];
+		if (!challenge?.deviceCode) return;
+
+		setCheckingLoginID(provider.id);
+		try {
+			const nextData = await completeProviderLogin(provider.id, challenge.deviceCode);
+			await mutate(nextData, false);
+			setLoginChallenges((current) => withoutRecordKey(current, provider.id));
+			toast.success("登录已完成", { description: provider.label });
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "登录确认失败。";
+			toast.error("确认失败", { description: message });
+		} finally {
+			setCheckingLoginID(undefined);
+		}
+	};
+
 	return (
 		<SettingsPanelLayout
 			title="API 密钥"
@@ -141,6 +213,8 @@ const APIKeysPanel: React.FC = () => {
 					const apiKey = apiKeys[provider.id] ?? "";
 					const isSaving = savingID === provider.id;
 					const isClearing = clearingID === provider.id;
+					const isLoggingIn = loggingInID === provider.id;
+					const isCheckingLogin = checkingLoginID === provider.id;
 					return (
 						<APIKeyProviderRow
 							key={provider.id}
@@ -148,8 +222,14 @@ const APIKeysPanel: React.FC = () => {
 							apiKey={apiKey}
 							isSaving={isSaving}
 							isClearing={isClearing}
+							isLoggingIn={isLoggingIn}
+							isCheckingLogin={isCheckingLogin}
+							loginChallenge={loginChallenges[provider.id]}
 							onAPIKeyChange={(value) => updateAPIKey(provider.id, value)}
 							onClear={() => void clear(provider)}
+							onConfirmLogin={() => void completeLogin(provider)}
+							onLogin={() => void login(provider)}
+							onOpenLogin={() => void openLoginChallenge(provider)}
 							onSave={() => void save(provider)}
 						/>
 					);
@@ -157,6 +237,21 @@ const APIKeysPanel: React.FC = () => {
 			</div>
 		</SettingsPanelLayout>
 	);
+};
+
+const withoutRecordKey = <TValue,>(values: Record<string, TValue>, key: string) => {
+	const next = { ...values };
+	delete next[key];
+	return next;
+};
+
+const openExternalURL = async (url: string) => {
+	if (isTauriRuntime()) {
+		const { openUrl } = await import("@tauri-apps/plugin-opener");
+		await openUrl(url);
+		return;
+	}
+	window.open(url, "_blank", "noopener,noreferrer");
 };
 
 const AppearancePanel: React.FC<{
@@ -261,15 +356,37 @@ const themeModeOptions: Array<{
 
 const APIKeyProviderRow: React.FC<{
 	apiKey: string;
+	isCheckingLogin: boolean;
 	isClearing: boolean;
+	isLoggingIn: boolean;
 	isSaving: boolean;
+	loginChallenge?: APIKeyLoginChallenge;
 	onAPIKeyChange: (value: string) => void;
 	onClear: () => void;
+	onConfirmLogin: () => void;
+	onLogin: () => void;
+	onOpenLogin: () => void;
 	onSave: () => void;
 	provider: APIKeyProvider;
-}> = ({ apiKey, isClearing, isSaving, onAPIKeyChange, onClear, onSave, provider }) => {
+}> = ({
+	apiKey,
+	isCheckingLogin,
+	isClearing,
+	isLoggingIn,
+	isSaving,
+	loginChallenge,
+	onAPIKeyChange,
+	onClear,
+	onConfirmLogin,
+	onLogin,
+	onOpenLogin,
+	onSave,
+	provider,
+}) => {
 	const inputID = `api-key-${provider.id}`;
 	const canClear = provider.configured || Boolean(apiKey);
+	const isOAuthProvider = provider.credentialKind === "oauth";
+	const isLoginPending = loginChallenge?.status === "pending";
 
 	return (
 		<section className="grid gap-3 py-2 lg:grid-cols-[minmax(var(--settings-provider-column-min),var(--settings-provider-column-max))_minmax(0,1fr)_auto] lg:items-start">
@@ -289,20 +406,55 @@ const APIKeyProviderRow: React.FC<{
 			</div>
 
 			<div className="min-w-0">
-				<Label htmlFor={inputID} className="mb-2 block text-xs text-muted-foreground">
-					{providerCredentialLabel(provider.credentialLabel)}
-				</Label>
-				<Input
-					id={inputID}
-					type="password"
-					value={apiKey}
-					onChange={(event) => onAPIKeyChange(event.target.value)}
-					placeholder={
-						provider.placeholder ??
-						(provider.configured ? "输入新的 Key 以替换当前凭据" : "输入 API Key")
-					}
-					className="h-8 rounded-md font-mono text-xs text-foreground"
-				/>
+				{isOAuthProvider ? (
+					<div>
+						<Label className="mb-2 block text-xs text-muted-foreground">登录状态</Label>
+						<div className="flex min-h-8 items-center rounded-md border border-border bg-ide-toolbar px-3 text-xs text-foreground">
+							<span>
+								{isLoginPending
+									? "等待即梦授权确认"
+									: provider.configured
+										? "本地即梦会话已记录"
+										: "需要登录即梦账号"}
+							</span>
+						</div>
+						{isLoginPending ? (
+							<div className="mt-2 grid gap-1.5 rounded-md border border-border bg-ide-toolbar px-3 py-2 text-xs text-muted-foreground">
+								{loginChallenge.userCode ? (
+									<div className="flex items-center justify-between gap-2">
+										<span>验证码</span>
+										<span className="font-mono text-foreground">{loginChallenge.userCode}</span>
+									</div>
+								) : null}
+								{loginChallenge.verificationUri ? (
+									<div className="flex items-center justify-between gap-2">
+										<span className="shrink-0">授权页</span>
+										<span className="min-w-0 truncate font-mono text-foreground">
+											{loginChallenge.verificationUri}
+										</span>
+									</div>
+								) : null}
+							</div>
+						) : null}
+					</div>
+				) : (
+					<>
+						<Label htmlFor={inputID} className="mb-2 block text-xs text-muted-foreground">
+							{providerCredentialLabel(provider.credentialLabel)}
+						</Label>
+						<Input
+							id={inputID}
+							type="password"
+							value={apiKey}
+							onChange={(event) => onAPIKeyChange(event.target.value)}
+							placeholder={
+								provider.placeholder ??
+								(provider.configured ? "输入新的 Key 以替换当前凭据" : "输入 API Key")
+							}
+							className="h-8 rounded-md font-mono text-xs text-foreground"
+						/>
+					</>
+				)}
 				{provider.help ? (
 					<p className="mt-2 text-xs text-muted-foreground">{providerHelp(provider.help)}</p>
 				) : null}
@@ -319,15 +471,55 @@ const APIKeyProviderRow: React.FC<{
 					{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
 					<span>清除</span>
 				</Button>
-				<Button
-					type="button"
-					disabled={!apiKey.trim() || isSaving}
-					onClick={onSave}
-					className="rounded-md"
-				>
-					{isSaving ? <Loader2 className="animate-spin" /> : <Save />}
-					<span>保存</span>
-				</Button>
+				{isOAuthProvider ? (
+					<>
+						{isLoginPending && loginChallenge?.verificationUri ? (
+							<Button
+								type="button"
+								variant="outline"
+								onClick={onOpenLogin}
+								className="rounded-md"
+								title="打开即梦授权页"
+							>
+								<ExternalLink />
+								<span>打开</span>
+							</Button>
+						) : null}
+						{isLoginPending ? (
+							<Button
+								type="button"
+								disabled={isCheckingLogin}
+								onClick={onConfirmLogin}
+								className="rounded-md"
+								title="确认即梦登录"
+							>
+								{isCheckingLogin ? <Loader2 className="animate-spin" /> : <Check />}
+								<span>确认</span>
+							</Button>
+						) : (
+							<Button
+								type="button"
+								disabled={isLoggingIn}
+								onClick={onLogin}
+								className="rounded-md"
+								title="打开即梦登录授权"
+							>
+								{isLoggingIn ? <Loader2 className="animate-spin" /> : <LogIn />}
+								<span>{provider.configured ? "重新登录" : "登录"}</span>
+							</Button>
+						)}
+					</>
+				) : (
+					<Button
+						type="button"
+						disabled={!apiKey.trim() || isSaving}
+						onClick={onSave}
+						className="rounded-md"
+					>
+						{isSaving ? <Loader2 className="animate-spin" /> : <Save />}
+						<span>保存</span>
+					</Button>
+				)}
 			</div>
 		</section>
 	);
@@ -346,7 +538,7 @@ const ProviderBadge: React.FC<{
 
 	return (
 		<Badge variant="secondary" className="rounded-md">
-			已保存
+			{provider.credentialKind === "oauth" ? "已登录" : "已保存"}
 		</Badge>
 	);
 };
@@ -358,6 +550,7 @@ const providerDescription = (description: string) => {
 		"OpenAI official image routes": "OpenAI 官方图像供应商",
 		"Google official image routes": "Google 官方图像供应商",
 		"Seedream and Seedance official routes": "Seedream 和 Seedance 官方供应商",
+		"Jimeng CLI local OAuth session": "即梦 CLI 本地登录",
 	};
 	return descriptions[description] ?? description;
 };

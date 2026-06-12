@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
 	appmcp "github.com/mediago-dev/mediago-drama/packages/server/internal/app/mcp"
 	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
@@ -21,6 +20,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
 	servicedocument "github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
 	serviceprompttemplates "github.com/mediago-dev/mediago-drama/packages/server/internal/service/prompttemplates"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Config controls local server persistence and runtime behavior.
@@ -35,6 +35,8 @@ type Config struct {
 	AgentBinDir              string
 	FFmpegPath               string
 	FFmpegBinDir             string
+	JimengBinPath            string
+	JimengBinDir             string
 	DocumentMCPConfigPath    string
 	AgentBridgeURL           string
 	AgentBridgeToken         string

@@ -12,12 +12,12 @@ tasks:
       - go run ./cmd/prepare-agent --agent {{.AGENT}}
 
   prepare:tool:
-    desc: Prepare one vendored tool (TOOL=ffmpeg|ffprobe)
+    desc: Prepare one vendored tool (TOOL=ffmpeg|ffprobe|dreamina)
     vars:
       TOOL: '{{.TOOL | default "ffmpeg"}}'
     preconditions:
-      - sh: 'case "{{.TOOL}}" in ffmpeg|ffprobe) ;; *) exit 1 ;; esac'
-        msg: "TOOL must be one of: ffmpeg, ffprobe"
+      - sh: 'case "{{.TOOL}}" in ffmpeg|ffprobe|dreamina) ;; *) exit 1 ;; esac'
+        msg: "TOOL must be one of: ffmpeg, ffprobe, dreamina"
     cmds:
       - go run ./cmd/prepare-tool --tool {{.TOOL}}
 
@@ -29,6 +29,9 @@ tasks:
       - task: prepare:tool
         vars:
           TOOL: ffprobe
+      - task: prepare:tool
+        vars:
+          TOOL: dreamina
 
   prepare:all:
     cmds:

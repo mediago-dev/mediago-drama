@@ -26,6 +26,10 @@ function main(): void {
 		join(toolsDist, "ffprobe", "tool.json"),
 		`missing prepared ffprobe: ${join(toolsDist, "ffprobe", "tool.json")}`,
 	);
+	ensureFile(
+		join(toolsDist, "dreamina", "tool.json"),
+		`missing prepared dreamina: ${join(toolsDist, "dreamina", "tool.json")}`,
+	);
 
 	const triple = rustTargetTriple();
 	const binariesDir = join(tauriDir, "binaries");

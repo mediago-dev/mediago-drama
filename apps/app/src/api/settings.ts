@@ -10,6 +10,7 @@ export interface APIKeyProvider {
 	credentialLabel?: string;
 	placeholder?: string;
 	help?: string;
+	credentialKind?: "apiKey" | "oauth" | string;
 }
 
 export interface APIKeyListResponse {

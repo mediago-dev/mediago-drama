@@ -172,6 +172,24 @@ export function seedreamParams(): GenerationParam[] {
 	];
 }
 
+export function jimengSeedreamParams(): GenerationParam[] {
+	return [
+		selectParam("ratio", "画幅比例", "1:1", [
+			{ label: "1:1", value: "1:1" },
+			{ label: "16:9", value: "16:9" },
+			{ label: "9:16", value: "9:16" },
+			{ label: "4:3", value: "4:3" },
+			{ label: "3:4", value: "3:4" },
+			{ label: "21:9", value: "21:9" },
+		]),
+		selectParam("resolutionType", "分辨率", "2k", [
+			{ label: "2K", value: "2k" },
+			{ label: "4K", value: "4k" },
+		]),
+		numberParam("poll", "等待秒数", 30, 30, 600),
+	];
+}
+
 export function officialGPTImageParams(): GenerationParam[] {
 	return [
 		...gptImageParams(),
@@ -271,6 +289,31 @@ export function dmxSeedanceParams(): GenerationParam[] {
 	return seedanceParams();
 }
 
+export function jimengSeedanceParams(): GenerationParam[] {
+	return [
+		selectParam("ratio", "比例", "16:9", [
+			{ label: "16:9", value: "16:9" },
+			{ label: "4:3", value: "4:3" },
+			{ label: "1:1", value: "1:1" },
+			{ label: "3:4", value: "3:4" },
+			{ label: "9:16", value: "9:16" },
+			{ label: "21:9", value: "21:9" },
+		]),
+		selectParam("videoResolution", "分辨率", "720p", [
+			{ label: "720p", value: "720p" },
+			{ label: "1080p", value: "1080p" },
+		]),
+		selectParam("duration", "时长", "5", jimengSeedanceDurationOptions()),
+		selectParam("modelVersion", "模型通道", "seedance2.0fast", [
+			{ label: "Seedance 2.0 Fast", value: "seedance2.0fast" },
+			{ label: "Seedance 2.0", value: "seedance2.0" },
+			{ label: "Seedance 2.0 Fast VIP", value: "seedance2.0fast_vip" },
+			{ label: "Seedance 2.0 VIP", value: "seedance2.0_vip" },
+		]),
+		numberParam("poll", "等待秒数", 0, 0, 600),
+	];
+}
+
 function seedanceParams(): GenerationParam[] {
 	return [
 		selectParam("ratio", "比例", "16:9", [
@@ -293,6 +336,13 @@ function seedanceParams(): GenerationParam[] {
 		boolParam("returnLastFrame", "返回最后一帧", false),
 		optionalNumberParam("executionExpiresAfter", "任务超时", 3600, 259200),
 	];
+}
+
+function jimengSeedanceDurationOptions() {
+	return Array.from({ length: 12 }, (_, index) => {
+		const seconds = String(index + 4);
+		return { label: `${seconds} 秒`, value: seconds };
+	});
 }
 
 function seedanceDurationOptions() {

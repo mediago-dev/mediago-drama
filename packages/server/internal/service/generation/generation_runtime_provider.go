@@ -24,6 +24,8 @@ func (workflow *GenerationService) newGenerationProvider(route coregeneration.Mo
 		Credentials:                   workflow.generationCredentialResolver(),
 		MultimodalTextProviderFactory: workflow.multimodalTextProviderFactory,
 		OpenRouterAppName:             "mediago-drama",
+		JimengBinPath:                 workflow.jimengBinPath,
+		JimengBinDir:                  workflow.jimengBinDir,
 	})
 }
 

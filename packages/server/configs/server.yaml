@@ -10,6 +10,9 @@ port: 8080
 # ffmpeg:
 #   path: ""       # Optional explicit ffmpeg binary; MEDIAGO_FFMPEG_PATH overrides this.
 #   bin_dir: ""    # Directory containing ffmpeg; MEDIAGO_FFMPEG_BIN_DIR overrides this.
+# jimeng:
+#   path: ""       # Optional explicit dreamina binary; MEDIAGO_JIMENG_PATH overrides this.
+#   bin_dir: ""    # Directory containing dreamina; MEDIAGO_JIMENG_BIN_DIR overrides this.
 # internal_api:
 #   url: ""    # ONE_INTERNAL_API_URL overrides this when set.
 #   token: ""  # ONE_INTERNAL_API_TOKEN overrides this when set.

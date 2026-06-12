@@ -57,7 +57,8 @@ pub fn run() {
                     .env("MEDIAGO_SERVER_PORT", SERVER_PORT)
                     .env("MEDIAGO_EXIT_ON_STDIN_CLOSE", "1")
                     .env("MEDIAGO_AGENT_BIN_DIR", agents_dir)
-                    .env("MEDIAGO_FFMPEG_BIN_DIR", media_tools_dir);
+                    .env("MEDIAGO_FFMPEG_BIN_DIR", media_tools_dir.clone())
+                    .env("MEDIAGO_JIMENG_BIN_DIR", media_tools_dir);
                 let (mut rx, child) = sidecar.spawn()?;
                 app.manage(ServerSidecar(Mutex::new(Some(child))));
 

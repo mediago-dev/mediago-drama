@@ -17,3 +17,21 @@ func seedreamParams() []ParamSpec {
 		numberParam("n", "Images", 1, 1, 4),
 	}
 }
+
+func jimengSeedreamParams() []ParamSpec {
+	return []ParamSpec{
+		selectParam("ratio", "Ratio", "1:1", []ParamOption{
+			{Label: "1:1", Value: "1:1"},
+			{Label: "16:9", Value: "16:9"},
+			{Label: "9:16", Value: "9:16"},
+			{Label: "4:3", Value: "4:3"},
+			{Label: "3:4", Value: "3:4"},
+			{Label: "21:9", Value: "21:9"},
+		}),
+		selectParam("resolutionType", "Resolution", "2k", []ParamOption{
+			{Label: "2K", Value: "2k"},
+			{Label: "4K", Value: "4k"},
+		}),
+		withHelp(optionalNumberParam("poll", "Poll seconds", 30, 600), "Seconds for the CLI to wait before returning an intermediate task state."),
+	}
+}

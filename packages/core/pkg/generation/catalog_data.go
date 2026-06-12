@@ -16,11 +16,14 @@ var familySpecs = []familySpec{
 		},
 		Versions: []ModelVersion{
 			version(VersionSeedream5Lite, FamilySeedream, "Seedream 5.0 Lite", KindImage, "doubao-seedream-5.0-lite", false, true),
+			version(VersionSeedream47, FamilySeedream, "Seedream 4.7", KindImage, "4.7", false, true),
 			version(VersionSeedream45, FamilySeedream, "Seedream 4.5", KindImage, "bytedance-seed/seedream-4.5", false, true),
 		},
 		Routes: []ModelRoute{
 			dmxRoute(RouteDMXSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "DMX", "doubao-seedream-5.0-lite", AdapterDMXResponsesImage, "https://doc.dmxapi.cn/doubao-seedream-5.0-lite-Multi-image-fusion.html", seedreamParams(), false, true, ModelSeedream5Lite),
 			officialRoute(RouteOfficialSeedream5Lite, FamilySeedream, VersionSeedream5Lite, KindImage, "Volcengine official", "doubao-seedream-5-0-260128", AdapterOfficialVolcengineImage, "https://www.volcengine.com/docs/82379/1541523", []string{"volcengine"}, seedreamParams(), false, true),
+			jimengRoute(RouteJimengSeedream50, FamilySeedream, VersionSeedream5Lite, "即梦 CLI", "5.0", AdapterJimengCLIImage, "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg", jimengSeedreamParams(), false, true, ModelSeedream50),
+			jimengRoute(RouteJimengSeedream47, FamilySeedream, VersionSeedream47, "即梦 CLI", "4.7", AdapterJimengCLIImage, "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg", jimengSeedreamParams(), false, true, ModelSeedream47),
 			openRouterRoute(RouteOpenRouterSeedream45, FamilySeedream, VersionSeedream45, KindImage, "OpenRouter", "bytedance-seed/seedream-4.5", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, true),
 		},
 	},
@@ -94,6 +97,7 @@ var familySpecs = []familySpec{
 		},
 		Routes: []ModelRoute{
 			dmxRoute(RouteDMXSeedance20Fast, FamilySeedance, VersionSeedance20Fast, "DMX", "doubao-seedance-2-0-fast-260128", AdapterDMXResponsesVideo, "https://doc.dmxapi.cn/doubao-seedance-2-0-fast-text-to-video.html", dmxSeedanceParams(), true, false, ModelJimengSeedance2Fast),
+			jimengRoute(RouteJimengSeedance20Fast, FamilySeedance, VersionSeedance20Fast, "即梦 CLI", "seedance2.0fast", AdapterJimengCLIVideo, "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg", jimengSeedanceParams(), true, true, ModelJimengSeedance2Fast),
 			officialRoute(RouteOfficialSeedance20Fast, FamilySeedance, VersionSeedance20Fast, KindVideo, "Volcengine official", "doubao-seedance-2-0-fast-260128", AdapterOfficialVolcengineVideo, "https://www.volcengine.com/docs/82379/1520757", []string{"volcengine"}, officialSeedanceParams(), true, true),
 			openRouterRoute(RouteOpenRouterSeedance20Fast, FamilySeedance, VersionSeedance20Fast, KindVideo, "OpenRouter", "bytedance/seedance-2.0-fast", AdapterOpenRouterVideo, openRouterVideoDocs, openRouterVideoParams(), true, true),
 			openRouterRoute(RouteOpenRouterSeedance20, FamilySeedance, VersionSeedance20, KindVideo, "OpenRouter", "bytedance/seedance-2.0", AdapterOpenRouterVideo, openRouterVideoDocs, openRouterVideoParams(), true, true),

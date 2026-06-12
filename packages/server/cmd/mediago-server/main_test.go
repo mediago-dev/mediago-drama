@@ -17,6 +17,8 @@ func TestApplyEnvOverrides(t *testing.T) {
 	t.Setenv("MEDIAGO_AGENT_BIN_DIR", "/tmp/agents")
 	t.Setenv("MEDIAGO_FFMPEG_PATH", "/tmp/ffmpeg")
 	t.Setenv("MEDIAGO_FFMPEG_BIN_DIR", "/tmp/tools/ffmpeg")
+	t.Setenv("MEDIAGO_JIMENG_PATH", "/tmp/dreamina")
+	t.Setenv("MEDIAGO_JIMENG_BIN_DIR", "/tmp/tools")
 	t.Setenv("MEDIAGO_SERVER_PORT", "48273")
 	t.Setenv("MEDIAGO_LOG_LEVEL", "debug")
 
@@ -36,6 +38,12 @@ func TestApplyEnvOverrides(t *testing.T) {
 	}
 	if config.FFmpeg.BinDir != "/tmp/tools/ffmpeg" {
 		t.Fatalf("FFmpeg.BinDir = %q, want %q", config.FFmpeg.BinDir, "/tmp/tools/ffmpeg")
+	}
+	if config.Jimeng.Path != "/tmp/dreamina" {
+		t.Fatalf("Jimeng.Path = %q, want %q", config.Jimeng.Path, "/tmp/dreamina")
+	}
+	if config.Jimeng.BinDir != "/tmp/tools" {
+		t.Fatalf("Jimeng.BinDir = %q, want %q", config.Jimeng.BinDir, "/tmp/tools")
 	}
 	if config.Port != 48273 {
 		t.Fatalf("Port = %d, want %d", config.Port, 48273)

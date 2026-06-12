@@ -92,6 +92,11 @@ func registerSettingsRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.GET("/settings/api-keys", handlers.Settings.HandleAPIKeys)
 	apiRoutes.PUT("/settings/api-keys/:provider", handlers.Settings.HandlePutAPIKey)
 	apiRoutes.DELETE("/settings/api-keys/:provider", handlers.Settings.HandleDeleteAPIKey)
+	apiRoutes.POST("/settings/api-keys/:provider/login", handlers.Settings.HandlePostProviderLogin)
+	apiRoutes.POST(
+		"/settings/api-keys/:provider/login/check",
+		handlers.Settings.HandlePostProviderLoginCheck,
+	)
 	apiRoutes.GET(
 		"/settings/agent-model-profiles",
 		handlers.Settings.HandleAgentModelProfiles,

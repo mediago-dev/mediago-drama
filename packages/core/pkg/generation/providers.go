@@ -8,6 +8,8 @@ const (
 	ProviderTypeOfficial ProviderType = "official"
 	// ProviderTypeAggregator marks third-party aggregation providers.
 	ProviderTypeAggregator ProviderType = "aggregator"
+	// ProviderTypeLocal marks locally bundled command-line providers.
+	ProviderTypeLocal ProviderType = "local"
 )
 
 // ProviderInfo describes one generation provider exposed by the catalog.
@@ -26,6 +28,7 @@ func Providers() []ProviderInfo {
 		{ID: ProviderVolcengine, Label: labels[ProviderVolcengine], ProviderType: ProviderTypeOfficial},
 		{ID: ProviderDMX, Label: labels[ProviderDMX], ProviderType: ProviderTypeAggregator},
 		{ID: ProviderOpenRouter, Label: labels[ProviderOpenRouter], ProviderType: ProviderTypeAggregator},
+		{ID: ProviderJimeng, Label: labels[ProviderJimeng], ProviderType: ProviderTypeLocal},
 	}
 
 	result := make([]ProviderInfo, len(providers))
