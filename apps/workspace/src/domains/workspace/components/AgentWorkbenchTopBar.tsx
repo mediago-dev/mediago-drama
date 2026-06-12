@@ -1,0 +1,90 @@
+import { Bot, FileText } from "lucide-react";
+import type React from "react";
+import { useTauriWindowDrag } from "@/domains/workspace/lib/tauri-window-drag";
+import { useAgentLayoutStore, type AgentLayoutTab } from "@/lib/stores/agent-layout";
+import { useWorkModeStore, type WorkMode } from "@/lib/stores/work-mode";
+import { Button } from "@/shared/components/ui/button";
+import { cn } from "@/shared/lib/utils";
+
+const tabs: Array<{
+	value: AgentLayoutTab;
+	label: string;
+	icon: React.ElementType;
+}> = [
+	{ value: "document", label: "文档", icon: FileText },
+	{ value: "agent", label: "agent", icon: Bot },
+];
+
+interface AgentWorkbenchTopBarProps {
+	mode?: WorkMode;
+	showTabs?: boolean;
+}
+
+export const AgentWorkbenchTopBar: React.FC<AgentWorkbenchTopBarProps> = ({ mode, showTabs }) => {
+	const storedWorkMode = useWorkModeStore((state) => state.mode);
+	const startWindowDrag = useTauriWindowDrag();
+	const workMode = mode ?? storedWorkMode;
+	const title = workMode === "studio" ? "创作台" : "智能体工作台";
+
+	return (
+		<header
+			className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-ide-toolbar/95 px-3 text-ide-toolbar-foreground"
+			onPointerDown={startWindowDrag}
+		>
+			<div
+				className="flex h-full min-w-0 flex-1 items-center text-sm font-medium text-foreground"
+				data-tauri-drag-region
+			>
+				{title}
+			</div>
+			<AgentWorkbenchHeaderActions mode={workMode} showTabs={showTabs} />
+		</header>
+	);
+};
+
+export const AgentWorkbenchHeaderActions: React.FC<AgentWorkbenchTopBarProps> = ({
+	mode,
+	showTabs,
+}) => {
+	const tab = useAgentLayoutStore((state) => state.tab);
+	const setTab = useAgentLayoutStore((state) => state.setTab);
+	const storedWorkMode = useWorkModeStore((state) => state.mode);
+	const workMode = mode ?? storedWorkMode;
+	const shouldShowTabs = showTabs ?? workMode === "agent";
+
+	if (!shouldShowTabs) return null;
+
+	return (
+		<div
+			className="flex h-8 items-center rounded-sm border border-border bg-ide-toolbar p-0.5"
+			data-tauri-no-drag
+			aria-label="工作台内容"
+			role="group"
+		>
+			{tabs.map((item) => {
+				const Icon = item.icon;
+				const isActive = tab === item.value;
+				const label = item.label;
+				return (
+					<Button
+						key={item.value}
+						type="button"
+						variant="ghost"
+						size="sm"
+						className={cn(
+							"h-7 rounded-sm px-2 text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+							isActive && "bg-ide-list-active text-ide-list-active-foreground",
+						)}
+						onClick={() => setTab(item.value)}
+						aria-pressed={isActive}
+						aria-label={label}
+						title={label}
+					>
+						<Icon className="size-3.5" />
+						<span>{label}</span>
+					</Button>
+				);
+			})}
+		</div>
+	);
+};

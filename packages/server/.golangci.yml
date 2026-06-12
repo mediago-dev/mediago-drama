@@ -1,0 +1,41 @@
+run:
+  timeout: 3m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+    - misspell
+    - unused
+    - gocritic
+    - ineffassign
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+    - path: _test\.go
+      linters:
+        - unused
+    - linters:
+        - revive
+      text: "(stutters|redefinition of the built-in function|unexported-return|unused-parameter)"
+    - path: internal/
+      linters:
+        - unused
+    - linters:
+        - gocritic
+      text: "(ifElseChain|captLocal|assignOp)"
+    - path: internal/http/handlers/legacy_document\.go
+      linters:
+        - gosimple
+      text: "S1016"
+    - path: internal/service/
+      linters:
+        - ineffassign
+    - linters:
+        - staticcheck
+      text: "(SA1019: strings.Title|SA4008|SA4006)"

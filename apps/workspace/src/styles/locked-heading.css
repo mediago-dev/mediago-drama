@@ -1,0 +1,6 @@
+.template-locked-heading {
+	position: relative;
+	border-radius: var(--radius-scale-sm);
+	cursor: not-allowed;
+	user-select: none;
+}

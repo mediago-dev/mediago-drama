@@ -1,0 +1,16 @@
+# binaries / build output
+bin/
+dist/
+/document-mcp
+
+# test output
+coverage.out
+coverage.html
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# go mod cache leftovers
+vendor/

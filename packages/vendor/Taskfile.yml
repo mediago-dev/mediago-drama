@@ -1,0 +1,105 @@
+version: "3"
+
+tasks:
+  prepare:
+    desc: Prepare one ACP agent (AGENT=codex|opencode)
+    vars:
+      AGENT: '{{.AGENT | default "codex"}}'
+    preconditions:
+      - sh: 'case "{{.AGENT}}" in codex|opencode) ;; *) exit 1 ;; esac'
+        msg: "AGENT must be one of: codex, opencode"
+    cmds:
+      - go run ./cmd/prepare-agent --agent {{.AGENT}}
+
+  prepare:tool:
+    desc: Prepare one vendored tool (TOOL=ffmpeg|ffprobe)
+    vars:
+      TOOL: '{{.TOOL | default "ffmpeg"}}'
+    preconditions:
+      - sh: 'case "{{.TOOL}}" in ffmpeg|ffprobe) ;; *) exit 1 ;; esac'
+        msg: "TOOL must be one of: ffmpeg, ffprobe"
+    cmds:
+      - go run ./cmd/prepare-tool --tool {{.TOOL}}
+
+  prepare:media-tools:
+    cmds:
+      - task: prepare:tool
+        vars:
+          TOOL: ffmpeg
+      - task: prepare:tool
+        vars:
+          TOOL: ffprobe
+
+  prepare:all:
+    cmds:
+      - task: prepare
+        vars:
+          AGENT: codex
+      - task: prepare
+        vars:
+          AGENT: opencode
+      - task: prepare:media-tools
+
+  prepare:clean:
+    cmds:
+      - rm -rf dist
+
+  fmt:
+    cmds:
+      - gofmt -w .
+
+  fmt:check:
+    cmds:
+      - test -z "$(gofmt -l .)"
+
+  vet:
+    cmds:
+      - |
+        packages="$(go list ./...)"
+        if [ -n "$packages" ]; then
+          go vet $packages
+        else
+          echo "no Go packages to vet"
+        fi
+
+  test:
+    cmds:
+      - |
+        packages="$(go list ./...)"
+        if [ -n "$packages" ]; then
+          go test -race $packages
+        else
+          echo "no Go packages to test"
+        fi
+
+  test:cover:
+    cmds:
+      - |
+        packages="$(go list ./...)"
+        if [ -n "$packages" ]; then
+          go test -race -coverprofile=coverage.out $packages
+          go tool cover -func=coverage.out
+        else
+          echo "no Go packages to test"
+        fi
+
+  build:
+    cmds:
+      - |
+        packages="$(go list ./...)"
+        if [ -n "$packages" ]; then
+          go build $packages
+        else
+          echo "no Go packages to build"
+        fi
+
+  tidy:
+    cmds:
+      - go mod tidy
+
+  check:
+    cmds:
+      - task: tidy
+      - task: fmt:check
+      - task: vet
+      - task: test

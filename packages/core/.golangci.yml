@@ -1,0 +1,31 @@
+run:
+  timeout: 3m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+    - misspell
+    - unused
+    - gocritic
+    - ineffassign
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+    - path: pkg/generation/catalog\.go
+      linters:
+        - unused
+      text: "func `(plannedRoute|gatedRoute|unavailableRoute)` is unused"
+    - path: pkg/generation/openrouter/provider\.go
+      linters:
+        - unused
+      text: "func `valueOrDefault` is unused"
+    - path: internal/einoadapter/convert\.go
+      linters:
+        - staticcheck
+      text: "SA1019: schema.ChatMessagePart is deprecated"

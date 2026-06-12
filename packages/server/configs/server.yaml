@@ -1,0 +1,28 @@
+host: 127.0.0.1
+port: 8080
+# log_path: ""       # Leave empty to use <workspaceDir>/.mediago-drama/logs/server.log
+# log_level: info    # info by default; MEDIAGO_LOG_LEVEL=debug enables diagnostic traces.
+# workspace_dir: ""  # Leave empty to use the app data workspace
+# acp_command: codex-acp
+# agent:
+#   id: codex      # Optional active backend override: codex or opencode.
+#   bin_dir: ""    # Directory containing <id>/agent.json; empty uses PATH commands.
+# ffmpeg:
+#   path: ""       # Optional explicit ffmpeg binary; MEDIAGO_FFMPEG_PATH overrides this.
+#   bin_dir: ""    # Directory containing ffmpeg; MEDIAGO_FFMPEG_BIN_DIR overrides this.
+# internal_api:
+#   url: ""    # ONE_INTERNAL_API_URL overrides this when set.
+#   token: ""  # ONE_INTERNAL_API_TOKEN overrides this when set.
+billing:
+  price_overlay_path: "pricing.overlay.json" # Optional JSON file with {"prices":[...]} route price overrides.
+# document_mcp:
+#   session_id: ""
+#   run_id: ""
+#   bridge_url: ""    # MEDIAGO_DRAMA_AGENT_BRIDGE_URL overrides this when set.
+#   bridge_token: ""  # MEDIAGO_DRAMA_AGENT_BRIDGE_TOKEN overrides this when set.
+#   role_persona: ""
+#   agent_tag: ""
+#   active_document_id: ""
+#   selection_text: ""
+prompt:
+  max_section_chars: 12000

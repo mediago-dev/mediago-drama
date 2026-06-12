@@ -1,0 +1,54 @@
+{
+  "ffmpeg": {
+    "bin": "ffmpeg",
+    "version": "b6.1.2-rc.1",
+    "platforms": {
+      "darwin-arm64": {
+        "url": "https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/b6.1.2-rc.1/ffmpeg-darwin-arm64",
+        "sizeBytes": 47078120
+      },
+      "darwin-x64": {
+        "url": "https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/b6.1.2-rc.1/ffmpeg-darwin-x64",
+        "sizeBytes": 75991688
+      },
+      "linux-arm64": {
+        "url": "https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/b6.1.2-rc.1/ffmpeg-linux-arm64",
+        "sizeBytes": 92424880
+      },
+      "linux-x64": {
+        "url": "https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/b6.1.2-rc.1/ffmpeg-linux-x64",
+        "sizeBytes": 128513072
+      },
+      "win32-x64": {
+        "url": "https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/b6.1.2-rc.1/ffmpeg-win32-x64",
+        "sizeBytes": 126518784
+      }
+    }
+  },
+  "ffprobe": {
+    "bin": "ffprobe",
+    "version": "b6.1.2-rc.1",
+    "platforms": {
+      "darwin-arm64": {
+        "url": "https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/b6.1.2-rc.1/ffprobe-darwin-arm64",
+        "sizeBytes": 47037128
+      },
+      "darwin-x64": {
+        "url": "https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/b6.1.2-rc.1/ffprobe-darwin-x64",
+        "sizeBytes": 75917176
+      },
+      "linux-arm64": {
+        "url": "https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/b6.1.2-rc.1/ffprobe-linux-arm64",
+        "sizeBytes": 92364464
+      },
+      "linux-x64": {
+        "url": "https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/b6.1.2-rc.1/ffprobe-linux-x64",
+        "sizeBytes": 128374768
+      },
+      "win32-x64": {
+        "url": "https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/b6.1.2-rc.1/ffprobe-win32-x64",
+        "sizeBytes": 126382080
+      }
+    }
+  }
+}

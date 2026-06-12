@@ -1,0 +1,25 @@
+package generation
+
+const (
+	RouteDMXSeedream5Lite         = "dmx.seedream-5-lite"
+	RouteDMXGPT41MiniText         = "dmx.gpt-4.1-mini-text"
+	RouteDMXGPTImage2             = "dmx.gpt-image-2"
+	RouteDMXNanoBanana31          = "dmx.gemini-3.1-flash-image-preview"
+	RouteDMXSeedance20Fast        = "dmx.seedance-2.0-fast"
+	RouteOpenRouterSeedream45     = "openrouter.seedream-4.5"
+	RouteOpenRouterGPT41MiniText  = "openrouter.gpt-4.1-mini-text"
+	RouteOpenRouterGPT5MiniText   = "openrouter.gpt-5-mini-text"
+	RouteOpenRouterGPT54Image2    = "openrouter.gpt-5.4-image-2"
+	RouteOpenRouterNanoBanana31   = "openrouter.gemini-3.1-flash-image-preview"
+	RouteOpenRouterNanoBananaPro  = "openrouter.gemini-3-pro-image-preview"
+	RouteOpenRouterNanoBanana25   = "openrouter.gemini-2.5-flash-image"
+	RouteOpenRouterSeedance20Fast = "openrouter.seedance-2.0-fast"
+	RouteOpenRouterSeedance20     = "openrouter.seedance-2.0"
+	RouteOpenRouterSeedance15Pro  = "openrouter.seedance-1.5-pro"
+	RouteOfficialSeedream5Lite    = "official.seedream-5-lite"
+	RouteOfficialGPT41MiniText    = "official.gpt-4.1-mini-text"
+	RouteOfficialGPT5MiniText     = "official.gpt-5-mini-text"
+	RouteOfficialGPTImage2        = "official.gpt-image-2"
+	RouteOfficialNanoBanana31     = "official.gemini-3.1-flash-image-preview"
+	RouteOfficialSeedance20Fast   = "official.seedance-2.0-fast"
+)

@@ -1,0 +1,44 @@
+version: "3"
+
+tasks:
+  fmt:
+    cmds:
+      - gofmt -w .
+
+  fmt:check:
+    cmds:
+      - test -z "$(gofmt -l .)"
+
+  vet:
+    cmds:
+      - go vet ./...
+
+  test:
+    cmds:
+      - go test -race ./...
+
+  test:cover:
+    cmds:
+      - go test -race -coverprofile=coverage.out ./...
+      - go tool cover -func=coverage.out
+
+  build:
+    cmds:
+      - go build ./...
+
+  lint:
+    cmds:
+      - go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run
+
+  tidy:
+    cmds:
+      - go mod tidy
+
+  check:
+    cmds:
+      - task: tidy
+      - task: fmt:check
+      - task: vet
+      - task: lint
+      - task: build
+      - task: test

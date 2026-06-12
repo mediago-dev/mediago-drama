@@ -1,0 +1,9 @@
+go 1.25.0
+
+use (
+	./packages/server
+	./packages/core
+	./packages/mcp
+	./packages/tools
+	./packages/vendor
+)

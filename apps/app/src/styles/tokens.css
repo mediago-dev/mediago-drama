@@ -1,0 +1,135 @@
+@layer theme {
+	:root {
+		--space-xs: 0.25rem;
+		--space-sm: 0.5rem;
+		--space-md: 1rem;
+		--space-lg: 1.5rem;
+		--space-xl: 2rem;
+
+		--radius-scale-none: 0;
+		--radius-scale-sm: 0.375rem;
+		--radius-scale-md: 0.5rem;
+		--radius-scale-lg: 0.625rem;
+		--radius-scale-xl: 0.75rem;
+		--radius-scale-full: 9999px;
+
+		--shadow-scale-sm: 0 1px 0 rgb(243 244 245 / 0.72);
+		--shadow-scale-md: 0 6px 12px rgb(174 181 196 / 0.16);
+		--shadow-scale-lg: 0 14px 32px rgb(174 181 196 / 0.2);
+
+		--border-width-scale-sm: 1px;
+		--border-width-scale-md: 2px;
+		--outline-width-focus: var(--border-width-scale-md);
+		--outline-offset-focus: var(--border-width-scale-md);
+		--scrollbar-size: 0.375rem;
+
+		--font-family-sans:
+			"MILan Pro VF", "MILanProVF", "PingFang SC", "Avenir Next", "Segoe UI",
+			"Helvetica Neue", "Arial", "Noto Sans", sans-serif;
+		--font-family-mono:
+			"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", monospace;
+
+		--font-size-xs: 0.75rem;
+		--font-size-sm: 0.875rem;
+		--font-size-md: 1rem;
+		--font-size-lg: 1.125rem;
+		--font-size-xl: 1.25rem;
+		--font-size-2xl: 1.5rem;
+
+		--font-weight-scale-normal: 400;
+		--font-weight-scale-medium: 500;
+		--font-weight-scale-semibold: 600;
+		--font-weight-scale-bold: 700;
+
+		--line-height-tight: 1.25;
+		--line-height-normal: 1.5;
+		--line-height-relaxed: 1.625;
+
+		--background: rgb(247 249 251);
+		--foreground: rgb(11 21 38);
+		--card: rgb(255 255 255);
+		--card-foreground: rgb(11 21 38);
+		--popover: rgb(255 255 255);
+		--popover-foreground: rgb(11 21 38);
+		--primary: rgb(77 137 255);
+		--primary-foreground: rgb(255 255 255);
+		--secondary: rgb(230 238 255);
+		--secondary-foreground: rgb(48 98 218);
+		--muted: rgb(240 243 247);
+		--muted-foreground: rgb(109 121 143);
+		--accent: rgb(239 244 255);
+		--accent-foreground: rgb(48 98 218);
+		--destructive: rgb(255 77 77);
+		--destructive-foreground: rgb(255 255 255);
+		--border: rgb(231 236 243);
+		--input: rgb(219 225 235);
+		--ring: rgb(77 137 255);
+		--success-surface: rgb(233 247 242);
+		--success-border: rgb(180 237 216);
+		--success-foreground: rgb(55 194 141);
+		--info-surface: rgb(239 244 255);
+		--info-border: rgb(179 204 255);
+		--info-foreground: rgb(77 137 255);
+		--warning-surface: rgb(255 247 240);
+		--warning-border: rgb(255 217 179);
+		--warning-foreground: rgb(201 124 46);
+		--error-surface: rgb(255 240 240);
+		--error-border: rgb(255 179 179);
+		--error-foreground: rgb(255 77 77);
+		--surface-subtle: rgb(247 249 251 / 0.84);
+		--surface-raised: rgb(255 255 255);
+		--app-toolbar: rgb(255 255 255 / 0.92);
+		--app-tabbar: rgb(255 255 255 / 0.96);
+
+		--app-background-image: linear-gradient(
+			180deg,
+			rgb(247 249 251) 0%,
+			rgb(247 249 251) 72%,
+			rgb(235 246 255) 100%
+		);
+	}
+
+	:root[data-theme="dark"] {
+		--background: rgb(25 27 28);
+		--foreground: rgb(223 230 237);
+		--card: rgb(35 37 41);
+		--card-foreground: rgb(223 230 237);
+		--popover: rgb(35 37 41);
+		--popover-foreground: rgb(223 230 237);
+		--primary: rgb(62 116 224);
+		--primary-foreground: rgb(255 255 255);
+		--secondary: rgb(32 48 79);
+		--secondary-foreground: rgb(188 215 250);
+		--muted: rgb(44 47 51);
+		--muted-foreground: rgb(167 171 181);
+		--accent: rgb(32 40 61);
+		--accent-foreground: rgb(146 184 245);
+		--destructive: rgb(220 68 69);
+		--destructive-foreground: rgb(255 255 255);
+		--border: rgb(53 56 61);
+		--input: rgb(72 75 82);
+		--ring: rgb(62 116 224);
+		--success-surface: rgb(25 46 39);
+		--success-border: rgb(43 114 88);
+		--success-foreground: rgb(102 218 172);
+		--info-surface: rgb(32 48 79);
+		--info-border: rgb(43 72 130);
+		--info-foreground: rgb(146 184 245);
+		--warning-surface: rgb(51 38 27);
+		--warning-border: rgb(126 86 46);
+		--warning-foreground: rgb(232 174 107);
+		--error-surface: rgb(51 27 29);
+		--error-border: rgb(126 46 46);
+		--error-foreground: rgb(232 112 107);
+		--surface-subtle: rgb(35 37 41 / 0.78);
+		--surface-raised: rgb(35 37 41);
+		--app-toolbar: rgb(35 37 41 / 0.92);
+		--app-tabbar: rgb(35 37 41 / 0.96);
+		--app-background-image: linear-gradient(
+			180deg,
+			rgb(25 27 28) 0%,
+			rgb(25 27 28) 72%,
+			rgb(32 48 79) 100%
+		);
+	}
+}

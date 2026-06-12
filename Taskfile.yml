@@ -1,0 +1,136 @@
+version: "3"
+
+vars:
+  AGENT: '{{.AGENT | default "opencode"}}'
+  TOOL: '{{.TOOL | default "ffmpeg"}}'
+  SERVER_PORT: '{{.SERVER_PORT | default "48273"}}'
+
+tasks:
+  check:
+    cmds:
+      - task: go:check
+      - task: workspace:check
+      - task: workspace:test
+      - task: workspace:build
+      - task: app:check
+      - task: app:test
+      - task: app:build
+
+  test:
+    cmds:
+      - task: go:test
+      - task: workspace:test
+      - task: app:test
+
+  build:
+    cmds:
+      - task: prepare-agent
+        vars:
+          AGENT: "{{.AGENT}}"
+      - task: prepare-media-tools
+      - task: build:server
+      - task: stage-tauri
+        vars:
+          AGENT: "{{.AGENT}}"
+      - MEDIAGO_AGENT_ID={{.AGENT}} MEDIAGO_SERVER_PORT={{.SERVER_PORT}} VITE_MEDIAGO_SERVER_PORT={{.SERVER_PORT}} pnpm -C apps/workspace tauri:build
+
+  prepare-agent:
+    cmds:
+      - task -d packages/vendor prepare AGENT={{.AGENT}}
+
+  prepare-tool:
+    cmds:
+      - task -d packages/vendor prepare:tool TOOL={{.TOOL}}
+
+  prepare-media-tools:
+    cmds:
+      - task -d packages/vendor prepare:media-tools
+
+  dev:
+    deps:
+      - task: prepare-agent
+        vars:
+          AGENT: "{{.AGENT}}"
+      - task: prepare-media-tools
+    cmds:
+      - |
+        AGENT="{{.AGENT}}"
+        MEDIAGO_AGENT_ID="$AGENT" \
+        MEDIAGO_AGENT_BIN_DIR="$(pwd)/packages/vendor/dist" \
+        MEDIAGO_FFMPEG_BIN_DIR="$(pwd)/packages/vendor/dist/tools" \
+          go run ./packages/server/cmd/mediago-server --config packages/server/configs/server.yaml &
+        SERVER_PID=$!
+        trap 'kill $SERVER_PID 2>/dev/null' EXIT INT TERM
+        pnpm -C apps/workspace dev
+
+  dev:server:
+    deps:
+      - task: prepare-agent
+        vars:
+          AGENT: "{{.AGENT}}"
+      - task: prepare-media-tools
+    cmds:
+      - |
+        AGENT="{{.AGENT}}"
+        MEDIAGO_AGENT_ID="$AGENT" \
+        MEDIAGO_AGENT_BIN_DIR="$(pwd)/packages/vendor/dist" \
+        MEDIAGO_FFMPEG_BIN_DIR="$(pwd)/packages/vendor/dist/tools" \
+          go run ./packages/server/cmd/mediago-server --config packages/server/configs/server.yaml
+
+  build:server:
+    cmds:
+      - mkdir -p bin
+      - go build -o bin/mediago-server ./packages/server/cmd/mediago-server
+
+  stage-tauri:
+    cmds:
+      - node apps/workspace/scripts/stage-tauri.ts {{.AGENT}}
+
+  go:check:
+    cmds:
+      - task -d packages/core check
+      - task -d packages/mcp check
+      - task -d packages/server check
+
+  go:test:
+    cmds:
+      - task -d packages/core test
+      - task -d packages/mcp test
+      - task -d packages/server test
+
+  go:build:
+    cmds:
+      - task -d packages/core build
+      - task -d packages/mcp build
+      - task -d packages/server build
+
+  workspace:check:
+    cmds:
+      - pnpm -C apps/workspace lint
+      - pnpm -C apps/workspace format
+
+  workspace:test:
+    cmds:
+      - pnpm -C apps/workspace test
+
+  workspace:build:
+    cmds:
+      - pnpm -C apps/workspace build
+
+  app:check:
+    cmds:
+      - pnpm -C apps/app lint
+
+  app:test:
+    cmds:
+      - pnpm -C apps/app exec vitest run
+
+  app:build:
+    cmds:
+      - pnpm -C apps/app build
+
+  sync:workspace-dist:
+    cmds:
+      - rm -rf packages/server/internal/workspace/dist
+      - mkdir -p packages/server/internal/workspace/dist
+      - cp -R apps/workspace/dist/. packages/server/internal/workspace/dist

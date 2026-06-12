@@ -1,0 +1,29 @@
+package generation
+
+const (
+	FamilySeedream   = "seedream"
+	FamilyText       = "text"
+	FamilyGPTImage   = "gpt-image"
+	FamilyNanoBanana = "nano-banana"
+	FamilySeedance   = "seedance"
+
+	VersionSeedream5Lite  = "seedream-5-lite"
+	VersionGPT41MiniText  = "gpt-4.1-mini-text"
+	VersionGPT5MiniText   = "gpt-5-mini-text"
+	VersionSeedream45     = "seedream-4.5"
+	VersionGPTImage2      = "gpt-image-2"
+	VersionGPT54Image2    = "gpt-5.4-image-2"
+	VersionNanoBanana31   = "gemini-3.1-flash-image-preview"
+	VersionNanoBananaPro  = "gemini-3-pro-image-preview"
+	VersionNanoBanana25   = "gemini-2.5-flash-image"
+	VersionSeedance20Fast = "seedance-2.0-fast"
+	VersionSeedance20     = "seedance-2.0"
+	VersionSeedance15Pro  = "seedance-1.5-pro"
+
+	ModelSeedream5Lite       = "seedream-5-lite"
+	ModelGPT41MiniText       = "gpt-4.1-mini-text"
+	ModelGPT5MiniText        = "gpt-5-mini-text"
+	ModelGPTImage2           = "gpt-image-2"
+	ModelNanoBanana          = "nano-banana"
+	ModelJimengSeedance2Fast = "jimeng-seedance-2-fast"
+)

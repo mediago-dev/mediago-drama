@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@theme inline {
+	--spacing: var(--space-xs);
+
+	--font-sans: var(--font-family-sans);
+	--font-mono: var(--font-family-mono);
+
+	--text-xs: var(--font-size-xs);
+	--text-sm: var(--font-size-sm);
+	--text-base: var(--font-size-md);
+	--text-lg: var(--font-size-lg);
+	--text-xl: var(--font-size-xl);
+	--text-2xl: var(--font-size-2xl);
+
+	--font-weight-normal: var(--font-weight-scale-normal);
+	--font-weight-medium: var(--font-weight-scale-medium);
+	--font-weight-semibold: var(--font-weight-scale-semibold);
+	--font-weight-bold: var(--font-weight-scale-bold);
+
+	--leading-tight: var(--line-height-tight);
+	--leading-normal: var(--line-height-normal);
+	--leading-relaxed: var(--line-height-relaxed);
+
+	--radius-none: var(--radius-scale-none);
+	--radius-sm: var(--radius-scale-sm);
+	--radius-md: var(--radius-scale-md);
+	--radius-lg: var(--radius-scale-lg);
+	--radius-xl: var(--radius-scale-xl);
+	--radius-full: var(--radius-scale-full);
+
+	--shadow-sm: var(--shadow-scale-sm);
+	--shadow-md: var(--shadow-scale-md);
+	--shadow-lg: var(--shadow-scale-lg);
+
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-success-surface: var(--success-surface);
+	--color-success-border: var(--success-border);
+	--color-success-foreground: var(--success-foreground);
+	--color-info-surface: var(--info-surface);
+	--color-info-border: var(--info-border);
+	--color-info-foreground: var(--info-foreground);
+	--color-warning-surface: var(--warning-surface);
+	--color-warning-border: var(--warning-border);
+	--color-warning-foreground: var(--warning-foreground);
+	--color-error-surface: var(--error-surface);
+	--color-error-border: var(--error-border);
+	--color-error-foreground: var(--error-foreground);
+}
+
+@layer base {
+	* {
+		@apply border-border;
+	}
+
+	html {
+		@apply bg-background;
+	}
+
+	body {
+		@apply min-h-screen bg-background font-sans text-foreground antialiased;
+		background-image: var(--app-background-image);
+	}
+
+	ion-title {
+		padding-inline: var(--space-lg);
+	}
+
+	* {
+		scrollbar-color: color-mix(in srgb, var(--muted-foreground) 34%, transparent) transparent;
+		scrollbar-width: thin;
+	}
+
+	*::-webkit-scrollbar {
+		width: var(--scrollbar-size);
+		height: var(--scrollbar-size);
+	}
+
+	*::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	*::-webkit-scrollbar-thumb {
+		border: var(--border-width-scale-sm) solid transparent;
+		border-radius: var(--radius-scale-full);
+		background-color: color-mix(in srgb, var(--muted-foreground) 32%, transparent);
+		background-clip: content-box;
+	}
+}

@@ -1,0 +1,26 @@
+{
+  "name": "mediago-drama",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "build": "task build",
+    "build:server": "task build:server",
+    "prepare-agent": "task prepare-agent",
+    "dev": "task dev",
+    "dev:server": "task dev:server",
+    "build:workspace": "pnpm -C apps/workspace build",
+    "workspace:dev": "pnpm -C apps/workspace dev",
+    "dev:desktop": "pnpm -C apps/workspace tauri:dev",
+    "build:desktop": "pnpm -C apps/workspace tauri:build",
+    "check:go": "cd packages/core && task check && cd ../mcp && task check && cd ../server && task check",
+    "prepare": "husky",
+    "changeset": "changeset"
+  },
+  "devDependencies": {
+    "@changesets/cli": "latest",
+    "@commitlint/cli": "latest",
+    "@commitlint/config-conventional": "latest",
+    "husky": "latest"
+  }
+}

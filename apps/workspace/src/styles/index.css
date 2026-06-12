@@ -1,0 +1,144 @@
+@layer reset, theme, base, components, utilities;
+
+@import "./reset.css" layer(reset);
+@import "./tokens.css";
+@import "@xterm/xterm/css/xterm.css";
+@import "./locked-heading.css";
+@import "./tailwind.css";
+@import "@vidstack/react/player/styles/base.css";
+@import "@vidstack/react/player/styles/default/theme.css";
+@import "@vidstack/react/player/styles/default/layouts/video.css";
+
+@layer components {
+	.agent-json-container {
+		background: var(--rjv-background-color);
+		color: var(--foreground);
+		line-height: 1.45;
+		white-space: pre-wrap;
+		word-wrap: break-word;
+	}
+
+	.agent-json-key {
+		color: var(--rjv-key-string);
+		font-weight: 600;
+		margin-right: var(--space-json-inline-gap);
+	}
+
+	.agent-json-clickable {
+		cursor: pointer;
+	}
+
+	.agent-json-string {
+		color: var(--rjv-string-color);
+	}
+
+	.agent-json-number {
+		color: var(--rjv-number-color);
+	}
+
+	.agent-json-boolean {
+		color: var(--rjv-boolean-color);
+	}
+
+	.agent-json-null,
+	.agent-json-muted {
+		color: var(--rjv-null-color);
+	}
+
+	.agent-json-punctuation,
+	.agent-json-icon {
+		color: var(--foreground);
+	}
+
+	.agent-json-punctuation {
+		font-weight: 700;
+		margin-right: var(--space-json-inline-gap);
+	}
+
+	.agent-json-icon {
+		cursor: pointer;
+		font-size: 1.2em;
+		margin-right: var(--space-json-inline-gap);
+		user-select: none;
+	}
+
+	.agent-json-expand::after {
+		content: "▸";
+	}
+
+	.agent-json-collapse::after {
+		content: "▾";
+	}
+
+	.navigator-resize-line {
+		width: var(--navigator-resize-line-width);
+		opacity: 0;
+		background: linear-gradient(
+			to bottom,
+			transparent 0,
+			transparent 3rem,
+			color-mix(in srgb, var(--muted-foreground) 0%, transparent) 4.25rem,
+			color-mix(in srgb, var(--muted-foreground) 78%, transparent) 7rem,
+			color-mix(in srgb, var(--muted-foreground) 78%, transparent) calc(100% - 7rem),
+			color-mix(in srgb, var(--muted-foreground) 0%, transparent) calc(100% - 4.25rem),
+			transparent calc(100% - 3rem),
+			transparent 100%
+		);
+		transition:
+			opacity 160ms ease,
+			width 160ms ease;
+	}
+
+	.navigator-resize-handle:hover .navigator-resize-line,
+	.navigator-resize-handle:active .navigator-resize-line,
+	.navigator-resize-handle:focus-visible .navigator-resize-line {
+		width: var(--navigator-resize-line-width-active);
+		opacity: 1;
+	}
+
+	.native-sidebar-panel {
+		background: color-mix(in srgb, var(--ide-sidebar) 72%, transparent);
+		backdrop-filter: blur(var(--blur-scale-lg)) saturate(1.35);
+		-webkit-backdrop-filter: blur(var(--blur-scale-lg)) saturate(1.35);
+		box-shadow:
+			inset calc(var(--border-width-scale-sm) * -1) 0
+				color-mix(in srgb, var(--border) 70%, transparent),
+			inset var(--border-width-scale-sm) 0 color-mix(in srgb, var(--popover) 42%, transparent);
+	}
+
+	.PhotoView-Portal {
+		pointer-events: auto;
+	}
+}
+
+.tauri-window-drag-region {
+	display: none;
+	touch-action: none;
+	user-select: none;
+	-webkit-user-select: none;
+	-webkit-app-region: drag;
+	app-region: drag;
+}
+
+.is-tauri .tauri-window-frame {
+	padding-top: 0;
+}
+
+.is-tauri .tauri-sidebar-chrome-offset {
+	padding-top: var(--tauri-titlebar-offset);
+}
+
+.is-tauri .tauri-window-drag-region {
+	display: block;
+	position: fixed;
+	top: 0;
+	left: 0;
+	z-index: 50;
+	width: var(--workspace-sidebar-width, var(--workspace-sidebar-default-width));
+	height: var(--tauri-drag-region-height);
+	cursor: default;
+}
+
+.is-tauri .episode-workbench-header {
+	padding-left: calc(var(--tauri-traffic-light-safe-area) + var(--space-sm));
+}

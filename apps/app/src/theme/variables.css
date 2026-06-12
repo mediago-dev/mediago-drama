@@ -1,0 +1,66 @@
+:root {
+	--ion-font-family: var(--font-family-sans);
+	--ion-background-color: var(--background);
+	--ion-background-color-rgb: 247, 249, 251;
+	--ion-text-color: var(--foreground);
+	--ion-text-color-rgb: 11, 21, 38;
+	--ion-color-primary: var(--primary);
+	--ion-color-primary-rgb: 77, 137, 255;
+	--ion-color-primary-contrast: var(--primary-foreground);
+	--ion-color-primary-contrast-rgb: 255, 255, 255;
+	--ion-color-primary-shade: rgb(68 121 224);
+	--ion-color-primary-tint: rgb(95 149 255);
+	--ion-color-secondary: var(--secondary);
+	--ion-color-secondary-rgb: 230, 238, 255;
+	--ion-color-secondary-contrast: var(--secondary-foreground);
+	--ion-color-secondary-contrast-rgb: 48, 98, 218;
+	--ion-color-success: var(--success-foreground);
+	--ion-color-success-rgb: 55, 194, 141;
+	--ion-color-success-contrast: rgb(255 255 255);
+	--ion-color-success-contrast-rgb: 255, 255, 255;
+	--ion-color-warning: var(--warning-foreground);
+	--ion-color-warning-rgb: 201, 124, 46;
+	--ion-color-warning-contrast: rgb(255 255 255);
+	--ion-color-warning-contrast-rgb: 255, 255, 255;
+	--ion-color-danger: var(--destructive);
+	--ion-color-danger-rgb: 255, 77, 77;
+	--ion-color-danger-contrast: var(--destructive-foreground);
+	--ion-color-danger-contrast-rgb: 255, 255, 255;
+	--ion-color-medium: var(--muted-foreground);
+	--ion-color-medium-rgb: 109, 121, 143;
+	--ion-color-medium-contrast: rgb(255 255 255);
+	--ion-color-medium-contrast-rgb: 255, 255, 255;
+	--ion-color-light: var(--muted);
+	--ion-color-light-rgb: 240, 243, 247;
+	--ion-color-light-contrast: var(--foreground);
+	--ion-color-light-contrast-rgb: 11, 21, 38;
+	--ion-toolbar-background: var(--card);
+	--ion-toolbar-color: var(--foreground);
+	--ion-toolbar-border-color: var(--border);
+	--ion-tab-bar-background: var(--card);
+	--ion-tab-bar-color: var(--muted-foreground);
+	--ion-tab-bar-color-selected: var(--primary);
+	--ion-tab-bar-border-color: var(--border);
+	--ion-item-background: var(--card);
+	--ion-border-color: var(--border);
+	--ion-card-background: var(--card);
+	--ion-overlay-background-color: var(--popover);
+	--ion-backdrop-color: rgb(11 21 38);
+	--ion-box-shadow-color: rgb(109 121 143 / 0.22);
+}
+
+:root[data-theme="dark"] {
+	--ion-background-color-rgb: 25, 27, 28;
+	--ion-text-color-rgb: 223, 230, 237;
+	--ion-color-primary-rgb: 62, 116, 224;
+	--ion-color-primary-shade: rgb(55 102 197);
+	--ion-color-primary-tint: rgb(81 130 227);
+	--ion-color-secondary-rgb: 32, 48, 79;
+	--ion-color-secondary-contrast-rgb: 188, 215, 250;
+	--ion-color-success-rgb: 102, 218, 172;
+	--ion-color-warning-rgb: 232, 174, 107;
+	--ion-color-danger-rgb: 220, 68, 69;
+	--ion-color-medium-rgb: 167, 171, 181;
+	--ion-color-light-rgb: 44, 47, 51;
+	--ion-color-light-contrast-rgb: 223, 230, 237;
+}

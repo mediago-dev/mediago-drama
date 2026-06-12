@@ -1,0 +1,68 @@
+version: "3"
+
+tasks:
+  build:
+    cmds:
+      - task: build:server
+      - task: build:mcp
+      - task: build:document-mcp
+
+  build:server:
+    cmds:
+      - go build -tags workspace_dist -o ../../bin/mediago-server ./cmd/mediago-server
+
+  build:fallback:
+    cmds:
+      - go build -o ../../bin/mediago-server ./cmd/mediago-server
+      - task: build:mcp
+      - task: build:document-mcp
+
+  build:mcp:
+    cmds:
+      - go build -o ../../bin/mediago-mcp ./cmd/mediago-mcp
+
+  build:document-mcp:
+    cmds:
+      - go build -o ../../bin/mediago-document-mcp ./cmd/mediago-document-mcp
+
+  fmt:
+    cmds:
+      - gofmt -w .
+
+  fmt:check:
+    cmds:
+      - test -z "$(gofmt -l .)"
+
+  vet:
+    cmds:
+      - go vet ./...
+
+  test:
+    cmds:
+      - go test -race ./...
+
+  test:integration:
+    cmds:
+      - go test -race -tags integration ./...
+
+  test:cover:
+    cmds:
+      - go test -race -coverprofile=coverage.out ./...
+      - go tool cover -func=coverage.out
+
+  lint:
+    cmds:
+      - go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run
+
+  tidy:
+    cmds:
+      - go mod tidy
+
+  check:
+    cmds:
+      - task: tidy
+      - task: fmt:check
+      - task: vet
+      - task: lint
+      - task: build
+      - task: test

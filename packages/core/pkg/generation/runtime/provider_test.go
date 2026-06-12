@@ -1,0 +1,493 @@
+package runtime
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
+	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/multimodal"
+)
+
+func TestProviderDispatchesByRouteProvider(t *testing.T) {
+	var authHeader string
+	var payload struct {
+		Model string `json:"model"`
+		Input string `json:"input"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authHeader = request.Header.Get("Authorization")
+		if request.URL.Path != "/v1/responses" {
+			t.Fatalf("path = %q, want /v1/responses", request.URL.Path)
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"id":"resp_1",
+			"status":"completed",
+			"model":"doubao-seedream-5.0-lite",
+			"output":[{"type":"image_url","image_url":{"url":"https://example.test/image.png"}}]
+		}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{
+		DMXBaseURL: server.URL,
+		Credentials: CredentialResolverFunc(func(context.Context, string) (string, error) {
+			return "sk-dmx", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		RouteID: generation.RouteDMXSeedream5Lite,
+		Prompt:  "make an image",
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if authHeader != "sk-dmx" {
+		t.Fatalf("Authorization = %q, want sk-dmx", authHeader)
+	}
+	if payload.Model != "doubao-seedream-5.0-lite" || payload.Input != "make an image" {
+		t.Fatalf("payload = %#v", payload)
+	}
+	if response.Status != "completed" || len(response.Assets) != 1 {
+		t.Fatalf("response = %#v, want completed image asset", response)
+	}
+}
+
+func TestProviderCachesRouteProviderButResolvesCredentialsEachRequest(t *testing.T) {
+	var credentialCalls int
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		if request.Header.Get("Authorization") != "sk-dmx" {
+			t.Fatalf("Authorization = %q, want sk-dmx", request.Header.Get("Authorization"))
+		}
+
+		writeRuntimeSeedreamResponse(writer)
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{
+		DMXBaseURL: server.URL,
+		Credentials: CredentialResolverFunc(func(context.Context, string) (string, error) {
+			credentialCalls++
+			return "sk-dmx", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	for range 2 {
+		if _, err := provider.Generate(context.Background(), generation.Request{
+			RouteID: generation.RouteDMXSeedream5Lite,
+			Prompt:  "make an image",
+		}); err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+	}
+
+	if credentialCalls != 2 {
+		t.Fatalf("credentialCalls = %d, want 2", credentialCalls)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+	if cacheSize := providerCacheSize(provider); cacheSize != 1 {
+		t.Fatalf("provider cache size = %d, want 1", cacheSize)
+	}
+}
+
+func TestProviderCachesCredentialRotationsSeparately(t *testing.T) {
+	var credentialCalls int
+	authHeaders := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authHeaders = append(authHeaders, request.Header.Get("Authorization"))
+		writeRuntimeSeedreamResponse(writer)
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{
+		DMXBaseURL: server.URL,
+		Credentials: CredentialResolverFunc(func(context.Context, string) (string, error) {
+			credentialCalls++
+			if credentialCalls == 1 {
+				return "sk-one", nil
+			}
+
+			return "sk-two", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	for range 2 {
+		if _, err := provider.Generate(context.Background(), generation.Request{
+			RouteID: generation.RouteDMXSeedream5Lite,
+			Prompt:  "make an image",
+		}); err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+	}
+
+	if got, want := authHeaders, []string{"sk-one", "sk-two"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("auth headers = %#v, want %#v", got, want)
+	}
+	if cacheSize := providerCacheSize(provider); cacheSize != 2 {
+		t.Fatalf("provider cache size = %d, want 2", cacheSize)
+	}
+}
+
+func TestProviderRequiresRouteCredential(t *testing.T) {
+	provider, err := NewProvider(Config{
+		Credentials: CredentialResolverFunc(func(context.Context, string) (string, error) {
+			return "", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	if _, err := provider.Generate(context.Background(), generation.Request{
+		RouteID: generation.RouteDMXSeedream5Lite,
+		Prompt:  "make an image",
+	}); err != generation.ErrMissingAPIKey {
+		t.Fatalf("Generate() error = %v, want ErrMissingAPIKey", err)
+	}
+}
+
+func TestProviderRejectsUnsupportedReferenceURLsBeforeCredentials(t *testing.T) {
+	credentialCalled := false
+	provider, err := NewProvider(Config{
+		Credentials: CredentialResolverFunc(func(context.Context, string) (string, error) {
+			credentialCalled = true
+			return "sk-test", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	_, err = provider.Generate(context.Background(), generation.Request{
+		RouteID:       generation.RouteOfficialGPTImage2,
+		Prompt:        "edit this image",
+		ReferenceURLs: []string{"https://example.test/reference.png"},
+	})
+	if err == nil {
+		t.Fatal("Generate() accepted unsupported reference URLs")
+	}
+	if credentialCalled {
+		t.Fatal("credential resolver should not be called for a route capability error")
+	}
+}
+
+func TestProviderDispatchesTextRouteThroughMultimodalFactory(t *testing.T) {
+	fake := &fakeMultimodalTextProvider{
+		response: multimodal.GenerateResponse{
+			Messages: []multimodal.Message{
+				{
+					Role: multimodal.RoleAssistant,
+					Parts: []multimodal.Part{
+						{Modality: multimodal.ModalityText, Text: "hello via multimodal"},
+					},
+				},
+			},
+			Usage: multimodal.Usage{InputTokens: 1, OutputTokens: 2, TotalTokens: 3},
+		},
+	}
+	var factoryCredentials RouteCredentials
+	provider, err := NewProvider(Config{
+		Credentials: CredentialResolverFunc(func(context.Context, string) (string, error) {
+			return "sk-text", nil
+		}),
+		MultimodalTextProviderFactory: func(
+			_ context.Context,
+			route generation.ModelRoute,
+			credentials RouteCredentials,
+		) (multimodal.Provider, error) {
+			if route.ID != generation.RouteDMXGPT41MiniText {
+				t.Fatalf("route = %q, want %q", route.ID, generation.RouteDMXGPT41MiniText)
+			}
+			factoryCredentials = credentials
+			return fake, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		RouteID: generation.RouteDMXGPT41MiniText,
+		Prompt:  "write",
+		Params: map[string]any{
+			"temperature": 0.2,
+			"maxTokens":   128,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if got := factoryCredentials[generation.ProviderDMX]; got != "sk-text" {
+		t.Fatalf("factory credential = %q, want sk-text", got)
+	}
+	if fake.request.Options.Model != "gpt-4.1-mini" {
+		t.Fatalf("model = %q, want gpt-4.1-mini", fake.request.Options.Model)
+	}
+	if fake.request.Options.Temperature == nil || *fake.request.Options.Temperature != 0.2 {
+		t.Fatalf("temperature = %v, want 0.2", fake.request.Options.Temperature)
+	}
+	if fake.request.Options.MaxTokens == nil || *fake.request.Options.MaxTokens != 128 {
+		t.Fatalf("max tokens = %v, want 128", fake.request.Options.MaxTokens)
+	}
+	if got := fake.request.Messages[0].Parts[0].Text; got != "write" {
+		t.Fatalf("prompt = %q, want write", got)
+	}
+	if response.Text != "hello via multimodal" || response.Usage.TotalTokens != 3 {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestProviderStreamsTextRouteThroughMultimodalFactory(t *testing.T) {
+	fake := &fakeMultimodalTextProvider{
+		stream: []multimodal.StreamEvent{
+			{Type: multimodal.StreamEventMessageDelta, Delta: "hel"},
+			{Type: multimodal.StreamEventMessageDelta, Delta: "lo"},
+			{
+				Type:  multimodal.StreamEventDone,
+				Usage: &multimodal.Usage{InputTokens: 1, OutputTokens: 2, TotalTokens: 3},
+			},
+		},
+	}
+	provider, err := NewProvider(Config{
+		Credentials: CredentialResolverFunc(func(context.Context, string) (string, error) {
+			return "sk-text", nil
+		}),
+		MultimodalTextProviderFactory: func(
+			context.Context,
+			generation.ModelRoute,
+			RouteCredentials,
+		) (multimodal.Provider, error) {
+			return fake, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	stream, err := provider.GenerateTextStream(context.Background(), generation.Request{
+		RouteID: generation.RouteDMXGPT41MiniText,
+		Prompt:  "write",
+	})
+	if err != nil {
+		t.Fatalf("GenerateTextStream() error = %v", err)
+	}
+	defer stream.Close()
+
+	first, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("Recv() first error = %v", err)
+	}
+	second, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("Recv() second error = %v", err)
+	}
+	done, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("Recv() done error = %v", err)
+	}
+
+	if first.Delta != "hel" || second.Delta != "lo" {
+		t.Fatalf("deltas = %q %q, want hel lo", first.Delta, second.Delta)
+	}
+	if !done.Done || done.Usage == nil || done.Usage.TotalTokens != 3 {
+		t.Fatalf("done event = %#v", done)
+	}
+}
+
+func TestProviderTextStreamReportsUnsupportedForGenerateOnlyMultimodalFactory(t *testing.T) {
+	provider, err := NewProvider(Config{
+		Credentials: CredentialResolverFunc(func(context.Context, string) (string, error) {
+			return "sk-text", nil
+		}),
+		MultimodalTextProviderFactory: func(
+			context.Context,
+			generation.ModelRoute,
+			RouteCredentials,
+		) (multimodal.Provider, error) {
+			return &fakeMultimodalGenerateOnlyProvider{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	_, err = provider.GenerateTextStream(context.Background(), generation.Request{
+		RouteID: generation.RouteDMXGPT41MiniText,
+		Prompt:  "write",
+	})
+	if !errors.Is(err, generation.ErrTextStreamingUnsupported) {
+		t.Fatalf("GenerateTextStream() error = %v, want ErrTextStreamingUnsupported", err)
+	}
+}
+
+func TestMultimodalTextProviderMapsRequestOptions(t *testing.T) {
+	tests := []struct {
+		name          string
+		params        map[string]any
+		options       map[string]any
+		wantTemp      *float32
+		wantMaxTokens *int
+		wantTopP      *float32
+		wantStop      []string
+	}{
+		{
+			name:          "params win",
+			params:        map[string]any{"temperature": 0.25, "maxTokens": 64, "topP": 0.8, "stop": []string{"END"}},
+			options:       map[string]any{"temperature": 0.9, "maxTokens": 512},
+			wantTemp:      float32Ptr(0.25),
+			wantMaxTokens: intPtr(64),
+			wantTopP:      float32Ptr(0.8),
+			wantStop:      []string{"END"},
+		},
+		{
+			name:          "options fallback",
+			options:       map[string]any{"temperature": 0.4, "maxTokens": 128, "stop": "STOP"},
+			wantTemp:      float32Ptr(0.4),
+			wantMaxTokens: intPtr(128),
+			wantStop:      []string{"STOP"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fake := &fakeMultimodalTextProvider{}
+			provider, err := NewMultimodalTextProvider(fake)
+			if err != nil {
+				t.Fatalf("NewMultimodalTextProvider() error = %v", err)
+			}
+
+			_, err = provider.Generate(context.Background(), generation.Request{
+				Kind:    generation.KindText,
+				Model:   "gpt-4.1-mini",
+				Prompt:  "write",
+				Params:  test.params,
+				Options: test.options,
+			})
+			if err != nil {
+				t.Fatalf("Generate() error = %v", err)
+			}
+
+			assertFloat32Pointer(t, "temperature", fake.request.Options.Temperature, test.wantTemp)
+			assertIntPointer(t, "maxTokens", fake.request.Options.MaxTokens, test.wantMaxTokens)
+			assertFloat32Pointer(t, "topP", fake.request.Options.TopP, test.wantTopP)
+			if strings.Join(fake.request.Options.Stop, ",") != strings.Join(test.wantStop, ",") {
+				t.Fatalf("stop = %#v, want %#v", fake.request.Options.Stop, test.wantStop)
+			}
+		})
+	}
+}
+
+func providerCacheSize(provider *Provider) int {
+	provider.cacheMu.Lock()
+	defer provider.cacheMu.Unlock()
+
+	return len(provider.providerCache)
+}
+
+func writeRuntimeSeedreamResponse(writer http.ResponseWriter) {
+	writer.Header().Set("Content-Type", "application/json")
+	_, _ = writer.Write([]byte(`{
+		"id":"resp_1",
+		"status":"completed",
+		"model":"doubao-seedream-5.0-lite",
+		"output":[{"type":"image_url","image_url":{"url":"https://example.test/image.png"}}]
+	}`))
+}
+
+func float32Ptr(value float32) *float32 {
+	return &value
+}
+
+func intPtr(value int) *int {
+	return &value
+}
+
+func assertFloat32Pointer(t *testing.T, name string, got *float32, want *float32) {
+	t.Helper()
+	if got == nil || want == nil {
+		if got != want {
+			t.Fatalf("%s = %v, want %v", name, got, want)
+		}
+		return
+	}
+	if *got != *want {
+		t.Fatalf("%s = %v, want %v", name, *got, *want)
+	}
+}
+
+func assertIntPointer(t *testing.T, name string, got *int, want *int) {
+	t.Helper()
+	if got == nil || want == nil {
+		if got != want {
+			t.Fatalf("%s = %v, want %v", name, got, want)
+		}
+		return
+	}
+	if *got != *want {
+		t.Fatalf("%s = %v, want %v", name, *got, *want)
+	}
+}
+
+type fakeMultimodalTextProvider struct {
+	request  multimodal.GenerateRequest
+	response multimodal.GenerateResponse
+	stream   []multimodal.StreamEvent
+}
+
+func (provider *fakeMultimodalTextProvider) Name() string {
+	return "fake-multimodal"
+}
+
+func (provider *fakeMultimodalTextProvider) Generate(
+	_ context.Context,
+	request multimodal.GenerateRequest,
+) (multimodal.GenerateResponse, error) {
+	provider.request = request
+	return provider.response, nil
+}
+
+func (provider *fakeMultimodalTextProvider) Stream(
+	_ context.Context,
+	request multimodal.GenerateRequest,
+) (*multimodal.StreamReader, error) {
+	provider.request = request
+	return multimodal.StreamFromEvents(provider.stream), nil
+}
+
+type fakeMultimodalGenerateOnlyProvider struct{}
+
+func (provider *fakeMultimodalGenerateOnlyProvider) Name() string {
+	return "fake-generate-only"
+}
+
+func (provider *fakeMultimodalGenerateOnlyProvider) Generate(
+	context.Context,
+	multimodal.GenerateRequest,
+) (multimodal.GenerateResponse, error) {
+	return multimodal.GenerateResponse{}, nil
+}

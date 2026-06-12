@@ -1,0 +1,300 @@
+import httpClient from "@/shared/lib/http";
+import { apiURL } from "@/shared/lib/api-base";
+import { ManagedEventSource } from "@/shared/lib/sse/managed-event-source";
+import type { Episode } from "@/domains/episode/lib/sample";
+import type {
+	CreateDocumentFolderRequest as GeneratedCreateDocumentFolderRequest,
+	CreateWorkspaceDocumentRequest as GeneratedCreateWorkspaceDocumentRequest,
+	DeleteDocumentFolderResponse as GeneratedDeleteDocumentFolderResponse,
+	DeleteWorkspaceDocumentResponse as GeneratedDeleteWorkspaceDocumentResponse,
+	DocumentFolderMutationResponse as GeneratedDocumentFolderMutationResponse,
+	DocumentFoldersResponse,
+	EpisodeTimelineStateResponse,
+	UpdateDocumentFolderRequest as GeneratedUpdateDocumentFolderRequest,
+	UpdateWorkspaceDocumentRequest as GeneratedUpdateWorkspaceDocumentRequest,
+	WorkspaceDocumentsResponse,
+	WorkspaceStateRequest as GeneratedWorkspaceStateRequest,
+	WorkspaceStateResponse,
+} from "@/api/types/documents";
+import type {
+	DocumentFolder,
+	MarkdownDocument,
+	DocumentOperationLogEntry,
+} from "@/domains/documents/stores";
+import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
+import { ErrorCode, type ApiError } from "@/types/api";
+
+const projectAPIPath = (projectId: string | null | undefined, path: string) => {
+	const id = projectId?.trim();
+	if (!id) throw new Error("projectId is required");
+	return `/projects/${encodeURIComponent(id)}${path}`;
+};
+
+export const workspaceStateKey = (projectId?: string | null) =>
+	projectAPIPath(projectId, "/workspace/state");
+
+export const workspaceDocumentsChangedEventType = "workspace.documents.changed";
+
+export interface WorkspaceEventPayload {
+	id?: string;
+	type: string;
+	projectId?: string;
+	message?: string;
+	createdAt?: string;
+}
+
+export type WorkspaceStatePayload = Omit<
+	WorkspaceStateResponse,
+	"assets" | "documents" | "folders" | "operationLog"
+> & {
+	documents: MarkdownDocument[];
+	folders?: DocumentFolder[];
+	assets?: ProjectAsset[];
+	operationLog: DocumentOperationLogEntry[];
+};
+
+export type WorkspaceDocumentsPayload = Omit<
+	WorkspaceDocumentsResponse,
+	"assets" | "documents" | "folders"
+> & {
+	documents: MarkdownDocument[];
+	folders?: DocumentFolder[];
+	assets?: ProjectAsset[];
+};
+
+export type WorkspaceEpisodePayload = Omit<EpisodeTimelineStateResponse, "episode"> & {
+	episode: Episode;
+};
+
+export type CreateWorkspaceDocumentRequest = Omit<
+	GeneratedCreateWorkspaceDocumentRequest,
+	"category" | "comments" | "folderId" | "parentId" | "workbenchDraft"
+> & {
+	category: MarkdownDocument["category"];
+	parentId?: string | null;
+	folderId?: string | null;
+	comments?: MarkdownDocument["comments"];
+	workbenchDraft?: MarkdownDocument["workbenchDraft"];
+};
+
+export type UpdateWorkspaceDocumentRequest = Omit<
+	GeneratedUpdateWorkspaceDocumentRequest,
+	"category" | "comments" | "folderId" | "parentId" | "workbenchDraft"
+> & {
+	category?: MarkdownDocument["category"];
+	parentId?: string | null;
+	folderId?: string | null;
+	comments?: MarkdownDocument["comments"];
+	workbenchDraft?: MarkdownDocument["workbenchDraft"];
+};
+
+export interface WorkspaceDocumentMutationResponse {
+	document: MarkdownDocument;
+	state: WorkspaceDocumentsPayload;
+}
+
+export type DeleteWorkspaceDocumentResponse = Omit<
+	GeneratedDeleteWorkspaceDocumentResponse,
+	"state"
+> & {
+	state: WorkspaceDocumentsPayload;
+};
+
+export type WorkspaceFoldersPayload = Omit<DocumentFoldersResponse, "folders"> & {
+	folders: DocumentFolder[];
+};
+
+export type CreateWorkspaceFolderRequest = Omit<
+	GeneratedCreateDocumentFolderRequest,
+	"parentId"
+> & {
+	parentId?: string | null;
+};
+
+export type UpdateWorkspaceFolderRequest = Omit<
+	GeneratedUpdateDocumentFolderRequest,
+	"parentId"
+> & {
+	parentId?: string | null;
+};
+
+export type WorkspaceFolderMutationResponse = Omit<
+	GeneratedDocumentFolderMutationResponse,
+	"folder" | "state"
+> & {
+	folder: DocumentFolder;
+	state: WorkspaceDocumentsPayload;
+};
+
+export type DeleteWorkspaceFolderResponse = Omit<GeneratedDeleteDocumentFolderResponse, "state"> & {
+	state: WorkspaceDocumentsPayload;
+};
+
+export type WorkspaceStateRequest = Omit<
+	GeneratedWorkspaceStateRequest,
+	"documents" | "operationLog"
+> & {
+	documents: MarkdownDocument[];
+	operationLog: DocumentOperationLogEntry[];
+};
+
+export const getWorkspaceState = async (projectId?: string | null) => {
+	const response = await httpClient.get<WorkspaceStatePayload>(workspaceStateKey(projectId));
+	return response.data;
+};
+
+export const createWorkspaceEventSource = (projectId?: string | null) =>
+	new ManagedEventSource({
+		url: () => workspaceEventSourceURL(projectId),
+	});
+
+export const updateWorkspaceState = async (
+	payload: WorkspaceStateRequest,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.put<WorkspaceStatePayload>(
+		workspaceStateKey(projectId),
+		payload,
+	);
+	return response.data;
+};
+
+export const getWorkspaceDocuments = async (projectId?: string | null) => {
+	const response = await httpClient.get<WorkspaceDocumentsPayload>(
+		workspaceDocumentsKey(projectId),
+	);
+	return response.data;
+};
+
+export const createWorkspaceDocument = async (
+	payload: CreateWorkspaceDocumentRequest,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.post<WorkspaceDocumentMutationResponse>(
+		workspaceDocumentsKey(projectId),
+		payload,
+	);
+	return response.data;
+};
+
+export const updateWorkspaceDocumentRecord = async (
+	documentId: string,
+	payload: UpdateWorkspaceDocumentRequest,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.patch<WorkspaceDocumentMutationResponse>(
+		workspaceDocumentRecordKey(documentId, projectId),
+		payload,
+	);
+	return response.data;
+};
+
+export const deleteWorkspaceDocumentRecord = async (
+	documentId: string,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.delete<DeleteWorkspaceDocumentResponse>(
+		workspaceDocumentRecordKey(documentId, projectId),
+	);
+	return response.data;
+};
+
+export const getWorkspaceFolders = async (projectId?: string | null) => {
+	const response = await httpClient.get<WorkspaceFoldersPayload>(workspaceFoldersKey(projectId));
+	return response.data;
+};
+
+export const createWorkspaceFolder = async (
+	payload: CreateWorkspaceFolderRequest,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.post<WorkspaceFolderMutationResponse>(
+		workspaceFoldersKey(projectId),
+		payload,
+	);
+	return response.data;
+};
+
+export const updateWorkspaceFolder = async (
+	folderId: string,
+	payload: UpdateWorkspaceFolderRequest,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.patch<WorkspaceFolderMutationResponse>(
+		workspaceFolderRecordKey(folderId, projectId),
+		payload,
+	);
+	return response.data;
+};
+
+export const deleteWorkspaceFolder = async (folderId: string, projectId?: string | null) => {
+	const response = await httpClient.delete<DeleteWorkspaceFolderResponse>(
+		workspaceFolderRecordKey(folderId, projectId),
+	);
+	return response.data;
+};
+
+export const getWorkspaceEpisode = async (documentId: string, projectId?: string | null) => {
+	try {
+		const response = await httpClient.get<WorkspaceEpisodePayload>(
+			workspaceEpisodeKey(documentId, projectId),
+		);
+		return response.data;
+	} catch (error) {
+		if (isNotFoundError(error)) return null;
+		throw error;
+	}
+};
+
+export const updateWorkspaceEpisode = async (
+	documentId: string,
+	episode: Episode,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.put<WorkspaceEpisodePayload>(
+		workspaceEpisodeKey(documentId, projectId),
+		{ episode },
+	);
+	return response.data;
+};
+
+export const workspaceDocumentsKey = (projectId?: string | null) =>
+	projectAPIPath(projectId, "/workspace/documents");
+
+export const workspaceFoldersKey = (projectId?: string | null) =>
+	projectAPIPath(projectId, "/workspace/folders");
+
+const workspaceDocumentRecordKey = (documentId: string, projectId?: string | null) => {
+	return projectAPIPath(projectId, `/workspace/documents/${encodeURIComponent(documentId)}`);
+};
+
+const workspaceFolderRecordKey = (folderId: string, projectId?: string | null) => {
+	return projectAPIPath(projectId, `/workspace/folders/${encodeURIComponent(folderId)}`);
+};
+
+export const workspaceEpisodeKey = (documentId: string, projectId?: string | null) => {
+	return projectAPIPath(projectId, `/workspace/episodes/${encodeURIComponent(documentId)}`);
+};
+
+export const workspaceEpisodePreviewStreamURL = (
+	documentId: string,
+	projectId?: string | null,
+	version?: string,
+) => {
+	const path = projectAPIPath(
+		projectId,
+		`/workspace/episodes/${encodeURIComponent(documentId)}/preview.mp4`,
+	);
+	const query = version ? `?v=${encodeURIComponent(version)}` : "";
+	return apiURL(path + query);
+};
+
+const workspaceEventSourceURL = (projectId?: string | null) => {
+	return apiURL(projectAPIPath(projectId, "/workspace/events"));
+};
+
+const isNotFoundError = (error: unknown) =>
+	typeof error === "object" &&
+	error !== null &&
+	"code" in error &&
+	(error as ApiError).code === ErrorCode.NOT_FOUND;

@@ -1,0 +1,491 @@
+import type React from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Settings2 } from "lucide-react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import { PhotoSlider } from "react-photo-view";
+import type { Extensions } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import { Markdown } from "@tiptap/markdown";
+import Image from "@tiptap/extension-image";
+import Placeholder from "@tiptap/extension-placeholder";
+import { Table } from "@tiptap/extension-table";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import TableRow from "@tiptap/extension-table-row";
+import type { MarkdownHybridEditorHandle } from "@/domains/documents/lib/editor-registry";
+import {
+	createLockedHeadingsExtension,
+	LockedHeading,
+} from "@/domains/documents/components/extensions/locked-heading";
+import { SectionIdAnchor } from "@/domains/documents/components/extensions/section-id-anchor";
+import {
+	commentAnchorExtension,
+	createBlockHandleExtension,
+} from "@/domains/documents/components/tiptap/extensions";
+import {
+	BlockHandle,
+	HeadingActionButton,
+	SectionGenerateButton,
+} from "@/domains/documents/components/tiptap/editor-overlays";
+import {
+	diffTopLevelBlocks,
+	findTopLevelBlockRangeByIndex,
+} from "@/domains/documents/components/tiptap/ranges";
+import {
+	blockHandlePluginKey,
+	blockHandleStorage,
+	commentAnchorPluginKey,
+	commentAnchorStorage,
+	type InlineDecorationRange,
+} from "@/domains/documents/components/tiptap/storage";
+import {
+	createMarkdownHeadingContext,
+	createMarkdownSectionContext,
+	ensureMarkdownHeadingSectionId,
+	type MarkdownHeadingContext,
+	type MarkdownSectionContext,
+} from "@/domains/documents/components/tiptap/section-context";
+import { isSectionImagePlaceholderElement } from "@/domains/documents/components/tiptap/section-images";
+import { TiptapToolbar } from "@/domains/documents/components/tiptap/toolbar";
+import { useMarkdownEditorImperativeHandle } from "@/domains/documents/components/tiptap/useMarkdownEditorImperativeHandle";
+import type {
+	HoveredBlockRect,
+	StreamingBlockTarget,
+} from "@/domains/documents/components/tiptap/types";
+import type { LockedHeadingPlan } from "@/domains/documents/lib/locked-headings";
+import type { TextAnchor } from "@/domains/documents/lib/operations";
+import type { DocumentComment } from "@/domains/documents/stores";
+import "@/styles/tiptap.css";
+import "react-photo-view/dist/react-photo-view.css";
+
+export interface MarkdownHybridEditorProps {
+	comments?: DocumentComment[];
+	activeCommentId?: string | null;
+	documentId: string;
+	extraExtensions?: Extensions;
+	headingActionAriaLabel?: string;
+	headingActionIcon?: React.ReactNode;
+	headingActionLabel?: string;
+	headingActionTitle?: string;
+	isHeadingActionEnabled?: (heading: MarkdownHeadingContext) => boolean;
+	lockedHeadingPlan?: LockedHeadingPlan | null;
+	pendingSelectionAnchor?: TextAnchor | null;
+	pendingSelectionRange?: InlineDecorationRange | null;
+	value: string;
+	onChange: (value: string) => void;
+	onCommentAnchorClick?: (commentId: string) => void;
+	onHeadingAction?: (heading: MarkdownHeadingContext) => void;
+	onSectionGenerate?: (section: MarkdownSectionContext) => void;
+	onSelectionChange?: (value: string) => void;
+	onSelectionCoordChange?: (coords: SelectionCoords | null) => void;
+	onSelectionRangeChange?: (range: InlineDecorationRange | null) => void;
+}
+
+export type { MarkdownHybridEditorHandle };
+
+export type { MarkdownHeadingContext, MarkdownSectionContext };
+
+export interface SelectionCoords {
+	x: number;
+	y: number;
+}
+
+const defaultComments: DocumentComment[] = [];
+const defaultExtraExtensions: Extensions = [];
+
+interface ImagePreviewState {
+	index: number;
+	images: Array<{ key: string; src: string }>;
+}
+
+export const MarkdownHybridEditor = forwardRef<
+	MarkdownHybridEditorHandle,
+	MarkdownHybridEditorProps
+>(function MarkdownHybridEditor(
+	{
+		comments = defaultComments,
+		activeCommentId = null,
+		documentId,
+		extraExtensions = defaultExtraExtensions,
+		headingActionAriaLabel = "打开标题操作",
+		headingActionIcon,
+		headingActionLabel = "设置",
+		headingActionTitle = headingActionAriaLabel,
+		isHeadingActionEnabled,
+		lockedHeadingPlan = null,
+		pendingSelectionAnchor = null,
+		pendingSelectionRange = null,
+		value,
+		onChange,
+		onCommentAnchorClick,
+		onHeadingAction,
+		onSectionGenerate,
+		onSelectionChange,
+		onSelectionCoordChange,
+		onSelectionRangeChange,
+	},
+	ref,
+) {
+	const onChangeRef = useRef(onChange);
+	const onHeadingActionRef = useRef(onHeadingAction);
+	const onSectionGenerateRef = useRef(onSectionGenerate);
+	const onSelectionChangeRef = useRef(onSelectionChange);
+	const onSelectionCoordChangeRef = useRef(onSelectionCoordChange);
+	const onSelectionRangeChangeRef = useRef(onSelectionRangeChange);
+	const emittedMarkdownRef = useRef(value);
+	const isStreamingRef = useRef(false);
+	const streamingTargetRef = useRef<StreamingBlockTarget | null>(null);
+	const editorSurfaceRef = useRef<HTMLDivElement>(null);
+	const [hoveredBlockRect, setHoveredBlockRect] = useState<HoveredBlockRect | null>(null);
+	const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
+	const blockHandleExtension = useMemo(
+		() =>
+			createBlockHandleExtension((rect, range) => {
+				const surface = editorSurfaceRef.current;
+				if (!rect || !surface) {
+					setHoveredBlockRect(null);
+					return;
+				}
+
+				const surfaceRect = surface.getBoundingClientRect();
+				setHoveredBlockRect({
+					height: rect.height,
+					isHeading: range?.nodeType === "heading",
+					range: range ?? null,
+					top: rect.top - surfaceRect.top + surface.scrollTop,
+				});
+			}),
+		[],
+	);
+	const extensions = useMemo(
+		() => [
+			StarterKit.configure({
+				heading: false,
+				horizontalRule: false,
+				link: {
+					autolink: true,
+					defaultProtocol: "https",
+					enableClickSelection: true,
+					linkOnPaste: true,
+					openOnClick: false,
+				},
+			}),
+			LockedHeading.configure({ levels: [1, 2, 3, 4] }),
+			SectionIdAnchor,
+			Image.configure({
+				allowBase64: true,
+			}),
+			Table.configure({
+				resizable: true,
+			}),
+			TableRow,
+			TableHeader,
+			TableCell,
+			...extraExtensions,
+			...(lockedHeadingPlan ? [createLockedHeadingsExtension(lockedHeadingPlan)] : []),
+			blockHandleExtension,
+			commentAnchorExtension,
+			Placeholder.configure({
+				placeholder: "开始写作...",
+			}),
+			Markdown.configure({
+				indentation: {
+					style: "space",
+					size: 2,
+				},
+			}),
+		],
+		[blockHandleExtension, extraExtensions, lockedHeadingPlan],
+	);
+
+	useEffect(() => {
+		onChangeRef.current = onChange;
+	}, [onChange]);
+
+	useEffect(() => {
+		onHeadingActionRef.current = onHeadingAction;
+	}, [onHeadingAction]);
+
+	useEffect(() => {
+		onSectionGenerateRef.current = onSectionGenerate;
+	}, [onSectionGenerate]);
+
+	useEffect(() => {
+		onSelectionChangeRef.current = onSelectionChange;
+	}, [onSelectionChange]);
+
+	useEffect(() => {
+		onSelectionCoordChangeRef.current = onSelectionCoordChange;
+	}, [onSelectionCoordChange]);
+
+	useEffect(() => {
+		onSelectionRangeChangeRef.current = onSelectionRangeChange;
+	}, [onSelectionRangeChange]);
+
+	const editor = useEditor(
+		{
+			extensions,
+			content: value,
+			contentType: "markdown",
+			editorProps: {
+				attributes: {
+					class: "tiptap-content",
+					"aria-label": "Markdown 编辑器",
+				},
+			},
+			immediatelyRender: true,
+			shouldRerenderOnTransaction: false,
+			onUpdate: ({ editor: nextEditor }) => {
+				const markdown = nextEditor.getMarkdown();
+				emittedMarkdownRef.current = markdown;
+				if (isStreamingRef.current) return;
+				onChangeRef.current(markdown);
+			},
+			onSelectionUpdate: ({ editor: nextEditor }) => {
+				const { from, to } = nextEditor.state.selection;
+				const selectedText = from === to ? "" : nextEditor.state.doc.textBetween(from, to, "\n");
+				onSelectionChangeRef.current?.(selectedText);
+				if (from === to || !selectedText.trim()) {
+					onSelectionCoordChangeRef.current?.(null);
+					onSelectionRangeChangeRef.current?.(null);
+					return;
+				}
+
+				onSelectionRangeChangeRef.current?.({
+					from: Math.min(from, to),
+					to: Math.max(from, to),
+				});
+				const selectionHead = selectionHeadPosition(nextEditor.state.selection);
+				const coords = nextEditor.view.coordsAtPos(selectionHead);
+				const maxX = Math.max(80, window.innerWidth - 80);
+				onSelectionCoordChangeRef.current?.({
+					x: Math.min(Math.max(coords.left, 80), maxX),
+					y: coords.top,
+				});
+			},
+		},
+		[],
+	);
+
+	useMarkdownEditorImperativeHandle({
+		documentId,
+		editor,
+		emittedMarkdownRef,
+		isStreamingRef,
+		onChangeRef,
+		ref,
+		streamingTargetRef,
+	});
+
+	useEffect(() => {
+		if (value === emittedMarkdownRef.current) return;
+		if (!editor) return;
+		if (isStreamingRef.current) return;
+
+		const previousMarkdown = emittedMarkdownRef.current;
+		const changedBlock = diffTopLevelBlocks(editor, previousMarkdown, value);
+		if (changedBlock) {
+			const blockRange = findTopLevelBlockRangeByIndex(editor.state.doc, changedBlock.blockIndex);
+			if (blockRange) {
+				const wasStreaming = isStreamingRef.current;
+				isStreamingRef.current = true;
+				const applied = editor.commands.insertContentAt(
+					{ from: blockRange.from, to: blockRange.to },
+					changedBlock.markdown,
+					{
+						contentType: "markdown",
+						errorOnInvalidContent: false,
+						updateSelection: false,
+					},
+				);
+				isStreamingRef.current = wasStreaming;
+				if (applied) {
+					emittedMarkdownRef.current = value;
+					streamingTargetRef.current = null;
+					return;
+				}
+			}
+		}
+
+		const selection = editor.state.selection;
+		emittedMarkdownRef.current = value;
+		editor.commands.setContent(value, {
+			contentType: "markdown",
+			emitUpdate: false,
+		});
+		isStreamingRef.current = false;
+		streamingTargetRef.current = null;
+		try {
+			const size = editor.state.doc.content.size;
+			editor.commands.setTextSelection({
+				from: Math.min(selection.from, size),
+				to: Math.min(selection.to, size),
+			});
+		} catch {
+			// Selection positions can become invalid after a full document replacement.
+		}
+	}, [editor, value]);
+
+	useEffect(() => {
+		if (!editor) return;
+
+		const storage = commentAnchorStorage(editor);
+		storage.items = comments;
+		storage.activeCommentId = activeCommentId;
+		storage.pendingSelectionAnchor = pendingSelectionAnchor;
+		storage.pendingSelectionRange = pendingSelectionRange;
+		storage.onClick = onCommentAnchorClick;
+		editor.view.dispatch(editor.state.tr.setMeta(commentAnchorPluginKey, Date.now()));
+	}, [
+		activeCommentId,
+		comments,
+		editor,
+		onCommentAnchorClick,
+		pendingSelectionAnchor,
+		pendingSelectionRange,
+	]);
+
+	const clearHoveredBlockHandle = useCallback(() => {
+		setHoveredBlockRect(null);
+		if (!editor) return;
+
+		const storage = blockHandleStorage(editor);
+		if (!storage.hoveredRange) return;
+
+		storage.hoveredRange = null;
+		editor.view.dispatch(editor.state.tr.setMeta(blockHandlePluginKey, Date.now()));
+	}, [editor]);
+
+	const insertBlockAfterHoveredBlock = useCallback(() => {
+		if (!editor) return;
+
+		const range = blockHandleStorage(editor).hoveredRange;
+		if (!range) return;
+
+		const insertAt = range.to;
+		editor
+			.chain()
+			.focus()
+			.insertContentAt(insertAt, { type: "paragraph" })
+			.setTextSelection(insertAt + 1)
+			.run();
+		clearHoveredBlockHandle();
+	}, [clearHoveredBlockHandle, editor]);
+
+	const openSectionGeneration = useCallback(() => {
+		if (!editor || !onSectionGenerateRef.current) return;
+
+		const range = blockHandleStorage(editor).hoveredRange;
+		if (!range || range.nodeType !== "heading") return;
+
+		const sectionRange = ensureMarkdownHeadingSectionId(editor, range);
+		if (!sectionRange) return;
+
+		const section = createMarkdownSectionContext(editor, documentId, sectionRange);
+		if (!section) return;
+
+		onSectionGenerateRef.current(section);
+		clearHoveredBlockHandle();
+	}, [clearHoveredBlockHandle, documentId, editor]);
+
+	const hoveredHeadingContext = useMemo(() => {
+		if (!editor || !hoveredBlockRect?.range || hoveredBlockRect.range.nodeType !== "heading") {
+			return null;
+		}
+
+		return createMarkdownHeadingContext(editor, documentId, hoveredBlockRect.range);
+	}, [documentId, editor, hoveredBlockRect]);
+
+	const canShowHeadingAction =
+		Boolean(hoveredHeadingContext && onHeadingAction) &&
+		(!hoveredHeadingContext ||
+			!isHeadingActionEnabled ||
+			isHeadingActionEnabled(hoveredHeadingContext));
+
+	const openHeadingAction = useCallback(() => {
+		if (!hoveredHeadingContext || !onHeadingActionRef.current) return;
+
+		onHeadingActionRef.current(hoveredHeadingContext);
+		clearHoveredBlockHandle();
+	}, [clearHoveredBlockHandle, hoveredHeadingContext]);
+
+	const openImagePreview = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+		const target = event.target;
+		if (!(target instanceof Element)) return;
+
+		const image = target.closest(".tiptap-content img");
+		if (!(image instanceof HTMLImageElement)) return;
+		if (isSectionImagePlaceholderElement(image)) return;
+
+		const content = editorSurfaceRef.current?.querySelector<HTMLElement>(".tiptap-content");
+		if (!content?.contains(image)) return;
+
+		const imageEntries = Array.from(content.querySelectorAll<HTMLImageElement>("img[src]"))
+			.filter((element) => !isSectionImagePlaceholderElement(element))
+			.map((element, index) => {
+				const src = element.currentSrc || element.src || element.getAttribute("src") || "";
+				return src ? { element, key: `${index}:${src}`, src } : null;
+			})
+			.filter((entry): entry is { element: HTMLImageElement; key: string; src: string } =>
+				Boolean(entry),
+			);
+		const index = imageEntries.findIndex((entry) => entry.element === image);
+		if (index < 0) return;
+
+		event.preventDefault();
+		event.stopPropagation();
+		setImagePreview({
+			index,
+			images: imageEntries.map(({ key, src }) => ({ key, src })),
+		});
+	}, []);
+
+	return (
+		<div className="tiptap-editor">
+			<TiptapToolbar editor={editor} />
+			<div ref={editorSurfaceRef} className="tiptap-editor-surface" onClick={openImagePreview}>
+				{hoveredBlockRect ? (
+					<>
+						{canShowHeadingAction ? (
+							<HeadingActionButton
+								ariaLabel={headingActionAriaLabel}
+								icon={headingActionIcon ?? <Settings2 className="size-3.5" />}
+								label={headingActionLabel}
+								rect={hoveredBlockRect}
+								title={headingActionTitle}
+								onAction={openHeadingAction}
+								onMouseLeave={clearHoveredBlockHandle}
+							/>
+						) : null}
+						{hoveredBlockRect.isHeading && onSectionGenerate ? (
+							<SectionGenerateButton
+								rect={hoveredBlockRect}
+								onGenerate={openSectionGeneration}
+								onMouseLeave={clearHoveredBlockHandle}
+							/>
+						) : null}
+						<BlockHandle
+							rect={hoveredBlockRect}
+							onInsertAfter={insertBlockAfterHoveredBlock}
+							onMouseLeave={clearHoveredBlockHandle}
+						/>
+					</>
+				) : null}
+				<EditorContent editor={editor} />
+			</div>
+			<PhotoSlider
+				images={imagePreview?.images ?? []}
+				index={imagePreview?.index ?? 0}
+				maskOpacity={0.84}
+				visible={Boolean(imagePreview?.images.length)}
+				onClose={() => setImagePreview(null)}
+				onIndexChange={(index) => {
+					setImagePreview((current) => (current ? { ...current, index } : current));
+				}}
+			/>
+		</div>
+	);
+});
+
+const selectionHeadPosition = (selection: { from: number; head?: number; to: number }) =>
+	typeof selection.head === "number" ? selection.head : selection.to;

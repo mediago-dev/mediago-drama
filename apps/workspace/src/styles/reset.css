@@ -1,0 +1,113 @@
+/* CSS Reset - 现代重置样式 */
+
+/* Box sizing 统一 */
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+/* 温和的边距重置 */
+body,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+blockquote,
+pre,
+dl,
+dd,
+ol,
+ul,
+figure,
+hr,
+fieldset,
+legend {
+	margin: 0;
+	padding: 0;
+}
+
+/* 根元素优化 */
+html {
+	/* 改善文本渲染 */
+	-webkit-text-size-adjust: none;
+	text-size-adjust: none;
+	/* 平滑滚动 */
+	scroll-behavior: smooth;
+}
+
+/* Body 优化 */
+body {
+	/* 最小高度为视口高度 */
+	min-height: 100vh;
+	/* 改善文本渲染 */
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	/* 文本渲染优化 */
+	text-rendering: optimizeLegibility;
+	/* 字体合成 */
+	font-synthesis: none;
+	/* 行高 */
+	line-height: 1.5;
+}
+
+/* 媒体元素 */
+img,
+picture,
+video,
+canvas,
+svg {
+	display: block;
+	max-width: 100%;
+	height: auto;
+}
+
+/* 表单元素 */
+input,
+button,
+textarea,
+select {
+	font: inherit;
+}
+
+/* 链接样式重置 */
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+/* 列表样式重置 - 只重置自定义列表 */
+ol:not([class]),
+ul:not([class]) {
+	list-style: none;
+}
+
+/* 表格样式重置 */
+table {
+	border-collapse: collapse;
+	border-spacing: 0;
+}
+
+/* 文本元素 */
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	overflow-wrap: break-word;
+}
+
+/* 隐藏元素 */
+[hidden] {
+	display: none;
+}
+
+/* 焦点样式 */
+:focus-visible {
+	outline: none;
+}

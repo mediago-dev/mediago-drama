@@ -1,0 +1,8 @@
+<svg viewBox="0 0 500 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="One CLI">
+  <title>One CLI</title>
+  <desc>One CLI horizontal wordmark — inverted for dark backgrounds</desc>
+  <path d="M 49.74 31.81 A 30 30 0 0 1 88.19 70.26 M 70.26 88.19 A 30 30 0 0 1 31.81 49.74"
+        fill="none" stroke="#fafafa" stroke-width="14" stroke-linecap="round"/>
+  <text x="125" y="82" font-family="Inter, 'Helvetica Neue', Arial, sans-serif"
+        font-size="60" font-weight="500" fill="#fafafa" letter-spacing="4">ONE CLI</text>
+</svg>

@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "workspace": {
+    "id": "media-cli-44b079",
+    "name": "mediago-drama"
+  },
+  "environments": {
+    "names": [
+      "dev",
+      "staging",
+      "prod"
+    ],
+    "default": "dev"
+  },
+  "domains": {
+    "env": {
+      "kind": "dotenv"
+    }
+  },
+  "projects": [
+    {
+      "name": "workspace",
+      "relativeDir": "apps/workspace",
+      "templateId": "react-spa",
+      "toolchain": "node",
+      "buildVersion": "0.0.1",
+      "packageManager": "pnpm",
+      "domains": {
+        "deploy": {
+          "kind": "aliyun-oss",
+          "config": {
+            "bucket": "media-cli-44b079"
+          }
+        },
+        "dev": {
+          "command": "pnpm run dev"
+        }
+      }
+    },
+    {
+      "name": "core",
+      "relativeDir": "packages/core",
+      "templateId": "go-lib",
+      "toolchain": "go",
+      "buildVersion": "0.0.1",
+      "domains": {
+        "dev": {
+          "command": "go test ./..."
+        }
+      }
+    },
+    {
+      "name": "mcp",
+      "relativeDir": "packages/mcp",
+      "templateId": "go-lib",
+      "toolchain": "go",
+      "buildVersion": "0.0.1",
+      "domains": {
+        "dev": {
+          "command": "go test ./..."
+        }
+      }
+    },
+    {
+      "name": "server",
+      "relativeDir": "packages/server",
+      "templateId": "go-api",
+      "toolchain": "go",
+      "buildVersion": "0.0.1",
+      "domains": {
+        "dev": {
+          "command": "go run ./cmd/mediago-server --config configs/server.yaml"
+        }
+      }
+    },
+    {
+      "name": "tools",
+      "relativeDir": "packages/tools",
+      "templateId": "go-lib",
+      "toolchain": "go",
+      "buildVersion": "0.1.0",
+      "domains": {
+        "dev": {
+          "command": "go test ./..."
+        }
+      }
+    },
+    {
+      "name": "vendor",
+      "relativeDir": "packages/vendor",
+      "templateId": "go-lib",
+      "toolchain": "go",
+      "buildVersion": "0.1.0",
+      "domains": {
+        "dev": {
+          "command": "go test ./..."
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,150 @@
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type React from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { MarkdownDocument } from "@/domains/documents/stores";
+import { useDocumentsStore } from "@/domains/documents/stores";
+import type { WorkspaceProject } from "@/domains/projects/api/projects";
+import { useDocumentViewStore } from "@/lib/stores/document-view";
+import { ProjectSidebarPanel } from "./ProjectNavigatorProjectPanels";
+
+const project: WorkspaceProject = {
+	id: "project-a",
+	name: "测试项目",
+	description: "",
+	relativeDir: "project-a",
+	documentCount: 1,
+	createdAt: "2026-06-04T00:00:00.000Z",
+	updatedAt: "2026-06-04T00:00:00.000Z",
+};
+
+const document: MarkdownDocument = {
+	id: "doc-a",
+	title: "第一集",
+	content: "",
+	category: "screenplay",
+	parentId: null,
+	sortOrder: 0,
+	version: 1,
+	updatedAt: "2026-06-04T00:00:00.000Z",
+	isDirty: false,
+	comments: [],
+	workbenchDraft: null,
+};
+
+describe("ProjectSidebarPanel", () => {
+	beforeEach(() => {
+		useDocumentViewStore.setState({ mode: "category" });
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: project.id,
+			documents: [document],
+			folders: [],
+			assets: [],
+		});
+		useDocumentsStore.getState().selectDocument(document.id);
+	});
+
+	afterEach(() => {
+		cleanup();
+		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
+		useDocumentViewStore.setState({ mode: "directory" });
+		localStorage.clear();
+	});
+
+	it("hides overview and document active highlights when active selection is disabled", () => {
+		renderProjectSidebar(false);
+
+		expect(screen.getByRole("button", { name: "项目概览" }).className).not.toContain(
+			"bg-ide-list-active",
+		);
+		expect(documentItemClassName()).not.toContain("bg-ide-list-active");
+	});
+
+	it("keeps active highlights when active selection is enabled", () => {
+		renderProjectSidebar(true);
+
+		expect(screen.getByRole("button", { name: "项目概览" }).className).toContain(
+			"bg-ide-list-active",
+		);
+		expect(documentItemClassName()).toContain("bg-ide-list-active");
+	});
+
+	it("renders category headers without counts and moves document actions to right click", () => {
+		renderProjectSidebar(true);
+
+		expect(screen.getByRole("button", { name: "剧本" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "剧本 1" })).toBeNull();
+		expect(screen.queryByLabelText(/更多操作/)).toBeNull();
+
+		const categoryIcons = screen.getByRole("button", { name: "剧本" }).querySelectorAll("svg");
+		const documentIcon = screen.getByRole("button", { name: "第一集" }).querySelector("svg");
+		expect(categoryIcons[1]?.getAttribute("class")).toContain("lucide-scroll-text");
+		expect(documentIcon?.getAttribute("class")).toContain("lucide-scroll-text");
+
+		const documentRow = screen.getByRole("button", { name: "第一集" }).parentElement;
+		expect(documentRow).toBeTruthy();
+
+		fireEvent.contextMenu(documentRow as HTMLElement, { clientX: 72, clientY: 96 });
+
+		expect(screen.getByRole("menu", { name: "第一集 操作" })).toBeTruthy();
+		expect(screen.getByRole("menuitem", { name: "在文件管理器中展示" })).toBeTruthy();
+		expect(screen.getByRole("menuitem", { name: "变更类型" })).toBeTruthy();
+		expect(screen.getByRole("menuitem", { name: "删除" })).toBeTruthy();
+	});
+
+	it("creates a document from the category header context menu", () => {
+		const onCreateDocumentInCategory = vi.fn();
+		renderProjectSidebar(true, { onCreateDocumentInCategory });
+
+		fireEvent.contextMenu(screen.getByRole("button", { name: "角色" }), {
+			clientX: 72,
+			clientY: 96,
+		});
+		fireEvent.click(screen.getByRole("menuitem", { name: "新建角色" }));
+
+		expect(onCreateDocumentInCategory).toHaveBeenCalledWith("character");
+	});
+
+	it("opens the upload-ready new document dialog from the source material header menu", () => {
+		const onOpenNewDocument = vi.fn();
+		renderProjectSidebar(true, { onOpenNewDocument });
+
+		fireEvent.contextMenu(screen.getByRole("button", { name: "素材" }), {
+			clientX: 72,
+			clientY: 96,
+		});
+		fireEvent.click(screen.getByRole("menuitem", { name: "新建素材" }));
+
+		expect(onOpenNewDocument).toHaveBeenCalledWith("source-material");
+	});
+});
+
+const renderProjectSidebar = (
+	showActiveSelection: boolean,
+	overrides: Partial<React.ComponentProps<typeof ProjectSidebarPanel>> = {},
+) =>
+	render(
+		<ProjectSidebarPanel
+			displayProject={project}
+			documentsProjectId={project.id}
+			isOverviewActive
+			isLoading={false}
+			locationPathname="/agent"
+			locationSearch="?projectId=project-a"
+			showActiveSelection={showActiveSelection}
+			onBack={vi.fn()}
+			onCreateDocumentInCategory={vi.fn()}
+			onDeleteAsset={vi.fn()}
+			onDeleteDocument={vi.fn()}
+			onOpenAsset={vi.fn()}
+			onOpenDocument={vi.fn()}
+			onOpenNewDocument={vi.fn()}
+			onOpenOverview={vi.fn()}
+			onOpenSearch={vi.fn()}
+			onOpenSettings={vi.fn()}
+			{...overrides}
+		/>,
+	);
+
+const documentItemClassName = () =>
+	(screen.getByRole("button", { name: "第一集" }).parentElement as HTMLElement).className;

@@ -1,0 +1,146 @@
+{
+  "prices": [
+    {
+      "routeId": "dmx.seedream-5-lite",
+      "currency": "CNY",
+      "unit": "per_call",
+      "perCallPrice": 0.22
+    },
+    {
+      "routeId": "official.seedream-5-lite",
+      "currency": "CNY",
+      "unit": "per_call",
+      "perCallPrice": 0.22
+    },
+    {
+      "routeId": "openrouter.seedream-4.5",
+      "currency": "USD",
+      "unit": "per_call",
+      "perCallPrice": 0
+    },
+    {
+      "routeId": "dmx.gpt-4.1-mini-text",
+      "currency": "CNY",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 2,
+      "outputTokenPrice": 8
+    },
+    {
+      "routeId": "openrouter.gpt-4.1-mini-text",
+      "currency": "USD",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 0.4,
+      "outputTokenPrice": 1.6,
+      "cachedTokenPrice": 0.1
+    },
+    {
+      "routeId": "official.gpt-4.1-mini-text",
+      "currency": "USD",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 0.4,
+      "outputTokenPrice": 1.6,
+      "cachedTokenPrice": 0.1
+    },
+    {
+      "routeId": "openrouter.gpt-5-mini-text",
+      "currency": "USD",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 0.25,
+      "outputTokenPrice": 2,
+      "cachedTokenPrice": 0.025
+    },
+    {
+      "routeId": "official.gpt-5-mini-text",
+      "currency": "USD",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 0.25,
+      "outputTokenPrice": 2,
+      "cachedTokenPrice": 0.025
+    },
+    {
+      "routeId": "official.gpt-image-2",
+      "currency": "USD",
+      "unit": "per_call",
+      "perCallPrice": 0.032
+    },
+    {
+      "routeId": "dmx.gpt-image-2",
+      "currency": "USD",
+      "unit": "per_call",
+      "perCallPrice": 0.032
+    },
+    {
+      "routeId": "openrouter.gpt-5.4-image-2",
+      "currency": "USD",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 8,
+      "outputTokenPrice": 15,
+      "cachedTokenPrice": 2
+    },
+    {
+      "routeId": "official.gemini-3.1-flash-image-preview",
+      "currency": "USD",
+      "unit": "per_call",
+      "perCallPrice": 0.067
+    },
+    {
+      "routeId": "dmx.gemini-3.1-flash-image-preview",
+      "currency": "USD",
+      "unit": "per_call",
+      "perCallPrice": 0.067
+    },
+    {
+      "routeId": "openrouter.gemini-3.1-flash-image-preview",
+      "currency": "USD",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 0.5,
+      "outputTokenPrice": 3
+    },
+    {
+      "routeId": "openrouter.gemini-3-pro-image-preview",
+      "currency": "USD",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 2,
+      "outputTokenPrice": 12,
+      "cachedTokenPrice": 0.2
+    },
+    {
+      "routeId": "openrouter.gemini-2.5-flash-image",
+      "currency": "USD",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 0.3,
+      "outputTokenPrice": 2.5,
+      "cachedTokenPrice": 0.03
+    },
+    {
+      "routeId": "dmx.seedance-2.0-fast",
+      "currency": "CNY",
+      "unit": "per_call",
+      "perCallPrice": 4
+    },
+    {
+      "routeId": "official.seedance-2.0-fast",
+      "currency": "CNY",
+      "unit": "per_call",
+      "perCallPrice": 4
+    },
+    {
+      "routeId": "openrouter.seedance-2.0-fast",
+      "currency": "USD",
+      "unit": "per_call",
+      "perCallPrice": 0
+    },
+    {
+      "routeId": "openrouter.seedance-2.0",
+      "currency": "USD",
+      "unit": "per_call",
+      "perCallPrice": 0
+    },
+    {
+      "routeId": "openrouter.seedance-1.5-pro",
+      "currency": "USD",
+      "unit": "per_call",
+      "perCallPrice": 0
+    }
+  ]
+}

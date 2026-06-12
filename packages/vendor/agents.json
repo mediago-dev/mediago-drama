@@ -1,0 +1,14 @@
+{
+  "codex": {
+    "repo": "zed-industries/codex-acp",
+    "bin": "codex-acp",
+    "args": [],
+    "version": "v0.15.0"
+  },
+  "opencode": {
+    "repo": "anomalyco/opencode",
+    "bin": "opencode",
+    "args": ["acp"],
+    "version": "v1.15.13"
+  }
+}

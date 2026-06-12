@@ -1,0 +1,503 @@
+package media
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"mime/multipart"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+
+	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
+	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
+)
+
+func TestSaveBase64StoresGeneratedAssetsByProject(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library", "assets", "generated")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	workspaceRepos, err := repository.OpenWorkspaceRepositories(filepath.Join(t.TempDir(), "workspace.db"))
+	if err != nil {
+		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
+	}
+	requireMediaTestProject(t, workspaceRepos.Workspace, "alpha")
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, workspaceRepos.Workspace, nil)
+
+	encoded := base64.StdEncoding.EncodeToString([]byte("image-bytes"))
+	projectAsset, err := store.SaveBase64(MediaKindImage, "image/png", encoded, "", "alpha")
+	if err != nil {
+		t.Fatalf("SaveBase64(project) error = %v", err)
+	}
+	globalAsset, err := store.SaveBase64(MediaKindImage, "image/png", encoded, "", "")
+	if err != nil {
+		t.Fatalf("SaveBase64(global) error = %v", err)
+	}
+
+	if got := filepath.Dir(projectAsset.FilePath); got != globalDir {
+		t.Fatalf("project asset dir = %q, want %q", got, globalDir)
+	}
+	if got := filepath.Dir(globalAsset.FilePath); got != globalDir {
+		t.Fatalf("global asset dir = %q, want %q", got, globalDir)
+	}
+	if projectAsset.ProjectID != "alpha" {
+		t.Fatalf("project asset ProjectID = %q, want alpha", projectAsset.ProjectID)
+	}
+	if globalAsset.ProjectID != "" {
+		t.Fatalf("global asset ProjectID = %q, want empty", globalAsset.ProjectID)
+	}
+	if _, err := os.Stat(projectAsset.FilePath); err != nil {
+		t.Fatalf("project asset was not written: %v", err)
+	}
+	if _, err := os.Stat(globalAsset.FilePath); err != nil {
+		t.Fatalf("global asset was not written: %v", err)
+	}
+
+	studioAssets, err := store.List("")
+	if err != nil {
+		t.Fatalf("List(studio) error = %v", err)
+	}
+	if len(studioAssets) != 1 || studioAssets[0].ID != globalAsset.ID {
+		t.Fatalf("studio assets = %#v, want global asset only", studioAssets)
+	}
+
+	projectAssets, err := store.List("alpha")
+	if err != nil {
+		t.Fatalf("List(project) error = %v", err)
+	}
+	if len(projectAssets) != 2 {
+		t.Fatalf("project assets len = %d, want 2", len(projectAssets))
+	}
+}
+
+func TestSaveMultipartFileStoresUploadsByProject(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library", "assets", "generated")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	workspaceRepos, err := repository.OpenWorkspaceRepositories(filepath.Join(t.TempDir(), "workspace.db"))
+	if err != nil {
+		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
+	}
+	requireMediaTestProject(t, workspaceRepos.Workspace, "alpha")
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, workspaceRepos.Workspace, nil)
+
+	header := multipartFileHeader(t, "upload.png", []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
+	asset, err := store.SaveMultipartFile(header, "alpha")
+	if err != nil {
+		t.Fatalf("SaveMultipartFile() error = %v", err)
+	}
+
+	if got := filepath.Dir(asset.FilePath); got != globalDir {
+		t.Fatalf("uploaded asset dir = %q, want %q", got, globalDir)
+	}
+	if asset.ProjectID != "alpha" {
+		t.Fatalf("uploaded asset ProjectID = %q, want alpha", asset.ProjectID)
+	}
+}
+
+func TestSaveGeneratedAssetFileCopiesLocalAssetByID(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library", "assets", "generated")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+	asset, err := store.SaveBase64(
+		MediaKindImage,
+		"image/png",
+		base64.StdEncoding.EncodeToString([]byte("image-bytes")),
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("SaveBase64() error = %v", err)
+	}
+
+	exportDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(exportDir, "scene.png"), []byte("existing"), 0o600); err != nil {
+		t.Fatalf("writing existing export: %v", err)
+	}
+	saved, err := store.SaveGeneratedAssetFile(context.Background(), GeneratedAssetFileSaveRequest{
+		Directory: exportDir,
+		Filename:  "scene.png",
+		AssetID:   asset.ID,
+		Kind:      MediaKindImage,
+	})
+	if err != nil {
+		t.Fatalf("SaveGeneratedAssetFile() error = %v", err)
+	}
+
+	if saved.Filename != "scene-2.png" {
+		t.Fatalf("saved filename = %q, want scene-2.png", saved.Filename)
+	}
+	data, err := os.ReadFile(saved.Path)
+	if err != nil {
+		t.Fatalf("reading saved file: %v", err)
+	}
+	if string(data) != "image-bytes" {
+		t.Fatalf("saved data = %q, want image-bytes", data)
+	}
+}
+
+func TestSaveBase64VideoStoresDerivedMetadataAndPoster(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake media tool scripts are POSIX shell scripts")
+	}
+
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library", "assets", "generated")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+	store.SetMediaToolPaths("", fakeMediaToolsDir(t))
+
+	asset, err := store.SaveBase64(
+		MediaKindVideo,
+		"video/mp4",
+		base64.StdEncoding.EncodeToString([]byte("video-bytes")),
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("SaveBase64(video) error = %v", err)
+	}
+
+	if asset.DurationSeconds != 6.25 {
+		t.Fatalf("DurationSeconds = %v, want 6.25", asset.DurationSeconds)
+	}
+	if asset.Width != 1920 || asset.Height != 1080 {
+		t.Fatalf("dimensions = %dx%d, want 1920x1080", asset.Width, asset.Height)
+	}
+	if asset.MetadataStatus != MetadataStatusReady {
+		t.Fatalf("MetadataStatus = %q, want %q", asset.MetadataStatus, MetadataStatusReady)
+	}
+	if asset.PosterURL == "" || asset.PosterPath == "" {
+		t.Fatalf("poster metadata missing: url=%q path=%q", asset.PosterURL, asset.PosterPath)
+	}
+	if _, err := os.Stat(asset.PosterPath); err != nil {
+		t.Fatalf("poster was not written: %v", err)
+	}
+
+	got, ok, err := store.Get(asset.ID)
+	if err != nil {
+		t.Fatalf("Get(video asset) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("Get(video asset) ok = false, want true")
+	}
+	if got.DurationSeconds != asset.DurationSeconds || got.PosterPath != asset.PosterPath {
+		t.Fatalf("persisted metadata = %#v, want duration/poster from %#v", got, asset)
+	}
+}
+
+func TestListBackfillsHistoricalVideoMetadata(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake media tool scripts are POSIX shell scripts")
+	}
+
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library", "assets", "generated")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatalf("creating media dir: %v", err)
+	}
+	filePath := filepath.Join(globalDir, "historical.mp4")
+	if err := os.WriteFile(filePath, []byte("old-video-bytes"), 0o600); err != nil {
+		t.Fatalf("writing historical video: %v", err)
+	}
+
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	if err := repo.CreateMediaAsset(domain.MediaAssetModel{
+		ID:        "asset-historical",
+		Kind:      MediaKindVideo,
+		Filename:  "historical.mp4",
+		MIMEType:  "video/mp4",
+		SizeBytes: 15,
+		Path:      filePath,
+		URL:       "/api/v1/media-assets/asset-historical/content",
+		CreatedAt: "2026-05-22T00:00:00Z",
+		UpdatedAt: "2026-05-22T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("CreateMediaAsset() error = %v", err)
+	}
+
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+	store.SetMediaToolPaths("", fakeMediaToolsDir(t))
+
+	assets, err := store.List("")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(assets) != 1 {
+		t.Fatalf("List() len = %d, want 1", len(assets))
+	}
+	asset := assets[0]
+	if asset.DurationSeconds != 6.25 || asset.Width != 1920 || asset.Height != 1080 {
+		t.Fatalf("backfilled metadata = duration %v dimensions %dx%d, want 6.25 1920x1080", asset.DurationSeconds, asset.Width, asset.Height)
+	}
+	if asset.MetadataStatus != MetadataStatusReady || asset.PosterURL == "" {
+		t.Fatalf("backfilled status/poster = %q/%q, want ready and poster", asset.MetadataStatus, asset.PosterURL)
+	}
+
+	got, err := repo.GetMediaAsset("asset-historical")
+	if err != nil {
+		t.Fatalf("GetMediaAsset() error = %v", err)
+	}
+	if got.DurationSeconds != 6.25 || got.PosterPath == "" {
+		t.Fatalf("persisted historical metadata = %#v, want duration and poster path", got)
+	}
+}
+
+func TestSaveBase64StoresGeneratedAssetsByStudioSession(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library", "assets", "generated")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+
+	asset, err := store.SaveBase64ForStudioSession(
+		MediaKindImage,
+		"image/png",
+		base64.StdEncoding.EncodeToString([]byte("image-bytes")),
+		"",
+		"conversation-1",
+	)
+	if err != nil {
+		t.Fatalf("SaveBase64ForStudioSession() error = %v", err)
+	}
+
+	wantDir := filepath.Join(workspaceRoot, "studio", "conversation-1")
+	if got := filepath.Dir(asset.FilePath); got != wantDir {
+		t.Fatalf("studio asset dir = %q, want %q", got, wantDir)
+	}
+	if asset.ProjectID != "" {
+		t.Fatalf("studio asset ProjectID = %q, want empty", asset.ProjectID)
+	}
+	if _, err := os.Stat(asset.FilePath); err != nil {
+		t.Fatalf("studio asset was not written: %v", err)
+	}
+}
+
+func TestSaveBase64StoresGeneratedAssetsByStudioDir(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library", "assets", "generated")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+
+	studioDir := filepath.Join(workspaceRoot, "studio", "image-generation", "2026-06", "conversation-1")
+	asset, err := store.SaveBase64ForStudioDir(
+		MediaKindImage,
+		"image/png",
+		base64.StdEncoding.EncodeToString([]byte("image-bytes")),
+		"",
+		studioDir,
+	)
+	if err != nil {
+		t.Fatalf("SaveBase64ForStudioDir() error = %v", err)
+	}
+
+	if got := filepath.Dir(asset.FilePath); got != studioDir {
+		t.Fatalf("studio asset dir = %q, want %q", got, studioDir)
+	}
+	if asset.ProjectID != "" {
+		t.Fatalf("studio asset ProjectID = %q, want empty", asset.ProjectID)
+	}
+	if _, err := os.Stat(asset.FilePath); err != nil {
+		t.Fatalf("studio asset was not written: %v", err)
+	}
+}
+
+func TestServeFilePathRejectsPathsOutsideAllowedRoots(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library", "assets", "generated")
+	outsideDir := t.TempDir()
+	store := &MediaAssets{dir: globalDir, workspaceRoot: workspaceRoot}
+
+	for _, filePath := range []string{
+		filepath.Join(globalDir, "image.png"),
+		filepath.Join(workspaceRoot, "studio", "image-generation", "image.png"),
+	} {
+		resolved, err := store.ServeFilePath(MediaAsset{ID: "asset", FilePath: filePath})
+		if err != nil {
+			t.Fatalf("ServeFilePath(%q) returned error: %v", filePath, err)
+		}
+		want, err := filepath.Abs(filePath)
+		if err != nil {
+			t.Fatalf("Abs(%q) returned error: %v", filePath, err)
+		}
+		if resolved != want {
+			t.Fatalf("ServeFilePath(%q) = %q, want %q", filePath, resolved, want)
+		}
+	}
+
+	if _, err := store.ServeFilePath(MediaAsset{
+		ID:       "outside",
+		FilePath: filepath.Join(outsideDir, "secret.png"),
+	}); err == nil {
+		t.Fatal("ServeFilePath outside allowed roots returned nil error")
+	}
+}
+
+func TestServePosterFilePathRejectsPathsOutsideAllowedRoots(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library", "assets", "generated")
+	outsideDir := t.TempDir()
+	store := &MediaAssets{dir: globalDir, workspaceRoot: workspaceRoot}
+
+	posterPath := filepath.Join(globalDir, "video.poster.jpg")
+	resolved, err := store.ServePosterFilePath(MediaAsset{ID: "asset", PosterPath: posterPath})
+	if err != nil {
+		t.Fatalf("ServePosterFilePath() returned error: %v", err)
+	}
+	want, err := filepath.Abs(posterPath)
+	if err != nil {
+		t.Fatalf("Abs(%q) returned error: %v", posterPath, err)
+	}
+	if resolved != want {
+		t.Fatalf("ServePosterFilePath() = %q, want %q", resolved, want)
+	}
+
+	if _, err := store.ServePosterFilePath(MediaAsset{
+		ID:         "outside",
+		PosterPath: filepath.Join(outsideDir, "secret.jpg"),
+	}); err == nil {
+		t.Fatal("ServePosterFilePath outside allowed roots returned nil error")
+	}
+}
+
+func requireMediaTestProject(t *testing.T, repo *repository.WorkspaceRepository, projectID string) string {
+	t.Helper()
+	projectDir := filepath.Join(t.TempDir(), projectID)
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("creating project dir: %v", err)
+	}
+	if err := repo.UpsertProject(domain.WorkspaceProjectModel{
+		ID:          projectID,
+		Name:        projectID,
+		ProjectDir:  projectDir,
+		RelativeDir: projectDir,
+		CreatedAt:   "2026-06-02T00:00:00Z",
+		UpdatedAt:   "2026-06-02T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("UpsertProject(%s) error = %v", projectID, err)
+	}
+	return projectDir
+}
+
+func TestSaveBase64UsesPersistedProjectDir(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	customProjectDir := filepath.Join(t.TempDir(), "custom-project")
+	globalDir := filepath.Join(workspaceRoot, "library", "assets", "generated")
+	mediaRepo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	workspaceRepos, err := repository.OpenWorkspaceRepositories(filepath.Join(t.TempDir(), "workspace.db"))
+	if err != nil {
+		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
+	}
+	if err := workspaceRepos.Workspace.UpsertProject(domain.WorkspaceProjectModel{
+		ID:          "alpha",
+		Name:        "Alpha",
+		ProjectDir:  customProjectDir,
+		RelativeDir: customProjectDir,
+		CreatedAt:   "2026-06-02T00:00:00Z",
+		UpdatedAt:   "2026-06-02T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("UpsertProject() error = %v", err)
+	}
+	store := NewMediaAssetsFromRepository(
+		mediaRepo,
+		globalDir,
+		workspaceRoot,
+		workspaceRepos.Workspace,
+		nil,
+	)
+
+	asset, err := store.SaveBase64(
+		MediaKindImage,
+		"image/png",
+		base64.StdEncoding.EncodeToString([]byte("image-bytes")),
+		"",
+		"alpha",
+	)
+	if err != nil {
+		t.Fatalf("SaveBase64() error = %v", err)
+	}
+
+	wantDir := globalDir
+	if got := filepath.Dir(asset.FilePath); got != wantDir {
+		t.Fatalf("asset dir = %q, want %q", got, wantDir)
+	}
+}
+
+func multipartFileHeader(t *testing.T, filename string, data []byte) *multipart.FileHeader {
+	t.Helper()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatalf("CreateFormFile() error = %v", err)
+	}
+	if _, err := part.Write(data); err != nil {
+		t.Fatalf("writing multipart file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("closing multipart writer: %v", err)
+	}
+
+	request := httptest.NewRequest("POST", "/media/assets", body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	if err := request.ParseMultipartForm(MaxMediaAssetUploadSize); err != nil {
+		t.Fatalf("ParseMultipartForm() error = %v", err)
+	}
+	files := request.MultipartForm.File["file"]
+	if len(files) != 1 {
+		t.Fatalf("multipart files = %d, want 1", len(files))
+	}
+	return files[0]
+}
+
+func fakeMediaToolsDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeExecutableFile(t, filepath.Join(dir, "ffprobe", "ffprobe"), `#!/bin/sh
+cat <<'JSON'
+{"format":{"duration":"6.250000"},"streams":[{"codec_type":"video","width":1920,"height":1080}]}
+JSON
+`)
+	writeExecutableFile(t, filepath.Join(dir, "ffmpeg", "ffmpeg"), `#!/bin/sh
+for last do :; done
+printf poster > "$last"
+`)
+	return dir
+}
+
+func writeExecutableFile(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("creating tool dir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("writing executable %s: %v", path, err)
+	}
+}

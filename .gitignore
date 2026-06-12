@@ -1,0 +1,32 @@
+# dependencies
+node_modules
+
+# build output
+dist
+bin
+coverage
+
+# local media workspace state
+media.workspace.json
+.mediago-drama/
+.media-cli/
+/documents/
+/projects/
+
+# environment
+.env
+
+# secrets — private keys must NEVER be committed
+# (the .secrets/.gitignore inside the dir is the primary defense; this is
+# a belt-and-suspenders entry for the workspace root)
+.secrets/keys/
+
+# misc
+.DS_Store
+.env.*
+!.env.example
+.claude/settings.local.json
+.claude/worktrees/
+
+/tmp
+.cache
