@@ -1,10 +1,10 @@
 package mcp
 
 import (
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	appevents "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/events"
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
-	servicedocument "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	appevents "github.com/mediago-dev/mediago-drama/packages/server/internal/app/events"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
+	servicedocument "github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
 )
 
 type agentEvent = appevents.Event

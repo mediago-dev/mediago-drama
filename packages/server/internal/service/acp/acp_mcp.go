@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	acp "github.com/coder/acp-go-sdk"
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
 )
 
 const MediaGoDramaMCPServerName = mediamcp.ServerName

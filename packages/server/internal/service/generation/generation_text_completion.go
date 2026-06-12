@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	coregeneration "github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
 // TextCompletionRequest requests a non-persisted text model completion.

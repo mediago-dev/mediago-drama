@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
 )
 
 func TestHTTPEventPublisherRetriesGuaranteedEvents(t *testing.T) {

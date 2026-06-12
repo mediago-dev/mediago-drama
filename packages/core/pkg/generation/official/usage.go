@@ -1,6 +1,6 @@
 package official
 
-import "github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
+import "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 
 type tokenUsage struct {
 	InputTokens         int `json:"input_tokens"`

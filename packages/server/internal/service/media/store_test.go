@@ -11,8 +11,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
 )
 
 func TestSaveBase64StoresGeneratedAssetsByProject(t *testing.T) {

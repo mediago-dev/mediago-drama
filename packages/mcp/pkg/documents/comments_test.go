@@ -3,7 +3,7 @@ package documents
 import (
 	"testing"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 )
 
 func TestBuildCommentThreadsFiltersDeletedAndOptionalReplies(t *testing.T) {

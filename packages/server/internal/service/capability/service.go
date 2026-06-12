@@ -1,8 +1,8 @@
 package capability
 
 import (
-	corecapability "github.com/torchstellar-team/mediago-drama/packages/server/internal/capability"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/http/dto"
+	corecapability "github.com/mediago-dev/mediago-drama/packages/server/internal/capability"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/http/dto"
 )
 
 // Service reads the atomic capability registry and annotates route availability.

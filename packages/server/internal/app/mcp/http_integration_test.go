@@ -16,9 +16,9 @@ import (
 	"testing"
 	"testing/fstest"
 
-	docs "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/documents"
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	appserver "github.com/torchstellar-team/mediago-drama/packages/server/internal/app"
+	docs "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/documents"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	appserver "github.com/mediago-dev/mediago-drama/packages/server/internal/app"
 )
 
 const mcpHTTPDocumentContent = "# MCP Doc\n\nFirst paragraph."

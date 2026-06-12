@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	coregeneration "github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
 // StreamGenerationText streams a text generation request and persists the final task.

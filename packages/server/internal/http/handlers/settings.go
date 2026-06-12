@@ -8,8 +8,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	service "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/settings"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	service "github.com/mediago-dev/mediago-drama/packages/server/internal/service/settings"
 )
 
 // Settings handles settings HTTP routes.

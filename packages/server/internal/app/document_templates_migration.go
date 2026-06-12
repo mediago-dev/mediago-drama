@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	configassets "github.com/torchstellar-team/mediago-drama/packages/server/configs"
+	configassets "github.com/mediago-dev/mediago-drama/packages/server/configs"
 )
 
 func archiveLegacyDocumentTemplates() {

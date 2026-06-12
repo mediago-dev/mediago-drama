@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
 )
 
 // WriteJSONFile writes pretty JSON, creating parent directories first.

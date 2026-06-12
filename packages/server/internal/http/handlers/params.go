@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
 )
 
 func pathParam(context *gin.Context, name string) string {

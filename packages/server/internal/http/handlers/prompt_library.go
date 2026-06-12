@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	service "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/promptlibrary"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	service "github.com/mediago-dev/mediago-drama/packages/server/internal/service/promptlibrary"
 )
 
 // PromptLibraryService supplies reusable generation prompt persistence.

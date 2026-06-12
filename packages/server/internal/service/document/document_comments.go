@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	docs "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/documents"
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+	docs "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/documents"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 )
 
 // BuildCommentThreads groups non-deleted comments into root threads.

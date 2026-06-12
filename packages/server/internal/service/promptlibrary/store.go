@@ -11,11 +11,11 @@ import (
 	"strings"
 	"sync"
 
-	configassets "github.com/torchstellar-team/mediago-drama/packages/server/configs"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/config"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
+	configassets "github.com/mediago-dev/mediago-drama/packages/server/configs"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/config"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
 	"gopkg.in/yaml.v3"
 )
 

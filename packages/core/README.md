@@ -41,11 +41,11 @@ LICENSE                  # MIT
 ## Use as a dependency
 
 ```bash
-go get github.com/torchstellar-team/mediago-drama/packages/core
+go get github.com/mediago-dev/mediago-drama/packages/core
 ```
 
 ```go
-import "github.com/torchstellar-team/mediago-drama/packages/core/pkg/multimodal"
+import "github.com/mediago-dev/mediago-drama/packages/core/pkg/multimodal"
 
 func main() {
     _ = multimodal.GenerateRequest{}

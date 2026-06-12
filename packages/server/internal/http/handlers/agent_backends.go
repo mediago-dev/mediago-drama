@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"github.com/gin-gonic/gin"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
 )
 
 // AgentBackends handles configured ACP backend routes.

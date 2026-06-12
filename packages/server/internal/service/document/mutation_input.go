@@ -1,6 +1,6 @@
 package document
 
-import mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+import mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 
 // MoveDocumentInput moves one document relative to another document.
 type MoveDocumentInput struct {

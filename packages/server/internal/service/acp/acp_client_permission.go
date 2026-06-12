@@ -9,7 +9,7 @@ import (
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
 )
 
 const (

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	coregeneration "github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
 // GetGenerationVideo polls one generation video task for HTTP handlers.

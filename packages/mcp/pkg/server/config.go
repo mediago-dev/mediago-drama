@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 )
 
 // Config controls a document or external MCP server instance.

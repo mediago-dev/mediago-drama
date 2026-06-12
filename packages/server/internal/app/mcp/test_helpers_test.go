@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	appworkspace "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/workspace"
-	cliservice "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
+	appworkspace "github.com/mediago-dev/mediago-drama/packages/server/internal/app/workspace"
+	cliservice "github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
 )
 
 type workspaceStateService = appworkspace.WorkspaceStateService

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
 )
 
 func TestDecodeInternalAgentEventAllowsDocumentBridgeEvents(t *testing.T) {

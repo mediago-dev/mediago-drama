@@ -3,7 +3,7 @@
 HTTP server and stdio MCP entrypoints for the MediaGo Drama workspace.
 
 Multimodal provider integrations live in
-`github.com/torchstellar-team/mediago-drama/packages/core`; server code should
+`github.com/mediago-dev/mediago-drama/packages/core`; server code should
 import `core` when they need those capabilities.
 
 ## Quick start

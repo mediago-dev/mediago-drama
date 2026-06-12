@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	docs "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/documents"
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
+	docs "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/documents"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
 )
 
 // StreamDocumentEditInput is the legacy stream_document_edit operation shape.

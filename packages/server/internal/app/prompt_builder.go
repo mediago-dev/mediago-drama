@@ -3,10 +3,10 @@ package app
 import (
 	"strings"
 
-	appworkspace "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/workspace"
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
-	servicedocument "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
-	serviceprompt "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/prompt"
+	appworkspace "github.com/mediago-dev/mediago-drama/packages/server/internal/app/workspace"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
+	servicedocument "github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
+	serviceprompt "github.com/mediago-dev/mediago-drama/packages/server/internal/service/prompt"
 )
 
 type PromptSection = serviceprompt.PromptSection

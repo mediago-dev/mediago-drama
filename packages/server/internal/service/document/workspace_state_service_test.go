@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 )
 
 func TestWorkspaceStateServiceMoveDocumentAndMetadata(t *testing.T) {

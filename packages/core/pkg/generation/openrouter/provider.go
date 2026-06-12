@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation/internal/adapterutil"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/internal/adapterutil"
 )
 
 const (

@@ -6,10 +6,10 @@ import (
 	"log/slog"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	mcpserver "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/server"
-	appworkspace "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/workspace"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	mcpserver "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/server"
+	appworkspace "github.com/mediago-dev/mediago-drama/packages/server/internal/app/workspace"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
 )
 
 // RunExternalMCP exposes project-scoped MediaGo Drama document tools through MCP stdio.

@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/model"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/shared"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/model"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/shared"
 )
 
 // DefaultAgentRunTimeout disables the wall-clock timeout for one agent run.

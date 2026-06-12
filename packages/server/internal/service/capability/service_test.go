@@ -3,8 +3,8 @@ package capability
 import (
 	"testing"
 
-	corecapability "github.com/torchstellar-team/mediago-drama/packages/server/internal/capability"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/http/dto"
+	corecapability "github.com/mediago-dev/mediago-drama/packages/server/internal/capability"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/http/dto"
 )
 
 func TestListCapabilitiesComputesAvailability(t *testing.T) {

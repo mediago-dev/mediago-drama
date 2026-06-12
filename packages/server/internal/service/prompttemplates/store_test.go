@@ -10,7 +10,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	serviceprompt "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/prompt"
+	serviceprompt "github.com/mediago-dev/mediago-drama/packages/server/internal/service/prompt"
 )
 
 func TestStoreLoadFallsBackToEmbeddedTemplates(t *testing.T) {

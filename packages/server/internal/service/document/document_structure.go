@@ -1,8 +1,8 @@
 package document
 
 import (
-	docs "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/documents"
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+	docs "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/documents"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 )
 
 // MoveBlockContentResult describes the Markdown content updates for a block move.

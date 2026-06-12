@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
 const scannerMaxTokenSize = 1024 * 1024

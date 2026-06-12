@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
 )
 
 // InternalEventPublisher publishes internal agent event payloads.

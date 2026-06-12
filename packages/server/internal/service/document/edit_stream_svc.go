@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
 )
 
 // DocumentEditStreamRecord is the service-level state for a streamed edit.

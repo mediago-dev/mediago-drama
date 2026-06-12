@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
 )
 
 func TestProjectAssetFolderPathByIDUsesFilesystemFolderIDs(t *testing.T) {

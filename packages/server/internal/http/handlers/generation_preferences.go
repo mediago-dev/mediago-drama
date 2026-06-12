@@ -4,9 +4,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/http/dto"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	generationservice "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/generation"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/http/dto"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	generationservice "github.com/mediago-dev/mediago-drama/packages/server/internal/service/generation"
 )
 
 // GenerationPreferenceService supplies generation preference operations.

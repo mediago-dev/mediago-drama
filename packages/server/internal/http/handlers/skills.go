@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	serviceskill "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/skill"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	serviceskill "github.com/mediago-dev/mediago-drama/packages/server/internal/service/skill"
 )
 
 // Skills handles agent skill HTTP routes.

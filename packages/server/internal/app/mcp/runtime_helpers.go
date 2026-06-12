@@ -3,10 +3,10 @@ package mcp
 import (
 	"strings"
 
-	mcpdocs "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/documents"
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
-	servicedocument "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
+	mcpdocs "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/documents"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
+	servicedocument "github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
 )
 
 func (server DocumentServer) selectionFromConfig() *mediamcp.DocumentRangeSelection {

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
 // Settings errors returned by the settings service.

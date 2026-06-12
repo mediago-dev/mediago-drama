@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
 )
 
 func TestStorePersistsDocumentToolApprovalPayload(t *testing.T) {

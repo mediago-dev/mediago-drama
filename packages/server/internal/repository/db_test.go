@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	coregeneration "github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
 	"gorm.io/gorm"
 )
 

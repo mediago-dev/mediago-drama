@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	appmcp "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/mcp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	serviceevents "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/events"
+	appmcp "github.com/mediago-dev/mediago-drama/packages/server/internal/app/mcp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	serviceevents "github.com/mediago-dev/mediago-drama/packages/server/internal/service/events"
 )
 
 const (

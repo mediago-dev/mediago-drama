@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/media"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/media"
 )
 
 func TestAppendStudioTranscriptWritesJSONLAndTextResult(t *testing.T) {

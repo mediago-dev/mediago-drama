@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 )
 
 // WorkspaceDocumentContentMutationResult contains the before/after state for a document content mutation.

@@ -17,12 +17,12 @@ import (
 	"strings"
 	"time"
 
-	corepricing "github.com/torchstellar-team/mediago-drama/packages/core/pkg/pricing"
-	server "github.com/torchstellar-team/mediago-drama/packages/server/internal/app"
-	appagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/agent"
-	serverconfig "github.com/torchstellar-team/mediago-drama/packages/server/internal/config"
-	platformlogger "github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/logger"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/workspace"
+	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
+	server "github.com/mediago-dev/mediago-drama/packages/server/internal/app"
+	appagent "github.com/mediago-dev/mediago-drama/packages/server/internal/app/agent"
+	serverconfig "github.com/mediago-dev/mediago-drama/packages/server/internal/config"
+	platformlogger "github.com/mediago-dev/mediago-drama/packages/server/internal/platform/logger"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/workspace"
 )
 
 func main() {

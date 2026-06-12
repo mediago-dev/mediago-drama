@@ -1,6 +1,6 @@
 package events
 
-import "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
+import "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
 
 type AgentEvent = agent.AgentEvent
 

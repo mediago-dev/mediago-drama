@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/model"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/model"
 )
 
 func TestBuildACPPromptSnapshots(t *testing.T) {

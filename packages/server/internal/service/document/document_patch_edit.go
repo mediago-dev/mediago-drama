@@ -1,7 +1,7 @@
 package document
 
 import (
-	docs "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/documents"
+	docs "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/documents"
 )
 
 // ApplyDocumentPatchEditContent applies replace_range patches against the original content coordinates.

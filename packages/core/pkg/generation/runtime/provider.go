@@ -9,10 +9,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation/dmx"
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation/official"
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation/openrouter"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/dmx"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/official"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/openrouter"
 )
 
 // CredentialResolver loads credentials by catalog credential key.

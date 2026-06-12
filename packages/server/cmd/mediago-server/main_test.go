@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	coregeneration "github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
-	corepricing "github.com/torchstellar-team/mediago-drama/packages/core/pkg/pricing"
-	serverconfig "github.com/torchstellar-team/mediago-drama/packages/server/internal/config"
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
+	serverconfig "github.com/mediago-dev/mediago-drama/packages/server/internal/config"
 )
 
 func TestApplyEnvOverrides(t *testing.T) {

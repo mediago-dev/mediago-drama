@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
-	cliservice "github.com/torchstellar-team/mediago-drama/packages/server/internal/service"
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
-	servicedocument "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
-	serviceshared "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/shared"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
+	cliservice "github.com/mediago-dev/mediago-drama/packages/server/internal/service"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
+	servicedocument "github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
+	serviceshared "github.com/mediago-dev/mediago-drama/packages/server/internal/service/shared"
 )
 
 type workspaceStateResponse = servicedocument.WorkspaceStateResponse

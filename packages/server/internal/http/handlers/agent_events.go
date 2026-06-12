@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
-	service "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
-	serviceevents "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/events"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
+	service "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
+	serviceevents "github.com/mediago-dev/mediago-drama/packages/server/internal/service/events"
 )
 
 // AgentEventService supplies live and replayed agent events.

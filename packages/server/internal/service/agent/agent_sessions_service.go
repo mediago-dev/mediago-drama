@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
 )
 
 // SessionService tracks active agent runs and persists session state.

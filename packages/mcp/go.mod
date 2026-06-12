@@ -1,4 +1,4 @@
-module github.com/torchstellar-team/mediago-drama/packages/mcp
+module github.com/mediago-dev/mediago-drama/packages/mcp
 
 go 1.25.0
 

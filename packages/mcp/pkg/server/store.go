@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 )
 
 // Project is the project summary type used by external MCP services.

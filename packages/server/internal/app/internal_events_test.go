@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	httphandlers "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/handlers"
+	httphandlers "github.com/mediago-dev/mediago-drama/packages/server/internal/http/handlers"
 )
 
 func TestHandleInternalPublishEvent(t *testing.T) {

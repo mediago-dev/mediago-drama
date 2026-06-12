@@ -4,11 +4,11 @@ import (
 	"context"
 	"io"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	appevents "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/events"
-	appmcp "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/mcp"
-	appworkspace "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/workspace"
-	serverconfig "github.com/torchstellar-team/mediago-drama/packages/server/internal/config"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	appevents "github.com/mediago-dev/mediago-drama/packages/server/internal/app/events"
+	appmcp "github.com/mediago-dev/mediago-drama/packages/server/internal/app/mcp"
+	appworkspace "github.com/mediago-dev/mediago-drama/packages/server/internal/app/workspace"
+	serverconfig "github.com/mediago-dev/mediago-drama/packages/server/internal/config"
 )
 
 // RunDocumentMCP exposes MediaGo Drama document tools through the official MCP Go SDK.

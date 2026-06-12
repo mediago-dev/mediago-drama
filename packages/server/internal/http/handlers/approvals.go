@@ -5,9 +5,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	service "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	service "github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
 )
 
 // DocumentToolApprovalStore supplies document tool approval operations.

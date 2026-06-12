@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"strings"
 
-	coregeneration "github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/media"
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/media"
 )
 
 func (workflow *GenerationService) resolveGenerationReferences(

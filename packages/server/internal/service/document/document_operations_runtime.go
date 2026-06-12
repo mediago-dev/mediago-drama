@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
 )
 
 const defaultDocumentOperationTimeout = 2 * time.Minute

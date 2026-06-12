@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"github.com/gin-gonic/gin"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	servicecapability "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/capability"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	servicecapability "github.com/mediago-dev/mediago-drama/packages/server/internal/service/capability"
 )
 
 // Capabilities handles capability manifest routes.

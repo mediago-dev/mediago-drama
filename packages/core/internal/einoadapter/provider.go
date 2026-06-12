@@ -7,7 +7,7 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/multimodal"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/multimodal"
 )
 
 // ChatModelProvider adapts an Eino chat model to the core multimodal provider contract.

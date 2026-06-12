@@ -3,7 +3,7 @@ package document
 import (
 	"fmt"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
 )
 
 func (store *Service) load(projectID string) (workspaceStateResponse, error) {

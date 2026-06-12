@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 )
 
 func (adapter *Adapter) ListProjects(ctx context.Context) (mediamcp.ProjectList, error) {

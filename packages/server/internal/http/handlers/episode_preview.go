@@ -13,9 +13,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	servicedocument "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
-	servicemedia "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/media"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	servicedocument "github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
+	servicemedia "github.com/mediago-dev/mediago-drama/packages/server/internal/service/media"
 )
 
 // EpisodePreviewTimelineStore supplies persisted episode timeline state.

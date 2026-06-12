@@ -7,9 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
-	mcpserver "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/server"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
+	mcpserver "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/server"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
 )
 
 // MCPServerFactory creates a stateless MCP server for one HTTP request.

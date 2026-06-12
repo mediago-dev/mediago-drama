@@ -4,10 +4,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	corepricing "github.com/torchstellar-team/mediago-drama/packages/core/pkg/pricing"
-	corecapability "github.com/torchstellar-team/mediago-drama/packages/server/internal/capability"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
+	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
+	corecapability "github.com/mediago-dev/mediago-drama/packages/server/internal/capability"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
 	"gorm.io/gorm"
 )
 

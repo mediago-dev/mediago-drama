@@ -7,7 +7,7 @@ import (
 	"sync"
 	"text/template"
 
-	configassets "github.com/torchstellar-team/mediago-drama/packages/server/configs"
+	configassets "github.com/mediago-dev/mediago-drama/packages/server/configs"
 )
 
 var parsedTemplates sync.Map // map[string]*template.Template

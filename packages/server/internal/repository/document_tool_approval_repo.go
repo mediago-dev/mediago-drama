@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
 	"gorm.io/gorm"
 )
 

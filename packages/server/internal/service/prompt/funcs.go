@@ -6,7 +6,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/textutil"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/textutil"
 )
 
 var promptStaticFuncs = template.FuncMap{

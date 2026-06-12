@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 )
 
 // ApplyBatchDocumentEditContent applies same-document structural edits in order without persisting intermediate states.

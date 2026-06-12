@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/http/dto"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	service "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/generation"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/http/dto"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	service "github.com/mediago-dev/mediago-drama/packages/server/internal/service/generation"
 )
 
 // GenerationTaskService supplies generation task operations.

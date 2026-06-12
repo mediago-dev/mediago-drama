@@ -3,7 +3,7 @@ package capability
 import (
 	"testing"
 
-	coregeneration "github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
 func TestDefaultRegistryReturnsIsolatedCopies(t *testing.T) {

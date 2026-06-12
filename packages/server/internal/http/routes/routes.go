@@ -2,9 +2,9 @@ package routes
 
 import (
 	"github.com/gin-gonic/gin"
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	httphandlers "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/handlers"
-	serviceevents "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/events"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	httphandlers "github.com/mediago-dev/mediago-drama/packages/server/internal/http/handlers"
+	serviceevents "github.com/mediago-dev/mediago-drama/packages/server/internal/service/events"
 )
 
 // Handlers groups the concrete HTTP handlers used by the app router.

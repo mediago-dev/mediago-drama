@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
 )
 
 func TestGenerationNotificationServicePublishesCompletedTask(t *testing.T) {

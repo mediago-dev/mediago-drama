@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"strings"
 
-	coregeneration "github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation/runtime"
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/multimodal"
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/runtime"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/multimodal"
 )
 
 const (

@@ -1,6 +1,6 @@
 package dto
 
-import coregeneration "github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
+import coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 
 // GenerationModelsResponse returns the generation catalog.
 type GenerationModelsResponse struct {

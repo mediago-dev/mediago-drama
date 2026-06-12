@@ -10,9 +10,9 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation/runtime"
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/multimodal"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/runtime"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/multimodal"
 )
 
 func TestMessageConversionPreservesMultimodalParts(t *testing.T) {

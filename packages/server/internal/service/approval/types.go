@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/model"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/shared"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/model"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/shared"
 )
 
 type DocumentToolApprovalRecord = model.DocumentToolApprovalRecord

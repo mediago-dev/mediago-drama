@@ -3,9 +3,9 @@ package events_test
 import (
 	"testing"
 
-	appworkspace "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/workspace"
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
-	servicemodel "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/model"
+	appworkspace "github.com/mediago-dev/mediago-drama/packages/server/internal/app/workspace"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
+	servicemodel "github.com/mediago-dev/mediago-drama/packages/server/internal/service/model"
 )
 
 func TestLoadAgentEventsReplaysExternalProjectEvents(t *testing.T) {

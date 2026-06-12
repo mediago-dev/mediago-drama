@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	serviceskill "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/skill"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	serviceskill "github.com/mediago-dev/mediago-drama/packages/server/internal/service/skill"
 )
 
 func (adapter *Adapter) getWorkspaceDocument(projectID string, documentID string) (mediamcp.WorkspaceDocument, error) {

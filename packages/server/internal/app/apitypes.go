@@ -1,12 +1,12 @@
 package app
 
 import (
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/http/dto"
-	serviceacp "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/acp"
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
-	servicedocument "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
-	servicemodel "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/model"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/http/dto"
+	serviceacp "github.com/mediago-dev/mediago-drama/packages/server/internal/service/acp"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
+	servicedocument "github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
+	servicemodel "github.com/mediago-dev/mediago-drama/packages/server/internal/service/model"
 )
 
 const defaultAgentRunTimeout = serviceagent.DefaultAgentRunTimeout

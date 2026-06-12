@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	cliservice "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	cliservice "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
 )
 
 type recordingAgentEventPublisher struct {

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	serviceskill "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/skill"
+	serviceskill "github.com/mediago-dev/mediago-drama/packages/server/internal/service/skill"
 )
 
 // SectionDescriptor describes one system prompt section and its UI metadata.

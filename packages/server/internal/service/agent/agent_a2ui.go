@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/model"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/model"
 )
 
 const (

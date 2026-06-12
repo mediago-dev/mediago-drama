@@ -1,6 +1,6 @@
 package generation
 
-import catalogcache "github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation/internal/catalog"
+import catalogcache "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/internal/catalog"
 
 type routeCatalogIndex struct {
 	routes                []ModelRoute

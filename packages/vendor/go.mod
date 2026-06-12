@@ -1,3 +1,3 @@
-module github.com/torchstellar-team/mediago-drama/packages/vendor
+module github.com/mediago-dev/mediago-drama/packages/vendor
 
 go 1.23

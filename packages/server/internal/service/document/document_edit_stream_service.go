@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
 )
 
 func (store *EditStreamService) getDocumentEditStream(projectID string, streamID string) (documentEditStreamRecord, bool, error) {

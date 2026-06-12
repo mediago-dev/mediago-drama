@@ -1,4 +1,4 @@
-module github.com/torchstellar-team/mediago-drama/packages/server
+module github.com/mediago-dev/mediago-drama/packages/server
 
 go 1.25.0
 
@@ -8,8 +8,8 @@ require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/glebarez/sqlite v1.11.0
 	github.com/modelcontextprotocol/go-sdk v1.6.0
-	github.com/torchstellar-team/mediago-drama/packages/core v0.0.0
-	github.com/torchstellar-team/mediago-drama/packages/mcp v0.0.0
+	github.com/mediago-dev/mediago-drama/packages/core v0.0.0
+	github.com/mediago-dev/mediago-drama/packages/mcp v0.0.0
 	golang.org/x/text v0.28.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.31.1
@@ -62,8 +62,8 @@ require (
 	modernc.org/sqlite v1.50.1 // indirect
 )
 
-replace github.com/torchstellar-team/mediago-drama/packages/core => ../core
+replace github.com/mediago-dev/mediago-drama/packages/core => ../core
 
-replace github.com/torchstellar-team/mediago-drama/packages/mcp => ../mcp
+replace github.com/mediago-dev/mediago-drama/packages/mcp => ../mcp
 
-replace github.com/torchstellar-team/mediago-drama/packages/tools => ../tools
+replace github.com/mediago-dev/mediago-drama/packages/tools => ../tools

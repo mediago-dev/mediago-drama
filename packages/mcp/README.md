@@ -34,11 +34,11 @@ protocol/runtime code.
 ## Use From CLI
 
 ```bash
-go get github.com/torchstellar-team/mediago-drama/packages/mcp
+go get github.com/mediago-dev/mediago-drama/packages/mcp
 ```
 
 ```go
-import mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+import mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 
 name := mediamcp.ToolName("load_skill")
 ```

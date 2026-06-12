@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"strings"
 
-	serviceacp "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/acp"
+	serviceacp "github.com/mediago-dev/mediago-drama/packages/server/internal/service/acp"
 )
 
 // SetACPLogger directs ACP runner and protocol logs to the given logger.

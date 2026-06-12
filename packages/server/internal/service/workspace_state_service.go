@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/approval"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/chat"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/shared"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/approval"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/chat"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/shared"
 )
 
 // WorkspaceStateService is the stable aggregate entry point for workspace state.

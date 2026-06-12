@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
-	serviceworkspaceevent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/workspaceevent"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
+	serviceworkspaceevent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/workspaceevent"
 )
 
 // WorkspaceEventService supplies live workspace file events.

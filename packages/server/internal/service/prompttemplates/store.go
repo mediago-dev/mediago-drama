@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	configassets "github.com/torchstellar-team/mediago-drama/packages/server/configs"
-	serviceprompt "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/prompt"
+	configassets "github.com/mediago-dev/mediago-drama/packages/server/configs"
+	serviceprompt "github.com/mediago-dev/mediago-drama/packages/server/internal/service/prompt"
 )
 
 const embeddedTemplatesDir = "templates/prompts"

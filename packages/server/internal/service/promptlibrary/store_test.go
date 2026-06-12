@@ -7,8 +7,8 @@ import (
 	"testing"
 	"testing/fstest"
 
-	configassets "github.com/torchstellar-team/mediago-drama/packages/server/configs"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
+	configassets "github.com/mediago-dev/mediago-drama/packages/server/configs"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
 )
 
 func TestStoreSeedsBuiltinPromptEntriesIntoDatabase(t *testing.T) {

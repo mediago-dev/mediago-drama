@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	server "github.com/torchstellar-team/mediago-drama/packages/server/internal/app"
-	serverconfig "github.com/torchstellar-team/mediago-drama/packages/server/internal/config"
+	server "github.com/mediago-dev/mediago-drama/packages/server/internal/app"
+	serverconfig "github.com/mediago-dev/mediago-drama/packages/server/internal/config"
 )
 
 func main() {

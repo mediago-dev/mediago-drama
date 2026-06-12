@@ -1,6 +1,6 @@
 package mcp
 
-import appworkspace "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/workspace"
+import appworkspace "github.com/mediago-dev/mediago-drama/packages/server/internal/app/workspace"
 
 // Adapter bridges CLI-owned workspace services into packages/mcp server
 // dependency interfaces.

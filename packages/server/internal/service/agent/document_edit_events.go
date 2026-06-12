@@ -5,11 +5,11 @@ import (
 	"regexp"
 	"strings"
 
-	docs "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/documents"
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/model"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/shared"
+	docs "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/documents"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/model"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/shared"
 )
 
 // AgentDocumentEditSnapshot captures the document fields used by edit events.

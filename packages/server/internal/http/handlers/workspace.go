@@ -4,10 +4,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	service "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/model"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	service "github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/model"
 )
 
 // WorkspaceStore supplies workspace state and document operations.

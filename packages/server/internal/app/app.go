@@ -10,17 +10,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	corepricing "github.com/torchstellar-team/mediago-drama/packages/core/pkg/pricing"
-	appmcp "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/mcp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	httphandlers "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/handlers"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/http/middleware"
-	httpresponse "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/response"
-	httproutes "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/routes"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
-	servicedocument "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
-	serviceprompttemplates "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/prompttemplates"
+	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
+	appmcp "github.com/mediago-dev/mediago-drama/packages/server/internal/app/mcp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	httphandlers "github.com/mediago-dev/mediago-drama/packages/server/internal/http/handlers"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/http/middleware"
+	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	httproutes "github.com/mediago-dev/mediago-drama/packages/server/internal/http/routes"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
+	servicedocument "github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
+	serviceprompttemplates "github.com/mediago-dev/mediago-drama/packages/server/internal/service/prompttemplates"
 )
 
 // Config controls local server persistence and runtime behavior.

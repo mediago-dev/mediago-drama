@@ -1,8 +1,8 @@
 package agent
 
 import (
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/app/workspace"
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/app/workspace"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
 )
 
 // SessionService tracks agent sessions.

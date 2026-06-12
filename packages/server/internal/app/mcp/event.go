@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	cliservice "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	cliservice "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
 )
 
 func (adapter *Adapter) PublishAgentEvent(ctx context.Context, projectID string, event mediamcp.AgentDocumentEvent) error {

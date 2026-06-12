@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation/internal/adapterutil"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/internal/adapterutil"
 )
 
 func TestImageReferenceDataRejectsNonImageHTTPContentType(t *testing.T) {

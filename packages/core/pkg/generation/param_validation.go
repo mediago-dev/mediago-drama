@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation/internal/adapterutil"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/internal/adapterutil"
 )
 
 // ValidateRouteParams validates known request params against the route catalog.

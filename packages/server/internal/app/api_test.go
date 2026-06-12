@@ -19,9 +19,9 @@ import (
 	"testing/fstest"
 	"time"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	servicegeneration "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/generation"
-	servicemedia "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/media"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	servicegeneration "github.com/mediago-dev/mediago-drama/packages/server/internal/service/generation"
+	servicemedia "github.com/mediago-dev/mediago-drama/packages/server/internal/service/media"
 )
 
 var testSessionProjects sync.Map

@@ -1,8 +1,8 @@
 package events
 
 import (
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
-	serviceevents "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/events"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
+	serviceevents "github.com/mediago-dev/mediago-drama/packages/server/internal/service/events"
 )
 
 // Event aliases the agent event shape used by the service layer.

@@ -1,8 +1,8 @@
 package events
 
 import (
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
-	servicemodel "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/model"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
+	servicemodel "github.com/mediago-dev/mediago-drama/packages/server/internal/service/model"
 )
 
 // Context carries the agent/session identity used to decorate events.

@@ -3,7 +3,7 @@ package document
 import (
 	"strings"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 )
 
 // DocumentOperationsRequest asks the backend document-operation runtime for edits.

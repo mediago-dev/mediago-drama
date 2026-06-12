@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/multimodal"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/multimodal"
 )
 
 // RouteCredentials carries credential values resolved for a catalog route.

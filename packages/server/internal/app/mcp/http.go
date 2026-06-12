@@ -3,10 +3,10 @@ package mcp
 import (
 	"net/http"
 
-	mcpserver "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/server"
-	appevents "github.com/torchstellar-team/mediago-drama/packages/server/internal/app/events"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
+	mcpserver "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/server"
+	appevents "github.com/mediago-dev/mediago-drama/packages/server/internal/app/events"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
 )
 
 const (

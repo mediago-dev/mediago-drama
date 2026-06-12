@@ -1,6 +1,6 @@
 package agent
 
-import serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
+import serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
 
 // DefaultRunTimeout is zero, which disables the wall-clock timeout for one agent run.
 const DefaultRunTimeout = serviceagent.DefaultAgentRunTimeout

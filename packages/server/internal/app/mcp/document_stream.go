@@ -3,8 +3,8 @@ package mcp
 import (
 	"log/slog"
 
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
-	cliservice "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/document"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	cliservice "github.com/mediago-dev/mediago-drama/packages/server/internal/service/document"
 )
 
 func (server DocumentServer) publishDocumentEditStarted(document mediamcp.WorkspaceDocument, summary string) {

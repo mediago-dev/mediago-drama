@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
 )
 
 func ensureProjectedConversation(

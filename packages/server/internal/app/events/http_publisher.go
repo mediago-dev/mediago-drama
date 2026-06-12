@@ -1,8 +1,8 @@
 package events
 
 import (
-	serverconfig "github.com/torchstellar-team/mediago-drama/packages/server/internal/config"
-	serviceevents "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/events"
+	serverconfig "github.com/mediago-dev/mediago-drama/packages/server/internal/config"
+	serviceevents "github.com/mediago-dev/mediago-drama/packages/server/internal/service/events"
 )
 
 type httpEventPublisherAdapter struct {

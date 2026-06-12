@@ -5,9 +5,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation/internal/adapterutil"
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation/internal/openaichat"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/internal/adapterutil"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/internal/openaichat"
 )
 
 // GenerateTextStream streams a DMX OpenAI-compatible chat response.

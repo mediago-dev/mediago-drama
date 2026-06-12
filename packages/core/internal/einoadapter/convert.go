@@ -7,7 +7,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/multimodal"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/multimodal"
 )
 
 // ToEinoMessages converts core messages into Eino schema messages.

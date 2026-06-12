@@ -1,6 +1,6 @@
 package generation
 
-import "github.com/torchstellar-team/mediago-drama/packages/server/internal/http/dto"
+import "github.com/mediago-dev/mediago-drama/packages/server/internal/http/dto"
 
 // GenerationModelsResponse returns the generation catalog.
 type GenerationModelsResponse = dto.GenerationModelsResponse

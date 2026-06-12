@@ -3,7 +3,7 @@ package openrouter
 import (
 	"context"
 
-	"github.com/torchstellar-team/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
 func (provider *Provider) generateImage(ctx context.Context, request generation.Request) (generation.Response, error) {

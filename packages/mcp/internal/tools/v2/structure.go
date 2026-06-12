@@ -4,7 +4,7 @@ import (
 	"context"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
-	mediamcp "github.com/torchstellar-team/mediago-drama/packages/mcp/pkg/mcp"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 )
 
 func registerLoadSkillTool(server *mcpsdk.Server, dispatcher Dispatcher, projectID string, closedWorld bool, logToolRegistered func(string)) {

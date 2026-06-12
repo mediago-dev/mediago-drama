@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
-	service "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/settings"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
+	service "github.com/mediago-dev/mediago-drama/packages/server/internal/service/settings"
 	"gorm.io/gorm"
 )
 

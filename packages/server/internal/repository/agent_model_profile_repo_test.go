@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
 )
 
 func TestAgentModelProfileRepositoryCRUDAndDefault(t *testing.T) {

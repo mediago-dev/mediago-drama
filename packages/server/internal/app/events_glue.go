@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/app/events"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/app/events"
 )
 
 func (handler *apiHandler) newAgentEventBus(context events.Context) *events.Bus {

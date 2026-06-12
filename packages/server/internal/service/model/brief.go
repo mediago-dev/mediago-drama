@@ -8,8 +8,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/platform/timestamp"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/textutil"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/textutil"
 )
 
 // UnsetProjectBriefValue is rendered for empty project brief fields.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
 	"gorm.io/gorm"
 )
 

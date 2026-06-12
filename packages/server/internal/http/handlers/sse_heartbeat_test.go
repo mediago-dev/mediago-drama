@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/http/dto"
-	serviceagent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
-	serviceworkspaceevent "github.com/torchstellar-team/mediago-drama/packages/server/internal/service/workspaceevent"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/http/dto"
+	serviceagent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
+	serviceworkspaceevent "github.com/mediago-dev/mediago-drama/packages/server/internal/service/workspaceevent"
 )
 
 type fakeAgentEventService struct {

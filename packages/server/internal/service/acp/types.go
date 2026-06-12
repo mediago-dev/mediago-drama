@@ -1,9 +1,9 @@
 package acp
 
 import (
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/agent"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/prompt"
-	"github.com/torchstellar-team/mediago-drama/packages/server/internal/service/shared"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/prompt"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/shared"
 )
 
 type AgentRuntimeConfigResponse = agent.AgentRuntimeConfigResponse
