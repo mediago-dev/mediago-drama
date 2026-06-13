@@ -29,16 +29,19 @@ vi.mock("@/domains/generation/components/useMediaGenerationWorkspaceLayout", () 
 vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 	MediaGenerationInputPanel: ({
 		imageSpecControl,
+		modelControls,
 		previewReferenceAssets = [],
 		primaryParamControls,
 		secondaryParamControls,
 	}: {
 		imageSpecControl?: React.ReactNode;
+		modelControls?: React.ReactNode;
 		previewReferenceAssets?: MediaAsset[];
 		primaryParamControls?: React.ReactNode;
 		secondaryParamControls?: React.ReactNode;
 	}) => (
 		<div data-testid="generation-input-panel">
+			{modelControls}
 			{imageSpecControl}
 			{primaryParamControls}
 			{secondaryParamControls}
@@ -111,29 +114,55 @@ const workspaceDefaults = {
 	fullPrompt: "完整提示词",
 	prompt: "旧提示词",
 	selectableReferenceKinds: new Set(["image"]),
-	selectedFamily: { label: "图像模型" },
+	selectedFamily: { id: "image-family", label: "图像模型" },
 	selectedParams: {},
 	selectedReferenceAssetIds: [],
 	selectedReferenceAssets: [],
 	selectedRoute: {
+		adapter: "test.image",
 		configured: true,
+		docUrl: "https://example.com",
+		familyId: "image-family",
+		id: "route-image",
+		kind: "image",
+		model: "image-model",
 		params: [],
+		provider: "openai",
 		status: "available",
 		supportsReferenceUrls: true,
+		versionId: "version-image",
 	},
-	selectedVersion: { label: "v1" },
+	selectedVersion: { id: "version-image", label: "v1" },
 	setActiveEntryId: vi.fn(),
 	setKind: vi.fn(),
 	setLayerSelection: vi.fn(),
 	setPrompt: vi.fn(),
 	submit: vi.fn((event: React.FormEvent<HTMLFormElement>) => event.preventDefault()),
 	toggleReferenceAsset: vi.fn(),
+	updateFamily: vi.fn(),
+	updateModelRoute: vi.fn(),
 	updateParam: vi.fn(),
 	uploadIdPrefix: "test-generation",
 	uploadReferenceAsset: vi.fn(),
-	visibleFamilies: [],
+	visibleFamilies: [{ id: "image-family", label: "图像模型" }],
+	visibleFamilyRoutes: [
+		{
+			adapter: "test.image",
+			configured: true,
+			docUrl: "https://example.com",
+			familyId: "image-family",
+			id: "route-image",
+			kind: "image",
+			model: "image-model",
+			params: [],
+			provider: "openai",
+			status: "available",
+			supportsReferenceUrls: true,
+			versionId: "version-image",
+		},
+	],
 	visibleRoutes: [],
-	visibleVersions: [],
+	visibleVersions: [{ id: "version-image", label: "v1" }],
 };
 
 describe("MediaGenerationWorkspace", () => {
@@ -172,6 +201,23 @@ describe("MediaGenerationWorkspace", () => {
 		expect(selectReferenceAsset).toHaveBeenCalledWith(mediaAsset);
 		expect(setPrompt).not.toHaveBeenCalled();
 		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+
+	it("renders the model route picker in the input panel", () => {
+		vi.mocked(useGenerationWorkspace).mockReturnValue(
+			workspaceDefaults as unknown as ReturnType<typeof useGenerationWorkspace>,
+		);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+			/>,
+		);
+
+		expect(screen.getByRole("button", { name: "模型版本和供应商" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "打开模型文档" })).toBeTruthy();
 	});
 
 	it("keeps the tabbed edit view focused on the input without history or results", () => {
