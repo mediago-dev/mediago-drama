@@ -250,6 +250,19 @@ describe("GenerationWorkspace image spec control", () => {
 		expect(screen.queryByText("图像尺寸")).toBeNull();
 	});
 
+	it("opens the reference material library from the composer add button", () => {
+		vi.mocked(useGenerationWorkspace).mockReturnValue(
+			workspaceDefaults as unknown as ReturnType<typeof useGenerationWorkspace>,
+		);
+
+		renderWorkspace();
+
+		fireEvent.click(screen.getByRole("button", { name: "选择参考素材" }));
+
+		expect(screen.getByRole("dialog", { name: "选择参考图" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "上传" })).toBeTruthy();
+	});
+
 	it("moves video ratio, resolution, and duration into primary controls", () => {
 		vi.mocked(useGenerationWorkspace).mockReturnValue({
 			...workspaceDefaults,

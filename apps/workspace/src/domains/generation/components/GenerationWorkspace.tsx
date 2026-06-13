@@ -1,19 +1,20 @@
-import { Box, ExternalLink, SendHorizontal, Sparkles } from "lucide-react";
+import { ExternalLink, Plus, SendHorizontal, Sparkles } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { type GenerationAsset, type GenerationKind } from "@/domains/generation/api/generation";
 import { GenerationChatPanel } from "@/domains/generation/components/GenerationChatPanel";
-import {
-	GenerationInspectorResizeHandle,
-	useGenerationInspectorWidth,
-} from "@/domains/generation/components/GenerationInspectorResize";
 import {
 	GenerationSetupNotice,
 	InspectorHeading,
 	ModeToggle,
 } from "@/domains/generation/components/GenerationSetupNotice";
+import {
+	GenerationBrandMark,
+	generationFamilyBrand,
+	generationModelBrand,
+} from "@/domains/generation/components/GenerationBrandMark";
 import { GenerationModelRoutePicker } from "@/domains/generation/components/GenerationModelRoutePicker";
 import {
 	filterImageGenerationSpecParams,
@@ -23,6 +24,7 @@ import { ImageGenerationSpecControl } from "@/domains/generation/components/Imag
 import { MaterialLibrary } from "@/domains/generation/components/MaterialLibrary";
 import {
 	PrimaryParamControl,
+	ReferenceSelectionDialog,
 	SecondaryParamsDropdown,
 } from "@/domains/generation/components/MediaGenerationDialogs";
 import { ModelParamControls } from "@/domains/generation/components/ModelParamControls";
@@ -98,7 +100,6 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	projectId,
 	requireConversation = false,
 	selectedGeneratedAssetKey,
-	showInspector = true,
 	uploadIdPrefix,
 	variant = "page",
 }) => {
@@ -146,7 +147,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 		mutateMediaAssets: ws.mutateMediaAssets,
 		projectId,
 	});
-	const [inspectorWidth, setInspectorWidth] = useGenerationInspectorWidth();
+	const [referenceDialogOpen, setReferenceDialogOpen] = useState(false);
 
 	const documentationButton = ws.hasConfiguredRoutesForKind ? (
 		<Button
@@ -184,6 +185,11 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	const generationSummary = isTextGeneration
 		? ws.selectedRoute.model
 		: `${ws.selectedRoute.model} · ${ws.referenceCount} 个参考素材`;
+	const selectedFamilyBrand = generationModelBrand({
+		family: ws.selectedFamily,
+		route: ws.selectedRoute,
+		version: ws.selectedVersion,
+	});
 	const routeParamGroups = useMemo(() => resolveParamGroups(ws.selectedRoute), [ws.selectedRoute]);
 	const sizeGroupParams = useMemo(
 		() => routeParamGroups.find((group) => group.id === "size")?.params ?? [],
@@ -261,6 +267,8 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 		generationCountMax,
 	);
 	const sessionRequiredMessage = ws.needsConversation ? "请先从左侧新建或选择一个 session。" : "";
+	const canSelectReferenceAssets =
+		ws.hasConfiguredRoutesForKind && ws.selectedRoute.supportsReferenceUrls;
 	const updateComposerGenerationCount = (value: string) => {
 		if (!routeGenerationCountParam) return;
 
@@ -443,19 +451,40 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 					</div>
 					<div className="flex min-w-0 items-center justify-between gap-2">
 						<div className="flex min-w-0 items-center gap-2 overflow-x-auto">
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon"
+								aria-label="选择参考素材"
+								title="选择参考素材"
+								disabled={!canSelectReferenceAssets}
+								className="size-9 shrink-0 rounded-md border border-border bg-ide-editor text-muted-foreground shadow-none hover:bg-ide-list-hover hover:text-foreground disabled:bg-ide-editor disabled:text-muted-foreground [&_svg]:size-4"
+								onClick={() => setReferenceDialogOpen(true)}
+							>
+								<Plus />
+							</Button>
 							{lockKind ? null : <ModeToggle compact kind={ws.kind} onChange={ws.setKind} />}
 							<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
 								<SelectTrigger
 									aria-label="模型类型"
 									className={generationComposerSelectClassName()}
 								>
-									<Box className="size-4 shrink-0" />
+									<GenerationBrandMark
+										brand={selectedFamilyBrand}
+										className="size-4 text-[0.5rem]"
+									/>
 									<span>{ws.selectedFamily.label}</span>
 								</SelectTrigger>
 								<SelectContent align="start">
 									{ws.visibleFamilies.map((family) => (
-										<SelectItem key={family.id} value={family.id}>
-											{family.label}
+										<SelectItem key={family.id} value={family.id} textValue={family.label}>
+											<span className="flex min-w-0 items-center gap-2">
+												<GenerationBrandMark
+													brand={generationFamilyBrand(family)}
+													className="size-4 text-[0.5rem]"
+												/>
+												<span className="min-w-0 truncate">{family.label}</span>
+											</span>
 										</SelectItem>
 									))}
 								</SelectContent>
@@ -535,34 +564,6 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 		</form>
 	);
 
-	const materialInspectorSection = (
-		<section className="flex h-full min-h-0 flex-1 flex-col">
-			<MaterialLibrary
-				activeAssetId={ws.activeMediaAssetId}
-				assets={ws.filteredMediaAssets}
-				className="flex min-h-0 flex-1 flex-col"
-				disabled={!ws.selectedRoute.supportsReferenceUrls}
-				kindFilter={ws.mediaKindFilter}
-				inputId={`${ws.uploadIdPrefix}-media-upload-inspector`}
-				isUploading={ws.isUploadingAsset}
-				listClassName="min-h-0 flex-1 max-h-none"
-				query={ws.mediaQuery}
-				selectableKinds={ws.selectableReferenceKinds}
-				selectedAssetIds={ws.selectedReferenceAssetIds}
-				separated={false}
-				showRenameButton={false}
-				uploadButtonIconOnly
-				uploadButtonPlacement="search"
-				onDelete={ws.removeMediaAsset}
-				onKindFilterChange={ws.setMediaKindFilter}
-				onQueryChange={ws.setMediaQuery}
-				onRename={ws.renameMediaAsset}
-				onToggle={ws.toggleReferenceAsset}
-				onUpload={ws.uploadReferenceAsset}
-			/>
-		</section>
-	);
-
 	if (isSettingsVariant) {
 		return (
 			<div>
@@ -590,28 +591,10 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 
 	const visibleGenerationEntries =
 		focusActiveEntry && ws.activeEntry ? [ws.activeEntry] : ws.generationEntries;
-	const showMaterialInspector = showInspector && !isTextGeneration;
 
 	return (
-		<div
-			className={cn(
-				"h-full min-h-0 overflow-hidden bg-ide-editor text-ide-editor-foreground",
-				showMaterialInspector
-					? "grid lg:grid-cols-[minmax(24rem,1fr)_var(--inspector-width)]"
-					: "flex flex-col",
-			)}
-			style={
-				showMaterialInspector
-					? ({ "--inspector-width": `${inspectorWidth}px` } as React.CSSProperties)
-					: undefined
-			}
-		>
-			<main
-				className={cn(
-					"flex min-h-0 min-w-0 flex-1 flex-col",
-					showMaterialInspector && "lg:border-r lg:border-border",
-				)}
-			>
+		<div className="flex h-full min-h-0 flex-col overflow-hidden bg-ide-editor text-ide-editor-foreground">
+			<main className="flex min-h-0 min-w-0 flex-1 flex-col">
 				<GenerationChatPanel
 					entries={visibleGenerationEntries}
 					canSaveText={resultActions.canSaveText}
@@ -628,15 +611,25 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 				{generationComposer}
 			</main>
 
-			{showMaterialInspector ? (
-				<aside className="relative hidden min-h-0 min-w-0 bg-ide-editor p-4 text-ide-editor-foreground lg:block">
-					<GenerationInspectorResizeHandle
-						width={inspectorWidth}
-						onWidthChange={setInspectorWidth}
-					/>
-					{materialInspectorSection}
-				</aside>
-			) : null}
+			<ReferenceSelectionDialog
+				disabled={!canSelectReferenceAssets}
+				entries={ws.generationEntries}
+				inputId={`${ws.uploadIdPrefix}-reference-dialog-upload`}
+				isUploading={ws.isUploadingAsset}
+				mediaAssets={ws.mediaAssets}
+				open={referenceDialogOpen}
+				references={ws.selectedReferenceAssets}
+				requiresReference={false}
+				selectableKinds={ws.selectableReferenceKinds}
+				selectedAssetIds={ws.selectedReferenceAssetIds}
+				onOpenChange={setReferenceDialogOpen}
+				onRefreshAssets={() => {
+					void ws.mutateMediaAssets();
+				}}
+				onRemoveReference={ws.toggleReferenceAsset}
+				onToggleReference={ws.toggleReferenceAsset}
+				onUpload={ws.uploadReferenceAsset}
+			/>
 		</div>
 	);
 };

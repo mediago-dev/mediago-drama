@@ -1,7 +1,14 @@
-import { Box, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import type React from "react";
 import { useMemo } from "react";
 import type { GenerationRoute, GenerationVersion } from "@/domains/generation/api/generation";
+import {
+	GenerationBrandMark,
+	GenerationBrandStack,
+	generationModelBrand,
+	generationProviderBrand,
+	generationVersionBrand,
+} from "@/domains/generation/components/GenerationBrandMark";
 import { providerLabel } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -43,6 +50,11 @@ export const GenerationModelRoutePicker: React.FC<{
 	const selectedLabel = selectedVersion.label
 		? `${compactLabel(selectedVersion.label)} · ${selectedProvider}`
 		: selectedRoute.model;
+	const selectedModelBrand = generationModelBrand({
+		route: selectedRoute,
+		version: selectedVersion,
+	});
+	const selectedProviderBrand = generationProviderBrand(selectedRoute.provider);
 
 	return (
 		<DropdownMenu>
@@ -57,7 +69,10 @@ export const GenerationModelRoutePicker: React.FC<{
 						className,
 					)}
 				>
-					<Box className="size-4 shrink-0" />
+					<GenerationBrandStack
+						modelBrand={selectedModelBrand}
+						providerBrand={selectedProviderBrand}
+					/>
 					<span className="min-w-0 truncate">{selectedLabel}</span>
 				</Button>
 			</DropdownMenuTrigger>
@@ -65,6 +80,7 @@ export const GenerationModelRoutePicker: React.FC<{
 				{visibleVersions.map((version) => {
 					const versionRoutes = routesByVersion.get(version.id) ?? [];
 					const isSelectedVersion = version.id === selectedVersion.id;
+					const versionBrand = generationVersionBrand(version, versionRoutes[0]);
 
 					return (
 						<DropdownMenuSub key={version.id}>
@@ -72,6 +88,7 @@ export const GenerationModelRoutePicker: React.FC<{
 								<span className="flex size-4 shrink-0 items-center justify-center">
 									{isSelectedVersion ? <Check className="size-4" /> : null}
 								</span>
+								<GenerationBrandMark brand={versionBrand} className="size-4 text-[0.5rem]" />
 								<span className="min-w-0 flex-1 truncate">{version.label}</span>
 							</DropdownMenuSubTrigger>
 							<DropdownMenuSubContent sideOffset={6} className="w-48">
@@ -88,6 +105,10 @@ export const GenerationModelRoutePicker: React.FC<{
 											<span className="flex size-4 shrink-0 items-center justify-center">
 												{selected ? <Check className="size-4" /> : null}
 											</span>
+											<GenerationBrandMark
+												brand={generationProviderBrand(route.provider)}
+												className="size-4 text-[0.5rem]"
+											/>
 											<span className="min-w-0 truncate">{providerLabel(route.provider)}</span>
 										</DropdownMenuItem>
 									);

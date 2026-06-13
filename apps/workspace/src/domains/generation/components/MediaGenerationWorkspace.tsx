@@ -1,4 +1,4 @@
-import { Box, Clipboard, ExternalLink, PencilLine } from "lucide-react";
+import { Clipboard, ExternalLink, PencilLine } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -15,6 +15,11 @@ import {
 	resolveImageGenerationSpec,
 } from "@/domains/generation/components/imageGenerationSpec";
 import { ImageGenerationSpecControl } from "@/domains/generation/components/ImageGenerationSpecControl";
+import {
+	GenerationBrandMark,
+	generationFamilyBrand,
+	generationModelBrand,
+} from "@/domains/generation/components/GenerationBrandMark";
 import { GenerationModelRoutePicker } from "@/domains/generation/components/GenerationModelRoutePicker";
 import { MediaGenerationInputPanel } from "@/domains/generation/components/MediaGenerationInputPanel";
 import { MediaGenerationWorkspaceDialogs } from "@/domains/generation/components/MediaGenerationWorkspaceDialogs";
@@ -257,6 +262,11 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const modelSummary = ws.hasConfiguredRoutesForKind
 		? `${ws.selectedFamily.label} / ${ws.selectedVersion.label} / ${routeProviderLabel(ws.selectedRoute)}`
 		: `暂无可用${generatedKindLabel}供应商`;
+	const selectedFamilyBrand = generationModelBrand({
+		family: ws.selectedFamily,
+		route: ws.selectedRoute,
+		version: ws.selectedVersion,
+	});
 	const modelControls = ws.hasConfiguredRoutesForKind ? (
 		<div className="flex min-w-0 items-center gap-2">
 			<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
@@ -264,13 +274,19 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 					aria-label="模型类型"
 					className={mediaGenerationModelControlClassName("max-w-40")}
 				>
-					<Box className="size-3.5 shrink-0" />
+					<GenerationBrandMark brand={selectedFamilyBrand} className="size-4 text-[0.5rem]" />
 					<span>{ws.selectedFamily.label}</span>
 				</SelectTrigger>
 				<SelectContent align="start">
 					{ws.visibleFamilies.map((family) => (
-						<SelectItem key={family.id} value={family.id}>
-							{family.label}
+						<SelectItem key={family.id} value={family.id} textValue={family.label}>
+							<span className="flex min-w-0 items-center gap-2">
+								<GenerationBrandMark
+									brand={generationFamilyBrand(family)}
+									className="size-4 text-[0.5rem]"
+								/>
+								<span className="min-w-0 truncate">{family.label}</span>
+							</span>
 						</SelectItem>
 					))}
 				</SelectContent>
