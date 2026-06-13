@@ -14,7 +14,7 @@ describe("app route descriptor", () => {
 		expect(resolveAppRouteDescriptor("/", "", { workMode: "studio" })).toMatchObject({
 			level: 1,
 			sidebarScreen: "studio-types",
-			title: "创作台",
+			title: "工具箱",
 		});
 	});
 
