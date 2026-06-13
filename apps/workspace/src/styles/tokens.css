@@ -165,7 +165,6 @@
 		--generation-popover-radius: var(--radius-scale-sm);
 		--generation-popover-padding: var(--space-sm);
 		--generation-popover-padding-lg: calc(var(--space-sm) + var(--space-xs));
-		--generation-popover-padding-xl: var(--space-md);
 		--generation-popover-gap: calc(var(--space-sm) + var(--space-2xs));
 		--generation-popover-max-inline: calc(
 			100vw - var(--generation-popover-margin) - var(--generation-popover-margin)
@@ -178,7 +177,6 @@
 		--generation-model-popover-option-height: var(--generation-control-height-lg);
 		--generation-primary-popover-width: 14rem;
 		--generation-primary-popover-height: 17.5rem;
-		--generation-primary-trigger-max-width: 9rem;
 		--generation-primary-option-height: var(--space-xl);
 		--generation-size-popover-width: 25rem;
 		--generation-size-popover-height: 15.75rem;
@@ -190,12 +188,9 @@
 		--generation-size-ratio-glyph-max: 1.125rem;
 		--generation-count-popover-width: 14rem;
 		--generation-count-popover-height: 21.25rem;
-		--generation-count-compact-popover-height: 14.75rem;
 		--generation-count-option-height: var(--space-xl);
 		--generation-other-popover-width: 18rem;
 		--generation-other-popover-height: 14.5rem;
-		--generation-other-compact-popover-width: 24rem;
-		--generation-other-compact-popover-height: 22.5rem;
 		--generation-other-control-height: var(--generation-control-height-lg);
 		--generation-other-control-min-width: 5rem;
 		--generation-other-number-width: 5rem;

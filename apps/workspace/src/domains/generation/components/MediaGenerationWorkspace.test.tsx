@@ -437,7 +437,9 @@ describe("MediaGenerationWorkspace", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "其他" }));
 
-		expect(screen.getByText("质量")).toBeTruthy();
+		expect(
+			screen.getAllByText("质量").some((element) => !element.classList.contains("sr-only")),
+		).toBe(true);
 	});
 
 	it("passes video spec and duration as primary controls while keeping only secondary params in other", () => {
