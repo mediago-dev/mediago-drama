@@ -6,9 +6,9 @@ const (
 	dmxChatDocs        = "https://doc.dmxapi.cn"
 )
 
-func textParams() []ParamSpec {
-	return []ParamSpec{
-		numberParam("temperature", "Temperature", 0.7, 0, 2),
-		optionalNumberParam("maxTokens", "Max tokens", 1, 32768),
-	}
+func textParams() RouteParamConfig {
+	return identityRouteParamConfig([]RouteParam{
+		numberRouteParam(ParamTemperature, 0.7, 0, 2),
+		optionalNumberRouteParam(ParamMaxTokens, 1, 32768),
+	})
 }

@@ -13,8 +13,8 @@ func (provider *Provider) generateImage(ctx context.Context, request generation.
 		Modalities: []string{"image", "text"},
 		Stream:     false,
 		ImageConfig: map[string]any{
-			"aspect_ratio": firstNonEmpty(paramString(request.Params, "aspectRatio"), paramString(request.Params, "ratio"), "1:1"),
-			"image_size":   firstNonEmpty(paramString(request.Params, "imageSize"), request.Size, "1K"),
+			"aspect_ratio": firstNonEmpty(paramString(request.Params, "aspectRatio"), "1:1"),
+			"image_size":   firstNonEmpty(paramString(request.Params, "imageSize"), "1K"),
 		},
 	}
 

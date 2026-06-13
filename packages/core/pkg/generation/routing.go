@@ -130,8 +130,14 @@ func ValidateRequestForRoute(request Request, route ModelRoute) error {
 	if len(compactReferenceURLs(request.ReferenceURLs)) > 0 && !route.SupportsReferenceURLs {
 		return fmt.Errorf("route %q does not support reference URLs", route.ID)
 	}
-	if err := ValidateRouteParams(route, request.Params); err != nil {
-		return err
+	if !request.ParamsResolved {
+		normalizedParams, err := NormalizeRouteParams(route, request.Params)
+		if err != nil {
+			return err
+		}
+		if err := ValidateRouteParamTranslation(route, normalizedParams); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -150,8 +156,13 @@ func ApplyRoute(request Request, route ModelRoute) Request {
 	if request.ModelID == "" {
 		request.ModelID = route.LegacyModelID
 	}
-	if normalizedParams, err := NormalizeRouteParams(route, request.Params); err == nil {
-		request.Params = normalizedParams
+	if !request.ParamsResolved {
+		if normalizedParams, err := NormalizeRouteParams(route, request.Params); err == nil {
+			if translatedParams, err := TranslateRouteParams(route, normalizedParams); err == nil {
+				request.Params = translatedParams
+				request.ParamsResolved = true
+			}
+		}
 	}
 
 	return request

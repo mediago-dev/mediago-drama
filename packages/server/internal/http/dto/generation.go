@@ -27,7 +27,6 @@ type GenerationMessageRequest struct {
 	ModelID            string                        `json:"modelId"`
 	Model              string                        `json:"model"`
 	Prompt             string                        `json:"prompt"`
-	Size               string                        `json:"size,omitempty"`
 	ReferenceURLs      []string                      `json:"referenceUrls"`
 	ReferenceAssetIDs  []string                      `json:"referenceAssetIds"`
 	Params             map[string]any                `json:"params"`

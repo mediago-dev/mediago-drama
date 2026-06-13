@@ -1,46 +1,76 @@
 package generation
 
-func officialGPTImageParams() []ParamSpec {
-	params := gptImageParams()
-	params = append(params, selectParam("background", "Background", "auto", []ParamOption{
+func officialGPTImageParams() RouteParamConfig {
+	base := gptImageParams()
+	params := append(cloneRouteParams(base.CanonicalParams), selectRouteParam(ParamBackground, "auto", []ParamOption{
 		{Label: "Auto", Value: "auto"},
 		{Label: "Opaque", Value: "opaque"},
 	}))
-	return params
+	translation := cloneParamTranslation(base.Translation)
+	translation.Moves = append(translation.Moves, ParamMove{From: ParamBackground})
+	return routeParamConfig(params, translation)
 }
 
-func dmxGPTImageParams() []ParamSpec {
+func dmxGPTImageParams() RouteParamConfig {
 	return gptImageParams()
 }
 
-func gptImageParams() []ParamSpec {
-	return []ParamSpec{
-		selectParam("size", "Size", "1024x1024", []ParamOption{
-			{Label: "Auto", Value: "auto"},
-			{Label: "1024x1024", Value: "1024x1024"},
-			{Label: "1536x1024", Value: "1536x1024"},
-			{Label: "1024x1536", Value: "1024x1536"},
-			{Label: "2048x2048", Value: "2048x2048"},
-			{Label: "2048x1152", Value: "2048x1152"},
-			{Label: "3840x2160", Value: "3840x2160"},
-			{Label: "2160x3840", Value: "2160x3840"},
+func gptImageParams() RouteParamConfig {
+	params := []RouteParam{
+		selectRouteParam(ParamAspectRatio, "1:1", []ParamOption{
+			{Label: "Adaptive", Value: "adaptive"},
+			{Label: "1:1", Value: "1:1"},
+			{Label: "3:2", Value: "3:2"},
+			{Label: "2:3", Value: "2:3"},
+			{Label: "16:9", Value: "16:9"},
+			{Label: "9:16", Value: "9:16"},
 		}),
-		selectParam("quality", "Quality", "low", []ParamOption{
+		selectRouteParam(ParamResolution, "1K", []ParamOption{
+			{Label: "1K", Value: "1K"},
+			{Label: "2K", Value: "2K"},
+			{Label: "4K", Value: "4K"},
+		}),
+		selectRouteParam(ParamQuality, "low", []ParamOption{
 			{Label: "Auto", Value: "auto"},
 			{Label: "High", Value: "high"},
 			{Label: "Medium", Value: "medium"},
 			{Label: "Low", Value: "low"},
 		}),
-		selectParam("outputFormat", "Output format", "jpeg", []ParamOption{
+		selectRouteParam(ParamOutputFormat, "jpeg", []ParamOption{
 			{Label: "PNG", Value: "png"},
 			{Label: "JPEG", Value: "jpeg"},
 			{Label: "WEBP", Value: "webp"},
 		}),
-		selectParam("moderation", "Moderation", "auto", []ParamOption{
+		selectRouteParam(ParamModeration, "auto", []ParamOption{
 			{Label: "Auto", Value: "auto"},
 			{Label: "Low", Value: "low"},
 		}),
-		withHelp(numberParam("outputCompression", "Output compression", 100, 0, 100), "Only applies to JPEG and WEBP output."),
-		numberParam("n", "Images", 1, 1, 10),
+		withRouteHelp(numberRouteParam(ParamOutputCompression, 100, 0, 100), "Only applies to JPEG and WEBP output."),
+		numberRouteParam(ParamN, 1, 1, 10),
 	}
+	return routeParamConfig(params, ParamTranslation{
+		Moves: []ParamMove{
+			{From: ParamQuality},
+			{From: ParamOutputFormat},
+			{From: ParamModeration},
+			{From: ParamOutputCompression},
+			{From: ParamN},
+		},
+		Joins: []ParamJoin{
+			{
+				From: []ParamID{ParamAspectRatio, ParamResolution},
+				To:   "size",
+				Table: map[string]string{
+					"adaptive|1K": "auto",
+					"1:1|1K":      "1024x1024",
+					"1:1|2K":      "2048x2048",
+					"3:2|1K":      "1536x1024",
+					"2:3|1K":      "1024x1536",
+					"16:9|2K":     "2048x1152",
+					"16:9|4K":     "3840x2160",
+					"9:16|4K":     "2160x3840",
+				},
+			},
+		},
+	})
 }

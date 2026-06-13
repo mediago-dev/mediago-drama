@@ -170,6 +170,52 @@ func TestProviderRequiresRouteCredential(t *testing.T) {
 	}
 }
 
+func TestProviderAppliesRouteParamsOnceBeforeProviderDispatch(t *testing.T) {
+	var payload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/responses" {
+			t.Fatalf("path = %q, want /v1/responses", request.URL.Path)
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"id":"cgt_1"}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{
+		DMXBaseURL: server.URL,
+		Credentials: CredentialResolverFunc(func(context.Context, string) (string, error) {
+			return "sk-dmx", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	_, err = provider.Generate(context.Background(), generation.Request{
+		RouteID: generation.RouteDMXSeedance20Fast,
+		Prompt:  "make a video",
+		Params: map[string]any{
+			"aspectRatio": "21:9",
+			"resolution":  "720p",
+			"duration":    "-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if payload["ratio"] != "21:9" || payload["resolution"] != "720p" || payload["duration"] != float64(-1) {
+		t.Fatalf("payload = %#v, want translated vendor params", payload)
+	}
+	if _, ok := payload["aspectRatio"]; ok {
+		t.Fatalf("canonical aspectRatio leaked to provider payload: %#v", payload)
+	}
+}
+
 func TestProviderRejectsUnsupportedReferenceURLsBeforeCredentials(t *testing.T) {
 	credentialCalled := false
 	provider, err := NewProvider(Config{

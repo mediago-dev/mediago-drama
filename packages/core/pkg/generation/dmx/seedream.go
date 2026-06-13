@@ -126,7 +126,7 @@ func (provider *Provider) generateSingleImage(
 	payload := imageRequest{
 		Model:          valueOrDefault(request.Model, "doubao-seedream-5.0-lite"),
 		Input:          request.Prompt,
-		Size:           firstNonEmpty(paramString(request.Params, "size"), request.Size, "2K"),
+		Size:           firstNonEmpty(paramString(request.Params, "size"), "2K"),
 		Image:          request.ReferenceURLs,
 		OutputFormat:   firstNonEmpty(paramString(request.Params, "outputFormat"), request.OutputFormat, "png"),
 		ResponseFormat: valueOrDefault(request.ResponseFormat, "url"),

@@ -271,9 +271,13 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const imageSpec = useMemo(
 		() =>
 			kind === "image"
-				? resolveImageGenerationSpec(ws.selectedRoute.params, ws.selectedParams)
+				? resolveImageGenerationSpec(
+						ws.selectedRoute.params,
+						ws.selectedParams,
+						ws.selectedRoute.paramCombos,
+					)
 				: null,
-		[kind, ws.selectedParams, ws.selectedRoute.params],
+		[kind, ws.selectedParams, ws.selectedRoute.paramCombos, ws.selectedRoute.params],
 	);
 	const filteredAdvancedRouteParams = useMemo(
 		() => filterImageGenerationSpecParams(advancedRouteParams, imageSpec),

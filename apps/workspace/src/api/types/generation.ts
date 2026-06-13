@@ -46,6 +46,7 @@ export interface ModelRoute {
 	status: RouteStatus;
 	statusReason?: string;
 	params: ParamSpec[];
+	paramCombos?: ParamCombo[];
 	legacyModelId?: string;
 	configured?: boolean;
 }
@@ -78,6 +79,11 @@ export interface ParamSpec {
 export interface ParamOption {
 	label: string;
 	value: string;
+}
+
+export interface ParamCombo {
+	params: string[];
+	allowed: string[][];
 }
 
 export interface CredentialSpec {
@@ -149,7 +155,6 @@ export interface GenerationMessageRequest {
 	modelId: string;
 	model: string;
 	prompt: string;
-	size?: string;
 	referenceUrls: string[];
 	referenceAssetIds: string[];
 	params: Record<string, unknown>;

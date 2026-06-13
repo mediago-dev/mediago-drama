@@ -1,8 +1,8 @@
 package generation
 
-func nanoBananaParams() []ParamSpec {
-	return []ParamSpec{
-		selectParam("aspectRatio", "Aspect ratio", "1:1", []ParamOption{
+func nanoBananaParams() RouteParamConfig {
+	params := []RouteParam{
+		selectRouteParam(ParamAspectRatio, "1:1", []ParamOption{
 			{Label: "1:1", Value: "1:1"},
 			{Label: "1:4", Value: "1:4"},
 			{Label: "1:8", Value: "1:8"},
@@ -18,11 +18,18 @@ func nanoBananaParams() []ParamSpec {
 			{Label: "9:16", Value: "9:16"},
 			{Label: "21:9", Value: "21:9"},
 		}),
-		selectParam("imageSize", "Image size", "1K", []ParamOption{
+		selectRouteParam(ParamResolution, "1K", []ParamOption{
 			{Label: "1K", Value: "1K"},
 			{Label: "2K", Value: "2K"},
 			{Label: "4K", Value: "4K"},
 		}),
-		numberParam("n", "Images", 1, 1, 4),
+		numberRouteParam(ParamN, 1, 1, 4),
 	}
+	return routeParamConfig(params, ParamTranslation{
+		Moves: []ParamMove{
+			{From: ParamAspectRatio},
+			{From: ParamResolution, To: "imageSize"},
+			{From: ParamN},
+		},
+	})
 }

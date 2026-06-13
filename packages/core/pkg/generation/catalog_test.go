@@ -394,14 +394,14 @@ func TestCredentialSpecsCoverRouteAuthKeys(t *testing.T) {
 
 func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 	dmxSeedance := mustRoute(t, RouteDMXSeedance20Fast)
-	assertHasParams(t, dmxSeedance, "ratio", "resolution", "duration", "generateAudio", "seed", "watermark", "returnLastFrame", "executionExpiresAfter")
+	assertHasParams(t, dmxSeedance, "aspectRatio", "resolution", "duration", "generateAudio", "seed", "watermark", "returnLastFrame", "executionExpiresAfter")
 	assertNoParams(t, dmxSeedance, "negativePrompt")
 
 	officialGPTImage := mustRoute(t, RouteOfficialGPTImage2)
-	assertHasParams(t, officialGPTImage, "size", "quality", "outputFormat", "moderation", "outputCompression", "background", "n")
+	assertHasParams(t, officialGPTImage, "aspectRatio", "resolution", "quality", "outputFormat", "moderation", "outputCompression", "background", "n")
 
 	dmxGPTImage := mustRoute(t, RouteDMXGPTImage2)
-	assertHasParams(t, dmxGPTImage, "size", "quality", "outputFormat", "moderation", "outputCompression", "n")
+	assertHasParams(t, dmxGPTImage, "aspectRatio", "resolution", "quality", "outputFormat", "moderation", "outputCompression", "n")
 	assertNoParams(t, dmxGPTImage, "background")
 	if !dmxGPTImage.SupportsReferenceURLs {
 		t.Fatal("dmx gpt image route should support reference images")
@@ -422,17 +422,23 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 	assertHasOptions(t, seedanceDuration, "-1", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15")
 
 	jimengSeedream := mustRoute(t, RouteJimengSeedream50)
-	assertHasParams(t, jimengSeedream, "ratio", "resolutionType", "poll")
+	assertHasParams(t, jimengSeedream, "aspectRatio", "resolution")
 	if !jimengSeedream.SupportsReferenceURLs {
 		t.Fatal("jimeng seedream route should support reference images")
 	}
 	jimengSeedream47 := mustRoute(t, RouteJimengSeedream47)
-	assertHasParams(t, jimengSeedream47, "ratio", "resolutionType", "poll")
+	assertHasParams(t, jimengSeedream47, "aspectRatio", "resolution")
 
 	jimengSeedance := mustRoute(t, RouteJimengSeedance20Fast)
-	assertHasParams(t, jimengSeedance, "ratio", "videoResolution", "duration", "modelVersion", "poll")
+	assertHasParams(t, jimengSeedance, "aspectRatio", "resolution", "duration")
 	if !jimengSeedance.SupportsReferenceURLs {
 		t.Fatal("jimeng seedance route should support reference images")
+	}
+
+	jimengSeedanceVIP := mustRoute(t, RouteJimengSeedance20VIP)
+	assertHasParams(t, jimengSeedanceVIP, "aspectRatio", "resolution", "duration")
+	if jimengSeedanceVIP.Model != "seedance2.0_vip" {
+		t.Fatalf("jimeng seedance vip model = %q", jimengSeedanceVIP.Model)
 	}
 }
 
@@ -449,16 +455,17 @@ func TestRouteParamsDefaultToLowestCostOptions(t *testing.T) {
 
 	openRouterVideo := mustRoute(t, RouteOpenRouterSeedance20Fast)
 	assertParamDefault(t, openRouterVideo, "resolution", "480p")
-	assertParamDefault(t, openRouterVideo, "duration", float64(3))
+	assertParamDefault(t, openRouterVideo, "duration", "3")
 	assertParamDefault(t, openRouterVideo, "generateAudio", false)
 
 	dmxGPTImage := mustRoute(t, RouteDMXGPTImage2)
-	assertParamDefault(t, dmxGPTImage, "size", "1024x1024")
+	assertParamDefault(t, dmxGPTImage, "aspectRatio", "1:1")
+	assertParamDefault(t, dmxGPTImage, "resolution", "1K")
 	assertParamDefault(t, dmxGPTImage, "quality", "low")
 	assertParamDefault(t, dmxGPTImage, "n", float64(1))
 
 	dmxNanoBanana := mustRoute(t, RouteDMXNanoBanana31)
-	assertParamDefault(t, dmxNanoBanana, "imageSize", "1K")
+	assertParamDefault(t, dmxNanoBanana, "resolution", "1K")
 	assertParamDefault(t, dmxNanoBanana, "n", float64(1))
 }
 

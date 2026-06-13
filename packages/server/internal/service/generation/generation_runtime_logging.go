@@ -81,7 +81,6 @@ func sanitizedGenerationRequest(request coregeneration.Request) map[string]any {
 		"prompt_bytes":    len(request.Prompt),
 		"reference_count": len(request.ReferenceURLs),
 		"reference_urls":  sanitizedReferenceURLs(request.ReferenceURLs),
-		"size":            request.Size,
 		"output_format":   request.OutputFormat,
 		"response_format": request.ResponseFormat,
 		"watermark":       request.Watermark,

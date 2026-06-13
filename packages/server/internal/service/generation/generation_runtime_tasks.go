@@ -109,6 +109,9 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 	if payload.ModelID == "" {
 		payload.ModelID = route.LegacyModelID
 	}
+	if upgraded, err := coregeneration.UpgradeLegacyRouteParams(route, payload.Params); err == nil {
+		payload.Params = upgraded
+	}
 	if err := workflow.requireGenerationRouteConfigured(route); err != nil {
 		_ = workflow.generationTasks.RecordAttempt(task.ID, "retry", task.Status, "重试所需供应商未配置。", err)
 		return generationMessageResponse{}, http.StatusServiceUnavailable, err
@@ -212,6 +215,9 @@ func (workflow *GenerationService) generationRequestForTask(
 	}
 	if payload.ModelID == "" {
 		payload.ModelID = route.LegacyModelID
+	}
+	if upgraded, err := coregeneration.UpgradeLegacyRouteParams(route, payload.Params); err == nil {
+		payload.Params = upgraded
 	}
 	referenceURLs, err := workflow.resolveGenerationReferences(route, payload)
 	if err != nil {

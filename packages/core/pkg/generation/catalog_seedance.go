@@ -1,18 +1,20 @@
 package generation
 
-func officialSeedanceParams() []ParamSpec {
-	params := seedanceParams()
-	params = append(params, textParam("negativePrompt", "Negative prompt", ""))
-	return params
+func officialSeedanceParams() RouteParamConfig {
+	base := seedanceParams()
+	params := append(cloneRouteParams(base.CanonicalParams), textRouteParam(ParamNegativePrompt, ""))
+	translation := cloneParamTranslation(base.Translation)
+	translation.Moves = append(translation.Moves, ParamMove{From: ParamNegativePrompt})
+	return routeParamConfig(params, translation)
 }
 
-func dmxSeedanceParams() []ParamSpec {
+func dmxSeedanceParams() RouteParamConfig {
 	return seedanceParams()
 }
 
-func jimengSeedanceParams() []ParamSpec {
-	return []ParamSpec{
-		selectParam("ratio", "Ratio", "16:9", []ParamOption{
+func jimengSeedanceParams() RouteParamConfig {
+	params := []RouteParam{
+		selectRouteParam(ParamAspectRatio, "16:9", []ParamOption{
 			{Label: "16:9", Value: "16:9"},
 			{Label: "4:3", Value: "4:3"},
 			{Label: "1:1", Value: "1:1"},
@@ -20,24 +22,24 @@ func jimengSeedanceParams() []ParamSpec {
 			{Label: "9:16", Value: "9:16"},
 			{Label: "21:9", Value: "21:9"},
 		}),
-		selectParam("videoResolution", "Resolution", "720p", []ParamOption{
+		selectRouteParam(ParamResolution, "720p", []ParamOption{
 			{Label: "720p", Value: "720p"},
 			{Label: "1080p", Value: "1080p"},
 		}),
-		withHelp(selectParam("duration", "Duration", "5", jimengSeedanceDurationOptions()), "即梦 CLI 支持 4-15 秒视频。"),
-		selectParam("modelVersion", "Model version", "seedance2.0fast", []ParamOption{
-			{Label: "Seedance 2.0 Fast", Value: "seedance2.0fast"},
-			{Label: "Seedance 2.0", Value: "seedance2.0"},
-			{Label: "Seedance 2.0 Fast VIP", Value: "seedance2.0fast_vip"},
-			{Label: "Seedance 2.0 VIP", Value: "seedance2.0_vip"},
-		}),
-		withHelp(optionalNumberParam("poll", "Poll seconds", 0, 600), "Seconds for the CLI to wait before returning an intermediate task state."),
+		withRouteHelp(selectRouteParam(ParamDuration, "5", jimengSeedanceDurationOptions()), "即梦 CLI 支持 4-15 秒视频。"),
 	}
+	return routeParamConfig(params, ParamTranslation{
+		Moves: []ParamMove{
+			{From: ParamAspectRatio, To: "ratio"},
+			{From: ParamResolution, To: "videoResolution"},
+			{From: ParamDuration},
+		},
+	})
 }
 
-func seedanceParams() []ParamSpec {
-	return []ParamSpec{
-		selectParam("ratio", "Ratio", "16:9", []ParamOption{
+func seedanceParams() RouteParamConfig {
+	params := []RouteParam{
+		selectRouteParam(ParamAspectRatio, "16:9", []ParamOption{
 			{Label: "16:9", Value: "16:9"},
 			{Label: "4:3", Value: "4:3"},
 			{Label: "1:1", Value: "1:1"},
@@ -46,17 +48,29 @@ func seedanceParams() []ParamSpec {
 			{Label: "21:9", Value: "21:9"},
 			{Label: "Adaptive", Value: "adaptive"},
 		}),
-		selectParam("resolution", "Resolution", "480p", []ParamOption{
+		selectRouteParam(ParamResolution, "480p", []ParamOption{
 			{Label: "480p", Value: "480p"},
 			{Label: "720p", Value: "720p"},
 		}),
-		withHelp(selectParam("duration", "Duration", "4", seedanceDurationOptions()), "Use -1 to let the model choose a duration."),
-		boolParam("generateAudio", "Generate audio", false),
-		optionalNumberParam("seed", "Seed", -1, 2147483647),
-		boolParam("watermark", "Watermark", false),
-		boolParam("returnLastFrame", "Return last frame", false),
-		withHelp(optionalNumberParam("executionExpiresAfter", "Task timeout", 3600, 259200), "Seconds before a queued or running task expires."),
+		withRouteHelp(selectRouteParam(ParamDuration, "4", seedanceDurationOptions()), "Use -1 to let the model choose a duration."),
+		boolRouteParam(ParamGenerateAudio, false),
+		optionalNumberRouteParam(ParamSeed, -1, 2147483647),
+		boolRouteParam(ParamWatermark, false),
+		boolRouteParam(ParamReturnLastFrame, false),
+		withRouteHelp(optionalNumberRouteParam(ParamExecutionExpiresAfter, 3600, 259200), "Seconds before a queued or running task expires."),
 	}
+	return routeParamConfig(params, ParamTranslation{
+		Moves: []ParamMove{
+			{From: ParamAspectRatio, To: "ratio"},
+			{From: ParamResolution},
+			{From: ParamDuration},
+			{From: ParamGenerateAudio},
+			{From: ParamSeed},
+			{From: ParamWatermark},
+			{From: ParamReturnLastFrame},
+			{From: ParamExecutionExpiresAfter},
+		},
+	})
 }
 
 func seedanceDurationOptions() []ParamOption {

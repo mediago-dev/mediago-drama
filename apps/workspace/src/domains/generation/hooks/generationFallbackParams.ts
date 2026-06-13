@@ -1,6 +1,7 @@
 import type {
 	GenerationKind,
 	GenerationParam,
+	GenerationParamCombo,
 	GenerationRoute,
 	GenerationVersion,
 } from "@/domains/generation/api/generation";
@@ -41,6 +42,7 @@ export function route(
 	async: boolean,
 	supportsReferenceUrls: boolean,
 	legacyModelId?: string,
+	paramCombos?: GenerationParamCombo[],
 ): GenerationRoute {
 	return {
 		id,
@@ -56,6 +58,7 @@ export function route(
 		supportsReferenceUrls,
 		status: "available",
 		params,
+		paramCombos,
 		legacyModelId,
 	};
 }
@@ -70,6 +73,7 @@ export function plannedRoute(
 	model: string,
 	docUrl: string,
 	params: GenerationParam[],
+	paramCombos?: GenerationParamCombo[],
 ): GenerationRoute {
 	return {
 		id,
@@ -86,6 +90,7 @@ export function plannedRoute(
 		status: "planned",
 		statusReason: "此官方供应商已收录，但当前构建尚未实现。",
 		params,
+		paramCombos,
 	};
 }
 
@@ -156,12 +161,15 @@ function textParam(name: string, label: string, defaultValue: string): Generatio
 
 export function seedreamParams(): GenerationParam[] {
 	return [
-		selectParam("size", "尺寸", "2K", [
+		selectParam("aspectRatio", "画幅比例", "adaptive", [
+			{ label: "自适应", value: "adaptive" },
+			{ label: "1:1", value: "1:1" },
+			{ label: "16:9", value: "16:9" },
+			{ label: "9:16", value: "9:16" },
+		]),
+		selectParam("resolution", "分辨率", "2K", [
 			{ label: "2K", value: "2K" },
 			{ label: "3K", value: "3K" },
-			{ label: "2048x2048", value: "2048x2048" },
-			{ label: "16:9 2K", value: "2848x1600" },
-			{ label: "9:16 2K", value: "1600x2848" },
 		]),
 		selectParam("outputFormat", "输出格式", "png", [
 			{ label: "PNG", value: "png" },
@@ -172,9 +180,27 @@ export function seedreamParams(): GenerationParam[] {
 	];
 }
 
+export function seedreamParamCombos(): GenerationParamCombo[] {
+	return [
+		{
+			params: ["aspectRatio", "resolution"],
+			allowed: [
+				["adaptive", "2K"],
+				["adaptive", "3K"],
+				["1:1", "2K"],
+				["1:1", "3K"],
+				["16:9", "2K"],
+				["16:9", "3K"],
+				["9:16", "2K"],
+				["9:16", "3K"],
+			],
+		},
+	];
+}
+
 export function jimengSeedreamParams(): GenerationParam[] {
 	return [
-		selectParam("ratio", "画幅比例", "1:1", [
+		selectParam("aspectRatio", "画幅比例", "1:1", [
 			{ label: "1:1", value: "1:1" },
 			{ label: "16:9", value: "16:9" },
 			{ label: "9:16", value: "9:16" },
@@ -182,11 +208,10 @@ export function jimengSeedreamParams(): GenerationParam[] {
 			{ label: "3:4", value: "3:4" },
 			{ label: "21:9", value: "21:9" },
 		]),
-		selectParam("resolutionType", "分辨率", "2k", [
-			{ label: "2K", value: "2k" },
-			{ label: "4K", value: "4k" },
+		selectParam("resolution", "分辨率", "2K", [
+			{ label: "2K", value: "2K" },
+			{ label: "4K", value: "4K" },
 		]),
-		numberParam("poll", "等待秒数", 30, 30, 600),
 	];
 }
 
@@ -206,15 +231,18 @@ export function dmxGPTImageParams(): GenerationParam[] {
 
 function gptImageParams(): GenerationParam[] {
 	return [
-		selectParam("size", "尺寸", "1024x1024", [
-			{ label: "自动", value: "auto" },
-			{ label: "1024x1024", value: "1024x1024" },
-			{ label: "1536x1024", value: "1536x1024" },
-			{ label: "1024x1536", value: "1024x1536" },
-			{ label: "2048x2048", value: "2048x2048" },
-			{ label: "2048x1152", value: "2048x1152" },
-			{ label: "3840x2160", value: "3840x2160" },
-			{ label: "2160x3840", value: "2160x3840" },
+		selectParam("aspectRatio", "画幅比例", "1:1", [
+			{ label: "自适应", value: "adaptive" },
+			{ label: "1:1", value: "1:1" },
+			{ label: "3:2", value: "3:2" },
+			{ label: "2:3", value: "2:3" },
+			{ label: "16:9", value: "16:9" },
+			{ label: "9:16", value: "9:16" },
+		]),
+		selectParam("resolution", "分辨率", "1K", [
+			{ label: "1K", value: "1K" },
+			{ label: "2K", value: "2K" },
+			{ label: "4K", value: "4K" },
 		]),
 		selectParam("quality", "质量", "low", [
 			{ label: "自动", value: "auto" },
@@ -236,6 +264,24 @@ function gptImageParams(): GenerationParam[] {
 	];
 }
 
+export function gptImageParamCombos(): GenerationParamCombo[] {
+	return [
+		{
+			params: ["aspectRatio", "resolution"],
+			allowed: [
+				["adaptive", "1K"],
+				["1:1", "1K"],
+				["1:1", "2K"],
+				["3:2", "1K"],
+				["2:3", "1K"],
+				["16:9", "2K"],
+				["16:9", "4K"],
+				["9:16", "4K"],
+			],
+		},
+	];
+}
+
 export function nanoParams(): GenerationParam[] {
 	return [
 		selectParam("aspectRatio", "画幅比例", "1:1", [
@@ -254,7 +300,7 @@ export function nanoParams(): GenerationParam[] {
 			{ label: "9:16", value: "9:16" },
 			{ label: "21:9", value: "21:9" },
 		]),
-		selectParam("imageSize", "图像尺寸", "1K", [
+		selectParam("resolution", "分辨率", "1K", [
 			{ label: "1K", value: "1K" },
 			{ label: "2K", value: "2K" },
 			{ label: "4K", value: "4K" },
@@ -277,7 +323,7 @@ export function openRouterImageParams(): GenerationParam[] {
 			{ label: "16:9", value: "16:9" },
 			{ label: "21:9", value: "21:9" },
 		]),
-		selectParam("imageSize", "图像尺寸", "1K", [
+		selectParam("resolution", "分辨率", "1K", [
 			{ label: "1K", value: "1K" },
 			{ label: "2K", value: "2K" },
 			{ label: "4K", value: "4K" },
@@ -291,7 +337,7 @@ export function dmxSeedanceParams(): GenerationParam[] {
 
 export function jimengSeedanceParams(): GenerationParam[] {
 	return [
-		selectParam("ratio", "比例", "16:9", [
+		selectParam("aspectRatio", "比例", "16:9", [
 			{ label: "16:9", value: "16:9" },
 			{ label: "4:3", value: "4:3" },
 			{ label: "1:1", value: "1:1" },
@@ -299,24 +345,17 @@ export function jimengSeedanceParams(): GenerationParam[] {
 			{ label: "9:16", value: "9:16" },
 			{ label: "21:9", value: "21:9" },
 		]),
-		selectParam("videoResolution", "分辨率", "720p", [
+		selectParam("resolution", "分辨率", "720p", [
 			{ label: "720p", value: "720p" },
 			{ label: "1080p", value: "1080p" },
 		]),
 		selectParam("duration", "时长", "5", jimengSeedanceDurationOptions()),
-		selectParam("modelVersion", "模型通道", "seedance2.0fast", [
-			{ label: "Seedance 2.0 Fast", value: "seedance2.0fast" },
-			{ label: "Seedance 2.0", value: "seedance2.0" },
-			{ label: "Seedance 2.0 Fast VIP", value: "seedance2.0fast_vip" },
-			{ label: "Seedance 2.0 VIP", value: "seedance2.0_vip" },
-		]),
-		numberParam("poll", "等待秒数", 0, 0, 600),
 	];
 }
 
 function seedanceParams(): GenerationParam[] {
 	return [
-		selectParam("ratio", "比例", "16:9", [
+		selectParam("aspectRatio", "比例", "16:9", [
 			{ label: "16:9", value: "16:9" },
 			{ label: "4:3", value: "4:3" },
 			{ label: "1:1", value: "1:1" },
@@ -325,12 +364,12 @@ function seedanceParams(): GenerationParam[] {
 			{ label: "21:9", value: "21:9" },
 			{ label: "自适应", value: "adaptive" },
 		]),
-		selectParam("resolution", "分辨率", "720p", [
+		selectParam("resolution", "分辨率", "480p", [
 			{ label: "480p", value: "480p" },
 			{ label: "720p", value: "720p" },
 		]),
-		selectParam("duration", "时长", "5", seedanceDurationOptions()),
-		boolParam("generateAudio", "生成音频", true),
+		selectParam("duration", "时长", "4", seedanceDurationOptions()),
+		boolParam("generateAudio", "生成音频", false),
 		optionalNumberParam("seed", "种子", -1, 2147483647),
 		boolParam("watermark", "水印", false),
 		boolParam("returnLastFrame", "返回最后一帧", false),
@@ -365,15 +404,22 @@ export function openRouterVideoParams(): GenerationParam[] {
 			{ label: "3:4", value: "3:4" },
 			{ label: "21:9", value: "21:9" },
 		]),
-		selectParam("resolution", "分辨率", "720p", [
+		selectParam("resolution", "分辨率", "480p", [
 			{ label: "480p", value: "480p" },
 			{ label: "720p", value: "720p" },
 			{ label: "1080p", value: "1080p" },
 		]),
-		numberParam("duration", "时长", 5, 3, 15),
+		selectParam("duration", "时长", "3", openRouterDurationOptions()),
 		textParam("negativePrompt", "负向提示词", ""),
-		boolParam("generateAudio", "生成音频", true),
+		boolParam("generateAudio", "生成音频", false),
 	];
+}
+
+function openRouterDurationOptions() {
+	return Array.from({ length: 13 }, (_, index) => {
+		const seconds = String(index + 3);
+		return { label: `${seconds} 秒`, value: seconds };
+	});
 }
 
 export function textParams(): GenerationParam[] {

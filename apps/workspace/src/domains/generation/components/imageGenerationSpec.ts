@@ -1,14 +1,13 @@
-import type { GenerationParam } from "@/domains/generation/api/generation";
+import type { GenerationParam, GenerationParamCombo } from "@/domains/generation/api/generation";
 import {
 	paramLabel,
 	paramOptionLabel,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 
-export type SpecMode = "split" | "size";
 export type SpecAxis = "ratio" | "resolution";
 
 export interface SpecOption {
-	defaultRatio?: boolean;
+	disabled?: boolean;
 	height?: number;
 	id: string;
 	label: string;
@@ -19,21 +18,24 @@ export interface SpecOption {
 	width?: number;
 }
 
-interface SizeCandidate extends SpecOption {
-	ratio?: string;
-	resolution?: string;
+interface SplitCombo {
+	allowed: Array<{ ratio: string; resolution: string }>;
+}
+
+export interface SpecParamUpdate {
+	name: string;
+	value: string;
 }
 
 export interface ImageGenerationSpec {
+	allowedCombos?: SplitCombo;
 	controlledParamNames: string[];
-	mode: SpecMode;
+	mode: "split";
 	ratioOptions: SpecOption[];
 	resolutionOptions: SpecOption[];
 	selectedRatio: SpecOption | null;
 	selectedResolution: SpecOption | null;
-	sizeCandidates: SizeCandidate[];
 	sizePreview: ImageGenerationSizePreview | null;
-	sizeParam?: GenerationParam;
 	ratioParam?: GenerationParam;
 	resolutionParam?: GenerationParam;
 }
@@ -46,11 +48,9 @@ export interface ImageGenerationSizePreview {
 export const resolveImageGenerationSpec = (
 	params: GenerationParam[],
 	values: Record<string, unknown>,
+	paramCombos?: GenerationParamCombo[],
 ): ImageGenerationSpec | null => {
-	const splitSpec = resolveSplitImageGenerationSpec(params, values);
-	if (splitSpec) return splitSpec;
-
-	return resolveSizeImageGenerationSpec(params, values);
+	return resolveSplitImageGenerationSpec(params, values, paramCombos);
 };
 
 export const filterImageGenerationSpecParams = (
@@ -67,23 +67,35 @@ export const imageGenerationSpecUpdate = (
 	spec: ImageGenerationSpec,
 	axis: SpecAxis,
 	option: SpecOption,
-) => {
-	if (spec.mode === "split") {
-		const param = axis === "ratio" ? spec.ratioParam : spec.resolutionParam;
-		if (!param) return null;
+): { updates: SpecParamUpdate[] } | null => {
+	if (option.disabled) return null;
 
-		return { name: param.name, value: option.value };
+	const param = axis === "ratio" ? spec.ratioParam : spec.resolutionParam;
+	if (!param) return null;
+
+	const updates: SpecParamUpdate[] = [{ name: param.name, value: option.value }];
+	if (axis === "ratio" && spec.resolutionParam) {
+		const currentResolution = spec.selectedResolution;
+		if (
+			currentResolution &&
+			!isSplitComboAllowed(spec.allowedCombos, option.value, currentResolution.value)
+		) {
+			const nextResolution = spec.resolutionOptions.find((resolution) =>
+				isSplitComboAllowed(spec.allowedCombos, option.value, resolution.value),
+			);
+			if (nextResolution && nextResolution.value !== currentResolution.value) {
+				updates.push({ name: spec.resolutionParam.name, value: nextResolution.value });
+			}
+		}
 	}
 
-	const candidate = selectSizeCandidate(spec, axis, option);
-	if (!candidate || !spec.sizeParam) return null;
-
-	return { name: spec.sizeParam.name, value: candidate.value };
+	return { updates };
 };
 
 const resolveSplitImageGenerationSpec = (
 	params: GenerationParam[],
 	values: Record<string, unknown>,
+	paramCombos?: GenerationParamCombo[],
 ): ImageGenerationSpec | null => {
 	const ratioParam = params.find(isRatioParam);
 	const resolutionParam = params.find(isResolutionParam);
@@ -101,140 +113,87 @@ const resolveSplitImageGenerationSpec = (
 	);
 	if (ratioOptions.length === 0 || resolutionOptions.length === 0) return null;
 
+	const allowedCombos = resolveSplitCombo(paramCombos, ratioParam.name, resolutionParam.name);
 	const selectedRatioValue = selectedParamValue(ratioParam, values);
 	const selectedResolutionValue = selectedParamValue(resolutionParam, values);
 	const selectedRatio =
 		ratioOptions.find((option) => option.value === selectedRatioValue) ?? ratioOptions[0];
-	const selectedResolution =
+	let selectedResolution =
 		resolutionOptions.find((option) => option.value === selectedResolutionValue) ??
 		resolutionOptions[0];
+	if (!isSplitComboAllowed(allowedCombos, selectedRatio.value, selectedResolution.value)) {
+		selectedResolution =
+			resolutionOptions.find((option) =>
+				isSplitComboAllowed(allowedCombos, selectedRatio.value, option.value),
+			) ?? selectedResolution;
+	}
+	const orderedRatioOptions = orderRatioOptions(ratioOptions).map((option) => ({
+		...option,
+		disabled: !hasAnySplitComboForRatio(allowedCombos, option.value),
+	}));
+	const orderedResolutionOptions = orderResolutionOptions(resolutionOptions).map((option) => ({
+		...option,
+		disabled: !isSplitComboAllowed(allowedCombos, selectedRatio.value, option.value),
+	}));
 
 	return {
+		allowedCombos,
 		controlledParamNames: [ratioParam.name, resolutionParam.name],
 		mode: "split",
-		ratioOptions: orderRatioOptions(ratioOptions),
-		resolutionOptions: orderResolutionOptions(resolutionOptions),
+		ratioOptions: orderedRatioOptions,
+		resolutionOptions: orderedResolutionOptions,
 		selectedRatio,
 		selectedResolution,
-		sizeCandidates: [],
 		sizePreview: inferSizePreview(selectedRatio, selectedResolution),
 		ratioParam,
 		resolutionParam,
 	};
 };
 
-const resolveSizeImageGenerationSpec = (
-	params: GenerationParam[],
-	values: Record<string, unknown>,
-): ImageGenerationSpec | null => {
-	const sizeParam = params.find(isSizeParam);
-	if (!sizeParam?.options?.length) return null;
+const resolveSplitCombo = (
+	paramCombos: GenerationParamCombo[] | undefined,
+	ratioParamName: string,
+	resolutionParamName: string,
+): SplitCombo | undefined => {
+	const combo = paramCombos?.find(
+		(item) => item.params.includes(ratioParamName) && item.params.includes(resolutionParamName),
+	);
+	if (!combo) return undefined;
 
-	const sizeCandidates = sizeParam.options
-		.map((option) => sizeCandidate(option.value, paramOptionLabel(option.label)))
+	const ratioIndex = combo.params.indexOf(ratioParamName);
+	const resolutionIndex = combo.params.indexOf(resolutionParamName);
+	if (ratioIndex < 0 || resolutionIndex < 0) return undefined;
+
+	const allowed = combo.allowed
+		.map((values) => {
+			const ratio = values[ratioIndex];
+			const resolution = values[resolutionIndex];
+			if (!ratio || !resolution) return null;
+
+			return { ratio, resolution };
+		})
 		.filter(isPresent);
-	const ratioOptions = uniqueSpecOptions(
-		sizeCandidates
-			.flatMap((candidate) => {
-				if (candidate.smart) return [{ ...candidate, id: `ratio:${candidate.value}` }];
-				if (!candidate.ratio) return [];
+	if (allowed.length === 0) return undefined;
 
-				return [
-					{
-						id: `ratio:${candidate.ratio}`,
-						label: candidate.ratio,
-						ratio: candidate.ratio,
-						value: candidate.ratio,
-					},
-				];
-			})
-			.filter(isPresent),
-	);
-	const defaultRatioCandidate = sizeCandidates.find(
-		(candidate) => candidate.resolution && !candidate.ratio && !candidate.smart,
-	);
-	if (defaultRatioCandidate && !ratioOptions.some((option) => option.defaultRatio)) {
-		ratioOptions.unshift({
-			defaultRatio: true,
-			id: "ratio:default",
-			label: "默认",
-			value: "default",
-		});
-	}
-	const resolutionOptions = uniqueSpecOptions(
-		sizeCandidates
-			.flatMap((candidate) => {
-				if (!candidate.resolution) return [];
-
-				return [
-					{
-						id: `resolution:${candidate.resolution}`,
-						label: candidate.resolution,
-						resolution: candidate.resolution,
-						value: candidate.resolution,
-					},
-				];
-			})
-			.filter(isPresent),
-	);
-	if (ratioOptions.length === 0 || resolutionOptions.length === 0) return null;
-
-	const selectedValue = selectedParamValue(sizeParam, values);
-	const selectedCandidate =
-		sizeCandidates.find((candidate) => candidate.value === selectedValue) ?? sizeCandidates[0];
-	const selectedRatio = selectedCandidate.smart
-		? (ratioOptions.find((option) => option.smart) ?? null)
-		: (ratioOptions.find((option) => option.ratio === selectedCandidate.ratio) ??
-			ratioOptions.find((option) => option.defaultRatio) ??
-			null);
-	const selectedResolution =
-		resolutionOptions.find((option) => option.resolution === selectedCandidate.resolution) ?? null;
-
-	return {
-		controlledParamNames: [sizeParam.name],
-		mode: "size",
-		ratioOptions: orderRatioOptions(ratioOptions),
-		resolutionOptions: orderResolutionOptions(resolutionOptions),
-		selectedRatio,
-		selectedResolution,
-		sizeCandidates,
-		sizePreview: selectedCandidate
-			? exactOrInferredSizePreview(selectedCandidate, selectedRatio, selectedResolution)
-			: null,
-		sizeParam,
-	};
+	return { allowed };
 };
 
-const selectSizeCandidate = (
-	spec: ImageGenerationSpec,
-	axis: SpecAxis,
-	option: SpecOption,
-): SizeCandidate | undefined => {
-	if (axis === "ratio" && option.smart) {
-		return spec.sizeCandidates.find((candidate) => candidate.smart);
-	}
-	if (axis === "ratio" && option.defaultRatio) {
-		return spec.sizeCandidates.find(
-			(candidate) =>
-				candidate.resolution === spec.selectedResolution?.resolution &&
-				!candidate.ratio &&
-				!candidate.smart,
-		);
-	}
+const isSplitComboAllowed = (
+	combo: SplitCombo | undefined,
+	ratioValue: string,
+	resolutionValue: string,
+) => {
+	if (!combo) return true;
 
-	const nextRatio = axis === "ratio" ? option.ratio : spec.selectedRatio?.ratio;
-	const nextResolution =
-		axis === "resolution" ? option.resolution : spec.selectedResolution?.resolution;
-	const exact = spec.sizeCandidates.find(
-		(candidate) => candidate.ratio === nextRatio && candidate.resolution === nextResolution,
+	return combo.allowed.some(
+		(allowed) => allowed.ratio === ratioValue && allowed.resolution === resolutionValue,
 	);
-	if (exact) return exact;
+};
 
-	if (axis === "ratio") {
-		return spec.sizeCandidates.find((candidate) => candidate.ratio === nextRatio);
-	}
+const hasAnySplitComboForRatio = (combo: SplitCombo | undefined, ratioValue: string) => {
+	if (!combo) return true;
 
-	return spec.sizeCandidates.find((candidate) => candidate.resolution === nextResolution);
+	return combo.allowed.some((allowed) => allowed.ratio === ratioValue);
 };
 
 const isRatioParam = (param: GenerationParam) => {
@@ -247,7 +206,8 @@ const isRatioParam = (param: GenerationParam) => {
 
 const isResolutionParam = (param: GenerationParam) => {
 	if (param.type !== "select" || !param.options?.length) return false;
-	if (param.name === "resolutionType" || param.name === "imageSize") return true;
+	if (param.name === "resolution" || param.name === "resolutionType" || param.name === "imageSize")
+		return true;
 
 	const label = paramLabel(param.label);
 	if (!label.includes("分辨率") && !label.includes("图像尺寸")) return false;
@@ -255,42 +215,9 @@ const isResolutionParam = (param: GenerationParam) => {
 	return param.options.some((option) => parseResolutionLabel(option.value, option.label));
 };
 
-const isSizeParam = (param: GenerationParam) =>
-	param.type === "select" && param.name === "size" && Boolean(param.options?.length);
-
 const selectedParamValue = (param: GenerationParam, values: Record<string, unknown>) => {
 	const rawValue = values[param.name] ?? param.default ?? param.options?.[0]?.value ?? "";
 	return String(rawValue);
-};
-
-const sizeCandidate = (value: string, label: string): SizeCandidate | null => {
-	const smart = isSmartOption(value, label);
-	const ratio = parseRatioLabel(label) ?? parseRatioLabel(value);
-	const dimensions = parseDimensions(value) ?? parseDimensions(label);
-	const dimensionRatio = dimensions
-		? normalizeRatio(dimensions.width, dimensions.height)
-		: undefined;
-	const resolution = parseResolutionLabel(label, value) ?? resolutionFromDimensions(dimensions);
-
-	if (smart) {
-		return {
-			id: `size:${value}`,
-			label,
-			smart: true,
-			value,
-		};
-	}
-	if (!ratio && !dimensionRatio && !resolution) return null;
-
-	return {
-		id: `size:${value}`,
-		label,
-		ratio: ratio ?? dimensionRatio,
-		resolution,
-		value,
-		width: dimensions?.width,
-		height: dimensions?.height,
-	};
 };
 
 const ratioSpecOption = (value: string, label: string): SpecOption | null => {
@@ -353,61 +280,17 @@ const parseResolutionLabel = (...values: string[]) => {
 	return undefined;
 };
 
-const parseDimensions = (value: string) => {
-	const match = value.match(/(\d{3,5})\s*x\s*(\d{3,5})/i);
-	if (!match) return undefined;
-
-	const width = Number(match[1]);
-	const height = Number(match[2]);
-	if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-		return undefined;
-	}
-
-	return { height, width };
-};
-
-const resolutionFromDimensions = (dimensions?: { height: number; width: number }) => {
-	if (!dimensions) return undefined;
-
-	const longSide = Math.max(dimensions.width, dimensions.height);
-	if (longSide >= 3600) return "4K";
-	if (longSide >= 2800) return "3K";
-	if (longSide >= 1800) return "2K";
-	if (longSide >= 960) return "1K";
-
-	return undefined;
-};
-
-const normalizeRatio = (width: number, height: number) => {
-	const divisor = greatestCommonDivisor(width, height);
-	return `${Math.round(width / divisor)}:${Math.round(height / divisor)}`;
-};
-
-const greatestCommonDivisor = (left: number, right: number): number => {
-	let a = Math.abs(Math.round(left));
-	let b = Math.abs(Math.round(right));
-	while (b > 0) {
-		const next = a % b;
-		a = b;
-		b = next;
-	}
-
-	return a || 1;
-};
-
 const uniqueSpecOptions = (options: SpecOption[]) => {
 	const seen = new Set<string>();
 	const result: SpecOption[] = [];
 	for (const option of options) {
 		const key = option.smart
 			? "smart"
-			: option.defaultRatio
-				? "default"
-				: option.ratio
-					? `ratio:${option.ratio}`
-					: option.resolution
-						? `resolution:${option.resolution}`
-						: option.value;
+			: option.ratio
+				? `ratio:${option.ratio}`
+				: option.resolution
+					? `resolution:${option.resolution}`
+					: option.value;
 		if (seen.has(key)) continue;
 
 		seen.add(key);
@@ -419,7 +302,6 @@ const uniqueSpecOptions = (options: SpecOption[]) => {
 
 const preferredRatioOrder = [
 	"smart",
-	"default",
 	"21:9",
 	"16:9",
 	"3:2",
@@ -432,16 +314,8 @@ const preferredRatioOrder = [
 
 const orderRatioOptions = (options: SpecOption[]) =>
 	[...options].sort((left, right) => {
-		const leftKey = left.smart
-			? "smart"
-			: left.defaultRatio
-				? "default"
-				: (left.ratio ?? left.label);
-		const rightKey = right.smart
-			? "smart"
-			: right.defaultRatio
-				? "default"
-				: (right.ratio ?? right.label);
+		const leftKey = left.smart ? "smart" : (left.ratio ?? left.label);
+		const rightKey = right.smart ? "smart" : (right.ratio ?? right.label);
 		const leftIndex = preferredRatioOrder.indexOf(leftKey);
 		const rightIndex = preferredRatioOrder.indexOf(rightKey);
 		if (leftIndex !== rightIndex) {
@@ -488,18 +362,6 @@ const inferSizePreview = (ratio: SpecOption | null, resolution: SpecOption | nul
 		width: Math.round((base * ratioWidth) / ratioHeight),
 		height: base,
 	};
-};
-
-const exactOrInferredSizePreview = (
-	candidate: SizeCandidate,
-	ratio: SpecOption | null,
-	resolution: SpecOption | null,
-) => {
-	if (candidate.width && candidate.height) {
-		return { height: candidate.height, width: candidate.width };
-	}
-
-	return inferSizePreview(ratio, resolution);
 };
 
 const resolutionBasePixels = (resolution: string) => {

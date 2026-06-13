@@ -22,7 +22,7 @@ func TestGenerationPreferenceServicePersistToSQLite(t *testing.T) {
 		FamilyIDs:     map[string]string{"image": "seedream", "": "ignored"},
 		RouteIDs:      map[string]string{"seedream-5-lite": "official.seedream-5-lite"},
 		VersionIDs:    map[string]string{"seedream": "seedream-5-lite"},
-		RouteParams:   map[string]map[string]any{"official.seedream-5-lite": {"size": "2K"}},
+		RouteParams:   map[string]map[string]any{"official.seedream-5-lite": {"size": "1600x2848"}},
 		StylePresetID: "preset-cinematic",
 	})
 	if err != nil {
@@ -40,7 +40,8 @@ func TestGenerationPreferenceServicePersistToSQLite(t *testing.T) {
 	if got.FamilyIDs["image"] != "seedream" ||
 		got.RouteIDs["seedream-5-lite"] != "official.seedream-5-lite" ||
 		got.VersionIDs["seedream"] != "seedream-5-lite" ||
-		got.RouteParams["official.seedream-5-lite"]["size"] != "2K" ||
+		got.RouteParams["official.seedream-5-lite"]["aspectRatio"] != "9:16" ||
+		got.RouteParams["official.seedream-5-lite"]["resolution"] != "2K" ||
 		got.StylePresetID != "preset-cinematic" {
 		t.Fatalf("preference = %+v, want persisted fields", got)
 	}

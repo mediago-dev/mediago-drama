@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/packages/server/internal/config"
 	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/packages/server/internal/platform/timestamp"
@@ -158,7 +159,7 @@ func generationPreferenceRecordFromModel(model generationPreferenceModel) (Gener
 	record.FamilyIDs = compactStringMap(record.FamilyIDs)
 	record.RouteIDs = compactStringMap(record.RouteIDs)
 	record.VersionIDs = compactStringMap(record.VersionIDs)
-	record.RouteParams = compactRouteParams(record.RouteParams)
+	record.RouteParams = upgradeLegacyRouteParams(compactRouteParams(record.RouteParams))
 
 	return record, nil
 }
@@ -196,6 +197,33 @@ func compactRouteParams(value map[string]map[string]any) map[string]map[string]a
 			continue
 		}
 		result[routeID] = params
+	}
+	return result
+}
+
+func upgradeLegacyRouteParams(value map[string]map[string]any) map[string]map[string]any {
+	result := map[string]map[string]any{}
+	for routeID, params := range value {
+		route, ok := coregeneration.FindRoute(routeID)
+		if !ok {
+			route, ok = coregeneration.FindRouteByLegacyModelID(routeID)
+		}
+		if ok {
+			upgraded, err := coregeneration.UpgradeLegacyRouteParams(route, params)
+			if err == nil {
+				result[routeID] = upgraded
+				continue
+			}
+		}
+		result[routeID] = cloneRouteParamMap(params)
+	}
+	return result
+}
+
+func cloneRouteParamMap(value map[string]any) map[string]any {
+	result := make(map[string]any, len(value))
+	for key, item := range value {
+		result[key] = item
 	}
 	return result
 }

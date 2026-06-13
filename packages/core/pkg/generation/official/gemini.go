@@ -88,7 +88,7 @@ func (provider *Provider) generateSingleGoogleImage(ctx context.Context, request
 			ResponseFormat: googleResponseFormat{
 				Image: googleImageResponseFormat{
 					AspectRatio: firstNonEmpty(paramString(request.Params, "aspectRatio"), "1:1"),
-					ImageSize:   firstNonEmpty(paramString(request.Params, "imageSize"), request.Size, "1K"),
+					ImageSize:   firstNonEmpty(paramString(request.Params, "imageSize"), "1K"),
 				},
 			},
 		},
