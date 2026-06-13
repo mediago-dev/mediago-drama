@@ -36,7 +36,7 @@ func (workflow *GenerationService) StreamGenerationText(
 	payload.Model = strings.TrimSpace(payload.Model)
 	payload.ReferenceURLs = []string{}
 	payload.ReferenceAssetIDs = []string{}
-	payload.Params = NormalizeGenerationParams(payload.Params, payload.Size)
+	payload.Params = NormalizeGenerationParams(payload.Params)
 	if payload.Prompt == "" {
 		return http.StatusBadRequest, fmt.Errorf("缺少 prompt")
 	}

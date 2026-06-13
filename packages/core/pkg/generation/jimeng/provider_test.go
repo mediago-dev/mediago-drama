@@ -26,7 +26,6 @@ func TestGenerateImageUsesCLIAndParsesAssets(t *testing.T) {
 		Params: map[string]any{
 			"ratio":          "1:1",
 			"resolutionType": "2k",
-			"poll":           45,
 		},
 	})
 	if err != nil {
@@ -38,7 +37,7 @@ func TestGenerateImageUsesCLIAndParsesAssets(t *testing.T) {
 		"--ratio=1:1",
 		"--resolution_type=2k",
 		"--model_version=4.7",
-		"--poll=45",
+		"--poll=30",
 	}) {
 		t.Fatalf("args = %#v", gotArgs)
 	}
@@ -105,7 +104,6 @@ func TestGenerateVideoWithReferenceWritesTempFile(t *testing.T) {
 			"duration":        "5",
 			"ratio":           "16:9",
 			"videoResolution": "720p",
-			"modelVersion":    "seedance2.0fast",
 		},
 	})
 	if err != nil {
@@ -143,7 +141,6 @@ func TestGenerateVideoWithMultipleReferencesUsesMultimodalCLI(t *testing.T) {
 			"duration":        "5",
 			"ratio":           "16:9",
 			"videoResolution": "720p",
-			"modelVersion":    "seedance2.0fast",
 			"poll":            10,
 		},
 	})
@@ -160,6 +157,50 @@ func TestGenerateVideoWithMultipleReferencesUsesMultimodalCLI(t *testing.T) {
 	assertContainsArg(t, gotArgs, "--video_resolution=720p")
 	assertContainsArg(t, gotArgs, "--model_version=seedance2.0fast")
 	assertContainsArg(t, gotArgs, "--poll=10")
+}
+
+func TestGenerateVideoPreservesLegacyModelVersionParam(t *testing.T) {
+	var gotArgs []string
+	provider := testProvider(t, CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		gotArgs = append([]string{}, args...)
+		return []byte(`{"submit_id":"video_1","gen_status":"querying"}`), nil
+	}))
+
+	_, err := provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindVideo,
+		RouteID: generation.RouteJimengSeedance20Fast,
+		Prompt:  "兼容旧模型通道",
+		Params: map[string]any{
+			"duration":        "5",
+			"videoResolution": "720p",
+			"modelVersion":    "seedance2.0_vip",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	assertContainsArg(t, gotArgs, "--model_version=seedance2.0_vip")
+}
+
+func TestGenerateImagePreservesLegacyPollParam(t *testing.T) {
+	var gotArgs []string
+	provider := testProvider(t, CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		gotArgs = append([]string{}, args...)
+		return []byte(`{"submit_id":"img_1","gen_status":"success","image_urls":["https://example.test/a.png"]}`), nil
+	}))
+
+	_, err := provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindImage,
+		RouteID: generation.RouteJimengSeedream47,
+		Prompt:  "兼容旧等待秒数",
+		Params: map[string]any{
+			"poll": 45,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	assertContainsArg(t, gotArgs, "--poll=45")
 }
 
 func TestGetQueriesResult(t *testing.T) {

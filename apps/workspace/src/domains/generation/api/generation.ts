@@ -22,6 +22,7 @@ import type {
 	GenerationUsage as GeneratedGenerationUsage,
 	Kind,
 	ModelFamily,
+	ParamCombo,
 	ModelRoute,
 	ModelSpec,
 	ModelVersion,
@@ -39,6 +40,7 @@ export type GenerationProviderInfo = ProviderInfo;
 export type GenerationProviderType = ProviderType;
 export type GenerationRouteStatus = RouteStatus;
 export type GenerationCapabilities = Capabilities;
+export type GenerationParamCombo = ParamCombo;
 export type GenerationParamOption = ParamOption;
 export type GenerationParam = ParamSpec;
 export type GenerationFamily = ModelFamily;

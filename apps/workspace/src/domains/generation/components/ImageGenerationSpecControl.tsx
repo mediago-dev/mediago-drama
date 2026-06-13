@@ -74,7 +74,9 @@ export const ImageGenerationSpecControl: React.FC<{
 		const update = imageGenerationSpecUpdate(spec, axis, option);
 		if (!update) return;
 
-		onChange(update.name, update.value);
+		for (const item of update.updates) {
+			onChange(item.name, item.value);
+		}
 	};
 
 	const triggerRatioLabel = spec.selectedRatio ? ratioTriggerLabel(spec.selectedRatio) : "选择比例";
@@ -163,12 +165,15 @@ const SpecOptionGroup: React.FC<{
 						<button
 							key={option.id}
 							type="button"
+							disabled={option.disabled}
 							className={cn(
 								"relative flex min-w-0 items-center justify-center gap-2 rounded-sm px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 								type === "ratio" ? "h-14 flex-col" : "h-10",
+								option.disabled && "cursor-not-allowed opacity-40",
 								selected
 									? "bg-background text-foreground shadow-sm"
 									: "text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+								option.disabled && "hover:bg-transparent hover:text-muted-foreground",
 							)}
 							onClick={() => onSelect(option)}
 						>
@@ -188,7 +193,7 @@ const SpecOptionGroup: React.FC<{
 };
 
 const RatioGlyph: React.FC<{ option: SpecOption; selected: boolean }> = ({ option, selected }) => {
-	if (option.smart || option.defaultRatio) {
+	if (option.smart) {
 		return (
 			<Scan className={cn("size-4", selected ? "text-foreground" : "text-muted-foreground")} />
 		);
@@ -255,13 +260,11 @@ const ratioGlyphSize = (ratio: string) => {
 
 const ratioTriggerLabel = (option: SpecOption) => {
 	if (option.smart) return "智能比例";
-	if (option.defaultRatio) return "默认比例";
 	return option.ratio ?? option.label;
 };
 
 const ratioOptionLabel = (option: SpecOption) => {
 	if (option.smart) return "智能";
-	if (option.defaultRatio) return "默认";
 	return option.ratio ?? option.label;
 };
 

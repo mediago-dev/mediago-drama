@@ -200,7 +200,6 @@ func GenerationRequestFromMessage(
 		Model:          payload.Model,
 		Prompt:         payload.Prompt,
 		ReferenceURLs:  referenceURLs,
-		Size:           payload.Size,
 		OutputFormat:   "png",
 		ResponseFormat: ResponseFormatForRoute(route),
 		Watermark:      BoolPtr(false),
@@ -629,15 +628,10 @@ func AppendStorageWarning(message string, err error) string {
 	return message + " 本地任务历史保存失败：" + err.Error()
 }
 
-// NormalizeGenerationParams fills legacy generation params.
-func NormalizeGenerationParams(params map[string]any, legacySize string) map[string]any {
+// NormalizeGenerationParams returns a non-nil params map for downstream routing.
+func NormalizeGenerationParams(params map[string]any) map[string]any {
 	if params == nil {
-		params = map[string]any{}
-	}
-	if legacySize != "" {
-		if _, ok := params["size"]; !ok {
-			params["size"] = legacySize
-		}
+		return map[string]any{}
 	}
 
 	return params

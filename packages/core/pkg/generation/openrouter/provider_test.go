@@ -44,7 +44,7 @@ func TestGenerateImage(t *testing.T) {
 		Prompt:  "make an image",
 		Params: map[string]any{
 			"aspectRatio": "16:9",
-			"imageSize":   "2K",
+			"resolution":  "2K",
 		},
 	})
 	if err != nil {

@@ -98,7 +98,7 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	if payload.Kind == "" && payload.RouteID == "" && payload.ModelID == "" {
 		payload.Kind = string(coregeneration.KindImage)
 	}
-	payload.Params = NormalizeGenerationParams(payload.Params, payload.Size)
+	payload.Params = NormalizeGenerationParams(payload.Params)
 	if payload.Prompt == "" {
 		return generationMessageResponse{}, http.StatusBadRequest, fmt.Errorf("缺少 prompt")
 	}

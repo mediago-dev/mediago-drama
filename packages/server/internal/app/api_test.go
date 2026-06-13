@@ -1330,7 +1330,7 @@ func TestAPIHandler(t *testing.T) {
 		}
 		getBody := readBody(t, get.Body)
 		if !strings.Contains(getBody, `"stylePresetId":"preset-cinematic"`) ||
-			!strings.Contains(getBody, `"official.seedream-5-lite":{"size":"2K"}`) {
+			!strings.Contains(getBody, `"official.seedream-5-lite":{"aspectRatio":"adaptive","resolution":"2K"}`) {
 			t.Fatalf("body = %s, want saved preferences", getBody)
 		}
 	})

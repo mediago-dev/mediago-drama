@@ -34,11 +34,11 @@ type Request struct {
 	Model          string
 	Prompt         string
 	ReferenceURLs  []string
-	Size           string
 	OutputFormat   string
 	ResponseFormat string
 	Watermark      *bool
 	Params         map[string]any
+	ParamsResolved bool
 	Options        map[string]any
 }
 

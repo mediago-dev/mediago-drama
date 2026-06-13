@@ -203,9 +203,18 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	const imageSpec = useMemo(
 		() =>
 			activeGenerationKind === "image"
-				? resolveImageGenerationSpec(ws.selectedRoute.params, ws.selectedParams)
+				? resolveImageGenerationSpec(
+						ws.selectedRoute.params,
+						ws.selectedParams,
+						ws.selectedRoute.paramCombos,
+					)
 				: null,
-		[activeGenerationKind, ws.selectedParams, ws.selectedRoute.params],
+		[
+			activeGenerationKind,
+			ws.selectedParams,
+			ws.selectedRoute.paramCombos,
+			ws.selectedRoute.params,
+		],
 	);
 	const paramsWithoutImageSpec = useMemo(
 		() => filterImageGenerationSpecParams(ws.selectedRoute.params, imageSpec),

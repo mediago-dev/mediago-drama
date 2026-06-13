@@ -12,7 +12,7 @@ func (provider *Provider) generateOpenAIImage(ctx context.Context, request gener
 		Model:             request.Model,
 		Prompt:            request.Prompt,
 		N:                 paramInt(request.Params, "n", 1),
-		Size:              firstNonEmpty(paramString(request.Params, "size"), request.Size, "1024x1024"),
+		Size:              firstNonEmpty(paramString(request.Params, "size"), "1024x1024"),
 		Quality:           paramString(request.Params, "quality"),
 		OutputFormat:      firstNonEmpty(paramString(request.Params, "outputFormat"), request.OutputFormat),
 		OutputCompression: paramIntPointer(request.Params, "outputCompression"),

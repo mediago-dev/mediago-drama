@@ -12,7 +12,7 @@ func (provider *Provider) generateVolcengineImage(ctx context.Context, request g
 	payload := volcengineImagesRequest{
 		Model:          request.Model,
 		Prompt:         request.Prompt,
-		Size:           firstNonEmpty(paramString(request.Params, "size"), request.Size, "2K"),
+		Size:           firstNonEmpty(paramString(request.Params, "size"), "2K"),
 		OutputFormat:   firstNonEmpty(paramString(request.Params, "outputFormat"), request.OutputFormat, "png"),
 		ResponseFormat: firstNonEmpty(request.ResponseFormat, "url"),
 		Watermark:      boolParamPointer(request.Params, "watermark", request.Watermark, false),

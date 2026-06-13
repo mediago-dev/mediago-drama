@@ -31,10 +31,10 @@ func (provider *Provider) createVideo(ctx context.Context, request generation.Re
 		"prompt":         request.Prompt,
 		"duration":       paramInt(request.Params, "duration", 3),
 		"resolution":     firstNonEmpty(paramString(request.Params, "resolution"), "480p"),
-		"aspect_ratio":   firstNonEmpty(paramString(request.Params, "aspectRatio"), paramString(request.Params, "ratio"), "16:9"),
+		"aspect_ratio":   firstNonEmpty(paramString(request.Params, "aspectRatio"), "16:9"),
 		"generate_audio": false,
 	}
-	if size := firstNonEmpty(paramString(request.Params, "size"), request.Size); size != "" {
+	if size := paramString(request.Params, "size"); size != "" {
 		payload["size"] = size
 	}
 	if value, ok := paramBoolValue(request.Params, "generateAudio"); ok {

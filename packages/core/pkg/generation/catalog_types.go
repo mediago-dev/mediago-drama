@@ -51,23 +51,26 @@ type Capabilities struct {
 
 // ModelRoute is one concrete provider implementation for a version.
 type ModelRoute struct {
-	ID                    string      `json:"id"`
-	FamilyID              string      `json:"familyId"`
-	VersionID             string      `json:"versionId"`
-	Label                 string      `json:"label"`
-	Kind                  Kind        `json:"kind"`
-	Provider              string      `json:"provider"`
-	Model                 string      `json:"model"`
-	Adapter               string      `json:"adapter"`
-	DocURL                string      `json:"docUrl"`
-	Async                 bool        `json:"async"`
-	SupportsReferenceURLs bool        `json:"supportsReferenceUrls"`
-	Status                RouteStatus `json:"status"`
-	StatusReason          string      `json:"statusReason,omitempty"`
-	AuthKeys              []string    `json:"-"`
-	Params                []ParamSpec `json:"params"`
-	LegacyModelID         string      `json:"legacyModelId,omitempty"`
-	Configured            bool        `json:"configured,omitempty"`
+	ID                    string           `json:"id"`
+	FamilyID              string           `json:"familyId"`
+	VersionID             string           `json:"versionId"`
+	Label                 string           `json:"label"`
+	Kind                  Kind             `json:"kind"`
+	Provider              string           `json:"provider"`
+	Model                 string           `json:"model"`
+	Adapter               string           `json:"adapter"`
+	DocURL                string           `json:"docUrl"`
+	Async                 bool             `json:"async"`
+	SupportsReferenceURLs bool             `json:"supportsReferenceUrls"`
+	Status                RouteStatus      `json:"status"`
+	StatusReason          string           `json:"statusReason,omitempty"`
+	AuthKeys              []string         `json:"-"`
+	Params                []ParamSpec      `json:"params"`
+	Combos                []ParamCombo     `json:"paramCombos,omitempty"`
+	CanonicalParams       []RouteParam     `json:"-"`
+	Translation           ParamTranslation `json:"-"`
+	LegacyModelID         string           `json:"legacyModelId,omitempty"`
+	Configured            bool             `json:"configured,omitempty"`
 }
 
 // ModelSpec describes one legacy generation model exposed by the core package.
@@ -101,4 +104,67 @@ type ParamSpec struct {
 type ParamOption struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
+}
+
+// ParamCombo lists the allowed value combinations of linked route params.
+type ParamCombo struct {
+	Params  []string   `json:"params"`
+	Allowed [][]string `json:"allowed"`
+}
+
+// ParamID is a canonical route parameter name shared by UI, storage, and API callers.
+type ParamID string
+
+// CanonicalParamSpec describes the widest allowed shape for one canonical parameter.
+type CanonicalParamSpec struct {
+	ID      ParamID
+	Label   string
+	Type    string
+	Options []ParamOption
+	Min     *float64
+	Max     *float64
+	Help    string
+}
+
+// RouteParam narrows a canonical parameter for one route.
+type RouteParam struct {
+	ID      ParamID
+	Default any
+	Options []ParamOption
+	Min     *float64
+	Max     *float64
+	Help    string
+}
+
+// RouteParamConfig groups route-facing canonical declarations with vendor translation data.
+type RouteParamConfig struct {
+	CanonicalParams []RouteParam
+	Translation     ParamTranslation
+}
+
+// ParamTranslation translates canonical route params into provider-native params.
+type ParamTranslation struct {
+	Moves  []ParamMove
+	Joins  []ParamJoin
+	Consts []VendorConst
+}
+
+// ParamMove translates one canonical parameter to one provider parameter.
+type ParamMove struct {
+	From   ParamID
+	To     string
+	Values map[string]string
+}
+
+// ParamJoin combines multiple canonical parameters into one provider parameter.
+type ParamJoin struct {
+	From  []ParamID
+	To    string
+	Table map[string]string
+}
+
+// VendorConst injects a provider parameter value for a route.
+type VendorConst struct {
+	To    string
+	Value any
 }

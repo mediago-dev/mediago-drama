@@ -49,8 +49,8 @@ func TestGenerateImage(t *testing.T) {
 		Kind:          generation.KindImage,
 		Prompt:        "make an image",
 		ReferenceURLs: []string{"https://example.test/ref.png"},
-		Size:          "2K",
 		Params: map[string]any{
+			"size":      "2K",
 			"watermark": true,
 		},
 	})
