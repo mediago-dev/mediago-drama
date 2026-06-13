@@ -1,7 +1,6 @@
-import { Check, Link2, Scan } from "lucide-react";
+import { ChevronDown, Link2, Scan, Sparkles } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { clampNumber } from "@/domains/generation/components/mediaGenerationHelpers";
+import { useState } from "react";
 import {
 	imageGenerationSpecUpdate,
 	type ImageGenerationSizePreview,
@@ -9,6 +8,7 @@ import {
 	type SpecAxis,
 	type SpecOption,
 } from "@/domains/generation/components/imageGenerationSpec";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import { cn } from "@/shared/lib/utils";
 
 export const ImageGenerationSpecControl: React.FC<{
@@ -27,57 +27,6 @@ export const ImageGenerationSpecControl: React.FC<{
 	variant = "compact",
 }) => {
 	const [open, setOpen] = useState(false);
-	const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(
-		null,
-	);
-	const rootRef = useRef<HTMLDivElement>(null);
-	const popoverRef = useRef<HTMLDivElement>(null);
-	const triggerRef = useRef<HTMLButtonElement>(null);
-
-	const updatePopoverPosition = useCallback(() => {
-		const trigger = triggerRef.current;
-		if (!trigger) return;
-
-		const rect = trigger.getBoundingClientRect();
-		const popoverRect = popoverRef.current?.getBoundingClientRect();
-		const popoverWidth = popoverRect?.width ?? 520;
-		const popoverHeight = popoverRect?.height ?? 328;
-		const margin = 8;
-		const preferredLeft = rect.left;
-		const preferredTop = rect.top - popoverHeight - margin;
-
-		setPopoverPosition({
-			left: clampNumber(preferredLeft, margin, window.innerWidth - popoverWidth - margin),
-			top: clampNumber(preferredTop, margin, window.innerHeight - popoverHeight - margin),
-		});
-	}, []);
-
-	useEffect(() => {
-		if (!open) return;
-
-		updatePopoverPosition();
-		const animationFrameId = window.requestAnimationFrame(updatePopoverPosition);
-		const closeOnOutsidePointerDown = (event: PointerEvent) => {
-			if (rootRef.current?.contains(event.target as Node)) return;
-
-			setOpen(false);
-		};
-		const closeOnEscape = (event: KeyboardEvent) => {
-			if (event.key === "Escape") setOpen(false);
-		};
-
-		document.addEventListener("pointerdown", closeOnOutsidePointerDown);
-		document.addEventListener("keydown", closeOnEscape);
-		window.addEventListener("resize", updatePopoverPosition);
-		window.addEventListener("scroll", updatePopoverPosition, true);
-		return () => {
-			window.cancelAnimationFrame(animationFrameId);
-			document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
-			document.removeEventListener("keydown", closeOnEscape);
-			window.removeEventListener("resize", updatePopoverPosition);
-			window.removeEventListener("scroll", updatePopoverPosition, true);
-		};
-	}, [open, updatePopoverPosition]);
 
 	const applyOption = (axis: SpecAxis, option: SpecOption) => {
 		const update = imageGenerationSpecUpdate(spec, axis, option);
@@ -94,56 +43,52 @@ export const ImageGenerationSpecControl: React.FC<{
 		: "选择分辨率";
 
 	return (
-		<div ref={rootRef} className={cn("relative shrink-0", className)}>
-			<button
-				ref={triggerRef}
-				type="button"
-				aria-expanded={open}
-				aria-haspopup="dialog"
-				aria-label={`${label}：${triggerRatioLabel}，${triggerResolutionLabel}`}
-				className={cn(
-					"inline-flex min-w-0 items-center gap-2 border border-border bg-ide-editor font-medium text-foreground shadow-sm transition-colors hover:bg-ide-list-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-					variant === "toolbar"
-						? "h-9 max-w-72 rounded-md px-3 text-xs"
-						: "h-7 max-w-64 rounded-full px-2.5 text-2xs",
-					open && "border-primary bg-ide-list-active text-ide-list-active-foreground",
-				)}
-				onClick={() => setOpen((current) => !current)}
-			>
-				<Scan className={variant === "toolbar" ? "size-4 shrink-0" : "size-3.5 shrink-0"} />
-				<span className="min-w-0 truncate">{triggerRatioLabel}</span>
-				<span className="h-3.5 w-px shrink-0 bg-border" aria-hidden="true" />
-				<span className="min-w-0 truncate">{triggerResolutionLabel}</span>
-			</button>
-			{open && popoverPosition ? (
-				<div
-					ref={popoverRef}
-					role="dialog"
-					aria-label={label}
-					className="fixed z-50 grid w-[min(34rem,calc(100vw-1rem))] gap-4 rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-xl"
-					style={{
-						left: popoverPosition.left,
-						top: popoverPosition.top,
-					}}
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<button
+					type="button"
+					aria-label={`${label}：${triggerRatioLabel}，${triggerResolutionLabel}`}
+					className={cn(
+						"inline-flex min-w-0 items-center gap-2 border font-semibold text-foreground transition-colors hover:bg-ide-list-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+						variant === "toolbar"
+							? "h-[var(--generation-control-height)] max-w-56 rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs shadow-none"
+							: "h-7 max-w-64 rounded-full border-border bg-card px-2.5 text-2xs shadow-sm",
+						open && "border-primary bg-ide-list-active text-ide-list-active-foreground shadow-none",
+						className,
+					)}
 				>
-					<SpecOptionGroup
-						label="选择比例"
-						options={spec.ratioOptions}
-						selectedId={spec.selectedRatio?.id}
-						type="ratio"
-						onSelect={(option) => applyOption("ratio", option)}
-					/>
-					<SpecOptionGroup
-						label="选择分辨率"
-						options={spec.resolutionOptions}
-						selectedId={spec.selectedResolution?.id}
-						type="resolution"
-						onSelect={(option) => applyOption("resolution", option)}
-					/>
-					{showSizePreview ? <SizePreview preview={spec.sizePreview} /> : null}
-				</div>
-			) : null}
-		</div>
+					<Scan className={variant === "toolbar" ? "size-4 shrink-0" : "size-3.5 shrink-0"} />
+					<span className="min-w-0 truncate">{triggerRatioLabel}</span>
+					<span className="h-3.5 w-px shrink-0 bg-border" aria-hidden="true" />
+					<span className="min-w-0 truncate">{triggerResolutionLabel}</span>
+					{variant === "toolbar" ? (
+						<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+					) : null}
+				</button>
+			</PopoverTrigger>
+			<PopoverContent
+				side="top"
+				align="start"
+				aria-label={label}
+				className="grid w-[min(var(--generation-size-popover-width),var(--generation-popover-max-inline))] gap-[var(--generation-popover-gap)] rounded-[var(--generation-popover-radius)] border-border bg-popover p-[var(--generation-popover-padding)] text-popover-foreground shadow-xl"
+			>
+				<SpecOptionGroup
+					label="比例"
+					options={spec.ratioOptions}
+					selectedId={spec.selectedRatio?.id}
+					type="ratio"
+					onSelect={(option) => applyOption("ratio", option)}
+				/>
+				<SpecOptionGroup
+					label="分辨率"
+					options={spec.resolutionOptions}
+					selectedId={spec.selectedResolution?.id}
+					type="resolution"
+					onSelect={(option) => applyOption("resolution", option)}
+				/>
+				{showSizePreview ? <SizePreview preview={spec.sizePreview} /> : null}
+			</PopoverContent>
+		</Popover>
 	);
 };
 
@@ -158,13 +103,13 @@ const SpecOptionGroup: React.FC<{
 
 	return (
 		<div className="grid gap-2">
-			<p className="text-xs font-medium text-muted-foreground">{label}</p>
+			<p className="text-xs font-semibold text-muted-foreground">{label}</p>
 			<div
 				className={cn(
-					"grid overflow-hidden rounded-md border border-border bg-muted/70 p-0.5",
 					type === "ratio"
-						? "grid-cols-[repeat(auto-fit,minmax(3.875rem,1fr))]"
-						: "grid-cols-[repeat(auto-fit,minmax(8rem,1fr))]",
+						? "grid grid-cols-6 gap-[var(--generation-composer-toolbar-gap)]"
+						: "grid overflow-hidden rounded-lg bg-muted p-1",
+					type === "resolution" && "grid-cols-[repeat(auto-fit,minmax(6rem,1fr))]",
 				)}
 			>
 				{options.map((option) => {
@@ -176,12 +121,18 @@ const SpecOptionGroup: React.FC<{
 							type="button"
 							disabled={option.disabled}
 							className={cn(
-								"relative flex min-w-0 items-center justify-center gap-2 rounded-sm px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-								type === "ratio" ? "h-14 flex-col" : "h-10",
+								"relative flex min-w-0 items-center justify-center gap-2 px-2 font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+								type === "ratio"
+									? "h-[var(--generation-size-ratio-option-height)] flex-col rounded-[var(--generation-control-radius)] border text-2xs"
+									: "h-[var(--generation-size-resolution-option-height)] rounded-[var(--generation-control-radius)] text-2xs",
 								option.disabled && "cursor-not-allowed opacity-40",
-								selected
-									? "bg-background text-foreground shadow-sm"
-									: "text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+								type === "ratio" && selected
+									? "border-primary bg-ide-list-active text-ide-list-active-foreground"
+									: type === "ratio"
+										? "border-input bg-card text-muted-foreground hover:border-primary/60 hover:bg-ide-list-hover hover:text-foreground"
+										: selected
+											? "bg-card text-foreground shadow-sm"
+											: "text-muted-foreground hover:bg-card/70 hover:text-foreground",
 								option.disabled && "hover:bg-transparent hover:text-muted-foreground",
 							)}
 							onClick={() => onSelect(option)}
@@ -190,9 +141,6 @@ const SpecOptionGroup: React.FC<{
 							<span className="min-w-0 truncate">
 								{type === "ratio" ? ratioOptionLabel(option) : resolutionOptionLabel(option)}
 							</span>
-							{selected && type === "resolution" ? (
-								<Check className="absolute right-2 size-3.5 text-primary" />
-							) : null}
 						</button>
 					);
 				})}
@@ -204,19 +152,16 @@ const SpecOptionGroup: React.FC<{
 const RatioGlyph: React.FC<{ option: SpecOption; selected: boolean }> = ({ option, selected }) => {
 	if (option.smart) {
 		return (
-			<Scan className={cn("size-4", selected ? "text-foreground" : "text-muted-foreground")} />
+			<Sparkles className={cn("size-3.5", selected ? "text-primary" : "text-muted-foreground")} />
 		);
 	}
 
-	const { width, height } = ratioGlyphSize(option.ratio ?? option.label);
+	const glyphStyle = ratioGlyphStyle(option.ratio ?? option.label);
 	return (
 		<span className="flex h-5 items-center justify-center" aria-hidden="true">
 			<span
-				className={cn(
-					"rounded-[3px] border-2",
-					selected ? "border-foreground" : "border-muted-foreground",
-				)}
-				style={{ height, width }}
+				className={cn("block rounded-[4px]", selected ? "bg-primary" : "bg-muted-foreground")}
+				style={glyphStyle}
 			/>
 		</span>
 	);
@@ -224,12 +169,13 @@ const RatioGlyph: React.FC<{ option: SpecOption; selected: boolean }> = ({ optio
 
 const SizePreview: React.FC<{ preview: ImageGenerationSizePreview | null }> = ({ preview }) => (
 	<div className="grid gap-2">
-		<p className="text-xs font-medium text-muted-foreground">尺寸</p>
-		<div className="grid grid-cols-[minmax(0,1fr)_2.25rem_minmax(0,1fr)_2rem] items-center gap-3">
+		<p className="text-xs font-semibold text-muted-foreground">尺寸</p>
+		<div className="grid grid-cols-[minmax(0,1fr)_var(--generation-size-preview-link-size)_minmax(0,1fr)] items-center gap-2">
 			<PreviewBox label="宽度预览" prefix="W" value={preview?.width} />
-			<Link2 className="mx-auto size-4 text-muted-foreground" aria-hidden="true" />
+			<span className="flex size-[var(--generation-size-preview-link-size)] items-center justify-center rounded-[var(--generation-control-radius)] bg-muted text-muted-foreground">
+				<Link2 className="size-3.5" aria-hidden="true" />
+			</span>
 			<PreviewBox label="高度预览" prefix="H" value={preview?.height} />
-			<span className="text-xs font-semibold text-muted-foreground">PX</span>
 		</div>
 	</div>
 );
@@ -241,29 +187,38 @@ const PreviewBox: React.FC<{ label: string; prefix: string; value?: number }> = 
 }) => (
 	<div
 		aria-label={label}
-		className="flex h-10 min-w-0 items-center justify-between gap-2 rounded-md bg-muted px-3 text-xs text-muted-foreground"
+		className="flex h-[var(--generation-size-preview-control-height)] min-w-0 items-center gap-2 rounded-[var(--generation-control-radius)] border border-input bg-card px-2.5 text-2xs text-muted-foreground"
 	>
-		<span>{prefix}</span>
-		<span className="truncate text-foreground/75">{value ? String(value) : "--"}</span>
+		<span className="font-semibold">{prefix}</span>
+		<span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+			{value ? String(value) : "--"}
+		</span>
+		<span className="shrink-0 font-semibold">px</span>
 	</div>
 );
 
-const ratioGlyphSize = (ratio: string) => {
+const ratioGlyphStyle = (ratio: string): React.CSSProperties => {
 	const [rawWidth, rawHeight] = ratio.split(":").map(Number);
-	if (!rawWidth || !rawHeight) return { height: 14, width: 14 };
+	if (!rawWidth || !rawHeight) {
+		return {
+			height: "var(--generation-size-ratio-glyph-max)",
+			width: "var(--generation-size-ratio-glyph-max)",
+		};
+	}
 
-	const max = 22;
-	const min = 10;
+	const aspectRatio = `${rawWidth} / ${rawHeight}`;
 	if (rawWidth >= rawHeight) {
 		return {
-			width: max,
-			height: clampNumber(Math.round((max * rawHeight) / rawWidth), min, max),
+			aspectRatio,
+			minHeight: "var(--generation-size-ratio-glyph-min)",
+			width: "var(--generation-size-ratio-glyph-max)",
 		};
 	}
 
 	return {
-		width: clampNumber(Math.round((max * rawWidth) / rawHeight), min, max),
-		height: max,
+		aspectRatio,
+		height: "var(--generation-size-ratio-glyph-max)",
+		minWidth: "var(--generation-size-ratio-glyph-min)",
 	};
 };
 

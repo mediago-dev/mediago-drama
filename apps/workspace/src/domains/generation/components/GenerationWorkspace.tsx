@@ -1,4 +1,12 @@
-import { ExternalLink, Plus, SendHorizontal, Sparkles } from "lucide-react";
+import {
+	Clipboard,
+	ExternalLink,
+	FileText,
+	ImagePlus,
+	Loader2,
+	SendHorizontal,
+	Sparkles,
+} from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
 import { useMemo, useState } from "react";
@@ -23,6 +31,7 @@ import {
 import { ImageGenerationSpecControl } from "@/domains/generation/components/ImageGenerationSpecControl";
 import { MaterialLibrary } from "@/domains/generation/components/MaterialLibrary";
 import {
+	GenerationCountControl,
 	PrimaryParamControl,
 	ReferenceSelectionDialog,
 	SecondaryParamsDropdown,
@@ -262,10 +271,6 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 				generationCountMax,
 			)
 		: 1;
-	const generationCountOptions = generationCountOptionValues(
-		generationCountMin,
-		generationCountMax,
-	);
 	const sessionRequiredMessage = ws.needsConversation ? "请先从左侧新建或选择一个 session。" : "";
 	const canSelectReferenceAssets =
 		ws.hasConfiguredRoutesForKind && ws.selectedRoute.supportsReferenceUrls;
@@ -297,6 +302,9 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 			}),
 		[primaryParamGroups, ws.selectedParams, ws.updateParam],
 	);
+	const copyComposerPrompt = () => {
+		void resultActions.copyText(ws.fullPrompt, "没有可复制的完整提示词");
+	};
 
 	const generationForm = (
 		<form
@@ -422,9 +430,12 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	);
 
 	const generationComposer = (
-		<form onSubmit={ws.submit} className="shrink-0 border-t border-border bg-ide-panel p-4">
+		<form
+			onSubmit={ws.submit}
+			className="shrink-0 border-t border-border bg-ide-panel p-[var(--generation-composer-padding)]"
+		>
 			{ws.hasConfiguredRoutesForKind ? (
-				<div className="grid gap-3">
+				<div className="grid gap-[var(--generation-composer-gap)] rounded-[var(--generation-popover-radius)] border border-input bg-card p-[var(--generation-composer-padding)] shadow-sm">
 					{isTextGeneration ? null : (
 						<ReferencePreviewStrip
 							disabled={!ws.hasConfiguredRoutesForKind || !ws.selectedRoute.supportsReferenceUrls}
@@ -434,35 +445,63 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 							onRemove={ws.toggleReferenceAsset}
 						/>
 					)}
-					{isTextGeneration ? null : (
-						<LayeredPromptComposer layers={ws.composerLayers} onSelect={ws.setLayerSelection} />
-					)}
-					<div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
-						<Textarea
-							value={ws.prompt}
-							onChange={(event) => ws.setPrompt(event.target.value)}
-							placeholder={compactPromptPlaceholder}
-							className="max-h-52 min-h-20 min-w-0 flex-1 resize-y rounded-md bg-ide-editor text-foreground"
-						/>
-						<Button type="submit" className="h-10 shrink-0 sm:w-auto" disabled={!ws.canSubmit}>
-							<SendHorizontal />
-							<span>{submitLabel}</span>
+					<div className="flex min-w-0 items-start justify-between gap-3">
+						<div className="min-w-0 flex-1">
+							{isTextGeneration ? null : (
+								<LayeredPromptComposer
+									layers={ws.composerLayers}
+									variant="composer"
+									onSelect={ws.setLayerSelection}
+								/>
+							)}
+						</div>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							disabled={!ws.fullPrompt.trim()}
+							className="h-[var(--generation-control-height)] shrink-0 rounded-[var(--generation-control-radius)] border-input bg-card px-[var(--generation-control-padding-x)] text-2xs font-semibold text-muted-foreground shadow-none hover:bg-ide-list-hover hover:text-foreground disabled:bg-card"
+							onClick={copyComposerPrompt}
+						>
+							<Clipboard className="size-4" />
+							<span>复制 Prompt</span>
 						</Button>
 					</div>
-					<div className="flex min-w-0 items-center justify-between gap-2">
-						<div className="flex min-w-0 items-center gap-2 overflow-x-auto">
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon"
-								aria-label="选择参考素材"
-								title="选择参考素材"
-								disabled={!canSelectReferenceAssets}
-								className="size-9 shrink-0 rounded-md border border-border bg-ide-editor text-muted-foreground shadow-none hover:bg-ide-list-hover hover:text-foreground disabled:bg-ide-editor disabled:text-muted-foreground [&_svg]:size-4"
-								onClick={() => setReferenceDialogOpen(true)}
-							>
-								<Plus />
-							</Button>
+					<Textarea
+						value={ws.prompt}
+						onChange={(event) => ws.setPrompt(event.target.value)}
+						placeholder={compactPromptPlaceholder}
+						className="h-[var(--generation-composer-textarea-height)] max-h-[var(--generation-composer-textarea-max-height)] min-h-[var(--generation-composer-textarea-height)] min-w-0 resize-none border-0 bg-transparent px-[var(--generation-control-padding-x)] py-[var(--generation-composer-padding)] text-sm leading-5 text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
+					/>
+					{sessionRequiredMessage || ws.error ? (
+						<p
+							className={cn(
+								"mx-2 rounded-lg px-3 py-2 text-xs",
+								ws.error
+									? "bg-error-surface text-error-foreground"
+									: "bg-warning-surface text-warning-foreground",
+							)}
+						>
+							{ws.error || sessionRequiredMessage}
+						</p>
+					) : null}
+					<div className="flex min-w-0 flex-col gap-[var(--generation-popover-padding)] lg:flex-row lg:items-center lg:justify-between">
+						<div className="flex min-w-0 flex-wrap items-center gap-[var(--generation-composer-toolbar-gap)]">
+							{isTextGeneration ? null : (
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									aria-label="选择参考素材"
+									title="选择参考素材"
+									disabled={!canSelectReferenceAssets}
+									className="h-[var(--generation-control-height)] shrink-0 rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs font-semibold text-foreground shadow-none hover:bg-ide-list-hover disabled:bg-muted disabled:text-muted-foreground"
+									onClick={() => setReferenceDialogOpen(true)}
+								>
+									<ImagePlus className="size-4 text-primary" />
+									<span>参考图</span>
+								</Button>
+							)}
 							{lockKind ? null : <ModeToggle compact kind={ws.kind} onChange={ws.setKind} />}
 							<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
 								<SelectTrigger
@@ -498,15 +537,17 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 							/>
 							<Button
 								type="button"
-								variant="outline"
+								variant="ghost"
 								size="sm"
 								aria-label="打开模型文档"
-								className={generationComposerSelectClassName("shrink-0")}
+								className="h-[var(--generation-control-height)] shrink-0 rounded-[var(--generation-control-radius)] border-0 bg-transparent px-[var(--generation-composer-padding)] text-2xs font-semibold text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground [&_svg]:size-3.5"
 								onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
 							>
-								<ExternalLink className="size-4 shrink-0" />
+								<FileText className="size-4 shrink-0 text-muted-foreground" />
 								<span>文档</span>
 							</Button>
+						</div>
+						<div className="flex min-w-0 flex-wrap items-center gap-[var(--generation-composer-toolbar-gap)] lg:justify-end">
 							{imageSpec ? (
 								<ImageGenerationSpecControl
 									label={activeGenerationKind === "video" ? "视频大小" : "图片大小"}
@@ -518,24 +559,13 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 							) : null}
 							{primaryParamControls}
 							{isTextGeneration || !routeGenerationCountParam ? null : (
-								<Select
-									value={String(selectedGenerationCount)}
-									onValueChange={updateComposerGenerationCount}
-								>
-									<SelectTrigger
-										aria-label="生成数量"
-										className={generationComposerSelectClassName()}
-									>
-										<span>数量: {selectedGenerationCount}</span>
-									</SelectTrigger>
-									<SelectContent align="start">
-										{generationCountOptions.map((count) => (
-											<SelectItem key={count} value={String(count)}>
-												{count} 个
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								<GenerationCountControl
+									max={generationCountMax}
+									min={generationCountMin}
+									value={selectedGenerationCount}
+									variant="toolbar"
+									onChange={(value) => updateComposerGenerationCount(String(value))}
+								/>
 							)}
 							{secondaryRouteParams.length > 0 ? (
 								<SecondaryParamsDropdown
@@ -546,12 +576,21 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 									onChange={ws.updateParam}
 								/>
 							) : null}
+							<Button
+								type="submit"
+								className="h-[var(--generation-control-height-lg)] shrink-0 rounded-[var(--generation-control-radius)] bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-none hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground"
+								disabled={!ws.canSubmit}
+							>
+								{ws.isSubmitting ? (
+									<Loader2 className="size-4 animate-spin" />
+								) : activeGenerationKind === "image" ? (
+									<Sparkles className="size-4" />
+								) : (
+									<SendHorizontal className="size-4" />
+								)}
+								<span>{submitLabel}</span>
+							</Button>
 						</div>
-						{sessionRequiredMessage ? (
-							<span className="text-warning-foreground">{sessionRequiredMessage}</span>
-						) : ws.error ? (
-							<span className="text-error-foreground">{ws.error}</span>
-						) : null}
 					</div>
 				</div>
 			) : (
@@ -636,7 +675,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 
 const generationComposerSelectClassName = (toneClassName?: string) =>
 	cn(
-		"h-9 w-auto max-w-60 rounded-md border-border bg-ide-editor px-3 text-xs font-medium shadow-none hover:bg-ide-list-hover [&_svg]:size-4",
+		"h-[var(--generation-control-height)] w-auto max-w-56 rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs font-semibold text-foreground shadow-none hover:bg-ide-list-hover [&_svg]:size-3.5",
 		toneClassName,
 	);
 
@@ -646,14 +685,4 @@ const normalizeGenerationCount = (value: number, min: number, max: number) => {
 	const normalizedValue = Number.isFinite(value) ? Math.round(value) : normalizedMin;
 
 	return Math.min(normalizedMax, Math.max(normalizedMin, normalizedValue));
-};
-
-const generationCountOptionValues = (min: number, max: number) => {
-	const normalizedMin = Math.max(1, Math.floor(min));
-	const normalizedMax = Math.min(10, Math.max(normalizedMin, Math.floor(max)));
-
-	return Array.from(
-		{ length: normalizedMax - normalizedMin + 1 },
-		(_, index) => normalizedMin + index,
-	);
 };

@@ -301,10 +301,10 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			/>
 			<Button
 				type="button"
-				variant="outline"
+				variant="ghost"
 				size="sm"
 				aria-label="打开模型文档"
-				className={mediaGenerationModelControlClassName("shrink-0")}
+				className="h-8 shrink-0 rounded-sm border-0 bg-transparent px-1.5 text-xs font-medium text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground [&_svg]:size-3.5"
 				onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
 			>
 				<ExternalLink className="size-3.5 shrink-0" />
