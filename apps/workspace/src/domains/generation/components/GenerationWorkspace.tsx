@@ -1,7 +1,7 @@
 import { Box, ExternalLink, SendHorizontal, Sparkles } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { type GenerationAsset, type GenerationKind } from "@/domains/generation/api/generation";
 import { GenerationChatPanel } from "@/domains/generation/components/GenerationChatPanel";
@@ -14,6 +14,7 @@ import {
 	InspectorHeading,
 	ModeToggle,
 } from "@/domains/generation/components/GenerationSetupNotice";
+import { GenerationModelRoutePicker } from "@/domains/generation/components/GenerationModelRoutePicker";
 import {
 	filterImageGenerationSpecParams,
 	resolveImageGenerationSpec,
@@ -32,7 +33,6 @@ import { RouteSelectors } from "@/domains/generation/components/RouteSelectors";
 import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import { useGeneratedResultActions } from "@/domains/generation/components/generatedResultActions";
@@ -71,8 +71,6 @@ export interface GenerationWorkspaceProps {
 }
 
 export const Generate: React.FC = () => <GenerationWorkspace />;
-
-type InspectorTab = "settings" | "materials";
 
 const openDocumentationUrl = async (url: string) => {
 	try {
@@ -149,7 +147,6 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 		projectId,
 	});
 	const [inspectorWidth, setInspectorWidth] = useGenerationInspectorWidth();
-	const [inspectorTab, setInspectorTab] = useState<InspectorTab>("settings");
 
 	const documentationButton = ws.hasConfiguredRoutesForKind ? (
 		<Button
@@ -162,27 +159,9 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 			<span>文档</span>
 		</Button>
 	) : null;
-	const documentationField = ws.hasConfiguredRoutesForKind ? (
-		<div>
-			<Label className="mb-2 block text-xs text-muted-foreground">文档</Label>
-			<Button
-				type="button"
-				variant="outline"
-				size="sm"
-				className="h-9 w-full justify-start rounded-md"
-				onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
-			>
-				<ExternalLink className="size-4" />
-				<span>打开文档</span>
-			</Button>
-		</div>
-	) : null;
 	const activeGenerationKind = ws.kind;
 	const isTextGeneration = activeGenerationKind === "text";
 	const promptLibraryKind = activeGenerationKind === "video" ? "video" : "image";
-	useEffect(() => {
-		if (isTextGeneration && inspectorTab === "materials") setInspectorTab("settings");
-	}, [inspectorTab, isTextGeneration]);
 
 	const promptPlaceholder =
 		activeGenerationKind === "image"
@@ -281,9 +260,6 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 		generationCountMin,
 		generationCountMax,
 	);
-	const composerModelLabel = ws.hasConfiguredRoutesForKind
-		? compactModelLabel(ws.selectedVersion.label || ws.selectedRoute.model)
-		: "暂无模型";
 	const sessionRequiredMessage = ws.needsConversation ? "请先从左侧新建或选择一个 session。" : "";
 	const updateComposerGenerationCount = (value: string) => {
 		if (!routeGenerationCountParam) return;
@@ -467,22 +443,41 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 					</div>
 					<div className="flex min-w-0 items-center justify-between gap-2">
 						<div className="flex min-w-0 items-center gap-2 overflow-x-auto">
-							<Select value={ws.selectedVersion.id} onValueChange={ws.updateVersion}>
+							{lockKind ? null : <ModeToggle compact kind={ws.kind} onChange={ws.setKind} />}
+							<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
 								<SelectTrigger
-									aria-label="具体模型"
+									aria-label="模型类型"
 									className={generationComposerSelectClassName()}
 								>
 									<Box className="size-4 shrink-0" />
-									<span>{composerModelLabel}</span>
+									<span>{ws.selectedFamily.label}</span>
 								</SelectTrigger>
 								<SelectContent align="start">
-									{ws.visibleVersions.map((versionItem) => (
-										<SelectItem key={versionItem.id} value={versionItem.id}>
-											{versionItem.label}
+									{ws.visibleFamilies.map((family) => (
+										<SelectItem key={family.id} value={family.id}>
+											{family.label}
 										</SelectItem>
 									))}
 								</SelectContent>
 							</Select>
+							<GenerationModelRoutePicker
+								routes={ws.visibleFamilyRoutes}
+								selectedRoute={ws.selectedRoute}
+								selectedVersion={ws.selectedVersion}
+								versions={ws.visibleVersions}
+								onSelect={ws.updateModelRoute}
+							/>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								aria-label="打开模型文档"
+								className={generationComposerSelectClassName("shrink-0")}
+								onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
+							>
+								<ExternalLink className="size-4 shrink-0" />
+								<span>文档</span>
+							</Button>
 							{imageSpec ? (
 								<ImageGenerationSpecControl
 									label={activeGenerationKind === "video" ? "视频大小" : "图片大小"}
@@ -540,39 +535,6 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 		</form>
 	);
 
-	const advancedSettingsSection = (
-		<section className="min-w-0">
-			{ws.hasConfiguredRoutesForKind ? (
-				<div className="grid gap-4">
-					<RouteSelectors
-						compact
-						kind={ws.kind}
-						families={ws.visibleFamilies}
-						versions={ws.visibleVersions}
-						routes={ws.visibleRoutes}
-						selectedFamily={ws.selectedFamily}
-						selectedVersion={ws.selectedVersion}
-						selectedRoute={ws.selectedRoute}
-						onKindChange={ws.setKind}
-						onFamilyChange={ws.updateFamily}
-						onVersionChange={ws.updateVersion}
-						onRouteChange={ws.updateRoute}
-						showKindToggle={!lockKind}
-					/>
-					{documentationField ? (
-						<div className="border-t border-border pt-4">{documentationField}</div>
-					) : null}
-				</div>
-			) : (
-				<GenerationSetupNotice
-					isLoading={!ws.hasLiveCatalog}
-					kind={ws.kind}
-					onSettingsClick={() => navigate("/settings")}
-				/>
-			)}
-		</section>
-	);
-
 	const materialInspectorSection = (
 		<section className="flex h-full min-h-0 flex-1 flex-col">
 			<MaterialLibrary
@@ -628,17 +590,18 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 
 	const visibleGenerationEntries =
 		focusActiveEntry && ws.activeEntry ? [ws.activeEntry] : ws.generationEntries;
+	const showMaterialInspector = showInspector && !isTextGeneration;
 
 	return (
 		<div
 			className={cn(
 				"h-full min-h-0 overflow-hidden bg-ide-editor text-ide-editor-foreground",
-				showInspector
+				showMaterialInspector
 					? "grid lg:grid-cols-[minmax(24rem,1fr)_var(--inspector-width)]"
 					: "flex flex-col",
 			)}
 			style={
-				showInspector
+				showMaterialInspector
 					? ({ "--inspector-width": `${inspectorWidth}px` } as React.CSSProperties)
 					: undefined
 			}
@@ -646,7 +609,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 			<main
 				className={cn(
 					"flex min-h-0 min-w-0 flex-1 flex-col",
-					showInspector && "lg:border-r lg:border-border",
+					showMaterialInspector && "lg:border-r lg:border-border",
 				)}
 			>
 				<GenerationChatPanel
@@ -665,35 +628,13 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 				{generationComposer}
 			</main>
 
-			{showInspector ? (
+			{showMaterialInspector ? (
 				<aside className="relative hidden min-h-0 min-w-0 bg-ide-editor p-4 text-ide-editor-foreground lg:block">
 					<GenerationInspectorResizeHandle
 						width={inspectorWidth}
 						onWidthChange={setInspectorWidth}
 					/>
-					<Tabs
-						value={inspectorTab}
-						className="flex h-full min-h-0 flex-col gap-3"
-						onValueChange={(value) => setInspectorTab(value as InspectorTab)}
-					>
-						<TabsList
-							className={cn(
-								"grid w-full shrink-0",
-								isTextGeneration ? "grid-cols-1" : "grid-cols-2",
-							)}
-						>
-							<TabsTrigger value="settings">高级设置</TabsTrigger>
-							{isTextGeneration ? null : <TabsTrigger value="materials">素材选择</TabsTrigger>}
-						</TabsList>
-						<TabsContent value="settings" className="m-0 min-h-0 flex-1 overflow-y-auto">
-							{advancedSettingsSection}
-						</TabsContent>
-						{isTextGeneration ? null : (
-							<TabsContent value="materials" className="m-0 min-h-0 flex-1 overflow-hidden">
-								{materialInspectorSection}
-							</TabsContent>
-						)}
-					</Tabs>
+					{materialInspectorSection}
 				</aside>
 			) : null}
 		</div>
@@ -705,8 +646,6 @@ const generationComposerSelectClassName = (toneClassName?: string) =>
 		"h-9 w-auto max-w-60 rounded-md border-border bg-ide-editor px-3 text-xs font-medium shadow-none hover:bg-ide-list-hover [&_svg]:size-4",
 		toneClassName,
 	);
-
-const compactModelLabel = (label: string) => label.replace(/\s+/g, " ").trim();
 
 const normalizeGenerationCount = (value: number, min: number, max: number) => {
 	const normalizedMin = Math.max(1, Math.floor(min));

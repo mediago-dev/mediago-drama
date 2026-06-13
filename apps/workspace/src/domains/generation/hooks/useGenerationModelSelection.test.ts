@@ -44,6 +44,17 @@ const catalog: GenerationModelsResponse = {
 			},
 		},
 		{
+			id: "version-image-alt",
+			familyId: "family-image",
+			label: "Image v2",
+			kind: "image",
+			canonicalModel: "image-model-alt",
+			capabilities: {
+				async: false,
+				supportsReferenceUrls: true,
+			},
+		},
+		{
 			id: "version-text",
 			familyId: "family-text",
 			label: "Text v1",
@@ -87,6 +98,29 @@ const catalog: GenerationModelsResponse = {
 			kind: "image",
 			provider: "dmx",
 			model: "image-model-dmx",
+			adapter: "test.image",
+			docUrl: "",
+			async: false,
+			supportsReferenceUrls: true,
+			status: "available",
+			configured: true,
+			params: [
+				{
+					name: "size",
+					label: "Size",
+					type: "string",
+					default: "1024x1024",
+				},
+			],
+		},
+		{
+			id: "route-image-alt",
+			familyId: "family-image",
+			versionId: "version-image-alt",
+			label: "Image Alt Route",
+			kind: "image",
+			provider: "openai",
+			model: "image-model-alt",
 			adapter: "test.image",
 			docUrl: "",
 			async: false,
@@ -171,6 +205,11 @@ describe("useGenerationModelSelection", () => {
 		expect(result.current.selectedRoute.id).toBe("route-image");
 		expect(result.current.selectedStylePreset?.id).toBe(stylePreset.id);
 		expect(result.current.selectedParams).toEqual({ size: "768x768" });
+		expect(result.current.visibleFamilyRoutes.map((route) => route.id)).toEqual([
+			"route-image",
+			"route-image-dmx",
+			"route-image-alt",
+		]);
 
 		act(() => {
 			result.current.updateRoute("route-image-dmx");
@@ -190,6 +229,15 @@ describe("useGenerationModelSelection", () => {
 			size: "256x256",
 		});
 		expect(readGenerationStylePresetId()).toBe(stylePreset.id);
+
+		act(() => {
+			result.current.updateModelRoute("version-image-alt", "route-image-alt");
+		});
+
+		expect(result.current.selectedVersion.id).toBe("version-image-alt");
+		expect(result.current.selectedRoute.id).toBe("route-image-alt");
+		expect(readGenerationModelSelection().versionIds["family-image"]).toBe("version-image-alt");
+		expect(readGenerationModelSelection().routeIds["version-image-alt"]).toBe("route-image-alt");
 	});
 
 	it("syncs scoped preferences and clears stale style preset IDs", async () => {
