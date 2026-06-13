@@ -1,4 +1,5 @@
-import { Clipboard, PencilLine } from "lucide-react";
+import { Box, Clipboard, ExternalLink, PencilLine } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -14,6 +15,7 @@ import {
 	resolveImageGenerationSpec,
 } from "@/domains/generation/components/imageGenerationSpec";
 import { ImageGenerationSpecControl } from "@/domains/generation/components/ImageGenerationSpecControl";
+import { GenerationModelRoutePicker } from "@/domains/generation/components/GenerationModelRoutePicker";
 import { MediaGenerationInputPanel } from "@/domains/generation/components/MediaGenerationInputPanel";
 import { MediaGenerationWorkspaceDialogs } from "@/domains/generation/components/MediaGenerationWorkspaceDialogs";
 import {
@@ -57,12 +59,22 @@ import {
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useToast } from "@/hooks/useToast";
 import { Button } from "@/shared/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
 
 type GenerationExtraValue<T> = T | ((prompt: string) => T);
 export type MediaGenerationWorkspaceViewMode = "edit" | "history";
 
 export type { PromptEditorProps } from "@/domains/generation/components/PromptEditor";
+
+const openDocumentationUrl = async (url: string) => {
+	try {
+		await openUrl(url);
+		return;
+	} catch {
+		window.open(url, "_blank", "noopener,noreferrer");
+	}
+};
 
 export interface MediaGenerationWorkspaceProps {
 	className?: string;
@@ -245,6 +257,45 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const modelSummary = ws.hasConfiguredRoutesForKind
 		? `${ws.selectedFamily.label} / ${ws.selectedVersion.label} / ${routeProviderLabel(ws.selectedRoute)}`
 		: `暂无可用${generatedKindLabel}供应商`;
+	const modelControls = ws.hasConfiguredRoutesForKind ? (
+		<div className="flex min-w-0 items-center gap-2">
+			<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
+				<SelectTrigger
+					aria-label="模型类型"
+					className={mediaGenerationModelControlClassName("max-w-40")}
+				>
+					<Box className="size-3.5 shrink-0" />
+					<span>{ws.selectedFamily.label}</span>
+				</SelectTrigger>
+				<SelectContent align="start">
+					{ws.visibleFamilies.map((family) => (
+						<SelectItem key={family.id} value={family.id}>
+							{family.label}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
+			<GenerationModelRoutePicker
+				className="h-8 max-w-56 rounded-sm px-2"
+				routes={ws.visibleFamilyRoutes}
+				selectedRoute={ws.selectedRoute}
+				selectedVersion={ws.selectedVersion}
+				versions={ws.visibleVersions}
+				onSelect={ws.updateModelRoute}
+			/>
+			<Button
+				type="button"
+				variant="outline"
+				size="sm"
+				aria-label="打开模型文档"
+				className={mediaGenerationModelControlClassName("shrink-0")}
+				onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
+			>
+				<ExternalLink className="size-3.5 shrink-0" />
+				<span>文档</span>
+			</Button>
+		</div>
+	) : null;
 	const generationEntries = ws.orderedGenerationEntries.filter((entry) => entry.kind === kind);
 	const activeGenerationEntry =
 		generationEntries.find((entry) => entry.id === ws.activeEntryId) ??
@@ -633,6 +684,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 							) : null
 						}
 						isSubmitting={ws.isSubmitting}
+						modelControls={modelControls}
 						modelSummary={modelSummary}
 						previewReferenceAssets={previewReferenceAssets}
 						primaryParamControls={primaryParamControls}
@@ -804,6 +856,12 @@ const resolveStringArrayExtraValue = (
 	value: GenerationExtraValue<string[]>,
 	prompt: string,
 ): string[] => (typeof value === "function" ? value(prompt) : value);
+
+const mediaGenerationModelControlClassName = (className?: string) =>
+	cn(
+		"h-8 w-auto rounded-sm border-border bg-card px-2 text-xs font-medium shadow-none hover:bg-ide-list-hover [&_svg]:size-3.5",
+		className,
+	);
 
 const uniqueStrings = (values: string[]) => {
 	const seen = new Set<string>();

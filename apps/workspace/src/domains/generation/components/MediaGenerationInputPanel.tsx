@@ -21,6 +21,7 @@ export const MediaGenerationInputPanel: React.FC<{
 	imageSpecControl?: React.ReactNode;
 	isSubmitting: boolean;
 	modelSummary: string;
+	modelControls?: React.ReactNode;
 	onCopyPrompt?: () => void;
 	onOpenReferenceDialog: () => void;
 	onRemoveReferencePreview: (asset: MediaAsset) => void;
@@ -44,6 +45,7 @@ export const MediaGenerationInputPanel: React.FC<{
 	imageSpecControl,
 	isSubmitting,
 	modelSummary,
+	modelControls,
 	layeredComposer,
 	onCopyPrompt,
 	onOpenReferenceDialog,
@@ -102,7 +104,7 @@ export const MediaGenerationInputPanel: React.FC<{
 				</p>
 			) : null}
 			<div className="flex shrink-0 items-center justify-between gap-3 px-3 py-2">
-				<div className="flex min-w-0 items-center gap-2">
+				<div className="flex min-w-0 items-center gap-2 overflow-x-auto">
 					<Button
 						type="button"
 						variant="ghost"
@@ -116,7 +118,9 @@ export const MediaGenerationInputPanel: React.FC<{
 						<Plus />
 					</Button>
 					{promptLibraryPicker}
-					<p className="truncate text-xs text-muted-foreground">{modelSummary}</p>
+					{modelControls ?? (
+						<p className="truncate text-xs text-muted-foreground">{modelSummary}</p>
+					)}
 				</div>
 				<div className="flex min-w-0 shrink-0 items-center gap-2">
 					{imageSpecControl}
