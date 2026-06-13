@@ -1,4 +1,9 @@
-import type { GenerationAsset, GenerationKind } from "@/domains/generation/api/generation";
+import type {
+	GenerationAsset,
+	GenerationKind,
+	GenerationParam,
+	GenerationRoute,
+} from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import {
 	generationAssetSelectionKey,
@@ -10,6 +15,81 @@ export const entryPromptText = (entry: GenerationEntry) => entry.prompt || entry
 
 export const clampNumber = (value: number, min: number, max: number) =>
 	Math.min(Math.max(value, min), max);
+
+export interface ResolvedParamGroup {
+	id: string;
+	label: string;
+	params: GenerationParam[];
+}
+
+const paramGroupOrderByKind: Record<GenerationKind, string[]> = {
+	image: ["size", "count", "other"],
+	video: ["size", "duration", "other"],
+	text: ["other"],
+};
+
+const paramGroupLabelByID: Record<string, string> = {
+	size: "大小",
+	duration: "秒数",
+	count: "数量",
+	other: "其他",
+};
+
+const paramGroupByName: Record<string, string> = {
+	aspectRatio: "size",
+	ratio: "size",
+	resolution: "size",
+	resolutionType: "size",
+	imageSize: "size",
+	duration: "duration",
+	n: "count",
+};
+
+const uniqueValues = <T>(values: T[]) => Array.from(new Set(values));
+
+export const resolveParamGroups = (route: GenerationRoute): ResolvedParamGroup[] => {
+	if (route.paramGroups?.length) {
+		const paramsByName = new Map(route.params.map((param) => [param.name, param]));
+		return route.paramGroups.flatMap((group) => {
+			const params = group.params
+				.map((name) => paramsByName.get(name))
+				.filter((param): param is GenerationParam => Boolean(param));
+			if (params.length === 0) return [];
+
+			return [{ id: group.id, label: group.label, params }];
+		});
+	}
+
+	return deriveParamGroups(route.kind, route.params);
+};
+
+const deriveParamGroups = (
+	kind: GenerationKind,
+	params: GenerationParam[],
+): ResolvedParamGroup[] => {
+	const groups = new Map<string, GenerationParam[]>();
+	for (const param of params) {
+		const groupID = param.group || paramGroupByName[param.name] || "other";
+		groups.set(groupID, [...(groups.get(groupID) ?? []), param]);
+	}
+
+	const orderedGroupIDs = uniqueValues([
+		...(paramGroupOrderByKind[kind] ?? []),
+		...Array.from(groups.keys()),
+	]);
+	return orderedGroupIDs.flatMap((groupID) => {
+		const groupParams = groups.get(groupID) ?? [];
+		if (groupParams.length === 0) return [];
+
+		return [
+			{
+				id: groupID,
+				label: paramGroupLabelByID[groupID] ?? "其他",
+				params: groupParams,
+			},
+		];
+	});
+};
 
 export interface GeneratedReferenceOption {
 	entry: GenerationEntry | null;

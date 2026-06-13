@@ -1,8 +1,5 @@
 import type { GenerationParam, GenerationParamCombo } from "@/domains/generation/api/generation";
-import {
-	paramLabel,
-	paramOptionLabel,
-} from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import { paramOptionLabel } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 
 export type SpecAxis = "ratio" | "resolution";
 
@@ -198,21 +195,14 @@ const hasAnySplitComboForRatio = (combo: SplitCombo | undefined, ratioValue: str
 
 const isRatioParam = (param: GenerationParam) => {
 	if (param.type !== "select" || !param.options?.length) return false;
-	if (param.name === "aspectRatio" || param.name === "ratio") return true;
-
-	const label = paramLabel(param.label);
-	return label.includes("比例") || label.includes("画幅");
+	return param.name === "aspectRatio" || param.name === "ratio";
 };
 
 const isResolutionParam = (param: GenerationParam) => {
 	if (param.type !== "select" || !param.options?.length) return false;
-	if (param.name === "resolution" || param.name === "resolutionType" || param.name === "imageSize")
-		return true;
-
-	const label = paramLabel(param.label);
-	if (!label.includes("分辨率") && !label.includes("图像尺寸")) return false;
-
-	return param.options.some((option) => parseResolutionLabel(option.value, option.label));
+	return (
+		param.name === "resolution" || param.name === "resolutionType" || param.name === "imageSize"
+	);
 };
 
 const selectedParamValue = (param: GenerationParam, values: Record<string, unknown>) => {
@@ -273,8 +263,11 @@ const parseRatioLabel = (value: string) => {
 
 const parseResolutionLabel = (...values: string[]) => {
 	for (const value of values) {
-		const match = value.match(/([1-9])\s*k/i);
-		if (match) return `${match[1]}K`;
+		const kiloMatch = value.match(/([1-9])\s*k/i);
+		if (kiloMatch) return `${kiloMatch[1]}K`;
+
+		const verticalPixelsMatch = value.match(/([1-9]\d{2,3})\s*p/i);
+		if (verticalPixelsMatch) return `${verticalPixelsMatch[1]}p`;
 	}
 
 	return undefined;
@@ -300,17 +293,7 @@ const uniqueSpecOptions = (options: SpecOption[]) => {
 	return result;
 };
 
-const preferredRatioOrder = [
-	"smart",
-	"21:9",
-	"16:9",
-	"3:2",
-	"4:3",
-	"1:1",
-	"3:4",
-	"2:3",
-	"9:16",
-];
+const preferredRatioOrder = ["smart", "21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"];
 
 const orderRatioOptions = (options: SpecOption[]) =>
 	[...options].sort((left, right) => {
@@ -365,7 +348,7 @@ const inferSizePreview = (ratio: SpecOption | null, resolution: SpecOption | nul
 };
 
 const resolutionBasePixels = (resolution: string) => {
-	const match = resolution.match(/([1-9])/);
+	const match = resolution.match(/^([1-9])K$/i);
 	if (!match) return undefined;
 
 	return Number(match[1]) * 1024;

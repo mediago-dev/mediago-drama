@@ -9,6 +9,14 @@ const (
 	RouteStatusGated     RouteStatus = "gated"
 )
 
+// ParamMenu describes the deprecated primary/secondary UI placement.
+type ParamMenu string
+
+const (
+	ParamMenuPrimary   ParamMenu = "primary"
+	ParamMenuSecondary ParamMenu = "secondary"
+)
+
 // ModelCatalog is the full UI-facing model catalog.
 type ModelCatalog struct {
 	Families  []ModelFamily  `json:"families"`
@@ -51,26 +59,27 @@ type Capabilities struct {
 
 // ModelRoute is one concrete provider implementation for a version.
 type ModelRoute struct {
-	ID                    string           `json:"id"`
-	FamilyID              string           `json:"familyId"`
-	VersionID             string           `json:"versionId"`
-	Label                 string           `json:"label"`
-	Kind                  Kind             `json:"kind"`
-	Provider              string           `json:"provider"`
-	Model                 string           `json:"model"`
-	Adapter               string           `json:"adapter"`
-	DocURL                string           `json:"docUrl"`
-	Async                 bool             `json:"async"`
-	SupportsReferenceURLs bool             `json:"supportsReferenceUrls"`
-	Status                RouteStatus      `json:"status"`
-	StatusReason          string           `json:"statusReason,omitempty"`
-	AuthKeys              []string         `json:"-"`
-	Params                []ParamSpec      `json:"params"`
-	Combos                []ParamCombo     `json:"paramCombos,omitempty"`
-	CanonicalParams       []RouteParam     `json:"-"`
-	Translation           ParamTranslation `json:"-"`
-	LegacyModelID         string           `json:"legacyModelId,omitempty"`
-	Configured            bool             `json:"configured,omitempty"`
+	ID                    string            `json:"id"`
+	FamilyID              string            `json:"familyId"`
+	VersionID             string            `json:"versionId"`
+	Label                 string            `json:"label"`
+	Kind                  Kind              `json:"kind"`
+	Provider              string            `json:"provider"`
+	Model                 string            `json:"model"`
+	Adapter               string            `json:"adapter"`
+	DocURL                string            `json:"docUrl"`
+	Async                 bool              `json:"async"`
+	SupportsReferenceURLs bool              `json:"supportsReferenceUrls"`
+	Status                RouteStatus       `json:"status"`
+	StatusReason          string            `json:"statusReason,omitempty"`
+	AuthKeys              []string          `json:"-"`
+	Params                []ParamSpec       `json:"params"`
+	ParamGroups           []RouteParamGroup `json:"paramGroups,omitempty"`
+	Combos                []ParamCombo      `json:"paramCombos,omitempty"`
+	CanonicalParams       []RouteParam      `json:"-"`
+	Translation           ParamTranslation  `json:"-"`
+	LegacyModelID         string            `json:"legacyModelId,omitempty"`
+	Configured            bool              `json:"configured,omitempty"`
 }
 
 // ModelSpec describes one legacy generation model exposed by the core package.
@@ -92,12 +101,20 @@ type ParamSpec struct {
 	Name     string        `json:"name"`
 	Label    string        `json:"label"`
 	Type     string        `json:"type"`
+	Group    string        `json:"group,omitempty"`
+	Menu     string        `json:"menu,omitempty"`
 	Default  any           `json:"default,omitempty"`
 	Options  []ParamOption `json:"options,omitempty"`
 	Required bool          `json:"required,omitempty"`
 	Min      *float64      `json:"min,omitempty"`
 	Max      *float64      `json:"max,omitempty"`
 	Help     string        `json:"help,omitempty"`
+}
+
+type RouteParamGroup struct {
+	ID     string   `json:"id"`
+	Label  string   `json:"label"`
+	Params []string `json:"params"`
 }
 
 // ParamOption is one option for a select-like model parameter.
@@ -112,14 +129,12 @@ type ParamCombo struct {
 	Allowed [][]string `json:"allowed"`
 }
 
-// ParamID is a canonical route parameter name shared by UI, storage, and API callers.
-type ParamID string
-
 // CanonicalParamSpec describes the widest allowed shape for one canonical parameter.
 type CanonicalParamSpec struct {
 	ID      ParamID
 	Label   string
 	Type    string
+	Group   ParamGroupID
 	Options []ParamOption
 	Min     *float64
 	Max     *float64

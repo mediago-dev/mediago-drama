@@ -7,10 +7,11 @@ import (
 )
 
 func TestCatalogCanonicalParamConformance(t *testing.T) {
+	assertCanonicalParamGroups(t)
+
 	for _, route := range Routes() {
 		t.Run(route.ID, func(t *testing.T) {
 			assertRouteParamsAreCanonical(t, route)
-			assertRouteResolutionVocabulary(t, route)
 			assertRouteCombosAreDerived(t, route)
 			assertRouteTranslationConsumesParams(t, route)
 			assertRouteTranslationTargetsAreUnique(t, route)
@@ -18,17 +19,53 @@ func TestCatalogCanonicalParamConformance(t *testing.T) {
 	}
 }
 
+func assertCanonicalParamGroups(t *testing.T) {
+	t.Helper()
+
+	for kind, registry := range paramRegistryByKind {
+		groupIDs := paramGroupIDs(kind)
+		if len(groupIDs) == 0 {
+			t.Fatalf("kind %q has no param group registry", kind)
+		}
+
+		for id, param := range registry {
+			if param.ID != id {
+				t.Fatalf("kind %q canonical param map key %q does not match spec ID %q", kind, id, param.ID)
+			}
+			if !groupIDs[param.Group] {
+				t.Fatalf("kind %q canonical param %q has unregistered group %q", kind, id, param.Group)
+			}
+			if param.Group == ParamGroupSize && id != ParamAspectRatio && id != ParamResolution {
+				t.Fatalf("kind %q canonical param %q is in size group; only aspectRatio/resolution are allowed", kind, id)
+			}
+			if param.Group != ParamGroupOther && param.Type != "select" {
+				if !(param.Group == ParamGroupCount && param.Type == "number") {
+					t.Fatalf("kind %q canonical param %q has non-renderable primary group type %q", kind, id, param.Type)
+				}
+			}
+		}
+	}
+}
+
 func assertRouteParamsAreCanonical(t *testing.T, route ModelRoute) {
 	t.Helper()
 
-	if !reflect.DeepEqual(route.Params, routeParamSpecs(route.CanonicalParams)) {
+	registry, ok := paramRegistryByKind[route.Kind]
+	if !ok {
+		t.Fatalf("route %q kind %q has no canonical param registry", route.ID, route.Kind)
+	}
+
+	if !reflect.DeepEqual(route.Params, routeParamSpecs(route.Kind, route.CanonicalParams)) {
 		t.Fatalf("route.Params is not derived from canonical params\nparams=%#v\ncanonical=%#v", route.Params, route.CanonicalParams)
+	}
+	if !reflect.DeepEqual(route.ParamGroups, routeParamGroups(route.Kind, route.CanonicalParams)) {
+		t.Fatalf("route %q paramGroups is not derived from canonical params\ngroups=%#v\ncanonical=%#v", route.ID, route.ParamGroups, route.CanonicalParams)
 	}
 
 	for _, param := range route.CanonicalParams {
-		canonical, ok := canonicalParamRegistry[param.ID]
+		canonical, ok := registry[param.ID]
 		if !ok {
-			t.Fatalf("canonical param %q is not registered", param.ID)
+			t.Fatalf("route %q param %q is not registered for kind %q", route.ID, param.ID, route.Kind)
 		}
 		assertRouteOptionsNarrowCanonical(t, route, canonical, param)
 		assertRouteBoundsNarrowCanonical(t, route, canonical, param)
@@ -39,6 +76,15 @@ func assertRouteParamsAreCanonical(t *testing.T, route ModelRoute) {
 			}
 		}
 	}
+}
+
+func paramGroupIDs(kind Kind) map[ParamGroupID]bool {
+	groups := paramGroupsByKind[kind]
+	result := make(map[ParamGroupID]bool, len(groups))
+	for _, group := range groups {
+		result[group.ID] = true
+	}
+	return result
 }
 
 func assertRouteOptionsNarrowCanonical(
@@ -76,39 +122,6 @@ func assertRouteBoundsNarrowCanonical(
 	if canonical.Max != nil && param.Max != nil && *param.Max > *canonical.Max {
 		t.Fatalf("route %q param %q max %v is above canonical max %v", route.ID, param.ID, *param.Max, *canonical.Max)
 	}
-}
-
-func assertRouteResolutionVocabulary(t *testing.T, route ModelRoute) {
-	t.Helper()
-
-	param, ok := routeParamByID(route, ParamResolution)
-	if !ok {
-		return
-	}
-
-	allowed, ok := resolutionVocabularyByKind[route.Kind]
-	if !ok {
-		t.Fatalf("route %q declares resolution for unsupported kind %q", route.ID, route.Kind)
-	}
-	for _, option := range param.Options {
-		if !allowed[option.Value] {
-			t.Fatalf("route %q resolution option %q is outside %s vocabulary", route.ID, option.Value, route.Kind)
-		}
-	}
-}
-
-var resolutionVocabularyByKind = map[Kind]map[string]bool{
-	KindImage: {
-		"1K": true,
-		"2K": true,
-		"3K": true,
-		"4K": true,
-	},
-	KindVideo: {
-		"480p":  true,
-		"720p":  true,
-		"1080p": true,
-	},
 }
 
 func assertRouteTranslationConsumesParams(t *testing.T, route ModelRoute) {

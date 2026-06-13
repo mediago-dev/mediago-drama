@@ -291,8 +291,9 @@ func TestUpgradeLegacyRouteParams(t *testing.T) {
 
 func TestUpgradeLegacyRouteParamsTranslatesSameNameMoveValues(t *testing.T) {
 	route := ModelRoute{
-		ID: "test.same-name-move",
-		Params: routeParamSpecs([]RouteParam{
+		ID:   "test.same-name-move",
+		Kind: KindImage,
+		Params: routeParamSpecs(KindImage, []RouteParam{
 			selectRouteParam(ParamResolution, "2K", []ParamOption{
 				{Label: "2K", Value: "2K"},
 				{Label: "4K", Value: "4K"},

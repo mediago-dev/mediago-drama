@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type React from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -98,6 +98,7 @@ const videoParams = [
 		name: "ratio",
 		label: "比例",
 		type: "select",
+		menu: "primary",
 		default: "16:9",
 		options: [
 			{ label: "16:9", value: "16:9" },
@@ -108,10 +109,22 @@ const videoParams = [
 		name: "resolution",
 		label: "分辨率",
 		type: "select",
+		menu: "primary",
 		default: "720p",
 		options: [
 			{ label: "480p", value: "480p" },
 			{ label: "720p", value: "720p" },
+		],
+	},
+	{
+		name: "duration",
+		label: "时长",
+		type: "select",
+		menu: "primary",
+		default: "5",
+		options: [
+			{ label: "4 秒", value: "4" },
+			{ label: "5 秒", value: "5" },
 		],
 	},
 ];
@@ -196,20 +209,26 @@ describe("GenerationWorkspace image spec control", () => {
 		cleanup();
 	});
 
-	it("shows image spec control in the studio composer and keeps only other params in settings", () => {
+	it("shows image spec control in the studio composer and keeps secondary params behind other", () => {
 		vi.mocked(useGenerationWorkspace).mockReturnValue(
 			workspaceDefaults as unknown as ReturnType<typeof useGenerationWorkspace>,
 		);
 
 		renderWorkspace();
 
-		expect(screen.getByRole("button", { name: /图像规格/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /图片大小/ })).toBeTruthy();
+		expect(screen.queryByText("质量")).toBeNull();
+		expect(screen.queryByText("画幅比例")).toBeNull();
+		expect(screen.queryByText("图像尺寸")).toBeNull();
+
+		fireEvent.click(screen.getByRole("button", { name: "其他" }));
+
 		expect(screen.getByText("质量")).toBeTruthy();
 		expect(screen.queryByText("画幅比例")).toBeNull();
 		expect(screen.queryByText("图像尺寸")).toBeNull();
 	});
 
-	it("does not migrate video ratio and resolution params", () => {
+	it("moves video ratio, resolution, and duration into primary controls", () => {
 		vi.mocked(useGenerationWorkspace).mockReturnValue({
 			...workspaceDefaults,
 			kind: "video",
@@ -223,6 +242,7 @@ describe("GenerationWorkspace image spec control", () => {
 			selectedParams: {
 				ratio: "16:9",
 				resolution: "720p",
+				duration: "5",
 			},
 			selectedVersion: { id: "version-video", label: "Video 1" },
 			visibleVersions: [{ id: "version-video", label: "Video 1" }],
@@ -230,8 +250,10 @@ describe("GenerationWorkspace image spec control", () => {
 
 		renderWorkspace();
 
-		expect(screen.queryByRole("button", { name: /图像规格/ })).toBeNull();
-		expect(screen.getByText("比例")).toBeTruthy();
-		expect(screen.getByText("分辨率")).toBeTruthy();
+		expect(screen.getByRole("button", { name: /视频大小/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "秒数：5 秒" })).toBeTruthy();
+		expect(screen.queryByText("比例")).toBeNull();
+		expect(screen.queryByText("分辨率")).toBeNull();
+		expect(screen.queryByText("时长")).toBeNull();
 	});
 });
