@@ -1,7 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GenerationParam } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
-import { ReferenceSelectionDialog } from "./MediaGenerationDialogs";
+import {
+	PrimaryParamControl,
+	ReferenceSelectionDialog,
+	SecondaryParamsDropdown,
+} from "./MediaGenerationDialogs";
 
 const mediaAsset = (overrides: Partial<MediaAsset> = {}): MediaAsset => ({
 	id: "image-1",
@@ -15,7 +20,33 @@ const mediaAsset = (overrides: Partial<MediaAsset> = {}): MediaAsset => ({
 	...overrides,
 });
 
+const durationParam: GenerationParam = {
+	name: "duration",
+	label: "时长",
+	type: "select",
+	menu: "primary",
+	default: "4",
+	options: [
+		{ label: "4 秒", value: "4" },
+		{ label: "5 秒", value: "5" },
+	],
+};
+
+const compressionParam: GenerationParam = {
+	name: "outputCompression",
+	label: "输出压缩",
+	type: "number",
+	menu: "secondary",
+	default: 100,
+	min: 0,
+	max: 100,
+};
+
 describe("ReferenceSelectionDialog", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
 	it("filters reference materials by all, video, and image tabs", () => {
 		render(
 			<ReferenceSelectionDialog
@@ -62,5 +93,64 @@ describe("ReferenceSelectionDialog", () => {
 
 		expect(screen.getByText("still.png")).toBeTruthy();
 		expect(screen.queryByText("scene.mp4")).toBeNull();
+	});
+});
+
+describe("PrimaryParamControl", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+			callback(0);
+			return 0;
+		}) as typeof window.requestAnimationFrame;
+		window.cancelAnimationFrame = vi.fn() as typeof window.cancelAnimationFrame;
+	});
+
+	afterEach(() => {
+		cleanup();
+	});
+
+	it("opens, selects an option, and closes", async () => {
+		const onChange = vi.fn();
+		render(<PrimaryParamControl param={durationParam} value="4" onChange={onChange} />);
+
+		fireEvent.click(screen.getByRole("button", { name: "时长：4 秒" }));
+		await screen.findByRole("dialog", { name: "时长" });
+		fireEvent.click(screen.getByRole("button", { name: "5 秒" }));
+
+		expect(onChange).toHaveBeenCalledWith("5");
+		await waitFor(() => expect(screen.queryByRole("dialog", { name: "时长" })).toBeNull());
+	});
+});
+
+describe("SecondaryParamsDropdown", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+			callback(0);
+			return 0;
+		}) as typeof window.requestAnimationFrame;
+		window.cancelAnimationFrame = vi.fn() as typeof window.cancelAnimationFrame;
+	});
+
+	afterEach(() => {
+		cleanup();
+	});
+
+	it("opens a dropdown form and updates secondary params", async () => {
+		const onChange = vi.fn();
+		render(
+			<SecondaryParamsDropdown
+				params={[compressionParam]}
+				values={{ outputCompression: 100 }}
+				onChange={onChange}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "其他" }));
+		await screen.findByRole("dialog", { name: "其他参数" });
+		fireEvent.change(screen.getByDisplayValue("100"), { target: { value: "80" } });
+
+		expect(onChange).toHaveBeenCalledWith("outputCompression", 80);
 	});
 });

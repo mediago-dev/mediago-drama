@@ -30,12 +30,18 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 	MediaGenerationInputPanel: ({
 		imageSpecControl,
 		previewReferenceAssets = [],
+		primaryParamControls,
+		secondaryParamControls,
 	}: {
 		imageSpecControl?: React.ReactNode;
 		previewReferenceAssets?: MediaAsset[];
+		primaryParamControls?: React.ReactNode;
+		secondaryParamControls?: React.ReactNode;
 	}) => (
 		<div data-testid="generation-input-panel">
 			{imageSpecControl}
+			{primaryParamControls}
+			{secondaryParamControls}
 			{previewReferenceAssets.map((asset) => (
 				<span key={asset.id}>{asset.filename}</span>
 			))}
@@ -44,15 +50,7 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 }));
 
 vi.mock("@/domains/generation/components/MediaGenerationWorkspaceDialogs", () => ({
-	MediaGenerationWorkspaceDialogs: ({
-		advancedRouteParams,
-	}: {
-		advancedRouteParams: Array<{ name: string }>;
-	}) => (
-		<div data-testid="generation-dialog-params">
-			{advancedRouteParams.map((param) => param.name).join(",")}
-		</div>
-	),
+	MediaGenerationWorkspaceDialogs: () => <div data-testid="generation-dialogs" />,
 }));
 
 vi.mock("react-photo-view", () => ({
@@ -388,7 +386,132 @@ describe("MediaGenerationWorkspace", () => {
 			/>,
 		);
 
-		expect(screen.getByRole("button", { name: /图像规格/ })).toBeTruthy();
-		expect(screen.getByTestId("generation-dialog-params").textContent).toBe("quality");
+		expect(screen.getByRole("button", { name: /图片大小/ })).toBeTruthy();
+		expect(screen.queryByText("质量")).toBeNull();
+
+		fireEvent.click(screen.getByRole("button", { name: "其他" }));
+
+		expect(screen.getByText("质量")).toBeTruthy();
+	});
+
+	it("passes video spec and duration as primary controls while keeping only secondary params in other", () => {
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			kind: "video",
+			selectedParams: {
+				aspectRatio: "16:9",
+				resolution: "720p",
+				duration: "5",
+				generateAudio: false,
+			},
+			selectedRoute: {
+				...workspaceDefaults.selectedRoute,
+				kind: "video",
+				params: [
+					{
+						name: "aspectRatio",
+						label: "比例",
+						type: "select",
+						menu: "primary",
+						default: "16:9",
+						options: [
+							{ label: "16:9", value: "16:9" },
+							{ label: "9:16", value: "9:16" },
+						],
+					},
+					{
+						name: "resolution",
+						label: "分辨率",
+						type: "select",
+						menu: "primary",
+						default: "720p",
+						options: [
+							{ label: "480p", value: "480p" },
+							{ label: "720p", value: "720p" },
+						],
+					},
+					{
+						name: "duration",
+						label: "时长",
+						type: "select",
+						menu: "primary",
+						default: "5",
+						options: [
+							{ label: "4 秒", value: "4" },
+							{ label: "5 秒", value: "5" },
+						],
+					},
+					{
+						name: "generateAudio",
+						label: "生成音频",
+						type: "boolean",
+						menu: "secondary",
+						default: false,
+					},
+				],
+			},
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="video"
+			/>,
+		);
+
+		expect(screen.getByRole("button", { name: /视频大小/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "秒数：5 秒" })).toBeTruthy();
+
+		fireEvent.click(screen.getByRole("button", { name: "其他" }));
+
+		expect(screen.getByText("生成音频")).toBeTruthy();
+	});
+
+	it("hides the other entry when there are no secondary params", () => {
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			selectedParams: {
+				aspectRatio: "1:1",
+				resolution: "2K",
+			},
+			selectedRoute: {
+				...workspaceDefaults.selectedRoute,
+				params: [
+					{
+						name: "aspectRatio",
+						label: "画幅比例",
+						type: "select",
+						menu: "primary",
+						default: "1:1",
+						options: [
+							{ label: "1:1", value: "1:1" },
+							{ label: "16:9", value: "16:9" },
+						],
+					},
+					{
+						name: "resolution",
+						label: "分辨率",
+						type: "select",
+						menu: "primary",
+						default: "2K",
+						options: [
+							{ label: "2K", value: "2K" },
+							{ label: "4K", value: "4K" },
+						],
+					},
+				],
+			},
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+			/>,
+		);
+
+		expect(screen.queryByRole("button", { name: "其他" })).toBeNull();
 	});
 });

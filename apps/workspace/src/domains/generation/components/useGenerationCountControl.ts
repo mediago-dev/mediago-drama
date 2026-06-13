@@ -36,13 +36,6 @@ export const useGenerationCountControl = ({
 			generationCountMax,
 		);
 	}, [generationCountMax, generationCountMin, generationCountParam, selectedParams]);
-	const advancedRouteParams = useMemo(
-		() =>
-			generationCountParam
-				? params.filter((param) => param.name !== generationCountParam.name)
-				: params,
-		[generationCountParam, params],
-	);
 	const generationCountControl = useMemo<MediaGenerationCountControlConfig | null>(() => {
 		if (!generationCountParam) return null;
 
@@ -66,7 +59,6 @@ export const useGenerationCountControl = ({
 	]);
 
 	return {
-		advancedRouteParams,
 		generationCountControl,
 	};
 };

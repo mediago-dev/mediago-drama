@@ -112,10 +112,10 @@ func withRouteHelp(param RouteParam, help string) RouteParam {
 	return param
 }
 
-func routeParamSpecs(params []RouteParam) []ParamSpec {
+func routeParamSpecs(kind Kind, params []RouteParam) []ParamSpec {
 	specs := make([]ParamSpec, 0, len(params))
 	for _, param := range params {
-		spec, ok := canonicalParamRegistry[param.ID]
+		spec, ok := CanonicalParam(kind, param.ID)
 		if !ok {
 			specs = append(specs, ParamSpec{
 				Name:    string(param.ID),
@@ -145,6 +145,8 @@ func routeParamSpecs(params []RouteParam) []ParamSpec {
 			Name:    string(param.ID),
 			Label:   spec.Label,
 			Type:    spec.Type,
+			Group:   string(spec.Group),
+			Menu:    string(paramMenuForGroup(spec.Group)),
 			Default: param.Default,
 			Options: cloneOptions(options),
 			Min:     cloneFloatPointer(minValue),
@@ -154,6 +156,44 @@ func routeParamSpecs(params []RouteParam) []ParamSpec {
 	}
 
 	return specs
+}
+
+func routeParamGroups(kind Kind, params []RouteParam) []RouteParamGroup {
+	groupSpecs, ok := paramGroupsByKind[kind]
+	if !ok {
+		return nil
+	}
+
+	paramsByGroup := make(map[ParamGroupID][]string, len(groupSpecs))
+	for _, param := range params {
+		spec, ok := CanonicalParam(kind, param.ID)
+		if !ok {
+			continue
+		}
+		paramsByGroup[spec.Group] = append(paramsByGroup[spec.Group], string(param.ID))
+	}
+
+	groups := make([]RouteParamGroup, 0, len(groupSpecs))
+	for _, groupSpec := range groupSpecs {
+		groupParams := paramsByGroup[groupSpec.ID]
+		if len(groupParams) == 0 {
+			continue
+		}
+		groups = append(groups, RouteParamGroup{
+			ID:     string(groupSpec.ID),
+			Label:  groupSpec.Label,
+			Params: cloneStrings(groupParams),
+		})
+	}
+
+	return groups
+}
+
+func paramMenuForGroup(group ParamGroupID) ParamMenu {
+	if group == ParamGroupOther {
+		return ParamMenuSecondary
+	}
+	return ParamMenuPrimary
 }
 
 func identityParamTranslation(params []RouteParam) ParamTranslation {

@@ -3,8 +3,79 @@ import type {
 	GenerationParam,
 	GenerationParamCombo,
 	GenerationRoute,
+	GenerationRouteParamGroup,
 	GenerationVersion,
 } from "@/domains/generation/api/generation";
+
+const paramGroupByName: Record<string, NonNullable<GenerationParam["group"]>> = {
+	aspectRatio: "size",
+	ratio: "size",
+	resolution: "size",
+	resolutionType: "size",
+	imageSize: "size",
+	duration: "duration",
+	n: "count",
+	quality: "other",
+	outputFormat: "other",
+	outputCompression: "other",
+	moderation: "other",
+	background: "other",
+	watermark: "other",
+	negativePrompt: "other",
+	seed: "other",
+	returnLastFrame: "other",
+	executionExpiresAfter: "other",
+	maxTokens: "other",
+	generateAudio: "other",
+	temperature: "other",
+};
+
+const paramGroupSpecsByKind: Record<GenerationKind, Array<{ id: string; label: string }>> = {
+	image: [
+		{ id: "size", label: "大小" },
+		{ id: "count", label: "数量" },
+		{ id: "other", label: "其他" },
+	],
+	video: [
+		{ id: "size", label: "大小" },
+		{ id: "duration", label: "秒数" },
+		{ id: "other", label: "其他" },
+	],
+	text: [{ id: "other", label: "其他" }],
+};
+
+const withParamGroup = (param: GenerationParam): GenerationParam => {
+	const group = param.group ?? paramGroupByName[param.name] ?? "other";
+	return {
+		...param,
+		group,
+		menu: group === "other" ? "secondary" : "primary",
+	};
+};
+
+const fallbackParamGroups = (
+	kind: GenerationKind,
+	params: GenerationParam[],
+): GenerationRouteParamGroup[] => {
+	const paramsByGroup = new Map<string, string[]>();
+	for (const param of params) {
+		const group = param.group ?? paramGroupByName[param.name] ?? "other";
+		paramsByGroup.set(group, [...(paramsByGroup.get(group) ?? []), param.name]);
+	}
+
+	const groupSpecs = paramGroupSpecsByKind[kind] ?? paramGroupSpecsByKind.image;
+	const extraGroups = Array.from(paramsByGroup.keys()).filter(
+		(group) => !groupSpecs.some((groupSpec) => groupSpec.id === group),
+	);
+	return [...groupSpecs, ...extraGroups.map((group) => ({ id: group, label: "其他" }))].flatMap(
+		(group) => {
+			const groupParams = paramsByGroup.get(group.id) ?? [];
+			if (groupParams.length === 0) return [];
+
+			return [{ ...group, params: groupParams }];
+		},
+	);
+};
 
 export function version(
 	id: string,
@@ -44,6 +115,7 @@ export function route(
 	legacyModelId?: string,
 	paramCombos?: GenerationParamCombo[],
 ): GenerationRoute {
+	const groupedParams = params.map(withParamGroup);
 	return {
 		id,
 		familyId,
@@ -57,7 +129,8 @@ export function route(
 		async,
 		supportsReferenceUrls,
 		status: "available",
-		params,
+		params: groupedParams,
+		paramGroups: fallbackParamGroups(kind, groupedParams),
 		paramCombos,
 		legacyModelId,
 	};
@@ -75,6 +148,7 @@ export function plannedRoute(
 	params: GenerationParam[],
 	paramCombos?: GenerationParamCombo[],
 ): GenerationRoute {
+	const groupedParams = params.map(withParamGroup);
 	return {
 		id,
 		familyId,
@@ -89,7 +163,8 @@ export function plannedRoute(
 		supportsReferenceUrls: false,
 		status: "planned",
 		statusReason: "此官方供应商已收录，但当前构建尚未实现。",
-		params,
+		params: groupedParams,
+		paramGroups: fallbackParamGroups(kind, groupedParams),
 		paramCombos,
 	};
 }
@@ -100,13 +175,13 @@ function selectParam(
 	defaultValue: string,
 	options: { label: string; value: string }[],
 ): GenerationParam {
-	return {
+	return withParamGroup({
 		name,
 		label,
 		type: "select",
 		default: defaultValue,
 		options,
-	};
+	});
 }
 
 function numberParam(
@@ -116,14 +191,14 @@ function numberParam(
 	min: number,
 	max: number,
 ): GenerationParam {
-	return {
+	return withParamGroup({
 		name,
 		label,
 		type: "number",
 		default: defaultValue,
 		min,
 		max,
-	};
+	});
 }
 
 function optionalNumberParam(
@@ -132,31 +207,31 @@ function optionalNumberParam(
 	min: number,
 	max: number,
 ): GenerationParam {
-	return {
+	return withParamGroup({
 		name,
 		label,
 		type: "number",
 		min,
 		max,
-	};
+	});
 }
 
 function boolParam(name: string, label: string, defaultValue: boolean): GenerationParam {
-	return {
+	return withParamGroup({
 		name,
 		label,
 		type: "boolean",
 		default: defaultValue,
-	};
+	});
 }
 
 function textParam(name: string, label: string, defaultValue: string): GenerationParam {
-	return {
+	return withParamGroup({
 		name,
 		label,
 		type: "text",
 		default: defaultValue,
-	};
+	});
 }
 
 export function seedreamParams(): GenerationParam[] {

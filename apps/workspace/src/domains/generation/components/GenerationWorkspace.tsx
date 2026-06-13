@@ -20,6 +20,10 @@ import {
 } from "@/domains/generation/components/imageGenerationSpec";
 import { ImageGenerationSpecControl } from "@/domains/generation/components/ImageGenerationSpecControl";
 import { MaterialLibrary } from "@/domains/generation/components/MaterialLibrary";
+import {
+	PrimaryParamControl,
+	SecondaryParamsDropdown,
+} from "@/domains/generation/components/MediaGenerationDialogs";
 import { ModelParamControls } from "@/domains/generation/components/ModelParamControls";
 import { PromptLibraryPicker } from "@/domains/generation/components/PromptLibraryPicker";
 import { LayeredPromptComposer } from "@/domains/generation/components/LayeredPromptComposer";
@@ -32,6 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui
 import { Textarea } from "@/shared/components/ui/textarea";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import { useGeneratedResultActions } from "@/domains/generation/components/generatedResultActions";
+import { resolveParamGroups } from "@/domains/generation/components/mediaGenerationHelpers";
 import { useToast } from "@/hooks/useToast";
 import { settingsInsetRowClassName } from "@/lib/settings-layout";
 import { cn } from "@/shared/lib/utils";
@@ -200,28 +205,66 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	const generationSummary = isTextGeneration
 		? ws.selectedRoute.model
 		: `${ws.selectedRoute.model} · ${ws.referenceCount} 个参考素材`;
+	const routeParamGroups = useMemo(() => resolveParamGroups(ws.selectedRoute), [ws.selectedRoute]);
+	const sizeGroupParams = useMemo(
+		() => routeParamGroups.find((group) => group.id === "size")?.params ?? [],
+		[routeParamGroups],
+	);
+	const countGroupParams = useMemo(
+		() => routeParamGroups.find((group) => group.id === "count")?.params ?? [],
+		[routeParamGroups],
+	);
+	const otherParamGroup = useMemo(
+		() => routeParamGroups.find((group) => group.id === "other") ?? null,
+		[routeParamGroups],
+	);
 	const imageSpec = useMemo(
 		() =>
-			activeGenerationKind === "image"
-				? resolveImageGenerationSpec(
-						ws.selectedRoute.params,
-						ws.selectedParams,
-						ws.selectedRoute.paramCombos,
-					)
-				: null,
-		[
-			activeGenerationKind,
-			ws.selectedParams,
-			ws.selectedRoute.paramCombos,
-			ws.selectedRoute.params,
-		],
+			resolveImageGenerationSpec(sizeGroupParams, ws.selectedParams, ws.selectedRoute.paramCombos),
+		[sizeGroupParams, ws.selectedParams, ws.selectedRoute.paramCombos],
 	);
-	const paramsWithoutImageSpec = useMemo(
-		() => filterImageGenerationSpecParams(ws.selectedRoute.params, imageSpec),
-		[imageSpec, ws.selectedRoute.params],
-	);
-	const routeGenerationCountParam = ws.selectedRoute.params.find(
+	const routeGenerationCountParam = countGroupParams.find(
 		(param) => param.name === "n" && param.type === "number",
+	);
+	const imageSpecControlledParamNames = useMemo(
+		() => new Set(imageSpec?.controlledParamNames ?? []),
+		[imageSpec],
+	);
+	const primaryParamGroups = useMemo(
+		() =>
+			routeParamGroups.filter(
+				(group) =>
+					group.id !== "size" &&
+					group.id !== "count" &&
+					group.id !== "other" &&
+					group.params.length === 1 &&
+					group.params[0]?.type === "select",
+			),
+		[routeParamGroups],
+	);
+	const renderedPrimaryParamNames = useMemo(() => {
+		const names = new Set(imageSpecControlledParamNames);
+		if (routeGenerationCountParam) names.add(routeGenerationCountParam.name);
+		for (const group of primaryParamGroups) {
+			const param = group.params[0];
+			if (param) names.add(param.name);
+		}
+		return names;
+	}, [imageSpecControlledParamNames, primaryParamGroups, routeGenerationCountParam]);
+	const secondaryRouteParams = useMemo(
+		() =>
+			filterImageGenerationSpecParams(
+				[
+					...(otherParamGroup?.params ?? []),
+					...routeParamGroups.flatMap((group) =>
+						group.id === "other"
+							? []
+							: group.params.filter((param) => !renderedPrimaryParamNames.has(param.name)),
+					),
+				],
+				imageSpec,
+			),
+		[imageSpec, otherParamGroup, renderedPrimaryParamNames, routeParamGroups],
 	);
 	const generationCountMin = routeGenerationCountParam?.min ?? 1;
 	const generationCountMax = routeGenerationCountParam?.max ?? 4;
@@ -252,6 +295,24 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 		);
 		ws.updateParam(routeGenerationCountParam.name, nextCount);
 	};
+	const primaryParamControls = useMemo(
+		() =>
+			primaryParamGroups.map((group) => {
+				const param = group.params[0];
+				if (!param) return null;
+
+				return (
+					<PrimaryParamControl
+						key={`${group.id}:${param.name}`}
+						label={group.label}
+						param={param}
+						value={ws.selectedParams[param.name]}
+						onChange={(value) => ws.updateParam(param.name, value)}
+					/>
+				);
+			}),
+		[primaryParamGroups, ws.selectedParams, ws.updateParam],
+	);
 
 	const generationForm = (
 		<form
@@ -424,11 +485,14 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 							</Select>
 							{imageSpec ? (
 								<ImageGenerationSpecControl
+									label={activeGenerationKind === "video" ? "视频大小" : "图片大小"}
+									showSizePreview={activeGenerationKind === "image"}
 									spec={imageSpec}
 									variant="toolbar"
 									onChange={ws.updateParam}
 								/>
 							) : null}
+							{primaryParamControls}
 							{isTextGeneration || !routeGenerationCountParam ? null : (
 								<Select
 									value={String(selectedGenerationCount)}
@@ -449,6 +513,15 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 									</SelectContent>
 								</Select>
 							)}
+							{secondaryRouteParams.length > 0 ? (
+								<SecondaryParamsDropdown
+									label={otherParamGroup?.label}
+									params={secondaryRouteParams}
+									values={ws.selectedParams}
+									variant="toolbar"
+									onChange={ws.updateParam}
+								/>
+							) : null}
 						</div>
 						{sessionRequiredMessage ? (
 							<span className="text-warning-foreground">{sessionRequiredMessage}</span>
@@ -486,19 +559,8 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 						onRouteChange={ws.updateRoute}
 						showKindToggle={!lockKind}
 					/>
-					{paramsWithoutImageSpec.length > 0 || documentationField ? (
-						<div className="border-t border-border pt-4">
-							<Label className="mb-2 block text-xs text-muted-foreground">参数</Label>
-							<div className="grid gap-3">
-								{documentationField}
-								<ModelParamControls
-									compact
-									params={paramsWithoutImageSpec}
-									values={ws.selectedParams}
-									onChange={ws.updateParam}
-								/>
-							</div>
-						</div>
+					{documentationField ? (
+						<div className="border-t border-border pt-4">{documentationField}</div>
 					) : null}
 				</div>
 			) : (

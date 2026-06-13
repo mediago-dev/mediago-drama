@@ -13,10 +13,19 @@ import { cn } from "@/shared/lib/utils";
 
 export const ImageGenerationSpecControl: React.FC<{
 	className?: string;
+	label?: string;
 	onChange: (name: string, value: unknown) => void;
+	showSizePreview?: boolean;
 	spec: ImageGenerationSpec;
 	variant?: "compact" | "toolbar";
-}> = ({ className, onChange, spec, variant = "compact" }) => {
+}> = ({
+	className,
+	label = "图像规格",
+	onChange,
+	showSizePreview = true,
+	spec,
+	variant = "compact",
+}) => {
 	const [open, setOpen] = useState(false);
 	const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(
 		null,
@@ -91,7 +100,7 @@ export const ImageGenerationSpecControl: React.FC<{
 				type="button"
 				aria-expanded={open}
 				aria-haspopup="dialog"
-				aria-label={`图像规格：${triggerRatioLabel}，${triggerResolutionLabel}`}
+				aria-label={`${label}：${triggerRatioLabel}，${triggerResolutionLabel}`}
 				className={cn(
 					"inline-flex min-w-0 items-center gap-2 border border-border bg-ide-editor font-medium text-foreground shadow-sm transition-colors hover:bg-ide-list-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 					variant === "toolbar"
@@ -110,7 +119,7 @@ export const ImageGenerationSpecControl: React.FC<{
 				<div
 					ref={popoverRef}
 					role="dialog"
-					aria-label="图像规格"
+					aria-label={label}
 					className="fixed z-50 grid w-[min(34rem,calc(100vw-1rem))] gap-4 rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-xl"
 					style={{
 						left: popoverPosition.left,
@@ -131,7 +140,7 @@ export const ImageGenerationSpecControl: React.FC<{
 						type="resolution"
 						onSelect={(option) => applyOption("resolution", option)}
 					/>
-					<SizePreview preview={spec.sizePreview} />
+					{showSizePreview ? <SizePreview preview={spec.sizePreview} /> : null}
 				</div>
 			) : null}
 		</div>

@@ -1,6 +1,16 @@
-import { Check, Film, LayoutGrid, Loader2, UploadCloud, X } from "lucide-react";
+import {
+	Check,
+	ChevronDown,
+	Film,
+	LayoutGrid,
+	Loader2,
+	SlidersHorizontal,
+	UploadCloud,
+	X,
+} from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { GenerationParam } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import {
 	buildGeneratedReferenceOptions,
@@ -11,11 +21,13 @@ import {
 import { GenerationVideoThumbnail } from "@/domains/generation/components/GenerationVideoThumbnail";
 import { ModelParamControls } from "@/domains/generation/components/ModelParamControls";
 import { ReferencePreviewStrip } from "@/domains/generation/components/ReferencePreviewStrip";
-import { RouteSelectors } from "@/domains/generation/components/RouteSelectors";
 import { Button } from "@/shared/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import {
 	generationStatusLabel,
+	paramHelp,
+	paramLabel,
+	paramOptionLabel,
 	type GenerationEntry,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { cn } from "@/shared/lib/utils";
@@ -108,6 +120,8 @@ export const GenerationCountControl: React.FC<{
 			{open && popoverPosition ? (
 				<div
 					ref={popoverRef}
+					role="dialog"
+					aria-label="生成数量"
 					className="fixed z-50 w-56 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl"
 					style={{
 						left: popoverPosition.left,
@@ -143,6 +157,257 @@ export const GenerationCountControl: React.FC<{
 							);
 						})}
 					</div>
+				</div>
+			) : null}
+		</div>
+	);
+};
+
+export const PrimaryParamControl: React.FC<{
+	label?: string;
+	onChange: (value: string) => void;
+	param: GenerationParam;
+	value: unknown;
+}> = ({ label: triggerLabel, onChange, param, value }) => {
+	const [open, setOpen] = useState(false);
+	const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(
+		null,
+	);
+	const rootRef = useRef<HTMLDivElement>(null);
+	const popoverRef = useRef<HTMLDivElement>(null);
+	const triggerRef = useRef<HTMLButtonElement>(null);
+	const options = param.options ?? [];
+	const selectedValue = String(value ?? param.default ?? options[0]?.value ?? "");
+	const selectedOption = options.find((option) => option.value === selectedValue) ?? options[0];
+	const label = paramLabel(param.label);
+	const controlLabel = triggerLabel ?? label;
+	const selectedLabel = selectedOption ? paramOptionLabel(selectedOption.label) : "未选择";
+
+	const updatePopoverPosition = useCallback(() => {
+		const trigger = triggerRef.current;
+		if (!trigger) return;
+
+		const rect = trigger.getBoundingClientRect();
+		const popoverRect = popoverRef.current?.getBoundingClientRect();
+		const popoverWidth = popoverRect?.width ?? 224;
+		const popoverHeight = popoverRect?.height ?? 280;
+		const margin = 8;
+		setPopoverPosition({
+			left: clampNumber(
+				rect.left + rect.width / 2 - popoverWidth / 2,
+				margin,
+				window.innerWidth - popoverWidth - margin,
+			),
+			top: clampNumber(
+				rect.top - popoverHeight - margin,
+				margin,
+				window.innerHeight - popoverHeight - margin,
+			),
+		});
+	}, []);
+
+	useEffect(() => {
+		if (!open) return;
+
+		updatePopoverPosition();
+		const animationFrameId = window.requestAnimationFrame(updatePopoverPosition);
+		const closeOnOutsidePointerDown = (event: PointerEvent) => {
+			if (rootRef.current?.contains(event.target as Node)) return;
+
+			setOpen(false);
+		};
+		const closeOnEscape = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setOpen(false);
+		};
+
+		document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+		document.addEventListener("keydown", closeOnEscape);
+		window.addEventListener("resize", updatePopoverPosition);
+		window.addEventListener("scroll", updatePopoverPosition, true);
+		return () => {
+			window.cancelAnimationFrame(animationFrameId);
+			document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+			document.removeEventListener("keydown", closeOnEscape);
+			window.removeEventListener("resize", updatePopoverPosition);
+			window.removeEventListener("scroll", updatePopoverPosition, true);
+		};
+	}, [open, updatePopoverPosition]);
+
+	if (options.length === 0) return null;
+
+	return (
+		<div ref={rootRef} className="relative shrink-0">
+			<button
+				ref={triggerRef}
+				type="button"
+				aria-expanded={open}
+				aria-haspopup="dialog"
+				aria-label={`${controlLabel}：${selectedLabel}`}
+				className={cn(
+					"flex h-7 max-w-36 items-center gap-1.5 rounded-full border px-2 text-xs font-medium transition-colors",
+					open
+						? "border-primary bg-primary text-primary-foreground"
+						: "border-border bg-card text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+				)}
+				onClick={() => setOpen((current) => !current)}
+			>
+				<span className="truncate">
+					{controlLabel}: {selectedLabel}
+				</span>
+				<ChevronDown className="size-3 shrink-0" />
+			</button>
+			{open && popoverPosition ? (
+				<div
+					ref={popoverRef}
+					role="dialog"
+					aria-label={label}
+					className="fixed z-50 w-56 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl"
+					style={{
+						left: popoverPosition.left,
+						top: popoverPosition.top,
+					}}
+				>
+					<div className="mb-3">
+						<p className="text-sm font-semibold">{label}</p>
+						{param.help ? (
+							<p className="mt-0.5 text-xs text-muted-foreground">{paramHelp(param.help)}</p>
+						) : null}
+					</div>
+					<div className="grid grid-cols-2 gap-1.5">
+						{options.map((option) => {
+							const optionLabel = paramOptionLabel(option.label);
+							const selected = option.value === selectedValue;
+
+							return (
+								<button
+									key={option.value}
+									type="button"
+									className={cn(
+										"flex h-8 min-w-0 items-center justify-center rounded-md border px-2 text-xs font-medium transition-colors",
+										selected
+											? "border-primary bg-primary text-primary-foreground"
+											: "border-border bg-card text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+									)}
+									onClick={() => {
+										onChange(option.value);
+										setOpen(false);
+									}}
+								>
+									<span className="truncate">{optionLabel}</span>
+								</button>
+							);
+						})}
+					</div>
+				</div>
+			) : null}
+		</div>
+	);
+};
+
+export const SecondaryParamsDropdown: React.FC<{
+	label?: string;
+	onChange: (name: string, value: unknown) => void;
+	params: GenerationParam[];
+	values: Record<string, unknown>;
+	variant?: "compact" | "toolbar";
+}> = ({ label = "其他", onChange, params, values, variant = "compact" }) => {
+	const [open, setOpen] = useState(false);
+	const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(
+		null,
+	);
+	const rootRef = useRef<HTMLDivElement>(null);
+	const popoverRef = useRef<HTMLDivElement>(null);
+	const triggerRef = useRef<HTMLButtonElement>(null);
+
+	const updatePopoverPosition = useCallback(() => {
+		const trigger = triggerRef.current;
+		if (!trigger) return;
+
+		const rect = trigger.getBoundingClientRect();
+		const popoverRect = popoverRef.current?.getBoundingClientRect();
+		const popoverWidth = popoverRect?.width ?? 384;
+		const popoverHeight = popoverRect?.height ?? 360;
+		const margin = 8;
+		const preferredTop = rect.top - popoverHeight - margin;
+		setPopoverPosition({
+			left: clampNumber(
+				rect.right - popoverWidth,
+				margin,
+				window.innerWidth - popoverWidth - margin,
+			),
+			top:
+				preferredTop >= margin
+					? preferredTop
+					: clampNumber(rect.bottom + margin, margin, window.innerHeight - popoverHeight - margin),
+		});
+	}, []);
+
+	useEffect(() => {
+		if (!open) return;
+
+		updatePopoverPosition();
+		const animationFrameId = window.requestAnimationFrame(updatePopoverPosition);
+		const closeOnOutsidePointerDown = (event: PointerEvent) => {
+			if (rootRef.current?.contains(event.target as Node)) return;
+
+			setOpen(false);
+		};
+		const closeOnEscape = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setOpen(false);
+		};
+
+		document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+		document.addEventListener("keydown", closeOnEscape);
+		window.addEventListener("resize", updatePopoverPosition);
+		window.addEventListener("scroll", updatePopoverPosition, true);
+		return () => {
+			window.cancelAnimationFrame(animationFrameId);
+			document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+			document.removeEventListener("keydown", closeOnEscape);
+			window.removeEventListener("resize", updatePopoverPosition);
+			window.removeEventListener("scroll", updatePopoverPosition, true);
+		};
+	}, [open, updatePopoverPosition]);
+
+	if (params.length === 0) return null;
+
+	return (
+		<div ref={rootRef} className="relative shrink-0">
+			<button
+				ref={triggerRef}
+				type="button"
+				aria-expanded={open}
+				aria-haspopup="dialog"
+				aria-label={label}
+				className={cn(
+					"inline-flex min-w-0 items-center gap-1.5 border font-medium transition-colors",
+					variant === "toolbar"
+						? "h-9 max-w-60 rounded-md border-border bg-ide-editor px-3 text-xs text-foreground shadow-none hover:bg-ide-list-hover"
+						: "h-7 rounded-full border-border bg-card px-2 text-2xs text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+					open && "border-primary bg-ide-list-active text-ide-list-active-foreground",
+				)}
+				onClick={() => setOpen((current) => !current)}
+			>
+				<SlidersHorizontal
+					className={variant === "toolbar" ? "size-4 shrink-0" : "size-3.5 shrink-0"}
+				/>
+				<span>{label}</span>
+			</button>
+			{open && popoverPosition ? (
+				<div
+					ref={popoverRef}
+					role="dialog"
+					aria-label={`${label}参数`}
+					className="fixed z-50 max-h-[min(32rem,calc(100vh-1rem))] w-[min(24rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-xl"
+					style={{
+						left: popoverPosition.left,
+						top: popoverPosition.top,
+					}}
+				>
+					<div className="mb-3">
+						<p className="text-sm font-semibold">{label}</p>
+					</div>
+					<ModelParamControls compact params={params} values={values} onChange={onChange} />
 				</div>
 			) : null}
 		</div>
@@ -357,93 +622,6 @@ const referenceKindFilterLabel = (value: ReferenceKindFilter) => {
 	if (value === "video") return "视频";
 	if (value === "image") return "图片";
 	return "参考";
-};
-
-export const AdvancedSettingsDialog: React.FC<{
-	hasConfiguredRoutesForKind: boolean;
-	modelSummary: string;
-	onOpenChange: (open: boolean) => void;
-	open: boolean;
-	paramControlsProps: React.ComponentProps<typeof ModelParamControls>;
-	routeSelectorsProps: React.ComponentProps<typeof RouteSelectors>;
-}> = ({
-	hasConfiguredRoutesForKind,
-	modelSummary,
-	onOpenChange,
-	open,
-	paramControlsProps,
-	routeSelectorsProps,
-}) => {
-	useEffect(() => {
-		if (!open) return;
-
-		const closeOnEscape = (event: KeyboardEvent) => {
-			if (event.key !== "Escape") return;
-
-			event.preventDefault();
-			event.stopPropagation();
-			event.stopImmediatePropagation();
-			onOpenChange(false);
-		};
-
-		window.addEventListener("keydown", closeOnEscape, true);
-		return () => window.removeEventListener("keydown", closeOnEscape, true);
-	}, [onOpenChange, open]);
-
-	if (!open) return null;
-
-	return (
-		<div
-			data-state="open"
-			className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 p-4 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200"
-			onMouseDown={(event) => {
-				if (event.target === event.currentTarget) onOpenChange(false);
-			}}
-		>
-			<section
-				data-state="open"
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="generation-advanced-title"
-				className="flex max-h-[min(42rem,calc(100vh-2rem))] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-2xl data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200"
-			>
-				<header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
-					<div className="min-w-0">
-						<h3
-							id="generation-advanced-title"
-							className="truncate text-sm font-semibold text-foreground"
-						>
-							高级设置
-						</h3>
-						<p className="mt-1 truncate text-xs text-muted-foreground">{modelSummary}</p>
-					</div>
-					<Button type="button" variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
-						<X className="size-4" />
-					</Button>
-				</header>
-				<div className="min-h-0 flex-1 overflow-y-auto p-4">
-					{hasConfiguredRoutesForKind ? (
-						<div className="grid gap-5">
-							<RouteSelectors {...routeSelectorsProps} />
-							{paramControlsProps.params.length > 0 ? (
-								<div className="border-t border-border pt-4">
-									<ModelParamControls {...paramControlsProps} />
-								</div>
-							) : (
-								<p className="rounded-sm border border-dashed border-border bg-ide-editor p-4 text-xs text-muted-foreground">
-									当前模型没有额外参数。
-								</p>
-							)}
-						</div>
-					) : (
-						<p className="rounded-sm border border-dashed border-border bg-ide-editor p-4 text-xs text-muted-foreground">
-							暂无可用生成供应商，请先完成模型接入配置。
-						</p>
-					)}
-				</div>
-			</section>
-		</div>
-	);
 };
 
 const GeneratedReferenceOptionCard: React.FC<{

@@ -22,6 +22,7 @@ func cloneVersions(versions []ModelVersion) []ModelVersion {
 func cloneRoute(route ModelRoute) ModelRoute {
 	route.AuthKeys = cloneStrings(route.AuthKeys)
 	route.Params = cloneParams(route.Params)
+	route.ParamGroups = cloneRouteParamGroups(route.ParamGroups)
 	route.Combos = cloneParamCombos(route.Combos)
 	route.CanonicalParams = cloneRouteParams(route.CanonicalParams)
 	route.Translation = cloneParamTranslation(route.Translation)
@@ -52,6 +53,26 @@ func cloneParams(params []ParamSpec) []ParamSpec {
 	}
 
 	return result
+}
+
+func cloneRouteParamGroups(groups []RouteParamGroup) []RouteParamGroup {
+	if groups == nil {
+		return nil
+	}
+	result := make([]RouteParamGroup, len(groups))
+	for index, group := range groups {
+		group.Params = cloneStrings(group.Params)
+		result[index] = group
+	}
+
+	return result
+}
+
+func cloneCanonicalParamSpec(spec CanonicalParamSpec) CanonicalParamSpec {
+	spec.Options = cloneOptions(spec.Options)
+	spec.Min = cloneFloatPointer(spec.Min)
+	spec.Max = cloneFloatPointer(spec.Max)
+	return spec
 }
 
 func cloneRouteParams(params []RouteParam) []RouteParam {

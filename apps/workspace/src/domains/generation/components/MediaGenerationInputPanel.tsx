@@ -1,4 +1,4 @@
-import { Clipboard, Loader2, Plus, SendHorizontal, SlidersHorizontal } from "lucide-react";
+import { Clipboard, Loader2, Plus, SendHorizontal } from "lucide-react";
 import type React from "react";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import { GenerationCountControl } from "@/domains/generation/components/MediaGenerationDialogs";
@@ -22,16 +22,17 @@ export const MediaGenerationInputPanel: React.FC<{
 	isSubmitting: boolean;
 	modelSummary: string;
 	onCopyPrompt?: () => void;
-	onOpenAdvancedSettings: () => void;
 	onOpenReferenceDialog: () => void;
 	onRemoveReferencePreview: (asset: MediaAsset) => void;
 	previewReferenceAssets: MediaAsset[];
 	layeredComposer?: React.ReactNode;
+	primaryParamControls?: React.ReactNode;
 	promptEditor: React.ReactNode;
 	promptExtras: React.ReactNode;
 	promptLibraryPicker?: React.ReactNode;
 	referenceBadges?: Record<string, string>;
 	requiresReference: boolean;
+	secondaryParamControls?: React.ReactNode;
 	showReferencePreviewStrip: boolean;
 	submitLabel: string;
 }> = ({
@@ -45,15 +46,16 @@ export const MediaGenerationInputPanel: React.FC<{
 	modelSummary,
 	layeredComposer,
 	onCopyPrompt,
-	onOpenAdvancedSettings,
 	onOpenReferenceDialog,
 	onRemoveReferencePreview,
 	previewReferenceAssets,
 	promptEditor,
 	promptExtras,
 	promptLibraryPicker,
+	primaryParamControls,
 	referenceBadges,
 	requiresReference,
+	secondaryParamControls,
 	showReferencePreviewStrip,
 	submitLabel,
 }) => (
@@ -118,6 +120,7 @@ export const MediaGenerationInputPanel: React.FC<{
 				</div>
 				<div className="flex min-w-0 shrink-0 items-center gap-2">
 					{imageSpecControl}
+					{primaryParamControls}
 					{generationCountControl ? (
 						<GenerationCountControl
 							max={generationCountControl.max}
@@ -126,16 +129,7 @@ export const MediaGenerationInputPanel: React.FC<{
 							onChange={generationCountControl.onChange}
 						/>
 					) : null}
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						className="h-7 rounded-full px-2 text-2xs font-medium text-muted-foreground hover:bg-ide-list-hover hover:text-foreground [&_svg]:size-3.5"
-						onClick={onOpenAdvancedSettings}
-					>
-						<SlidersHorizontal />
-						<span>高级设置</span>
-					</Button>
+					{secondaryParamControls}
 					<Button
 						type="submit"
 						size="icon"

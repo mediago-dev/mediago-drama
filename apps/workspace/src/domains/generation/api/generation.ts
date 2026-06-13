@@ -23,11 +23,13 @@ import type {
 	Kind,
 	ModelFamily,
 	ParamCombo,
+	ParamGroupID,
 	ModelRoute,
 	ModelSpec,
 	ModelVersion,
 	ParamOption,
 	ParamSpec,
+	RouteParamGroup,
 	ProviderInfo,
 	ProviderType,
 	RouteStatus,
@@ -41,6 +43,8 @@ export type GenerationProviderType = ProviderType;
 export type GenerationRouteStatus = RouteStatus;
 export type GenerationCapabilities = Capabilities;
 export type GenerationParamCombo = ParamCombo;
+export type GenerationParamGroupID = ParamGroupID;
+export type GenerationRouteParamGroup = RouteParamGroup;
 export type GenerationParamOption = ParamOption;
 export type GenerationParam = ParamSpec;
 export type GenerationFamily = ModelFamily;

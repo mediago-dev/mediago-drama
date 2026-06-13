@@ -46,6 +46,7 @@ export interface ModelRoute {
 	status: RouteStatus;
 	statusReason?: string;
 	params: ParamSpec[];
+	paramGroups?: RouteParamGroup[];
 	paramCombos?: ParamCombo[];
 	legacyModelId?: string;
 	configured?: boolean;
@@ -64,16 +65,27 @@ export interface ModelSpec {
 	params: ParamSpec[];
 }
 
+export type ParamMenu = "primary" | "secondary";
+export type ParamGroupID = "size" | "duration" | "count" | "other";
+
 export interface ParamSpec {
 	name: string;
 	label: string;
 	type: string;
+	group?: ParamGroupID | string;
+	menu?: ParamMenu;
 	default?: unknown;
 	options?: ParamOption[];
 	required?: boolean;
 	min?: number;
 	max?: number;
 	help?: string;
+}
+
+export interface RouteParamGroup {
+	id: ParamGroupID | string;
+	label: string;
+	params: string[];
 }
 
 export interface ParamOption {

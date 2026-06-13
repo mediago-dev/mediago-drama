@@ -16,6 +16,10 @@ import {
 import { ImageGenerationSpecControl } from "@/domains/generation/components/ImageGenerationSpecControl";
 import { MediaGenerationInputPanel } from "@/domains/generation/components/MediaGenerationInputPanel";
 import { MediaGenerationWorkspaceDialogs } from "@/domains/generation/components/MediaGenerationWorkspaceDialogs";
+import {
+	PrimaryParamControl,
+	SecondaryParamsDropdown,
+} from "@/domains/generation/components/MediaGenerationDialogs";
 import { PromptLibraryPicker } from "@/domains/generation/components/PromptLibraryPicker";
 import { ReferencePreviewStrip } from "@/domains/generation/components/ReferencePreviewStrip";
 import { LayeredPromptComposer } from "@/domains/generation/components/LayeredPromptComposer";
@@ -25,6 +29,7 @@ import {
 	entryPromptText,
 	mediaAssetIdFromGeneratedSource,
 	mergeReferencePreviewAssets,
+	resolveParamGroups,
 } from "@/domains/generation/components/mediaGenerationHelpers";
 import { GenerationResultGallery } from "@/domains/generation/components/MediaGenerationResultGallery";
 import {
@@ -139,7 +144,6 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	viewMode,
 }) => {
 	const toast = useToast();
-	const [advancedOpen, setAdvancedOpen] = useState(false);
 	const [inlineHistoryReferences, setInlineHistoryReferences] = useState<MediaAsset[]>([]);
 	const [inlineResultReferences, setInlineResultReferences] = useState<MediaAsset[]>([]);
 	const [referenceDialogOpen, setReferenceDialogOpen] = useState(false);
@@ -262,26 +266,103 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	);
 	const canSelectReferenceImages =
 		ws.hasConfiguredRoutesForKind && ws.selectedRoute.supportsReferenceUrls;
-	const { advancedRouteParams, generationCountControl } = useGenerationCountControl({
-		hasConfiguredRoutesForKind: ws.hasConfiguredRoutesForKind,
-		onParamChange: ws.updateParam,
-		params: ws.selectedRoute.params,
-		selectedParams: ws.selectedParams,
-	});
+	const routeParamGroups = useMemo(() => resolveParamGroups(ws.selectedRoute), [ws.selectedRoute]);
+	const sizeGroupParams = useMemo(
+		() => routeParamGroups.find((group) => group.id === "size")?.params ?? [],
+		[routeParamGroups],
+	);
+	const countGroupParams = useMemo(
+		() => routeParamGroups.find((group) => group.id === "count")?.params ?? [],
+		[routeParamGroups],
+	);
+	const otherParamGroup = useMemo(
+		() => routeParamGroups.find((group) => group.id === "other") ?? null,
+		[routeParamGroups],
+	);
 	const imageSpec = useMemo(
 		() =>
-			kind === "image"
-				? resolveImageGenerationSpec(
-						ws.selectedRoute.params,
-						ws.selectedParams,
-						ws.selectedRoute.paramCombos,
-					)
-				: null,
-		[kind, ws.selectedParams, ws.selectedRoute.paramCombos, ws.selectedRoute.params],
+			resolveImageGenerationSpec(sizeGroupParams, ws.selectedParams, ws.selectedRoute.paramCombos),
+		[sizeGroupParams, ws.selectedParams, ws.selectedRoute.paramCombos],
 	);
-	const filteredAdvancedRouteParams = useMemo(
-		() => filterImageGenerationSpecParams(advancedRouteParams, imageSpec),
-		[advancedRouteParams, imageSpec],
+	const { generationCountControl } = useGenerationCountControl({
+		hasConfiguredRoutesForKind: ws.hasConfiguredRoutesForKind,
+		onParamChange: ws.updateParam,
+		params: countGroupParams,
+		selectedParams: ws.selectedParams,
+	});
+	const generationCountParamName = useMemo(
+		() => countGroupParams.find((param) => param.name === "n" && param.type === "number")?.name,
+		[countGroupParams],
+	);
+	const imageSpecControlledParamNames = useMemo(
+		() => new Set(imageSpec?.controlledParamNames ?? []),
+		[imageSpec],
+	);
+	const primaryParamGroups = useMemo(
+		() =>
+			routeParamGroups.filter(
+				(group) =>
+					group.id !== "size" &&
+					group.id !== "count" &&
+					group.id !== "other" &&
+					group.params.length === 1 &&
+					group.params[0]?.type === "select",
+			),
+		[routeParamGroups],
+	);
+	const renderedPrimaryParamNames = useMemo(() => {
+		const names = new Set(imageSpecControlledParamNames);
+		if (generationCountParamName) names.add(generationCountParamName);
+		for (const group of primaryParamGroups) {
+			const param = group.params[0];
+			if (param) names.add(param.name);
+		}
+		return names;
+	}, [generationCountParamName, imageSpecControlledParamNames, primaryParamGroups]);
+	const secondaryRouteParams = useMemo(
+		() =>
+			filterImageGenerationSpecParams(
+				[
+					...(otherParamGroup?.params ?? []),
+					...routeParamGroups.flatMap((group) =>
+						group.id === "other"
+							? []
+							: group.params.filter((param) => !renderedPrimaryParamNames.has(param.name)),
+					),
+				],
+				imageSpec,
+			),
+		[imageSpec, otherParamGroup, renderedPrimaryParamNames, routeParamGroups],
+	);
+	const primaryParamControls = useMemo(
+		() =>
+			primaryParamGroups.map((group) => {
+				const param = group.params[0];
+				if (!param) return null;
+
+				return (
+					<PrimaryParamControl
+						key={`${group.id}:${param.name}`}
+						label={group.label}
+						param={param}
+						value={ws.selectedParams[param.name]}
+						onChange={(value) => ws.updateParam(param.name, value)}
+					/>
+				);
+			}),
+		[primaryParamGroups, ws.selectedParams, ws.updateParam],
+	);
+	const secondaryParamControls = useMemo(
+		() =>
+			secondaryRouteParams.length > 0 ? (
+				<SecondaryParamsDropdown
+					label={otherParamGroup?.label}
+					params={secondaryRouteParams}
+					values={ws.selectedParams}
+					onChange={ws.updateParam}
+				/>
+			) : null,
+		[otherParamGroup?.label, secondaryRouteParams, ws.selectedParams, ws.updateParam],
 	);
 	const previewReferenceAssets = useMemo(
 		() => mergeReferencePreviewAssets(ws.selectedReferenceAssets, resolvedReferencePreviewAssets),
@@ -543,12 +624,18 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 						generationCountControl={generationCountControl}
 						imageSpecControl={
 							imageSpec ? (
-								<ImageGenerationSpecControl spec={imageSpec} onChange={ws.updateParam} />
+								<ImageGenerationSpecControl
+									label={kind === "video" ? "视频大小" : "图片大小"}
+									showSizePreview={kind === "image"}
+									spec={imageSpec}
+									onChange={ws.updateParam}
+								/>
 							) : null
 						}
 						isSubmitting={ws.isSubmitting}
 						modelSummary={modelSummary}
 						previewReferenceAssets={previewReferenceAssets}
+						primaryParamControls={primaryParamControls}
 						layeredComposer={
 							<LayeredPromptComposer layers={ws.composerLayers} onSelect={ws.setLayerSelection} />
 						}
@@ -563,12 +650,12 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 						}
 						referenceBadges={resolvedReferenceBadges}
 						requiresReference={false}
+						secondaryParamControls={secondaryParamControls}
 						showReferencePreviewStrip={showReferencePreviewStrip}
 						submitLabel={resolvedSubmitLabel}
 						onCopyPrompt={() =>
 							void resultActions.copyText(ws.fullPrompt, "没有可复制的完整提示词")
 						}
-						onOpenAdvancedSettings={() => setAdvancedOpen(true)}
 						onOpenReferenceDialog={() => setReferenceDialogOpen(true)}
 						onRemoveReferencePreview={removePreviewReferenceAsset}
 					/>
@@ -576,13 +663,9 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			</div>
 
 			<MediaGenerationWorkspaceDialogs
-				advancedOpen={advancedOpen}
-				advancedRouteParams={filteredAdvancedRouteParams}
 				generationEntries={generationEntries}
-				modelSummary={modelSummary}
 				referenceDialogOpen={referenceDialogOpen}
 				workspace={ws}
-				onAdvancedOpenChange={setAdvancedOpen}
 				onReferenceDialogOpenChange={setReferenceDialogOpen}
 			/>
 		</form>
