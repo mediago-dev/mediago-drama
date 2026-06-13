@@ -3,7 +3,6 @@ import {
 	ChevronDown,
 	Film,
 	Images,
-	LayoutGrid,
 	Loader2,
 	SlidersHorizontal,
 	UploadCloud,
@@ -19,7 +18,6 @@ import {
 	type GeneratedReferenceOption,
 } from "@/domains/generation/components/mediaGenerationHelpers";
 import { GenerationVideoThumbnail } from "@/domains/generation/components/GenerationVideoThumbnail";
-import { ModelParamControls } from "@/domains/generation/components/ModelParamControls";
 import { ReferencePreviewStrip } from "@/domains/generation/components/ReferencePreviewStrip";
 import { Button } from "@/shared/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
@@ -38,8 +36,7 @@ export const GenerationCountControl: React.FC<{
 	min: number;
 	onChange: (value: number) => void;
 	value: number;
-	variant?: "compact" | "toolbar";
-}> = ({ max, min, onChange, value, variant = "compact" }) => {
+}> = ({ max, min, onChange, value }) => {
 	const [open, setOpen] = useState(false);
 	const options = useMemo(
 		() => Array.from({ length: max - min + 1 }, (_, index) => min + index),
@@ -54,52 +51,25 @@ export const GenerationCountControl: React.FC<{
 					aria-label={`生成数量：${value}`}
 					className={cn(
 						"flex items-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-						variant === "toolbar"
-							? "h-[var(--generation-control-height)] rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs font-semibold text-foreground hover:bg-ide-list-hover"
-							: "h-7 rounded-full border px-2 text-xs font-medium",
-						variant === "compact" &&
-							(open
-								? "border-primary bg-primary text-primary-foreground"
-								: "border-border bg-card text-muted-foreground hover:bg-ide-list-hover hover:text-foreground"),
-						variant === "toolbar" && open && "bg-ide-list-active text-ide-list-active-foreground",
+						"h-[var(--generation-control-height)] rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs font-semibold text-foreground hover:bg-ide-list-hover",
+						open && "bg-ide-list-active text-ide-list-active-foreground",
 					)}
 				>
-					{variant === "toolbar" ? (
-						<Images className="size-4 shrink-0 text-muted-foreground" />
-					) : (
-						<LayoutGrid className="size-3.5" />
-					)}
-					<span>{variant === "toolbar" ? `数量 ${value}` : `${value}x`}</span>
-					{variant === "toolbar" ? (
-						<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-					) : null}
+					<Images className="size-4 shrink-0 text-muted-foreground" />
+					<span>数量 {value}</span>
+					<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
 				</button>
 			</PopoverTrigger>
 			<PopoverContent
 				side="top"
-				align={variant === "toolbar" ? "end" : "center"}
+				align="end"
 				aria-label="生成数量"
-				className={cn(
-					"w-[min(var(--generation-count-popover-width),var(--generation-popover-max-inline))] border-border bg-popover text-popover-foreground shadow-2xl",
-					variant === "toolbar"
-						? "rounded-[var(--generation-popover-radius)] p-[var(--generation-popover-padding)]"
-						: "rounded-[var(--generation-popover-radius)] p-[var(--generation-popover-padding-lg)]",
-				)}
+				className="w-[min(var(--generation-count-popover-width),var(--generation-popover-max-inline))] rounded-[var(--generation-popover-radius)] border-border bg-popover p-[var(--generation-popover-padding)] text-popover-foreground shadow-2xl"
 			>
-				{variant === "toolbar" ? (
-					<div className="mb-2 px-2">
-						<p className="text-xs font-semibold text-muted-foreground">数量</p>
-					</div>
-				) : (
-					<>
-						<div className="mb-3">
-							<p className="text-sm font-semibold">生成数量</p>
-							<p className="mt-0.5 text-xs text-muted-foreground">一次生成多个候选结果</p>
-						</div>
-						<div className="mb-2 text-2xs font-semibold text-muted-foreground">候选数量</div>
-					</>
-				)}
-				<div className={cn(variant === "toolbar" ? "grid gap-2" : "grid grid-cols-2 gap-1.5")}>
+				<div className="mb-2 px-2">
+					<p className="text-xs font-semibold text-muted-foreground">数量</p>
+				</div>
+				<div className="grid gap-2">
 					{options.map((option) => {
 						const selected = option === value;
 
@@ -109,26 +79,18 @@ export const GenerationCountControl: React.FC<{
 								type="button"
 								className={cn(
 									"transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-									variant === "toolbar"
-										? "flex h-[var(--generation-count-option-height)] items-center justify-between rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-xs font-semibold"
-										: "flex h-8 items-center justify-center rounded-md border text-xs font-medium",
-									variant === "toolbar"
-										? selected
-											? "bg-ide-list-active text-ide-list-active-foreground"
-											: "text-foreground hover:bg-muted"
-										: selected
-											? "border-primary bg-primary text-primary-foreground"
-											: "border-border bg-card text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+									"flex h-[var(--generation-count-option-height)] items-center justify-between rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-xs font-semibold",
+									selected
+										? "bg-ide-list-active text-ide-list-active-foreground"
+										: "text-foreground hover:bg-muted",
 								)}
 								onClick={() => {
 									onChange(option);
 									setOpen(false);
 								}}
 							>
-								<span>{variant === "toolbar" ? option : option === 1 ? "1" : `${option}x`}</span>
-								{variant === "toolbar" && selected ? (
-									<Check className="size-5 text-primary" />
-								) : null}
+								<span>{option}</span>
+								{selected ? <Check className="size-5 text-primary" /> : null}
 							</button>
 						);
 					})}
@@ -161,21 +123,20 @@ export const PrimaryParamControl: React.FC<{
 					type="button"
 					aria-label={`${controlLabel}：${selectedLabel}`}
 					className={cn(
-						"flex h-[var(--generation-control-height-lg)] max-w-[var(--generation-primary-trigger-max-width)] items-center gap-1.5 rounded-full border px-[var(--generation-control-padding-x)] text-xs font-medium transition-colors",
-						open
-							? "border-primary bg-primary text-primary-foreground"
-							: "border-border bg-card text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+						"flex min-w-0 items-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+						"h-[var(--generation-control-height)] max-w-48 rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs font-semibold text-foreground shadow-none hover:bg-ide-list-hover",
+						open && "bg-ide-list-active text-ide-list-active-foreground",
 					)}
 				>
 					<span className="truncate">
 						{controlLabel}: {selectedLabel}
 					</span>
-					<ChevronDown className="size-3 shrink-0" />
+					<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
 				</button>
 			</PopoverTrigger>
 			<PopoverContent
 				side="top"
-				align="center"
+				align="end"
 				aria-label={label}
 				className="w-[min(var(--generation-primary-popover-width),var(--generation-popover-max-inline))] rounded-[var(--generation-popover-radius)] border-border bg-popover p-[var(--generation-popover-padding-lg)] text-popover-foreground shadow-xl"
 			>
@@ -220,8 +181,7 @@ export const SecondaryParamsDropdown: React.FC<{
 	onChange: (name: string, value: unknown) => void;
 	params: GenerationParam[];
 	values: Record<string, unknown>;
-	variant?: "compact" | "toolbar";
-}> = ({ label = "其他", onChange, params, values, variant = "compact" }) => {
+}> = ({ label = "其他", onChange, params, values }) => {
 	const [open, setOpen] = useState(false);
 	const triggerLabel = label === "Other" ? "其他" : paramLabel(label);
 
@@ -235,42 +195,22 @@ export const SecondaryParamsDropdown: React.FC<{
 					aria-label={triggerLabel}
 					className={cn(
 						"inline-flex min-w-0 items-center gap-1.5 border font-medium transition-colors",
-						variant === "toolbar"
-							? "h-[var(--generation-control-height)] max-w-48 rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs font-semibold text-foreground shadow-none hover:bg-ide-list-hover"
-							: "h-7 rounded-full border-border bg-card px-2 text-2xs text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+						"h-[var(--generation-control-height)] max-w-48 rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs font-semibold text-foreground shadow-none hover:bg-ide-list-hover",
 						open && "border-primary bg-ide-list-active text-ide-list-active-foreground",
 					)}
 				>
-					<SlidersHorizontal
-						className={variant === "toolbar" ? "size-4 shrink-0" : "size-3.5 shrink-0"}
-					/>
+					<SlidersHorizontal className="size-4 shrink-0" />
 					<span>{triggerLabel}</span>
-					{variant === "toolbar" ? (
-						<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-					) : null}
+					<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
 				</button>
 			</PopoverTrigger>
 			<PopoverContent
 				side="top"
 				align="end"
 				aria-label={`${triggerLabel}参数`}
-				className={cn(
-					"max-h-[var(--generation-popover-max-block)] overflow-y-auto border-border bg-popover text-popover-foreground shadow-2xl",
-					variant === "toolbar"
-						? "w-[min(var(--generation-other-popover-width),var(--generation-popover-max-inline))] rounded-[var(--generation-popover-radius)] p-[var(--generation-popover-padding)]"
-						: "w-[min(var(--generation-other-compact-popover-width),var(--generation-popover-max-inline))] rounded-[var(--generation-popover-radius)] p-[var(--generation-popover-padding-xl)]",
-				)}
+				className="max-h-[var(--generation-popover-max-block)] w-[min(var(--generation-other-popover-width),var(--generation-popover-max-inline))] overflow-y-auto rounded-[var(--generation-popover-radius)] border-border bg-popover p-[var(--generation-popover-padding)] text-popover-foreground shadow-2xl"
 			>
-				{variant === "toolbar" ? (
-					<SecondaryParamSettings params={params} values={values} onChange={onChange} />
-				) : (
-					<>
-						<div className="mb-3">
-							<p className="text-sm font-semibold">{triggerLabel}</p>
-						</div>
-						<ModelParamControls compact params={params} values={values} onChange={onChange} />
-					</>
-				)}
+				<SecondaryParamSettings params={params} values={values} onChange={onChange} />
 			</PopoverContent>
 		</Popover>
 	);

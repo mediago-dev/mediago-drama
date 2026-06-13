@@ -32,20 +32,12 @@ vi.mock("@/domains/generation/components/MaterialLibrary", () => ({
 	MaterialLibrary: () => <div data-testid="material-library" />,
 }));
 
-vi.mock("@/domains/generation/components/PromptLibraryPicker", () => ({
-	PromptLibraryPicker: () => null,
-}));
-
 vi.mock("@/domains/generation/components/LayeredPromptComposer", () => ({
 	LayeredPromptComposer: () => null,
 }));
 
 vi.mock("@/domains/generation/components/ReferencePreviewStrip", () => ({
 	ReferencePreviewStrip: () => null,
-}));
-
-vi.mock("@/domains/generation/components/RouteSelectors", () => ({
-	RouteSelectors: () => <div data-testid="route-selectors" />,
 }));
 
 vi.mock("@/domains/generation/components/generatedResultActions", () => ({
@@ -137,6 +129,7 @@ const workspaceDefaults = {
 	composerLayers: [],
 	error: null,
 	filteredMediaAssets: [],
+	fullPrompt: "",
 	generationEntries: [],
 	hasConfiguredRoutesForKind: true,
 	hasLiveCatalog: true,
@@ -245,7 +238,9 @@ describe("GenerationWorkspace image spec control", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "其他" }));
 
-		expect(screen.getByText("质量")).toBeTruthy();
+		expect(
+			screen.getAllByText("质量").some((element) => !element.classList.contains("sr-only")),
+		).toBe(true);
 		expect(screen.queryByText("画幅比例")).toBeNull();
 		expect(screen.queryByText("图像尺寸")).toBeNull();
 	});

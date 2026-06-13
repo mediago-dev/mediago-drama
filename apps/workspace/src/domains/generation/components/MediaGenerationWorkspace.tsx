@@ -1,4 +1,4 @@
-import { Clipboard, ExternalLink, PencilLine } from "lucide-react";
+import { Clipboard, FileText, PencilLine } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +20,11 @@ import {
 	generationFamilyBrand,
 	generationModelBrand,
 } from "@/domains/generation/components/GenerationBrandMark";
+import {
+	generationComposerPromptInputFillClassName,
+	generationComposerSelectClassName,
+	generationComposerToolbarGhostButtonClassName,
+} from "@/domains/generation/components/GenerationComposerPanel";
 import { GenerationModelRoutePicker } from "@/domains/generation/components/GenerationModelRoutePicker";
 import { MediaGenerationInputPanel } from "@/domains/generation/components/MediaGenerationInputPanel";
 import { MediaGenerationWorkspaceDialogs } from "@/domains/generation/components/MediaGenerationWorkspaceDialogs";
@@ -27,7 +32,6 @@ import {
 	PrimaryParamControl,
 	SecondaryParamsDropdown,
 } from "@/domains/generation/components/MediaGenerationDialogs";
-import { PromptLibraryPicker } from "@/domains/generation/components/PromptLibraryPicker";
 import { ReferencePreviewStrip } from "@/domains/generation/components/ReferencePreviewStrip";
 import { LayeredPromptComposer } from "@/domains/generation/components/LayeredPromptComposer";
 import type { GenerationTaskType } from "@/domains/generation/lib/prompt-layers";
@@ -192,7 +196,6 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		startInputPanelResize,
 	} = useMediaGenerationWorkspaceLayout({ rightPaneRef, workspaceRef });
 	const generatedKindLabel = kind === "image" ? "图像" : "视频";
-	const promptLibraryKind = kind === "video" ? "video" : "image";
 	const resolvedSubmitLabel = submitLabel ?? (kind === "image" ? "生成图片" : "生成视频");
 	const resolvedPromptPlaceholder =
 		promptPlaceholder ??
@@ -272,7 +275,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
 				<SelectTrigger
 					aria-label="模型类型"
-					className={mediaGenerationModelControlClassName("max-w-40")}
+					className={generationComposerSelectClassName("max-w-40")}
 				>
 					<GenerationBrandMark brand={selectedFamilyBrand} className="size-4 text-[0.5rem]" />
 					<span>{ws.selectedFamily.label}</span>
@@ -292,7 +295,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				</SelectContent>
 			</Select>
 			<GenerationModelRoutePicker
-				className="h-8 max-w-56 rounded-sm px-2"
+				className="max-w-56"
 				routes={ws.visibleFamilyRoutes}
 				selectedRoute={ws.selectedRoute}
 				selectedVersion={ws.selectedVersion}
@@ -304,10 +307,10 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				variant="ghost"
 				size="sm"
 				aria-label="打开模型文档"
-				className="h-8 shrink-0 rounded-sm border-0 bg-transparent px-1.5 text-xs font-medium text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground [&_svg]:size-3.5"
+				className={generationComposerToolbarGhostButtonClassName()}
 				onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
 			>
-				<ExternalLink className="size-3.5 shrink-0" />
+				<FileText className="size-4 shrink-0 text-muted-foreground" />
 				<span>文档</span>
 			</Button>
 		</div>
@@ -569,12 +572,14 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			value: ws.prompt,
 			placeholder: resolvedPromptPlaceholder,
 			onChange: ws.setPrompt,
+			className: generationComposerPromptInputFillClassName,
 		})
 	) : (
 		<PromptEditor
 			value={ws.prompt}
 			onChange={ws.setPrompt}
 			placeholder={resolvedPromptPlaceholder}
+			className={generationComposerPromptInputFillClassName}
 		/>
 	);
 
@@ -705,22 +710,20 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 						previewReferenceAssets={previewReferenceAssets}
 						primaryParamControls={primaryParamControls}
 						layeredComposer={
-							<LayeredPromptComposer layers={ws.composerLayers} onSelect={ws.setLayerSelection} />
+							<LayeredPromptComposer
+								layers={ws.composerLayers}
+								variant="composer"
+								onSelect={ws.setLayerSelection}
+							/>
 						}
 						promptEditor={promptEditor}
 						promptExtras={renderedPromptExtras}
-						promptLibraryPicker={
-							<PromptLibraryPicker
-								kind={promptLibraryKind}
-								prompt={ws.prompt}
-								onPromptChange={ws.setPrompt}
-							/>
-						}
 						referenceBadges={resolvedReferenceBadges}
 						requiresReference={false}
 						secondaryParamControls={secondaryParamControls}
 						showReferencePreviewStrip={showReferencePreviewStrip}
 						submitLabel={resolvedSubmitLabel}
+						submitTone={kind === "video" ? "video" : "image"}
 						onCopyPrompt={() =>
 							void resultActions.copyText(ws.fullPrompt, "没有可复制的完整提示词")
 						}
@@ -872,12 +875,6 @@ const resolveStringArrayExtraValue = (
 	value: GenerationExtraValue<string[]>,
 	prompt: string,
 ): string[] => (typeof value === "function" ? value(prompt) : value);
-
-const mediaGenerationModelControlClassName = (className?: string) =>
-	cn(
-		"h-8 w-auto rounded-sm border-border bg-card px-2 text-xs font-medium shadow-none hover:bg-ide-list-hover [&_svg]:size-3.5",
-		className,
-	);
 
 const uniqueStrings = (values: string[]) => {
 	const seen = new Set<string>();

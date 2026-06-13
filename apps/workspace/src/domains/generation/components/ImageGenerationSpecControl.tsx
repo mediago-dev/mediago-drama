@@ -17,15 +17,7 @@ export const ImageGenerationSpecControl: React.FC<{
 	onChange: (name: string, value: unknown) => void;
 	showSizePreview?: boolean;
 	spec: ImageGenerationSpec;
-	variant?: "compact" | "toolbar";
-}> = ({
-	className,
-	label = "图像规格",
-	onChange,
-	showSizePreview = true,
-	spec,
-	variant = "compact",
-}) => {
+}> = ({ className, label = "图像规格", onChange, showSizePreview = true, spec }) => {
 	const [open, setOpen] = useState(false);
 
 	const applyOption = (axis: SpecAxis, option: SpecOption) => {
@@ -50,20 +42,16 @@ export const ImageGenerationSpecControl: React.FC<{
 					aria-label={`${label}：${triggerRatioLabel}，${triggerResolutionLabel}`}
 					className={cn(
 						"inline-flex min-w-0 items-center gap-2 border font-semibold text-foreground transition-colors hover:bg-ide-list-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-						variant === "toolbar"
-							? "h-[var(--generation-control-height)] max-w-56 rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs shadow-none"
-							: "h-7 max-w-64 rounded-full border-border bg-card px-2.5 text-2xs shadow-sm",
+						"h-[var(--generation-control-height)] max-w-56 rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs shadow-none",
 						open && "border-primary bg-ide-list-active text-ide-list-active-foreground shadow-none",
 						className,
 					)}
 				>
-					<Scan className={variant === "toolbar" ? "size-4 shrink-0" : "size-3.5 shrink-0"} />
+					<Scan className="size-4 shrink-0" />
 					<span className="min-w-0 truncate">{triggerRatioLabel}</span>
 					<span className="h-3.5 w-px shrink-0 bg-border" aria-hidden="true" />
 					<span className="min-w-0 truncate">{triggerResolutionLabel}</span>
-					{variant === "toolbar" ? (
-						<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-					) : null}
+					<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
 				</button>
 			</PopoverTrigger>
 			<PopoverContent

@@ -1,9 +1,11 @@
-import { Clipboard, Loader2, Plus, SendHorizontal } from "lucide-react";
 import type React from "react";
 import type { MediaAsset } from "@/domains/workspace/api/media";
+import {
+	GenerationComposerPanel,
+	type GenerationComposerSubmitTone,
+} from "@/domains/generation/components/GenerationComposerPanel";
 import { GenerationCountControl } from "@/domains/generation/components/MediaGenerationDialogs";
 import { ReferencePreviewStrip } from "@/domains/generation/components/ReferencePreviewStrip";
-import { Button } from "@/shared/components/ui/button";
 
 export interface MediaGenerationCountControlConfig {
 	max: number;
@@ -30,12 +32,12 @@ export const MediaGenerationInputPanel: React.FC<{
 	primaryParamControls?: React.ReactNode;
 	promptEditor: React.ReactNode;
 	promptExtras: React.ReactNode;
-	promptLibraryPicker?: React.ReactNode;
 	referenceBadges?: Record<string, string>;
 	requiresReference: boolean;
 	secondaryParamControls?: React.ReactNode;
 	showReferencePreviewStrip: boolean;
 	submitLabel: string;
+	submitTone?: GenerationComposerSubmitTone;
 }> = ({
 	canSelectReferenceImages,
 	canCopyPrompt = false,
@@ -53,99 +55,62 @@ export const MediaGenerationInputPanel: React.FC<{
 	previewReferenceAssets,
 	promptEditor,
 	promptExtras,
-	promptLibraryPicker,
 	primaryParamControls,
 	referenceBadges,
 	requiresReference,
 	secondaryParamControls,
 	showReferencePreviewStrip,
 	submitLabel,
+	submitTone = "image",
 }) => (
-	<section className="flex min-h-0 min-w-0 flex-col bg-card">
-		<div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-ide-editor">
-			{promptExtras}
-			{showReferencePreviewStrip ? (
-				<div className="shrink-0 px-4 pt-3">
-					<ReferencePreviewStrip
-						tone="card"
-						disabled={!canSelectReferenceImages}
-						enableImagePreview
-						referenceBadges={referenceBadges}
-						references={previewReferenceAssets}
-						requiresReference={requiresReference}
-						simple
-						onRemove={onRemoveReferencePreview}
+	<GenerationComposerPanel
+		canCopyPrompt={canCopyPrompt}
+		canSelectReference={canSelectReferenceImages}
+		canSubmit={canSubmit}
+		className="h-full min-h-0 bg-card"
+		error={error}
+		errorTone="error"
+		fillHeight
+		isSubmitting={isSubmitting}
+		layeredComposer={layeredComposer}
+		leftControls={
+			<>
+				{modelControls ?? <p className="truncate text-xs text-muted-foreground">{modelSummary}</p>}
+			</>
+		}
+		promptExtras={promptExtras}
+		promptInput={promptEditor}
+		referencePreview={
+			showReferencePreviewStrip ? (
+				<ReferencePreviewStrip
+					disabled={!canSelectReferenceImages}
+					enableImagePreview
+					referenceBadges={referenceBadges}
+					references={previewReferenceAssets}
+					requiresReference={requiresReference}
+					simple
+					onRemove={onRemoveReferencePreview}
+				/>
+			) : null
+		}
+		rightControls={
+			<>
+				{imageSpecControl}
+				{primaryParamControls}
+				{generationCountControl ? (
+					<GenerationCountControl
+						max={generationCountControl.max}
+						min={generationCountControl.min}
+						value={generationCountControl.value}
+						onChange={generationCountControl.onChange}
 					/>
-				</div>
-			) : null}
-			{layeredComposer || onCopyPrompt ? (
-				<div className="flex shrink-0 items-center justify-between gap-3 px-4 pt-2">
-					<div className="min-w-0 flex-1">{layeredComposer}</div>
-					{onCopyPrompt ? (
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon"
-							aria-label="复制完整提示词"
-							title="复制完整提示词"
-							disabled={!canCopyPrompt}
-							className="size-7 shrink-0 rounded-sm border border-border bg-card text-muted-foreground shadow-none hover:bg-ide-list-hover hover:text-foreground disabled:bg-card disabled:text-muted-foreground [&_svg]:size-3.5"
-							onClick={onCopyPrompt}
-						>
-							<Clipboard />
-						</Button>
-					) : null}
-				</div>
-			) : null}
-			{promptEditor}
-			{error ? (
-				<p className="mx-4 mb-4 shrink-0 rounded-sm border border-error-border bg-error-surface px-3 py-2 text-xs text-error-foreground">
-					{error}
-				</p>
-			) : null}
-			<div className="flex shrink-0 items-center justify-between gap-3 px-3 py-2">
-				<div className="flex min-w-0 items-center gap-2 overflow-x-auto">
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon"
-						aria-label="选择参考图"
-						title="选择参考图"
-						disabled={!canSelectReferenceImages}
-						className="size-7 rounded-full border border-border bg-card text-muted-foreground shadow-none hover:bg-ide-list-hover hover:text-foreground [&_svg]:size-3.5"
-						onClick={onOpenReferenceDialog}
-					>
-						<Plus />
-					</Button>
-					{promptLibraryPicker}
-					{modelControls ?? (
-						<p className="truncate text-xs text-muted-foreground">{modelSummary}</p>
-					)}
-				</div>
-				<div className="flex min-w-0 shrink-0 items-center gap-2">
-					{imageSpecControl}
-					{primaryParamControls}
-					{generationCountControl ? (
-						<GenerationCountControl
-							max={generationCountControl.max}
-							min={generationCountControl.min}
-							value={generationCountControl.value}
-							onChange={generationCountControl.onChange}
-						/>
-					) : null}
-					{secondaryParamControls}
-					<Button
-						type="submit"
-						size="icon"
-						aria-label={submitLabel}
-						title={submitLabel}
-						disabled={!canSubmit}
-						className="size-7 rounded-full bg-foreground text-background shadow-none hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground [&_svg]:size-3.5"
-					>
-						{isSubmitting ? <Loader2 className="animate-spin" /> : <SendHorizontal />}
-					</Button>
-				</div>
-			</div>
-		</div>
-	</section>
+				) : null}
+				{secondaryParamControls}
+			</>
+		}
+		submitLabel={submitLabel}
+		submitTone={submitTone}
+		onCopyPrompt={onCopyPrompt}
+		onOpenReferenceDialog={onOpenReferenceDialog}
+	/>
 );
