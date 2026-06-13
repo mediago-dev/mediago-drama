@@ -26,7 +26,7 @@ func jimengSeedanceParams() RouteParamConfig {
 			{Label: "720p", Value: "720p"},
 			{Label: "1080p", Value: "1080p"},
 		}),
-		withRouteHelp(selectRouteParam(ParamDuration, "5", jimengSeedanceDurationOptions()), "即梦 CLI 支持 4-15 秒视频。"),
+		withRouteHelp(selectRouteParam(ParamDuration, "5", jimengSeedanceDurationOptions()), "即梦支持 4-15 秒视频。"),
 	}
 	return routeParamConfig(params, ParamTranslation{
 		Moves: []ParamMove{

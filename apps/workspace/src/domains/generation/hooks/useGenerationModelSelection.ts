@@ -114,6 +114,10 @@ export const useGenerationModelSelection = ({
 			),
 		[catalog.versions, configuredRoutes, selectedFamily.id],
 	);
+	const visibleFamilyRoutes = useMemo(
+		() => configuredRoutes.filter((routeItem) => routeItem.familyId === selectedFamily.id),
+		[configuredRoutes, selectedFamily.id],
+	);
 
 	useEffect(() => {
 		if (visibleVersions.length === 0) return;
@@ -312,6 +316,20 @@ export const useGenerationModelSelection = ({
 		[selectedVersion.id],
 	);
 
+	const updateModelRoute = useCallback(
+		(versionID: string, routeID: string) => {
+			setSelectedVersionIds((current) => ({
+				...current,
+				[selectedFamily.id]: versionID,
+			}));
+			setSelectedRouteIds((current) => ({
+				...current,
+				[versionID]: routeID,
+			}));
+		},
+		[selectedFamily.id],
+	);
+
 	const updateParam = useCallback(
 		(name: string, value: unknown) => {
 			setRouteParams((current) => ({
@@ -346,7 +364,9 @@ export const useGenerationModelSelection = ({
 		updateFamily,
 		updateParam,
 		updateRoute,
+		updateModelRoute,
 		updateVersion,
+		visibleFamilyRoutes,
 		visibleFamilies,
 		visibleRoutes,
 		visibleVersions,
