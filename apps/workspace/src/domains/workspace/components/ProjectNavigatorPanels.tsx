@@ -57,7 +57,7 @@ const workModeOptions: {
 	mode: WorkMode;
 }[] = [
 	{ mode: "agent", label: "智能体" },
-	{ mode: "studio", label: "创作台" },
+	{ mode: "studio", label: "工具箱" },
 ];
 
 interface StudioToolItem {
@@ -70,10 +70,6 @@ interface StudioToolItem {
 	statusLabel?: string;
 	value: string;
 }
-
-const BookOpenIcon = iconByName("BookOpen");
-const ScanSearchIcon = iconByName("ScanSearch");
-const AudioLinesIcon = iconByName("AudioLines");
 
 const fallbackStudioToolItems: StudioToolItem[] = [
 	{
@@ -99,33 +95,6 @@ const fallbackStudioToolItems: StudioToolItem[] = [
 		label: "文本生成",
 		sourceIndex: 2,
 		value: "text.generate",
-	},
-	{
-		category: "understanding",
-		icon: <BookOpenIcon />,
-		label: "小说理解",
-		available: false,
-		sourceIndex: 3,
-		statusLabel: "Coming soon",
-		value: "novel.understand",
-	},
-	{
-		category: "understanding",
-		icon: <ScanSearchIcon />,
-		label: "视频理解",
-		available: false,
-		sourceIndex: 4,
-		statusLabel: "Coming soon",
-		value: "video.understand",
-	},
-	{
-		category: "understanding",
-		icon: <AudioLinesIcon />,
-		label: "音频转录",
-		available: false,
-		sourceIndex: 5,
-		statusLabel: "Coming soon",
-		value: "audio.transcribe",
 	},
 ];
 
@@ -299,7 +268,7 @@ export const StudioTypesScreen: React.FC<{
 	);
 };
 
-const categoryOrder: CapabilityRecord["category"][] = ["generation", "understanding", "processing"];
+const categoryOrder: CapabilityRecord["category"][] = ["generation", "processing"];
 
 const categoryLabels: Record<CapabilityRecord["category"], string> = {
 	generation: "生成",

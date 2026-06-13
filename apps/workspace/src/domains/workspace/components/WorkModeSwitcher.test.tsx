@@ -17,7 +17,7 @@ describe("WorkModeSwitcher", () => {
 		const switcher = screen.getByLabelText("工作模式");
 
 		expect(within(switcher).getByRole("button", { name: "智能体" }).textContent).toBe("智能体");
-		expect(within(switcher).getByRole("button", { name: "创作台" }).textContent).toBe("创作台");
+		expect(within(switcher).getByRole("button", { name: "工具箱" }).textContent).toBe("工具箱");
 		expect(container.querySelector("svg")).toBeNull();
 	});
 
@@ -25,12 +25,12 @@ describe("WorkModeSwitcher", () => {
 		const onSelectMode = vi.fn();
 		render(<WorkModeSwitcher activeMode="agent" onSelectMode={onSelectMode} />);
 
-		fireEvent.click(screen.getByRole("button", { name: "创作台" }));
+		fireEvent.click(screen.getByRole("button", { name: "工具箱" }));
 
 		expect(onSelectMode).toHaveBeenCalledWith("studio");
 	});
 
-	it("renders disabled coming soon studio tools without removed slicing tools", () => {
+	it("does not render disabled understanding studio tools", () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), revalidateOnMount: false }}>
 				<StudioTypesScreen
@@ -44,15 +44,13 @@ describe("WorkModeSwitcher", () => {
 			</SWRConfig>,
 		);
 
+		expect(screen.queryByText("理解")).toBeNull();
 		expect(screen.queryByText("小说切片")).toBeNull();
 		expect(screen.queryByText("视频切片")).toBeNull();
-
-		for (const label of ["小说理解", "视频理解", "音频转录"]) {
-			const button = screen.getByText(label).closest("button");
-			expect(button?.disabled).toBe(true);
-			expect(within(button as HTMLButtonElement).getByText("Coming soon")).toBeTruthy();
-			fireEvent.click(button as HTMLButtonElement);
-		}
+		expect(screen.queryByText("小说理解")).toBeNull();
+		expect(screen.queryByText("视频理解")).toBeNull();
+		expect(screen.queryByText("音频转录")).toBeNull();
+		expect(screen.queryByText("Coming soon")).toBeNull();
 	});
 
 	it("keeps generation tools clickable when routes are not configured", () => {
