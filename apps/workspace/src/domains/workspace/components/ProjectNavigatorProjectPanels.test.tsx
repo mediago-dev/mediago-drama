@@ -31,6 +31,12 @@ const document: MarkdownDocument = {
 	workbenchDraft: null,
 };
 
+const secondDocument: MarkdownDocument = {
+	...document,
+	id: "doc-b",
+	title: "第二集",
+};
+
 describe("ProjectSidebarPanel", () => {
 	beforeEach(() => {
 		useDocumentViewStore.setState({ mode: "category" });
@@ -60,13 +66,35 @@ describe("ProjectSidebarPanel", () => {
 		expect(documentItemClassName()).not.toContain("bg-ide-list-active");
 	});
 
-	it("keeps active highlights when active selection is enabled", () => {
+	it("highlights overview instead of the store document when no document is in the URL", () => {
 		renderProjectSidebar(true);
 
 		expect(screen.getByRole("button", { name: "项目概览" }).className).toContain(
 			"bg-ide-list-active",
 		);
-		expect(documentItemClassName()).toContain("bg-ide-list-active");
+		expect(documentItemClassName("第一集")).not.toContain("bg-ide-list-active");
+	});
+
+	it("uses the URL document as the first sidebar highlight source", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: project.id,
+			documents: [document, secondDocument],
+			folders: [],
+			assets: [],
+		});
+		useDocumentsStore.getState().selectDocument(document.id);
+
+		renderProjectSidebar(true, {
+			isOverviewActive: false,
+			locationSearch: "?projectId=project-a&documentId=doc-b",
+		});
+
+		expect(screen.getByRole("button", { name: "项目概览" }).className).not.toContain(
+			"bg-ide-list-active",
+		);
+		expect(documentItemClassName("第一集")).not.toContain("bg-ide-list-active");
+		expect(documentItemClassName("第二集")).toContain("bg-ide-list-active");
 	});
 
 	it("renders category headers without counts and moves document actions to right click", () => {
@@ -146,5 +174,5 @@ const renderProjectSidebar = (
 		/>,
 	);
 
-const documentItemClassName = () =>
-	(screen.getByRole("button", { name: "第一集" }).parentElement as HTMLElement).className;
+const documentItemClassName = (name = "第一集") =>
+	(screen.getByRole("button", { name }).parentElement as HTMLElement).className;

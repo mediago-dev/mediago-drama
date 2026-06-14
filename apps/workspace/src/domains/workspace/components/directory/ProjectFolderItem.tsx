@@ -236,8 +236,8 @@ export const ProjectFolderItem: React.FC<{
 						type="button"
 						onClick={() => onToggleFolder(folder.id)}
 						className={cn(
-							"flex min-w-0 flex-1 items-center gap-1.5 text-left",
-							canMutate && "cursor-pointer touch-none select-none",
+							"flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left",
+							canMutate && "touch-none select-none",
 							isDragging && "opacity-40",
 						)}
 						title={canMutate ? "拖拽移动文件夹" : undefined}

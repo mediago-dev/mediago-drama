@@ -35,8 +35,9 @@ import {
 import {
 	agentProjectPath,
 	agentProjectRouteState,
+	getRouteAssetId,
+	getRouteDocumentId,
 	getRouteProjectId,
-	isAgentProjectViewState,
 	isProjectSettingsRoute,
 	settingsPath,
 	studioTabPath,
@@ -122,7 +123,9 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	const studioSearchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
 	const activeStudioTab = studioTabFromPath(location.pathname);
 	const activeStudioConversationId = studioSearchParams.get("conversation") ?? "";
-	const isOverviewActive = isAgentProjectViewState(location.state, "overview");
+	const routeDocumentId = getRouteDocumentId(location.search);
+	const routeAssetId = getRouteAssetId(location.search);
+	const isOverviewActive = !routeDocumentId && !routeAssetId;
 	const showProjectSidebarActiveSelection = agentLayoutTab === "document";
 	const settingsScreenIsProjectSettings = usesProjectSettingsSidebar(
 		activeScreen,
@@ -141,19 +144,15 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		setAgentLayoutTab("document");
 	}, [setAgentLayoutTab]);
 
-	const showAgentPane = useCallback(() => {
-		setAgentLayoutTab("agent");
-	}, [setAgentLayoutTab]);
-
 	const openProject = useCallback(
 		(project: WorkspaceProject) => {
-			showAgentPane();
+			showDocumentPane();
 			setActiveProjectId(project.id);
 			navigate(agentProjectPath(project.id), {
 				state: agentProjectRouteState("overview"),
 			});
 		},
-		[navigate, setActiveProjectId, showAgentPane],
+		[navigate, setActiveProjectId, showDocumentPane],
 	);
 
 	const openDocument = useCallback(
@@ -161,7 +160,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 			showDocumentPane();
 			setActiveProjectId(project.id);
 			selectDocument(documentId);
-			navigate(agentProjectPath(project.id), {
+			navigate(agentProjectPath(project.id, { documentId }), {
 				state: agentProjectRouteState("document"),
 			});
 		},
@@ -173,7 +172,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 			showDocumentPane();
 			setActiveProjectId(project.id);
 			selectAsset(assetId);
-			navigate(agentProjectPath(project.id), {
+			navigate(agentProjectPath(project.id, { assetId }), {
 				state: agentProjectRouteState("document"),
 			});
 		},
@@ -189,7 +188,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 			showDocumentPane();
 			setActiveProjectId(target.projectId);
 			selectDocument(target.documentId);
-			navigate(agentProjectPath(target.projectId), {
+			navigate(agentProjectPath(target.projectId, { documentId: target.documentId }), {
 				state: agentProjectRouteState("document"),
 			});
 		},
@@ -239,7 +238,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 				deletedIdSet.has(activeDocumentId)
 			) {
 				navigate(agentProjectPath(project.id), {
-					state: agentProjectRouteState("document"),
+					state: agentProjectRouteState("overview"),
 				});
 			}
 
@@ -251,7 +250,15 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 						: `已删除“${documentTitle}”。`,
 			});
 		},
-		[activeDocumentId, deleteDocument, documentsProjectId, location.pathname, navigate, toast],
+		[
+			activeDocumentId,
+			deleteDocument,
+			documentsProjectId,
+			location.pathname,
+			location.search,
+			navigate,
+			toast,
+		],
 	);
 
 	const deleteProjectAssetRecord = useCallback(
@@ -268,7 +275,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 				await mutateSWR(workspaceDocumentsKey(project.id));
 				if (activeAssetId === assetId) {
 					navigate(agentProjectPath(project.id), {
-						state: agentProjectRouteState("document"),
+						state: agentProjectRouteState("overview"),
 					});
 				}
 				toast.success("素材已删除", { description: filename || "未命名文件" });
@@ -357,7 +364,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 						showDocumentPane();
 						setActiveProjectId(displayProject.id);
 						selectAsset(asset.id);
-						navigate(agentProjectPath(displayProject.id), {
+						navigate(agentProjectPath(displayProject.id, { assetId: asset.id }), {
 							state: agentProjectRouteState("document"),
 						});
 						toast.success("素材已上传", { description: asset.filename || choice.file.name });
@@ -382,7 +389,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 			showDocumentPane();
 			setActiveProjectId(displayProject.id);
 			selectDocument(document.id);
-			navigate(agentProjectPath(displayProject.id), {
+			navigate(agentProjectPath(displayProject.id, { documentId: document.id }), {
 				state: agentProjectRouteState("document"),
 			});
 			toast.success("文档已创建", { description: document.title || "未命名文档" });
@@ -416,7 +423,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 			await mutateSWR(projectsKey);
 			setIsAgentCreateOpen(false);
 			setNewAgentProjectName("");
-			showAgentPane();
+			showDocumentPane();
 			setActiveProjectId(project.id);
 			navigate(agentProjectPath(project.id), {
 				state: agentProjectRouteState("overview"),
@@ -428,7 +435,15 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		} finally {
 			setIsCreating(false);
 		}
-	}, [isCreating, mutate, navigate, newAgentProjectName, setActiveProjectId, showAgentPane, toast]);
+	}, [
+		isCreating,
+		mutate,
+		navigate,
+		newAgentProjectName,
+		setActiveProjectId,
+		showDocumentPane,
+		toast,
+	]);
 
 	useEffect(() => {
 		if (activeProjectId) setDisplayProjectId(activeProjectId);

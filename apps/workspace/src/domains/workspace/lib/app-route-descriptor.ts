@@ -4,7 +4,7 @@ import {
 	resolveSidebarScreen,
 	workModeForScreen,
 } from "@/domains/workspace/lib/sidebar-navigation";
-import { getRouteDocumentId, isAgentRoute, isProjectSettingsRoute } from "./workbench-route";
+import { isAgentDocumentRoute, isProjectSettingsRoute } from "./workbench-route";
 
 export type AppPageLevel = 1 | 2 | 9999;
 
@@ -56,7 +56,7 @@ export const resolveAppRouteDescriptor = (
 
 	return {
 		level: sidebarScreenLevel(sidebarScreen, { isProjectSettings }),
-		sidebarHidden: isAgentRoute(pathname) && Boolean(getRouteDocumentId(search)),
+		sidebarHidden: isAgentDocumentRoute(pathname, search),
 		sidebarScreen,
 		title: routeTitle(sidebarScreen, isProjectSettings),
 		workMode,

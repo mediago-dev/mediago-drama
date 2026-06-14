@@ -13,7 +13,6 @@ import {
 import { DocumentMention } from "@/domains/documents/components/extensions/document-mention";
 import { SectionGenerationDialog } from "@/domains/documents/components/SectionGenerationDialog";
 import { SelectionBubble } from "@/domains/documents/components/SelectionBubble";
-import { StoryboardTimelinePanel } from "@/domains/documents/components/StoryboardTimelinePanel";
 import { createDOMTextAnchorResolver } from "@/domains/documents/components/text-anchor-dom";
 import type { InlineDecorationRange } from "@/domains/documents/components/tiptap/storage";
 import { Button } from "@/shared/components/ui/button";
@@ -180,7 +179,12 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 			activeDocument.workbenchDraft ?? convertDocumentToWorkbenchDraft(activeDocument.id);
 		if (!draft) return;
 
-		navigate(agentProjectPath(projectId, { documentId: activeDocument.id }));
+		navigate(
+			agentProjectPath(projectId, {
+				documentId: activeDocument.id,
+				workbench: "timeline",
+			}),
+		);
 	};
 
 	const focusCommentAnchor = useCallback(
@@ -380,13 +384,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 					</div>
 				) : null}
 			</main>
-			{activeDocument.category === "storyboard" ? (
-				<StoryboardTimelinePanel
-					documentContent={activeDocument.content}
-					documentId={activeDocument.id}
-					documentTitle={activeDocument.title}
-				/>
-			) : null}
 			{selectionCoords ? (
 				<SelectionBubble
 					x={selectionCoords.x}

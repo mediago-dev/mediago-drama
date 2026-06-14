@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showAgentPermissionSystemNotification } from "@/domains/agent/lib/permission-notifications";
 import { selectAgentPermissionRequests, useAgentStore } from "@/domains/agent/stores";
-import { agentProjectPath } from "@/domains/workspace/lib/workbench-route";
+import { agentProjectPath, agentProjectRouteState } from "@/domains/workspace/lib/workbench-route";
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
 import { useToast } from "@/hooks/useToast";
 
@@ -50,7 +50,11 @@ export const AgentPermissionNotificationSync: React.FC<AgentPermissionNotificati
 			void showAgentPermissionSystemNotification(request, () => {
 				window.focus();
 				useAgentLayoutStore.getState().setTab("agent");
-				if (projectId) navigate(agentProjectPath(projectId));
+				if (projectId) {
+					navigate(agentProjectPath(projectId), {
+						state: agentProjectRouteState("agent"),
+					});
+				}
 			}).then((result) => {
 				if (result === "shown") return;
 				toast.warning("Agent 等待权限确认", {

@@ -9,8 +9,11 @@ import { AppLayout } from "@/domains/workspace/components/AppLayout";
 import { ProjectNavigator } from "@/domains/workspace/components/ProjectNavigator";
 import { resolveAppRouteDescriptor } from "@/domains/workspace/lib/app-route-descriptor";
 import {
+	getRouteAssetId,
+	getRouteDocumentId,
 	getRouteProjectId,
 	isAgentDocumentRoute,
+	isAgentProjectViewState,
 	isAgentRoute,
 	isSettingsRoute,
 	shouldForceDocumentWorkbench,
@@ -25,6 +28,9 @@ export const App: React.FC = () => {
 	const location = useLocation();
 	const workMode = useWorkModeStore((state) => state.mode);
 	const routeProjectId = getRouteProjectId(location.search);
+	const routeDocumentId = getRouteDocumentId(location.search);
+	const routeAssetId = getRouteAssetId(location.search);
+	const preserveAgentTab = isAgentProjectViewState(location.state, "agent");
 	const isProjectRoute = isAgentRoute(location.pathname) && Boolean(routeProjectId);
 	const isEpisodeRoute = isAgentDocumentRoute(location.pathname, location.search);
 	const routeIsSettings = isSettingsRoute(location.pathname);
@@ -32,7 +38,10 @@ export const App: React.FC = () => {
 	const routeWorkbenchMode = workbenchModeForRoute(location.pathname, workMode);
 	const forceDocumentWorkbench = shouldForceDocumentWorkbench(location.pathname, location.search);
 	const agentLayoutTab = useAgentLayoutStore((state) => state.tab);
-	const activeWorkbenchTab = forceDocumentWorkbench ? "document" : agentLayoutTab;
+	const forceProjectDocumentTab =
+		isProjectRoute && !preserveAgentTab && Boolean(routeDocumentId || routeAssetId);
+	const activeWorkbenchTab =
+		forceDocumentWorkbench || forceProjectDocumentTab ? "document" : agentLayoutTab;
 	const routeDescriptor = resolveAppRouteDescriptor(location.pathname, location.search, {
 		projectId: routeProjectId,
 		workMode,

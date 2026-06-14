@@ -35,6 +35,8 @@ export const ProjectDirectoryTree: React.FC<{
 	onOpenDocument: (project: WorkspaceProject, documentId: string) => void;
 	onRootCreateRequestReady?: (startCreateRootFolder: (() => void) | null) => void;
 	project: WorkspaceProject;
+	routeAssetId?: string | null;
+	routeDocumentId?: string | null;
 	showActiveSelection?: boolean;
 	showRootCreateButton?: boolean;
 }> = ({
@@ -45,6 +47,8 @@ export const ProjectDirectoryTree: React.FC<{
 	onOpenDocument,
 	onRootCreateRequestReady,
 	project,
+	routeAssetId,
+	routeDocumentId,
 	showActiveSelection = true,
 	showRootCreateButton = true,
 }) => {
@@ -80,6 +84,8 @@ export const ProjectDirectoryTree: React.FC<{
 	const sourceAssets = isStoreProject ? storeAssets : (remoteDocuments?.assets ?? []);
 	const workspaceDir = isStoreProject ? storeWorkspaceDir : (remoteDocuments?.workspaceDir ?? "");
 	const canMutate = isStoreProject;
+	const displayedActiveDocumentId = routeDocumentId ?? (routeAssetId ? "" : activeDocumentId);
+	const displayedActiveAssetId = routeAssetId ?? (routeDocumentId ? "" : activeAssetId);
 	const autoExpandFolder = useCallback(
 		(folderId: string) => {
 			expandStoredFolder(project.id, folderId);
@@ -230,8 +236,8 @@ export const ProjectDirectoryTree: React.FC<{
 								node={node}
 								project={project}
 								depth={0}
-								activeDocumentId={activeDocumentId}
-								activeAssetId={activeAssetId}
+								activeDocumentId={displayedActiveDocumentId}
+								activeAssetId={displayedActiveAssetId}
 								canMutate={canMutate}
 								collapsedFolders={collapsedFolders}
 								creatingFolderParentId={creatingFolderParentId}
@@ -259,8 +265,8 @@ export const ProjectDirectoryTree: React.FC<{
 								entry={file}
 								project={project}
 								depth={0}
-								activeDocumentId={activeDocumentId}
-								activeAssetId={activeAssetId}
+								activeDocumentId={displayedActiveDocumentId}
+								activeAssetId={displayedActiveAssetId}
 								canMutate={canMutate}
 								documents={sourceDocuments}
 								folders={sourceFolders}

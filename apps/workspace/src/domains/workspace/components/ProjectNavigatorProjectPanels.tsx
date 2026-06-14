@@ -1,10 +1,10 @@
 import {
 	ChevronLeft,
 	FilePlus2,
-	FileText,
 	Folder,
 	FolderPlus,
 	FolderTree,
+	LayoutDashboard,
 	LayoutList,
 	Loader2,
 	Search,
@@ -37,7 +37,11 @@ import {
 	WorkModeSwitcher,
 } from "@/domains/workspace/components/ProjectNavigatorPanels";
 import { GenerationNotificationButton } from "@/domains/workspace/components/GenerationNotificationButton";
-import { isProjectSettingsRoute } from "@/domains/workspace/lib/workbench-route";
+import {
+	getRouteAssetId,
+	getRouteDocumentId,
+	isProjectSettingsRoute,
+} from "@/domains/workspace/lib/workbench-route";
 import { useDocumentViewStore } from "@/lib/stores/document-view";
 import type { WorkMode } from "@/lib/stores/work-mode";
 import { cn } from "@/shared/lib/utils";
@@ -232,9 +236,12 @@ export const ProjectSidebarPanel: React.FC<{
 	const documentViewMode = useDocumentViewStore((state) => state.mode);
 	const setDocumentViewMode = useDocumentViewStore((state) => state.setMode);
 	const startCreateRootFolderRef = useRef<(() => void) | null>(null);
+	const routeDocumentId = getRouteDocumentId(locationSearch);
+	const routeAssetId = getRouteAssetId(locationSearch);
 	const canMutateProjectDirectory = Boolean(
 		displayProject && documentsProjectId === displayProject.id,
 	);
+	const directoryItemSelectionEnabled = showActiveSelection && !isOverviewActive;
 	const setStartCreateRootFolder = useCallback((startCreateRootFolder: (() => void) | null) => {
 		startCreateRootFolderRef.current = startCreateRootFolder;
 	}, []);
@@ -304,32 +311,36 @@ export const ProjectSidebarPanel: React.FC<{
 										: "text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
 								)}
 							>
-								<FileText className="size-3.5 shrink-0" />
+								<LayoutDashboard className="size-3.5 shrink-0" />
 								<span className="min-w-0 flex-1 truncate">项目概览</span>
 							</button>
 							{documentViewMode === "directory" ? (
 								<ProjectDirectoryTree
 									project={displayProject}
 									locationPathname={locationPathname}
+									routeAssetId={routeAssetId}
+									routeDocumentId={routeDocumentId}
 									onOpenAsset={onOpenAsset}
 									onOpenDocument={onOpenDocument}
 									onDeleteAsset={onDeleteAsset}
 									onDeleteDocument={onDeleteDocument}
 									onRootCreateRequestReady={setStartCreateRootFolder}
-									showActiveSelection={showActiveSelection}
+									showActiveSelection={directoryItemSelectionEnabled}
 									showRootCreateButton={false}
 								/>
 							) : (
 								<ProjectDirectory
 									project={displayProject}
 									locationPathname={locationPathname}
+									routeAssetId={routeAssetId}
+									routeDocumentId={routeDocumentId}
 									onCreateDocumentInCategory={onCreateDocumentInCategory}
 									onOpenAsset={onOpenAsset}
 									onOpenDocument={onOpenDocument}
 									onDeleteAsset={onDeleteAsset}
 									onDeleteDocument={onDeleteDocument}
 									onOpenNewDocument={onOpenNewDocument}
-									showActiveSelection={showActiveSelection}
+									showActiveSelection={directoryItemSelectionEnabled}
 								/>
 							)}
 						</div>

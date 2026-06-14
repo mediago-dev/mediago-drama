@@ -44,10 +44,18 @@ export const EpisodeTimeline: React.FC = () => {
 
 	if (!projectId) return <Navigate to="/" replace />;
 	if (!documentId && targetDocument) {
-		return <Navigate to={agentProjectPath(projectId, { documentId: targetDocument.id })} replace />;
+		return (
+			<Navigate
+				to={agentProjectPath(projectId, {
+					documentId: targetDocument.id,
+					workbench: "timeline",
+				})}
+				replace
+			/>
+		);
 	}
 	if (targetDocument && !isStoryboardWorkbenchDocument(targetDocument)) {
-		return <Navigate to={agentProjectPath(projectId)} replace />;
+		return <Navigate to={agentProjectPath(projectId, { documentId: targetDocument.id })} replace />;
 	}
 	if (!targetDocument) {
 		if (loadedProjectId === projectId && (syncStatus === "synced" || syncStatus === "error")) {

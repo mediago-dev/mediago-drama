@@ -1,9 +1,10 @@
 import type React from "react";
 import { lazy, Suspense } from "react";
 import { type RouteObject, useRoutes } from "react-router-dom";
+import { WorkspaceContentFallback } from "@/domains/workspace/components/WorkspaceContentFallback";
+import { Home } from "@/pages/Home";
 import { useWorkModeStore } from "@/lib/stores/work-mode";
 
-const Home = lazy(() => import("@/pages/Home").then((module) => ({ default: module.Home })));
 const Projects = lazy(() =>
 	import("@/pages/Projects").then((module) => ({ default: module.Projects })),
 );
@@ -39,10 +40,6 @@ function RootShell() {
 	return <Projects />;
 }
 
-const RouteFallback: React.FC = () => (
-	<div className="h-full min-h-0 bg-ide-editor text-ide-editor-foreground" />
-);
-
 const routes: RouteObject[] = [
 	{ path: "/", element: <RootShell /> },
 	{ path: "/agent", element: <Home /> },
@@ -58,5 +55,5 @@ const routes: RouteObject[] = [
 
 export const AppRoutes: React.FC = () => {
 	const element = useRoutes(routes);
-	return <Suspense fallback={<RouteFallback />}>{element}</Suspense>;
+	return <Suspense fallback={<WorkspaceContentFallback />}>{element}</Suspense>;
 };

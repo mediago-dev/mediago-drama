@@ -296,9 +296,9 @@ export const CommentsGutter: React.FC = () => {
 		if (agentIsRunning || openComments.length === 0) return;
 
 		setAgentTab("agent");
-		if (projectId) {
-			navigate(agentProjectPath(projectId), {
-				state: agentProjectRouteState("document"),
+		if (projectId && activeDocument) {
+			navigate(agentProjectPath(projectId, { documentId: activeDocument.id }), {
+				state: agentProjectRouteState("agent"),
 			});
 		}
 		void runAgentPrompt("", {

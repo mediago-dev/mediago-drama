@@ -345,7 +345,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 						className="size-7 rounded-sm"
 						aria-label="返回文档"
 						onClick={() =>
-							navigate(projectId ? agentProjectPath(projectId) : "/", {
+							navigate(projectId ? agentProjectPath(projectId, { documentId }) : "/", {
 								state: agentProjectRouteState("document"),
 							})
 						}

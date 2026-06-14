@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import useSWR from "swr";
 import {
 	createWorkspaceEventSource,
@@ -32,7 +32,7 @@ export const DocumentStateSync: React.FC<DocumentStateSyncProps> = ({ projectId 
 		}
 	}, [isLoading, projectId]);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (!data) return;
 		hydrateWorkspaceStateFromPayload(data, projectId);
 	}, [data, projectId]);

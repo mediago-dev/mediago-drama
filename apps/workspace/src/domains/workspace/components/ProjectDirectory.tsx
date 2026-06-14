@@ -100,6 +100,8 @@ export const ProjectDirectory: React.FC<{
 	onOpenDocument: (project: WorkspaceProject, documentId: string) => void;
 	onOpenNewDocument: (category?: DocumentCategory) => void;
 	project: WorkspaceProject;
+	routeAssetId?: string | null;
+	routeDocumentId?: string | null;
 	showActiveSelection?: boolean;
 }> = ({
 	locationPathname,
@@ -110,6 +112,8 @@ export const ProjectDirectory: React.FC<{
 	onOpenDocument,
 	onOpenNewDocument,
 	project,
+	routeAssetId,
+	routeDocumentId,
 	showActiveSelection = true,
 }) => {
 	const storeDocuments = useDocumentsStore((state) => state.documents);
@@ -134,6 +138,8 @@ export const ProjectDirectory: React.FC<{
 	const sourceFolders = isStoreProject ? storeFolders : (remoteDocuments?.folders ?? []);
 	const sourceAssets = isStoreProject ? storeAssets : (remoteDocuments?.assets ?? []);
 	const workspaceDir = isStoreProject ? storeWorkspaceDir : (remoteDocuments?.workspaceDir ?? "");
+	const displayedActiveDocumentId = routeDocumentId ?? (routeAssetId ? "" : activeDocumentId);
+	const displayedActiveAssetId = routeAssetId ?? (routeDocumentId ? "" : activeAssetId);
 	const projectDocuments = useMemo(
 		() =>
 			sourceDocuments
@@ -204,8 +210,8 @@ export const ProjectDirectory: React.FC<{
 										node={node}
 										project={project}
 										depth={0}
-										activeDocumentId={activeDocumentId}
-										activeAssetId={activeAssetId}
+										activeDocumentId={displayedActiveDocumentId}
+										activeAssetId={displayedActiveAssetId}
 										canMutate={isStoreProject}
 										documents={sourceDocuments}
 										folders={sourceFolders}
@@ -271,7 +277,7 @@ const ProjectCategoryHeader: React.FC<{
 				type="button"
 				onClick={onToggle}
 				onContextMenu={openMenuFromContext}
-				className="flex h-6 w-full items-center gap-1.5 rounded-sm px-2 text-left text-xs font-medium text-foreground transition-colors hover:bg-ide-list-hover"
+				className="flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-sm px-2 text-left text-xs font-medium text-foreground transition-colors hover:bg-ide-list-hover"
 				aria-expanded={!isCollapsed}
 			>
 				<ToggleIcon className="size-3 shrink-0 text-muted-foreground" />
@@ -424,7 +430,7 @@ const ProjectDocumentItem: React.FC<{
 					onClick={() =>
 						entry.kind === "asset" ? onOpenAsset(project, entry.id) : onOpen(project, entry.id)
 					}
-					className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+					className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left"
 				>
 					<EntryIcon
 						className="size-3.5 shrink-0"

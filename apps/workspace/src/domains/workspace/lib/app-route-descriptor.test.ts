@@ -36,6 +36,20 @@ describe("app route descriptor", () => {
 			}),
 		).toMatchObject({
 			level: 2,
+			sidebarHidden: false,
+			sidebarScreen: "project",
+		});
+		expect(
+			resolveAppRouteDescriptor(
+				"/agent",
+				"?projectId=project-1&documentId=doc-1&workbench=timeline",
+				{
+					workMode: "agent",
+					projectId: "project-1",
+				},
+			),
+		).toMatchObject({
+			level: 2,
 			sidebarHidden: true,
 			sidebarScreen: "project",
 		});
