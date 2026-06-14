@@ -52,6 +52,11 @@ export const apiResourceURL = (value: string) => {
 	const trimmed = value.trim();
 	if (!trimmed) return "";
 	if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith("//")) return value;
+	if (trimmed === "api" || trimmed.startsWith("api/")) {
+		const origin = apiOrigin();
+		const apiPath = normalizeResourceApiPath(`/${trimmed}`);
+		return origin ? `${origin}${apiPath}` : apiPath;
+	}
 	if (
 		trimmed === "/api" ||
 		trimmed.startsWith("/api/") ||

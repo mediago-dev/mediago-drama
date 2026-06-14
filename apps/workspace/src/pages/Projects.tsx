@@ -9,11 +9,13 @@ import { useToast } from "@/hooks/useToast";
 import { pickProjectDirectory } from "@/domains/projects/lib/project-directory";
 import { useProjectStore } from "@/domains/projects/stores";
 import { agentProjectPath, agentProjectRouteState } from "@/domains/workspace/lib/workbench-route";
+import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
 
 export const Projects: React.FC = () => {
 	const navigate = useNavigate();
 	const toast = useToast();
 	const setActiveProjectId = useProjectStore((state) => state.setActiveProjectId);
+	const setAgentLayoutTab = useAgentLayoutStore((state) => state.setTab);
 	const { data, error, isLoading, mutate } = useSWR(projectsKey, getProjects);
 	const [isCreating, setIsCreating] = useState(false);
 	const projects = data?.projects ?? [];
@@ -29,10 +31,11 @@ export const Projects: React.FC = () => {
 			const project = await createProject({ projectDir });
 			await mutate();
 			await mutateSWR(projectsKey);
+			setAgentLayoutTab("agent");
 			setActiveProjectId(project.id);
 			navigate(agentProjectPath(project.id), {
 				replace: true,
-				state: agentProjectRouteState("overview"),
+				state: agentProjectRouteState("agent"),
 			});
 			toast.success("项目已创建", { description: project.name });
 		} catch (err) {

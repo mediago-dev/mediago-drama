@@ -37,6 +37,9 @@ describe("api-base", () => {
 		expect(apiResourceURL("/api/projects/project-1/assets/asset-1/content")).toBe(
 			"/api/v1/projects/project-1/assets/asset-1/content",
 		);
+		expect(apiResourceURL("api/projects/project-1/assets/asset-1/content")).toBe(
+			"/api/v1/projects/project-1/assets/asset-1/content",
+		);
 	});
 
 	it("uses the dev server origin inside Tauri dev", () => {
@@ -59,6 +62,9 @@ describe("api-base", () => {
 		);
 		expect(apiResourceURL("/api/v1/media-assets/image-1/content")).toBe(
 			"http://127.0.0.1:48273/api/v1/media-assets/image-1/content",
+		);
+		expect(apiResourceURL("api/v1/projects/project-1/assets/asset-1/content")).toBe(
+			"http://127.0.0.1:48273/api/v1/projects/project-1/assets/asset-1/content",
 		);
 		expect(apiResourceURL("https://example.test/image.png")).toBe("https://example.test/image.png");
 		expect(apiResourceURL("data:image/png;base64,YWJj")).toBe("data:image/png;base64,YWJj");

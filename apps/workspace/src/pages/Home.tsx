@@ -42,6 +42,9 @@ export const Home: React.FC = () => {
 	const assetId = getRouteAssetId(location.search);
 	const documentWorkbench = getRouteDocumentWorkbench(location.search);
 	const preserveAgentTab = isAgentProjectViewState(location.state, "agent");
+	const preserveDocumentTab =
+		isAgentProjectViewState(location.state, "document") ||
+		isAgentProjectViewState(location.state, "overview");
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
 	const activeAssetId = useDocumentsStore((state) => state.activeAssetId);
 	const documents = useDocumentsStore((state) => state.documents);
@@ -75,9 +78,25 @@ export const Home: React.FC = () => {
 	}, [activeProjectId, projectId, setActiveProjectId]);
 
 	useEffect(() => {
-		if (!projectId || documentWorkbench === "timeline" || preserveAgentTab) return;
-		setAgentLayoutTab("document");
-	}, [documentWorkbench, preserveAgentTab, projectId, setAgentLayoutTab]);
+		if (!projectId || documentWorkbench === "timeline") return;
+		if (preserveAgentTab) {
+			setAgentLayoutTab("agent");
+			return;
+		}
+		if (documentId || assetId || preserveDocumentTab) {
+			setAgentLayoutTab("document");
+			return;
+		}
+		setAgentLayoutTab("agent");
+	}, [
+		assetId,
+		documentId,
+		documentWorkbench,
+		preserveAgentTab,
+		preserveDocumentTab,
+		projectId,
+		setAgentLayoutTab,
+	]);
 
 	useEffect(() => {
 		if (!projectId) return;

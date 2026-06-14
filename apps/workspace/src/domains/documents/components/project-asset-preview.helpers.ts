@@ -1,5 +1,7 @@
 import { File, FileText, ImageIcon, Video } from "lucide-react";
 import type { ComponentType } from "react";
+import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
+import { apiResourceURL } from "@/shared/lib/api-base";
 
 export const assetPreviewIcon = (kind: string): ComponentType<{ className?: string }> => {
 	switch (kind) {
@@ -20,9 +22,30 @@ export const errorMessage = (error: unknown, fallback: string) => {
 };
 
 export const fetchTextAsset = async (url: string) => {
+	if (!url.trim()) throw new Error("素材地址缺失。");
 	const response = await fetch(url);
 	if (!response.ok) throw new Error(`文本读取失败：${response.status}`);
-	return response.text();
+	const text = await response.text();
+	if (isHTMLResponse(response, text)) {
+		throw new Error("文本读取失败：素材接口返回了前端页面。");
+	}
+	return text;
+};
+
+export const projectAssetContentPath = (projectId: string, assetId: string) =>
+	`/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/content`;
+
+export const projectAssetContentURL = (
+	asset: Pick<ProjectAsset, "id" | "projectId" | "url">,
+	projectId?: string | null,
+) => {
+	const explicitURL = apiResourceURL(asset.url);
+	if (explicitURL) return explicitURL;
+
+	const resolvedProjectId = (projectId ?? asset.projectId).trim();
+	const assetId = asset.id.trim();
+	if (!resolvedProjectId || !assetId) return "";
+	return apiResourceURL(projectAssetContentPath(resolvedProjectId, assetId));
 };
 
 export const formatBytes = (bytes: number) => {
@@ -41,4 +64,10 @@ export const formatBytes = (bytes: number) => {
 export const truncateTextPreview = (text: string) => {
 	const maxLength = 80_000;
 	return text.length <= maxLength ? text : `${text.slice(0, maxLength)}\n\n...`;
+};
+
+const isHTMLResponse = (response: Response, text: string) => {
+	const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
+	if (contentType.includes("text/html")) return true;
+	return /^\s*<!doctype\s+html/i.test(text) || /^\s*<html[\s>]/i.test(text);
 };

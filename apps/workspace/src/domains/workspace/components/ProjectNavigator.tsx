@@ -140,15 +140,19 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		setAgentLayoutTab("document");
 	}, [setAgentLayoutTab]);
 
+	const showAgentPane = useCallback(() => {
+		setAgentLayoutTab("agent");
+	}, [setAgentLayoutTab]);
+
 	const openProject = useCallback(
 		(project: WorkspaceProject) => {
-			showDocumentPane();
+			showAgentPane();
 			setActiveProjectId(project.id);
 			navigate(agentProjectPath(project.id), {
-				state: agentProjectRouteState("overview"),
+				state: agentProjectRouteState("agent"),
 			});
 		},
-		[navigate, setActiveProjectId, showDocumentPane],
+		[navigate, setActiveProjectId, showAgentPane],
 	);
 
 	const openDocument = useCallback(
@@ -389,10 +393,10 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 			await mutateSWR(projectsKey);
 			setIsAgentCreateOpen(false);
 			setNewAgentProjectName("");
-			showDocumentPane();
+			showAgentPane();
 			setActiveProjectId(project.id);
 			navigate(agentProjectPath(project.id), {
-				state: agentProjectRouteState("overview"),
+				state: agentProjectRouteState("agent"),
 			});
 			toast.success("项目已创建", { description: project.name });
 		} catch (err) {
@@ -401,15 +405,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		} finally {
 			setIsCreating(false);
 		}
-	}, [
-		isCreating,
-		mutate,
-		navigate,
-		newAgentProjectName,
-		setActiveProjectId,
-		showDocumentPane,
-		toast,
-	]);
+	}, [isCreating, mutate, navigate, newAgentProjectName, setActiveProjectId, showAgentPane, toast]);
 
 	useEffect(() => {
 		if (activeProjectId) setDisplayProjectId(activeProjectId);

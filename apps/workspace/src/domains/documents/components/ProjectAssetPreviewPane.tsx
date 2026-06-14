@@ -14,6 +14,7 @@ import {
 	errorMessage,
 	fetchTextAsset,
 	formatBytes,
+	projectAssetContentURL,
 } from "./project-asset-preview.helpers";
 import { AssetPreviewBody } from "./project-asset-preview.components";
 
@@ -29,7 +30,12 @@ export const ProjectAssetPreviewPane: React.FC<ProjectAssetPreviewPaneProps> = (
 	const toast = useToast();
 	const [draftFilename, setDraftFilename] = useState(asset.filename);
 	const [isSaving, setIsSaving] = useState(false);
-	const textKey = asset.kind === "text" ? asset.url : null;
+	const source = useMemo(() => projectAssetContentURL(asset, projectId), [asset, projectId]);
+	const textKey = asset.kind === "text" && source ? source : null;
+	const sourceError = useMemo(
+		() => (asset.kind === "text" && !source ? new Error("素材地址缺失。") : null),
+		[asset.kind, source],
+	);
 	const {
 		data: text,
 		error,
@@ -104,7 +110,7 @@ export const ProjectAssetPreviewPane: React.FC<ProjectAssetPreviewPaneProps> = (
 										<span>保存</span>
 									</Button>
 									<Button asChild type="button" size="sm" variant="secondary">
-										<a href={asset.url} download={asset.filename}>
+										<a href={source || asset.url} download={asset.filename}>
 											<Download />
 											<span>下载</span>
 										</a>
@@ -116,7 +122,13 @@ export const ProjectAssetPreviewPane: React.FC<ProjectAssetPreviewPaneProps> = (
 				</header>
 
 				<section className="min-h-0 flex-1">
-					<AssetPreviewBody asset={asset} isTextLoading={isLoading} text={text} textError={error} />
+					<AssetPreviewBody
+						asset={asset}
+						isTextLoading={isLoading}
+						source={source}
+						text={text}
+						textError={error ?? sourceError}
+					/>
 				</section>
 			</div>
 		</main>

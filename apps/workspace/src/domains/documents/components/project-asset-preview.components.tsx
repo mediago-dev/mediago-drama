@@ -4,8 +4,7 @@ import type React from "react";
 import { useRef } from "react";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
-import { apiResourceURL } from "@/shared/lib/api-base";
-import { truncateTextPreview } from "./project-asset-preview.helpers";
+import { errorMessage, truncateTextPreview } from "./project-asset-preview.helpers";
 
 export const TextAssetPreview: React.FC<{
 	error: unknown;
@@ -26,7 +25,7 @@ export const TextAssetPreview: React.FC<{
 	if (error) {
 		return (
 			<div className="border border-border bg-card p-4 text-sm text-error-foreground">
-				文本读取失败。
+				{errorMessage(error, "文本读取失败。")}
 			</div>
 		);
 	}
@@ -41,11 +40,11 @@ export const TextAssetPreview: React.FC<{
 export const AssetPreviewBody: React.FC<{
 	asset: ProjectAsset;
 	isTextLoading: boolean;
+	source: string;
 	text?: string;
 	textError: unknown;
-}> = ({ asset, isTextLoading, text, textError }) => {
+}> = ({ asset, isTextLoading, source, text, textError }) => {
 	const videoPlayerRef = useRef<MediaPlayerInstance | null>(null);
-	const source = apiResourceURL(asset.url);
 
 	if (asset.kind === "image") {
 		return (

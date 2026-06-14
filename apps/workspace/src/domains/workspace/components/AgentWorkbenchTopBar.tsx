@@ -1,6 +1,16 @@
 import { Bot, FileText } from "lucide-react";
 import type React from "react";
+import { useCallback } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useTauriWindowDrag } from "@/domains/workspace/lib/tauri-window-drag";
+import {
+	agentProjectPath,
+	agentProjectRouteState,
+	getRouteAssetId,
+	getRouteDocumentId,
+	getRouteProjectId,
+	isAgentRoute,
+} from "@/domains/workspace/lib/workbench-route";
 import { useAgentLayoutStore, type AgentLayoutTab } from "@/lib/stores/agent-layout";
 import { useWorkModeStore, type WorkMode } from "@/lib/stores/work-mode";
 import { Button } from "@/shared/components/ui/button";
@@ -46,11 +56,37 @@ export const AgentWorkbenchHeaderActions: React.FC<AgentWorkbenchTopBarProps> = 
 	mode,
 	showTabs,
 }) => {
+	const navigate = useNavigate();
+	const location = useLocation();
 	const tab = useAgentLayoutStore((state) => state.tab);
 	const setTab = useAgentLayoutStore((state) => state.setTab);
 	const storedWorkMode = useWorkModeStore((state) => state.mode);
 	const workMode = mode ?? storedWorkMode;
 	const shouldShowTabs = showTabs ?? workMode === "agent";
+	const projectId = getRouteProjectId(location.search);
+	const routeDocumentId = getRouteDocumentId(location.search);
+	const routeAssetId = getRouteAssetId(location.search);
+	const selectTab = useCallback(
+		(nextTab: AgentLayoutTab) => {
+			setTab(nextTab);
+			if (workMode !== "agent" || !projectId || !isAgentRoute(location.pathname)) {
+				return;
+			}
+			if (nextTab === "agent") {
+				navigate(agentProjectPath(projectId), {
+					state: agentProjectRouteState("agent"),
+				});
+				return;
+			}
+			if (!routeDocumentId && !routeAssetId) {
+				navigate(agentProjectPath(projectId), {
+					replace: true,
+					state: agentProjectRouteState("overview"),
+				});
+			}
+		},
+		[location.pathname, navigate, projectId, routeAssetId, routeDocumentId, setTab, workMode],
+	);
 
 	if (!shouldShowTabs) return null;
 
@@ -75,7 +111,7 @@ export const AgentWorkbenchHeaderActions: React.FC<AgentWorkbenchTopBarProps> = 
 							"h-7 rounded-sm px-2 text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
 							isActive && "bg-ide-list-active text-ide-list-active-foreground",
 						)}
-						onClick={() => setTab(item.value)}
+						onClick={() => selectTab(item.value)}
 						aria-pressed={isActive}
 						aria-label={label}
 						title={label}

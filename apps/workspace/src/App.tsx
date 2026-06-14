@@ -31,6 +31,9 @@ export const App: React.FC = () => {
 	const routeDocumentId = getRouteDocumentId(location.search);
 	const routeAssetId = getRouteAssetId(location.search);
 	const preserveAgentTab = isAgentProjectViewState(location.state, "agent");
+	const preserveDocumentTab =
+		isAgentProjectViewState(location.state, "document") ||
+		isAgentProjectViewState(location.state, "overview");
 	const isProjectRoute = isAgentRoute(location.pathname) && Boolean(routeProjectId);
 	const isEpisodeRoute = isAgentDocumentRoute(location.pathname, location.search);
 	const routeIsSettings = isSettingsRoute(location.pathname);
@@ -40,8 +43,14 @@ export const App: React.FC = () => {
 	const agentLayoutTab = useAgentLayoutStore((state) => state.tab);
 	const forceProjectDocumentTab =
 		isProjectRoute && !preserveAgentTab && Boolean(routeDocumentId || routeAssetId);
+	const defaultProjectAgentTab =
+		isProjectRoute && !preserveDocumentTab && !routeDocumentId && !routeAssetId;
 	const activeWorkbenchTab =
-		forceDocumentWorkbench || forceProjectDocumentTab ? "document" : agentLayoutTab;
+		forceDocumentWorkbench || forceProjectDocumentTab || preserveDocumentTab
+			? "document"
+			: defaultProjectAgentTab
+				? "agent"
+				: agentLayoutTab;
 	const routeDescriptor = resolveAppRouteDescriptor(location.pathname, location.search, {
 		projectId: routeProjectId,
 		workMode,
