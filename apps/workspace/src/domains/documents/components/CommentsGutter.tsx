@@ -9,19 +9,16 @@ import {
 	X,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { runAgentPrompt } from "@/domains/agent/lib/controller";
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
 import { Button } from "@/shared/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import { Textarea } from "@/shared/components/ui/textarea";
+import { createDOMTextAnchorResolver } from "@/domains/documents/components/text-anchor-dom";
 import { getOpenComments } from "@/domains/documents/lib/filters";
-import {
-	findMarkdownBlockForAnchor,
-	findTextAnchorMatch,
-	type TextAnchorInput,
-} from "@/domains/documents/lib/operations";
+import { findMarkdownBlockForAnchor } from "@/domains/documents/lib/operations";
 import { type DocumentComment, useDocumentsStore } from "@/domains/documents/stores";
 import { useProjectStore } from "@/domains/projects/stores";
 import { agentProjectPath, agentProjectRouteState } from "@/domains/workspace/lib/workbench-route";
@@ -74,17 +71,17 @@ export const CommentsGutter: React.FC = () => {
 	const projectId = documentProjectId ?? activeProjectId;
 	const anchoredComments = useMemo(
 		() =>
-			activeDocument
+			showComments && activeDocument
 				? comments.filter((comment) => hasCommentAnchor(activeDocument.content, comment))
 				: [],
-		[activeDocument, comments],
+		[activeDocument, comments, showComments],
 	);
 	const danglingComments = useMemo(
 		() =>
-			activeDocument
+			showComments && activeDocument
 				? comments.filter((comment) => !hasCommentAnchor(activeDocument.content, comment))
 				: [],
-		[activeDocument, comments],
+		[activeDocument, comments, showComments],
 	);
 	const activePending =
 		pendingComment && activeDocument && pendingComment.documentId === activeDocument.id
@@ -133,9 +130,10 @@ export const CommentsGutter: React.FC = () => {
 		setBodyTop(rect.top);
 		setBodyHeight(rect.height);
 
+		const anchorResolver = createDOMTextAnchorResolver(editorRoot);
 		const nextOffsets: Record<string, number> = {};
 		for (const comment of anchoredComments) {
-			const anchorRect = findAnchorRect(editorRoot, comment.anchor);
+			const anchorRect = anchorResolver.findRect(comment.anchor, { fallbackToToken: true });
 			if (anchorRect) {
 				nextOffsets[comment.id] = anchorRect.top - rect.top;
 			}
@@ -153,7 +151,9 @@ export const CommentsGutter: React.FC = () => {
 		const pendingAnchor = activePending
 			? (activeSelection?.anchor ?? activePending.selection)
 			: null;
-		const pendingRect = pendingAnchor ? findAnchorRect(editorRoot, pendingAnchor) : null;
+		const pendingRect = pendingAnchor
+			? anchorResolver.findRect(pendingAnchor, { fallbackToToken: true })
+			: null;
 		const nextPendingOffset = pendingRect ? pendingRect.top - rect.top : null;
 		setPendingOffset((current) =>
 			sameNullableOffset(current, nextPendingOffset) ? current : nextPendingOffset,
@@ -166,7 +166,7 @@ export const CommentsGutter: React.FC = () => {
 		);
 	}, [activePending, activeSelection?.anchor, anchoredComments]);
 
-	useLayoutEffect(() => {
+	useEffect(() => {
 		measureAnchors();
 	}, [
 		activeDocument?.content,
@@ -718,71 +718,11 @@ const sortLayoutItems = (first: LayoutItem, second: LayoutItem) =>
 
 const layoutItemRank = (item: LayoutItem) => (item.type === "comment" ? 0 : 1);
 
-const findAnchorRect = (root: HTMLElement, anchor: TextAnchorInput): DOMRect | null => {
-	const textNodes = collectTextNodes(root);
-	const fullText = textNodes.map((item) => item.text).join("");
-	const match = findTextAnchorMatch(fullText, anchor, { fallbackToToken: true });
-	if (!match) return null;
-
-	const start = resolveTextPosition(textNodes, match.start);
-	const end = resolveTextPosition(textNodes, match.end);
-	if (!start || !end) return null;
-
-	const range = document.createRange();
-	range.setStart(start.node, start.offset);
-	range.setEnd(end.node, end.offset);
-	const rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
-	range.detach();
-	return rect && rect.height > 0 ? rect : null;
-};
-
 const hasCommentAnchor = (content: string, comment: DocumentComment) =>
 	Boolean(
 		findMarkdownBlockForAnchor(content, comment.anchor) ??
 		findMarkdownBlockForAnchor(content, comment.anchorText),
 	);
-
-interface TextNodePosition {
-	end: number;
-	node: Text;
-	start: number;
-	text: string;
-}
-
-const collectTextNodes = (root: HTMLElement): TextNodePosition[] => {
-	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-	const textNodes: TextNodePosition[] = [];
-	let offset = 0;
-	let node = walker.nextNode();
-	while (node) {
-		const text = node.textContent ?? "";
-		if (text) {
-			textNodes.push({
-				end: offset + text.length,
-				node: node as Text,
-				start: offset,
-				text,
-			});
-			offset += text.length;
-		}
-		node = walker.nextNode();
-	}
-	return textNodes;
-};
-
-const resolveTextPosition = (nodes: TextNodePosition[], offset: number) => {
-	for (const item of nodes) {
-		if (offset >= item.start && offset <= item.end) {
-			return {
-				node: item.node,
-				offset: Math.min(Math.max(offset - item.start, 0), item.text.length),
-			};
-		}
-	}
-
-	const last = nodes.at(-1);
-	return last ? { node: last.node, offset: last.text.length } : null;
-};
 
 const sameOffsets = (first: Record<string, number>, second: Record<string, number>) => {
 	const firstKeys = Object.keys(first);

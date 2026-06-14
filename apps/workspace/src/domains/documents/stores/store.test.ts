@@ -255,6 +255,25 @@ describe("documents store remote sync", () => {
 		expect(third).toHaveLength(0);
 	});
 
+	it("does not update document state when content is unchanged", () => {
+		const document = makeDocument("doc-a");
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [document],
+		});
+
+		const beforeState = useDocumentsStore.getState();
+		const beforeDocument = beforeState.documents[0];
+		useDocumentsStore.getState().updateDocumentContent("doc-a", document.content);
+		const afterState = useDocumentsStore.getState();
+
+		expect(afterState).toBe(beforeState);
+		expect(afterState.documents[0]).toBe(beforeDocument);
+		expect(afterState.documents[0]?.version).toBe(document.version);
+		expect(afterState.documents[0]?.isDirty).toBe(false);
+	});
+
 	it("preserves pending comment state when hydrating the same active document", () => {
 		const document = {
 			...makeDocument("doc-a"),

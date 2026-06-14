@@ -84,6 +84,23 @@
 	caret-color: var(--ide-editor-foreground);
 }
 
+.tiptap-content > p,
+.tiptap-content > ul,
+.tiptap-content > ol,
+.tiptap-content > blockquote,
+.tiptap-content > pre,
+.tiptap-content > table,
+.tiptap-content > img,
+.tiptap-content > h1,
+.tiptap-content > h2,
+.tiptap-content > h3,
+.tiptap-content > h4,
+.tiptap-content > h5,
+.tiptap-content > h6 {
+	content-visibility: auto;
+	contain-intrinsic-size: auto 6rem;
+}
+
 .tiptap-editor-surface {
 	position: relative;
 	padding-left: 2rem;

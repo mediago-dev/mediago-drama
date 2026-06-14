@@ -8,11 +8,12 @@ import {
 	isAgentProjectViewState,
 } from "@/domains/workspace/lib/workbench-route";
 
-const WritingWorkspace = lazy(() =>
+const loadWritingWorkspace = () =>
 	import("@/domains/documents/components/WritingWorkspace").then((module) => ({
 		default: module.WritingWorkspace,
-	})),
-);
+	}));
+
+const WritingWorkspace = lazy(() => loadWritingWorkspace());
 const EpisodeTimeline = lazy(() =>
 	import("@/pages/EpisodeTimeline").then((module) => ({ default: module.EpisodeTimeline })),
 );
@@ -34,6 +35,11 @@ export const Home: React.FC = () => {
 	useEffect(() => {
 		if (projectId && activeProjectId !== projectId) setActiveProjectId(projectId);
 	}, [activeProjectId, projectId, setActiveProjectId]);
+
+	useEffect(() => {
+		if (!projectId) return;
+		void loadWritingWorkspace();
+	}, [projectId]);
 
 	if (!projectId) return <Navigate to="/" replace />;
 	if (documentId) {

@@ -65,10 +65,12 @@ export const StoryboardTimelinePanel: React.FC<StoryboardTimelinePanelProps> = (
 	const [isExpanded, setIsExpanded] = useState(false);
 	const episode = useMemo(
 		() =>
-			createEpisodeFromMarkdownDocument(
-				createStoryboardDocument(documentId, documentTitle, documentContent),
-			),
-		[documentContent, documentId, documentTitle],
+			isExpanded
+				? createEpisodeFromMarkdownDocument(
+						createStoryboardDocument(documentId, documentTitle, documentContent),
+					)
+				: null,
+		[documentContent, documentId, documentTitle, isExpanded],
 	);
 
 	return (
@@ -84,7 +86,7 @@ export const StoryboardTimelinePanel: React.FC<StoryboardTimelinePanelProps> = (
 						<div className="min-w-0">
 							<h2 className="truncate text-sm font-semibold text-foreground">分镜同步</h2>
 							<p className="truncate text-xs text-muted-foreground">
-								{episode.sections.length} 个组 · {formatTimelineTime(episode.duration)}
+								{episode?.sections.length ?? 0} 个组 · {formatTimelineTime(episode?.duration ?? 0)}
 							</p>
 						</div>
 						<Button
@@ -125,7 +127,7 @@ export const StoryboardTimelinePanel: React.FC<StoryboardTimelinePanelProps> = (
 							);
 						})}
 					</div>
-					{episode.sections.length > 0 ? (
+					{episode && episode.sections.length > 0 ? (
 						<div className="space-y-2">
 							{episode.sections.map((section, index) => (
 								<StoryboardSectionSummary

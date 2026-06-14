@@ -4,7 +4,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Editor } from "@tiptap/react";
 import type { DocumentComment } from "@/domains/documents/stores";
 import { cn } from "@/shared/lib/utils";
-import { findTextNodeRange, findTopLevelBlockRange, sameBlockRange } from "./ranges";
+import { createTextNodeRangeResolver, findTopLevelBlockRange, sameBlockRange } from "./ranges";
 import {
 	blockHandlePluginKey,
 	blockHandleStorage,
@@ -130,11 +130,10 @@ export const commentAnchorExtension = Extension.create({
 						}
 
 						const decorations: Decoration[] = [];
+						const rangeResolver = createTextNodeRangeResolver(state.doc);
 						const pendingRange =
 							normalizeDecorationRange(pendingSelectionRange, state.doc.content.size) ??
-							(pendingSelectionAnchor
-								? findTextNodeRange(state.doc, pendingSelectionAnchor)
-								: null);
+							(pendingSelectionAnchor ? rangeResolver.findRange(pendingSelectionAnchor) : null);
 						if (pendingRange) {
 							const range = pendingRange;
 							if (range && range.from !== range.to) {
@@ -147,7 +146,7 @@ export const commentAnchorExtension = Extension.create({
 						}
 
 						for (const comment of items) {
-							const range = findTextNodeRange(state.doc, comment.anchor);
+							const range = rangeResolver.findRange(comment.anchor);
 							if (!range || range.from === range.to) continue;
 
 							decorations.push(

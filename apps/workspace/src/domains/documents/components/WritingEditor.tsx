@@ -1,5 +1,5 @@
 import type React from "react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Menu, MessageSquare, MessageSquareOff, ScissorsLineDashed } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { GenerationAsset } from "@/domains/generation/api/generation";
@@ -13,11 +13,11 @@ import { DocumentMention } from "@/domains/documents/components/extensions/docum
 import { SectionGenerationDialog } from "@/domains/documents/components/SectionGenerationDialog";
 import { SelectionBubble } from "@/domains/documents/components/SelectionBubble";
 import { StoryboardTimelinePanel } from "@/domains/documents/components/StoryboardTimelinePanel";
+import { createDOMTextAnchorResolver } from "@/domains/documents/components/text-anchor-dom";
 import type { InlineDecorationRange } from "@/domains/documents/components/tiptap/storage";
 import { Button } from "@/shared/components/ui/button";
 import { registerEditor } from "@/domains/documents/lib/editor-registry";
 import { selectEditableDocument } from "@/domains/documents/lib/filters";
-import { findTextAnchorMatch, type TextAnchorInput } from "@/domains/documents/lib/operations";
 import { sectionGenerationIdentityKey } from "@/domains/documents/lib/section-generation";
 import { type DocumentComment, useDocumentsStore } from "@/domains/documents/stores";
 import { useGenerationNotificationStore } from "@/domains/generation/stores/generation-notifications";
@@ -112,20 +112,21 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const measureCommentMarkers = useCallback(() => {
 		const container = mainRef.current;
 		const editorRoot = document.querySelector<HTMLElement>(".tiptap-content");
-		if (!container || !editorRoot || !activeDocument) return;
+		if (!container || !editorRoot || !activeDocument || showComments) return;
 
 		const containerRect = container.getBoundingClientRect();
+		const anchorResolver = createDOMTextAnchorResolver(editorRoot);
 		const nextOffsets: Record<string, number> = {};
 		for (const comment of activeDocument.comments) {
-			const anchorRect = findAnchorRect(editorRoot, comment.anchor);
+			const anchorRect = anchorResolver.findRect(comment.anchor, { fallbackToToken: true });
 			if (anchorRect) {
 				nextOffsets[comment.id] = anchorRect.top - containerRect.top + container.scrollTop;
 			}
 		}
 		setCommentOffsets((current) => (sameOffsets(current, nextOffsets) ? current : nextOffsets));
-	}, [activeDocument]);
+	}, [activeDocument, showComments]);
 
-	useLayoutEffect(() => {
+	useEffect(() => {
 		measureCommentMarkers();
 	}, [activeDocument?.content, activeDocument?.comments, measureCommentMarkers]);
 
@@ -430,66 +431,6 @@ const buildCommentMarkers = (
 		});
 	}
 	return markers;
-};
-
-const findAnchorRect = (root: HTMLElement, anchor: TextAnchorInput): DOMRect | null => {
-	const textNodes = collectTextNodes(root);
-	const fullText = textNodes.map((item) => item.text).join("");
-	const match = findTextAnchorMatch(fullText, anchor, { fallbackToToken: true });
-	if (!match) return null;
-
-	const start = resolveTextPosition(textNodes, match.start);
-	const end = resolveTextPosition(textNodes, match.end);
-	if (!start || !end) return null;
-
-	const range = document.createRange();
-	range.setStart(start.node, start.offset);
-	range.setEnd(end.node, end.offset);
-	const rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
-	range.detach();
-	return rect && rect.height > 0 ? rect : null;
-};
-
-interface TextNodePosition {
-	end: number;
-	node: Text;
-	start: number;
-	text: string;
-}
-
-const collectTextNodes = (root: HTMLElement): TextNodePosition[] => {
-	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-	const textNodes: TextNodePosition[] = [];
-	let offset = 0;
-	let node = walker.nextNode();
-	while (node) {
-		const text = node.textContent ?? "";
-		if (text) {
-			textNodes.push({
-				end: offset + text.length,
-				node: node as Text,
-				start: offset,
-				text,
-			});
-			offset += text.length;
-		}
-		node = walker.nextNode();
-	}
-	return textNodes;
-};
-
-const resolveTextPosition = (nodes: TextNodePosition[], offset: number) => {
-	for (const item of nodes) {
-		if (offset >= item.start && offset <= item.end) {
-			return {
-				node: item.node,
-				offset: Math.min(Math.max(offset - item.start, 0), item.text.length),
-			};
-		}
-	}
-
-	const last = nodes.at(-1);
-	return last ? { node: last.node, offset: last.text.length } : null;
 };
 
 const sectionImageAssetKeys = (section: MarkdownSectionContext) => {

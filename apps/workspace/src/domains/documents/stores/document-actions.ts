@@ -366,18 +366,19 @@ export const createDocumentMutationActions = ({
 	},
 	updateDocumentContent: (id, content) => {
 		set((state) => {
-			const documents = state.documents.map((document) =>
-				document.id === id
-					? {
-							...document,
-							content,
-							version: document.version + 1,
-							updatedAt: new Date().toISOString(),
-							isDirty: true,
-						}
-					: document,
-			);
-			return { documents };
+			let didUpdate = false;
+			const documents = state.documents.map((document) => {
+				if (document.id !== id || document.content === content) return document;
+				didUpdate = true;
+				return {
+					...document,
+					content,
+					version: document.version + 1,
+					updatedAt: new Date().toISOString(),
+					isDirty: true,
+				};
+			});
+			return didUpdate ? { documents } : state;
 		});
 	},
 });

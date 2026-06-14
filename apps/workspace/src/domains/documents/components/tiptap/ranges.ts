@@ -9,18 +9,29 @@ export const findTextNodeRange = (
 	doc: ProseMirrorNode,
 	anchor: TextAnchorInput,
 ): { from: number; to: number } | null => {
-	const textNodes = collectTextNodes(doc);
-	const fullText = textNodes.map((item) => item.text).join("");
-	const match = findTextAnchorMatch(fullText, anchor);
-	if (!match) return null;
+	return createTextNodeRangeResolver(doc).findRange(anchor);
+};
 
-	const start = resolveTextPosition(textNodes, match.start);
-	const end = resolveTextPosition(textNodes, match.end);
-	if (start === null || end === null || start === end) return null;
+export const createTextNodeRangeResolver = (doc: ProseMirrorNode) => {
+	const { text, textNodes } = collectTextNodes(doc);
 
 	return {
-		from: Math.min(start, end),
-		to: Math.max(start, end),
+		findRange(
+			anchor: TextAnchorInput,
+			options: { fallbackToToken?: boolean } = {},
+		): { from: number; to: number } | null {
+			const match = findTextAnchorMatch(text, anchor, options);
+			if (!match) return null;
+
+			const start = resolveTextPosition(textNodes, match.start, "forward");
+			const end = resolveTextPosition(textNodes, match.end, "backward");
+			if (start === null || end === null || start === end) return null;
+
+			return {
+				from: Math.min(start, end),
+				to: Math.max(start, end),
+			};
+		},
 	};
 };
 
@@ -31,27 +42,37 @@ interface TextNodePosition {
 	text: string;
 }
 
-const collectTextNodes = (doc: ProseMirrorNode): TextNodePosition[] => {
+const collectTextNodes = (doc: ProseMirrorNode) => {
 	const textNodes: TextNodePosition[] = [];
-	let offset = 0;
+	let text = "";
 	doc.descendants((node, position) => {
 		if (!node.isText || !node.text) return true;
 
+		const start = text.length;
+		text += node.text;
 		textNodes.push({
-			end: offset + node.text.length,
+			end: text.length,
 			position,
-			start: offset,
+			start,
 			text: node.text,
 		});
-		offset += node.text.length;
 		return true;
 	});
-	return textNodes;
+	return { text, textNodes };
 };
 
-const resolveTextPosition = (nodes: TextNodePosition[], offset: number) => {
-	for (const item of nodes) {
-		if (offset >= item.start && offset <= item.end) {
+const resolveTextPosition = (
+	nodes: TextNodePosition[],
+	offset: number,
+	bias: "backward" | "forward",
+) => {
+	const orderedNodes = bias === "backward" ? [...nodes].reverse() : nodes;
+	for (const item of orderedNodes) {
+		const contains =
+			bias === "backward"
+				? offset > item.start && offset <= item.end
+				: offset >= item.start && offset < item.end;
+		if (contains) {
 			return item.position + Math.min(Math.max(offset - item.start, 0), item.text.length);
 		}
 	}

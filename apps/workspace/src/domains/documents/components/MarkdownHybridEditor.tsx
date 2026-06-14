@@ -3,7 +3,7 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "r
 import { Settings2 } from "lucide-react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { PhotoSlider } from "react-photo-view";
-import type { Extensions } from "@tiptap/core";
+import type { Editor, Extensions, JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import Image from "@tiptap/extension-image";
@@ -92,6 +92,40 @@ export interface SelectionCoords {
 
 const defaultComments: DocumentComment[] = [];
 const defaultExtraExtensions: Extensions = [];
+const markdownChangeFlushDelayMs = 160;
+const parsedMarkdownCacheLimit = 8;
+
+interface ParsedMarkdownCacheEntry {
+	json: JSONContent;
+	markdown: string;
+}
+
+const parsedMarkdownCache = new Map<string, ParsedMarkdownCacheEntry>();
+
+const cachedParsedMarkdown = (documentId: string, markdown: string): JSONContent | null => {
+	const entry = parsedMarkdownCache.get(documentId);
+	if (!entry || entry.markdown !== markdown) return null;
+
+	parsedMarkdownCache.delete(documentId);
+	parsedMarkdownCache.set(documentId, entry);
+	return entry.json;
+};
+
+const rememberParsedMarkdown = (documentId: string, markdown: string, editor: Editor) => {
+	if (!markdown || editor.isDestroyed) return;
+
+	parsedMarkdownCache.delete(documentId);
+	parsedMarkdownCache.set(documentId, {
+		json: editor.getJSON(),
+		markdown,
+	});
+
+	while (parsedMarkdownCache.size > parsedMarkdownCacheLimit) {
+		const oldestKey = parsedMarkdownCache.keys().next().value;
+		if (!oldestKey) break;
+		parsedMarkdownCache.delete(oldestKey);
+	}
+};
 
 interface ImagePreviewState {
 	index: number;
@@ -134,10 +168,16 @@ export const MarkdownHybridEditor = forwardRef<
 	const onSelectionRangeChangeRef = useRef(onSelectionRangeChange);
 	const emittedMarkdownRef = useRef(value);
 	const isStreamingRef = useRef(false);
+	const pendingMarkdownEditorRef = useRef<Editor | null>(null);
+	const pendingMarkdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const streamingTargetRef = useRef<StreamingBlockTarget | null>(null);
 	const editorSurfaceRef = useRef<HTMLDivElement>(null);
 	const [hoveredBlockRect, setHoveredBlockRect] = useState<HoveredBlockRect | null>(null);
 	const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
+	const initialEditorContent = useMemo(
+		() => cachedParsedMarkdown(documentId, value) ?? value,
+		[documentId, value],
+	);
 	const blockHandleExtension = useMemo(
 		() =>
 			createBlockHandleExtension((rect, range) => {
@@ -222,24 +262,61 @@ export const MarkdownHybridEditor = forwardRef<
 		onSelectionRangeChangeRef.current = onSelectionRangeChange;
 	}, [onSelectionRangeChange]);
 
+	const clearPendingMarkdownTimer = useCallback(() => {
+		if (pendingMarkdownTimerRef.current === null) return;
+		clearTimeout(pendingMarkdownTimerRef.current);
+		pendingMarkdownTimerRef.current = null;
+	}, []);
+
+	const flushPendingMarkdownChange = useCallback(() => {
+		clearPendingMarkdownTimer();
+		const pendingEditor = pendingMarkdownEditorRef.current;
+		pendingMarkdownEditorRef.current = null;
+		if (!pendingEditor || pendingEditor.isDestroyed) return;
+
+		const markdown = pendingEditor.getMarkdown();
+		if (markdown === emittedMarkdownRef.current) return;
+
+		emittedMarkdownRef.current = markdown;
+		rememberParsedMarkdown(documentId, markdown, pendingEditor);
+		if (isStreamingRef.current) return;
+		onChangeRef.current(markdown);
+	}, [clearPendingMarkdownTimer, documentId]);
+
+	const scheduleMarkdownChangeFlush = useCallback(
+		(nextEditor: Editor) => {
+			pendingMarkdownEditorRef.current = nextEditor;
+			if (pendingMarkdownTimerRef.current !== null) return;
+
+			pendingMarkdownTimerRef.current = setTimeout(() => {
+				flushPendingMarkdownChange();
+			}, markdownChangeFlushDelayMs);
+		},
+		[flushPendingMarkdownChange],
+	);
+
 	const editor = useEditor(
 		{
 			extensions,
-			content: value,
-			contentType: "markdown",
+			content: initialEditorContent,
+			...(typeof initialEditorContent === "string" ? { contentType: "markdown" as const } : {}),
 			editorProps: {
 				attributes: {
 					class: "tiptap-content",
 					"aria-label": "Markdown 编辑器",
 				},
 			},
-			immediatelyRender: true,
+			immediatelyRender: false,
 			shouldRerenderOnTransaction: false,
+			onBlur: () => {
+				flushPendingMarkdownChange();
+			},
+			onCreate: ({ editor: nextEditor }) => {
+				rememberParsedMarkdown(documentId, value, nextEditor);
+			},
 			onUpdate: ({ editor: nextEditor }) => {
-				const markdown = nextEditor.getMarkdown();
-				emittedMarkdownRef.current = markdown;
 				if (isStreamingRef.current) return;
-				onChangeRef.current(markdown);
+				scheduleMarkdownChangeFlush(nextEditor);
 			},
 			onSelectionUpdate: ({ editor: nextEditor }) => {
 				const { from, to } = nextEditor.state.selection;
@@ -267,6 +344,13 @@ export const MarkdownHybridEditor = forwardRef<
 		[],
 	);
 
+	useEffect(() => {
+		if (!editor) return;
+		return () => {
+			rememberParsedMarkdown(documentId, emittedMarkdownRef.current, editor);
+		};
+	}, [documentId, editor]);
+
 	useMarkdownEditorImperativeHandle({
 		documentId,
 		editor,
@@ -277,10 +361,21 @@ export const MarkdownHybridEditor = forwardRef<
 		streamingTargetRef,
 	});
 
+	useEffect(
+		() => () => {
+			flushPendingMarkdownChange();
+		},
+		[flushPendingMarkdownChange],
+	);
+
 	useEffect(() => {
-		if (value === emittedMarkdownRef.current) return;
 		if (!editor) return;
 		if (isStreamingRef.current) return;
+		if (pendingMarkdownEditorRef.current) {
+			flushPendingMarkdownChange();
+			return;
+		}
+		if (value === emittedMarkdownRef.current) return;
 
 		const previousMarkdown = emittedMarkdownRef.current;
 		const changedBlock = diffTopLevelBlocks(editor, previousMarkdown, value);
@@ -324,7 +419,7 @@ export const MarkdownHybridEditor = forwardRef<
 		} catch {
 			// Selection positions can become invalid after a full document replacement.
 		}
-	}, [editor, value]);
+	}, [editor, flushPendingMarkdownChange, value]);
 
 	useEffect(() => {
 		if (!editor) return;
