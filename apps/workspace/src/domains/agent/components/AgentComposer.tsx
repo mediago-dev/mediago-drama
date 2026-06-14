@@ -3,7 +3,6 @@ import {
 	useCallback,
 	useEffect,
 	useImperativeHandle,
-	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -54,8 +53,6 @@ interface AgentComposerProps {
 	onSubmit?: () => void;
 	placeholder?: string;
 }
-
-const maxComposerRows = 3;
 
 const AgentMention = Mention.extend({
 	addAttributes() {
@@ -164,7 +161,6 @@ export const AgentComposer = forwardRef<AgentComposerHandle, AgentComposerProps>
 				hasText: value.text.trim().length > 0,
 				referenceCount: value.references.length,
 			});
-			window.requestAnimationFrame(() => resizeComposer(surfaceRef.current));
 		}, []);
 
 		const extensions = useMemo(
@@ -235,10 +231,6 @@ export const AgentComposer = forwardRef<AgentComposerHandle, AgentComposerProps>
 				?.setAttribute("data-placeholder", placeholder);
 		}, [editor, isReferenceOnly, placeholder]);
 
-		useLayoutEffect(() => {
-			resizeComposer(surfaceRef.current);
-		}, [editor]);
-
 		useImperativeHandle(
 			ref,
 			() => ({
@@ -267,7 +259,7 @@ export const AgentComposer = forwardRef<AgentComposerHandle, AgentComposerProps>
 			<div
 				ref={surfaceRef}
 				className={cn(
-					"agent-composer agent-composer-surface min-h-8 flex-1 rounded-sm border border-input bg-ide-editor px-2 py-1.5 text-xs leading-5 text-foreground transition-colors focus-within:border-ring",
+					"agent-composer agent-composer-surface min-h-8 flex-1 resize-none overflow-y-auto rounded-sm border border-input bg-ide-editor px-2 py-1.5 text-xs leading-5 text-foreground transition-colors focus-within:border-ring",
 					disabled && "cursor-not-allowed opacity-60",
 					className,
 				)}
@@ -376,25 +368,4 @@ const mentionTextFromAttrs = (attrs: Record<string, unknown>) => {
 	const value = attrs.title ?? attrs.label ?? attrs.id;
 	if (typeof value !== "string" || value.trim() === "") return "";
 	return mentionDisplayText(value);
-};
-
-const resizeComposer = (surface: HTMLDivElement | null) => {
-	const element = surface?.querySelector<HTMLElement>(".ProseMirror");
-	if (!element) return;
-
-	element.style.height = "auto";
-	const styles = window.getComputedStyle(element);
-	const lineHeight = cssPixels(styles.lineHeight, 20);
-	const paddingY = cssPixels(styles.paddingTop) + cssPixels(styles.paddingBottom);
-	const maxHeight = lineHeight * maxComposerRows + paddingY;
-	const scrollHeight = element.scrollHeight;
-	const nextHeight = Math.min(scrollHeight, maxHeight);
-
-	element.style.height = `${Math.ceil(nextHeight)}px`;
-	element.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
-};
-
-const cssPixels = (value: string, fallback = 0) => {
-	const parsed = Number.parseFloat(value);
-	return Number.isFinite(parsed) ? parsed : fallback;
 };

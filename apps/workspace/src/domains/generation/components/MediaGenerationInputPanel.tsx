@@ -67,10 +67,9 @@ export const MediaGenerationInputPanel: React.FC<{
 		canCopyPrompt={canCopyPrompt}
 		canSelectReference={canSelectReferenceImages}
 		canSubmit={canSubmit}
-		className="h-full min-h-0 bg-card"
+		className="bg-card"
 		error={error}
 		errorTone="error"
-		fillHeight
 		isSubmitting={isSubmitting}
 		layeredComposer={layeredComposer}
 		leftControls={

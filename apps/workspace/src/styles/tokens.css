@@ -158,8 +158,13 @@
 		--generation-composer-padding: calc(var(--space-xs) + var(--space-2xs));
 		--generation-composer-gap: var(--space-xs);
 		--generation-composer-toolbar-gap: calc(var(--space-xs) + var(--space-2xs));
-		--generation-composer-textarea-height: calc(var(--space-xl) + var(--space-sm));
-		--generation-composer-textarea-max-height: calc(var(--space-2xl) + var(--space-2xl));
+		--generation-composer-textarea-min-height: calc(
+			2.5rem + var(--generation-composer-padding) + var(--generation-composer-padding)
+		);
+		--generation-composer-textarea-max-height: calc(
+			11.25rem + var(--generation-composer-padding) + var(--generation-composer-padding)
+		);
+		--generation-composer-textarea-height: var(--generation-composer-textarea-min-height);
 		--generation-composer-layer-min-width: 7rem;
 		--generation-popover-margin: calc(var(--space-sm) + var(--space-xs));
 		--generation-popover-radius: var(--radius-scale-sm);

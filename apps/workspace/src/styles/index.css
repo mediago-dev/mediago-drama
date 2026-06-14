@@ -777,13 +777,15 @@
 	}
 
 	.agent-composer-surface {
-		min-height: calc(var(--generation-composer-textarea-height) + var(--space-xs));
+		min-height: calc(2.55rem + 0.75rem + var(--space-2xs) + var(--space-2xs));
+		max-height: calc(11.45rem + 0.75rem + var(--space-2xs) + var(--space-2xs));
 		min-width: 0;
 		border: 0;
 		border-radius: var(--radius-scale-sm);
 		background: var(--agent-surface);
 		box-shadow: none;
 		color: var(--agent-text);
+		overflow-y: auto;
 	}
 
 	.agent-composer-surface:focus-within {
@@ -792,7 +794,7 @@
 	}
 
 	.agent-composer-prosemirror {
-		min-height: var(--generation-composer-textarea-height);
+		min-height: calc(2.55rem + var(--space-2xs) + var(--space-2xs));
 		padding: var(--space-2xs) 0.15rem;
 		font-size: 0.82rem;
 		line-height: 1.55;

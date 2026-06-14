@@ -21,7 +21,7 @@ import {
 	generationModelBrand,
 } from "@/domains/generation/components/GenerationBrandMark";
 import {
-	generationComposerPromptInputFillClassName,
+	generationComposerPromptInputClassName,
 	generationComposerSelectClassName,
 	generationComposerToolbarGhostButtonClassName,
 } from "@/domains/generation/components/GenerationComposerPanel";
@@ -187,8 +187,9 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			]),
 		[extraReferenceUrls, inlineReferenceUrls],
 	);
-	const { historyWidth, inputPanelHeight, nudgeHistoryWidth, startHistoryResize } =
-		useMediaGenerationWorkspaceLayout({ rightPaneRef, workspaceRef });
+	const { historyWidth, nudgeHistoryWidth, startHistoryResize } = useMediaGenerationWorkspaceLayout(
+		{ rightPaneRef, workspaceRef },
+	);
 	const generatedKindLabel = kind === "image" ? "图像" : "视频";
 	const resolvedSubmitLabel = submitLabel ?? (kind === "image" ? "生成图片" : "生成视频");
 	const resolvedPromptPlaceholder =
@@ -564,13 +565,14 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		() => promptInsertItemsFromLayers(ws.composerLayers, kind),
 		[ws.composerLayers, kind],
 	);
+	const promptEditorClassName = generationComposerPromptInputClassName;
 
 	const promptEditor = renderPromptEditor ? (
 		renderPromptEditor({
 			value: ws.prompt,
 			placeholder: resolvedPromptPlaceholder,
 			onChange: ws.setPrompt,
-			className: generationComposerPromptInputFillClassName,
+			className: promptEditorClassName,
 			slashItems: promptSlashItems,
 		})
 	) : (
@@ -578,7 +580,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			value={ws.prompt}
 			onChange={ws.setPrompt}
 			placeholder={resolvedPromptPlaceholder}
-			className={generationComposerPromptInputFillClassName}
+			className={promptEditorClassName}
 			slashItems={promptSlashItems}
 		/>
 	);
@@ -640,7 +642,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				ref={rightPaneRef}
 				className="grid min-h-0 min-w-0"
 				style={{
-					gridTemplateRows: `minmax(0, 1fr) ${inputPanelHeight}px`,
+					gridTemplateRows: "minmax(0, 1fr) auto",
 				}}
 			>
 				<section className="flex min-h-0 min-w-0 flex-col bg-card">

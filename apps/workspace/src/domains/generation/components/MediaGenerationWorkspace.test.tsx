@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type React from "react";
+import React from "react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MediaAsset } from "@/domains/workspace/api/media";
@@ -18,11 +18,8 @@ vi.mock("@/domains/generation/components/useMediaGenerationWorkspaceLayout", () 
 	resizeKeyboardStep: 24,
 	useMediaGenerationWorkspaceLayout: () => ({
 		historyWidth: 320,
-		inputPanelHeight: 260,
 		nudgeHistoryWidth: vi.fn(),
-		nudgeInputPanelHeight: vi.fn(),
 		startHistoryResize: vi.fn(),
-		startInputPanelResize: vi.fn(),
 	}),
 }));
 
@@ -32,24 +29,33 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 		modelControls,
 		previewReferenceAssets = [],
 		primaryParamControls,
+		promptEditor,
 		secondaryParamControls,
 	}: {
 		imageSpecControl?: React.ReactNode;
 		modelControls?: React.ReactNode;
 		previewReferenceAssets?: MediaAsset[];
 		primaryParamControls?: React.ReactNode;
+		promptEditor?: React.ReactNode;
 		secondaryParamControls?: React.ReactNode;
-	}) => (
-		<div data-testid="generation-input-panel">
-			{modelControls}
-			{imageSpecControl}
-			{primaryParamControls}
-			{secondaryParamControls}
-			{previewReferenceAssets.map((asset) => (
-				<span key={asset.id}>{asset.filename}</span>
-			))}
-		</div>
-	),
+	}) => {
+		const promptEditorClassName = React.isValidElement<{ className?: string }>(promptEditor)
+			? (promptEditor.props.className ?? "")
+			: "";
+
+		return (
+			<div data-testid="generation-input-panel">
+				<div data-testid="document-prompt-editor-class" data-class={promptEditorClassName} />
+				{modelControls}
+				{imageSpecControl}
+				{primaryParamControls}
+				{secondaryParamControls}
+				{previewReferenceAssets.map((asset) => (
+					<span key={asset.id}>{asset.filename}</span>
+				))}
+			</div>
+		);
+	},
 }));
 
 vi.mock("@/domains/generation/components/MediaGenerationWorkspaceDialogs", () => ({
@@ -218,6 +224,32 @@ describe("MediaGenerationWorkspace", () => {
 
 		expect(screen.getByRole("button", { name: "模型版本和供应商" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "打开模型文档" })).toBeTruthy();
+	});
+
+	it("passes a 2-to-9-line prompt editor to the document input panel", () => {
+		vi.mocked(useGenerationWorkspace).mockReturnValue(
+			workspaceDefaults as unknown as ReturnType<typeof useGenerationWorkspace>,
+		);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+			/>,
+		);
+
+		const promptEditorClassName = screen
+			.getByTestId("document-prompt-editor-class")
+			.getAttribute("data-class");
+
+		expect(promptEditorClassName).toContain(
+			"min-h-[var(--generation-composer-textarea-min-height)]",
+		);
+		expect(promptEditorClassName).toContain(
+			"max-h-[var(--generation-composer-textarea-max-height)]",
+		);
+		expect(promptEditorClassName).toContain("resize-none");
 	});
 
 	it("keeps the tabbed edit view focused on the input without history or results", () => {

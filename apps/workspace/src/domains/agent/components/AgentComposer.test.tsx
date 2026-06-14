@@ -33,4 +33,12 @@ describe("AgentComposer", () => {
 		expect(value?.displayText.trim()).toBe("@完美世界.txt 这个文档转换成 utf8 编码吗？");
 		expect(value?.references).toEqual([assetReference]);
 	});
+
+	it("limits the chat input to an automatic 2-to-9-line height", () => {
+		const { container } = render(<AgentComposer />);
+		const composer = container.querySelector<HTMLElement>(".agent-composer-surface");
+
+		expect(composer?.className).toContain("resize-none");
+		expect(composer?.className).toContain("overflow-y-auto");
+	});
 });

@@ -152,11 +152,11 @@ export const GenerationComposerPanel: React.FC<GenerationComposerPanelProps> = (
 };
 
 export const generationComposerPromptInputClassName =
-	"h-[var(--generation-composer-textarea-height)] max-h-[var(--generation-composer-textarea-max-height)] min-h-[var(--generation-composer-textarea-height)] min-w-0 resize-none border-0 bg-transparent px-[var(--generation-control-padding-x)] py-[var(--generation-composer-padding)] text-sm leading-5 text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0";
+	"max-h-[var(--generation-composer-textarea-max-height)] min-h-[var(--generation-composer-textarea-min-height)] min-w-0 resize-none overflow-y-auto border-0 bg-transparent px-[var(--generation-control-padding-x)] py-[var(--generation-composer-padding)] text-sm leading-5 text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0";
 
 export const generationComposerPromptInputFillClassName = cn(
 	generationComposerPromptInputClassName,
-	"h-full max-h-none min-h-0 flex-1",
+	"h-full flex-1",
 );
 
 export const generationComposerSelectClassName = (toneClassName?: string) =>

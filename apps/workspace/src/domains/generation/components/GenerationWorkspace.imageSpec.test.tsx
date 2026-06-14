@@ -253,6 +253,22 @@ describe("GenerationWorkspace image spec control", () => {
 		expect(screen.getByRole("button", { name: "上传" })).toBeTruthy();
 	});
 
+	it("keeps the studio prompt editor between 2 and 9 rows", () => {
+		vi.mocked(useGenerationWorkspace).mockReturnValue(
+			workspaceDefaults as unknown as ReturnType<typeof useGenerationWorkspace>,
+		);
+
+		const { container } = renderWorkspace();
+
+		expect(
+			container.querySelector("[class*='generation-composer-textarea-min-height']"),
+		).toBeTruthy();
+		expect(
+			container.querySelector("[class*='generation-composer-textarea-max-height']"),
+		).toBeTruthy();
+		expect(container.querySelector(".resize-y")).toBeNull();
+	});
+
 	it("moves video ratio, resolution, and duration into primary controls", () => {
 		vi.mocked(useGenerationWorkspace).mockReturnValue({
 			...workspaceDefaults,
