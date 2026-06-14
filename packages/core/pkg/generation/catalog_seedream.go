@@ -58,6 +58,7 @@ func jimengSeedreamParams() RouteParamConfig {
 			{Label: "2K", Value: "2K"},
 			{Label: "4K", Value: "4K"},
 		}),
+		numberRouteParam(ParamN, 1, 1, 4),
 	}
 	return routeParamConfig(params, ParamTranslation{
 		Moves: []ParamMove{
@@ -66,6 +67,7 @@ func jimengSeedreamParams() RouteParamConfig {
 				"2K": "2k",
 				"4K": "4k",
 			}},
+			{From: ParamN, To: "_mediago_task_count"},
 		},
 	})
 }

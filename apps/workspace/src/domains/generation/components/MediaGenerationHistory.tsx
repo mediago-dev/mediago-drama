@@ -1,6 +1,6 @@
 import { Check, Clipboard, FileText, Image as ImageIcon, Loader2, Trash2 } from "lucide-react";
 import type React from "react";
-import type { GenerationKind } from "@/domains/generation/api/generation";
+import type { GenerationAsset, GenerationKind } from "@/domains/generation/api/generation";
 import { GenerationVideoThumbnail } from "@/domains/generation/components/GenerationVideoThumbnail";
 import {
 	entryGeneratedAssets,
@@ -12,6 +12,7 @@ import {
 } from "@/domains/generation/components/mediaGenerationHelpers";
 import { Button } from "@/shared/components/ui/button";
 import {
+	generationAssetSelectionKey,
 	generationAssetSource,
 	generationStatusLabel,
 	type GenerationEntry,
@@ -27,7 +28,10 @@ export const HistoryGenerationList: React.FC<{
 	onCopyPrompt?: (entry: GenerationEntry) => void;
 	onDeleteEntry: (entry: GenerationEntry) => void;
 	onSelectEntry: (entry: GenerationEntry) => void;
+	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
+	onUsePrompt?: (entry: GenerationEntry) => void;
 	selectedAssetKeys: string[];
+	variant?: "compact" | "list";
 }> = ({
 	activeEntryId,
 	deletingEntryIds,
@@ -37,7 +41,10 @@ export const HistoryGenerationList: React.FC<{
 	onCopyPrompt,
 	onDeleteEntry,
 	onSelectEntry,
+	onToggleAsset,
+	onUsePrompt,
 	selectedAssetKeys,
+	variant = "compact",
 }) => {
 	if (entries.length === 0) {
 		return (
@@ -49,7 +56,7 @@ export const HistoryGenerationList: React.FC<{
 
 	return (
 		<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
-			<div className="grid gap-2">
+			<div className="grid gap-2.5">
 				{entries.map((entry) => (
 					<HistoryGenerationItem
 						key={entry.id}
@@ -62,6 +69,9 @@ export const HistoryGenerationList: React.FC<{
 						onCopyPrompt={onCopyPrompt ? () => onCopyPrompt(entry) : undefined}
 						onDelete={() => onDeleteEntry(entry)}
 						onSelect={() => onSelectEntry(entry)}
+						onToggleAsset={onToggleAsset}
+						onUsePrompt={onUsePrompt ? () => onUsePrompt(entry) : undefined}
+						variant={variant}
 					/>
 				))}
 			</div>
@@ -77,8 +87,11 @@ const HistoryGenerationItem: React.FC<{
 	onCopyPrompt?: () => void;
 	onDelete: () => void;
 	onSelect: () => void;
+	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
+	onUsePrompt?: () => void;
 	selected: boolean;
 	selectedAssetKeys: string[];
+	variant: "compact" | "list";
 }> = ({
 	defaultSourceLabel,
 	entry,
@@ -87,18 +100,97 @@ const HistoryGenerationItem: React.FC<{
 	onCopyPrompt,
 	onDelete,
 	onSelect,
+	onToggleAsset,
+	onUsePrompt,
 	selected,
 	selectedAssetKeys,
+	variant,
 }) => {
 	const generatedAssets = entryGeneratedAssets(entry, kind);
-	const thumbnail = generatedAssets[0];
-	const source = thumbnail ? generationAssetSource(thumbnail) : "";
 	const loading = isPendingGenerationStatus(entry.status);
 	const failed = isFailedGenerationStatus(entry.status);
 	const errorMessage = failed ? entryErrorText(entry) : "";
 	const selection = entrySelectionState(generatedAssets, selectedAssetKeys);
 	const sourceBadge = generationSourceBadge(defaultSourceLabel);
 	const timeSummary = generationTimeSummary(entry, loading);
+	const pendingAssetCount = pendingGenerationAssetCount(entry, kind, loading);
+
+	if (variant === "list") {
+		return (
+			<article
+				className={cn(
+					"group/history-item relative min-w-0 max-w-full rounded-sm border bg-card p-3",
+					failed ? "border-error-border" : "border-border",
+				)}
+			>
+				<div className="flex w-full min-w-0 items-start justify-between gap-3 pr-28 text-left">
+					<div className="min-w-0 flex-1">
+						<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+							<span className="inline-flex min-w-0 items-center gap-2">
+								<span
+									className={cn(
+										"truncate text-xs font-medium text-foreground",
+										failed && "text-error-foreground",
+									)}
+									title={errorMessage || undefined}
+								>
+									{entry.status ? generationStatusLabel(entry.status) : "生成结果"}
+								</span>
+							</span>
+							{timeSummary ? (
+								<span className="shrink-0 whitespace-nowrap text-2xs leading-4 text-muted-foreground">
+									{timeSummary}
+								</span>
+							) : null}
+						</div>
+						<p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+							{entryPromptText(entry) || "无提示词"}
+						</p>
+					</div>
+				</div>
+				<HistoryAssetStrip
+					assets={generatedAssets}
+					kind={kind}
+					loading={loading}
+					pendingAssetCount={pendingAssetCount}
+					selectedAssetKeys={selectedAssetKeys}
+					onToggleAsset={onToggleAsset}
+				/>
+				{onCopyPrompt ? (
+					<HistoryIconButton
+						ariaLabel="复制这条提示词"
+						className="absolute right-[4.25rem] top-3"
+						title="复制提示词"
+						onClick={onCopyPrompt}
+					>
+						<Clipboard className="size-3.5" />
+					</HistoryIconButton>
+				) : null}
+				{onUsePrompt ? (
+					<HistoryIconButton
+						ariaLabel="用此提示词编辑"
+						className="absolute right-10 top-3"
+						title="用此提示词编辑"
+						onClick={onUsePrompt}
+					>
+						<FileText className="size-3.5" />
+					</HistoryIconButton>
+				) : null}
+				<DeleteEntryButton
+					className="absolute right-3 top-3"
+					isDeleting={isDeleting}
+					onDelete={onDelete}
+				/>
+				{errorMessage ? <HistoryErrorTooltip message={errorMessage} /> : null}
+			</article>
+		);
+	}
+
+	const thumbnail = generatedAssets[0];
+	const source = thumbnail ? generationAssetSource(thumbnail) : "";
+	const displayAssetCount = loading
+		? Math.max(generatedAssets.length, pendingAssetCount)
+		: generatedAssets.length;
 
 	return (
 		<article
@@ -142,7 +234,7 @@ const HistoryGenerationItem: React.FC<{
 									failed && "text-error-foreground",
 								)}
 							>
-								{generatedAssets.length} {kind === "image" ? "张" : "个"}
+								{displayAssetCount} {kind === "image" ? "张" : "个"}
 							</span>
 						</span>
 						{selection.selectedCount > 0 ? (
@@ -188,6 +280,113 @@ const HistoryGenerationItem: React.FC<{
 		</article>
 	);
 };
+
+const HistoryAssetStrip: React.FC<{
+	assets: GenerationAsset[];
+	kind: GenerationKind;
+	loading: boolean;
+	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
+	pendingAssetCount: number;
+	selectedAssetKeys: string[];
+}> = ({ assets, kind, loading, onToggleAsset, pendingAssetCount, selectedAssetKeys }) => {
+	const pendingPlaceholderCount = loading ? Math.max(0, pendingAssetCount - assets.length) : 0;
+
+	if (assets.length === 0 && pendingPlaceholderCount === 0) {
+		return (
+			<div className="mt-3 flex h-24 items-center justify-center rounded-sm border border-dashed border-border bg-muted/50 text-xs text-muted-foreground">
+				{kind === "image" ? "暂无图片" : "暂无视频"}
+			</div>
+		);
+	}
+
+	return (
+		<div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+			{assets.map((asset, index) => {
+				const source = generationAssetSource(asset);
+				const selectionKey = generationAssetSelectionKey(asset);
+				const selected = Boolean(selectionKey && selectedAssetKeys.includes(selectionKey));
+
+				return (
+					<HistoryAssetThumb
+						key={`${asset.kind}:${source}:${index}`}
+						asset={asset}
+						index={index}
+						selectable={Boolean(selectionKey && onToggleAsset)}
+						selected={selected}
+						source={source}
+						onToggleAsset={onToggleAsset}
+					/>
+				);
+			})}
+			{Array.from({ length: pendingPlaceholderCount }, (_, index) => (
+				<HistoryPendingAssetThumb
+					key={`pending:${assets.length + index}`}
+					index={assets.length + index}
+					kind={kind}
+				/>
+			))}
+		</div>
+	);
+};
+
+const HistoryPendingAssetThumb: React.FC<{
+	index: number;
+	kind: GenerationKind;
+}> = ({ index, kind }) => (
+	<div
+		role="img"
+		aria-label={`第 ${index + 1} ${kind === "image" ? "张" : "个"}生成中`}
+		className="flex h-24 w-32 shrink-0 flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-border bg-muted/50 text-2xs text-muted-foreground"
+	>
+		<Loader2 className="size-4 animate-spin" />
+		<span>生成中</span>
+	</div>
+);
+
+const HistoryAssetThumb: React.FC<{
+	asset: GenerationAsset;
+	index: number;
+	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
+	selectable: boolean;
+	selected: boolean;
+	source: string;
+}> = ({ asset, index, onToggleAsset, selectable, selected, source }) => (
+	<button
+		type="button"
+		role={selectable ? "checkbox" : undefined}
+		aria-checked={selectable ? selected : undefined}
+		aria-label={selectable ? (selected ? "取消选入结果" : "选入结果") : `历史结果 ${index + 1}`}
+		title={selectable ? (selected ? "取消选入结果" : "选入结果") : `历史结果 ${index + 1}`}
+		className={cn(
+			"relative h-24 w-32 shrink-0 overflow-hidden rounded-sm border bg-muted transition-colors",
+			selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-input",
+			!selectable && "cursor-default",
+		)}
+		onClick={(event) => {
+			event.stopPropagation();
+			if (!selectable || !onToggleAsset) return;
+			onToggleAsset(asset, !selected);
+		}}
+	>
+		{asset.kind === "video" ? (
+			<GenerationVideoThumbnail source={source} />
+		) : (
+			<img src={source} alt="" className="size-full object-cover" />
+		)}
+		{selectable ? (
+			<span
+				className={cn(
+					"absolute left-2 top-2 flex size-6 items-center justify-center rounded-sm border shadow-sm ring-1 ring-black/10 transition-colors",
+					selected
+						? "border-primary bg-primary text-primary-foreground"
+						: "border-white/80 bg-background/90 text-transparent hover:bg-background",
+				)}
+			>
+				<Check className={cn("size-3.5", selected ? "opacity-100" : "opacity-0")} />
+			</span>
+		) : null}
+	</button>
+);
 
 const HistoryErrorTooltip: React.FC<{ message: string }> = ({ message }) => (
 	<span
@@ -248,6 +447,49 @@ const generationDurationMs = (entry: GenerationEntry, running: boolean) => {
 	if (Number.isNaN(startedAt)) return null;
 
 	return Math.max(0, Date.now() - startedAt);
+};
+
+const pendingAssetCountMax = 10;
+
+const pendingGenerationAssetCount = (
+	entry: GenerationEntry,
+	kind: GenerationKind,
+	loading: boolean,
+) => {
+	if (!loading) return 0;
+	if (kind !== "image") return 1;
+
+	return requestGenerationCount(entry.requestDetails ?? []);
+};
+
+const requestGenerationCount = (details: Array<{ label: string; value: string }>) => {
+	const countDetail = details.find((detail) => isCountDetailLabel(detail.label));
+	const count = countFromDetailValue(countDetail?.value);
+
+	return count ?? 1;
+};
+
+const isCountDetailLabel = (label: string) => {
+	const normalizedLabel = label.trim().toLowerCase();
+
+	return (
+		normalizedLabel === "n" ||
+		normalizedLabel === "images" ||
+		normalizedLabel === "图像数量" ||
+		normalizedLabel === "图片数量" ||
+		normalizedLabel === "生成数量" ||
+		normalizedLabel === "数量"
+	);
+};
+
+const countFromDetailValue = (value?: string) => {
+	const match = value?.match(/\d+(?:\.\d+)?/u);
+	if (!match?.[0]) return null;
+
+	const count = Number(match[0]);
+	if (!Number.isFinite(count)) return null;
+
+	return Math.max(1, Math.min(pendingAssetCountMax, Math.round(count)));
 };
 
 const formatGenerationTime = (value?: string) => {

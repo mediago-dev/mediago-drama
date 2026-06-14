@@ -132,4 +132,29 @@ describe("GenerationChatPanel", () => {
 
 		expect(onSaveText).toHaveBeenCalledWith(entries[0]);
 	});
+
+	it("keeps pending image slots visible after a multi-image task partially returns assets", () => {
+		HTMLElement.prototype.scrollTo = vi.fn();
+		const entries: GenerationEntry[] = [
+			{
+				id: "task-image",
+				kind: "image",
+				status: "submitted",
+				content: "",
+				prompt: "生成四张图",
+				requestDetails: [{ label: "数量", value: "4" }],
+				assets: [
+					{ kind: "image", url: "https://example.test/a.png", mimeType: "image/png" },
+					{ kind: "image", url: "https://example.test/b.png", mimeType: "image/png" },
+				],
+			},
+		];
+
+		const { container } = render(
+			<GenerationChatPanel entries={entries} onRefreshVideo={vi.fn()} onSelectEntry={vi.fn()} />,
+		);
+
+		expect(container.querySelectorAll("img")).toHaveLength(2);
+		expect(screen.getAllByText("生成中")).toHaveLength(2);
+	});
 });

@@ -533,6 +533,140 @@ func TestCreateVideoGenerationSubmitsProviderTaskInBackground(t *testing.T) {
 	}
 }
 
+func TestCreateJimengImageGenerationPersistsOneTaskForRequestedCount(t *testing.T) {
+	repo, err := repository.NewGenerationTaskRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{
+			coregeneration.ProviderJimeng: "logged-in",
+		},
+	})
+	provider := &blockingMultiAssetImageGenerateProvider{
+		started: make(chan coregeneration.Request, 3),
+		release: make(chan struct{}),
+	}
+	workflow := NewGenerationService(settingsSvc, store, nil)
+	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		if route.ID != coregeneration.RouteJimengSeedream50 {
+			t.Fatalf("route = %q, want jimeng seedream route", route.ID)
+		}
+		return provider, nil
+	}
+
+	response, status, err := workflow.CreateGenerationMessage(context.Background(), GenerationMessageRequest{
+		Kind:    string(coregeneration.KindImage),
+		RouteID: coregeneration.RouteJimengSeedream50,
+		ModelID: coregeneration.ModelSeedream50,
+		Model:   "5.0",
+		Prompt:  "生成三张同主题角色图",
+		Params: map[string]any{
+			"aspectRatio": "1:1",
+			"resolution":  "2K",
+			"n":           3,
+		},
+	})
+	if err != nil || status != 200 {
+		t.Fatalf("CreateGenerationMessage() status = %d error = %v", status, err)
+	}
+	if response.Status != "submitted" {
+		t.Fatalf("response status = %q, want submitted", response.Status)
+	}
+
+	var request coregeneration.Request
+	select {
+	case request = <-provider.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider request did not start")
+	}
+	if request.Prompt != "生成三张同主题角色图" {
+		t.Fatalf("provider prompt = %q", request.Prompt)
+	}
+	if request.Params["n"] != 3 {
+		t.Fatalf("provider request params = %#v, want n=3 on the single request", request.Params)
+	}
+	task := waitForGenerationTask(t, store, response.ID, func(task GenerationTaskRecord) bool {
+		return task.Status == "running" || task.Status == "submitted"
+	})
+	if task.RouteID != coregeneration.RouteJimengSeedream50 || task.Provider != coregeneration.ProviderJimeng {
+		t.Fatalf("task = %+v, want jimeng seedream task", task)
+	}
+	tasks, err := store.List()
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("task count = %d, want one history task", len(tasks))
+	}
+	task = waitForGenerationTask(t, store, response.ID, func(task GenerationTaskRecord) bool {
+		return task.Status == "running" && len(task.Assets) == 2
+	})
+	if len(task.Assets) != 2 {
+		t.Fatalf("running task assets = %#v, want two partial generated images", task.Assets)
+	}
+
+	close(provider.release)
+	task = waitForGenerationTask(t, store, response.ID, func(task GenerationTaskRecord) bool {
+		return task.Status == "completed" && len(task.Assets) == 3
+	})
+	if len(task.Assets) != 3 {
+		t.Fatalf("task assets = %#v, want three generated images on one task", task.Assets)
+	}
+}
+
+func TestCreateJimengImageGenerationPreservesPartialAssetsOnFailure(t *testing.T) {
+	repo, err := repository.NewGenerationTaskRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{
+			coregeneration.ProviderJimeng: "logged-in",
+		},
+	})
+	provider := &blockingMultiAssetImageGenerateProvider{
+		started: make(chan coregeneration.Request, 3),
+		release: make(chan struct{}),
+		err:     fmt.Errorf("third image failed"),
+	}
+	workflow := NewGenerationService(settingsSvc, store, nil)
+	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		return provider, nil
+	}
+
+	response, status, err := workflow.CreateGenerationMessage(context.Background(), GenerationMessageRequest{
+		Kind:    string(coregeneration.KindImage),
+		RouteID: coregeneration.RouteJimengSeedream50,
+		ModelID: coregeneration.ModelSeedream50,
+		Model:   "5.0",
+		Prompt:  "生成三张同主题角色图",
+		Params:  map[string]any{"n": 3},
+	})
+	if err != nil || status != 200 {
+		t.Fatalf("CreateGenerationMessage() status = %d error = %v", status, err)
+	}
+
+	select {
+	case <-provider.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider request did not start")
+	}
+	waitForGenerationTask(t, store, response.ID, func(task GenerationTaskRecord) bool {
+		return task.Status == "running" && len(task.Assets) == 2
+	})
+
+	close(provider.release)
+	task := waitForGenerationTask(t, store, response.ID, func(task GenerationTaskRecord) bool {
+		return task.Status == "failed" && len(task.Assets) == 2
+	})
+	if len(task.Assets) != 2 {
+		t.Fatalf("failed task assets = %#v, want partial generated images preserved", task.Assets)
+	}
+}
+
 func TestGetGenerationVideoPollsProviderTaskID(t *testing.T) {
 	repo, err := repository.NewGenerationTaskRepository(filepath.Join(t.TempDir(), "settings.db"))
 	if err != nil {
@@ -1024,6 +1158,52 @@ type blockingVideoGenerateProvider struct {
 	release  chan struct{}
 	response coregeneration.Response
 	err      error
+}
+
+type blockingMultiAssetImageGenerateProvider struct {
+	started chan coregeneration.Request
+	release chan struct{}
+	err     error
+}
+
+func (provider *blockingMultiAssetImageGenerateProvider) Name() string {
+	return "blocking-image"
+}
+
+func (provider *blockingMultiAssetImageGenerateProvider) Generate(ctx context.Context, request coregeneration.Request) (coregeneration.Response, error) {
+	provider.started <- request
+	if callback, ok := coregeneration.ProgressCallbackFromOptions(request.Options); ok {
+		callback(ctx, coregeneration.ProgressEvent{
+			Response: coregeneration.Response{
+				ID:     "image-batch",
+				Status: "completed",
+				Assets: []coregeneration.Asset{
+					{Kind: coregeneration.KindImage, URL: "https://example.test/generated-1.png"},
+					{Kind: coregeneration.KindImage, URL: "https://example.test/generated-2.png"},
+				},
+			},
+			Completed: 2,
+			Total:     3,
+		})
+	}
+	select {
+	case <-provider.release:
+	case <-ctx.Done():
+		return coregeneration.Response{}, ctx.Err()
+	}
+	return coregeneration.Response{
+		ID:     "image-batch",
+		Status: "completed",
+		Assets: []coregeneration.Asset{
+			{Kind: coregeneration.KindImage, URL: "https://example.test/generated-1.png"},
+			{Kind: coregeneration.KindImage, URL: "https://example.test/generated-2.png"},
+			{Kind: coregeneration.KindImage, URL: "https://example.test/generated-3.png"},
+		},
+	}, provider.err
+}
+
+func (provider *blockingMultiAssetImageGenerateProvider) Get(context.Context, string) (coregeneration.Response, error) {
+	return coregeneration.Response{}, nil
 }
 
 func (provider *blockingVideoGenerateProvider) Name() string {

@@ -13,13 +13,18 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
 const (
-	defaultBinaryName = "dreamina"
-	defaultImagePoll  = 30
+	defaultBinaryName       = "dreamina"
+	defaultImagePoll        = 30
+	defaultImageResultPoll  = 180
+	jimengImageCountParam   = "_mediago_task_count"
+	jimengMaxCLIImageCount  = 4
+	jimengDefaultImageCount = 1
 )
 
 // CommandRunner executes one CLI command and returns combined output.
@@ -111,11 +116,7 @@ func (provider *Provider) Get(ctx context.Context, id string) (generation.Respon
 		return generation.Response{}, fmt.Errorf("generation id is required")
 	}
 
-	output, err := provider.runner.Run(ctx, provider.binPath, "query_result", "--submit_id="+taskID)
-	if err != nil {
-		return generation.Response{}, commandError("query_result", output, err)
-	}
-	response, err := parseCLIResponse(output, generation.KindVideo, prefix, "")
+	response, err := provider.queryResult(ctx, taskID, generation.KindVideo, prefix, "")
 	if err != nil {
 		return generation.Response{}, err
 	}
@@ -132,6 +133,32 @@ func (provider *Provider) generateImage(ctx context.Context, request generation.
 	}
 	defer cleanup()
 
+	imageCount := boundedImageCount(paramInt(request.Params, jimengImageCountParam, paramInt(request.Params, "n", jimengDefaultImageCount)))
+	if imageCount <= 1 {
+		return provider.generateSingleImage(ctx, request, tempDir)
+	}
+
+	progressCallback, hasProgressCallback := generation.ProgressCallbackFromOptions(request.Options)
+	responses := make([]generation.Response, 0, imageCount)
+	for index := 0; index < imageCount; index++ {
+		response, err := provider.generateSingleImage(ctx, request, tempDir)
+		if err != nil {
+			return generation.Response{}, err
+		}
+		responses = append(responses, response)
+		if hasProgressCallback {
+			progressResponse := combineImageResponses(responses)
+			progressCallback(ctx, generation.ProgressEvent{
+				Response:  progressResponse,
+				Completed: index + 1,
+				Total:     imageCount,
+			})
+		}
+	}
+	return combineImageResponses(responses), nil
+}
+
+func (provider *Provider) generateSingleImage(ctx context.Context, request generation.Request, tempDir referenceFiles) (generation.Response, error) {
 	command := "text2image"
 	args := []string{command}
 	if len(tempDir.paths) > 0 {
@@ -148,7 +175,169 @@ func (provider *Provider) generateImage(ctx context.Context, request generation.
 	if err != nil {
 		return generation.Response{}, commandError(command, output, err)
 	}
-	return parseCLIResponse(output, generation.KindImage, taskIDPrefix(request), request.Model)
+	response, err := parseCLIResponse(output, generation.KindImage, taskIDPrefix(request), request.Model)
+	if err != nil {
+		return generation.Response{}, err
+	}
+
+	resultPoll := paramInt(request.Params, "resultPoll", defaultImageResultPoll)
+	return provider.responseWithQueriedImageResult(ctx, response, taskIDPrefix(request), request.Model, resultPoll)
+}
+
+func (provider *Provider) responseWithQueriedImageResult(ctx context.Context, response generation.Response, prefix string, model string, pollSeconds int) (generation.Response, error) {
+	taskID := taskIDFromResponse(response, prefix)
+	if taskID == "" {
+		return response, nil
+	}
+
+	queried, err := provider.queryResult(ctx, taskID, generation.KindImage, prefix, model)
+	if err != nil {
+		if len(response.Assets) > 0 {
+			return response, nil
+		}
+		return generation.Response{}, err
+	}
+	queried = normalizeQueriedImageResponse(queried, response, prefix, taskID)
+	if imageQueryResultReady(queried) {
+		return queried, nil
+	}
+	queried, err = provider.pollImageResult(ctx, taskID, prefix, model, response, queried, pollSeconds)
+	if err != nil {
+		if len(response.Assets) > 0 {
+			return response, nil
+		}
+		return generation.Response{}, err
+	}
+	if len(queried.Assets) == 0 && len(response.Assets) > 0 {
+		return response, nil
+	}
+
+	return queried, nil
+}
+
+func (provider *Provider) pollImageResult(
+	ctx context.Context,
+	taskID string,
+	prefix string,
+	model string,
+	initial generation.Response,
+	current generation.Response,
+	pollSeconds int,
+) (generation.Response, error) {
+	if pollSeconds <= 0 {
+		return current, nil
+	}
+
+	pollCtx, cancel := context.WithTimeout(ctx, time.Duration(pollSeconds)*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	last := current
+	for {
+		select {
+		case <-pollCtx.Done():
+			if errors.Is(pollCtx.Err(), context.DeadlineExceeded) {
+				return last, nil
+			}
+			return last, pollCtx.Err()
+		case <-ticker.C:
+			queried, err := provider.queryResult(pollCtx, taskID, generation.KindImage, prefix, model)
+			if err != nil {
+				if len(last.Assets) > 0 {
+					return last, nil
+				}
+				return last, err
+			}
+			last = normalizeQueriedImageResponse(queried, initial, prefix, taskID)
+			if imageQueryResultReady(last) {
+				return last, nil
+			}
+		}
+	}
+}
+
+func normalizeQueriedImageResponse(queried generation.Response, initial generation.Response, prefix string, taskID string) generation.Response {
+	if queried.ID == "" {
+		queried.ID = joinTaskID(prefix, taskID)
+	}
+	if queried.Model == "" {
+		queried.Model = initial.Model
+	}
+	if queried.Status == "" {
+		queried.Status = initial.Status
+	}
+
+	return queried
+}
+
+func imageQueryResultReady(response generation.Response) bool {
+	if response.Status == "failed" {
+		return true
+	}
+
+	return len(response.Assets) > 0
+}
+
+func (provider *Provider) queryResult(ctx context.Context, taskID string, kind generation.Kind, prefix string, model string) (generation.Response, error) {
+	output, err := provider.runner.Run(ctx, provider.binPath, "query_result", "--submit_id="+taskID)
+	if err != nil {
+		return generation.Response{}, commandError("query_result", output, err)
+	}
+	response, err := parseCLIResponse(output, kind, prefix, model)
+	if err != nil {
+		return generation.Response{}, err
+	}
+	if response.ID == "" || strings.TrimSpace(response.ID) == strings.TrimSpace(prefix) {
+		response.ID = joinTaskID(prefix, taskID)
+	}
+
+	return response, nil
+}
+
+func boundedImageCount(value int) int {
+	return max(1, min(value, jimengMaxCLIImageCount))
+}
+
+func combineImageResponses(responses []generation.Response) generation.Response {
+	if len(responses) == 0 {
+		return generation.Response{Status: "completed"}
+	}
+
+	combined := generation.Response{
+		ID:       responses[0].ID,
+		Status:   "completed",
+		Model:    responses[0].Model,
+		Assets:   []generation.Asset{},
+		Metadata: map[string]any{"results": []any{}},
+	}
+	results := make([]any, 0, len(responses))
+	for _, response := range responses {
+		if combined.ID == "" {
+			combined.ID = response.ID
+		}
+		if combined.Model == "" {
+			combined.Model = response.Model
+		}
+		if response.Status == "failed" {
+			combined.Status = "failed"
+			if errorMessage := stringFromMetadata(response.Metadata, "error"); errorMessage != "" {
+				combined.Metadata["error"] = errorMessage
+			}
+		} else if combined.Status != "failed" && response.Status != "" && response.Status != "completed" {
+			combined.Status = response.Status
+		}
+		combined.Assets = append(combined.Assets, response.Assets...)
+		if result, ok := response.Metadata["result"]; ok {
+			results = append(results, result)
+		} else if response.Metadata != nil {
+			results = append(results, response.Metadata)
+		}
+	}
+	combined.Metadata["results"] = results
+	combined.Metadata["image_count"] = len(responses)
+	return combined
 }
 
 func (provider *Provider) generateVideo(ctx context.Context, request generation.Request) (generation.Response, error) {
@@ -544,6 +733,20 @@ func stringFromMap(values map[string]any, key string) string {
 	return strings.TrimSpace(fmt.Sprint(value))
 }
 
+func stringFromMetadata(values map[string]any, key string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	value, ok := values[key]
+	if !ok || value == nil {
+		return ""
+	}
+	if text, ok := value.(string); ok {
+		return strings.TrimSpace(text)
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		value = strings.TrimSpace(value)
@@ -610,6 +813,26 @@ func splitTaskID(id string) (string, string) {
 		return "", strings.TrimSpace(id)
 	}
 	return prefix, taskID
+}
+
+func taskIDFromResponse(response generation.Response, prefix string) string {
+	responseID := strings.TrimSpace(response.ID)
+	prefix = strings.TrimSpace(prefix)
+	if responseID == "" || responseID == prefix {
+		if result, ok := response.Metadata["result"].(map[string]any); ok {
+			return firstNonEmpty(
+				stringFromMap(result, "submit_id"),
+				stringFromMap(result, "task_id"),
+				stringFromMap(result, "id"),
+			)
+		}
+		return ""
+	}
+	_, taskID := splitTaskID(responseID)
+	if prefix != "" && strings.HasPrefix(responseID, prefix+":") {
+		return taskID
+	}
+	return responseID
 }
 
 func formatNumber(value float64) string {

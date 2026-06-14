@@ -821,76 +821,87 @@
 		margin: 0;
 	}
 
-	.agent-config-field {
+	.agent-runtime-config-loading {
 		display: inline-flex;
+		height: var(--generation-control-height-lg);
+		align-items: center;
+		gap: 0.4rem;
+		color: var(--agent-subtle);
+		font-size: 0.75rem;
+		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	.agent-runtime-config-loading svg {
+		width: 0.9rem;
+		height: 0.9rem;
+		color: var(--agent-blue);
+	}
+
+	.agent-config-trigger {
+		display: inline-flex;
+		width: auto;
 		min-width: 0;
 		max-width: 14rem;
 		height: var(--generation-control-height-lg);
 		align-items: center;
+		justify-content: flex-start;
 		gap: 0.4rem;
 		border: var(--border-width-scale-sm) solid #e4ebf5;
 		border-radius: var(--radius-scale-sm);
 		background: #f3f6fb;
 		padding: 0 var(--generation-control-padding-x);
 		color: var(--agent-subtle);
+		box-shadow: none;
 	}
 
-	.agent-config-field > span,
-	.agent-config-title {
+	button.agent-config-trigger > .agent-config-title {
 		flex: 0 0 auto;
 		color: var(--agent-subtle);
 		font-size: 0.75rem;
 		font-weight: 600;
 	}
 
-	.agent-config-icon {
+	button.agent-config-trigger > .agent-config-icon {
 		display: inline-flex;
+		flex: 0 0 auto;
 		color: var(--agent-blue);
 	}
 
-	.agent-config-icon svg {
+	button.agent-config-trigger > .agent-config-icon svg {
 		width: 0.9rem;
 		height: 0.9rem;
 	}
 
-	.agent-config-trigger {
-		width: auto;
+	button.agent-config-trigger > .agent-config-value {
 		min-width: 0;
-		max-width: 9.5rem;
-		height: auto;
-		border: 0;
-		background: transparent;
-		padding: 0;
+		flex: 1 1 auto;
+		overflow: hidden;
 		color: var(--agent-text);
-		box-shadow: none;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	.agent-config-trigger svg {
+	.agent-config-trigger > svg {
 		flex: 0 0 auto;
 		width: 0.8rem;
 		height: 0.8rem;
 		margin-left: 0.2rem;
 	}
 
-	.agent-config-trigger > span {
+	.agent-config-content {
+		max-width: min(28rem, calc(100vw - 2rem));
+	}
+
+	.agent-config-item {
+		max-width: min(28rem, calc(100vw - 2rem));
+	}
+
+	.agent-config-item > span:last-child {
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-
-	.agent-config-placeholder {
-		width: auto;
-		max-width: 7rem;
-		height: auto;
-		border: 0;
-		background: transparent;
-		padding: 0;
-		color: var(--agent-subtle);
-	}
-
-	.agent-config-placeholder > span {
-		min-width: 0;
 	}
 
 	.agent-composer-actions {
@@ -898,6 +909,7 @@
 		align-items: center;
 		justify-content: flex-end;
 		gap: var(--generation-composer-toolbar-gap);
+		margin-left: auto;
 	}
 
 	.agent-composer-hint {
@@ -987,6 +999,8 @@
 
 		.agent-composer-actions {
 			justify-content: space-between;
+			width: 100%;
+			margin-left: 0;
 		}
 
 		.agent-composer-hint {

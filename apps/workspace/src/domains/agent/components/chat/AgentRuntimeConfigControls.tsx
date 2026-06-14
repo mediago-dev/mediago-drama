@@ -1,4 +1,4 @@
-import { Bot, ChevronDown, LayoutGrid, type LucideIcon, Sparkles } from "lucide-react";
+import { Bot, LayoutGrid, Loader2, type LucideIcon, Sparkles } from "lucide-react";
 import type React from "react";
 import type {
 	AgentRuntimeConfigPayload,
@@ -31,12 +31,24 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 	reasoningValue,
 	permissionValue,
 	disabled,
-	errorMessage,
 	isLoading,
 	onModelChange,
 	onReasoningChange,
 	onPermissionChange,
 }) => {
+	const hasRuntimeConfigOptions = [config?.model, config?.reasoning, config?.permission].some(
+		(item) => runtimeConfigOptions(item).length > 0,
+	);
+	if (!hasRuntimeConfigOptions && isLoading) {
+		return (
+			<div className="agent-runtime-config-loading" role="status">
+				<Loader2 className="animate-spin" aria-hidden="true" />
+				<span>配置读取中</span>
+			</div>
+		);
+	}
+	if (!hasRuntimeConfigOptions) return null;
+
 	return (
 		<div className="agent-runtime-config">
 			<AgentRuntimeConfigSelect
@@ -45,8 +57,6 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 				config={config?.model}
 				value={modelValue}
 				disabled={disabled}
-				errorMessage={errorMessage}
-				isLoading={isLoading}
 				onChange={onModelChange}
 			/>
 			<AgentRuntimeConfigSelect
@@ -55,8 +65,6 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 				config={config?.reasoning}
 				value={reasoningValue}
 				disabled={disabled}
-				errorMessage={errorMessage}
-				isLoading={isLoading}
 				onChange={onReasoningChange}
 			/>
 			<AgentRuntimeConfigSelect
@@ -65,8 +73,6 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 				config={config?.permission}
 				value={permissionValue}
 				disabled={disabled}
-				errorMessage={errorMessage}
-				isLoading={isLoading}
 				onChange={onPermissionChange}
 			/>
 		</div>
@@ -79,8 +85,6 @@ interface AgentRuntimeConfigSelectProps {
 	config?: AgentRuntimeSelectConfig;
 	value: string;
 	disabled: boolean;
-	errorMessage: string;
-	isLoading: boolean;
 	onChange: (value: string) => void;
 }
 
@@ -90,50 +94,37 @@ const AgentRuntimeConfigSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	config,
 	value,
 	disabled,
-	errorMessage,
-	isLoading,
 	onChange,
 }) => {
 	const options = runtimeConfigOptions(config);
-	if (options.length === 0) {
-		const placeholder = isLoading ? "读取中" : errorMessage ? "配置不可用" : "未返回选项";
-		return (
-			<label className="agent-config-field">
+	if (options.length === 0) return null;
+
+	const resolvedValue = normalizeRuntimeConfigValue(config, value);
+
+	return (
+		<Select value={resolvedValue} onValueChange={onChange} disabled={disabled}>
+			<SelectTrigger className="agent-config-trigger" aria-label={label}>
 				<span className="agent-config-icon" aria-hidden="true">
 					<Icon />
 				</span>
 				<span className="agent-config-title">{label}</span>
-				<div
-					className="agent-config-placeholder flex h-7 w-full items-center justify-between gap-2 rounded-sm border border-input bg-ide-editor px-2 py-1.5 text-xs text-muted-foreground opacity-60"
-					title={errorMessage || placeholder}
-				>
-					<span className="truncate">{placeholder}</span>
-					<ChevronDown className="size-4 shrink-0 opacity-50" />
-				</div>
-			</label>
-		);
-	}
-	const resolvedValue = normalizeRuntimeConfigValue(config, value);
-
-	return (
-		<label className="agent-config-field">
-			<span className="agent-config-icon" aria-hidden="true">
-				<Icon />
-			</span>
-			<span className="agent-config-title">{label}</span>
-			<Select value={resolvedValue} onValueChange={onChange} disabled={disabled}>
-				<SelectTrigger className="agent-config-trigger h-7">
+				<span className="agent-config-value">
 					<SelectValue placeholder={config?.name || label} />
-				</SelectTrigger>
-				<SelectContent>
-					{options.map((option) => (
-						<SelectItem key={option.value} value={option.value} title={option.description}>
-							{option.name}
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
-		</label>
+				</span>
+			</SelectTrigger>
+			<SelectContent align="start" className="agent-config-content">
+				{options.map((option) => (
+					<SelectItem
+						key={option.value}
+						value={option.value}
+						title={option.description}
+						className="agent-config-item"
+					>
+						{option.name}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
 	);
 };
 

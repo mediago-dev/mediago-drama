@@ -183,6 +183,8 @@ func sanitizedLogValue(value any) any {
 			values[key] = sanitizedLogString(item)
 		}
 		return values
+	case coregeneration.ProgressCallback:
+		return "<progress-callback>"
 	default:
 		return value
 	}

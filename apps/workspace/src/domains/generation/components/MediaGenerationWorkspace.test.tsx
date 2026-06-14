@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import React from "react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -271,44 +271,15 @@ describe("MediaGenerationWorkspace", () => {
 		);
 
 		expect(screen.getByTestId("generation-input-panel")).toBeTruthy();
-		expect(screen.getByText("旧提示词")).toBeTruthy();
-		expect(screen.getByText("新提示词")).toBeTruthy();
-		expect(screen.getByText("旧提示词").closest("article")?.className).not.toContain(
-			"border-primary",
-		);
+		expect(screen.queryByText("旧提示词")).toBeNull();
+		expect(screen.queryByText("新提示词")).toBeNull();
+		expect(screen.queryByRole("separator", { name: "调整历史生成宽度" })).toBeNull();
 		expect(screen.queryByRole("button", { name: "预览生成图片" })).toBeNull();
 		expect(setPrompt).not.toHaveBeenCalled();
 		expect(onHistoryCountChange).toHaveBeenCalledWith(2);
 	});
 
-	it("opens history preview when selecting a history item from the tabbed edit view", () => {
-		const onViewModeChange = vi.fn();
-		const setActiveEntryId = vi.fn();
-		const setPrompt = vi.fn();
-		vi.mocked(useGenerationWorkspace).mockReturnValue({
-			...workspaceDefaults,
-			setActiveEntryId,
-			setPrompt,
-		} as unknown as ReturnType<typeof useGenerationWorkspace>);
-
-		render(
-			<MediaGenerationWorkspace
-				historyScopeId="history-a"
-				initialPrompt="初始提示词"
-				kind="image"
-				onViewModeChange={onViewModeChange}
-				viewMode="edit"
-			/>,
-		);
-
-		fireEvent.click(screen.getByText("新提示词"));
-
-		expect(setActiveEntryId).toHaveBeenCalledWith("entry-image-2");
-		expect(onViewModeChange).toHaveBeenCalledWith("history");
-		expect(setPrompt).not.toHaveBeenCalled();
-	});
-
-	it("selects history in tabbed history view without overwriting the edit prompt", () => {
+	it("keeps tabbed history rows read-only while preserving explicit actions", () => {
 		const setActiveEntryId = vi.fn();
 		const setPrompt = vi.fn();
 		vi.mocked(useGenerationWorkspace).mockReturnValue({
@@ -328,11 +299,12 @@ describe("MediaGenerationWorkspace", () => {
 
 		fireEvent.click(screen.getByText("新提示词"));
 
-		expect(setActiveEntryId).toHaveBeenCalledWith("entry-image-2");
+		expect(setActiveEntryId).not.toHaveBeenCalled();
 		expect(setPrompt).not.toHaveBeenCalled();
 	});
 
-	it("shows the selected history request reference assets in history preview", () => {
+	it("renders tabbed history as a full-page list with in-place asset selection", () => {
+		const onToggleAsset = vi.fn();
 		vi.mocked(useGenerationWorkspace).mockReturnValue({
 			...workspaceDefaults,
 		} as unknown as ReturnType<typeof useGenerationWorkspace>);
@@ -342,13 +314,29 @@ describe("MediaGenerationWorkspace", () => {
 				historyScopeId="history-a"
 				initialPrompt="初始提示词"
 				kind="image"
+				onToggleAsset={onToggleAsset}
+				selectedAssetKeys={["image:/api/v1/media-assets/media-a/content"]}
 				viewMode="history"
 			/>,
 		);
 
-		expect(screen.getByText("历史参考图")).toBeTruthy();
-		expect(screen.getByText("生成时使用 1 个")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "预览 历史参考图 1" })).toBeTruthy();
+		expect(screen.queryByTestId("generation-input-panel")).toBeNull();
+		expect(screen.queryByRole("separator", { name: "调整历史生成宽度" })).toBeNull();
+
+		const firstRow = screen.getByText("旧提示词").closest("article");
+		const secondRow = screen.getByText("新提示词").closest("article");
+
+		if (!firstRow || !secondRow) throw new Error("missing history rows");
+
+		expect(within(firstRow).queryByText("1 张")).toBeNull();
+		expect(within(firstRow).queryByText("已选")).toBeNull();
+		expect(
+			within(firstRow).getByRole("checkbox", { name: "取消选入结果" }).getAttribute("aria-checked"),
+		).toBe("true");
+
+		fireEvent.click(within(secondRow).getByRole("checkbox", { name: "选入结果" }));
+
+		expect(onToggleAsset).toHaveBeenCalledWith(secondImageEntry.assets?.[0], true);
 	});
 
 	it("copies the active history prompt into the editor only when explicitly requested", () => {
@@ -369,7 +357,10 @@ describe("MediaGenerationWorkspace", () => {
 			/>,
 		);
 
-		fireEvent.click(screen.getByRole("button", { name: "用此提示词编辑" }));
+		const firstRow = screen.getByText("旧提示词").closest("article");
+		if (!firstRow) throw new Error("missing history row");
+
+		fireEvent.click(within(firstRow).getByRole("button", { name: "用此提示词编辑" }));
 
 		expect(setPrompt).toHaveBeenCalledWith("旧提示词");
 		expect(onViewModeChange).toHaveBeenCalledWith("edit");
@@ -402,7 +393,10 @@ describe("MediaGenerationWorkspace", () => {
 
 		render(<Harness />);
 
-		fireEvent.click(screen.getByRole("button", { name: "用此提示词编辑" }));
+		const firstRow = screen.getByText("旧提示词").closest("article");
+		if (!firstRow) throw new Error("missing history row");
+
+		fireEvent.click(within(firstRow).getByRole("button", { name: "用此提示词编辑" }));
 
 		expect(setPrompt).toHaveBeenCalledWith("旧提示词");
 		expect(screen.getByTestId("generation-input-panel")).toBeTruthy();

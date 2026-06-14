@@ -122,15 +122,14 @@ const GenerationChatEntry: React.FC<{
 	savingKeys,
 	selectedGeneratedAssetKey,
 }) => {
-	const pending = entry.assistantMessage
-		? isPendingGenerationStatus(entry.assistantMessage.status)
-		: false;
+	const pending = isPendingGenerationStatus(entry.assistantMessage?.status ?? entry.status);
 	const hasGeneratedAssets = Boolean(entry.assets?.length);
 	const requestSummary = requestInlineSummary(
 		requestDetailsWithCreatedAt(entry.requestDetails ?? [], entry.createdAt),
 	);
-	const pendingPlaceholderCount =
+	const requestedImageCount =
 		pending && entry.kind === "image" ? requestGenerationCount(entry.requestDetails ?? []) : 0;
+	const pendingPlaceholderCount = Math.max(0, requestedImageCount - (entry.assets?.length ?? 0));
 	const isTextEntry = entry.kind === "text";
 	const showTextLoading = isTextEntry && pending && entry.content.trim() === "";
 	const failed = isFailedGenerationStatus(entry.assistantMessage?.status ?? entry.status);
@@ -152,6 +151,7 @@ const GenerationChatEntry: React.FC<{
 					entry={entry}
 					assets={entry.assets}
 					onSaveAsset={onSaveAsset}
+					pendingPlaceholderCount={pendingPlaceholderCount}
 					selectedGeneratedAssetKey={selectedGeneratedAssetKey}
 					savedKeys={savedKeys}
 					savingKeys={savingKeys}
@@ -559,6 +559,7 @@ const GenerationAssetGallery: React.FC<{
 	entry: GenerationEntry;
 	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onSelectGeneratedAsset?: (asset: GenerationAsset) => void;
+	pendingPlaceholderCount?: number;
 	savedKeys: string[];
 	savingKeys: string[];
 	selectedGeneratedAssetKey?: string | null;
@@ -567,11 +568,12 @@ const GenerationAssetGallery: React.FC<{
 	entry,
 	onSaveAsset,
 	onSelectGeneratedAsset,
+	pendingPlaceholderCount = 0,
 	savedKeys,
 	savingKeys,
 	selectedGeneratedAssetKey,
 }) => {
-	if (assets.length === 0) return null;
+	if (assets.length === 0 && pendingPlaceholderCount === 0) return null;
 
 	return (
 		<PhotoProvider maskOpacity={0.84}>
@@ -648,10 +650,20 @@ const GenerationAssetGallery: React.FC<{
 						</div>
 					);
 				})}
+				{Array.from({ length: pendingPlaceholderCount }, (_, index) => (
+					<GenerationPendingImageCard key={`pending:${assets.length + index}`} />
+				))}
 			</div>
 		</PhotoProvider>
 	);
 };
+
+const GenerationPendingImageCard: React.FC = () => (
+	<div className="flex h-[22rem] max-h-[62vh] w-[min(18rem,78vw)] shrink-0 flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-border bg-ide-panel text-xs text-muted-foreground">
+		<Loader2 className="size-5 animate-spin" />
+		<span>生成中</span>
+	</div>
+);
 
 const SaveGeneratedResultButton: React.FC<{
 	className?: string;
@@ -698,10 +710,22 @@ const requestInlineSummary = (details: ChatMessageDetail[]) =>
 	details.map((detail) => `${detail.label}: ${detail.value}`).join(" | ");
 
 const requestGenerationCount = (details: ChatMessageDetail[]) => {
-	const countDetail = details.find(
-		(detail) => detail.label === "图像数量" || detail.label === "Images",
-	);
-	const count = Number(countDetail?.value);
+	const countDetail = details.find((detail) => isGenerationCountLabel(detail.label));
+	const match = countDetail?.value.match(/\d+(?:\.\d+)?/u);
+	const count = Number(match?.[0]);
 
 	return Number.isFinite(count) ? Math.max(1, Math.min(4, Math.round(count))) : 1;
+};
+
+const isGenerationCountLabel = (label: string) => {
+	const normalizedLabel = label.trim().toLowerCase();
+
+	return (
+		normalizedLabel === "n" ||
+		normalizedLabel === "images" ||
+		normalizedLabel === "图像数量" ||
+		normalizedLabel === "图片数量" ||
+		normalizedLabel === "生成数量" ||
+		normalizedLabel === "数量"
+	);
 };

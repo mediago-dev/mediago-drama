@@ -457,6 +457,7 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 	generationCtx, cancel := context.WithTimeout(ctx, generationRequestTimeout)
 	defer cancel()
 
+	request = workflow.requestWithGenerationProgressCallback(request, runningTask, projectID, studioSessionID)
 	response, err := workflow.generateWithProvider(
 		generationCtx,
 		provider,
@@ -466,6 +467,7 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 	if err != nil {
 		messageResponse := FailedGenerationResponse(task.ID, err)
 		failedTask := GenerationTaskWithMessage(runningTask, messageResponse)
+		failedTask = workflow.taskWithCurrentProgressAssets(task.ID, failedTask)
 		if saveErr := workflow.generationTasks.Upsert(failedTask); saveErr != nil {
 			slog.Error("generation task failure could not be saved", "task_id", task.ID, "error", saveErr)
 			return
@@ -478,6 +480,7 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 		return
 	}
 
+	response = workflow.responseWithCachedProgressAssets(task.ID, response)
 	response = workflow.cacheGenerationResponseAssetsForScope(ctx, response, projectID, studioSessionID)
 	messageResponse := GenerationResponseFromCore(response, task.Kind)
 	messageResponse.ID = task.ID
@@ -491,4 +494,113 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 	if conversation, ok, err := workflow.generationTasks.GetConversation(task.ConversationID); err == nil && ok {
 		workflow.appendStudioAssistantTranscript(conversation, messageResponse)
 	}
+}
+
+func (workflow *GenerationService) requestWithGenerationProgressCallback(
+	request coregeneration.Request,
+	task generationTaskRecord,
+	projectID string,
+	studioSessionID string,
+) coregeneration.Request {
+	if request.Kind != coregeneration.KindImage || workflow.generationTasks == nil {
+		return request
+	}
+
+	options := make(map[string]any, len(request.Options)+1)
+	for key, value := range request.Options {
+		options[key] = value
+	}
+	options[coregeneration.ProgressCallbackOption] = coregeneration.ProgressCallback(
+		func(ctx context.Context, event coregeneration.ProgressEvent) {
+			workflow.persistGenerationProgress(ctx, task, event, projectID, studioSessionID)
+		},
+	)
+	request.Options = options
+
+	return request
+}
+
+func (workflow *GenerationService) persistGenerationProgress(
+	ctx context.Context,
+	task generationTaskRecord,
+	event coregeneration.ProgressEvent,
+	projectID string,
+	studioSessionID string,
+) {
+	if workflow.generationTasks == nil || len(event.Response.Assets) == 0 {
+		return
+	}
+
+	response := event.Response
+	response.Status = "running"
+	response = workflow.cacheGenerationResponseAssetsForScope(ctx, response, projectID, studioSessionID)
+
+	messageResponse := GenerationResponseFromCore(response, task.Kind)
+	messageResponse.ID = task.ID
+	messageResponse.Status = "running"
+	messageResponse.Message = generationProgressMessage(event.Completed, event.Total)
+
+	progressTask := GenerationTaskWithMessage(task, messageResponse)
+	progressTask.Status = "running"
+	if err := workflow.generationTasks.Upsert(progressTask); err != nil {
+		slog.Warn("generation task progress could not be saved", "task_id", task.ID, "error", err)
+		return
+	}
+	workflow.syncGenerationNotificationTask(progressTask)
+}
+
+func (workflow *GenerationService) responseWithCachedProgressAssets(
+	taskID string,
+	response coregeneration.Response,
+) coregeneration.Response {
+	if workflow.generationTasks == nil || len(response.Assets) == 0 {
+		return response
+	}
+
+	task, ok, err := workflow.generationTasks.Get(taskID)
+	if err != nil || !ok || len(task.Assets) != len(response.Assets) {
+		return response
+	}
+	for _, asset := range task.Assets {
+		if strings.TrimSpace(asset.URL) == "" || !isLocalMediaAssetURL(asset.URL) {
+			return response
+		}
+	}
+
+	for index, asset := range task.Assets {
+		response.Assets[index].URL = asset.URL
+		response.Assets[index].Base64 = asset.Base64
+		response.Assets[index].MIMEType = asset.MIMEType
+	}
+	return response
+}
+
+func (workflow *GenerationService) taskWithCurrentProgressAssets(
+	taskID string,
+	task generationTaskRecord,
+) generationTaskRecord {
+	if workflow.generationTasks == nil || len(task.Assets) > 0 {
+		return task
+	}
+
+	currentTask, ok, err := workflow.generationTasks.Get(taskID)
+	if err != nil || !ok || len(currentTask.Assets) == 0 {
+		return task
+	}
+	task.Assets = currentTask.Assets
+	return task
+}
+
+func generationProgressMessage(completed int, total int) string {
+	if total <= 0 || completed <= 0 {
+		return "生成请求正在服务器上运行，可以安全刷新页面。"
+	}
+	if completed > total {
+		completed = total
+	}
+	if completed == total {
+		return fmt.Sprintf("已生成 %d/%d 张，正在保存结果。", completed, total)
+	}
+
+	return fmt.Sprintf("已生成 %d/%d 张，剩余继续生成中。", completed, total)
 }

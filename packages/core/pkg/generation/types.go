@@ -53,6 +53,25 @@ type Response struct {
 	Metadata map[string]any
 }
 
+const ProgressCallbackOption = "_mediago_progress_callback"
+
+// ProgressEvent reports partial generation progress for providers that can surface it.
+type ProgressEvent struct {
+	Response  Response
+	Completed int
+	Total     int
+}
+
+// ProgressCallback receives partial generation results while a request is still running.
+type ProgressCallback func(context.Context, ProgressEvent)
+
+// ProgressCallbackFromOptions returns the internal progress callback when present.
+func ProgressCallbackFromOptions(options map[string]any) (ProgressCallback, bool) {
+	callback, ok := options[ProgressCallbackOption].(ProgressCallback)
+
+	return callback, ok
+}
+
 // Usage captures provider token accounting.
 type Usage struct {
 	InputTokens     int

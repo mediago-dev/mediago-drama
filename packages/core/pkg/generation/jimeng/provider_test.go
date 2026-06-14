@@ -3,6 +3,7 @@ package jimeng
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,10 +14,13 @@ import (
 )
 
 func TestGenerateImageUsesCLIAndParsesAssets(t *testing.T) {
-	var gotArgs []string
+	gotArgs := [][]string{}
 	provider := testProvider(t, CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
-		gotArgs = append([]string{}, args...)
-		return []byte(`{"submit_id":"img_1","gen_status":"success","image_urls":["https://example.test/a.png"]}`), nil
+		gotArgs = append(gotArgs, append([]string{}, args...))
+		if len(args) > 0 && args[0] == "query_result" {
+			return []byte(`{"submit_id":"img_1","gen_status":"success","image_urls":["https://example.test/a-from-query.png"]}`), nil
+		}
+		return []byte(`{"submit_id":"img_1","gen_status":"success"}`), nil
 	}))
 
 	response, err := provider.Generate(context.Background(), generation.Request{
@@ -31,7 +35,10 @@ func TestGenerateImageUsesCLIAndParsesAssets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
-	if !reflect.DeepEqual(gotArgs, []string{
+	if len(gotArgs) != 2 {
+		t.Fatalf("CLI calls = %#v, want text2image then query_result", gotArgs)
+	}
+	if !reflect.DeepEqual(gotArgs[0], []string{
 		"text2image",
 		"--prompt=一只戴墨镜的橘猫",
 		"--ratio=1:1",
@@ -41,10 +48,13 @@ func TestGenerateImageUsesCLIAndParsesAssets(t *testing.T) {
 	}) {
 		t.Fatalf("args = %#v", gotArgs)
 	}
+	if !reflect.DeepEqual(gotArgs[1], []string{"query_result", "--submit_id=img_1"}) {
+		t.Fatalf("query args = %#v", gotArgs[1])
+	}
 	if response.ID != generation.RouteJimengSeedream47+":img_1" || response.Status != "completed" {
 		t.Fatalf("response = %#v", response)
 	}
-	if len(response.Assets) != 1 || response.Assets[0].URL != "https://example.test/a.png" {
+	if len(response.Assets) != 1 || response.Assets[0].URL != "https://example.test/a-from-query.png" {
 		t.Fatalf("assets = %#v", response.Assets)
 	}
 }
@@ -83,6 +93,145 @@ func TestGenerateImageParsesResultJSONAssets(t *testing.T) {
 	}
 	if response.Assets[0].URL == "" || !strings.Contains(response.Assets[0].URL, "byteimg.com") {
 		t.Fatalf("asset url = %q, want dreamina image url", response.Assets[0].URL)
+	}
+}
+
+func TestGenerateImageKeepsInitialAssetsWhenQueryResultFails(t *testing.T) {
+	provider := testProvider(t, CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		if len(args) > 0 && args[0] == "query_result" {
+			return []byte(`network unavailable`), errors.New("query failed")
+		}
+		return []byte(`{"submit_id":"img_1","gen_status":"success","image_urls":["https://example.test/initial.png"]}`), nil
+	}))
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindImage,
+		RouteID: generation.RouteJimengSeedream50,
+		Prompt:  "测试",
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if len(response.Assets) != 1 || response.Assets[0].URL != "https://example.test/initial.png" {
+		t.Fatalf("assets = %#v, want initial image asset", response.Assets)
+	}
+}
+
+func TestGenerateImagePollsQueryResultUntilImageAssetIsReady(t *testing.T) {
+	queryCalls := 0
+	provider := testProvider(t, CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		if len(args) > 0 && args[0] == "query_result" {
+			queryCalls++
+			if queryCalls == 1 {
+				return []byte(`{"submit_id":"img_1","gen_status":"querying"}`), nil
+			}
+			return []byte(`{"submit_id":"img_1","gen_status":"success","image_urls":["https://example.test/ready.png"]}`), nil
+		}
+		return []byte(`{"submit_id":"img_1","gen_status":"querying"}`), nil
+	}))
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindImage,
+		RouteID: generation.RouteJimengSeedream50,
+		Prompt:  "测试",
+		Params:  map[string]any{"resultPoll": 2},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if queryCalls != 2 {
+		t.Fatalf("query calls = %d, want initial query plus one poll", queryCalls)
+	}
+	if len(response.Assets) != 1 || response.Assets[0].URL != "https://example.test/ready.png" {
+		t.Fatalf("assets = %#v, want polled image asset", response.Assets)
+	}
+}
+
+func TestGenerateImageRunsCLIForRequestedCountAndCombinesAssets(t *testing.T) {
+	gotArgs := [][]string{}
+	generationCalls := 0
+	progressEvents := []generation.ProgressEvent{}
+	provider := testProvider(t, CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		gotArgs = append(gotArgs, append([]string{}, args...))
+		if len(args) > 0 && args[0] == "query_result" {
+			submitID := strings.TrimPrefix(args[1], "--submit_id=img_")
+			return []byte(`{"submit_id":"img_` + submitID + `","gen_status":"success","image_urls":["https://example.test/generated-` + submitID + `.png"]}`), nil
+		}
+		generationCalls++
+		index := generationCalls
+		return []byte(`{"submit_id":"img_` + formatNumber(float64(index)) + `","gen_status":"success"}`), nil
+	}))
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindImage,
+		RouteID: generation.RouteJimengSeedream50,
+		Prompt:  "生成三张同主题角色图",
+		Params: map[string]any{
+			"aspectRatio": "1:1",
+			"resolution":  "2K",
+			"n":           3,
+		},
+		Options: map[string]any{
+			generation.ProgressCallbackOption: generation.ProgressCallback(
+				func(_ context.Context, event generation.ProgressEvent) {
+					progressEvents = append(progressEvents, event)
+				},
+			),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if len(gotArgs) != 6 {
+		t.Fatalf("CLI calls = %d, want 3 text2image and 3 query_result calls", len(gotArgs))
+	}
+	text2imageCalls := [][]string{}
+	queryCalls := [][]string{}
+	for _, args := range gotArgs {
+		if len(args) > 0 && args[0] == "query_result" {
+			queryCalls = append(queryCalls, args)
+			continue
+		}
+		text2imageCalls = append(text2imageCalls, args)
+	}
+	for _, args := range text2imageCalls {
+		if !reflect.DeepEqual(args, []string{
+			"text2image",
+			"--prompt=生成三张同主题角色图",
+			"--ratio=1:1",
+			"--resolution_type=2k",
+			"--model_version=5.0",
+			"--poll=30",
+		}) {
+			t.Fatalf("args = %#v", args)
+		}
+	}
+	if !reflect.DeepEqual(queryCalls, [][]string{
+		{"query_result", "--submit_id=img_1"},
+		{"query_result", "--submit_id=img_2"},
+		{"query_result", "--submit_id=img_3"},
+	}) {
+		t.Fatalf("query calls = %#v", queryCalls)
+	}
+	if response.ID != generation.RouteJimengSeedream50+":img_1" || response.Status != "completed" {
+		t.Fatalf("response = %#v", response)
+	}
+	if len(response.Assets) != 3 {
+		t.Fatalf("assets = %#v, want three combined image assets", response.Assets)
+	}
+	if len(progressEvents) != 3 {
+		t.Fatalf("progress events = %#v, want one event per generated image", progressEvents)
+	}
+	for index, event := range progressEvents {
+		if event.Completed != index+1 || event.Total != 3 || len(event.Response.Assets) != index+1 {
+			t.Fatalf("progress event[%d] = %#v, want cumulative %d/3 assets", index, event, index+1)
+		}
+	}
+	for index, asset := range response.Assets {
+		wantURL := "https://example.test/generated-" + formatNumber(float64(index+1)) + ".png"
+		if asset.URL != wantURL {
+			t.Fatalf("asset[%d] url = %q, want %q", index, asset.URL, wantURL)
+		}
 	}
 }
 
@@ -183,9 +332,12 @@ func TestGenerateVideoPreservesLegacyModelVersionParam(t *testing.T) {
 }
 
 func TestGenerateImagePreservesLegacyPollParam(t *testing.T) {
-	var gotArgs []string
+	gotArgs := [][]string{}
 	provider := testProvider(t, CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
-		gotArgs = append([]string{}, args...)
+		gotArgs = append(gotArgs, append([]string{}, args...))
+		if len(args) > 0 && args[0] == "query_result" {
+			return []byte(`{"submit_id":"img_1","gen_status":"success","image_urls":["https://example.test/a.png"]}`), nil
+		}
 		return []byte(`{"submit_id":"img_1","gen_status":"success","image_urls":["https://example.test/a.png"]}`), nil
 	}))
 
@@ -200,7 +352,10 @@ func TestGenerateImagePreservesLegacyPollParam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
-	assertContainsArg(t, gotArgs, "--poll=45")
+	if len(gotArgs) == 0 {
+		t.Fatal("CLI was not called")
+	}
+	assertContainsArg(t, gotArgs[0], "--poll=45")
 }
 
 func TestGetQueriesResult(t *testing.T) {
