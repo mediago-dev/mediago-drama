@@ -248,6 +248,7 @@ export interface GenerationAsset {
 	url?: string;
 	base64?: string;
 	mimeType?: string;
+	slotIndex?: number;
 }
 
 export interface GenerationUsage {
@@ -280,6 +281,7 @@ export interface GenerationTaskRecord {
 	message: string;
 	text?: string;
 	assets: GenerationAsset[];
+	deletedAssetSlots?: number[];
 	usage: GenerationUsage;
 	error?: string;
 	errorCode?: string;

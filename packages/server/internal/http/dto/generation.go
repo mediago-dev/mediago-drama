@@ -112,10 +112,11 @@ type GenerationNotificationEvent struct {
 
 // GenerationAsset is a generated asset reference or inline payload.
 type GenerationAsset struct {
-	Kind     string `json:"kind" ts:"Kind"`
-	URL      string `json:"url,omitempty"`
-	Base64   string `json:"base64,omitempty"`
-	MIMEType string `json:"mimeType,omitempty"`
+	Kind      string `json:"kind" ts:"Kind"`
+	URL       string `json:"url,omitempty"`
+	Base64    string `json:"base64,omitempty"`
+	MIMEType  string `json:"mimeType,omitempty"`
+	SlotIndex int    `json:"slotIndex,omitempty"`
 }
 
 // GenerationUsage contains token usage for generation providers.
@@ -150,6 +151,7 @@ type GenerationTaskRecord struct {
 	Message           string                        `json:"message"`
 	Text              string                        `json:"text,omitempty"`
 	Assets            []GenerationAsset             `json:"assets"`
+	DeletedAssetSlots []int                         `json:"deletedAssetSlots,omitempty"`
 	Usage             GenerationUsage               `json:"usage"`
 	Error             string                        `json:"error,omitempty"`
 	ErrorCode         string                        `json:"errorCode,omitempty"`

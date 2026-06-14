@@ -180,6 +180,20 @@ func (repo *GenerationTaskRepository) UpdateGenerationTaskAssets(id string, asse
 	return result.RowsAffected > 0, nil
 }
 
+// UpdateGenerationTaskDeletedAssetSlots replaces a task's hidden generated asset slots.
+func (repo *GenerationTaskRepository) UpdateGenerationTaskDeletedAssetSlots(id string, deletedAssetSlotsJSON string, updatedAt string) (bool, error) {
+	result := repo.db.Model(&domain.GenerationTaskModel{}).
+		Where("id = ?", strings.TrimSpace(id)).
+		Updates(map[string]any{
+			"deleted_asset_slots_json": deletedAssetSlotsJSON,
+			"updated_at":               updatedAt,
+		})
+	if result.Error != nil {
+		return false, fmt.Errorf("updating generation task deleted asset slots: %w", result.Error)
+	}
+	return result.RowsAffected > 0, nil
+}
+
 // UpsertGenerationConversation inserts or updates a generation conversation.
 func (repo *GenerationTaskRepository) UpsertGenerationConversation(model domain.GenerationConversationModel) error {
 	err := repo.db.Clauses(clause.OnConflict{

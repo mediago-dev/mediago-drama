@@ -23,6 +23,7 @@ type GenerationTaskModel struct {
 	Message               string `gorm:"column:message;not null"`
 	Text                  string `gorm:"column:text;not null;default:''"`
 	AssetsJSON            string `gorm:"column:assets_json;not null"`
+	DeletedAssetSlotsJSON string `gorm:"column:deleted_asset_slots_json;not null;default:'[]'"`
 	UsageJSON             string `gorm:"column:usage_json;not null"`
 	Error                 string `gorm:"column:error;not null;default:''"`
 	ErrorCode             string `gorm:"column:error_code;not null;default:''"`

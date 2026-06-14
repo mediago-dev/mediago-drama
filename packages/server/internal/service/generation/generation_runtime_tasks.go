@@ -240,7 +240,7 @@ func (workflow *GenerationService) ListGenerationTasks(query GenerationTaskListQ
 		if err != nil {
 			return generationTasksResponse{}, err
 		}
-		return generationTasksResponse{Tasks: tasks}, nil
+		return generationTasksResponse{Tasks: GenerationTasksForClient(tasks)}, nil
 	} else if conversationID != "" {
 		conversation, status, err := workflow.resolveGenerationConversationWithScopeFilter(conversationID, scopeID, kind, hasScopeFilter)
 		if err != nil {
@@ -260,24 +260,32 @@ func (workflow *GenerationService) ListGenerationTasks(query GenerationTaskListQ
 		if err != nil {
 			return generationTasksResponse{}, err
 		}
-		return generationTasksResponse{Tasks: tasks}, nil
+		return generationTasksResponse{Tasks: GenerationTasksForClient(tasks)}, nil
 	}
 
 	tasks, err := workflow.generationTasks.ListByConversation(kind, conversationID, includeLegacyDefault, listOptions)
 	if err != nil {
 		return generationTasksResponse{}, err
 	}
-	return generationTasksResponse{Tasks: tasks}, nil
+	return generationTasksResponse{Tasks: GenerationTasksForClient(tasks)}, nil
 }
 
 // GetGenerationTask returns a generation task for HTTP handlers.
 func (workflow *GenerationService) GetGenerationTask(id string) (generationTaskRecord, bool, error) {
-	return workflow.generationTasks.Get(id)
+	task, ok, err := workflow.generationTasks.Get(id)
+	if err != nil || !ok {
+		return task, ok, err
+	}
+	return GenerationTaskForClient(task), true, nil
 }
 
 // DeleteGenerationTaskAsset deletes one generated asset from a generation task.
 func (workflow *GenerationService) DeleteGenerationTaskAsset(id string, assetIndex int) (generationTaskRecord, bool, error) {
-	return workflow.generationTasks.DeleteAsset(id, assetIndex)
+	task, deleted, err := workflow.generationTasks.DeleteAsset(id, assetIndex)
+	if err != nil || !deleted {
+		return task, deleted, err
+	}
+	return GenerationTaskForClient(task), true, nil
 }
 
 // DeleteGenerationTask deletes a generation task and returns the updated task list.

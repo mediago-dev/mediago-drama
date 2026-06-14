@@ -36,6 +36,12 @@ import {
 } from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
 import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuTrigger,
+} from "@/shared/components/ui/context-menu";
+import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
@@ -60,6 +66,7 @@ export const HistoryGenerationList: React.FC<{
 	onCopyPrompt?: (entry: GenerationEntry) => void;
 	onDeleteAsset?: (entry: GenerationEntry, asset: GenerationAsset, assetIndex: number) => void;
 	onDeleteEntry: (entry: GenerationEntry) => void;
+	onDeletePlaceholder?: (entry: GenerationEntry, assetIndex: number) => void;
 	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onSelectEntry: (entry: GenerationEntry) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
@@ -80,6 +87,7 @@ export const HistoryGenerationList: React.FC<{
 	onCopyPrompt,
 	onDeleteAsset,
 	onDeleteEntry,
+	onDeletePlaceholder,
 	onSaveAsset,
 	onSelectEntry,
 	onToggleAsset,
@@ -107,6 +115,7 @@ export const HistoryGenerationList: React.FC<{
 				entries={entries}
 				onDeleteAsset={onDeleteAsset}
 				onDeleteEntry={onDeleteEntry}
+				onDeletePlaceholder={onDeletePlaceholder}
 				onSaveAsset={onSaveAsset}
 				onToggleAsset={onToggleAsset}
 				onUseAssetAsReference={onUseAssetAsReference}
@@ -171,6 +180,7 @@ const HistoryImageGrid: React.FC<{
 	entries: GenerationEntry[];
 	onDeleteAsset?: (entry: GenerationEntry, asset: GenerationAsset, assetIndex: number) => void;
 	onDeleteEntry: (entry: GenerationEntry) => void;
+	onDeletePlaceholder?: (entry: GenerationEntry, assetIndex: number) => void;
 	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	onUseAssetAsReference?: (asset: GenerationAsset) => void;
@@ -185,6 +195,7 @@ const HistoryImageGrid: React.FC<{
 	entries,
 	onDeleteAsset,
 	onDeleteEntry,
+	onDeletePlaceholder,
 	onSaveAsset,
 	onToggleAsset,
 	onUseAssetAsReference,
@@ -214,6 +225,7 @@ const HistoryImageGrid: React.FC<{
 							deleting={isDeletingHistoryImage(record, deletingAssetKeys, deletingEntryIds)}
 							onDeleteAsset={onDeleteAsset}
 							onDeleteEntry={onDeleteEntry}
+							onDeletePlaceholder={onDeletePlaceholder}
 							onSaveAsset={onSaveAsset}
 							onToggleAsset={onToggleAsset}
 							onUseAssetAsReference={onUseAssetAsReference}
@@ -233,6 +245,7 @@ const HistoryImageCard: React.FC<{
 	deleting: boolean;
 	onDeleteAsset?: (entry: GenerationEntry, asset: GenerationAsset, assetIndex: number) => void;
 	onDeleteEntry: (entry: GenerationEntry) => void;
+	onDeletePlaceholder?: (entry: GenerationEntry, assetIndex: number) => void;
 	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	onUseAssetAsReference?: (asset: GenerationAsset) => void;
@@ -245,6 +258,7 @@ const HistoryImageCard: React.FC<{
 	deleting,
 	onDeleteAsset,
 	onDeleteEntry,
+	onDeletePlaceholder,
 	onSaveAsset,
 	onToggleAsset,
 	onUseAssetAsReference,
@@ -258,10 +272,67 @@ const HistoryImageCard: React.FC<{
 	const isAssetRecord = record.kind === "asset";
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 	if (!isAssetRecord) {
+		const confirmPlaceholderDelete = () => onDeletePlaceholder?.(entry, assetIndex);
+
 		return (
-			<article className="relative aspect-[4/3] min-w-0 overflow-hidden rounded-sm border border-border bg-muted">
-				<HistoryImagePlaceholder record={record} />
-			</article>
+			<>
+				<ContextMenu>
+					<ContextMenuTrigger asChild>
+						<article className="relative aspect-[4/3] min-w-0 overflow-hidden rounded-sm border border-border bg-muted">
+							<HistoryImagePlaceholder record={record} />
+						</article>
+					</ContextMenuTrigger>
+					<ContextMenuContent>
+						<ContextMenuItem disabled>
+							<Eye className="size-4" />
+							<span>预览</span>
+						</ContextMenuItem>
+						<ContextMenuItem disabled>
+							<Download className="size-4" />
+							<span>下载</span>
+						</ContextMenuItem>
+						<ContextMenuItem disabled>
+							<WandSparkles className="size-4" />
+							<span>派生</span>
+						</ContextMenuItem>
+						<ContextMenuItem disabled={!onUsePrompt} onSelect={() => onUsePrompt?.(entry)}>
+							<FileText className="size-4" />
+							<span>使用此提示词</span>
+						</ContextMenuItem>
+						<ContextMenuItem
+							className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
+							disabled={deleting || !onDeletePlaceholder}
+							onSelect={() => setDeleteDialogOpen(true)}
+						>
+							{deleting ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<Trash2 className="size-4" />
+							)}
+							<span>{deleting ? "正在删除" : "删除"}</span>
+						</ContextMenuItem>
+					</ContextMenuContent>
+				</ContextMenu>
+				<AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>删除这张图片？</AlertDialogTitle>
+							<AlertDialogDescription>
+								删除后会从这条生成记录中移除这个图片位置。
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+							<AlertDialogAction
+								disabled={deleting || !onDeletePlaceholder}
+								onClick={confirmPlaceholderDelete}
+							>
+								删除
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+			</>
 		);
 	}
 
@@ -272,6 +343,15 @@ const HistoryImageCard: React.FC<{
 	const selectionKey = generationAssetSelectionKey(record.asset);
 	const selectable = Boolean(selectionKey && onToggleAsset);
 	const selected = Boolean(selectionKey && selectedAssetKeys.includes(selectionKey));
+	const saveAsset = () => onSaveAsset?.(entry, record.asset);
+	const deriveAsset = () => {
+		if (onUseAssetAsReference) {
+			onUseAssetAsReference(record.asset);
+			return;
+		}
+		onToggleAsset?.(record.asset, true);
+	};
+	const usePrompt = () => onUsePrompt?.(entry);
 	const confirmDelete = () => {
 		if (onDeleteAsset) {
 			onDeleteAsset(entry, record.asset, assetIndex);
@@ -283,86 +363,122 @@ const HistoryImageCard: React.FC<{
 	return (
 		<TooltipProvider delayDuration={180}>
 			<>
-				<article
-					className={cn(
-						"group/history-image relative aspect-[4/3] min-w-0 overflow-hidden rounded-sm border bg-muted",
-						selected ? "border-primary ring-1 ring-primary" : "border-border",
-					)}
-				>
-					<img src={source} alt="" className="size-full object-cover" />
-					<div className="absolute inset-0 flex items-center justify-center bg-foreground/55 opacity-0 transition-opacity group-hover/history-image:opacity-100 group-focus-within/history-image:opacity-100">
-						<div className="grid max-w-[calc(100%-2rem)] grid-cols-5 items-center justify-center gap-2">
-							<Tooltip>
-								<PhotoView src={source}>
-									<TooltipTrigger asChild>
-										<button
-											type="button"
-											aria-label="预览图片"
-											className={historyImageActionButtonClassName}
-										>
-											<Eye className="size-4" />
-										</button>
-									</TooltipTrigger>
-								</PhotoView>
-								<TooltipContent>预览</TooltipContent>
-							</Tooltip>
-							<HistoryImageActionButton
-								ariaLabel={saved ? "图片已下载" : saving ? "正在下载图片" : "下载图片"}
-								disabled={!onSaveAsset || saving || saved}
-								tooltip={saved ? "已下载" : saving ? "正在下载" : "下载"}
-								onClick={() => onSaveAsset?.(entry, record.asset)}
-							>
-								{saving ? (
-									<Loader2 className="size-4 animate-spin" />
-								) : saved ? (
-									<Check className="size-4" />
-								) : (
-									<Download className="size-4" />
-								)}
-							</HistoryImageActionButton>
-							<HistoryImageActionButton
-								ariaLabel="派生图片"
-								disabled={!canDerive}
-								tooltip="派生"
-								onClick={() => {
-									if (onUseAssetAsReference) {
-										onUseAssetAsReference(record.asset);
-										return;
-									}
-									onToggleAsset?.(record.asset, true);
-								}}
-							>
-								<WandSparkles className="size-4" />
-							</HistoryImageActionButton>
-							<HistoryImageActionButton
-								ariaLabel="使用此提示词"
-								disabled={!onUsePrompt}
-								tooltip="使用此提示词"
-								onClick={() => onUsePrompt?.(entry)}
-							>
-								<FileText className="size-4" />
-							</HistoryImageActionButton>
-							<HistoryImageActionButton
-								ariaLabel="删除图片"
-								disabled={deleting}
-								tooltip={deleting ? "正在删除" : "删除"}
-								onClick={() => setDeleteDialogOpen(true)}
-							>
-								{deleting ? (
-									<Loader2 className="size-4 animate-spin" />
-								) : (
-									<Trash2 className="size-4" />
-								)}
-							</HistoryImageActionButton>
-						</div>
-					</div>
-					{selectable && onToggleAsset ? (
-						<HistoryImageSelectionButton
-							selected={selected}
-							onToggle={() => onToggleAsset(record.asset, !selected)}
-						/>
-					) : null}
-				</article>
+				<ContextMenu>
+					<ContextMenuTrigger asChild>
+						<article
+							className={cn(
+								"group/history-image relative aspect-[4/3] min-w-0 overflow-hidden rounded-sm border bg-muted",
+								selected ? "border-primary ring-1 ring-primary" : "border-border",
+							)}
+						>
+							<img src={source} alt="" className="size-full object-cover" />
+							<div className="absolute inset-0 flex items-center justify-center bg-foreground/55 opacity-0 transition-opacity group-hover/history-image:opacity-100 group-focus-within/history-image:opacity-100">
+								<div className="grid max-w-[calc(100%-2rem)] grid-cols-5 items-center justify-center gap-2">
+									<Tooltip>
+										<PhotoView src={source}>
+											<TooltipTrigger asChild>
+												<button
+													type="button"
+													aria-label="预览图片"
+													className={historyImageActionButtonClassName}
+												>
+													<Eye className="size-4" />
+												</button>
+											</TooltipTrigger>
+										</PhotoView>
+										<TooltipContent>预览</TooltipContent>
+									</Tooltip>
+									<HistoryImageActionButton
+										ariaLabel={saved ? "图片已下载" : saving ? "正在下载图片" : "下载图片"}
+										disabled={!onSaveAsset || saving || saved}
+										tooltip={saved ? "已下载" : saving ? "正在下载" : "下载"}
+										onClick={saveAsset}
+									>
+										{saving ? (
+											<Loader2 className="size-4 animate-spin" />
+										) : saved ? (
+											<Check className="size-4" />
+										) : (
+											<Download className="size-4" />
+										)}
+									</HistoryImageActionButton>
+									<HistoryImageActionButton
+										ariaLabel="派生图片"
+										disabled={!canDerive}
+										tooltip="派生"
+										onClick={deriveAsset}
+									>
+										<WandSparkles className="size-4" />
+									</HistoryImageActionButton>
+									<HistoryImageActionButton
+										ariaLabel="使用此提示词"
+										disabled={!onUsePrompt}
+										tooltip="使用此提示词"
+										onClick={usePrompt}
+									>
+										<FileText className="size-4" />
+									</HistoryImageActionButton>
+									<HistoryImageActionButton
+										ariaLabel="删除图片"
+										disabled={deleting}
+										tooltip={deleting ? "正在删除" : "删除"}
+										onClick={() => setDeleteDialogOpen(true)}
+									>
+										{deleting ? (
+											<Loader2 className="size-4 animate-spin" />
+										) : (
+											<Trash2 className="size-4" />
+										)}
+									</HistoryImageActionButton>
+								</div>
+							</div>
+							{selectable && onToggleAsset ? (
+								<HistoryImageSelectionButton
+									selected={selected}
+									onToggle={() => onToggleAsset(record.asset, !selected)}
+								/>
+							) : null}
+						</article>
+					</ContextMenuTrigger>
+					<ContextMenuContent>
+						<PhotoView src={source}>
+							<ContextMenuItem>
+								<Eye className="size-4" />
+								<span>预览</span>
+							</ContextMenuItem>
+						</PhotoView>
+						<ContextMenuItem disabled={!onSaveAsset || saving || saved} onSelect={saveAsset}>
+							{saving ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : saved ? (
+								<Check className="size-4" />
+							) : (
+								<Download className="size-4" />
+							)}
+							<span>{saved ? "已下载" : saving ? "正在下载" : "下载"}</span>
+						</ContextMenuItem>
+						<ContextMenuItem disabled={!canDerive} onSelect={deriveAsset}>
+							<WandSparkles className="size-4" />
+							<span>派生</span>
+						</ContextMenuItem>
+						<ContextMenuItem disabled={!onUsePrompt} onSelect={usePrompt}>
+							<FileText className="size-4" />
+							<span>使用此提示词</span>
+						</ContextMenuItem>
+						<ContextMenuItem
+							className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
+							disabled={deleting}
+							onSelect={() => setDeleteDialogOpen(true)}
+						>
+							{deleting ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<Trash2 className="size-4" />
+							)}
+							<span>{deleting ? "正在删除" : "删除"}</span>
+						</ContextMenuItem>
+					</ContextMenuContent>
+				</ContextMenu>
 				<AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
 					<AlertDialogContent>
 						<AlertDialogHeader>
@@ -480,15 +596,16 @@ const imageRecordsFromEntries = (
 			(asset, assetIndex) => {
 				const source = generationAssetSource(asset);
 				if (asset.kind !== "image" || !source) return [];
+				const slotIndex = generationAssetSlotIndex(asset, assetIndex);
 
 				return [
 					{
 						asset,
-						assetIndex,
-						displayIndex: assetIndex,
+						assetIndex: slotIndex,
+						displayIndex: slotIndex,
 						entry,
 						kind: "asset",
-						key: `${entry.id}:${assetIndex}:${source}`,
+						key: `${entry.id}:${slotIndex}:${source}`,
 						source,
 					},
 				];
@@ -500,27 +617,46 @@ const imageRecordsFromEntries = (
 		if (!placeholderKind) return imageRecords;
 
 		const targetCount = Math.max(
-			imageRecords.length,
+			...imageRecords.map((record) => record.displayIndex + 1),
 			requestGenerationCount(entry.requestDetails ?? []),
 		);
-		const deletedPlaceholderCount = Math.max(0, deletedAssetPlaceholderCounts[entry.id] ?? 0);
-		const placeholders = Array.from(
-			{ length: Math.max(0, targetCount - imageRecords.length - deletedPlaceholderCount) },
-			(_, index): HistoryImagePlaceholderRecord => {
-				const displayIndex = imageRecords.length + deletedPlaceholderCount + index;
-				return {
-					assetIndex: displayIndex,
-					displayIndex,
-					entry,
-					kind: placeholderKind,
-					key: `${entry.id}:${placeholderKind}:${displayIndex}`,
-					source: "",
-				};
-			},
-		);
+		const occupiedSlots = new Set(imageRecords.map((record) => record.displayIndex));
+		const deletedSlots = generationDeletedAssetSlotSet(entry.deletedAssetSlots);
+		let legacyDeletedPlaceholderCount = Math.max(0, deletedAssetPlaceholderCounts[entry.id] ?? 0);
+		const placeholders: HistoryImagePlaceholderRecord[] = [];
+		for (let displayIndex = 0; displayIndex < targetCount; displayIndex++) {
+			if (occupiedSlots.has(displayIndex) || deletedSlots.has(displayIndex)) continue;
+			if (legacyDeletedPlaceholderCount > 0) {
+				legacyDeletedPlaceholderCount -= 1;
+				continue;
+			}
+			placeholders.push({
+				assetIndex: displayIndex,
+				displayIndex,
+				entry,
+				kind: placeholderKind,
+				key: `${entry.id}:${placeholderKind}:${displayIndex}`,
+				source: "",
+			});
+		}
 
 		return [...imageRecords, ...placeholders];
 	});
+
+const generationAssetSlotIndex = (asset: GenerationAsset, fallback: number) => {
+	const slotIndex = asset.slotIndex;
+	return typeof slotIndex === "number" && Number.isInteger(slotIndex) && slotIndex >= 0
+		? slotIndex
+		: fallback;
+};
+
+const generationDeletedAssetSlotSet = (slots: number[] | undefined) => {
+	const set = new Set<number>();
+	for (const slot of slots ?? []) {
+		if (Number.isInteger(slot) && slot >= 0) set.add(slot);
+	}
+	return set;
+};
 
 const isDeletingHistoryImage = (
 	record: HistoryImageRecord,

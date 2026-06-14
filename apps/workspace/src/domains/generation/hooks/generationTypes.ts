@@ -8,6 +8,7 @@ export interface ChatMessage {
 	status?: string;
 	assets?: GenerationAsset[];
 	createdAt?: string;
+	deletedAssetSlots?: number[];
 	details?: ChatMessageDetail[];
 	durationMs?: number;
 	error?: string;
@@ -26,6 +27,7 @@ export interface GenerationEntry {
 	assistantMessage?: ChatMessage;
 	content: string;
 	createdAt?: string;
+	deletedAssetSlots?: number[];
 	durationMs?: number;
 	id: string;
 	kind: GenerationKind;

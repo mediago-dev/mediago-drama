@@ -184,7 +184,7 @@ describe("useGenerationTaskActions", () => {
 		expect(mutateTasks).toHaveBeenCalled();
 	});
 
-	it("tracks deleted image slots so they are not rendered as pending placeholders", async () => {
+	it("deletes generated images by their persisted slot", async () => {
 		vi.mocked(deleteGenerationTaskAsset).mockResolvedValue(
 			{} as Awaited<ReturnType<typeof deleteGenerationTaskAsset>>,
 		);
@@ -199,7 +199,25 @@ describe("useGenerationTaskActions", () => {
 			await result.current.deleteGenerationEntryAsset("task-1", 0);
 		});
 
-		expect(result.current.deletedAssetPlaceholderCounts["task-1"]).toBe(1);
+		expect(deleteGenerationTaskAsset).toHaveBeenCalledWith("task-1", 0);
+		expect(result.current.deletedAssetPlaceholderCounts["task-1"]).toBeUndefined();
 		expect(result.current.messages[0]?.assets).toEqual([]);
+	});
+
+	it("persists hidden placeholder image slots without deleting the whole task", async () => {
+		vi.mocked(deleteGenerationTaskAsset).mockResolvedValue(
+			{} as Awaited<ReturnType<typeof deleteGenerationTaskAsset>>,
+		);
+		const { mutateTasks, result } = renderTaskActionsHook([
+			submittedImageMessage({ id: "task-1" }),
+		]);
+
+		await act(async () => {
+			await result.current.deleteGenerationEntryAssetPlaceholder("task-1", 2);
+		});
+
+		expect(deleteGenerationTaskAsset).toHaveBeenCalledWith("task-1", 2);
+		expect(result.current.messages[0]?.assets).toBeUndefined();
+		expect(mutateTasks).toHaveBeenCalled();
 	});
 });

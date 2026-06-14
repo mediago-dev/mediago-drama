@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -241,18 +242,14 @@ func (service *GenerationTaskService) deleteAssetRecord(id string, assetIndex in
 	if err != nil {
 		return GenerationTaskRecord{}, false, err
 	}
-	if assetIndex >= len(task.Assets) {
-		return GenerationTaskRecord{}, false, nil
-	}
-
-	task.Assets = append(task.Assets[:assetIndex], task.Assets[assetIndex+1:]...)
+	task.DeletedAssetSlots = appendGenerationDeletedAssetSlot(task.DeletedAssetSlots, assetIndex)
 	task.UpdatedAt = timestamp.NowRFC3339Nano()
-	assetsJSON, err := json.Marshal(task.Assets)
+	deletedAssetSlotsJSON, err := json.Marshal(task.DeletedAssetSlots)
 	if err != nil {
 		return GenerationTaskRecord{}, false, err
 	}
 
-	updated, err := service.repo.UpdateGenerationTaskAssets(id, string(assetsJSON), task.UpdatedAt)
+	updated, err := service.repo.UpdateGenerationTaskDeletedAssetSlots(id, string(deletedAssetSlotsJSON), task.UpdatedAt)
 	return task, updated, err
 }
 
@@ -296,6 +293,10 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 	if err != nil {
 		return err
 	}
+	deletedAssetSlotsJSON, err := json.Marshal(normalizeGenerationDeletedAssetSlots(task.DeletedAssetSlots))
+	if err != nil {
+		return err
+	}
 	usageJSON, err := json.Marshal(task.Usage)
 	if err != nil {
 		return err
@@ -326,6 +327,7 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 		Message:               task.Message,
 		Text:                  task.Text,
 		AssetsJSON:            string(assetsJSON),
+		DeletedAssetSlotsJSON: string(deletedAssetSlotsJSON),
 		UsageJSON:             string(usageJSON),
 		Error:                 task.Error,
 		ErrorCode:             task.ErrorCode,
@@ -644,6 +646,9 @@ func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRec
 	if err := decodeGenerationTaskJSON(model.AssetsJSON, &task.Assets); err != nil {
 		return GenerationTaskRecord{}, err
 	}
+	if err := decodeGenerationTaskJSON(model.DeletedAssetSlotsJSON, &task.DeletedAssetSlots); err != nil {
+		return GenerationTaskRecord{}, err
+	}
 	if err := decodeGenerationTaskJSON(model.UsageJSON, &task.Usage); err != nil {
 		return GenerationTaskRecord{}, err
 	}
@@ -659,8 +664,88 @@ func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRec
 	if task.Assets == nil {
 		task.Assets = []GenerationAsset{}
 	}
+	task.DeletedAssetSlots = normalizeGenerationDeletedAssetSlots(task.DeletedAssetSlots)
 
 	return task, nil
+}
+
+func appendGenerationDeletedAssetSlot(slots []int, slot int) []int {
+	if slot < 0 {
+		return normalizeGenerationDeletedAssetSlots(slots)
+	}
+	return normalizeGenerationDeletedAssetSlots(append(slots, slot))
+}
+
+func normalizeGenerationDeletedAssetSlots(slots []int) []int {
+	if len(slots) == 0 {
+		return []int{}
+	}
+	sort.Ints(slots)
+	normalized := make([]int, 0, len(slots))
+	for _, slot := range slots {
+		if slot < 0 {
+			continue
+		}
+		if len(normalized) > 0 && normalized[len(normalized)-1] == slot {
+			continue
+		}
+		normalized = append(normalized, slot)
+	}
+	return normalized
+}
+
+func GenerationTaskForClient(task GenerationTaskRecord) GenerationTaskRecord {
+	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
+	if len(deletedSlots) == 0 {
+		task.Assets = generationAssetsWithSlotIndices(task.Assets)
+		task.DeletedAssetSlots = normalizeGenerationDeletedAssetSlots(task.DeletedAssetSlots)
+		return task
+	}
+
+	assets := make([]GenerationAsset, 0, len(task.Assets))
+	for index, asset := range task.Assets {
+		if deletedSlots[index] {
+			continue
+		}
+		asset.SlotIndex = index
+		assets = append(assets, asset)
+	}
+	task.Assets = assets
+	task.DeletedAssetSlots = normalizeGenerationDeletedAssetSlots(task.DeletedAssetSlots)
+	return task
+}
+
+func GenerationTasksForClient(tasks []GenerationTaskRecord) []GenerationTaskRecord {
+	next := make([]GenerationTaskRecord, 0, len(tasks))
+	for _, task := range tasks {
+		next = append(next, GenerationTaskForClient(task))
+	}
+	return next
+}
+
+func generationAssetsWithSlotIndices(assets []GenerationAsset) []GenerationAsset {
+	if len(assets) == 0 {
+		return assets
+	}
+	next := make([]GenerationAsset, 0, len(assets))
+	for index, asset := range assets {
+		asset.SlotIndex = index
+		next = append(next, asset)
+	}
+	return next
+}
+
+func generationDeletedAssetSlotSet(slots []int) map[int]bool {
+	if len(slots) == 0 {
+		return nil
+	}
+	set := make(map[int]bool, len(slots))
+	for _, slot := range slots {
+		if slot >= 0 {
+			set[slot] = true
+		}
+	}
+	return set
 }
 
 func isStaleSubmittingGenerationTask(task GenerationTaskRecord, now time.Time) bool {

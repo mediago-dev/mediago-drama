@@ -550,6 +550,19 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		},
 		[toast, ws.deleteGenerationEntryAsset],
 	);
+	const deleteEntryAssetPlaceholder = useCallback(
+		async (entry: GenerationEntry, assetIndex: number) => {
+			try {
+				const deleted = await ws.deleteGenerationEntryAssetPlaceholder(entry.id, assetIndex);
+				if (!deleted) {
+					toast.error("删除失败", { description: "找不到可删除的生成图片。" });
+				}
+			} catch (error) {
+				toast.error("删除失败", { description: apiErrorMessage(error, "生成图片删除失败。") });
+			}
+		},
+		[toast, ws.deleteGenerationEntryAssetPlaceholder],
+	);
 
 	const selectHistoryEntry = useCallback(
 		(entry: GenerationEntry) => {
@@ -713,6 +726,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 							selectedAssetKeys={selectedAssetKeys}
 							onDeleteEntry={deleteEntry}
 							onDeleteAsset={deleteEntryAsset}
+							onDeletePlaceholder={deleteEntryAssetPlaceholder}
 							onCopyPrompt={resultActions.copyPrompt}
 							onSaveAsset={resultActions.saveAsset}
 							onSelectEntry={selectHistoryEntry}

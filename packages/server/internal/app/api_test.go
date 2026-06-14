@@ -1235,8 +1235,8 @@ func TestAPIHandler(t *testing.T) {
 			t.Fatalf("delete asset status code = %d, want %d: %s", removeAsset.StatusCode, http.StatusOK, readBody(t, removeAsset.Body))
 		}
 		removeAssetBody := readBody(t, removeAsset.Body)
-		if strings.Contains(removeAssetBody, "project-a") ||
-			!strings.Contains(removeAssetBody, "project-b") {
+		if strings.Contains(removeAssetBody, "/api/v1/media-assets/project-a/content") ||
+			!strings.Contains(removeAssetBody, "/api/v1/media-assets/project-b/content") {
 			t.Fatalf("body = %s, want only deleted asset removed", removeAssetBody)
 		}
 

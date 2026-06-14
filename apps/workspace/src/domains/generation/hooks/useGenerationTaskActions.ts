@@ -169,17 +169,15 @@ export const useGenerationTaskActions = ({
 			setDeletingAssetKeys((current) =>
 				current.includes(deletingKey) ? current : [...current, deletingKey],
 			);
-			setDeletedAssetPlaceholderCounts((current) => ({
-				...current,
-				[entryId]: (current[entryId] ?? 0) + 1,
-			}));
 			setMessages((current) =>
 				current.map((message) => {
 					if (message.id !== entryId) return message;
 
 					return {
 						...message,
-						assets: (message.assets ?? []).filter((_, index) => index !== assetIndex),
+						assets: (message.assets ?? []).filter(
+							(asset, index) => generationAssetSlotIndex(asset, index) !== assetIndex,
+						),
 					};
 				}),
 			);
@@ -192,13 +190,6 @@ export const useGenerationTaskActions = ({
 				void mutateSWR(generationConversationsQueryKey(kind, "", { allScopes: true }));
 				return true;
 			} catch (err) {
-				setDeletedAssetPlaceholderCounts((current) => {
-					const nextCount = Math.max(0, (current[entryId] ?? 0) - 1);
-					if (nextCount > 0) return { ...current, [entryId]: nextCount };
-
-					const { [entryId]: _removed, ...rest } = current;
-					return rest;
-				});
 				void mutateTasks();
 				throw new Error(errorMessage(err, "生成图片删除失败。"));
 			} finally {
@@ -213,6 +204,36 @@ export const useGenerationTaskActions = ({
 			setError,
 			setMessages,
 		],
+	);
+
+	const deleteGenerationEntryAssetPlaceholder = useCallback(
+		async (entryId: string, assetIndex: number) => {
+			if (!entryId || assetIndex < 0) return false;
+
+			const taskId = taskIdForDeletion(entryId);
+			if (!taskId) return false;
+
+			const deletingKey = `${entryId}:${assetIndex}`;
+			setError(null);
+			setDeletingAssetKeys((current) =>
+				current.includes(deletingKey) ? current : [...current, deletingKey],
+			);
+
+			try {
+				await deleteGenerationTaskAsset(taskId, assetIndex);
+				await mutateTasks();
+				mutateProjectGenerationTasks(kind);
+				void mutateSWR(generationConversationsQueryKey(kind, resolvedConversationScopeId));
+				void mutateSWR(generationConversationsQueryKey(kind, "", { allScopes: true }));
+				return true;
+			} catch (err) {
+				void mutateTasks();
+				throw new Error(errorMessage(err, "生成图片删除失败。"));
+			} finally {
+				setDeletingAssetKeys((current) => current.filter((key) => key !== deletingKey));
+			}
+		},
+		[kind, mutateProjectGenerationTasks, mutateTasks, resolvedConversationScopeId, setError],
 	);
 
 	useEffect(() => {
@@ -241,6 +262,7 @@ export const useGenerationTaskActions = ({
 	return {
 		deletedAssetPlaceholderCounts,
 		deleteGenerationEntryAsset,
+		deleteGenerationEntryAssetPlaceholder,
 		deleteGenerationEntry,
 		deletingAssetKeys,
 		deletingEntryIds,
@@ -254,6 +276,13 @@ const taskIdForDeletion = (entryId: string) => {
 
 	const baseId = entryId.replace(/:(assistant|error|prompt)$/, "");
 	return baseId && !baseId.startsWith("local-") ? baseId : null;
+};
+
+const generationAssetSlotIndex = (asset: { slotIndex?: number }, fallback: number) => {
+	const slotIndex = asset.slotIndex;
+	return typeof slotIndex === "number" && Number.isInteger(slotIndex) && slotIndex >= 0
+		? slotIndex
+		: fallback;
 };
 
 const failedVideoMessage = (message: ChatMessage, error: string): ChatMessage => ({

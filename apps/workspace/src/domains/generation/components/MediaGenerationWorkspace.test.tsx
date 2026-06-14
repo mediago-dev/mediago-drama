@@ -106,6 +106,16 @@ const secondImageEntry: GenerationEntry = {
 	assets: [{ kind: "image", url: "/api/v1/media-assets/media-b/content", mimeType: "image/png" }],
 };
 
+const pendingImageEntry: GenerationEntry = {
+	id: "entry-pending-image",
+	kind: "image",
+	status: "running",
+	content: "",
+	prompt: "生成四张图",
+	requestDetails: [{ label: "图像数量", value: "4" }],
+	assets: [],
+};
+
 const mediaAsset: MediaAsset = {
 	id: "media-a",
 	kind: "image",
@@ -124,6 +134,7 @@ const workspaceDefaults = {
 	deletedAssetPlaceholderCounts: {},
 	deleteGenerationEntry: vi.fn(),
 	deleteGenerationEntryAsset: vi.fn(),
+	deleteGenerationEntryAssetPlaceholder: vi.fn(),
 	deletingEntryIds: [],
 	error: null,
 	hasConfiguredRoutesForKind: true,
@@ -457,6 +468,39 @@ describe("MediaGenerationWorkspace", () => {
 			});
 		});
 		expect(screen.queryByRole("alert")).toBeNull();
+	});
+
+	it("deletes only the selected pending image slot from tabbed history", async () => {
+		const deleteGenerationEntry = vi.fn();
+		const deleteGenerationEntryAssetPlaceholder = vi.fn();
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: "entry-pending-image",
+			deleteGenerationEntry,
+			deleteGenerationEntryAssetPlaceholder,
+			orderedGenerationEntries: [pendingImageEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				viewMode="history"
+			/>,
+		);
+
+		fireEvent.contextMenu(screen.getAllByRole("img", { name: /生成中/ })[0]);
+		const menu = await screen.findByRole("menu");
+		fireEvent.click(within(menu).getByRole("menuitem", { name: "删除" }));
+		fireEvent.click(
+			within(screen.getByRole("alertdialog", { name: "删除这张图片？" })).getByRole("button", {
+				name: "删除",
+			}),
+		);
+
+		expect(deleteGenerationEntryAssetPlaceholder).toHaveBeenCalledWith("entry-pending-image", 0);
+		expect(deleteGenerationEntry).not.toHaveBeenCalled();
 	});
 
 	it("passes image spec control to the input panel and filters advanced params", () => {

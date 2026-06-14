@@ -146,13 +146,82 @@ func TestGenerationTaskServiceDeleteAssetIncludesAttemptsWithoutDeadlock(t *test
 		if !result.deleted {
 			t.Fatal("delete returned false, want true")
 		}
-		if len(result.task.Assets) != 1 || result.task.Assets[0].URL != "/api/v1/media-assets/image-b/content" {
-			t.Fatalf("assets = %#v, want only second image", result.task.Assets)
+		if len(result.task.Assets) != 2 {
+			t.Fatalf("assets = %#v, want stored assets preserved", result.task.Assets)
+		}
+		if len(result.task.DeletedAssetSlots) != 1 || result.task.DeletedAssetSlots[0] != 0 {
+			t.Fatalf("deleted slots = %#v, want first image slot deleted", result.task.DeletedAssetSlots)
+		}
+		visibleTask := GenerationTaskForClient(result.task)
+		if len(visibleTask.Assets) != 1 ||
+			visibleTask.Assets[0].URL != "/api/v1/media-assets/image-b/content" ||
+			visibleTask.Assets[0].SlotIndex != 1 {
+			t.Fatalf("visible assets = %#v, want only second image with original slot", visibleTask.Assets)
 		}
 		if len(result.task.Attempts) != 1 {
 			t.Fatalf("attempts = %#v, want delete response with attempts", result.task.Attempts)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("DeleteAsset timed out, likely waiting on its own attempts summary lock")
+	}
+}
+
+func TestGenerationTaskServiceDeletePendingAssetSlotPersistsAcrossTaskUpdates(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	taskID := "task-delete-pending-slot"
+
+	service := NewGenerationTaskService(dbPath, nil)
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:     taskID,
+		Kind:   "image",
+		Status: "running",
+		Prompt: "portrait set",
+		Assets: []GenerationAsset{
+			{Kind: "image", URL: "/api/v1/media-assets/image-a/content"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting task: %v", err)
+	}
+
+	task, deleted, err := service.DeleteAsset(taskID, 2)
+	if err != nil {
+		t.Fatalf("deleting pending slot: %v", err)
+	}
+	if !deleted {
+		t.Fatal("delete returned false, want true")
+	}
+	if len(task.DeletedAssetSlots) != 1 || task.DeletedAssetSlots[0] != 2 {
+		t.Fatalf("deleted slots = %#v, want slot 2", task.DeletedAssetSlots)
+	}
+
+	task.Status = "completed"
+	task.Assets = []GenerationAsset{
+		{Kind: "image", URL: "/api/v1/media-assets/image-a/content"},
+		{Kind: "image", URL: "/api/v1/media-assets/image-b/content"},
+		{Kind: "image", URL: "/api/v1/media-assets/image-c/content"},
+		{Kind: "image", URL: "/api/v1/media-assets/image-d/content"},
+	}
+	if err := service.Upsert(task); err != nil {
+		t.Fatalf("upserting completed task: %v", err)
+	}
+
+	reloaded, ok, err := service.Get(taskID)
+	if err != nil {
+		t.Fatalf("getting task: %v", err)
+	}
+	if !ok {
+		t.Fatal("task was not persisted")
+	}
+	if len(reloaded.DeletedAssetSlots) != 1 || reloaded.DeletedAssetSlots[0] != 2 {
+		t.Fatalf("deleted slots after upsert = %#v, want slot 2 preserved", reloaded.DeletedAssetSlots)
+	}
+	visibleTask := GenerationTaskForClient(reloaded)
+	if len(visibleTask.Assets) != 3 {
+		t.Fatalf("visible assets = %#v, want one deleted slot hidden", visibleTask.Assets)
+	}
+	if visibleTask.Assets[0].SlotIndex != 0 ||
+		visibleTask.Assets[1].SlotIndex != 1 ||
+		visibleTask.Assets[2].SlotIndex != 3 {
+		t.Fatalf("visible asset slots = %#v, want original slots 0, 1, 3", visibleTask.Assets)
 	}
 }

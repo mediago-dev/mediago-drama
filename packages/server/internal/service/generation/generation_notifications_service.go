@@ -269,7 +269,7 @@ func generationNotificationTaskStatus(task GenerationTaskRecord) string {
 
 func generationNotificationAssetCount(task GenerationTaskRecord) int {
 	count := 0
-	for _, asset := range task.Assets {
+	for _, asset := range GenerationTaskForClient(task).Assets {
 		if strings.TrimSpace(asset.Kind) != strings.TrimSpace(task.Kind) {
 			continue
 		}
