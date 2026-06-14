@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,8 +7,19 @@ import type { GenerationEntry } from "@/domains/generation/hooks/useGenerationWo
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import { MediaGenerationWorkspace } from "./MediaGenerationWorkspace";
 
+const toastMocks = vi.hoisted(() => ({
+	copySuccess: vi.fn(),
+	error: vi.fn(),
+	success: vi.fn(),
+	warning: vi.fn(),
+}));
+
 vi.mock("@/domains/generation/hooks/useGenerationWorkspace", () => ({
 	useGenerationWorkspace: vi.fn(),
+}));
+
+vi.mock("@/hooks/useToast", () => ({
+	useToast: () => toastMocks,
 }));
 
 vi.mock("@/domains/generation/components/useMediaGenerationWorkspaceLayout", () => ({
@@ -25,6 +36,7 @@ vi.mock("@/domains/generation/components/useMediaGenerationWorkspaceLayout", () 
 
 vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 	MediaGenerationInputPanel: ({
+		error,
 		imageSpecControl,
 		modelControls,
 		previewReferenceAssets = [],
@@ -32,6 +44,7 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 		promptEditor,
 		secondaryParamControls,
 	}: {
+		error?: string | null;
 		imageSpecControl?: React.ReactNode;
 		modelControls?: React.ReactNode;
 		previewReferenceAssets?: MediaAsset[];
@@ -46,6 +59,7 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 		return (
 			<div data-testid="generation-input-panel">
 				<div data-testid="document-prompt-editor-class" data-class={promptEditorClassName} />
+				{error ? <div role="alert">{error}</div> : null}
 				{modelControls}
 				{imageSpecControl}
 				{primaryParamControls}
@@ -107,7 +121,9 @@ const workspaceDefaults = {
 	activeEntryId: "entry-image",
 	canSubmit: true,
 	composerLayers: [],
+	deletedAssetPlaceholderCounts: {},
 	deleteGenerationEntry: vi.fn(),
+	deleteGenerationEntryAsset: vi.fn(),
 	deletingEntryIds: [],
 	error: null,
 	hasConfiguredRoutesForKind: true,
@@ -297,13 +313,13 @@ describe("MediaGenerationWorkspace", () => {
 			/>,
 		);
 
-		fireEvent.click(screen.getByText("新提示词"));
+		fireEvent.click(screen.getAllByRole("button", { name: "预览图片" })[1]);
 
 		expect(setActiveEntryId).not.toHaveBeenCalled();
 		expect(setPrompt).not.toHaveBeenCalled();
 	});
 
-	it("renders tabbed history as a full-page list with in-place asset selection", () => {
+	it("renders tabbed history beside the edit panel with in-place asset selection", () => {
 		const onToggleAsset = vi.fn();
 		vi.mocked(useGenerationWorkspace).mockReturnValue({
 			...workspaceDefaults,
@@ -320,16 +336,20 @@ describe("MediaGenerationWorkspace", () => {
 			/>,
 		);
 
-		expect(screen.queryByTestId("generation-input-panel")).toBeNull();
+		expect(screen.getByRole("region", { name: "历史记录" })).toBeTruthy();
+		expect(screen.getByRole("region", { name: "编辑" })).toBeTruthy();
+		expect(screen.getByTestId("generation-input-panel")).toBeTruthy();
 		expect(screen.queryByRole("separator", { name: "调整历史生成宽度" })).toBeNull();
 
-		const firstRow = screen.getByText("旧提示词").closest("article");
-		const secondRow = screen.getByText("新提示词").closest("article");
+		const firstRow = screen.getAllByRole("article")[0];
+		const secondRow = screen.getAllByRole("article")[1];
 
 		if (!firstRow || !secondRow) throw new Error("missing history rows");
 
 		expect(within(firstRow).queryByText("1 张")).toBeNull();
 		expect(within(firstRow).queryByText("已选")).toBeNull();
+		expect(screen.queryByText("旧提示词")).toBeNull();
+		expect(screen.queryByText("新提示词")).toBeNull();
 		expect(
 			within(firstRow).getByRole("checkbox", { name: "取消选入结果" }).getAttribute("aria-checked"),
 		).toBe("true");
@@ -357,13 +377,10 @@ describe("MediaGenerationWorkspace", () => {
 			/>,
 		);
 
-		const firstRow = screen.getByText("旧提示词").closest("article");
-		if (!firstRow) throw new Error("missing history row");
-
-		fireEvent.click(within(firstRow).getByRole("button", { name: "用此提示词编辑" }));
+		fireEvent.click(screen.getAllByRole("button", { name: "使用此提示词" })[0]);
 
 		expect(setPrompt).toHaveBeenCalledWith("旧提示词");
-		expect(onViewModeChange).toHaveBeenCalledWith("edit");
+		expect(onViewModeChange).not.toHaveBeenCalled();
 	});
 
 	it("copies the active history request references into the editor with the prompt", () => {
@@ -393,10 +410,7 @@ describe("MediaGenerationWorkspace", () => {
 
 		render(<Harness />);
 
-		const firstRow = screen.getByText("旧提示词").closest("article");
-		if (!firstRow) throw new Error("missing history row");
-
-		fireEvent.click(within(firstRow).getByRole("button", { name: "用此提示词编辑" }));
+		fireEvent.click(screen.getAllByRole("button", { name: "使用此提示词" })[0]);
 
 		expect(setPrompt).toHaveBeenCalledWith("旧提示词");
 		expect(screen.getByTestId("generation-input-panel")).toBeTruthy();
@@ -410,6 +424,39 @@ describe("MediaGenerationWorkspace", () => {
 		expect(
 			referenceUrls.some((url) => url.endsWith("/api/v1/media-assets/reference-a/content")),
 		).toBe(true);
+	});
+
+	it("shows image delete failures as a toast instead of an input panel error", async () => {
+		const deleteGenerationEntryAsset = vi
+			.fn()
+			.mockRejectedValue({ message: "generation task asset not found" });
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			deleteGenerationEntryAsset,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				viewMode="history"
+			/>,
+		);
+
+		fireEvent.click(screen.getAllByRole("button", { name: "删除图片" })[0]);
+
+		expect(deleteGenerationEntryAsset).not.toHaveBeenCalled();
+		const dialog = screen.getByRole("alertdialog", { name: "删除这张图片？" });
+		fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+
+		await waitFor(() => {
+			expect(deleteGenerationEntryAsset).toHaveBeenCalledWith("entry-image", 0);
+			expect(toastMocks.error).toHaveBeenCalledWith("删除失败", {
+				description: "generation task asset not found",
+			});
+		});
+		expect(screen.queryByRole("alert")).toBeNull();
 	});
 
 	it("passes image spec control to the input panel and filters advanced params", () => {

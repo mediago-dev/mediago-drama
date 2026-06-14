@@ -4,6 +4,7 @@ import type { KeyedMutator } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MediaAssetsResponse } from "@/domains/workspace/api/media";
 import {
+	deleteGenerationTaskAsset,
 	getGenerationVideo,
 	type GenerationTasksResponse,
 } from "@/domains/generation/api/generation";
@@ -11,6 +12,7 @@ import type { ChatMessage } from "./useGenerationWorkspace.helpers";
 import { useGenerationTaskActions } from "./useGenerationTaskActions";
 
 vi.mock("@/domains/generation/api/generation", () => ({
+	deleteGenerationTaskAsset: vi.fn(),
 	deleteGenerationTask: vi.fn(),
 	generationConversationsQueryKey: (
 		kind?: string,
@@ -153,5 +155,51 @@ describe("useGenerationTaskActions", () => {
 			vi.advanceTimersByTime(1);
 		});
 		expect(mutateTasks).toHaveBeenCalledTimes(1);
+	});
+
+	it("throws asset deletion API errors without writing the composer error", async () => {
+		vi.mocked(deleteGenerationTaskAsset).mockRejectedValue({
+			message: "generation task asset not found",
+		});
+		const { mutateTasks, result } = renderTaskActionsHook([
+			submittedImageMessage({
+				id: "task-1",
+				assets: [{ kind: "image", url: "/api/v1/media-assets/image-a/content" }],
+			}),
+		]);
+		let thrown: unknown;
+
+		await act(async () => {
+			try {
+				await result.current.deleteGenerationEntryAsset("task-1", 0);
+			} catch (error) {
+				thrown = error;
+			}
+		});
+
+		expect(thrown).toBeInstanceOf(Error);
+		expect((thrown as Error).message).toBe("generation task asset not found");
+		expect(result.current.error).toBeNull();
+		expect(result.current.deletedAssetPlaceholderCounts["task-1"]).toBeUndefined();
+		expect(mutateTasks).toHaveBeenCalled();
+	});
+
+	it("tracks deleted image slots so they are not rendered as pending placeholders", async () => {
+		vi.mocked(deleteGenerationTaskAsset).mockResolvedValue(
+			{} as Awaited<ReturnType<typeof deleteGenerationTaskAsset>>,
+		);
+		const { result } = renderTaskActionsHook([
+			submittedImageMessage({
+				id: "task-1",
+				assets: [{ kind: "image", url: "/api/v1/media-assets/image-a/content" }],
+			}),
+		]);
+
+		await act(async () => {
+			await result.current.deleteGenerationEntryAsset("task-1", 0);
+		});
+
+		expect(result.current.deletedAssetPlaceholderCounts["task-1"]).toBe(1);
+		expect(result.current.messages[0]?.assets).toEqual([]);
 	});
 });

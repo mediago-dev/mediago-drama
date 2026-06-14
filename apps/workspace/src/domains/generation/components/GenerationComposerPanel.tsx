@@ -112,7 +112,7 @@ export const GenerationComposerPanel: React.FC<GenerationComposerPanelProps> = (
 					</p>
 				) : null}
 				<div className="flex min-w-0 flex-col gap-[var(--generation-popover-padding)] lg:flex-row lg:items-center lg:justify-between">
-					<div className="flex min-w-0 flex-wrap items-center gap-[var(--generation-composer-toolbar-gap)]">
+					<div className="flex min-w-0 flex-wrap items-center gap-[var(--generation-composer-toolbar-gap)] lg:flex-1">
 						{onOpenReferenceDialog ? (
 							<Button
 								type="button"

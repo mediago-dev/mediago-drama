@@ -166,6 +166,20 @@ func (repo *GenerationTaskRepository) UpsertGenerationTask(model domain.Generati
 	return nil
 }
 
+// UpdateGenerationTaskAssets replaces a task's generated assets.
+func (repo *GenerationTaskRepository) UpdateGenerationTaskAssets(id string, assetsJSON string, updatedAt string) (bool, error) {
+	result := repo.db.Model(&domain.GenerationTaskModel{}).
+		Where("id = ?", strings.TrimSpace(id)).
+		Updates(map[string]any{
+			"assets_json": assetsJSON,
+			"updated_at":  updatedAt,
+		})
+	if result.Error != nil {
+		return false, fmt.Errorf("updating generation task assets: %w", result.Error)
+	}
+	return result.RowsAffected > 0, nil
+}
+
 // UpsertGenerationConversation inserts or updates a generation conversation.
 func (repo *GenerationTaskRepository) UpsertGenerationConversation(model domain.GenerationConversationModel) error {
 	err := repo.db.Clauses(clause.OnConflict{

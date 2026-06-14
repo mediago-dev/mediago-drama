@@ -1171,8 +1171,9 @@ func TestAPIHandler(t *testing.T) {
 		if projectConversation.ID != projectSessionID {
 			t.Fatalf("project conversation = %+v, want project session id", projectConversation)
 		}
+		projectImageTaskID := "official.seedream-5-lite:project-image"
 		if err := store.Upsert(generationTaskRecord{
-			ID:             "official.seedream-5-lite:project-image",
+			ID:             projectImageTaskID,
 			ConversationID: projectConversation.ID,
 			ProjectID:      projectSessionID,
 			Kind:           "image",
@@ -1186,6 +1187,10 @@ func TestAPIHandler(t *testing.T) {
 			Params:         map[string]any{},
 			Status:         "completed",
 			Message:        "Image generation completed.",
+			Assets: []generationAsset{
+				{Kind: "image", URL: "/api/v1/media-assets/project-a/content"},
+				{Kind: "image", URL: "/api/v1/media-assets/project-b/content"},
+			},
 		}); err != nil {
 			t.Fatalf("seeding project scoped task: %v", err)
 		}
@@ -1223,6 +1228,18 @@ func TestAPIHandler(t *testing.T) {
 			strings.Contains(projectTasksBody, `"prompt":"make a video"`) {
 			t.Fatalf("body = %s, want project-scoped conversation tasks", projectTasksBody)
 		}
+
+		removeAsset := requestJSON(t, handler, http.MethodDelete, "/api/v1/generation/tasks/"+url.PathEscape(projectImageTaskID)+"/assets/0", "")
+		defer removeAsset.Body.Close()
+		if removeAsset.StatusCode != http.StatusOK {
+			t.Fatalf("delete asset status code = %d, want %d: %s", removeAsset.StatusCode, http.StatusOK, readBody(t, removeAsset.Body))
+		}
+		removeAssetBody := readBody(t, removeAsset.Body)
+		if strings.Contains(removeAssetBody, "project-a") ||
+			!strings.Contains(removeAssetBody, "project-b") {
+			t.Fatalf("body = %s, want only deleted asset removed", removeAssetBody)
+		}
+
 		detail := requestJSON(t, handler, http.MethodGet, "/api/v1/generation/tasks/"+url.PathEscape(taskID), "")
 		defer detail.Body.Close()
 		if detail.StatusCode != http.StatusOK {

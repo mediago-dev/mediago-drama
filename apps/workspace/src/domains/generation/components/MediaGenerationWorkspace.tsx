@@ -208,6 +208,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	});
 	const tabbedView = viewMode !== undefined;
 	const currentViewMode = viewMode ?? "history";
+	const showTabbedHistory = tabbedView && currentViewMode === "history";
 	const showHistoryResult = !tabbedView || currentViewMode === "history";
 	const handleSubmitStart = useCallback(
 		(event: Parameters<typeof trackGenerationStart>[0]) => {
@@ -259,11 +260,11 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		version: ws.selectedVersion,
 	});
 	const modelControls = ws.hasConfiguredRoutesForKind ? (
-		<div className="flex min-w-0 items-center gap-2">
+		<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
 			<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
 				<SelectTrigger
 					aria-label="模型类型"
-					className={generationComposerSelectClassName("max-w-40")}
+					className={generationComposerSelectClassName("min-w-32 max-w-56 shrink-0")}
 				>
 					<GenerationBrandMark brand={selectedFamilyBrand} className="size-4 text-[0.5rem]" />
 					<span>{ws.selectedFamily.label}</span>
@@ -283,7 +284,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				</SelectContent>
 			</Select>
 			<GenerationModelRoutePicker
-				className="max-w-56"
+				className="min-w-44 max-w-72 flex-1"
 				routes={ws.visibleFamilyRoutes}
 				selectedRoute={ws.selectedRoute}
 				selectedVersion={ws.selectedVersion}
@@ -295,7 +296,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				variant="ghost"
 				size="sm"
 				aria-label="打开模型文档"
-				className={generationComposerToolbarGhostButtonClassName()}
+				className={generationComposerToolbarGhostButtonClassName("shrink-0")}
 				onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
 			>
 				<FileText className="size-4 shrink-0 text-muted-foreground" />
@@ -489,10 +490,17 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				);
 			}
 
-			onViewModeChange?.("edit");
+			if (!showTabbedHistory) onViewModeChange?.("edit");
 			window.requestAnimationFrame(() => focusGenerationPromptEditor(rightPaneRef.current));
 		},
-		[canSelectReferenceImages, onViewModeChange, toast, ws.mediaAssets, ws.selectReferenceAsset],
+		[
+			canSelectReferenceImages,
+			onViewModeChange,
+			showTabbedHistory,
+			toast,
+			ws.mediaAssets,
+			ws.selectReferenceAsset,
+		],
 	);
 
 	useEffect(() => {
@@ -529,6 +537,19 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		},
 		[clearDeletedEntry, ws.deleteGenerationEntry],
 	);
+	const deleteEntryAsset = useCallback(
+		async (entry: GenerationEntry, _asset: GenerationAsset, assetIndex: number) => {
+			try {
+				const deleted = await ws.deleteGenerationEntryAsset(entry.id, assetIndex);
+				if (!deleted) {
+					toast.error("删除失败", { description: "找不到可删除的生成图片。" });
+				}
+			} catch (error) {
+				toast.error("删除失败", { description: apiErrorMessage(error, "生成图片删除失败。") });
+			}
+		},
+		[toast, ws.deleteGenerationEntryAsset],
+	);
 
 	const selectHistoryEntry = useCallback(
 		(entry: GenerationEntry) => {
@@ -550,10 +571,10 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			syncedPromptEntryIdRef.current = entry.id;
 			setInlineHistoryReferences(historyReferencePreviewAssetsFromEntry(entry));
 			ws.setPrompt(prompt);
-			onViewModeChange?.("edit");
+			if (!showTabbedHistory) onViewModeChange?.("edit");
 			window.requestAnimationFrame(() => focusGenerationPromptEditor(rightPaneRef.current));
 		},
-		[onViewModeChange, ws.setPrompt],
+		[onViewModeChange, showTabbedHistory, ws.setPrompt],
 	);
 	const promptSlashItems = useMemo(
 		() => promptInsertItemsFromLayers(ws.composerLayers, kind),
@@ -578,8 +599,86 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			slashItems={promptSlashItems}
 		/>
 	);
-	const showTabbedHistory = tabbedView && currentViewMode === "history";
 	const showSidebarHistory = !tabbedView;
+	const editorResultEntries =
+		!showTabbedHistory && showHistoryResult && activeGenerationEntry ? [activeGenerationEntry] : [];
+	const editorPane = (
+		<section
+			ref={rightPaneRef}
+			aria-label="编辑"
+			className={cn(
+				showTabbedHistory
+					? "min-h-0 min-w-0 border-t border-border bg-card"
+					: "grid h-full min-h-0 min-w-0 bg-card",
+			)}
+			style={
+				showTabbedHistory
+					? undefined
+					: {
+							gridTemplateRows: "minmax(0, 1fr) auto",
+						}
+			}
+		>
+			{showTabbedHistory ? null : (
+				<section className="flex min-h-0 min-w-0 flex-col bg-card">
+					<div className="min-h-0 flex-1 overflow-hidden px-4">
+						<GenerationResultGallery
+							emptyText={currentViewMode === "edit" ? "" : resolvedEmptyResultText}
+							entries={editorResultEntries}
+							kind={kind}
+							selectedAssetKeys={selectedAssetKeys}
+							onSaveAsset={resultActions.saveAsset}
+							onToggleAsset={onToggleAsset}
+							onUseAssetAsReference={useAssetAsReference}
+							savedAssetKeys={resultActions.savedKeys}
+							savingAssetKeys={resultActions.savingKeys}
+						/>
+					</div>
+				</section>
+			)}
+
+			<MediaGenerationInputPanel
+				canSelectReferenceImages={canSelectReferenceImages}
+				canCopyPrompt={Boolean(ws.fullPrompt.trim())}
+				canSubmit={ws.canSubmit}
+				error={ws.error}
+				generationCountControl={generationCountControl}
+				imageSpecControl={
+					imageSpec ? (
+						<ImageGenerationSpecControl
+							label={kind === "video" ? "视频大小" : "图片大小"}
+							showSizePreview={kind === "image"}
+							spec={imageSpec}
+							onChange={ws.updateParam}
+						/>
+					) : null
+				}
+				isSubmitting={ws.isSubmitting}
+				modelControls={modelControls}
+				modelSummary={modelSummary}
+				previewReferenceAssets={previewReferenceAssets}
+				primaryParamControls={primaryParamControls}
+				layeredComposer={
+					<LayeredPromptComposer
+						layers={ws.composerLayers}
+						variant="composer"
+						onSelect={ws.setLayerSelection}
+					/>
+				}
+				promptEditor={promptEditor}
+				promptExtras={renderedPromptExtras}
+				referenceBadges={resolvedReferenceBadges}
+				requiresReference={false}
+				secondaryParamControls={secondaryParamControls}
+				showReferencePreviewStrip={showReferencePreviewStrip}
+				submitLabel={resolvedSubmitLabel}
+				submitTone={kind === "video" ? "video" : "image"}
+				onCopyPrompt={() => void resultActions.copyText(ws.fullPrompt, "没有可复制的完整提示词")}
+				onOpenReferenceDialog={() => setReferenceDialogOpen(true)}
+				onRemoveReferencePreview={removePreviewReferenceAsset}
+			/>
+		</section>
+	);
 
 	return (
 		<form
@@ -587,7 +686,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			onSubmit={ws.submit}
 			className={cn(
 				showTabbedHistory
-					? "relative h-full min-h-0 bg-card text-card-foreground"
+					? "relative grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] bg-card text-card-foreground"
 					: showSidebarHistory
 						? "relative grid h-full min-h-0 grid-rows-[minmax(13rem,34%)_minmax(0,1fr)] bg-card text-card-foreground lg:grid-cols-[var(--generation-history-width)_var(--generation-history-resize-width)_minmax(0,1fr)] lg:grid-rows-none"
 						: "relative grid h-full min-h-0 bg-card text-card-foreground",
@@ -601,22 +700,32 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			}
 		>
 			{showTabbedHistory ? (
-				<section className="flex h-full min-h-0 min-w-0 flex-col bg-card">
-					<HistoryGenerationList
-						activeEntryId={highlightedHistoryEntryId}
-						deletingEntryIds={ws.deletingEntryIds}
-						defaultSourceLabel={defaultHistorySourceLabel}
-						entries={generationEntries}
-						kind={kind}
-						selectedAssetKeys={selectedAssetKeys}
-						onDeleteEntry={deleteEntry}
-						onCopyPrompt={resultActions.copyPrompt}
-						onSelectEntry={selectHistoryEntry}
-						onToggleAsset={onToggleAsset}
-						onUsePrompt={useHistoryPrompt}
-						variant="list"
-					/>
-				</section>
+				<>
+					<section aria-label="历史记录" className="flex h-full min-h-0 min-w-0 flex-col bg-card">
+						<HistoryGenerationList
+							activeEntryId={highlightedHistoryEntryId}
+							deletedAssetPlaceholderCounts={ws.deletedAssetPlaceholderCounts}
+							deletingEntryIds={ws.deletingEntryIds}
+							defaultSourceLabel={defaultHistorySourceLabel}
+							entries={generationEntries}
+							kind={kind}
+							deletingAssetKeys={ws.deletingAssetKeys}
+							selectedAssetKeys={selectedAssetKeys}
+							onDeleteEntry={deleteEntry}
+							onDeleteAsset={deleteEntryAsset}
+							onCopyPrompt={resultActions.copyPrompt}
+							onSaveAsset={resultActions.saveAsset}
+							onSelectEntry={selectHistoryEntry}
+							onToggleAsset={onToggleAsset}
+							onUseAssetAsReference={useAssetAsReference}
+							onUsePrompt={useHistoryPrompt}
+							savedAssetKeys={resultActions.savedKeys}
+							savingAssetKeys={resultActions.savingKeys}
+							variant="list"
+						/>
+					</section>
+					{editorPane}
+				</>
 			) : (
 				<>
 					{showSidebarHistory ? (
@@ -661,74 +770,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 						</>
 					) : null}
 
-					<div
-						ref={rightPaneRef}
-						className="grid h-full min-h-0 min-w-0"
-						style={{
-							gridTemplateRows: "minmax(0, 1fr) auto",
-						}}
-					>
-						<section className="flex min-h-0 min-w-0 flex-col bg-card">
-							<div className="min-h-0 flex-1 overflow-hidden px-4">
-								<GenerationResultGallery
-									emptyText={currentViewMode === "edit" ? "" : resolvedEmptyResultText}
-									entries={
-										showHistoryResult && activeGenerationEntry ? [activeGenerationEntry] : []
-									}
-									kind={kind}
-									selectedAssetKeys={selectedAssetKeys}
-									onSaveAsset={resultActions.saveAsset}
-									onToggleAsset={onToggleAsset}
-									onUseAssetAsReference={useAssetAsReference}
-									savedAssetKeys={resultActions.savedKeys}
-									savingAssetKeys={resultActions.savingKeys}
-								/>
-							</div>
-						</section>
-
-						<MediaGenerationInputPanel
-							canSelectReferenceImages={canSelectReferenceImages}
-							canCopyPrompt={Boolean(ws.fullPrompt.trim())}
-							canSubmit={ws.canSubmit}
-							error={ws.error}
-							generationCountControl={generationCountControl}
-							imageSpecControl={
-								imageSpec ? (
-									<ImageGenerationSpecControl
-										label={kind === "video" ? "视频大小" : "图片大小"}
-										showSizePreview={kind === "image"}
-										spec={imageSpec}
-										onChange={ws.updateParam}
-									/>
-								) : null
-							}
-							isSubmitting={ws.isSubmitting}
-							modelControls={modelControls}
-							modelSummary={modelSummary}
-							previewReferenceAssets={previewReferenceAssets}
-							primaryParamControls={primaryParamControls}
-							layeredComposer={
-								<LayeredPromptComposer
-									layers={ws.composerLayers}
-									variant="composer"
-									onSelect={ws.setLayerSelection}
-								/>
-							}
-							promptEditor={promptEditor}
-							promptExtras={renderedPromptExtras}
-							referenceBadges={resolvedReferenceBadges}
-							requiresReference={false}
-							secondaryParamControls={secondaryParamControls}
-							showReferencePreviewStrip={showReferencePreviewStrip}
-							submitLabel={resolvedSubmitLabel}
-							submitTone={kind === "video" ? "video" : "image"}
-							onCopyPrompt={() =>
-								void resultActions.copyText(ws.fullPrompt, "没有可复制的完整提示词")
-							}
-							onOpenReferenceDialog={() => setReferenceDialogOpen(true)}
-							onRemoveReferencePreview={removePreviewReferenceAsset}
-						/>
-					</div>
+					{editorPane}
 				</>
 			)}
 
@@ -794,6 +836,16 @@ const resolveStringArrayExtraValue = (
 	value: GenerationExtraValue<string[]>,
 	prompt: string,
 ): string[] => (typeof value === "function" ? value(prompt) : value);
+
+const apiErrorMessage = (error: unknown, fallback: string) => {
+	if (error instanceof Error && error.message.trim()) return error.message;
+	if (error && typeof error === "object" && "message" in error) {
+		const message = (error as { message?: unknown }).message;
+		if (typeof message === "string" && message.trim()) return message;
+	}
+
+	return fallback;
+};
 
 const uniqueStrings = (values: string[]) => {
 	const seen = new Set<string>();

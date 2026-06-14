@@ -205,6 +205,57 @@ func (service *GenerationTaskService) Get(id string) (GenerationTaskRecord, bool
 	return task, true, nil
 }
 
+// DeleteAsset removes one generated asset from a generation task.
+func (service *GenerationTaskService) DeleteAsset(id string, assetIndex int) (GenerationTaskRecord, bool, error) {
+	if service.initErr != nil {
+		return GenerationTaskRecord{}, false, service.initErr
+	}
+	if assetIndex < 0 {
+		return GenerationTaskRecord{}, false, nil
+	}
+
+	task, updated, err := service.deleteAssetRecord(id, assetIndex)
+	if err != nil || !updated {
+		return GenerationTaskRecord{}, updated, err
+	}
+	if err := service.attachAttemptSummary(&task); err != nil {
+		return GenerationTaskRecord{}, false, err
+	}
+
+	return task, true, nil
+}
+
+func (service *GenerationTaskService) deleteAssetRecord(id string, assetIndex int) (GenerationTaskRecord, bool, error) {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+
+	model, err := service.repo.GetGenerationTask(id)
+	if repository.IsRecordNotFound(err) {
+		return GenerationTaskRecord{}, false, nil
+	}
+	if err != nil {
+		return GenerationTaskRecord{}, false, err
+	}
+
+	task, err := generationTaskRecordFromModel(model)
+	if err != nil {
+		return GenerationTaskRecord{}, false, err
+	}
+	if assetIndex >= len(task.Assets) {
+		return GenerationTaskRecord{}, false, nil
+	}
+
+	task.Assets = append(task.Assets[:assetIndex], task.Assets[assetIndex+1:]...)
+	task.UpdatedAt = timestamp.NowRFC3339Nano()
+	assetsJSON, err := json.Marshal(task.Assets)
+	if err != nil {
+		return GenerationTaskRecord{}, false, err
+	}
+
+	updated, err := service.repo.UpdateGenerationTaskAssets(id, string(assetsJSON), task.UpdatedAt)
+	return task, updated, err
+}
+
 // Upsert creates or updates a generation task.
 func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 	if service.initErr != nil {

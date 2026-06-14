@@ -275,6 +275,11 @@ func (workflow *GenerationService) GetGenerationTask(id string) (generationTaskR
 	return workflow.generationTasks.Get(id)
 }
 
+// DeleteGenerationTaskAsset deletes one generated asset from a generation task.
+func (workflow *GenerationService) DeleteGenerationTaskAsset(id string, assetIndex int) (generationTaskRecord, bool, error) {
+	return workflow.generationTasks.DeleteAsset(id, assetIndex)
+}
+
 // DeleteGenerationTask deletes a generation task and returns the updated task list.
 func (workflow *GenerationService) DeleteGenerationTask(id string) (generationTasksResponse, bool, error) {
 	deleted, err := workflow.generationTasks.Delete(id)

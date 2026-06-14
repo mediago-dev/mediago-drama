@@ -348,7 +348,14 @@ export const useGenerationWorkspace = ({
 		setMessages,
 		setPrompt,
 	});
-	const { deleteGenerationEntry, deletingEntryIds, refreshVideo } = useGenerationTaskActions({
+	const {
+		deletedAssetPlaceholderCounts,
+		deleteGenerationEntry,
+		deleteGenerationEntryAsset,
+		deletingAssetKeys,
+		deletingEntryIds,
+		refreshVideo,
+	} = useGenerationTaskActions({
 		conversationId,
 		conversationMessages,
 		initialKind,
@@ -388,7 +395,10 @@ export const useGenerationWorkspace = ({
 		catalog,
 		composerLayers,
 		conversationMessages,
+		deletedAssetPlaceholderCounts,
 		deleteGenerationEntry,
+		deleteGenerationEntryAsset,
+		deletingAssetKeys,
 		setLayerSelection,
 		deletingEntryIds,
 		error,

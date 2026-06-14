@@ -4,6 +4,7 @@ import type { KeyedMutator } from "swr";
 import { mutate as mutateSWR } from "swr";
 import type { MediaAssetsResponse } from "@/domains/workspace/api/media";
 import {
+	deleteGenerationTaskAsset,
 	deleteGenerationTask,
 	type GenerationKind,
 	type GenerationTasksResponse,
@@ -49,6 +50,10 @@ export const useGenerationTaskActions = ({
 	setError,
 	setMessages,
 }: UseGenerationTaskActionsOptions) => {
+	const [deletedAssetPlaceholderCounts, setDeletedAssetPlaceholderCounts] = useState<
+		Record<string, number>
+	>({});
+	const [deletingAssetKeys, setDeletingAssetKeys] = useState<string[]>([]);
 	const [deletingEntryIds, setDeletingEntryIds] = useState<string[]>([]);
 
 	const refreshVideoByID = useCallback(
@@ -110,6 +115,10 @@ export const useGenerationTaskActions = ({
 			);
 			setMessages((current) => removeGenerationEntryMessages(current, entryId));
 			setActiveEntryId((current) => (current === entryId ? null : current));
+			setDeletedAssetPlaceholderCounts((current) => {
+				const { [entryId]: _removed, ...rest } = current;
+				return rest;
+			});
 
 			try {
 				if (taskId) {
@@ -148,6 +157,64 @@ export const useGenerationTaskActions = ({
 		],
 	);
 
+	const deleteGenerationEntryAsset = useCallback(
+		async (entryId: string, assetIndex: number) => {
+			if (!entryId || assetIndex < 0) return false;
+
+			const taskId = taskIdForDeletion(entryId);
+			if (!taskId) return false;
+
+			const deletingKey = `${entryId}:${assetIndex}`;
+			setError(null);
+			setDeletingAssetKeys((current) =>
+				current.includes(deletingKey) ? current : [...current, deletingKey],
+			);
+			setDeletedAssetPlaceholderCounts((current) => ({
+				...current,
+				[entryId]: (current[entryId] ?? 0) + 1,
+			}));
+			setMessages((current) =>
+				current.map((message) => {
+					if (message.id !== entryId) return message;
+
+					return {
+						...message,
+						assets: (message.assets ?? []).filter((_, index) => index !== assetIndex),
+					};
+				}),
+			);
+
+			try {
+				await deleteGenerationTaskAsset(taskId, assetIndex);
+				await mutateTasks();
+				mutateProjectGenerationTasks(kind);
+				void mutateSWR(generationConversationsQueryKey(kind, resolvedConversationScopeId));
+				void mutateSWR(generationConversationsQueryKey(kind, "", { allScopes: true }));
+				return true;
+			} catch (err) {
+				setDeletedAssetPlaceholderCounts((current) => {
+					const nextCount = Math.max(0, (current[entryId] ?? 0) - 1);
+					if (nextCount > 0) return { ...current, [entryId]: nextCount };
+
+					const { [entryId]: _removed, ...rest } = current;
+					return rest;
+				});
+				void mutateTasks();
+				throw new Error(errorMessage(err, "生成图片删除失败。"));
+			} finally {
+				setDeletingAssetKeys((current) => current.filter((key) => key !== deletingKey));
+			}
+		},
+		[
+			kind,
+			mutateProjectGenerationTasks,
+			mutateTasks,
+			resolvedConversationScopeId,
+			setError,
+			setMessages,
+		],
+	);
+
 	useEffect(() => {
 		const pendingMessages = conversationMessages.filter(isPendingVideoMessage);
 		if (pendingMessages.length === 0) return;
@@ -172,10 +239,21 @@ export const useGenerationTaskActions = ({
 	}, [conversationMessages, mutateTasks]);
 
 	return {
+		deletedAssetPlaceholderCounts,
+		deleteGenerationEntryAsset,
 		deleteGenerationEntry,
+		deletingAssetKeys,
 		deletingEntryIds,
 		refreshVideo,
 	};
+};
+
+const taskIdForDeletion = (entryId: string) => {
+	const taskId = taskIdFromGenerationEntryId(entryId);
+	if (taskId) return taskId;
+
+	const baseId = entryId.replace(/:(assistant|error|prompt)$/, "");
+	return baseId && !baseId.startsWith("local-") ? baseId : null;
 };
 
 const failedVideoMessage = (message: ChatMessage, error: string): ChatMessage => ({

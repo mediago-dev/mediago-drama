@@ -1,7 +1,21 @@
-import { Check, Clipboard, FileText, Image as ImageIcon, Loader2, Trash2 } from "lucide-react";
+import {
+	Check,
+	Clipboard,
+	Download,
+	Eye,
+	FileText,
+	Image as ImageIcon,
+	Loader2,
+	Trash2,
+	WandSparkles,
+} from "lucide-react";
+import { useState } from "react";
 import type React from "react";
+import { PhotoProvider, PhotoView } from "react-photo-view";
+import "react-photo-view/dist/react-photo-view.css";
 import type { GenerationAsset, GenerationKind } from "@/domains/generation/api/generation";
 import { GenerationVideoThumbnail } from "@/domains/generation/components/GenerationVideoThumbnail";
+import { generatedAssetSaveKey } from "@/domains/generation/components/generatedResultActions";
 import {
 	entryGeneratedAssets,
 	entryPromptText,
@@ -10,7 +24,23 @@ import {
 	isFailedGenerationStatus,
 	isPendingGenerationStatus,
 } from "@/domains/generation/components/mediaGenerationHelpers";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/shared/components/ui/tooltip";
 import {
 	generationAssetSelectionKey,
 	generationAssetSource,
@@ -21,29 +51,43 @@ import { cn } from "@/shared/lib/utils";
 
 export const HistoryGenerationList: React.FC<{
 	activeEntryId: string | null;
+	deletedAssetPlaceholderCounts?: Record<string, number>;
 	deletingEntryIds: string[];
 	defaultSourceLabel?: string;
+	deletingAssetKeys?: string[];
 	entries: GenerationEntry[];
 	kind: GenerationKind;
 	onCopyPrompt?: (entry: GenerationEntry) => void;
+	onDeleteAsset?: (entry: GenerationEntry, asset: GenerationAsset, assetIndex: number) => void;
 	onDeleteEntry: (entry: GenerationEntry) => void;
+	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onSelectEntry: (entry: GenerationEntry) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
+	onUseAssetAsReference?: (asset: GenerationAsset) => void;
 	onUsePrompt?: (entry: GenerationEntry) => void;
+	savedAssetKeys?: string[];
 	selectedAssetKeys: string[];
+	savingAssetKeys?: string[];
 	variant?: "compact" | "list";
 }> = ({
 	activeEntryId,
+	deletedAssetPlaceholderCounts = {},
 	deletingEntryIds,
+	deletingAssetKeys = [],
 	defaultSourceLabel,
 	entries,
 	kind,
 	onCopyPrompt,
+	onDeleteAsset,
 	onDeleteEntry,
+	onSaveAsset,
 	onSelectEntry,
 	onToggleAsset,
+	onUseAssetAsReference,
 	onUsePrompt,
+	savedAssetKeys = [],
 	selectedAssetKeys,
+	savingAssetKeys = [],
 	variant = "compact",
 }) => {
 	if (entries.length === 0) {
@@ -51,6 +95,26 @@ export const HistoryGenerationList: React.FC<{
 			<div className="flex min-h-0 flex-1 items-center justify-center p-4 text-center text-xs text-muted-foreground">
 				暂无生成历史。
 			</div>
+		);
+	}
+
+	if (variant === "list" && kind === "image") {
+		return (
+			<HistoryImageGrid
+				deletingAssetKeys={deletingAssetKeys}
+				deletedAssetPlaceholderCounts={deletedAssetPlaceholderCounts}
+				deletingEntryIds={deletingEntryIds}
+				entries={entries}
+				onDeleteAsset={onDeleteAsset}
+				onDeleteEntry={onDeleteEntry}
+				onSaveAsset={onSaveAsset}
+				onToggleAsset={onToggleAsset}
+				onUseAssetAsReference={onUseAssetAsReference}
+				onUsePrompt={onUsePrompt}
+				savedAssetKeys={savedAssetKeys}
+				selectedAssetKeys={selectedAssetKeys}
+				savingAssetKeys={savingAssetKeys}
+			/>
 		);
 	}
 
@@ -78,6 +142,393 @@ export const HistoryGenerationList: React.FC<{
 		</div>
 	);
 };
+
+type HistoryImageRecord = HistoryImageAssetRecord | HistoryImagePlaceholderRecord;
+
+interface HistoryImageAssetRecord {
+	asset: GenerationAsset;
+	assetIndex: number;
+	displayIndex: number;
+	entry: GenerationEntry;
+	kind: "asset";
+	key: string;
+	source: string;
+}
+
+interface HistoryImagePlaceholderRecord {
+	assetIndex: number;
+	displayIndex: number;
+	entry: GenerationEntry;
+	kind: "failed" | "pending";
+	key: string;
+	source: "";
+}
+
+const HistoryImageGrid: React.FC<{
+	deletedAssetPlaceholderCounts: Record<string, number>;
+	deletingAssetKeys: string[];
+	deletingEntryIds: string[];
+	entries: GenerationEntry[];
+	onDeleteAsset?: (entry: GenerationEntry, asset: GenerationAsset, assetIndex: number) => void;
+	onDeleteEntry: (entry: GenerationEntry) => void;
+	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
+	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
+	onUseAssetAsReference?: (asset: GenerationAsset) => void;
+	onUsePrompt?: (entry: GenerationEntry) => void;
+	savedAssetKeys: string[];
+	selectedAssetKeys: string[];
+	savingAssetKeys: string[];
+}> = ({
+	deletedAssetPlaceholderCounts,
+	deletingAssetKeys,
+	deletingEntryIds,
+	entries,
+	onDeleteAsset,
+	onDeleteEntry,
+	onSaveAsset,
+	onToggleAsset,
+	onUseAssetAsReference,
+	onUsePrompt,
+	savedAssetKeys,
+	selectedAssetKeys,
+	savingAssetKeys,
+}) => {
+	const records = imageRecordsFromEntries(entries, deletedAssetPlaceholderCounts);
+
+	if (records.length === 0) {
+		return (
+			<div className="flex min-h-0 flex-1 items-center justify-center p-4 text-center text-xs text-muted-foreground">
+				暂无生成图片。
+			</div>
+		);
+	}
+
+	return (
+		<PhotoProvider maskOpacity={0.84}>
+			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+				<div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+					{records.map((record) => (
+						<HistoryImageCard
+							key={record.key}
+							record={record}
+							deleting={isDeletingHistoryImage(record, deletingAssetKeys, deletingEntryIds)}
+							onDeleteAsset={onDeleteAsset}
+							onDeleteEntry={onDeleteEntry}
+							onSaveAsset={onSaveAsset}
+							onToggleAsset={onToggleAsset}
+							onUseAssetAsReference={onUseAssetAsReference}
+							onUsePrompt={onUsePrompt}
+							savedAssetKeys={savedAssetKeys}
+							selectedAssetKeys={selectedAssetKeys}
+							savingAssetKeys={savingAssetKeys}
+						/>
+					))}
+				</div>
+			</div>
+		</PhotoProvider>
+	);
+};
+
+const HistoryImageCard: React.FC<{
+	deleting: boolean;
+	onDeleteAsset?: (entry: GenerationEntry, asset: GenerationAsset, assetIndex: number) => void;
+	onDeleteEntry: (entry: GenerationEntry) => void;
+	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
+	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
+	onUseAssetAsReference?: (asset: GenerationAsset) => void;
+	onUsePrompt?: (entry: GenerationEntry) => void;
+	record: HistoryImageRecord;
+	savedAssetKeys: string[];
+	selectedAssetKeys: string[];
+	savingAssetKeys: string[];
+}> = ({
+	deleting,
+	onDeleteAsset,
+	onDeleteEntry,
+	onSaveAsset,
+	onToggleAsset,
+	onUseAssetAsReference,
+	onUsePrompt,
+	record,
+	savedAssetKeys,
+	selectedAssetKeys,
+	savingAssetKeys,
+}) => {
+	const { assetIndex, entry, source } = record;
+	const isAssetRecord = record.kind === "asset";
+	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+	if (!isAssetRecord) {
+		return (
+			<article className="relative aspect-[4/3] min-w-0 overflow-hidden rounded-sm border border-border bg-muted">
+				<HistoryImagePlaceholder record={record} />
+			</article>
+		);
+	}
+
+	const canDerive = Boolean(onUseAssetAsReference || onToggleAsset);
+	const saveKey = generatedAssetSaveKey(entry, record.asset);
+	const saving = Boolean(saveKey && savingAssetKeys.includes(saveKey));
+	const saved = Boolean(saveKey && savedAssetKeys.includes(saveKey));
+	const selectionKey = generationAssetSelectionKey(record.asset);
+	const selectable = Boolean(selectionKey && onToggleAsset);
+	const selected = Boolean(selectionKey && selectedAssetKeys.includes(selectionKey));
+	const confirmDelete = () => {
+		if (onDeleteAsset) {
+			onDeleteAsset(entry, record.asset, assetIndex);
+			return;
+		}
+		onDeleteEntry(entry);
+	};
+
+	return (
+		<TooltipProvider delayDuration={180}>
+			<>
+				<article
+					className={cn(
+						"group/history-image relative aspect-[4/3] min-w-0 overflow-hidden rounded-sm border bg-muted",
+						selected ? "border-primary ring-1 ring-primary" : "border-border",
+					)}
+				>
+					<img src={source} alt="" className="size-full object-cover" />
+					<div className="absolute inset-0 flex items-center justify-center bg-foreground/55 opacity-0 transition-opacity group-hover/history-image:opacity-100 group-focus-within/history-image:opacity-100">
+						<div className="grid max-w-[calc(100%-2rem)] grid-cols-5 items-center justify-center gap-2">
+							<Tooltip>
+								<PhotoView src={source}>
+									<TooltipTrigger asChild>
+										<button
+											type="button"
+											aria-label="预览图片"
+											className={historyImageActionButtonClassName}
+										>
+											<Eye className="size-4" />
+										</button>
+									</TooltipTrigger>
+								</PhotoView>
+								<TooltipContent>预览</TooltipContent>
+							</Tooltip>
+							<HistoryImageActionButton
+								ariaLabel={saved ? "图片已下载" : saving ? "正在下载图片" : "下载图片"}
+								disabled={!onSaveAsset || saving || saved}
+								tooltip={saved ? "已下载" : saving ? "正在下载" : "下载"}
+								onClick={() => onSaveAsset?.(entry, record.asset)}
+							>
+								{saving ? (
+									<Loader2 className="size-4 animate-spin" />
+								) : saved ? (
+									<Check className="size-4" />
+								) : (
+									<Download className="size-4" />
+								)}
+							</HistoryImageActionButton>
+							<HistoryImageActionButton
+								ariaLabel="派生图片"
+								disabled={!canDerive}
+								tooltip="派生"
+								onClick={() => {
+									if (onUseAssetAsReference) {
+										onUseAssetAsReference(record.asset);
+										return;
+									}
+									onToggleAsset?.(record.asset, true);
+								}}
+							>
+								<WandSparkles className="size-4" />
+							</HistoryImageActionButton>
+							<HistoryImageActionButton
+								ariaLabel="使用此提示词"
+								disabled={!onUsePrompt}
+								tooltip="使用此提示词"
+								onClick={() => onUsePrompt?.(entry)}
+							>
+								<FileText className="size-4" />
+							</HistoryImageActionButton>
+							<HistoryImageActionButton
+								ariaLabel="删除图片"
+								disabled={deleting}
+								tooltip={deleting ? "正在删除" : "删除"}
+								onClick={() => setDeleteDialogOpen(true)}
+							>
+								{deleting ? (
+									<Loader2 className="size-4 animate-spin" />
+								) : (
+									<Trash2 className="size-4" />
+								)}
+							</HistoryImageActionButton>
+						</div>
+					</div>
+					{selectable && onToggleAsset ? (
+						<HistoryImageSelectionButton
+							selected={selected}
+							onToggle={() => onToggleAsset(record.asset, !selected)}
+						/>
+					) : null}
+				</article>
+				<AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>删除这张图片？</AlertDialogTitle>
+							<AlertDialogDescription>
+								删除后会从这条生成记录中移除，无法在历史记录中恢复。
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+							<AlertDialogAction disabled={deleting} onClick={confirmDelete}>
+								删除
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+			</>
+		</TooltipProvider>
+	);
+};
+
+const HistoryImageSelectionButton: React.FC<{
+	onToggle: () => void;
+	selected: boolean;
+}> = ({ onToggle, selected }) => (
+	<Tooltip>
+		<TooltipTrigger asChild>
+			<button
+				type="button"
+				role="checkbox"
+				aria-checked={selected}
+				aria-label={selected ? "取消选入结果" : "选入结果"}
+				className={cn(
+					"absolute left-3 top-3 z-20 flex size-7 items-center justify-center rounded-sm border shadow-sm ring-1 ring-black/10 transition-colors",
+					selected
+						? "border-primary bg-primary text-primary-foreground"
+						: "border-white/80 bg-background/90 text-transparent hover:bg-background",
+				)}
+				onClick={(event) => {
+					event.preventDefault();
+					event.stopPropagation();
+					onToggle();
+				}}
+			>
+				<Check className={cn("size-4", selected ? "opacity-100" : "opacity-0")} />
+			</button>
+		</TooltipTrigger>
+		<TooltipContent>{selected ? "取消选入结果" : "选入结果"}</TooltipContent>
+	</Tooltip>
+);
+
+const HistoryImagePlaceholder: React.FC<{ record: HistoryImagePlaceholderRecord }> = ({
+	record,
+}) => {
+	const failed = record.kind === "failed";
+	const label = `第 ${record.displayIndex + 1} 张${failed ? "生成失败" : "生成中"}`;
+	const errorMessage = failed ? entryErrorText(record.entry) : "";
+
+	return (
+		<div
+			role="img"
+			aria-label={label}
+			title={errorMessage || label}
+			className={cn(
+				"flex size-full flex-col items-center justify-center gap-2 border border-dashed bg-muted/70 text-xs",
+				failed
+					? "border-error-border text-error-foreground"
+					: "border-border text-muted-foreground",
+			)}
+		>
+			{failed ? <ImageIcon className="size-5" /> : <Loader2 className="size-5 animate-spin" />}
+			<span>{failed ? "生成失败" : "生成中"}</span>
+		</div>
+	);
+};
+
+const historyImageActionButtonClassName = cn(
+	"flex size-9 items-center justify-center rounded-full border border-white/25 bg-background text-foreground shadow-lg transition-colors",
+	"hover:bg-background/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60",
+);
+
+const HistoryImageActionButton: React.FC<{
+	ariaLabel: string;
+	children: React.ReactNode;
+	disabled?: boolean;
+	onClick?: () => void;
+	tooltip: string;
+}> = ({ ariaLabel, children, disabled, onClick, tooltip }) => (
+	<Tooltip>
+		<TooltipTrigger asChild>
+			<button
+				type="button"
+				aria-label={ariaLabel}
+				className={historyImageActionButtonClassName}
+				disabled={disabled}
+				onClick={(event) => {
+					event.preventDefault();
+					event.stopPropagation();
+					onClick?.();
+				}}
+			>
+				{children}
+			</button>
+		</TooltipTrigger>
+		<TooltipContent>{tooltip}</TooltipContent>
+	</Tooltip>
+);
+
+const imageRecordsFromEntries = (
+	entries: GenerationEntry[],
+	deletedAssetPlaceholderCounts: Record<string, number>,
+): HistoryImageRecord[] =>
+	entries.flatMap((entry) => {
+		const imageRecords = (entry.assets ?? []).flatMap<HistoryImageAssetRecord>(
+			(asset, assetIndex) => {
+				const source = generationAssetSource(asset);
+				if (asset.kind !== "image" || !source) return [];
+
+				return [
+					{
+						asset,
+						assetIndex,
+						displayIndex: assetIndex,
+						entry,
+						kind: "asset",
+						key: `${entry.id}:${assetIndex}:${source}`,
+						source,
+					},
+				];
+			},
+		);
+		const loading = isPendingGenerationStatus(entry.status);
+		const failed = isFailedGenerationStatus(entry.status);
+		const placeholderKind = failed ? "failed" : loading ? "pending" : null;
+		if (!placeholderKind) return imageRecords;
+
+		const targetCount = Math.max(
+			imageRecords.length,
+			requestGenerationCount(entry.requestDetails ?? []),
+		);
+		const deletedPlaceholderCount = Math.max(0, deletedAssetPlaceholderCounts[entry.id] ?? 0);
+		const placeholders = Array.from(
+			{ length: Math.max(0, targetCount - imageRecords.length - deletedPlaceholderCount) },
+			(_, index): HistoryImagePlaceholderRecord => {
+				const displayIndex = imageRecords.length + deletedPlaceholderCount + index;
+				return {
+					assetIndex: displayIndex,
+					displayIndex,
+					entry,
+					kind: placeholderKind,
+					key: `${entry.id}:${placeholderKind}:${displayIndex}`,
+					source: "",
+				};
+			},
+		);
+
+		return [...imageRecords, ...placeholders];
+	});
+
+const isDeletingHistoryImage = (
+	record: HistoryImageRecord,
+	deletingAssetKeys: string[],
+	deletingEntryIds: string[],
+) =>
+	deletingAssetKeys.includes(`${record.entry.id}:${record.assetIndex}`) ||
+	deletingEntryIds.includes(record.entry.id);
 
 const HistoryGenerationItem: React.FC<{
 	defaultSourceLabel?: string;

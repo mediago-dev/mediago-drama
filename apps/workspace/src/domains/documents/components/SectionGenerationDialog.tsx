@@ -8,8 +8,6 @@ import { GenerationModalShell } from "@/domains/documents/components/GenerationM
 import { DocumentSectionGenerator } from "@/domains/documents/components/DocumentSectionGenerator";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { sectionGenerationIdentityKey } from "@/domains/documents/lib/section-generation";
-import type { MediaGenerationWorkspaceViewMode } from "@/domains/generation/components/MediaGenerationWorkspace";
-import { Tabs, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 
 interface SectionGenerationDialogProps {
 	onGenerationComplete: (
@@ -50,16 +48,10 @@ export const SectionGenerationDialog: React.FC<SectionGenerationDialogProps> = (
 	section,
 }) => {
 	const [lastSection, setLastSection] = useState<MarkdownSectionContext | null>(section);
-	const [viewMode, setViewMode] = useState<MediaGenerationWorkspaceViewMode>("edit");
-	const [historyCount, setHistoryCount] = useState(0);
 
 	useEffect(() => {
 		if (section) setLastSection(section);
 	}, [section]);
-
-	useEffect(() => {
-		if (open) setViewMode("edit");
-	}, [open, section?.blockId, section?.documentId, section?.headingOccurrence]);
 
 	const dialogSection = section ?? lastSection;
 	if (!dialogSection) return null;
@@ -68,13 +60,6 @@ export const SectionGenerationDialog: React.FC<SectionGenerationDialogProps> = (
 		<GenerationModalShell
 			open={open}
 			title={`生成视觉素材 · ${dialogSection.headingText}`}
-			titleAside={
-				<SectionGenerationViewTabs
-					historyCount={historyCount}
-					value={viewMode}
-					onValueChange={setViewMode}
-				/>
-			}
 			titleId="section-generation-title"
 			onOpenChange={onOpenChange}
 		>
@@ -83,7 +68,7 @@ export const SectionGenerationDialog: React.FC<SectionGenerationDialogProps> = (
 				projectId={projectId}
 				section={dialogSection}
 				selectedAssetKeys={selectedAssetKeys ?? []}
-				viewMode={viewMode}
+				viewMode="history"
 				onGenerationComplete={(pendingId, assets, sourceTaskId) =>
 					onGenerationComplete(dialogSection, pendingId, assets, sourceTaskId)
 				}
@@ -94,30 +79,8 @@ export const SectionGenerationDialog: React.FC<SectionGenerationDialogProps> = (
 				onGenerationStart={(pendingId, prompt) =>
 					onGenerationStart(dialogSection, pendingId, prompt)
 				}
-				onHistoryCountChange={setHistoryCount}
 				onToggleImage={(asset, selected) => onToggleImage(dialogSection, asset, selected)}
-				onViewModeChange={setViewMode}
 			/>
 		</GenerationModalShell>
 	);
 };
-
-const SectionGenerationViewTabs: React.FC<{
-	historyCount: number;
-	onValueChange: (value: MediaGenerationWorkspaceViewMode) => void;
-	value: MediaGenerationWorkspaceViewMode;
-}> = ({ historyCount, onValueChange, value }) => (
-	<Tabs
-		value={value}
-		onValueChange={(nextValue) => onValueChange(nextValue as MediaGenerationWorkspaceViewMode)}
-	>
-		<TabsList className="h-7">
-			<TabsTrigger value="history" className="h-5 px-2">
-				历史记录 {historyCount}
-			</TabsTrigger>
-			<TabsTrigger value="edit" className="h-5 px-2">
-				编辑
-			</TabsTrigger>
-		</TabsList>
-	</Tabs>
-);

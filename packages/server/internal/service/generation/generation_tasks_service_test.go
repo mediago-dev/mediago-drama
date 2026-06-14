@@ -3,6 +3,7 @@ package generation
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestGenerationTaskServicePersistToSQLite(t *testing.T) {
@@ -102,5 +103,56 @@ func TestGenerationTaskServicePersistToSQLite(t *testing.T) {
 	}
 	if ok {
 		t.Fatal("deleted task is still present")
+	}
+}
+
+func TestGenerationTaskServiceDeleteAssetIncludesAttemptsWithoutDeadlock(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	taskID := "task-delete-asset"
+
+	service := NewGenerationTaskService(dbPath, nil)
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:     taskID,
+		Kind:   "image",
+		Status: "completed",
+		Prompt: "portrait",
+		Assets: []GenerationAsset{
+			{Kind: "image", URL: "/api/v1/media-assets/image-a/content"},
+			{Kind: "image", URL: "/api/v1/media-assets/image-b/content"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting task: %v", err)
+	}
+	if err := service.RecordAttempt(taskID, "create", "completed", "created", nil); err != nil {
+		t.Fatalf("recording attempt: %v", err)
+	}
+
+	type deleteResult struct {
+		deleted bool
+		err     error
+		task    GenerationTaskRecord
+	}
+	done := make(chan deleteResult, 1)
+	go func() {
+		task, deleted, err := service.DeleteAsset(taskID, 0)
+		done <- deleteResult{deleted: deleted, err: err, task: task}
+	}()
+
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatalf("deleting asset: %v", result.err)
+		}
+		if !result.deleted {
+			t.Fatal("delete returned false, want true")
+		}
+		if len(result.task.Assets) != 1 || result.task.Assets[0].URL != "/api/v1/media-assets/image-b/content" {
+			t.Fatalf("assets = %#v, want only second image", result.task.Assets)
+		}
+		if len(result.task.Attempts) != 1 {
+			t.Fatalf("attempts = %#v, want delete response with attempts", result.task.Attempts)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("DeleteAsset timed out, likely waiting on its own attempts summary lock")
 	}
 }

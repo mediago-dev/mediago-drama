@@ -163,6 +163,10 @@ func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 		handlers.GenerationTasks.HandleRetryGenerationTask,
 	)
 	apiRoutes.DELETE(
+		"/generation/tasks/:taskId/assets/:assetIndex",
+		handlers.GenerationTasks.HandleDeleteGenerationTaskAsset,
+	)
+	apiRoutes.DELETE(
 		"/generation/tasks/:taskId",
 		handlers.GenerationTasks.HandleDeleteGenerationTask,
 	)

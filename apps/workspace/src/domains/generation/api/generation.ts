@@ -355,6 +355,13 @@ export const deleteGenerationTask = async (id: string) => {
 	return response.data;
 };
 
+export const deleteGenerationTaskAsset = async (id: string, assetIndex: number) => {
+	const response = await httpClient.delete<GenerationTask>(
+		`/generation/tasks/${encodeURIComponent(id)}/assets/${assetIndex}`,
+	);
+	return normalizeGenerationTask(response.data);
+};
+
 export const sendGenerationMessage = async (request: GenerationMessageRequest) => {
 	const payload = generationMessagePayload(request);
 	const response = await httpClient.post<GenerationMessageResponse>(

@@ -28,6 +28,7 @@ type GenerationTaskService interface {
 	ListGenerationConversations(scopeID string, kind string) (dto.GenerationConversationsResponse, error)
 	ListGenerationTasks(query service.GenerationTaskListQuery) (dto.GenerationTasksResponse, error)
 	GetGenerationTask(id string) (dto.GenerationTaskRecord, bool, error)
+	DeleteGenerationTaskAsset(id string, assetIndex int) (dto.GenerationTaskRecord, bool, error)
 	DeleteGenerationTask(id string) (dto.GenerationTasksResponse, bool, error)
 	ListGenerationNotifications(projectID string) (dto.GenerationNotificationsResponse, error)
 	MarkGenerationNotificationRead(id string) (dto.GenerationNotificationRecord, bool, error)
@@ -363,6 +364,36 @@ func (handler GenerationTasks) HandleGenerationTask(context *gin.Context) {
 	}
 	if !ok {
 		httpresponse.Error(context, http.StatusNotFound, "generation task not found")
+		return
+	}
+
+	httpresponse.OK(context, task)
+}
+
+// HandleDeleteGenerationTaskAsset deletes one generated asset from a task.
+func (handler GenerationTasks) HandleDeleteGenerationTaskAsset(context *gin.Context) {
+	id, ok := requiredPathParam(context, "taskId", "taskId")
+	if !ok {
+		return
+	}
+
+	rawIndex, ok := requiredPathParam(context, "assetIndex", "assetIndex")
+	if !ok {
+		return
+	}
+	assetIndex, err := strconv.Atoi(rawIndex)
+	if err != nil || assetIndex < 0 {
+		httpresponse.Error(context, http.StatusBadRequest, "assetIndex must be a non-negative number")
+		return
+	}
+
+	task, deleted, err := handler.service.DeleteGenerationTaskAsset(id, assetIndex)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+	if !deleted {
+		httpresponse.Error(context, http.StatusNotFound, "generation task asset not found")
 		return
 	}
 
