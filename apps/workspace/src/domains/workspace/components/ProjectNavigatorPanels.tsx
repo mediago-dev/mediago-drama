@@ -6,7 +6,6 @@ import {
 	Film,
 	Image as ImageIcon,
 	KeyRound,
-	LayoutGrid,
 	Loader2,
 	Plus,
 	ReceiptText,
@@ -219,11 +218,6 @@ export const StudioTypesScreen: React.FC<{
 				<WorkModeSwitcher activeMode={activeMode} onSelectMode={onSelectMode} />
 			) : null}
 
-			<div className="mb-2 flex shrink-0 items-center gap-2 px-2">
-				<LayoutGrid className="size-4 shrink-0 text-muted-foreground" />
-				<span className="min-w-0 truncate text-xs font-semibold text-foreground">工具箱</span>
-			</div>
-
 			<div className="min-h-0 flex-1 overflow-y-auto pr-1">
 				<div className="space-y-4">
 					{categoryOrder.map((category) => {
@@ -232,9 +226,6 @@ export const StudioTypesScreen: React.FC<{
 
 						return (
 							<section key={category} className="space-y-1">
-								<p className="px-2 text-2xs font-semibold text-muted-foreground">
-									{categoryLabels[category]}
-								</p>
 								{items.map((item) => (
 									<SettingsPanelButton
 										key={item.value}
@@ -269,12 +260,6 @@ export const StudioTypesScreen: React.FC<{
 };
 
 const categoryOrder: CapabilityRecord["category"][] = ["generation", "processing"];
-
-const categoryLabels: Record<CapabilityRecord["category"], string> = {
-	generation: "生成",
-	processing: "处理",
-	understanding: "理解",
-};
 
 const studioTabOrder: Record<StudioTab, number> = {
 	video: 0,
