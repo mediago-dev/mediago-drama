@@ -2,16 +2,23 @@ package settings
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 type memoryAPIKeyStore struct {
+	mu     sync.RWMutex
 	values map[string]string
 }
 
 func (store *memoryAPIKeyStore) Get(keyName string) (string, string, error) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
 	value := store.values[keyName]
 	if value == "" {
 		return "", "none", nil
@@ -20,11 +27,15 @@ func (store *memoryAPIKeyStore) Get(keyName string) (string, string, error) {
 }
 
 func (store *memoryAPIKeyStore) Set(keyName string, value string) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
 	store.values[keyName] = value
 	return nil
 }
 
 func (store *memoryAPIKeyStore) Clear(keyName string) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
 	delete(store.values, keyName)
 	return nil
 }
@@ -62,10 +73,46 @@ func TestSettingsSetAPIKeyValidation(t *testing.T) {
 	}
 }
 
+func TestSettingsClearJimengAPIKeyRunsLogout(t *testing.T) {
+	store := &memoryAPIKeyStore{values: map[string]string{"jimeng": "oauth:old"}}
+	settings := NewSettings(store)
+	tempDir := t.TempDir()
+	argsPath := filepath.Join(tempDir, "args.log")
+	binPath := filepath.Join(tempDir, "dreamina")
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$*\" >> %q\nexit 0\n", argsPath)
+	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("writing fake jimeng CLI: %v", err)
+	}
+	settings.SetJimengCLIPaths(binPath, "")
+
+	list, err := settings.ClearAPIKey(context.Background(), "jimeng")
+	if err != nil {
+		t.Fatalf("ClearAPIKey returned error: %v", err)
+	}
+	provider := providerByID(t, list, "jimeng")
+	if provider.Configured || provider.Source != "none" {
+		t.Fatalf("provider after clear = %#v, want unconfigured provider", provider)
+	}
+	output, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("reading fake jimeng args: %v", err)
+	}
+	if strings.TrimSpace(string(output)) != "logout" {
+		t.Fatalf("jimeng args = %q, want logout", string(output))
+	}
+}
+
 func TestSettingsBeginJimengLoginStoresOAuthMarkerWhenSessionExists(t *testing.T) {
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
 	binPath := filepath.Join(t.TempDir(), "dreamina")
-	if err := os.WriteFile(binPath, []byte("#!/bin/sh\necho '已复用当前本地 OAuth 登录态。'\n"), 0o755); err != nil {
+	script := `#!/bin/sh
+if [ "$1" = "login" ] && [ "$#" -eq 1 ]; then
+  echo '已复用当前本地 OAuth 登录态。'
+  exit 0
+fi
+exit 1
+`
+	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("writing fake jimeng CLI: %v", err)
 	}
 	settings.SetJimengCLIPaths(binPath, "")
@@ -86,19 +133,16 @@ func TestSettingsBeginJimengLoginStoresOAuthMarkerWhenSessionExists(t *testing.T
 	}
 }
 
-func TestSettingsJimengDeviceLoginRequiresCheckBeforeConfigured(t *testing.T) {
-	store := &memoryAPIKeyStore{values: map[string]string{"jimeng": "oauth:old"}}
+func TestSettingsJimengBrowserLoginReturnsChallengeAndPersistsAfterCLICompletes(t *testing.T) {
+	store := &memoryAPIKeyStore{values: map[string]string{}}
 	settings := NewSettings(store)
 	binPath := filepath.Join(t.TempDir(), "dreamina")
 	script := `#!/bin/sh
-if [ "$1" = "relogin" ]; then
+if [ "$1" = "login" ] && [ "$#" -eq 1 ]; then
   echo "verification_uri: https://example.test/device"
   echo "user_code: ABCD-EFGH"
   echo "device_code: device-123"
-  exit 0
-fi
-if [ "$1" = "login" ] && [ "$2" = "checklogin" ]; then
-  echo "[OAuthLogin] login success"
+  sleep 0.2
   exit 0
 fi
 exit 1
@@ -108,32 +152,35 @@ exit 1
 	}
 	settings.SetJimengCLIPaths(binPath, "")
 
-	result, err := settings.BeginJimengLogin(context.Background(), true)
+	result, err := settings.BeginJimengLogin(context.Background(), false)
 	if err != nil {
 		t.Fatalf("BeginJimengLogin returned error: %v", err)
 	}
 	if result.Login.Status != "pending" ||
 		result.Login.VerificationURI != "https://example.test/device" ||
-		result.Login.UserCode != "ABCD-EFGH" ||
-		result.Login.DeviceCode != "device-123" {
-		t.Fatalf("login = %#v, want parsed device challenge", result.Login)
+		result.Login.UserCode != "ABCD-EFGH" {
+		t.Fatalf("login = %#v, want parsed browser challenge", result.Login)
+	}
+	if result.Login.DeviceCode != "" {
+		t.Fatalf("login device code = %q, want hidden device code for browser login", result.Login.DeviceCode)
 	}
 	provider := providerByID(t, APIKeyList{Providers: result.Providers}, "jimeng")
 	if provider.Configured {
 		t.Fatalf("provider = %#v, want unconfigured while challenge is pending", provider)
 	}
 
-	result, err = settings.CompleteJimengLogin(context.Background(), result.Login.DeviceCode)
-	if err != nil {
-		t.Fatalf("CompleteJimengLogin returned error: %v", err)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		value, _, err := store.Get("jimeng")
+		if err != nil {
+			t.Fatalf("Get returned error: %v", err)
+		}
+		if strings.HasPrefix(value, "oauth:") {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	if result.Login.Status != "completed" {
-		t.Fatalf("login = %#v, want completed", result.Login)
-	}
-	provider = providerByID(t, APIKeyList{Providers: result.Providers}, "jimeng")
-	if !provider.Configured || provider.Source != "settings" {
-		t.Fatalf("provider = %#v, want configured provider", provider)
-	}
+	t.Fatal("jimeng oauth marker was not persisted after login command completed")
 }
 
 func providerByID(t *testing.T, list APIKeyList, id string) APIKeyProvider {
