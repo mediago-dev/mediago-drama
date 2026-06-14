@@ -8,8 +8,7 @@ capabilities instead of implementing provider logic locally.
 
 The public packages define mediago-drama contracts. Provider SDKs and orchestration
 frameworks are kept behind internal adapters so upper layers do not depend on
-their types directly. Eino is the current internal execution layer for chat
-model adapters.
+their types directly.
 
 Media generation is organized as model families first (Seedream, GPT Image,
 Gemini, Seedance), with official, DMX, and OpenRouter handled as
@@ -32,7 +31,6 @@ pkg/generation/dmx/      # DMX provider adapter facade
 pkg/generation/official/ # first-party provider adapter facade
 pkg/generation/openrouter/ # OpenRouter provider adapter facade
 pkg/multimodal/          # public multimodal provider contracts
-internal/einoadapter/    # Eino <-> core conversion and provider wrappers
 go.mod                   # module declaration
 Taskfile.yml             # go-task tasks (fmt / vet / test / tidy / check)
 LICENSE                  # MIT
