@@ -51,6 +51,7 @@ describe("EpisodeVideoGenerationDialog", () => {
 
 		expect(workspaceProps).toMatchObject({
 			kind: "video",
+			viewMode: "history",
 			notificationTarget: {
 				kind: "document-section",
 				projectId: "project-a",

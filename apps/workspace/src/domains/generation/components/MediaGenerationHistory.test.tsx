@@ -9,6 +9,12 @@ vi.mock("react-photo-view", () => ({
 	PhotoView: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+vi.mock("@/components/VideoPlayer", () => ({
+	VideoPlayer: ({ mimeType, src }: { mimeType?: string; src: string }) => (
+		<video data-testid="video-preview" data-mime-type={mimeType} src={src} />
+	),
+}));
+
 const videoEntry = (): GenerationEntry => ({
 	id: "entry-video",
 	kind: "video",
@@ -89,6 +95,69 @@ describe("HistoryGenerationList", () => {
 		expect(video?.getAttribute("src")).toBe("https://example.test/scene.mp4");
 		expect(video?.getAttribute("preload")).toBe("auto");
 		expect(video?.playsInline).toBe(true);
+	});
+
+	it("renders full-page video history as a flat media grid", async () => {
+		const entry = videoEntry();
+		const onDeleteAsset = vi.fn();
+		const onSaveAsset = vi.fn();
+		const onToggleAsset = vi.fn();
+		const { container } = render(
+			<HistoryGenerationList
+				activeEntryId="entry-video"
+				deletingEntryIds={[]}
+				entries={[entry]}
+				kind="video"
+				selectedAssetKeys={["video:https://example.test/scene.mp4"]}
+				variant="list"
+				onDeleteEntry={vi.fn()}
+				onDeleteAsset={onDeleteAsset}
+				onSaveAsset={onSaveAsset}
+				onSelectEntry={vi.fn()}
+				onToggleAsset={onToggleAsset}
+			/>,
+		);
+
+		expect(container.querySelectorAll("video")).toHaveLength(1);
+		expect(screen.queryByText("生成一个街景镜头")).toBeNull();
+		expect(screen.queryByText("已完成")).toBeNull();
+		expect(screen.getByRole("button", { name: "预览视频" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "下载视频" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "派生视频" })).toBeNull();
+		expect(screen.getByRole("button", { name: "删除视频" })).toBeTruthy();
+		expect(
+			screen.getByRole("checkbox", { name: "取消选入结果" }).getAttribute("aria-checked"),
+		).toBe("true");
+
+		fireEvent.click(screen.getByRole("button", { name: "预览视频" }));
+
+		const previewDialog = screen.getByRole("dialog", { name: "预览视频" });
+		const previewVideo = within(previewDialog).getByTestId("video-preview");
+		expect(previewVideo.getAttribute("src")).toBe("https://example.test/scene.mp4");
+		expect(previewVideo.getAttribute("data-mime-type")).toBe("video/mp4");
+		fireEvent.click(within(previewDialog).getByRole("button", { name: "关闭预览" }));
+
+		const card = container.querySelector("article");
+		if (!card) throw new Error("missing history video card");
+		fireEvent.contextMenu(card, { clientX: 48, clientY: 48 });
+
+		const menu = await screen.findByRole("menu");
+		expect(within(menu).getByRole("menuitem", { name: "预览" })).toBeTruthy();
+		expect(within(menu).queryByRole("menuitem", { name: "派生" })).toBeNull();
+		fireEvent.keyDown(menu, { key: "Escape" });
+
+		fireEvent.click(screen.getByRole("button", { name: "下载视频" }));
+
+		expect(onSaveAsset).toHaveBeenCalledWith(entry, entry.assets?.[0]);
+
+		fireEvent.click(screen.getByRole("button", { name: "删除视频" }));
+		fireEvent.click(
+			within(screen.getByRole("alertdialog", { name: "删除这个视频？" })).getByRole("button", {
+				name: "删除",
+			}),
+		);
+
+		expect(onDeleteAsset).toHaveBeenCalledWith(entry, entry.assets?.[0], 0);
 	});
 
 	it("renders full-page image history as a flat image grid with hover actions", () => {

@@ -1,6 +1,5 @@
-import { X } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import useSWR from "swr";
 import type {
 	GenerationAsset,
@@ -9,7 +8,7 @@ import type {
 import { projectGenerationConversation } from "@/domains/generation/api/generation";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { MediaGenerationWorkspace } from "@/domains/generation/components/MediaGenerationWorkspace";
-import { Button } from "@/shared/components/ui/button";
+import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
 import { formatTimelineTime, type Episode, type TimelineClip } from "@/domains/episode/lib/sample";
 import {
 	generationAssetSelectionKey,
@@ -107,78 +106,38 @@ export const EpisodeVideoGenerationDialog: React.FC<EpisodeVideoGenerationDialog
 		[onGeneratedVideoReady, selectedClip],
 	);
 
-	useEffect(() => {
-		if (!open) return;
-
-		const closeOnEscape = (event: KeyboardEvent) => {
-			if (event.key === "Escape") onOpenChange(false);
-		};
-
-		window.addEventListener("keydown", closeOnEscape);
-		return () => window.removeEventListener("keydown", closeOnEscape);
-	}, [onOpenChange, open]);
-
-	if (!open) return null;
-
 	return (
-		<div
-			data-state="open"
-			className="fixed inset-0 z-50 grid place-items-center bg-foreground/30 p-4 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200"
-			onMouseDown={(event) => {
-				if (event.target === event.currentTarget) onOpenChange(false);
-			}}
+		<GenerationModalShell
+			open={open}
+			title={`生成视频素材 · ${selectedClip?.title ?? episode.title}`}
+			titleId={titleId}
+			onOpenChange={onOpenChange}
 		>
-			<section
-				data-state="open"
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby={titleId}
-				className="flex h-[min(82vh,52rem)] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-2xl data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200"
-			>
-				<header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
-					<div className="min-w-0">
-						<h2 id={titleId} className="truncate text-sm font-semibold text-foreground">
-							生成视频素材 · {selectedClip?.title ?? episode.title}
-						</h2>
-						<p className="mt-1 truncate text-xs text-muted-foreground">
-							{selectedClip?.content ?? "从当前剧集上下文生成可放入时间线的视频素材。"}
-						</p>
-					</div>
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon"
-						aria-label="关闭视频生成"
-						onClick={() => onOpenChange(false)}
-					>
-						<X />
-					</Button>
-				</header>
-				<MediaGenerationWorkspace
-					className="min-h-0 flex-1"
-					kind="video"
-					emptyResultText="生成后会在这里显示可预览的视频素材。"
-					conversationId={projectConversation?.conversationId}
-					conversationScopeId={conversationScopeId}
-					conversationTitle={projectConversation?.conversationTitle}
-					historyScopeId={historyScopeId}
-					sectionId={sectionId}
-					taskType="storyboard"
-					initialPrompt={generationContext.prompt}
-					notificationTarget={notificationTarget}
-					promptPlaceholder="描述当前组的视频镜头、运动、机位、时长、画幅和质量"
-					projectId={projectId}
-					submitLabel="生成视频"
-					uploadIdPrefix="episode-video-generation"
-					selectedAssetKeys={selectedAssetKeys}
-					onToggleAsset={toggleGeneratedVideo}
-					onGenerationComplete={(_, assets) => {
-						const videoUrl = firstVideoAssetSource(assets);
-						if (selectedClip && videoUrl) onGeneratedVideoReady?.(selectedClip.id, videoUrl);
-					}}
-				/>
-			</section>
-		</div>
+			<MediaGenerationWorkspace
+				className="min-h-0 flex-1"
+				kind="video"
+				emptyResultText="生成后会在这里显示可预览的视频素材。"
+				conversationId={projectConversation?.conversationId}
+				conversationScopeId={conversationScopeId}
+				conversationTitle={projectConversation?.conversationTitle}
+				historyScopeId={historyScopeId}
+				sectionId={sectionId}
+				taskType="storyboard"
+				initialPrompt={generationContext.prompt}
+				notificationTarget={notificationTarget}
+				promptPlaceholder="描述当前组的视频镜头、运动、机位、时长、画幅和质量"
+				projectId={projectId}
+				submitLabel="生成视频"
+				uploadIdPrefix="episode-video-generation"
+				selectedAssetKeys={selectedAssetKeys}
+				viewMode="history"
+				onToggleAsset={toggleGeneratedVideo}
+				onGenerationComplete={(_, assets) => {
+					const videoUrl = firstVideoAssetSource(assets);
+					if (selectedClip && videoUrl) onGeneratedVideoReady?.(selectedClip.id, videoUrl);
+				}}
+			/>
+		</GenerationModalShell>
 	);
 };
 
