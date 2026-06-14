@@ -1,10 +1,17 @@
-import type { Extensions } from "@tiptap/core";
+import type { Editor, Extensions, Range } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import type React from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	filterPromptInsertItems,
+	insertPromptItem,
+	PromptSlashMenu,
+	type PromptInsertItem,
+	type PromptSlashMenuPosition,
+} from "@/domains/generation/components/PromptSlashCommand";
 import { cn } from "@/shared/lib/utils";
 import "@/styles/tiptap.css";
 
@@ -14,10 +21,19 @@ export interface PromptEditorProps {
 	extensions?: Extensions;
 	onChange: (value: string) => void;
 	placeholder: string;
+	slashItems?: PromptInsertItem[];
 	value: string;
 }
 
 const emptyPromptMarkdownExtensions: Extensions = [];
+
+interface PromptSlashState {
+	items: PromptInsertItem[];
+	position: PromptSlashMenuPosition;
+	query: string;
+	range: Range;
+	selectedIndex: number;
+}
 
 export const PromptEditor: React.FC<PromptEditorProps> = ({
 	className,
@@ -25,8 +41,12 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
 	extensions,
 	onChange,
 	placeholder,
+	slashItems,
 	value,
 }) => {
+	const surfaceRef = useRef<HTMLDivElement | null>(null);
+	const [slashState, setSlashState] = useState<PromptSlashState | null>(null);
+	const slashStateRef = useRef<PromptSlashState | null>(null);
 	const editor = usePromptMarkdownEditor({
 		editorClassName,
 		editable: true,
@@ -35,16 +55,134 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
 		placeholder,
 		value,
 	});
+	const resolvedSlashItems = useMemo(() => slashItems ?? [], [slashItems]);
+
+	useEffect(() => {
+		slashStateRef.current = slashState;
+	}, [slashState]);
+
+	const refreshSlashState = useCallback(() => {
+		const nextState = resolvePromptSlashState(editor, resolvedSlashItems);
+
+		setSlashState((current) => {
+			if (!nextState) return null;
+
+			const selectedIndex =
+				current && current.range.from === nextState.range.from && current.query === nextState.query
+					? Math.min(current.selectedIndex, Math.max(0, nextState.items.length - 1))
+					: 0;
+
+			return { ...nextState, selectedIndex };
+		});
+	}, [editor, resolvedSlashItems]);
+
+	useEffect(() => {
+		if (!editor) return;
+
+		const update = () => refreshSlashState();
+		editor.on("update", update);
+		editor.on("selectionUpdate", update);
+		editor.on("focus", update);
+		editor.on("blur", update);
+		update();
+
+		return () => {
+			editor.off("update", update);
+			editor.off("selectionUpdate", update);
+			editor.off("focus", update);
+			editor.off("blur", update);
+		};
+	}, [editor, refreshSlashState]);
+
+	useEffect(() => {
+		if (!slashState) return;
+
+		const closeOnOutsidePointer = (event: PointerEvent) => {
+			const target = event.target;
+			if (!(target instanceof Node)) return;
+			if (surfaceRef.current?.contains(target)) return;
+			if (target instanceof Element && target.closest(".prompt-slash-menu-layer")) return;
+			setSlashState(null);
+		};
+
+		document.addEventListener("pointerdown", closeOnOutsidePointer);
+		return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+	}, [slashState]);
+
+	const selectSlashItem = useCallback(
+		(item: PromptInsertItem) => {
+			const current = slashStateRef.current;
+			if (!editor || !current) return;
+
+			insertPromptItem(editor, current.range, item);
+			setSlashState(null);
+		},
+		[editor],
+	);
+
+	const handleKeyDownCapture = useCallback(
+		(event: React.KeyboardEvent<HTMLDivElement>) => {
+			const current = slashStateRef.current;
+			if (!current) return;
+
+			if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+				event.preventDefault();
+				event.stopPropagation();
+				if (current.items.length === 0) return;
+
+				const step = event.key === "ArrowDown" ? 1 : -1;
+				setSlashState((state) =>
+					state
+						? {
+								...state,
+								selectedIndex:
+									(state.selectedIndex + state.items.length + step) % state.items.length,
+							}
+						: state,
+				);
+				return;
+			}
+
+			if (event.key === "Enter" || event.key === "Tab") {
+				if (current.items.length === 0) return;
+
+				event.preventDefault();
+				event.stopPropagation();
+				selectSlashItem(current.items[current.selectedIndex] ?? current.items[0]);
+				return;
+			}
+
+			if (event.key === "Escape") {
+				event.preventDefault();
+				event.stopPropagation();
+				setSlashState(null);
+			}
+		},
+		[selectSlashItem],
+	);
 
 	return (
 		<div
+			ref={surfaceRef}
 			className={cn(
 				"min-h-0 flex-1 overflow-y-auto bg-ide-editor px-4 py-3 text-xs leading-5 text-foreground transition-colors",
 				className,
 			)}
 			onClick={() => editor?.chain().focus().run()}
+			onKeyDownCapture={handleKeyDownCapture}
 		>
 			<EditorContent editor={editor} />
+			{slashState ? (
+				<PromptSlashMenu
+					items={slashState.items}
+					position={slashState.position}
+					selectedIndex={slashState.selectedIndex}
+					onHover={(index) =>
+						setSlashState((state) => (state ? { ...state, selectedIndex: index } : state))
+					}
+					onSelect={selectSlashItem}
+				/>
+			) : null}
 		</div>
 	);
 };
@@ -91,8 +229,8 @@ const usePromptMarkdownEditor = ({
 }) => {
 	const onChangeRef = useRef(onChange);
 	const emittedMarkdownRef = useRef(value);
-	const resolvedExtensions = useMemo(
-		() => [
+	const resolvedExtensions = useMemo(() => {
+		const promptExtensions: Extensions = [
 			StarterKit.configure({}),
 			...extensions,
 			Placeholder.configure({ placeholder }),
@@ -102,9 +240,10 @@ const usePromptMarkdownEditor = ({
 					size: 2,
 				},
 			}),
-		],
-		[extensions, placeholder],
-	);
+		];
+
+		return promptExtensions;
+	}, [extensions, placeholder]);
 	const editor = useEditor(
 		{
 			editable,
@@ -146,4 +285,65 @@ const usePromptMarkdownEditor = ({
 	}, [editor, value]);
 
 	return editor;
+};
+
+const resolvePromptSlashState = (
+	editor: Editor | null,
+	items: PromptInsertItem[],
+): Omit<PromptSlashState, "selectedIndex"> | null => {
+	if (!editor || !editor.isEditable || !editor.isFocused || items.length === 0) return null;
+
+	const match = findPromptSlashMatch(editor);
+	if (!match) return null;
+
+	return {
+		items: filterPromptInsertItems(items, match.query),
+		position: promptSlashMenuPosition(editor, match.range),
+		query: match.query,
+		range: match.range,
+	};
+};
+
+const findPromptSlashMatch = (editor: Editor): { query: string; range: Range } | null => {
+	const { selection } = editor.state;
+	if (!selection.empty) return null;
+
+	const $from = selection.$from;
+	if (!$from.parent.isTextblock) return null;
+
+	const textBeforeCursor = $from.parent.textBetween(0, $from.parentOffset, "\n", "\n");
+	const slashIndex = textBeforeCursor.lastIndexOf("/");
+	if (slashIndex < 0) return null;
+
+	const previousCharacter = slashIndex > 0 ? textBeforeCursor[slashIndex - 1] : "";
+	if (previousCharacter && !/\s/u.test(previousCharacter)) return null;
+
+	const query = textBeforeCursor.slice(slashIndex + 1);
+	const from = selection.from - query.length - 1;
+
+	return {
+		query,
+		range: { from, to: selection.from },
+	};
+};
+
+const promptSlashMenuPosition = (editor: Editor, range: Range): PromptSlashMenuPosition => {
+	const coords = editor.view.coordsAtPos(range.from);
+	const viewportMargin = 12;
+	const menuWidth = Math.min(416, window.innerWidth - viewportMargin * 2);
+	const menuHeight = 304;
+	const availableBelow = window.innerHeight - coords.bottom;
+	const availableAbove = coords.top;
+	const placement =
+		availableBelow < menuHeight && availableAbove > availableBelow ? "top" : "bottom";
+	const left = Math.min(
+		Math.max(viewportMargin, coords.left),
+		Math.max(viewportMargin, window.innerWidth - menuWidth - viewportMargin),
+	);
+
+	return {
+		left,
+		placement,
+		top: placement === "top" ? coords.top - 6 : coords.bottom + 6,
+	};
 };

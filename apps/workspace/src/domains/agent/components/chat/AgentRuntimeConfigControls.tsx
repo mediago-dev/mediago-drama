@@ -38,7 +38,7 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 	onPermissionChange,
 }) => {
 	return (
-		<div className="agent-runtime-config mb-1.5 grid gap-1.5">
+		<div className="agent-runtime-config">
 			<AgentRuntimeConfigSelect
 				label="模型"
 				icon={Bot}
@@ -98,7 +98,7 @@ const AgentRuntimeConfigSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	if (options.length === 0) {
 		const placeholder = isLoading ? "读取中" : errorMessage ? "配置不可用" : "未返回选项";
 		return (
-			<label className="agent-config-field min-w-0 space-y-1">
+			<label className="agent-config-field">
 				<span className="agent-config-icon" aria-hidden="true">
 					<Icon />
 				</span>
@@ -116,7 +116,7 @@ const AgentRuntimeConfigSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	const resolvedValue = normalizeRuntimeConfigValue(config, value);
 
 	return (
-		<label className="agent-config-field min-w-0 space-y-1">
+		<label className="agent-config-field">
 			<span className="agent-config-icon" aria-hidden="true">
 				<Icon />
 			</span>

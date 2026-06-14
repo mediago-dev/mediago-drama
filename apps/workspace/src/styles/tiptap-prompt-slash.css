@@ -1,0 +1,111 @@
+.prompt-slash-query {
+	border-radius: var(--radius-scale-sm);
+	background: var(--ide-selection);
+}
+
+.prompt-slash-menu-layer {
+	position: fixed;
+	z-index: 80;
+	max-width: calc(100vw - 1.5rem);
+	pointer-events: auto;
+}
+
+.prompt-slash-menu-layer[data-placement="top"] {
+	transform: translateY(-100%);
+}
+
+.prompt-slash-menu,
+.prompt-slash-menu-empty {
+	width: min(26rem, calc(100vw - 2rem));
+	border: var(--border-width-scale-sm) solid var(--border);
+	border-radius: var(--radius-scale-sm);
+	background: var(--popover);
+	color: var(--popover-foreground);
+	box-shadow: var(--shadow-scale-lg);
+	font-size: var(--font-size-xs);
+}
+
+.prompt-slash-menu {
+	max-height: 19rem;
+	overscroll-behavior: contain;
+	overflow-y: auto;
+	padding: 0.25rem;
+}
+
+.prompt-slash-menu-empty {
+	padding: 0.625rem 0.75rem;
+	color: var(--muted-foreground);
+}
+
+.prompt-slash-group {
+	padding: 0.375rem 0.5rem 0.25rem;
+	color: var(--muted-foreground);
+	font-size: var(--font-size-xs);
+	font-weight: var(--font-weight-scale-semibold);
+	line-height: 1;
+}
+
+.prompt-slash-option {
+	display: grid;
+	width: 100%;
+	grid-template-columns: 1rem minmax(0, 1fr);
+	align-items: start;
+	gap: 0.5rem;
+	border-radius: var(--radius-scale-sm);
+	padding: 0.45rem 0.5rem;
+	text-align: left;
+	transition:
+		background-color 120ms ease,
+		color 120ms ease;
+}
+
+.prompt-slash-option[data-selected="true"] {
+	background: var(--ide-list-active);
+	color: var(--ide-list-active-foreground);
+}
+
+.prompt-slash-option-icon {
+	width: 1rem;
+	height: 1rem;
+	margin-top: 0.125rem;
+	color: var(--muted-foreground);
+}
+
+.prompt-slash-option[data-selected="true"] .prompt-slash-option-icon {
+	color: currentColor;
+}
+
+.prompt-slash-option-body {
+	display: grid;
+	min-width: 0;
+	gap: 0.125rem;
+}
+
+.prompt-slash-option-title,
+.prompt-slash-option-meta,
+.prompt-slash-option-preview {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.prompt-slash-option-title {
+	color: inherit;
+	font-weight: var(--font-weight-scale-medium);
+}
+
+.prompt-slash-option-meta,
+.prompt-slash-option-preview {
+	color: var(--muted-foreground);
+	font-size: var(--font-size-xs);
+}
+
+.prompt-slash-option-preview {
+	opacity: 0.9;
+}
+
+.prompt-slash-option[data-selected="true"] .prompt-slash-option-meta,
+.prompt-slash-option[data-selected="true"] .prompt-slash-option-preview {
+	color: currentColor;
+	opacity: 0.78;
+}

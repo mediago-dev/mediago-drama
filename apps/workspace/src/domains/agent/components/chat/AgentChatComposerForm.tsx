@@ -73,10 +73,7 @@ export const AgentChatComposerForm: React.FC<{
 	runtimeConfigErrorMessage,
 	selectedModel,
 }) => (
-	<form
-		onSubmit={onSubmit}
-		className="agent-composer-form border-t border-border bg-ide-panel/95 p-2"
-	>
+	<form onSubmit={onSubmit} className="agent-composer-form">
 		{attachments.length > 0 || openComments.length > 0 ? (
 			<div className="agent-context-strip mb-2 flex min-w-0 flex-nowrap gap-1.5 overflow-hidden">
 				{attachments.map((attachment) => (

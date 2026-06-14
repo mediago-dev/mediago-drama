@@ -762,12 +762,12 @@
 	}
 
 	.agent-composer-form {
-		margin: 0.75rem 1.25rem 1rem;
+		margin: 0.5rem 1rem 0.75rem;
 		border: var(--border-width-scale-sm) solid var(--agent-line);
 		border-radius: 8px;
 		background: var(--agent-surface);
-		padding: 1rem;
-		box-shadow: 0 12px 34px -28px rgb(39 58 88 / 0.42);
+		padding: calc(var(--generation-composer-padding) + var(--space-2xs));
+		box-shadow: 0 8px 24px -24px rgb(39 58 88 / 0.38);
 		backdrop-filter: none;
 		-webkit-backdrop-filter: none;
 	}
@@ -777,7 +777,7 @@
 	}
 
 	.agent-composer-surface {
-		min-height: 7.5rem;
+		min-height: calc(var(--generation-composer-textarea-height) + var(--space-xs));
 		min-width: 0;
 		border: 0;
 		border-radius: var(--radius-scale-sm);
@@ -792,10 +792,10 @@
 	}
 
 	.agent-composer-prosemirror {
-		min-height: 7rem;
-		padding: 0.25rem 0.15rem;
+		min-height: var(--generation-composer-textarea-height);
+		padding: var(--space-2xs) 0.15rem;
 		font-size: 0.82rem;
-		line-height: 1.7;
+		line-height: 1.55;
 		color: var(--agent-text);
 	}
 
@@ -807,14 +807,14 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.75rem;
-		margin-top: 0.75rem;
+		gap: var(--generation-composer-toolbar-gap);
+		margin-top: var(--generation-composer-gap);
 	}
 
 	.agent-runtime-config {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.45rem;
+		gap: var(--generation-composer-toolbar-gap);
 		grid-template-columns: none;
 		margin: 0;
 	}
@@ -822,14 +822,14 @@
 	.agent-config-field {
 		display: inline-flex;
 		min-width: 0;
-		max-width: 16rem;
-		height: 2rem;
+		max-width: 14rem;
+		height: var(--generation-control-height-lg);
 		align-items: center;
 		gap: 0.4rem;
 		border: var(--border-width-scale-sm) solid #e4ebf5;
 		border-radius: var(--radius-scale-sm);
 		background: #f3f6fb;
-		padding: 0 0.6rem;
+		padding: 0 var(--generation-control-padding-x);
 		color: var(--agent-subtle);
 	}
 
@@ -895,7 +895,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
-		gap: 0.55rem;
+		gap: var(--generation-composer-toolbar-gap);
 	}
 
 	.agent-composer-hint {
@@ -905,8 +905,8 @@
 	}
 
 	.agent-composer-icon-button {
-		width: 2rem;
-		height: 2rem;
+		width: var(--generation-control-height-lg);
+		height: var(--generation-control-height-lg);
 		border: 0;
 		border-radius: var(--radius-scale-sm);
 		background: #f3f6fb;
@@ -915,7 +915,7 @@
 
 	.agent-send-button,
 	.agent-stop-button {
-		height: 2rem;
+		height: var(--generation-control-height-lg);
 		border-radius: var(--radius-scale-sm);
 		box-shadow: none;
 	}
@@ -975,7 +975,7 @@
 
 		.agent-composer-form {
 			margin-inline: 0.75rem;
-			padding: 0.85rem;
+			padding: calc(var(--generation-composer-padding) + var(--space-2xs));
 		}
 
 		.agent-composer-footer {

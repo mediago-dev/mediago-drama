@@ -52,13 +52,13 @@ import { useMediaGenerationLifecycle } from "@/domains/generation/components/use
 import {
 	historyPanelWidth,
 	historyResizeHandleWidth,
-	resizeHandleHeight,
 	resizeKeyboardStep,
 	useMediaGenerationWorkspaceLayout,
 } from "@/domains/generation/components/useMediaGenerationWorkspaceLayout";
 import { useGeneratedResultActions } from "@/domains/generation/components/generatedResultActions";
 import { useGenerationCountControl } from "@/domains/generation/components/useGenerationCountControl";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
+import { promptInsertItemsFromLayers } from "@/domains/generation/lib/prompt-insertions";
 import {
 	type GenerationEntry,
 	generationAssetSelectionKey,
@@ -187,14 +187,8 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			]),
 		[extraReferenceUrls, inlineReferenceUrls],
 	);
-	const {
-		historyWidth,
-		inputPanelHeight,
-		nudgeHistoryWidth,
-		nudgeInputPanelHeight,
-		startHistoryResize,
-		startInputPanelResize,
-	} = useMediaGenerationWorkspaceLayout({ rightPaneRef, workspaceRef });
+	const { historyWidth, inputPanelHeight, nudgeHistoryWidth, startHistoryResize } =
+		useMediaGenerationWorkspaceLayout({ rightPaneRef, workspaceRef });
 	const generatedKindLabel = kind === "image" ? "图像" : "视频";
 	const resolvedSubmitLabel = submitLabel ?? (kind === "image" ? "生成图片" : "生成视频");
 	const resolvedPromptPlaceholder =
@@ -566,6 +560,10 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		onViewModeChange?.("edit");
 		window.requestAnimationFrame(() => focusGenerationPromptEditor(rightPaneRef.current));
 	}, [activeGenerationEntry, onViewModeChange, ws.setPrompt]);
+	const promptSlashItems = useMemo(
+		() => promptInsertItemsFromLayers(ws.composerLayers, kind),
+		[ws.composerLayers, kind],
+	);
 
 	const promptEditor = renderPromptEditor ? (
 		renderPromptEditor({
@@ -573,6 +571,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			placeholder: resolvedPromptPlaceholder,
 			onChange: ws.setPrompt,
 			className: generationComposerPromptInputFillClassName,
+			slashItems: promptSlashItems,
 		})
 	) : (
 		<PromptEditor
@@ -580,6 +579,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			onChange={ws.setPrompt}
 			placeholder={resolvedPromptPlaceholder}
 			className={generationComposerPromptInputFillClassName}
+			slashItems={promptSlashItems}
 		/>
 	);
 
@@ -640,7 +640,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				ref={rightPaneRef}
 				className="grid min-h-0 min-w-0"
 				style={{
-					gridTemplateRows: `minmax(0, 1fr) ${resizeHandleHeight}px ${inputPanelHeight}px`,
+					gridTemplateRows: `minmax(0, 1fr) ${inputPanelHeight}px`,
 				}}
 			>
 				<section className="flex min-h-0 min-w-0 flex-col bg-card">
@@ -658,27 +658,6 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 						/>
 					</div>
 				</section>
-
-				<div
-					role="separator"
-					aria-label="调整生成输入区高度"
-					aria-orientation="horizontal"
-					tabIndex={0}
-					className="group relative z-10 -my-[5.5px] flex h-3 cursor-row-resize items-center justify-center bg-transparent"
-					onPointerDown={startInputPanelResize}
-					onKeyDown={(event) => {
-						if (event.key === "ArrowUp") {
-							event.preventDefault();
-							nudgeInputPanelHeight(resizeKeyboardStep);
-						}
-						if (event.key === "ArrowDown") {
-							event.preventDefault();
-							nudgeInputPanelHeight(-resizeKeyboardStep);
-						}
-					}}
-				>
-					<span className="h-px w-full bg-border transition-colors group-hover:bg-muted-foreground/70" />
-				</div>
 
 				{currentViewMode === "history" && tabbedView ? (
 					<HistoryPromptPreviewPanel

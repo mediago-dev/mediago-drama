@@ -62,7 +62,7 @@ export const GenerationComposerPanel: React.FC<GenerationComposerPanelProps> = (
 	return (
 		<section
 			className={cn(
-				"shrink-0 border-t border-border bg-ide-panel p-[var(--generation-composer-padding)]",
+				"shrink-0 bg-transparent p-[var(--generation-composer-padding)]",
 				fillHeight && "h-full min-h-0",
 				className,
 			)}

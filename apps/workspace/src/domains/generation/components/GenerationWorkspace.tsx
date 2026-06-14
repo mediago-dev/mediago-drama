@@ -33,13 +33,14 @@ import {
 	SecondaryParamsDropdown,
 } from "@/domains/generation/components/MediaGenerationDialogs";
 import { LayeredPromptComposer } from "@/domains/generation/components/LayeredPromptComposer";
+import { PromptEditor } from "@/domains/generation/components/PromptEditor";
 import { ReferencePreviewStrip } from "@/domains/generation/components/ReferencePreviewStrip";
 import { Button } from "@/shared/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/components/ui/select";
-import { Textarea } from "@/shared/components/ui/textarea";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import { useGeneratedResultActions } from "@/domains/generation/components/generatedResultActions";
 import { resolveParamGroups } from "@/domains/generation/components/mediaGenerationHelpers";
+import { promptInsertItemsFromLayers } from "@/domains/generation/lib/prompt-insertions";
 
 export {
 	generationAssetSelectionKey,
@@ -248,6 +249,10 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	const copyComposerPrompt = () => {
 		void resultActions.copyText(ws.fullPrompt, "没有可复制的完整提示词");
 	};
+	const promptSlashItems = useMemo(
+		() => promptInsertItemsFromLayers(ws.composerLayers, ws.kind),
+		[ws.composerLayers, ws.kind],
+	);
 
 	const generationComposer = (
 		<form onSubmit={ws.submit} className="shrink-0">
@@ -317,11 +322,12 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 						</>
 					}
 					promptInput={
-						<Textarea
+						<PromptEditor
 							value={ws.prompt}
-							onChange={(event) => ws.setPrompt(event.target.value)}
+							onChange={ws.setPrompt}
 							placeholder={compactPromptPlaceholder}
 							className={generationComposerPromptInputClassName}
+							slashItems={promptSlashItems}
 						/>
 					}
 					referencePreview={
