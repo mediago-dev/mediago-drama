@@ -329,7 +329,7 @@ export const AgentChat: React.FC = () => {
 	};
 
 	return (
-		<section className="flex h-full min-h-0 flex-col bg-ide-panel">
+		<section className="agent-chat-shell flex h-full min-h-0 flex-col bg-ide-panel">
 			<div className="min-h-0 flex-1 overflow-hidden">
 				<AgentTimeline
 					className="h-full"

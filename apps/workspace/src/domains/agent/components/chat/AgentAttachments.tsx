@@ -272,7 +272,7 @@ export const AttachmentChip: React.FC<{
 
 	return (
 		<div
-			className={`inline-flex max-w-full items-center gap-1.5 rounded-sm border px-2 py-1 text-caption ${
+			className={`agent-attachment-chip inline-flex max-w-full items-center gap-1.5 rounded-sm border px-2 py-1 text-caption ${
 				isError
 					? "border-error-border bg-error-surface text-error-foreground"
 					: "border-border bg-ide-toolbar text-ide-toolbar-foreground"

@@ -1,3 +1,4 @@
+import { ShieldAlert } from "lucide-react";
 import type React from "react";
 import { PermissionRequestCard } from "@/domains/agent/components/PermissionRequestCard";
 import {
@@ -18,8 +19,15 @@ export const PendingPermissionRequests: React.FC = () => {
 		<section
 			aria-label="待确认工具权限"
 			aria-live="polite"
-			className="max-h-56 overflow-y-auto border-t border-border bg-ide-panel px-3 py-2"
+			className="agent-permission-stack max-h-56 overflow-y-auto border-t border-border bg-ide-panel px-3 py-2"
 		>
+			<div className="agent-permission-stack-header">
+				<span className="agent-permission-stack-icon" aria-hidden="true">
+					<ShieldAlert />
+				</span>
+				<span>待确认工具权限</span>
+				<span className="agent-permission-count">{requests.length}</span>
+			</div>
 			<div className="space-y-2">
 				{requests.map((request) => (
 					<PermissionRequestCard

@@ -58,7 +58,7 @@ export const ToolCallCard: React.FC<{ message: AgentMessage }> = memo(({ message
 	const { metadata, title, acpKind, Icon, status, inputSummary, outputSummary, isMCP } = details;
 
 	return (
-		<article className="border border-border bg-ide-editor text-xs">
+		<article className="agent-tool-card border border-border bg-ide-editor text-xs">
 			<button
 				type="button"
 				className="flex w-full items-start gap-2 px-2.5 py-2 text-left"
@@ -67,7 +67,7 @@ export const ToolCallCard: React.FC<{ message: AgentMessage }> = memo(({ message
 			>
 				<span
 					className={cn(
-						"mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar",
+						"agent-tool-icon mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar",
 						toolIconTone(status),
 					)}
 				>
@@ -76,11 +76,11 @@ export const ToolCallCard: React.FC<{ message: AgentMessage }> = memo(({ message
 				<span className="min-w-0 flex-1">
 					<span className="flex min-w-0 flex-wrap items-center gap-1.5">
 						<span className="truncate font-medium text-foreground">{title}</span>
-						<span className="shrink-0 rounded-sm border border-border bg-ide-toolbar px-1.5 py-0.5 text-2xs text-muted-foreground">
+						<span className="agent-chip shrink-0 rounded-sm border border-border bg-ide-toolbar px-1.5 py-0.5 text-2xs text-muted-foreground">
 							{acpKind}
 						</span>
 						{isMCP ? (
-							<span className="shrink-0 rounded-sm border border-info-border bg-info-surface px-1.5 py-0.5 text-2xs text-info-foreground">
+							<span className="agent-chip agent-chip-info shrink-0 rounded-sm border border-info-border bg-info-surface px-1.5 py-0.5 text-2xs text-info-foreground">
 								MCP
 							</span>
 						) : null}
@@ -127,7 +127,7 @@ export const ToolCallBody: React.FC<{
 	const { metadata, acpKind, inputText, inputValue, outputBlocks, rawOutputValue } = details;
 
 	return (
-		<div className={cn("border-t border-border bg-ide-toolbar/45", className)}>
+		<div className={cn("agent-tool-body border-t border-border bg-ide-toolbar/45", className)}>
 			<div className="flex border-b border-border">
 				<ToolTabButton active={currentTab === "input"} onClick={() => setTab("input")}>
 					输入
@@ -232,7 +232,7 @@ const ToolTabButton: React.FC<{
 	<button
 		type="button"
 		className={cn(
-			"border-r border-border px-2.5 py-1.5 text-caption transition-colors",
+			"agent-tool-tab border-r border-border px-2.5 py-1.5 text-caption transition-colors",
 			active ? "bg-ide-editor text-foreground" : "text-muted-foreground hover:bg-ide-editor",
 		)}
 		onClick={onClick}
@@ -378,8 +378,14 @@ const EmptyToolPanel: React.FC<{ children: React.ReactNode }> = ({ children }) =
 export const StatusBadge: React.FC<{ status?: string }> = ({ status }) => {
 	if (!status) return null;
 	return (
-		<span className={cn("shrink-0 rounded-sm border px-1.5 py-0.5 text-2xs", statusTone(status))}>
-			{status}
+		<span
+			className={cn(
+				"agent-tool-status shrink-0 rounded-sm border px-1.5 py-0.5 text-2xs",
+				statusTone(status),
+			)}
+		>
+			<span className="agent-tool-status-dot" aria-hidden="true" />
+			{toolStatusLabel(status)}
 		</span>
 	);
 };
@@ -422,6 +428,15 @@ const statusTone = (status: string) => {
 		return "border-warning-border bg-warning-surface text-warning-foreground";
 	}
 	return "border-info-border bg-info-surface text-info-foreground";
+};
+
+const toolStatusLabel = (status: string) => {
+	if (status === "completed") return "完成";
+	if (status === "failed") return "失败";
+	if (status === "in_progress" || status === "pending" || status === "streaming") {
+		return "运行中";
+	}
+	return status;
 };
 
 const toolIconTone = (status?: string) => {

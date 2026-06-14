@@ -15,7 +15,7 @@ export const RuntimeAlertCard: React.FC<RuntimeAlertCardProps> = ({ alert }) => 
 	return (
 		<div
 			className={cn(
-				"rounded-sm border px-2 py-2 text-xs",
+				"agent-runtime-alert rounded-sm border px-2 py-2 text-xs",
 				isError
 					? "border-error-border bg-error-surface text-error-foreground"
 					: "border-warning-border bg-warning-surface text-warning-foreground",

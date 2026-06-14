@@ -172,6 +172,112 @@ describe("AgentTimeline", () => {
 		expect(screen.getAllByText("3.6 MB")).toHaveLength(1);
 	});
 
+	it("renders structured assistant markdown as a final reply card", () => {
+		render(
+			<AgentTimeline
+				isRunning={false}
+				messages={[
+					assistantMessage({
+						content: [
+							"## 第二章 · 分镜文档已生成",
+							"我已整理完整镜头序列。",
+							"",
+							"- 共拆解 18 个镜头",
+							"- 已写入 docs/第二章·分镜.md",
+						].join("\n"),
+					}),
+				]}
+			/>,
+		);
+
+		expect(screen.getByText("文档智能体")).toBeTruthy();
+		expect(screen.getByText("最终回复")).toBeTruthy();
+		expect(screen.getByText("第二章 · 分镜文档已生成")).toBeTruthy();
+		expect(screen.getByText("共拆解 18 个镜头")).toBeTruthy();
+	});
+
+	it("keeps top-level think content as a standalone thought block", () => {
+		render(
+			<AgentTimeline
+				isRunning={false}
+				messages={[
+					assistantMessage({
+						content: "<think>需要先读取项目结构，再输出结论。</think>",
+					}),
+				]}
+			/>,
+		);
+
+		expect(screen.getByText("思考")).toBeTruthy();
+		expect(screen.getByText("1 段")).toBeTruthy();
+		expect(screen.queryByText("最终回复")).toBeFalsy();
+	});
+
+	it("renders plan entries with progress state", () => {
+		render(
+			<AgentTimeline
+				isRunning={false}
+				messages={[
+					assistantMessage({
+						id: "plan-1",
+						kind: "plan",
+						content: "",
+						metadata: {
+							planEntries: [
+								{ content: "读取第二章剧本与角色设定", status: "completed" },
+								{ content: "匹配分镜模板与镜头规范", status: "completed" },
+								{ content: "逐场拆解镜头并撰写画面说明", status: "in_progress" },
+							],
+						},
+					}),
+				]}
+			/>,
+		);
+
+		expect(screen.getByText("2 / 3 完成")).toBeTruthy();
+		expect(screen.getByText("读取第二章剧本与角色设定")).toBeTruthy();
+		expect(screen.getByText("逐场拆解镜头并撰写画面说明")).toBeTruthy();
+	});
+
+	it("renders tool group rows with localized status badges", () => {
+		render(
+			<AgentTimeline
+				isRunning
+				messages={[
+					assistantMessage({
+						id: "tool-read",
+						kind: "tool",
+						title: "读取章节脚本",
+						metadata: {
+							acpKind: "read",
+							durationMs: 1800,
+							filePath: "drama/第二章/script.md",
+							status: "completed",
+							toolCallId: "call-read",
+						},
+					}),
+					assistantMessage({
+						id: "tool-edit",
+						kind: "tool",
+						title: "生成分镜文档",
+						metadata: {
+							acpKind: "edit",
+							filePath: "docs/第二章·分镜.md",
+							status: "in_progress",
+							toolCallId: "call-edit",
+						},
+					}),
+				]}
+			/>,
+		);
+
+		expect(screen.getByText(/已探索 1 个文件/)).toBeTruthy();
+		expect(screen.getByText("读取章节脚本")).toBeTruthy();
+		expect(screen.getByText("生成分镜文档")).toBeTruthy();
+		expect(screen.getByText("完成")).toBeTruthy();
+		expect(screen.getByText("运行中")).toBeTruthy();
+	});
+
 	it("hides stale permission A2UI cards after the request leaves pending state", () => {
 		useAgentStore.setState({ isRunning: false, permissionRequests: [] });
 
@@ -226,6 +332,17 @@ const userMessage = (patch: Partial<AgentMessage>): AgentMessage => ({
 	status: patch.status ?? "complete",
 	createdAt: patch.createdAt ?? "2026-06-08T08:00:00.000Z",
 	metadata: patch.metadata,
+});
+
+const assistantMessage = (patch: Partial<AgentMessage>): AgentMessage => ({
+	id: patch.id ?? "assistant-1",
+	role: "assistant",
+	content: patch.content ?? "content",
+	kind: patch.kind ?? "message",
+	status: patch.status ?? "complete",
+	createdAt: patch.createdAt ?? "2026-06-08T08:00:01.000Z",
+	metadata: patch.metadata,
+	title: patch.title,
 });
 
 const permissionA2UIMessage = (metadata: Record<string, unknown> = {}): AgentMessage => ({

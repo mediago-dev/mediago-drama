@@ -73,21 +73,12 @@ export const AgentChatComposerForm: React.FC<{
 	runtimeConfigErrorMessage,
 	selectedModel,
 }) => (
-	<form onSubmit={onSubmit} className="border-t border-border bg-ide-panel/95 p-2">
-		<AgentRuntimeConfigControls
-			config={runtimeConfig}
-			modelValue={selectedModel}
-			reasoningValue={reasoningValue}
-			permissionValue={permissionValue}
-			disabled={disabled}
-			errorMessage={runtimeConfigErrorMessage}
-			isLoading={isRuntimeConfigLoading}
-			onModelChange={onModelChange}
-			onReasoningChange={onReasoningChange}
-			onPermissionChange={onPermissionChange}
-		/>
+	<form
+		onSubmit={onSubmit}
+		className="agent-composer-form border-t border-border bg-ide-panel/95 p-2"
+	>
 		{attachments.length > 0 || openComments.length > 0 ? (
-			<div className="mb-2 flex min-w-0 flex-nowrap gap-1.5 overflow-hidden">
+			<div className="agent-context-strip mb-2 flex min-w-0 flex-nowrap gap-1.5 overflow-hidden">
 				{attachments.map((attachment) => (
 					<AttachmentChip
 						key={attachment.id}
@@ -111,9 +102,10 @@ export const AgentChatComposerForm: React.FC<{
 			className="hidden"
 			onChange={onAttachFiles}
 		/>
-		<div className="flex items-end gap-2">
+		<div className="agent-composer-row flex items-end gap-2">
 			<AgentComposer
 				ref={composerRef}
+				className="agent-composer-main"
 				disabled={disabled}
 				placeholder={
 					openComments.length > 0
@@ -128,41 +120,59 @@ export const AgentChatComposerForm: React.FC<{
 					onRunPrompt();
 				}}
 			/>
-			<Button
-				type="button"
-				variant="outline"
-				size="icon"
-				aria-label="上传附件"
+		</div>
+		<div className="agent-composer-footer">
+			<AgentRuntimeConfigControls
+				config={runtimeConfig}
+				modelValue={selectedModel}
+				reasoningValue={reasoningValue}
+				permissionValue={permissionValue}
 				disabled={disabled}
-				onClick={() => fileInputRef.current?.click()}
-			>
-				<Paperclip />
-			</Button>
-			{disabled ? (
+				errorMessage={runtimeConfigErrorMessage}
+				isLoading={isRuntimeConfigLoading}
+				onModelChange={onModelChange}
+				onReasoningChange={onReasoningChange}
+				onPermissionChange={onPermissionChange}
+			/>
+			<div className="agent-composer-actions">
+				<span className="agent-composer-hint">@ 引用文档 · Enter 发送</span>
 				<Button
 					type="button"
-					size="sm"
-					variant="destructive"
-					className="h-8 px-2.5"
-					aria-label="终止运行"
-					disabled={isStopping}
-					onClick={onStopRun}
+					variant="outline"
+					size="icon"
+					className="agent-composer-icon-button"
+					aria-label="上传附件"
+					disabled={disabled}
+					onClick={() => fileInputRef.current?.click()}
 				>
-					{isStopping ? <Loader2 className="animate-spin" /> : <Square />}
-					<span>停止</span>
+					<Paperclip />
 				</Button>
-			) : (
-				<Button
-					type="submit"
-					size="sm"
-					className="h-8 px-2.5"
-					aria-label="发送消息"
-					disabled={!canSubmit}
-				>
-					<SendHorizontal />
-					<span>发送</span>
-				</Button>
-			)}
+				{disabled ? (
+					<Button
+						type="button"
+						size="sm"
+						variant="destructive"
+						className="agent-stop-button h-8 px-2.5"
+						aria-label="终止运行"
+						disabled={isStopping}
+						onClick={onStopRun}
+					>
+						{isStopping ? <Loader2 className="animate-spin" /> : <Square />}
+						<span>停止</span>
+					</Button>
+				) : (
+					<Button
+						type="submit"
+						size="sm"
+						className="agent-send-button h-8 px-2.5"
+						aria-label="发送消息"
+						disabled={!canSubmit}
+					>
+						<SendHorizontal />
+						<span>发送</span>
+					</Button>
+				)}
+			</div>
 		</div>
 	</form>
 );

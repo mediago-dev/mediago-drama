@@ -97,12 +97,12 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 
 	return (
 		<aside
-			className="flex h-full min-h-0 w-full shrink-0 flex-col bg-ide-panel text-ide-panel-foreground"
+			className="agent-panel-shell flex h-full min-h-0 w-full shrink-0 flex-col bg-ide-panel text-ide-panel-foreground"
 			style={width ? { width } : undefined}
 		>
-			<header className="flex items-center justify-between gap-3 border-b border-border bg-ide-toolbar/95 px-3 py-2 text-ide-toolbar-foreground">
+			<header className="agent-panel-header flex items-center justify-between gap-3 border-b border-border bg-ide-toolbar/95 px-3 py-2 text-ide-toolbar-foreground">
 				<div className="flex min-w-0 items-center gap-2">
-					<div className="flex size-7 items-center justify-center rounded-sm bg-primary text-primary-foreground">
+					<div className="agent-brand-mark flex size-8 items-center justify-center rounded-sm bg-primary text-primary-foreground">
 						<Bot className="size-4" />
 					</div>
 					<div className="min-w-0">
@@ -111,7 +111,7 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 					</div>
 				</div>
 				<div className="flex shrink-0 items-center gap-1">
-					<span className="hidden items-center gap-1.5 rounded-sm border border-border bg-ide-panel px-2 py-1 text-caption text-muted-foreground sm:flex">
+					<span className="agent-status-pill hidden items-center gap-1.5 rounded-sm border border-border bg-ide-panel px-2 py-1 text-caption text-muted-foreground sm:flex">
 						<span
 							className={cn(
 								"size-1.5 rounded-full",
@@ -125,6 +125,7 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 						<Button
 							variant={isHistoryOpen ? "secondary" : "ghost"}
 							size="sm"
+							className="agent-header-button"
 							onClick={() => setIsHistoryOpen((open) => !open)}
 							aria-expanded={isHistoryOpen}
 							aria-haspopup="menu"
@@ -145,6 +146,7 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 					<Button
 						variant="ghost"
 						size="sm"
+						className="agent-header-button"
 						onClick={handleCreateSession}
 						disabled={isRunning || isCreatingSession}
 						title={isRunning ? "当前运行结束后再新建会话" : "新建会话"}
@@ -154,7 +156,7 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 					</Button>
 				</div>
 			</header>
-			<div className="min-h-0 flex-1 overflow-hidden">
+			<div className="relative min-h-0 flex-1 overflow-hidden">
 				<AgentChat />
 			</div>
 		</aside>
@@ -219,7 +221,7 @@ const AgentSessionHistoryMenu: React.FC<{
 	if (!projectId) {
 		return (
 			<div
-				className="absolute right-0 top-full z-50 mt-1 w-72 rounded-sm border border-border bg-popover p-3 text-sm text-muted-foreground shadow-lg"
+				className="agent-history-menu absolute right-0 top-full z-50 mt-1 w-72 rounded-sm border border-border bg-popover p-3 text-sm text-muted-foreground shadow-lg"
 				role="menu"
 			>
 				打开项目后可以查看历史会话。
@@ -229,7 +231,7 @@ const AgentSessionHistoryMenu: React.FC<{
 
 	return (
 		<section
-			className="absolute right-0 top-full z-50 mt-1 flex max-h-[min(28rem,calc(100vh-8rem))] w-[min(24rem,calc(100vw-2rem))] min-w-72 flex-col overflow-hidden rounded-sm border border-border bg-popover text-popover-foreground shadow-lg"
+			className="agent-history-menu absolute right-0 top-full z-50 mt-1 flex max-h-[min(28rem,calc(100vh-8rem))] w-[min(24rem,calc(100vw-2rem))] min-w-72 flex-col overflow-hidden rounded-sm border border-border bg-popover text-popover-foreground shadow-lg"
 			role="menu"
 		>
 			<div className="border-b border-border px-3 py-2">
@@ -262,11 +264,11 @@ const AgentSessionHistoryMenu: React.FC<{
 									onClick={() => selectSession(session)}
 									disabled={Boolean(loadingSessionId)}
 									className={cn(
-										"flex w-full items-start gap-2 rounded-sm border border-transparent px-2 py-2 text-left transition-colors hover:border-border hover:bg-ide-list-hover disabled:pointer-events-none disabled:opacity-60",
-										isActive && "border-info-border bg-info-surface",
+										"agent-history-item flex w-full items-start gap-2 rounded-sm border border-transparent px-2 py-2 text-left transition-colors hover:border-border hover:bg-ide-list-hover disabled:pointer-events-none disabled:opacity-60",
+										isActive && "agent-history-item-active border-info-border bg-info-surface",
 									)}
 								>
-									<div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar">
+									<div className="agent-history-icon mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar">
 										{isLoadingSession ? (
 											<Loader2 className="size-3.5 animate-spin" />
 										) : (
@@ -283,7 +285,7 @@ const AgentSessionHistoryMenu: React.FC<{
 											</span>
 											<span
 												className={cn(
-													"shrink-0 rounded-sm border px-1.5 py-0.5 text-2xs",
+													"agent-history-status shrink-0 rounded-sm border px-1.5 py-0.5 text-2xs",
 													sessionStatusClassName(session),
 												)}
 											>

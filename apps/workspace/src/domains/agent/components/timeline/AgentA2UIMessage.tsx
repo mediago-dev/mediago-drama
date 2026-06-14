@@ -25,7 +25,7 @@ export const AgentA2UIMessage: React.FC<{
 
 	if (result.error) {
 		return (
-			<article className="rounded-sm border border-error-border bg-error-surface px-3 py-2 text-xs leading-5 text-error-foreground">
+			<article className="agent-a2ui-card rounded-sm border border-error-border bg-error-surface px-3 py-2 text-xs leading-5 text-error-foreground">
 				{result.error}
 			</article>
 		);
@@ -36,7 +36,7 @@ export const AgentA2UIMessage: React.FC<{
 	return (
 		<article
 			className={cn(
-				"max-w-[var(--message-bubble-max-width)] rounded-sm border border-border bg-card px-3 py-3 text-xs shadow-sm",
+				"agent-a2ui-card max-w-[var(--message-bubble-max-width)] rounded-sm border border-border bg-card px-3 py-3 text-xs shadow-sm",
 				"[--a2ui-button-border-radius:var(--radius-scale-sm)] [--a2ui-color-border:var(--border)]",
 				"[--a2ui-color-input:var(--input)] [--a2ui-color-on-background:var(--foreground)]",
 				"[--a2ui-color-on-primary:var(--primary-foreground)] [--a2ui-color-on-surface:var(--card-foreground)]",

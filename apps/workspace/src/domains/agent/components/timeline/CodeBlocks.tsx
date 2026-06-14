@@ -10,7 +10,7 @@ import { byteLength, compactDiffLines, countTextLines, formatBytes, isLargeText 
 import { XtermView } from "./XtermView";
 
 export const CodeBlock: React.FC<{ content: string }> = ({ content }) => (
-	<pre className="max-h-64 overflow-auto whitespace-pre-wrap font-mono text-caption leading-5 text-foreground">
+	<pre className="agent-code-block max-h-64 overflow-auto whitespace-pre-wrap font-mono text-caption leading-5 text-foreground">
 		<code>{content}</code>
 	</pre>
 );
@@ -20,7 +20,7 @@ export const TextOutputBlock: React.FC<{ label: string; text: string }> = ({ lab
 	const summary = `${countTextLines(text)} lines · ${formatBytes(byteLength(text))}`;
 
 	return (
-		<section className="border border-border bg-ide-editor">
+		<section className="agent-output-block border border-border bg-ide-editor">
 			<div className="flex items-center justify-between gap-2 border-b border-border bg-ide-toolbar px-2 py-1">
 				<button
 					type="button"
@@ -50,7 +50,7 @@ export const JsonViewBlock: React.FC<{ label: string; value: unknown }> = ({ lab
 	const summary = `${formatBytes(byteLength(jsonText))} JSON`;
 
 	return (
-		<section className="border border-border bg-ide-editor">
+		<section className="agent-output-block border border-border bg-ide-editor">
 			<div className="flex items-center justify-between gap-2 border-b border-border bg-ide-toolbar px-2 py-1">
 				<button
 					type="button"
@@ -97,7 +97,7 @@ export const DiffBlock: React.FC<{ block: AgentACPContentBlock }> = ({ block }) 
 	]);
 
 	return (
-		<section className="border border-border bg-ide-editor">
+		<section className="agent-output-block border border-border bg-ide-editor">
 			<div className="flex items-center justify-between gap-2 border-b border-border bg-ide-toolbar px-2 py-1">
 				<div className="min-w-0 text-caption text-muted-foreground">
 					<span className="font-mono">{block.path || "diff"}</span>
@@ -138,7 +138,7 @@ export const TerminalBlock: React.FC<{ block: AgentACPContentBlock }> = ({ block
 	const [expanded, setExpanded] = useState(!isLargeText(text));
 
 	return (
-		<section className="border border-border bg-ide-editor">
+		<section className="agent-output-block border border-border bg-ide-editor">
 			<div className="flex items-center justify-between gap-2 border-b border-border bg-ide-toolbar px-2 py-1">
 				<button
 					type="button"
