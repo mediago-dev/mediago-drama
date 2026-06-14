@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
@@ -25,9 +27,13 @@ var (
 )
 
 const (
-	jimengLoginStartTimeout = 60 * time.Second
-	jimengLoginCheckTimeout = 45 * time.Second
+	jimengLoginStartTimeout   = 60 * time.Second
+	jimengLoginCheckTimeout   = 45 * time.Second
+	jimengLoginProcessTimeout = 10 * time.Minute
+	jimengLogoutTimeout       = 30 * time.Second
 )
+
+var urlPattern = regexp.MustCompile(`https?://[^\s"'<>]+`)
 
 // APIKeyStore persists API keys for configured providers.
 type APIKeyStore interface {
@@ -145,6 +151,11 @@ func (service *Settings) ClearAPIKey(ctx context.Context, providerID string) (AP
 	if !ok {
 		return APIKeyList{}, ErrAPIKeyProviderNotFound
 	}
+	if provider.ID == generation.ProviderJimeng {
+		if _, err := service.runJimengCommand(ctx, jimengLogoutTimeout, "logout"); err != nil {
+			return APIKeyList{}, err
+		}
+	}
 	if err := service.apiKeys.Clear(provider.keyName); err != nil {
 		return APIKeyList{}, err
 	}
@@ -153,25 +164,19 @@ func (service *Settings) ClearAPIKey(ctx context.Context, providerID string) (AP
 
 // BeginJimengLogin starts the local Jimeng OAuth device login flow.
 func (service *Settings) BeginJimengLogin(ctx context.Context, force bool) (APIKeyLoginResult, error) {
+	_ = force
 	if _, ok := findAPIKeyProvider(generation.ProviderJimeng); !ok {
 		return APIKeyLoginResult{}, ErrAPIKeyProviderNotFound
 	}
-	command := "login"
-	if force {
-		command = "relogin"
-	}
-	output, err := service.runJimengCommand(ctx, jimengLoginStartTimeout, command, "--headless")
+	login, waitDone, output, err := service.startJimengLogin(ctx)
 	if err != nil {
 		return APIKeyLoginResult{}, err
 	}
-
-	login := parseJimengLoginChallenge(output)
 	if login.Status == "pending" {
-		if force {
-			if err := service.apiKeys.Clear(generation.ProviderJimeng); err != nil {
-				return APIKeyLoginResult{}, err
-			}
+		if err := service.apiKeys.Clear(generation.ProviderJimeng); err != nil {
+			return APIKeyLoginResult{}, err
 		}
+		go service.persistJimengLoginWhenDone(waitDone)
 		return service.apiKeyLoginResult(ctx, login)
 	}
 	if err := service.apiKeys.Set(generation.ProviderJimeng, "oauth:"+time.Now().UTC().Format(time.RFC3339)); err != nil {
@@ -181,9 +186,78 @@ func (service *Settings) BeginJimengLogin(ctx context.Context, force bool) (APIK
 		login.Status = "completed"
 	}
 	if login.Message == "" {
+		login.Message = strings.TrimSpace(output)
+	}
+	if login.Message == "" {
 		login.Message = "即梦本地登录态已可用"
 	}
 	return service.apiKeyLoginResult(ctx, login)
+}
+
+func (service *Settings) startJimengLogin(ctx context.Context) (ProviderLoginChallenge, <-chan error, string, error) {
+	binPath, err := jimeng.ResolveBinaryPath(service.jimengBinPath, service.jimengBinDir)
+	if err != nil {
+		return ProviderLoginChallenge{}, nil, "", err
+	}
+
+	processCtx, cancelProcess := context.WithTimeout(context.Background(), jimengLoginProcessTimeout)
+	command := exec.CommandContext(processCtx, binPath, "login")
+	output := newCommandOutputWatcher()
+	command.Stdout = output
+	command.Stderr = output
+	if err := command.Start(); err != nil {
+		cancelProcess()
+		return ProviderLoginChallenge{}, nil, "", err
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		err := command.Wait()
+		cancelProcess()
+		done <- err
+	}()
+
+	startTimer := time.NewTimer(jimengLoginStartTimeout)
+	defer startTimer.Stop()
+
+	for {
+		select {
+		case text := <-output.updates:
+			login := parseJimengLoginChallenge([]byte(text))
+			if login.Status == "pending" && login.VerificationURI != "" {
+				login.DeviceCode = ""
+				if login.Message == "" {
+					login.Message = "即梦登录链接已生成，请在浏览器中完成登录。"
+				}
+				return login, done, text, nil
+			}
+		case err := <-done:
+			text := output.String()
+			if err != nil {
+				return ProviderLoginChallenge{}, nil, text, jimengCommandError("login", err, text)
+			}
+			login := parseJimengLoginChallenge([]byte(text))
+			login.Status = "completed"
+			login.DeviceCode = ""
+			return login, nil, text, nil
+		case <-startTimer.C:
+			cancelProcess()
+			return ProviderLoginChallenge{}, nil, output.String(), jimengCommandError("login", context.DeadlineExceeded, output.String())
+		case <-ctx.Done():
+			cancelProcess()
+			return ProviderLoginChallenge{}, nil, output.String(), ctx.Err()
+		}
+	}
+}
+
+func (service *Settings) persistJimengLoginWhenDone(done <-chan error) {
+	if done == nil {
+		return
+	}
+	if err := <-done; err != nil {
+		return
+	}
+	_ = service.apiKeys.Set(generation.ProviderJimeng, "oauth:"+time.Now().UTC().Format(time.RFC3339))
 }
 
 // CompleteJimengLogin checks a prior Jimeng OAuth device login and stores a local session marker.
@@ -230,13 +304,17 @@ func (service *Settings) runJimengCommand(ctx context.Context, timeout time.Dura
 	command := exec.CommandContext(commandCtx, binPath, args...)
 	output, err := command.CombinedOutput()
 	if err != nil {
-		message := strings.TrimSpace(string(output))
-		if message == "" {
-			return output, fmt.Errorf("jimeng %s failed: %w", strings.Join(args, " "), err)
-		}
-		return output, fmt.Errorf("jimeng %s failed: %w: %s", strings.Join(args, " "), err, message)
+		return output, jimengCommandError(strings.Join(args, " "), err, string(output))
 	}
 	return output, nil
+}
+
+func jimengCommandError(commandName string, err error, output string) error {
+	message := strings.TrimSpace(output)
+	if message == "" {
+		return fmt.Errorf("jimeng %s failed: %w", commandName, err)
+	}
+	return fmt.Errorf("jimeng %s failed: %w: %s", commandName, err, message)
 }
 
 func (service *Settings) apiKeyLoginResult(ctx context.Context, login ProviderLoginChallenge) (APIKeyLoginResult, error) {
@@ -269,6 +347,9 @@ func parseJimengLoginChallenge(output []byte) ProviderLoginChallenge {
 	}
 	if login.DeviceCode == "" {
 		login.DeviceCode = loginOutputValue(text, "device_code", "deviceCode")
+	}
+	if login.VerificationURI == "" {
+		login.VerificationURI = firstURL(text)
 	}
 	if login.VerificationURI != "" || login.UserCode != "" || login.DeviceCode != "" {
 		login.Status = "pending"
@@ -308,6 +389,48 @@ func loginOutputValue(output string, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func firstURL(output string) string {
+	value := urlPattern.FindString(output)
+	return strings.TrimRight(value, ".,;:)]}，。；：")
+}
+
+type commandOutputWatcher struct {
+	mu      sync.Mutex
+	output  strings.Builder
+	updates chan string
+}
+
+func newCommandOutputWatcher() *commandOutputWatcher {
+	return &commandOutputWatcher{updates: make(chan string, 1)}
+}
+
+func (watcher *commandOutputWatcher) Write(bytes []byte) (int, error) {
+	watcher.mu.Lock()
+	watcher.output.Write(bytes)
+	text := watcher.output.String()
+	watcher.mu.Unlock()
+
+	select {
+	case watcher.updates <- text:
+	default:
+		select {
+		case <-watcher.updates:
+		default:
+		}
+		select {
+		case watcher.updates <- text:
+		default:
+		}
+	}
+	return len(bytes), nil
+}
+
+func (watcher *commandOutputWatcher) String() string {
+	watcher.mu.Lock()
+	defer watcher.mu.Unlock()
+	return watcher.output.String()
 }
 
 // GetAPIKey returns an API key by provider key name.

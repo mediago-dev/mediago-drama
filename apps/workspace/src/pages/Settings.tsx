@@ -10,7 +10,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import useSWR from "swr";
 import {
@@ -99,6 +99,32 @@ const APIKeysPanel: React.FC = () => {
 	const [loggingInID, setLoggingInID] = useState<string>();
 	const [checkingLoginID, setCheckingLoginID] = useState<string>();
 	const [loginChallenges, setLoginChallenges] = useState<Record<string, APIKeyLoginChallenge>>({});
+	const hasPendingBrowserLogin = Object.values(loginChallenges).some(
+		(challenge) => challenge.status === "pending" && Boolean(challenge.verificationUri),
+	);
+
+	useEffect(() => {
+		if (!hasPendingBrowserLogin) return;
+		const intervalID = window.setInterval(() => {
+			void mutate();
+		}, 3000);
+		return () => window.clearInterval(intervalID);
+	}, [hasPendingBrowserLogin, mutate]);
+
+	useEffect(() => {
+		if (!data?.providers) return;
+		setLoginChallenges((current) => {
+			let changed = false;
+			const next = { ...current };
+			for (const provider of data.providers) {
+				if (provider.configured && next[provider.id]?.status === "pending") {
+					delete next[provider.id];
+					changed = true;
+				}
+			}
+			return changed ? next : current;
+		});
+	}, [data?.providers]);
 
 	const updateAPIKey = (providerID: string, value: string) => {
 		setAPIKeys((current) => ({ ...current, [providerID]: value }));
@@ -147,7 +173,7 @@ const APIKeysPanel: React.FC = () => {
 				if (nextData.login.verificationUri) {
 					await openExternalURL(nextData.login.verificationUri);
 				}
-				toast.info("即梦授权已打开", {
+				toast.info("即梦登录页已打开", {
 					description: nextData.login.userCode
 						? `验证码：${nextData.login.userCode}`
 						: provider.label,
@@ -387,6 +413,7 @@ const APIKeyProviderRow: React.FC<{
 	const canClear = provider.configured || Boolean(apiKey);
 	const isOAuthProvider = provider.credentialKind === "oauth";
 	const isLoginPending = loginChallenge?.status === "pending";
+	const canConfirmLogin = isLoginPending && Boolean(loginChallenge?.deviceCode);
 
 	return (
 		<section className="grid gap-3 py-2 lg:grid-cols-[minmax(var(--settings-provider-column-min),var(--settings-provider-column-max))_minmax(0,1fr)_auto] lg:items-start">
@@ -412,7 +439,7 @@ const APIKeyProviderRow: React.FC<{
 						<div className="flex min-h-8 items-center rounded-md border border-border bg-ide-toolbar px-3 text-xs text-foreground">
 							<span>
 								{isLoginPending
-									? "等待即梦授权确认"
+									? "等待即梦浏览器登录"
 									: provider.configured
 										? "本地即梦会话已记录"
 										: "需要登录即梦账号"}
@@ -485,7 +512,7 @@ const APIKeyProviderRow: React.FC<{
 								<span>打开</span>
 							</Button>
 						) : null}
-						{isLoginPending ? (
+						{canConfirmLogin ? (
 							<Button
 								type="button"
 								disabled={isCheckingLogin}
@@ -495,6 +522,11 @@ const APIKeyProviderRow: React.FC<{
 							>
 								{isCheckingLogin ? <Loader2 className="animate-spin" /> : <Check />}
 								<span>确认</span>
+							</Button>
+						) : isLoginPending ? (
+							<Button type="button" disabled className="rounded-md">
+								<Loader2 className="animate-spin" />
+								<span>登录中</span>
 							</Button>
 						) : (
 							<Button
