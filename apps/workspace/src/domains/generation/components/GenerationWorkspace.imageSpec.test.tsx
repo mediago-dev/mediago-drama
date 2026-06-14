@@ -17,11 +17,6 @@ vi.mock("@/domains/generation/components/GenerationChatPanel", () => ({
 	GenerationChatPanel: () => <div data-testid="generation-chat-panel" />,
 }));
 
-vi.mock("@/domains/generation/components/GenerationInspectorResize", () => ({
-	GenerationInspectorResizeHandle: () => null,
-	useGenerationInspectorWidth: () => [360, vi.fn()],
-}));
-
 vi.mock("@/domains/generation/components/GenerationSetupNotice", () => ({
 	GenerationSetupNotice: () => <div data-testid="setup-notice" />,
 	InspectorHeading: ({ title }: { title: string }) => <h2>{title}</h2>,
