@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { GenerationAsset } from "@/domains/generation/api/generation";
 import {
 	MarkdownHybridEditor,
+	prewarmMarkdownHybridEditorContent,
 	type MarkdownSectionContext,
 	type MarkdownHybridEditorHandle,
 	type SelectionCoords,
@@ -19,7 +20,11 @@ import { Button } from "@/shared/components/ui/button";
 import { registerEditor } from "@/domains/documents/lib/editor-registry";
 import { selectEditableDocument } from "@/domains/documents/lib/filters";
 import { sectionGenerationIdentityKey } from "@/domains/documents/lib/section-generation";
-import { type DocumentComment, useDocumentsStore } from "@/domains/documents/stores";
+import {
+	type DocumentComment,
+	type MarkdownDocument,
+	useDocumentsStore,
+} from "@/domains/documents/stores";
 import { useGenerationNotificationStore } from "@/domains/generation/stores/generation-notifications";
 import {
 	generationAssetSelectionKey,
@@ -29,7 +34,17 @@ import { agentProjectPath, getRouteProjectId } from "@/domains/workspace/lib/wor
 
 const autosaveDelayMs = 500;
 const markerClusterDistance = 28;
-const writingEditorExtraExtensions = [DocumentMention];
+export const writingEditorExtraExtensions = [DocumentMention];
+
+export const prewarmWritingEditorDocument = (
+	document: Pick<MarkdownDocument, "content" | "id">,
+) => {
+	prewarmMarkdownHybridEditorContent({
+		documentId: document.id,
+		extraExtensions: writingEditorExtraExtensions,
+		value: document.content,
+	});
+};
 
 interface WritingEditorProps {
 	onOpenDocumentList?: () => void;

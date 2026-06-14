@@ -1,9 +1,14 @@
 import type React from "react";
 import { CommentsGutter } from "@/domains/documents/components/CommentsGutter";
 import { ProjectAssetPreviewPane } from "@/domains/documents/components/ProjectAssetPreviewPane";
-import { WritingEditor } from "@/domains/documents/components/WritingEditor";
+import {
+	prewarmWritingEditorDocument,
+	WritingEditor,
+} from "@/domains/documents/components/WritingEditor";
 import { ProjectWorkspaceShell } from "@/domains/workspace/components/ProjectWorkspaceShell";
 import { useDocumentsStore } from "@/domains/documents/stores";
+
+export const prewarmWritingDocumentEditor = prewarmWritingEditorDocument;
 
 export const WritingWorkspace: React.FC = () => {
 	const activeAssetId = useDocumentsStore((state) => state.activeAssetId);

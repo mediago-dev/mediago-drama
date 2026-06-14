@@ -3,7 +3,7 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "r
 import { Settings2 } from "lucide-react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { PhotoSlider } from "react-photo-view";
-import type { Editor, Extensions, JSONContent } from "@tiptap/core";
+import { Editor as CoreEditor, type Editor, type Extensions, type JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import Image from "@tiptap/extension-image";
@@ -127,6 +127,89 @@ const rememberParsedMarkdown = (documentId: string, markdown: string, editor: Ed
 	}
 };
 
+const createMarkdownSchemaExtensions = (
+	extraExtensions: Extensions = defaultExtraExtensions,
+	lockedHeadingPlan: LockedHeadingPlan | null = null,
+): Extensions => [
+	StarterKit.configure({
+		heading: false,
+		horizontalRule: false,
+		link: {
+			autolink: true,
+			defaultProtocol: "https",
+			enableClickSelection: true,
+			linkOnPaste: true,
+			openOnClick: false,
+		},
+	}),
+	LockedHeading.configure({ levels: [1, 2, 3, 4] }),
+	SectionIdAnchor,
+	Image.configure({
+		allowBase64: true,
+	}),
+	Table.configure({
+		resizable: true,
+	}),
+	TableRow,
+	TableHeader,
+	TableCell,
+	...extraExtensions,
+	...(lockedHeadingPlan ? [createLockedHeadingsExtension(lockedHeadingPlan)] : []),
+];
+
+const markdownExtension = () =>
+	Markdown.configure({
+		indentation: {
+			style: "space",
+			size: 2,
+		},
+	});
+
+const createMarkdownParsingExtensions = (
+	extraExtensions: Extensions = defaultExtraExtensions,
+	lockedHeadingPlan: LockedHeadingPlan | null = null,
+): Extensions => [
+	...createMarkdownSchemaExtensions(extraExtensions, lockedHeadingPlan),
+	markdownExtension(),
+];
+
+const createMarkdownEditorExtensions = (
+	blockHandleExtension: Extensions[number],
+	extraExtensions: Extensions = defaultExtraExtensions,
+	lockedHeadingPlan: LockedHeadingPlan | null = null,
+): Extensions => [
+	...createMarkdownSchemaExtensions(extraExtensions, lockedHeadingPlan),
+	blockHandleExtension,
+	commentAnchorExtension,
+	Placeholder.configure({
+		placeholder: "开始写作...",
+	}),
+	markdownExtension(),
+];
+
+export const prewarmMarkdownHybridEditorContent = ({
+	documentId,
+	extraExtensions = defaultExtraExtensions,
+	lockedHeadingPlan = null,
+	value,
+}: {
+	documentId: string;
+	extraExtensions?: Extensions;
+	lockedHeadingPlan?: LockedHeadingPlan | null;
+	value: string;
+}) => {
+	if (!documentId || !value || cachedParsedMarkdown(documentId, value)) return;
+
+	const editor = new CoreEditor({
+		editable: false,
+		extensions: createMarkdownParsingExtensions(extraExtensions, lockedHeadingPlan),
+		content: value,
+		contentType: "markdown",
+	});
+	rememberParsedMarkdown(documentId, value, editor);
+	editor.destroy();
+};
+
 interface ImagePreviewState {
 	index: number;
 	images: Array<{ key: string; src: string }>;
@@ -198,43 +281,7 @@ export const MarkdownHybridEditor = forwardRef<
 		[],
 	);
 	const extensions = useMemo(
-		() => [
-			StarterKit.configure({
-				heading: false,
-				horizontalRule: false,
-				link: {
-					autolink: true,
-					defaultProtocol: "https",
-					enableClickSelection: true,
-					linkOnPaste: true,
-					openOnClick: false,
-				},
-			}),
-			LockedHeading.configure({ levels: [1, 2, 3, 4] }),
-			SectionIdAnchor,
-			Image.configure({
-				allowBase64: true,
-			}),
-			Table.configure({
-				resizable: true,
-			}),
-			TableRow,
-			TableHeader,
-			TableCell,
-			...extraExtensions,
-			...(lockedHeadingPlan ? [createLockedHeadingsExtension(lockedHeadingPlan)] : []),
-			blockHandleExtension,
-			commentAnchorExtension,
-			Placeholder.configure({
-				placeholder: "开始写作...",
-			}),
-			Markdown.configure({
-				indentation: {
-					style: "space",
-					size: 2,
-				},
-			}),
-		],
+		() => createMarkdownEditorExtensions(blockHandleExtension, extraExtensions, lockedHeadingPlan),
 		[blockHandleExtension, extraExtensions, lockedHeadingPlan],
 	);
 
