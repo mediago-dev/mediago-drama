@@ -74,6 +74,41 @@ const imageRoute: GenerationRoute = {
 	params: [],
 };
 
+const videoFamily: GenerationFamily = {
+	id: "family-video",
+	label: "Video Family",
+	kind: "video",
+};
+
+const videoVersion: GenerationVersion = {
+	id: "version-video",
+	familyId: videoFamily.id,
+	label: "Video v1",
+	kind: "video",
+	canonicalModel: "video-model",
+	capabilities: {
+		async: true,
+		supportsReferenceUrls: true,
+	},
+};
+
+const videoRoute: GenerationRoute = {
+	id: "route-video",
+	familyId: videoFamily.id,
+	versionId: videoVersion.id,
+	label: "Video Route",
+	kind: "video",
+	provider: "dmx",
+	model: "video-model",
+	adapter: "test.video",
+	docUrl: "",
+	async: true,
+	supportsReferenceUrls: true,
+	status: "available",
+	configured: true,
+	params: [],
+};
+
 const textFamily: GenerationFamily = {
 	id: "family-text",
 	label: "Text Family",
@@ -132,6 +167,7 @@ const renderSubmitHook = (
 		onSubmitResponse?: (event: GenerationSubmitResponseEvent) => void;
 		onSubmitStart?: (event: GenerationSubmitStartEvent) => void;
 		onSubmitSuccess?: (kind: GenerationSubmitStartEvent["kind"]) => void;
+		rememberSelectedModel?: () => void;
 		conversationTitle?: string | null;
 		prompt?: string;
 		selectedFamily?: GenerationFamily;
@@ -187,6 +223,7 @@ const renderSubmitHook = (
 				onSubmitResponse: options.onSubmitResponse,
 				onSubmitStart: options.onSubmitStart,
 				onSubmitSuccess: options.onSubmitSuccess,
+				rememberSelectedModel: options.rememberSelectedModel,
 				projectId: "project-1",
 				prompt,
 				resolvedConversationScopeId: "scope-1",
@@ -245,11 +282,13 @@ describe("useGenerationSubmit", () => {
 		const onSubmitStart = vi.fn();
 		const onSubmitResponse = vi.fn();
 		const onSubmitSuccess = vi.fn();
+		const rememberSelectedModel = vi.fn();
 		const { mutateMediaAssets, mutateProjectGenerationTasks, mutateTasks, result } =
 			renderSubmitHook({
 				onSubmitResponse,
 				onSubmitStart,
 				onSubmitSuccess,
+				rememberSelectedModel,
 			});
 
 		await act(async () => {
@@ -304,6 +343,7 @@ describe("useGenerationSubmit", () => {
 			expect.objectContaining({ kind: "image", response }),
 		);
 		expect(onSubmitSuccess).toHaveBeenCalledWith("image");
+		expect(rememberSelectedModel).toHaveBeenCalledTimes(1);
 		expect(mutateTasks).toHaveBeenCalledTimes(1);
 		expect(mutateProjectGenerationTasks).toHaveBeenCalledWith("image");
 		expect(mutateMediaAssets).toHaveBeenCalledTimes(1);
@@ -325,6 +365,32 @@ describe("useGenerationSubmit", () => {
 			scopeId: "scope-1",
 			title: "Project Alpha",
 		});
+	});
+
+	it("remembers video model selections when submitting video generations", async () => {
+		vi.mocked(sendGenerationMessage).mockResolvedValue(generationResponse());
+		const rememberSelectedModel = vi.fn();
+		const { result } = renderSubmitHook({
+			prompt: "make a clip",
+			rememberSelectedModel,
+			selectedFamily: videoFamily,
+			selectedRoute: videoRoute,
+			selectedVersion: videoVersion,
+		});
+
+		await act(async () => {
+			await result.current.submitGeneration();
+		});
+
+		expect(sendGenerationMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				kind: "video",
+				model: "video-model",
+				routeId: videoRoute.id,
+				versionId: videoVersion.id,
+			}),
+		);
+		expect(rememberSelectedModel).toHaveBeenCalledTimes(1);
 	});
 
 	it("turns failed requests into error messages and failure callbacks", async () => {
@@ -393,7 +459,9 @@ describe("useGenerationSubmit", () => {
 			});
 			throw new Error("provider failed");
 		});
+		const rememberSelectedModel = vi.fn();
 		const { mutateProjectGenerationTasks, mutateTasks, result } = renderSubmitHook({
+			rememberSelectedModel,
 			prompt: "write text",
 			selectedFamily: textFamily,
 			selectedRoute: textRoute,
@@ -429,5 +497,6 @@ describe("useGenerationSubmit", () => {
 		]);
 		expect(mutateTasks).toHaveBeenCalledTimes(1);
 		expect(mutateProjectGenerationTasks).toHaveBeenCalledWith("text");
+		expect(rememberSelectedModel).not.toHaveBeenCalled();
 	});
 });

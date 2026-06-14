@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { KeyedMutator } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { updateGenerationPreferences } from "@/domains/generation/api/generation";
 import type {
 	GenerationModelsResponse,
 	GenerationPreference,
@@ -15,6 +16,20 @@ import {
 	writeGenerationStylePresetId,
 } from "./useGenerationWorkspace.helpers";
 import { useGenerationModelSelection } from "./useGenerationModelSelection";
+
+vi.mock("@/domains/generation/api/generation", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/domains/generation/api/generation")>();
+
+	return {
+		...actual,
+		updateGenerationPreferences: vi.fn(
+			async (scopeId: string, preferences: Omit<GenerationPreference, "scopeId">) => ({
+				scopeId,
+				...preferences,
+			}),
+		),
+	};
+});
 
 const mutatePreferences = vi.fn() as unknown as KeyedMutator<GenerationPreference>;
 
@@ -271,6 +286,60 @@ describe("useGenerationModelSelection", () => {
 
 		await waitFor(() => {
 			expect(result.current.stylePresetId).toBe("");
+		});
+	});
+
+	it("immediately remembers the submitted model selection for scoped preferences", async () => {
+		const { result } = renderHook(() =>
+			useGenerationModelSelection({
+				generationPreferences: {
+					scopeId: "project-1",
+					familyIds: { image: "family-image" },
+					versionIds: { "family-image": "version-image" },
+					routeIds: { "version-image": "route-image" },
+					routeParams: {},
+					stylePresetId: "",
+				},
+				initialKind: "image",
+				modelCatalog: catalog,
+				mutatePreferences,
+				preferenceScopeId: "project-1",
+				stylePresets: [],
+			}),
+		);
+
+		await waitFor(() => {
+			expect(result.current.selectedRoute.id).toBe("route-image");
+		});
+
+		act(() => {
+			result.current.updateModelRoute("version-image-alt", "route-image-alt");
+		});
+		act(() => {
+			result.current.rememberSelectedModel();
+		});
+
+		expect(updateGenerationPreferences).toHaveBeenCalledWith(
+			"project-1",
+			expect.objectContaining({
+				familyIds: expect.objectContaining({ image: "family-image" }),
+				routeIds: expect.objectContaining({
+					"version-image": "route-image",
+					"version-image-alt": "route-image-alt",
+				}),
+				versionIds: { "family-image": "version-image-alt" },
+			}),
+		);
+		await waitFor(() => {
+			expect(mutatePreferences).toHaveBeenCalledWith(
+				expect.objectContaining({
+					scopeId: "project-1",
+					routeIds: expect.objectContaining({
+						"version-image-alt": "route-image-alt",
+					}),
+				}),
+				false,
+			);
 		});
 	});
 });

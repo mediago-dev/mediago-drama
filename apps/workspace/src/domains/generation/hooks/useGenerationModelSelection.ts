@@ -24,6 +24,7 @@ import {
 	readGenerationModelSelection,
 	readGenerationStylePresetId,
 	routeParamValues,
+	type StoredGenerationModelSelection,
 	writeGenerationModelSelection,
 	writeGenerationStylePresetId,
 } from "./useGenerationWorkspace.helpers";
@@ -63,6 +64,7 @@ export const useGenerationModelSelection = ({
 	);
 	const [stylePresetId, setStylePresetId] = useState(readGenerationStylePresetId);
 	const preferenceSyncRef = useRef({ initialized: false, scopeId: "" });
+	const pendingPreferenceSignatureRef = useRef("");
 	const persistedPreferenceSignatureRef = useRef("");
 
 	const catalog = useMemo(() => catalogOrFallback(modelCatalog), [modelCatalog]);
@@ -179,6 +181,7 @@ export const useGenerationModelSelection = ({
 	useEffect(() => {
 		if (!preferenceScopeId) {
 			preferenceSyncRef.current = { initialized: false, scopeId: "" };
+			pendingPreferenceSignatureRef.current = "";
 			persistedPreferenceSignatureRef.current = "";
 			return;
 		}
@@ -186,6 +189,7 @@ export const useGenerationModelSelection = ({
 
 		if (preferenceSyncRef.current.scopeId !== preferenceScopeId) {
 			preferenceSyncRef.current = { initialized: false, scopeId: preferenceScopeId };
+			pendingPreferenceSignatureRef.current = "";
 			persistedPreferenceSignatureRef.current = "";
 		}
 		if (preferenceSyncRef.current.initialized) return;
@@ -252,18 +256,33 @@ export const useGenerationModelSelection = ({
 			stylePresetId,
 		});
 		const signature = generationPreferenceSignature(preference);
-		if (signature === persistedPreferenceSignatureRef.current) return;
+		if (
+			signature === persistedPreferenceSignatureRef.current ||
+			signature === pendingPreferenceSignatureRef.current
+		) {
+			return;
+		}
 
 		const timer = window.setTimeout(() => {
+			if (
+				signature === persistedPreferenceSignatureRef.current ||
+				signature === pendingPreferenceSignatureRef.current
+			) {
+				return;
+			}
+			pendingPreferenceSignatureRef.current = signature;
 			void updateGenerationPreferences(
 				preferenceScopeId,
 				generationPreferencePayload(preference),
 			).then(
 				(nextPreference) => {
 					persistedPreferenceSignatureRef.current = signature;
+					pendingPreferenceSignatureRef.current = "";
 					void mutatePreferences(nextPreference, false);
 				},
-				() => undefined,
+				() => {
+					pendingPreferenceSignatureRef.current = "";
+				},
 			);
 		}, generationPreferenceDebounceMs);
 
@@ -343,12 +362,77 @@ export const useGenerationModelSelection = ({
 		[selectedRoute.id],
 	);
 
+	const currentModelSelection = useCallback(
+		(): StoredGenerationModelSelection => ({
+			familyIds: {
+				...selectedFamilyIds,
+				[selectedRoute.kind]: selectedFamily.id,
+			},
+			routeIds: {
+				...selectedRouteIds,
+				[selectedVersion.id]: selectedRoute.id,
+			},
+			routeParams,
+			versionIds: {
+				...selectedVersionIds,
+				[selectedFamily.id]: selectedVersion.id,
+			},
+		}),
+		[
+			routeParams,
+			selectedFamily.id,
+			selectedFamilyIds,
+			selectedRoute.id,
+			selectedRoute.kind,
+			selectedRouteIds,
+			selectedVersion.id,
+			selectedVersionIds,
+		],
+	);
+
+	const rememberSelectedModel = useCallback(() => {
+		const selection = currentModelSelection();
+		if (!preferenceScopeId) {
+			writeGenerationModelSelection(selection);
+			return;
+		}
+
+		const preference = normalizeGenerationPreference({
+			scopeId: preferenceScopeId,
+			...selection,
+			stylePresetId,
+		});
+		const signature = generationPreferenceSignature(preference);
+		if (
+			signature === persistedPreferenceSignatureRef.current ||
+			signature === pendingPreferenceSignatureRef.current
+		) {
+			return;
+		}
+
+		pendingPreferenceSignatureRef.current = signature;
+		void updateGenerationPreferences(
+			preferenceScopeId,
+			generationPreferencePayload(preference),
+		).then(
+			(nextPreference) => {
+				persistedPreferenceSignatureRef.current = signature;
+				pendingPreferenceSignatureRef.current = "";
+				void mutatePreferences(nextPreference, false);
+			},
+			() => {
+				pendingPreferenceSignatureRef.current = "";
+			},
+		);
+	}, [currentModelSelection, mutatePreferences, preferenceScopeId, stylePresetId]);
+
 	return {
 		catalog,
 		configuredRoutesForKind,
 		hasConfiguredRoutesForKind,
 		hasLiveCatalog,
 		kind,
+		rememberSelectedModel,
 		routeParams,
 		selectedFamily,
 		selectedFamilyIds,

@@ -100,6 +100,7 @@ interface UseGenerationSubmitOptions {
 	onSubmitResponse?: (event: GenerationSubmitResponseEvent) => void;
 	onSubmitStart?: (event: GenerationSubmitStartEvent) => void;
 	onSubmitSuccess?: (kind: GenerationKind) => void;
+	rememberSelectedModel?: () => void;
 	projectBrief?: ProjectBrief;
 	projectStylePrompt?: string;
 	projectId?: string;
@@ -135,6 +136,7 @@ export const useGenerationSubmit = ({
 	onSubmitResponse,
 	onSubmitStart,
 	onSubmitSuccess,
+	rememberSelectedModel,
 	projectBrief,
 	projectStylePrompt,
 	projectId,
@@ -177,6 +179,13 @@ export const useGenerationSubmit = ({
 			setError(null);
 			setActiveSubmitCount((count) => count + 1);
 			const requestKind = selectedRoute.kind;
+			if (requestKind === "image" || requestKind === "video") {
+				try {
+					rememberSelectedModel?.();
+				} catch {
+					// Remembering a preference must not block the generation request.
+				}
+			}
 			const requestExtraPrompt =
 				overrides.extraPrompt ?? resolveGenerationExtraValue(extraPrompt, nextPrompt);
 			const requestPrompt = generationRequestPrompt({
@@ -446,6 +455,7 @@ export const useGenerationSubmit = ({
 			onSubmitResponse,
 			onSubmitStart,
 			onSubmitSuccess,
+			rememberSelectedModel,
 			projectBrief?.style,
 			projectStylePrompt,
 			projectId,
