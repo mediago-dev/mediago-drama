@@ -331,6 +331,7 @@ export interface UpdateGenerationPreferenceRequest {
 
 export interface GenerationConversationRecord {
 	sessionId: string;
+	scopeId?: string;
 	kind: Kind;
 	title: string;
 	taskCount: number;
@@ -345,6 +346,7 @@ export interface GenerationConversationsResponse {
 
 export interface CreateGenerationConversationRequest {
 	sessionId?: string;
+	scopeId?: string;
 	kind: Kind;
 	title: string;
 }

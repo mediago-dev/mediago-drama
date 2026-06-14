@@ -220,12 +220,12 @@ export const getGenerationConversations = async (
 	scopeId = defaultGenerationConversationScopeId,
 	options: { allScopes?: boolean } = {},
 ) => {
-	void scopeId;
+	const normalizedScopeId = scopeId.trim() || defaultGenerationConversationScopeId;
 	const response = await httpClient.get<GenerationConversationsResponse>(
 		generationConversationsKey,
 		{
 			params: {
-				...(options.allScopes ? {} : {}),
+				...(options.allScopes ? {} : { scopeId: normalizedScopeId }),
 				...(kind ? { kind } : {}),
 			},
 		},
@@ -326,6 +326,7 @@ export const createGenerationConversation = async (
 	};
 	const response = await httpClient.post<GenerationConversation>(generationConversationsKey, {
 		sessionId: rawRequest.sessionId ?? rawRequest.id,
+		scopeId: rawRequest.scopeId,
 		kind: request.kind,
 		title: request.title,
 	});
@@ -493,7 +494,7 @@ const normalizeGenerationConversation = (
 		...conversation,
 		id: sessionId,
 		sessionId,
-		scopeId: raw.scopeId ?? sessionId,
+		scopeId: raw.scopeId?.trim() || sessionId,
 	};
 };
 

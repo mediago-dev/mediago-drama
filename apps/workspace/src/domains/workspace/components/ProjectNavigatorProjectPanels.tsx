@@ -32,22 +32,18 @@ import {
 	type ProjectDocumentDeleteHandler,
 } from "@/domains/workspace/components/ProjectDirectory";
 import { ProjectDirectoryTree } from "@/domains/workspace/components/ProjectDirectoryTree";
-import {
-	SettingsButton,
-	WorkModeSwitcher,
-} from "@/domains/workspace/components/ProjectNavigatorPanels";
+import { SettingsButton } from "@/domains/workspace/components/ProjectNavigatorPanels";
 import { GenerationNotificationButton } from "@/domains/workspace/components/GenerationNotificationButton";
+import { GlobalToolboxButton } from "@/domains/workspace/components/GlobalToolboxDrawer";
 import {
 	getRouteAssetId,
 	getRouteDocumentId,
 	isProjectSettingsRoute,
 } from "@/domains/workspace/lib/workbench-route";
 import { useDocumentViewStore } from "@/lib/stores/document-view";
-import type { WorkMode } from "@/lib/stores/work-mode";
 import { cn } from "@/shared/lib/utils";
 
 export const ProjectsSidebarPanel: React.FC<{
-	activeMode: WorkMode;
 	error?: unknown;
 	isCreating: boolean;
 	isLoading: boolean;
@@ -57,10 +53,8 @@ export const ProjectsSidebarPanel: React.FC<{
 	onOpenGenerationNotification?: (notification: GenerationSuccessNotification) => void;
 	onOpenSearch: (scope: "global" | "project") => void;
 	onOpenSettings: () => void;
-	onSelectMode: (mode: WorkMode) => void;
 	projects: WorkspaceProject[];
 }> = ({
-	activeMode,
 	error,
 	isCreating,
 	isLoading,
@@ -70,12 +64,9 @@ export const ProjectsSidebarPanel: React.FC<{
 	onOpenProject,
 	onOpenSearch,
 	onOpenSettings,
-	onSelectMode,
 	projects,
 }) => (
 	<div className="flex h-full flex-col">
-		<WorkModeSwitcher activeMode={activeMode} onSelectMode={onSelectMode} />
-
 		<Button
 			type="button"
 			variant="ghost"
@@ -376,6 +367,7 @@ const SidebarFooterActions: React.FC<{
 			<div className="min-w-0 flex-1">
 				<SettingsButton isActive={settingsActive} onClick={onOpenSettings} />
 			</div>
+			<GlobalToolboxButton />
 			{onOpenGenerationNotification ? (
 				<GenerationNotificationButton onOpenNotification={onOpenGenerationNotification} />
 			) : null}

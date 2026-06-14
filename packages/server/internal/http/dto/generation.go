@@ -207,7 +207,7 @@ type UpdateGenerationPreferenceRequest struct {
 // GenerationConversationRecord is a persisted generation conversation.
 type GenerationConversationRecord struct {
 	ID           string `json:"sessionId"`
-	ScopeID      string `json:"-"`
+	ScopeID      string `json:"scopeId"`
 	Kind         string `json:"kind" ts:"Kind"`
 	Title        string `json:"title"`
 	Default      bool   `json:"-"`
@@ -225,7 +225,7 @@ type GenerationConversationsResponse struct {
 // CreateGenerationConversationRequest creates a generation conversation.
 type CreateGenerationConversationRequest struct {
 	ID      string `json:"sessionId,omitempty"`
-	ScopeID string `json:"-"`
+	ScopeID string `json:"scopeId,omitempty"`
 	Kind    string `json:"kind" ts:"Kind"`
 	Title   string `json:"title"`
 }

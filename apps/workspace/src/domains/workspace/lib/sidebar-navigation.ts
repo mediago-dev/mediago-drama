@@ -25,8 +25,6 @@ export const resolveSidebarScreen = (
 	if (isSettingsRoute(pathname)) return "settings";
 
 	if (pathname.startsWith("/studio/")) {
-		const activeTab = studioTabFromPath(pathname);
-		if (activeTab) return "studio-conversations";
 		return "studio-types";
 	}
 

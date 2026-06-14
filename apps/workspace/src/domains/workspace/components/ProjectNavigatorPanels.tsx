@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import useSWR from "swr";
+import useSWR, { mutate as mutateSWR } from "swr";
 import {
 	capabilitiesKey,
 	getCapabilities,
@@ -34,6 +34,13 @@ import type { GenerationSuccessNotification } from "@/domains/generation/stores/
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/shared/components/ui/select";
+import {
 	AlertDialog,
 	AlertDialogAction,
 	AlertDialogCancel,
@@ -45,19 +52,11 @@ import {
 } from "@/shared/components/ui/alert-dialog";
 import { useToast } from "@/hooks/useToast";
 import type { SettingsTabValue } from "@/lib/stores/settings";
-import type { WorkMode } from "@/lib/stores/work-mode";
 import { cn } from "@/shared/lib/utils";
 import { debugTabs, type DebugTabValue } from "@/pages/Debug";
 import { GenerationNotificationButton } from "./GenerationNotificationButton";
+import { GlobalToolboxButton } from "./GlobalToolboxDrawer";
 import type { ActiveStudioTab, StudioTab } from "./ProjectNavigatorTypes";
-
-const workModeOptions: {
-	label: string;
-	mode: WorkMode;
-}[] = [
-	{ mode: "agent", label: "智能体" },
-	{ mode: "studio", label: "工具箱" },
-];
 
 interface StudioToolItem {
 	category: CapabilityRecord["category"];
@@ -97,38 +96,6 @@ const fallbackStudioToolItems: StudioToolItem[] = [
 	},
 ];
 
-export const WorkModeSwitcher: React.FC<{
-	activeMode: WorkMode;
-	onSelectMode: (mode: WorkMode) => void;
-}> = ({ activeMode, onSelectMode }) => (
-	<div className="-mx-2 -mt-3 mb-3 shrink-0 border-b border-border px-2 py-2">
-		<div
-			className="grid grid-cols-3 gap-1 rounded-sm border border-border bg-ide-toolbar p-0.5"
-			aria-label="工作模式"
-		>
-			{workModeOptions.map((option) => {
-				const active = activeMode === option.mode;
-				return (
-					<button
-						key={option.mode}
-						type="button"
-						aria-label={option.label}
-						aria-pressed={active}
-						title={option.label}
-						onClick={() => onSelectMode(option.mode)}
-						className={cn(
-							"flex h-8 min-w-0 items-center justify-center rounded-sm px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-							active && "bg-ide-list-active text-ide-list-active-foreground shadow-sm",
-						)}
-					>
-						<span className="min-w-0 truncate">{option.label}</span>
-					</button>
-				);
-			})}
-		</div>
-	</div>
-);
-
 export const SettingsButton: React.FC<{
 	isActive: boolean;
 	onClick: () => void;
@@ -151,49 +118,148 @@ export const SettingsButton: React.FC<{
 export const StudioConversationsScreen: React.FC<{
 	activeConversationId: string;
 	activeTab: ActiveStudioTab;
-	onReturnToTypes: () => void;
-	onSelectConversation: (conversationId: string) => void;
-}> = ({ activeConversationId, activeTab, onReturnToTypes, onSelectConversation }) => {
-	const selectedTab = activeTab ?? "image";
+	onOpenGenerationNotification?: (notification: GenerationSuccessNotification) => void;
+	onOpenSettings: () => void;
+	onSelectConversation: (kind: StudioTab, conversationId: string) => void;
+}> = (props) => <StudioSessionsScreen {...props} />;
+
+export const StudioSessionsScreen: React.FC<{
+	activeConversationId: string;
+	activeTab: ActiveStudioTab;
+	onOpenGenerationNotification?: (notification: GenerationSuccessNotification) => void;
+	onOpenSettings: () => void;
+	onSelectConversation: (kind: StudioTab, conversationId: string) => void;
+	scopeId?: string;
+}> = ({
+	activeConversationId,
+	activeTab,
+	onOpenGenerationNotification,
+	onOpenSettings,
+	onSelectConversation,
+	scopeId = "studio",
+}) => {
+	const toast = useToast();
+	const [isCreateOpen, setIsCreateOpen] = useState(false);
+	const [isCreatingConversation, setIsCreatingConversation] = useState(false);
+	const [newConversationKind, setNewConversationKind] = useState<StudioTab>(
+		activeTab ?? defaultStudioConversationKind,
+	);
+	const [newConversationTitle, setNewConversationTitle] = useState("");
+
+	const openCreateDialog = () => {
+		setNewConversationKind(activeTab ?? defaultStudioConversationKind);
+		setIsCreateOpen(true);
+	};
+
+	const createConversation = useCallback(async () => {
+		if (isCreatingConversation) return;
+		const title = newConversationTitle.trim();
+		if (!title) return;
+
+		setIsCreatingConversation(true);
+		try {
+			const conversation = await createGenerationConversation({
+				kind: newConversationKind,
+				scopeId,
+				title,
+			});
+			await mutateSWR(generationConversationsQueryKey(newConversationKind, scopeId));
+			onSelectConversation(newConversationKind, conversation.id);
+			setIsCreateOpen(false);
+			setNewConversationTitle("");
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "创建会话失败。";
+			toast.error("创建会话失败", { description: message });
+		} finally {
+			setIsCreatingConversation(false);
+		}
+	}, [
+		isCreatingConversation,
+		newConversationKind,
+		newConversationTitle,
+		onSelectConversation,
+		scopeId,
+		toast,
+	]);
 
 	return (
-		<div className="flex h-full min-h-0 flex-col">
-			<button
-				type="button"
-				onClick={onReturnToTypes}
-				className="flex h-9 w-full shrink-0 items-center gap-2 rounded-sm px-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-ide-list-hover"
-			>
-				<ChevronLeft className="size-4 shrink-0 text-muted-foreground" />
-				<span className="min-w-0 flex-1 truncate">返回</span>
-			</button>
+		<>
+			<div className="flex h-full min-h-0 flex-col">
+				<div className="mb-2 px-1">
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="h-8 w-full justify-start rounded-sm border border-border/70 bg-ide-toolbar/40 px-2 text-sm font-semibold shadow-none hover:border-border hover:bg-ide-list-hover"
+						disabled={isCreatingConversation}
+						onClick={openCreateDialog}
+					>
+						{isCreatingConversation ? (
+							<Loader2 className="size-3.5 animate-spin" />
+						) : (
+							<SquarePen className="size-3.5" />
+						)}
+						<span>新建</span>
+					</Button>
+				</div>
 
-			<StudioConversationList
-				activeConversationId={activeConversationId}
-				kind={selectedTab}
-				onSelectConversation={onSelectConversation}
+				<div className="min-h-0 flex-1 overflow-y-auto pr-1">
+					<div className="space-y-2">
+						{studioConversationGroups.map((group) => (
+							<StudioConversationGroup
+								key={group.kind}
+								activeConversationId={activeConversationId}
+								activeTab={activeTab}
+								group={group}
+								onSelectConversation={onSelectConversation}
+								scopeId={scopeId}
+							/>
+						))}
+					</div>
+				</div>
+
+				<div className="mt-auto pt-2">
+					<div className="flex items-center gap-1">
+						<div className="min-w-0 flex-1">
+							<SettingsButton isActive={false} onClick={onOpenSettings} />
+						</div>
+						<GlobalToolboxButton />
+						{onOpenGenerationNotification ? (
+							<GenerationNotificationButton onOpenNotification={onOpenGenerationNotification} />
+						) : null}
+					</div>
+				</div>
+			</div>
+			<GenerationSessionCreateDialog
+				isCreating={isCreatingConversation}
+				kind={newConversationKind}
+				onCreate={() => void createConversation()}
+				onKindChange={setNewConversationKind}
+				onOpenChange={(open) => {
+					if (isCreatingConversation) return;
+					setIsCreateOpen(open);
+					if (!open) setNewConversationTitle("");
+				}}
+				onTitleChange={setNewConversationTitle}
+				open={isCreateOpen}
+				title={newConversationTitle}
 			/>
-		</div>
+		</>
 	);
 };
 
 export const StudioTypesScreen: React.FC<{
 	activeCapabilityId: string | null;
-	activeMode: WorkMode;
 	activeTab: ActiveStudioTab;
 	onOpenGenerationNotification?: (notification: GenerationSuccessNotification) => void;
 	onOpenSettings: () => void;
-	onSelectMode: (mode: WorkMode) => void;
 	onSelectTab: (tab: StudioTab | null) => void;
-	showModeSwitcher?: boolean;
 }> = ({
 	activeCapabilityId,
-	activeMode,
 	activeTab,
 	onOpenGenerationNotification,
 	onOpenSettings,
-	onSelectMode,
 	onSelectTab,
-	showModeSwitcher = true,
 }) => {
 	const { data } = useSWR(capabilitiesKey, getCapabilities);
 	const manifestStudioToolItems = useMemo(
@@ -214,10 +280,6 @@ export const StudioTypesScreen: React.FC<{
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			{showModeSwitcher ? (
-				<WorkModeSwitcher activeMode={activeMode} onSelectMode={onSelectMode} />
-			) : null}
-
 			<div className="min-h-0 flex-1 overflow-y-auto pr-1">
 				<div className="space-y-4">
 					{categoryOrder.map((category) => {
@@ -250,6 +312,7 @@ export const StudioTypesScreen: React.FC<{
 					<div className="min-w-0 flex-1">
 						<SettingsButton isActive={false} onClick={onOpenSettings} />
 					</div>
+					<GlobalToolboxButton />
 					{onOpenGenerationNotification ? (
 						<GenerationNotificationButton onOpenNotification={onOpenGenerationNotification} />
 					) : null}
@@ -266,6 +329,18 @@ const studioTabOrder: Record<StudioTab, number> = {
 	image: 1,
 	text: 2,
 };
+
+const defaultStudioConversationKind: StudioTab = "video";
+
+const studioConversationGroups: Array<{
+	icon: React.ReactNode;
+	kind: StudioTab;
+	label: string;
+}> = [
+	{ icon: <Film />, kind: "video", label: "视频生成" },
+	{ icon: <ImageIcon />, kind: "image", label: "图片生成" },
+	{ icon: <FileText />, kind: "text", label: "文本生成" },
+];
 
 const studioToolItemsFromCapabilities = (capabilities: CapabilityRecord[]): StudioToolItem[] =>
 	capabilities
@@ -326,16 +401,15 @@ const compareStudioToolItems = (left: StudioToolItem, right: StudioToolItem) => 
 const isStudioTabKind = (kind: string): kind is StudioTab =>
 	kind === "image" || kind === "video" || kind === "text";
 
-const StudioConversationList: React.FC<{
+const StudioConversationGroup: React.FC<{
 	activeConversationId: string;
-	kind: StudioTab;
-	onSelectConversation: (conversationId: string) => void;
+	activeTab: ActiveStudioTab;
+	group: (typeof studioConversationGroups)[number];
+	onSelectConversation: (kind: StudioTab, conversationId: string) => void;
 	scopeId?: string;
-}> = ({ activeConversationId, kind, onSelectConversation, scopeId = "studio" }) => {
+}> = ({ activeConversationId, activeTab, group, onSelectConversation, scopeId = "studio" }) => {
 	const toast = useToast();
-	const [isCreatingConversation, setIsCreatingConversation] = useState(false);
-	const [isCreateOpen, setIsCreateOpen] = useState(false);
-	const [newConversationTitle, setNewConversationTitle] = useState("");
+	const { kind } = group;
 	const conversationsKey = generationConversationsQueryKey(kind, scopeId, { allScopes: true });
 	const {
 		data,
@@ -348,112 +422,59 @@ const StudioConversationList: React.FC<{
 	const conversations = data?.conversations ?? [];
 	const selectedConversationId = activeConversationId || "";
 
-	const createConversation = useCallback(async () => {
-		if (isCreatingConversation) return;
-		const title = newConversationTitle.trim();
-		if (!title) return;
-
-		setIsCreatingConversation(true);
-		try {
-			const conversation = await createGenerationConversation({
-				kind,
-				scopeId,
-				title,
-			});
-			await mutateConversations();
-			onSelectConversation(conversation.id);
-			setIsCreateOpen(false);
-			setNewConversationTitle("");
-		} catch (err) {
-			const message = err instanceof Error ? err.message : "创建会话失败。";
-			toast.error("创建会话失败", { description: message });
-		} finally {
-			setIsCreatingConversation(false);
-		}
-	}, [
-		isCreatingConversation,
-		kind,
-		mutateConversations,
-		newConversationTitle,
-		onSelectConversation,
-		scopeId,
-		toast,
-	]);
-
 	const deleteConversation = useCallback(
 		async (conversation: GenerationConversation) => {
 			try {
 				await deleteGenerationConversation(conversation.id);
 				await mutateConversations();
-				if (conversation.id === selectedConversationId) onSelectConversation("");
-				toast.success("Session 已删除", { description: conversation.title });
+				if (kind === activeTab && conversation.id === selectedConversationId) {
+					onSelectConversation(kind, "");
+				}
+				toast.success("会话已删除", { description: conversation.title });
 			} catch (err) {
 				const message = err instanceof Error ? err.message : "删除失败。";
-				toast.error("删除 session 失败", { description: message });
+				toast.error("删除会话失败", { description: message });
 			}
 		},
-		[mutateConversations, onSelectConversation, selectedConversationId, toast],
+		[activeTab, kind, mutateConversations, onSelectConversation, selectedConversationId, toast],
 	);
 
 	return (
-		<>
-			<div className="mt-3 flex min-h-0 flex-1 flex-col">
-				<div className="mb-2 px-2">
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						className="h-8 w-full justify-start px-2"
-						disabled={isCreatingConversation}
-						onClick={() => setIsCreateOpen(true)}
-					>
-						{isCreatingConversation ? (
-							<Loader2 className="size-3.5 animate-spin" />
-						) : (
-							<SquarePen className="size-3.5" />
-						)}
-						<span>新建</span>
-					</Button>
-				</div>
-				<div className="min-h-0 flex-1 overflow-y-auto">
-					{isLoading ? (
-						<div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-							<Loader2 className="size-3.5 animate-spin" />
-							<span>加载中</span>
-						</div>
-					) : error ? (
-						<p className="px-2 py-1.5 text-xs text-error-foreground">加载失败</p>
-					) : conversations.length ? (
-						<div className="space-y-1">
-							{conversations.map((conversation) => (
-								<StudioConversationItem
-									key={conversation.id}
-									conversation={conversation}
-									selected={conversation.id === selectedConversationId}
-									onDelete={() => void deleteConversation(conversation)}
-									onSelect={() => onSelectConversation(conversation.id)}
-								/>
-							))}
-						</div>
-					) : (
-						<p className="px-2 py-1.5 text-xs leading-5 text-muted-foreground">暂无 session。</p>
-					)}
-				</div>
+		<section className="space-y-0.5">
+			<div className="flex h-6 items-center gap-1.5 px-1.5 text-xs font-semibold text-muted-foreground">
+				<span className="flex size-4 shrink-0 items-center justify-center rounded-sm [&_svg]:size-3.5">
+					{group.icon}
+				</span>
+				<span className="min-w-0 flex-1 truncate">{group.label}</span>
+				{!isLoading && !error ? (
+					<span className="rounded-sm bg-ide-toolbar px-1.5 py-0.5 text-2xs font-medium tabular-nums text-muted-foreground">
+						{conversations.length}
+					</span>
+				) : null}
 			</div>
-			<GenerationSessionCreateDialog
-				isCreating={isCreatingConversation}
-				kind={kind}
-				onCreate={() => void createConversation()}
-				onOpenChange={(open) => {
-					if (isCreatingConversation) return;
-					setIsCreateOpen(open);
-					if (!open) setNewConversationTitle("");
-				}}
-				onTitleChange={setNewConversationTitle}
-				open={isCreateOpen}
-				title={newConversationTitle}
-			/>
-		</>
+			{isLoading ? (
+				<div className="flex h-7 items-center gap-2 px-2 text-xs text-muted-foreground">
+					<Loader2 className="size-3.5 animate-spin" />
+					<span>加载中</span>
+				</div>
+			) : error ? (
+				<p className="flex h-7 items-center px-2 text-xs text-error-foreground">加载失败</p>
+			) : conversations.length ? (
+				<div className="space-y-0.5">
+					{conversations.map((conversation) => (
+						<StudioConversationItem
+							key={conversation.id}
+							conversation={conversation}
+							selected={kind === activeTab && conversation.id === selectedConversationId}
+							onDelete={() => void deleteConversation(conversation)}
+							onSelect={() => onSelectConversation(kind, conversation.id)}
+						/>
+					))}
+				</div>
+			) : (
+				<p className="flex h-7 items-center px-2 text-xs text-muted-foreground">暂无会话</p>
+			)}
+		</section>
 	);
 };
 
@@ -466,7 +487,7 @@ const StudioConversationItem: React.FC<{
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const itemRef = useRef<HTMLDivElement>(null);
-	const title = conversation.title || "未命名 session";
+	const title = conversation.title || "未命名会话";
 
 	useCloseSidebarItemMenu(itemRef, isMenuOpen, setIsMenuOpen);
 
@@ -479,7 +500,7 @@ const StudioConversationItem: React.FC<{
 		<div ref={itemRef} className="relative">
 			<div
 				className={cn(
-					"group/session flex w-full items-center gap-1 rounded-sm border p-1 text-left transition-colors",
+					"group/session flex h-7 w-full items-center gap-1 rounded-sm border border-transparent text-left transition-colors",
 					selected
 						? "border-border/80 bg-ide-list-active text-ide-list-active-foreground"
 						: "border-transparent text-ide-sidebar-foreground hover:bg-ide-list-hover hover:text-foreground focus-within:bg-ide-list-hover focus-within:text-foreground",
@@ -488,7 +509,7 @@ const StudioConversationItem: React.FC<{
 				<button
 					type="button"
 					onClick={onSelect}
-					className="flex min-w-0 flex-1 flex-col gap-1 px-1 py-1 text-left"
+					className="flex h-full min-w-0 flex-1 items-center px-2 text-left"
 				>
 					<span className="min-w-0 truncate text-xs font-medium">{title}</span>
 				</button>
@@ -497,7 +518,7 @@ const StudioConversationItem: React.FC<{
 					size="icon"
 					variant="ghost"
 					className={cn(
-						"size-6 shrink-0 text-muted-foreground hover:text-foreground",
+						"mr-0.5 size-6 shrink-0 text-muted-foreground hover:text-foreground",
 						isMenuOpen || isDeleteDialogOpen
 							? "opacity-100"
 							: "opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100",
@@ -514,9 +535,9 @@ const StudioConversationItem: React.FC<{
 			<AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>删除 session？</AlertDialogTitle>
+						<AlertDialogTitle>删除会话？</AlertDialogTitle>
 						<AlertDialogDescription>
-							确定要删除“{title}”吗？该 session 下的生成记录会一并删除，此操作无法撤销。
+							确定要删除“{title}”吗？该会话下的生成记录会一并删除，此操作无法撤销。
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -579,11 +600,12 @@ const GenerationSessionCreateDialog: React.FC<{
 	isCreating: boolean;
 	kind: StudioTab;
 	onCreate: () => void;
+	onKindChange: (kind: StudioTab) => void;
 	onOpenChange: (open: boolean) => void;
 	onTitleChange: (title: string) => void;
 	open: boolean;
 	title: string;
-}> = ({ isCreating, kind, onCreate, onOpenChange, onTitleChange, open, title }) => {
+}> = ({ isCreating, kind, onCreate, onKindChange, onOpenChange, onTitleChange, open, title }) => {
 	const submit = (event: React.FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		onCreate();
@@ -595,21 +617,40 @@ const GenerationSessionCreateDialog: React.FC<{
 			<AlertDialogContent className="max-w-md">
 				<form onSubmit={submit}>
 					<AlertDialogHeader>
-						<AlertDialogTitle>新建{kindLabel} session</AlertDialogTitle>
-						<AlertDialogDescription>填写左侧 session 列表中显示的名称。</AlertDialogDescription>
+						<AlertDialogTitle>新建会话</AlertDialogTitle>
+						<AlertDialogDescription>选择生成类型并填写会话名称。</AlertDialogDescription>
 					</AlertDialogHeader>
-					<label className="my-4 block">
-						<span className="mb-1 block text-xs font-medium text-muted-foreground">
-							Session 名称
-						</span>
-						<Input
-							value={title}
-							onChange={(event) => onTitleChange(event.target.value)}
-							placeholder={`${kindLabel}探索`}
-							disabled={isCreating}
-							autoFocus
-						/>
-					</label>
+					<div className="my-4 grid gap-3">
+						<label className="block">
+							<span className="mb-1 block text-xs font-medium text-muted-foreground">生成类型</span>
+							<Select
+								value={kind}
+								onValueChange={(value) => onKindChange(value as StudioTab)}
+								disabled={isCreating}
+							>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{studioConversationGroups.map((group) => (
+										<SelectItem key={group.kind} value={group.kind}>
+											{group.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</label>
+						<label className="block">
+							<span className="mb-1 block text-xs font-medium text-muted-foreground">会话名称</span>
+							<Input
+								value={title}
+								onChange={(event) => onTitleChange(event.target.value)}
+								placeholder={`${kindLabel}探索`}
+								disabled={isCreating}
+								autoFocus
+							/>
+						</label>
+					</div>
 					<AlertDialogFooter>
 						<AlertDialogCancel disabled={isCreating}>取消</AlertDialogCancel>
 						<Button type="submit" disabled={isCreating || !title.trim()}>
@@ -731,11 +772,12 @@ export const SettingsSidebarPanel: React.FC<{
 				))}
 			</div>
 		)}
-		{onOpenGenerationNotification ? (
-			<div className="mt-auto flex justify-end pt-2">
+		<div className="mt-auto flex justify-end gap-1 pt-2">
+			<GlobalToolboxButton />
+			{onOpenGenerationNotification ? (
 				<GenerationNotificationButton onOpenNotification={onOpenGenerationNotification} />
-			</div>
-		) : null}
+			) : null}
+		</div>
 	</div>
 );
 

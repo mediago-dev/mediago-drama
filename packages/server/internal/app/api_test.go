@@ -1132,7 +1132,9 @@ func TestAPIHandler(t *testing.T) {
 			t.Fatalf("conversation list status code = %d, want %d", conversationList.StatusCode, http.StatusOK)
 		}
 		conversationListBody := readBody(t, conversationList.Body)
-		if !strings.Contains(conversationListBody, conversation.ID) || !strings.Contains(conversationListBody, `"kind":"video"`) {
+		if !strings.Contains(conversationListBody, conversation.ID) ||
+			!strings.Contains(conversationListBody, `"kind":"video"`) ||
+			!strings.Contains(conversationListBody, `"scopeId":"studio"`) {
 			t.Fatalf("body = %s, want persisted video conversation", conversationListBody)
 		}
 
@@ -1156,7 +1158,7 @@ func TestAPIHandler(t *testing.T) {
 		}
 
 		projectSessionID := "project-alpha"
-		createProjectConversation := requestJSON(t, handler, http.MethodPost, "/api/v1/generation/sessions", `{"sessionId":"project-alpha","kind":"image","title":"Project image session"}`)
+		createProjectConversation := requestJSON(t, handler, http.MethodPost, "/api/v1/generation/sessions", `{"sessionId":"project-alpha","scopeId":"agent","kind":"image","title":"Project image session"}`)
 		defer createProjectConversation.Body.Close()
 		if createProjectConversation.StatusCode != http.StatusOK {
 			t.Fatalf("create project conversation status code = %d, want %d", createProjectConversation.StatusCode, http.StatusOK)
@@ -1170,6 +1172,9 @@ func TestAPIHandler(t *testing.T) {
 		projectConversation := projectConversationEnvelope.Data
 		if projectConversation.ID != projectSessionID {
 			t.Fatalf("project conversation = %+v, want project session id", projectConversation)
+		}
+		if projectConversation.ScopeID != "agent" {
+			t.Fatalf("project conversation scope = %q, want agent", projectConversation.ScopeID)
 		}
 		projectImageTaskID := "official.seedream-5-lite:project-image"
 		if err := store.Upsert(generationTaskRecord{
@@ -1206,6 +1211,27 @@ func TestAPIHandler(t *testing.T) {
 			t.Fatalf("body = %s, want project conversation summary", projectConversationsBody)
 		}
 
+		studioImageConversations := requestJSON(t, handler, http.MethodGet, "/api/v1/generation/sessions?kind=image&scopeId=studio", "")
+		defer studioImageConversations.Body.Close()
+		if studioImageConversations.StatusCode != http.StatusOK {
+			t.Fatalf("studio image conversations status code = %d, want %d", studioImageConversations.StatusCode, http.StatusOK)
+		}
+		studioImageConversationsBody := readBody(t, studioImageConversations.Body)
+		if strings.Contains(studioImageConversationsBody, projectConversation.ID) {
+			t.Fatalf("body = %s, want studio scope to exclude agent conversation", studioImageConversationsBody)
+		}
+
+		agentImageConversations := requestJSON(t, handler, http.MethodGet, "/api/v1/generation/sessions?kind=image&scopeId=agent", "")
+		defer agentImageConversations.Body.Close()
+		if agentImageConversations.StatusCode != http.StatusOK {
+			t.Fatalf("agent image conversations status code = %d, want %d", agentImageConversations.StatusCode, http.StatusOK)
+		}
+		agentImageConversationsBody := readBody(t, agentImageConversations.Body)
+		if !strings.Contains(agentImageConversationsBody, projectConversation.ID) ||
+			!strings.Contains(agentImageConversationsBody, `"scopeId":"agent"`) {
+			t.Fatalf("body = %s, want agent scoped conversation", agentImageConversationsBody)
+		}
+
 		allImageConversations := requestJSON(t, handler, http.MethodGet, "/api/v1/generation/sessions?kind=image", "")
 		defer allImageConversations.Body.Close()
 		if allImageConversations.StatusCode != http.StatusOK {
@@ -1214,8 +1240,8 @@ func TestAPIHandler(t *testing.T) {
 		allImageConversationsBody := readBody(t, allImageConversations.Body)
 		if !strings.Contains(allImageConversationsBody, projectConversation.ID) ||
 			!strings.Contains(allImageConversationsBody, `"sessionId":"project-alpha"`) ||
-			strings.Contains(allImageConversationsBody, `"scopeId"`) {
-			t.Fatalf("body = %s, want public session conversations without scopeId", allImageConversationsBody)
+			!strings.Contains(allImageConversationsBody, `"scopeId":"agent"`) {
+			t.Fatalf("body = %s, want public session conversations with scopeId", allImageConversationsBody)
 		}
 
 		projectTasks := requestJSON(t, handler, http.MethodGet, "/api/v1/generation/sessions/"+url.PathEscape(projectConversation.ID)+"/tasks?kind=image", "")

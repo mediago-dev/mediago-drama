@@ -24,9 +24,7 @@ describe("sidebar navigation", () => {
 	});
 
 	it("uses explicit studio path segments for generation conversations", () => {
-		expect(resolveSidebarScreen("/studio/image", "", { workMode: "studio" })).toBe(
-			"studio-conversations",
-		);
+		expect(resolveSidebarScreen("/studio/image", "", { workMode: "studio" })).toBe("studio-types");
 		expect(resolveSidebarScreen("/studio/audio-transcribe", "", { workMode: "studio" })).toBe(
 			"studio-types",
 		);

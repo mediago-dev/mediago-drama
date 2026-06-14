@@ -54,8 +54,8 @@ describe("app route descriptor", () => {
 			sidebarScreen: "project",
 		});
 		expect(resolveAppRouteDescriptor("/studio/video", "", { workMode: "studio" })).toMatchObject({
-			level: 2,
-			sidebarScreen: "studio-conversations",
+			level: 1,
+			sidebarScreen: "studio-types",
 		});
 	});
 

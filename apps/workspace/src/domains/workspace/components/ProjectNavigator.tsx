@@ -44,14 +44,10 @@ import {
 } from "@/domains/workspace/lib/workbench-route";
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
 import { useSettingsNavigationStore } from "@/lib/stores/settings";
-import { useWorkModeStore, type WorkMode } from "@/lib/stores/work-mode";
+import { useWorkModeStore } from "@/lib/stores/work-mode";
 import { NewDocumentDialog, type NewDocumentDialogChoice } from "./NewDocumentDialog";
 import { NewSourceMaterialDialog } from "./NewSourceMaterialDialog";
-import {
-	SettingsSidebarPanel,
-	StudioConversationsScreen,
-	StudioTypesScreen,
-} from "./ProjectNavigatorPanels";
+import { SettingsSidebarPanel, StudioSessionsScreen } from "./ProjectNavigatorPanels";
 import {
 	AgentProjectCreateDialog,
 	ProjectSidebarPanel,
@@ -306,42 +302,12 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		}
 	}, [activeWorkMode, isProjectSettingsMode, navigate, visibleProjectId]);
 
-	const selectWorkMode = useCallback(
-		(mode: WorkMode) => {
-			setWorkMode(mode);
-			if (mode === "agent") {
-				setActiveProjectId(null);
-			}
-
-			if (location.pathname !== "/") navigate("/");
-		},
-		[location.pathname, navigate, setActiveProjectId, setWorkMode],
-	);
-
-	const selectStudioTab = useCallback(
-		(tab: StudioTab | null) => {
+	const selectStudioConversation = useCallback(
+		(kind: StudioTab, conversationId: string) => {
 			setWorkMode("studio");
-			if (!tab) {
-				navigate("/");
-				return;
-			}
-
-			navigate(studioTabPath(tab));
+			navigate(studioTabPath(kind, { conversationId }));
 		},
 		[navigate, setWorkMode],
-	);
-
-	const returnToStudioTypes = useCallback(() => {
-		setWorkMode("studio");
-		navigate("/");
-	}, [navigate, setWorkMode]);
-
-	const selectStudioConversation = useCallback(
-		(conversationId: string) => {
-			if (!activeStudioTab) return;
-			navigate(studioTabPath(activeStudioTab, { conversationId }));
-		},
-		[activeStudioTab, navigate],
 	);
 
 	const createDocumentFromTemplate = useCallback(
@@ -500,7 +466,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 								level: sidebarScreenLevel("projects", { isProjectSettings: false }),
 								node: (
 									<ProjectsSidebarPanel
-										activeMode="agent"
 										error={error}
 										isCreating={isCreating}
 										isLoading={isLoading}
@@ -511,7 +476,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 										onOpenProject={openProject}
 										onOpenSearch={openSearch}
 										onOpenSettings={() => navigate("/settings")}
-										onSelectMode={selectWorkMode}
 									/>
 								),
 							},
@@ -548,16 +512,14 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 								id: "studio-types",
 								level: sidebarScreenLevel("studio-types", { isProjectSettings: false }),
 								node: (
-									<StudioTypesScreen
-										activeCapabilityId={null}
-										activeMode="studio"
+									<StudioSessionsScreen
+										activeConversationId={activeStudioConversationId}
 										activeTab={activeStudioTab}
 										onOpenSettings={() =>
 											navigate(isProjectMode && activeProjectId ? projectSettingsPath : "/settings")
 										}
 										onOpenGenerationNotification={openGenerationNotification}
-										onSelectMode={selectWorkMode}
-										onSelectTab={selectStudioTab}
+										onSelectConversation={selectStudioConversation}
 									/>
 								),
 							},
@@ -566,14 +528,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 								level: sidebarScreenLevel("studio-conversations", {
 									isProjectSettings: false,
 								}),
-								node: (
-									<StudioConversationsScreen
-										activeConversationId={activeStudioConversationId}
-										activeTab={activeStudioTab}
-										onReturnToTypes={returnToStudioTypes}
-										onSelectConversation={selectStudioConversation}
-									/>
-								),
+								node: null,
 							},
 							{
 								id: "settings",

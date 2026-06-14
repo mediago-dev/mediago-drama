@@ -117,7 +117,7 @@ func (handler GenerationTasks) HandleGenerationTextStream(context *gin.Context) 
 // HandleGenerationConversations lists generation conversations.
 func (handler GenerationTasks) HandleGenerationConversations(context *gin.Context) {
 	conversations, err := handler.service.ListGenerationConversations(
-		"",
+		strings.TrimSpace(context.Query("scopeId")),
 		strings.TrimSpace(context.Query("kind")),
 	)
 	if err != nil {
@@ -135,7 +135,9 @@ func (handler GenerationTasks) HandleCreateGenerationConversation(context *gin.C
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 		return
 	}
-	payload.ScopeID = service.GenerationScopeIDForSessionID(payload.ID)
+	if strings.TrimSpace(payload.ScopeID) == "" {
+		payload.ScopeID = service.GenerationScopeIDForSessionID(payload.ID)
+	}
 
 	conversation, status, err := handler.service.CreateGenerationConversation(payload)
 	if err != nil {

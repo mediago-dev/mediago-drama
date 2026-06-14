@@ -2,7 +2,6 @@ import type React from "react";
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import useSWR from "swr";
-import { CapabilityGrid } from "@/domains/capabilities/components/CapabilityGrid";
 import {
 	defaultGenerationConversationScopeId,
 	generationConversationsQueryKey,
@@ -18,7 +17,12 @@ export const StudioHome: React.FC = () => {
 
 	return (
 		<div className="flex h-full min-h-0 flex-col overflow-hidden bg-ide-editor text-ide-editor-foreground">
-			<CapabilityGrid projectMode={false} />
+			<div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
+				<div className="max-w-sm">
+					<h1 className="text-sm font-medium text-foreground">工具箱</h1>
+					<p className="mt-2 text-xs leading-5 text-muted-foreground">从左侧选择或新建一个会话。</p>
+				</div>
+			</div>
 		</div>
 	);
 };

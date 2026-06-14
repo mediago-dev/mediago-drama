@@ -1,33 +1,31 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { capabilitiesKey, type CapabilityRecord } from "@/domains/capabilities/api/capabilities";
 import {
+	createGenerationConversation,
+	getGenerationConversations,
+} from "@/domains/generation/api/generation";
+import {
+	StudioSessionsScreen,
 	StudioTypesScreen,
-	WorkModeSwitcher,
 } from "@/domains/workspace/components/ProjectNavigatorPanels";
 
-describe("WorkModeSwitcher", () => {
+vi.mock("@/domains/generation/api/generation", () => ({
+	createGenerationConversation: vi.fn(),
+	deleteGenerationConversation: vi.fn(),
+	generationConversationsQueryKey: (kind?: string, scopeId = "studio") => [
+		"/generation/sessions",
+		scopeId,
+		kind ?? "",
+	],
+	getGenerationConversations: vi.fn(),
+}));
+
+describe("Studio sidebar screens", () => {
 	afterEach(() => {
+		vi.clearAllMocks();
 		cleanup();
-	});
-
-	it("renders work modes as text labels without icons", () => {
-		const { container } = render(<WorkModeSwitcher activeMode="agent" onSelectMode={vi.fn()} />);
-		const switcher = screen.getByLabelText("工作模式");
-
-		expect(within(switcher).getByRole("button", { name: "智能体" }).textContent).toBe("智能体");
-		expect(within(switcher).getByRole("button", { name: "工具箱" }).textContent).toBe("工具箱");
-		expect(container.querySelector("svg")).toBeNull();
-	});
-
-	it("selects a work mode from the text button", () => {
-		const onSelectMode = vi.fn();
-		render(<WorkModeSwitcher activeMode="agent" onSelectMode={onSelectMode} />);
-
-		fireEvent.click(screen.getByRole("button", { name: "工具箱" }));
-
-		expect(onSelectMode).toHaveBeenCalledWith("studio");
 	});
 
 	it("does not render disabled understanding studio tools", () => {
@@ -35,10 +33,8 @@ describe("WorkModeSwitcher", () => {
 			<SWRConfig value={{ provider: () => new Map(), revalidateOnMount: false }}>
 				<StudioTypesScreen
 					activeCapabilityId={null}
-					activeMode="studio"
 					activeTab={null}
 					onOpenSettings={vi.fn()}
-					onSelectMode={vi.fn()}
 					onSelectTab={vi.fn()}
 				/>
 			</SWRConfig>,
@@ -51,6 +47,7 @@ describe("WorkModeSwitcher", () => {
 		expect(screen.queryByText("视频理解")).toBeNull();
 		expect(screen.queryByText("音频转录")).toBeNull();
 		expect(screen.queryByText("Coming soon")).toBeNull();
+		expect(screen.queryByLabelText("工作模式")).toBeNull();
 	});
 
 	it("keeps generation tools clickable when routes are not configured", () => {
@@ -72,10 +69,8 @@ describe("WorkModeSwitcher", () => {
 			>
 				<StudioTypesScreen
 					activeCapabilityId={null}
-					activeMode="studio"
 					activeTab={null}
 					onOpenSettings={vi.fn()}
-					onSelectMode={vi.fn()}
 					onSelectTab={onSelectTab}
 				/>
 			</SWRConfig>,
@@ -91,6 +86,88 @@ describe("WorkModeSwitcher", () => {
 			fireEvent.click(button as HTMLButtonElement);
 			expect(onSelectTab).toHaveBeenLastCalledWith(tab);
 		}
+	});
+});
+
+describe("StudioSessionsScreen", () => {
+	afterEach(() => {
+		vi.clearAllMocks();
+		cleanup();
+	});
+
+	it("renders generation conversations under video, image, and text groups", async () => {
+		vi.mocked(getGenerationConversations).mockImplementation(async (kind) => {
+			const conversationKind = kind ?? "image";
+			return {
+				conversations: [
+					generationConversation(`${conversationKind}-1`, conversationKind, `${kind} 会话`),
+					...(conversationKind === "image"
+						? [generationConversation("project-image", "image", "项目图片会话", "agent")]
+						: []),
+				],
+			};
+		});
+		const onSelectConversation = vi.fn();
+
+		render(
+			<SWRConfig value={{ provider: () => new Map() }}>
+				<StudioSessionsScreen
+					activeConversationId="image-1"
+					activeTab="image"
+					onOpenSettings={vi.fn()}
+					onSelectConversation={onSelectConversation}
+				/>
+			</SWRConfig>,
+		);
+
+		await waitFor(() => expect(screen.getByText("video 会话")).toBeTruthy());
+		expect(getGenerationConversations).toHaveBeenCalledWith("video", "studio", {
+			allScopes: true,
+		});
+		expect(getGenerationConversations).toHaveBeenCalledWith("image", "studio", {
+			allScopes: true,
+		});
+		expect(getGenerationConversations).toHaveBeenCalledWith("text", "studio", {
+			allScopes: true,
+		});
+		expect(screen.getByText("项目图片会话")).toBeTruthy();
+		expect(screen.queryByLabelText("工作模式")).toBeNull();
+
+		fireEvent.click(screen.getByText("video 会话"));
+
+		expect(onSelectConversation).toHaveBeenCalledWith("video", "video-1");
+	});
+
+	it("creates a conversation from the sidebar new button", async () => {
+		vi.mocked(getGenerationConversations).mockResolvedValue({ conversations: [] });
+		vi.mocked(createGenerationConversation).mockResolvedValue(
+			generationConversation("text-new", "text", "文本草稿"),
+		);
+		const onSelectConversation = vi.fn();
+
+		render(
+			<SWRConfig value={{ provider: () => new Map() }}>
+				<StudioSessionsScreen
+					activeConversationId=""
+					activeTab="text"
+					onOpenSettings={vi.fn()}
+					onSelectConversation={onSelectConversation}
+				/>
+			</SWRConfig>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "新建" }));
+		fireEvent.change(screen.getByLabelText("会话名称"), { target: { value: "文本草稿" } });
+		fireEvent.click(screen.getByRole("button", { name: "创建" }));
+
+		await waitFor(() =>
+			expect(createGenerationConversation).toHaveBeenCalledWith({
+				kind: "text",
+				scopeId: "studio",
+				title: "文本草稿",
+			}),
+		);
+		expect(onSelectConversation).toHaveBeenCalledWith("text", "text-new");
 	});
 });
 
@@ -111,4 +188,15 @@ const capability = (
 	relatedRoutes: [`${kind}.route`],
 	status: "available",
 	surface: "generation",
+});
+
+const generationConversation = (id: string, kind: string, title: string, scopeId = "studio") => ({
+	id,
+	sessionId: id,
+	scopeId,
+	kind: kind as "image" | "video" | "text",
+	title,
+	taskCount: 0,
+	createdAt: "2026-06-06T11:00:00Z",
+	updatedAt: "2026-06-06T11:00:00Z",
 });
