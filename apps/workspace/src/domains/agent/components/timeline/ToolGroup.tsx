@@ -38,7 +38,7 @@ export const ToolGroup: React.FC<{ messages: AgentMessage[] }> = ({ messages }) 
 	};
 
 	return (
-		<section className="px-1 text-xs">
+		<section className="agent-tool-group px-1 text-xs">
 			<button
 				type="button"
 				className={cn(
@@ -60,7 +60,7 @@ export const ToolGroup: React.FC<{ messages: AgentMessage[] }> = ({ messages }) 
 				</span>
 			</button>
 			{expanded ? (
-				<div className="mt-2 space-y-1 rounded-sm bg-ide-toolbar/50 px-2.5 py-2">
+				<div className="agent-tool-group-body mt-2 space-y-1 rounded-sm bg-ide-toolbar/50 px-2.5 py-2">
 					{messages.map((message) => (
 						<ToolGroupRow key={message.id} message={message} />
 					))}
@@ -81,7 +81,7 @@ const ToolGroupRow: React.FC<{ message: AgentMessage }> = ({ message }) => {
 		<div className="border-b border-border/50 pb-1 last:border-0 last:pb-0">
 			<button
 				type="button"
-				className="flex w-full items-center gap-2 py-1 text-left"
+				className="agent-tool-row flex w-full items-center gap-2 py-1 text-left"
 				onClick={() => setExpanded((value) => !value)}
 				aria-expanded={expanded}
 			>
@@ -103,7 +103,7 @@ const ToolGroupRow: React.FC<{ message: AgentMessage }> = ({ message }) => {
 						>
 							{title}
 						</span>
-						<span className="shrink-0 rounded-sm border border-border bg-ide-editor px-1.5 py-0.5 text-2xs text-muted-foreground">
+						<span className="agent-chip shrink-0 rounded-sm border border-border bg-ide-editor px-1.5 py-0.5 text-2xs text-muted-foreground">
 							{acpKind}
 						</span>
 					</span>
@@ -140,13 +140,13 @@ const RowStatus: React.FC<{ status?: string }> = ({ status }) => {
 	return (
 		<span
 			className={cn(
-				"flex shrink-0 items-center gap-1 rounded-sm border px-1.5 py-0.5 text-2xs",
+				"agent-tool-status flex shrink-0 items-center gap-1 rounded-sm border px-1.5 py-0.5 text-2xs",
 				statusTone(status),
 			)}
 			title={status}
 		>
 			<span className="size-1.5 rounded-full bg-current" />
-			<span>{status}</span>
+			<span>{toolStatusLabel(status)}</span>
 		</span>
 	);
 };
@@ -229,6 +229,15 @@ const statusTone = (status: string) => {
 		return "border-warning-border bg-warning-surface text-warning-foreground";
 	}
 	return "border-info-border bg-info-surface text-info-foreground";
+};
+
+const toolStatusLabel = (status: string) => {
+	if (status === "completed") return "完成";
+	if (status === "failed") return "失败";
+	if (status === "in_progress" || status === "pending" || status === "streaming") {
+		return "运行中";
+	}
+	return status;
 };
 
 const rowIconTone = (status?: string) => {

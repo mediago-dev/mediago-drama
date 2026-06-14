@@ -46,6 +46,9 @@ describe("PendingPermissionRequests", () => {
 		render(<PendingPermissionRequests />);
 
 		expect(screen.getByLabelText("待确认工具权限")).toBeTruthy();
+		expect(screen.getByText("1")).toBeTruthy();
+		expect(screen.getByText("请求写入文件")).toBeTruthy();
+		expect(screen.getByText("目标文件")).toBeTruthy();
 		expect(screen.getByText(/Edit 第一章 分镜脚本\.md/)).toBeTruthy();
 		expect(screen.getByRole("button", { name: "允许一次" })).toBeTruthy();
 	});

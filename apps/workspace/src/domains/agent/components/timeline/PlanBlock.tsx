@@ -9,14 +9,20 @@ export const PlanBlock: React.FC<{ content: string; entries?: AgentACPPlanEntry[
 }) => {
 	if (entries && entries.length > 0) {
 		return (
-			<ol className="space-y-1 text-caption text-muted-foreground">
+			<ol className="agent-plan-list space-y-1 text-caption text-muted-foreground">
 				{entries.map((entry, index) => {
 					const Icon = planStatusIcon(entry.status);
 					return (
-						<li key={`${entry.content}-${index}`} className="flex items-start gap-2">
+						<li
+							key={`${entry.content}-${index}`}
+							className={cn(
+								"agent-plan-row flex items-start gap-2",
+								`agent-plan-row-${entry.status}`,
+							)}
+						>
 							<Icon
 								className={cn(
-									"mt-0.5 size-3.5 shrink-0",
+									"agent-plan-status-icon mt-0.5 size-3.5 shrink-0",
 									entry.status === "completed" && "text-success-foreground",
 									entry.status === "in_progress" && "animate-spin text-warning-foreground",
 								)}
@@ -42,9 +48,9 @@ export const PlanBlock: React.FC<{ content: string; entries?: AgentACPPlanEntry[
 	if (steps.length === 0) return <p>暂无计划步骤。</p>;
 
 	return (
-		<ol className="list-decimal space-y-1 pl-4 text-caption text-muted-foreground">
+		<ol className="agent-plan-list list-decimal space-y-1 pl-4 text-caption text-muted-foreground">
 			{steps.map((step, index) => (
-				<li key={`${step}-${index}`} className="whitespace-pre-wrap break-words">
+				<li key={`${step}-${index}`} className="agent-plan-row whitespace-pre-wrap break-words">
 					{step}
 				</li>
 			))}

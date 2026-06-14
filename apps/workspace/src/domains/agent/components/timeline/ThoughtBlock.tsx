@@ -10,10 +10,9 @@ export const ThoughtBlock: React.FC<{ messages: AgentMessage[] }> = ({ messages 
 	const content = readableThoughtContent(messages);
 
 	return (
-		<article className="w-full text-xs">
-			<div className="flex items-start gap-2 px-1 py-1">
-				<span className="mt-1 flex shrink-0 items-center gap-1 text-warning-foreground">
-					<span className="size-1.5 rounded-full bg-current" />
+		<article className="agent-thought-block w-full text-xs">
+			<div className="flex items-start gap-2 px-2.5 py-2">
+				<span className="agent-thought-icon mt-0.5 flex shrink-0 items-center justify-center text-warning-foreground">
 					<Brain className="size-4" />
 				</span>
 				<div className="min-w-0 flex-1">
@@ -24,14 +23,17 @@ export const ThoughtBlock: React.FC<{ messages: AgentMessage[] }> = ({ messages 
 						aria-expanded={expanded}
 					>
 						<span className="min-w-0">
-							<span className="block truncate font-medium italic text-muted-foreground">
-								思考 ({messages.length} 段)
+							<span className="agent-thought-heading flex min-w-0 items-center gap-1.5">
+								<span className="agent-thought-title truncate font-medium text-muted-foreground">
+									思考
+								</span>
+								<span className="agent-thought-count shrink-0">{messages.length} 段</span>
 							</span>
-							<span className="mt-0.5 block truncate text-caption italic text-muted-foreground">
+							<span className="agent-thought-preview mt-0.5 block truncate text-caption italic text-muted-foreground">
 								{compact(content)}
 							</span>
 						</span>
-						<span className="flex shrink-0 items-center gap-1 text-caption text-muted-foreground">
+						<span className="agent-thought-meta flex shrink-0 items-center gap-1 text-caption text-muted-foreground">
 							{formatTime(messages[0]?.createdAt)}
 							<ChevronRight
 								className={cn("size-3.5 transition-transform", expanded && "rotate-90")}
@@ -39,7 +41,7 @@ export const ThoughtBlock: React.FC<{ messages: AgentMessage[] }> = ({ messages 
 						</span>
 					</button>
 					{expanded ? (
-						<div className="mt-1.5 w-full min-w-0 rounded-sm bg-ide-toolbar/50 px-2.5 py-2 leading-5 text-muted-foreground">
+						<div className="agent-action-body agent-thought-body mt-1.5 w-full min-w-0 rounded-sm bg-ide-toolbar/50 px-2.5 py-2 leading-5 text-muted-foreground">
 							<p className="whitespace-pre-wrap break-words italic">{content}</p>
 						</div>
 					) : null}

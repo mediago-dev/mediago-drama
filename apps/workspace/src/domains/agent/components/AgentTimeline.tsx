@@ -7,6 +7,7 @@ import {
 	GitBranch,
 	ImageIcon,
 	LoaderCircle,
+	Sparkles,
 	TerminalSquare,
 	UserRound,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import {
 	type AgentDisplayAttachment,
 	type AgentMessage,
 	type AgentMessageKind,
+	type AgentMessageMetadata,
 	type AgentRuntimeAlert,
 	useAgentStore,
 } from "@/domains/agent/stores";
@@ -68,7 +70,7 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 
 	return (
 		<Virtuoso
-			className={cn("h-full", className)}
+			className={cn("agent-timeline h-full", className)}
 			data={items}
 			alignToBottom
 			computeItemKey={(_, item) => timelineRenderItemKey(item)}
@@ -76,7 +78,7 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 			initialItemCount={Math.min(items.length, 20)}
 			increaseViewportBy={{ top: 800, bottom: 800 }}
 			itemContent={(index, item) => (
-				<div className={cn("px-3 pb-3", index === 0 && "pt-3")}>
+				<div className={cn("agent-timeline-row px-4 pb-3", index === 0 && "pt-4")}>
 					{renderTimelineItem(item, onA2UIAction)}
 				</div>
 			)}
@@ -120,7 +122,7 @@ const TimelineUserTurn: React.FC<{ message: AgentMessage }> = memo(({ message })
 		<div className="flex justify-end">
 			<div className="flex max-w-[var(--message-bubble-max-width)] flex-col items-end gap-1.5">
 				{attachments.length > 0 ? <UserAttachmentStrip attachments={attachments} /> : null}
-				<article className="rounded-lg bg-primary px-3 py-2 text-xs leading-5 text-primary-foreground">
+				<article className="agent-user-bubble rounded-lg bg-primary px-3 py-2 text-xs leading-5 text-primary-foreground">
 					<div className="mb-1 flex items-center justify-end gap-1.5 text-caption opacity-80">
 						<span>{formatTime(message.createdAt)}</span>
 						<span>你</span>
@@ -154,7 +156,7 @@ const UserAttachmentCard: React.FC<{ attachment: AgentDisplayAttachment }> = mem
 					href={attachment.url}
 					target="_blank"
 					rel="noreferrer"
-					className="block h-28 w-36 overflow-hidden rounded-sm border border-border bg-card shadow-sm transition-colors hover:border-primary"
+					className="agent-user-attachment block h-28 w-36 overflow-hidden rounded-sm border border-border bg-card shadow-sm transition-colors hover:border-primary"
 					title={attachment.name}
 				>
 					<img src={attachment.url} alt={attachment.name} className="h-full w-full object-cover" />
@@ -164,7 +166,7 @@ const UserAttachmentCard: React.FC<{ attachment: AgentDisplayAttachment }> = mem
 
 		return (
 			<div
-				className="grid max-w-64 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 rounded-sm border border-border bg-card px-2.5 py-2 text-left text-xs shadow-sm"
+				className="agent-user-attachment grid max-w-64 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 rounded-sm border border-border bg-card px-2.5 py-2 text-left text-xs shadow-sm"
 				title={attachment.name}
 			>
 				<span className="flex size-7 items-center justify-center rounded-sm bg-ide-toolbar text-muted-foreground">
@@ -320,7 +322,7 @@ const TimelineAssistantGroup: React.FC<{
 }> = memo(({ messages, onA2UIAction }) => {
 	const items = useMemo(() => groupAssistantMessages(messages), [messages]);
 	return (
-		<div className="space-y-2 px-1">
+		<div className="agent-assistant-group space-y-2 px-1">
 			{items.map((item) =>
 				item.type === "thoughts" ? (
 					<ThoughtBlock key={item.id} messages={item.messages} />
@@ -386,17 +388,64 @@ const TimelineA2UIItem: React.FC<{
 	);
 });
 
-const TimelineMessage: React.FC<{ message: AgentMessage }> = memo(({ message }) => (
-	<article
-		className={cn(
-			"px-1 py-1 text-xs leading-5",
-			message.status === "error" ? "text-error-foreground" : "text-foreground",
-		)}
-	>
-		<MarkdownContent content={message.content} />
-		{message.status === "streaming" ? <StreamingCursor /> : null}
-	</article>
-));
+const TimelineMessage: React.FC<{ message: AgentMessage }> = memo(({ message }) => {
+	const { thoughts, text } = splitAssistantInlineThoughts(message.content);
+	return (
+		<>
+			{thoughts.map((thought, index) => (
+				<ThoughtBlock
+					key={`${message.id}-inline-thought-${index}`}
+					messages={[
+						{
+							...message,
+							id: `${message.id}-inline-thought-${index}`,
+							content: thought,
+							kind: "thought",
+						},
+					]}
+				/>
+			))}
+			{text ? <AssistantTextMessage message={message} content={text} /> : null}
+		</>
+	);
+});
+
+const AssistantTextMessage: React.FC<{ message: AgentMessage; content: string }> = ({
+	message,
+	content,
+}) => {
+	const rich = isRichAssistantMarkdown(content);
+	return (
+		<article
+			className={cn(
+				"agent-assistant-message text-xs leading-5",
+				rich
+					? "agent-assistant-message-card px-3 py-3"
+					: "agent-assistant-message-inline px-1 py-1",
+				message.status === "error" ? "text-error-foreground" : "text-foreground",
+			)}
+		>
+			{rich ? (
+				<div className="agent-assistant-message-heading">
+					<span className="agent-assistant-message-icon" aria-hidden="true">
+						<Sparkles />
+					</span>
+					<span className="agent-assistant-message-title">文档智能体</span>
+					<span className="agent-assistant-message-dot">·</span>
+					<span className="agent-assistant-message-subtitle">最终回复</span>
+				</div>
+			) : (
+				<span className="agent-assistant-inline-icon" aria-hidden="true">
+					<Sparkles />
+				</span>
+			)}
+			<div className="agent-assistant-message-content">
+				<MarkdownContent content={content} />
+				{message.status === "streaming" ? <StreamingCursor /> : null}
+			</div>
+		</article>
+	);
+};
 
 const TimelineAction: React.FC<{
 	message: AgentMessage;
@@ -412,17 +461,21 @@ const TimelineAction: React.FC<{
 	const isError = message.status === "error";
 
 	return (
-		<article className="text-xs">
-			<div className="flex items-start gap-2 px-1 py-1">
-				<span className={cn("mt-1 flex shrink-0 items-center gap-1", actionIconTone(message))}>
-					<span className="size-1.5 rounded-full bg-current" />
+		<article className={cn("agent-action-card text-xs", kind === "plan" && "agent-plan-card")}>
+			<div className="flex items-start gap-2 px-2.5 py-2">
+				<span
+					className={cn(
+						"agent-action-icon mt-1 flex shrink-0 items-center gap-1",
+						actionIconTone(message),
+					)}
+				>
 					<Icon className="size-4" />
 				</span>
 				<div className="min-w-0 flex-1">
 					<button
 						type="button"
 						className={cn(
-							"flex w-full justify-between gap-2 text-left",
+							"agent-action-toggle flex w-full justify-between gap-2 text-left",
 							hasSummary ? "items-start" : "items-center",
 						)}
 						onClick={() => setExpanded((value) => !value)}
@@ -438,6 +491,9 @@ const TimelineAction: React.FC<{
 							>
 								{title}
 							</span>
+							{kind === "plan" ? (
+								<PlanProgressBadge entries={message.metadata?.planEntries} />
+							) : null}
 							{hasSummary ? (
 								<span
 									className={cn(
@@ -449,7 +505,7 @@ const TimelineAction: React.FC<{
 								</span>
 							) : null}
 						</span>
-						<span className="flex shrink-0 items-center gap-1 text-caption text-muted-foreground">
+						<span className="agent-action-meta flex shrink-0 items-center gap-1 text-caption text-muted-foreground">
 							{formatTime(message.createdAt)}
 							<ChevronRight
 								className={cn("size-3.5 transition-transform", expanded && "rotate-90")}
@@ -459,7 +515,7 @@ const TimelineAction: React.FC<{
 					{expanded ? (
 						<div
 							className={cn(
-								"mt-1.5 space-y-2 rounded-sm bg-ide-toolbar/50 px-2.5 py-2 leading-5 text-muted-foreground",
+								"agent-action-body mt-1.5 space-y-2 rounded-sm bg-ide-toolbar/50 px-2.5 py-2 leading-5 text-muted-foreground",
 								kind === "thought" && "italic",
 							)}
 						>
@@ -472,6 +528,65 @@ const TimelineAction: React.FC<{
 		</article>
 	);
 });
+
+const isRichAssistantMarkdown = (content: string) => {
+	const trimmed = content.trim();
+	if (!trimmed) return false;
+	if (trimmed.length > 120) return true;
+	return /(^|\n)(#{1,6}\s|[-*]\s|\d+[.)]\s|>\s|```)/.test(trimmed);
+};
+
+const splitAssistantInlineThoughts = (content: string) => {
+	const thoughts: string[] = [];
+	const textSegments: string[] = [];
+	const openPattern = /<think>/gi;
+	let cursor = 0;
+	let openMatch: RegExpExecArray | null;
+
+	while ((openMatch = openPattern.exec(content)) !== null) {
+		if (openMatch.index > cursor) {
+			textSegments.push(content.slice(cursor, openMatch.index));
+		}
+
+		const start = openPattern.lastIndex;
+		const closePattern = /<\/think>/gi;
+		closePattern.lastIndex = start;
+		const closeMatch = closePattern.exec(content);
+		if (!closeMatch) {
+			const thought = content.slice(start).trim();
+			if (thought) thoughts.push(thought);
+			cursor = content.length;
+			break;
+		}
+
+		const thought = content.slice(start, closeMatch.index).trim();
+		if (thought) thoughts.push(thought);
+		cursor = closeMatch.index + closeMatch[0].length;
+		openPattern.lastIndex = cursor;
+	}
+
+	if (cursor < content.length) textSegments.push(content.slice(cursor));
+
+	return {
+		thoughts,
+		text: textSegments
+			.map((segment) => segment.trim())
+			.filter(Boolean)
+			.join("\n\n"),
+	};
+};
+
+const PlanProgressBadge: React.FC<{ entries?: AgentMessageMetadata["planEntries"] }> = ({
+	entries,
+}) => {
+	if (!entries || entries.length === 0) return null;
+	const completed = entries.filter((entry) => entry.status === "completed").length;
+	return (
+		<span className="agent-plan-progress">
+			{completed} / {entries.length} 完成
+		</span>
+	);
+};
 
 const ActionContent: React.FC<{ message: AgentMessage }> = memo(({ message }) => {
 	const kind = message.kind ?? "tool";
@@ -531,7 +646,7 @@ const LabeledCode: React.FC<{ label: string; content: string }> = ({ label, cont
 );
 
 const TimelineRunning: React.FC = () => (
-	<div className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
+	<div className="agent-running-indicator flex items-center gap-2 px-2.5 py-2 text-xs text-muted-foreground">
 		<LoaderCircle className="size-3.5 animate-spin text-primary" />
 		<span>智能体正在处理</span>
 		<StreamingCursor />

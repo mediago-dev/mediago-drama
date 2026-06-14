@@ -93,6 +93,8 @@ describe("PermissionRequestCard", () => {
 		expect(summary.className).toContain("max-h-20");
 		expect(summary.className).toContain("overflow-auto");
 		expect(summary.className).toContain("break-all");
+		expect(screen.getByText("请求执行命令")).toBeTruthy();
+		expect(screen.getByText("命令")).toBeTruthy();
 		expect(screen.getByText("execute")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Yes, proceed" })).toBeTruthy();
 	});

@@ -267,7 +267,7 @@ export const AgentComposer = forwardRef<AgentComposerHandle, AgentComposerProps>
 			<div
 				ref={surfaceRef}
 				className={cn(
-					"agent-composer min-h-8 flex-1 rounded-sm border border-input bg-ide-editor px-2 py-1.5 text-xs leading-5 text-foreground transition-colors focus-within:border-ring",
+					"agent-composer agent-composer-surface min-h-8 flex-1 rounded-sm border border-input bg-ide-editor px-2 py-1.5 text-xs leading-5 text-foreground transition-colors focus-within:border-ring",
 					disabled && "cursor-not-allowed opacity-60",
 					className,
 				)}

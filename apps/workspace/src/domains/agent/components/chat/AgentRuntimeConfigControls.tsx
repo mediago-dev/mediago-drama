@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { Bot, ChevronDown, LayoutGrid, type LucideIcon, Sparkles } from "lucide-react";
 import type React from "react";
 import type {
 	AgentRuntimeConfigPayload,
@@ -38,9 +38,10 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 	onPermissionChange,
 }) => {
 	return (
-		<div className="mb-1.5 grid grid-cols-3 gap-1.5">
+		<div className="agent-runtime-config mb-1.5 grid gap-1.5">
 			<AgentRuntimeConfigSelect
 				label="模型"
+				icon={Bot}
 				config={config?.model}
 				value={modelValue}
 				disabled={disabled}
@@ -50,6 +51,7 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 			/>
 			<AgentRuntimeConfigSelect
 				label="推理强度"
+				icon={Sparkles}
 				config={config?.reasoning}
 				value={reasoningValue}
 				disabled={disabled}
@@ -58,7 +60,8 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 				onChange={onReasoningChange}
 			/>
 			<AgentRuntimeConfigSelect
-				label="权限"
+				label="模式"
+				icon={LayoutGrid}
 				config={config?.permission}
 				value={permissionValue}
 				disabled={disabled}
@@ -72,6 +75,7 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 
 interface AgentRuntimeConfigSelectProps {
 	label: string;
+	icon: LucideIcon;
 	config?: AgentRuntimeSelectConfig;
 	value: string;
 	disabled: boolean;
@@ -82,6 +86,7 @@ interface AgentRuntimeConfigSelectProps {
 
 const AgentRuntimeConfigSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	label,
+	icon: Icon,
 	config,
 	value,
 	disabled,
@@ -91,11 +96,17 @@ const AgentRuntimeConfigSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 }) => {
 	const options = runtimeConfigOptions(config);
 	if (options.length === 0) {
-		const placeholder = isLoading ? "读取 ACP 配置中" : errorMessage || `ACP 未返回${label}选项`;
+		const placeholder = isLoading ? "读取中" : errorMessage ? "配置不可用" : "未返回选项";
 		return (
-			<label className="min-w-0 space-y-1">
-				<span className="text-caption font-medium text-muted-foreground">{label}</span>
-				<div className="flex h-7 w-full items-center justify-between gap-2 rounded-sm border border-input bg-ide-editor px-2 py-1.5 text-xs text-muted-foreground opacity-60">
+			<label className="agent-config-field min-w-0 space-y-1">
+				<span className="agent-config-icon" aria-hidden="true">
+					<Icon />
+				</span>
+				<span className="agent-config-title">{label}</span>
+				<div
+					className="agent-config-placeholder flex h-7 w-full items-center justify-between gap-2 rounded-sm border border-input bg-ide-editor px-2 py-1.5 text-xs text-muted-foreground opacity-60"
+					title={errorMessage || placeholder}
+				>
 					<span className="truncate">{placeholder}</span>
 					<ChevronDown className="size-4 shrink-0 opacity-50" />
 				</div>
@@ -105,12 +116,13 @@ const AgentRuntimeConfigSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	const resolvedValue = normalizeRuntimeConfigValue(config, value);
 
 	return (
-		<label className="min-w-0 space-y-1">
-			<span className="text-caption font-medium text-muted-foreground">
-				{config?.name || label}
+		<label className="agent-config-field min-w-0 space-y-1">
+			<span className="agent-config-icon" aria-hidden="true">
+				<Icon />
 			</span>
+			<span className="agent-config-title">{label}</span>
 			<Select value={resolvedValue} onValueChange={onChange} disabled={disabled}>
-				<SelectTrigger className="h-7">
+				<SelectTrigger className="agent-config-trigger h-7">
 					<SelectValue placeholder={config?.name || label} />
 				</SelectTrigger>
 				<SelectContent>
