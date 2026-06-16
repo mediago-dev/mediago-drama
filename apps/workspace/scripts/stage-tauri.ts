@@ -35,7 +35,8 @@ function main(): void {
 	const binariesDir = join(tauriDir, "binaries");
 	const agentsDir = join(tauriDir, "resources", "agents");
 	const toolsDir = join(tauriDir, "resources", "tools");
-	const stagedServer = join(binariesDir, `mediago-server-${triple}`);
+	const binaryExt = triple.includes("windows") ? ".exe" : "";
+	const stagedServer = join(binariesDir, `mediago-server-${triple}${binaryExt}`);
 
 	mkdirSync(binariesDir, { recursive: true });
 	mkdirSync(agentsDir, { recursive: true });
