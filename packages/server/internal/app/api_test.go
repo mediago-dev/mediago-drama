@@ -203,6 +203,100 @@ func TestAPIHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("workspace document history exposes diff and restore", func(t *testing.T) {
+		project, _ := createExternalProjectForTest(t, handler, "Document History")
+		projectID := project.ID
+		documentsPath := "/api/v1/workspace/documents?projectId=" + url.QueryEscape(projectID)
+
+		create := requestJSON(t, handler, http.MethodPost, documentsPath, `{"title":"道具设定","content":"# 道具设定\n\nfirst","category":"prop","tags":["key"]}`)
+		defer create.Body.Close()
+		if create.StatusCode != http.StatusOK {
+			t.Fatalf("create status code = %d, want %d: %s", create.StatusCode, http.StatusOK, readBody(t, create.Body))
+		}
+		var createEnvelope struct {
+			Data struct {
+				Document mediamcp.WorkspaceDocument `json:"document"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(create.Body).Decode(&createEnvelope); err != nil {
+			t.Fatalf("decoding create response: %v", err)
+		}
+		documentID := createEnvelope.Data.Document.ID
+		if documentID == "" {
+			t.Fatal("created document id is empty")
+		}
+
+		documentPath := "/api/v1/workspace/documents/" + url.PathEscape(documentID) + "?projectId=" + url.QueryEscape(projectID)
+		update := requestJSON(t, handler, http.MethodPatch, documentPath, `{"content":"# 道具设定\n\nsecond","category":"prop"}`)
+		defer update.Body.Close()
+		if update.StatusCode != http.StatusOK {
+			t.Fatalf("update status code = %d, want %d: %s", update.StatusCode, http.StatusOK, readBody(t, update.Body))
+		}
+
+		history := requestJSON(t, handler, http.MethodGet, "/api/v1/workspace/documents/"+url.PathEscape(documentID)+"/history?projectId="+url.QueryEscape(projectID)+"&limit=20", "")
+		defer history.Body.Close()
+		if history.StatusCode != http.StatusOK {
+			t.Fatalf("history status code = %d, want %d: %s", history.StatusCode, http.StatusOK, readBody(t, history.Body))
+		}
+		var historyEnvelope struct {
+			Data struct {
+				Items []struct {
+					Hash        string   `json:"hash"`
+					DocumentIDs []string `json:"documentIds"`
+				} `json:"items"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(history.Body).Decode(&historyEnvelope); err != nil {
+			t.Fatalf("decoding history response: %v", err)
+		}
+		if len(historyEnvelope.Data.Items) < 2 {
+			t.Fatalf("history item count = %d, want at least 2: %#v", len(historyEnvelope.Data.Items), historyEnvelope.Data.Items)
+		}
+		latestHash := historyEnvelope.Data.Items[0].Hash
+		oldestHash := historyEnvelope.Data.Items[len(historyEnvelope.Data.Items)-1].Hash
+		if latestHash == "" || oldestHash == "" {
+			t.Fatalf("history hashes are empty: %#v", historyEnvelope.Data.Items)
+		}
+
+		version := requestJSON(t, handler, http.MethodGet, "/api/v1/workspace/documents/"+url.PathEscape(documentID)+"/history/"+url.PathEscape(latestHash)+"?projectId="+url.QueryEscape(projectID), "")
+		defer version.Body.Close()
+		if version.StatusCode != http.StatusOK {
+			t.Fatalf("version status code = %d, want %d: %s", version.StatusCode, http.StatusOK, readBody(t, version.Body))
+		}
+		versionBody := readBody(t, version.Body)
+		if !strings.Contains(versionBody, `"category":"prop"`) || !strings.Contains(versionBody, `second`) || strings.Contains(versionBody, `category: prop`) {
+			t.Fatalf("version body = %s, want prop body without frontmatter", versionBody)
+		}
+
+		diff := requestJSON(t, handler, http.MethodGet, "/api/v1/workspace/documents/"+url.PathEscape(documentID)+"/history/"+url.PathEscape(latestHash)+"/diff?projectId="+url.QueryEscape(projectID), "")
+		defer diff.Body.Close()
+		if diff.StatusCode != http.StatusOK {
+			t.Fatalf("diff status code = %d, want %d: %s", diff.StatusCode, http.StatusOK, readBody(t, diff.Body))
+		}
+		diffBody := readBody(t, diff.Body)
+		if !strings.Contains(diffBody, `"type":"removed"`) || !strings.Contains(diffBody, `first`) ||
+			!strings.Contains(diffBody, `"type":"added"`) || !strings.Contains(diffBody, `second`) {
+			t.Fatalf("diff body = %s, want removed first and added second", diffBody)
+		}
+
+		restore := requestJSON(t, handler, http.MethodPost, "/api/v1/workspace/documents/"+url.PathEscape(documentID)+"/history/"+url.PathEscape(oldestHash)+"/restore?projectId="+url.QueryEscape(projectID), "")
+		defer restore.Body.Close()
+		if restore.StatusCode != http.StatusOK {
+			t.Fatalf("restore status code = %d, want %d: %s", restore.StatusCode, http.StatusOK, readBody(t, restore.Body))
+		}
+		var restoreEnvelope struct {
+			Data struct {
+				Document mediamcp.WorkspaceDocument `json:"document"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(restore.Body).Decode(&restoreEnvelope); err != nil {
+			t.Fatalf("decoding restore response: %v", err)
+		}
+		if restoreEnvelope.Data.Document.Category != "prop" || !strings.Contains(restoreEnvelope.Data.Document.Content, "first") {
+			t.Fatalf("restored document = %#v, want prop category and first content", restoreEnvelope.Data.Document)
+		}
+	})
+
 	t.Run("episode timeline state persists by document", func(t *testing.T) {
 		project, _ := createExternalProjectForTest(t, handler, "Episode State")
 		projectID := project.ID
@@ -677,6 +771,7 @@ func TestAPIHandler(t *testing.T) {
 		if !strings.Contains(body, `"accepted":true`) {
 			t.Fatalf("body = %s, want accepted true", body)
 		}
+		waitForAgentSessionStatus(t, handler, sessionID, "completed")
 	})
 
 	t.Run("message passes runtime config selections to runner", func(t *testing.T) {

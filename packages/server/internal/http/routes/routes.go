@@ -216,6 +216,22 @@ func registerWorkspaceRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) 
 	projectRoutes.GET("/workspace/documents", handlers.Workspace.HandleListWorkspaceDocuments)
 	projectRoutes.POST("/workspace/documents", handlers.Workspace.HandleCreateWorkspaceDocument)
 	projectRoutes.GET(
+		"/workspace/documents/:documentId/history",
+		handlers.Workspace.HandleListDocumentHistory,
+	)
+	projectRoutes.GET(
+		"/workspace/documents/:documentId/history/:commitHash",
+		handlers.Workspace.HandleGetDocumentHistoryVersion,
+	)
+	projectRoutes.GET(
+		"/workspace/documents/:documentId/history/:commitHash/diff",
+		handlers.Workspace.HandleGetDocumentHistoryDiff,
+	)
+	projectRoutes.POST(
+		"/workspace/documents/:documentId/history/:commitHash/restore",
+		handlers.Workspace.HandleRestoreDocumentHistoryVersion,
+	)
+	projectRoutes.GET(
 		"/workspace/documents/:documentId",
 		handlers.Workspace.HandleGetWorkspaceDocument,
 	)

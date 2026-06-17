@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
@@ -23,6 +25,10 @@ type WorkspaceStore interface {
 	GetWorkspaceDocument(projectID string, documentID string) (mediamcp.WorkspaceDocument, bool, error)
 	UpdateWorkspaceDocument(projectID string, documentID string, request service.UpdateWorkspaceDocumentRequest) (mediamcp.WorkspaceDocument, service.WorkspaceDocumentsResponse, error)
 	DeleteWorkspaceDocument(projectID string, documentID string) (service.DeleteWorkspaceDocumentResponse, error)
+	ListDocumentHistory(projectID string, documentID string, limit int) (service.DocumentHistoryResponse, error)
+	GetDocumentHistoryVersion(projectID string, documentID string, commitHash string) (service.DocumentHistoryVersionResponse, error)
+	GetDocumentHistoryDiff(projectID string, documentID string, commitHash string, fromHash string) (service.DocumentHistoryDiffResponse, error)
+	RestoreDocumentHistoryVersion(projectID string, documentID string, commitHash string) (service.DocumentHistoryRestoreResponse, error)
 	GetEpisodeTimelineState(projectID string, documentID string) (service.EpisodeTimelineStateResponse, bool, error)
 	SaveEpisodeTimelineState(projectID string, documentID string, request service.SaveEpisodeTimelineStateRequest) (service.EpisodeTimelineStateResponse, error)
 }
@@ -325,6 +331,99 @@ func (handler Workspace) HandleDeleteWorkspaceDocument(context *gin.Context) {
 	httpresponse.OK(context, response)
 }
 
+// HandleListDocumentHistory lists version-control entries for a project document.
+func (handler Workspace) HandleListDocumentHistory(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+	documentID, ok := requiredPathParam(context, "documentId", "documentId")
+	if !ok {
+		return
+	}
+	limit, ok := documentHistoryLimit(context)
+	if !ok {
+		return
+	}
+	response, err := handler.store.ListDocumentHistory(projectID, documentID, limit)
+	if err != nil {
+		handler.writeDocumentHistoryError(context, err)
+		return
+	}
+	httpresponse.OK(context, response)
+}
+
+// HandleGetDocumentHistoryVersion returns one historical version for a document.
+func (handler Workspace) HandleGetDocumentHistoryVersion(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+	documentID, ok := requiredPathParam(context, "documentId", "documentId")
+	if !ok {
+		return
+	}
+	commitHash, ok := requiredPathParam(context, "commitHash", "commitHash")
+	if !ok {
+		return
+	}
+	response, err := handler.store.GetDocumentHistoryVersion(projectID, documentID, commitHash)
+	if err != nil {
+		handler.writeDocumentHistoryError(context, err)
+		return
+	}
+	httpresponse.OK(context, response)
+}
+
+// HandleGetDocumentHistoryDiff returns a line diff for one historical document version.
+func (handler Workspace) HandleGetDocumentHistoryDiff(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+	documentID, ok := requiredPathParam(context, "documentId", "documentId")
+	if !ok {
+		return
+	}
+	commitHash, ok := requiredPathParam(context, "commitHash", "commitHash")
+	if !ok {
+		return
+	}
+	response, err := handler.store.GetDocumentHistoryDiff(projectID, documentID, commitHash, strings.TrimSpace(context.Query("from")))
+	if err != nil {
+		handler.writeDocumentHistoryError(context, err)
+		return
+	}
+	httpresponse.OK(context, response)
+}
+
+// HandleRestoreDocumentHistoryVersion restores one historical document version.
+func (handler Workspace) HandleRestoreDocumentHistoryVersion(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+	documentID, ok := requiredPathParam(context, "documentId", "documentId")
+	if !ok {
+		return
+	}
+	commitHash, ok := requiredPathParam(context, "commitHash", "commitHash")
+	if !ok {
+		return
+	}
+	response, err := handler.store.RestoreDocumentHistoryVersion(projectID, documentID, commitHash)
+	if err != nil {
+		handler.writeDocumentHistoryError(context, err)
+		return
+	}
+	response.State, err = handler.withProjectAssetsForDocuments(response.State)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+	httpresponse.OK(context, response)
+}
+
 // HandleGetEpisodeTimelineState returns the persisted episode timeline for a document.
 func (handler Workspace) HandleGetEpisodeTimelineState(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
@@ -395,6 +494,14 @@ func (handler Workspace) writeFolderMutationError(context *gin.Context, err erro
 	httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 }
 
+func (handler Workspace) writeDocumentHistoryError(context *gin.Context, err error) {
+	if handler.matchesNotFound(err) {
+		httpresponse.Error(context, http.StatusNotFound, "历史版本不存在")
+		return
+	}
+	httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+}
+
 func (handler Workspace) matchesNotFound(err error) bool {
 	return handler.isNotFound != nil && handler.isNotFound(err)
 }
@@ -425,4 +532,17 @@ func (handler Workspace) withProjectAssetsForDocuments(state service.WorkspaceDo
 	}
 	state.Assets = assets
 	return state, nil
+}
+
+func documentHistoryLimit(context *gin.Context) (int, bool) {
+	raw := strings.TrimSpace(context.Query("limit"))
+	if raw == "" {
+		return 50, true
+	}
+	limit, err := strconv.Atoi(raw)
+	if err != nil || limit < 1 || limit > 200 {
+		httpresponse.Error(context, http.StatusBadRequest, "limit 必须是 1 到 200 之间的整数")
+		return 0, false
+	}
+	return limit, true
 }

@@ -163,6 +163,7 @@ func (store *Service) updateDocumentFolder(projectID string, folderID string, re
 		if err := os.Rename(filepath.Join(store.documentsDir(projectID), beforePath), filepath.Join(store.documentsDir(projectID), afterPath)); err != nil {
 			return documentFolderMutationResponse{}, err
 		}
+		store.recordDocumentHistory(projectID)
 	}
 	state, err := store.loadUnlocked(projectID)
 	if err != nil {
@@ -223,6 +224,7 @@ func (store *Service) deleteDocumentFolder(projectID string, folderID string) (d
 	if err := moveDocumentFolderChildrenToParent(store.documentsDir(projectID), folderPath); err != nil {
 		return deleteDocumentFolderResponse{}, err
 	}
+	store.recordDocumentHistory(projectID)
 	state, err := store.loadUnlocked(projectID)
 	if err != nil {
 		return deleteDocumentFolderResponse{}, err

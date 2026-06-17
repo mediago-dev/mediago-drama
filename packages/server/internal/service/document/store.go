@@ -61,6 +61,7 @@ func (store *Service) saveUnlocked(projectID string, request workspaceStateReque
 	if err := store.writeDocumentMarkdownProjection(projectID, documents, documentFiles, folderPaths); err != nil {
 		return workspaceStateResponse{}, err
 	}
+	store.recordDocumentHistory(projectID)
 	savedDocuments, savedFolders, err := store.loadLocalMarkdownWorkspaceUnlocked(projectID)
 	if err != nil {
 		return workspaceStateResponse{}, err

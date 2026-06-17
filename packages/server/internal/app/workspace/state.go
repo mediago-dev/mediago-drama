@@ -25,6 +25,10 @@ type createWorkspaceProjectRequest = servicedocument.CreateWorkspaceProjectReque
 type createWorkspaceDocumentRequest = servicedocument.CreateWorkspaceDocumentRequest
 type updateWorkspaceDocumentRequest = servicedocument.UpdateWorkspaceDocumentRequest
 type deleteWorkspaceDocumentResponse = servicedocument.DeleteWorkspaceDocumentResponse
+type documentHistoryResponse = servicedocument.DocumentHistoryResponse
+type documentHistoryVersionResponse = servicedocument.DocumentHistoryVersionResponse
+type documentHistoryDiffResponse = servicedocument.DocumentHistoryDiffResponse
+type documentHistoryRestoreResponse = servicedocument.DocumentHistoryRestoreResponse
 type createDocumentFolderRequest = servicedocument.CreateDocumentFolderRequest
 type updateDocumentFolderRequest = servicedocument.UpdateDocumentFolderRequest
 type documentFolderMutationResponse = servicedocument.DocumentFolderMutationResponse
@@ -317,6 +321,26 @@ func (store *WorkspaceStateService) UpdateWorkspaceDocument(projectID string, do
 
 func (store *WorkspaceStateService) updateDocument(projectID string, documentID string, request updateWorkspaceDocumentRequest) (mediamcp.WorkspaceDocument, workspaceDocumentsResponse, error) {
 	return store.StateService().Documents.UpdateWorkspaceDocument(projectID, documentID, request)
+}
+
+// ListDocumentHistory lists recent version-control entries for one document.
+func (store *WorkspaceStateService) ListDocumentHistory(projectID string, documentID string, limit int) (documentHistoryResponse, error) {
+	return store.StateService().Documents.ListDocumentHistory(projectID, documentID, limit)
+}
+
+// GetDocumentHistoryVersion returns one historical version of a document.
+func (store *WorkspaceStateService) GetDocumentHistoryVersion(projectID string, documentID string, commitHash string) (documentHistoryVersionResponse, error) {
+	return store.StateService().Documents.GetDocumentHistoryVersion(projectID, documentID, commitHash)
+}
+
+// GetDocumentHistoryDiff returns a line diff for one document version.
+func (store *WorkspaceStateService) GetDocumentHistoryDiff(projectID string, documentID string, commitHash string, fromHash string) (documentHistoryDiffResponse, error) {
+	return store.StateService().Documents.GetDocumentHistoryDiff(projectID, documentID, commitHash, fromHash)
+}
+
+// RestoreDocumentHistoryVersion restores a historical document version.
+func (store *WorkspaceStateService) RestoreDocumentHistoryVersion(projectID string, documentID string, commitHash string) (documentHistoryRestoreResponse, error) {
+	return store.StateService().Documents.RestoreDocumentHistoryVersion(projectID, documentID, commitHash)
 }
 
 // MoveWorkspaceDocument moves a document in the workspace tree.

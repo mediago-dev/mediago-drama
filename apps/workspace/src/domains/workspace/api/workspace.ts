@@ -93,6 +93,67 @@ export interface WorkspaceDocumentMutationResponse {
 	state: WorkspaceDocumentsPayload;
 }
 
+export interface DocumentHistoryItem {
+	hash: string;
+	summary: string;
+	message: string;
+	projectId?: string;
+	source?: string;
+	operation?: string;
+	documentIds: string[];
+	paths: string[];
+	createdAt: string;
+}
+
+export interface DocumentHistoryVersion {
+	hash: string;
+	parentHash?: string;
+	documentId: string;
+	title: string;
+	category?: MarkdownDocument["category"];
+	tags?: string[];
+	content: string;
+	path: string;
+	createdAt: string;
+}
+
+export interface DocumentHistoryDiffLine {
+	type: "context" | "added" | "removed";
+	oldLine?: number;
+	newLine?: number;
+	text: string;
+}
+
+export interface DocumentHistoryDiff {
+	documentId: string;
+	from?: DocumentHistoryVersion | null;
+	to: DocumentHistoryVersion;
+	lines: DocumentHistoryDiffLine[];
+}
+
+export interface DocumentHistoryResponse {
+	projectId: string;
+	documentId: string;
+	items: DocumentHistoryItem[];
+}
+
+export interface DocumentHistoryVersionResponse {
+	projectId: string;
+	documentId: string;
+	version: DocumentHistoryVersion;
+}
+
+export interface DocumentHistoryDiffResponse {
+	projectId: string;
+	documentId: string;
+	diff: DocumentHistoryDiff;
+}
+
+export interface RestoreDocumentHistoryResponse {
+	document: MarkdownDocument;
+	state: WorkspaceDocumentsPayload;
+}
+
 export type DeleteWorkspaceDocumentResponse = Omit<
 	GeneratedDeleteWorkspaceDocumentResponse,
 	"state"
@@ -199,6 +260,54 @@ export const deleteWorkspaceDocumentRecord = async (
 	return response.data;
 };
 
+export const getWorkspaceDocumentHistory = async (
+	documentId: string,
+	projectId?: string | null,
+	limit = 50,
+) => {
+	const response = await httpClient.get<DocumentHistoryResponse>(
+		workspaceDocumentHistoryKey(documentId, projectId),
+		{ params: { limit } },
+	);
+	return response.data;
+};
+
+export const getWorkspaceDocumentHistoryVersion = async (
+	documentId: string,
+	commitHash: string,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.get<DocumentHistoryVersionResponse>(
+		workspaceDocumentHistoryVersionKey(documentId, commitHash, projectId),
+	);
+	return response.data;
+};
+
+export const getWorkspaceDocumentHistoryDiff = async (
+	documentId: string,
+	commitHash: string,
+	projectId?: string | null,
+	fromHash?: string | null,
+) => {
+	const params = fromHash ? { from: fromHash } : undefined;
+	const response = await httpClient.get<DocumentHistoryDiffResponse>(
+		workspaceDocumentHistoryDiffKey(documentId, commitHash, projectId),
+		{ params },
+	);
+	return response.data;
+};
+
+export const restoreWorkspaceDocumentHistoryVersion = async (
+	documentId: string,
+	commitHash: string,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.post<RestoreDocumentHistoryResponse>(
+		workspaceDocumentHistoryRestoreKey(documentId, commitHash, projectId),
+	);
+	return response.data;
+};
+
 export const getWorkspaceFolders = async (projectId?: string | null) => {
 	const response = await httpClient.get<WorkspaceFoldersPayload>(workspaceFoldersKey(projectId));
 	return response.data;
@@ -267,6 +376,27 @@ export const workspaceFoldersKey = (projectId?: string | null) =>
 const workspaceDocumentRecordKey = (documentId: string, projectId?: string | null) => {
 	return projectAPIPath(projectId, `/workspace/documents/${encodeURIComponent(documentId)}`);
 };
+
+export const workspaceDocumentHistoryKey = (documentId: string, projectId?: string | null) =>
+	`${workspaceDocumentRecordKey(documentId, projectId)}/history`;
+
+const workspaceDocumentHistoryVersionKey = (
+	documentId: string,
+	commitHash: string,
+	projectId?: string | null,
+) => `${workspaceDocumentHistoryKey(documentId, projectId)}/${encodeURIComponent(commitHash)}`;
+
+const workspaceDocumentHistoryDiffKey = (
+	documentId: string,
+	commitHash: string,
+	projectId?: string | null,
+) => `${workspaceDocumentHistoryVersionKey(documentId, commitHash, projectId)}/diff`;
+
+const workspaceDocumentHistoryRestoreKey = (
+	documentId: string,
+	commitHash: string,
+	projectId?: string | null,
+) => `${workspaceDocumentHistoryVersionKey(documentId, commitHash, projectId)}/restore`;
 
 const workspaceFolderRecordKey = (folderId: string, projectId?: string | null) => {
 	return projectAPIPath(projectId, `/workspace/folders/${encodeURIComponent(folderId)}`);

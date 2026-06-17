@@ -1,6 +1,6 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Menu, MessageSquare, MessageSquareOff, ScissorsLineDashed } from "lucide-react";
+import { History, Menu, MessageSquare, MessageSquareOff, ScissorsLineDashed } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { GenerationAsset } from "@/domains/generation/api/generation";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/domains/documents/components/MarkdownHybridEditor";
 import { DocumentMention } from "@/domains/documents/components/extensions/document-mention";
 import { SectionGenerationDialog } from "@/domains/documents/components/SectionGenerationDialog";
+import { DocumentHistoryPanel } from "@/domains/documents/components/DocumentHistoryPanel";
 import { SelectionBubble } from "@/domains/documents/components/SelectionBubble";
 import { createDOMTextAnchorResolver } from "@/domains/documents/components/text-anchor-dom";
 import type { InlineDecorationRange } from "@/domains/documents/components/tiptap/storage";
@@ -54,6 +55,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const [selectionRange, setSelectionRange] = useState<InlineDecorationRange | null>(null);
 	const [commentOffsets, setCommentOffsets] = useState<Record<string, number>>({});
 	const [sectionGeneration, setSectionGeneration] = useState<MarkdownSectionContext | null>(null);
+	const [historyOpen, setHistoryOpen] = useState(false);
 	const [selectedSectionAssetKeys, setSelectedSectionAssetKeys] = useState<
 		Record<string, string[]>
 	>({});
@@ -321,6 +323,17 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 										<MessageSquareOff />
 									</Button>
 								)}
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon"
+									aria-label="查看变更记录"
+									title="变更记录"
+									disabled={!projectId}
+									onClick={() => setHistoryOpen(true)}
+								>
+									<History />
+								</Button>
 								{canOpenWorkbench ? (
 									<Button
 										type="button"
@@ -408,6 +421,12 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 					if (!open) setSectionGeneration(null);
 				}}
 				onToggleImage={toggleSectionImage}
+			/>
+			<DocumentHistoryPanel
+				open={historyOpen}
+				onOpenChange={setHistoryOpen}
+				projectId={projectId}
+				document={activeDocument}
 			/>
 		</>
 	);

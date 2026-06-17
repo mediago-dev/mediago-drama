@@ -39,6 +39,9 @@ func (store *Service) SyncLocalMarkdownFiles(projectID string) (bool, error) {
 	defer store.mu.Unlock()
 
 	_, _, err := store.loadLocalMarkdownWorkspaceUnlocked(projectID)
+	if err == nil {
+		store.recordDocumentHistory(projectID)
+	}
 	return false, err
 }
 

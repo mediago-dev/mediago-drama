@@ -12,6 +12,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/packages/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/agent"
+	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/documenthistory"
 	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/model"
 	"github.com/mediago-dev/mediago-drama/packages/server/internal/service/shared"
 )
@@ -146,6 +147,7 @@ type Service struct {
 	workspace *repository.WorkspaceRepository
 	approvals ApprovalGate
 	streams   *EditStreamService
+	history   *documenthistory.Service
 	initErr   error
 }
 
@@ -155,12 +157,20 @@ func NewService(workspaceDir string, repo *repository.WorkspaceRepository, appro
 		dir:       shared.ResolveWorkspaceDir(workspaceDir),
 		workspace: repo,
 		approvals: approvals,
+		history:   documenthistory.NewService(),
 		initErr:   initErr,
 	}
 	if store.initErr == nil && store.workspace == nil {
 		store.initErr = fmt.Errorf("workspace repository is nil")
 	}
 	return store
+}
+
+// SetDocumentHistoryService replaces the document history dependency.
+func (store *Service) SetDocumentHistoryService(history *documenthistory.Service) {
+	if store != nil {
+		store.history = history
+	}
 }
 
 // SetApprovalGate sets the approval dependency after services are constructed.
