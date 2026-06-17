@@ -1,12 +1,14 @@
-import { FolderOpen, Loader2, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Archive, FolderOpen, Loader2, SlidersHorizontal, Trash2 } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import useSWR, { mutate as mutateSWR } from "swr";
 import {
+	archiveProject,
 	deleteProject,
 	getProjects,
 	projectsKey,
+	projectsKeyForStatus,
 	type WorkspaceProject,
 } from "@/domains/projects/api/projects";
 import { workspaceStateKey } from "@/domains/workspace/api/workspace";
@@ -42,6 +44,7 @@ export const ProjectSettings: React.FC = () => {
 	const workspaceDir = useDocumentsStore((state) => state.workspaceDir);
 	const { data, isLoading } = useSWR(projectsKey, getProjects);
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+	const [isArchiving, setIsArchiving] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isOpeningProjectFolder, setIsOpeningProjectFolder] = useState(false);
 
@@ -56,22 +59,51 @@ export const ProjectSettings: React.FC = () => {
 	const projectDir =
 		project?.projectDir?.trim() || (documentsProjectId === project?.id ? workspaceDir.trim() : "");
 
+	const refreshProjectLists = async () => {
+		await Promise.all([
+			mutateSWR(projectsKeyForStatus("active")),
+			mutateSWR(projectsKeyForStatus("archived")),
+			mutateSWR(projectsKeyForStatus("trashed")),
+		]);
+	};
+
+	const leaveCurrentProject = (message: string) => {
+		void mutateSWR(workspaceStateKey(project?.id ?? ""), undefined, { revalidate: false });
+		setActiveProjectId(null);
+		prepareWorkspaceLoad(message);
+		navigate("/", { replace: true });
+	};
+
+	const archiveCurrentProject = async () => {
+		if (!project || isArchiving) return;
+
+		setIsArchiving(true);
+		try {
+			await archiveProject(project.id);
+			await refreshProjectLists();
+			leaveCurrentProject("请选择一个项目");
+			toast.success("项目已归档", { description: project.name });
+		} catch (err) {
+			const message = projectSettingsErrorMessage(err, "归档项目失败。");
+			toast.error("归档项目失败", { description: message });
+		} finally {
+			setIsArchiving(false);
+		}
+	};
+
 	const deleteCurrentProject = async () => {
 		if (!project || isDeleting) return;
 
 		setIsDeleting(true);
 		try {
 			await deleteProject(project.id);
-			await mutateSWR(projectsKey);
-			void mutateSWR(workspaceStateKey(project.id), undefined, { revalidate: false });
-			setActiveProjectId(null);
-			prepareWorkspaceLoad("请选择一个项目");
+			await refreshProjectLists();
 			setIsDeleteDialogOpen(false);
-			navigate("/", { replace: true });
-			toast.success("项目已删除", { description: project.name });
+			leaveCurrentProject("请选择一个项目");
+			toast.success("项目已移到垃圾箱", { description: project.name });
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "删除项目失败。";
-			toast.error("删除项目失败", { description: message });
+			const message = projectSettingsErrorMessage(err, "移到垃圾箱失败。");
+			toast.error("移到垃圾箱失败", { description: message });
 		} finally {
 			setIsDeleting(false);
 		}
@@ -99,12 +131,14 @@ export const ProjectSettings: React.FC = () => {
 	return (
 		<div className="h-full min-h-0 overflow-hidden bg-ide-editor text-ide-editor-foreground">
 			<ProjectSettingsGeneralPanel
+				isArchiving={isArchiving}
 				isDeleting={isDeleting}
 				isLoading={isLoading}
 				project={project}
 				projectDir={projectDir}
 				projectName={projectName}
 				isOpeningProjectFolder={isOpeningProjectFolder}
+				onArchive={() => void archiveCurrentProject()}
 				onDelete={() => setIsDeleteDialogOpen(true)}
 				onOpenProjectFolder={openCurrentProjectFolder}
 			/>
@@ -112,10 +146,10 @@ export const ProjectSettings: React.FC = () => {
 			<AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>删除项目？</AlertDialogTitle>
+						<AlertDialogTitle>移到垃圾箱？</AlertDialogTitle>
 						<AlertDialogDescription>
-							确定要删除“{projectName}”吗？项目会从列表中移除，并清除 MediaGo Drama
-							中的文档索引、智能体会话和待处理审批；本地项目文件夹不会被删除。
+							确定要将“{projectName}”移到垃圾箱吗？项目文件夹会移动到
+							.mediago-drama/trash，之后可以在垃圾箱中恢复。
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -128,7 +162,7 @@ export const ProjectSettings: React.FC = () => {
 							}}
 						>
 							{isDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
-							<span>删除项目</span>
+							<span>移到垃圾箱</span>
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
@@ -138,18 +172,22 @@ export const ProjectSettings: React.FC = () => {
 };
 
 const ProjectSettingsGeneralPanel: React.FC<{
+	isArchiving: boolean;
 	isDeleting: boolean;
 	isLoading: boolean;
 	isOpeningProjectFolder: boolean;
+	onArchive: () => void;
 	onDelete: () => void;
 	onOpenProjectFolder: () => void;
 	project: WorkspaceProject | null;
 	projectDir: string;
 	projectName: string;
 }> = ({
+	isArchiving,
 	isDeleting,
 	isLoading,
 	isOpeningProjectFolder,
+	onArchive,
 	onDelete,
 	onOpenProjectFolder,
 	project,
@@ -199,9 +237,30 @@ const ProjectSettingsGeneralPanel: React.FC<{
 
 				<div className={cn(settingsInsetRowClassName, projectSettingsRowClassName)}>
 					<div className="min-w-0">
-						<p className="text-sm font-medium text-foreground">删除项目</p>
+						<p className="text-sm font-medium text-foreground">归档项目</p>
 						<p className="mt-1 text-xs leading-5 text-muted-foreground">
-							从项目列表中移除“{project.name}”，并清除它在 MediaGo Drama 中的索引数据。
+							从默认项目列表隐藏“{project.name}”，项目文件夹仍保留在当前位置。
+						</p>
+					</div>
+					<div className="flex min-w-0 justify-start md:justify-end">
+						<Button
+							type="button"
+							variant="secondary"
+							onClick={onArchive}
+							disabled={isArchiving}
+							className="rounded-md"
+						>
+							{isArchiving ? <Loader2 className="animate-spin" /> : <Archive />}
+							<span>归档项目</span>
+						</Button>
+					</div>
+				</div>
+
+				<div className={cn(settingsInsetRowClassName, projectSettingsRowClassName)}>
+					<div className="min-w-0">
+						<p className="text-sm font-medium text-foreground">移到垃圾箱</p>
+						<p className="mt-1 text-xs leading-5 text-muted-foreground">
+							从默认项目列表隐藏“{project.name}”，并把项目文件夹移动到 .mediago-drama/trash。
 						</p>
 					</div>
 					<div className="flex min-w-0 justify-start md:justify-end">
@@ -213,7 +272,7 @@ const ProjectSettingsGeneralPanel: React.FC<{
 							className="rounded-md"
 						>
 							{isDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
-							<span>删除项目</span>
+							<span>移到垃圾箱</span>
 						</Button>
 					</div>
 				</div>
@@ -224,3 +283,12 @@ const ProjectSettingsGeneralPanel: React.FC<{
 
 const projectSettingsRowClassName =
 	"grid gap-3 md:grid-cols-[minmax(var(--settings-label-column-min),var(--settings-label-column-max))_minmax(0,1fr)] md:items-start";
+
+const projectSettingsErrorMessage = (err: unknown, fallback: string) => {
+	if (err instanceof Error) return err.message;
+	if (err && typeof err === "object" && "message" in err) {
+		const message = (err as { message?: unknown }).message;
+		if (typeof message === "string" && message.trim()) return message;
+	}
+	return fallback;
+};

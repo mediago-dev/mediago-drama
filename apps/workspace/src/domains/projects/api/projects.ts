@@ -11,15 +11,23 @@ export type ProjectLayerDefaults = Partial<Record<PromptLayer, string>>;
 
 export const projectsKey = "/projects";
 
+export type ProjectStatus = "active" | "archived" | "trashed";
+export type ProjectStatusFilter = ProjectStatus | "all";
+
 export interface WorkspaceProject {
 	id: string;
 	name: string;
 	description: string;
+	status?: ProjectStatus;
 	projectDir?: string;
 	relativeDir: string;
 	documentCount: number;
 	createdAt: string;
 	updatedAt: string;
+	archivedAt?: string;
+	trashedAt?: string;
+	originalProjectDir?: string;
+	trashProjectDir?: string;
 }
 
 export interface WorkspaceProjectsPayload {
@@ -60,8 +68,14 @@ export type { ProjectBrief, ProjectBriefPatch } from "@/api/types/documents";
 
 export type CreateWorkspaceProjectRequest = Partial<GeneratedCreateWorkspaceProjectRequest>;
 
-export const getProjects = async () => {
-	const response = await httpClient.get<WorkspaceProjectsPayload>(projectsKey);
+export const projectsKeyForStatus = (status: ProjectStatusFilter = "active") =>
+	status === "active" ? projectsKey : `${projectsKey}?status=${encodeURIComponent(status)}`;
+
+export const getProjects = async (status: ProjectStatusFilter = "active") => {
+	const response =
+		status === "active"
+			? await httpClient.get<WorkspaceProjectsPayload>(projectsKey)
+			: await httpClient.get<WorkspaceProjectsPayload>(projectsKey, { params: { status } });
 	return response.data;
 };
 
@@ -105,6 +119,27 @@ export const updateProjectBrief = async (projectId: string, payload: ProjectBrie
 export const deleteProject = async (projectId: string) => {
 	const response = await httpClient.delete<WorkspaceProject>(
 		`${projectsKey}/${encodeURIComponent(projectId)}`,
+	);
+	return response.data;
+};
+
+export const archiveProject = async (projectId: string) => {
+	const response = await httpClient.post<WorkspaceProject>(
+		`${projectsKey}/${encodeURIComponent(projectId)}/archive`,
+	);
+	return response.data;
+};
+
+export const restoreProject = async (projectId: string) => {
+	const response = await httpClient.post<WorkspaceProject>(
+		`${projectsKey}/${encodeURIComponent(projectId)}/restore`,
+	);
+	return response.data;
+};
+
+export const permanentlyDeleteProject = async (projectId: string) => {
+	const response = await httpClient.delete<WorkspaceProject>(
+		`${projectsKey}/${encodeURIComponent(projectId)}/permanent`,
 	);
 	return response.data;
 };
