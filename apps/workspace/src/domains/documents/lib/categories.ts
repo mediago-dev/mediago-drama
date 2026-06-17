@@ -2,6 +2,7 @@ import {
 	Clapperboard,
 	FileInput,
 	Film,
+	Package,
 	ScrollText,
 	UserRound,
 	type LucideIcon,
@@ -21,6 +22,7 @@ export const documentCategoryDescriptors: readonly DocumentCategoryDescriptor[] 
 	{ key: "screenplay", label: "剧本", icon: ScrollText, colorVar: "--doc-category-screenplay" },
 	{ key: "character", label: "角色", icon: UserRound, colorVar: "--doc-category-character" },
 	{ key: "scene", label: "场景", icon: Clapperboard, colorVar: "--doc-category-scene" },
+	{ key: "prop", label: "道具", icon: Package, colorVar: "--doc-category-prop" },
 	{ key: "storyboard", label: "分镜", icon: Film, colorVar: "--doc-category-storyboard" },
 	{
 		key: "source-material",

@@ -36,6 +36,8 @@ func DefaultProjectOverviewMarkdown(projectName string, projectDescription strin
 	builder.WriteString("<!-- section-doc-list category=\"character\" -->\n\n")
 	builder.WriteString("## 场景\n\n")
 	builder.WriteString("<!-- section-doc-list category=\"scene\" -->\n\n")
+	builder.WriteString("## 道具\n\n")
+	builder.WriteString("<!-- section-doc-list category=\"prop\" -->\n\n")
 	builder.WriteString("## 分镜\n\n")
 	builder.WriteString("<!-- section-doc-list category=\"storyboard\" -->\n\n")
 	builder.WriteString("## 素材\n\n")

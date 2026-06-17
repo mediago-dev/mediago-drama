@@ -145,6 +145,11 @@ func TestPromptBuilderAdvertisesSkillForBusinessDocuments(t *testing.T) {
 			skillName: "scene-writer",
 		},
 		{
+			name:      "prop",
+			category:  "prop",
+			skillName: "prop-writer",
+		},
+		{
 			name:      "storyboard",
 			category:  "storyboard",
 			skillName: "storyboard-writer",
@@ -227,6 +232,7 @@ func assertNoInlineCategoryGuidance(t *testing.T, prompt string) {
 		"# 类型专属写作指导：剧本（screenplay）",
 		"# 类型专属写作指导：角色档案（character）",
 		"# 类型专属写作指导：场景设定（scene）",
+		"# 类型专属写作指导：道具设定（prop）",
 		"# 类型专属写作指导：分镜（storyboard）",
 	} {
 		if strings.Contains(prompt, heading) {

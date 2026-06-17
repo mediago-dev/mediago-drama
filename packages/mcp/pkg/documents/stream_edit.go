@@ -12,7 +12,7 @@ type StreamDocumentEditInput struct {
 	Mode             string  `json:"mode" jsonschema:"编辑模式：create、append、replace_block 或 replace_document。"`
 	AnchorText       string  `json:"anchorText,omitempty" jsonschema:"replace_block 模式下用于定位 Markdown 块的锚定文本。"`
 	Title            string  `json:"title,omitempty" jsonschema:"create 模式的新文档标题，或可选展示标题。"`
-	Category         string  `json:"category,omitempty" jsonschema:"create 模式的新文档类型：screenplay、character、scene、storyboard 或 source-material。"`
+	Category         string  `json:"category,omitempty" jsonschema:"create 模式的新文档类型：screenplay、character、scene、prop、storyboard 或 source-material。"`
 	ParentDocumentID *string `json:"parentDocumentId,omitempty" jsonschema:"create 模式下的新文档父 ID；空字符串表示根级。"`
 	Chunk            string  `json:"chunk,omitempty" jsonschema:"本次流式写入的一小段 Markdown。"`
 	Finalize         bool    `json:"finalize,omitempty" jsonschema:"设为 true 表示本轮流式写入完成。"`

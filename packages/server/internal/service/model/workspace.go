@@ -210,7 +210,7 @@ func ValidateDocumentCategory(category string) error {
 		return nil
 	}
 	switch category {
-	case "screenplay", "character", "scene", "storyboard", "source-material":
+	case "screenplay", "character", "scene", "prop", "storyboard", "source-material":
 		return nil
 	default:
 		return fmt.Errorf("unsupported document category: %s", category)

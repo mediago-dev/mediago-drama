@@ -10,6 +10,7 @@ describe("taskTypeForCategory", () => {
 
 	it("falls back to studio for other/missing categories", () => {
 		expect(taskTypeForCategory("screenplay")).toBe("studio");
+		expect(taskTypeForCategory("prop")).toBe("studio");
 		expect(taskTypeForCategory(null)).toBe("studio");
 		expect(taskTypeForCategory(undefined)).toBe("studio");
 	});

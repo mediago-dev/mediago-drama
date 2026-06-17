@@ -9,6 +9,7 @@ describe("NewDocumentDialog", () => {
 		expect(screen.getByRole("button", { name: /剧本/ })).toBeTruthy();
 		expect(screen.getByRole("button", { name: /角色/ })).toBeTruthy();
 		expect(screen.getByRole("button", { name: /场景/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /道具/ })).toBeTruthy();
 		expect(screen.getByRole("button", { name: /分镜/ })).toBeTruthy();
 		expect(screen.queryByRole("button", { name: /素材/ })).toBeNull();
 		expect(screen.queryByRole("button", { name: "上传文件" })).toBeNull();

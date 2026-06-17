@@ -334,6 +334,7 @@ var legacyTemplateIDs = map[string]struct{}{
 	"category_screenplay":        {},
 	"category_character":         {},
 	"category_scene":             {},
+	"category_prop":              {},
 	"category_storyboard":        {},
 	"workflow_gate":              {},
 	"project_document_tree":      {},

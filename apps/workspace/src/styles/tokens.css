@@ -272,6 +272,7 @@
 		--doc-category-screenplay: var(--info-foreground);
 		--doc-category-character: var(--success-foreground);
 		--doc-category-scene: var(--warning-foreground);
+		--doc-category-prop: rgb(219 39 119);
 		--doc-category-storyboard: rgb(124 58 237);
 		--doc-category-source-material: var(--muted-foreground);
 
@@ -365,6 +366,7 @@
 		--doc-category-screenplay: var(--info-foreground);
 		--doc-category-character: var(--success-foreground);
 		--doc-category-scene: var(--warning-foreground);
+		--doc-category-prop: rgb(244 114 182);
 		--doc-category-storyboard: rgb(167 139 250);
 		--doc-category-source-material: var(--muted-foreground);
 

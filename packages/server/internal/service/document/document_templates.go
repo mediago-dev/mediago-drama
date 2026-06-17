@@ -37,7 +37,7 @@ func normalizeCreateDocumentRequest(request createWorkspaceDocumentRequest) (cre
 
 func isCreatableTemplateCategory(category string) bool {
 	switch category {
-	case "screenplay", "character", "scene", "storyboard":
+	case "screenplay", "character", "scene", "prop", "storyboard":
 		return true
 	default:
 		return false

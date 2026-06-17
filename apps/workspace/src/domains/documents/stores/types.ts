@@ -34,6 +34,7 @@ export type DocumentCategory =
 	| "screenplay"
 	| "character"
 	| "scene"
+	| "prop"
 	| "storyboard"
 	| "source-material"
 	| "overview";

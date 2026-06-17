@@ -70,6 +70,12 @@
 	color: var(--warning-foreground);
 }
 
+.agent-reference-mention[data-category="prop"] {
+	border-color: color-mix(in srgb, var(--doc-category-prop) 36%, var(--border));
+	background: color-mix(in srgb, var(--doc-category-prop) 12%, var(--background));
+	color: var(--doc-category-prop);
+}
+
 .agent-reference-mention[data-category="storyboard"] {
 	border-color: color-mix(in srgb, var(--doc-category-storyboard) 40%, var(--border));
 	background: color-mix(in srgb, var(--secondary) 80%, var(--background));
