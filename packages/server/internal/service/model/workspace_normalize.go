@@ -60,16 +60,29 @@ func WorkspaceProjectRecordsFromModels(models []domain.WorkspaceProjectModel) []
 	projects := make([]mediamcp.Project, 0, len(models))
 	for _, model := range models {
 		projects = append(projects, mediamcp.Project{
-			ID:          model.ID,
-			Name:        model.Name,
-			Description: model.Description,
-			ProjectDir:  model.ProjectDir,
-			RelativeDir: model.RelativeDir,
-			CreatedAt:   model.CreatedAt,
-			UpdatedAt:   model.UpdatedAt,
+			ID:                 model.ID,
+			Name:               model.Name,
+			Description:        model.Description,
+			Status:             workspaceProjectStatus(model.Status),
+			ProjectDir:         model.ProjectDir,
+			RelativeDir:        model.RelativeDir,
+			OriginalProjectDir: model.OriginalProjectDir,
+			TrashProjectDir:    model.TrashProjectDir,
+			ArchivedAt:         model.ArchivedAt,
+			TrashedAt:          model.TrashedAt,
+			CreatedAt:          model.CreatedAt,
+			UpdatedAt:          model.UpdatedAt,
 		})
 	}
 	return projects
+}
+
+func workspaceProjectStatus(status string) string {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		return "active"
+	}
+	return status
 }
 
 // NormalizeWorkspaceDocuments normalizes documents before persistence or output.

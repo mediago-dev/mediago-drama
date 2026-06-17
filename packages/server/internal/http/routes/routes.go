@@ -178,6 +178,9 @@ func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 
 func registerProjectRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
 	projectRoutes.DELETE("", handlers.Projects.HandleDeleteProject)
+	projectRoutes.POST("/archive", handlers.Projects.HandleArchiveProject)
+	projectRoutes.POST("/restore", handlers.Projects.HandleRestoreProject)
+	projectRoutes.DELETE("/permanent", handlers.Projects.HandlePermanentlyDeleteProject)
 	projectRoutes.GET("/billing/summary", handlers.Billing.HandleBillingSummary)
 	projectRoutes.GET("/config", handlers.ProjectConfigs.HandleGetProjectConfig)
 	projectRoutes.PATCH("/config", handlers.ProjectConfigs.HandlePatchProjectConfig)

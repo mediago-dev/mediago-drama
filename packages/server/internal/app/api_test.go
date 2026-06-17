@@ -570,15 +570,50 @@ func TestAPIHandler(t *testing.T) {
 			t.Fatalf("body = %s, project document leaked into root workspace state", rootBody)
 		}
 
+		archiveProject := requestJSON(t, projectHandler, http.MethodPost, "/api/v1/projects/"+url.PathEscape(nameOnlyEnvelope.Data.ID)+"/archive", "")
+		defer archiveProject.Body.Close()
+		if archiveProject.StatusCode != http.StatusOK {
+			t.Fatalf("archive project status code = %d, want %d: %s", archiveProject.StatusCode, http.StatusOK, readBody(t, archiveProject.Body))
+		}
+		archiveBody := readBody(t, archiveProject.Body)
+		if !strings.Contains(archiveBody, `"status":"archived"`) || !strings.Contains(archiveBody, `"archivedAt"`) {
+			t.Fatalf("body = %s, want archived project", archiveBody)
+		}
+		archivedProjects := requestJSON(t, projectHandler, http.MethodGet, "/api/v1/projects?status=archived", "")
+		defer archivedProjects.Body.Close()
+		archivedProjectsBody := readBody(t, archivedProjects.Body)
+		if !strings.Contains(archivedProjectsBody, `"id":"`+nameOnlyEnvelope.Data.ID+`"`) {
+			t.Fatalf("body = %s, want archived project listed", archivedProjectsBody)
+		}
+		restoreArchived := requestJSON(t, projectHandler, http.MethodPost, "/api/v1/projects/"+url.PathEscape(nameOnlyEnvelope.Data.ID)+"/restore", "")
+		defer restoreArchived.Body.Close()
+		if restoreArchived.StatusCode != http.StatusOK {
+			t.Fatalf("restore archived status code = %d, want %d: %s", restoreArchived.StatusCode, http.StatusOK, readBody(t, restoreArchived.Body))
+		}
+		restoreArchivedBody := readBody(t, restoreArchived.Body)
+		if !strings.Contains(restoreArchivedBody, `"status":"active"`) {
+			t.Fatalf("body = %s, want restored archived project", restoreArchivedBody)
+		}
+
 		deleteProject := requestJSON(t, projectHandler, http.MethodDelete, "/api/v1/projects/"+url.PathEscape(createEnvelope.Data.ID), "")
 		defer deleteProject.Body.Close()
 		if deleteProject.StatusCode != http.StatusOK {
 			t.Fatalf("delete project status code = %d, want %d: %s", deleteProject.StatusCode, http.StatusOK, readBody(t, deleteProject.Body))
 		}
-		deleteProjectBody := readBody(t, deleteProject.Body)
-		if !strings.Contains(deleteProjectBody, `"id":"`+createEnvelope.Data.ID+`"`) {
-			t.Fatalf("body = %s, want deleted project", deleteProjectBody)
+		var deleteEnvelope struct {
+			Data workspaceProjectRecord `json:"data"`
 		}
+		if err := json.NewDecoder(deleteProject.Body).Decode(&deleteEnvelope); err != nil {
+			t.Fatalf("decoding delete project response: %v", err)
+		}
+		if deleteEnvelope.Data.ID != createEnvelope.Data.ID ||
+			deleteEnvelope.Data.Status != "trashed" ||
+			deleteEnvelope.Data.OriginalProjectDir != selectedDir ||
+			deleteEnvelope.Data.TrashProjectDir == "" {
+			t.Fatalf("delete project = %+v, want trashed project metadata", deleteEnvelope.Data)
+		}
+		assertPathMissing(t, selectedDir)
+		assertPathExists(t, deleteEnvelope.Data.TrashProjectDir)
 
 		listAfterDelete := requestJSON(t, projectHandler, http.MethodGet, "/api/v1/projects", "")
 		defer listAfterDelete.Body.Close()
@@ -587,10 +622,68 @@ func TestAPIHandler(t *testing.T) {
 			t.Fatalf("body = %s, deleted project is still listed", listAfterDeleteBody)
 		}
 
+		trashList := requestJSON(t, projectHandler, http.MethodGet, "/api/v1/projects?status=trashed", "")
+		defer trashList.Body.Close()
+		if trashList.StatusCode != http.StatusOK {
+			t.Fatalf("trash list status code = %d, want %d: %s", trashList.StatusCode, http.StatusOK, readBody(t, trashList.Body))
+		}
+		trashListBody := readBody(t, trashList.Body)
+		if !strings.Contains(trashListBody, `"status":"trashed"`) ||
+			!strings.Contains(trashListBody, `"id":"`+createEnvelope.Data.ID+`"`) {
+			t.Fatalf("body = %s, want trashed project", trashListBody)
+		}
+
 		deleteMissing := requestJSON(t, projectHandler, http.MethodDelete, "/api/v1/projects/"+url.PathEscape(createEnvelope.Data.ID), "")
 		defer deleteMissing.Body.Close()
 		if deleteMissing.StatusCode != http.StatusNotFound {
 			t.Fatalf("delete missing status code = %d, want %d: %s", deleteMissing.StatusCode, http.StatusNotFound, readBody(t, deleteMissing.Body))
+		}
+
+		restoreProject := requestJSON(t, projectHandler, http.MethodPost, "/api/v1/projects/"+url.PathEscape(createEnvelope.Data.ID)+"/restore", "")
+		defer restoreProject.Body.Close()
+		if restoreProject.StatusCode != http.StatusOK {
+			t.Fatalf("restore project status code = %d, want %d: %s", restoreProject.StatusCode, http.StatusOK, readBody(t, restoreProject.Body))
+		}
+		var restoreEnvelope struct {
+			Data workspaceProjectRecord `json:"data"`
+		}
+		if err := json.NewDecoder(restoreProject.Body).Decode(&restoreEnvelope); err != nil {
+			t.Fatalf("decoding restore response: %v", err)
+		}
+		if restoreEnvelope.Data.Status != "active" || restoreEnvelope.Data.ProjectDir != selectedDir || restoreEnvelope.Data.TrashProjectDir != "" {
+			t.Fatalf("restored project = %+v, want active project at original directory", restoreEnvelope.Data)
+		}
+		assertPathExists(t, selectedDir)
+		assertPathMissing(t, deleteEnvelope.Data.TrashProjectDir)
+
+		permanentActive := requestJSON(t, projectHandler, http.MethodDelete, "/api/v1/projects/"+url.PathEscape(createEnvelope.Data.ID)+"/permanent", "")
+		defer permanentActive.Body.Close()
+		if permanentActive.StatusCode != http.StatusConflict {
+			t.Fatalf("permanent active status code = %d, want %d: %s", permanentActive.StatusCode, http.StatusConflict, readBody(t, permanentActive.Body))
+		}
+
+		deleteAgain := requestJSON(t, projectHandler, http.MethodDelete, "/api/v1/projects/"+url.PathEscape(createEnvelope.Data.ID), "")
+		defer deleteAgain.Body.Close()
+		if deleteAgain.StatusCode != http.StatusOK {
+			t.Fatalf("delete again status code = %d, want %d: %s", deleteAgain.StatusCode, http.StatusOK, readBody(t, deleteAgain.Body))
+		}
+		var deleteAgainEnvelope struct {
+			Data workspaceProjectRecord `json:"data"`
+		}
+		if err := json.NewDecoder(deleteAgain.Body).Decode(&deleteAgainEnvelope); err != nil {
+			t.Fatalf("decoding delete again response: %v", err)
+		}
+		permanentDelete := requestJSON(t, projectHandler, http.MethodDelete, "/api/v1/projects/"+url.PathEscape(createEnvelope.Data.ID)+"/permanent", "")
+		defer permanentDelete.Body.Close()
+		if permanentDelete.StatusCode != http.StatusOK {
+			t.Fatalf("permanent delete status code = %d, want %d: %s", permanentDelete.StatusCode, http.StatusOK, readBody(t, permanentDelete.Body))
+		}
+		assertPathMissing(t, deleteAgainEnvelope.Data.TrashProjectDir)
+		trashAfterPermanent := requestJSON(t, projectHandler, http.MethodGet, "/api/v1/projects?status=trashed", "")
+		defer trashAfterPermanent.Body.Close()
+		trashAfterPermanentBody := readBody(t, trashAfterPermanent.Body)
+		if strings.Contains(trashAfterPermanentBody, createEnvelope.Data.ID) {
+			t.Fatalf("body = %s, permanently deleted project still in trash", trashAfterPermanentBody)
 		}
 	})
 

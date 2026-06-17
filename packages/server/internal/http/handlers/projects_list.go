@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -13,8 +14,12 @@ import (
 // ProjectStore persists workspace project records.
 type ProjectStore interface {
 	ListProjects() (mediamcp.ProjectList, error)
+	ListProjectsByStatus(status string) (mediamcp.ProjectList, error)
 	CreateProject(id string, request service.CreateWorkspaceProjectRequest) (mediamcp.Project, error)
 	DeleteProject(id string) (mediamcp.Project, bool, error)
+	ArchiveProject(id string) (mediamcp.Project, bool, error)
+	RestoreProject(id string) (mediamcp.Project, bool, error)
+	PermanentlyDeleteProject(id string) (mediamcp.Project, bool, error)
 }
 
 // Projects handles workspace project HTTP routes.
@@ -30,7 +35,16 @@ func NewProjects(store ProjectStore, newID func(prefix string) (string, error)) 
 
 // HandleListProjects lists workspace projects.
 func (handler Projects) HandleListProjects(context *gin.Context) {
-	projects, err := handler.store.ListProjects()
+	status := strings.TrimSpace(context.Query("status"))
+	var (
+		projects mediamcp.ProjectList
+		err      error
+	)
+	if status == "" {
+		projects, err = handler.store.ListProjects()
+	} else {
+		projects, err = handler.store.ListProjectsByStatus(status)
+	}
 	if err != nil {
 		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
 		return
@@ -65,7 +79,7 @@ func (handler Projects) HandleCreateProject(context *gin.Context) {
 	httpresponse.OK(context, project)
 }
 
-// HandleDeleteProject deletes a workspace project.
+// HandleDeleteProject moves a workspace project to the app trash.
 func (handler Projects) HandleDeleteProject(context *gin.Context) {
 	projectID, ok := requiredPathParam(context, "projectId", "projectId")
 	if !ok {
@@ -83,6 +97,71 @@ func (handler Projects) HandleDeleteProject(context *gin.Context) {
 	}
 
 	httpresponse.OK(context, project)
+}
+
+// HandleArchiveProject archives a workspace project.
+func (handler Projects) HandleArchiveProject(context *gin.Context) {
+	projectID, ok := requiredPathParam(context, "projectId", "projectId")
+	if !ok {
+		return
+	}
+	project, archived, err := handler.store.ArchiveProject(projectID)
+	if err != nil {
+		handler.writeProjectLifecycleError(context, err)
+		return
+	}
+	if !archived {
+		httpresponse.Error(context, http.StatusNotFound, "项目不存在")
+		return
+	}
+	httpresponse.OK(context, project)
+}
+
+// HandleRestoreProject restores an archived or trashed workspace project.
+func (handler Projects) HandleRestoreProject(context *gin.Context) {
+	projectID, ok := requiredPathParam(context, "projectId", "projectId")
+	if !ok {
+		return
+	}
+	project, restored, err := handler.store.RestoreProject(projectID)
+	if err != nil {
+		handler.writeProjectLifecycleError(context, err)
+		return
+	}
+	if !restored {
+		httpresponse.Error(context, http.StatusNotFound, "项目不存在")
+		return
+	}
+	httpresponse.OK(context, project)
+}
+
+// HandlePermanentlyDeleteProject permanently deletes a trashed workspace project.
+func (handler Projects) HandlePermanentlyDeleteProject(context *gin.Context) {
+	projectID, ok := requiredPathParam(context, "projectId", "projectId")
+	if !ok {
+		return
+	}
+	project, deleted, err := handler.store.PermanentlyDeleteProject(projectID)
+	if err != nil {
+		handler.writeProjectLifecycleError(context, err)
+		return
+	}
+	if !deleted {
+		httpresponse.Error(context, http.StatusNotFound, "项目不存在")
+		return
+	}
+	httpresponse.OK(context, project)
+}
+
+func (handler Projects) writeProjectLifecycleError(context *gin.Context, err error) {
+	switch {
+	case errors.Is(err, service.ErrProjectTrashOperationConflict):
+		httpresponse.Error(context, http.StatusConflict, "项目已在垃圾箱中")
+	case errors.Is(err, service.ErrProjectNotInTrash):
+		httpresponse.Error(context, http.StatusConflict, "项目未在垃圾箱中")
+	default:
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+	}
 }
 
 func (handler Projects) newProjectID() (string, error) {

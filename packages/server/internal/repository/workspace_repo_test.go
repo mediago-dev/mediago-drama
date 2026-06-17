@@ -82,6 +82,146 @@ func TestWorkspaceRepositoryProjectAndOperationLogLifecycle(t *testing.T) {
 	}
 }
 
+func TestWorkspaceRepositoryProjectLifecycleFieldsMigrate(t *testing.T) {
+	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	if err != nil {
+		t.Fatalf("OpenWorkspaceDB() error = %v", err)
+	}
+	repo := NewWorkspaceRepository(db)
+	now := "2026-06-17T00:00:00Z"
+
+	if err := repo.UpsertProject(domain.WorkspaceProjectModel{
+		ID:          "project-status",
+		Name:        "Status Project",
+		Category:    "agent",
+		Status:      ProjectStatusActive,
+		ProjectDir:  filepath.Join(t.TempDir(), "Status Project"),
+		RelativeDir: "Status Project",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("UpsertProject() error = %v", err)
+	}
+
+	got, err := repo.GetProject("project-status")
+	if err != nil {
+		t.Fatalf("GetProject() error = %v", err)
+	}
+	if got.Status != ProjectStatusActive {
+		t.Fatalf("Status = %q, want active", got.Status)
+	}
+}
+
+func TestWorkspaceRepositoryProjectStatusLifecycle(t *testing.T) {
+	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	if err != nil {
+		t.Fatalf("OpenWorkspaceDB() error = %v", err)
+	}
+	repo := NewWorkspaceRepository(db)
+	rootDir := t.TempDir()
+	now := "2026-06-17T00:00:00Z"
+
+	for _, project := range []domain.WorkspaceProjectModel{
+		{
+			ID:          "project-active",
+			Name:        "Active Project",
+			Category:    "agent",
+			Status:      ProjectStatusActive,
+			ProjectDir:  filepath.Join(rootDir, "Active Project"),
+			RelativeDir: "Active Project",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		},
+		{
+			ID:          "project-archived",
+			Name:        "Archived Project",
+			Category:    "agent",
+			Status:      ProjectStatusActive,
+			ProjectDir:  filepath.Join(rootDir, "Archived Project"),
+			RelativeDir: "Archived Project",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		},
+		{
+			ID:          "project-trashed",
+			Name:        "Trashed Project",
+			Category:    "agent",
+			Status:      ProjectStatusActive,
+			ProjectDir:  filepath.Join(rootDir, "Trashed Project"),
+			RelativeDir: "Trashed Project",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		},
+	} {
+		if err := repo.UpsertProject(project); err != nil {
+			t.Fatalf("UpsertProject(%s) error = %v", project.ID, err)
+		}
+	}
+
+	archivedAt := "2026-06-17T00:01:00Z"
+	ok, err := repo.ArchiveProject("project-archived", archivedAt)
+	if err != nil || !ok {
+		t.Fatalf("ArchiveProject() ok=%v err=%v, want ok", ok, err)
+	}
+	trashedAt := "2026-06-17T00:02:00Z"
+	originalDir := filepath.Join(rootDir, "Trashed Project")
+	trashDir := filepath.Join(rootDir, ".mediago-drama", "trash", "projects", "trashed")
+	ok, err = repo.TrashProject("project-trashed", originalDir, trashDir, "trash/projects/trashed", trashedAt)
+	if err != nil || !ok {
+		t.Fatalf("TrashProject() ok=%v err=%v, want ok", ok, err)
+	}
+
+	active, err := repo.ListProjects()
+	if err != nil {
+		t.Fatalf("ListProjects() error = %v", err)
+	}
+	if len(active) != 1 || active[0].ID != "project-active" {
+		t.Fatalf("active projects = %#v, want only project-active", active)
+	}
+	archived, err := repo.ListProjectsByStatus(ProjectStatusArchived)
+	if err != nil {
+		t.Fatalf("ListProjectsByStatus(archived) error = %v", err)
+	}
+	if len(archived) != 1 || archived[0].ID != "project-archived" || archived[0].ArchivedAt != archivedAt {
+		t.Fatalf("archived = %#v, want archived project", archived)
+	}
+	trashed, err := repo.ListProjectsByStatus(ProjectStatusTrashed)
+	if err != nil {
+		t.Fatalf("ListProjectsByStatus(trashed) error = %v", err)
+	}
+	if len(trashed) != 1 || trashed[0].ID != "project-trashed" ||
+		trashed[0].OriginalProjectDir != originalDir ||
+		trashed[0].TrashProjectDir != trashDir ||
+		trashed[0].TrashedAt != trashedAt {
+		t.Fatalf("trashed = %#v, want trashed project metadata", trashed)
+	}
+
+	restoredDir := filepath.Join(rootDir, "Restored Project")
+	ok, err = repo.RestoreProject("project-trashed", restoredDir, "Restored Project", "2026-06-17T00:03:00Z")
+	if err != nil || !ok {
+		t.Fatalf("RestoreProject() ok=%v err=%v, want ok", ok, err)
+	}
+	restored, err := repo.GetProject("project-trashed")
+	if err != nil {
+		t.Fatalf("GetProject(restored) error = %v", err)
+	}
+	if restored.Status != ProjectStatusActive ||
+		restored.ProjectDir != restoredDir ||
+		restored.OriginalProjectDir != "" ||
+		restored.TrashProjectDir != "" ||
+		restored.TrashedAt != "" {
+		t.Fatalf("restored project = %#v, want active with cleared trash metadata", restored)
+	}
+
+	ok, err = repo.PermanentlyDeleteProject("project-archived")
+	if err != nil || !ok {
+		t.Fatalf("PermanentlyDeleteProject() ok=%v err=%v, want ok", ok, err)
+	}
+	if _, err := repo.GetProject("project-archived"); !IsRecordNotFound(err) {
+		t.Fatalf("GetProject(project-archived) error = %v, want not found", err)
+	}
+}
+
 func TestWorkspaceRepositoryDeletesDeprecatedStudioCapabilityProjects(t *testing.T) {
 	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {

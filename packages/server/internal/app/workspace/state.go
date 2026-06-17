@@ -210,6 +210,11 @@ func (store *WorkspaceStateService) listProjects() (workspaceProjectsResponse, e
 	return store.StateService().Documents.ListProjects()
 }
 
+// ListProjectsByStatus lists workspace projects filtered by lifecycle status.
+func (store *WorkspaceStateService) ListProjectsByStatus(status string) (workspaceProjectsResponse, error) {
+	return store.StateService().Documents.ListProjectsByStatus(status)
+}
+
 // CreateProject creates a workspace project.
 func (store *WorkspaceStateService) CreateProject(id string, request createWorkspaceProjectRequest) (workspaceProjectRecord, error) {
 	return store.createProject(id, request)
@@ -226,6 +231,21 @@ func (store *WorkspaceStateService) DeleteProject(projectID string) (workspacePr
 
 func (store *WorkspaceStateService) deleteProject(projectID string) (workspaceProjectRecord, bool, error) {
 	return store.StateService().Documents.DeleteProject(projectID)
+}
+
+// ArchiveProject archives a workspace project.
+func (store *WorkspaceStateService) ArchiveProject(projectID string) (workspaceProjectRecord, bool, error) {
+	return store.StateService().Documents.ArchiveProject(projectID)
+}
+
+// RestoreProject restores an archived or trashed workspace project.
+func (store *WorkspaceStateService) RestoreProject(projectID string) (workspaceProjectRecord, bool, error) {
+	return store.StateService().Documents.RestoreProject(projectID)
+}
+
+// PermanentlyDeleteProject permanently deletes a trashed project.
+func (store *WorkspaceStateService) PermanentlyDeleteProject(projectID string) (workspaceProjectRecord, bool, error) {
+	return store.StateService().Documents.PermanentlyDeleteProject(projectID)
 }
 
 // ListWorkspaceDocuments lists project documents.

@@ -4,15 +4,20 @@ import "database/sql"
 
 // WorkspaceProjectModel is the GORM model for workspace projects.
 type WorkspaceProjectModel struct {
-	ID          string         `gorm:"column:id;primaryKey"`
-	Name        string         `gorm:"column:name;not null"`
-	Category    string         `gorm:"column:category;not null;default:'agent';index:projects_category_idx"`
-	Description string         `gorm:"column:description;not null;default:''"`
-	ProjectDir  string         `gorm:"column:project_dir;not null;default:''"`
-	RelativeDir string         `gorm:"column:relative_dir;not null"`
-	BriefJSON   sql.NullString `gorm:"column:brief_json;type:text"`
-	CreatedAt   string         `gorm:"column:created_at;not null"`
-	UpdatedAt   string         `gorm:"column:updated_at;not null"`
+	ID                 string         `gorm:"column:id;primaryKey"`
+	Name               string         `gorm:"column:name;not null"`
+	Category           string         `gorm:"column:category;not null;default:'agent';index:projects_category_idx"`
+	Status             string         `gorm:"column:status;not null;default:'active';index:projects_status_idx"`
+	Description        string         `gorm:"column:description;not null;default:''"`
+	ProjectDir         string         `gorm:"column:project_dir;not null;default:''"`
+	RelativeDir        string         `gorm:"column:relative_dir;not null"`
+	OriginalProjectDir string         `gorm:"column:original_project_dir;not null;default:''"`
+	TrashProjectDir    string         `gorm:"column:trash_project_dir;not null;default:''"`
+	BriefJSON          sql.NullString `gorm:"column:brief_json;type:text"`
+	ArchivedAt         string         `gorm:"column:archived_at;not null;default:''"`
+	TrashedAt          string         `gorm:"column:trashed_at;not null;default:'';index:projects_status_idx"`
+	CreatedAt          string         `gorm:"column:created_at;not null"`
+	UpdatedAt          string         `gorm:"column:updated_at;not null"`
 }
 
 // TableName returns the backing table name.

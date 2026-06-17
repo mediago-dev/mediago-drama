@@ -120,14 +120,19 @@ type DocumentFolder struct {
 
 // Project is a MediaGo Drama project summary.
 type Project struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Description   string `json:"description,omitempty"`
-	ProjectDir    string `json:"projectDir,omitempty"`
-	RelativeDir   string `json:"relativeDir,omitempty"`
-	DocumentCount int    `json:"documentCount,omitempty"`
-	CreatedAt     string `json:"createdAt,omitempty"`
-	UpdatedAt     string `json:"updatedAt,omitempty"`
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	Description        string `json:"description,omitempty"`
+	Status             string `json:"status,omitempty"`
+	ProjectDir         string `json:"projectDir,omitempty"`
+	RelativeDir        string `json:"relativeDir,omitempty"`
+	OriginalProjectDir string `json:"originalProjectDir,omitempty"`
+	TrashProjectDir    string `json:"trashProjectDir,omitempty"`
+	DocumentCount      int    `json:"documentCount,omitempty"`
+	ArchivedAt         string `json:"archivedAt,omitempty"`
+	TrashedAt          string `json:"trashedAt,omitempty"`
+	CreatedAt          string `json:"createdAt,omitempty"`
+	UpdatedAt          string `json:"updatedAt,omitempty"`
 }
 
 // ProjectList is the external project listing payload.

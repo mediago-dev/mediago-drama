@@ -181,6 +181,110 @@ func TestWorkspaceStateServiceCreateProjectStartsWithoutOverviewDocument(t *test
 	}
 }
 
+func TestWorkspaceStateServiceArchivesTrashesRestoresAndPermanentlyDeletesProject(t *testing.T) {
+	workspaceDir := t.TempDir()
+	store := newWorkspaceStateService(workspaceDir)
+	if store.initErr != nil {
+		t.Fatalf("initializing workspace store: %v", store.initErr)
+	}
+	projectID := "project-lifecycle"
+	projectDir := requireTestProject(t, store, projectID)
+	if err := os.WriteFile(filepath.Join(projectDir, "keep.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatalf("writing project file: %v", err)
+	}
+
+	archivedProjectID := "project-archive"
+	archivedProjectDir := requireTestProject(t, store, archivedProjectID)
+	archived, ok, err := store.ArchiveProject(archivedProjectID)
+	if err != nil || !ok {
+		t.Fatalf("ArchiveProject() ok=%v err=%v, want ok", ok, err)
+	}
+	if archived.Status != "archived" || archived.ArchivedAt == "" {
+		t.Fatalf("archived project = %#v, want archived status", archived)
+	}
+	if _, err := os.Stat(archivedProjectDir); err != nil {
+		t.Fatalf("archived project dir moved or missing: %v", err)
+	}
+	active, err := store.ListProjects()
+	if err != nil {
+		t.Fatalf("ListProjects() error = %v", err)
+	}
+	if workspaceProjectIDs(active.Projects)[archivedProjectID] {
+		t.Fatalf("archived project still appears in active list: %#v", active.Projects)
+	}
+	archivedList, err := store.ListProjectsByStatus("archived")
+	if err != nil {
+		t.Fatalf("ListProjectsByStatus(archived) error = %v", err)
+	}
+	if !workspaceProjectIDs(archivedList.Projects)[archivedProjectID] {
+		t.Fatalf("archived project missing from archived list: %#v", archivedList.Projects)
+	}
+	restoredArchive, ok, err := store.RestoreProject(archivedProjectID)
+	if err != nil || !ok {
+		t.Fatalf("RestoreProject(archived) ok=%v err=%v, want ok", ok, err)
+	}
+	if restoredArchive.Status != "active" || restoredArchive.ArchivedAt != "" {
+		t.Fatalf("restored archive = %#v, want active with cleared archive metadata", restoredArchive)
+	}
+
+	trashed, ok, err := store.DeleteProject(projectID)
+	if err != nil || !ok {
+		t.Fatalf("DeleteProject() ok=%v err=%v, want ok", ok, err)
+	}
+	if trashed.Status != "trashed" || trashed.OriginalProjectDir != projectDir || trashed.TrashProjectDir == "" {
+		t.Fatalf("trashed project = %#v, want trash metadata", trashed)
+	}
+	if _, err := os.Stat(projectDir); !os.IsNotExist(err) {
+		t.Fatalf("original project dir exists after trash, err=%v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(trashed.TrashProjectDir, "keep.txt")); err != nil || string(got) != "keep" {
+		t.Fatalf("trashed file = %q err=%v, want keep", got, err)
+	}
+	active, err = store.ListProjects()
+	if err != nil {
+		t.Fatalf("ListProjects() after trash error = %v", err)
+	}
+	if workspaceProjectIDs(active.Projects)[projectID] {
+		t.Fatalf("trashed project still appears in active list: %#v", active.Projects)
+	}
+	trashList, err := store.ListProjectsByStatus("trashed")
+	if err != nil {
+		t.Fatalf("ListProjectsByStatus(trashed) error = %v", err)
+	}
+	if !workspaceProjectIDs(trashList.Projects)[projectID] {
+		t.Fatalf("trashed project missing from trash list: %#v", trashList.Projects)
+	}
+
+	restored, ok, err := store.RestoreProject(projectID)
+	if err != nil || !ok {
+		t.Fatalf("RestoreProject(trashed) ok=%v err=%v, want ok", ok, err)
+	}
+	if restored.Status != "active" || restored.ProjectDir != projectDir || restored.TrashProjectDir != "" {
+		t.Fatalf("restored project = %#v, want original active project", restored)
+	}
+	if got, err := os.ReadFile(filepath.Join(projectDir, "keep.txt")); err != nil || string(got) != "keep" {
+		t.Fatalf("restored file = %q err=%v, want keep", got, err)
+	}
+
+	trashedAgain, ok, err := store.DeleteProject(projectID)
+	if err != nil || !ok {
+		t.Fatalf("DeleteProject(second) ok=%v err=%v, want ok", ok, err)
+	}
+	permanent, ok, err := store.PermanentlyDeleteProject(projectID)
+	if err != nil || !ok {
+		t.Fatalf("PermanentlyDeleteProject() project=%#v ok=%v err=%v, want ok", permanent, ok, err)
+	}
+	if permanent.ID != projectID {
+		t.Fatalf("permanent project ID = %q, want %q", permanent.ID, projectID)
+	}
+	if _, err := os.Stat(trashedAgain.TrashProjectDir); !os.IsNotExist(err) {
+		t.Fatalf("trash dir exists after permanent delete, err=%v", err)
+	}
+	if _, err := store.workspace.GetProject(projectID); err == nil {
+		t.Fatal("project still exists after permanent delete")
+	}
+}
+
 func TestWorkspaceStateServiceWritesReadableFilenamesAndReconcilesMarkdownFiles(t *testing.T) {
 	workspaceDir := t.TempDir()
 	store := newWorkspaceStateService(workspaceDir)
@@ -1010,6 +1114,14 @@ func findTestWorkspaceDocumentByTitle(documents []mediamcp.WorkspaceDocument, ti
 		}
 	}
 	return mediamcp.WorkspaceDocument{}
+}
+
+func workspaceProjectIDs(projects []mediamcp.Project) map[string]bool {
+	ids := map[string]bool{}
+	for _, project := range projects {
+		ids[project.ID] = true
+	}
+	return ids
 }
 
 func testDocumentFolderPathExists(folders []mediamcp.DocumentFolder, path string) bool {
