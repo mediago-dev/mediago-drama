@@ -5,6 +5,7 @@ import {
 	FileText,
 	Film,
 	Image as ImageIcon,
+	Keyboard,
 	KeyRound,
 	Loader2,
 	Plus,
@@ -697,6 +698,7 @@ const settingsNavGroups: SettingsNavGroup[] = [
 		label: "工作区",
 		items: [
 			{ value: "appearance", label: "基础设置", icon: SlidersHorizontal },
+			{ value: "shortcuts", label: "快捷键", icon: Keyboard },
 			{ value: "billing", label: "用量与账单", icon: ReceiptText },
 		],
 	},

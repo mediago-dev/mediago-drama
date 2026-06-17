@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type SettingsTabValue = "appearance" | "api-keys" | string;
+export type SettingsTabValue = "appearance" | "api-keys" | "shortcuts" | string;
 
 interface SettingsNavigationState {
 	activeTab: SettingsTabValue;

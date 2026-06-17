@@ -24,6 +24,7 @@ import {
 	saveAPIKey,
 } from "@/domains/settings/api/settings";
 import { AgentModelProfilesPanel } from "@/domains/settings/components/AgentModelProfilesPanel";
+import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
 import { BillingPanel } from "@/domains/billing/components/BillingPanel";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -53,6 +54,7 @@ type SettingsTabValue =
 	| "api-keys"
 	| "agent-model-profiles"
 	| "billing"
+	| "shortcuts"
 	| DebugTabValue;
 
 const isSettingsTabValue = (value: string): value is SettingsTabValue =>
@@ -60,6 +62,7 @@ const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	value === "api-keys" ||
 	value === "agent-model-profiles" ||
 	value === "billing" ||
+	value === "shortcuts" ||
 	debugTabs.some((tab) => tab.value === value);
 
 export const Settings: React.FC = () => {
@@ -81,6 +84,7 @@ export const Settings: React.FC = () => {
 			{visibleTab === "api-keys" ? <APIKeysPanel /> : null}
 			{visibleTab === "agent-model-profiles" ? <AgentModelProfilesPanel /> : null}
 			{visibleTab === "billing" ? <BillingPanel /> : null}
+			{visibleTab === "shortcuts" ? <ShortcutKeysPanel /> : null}
 
 			{debugTabs.map((tab) =>
 				visibleTab === tab.value ? <DebugTabPanel key={tab.value} value={tab.value} /> : null,
