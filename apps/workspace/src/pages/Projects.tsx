@@ -2,7 +2,7 @@ import { Archive, FolderOpen, Loader2, RotateCcw, Trash2, type LucideIcon } from
 import type React from "react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import useSWR, { mutate as mutateSWR } from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import {
 	getProjects,
 	permanentlyDeleteProject,
@@ -73,6 +73,7 @@ const tabMeta: Record<
 export const Projects: React.FC = () => {
 	const navigate = useNavigate();
 	const toast = useToast();
+	const { mutate } = useSWRConfig();
 	const setActiveProjectId = useProjectStore((state) => state.setActiveProjectId);
 	const [activeTab, setActiveTab] = useState<ProjectManagementTab>("active");
 	const [action, setAction] = useState<{ kind: ProjectAction; projectId: string } | null>(null);
@@ -94,9 +95,9 @@ export const Projects: React.FC = () => {
 
 	const refreshProjectLists = async () => {
 		await Promise.all([
-			mutateSWR(projectsKeyForStatus("active")),
-			mutateSWR(projectsKeyForStatus("archived")),
-			mutateSWR(projectsKeyForStatus("trashed")),
+			mutate(projectsKeyForStatus("active")),
+			mutate(projectsKeyForStatus("archived")),
+			mutate(projectsKeyForStatus("trashed")),
 		]);
 	};
 

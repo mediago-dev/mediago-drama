@@ -2,7 +2,7 @@ import { Archive, FolderOpen, Loader2, SlidersHorizontal, Trash2 } from "lucide-
 import type React from "react";
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import useSWR, { mutate as mutateSWR } from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import {
 	archiveProject,
 	deleteProject,
@@ -37,6 +37,7 @@ export const ProjectSettings: React.FC = () => {
 	const projectId = getRouteProjectId(location.search);
 	const navigate = useNavigate();
 	const toast = useToast();
+	const { mutate } = useSWRConfig();
 	const activeProjectId = useProjectStore((state) => state.activeProjectId);
 	const setActiveProjectId = useProjectStore((state) => state.setActiveProjectId);
 	const prepareWorkspaceLoad = useDocumentsStore((state) => state.prepareWorkspaceLoad);
@@ -61,14 +62,14 @@ export const ProjectSettings: React.FC = () => {
 
 	const refreshProjectLists = async () => {
 		await Promise.all([
-			mutateSWR(projectsKeyForStatus("active")),
-			mutateSWR(projectsKeyForStatus("archived")),
-			mutateSWR(projectsKeyForStatus("trashed")),
+			mutate(projectsKeyForStatus("active")),
+			mutate(projectsKeyForStatus("archived")),
+			mutate(projectsKeyForStatus("trashed")),
 		]);
 	};
 
 	const leaveCurrentProject = (message: string) => {
-		void mutateSWR(workspaceStateKey(project?.id ?? ""), undefined, { revalidate: false });
+		void mutate(workspaceStateKey(project?.id ?? ""), undefined, { revalidate: false });
 		setActiveProjectId(null);
 		prepareWorkspaceLoad(message);
 		navigate("/", { replace: true });
