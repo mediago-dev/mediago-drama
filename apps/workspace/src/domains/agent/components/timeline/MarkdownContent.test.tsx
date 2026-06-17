@@ -38,7 +38,7 @@ describe("MarkdownContent", () => {
 		expect(container.textContent).not.toContain("|-----|");
 	});
 
-	it("renders local file links with angle-bracket markdown destinations", () => {
+	it("renders local file links as non-clickable text", () => {
 		const { container } = render(
 			<MarkdownContent
 				content={
@@ -47,15 +47,68 @@ describe("MarkdownContent", () => {
 			/>,
 		);
 
-		const link = screen.getByRole("link", {
-			name: "第一章 示例剧本.md",
-		});
-		const href = link.getAttribute("href") ?? "";
-
+		expect(
+			screen.queryByRole("link", {
+				name: "第一章 示例剧本.md",
+			}),
+		).toBeNull();
+		const fileLabel = screen.getByText("第一章 示例剧本.md");
+		const fileTag = fileLabel.parentElement;
+		expect(fileTag?.className).toContain("text-primary");
+		expect(fileTag?.querySelector("svg")).toBeTruthy();
 		expect(container.textContent).not.toContain("](");
-		expect(href).toContain("Application%20Support");
-		expect(href).toContain("%E7%AC%AC%E4%B8%80%E7%AB%A0");
-		expect(href).not.toContain(".md:1");
+	});
+
+	it("renders relative markdown document links as non-clickable text", () => {
+		const { container } = render(
+			<MarkdownContent content={"已生成：[第一章 示例剧本.md](<第一章 示例剧本.md>)"} />,
+		);
+
+		expect(
+			screen.queryByRole("link", {
+				name: "第一章 示例剧本.md",
+			}),
+		).toBeNull();
+		const fileLabel = screen.getByText("第一章 示例剧本.md");
+		const fileTag = fileLabel.parentElement;
+		expect(fileTag?.className).toContain("text-primary");
+		expect(fileTag?.querySelector("svg")).toBeTruthy();
+		expect(container.textContent).not.toContain("](");
+	});
+
+	it("keeps remote links clickable", () => {
+		render(<MarkdownContent content={"查看 [官网](https://example.com/docs)。"} />);
+
+		const link = screen.getByRole("link", {
+			name: "官网",
+		});
+
+		expect(link.getAttribute("href")).toBe("https://example.com/docs");
+		expect(link.getAttribute("target")).toBe("_blank");
+	});
+
+	it("keeps mailto links clickable", () => {
+		render(<MarkdownContent content={"联系 [支持](mailto:support@example.com)。"} />);
+
+		const link = screen.getByRole("link", {
+			name: "支持",
+		});
+
+		expect(link.getAttribute("href")).toBe("mailto:support@example.com");
+		expect(link.getAttribute("target")).toBe("_blank");
+	});
+
+	it("keeps non-local unsupported markdown links unchanged", () => {
+		const { container } = render(
+			<MarkdownContent content={"查看 [内部引用](mention://doc-1)。"} />,
+		);
+
+		expect(
+			screen.queryByRole("link", {
+				name: "内部引用",
+			}),
+		).toBeNull();
+		expect(container.textContent).toContain("[内部引用](mention://doc-1)");
 	});
 
 	it("renders MiniMax inline think tags with the existing thought styling", () => {

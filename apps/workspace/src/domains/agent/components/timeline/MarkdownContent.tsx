@@ -1,7 +1,7 @@
 import type React from "react";
 import { memo, useMemo } from "react";
+import { FileText } from "lucide-react";
 import type { AgentMessage } from "@/domains/agent/stores";
-import { isTauriRuntime } from "@/shared/lib/api-base";
 import { cn } from "@/shared/lib/utils";
 import { CodeBlock } from "./CodeBlocks";
 import { ThoughtBlock } from "./ThoughtBlock";
@@ -283,6 +283,10 @@ const renderInlineMarkdown = (text: string): React.ReactNode[] => {
 		const markdownHref = normalizedMarkdownHref(angleHref ?? bareHref ?? "");
 		if (linkText && markdownHref) {
 			nodes.push(<MarkdownLink key={key} href={markdownHref} text={linkText} />);
+		} else if (linkText && isNonClickableLocalMarkdownHref(angleHref ?? bareHref ?? "")) {
+			nodes.push(
+				<NonClickableMarkdownFile key={key} href={angleHref ?? bareHref ?? ""} text={linkText} />,
+			);
 		} else if (code) {
 			nodes.push(
 				<code key={key} className="rounded-sm bg-muted px-1 font-mono text-caption">
@@ -308,44 +312,32 @@ const renderInlineMarkdown = (text: string): React.ReactNode[] => {
 };
 
 const MarkdownLink: React.FC<{ href: string; text: string }> = ({ href, text }) => {
-	const anchorHref = markdownAnchorHref(href);
-	const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
-		if (!localPathFromMarkdownHref(href) || !isTauriRuntime()) return;
-		event.preventDefault();
-		void openLocalMarkdownHref(href);
-	};
-
 	return (
 		<a
-			href={anchorHref}
+			href={href}
 			target="_blank"
 			rel="noreferrer"
 			title={href}
 			className="text-primary underline underline-offset-2"
-			onClick={handleClick}
 		>
 			{text}
 		</a>
 	);
 };
 
+const NonClickableMarkdownFile: React.FC<{ href: string; text: string }> = ({ href, text }) => {
+	return (
+		<span title={href} className="inline text-primary">
+			<FileText className="mr-1 inline-block size-3.5 align-[-0.2em]" aria-hidden="true" />
+			<span className="break-all">{text}</span>
+		</span>
+	);
+};
+
 const normalizedMarkdownHref = (href: string) => {
 	const trimmed = href.trim();
-	if (isRemoteMarkdownHref(trimmed) || localPathFromMarkdownHref(trimmed)) return trimmed;
+	if (isRemoteMarkdownHref(trimmed)) return trimmed;
 	return "";
-};
-
-const markdownAnchorHref = (href: string) => {
-	const localPath = localPathFromMarkdownHref(href);
-	if (!localPath) return href;
-	return `file://${encodeFilePath(localPath)}`;
-};
-
-const openLocalMarkdownHref = async (href: string) => {
-	const localPath = localPathFromMarkdownHref(href);
-	if (!localPath) return;
-	const { openPath } = await import("@tauri-apps/plugin-opener");
-	await openPath(localPath);
 };
 
 const localPathFromMarkdownHref = (href: string) => {
@@ -361,11 +353,25 @@ const localPathFromMarkdownHref = (href: string) => {
 
 const stripLineSuffix = (path: string) => path.replace(/:\d+(?:-\d+)?$/, "");
 
-const encodeFilePath = (path: string) =>
-	path
-		.split("/")
-		.map((segment, index) => (index === 0 ? "" : encodeURIComponent(segment)))
-		.join("/");
+const isNonClickableLocalMarkdownHref = (href: string) => {
+	const trimmed = href.trim();
+	return Boolean(localPathFromMarkdownHref(trimmed) || isMarkdownDocumentHref(trimmed));
+};
+
+const isMarkdownDocumentHref = (href: string) => {
+	const decoded = safeDecodeURIComponent(href.trim());
+	const withoutLine = stripLineSuffix(decoded);
+	const path = (withoutLine.split(/[?#]/, 1)[0] ?? "").replace(/^file:\/\//i, "");
+	return /\.(?:md|markdown)$/i.test(path);
+};
+
+const safeDecodeURIComponent = (value: string) => {
+	try {
+		return decodeURIComponent(value);
+	} catch {
+		return value;
+	}
+};
 
 const isRemoteMarkdownHref = (href: string) => /^(https?:\/\/|mailto:)/i.test(href);
 
