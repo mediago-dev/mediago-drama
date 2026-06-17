@@ -184,21 +184,45 @@ export const saveGeneratedAssetToUserDirectory = async (
 	source: string,
 	fallbackFilename: string,
 ) => {
-	if (isTauriRuntime()) {
-		return saveGeneratedAssetWithTauri(asset, source, fallbackFilename);
-	}
-
-	const file = await generationAssetFile(asset, source, fallbackFilename);
-	return saveGeneratedFileWithBrowserDirectoryPicker(file);
+	const target = await pickGeneratedAssetSaveTarget();
+	if (!target) return null;
+	return saveGeneratedAssetToTarget(asset, source, fallbackFilename, target);
 };
 
-const saveGeneratedAssetWithTauri = async (
+export type GeneratedAssetSaveTarget =
+	| { kind: "tauri"; directory: string }
+	| { kind: "browser"; directory: BrowserDirectoryHandle };
+
+export const pickGeneratedAssetSaveTarget = async (): Promise<GeneratedAssetSaveTarget | null> => {
+	if (isTauriRuntime()) {
+		const directory = await pickSaveDirectory();
+		return directory ? { kind: "tauri", directory } : null;
+	}
+
+	const directory = await pickBrowserSaveDirectory();
+	return directory ? { kind: "browser", directory } : null;
+};
+
+export const saveGeneratedAssetToTarget = async (
 	asset: GenerationAsset,
 	source: string,
 	fallbackFilename: string,
+	target: GeneratedAssetSaveTarget,
 ) => {
-	const directory = await pickSaveDirectory();
-	if (!directory) return null;
+	if (target.kind === "tauri") {
+		return saveGeneratedAssetWithTauriDirectory(asset, source, fallbackFilename, target.directory);
+	}
+
+	const file = await generationAssetFile(asset, source, fallbackFilename);
+	return saveGeneratedFileToBrowserDirectory(file, target.directory);
+};
+
+const saveGeneratedAssetWithTauriDirectory = async (
+	asset: GenerationAsset,
+	source: string,
+	fallbackFilename: string,
+	directory: string,
+) => {
 	if (asset.kind !== "image" && asset.kind !== "video") {
 		throw new Error("只支持保存图片和视频生成结果。");
 	}
@@ -235,24 +259,30 @@ const pickSaveDirectory = async () => {
 	return typeof directory === "string" && directory.trim() ? directory : null;
 };
 
-const saveGeneratedFileWithBrowserDirectoryPicker = async (file: File) => {
+const pickBrowserSaveDirectory = async () => {
 	const picker = (window as BrowserDirectoryPickerWindow).showDirectoryPicker;
 	if (!picker) {
 		throw new Error("当前运行环境不支持原生文件夹选择。请在桌面端使用保存功能。");
 	}
 
 	try {
-		const directory = await picker.call(window);
-		const filename = await availableBrowserFilename(directory, file.name);
-		const fileHandle = await directory.getFileHandle(filename, { create: true });
-		const writable = await fileHandle.createWritable();
-		await writable.write(file);
-		await writable.close();
-		return filename;
+		return await picker.call(window);
 	} catch (error) {
 		if (isAbortError(error)) return null;
 		throw error;
 	}
+};
+
+const saveGeneratedFileToBrowserDirectory = async (
+	file: File,
+	directory: BrowserDirectoryHandle,
+) => {
+	const filename = await availableBrowserFilename(directory, file.name);
+	const fileHandle = await directory.getFileHandle(filename, { create: true });
+	const writable = await fileHandle.createWritable();
+	await writable.write(file);
+	await writable.close();
+	return filename;
 };
 
 const availableBrowserFilename = async (directory: BrowserDirectoryHandle, filename: string) => {

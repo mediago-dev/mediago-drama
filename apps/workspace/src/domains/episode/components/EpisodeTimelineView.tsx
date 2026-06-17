@@ -1,5 +1,5 @@
 import type { MediaPlayerInstance } from "@vidstack/react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download, Loader2 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -15,7 +15,11 @@ import { EpisodeCompanionGenerationDialog } from "@/domains/episode/components/E
 import { EpisodeTimelineEditor } from "@/domains/episode/components/EpisodeTimelineEditor";
 import { EpisodePreviewPlayer } from "@/domains/episode/components/EpisodePreviewPlayer";
 import { EpisodeVideoGenerationDialog } from "@/domains/episode/components/EpisodeVideoGenerationDialog";
-import { saveGeneratedAssetToUserDirectory } from "@/domains/generation/components/generatedResultActions";
+import {
+	pickGeneratedAssetSaveTarget,
+	saveGeneratedAssetToTarget,
+	saveGeneratedAssetToUserDirectory,
+} from "@/domains/generation/components/generatedResultActions";
 import { Button } from "@/shared/components/ui/button";
 import { useToast } from "@/hooks/useToast";
 import { findDocumentById, selectDocumentById } from "@/domains/documents/lib/filters";
@@ -71,6 +75,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		useState<CompanionGenerationTarget | null>(null);
 	const [videoGenerationOpen, setVideoGenerationOpen] = useState(false);
 	const [downloadingVideoClipIds, setDownloadingVideoClipIds] = useState<string[]>([]);
+	const [isExportingAllStoryboards, setIsExportingAllStoryboards] = useState(false);
 	const [previewPlaybackActive, setPreviewPlaybackActive] = useState(false);
 	const previewPlayerRef = useRef<MediaPlayerInstance | null>(null);
 	const lastPreviewErrorKey = useRef("");
@@ -145,6 +150,14 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const downloadingVideoClipIdSet = useMemo(
 		() => new Set(downloadingVideoClipIds),
 		[downloadingVideoClipIds],
+	);
+	const storyboardVideoClips = useMemo(
+		() => clipPlaybackRanges.map((range) => range.clip),
+		[clipPlaybackRanges],
+	);
+	const exportableStoryboardVideoClips = useMemo(
+		() => storyboardVideoClips.filter(hasClipVideoUrl),
+		[storyboardVideoClips],
 	);
 	const markVideoClipDownloading = useCallback((clipId: string, downloading: boolean) => {
 		setDownloadingVideoClipIds((current) => {
@@ -224,6 +237,69 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		},
 		[downloadingVideoClipIdSet, markVideoClipDownloading, toast],
 	);
+	const handleExportAllStoryboards = useCallback(async () => {
+		if (isExportingAllStoryboards) return;
+
+		const clips = exportableStoryboardVideoClips;
+		const skippedCount = Math.max(storyboardVideoClips.length - clips.length, 0);
+		if (clips.length === 0) {
+			toast.warning("暂无可导出分镜", {
+				description: "生成视频后再导出全部分镜。",
+			});
+			return;
+		}
+
+		setIsExportingAllStoryboards(true);
+		try {
+			const target = await pickGeneratedAssetSaveTarget();
+			if (!target) return;
+
+			let savedCount = 0;
+			const failedTitles: string[] = [];
+			for (const [index, clip] of clips.entries()) {
+				const videoUrl = clip.videoUrl?.trim();
+				if (!videoUrl) continue;
+
+				try {
+					await saveGeneratedAssetToTarget(
+						{ kind: "video", url: videoUrl, mimeType: "video/mp4" },
+						videoUrl,
+						episodeClipVideoFilename(clip, index),
+						target,
+					);
+					savedCount += 1;
+				} catch {
+					failedTitles.push(clip.title || `第 ${index + 1} 个分镜`);
+				}
+			}
+
+			if (savedCount === 0 && failedTitles.length > 0) {
+				toast.error("导出失败", {
+					description: exportStoryboardsSummary(savedCount, skippedCount, failedTitles),
+				});
+				return;
+			}
+
+			const description = exportStoryboardsSummary(savedCount, skippedCount, failedTitles);
+			if (failedTitles.length > 0) {
+				toast.warning("部分分镜已导出", { description });
+				return;
+			}
+
+			toast.success(skippedCount > 0 ? "可用分镜已导出" : "全部分镜已导出", {
+				description,
+			});
+		} catch (error) {
+			toast.error("导出失败", { description: toErrorMessage(error) });
+		} finally {
+			setIsExportingAllStoryboards(false);
+		}
+	}, [
+		exportableStoryboardVideoClips,
+		isExportingAllStoryboards,
+		storyboardVideoClips.length,
+		toast,
+	]);
 	const handleTimelineSeek = useCallback(
 		(time: number) => {
 			const range = findEpisodeClipPlaybackRangeAtTime(clipPlaybackRanges, time);
@@ -362,6 +438,23 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 				<section className="grid min-h-0 flex-1 grid-cols-1 border-b border-border">
 					<div className="flex min-h-0 flex-1 flex-col gap-2 bg-ide-preview p-2">
 						<div className="relative grid min-h-0 flex-1 place-items-center overflow-hidden border border-border bg-ide-editor">
+							<Button
+								type="button"
+								variant="secondary"
+								size="sm"
+								className="absolute right-4 top-4 z-20 h-8 px-3 shadow-sm"
+								disabled={isExportingAllStoryboards || exportableStoryboardVideoClips.length === 0}
+								aria-label="导出全部分镜"
+								title={
+									exportableStoryboardVideoClips.length > 0
+										? "导出全部已生成分镜视频"
+										: "暂无可导出的分镜视频"
+								}
+								onClick={handleExportAllStoryboards}
+							>
+								{isExportingAllStoryboards ? <Loader2 className="animate-spin" /> : <Download />}
+								<span>{isExportingAllStoryboards ? "导出中" : "导出全部分镜"}</span>
+							</Button>
 							<EpisodePreviewPlayer
 								videoUrl={playbackVideoUrl}
 								posterUrl={playbackPosterUrl}
@@ -420,12 +513,31 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	);
 };
 
-const episodeClipVideoFilename = (clip: TimelineClip) => {
+const episodeClipVideoFilename = (clip: TimelineClip, index?: number) => {
 	const title = clip.title
 		.replace(/[\\/:*?"<>|#%{}^~[\]`]+/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();
-	return `${(title || "分镜视频").slice(0, 40)}-video`;
+	const prefix = typeof index === "number" ? `${String(index + 1).padStart(2, "0")}-` : "";
+	return `${prefix}${(title || "分镜视频").slice(0, 40)}-video`;
+};
+
+const hasClipVideoUrl = (clip: TimelineClip) => Boolean(clip.videoUrl?.trim());
+
+const exportStoryboardsSummary = (
+	savedCount: number,
+	skippedCount: number,
+	failedTitles: string[],
+) => {
+	const parts = [`已保存 ${savedCount} 个视频`];
+	if (skippedCount > 0) parts.push(`跳过 ${skippedCount} 个未生成分镜`);
+	if (failedTitles.length > 0) {
+		const names = failedTitles.slice(0, 2).join("、");
+		parts.push(
+			`${failedTitles.length} 个保存失败${names ? `（${names}${failedTitles.length > 2 ? " 等" : ""}）` : ""}`,
+		);
+	}
+	return `${parts.join("，")}。`;
 };
 
 const toErrorMessage = (error: unknown) => {
