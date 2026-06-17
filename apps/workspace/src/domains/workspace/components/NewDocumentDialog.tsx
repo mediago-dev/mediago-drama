@@ -32,6 +32,7 @@ export type NewDocumentDialogChoice = NewDocumentChoice | UploadAssetChoice;
 interface NewDocumentDialogProps {
 	initialCategory?: DocumentCategory | null;
 	onCreate: (choice: NewDocumentDialogChoice) => void;
+	onOpenSourceMaterial?: () => void;
 	onOpenChange: (open: boolean) => void;
 	open: boolean;
 }
@@ -46,6 +47,7 @@ interface TemplateOption {
 export const NewDocumentDialog: React.FC<NewDocumentDialogProps> = ({
 	initialCategory,
 	onCreate,
+	onOpenSourceMaterial,
 	onOpenChange,
 	open,
 }) => {
@@ -84,6 +86,13 @@ export const NewDocumentDialog: React.FC<NewDocumentDialogProps> = ({
 							onSelect={() => setSelectedId(option.id)}
 						/>
 					))}
+					{onOpenSourceMaterial ? (
+						<TemplateOptionButton
+							option={sourceMaterialOption}
+							selected={false}
+							onSelect={onOpenSourceMaterial}
+						/>
+					) : null}
 				</div>
 
 				<AlertDialogFooter>
@@ -163,3 +172,10 @@ const buildTemplateOptions = (): TemplateOption[] =>
 				category: descriptor.key,
 			}),
 		);
+
+const sourceMaterialOption: TemplateOption = {
+	id: "category-source-material",
+	name: "素材",
+	description: "上传本地文件或创建空白素材文档。",
+	category: "source-material",
+};

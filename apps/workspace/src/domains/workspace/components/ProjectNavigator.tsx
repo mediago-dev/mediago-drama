@@ -221,6 +221,11 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		setIsNewDocumentOpen(true);
 	}, []);
 
+	const openSourceMaterialFromNewDocument = useCallback(() => {
+		setIsNewDocumentOpen(false);
+		setIsSourceMaterialOpen(true);
+	}, []);
+
 	const deleteProjectDocument = useCallback(
 		(project: WorkspaceProject, document: MarkdownDocument, deletedIds: string[]) => {
 			if (documentsProjectId !== project.id) {
@@ -555,6 +560,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 				open={isNewDocumentOpen}
 				initialCategory={newDocumentInitialCategory}
 				onOpenChange={setIsNewDocumentOpen}
+				onOpenSourceMaterial={openSourceMaterialFromNewDocument}
 				onCreate={createDocumentFromTemplate}
 			/>
 			<NewSourceMaterialDialog
