@@ -199,6 +199,7 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 		if err := workflow.generationTasks.Upsert(task); err != nil {
 			messageResponse.Message = AppendStorageWarning(messageResponse.Message, err)
 		} else {
+			messageResponse.Assets = generationAssetsWithTaskSlots(task.ID, task.Assets)
 			workflow.trackGenerationNotificationTarget(task, payload.NotificationTarget)
 			workflow.syncGenerationNotificationTask(task)
 			_ = workflow.generationTasks.RecordAttempt(task.ID, "create", messageResponse.Status, messageResponse.Message, nil)

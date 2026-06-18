@@ -105,6 +105,7 @@ describe("DocumentSectionGenerator", () => {
 		expect(screen.getByTestId("reference-preview-count").textContent).toBe("1");
 		expect(screen.getByTestId("reference-asset-ids").textContent).toBe("ref-a");
 		expect(capturedWorkspaceProps?.extraPrompt).toBeUndefined();
+		expect(capturedWorkspaceProps?.selectedAssetTitle).toBe("第 01 组");
 	});
 
 	it("passes selected document node images as reference shortcuts", () => {

@@ -245,10 +245,13 @@ export interface GenerationNotificationEvent {
 
 export interface GenerationAsset {
 	kind: Kind;
+	taskId?: string;
+	title?: string;
 	url?: string;
 	base64?: string;
 	mimeType?: string;
 	slotIndex?: number;
+	selected?: boolean;
 }
 
 export interface GenerationUsage {
@@ -307,6 +310,32 @@ export interface GenerationTaskAttemptRecord {
 
 export interface GenerationTasksResponse {
 	tasks: GenerationTaskRecord[];
+}
+
+export interface UpdateGenerationTaskAssetRequest {
+	resourceType?: SelectedGenerationResourceType;
+	selected?: boolean;
+	title?: string;
+}
+
+export type SelectedGenerationResourceType = "character" | "scene" | "storyboard" | "prop";
+
+export interface SelectedGenerationAssetRecord {
+	id: string;
+	taskId: string;
+	assetIndex: number;
+	resourceType: SelectedGenerationResourceType;
+	kind: Kind;
+	title?: string;
+	url?: string;
+	base64?: string;
+	mimeType?: string;
+	createdAt?: string;
+	updatedAt?: string;
+}
+
+export interface SelectedGenerationAssetsResponse {
+	assets: SelectedGenerationAssetRecord[];
 }
 
 export interface GenerationPreferenceRecord {

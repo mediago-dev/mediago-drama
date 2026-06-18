@@ -162,6 +162,10 @@ func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 		"/generation/tasks/:taskId/retry",
 		handlers.GenerationTasks.HandleRetryGenerationTask,
 	)
+	apiRoutes.PATCH(
+		"/generation/tasks/:taskId/assets/:assetIndex",
+		handlers.GenerationTasks.HandleUpdateGenerationTaskAsset,
+	)
 	apiRoutes.DELETE(
 		"/generation/tasks/:taskId/assets/:assetIndex",
 		handlers.GenerationTasks.HandleDeleteGenerationTaskAsset,
@@ -197,6 +201,10 @@ func registerProjectRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
 	projectRoutes.GET("/media-assets/:assetId/poster", handlers.MediaAssets.HandleMediaAssetPoster)
 	projectRoutes.PUT("/media-assets/:assetId", handlers.MediaAssets.HandleUpdateMediaAsset)
 	projectRoutes.DELETE("/media-assets/:assetId", handlers.MediaAssets.HandleDeleteMediaAsset)
+	projectRoutes.GET(
+		"/generation/selected-assets",
+		handlers.GenerationTasks.HandleSelectedGenerationAssets,
+	)
 	registerWorkspaceRoutes(projectRoutes, handlers)
 	registerAgentRoutes(projectRoutes, handlers)
 	registerGenerationNotificationRoutes(projectRoutes, handlers.GenerationTasks, false)

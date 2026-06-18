@@ -1,4 +1,4 @@
-import { Layers, Loader2, Palette, ReceiptText, RotateCcw, Save } from "lucide-react";
+import { Images, Layers, Loader2, Palette, ReceiptText, RotateCcw, Save } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
@@ -9,6 +9,20 @@ import {
 	listPromptPresets,
 	promptPresetsKey,
 } from "@/domains/generation/api/prompt-presets";
+import {
+	type SelectedGenerationAsset,
+	getSelectedGenerationAssets,
+	selectedGenerationAssetsQueryKey,
+} from "@/domains/generation/api/generation";
+import {
+	SelectedGenerationAssetsEmpty,
+	SelectedGenerationAssetsGrid,
+} from "@/domains/generation/components/SelectedGenerationAssetsGrid";
+import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
+import {
+	selectedGenerationResourceDescriptorMap,
+	selectedGenerationResourceDescriptors,
+} from "@/domains/generation/lib/selected-resources";
 import {
 	billingSummaryKey,
 	getBillingSummary,
@@ -21,7 +35,7 @@ import {
 	updateProjectConfig,
 } from "@/domains/projects/api/projects";
 import { ProjectWorkspaceShell } from "@/domains/workspace/components/ProjectWorkspaceShell";
-import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
+import { getRouteProjectId, type AgentResourceType } from "@/domains/workspace/lib/workbench-route";
 import { useProjectStore } from "@/domains/projects/stores";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -67,6 +81,8 @@ export const ProjectOverview: React.FC = () => {
 	const setActiveProjectId = useProjectStore((state) => state.setActiveProjectId);
 	const [defaults, setDefaults] = useState<ProjectLayerDefaults>({});
 	const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
+	const [selectedResourceDialogType, setSelectedResourceDialogType] =
+		useState<AgentResourceType | null>(null);
 	const usageParams = useMemo(
 		() => (projectId ? { groupBy: "capability", projectId } : null),
 		[projectId],
@@ -90,6 +106,13 @@ export const ProjectOverview: React.FC = () => {
 	} = useSWR(usageParams ? billingSummaryKey(usageParams) : null, () =>
 		getBillingSummary(usageParams ?? { groupBy: "capability" }),
 	);
+	const {
+		data: selectedResources,
+		error: selectedResourcesError,
+		isLoading: isSelectedResourcesLoading,
+	} = useSWR(projectId ? selectedGenerationAssetsQueryKey(projectId) : null, () =>
+		getSelectedGenerationAssets(projectId ?? ""),
+	);
 
 	// 配置基线:优先用已存的 layerDefaults;否则从旧 overview.style 反查风格预设做无损迁移预选。
 	const configDefaults = useMemo<ProjectLayerDefaults>(() => {
@@ -108,6 +131,10 @@ export const ProjectOverview: React.FC = () => {
 	useEffect(() => {
 		if (projectId && activeProjectId !== projectId) setActiveProjectId(projectId);
 	}, [activeProjectId, projectId, setActiveProjectId]);
+
+	useEffect(() => {
+		setSelectedResourceDialogType(null);
+	}, [projectId]);
 
 	useEffect(() => {
 		setDefaults(configDefaults);
@@ -152,6 +179,10 @@ export const ProjectOverview: React.FC = () => {
 			toast.error(message);
 		}
 	}, [config, defaults, mutate, projectId, saveStatus, toast]);
+
+	const openSelectedResourceType = useCallback((resourceType: AgentResourceType) => {
+		setSelectedResourceDialogType(resourceType);
+	}, []);
 
 	if (!projectId) return <Navigate to="/" replace />;
 
@@ -200,6 +231,22 @@ export const ProjectOverview: React.FC = () => {
 									data={usageSummary}
 									error={usageError}
 									isLoading={isUsageLoading}
+								/>
+								<SelectedGenerationResourcesSummary
+									assets={selectedResources?.assets ?? []}
+									error={selectedResourcesError}
+									isLoading={isSelectedResourcesLoading}
+									onOpen={openSelectedResourceType}
+								/>
+								<SelectedGenerationResourcesDialog
+									assets={selectedResources?.assets ?? []}
+									error={selectedResourcesError}
+									isLoading={isSelectedResourcesLoading}
+									open={Boolean(selectedResourceDialogType)}
+									resourceType={selectedResourceDialogType}
+									onOpenChange={(open) => {
+										if (!open) setSelectedResourceDialogType(null);
+									}}
 								/>
 
 								<div className="bg-card">
@@ -284,6 +331,139 @@ export const ProjectOverview: React.FC = () => {
 				</div>
 			</div>
 		</ProjectWorkspaceShell>
+	);
+};
+
+const SelectedGenerationResourcesDialog: React.FC<{
+	assets: SelectedGenerationAsset[];
+	error?: unknown;
+	isLoading: boolean;
+	open: boolean;
+	resourceType: AgentResourceType | null;
+	onOpenChange: (open: boolean) => void;
+}> = ({ assets, error, isLoading, open, resourceType, onOpenChange }) => {
+	const descriptor = resourceType ? selectedGenerationResourceDescriptorMap[resourceType] : null;
+	const filteredAssets = useMemo(
+		() => (resourceType ? assets.filter((asset) => asset.resourceType === resourceType) : []),
+		[assets, resourceType],
+	);
+
+	if (!descriptor) return null;
+
+	const Icon = descriptor.icon;
+	const titleId = `selected-generation-resources-${descriptor.key}-title`;
+
+	return (
+		<GenerationModalShell
+			open={open}
+			title={
+				<span className="flex min-w-0 items-center gap-2">
+					<Icon className="size-4 shrink-0 text-muted-foreground" />
+					<span className="truncate">{descriptor.label} · 已选生成资源</span>
+				</span>
+			}
+			titleAside={
+				<Badge variant="secondary" className="shrink-0">
+					已选 {filteredAssets.length} 张
+				</Badge>
+			}
+			titleId={titleId}
+			contentClassName="h-[min(86vh,760px)]"
+			onOpenChange={onOpenChange}
+		>
+			<div className="flex h-full min-h-0 flex-col bg-ide-editor">
+				{isLoading ? (
+					<div className="grid min-h-56 flex-1 place-items-center">
+						<div className="flex items-center gap-2 text-sm text-muted-foreground">
+							<Loader2 className="size-4 animate-spin" />
+							<span>正在加载已选图片</span>
+						</div>
+					</div>
+				) : null}
+
+				{!isLoading && error ? (
+					<div className="m-4 border border-error-border bg-error-surface p-4 text-sm text-error-foreground">
+						已选图片加载失败。
+					</div>
+				) : null}
+
+				{!isLoading && !error && filteredAssets.length === 0 ? (
+					<div className="p-4">
+						<SelectedGenerationAssetsEmpty />
+					</div>
+				) : null}
+
+				{!isLoading && !error && filteredAssets.length > 0 ? (
+					<div className="min-h-0 flex-1 overflow-y-auto p-4">
+						<SelectedGenerationAssetsGrid
+							assets={filteredAssets}
+							className="lg:grid-cols-3 xl:grid-cols-3"
+						/>
+					</div>
+				) : null}
+			</div>
+		</GenerationModalShell>
+	);
+};
+
+const SelectedGenerationResourcesSummary: React.FC<{
+	assets: SelectedGenerationAsset[];
+	error?: unknown;
+	isLoading: boolean;
+	onOpen: (resourceType: AgentResourceType) => void;
+}> = ({ assets, error, isLoading, onOpen }) => {
+	const counts = useMemo(() => {
+		const next: Record<AgentResourceType, number> = {
+			character: 0,
+			scene: 0,
+			storyboard: 0,
+			prop: 0,
+		};
+		for (const asset of assets) next[asset.resourceType] += 1;
+		return next;
+	}, [assets]);
+
+	return (
+		<section className="bg-card">
+			<div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+				<div className="flex min-w-0 items-center gap-2">
+					<Images className="size-4 shrink-0 text-muted-foreground" />
+					<div className="min-w-0">
+						<h2 className="text-sm font-semibold text-foreground">已选生成资源</h2>
+						<p className="text-xs text-muted-foreground">生成列表中用户选中的图片资源。</p>
+					</div>
+				</div>
+				{isLoading ? (
+					<span className="flex items-center gap-1 text-xs text-muted-foreground">
+						<Loader2 className="size-3 animate-spin" />
+						加载中
+					</span>
+				) : null}
+			</div>
+			{error ? (
+				<div className="mt-3 border border-error-border bg-error-surface px-3 py-2 text-xs text-error-foreground">
+					已选资源加载失败。
+				</div>
+			) : null}
+			<div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+				{selectedGenerationResourceDescriptors.map(({ key, label, icon: Icon }) => (
+					<button
+						key={key}
+						type="button"
+						className="group flex min-h-24 min-w-0 flex-col items-start justify-between rounded-sm border border-border bg-ide-editor px-3 py-3 text-left transition-colors hover:border-input hover:bg-ide-list-hover"
+						onClick={() => onOpen(key)}
+					>
+						<span className="flex w-full min-w-0 items-center justify-between gap-2">
+							<span className="flex min-w-0 items-center gap-2">
+								<Icon className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
+								<span className="truncate text-sm font-medium text-foreground">{label}</span>
+							</span>
+						</span>
+						<span className="text-xs text-muted-foreground">已选 {counts[key]} 张</span>
+					</button>
+				))}
+			</div>
+		</section>
 	);
 };
 

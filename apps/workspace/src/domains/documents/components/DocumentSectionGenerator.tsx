@@ -240,6 +240,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 					/>
 				)}
 				selectedAssetKeys={selectedAssetKeys}
+				selectedAssetTitle={section.headingText}
 				submitLabel="生成插图"
 				uploadIdPrefix="section-generation"
 				onGenerationComplete={onGenerationComplete}

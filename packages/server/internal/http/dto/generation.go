@@ -113,10 +113,13 @@ type GenerationNotificationEvent struct {
 // GenerationAsset is a generated asset reference or inline payload.
 type GenerationAsset struct {
 	Kind      string `json:"kind" ts:"Kind"`
+	TaskID    string `json:"taskId,omitempty"`
+	Title     string `json:"title,omitempty"`
 	URL       string `json:"url,omitempty"`
 	Base64    string `json:"base64,omitempty"`
 	MIMEType  string `json:"mimeType,omitempty"`
 	SlotIndex int    `json:"slotIndex,omitempty"`
+	Selected  bool   `json:"selected,omitempty"`
 }
 
 // GenerationUsage contains token usage for generation providers.
@@ -179,6 +182,33 @@ type GenerationTaskAttemptRecord struct {
 // GenerationTasksResponse lists generation tasks.
 type GenerationTasksResponse struct {
 	Tasks []GenerationTaskRecord `json:"tasks"`
+}
+
+// UpdateGenerationTaskAssetRequest updates user-facing metadata on one generated asset.
+type UpdateGenerationTaskAssetRequest struct {
+	Selected     *bool   `json:"selected,omitempty"`
+	Title        *string `json:"title,omitempty"`
+	ResourceType string  `json:"resourceType,omitempty"`
+}
+
+// SelectedGenerationAssetRecord is one image selected into a project's resource overview.
+type SelectedGenerationAssetRecord struct {
+	ID           string `json:"id"`
+	TaskID       string `json:"taskId"`
+	AssetIndex   int    `json:"assetIndex"`
+	ResourceType string `json:"resourceType"`
+	Kind         string `json:"kind" ts:"Kind"`
+	Title        string `json:"title,omitempty"`
+	URL          string `json:"url,omitempty"`
+	Base64       string `json:"base64,omitempty"`
+	MIMEType     string `json:"mimeType,omitempty"`
+	CreatedAt    string `json:"createdAt,omitempty"`
+	UpdatedAt    string `json:"updatedAt,omitempty"`
+}
+
+// SelectedGenerationAssetsResponse lists selected generated image resources.
+type SelectedGenerationAssetsResponse struct {
+	Assets []SelectedGenerationAssetRecord `json:"assets"`
 }
 
 // GenerationPreferenceRecord is a persisted generation preference set.

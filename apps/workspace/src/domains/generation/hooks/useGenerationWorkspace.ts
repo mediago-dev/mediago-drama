@@ -360,6 +360,7 @@ export const useGenerationWorkspace = ({
 		setError,
 		setMessages,
 		setPrompt,
+		taskType,
 		useRawPrompt,
 	});
 	const {
@@ -438,6 +439,7 @@ export const useGenerationWorkspace = ({
 		mediaKindFilter,
 		mediaQuery,
 		mutateMediaAssets,
+		mutateTasks,
 		needsConversation,
 		orderedGenerationEntries,
 		prompt,

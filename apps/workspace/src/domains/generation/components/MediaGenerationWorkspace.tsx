@@ -2,11 +2,16 @@ import { FileText } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { mutate as mutateSWR } from "swr";
 import type {
 	GenerationAsset,
 	GenerationKind,
 	GenerationMessageResponse,
 	GenerationNotificationOpenTarget,
+} from "@/domains/generation/api/generation";
+import {
+	selectedGenerationAssetsQueryKey,
+	updateGenerationTaskAsset,
 } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import { HistoryGenerationList } from "@/domains/generation/components/MediaGenerationHistory";
@@ -116,6 +121,7 @@ export interface MediaGenerationWorkspaceProps {
 	sectionId?: string | null;
 	taskType?: GenerationTaskType;
 	selectedAssetKeys?: string[];
+	selectedAssetTitle?: string | null;
 	submitLabel?: string;
 	uploadIdPrefix?: string;
 	viewMode?: MediaGenerationWorkspaceViewMode;
@@ -156,6 +162,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	sectionId,
 	taskType,
 	selectedAssetKeys = [],
+	selectedAssetTitle,
 	submitLabel,
 	uploadIdPrefix = "generation-workspace",
 	viewMode,
@@ -164,6 +171,9 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const [inlineHistoryReferences, setInlineHistoryReferences] = useState<MediaAsset[]>([]);
 	const [inlineResultReferences, setInlineResultReferences] = useState<MediaAsset[]>([]);
 	const [inlineShortcutReferences, setInlineShortcutReferences] = useState<MediaAsset[]>([]);
+	const [assetSelectionOverrides, setAssetSelectionOverrides] = useState<Record<string, boolean>>(
+		{},
+	);
 	const [referenceDialogOpen, setReferenceDialogOpen] = useState(false);
 	const syncedPromptEntryIdRef = useRef<string | null>(null);
 	const workspaceRef = useRef<HTMLFormElement>(null);
@@ -320,6 +330,15 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		</div>
 	) : null;
 	const generationEntries = ws.orderedGenerationEntries.filter((entry) => entry.kind === kind);
+	const effectiveSelectedAssetKeys = useMemo(
+		() =>
+			effectiveGenerationSelectionKeys(
+				generationEntries,
+				selectedAssetKeys,
+				assetSelectionOverrides,
+			),
+		[generationEntries, selectedAssetKeys, assetSelectionOverrides],
+	);
 	const activeGenerationEntry =
 		generationEntries.find((entry) => entry.id === ws.activeEntryId) ??
 		generationEntries[0] ??
@@ -530,6 +549,44 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			ws.selectReferenceAsset,
 		],
 	);
+	const toggleGeneratedAsset = useCallback(
+		(asset: GenerationAsset, selected: boolean) => {
+			const selectionKey = generationAssetSelectionKey(asset);
+			if (selectionKey) {
+				setAssetSelectionOverrides((current) => ({ ...current, [selectionKey]: selected }));
+			}
+
+			onToggleAsset?.(asset, selected);
+
+			if (
+				!projectId?.trim() ||
+				asset.kind !== "image" ||
+				!asset.taskId ||
+				asset.slotIndex === undefined
+			) {
+				return;
+			}
+
+			const persistedTitle = asset.title?.trim() || selectedAssetTitle?.trim() || undefined;
+
+			void updateGenerationTaskAsset(asset.taskId, asset.slotIndex, {
+				resourceType: selectedGenerationResourceTypeForTaskType(taskType),
+				selected,
+				title: persistedTitle,
+			})
+				.then(() => {
+					void ws.mutateTasks();
+					void mutateSWR(selectedGenerationAssetsQueryKey(projectId));
+				})
+				.catch((err) => {
+					const message = err instanceof Error ? err.message : "已选资源保存失败。";
+					toast.error(message);
+				});
+		},
+		[onToggleAsset, projectId, selectedAssetTitle, taskType, toast, ws.mutateTasks],
+	);
+	const generatedAssetToggleHandler =
+		onToggleAsset || projectId?.trim() ? toggleGeneratedAsset : undefined;
 	const toggleShortcutReference = useCallback(
 		(asset: MediaAsset) => {
 			if (!canSelectReferenceImages) {
@@ -692,9 +749,9 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 							emptyText={currentViewMode === "edit" ? "" : resolvedEmptyResultText}
 							entries={editorResultEntries}
 							kind={kind}
-							selectedAssetKeys={selectedAssetKeys}
+							selectedAssetKeys={effectiveSelectedAssetKeys}
 							onSaveAsset={resultActions.saveAsset}
-							onToggleAsset={onToggleAsset}
+							onToggleAsset={generatedAssetToggleHandler}
 							onUseAssetAsReference={useAssetAsReference}
 							savedAssetKeys={resultActions.savedKeys}
 							savingAssetKeys={resultActions.savingKeys}
@@ -777,14 +834,14 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 							entries={generationEntries}
 							kind={kind}
 							deletingAssetKeys={ws.deletingAssetKeys}
-							selectedAssetKeys={selectedAssetKeys}
+							selectedAssetKeys={effectiveSelectedAssetKeys}
 							onDeleteEntry={deleteEntry}
 							onDeleteAsset={deleteEntryAsset}
 							onDeletePlaceholder={deleteEntryAssetPlaceholder}
 							onCopyPrompt={resultActions.copyPrompt}
 							onSaveAsset={resultActions.saveAsset}
 							onSelectEntry={selectHistoryEntry}
-							onToggleAsset={onToggleAsset}
+							onToggleAsset={generatedAssetToggleHandler}
 							onUseAssetAsReference={useAssetAsReference}
 							onUsePrompt={useHistoryPrompt}
 							savedAssetKeys={resultActions.savedKeys}
@@ -805,7 +862,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 									defaultSourceLabel={defaultHistorySourceLabel}
 									entries={generationEntries}
 									kind={kind}
-									selectedAssetKeys={selectedAssetKeys}
+									selectedAssetKeys={effectiveSelectedAssetKeys}
 									onDeleteEntry={deleteEntry}
 									onCopyPrompt={resultActions.copyPrompt}
 									onSelectEntry={selectHistoryEntry}
@@ -856,6 +913,38 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 };
 
 const inlineReferenceTimestamp = "1970-01-01T00:00:00.000Z";
+
+const effectiveGenerationSelectionKeys = (
+	entries: GenerationEntry[],
+	selectedAssetKeys: string[],
+	overrides: Record<string, boolean>,
+) => {
+	const keys = new Set(selectedAssetKeys);
+	for (const entry of entries) {
+		for (const asset of entry.assets ?? []) {
+			if (!asset.selected) continue;
+			const key = generationAssetSelectionKey(asset);
+			if (key) keys.add(key);
+		}
+	}
+	for (const [key, selected] of Object.entries(overrides)) {
+		if (selected) keys.add(key);
+		else keys.delete(key);
+	}
+	return Array.from(keys);
+};
+
+const selectedGenerationResourceTypeForTaskType = (taskType?: GenerationTaskType) => {
+	switch (taskType) {
+		case "character":
+		case "scene":
+		case "storyboard":
+		case "prop":
+			return taskType;
+		default:
+			return undefined;
+	}
+};
 
 const historyReferencePreviewAssetsFromEntry = (entry: GenerationEntry): MediaAsset[] =>
 	(entry.requestAssets ?? []).flatMap((asset, index) => {

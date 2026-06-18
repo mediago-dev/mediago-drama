@@ -270,11 +270,61 @@ func (workflow *GenerationService) ListGenerationTasks(query GenerationTaskListQ
 	return generationTasksResponse{Tasks: GenerationTasksForClient(tasks)}, nil
 }
 
+// ListSelectedGenerationAssets lists selected generated project images grouped by creative resource type.
+func (workflow *GenerationService) ListSelectedGenerationAssets(projectID string) (SelectedGenerationAssetsResponse, error) {
+	projectID = GenerationProjectIDForRequest(projectID, "")
+	if projectID == "" {
+		return SelectedGenerationAssetsResponse{Assets: []SelectedGenerationAssetRecord{}}, nil
+	}
+
+	tasks, err := workflow.generationTasks.ListByProject("", projectID)
+	if err != nil {
+		return SelectedGenerationAssetsResponse{}, err
+	}
+
+	assets := make([]SelectedGenerationAssetRecord, 0)
+	for _, task := range tasks {
+		resourceType := selectedGenerationResourceType(task.CapabilityID)
+		if resourceType == "" {
+			continue
+		}
+		for _, asset := range GenerationTaskForClient(task).Assets {
+			if !asset.Selected || asset.Kind != string(coregeneration.KindImage) {
+				continue
+			}
+			assets = append(assets, SelectedGenerationAssetRecord{
+				ID:           fmt.Sprintf("%s:%d", task.ID, asset.SlotIndex),
+				TaskID:       task.ID,
+				AssetIndex:   asset.SlotIndex,
+				ResourceType: resourceType,
+				Kind:         asset.Kind,
+				Title:        strings.TrimSpace(asset.Title),
+				URL:          asset.URL,
+				Base64:       asset.Base64,
+				MIMEType:     asset.MIMEType,
+				CreatedAt:    task.CreatedAt,
+				UpdatedAt:    task.UpdatedAt,
+			})
+		}
+	}
+
+	return SelectedGenerationAssetsResponse{Assets: assets}, nil
+}
+
 // GetGenerationTask returns a generation task for HTTP handlers.
 func (workflow *GenerationService) GetGenerationTask(id string) (generationTaskRecord, bool, error) {
 	task, ok, err := workflow.generationTasks.Get(id)
 	if err != nil || !ok {
 		return task, ok, err
+	}
+	return GenerationTaskForClient(task), true, nil
+}
+
+// UpdateGenerationTaskAsset updates one generated asset for HTTP handlers.
+func (workflow *GenerationService) UpdateGenerationTaskAsset(id string, assetIndex int, patch UpdateGenerationTaskAssetRequest) (generationTaskRecord, bool, error) {
+	task, updated, err := workflow.generationTasks.UpdateAsset(id, assetIndex, patch)
+	if err != nil || !updated {
+		return task, updated, err
 	}
 	return GenerationTaskForClient(task), true, nil
 }
@@ -296,6 +346,15 @@ func (workflow *GenerationService) DeleteGenerationTask(id string) (generationTa
 	}
 	response, err := workflow.ListGenerationTasks(GenerationTaskListQuery{})
 	return response, true, err
+}
+
+func selectedGenerationResourceType(capabilityID string) string {
+	switch strings.TrimSpace(capabilityID) {
+	case "character", "scene", "storyboard", "prop":
+		return strings.TrimSpace(capabilityID)
+	default:
+		return ""
+	}
 }
 
 // PollPendingGenerationTasks polls pending generation tasks in the background.

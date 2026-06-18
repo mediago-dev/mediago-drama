@@ -2,8 +2,16 @@ import type { WorkMode } from "@/lib/stores/work-mode";
 
 export type AgentProjectView = "agent" | "document" | "overview";
 export type AgentDocumentWorkbench = "timeline";
+export type AgentResourceType = "character" | "scene" | "storyboard" | "prop";
 
 export const getRouteProjectId = (search: string) => getSearchParam(search, "projectId");
+
+export const getRouteResourceType = (search: string): AgentResourceType | null => {
+	const value = getSearchParam(search, "resourceType");
+	return value === "character" || value === "scene" || value === "storyboard" || value === "prop"
+		? value
+		: null;
+};
 
 export const getRouteDocumentId = (search: string) => getSearchParam(search, "documentId");
 
@@ -57,6 +65,7 @@ export const agentProjectPath = (
 		assetId?: string | null;
 		agentSessionId?: string | null;
 		documentId?: string | null;
+		resourceType?: AgentResourceType | null;
 		workbench?: AgentDocumentWorkbench | null;
 	} = {},
 ) => {
@@ -64,6 +73,9 @@ export const agentProjectPath = (
 	params.set("projectId", projectId);
 	if (options.documentId) params.set("documentId", options.documentId);
 	if (options.assetId && !options.documentId) params.set("assetId", options.assetId);
+	if (options.resourceType && !options.documentId && !options.assetId) {
+		params.set("resourceType", options.resourceType);
+	}
 	if (options.agentSessionId) params.set("agentSessionId", options.agentSessionId);
 	if (options.documentId && options.workbench) params.set("workbench", options.workbench);
 	return `/agent?${params.toString()}`;

@@ -11,6 +11,7 @@ import {
 	getRouteDocumentId,
 	getRouteDocumentWorkbench,
 	getRouteProjectId,
+	getRouteResourceType,
 	isAgentProjectViewState,
 } from "@/domains/workspace/lib/workbench-route";
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
@@ -34,12 +35,18 @@ const EpisodeTimeline = lazy(() =>
 const ProjectOverview = lazy(() =>
 	import("@/pages/ProjectOverview").then((module) => ({ default: module.ProjectOverview })),
 );
+const ProjectSelectedResources = lazy(() =>
+	import("@/pages/ProjectSelectedResources").then((module) => ({
+		default: module.ProjectSelectedResources,
+	})),
+);
 
 export const Home: React.FC = () => {
 	const location = useLocation();
 	const projectId = getRouteProjectId(location.search);
 	const documentId = getRouteDocumentId(location.search);
 	const assetId = getRouteAssetId(location.search);
+	const resourceType = getRouteResourceType(location.search);
 	const documentWorkbench = getRouteDocumentWorkbench(location.search);
 	const preserveAgentTab = isAgentProjectViewState(location.state, "agent");
 	const preserveDocumentTab =
@@ -198,6 +205,13 @@ export const Home: React.FC = () => {
 		return (
 			<Suspense fallback={<WorkspaceContentFallback />}>
 				<WritingWorkspace />
+			</Suspense>
+		);
+	}
+	if (resourceType) {
+		return (
+			<Suspense fallback={<WorkspaceContentFallback />}>
+				<ProjectSelectedResources />
 			</Suspense>
 		);
 	}

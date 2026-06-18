@@ -18,6 +18,7 @@ import {
 	sendGenerationMessage,
 	streamGenerationText,
 } from "@/domains/generation/api/generation";
+import type { GenerationTaskType } from "@/domains/generation/lib/prompt-layers";
 import type { ProjectBrief } from "@/domains/projects/api/projects";
 import { applyVisualStyle } from "@/lib/style-presets";
 import {
@@ -113,6 +114,7 @@ interface UseGenerationSubmitOptions {
 	requireConversation?: boolean;
 	resolvedConversationScopeId?: string;
 	sectionId?: string;
+	taskType?: GenerationTaskType;
 	selectedFamily: GenerationFamily;
 	selectedParams: Record<string, unknown>;
 	selectedRoute: GenerationRoute;
@@ -151,6 +153,7 @@ export const useGenerationSubmit = ({
 	requireConversation = false,
 	resolvedConversationScopeId,
 	sectionId,
+	taskType = "studio",
 	selectedFamily,
 	selectedParams,
 	selectedRoute,
@@ -268,6 +271,7 @@ export const useGenerationSubmit = ({
 							scopeId: resolvedConversationScopeId,
 							projectId: mediaAssetProjectId || undefined,
 							sectionId: sectionId || undefined,
+							capabilityId: taskType,
 							notificationTarget: notificationTarget ?? undefined,
 							routeId: selectedRoute.id,
 							familyId: selectedFamily.id,
@@ -353,6 +357,7 @@ export const useGenerationSubmit = ({
 					scopeId: resolvedConversationScopeId,
 					projectId: mediaAssetProjectId || undefined,
 					sectionId: sectionId || undefined,
+					capabilityId: taskType,
 					notificationTarget: notificationTarget ?? undefined,
 					routeId: selectedRoute.id,
 					familyId: selectedFamily.id,
@@ -474,6 +479,7 @@ export const useGenerationSubmit = ({
 			promptRef,
 			requireConversation,
 			resolvedConversationScopeId,
+			taskType,
 			selectedFamily.id,
 			selectedParams,
 			selectedRoute,

@@ -13,10 +13,27 @@ const toastMocks = vi.hoisted(() => ({
 	success: vi.fn(),
 	warning: vi.fn(),
 }));
+const generationApiMocks = vi.hoisted(() => ({
+	selectedGenerationAssetsQueryKey: vi.fn((projectId: string) => [
+		"generation-selected-assets",
+		projectId,
+	]),
+	updateGenerationTaskAsset: vi.fn(async () => undefined),
+}));
 
 vi.mock("@/domains/generation/hooks/useGenerationWorkspace", () => ({
 	useGenerationWorkspace: vi.fn(),
 }));
+
+vi.mock("@/domains/generation/api/generation", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/domains/generation/api/generation")>();
+
+	return {
+		...actual,
+		selectedGenerationAssetsQueryKey: generationApiMocks.selectedGenerationAssetsQueryKey,
+		updateGenerationTaskAsset: generationApiMocks.updateGenerationTaskAsset,
+	};
+});
 
 vi.mock("@/hooks/useToast", () => ({
 	useToast: () => toastMocks,
@@ -175,6 +192,7 @@ const workspaceDefaults = {
 	kind: "image",
 	mediaAssets: [mediaAsset],
 	mutateMediaAssets: vi.fn(),
+	mutateTasks: vi.fn(),
 	orderedGenerationEntries: [imageEntry, secondImageEntry],
 	fullPrompt: "完整提示词",
 	prompt: "旧提示词",
@@ -446,6 +464,48 @@ describe("MediaGenerationWorkspace", () => {
 		fireEvent.click(within(secondRow).getByRole("checkbox", { name: "选入结果" }));
 
 		expect(onToggleAsset).toHaveBeenCalledWith(secondImageEntry.assets?.[0], true);
+	});
+
+	it("persists selected generated image with the document title", async () => {
+		const selectedEntry: GenerationEntry = {
+			...imageEntry,
+			assets: [
+				{
+					kind: "image",
+					mimeType: "image/png",
+					slotIndex: 2,
+					taskId: "task-a",
+					url: "/api/v1/media-assets/media-a/content",
+				},
+			],
+		};
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: selectedEntry.id,
+			orderedGenerationEntries: [selectedEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				projectId="project-a"
+				selectedAssetTitle="主角 底层青年 / 低阶散修"
+				taskType="character"
+				viewMode="history"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("checkbox", { name: "选入结果" }));
+
+		await waitFor(() => {
+			expect(generationApiMocks.updateGenerationTaskAsset).toHaveBeenCalledWith("task-a", 2, {
+				resourceType: "character",
+				selected: true,
+				title: "主角 底层青年 / 低阶散修",
+			});
+		});
 	});
 
 	it("copies the active history prompt into the editor only when explicitly requested", () => {

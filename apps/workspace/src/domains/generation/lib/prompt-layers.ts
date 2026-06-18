@@ -2,13 +2,14 @@ import type { PromptLayer } from "@/domains/generation/api/prompt-presets";
 import type { DocumentCategory } from "@/domains/documents/stores";
 
 // 生成任务类型(对应文档分类;无项目/无分类时为 studio)。
-export type GenerationTaskType = "character" | "scene" | "storyboard" | "studio";
+export type GenerationTaskType = "character" | "scene" | "storyboard" | "prop" | "studio";
 
 // 各任务类型在组合器里展示的「库内文字层」(主体词=输入框,不在此列)。
 const taskTypeLayerMap: Record<GenerationTaskType, PromptLayer[]> = {
 	character: ["style", "extra"],
 	scene: ["style", "extra"],
 	storyboard: ["style", "extra"],
+	prop: ["style", "extra"],
 	studio: ["style", "extra"],
 };
 
@@ -20,6 +21,8 @@ export const taskTypeForCategory = (category?: DocumentCategory | null): Generat
 			return "scene";
 		case "storyboard":
 			return "storyboard";
+		case "prop":
+			return "prop";
 		default:
 			return "studio";
 	}

@@ -44,6 +44,15 @@ type GenerationTaskAttemptRecord = dto.GenerationTaskAttemptRecord
 // GenerationTasksResponse lists generation tasks.
 type GenerationTasksResponse = dto.GenerationTasksResponse
 
+// UpdateGenerationTaskAssetRequest updates user-facing generated asset metadata.
+type UpdateGenerationTaskAssetRequest = dto.UpdateGenerationTaskAssetRequest
+
+// SelectedGenerationAssetRecord is one selected generated image resource.
+type SelectedGenerationAssetRecord = dto.SelectedGenerationAssetRecord
+
+// SelectedGenerationAssetsResponse lists selected generated image resources.
+type SelectedGenerationAssetsResponse = dto.SelectedGenerationAssetsResponse
+
 // GenerationPreferenceRecord is a persisted generation preference set.
 type GenerationPreferenceRecord = dto.GenerationPreferenceRecord
 

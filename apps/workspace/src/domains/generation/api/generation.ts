@@ -14,6 +14,8 @@ import type {
 	GenerationNotificationRecord,
 	GenerationNotificationsResponse as GeneratedGenerationNotificationsResponse,
 	GenerationNotificationTarget,
+	SelectedGenerationAssetsResponse as GeneratedSelectedGenerationAssetsResponse,
+	SelectedGenerationAssetRecord as GeneratedSelectedGenerationAssetRecord,
 	GenerationPreferenceRecord,
 	GenerationTaskAttemptRecord,
 	GenerationTaskRecord,
@@ -33,6 +35,7 @@ import type {
 	ProviderInfo,
 	ProviderType,
 	RouteStatus,
+	UpdateGenerationTaskAssetRequest as GeneratedUpdateGenerationTaskAssetRequest,
 	UpdateGenerationPreferenceRequest as GeneratedUpdateGenerationPreferenceRequest,
 } from "@/api/types/generation";
 
@@ -63,6 +66,9 @@ export type GenerationNotification = GenerationNotificationRecord;
 export type GenerationNotificationEvent = GeneratedGenerationNotificationEvent;
 export type GenerationNotificationsResponse = GeneratedGenerationNotificationsResponse;
 export type GenerationNotificationOpenTarget = GenerationNotificationTarget;
+export type SelectedGenerationAsset = GeneratedSelectedGenerationAssetRecord;
+export type SelectedGenerationAssetsResponse = GeneratedSelectedGenerationAssetsResponse;
+export type UpdateGenerationTaskAssetRequest = GeneratedUpdateGenerationTaskAssetRequest;
 export type GenerationTask = GenerationTaskRecord & {
 	conversationId?: string;
 	sessionId?: string;
@@ -120,6 +126,7 @@ export const generationPreferencesKey = "/generation/sessions";
 export const generationTasksKey = "/generation/tasks";
 export const generationConversationsKey = "/generation/sessions";
 export const generationNotificationsKey = "/generation/notifications";
+export const selectedGenerationAssetsKey = "/generation/selected-assets";
 export const defaultGenerationConversationScopeId = "studio";
 export const agentGenerationConversationScopeId = "agent";
 
@@ -255,6 +262,16 @@ export const getGenerationConversations = async (
 export const generationNotificationsQueryKey = (projectId?: string | null) =>
 	[generationNotificationsKey, projectId?.trim() || ""] as const;
 
+export const selectedGenerationAssetsQueryKey = (projectId?: string | null) =>
+	[selectedGenerationAssetsKey, projectId?.trim() || ""] as const;
+
+export const getSelectedGenerationAssets = async (projectId: string) => {
+	const response = await httpClient.get<SelectedGenerationAssetsResponse>(
+		`/projects/${encodeURIComponent(projectId)}/generation/selected-assets`,
+	);
+	return response.data;
+};
+
 export const getGenerationNotifications = async (projectId?: string | null) => {
 	const normalizedProjectId = projectId?.trim();
 	const response = await httpClient.get<GenerationNotificationsResponse>(
@@ -359,6 +376,18 @@ export const deleteGenerationTask = async (id: string) => {
 export const deleteGenerationTaskAsset = async (id: string, assetIndex: number) => {
 	const response = await httpClient.delete<GenerationTask>(
 		`/generation/tasks/${encodeURIComponent(id)}/assets/${assetIndex}`,
+	);
+	return normalizeGenerationTask(response.data);
+};
+
+export const updateGenerationTaskAsset = async (
+	id: string,
+	assetIndex: number,
+	request: UpdateGenerationTaskAssetRequest,
+) => {
+	const response = await httpClient.patch<GenerationTask>(
+		`/generation/tasks/${encodeURIComponent(id)}/assets/${assetIndex}`,
+		request,
 	);
 	return normalizeGenerationTask(response.data);
 };

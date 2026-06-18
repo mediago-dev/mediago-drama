@@ -27,7 +27,9 @@ type GenerationTaskService interface {
 	RetryGenerationTask(ctx context.Context, id string) (dto.GenerationMessageResponse, int, error)
 	ListGenerationConversations(scopeID string, kind string) (dto.GenerationConversationsResponse, error)
 	ListGenerationTasks(query service.GenerationTaskListQuery) (dto.GenerationTasksResponse, error)
+	ListSelectedGenerationAssets(projectID string) (dto.SelectedGenerationAssetsResponse, error)
 	GetGenerationTask(id string) (dto.GenerationTaskRecord, bool, error)
+	UpdateGenerationTaskAsset(id string, assetIndex int, patch dto.UpdateGenerationTaskAssetRequest) (dto.GenerationTaskRecord, bool, error)
 	DeleteGenerationTaskAsset(id string, assetIndex int) (dto.GenerationTaskRecord, bool, error)
 	DeleteGenerationTask(id string) (dto.GenerationTasksResponse, bool, error)
 	ListGenerationNotifications(projectID string) (dto.GenerationNotificationsResponse, error)
@@ -225,6 +227,22 @@ func (handler GenerationTasks) HandleGenerationTasks(context *gin.Context) {
 	httpresponse.OK(context, tasks)
 }
 
+// HandleSelectedGenerationAssets lists project-level selected generated image assets.
+func (handler GenerationTasks) HandleSelectedGenerationAssets(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+
+	assets, err := handler.service.ListSelectedGenerationAssets(projectID)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+
+	httpresponse.OK(context, assets)
+}
+
 func nonNegativeIntQuery(context *gin.Context, name string) (int, bool) {
 	value := strings.TrimSpace(context.Query(name))
 	if value == "" {
@@ -366,6 +384,46 @@ func (handler GenerationTasks) HandleGenerationTask(context *gin.Context) {
 	}
 	if !ok {
 		httpresponse.Error(context, http.StatusNotFound, "generation task not found")
+		return
+	}
+
+	httpresponse.OK(context, task)
+}
+
+// HandleUpdateGenerationTaskAsset updates one generated asset on a task.
+func (handler GenerationTasks) HandleUpdateGenerationTaskAsset(context *gin.Context) {
+	id, ok := requiredPathParam(context, "taskId", "taskId")
+	if !ok {
+		return
+	}
+
+	rawIndex, ok := requiredPathParam(context, "assetIndex", "assetIndex")
+	if !ok {
+		return
+	}
+	assetIndex, err := strconv.Atoi(rawIndex)
+	if err != nil || assetIndex < 0 {
+		httpresponse.Error(context, http.StatusBadRequest, "assetIndex must be a non-negative number")
+		return
+	}
+
+	payload, err := decodeJSON[dto.UpdateGenerationTaskAssetRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	if payload.Selected == nil && payload.Title == nil && strings.TrimSpace(payload.ResourceType) == "" {
+		httpresponse.Error(context, http.StatusBadRequest, "selected, title, or resourceType is required")
+		return
+	}
+
+	task, updated, err := handler.service.UpdateGenerationTaskAsset(id, assetIndex, payload)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+	if !updated {
+		httpresponse.Error(context, http.StatusNotFound, "generation task asset not found")
 		return
 	}
 

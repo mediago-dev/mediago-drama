@@ -226,6 +226,26 @@ func (service *GenerationTaskService) DeleteAsset(id string, assetIndex int) (Ge
 	return task, true, nil
 }
 
+// UpdateAsset updates user-facing metadata for one generated asset on a task.
+func (service *GenerationTaskService) UpdateAsset(id string, assetIndex int, patch UpdateGenerationTaskAssetRequest) (GenerationTaskRecord, bool, error) {
+	if service.initErr != nil {
+		return GenerationTaskRecord{}, false, service.initErr
+	}
+	if assetIndex < 0 {
+		return GenerationTaskRecord{}, false, nil
+	}
+
+	task, updated, err := service.updateAssetRecord(id, assetIndex, patch)
+	if err != nil || !updated {
+		return GenerationTaskRecord{}, updated, err
+	}
+	if err := service.attachAttemptSummary(&task); err != nil {
+		return GenerationTaskRecord{}, false, err
+	}
+
+	return task, true, nil
+}
+
 func (service *GenerationTaskService) deleteAssetRecord(id string, assetIndex int) (GenerationTaskRecord, bool, error) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
@@ -250,6 +270,46 @@ func (service *GenerationTaskService) deleteAssetRecord(id string, assetIndex in
 	}
 
 	updated, err := service.repo.UpdateGenerationTaskDeletedAssetSlots(id, string(deletedAssetSlotsJSON), task.UpdatedAt)
+	return task, updated, err
+}
+
+func (service *GenerationTaskService) updateAssetRecord(id string, assetIndex int, patch UpdateGenerationTaskAssetRequest) (GenerationTaskRecord, bool, error) {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+
+	model, err := service.repo.GetGenerationTask(id)
+	if repository.IsRecordNotFound(err) {
+		return GenerationTaskRecord{}, false, nil
+	}
+	if err != nil {
+		return GenerationTaskRecord{}, false, err
+	}
+
+	task, err := generationTaskRecordFromModel(model)
+	if err != nil {
+		return GenerationTaskRecord{}, false, err
+	}
+	if assetIndex >= len(task.Assets) || generationDeletedAssetSlotSet(task.DeletedAssetSlots)[assetIndex] {
+		return GenerationTaskRecord{}, false, nil
+	}
+
+	if patch.Selected != nil {
+		task.Assets[assetIndex].Selected = *patch.Selected
+	}
+	if patch.Title != nil {
+		task.Assets[assetIndex].Title = strings.TrimSpace(*patch.Title)
+	}
+	if resourceType := selectedGenerationResourceType(patch.ResourceType); resourceType != "" {
+		task.CapabilityID = resourceType
+	}
+	task.UpdatedAt = timestamp.NowRFC3339Nano()
+
+	assetsJSON, err := json.Marshal(task.Assets)
+	if err != nil {
+		return GenerationTaskRecord{}, false, err
+	}
+
+	updated, err := service.repo.UpdateGenerationTaskAssets(id, string(assetsJSON), task.CapabilityID, task.UpdatedAt)
 	return task, updated, err
 }
 
@@ -697,7 +757,7 @@ func normalizeGenerationDeletedAssetSlots(slots []int) []int {
 func GenerationTaskForClient(task GenerationTaskRecord) GenerationTaskRecord {
 	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
 	if len(deletedSlots) == 0 {
-		task.Assets = generationAssetsWithSlotIndices(task.Assets)
+		task.Assets = generationAssetsWithTaskSlots(task.ID, task.Assets)
 		task.DeletedAssetSlots = normalizeGenerationDeletedAssetSlots(task.DeletedAssetSlots)
 		return task
 	}
@@ -708,6 +768,7 @@ func GenerationTaskForClient(task GenerationTaskRecord) GenerationTaskRecord {
 			continue
 		}
 		asset.SlotIndex = index
+		asset.TaskID = task.ID
 		assets = append(assets, asset)
 	}
 	task.Assets = assets
@@ -723,13 +784,14 @@ func GenerationTasksForClient(tasks []GenerationTaskRecord) []GenerationTaskReco
 	return next
 }
 
-func generationAssetsWithSlotIndices(assets []GenerationAsset) []GenerationAsset {
+func generationAssetsWithTaskSlots(taskID string, assets []GenerationAsset) []GenerationAsset {
 	if len(assets) == 0 {
 		return assets
 	}
 	next := make([]GenerationAsset, 0, len(assets))
 	for index, asset := range assets {
 		asset.SlotIndex = index
+		asset.TaskID = taskID
 		next = append(next, asset)
 	}
 	return next

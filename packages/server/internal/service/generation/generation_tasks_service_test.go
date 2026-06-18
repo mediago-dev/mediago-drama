@@ -166,6 +166,140 @@ func TestGenerationTaskServiceDeleteAssetIncludesAttemptsWithoutDeadlock(t *test
 	}
 }
 
+func TestGenerationTaskServiceUpdateAssetSelectionPersists(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	taskID := "task-update-selected-asset"
+
+	service := NewGenerationTaskService(dbPath, nil)
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:     taskID,
+		Kind:   "image",
+		Status: "completed",
+		Prompt: "portrait set",
+		Assets: []GenerationAsset{
+			{Kind: "image", URL: "/api/v1/media-assets/image-a/content"},
+			{Kind: "image", URL: "/api/v1/media-assets/image-b/content"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting task: %v", err)
+	}
+
+	selected := true
+	title := "主角设定图"
+	task, updated, err := service.UpdateAsset(taskID, 1, UpdateGenerationTaskAssetRequest{
+		Selected:     &selected,
+		Title:        &title,
+		ResourceType: "character",
+	})
+	if err != nil {
+		t.Fatalf("updating asset: %v", err)
+	}
+	if !updated {
+		t.Fatal("update returned false, want true")
+	}
+	if !task.Assets[1].Selected || task.Assets[1].Title != title || task.CapabilityID != "character" {
+		t.Fatalf("task = %+v, want selected character asset with title", task)
+	}
+
+	restarted := NewGenerationTaskService(dbPath, nil)
+	reloaded, ok, err := restarted.Get(taskID)
+	if err != nil {
+		t.Fatalf("getting task: %v", err)
+	}
+	if !ok {
+		t.Fatal("task was not persisted")
+	}
+	if !reloaded.Assets[1].Selected || reloaded.Assets[1].Title != title || reloaded.CapabilityID != "character" {
+		t.Fatalf("persisted task = %+v, want selected character asset with title", reloaded)
+	}
+
+	visibleTask := GenerationTaskForClient(reloaded)
+	if visibleTask.Assets[1].TaskID != taskID || visibleTask.Assets[1].SlotIndex != 1 {
+		t.Fatalf("visible asset = %+v, want task id and original slot", visibleTask.Assets[1])
+	}
+}
+
+func TestGenerationServiceListSelectedGenerationAssets(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	projectID := "project-selected-assets"
+	service := NewGenerationTaskService(dbPath, nil)
+	workflow := &GenerationService{generationTasks: service}
+
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:           "task-character",
+		ProjectID:    projectID,
+		CapabilityID: "character",
+		Kind:         "image",
+		Status:       "completed",
+		Prompt:       "character",
+		Assets: []GenerationAsset{
+			{
+				Kind:     "image",
+				URL:      "/api/v1/media-assets/character/content",
+				Title:    "角色图",
+				Selected: true,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("upserting character task: %v", err)
+	}
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:           "task-scene-unselected",
+		ProjectID:    projectID,
+		CapabilityID: "scene",
+		Kind:         "image",
+		Status:       "completed",
+		Prompt:       "scene",
+		Assets: []GenerationAsset{
+			{Kind: "image", URL: "/api/v1/media-assets/scene/content"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting scene task: %v", err)
+	}
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:           "task-video-selected",
+		ProjectID:    projectID,
+		CapabilityID: "storyboard",
+		Kind:         "video",
+		Status:       "completed",
+		Prompt:       "video",
+		Assets: []GenerationAsset{
+			{Kind: "video", URL: "/api/v1/media-assets/video/content", Selected: true},
+		},
+	}); err != nil {
+		t.Fatalf("upserting video task: %v", err)
+	}
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:           "task-generic-selected",
+		ProjectID:    projectID,
+		CapabilityID: "image.generate",
+		Kind:         "image",
+		Status:       "completed",
+		Prompt:       "generic",
+		Assets: []GenerationAsset{
+			{Kind: "image", URL: "/api/v1/media-assets/generic/content", Selected: true},
+		},
+	}); err != nil {
+		t.Fatalf("upserting generic task: %v", err)
+	}
+
+	response, err := workflow.ListSelectedGenerationAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing selected assets: %v", err)
+	}
+	if len(response.Assets) != 1 {
+		t.Fatalf("assets = %+v, want only one selected creative image", response.Assets)
+	}
+	asset := response.Assets[0]
+	if asset.TaskID != "task-character" ||
+		asset.AssetIndex != 0 ||
+		asset.ResourceType != "character" ||
+		asset.Title != "角色图" ||
+		asset.URL != "/api/v1/media-assets/character/content" {
+		t.Fatalf("asset = %+v, want selected character image summary", asset)
+	}
+}
+
 func TestGenerationTaskServiceDeletePendingAssetSlotPersistsAcrossTaskUpdates(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	taskID := "task-delete-pending-slot"
