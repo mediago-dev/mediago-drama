@@ -218,6 +218,8 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	const sessionRequiredMessage = ws.needsConversation ? "请先从左侧新建或选择一个 session。" : "";
 	const canSelectReferenceAssets =
 		ws.hasConfiguredRoutesForKind && ws.selectedRoute.supportsReferenceUrls;
+	const referenceDialogTitle = activeGenerationKind === "video" ? "选择参考素材" : "选择参考图";
+	const referenceButtonLabel = activeGenerationKind === "video" ? "参考素材" : "参考图";
 	const updateComposerGenerationCount = (value: string) => {
 		if (!routeGenerationCountParam) return;
 
@@ -330,6 +332,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 							slashItems={promptSlashItems}
 						/>
 					}
+					referenceButtonLabel={referenceButtonLabel}
 					referencePreview={
 						isTextGeneration ? null : (
 							<ReferencePreviewStrip
@@ -418,6 +421,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 				requiresReference={false}
 				selectableKinds={ws.selectableReferenceKinds}
 				selectedAssetIds={ws.selectedReferenceAssetIds}
+				title={referenceDialogTitle}
 				onOpenChange={setReferenceDialogOpen}
 				onRefreshAssets={() => {
 					void ws.mutateMediaAssets();

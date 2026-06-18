@@ -193,6 +193,8 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const resolvedEmptyResultText =
 		emptyResultText ??
 		(kind === "image" ? "生成后会在这里显示图片素材。" : "生成后会在这里显示可预览的视频素材。");
+	const mediaKindLabel = kind === "video" ? "视频" : "图片";
+	const referenceButtonLabel = kind === "video" ? "参考素材" : "参考图";
 	const {
 		clearDeletedEntry,
 		syncGenerationEntries,
@@ -466,8 +468,11 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const useAssetAsReference = useCallback(
 		(asset: GenerationAsset) => {
 			if (!canSelectReferenceImages) {
-				toast.warning("当前供应商不支持参考图", {
-					description: "请切换到支持图生图的供应商后再使用参考图。",
+				toast.warning(`当前供应商不支持${referenceButtonLabel}`, {
+					description:
+						kind === "video"
+							? "请切换到支持参考素材的视频供应商后再使用参考。"
+							: "请切换到支持图生图的供应商后再使用参考图。",
 				});
 				return;
 			}
@@ -498,6 +503,8 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			onViewModeChange,
 			showTabbedHistory,
 			toast,
+			kind,
+			referenceButtonLabel,
 			ws.mediaAssets,
 			ws.selectReferenceAsset,
 		],
@@ -542,26 +549,30 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			try {
 				const deleted = await ws.deleteGenerationEntryAsset(entry.id, assetIndex);
 				if (!deleted) {
-					toast.error("删除失败", { description: "找不到可删除的生成图片。" });
+					toast.error("删除失败", { description: `找不到可删除的生成${mediaKindLabel}。` });
 				}
 			} catch (error) {
-				toast.error("删除失败", { description: apiErrorMessage(error, "生成图片删除失败。") });
+				toast.error("删除失败", {
+					description: apiErrorMessage(error, `生成${mediaKindLabel}删除失败。`),
+				});
 			}
 		},
-		[toast, ws.deleteGenerationEntryAsset],
+		[mediaKindLabel, toast, ws.deleteGenerationEntryAsset],
 	);
 	const deleteEntryAssetPlaceholder = useCallback(
 		async (entry: GenerationEntry, assetIndex: number) => {
 			try {
 				const deleted = await ws.deleteGenerationEntryAssetPlaceholder(entry.id, assetIndex);
 				if (!deleted) {
-					toast.error("删除失败", { description: "找不到可删除的生成图片。" });
+					toast.error("删除失败", { description: `找不到可删除的生成${mediaKindLabel}。` });
 				}
 			} catch (error) {
-				toast.error("删除失败", { description: apiErrorMessage(error, "生成图片删除失败。") });
+				toast.error("删除失败", {
+					description: apiErrorMessage(error, `生成${mediaKindLabel}删除失败。`),
+				});
 			}
 		},
-		[toast, ws.deleteGenerationEntryAssetPlaceholder],
+		[mediaKindLabel, toast, ws.deleteGenerationEntryAssetPlaceholder],
 	);
 
 	const selectHistoryEntry = useCallback(
@@ -671,6 +682,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				modelSummary={modelSummary}
 				previewReferenceAssets={previewReferenceAssets}
 				primaryParamControls={primaryParamControls}
+				referenceButtonLabel={referenceButtonLabel}
 				layeredComposer={
 					<LayeredPromptComposer
 						layers={ws.composerLayers}

@@ -28,6 +28,7 @@ export const MediaGenerationInputPanel: React.FC<{
 	onOpenReferenceDialog: () => void;
 	onRemoveReferencePreview: (asset: MediaAsset) => void;
 	previewReferenceAssets: MediaAsset[];
+	referenceButtonLabel?: string;
 	layeredComposer?: React.ReactNode;
 	primaryParamControls?: React.ReactNode;
 	promptEditor: React.ReactNode;
@@ -55,6 +56,7 @@ export const MediaGenerationInputPanel: React.FC<{
 	previewReferenceAssets,
 	promptEditor,
 	promptExtras,
+	referenceButtonLabel,
 	primaryParamControls,
 	referenceBadges,
 	requiresReference,
@@ -92,6 +94,7 @@ export const MediaGenerationInputPanel: React.FC<{
 				/>
 			) : null
 		}
+		referenceButtonLabel={referenceButtonLabel}
 		rightControls={
 			<>
 				{imageSpecControl}

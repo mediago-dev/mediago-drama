@@ -42,6 +42,7 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 		previewReferenceAssets = [],
 		primaryParamControls,
 		promptEditor,
+		referenceButtonLabel,
 		secondaryParamControls,
 	}: {
 		error?: string | null;
@@ -50,6 +51,7 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 		previewReferenceAssets?: MediaAsset[];
 		primaryParamControls?: React.ReactNode;
 		promptEditor?: React.ReactNode;
+		referenceButtonLabel?: string;
 		secondaryParamControls?: React.ReactNode;
 	}) => {
 		const promptEditorClassName = React.isValidElement<{ className?: string }>(promptEditor)
@@ -59,6 +61,7 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 		return (
 			<div data-testid="generation-input-panel">
 				<div data-testid="document-prompt-editor-class" data-class={promptEditorClassName} />
+				<div data-testid="reference-button-label">{referenceButtonLabel}</div>
 				{error ? <div role="alert">{error}</div> : null}
 				{modelControls}
 				{imageSpecControl}
@@ -114,6 +117,15 @@ const pendingImageEntry: GenerationEntry = {
 	prompt: "生成四张图",
 	requestDetails: [{ label: "图像数量", value: "4" }],
 	assets: [],
+};
+
+const videoEntry: GenerationEntry = {
+	id: "entry-video",
+	kind: "video",
+	status: "completed",
+	content: "",
+	prompt: "视频提示词",
+	assets: [{ kind: "video", url: "/api/v1/media-assets/video-a/content", mimeType: "video/mp4" }],
 };
 
 const mediaAsset: MediaAsset = {
@@ -251,6 +263,29 @@ describe("MediaGenerationWorkspace", () => {
 
 		expect(screen.getByRole("button", { name: "模型版本和供应商" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "打开模型文档" })).toBeTruthy();
+	});
+
+	it("labels video references as reference material in the input panel", () => {
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			kind: "video",
+			selectedRoute: {
+				...workspaceDefaults.selectedRoute,
+				adapter: "openrouter.video",
+				kind: "video",
+				provider: "openrouter",
+			},
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="video"
+			/>,
+		);
+
+		expect(screen.getByTestId("reference-button-label").textContent).toBe("参考素材");
 	});
 
 	it("passes a 2-to-9-line prompt editor to the document input panel", () => {
@@ -468,6 +503,41 @@ describe("MediaGenerationWorkspace", () => {
 			});
 		});
 		expect(screen.queryByRole("alert")).toBeNull();
+	});
+
+	it("uses video wording when a generated video asset cannot be deleted", async () => {
+		const deleteGenerationEntryAsset = vi.fn().mockResolvedValue(false);
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: "entry-video",
+			deleteGenerationEntryAsset,
+			kind: "video",
+			orderedGenerationEntries: [videoEntry],
+			selectedRoute: {
+				...workspaceDefaults.selectedRoute,
+				kind: "video",
+			},
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="video"
+				viewMode="history"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "删除视频" }));
+		const dialog = screen.getByRole("alertdialog", { name: "删除这个视频？" });
+		fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+
+		await waitFor(() => {
+			expect(deleteGenerationEntryAsset).toHaveBeenCalledWith("entry-video", 0);
+			expect(toastMocks.error).toHaveBeenCalledWith("删除失败", {
+				description: "找不到可删除的生成视频。",
+			});
+		});
 	});
 
 	it("deletes only the selected pending image slot from tabbed history", async () => {

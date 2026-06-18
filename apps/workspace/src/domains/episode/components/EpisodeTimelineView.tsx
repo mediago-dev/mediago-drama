@@ -20,9 +20,18 @@ import {
 	saveGeneratedAssetToTarget,
 	saveGeneratedAssetToUserDirectory,
 } from "@/domains/generation/components/generatedResultActions";
+import type { GenerationAsset } from "@/domains/generation/api/generation";
 import { Button } from "@/shared/components/ui/button";
 import { useToast } from "@/hooks/useToast";
+import { SectionGenerationDialog } from "@/domains/documents/components/SectionGenerationDialog";
+import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
+import {
+	appendSectionImageMarkdown,
+	removeSectionImageMarkdown,
+} from "@/domains/documents/components/tiptap/section-images";
+import type { MarkdownSectionImage } from "@/domains/documents/lib/editor-registry";
 import { findDocumentById, selectDocumentById } from "@/domains/documents/lib/filters";
+import { sectionGenerationIdentityKey } from "@/domains/documents/lib/section-generation";
 import {
 	findEpisodeClip,
 	findEpisodeTrackForClip,
@@ -38,8 +47,12 @@ import {
 	isEpisodeVideoClipPlayable,
 } from "@/domains/episode/lib/media-assets";
 import type { TimelineClip } from "@/domains/episode/lib/sample";
-import { useDocumentsStore } from "@/domains/documents/stores";
+import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
 import { type TimelineCompanionTrackType, useEpisodeStore } from "@/domains/episode/stores";
+import {
+	generationAssetSelectionKey,
+	generationAssetSource,
+} from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useTauriWindowDrag } from "@/domains/workspace/lib/tauri-window-drag";
 import { agentProjectPath, agentProjectRouteState } from "@/domains/workspace/lib/workbench-route";
 
@@ -63,6 +76,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const documents = useDocumentsStore((state) => state.documents);
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
 	const projectId = useDocumentsStore((state) => state.projectId);
+	const updateDocumentContent = useDocumentsStore((state) => state.updateDocumentContent);
 	const addCompanionTextClip = useEpisodeStore((state) => state.addCompanionTextClip);
 	const selectClip = useEpisodeStore((state) => state.selectClip);
 	const setCurrentTime = useEpisodeStore((state) => state.setCurrentTime);
@@ -73,6 +87,11 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const startWindowDrag = useTauriWindowDrag();
 	const [companionGenerationTarget, setCompanionGenerationTarget] =
 		useState<CompanionGenerationTarget | null>(null);
+	const [referenceSectionGeneration, setReferenceSectionGeneration] =
+		useState<MarkdownSectionContext | null>(null);
+	const [selectedSectionAssetKeys, setSelectedSectionAssetKeys] = useState<
+		Record<string, string[]>
+	>({});
 	const [videoGenerationOpen, setVideoGenerationOpen] = useState(false);
 	const [downloadingVideoClipIds, setDownloadingVideoClipIds] = useState<string[]>([]);
 	const [isExportingAllStoryboards, setIsExportingAllStoryboards] = useState(false);
@@ -100,6 +119,45 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const selectedClip = useMemo(
 		() => findEpisodeClip(episode, selectedClipId),
 		[episode, selectedClipId],
+	);
+	const openReferenceSectionGeneration = useCallback((section: MarkdownSectionContext) => {
+		const sectionKey = sectionGenerationIdentityKey(section);
+		setSelectedSectionAssetKeys((current) => ({
+			...current,
+			[sectionKey]: sectionImageAssetKeys(section),
+		}));
+		setReferenceSectionGeneration(section);
+	}, []);
+	const toggleReferenceSectionImage = useCallback(
+		(section: MarkdownSectionContext, asset: GenerationAsset, selected: boolean) => {
+			const source = generationAssetSource(asset);
+			const assetKey = generationAssetSelectionKey(asset);
+			if (!source || !assetKey) return;
+
+			const image = {
+				src: source,
+				title: section.headingText,
+			};
+			const applied = applySectionImageToStoredDocument({
+				documents,
+				image,
+				section,
+				selected,
+				updateDocumentContent,
+			});
+			if (!applied) return;
+
+			const sectionKey = sectionGenerationIdentityKey(section);
+			setSelectedSectionAssetKeys((current) => ({
+				...current,
+				[sectionKey]: selected
+					? current[sectionKey]?.includes(assetKey)
+						? current[sectionKey]
+						: [...(current[sectionKey] ?? []), assetKey]
+					: (current[sectionKey] ?? []).filter((key) => key !== assetKey),
+			}));
+		},
+		[documents, updateDocumentContent],
 	);
 	const clipMedia = useMemo(
 		() => buildEpisodeClipMedia(episode, mediaAssetsData?.assets),
@@ -507,7 +565,27 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 				selectedClip={selectedClip}
 				selectedVideoUrl={selectedClip?.videoUrl ?? null}
 				onOpenChange={setVideoGenerationOpen}
+				onOpenReferenceGeneration={openReferenceSectionGeneration}
 				onGeneratedVideoReady={handleGeneratedVideoReady}
+			/>
+			<SectionGenerationDialog
+				open={Boolean(referenceSectionGeneration)}
+				projectId={projectId ?? undefined}
+				section={referenceSectionGeneration}
+				selectedAssetKeys={
+					referenceSectionGeneration
+						? (selectedSectionAssetKeys[sectionGenerationIdentityKey(referenceSectionGeneration)] ??
+							[])
+						: []
+				}
+				onGenerationComplete={() => undefined}
+				onGenerationError={() => undefined}
+				onGenerationStart={() => undefined}
+				onOpenChange={(open) => {
+					if (!open) setReferenceSectionGeneration(null);
+				}}
+				onOpenReferenceGeneration={openReferenceSectionGeneration}
+				onToggleImage={toggleReferenceSectionImage}
 			/>
 		</div>
 	);
@@ -523,6 +601,55 @@ const episodeClipVideoFilename = (clip: TimelineClip, index?: number) => {
 };
 
 const hasClipVideoUrl = (clip: TimelineClip) => Boolean(clip.videoUrl?.trim());
+
+const sectionImageAssetKeys = (section: MarkdownSectionContext) => {
+	const keys = section.markdown.split("\n").flatMap((line) => {
+		const source = sectionImageSourceFromLine(line.trim());
+		return source ? [`image:${source}`] : [];
+	});
+
+	return Array.from(new Set(keys));
+};
+
+const sectionImageSourceFromLine = (line: string) => {
+	const match = /^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$/.exec(line);
+	if (!match) return null;
+	if (
+		["mediago-drama-section-image-pending:", "media-cli-section-image-pending:"].some((prefix) =>
+			match[1].startsWith(prefix),
+		)
+	)
+		return null;
+	const source = match[2] ?? match[3] ?? null;
+	if (match[1] === "正在生成图片" && source?.startsWith("data:image/svg+xml;base64,")) return null;
+
+	return source;
+};
+
+const applySectionImageToStoredDocument = ({
+	documents,
+	image,
+	section,
+	selected,
+	updateDocumentContent,
+}: {
+	documents: MarkdownDocument[];
+	image: MarkdownSectionImage;
+	section: MarkdownSectionContext;
+	selected: boolean;
+	updateDocumentContent: (id: string, content: string) => void;
+}) => {
+	const document = documents.find((item) => item.id === section.documentId);
+	if (!document) return false;
+
+	const result = selected
+		? appendSectionImageMarkdown(document.content, section, image)
+		: removeSectionImageMarkdown(document.content, section, image);
+	if (!result) return false;
+	if (result.changed) updateDocumentContent(document.id, result.markdown);
+
+	return selected || result.changed;
+};
 
 const exportStoryboardsSummary = (
 	savedCount: number,

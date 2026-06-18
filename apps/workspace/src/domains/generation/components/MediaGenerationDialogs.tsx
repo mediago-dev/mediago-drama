@@ -350,6 +350,7 @@ export const ReferenceSelectionDialog: React.FC<{
 	requiresReference: boolean;
 	selectableKinds: Set<MediaAsset["kind"]>;
 	selectedAssetIds: string[];
+	title?: string;
 }> = ({
 	disabled,
 	entries,
@@ -366,6 +367,7 @@ export const ReferenceSelectionDialog: React.FC<{
 	requiresReference,
 	selectableKinds,
 	selectedAssetIds,
+	title = "选择参考图",
 }) => {
 	const [kindFilter, setKindFilter] = useState<ReferenceKindFilter>("all");
 	const options = useMemo(
@@ -426,7 +428,7 @@ export const ReferenceSelectionDialog: React.FC<{
 							id="generation-reference-title"
 							className="truncate text-sm font-semibold text-foreground"
 						>
-							选择参考图
+							{title}
 						</h3>
 						<p className="mt-1 truncate text-xs text-muted-foreground">
 							上传素材，或从当前项目素材中选择。

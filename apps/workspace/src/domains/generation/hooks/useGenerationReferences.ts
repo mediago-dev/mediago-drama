@@ -63,7 +63,7 @@ export const useGenerationReferences = ({
 
 	useEffect(() => {
 		if (mediaAssets.length === 0) {
-			setSelectedReferenceAssetIds([]);
+			setSelectedReferenceAssetIds((current) => (current.length === 0 ? current : []));
 			return;
 		}
 
@@ -72,7 +72,10 @@ export const useGenerationReferences = ({
 				.filter((asset) => canUseAssetAsReference(asset, selectedRoute, selectableReferenceKinds))
 				.map((asset) => asset.id),
 		);
-		setSelectedReferenceAssetIds((current) => current.filter((id) => validIDs.has(id)));
+		setSelectedReferenceAssetIds((current) => {
+			const next = current.filter((id) => validIDs.has(id));
+			return sameStringList(current, next) ? current : next;
+		});
 	}, [mediaAssets, selectableReferenceKinds, selectedRoute]);
 
 	const removeReferenceAsset = useCallback((assetId: string) => {
@@ -114,7 +117,7 @@ export const useGenerationReferences = ({
 			try {
 				const asset = await uploadMediaAsset(file, mediaAssetProjectId);
 				await mutateMediaAssets();
-				if (asset.kind === "image") {
+				if (canUseAssetAsReference(asset, selectedRoute, selectableReferenceKinds)) {
 					setSelectedReferenceAssetIds((current) =>
 						current.includes(asset.id) ? current : [...current, asset.id],
 					);
@@ -126,7 +129,7 @@ export const useGenerationReferences = ({
 				setIsUploadingAsset(false);
 			}
 		},
-		[mediaAssetProjectId, mutateMediaAssets, setError],
+		[mediaAssetProjectId, mutateMediaAssets, selectableReferenceKinds, selectedRoute, setError],
 	);
 
 	return {
@@ -143,3 +146,6 @@ export const useGenerationReferences = ({
 		uploadReferenceAsset,
 	};
 };
+
+const sameStringList = (left: string[], right: string[]) =>
+	left.length === right.length && left.every((value, index) => value === right[index]);

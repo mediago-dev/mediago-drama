@@ -79,6 +79,7 @@ describe("ReferenceSelectionDialog", () => {
 
 		expect(screen.getByText("still.png")).toBeTruthy();
 		expect(screen.getByText("scene.mp4")).toBeTruthy();
+		expect(screen.getByRole("dialog", { name: "选择参考图" })).toBeTruthy();
 
 		const videoTab = screen.getByRole("tab", { name: /视频/ });
 		fireEvent.mouseDown(videoTab, { button: 0 });
@@ -93,6 +94,31 @@ describe("ReferenceSelectionDialog", () => {
 
 		expect(screen.getByText("still.png")).toBeTruthy();
 		expect(screen.queryByText("scene.mp4")).toBeNull();
+	});
+
+	it("allows callers to label mixed video references as material", () => {
+		render(
+			<ReferenceSelectionDialog
+				disabled={false}
+				entries={[]}
+				inputId="reference-upload"
+				isUploading={false}
+				mediaAssets={[]}
+				open
+				references={[]}
+				requiresReference={false}
+				selectableKinds={new Set(["image", "video"])}
+				selectedAssetIds={[]}
+				title="选择参考素材"
+				onOpenChange={vi.fn()}
+				onRefreshAssets={vi.fn()}
+				onRemoveReference={vi.fn()}
+				onToggleReference={vi.fn()}
+				onUpload={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByRole("dialog", { name: "选择参考素材" })).toBeTruthy();
 	});
 });
 

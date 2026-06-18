@@ -26,6 +26,7 @@ export const MediaGenerationWorkspaceDialogs: React.FC<{
 				requiresReference={false}
 				selectableKinds={workspace.selectableReferenceKinds}
 				selectedAssetIds={workspace.selectedReferenceAssetIds}
+				title={workspace.kind === "video" ? "选择参考素材" : "选择参考图"}
 				onOpenChange={onReferenceDialogOpenChange}
 				onRefreshAssets={() => {
 					void workspace.mutateMediaAssets();

@@ -10,6 +10,7 @@ import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { DocumentMentionHoverPopover } from "@/domains/documents/components/DocumentMentionHoverPopover";
 import { DocumentMention } from "@/domains/documents/components/extensions/document-mention";
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
+import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import {
 	buildMentionPreviewReferences,
 	buildMentionReferenceInputs,
@@ -43,6 +44,7 @@ interface EpisodeVideoGenerationDialogProps {
 	episode: Episode;
 	onGeneratedVideoReady?: (clipId: string, videoUrl: string | null) => void;
 	onOpenChange: (open: boolean) => void;
+	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
 	open: boolean;
 	projectId?: string;
 	selectedClip: TimelineClip | null;
@@ -76,6 +78,7 @@ export const EpisodeVideoGenerationDialog: React.FC<EpisodeVideoGenerationDialog
 	episode,
 	onGeneratedVideoReady,
 	onOpenChange,
+	onOpenReferenceGeneration,
 	open,
 	projectId,
 	selectedClip,
@@ -231,6 +234,7 @@ export const EpisodeVideoGenerationDialog: React.FC<EpisodeVideoGenerationDialog
 				sectionId={sectionId}
 				taskType="storyboard"
 				initialPrompt={generationContext.prompt}
+				modelPreferenceScopeId={conversationScopeId}
 				notificationTarget={notificationTarget}
 				promptPlaceholder="描述当前组的视频镜头、运动、机位、时长、画幅和质量"
 				projectId={projectId}
@@ -241,6 +245,7 @@ export const EpisodeVideoGenerationDialog: React.FC<EpisodeVideoGenerationDialog
 						{...props}
 						allAssets={allAssets}
 						allDocuments={allDocuments}
+						onGenerateReference={onOpenReferenceGeneration}
 					/>
 				)}
 				submitLabel="生成视频"
@@ -311,12 +316,17 @@ const EpisodeVideoPromptMentionEditor: React.FC<
 	PromptEditorProps & {
 		allAssets: ProjectAsset[];
 		allDocuments: MarkdownDocument[];
+		onGenerateReference?: (section: MarkdownSectionContext) => void;
 	}
-> = ({ allAssets, allDocuments, ...props }) => {
+> = ({ allAssets, allDocuments, onGenerateReference, ...props }) => {
 	const extensions = useMemo(() => [DocumentMention], []);
 
 	return (
-		<DocumentMentionHoverPopover allAssets={allAssets} allDocuments={allDocuments}>
+		<DocumentMentionHoverPopover
+			allAssets={allAssets}
+			allDocuments={allDocuments}
+			onGenerateReference={onGenerateReference}
+		>
 			<PromptEditor
 				{...props}
 				extensions={extensions}

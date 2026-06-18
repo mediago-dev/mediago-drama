@@ -1,4 +1,5 @@
 import { cleanup, render } from "@testing-library/react";
+import { isValidElement, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sampleEpisode } from "@/domains/episode/lib/sample";
 import { useDocumentsStore, type MarkdownDocument } from "@/domains/documents/stores";
@@ -54,6 +55,7 @@ describe("EpisodeVideoGenerationDialog", () => {
 
 		expect(workspaceProps).toMatchObject({
 			kind: "video",
+			modelPreferenceScopeId: "agent",
 			viewMode: "history",
 			notificationTarget: {
 				kind: "document-section",
@@ -75,6 +77,7 @@ describe("EpisodeVideoGenerationDialog", () => {
 
 	it("uses source markdown and mention references like image generation", () => {
 		mocks.getProjects.mockResolvedValue({ projects: [] });
+		const onOpenReferenceGeneration = vi.fn();
 		useDocumentsStore.getState().hydrateWorkspaceDocuments({
 			workspaceDir: "/workspace/project-a",
 			projectId: "project-a",
@@ -135,6 +138,7 @@ describe("EpisodeVideoGenerationDialog", () => {
 				selectedVideoUrl={null}
 				onGeneratedVideoReady={vi.fn()}
 				onOpenChange={vi.fn()}
+				onOpenReferenceGeneration={onOpenReferenceGeneration}
 			/>,
 		);
 
@@ -143,6 +147,17 @@ describe("EpisodeVideoGenerationDialog", () => {
 		expect(workspaceProps?.initialPrompt).toContain("- 镜头：低角度跟拍");
 		expect(workspaceProps?.initialPrompt).toContain("### 标志性细节");
 		expect(workspaceProps?.renderPromptEditor).toEqual(expect.any(Function));
+		const promptEditor = workspaceProps?.renderPromptEditor?.({
+			className: "",
+			onChange: vi.fn(),
+			placeholder: "",
+			slashItems: [],
+			value: workspaceProps.initialPrompt,
+		});
+		expect(isValidElement(promptEditor)).toBe(true);
+		expect(
+			(promptEditor as ReactElement<{ onGenerateReference?: unknown }>).props.onGenerateReference,
+		).toBe(onOpenReferenceGeneration);
 
 		const previewReferences = resolveReferencePreviewAssets(workspaceProps);
 		const referenceAssetIds = resolveReferenceAssetIds(workspaceProps);
