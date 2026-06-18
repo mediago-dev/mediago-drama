@@ -75,7 +75,6 @@ export const GenerationComposerPanel: React.FC<GenerationComposerPanelProps> = (
 				)}
 			>
 				{promptExtras}
-				{referencePreview}
 				{layeredComposer || onCopyPrompt ? (
 					<div className="flex min-w-0 items-start justify-between gap-3">
 						<div className="min-w-0 flex-1">{layeredComposer}</div>
@@ -94,6 +93,7 @@ export const GenerationComposerPanel: React.FC<GenerationComposerPanelProps> = (
 						) : null}
 					</div>
 				) : null}
+				{referencePreview}
 				{fillHeight ? (
 					<div className="min-h-0 flex-1 overflow-hidden">{promptInput}</div>
 				) : (

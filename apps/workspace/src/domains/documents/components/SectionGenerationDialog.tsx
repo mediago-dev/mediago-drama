@@ -23,6 +23,7 @@ interface SectionGenerationDialogProps {
 		response: GenerationMessageResponse,
 	) => void;
 	onGenerationStart: (section: MarkdownSectionContext, pendingId: string, prompt: string) => void;
+	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
 	onToggleImage: (
 		section: MarkdownSectionContext,
 		asset: GenerationAsset,
@@ -40,6 +41,7 @@ export const SectionGenerationDialog: React.FC<SectionGenerationDialogProps> = (
 	onGenerationError,
 	onGenerationResponse,
 	onGenerationStart,
+	onOpenReferenceGeneration,
 	onToggleImage,
 	open,
 	onOpenChange,
@@ -79,6 +81,7 @@ export const SectionGenerationDialog: React.FC<SectionGenerationDialogProps> = (
 				onGenerationStart={(pendingId, prompt) =>
 					onGenerationStart(dialogSection, pendingId, prompt)
 				}
+				onOpenReferenceGeneration={onOpenReferenceGeneration}
 				onToggleImage={(asset, selected) => onToggleImage(dialogSection, asset, selected)}
 			/>
 		</GenerationModalShell>

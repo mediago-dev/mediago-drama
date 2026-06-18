@@ -10,14 +10,20 @@ import {
 	type MarkdownHybridEditorHandle,
 	type SelectionCoords,
 } from "@/domains/documents/components/MarkdownHybridEditor";
+import { DocumentMentionHoverPopover } from "@/domains/documents/components/DocumentMentionHoverPopover";
 import { DocumentMention } from "@/domains/documents/components/extensions/document-mention";
 import { SectionGenerationDialog } from "@/domains/documents/components/SectionGenerationDialog";
 import { DocumentHistoryPanel } from "@/domains/documents/components/DocumentHistoryPanel";
 import { SelectionBubble } from "@/domains/documents/components/SelectionBubble";
 import { createDOMTextAnchorResolver } from "@/domains/documents/components/text-anchor-dom";
+import {
+	appendSectionImageMarkdown,
+	removeSectionImageMarkdown,
+} from "@/domains/documents/components/tiptap/section-images";
 import type { InlineDecorationRange } from "@/domains/documents/components/tiptap/storage";
 import { Button } from "@/shared/components/ui/button";
 import { registerEditor } from "@/domains/documents/lib/editor-registry";
+import type { MarkdownSectionImage } from "@/domains/documents/lib/editor-registry";
 import { selectEditableDocument } from "@/domains/documents/lib/filters";
 import { sectionGenerationIdentityKey } from "@/domains/documents/lib/section-generation";
 import {
@@ -65,6 +71,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const location = useLocation();
 	const projectId = getRouteProjectId(location.search);
 	const documents = useDocumentsStore((state) => state.documents);
+	const assets = useDocumentsStore((state) => state.assets);
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
 	const activeCommentId = useDocumentsStore((state) => state.activeCommentId);
 	const convertDocumentToWorkbenchDraft = useDocumentsStore(
@@ -229,9 +236,18 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 				src: source,
 				title: section.headingText,
 			};
-			const applied = selected
-				? editorRef.current?.setSectionImage(section, image)
-				: editorRef.current?.removeSectionImage(section, image);
+			const applied =
+				section.documentId === activeDocument?.id
+					? selected
+						? editorRef.current?.setSectionImage(section, image)
+						: editorRef.current?.removeSectionImage(section, image)
+					: applySectionImageToStoredDocument({
+							documents,
+							image,
+							section,
+							selected,
+							updateDocumentContent,
+						});
 			if (!applied) return;
 
 			const sectionKey = sectionGenerationIdentityKey(section);
@@ -244,7 +260,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 					: (current[sectionKey] ?? []).filter((key) => key !== assetKey),
 			}));
 		},
-		[],
+		[activeDocument?.id, documents, updateDocumentContent],
 	);
 
 	const ignorePendingSectionImage = useCallback(() => {}, []);
@@ -356,27 +372,33 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 							className="mb-2 w-full border-0 bg-transparent text-2xl font-semibold leading-tight text-foreground outline-none placeholder:text-muted-foreground md:text-3xl"
 						/>
 
-						<MarkdownHybridEditor
-							key={activeDocument.id}
-							ref={editorRef}
-							activeCommentId={activeCommentId}
-							comments={activeDocument.comments}
-							documentId={activeDocument.id}
-							extraExtensions={writingEditorExtraExtensions}
-							pendingSelectionAnchor={
-								activePendingComment ? (activeSelection?.anchor ?? null) : null
-							}
-							pendingSelectionRange={
-								activePendingComment && activeSelection ? selectionRange : null
-							}
-							value={activeDocument.content}
-							onChange={(content) => updateDocumentContent(activeDocument.id, content)}
-							onCommentAnchorClick={focusCommentAnchor}
-							onSectionGenerate={openSectionGeneration}
-							onSelectionChange={(text) => setSelection(activeDocument.id, text)}
-							onSelectionCoordChange={setSelectionCoords}
-							onSelectionRangeChange={setSelectionRange}
-						/>
+						<DocumentMentionHoverPopover
+							allAssets={assets}
+							allDocuments={documents}
+							onGenerateReference={openSectionGeneration}
+						>
+							<MarkdownHybridEditor
+								key={activeDocument.id}
+								ref={editorRef}
+								activeCommentId={activeCommentId}
+								comments={activeDocument.comments}
+								documentId={activeDocument.id}
+								extraExtensions={writingEditorExtraExtensions}
+								pendingSelectionAnchor={
+									activePendingComment ? (activeSelection?.anchor ?? null) : null
+								}
+								pendingSelectionRange={
+									activePendingComment && activeSelection ? selectionRange : null
+								}
+								value={activeDocument.content}
+								onChange={(content) => updateDocumentContent(activeDocument.id, content)}
+								onCommentAnchorClick={focusCommentAnchor}
+								onSectionGenerate={openSectionGeneration}
+								onSelectionChange={(text) => setSelection(activeDocument.id, text)}
+								onSelectionCoordChange={setSelectionCoords}
+								onSelectionRangeChange={setSelectionRange}
+							/>
+						</DocumentMentionHoverPopover>
 					</section>
 				</div>
 				{!showComments && commentMarkers.length > 0 ? (
@@ -420,6 +442,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 				onOpenChange={(open) => {
 					if (!open) setSectionGeneration(null);
 				}}
+				onOpenReferenceGeneration={openSectionGeneration}
 				onToggleImage={toggleSectionImage}
 			/>
 			<DocumentHistoryPanel
@@ -486,6 +509,31 @@ const sectionImageSourceFromLine = (line: string) => {
 	if (match[1] === "正在生成图片" && source?.startsWith("data:image/svg+xml;base64,")) return null;
 
 	return source;
+};
+
+const applySectionImageToStoredDocument = ({
+	documents,
+	image,
+	section,
+	selected,
+	updateDocumentContent,
+}: {
+	documents: MarkdownDocument[];
+	image: MarkdownSectionImage;
+	section: MarkdownSectionContext;
+	selected: boolean;
+	updateDocumentContent: (id: string, content: string) => void;
+}) => {
+	const document = documents.find((item) => item.id === section.documentId);
+	if (!document) return false;
+
+	const result = selected
+		? appendSectionImageMarkdown(document.content, section, image)
+		: removeSectionImageMarkdown(document.content, section, image);
+	if (!result) return false;
+	if (result.changed) updateDocumentContent(document.id, result.markdown);
+
+	return selected || result.changed;
 };
 
 const sameOffsets = (first: Record<string, number>, second: Record<string, number>) => {
