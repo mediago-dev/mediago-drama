@@ -94,9 +94,27 @@ describe("section context", () => {
 
 		const section = createMarkdownSectionContext(editor, "doc-1", headingRangeAt(editor, 0));
 
+		expect(section?.prompt).toMatch(/^## 沈闯（普通状态）/u);
 		expect(section?.prompt).toContain("**形象定位**");
 		expect(section?.prompt).toContain("- 湿透落水状态");
 		expect(section?.prompt).toContain("### 标志性细节");
+		expect(section?.prompt).not.toContain("请根据下面这个标题区域");
+		expect(section?.prompt).not.toContain("标题：");
+		expect(section?.prompt).not.toContain("正文：");
+
+		editor.destroy();
+	});
+
+	it("uses the original heading format when the section body is empty", () => {
+		const editor = new Editor({
+			extensions: [StarterKit, SectionIdAnchor, Markdown],
+			content: "## 主角 底层青年 / 低阶散修",
+			contentType: "markdown",
+		});
+
+		const section = createMarkdownSectionContext(editor, "doc-1", headingRangeAt(editor, 0));
+
+		expect(section?.prompt).toBe("## 主角 底层青年 / 低阶散修");
 
 		editor.destroy();
 	});

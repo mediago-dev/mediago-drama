@@ -9,6 +9,7 @@ import {
 	normalizeSectionId,
 	sectionIdAnchorNodeName,
 } from "@/domains/documents/lib/sections";
+import { createSectionGenerationPrompt } from "@/domains/documents/lib/section-generation-prompt";
 import { findTopLevelBlockRangeByIndex, serializeMarkdownNodes } from "./ranges";
 import type { BlockRange } from "./types";
 
@@ -78,9 +79,7 @@ export const createMarkdownSectionContext = (
 	if (!heading) return null;
 	const { headingLevel, headingOccurrence, headingText } = heading;
 	const sectionNodes: JSONContent[] = [];
-	const bodyNodes: JSONContent[] = [];
 	const plainTextParts: string[] = [];
-	const bodyTextParts: string[] = [];
 
 	for (let index = headingRange.index; index < editor.state.doc.childCount; index += 1) {
 		const node = editor.state.doc.child(index);
@@ -97,22 +96,16 @@ export const createMarkdownSectionContext = (
 		if (node.type.name !== sectionIdAnchorNodeName) {
 			const json = node.toJSON() as JSONContent;
 			sectionNodes.push(json);
-			if (index > headingRange.index) bodyNodes.push(json);
 		}
 
 		const text = node.textContent.trim();
 		if (text) {
 			plainTextParts.push(text);
-			if (index > headingRange.index) bodyTextParts.push(text);
 		}
 	}
 
 	const markdown = serializeMarkdownNodes(editor, sectionNodes)?.trim();
 	if (!markdown) return null;
-
-	const bodyMarkdown = serializeMarkdownNodes(editor, bodyNodes)?.trim();
-	const bodyText = bodyTextParts.join("\n\n").trim();
-	const promptBody = bodyMarkdown || bodyText || headingText;
 
 	return {
 		blockId: heading.blockId,
@@ -122,11 +115,7 @@ export const createMarkdownSectionContext = (
 		headingText,
 		markdown,
 		plainText: plainTextParts.join("\n\n").trim(),
-		prompt: `请根据下面这个标题区域生成可用于当前项目的视觉素材。
-标题：${headingText}
-
-正文：
-${promptBody}`,
+		prompt: createSectionGenerationPrompt(markdown, headingText),
 	};
 };
 

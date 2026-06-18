@@ -22,6 +22,7 @@ import {
 	normalizeHeadingText,
 	stripSectionIdCommentLines,
 } from "@/domains/documents/lib/sections";
+import { createSectionGenerationPrompt } from "@/domains/documents/lib/section-generation-prompt";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import { apiResourceURL } from "@/shared/lib/api-base";
 
@@ -325,22 +326,13 @@ const mentionSectionContext = (
 	const markdown = lines.slice(headingIndex, endIndex).join("\n").trim();
 	if (!markdown) return null;
 
-	const bodyMarkdown = lines
-		.slice(headingIndex + 1, endIndex)
-		.join("\n")
-		.trim();
 	const plainText = markdownPlainText(markdown);
-	const promptBody = stripSectionIdCommentLines(bodyMarkdown).trim() || plainText || summary.title;
 
 	return {
 		...identity,
 		markdown,
 		plainText,
-		prompt: `请根据下面这个标题区域生成可用于当前项目的视觉素材。
-标题：${summary.title}
-
-正文：
-${promptBody}`,
+		prompt: createSectionGenerationPrompt(markdown, summary.title),
 	};
 };
 

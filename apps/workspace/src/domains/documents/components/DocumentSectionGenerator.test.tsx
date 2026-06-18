@@ -58,7 +58,7 @@ const section: MarkdownSectionContext = {
 		"## 第 01 组\n\n动作：沈阔 @[沈阔（普通状态）](mention://character-doc/section_character?kind=section&category=character) 从水中下沉。",
 	plainText: "第 01 组\n\n动作：沈阔 从水中下沉。",
 	prompt:
-		"请根据下面这个标题区域生成可用于当前项目的视觉素材。\n标题：第 01 组\n\n正文：\n动作：沈阔 @[沈阔（普通状态）](mention://character-doc/section_character?kind=section&category=character) 从水中下沉。",
+		"## 第 01 组\n\n动作：沈阔 @[沈阔（普通状态）](mention://character-doc/section_character?kind=section&category=character) 从水中下沉。",
 };
 
 describe("DocumentSectionGenerator", () => {
