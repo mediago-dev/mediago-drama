@@ -1,5 +1,20 @@
-import { createElement, forwardRef, useEffect, useImperativeHandle, useState } from "react";
-import { File, FileCode2, FileImage, FileVideo, Hash } from "lucide-react";
+import {
+	createElement,
+	forwardRef,
+	useEffect,
+	useImperativeHandle,
+	useMemo,
+	useState,
+} from "react";
+import {
+	ChevronRight,
+	File,
+	FileCode2,
+	FileImage,
+	FileVideo,
+	Hash,
+	type LucideIcon,
+} from "lucide-react";
 import { ReactRenderer } from "@tiptap/react";
 import type {
 	SuggestionKeyDownProps,
@@ -14,12 +29,19 @@ import {
 	documentCategoryDescriptorMap,
 	documentCategoryDescriptors,
 } from "@/domains/documents/lib/categories";
-import { listDocumentSections } from "@/domains/documents/lib/sections";
+import {
+	createSectionBlockId,
+	findMarkdownSectionEndLine,
+	listDocumentSections,
+	normalizeHeadingText,
+	sectionIdBeforeHeadingLine,
+} from "@/domains/documents/lib/sections";
 import {
 	type DocumentCategory,
 	type MarkdownDocument,
 	useDocumentsStore,
 } from "@/domains/documents/stores";
+import { apiResourceURL } from "@/shared/lib/api-base";
 
 export interface AgentMentionItem {
 	assetId?: string;
@@ -33,6 +55,7 @@ export interface AgentMentionItem {
 	kind: AgentReference["kind"];
 	label: string;
 	level?: number;
+	previewUrl?: string;
 	title: string;
 	url?: string;
 }
@@ -46,9 +69,20 @@ interface MentionListProps {
 	items: AgentMentionItem[];
 }
 
+interface AgentMentionGroup {
+	category: DocumentCategory;
+	icon: LucideIcon;
+	id: string;
+	items: AgentMentionItem[];
+	label: string;
+	meta: string;
+}
+
 export const fallbackMentionCategory: DocumentCategory = "source-material";
 
-const maxMentionItems = 40;
+const maxMentionItems = 100;
+const maxDocumentMentionItems = 72;
+const maxAssetMentionItems = 28;
 const categoryOrder = new Map<DocumentCategory, number>(
 	documentCategoryDescriptors.map((descriptor, index) => [descriptor.key, index]),
 );
@@ -56,98 +90,211 @@ const fallbackMentionDescriptor = documentCategoryDescriptorMap[fallbackMentionC
 
 export const AgentMentionList = forwardRef<MentionListHandle, MentionListProps>(
 	function AgentMentionList({ command, items }, ref) {
-		const [selectedIndex, setSelectedIndex] = useState(0);
+		const groups = useMemo(() => createMentionGroups(items), [items]);
+		const [selectedGroupIndex, setSelectedGroupIndex] = useState(0);
+		const [selectedItemIndex, setSelectedItemIndex] = useState(0);
+		const activeGroup = groups[selectedGroupIndex] ?? groups[0];
+		const activeItems = activeGroup?.items ?? [];
 
 		useEffect(() => {
-			setSelectedIndex(0);
+			setSelectedGroupIndex(0);
+			setSelectedItemIndex(0);
 		}, [items]);
 
 		useImperativeHandle(
 			ref,
 			() => ({
 				onKeyDown: ({ event }) => {
-					if (items.length === 0) return false;
+					if (groups.length === 0 || activeItems.length === 0) return false;
 
 					if (event.key === "ArrowUp") {
-						setSelectedIndex((index) => (index + items.length - 1) % items.length);
+						setSelectedItemIndex((index) => (index + activeItems.length - 1) % activeItems.length);
 						return true;
 					}
 
 					if (event.key === "ArrowDown") {
-						setSelectedIndex((index) => (index + 1) % items.length);
+						setSelectedItemIndex((index) => (index + 1) % activeItems.length);
+						return true;
+					}
+
+					if (event.key === "ArrowLeft") {
+						setSelectedGroupIndex((index) => {
+							const nextIndex = (index + groups.length - 1) % groups.length;
+							return nextIndex;
+						});
+						setSelectedItemIndex(0);
+						return true;
+					}
+
+					if (event.key === "ArrowRight") {
+						setSelectedGroupIndex((index) => (index + 1) % groups.length);
+						setSelectedItemIndex(0);
 						return true;
 					}
 
 					if (event.key === "Enter") {
-						command(items[selectedIndex] ?? items[0]);
+						command(activeItems[selectedItemIndex] ?? activeItems[0]);
 						return true;
 					}
 
 					return false;
 				},
 			}),
-			[command, items, selectedIndex],
+			[activeItems, command, groups.length, selectedItemIndex],
 		);
 
 		if (items.length === 0) {
 			return createElement("div", { className: "agent-mention-menu-empty" }, "无匹配引用");
 		}
 
-		let previousCategory: DocumentCategory | null = null;
+		let previousSourceCategory: DocumentCategory | null = null;
 
 		return createElement(
 			"div",
-			{ className: "agent-mention-menu", role: "listbox" },
-			items.map((item, index) => {
-				const showGroup = item.category !== previousCategory;
-				previousCategory = item.category;
-				const descriptor = mentionCategoryDescriptor(item.category);
-				const Icon =
-					item.kind === "section"
-						? Hash
-						: item.kind === "asset"
-							? assetMentionIcon(item.assetKind)
-							: descriptor.icon;
+			{ className: "agent-mention-cascader" },
+			createElement(
+				"div",
+				{ className: "agent-mention-menu agent-mention-cascader-primary" },
+				createElement("div", { className: "agent-mention-pane-label" }, "文档"),
+				groups.map((group, index) => {
+					const showCategory = group.category !== previousSourceCategory;
+					previousSourceCategory = group.category;
 
-				return createElement(
-					"div",
-					{ key: item.id },
-					showGroup
-						? createElement("div", { className: "agent-mention-group" }, descriptor.label)
-						: null,
-					createElement(
-						"button",
-						{
-							type: "button",
-							className: "agent-mention-option",
-							"data-category": item.category,
-							"data-kind": item.kind,
-							"data-selected": index === selectedIndex ? "true" : "false",
-							role: "option",
-							"aria-selected": index === selectedIndex,
-							onMouseEnter: () => setSelectedIndex(index),
-							onMouseDown: (event) => {
-								event.preventDefault();
-								command(item);
-							},
-						},
-						createElement(Icon, { className: "agent-mention-option-icon" }),
+					return createElement(
+						"div",
+						{ key: group.id },
+						showCategory
+							? createElement(
+									"div",
+									{ className: "agent-mention-source-group" },
+									mentionCategoryDescriptor(group.category).label,
+								)
+							: null,
 						createElement(
-							"span",
-							{ className: "agent-mention-option-body" },
-							createElement("span", { className: "agent-mention-option-title" }, item.title),
+							"button",
+							{
+								type: "button",
+								className: "agent-mention-source",
+								"data-category": group.category,
+								"data-selected": index === selectedGroupIndex ? "true" : "false",
+								onMouseEnter: () => {
+									setSelectedGroupIndex(index);
+									setSelectedItemIndex(0);
+								},
+								onMouseDown: (event) => {
+									event.preventDefault();
+								},
+							},
+							createElement(group.icon, { className: "agent-mention-source-icon" }),
 							createElement(
 								"span",
-								{ className: "agent-mention-option-meta" },
-								mentionItemMeta(item),
+								{ className: "agent-mention-source-body" },
+								createElement("span", { className: "agent-mention-source-title" }, group.label),
+								createElement("span", { className: "agent-mention-source-meta" }, group.meta),
 							),
+							createElement(ChevronRight, { className: "agent-mention-source-chevron" }),
 						),
-					),
-				);
-			}),
+					);
+				}),
+			),
+			createElement(
+				"div",
+				{ className: "agent-mention-menu agent-mention-cascader-secondary", role: "listbox" },
+				createElement("div", { className: "agent-mention-pane-label" }, "节点"),
+				activeItems.map((item, index) =>
+					renderMentionOption(item, index, selectedItemIndex, {
+						command,
+						setSelectedItemIndex,
+					}),
+				),
+			),
 		);
 	},
 );
+
+const renderMentionOption = (
+	item: AgentMentionItem,
+	index: number,
+	selectedItemIndex: number,
+	actions: {
+		command: (item: AgentMentionItem) => void;
+		setSelectedItemIndex: (index: number) => void;
+	},
+) => {
+	const descriptor = mentionCategoryDescriptor(item.category);
+	const Icon =
+		item.kind === "document"
+			? File
+			: item.kind === "section"
+				? Hash
+				: item.kind === "asset"
+					? assetMentionIcon(item.assetKind)
+					: descriptor.icon;
+	const selected = index === selectedItemIndex;
+	const previewUrl = item.kind === "document" ? undefined : item.previewUrl;
+
+	return createElement(
+		"button",
+		{
+			key: item.id,
+			type: "button",
+			className: "agent-mention-option",
+			"data-category": item.category,
+			"data-has-preview": previewUrl ? "true" : "false",
+			"data-kind": item.kind,
+			"data-selected": selected ? "true" : "false",
+			role: "option",
+			"aria-selected": selected,
+			onMouseEnter: () => actions.setSelectedItemIndex(index),
+			onMouseDown: (event) => {
+				event.preventDefault();
+				actions.command(item);
+			},
+		},
+		createElement(Icon, { className: "agent-mention-option-icon" }),
+		createElement(
+			"span",
+			{ className: "agent-mention-option-body" },
+			createElement("span", { className: "agent-mention-option-title" }, item.title),
+			createElement("span", { className: "agent-mention-option-meta" }, mentionItemMeta(item)),
+		),
+		previewUrl
+			? createElement("img", {
+					alt: "",
+					className: "agent-mention-option-preview",
+					src: apiResourceURL(previewUrl),
+				})
+			: null,
+	);
+};
+
+const createMentionGroups = (items: AgentMentionItem[]): AgentMentionGroup[] => {
+	const groups: AgentMentionGroup[] = [];
+	const groupById = new Map<string, AgentMentionGroup>();
+
+	for (const item of items) {
+		const id = item.kind === "asset" ? "asset:project-assets" : `document:${item.documentId}`;
+		let group = groupById.get(id);
+
+		if (!group) {
+			const descriptor = mentionCategoryDescriptor(item.category);
+			group = {
+				category: item.category,
+				icon: item.kind === "asset" ? FileImage : descriptor.icon,
+				id,
+				items: [],
+				label: item.kind === "asset" ? "项目素材" : item.documentTitle,
+				meta: item.kind === "asset" ? "素材" : descriptor.label,
+			};
+			groupById.set(id, group);
+			groups.push(group);
+		}
+
+		group.items.push(item);
+	}
+
+	return groups;
+};
 
 export function createMentionSuggestion(): Omit<
 	SuggestionOptions<AgentMentionItem, AgentMentionItem>,
@@ -173,12 +320,15 @@ export function createMentionSuggestion(): Omit<
 					props: listProps(props),
 				});
 
+				const appendTarget = mentionPopupAppendTarget(props.editor.view.dom);
+
 				popup = tippy(document.body, {
-					appendTo: () => document.body,
+					appendTo: () => appendTarget,
 					content: component.element,
 					getReferenceClientRect: () => props.clientRect?.() ?? new DOMRect(),
 					hideOnClick: true,
 					interactive: true,
+					maxWidth: "none",
 					placement: "bottom-start",
 					showOnCreate: true,
 					trigger: "manual",
@@ -209,22 +359,35 @@ export function createMentionSuggestion(): Omit<
 	};
 }
 
+export const mentionPopupAppendTarget = (editorElement: Element | null): HTMLElement => {
+	const ownerDocument = editorElement?.ownerDocument ?? document;
+	const popupRoot = editorElement?.closest<HTMLElement>(
+		"[data-agent-mention-popup-root], [role='dialog']",
+	);
+
+	return popupRoot ?? ownerDocument.body;
+};
+
 export const createMentionItems = (query: string): AgentMentionItem[] => {
 	const normalizedQuery = query.trim().toLowerCase();
 	const documents = [...useDocumentsStore.getState().documents].sort(compareDocuments);
 	const assets = [...useDocumentsStore.getState().assets].sort(compareAssets);
-	const items: AgentMentionItem[] = [];
+	const documentItems: AgentMentionItem[] = [];
+	const assetItems: AgentMentionItem[] = [];
 
 	for (const document of documents) {
+		if (documentItems.length >= maxDocumentMentionItems) break;
+
 		const category = normalizeMentionCategory(document.category);
 		const docMatches = matchesMentionQuery(document.title, normalizedQuery);
 		const sections = listDocumentSections(document);
+		const sectionPreviewUrls = sectionPreviewUrlMap(document);
 		const matchingSections = sections.filter(
 			(section) => docMatches || matchesMentionQuery(section.title, normalizedQuery),
 		);
 
 		if (docMatches) {
-			items.push({
+			documentItems.push({
 				category,
 				documentId: document.id,
 				documentTitle: document.title,
@@ -236,7 +399,9 @@ export const createMentionItems = (query: string): AgentMentionItem[] => {
 		}
 
 		for (const section of matchingSections) {
-			items.push({
+			if (documentItems.length >= maxDocumentMentionItems) break;
+
+			documentItems.push({
 				blockId: section.blockId,
 				category,
 				documentId: document.id,
@@ -245,18 +410,17 @@ export const createMentionItems = (query: string): AgentMentionItem[] => {
 				kind: "section",
 				label: section.title,
 				level: section.level,
+				previewUrl: sectionPreviewUrls.get(section.blockId),
 				title: section.title,
 			});
 		}
-
-		if (items.length >= maxMentionItems) break;
 	}
 
 	for (const asset of assets) {
-		if (items.length >= maxMentionItems) break;
+		if (assetItems.length >= maxAssetMentionItems) break;
 		if (!matchesMentionQuery(asset.filename, normalizedQuery)) continue;
 
-		items.push({
+		assetItems.push({
 			assetId: asset.id,
 			assetKind: asset.kind,
 			category: fallbackMentionCategory,
@@ -266,12 +430,13 @@ export const createMentionItems = (query: string): AgentMentionItem[] => {
 			kind: "asset",
 			label: asset.filename,
 			mimeType: asset.mimeType,
+			previewUrl: asset.kind === "image" ? asset.url : undefined,
 			title: asset.filename,
 			url: asset.url,
 		});
 	}
 
-	return items.slice(0, maxMentionItems);
+	return [...documentItems, ...assetItems].slice(0, maxMentionItems);
 };
 
 export const compareDocuments = (a: MarkdownDocument, b: MarkdownDocument) => {
@@ -338,6 +503,70 @@ export const renderDataAttribute = (name: string, value: unknown) => {
 };
 
 export const stringAttribute = (value: unknown) => (typeof value === "string" ? value : "");
+
+const sectionPreviewUrlMap = (document: MarkdownDocument) => {
+	const previews = new Map<string, string>();
+	const lines = document.content.split(/\r?\n/);
+	const occurrenceByHeading = new Map<string, number>();
+	const seenSectionIds = new Set<string>();
+
+	for (let index = 0; index < lines.length; index += 1) {
+		const match = /^(#{1,3})\s+(.+)$/.exec(lines[index]);
+		if (!match) continue;
+
+		const level = match[1].length;
+		const title = normalizeHeadingText(match[2]);
+		if (!title) continue;
+
+		const key = `${level}|${title}`;
+		const occurrence = (occurrenceByHeading.get(key) ?? 0) + 1;
+		occurrenceByHeading.set(key, occurrence);
+
+		const sectionId = sectionIdBeforeHeadingLine(lines, index);
+		const blockId =
+			sectionId && !seenSectionIds.has(sectionId)
+				? sectionId
+				: createSectionBlockId(document.id, level, occurrence, title);
+		if (sectionId && !seenSectionIds.has(sectionId)) {
+			seenSectionIds.add(sectionId);
+		}
+
+		const sectionEnd = findMarkdownSectionEndLine(lines, index, level);
+		const previewUrl = firstImageSourceFromMarkdown(lines.slice(index + 1, sectionEnd).join("\n"));
+		if (previewUrl) previews.set(blockId, previewUrl);
+	}
+
+	return previews;
+};
+
+const firstImageSourceFromMarkdown = (markdown: string) => {
+	for (const line of markdown.split(/\r?\n/)) {
+		const image = markdownImageFromLine(line.trim());
+		if (!image || isPlaceholderImage(image)) continue;
+
+		return image.source;
+	}
+
+	return undefined;
+};
+
+const markdownImageFromLine = (line: string) => {
+	const match = /^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$/.exec(line);
+	if (!match) return null;
+
+	return {
+		alt: match[1] ?? "",
+		source: match[2] ?? match[3] ?? "",
+	};
+};
+
+const isPlaceholderImage = (image: { alt: string; source: string }) =>
+	["mediago-drama-section-image-pending:", "media-cli-section-image-pending:"].some((prefix) =>
+		image.alt.startsWith(prefix),
+	) ||
+	Boolean(image.source.startsWith("mediago-drama-section-image-pending:")) ||
+	Boolean(image.source.startsWith("media-cli-section-image-pending:")) ||
+	(image.alt === "正在生成图片" && image.source.startsWith("data:image/svg+xml;base64,"));
 
 const normalizeMentionCategory = (category: MarkdownDocument["category"]): DocumentCategory =>
 	documentCategory(category) ?? fallbackMentionCategory;

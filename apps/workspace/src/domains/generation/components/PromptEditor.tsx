@@ -320,6 +320,7 @@ const flushPromptEditorDomObserver = (editor: Pick<Editor, "view">) => {
 
 export const promptEditorTestInternals = {
 	emitPromptMarkdownChange,
+	findPromptSlashMatchFromText,
 	flushPromptEditorDomObserver,
 };
 
@@ -348,6 +349,13 @@ const findPromptSlashMatch = (editor: Editor): { query: string; range: Range } |
 	if (!$from.parent.isTextblock) return null;
 
 	const textBeforeCursor = $from.parent.textBetween(0, $from.parentOffset, "\n", "\n");
+	return findPromptSlashMatchFromText(textBeforeCursor, selection.from);
+};
+
+function findPromptSlashMatchFromText(
+	textBeforeCursor: string,
+	selectionFrom: number,
+): { query: string; range: Range } | null {
 	const slashIndex = textBeforeCursor.lastIndexOf("/");
 	if (slashIndex < 0) return null;
 
@@ -355,13 +363,15 @@ const findPromptSlashMatch = (editor: Editor): { query: string; range: Range } |
 	if (previousCharacter && !/\s/u.test(previousCharacter)) return null;
 
 	const query = textBeforeCursor.slice(slashIndex + 1);
-	const from = selection.from - query.length - 1;
+	if (/^\s/u.test(query)) return null;
+
+	const from = selectionFrom - query.length - 1;
 
 	return {
 		query,
-		range: { from, to: selection.from },
+		range: { from, to: selectionFrom },
 	};
-};
+}
 
 const promptSlashMenuPosition = (editor: Editor, range: Range): PromptSlashMenuPosition => {
 	const coords = editor.view.coordsAtPos(range.from);

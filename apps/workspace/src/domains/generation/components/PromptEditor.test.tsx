@@ -63,6 +63,17 @@ describe("PromptEditor", () => {
 		expect(filteredByBody.map((item) => item.id)).toEqual(["character-extra"]);
 	});
 
+	it("only treats a slash as an active prompt command when the query starts immediately after it", () => {
+		const activeMatch = promptEditorTestInternals.findPromptSlashMatchFromText("/电影", 4);
+		const separatorMatch = promptEditorTestInternals.findPromptSlashMatchFromText(
+			"主角 / 低阶散修",
+			10,
+		);
+
+		expect(activeMatch?.query).toBe("电影");
+		expect(separatorMatch).toBeNull();
+	});
+
 	it("inserts selected slash prompt markdown into the editor", () => {
 		const editor = new Editor({
 			content: "/",

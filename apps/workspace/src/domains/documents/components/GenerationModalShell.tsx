@@ -63,6 +63,7 @@ export const GenerationModalShell: React.FC<{
 					"group fixed left-1/2 top-1/2 z-50 w-[calc(100%_-_2rem)] max-w-7xl -translate-x-1/2 -translate-y-1/2 outline-none",
 					contentLayerClassName,
 				)}
+				data-agent-mention-popup-root=""
 				onEscapeKeyDown={preventPhotoViewEscapeDismiss}
 				onFocusOutside={preventPhotoViewPortalDismiss}
 				onPointerDownOutside={preventPhotoViewPortalDismiss}
