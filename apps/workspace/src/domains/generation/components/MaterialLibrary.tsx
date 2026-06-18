@@ -257,7 +257,11 @@ const MaterialAssetThumbnail: React.FC<{
 }> = ({ asset, enableImagePreview, tone }) => {
 	const className = cn(
 		"flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border",
-		tone === "card" ? "bg-muted" : "bg-ide-toolbar",
+		asset.kind === "image"
+			? "bg-muted-foreground/10"
+			: tone === "card"
+				? "bg-muted"
+				: "bg-ide-toolbar",
 	);
 
 	if (asset.kind !== "image") {
@@ -269,7 +273,7 @@ const MaterialAssetThumbnail: React.FC<{
 	}
 
 	const source = apiResourceURL(asset.url);
-	const image = <img src={source} alt="" className="size-full object-cover" />;
+	const image = <img src={source} alt="" className="size-full object-contain" />;
 
 	if (!enableImagePreview) {
 		return <div className={className}>{image}</div>;

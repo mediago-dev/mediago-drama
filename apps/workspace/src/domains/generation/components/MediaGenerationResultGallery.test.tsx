@@ -143,7 +143,11 @@ describe("GenerationResultGallery", () => {
 			/>,
 		);
 
-		fireEvent.click(screen.getAllByRole("button", { name: "预览生成图片" })[1]);
+		const previewButtons = screen.getAllByRole("button", { name: "预览生成图片" });
+		const secondPreviewButton = previewButtons[1];
+		if (!secondPreviewButton) throw new Error("missing second preview button");
+		expect(secondPreviewButton.className).toContain("bg-muted-foreground/10");
+		fireEvent.click(secondPreviewButton);
 
 		expect(screen.getByRole("dialog", { name: "图片预览" }).getAttribute("data-index")).toBe("1");
 		expect(screen.getByTestId("preview-sources").textContent).toBe(

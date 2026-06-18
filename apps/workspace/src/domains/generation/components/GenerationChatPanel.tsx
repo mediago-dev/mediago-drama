@@ -428,12 +428,15 @@ const GenerationChatAssetStrip: React.FC<{
 				return (
 					<div
 						key={`${asset.kind}:${source}`}
-						className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-ide-toolbar"
+						className={cn(
+							"flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border",
+							asset.kind === "video" ? "bg-ide-toolbar" : "bg-muted-foreground/10",
+						)}
 					>
 						{asset.kind === "video" ? (
 							<video src={source} muted preload="metadata" className="size-full object-cover" />
 						) : (
-							<img src={source} alt="" className="size-full object-cover" />
+							<img src={source} alt="" className="size-full object-contain" />
 						)}
 					</div>
 				);
@@ -609,7 +612,7 @@ const GenerationAssetGallery: React.FC<{
 						<div
 							key={source}
 							className={cn(
-								"relative shrink-0 overflow-hidden rounded-sm border bg-ide-toolbar",
+								"relative shrink-0 overflow-hidden rounded-sm border bg-muted-foreground/10",
 								selected ? "border-primary" : "border-border",
 							)}
 						>

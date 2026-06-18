@@ -207,7 +207,12 @@ describe("HistoryGenerationList", () => {
 			/>,
 		);
 
-		expect(container.querySelectorAll("img")).toHaveLength(3);
+		const images = container.querySelectorAll("img");
+		expect(images).toHaveLength(3);
+		images.forEach((image) => expect(image.className).toContain("object-contain"));
+		images.forEach((image) =>
+			expect(image.parentElement?.className).toContain("bg-muted-foreground/10"),
+		);
 		expect(screen.queryByText("生成三张角色设定图")).toBeNull();
 		expect(screen.queryByText("已完成")).toBeNull();
 		expect(screen.getAllByRole("button", { name: "预览图片" })).toHaveLength(3);

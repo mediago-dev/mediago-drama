@@ -358,13 +358,14 @@
 
 .tiptap-content img {
 	display: block;
-	width: clamp(8.5rem, 28%, 12.5rem);
-	aspect-ratio: 4 / 3;
-	max-width: 100%;
+	width: auto;
+	height: auto;
+	max-width: min(100%, 18rem);
+	max-height: min(70vh, 34rem);
 	border-radius: var(--radius-scale-sm);
 	background: var(--muted);
 	cursor: zoom-in;
-	object-fit: cover;
+	object-fit: contain;
 }
 
 .block-hovered {

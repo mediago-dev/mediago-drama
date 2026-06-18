@@ -61,11 +61,11 @@ const GenerationHistoryItem: React.FC<{
 			)}
 			onClick={onSelect}
 		>
-			<div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-ide-toolbar">
+			<div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted-foreground/10">
 				{isLoading ? (
 					<Loader2 className="size-4 animate-spin text-muted-foreground" />
 				) : source && thumbnail?.kind === "image" ? (
-					<img src={source} alt="" className="size-full object-cover" />
+					<img src={source} alt="" className="size-full object-contain" />
 				) : source && thumbnail?.kind === "video" ? (
 					<GenerationVideoThumbnail source={source} />
 				) : entry.kind === "image" ? (

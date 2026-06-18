@@ -656,11 +656,11 @@ const ReferenceShortcutCard: React.FC<{
 		)}
 		onClick={onToggle}
 	>
-		<div className="relative aspect-[4/3] bg-muted">
+		<div className="relative aspect-[4/3] bg-muted-foreground/10">
 			{item.asset.kind === "video" ? (
 				<GenerationVideoThumbnail source={item.asset.url} />
 			) : (
-				<img src={item.asset.url} alt="" className="size-full object-cover" />
+				<img src={item.asset.url} alt="" className="size-full object-contain" />
 			)}
 			{item.asset.kind === "video" ? (
 				<span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-sm bg-background/90 px-1.5 py-1 text-2xs font-medium text-foreground shadow-sm">
@@ -701,7 +701,7 @@ const GeneratedReferenceOptionCard: React.FC<{
 		)}
 		onClick={onToggle}
 	>
-		<div className="relative aspect-square bg-muted">
+		<div className="relative aspect-square bg-muted-foreground/10">
 			<GeneratedReferenceOptionPreview option={option} />
 			{option.kind === "video" ? (
 				<span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-sm bg-background/90 px-1.5 py-1 text-2xs font-medium text-foreground shadow-sm">
@@ -738,7 +738,7 @@ const GeneratedReferenceOptionPreview: React.FC<{ option: GeneratedReferenceOpti
 		return <GenerationVideoThumbnail source={option.source} />;
 	}
 
-	return <img src={option.source} alt="" className="size-full object-cover" />;
+	return <img src={option.source} alt="" className="size-full object-contain" />;
 };
 
 const referenceOptionStatusText = (option: GeneratedReferenceOption, supported: boolean) => {

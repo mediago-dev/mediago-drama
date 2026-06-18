@@ -309,7 +309,7 @@ const HistoryImageCard: React.FC<{
 					<ContextMenuTrigger asChild>
 						<article
 							className={cn(
-								"relative min-w-0 overflow-hidden rounded-sm border border-border bg-muted",
+								"relative min-w-0 overflow-hidden rounded-sm border border-border bg-muted-foreground/10",
 								record.entry.kind === "video" ? "aspect-video" : "aspect-[4/3]",
 							)}
 						>
@@ -415,7 +415,7 @@ const HistoryImageCard: React.FC<{
 					<ContextMenuTrigger asChild>
 						<article
 							className={cn(
-								"group/history-image relative min-w-0 overflow-hidden rounded-sm border bg-muted",
+								"group/history-image relative min-w-0 overflow-hidden rounded-sm border bg-muted-foreground/10",
 								isVideo ? "aspect-video" : "aspect-[4/3]",
 								selected ? "border-primary ring-1 ring-primary" : "border-border",
 							)}
@@ -423,7 +423,7 @@ const HistoryImageCard: React.FC<{
 							{isVideo ? (
 								<GenerationVideoThumbnail source={source} />
 							) : (
-								<img src={source} alt="" className="size-full object-cover" />
+								<img src={source} alt="" className="size-full object-contain" />
 							)}
 							<div className="absolute inset-0 flex items-center justify-center bg-foreground/55 opacity-0 transition-opacity group-hover/history-image:opacity-100 group-focus-within/history-image:opacity-100">
 								<div
@@ -940,11 +940,11 @@ const HistoryGenerationItem: React.FC<{
 				className="flex w-full min-w-0 items-stretch gap-2 p-2 pr-10 text-left"
 				onClick={onSelect}
 			>
-				<div className="flex h-16 w-20 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted">
+				<div className="flex h-16 w-20 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted-foreground/10">
 					{source && thumbnail?.kind === "video" ? (
 						<GenerationVideoThumbnail source={source} />
 					) : source ? (
-						<img src={source} alt="" className="size-full object-cover" />
+						<img src={source} alt="" className="size-full object-contain" />
 					) : loading ? (
 						<Loader2 className="size-4 animate-spin text-muted-foreground" />
 					) : (
@@ -1093,7 +1093,7 @@ const HistoryAssetThumb: React.FC<{
 		aria-label={selectable ? (selected ? "取消选入结果" : "选入结果") : `历史结果 ${index + 1}`}
 		title={selectable ? (selected ? "取消选入结果" : "选入结果") : `历史结果 ${index + 1}`}
 		className={cn(
-			"relative h-24 w-32 shrink-0 overflow-hidden rounded-sm border bg-muted transition-colors",
+			"relative h-24 w-32 shrink-0 overflow-hidden rounded-sm border bg-muted-foreground/10 transition-colors",
 			selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-input",
 			!selectable && "cursor-default",
 		)}
@@ -1106,7 +1106,7 @@ const HistoryAssetThumb: React.FC<{
 		{asset.kind === "video" ? (
 			<GenerationVideoThumbnail source={source} />
 		) : (
-			<img src={source} alt="" className="size-full object-cover" />
+			<img src={source} alt="" className="size-full object-contain" />
 		)}
 		{selectable ? (
 			<span

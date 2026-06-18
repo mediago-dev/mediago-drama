@@ -210,8 +210,8 @@ const MentionReferencePopover: React.FC<{
 								key={`${image.mediaAssetId ?? image.url}:${index}`}
 								className={
 									images.length === 1
-										? "max-h-80 overflow-hidden rounded-sm border border-border bg-muted"
-										: "aspect-square overflow-hidden rounded-sm border border-border bg-muted"
+										? "max-h-80 overflow-hidden rounded-sm border border-border bg-muted-foreground/10"
+										: "aspect-square overflow-hidden rounded-sm border border-border bg-muted-foreground/10"
 								}
 							>
 								<img
@@ -220,7 +220,7 @@ const MentionReferencePopover: React.FC<{
 									className={
 										images.length === 1
 											? "max-h-80 w-full object-contain"
-											: "size-full object-cover"
+											: "size-full object-contain"
 									}
 									loading="lazy"
 								/>

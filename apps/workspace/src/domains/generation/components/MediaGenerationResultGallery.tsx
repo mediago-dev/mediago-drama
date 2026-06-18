@@ -371,7 +371,7 @@ const GenerationImageResultAsset: React.FC<{
 		>
 			<button
 				type="button"
-				className="flex h-full min-w-0 max-w-full cursor-zoom-in items-center justify-center"
+				className="flex h-full min-w-0 max-w-full cursor-zoom-in items-center justify-center rounded-sm bg-muted-foreground/10"
 				aria-label="预览生成图片"
 				onClick={() => onPreviewImage(asset)}
 			>

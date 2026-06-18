@@ -170,6 +170,11 @@ describe("ReferenceSelectionDialog", () => {
 		expect(screen.getByText("第 01 组")).toBeTruthy();
 		expect(screen.getByText("第 1 张")).toBeTruthy();
 		expect(screen.getByText("已选")).toBeTruthy();
+		const nodeImagePreview = document.querySelector(
+			'img[src="/api/v1/media-assets/node-image-1/content"]',
+		);
+		expect(nodeImagePreview?.className).toContain("object-contain");
+		expect(nodeImagePreview?.parentElement?.className).toContain("bg-muted-foreground/10");
 
 		fireEvent.click(screen.getByRole("button", { name: /第 01 组/ }));
 

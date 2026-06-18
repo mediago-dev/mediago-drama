@@ -109,7 +109,7 @@ const ReferencePreviewItem: React.FC<{
 		className={cn(
 			"relative shrink-0 overflow-hidden rounded-sm",
 			simple ? "h-20 w-20" : "h-24 w-24 border border-border",
-			tone === "card" ? "bg-muted" : "bg-ide-toolbar",
+			"bg-muted-foreground/10",
 		)}
 	>
 		<ReferencePreviewMedia asset={asset} enableImagePreview={enableImagePreview} />
@@ -162,7 +162,7 @@ const ReferencePreviewMedia: React.FC<{
 		return <video src={source} muted preload="metadata" className="size-full object-cover" />;
 	}
 
-	const image = <img src={source} alt="" className="size-full object-cover" />;
+	const image = <img src={source} alt="" className="size-full object-contain" />;
 
 	if (!enableImagePreview) return image;
 

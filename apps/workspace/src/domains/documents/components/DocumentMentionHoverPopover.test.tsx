@@ -53,6 +53,8 @@ describe("DocumentMentionHoverPopover", () => {
 		fireEvent.pointerOver(screen.getByText("@沈阔（普通状态）"));
 
 		await waitFor(() => expect(referenceImage()).toBeTruthy());
+		expect(referenceImage()?.className).toContain("object-contain");
+		expect(referenceImage()?.parentElement?.className).toContain("bg-muted-foreground/10");
 	});
 
 	it("keeps the popover open when moving from a mention onto nearby text", async () => {
