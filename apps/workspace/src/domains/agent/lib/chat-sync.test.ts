@@ -68,6 +68,101 @@ describe("refreshAgentChatTranscript", () => {
 		expect(mutateSWR).toHaveBeenCalledWith("sessions:project-1");
 	});
 
+	it("trusts an explicit project id while the project store is still hydrating", async () => {
+		useProjectStore.setState({ activeProjectId: null });
+		useAgentStore.setState({ sessionId: "session-1" });
+		vi.mocked(getAgentChatState).mockResolvedValue({
+			projectId: "project-1",
+			sessionId: "session-1",
+			messages: [
+				{
+					id: "assistant-1",
+					role: "assistant",
+					content: "Tauri 刷新恢复",
+					kind: "message",
+					status: "complete",
+				},
+			],
+			activity: [],
+			running: false,
+			lastEventId: "12",
+		});
+
+		await refreshAgentChatTranscript("session-1", "project-1");
+
+		expect(getAgentChatState).toHaveBeenCalledWith("project-1", "session-1");
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({ id: "assistant-1", content: "Tauri 刷新恢复" }),
+		]);
+	});
+
+	it("ignores a transcript for a different project", async () => {
+		useProjectStore.setState({ activeProjectId: null });
+		useAgentStore.setState({ sessionId: "session-1" });
+		vi.mocked(getAgentChatState).mockResolvedValue({
+			projectId: "project-2",
+			sessionId: "session-1",
+			messages: [
+				{
+					id: "stale",
+					role: "assistant",
+					content: "其它项目",
+					kind: "message",
+					status: "complete",
+				},
+			],
+			activity: [],
+			running: false,
+			lastEventId: "12",
+		});
+
+		await refreshAgentChatTranscript("session-1", "project-1");
+
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([]);
+		expect(mutateSWR).not.toHaveBeenCalled();
+	});
+
+	it("hydrates restored conversations when the refreshed flat transcript is empty", async () => {
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		useAgentStore.setState({ sessionId: "session-1" });
+		vi.mocked(getAgentChatState).mockResolvedValue({
+			projectId: "project-1",
+			sessionId: "session-1",
+			messages: [],
+			activity: [],
+			running: false,
+			lastEventId: "12",
+			rootRunId: "run-1",
+			conversations: {
+				"run-1": {
+					runId: "run-1",
+					name: "主智能体",
+					status: "completed",
+					messages: [
+						{
+							id: "assistant-1",
+							role: "assistant",
+							content: "从 conversation 恢复",
+							kind: "message",
+							status: "complete",
+						},
+					],
+					streamingMessageId: null,
+					children: [],
+					createdAt: "2026-06-09T00:00:00.000Z",
+					updatedAt: "2026-06-09T00:00:00.000Z",
+				},
+			},
+		});
+
+		await refreshAgentChatTranscript("session-1", "project-1");
+
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({ id: "assistant-1", content: "从 conversation 恢复" }),
+		]);
+		expect(useAgentStore.getState().rootRunId).toBe("run-1");
+	});
+
 	it("does not overwrite the store when a stale transcript response is for another session", async () => {
 		useProjectStore.setState({ activeProjectId: "project-1" });
 		useAgentStore.setState({
@@ -182,6 +277,170 @@ describe("refreshAgentChatTranscript", () => {
 				id: "assistant-local",
 				content: "我是 MediaGo Drama 的项目 Agent。",
 			}),
+		]);
+		expect(mutateSWR).not.toHaveBeenCalledWith(
+			"chat:project-1:session-1",
+			expect.anything(),
+			expect.anything(),
+		);
+		expect(mutateSWR).toHaveBeenCalledWith("sessions:project-1");
+	});
+
+	it("keeps a just-sent local user turn when the transcript has not caught up yet", async () => {
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		useAgentStore.setState({
+			sessionId: "session-1",
+			rootRunId: "run-current",
+			conversations: {
+				"run-current": {
+					runId: "run-current",
+					status: "running",
+					messages: [
+						{
+							id: "user-1",
+							role: "user",
+							content: "第一个问题",
+							kind: "message",
+							status: "complete",
+						},
+						{
+							id: "assistant-1",
+							role: "assistant",
+							content: "第一个回答",
+							kind: "message",
+							status: "complete",
+						},
+						{
+							id: "user-2",
+							role: "user",
+							content: "第二个问题",
+							kind: "message",
+							status: "complete",
+						},
+					],
+					streamingMessageId: null,
+					children: [],
+					createdAt: "2026-06-09T00:00:00.000Z",
+					updatedAt: "2026-06-09T00:00:00.000Z",
+				},
+			},
+		});
+		vi.mocked(getAgentChatState).mockResolvedValue({
+			projectId: "project-1",
+			sessionId: "session-1",
+			messages: [
+				{
+					id: "user-1",
+					role: "user",
+					content: "第一个问题",
+					kind: "message",
+					status: "complete",
+				},
+				{
+					id: "assistant-1",
+					role: "assistant",
+					content: "第一个回答",
+					kind: "message",
+					status: "complete",
+				},
+			],
+			activity: [],
+			running: true,
+			lastEventId: "16",
+		});
+
+		await refreshAgentChatTranscript("session-1", "project-1");
+
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({ id: "user-1", content: "第一个问题" }),
+			expect.objectContaining({ id: "assistant-1", content: "第一个回答" }),
+			expect.objectContaining({ id: "user-2", content: "第二个问题" }),
+		]);
+		expect(mutateSWR).not.toHaveBeenCalledWith(
+			"chat:project-1:session-1",
+			expect.anything(),
+			expect.anything(),
+		);
+		expect(mutateSWR).toHaveBeenCalledWith("sessions:project-1");
+	});
+
+	it("keeps earlier local turns when a refreshed transcript only contains the current run", async () => {
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		useAgentStore.setState({
+			sessionId: "session-1",
+			rootRunId: "run-current",
+			conversations: {
+				"run-current": {
+					runId: "run-current",
+					status: "running",
+					messages: [
+						{
+							id: "user-1",
+							role: "user",
+							content: "第一个问题",
+							kind: "message",
+							status: "complete",
+						},
+						{
+							id: "assistant-1",
+							role: "assistant",
+							content: "第一个回答",
+							kind: "message",
+							status: "complete",
+						},
+						{
+							id: "user-2",
+							role: "user",
+							content: "第二个问题",
+							kind: "message",
+							status: "complete",
+						},
+						{
+							id: "assistant-2",
+							role: "assistant",
+							content: "第二个回答",
+							kind: "message",
+							status: "complete",
+						},
+					],
+					streamingMessageId: null,
+					children: [],
+					createdAt: "2026-06-09T00:00:00.000Z",
+					updatedAt: "2026-06-09T00:00:00.000Z",
+				},
+			},
+		});
+		vi.mocked(getAgentChatState).mockResolvedValue({
+			projectId: "project-1",
+			sessionId: "session-1",
+			messages: [
+				{
+					id: "user-2-backend",
+					role: "user",
+					content: "第二个问题",
+					kind: "message",
+					status: "complete",
+				},
+				{
+					id: "assistant-2-backend",
+					role: "assistant",
+					content: "第二个回答",
+					kind: "message",
+					status: "complete",
+				},
+			],
+			activity: [],
+			running: true,
+			lastEventId: "20",
+		});
+
+		await refreshAgentChatTranscript("session-1", "project-1");
+
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({ id: "user-1", content: "第一个问题" }),
+			expect.objectContaining({ id: "assistant-1", content: "第一个回答" }),
+			expect.objectContaining({ id: "user-2", content: "第二个问题" }),
+			expect.objectContaining({ id: "assistant-2", content: "第二个回答" }),
 		]);
 		expect(mutateSWR).not.toHaveBeenCalledWith(
 			"chat:project-1:session-1",

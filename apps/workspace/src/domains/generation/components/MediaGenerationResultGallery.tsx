@@ -1,10 +1,12 @@
 import { Check, Loader2, Save, Sparkles } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { PhotoProvider, PhotoView } from "react-photo-view";
-import "react-photo-view/dist/react-photo-view.css";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import type { GenerationAsset, GenerationKind } from "@/domains/generation/api/generation";
+import {
+	GenerationImagePreviewSlider,
+	type GenerationImagePreviewItem,
+} from "@/domains/generation/components/GenerationImagePreviewSlider";
 import { entryGeneratedAssets } from "@/domains/generation/components/mediaGenerationHelpers";
 import {
 	generationAssetSelectionKey,
@@ -36,6 +38,26 @@ export const GenerationResultGallery: React.FC<{
 	selectedAssetKeys,
 	savingAssetKeys = [],
 }) => {
+	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+	const previewImages = useMemo(
+		() => generationResultPreviewImages(entries, kind),
+		[entries, kind],
+	);
+	const openImagePreview = useCallback(
+		(asset: GenerationAsset) => {
+			const selectionKey = generationAssetSelectionKey(asset);
+			const source = generationAssetSource(asset);
+			const index = previewImages.findIndex(
+				(image) =>
+					image.asset === asset ||
+					(Boolean(selectionKey) && generationAssetSelectionKey(image.asset) === selectionKey) ||
+					(Boolean(source) && image.src === source),
+			);
+			if (index >= 0) setPreviewIndex(index);
+		},
+		[previewImages],
+	);
+
 	if (entries.length === 0) {
 		return (
 			<div className="flex h-full min-h-0 w-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
@@ -45,7 +67,7 @@ export const GenerationResultGallery: React.FC<{
 	}
 
 	return (
-		<PhotoProvider maskOpacity={0.84}>
+		<>
 			<div className="flex h-full min-h-0 w-full items-center justify-center gap-4 overflow-x-auto">
 				{entries.map((entry) => (
 					<GenerationResultEntry
@@ -54,6 +76,7 @@ export const GenerationResultGallery: React.FC<{
 						kind={kind}
 						selectedAssetKeys={selectedAssetKeys}
 						onSaveAsset={onSaveAsset}
+						onPreviewImage={openImagePreview}
 						onToggleAsset={onToggleAsset}
 						onUseAssetAsReference={onUseAssetAsReference}
 						savedAssetKeys={savedAssetKeys}
@@ -61,13 +84,22 @@ export const GenerationResultGallery: React.FC<{
 					/>
 				))}
 			</div>
-		</PhotoProvider>
+			<GenerationImagePreviewSlider
+				images={previewImages}
+				index={previewIndex}
+				selectedAssetKeys={selectedAssetKeys}
+				onClose={() => setPreviewIndex(null)}
+				onIndexChange={setPreviewIndex}
+				onToggleAsset={onToggleAsset}
+			/>
+		</>
 	);
 };
 
 const GenerationResultEntry: React.FC<{
 	entry: GenerationEntry;
 	kind: GenerationKind;
+	onPreviewImage: (asset: GenerationAsset) => void;
 	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	onUseAssetAsReference?: (asset: GenerationAsset) => void;
@@ -77,6 +109,7 @@ const GenerationResultEntry: React.FC<{
 }> = ({
 	entry,
 	kind,
+	onPreviewImage,
 	onSaveAsset,
 	onToggleAsset,
 	onUseAssetAsReference,
@@ -140,6 +173,7 @@ const GenerationResultEntry: React.FC<{
 						saved={savedAssetKeys.includes(generatedAssetSaveKey(entry, asset))}
 						saving={savingAssetKeys.includes(generatedAssetSaveKey(entry, asset))}
 						source={source}
+						onPreviewImage={onPreviewImage}
 						onSaveAsset={onSaveAsset}
 						onToggleAsset={onToggleAsset}
 						onUseAssetAsReference={onUseAssetAsReference}
@@ -227,6 +261,7 @@ const GenerationVideoResultAsset: React.FC<{
 const GenerationImageResultAsset: React.FC<{
 	asset: GenerationAsset;
 	entry: GenerationEntry;
+	onPreviewImage: (asset: GenerationAsset) => void;
 	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	onUseAssetAsReference?: (asset: GenerationAsset) => void;
@@ -238,6 +273,7 @@ const GenerationImageResultAsset: React.FC<{
 }> = ({
 	asset,
 	entry,
+	onPreviewImage,
 	onSaveAsset,
 	onToggleAsset,
 	onUseAssetAsReference,
@@ -333,21 +369,20 @@ const GenerationImageResultAsset: React.FC<{
 			ref={frameRef}
 			className="relative flex h-full min-w-0 max-w-full items-center justify-center bg-transparent"
 		>
-			<PhotoView src={source}>
-				<button
-					type="button"
-					className="flex h-full min-w-0 max-w-full cursor-zoom-in items-center justify-center"
-					aria-label="预览生成图片"
-				>
-					<img
-						ref={imageRef}
-						src={source}
-						alt=""
-						className="h-full w-auto max-w-full object-contain"
-						onLoad={updateCheckboxOffset}
-					/>
-				</button>
-			</PhotoView>
+			<button
+				type="button"
+				className="flex h-full min-w-0 max-w-full cursor-zoom-in items-center justify-center"
+				aria-label="预览生成图片"
+				onClick={() => onPreviewImage(asset)}
+			>
+				<img
+					ref={imageRef}
+					src={source}
+					alt=""
+					className="h-full w-auto max-w-full object-contain"
+					onLoad={updateCheckboxOffset}
+				/>
+			</button>
 			{onSaveAsset ? (
 				<SaveGeneratedAssetButton
 					className="absolute z-10"
@@ -406,6 +441,28 @@ const GenerationImageResultAsset: React.FC<{
 				</button>
 			) : null}
 		</article>
+	);
+};
+
+const generationResultPreviewImages = (
+	entries: GenerationEntry[],
+	kind: GenerationKind,
+): GenerationImagePreviewItem[] => {
+	if (kind !== "image") return [];
+
+	return entries.flatMap((entry) =>
+		entryGeneratedAssets(entry, "image").flatMap((asset, index) => {
+			const source = generationAssetSource(asset);
+			if (!source) return [];
+
+			return [
+				{
+					asset,
+					key: `${entry.id}:${generationAssetSelectionKey(asset) ?? source}:${index}`,
+					src: source,
+				},
+			];
+		}),
 	);
 };
 

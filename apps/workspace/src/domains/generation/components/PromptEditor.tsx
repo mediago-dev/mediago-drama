@@ -263,9 +263,14 @@ const usePromptMarkdownEditor = ({
 			onUpdate: ({ editor: nextEditor }) => {
 				if (!editable) return;
 
-				const markdown = nextEditor.getMarkdown();
-				emittedMarkdownRef.current = markdown;
-				onChangeRef.current?.(markdown);
+				emitPromptMarkdownChange(nextEditor, emittedMarkdownRef, onChangeRef);
+			},
+			onBlur: ({ editor: nextEditor }) => {
+				if (!editable) return;
+
+				emitPromptMarkdownChange(nextEditor, emittedMarkdownRef, onChangeRef, {
+					flushDom: true,
+				});
 			},
 		},
 		[editable, resolvedExtensions, placeholder, editorClassName],
@@ -281,10 +286,41 @@ const usePromptMarkdownEditor = ({
 		emittedMarkdownRef.current = value;
 		editor.commands.setContent(value, {
 			contentType: "markdown",
+			emitUpdate: false,
 		});
 	}, [editor, value]);
 
 	return editor;
+};
+
+const emitPromptMarkdownChange = (
+	editor: Pick<Editor, "getMarkdown" | "view">,
+	emittedMarkdownRef: React.MutableRefObject<string>,
+	onChangeRef: React.MutableRefObject<((value: string) => void) | undefined>,
+	options: { flushDom?: boolean } = {},
+) => {
+	if (options.flushDom) flushPromptEditorDomObserver(editor);
+
+	const markdown = editor.getMarkdown();
+	if (markdown === emittedMarkdownRef.current) return;
+
+	emittedMarkdownRef.current = markdown;
+	onChangeRef.current?.(markdown);
+};
+
+const flushPromptEditorDomObserver = (editor: Pick<Editor, "view">) => {
+	const view = editor.view as Editor["view"] & {
+		domObserver?: {
+			flush?: () => void;
+		};
+	};
+
+	view.domObserver?.flush?.();
+};
+
+export const promptEditorTestInternals = {
+	emitPromptMarkdownChange,
+	flushPromptEditorDomObserver,
 };
 
 const resolvePromptSlashState = (

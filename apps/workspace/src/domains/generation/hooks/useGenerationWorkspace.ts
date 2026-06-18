@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type React from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { mutate as mutateSWR } from "swr";
 import {
 	type GenerationKind,
@@ -80,6 +81,7 @@ export interface UseGenerationWorkspaceOptions {
 	sectionId?: string | null;
 	taskType?: GenerationTaskType;
 	uploadIdPrefix?: string;
+	useRawPrompt?: boolean;
 	onActiveEntryIdChange?: (entryId: string | null) => void;
 	onSubmitFailure?: (event: GenerationSubmitFailureEvent) => void;
 	onSubmitResponse?: (event: GenerationSubmitResponseEvent) => void;
@@ -115,8 +117,16 @@ export const useGenerationWorkspace = ({
 	sectionId,
 	taskType = "studio",
 	uploadIdPrefix = "generation",
+	useRawPrompt = false,
 }: UseGenerationWorkspaceOptions = {}) => {
-	const [prompt, setPrompt] = useState(initialPrompt);
+	const promptRef = useRef(initialPrompt);
+	const [prompt, setPromptState] = useState(initialPrompt);
+	const setPrompt = useCallback((next: React.SetStateAction<string>) => {
+		const resolved =
+			typeof next === "function" ? (next as (current: string) => string)(promptRef.current) : next;
+		promptRef.current = resolved;
+		setPromptState(resolved);
+	}, []);
 	const [error, setError] = useState<string | null>(null);
 	const resolvedConversationScopeId =
 		conversationScopeId?.trim() ||
@@ -313,7 +323,7 @@ export const useGenerationWorkspace = ({
 
 	useEffect(() => {
 		setPrompt(initialPrompt);
-	}, [initialPrompt]);
+	}, [initialPrompt, setPrompt]);
 
 	const { isSubmitting, submit, submitGeneration } = useGenerationSubmit({
 		conversationId,
@@ -338,6 +348,7 @@ export const useGenerationWorkspace = ({
 		projectStylePrompt,
 		projectId,
 		prompt,
+		promptRef,
 		requireConversation,
 		resolvedConversationScopeId,
 		sectionId: trimmedSectionId,
@@ -349,6 +360,7 @@ export const useGenerationWorkspace = ({
 		setError,
 		setMessages,
 		setPrompt,
+		useRawPrompt,
 	});
 	const {
 		deletedAssetPlaceholderCounts,
@@ -381,6 +393,7 @@ export const useGenerationWorkspace = ({
 	const fullPrompt = useMemo(() => {
 		const nextPrompt = prompt.trim();
 		if (!nextPrompt) return "";
+		if (useRawPrompt) return prompt;
 
 		return generationRequestPrompt({
 			extraPrompt: resolveGenerationExtraValue(extraPrompt, nextPrompt),
@@ -388,7 +401,14 @@ export const useGenerationWorkspace = ({
 			projectStylePrompt: projectStylePrompt?.trim() || projectBrief?.style,
 			prompt: nextPrompt,
 		});
-	}, [extraPrompt, projectBrief?.style, projectStylePrompt, prompt, selectedRoute.kind]);
+	}, [
+		extraPrompt,
+		projectBrief?.style,
+		projectStylePrompt,
+		prompt,
+		selectedRoute.kind,
+		useRawPrompt,
+	]);
 
 	return {
 		activeEntry,

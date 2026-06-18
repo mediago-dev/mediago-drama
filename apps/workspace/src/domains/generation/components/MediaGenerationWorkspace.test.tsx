@@ -76,11 +76,31 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 }));
 
 vi.mock("@/domains/generation/components/MediaGenerationWorkspaceDialogs", () => ({
-	MediaGenerationWorkspaceDialogs: () => <div data-testid="generation-dialogs" />,
+	MediaGenerationWorkspaceDialogs: ({
+		onToggleInlineReference,
+		referenceShortcutGroups = [],
+	}: {
+		onToggleInlineReference?: (asset: MediaAsset) => void;
+		referenceShortcutGroups?: Array<{ items: Array<{ asset: MediaAsset; title: string }> }>;
+	}) => {
+		const shortcut = referenceShortcutGroups[0]?.items[0];
+
+		return (
+			<div data-testid="generation-dialogs">
+				{shortcut ? (
+					<button type="button" onClick={() => onToggleInlineReference?.(shortcut.asset)}>
+						选择快捷参考 {shortcut.title}
+					</button>
+				) : null}
+			</div>
+		);
+	},
 }));
 
 vi.mock("react-photo-view", () => ({
 	PhotoProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+	PhotoSlider: ({ visible }: { visible: boolean }) =>
+		visible ? <div role="dialog" aria-label="图片预览" /> : null,
 	PhotoView: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
@@ -221,6 +241,29 @@ describe("MediaGenerationWorkspace", () => {
 			callback(0);
 			return 0;
 		}) as typeof window.requestAnimationFrame;
+	});
+
+	it("submits prompts from the modal without workspace prompt enrichment", () => {
+		const workspaceOptions: Array<Parameters<typeof useGenerationWorkspace>[0]> = [];
+		vi.mocked(useGenerationWorkspace).mockImplementation((options) => {
+			workspaceOptions.push(options);
+			return workspaceDefaults as unknown as ReturnType<typeof useGenerationWorkspace>;
+		});
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+			/>,
+		);
+
+		expect(workspaceOptions.at(-1)).toEqual(
+			expect.objectContaining({
+				projectStyleOnly: true,
+				useRawPrompt: true,
+			}),
+		);
 	});
 
 	it("uses a generated image as a reference without changing the prompt", () => {
@@ -470,6 +513,52 @@ describe("MediaGenerationWorkspace", () => {
 		expect(
 			referenceUrls.some((url) => url.endsWith("/api/v1/media-assets/reference-a/content")),
 		).toBe(true);
+	});
+
+	it("adds selected node shortcut images to reference urls", () => {
+		const workspaceOptions: Array<Parameters<typeof useGenerationWorkspace>[0]> = [];
+		const nodeReference: MediaAsset = {
+			id: "document-section-image:scene-a",
+			kind: "image",
+			filename: "第 01 组 · 图片 1",
+			mimeType: "image/png",
+			sizeBytes: 0,
+			url: "/api/v1/media-assets/scene-a/content",
+			createdAt: "2026-01-01T00:00:00.000Z",
+			updatedAt: "2026-01-01T00:00:00.000Z",
+		};
+
+		vi.mocked(useGenerationWorkspace).mockImplementation((options) => {
+			workspaceOptions.push(options);
+			return workspaceDefaults as unknown as ReturnType<typeof useGenerationWorkspace>;
+		});
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				referenceShortcutGroups={[
+					{
+						id: "selected-nodes",
+						title: "已选节点图片",
+						items: [{ asset: nodeReference, title: "第 01 组" }],
+					},
+				]}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "选择快捷参考 第 01 组" }));
+
+		expect(screen.getByText("第 01 组 · 图片 1")).toBeTruthy();
+		const latestOptions = workspaceOptions.at(-1);
+		const referenceUrls =
+			typeof latestOptions?.extraReferenceUrls === "function"
+				? latestOptions.extraReferenceUrls("初始提示词")
+				: (latestOptions?.extraReferenceUrls ?? []);
+		expect(referenceUrls.some((url) => url.endsWith("/api/v1/media-assets/scene-a/content"))).toBe(
+			true,
+		);
 	});
 
 	it("shows image delete failures as a toast instead of an input panel error", async () => {

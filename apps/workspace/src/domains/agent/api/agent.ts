@@ -26,7 +26,11 @@ import type {
 } from "@/api/types/agent";
 import httpClient from "@/shared/lib/http";
 import type { DocumentComment, MarkdownDocument } from "@/domains/documents/stores";
-import type { AgentActivityItem, AgentMessage } from "@/domains/agent/stores";
+import type {
+	AgentActivityItem,
+	AgentConversationState,
+	AgentMessage,
+} from "@/domains/agent/stores";
 import { ManagedEventSource } from "@/shared/lib/sse/managed-event-source";
 import { apiURL } from "@/shared/lib/api-base";
 import type {
@@ -81,6 +85,8 @@ export type AgentMessageRequest = Omit<
 export type AgentChatStatePayload = Omit<AgentChatStateResponse, "activity" | "messages"> & {
 	messages: AgentMessage[];
 	activity: AgentActivityItem[];
+	rootRunId?: string | null;
+	conversations?: Record<string, AgentConversationState>;
 };
 
 export type AgentChatAppendRequest = Omit<GeneratedAgentChatAppendRequest, "messages"> & {
@@ -200,6 +206,7 @@ export const getAgentRuntimeConfig = async (projectId?: string | null) => {
 export const getAgentSessionStatus = async (sessionId: string, projectId?: string | null) => {
 	const response = await httpClient.get<AgentSessionStatus>(
 		projectAgentPath(projectId, `/sessions/${encodeURIComponent(sessionId)}/status`),
+		noStoreGetConfig(),
 	);
 	return response.data;
 };
@@ -234,7 +241,10 @@ export const agentSessionsKey = (projectId?: string | null) =>
 	projectAgentPath(projectId, "/sessions");
 
 export const listAgentSessions = async (projectId?: string | null) => {
-	const response = await httpClient.get<AgentSessionsPayload>(agentSessionsKey(projectId));
+	const response = await httpClient.get<AgentSessionsPayload>(
+		agentSessionsKey(projectId),
+		noStoreGetConfig(),
+	);
 	return response.data.sessions;
 };
 
@@ -257,7 +267,10 @@ export const agentChatKey = (projectId?: string | null, sessionId?: string | nul
 };
 
 export const getAgentChatState = async (projectId?: string | null, sessionId?: string | null) => {
-	const response = await httpClient.get<AgentChatStatePayload>(agentChatKey(projectId, sessionId));
+	const response = await httpClient.get<AgentChatStatePayload>(
+		agentChatKey(projectId, sessionId),
+		noStoreGetConfig(),
+	);
 	return response.data;
 };
 
@@ -304,6 +317,10 @@ const agentEventSourceURL = (
 		projectAgentPath(projectId, `/sessions/${encodeURIComponent(sessionId)}/events`) + query,
 	);
 };
+
+const noStoreGetConfig = () => ({
+	params: { _: Date.now().toString() },
+});
 
 export const listDocumentToolApprovals = async (projectId?: string | null) => {
 	const response = await httpClient.get<AgentDocumentToolApproval[]>(

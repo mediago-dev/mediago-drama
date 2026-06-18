@@ -6,6 +6,28 @@ import { HistoryGenerationList } from "./MediaGenerationHistory";
 
 vi.mock("react-photo-view", () => ({
 	PhotoProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+	PhotoSlider: ({
+		images,
+		index,
+		onIndexChange,
+		toolbarRender,
+		visible,
+	}: {
+		images: Array<{ key: string; src: string }>;
+		index: number;
+		onIndexChange: (index: number) => void;
+		toolbarRender?: (props: { images: unknown[]; index: number }) => React.ReactNode;
+		visible: boolean;
+	}) =>
+		visible ? (
+			<div role="dialog" aria-label="图片预览" data-index={index}>
+				<div data-testid="preview-sources">{images.map((image) => image.src).join("|")}</div>
+				{toolbarRender?.({ images, index })}
+				<button type="button" onClick={() => onIndexChange(index + 1)}>
+					下一张
+				</button>
+			</div>
+		) : null,
 	PhotoView: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
@@ -198,6 +220,18 @@ describe("HistoryGenerationList", () => {
 		).toBe("true");
 
 		fireEvent.click(screen.getAllByRole("checkbox", { name: "选入结果" })[0]);
+
+		expect(onToggleAsset).toHaveBeenCalledWith(entry.assets?.[1], true);
+		onToggleAsset.mockClear();
+
+		fireEvent.click(screen.getAllByRole("button", { name: "预览图片" })[1]);
+
+		expect(screen.getByRole("dialog", { name: "图片预览" }).getAttribute("data-index")).toBe("1");
+		expect(screen.getByTestId("preview-sources").textContent).toBe(
+			"https://example.test/role-a.png|https://example.test/role-b.png|https://example.test/role-c.png",
+		);
+
+		fireEvent.click(screen.getByRole("checkbox", { name: "选入图片" }));
 
 		expect(onToggleAsset).toHaveBeenCalledWith(entry.assets?.[1], true);
 		onToggleAsset.mockClear();

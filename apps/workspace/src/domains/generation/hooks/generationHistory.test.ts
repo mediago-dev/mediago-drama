@@ -102,6 +102,33 @@ describe("mergeConversationMessages", () => {
 		expect(mergeConversationMessages(historyMessages, localMessages)).toEqual(historyMessages);
 	});
 
+	it("keeps a completed local result when the task history is still pending", () => {
+		const localMessages = [
+			chatMessage({
+				id: "task-1",
+				role: "assistant",
+				kind: "image",
+				content: "local completed content",
+				status: "completed",
+				assets: [{ kind: "image", url: "/api/v1/media-assets/generated/content" }],
+				createdAt: "2026-05-30T10:00:00.000Z",
+			}),
+		];
+		const historyMessages = [
+			chatMessage({
+				id: "task-1",
+				role: "assistant",
+				kind: "image",
+				content: "history pending content",
+				status: "running",
+				assets: [],
+				createdAt: "2026-05-30T10:00:00.000Z",
+			}),
+		];
+
+		expect(mergeConversationMessages(historyMessages, localMessages)).toEqual(localMessages);
+	});
+
 	it("preserves user-before-assistant order for messages with the same timestamp", () => {
 		const createdAt = "2026-05-30T10:00:00.000Z";
 		const historyMessages = [

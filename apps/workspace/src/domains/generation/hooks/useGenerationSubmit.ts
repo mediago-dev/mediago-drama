@@ -68,12 +68,16 @@ export const generationRequestPrompt = ({
 	kind,
 	projectStylePrompt,
 	prompt,
+	useRawPrompt = false,
 }: {
 	extraPrompt: string;
 	kind: GenerationKind;
 	projectStylePrompt?: string;
 	prompt: string;
+	useRawPrompt?: boolean;
 }) => {
+	if (useRawPrompt) return prompt;
+
 	const promptWithContext = promptWithExtraContext(prompt, extraPrompt);
 	if (kind === "text") return promptWithContext;
 
@@ -105,6 +109,7 @@ interface UseGenerationSubmitOptions {
 	projectStylePrompt?: string;
 	projectId?: string;
 	prompt: string;
+	promptRef?: React.MutableRefObject<string>;
 	requireConversation?: boolean;
 	resolvedConversationScopeId?: string;
 	sectionId?: string;
@@ -116,6 +121,7 @@ interface UseGenerationSubmitOptions {
 	setError: (message: string | null) => void;
 	setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
 	setPrompt: React.Dispatch<React.SetStateAction<string>>;
+	useRawPrompt?: boolean;
 }
 
 export const useGenerationSubmit = ({
@@ -141,6 +147,7 @@ export const useGenerationSubmit = ({
 	projectStylePrompt,
 	projectId,
 	prompt,
+	promptRef,
 	requireConversation = false,
 	resolvedConversationScopeId,
 	sectionId,
@@ -152,13 +159,15 @@ export const useGenerationSubmit = ({
 	setError,
 	setMessages,
 	setPrompt,
+	useRawPrompt = false,
 }: UseGenerationSubmitOptions) => {
 	const [activeSubmitCount, setActiveSubmitCount] = useState(0);
 	const isSubmitting = activeSubmitCount > 0;
 
 	const submitGeneration = useCallback(
 		async (overrides: GenerationSubmitOverrides = {}) => {
-			const nextPrompt = (overrides.prompt ?? prompt).trim();
+			const promptInput = overrides.prompt ?? promptRef?.current ?? prompt;
+			const nextPrompt = promptInput.trim();
 			const requestReferenceAssetIds = overrides.referenceAssetIds ?? effectiveReferenceAssetIds;
 			const requestReferenceUrls = overrides.referenceUrls ?? effectiveReferenceUrls;
 			if (requireConversation && !conversationId?.trim()) {
@@ -186,13 +195,15 @@ export const useGenerationSubmit = ({
 					// Remembering a preference must not block the generation request.
 				}
 			}
-			const requestExtraPrompt =
-				overrides.extraPrompt ?? resolveGenerationExtraValue(extraPrompt, nextPrompt);
+			const requestExtraPrompt = useRawPrompt
+				? ""
+				: (overrides.extraPrompt ?? resolveGenerationExtraValue(extraPrompt, nextPrompt));
 			const requestPrompt = generationRequestPrompt({
 				extraPrompt: requestExtraPrompt,
 				kind: requestKind,
 				projectStylePrompt: projectStylePrompt?.trim() || projectBrief?.style,
-				prompt: nextPrompt,
+				prompt: useRawPrompt ? promptInput : nextPrompt,
+				useRawPrompt,
 			});
 			const localID = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 			const submittedAt = new Date();
@@ -460,6 +471,7 @@ export const useGenerationSubmit = ({
 			projectStylePrompt,
 			projectId,
 			prompt,
+			promptRef,
 			requireConversation,
 			resolvedConversationScopeId,
 			selectedFamily.id,
@@ -470,6 +482,7 @@ export const useGenerationSubmit = ({
 			setError,
 			setMessages,
 			setPrompt,
+			useRawPrompt,
 		],
 	);
 

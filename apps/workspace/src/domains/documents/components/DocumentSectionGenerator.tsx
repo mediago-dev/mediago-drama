@@ -16,10 +16,12 @@ import type { MarkdownSectionContext } from "@/domains/documents/components/Mark
 import {
 	buildMentionPreviewReferences,
 	buildMentionReferenceInputs,
+	extractDocumentSectionImageReferences,
 	extractDocumentImageAssets,
 	type MentionPreviewReferences,
 	uniqueResolvedMention,
 } from "@/domains/documents/lib/mention-generation-references";
+import type { ReferenceSelectionShortcutGroup } from "@/domains/generation/components/MediaGenerationDialogs";
 import {
 	MediaGenerationWorkspace,
 	type MediaGenerationWorkspaceViewMode,
@@ -80,6 +82,26 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 		() => allDocuments.find((document) => document.id === section.documentId)?.category,
 		[allDocuments, section.documentId],
 	);
+	const selectedNodeReferenceGroups = useMemo<ReferenceSelectionShortcutGroup[]>(() => {
+		const document = allDocuments.find((item) => item.id === section.documentId);
+		if (!document) return [];
+
+		const references = extractDocumentSectionImageReferences(document.id, document.content);
+		if (references.length === 0) return [];
+
+		return [
+			{
+				description: `来自《${document.title || "当前文档"}》中已选用插图的节点`,
+				id: "selected-document-section-images",
+				title: "已选节点图片",
+				items: references.map((reference) => ({
+					asset: reference.asset,
+					subtitle: reference.imageLabel,
+					title: reference.sectionTitle,
+				})),
+			},
+		];
+	}, [allDocuments, section.documentId]);
 	const mediaAssets = useDocumentsMediaAssets();
 	// 在智能体项目里把生成统一归到「项目级命名会话」，让创作台可见；非项目场景回退到章节 scope。
 	const { data: projectsData } = useSWR(projectId?.trim() ? projectsKey : null, getProjects);
@@ -208,6 +230,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				promptPlaceholder="描述要放入当前章节的视觉素材"
 				referenceBadges={(prompt) => getMentionPreview(prompt).preview.badges}
 				referencePreviewAssets={(prompt) => getMentionPreview(prompt).preview.references}
+				referenceShortcutGroups={selectedNodeReferenceGroups}
 				renderPromptEditor={(props) => (
 					<PromptMentionEditor
 						{...props}

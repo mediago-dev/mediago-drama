@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
+import type React from "react";
 import { useState } from "react";
 import type { KeyedMutator } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +16,7 @@ import {
 	sendGenerationMessage,
 	streamGenerationText,
 } from "@/domains/generation/api/generation";
-import type { ChatMessage } from "./useGenerationWorkspace.helpers";
+import type { ChatMessage, GenerationExtraValue } from "./useGenerationWorkspace.helpers";
 import {
 	type GenerationSubmitFailureEvent,
 	type GenerationSubmitResponseEvent,
@@ -169,10 +170,14 @@ const renderSubmitHook = (
 		onSubmitSuccess?: (kind: GenerationSubmitStartEvent["kind"]) => void;
 		rememberSelectedModel?: () => void;
 		conversationTitle?: string | null;
+		extraPrompt?: GenerationExtraValue<string>;
 		prompt?: string;
+		promptRef?: React.MutableRefObject<string>;
+		projectStylePrompt?: string;
 		selectedFamily?: GenerationFamily;
 		selectedRoute?: GenerationRoute;
 		selectedVersion?: GenerationVersion;
+		useRawPrompt?: boolean;
 	} = {},
 ) => {
 	const mutateMediaAssets = vi.fn(async () => ({
@@ -199,7 +204,7 @@ const renderSubmitHook = (
 				conversationTitle: options.conversationTitle,
 				effectiveReferenceAssetIds: ["asset-1"],
 				effectiveReferenceUrls: ["https://example.test/reference.png"],
-				extraPrompt: "",
+				extraPrompt: options.extraPrompt ?? "",
 				isLoadingProjectBrief: false,
 				mediaAssetProjectId: "project-1",
 				mediaAssets: [
@@ -225,7 +230,9 @@ const renderSubmitHook = (
 				onSubmitSuccess: options.onSubmitSuccess,
 				rememberSelectedModel: options.rememberSelectedModel,
 				projectId: "project-1",
+				projectStylePrompt: options.projectStylePrompt,
 				prompt,
+				promptRef: options.promptRef,
 				resolvedConversationScopeId: "scope-1",
 				selectedFamily: options.selectedFamily ?? imageFamily,
 				selectedParams: {
@@ -237,6 +244,7 @@ const renderSubmitHook = (
 				setError,
 				setMessages,
 				setPrompt,
+				useRawPrompt: options.useRawPrompt,
 			}),
 		};
 	});
@@ -267,6 +275,18 @@ describe("useGenerationSubmit", () => {
 		expect(prompt).toContain("项目视觉风格：");
 		expect(prompt).toContain("电影感光影\n冷色调");
 		expect(prompt).toContain("本次图片/视频生成必须遵循这个风格。");
+	});
+
+	it("can bypass prompt enrichment and keep the prompt unchanged", () => {
+		const prompt = generationRequestPrompt({
+			extraPrompt: "引用资料：角色设定",
+			kind: "image",
+			projectStylePrompt: "电影感光影",
+			prompt: "  生成角色设定图\n",
+			useRawPrompt: true,
+		});
+
+		expect(prompt).toBe("  生成角色设定图\n");
 	});
 
 	it("submits image generations and replaces optimistic messages with the response", async () => {
@@ -347,6 +367,65 @@ describe("useGenerationSubmit", () => {
 		expect(mutateTasks).toHaveBeenCalledTimes(1);
 		expect(mutateProjectGenerationTasks).toHaveBeenCalledWith("image");
 		expect(mutateMediaAssets).toHaveBeenCalledTimes(1);
+	});
+
+	it("submits the raw prompt without resolving extra prompt or style layers", async () => {
+		vi.mocked(sendGenerationMessage).mockResolvedValue(generationResponse());
+		const extraPrompt = vi.fn(() => "引用资料：不应附加");
+		const { result } = renderSubmitHook({
+			extraPrompt,
+			projectStylePrompt: "项目视觉风格不应附加",
+			prompt: "  draw a cat\nwith props  ",
+			useRawPrompt: true,
+		});
+
+		await act(async () => {
+			await result.current.submitGeneration();
+		});
+
+		expect(extraPrompt).not.toHaveBeenCalled();
+		expect(sendGenerationMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				prompt: "  draw a cat\nwith props  ",
+			}),
+		);
+		expect(result.current.messages).toEqual([
+			expect.objectContaining({
+				id: "task-1:prompt",
+				content: "  draw a cat\nwith props  ",
+			}),
+			expect.objectContaining({
+				id: "task-1",
+			}),
+		]);
+	});
+
+	it("uses the latest prompt ref when the rendered prompt state is stale", async () => {
+		vi.mocked(sendGenerationMessage).mockResolvedValue(generationResponse());
+		const promptRef = { current: "fresh prompt from editor blur" };
+		const { result } = renderSubmitHook({
+			prompt: "stale rendered prompt",
+			promptRef,
+		});
+
+		await act(async () => {
+			await result.current.submitGeneration();
+		});
+
+		expect(sendGenerationMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				prompt: "fresh prompt from editor blur",
+			}),
+		);
+		expect(result.current.messages).toEqual([
+			expect.objectContaining({
+				id: "task-1:prompt",
+				content: "fresh prompt from editor blur",
+			}),
+			expect.objectContaining({
+				id: "task-1",
+			}),
+		]);
 	});
 
 	it("ensures a named conversation before submitting", async () => {

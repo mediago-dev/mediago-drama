@@ -1,4 +1,4 @@
-import { ChevronDown, Link2, Scan, Sparkles } from "lucide-react";
+import { ChevronDown, Link2, Sparkles } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
 import {
@@ -47,7 +47,7 @@ export const ImageGenerationSpecControl: React.FC<{
 						className,
 					)}
 				>
-					<Scan className="size-4 shrink-0" />
+					<RatioTriggerGlyph option={spec.selectedRatio} open={open} />
 					<span className="min-w-0 truncate">{triggerRatioLabel}</span>
 					<span className="h-3.5 w-px shrink-0 bg-border" aria-hidden="true" />
 					<span className="min-w-0 truncate">{triggerResolutionLabel}</span>
@@ -149,6 +149,35 @@ const RatioGlyph: React.FC<{ option: SpecOption; selected: boolean }> = ({ optio
 		<span className="flex h-5 items-center justify-center" aria-hidden="true">
 			<span
 				className={cn("block rounded-[4px]", selected ? "bg-primary" : "bg-muted-foreground")}
+				style={glyphStyle}
+			/>
+		</span>
+	);
+};
+
+const RatioTriggerGlyph: React.FC<{ open: boolean; option: SpecOption | null }> = ({
+	open,
+	option,
+}) => {
+	if (option?.smart) {
+		return (
+			<Sparkles
+				className={cn("size-4 shrink-0", open ? "text-primary" : "text-muted-foreground")}
+				aria-hidden="true"
+			/>
+		);
+	}
+
+	const glyphStyle = ratioGlyphStyle(option?.ratio ?? option?.label ?? "");
+	return (
+		<span className="flex size-5 shrink-0 items-center justify-center" aria-hidden="true">
+			<span
+				data-ratio-glyph="trigger"
+				data-ratio-value={option?.ratio ?? option?.label ?? ""}
+				className={cn(
+					"block rounded-[3px] border-[1.5px] border-current bg-transparent",
+					open ? "text-primary" : "text-foreground",
+				)}
 				style={glyphStyle}
 			/>
 		</span>

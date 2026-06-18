@@ -6,6 +6,7 @@ import { useTauriWindowDrag } from "@/domains/workspace/lib/tauri-window-drag";
 import {
 	agentProjectPath,
 	agentProjectRouteState,
+	getRouteAgentSessionId,
 	getRouteAssetId,
 	getRouteDocumentId,
 	getRouteProjectId,
@@ -64,6 +65,7 @@ export const AgentWorkbenchHeaderActions: React.FC<AgentWorkbenchTopBarProps> = 
 	const workMode = mode ?? storedWorkMode;
 	const shouldShowTabs = showTabs ?? workMode === "agent";
 	const projectId = getRouteProjectId(location.search);
+	const routeAgentSessionId = getRouteAgentSessionId(location.search);
 	const routeDocumentId = getRouteDocumentId(location.search);
 	const routeAssetId = getRouteAssetId(location.search);
 	const selectTab = useCallback(
@@ -73,7 +75,7 @@ export const AgentWorkbenchHeaderActions: React.FC<AgentWorkbenchTopBarProps> = 
 				return;
 			}
 			if (nextTab === "agent") {
-				navigate(agentProjectPath(projectId), {
+				navigate(agentProjectPath(projectId, { agentSessionId: routeAgentSessionId }), {
 					state: agentProjectRouteState("agent"),
 				});
 				return;
@@ -85,7 +87,16 @@ export const AgentWorkbenchHeaderActions: React.FC<AgentWorkbenchTopBarProps> = 
 				});
 			}
 		},
-		[location.pathname, navigate, projectId, routeAssetId, routeDocumentId, setTab, workMode],
+		[
+			location.pathname,
+			navigate,
+			projectId,
+			routeAgentSessionId,
+			routeAssetId,
+			routeDocumentId,
+			setTab,
+			workMode,
+		],
 	);
 
 	if (!shouldShowTabs) return null;

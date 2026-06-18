@@ -288,14 +288,36 @@ export const sameChatMessageList = (left: ChatMessage[], right: ChatMessage[]) =
 	left.length === right.length &&
 	left.every((message, index) => JSON.stringify(message) === JSON.stringify(right[index]));
 
+interface GenerationTaskSnapshot {
+	error?: string;
+	id: string;
+	status?: string;
+}
+
+const pendingGenerationStatuses = new Set([
+	"loading",
+	"streaming",
+	"submitting",
+	"submitted",
+	"running",
+	"pending",
+	"processing",
+	"queued",
+]);
+
 export const removeMessagesBackedByTasks = (
 	messages: ChatMessage[],
-	tasks: Array<{ id: string }>,
+	tasks: GenerationTaskSnapshot[],
 ) => {
-	const taskIDs = new Set(tasks.map((task) => task.id));
+	const taskByID = new Map(tasks.map((task) => [task.id, task]));
 	return messages.filter((message) => {
 		const taskID = taskIDFromChatMessage(message);
-		return !taskID || !taskIDs.has(taskID);
+		if (!taskID) return true;
+
+		const task = taskByID.get(taskID);
+		if (!task) return true;
+
+		return shouldKeepLocalMessageOverTask(message, task);
 	});
 };
 
@@ -307,6 +329,24 @@ const taskIDFromChatMessage = (message: ChatMessage) => {
 	if (message.role === "assistant") return message.id;
 
 	return null;
+};
+
+const shouldKeepLocalMessageOverTask = (message: ChatMessage, task: GenerationTaskSnapshot) => {
+	if (message.role !== "assistant") return false;
+	if (!isTerminalLocalGenerationMessage(message)) return false;
+	if (!pendingGenerationStatuses.has(String(task.status ?? "").toLowerCase())) return false;
+	if (task.error?.trim()) return false;
+
+	return true;
+};
+
+const isTerminalLocalGenerationMessage = (message: ChatMessage) => {
+	const status = String(message.status ?? "").toLowerCase();
+	const isPending = pendingGenerationStatuses.has(status);
+	return (
+		!isPending &&
+		(Boolean(message.status) || Boolean(message.error?.trim()) || Boolean(message.assets?.length))
+	);
 };
 
 export const notifySubmitCallback = <T>(callback: ((event: T) => void) | undefined, event: T) => {

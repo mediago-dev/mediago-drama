@@ -1,7 +1,13 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
-import { agentChatKey, getAgentChatState, getAgentSessionStatus } from "@/domains/agent/api/agent";
+import {
+	agentChatKey,
+	getAgentChatState,
+	getAgentSessionStatus,
+	type AgentSessionStatus,
+} from "@/domains/agent/api/agent";
+import { refreshAgentChatTranscript } from "@/domains/agent/lib/chat-sync";
 import {
 	closeAllResumedAgentEventStreams,
 	resumeAgentSessionEventStream,
@@ -9,21 +15,33 @@ import {
 import {
 	getPersistedAgentSessionId,
 	setPersistedAgentSessionId,
+	useAgentPersistenceStore,
 } from "@/domains/agent/stores/persistence";
+import { readAgentChatCache, writeAgentChatCache } from "@/domains/agent/stores/chat-cache";
 import { selectAgentSessionId, useAgentStore } from "@/domains/agent/stores";
-import { useProjectStore } from "@/domains/projects/stores";
 
 interface AgentStateSyncProps {
 	projectId?: string | null;
+	routeSessionId?: string | null;
+	workspaceReady?: boolean;
 }
 
-export const AgentStateSync: React.FC<AgentStateSyncProps> = ({ projectId }) => {
+export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
+	projectId,
+	routeSessionId,
+	workspaceReady = true,
+}) => {
 	const activeSessionId = useAgentStore(selectAgentSessionId);
-	const [storedSessionId, setStoredSessionId] = useState<string | null>(() =>
-		projectId ? getPersistedAgentSessionId(projectId) : null,
+	const persistedSessionId = useAgentPersistenceStore((state) =>
+		projectId ? (state.sessionIdsByProject[projectId] ?? null) : null,
 	);
-	const sessionIdForLoad = (activeSessionId || storedSessionId)?.trim() || null;
-	const swrKey = projectId ? agentChatKey(projectId, sessionIdForLoad) : null;
+	const [persistenceHydrated, setPersistenceHydrated] = useState(() =>
+		useAgentPersistenceStore.persist.hasHydrated(),
+	);
+	const sessionIdForLoad =
+		(routeSessionId || activeSessionId || persistedSessionId)?.trim() || null;
+	const canLoadChat = workspaceReady && (persistenceHydrated || Boolean(routeSessionId?.trim()));
+	const swrKey = projectId && canLoadChat ? agentChatKey(projectId, sessionIdForLoad) : null;
 	const { data } = useSWR(swrKey, async () => {
 		const requestedProjectId = projectId?.trim() || null;
 		const requestedSessionId = sessionIdForLoad;
@@ -34,18 +52,36 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({ projectId }) => 
 			__requestSessionId: requestedSessionId,
 		};
 	});
-	const hasLoaded = useRef(false);
+	const loadedRequestKey = useRef<string | null>(null);
 	const inactiveNoticeSessionId = useRef<string | null>(null);
 
 	useEffect(() => {
-		hasLoaded.current = false;
+		if (useAgentPersistenceStore.persist.hasHydrated()) {
+			setPersistenceHydrated(true);
+		}
+		return useAgentPersistenceStore.persist.onFinishHydration(() => {
+			setPersistenceHydrated(true);
+		});
+	}, []);
+
+	useEffect(() => {
+		loadedRequestKey.current = null;
 		inactiveNoticeSessionId.current = null;
 		useAgentStore.getState().resetSession();
-		if (!projectId) {
-			setStoredSessionId(null);
-			useAgentStore.getState().hydrateAgentChatState([], []);
+		// Refreshing the Tauri webview wipes the in-memory transcript. Restore the
+		// last cached snapshot for this project so history shows immediately, even
+		// before (or without) the backend chat fetch resolving. The SWR hydration
+		// below overwrites it with authoritative data once it arrives.
+		const cached = projectId ? readAgentChatCache(projectId) : null;
+		if (cached) {
+			useAgentStore.getState().hydrateAgentChatState([], cached.activity, {
+				sessionId: cached.sessionId,
+				rootRunId: cached.rootRunId,
+				conversations: cached.conversations,
+				lastEventId: cached.lastEventId,
+				running: false,
+			});
 		} else {
-			setStoredSessionId(getPersistedAgentSessionId(projectId));
 			useAgentStore.getState().hydrateAgentChatState([], []);
 		}
 		// Resumed streams belong to the project being left; without this they
@@ -56,17 +92,51 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({ projectId }) => 
 	}, [projectId]);
 
 	useEffect(() => {
-		if (!data || hasLoaded.current) return;
-		const currentProjectId = useProjectStore.getState().activeProjectId;
+		if (!projectId) return;
+		// Persist a debounced snapshot of the transcript so it survives a refresh.
+		// Skip while a run is streaming (volatile state, high write frequency) and
+		// skip empty states so an uninitialized store never clobbers a good cache.
+		let timeout: ReturnType<typeof setTimeout> | undefined;
+		const flush = () => {
+			timeout = undefined;
+			const state = useAgentStore.getState();
+			if (state.isRunning) return;
+			if (Object.keys(state.conversations).length === 0 && !state.sessionId) return;
+			writeAgentChatCache({
+				projectId,
+				sessionId: state.sessionId,
+				rootRunId: state.rootRunId,
+				lastEventId: state.lastEventId,
+				conversations: state.conversations,
+				activity: state.activity,
+				updatedAt: new Date().toISOString(),
+			});
+		};
+		const unsubscribe = useAgentStore.subscribe(() => {
+			if (timeout !== undefined) clearTimeout(timeout);
+			timeout = setTimeout(flush, 500);
+		});
+		return () => {
+			if (timeout !== undefined) clearTimeout(timeout);
+			unsubscribe();
+		};
+	}, [projectId]);
+
+	useEffect(() => {
+		if (!data) return;
 		const requestedProjectId = data.__requestProjectId;
-		if (requestedProjectId && currentProjectId && currentProjectId !== requestedProjectId) return;
+		if (requestedProjectId && projectId && requestedProjectId !== projectId) return;
 		if (requestedProjectId && data.projectId && data.projectId !== requestedProjectId) return;
 		const requestedSessionId = data.__requestSessionId;
 		const resolvedSessionId = data.sessionId?.trim() || requestedSessionId;
 		if (requestedSessionId && resolvedSessionId && requestedSessionId !== resolvedSessionId) return;
+		const requestKey = agentStateSyncRequestKey(requestedProjectId, requestedSessionId);
+		if (loadedRequestKey.current === requestKey) return;
 
 		useAgentStore.getState().hydrateAgentChatState(data.messages, data.activity, {
 			sessionId: resolvedSessionId,
+			rootRunId: data.rootRunId,
+			conversations: data.conversations,
 			lastEventId: data.lastEventId,
 			running: data.running,
 			pendingPermissions: data.pendingPermissions,
@@ -77,40 +147,48 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({ projectId }) => 
 		if (requestedProjectId && resolvedSessionId && data.running) {
 			resumeAgentSessionEventStream(resolvedSessionId, requestedProjectId, data.lastEventId);
 		}
-		hasLoaded.current = true;
-	}, [data]);
+		loadedRequestKey.current = requestKey;
+	}, [data, projectId]);
 
 	useEffect(() => {
-		if (!projectId || !hasLoaded.current) return;
+		if (!projectId || !loadedRequestKey.current) return;
 
-		const sessionId = getPersistedAgentSessionId(projectId);
+		const sessionId =
+			routeSessionId?.trim() ||
+			persistedSessionId?.trim() ||
+			useAgentStore.getState().sessionId?.trim() ||
+			getPersistedAgentSessionId(projectId);
 		if (!sessionId) return;
 		if (inactiveNoticeSessionId.current === sessionId) return;
 
 		let cancelled = false;
 		getAgentSessionStatus(sessionId, projectId)
 			.then((status) => {
-				const currentProjectId = useProjectStore.getState().activeProjectId;
 				const currentSessionId = useAgentStore.getState().sessionId?.trim() || null;
-				if (
-					cancelled ||
-					(currentProjectId && currentProjectId !== projectId) ||
-					(currentSessionId && currentSessionId !== sessionId) ||
-					(status.lastStatus !== "interrupted" && status.lastStatus !== "paused")
-				) {
+				if (cancelled || (currentSessionId && currentSessionId !== sessionId)) {
 					return;
 				}
 
-				inactiveNoticeSessionId.current = sessionId;
 				const store = useAgentStore.getState();
-				store.setSessionId(sessionId);
-				store.recordActivity(
-					"runtime",
-					status.lastStatus === "paused" ? "上次运行已暂停" : "上次运行中断",
-					status.lastMessage
-						? `上次有未完成的 run，已在重启后标记为非运行状态。${status.lastMessage}`
-						: "上次有未完成的 run，已在重启后标记为非运行状态；不会自动重启 ACP，可重新发起或忽略。",
-				);
+				if (!status.running) {
+					applyTerminalSessionStatus(status);
+					void refreshAgentChatTranscript(sessionId, projectId).catch(() => {});
+				}
+
+				if (
+					inactiveNoticeSessionId.current !== sessionId &&
+					(status.lastStatus === "interrupted" || status.lastStatus === "paused")
+				) {
+					inactiveNoticeSessionId.current = sessionId;
+					store.setSessionId(sessionId);
+					store.recordActivity(
+						"runtime",
+						status.lastStatus === "paused" ? "上次运行已暂停" : "上次运行中断",
+						status.lastMessage
+							? `上次有未完成的 run，已在重启后标记为非运行状态。${status.lastMessage}`
+							: "上次有未完成的 run，已在重启后标记为非运行状态；不会自动重启 ACP，可重新发起或忽略。",
+					);
+				}
 			})
 			.catch((error) => {
 				// Recovery is best-effort; regular chat hydration remains the source of history.
@@ -122,7 +200,31 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({ projectId }) => 
 		return () => {
 			cancelled = true;
 		};
-	}, [data, projectId]);
+	}, [data, persistenceHydrated, persistedSessionId, projectId, routeSessionId]);
 
 	return null;
+};
+
+const agentStateSyncRequestKey = (projectId?: string | null, sessionId?: string | null) =>
+	`${projectId ?? ""}\u0000${sessionId ?? ""}`;
+
+const applyTerminalSessionStatus = (status: AgentSessionStatus) => {
+	const store = useAgentStore.getState();
+	const message = status.lastMessage?.trim();
+	switch (status.lastStatus) {
+		case "cancelled":
+			store.cancelRun(message || "智能体运行已中断。");
+			return;
+		case "failed":
+			store.failRun(message || "智能体运行失败。");
+			return;
+		case "interrupted":
+		case "paused":
+			store.cancelRun(message || "上次运行已因应用重启暂停。");
+			return;
+		default:
+			if (!store.isRunning) return;
+			store.recordActivity("runtime", "状态已同步", message || "后端运行已结束，已释放输入框。");
+			store.finishRun();
+	}
 };

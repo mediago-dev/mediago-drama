@@ -7,25 +7,40 @@ export const refreshAgentChatTranscript = async (
 	sessionId?: string | null,
 	projectId?: string | null,
 ) => {
+	const hasExplicitProjectId = projectId !== undefined && projectId !== null;
 	const targetProjectId = projectId ?? useProjectStore.getState().activeProjectId;
 	const trimmedSessionId = sessionId?.trim() || null;
-	if (targetProjectId && useProjectStore.getState().activeProjectId !== targetProjectId) return;
+	if (
+		!hasExplicitProjectId &&
+		targetProjectId &&
+		useProjectStore.getState().activeProjectId !== targetProjectId
+	) {
+		return;
+	}
 
 	const localMessages = selectAgentMessages(useAgentStore.getState());
 	const state = await getAgentChatState(targetProjectId, trimmedSessionId);
-	if (targetProjectId && useProjectStore.getState().activeProjectId !== targetProjectId) return;
+	if (targetProjectId && state.projectId && state.projectId !== targetProjectId) return;
+	if (
+		!hasExplicitProjectId &&
+		targetProjectId &&
+		useProjectStore.getState().activeProjectId !== targetProjectId
+	) {
+		return;
+	}
 
 	const resolvedSessionId = state.sessionId?.trim() || trimmedSessionId;
 	const currentSessionId = useAgentStore.getState().sessionId?.trim() || null;
 	if (currentSessionId && resolvedSessionId && currentSessionId !== resolvedSessionId) return;
 
-	const dropsLatestAssistantTurn = transcriptDropsLatestAssistantTurn(
-		localMessages,
-		state.messages,
-	);
-	if (!dropsLatestAssistantTurn) {
+	const dropsLocalContext =
+		transcriptDropsEarlierLocalContext(localMessages, state.messages) ||
+		transcriptDropsLatestLocalTurn(localMessages, state.messages);
+	if (!dropsLocalContext) {
 		useAgentStore.getState().hydrateAgentChatState(state.messages, state.activity, {
 			sessionId: resolvedSessionId,
+			rootRunId: state.rootRunId,
+			conversations: state.conversations,
 			lastEventId: state.lastEventId,
 			running: state.running,
 			pendingPermissions: state.pendingPermissions,
@@ -40,19 +55,32 @@ export const refreshAgentChatTranscript = async (
 	}
 };
 
-const transcriptDropsLatestAssistantTurn = (
+const transcriptDropsEarlierLocalContext = (
+	localMessages: AgentMessage[],
+	transcriptMessages: AgentMessage[],
+) => {
+	const localLatestUserIndex = latestUserIndex(localMessages);
+	if (localLatestUserIndex <= 0) return false;
+
+	const localContext = localMessages.slice(0, localLatestUserIndex).filter(isContextMessage);
+	if (localContext.length === 0) return false;
+	return !isMessageSubsequence(localContext, transcriptMessages.filter(isContextMessage));
+};
+
+const transcriptDropsLatestLocalTurn = (
 	localMessages: AgentMessage[],
 	transcriptMessages: AgentMessage[],
 ) => {
 	const localLatestUserIndex = latestUserIndex(localMessages);
 	if (localLatestUserIndex < 0) return false;
-	const localAssistantAfterUser = hasAssistantMessageAfter(localMessages, localLatestUserIndex);
-	if (!localAssistantAfterUser) return false;
 
 	const latestUserContent = localMessages[localLatestUserIndex]?.content.trim();
 	if (!latestUserContent) return false;
 	const transcriptLatestUserIndex = latestMatchingUserIndex(transcriptMessages, latestUserContent);
-	if (transcriptLatestUserIndex < 0) return false;
+	if (transcriptLatestUserIndex < 0) return true;
+
+	const localAssistantAfterUser = hasAssistantMessageAfter(localMessages, localLatestUserIndex);
+	if (!localAssistantAfterUser) return false;
 	return !hasAssistantMessageAfter(transcriptMessages, transcriptLatestUserIndex);
 };
 
@@ -80,3 +108,32 @@ const hasAssistantMessageAfter = (messages: AgentMessage[], userIndex: number) =
 				(message.kind ?? "message") === "message" &&
 				message.content.trim() !== "",
 		);
+
+const isContextMessage = (message: AgentMessage) => {
+	const content = message.content.trim();
+	if (!content) return false;
+	if (message.role === "user") return true;
+	return (message.kind ?? "message") !== "runtime";
+};
+
+const isMessageSubsequence = (expected: AgentMessage[], actual: AgentMessage[]) => {
+	let actualIndex = 0;
+	for (const message of expected) {
+		const fingerprint = messageFingerprint(message);
+		let found = false;
+		while (actualIndex < actual.length) {
+			const actualMessage = actual[actualIndex];
+			if (actualMessage && messageFingerprint(actualMessage) === fingerprint) {
+				found = true;
+				actualIndex += 1;
+				break;
+			}
+			actualIndex += 1;
+		}
+		if (!found) return false;
+	}
+	return true;
+};
+
+const messageFingerprint = (message: AgentMessage) =>
+	[message.role, message.kind ?? "message", message.content.trim()].join("\u0000");

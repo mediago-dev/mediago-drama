@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	agentProjectPath,
+	getRouteAgentSessionId,
 	getRouteAssetId,
 	getRouteDocumentId,
 	getRouteDocumentWorkbench,
@@ -15,8 +16,11 @@ import {
 
 describe("workbench route", () => {
 	it("identifies query-scoped route ids", () => {
-		const search = "?projectId=project-1&documentId=doc-1&workbench=timeline";
+		const search =
+			"?projectId=project-1&documentId=doc-1&workbench=timeline&agentSessionId=session-1";
 		expect(getRouteProjectId(search)).toBe("project-1");
+		expect(getRouteAgentSessionId(search)).toBe("session-1");
+		expect(getRouteAgentSessionId("?agentSession=session-legacy")).toBe("session-legacy");
 		expect(getRouteDocumentId(search)).toBe("doc-1");
 		expect(getRouteDocumentWorkbench(search)).toBe("timeline");
 		expect(getRouteProjectId("")).toBeNull();
@@ -60,6 +64,9 @@ describe("workbench route", () => {
 		);
 		expect(agentProjectPath("project-1", { documentId: "doc-1", workbench: "timeline" })).toBe(
 			"/agent?projectId=project-1&documentId=doc-1&workbench=timeline",
+		);
+		expect(agentProjectPath("project-1", { agentSessionId: "session-1" })).toBe(
+			"/agent?projectId=project-1&agentSessionId=session-1",
 		);
 		expect(studioTabPath("image", { conversationId: "session-1" })).toBe(
 			"/studio/image?conversation=session-1",

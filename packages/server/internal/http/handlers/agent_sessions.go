@@ -89,6 +89,7 @@ func (handler AgentSessions) HandleCreateSession(context *gin.Context) {
 
 // HandleListAgentSessions lists agent sessions.
 func (handler AgentSessions) HandleListAgentSessions(context *gin.Context) {
+	writeNoStoreHeaders(context)
 	projectID, ok := requiredProjectID(context)
 	if !ok {
 		return
@@ -100,6 +101,7 @@ func (handler AgentSessions) HandleListAgentSessions(context *gin.Context) {
 
 // HandleAgentSessionStatus returns session status.
 func (handler AgentSessions) HandleAgentSessionStatus(context *gin.Context) {
+	writeNoStoreHeaders(context)
 	sessionID, ok := requiredPathParam(context, "sessionId", "sessionId")
 	if !ok {
 		return

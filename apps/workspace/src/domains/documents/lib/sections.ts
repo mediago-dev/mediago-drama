@@ -107,7 +107,9 @@ export const findMarkdownSectionEndLine = (
 ) => {
 	for (let index = headingIndex + 1; index < lines.length; index += 1) {
 		const match = headingLinePattern.exec(lines[index]);
-		if (match && match[1].length <= headingLevel) return index;
+		if (match && match[1].length <= headingLevel) {
+			return sectionBoundaryBeforeHeadingLine(lines, headingIndex, index);
+		}
 	}
 
 	return lines.length;
@@ -172,6 +174,21 @@ const findMarkdownSectionHeadingLineByHeading = (
 	}
 
 	return -1;
+};
+
+const sectionBoundaryBeforeHeadingLine = (
+	lines: string[],
+	headingIndex: number,
+	nextHeadingIndex: number,
+) => {
+	for (let index = nextHeadingIndex - 1; index > headingIndex; index -= 1) {
+		const line = lines[index];
+		if (!line.trim()) continue;
+		if (sectionIdFromCommentLine(line)) return index;
+		break;
+	}
+
+	return nextHeadingIndex;
 };
 
 const randomSectionIdPart = () => {

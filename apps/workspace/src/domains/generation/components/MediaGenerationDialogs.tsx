@@ -350,7 +350,10 @@ export const ReferenceSelectionDialog: React.FC<{
 	requiresReference: boolean;
 	selectableKinds: Set<MediaAsset["kind"]>;
 	selectedAssetIds: string[];
+	selectedShortcutAssetIds?: string[];
+	shortcutGroups?: ReferenceSelectionShortcutGroup[];
 	title?: string;
+	onToggleShortcutReference?: (asset: MediaAsset) => void;
 }> = ({
 	disabled,
 	entries,
@@ -367,7 +370,10 @@ export const ReferenceSelectionDialog: React.FC<{
 	requiresReference,
 	selectableKinds,
 	selectedAssetIds,
+	selectedShortcutAssetIds = [],
+	shortcutGroups = [],
 	title = "选择参考图",
+	onToggleShortcutReference,
 }) => {
 	const [kindFilter, setKindFilter] = useState<ReferenceKindFilter>("all");
 	const options = useMemo(
@@ -385,6 +391,22 @@ export const ReferenceSelectionDialog: React.FC<{
 	const visibleOptions = useMemo(
 		() => (kindFilter === "all" ? options : options.filter((option) => option.kind === kindFilter)),
 		[kindFilter, options],
+	);
+	const selectedShortcutIDSet = useMemo(
+		() => new Set(selectedShortcutAssetIds),
+		[selectedShortcutAssetIds],
+	);
+	const visibleShortcutGroups = useMemo(
+		() =>
+			shortcutGroups
+				.map((group) => ({
+					...group,
+					items: group.items.filter((item) =>
+						kindFilter === "all" ? true : item.asset.kind === kindFilter,
+					),
+				}))
+				.filter((group) => group.items.length > 0),
+		[kindFilter, shortcutGroups],
 	);
 
 	useEffect(() => {
@@ -476,6 +498,17 @@ export const ReferenceSelectionDialog: React.FC<{
 							simple
 							onRemove={onRemoveReference}
 						/>
+						{visibleShortcutGroups.map((group) => (
+							<ReferenceShortcutGroup
+								key={group.id}
+								disabled={disabled}
+								group={group}
+								selectableKinds={selectableKinds}
+								selectedAssetIds={selectedAssetIds}
+								selectedShortcutAssetIds={selectedShortcutIDSet}
+								onToggleReference={onToggleShortcutReference ?? onToggleReference}
+							/>
+						))}
 						<Tabs
 							value={kindFilter}
 							onValueChange={(value) => setKindFilter(value as ReferenceKindFilter)}
@@ -532,6 +565,19 @@ export const ReferenceSelectionDialog: React.FC<{
 	);
 };
 
+export interface ReferenceSelectionShortcutItem {
+	asset: MediaAsset;
+	subtitle?: string;
+	title: string;
+}
+
+export interface ReferenceSelectionShortcutGroup {
+	description?: string;
+	id: string;
+	items: ReferenceSelectionShortcutItem[];
+	title: string;
+}
+
 type ReferenceKindFilter = "all" | "video" | "image";
 
 const referenceKindTabs: Array<{ label: string; value: ReferenceKindFilter }> = [
@@ -545,6 +591,98 @@ const referenceKindFilterLabel = (value: ReferenceKindFilter) => {
 	if (value === "image") return "图片";
 	return "参考";
 };
+
+const ReferenceShortcutGroup: React.FC<{
+	disabled: boolean;
+	group: ReferenceSelectionShortcutGroup;
+	onToggleReference: (asset: MediaAsset) => void;
+	selectableKinds: Set<MediaAsset["kind"]>;
+	selectedAssetIds: string[];
+	selectedShortcutAssetIds: Set<string>;
+}> = ({
+	disabled,
+	group,
+	onToggleReference,
+	selectableKinds,
+	selectedAssetIds,
+	selectedShortcutAssetIds,
+}) => (
+	<section className="grid gap-3 rounded-sm border border-border bg-muted/35 p-3">
+		<div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+			<div className="min-w-0">
+				<p className="truncate text-xs font-semibold text-foreground">{group.title}</p>
+				{group.description ? (
+					<p className="mt-1 truncate text-2xs text-muted-foreground">{group.description}</p>
+				) : null}
+			</div>
+			<p className="shrink-0 text-2xs text-muted-foreground">{group.items.length} 个</p>
+		</div>
+		<div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">
+			{group.items.map((item) => {
+				const supported = selectableKinds.has(item.asset.kind);
+				const selectable = !disabled && supported;
+				const selected =
+					selectedAssetIds.includes(item.asset.id) || selectedShortcutAssetIds.has(item.asset.id);
+
+				return (
+					<ReferenceShortcutCard
+						key={`${group.id}:${item.asset.id}`}
+						item={item}
+						selectable={selectable}
+						selected={selected}
+						supported={supported}
+						onToggle={() => onToggleReference(item.asset)}
+					/>
+				);
+			})}
+		</div>
+	</section>
+);
+
+const ReferenceShortcutCard: React.FC<{
+	item: ReferenceSelectionShortcutItem;
+	onToggle: () => void;
+	selectable: boolean;
+	selected: boolean;
+	supported: boolean;
+}> = ({ item, onToggle, selectable, selected, supported }) => (
+	<button
+		type="button"
+		disabled={!selectable}
+		className={cn(
+			"min-w-0 overflow-hidden rounded-sm border bg-card text-left transition-colors",
+			selected ? "border-primary ring-1 ring-primary" : "border-border",
+			selectable ? "hover:border-input" : "opacity-60",
+		)}
+		onClick={onToggle}
+	>
+		<div className="relative aspect-[4/3] bg-muted">
+			{item.asset.kind === "video" ? (
+				<GenerationVideoThumbnail source={item.asset.url} />
+			) : (
+				<img src={item.asset.url} alt="" className="size-full object-cover" />
+			)}
+			{item.asset.kind === "video" ? (
+				<span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-sm bg-background/90 px-1.5 py-1 text-2xs font-medium text-foreground shadow-sm">
+					<Film className="size-3" />
+					视频
+				</span>
+			) : null}
+			{selected ? (
+				<span className="absolute right-1.5 top-1.5 flex items-center gap-1 rounded-sm bg-primary px-1.5 py-1 text-xs font-medium text-primary-foreground shadow-sm">
+					<Check className="size-3" />
+					已选
+				</span>
+			) : null}
+		</div>
+		<div className="grid gap-1 p-2">
+			<p className="truncate text-xs font-medium text-foreground">{item.title}</p>
+			<p className="truncate text-2xs text-muted-foreground">
+				{supported ? (item.subtitle ?? "可作为参考") : "当前模型不可用"}
+			</p>
+		</div>
+	</button>
+);
 
 const GeneratedReferenceOptionCard: React.FC<{
 	option: GeneratedReferenceOption;

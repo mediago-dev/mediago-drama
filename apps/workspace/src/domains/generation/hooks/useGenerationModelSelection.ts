@@ -229,14 +229,15 @@ export const useGenerationModelSelection = ({
 	}, [generationPreferences, mutatePreferences, preferenceScopeId]);
 
 	useEffect(() => {
+		writeGenerationModelSelection({
+			familyIds: selectedFamilyIds,
+			routeIds: selectedRouteIds,
+			routeParams,
+			versionIds: selectedVersionIds,
+		});
+		writeGenerationStylePresetId(stylePresetId);
+
 		if (!preferenceScopeId) {
-			writeGenerationModelSelection({
-				familyIds: selectedFamilyIds,
-				routeIds: selectedRouteIds,
-				routeParams,
-				versionIds: selectedVersionIds,
-			});
-			writeGenerationStylePresetId(stylePresetId);
 			return;
 		}
 		if (
@@ -392,8 +393,10 @@ export const useGenerationModelSelection = ({
 
 	const rememberSelectedModel = useCallback(() => {
 		const selection = currentModelSelection();
+		writeGenerationModelSelection(selection);
+		writeGenerationStylePresetId(stylePresetId);
+
 		if (!preferenceScopeId) {
-			writeGenerationModelSelection(selection);
 			return;
 		}
 

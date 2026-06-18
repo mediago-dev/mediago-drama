@@ -1,6 +1,7 @@
 import { Bot, ChevronDown, History, Loader2, Plus } from "lucide-react";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import useSWR from "swr";
 import { useSWRConfig } from "swr";
 import {
@@ -23,22 +24,75 @@ import {
 } from "@/domains/agent/stores";
 import { setPersistedAgentSessionId } from "@/domains/agent/stores/persistence";
 import { useProjectStore } from "@/domains/projects/stores";
+import {
+	agentProjectPath,
+	agentProjectRouteState,
+	getRouteProjectId,
+	isAgentRoute,
+} from "@/domains/workspace/lib/workbench-route";
 import { cn } from "@/shared/lib/utils";
 
 export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 	const isRunning = useAgentStore(selectAgentIsRunning);
 	const activeSessionId = useAgentStore(selectAgentSessionId);
 	const composerSeed = useAgentStore(selectAgentComposerSeed);
-	const projectId = useProjectStore((state) => state.activeProjectId);
+	const storedProjectId = useProjectStore((state) => state.activeProjectId);
+	const location = useLocation();
+	const navigate = useNavigate();
+	const routeProjectId = getRouteProjectId(location.search);
+	const projectId = routeProjectId ?? storedProjectId;
+	const currentRouteProjectIdRef = useRef(routeProjectId);
 	const toast = useToast();
 	const { mutate } = useSWRConfig();
 	const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 	const [isCreatingSession, setIsCreatingSession] = useState(false);
 	const historyMenuRef = useRef<HTMLDivElement>(null);
+	currentRouteProjectIdRef.current = routeProjectId;
+
+	const isCurrentAgentProject = useCallback((requestedProjectId: string | null) => {
+		const currentRouteProjectId = currentRouteProjectIdRef.current;
+		if (currentRouteProjectId) return currentRouteProjectId === requestedProjectId;
+		return useProjectStore.getState().activeProjectId === requestedProjectId;
+	}, []);
+
+	const syncAgentSessionUrl = useCallback(
+		(sessionId: string, options: { cleanAgentRoute?: boolean; replace?: boolean } = {}) => {
+			const trimmedSessionId = sessionId.trim();
+			if (!projectId || !trimmedSessionId || !isAgentRoute(location.pathname)) return;
+
+			if (options.cleanAgentRoute) {
+				const nextUrl = agentProjectPath(projectId, { agentSessionId: trimmedSessionId });
+				if (nextUrl === `${location.pathname}${location.search}`) return;
+				navigate(nextUrl, {
+					replace: options.replace ?? false,
+					state: agentProjectRouteState("agent"),
+				});
+				return;
+			}
+
+			const params = new URLSearchParams(location.search);
+			if (params.has("documentId") || params.has("assetId")) return;
+			params.set("projectId", projectId);
+			params.set("agentSessionId", trimmedSessionId);
+			const nextUrl = `${location.pathname}?${params.toString()}`;
+			if (nextUrl === `${location.pathname}${location.search}`) return;
+
+			navigate(nextUrl, {
+				replace: options.replace ?? true,
+				state: location.state,
+			});
+		},
+		[location.pathname, location.search, location.state, navigate, projectId],
+	);
 
 	useEffect(() => {
 		if (composerSeed) setIsHistoryOpen(false);
 	}, [composerSeed]);
+
+	useEffect(() => {
+		if (!activeSessionId) return;
+		syncAgentSessionUrl(activeSessionId, { replace: true });
+	}, [activeSessionId, syncAgentSessionUrl]);
 
 	useEffect(() => {
 		if (!isHistoryOpen) return;
@@ -67,7 +121,7 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 		setIsCreatingSession(true);
 		try {
 			const session = await createAgentSession(requestedProjectId, true);
-			if (!isCurrentProject(requestedProjectId)) return;
+			if (!isCurrentAgentProject(requestedProjectId)) return;
 			const state: AgentChatStatePayload = {
 				projectId: requestedProjectId ?? undefined,
 				sessionId: session.sessionId,
@@ -81,13 +135,14 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 				running: false,
 			});
 			if (requestedProjectId) setPersistedAgentSessionId(requestedProjectId, session.sessionId);
+			syncAgentSessionUrl(session.sessionId, { cleanAgentRoute: true, replace: false });
 			setIsHistoryOpen(false);
 			void mutate(agentChatKey(requestedProjectId, session.sessionId), state, {
 				revalidate: false,
 			});
 			void mutate(agentSessionsKey(requestedProjectId));
 		} catch (err) {
-			if (isCurrentProject(requestedProjectId)) {
+			if (isCurrentAgentProject(requestedProjectId)) {
 				toast.error("新建会话失败", { description: getErrorMessage(err) });
 			}
 		} finally {
@@ -138,6 +193,10 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 						{isHistoryOpen ? (
 							<AgentSessionHistoryMenu
 								activeSessionId={activeSessionId}
+								isCurrentProject={isCurrentAgentProject}
+								onSessionSelected={(sessionId) =>
+									syncAgentSessionUrl(sessionId, { cleanAgentRoute: true, replace: false })
+								}
 								projectId={projectId}
 								onClose={() => setIsHistoryOpen(false)}
 							/>
@@ -165,9 +224,11 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 
 const AgentSessionHistoryMenu: React.FC<{
 	activeSessionId: string | null;
+	isCurrentProject: (projectId: string | null) => boolean;
+	onSessionSelected?: (sessionId: string) => void;
 	projectId: string | null;
 	onClose: () => void;
-}> = ({ activeSessionId, projectId, onClose }) => {
+}> = ({ activeSessionId, isCurrentProject, onSessionSelected, projectId, onClose }) => {
 	const toast = useToast();
 	const { mutate } = useSWRConfig();
 	const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
@@ -200,11 +261,14 @@ const AgentSessionHistoryMenu: React.FC<{
 
 			useAgentStore.getState().hydrateAgentChatState(state.messages, state.activity, {
 				sessionId: resolvedSessionId,
+				rootRunId: state.rootRunId,
+				conversations: state.conversations,
 				lastEventId: state.lastEventId,
 				running: state.running,
 				pendingPermissions: state.pendingPermissions,
 			});
 			setPersistedAgentSessionId(requestedProjectId, resolvedSessionId);
+			onSessionSelected?.(resolvedSessionId);
 			void mutate(agentChatKey(requestedProjectId, resolvedSessionId), state, {
 				revalidate: false,
 			});
@@ -316,9 +380,6 @@ const shortSessionID = (sessionId: string) => {
 	if (sessionId.length <= 16) return sessionId;
 	return `${sessionId.slice(0, 12)}…`;
 };
-
-const isCurrentProject = (projectId: string | null) =>
-	useProjectStore.getState().activeProjectId === projectId;
 
 const sessionStatusLabel = (session: AgentSessionSummary) => {
 	if (session.running) return "运行中";

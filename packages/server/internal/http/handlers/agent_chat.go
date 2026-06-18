@@ -32,6 +32,7 @@ func NewAgentChat(store AgentChatStore, pendingPermissions ...func(sessionID str
 
 // HandleGetAgentChat returns chat state.
 func (handler AgentChat) HandleGetAgentChat(context *gin.Context) {
+	writeNoStoreHeaders(context)
 	projectID, ok := requiredProjectID(context)
 	if !ok {
 		return

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	GenerationModalShell,
+	isPhotoViewPortalOpen,
 	isPhotoViewPortalTarget,
 } from "@/domains/documents/components/GenerationModalShell";
 
@@ -25,6 +26,16 @@ describe("GenerationModalShell", () => {
 		expect(isPhotoViewPortalTarget(closeLabel)).toBe(true);
 		expect(isPhotoViewPortalTarget(document.createElement("button"))).toBe(false);
 		expect(isPhotoViewPortalTarget(null)).toBe(false);
+	});
+
+	it("recognizes when the PhotoView portal is open", () => {
+		expect(isPhotoViewPortalOpen()).toBe(false);
+
+		const photoViewPortal = document.createElement("div");
+		photoViewPortal.className = "PhotoView-Portal";
+		document.body.append(photoViewPortal);
+
+		expect(isPhotoViewPortalOpen()).toBe(true);
 	});
 
 	it("keeps the generation modal open when PhotoView emits an outside pointer event", async () => {
@@ -57,5 +68,50 @@ describe("GenerationModalShell", () => {
 
 		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 		expect(screen.getByText("生成内容").textContent).toBe("生成内容");
+	});
+
+	it("keeps the generation modal open when PhotoView handles escape", async () => {
+		const onOpenChange = vi.fn();
+		const photoViewPortal = document.createElement("div");
+
+		photoViewPortal.className = "PhotoView-Portal";
+		document.body.append(photoViewPortal);
+
+		render(
+			<GenerationModalShell
+				open
+				title="生成视觉素材"
+				titleId="section-generation-title"
+				onOpenChange={onOpenChange}
+			>
+				<div>生成内容</div>
+			</GenerationModalShell>,
+		);
+
+		await waitForRadixOutsideListeners();
+		fireEvent.keyDown(document, { key: "Escape" });
+
+		await waitFor(() => expect(onOpenChange).not.toHaveBeenCalled());
+		expect(screen.getByText("生成内容").textContent).toBe("生成内容");
+	});
+
+	it("keeps the default escape close when no PhotoView preview is open", async () => {
+		const onOpenChange = vi.fn();
+
+		render(
+			<GenerationModalShell
+				open
+				title="生成视觉素材"
+				titleId="section-generation-title"
+				onOpenChange={onOpenChange}
+			>
+				<div>生成内容</div>
+			</GenerationModalShell>,
+		);
+
+		await waitForRadixOutsideListeners();
+		fireEvent.keyDown(document, { key: "Escape" });
+
+		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 	});
 });

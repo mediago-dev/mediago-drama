@@ -372,10 +372,9 @@ export const createAgentLifecycleActions = ({ set }: AgentActionContext): Lifecy
 				status: "complete",
 				metadata,
 			};
-			const conversation = createConversation(pendingRootRunId, {
-				name: "主智能体",
+			const conversation = createPendingRootConversation(state, {
 				status: "completed",
-				messages: [message],
+				message,
 			});
 			const conversations = { ...state.conversations, [pendingRootRunId]: conversation };
 
@@ -422,10 +421,9 @@ export const createAgentLifecycleActions = ({ set }: AgentActionContext): Lifecy
 				status: "complete",
 				metadata,
 			};
-			const conversation = createConversation(pendingRootRunId, {
-				name: "主智能体",
+			const conversation = createPendingRootConversation(state, {
 				status: "running",
-				messages: [message],
+				message,
 			});
 			const conversations = { ...state.conversations, [pendingRootRunId]: conversation };
 
@@ -496,6 +494,31 @@ export const createAgentLifecycleActions = ({ set }: AgentActionContext): Lifecy
 		set({ runtimeMode });
 	},
 });
+
+const createPendingRootConversation = (
+	state: {
+		conversations: Record<string, AgentConversationState>;
+		rootRunId: string | null;
+	},
+	{
+		message,
+		status,
+	}: {
+		message: AgentMessage;
+		status: AgentConversationState["status"];
+	},
+) => {
+	const currentRoot = rootConversation(state.conversations, state.rootRunId);
+	return createConversation(pendingRootRunId, {
+		children: currentRoot?.children ?? [],
+		createdAt: currentRoot?.createdAt,
+		messages: [...(currentRoot?.messages ?? []), message],
+		name: currentRoot?.name ?? "主智能体",
+		prompt: currentRoot?.prompt,
+		status,
+		streamingMessageId: null,
+	});
+};
 
 const normalizePermissionRequests = (
 	requests: AgentRuntimeACPPermissionRequest[],

@@ -167,13 +167,29 @@ export const mergeConversationMessages = (
 			indexes.set(message.id, merged.length);
 			merged.push(message);
 		} else {
-			merged[existingIndex] = message;
+			const existing = merged[existingIndex];
+			merged[existingIndex] = shouldKeepLocalGenerationMessage(existing, message)
+				? existing
+				: message;
 		}
 	}
 
-	merged.sort((left, right) => sortableTimeOf(left) - sortableTimeOf(right));
+	merged.sort(compareConversationMessages);
 
 	return merged;
+};
+
+const compareConversationMessages = (left: ChatMessage, right: ChatMessage) => {
+	const timeDifference = sortableTimeOf(left) - sortableTimeOf(right);
+	if (timeDifference !== 0) return timeDifference;
+
+	const leftTaskId = taskIdFromChatMessage(left);
+	const rightTaskId = taskIdFromChatMessage(right);
+	if (leftTaskId && leftTaskId === rightTaskId && left.role !== right.role) {
+		return left.role === "user" ? -1 : 1;
+	}
+
+	return 0;
 };
 
 export const scopedGenerationHistoryStorageKey = "mediago_drama_section_generation_history";
@@ -281,6 +297,7 @@ export const syncScopedMessagesWithTasks = (
 
 		const task = taskById.get(taskId);
 		if (!task) return message;
+		if (shouldKeepLocalMessageOverTask(message, task)) return message;
 
 		const nextMessage =
 			message.role === "user"
@@ -294,6 +311,22 @@ export const syncScopedMessagesWithTasks = (
 
 	return changed ? nextMessages : messages;
 };
+
+const shouldKeepLocalGenerationMessage = (localMessage: ChatMessage, historyMessage: ChatMessage) =>
+	localMessage.role === "assistant" &&
+	historyMessage.role === "assistant" &&
+	isTerminalLocalGenerationMessage(localMessage) &&
+	isPendingGenerationMessage(historyMessage);
+
+const shouldKeepLocalMessageOverTask = (message: ChatMessage, task: GenerationTask) =>
+	message.role === "assistant" &&
+	isTerminalLocalGenerationMessage(message) &&
+	pendingGenerationStatuses.has(String(task.status ?? "").toLowerCase()) &&
+	!task.error?.trim();
+
+const isTerminalLocalGenerationMessage = (message: ChatMessage) =>
+	!isPendingGenerationMessage(message) &&
+	(Boolean(message.status) || Boolean(message.error?.trim()) || Boolean(message.assets?.length));
 
 const userMessageFromTask = (
 	task: GenerationTask,
@@ -313,6 +346,12 @@ const userMessageFromTask = (
 const taskIdFromUserMessageId = (id: string) => {
 	const suffix = ":prompt";
 	return id.endsWith(suffix) ? id.slice(0, -suffix.length) : null;
+};
+
+const taskIdFromChatMessage = (message: ChatMessage) => {
+	if (message.role === "user") return taskIdFromUserMessageId(message.id);
+	if (message.role === "assistant") return message.id;
+	return null;
 };
 
 const sameChatMessage = (left: ChatMessage, right: ChatMessage) =>

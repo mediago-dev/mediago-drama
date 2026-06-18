@@ -52,6 +52,20 @@ describe("AgentWorkbenchHeaderActions", () => {
 		expect(screen.getByTestId("location").dataset.projectView).toBe("agent");
 	});
 
+	it("keeps the route agent session when switching back to agent", async () => {
+		useAgentLayoutStore.getState().setTab("document");
+
+		renderHeaderActions("/agent?projectId=project-1&assetId=asset-1&agentSessionId=session-1");
+		fireEvent.click(screen.getByRole("button", { name: "agent" }));
+
+		await waitFor(() =>
+			expect(screen.getByTestId("location").dataset.path).toBe(
+				"/agent?projectId=project-1&agentSessionId=session-1",
+			),
+		);
+		expect(screen.getByTestId("location").dataset.projectView).toBe("agent");
+	});
+
 	it("marks the clean project route as overview when switching to document", async () => {
 		useAgentLayoutStore.getState().setTab("agent");
 

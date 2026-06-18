@@ -106,6 +106,48 @@ describe("DocumentSectionGenerator", () => {
 		expect(screen.getByTestId("reference-asset-ids").textContent).toBe("ref-a");
 		expect(capturedWorkspaceProps?.extraPrompt).toBeUndefined();
 	});
+
+	it("passes selected document node images as reference shortcuts", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [
+				baseDocument({
+					id: "story-doc",
+					title: "故事",
+					content: [
+						"## 第 01 组",
+						"",
+						"动作：沈阔入水。",
+						"",
+						"![第 01 组](</api/media/assets/scene-a/content>)",
+						"",
+						"## 第 02 组",
+						"",
+						"动作：林夜回头。",
+						"",
+						"![第 02 组](</api/media/assets/scene-b/content>)",
+					].join("\n"),
+				}),
+			],
+		});
+
+		render(
+			<DocumentSectionGenerator
+				section={section}
+				selectedAssetKeys={[]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleImage={vi.fn()}
+			/>,
+		);
+
+		const group = capturedWorkspaceProps?.referenceShortcutGroups?.[0];
+		expect(group?.title).toBe("已选节点图片");
+		expect(group?.items.map((item) => item.title)).toEqual(["第 01 组", "第 02 组"]);
+		expect(group?.items.map((item) => item.subtitle)).toEqual(["第 01 组", "第 02 组"]);
+	});
 });
 
 const resolveReferencePreviewAssets = (props: MediaGenerationWorkspaceProps) => {

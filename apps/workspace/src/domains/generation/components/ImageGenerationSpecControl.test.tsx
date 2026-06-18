@@ -170,6 +170,21 @@ describe("ImageGenerationSpecControl", () => {
 		expect(onChange).toHaveBeenCalledWith("imageSize", "4K");
 	});
 
+	it("renders the trigger icon with the selected aspect ratio", () => {
+		const spec = resolveImageGenerationSpec(splitParams, {
+			aspectRatio: "16:9",
+			imageSize: "2K",
+		});
+		expect(spec).not.toBeNull();
+
+		const { container } = render(<ImageGenerationSpecControl spec={spec!} onChange={vi.fn()} />);
+		const glyph = container.querySelector<HTMLElement>('[data-ratio-glyph="trigger"]');
+
+		expect(glyph?.dataset.ratioValue).toBe("16:9");
+		expect(glyph?.style.aspectRatio).toBe("16 / 9");
+		expect(glyph?.style.width).toBe("var(--generation-size-ratio-glyph-max)");
+	});
+
 	it("disables unavailable combos and jumps resolution when ratio changes", async () => {
 		const onChange = vi.fn();
 		const spec = resolveImageGenerationSpec(

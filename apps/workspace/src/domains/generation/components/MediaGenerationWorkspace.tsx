@@ -30,6 +30,7 @@ import { MediaGenerationInputPanel } from "@/domains/generation/components/Media
 import { MediaGenerationWorkspaceDialogs } from "@/domains/generation/components/MediaGenerationWorkspaceDialogs";
 import {
 	PrimaryParamControl,
+	type ReferenceSelectionShortcutGroup,
 	SecondaryParamsDropdown,
 } from "@/domains/generation/components/MediaGenerationDialogs";
 import { LayeredPromptComposer } from "@/domains/generation/components/LayeredPromptComposer";
@@ -110,6 +111,7 @@ export interface MediaGenerationWorkspaceProps {
 	promptPlaceholder?: string;
 	referenceBadges?: Record<string, string> | ((prompt: string) => Record<string, string>);
 	referencePreviewAssets?: MediaAsset[] | ((prompt: string) => MediaAsset[]);
+	referenceShortcutGroups?: ReferenceSelectionShortcutGroup[];
 	renderPromptEditor?: (props: PromptEditorProps) => React.ReactNode;
 	sectionId?: string | null;
 	taskType?: GenerationTaskType;
@@ -149,6 +151,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	promptPlaceholder,
 	referenceBadges,
 	referencePreviewAssets,
+	referenceShortcutGroups = [],
 	renderPromptEditor,
 	sectionId,
 	taskType,
@@ -160,17 +163,26 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const toast = useToast();
 	const [inlineHistoryReferences, setInlineHistoryReferences] = useState<MediaAsset[]>([]);
 	const [inlineResultReferences, setInlineResultReferences] = useState<MediaAsset[]>([]);
+	const [inlineShortcutReferences, setInlineShortcutReferences] = useState<MediaAsset[]>([]);
 	const [referenceDialogOpen, setReferenceDialogOpen] = useState(false);
 	const syncedPromptEntryIdRef = useRef<string | null>(null);
 	const workspaceRef = useRef<HTMLFormElement>(null);
 	const rightPaneRef = useRef<HTMLDivElement>(null);
 	const inlineReferenceAssets = useMemo(
-		() => mergeReferencePreviewAssets(inlineHistoryReferences, inlineResultReferences),
-		[inlineHistoryReferences, inlineResultReferences],
+		() =>
+			mergeReferencePreviewAssets(
+				mergeReferencePreviewAssets(inlineHistoryReferences, inlineResultReferences),
+				inlineShortcutReferences,
+			),
+		[inlineHistoryReferences, inlineResultReferences, inlineShortcutReferences],
 	);
 	const inlineReferenceUrls = useMemo(
 		() => inlineReferenceAssets.map((asset) => referenceUrlFromGenerationSource(asset.url)),
 		[inlineReferenceAssets],
+	);
+	const inlineShortcutReferenceIds = useMemo(
+		() => inlineShortcutReferences.map((asset) => asset.id),
+		[inlineShortcutReferences],
 	);
 	const workspaceExtraReferenceUrls = useCallback(
 		(prompt: string) =>
@@ -240,6 +252,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		sectionId,
 		taskType,
 		uploadIdPrefix,
+		useRawPrompt: true,
 	});
 	const resolvedMediaAssetProjectId =
 		mediaAssetProjectId === undefined ? (projectId?.trim() ?? "") : (mediaAssetProjectId ?? "");
@@ -455,11 +468,19 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				return;
 			}
 
+			if (inlineShortcutReferences.some((reference) => reference.id === asset.id)) {
+				setInlineShortcutReferences((current) =>
+					current.filter((reference) => reference.id !== asset.id),
+				);
+				return;
+			}
+
 			onRemoveReferencePreview?.(asset);
 		},
 		[
 			inlineHistoryReferences,
 			inlineResultReferences,
+			inlineShortcutReferences,
 			onRemoveReferencePreview,
 			selectedReferenceAssetIds,
 			ws,
@@ -508,6 +529,27 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			ws.mediaAssets,
 			ws.selectReferenceAsset,
 		],
+	);
+	const toggleShortcutReference = useCallback(
+		(asset: MediaAsset) => {
+			if (!canSelectReferenceImages) {
+				toast.warning(`当前供应商不支持${referenceButtonLabel}`, {
+					description:
+						kind === "video"
+							? "请切换到支持参考素材的视频供应商后再使用参考。"
+							: "请切换到支持图生图的供应商后再使用参考图。",
+				});
+				return;
+			}
+			if (!ws.selectableReferenceKinds.has(asset.kind)) return;
+
+			setInlineShortcutReferences((current) =>
+				current.some((reference) => reference.id === asset.id)
+					? current.filter((reference) => reference.id !== asset.id)
+					: [...current, asset],
+			);
+		},
+		[canSelectReferenceImages, kind, referenceButtonLabel, toast, ws.selectableReferenceKinds],
 	);
 
 	useEffect(() => {
@@ -802,9 +844,12 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 
 			<MediaGenerationWorkspaceDialogs
 				generationEntries={generationEntries}
+				inlineReferenceAssetIds={inlineShortcutReferenceIds}
 				referenceDialogOpen={referenceDialogOpen}
+				referenceShortcutGroups={referenceShortcutGroups}
 				workspace={ws}
 				onReferenceDialogOpenChange={setReferenceDialogOpen}
+				onToggleInlineReference={toggleShortcutReference}
 			/>
 		</form>
 	);

@@ -120,6 +120,61 @@ describe("ReferenceSelectionDialog", () => {
 
 		expect(screen.getByRole("dialog", { name: "选择参考素材" })).toBeTruthy();
 	});
+
+	it("renders selected node image shortcuts with section titles", () => {
+		const onToggleShortcutReference = vi.fn();
+		const nodeImage = mediaAsset({
+			id: "node-image-1",
+			filename: "node-image.png",
+			url: "/api/v1/media-assets/node-image-1/content",
+		});
+
+		render(
+			<ReferenceSelectionDialog
+				disabled={false}
+				entries={[]}
+				inputId="reference-upload"
+				isUploading={false}
+				mediaAssets={[]}
+				open
+				references={[]}
+				requiresReference={false}
+				selectableKinds={new Set(["image"])}
+				selectedAssetIds={[]}
+				selectedShortcutAssetIds={["node-image-1"]}
+				shortcutGroups={[
+					{
+						description: "来自《故事》",
+						id: "selected-nodes",
+						title: "已选节点图片",
+						items: [
+							{
+								asset: nodeImage,
+								subtitle: "第 1 张",
+								title: "第 01 组",
+							},
+						],
+					},
+				]}
+				onOpenChange={vi.fn()}
+				onRefreshAssets={vi.fn()}
+				onRemoveReference={vi.fn()}
+				onToggleReference={vi.fn()}
+				onToggleShortcutReference={onToggleShortcutReference}
+				onUpload={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByText("已选节点图片")).toBeTruthy();
+		expect(screen.getByText("来自《故事》")).toBeTruthy();
+		expect(screen.getByText("第 01 组")).toBeTruthy();
+		expect(screen.getByText("第 1 张")).toBeTruthy();
+		expect(screen.getByText("已选")).toBeTruthy();
+
+		fireEvent.click(screen.getByRole("button", { name: /第 01 组/ }));
+
+		expect(onToggleShortcutReference).toHaveBeenCalledWith(nodeImage);
+	});
 });
 
 describe("PrimaryParamControl", () => {

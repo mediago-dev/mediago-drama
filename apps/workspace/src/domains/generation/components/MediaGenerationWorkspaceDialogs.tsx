@@ -1,5 +1,8 @@
 import type React from "react";
-import { ReferenceSelectionDialog } from "@/domains/generation/components/MediaGenerationDialogs";
+import {
+	ReferenceSelectionDialog,
+	type ReferenceSelectionShortcutGroup,
+} from "@/domains/generation/components/MediaGenerationDialogs";
 import type { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import type { GenerationEntry } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 
@@ -7,10 +10,21 @@ type GenerationWorkspaceState = ReturnType<typeof useGenerationWorkspace>;
 
 export const MediaGenerationWorkspaceDialogs: React.FC<{
 	generationEntries: GenerationEntry[];
+	inlineReferenceAssetIds?: string[];
 	onReferenceDialogOpenChange: (open: boolean) => void;
+	onToggleInlineReference?: (asset: GenerationWorkspaceState["mediaAssets"][number]) => void;
 	referenceDialogOpen: boolean;
+	referenceShortcutGroups?: ReferenceSelectionShortcutGroup[];
 	workspace: GenerationWorkspaceState;
-}> = ({ generationEntries, onReferenceDialogOpenChange, referenceDialogOpen, workspace }) => {
+}> = ({
+	generationEntries,
+	inlineReferenceAssetIds = [],
+	onReferenceDialogOpenChange,
+	onToggleInlineReference,
+	referenceDialogOpen,
+	referenceShortcutGroups = [],
+	workspace,
+}) => {
 	return (
 		<>
 			<ReferenceSelectionDialog
@@ -26,12 +40,15 @@ export const MediaGenerationWorkspaceDialogs: React.FC<{
 				requiresReference={false}
 				selectableKinds={workspace.selectableReferenceKinds}
 				selectedAssetIds={workspace.selectedReferenceAssetIds}
+				selectedShortcutAssetIds={inlineReferenceAssetIds}
+				shortcutGroups={referenceShortcutGroups}
 				title={workspace.kind === "video" ? "选择参考素材" : "选择参考图"}
 				onOpenChange={onReferenceDialogOpenChange}
 				onRefreshAssets={() => {
 					void workspace.mutateMediaAssets();
 				}}
 				onRemoveReference={workspace.toggleReferenceAsset}
+				onToggleShortcutReference={onToggleInlineReference}
 				onToggleReference={workspace.toggleReferenceAsset}
 				onUpload={workspace.uploadReferenceAsset}
 			/>

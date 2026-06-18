@@ -281,6 +281,11 @@ describe("useGenerationModelSelection", () => {
 		await waitFor(() => {
 			expect(result.current.selectedParams).toEqual({ size: "768x768" });
 		});
+		await waitFor(() => {
+			expect(readGenerationModelSelection().routeParams["route-image"]).toEqual({
+				size: "768x768",
+			});
+		});
 
 		rerender({ stylePresets: [stylePreset] });
 
@@ -316,9 +321,22 @@ describe("useGenerationModelSelection", () => {
 			result.current.updateModelRoute("version-image-alt", "route-image-alt");
 		});
 		act(() => {
+			result.current.updateParam("size", "640x640");
+		});
+		act(() => {
 			result.current.rememberSelectedModel();
 		});
 
+		expect(readGenerationModelSelection()).toEqual(
+			expect.objectContaining({
+				familyIds: expect.objectContaining({ image: "family-image" }),
+				routeIds: expect.objectContaining({ "version-image-alt": "route-image-alt" }),
+				routeParams: expect.objectContaining({
+					"route-image-alt": { size: "640x640" },
+				}),
+				versionIds: { "family-image": "version-image-alt" },
+			}),
+		);
 		expect(updateGenerationPreferences).toHaveBeenCalledWith(
 			"project-1",
 			expect.objectContaining({

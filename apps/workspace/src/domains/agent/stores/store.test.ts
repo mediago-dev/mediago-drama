@@ -231,6 +231,90 @@ describe("agent store pending user turns", () => {
 		});
 	});
 
+	it("keeps existing chat messages visible when starting a follow-up run", () => {
+		useAgentStore.setState({
+			rootRunId: "run-1",
+			conversations: {
+				"run-1": {
+					runId: "run-1",
+					name: "主智能体",
+					status: "completed",
+					messages: [
+						{
+							id: "user-1",
+							role: "user",
+							content: "第一个问题",
+							kind: "message",
+							status: "complete",
+						},
+						{
+							id: "assistant-1",
+							role: "assistant",
+							content: "第一个回答",
+							kind: "message",
+							status: "complete",
+						},
+					],
+					streamingMessageId: null,
+					children: [],
+					createdAt: "2026-06-09T00:00:00.000Z",
+					updatedAt: "2026-06-09T00:00:00.000Z",
+				},
+			},
+		});
+
+		useAgentStore.getState().startRun("第二个问题");
+
+		const state = useAgentStore.getState();
+		expect(state.rootRunId).toBe(pendingRootRunId);
+		expect(selectAgentMessages(state)).toEqual([
+			expect.objectContaining({ role: "user", content: "第一个问题" }),
+			expect.objectContaining({ role: "assistant", content: "第一个回答" }),
+			expect.objectContaining({ role: "user", content: "第二个问题" }),
+		]);
+	});
+
+	it("keeps existing chat messages visible when staging a user message before confirmation", () => {
+		useAgentStore.setState({
+			rootRunId: "run-1",
+			conversations: {
+				"run-1": {
+					runId: "run-1",
+					name: "主智能体",
+					status: "completed",
+					messages: [
+						{
+							id: "user-1",
+							role: "user",
+							content: "第一个问题",
+							kind: "message",
+							status: "complete",
+						},
+						{
+							id: "assistant-1",
+							role: "assistant",
+							content: "第一个回答",
+							kind: "message",
+							status: "complete",
+						},
+					],
+					streamingMessageId: null,
+					children: [],
+					createdAt: "2026-06-09T00:00:00.000Z",
+					updatedAt: "2026-06-09T00:00:00.000Z",
+				},
+			},
+		});
+
+		useAgentStore.getState().addUserMessage("第二个问题");
+
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({ role: "user", content: "第一个问题" }),
+			expect.objectContaining({ role: "assistant", content: "第一个回答" }),
+			expect.objectContaining({ role: "user", content: "第二个问题" }),
+		]);
+	});
+
 	it("marks the pending user turn as running after confirmation", () => {
 		useAgentStore.getState().addUserMessage("这个故事讲了什么");
 		useAgentStore.getState().beginPendingRun();

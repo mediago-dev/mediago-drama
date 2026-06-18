@@ -3,7 +3,7 @@ import { Editor } from "@tiptap/core";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 import { describe, expect, it, vi } from "vitest";
-import { PromptEditor, PromptMarkdownPreview } from "./PromptEditor";
+import { PromptEditor, PromptMarkdownPreview, promptEditorTestInternals } from "./PromptEditor";
 import {
 	PromptSlashMenu,
 	promptSlashCommandTestInternals,
@@ -87,6 +87,31 @@ describe("PromptEditor", () => {
 		} finally {
 			editor.destroy();
 		}
+	});
+
+	it("flushes pending editor DOM changes before emitting on blur", () => {
+		let markdown = "第一行\n\n第二行";
+		const flush = vi.fn(() => {
+			markdown = "第一行";
+		});
+		const getMarkdown = vi.fn(() => markdown);
+		const onChange = vi.fn();
+
+		promptEditorTestInternals.emitPromptMarkdownChange(
+			{
+				getMarkdown,
+				view: {
+					domObserver: { flush },
+				},
+			} as unknown as Editor,
+			{ current: "第一行\n\n第二行" },
+			{ current: onChange },
+			{ flushDom: true },
+		);
+
+		expect(flush).toHaveBeenCalled();
+		expect(getMarkdown).toHaveBeenCalled();
+		expect(onChange).toHaveBeenCalledWith("第一行");
 	});
 
 	it("selects a slash prompt item through the menu", () => {

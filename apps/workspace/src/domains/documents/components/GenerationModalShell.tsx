@@ -17,8 +17,15 @@ export const isPhotoViewPortalTarget = (target: EventTarget | null) => {
 	return Boolean(element?.closest(photoViewPortalSelector));
 };
 
+export const isPhotoViewPortalOpen = () =>
+	typeof document !== "undefined" && Boolean(document.querySelector(photoViewPortalSelector));
+
 const preventPhotoViewPortalDismiss = (event: DialogOutsideEvent) => {
 	if (isPhotoViewPortalTarget(event.detail.originalEvent.target)) event.preventDefault();
+};
+
+const preventPhotoViewEscapeDismiss = (event: KeyboardEvent) => {
+	if (isPhotoViewPortalOpen()) event.preventDefault();
 };
 
 export const GenerationModalShell: React.FC<{
@@ -56,6 +63,7 @@ export const GenerationModalShell: React.FC<{
 					"group fixed left-1/2 top-1/2 z-50 w-[calc(100%_-_2rem)] max-w-7xl -translate-x-1/2 -translate-y-1/2 outline-none",
 					contentLayerClassName,
 				)}
+				onEscapeKeyDown={preventPhotoViewEscapeDismiss}
 				onFocusOutside={preventPhotoViewPortalDismiss}
 				onPointerDownOutside={preventPhotoViewPortalDismiss}
 			>

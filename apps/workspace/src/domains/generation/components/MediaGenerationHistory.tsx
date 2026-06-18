@@ -13,10 +13,12 @@ import {
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useState } from "react";
 import type React from "react";
-import { PhotoProvider, PhotoView } from "react-photo-view";
-import "react-photo-view/dist/react-photo-view.css";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import type { GenerationAsset, GenerationKind } from "@/domains/generation/api/generation";
+import {
+	GenerationImagePreviewSlider,
+	type GenerationImagePreviewItem,
+} from "@/domains/generation/components/GenerationImagePreviewSlider";
 import { GenerationVideoThumbnail } from "@/domains/generation/components/GenerationVideoThumbnail";
 import { generatedAssetSaveKey } from "@/domains/generation/components/generatedResultActions";
 import {
@@ -211,6 +213,12 @@ const HistoryImageGrid: React.FC<{
 	savingAssetKeys,
 }) => {
 	const records = imageRecordsFromEntries(entries, kind, deletedAssetPlaceholderCounts);
+	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+	const previewImages = historyPreviewImagesFromRecords(records);
+	const openImagePreview = (record: HistoryImageAssetRecord) => {
+		const index = previewImages.findIndex((image) => image.key === record.key);
+		if (index >= 0) setPreviewIndex(index);
+	};
 
 	if (records.length === 0) {
 		return (
@@ -221,7 +229,7 @@ const HistoryImageGrid: React.FC<{
 	}
 
 	return (
-		<PhotoProvider maskOpacity={0.84}>
+		<>
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
 				<div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
 					{records.map((record) => (
@@ -232,6 +240,7 @@ const HistoryImageGrid: React.FC<{
 							onDeleteAsset={onDeleteAsset}
 							onDeleteEntry={onDeleteEntry}
 							onDeletePlaceholder={onDeletePlaceholder}
+							onPreviewImage={openImagePreview}
 							onSaveAsset={onSaveAsset}
 							onToggleAsset={onToggleAsset}
 							onUseAssetAsReference={onUseAssetAsReference}
@@ -243,7 +252,15 @@ const HistoryImageGrid: React.FC<{
 					))}
 				</div>
 			</div>
-		</PhotoProvider>
+			<GenerationImagePreviewSlider
+				images={previewImages}
+				index={previewIndex}
+				selectedAssetKeys={selectedAssetKeys}
+				onClose={() => setPreviewIndex(null)}
+				onIndexChange={setPreviewIndex}
+				onToggleAsset={onToggleAsset}
+			/>
+		</>
 	);
 };
 
@@ -252,6 +269,7 @@ const HistoryImageCard: React.FC<{
 	onDeleteAsset?: (entry: GenerationEntry, asset: GenerationAsset, assetIndex: number) => void;
 	onDeleteEntry: (entry: GenerationEntry) => void;
 	onDeletePlaceholder?: (entry: GenerationEntry, assetIndex: number) => void;
+	onPreviewImage: (record: HistoryImageAssetRecord) => void;
 	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	onUseAssetAsReference?: (asset: GenerationAsset) => void;
@@ -265,6 +283,7 @@ const HistoryImageCard: React.FC<{
 	onDeleteAsset,
 	onDeleteEntry,
 	onDeletePlaceholder,
+	onPreviewImage,
 	onSaveAsset,
 	onToggleAsset,
 	onUseAssetAsReference,
@@ -369,6 +388,10 @@ const HistoryImageCard: React.FC<{
 		if (!isVideo || !source) return;
 		setPreviewDialogOpen(true);
 	};
+	const previewImage = () => {
+		if (isVideo) return;
+		onPreviewImage(record);
+	};
 	const deriveAsset = () => {
 		if (onUseAssetAsReference) {
 			onUseAssetAsReference(record.asset);
@@ -419,17 +442,20 @@ const HistoryImageCard: React.FC<{
 										</HistoryImageActionButton>
 									) : (
 										<Tooltip>
-											<PhotoView src={source}>
-												<TooltipTrigger asChild>
-													<button
-														type="button"
-														aria-label="预览图片"
-														className={historyImageActionButtonClassName}
-													>
-														<Eye className="size-4" />
-													</button>
-												</TooltipTrigger>
-											</PhotoView>
+											<TooltipTrigger asChild>
+												<button
+													type="button"
+													aria-label="预览图片"
+													className={historyImageActionButtonClassName}
+													onClick={(event) => {
+														event.preventDefault();
+														event.stopPropagation();
+														previewImage();
+													}}
+												>
+													<Eye className="size-4" />
+												</button>
+											</TooltipTrigger>
 											<TooltipContent>预览</TooltipContent>
 										</Tooltip>
 									)}
@@ -500,12 +526,10 @@ const HistoryImageCard: React.FC<{
 								<span>预览</span>
 							</ContextMenuItem>
 						) : (
-							<PhotoView src={source}>
-								<ContextMenuItem>
-									<Eye className="size-4" />
-									<span>预览</span>
-								</ContextMenuItem>
-							</PhotoView>
+							<ContextMenuItem onSelect={previewImage}>
+								<Eye className="size-4" />
+								<span>预览</span>
+							</ContextMenuItem>
 						)}
 						<ContextMenuItem disabled={!onSaveAsset || saving || saved} onSelect={saveAsset}>
 							{saving ? (
@@ -750,6 +774,21 @@ const imageRecordsFromEntries = (
 		}
 
 		return [...imageRecords, ...placeholders];
+	});
+
+const historyPreviewImagesFromRecords = (
+	records: HistoryImageRecord[],
+): GenerationImagePreviewItem[] =>
+	records.flatMap((record) => {
+		if (record.kind !== "asset" || record.asset.kind !== "image") return [];
+
+		return [
+			{
+				asset: record.asset,
+				key: record.key,
+				src: record.source,
+			},
+		];
 	});
 
 const generationAssetSlotIndex = (asset: GenerationAsset, fallback: number) => {

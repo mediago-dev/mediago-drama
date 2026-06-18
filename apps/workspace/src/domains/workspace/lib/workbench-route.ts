@@ -9,6 +9,9 @@ export const getRouteDocumentId = (search: string) => getSearchParam(search, "do
 
 export const getRouteAssetId = (search: string) => getSearchParam(search, "assetId");
 
+export const getRouteAgentSessionId = (search: string) =>
+	getSearchParam(search, "agentSessionId") ?? getSearchParam(search, "agentSession");
+
 export const getRouteDocumentWorkbench = (search: string): AgentDocumentWorkbench | null => {
 	const value = getSearchParam(search, "workbench");
 	return value === "timeline" ? value : null;
@@ -52,6 +55,7 @@ export const agentProjectPath = (
 	projectId: string,
 	options: {
 		assetId?: string | null;
+		agentSessionId?: string | null;
 		documentId?: string | null;
 		workbench?: AgentDocumentWorkbench | null;
 	} = {},
@@ -60,6 +64,7 @@ export const agentProjectPath = (
 	params.set("projectId", projectId);
 	if (options.documentId) params.set("documentId", options.documentId);
 	if (options.assetId && !options.documentId) params.set("assetId", options.assetId);
+	if (options.agentSessionId) params.set("agentSessionId", options.agentSessionId);
 	if (options.documentId && options.workbench) params.set("workbench", options.workbench);
 	return `/agent?${params.toString()}`;
 };

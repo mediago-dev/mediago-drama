@@ -22,6 +22,7 @@ export const GenerationNotificationButton: React.FC<GenerationNotificationButton
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const popoverRef = useRef<HTMLDivElement>(null);
 	const rootRef = useRef<HTMLDivElement>(null);
+	const pendingOpenFrameRef = useRef<number | null>(null);
 	const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties | null>(null);
 	const unreadCount = useMemo(
 		() => notifications.filter((notification) => !notification.readAt).length,
@@ -45,13 +46,36 @@ export const GenerationNotificationButton: React.FC<GenerationNotificationButton
 		const bottom = Math.max(16, viewportHeight - rect.top + 8);
 		const maxHeight = Math.max(160, Math.min(384, rect.top - 24));
 
-		setPopoverStyle({
+		const nextStyle: React.CSSProperties = {
 			bottom,
 			left,
 			maxHeight,
 			width,
-		});
+		};
+		setPopoverStyle((current) => (samePopoverStyle(current, nextStyle) ? current : nextStyle));
 	}, []);
+	const openNotificationAfterClose = useCallback(
+		(notification: GenerationSuccessNotification) => {
+			setOpen(false);
+			if (pendingOpenFrameRef.current !== null) {
+				cancelAnimationFrame(pendingOpenFrameRef.current);
+			}
+			pendingOpenFrameRef.current = requestAnimationFrame(() => {
+				pendingOpenFrameRef.current = null;
+				onOpenNotification(notification);
+			});
+		},
+		[onOpenNotification],
+	);
+
+	useEffect(
+		() => () => {
+			if (pendingOpenFrameRef.current !== null) {
+				cancelAnimationFrame(pendingOpenFrameRef.current);
+			}
+		},
+		[],
+	);
 
 	useLayoutEffect(() => {
 		if (!open) return;
@@ -142,10 +166,7 @@ export const GenerationNotificationButton: React.FC<GenerationNotificationButton
 											<GenerationNotificationItem
 												key={notification.id}
 												notification={notification}
-												onClick={() => {
-													onOpenNotification(notification);
-													setOpen(false);
-												}}
+												onClick={() => openNotificationAfterClose(notification)}
 											/>
 										))}
 									</div>
@@ -191,6 +212,17 @@ const GenerationNotificationItem: React.FC<{
 		</span>
 	</button>
 );
+
+const samePopoverStyle = (current: React.CSSProperties | null, next: React.CSSProperties) => {
+	if (!current) return false;
+
+	return (
+		current.bottom === next.bottom &&
+		current.left === next.left &&
+		current.maxHeight === next.maxHeight &&
+		current.width === next.width
+	);
+};
 
 const generationNotificationTime = (createdAt: string) => {
 	const date = new Date(createdAt);
