@@ -6,6 +6,7 @@ import {
 	FileText,
 	Image as ImageIcon,
 	Loader2,
+	Pencil,
 	Trash2,
 	WandSparkles,
 	X,
@@ -72,6 +73,7 @@ export const HistoryGenerationList: React.FC<{
 	onDeleteAsset?: (entry: GenerationEntry, asset: GenerationAsset, assetIndex: number) => void;
 	onDeleteEntry: (entry: GenerationEntry) => void;
 	onDeletePlaceholder?: (entry: GenerationEntry, assetIndex: number) => void;
+	onEditAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onSelectEntry: (entry: GenerationEntry) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
@@ -93,6 +95,7 @@ export const HistoryGenerationList: React.FC<{
 	onDeleteAsset,
 	onDeleteEntry,
 	onDeletePlaceholder,
+	onEditAsset,
 	onSaveAsset,
 	onSelectEntry,
 	onToggleAsset,
@@ -122,6 +125,7 @@ export const HistoryGenerationList: React.FC<{
 				onDeleteAsset={onDeleteAsset}
 				onDeleteEntry={onDeleteEntry}
 				onDeletePlaceholder={onDeletePlaceholder}
+				onEditAsset={onEditAsset}
 				onSaveAsset={onSaveAsset}
 				onToggleAsset={onToggleAsset}
 				onUseAssetAsReference={onUseAssetAsReference}
@@ -188,6 +192,7 @@ const HistoryImageGrid: React.FC<{
 	onDeleteAsset?: (entry: GenerationEntry, asset: GenerationAsset, assetIndex: number) => void;
 	onDeleteEntry: (entry: GenerationEntry) => void;
 	onDeletePlaceholder?: (entry: GenerationEntry, assetIndex: number) => void;
+	onEditAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	onUseAssetAsReference?: (asset: GenerationAsset) => void;
@@ -204,6 +209,7 @@ const HistoryImageGrid: React.FC<{
 	onDeleteAsset,
 	onDeleteEntry,
 	onDeletePlaceholder,
+	onEditAsset,
 	onSaveAsset,
 	onToggleAsset,
 	onUseAssetAsReference,
@@ -240,6 +246,7 @@ const HistoryImageGrid: React.FC<{
 							onDeleteAsset={onDeleteAsset}
 							onDeleteEntry={onDeleteEntry}
 							onDeletePlaceholder={onDeletePlaceholder}
+							onEditAsset={onEditAsset}
 							onPreviewImage={openImagePreview}
 							onSaveAsset={onSaveAsset}
 							onToggleAsset={onToggleAsset}
@@ -269,6 +276,7 @@ const HistoryImageCard: React.FC<{
 	onDeleteAsset?: (entry: GenerationEntry, asset: GenerationAsset, assetIndex: number) => void;
 	onDeleteEntry: (entry: GenerationEntry) => void;
 	onDeletePlaceholder?: (entry: GenerationEntry, assetIndex: number) => void;
+	onEditAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onPreviewImage: (record: HistoryImageAssetRecord) => void;
 	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
@@ -283,6 +291,7 @@ const HistoryImageCard: React.FC<{
 	onDeleteAsset,
 	onDeleteEntry,
 	onDeletePlaceholder,
+	onEditAsset,
 	onPreviewImage,
 	onSaveAsset,
 	onToggleAsset,
@@ -383,7 +392,9 @@ const HistoryImageCard: React.FC<{
 	const mediaLabel = isVideo ? "视频" : "图片";
 	const deleteTitle = isVideo ? "删除这个视频？" : "删除这张图片？";
 	const showDeriveAction = !isVideo;
+	const showEditAction = !isVideo && Boolean(onEditAsset);
 	const saveAsset = () => onSaveAsset?.(entry, record.asset);
+	const editAsset = () => onEditAsset?.(entry, record.asset);
 	const previewAsset = () => {
 		if (!isVideo || !source) return;
 		setPreviewDialogOpen(true);
@@ -429,7 +440,7 @@ const HistoryImageCard: React.FC<{
 								<div
 									className={cn(
 										"grid max-w-[calc(100%-2rem)] items-center justify-center gap-2",
-										isVideo ? "grid-cols-4" : "grid-cols-5",
+										isVideo ? "grid-cols-4" : showEditAction ? "grid-cols-6" : "grid-cols-5",
 									)}
 								>
 									{isVideo ? (
@@ -459,6 +470,15 @@ const HistoryImageCard: React.FC<{
 											<TooltipContent>预览</TooltipContent>
 										</Tooltip>
 									)}
+									{showEditAction ? (
+										<HistoryImageActionButton
+											ariaLabel="编辑图片"
+											tooltip="编辑"
+											onClick={editAsset}
+										>
+											<Pencil className="size-4" />
+										</HistoryImageActionButton>
+									) : null}
 									<HistoryImageActionButton
 										ariaLabel={
 											saved
@@ -531,6 +551,12 @@ const HistoryImageCard: React.FC<{
 								<span>预览</span>
 							</ContextMenuItem>
 						)}
+						{showEditAction ? (
+							<ContextMenuItem onSelect={editAsset}>
+								<Pencil className="size-4" />
+								<span>编辑</span>
+							</ContextMenuItem>
+						) : null}
 						<ContextMenuItem disabled={!onSaveAsset || saving || saved} onSelect={saveAsset}>
 							{saving ? (
 								<Loader2 className="size-4 animate-spin" />

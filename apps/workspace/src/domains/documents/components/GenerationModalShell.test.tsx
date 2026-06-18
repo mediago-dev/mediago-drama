@@ -11,6 +11,7 @@ const waitForRadixOutsideListeners = () => new Promise((resolve) => window.setTi
 describe("GenerationModalShell", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
+		vi.restoreAllMocks();
 	});
 
 	it("recognizes events coming from the PhotoView portal", () => {
@@ -36,6 +37,35 @@ describe("GenerationModalShell", () => {
 		document.body.append(photoViewPortal);
 
 		expect(isPhotoViewPortalOpen()).toBe(true);
+	});
+
+	it("lets Radix associate the dialog title without accessibility warnings", async () => {
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+		render(
+			<GenerationModalShell
+				open
+				title="生成视觉素材"
+				titleId="section-generation-title"
+				onOpenChange={vi.fn()}
+			>
+				<div>生成内容</div>
+			</GenerationModalShell>,
+		);
+
+		await waitForRadixOutsideListeners();
+
+		const radixMessages = [...errorSpy.mock.calls, ...warnSpy.mock.calls]
+			.flat()
+			.map(String)
+			.filter(
+				(message) =>
+					message.includes("DialogContent") ||
+					message.includes("DialogTitle") ||
+					message.includes("aria-describedby"),
+			);
+		expect(radixMessages).toEqual([]);
 	});
 
 	it("keeps the generation modal open when PhotoView emits an outside pointer event", async () => {

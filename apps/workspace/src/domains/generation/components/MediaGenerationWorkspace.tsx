@@ -13,8 +13,12 @@ import {
 	selectedGenerationAssetsQueryKey,
 	updateGenerationTaskAsset,
 } from "@/domains/generation/api/generation";
-import type { MediaAsset } from "@/domains/workspace/api/media";
+import { uploadMediaAsset, type MediaAsset } from "@/domains/workspace/api/media";
 import { HistoryGenerationList } from "@/domains/generation/components/MediaGenerationHistory";
+import {
+	ImageStickerEditorDialog,
+	type ImageStickerEditorSaveResult,
+} from "@/domains/generation/components/ImageStickerEditorDialog";
 import {
 	filterImageGenerationSpecParams,
 	resolveImageGenerationSpec,
@@ -55,7 +59,10 @@ import {
 	resizeKeyboardStep,
 	useMediaGenerationWorkspaceLayout,
 } from "@/domains/generation/components/useMediaGenerationWorkspaceLayout";
-import { useGeneratedResultActions } from "@/domains/generation/components/generatedResultActions";
+import {
+	generationAssetFile,
+	useGeneratedResultActions,
+} from "@/domains/generation/components/generatedResultActions";
 import { useGenerationCountControl } from "@/domains/generation/components/useGenerationCountControl";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import { promptInsertItemsFromLayers } from "@/domains/generation/lib/prompt-insertions";
@@ -174,8 +181,15 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const [assetSelectionOverrides, setAssetSelectionOverrides] = useState<Record<string, boolean>>(
 		{},
 	);
+	const [editingImageTarget, setEditingImageTarget] = useState<{
+		asset: GenerationAsset;
+		entry: GenerationEntry;
+		source: string;
+	} | null>(null);
 	const [referenceDialogOpen, setReferenceDialogOpen] = useState(false);
 	const syncedPromptEntryIdRef = useRef<string | null>(null);
+	const editingImageObjectUrlRef = useRef<string | null>(null);
+	const editingImageRequestIdRef = useRef(0);
 	const workspaceRef = useRef<HTMLFormElement>(null);
 	const rightPaneRef = useRef<HTMLDivElement>(null);
 	const inlineReferenceAssets = useMemo(
@@ -587,6 +601,98 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	);
 	const generatedAssetToggleHandler =
 		onToggleAsset || projectId?.trim() ? toggleGeneratedAsset : undefined;
+	const releaseEditingImageObjectUrl = useCallback(() => {
+		if (!editingImageObjectUrlRef.current) return;
+		URL.revokeObjectURL(editingImageObjectUrlRef.current);
+		editingImageObjectUrlRef.current = null;
+	}, []);
+	const openImageEditor = useCallback(
+		async (entry: GenerationEntry, asset: GenerationAsset) => {
+			if (asset.kind !== "image") return;
+			const source = generationAssetSource(asset);
+			if (!source) {
+				toast.error("无法编辑图片", { description: "找不到可编辑的图片源。" });
+				return;
+			}
+			const editableSource = sameOriginDevApiSource(source);
+			const requestId = editingImageRequestIdRef.current + 1;
+			editingImageRequestIdRef.current = requestId;
+			releaseEditingImageObjectUrl();
+			let editorSource = editableSource;
+			try {
+				const file = await generationAssetFile(
+					asset,
+					editableSource,
+					asset.title?.trim() || "编辑图片.png",
+				);
+				if (editingImageRequestIdRef.current !== requestId) return;
+				const objectUrl = URL.createObjectURL(file);
+				editingImageObjectUrlRef.current = objectUrl;
+				editorSource = objectUrl;
+			} catch {
+				if (editingImageRequestIdRef.current !== requestId) return;
+			}
+			setEditingImageTarget({ asset, entry, source: editorSource });
+		},
+		[releaseEditingImageObjectUrl, toast],
+	);
+	const closeImageEditor = useCallback(
+		(open: boolean) => {
+			if (open) return;
+			editingImageRequestIdRef.current += 1;
+			setEditingImageTarget(null);
+			releaseEditingImageObjectUrl();
+		},
+		[releaseEditingImageObjectUrl],
+	);
+	const saveEditedImage = useCallback(
+		async (result: ImageStickerEditorSaveResult) => {
+			if (!editingImageTarget) return;
+			const baseTitle =
+				editingImageTarget.asset.title?.trim() || selectedAssetTitle?.trim() || "编辑图片";
+			const editedTitle = `${baseTitle} 编辑版`;
+			try {
+				const file = renameFile(result.file, `${editedTitle}.png`, result.mimeType);
+				const mediaAsset = await uploadMediaAsset(file, resolvedMediaAssetProjectId);
+				await ws.mutateMediaAssets();
+				const editedAsset: GenerationAsset = {
+					kind: "image",
+					mimeType: mediaAsset.mimeType || result.mimeType,
+					selected: true,
+					title: editedTitle,
+					url: mediaAsset.url,
+				};
+				const editedEntryId = ws.addEditedGenerationEntry({
+					asset: editedAsset,
+					sourceEntry: editingImageTarget.entry,
+					title: "图片编辑",
+				});
+				const selectionKey = generationAssetSelectionKey(editedAsset);
+				if (selectionKey) {
+					setAssetSelectionOverrides((current) => ({ ...current, [selectionKey]: true }));
+				}
+				onToggleAsset?.(editedAsset, true);
+				ws.setActiveEntryId(editedEntryId);
+				setEditingImageTarget(null);
+				releaseEditingImageObjectUrl();
+				toast.success("已保存编辑版", { description: "编辑后的图片已加入历史记录。" });
+			} catch (error) {
+				toast.error("保存失败", {
+					description: apiErrorMessage(error, "编辑图片上传失败。"),
+				});
+				throw error;
+			}
+		},
+		[
+			editingImageTarget,
+			onToggleAsset,
+			releaseEditingImageObjectUrl,
+			resolvedMediaAssetProjectId,
+			selectedAssetTitle,
+			toast,
+			ws,
+		],
+	);
 	const toggleShortcutReference = useCallback(
 		(asset: MediaAsset) => {
 			if (!canSelectReferenceImages) {
@@ -616,6 +722,8 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 
 		ws.setActiveEntryId(generationEntries[0].id);
 	}, [generationEntries, ws.activeEntryId, ws.setActiveEntryId]);
+
+	useEffect(() => () => releaseEditingImageObjectUrl(), [releaseEditingImageObjectUrl]);
 
 	useEffect(() => {
 		onHistoryCountChange?.(generationEntries.length);
@@ -839,6 +947,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 							onDeleteAsset={deleteEntryAsset}
 							onDeletePlaceholder={deleteEntryAssetPlaceholder}
 							onCopyPrompt={resultActions.copyPrompt}
+							onEditAsset={openImageEditor}
 							onSaveAsset={resultActions.saveAsset}
 							onSelectEntry={selectHistoryEntry}
 							onToggleAsset={generatedAssetToggleHandler}
@@ -908,6 +1017,13 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				onReferenceDialogOpenChange={setReferenceDialogOpen}
 				onToggleInlineReference={toggleShortcutReference}
 			/>
+			<ImageStickerEditorDialog
+				open={Boolean(editingImageTarget)}
+				source={editingImageTarget?.source ?? ""}
+				title={editingImageTarget?.asset.title?.trim() || "图片编辑工作台"}
+				onOpenChange={closeImageEditor}
+				onSave={saveEditedImage}
+			/>
 		</form>
 	);
 };
@@ -932,6 +1048,21 @@ const effectiveGenerationSelectionKeys = (
 		else keys.delete(key);
 	}
 	return Array.from(keys);
+};
+
+const renameFile = (file: File, filename: string, mimeType: string) => {
+	const sanitizedFilename = sanitizeEditedImageFilename(filename);
+	if (file.name === sanitizedFilename && file.type === mimeType) return file;
+	return new File([file], sanitizedFilename, { type: mimeType || file.type || "image/png" });
+};
+
+const sanitizeEditedImageFilename = (value: string) => {
+	const withoutExtension = value.trim().replace(/\.(png|jpe?g|webp)$/iu, "");
+	const sanitized = withoutExtension
+		.replace(/[\\/:*?"<>|]+/gu, " ")
+		.replace(/\s+/gu, " ")
+		.trim();
+	return `${sanitized || "编辑图片"}.png`;
 };
 
 const selectedGenerationResourceTypeForTaskType = (taskType?: GenerationTaskType) => {
@@ -987,6 +1118,25 @@ const referenceUrlFromGenerationSource = (source: string) => {
 
 	try {
 		return new URL(source, window.location.origin).toString();
+	} catch {
+		return source;
+	}
+};
+
+const sameOriginDevApiSource = (source: string) => {
+	if (typeof window === "undefined") return source;
+	if (!/^https?:\/\//iu.test(source)) return source;
+	if (!/^https?:$/iu.test(window.location.protocol)) return source;
+
+	try {
+		const url = new URL(source);
+		const localHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+		if (!localHosts.has(url.hostname) || !localHosts.has(window.location.hostname)) {
+			return source;
+		}
+		if (!url.pathname.startsWith("/api/")) return source;
+		if (url.origin === window.location.origin) return source;
+		return `${url.pathname}${url.search}${url.hash}`;
 	} catch {
 		return source;
 	}

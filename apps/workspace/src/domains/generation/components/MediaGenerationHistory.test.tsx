@@ -186,6 +186,7 @@ describe("HistoryGenerationList", () => {
 		const entry = imageEntry();
 		const onDeleteAsset = vi.fn();
 		const onSaveAsset = vi.fn();
+		const onEditAsset = vi.fn();
 		const onToggleAsset = vi.fn();
 		const onUseAssetAsReference = vi.fn();
 		const onUsePrompt = vi.fn();
@@ -199,6 +200,7 @@ describe("HistoryGenerationList", () => {
 				variant="list"
 				onDeleteEntry={vi.fn()}
 				onDeleteAsset={onDeleteAsset}
+				onEditAsset={onEditAsset}
 				onSaveAsset={onSaveAsset}
 				onSelectEntry={vi.fn()}
 				onToggleAsset={onToggleAsset}
@@ -216,6 +218,7 @@ describe("HistoryGenerationList", () => {
 		expect(screen.queryByText("生成三张角色设定图")).toBeNull();
 		expect(screen.queryByText("已完成")).toBeNull();
 		expect(screen.getAllByRole("button", { name: "预览图片" })).toHaveLength(3);
+		expect(screen.getAllByRole("button", { name: "编辑图片" })).toHaveLength(3);
 		expect(screen.getAllByRole("button", { name: "下载图片" })).toHaveLength(3);
 		expect(screen.getAllByRole("button", { name: "派生图片" })).toHaveLength(3);
 		expect(screen.getAllByRole("button", { name: "使用此提示词" })).toHaveLength(3);
@@ -244,6 +247,10 @@ describe("HistoryGenerationList", () => {
 		fireEvent.click(screen.getAllByRole("button", { name: "下载图片" })[0]);
 
 		expect(onSaveAsset).toHaveBeenCalledWith(entry, entry.assets?.[0]);
+
+		fireEvent.click(screen.getAllByRole("button", { name: "编辑图片" })[2]);
+
+		expect(onEditAsset).toHaveBeenCalledWith(entry, entry.assets?.[2]);
 
 		fireEvent.click(screen.getAllByRole("button", { name: "派生图片" })[1]);
 
@@ -290,6 +297,7 @@ describe("HistoryGenerationList", () => {
 	it("shows the image history actions in the right-click menu", async () => {
 		const entry = imageEntry();
 		const onDeleteAsset = vi.fn();
+		const onEditAsset = vi.fn();
 		const onUseAssetAsReference = vi.fn();
 		const { container } = render(
 			<HistoryGenerationList
@@ -301,6 +309,7 @@ describe("HistoryGenerationList", () => {
 				variant="list"
 				onDeleteEntry={vi.fn()}
 				onDeleteAsset={onDeleteAsset}
+				onEditAsset={onEditAsset}
 				onSaveAsset={vi.fn()}
 				onSelectEntry={vi.fn()}
 				onUseAssetAsReference={onUseAssetAsReference}
@@ -315,6 +324,7 @@ describe("HistoryGenerationList", () => {
 
 		const menu = await screen.findByRole("menu");
 		expect(within(menu).getByRole("menuitem", { name: "预览" })).toBeTruthy();
+		expect(within(menu).getByRole("menuitem", { name: "编辑" })).toBeTruthy();
 		expect(within(menu).getByRole("menuitem", { name: "下载" })).toBeTruthy();
 		expect(within(menu).getByRole("menuitem", { name: "派生" })).toBeTruthy();
 		expect(within(menu).getByRole("menuitem", { name: "使用此提示词" })).toBeTruthy();
@@ -323,6 +333,12 @@ describe("HistoryGenerationList", () => {
 		fireEvent.click(within(menu).getByRole("menuitem", { name: "派生" }));
 
 		expect(onUseAssetAsReference).toHaveBeenCalledWith(entry.assets?.[0]);
+
+		fireEvent.contextMenu(card, { clientX: 48, clientY: 48 });
+		const editMenu = await screen.findByRole("menu");
+		fireEvent.click(within(editMenu).getByRole("menuitem", { name: "编辑" }));
+
+		expect(onEditAsset).toHaveBeenCalledWith(entry, entry.assets?.[0]);
 
 		fireEvent.contextMenu(card, { clientX: 48, clientY: 48 });
 		const deleteMenu = await screen.findByRole("menu");

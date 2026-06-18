@@ -47,7 +47,6 @@ export const GenerationModalShell: React.FC<{
 	open,
 	title,
 	titleAside,
-	titleId,
 }) => (
 	<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
 		<DialogPrimitive.Portal>
@@ -58,7 +57,7 @@ export const GenerationModalShell: React.FC<{
 				)}
 			/>
 			<DialogPrimitive.Content
-				aria-labelledby={titleId}
+				aria-describedby={undefined}
 				className={cn(
 					"group fixed left-1/2 top-1/2 z-50 w-[calc(100%_-_2rem)] max-w-7xl -translate-x-1/2 -translate-y-1/2 outline-none",
 					contentLayerClassName,
@@ -76,10 +75,7 @@ export const GenerationModalShell: React.FC<{
 				>
 					<header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
 						<div className="flex min-w-0 items-center gap-3">
-							<DialogPrimitive.Title
-								id={titleId}
-								className="min-w-0 truncate text-sm font-semibold text-foreground"
-							>
+							<DialogPrimitive.Title className="min-w-0 truncate text-sm font-semibold text-foreground">
 								{title}
 							</DialogPrimitive.Title>
 							{titleAside ? <div className="shrink-0">{titleAside}</div> : null}

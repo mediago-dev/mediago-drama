@@ -2,6 +2,7 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { mutate as mutateSWR } from "swr";
 import {
+	type GenerationAsset,
 	type GenerationKind,
 	type GenerationNotificationOpenTarget,
 	generationModelsKey,
@@ -35,7 +36,9 @@ import type { MediaAsset } from "@/domains/workspace/api/media";
 import {
 	isConfiguredRoute,
 	resolveGenerationExtraValue,
+	type ChatMessage,
 	type GenerationExtraValue,
+	type GenerationEntry,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useGenerationMediaLibrary } from "./useGenerationMediaLibrary";
 import { useGenerationMessages } from "./useGenerationMessages";
@@ -88,6 +91,12 @@ export interface UseGenerationWorkspaceOptions {
 	onSubmitStart?: (event: GenerationSubmitStartEvent) => void;
 	onSubmitSuccess?: (kind: GenerationKind) => void;
 	onSubmitError?: (message: string) => void;
+}
+
+interface AddEditedGenerationEntryOptions {
+	asset: GenerationAsset;
+	sourceEntry: GenerationEntry;
+	title?: string;
 }
 
 export const useGenerationWorkspace = ({
@@ -385,6 +394,38 @@ export const useGenerationWorkspace = ({
 		setMessages,
 	});
 
+	const addEditedGenerationEntry = useCallback(
+		({ asset, sourceEntry, title }: AddEditedGenerationEntryOptions) => {
+			const now = new Date().toISOString();
+			const entryId = `${sourceEntry.id}:edited:${Date.now()}`;
+			const requestMessage: ChatMessage = {
+				id: `${entryId}:prompt`,
+				role: "user",
+				kind: "image",
+				content: sourceEntry.prompt,
+				assets: sourceEntry.requestAssets,
+				createdAt: now,
+				details: sourceEntry.requestDetails,
+				updatedAt: now,
+			};
+			const responseMessage: ChatMessage = {
+				id: entryId,
+				role: "assistant",
+				kind: "image",
+				status: "completed",
+				content: "已保存图片编辑版本。",
+				assets: [asset],
+				createdAt: now,
+				details: [{ label: "来源", value: title?.trim() || "图片编辑" }],
+				updatedAt: now,
+			};
+			setMessages((current) => [...current, requestMessage, responseMessage]);
+			setActiveEntryId(entryId);
+			return entryId;
+		},
+		[setActiveEntryId, setMessages],
+	);
+
 	const canSubmit =
 		hasConfiguredRoutesForKind &&
 		Boolean(prompt.trim()) &&
@@ -415,6 +456,7 @@ export const useGenerationWorkspace = ({
 		activeEntry,
 		activeEntryId,
 		activeMediaAssetId,
+		addEditedGenerationEntry,
 		canSubmit,
 		catalog,
 		composerLayers,

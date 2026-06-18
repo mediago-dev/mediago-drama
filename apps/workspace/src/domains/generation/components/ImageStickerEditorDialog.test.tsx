@@ -1,0 +1,244 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ImageStickerEditorDialog } from "./ImageStickerEditorDialog";
+
+vi.mock("fabric", () => {
+	class MockFabricObject {
+		static customProperties: string[] = [];
+
+		angle = 0;
+		editorRole?: string;
+		height = 0;
+		left = 0;
+		opacity = 1;
+		scaleX = 1;
+		scaleY = 1;
+		top = 0;
+		width = 0;
+
+		set(values: Record<string, unknown>) {
+			Object.assign(this, values);
+			return this;
+		}
+
+		setCoords() {}
+
+		getCenterPoint() {
+			return { x: this.left, y: this.top };
+		}
+
+		getScaledWidth() {
+			return this.width * this.scaleX;
+		}
+
+		getScaledHeight() {
+			return this.height * this.scaleY;
+		}
+	}
+
+	class MockFabricImage extends MockFabricObject {
+		private element: CanvasImageSource;
+
+		constructor(element: CanvasImageSource) {
+			super();
+			this.element = element;
+			const image = element as { naturalHeight?: number; naturalWidth?: number };
+			this.width = image.naturalWidth ?? 320;
+			this.height = image.naturalHeight ?? 180;
+		}
+
+		getElement() {
+			return this.element;
+		}
+
+		setElement(element: CanvasImageSource, size?: { height?: number; width?: number }) {
+			this.element = element;
+			this.width = size?.width ?? this.width;
+			this.height = size?.height ?? this.height;
+		}
+	}
+
+	class MockRect extends MockFabricObject {
+		constructor(options: Record<string, unknown>) {
+			super();
+			this.set(options);
+		}
+	}
+
+	class MockTextbox extends MockRect {}
+
+	class MockCanvas {
+		private activeObject: MockFabricObject | null = null;
+		private objects: MockFabricObject[] = [];
+		private width = 1;
+		private height = 1;
+
+		constructor(_element: HTMLCanvasElement) {}
+
+		add(...objects: MockFabricObject[]) {
+			this.objects.push(...objects);
+		}
+
+		bringObjectForward() {
+			return true;
+		}
+
+		discardActiveObject() {
+			this.activeObject = null;
+		}
+
+		dispose() {
+			return Promise.resolve(true);
+		}
+
+		getActiveObject() {
+			return this.activeObject;
+		}
+
+		getActiveObjects() {
+			return this.activeObject ? [this.activeObject] : [];
+		}
+
+		getHeight() {
+			return this.height;
+		}
+
+		getObjects() {
+			return this.objects;
+		}
+
+		getWidth() {
+			return this.width;
+		}
+
+		loadFromJSON() {
+			return Promise.resolve();
+		}
+
+		on() {
+			return () => {};
+		}
+
+		remove(...objects: MockFabricObject[]) {
+			this.objects = this.objects.filter((object) => !objects.includes(object));
+		}
+
+		renderAll() {}
+
+		requestRenderAll() {}
+
+		sendObjectBackwards() {
+			return true;
+		}
+
+		sendObjectToBack(_object: MockFabricObject) {}
+
+		setActiveObject(object: MockFabricObject) {
+			this.activeObject = object;
+		}
+
+		setDimensions(size: { height: number; width: number }) {
+			this.width = size.width;
+			this.height = size.height;
+		}
+
+		toDataURL() {
+			return "data:image/png;base64,edited";
+		}
+
+		toObject() {
+			return { objects: this.objects.map((object) => ({ editorRole: object.editorRole })) };
+		}
+	}
+
+	return {
+		Canvas: MockCanvas,
+		FabricImage: MockFabricImage,
+		FabricObject: MockFabricObject,
+		Rect: MockRect,
+		Textbox: MockTextbox,
+	};
+});
+
+class TestImage {
+	crossOrigin: string | null = null;
+	height = 180;
+	naturalHeight = 180;
+	naturalWidth = 320;
+	onerror: (() => void) | null = null;
+	onload: (() => void) | null = null;
+	width = 320;
+
+	set src(_value: string) {
+		queueMicrotask(() => this.onload?.());
+	}
+}
+
+describe("ImageStickerEditorDialog", () => {
+	beforeEach(() => {
+		vi.stubGlobal("Image", TestImage);
+	});
+
+	afterEach(() => {
+		cleanup();
+		vi.unstubAllGlobals();
+	});
+
+	it("waits for the canvas node before initializing Fabric", async () => {
+		render(
+			<ImageStickerEditorDialog
+				open
+				source="data:image/png;base64,source"
+				onOpenChange={vi.fn()}
+				onSave={vi.fn()}
+			/>,
+		);
+
+		expect(screen.queryByText("图片编辑器初始化失败，请关闭后重试。")).not.toBeInTheDocument();
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+		});
+	});
+
+	it("enables rectangle color controls for selected rectangles", async () => {
+		render(
+			<ImageStickerEditorDialog
+				open
+				source="data:image/png;base64,source"
+				onOpenChange={vi.fn()}
+				onSave={vi.fn()}
+			/>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "矩形" }));
+		fireEvent.click(screen.getByRole("button", { name: "矩形颜色 #ef4444" }));
+
+		expect(screen.getByLabelText("自定义矩形颜色")).toHaveValue("#ef4444");
+	});
+
+	it("enables rectangle rotation controls for selected rectangles", async () => {
+		render(
+			<ImageStickerEditorDialog
+				open
+				source="data:image/png;base64,source"
+				onOpenChange={vi.fn()}
+				onSave={vi.fn()}
+			/>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "矩形" }));
+		fireEvent.change(screen.getByLabelText("矩形旋转角度"), { target: { value: "45" } });
+
+		expect(screen.getByLabelText("矩形旋转角度")).toHaveValue("45");
+		expect(screen.getByText("45°")).toBeInTheDocument();
+	});
+});

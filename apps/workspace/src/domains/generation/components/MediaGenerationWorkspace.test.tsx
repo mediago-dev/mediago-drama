@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import React from "react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GenerationAsset } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { GenerationEntry } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
@@ -20,6 +21,9 @@ const generationApiMocks = vi.hoisted(() => ({
 	]),
 	updateGenerationTaskAsset: vi.fn(async () => undefined),
 }));
+const mediaApiMocks = vi.hoisted(() => ({
+	uploadMediaAsset: vi.fn(),
+}));
 
 vi.mock("@/domains/generation/hooks/useGenerationWorkspace", () => ({
 	useGenerationWorkspace: vi.fn(),
@@ -37,6 +41,40 @@ vi.mock("@/domains/generation/api/generation", async (importOriginal) => {
 
 vi.mock("@/hooks/useToast", () => ({
 	useToast: () => toastMocks,
+}));
+
+vi.mock("@/domains/workspace/api/media", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/domains/workspace/api/media")>();
+
+	return {
+		...actual,
+		uploadMediaAsset: mediaApiMocks.uploadMediaAsset,
+	};
+});
+
+vi.mock("@/domains/generation/components/ImageStickerEditorDialog", () => ({
+	ImageStickerEditorDialog: ({
+		onSave,
+		open,
+	}: {
+		onSave: (result: { file: File; mimeType: string }) => Promise<void> | void;
+		open: boolean;
+	}) =>
+		open ? (
+			<div role="dialog" aria-label="图片编辑工作台">
+				<button
+					type="button"
+					onClick={() =>
+						void onSave({
+							file: new File(["edited"], "edited.png", { type: "image/png" }),
+							mimeType: "image/png",
+						})
+					}
+				>
+					保存编辑图
+				</button>
+			</div>
+		) : null,
 }));
 
 vi.mock("@/domains/generation/components/useMediaGenerationWorkspaceLayout", () => ({
@@ -178,6 +216,7 @@ const mediaAsset: MediaAsset = {
 
 const workspaceDefaults = {
 	activeEntryId: "entry-image",
+	addEditedGenerationEntry: vi.fn(),
 	canSubmit: true,
 	composerLayers: [],
 	deletedAssetPlaceholderCounts: {},
@@ -506,6 +545,77 @@ describe("MediaGenerationWorkspace", () => {
 				title: "主角 底层青年 / 低阶散修",
 			});
 		});
+	});
+
+	it("uploads edited images to the media library instead of storing base64 in history", async () => {
+		const addEditedGenerationEntry = vi.fn(
+			(_options: { asset: GenerationAsset }) => "edited-entry",
+		);
+		const mutateMediaAssets = vi.fn(async () => undefined);
+		const onToggleAsset = vi.fn();
+		const setActiveEntryId = vi.fn();
+		const editableEntry: GenerationEntry = {
+			...imageEntry,
+			assets: [
+				{
+					kind: "image",
+					base64: btoa("source"),
+					mimeType: "image/png",
+					title: "原图",
+				},
+			],
+		};
+		mediaApiMocks.uploadMediaAsset.mockResolvedValue({
+			...mediaAsset,
+			filename: "原图 编辑版.png",
+			id: "edited-media",
+			url: "/api/v1/media-assets/edited-media/content",
+		});
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: editableEntry.id,
+			addEditedGenerationEntry,
+			mutateMediaAssets,
+			orderedGenerationEntries: [editableEntry],
+			setActiveEntryId,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				onToggleAsset={onToggleAsset}
+				projectId="project-a"
+				viewMode="history"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "编辑图片" }));
+		fireEvent.click(await screen.findByRole("button", { name: "保存编辑图" }));
+
+		await waitFor(() => {
+			expect(mediaApiMocks.uploadMediaAsset).toHaveBeenCalledWith(expect.any(File), "project-a");
+			expect(addEditedGenerationEntry).toHaveBeenCalled();
+		});
+
+		const uploadedFile = mediaApiMocks.uploadMediaAsset.mock.calls[0]?.[0] as File;
+		expect(uploadedFile.name).toBe("原图 编辑版.png");
+		expect(uploadedFile.type).toBe("image/png");
+		const editedAsset = addEditedGenerationEntry.mock.calls[0]?.[0].asset;
+		expect(editedAsset).toEqual(
+			expect.objectContaining({
+				kind: "image",
+				mimeType: "image/png",
+				selected: true,
+				title: "原图 编辑版",
+				url: "/api/v1/media-assets/edited-media/content",
+			}),
+		);
+		expect(editedAsset.base64).toBeUndefined();
+		expect(mutateMediaAssets).toHaveBeenCalled();
+		expect(onToggleAsset).toHaveBeenCalledWith(editedAsset, true);
+		expect(setActiveEntryId).toHaveBeenCalledWith("edited-entry");
 	});
 
 	it("copies the active history prompt into the editor only when explicitly requested", () => {
