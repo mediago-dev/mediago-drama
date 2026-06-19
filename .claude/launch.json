@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "workspace",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["-C", "apps/workspace", "dev"],
+      "port": 5173
+    }
+  ]
+}

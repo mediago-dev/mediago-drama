@@ -32,9 +32,12 @@
 	--leading-loose: var(--line-height-loose);
 
 	--radius-none: var(--radius-scale-none);
+	--radius-chip: var(--radius-scale-chip);
+	--radius-control: var(--radius-scale-control);
 	--radius-sm: var(--radius-scale-sm);
 	--radius-md: var(--radius-scale-md);
 	--radius-lg: var(--radius-scale-lg);
+	--radius-panel: var(--radius-scale-panel);
 	--radius-xl: var(--radius-scale-xl);
 	--radius-2xl: var(--radius-scale-2xl);
 	--radius-full: var(--radius-scale-full);
