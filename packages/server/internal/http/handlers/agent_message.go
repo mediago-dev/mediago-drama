@@ -23,7 +23,20 @@ func NewAgentMessages(service AgentMessageService) AgentMessages {
 	return AgentMessages{service: service}
 }
 
-// HandleAgentMessage starts an agent run.
+// HandleAgentMessage godoc
+// @Summary 提交 Agent 消息
+// @Description 向 Agent 会话提交消息并启动后台运行。
+// @Tags Agent
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param sessionId path string true "Session ID"
+// @Param payload body SwaggerObject true "Agent message payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 409 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/sessions/{sessionId}/messages [post]
 func (handler AgentMessages) HandleAgentMessage(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {

@@ -24,7 +24,18 @@ func NewDocumentOperations(runner DocumentOperationsRunner) DocumentOperations {
 	return DocumentOperations{runner: runner}
 }
 
-// HandleDocumentOperations runs document operations for the current payload.
+// HandleDocumentOperations godoc
+// @Summary 执行文档操作
+// @Description 根据请求体执行 Agent 生成的文档操作。
+// @Tags Agent
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param payload body SwaggerObject true "Document operations payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/document-operations [post]
 func (handler DocumentOperations) HandleDocumentOperations(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -44,7 +55,16 @@ func (handler DocumentOperations) HandleDocumentOperations(context *gin.Context)
 	httpresponse.OK(context, handler.runner.RunDocumentOperations(context.Request.Context(), payload))
 }
 
-// HandleTestDocumentOperations runs a fixed document operation test payload.
+// HandleTestDocumentOperations godoc
+// @Summary 测试文档操作
+// @Description 使用固定测试载荷执行文档操作验证。
+// @Tags Agent
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/document-operations/test [post]
 func (handler DocumentOperations) HandleTestDocumentOperations(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {

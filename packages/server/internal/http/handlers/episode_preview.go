@@ -51,7 +51,18 @@ func NewEpisodePreview(timelines EpisodePreviewTimelineStore, media EpisodePrevi
 	return EpisodePreview{timelines: timelines, media: media, streamer: streamer}
 }
 
-// HandleEpisodePreviewStream serves the generated video clips for an episode timeline.
+// HandleEpisodePreviewStream godoc
+// @Summary 获取剧集预览视频
+// @Description 将剧集时间线中的视频片段组合为预览 MP4 流。
+// @Tags Episodes
+// @Produce video/mp4
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Success 200 {file} file
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/episodes/{documentId}/preview.mp4 [get]
 func (handler EpisodePreview) HandleEpisodePreviewStream(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {

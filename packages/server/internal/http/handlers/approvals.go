@@ -28,7 +28,16 @@ func NewDocumentToolApprovals(store DocumentToolApprovalStore, isNotFound func(e
 	return DocumentToolApprovals{store: store, isNotFound: isNotFound}
 }
 
-// HandleListDocumentToolApprovals lists pending document tool approvals.
+// HandleListDocumentToolApprovals godoc
+// @Summary 获取文档工具审批
+// @Description 返回当前项目中等待处理的文档工具审批请求。
+// @Tags Agent
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/document-tool-approvals [get]
 func (handler DocumentToolApprovals) HandleListDocumentToolApprovals(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -47,7 +56,20 @@ func (handler DocumentToolApprovals) HandleListDocumentToolApprovals(context *gi
 	httpresponse.OK(context, approvals)
 }
 
-// HandleDecideDocumentToolApproval applies an approval decision.
+// HandleDecideDocumentToolApproval godoc
+// @Summary 处理文档工具审批
+// @Description 接受或拒绝一个文档工具审批请求。
+// @Tags Agent
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param approvalId path string true "Approval ID"
+// @Param payload body SwaggerObject true "Approval decision payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/document-tool-approvals/{approvalId}/decision [post]
 func (handler DocumentToolApprovals) HandleDecideDocumentToolApproval(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {

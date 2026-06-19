@@ -22,7 +22,16 @@ func NewAgentRuntime(inspect AgentRuntimeConfigInspector) AgentRuntime {
 	return AgentRuntime{inspect: inspect}
 }
 
-// HandleAgentRuntimeConfig returns runtime configuration if the runner supports it.
+// HandleAgentRuntimeConfig godoc
+// @Summary 获取 Agent 运行配置
+// @Description 返回当前项目可用于 Agent 运行的配置检查结果。
+// @Tags Agent
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/runtime-config [get]
 func (handler AgentRuntime) HandleAgentRuntimeConfig(context *gin.Context) {
 	if handler.inspect == nil {
 		httpresponse.OK(context, service.AgentRuntimeConfigResponse{})

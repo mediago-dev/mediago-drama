@@ -29,7 +29,16 @@ func NewWorkspaceEvents(service WorkspaceEventService) WorkspaceEvents {
 	return WorkspaceEvents{service: service}
 }
 
-// HandleWorkspaceEvents streams live workspace file events using SSE.
+// HandleWorkspaceEvents godoc
+// @Summary 订阅工作区事件
+// @Description 使用 SSE 订阅项目工作区文件和文档变更事件。
+// @Tags Workspace
+// @Produce text/event-stream
+// @Param projectId path string true "Project ID"
+// @Success 200 {string} string "SSE stream"
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/events [get]
 func (handler WorkspaceEvents) HandleWorkspaceEvents(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {

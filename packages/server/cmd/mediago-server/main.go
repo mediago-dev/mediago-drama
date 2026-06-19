@@ -25,6 +25,47 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/server/internal/workspace"
 )
 
+// @title MediaGo Drama API
+// @version 0.0.0
+// @description MediaGo Drama local workspace server API for projects, assets, generation, settings, and agent workflows.
+// @BasePath /
+// @schemes http
+// @tag.name System
+// @tag.description Health checks and internal system endpoints.
+// @tag.name MCP
+// @tag.description Model Context Protocol HTTP endpoints.
+// @tag.name Capabilities
+// @tag.description Capability manifests exposed by the server.
+// @tag.name Billing
+// @tag.description Usage and cost summaries.
+// @tag.name Projects
+// @tag.description Workspace project lifecycle APIs.
+// @tag.name Project Config
+// @tag.description Project media config and creative brief APIs.
+// @tag.name Project Assets
+// @tag.description Project-scoped asset library APIs.
+// @tag.name Media Assets
+// @tag.description Generated and uploaded media asset APIs.
+// @tag.name Prompt Templates
+// @tag.description Editable system prompt template APIs.
+// @tag.name Prompt Presets
+// @tag.description Reusable generation prompt library APIs.
+// @tag.name Skills
+// @tag.description Built-in and user skill management APIs.
+// @tag.name Settings
+// @tag.description API keys and model profile settings APIs.
+// @tag.name Generation
+// @tag.description Model catalog, generation conversations, tasks, and results.
+// @tag.name Generation Notifications
+// @tag.description Generation notification list, read-state, and event stream APIs.
+// @tag.name Workspace
+// @tag.description Project document, folder, state, and history APIs.
+// @tag.name Episodes
+// @tag.description Episode timeline state and preview APIs.
+// @tag.name Agent
+// @tag.description Agent chat, permissions, sessions, events, and document operation APIs.
+// @tag.name Internal
+// @tag.description Internal bridge endpoints used by local agent processes.
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -130,6 +171,7 @@ func run(args []string) error {
 
 	fmt.Printf("Serving workspace at http://%s\n", addr)
 	fmt.Printf("MCP endpoint: http://%s/mcp\n", addr)
+	printDevelopmentDocsURL(addr)
 	fmt.Printf("Workspace: %s\n", workspaceDir)
 	fmt.Printf("Logs: %s\n", logPath)
 	fmt.Printf("ACP logs: %s\n", acpLogPath)

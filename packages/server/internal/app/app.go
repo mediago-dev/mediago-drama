@@ -184,6 +184,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		AgentRuntime:          runtimeHandler,
 		AgentSessions:         sessionHandler,
 	})
+	registerDevelopmentDocs(router)
 
 	static := httphandlers.NewSPA(staticFS)
 	router.NoRoute(func(context *gin.Context) {

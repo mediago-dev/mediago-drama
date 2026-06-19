@@ -15,6 +15,14 @@ task test
 go run ./cmd/mediago-server --config configs/server.yaml
 ```
 
+Development builds expose Swagger UI at `http://<host>:<port>/docs/index.html`
+and the generated Swagger JSON document at `/openapi.json`. The root `task dev`
+and `task dev:server` commands regenerate the local Swagger cache automatically;
+after changing handler annotations, you can also run `task swagger` in this
+module. The generated cache lives under `.cache/server-swagger/` and should not
+be committed. Production builds use the `workspace_dist` tag and omit those
+development documentation routes.
+
 The server exports `ONE_INTERNAL_API_URL` and `ONE_INTERNAL_API_TOKEN` for
 child processes. External stdio MCP clients can use:
 

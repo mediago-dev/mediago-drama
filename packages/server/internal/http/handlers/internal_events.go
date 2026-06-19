@@ -26,7 +26,17 @@ func NewInternalEvents(bridgeToken string, publisher InternalEventPublisher) Int
 	return InternalEvents{bridgeToken: bridgeToken, publisher: publisher}
 }
 
-// HandleInternalPublishEvent publishes an internal event.
+// HandleInternalPublishEvent godoc
+// @Summary 发布内部事件
+// @Description Agent 进程使用内部令牌向前端事件流发布事件。
+// @Tags Internal
+// @Accept json
+// @Produce json
+// @Param payload body SwaggerObject true "Internal event payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 401 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/internal/events/publish [post]
 func (handler InternalEvents) HandleInternalPublishEvent(context *gin.Context) {
 	token := strings.TrimSpace(strings.TrimPrefix(context.GetHeader("Authorization"), "Bearer "))
 	if handler.bridgeToken == "" || token == "" || token != handler.bridgeToken {

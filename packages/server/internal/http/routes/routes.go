@@ -41,7 +41,7 @@ type Handlers struct {
 // Register attaches all app routes to the provided Gin engine.
 func Register(router *gin.Engine, handlers Handlers) {
 	router.Any("/mcp", handlers.MCP.HandleExternalMCP)
-	router.Any(mediamcp.LegacyDocumentHTTPPath, handlers.MCP.HandleInternalDocumentMCP)
+	router.Any(mediamcp.LegacyDocumentHTTPPath, handlers.MCP.HandleLegacyDocumentMCP)
 
 	apiRoutes := router.Group("/api/v1")
 	registerCoreRoutes(apiRoutes, handlers)
@@ -80,7 +80,7 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.Any("/internal/agent/document-mcp", handlers.MCP.HandleInternalDocumentMCP)
 	apiRoutes.Any(
 		"/internal/projects/:projectId/agent/document-mcp",
-		handlers.MCP.HandleInternalDocumentMCP,
+		handlers.MCP.HandleProjectDocumentMCP,
 	)
 	apiRoutes.POST(
 		serviceevents.InternalEventsPublishRoute,
@@ -145,7 +145,7 @@ func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	)
 	apiRoutes.GET(
 		"/generation/sessions/:sessionId/tasks",
-		handlers.GenerationTasks.HandleGenerationTasks,
+		handlers.GenerationTasks.HandleGenerationSessionTasks,
 	)
 	apiRoutes.POST(
 		"/generation/sessions/:sessionId/media-assets/import",
@@ -189,7 +189,7 @@ func registerProjectRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
 	projectRoutes.POST("/archive", handlers.Projects.HandleArchiveProject)
 	projectRoutes.POST("/restore", handlers.Projects.HandleRestoreProject)
 	projectRoutes.DELETE("/permanent", handlers.Projects.HandlePermanentlyDeleteProject)
-	projectRoutes.GET("/billing/summary", handlers.Billing.HandleBillingSummary)
+	projectRoutes.GET("/billing/summary", handlers.Billing.HandleProjectBillingSummary)
 	projectRoutes.GET("/config", handlers.ProjectConfigs.HandleGetProjectConfig)
 	projectRoutes.PATCH("/config", handlers.ProjectConfigs.HandlePatchProjectConfig)
 	projectRoutes.GET("/brief", handlers.ProjectBriefs.HandleGetProjectBrief)
@@ -199,19 +199,19 @@ func registerProjectRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
 	projectRoutes.GET("/assets/:assetId/content", handlers.ProjectAssets.HandleProjectAssetContent)
 	projectRoutes.PUT("/assets/:assetId", handlers.ProjectAssets.HandleUpdateProjectAsset)
 	projectRoutes.DELETE("/assets/:assetId", handlers.ProjectAssets.HandleDeleteProjectAsset)
-	projectRoutes.GET("/media-assets", handlers.MediaAssets.HandleMediaAssets)
-	projectRoutes.POST("/media-assets", handlers.MediaAssets.HandleUploadMediaAsset)
-	projectRoutes.GET("/media-assets/:assetId/content", handlers.MediaAssets.HandleMediaAssetContent)
-	projectRoutes.GET("/media-assets/:assetId/poster", handlers.MediaAssets.HandleMediaAssetPoster)
-	projectRoutes.PUT("/media-assets/:assetId", handlers.MediaAssets.HandleUpdateMediaAsset)
-	projectRoutes.DELETE("/media-assets/:assetId", handlers.MediaAssets.HandleDeleteMediaAsset)
+	projectRoutes.GET("/media-assets", handlers.MediaAssets.HandleProjectMediaAssets)
+	projectRoutes.POST("/media-assets", handlers.MediaAssets.HandleUploadProjectMediaAsset)
+	projectRoutes.GET("/media-assets/:assetId/content", handlers.MediaAssets.HandleProjectMediaAssetContent)
+	projectRoutes.GET("/media-assets/:assetId/poster", handlers.MediaAssets.HandleProjectMediaAssetPoster)
+	projectRoutes.PUT("/media-assets/:assetId", handlers.MediaAssets.HandleUpdateProjectMediaAsset)
+	projectRoutes.DELETE("/media-assets/:assetId", handlers.MediaAssets.HandleDeleteProjectMediaAsset)
 	projectRoutes.GET(
 		"/generation/selected-assets",
 		handlers.GenerationTasks.HandleSelectedGenerationAssets,
 	)
 	registerWorkspaceRoutes(projectRoutes, handlers)
 	registerAgentRoutes(projectRoutes, handlers)
-	registerGenerationNotificationRoutes(projectRoutes, handlers.GenerationTasks, false)
+	registerProjectGenerationNotificationRoutes(projectRoutes, handlers.GenerationTasks)
 }
 
 func registerWorkspaceRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
@@ -286,7 +286,7 @@ func registerAgentRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
 		handlers.AgentPermissions.HandleDecideAgentPermission,
 	)
 	projectRoutes.GET("/agent/chat", handlers.AgentChat.HandleGetAgentChat)
-	projectRoutes.GET("/agent/sessions/:sessionId/chat", handlers.AgentChat.HandleGetAgentChat)
+	projectRoutes.GET("/agent/sessions/:sessionId/chat", handlers.AgentChat.HandleGetAgentSessionChat)
 	projectRoutes.POST("/agent/chat/messages", handlers.AgentChat.HandleAppendAgentChat)
 	projectRoutes.DELETE("/agent/chat", handlers.AgentChat.HandleDeleteAgentChat)
 	projectRoutes.GET("/agent/runtime-config", handlers.AgentRuntime.HandleAgentRuntimeConfig)
@@ -315,11 +315,7 @@ func registerAgentRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
 	)
 }
 
-func registerGenerationNotificationRoutes(
-	routes *gin.RouterGroup,
-	handler httphandlers.GenerationTasks,
-	includeIndividualReadRoute bool,
-) {
+func registerGenerationNotificationRoutes(routes *gin.RouterGroup, handler httphandlers.GenerationTasks, includeIndividualReadRoute bool) {
 	routes.GET("/generation/notifications", handler.HandleGenerationNotifications)
 	routes.PATCH(
 		"/generation/notifications/read",
@@ -335,5 +331,17 @@ func registerGenerationNotificationRoutes(
 	routes.PATCH(
 		"/generation/notifications/:notificationId/read",
 		handler.HandleMarkGenerationNotificationRead,
+	)
+}
+
+func registerProjectGenerationNotificationRoutes(routes *gin.RouterGroup, handler httphandlers.GenerationTasks) {
+	routes.GET("/generation/notifications", handler.HandleProjectGenerationNotifications)
+	routes.PATCH(
+		"/generation/notifications/read",
+		handler.HandleMarkAllProjectGenerationNotificationsRead,
+	)
+	routes.GET(
+		"/generation/notifications/events",
+		handler.HandleProjectGenerationNotificationEvents,
 	)
 }

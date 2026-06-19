@@ -37,7 +37,14 @@ type ProviderLoginCheckRequest struct {
 	DeviceCode string `json:"deviceCode"`
 }
 
-// HandleAPIKeys lists API key provider configuration state.
+// HandleAPIKeys godoc
+// @Summary 获取 API Key 配置
+// @Description 返回模型供应商 API Key 的配置和脱敏状态。
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/api-keys [get]
 func (handler Settings) HandleAPIKeys(context *gin.Context) {
 	list, err := handler.service.ListAPIKeys(context.Request.Context())
 	if err != nil {
@@ -48,7 +55,19 @@ func (handler Settings) HandleAPIKeys(context *gin.Context) {
 	httpresponse.OK(context, list)
 }
 
-// HandlePutAPIKey stores a provider API key.
+// HandlePutAPIKey godoc
+// @Summary 保存 API Key
+// @Description 保存指定供应商的 API Key。
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param provider path string true "Provider ID"
+// @Param payload body APIKeyUpdateRequest true "API key payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/api-keys/{provider} [put]
 func (handler Settings) HandlePutAPIKey(context *gin.Context) {
 	payload, err := decodeJSON[APIKeyUpdateRequest](context)
 	if err != nil {
@@ -65,7 +84,16 @@ func (handler Settings) HandlePutAPIKey(context *gin.Context) {
 	httpresponse.OK(context, list)
 }
 
-// HandleDeleteAPIKey removes a provider API key.
+// HandleDeleteAPIKey godoc
+// @Summary 删除 API Key
+// @Description 删除指定供应商保存的 API Key。
+// @Tags Settings
+// @Produce json
+// @Param provider path string true "Provider ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/api-keys/{provider} [delete]
 func (handler Settings) HandleDeleteAPIKey(context *gin.Context) {
 	list, err := handler.service.ClearAPIKey(context.Request.Context(), context.Param("provider"))
 	if err != nil {
@@ -76,7 +104,19 @@ func (handler Settings) HandleDeleteAPIKey(context *gin.Context) {
 	httpresponse.OK(context, list)
 }
 
-// HandlePostProviderLogin starts a provider-specific login flow.
+// HandlePostProviderLogin godoc
+// @Summary 发起供应商登录
+// @Description 发起需要交互授权的供应商登录流程。
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param provider path string true "Provider ID"
+// @Param payload body ProviderLoginStartRequest false "Login start payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/api-keys/{provider}/login [post]
 func (handler Settings) HandlePostProviderLogin(context *gin.Context) {
 	payload, err := decodeOptionalJSON[ProviderLoginStartRequest](context)
 	if err != nil {
@@ -97,7 +137,19 @@ func (handler Settings) HandlePostProviderLogin(context *gin.Context) {
 	}
 }
 
-// HandlePostProviderLoginCheck checks a provider-specific login flow.
+// HandlePostProviderLoginCheck godoc
+// @Summary 检查供应商登录
+// @Description 使用设备码或挑战码完成供应商登录检查。
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param provider path string true "Provider ID"
+// @Param payload body ProviderLoginCheckRequest true "Login check payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/api-keys/{provider}/login/check [post]
 func (handler Settings) HandlePostProviderLoginCheck(context *gin.Context) {
 	payload, err := decodeJSON[ProviderLoginCheckRequest](context)
 	if err != nil {
@@ -118,7 +170,14 @@ func (handler Settings) HandlePostProviderLoginCheck(context *gin.Context) {
 	}
 }
 
-// HandleAgentModelProfiles lists global agent model profiles.
+// HandleAgentModelProfiles godoc
+// @Summary 获取 Agent 模型配置
+// @Description 返回全局 Agent 模型 Profile 列表。
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/agent-model-profiles [get]
 func (handler Settings) HandleAgentModelProfiles(context *gin.Context) {
 	list, err := handler.service.ListAgentModelProfiles(context.Request.Context())
 	if err != nil {
@@ -129,7 +188,17 @@ func (handler Settings) HandleAgentModelProfiles(context *gin.Context) {
 	httpresponse.OK(context, list)
 }
 
-// HandlePostAgentModelProfile creates a global agent model profile.
+// HandlePostAgentModelProfile godoc
+// @Summary 创建 Agent 模型配置
+// @Description 创建一个全局 Agent 模型 Profile。
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param payload body SwaggerObject true "Agent model profile payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/agent-model-profiles [post]
 func (handler Settings) HandlePostAgentModelProfile(context *gin.Context) {
 	payload, err := decodeJSON[service.AgentModelProfileMutation](context)
 	if err != nil {
@@ -146,7 +215,19 @@ func (handler Settings) HandlePostAgentModelProfile(context *gin.Context) {
 	httpresponse.OK(context, list)
 }
 
-// HandlePatchAgentModelProfile updates a global agent model profile.
+// HandlePatchAgentModelProfile godoc
+// @Summary 更新 Agent 模型配置
+// @Description 更新一个全局 Agent 模型 Profile。
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param profileId path string true "Profile ID"
+// @Param payload body SwaggerObject true "Agent model profile patch"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/agent-model-profiles/{profileId} [patch]
 func (handler Settings) HandlePatchAgentModelProfile(context *gin.Context) {
 	payload, err := decodeJSON[service.AgentModelProfileMutation](context)
 	if err != nil {
@@ -163,7 +244,16 @@ func (handler Settings) HandlePatchAgentModelProfile(context *gin.Context) {
 	httpresponse.OK(context, list)
 }
 
-// HandleDeleteAgentModelProfile removes a global agent model profile.
+// HandleDeleteAgentModelProfile godoc
+// @Summary 删除 Agent 模型配置
+// @Description 删除一个全局 Agent 模型 Profile。
+// @Tags Settings
+// @Produce json
+// @Param profileId path string true "Profile ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/agent-model-profiles/{profileId} [delete]
 func (handler Settings) HandleDeleteAgentModelProfile(context *gin.Context) {
 	list, err := handler.service.DeleteAgentModelProfile(context.Request.Context(), context.Param("profileId"))
 	if err != nil {
@@ -174,7 +264,16 @@ func (handler Settings) HandleDeleteAgentModelProfile(context *gin.Context) {
 	httpresponse.OK(context, list)
 }
 
-// HandlePutAgentModelProfileDefault selects the default global agent model profile.
+// HandlePutAgentModelProfileDefault godoc
+// @Summary 设置默认 Agent 模型配置
+// @Description 将指定 Agent 模型 Profile 设为默认配置。
+// @Tags Settings
+// @Produce json
+// @Param profileId path string true "Profile ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/agent-model-profiles/{profileId}/default [put]
 func (handler Settings) HandlePutAgentModelProfileDefault(context *gin.Context) {
 	list, err := handler.service.SetAgentModelProfileDefault(context.Request.Context(), context.Param("profileId"))
 	if err != nil {
@@ -185,7 +284,19 @@ func (handler Settings) HandlePutAgentModelProfileDefault(context *gin.Context) 
 	httpresponse.OK(context, list)
 }
 
-// HandlePutAgentModelProfileAPIKey stores a global agent model profile API key.
+// HandlePutAgentModelProfileAPIKey godoc
+// @Summary 保存 Agent 模型配置 API Key
+// @Description 为指定 Agent 模型 Profile 保存 API Key。
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param profileId path string true "Profile ID"
+// @Param payload body APIKeyUpdateRequest true "API key payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/agent-model-profiles/{profileId}/api-key [put]
 func (handler Settings) HandlePutAgentModelProfileAPIKey(context *gin.Context) {
 	payload, err := decodeJSON[APIKeyUpdateRequest](context)
 	if err != nil {
@@ -202,7 +313,16 @@ func (handler Settings) HandlePutAgentModelProfileAPIKey(context *gin.Context) {
 	httpresponse.OK(context, list)
 }
 
-// HandleDeleteAgentModelProfileAPIKey removes a global agent model profile API key.
+// HandleDeleteAgentModelProfileAPIKey godoc
+// @Summary 删除 Agent 模型配置 API Key
+// @Description 删除指定 Agent 模型 Profile 保存的 API Key。
+// @Tags Settings
+// @Produce json
+// @Param profileId path string true "Profile ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/agent-model-profiles/{profileId}/api-key [delete]
 func (handler Settings) HandleDeleteAgentModelProfileAPIKey(context *gin.Context) {
 	list, err := handler.service.ClearAgentModelProfileAPIKey(context.Request.Context(), context.Param("profileId"))
 	if err != nil {

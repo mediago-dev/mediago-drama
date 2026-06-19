@@ -38,7 +38,17 @@ type deletePromptLibraryResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-// HandleListPrompts lists built-in and user reusable generation prompts.
+// HandleListPrompts godoc
+// @Summary 获取提示词预设
+// @Description 返回内置和用户自定义的可复用生成提示词。
+// @Tags Prompt Presets
+// @Produce json
+// @Param layer query string false "Prompt layer"
+// @Param kind query string false "Prompt kind"
+// @Param type query string false "Prompt type"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/prompt-presets [get]
 func (handler PromptLibrary) HandleListPrompts(context *gin.Context) {
 	prompts, err := handler.store.List(context.Request.Context(), service.Filter{
 		Layer: context.Query("layer"),
@@ -52,7 +62,16 @@ func (handler PromptLibrary) HandleListPrompts(context *gin.Context) {
 	httpresponse.OK(context, promptLibraryListResponse{Prompts: prompts})
 }
 
-// HandleGetPrompt returns one reusable generation prompt.
+// HandleGetPrompt godoc
+// @Summary 获取提示词预设详情
+// @Description 返回一个可复用生成提示词的完整内容。
+// @Tags Prompt Presets
+// @Produce json
+// @Param id path string true "Prompt preset ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/prompt-presets/{id} [get]
 func (handler PromptLibrary) HandleGetPrompt(context *gin.Context) {
 	prompt, err := handler.store.Get(context.Request.Context(), context.Param("id"))
 	if err != nil {
@@ -62,7 +81,17 @@ func (handler PromptLibrary) HandleGetPrompt(context *gin.Context) {
 	httpresponse.OK(context, prompt)
 }
 
-// HandlePostPrompt creates a new user reusable generation prompt.
+// HandlePostPrompt godoc
+// @Summary 创建提示词预设
+// @Description 创建一个用户提示词预设。
+// @Tags Prompt Presets
+// @Accept json
+// @Produce json
+// @Param payload body SwaggerObject true "Prompt preset payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/prompt-presets [post]
 func (handler PromptLibrary) HandlePostPrompt(context *gin.Context) {
 	payload, err := decodeJSON[service.PromptEntry](context)
 	if err != nil {
@@ -77,7 +106,19 @@ func (handler PromptLibrary) HandlePostPrompt(context *gin.Context) {
 	httpresponse.OK(context, prompt)
 }
 
-// HandlePutPrompt updates a user prompt or creates a user override for a built-in prompt.
+// HandlePutPrompt godoc
+// @Summary 更新提示词预设
+// @Description 更新用户提示词，或为内置提示词创建用户覆盖。
+// @Tags Prompt Presets
+// @Accept json
+// @Produce json
+// @Param id path string true "Prompt preset ID"
+// @Param payload body SwaggerObject true "Prompt preset payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/prompt-presets/{id} [put]
 func (handler PromptLibrary) HandlePutPrompt(context *gin.Context) {
 	payload, err := decodeJSON[service.PromptEntry](context)
 	if err != nil {
@@ -92,7 +133,16 @@ func (handler PromptLibrary) HandlePutPrompt(context *gin.Context) {
 	httpresponse.OK(context, prompt)
 }
 
-// HandleDeletePrompt deletes a user-created prompt.
+// HandleDeletePrompt godoc
+// @Summary 删除提示词预设
+// @Description 删除一个用户创建的提示词预设。
+// @Tags Prompt Presets
+// @Produce json
+// @Param id path string true "Prompt preset ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/prompt-presets/{id} [delete]
 func (handler PromptLibrary) HandleDeletePrompt(context *gin.Context) {
 	if err := handler.store.Delete(context.Request.Context(), context.Param("id")); err != nil {
 		writePromptLibraryError(context, err)
@@ -101,7 +151,16 @@ func (handler PromptLibrary) HandleDeletePrompt(context *gin.Context) {
 	httpresponse.OK(context, deletePromptLibraryResponse{Deleted: true})
 }
 
-// HandleResetPrompt restores one built-in prompt to its system default.
+// HandleResetPrompt godoc
+// @Summary 重置提示词预设
+// @Description 将一个内置提示词恢复到系统默认内容。
+// @Tags Prompt Presets
+// @Produce json
+// @Param id path string true "Prompt preset ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/prompt-presets/{id}/reset [post]
 func (handler PromptLibrary) HandleResetPrompt(context *gin.Context) {
 	prompt, err := handler.store.Reset(context.Request.Context(), context.Param("id"))
 	if err != nil {

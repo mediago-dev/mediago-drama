@@ -30,7 +30,14 @@ type promptTemplateListResponse struct {
 	Templates []service.PromptTemplate `json:"templates"`
 }
 
-// HandleListPromptTemplates lists editable system prompt templates.
+// HandleListPromptTemplates godoc
+// @Summary 获取系统提示词模板
+// @Description 返回可编辑的系统提示词模板列表。
+// @Tags Prompt Templates
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/prompt-templates [get]
 func (handler PromptTemplates) HandleListPromptTemplates(context *gin.Context) {
 	templateMap, err := handler.store.Load(context.Request.Context())
 	if err != nil {
@@ -43,7 +50,18 @@ func (handler PromptTemplates) HandleListPromptTemplates(context *gin.Context) {
 	})
 }
 
-// HandlePutPromptTemplate saves one editable system prompt template.
+// HandlePutPromptTemplate godoc
+// @Summary 保存系统提示词模板
+// @Description 保存一个可编辑系统提示词模板的 Markdown 内容。
+// @Tags Prompt Templates
+// @Accept json
+// @Produce json
+// @Param id path string true "Template ID"
+// @Param payload body SwaggerObject true "Prompt template payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/prompt-templates/{id} [put]
 func (handler PromptTemplates) HandlePutPromptTemplate(context *gin.Context) {
 	payload, err := decodeJSON[service.PromptTemplate](context)
 	if err != nil {

@@ -6,10 +6,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	mcpserver "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/server"
 	"github.com/mediago-dev/mediago-drama/packages/server/internal/domain"
 	httpresponse "github.com/mediago-dev/mediago-drama/packages/server/internal/http/response"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // MCPServerFactory creates a stateless MCP server for one HTTP request.
@@ -36,7 +36,15 @@ func NewMCP(bridgeToken string, externalServer MCPServerFactory, documentServer 
 	}
 }
 
-// HandleExternalMCP serves the cross-project MCP endpoint.
+// HandleExternalMCP godoc
+// @Summary 外部 MCP 入口
+// @Description 提供跨项目的 MCP streamable HTTP 入口。
+// @Tags MCP
+// @Accept json
+// @Produce json
+// @Param payload body SwaggerObject false "MCP JSON-RPC payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Router /mcp [post]
 func (handler MCP) HandleExternalMCP(context *gin.Context) {
 	slog.Debug(
 		"external mcp http request",
@@ -48,7 +56,16 @@ func (handler MCP) HandleExternalMCP(context *gin.Context) {
 	httpHandler.ServeHTTP(context.Writer, context.Request)
 }
 
-// HandleInternalDocumentMCP serves the agent document MCP endpoint.
+// HandleInternalDocumentMCP godoc
+// @Summary 文档 MCP 入口
+// @Description 提供当前 Agent 运行使用的文档工具 MCP streamable HTTP 入口。
+// @Tags MCP
+// @Accept json
+// @Produce json
+// @Param projectId query string true "Project ID"
+// @Param payload body SwaggerObject false "MCP JSON-RPC payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Router /api/v1/internal/agent/document-mcp [post]
 func (handler MCP) HandleInternalDocumentMCP(context *gin.Context) {
 	token := strings.TrimPrefix(context.GetHeader("Authorization"), "Bearer ")
 	if handler.bridgeToken == "" || token != handler.bridgeToken {
@@ -76,4 +93,32 @@ func (handler MCP) HandleInternalDocumentMCP(context *gin.Context) {
 		return handler.documentServer(request, projectID)
 	}, handler.statelessLogger)
 	httpHandler.ServeHTTP(context.Writer, context.Request)
+}
+
+// HandleLegacyDocumentMCP godoc
+// @Summary 旧版文档 MCP 入口
+// @Description 兼容旧 Agent 进程使用的文档 MCP streamable HTTP 入口。
+// @Tags MCP
+// @Accept json
+// @Produce json
+// @Param projectId query string true "Project ID"
+// @Param payload body SwaggerObject false "MCP JSON-RPC payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Router /api/internal/agent/document-mcp [post]
+func (handler MCP) HandleLegacyDocumentMCP(context *gin.Context) {
+	handler.HandleInternalDocumentMCP(context)
+}
+
+// HandleProjectDocumentMCP godoc
+// @Summary 项目文档 MCP 入口
+// @Description 提供指定项目范围内的文档工具 MCP streamable HTTP 入口。
+// @Tags MCP
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param payload body SwaggerObject false "MCP JSON-RPC payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Router /api/v1/internal/projects/{projectId}/agent/document-mcp [post]
+func (handler MCP) HandleProjectDocumentMCP(context *gin.Context) {
+	handler.HandleInternalDocumentMCP(context)
 }

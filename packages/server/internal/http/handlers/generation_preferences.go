@@ -25,7 +25,15 @@ func NewGenerationPreferences(service GenerationPreferenceService) GenerationPre
 	return GenerationPreferences{service: service}
 }
 
-// HandleGenerationPreferences returns preferences for one scope.
+// HandleGenerationPreferences godoc
+// @Summary 获取生成偏好
+// @Description 返回指定生成会话的模型和参数偏好。
+// @Tags Generation
+// @Produce json
+// @Param sessionId path string true "Session ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/sessions/{sessionId}/preferences [get]
 func (handler GenerationPreferences) HandleGenerationPreferences(context *gin.Context) {
 	sessionID, ok := requiredPathParam(context, "sessionId", "sessionId")
 	if !ok {
@@ -41,7 +49,18 @@ func (handler GenerationPreferences) HandleGenerationPreferences(context *gin.Co
 	httpresponse.OK(context, preferences)
 }
 
-// HandlePutGenerationPreferences updates preferences for one scope.
+// HandlePutGenerationPreferences godoc
+// @Summary 保存生成偏好
+// @Description 更新指定生成会话的模型和参数偏好。
+// @Tags Generation
+// @Accept json
+// @Produce json
+// @Param sessionId path string true "Session ID"
+// @Param payload body SwaggerObject true "Generation preference payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/sessions/{sessionId}/preferences [put]
 func (handler GenerationPreferences) HandlePutGenerationPreferences(context *gin.Context) {
 	sessionID, ok := requiredPathParam(context, "sessionId", "sessionId")
 	if !ok {

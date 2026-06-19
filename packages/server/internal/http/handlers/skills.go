@@ -45,7 +45,14 @@ type deleteSkillResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-// HandleListSkills lists available built-in and user skills.
+// HandleListSkills godoc
+// @Summary 获取 Skills 列表
+// @Description 返回内置和用户自定义的 Agent Skills。
+// @Tags Skills
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/skills [get]
 func (handler Skills) HandleListSkills(context *gin.Context) {
 	metas, err := handler.registry.List(context.Request.Context())
 	if err != nil {
@@ -55,7 +62,16 @@ func (handler Skills) HandleListSkills(context *gin.Context) {
 	httpresponse.OK(context, skillListResponse{Skills: metas})
 }
 
-// HandleGetSkill returns one raw skill Markdown file.
+// HandleGetSkill godoc
+// @Summary 获取 Skill 内容
+// @Description 返回一个 Skill 的原始 Markdown 内容。
+// @Tags Skills
+// @Produce json
+// @Param name path string true "Skill name"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/skills/{name} [get]
 func (handler Skills) HandleGetSkill(context *gin.Context) {
 	item, err := handler.registry.GetRaw(context.Request.Context(), context.Param("name"))
 	if err != nil {
@@ -65,7 +81,18 @@ func (handler Skills) HandleGetSkill(context *gin.Context) {
 	httpresponse.OK(context, skillHTTPResponse(item))
 }
 
-// HandlePutSkill updates a skill from raw Markdown, creating a user override for built-ins.
+// HandlePutSkill godoc
+// @Summary 保存 Skill
+// @Description 保存 Skill Markdown，必要时为内置 Skill 创建用户覆盖。
+// @Tags Skills
+// @Accept text/plain
+// @Produce json
+// @Param name path string true "Skill name"
+// @Param body body string true "Skill Markdown"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/skills/{name} [put]
 func (handler Skills) HandlePutSkill(context *gin.Context) {
 	raw, err := decodeRawMarkdown(context)
 	if err != nil {
@@ -80,7 +107,17 @@ func (handler Skills) HandlePutSkill(context *gin.Context) {
 	httpresponse.OK(context, skillHTTPResponse(item))
 }
 
-// HandlePostSkill creates a new user skill.
+// HandlePostSkill godoc
+// @Summary 创建 Skill
+// @Description 创建一个用户自定义 Skill。
+// @Tags Skills
+// @Accept json
+// @Produce json
+// @Param payload body SwaggerObject true "Skill payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/skills [post]
 func (handler Skills) HandlePostSkill(context *gin.Context) {
 	payload, err := decodeJSON[createSkillRequest](context)
 	if err != nil {
@@ -95,7 +132,16 @@ func (handler Skills) HandlePostSkill(context *gin.Context) {
 	httpresponse.OK(context, skillHTTPResponse(item))
 }
 
-// HandleDeleteSkill deletes an existing user skill.
+// HandleDeleteSkill godoc
+// @Summary 删除 Skill
+// @Description 删除一个用户自定义 Skill。
+// @Tags Skills
+// @Produce json
+// @Param name path string true "Skill name"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/skills/{name} [delete]
 func (handler Skills) HandleDeleteSkill(context *gin.Context) {
 	if err := handler.registry.Delete(context.Request.Context(), context.Param("name")); err != nil {
 		writeSkillError(context, err)

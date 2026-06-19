@@ -34,7 +34,20 @@ func NewAgentEvents(service AgentEventService) AgentEvents {
 	return AgentEvents{service: service}
 }
 
-// HandleAgentEvents streams live agent events using server-sent events.
+// HandleAgentEvents godoc
+// @Summary 订阅 Agent 会话事件
+// @Description 使用 SSE 订阅指定 Agent 会话的运行事件。
+// @Tags Agent
+// @Produce text/event-stream
+// @Param projectId path string true "Project ID"
+// @Param sessionId path string true "Session ID"
+// @Param after query int false "Last seen event sequence"
+// @Param limit query int false "Replay event limit"
+// @Success 200 {string} string "SSE stream"
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/sessions/{sessionId}/events [get]
 func (handler AgentEvents) HandleAgentEvents(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {

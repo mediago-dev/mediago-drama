@@ -23,7 +23,22 @@ func NewAgentPermissions(resolver AgentPermissionResolver) AgentPermissions {
 	return AgentPermissions{resolver: resolver}
 }
 
-// HandleDecideAgentPermission resolves one pending ACP permission request.
+// HandleDecideAgentPermission godoc
+// @Summary 处理 Agent 权限请求
+// @Description 接受或拒绝一个运行中的 Agent ACP 权限请求。
+// @Tags Agent
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param sessionId path string true "Session ID"
+// @Param requestId path string true "Permission request ID"
+// @Param payload body SwaggerObject true "Permission decision payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 409 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/sessions/{sessionId}/permission-requests/{requestId}/decision [post]
 func (handler AgentPermissions) HandleDecideAgentPermission(context *gin.Context) {
 	if handler.resolver == nil {
 		httpresponse.Error(context, http.StatusServiceUnavailable, "agent runtime is unavailable")

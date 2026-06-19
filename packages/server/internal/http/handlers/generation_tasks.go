@@ -50,12 +50,30 @@ func NewGenerationTasks(service GenerationTaskService) GenerationTasks {
 	return GenerationTasks{service: service}
 }
 
-// HandleGenerationModels lists available generation models and routes.
+// HandleGenerationModels godoc
+// @Summary 获取生成模型目录
+// @Description 返回可用生成模型、路由、参数和供应商配置状态。
+// @Tags Generation
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/models [get]
 func (handler GenerationTasks) HandleGenerationModels(context *gin.Context) {
 	httpresponse.OK(context, handler.service.ListGenerationModels())
 }
 
-// HandleGenerationMessage creates a generation request.
+// HandleGenerationMessage godoc
+// @Summary 提交生成消息
+// @Description 向生成会话提交文本、图片或视频生成请求。
+// @Tags Generation
+// @Accept json
+// @Produce json
+// @Param sessionId path string true "Session ID"
+// @Param payload body SwaggerObject true "Generation message payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 503 {object} SwaggerEnvelope
+// @Router /api/v1/generation/sessions/{sessionId}/messages [post]
 func (handler GenerationTasks) HandleGenerationMessage(context *gin.Context) {
 	payload, err := decodeJSON[dto.GenerationMessageRequest](context)
 	if err != nil {
@@ -74,7 +92,18 @@ func (handler GenerationTasks) HandleGenerationMessage(context *gin.Context) {
 	httpresponse.OK(context, response)
 }
 
-// HandleImportGenerationMediaAssets imports media library images into generation history.
+// HandleImportGenerationMediaAssets godoc
+// @Summary 导入生成媒体资产
+// @Description 将媒体资产导入到生成会话上下文。
+// @Tags Generation
+// @Accept json
+// @Produce json
+// @Param sessionId path string true "Session ID"
+// @Param payload body SwaggerObject true "Media asset import payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/sessions/{sessionId}/media-assets/import [post]
 func (handler GenerationTasks) HandleImportGenerationMediaAssets(context *gin.Context) {
 	payload, err := decodeJSON[dto.ImportGenerationMediaAssetsRequest](context)
 	if err != nil {
@@ -93,7 +122,18 @@ func (handler GenerationTasks) HandleImportGenerationMediaAssets(context *gin.Co
 	httpresponse.OK(context, response)
 }
 
-// HandleGenerationTextStream streams a text generation request using SSE.
+// HandleGenerationTextStream godoc
+// @Summary 流式生成文本
+// @Description 向生成会话提交文本生成请求并通过 SSE 返回流式事件。
+// @Tags Generation
+// @Accept json
+// @Produce text/event-stream
+// @Param sessionId path string true "Session ID"
+// @Param payload body SwaggerObject true "Generation stream payload"
+// @Success 200 {string} string "SSE stream"
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 503 {object} SwaggerEnvelope
+// @Router /api/v1/generation/sessions/{sessionId}/messages/stream [post]
 func (handler GenerationTasks) HandleGenerationTextStream(context *gin.Context) {
 	payload, err := decodeJSON[dto.GenerationMessageRequest](context)
 	if err != nil {
@@ -136,7 +176,14 @@ func (handler GenerationTasks) HandleGenerationTextStream(context *gin.Context) 
 	}
 }
 
-// HandleGenerationConversations lists generation conversations.
+// HandleGenerationConversations godoc
+// @Summary 获取生成会话列表
+// @Description 返回生成工作台中的会话列表。
+// @Tags Generation
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/sessions [get]
 func (handler GenerationTasks) HandleGenerationConversations(context *gin.Context) {
 	conversations, err := handler.service.ListGenerationConversations(
 		strings.TrimSpace(context.Query("scopeId")),
@@ -150,7 +197,17 @@ func (handler GenerationTasks) HandleGenerationConversations(context *gin.Contex
 	httpresponse.OK(context, conversations)
 }
 
-// HandleCreateGenerationConversation creates a generation conversation.
+// HandleCreateGenerationConversation godoc
+// @Summary 创建生成会话
+// @Description 创建一个新的生成会话。
+// @Tags Generation
+// @Accept json
+// @Produce json
+// @Param payload body SwaggerObject true "Generation session payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/sessions [post]
 func (handler GenerationTasks) HandleCreateGenerationConversation(context *gin.Context) {
 	payload, err := decodeJSON[dto.CreateGenerationConversationRequest](context)
 	if err != nil {
@@ -169,7 +226,16 @@ func (handler GenerationTasks) HandleCreateGenerationConversation(context *gin.C
 	httpresponse.OK(context, conversation)
 }
 
-// HandleDeleteGenerationConversation deletes one generation conversation.
+// HandleDeleteGenerationConversation godoc
+// @Summary 删除生成会话
+// @Description 删除一个生成会话及其关联状态。
+// @Tags Generation
+// @Produce json
+// @Param sessionId path string true "Session ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/sessions/{sessionId} [delete]
 func (handler GenerationTasks) HandleDeleteGenerationConversation(context *gin.Context) {
 	id, ok := requiredPathParam(context, "sessionId", "sessionId")
 	if !ok {
@@ -189,7 +255,16 @@ func (handler GenerationTasks) HandleDeleteGenerationConversation(context *gin.C
 	httpresponse.OK(context, map[string]bool{"deleted": true})
 }
 
-// HandleGenerationVideo polls one generation video task.
+// HandleGenerationVideo godoc
+// @Summary 获取生成任务结果
+// @Description 返回视频任务结果或生成任务产物。
+// @Tags Generation
+// @Produce application/octet-stream
+// @Param taskId path string true "Task ID"
+// @Success 200 {file} file
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/tasks/{taskId}/result [get]
 func (handler GenerationTasks) HandleGenerationVideo(context *gin.Context) {
 	id, ok := requiredPathParam(context, "taskId", "taskId")
 	if !ok {
@@ -204,7 +279,16 @@ func (handler GenerationTasks) HandleGenerationVideo(context *gin.Context) {
 	httpresponse.OK(context, response)
 }
 
-// HandleRetryGenerationTask retries one generation task.
+// HandleRetryGenerationTask godoc
+// @Summary 重试生成任务
+// @Description 对失败或可重试的生成任务重新提交请求。
+// @Tags Generation
+// @Produce json
+// @Param taskId path string true "Task ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 503 {object} SwaggerEnvelope
+// @Router /api/v1/generation/tasks/{taskId}/retry [post]
 func (handler GenerationTasks) HandleRetryGenerationTask(context *gin.Context) {
 	id, ok := requiredPathParam(context, "taskId", "taskId")
 	if !ok {
@@ -219,7 +303,17 @@ func (handler GenerationTasks) HandleRetryGenerationTask(context *gin.Context) {
 	httpresponse.OK(context, response)
 }
 
-// HandleGenerationTasks lists generation tasks.
+// HandleGenerationTasks godoc
+// @Summary 获取生成任务列表
+// @Description 返回所有生成任务，可按会话、状态或类型筛选。
+// @Tags Generation
+// @Produce json
+// @Param sessionId query string false "Session ID"
+// @Param status query string false "Task status"
+// @Param kind query string false "Generation kind"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/tasks [get]
 func (handler GenerationTasks) HandleGenerationTasks(context *gin.Context) {
 	sessionID := pathParam(context, "sessionId")
 	if sessionID == "" {
@@ -247,7 +341,31 @@ func (handler GenerationTasks) HandleGenerationTasks(context *gin.Context) {
 	httpresponse.OK(context, tasks)
 }
 
-// HandleSelectedGenerationAssets lists project-level selected generated image assets.
+// HandleGenerationSessionTasks godoc
+// @Summary 获取会话生成任务
+// @Description 返回指定生成会话下的任务列表。
+// @Tags Generation
+// @Produce json
+// @Param sessionId path string true "Session ID"
+// @Param status query string false "Task status"
+// @Param kind query string false "Generation kind"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/sessions/{sessionId}/tasks [get]
+func (handler GenerationTasks) HandleGenerationSessionTasks(context *gin.Context) {
+	handler.HandleGenerationTasks(context)
+}
+
+// HandleSelectedGenerationAssets godoc
+// @Summary 获取项目选中生成资产
+// @Description 返回项目页面中被选中用于展示或编排的生成资产。
+// @Tags Generation
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/generation/selected-assets [get]
 func (handler GenerationTasks) HandleSelectedGenerationAssets(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -289,7 +407,14 @@ func writeGenerationTextSSE(writer http.ResponseWriter, event dto.GenerationText
 	fmt.Fprintf(writer, "data: %s\n\n", body)
 }
 
-// HandleGenerationNotifications lists completed generation notifications.
+// HandleGenerationNotifications godoc
+// @Summary 获取生成通知
+// @Description 返回生成任务通知列表。
+// @Tags Generation Notifications
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/notifications [get]
 func (handler GenerationTasks) HandleGenerationNotifications(context *gin.Context) {
 	notifications, err := handler.service.ListGenerationNotifications(optionalProjectID(context))
 	if err != nil {
@@ -300,7 +425,27 @@ func (handler GenerationTasks) HandleGenerationNotifications(context *gin.Contex
 	httpresponse.OK(context, notifications)
 }
 
-// HandleGenerationNotificationEvents streams live generation notification events using SSE.
+// HandleProjectGenerationNotifications godoc
+// @Summary 获取生成通知
+// @Description 返回生成任务通知列表。
+// @Tags Generation Notifications
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/generation/notifications [get]
+func (handler GenerationTasks) HandleProjectGenerationNotifications(context *gin.Context) {
+	handler.HandleGenerationNotifications(context)
+}
+
+// HandleGenerationNotificationEvents godoc
+// @Summary 订阅生成通知事件
+// @Description 使用 SSE 订阅生成通知更新事件。
+// @Tags Generation Notifications
+// @Produce text/event-stream
+// @Success 200 {string} string "SSE stream"
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/notifications/events [get]
 func (handler GenerationTasks) HandleGenerationNotificationEvents(context *gin.Context) {
 	projectID := optionalProjectID(context)
 	flusher, ok := context.Writer.(http.Flusher)
@@ -344,7 +489,29 @@ func (handler GenerationTasks) HandleGenerationNotificationEvents(context *gin.C
 	}
 }
 
-// HandleMarkGenerationNotificationRead marks one notification read.
+// HandleProjectGenerationNotificationEvents godoc
+// @Summary 订阅生成通知事件
+// @Description 使用 SSE 订阅生成通知更新事件。
+// @Tags Generation Notifications
+// @Produce text/event-stream
+// @Param projectId path string true "Project ID"
+// @Success 200 {string} string "SSE stream"
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/generation/notifications/events [get]
+func (handler GenerationTasks) HandleProjectGenerationNotificationEvents(context *gin.Context) {
+	handler.HandleGenerationNotificationEvents(context)
+}
+
+// HandleMarkGenerationNotificationRead godoc
+// @Summary 标记单条生成通知已读
+// @Description 将指定生成通知标记为已读。
+// @Tags Generation Notifications
+// @Produce json
+// @Param notificationId path string true "Notification ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/notifications/{notificationId}/read [patch]
 func (handler GenerationTasks) HandleMarkGenerationNotificationRead(context *gin.Context) {
 	id, ok := requiredPathParam(context, "notificationId", "notificationId")
 	if !ok {
@@ -364,7 +531,14 @@ func (handler GenerationTasks) HandleMarkGenerationNotificationRead(context *gin
 	httpresponse.OK(context, notification)
 }
 
-// HandleMarkAllGenerationNotificationsRead marks all notifications read.
+// HandleMarkAllGenerationNotificationsRead godoc
+// @Summary 标记所有生成通知已读
+// @Description 将当前范围内所有生成通知标记为已读。
+// @Tags Generation Notifications
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/notifications/read [patch]
 func (handler GenerationTasks) HandleMarkAllGenerationNotificationsRead(context *gin.Context) {
 	if err := handler.service.MarkAllGenerationNotificationsRead(optionalProjectID(context)); err != nil {
 		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
@@ -372,6 +546,19 @@ func (handler GenerationTasks) HandleMarkAllGenerationNotificationsRead(context 
 	}
 
 	httpresponse.OK(context, map[string]bool{"ok": true})
+}
+
+// HandleMarkAllProjectGenerationNotificationsRead godoc
+// @Summary 标记所有生成通知已读
+// @Description 将当前范围内所有生成通知标记为已读。
+// @Tags Generation Notifications
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/generation/notifications/read [patch]
+func (handler GenerationTasks) HandleMarkAllProjectGenerationNotificationsRead(context *gin.Context) {
+	handler.HandleMarkAllGenerationNotificationsRead(context)
 }
 
 func writeGenerationNotificationSSE(writer http.ResponseWriter, event dto.GenerationNotificationEvent) {
@@ -390,7 +577,16 @@ func writeGenerationNotificationSSE(writer http.ResponseWriter, event dto.Genera
 	fmt.Fprintf(writer, "data: %s\n\n", body)
 }
 
-// HandleGenerationTask returns one generation task.
+// HandleGenerationTask godoc
+// @Summary 获取生成任务详情
+// @Description 返回一个生成任务的完整状态、结果和尝试记录。
+// @Tags Generation
+// @Produce json
+// @Param taskId path string true "Task ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/tasks/{taskId} [get]
 func (handler GenerationTasks) HandleGenerationTask(context *gin.Context) {
 	id, ok := requiredPathParam(context, "taskId", "taskId")
 	if !ok {
@@ -410,7 +606,20 @@ func (handler GenerationTasks) HandleGenerationTask(context *gin.Context) {
 	httpresponse.OK(context, task)
 }
 
-// HandleUpdateGenerationTaskAsset updates one generated asset on a task.
+// HandleUpdateGenerationTaskAsset godoc
+// @Summary 更新生成任务资产
+// @Description 更新生成任务中某个结果资产的元数据。
+// @Tags Generation
+// @Accept json
+// @Produce json
+// @Param taskId path string true "Task ID"
+// @Param assetIndex path int true "Asset index"
+// @Param payload body SwaggerObject true "Generation task asset patch"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/tasks/{taskId}/assets/{assetIndex} [patch]
 func (handler GenerationTasks) HandleUpdateGenerationTaskAsset(context *gin.Context) {
 	id, ok := requiredPathParam(context, "taskId", "taskId")
 	if !ok {
@@ -450,7 +659,18 @@ func (handler GenerationTasks) HandleUpdateGenerationTaskAsset(context *gin.Cont
 	httpresponse.OK(context, task)
 }
 
-// HandleDeleteGenerationTaskAsset deletes one generated asset from a task.
+// HandleDeleteGenerationTaskAsset godoc
+// @Summary 删除生成任务资产
+// @Description 删除生成任务中的某个结果资产。
+// @Tags Generation
+// @Produce json
+// @Param taskId path string true "Task ID"
+// @Param assetIndex path int true "Asset index"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/tasks/{taskId}/assets/{assetIndex} [delete]
 func (handler GenerationTasks) HandleDeleteGenerationTaskAsset(context *gin.Context) {
 	id, ok := requiredPathParam(context, "taskId", "taskId")
 	if !ok {
@@ -480,7 +700,16 @@ func (handler GenerationTasks) HandleDeleteGenerationTaskAsset(context *gin.Cont
 	httpresponse.OK(context, task)
 }
 
-// HandleDeleteGenerationTask deletes one generation task.
+// HandleDeleteGenerationTask godoc
+// @Summary 删除生成任务
+// @Description 删除一个生成任务记录。
+// @Tags Generation
+// @Produce json
+// @Param taskId path string true "Task ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/tasks/{taskId} [delete]
 func (handler GenerationTasks) HandleDeleteGenerationTask(context *gin.Context) {
 	id, ok := requiredPathParam(context, "taskId", "taskId")
 	if !ok {

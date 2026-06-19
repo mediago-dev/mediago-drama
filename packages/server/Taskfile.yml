@@ -39,6 +39,7 @@ tasks:
 
   test:
     cmds:
+      - task: swagger
       - go test -race ./...
 
   test:integration:
@@ -57,6 +58,10 @@ tasks:
   tidy:
     cmds:
       - go mod tidy
+
+  swagger:
+    cmds:
+      - GOWORK=off go run github.com/swaggo/swag/cmd/swag@v1.8.12 init -g main.go -d cmd/mediago-server,internal/http/handlers -o ../../.cache/server-swagger --parseInternal --outputTypes json
 
   check:
     cmds:

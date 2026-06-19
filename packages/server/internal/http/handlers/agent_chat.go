@@ -30,7 +30,16 @@ func NewAgentChat(store AgentChatStore, pendingPermissions ...func(sessionID str
 	return handler
 }
 
-// HandleGetAgentChat returns chat state.
+// HandleGetAgentChat godoc
+// @Summary 获取项目 Agent 聊天
+// @Description 返回项目默认 Agent 聊天状态。
+// @Tags Agent
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/chat [get]
 func (handler AgentChat) HandleGetAgentChat(context *gin.Context) {
 	writeNoStoreHeaders(context)
 	projectID, ok := requiredProjectID(context)
@@ -54,7 +63,33 @@ func (handler AgentChat) HandleGetAgentChat(context *gin.Context) {
 	httpresponse.OK(context, state)
 }
 
-// HandleAppendAgentChat appends chat messages.
+// HandleGetAgentSessionChat godoc
+// @Summary 获取会话 Agent 聊天
+// @Description 返回指定 Agent 会话的聊天状态。
+// @Tags Agent
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param sessionId path string true "Session ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/sessions/{sessionId}/chat [get]
+func (handler AgentChat) HandleGetAgentSessionChat(context *gin.Context) {
+	handler.HandleGetAgentChat(context)
+}
+
+// HandleAppendAgentChat godoc
+// @Summary 追加 Agent 聊天消息
+// @Description 向项目默认 Agent 聊天追加消息。
+// @Tags Agent
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param payload body SwaggerObject true "Chat append payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/chat/messages [post]
 func (handler AgentChat) HandleAppendAgentChat(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -76,7 +111,16 @@ func (handler AgentChat) HandleAppendAgentChat(context *gin.Context) {
 	httpresponse.OK(context, state)
 }
 
-// HandleDeleteAgentChat clears chat state.
+// HandleDeleteAgentChat godoc
+// @Summary 清空 Agent 聊天
+// @Description 删除项目默认 Agent 聊天状态。
+// @Tags Agent
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/chat [delete]
 func (handler AgentChat) HandleDeleteAgentChat(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {

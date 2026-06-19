@@ -60,7 +60,16 @@ type workspaceDocumentMutationResponse struct {
 	State    service.WorkspaceDocumentsResponse `json:"state"`
 }
 
-// HandleListDocumentFolders lists project folders.
+// HandleListDocumentFolders godoc
+// @Summary 获取文档文件夹
+// @Description 返回项目文档目录中的文件夹列表。
+// @Tags Workspace
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/folders [get]
 func (handler Workspace) HandleListDocumentFolders(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -74,7 +83,18 @@ func (handler Workspace) HandleListDocumentFolders(context *gin.Context) {
 	httpresponse.OK(context, state)
 }
 
-// HandleCreateDocumentFolder creates a project folder.
+// HandleCreateDocumentFolder godoc
+// @Summary 创建文档文件夹
+// @Description 在项目文档目录中创建文件夹。
+// @Tags Workspace
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param payload body SwaggerObject true "Folder creation payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/folders [post]
 func (handler Workspace) HandleCreateDocumentFolder(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -98,7 +118,20 @@ func (handler Workspace) HandleCreateDocumentFolder(context *gin.Context) {
 	httpresponse.OK(context, response)
 }
 
-// HandleUpdateDocumentFolder updates a project folder.
+// HandleUpdateDocumentFolder godoc
+// @Summary 更新文档文件夹
+// @Description 重命名或移动项目文档文件夹。
+// @Tags Workspace
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param folderId path string true "Folder ID"
+// @Param payload body SwaggerObject true "Folder patch payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/folders/{folderId} [patch]
 func (handler Workspace) HandleUpdateDocumentFolder(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -126,7 +159,18 @@ func (handler Workspace) HandleUpdateDocumentFolder(context *gin.Context) {
 	httpresponse.OK(context, response)
 }
 
-// HandleDeleteDocumentFolder deletes a project folder.
+// HandleDeleteDocumentFolder godoc
+// @Summary 删除文档文件夹
+// @Description 删除项目文档文件夹。
+// @Tags Workspace
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param folderId path string true "Folder ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/folders/{folderId} [delete]
 func (handler Workspace) HandleDeleteDocumentFolder(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -149,7 +193,16 @@ func (handler Workspace) HandleDeleteDocumentFolder(context *gin.Context) {
 	httpresponse.OK(context, response)
 }
 
-// HandleGetWorkspaceState returns complete workspace state.
+// HandleGetWorkspaceState godoc
+// @Summary 获取工作区状态
+// @Description 返回项目文档、目录、草稿和操作日志等完整工作区状态。
+// @Tags Workspace
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/state [get]
 func (handler Workspace) HandleGetWorkspaceState(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -169,7 +222,19 @@ func (handler Workspace) HandleGetWorkspaceState(context *gin.Context) {
 	httpresponse.OK(context, state)
 }
 
-// HandlePutWorkspaceState replaces complete workspace state.
+// HandlePutWorkspaceState godoc
+// @Summary 保存工作区状态
+// @Description 替换项目的完整工作区状态。
+// @Tags Workspace
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param payload body SwaggerObject true "Workspace state payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 409 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/state [put]
 func (handler Workspace) HandlePutWorkspaceState(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -195,7 +260,17 @@ func (handler Workspace) HandlePutWorkspaceState(context *gin.Context) {
 	httpresponse.OK(context, state)
 }
 
-// HandleListWorkspaceDocuments lists project documents.
+// HandleListWorkspaceDocuments godoc
+// @Summary 获取文档列表
+// @Description 返回项目工作区文档列表。
+// @Tags Workspace
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param category query string false "Document category"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/documents [get]
 func (handler Workspace) HandleListWorkspaceDocuments(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -214,7 +289,18 @@ func (handler Workspace) HandleListWorkspaceDocuments(context *gin.Context) {
 	httpresponse.OK(context, state)
 }
 
-// HandleCreateWorkspaceDocument creates a project document.
+// HandleCreateWorkspaceDocument godoc
+// @Summary 创建文档
+// @Description 在项目工作区创建 Markdown 文档。
+// @Tags Workspace
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param payload body SwaggerObject true "Document creation payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/documents [post]
 func (handler Workspace) HandleCreateWorkspaceDocument(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -246,7 +332,18 @@ func (handler Workspace) HandleCreateWorkspaceDocument(context *gin.Context) {
 	})
 }
 
-// HandleGetWorkspaceDocument returns a project document.
+// HandleGetWorkspaceDocument godoc
+// @Summary 获取文档详情
+// @Description 返回项目工作区中的一个文档。
+// @Tags Workspace
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/documents/{documentId} [get]
 func (handler Workspace) HandleGetWorkspaceDocument(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -268,7 +365,21 @@ func (handler Workspace) HandleGetWorkspaceDocument(context *gin.Context) {
 	httpresponse.OK(context, document)
 }
 
-// HandleUpdateWorkspaceDocument updates a project document.
+// HandleUpdateWorkspaceDocument godoc
+// @Summary 更新文档
+// @Description 更新项目工作区文档的内容、标题、分类或草稿状态。
+// @Tags Workspace
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Param payload body SwaggerObject true "Document patch payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 409 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/documents/{documentId} [patch]
 func (handler Workspace) HandleUpdateWorkspaceDocument(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -300,7 +411,18 @@ func (handler Workspace) HandleUpdateWorkspaceDocument(context *gin.Context) {
 	})
 }
 
-// HandleDeleteWorkspaceDocument deletes a project document.
+// HandleDeleteWorkspaceDocument godoc
+// @Summary 删除文档
+// @Description 删除项目工作区文档。
+// @Tags Workspace
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/documents/{documentId} [delete]
 func (handler Workspace) HandleDeleteWorkspaceDocument(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -331,7 +453,19 @@ func (handler Workspace) HandleDeleteWorkspaceDocument(context *gin.Context) {
 	httpresponse.OK(context, response)
 }
 
-// HandleListDocumentHistory lists version-control entries for a project document.
+// HandleListDocumentHistory godoc
+// @Summary 获取文档历史
+// @Description 返回项目文档的版本历史记录。
+// @Tags Workspace
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Param limit query int false "History item limit"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/documents/{documentId}/history [get]
 func (handler Workspace) HandleListDocumentHistory(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -353,7 +487,19 @@ func (handler Workspace) HandleListDocumentHistory(context *gin.Context) {
 	httpresponse.OK(context, response)
 }
 
-// HandleGetDocumentHistoryVersion returns one historical version for a document.
+// HandleGetDocumentHistoryVersion godoc
+// @Summary 获取文档历史版本
+// @Description 返回指定提交中的文档历史版本。
+// @Tags Workspace
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Param commitHash path string true "Commit hash"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/documents/{documentId}/history/{commitHash} [get]
 func (handler Workspace) HandleGetDocumentHistoryVersion(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -375,7 +521,20 @@ func (handler Workspace) HandleGetDocumentHistoryVersion(context *gin.Context) {
 	httpresponse.OK(context, response)
 }
 
-// HandleGetDocumentHistoryDiff returns a line diff for one historical document version.
+// HandleGetDocumentHistoryDiff godoc
+// @Summary 获取文档历史差异
+// @Description 返回指定历史版本相对当前或指定版本的行级差异。
+// @Tags Workspace
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Param commitHash path string true "Commit hash"
+// @Param from query string false "Base commit hash"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/documents/{documentId}/history/{commitHash}/diff [get]
 func (handler Workspace) HandleGetDocumentHistoryDiff(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -397,7 +556,19 @@ func (handler Workspace) HandleGetDocumentHistoryDiff(context *gin.Context) {
 	httpresponse.OK(context, response)
 }
 
-// HandleRestoreDocumentHistoryVersion restores one historical document version.
+// HandleRestoreDocumentHistoryVersion godoc
+// @Summary 恢复文档历史版本
+// @Description 将文档恢复到指定提交中的历史版本。
+// @Tags Workspace
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Param commitHash path string true "Commit hash"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/documents/{documentId}/history/{commitHash}/restore [post]
 func (handler Workspace) HandleRestoreDocumentHistoryVersion(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -424,7 +595,18 @@ func (handler Workspace) HandleRestoreDocumentHistoryVersion(context *gin.Contex
 	httpresponse.OK(context, response)
 }
 
-// HandleGetEpisodeTimelineState returns the persisted episode timeline for a document.
+// HandleGetEpisodeTimelineState godoc
+// @Summary 获取剧集时间线
+// @Description 返回文档关联的剧集时间线状态。
+// @Tags Episodes
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/episodes/{documentId} [get]
 func (handler Workspace) HandleGetEpisodeTimelineState(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -446,7 +628,19 @@ func (handler Workspace) HandleGetEpisodeTimelineState(context *gin.Context) {
 	httpresponse.OK(context, state)
 }
 
-// HandlePutEpisodeTimelineState saves the persisted episode timeline for a document.
+// HandlePutEpisodeTimelineState godoc
+// @Summary 保存剧集时间线
+// @Description 保存文档关联的剧集时间线状态。
+// @Tags Episodes
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Param payload body SwaggerObject true "Episode timeline payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/episodes/{documentId} [put]
 func (handler Workspace) HandlePutEpisodeTimelineState(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {

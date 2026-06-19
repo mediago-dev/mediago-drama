@@ -41,7 +41,18 @@ func NewAgentSessions(
 	return handler
 }
 
-// HandleCreateSession creates or reuses an agent session.
+// HandleCreateSession godoc
+// @Summary 创建 Agent 会话
+// @Description 创建或复用一个项目 Agent 会话。
+// @Tags Agent
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param payload body SwaggerObject true "Agent session payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/sessions [post]
 func (handler AgentSessions) HandleCreateSession(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -87,7 +98,16 @@ func (handler AgentSessions) HandleCreateSession(context *gin.Context) {
 	httpresponse.OK(context, service.AgentSessionResponse{SessionID: sessionID})
 }
 
-// HandleListAgentSessions lists agent sessions.
+// HandleListAgentSessions godoc
+// @Summary 获取 Agent 会话列表
+// @Description 返回项目中的 Agent 会话列表。
+// @Tags Agent
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/sessions [get]
 func (handler AgentSessions) HandleListAgentSessions(context *gin.Context) {
 	writeNoStoreHeaders(context)
 	projectID, ok := requiredProjectID(context)
@@ -99,7 +119,18 @@ func (handler AgentSessions) HandleListAgentSessions(context *gin.Context) {
 	})
 }
 
-// HandleAgentSessionStatus returns session status.
+// HandleAgentSessionStatus godoc
+// @Summary 获取 Agent 会话状态
+// @Description 返回 Agent 会话状态、运行状态和待处理权限请求。
+// @Tags Agent
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param sessionId path string true "Session ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/sessions/{sessionId}/status [get]
 func (handler AgentSessions) HandleAgentSessionStatus(context *gin.Context) {
 	writeNoStoreHeaders(context)
 	sessionID, ok := requiredPathParam(context, "sessionId", "sessionId")
@@ -118,7 +149,18 @@ func (handler AgentSessions) HandleAgentSessionStatus(context *gin.Context) {
 	httpresponse.OK(context, status)
 }
 
-// HandleCancelAgentSession cancels an active session run.
+// HandleCancelAgentSession godoc
+// @Summary 取消 Agent 会话运行
+// @Description 取消指定 Agent 会话中的活跃运行。
+// @Tags Agent
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param sessionId path string true "Session ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/agent/sessions/{sessionId}/cancel [post]
 func (handler AgentSessions) HandleCancelAgentSession(context *gin.Context) {
 	sessionID, ok := requiredPathParam(context, "sessionId", "sessionId")
 	if !ok {

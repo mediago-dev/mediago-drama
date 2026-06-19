@@ -53,6 +53,7 @@ tasks:
           AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
     cmds:
+      - task -d packages/server swagger
       - |
         AGENT="{{.AGENT}}"
         MEDIAGO_AGENT_ID="$AGENT" \
@@ -71,6 +72,7 @@ tasks:
           AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
     cmds:
+      - task -d packages/server swagger
       - |
         AGENT="{{.AGENT}}"
         MEDIAGO_AGENT_ID="$AGENT" \
@@ -82,7 +84,7 @@ tasks:
   build:server:
     cmds:
       - mkdir -p bin
-      - go build -o bin/mediago-server ./packages/server/cmd/mediago-server
+      - go build -tags workspace_dist -o bin/mediago-server ./packages/server/cmd/mediago-server
 
   stage-tauri:
     cmds:

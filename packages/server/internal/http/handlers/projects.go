@@ -25,7 +25,16 @@ func NewProjectBriefs(store ProjectBriefStore, publish func(projectID string, br
 	return ProjectBriefs{store: store, publish: publish}
 }
 
-// HandleGetProjectBrief returns a project's creative brief.
+// HandleGetProjectBrief godoc
+// @Summary 获取项目创作简报
+// @Description 返回项目的创作目标、世界观、受众和生产偏好等简报信息。
+// @Tags Project Config
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/brief [get]
 func (handler ProjectBriefs) HandleGetProjectBrief(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
@@ -39,7 +48,18 @@ func (handler ProjectBriefs) HandleGetProjectBrief(context *gin.Context) {
 	httpresponse.OK(context, brief)
 }
 
-// HandlePutProjectBrief updates a project's creative brief.
+// HandlePutProjectBrief godoc
+// @Summary 更新项目创作简报
+// @Description 保存项目创作简报并发布简报更新事件。
+// @Tags Project Config
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param payload body SwaggerObject true "Project brief patch"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/brief [put]
 func (handler ProjectBriefs) HandlePutProjectBrief(context *gin.Context) {
 	projectID, ok := requiredProjectID(context)
 	if !ok {
