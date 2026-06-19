@@ -119,7 +119,7 @@ export const AgentWorkbenchHeaderActions: React.FC<AgentWorkbenchTopBarProps> = 
 						variant="ghost"
 						size="sm"
 						className={cn(
-							"h-7 rounded-sm px-2 text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+							"h-7 rounded-control px-2 text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
 							isActive && "bg-ide-list-active text-ide-list-active-foreground",
 						)}
 						onClick={() => selectTab(item.value)}
