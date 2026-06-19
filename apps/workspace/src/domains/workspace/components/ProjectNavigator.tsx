@@ -45,14 +45,11 @@ import {
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
 import { useSettingsNavigationStore } from "@/lib/stores/settings";
 import { useWorkModeStore } from "@/lib/stores/work-mode";
-import { NewDocumentDialog, type NewDocumentDialogChoice } from "./NewDocumentDialog";
-import { NewSourceMaterialDialog } from "./NewSourceMaterialDialog";
+import { openAgentProjectCreateDialog } from "./AgentProjectCreateDialog";
+import { openNewDocumentDialog, type NewDocumentDialogChoice } from "./NewDocumentDialog";
+import { openNewSourceMaterialDialog } from "./NewSourceMaterialDialog";
 import { SettingsSidebarPanel, StudioSessionsScreen } from "./ProjectNavigatorPanels";
-import {
-	AgentProjectCreateDialog,
-	ProjectSidebarPanel,
-	ProjectsSidebarPanel,
-} from "./ProjectNavigatorProjectPanels";
+import { ProjectSidebarPanel, ProjectsSidebarPanel } from "./ProjectNavigatorProjectPanels";
 import type { StudioTab } from "./ProjectNavigatorTypes";
 import { ProjectDocumentSearchDialog } from "./ProjectDocumentSearchDialog";
 import { SidebarScreenStack } from "./SidebarScreenStack";
@@ -88,12 +85,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	const workMode = useWorkModeStore((state) => state.mode);
 	const setWorkMode = useWorkModeStore((state) => state.setMode);
 	const [isCreating, setIsCreating] = useState(false);
-	const [isAgentCreateOpen, setIsAgentCreateOpen] = useState(false);
-	const [newAgentProjectName, setNewAgentProjectName] = useState("");
-	const [isNewDocumentOpen, setIsNewDocumentOpen] = useState(false);
-	const [isSourceMaterialOpen, setIsSourceMaterialOpen] = useState(false);
-	const [newDocumentInitialCategory, setNewDocumentInitialCategory] =
-		useState<DocumentCategory | null>(null);
 	const [isSearchOpen, setIsSearchOpen] = useState(false);
 	const [searchScope, setSearchScope] = useState<"global" | "project">("global");
 	const [displayProjectId, setDisplayProjectId] = useState(activeProjectId);
@@ -212,20 +203,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		[navigate, setActiveProjectId, showDocumentPane],
 	);
 
-	const openNewDocumentDialog = useCallback((category?: DocumentCategory) => {
-		if (category === "source-material") {
-			setIsSourceMaterialOpen(true);
-			return;
-		}
-		setNewDocumentInitialCategory(category ?? null);
-		setIsNewDocumentOpen(true);
-	}, []);
-
-	const openSourceMaterialFromNewDocument = useCallback(() => {
-		setIsNewDocumentOpen(false);
-		setIsSourceMaterialOpen(true);
-	}, []);
-
 	const deleteProjectDocument = useCallback(
 		(project: WorkspaceProject, document: MarkdownDocument, deletedIds: string[]) => {
 			if (documentsProjectId !== project.id) {
@@ -334,8 +311,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 						const state = await getWorkspaceDocuments(displayProject.id);
 						useDocumentsStore.getState().hydrateWorkspaceDocuments(state);
 						await mutateSWR(workspaceDocumentsKey(displayProject.id));
-						setIsNewDocumentOpen(false);
-						setIsSourceMaterialOpen(false);
 						showDocumentPane();
 						setActiveProjectId(displayProject.id);
 						selectAsset(asset.id);
@@ -359,8 +334,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 				return;
 			}
 
-			setIsNewDocumentOpen(false);
-			setIsSourceMaterialOpen(false);
 			showDocumentPane();
 			setActiveProjectId(displayProject.id);
 			selectDocument(document.id);
@@ -382,35 +355,58 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		],
 	);
 
+	const requestNewDocument = useCallback(
+		async (category?: DocumentCategory) => {
+			const choice =
+				category === "source-material"
+					? await openNewSourceMaterialDialog()
+					: await openNewDocumentDialog({
+							initialCategory: category ?? null,
+							showSourceMaterialHandoff: true,
+						});
+			if (!choice) return;
+
+			const finalChoice =
+				choice.kind === "source-material" ? await openNewSourceMaterialDialog() : choice;
+			if (!finalChoice) return;
+			createDocumentFromTemplate(finalChoice);
+		},
+		[createDocumentFromTemplate],
+	);
+
+	const createProjectFromName = useCallback(
+		async (name: string) => {
+			if (isCreating) return;
+			const projectName = name.trim() || "未命名项目";
+
+			setIsCreating(true);
+			try {
+				const project = await createProject({ name: projectName });
+				await mutate();
+				await mutateSWR(projectsKey);
+				showAgentPane();
+				setActiveProjectId(project.id);
+				navigate(agentProjectPath(project.id), {
+					state: agentProjectRouteState("agent"),
+				});
+				toast.success("项目已创建", { description: project.name });
+			} catch (err) {
+				const message = err instanceof Error ? err.message : "创建项目失败。";
+				toast.error("创建项目失败", { description: message });
+			} finally {
+				setIsCreating(false);
+			}
+		},
+		[isCreating, mutate, navigate, setActiveProjectId, showAgentPane, toast],
+	);
+
 	const openAgentCreateDialog = useCallback(() => {
-		setIsAgentCreateOpen(true);
-	}, []);
-
-	const createProjectFromName = useCallback(async () => {
-		if (isCreating) return;
-
-		const name = newAgentProjectName.trim() || "未命名项目";
-
-		setIsCreating(true);
-		try {
-			const project = await createProject({ name });
-			await mutate();
-			await mutateSWR(projectsKey);
-			setIsAgentCreateOpen(false);
-			setNewAgentProjectName("");
-			showAgentPane();
-			setActiveProjectId(project.id);
-			navigate(agentProjectPath(project.id), {
-				state: agentProjectRouteState("agent"),
-			});
-			toast.success("项目已创建", { description: project.name });
-		} catch (err) {
-			const message = err instanceof Error ? err.message : "创建项目失败。";
-			toast.error("创建项目失败", { description: message });
-		} finally {
-			setIsCreating(false);
-		}
-	}, [isCreating, mutate, navigate, newAgentProjectName, setActiveProjectId, showAgentPane, toast]);
+		void (async () => {
+			const projectName = await openAgentProjectCreateDialog();
+			if (!projectName) return;
+			await createProjectFromName(projectName);
+		})();
+	}, [createProjectFromName]);
 
 	useEffect(() => {
 		if (activeProjectId) setDisplayProjectId(activeProjectId);
@@ -502,7 +498,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 										onCreateDocumentInCategory={(category) =>
 											createDocumentFromTemplate({ kind: "document", category })
 										}
-										onOpenNewDocument={openNewDocumentDialog}
+										onOpenNewDocument={requestNewDocument}
 										onOpenOverview={openOverview}
 										onOpenSearch={openSearch}
 										onOpenSettings={() => navigate(projectSettingsPath)}
@@ -555,26 +551,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 				projects={searchProjects}
 				onOpenDocument={openDocument}
 				scopeLabel={searchScope === "project" ? "当前项目" : "所有项目"}
-			/>
-			<NewDocumentDialog
-				open={isNewDocumentOpen}
-				initialCategory={newDocumentInitialCategory}
-				onOpenChange={setIsNewDocumentOpen}
-				onOpenSourceMaterial={openSourceMaterialFromNewDocument}
-				onCreate={createDocumentFromTemplate}
-			/>
-			<NewSourceMaterialDialog
-				open={isSourceMaterialOpen}
-				onOpenChange={setIsSourceMaterialOpen}
-				onCreate={createDocumentFromTemplate}
-			/>
-			<AgentProjectCreateDialog
-				open={isAgentCreateOpen}
-				isCreating={isCreating}
-				projectName={newAgentProjectName}
-				onOpenChange={setIsAgentCreateOpen}
-				onProjectNameChange={setNewAgentProjectName}
-				onCreate={() => void createProjectFromName()}
 			/>
 		</>
 	);

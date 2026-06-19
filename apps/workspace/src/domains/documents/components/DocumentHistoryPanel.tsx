@@ -11,17 +11,8 @@ import {
 } from "@/domains/workspace/api/workspace";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
+import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import {
 	Sheet,
 	SheetContent,
@@ -47,7 +38,6 @@ export const DocumentHistoryPanel: React.FC<DocumentHistoryPanelProps> = ({
 }) => {
 	const toast = useToast();
 	const [selectedHash, setSelectedHash] = useState<string | null>(null);
-	const [confirmHash, setConfirmHash] = useState<string | null>(null);
 	const [restoringHash, setRestoringHash] = useState<string | null>(null);
 	const documentId = document?.id ?? null;
 	const historyKey =
@@ -65,7 +55,6 @@ export const DocumentHistoryPanel: React.FC<DocumentHistoryPanelProps> = ({
 	useEffect(() => {
 		if (!open) {
 			setSelectedHash(null);
-			setConfirmHash(null);
 			return;
 		}
 		if (!items.length) {
@@ -79,7 +68,6 @@ export const DocumentHistoryPanel: React.FC<DocumentHistoryPanelProps> = ({
 
 	useEffect(() => {
 		setSelectedHash(null);
-		setConfirmHash(null);
 	}, [documentId]);
 
 	const selectedItem = useMemo(
@@ -101,24 +89,31 @@ export const DocumentHistoryPanel: React.FC<DocumentHistoryPanelProps> = ({
 	);
 	const diff = diffResponse?.diff ?? null;
 
-	const restoreSelectedVersion = async () => {
-		if (!projectId || !documentId || !confirmHash || restoringHash) return;
-		setRestoringHash(confirmHash);
+	const restoreSelectedVersion = async (hash: string) => {
+		if (!projectId || !documentId || restoringHash) return false;
+		setRestoringHash(hash);
 		try {
-			const response = await restoreWorkspaceDocumentHistoryVersion(
-				documentId,
-				confirmHash,
-				projectId,
-			);
+			const response = await restoreWorkspaceDocumentHistoryVersion(documentId, hash, projectId);
 			useDocumentsStore.getState().hydrateWorkspaceDocuments(response.state);
 			await mutateHistory();
 			toast.success("已恢复历史版本", { description: response.document.title });
+			return true;
 		} catch (error) {
 			toast.error("恢复失败", { description: historyErrorMessage(error) });
+			return false;
 		} finally {
 			setRestoringHash(null);
-			setConfirmHash(null);
 		}
+	};
+
+	const confirmRestoreSelectedVersion = (hash: string | null) => {
+		if (!hash) return;
+		void confirmDialog({
+			title: "恢复这个历史版本？",
+			description: "当前文档内容会被替换，恢复动作会写入一条新的变更记录。",
+			confirmLabel: "恢复",
+			onConfirm: () => restoreSelectedVersion(hash),
+		});
 	};
 
 	return (
@@ -195,7 +190,7 @@ export const DocumentHistoryPanel: React.FC<DocumentHistoryPanelProps> = ({
 									variant="outline"
 									className="h-7 shrink-0"
 									disabled={!selectedHash || Boolean(restoringHash)}
-									onClick={() => setConfirmHash(selectedHash)}
+									onClick={() => confirmRestoreSelectedVersion(selectedHash)}
 								>
 									{restoringHash === selectedHash ? (
 										<Loader2 className="animate-spin" />
@@ -224,26 +219,6 @@ export const DocumentHistoryPanel: React.FC<DocumentHistoryPanelProps> = ({
 					</div>
 				</SheetContent>
 			</Sheet>
-
-			<AlertDialog
-				open={Boolean(confirmHash)}
-				onOpenChange={(next) => !next && setConfirmHash(null)}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>恢复这个历史版本？</AlertDialogTitle>
-						<AlertDialogDescription>
-							当前文档内容会被替换，恢复动作会写入一条新的变更记录。
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel disabled={Boolean(restoringHash)}>取消</AlertDialogCancel>
-						<AlertDialogAction disabled={Boolean(restoringHash)} onClick={restoreSelectedVersion}>
-							恢复
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 		</>
 	);
 };

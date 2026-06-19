@@ -288,6 +288,9 @@ importers:
       react:
         specifier: ^19.2.4
         version: 19.2.6
+      react-call:
+        specifier: 2.0.1
+        version: 2.0.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vite@8.0.13(@types/node@25.8.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
       react-dom:
         specifier: ^19.2.4
         version: 19.2.6(react@19.2.6)
@@ -5370,6 +5373,18 @@ packages:
   rc@1.2.8:
     resolution: {integrity: sha512-y3bGgqKj3QBdxLbLkomlohkvsA8gdAiUQlSBJnBhfn+BPxg4bc62d8TcBW15wavDfgexCgccckhcZvywyQYPOw==}
     hasBin: true
+
+  react-call@2.0.1:
+    resolution: {integrity: sha512-MHlsewuJBHKCiJzfHwNXkOn/nBVo3FZjUmNXvWsSFG9FBJ3uwr5M5KRqh38RiqRAb+SUbUwDO2RtU6rGQhu6qg==}
+    peerDependencies:
+      react: '>=18'
+      react-dom: '>=18'
+      vite: '>=8'
+    peerDependenciesMeta:
+      react-dom:
+        optional: true
+      vite:
+        optional: true
 
   react-dom@19.0.0:
     resolution: {integrity: sha512-4GV5sHFG0e/0AD4X+ySy6UJd3jVl1iNsNHdpad0qhABJ11twS3TTBnseqsKurKcsNqCEFeGL3uLpVChpIO3QfQ==}
@@ -12159,6 +12174,13 @@ snapshots:
       minimist: 1.2.8
       strip-json-comments: 2.0.1
     optional: true
+
+  react-call@2.0.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vite@8.0.13(@types/node@25.8.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)):
+    dependencies:
+      react: 19.2.6
+    optionalDependencies:
+      react-dom: 19.2.6(react@19.2.6)
+      vite: 8.0.13(@types/node@25.8.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
 
   react-dom@19.0.0(react@19.0.0):
     dependencies:

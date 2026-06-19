@@ -1,18 +1,19 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import { NewDocumentDialog } from "./NewDocumentDialog";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import { NewDocumentDialog, openNewDocumentDialog } from "./NewDocumentDialog";
 
 describe("NewDocumentDialog", () => {
-	it("renders typed document options and a material handoff", () => {
-		const onOpenSourceMaterial = vi.fn();
-		render(
-			<NewDocumentDialog
-				open
-				onOpenChange={vi.fn()}
-				onCreate={vi.fn()}
-				onOpenSourceMaterial={onOpenSourceMaterial}
-			/>,
-		);
+	afterEach(() => {
+		cleanup();
+	});
+
+	it("renders typed document options and resolves a material handoff", async () => {
+		render(<NewDocumentDialog />);
+		let resultPromise!: ReturnType<typeof openNewDocumentDialog>;
+
+		act(() => {
+			resultPromise = openNewDocumentDialog({ showSourceMaterialHandoff: true });
+		});
 
 		expect(screen.getByRole("button", { name: /剧本/ })).toBeTruthy();
 		expect(screen.getByRole("button", { name: /角色/ })).toBeTruthy();
@@ -24,6 +25,6 @@ describe("NewDocumentDialog", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: /素材/ }));
 
-		expect(onOpenSourceMaterial).toHaveBeenCalledTimes(1);
+		await expect(resultPromise).resolves.toEqual({ kind: "source-material" });
 	});
 });

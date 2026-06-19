@@ -1,5 +1,6 @@
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
+import { createCallable } from "react-call";
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -28,13 +29,11 @@ export interface UploadAssetChoice {
 }
 
 export type NewDocumentDialogChoice = NewDocumentChoice | UploadAssetChoice;
+export type NewDocumentDialogResult = NewDocumentDialogChoice | { kind: "source-material" } | null;
 
 interface NewDocumentDialogProps {
 	initialCategory?: DocumentCategory | null;
-	onCreate: (choice: NewDocumentDialogChoice) => void;
-	onOpenSourceMaterial?: () => void;
-	onOpenChange: (open: boolean) => void;
-	open: boolean;
+	showSourceMaterialHandoff?: boolean;
 }
 
 interface TemplateOption {
@@ -44,67 +43,71 @@ interface TemplateOption {
 	name: string;
 }
 
-export const NewDocumentDialog: React.FC<NewDocumentDialogProps> = ({
-	initialCategory,
-	onCreate,
-	onOpenSourceMaterial,
-	onOpenChange,
-	open,
-}) => {
-	const options = useMemo(() => buildTemplateOptions(), []);
-	const [selectedId, setSelectedId] = useState(options[0]?.id ?? "");
-	const selectedOption = options.find((option) => option.id === selectedId) ?? options[0];
+export const NewDocumentDialog = createCallable<NewDocumentDialogProps, NewDocumentDialogResult>(
+	({ initialCategory, showSourceMaterialHandoff = false, call }) => {
+		const options = useMemo(() => buildTemplateOptions(), []);
+		const [selectedId, setSelectedId] = useState(options[0]?.id ?? "");
+		const selectedOption = options.find((option) => option.id === selectedId) ?? options[0];
 
-	useEffect(() => {
-		if (!open) return;
-		const initialOption = options.find((option) => option.category === initialCategory);
-		setSelectedId(initialOption?.id ?? options[0]?.id ?? "");
-	}, [initialCategory, open, options]);
+		useEffect(() => {
+			const initialOption = options.find((option) => option.category === initialCategory);
+			setSelectedId(initialOption?.id ?? options[0]?.id ?? "");
+		}, [initialCategory, options]);
 
-	const createSelectedDocument = () => {
-		if (!selectedOption) return;
-		onCreate({
-			kind: "document",
-			category: selectedOption.category,
-		});
-	};
+		const createSelectedDocument = () => {
+			if (!selectedOption) return;
+			call.end({
+				kind: "document",
+				category: selectedOption.category,
+			});
+		};
 
-	return (
-		<AlertDialog open={open} onOpenChange={onOpenChange}>
-			<AlertDialogContent className="max-w-xl">
-				<AlertDialogHeader>
-					<AlertDialogTitle>新建文档</AlertDialogTitle>
-					<AlertDialogDescription>选择要创建的项目文档类型。</AlertDialogDescription>
-				</AlertDialogHeader>
+		return (
+			<AlertDialog
+				open
+				onOpenChange={(open) => {
+					if (!open) call.end(null);
+				}}
+			>
+				<AlertDialogContent className="max-w-xl">
+					<AlertDialogHeader>
+						<AlertDialogTitle>新建文档</AlertDialogTitle>
+						<AlertDialogDescription>选择要创建的项目文档类型。</AlertDialogDescription>
+					</AlertDialogHeader>
 
-				<div className="grid max-h-[min(28rem,60vh)] gap-2 overflow-y-auto pr-1">
-					{options.map((option) => (
-						<TemplateOptionButton
-							key={option.id}
-							option={option}
-							selected={option.id === selectedOption?.id}
-							onSelect={() => setSelectedId(option.id)}
-						/>
-					))}
-					{onOpenSourceMaterial ? (
-						<TemplateOptionButton
-							option={sourceMaterialOption}
-							selected={false}
-							onSelect={onOpenSourceMaterial}
-						/>
-					) : null}
-				</div>
+					<div className="grid max-h-[min(28rem,60vh)] gap-2 overflow-y-auto pr-1">
+						{options.map((option) => (
+							<TemplateOptionButton
+								key={option.id}
+								option={option}
+								selected={option.id === selectedOption?.id}
+								onSelect={() => setSelectedId(option.id)}
+							/>
+						))}
+						{showSourceMaterialHandoff ? (
+							<TemplateOptionButton
+								option={sourceMaterialOption}
+								selected={false}
+								onSelect={() => call.end({ kind: "source-material" })}
+							/>
+						) : null}
+					</div>
 
-				<AlertDialogFooter>
-					<AlertDialogCancel className="rounded-sm">取消</AlertDialogCancel>
-					<Button type="button" className="rounded-sm" onClick={createSelectedDocument}>
-						<span>创建</span>
-					</Button>
-				</AlertDialogFooter>
-			</AlertDialogContent>
-		</AlertDialog>
-	);
-};
+					<AlertDialogFooter>
+						<AlertDialogCancel className="rounded-sm">取消</AlertDialogCancel>
+						<Button type="button" className="rounded-sm" onClick={createSelectedDocument}>
+							<span>创建</span>
+						</Button>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+		);
+	},
+);
+NewDocumentDialog.displayName = "NewDocumentDialog";
+
+export const openNewDocumentDialog = (props: NewDocumentDialogProps = {}) =>
+	NewDocumentDialog.call(props);
 
 interface TemplateOptionButtonProps {
 	onSelect: () => void;

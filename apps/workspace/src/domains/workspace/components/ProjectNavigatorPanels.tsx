@@ -8,7 +8,6 @@ import {
 	Keyboard,
 	KeyRound,
 	Loader2,
-	Plus,
 	ReceiptText,
 	Settings,
 	SlidersHorizontal,
@@ -33,29 +32,13 @@ import {
 } from "@/domains/generation/api/generation";
 import type { GenerationSuccessNotification } from "@/domains/generation/stores/generation-notifications";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/shared/components/ui/select";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
+import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { useToast } from "@/hooks/useToast";
 import type { SettingsTabValue } from "@/lib/stores/settings";
 import { cn } from "@/shared/lib/utils";
 import { debugTabs, type DebugTabValue } from "@/pages/Debug";
 import { GenerationNotificationButton } from "./GenerationNotificationButton";
+import { openGenerationConversationCreateDialog } from "./GenerationConversationCreateDialog";
 import { GlobalToolboxButton } from "./GlobalToolboxDrawer";
 import type { ActiveStudioTab, StudioTab } from "./ProjectNavigatorTypes";
 
@@ -140,48 +123,41 @@ export const StudioSessionsScreen: React.FC<{
 	scopeId = "studio",
 }) => {
 	const toast = useToast();
-	const [isCreateOpen, setIsCreateOpen] = useState(false);
 	const [isCreatingConversation, setIsCreatingConversation] = useState(false);
-	const [newConversationKind, setNewConversationKind] = useState<StudioTab>(
-		activeTab ?? defaultStudioConversationKind,
-	);
-	const [newConversationTitle, setNewConversationTitle] = useState("");
 
-	const openCreateDialog = () => {
-		setNewConversationKind(activeTab ?? defaultStudioConversationKind);
-		setIsCreateOpen(true);
+	const openCreateDialog = async () => {
+		const result = await openGenerationConversationCreateDialog({
+			initialKind: activeTab ?? defaultStudioConversationKind,
+			groups: studioConversationGroups,
+		});
+		if (!result) return;
+		await createConversation(result.kind, result.title);
 	};
 
-	const createConversation = useCallback(async () => {
-		if (isCreatingConversation) return;
-		const title = newConversationTitle.trim();
-		if (!title) return;
+	const createConversation = useCallback(
+		async (kind: StudioTab, title: string) => {
+			if (isCreatingConversation) return;
+			const trimmedTitle = title.trim();
+			if (!trimmedTitle) return;
 
-		setIsCreatingConversation(true);
-		try {
-			const conversation = await createGenerationConversation({
-				kind: newConversationKind,
-				scopeId,
-				title,
-			});
-			await mutateSWR(generationConversationsQueryKey(newConversationKind, scopeId));
-			onSelectConversation(newConversationKind, conversation.id);
-			setIsCreateOpen(false);
-			setNewConversationTitle("");
-		} catch (err) {
-			const message = err instanceof Error ? err.message : "创建会话失败。";
-			toast.error("创建会话失败", { description: message });
-		} finally {
-			setIsCreatingConversation(false);
-		}
-	}, [
-		isCreatingConversation,
-		newConversationKind,
-		newConversationTitle,
-		onSelectConversation,
-		scopeId,
-		toast,
-	]);
+			setIsCreatingConversation(true);
+			try {
+				const conversation = await createGenerationConversation({
+					kind,
+					scopeId,
+					title: trimmedTitle,
+				});
+				await mutateSWR(generationConversationsQueryKey(kind, scopeId));
+				onSelectConversation(kind, conversation.id);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : "创建会话失败。";
+				toast.error("创建会话失败", { description: message });
+			} finally {
+				setIsCreatingConversation(false);
+			}
+		},
+		[isCreatingConversation, onSelectConversation, scopeId, toast],
+	);
 
 	return (
 		<>
@@ -193,7 +169,7 @@ export const StudioSessionsScreen: React.FC<{
 						size="sm"
 						className="h-8 w-full justify-start rounded-sm border border-border/70 bg-ide-toolbar/40 px-2 text-sm font-semibold shadow-none hover:border-border hover:bg-ide-list-hover"
 						disabled={isCreatingConversation}
-						onClick={openCreateDialog}
+						onClick={() => void openCreateDialog()}
 					>
 						{isCreatingConversation ? (
 							<Loader2 className="size-3.5 animate-spin" />
@@ -231,20 +207,6 @@ export const StudioSessionsScreen: React.FC<{
 					</div>
 				</div>
 			</div>
-			<GenerationSessionCreateDialog
-				isCreating={isCreatingConversation}
-				kind={newConversationKind}
-				onCreate={() => void createConversation()}
-				onKindChange={setNewConversationKind}
-				onOpenChange={(open) => {
-					if (isCreatingConversation) return;
-					setIsCreateOpen(open);
-					if (!open) setNewConversationTitle("");
-				}}
-				onTitleChange={setNewConversationTitle}
-				open={isCreateOpen}
-				title={newConversationTitle}
-			/>
 		</>
 	);
 };
@@ -486,7 +448,6 @@ const StudioConversationItem: React.FC<{
 	selected: boolean;
 }> = ({ conversation, onDelete, onSelect, selected }) => {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
-	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const itemRef = useRef<HTMLDivElement>(null);
 	const title = conversation.title || "未命名会话";
 
@@ -494,7 +455,12 @@ const StudioConversationItem: React.FC<{
 
 	const openDeleteDialog = () => {
 		setIsMenuOpen(false);
-		setIsDeleteDialogOpen(true);
+		void confirmDialog({
+			title: "删除会话？",
+			description: `确定要删除“${title}”吗？该会话下的生成记录会一并删除，此操作无法撤销。`,
+			confirmLabel: "删除",
+			onConfirm: onDelete,
+		});
 	};
 
 	return (
@@ -520,7 +486,7 @@ const StudioConversationItem: React.FC<{
 					variant="ghost"
 					className={cn(
 						"mr-0.5 size-6 shrink-0 text-muted-foreground hover:text-foreground",
-						isMenuOpen || isDeleteDialogOpen
+						isMenuOpen
 							? "opacity-100"
 							: "opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100",
 					)}
@@ -533,20 +499,6 @@ const StudioConversationItem: React.FC<{
 				</Button>
 			</div>
 			{isMenuOpen ? <SidebarDeleteMenu itemTitle={title} onDelete={openDeleteDialog} /> : null}
-			<AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>删除会话？</AlertDialogTitle>
-						<AlertDialogDescription>
-							确定要删除“{title}”吗？该会话下的生成记录会一并删除，此操作无法撤销。
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>取消</AlertDialogCancel>
-						<AlertDialogAction onClick={onDelete}>删除</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 		</div>
 	);
 };
@@ -595,85 +547,6 @@ const useCloseSidebarItemMenu = (
 			window.document.removeEventListener("keydown", closeOnEscape);
 		};
 	}, [isMenuOpen, itemRef, setIsMenuOpen]);
-};
-
-const GenerationSessionCreateDialog: React.FC<{
-	isCreating: boolean;
-	kind: StudioTab;
-	onCreate: () => void;
-	onKindChange: (kind: StudioTab) => void;
-	onOpenChange: (open: boolean) => void;
-	onTitleChange: (title: string) => void;
-	open: boolean;
-	title: string;
-}> = ({ isCreating, kind, onCreate, onKindChange, onOpenChange, onTitleChange, open, title }) => {
-	const submit = (event: React.FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		onCreate();
-	};
-	const kindLabel = studioTabLabel(kind);
-
-	return (
-		<AlertDialog open={open} onOpenChange={(nextOpen) => !isCreating && onOpenChange(nextOpen)}>
-			<AlertDialogContent className="max-w-md">
-				<form onSubmit={submit}>
-					<AlertDialogHeader>
-						<AlertDialogTitle>新建会话</AlertDialogTitle>
-						<AlertDialogDescription>选择生成类型并填写会话名称。</AlertDialogDescription>
-					</AlertDialogHeader>
-					<div className="my-4 grid gap-3">
-						<label className="block">
-							<span className="mb-1 block text-xs font-medium text-muted-foreground">生成类型</span>
-							<Select
-								value={kind}
-								onValueChange={(value) => onKindChange(value as StudioTab)}
-								disabled={isCreating}
-							>
-								<SelectTrigger>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{studioConversationGroups.map((group) => (
-										<SelectItem key={group.kind} value={group.kind}>
-											{group.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</label>
-						<label className="block">
-							<span className="mb-1 block text-xs font-medium text-muted-foreground">会话名称</span>
-							<Input
-								value={title}
-								onChange={(event) => onTitleChange(event.target.value)}
-								placeholder={`${kindLabel}探索`}
-								disabled={isCreating}
-								autoFocus
-							/>
-						</label>
-					</div>
-					<AlertDialogFooter>
-						<AlertDialogCancel disabled={isCreating}>取消</AlertDialogCancel>
-						<Button type="submit" disabled={isCreating || !title.trim()}>
-							{isCreating ? <Loader2 className="size-3.5 animate-spin" /> : <Plus />}
-							<span>创建</span>
-						</Button>
-					</AlertDialogFooter>
-				</form>
-			</AlertDialogContent>
-		</AlertDialog>
-	);
-};
-
-const studioTabLabel = (kind: StudioTab) => {
-	switch (kind) {
-		case "text":
-			return "文本生成";
-		case "video":
-			return "视频生成";
-		default:
-			return "图片生成";
-	}
 };
 
 type SettingsNavItem = {

@@ -4,16 +4,6 @@ import type React from "react";
 import { useCallback, useState } from "react";
 import type { WorkspaceProject } from "@/domains/projects/api/projects";
 import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
-import {
 	documentCategoryDescriptorMap,
 	documentCategoryDescriptors,
 } from "@/domains/documents/lib/categories";
@@ -24,6 +14,7 @@ import type {
 	ProjectDocumentDeleteHandler,
 } from "@/domains/workspace/components/ProjectDirectory";
 import { useToast } from "@/hooks/useToast";
+import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { cn } from "@/shared/lib/utils";
 import {
 	DirectoryItemMenu,
@@ -73,7 +64,6 @@ export const ProjectFileItem: React.FC<{
 	workspaceDir,
 }) => {
 	const [menuPosition, setMenuPosition] = useState<DirectoryItemMenuPosition | null>(null);
-	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const setDocumentCategory = useDocumentsStore((state) => state.setDocumentCategory);
 	const toast = useToast();
 	const isAsset = entry.kind === "asset";
@@ -166,7 +156,19 @@ export const ProjectFileItem: React.FC<{
 					{
 						icon: Trash2,
 						label: "删除",
-						onSelect: () => setIsDeleteDialogOpen(true),
+						onSelect: () =>
+							void confirmDialog({
+								title: isAsset ? "删除素材？" : "删除文档？",
+								description: `确定要删除“${itemTitle}”吗？此操作无法撤销。`,
+								confirmLabel: "删除",
+								onConfirm: () => {
+									if (entry.kind === "asset") {
+										onDeleteAsset(project, entry.id, entry.asset.filename);
+										return;
+									}
+									onDeleteDocument(project, entry.document, deletedIds);
+								},
+							}),
 						variant: "danger",
 					} satisfies DirectoryItemMenuItem,
 				]
@@ -221,28 +223,6 @@ export const ProjectFileItem: React.FC<{
 					position={menuPosition}
 				/>
 			) : null}
-			<AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>{isAsset ? "删除素材？" : "删除文档？"}</AlertDialogTitle>
-						<AlertDialogDescription>
-							确定要删除“{itemTitle}”吗？此操作无法撤销。
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>取消</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={() =>
-								entry.kind === "asset"
-									? onDeleteAsset(project, entry.id, entry.asset.filename)
-									: onDeleteDocument(project, entry.document, deletedIds)
-							}
-						>
-							删除
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 		</div>
 	);
 };

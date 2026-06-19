@@ -13,18 +13,9 @@ import {
 } from "@/domains/projects/api/projects";
 import { useProjectStore } from "@/domains/projects/stores";
 import { agentProjectPath, agentProjectRouteState } from "@/domains/workspace/lib/workbench-route";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { useToast } from "@/hooks/useToast";
 import { cn } from "@/shared/lib/utils";
 
@@ -77,7 +68,6 @@ export const Projects: React.FC = () => {
 	const setActiveProjectId = useProjectStore((state) => state.setActiveProjectId);
 	const [activeTab, setActiveTab] = useState<ProjectManagementTab>("active");
 	const [action, setAction] = useState<{ kind: ProjectAction; projectId: string } | null>(null);
-	const [permanentProject, setPermanentProject] = useState<WorkspaceProject | null>(null);
 	const swrKey = projectsKeyForStatus(activeTab);
 	const { data, error, isLoading } = useSWR(swrKey, () => getProjects(activeTab));
 	const projects = useMemo(
@@ -118,22 +108,34 @@ export const Projects: React.FC = () => {
 		}
 	};
 
-	const permanentlyDeleteCurrentProject = async () => {
-		if (!permanentProject || action) return;
+	const permanentlyDeleteCurrentProject = async (project: WorkspaceProject) => {
+		if (action) return false;
 
-		setAction({ kind: "permanent", projectId: permanentProject.id });
+		setAction({ kind: "permanent", projectId: project.id });
 		try {
-			await permanentlyDeleteProject(permanentProject.id);
+			await permanentlyDeleteProject(project.id);
 			await refreshProjectLists();
-			toast.success("项目已永久删除", { description: permanentProject.name });
-			setPermanentProject(null);
+			toast.success("项目已永久删除", { description: project.name });
+			return true;
 		} catch (err) {
 			toast.error("永久删除失败", {
 				description: projectManagementErrorMessage(err, "永久删除项目失败。"),
 			});
+			return false;
 		} finally {
 			setAction(null);
 		}
+	};
+
+	const confirmPermanentlyDeleteProject = (project: WorkspaceProject) => {
+		void confirmDialog({
+			title: "永久删除项目？",
+			description:
+				"永久删除后，垃圾箱中的项目文件夹和 MediaGo Drama 中的项目记录都会被清除，无法恢复。",
+			confirmLabel: "永久删除",
+			confirmIcon: <Trash2 />,
+			onConfirm: () => permanentlyDeleteCurrentProject(project),
+		});
 	};
 
 	return (
@@ -196,41 +198,12 @@ export const Projects: React.FC = () => {
 								statusLabel={meta.statusLabel}
 								onOpen={openProject}
 								onRestore={() => void restoreCurrentProject(project)}
-								onRequestPermanentDelete={() => setPermanentProject(project)}
+								onRequestPermanentDelete={() => confirmPermanentlyDeleteProject(project)}
 							/>
 						))}
 					</div>
 				) : null}
 			</div>
-
-			<AlertDialog
-				open={Boolean(permanentProject)}
-				onOpenChange={(open) => {
-					if (!open && !action) setPermanentProject(null);
-				}}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>永久删除项目？</AlertDialogTitle>
-						<AlertDialogDescription>
-							永久删除后，垃圾箱中的项目文件夹和 MediaGo Drama 中的项目记录都会被清除，无法恢复。
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel disabled={Boolean(action)}>取消</AlertDialogCancel>
-						<AlertDialogAction
-							disabled={Boolean(action)}
-							onClick={(event) => {
-								event.preventDefault();
-								void permanentlyDeleteCurrentProject();
-							}}
-						>
-							{action?.kind === "permanent" ? <Loader2 className="animate-spin" /> : <Trash2 />}
-							<span>永久删除</span>
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 		</div>
 	);
 };

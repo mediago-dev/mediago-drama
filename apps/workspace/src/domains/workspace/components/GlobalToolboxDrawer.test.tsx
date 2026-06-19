@@ -5,6 +5,7 @@ import {
 	createGenerationConversation,
 	getGenerationConversations,
 } from "@/domains/generation/api/generation";
+import { GenerationConversationCreateDialog } from "./GenerationConversationCreateDialog";
 import { GlobalToolboxButton } from "./GlobalToolboxDrawer";
 
 vi.mock("@/domains/generation/api/generation", () => ({
@@ -120,6 +121,7 @@ const renderGlobalToolboxButton = () =>
 	render(
 		<SWRConfig value={{ provider: () => new Map() }}>
 			<GlobalToolboxButton />
+			<GenerationConversationCreateDialog />
 		</SWRConfig>,
 	);
 

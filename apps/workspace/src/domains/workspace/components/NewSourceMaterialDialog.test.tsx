@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { NewSourceMaterialDialog } from "./NewSourceMaterialDialog";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import { NewSourceMaterialDialog, openNewSourceMaterialDialog } from "./NewSourceMaterialDialog";
 
 describe("NewSourceMaterialDialog", () => {
 	afterEach(() => {
@@ -8,7 +8,10 @@ describe("NewSourceMaterialDialog", () => {
 	});
 
 	it("renders material actions without document type choices", () => {
-		render(<NewSourceMaterialDialog open onOpenChange={vi.fn()} onCreate={vi.fn()} />);
+		render(<NewSourceMaterialDialog />);
+		act(() => {
+			void openNewSourceMaterialDialog();
+		});
 
 		expect(screen.getByRole("heading", { name: "新建素材" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "上传文件" })).toBeTruthy();
@@ -19,26 +22,34 @@ describe("NewSourceMaterialDialog", () => {
 		expect(screen.queryByRole("button", { name: /分镜/ })).toBeNull();
 	});
 
-	it("creates a blank source material document", () => {
-		const onCreate = vi.fn();
-		render(<NewSourceMaterialDialog open onOpenChange={vi.fn()} onCreate={onCreate} />);
+	it("creates a blank source material document", async () => {
+		render(<NewSourceMaterialDialog />);
+		let resultPromise!: ReturnType<typeof openNewSourceMaterialDialog>;
+
+		act(() => {
+			resultPromise = openNewSourceMaterialDialog();
+		});
 
 		fireEvent.click(screen.getByRole("button", { name: "新建空白素材" }));
 
-		expect(onCreate).toHaveBeenCalledWith({
+		await expect(resultPromise).resolves.toEqual({
 			kind: "document",
 			category: "source-material",
 		});
 	});
 
-	it("uploads a selected file", () => {
-		const onCreate = vi.fn();
-		render(<NewSourceMaterialDialog open onOpenChange={vi.fn()} onCreate={onCreate} />);
+	it("uploads a selected file", async () => {
+		render(<NewSourceMaterialDialog />);
+		let resultPromise!: ReturnType<typeof openNewSourceMaterialDialog>;
+
+		act(() => {
+			resultPromise = openNewSourceMaterialDialog();
+		});
 		const file = new File(["notes"], "notes.txt", { type: "text/plain" });
 		const input = screen.getByLabelText("选择素材文件");
 
 		fireEvent.change(input, { target: { files: [file] } });
 
-		expect(onCreate).toHaveBeenCalledWith({ kind: "upload", file });
+		await expect(resultPromise).resolves.toEqual({ kind: "upload", file });
 	});
 });

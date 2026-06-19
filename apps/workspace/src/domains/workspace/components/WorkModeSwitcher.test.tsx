@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render as testingRender,
+	screen,
+	waitFor,
+} from "@testing-library/react";
+import type React from "react";
 import { SWRConfig } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { capabilitiesKey, type CapabilityRecord } from "@/domains/capabilities/api/capabilities";
@@ -6,6 +13,7 @@ import {
 	createGenerationConversation,
 	getGenerationConversations,
 } from "@/domains/generation/api/generation";
+import { GenerationConversationCreateDialog } from "@/domains/workspace/components/GenerationConversationCreateDialog";
 import {
 	StudioSessionsScreen,
 	StudioTypesScreen,
@@ -21,6 +29,14 @@ vi.mock("@/domains/generation/api/generation", () => ({
 	],
 	getGenerationConversations: vi.fn(),
 }));
+
+const render = (ui: React.ReactElement) =>
+	testingRender(
+		<>
+			{ui}
+			<GenerationConversationCreateDialog />
+		</>,
+	);
 
 describe("Studio sidebar screens", () => {
 	afterEach(() => {

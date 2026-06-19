@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Projects } from "./Projects";
 import httpClient from "@/shared/lib/http";
 import type { WorkspaceProject } from "@/domains/projects/api/projects";
+import { ConfirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import type { ApiResponse } from "@/types/api";
 
 vi.mock("@/shared/lib/http", () => ({
@@ -62,6 +63,7 @@ describe("Projects", () => {
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
 				<MemoryRouter>
 					<Projects />
+					<ConfirmDialog />
 				</MemoryRouter>
 			</SWRConfig>,
 		);

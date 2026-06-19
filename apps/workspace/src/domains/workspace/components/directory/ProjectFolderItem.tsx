@@ -12,21 +12,12 @@ import type React from "react";
 import { useCallback, useState } from "react";
 import type { WorkspaceProject } from "@/domains/projects/api/projects";
 import type { DocumentFolder, MarkdownDocument } from "@/domains/documents/stores";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
 import type {
 	ProjectAssetDeleteHandler,
 	ProjectDocumentDeleteHandler,
 } from "@/domains/workspace/components/ProjectDirectory";
 import { useToast } from "@/hooks/useToast";
+import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { cn } from "@/shared/lib/utils";
 import {
 	DirectoryItemMenu,
@@ -102,7 +93,6 @@ export const ProjectFolderItem: React.FC<{
 }) => {
 	const { folder, folders: childFolders, files } = node;
 	const [menuPosition, setMenuPosition] = useState<DirectoryItemMenuPosition | null>(null);
-	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [isRenaming, setIsRenaming] = useState(false);
 	const toast = useToast();
 	const isCollapsed = Boolean(collapsedFolders[folder.id]);
@@ -191,7 +181,13 @@ export const ProjectFolderItem: React.FC<{
 					{
 						icon: Trash2,
 						label: "删除",
-						onSelect: () => setIsDeleteDialogOpen(true),
+						onSelect: () =>
+							void confirmDialog({
+								title: "删除文件夹？",
+								description: `确定要删除“${folder.name}”吗？其中的文件和子文件夹会上移到上一级。`,
+								confirmLabel: "删除",
+								onConfirm: () => onDeleteFolder(folder.id),
+							}),
 						variant: "danger",
 					} satisfies DirectoryItemMenuItem,
 				]
@@ -261,20 +257,6 @@ export const ProjectFolderItem: React.FC<{
 					position={menuPosition}
 				/>
 			) : null}
-			<AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>删除文件夹？</AlertDialogTitle>
-						<AlertDialogDescription>
-							确定要删除“{folder.name}”吗？其中的文件和子文件夹会上移到上一级。
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>取消</AlertDialogCancel>
-						<AlertDialogAction onClick={() => onDeleteFolder(folder.id)}>删除</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 			{isCollapsed ? null : (
 				<div>
 					{creatingFolderParentId === folder.id ? (

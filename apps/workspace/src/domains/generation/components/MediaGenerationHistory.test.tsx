@@ -1,7 +1,14 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render as testingRender,
+	screen,
+	within,
+} from "@testing-library/react";
 import type React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GenerationEntry } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import { ConfirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { HistoryGenerationList } from "./MediaGenerationHistory";
 
 vi.mock("react-photo-view", () => ({
@@ -36,6 +43,14 @@ vi.mock("@/components/VideoPlayer", () => ({
 		<video data-testid="video-preview" data-mime-type={mimeType} src={src} />
 	),
 }));
+
+const render = (ui: React.ReactElement) =>
+	testingRender(
+		<>
+			{ui}
+			<ConfirmDialog />
+		</>,
+	);
 
 const videoEntry = (): GenerationEntry => ({
 	id: "entry-video",

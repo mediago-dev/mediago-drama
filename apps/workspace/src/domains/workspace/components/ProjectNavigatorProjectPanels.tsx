@@ -8,7 +8,6 @@ import {
 	LayoutList,
 	Loader2,
 	Search,
-	Plus,
 	SquarePen,
 } from "lucide-react";
 import type React from "react";
@@ -17,16 +16,6 @@ import type { WorkspaceProject } from "@/domains/projects/api/projects";
 import type { DocumentCategory } from "@/domains/documents/stores";
 import type { GenerationSuccessNotification } from "@/domains/generation/stores/generation-notifications";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
-import {
-	AlertDialog,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
 import {
 	ProjectDirectory,
 	type ProjectDocumentDeleteHandler,
@@ -130,58 +119,6 @@ export const ProjectsSidebarPanel: React.FC<{
 		/>
 	</div>
 );
-
-export const AgentProjectCreateDialog: React.FC<{
-	isCreating: boolean;
-	onCreate: () => void;
-	onOpenChange: (open: boolean) => void;
-	onProjectNameChange: (projectName: string) => void;
-	open: boolean;
-	projectName: string;
-}> = ({ isCreating, onCreate, onOpenChange, onProjectNameChange, open, projectName }) => {
-	const submit = (event: React.FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		onCreate();
-	};
-
-	return (
-		<AlertDialog open={open} onOpenChange={(nextOpen) => !isCreating && onOpenChange(nextOpen)}>
-			<AlertDialogContent className="max-w-md">
-				<form onSubmit={submit}>
-					<AlertDialogHeader>
-						<AlertDialogTitle>新建智能体项目</AlertDialogTitle>
-						<AlertDialogDescription>
-							输入项目名后会在全局目录的 agent 文件夹下创建本地项目。
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<div className="my-4 space-y-3">
-						<label className="block">
-							<span className="mb-1 block text-xs font-medium text-muted-foreground">项目名称</span>
-							<Input
-								value={projectName}
-								onChange={(event) => onProjectNameChange(event.target.value)}
-								placeholder="未命名项目"
-								disabled={isCreating}
-								autoFocus
-							/>
-						</label>
-					</div>
-					<AlertDialogFooter>
-						<AlertDialogCancel disabled={isCreating}>取消</AlertDialogCancel>
-						<Button type="submit" disabled={isCreating}>
-							{isCreating ? (
-								<Loader2 className="size-3.5 animate-spin" />
-							) : (
-								<Plus className="size-3.5" />
-							)}
-							<span>创建</span>
-						</Button>
-					</AlertDialogFooter>
-				</form>
-			</AlertDialogContent>
-		</AlertDialog>
-	);
-};
 
 export const ProjectSidebarPanel: React.FC<{
 	displayProject: WorkspaceProject | null;

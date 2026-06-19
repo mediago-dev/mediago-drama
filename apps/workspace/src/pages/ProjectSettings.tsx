@@ -12,18 +12,9 @@ import {
 	type WorkspaceProject,
 } from "@/domains/projects/api/projects";
 import { workspaceStateKey } from "@/domains/workspace/api/workspace";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
 import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
 import { Button } from "@/shared/components/ui/button";
+import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { useToast } from "@/hooks/useToast";
 import { isTauriRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
 import { settingsInsetRowClassName } from "@/lib/settings-layout";
@@ -44,7 +35,6 @@ export const ProjectSettings: React.FC = () => {
 	const documentsProjectId = useDocumentsStore((state) => state.projectId);
 	const workspaceDir = useDocumentsStore((state) => state.workspaceDir);
 	const { data, isLoading } = useSWR(projectsKey, getProjects);
-	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [isArchiving, setIsArchiving] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isOpeningProjectFolder, setIsOpeningProjectFolder] = useState(false);
@@ -93,21 +83,38 @@ export const ProjectSettings: React.FC = () => {
 	};
 
 	const deleteCurrentProject = async () => {
-		if (!project || isDeleting) return;
+		if (!project || isDeleting) return false;
 
 		setIsDeleting(true);
 		try {
 			await deleteProject(project.id);
 			await refreshProjectLists();
-			setIsDeleteDialogOpen(false);
 			leaveCurrentProject("请选择一个项目");
 			toast.success("项目已移到垃圾箱", { description: project.name });
+			return true;
 		} catch (err) {
 			const message = projectSettingsErrorMessage(err, "移到垃圾箱失败。");
 			toast.error("移到垃圾箱失败", { description: message });
+			return false;
 		} finally {
 			setIsDeleting(false);
 		}
+	};
+
+	const confirmDeleteCurrentProject = () => {
+		if (!project) return;
+		void confirmDialog({
+			title: "移到垃圾箱？",
+			description: (
+				<>
+					确定要将“{projectName}”移到垃圾箱吗？项目文件夹会移动到
+					.mediago-drama/trash，之后可以在垃圾箱中恢复。
+				</>
+			),
+			confirmLabel: "移到垃圾箱",
+			confirmIcon: <Trash2 />,
+			onConfirm: deleteCurrentProject,
+		});
 	};
 
 	const openCurrentProjectFolder = async () => {
@@ -140,34 +147,9 @@ export const ProjectSettings: React.FC = () => {
 				projectName={projectName}
 				isOpeningProjectFolder={isOpeningProjectFolder}
 				onArchive={() => void archiveCurrentProject()}
-				onDelete={() => setIsDeleteDialogOpen(true)}
+				onDelete={confirmDeleteCurrentProject}
 				onOpenProjectFolder={openCurrentProjectFolder}
 			/>
-
-			<AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>移到垃圾箱？</AlertDialogTitle>
-						<AlertDialogDescription>
-							确定要将“{projectName}”移到垃圾箱吗？项目文件夹会移动到
-							.mediago-drama/trash，之后可以在垃圾箱中恢复。
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel disabled={isDeleting}>取消</AlertDialogCancel>
-						<AlertDialogAction
-							disabled={isDeleting || !project}
-							onClick={(event) => {
-								event.preventDefault();
-								void deleteCurrentProject();
-							}}
-						>
-							{isDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
-							<span>移到垃圾箱</span>
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 		</div>
 	);
 };

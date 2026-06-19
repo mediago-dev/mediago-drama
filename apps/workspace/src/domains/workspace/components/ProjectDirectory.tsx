@@ -19,16 +19,6 @@ import type { WorkspaceProject } from "@/domains/projects/api/projects";
 import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspace/api/workspace";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
-import {
 	type DocumentCategoryDescriptor,
 	documentCategoryDescriptorMap,
 	documentCategoryDescriptors,
@@ -42,6 +32,7 @@ import {
 	useDocumentsStore,
 } from "@/domains/documents/stores";
 import { useToast } from "@/hooks/useToast";
+import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { cn } from "@/shared/lib/utils";
 import {
 	DirectoryItemMenu,
@@ -334,7 +325,6 @@ const ProjectDocumentItem: React.FC<{
 }) => {
 	const { entry, children } = node;
 	const [menuPosition, setMenuPosition] = useState<DirectoryItemMenuPosition | null>(null);
-	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const setDocumentCategory = useDocumentsStore((state) => state.setDocumentCategory);
 	const toast = useToast();
 	const isAsset = entry.kind === "asset";
@@ -364,7 +354,25 @@ const ProjectDocumentItem: React.FC<{
 
 	const openDeleteDialog = () => {
 		closeMenu();
-		setIsDeleteDialogOpen(true);
+		void confirmDialog({
+			title: isAsset ? "删除素材？" : "删除文档？",
+			description: (
+				<>
+					确定要删除“{itemTitle}”吗？
+					{!isAsset && childDocumentCount > 0
+						? ` 该文档包含 ${childDocumentCount} 篇子文档，会一并删除，此操作无法撤销。`
+						: " 此操作无法撤销。"}
+				</>
+			),
+			confirmLabel: "删除",
+			onConfirm: () => {
+				if (entry.kind === "asset") {
+					onDeleteAsset(project, entry.id, entry.asset.filename);
+					return;
+				}
+				onDelete(project, entry.document, deletedIds);
+			},
+		});
 	};
 	const showInFileManager = () => {
 		void revealDirectoryFileInFileManager({ documents, entry, folders, workspaceDir }).catch(
@@ -450,31 +458,6 @@ const ProjectDocumentItem: React.FC<{
 					position={menuPosition}
 				/>
 			) : null}
-			<AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>{isAsset ? "删除素材？" : "删除文档？"}</AlertDialogTitle>
-						<AlertDialogDescription>
-							确定要删除“{itemTitle}”吗？
-							{!isAsset && childDocumentCount > 0
-								? ` 该文档包含 ${childDocumentCount} 篇子文档，会一并删除，此操作无法撤销。`
-								: " 此操作无法撤销。"}
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>取消</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={() =>
-								entry.kind === "asset"
-									? onDeleteAsset(project, entry.id, entry.asset.filename)
-									: onDelete(project, entry.document, deletedIds)
-							}
-						>
-							删除
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 			{children.map((child) => (
 				<ProjectDocumentItem
 					key={`${child.entry.kind}:${child.entry.id}`}

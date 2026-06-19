@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render as testingRender,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/react";
 import React from "react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +13,7 @@ import type { GenerationAsset } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { GenerationEntry } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
+import { ConfirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { MediaGenerationWorkspace } from "./MediaGenerationWorkspace";
 
 const toastMocks = vi.hoisted(() => ({
@@ -162,6 +170,14 @@ vi.mock("react-photo-view", () => ({
 vi.mock("@/components/VideoPlayer", () => ({
 	VideoPlayer: ({ src }: { src: string }) => <div data-testid="video-player" data-src={src} />,
 }));
+
+const render = (ui: React.ReactElement) =>
+	testingRender(
+		<>
+			{ui}
+			<ConfirmDialog />
+		</>,
+	);
 
 const imageEntry: GenerationEntry = {
 	id: "entry-image",

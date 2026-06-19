@@ -30,17 +30,8 @@ import {
 	isFailedGenerationStatus,
 	isPendingGenerationStatus,
 } from "@/domains/generation/components/mediaGenerationHelpers";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
+import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import {
 	ContextMenu,
 	ContextMenuContent,
@@ -304,13 +295,19 @@ const HistoryImageCard: React.FC<{
 }) => {
 	const { assetIndex, entry, source } = record;
 	const isAssetRecord = record.kind === "asset";
-	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 	const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
 	if (!isAssetRecord) {
-		const confirmPlaceholderDelete = () => onDeletePlaceholder?.(entry, assetIndex);
 		const mediaLabel = entry.kind === "video" ? "视频" : "图片";
 		const deleteTitle = entry.kind === "video" ? "删除这个视频？" : "删除这张图片？";
 		const showDeriveAction = entry.kind !== "video";
+		const confirmPlaceholderDelete = () => {
+			void confirmDialog({
+				title: deleteTitle,
+				description: `删除后会从这条生成记录中移除这个${mediaLabel}位置。`,
+				confirmLabel: "删除",
+				onConfirm: () => onDeletePlaceholder?.(entry, assetIndex),
+			});
+		};
 
 		return (
 			<>
@@ -347,7 +344,7 @@ const HistoryImageCard: React.FC<{
 						<ContextMenuItem
 							className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
 							disabled={deleting || !onDeletePlaceholder}
-							onSelect={() => setDeleteDialogOpen(true)}
+							onSelect={confirmPlaceholderDelete}
 						>
 							{deleting ? (
 								<Loader2 className="size-4 animate-spin" />
@@ -358,25 +355,6 @@ const HistoryImageCard: React.FC<{
 						</ContextMenuItem>
 					</ContextMenuContent>
 				</ContextMenu>
-				<AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-					<AlertDialogContent>
-						<AlertDialogHeader>
-							<AlertDialogTitle>{deleteTitle}</AlertDialogTitle>
-							<AlertDialogDescription>
-								删除后会从这条生成记录中移除这个{mediaLabel}位置。
-							</AlertDialogDescription>
-						</AlertDialogHeader>
-						<AlertDialogFooter>
-							<AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
-							<AlertDialogAction
-								disabled={deleting || !onDeletePlaceholder}
-								onClick={confirmPlaceholderDelete}
-							>
-								删除
-							</AlertDialogAction>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialog>
 			</>
 		);
 	}
@@ -417,6 +395,14 @@ const HistoryImageCard: React.FC<{
 			return;
 		}
 		onDeleteEntry(entry);
+	};
+	const openDeleteDialog = () => {
+		void confirmDialog({
+			title: deleteTitle,
+			description: "删除后会从这条生成记录中移除，无法在历史记录中恢复。",
+			confirmLabel: "删除",
+			onConfirm: confirmDelete,
+		});
 	};
 
 	return (
@@ -521,7 +507,7 @@ const HistoryImageCard: React.FC<{
 										ariaLabel={`删除${mediaLabel}`}
 										disabled={deleting}
 										tooltip={deleting ? "正在删除" : "删除"}
-										onClick={() => setDeleteDialogOpen(true)}
+										onClick={openDeleteDialog}
 									>
 										{deleting ? (
 											<Loader2 className="size-4 animate-spin" />
@@ -580,7 +566,7 @@ const HistoryImageCard: React.FC<{
 						<ContextMenuItem
 							className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
 							disabled={deleting}
-							onSelect={() => setDeleteDialogOpen(true)}
+							onSelect={openDeleteDialog}
 						>
 							{deleting ? (
 								<Loader2 className="size-4 animate-spin" />
@@ -591,22 +577,6 @@ const HistoryImageCard: React.FC<{
 						</ContextMenuItem>
 					</ContextMenuContent>
 				</ContextMenu>
-				<AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-					<AlertDialogContent>
-						<AlertDialogHeader>
-							<AlertDialogTitle>{deleteTitle}</AlertDialogTitle>
-							<AlertDialogDescription>
-								删除后会从这条生成记录中移除，无法在历史记录中恢复。
-							</AlertDialogDescription>
-						</AlertDialogHeader>
-						<AlertDialogFooter>
-							<AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
-							<AlertDialogAction disabled={deleting} onClick={confirmDelete}>
-								删除
-							</AlertDialogAction>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialog>
 				{isVideo ? (
 					<HistoryVideoPreviewDialog
 						mimeType={record.asset.mimeType}

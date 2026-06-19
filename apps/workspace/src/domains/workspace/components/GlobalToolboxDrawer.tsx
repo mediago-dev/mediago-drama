@@ -19,24 +19,7 @@ import {
 	type GenerationConversation,
 } from "@/domains/generation/api/generation";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/shared/components/ui/select";
-import {
-	AlertDialog,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
 import {
 	Sheet,
 	SheetClose,
@@ -53,6 +36,7 @@ import {
 } from "@/shared/components/ui/tooltip";
 import { useToast } from "@/hooks/useToast";
 import { cn } from "@/shared/lib/utils";
+import { openGenerationConversationCreateDialog } from "./GenerationConversationCreateDialog";
 import type { StudioTab } from "./ProjectNavigatorTypes";
 
 const GenerationWorkspace = lazy(() =>
@@ -109,10 +93,7 @@ const GlobalToolboxDrawer: React.FC<{
 }> = ({ onOpenChange, open }) => {
 	const [activeConversation, setActiveConversation] = useState<GenerationConversation | null>(null);
 	const [historyOpen, setHistoryOpen] = useState(false);
-	const [isCreateOpen, setIsCreateOpen] = useState(false);
 	const [isCreatingConversation, setIsCreatingConversation] = useState(false);
-	const [newConversationKind, setNewConversationKind] = useState<StudioTab>(defaultToolboxKind);
-	const [newConversationTitle, setNewConversationTitle] = useState("");
 	const sheetContentRef = useRef<HTMLDivElement>(null);
 	const toast = useToast();
 
@@ -172,40 +153,45 @@ const GlobalToolboxDrawer: React.FC<{
 		}
 	}, [activeConversation, allConversations, isLoadingConversations, open]);
 
-	const openCreateDialog = () => {
-		setNewConversationKind(
-			isToolboxKind(selectedConversation?.kind) ? selectedConversation.kind : defaultToolboxKind,
-		);
-		setIsCreateOpen(true);
+	const openCreateDialog = async () => {
+		const result = await openGenerationConversationCreateDialog({
+			groups: toolboxConversationGroups,
+			initialKind: isToolboxKind(selectedConversation?.kind)
+				? selectedConversation.kind
+				: defaultToolboxKind,
+		});
+		if (!result) return;
+		await createConversation(result.kind, result.title);
 	};
 
-	const createConversation = useCallback(async () => {
-		if (isCreatingConversation) return;
-		const title = newConversationTitle.trim();
-		if (!title) return;
+	const createConversation = useCallback(
+		async (kind: StudioTab, title: string) => {
+			if (isCreatingConversation) return;
+			const trimmedTitle = title.trim();
+			if (!trimmedTitle) return;
 
-		setIsCreatingConversation(true);
-		try {
-			const conversation = await createGenerationConversation({
-				kind: newConversationKind,
-				scopeId: globalToolboxScopeId,
-				title,
-			});
-			await mutateSWR(
-				generationConversationsQueryKey(newConversationKind, globalToolboxScopeId, {
-					allScopes: true,
-				}),
-			);
-			setActiveConversation(conversation);
-			setIsCreateOpen(false);
-			setNewConversationTitle("");
-		} catch (err) {
-			const message = err instanceof Error ? err.message : "创建会话失败。";
-			toast.error("创建会话失败", { description: message });
-		} finally {
-			setIsCreatingConversation(false);
-		}
-	}, [isCreatingConversation, newConversationKind, newConversationTitle, toast]);
+			setIsCreatingConversation(true);
+			try {
+				const conversation = await createGenerationConversation({
+					kind,
+					scopeId: globalToolboxScopeId,
+					title: trimmedTitle,
+				});
+				await mutateSWR(
+					generationConversationsQueryKey(kind, globalToolboxScopeId, {
+						allScopes: true,
+					}),
+				);
+				setActiveConversation(conversation);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : "创建会话失败。";
+				toast.error("创建会话失败", { description: message });
+			} finally {
+				setIsCreatingConversation(false);
+			}
+		},
+		[isCreatingConversation, toast],
+	);
 
 	return (
 		<>
@@ -283,7 +269,7 @@ const GlobalToolboxDrawer: React.FC<{
 								variant="ghost"
 								className="h-8 rounded-sm px-2.5 text-xs font-semibold"
 								disabled={isCreatingConversation}
-								onClick={openCreateDialog}
+								onClick={() => void openCreateDialog()}
 							>
 								{isCreatingConversation ? (
 									<Loader2 className="size-3.5 animate-spin" />
@@ -346,21 +332,6 @@ const GlobalToolboxDrawer: React.FC<{
 					</div>
 				</SheetContent>
 			</Sheet>
-
-			<GlobalToolboxCreateDialog
-				isCreating={isCreatingConversation}
-				kind={newConversationKind}
-				onCreate={() => void createConversation()}
-				onKindChange={setNewConversationKind}
-				onOpenChange={(nextOpen) => {
-					if (isCreatingConversation) return;
-					setIsCreateOpen(nextOpen);
-					if (!nextOpen) setNewConversationTitle("");
-				}}
-				onTitleChange={setNewConversationTitle}
-				open={isCreateOpen}
-				title={newConversationTitle}
-			/>
 		</>
 	);
 };
@@ -465,86 +436,8 @@ const ToolboxConversationItem: React.FC<{
 	);
 };
 
-const GlobalToolboxCreateDialog: React.FC<{
-	isCreating: boolean;
-	kind: StudioTab;
-	onCreate: () => void;
-	onKindChange: (kind: StudioTab) => void;
-	onOpenChange: (open: boolean) => void;
-	onTitleChange: (title: string) => void;
-	open: boolean;
-	title: string;
-}> = ({ isCreating, kind, onCreate, onKindChange, onOpenChange, onTitleChange, open, title }) => {
-	const submit = (event: React.FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		onCreate();
-	};
-
-	return (
-		<AlertDialog open={open} onOpenChange={(nextOpen) => !isCreating && onOpenChange(nextOpen)}>
-			<AlertDialogContent className="max-w-md">
-				<form onSubmit={submit}>
-					<AlertDialogHeader>
-						<AlertDialogTitle>新建会话</AlertDialogTitle>
-						<AlertDialogDescription>选择生成类型并填写会话名称。</AlertDialogDescription>
-					</AlertDialogHeader>
-					<div className="my-4 grid gap-3">
-						<label className="block">
-							<span className="mb-1 block text-xs font-medium text-muted-foreground">生成类型</span>
-							<Select
-								value={kind}
-								onValueChange={(value) => onKindChange(value as StudioTab)}
-								disabled={isCreating}
-							>
-								<SelectTrigger>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{toolboxConversationGroups.map((group) => (
-										<SelectItem key={group.kind} value={group.kind}>
-											{group.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</label>
-						<label className="block">
-							<span className="mb-1 block text-xs font-medium text-muted-foreground">会话名称</span>
-							<Input
-								value={title}
-								onChange={(event) => onTitleChange(event.target.value)}
-								placeholder={`${toolboxKindLabel(kind)}探索`}
-								disabled={isCreating}
-								autoFocus
-							/>
-						</label>
-					</div>
-					<AlertDialogFooter>
-						<AlertDialogCancel disabled={isCreating}>取消</AlertDialogCancel>
-						<Button type="submit" disabled={isCreating || !title.trim()}>
-							{isCreating ? <Loader2 className="size-3.5 animate-spin" /> : <Plus />}
-							<span>创建</span>
-						</Button>
-					</AlertDialogFooter>
-				</form>
-			</AlertDialogContent>
-		</AlertDialog>
-	);
-};
-
 const isToolboxKind = (kind: string | undefined): kind is StudioTab =>
 	kind === "video" || kind === "image" || kind === "text";
-
-const toolboxKindLabel = (kind: StudioTab) => {
-	switch (kind) {
-		case "text":
-			return "文本生成";
-		case "image":
-			return "图片生成";
-		default:
-			return "视频生成";
-	}
-};
 
 const toolboxConversationTime = (value: string) => {
 	const date = new Date(value);
