@@ -3,7 +3,11 @@ import {
 	ArrowUp,
 	Grid3X3,
 	ImagePlus,
+	Layers,
 	Loader2,
+	MousePointer2,
+	Palette,
+	PanelRight,
 	RotateCcw,
 	Save,
 	SlidersHorizontal,
@@ -44,6 +48,7 @@ export interface ImageStickerEditorDialogProps {
 type EditorRole = "base" | "mosaic" | "shape" | "sticker" | "text";
 type EditorObject = FabricObjectInstance & { editorRole?: EditorRole; isEditing?: boolean };
 type EditorImageObject = FabricImage & EditorObject;
+type LayerSummary = Record<Exclude<EditorRole, "base">, number>;
 
 const editorRoleProperty = "editorRole";
 const maxCanvasWidth = 960;
@@ -55,6 +60,7 @@ const defaultRectangleFill = "#0ea5e9";
 const defaultRectangleStroke = "#0369a1";
 const defaultShapeAngle = 0;
 const rectangleColorOptions = ["#0ea5e9", "#ef4444", "#f59e0b", "#22c55e", "#a855f7", "#111827"];
+const emptyLayerSummary: LayerSummary = { mosaic: 0, shape: 0, sticker: 0, text: 0 };
 
 FabricObject.customProperties = Array.from(
 	new Set([...FabricObject.customProperties, editorRoleProperty]),
@@ -83,7 +89,9 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
+	const [canvasSize, setCanvasSize] = useState({ height: 0, width: 0 });
 	const [hasShapeSelection, setHasShapeSelection] = useState(false);
+	const [layerSummary, setLayerSummary] = useState<LayerSummary>(emptyLayerSummary);
 	const [selectionCount, setSelectionCount] = useState(0);
 	const [selectedShapeAngle, setSelectedShapeAngle] = useState(defaultShapeAngle);
 	const [selectedShapeColor, setSelectedShapeColor] = useState(defaultRectangleFill);
@@ -94,6 +102,7 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 	const updateSelectionCount = useCallback((canvas = canvasRef.current) => {
 		if (!canvas) {
 			setHasShapeSelection(false);
+			setLayerSummary(emptyLayerSummary);
 			setSelectionCount(0);
 			setSelectedShapeAngle(defaultShapeAngle);
 			setSelectedShapeColor(defaultRectangleFill);
@@ -116,6 +125,7 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 				? normalizeHexColor(shapeObject.fill) || defaultRectangleFill
 				: defaultRectangleFill,
 		);
+		setLayerSummary(summarizeCanvasLayers(canvas));
 		setSelectedOpacity(Math.round((selectedObjects[0]?.opacity ?? 1) * 100));
 	}, []);
 
@@ -482,7 +492,9 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 		setReady(false);
 		setLoadError(null);
 		setSaveError(null);
+		setCanvasSize({ height: 0, width: 0 });
 		setHasShapeSelection(false);
+		setLayerSummary(emptyLayerSummary);
 		setSelectionCount(0);
 		setSelectedShapeAngle(defaultShapeAngle);
 		setSelectedShapeColor(defaultRectangleFill);
@@ -500,7 +512,9 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 		setReady(false);
 		setLoadError(null);
 		setSaveError(null);
+		setCanvasSize({ height: 0, width: 0 });
 		setHasShapeSelection(false);
+		setLayerSummary(emptyLayerSummary);
 		setSelectionCount(0);
 		setSelectedShapeAngle(defaultShapeAngle);
 		setSelectedShapeColor(defaultRectangleFill);
@@ -549,6 +563,7 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 					imageHeight / canvasHeight,
 				);
 				canvas.setDimensions({ height: canvasHeight, width: canvasWidth });
+				setCanvasSize({ height: canvasHeight, width: canvasWidth });
 				baseImage.set({
 					evented: false,
 					hasControls: false,
@@ -576,6 +591,7 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 				setUndoSnapshots([initialSnapshot]);
 				setRedoSnapshots([]);
 				syncHistoryState([initialSnapshot], []);
+				updateSelectionCount(canvas);
 				setReady(true);
 			} catch {
 				if (!disposed) {
@@ -629,25 +645,40 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 
 	const titleText = title?.trim() || "图片编辑工作台";
 	const hasSelection = selectionCount > 0;
+	const editableLayerCount =
+		layerSummary.mosaic + layerSummary.shape + layerSummary.sticker + layerSummary.text;
+	const canvasSizeLabel =
+		canvasSize.width > 0 && canvasSize.height > 0
+			? `${canvasSize.width} x ${canvasSize.height}px`
+			: "--";
 
 	return (
 		<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
 			<DialogPrimitive.Portal>
-				<DialogPrimitive.Overlay className="fixed inset-0 z-[70] bg-foreground/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
+				<DialogPrimitive.Overlay className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
 				<DialogPrimitive.Content
 					aria-describedby={undefined}
-					className="fixed left-1/2 top-1/2 z-[71] flex max-h-[calc(100vh-2rem)] w-[min(74rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-sm border border-border bg-card text-card-foreground shadow-2xl outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200"
+					className="fixed inset-3 z-[71] flex flex-col overflow-hidden rounded-sm border border-white/15 bg-[#202124] text-[#e8eaed] shadow-2xl outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 sm:inset-4 duration-200"
 					onKeyDown={handleKeyDown}
 				>
-					<header className="flex min-h-12 items-center justify-between gap-3 border-b border-border bg-card px-4">
-						<DialogPrimitive.Title className="min-w-0 truncate text-sm font-semibold">
-							{titleText}
-						</DialogPrimitive.Title>
+					<header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#2b2d31] px-3">
+						<div className="flex min-w-0 items-center gap-4">
+							<DialogPrimitive.Title className="min-w-0 truncate text-sm font-semibold text-white">
+								{titleText}
+							</DialogPrimitive.Title>
+							<nav className="hidden items-center gap-1 text-[0.6875rem] text-[#b9bec8] md:flex">
+								<span className="rounded-sm px-2 py-1 hover:bg-white/10">文件</span>
+								<span className="rounded-sm px-2 py-1 hover:bg-white/10">编辑</span>
+								<span className="rounded-sm px-2 py-1 hover:bg-white/10">图层</span>
+								<span className="rounded-sm px-2 py-1 hover:bg-white/10">视图</span>
+							</nav>
+						</div>
 						<div className="flex shrink-0 items-center gap-2">
 							<Button
 								type="button"
-								variant="secondary"
+								variant="default"
 								size="sm"
+								className="border border-[#2f74ff] bg-[#2f74ff] text-white shadow-none hover:bg-[#2563eb]"
 								disabled={!ready || saving}
 								onClick={saveCanvas}
 							>
@@ -655,110 +686,204 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 								<span>保存</span>
 							</Button>
 							<DialogPrimitive.Close asChild>
-								<Button type="button" variant="ghost" size="icon" aria-label="关闭编辑器">
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon"
+									aria-label="关闭编辑器"
+									className="text-[#c9ced8] hover:bg-white/10 hover:text-white"
+								>
 									<X className="size-4" />
 								</Button>
 							</DialogPrimitive.Close>
 						</div>
 					</header>
-					<div className="grid min-h-0 flex-1 grid-cols-[15rem_minmax(0,1fr)] max-lg:grid-cols-1 max-lg:grid-rows-[auto_minmax(0,1fr)]">
-						<aside className="flex min-h-0 flex-col gap-4 overflow-y-auto border-r border-border bg-ide-toolbar p-3 max-lg:max-h-52 max-lg:border-b max-lg:border-r-0">
-							<div className="grid gap-2">
-								<div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-									<ImagePlus className="size-4" />
-									<span>贴纸</span>
-								</div>
-								<div className="grid grid-cols-2 gap-2">
-									{stickerPresets.map((preset) => (
-										<Button
-											key={preset.id}
-											type="button"
-											variant="outline"
-											size="sm"
-											className="h-10 justify-start px-2"
-											disabled={!ready || busyTool !== null}
-											onClick={() => void addImageSticker(preset.source, preset.id)}
-										>
-											<span className="flex size-6 shrink-0 items-center justify-center rounded-sm border border-border bg-background">
-												<img src={preset.source} alt="" className="size-5 object-contain" />
-											</span>
-											<span className="min-w-0 truncate">{preset.label}</span>
-										</Button>
-									))}
-								</div>
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									className="justify-start"
-									disabled={!ready || busyTool !== null}
-									onClick={handleUploadClick}
-								>
-									{busyTool === "upload" ? (
+					<div className="flex min-h-0 flex-1 max-lg:flex-col">
+						<aside className="flex w-13 shrink-0 flex-col items-center gap-1 border-r border-white/10 bg-[#282a2f] px-1.5 py-2 max-lg:h-13 max-lg:w-full max-lg:flex-row max-lg:border-b max-lg:border-r-0">
+							<WorkbenchIconButton
+								label="选择"
+								icon={<MousePointer2 className="size-4" />}
+								disabled={!ready}
+							/>
+							<WorkbenchIconButton
+								label="上传贴纸"
+								icon={
+									busyTool === "upload" ? (
 										<Loader2 className="size-4 animate-spin" />
 									) : (
 										<Upload className="size-4" />
-									)}
-									<span>上传贴纸</span>
-								</Button>
-								<input
-									ref={uploadInputRef}
-									type="file"
-									accept="image/*"
-									className="hidden"
-									onChange={handleUploadChange}
+									)
+								}
+								disabled={!ready || busyTool !== null}
+								onClick={handleUploadClick}
+							/>
+							<WorkbenchIconButton
+								label="添加文字"
+								icon={<Type className="size-4" />}
+								disabled={!ready}
+								onClick={addTextSticker}
+							/>
+							<WorkbenchIconButton
+								label="矩形"
+								icon={<Square className="size-4" />}
+								disabled={!ready}
+								onClick={addRectangle}
+							/>
+							<WorkbenchIconButton
+								label="马赛克"
+								icon={<Grid3X3 className="size-4" />}
+								disabled={!ready}
+								onClick={addMosaic}
+							/>
+							<div className="my-1 h-px w-7 bg-white/10 max-lg:mx-1 max-lg:h-7 max-lg:w-px" />
+							<WorkbenchIconButton
+								label="删除"
+								icon={<Trash2 className="size-4" />}
+								disabled={!hasSelection}
+								onClick={deleteSelection}
+							/>
+							<WorkbenchIconButton
+								label="重置"
+								icon={<RotateCcw className="size-4" />}
+								disabled={!ready}
+								onClick={resetCanvas}
+							/>
+							<input
+								ref={uploadInputRef}
+								type="file"
+								accept="image/*"
+								className="hidden"
+								onChange={handleUploadChange}
+							/>
+						</aside>
+
+						<div className="flex min-w-0 flex-1 flex-col max-lg:min-h-0">
+							<div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#26282d] px-3 text-[0.6875rem] text-[#c0c5cf]">
+								<div className="flex min-w-0 items-center gap-1">
+									<TopbarButton
+										label="撤销"
+										icon={<Undo2 className="size-4" />}
+										disabled={!canUndo}
+										onClick={undo}
+									/>
+									<TopbarButton
+										label="重做"
+										icon={<Undo2 className="size-4 rotate-180" />}
+										disabled={!canRedo}
+										onClick={redo}
+									/>
+									<span className="mx-1 h-4 w-px bg-white/10" />
+									<TopbarButton
+										label="前移"
+										icon={<ArrowUp className="size-4" />}
+										disabled={!hasSelection}
+										onClick={() => moveSelection("forward")}
+									/>
+									<TopbarButton
+										label="后移"
+										icon={<ArrowDown className="size-4" />}
+										disabled={!hasSelection}
+										onClick={() => moveSelection("backward")}
+									/>
+								</div>
+								<div className="hidden min-w-0 items-center gap-3 tabular-nums sm:flex">
+									<span className="truncate">{canvasSizeLabel}</span>
+									<span>{hasSelection ? `已选 ${selectionCount}` : "未选择"}</span>
+								</div>
+							</div>
+
+							<section className="relative min-h-[24rem] min-w-0 flex-1 overflow-hidden bg-[#151619] max-lg:min-h-0">
+								<div
+									className="pointer-events-none absolute left-8 right-0 top-0 z-10 h-6 border-b border-white/10 bg-[#202226]"
+									style={{
+										backgroundImage:
+											"repeating-linear-gradient(90deg, rgba(255,255,255,.18) 0 1px, transparent 1px 40px)",
+									}}
 								/>
-							</div>
-							<div className="grid gap-2">
-								<div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-									<Type className="size-4" />
-									<span>文字</span>
+								<div
+									className="pointer-events-none absolute bottom-0 left-0 top-6 z-10 w-8 border-r border-white/10 bg-[#202226]"
+									style={{
+										backgroundImage:
+											"repeating-linear-gradient(0deg, rgba(255,255,255,.16) 0 1px, transparent 1px 40px)",
+									}}
+								/>
+								<div className="pointer-events-none absolute left-0 top-0 z-10 size-8 border-b border-r border-white/10 bg-[#2a2d32]" />
+								<div className="h-full w-full overflow-auto pl-8 pt-6">
+									<div className="flex min-h-full min-w-max items-center justify-center p-8">
+										<div
+											className={cn(
+												"relative inline-flex shrink-0 items-center justify-center border border-black/80 bg-[#30343a] p-3 shadow-[0_24px_80px_rgba(0,0,0,.42)]",
+												!ready && "opacity-60",
+											)}
+										>
+											<div
+												className="absolute inset-3"
+												style={{
+													backgroundColor: "#3a3d42",
+													backgroundImage:
+														"linear-gradient(45deg, #2f3237 25%, transparent 25%), linear-gradient(-45deg, #2f3237 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #2f3237 75%), linear-gradient(-45deg, transparent 75%, #2f3237 75%)",
+													backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0",
+													backgroundSize: "16px 16px",
+												}}
+											/>
+											<canvas ref={setEditorCanvasElement} className="relative z-10" />
+										</div>
+									</div>
 								</div>
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									className="justify-start"
-									disabled={!ready}
-									onClick={addTextSticker}
-								>
-									<Type className="size-4" />
-									<span>添加文字</span>
-								</Button>
-							</div>
-							<div className="grid gap-2">
-								<div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-									<Square className="size-4" />
-									<span>标注</span>
-								</div>
+								{!ready && !loadError ? (
+									<div className="absolute inset-0 z-20 flex items-center justify-center bg-[#151619]/50">
+										<Loader2 className="size-6 animate-spin text-[#c0c5cf]" />
+									</div>
+								) : null}
+								{loadError ? (
+									<div
+										role="alert"
+										className="absolute left-1/2 top-1/2 z-20 w-[min(22rem,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-sm border border-red-400/40 bg-[#2a1f22] p-4 text-center text-xs leading-5 text-red-200 shadow-lg"
+									>
+										{loadError}
+									</div>
+								) : null}
+							</section>
+
+							<footer className="flex h-7 shrink-0 items-center justify-between gap-3 border-t border-white/10 bg-[#2b2d31] px-3 text-[0.6875rem] text-[#b9bec8]">
+								<span>{ready ? "就绪" : loadError ? "载入失败" : "载入中"}</span>
+								<span className="tabular-nums">
+									{canvasSizeLabel} · {editableLayerCount} 图层
+								</span>
+							</footer>
+						</div>
+
+						<aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-l border-white/10 bg-[#25272c] max-xl:w-64 max-lg:h-72 max-lg:max-h-72 max-lg:w-full max-lg:border-l-0 max-lg:border-t">
+							<PanelSection title="贴纸库" icon={<ImagePlus className="size-4" />}>
 								<div className="grid grid-cols-2 gap-2">
-									<ToolButton
-										label="矩形"
-										disabled={!ready}
-										icon={<Square className="size-4" />}
-										onClick={addRectangle}
-									/>
-									<ToolButton
-										label="马赛克"
-										disabled={!ready}
-										icon={<Grid3X3 className="size-4" />}
-										onClick={addMosaic}
-									/>
+									{stickerPresets.map((preset) => (
+										<button
+											key={preset.id}
+											type="button"
+											disabled={!ready || busyTool !== null}
+											className="flex min-w-0 items-center gap-2 rounded-sm border border-white/10 bg-[#303238] px-2 py-2 text-left text-xs text-[#d7dbe3] transition hover:border-[#4d8bff] hover:bg-[#343943] disabled:cursor-not-allowed disabled:opacity-45"
+											onClick={() => void addImageSticker(preset.source, preset.id)}
+										>
+											<span className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-white/10 bg-[#1d1f23]">
+												<img src={preset.source} alt="" className="size-6 object-contain" />
+											</span>
+											<span className="min-w-0 truncate">{preset.label}</span>
+										</button>
+									))}
 								</div>
-							</div>
-							<div className="grid gap-2">
-								<div className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-									<span className="flex min-w-0 items-center gap-2">
-										<SlidersHorizontal className="size-4" />
-										<span>属性</span>
+							</PanelSection>
+
+							<PanelSection
+								title="属性"
+								icon={<SlidersHorizontal className="size-4" />}
+								aside={hasSelection ? `${selectedOpacity}%` : "--"}
+							>
+								<div className="grid gap-2 text-xs text-[#b9bec8]">
+									<span className="flex items-center gap-2 font-medium text-[#d7dbe3]">
+										<Palette className="size-4" />
+										颜色
 									</span>
-									<span className="shrink-0 tabular-nums">
-										{hasSelection ? `${selectedOpacity}%` : "--"}
-									</span>
-								</div>
-								<div className="grid gap-1.5 text-xs text-muted-foreground">
-									<span>颜色</span>
-									<div className="flex items-center gap-1.5">
+									<div className="flex flex-wrap items-center gap-1.5">
 										{rectangleColorOptions.map((color) => (
 											<button
 												key={color}
@@ -766,8 +891,9 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 												aria-label={`矩形颜色 ${color}`}
 												disabled={!ready || !hasShapeSelection}
 												className={cn(
-													"size-6 rounded-sm border border-border shadow-sm transition disabled:cursor-not-allowed disabled:opacity-40",
-													selectedShapeColor === color && "ring-2 ring-ring ring-offset-1",
+													"size-6 rounded-sm border border-white/20 shadow-sm transition disabled:cursor-not-allowed disabled:opacity-35",
+													selectedShapeColor === color &&
+														"ring-2 ring-[#7fb1ff] ring-offset-1 ring-offset-[#25272c]",
 												)}
 												style={{ backgroundColor: color }}
 												onClick={() => changeShapeColor(color)}
@@ -778,15 +904,15 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 											aria-label="自定义矩形颜色"
 											value={selectedShapeColor}
 											disabled={!ready || !hasShapeSelection}
-											className="size-7 rounded-sm border border-border bg-transparent p-0.5 disabled:cursor-not-allowed disabled:opacity-40"
+											className="size-7 rounded-sm border border-white/20 bg-transparent p-0.5 disabled:cursor-not-allowed disabled:opacity-35"
 											onChange={(event) => changeShapeColor(event.currentTarget.value)}
 										/>
 									</div>
 								</div>
-								<label className="grid gap-1.5 text-xs text-muted-foreground">
+								<label className="grid gap-1.5 text-xs text-[#b9bec8]">
 									<span className="flex items-center justify-between gap-2">
 										<span>旋转</span>
-										<span className="tabular-nums">
+										<span className="tabular-nums text-[#e8eaed]">
 											{hasShapeSelection ? `${selectedShapeAngle}°` : "--"}
 										</span>
 									</span>
@@ -798,12 +924,17 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 										step={1}
 										value={selectedShapeAngle}
 										disabled={!ready || !hasShapeSelection}
-										className="h-2 w-full accent-primary disabled:opacity-50"
+										className="h-2 w-full accent-[#4d8bff] disabled:opacity-35"
 										onChange={changeShapeAngle}
 									/>
 								</label>
-								<label className="grid gap-1.5 text-xs text-muted-foreground">
-									<span>透明度</span>
+								<label className="grid gap-1.5 text-xs text-[#b9bec8]">
+									<span className="flex items-center justify-between gap-2">
+										<span>透明度</span>
+										<span className="tabular-nums text-[#e8eaed]">
+											{hasSelection ? `${selectedOpacity}%` : "--"}
+										</span>
+									</span>
 									<input
 										type="range"
 										min={10}
@@ -811,81 +942,64 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 										step={5}
 										value={selectedOpacity}
 										disabled={!ready || !hasSelection}
-										className="h-2 w-full accent-primary disabled:opacity-50"
+										className="h-2 w-full accent-[#4d8bff] disabled:opacity-35"
 										onChange={changeSelectionOpacity}
 									/>
 								</label>
-							</div>
-							<div className="grid gap-2">
-								<div className="text-xs font-medium text-muted-foreground">编辑</div>
+							</PanelSection>
+
+							<PanelSection
+								title="图层"
+								icon={<Layers className="size-4" />}
+								aside={editableLayerCount}
+							>
+								<div className="grid gap-1.5">
+									<LayerRow label="原图" count={1} active={!hasSelection} />
+									<LayerRow label="贴纸" count={layerSummary.sticker} />
+									<LayerRow label="文字" count={layerSummary.text} />
+									<LayerRow label="标注" count={layerSummary.shape} />
+									<LayerRow label="马赛克" count={layerSummary.mosaic} />
+								</div>
+							</PanelSection>
+
+							<PanelSection title="排列" icon={<PanelRight className="size-4" />}>
 								<div className="grid grid-cols-2 gap-2">
-									<ToolButton
-										label="撤销"
-										disabled={!canUndo}
-										icon={<Undo2 className="size-4" />}
-										onClick={undo}
-									/>
-									<ToolButton
-										label="重做"
-										disabled={!canRedo}
-										icon={<Undo2 className="size-4 rotate-180" />}
-										onClick={redo}
-									/>
-									<ToolButton
+									<PanelButton
 										label="前移"
-										disabled={!hasSelection}
 										icon={<ArrowUp className="size-4" />}
+										disabled={!hasSelection}
 										onClick={() => moveSelection("forward")}
 									/>
-									<ToolButton
+									<PanelButton
 										label="后移"
-										disabled={!hasSelection}
 										icon={<ArrowDown className="size-4" />}
+										disabled={!hasSelection}
 										onClick={() => moveSelection("backward")}
 									/>
-									<ToolButton
+									<PanelButton
 										label="删除"
-										disabled={!hasSelection}
 										icon={<Trash2 className="size-4" />}
+										disabled={!hasSelection}
 										onClick={deleteSelection}
 									/>
-									<ToolButton
+									<PanelButton
 										label="重置"
-										disabled={!ready}
 										icon={<RotateCcw className="size-4" />}
+										disabled={!ready}
 										onClick={resetCanvas}
 									/>
 								</div>
-							</div>
+							</PanelSection>
+
 							{saveError ? (
-								<div role="alert" className="text-xs leading-5 text-destructive">
+								<div
+									role="alert"
+									className="border-t border-white/10 px-3 py-2 text-xs leading-5 text-red-200"
+								>
 									{saveError}
 								</div>
 							) : null}
 						</aside>
-						<section className="relative flex min-h-[24rem] min-w-0 items-center justify-center overflow-auto bg-ide-editor p-4">
-							<div
-								className={cn(
-									"inline-flex max-w-full shrink-0 items-center justify-center border border-border bg-muted/40 shadow-sm",
-									!ready && "opacity-60",
-								)}
-							>
-								<canvas ref={setEditorCanvasElement} />
-							</div>
-							{!ready && !loadError ? (
-								<div className="absolute inset-0 flex items-center justify-center bg-card/40">
-									<Loader2 className="size-6 animate-spin text-muted-foreground" />
-								</div>
-							) : null}
-							{loadError ? (
-								<div
-									role="alert"
-									className="absolute left-1/2 top-1/2 w-[min(22rem,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-sm border border-destructive/40 bg-card p-4 text-center text-xs leading-5 text-destructive shadow-lg"
-								>
-									{loadError}
-								</div>
-							) : null}
-						</section>
 					</div>
 				</DialogPrimitive.Content>
 			</DialogPrimitive.Portal>
@@ -893,24 +1007,110 @@ export const ImageStickerEditorDialog: React.FC<ImageStickerEditorDialogProps> =
 	);
 };
 
-const ToolButton: React.FC<{
+const WorkbenchIconButton: React.FC<{
+	disabled?: boolean;
+	icon: React.ReactNode;
+	label: string;
+	onClick?: () => void;
+}> = ({ disabled, icon, label, onClick }) => (
+	<button
+		type="button"
+		aria-label={label}
+		title={label}
+		disabled={disabled}
+		className="flex size-9 shrink-0 items-center justify-center rounded-sm border border-transparent text-[#c9ced8] transition hover:border-white/10 hover:bg-[#343943] hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+		onClick={onClick}
+	>
+		{icon}
+	</button>
+);
+
+const TopbarButton: React.FC<{
 	disabled?: boolean;
 	icon: React.ReactNode;
 	label: string;
 	onClick: () => void;
 }> = ({ disabled, icon, label, onClick }) => (
-	<Button
+	<button
 		type="button"
-		variant="outline"
-		size="sm"
-		className="justify-start"
+		aria-label={label}
+		title={label}
 		disabled={disabled}
+		className="flex h-7 items-center gap-1 rounded-sm px-2 text-[#c9ced8] transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+		onClick={onClick}
+	>
+		{icon}
+		<span className="hidden text-[0.6875rem] sm:inline">{label}</span>
+	</button>
+);
+
+const PanelSection: React.FC<{
+	aside?: React.ReactNode;
+	children: React.ReactNode;
+	icon: React.ReactNode;
+	title: string;
+}> = ({ aside, children, icon, title }) => (
+	<section className="border-b border-white/10">
+		<header className="flex h-9 items-center justify-between gap-2 bg-[#2b2d31] px-3 text-xs font-semibold text-[#e8eaed]">
+			<span className="flex min-w-0 items-center gap-2">
+				{icon}
+				<span className="truncate">{title}</span>
+			</span>
+			{aside !== undefined ? (
+				<span className="shrink-0 text-[0.6875rem] font-medium tabular-nums text-[#aeb4c0]">
+					{aside}
+				</span>
+			) : null}
+		</header>
+		<div className="grid gap-3 p-3">{children}</div>
+	</section>
+);
+
+const PanelButton: React.FC<{
+	disabled?: boolean;
+	icon: React.ReactNode;
+	label: string;
+	onClick: () => void;
+}> = ({ disabled, icon, label, onClick }) => (
+	<button
+		type="button"
+		disabled={disabled}
+		className="flex h-8 items-center justify-center gap-1.5 rounded-sm border border-white/10 bg-[#303238] px-2 text-xs font-medium text-[#d7dbe3] transition hover:border-[#4d8bff] hover:bg-[#343943] hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
 		onClick={onClick}
 	>
 		{icon}
 		<span>{label}</span>
-	</Button>
+	</button>
 );
+
+const LayerRow: React.FC<{ active?: boolean; count: number; label: string }> = ({
+	active,
+	count,
+	label,
+}) => (
+	<div
+		className={cn(
+			"flex h-8 items-center justify-between gap-2 rounded-sm border px-2 text-xs",
+			active
+				? "border-[#4d8bff]/60 bg-[#213452] text-[#dbe8ff]"
+				: "border-white/10 bg-[#303238] text-[#c9ced8]",
+		)}
+	>
+		<span className="min-w-0 truncate">{label}</span>
+		<span className="rounded-sm bg-black/20 px-1.5 py-0.5 text-[0.625rem] tabular-nums text-[#aeb4c0]">
+			{count}
+		</span>
+	</div>
+);
+
+const summarizeCanvasLayers = (canvas: Canvas): LayerSummary => {
+	const summary: LayerSummary = { ...emptyLayerSummary };
+	for (const object of canvas.getObjects()) {
+		const role = (object as EditorObject).editorRole;
+		if (role && role !== "base") summary[role] += 1;
+	}
+	return summary;
+};
 
 const serializeCanvas = (canvas: Canvas) => JSON.stringify(canvas.toObject([editorRoleProperty]));
 
