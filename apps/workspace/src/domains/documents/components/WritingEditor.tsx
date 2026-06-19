@@ -431,10 +431,9 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 				open={Boolean(sectionGeneration)}
 				projectId={projectId ?? undefined}
 				section={sectionGeneration}
-				selectedAssetKeys={
-					sectionGeneration
-						? (selectedSectionAssetKeys[sectionGenerationIdentityKey(sectionGeneration)] ?? [])
-						: []
+				selectedAssetKeys={(targetSection) =>
+					selectedSectionAssetKeys[sectionGenerationIdentityKey(targetSection)] ??
+					sectionImageAssetKeys(targetSection)
 				}
 				onGenerationComplete={completeSectionImageGeneration}
 				onGenerationError={removePendingSectionImage}

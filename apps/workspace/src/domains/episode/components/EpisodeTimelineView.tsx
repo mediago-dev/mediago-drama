@@ -572,11 +572,9 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 				open={Boolean(referenceSectionGeneration)}
 				projectId={projectId ?? undefined}
 				section={referenceSectionGeneration}
-				selectedAssetKeys={
-					referenceSectionGeneration
-						? (selectedSectionAssetKeys[sectionGenerationIdentityKey(referenceSectionGeneration)] ??
-							[])
-						: []
+				selectedAssetKeys={(targetSection) =>
+					selectedSectionAssetKeys[sectionGenerationIdentityKey(targetSection)] ??
+					sectionImageAssetKeys(targetSection)
 				}
 				onGenerationComplete={() => undefined}
 				onGenerationError={() => undefined}
