@@ -223,6 +223,84 @@ describe("MaterialLibraryImportDialog", () => {
 
 		expect(onConfirmSelection).toHaveBeenCalledWith([uploadedAsset]);
 	});
+
+	it("shows an upload error for non-image files", async () => {
+		const onUploadAsset = vi.fn();
+		render(
+			<MaterialLibraryImportDialog
+				mediaAssets={[]}
+				open
+				onConfirmSelection={vi.fn()}
+				onOpenChange={vi.fn()}
+				onUploadAsset={onUploadAsset}
+			/>,
+		);
+
+		const file = new File(["notes"], "notes.txt", { type: "text/plain" });
+		fireEvent.change(screen.getByLabelText("上传图片素材"), {
+			target: { files: [file] },
+		});
+
+		expect(await screen.findByText("请选择图片文件。")).toBeTruthy();
+		expect(onUploadAsset).not.toHaveBeenCalled();
+	});
+
+	it("resets transient search state when reopened", () => {
+		const asset = mediaAsset();
+		const { rerender } = render(
+			<MaterialLibraryImportDialog
+				mediaAssets={[asset]}
+				open
+				selectedAssetIds={[asset.id]}
+				onConfirmSelection={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		fireEvent.change(screen.getByPlaceholderText("搜索图片素材"), {
+			target: { value: "missing" },
+		});
+		expect(screen.queryByText("still.png")).toBeNull();
+
+		rerender(
+			<MaterialLibraryImportDialog
+				mediaAssets={[asset]}
+				open={false}
+				selectedAssetIds={[asset.id]}
+				onConfirmSelection={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+		rerender(
+			<MaterialLibraryImportDialog
+				mediaAssets={[asset]}
+				open
+				selectedAssetIds={[asset.id]}
+				onConfirmSelection={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByText("still.png")).toBeTruthy();
+		expect(screen.getByRole("checkbox", { name: /still.png/ }).getAttribute("aria-checked")).toBe(
+			"true",
+		);
+	});
+
+	it("prevents closing while confirming selected materials", () => {
+		render(
+			<MaterialLibraryImportDialog
+				confirming
+				mediaAssets={[mediaAsset()]}
+				open
+				onConfirmSelection={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByRole("button", { name: "关闭" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+	});
 });
 
 describe("PrimaryParamControl", () => {

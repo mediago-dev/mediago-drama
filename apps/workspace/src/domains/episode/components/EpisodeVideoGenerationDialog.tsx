@@ -28,6 +28,7 @@ import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/st
 import { formatTimelineTime, type Episode, type TimelineClip } from "@/domains/episode/lib/sample";
 import {
 	MediaGenerationWorkspace,
+	type MediaGenerationWorkspaceProps,
 	type PromptEditorProps,
 } from "@/domains/generation/components/MediaGenerationWorkspace";
 import { PromptEditor } from "@/domains/generation/components/PromptEditor";
@@ -72,7 +73,21 @@ interface EpisodeVideoSourceSection {
 
 const titleId = "episode-video-generation-title";
 
-export const EpisodeVideoGenerationDialog: React.FC<EpisodeVideoGenerationDialogProps> = ({
+interface EpisodeVideoGenerationDialogController {
+	onOpenChange: (open: boolean) => void;
+	open: boolean;
+	title: string;
+	workspaceProps: MediaGenerationWorkspaceProps;
+}
+
+export const EpisodeVideoGenerationDialog: React.FC<EpisodeVideoGenerationDialogProps> = (
+	props,
+) => {
+	const controller = useEpisodeVideoGenerationDialogController(props);
+	return <EpisodeVideoGenerationDialogView controller={controller} />;
+};
+
+const useEpisodeVideoGenerationDialogController = ({
 	documentId,
 	documentTitle,
 	episode,
@@ -83,7 +98,7 @@ export const EpisodeVideoGenerationDialog: React.FC<EpisodeVideoGenerationDialog
 	projectId,
 	selectedClip,
 	selectedVideoUrl,
-}) => {
+}: EpisodeVideoGenerationDialogProps): EpisodeVideoGenerationDialogController => {
 	const allDocuments = useDocumentsStore((state) => state.documents);
 	const allAssets = useDocumentsStore((state) => state.assets);
 	const sourceDocument = useMemo(
@@ -214,54 +229,63 @@ export const EpisodeVideoGenerationDialog: React.FC<EpisodeVideoGenerationDialog
 		setRemovedMentionKeys([]);
 	}, [generationContext.blockId, generationContext.sourceMarkdown]);
 
-	return (
-		<GenerationModalShell
-			open={open}
-			title={`生成视频素材 · ${selectedClip?.title ?? episode.title}`}
-			titleId={titleId}
-			onOpenChange={onOpenChange}
-		>
-			<MediaGenerationWorkspace
-				className="min-h-0 flex-1"
-				kind="video"
-				emptyResultText="生成后会在这里显示可预览的视频素材。"
-				conversationId={projectConversation?.conversationId}
-				conversationScopeId={conversationScopeId}
-				conversationTitle={projectConversation?.conversationTitle}
-				extraReferenceAssetIds={mentionReferenceAssetIds}
-				extraReferenceUrls={mentionReferenceUrls}
-				historyScopeId={historyScopeId}
-				sectionId={sectionId}
-				taskType="storyboard"
-				initialPrompt={generationContext.prompt}
-				modelPreferenceScopeId={conversationScopeId}
-				notificationTarget={notificationTarget}
-				promptPlaceholder="描述当前组的视频镜头、运动、机位、时长、画幅和质量"
-				projectId={projectId}
-				referenceBadges={(prompt) => getMentionPreview(prompt).preview.badges}
-				referencePreviewAssets={(prompt) => getMentionPreview(prompt).preview.references}
-				renderPromptEditor={(props) => (
-					<EpisodeVideoPromptMentionEditor
-						{...props}
-						allAssets={allAssets}
-						allDocuments={allDocuments}
-						onGenerateReference={onOpenReferenceGeneration}
-					/>
-				)}
-				submitLabel="生成视频"
-				uploadIdPrefix="episode-video-generation"
-				selectedAssetKeys={selectedAssetKeys}
-				viewMode="history"
-				onToggleAsset={toggleGeneratedVideo}
-				onRemoveReferencePreview={removePreviewReferenceAsset}
-				onGenerationComplete={(_, assets) => {
-					const videoUrl = firstVideoAssetSource(assets);
-					if (selectedClip && videoUrl) onGeneratedVideoReady?.(selectedClip.id, videoUrl);
-				}}
-			/>
-		</GenerationModalShell>
-	);
+	return {
+		onOpenChange,
+		open,
+		title: `生成视频素材 · ${selectedClip?.title ?? episode.title}`,
+		workspaceProps: {
+			className: "min-h-0 flex-1",
+			kind: "video",
+			emptyResultText: "生成后会在这里显示可预览的视频素材。",
+			conversationId: projectConversation?.conversationId,
+			conversationScopeId,
+			conversationTitle: projectConversation?.conversationTitle,
+			extraReferenceAssetIds: mentionReferenceAssetIds,
+			extraReferenceUrls: mentionReferenceUrls,
+			historyScopeId,
+			sectionId,
+			taskType: "storyboard",
+			initialPrompt: generationContext.prompt,
+			modelPreferenceScopeId: conversationScopeId,
+			notificationTarget,
+			promptPlaceholder: "描述当前组的视频镜头、运动、机位、时长、画幅和质量",
+			projectId,
+			referenceBadges: (prompt) => getMentionPreview(prompt).preview.badges,
+			referencePreviewAssets: (prompt) => getMentionPreview(prompt).preview.references,
+			renderPromptEditor: (props) => (
+				<EpisodeVideoPromptMentionEditor
+					{...props}
+					allAssets={allAssets}
+					allDocuments={allDocuments}
+					onGenerateReference={onOpenReferenceGeneration}
+				/>
+			),
+			submitLabel: "生成视频",
+			uploadIdPrefix: "episode-video-generation",
+			selectedAssetKeys,
+			viewMode: "history",
+			onToggleAsset: toggleGeneratedVideo,
+			onRemoveReferencePreview: removePreviewReferenceAsset,
+			onGenerationComplete: (_, assets) => {
+				const videoUrl = firstVideoAssetSource(assets);
+				if (selectedClip && videoUrl) onGeneratedVideoReady?.(selectedClip.id, videoUrl);
+			},
+		},
+	};
 };
+
+const EpisodeVideoGenerationDialogView: React.FC<{
+	controller: EpisodeVideoGenerationDialogController;
+}> = ({ controller }) => (
+	<GenerationModalShell
+		open={controller.open}
+		title={controller.title}
+		titleId={titleId}
+		onOpenChange={controller.onOpenChange}
+	>
+		<MediaGenerationWorkspace {...controller.workspaceProps} />
+	</GenerationModalShell>
+);
 
 const buildEpisodeVideoContext = (
 	episode: Episode,

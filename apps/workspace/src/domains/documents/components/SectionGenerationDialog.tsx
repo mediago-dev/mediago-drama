@@ -38,22 +38,57 @@ interface SectionGenerationDialogProps {
 	section: MarkdownSectionContext | null;
 }
 
-export const SectionGenerationDialog: React.FC<SectionGenerationDialogProps> = ({
+interface SectionGenerationDialogController {
+	dialogs: SectionGenerationDialogPanelController[];
+}
+
+interface SectionGenerationDialogPanelController {
+	dialogId: string;
+	generatorKey: string;
+	materialLibraryOpen: boolean;
+	onGenerationComplete: (
+		pendingId: string,
+		assets: GenerationAsset[],
+		sourceTaskId: string,
+	) => void;
+	onGenerationError: (pendingId: string) => void;
+	onGenerationResponse: (pendingId: string, response: GenerationMessageResponse) => void;
+	onGenerationStart: (pendingId: string, prompt: string) => void;
+	onMaterialLibraryImportOpenChange: (open: boolean) => void;
+	onOpenChange: (open: boolean) => void;
+	onOpenMaterialLibrary: () => void;
+	onOpenReferenceGeneration: (section: MarkdownSectionContext) => void;
+	onToggleImage: (asset: GenerationAsset, selected: boolean) => void;
+	open: boolean;
+	projectId?: string;
+	section: MarkdownSectionContext;
+	selectedAssetKeys: string[];
+	title: string;
+	titleId: string;
+}
+
+export const SectionGenerationDialog: React.FC<SectionGenerationDialogProps> = (props) => {
+	const controller = useSectionGenerationDialogController(props);
+	return <SectionGenerationDialogView controller={controller} />;
+};
+
+const useSectionGenerationDialogController = ({
 	onGenerationComplete,
 	onGenerationError,
 	onGenerationResponse,
 	onGenerationStart,
-	onOpenReferenceGeneration,
 	onToggleImage,
 	open,
 	onOpenChange,
 	projectId,
 	selectedAssetKeys,
 	section,
-}) => {
+}: SectionGenerationDialogProps): SectionGenerationDialogController => {
 	const [lastSection, setLastSection] = useState<MarkdownSectionContext | null>(section);
-	const [materialLibraryOpen, setMaterialLibraryOpen] = useState(false);
-	const [referenceSection, setReferenceSection] = useState<MarkdownSectionContext | null>(null);
+	const [referenceSections, setReferenceSections] = useState<MarkdownSectionContext[]>([]);
+	const [materialLibraryOpenByDialog, setMaterialLibraryOpenByDialog] = useState<
+		Record<string, boolean>
+	>({});
 
 	useEffect(() => {
 		if (section) setLastSection(section);
@@ -61,88 +96,134 @@ export const SectionGenerationDialog: React.FC<SectionGenerationDialogProps> = (
 
 	const dialogSection = section ?? lastSection;
 	const dialogSectionKey = dialogSection ? sectionGenerationIdentityKey(dialogSection) : "";
-	const resolvedSelectedAssetKeys = dialogSection
-		? resolveSelectedAssetKeys(selectedAssetKeys, dialogSection)
-		: [];
-
-	const openReferenceGenerationDialog = useCallback((nextSection: MarkdownSectionContext) => {
-		setReferenceSection(nextSection);
-	}, []);
 
 	useEffect(() => {
 		if (!open) {
-			setMaterialLibraryOpen(false);
-			setReferenceSection(null);
+			setMaterialLibraryOpenByDialog({});
+			setReferenceSections([]);
 		}
 	}, [open]);
 
 	useEffect(() => {
-		setMaterialLibraryOpen(false);
-		setReferenceSection(null);
+		setMaterialLibraryOpenByDialog({});
+		setReferenceSections([]);
 	}, [dialogSectionKey]);
 
-	if (!dialogSection) return null;
+	const setDialogMaterialLibraryOpen = useCallback((dialogId: string, nextOpen: boolean) => {
+		setMaterialLibraryOpenByDialog((current) => {
+			if (!nextOpen) {
+				const { [dialogId]: _removed, ...rest } = current;
+				return rest;
+			}
+			return { ...current, [dialogId]: true };
+		});
+	}, []);
 
-	return (
-		<>
-			<GenerationModalShell
-				open={open}
-				title={`生成视觉素材 · ${dialogSection.headingText}`}
-				titleId="section-generation-title"
-				titleAside={
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						className="h-8 shrink-0 rounded-md px-2.5 text-xs"
-						onClick={() => setMaterialLibraryOpen(true)}
-					>
-						<Images className="size-4" />
-						<span>从素材库中选择</span>
-					</Button>
-				}
-				onOpenChange={onOpenChange}
-			>
-				<DocumentSectionGenerator
-					key={`${sectionGenerationIdentityKey(dialogSection)}:${dialogSection.markdown}`}
-					materialLibraryImportOpen={materialLibraryOpen}
-					projectId={projectId}
-					section={dialogSection}
-					selectedAssetKeys={resolvedSelectedAssetKeys}
-					viewMode="history"
-					onGenerationComplete={(pendingId, assets, sourceTaskId) =>
-						onGenerationComplete(dialogSection, pendingId, assets, sourceTaskId)
-					}
-					onGenerationError={(pendingId) => onGenerationError(dialogSection, pendingId)}
-					onGenerationResponse={(pendingId, response) =>
-						onGenerationResponse?.(dialogSection, pendingId, response)
-					}
-					onGenerationStart={(pendingId, prompt) =>
-						onGenerationStart(dialogSection, pendingId, prompt)
-					}
-					onMaterialLibraryImportOpenChange={setMaterialLibraryOpen}
-					onOpenReferenceGeneration={openReferenceGenerationDialog}
-					onToggleImage={(asset, selected) => onToggleImage(dialogSection, asset, selected)}
-				/>
-			</GenerationModalShell>
-			<SectionGenerationDialog
-				open={Boolean(referenceSection)}
-				projectId={projectId}
-				section={referenceSection}
-				selectedAssetKeys={selectedAssetKeys}
-				onGenerationComplete={onGenerationComplete}
-				onGenerationError={onGenerationError}
-				onGenerationResponse={onGenerationResponse}
-				onGenerationStart={onGenerationStart}
-				onOpenChange={(nextOpen) => {
-					if (!nextOpen) setReferenceSection(null);
-				}}
-				onOpenReferenceGeneration={onOpenReferenceGeneration}
-				onToggleImage={onToggleImage}
-			/>
-		</>
+	const closeReferenceDialog = useCallback((referenceIndex: number) => {
+		setReferenceSections((current) => current.slice(0, referenceIndex));
+		setMaterialLibraryOpenByDialog({});
+	}, []);
+
+	const openReferenceGenerationDialog = useCallback(
+		(dialogIndex: number, nextSection: MarkdownSectionContext) => {
+			setReferenceSections((current) => [...current.slice(0, dialogIndex), nextSection]);
+			setMaterialLibraryOpenByDialog({});
+		},
+		[],
 	);
+
+	if (!dialogSection) return { dialogs: [] };
+
+	const sections = [dialogSection, ...referenceSections];
+
+	return {
+		dialogs: sections.map((currentSection, dialogIndex) => {
+			const sectionKey = sectionGenerationIdentityKey(currentSection);
+			const dialogId = `${dialogIndex}:${sectionKey}`;
+
+			return {
+				dialogId,
+				generatorKey: `${sectionKey}:${currentSection.markdown}`,
+				materialLibraryOpen: Boolean(materialLibraryOpenByDialog[dialogId]),
+				onGenerationComplete: (pendingId, assets, sourceTaskId) =>
+					onGenerationComplete(currentSection, pendingId, assets, sourceTaskId),
+				onGenerationError: (pendingId) => onGenerationError(currentSection, pendingId),
+				onGenerationResponse: (pendingId, response) =>
+					onGenerationResponse?.(currentSection, pendingId, response),
+				onGenerationStart: (pendingId, prompt) =>
+					onGenerationStart(currentSection, pendingId, prompt),
+				onMaterialLibraryImportOpenChange: (nextOpen) =>
+					setDialogMaterialLibraryOpen(dialogId, nextOpen),
+				onOpenChange: (nextOpen) => {
+					if (dialogIndex === 0) {
+						onOpenChange(nextOpen);
+						return;
+					}
+					if (!nextOpen) closeReferenceDialog(dialogIndex - 1);
+				},
+				onOpenMaterialLibrary: () => setDialogMaterialLibraryOpen(dialogId, true),
+				onOpenReferenceGeneration: (nextSection) =>
+					openReferenceGenerationDialog(dialogIndex, nextSection),
+				onToggleImage: (asset, selected) => onToggleImage(currentSection, asset, selected),
+				open: dialogIndex === 0 ? open : true,
+				projectId,
+				section: currentSection,
+				selectedAssetKeys: resolveSelectedAssetKeys(selectedAssetKeys, currentSection),
+				title: `生成视觉素材 · ${currentSection.headingText}`,
+				titleId: `section-generation-title-${dialogIndex}`,
+			};
+		}),
+	};
 };
+
+const SectionGenerationDialogView: React.FC<{ controller: SectionGenerationDialogController }> = ({
+	controller,
+}) => (
+	<>
+		{controller.dialogs.map((dialog) => (
+			<SectionGenerationDialogPanel key={dialog.dialogId} controller={dialog} />
+		))}
+	</>
+);
+
+const SectionGenerationDialogPanel: React.FC<{
+	controller: SectionGenerationDialogPanelController;
+}> = ({ controller }) => (
+	<GenerationModalShell
+		open={controller.open}
+		title={controller.title}
+		titleId={controller.titleId}
+		titleAside={
+			<Button
+				type="button"
+				variant="outline"
+				size="sm"
+				className="h-8 shrink-0 rounded-md px-2.5 text-xs"
+				onClick={controller.onOpenMaterialLibrary}
+			>
+				<Images className="size-4" />
+				<span>从素材库中选择</span>
+			</Button>
+		}
+		onOpenChange={controller.onOpenChange}
+	>
+		<DocumentSectionGenerator
+			key={controller.generatorKey}
+			materialLibraryImportOpen={controller.materialLibraryOpen}
+			projectId={controller.projectId}
+			section={controller.section}
+			selectedAssetKeys={controller.selectedAssetKeys}
+			viewMode="history"
+			onGenerationComplete={controller.onGenerationComplete}
+			onGenerationError={controller.onGenerationError}
+			onGenerationResponse={controller.onGenerationResponse}
+			onGenerationStart={controller.onGenerationStart}
+			onMaterialLibraryImportOpenChange={controller.onMaterialLibraryImportOpenChange}
+			onOpenReferenceGeneration={controller.onOpenReferenceGeneration}
+			onToggleImage={controller.onToggleImage}
+		/>
+	</GenerationModalShell>
+);
 
 const resolveSelectedAssetKeys = (
 	selectedAssetKeys: SectionGenerationDialogProps["selectedAssetKeys"],

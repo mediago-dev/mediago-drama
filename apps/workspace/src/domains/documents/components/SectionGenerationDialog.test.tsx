@@ -11,7 +11,7 @@ vi.mock("@/domains/documents/components/DocumentSectionGenerator", () => ({
 	DocumentSectionGenerator: (props: DocumentSectionGeneratorProps) => {
 		capturedGeneratorProps = props;
 		capturedGeneratorPropsList.push(props);
-		return <div data-testid="section-generator" />;
+		return <div data-testid="section-generator" data-section-id={props.section.blockId} />;
 	},
 }));
 
@@ -98,5 +98,67 @@ describe("SectionGenerationDialog", () => {
 		expect(capturedGeneratorPropsList.at(-1)?.selectedAssetKeys).toEqual([
 			"image:section_reference",
 		]);
+	});
+
+	it("keeps nested reference generation in a section dialog stack", async () => {
+		const firstReferenceSection: MarkdownSectionContext = {
+			blockId: "section_reference",
+			documentId: "story-doc",
+			headingLevel: 2,
+			headingOccurrence: 1,
+			headingText: "引用角色",
+			markdown: "## 引用角色\n\n角色参考。",
+			plainText: "引用角色\n\n角色参考。",
+			prompt: "角色参考。",
+		};
+		const secondReferenceSection: MarkdownSectionContext = {
+			blockId: "section_reference_child",
+			documentId: "story-doc",
+			headingLevel: 3,
+			headingOccurrence: 1,
+			headingText: "引用角色细节",
+			markdown: "### 引用角色细节\n\n角色细节参考。",
+			plainText: "引用角色细节\n\n角色细节参考。",
+			prompt: "角色细节参考。",
+		};
+
+		render(
+			<SectionGenerationDialog
+				open
+				section={section}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onOpenChange={vi.fn()}
+				onToggleImage={vi.fn()}
+			/>,
+		);
+
+		await act(async () => {
+			capturedGeneratorPropsList[0]?.onOpenReferenceGeneration?.(firstReferenceSection);
+		});
+
+		await waitFor(() => {
+			expect(
+				screen
+					.getAllByTestId("section-generator")
+					.map((element) => element.getAttribute("data-section-id")),
+			).toEqual(["section_character", "section_reference"]);
+		});
+
+		const firstReferenceProps = capturedGeneratorPropsList.find(
+			(props) => props.section.blockId === "section_reference",
+		);
+		await act(async () => {
+			firstReferenceProps?.onOpenReferenceGeneration?.(secondReferenceSection);
+		});
+
+		await waitFor(() => {
+			expect(
+				screen
+					.getAllByTestId("section-generator")
+					.map((element) => element.getAttribute("data-section-id")),
+			).toEqual(["section_character", "section_reference", "section_reference_child"]);
+		});
 	});
 });

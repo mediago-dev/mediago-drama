@@ -201,6 +201,13 @@ describe("ImageStickerEditorDialog", () => {
 		});
 	});
 
+	it("shows a load error when opened without an image source", () => {
+		render(<ImageStickerEditorDialog open source="" onOpenChange={vi.fn()} onSave={vi.fn()} />);
+
+		expect(screen.getByRole("alert")).toHaveTextContent("图片载入失败，找不到可编辑的图片源。");
+		expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+	});
+
 	it("enables rectangle color controls for selected rectangles", async () => {
 		render(
 			<ImageStickerEditorDialog

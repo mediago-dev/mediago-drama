@@ -1,6 +1,6 @@
 import { Loader2, Wand2, X } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { formatTimelineTime, type Episode, type TimelineClip } from "@/domains/episode/lib/sample";
@@ -17,31 +17,73 @@ interface EpisodeCompanionGenerationDialogProps {
 
 const titleId = "episode-companion-generation-title";
 
-export const EpisodeCompanionGenerationDialog: React.FC<EpisodeCompanionGenerationDialogProps> = ({
+type CompanionGenerationPhase = "editing" | "generating" | "generated";
+
+interface CompanionGenerationState {
+	content: string;
+	phase: CompanionGenerationPhase;
+	prompt: string;
+}
+
+type CompanionGenerationAction =
+	| { prompt: string; type: "reset" }
+	| { prompt: string; type: "promptChanged" }
+	| { content: string; type: "contentChanged" }
+	| { type: "generateStarted" }
+	| { content: string; type: "generateFinished" };
+
+const companionGenerationReducer = (
+	state: CompanionGenerationState,
+	action: CompanionGenerationAction,
+): CompanionGenerationState => {
+	switch (action.type) {
+		case "contentChanged":
+			return {
+				...state,
+				content: action.content,
+				phase: action.content.trim() ? "generated" : "editing",
+			};
+		case "generateFinished":
+			return { ...state, content: action.content, phase: "generated" };
+		case "generateStarted":
+			return { ...state, phase: "generating" };
+		case "promptChanged":
+			return { ...state, phase: "editing", prompt: action.prompt };
+		case "reset":
+			return { content: "", phase: "editing", prompt: action.prompt };
+	}
+};
+
+export const EpisodeCompanionGenerationDialog: React.FC<EpisodeCompanionGenerationDialogProps> = (
+	props,
+) => {
+	const controller = useEpisodeCompanionGenerationDialogController(props);
+	return <EpisodeCompanionGenerationDialogView controller={controller} />;
+};
+
+const useEpisodeCompanionGenerationDialogController = ({
 	episode,
 	onCommit,
 	onOpenChange,
 	open,
 	trackType,
 	videoClip,
-}) => {
+}: EpisodeCompanionGenerationDialogProps) => {
 	const initialPrompt = useMemo(
 		() =>
 			videoClip && trackType ? buildCompanionGenerationPrompt(episode, videoClip, trackType) : "",
 		[episode, trackType, videoClip],
 	);
-	const [prompt, setPrompt] = useState(initialPrompt);
-	const [content, setContent] = useState("");
-	const [isGenerating, setIsGenerating] = useState(false);
-	const [hasGenerated, setHasGenerated] = useState(false);
+	const [state, dispatch] = useReducer(companionGenerationReducer, {
+		content: "",
+		phase: "editing",
+		prompt: initialPrompt,
+	});
 
 	useEffect(() => {
 		if (!open) return;
 
-		setPrompt(initialPrompt);
-		setContent("");
-		setIsGenerating(false);
-		setHasGenerated(false);
+		dispatch({ prompt: initialPrompt, type: "reset" });
 	}, [initialPrompt, open, trackType, videoClip?.id]);
 
 	useEffect(() => {
@@ -55,27 +97,75 @@ export const EpisodeCompanionGenerationDialog: React.FC<EpisodeCompanionGenerati
 		return () => window.removeEventListener("keydown", closeOnEscape);
 	}, [onOpenChange, open]);
 
-	if (!open || !videoClip || !trackType) return null;
+	const companionLabel = trackType ? trackTypeLabel[trackType] : "";
+	const isGenerating = state.phase === "generating";
+	const hasGenerated = state.phase === "generated";
+	const canCommit = hasGenerated && !isGenerating && Boolean(state.content.trim());
 
-	const companionLabel = trackTypeLabel[trackType];
-	const canCommit = hasGenerated && !isGenerating && Boolean(content.trim());
-
-	const generateDraft = () => {
-		setIsGenerating(true);
+	const generateDraft = useCallback(() => {
+		if (!videoClip || !trackType) return;
+		dispatch({ type: "generateStarted" });
 
 		window.setTimeout(() => {
-			setContent(generateCompanionDraft(videoClip, prompt, trackType));
-			setHasGenerated(true);
-			setIsGenerating(false);
+			dispatch({
+				content: generateCompanionDraft(videoClip, state.prompt, trackType),
+				type: "generateFinished",
+			});
 		}, 520);
-	};
+	}, [state.prompt, trackType, videoClip]);
 
-	const commitDraft = () => {
-		if (!canCommit) return;
+	const commitDraft = useCallback(() => {
+		if (!canCommit || !trackType || !videoClip) return;
 
-		onCommit(videoClip.id, trackType, content.trim());
+		onCommit(videoClip.id, trackType, state.content.trim());
 		onOpenChange(false);
+	}, [canCommit, onCommit, onOpenChange, state.content, trackType, videoClip]);
+
+	return {
+		canCommit,
+		companionLabel,
+		content: state.content,
+		episode,
+		generateDraft,
+		hasGenerated,
+		isGenerating,
+		onContentChange: (content: string) => dispatch({ content, type: "contentChanged" }),
+		onOpenChange,
+		onPromptChange: (prompt: string) => dispatch({ prompt, type: "promptChanged" }),
+		open,
+		prompt: state.prompt,
+		trackType,
+		videoClip,
+		commitDraft,
 	};
+};
+
+type EpisodeCompanionGenerationDialogController = ReturnType<
+	typeof useEpisodeCompanionGenerationDialogController
+>;
+
+const EpisodeCompanionGenerationDialogView: React.FC<{
+	controller: EpisodeCompanionGenerationDialogController;
+}> = ({ controller }) => {
+	const {
+		canCommit,
+		commitDraft,
+		companionLabel,
+		content,
+		episode,
+		generateDraft,
+		hasGenerated,
+		isGenerating,
+		onContentChange,
+		onOpenChange,
+		onPromptChange,
+		open,
+		prompt,
+		trackType,
+		videoClip,
+	} = controller;
+
+	if (!open || !videoClip || !trackType) return null;
 
 	return (
 		<div
@@ -132,10 +222,7 @@ export const EpisodeCompanionGenerationDialog: React.FC<EpisodeCompanionGenerati
 							id="companion-prompt"
 							value={prompt}
 							className="min-h-28 resize-none text-sm"
-							onChange={(event) => {
-								setPrompt(event.target.value);
-								setHasGenerated(false);
-							}}
+							onChange={(event) => onPromptChange(event.target.value)}
 						/>
 					</div>
 
@@ -148,10 +235,7 @@ export const EpisodeCompanionGenerationDialog: React.FC<EpisodeCompanionGenerati
 							value={content}
 							placeholder={`生成后显示${companionLabel}文案`}
 							className="min-h-36 resize-none text-sm"
-							onChange={(event) => {
-								setContent(event.target.value);
-								setHasGenerated(Boolean(event.target.value.trim()));
-							}}
+							onChange={(event) => onContentChange(event.target.value)}
 						/>
 					</div>
 				</div>
