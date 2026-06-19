@@ -50,6 +50,7 @@ import {
 	generationStatusLabel,
 	type GenerationEntry,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 
 export const HistoryGenerationList: React.FC<{
@@ -601,7 +602,10 @@ const HistoryVideoPreviewDialog: React.FC<{
 			<DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-foreground/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
 			<DialogPrimitive.Content
 				aria-describedby={undefined}
-				className="fixed left-1/2 top-1/2 z-[61] w-[min(80rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-sm border border-border bg-card shadow-2xl outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200"
+				className={cn(
+					"fixed left-1/2 top-1/2 z-[61] w-[min(80rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-sm border border-border bg-card shadow-2xl outline-none",
+					dialogContentMotion,
+				)}
 			>
 				<div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
 					<DialogPrimitive.Title className="truncate text-sm font-semibold text-foreground">

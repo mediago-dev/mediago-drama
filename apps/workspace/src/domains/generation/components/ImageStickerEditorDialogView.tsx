@@ -21,6 +21,7 @@ import {
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type React from "react";
 import { Button } from "@/shared/components/ui/button";
+import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 import type { ImageStickerEditorDialogController } from "./ImageStickerEditorDialog";
 
@@ -75,7 +76,10 @@ export const ImageStickerEditorDialogView: React.FC<{
 				<DialogPrimitive.Overlay className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
 				<DialogPrimitive.Content
 					aria-describedby={undefined}
-					className="fixed inset-3 z-[71] flex flex-col overflow-hidden rounded-sm border border-white/15 bg-[#202124] text-[#e8eaed] shadow-2xl outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 sm:inset-4 duration-200"
+					className={cn(
+						"fixed inset-3 z-[71] flex flex-col overflow-hidden rounded-sm border border-white/15 bg-[#202124] text-[#e8eaed] shadow-2xl outline-none sm:inset-4",
+						dialogContentMotion,
+					)}
 					onKeyDown={handleKeyDown}
 				>
 					<ImageStickerEditorHeader

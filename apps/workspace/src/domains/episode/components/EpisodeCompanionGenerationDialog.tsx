@@ -1,10 +1,16 @@
 import { Loader2, Wand2, X } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useReducer } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { Button } from "@/shared/components/ui/button";
+import {
+	dialogContentMotion,
+	dialogOverlayMotion,
+	useDialogPresence,
+} from "@/shared/components/ui/dialog-motion";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { formatTimelineTime, type Episode, type TimelineClip } from "@/domains/episode/lib/sample";
 import type { TimelineCompanionTrackType } from "@/domains/episode/stores";
+import { cn } from "@/shared/lib/utils";
 
 interface EpisodeCompanionGenerationDialogProps {
 	episode: Episode;
@@ -79,12 +85,23 @@ const useEpisodeCompanionGenerationDialogController = ({
 		phase: "editing",
 		prompt: initialPrompt,
 	});
+	const [renderTarget, setRenderTarget] = useState<{
+		trackType: TimelineCompanionTrackType;
+		videoClip: TimelineClip;
+	} | null>(null);
+	const present = useDialogPresence(open);
 
 	useEffect(() => {
 		if (!open) return;
 
 		dispatch({ prompt: initialPrompt, type: "reset" });
 	}, [initialPrompt, open, trackType, videoClip?.id]);
+
+	useEffect(() => {
+		if (!videoClip || !trackType) return;
+
+		setRenderTarget({ trackType, videoClip });
+	}, [trackType, videoClip]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -97,10 +114,12 @@ const useEpisodeCompanionGenerationDialogController = ({
 		return () => window.removeEventListener("keydown", closeOnEscape);
 	}, [onOpenChange, open]);
 
-	const companionLabel = trackType ? trackTypeLabel[trackType] : "";
 	const isGenerating = state.phase === "generating";
 	const hasGenerated = state.phase === "generated";
 	const canCommit = hasGenerated && !isGenerating && Boolean(state.content.trim());
+	const renderTrackType = trackType ?? renderTarget?.trackType ?? null;
+	const renderVideoClip = videoClip ?? renderTarget?.videoClip ?? null;
+	const companionLabel = renderTrackType ? trackTypeLabel[renderTrackType] : "";
 
 	const generateDraft = useCallback(() => {
 		if (!videoClip || !trackType) return;
@@ -131,11 +150,12 @@ const useEpisodeCompanionGenerationDialogController = ({
 		isGenerating,
 		onContentChange: (content: string) => dispatch({ content, type: "contentChanged" }),
 		onOpenChange,
+		present,
 		onPromptChange: (prompt: string) => dispatch({ prompt, type: "promptChanged" }),
 		open,
 		prompt: state.prompt,
-		trackType,
-		videoClip,
+		trackType: renderTrackType,
+		videoClip: renderVideoClip,
 		commitDraft,
 	};
 };
@@ -160,27 +180,37 @@ const EpisodeCompanionGenerationDialogView: React.FC<{
 		onOpenChange,
 		onPromptChange,
 		open,
+		present,
 		prompt,
 		trackType,
 		videoClip,
 	} = controller;
 
-	if (!open || !videoClip || !trackType) return null;
+	if (!present || !videoClip || !trackType) return null;
+
+	const dialogState = open ? "open" : "closed";
 
 	return (
 		<div
-			data-state="open"
-			className="fixed inset-0 z-50 grid place-items-center bg-foreground/30 p-4 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200"
+			data-state={dialogState}
+			className={cn(
+				"fixed inset-0 z-50 grid place-items-center bg-foreground/30 p-4 backdrop-blur-sm",
+				dialogOverlayMotion,
+				!open && "pointer-events-none",
+			)}
 			onMouseDown={(event) => {
 				if (event.target === event.currentTarget) onOpenChange(false);
 			}}
 		>
 			<section
-				data-state="open"
+				data-state={dialogState}
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby={titleId}
-				className="flex max-h-[min(40rem,calc(100vh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border bg-background text-foreground shadow-2xl data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200"
+				className={cn(
+					"flex max-h-[min(40rem,calc(100vh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border bg-background text-foreground shadow-2xl",
+					dialogContentMotion,
+				)}
 			>
 				<header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
 					<div className="min-w-0">

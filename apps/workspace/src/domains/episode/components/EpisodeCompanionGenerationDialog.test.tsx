@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sampleEpisode } from "@/domains/episode/lib/sample";
+import { dialogAnimationDurationMs } from "@/shared/components/ui/dialog-motion";
 import { EpisodeCompanionGenerationDialog } from "./EpisodeCompanionGenerationDialog";
 
 const videoClip = sampleEpisode.tracks
@@ -48,5 +49,40 @@ describe("EpisodeCompanionGenerationDialog", () => {
 			expect.stringContaining("桌面宽幅捕捉写作区"),
 		);
 		expect(onOpenChange).toHaveBeenCalledWith(false);
+	});
+
+	it("keeps the dialog mounted for the closing animation", async () => {
+		vi.useFakeTimers();
+		const onOpenChange = vi.fn();
+		const { rerender } = render(
+			<EpisodeCompanionGenerationDialog
+				episode={sampleEpisode}
+				open
+				trackType="caption"
+				videoClip={videoClip ?? null}
+				onCommit={vi.fn()}
+				onOpenChange={onOpenChange}
+			/>,
+		);
+
+		rerender(
+			<EpisodeCompanionGenerationDialog
+				episode={sampleEpisode}
+				open={false}
+				trackType={null}
+				videoClip={null}
+				onCommit={vi.fn()}
+				onOpenChange={onOpenChange}
+			/>,
+		);
+
+		expect(screen.getByRole("dialog")).toHaveAttribute("data-state", "closed");
+		expect(screen.getByRole("heading", { name: /生成字幕/ })).toBeTruthy();
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(dialogAnimationDurationMs);
+		});
+
+		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 });

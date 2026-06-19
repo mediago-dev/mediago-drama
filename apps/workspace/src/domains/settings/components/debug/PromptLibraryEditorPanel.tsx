@@ -29,6 +29,7 @@ import {
 } from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { useToast } from "@/hooks/useToast";
+import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 
 const layers: { value: PromptLayer; label: string }[] = [
@@ -491,7 +492,10 @@ const PromptPresetCreateDialog: React.FC<{
 			<DialogPrimitive.Portal>
 				<DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
 				<DialogPrimitive.Content
-					className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(86vh,46rem)] w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-2xl outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200"
+					className={cn(
+						"fixed left-1/2 top-1/2 z-50 flex max-h-[min(86vh,46rem)] w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-2xl outline-none",
+						dialogContentMotion,
+					)}
 					aria-describedby="prompt-preset-create-description"
 				>
 					<header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3">

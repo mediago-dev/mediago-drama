@@ -2,6 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type React from "react";
 import { Button } from "@/shared/components/ui/button";
+import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 
 interface GenerationDialogShellProps {
@@ -47,7 +48,8 @@ export const GenerationDialogShell: React.FC<GenerationDialogShellProps> = ({
 				<DialogPrimitive.Content
 					aria-describedby={description ? `${titleId}-description` : undefined}
 					className={cn(
-						"fixed left-1/2 top-1/2 z-50 flex max-h-[min(46rem,calc(100vh-2rem))] w-[calc(100vw-2rem)] max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-2xl outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200",
+						"fixed left-1/2 top-1/2 z-50 flex max-h-[min(46rem,calc(100vh-2rem))] w-[calc(100vw-2rem)] max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-2xl outline-none",
+						dialogContentMotion,
 						className,
 					)}
 					onEscapeKeyDown={(event) => {

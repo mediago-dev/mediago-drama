@@ -6,6 +6,11 @@ import useSWR from "swr";
 import type { WorkspaceProject } from "@/domains/projects/api/projects";
 import { getWorkspaceDocuments } from "@/domains/workspace/api/workspace";
 import { Button } from "@/shared/components/ui/button";
+import {
+	dialogContentMotion,
+	dialogOverlayMotion,
+	useDialogPresence,
+} from "@/shared/components/ui/dialog-motion";
 import { Input } from "@/shared/components/ui/input";
 import {
 	documentCategoryDescriptorMap,
@@ -56,6 +61,7 @@ export const ProjectDocumentSearchDialog: React.FC<ProjectDocumentSearchDialogPr
 	const storeProjectId = useDocumentsStore((state) => state.projectId);
 	const [query, setQuery] = useState("");
 	const [activeIndex, setActiveIndex] = useState(0);
+	const present = useDialogPresence(open);
 
 	const projectsById = useMemo(
 		() => new Map(projects.map((project) => [project.id, project])),
@@ -124,7 +130,9 @@ export const ProjectDocumentSearchDialog: React.FC<ProjectDocumentSearchDialogPr
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [onOpenChange, open]);
 
-	if (!open) return null;
+	if (!present) return null;
+
+	const dialogState = open ? "open" : "closed";
 
 	const openResult = (result: SearchResult | undefined) => {
 		if (!result) return;
@@ -134,18 +142,25 @@ export const ProjectDocumentSearchDialog: React.FC<ProjectDocumentSearchDialogPr
 
 	return createPortal(
 		<div
-			data-state="open"
-			className="fixed inset-0 z-[var(--z-index-modal)] flex items-start justify-center bg-background/70 px-4 pt-[var(--search-dialog-offset-top)] backdrop-blur-xs data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200"
+			data-state={dialogState}
+			className={cn(
+				"fixed inset-0 z-[var(--z-index-modal)] flex items-start justify-center bg-background/70 px-4 pt-[var(--search-dialog-offset-top)] backdrop-blur-xs",
+				dialogOverlayMotion,
+				!open && "pointer-events-none",
+			)}
 			onMouseDown={(event) => {
 				if (event.target === event.currentTarget) onOpenChange(false);
 			}}
 		>
 			<div
-				data-state="open"
+				data-state={dialogState}
 				role="dialog"
 				aria-modal="true"
 				aria-label={`搜索${scopeLabel}文档`}
-				className="flex max-h-[var(--search-dialog-max-height)] w-full max-w-[var(--search-dialog-max-width)] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200"
+				className={cn(
+					"flex max-h-[var(--search-dialog-max-height)] w-full max-w-[var(--search-dialog-max-width)] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl",
+					dialogContentMotion,
+				)}
 			>
 				<div className="flex h-12 items-center gap-2 border-b border-border px-4">
 					<Search className="size-4 shrink-0 text-muted-foreground" />

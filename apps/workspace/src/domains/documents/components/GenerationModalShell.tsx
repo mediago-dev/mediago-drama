@@ -2,6 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type React from "react";
 import { Button } from "@/shared/components/ui/button";
+import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 
 const photoViewPortalSelector = ".PhotoView-Portal";
@@ -60,6 +61,7 @@ export const GenerationModalShell: React.FC<{
 				aria-describedby={undefined}
 				className={cn(
 					"group fixed left-1/2 top-1/2 z-50 w-[calc(100%_-_2rem)] max-w-7xl -translate-x-1/2 -translate-y-1/2 outline-none",
+					dialogContentMotion,
 					contentLayerClassName,
 				)}
 				data-agent-mention-popup-root=""
@@ -69,7 +71,7 @@ export const GenerationModalShell: React.FC<{
 			>
 				<section
 					className={cn(
-						"flex h-[var(--section-generation-dialog-height)] w-full flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-2xl group-data-[state=closed]:animate-out group-data-[state=closed]:fade-out-0 group-data-[state=open]:animate-in group-data-[state=open]:fade-in-0 duration-200",
+						"flex h-[var(--section-generation-dialog-height)] w-full flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-2xl",
 						contentClassName,
 					)}
 				>

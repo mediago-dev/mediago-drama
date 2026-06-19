@@ -1,6 +1,7 @@
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 import * as React from "react";
 import { buttonVariants } from "@/shared/components/ui/button";
+import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 
 const AlertDialog = AlertDialogPrimitive.Root;
@@ -32,12 +33,13 @@ const AlertDialogContent = React.forwardRef<
 			ref={ref}
 			className={cn(
 				"group fixed left-1/2 top-1/2 z-50 w-[calc(100%_-_var(--dialog-inline-gutter))] -translate-x-1/2 -translate-y-1/2 outline-none",
+				dialogContentMotion,
 			)}
 			{...props}
 		>
 			<div
 				className={cn(
-					"mx-auto grid w-full max-w-md gap-4 rounded-sm border border-border bg-ide-panel p-4 text-ide-panel-foreground shadow-lg group-data-[state=closed]:animate-out group-data-[state=closed]:fade-out-0 group-data-[state=open]:animate-in group-data-[state=open]:fade-in-0 duration-200",
+					"mx-auto grid w-full max-w-md gap-4 rounded-sm border border-border bg-ide-panel p-4 text-ide-panel-foreground shadow-lg",
 					className,
 				)}
 			>
