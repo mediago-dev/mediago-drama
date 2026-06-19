@@ -1,0 +1,37 @@
+{
+  "projectId": "a4037bd5-7e7f-421a-8faf-bab723b4e959",
+  "shape": "package",
+  "pkg": "react-spa-template",
+  "globalName": "MediagoUI",
+  "entry": "apps/workspace/.design-sync-entry.ts",
+  "buildCmd": "pnpm -C apps/workspace build && cp \"$(ls -t apps/workspace/dist/assets/index-*.css | head -1)\" apps/workspace/dist/ds-styles.css",
+  "tsconfig": "tsconfig.designsync.json",
+  "cssEntry": "dist/ds-styles.css",
+  "readmeHeader": ".design-sync/conventions.md",
+  "runtimeFontPrefixes": ["MILan", "PingFang", "Avenir", "Segoe", "Helvetica", "Noto Sans", "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro"],
+  "overrides": {
+    "Tabs": { "cardMode": "column" },
+    "Tooltip": { "cardMode": "single", "viewport": "380x220" },
+    "Popover": { "cardMode": "single", "viewport": "400x300" },
+    "AlertDialog": { "cardMode": "single", "viewport": "500x340" },
+    "Sheet": { "cardMode": "single", "viewport": "560x380" },
+    "Toaster": { "cardMode": "single", "viewport": "440x260" }
+  },
+  "componentSrcMap": {
+    "Button": "src/shared/components/ui/button.tsx",
+    "Badge": "src/shared/components/ui/badge.tsx",
+    "Card": "src/shared/components/ui/card.tsx",
+    "Alert": "src/shared/components/ui/alert.tsx",
+    "AlertDialog": "src/shared/components/ui/alert-dialog.tsx",
+    "Input": "src/shared/components/ui/input.tsx",
+    "Label": "src/shared/components/ui/label.tsx",
+    "Textarea": "src/shared/components/ui/textarea.tsx",
+    "Select": "src/shared/components/ui/select.tsx",
+    "Popover": "src/shared/components/ui/popover.tsx",
+    "Tabs": "src/shared/components/ui/tabs.tsx",
+    "Tooltip": "src/shared/components/ui/tooltip.tsx",
+    "Sheet": "src/shared/components/ui/sheet.tsx",
+    "ContextMenu": "src/shared/components/ui/context-menu.tsx",
+    "Toaster": "src/shared/components/ui/sonner.tsx"
+  }
+}
