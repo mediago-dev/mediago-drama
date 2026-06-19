@@ -20,6 +20,7 @@ import (
 type GenerationTaskService interface {
 	ListGenerationModels() dto.GenerationModelsResponse
 	CreateGenerationMessage(ctx context.Context, payload dto.GenerationMessageRequest) (dto.GenerationMessageResponse, int, error)
+	ImportGenerationMediaAssets(payload dto.ImportGenerationMediaAssetsRequest) (dto.GenerationTasksResponse, int, error)
 	StreamGenerationText(ctx context.Context, payload dto.GenerationMessageRequest, emit func(dto.GenerationTextStreamEvent) error) (int, error)
 	CreateGenerationConversation(payload dto.CreateGenerationConversationRequest) (dto.GenerationConversationRecord, int, error)
 	DeleteGenerationConversation(id string) (bool, error)
@@ -66,6 +67,25 @@ func (handler GenerationTasks) HandleGenerationMessage(context *gin.Context) {
 	}
 
 	response, status, err := handler.service.CreateGenerationMessage(context.Request.Context(), payload)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, status, err)
+		return
+	}
+	httpresponse.OK(context, response)
+}
+
+// HandleImportGenerationMediaAssets imports media library images into generation history.
+func (handler GenerationTasks) HandleImportGenerationMediaAssets(context *gin.Context) {
+	payload, err := decodeJSON[dto.ImportGenerationMediaAssetsRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	if sessionID := pathParam(context, "sessionId"); sessionID != "" {
+		payload.ConversationID = sessionID
+	}
+
+	response, status, err := handler.service.ImportGenerationMediaAssets(payload)
 	if err != nil {
 		httpresponse.ErrorFromStatus(context, status, err)
 		return

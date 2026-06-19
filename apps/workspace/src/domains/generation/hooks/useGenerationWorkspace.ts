@@ -5,6 +5,7 @@ import {
 	type GenerationAsset,
 	type GenerationKind,
 	type GenerationNotificationOpenTarget,
+	generationConversationsQueryKey,
 	generationModelsKey,
 	generationPreferencesQueryKey,
 	generationProjectConversationScopeId,
@@ -12,6 +13,7 @@ import {
 	getGenerationModels,
 	getGenerationPreferences,
 	getGenerationTasks,
+	importGenerationMediaAssets,
 } from "@/domains/generation/api/generation";
 import {
 	getProjectBrief,
@@ -99,6 +101,11 @@ interface AddEditedGenerationEntryOptions {
 	title?: string;
 }
 
+interface ImportMediaAssetsToHistoryOptions {
+	assetTitle?: string;
+	prompt?: string;
+}
+
 export const useGenerationWorkspace = ({
 	activeEntryId: controlledActiveEntryId,
 	conversationId,
@@ -137,6 +144,7 @@ export const useGenerationWorkspace = ({
 		setPromptState(resolved);
 	}, []);
 	const [error, setError] = useState<string | null>(null);
+	const [isImportingMediaAssets, setIsImportingMediaAssets] = useState(false);
 	const resolvedConversationScopeId =
 		conversationScopeId?.trim() ||
 		(projectId ? generationProjectConversationScopeId(projectId) : undefined);
@@ -425,6 +433,49 @@ export const useGenerationWorkspace = ({
 		},
 		[setActiveEntryId, setMessages],
 	);
+	const importMediaAssetsToHistory = useCallback(
+		async (assets: MediaAsset[], options: ImportMediaAssetsToHistoryOptions = {}) => {
+			const assetIds = assets
+				.filter((asset) => asset.kind === "image")
+				.map((asset) => asset.id.trim())
+				.filter(Boolean);
+			if (assetIds.length === 0) return [];
+
+			setError(null);
+			setIsImportingMediaAssets(true);
+			try {
+				const response = await importGenerationMediaAssets({
+					kind: "image",
+					conversationId: conversationId ?? undefined,
+					scopeId: resolvedConversationScopeId,
+					conversationTitle: conversationTitle ?? undefined,
+					projectId: mediaAssetProjectId || undefined,
+					sectionId: trimmedSectionId || undefined,
+					capabilityId: taskType,
+					assetIds,
+					assetTitle: options.assetTitle,
+					prompt: options.prompt,
+				});
+				await mutateTasks();
+				mutateProjectGenerationTasks("image");
+				void mutateSWR(generationConversationsQueryKey("image", resolvedConversationScopeId));
+				void mutateSWR(generationConversationsQueryKey("image", "", { allScopes: true }));
+				return response.tasks;
+			} finally {
+				setIsImportingMediaAssets(false);
+			}
+		},
+		[
+			conversationId,
+			conversationTitle,
+			mediaAssetProjectId,
+			mutateProjectGenerationTasks,
+			mutateTasks,
+			resolvedConversationScopeId,
+			taskType,
+			trimmedSectionId,
+		],
+	);
 
 	const canSubmit =
 		hasConfiguredRoutesForKind &&
@@ -475,7 +526,9 @@ export const useGenerationWorkspace = ({
 		hasConfiguredRoutesForKind,
 		hasLiveCatalog,
 		isSubmitting,
+		isImportingMediaAssets,
 		isUploadingAsset,
+		importMediaAssetsToHistory,
 		kind,
 		mediaAssets,
 		mediaKindFilter,

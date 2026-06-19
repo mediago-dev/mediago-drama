@@ -10,6 +10,7 @@ import type {
 	GenerationMessageRequest as GeneratedGenerationMessageRequest,
 	GenerationMessageResponse as GeneratedGenerationMessageResponse,
 	GenerationModelsResponse as GeneratedGenerationModelsResponse,
+	ImportGenerationMediaAssetsRequest as GeneratedImportGenerationMediaAssetsRequest,
 	GenerationNotificationEvent as GeneratedGenerationNotificationEvent,
 	GenerationNotificationRecord,
 	GenerationNotificationsResponse as GeneratedGenerationNotificationsResponse,
@@ -55,6 +56,14 @@ export type GenerationVersion = ModelVersion;
 export type GenerationRoute = ModelRoute;
 export type GenerationModel = ModelSpec;
 export type GenerationMessageRequest = Omit<GeneratedGenerationMessageRequest, "sessionId"> & {
+	sessionId?: string;
+	conversationId?: string;
+	scopeId?: string;
+};
+export type ImportGenerationMediaAssetsRequest = Omit<
+	GeneratedImportGenerationMediaAssetsRequest,
+	"sessionId"
+> & {
 	sessionId?: string;
 	conversationId?: string;
 	scopeId?: string;
@@ -392,6 +401,18 @@ export const updateGenerationTaskAsset = async (
 	return normalizeGenerationTask(response.data);
 };
 
+export const importGenerationMediaAssets = async (request: ImportGenerationMediaAssetsRequest) => {
+	const payload = importGenerationMediaAssetsPayload(request);
+	const response = await httpClient.post<GenerationTasksResponse>(
+		`${generationConversationsKey}/${encodeURIComponent(payload.sessionId)}/media-assets/import`,
+		payload,
+	);
+	return {
+		...response.data,
+		tasks: response.data.tasks.map(normalizeGenerationTask),
+	};
+};
+
 export const sendGenerationMessage = async (request: GenerationMessageRequest) => {
 	const payload = generationMessagePayload(request);
 	const response = await httpClient.post<GenerationMessageResponse>(
@@ -504,6 +525,25 @@ const generationMessagePayload = (request: GenerationMessageRequest) => {
 		raw.projectId?.trim() ||
 		defaultGenerationConversationScopeId;
 	const { conversationId: _conversationId, scopeId: _scopeId, ...payload } = raw;
+	return {
+		...payload,
+		sessionId,
+	};
+};
+
+const importGenerationMediaAssetsPayload = (request: ImportGenerationMediaAssetsRequest) => {
+	const raw = request as ImportGenerationMediaAssetsRequest & {
+		conversationId?: string;
+		scopeId?: string;
+		sessionId?: string;
+	};
+	const sessionId =
+		raw.sessionId?.trim() ||
+		raw.conversationId?.trim() ||
+		raw.scopeId?.trim() ||
+		raw.projectId?.trim() ||
+		defaultGenerationConversationScopeId;
+	const { conversationId: _conversationId, ...payload } = raw;
 	return {
 		...payload,
 		sessionId,

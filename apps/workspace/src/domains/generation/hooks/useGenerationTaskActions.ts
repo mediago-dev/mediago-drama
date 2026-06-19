@@ -275,7 +275,9 @@ const taskIdForDeletion = (entryId: string) => {
 	if (taskId) return taskId;
 
 	const baseId = entryId.replace(/:(assistant|error|prompt)$/, "");
-	return baseId && !baseId.startsWith("local-") ? baseId : null;
+	return baseId && !baseId.startsWith("local-") && !baseId.startsWith("media-library:")
+		? baseId
+		: null;
 };
 
 const generationAssetSlotIndex = (asset: { slotIndex?: number }, fallback: number) => {

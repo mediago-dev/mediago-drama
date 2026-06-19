@@ -203,6 +203,31 @@ const videoEntry: GenerationEntry = {
 	assets: [{ kind: "video", url: "/api/v1/media-assets/video-a/content", mimeType: "video/mp4" }],
 };
 
+const importedMaterialEntry: GenerationEntry = {
+	id: "media-library-1",
+	kind: "image",
+	status: "completed",
+	content: "已从素材库导入。",
+	prompt: "从素材库导入：source.png",
+	requestDetails: [
+		{ label: "来源", value: "素材库" },
+		{ label: "文件", value: "source.png" },
+	],
+	resultDetails: [
+		{ label: "来源", value: "素材库" },
+		{ label: "文件", value: "source.png" },
+	],
+	assets: [
+		{
+			kind: "image",
+			mimeType: "image/png",
+			selected: false,
+			title: "主角 底层青年 / 低阶散修",
+			url: "/api/v1/media-assets/media-a/content",
+		},
+	],
+};
+
 const mediaAsset: MediaAsset = {
 	id: "media-a",
 	kind: "image",
@@ -226,6 +251,8 @@ const workspaceDefaults = {
 	deletingEntryIds: [],
 	error: null,
 	hasConfiguredRoutesForKind: true,
+	importMediaAssetsToHistory: vi.fn(),
+	isImportingMediaAssets: false,
 	isSubmitting: false,
 	isUploadingAsset: false,
 	kind: "image",
@@ -618,6 +645,133 @@ describe("MediaGenerationWorkspace", () => {
 		expect(setActiveEntryId).toHaveBeenCalledWith("edited-entry");
 	});
 
+	it("imports selected material library images only after confirmation", async () => {
+		const importMediaAssetsToHistory = vi.fn().mockResolvedValue([{ id: "imported-entry" }]);
+		const onMaterialLibraryImportOpenChange = vi.fn();
+		const onToggleAsset = vi.fn();
+		const setActiveEntryId = vi.fn();
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			importMediaAssetsToHistory,
+			orderedGenerationEntries: [],
+			setActiveEntryId,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				materialLibraryImportOpen
+				onMaterialLibraryImportOpenChange={onMaterialLibraryImportOpenChange}
+				onToggleAsset={onToggleAsset}
+				selectedAssetTitle="主角 底层青年 / 低阶散修"
+				viewMode="history"
+			/>,
+		);
+
+		expect(screen.getByRole("dialog", { name: "从素材库中选择" })).toBeTruthy();
+		fireEvent.click(screen.getByRole("checkbox", { name: /source.png/ }));
+
+		expect(importMediaAssetsToHistory).not.toHaveBeenCalled();
+		expect(onToggleAsset).not.toHaveBeenCalled();
+
+		fireEvent.click(screen.getByRole("button", { name: "加入生成记录" }));
+
+		await waitFor(() => {
+			expect(importMediaAssetsToHistory).toHaveBeenCalledWith([mediaAsset], {
+				assetTitle: "主角 底层青年 / 低阶散修",
+			});
+		});
+		expect(onToggleAsset).not.toHaveBeenCalled();
+		expect(setActiveEntryId).toHaveBeenCalledWith("imported-entry");
+		expect(onMaterialLibraryImportOpenChange).toHaveBeenCalledWith(false);
+	});
+
+	it("uploads material library images from the import dialog before confirmation", async () => {
+		const uploadedAsset: MediaAsset = {
+			...mediaAsset,
+			id: "uploaded-media",
+			filename: "uploaded.png",
+			url: "/api/v1/media-assets/uploaded-media/content",
+		};
+		const importMediaAssetsToHistory = vi.fn().mockResolvedValue([{ id: "uploaded-entry" }]);
+		const mutateMediaAssets = vi.fn();
+		mediaApiMocks.uploadMediaAsset.mockResolvedValue(uploadedAsset);
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			importMediaAssetsToHistory,
+			mutateMediaAssets,
+			orderedGenerationEntries: [],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				materialLibraryImportOpen
+				onMaterialLibraryImportOpenChange={vi.fn()}
+				projectId="project-a"
+				viewMode="history"
+			/>,
+		);
+
+		const file = new File(["image"], "uploaded.png", { type: "image/png" });
+		fireEvent.change(screen.getByLabelText("上传图片素材"), {
+			target: { files: [file] },
+		});
+
+		await waitFor(() => {
+			expect(mediaApiMocks.uploadMediaAsset).toHaveBeenCalledWith(file, "project-a");
+		});
+		expect(mutateMediaAssets).toHaveBeenCalled();
+		expect(await screen.findByText("uploaded.png")).toBeTruthy();
+
+		fireEvent.click(screen.getByRole("button", { name: "加入生成记录" }));
+
+		await waitFor(() => {
+			expect(importMediaAssetsToHistory).toHaveBeenCalledWith([uploadedAsset], {
+				assetTitle: undefined,
+			});
+		});
+	});
+
+	it("does not treat document selection as material library import selection", () => {
+		const onMaterialLibraryImportOpenChange = vi.fn();
+		const onToggleAsset = vi.fn();
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			orderedGenerationEntries: [imageEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				materialLibraryImportOpen
+				onMaterialLibraryImportOpenChange={onMaterialLibraryImportOpenChange}
+				onToggleAsset={onToggleAsset}
+				selectedAssetKeys={["image:/api/v1/media-assets/media-a/content"]}
+				viewMode="history"
+			/>,
+		);
+
+		const materialCheckbox = screen.getByRole("checkbox", { name: /source.png/ });
+		expect(materialCheckbox.getAttribute("aria-checked")).toBe("false");
+
+		fireEvent.click(materialCheckbox);
+		expect(materialCheckbox.getAttribute("aria-checked")).toBe("true");
+		fireEvent.click(materialCheckbox);
+		expect(materialCheckbox.getAttribute("aria-checked")).toBe("false");
+		fireEvent.click(screen.getByRole("button", { name: "加入生成记录" }));
+
+		expect(workspaceDefaults.importMediaAssetsToHistory).not.toHaveBeenCalled();
+		expect(onToggleAsset).not.toHaveBeenCalled();
+		expect(onMaterialLibraryImportOpenChange).toHaveBeenCalledWith(false);
+	});
+
 	it("copies the active history prompt into the editor only when explicitly requested", () => {
 		const onViewModeChange = vi.fn();
 		const setPrompt = vi.fn();
@@ -762,6 +916,36 @@ describe("MediaGenerationWorkspace", () => {
 			});
 		});
 		expect(screen.queryByRole("alert")).toBeNull();
+	});
+
+	it("removes imported material references from local history instead of deleting task assets", async () => {
+		const deleteGenerationEntry = vi.fn().mockResolvedValue(true);
+		const deleteGenerationEntryAsset = vi.fn();
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: importedMaterialEntry.id,
+			deleteGenerationEntry,
+			deleteGenerationEntryAsset,
+			orderedGenerationEntries: [importedMaterialEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				viewMode="history"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "删除图片" }));
+		const dialog = screen.getByRole("alertdialog", { name: "删除这张图片？" });
+		fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+
+		await waitFor(() => {
+			expect(deleteGenerationEntry).toHaveBeenCalledWith(importedMaterialEntry.id);
+		});
+		expect(deleteGenerationEntryAsset).not.toHaveBeenCalled();
 	});
 
 	it("uses video wording when a generated video asset cannot be deleted", async () => {

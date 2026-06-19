@@ -38,6 +38,7 @@ import { GenerationModelRoutePicker } from "@/domains/generation/components/Gene
 import { MediaGenerationInputPanel } from "@/domains/generation/components/MediaGenerationInputPanel";
 import { MediaGenerationWorkspaceDialogs } from "@/domains/generation/components/MediaGenerationWorkspaceDialogs";
 import {
+	MaterialLibraryImportDialog,
 	PrimaryParamControl,
 	type ReferenceSelectionShortcutGroup,
 	SecondaryParamsDropdown,
@@ -105,6 +106,7 @@ export interface MediaGenerationWorkspaceProps {
 	initialPrompt: string;
 	kind: GenerationKind;
 	mediaAssetProjectId?: string | null;
+	materialLibraryImportOpen?: boolean;
 	modelPreferenceScopeId?: string | null;
 	notificationTarget?: GenerationNotificationOpenTarget | null;
 	onGenerationComplete?: (
@@ -116,6 +118,7 @@ export interface MediaGenerationWorkspaceProps {
 	onGenerationResponse?: (pendingId: string, response: GenerationMessageResponse) => void;
 	onGenerationStart?: (pendingId: string, prompt: string) => void;
 	onHistoryCountChange?: (count: number) => void;
+	onMaterialLibraryImportOpenChange?: (open: boolean) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	onViewModeChange?: (viewMode: MediaGenerationWorkspaceViewMode) => void;
 	projectId?: string;
@@ -149,6 +152,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	initialPrompt,
 	kind,
 	mediaAssetProjectId,
+	materialLibraryImportOpen,
 	modelPreferenceScopeId,
 	notificationTarget,
 	onGenerationComplete,
@@ -156,6 +160,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	onGenerationResponse,
 	onGenerationStart,
 	onHistoryCountChange,
+	onMaterialLibraryImportOpenChange,
 	onRemoveReferencePreview,
 	onToggleAsset,
 	onViewModeChange,
@@ -285,6 +290,14 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		mutateMediaAssets: ws.mutateMediaAssets,
 		projectId,
 	});
+	const uploadMaterialImportAsset = useCallback(
+		async (file: File) => {
+			const mediaAsset = await uploadMediaAsset(file, resolvedMediaAssetProjectId);
+			await ws.mutateMediaAssets();
+			return mediaAsset;
+		},
+		[resolvedMediaAssetProjectId, ws.mutateMediaAssets],
+	);
 
 	useEffect(() => {
 		if (ws.kind !== kind) ws.setKind(kind);
@@ -599,6 +612,64 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		},
 		[onToggleAsset, projectId, selectedAssetTitle, taskType, toast, ws.mutateTasks],
 	);
+	const confirmMaterialAssets = useCallback(
+		async (selectedAssets: MediaAsset[]) => {
+			let lastEntryId: string | null = null;
+			let existingCount = 0;
+			const assetsToImport: MediaAsset[] = [];
+
+			for (const asset of selectedAssets) {
+				if (asset.kind !== "image") continue;
+
+				const existing = findImportedMaterialAsset(generationEntries, asset);
+				if (existing) {
+					existingCount += 1;
+					lastEntryId = existing.entry.id;
+					continue;
+				}
+
+				assetsToImport.push(asset);
+			}
+
+			let addedCount = 0;
+			try {
+				const importedTasks =
+					assetsToImport.length > 0
+						? await ws.importMediaAssetsToHistory(assetsToImport, {
+								assetTitle: selectedAssetTitle?.trim() || undefined,
+							})
+						: [];
+				addedCount = importedTasks.length;
+				lastEntryId = importedTasks.at(-1)?.id ?? lastEntryId;
+
+				if (lastEntryId) ws.setActiveEntryId(lastEntryId);
+				if (tabbedView) onViewModeChange?.("history");
+				onMaterialLibraryImportOpenChange?.(false);
+
+				toast.success(addedCount > 0 ? "已加入生成记录" : "生成记录未变化", {
+					description: materialSelectionToastDescription({
+						addedCount,
+						existingCount,
+						totalCount: selectedAssets.length,
+					}),
+				});
+			} catch (error) {
+				toast.error("导入失败", {
+					description: apiErrorMessage(error, "素材库图片加入生成记录失败。"),
+				});
+			}
+		},
+		[
+			generationEntries,
+			onMaterialLibraryImportOpenChange,
+			onViewModeChange,
+			selectedAssetTitle,
+			tabbedView,
+			toast,
+			ws.importMediaAssetsToHistory,
+			ws.setActiveEntryId,
+		],
+	);
 	const generatedAssetToggleHandler =
 		onToggleAsset || projectId?.trim() ? toggleGeneratedAsset : undefined;
 	const releaseEditingImageObjectUrl = useCallback(() => {
@@ -753,6 +824,11 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	);
 	const deleteEntryAsset = useCallback(
 		async (entry: GenerationEntry, _asset: GenerationAsset, assetIndex: number) => {
+			if (isImportedMaterialEntry(entry)) {
+				await deleteEntry(entry);
+				return;
+			}
+
 			try {
 				const deleted = await ws.deleteGenerationEntryAsset(entry.id, assetIndex);
 				if (!deleted) {
@@ -764,7 +840,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				});
 			}
 		},
-		[mediaKindLabel, toast, ws.deleteGenerationEntryAsset],
+		[deleteEntry, mediaKindLabel, toast, ws.deleteGenerationEntryAsset],
 	);
 	const deleteEntryAssetPlaceholder = useCallback(
 		async (entry: GenerationEntry, assetIndex: number) => {
@@ -1017,6 +1093,19 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				onReferenceDialogOpenChange={setReferenceDialogOpen}
 				onToggleInlineReference={toggleShortcutReference}
 			/>
+			{onMaterialLibraryImportOpenChange ? (
+				<MaterialLibraryImportDialog
+					confirming={ws.isImportingMediaAssets}
+					mediaAssets={ws.mediaAssets}
+					open={Boolean(materialLibraryImportOpen)}
+					onOpenChange={onMaterialLibraryImportOpenChange}
+					onRefreshAssets={() => {
+						void ws.mutateMediaAssets();
+					}}
+					onUploadAsset={uploadMaterialImportAsset}
+					onConfirmSelection={confirmMaterialAssets}
+				/>
+			) : null}
 			<ImageStickerEditorDialog
 				open={Boolean(editingImageTarget)}
 				source={editingImageTarget?.source ?? ""}
@@ -1111,6 +1200,56 @@ const createInlineResultReferenceAsset = (asset: GenerationAsset, source: string
 	updatedAt: inlineReferenceTimestamp,
 	url: source,
 });
+
+const findImportedMaterialAsset = (entries: GenerationEntry[], mediaAsset: MediaAsset) => {
+	const targetKey = mediaAssetSelectionKey(mediaAsset);
+	const targetSource = generationAssetSource(mediaAssetGenerationAsset(mediaAsset));
+
+	for (const entry of entries) {
+		for (const asset of entry.assets ?? []) {
+			if (asset.kind !== mediaAsset.kind) continue;
+			const assetKey = generationAssetSelectionKey(asset);
+			const assetSource = generationAssetSource(asset);
+			if ((targetKey && assetKey === targetKey) || (targetSource && assetSource === targetSource)) {
+				return { asset, entry };
+			}
+		}
+	}
+
+	return null;
+};
+
+const isImportedMaterialEntry = (entry: GenerationEntry) =>
+	entry.id.startsWith("media-library:") ||
+	(entry.id.startsWith("media-library-") &&
+		entry.requestDetails?.some(
+			(detail) => detail.label.trim() === "来源" && detail.value.trim() === "素材库",
+		));
+
+const mediaAssetSelectionKey = (asset: MediaAsset) =>
+	generationAssetSelectionKey(mediaAssetGenerationAsset(asset));
+
+const mediaAssetGenerationAsset = (asset: MediaAsset): GenerationAsset => ({
+	kind: asset.kind,
+	mimeType: asset.mimeType,
+	url: asset.url,
+});
+
+const materialSelectionToastDescription = ({
+	addedCount,
+	existingCount,
+	totalCount,
+}: {
+	addedCount: number;
+	existingCount: number;
+	totalCount: number;
+}) => {
+	const parts: string[] = [];
+	if (addedCount > 0) parts.push(`新增 ${addedCount} 张`);
+	if (existingCount > 0) parts.push(`已有 ${existingCount} 张`);
+	if (parts.length > 0) return parts.join("，");
+	return totalCount > 0 ? `已有 ${totalCount} 张在生成记录中` : "当前未选择素材";
+};
 
 const referenceUrlFromGenerationSource = (source: string) => {
 	if (/^(data|https?):/iu.test(source)) return source;

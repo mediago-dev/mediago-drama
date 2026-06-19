@@ -32,6 +32,21 @@ type GenerationMessageRequest struct {
 	Params             map[string]any                `json:"params"`
 }
 
+// ImportGenerationMediaAssetsRequest creates completed generation history
+// records that reference existing media library assets.
+type ImportGenerationMediaAssetsRequest struct {
+	Kind              string   `json:"kind,omitempty" ts:"Kind"`
+	ConversationID    string   `json:"sessionId,omitempty"`
+	ScopeID           string   `json:"scopeId,omitempty"`
+	ConversationTitle string   `json:"conversationTitle,omitempty"`
+	ProjectID         string   `json:"projectId,omitempty"`
+	SectionID         string   `json:"sectionId,omitempty"`
+	CapabilityID      string   `json:"capabilityId,omitempty"`
+	AssetIDs          []string `json:"assetIds"`
+	AssetTitle        string   `json:"assetTitle,omitempty"`
+	Prompt            string   `json:"prompt,omitempty"`
+}
+
 // GenerationMessageResponse is returned by generation create/poll/retry calls.
 type GenerationMessageResponse struct {
 	ID        string            `json:"id"`

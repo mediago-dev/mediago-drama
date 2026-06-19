@@ -1528,6 +1528,78 @@ func TestAPIHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("generation import media assets creates reference history tasks", func(t *testing.T) {
+		project, _ := createExternalProjectForTest(t, handler, "Generation Import")
+		asset := uploadImageAssetForTest(t, handler, project.ID, "library.png")
+		sessionID := project.ID + "-image"
+		payload, err := json.Marshal(map[string]any{
+			"kind":              "image",
+			"scopeId":           "agent",
+			"conversationTitle": "Project image session",
+			"projectId":         project.ID,
+			"sectionId":         "section-import",
+			"capabilityId":      "character",
+			"assetIds":          []string{asset.ID},
+			"assetTitle":        "导入角色图",
+		})
+		if err != nil {
+			t.Fatalf("encoding import payload: %v", err)
+		}
+
+		importResponse := requestJSON(
+			t,
+			handler,
+			http.MethodPost,
+			"/api/v1/generation/sessions/"+url.PathEscape(sessionID)+"/media-assets/import",
+			string(payload),
+		)
+		defer importResponse.Body.Close()
+		if importResponse.StatusCode != http.StatusOK {
+			t.Fatalf("import status code = %d, want %d: %s", importResponse.StatusCode, http.StatusOK, readBody(t, importResponse.Body))
+		}
+
+		var envelope struct {
+			Data servicegeneration.GenerationTasksResponse `json:"data"`
+		}
+		if err := json.NewDecoder(importResponse.Body).Decode(&envelope); err != nil {
+			t.Fatalf("decoding import response: %v", err)
+		}
+		if len(envelope.Data.Tasks) != 1 {
+			t.Fatalf("tasks = %+v, want one imported task", envelope.Data.Tasks)
+		}
+		importedTask := envelope.Data.Tasks[0]
+		if importedTask.ConversationID != sessionID ||
+			importedTask.ProjectID != project.ID ||
+			importedTask.RouteID != "media-library" ||
+			importedTask.Status != "completed" ||
+			len(importedTask.Assets) != 1 ||
+			importedTask.Assets[0].URL != asset.URL ||
+			importedTask.Assets[0].Selected {
+			t.Fatalf("imported task = %+v, want completed unselected media-library reference", importedTask)
+		}
+		if len(importedTask.ReferenceAssetIDs) != 1 || importedTask.ReferenceAssetIDs[0] != asset.ID {
+			t.Fatalf("reference asset ids = %#v, want imported asset id", importedTask.ReferenceAssetIDs)
+		}
+
+		list := requestJSON(
+			t,
+			handler,
+			http.MethodGet,
+			"/api/v1/generation/sessions/"+url.PathEscape(sessionID)+"/tasks?kind=image",
+			"",
+		)
+		defer list.Body.Close()
+		if list.StatusCode != http.StatusOK {
+			t.Fatalf("list status code = %d, want %d: %s", list.StatusCode, http.StatusOK, readBody(t, list.Body))
+		}
+		listBody := readBody(t, list.Body)
+		if !strings.Contains(listBody, `"message":"已从素材库导入。"`) ||
+			!strings.Contains(listBody, `"routeId":"media-library"`) ||
+			!strings.Contains(listBody, asset.URL) {
+			t.Fatalf("body = %s, want imported media task in generation history", listBody)
+		}
+	})
+
 	t.Run("generation preferences round trip", func(t *testing.T) {
 		sessionID := "project-preferences"
 		empty := requestJSON(t, handler, http.MethodGet, "/api/v1/generation/sessions/"+url.PathEscape(sessionID)+"/preferences", "")
@@ -1713,6 +1785,47 @@ func uploadVideoAssetForTest(t *testing.T, handler http.Handler, projectID strin
 	}
 	if envelope.Data.ID == "" || envelope.Data.Kind != servicemedia.MediaKindVideo || envelope.Data.URL == "" {
 		t.Fatalf("asset = %+v, want uploaded video asset", envelope.Data)
+	}
+	return envelope.Data
+}
+
+func uploadImageAssetForTest(t *testing.T, handler http.Handler, projectID string, filename string) servicemedia.MediaAsset {
+	t.Helper()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename=%q`, filename))
+	header.Set("Content-Type", "image/png")
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		t.Fatalf("creating multipart image file: %v", err)
+	}
+	if _, err := part.Write([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0}); err != nil {
+		t.Fatalf("writing multipart image file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("closing multipart writer: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/projects/"+url.PathEscape(projectID)+"/media-assets", body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("upload image status code = %d, want %d: %s", response.StatusCode, http.StatusOK, readBody(t, response.Body))
+	}
+
+	var envelope struct {
+		Data servicemedia.MediaAsset `json:"data"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decoding upload image response: %v", err)
+	}
+	if envelope.Data.ID == "" || envelope.Data.Kind != servicemedia.MediaKindImage || envelope.Data.URL == "" {
+		t.Fatalf("asset = %+v, want uploaded image asset", envelope.Data)
 	}
 	return envelope.Data
 }

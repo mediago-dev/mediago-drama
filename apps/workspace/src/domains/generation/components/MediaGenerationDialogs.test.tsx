@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GenerationParam } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import {
+	MaterialLibraryImportDialog,
 	PrimaryParamControl,
 	ReferenceSelectionDialog,
 	SecondaryParamsDropdown,
@@ -179,6 +180,48 @@ describe("ReferenceSelectionDialog", () => {
 		fireEvent.click(screen.getByRole("button", { name: /第 01 组/ }));
 
 		expect(onToggleShortcutReference).toHaveBeenCalledWith(nodeImage);
+	});
+});
+
+describe("MaterialLibraryImportDialog", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	it("uploads image assets and selects them for confirmation", async () => {
+		const uploadedAsset = mediaAsset({
+			id: "uploaded-image",
+			filename: "uploaded.png",
+			url: "/api/v1/media-assets/uploaded-image/content",
+		});
+		const onConfirmSelection = vi.fn();
+		const onUploadAsset = vi.fn().mockResolvedValue(uploadedAsset);
+		render(
+			<MaterialLibraryImportDialog
+				mediaAssets={[]}
+				open
+				onConfirmSelection={onConfirmSelection}
+				onOpenChange={vi.fn()}
+				onUploadAsset={onUploadAsset}
+			/>,
+		);
+
+		const file = new File(["image"], "uploaded.png", { type: "image/png" });
+		fireEvent.change(screen.getByLabelText("上传图片素材"), {
+			target: { files: [file] },
+		});
+
+		await waitFor(() => {
+			expect(onUploadAsset).toHaveBeenCalledWith(file);
+		});
+		expect(await screen.findByText("uploaded.png")).toBeTruthy();
+		expect(
+			screen.getByRole("checkbox", { name: /uploaded.png/ }).getAttribute("aria-checked"),
+		).toBe("true");
+
+		fireEvent.click(screen.getByRole("button", { name: "加入生成记录" }));
+
+		expect(onConfirmSelection).toHaveBeenCalledWith([uploadedAsset]);
 	});
 });
 

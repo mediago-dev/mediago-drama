@@ -148,6 +148,10 @@ func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 		handlers.GenerationTasks.HandleGenerationTasks,
 	)
 	apiRoutes.POST(
+		"/generation/sessions/:sessionId/media-assets/import",
+		handlers.GenerationTasks.HandleImportGenerationMediaAssets,
+	)
+	apiRoutes.POST(
 		"/generation/sessions/:sessionId/messages",
 		handlers.GenerationTasks.HandleGenerationMessage,
 	)

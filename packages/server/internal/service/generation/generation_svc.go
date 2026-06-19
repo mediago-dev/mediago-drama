@@ -8,6 +8,9 @@ type GenerationModelsResponse = dto.GenerationModelsResponse
 // GenerationMessageRequest creates or retries a generation request.
 type GenerationMessageRequest = dto.GenerationMessageRequest
 
+// ImportGenerationMediaAssetsRequest imports media library assets into generation history.
+type ImportGenerationMediaAssetsRequest = dto.ImportGenerationMediaAssetsRequest
+
 // GenerationMessageResponse is returned by generation create/poll/retry calls.
 type GenerationMessageResponse = dto.GenerationMessageResponse
 

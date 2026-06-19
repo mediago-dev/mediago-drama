@@ -172,6 +172,19 @@ export interface GenerationMessageRequest {
 	params: Record<string, unknown>;
 }
 
+export interface ImportGenerationMediaAssetsRequest {
+	kind?: Kind;
+	sessionId?: string;
+	scopeId?: string;
+	conversationTitle?: string;
+	projectId?: string;
+	sectionId?: string;
+	capabilityId?: string;
+	assetIds: string[];
+	assetTitle?: string;
+	prompt?: string;
+}
+
 export interface GenerationMessageResponse {
 	id: string;
 	role: string;

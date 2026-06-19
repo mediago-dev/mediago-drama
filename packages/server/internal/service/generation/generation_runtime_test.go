@@ -10,6 +10,7 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -127,6 +128,66 @@ func TestResolveGenerationReferencesCompressesImageAssets(t *testing.T) {
 	bounds := imageValue.Bounds()
 	if max(bounds.Dx(), bounds.Dy()) > 512 {
 		t.Fatalf("reference size = %dx%d, want long side <= 512", bounds.Dx(), bounds.Dy())
+	}
+}
+
+func TestImportGenerationMediaAssetsCreatesReferenceHistoryTasks(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	mediaAssets := media.NewMediaAssets(dbPath, t.TempDir())
+	generatedID := 0
+	generationTasks := NewGenerationTaskService(dbPath, func(prefix string) (string, error) {
+		generatedID++
+		return fmt.Sprintf("%s-%d", prefix, generatedID), nil
+	})
+	workflow := NewGenerationService(nil, generationTasks, mediaAssets)
+	asset := savePNGReferenceAsset(t, mediaAssets, 320, 180)
+
+	response, status, err := workflow.ImportGenerationMediaAssets(ImportGenerationMediaAssetsRequest{
+		Kind:              "image",
+		ConversationID:    "project-alpha-image",
+		ScopeID:           "agent",
+		ConversationTitle: "Project image session",
+		ProjectID:         "project-alpha",
+		SectionID:         "section-a",
+		CapabilityID:      "scene",
+		AssetIDs:          []string{asset.ID},
+		AssetTitle:        "场景图",
+	})
+	if err != nil {
+		t.Fatalf("importing media assets: %v", err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want %d", status, http.StatusOK)
+	}
+	if len(response.Tasks) != 1 {
+		t.Fatalf("tasks = %+v, want one imported task", response.Tasks)
+	}
+	task := response.Tasks[0]
+	if task.ID != "media-library-1" ||
+		task.ConversationID != "project-alpha-image" ||
+		task.ProjectID != "project-alpha" ||
+		task.SectionID != "section-a" ||
+		task.CapabilityID != "scene" ||
+		task.RouteID != importedMediaGenerationRouteID ||
+		task.Status != "completed" {
+		t.Fatalf("task = %+v, want completed imported media task", task)
+	}
+	if len(task.ReferenceAssetIDs) != 1 || task.ReferenceAssetIDs[0] != asset.ID {
+		t.Fatalf("reference asset ids = %#v, want imported media asset id", task.ReferenceAssetIDs)
+	}
+	if len(task.Assets) != 1 ||
+		task.Assets[0].URL != asset.URL ||
+		task.Assets[0].Title != "场景图" ||
+		task.Assets[0].Selected {
+		t.Fatalf("assets = %+v, want unselected reference to media asset", task.Assets)
+	}
+
+	conversation, ok, err := generationTasks.GetConversation("project-alpha-image")
+	if err != nil {
+		t.Fatalf("getting created conversation: %v", err)
+	}
+	if !ok || conversation.ScopeID != "agent" || conversation.Kind != "image" {
+		t.Fatalf("conversation = %+v ok=%v, want imported image conversation", conversation, ok)
 	}
 }
 

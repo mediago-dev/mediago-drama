@@ -41,9 +41,10 @@ import {
 } from "@/domains/documents/lib/section-generation";
 import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
 
-interface DocumentSectionGeneratorProps {
+export interface DocumentSectionGeneratorProps {
 	section: MarkdownSectionContext;
 	selectedAssetKeys: string[];
+	materialLibraryImportOpen?: boolean;
 	projectId?: string;
 	onGenerationComplete: (
 		pendingId: string,
@@ -54,6 +55,7 @@ interface DocumentSectionGeneratorProps {
 	onGenerationResponse?: (pendingId: string, response: GenerationMessageResponse) => void;
 	onGenerationStart: (pendingId: string, prompt: string) => void;
 	onHistoryCountChange?: (count: number) => void;
+	onMaterialLibraryImportOpenChange?: (open: boolean) => void;
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
 	onToggleImage: (asset: GenerationAsset, selected: boolean) => void;
 	onViewModeChange?: (viewMode: MediaGenerationWorkspaceViewMode) => void;
@@ -61,11 +63,13 @@ interface DocumentSectionGeneratorProps {
 }
 
 export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> = ({
+	materialLibraryImportOpen,
 	onGenerationComplete,
 	onGenerationError,
 	onGenerationResponse,
 	onGenerationStart,
 	onHistoryCountChange,
+	onMaterialLibraryImportOpenChange,
 	onOpenReferenceGeneration,
 	onToggleImage,
 	onViewModeChange,
@@ -225,6 +229,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				taskType={taskTypeForCategory(documentCategory)}
 				initialPrompt={section.prompt}
 				modelPreferenceScopeId={modelPreferenceScopeId}
+				materialLibraryImportOpen={materialLibraryImportOpen}
 				notificationTarget={notificationTarget}
 				projectId={projectId}
 				promptPlaceholder="描述要放入当前章节的视觉素材"
@@ -248,6 +253,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				onGenerationResponse={onGenerationResponse}
 				onGenerationStart={onGenerationStart}
 				onHistoryCountChange={onHistoryCountChange}
+				onMaterialLibraryImportOpenChange={onMaterialLibraryImportOpenChange}
 				onRemoveReferencePreview={removePreviewReferenceAsset}
 				onToggleAsset={onToggleImage}
 				onViewModeChange={onViewModeChange}
