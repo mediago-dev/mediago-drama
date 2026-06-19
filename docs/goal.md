@@ -8,7 +8,7 @@
 
 **技术栈确认**：
 - 前端 [apps/workspace](apps/workspace)：React 19 + Vite 8 (rolldown) + Zustand 5 + SWR 2 + Tailwind 4 + tiptap 3 + Tauri 2 桌面壳（~55,300 行 TS，517 文件）
-- 后端 [packages/server](packages/server)：Go 1.25 + Gin + GORM + SQLite（glebarez 纯 Go 驱动）+ JSONL 文件事件存储（~53,600 行）
+- 后端 [services/server](services/server)：Go 1.25 + Gin + GORM + SQLite（glebarez 纯 Go 驱动）+ JSONL 文件事件存储（~53,600 行）
 - 另有 packages/core（生成核心 Go 库）、packages/mcp、apps/app（Ionic 移动端壳，疑似残留）、packages/tools（空占位）
 - 后端分层 handlers → service → repository → domain，整体清晰；持久化 = SQLite（任务/会话索引/资产元数据）+ 文件系统（agent 事件 JSONL、markdown 文档）
 
@@ -44,7 +44,7 @@
 - **证据**：`internal/repository/db.go` OpenGormSQLite 只设 busy_timeout/foreign_keys，无 journal_mode 设置（已 grep 确认）；本服务读写并发高（SSE 回放读 + 事件索引写 + 生成 worker 写并发）
 - **改动**：open 后追加 `PRAGMA journal_mode=WAL` + `PRAGMA synchronous=NORMAL`
 - **收益**：写不再阻塞读，busy 等待显著减少。**风险**：低（本地单机库标准配置；Tauri 打包目录可写 -wal/-shm）
-- **验证**：`cd packages/server && go test ./...`
+- **验证**：`cd services/server && go test ./...`
 
 ### 1.2 AutoMigrate Once 化（B3）
 - **证据**：`app/prompt_builder.go:44` 每次构建 agent 提示词 `appworkspace.NewStateService(request.WorkspaceDir)`；`app/app.go:68,80` 每个 MCP HTTP 请求 NewExternalServer/NewDocumentServer → 新 StateService。链路 NewStateService → OpenWorkspaceDB → EnsureWorkspaceSchema 对 7 个模型跑 AutoMigrate + dropDeprecatedWorkspaceStorage 的 HasTable/PRAGMA 检查。连接有 sqliteDBCache 缓存，**但 migration 每次重跑**（每模型十几条 PRAGMA/DDL）
@@ -157,7 +157,7 @@
 | domains/capabilities/components/CapabilityCard.tsx | 0 引用（该目录唯一组件） |
 | 零引用 barrel：domains/{agent,documents,episode,generation,projects,workspace}/index.ts、lib/index.ts、lib/stores/index.ts 及 4 个子目录 index、shared/index.ts、shared/lib/index.ts、shared/lib/sse/index.ts、shared/stores/index.ts | 自动扫描 + 抽样 grep 复核 0 import |
 | 零引用垫片目录：components/agent(12 文件)、components/workspace(9)、components/ui(10)、components/documents、components/episode、components/generation、components/workbench(空) | 全是 `export * from "@/domains/..."` 单行重导出，对应路径 0 import |
-| packages/server/internal/http/routes/ | 空目录（若不做 1.7 架构项则删） |
+| services/server/internal/http/routes/ | 空目录（若不做 1.7 架构项则删） |
 - 验证：tsc -b + vitest + oxlint
 
 ### 3.2 垫片收尾（先替换引用再删）
@@ -221,7 +221,7 @@
 4. **健壮性补充（阶段 4）**：R2 并入 1.5 同 PR；前端 SSE/轮询项并入 2.7 同 PR；其余独立小 PR 随时插队
 
 每个任务独立 PR、独立可验证：
-- 后端每步：`cd packages/server && go test ./...`（或根目录 task check）
+- 后端每步：`cd services/server && go test ./...`（或根目录 task check）
 - 前端每步：`pnpm -C apps/workspace test && pnpm -C apps/workspace check && pnpm -C apps/workspace build`
 - 已留存基线：vendor 1802 kB/gzip 532 kB、index 607 kB/gzip 167 kB、ui 157 kB；流式重渲染 commit 数与事件加载耗时在对应任务中做前后对比
 

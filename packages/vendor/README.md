@@ -29,7 +29,7 @@ task prepare:clean
 Supported agents and pinned versions are defined in `agents.json`. The Go
 prepare command under `cmd/prepare-agent` downloads the matching GitHub release
 asset for the current OS and architecture, extracts the native binary, and
-writes the manifest consumed by `packages/server`.
+writes the manifest consumed by `services/server`.
 
 If `dist/<agent-id>/agent.json` already matches the pinned version, binary name,
 args, and executable file, prepare reuses the cached artifact and skips the

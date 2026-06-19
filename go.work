@@ -1,7 +1,7 @@
 go 1.25.0
 
 use (
-	./packages/server
+	./services/server
 	./packages/core
 	./packages/mcp
 	./packages/tools

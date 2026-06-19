@@ -13,7 +13,7 @@
     "workspace:dev": "pnpm -C apps/workspace dev",
     "dev:desktop": "pnpm -C apps/workspace tauri:dev",
     "build:desktop": "pnpm -C apps/workspace tauri:build",
-    "check:go": "cd packages/core && task check && cd ../mcp && task check && cd ../server && task check",
+    "check:go": "task -d packages/core check && task -d packages/mcp check && task -d services/server check",
     "prepare": "husky",
     "changeset": "changeset"
   },

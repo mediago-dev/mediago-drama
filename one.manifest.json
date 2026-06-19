@@ -63,7 +63,7 @@
     },
     {
       "name": "server",
-      "relativeDir": "packages/server",
+      "relativeDir": "services/server",
       "templateId": "go-api",
       "toolchain": "go",
       "buildVersion": "0.0.1",

@@ -28,7 +28,7 @@ Taskfile.yml
 ```
 
 The document MCP executable entrypoint lives in
-`packages/server/cmd/mediago-document-mcp`; this module stays focused on shared
+`services/server/cmd/mediago-document-mcp`; this module stays focused on shared
 protocol/runtime code.
 
 ## Use From CLI

@@ -53,14 +53,14 @@ tasks:
           AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
     cmds:
-      - task -d packages/server swagger
+      - task -d services/server swagger
       - |
         AGENT="{{.AGENT}}"
         MEDIAGO_AGENT_ID="$AGENT" \
         MEDIAGO_AGENT_BIN_DIR="$(pwd)/packages/vendor/dist" \
         MEDIAGO_FFMPEG_BIN_DIR="$(pwd)/packages/vendor/dist/tools" \
         MEDIAGO_JIMENG_BIN_DIR="$(pwd)/packages/vendor/dist/tools" \
-          go run ./packages/server/cmd/mediago-server --config packages/server/configs/server.yaml &
+          go run ./services/server/cmd/mediago-server --config services/server/configs/server.yaml &
         SERVER_PID=$!
         trap 'kill $SERVER_PID 2>/dev/null' EXIT INT TERM
         pnpm -C apps/workspace dev
@@ -72,19 +72,19 @@ tasks:
           AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
     cmds:
-      - task -d packages/server swagger
+      - task -d services/server swagger
       - |
         AGENT="{{.AGENT}}"
         MEDIAGO_AGENT_ID="$AGENT" \
         MEDIAGO_AGENT_BIN_DIR="$(pwd)/packages/vendor/dist" \
         MEDIAGO_FFMPEG_BIN_DIR="$(pwd)/packages/vendor/dist/tools" \
         MEDIAGO_JIMENG_BIN_DIR="$(pwd)/packages/vendor/dist/tools" \
-          go run ./packages/server/cmd/mediago-server --config packages/server/configs/server.yaml
+          go run ./services/server/cmd/mediago-server --config services/server/configs/server.yaml
 
   build:server:
     cmds:
       - mkdir -p bin
-      - go build -tags workspace_dist -o bin/mediago-server ./packages/server/cmd/mediago-server
+      - go build -tags workspace_dist -o bin/mediago-server ./services/server/cmd/mediago-server
 
   stage-tauri:
     cmds:
@@ -94,19 +94,19 @@ tasks:
     cmds:
       - task -d packages/core check
       - task -d packages/mcp check
-      - task -d packages/server check
+      - task -d services/server check
 
   go:test:
     cmds:
       - task -d packages/core test
       - task -d packages/mcp test
-      - task -d packages/server test
+      - task -d services/server test
 
   go:build:
     cmds:
       - task -d packages/core build
       - task -d packages/mcp build
-      - task -d packages/server build
+      - task -d services/server build
 
   workspace:check:
     cmds:
@@ -135,6 +135,6 @@ tasks:
 
   sync:workspace-dist:
     cmds:
-      - rm -rf packages/server/internal/workspace/dist
-      - mkdir -p packages/server/internal/workspace/dist
-      - cp -R apps/workspace/dist/. packages/server/internal/workspace/dist
+      - rm -rf services/server/internal/workspace/dist
+      - mkdir -p services/server/internal/workspace/dist
+      - cp -R apps/workspace/dist/. services/server/internal/workspace/dist
