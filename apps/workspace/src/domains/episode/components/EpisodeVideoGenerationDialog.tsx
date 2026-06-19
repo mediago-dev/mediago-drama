@@ -299,7 +299,9 @@ const buildEpisodeVideoPrompt = (
 	}
 
 	const duration = Math.max(1, Math.round(selectedClip.end - selectedClip.start));
-	const sourcePrompt = sourceSection?.bodyMarkdown || selectedClip.prompt || selectedClip.content;
+	const sourcePrompt = stripEpisodeVideoPromptInternalReferences(
+		sourceSection?.bodyMarkdown || selectedClip.prompt || selectedClip.content,
+	);
 	return [
 		sourcePrompt,
 		"",
@@ -377,8 +379,8 @@ const collectMarkdownHeadingSections = (documentMarkdown: string): CollectedMark
 
 		const endIndex = findSectionEndLine(lines, index, headingLevel);
 		const markdown = stripSectionIdCommentLines(lines.slice(index, endIndex).join("\n")).trim();
-		const bodyMarkdown = stripSectionIdCommentLines(
-			lines.slice(index + 1, endIndex).join("\n"),
+		const bodyMarkdown = stripEpisodeVideoPromptInternalReferences(
+			stripSectionIdCommentLines(lines.slice(index + 1, endIndex).join("\n")),
 		).trim();
 		if (!markdown) continue;
 
@@ -412,6 +414,19 @@ const episodeClipSourceIndex = (clipId: string) => {
 	const index = Number(match[1]);
 	return Number.isFinite(index) ? index : null;
 };
+
+const stripEpisodeVideoPromptInternalReferences = (markdown: string) =>
+	markdown
+		.split("\n")
+		.filter((line) => !/^\s*\*\*引用资源\*\*\s*[：:]/.test(line))
+		.join("\n")
+		.replace(
+			/@\[((?:\\.|[^\]\\])*)\]\((?:<[^>]+>|[^\s)]+)\)/g,
+			(_, label: string) => `@${unescapeMentionLabelForPrompt(label)}`,
+		)
+		.replace(/\n{3,}/g, "\n\n");
+
+const unescapeMentionLabelForPrompt = (value: string) => value.replace(/\\([\\[\]])/g, "$1");
 
 const markdownToPlainText = (markdown: string) =>
 	markdown

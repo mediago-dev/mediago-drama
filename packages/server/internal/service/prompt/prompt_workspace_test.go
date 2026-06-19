@@ -123,6 +123,45 @@ func TestPromptBuilderDoesNotInlineAssetReferences(t *testing.T) {
 	}
 }
 
+func TestPromptBuilderIndexesResourceMentionsWithoutDocumentBodies(t *testing.T) {
+	prompt := BuildWorkspaceACPPrompt(AgentRunRequest{
+		ProjectID: "project-1",
+		Document: &AgentDocumentContext{
+			ID:       "storyboard-doc",
+			Title:    "第一集分镜",
+			Category: "storyboard",
+			Content:  "# 第一集分镜",
+		},
+		Documents: []AgentDocumentContext{
+			{
+				ID:       "character-doc",
+				Title:    "角色设定",
+				Category: "character",
+				Content: strings.Join([]string{
+					"<!-- section-id: section_shenyan -->",
+					"# 沈阎",
+					"",
+					"玄色长袍，银白发丝，眼尾冷峻。这段正文不能进入资源索引。",
+				}, "\n"),
+			},
+		},
+	})
+
+	for _, want := range []string{
+		"# 可用 @ 资源索引",
+		"角色｜沈阎",
+		"@[沈阎](mention://character-doc/section_shenyan?kind=section&category=character)",
+		"不要把 `mention://` 或 `asset://` 内部链接写入",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt = %q, want reference index segment %q", prompt, want)
+		}
+	}
+	if strings.Contains(prompt, "玄色长袍") || strings.Contains(prompt, "这段正文不能进入资源索引") {
+		t.Fatalf("prompt = %q, should not inline resource document body", prompt)
+	}
+}
+
 func TestPromptBuilderAdvertisesSkillForBusinessDocuments(t *testing.T) {
 	tests := []struct {
 		name      string

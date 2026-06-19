@@ -35,17 +35,22 @@
 
 .agent-reference-mention {
 	display: inline-flex;
-	max-width: 12rem;
+	box-sizing: border-box;
+	min-height: 1.48em;
+	max-width: min(24rem, 100%);
 	align-items: center;
+	overflow: hidden;
 	border: var(--border-width-scale-sm) solid transparent;
 	border-radius: var(--radius-scale-sm);
 	background: var(--secondary);
-	padding: 0 0.25rem;
+	padding: 0.02em 0.25rem 0;
 	color: var(--secondary-foreground);
 	font-weight: var(--font-weight-scale-medium);
-	line-height: 1.45;
-	vertical-align: baseline;
+	line-height: 1;
+	text-overflow: ellipsis;
 	white-space: nowrap;
+	word-break: normal;
+	overflow-wrap: normal;
 }
 
 .agent-reference-mention[data-kind="section"] {

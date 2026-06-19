@@ -20,6 +20,7 @@ const mentionLinkPattern = /^@\[((?:\\.|[^\]\\])*)\]\((?:<([^>]+)>|([^\s)]+))\)/
 
 export const DocumentMention = Mention.extend({
 	name: "documentMention",
+	priority: 1100,
 
 	addAttributes() {
 		return {

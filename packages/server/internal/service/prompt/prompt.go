@@ -106,6 +106,13 @@ func BuildACPPrompt(request AgentRunRequest, options PromptBuildOptions) string 
 		builder.WriteString(text)
 		builder.WriteString("\n\n")
 	}
+	if referencePrompt := renderReferenceIndexPrompt(ctx.Request); referencePrompt != "" {
+		text := truncatePromptContent("REFERENCES", strings.TrimRight(referencePrompt, "\n"), ctx.MaxSectionChars)
+		if text != "" {
+			builder.WriteString(text)
+			builder.WriteString("\n\n")
+		}
+	}
 	if userPrompt := renderUserRequestPrompt(ctx); userPrompt != "" {
 		builder.WriteString(userPrompt)
 		builder.WriteString("\n\n")

@@ -93,6 +93,8 @@ describe("EpisodeVideoGenerationDialog", () => {
 						"",
 						"**动作：** 沈阔 @[沈阔（普通状态）](mention://character-doc/section_character?kind=section&category=character) 从水中下沉。",
 						"",
+						"**引用资源**：角色 @[沈阔（普通状态）](mention://character-doc/section_character?kind=section&category=character)",
+						"",
 						"- 镜头：低角度跟拍",
 						"",
 						"### 标志性细节",
@@ -144,8 +146,11 @@ describe("EpisodeVideoGenerationDialog", () => {
 
 		const workspaceProps = lastWorkspaceProps();
 		expect(workspaceProps?.initialPrompt).toContain("**动作：**");
+		expect(workspaceProps?.initialPrompt).toContain("@沈阔（普通状态）");
 		expect(workspaceProps?.initialPrompt).toContain("- 镜头：低角度跟拍");
 		expect(workspaceProps?.initialPrompt).toContain("### 标志性细节");
+		expect(workspaceProps?.initialPrompt).not.toContain("mention://");
+		expect(workspaceProps?.initialPrompt).not.toContain("引用资源");
 		expect(workspaceProps?.renderPromptEditor).toEqual(expect.any(Function));
 		const promptEditor = workspaceProps?.renderPromptEditor?.({
 			className: "",
