@@ -21,6 +21,15 @@ media.workspace.json
 # a belt-and-suspenders entry for the workspace root)
 .secrets/keys/
 
+# design-sync (claude.ai/design) — staged scripts, build output, machine state.
+# Durable inputs under .design-sync/ (config.json, NOTES.md, conventions.md,
+# previews/, overrides/) are NOT ignored and should be committed.
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+
 # misc
 .DS_Store
 .env.*
