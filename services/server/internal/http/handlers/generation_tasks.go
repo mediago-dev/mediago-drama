@@ -21,6 +21,7 @@ type GenerationTaskService interface {
 	ListGenerationModels() dto.GenerationModelsResponse
 	CreateGenerationMessage(ctx context.Context, payload dto.GenerationMessageRequest) (dto.GenerationMessageResponse, int, error)
 	PreviewGenerationVoice(ctx context.Context, payload dto.GenerationVoicePreviewRequest) (dto.GenerationVoicePreviewResponse, int, error)
+	GenerationVoicePreviewContent(routeID string, voiceID string) (dto.GenerationVoicePreviewAsset, []byte, bool, error)
 	ImportGenerationMediaAssets(payload dto.ImportGenerationMediaAssetsRequest) (dto.GenerationTasksResponse, int, error)
 	StreamGenerationText(ctx context.Context, payload dto.GenerationMessageRequest, emit func(dto.GenerationTextStreamEvent) error) (int, error)
 	CreateGenerationConversation(payload dto.CreateGenerationConversationRequest) (dto.GenerationConversationRecord, int, error)
@@ -117,6 +118,43 @@ func (handler GenerationTasks) HandleGenerationVoicePreview(context *gin.Context
 		return
 	}
 	httpresponse.OK(context, response)
+}
+
+// HandleGenerationVoicePreviewContent godoc
+// @Summary 获取内置音色试听音频
+// @Description 返回应用内置的本地音色试听文件。
+// @Tags Generation
+// @Produce audio/mpeg
+// @Param routeId path string true "Route ID"
+// @Param voiceId path string true "Voice ID"
+// @Success 200 {file} file
+// @Failure 404 {object} SwaggerEnvelope
+// @Router /api/v1/generation/voice-previews/{routeId}/{voiceId} [get]
+func (handler GenerationTasks) HandleGenerationVoicePreviewContent(context *gin.Context) {
+	routeID, ok := requiredPathParam(context, "routeId", "routeId")
+	if !ok {
+		return
+	}
+	voiceID, ok := requiredPathParam(context, "voiceId", "voiceId")
+	if !ok {
+		return
+	}
+
+	asset, data, found, err := handler.service.GenerationVoicePreviewContent(routeID, voiceID)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusInternalServerError, err)
+		return
+	}
+	if !found {
+		httpresponse.ErrorFromStatus(context, http.StatusNotFound, fmt.Errorf("voice preview not found"))
+		return
+	}
+	mimeType := strings.TrimSpace(asset.MIMEType)
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+	context.Header("Cache-Control", "public, max-age=31536000, immutable")
+	context.Data(http.StatusOK, mimeType, data)
 }
 
 // HandleImportGenerationMediaAssets godoc

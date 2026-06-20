@@ -130,6 +130,10 @@ func registerSettingsRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.GET("/generation/models", handlers.GenerationTasks.HandleGenerationModels)
 	apiRoutes.POST("/generation/voice-preview", handlers.GenerationTasks.HandleGenerationVoicePreview)
+	apiRoutes.GET(
+		"/generation/voice-previews/:routeId/:voiceId",
+		handlers.GenerationTasks.HandleGenerationVoicePreviewContent,
+	)
 	apiRoutes.GET("/generation/sessions", handlers.GenerationTasks.HandleGenerationConversations)
 	apiRoutes.POST("/generation/sessions", handlers.GenerationTasks.HandleCreateGenerationConversation)
 	apiRoutes.DELETE(

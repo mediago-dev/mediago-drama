@@ -14,6 +14,9 @@ type GenerationVoicePreviewRequest = dto.GenerationVoicePreviewRequest
 // GenerationVoicePreviewResponse returns a playable audio asset for a voice preview.
 type GenerationVoicePreviewResponse = dto.GenerationVoicePreviewResponse
 
+// GenerationVoicePreviewAsset is one built-in local voice preview.
+type GenerationVoicePreviewAsset = dto.GenerationVoicePreviewAsset
+
 // ImportGenerationMediaAssetsRequest imports media library assets into generation history.
 type ImportGenerationMediaAssetsRequest = dto.ImportGenerationMediaAssetsRequest
 

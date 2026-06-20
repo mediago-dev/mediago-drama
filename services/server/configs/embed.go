@@ -27,6 +27,11 @@ var StylePresets embed.FS
 //go:embed prompt-library/builtin/*.md
 var PromptLibrary embed.FS
 
+// VoicePreviews embeds built-in voice preview audio files and their manifest.
+//
+//go:embed voice-previews
+var VoicePreviews embed.FS
+
 // ReadPromptTemplate reads an editable prompt template, preferring source files over embedded defaults.
 func ReadPromptTemplate(name string) ([]byte, error) {
 	sourcePath := filepath.Join(SourceTemplateDir("prompts"), name)

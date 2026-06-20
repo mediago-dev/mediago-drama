@@ -8,6 +8,7 @@ export interface ModelCatalog {
 	routes: ModelRoute[];
 	models: ModelSpec[];
 	providers: ProviderInfo[];
+	voicePreviews?: GenerationVoicePreviewAsset[];
 }
 
 export interface ModelFamily {
@@ -151,6 +152,7 @@ export interface GenerationModelsResponse {
 	routes: ModelRoute[];
 	models: ModelSpec[];
 	providers: ProviderInfo[];
+	voicePreviews?: GenerationVoicePreviewAsset[];
 }
 
 export interface GenerationMessageRequest {
@@ -180,6 +182,13 @@ export interface GenerationVoicePreviewRequest {
 
 export interface GenerationVoicePreviewResponse {
 	asset: GenerationAsset;
+}
+
+export interface GenerationVoicePreviewAsset {
+	routeId: string;
+	voiceId: string;
+	url: string;
+	mimeType: string;
 }
 
 export interface ImportGenerationMediaAssetsRequest {

@@ -10,6 +10,7 @@ import type {
 	GenerationNotificationOpenTarget,
 } from "@/domains/generation/api/generation";
 import {
+	generationModelsKey,
 	previewGenerationVoice,
 	selectedGenerationAssetsQueryKey,
 	updateGenerationTaskAsset,
@@ -212,9 +213,11 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const editingImageRequestIdRef = useRef(0);
 	const voicePreviewAudioRef = useRef<HTMLAudioElement | null>(null);
 	const voicePreviewSourceCacheRef = useRef(new Map<string, string>());
+	const voicePreviewCatalogRefreshRef = useRef("");
 	const workspaceRef = useRef<HTMLFormElement>(null);
 	const rightPaneRef = useRef<HTMLDivElement>(null);
 	const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
+	const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
 	const inlineReferenceAssets = useMemo(
 		() =>
 			mergeReferencePreviewAssets(
@@ -324,6 +327,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	useEffect(
 		() => () => {
 			voicePreviewAudioRef.current?.pause();
+			if (voicePreviewAudioRef.current) voicePreviewAudioRef.current.onended = null;
 			voicePreviewAudioRef.current = null;
 			voicePreviewSourceCacheRef.current.clear();
 		},
@@ -441,34 +445,102 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		() => countGroupParams.find((param) => param.name === "n" && param.type === "number")?.name,
 		[countGroupParams],
 	);
-	const playVoicePreviewSource = useCallback(async (source: string) => {
+	const voicePreviewRouteIds = useMemo(() => {
+		const routeIds = new Set<string>();
+		if (ws.selectedRoute.kind !== "audio") return routeIds;
+
+		routeIds.add(ws.selectedRoute.id);
+		for (const route of ws.visibleFamilyRoutes) {
+			if (route.kind === "audio" && route.familyId === ws.selectedRoute.familyId) {
+				routeIds.add(route.id);
+			}
+		}
+		return routeIds;
+	}, [
+		ws.selectedRoute.familyId,
+		ws.selectedRoute.id,
+		ws.selectedRoute.kind,
+		ws.visibleFamilyRoutes,
+	]);
+	const voicePreviewAssetsByVoiceId = useMemo(() => {
+		const assets = new Map<string, NonNullable<typeof ws.catalog.voicePreviews>[number]>();
+		for (const preview of ws.catalog?.voicePreviews ?? []) {
+			if (!voicePreviewRouteIds.has(preview.routeId)) continue;
+			const current = assets.get(preview.voiceId);
+			if (!current || preview.routeId === ws.selectedRoute.id) {
+				assets.set(preview.voiceId, preview);
+			}
+		}
+		return assets;
+	}, [voicePreviewRouteIds, ws.catalog?.voicePreviews, ws.selectedRoute.id]);
+	const previewableVoiceIds = useMemo(
+		() => new Set(voicePreviewAssetsByVoiceId.keys()),
+		[voicePreviewAssetsByVoiceId],
+	);
+	useEffect(() => {
+		if (ws.selectedRoute.kind !== "audio" || voicePreviewAssetsByVoiceId.size > 0) return;
+		if (voicePreviewCatalogRefreshRef.current === ws.selectedRoute.id) return;
+
+		voicePreviewCatalogRefreshRef.current = ws.selectedRoute.id;
+		void mutateSWR(generationModelsKey);
+	}, [voicePreviewAssetsByVoiceId.size, ws.selectedRoute.id, ws.selectedRoute.kind]);
+	const stopVoicePreview = useCallback((voiceID?: string) => {
 		voicePreviewAudioRef.current?.pause();
-		const audio = new Audio(source);
-		voicePreviewAudioRef.current = audio;
-		await audio.play();
+		if (voicePreviewAudioRef.current) voicePreviewAudioRef.current.onended = null;
+		voicePreviewAudioRef.current = null;
+		setPlayingVoiceId((current) => (!voiceID || current === voiceID ? null : current));
 	}, []);
+	const playVoicePreviewSource = useCallback(
+		async (source: string, voiceID: string) => {
+			stopVoicePreview();
+			const audio = new Audio(source);
+			audio.onended = () => {
+				if (voicePreviewAudioRef.current !== audio) return;
+
+				voicePreviewAudioRef.current = null;
+				setPlayingVoiceId((current) => (current === voiceID ? null : current));
+			};
+			voicePreviewAudioRef.current = audio;
+			try {
+				await audio.play();
+				setPlayingVoiceId(voiceID);
+			} catch (err) {
+				if (voicePreviewAudioRef.current === audio) {
+					audio.onended = null;
+					voicePreviewAudioRef.current = null;
+				}
+				setPlayingVoiceId((current) => (current === voiceID ? null : current));
+				throw err;
+			}
+		},
+		[stopVoicePreview],
+	);
 	const previewVoice = useCallback(
 		async (voiceID: string) => {
 			const normalizedVoiceID = voiceID.trim();
 			if (!normalizedVoiceID) return;
+			if (playingVoiceId === normalizedVoiceID) {
+				stopVoicePreview(normalizedVoiceID);
+				return;
+			}
 			if (!ws.hasConfiguredRoutesForKind || ws.selectedRoute.kind !== "audio") {
 				toast.warning("当前模型不支持音色预览。");
 				return;
 			}
+			const previewAsset = voicePreviewAssetsByVoiceId.get(normalizedVoiceID);
+			if (!previewAsset) {
+				toast.warning("这个音色暂无本地试听。");
+				return;
+			}
 
-			const previewParams = {
-				...ws.selectedParams,
-				voiceId: normalizedVoiceID,
-			};
 			const cacheKey = JSON.stringify({
-				params: previewParams,
-				routeId: ws.selectedRoute.id,
+				routeId: previewAsset.routeId,
 				voiceId: normalizedVoiceID,
 			});
 			const cachedSource = voicePreviewSourceCacheRef.current.get(cacheKey);
 			if (cachedSource) {
 				try {
-					await playVoicePreviewSource(cachedSource);
+					await playVoicePreviewSource(cachedSource, normalizedVoiceID);
 				} catch (err) {
 					const message = errorMessage(err);
 					toast.error("音色预览失败", {
@@ -481,16 +553,15 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			setPreviewingVoiceId(normalizedVoiceID);
 			try {
 				const response = await previewGenerationVoice({
-					routeId: ws.selectedRoute.id,
+					routeId: previewAsset.routeId,
 					voiceId: normalizedVoiceID,
-					params: previewParams,
 				});
 				const source = generationAssetSource(response.asset);
 				if (!source) throw new Error("音色预览未返回可播放音频。");
 
 				voicePreviewSourceCacheRef.current.set(cacheKey, source);
 				try {
-					await playVoicePreviewSource(source);
+					await playVoicePreviewSource(source, normalizedVoiceID);
 				} catch (err) {
 					if (isPlaybackBlockedError(err)) {
 						toast.warning("试听已生成", {
@@ -503,18 +574,20 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			} catch (err) {
 				const message = errorMessage(err);
 				toast.error("音色预览失败", {
-					description: message || "请检查 MiniMax 国内 API Key 或稍后重试。",
+					description: message || "这个音色暂无可播放的本地试听文件。",
 				});
 			} finally {
 				setPreviewingVoiceId((current) => (current === normalizedVoiceID ? null : current));
 			}
 		},
 		[
+			playingVoiceId,
 			playVoicePreviewSource,
+			stopVoicePreview,
+			voicePreviewAssetsByVoiceId,
 			toast,
 			ws.hasConfiguredRoutesForKind,
-			ws.selectedParams,
-			ws.selectedRoute,
+			ws.selectedRoute.kind,
 		],
 	);
 	const imageSpecControlledParamNames = useMemo(
@@ -568,6 +641,8 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 						key={`${group.id}:${param.name}`}
 						label={group.label}
 						param={param}
+						playingVoiceId={param.name === "voiceId" ? playingVoiceId : undefined}
+						previewableVoiceIds={param.name === "voiceId" ? previewableVoiceIds : undefined}
 						previewingVoiceId={previewingVoiceId}
 						value={ws.selectedParams[param.name]}
 						onChange={(value) => ws.updateParam(param.name, value)}
@@ -575,7 +650,15 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 					/>
 				);
 			}),
-		[previewVoice, previewingVoiceId, primaryParamGroups, ws.selectedParams, ws.updateParam],
+		[
+			previewVoice,
+			playingVoiceId,
+			previewableVoiceIds,
+			previewingVoiceId,
+			primaryParamGroups,
+			ws.selectedParams,
+			ws.updateParam,
+		],
 	);
 	const secondaryParamControls = useMemo(
 		() =>

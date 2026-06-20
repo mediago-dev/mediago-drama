@@ -9,6 +9,7 @@ import (
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/runtime"
+	configassets "github.com/mediago-dev/mediago-drama/services/server/configs"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 )
@@ -24,6 +25,7 @@ type GenerationService struct {
 	mediaAssets                   *media.MediaAssets
 	generationProviderFactory     func(coregeneration.ModelRoute) (coregeneration.Provider, error)
 	multimodalTextProviderFactory runtime.MultimodalTextProviderFactory
+	voicePreviews                 *VoicePreviewStore
 	jimengBinPath                 string
 	jimengBinDir                  string
 }
@@ -46,6 +48,7 @@ func NewGenerationService(settings *settings.Settings, generationTasks *Generati
 		generationTasks:               generationTasks,
 		mediaAssets:                   mediaAssets,
 		multimodalTextProviderFactory: defaultMultimodalTextProviderFactory,
+		voicePreviews:                 NewVoicePreviewStore(configassets.VoicePreviews),
 	}
 }
 
@@ -68,11 +71,12 @@ func (workflow *GenerationService) ListGenerationModels() generationModelsRespon
 	}
 
 	return generationModelsResponse{
-		Families:  catalog.Families,
-		Versions:  catalog.Versions,
-		Routes:    catalog.Routes,
-		Models:    catalog.Models,
-		Providers: catalog.Providers,
+		Families:      catalog.Families,
+		Versions:      catalog.Versions,
+		Routes:        catalog.Routes,
+		Models:        catalog.Models,
+		Providers:     catalog.Providers,
+		VoicePreviews: workflow.listVoicePreviewAssets(),
 	}
 }
 

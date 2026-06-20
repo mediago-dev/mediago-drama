@@ -1,16 +1,36 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type React from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import { GenerationWorkspace } from "./GenerationWorkspace";
 
+const generationApiMocks = vi.hoisted(() => ({
+	previewGenerationVoice: vi.fn(),
+}));
+
+const toastMocks = vi.hoisted(() => ({
+	error: vi.fn(),
+	info: vi.fn(),
+	success: vi.fn(),
+	warning: vi.fn(),
+}));
+
 vi.mock("@tauri-apps/plugin-opener", () => ({
 	openUrl: vi.fn(),
 }));
 
+vi.mock("@/domains/generation/api/generation", () => ({
+	generationModelsKey: "/generation/models",
+	previewGenerationVoice: generationApiMocks.previewGenerationVoice,
+}));
+
 vi.mock("@/domains/generation/hooks/useGenerationWorkspace", () => ({
 	useGenerationWorkspace: vi.fn(),
+}));
+
+vi.mock("@/hooks/useToast", () => ({
+	useToast: () => toastMocks,
 }));
 
 vi.mock("@/domains/generation/components/GenerationChatPanel", () => ({
@@ -116,6 +136,19 @@ const videoParams = [
 	},
 ];
 
+const audioVoiceParam = {
+	name: "voiceId",
+	label: "音色",
+	type: "select",
+	group: "voice",
+	menu: "primary",
+	default: "female-shaonv",
+	options: [
+		{ label: "中文 (普通话) · 少女音色", value: "female-shaonv" },
+		{ label: "中文 (普通话) · 精英青年音色", value: "male-qn-jingying" },
+	],
+};
+
 const workspaceDefaults = {
 	activeEntry: null,
 	activeEntryId: null,
@@ -213,6 +246,13 @@ const renderWorkspace = () =>
 describe("GenerationWorkspace image spec control", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		generationApiMocks.previewGenerationVoice.mockResolvedValue({
+			asset: {
+				kind: "audio",
+				mimeType: "audio/mpeg",
+				url: "/api/v1/generation/voice-previews/official.minimax-speech-2.8-turbo/male-qn-jingying",
+			},
+		});
 	});
 
 	afterEach(() => {
@@ -309,5 +349,108 @@ describe("GenerationWorkspace image spec control", () => {
 		expect(screen.queryByText("比例")).toBeNull();
 		expect(screen.queryByText("分辨率")).toBeNull();
 		expect(screen.queryByText("时长")).toBeNull();
+	});
+
+	it("shows and plays local voice previews in the studio audio composer", async () => {
+		const originalAudio = globalThis.Audio;
+		const playMock = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+		const pauseMock = vi.fn();
+
+		class MockAudio {
+			src: string;
+
+			constructor(src?: string) {
+				this.src = src ?? "";
+			}
+
+			play = playMock;
+			pause = pauseMock;
+		}
+
+		Object.defineProperty(globalThis, "Audio", {
+			configurable: true,
+			value: MockAudio,
+			writable: true,
+		});
+
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			catalog: {
+				families: [],
+				models: [],
+				providers: [],
+				routes: [],
+				versions: [],
+				voicePreviews: [
+					{
+						mimeType: "audio/mpeg",
+						routeId: "official.minimax-speech-2.8-turbo",
+						url: "/api/v1/generation/voice-previews/official.minimax-speech-2.8-turbo/male-qn-jingying",
+						voiceId: "male-qn-jingying",
+					},
+				],
+			},
+			kind: "audio",
+			selectedFamily: { id: "minimax-speech", label: "MiniMax 国内 Speech" },
+			selectedParams: {
+				voiceId: "female-shaonv",
+			},
+			selectedRoute: {
+				...workspaceDefaults.selectedRoute,
+				adapter: "official.minimax.speech",
+				familyId: "minimax-speech",
+				id: "official.minimax-speech-2.8-turbo",
+				kind: "audio",
+				model: "speech-2.8-turbo",
+				params: [audioVoiceParam],
+				provider: "minimax",
+				supportsReferenceUrls: false,
+				versionId: "minimax-speech-2.8-turbo",
+			},
+			selectedVersion: { id: "minimax-speech-2.8-turbo", label: "Minimax-speech-2.8-turbo" },
+			visibleFamilies: [{ id: "minimax-speech", label: "MiniMax 国内 Speech" }],
+			visibleFamilyRoutes: [
+				{
+					...workspaceDefaults.selectedRoute,
+					adapter: "official.minimax.speech",
+					familyId: "minimax-speech",
+					id: "official.minimax-speech-2.8-turbo",
+					kind: "audio",
+					model: "speech-2.8-turbo",
+					params: [audioVoiceParam],
+					provider: "minimax",
+					supportsReferenceUrls: false,
+					versionId: "minimax-speech-2.8-turbo",
+				},
+			],
+			visibleVersions: [{ id: "minimax-speech-2.8-turbo", label: "Minimax-speech-2.8-turbo" }],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		try {
+			renderWorkspace();
+
+			fireEvent.click(screen.getByRole("button", { name: "音色：中文 (普通话) · 少女音色" }));
+			await screen.findByRole("dialog", { name: "音色" });
+			fireEvent.click(screen.getByRole("button", { name: "预览 中文 (普通话) · 精英青年音色" }));
+
+			await waitFor(() => {
+				expect(generationApiMocks.previewGenerationVoice).toHaveBeenCalledWith({
+					routeId: "official.minimax-speech-2.8-turbo",
+					voiceId: "male-qn-jingying",
+				});
+			});
+			expect(playMock).toHaveBeenCalledTimes(1);
+			fireEvent.click(
+				await screen.findByRole("button", { name: "暂停 中文 (普通话) · 精英青年音色" }),
+			);
+			expect(generationApiMocks.previewGenerationVoice).toHaveBeenCalledTimes(1);
+			expect(pauseMock).toHaveBeenCalledTimes(1);
+		} finally {
+			Object.defineProperty(globalThis, "Audio", {
+				configurable: true,
+				value: originalAudio,
+				writable: true,
+			});
+		}
 	});
 });

@@ -4,11 +4,20 @@ import coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/ge
 
 // GenerationModelsResponse returns the generation catalog.
 type GenerationModelsResponse struct {
-	Families  []coregeneration.ModelFamily  `json:"families"`
-	Versions  []coregeneration.ModelVersion `json:"versions"`
-	Routes    []coregeneration.ModelRoute   `json:"routes"`
-	Models    []coregeneration.ModelSpec    `json:"models"`
-	Providers []coregeneration.ProviderInfo `json:"providers"`
+	Families      []coregeneration.ModelFamily  `json:"families"`
+	Versions      []coregeneration.ModelVersion `json:"versions"`
+	Routes        []coregeneration.ModelRoute   `json:"routes"`
+	Models        []coregeneration.ModelSpec    `json:"models"`
+	Providers     []coregeneration.ProviderInfo `json:"providers"`
+	VoicePreviews []GenerationVoicePreviewAsset `json:"voicePreviews,omitempty"`
+}
+
+// GenerationVoicePreviewAsset is one built-in local voice preview.
+type GenerationVoicePreviewAsset struct {
+	RouteID  string `json:"routeId"`
+	VoiceID  string `json:"voiceId"`
+	URL      string `json:"url"`
+	MIMEType string `json:"mimeType"`
 }
 
 // GenerationMessageRequest creates or retries a generation request.

@@ -2,20 +2,16 @@ package generation
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 )
 
-const generationVoicePreviewPrompt = "你好，这是一段音色试听。"
-
-// PreviewGenerationVoice generates a short audio sample without creating history.
+// PreviewGenerationVoice returns a bundled local preview sample without creating history.
 func (workflow *GenerationService) PreviewGenerationVoice(
-	ctx context.Context,
+	_ context.Context,
 	payload GenerationVoicePreviewRequest,
 ) (GenerationVoicePreviewResponse, int, error) {
 	routeID := strings.TrimSpace(payload.RouteID)
@@ -35,69 +31,37 @@ func (workflow *GenerationService) PreviewGenerationVoice(
 		return GenerationVoicePreviewResponse{}, http.StatusBadRequest, fmt.Errorf("route %q is %s, not audio", route.ID, route.Kind)
 	}
 
-	provider, err := workflow.newGenerationProvider(route)
+	preview, ok, err := workflow.localVoicePreviewAsset(route.ID, voiceID)
 	if err != nil {
-		return GenerationVoicePreviewResponse{}, http.StatusServiceUnavailable, err
+		return GenerationVoicePreviewResponse{}, http.StatusInternalServerError, err
+	}
+	if !ok {
+		return GenerationVoicePreviewResponse{}, http.StatusNotFound, fmt.Errorf("音色暂无本地试听")
 	}
 
-	params := defaultGenerationRouteParams(route)
-	for key, value := range NormalizeGenerationParams(payload.Params) {
-		params[key] = value
-	}
-	params[string(coregeneration.ParamVoiceID)] = voiceID
-	normalizedParams, err := coregeneration.NormalizeRouteParams(route, params)
-	if err != nil {
-		return GenerationVoicePreviewResponse{}, http.StatusBadRequest, err
-	}
-
-	request := GenerationRequestFromMessage(GenerationMessageRequest{
-		Kind:      string(coregeneration.KindAudio),
-		RouteID:   route.ID,
-		FamilyID:  route.FamilyID,
-		VersionID: route.VersionID,
-		Provider:  route.Provider,
-		ModelID:   route.LegacyModelID,
-		Model:     route.Model,
-		Prompt:    generationVoicePreviewPrompt,
-		Params:    normalizedParams,
-	}, route, nil)
-
-	runCtx, cancel := context.WithTimeout(ctx, generationRequestTimeout)
-	defer cancel()
-
-	response, err := workflow.generateWithProvider(
-		runCtx,
-		provider,
-		request,
-		generationProviderLogContext{Action: "voice-preview"},
-	)
-	if err != nil {
-		return GenerationVoicePreviewResponse{}, http.StatusBadGateway, err
-	}
-
-	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, media.MediaAssetSaveOptions{
-		Source: media.MediaSourcePreview,
-	})
-	message := GenerationResponseFromCore(response, string(coregeneration.KindAudio))
-	if message.Status == "failed" {
-		return GenerationVoicePreviewResponse{}, http.StatusBadGateway, errors.New(message.Message)
-	}
-	if len(message.Assets) == 0 {
-		return GenerationVoicePreviewResponse{}, http.StatusBadGateway, fmt.Errorf("音色预览未返回音频")
-	}
-
-	asset := message.Assets[0]
-	asset.Kind = string(coregeneration.KindAudio)
-	asset.Title = "音色试听"
-	return GenerationVoicePreviewResponse{Asset: asset}, http.StatusOK, nil
+	return GenerationVoicePreviewResponse{
+		Asset: GenerationAsset{
+			Kind:     string(coregeneration.KindAudio),
+			Title:    "音色试听",
+			URL:      preview.URL,
+			MIMEType: preview.MIMEType,
+		},
+	}, http.StatusOK, nil
 }
 
-func defaultGenerationRouteParams(route coregeneration.ModelRoute) map[string]any {
-	params := make(map[string]any, len(route.Params))
-	for _, spec := range route.Params {
-		if spec.Default != nil {
-			params[spec.Name] = spec.Default
-		}
+func (workflow *GenerationService) listVoicePreviewAssets() []GenerationVoicePreviewAsset {
+	previews, err := workflow.voicePreviews.List()
+	if err != nil {
+		return nil
 	}
-	return params
+	return previews
+}
+
+func (workflow *GenerationService) localVoicePreviewAsset(routeID string, voiceID string) (GenerationVoicePreviewAsset, bool, error) {
+	return workflow.voicePreviews.Asset(routeID, voiceID)
+}
+
+// GenerationVoicePreviewContent returns bundled preview audio content for HTTP serving.
+func (workflow *GenerationService) GenerationVoicePreviewContent(routeID string, voiceID string) (GenerationVoicePreviewAsset, []byte, bool, error) {
+	return workflow.voicePreviews.Content(routeID, voiceID)
 }

@@ -1,4 +1,13 @@
-import { Check, ChevronDown, Images, Loader2, Play, SlidersHorizontal, Star } from "lucide-react";
+import {
+	Check,
+	ChevronDown,
+	Images,
+	Loader2,
+	Pause,
+	Play,
+	SlidersHorizontal,
+	Star,
+} from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 import type { GenerationParam } from "@/domains/generation/api/generation";
@@ -87,9 +96,20 @@ export const PrimaryParamControl: React.FC<{
 	onChange: (value: string) => void;
 	onPreviewVoice?: (voiceID: string) => void | Promise<void>;
 	param: GenerationParam;
+	playingVoiceId?: string | null;
+	previewableVoiceIds?: ReadonlySet<string>;
 	previewingVoiceId?: string | null;
 	value: unknown;
-}> = ({ label: triggerLabel, onChange, onPreviewVoice, param, previewingVoiceId, value }) => {
+}> = ({
+	label: triggerLabel,
+	onChange,
+	onPreviewVoice,
+	param,
+	playingVoiceId,
+	previewableVoiceIds,
+	previewingVoiceId,
+	value,
+}) => {
 	const [open, setOpen] = useState(false);
 	const options = param.options ?? [];
 	const selectedValue = String(value ?? param.default ?? options[0]?.value ?? "");
@@ -107,6 +127,8 @@ export const PrimaryParamControl: React.FC<{
 				open={open}
 				options={options}
 				param={param}
+				playingVoiceId={playingVoiceId}
+				previewableVoiceIds={previewableVoiceIds}
 				selectedLabel={selectedLabel}
 				selectedValue={selectedValue}
 				previewingVoiceId={previewingVoiceId}
@@ -218,6 +240,8 @@ const VoiceParamControl: React.FC<{
 	open: boolean;
 	options: NonNullable<GenerationParam["options"]>;
 	param: GenerationParam;
+	playingVoiceId?: string | null;
+	previewableVoiceIds?: ReadonlySet<string>;
 	previewingVoiceId?: string | null;
 	selectedLabel: string;
 	selectedValue: string;
@@ -229,6 +253,8 @@ const VoiceParamControl: React.FC<{
 	open,
 	options,
 	param,
+	playingVoiceId,
+	previewableVoiceIds,
 	previewingVoiceId,
 	selectedLabel,
 	selectedValue,
@@ -367,11 +393,16 @@ const VoiceParamControl: React.FC<{
 									<VoiceOptionButton
 										key={voice.value}
 										favorited={favorites.has(voice.value)}
+										playing={playingVoiceId === voice.value}
 										previewing={previewingVoiceId === voice.value}
 										selected={voice.value === selectedValue}
 										voice={voice}
 										onFavoriteToggle={() => toggleFavorite(voice.value)}
-										onPreview={onPreviewVoice ? () => void onPreviewVoice(voice.value) : undefined}
+										onPreview={
+											onPreviewVoice && previewableVoiceIds?.has(voice.value)
+												? () => void onPreviewVoice(voice.value)
+												: undefined
+										}
 										onSelect={() => {
 											onChange(voice.value);
 											onOpenChange(false);
@@ -421,29 +452,43 @@ const VoiceOptionButton: React.FC<{
 	onFavoriteToggle: () => void;
 	onPreview?: () => void;
 	onSelect: () => void;
+	playing: boolean;
 	previewing: boolean;
 	selected: boolean;
 	voice: VoiceChoice;
-}> = ({ favorited, onFavoriteToggle, onPreview, onSelect, previewing, selected, voice }) => (
+}> = ({
+	favorited,
+	onFavoriteToggle,
+	onPreview,
+	onSelect,
+	playing,
+	previewing,
+	selected,
+	voice,
+}) => (
 	<div
 		className={cn(
 			"group flex min-w-0 items-center gap-2 rounded-[var(--generation-control-radius)] px-1 py-0.5 transition-colors",
 			selected ? "bg-ide-list-active" : "hover:bg-muted/70",
 		)}
 	>
-		<button
-			type="button"
-			aria-label={`预览 ${voice.label}`}
-			className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-foreground transition-colors hover:bg-ide-list-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-			disabled={!onPreview || previewing}
-			onClick={onPreview}
-		>
-			{previewing ? (
-				<Loader2 className="size-3.5 animate-spin" />
-			) : (
-				<Play className="ml-0.5 size-3.5 fill-current" />
-			)}
-		</button>
+		{onPreview ? (
+			<button
+				type="button"
+				aria-label={playing ? `暂停 ${voice.label}` : `预览 ${voice.label}`}
+				className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-foreground transition-colors hover:bg-ide-list-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+				disabled={previewing}
+				onClick={onPreview}
+			>
+				{previewing ? (
+					<Loader2 className="size-3.5 animate-spin" />
+				) : playing ? (
+					<Pause className="size-3.5 fill-current" />
+				) : (
+					<Play className="ml-0.5 size-3.5 fill-current" />
+				)}
+			</button>
+		) : null}
 		<button
 			type="button"
 			aria-label={`选择 ${voice.label}`}

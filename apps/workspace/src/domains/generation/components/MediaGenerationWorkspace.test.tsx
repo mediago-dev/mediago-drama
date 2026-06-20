@@ -364,7 +364,7 @@ describe("MediaGenerationWorkspace", () => {
 		}) as typeof window.requestAnimationFrame;
 	});
 
-	it("caches generated voice previews when the browser blocks autoplay", async () => {
+	it("caches local voice previews from the matching audio family route", async () => {
 		const originalAudio = globalThis.Audio;
 		const playMock = vi
 			.fn<() => Promise<void>>()
@@ -393,13 +393,28 @@ describe("MediaGenerationWorkspace", () => {
 
 		generationApiMocks.previewGenerationVoice.mockResolvedValue({
 			asset: {
-				base64: "cHJldmlldw==",
 				kind: "audio",
 				mimeType: "audio/mpeg",
+				url: "/api/v1/generation/voice-previews/official.minimax-speech-2.8-turbo/male-qn-jingying",
 			},
 		});
 		vi.mocked(useGenerationWorkspace).mockReturnValue({
 			...workspaceDefaults,
+			catalog: {
+				families: [],
+				models: [],
+				providers: [],
+				routes: [],
+				versions: [],
+				voicePreviews: [
+					{
+						mimeType: "audio/mpeg",
+						routeId: "official.minimax-speech-2.8-turbo",
+						url: "/api/v1/generation/voice-previews/official.minimax-speech-2.8-turbo/male-qn-jingying",
+						voiceId: "male-qn-jingying",
+					},
+				],
+			},
 			kind: "audio",
 			selectedFamily: { id: "minimax-speech", label: "MiniMax 国内 Speech" },
 			selectedParams: {
@@ -409,17 +424,29 @@ describe("MediaGenerationWorkspace", () => {
 				...workspaceDefaults.selectedRoute,
 				adapter: "official.minimax.speech",
 				familyId: "minimax-speech",
-				id: "official.minimax-speech-2.8-turbo",
+				id: "official.minimax-speech-2.8-hd",
 				kind: "audio",
-				model: "speech-2.8-turbo",
+				model: "speech-2.8-hd",
 				params: [audioVoiceParam],
 				provider: "minimax",
 				supportsReferenceUrls: false,
-				versionId: "minimax-speech-2.8-turbo",
+				versionId: "minimax-speech-2.8-hd",
 			},
-			selectedVersion: { id: "minimax-speech-2.8-turbo", label: "Minimax-speech-2.8-turbo" },
+			selectedVersion: { id: "minimax-speech-2.8-hd", label: "Minimax-speech-2.8-hd" },
 			visibleFamilies: [{ id: "minimax-speech", label: "MiniMax 国内 Speech" }],
 			visibleFamilyRoutes: [
+				{
+					...workspaceDefaults.selectedRoute,
+					adapter: "official.minimax.speech",
+					familyId: "minimax-speech",
+					id: "official.minimax-speech-2.8-hd",
+					kind: "audio",
+					model: "speech-2.8-hd",
+					params: [audioVoiceParam],
+					provider: "minimax",
+					supportsReferenceUrls: false,
+					versionId: "minimax-speech-2.8-hd",
+				},
 				{
 					...workspaceDefaults.selectedRoute,
 					adapter: "official.minimax.speech",
@@ -433,7 +460,7 @@ describe("MediaGenerationWorkspace", () => {
 					versionId: "minimax-speech-2.8-turbo",
 				},
 			],
-			visibleVersions: [{ id: "minimax-speech-2.8-turbo", label: "Minimax-speech-2.8-turbo" }],
+			visibleVersions: [{ id: "minimax-speech-2.8-hd", label: "Minimax-speech-2.8-hd" }],
 		} as unknown as ReturnType<typeof useGenerationWorkspace>);
 
 		try {
@@ -451,9 +478,6 @@ describe("MediaGenerationWorkspace", () => {
 
 			await waitFor(() => {
 				expect(generationApiMocks.previewGenerationVoice).toHaveBeenCalledWith({
-					params: {
-						voiceId: "male-qn-jingying",
-					},
 					routeId: "official.minimax-speech-2.8-turbo",
 					voiceId: "male-qn-jingying",
 				});
@@ -467,10 +491,14 @@ describe("MediaGenerationWorkspace", () => {
 			await waitFor(() => {
 				expect(playMock).toHaveBeenCalledTimes(2);
 			});
+			fireEvent.click(
+				await screen.findByRole("button", { name: "暂停 中文 (普通话) · 精英青年音色" }),
+			);
 			expect(generationApiMocks.previewGenerationVoice).toHaveBeenCalledTimes(1);
+			expect(pauseMock).toHaveBeenCalledTimes(1);
 			expect(audioSources).toEqual([
-				"data:audio/mpeg;base64,cHJldmlldw==",
-				"data:audio/mpeg;base64,cHJldmlldw==",
+				"/api/v1/generation/voice-previews/official.minimax-speech-2.8-turbo/male-qn-jingying",
+				"/api/v1/generation/voice-previews/official.minimax-speech-2.8-turbo/male-qn-jingying",
 			]);
 		} finally {
 			Object.defineProperty(globalThis, "Audio", {

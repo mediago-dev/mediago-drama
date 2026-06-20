@@ -1,9 +1,15 @@
 import { FileText } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { type GenerationAsset, type GenerationKind } from "@/domains/generation/api/generation";
+import { mutate as mutateSWR } from "swr";
+import {
+	generationModelsKey,
+	type GenerationAsset,
+	type GenerationKind,
+	previewGenerationVoice,
+} from "@/domains/generation/api/generation";
 import { GenerationChatPanel } from "@/domains/generation/components/GenerationChatPanel";
 import {
 	GenerationSetupNotice,
@@ -41,6 +47,8 @@ import { useGenerationWorkspace } from "@/domains/generation/hooks/useGeneration
 import { useGeneratedResultActions } from "@/domains/generation/components/generatedResultActions";
 import { resolveParamGroups } from "@/domains/generation/components/mediaGenerationHelpers";
 import { promptInsertItemsFromLayers } from "@/domains/generation/lib/prompt-insertions";
+import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import { useToast } from "@/hooks/useToast";
 
 export {
 	generationAssetSelectionKey,
@@ -81,6 +89,20 @@ const openDocumentationUrl = async (url: string) => {
 	}
 };
 
+const voicePreviewPlaybackBlockedMessage = "浏览器拦截了自动播放，请再点一次播放。";
+
+const errorMessage = (err: unknown) =>
+	err && typeof err === "object" && "message" in err
+		? String((err as { message?: unknown }).message || "")
+		: "";
+
+const isPlaybackBlockedError = (err: unknown) =>
+	err instanceof DOMException
+		? err.name === "NotAllowedError"
+		: err && typeof err === "object" && "name" in err
+			? String((err as { name?: unknown }).name || "") === "NotAllowedError"
+			: false;
+
 export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	activeEntryId,
 	conversationId,
@@ -102,6 +124,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	uploadIdPrefix,
 }) => {
 	const navigate = useNavigate();
+	const toast = useToast();
 	const ws = useGenerationWorkspace({
 		activeEntryId,
 		conversationId,
@@ -117,6 +140,11 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 		uploadIdPrefix: uploadIdPrefix ?? "generation",
 		onActiveEntryIdChange: onActiveEntryChange,
 	});
+	const voicePreviewAudioRef = useRef<HTMLAudioElement | null>(null);
+	const voicePreviewSourceCacheRef = useRef(new Map<string, string>());
+	const voicePreviewCatalogRefreshRef = useRef("");
+	const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
+	const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
 	const resolvedMediaAssetProjectId =
 		mediaAssetProjectId === undefined ? (projectId?.trim() ?? "") : (mediaAssetProjectId ?? "");
 	const resultActions = useGeneratedResultActions({
@@ -237,6 +265,160 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 		);
 		ws.updateParam(routeGenerationCountParam.name, nextCount);
 	};
+	useEffect(
+		() => () => {
+			voicePreviewAudioRef.current?.pause();
+			if (voicePreviewAudioRef.current) voicePreviewAudioRef.current.onended = null;
+			voicePreviewAudioRef.current = null;
+			voicePreviewSourceCacheRef.current.clear();
+		},
+		[],
+	);
+	const voicePreviewRouteIds = useMemo(() => {
+		const routeIds = new Set<string>();
+		if (ws.selectedRoute.kind !== "audio") return routeIds;
+
+		routeIds.add(ws.selectedRoute.id);
+		for (const route of ws.visibleFamilyRoutes) {
+			if (route.kind === "audio" && route.familyId === ws.selectedRoute.familyId) {
+				routeIds.add(route.id);
+			}
+		}
+		return routeIds;
+	}, [
+		ws.selectedRoute.familyId,
+		ws.selectedRoute.id,
+		ws.selectedRoute.kind,
+		ws.visibleFamilyRoutes,
+	]);
+	const voicePreviewAssetsByVoiceId = useMemo(() => {
+		const assets = new Map<string, NonNullable<typeof ws.catalog.voicePreviews>[number]>();
+		for (const preview of ws.catalog?.voicePreviews ?? []) {
+			if (!voicePreviewRouteIds.has(preview.routeId)) continue;
+			const current = assets.get(preview.voiceId);
+			if (!current || preview.routeId === ws.selectedRoute.id) {
+				assets.set(preview.voiceId, preview);
+			}
+		}
+		return assets;
+	}, [voicePreviewRouteIds, ws.catalog?.voicePreviews, ws.selectedRoute.id]);
+	const previewableVoiceIds = useMemo(
+		() => new Set(voicePreviewAssetsByVoiceId.keys()),
+		[voicePreviewAssetsByVoiceId],
+	);
+	useEffect(() => {
+		if (ws.selectedRoute.kind !== "audio" || voicePreviewAssetsByVoiceId.size > 0) return;
+		if (voicePreviewCatalogRefreshRef.current === ws.selectedRoute.id) return;
+
+		voicePreviewCatalogRefreshRef.current = ws.selectedRoute.id;
+		void mutateSWR(generationModelsKey);
+	}, [voicePreviewAssetsByVoiceId.size, ws.selectedRoute.id, ws.selectedRoute.kind]);
+	const stopVoicePreview = useCallback((voiceID?: string) => {
+		voicePreviewAudioRef.current?.pause();
+		if (voicePreviewAudioRef.current) voicePreviewAudioRef.current.onended = null;
+		voicePreviewAudioRef.current = null;
+		setPlayingVoiceId((current) => (!voiceID || current === voiceID ? null : current));
+	}, []);
+	const playVoicePreviewSource = useCallback(
+		async (source: string, voiceID: string) => {
+			stopVoicePreview();
+			const audio = new Audio(source);
+			audio.onended = () => {
+				if (voicePreviewAudioRef.current !== audio) return;
+
+				voicePreviewAudioRef.current = null;
+				setPlayingVoiceId((current) => (current === voiceID ? null : current));
+			};
+			voicePreviewAudioRef.current = audio;
+			try {
+				await audio.play();
+				setPlayingVoiceId(voiceID);
+			} catch (err) {
+				if (voicePreviewAudioRef.current === audio) {
+					audio.onended = null;
+					voicePreviewAudioRef.current = null;
+				}
+				setPlayingVoiceId((current) => (current === voiceID ? null : current));
+				throw err;
+			}
+		},
+		[stopVoicePreview],
+	);
+	const previewVoice = useCallback(
+		async (voiceID: string) => {
+			const normalizedVoiceID = voiceID.trim();
+			if (!normalizedVoiceID) return;
+			if (playingVoiceId === normalizedVoiceID) {
+				stopVoicePreview(normalizedVoiceID);
+				return;
+			}
+			if (!ws.hasConfiguredRoutesForKind || ws.selectedRoute.kind !== "audio") {
+				toast.warning("当前模型不支持音色预览。");
+				return;
+			}
+			const previewAsset = voicePreviewAssetsByVoiceId.get(normalizedVoiceID);
+			if (!previewAsset) {
+				toast.warning("这个音色暂无本地试听。");
+				return;
+			}
+
+			const cacheKey = JSON.stringify({
+				routeId: previewAsset.routeId,
+				voiceId: normalizedVoiceID,
+			});
+			const cachedSource = voicePreviewSourceCacheRef.current.get(cacheKey);
+			if (cachedSource) {
+				try {
+					await playVoicePreviewSource(cachedSource, normalizedVoiceID);
+				} catch (err) {
+					const message = errorMessage(err);
+					toast.error("音色预览失败", {
+						description: message || "浏览器暂时无法播放这个试听音频。",
+					});
+				}
+				return;
+			}
+
+			setPreviewingVoiceId(normalizedVoiceID);
+			try {
+				const response = await previewGenerationVoice({
+					routeId: previewAsset.routeId,
+					voiceId: normalizedVoiceID,
+				});
+				const source = generationAssetSource(response.asset);
+				if (!source) throw new Error("音色预览未返回可播放音频。");
+
+				voicePreviewSourceCacheRef.current.set(cacheKey, source);
+				try {
+					await playVoicePreviewSource(source, normalizedVoiceID);
+				} catch (err) {
+					if (isPlaybackBlockedError(err)) {
+						toast.warning("试听已生成", {
+							description: voicePreviewPlaybackBlockedMessage,
+						});
+						return;
+					}
+					throw err;
+				}
+			} catch (err) {
+				const message = errorMessage(err);
+				toast.error("音色预览失败", {
+					description: message || "这个音色暂无可播放的本地试听文件。",
+				});
+			} finally {
+				setPreviewingVoiceId((current) => (current === normalizedVoiceID ? null : current));
+			}
+		},
+		[
+			playingVoiceId,
+			playVoicePreviewSource,
+			stopVoicePreview,
+			toast,
+			voicePreviewAssetsByVoiceId,
+			ws.hasConfiguredRoutesForKind,
+			ws.selectedRoute.kind,
+		],
+	);
 	const primaryParamControls = useMemo(
 		() =>
 			primaryParamGroups.map((group) => {
@@ -248,12 +430,24 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 						key={`${group.id}:${param.name}`}
 						label={group.label}
 						param={param}
+						playingVoiceId={param.name === "voiceId" ? playingVoiceId : undefined}
+						previewableVoiceIds={param.name === "voiceId" ? previewableVoiceIds : undefined}
+						previewingVoiceId={previewingVoiceId}
 						value={ws.selectedParams[param.name]}
 						onChange={(value) => ws.updateParam(param.name, value)}
+						onPreviewVoice={previewVoice}
 					/>
 				);
 			}),
-		[primaryParamGroups, ws.selectedParams, ws.updateParam],
+		[
+			previewVoice,
+			playingVoiceId,
+			previewableVoiceIds,
+			previewingVoiceId,
+			primaryParamGroups,
+			ws.selectedParams,
+			ws.updateParam,
+		],
 	);
 	const copyComposerPrompt = () => {
 		void resultActions.copyText(ws.fullPrompt, "没有可复制的完整提示词");
