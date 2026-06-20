@@ -10,6 +10,7 @@ type MediaAssetModel struct {
 	Path              string  `gorm:"column:path;not null"`
 	URL               string  `gorm:"column:url;not null"`
 	SourceURL         string  `gorm:"column:source_url;not null;default:'';index:library_assets_source_url_idx"`
+	ContentHash       string  `gorm:"column:content_hash;not null;default:'';index:library_assets_content_hash_idx"`
 	ProjectID         string  `gorm:"column:project_id;not null;default:'';index:library_assets_project_id_idx"`
 	Source            string  `gorm:"column:source;not null;default:'';index:library_assets_source_idx"`
 	ConversationID    string  `gorm:"column:conversation_id;not null;default:'';index:library_assets_conversation_id_idx"`

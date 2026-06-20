@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"mime/multipart"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -13,11 +14,12 @@ import (
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 )
 
 func TestSaveBase64StoresGeneratedAssetsByProject(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
@@ -39,11 +41,11 @@ func TestSaveBase64StoresGeneratedAssetsByProject(t *testing.T) {
 		t.Fatalf("SaveBase64(global) error = %v", err)
 	}
 
-	wantProjectDir := filepath.Join(projectDir, "library", "assets", "images", "generation")
+	wantProjectDir := mediaAssetTestDateDir(projectAsset, filepath.Join(projectDir, "library"))
 	if got := filepath.Dir(projectAsset.FilePath); got != wantProjectDir {
 		t.Fatalf("project asset dir = %q, want %q", got, wantProjectDir)
 	}
-	wantGlobalDir := filepath.Join(globalDir, "images", "uploads")
+	wantGlobalDir := mediaAssetTestDateDir(globalAsset, globalDir)
 	if got := filepath.Dir(globalAsset.FilePath); got != wantGlobalDir {
 		t.Fatalf("global asset dir = %q, want %q", got, wantGlobalDir)
 	}
@@ -82,7 +84,7 @@ func TestSaveBase64StoresGeneratedAssetsByProject(t *testing.T) {
 
 func TestSaveMultipartFileStoresUploadsByProject(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
@@ -100,7 +102,7 @@ func TestSaveMultipartFileStoresUploadsByProject(t *testing.T) {
 		t.Fatalf("SaveMultipartFile() error = %v", err)
 	}
 
-	wantDir := filepath.Join(projectDir, "library", "assets", "images", "uploads")
+	wantDir := mediaAssetTestDateDir(asset, filepath.Join(projectDir, "library"))
 	if got := filepath.Dir(asset.FilePath); got != wantDir {
 		t.Fatalf("uploaded asset dir = %q, want %q", got, wantDir)
 	}
@@ -114,7 +116,7 @@ func TestSaveMultipartFileStoresUploadsByProject(t *testing.T) {
 
 func TestSaveWithOptionsStoresToolboxGenerationByConversation(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
@@ -132,7 +134,7 @@ func TestSaveWithOptionsStoresToolboxGenerationByConversation(t *testing.T) {
 		t.Fatalf("SaveBase64WithOptions() error = %v", err)
 	}
 
-	wantDir := filepath.Join(globalDir, "images", "toolbox", "conversation-1")
+	wantDir := mediaAssetTestDateDir(asset, globalDir)
 	if got := filepath.Dir(asset.FilePath); got != wantDir {
 		t.Fatalf("toolbox asset dir = %q, want %q", got, wantDir)
 	}
@@ -143,7 +145,7 @@ func TestSaveWithOptionsStoresToolboxGenerationByConversation(t *testing.T) {
 
 func TestSaveTextWithOptionsStoresToolboxTextAsset(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
@@ -160,7 +162,7 @@ func TestSaveTextWithOptionsStoresToolboxTextAsset(t *testing.T) {
 		t.Fatalf("SaveTextWithOptions() error = %v", err)
 	}
 
-	wantDir := filepath.Join(globalDir, "text", "toolbox", "conversation-1")
+	wantDir := mediaAssetTestDateDir(asset, globalDir)
 	if got := filepath.Dir(asset.FilePath); got != wantDir {
 		t.Fatalf("toolbox text dir = %q, want %q", got, wantDir)
 	}
@@ -186,9 +188,165 @@ func TestSaveTextWithOptionsStoresToolboxTextAsset(t *testing.T) {
 	}
 }
 
+func TestSaveTextWithOptionsReusesConversationScopedContentHash(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+	options := MediaAssetSaveOptions{Source: MediaSourceToolbox, ConversationID: "conversation-1"}
+
+	first, err := store.SaveTextWithOptions("same result", "first.txt", "", options)
+	if err != nil {
+		t.Fatalf("SaveTextWithOptions(first) error = %v", err)
+	}
+	second, err := store.SaveTextWithOptions("same result", "second.txt", "", options)
+	if err != nil {
+		t.Fatalf("SaveTextWithOptions(second) error = %v", err)
+	}
+
+	if first.ID != second.ID || first.FilePath != second.FilePath {
+		t.Fatalf("second text asset = %#v, want reused first asset %#v", second, first)
+	}
+	assets, err := store.List("")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(assets) != 1 {
+		t.Fatalf("assets len = %d, want 1", len(assets))
+	}
+}
+
+func TestSaveRemoteAssetWithOptionsReusesConversationScopedSourceURL(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requests++
+		response.Header().Set("Content-Type", "image/png")
+		_, _ = response.Write([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
+	}))
+	defer server.Close()
+	options := MediaAssetSaveOptions{Source: MediaSourceToolbox, ConversationID: "conversation-1"}
+
+	first, err := store.SaveRemoteAssetWithOptions(context.Background(), MediaKindImage, server.URL+"/image.png", options)
+	if err != nil {
+		t.Fatalf("SaveRemoteAssetWithOptions(first) error = %v", err)
+	}
+	second, err := store.SaveRemoteAssetWithOptions(context.Background(), MediaKindImage, server.URL+"/image.png", options)
+	if err != nil {
+		t.Fatalf("SaveRemoteAssetWithOptions(second) error = %v", err)
+	}
+
+	if first.ID != second.ID || first.FilePath != second.FilePath {
+		t.Fatalf("second asset = %#v, want reused first asset %#v", second, first)
+	}
+	if requests != 1 {
+		t.Fatalf("remote requests = %d, want 1", requests)
+	}
+	assets, err := store.List("")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(assets) != 1 {
+		t.Fatalf("assets len = %d, want 1", len(assets))
+	}
+}
+
+func TestSaveRemoteAssetWithOptionsReusesConversationScopedContentHashAcrossURLs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake media tool scripts are POSIX shell scripts")
+	}
+
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+	store.SetMediaToolPaths("", fakeMediaToolsDir(t))
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requests++
+		response.Header().Set("Content-Type", "video/mp4")
+		_, _ = response.Write([]byte("same-video-bytes"))
+	}))
+	defer server.Close()
+	options := MediaAssetSaveOptions{Source: MediaSourceToolbox, ConversationID: "conversation-1"}
+
+	first, err := store.SaveRemoteAssetWithOptions(context.Background(), MediaKindVideo, server.URL+"/video-a.m4v", options)
+	if err != nil {
+		t.Fatalf("SaveRemoteAssetWithOptions(first) error = %v", err)
+	}
+	second, err := store.SaveRemoteAssetWithOptions(context.Background(), MediaKindVideo, server.URL+"/video-b.m4v", options)
+	if err != nil {
+		t.Fatalf("SaveRemoteAssetWithOptions(second) error = %v", err)
+	}
+
+	if first.ID != second.ID || first.FilePath != second.FilePath {
+		t.Fatalf("second video asset = %#v, want reused first asset %#v", second, first)
+	}
+	if requests != 2 {
+		t.Fatalf("remote requests = %d, want 2 because URLs differ and content must be inspected", requests)
+	}
+	assets, err := store.List("")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(assets) != 1 {
+		t.Fatalf("assets len = %d, want 1", len(assets))
+	}
+}
+
+func TestSaveRemoteAssetWithOptionsDoesNotReuseAcrossConversations(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "image/png")
+		_, _ = response.Write([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
+	}))
+	defer server.Close()
+
+	first, err := store.SaveRemoteAssetWithOptions(
+		context.Background(),
+		MediaKindImage,
+		server.URL+"/image.png",
+		MediaAssetSaveOptions{Source: MediaSourceToolbox, ConversationID: "conversation-1"},
+	)
+	if err != nil {
+		t.Fatalf("SaveRemoteAssetWithOptions(first) error = %v", err)
+	}
+	second, err := store.SaveRemoteAssetWithOptions(
+		context.Background(),
+		MediaKindImage,
+		server.URL+"/image.png",
+		MediaAssetSaveOptions{Source: MediaSourceToolbox, ConversationID: "conversation-2"},
+	)
+	if err != nil {
+		t.Fatalf("SaveRemoteAssetWithOptions(second) error = %v", err)
+	}
+
+	if first.ID == second.ID || first.FilePath == second.FilePath {
+		t.Fatalf("second asset = %#v, want a distinct conversation-scoped asset from %#v", second, first)
+	}
+}
+
 func TestSaveWithOptionsStoresProjectSectionImagesByDocumentAndBlock(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
@@ -216,18 +374,18 @@ func TestSaveWithOptionsStoresProjectSectionImagesByDocumentAndBlock(t *testing.
 		t.Fatalf("SaveBase64WithOptions() error = %v", err)
 	}
 
-	wantDir := filepath.Join(projectDir, "library", "assets", "images", "document-1", "block-2")
+	wantDir := mediaAssetTestDateDir(asset, filepath.Join(projectDir, "library"))
 	if got := filepath.Dir(asset.FilePath); got != wantDir {
 		t.Fatalf("section image dir = %q, want %q", got, wantDir)
 	}
-	if asset.RelativePath != filepath.ToSlash(filepath.Join("library", "assets", "images", "document-1", "block-2", filepath.Base(asset.FilePath))) {
+	if asset.RelativePath != mediaAssetTestRelativePath(asset) {
 		t.Fatalf("RelativePath = %q", asset.RelativePath)
 	}
 }
 
 func TestSaveWithOptionsStoresProjectNonSectionMediaByConversation(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
@@ -255,7 +413,7 @@ func TestSaveWithOptionsStoresProjectNonSectionMediaByConversation(t *testing.T)
 		t.Fatalf("SaveBase64WithOptions() error = %v", err)
 	}
 
-	wantDir := filepath.Join(projectDir, "library", "assets", "video", "generation", "conversation-1")
+	wantDir := mediaAssetTestDateDir(asset, filepath.Join(projectDir, "library"))
 	if got := filepath.Dir(asset.FilePath); got != wantDir {
 		t.Fatalf("project video dir = %q, want %q", got, wantDir)
 	}
@@ -263,7 +421,7 @@ func TestSaveWithOptionsStoresProjectNonSectionMediaByConversation(t *testing.T)
 
 func TestSaveGeneratedAssetFileCopiesLocalAssetByID(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
@@ -312,7 +470,7 @@ func TestSaveBase64VideoStoresDerivedMetadataAndPoster(t *testing.T) {
 	}
 
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
@@ -346,6 +504,14 @@ func TestSaveBase64VideoStoresDerivedMetadataAndPoster(t *testing.T) {
 	if _, err := os.Stat(asset.PosterPath); err != nil {
 		t.Fatalf("poster was not written: %v", err)
 	}
+	if got, want := filepath.Dir(asset.PosterPath), shared.WorkspacePathsFor(workspaceRoot).MediaPosterCacheDir(); got != want {
+		t.Fatalf("poster dir = %q, want %q", got, want)
+	}
+	if visiblePoster := filepath.Join(filepath.Dir(asset.FilePath), asset.ID+".poster.jpg"); visiblePoster == asset.PosterPath {
+		t.Fatalf("poster path should not be inside visible library dir: %s", visiblePoster)
+	} else if _, err := os.Stat(visiblePoster); !os.IsNotExist(err) {
+		t.Fatalf("visible poster should not exist at %s, err=%v", visiblePoster, err)
+	}
 
 	got, ok, err := store.Get(asset.ID)
 	if err != nil {
@@ -365,7 +531,7 @@ func TestListBackfillsHistoricalVideoMetadata(t *testing.T) {
 	}
 
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatalf("creating media dir: %v", err)
 	}
@@ -409,6 +575,13 @@ func TestListBackfillsHistoricalVideoMetadata(t *testing.T) {
 	if asset.MetadataStatus != MetadataStatusReady || asset.PosterURL == "" {
 		t.Fatalf("backfilled status/poster = %q/%q, want ready and poster", asset.MetadataStatus, asset.PosterURL)
 	}
+	if got, want := filepath.Dir(asset.PosterPath), shared.WorkspacePathsFor(workspaceRoot).MediaPosterCacheDir(); got != want {
+		t.Fatalf("backfilled poster dir = %q, want %q", got, want)
+	}
+	visiblePoster := filepath.Join(filepath.Dir(filePath), "asset-historical.poster.jpg")
+	if _, err := os.Stat(visiblePoster); !os.IsNotExist(err) {
+		t.Fatalf("visible backfill poster should not exist at %s, err=%v", visiblePoster, err)
+	}
 
 	got, err := repo.GetMediaAsset("asset-historical")
 	if err != nil {
@@ -419,9 +592,85 @@ func TestListBackfillsHistoricalVideoMetadata(t *testing.T) {
 	}
 }
 
+func TestListMovesVisibleVideoPosterToHiddenCache(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake media tool scripts are POSIX shell scripts")
+	}
+
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library")
+	dateDir := filepath.Join(globalDir, "2026-06-21")
+	if err := os.MkdirAll(dateDir, 0o755); err != nil {
+		t.Fatalf("creating media dir: %v", err)
+	}
+	filePath := filepath.Join(dateDir, "asset-ready.mp4")
+	if err := os.WriteFile(filePath, []byte("video-bytes"), 0o600); err != nil {
+		t.Fatalf("writing video: %v", err)
+	}
+	visiblePosterPath := filepath.Join(dateDir, "asset-ready.poster.jpg")
+	if err := os.WriteFile(visiblePosterPath, []byte("old-poster"), 0o600); err != nil {
+		t.Fatalf("writing visible poster: %v", err)
+	}
+
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	if err := repo.CreateMediaAsset(domain.MediaAssetModel{
+		ID:                "asset-ready",
+		Kind:              MediaKindVideo,
+		Filename:          "ready.mp4",
+		MIMEType:          "video/mp4",
+		SizeBytes:         11,
+		Path:              filePath,
+		URL:               "/api/v1/media-assets/asset-ready/content",
+		DurationSeconds:   6.25,
+		Width:             1920,
+		Height:            1080,
+		PosterPath:        visiblePosterPath,
+		PosterURL:         "/api/v1/media-assets/asset-ready/poster",
+		MetadataStatus:    MetadataStatusReady,
+		MetadataUpdatedAt: "2026-06-21T00:00:00Z",
+		CreatedAt:         "2026-06-21T00:00:00Z",
+		UpdatedAt:         "2026-06-21T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("CreateMediaAsset() error = %v", err)
+	}
+
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+	store.SetMediaToolPaths("", fakeMediaToolsDir(t))
+
+	assets, err := store.List("")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(assets) != 1 {
+		t.Fatalf("List() len = %d, want 1", len(assets))
+	}
+	asset := assets[0]
+	wantPosterPath := filepath.Join(shared.WorkspacePathsFor(workspaceRoot).MediaPosterCacheDir(), "asset-ready.poster.jpg")
+	if asset.PosterPath != wantPosterPath {
+		t.Fatalf("poster path = %q, want %q", asset.PosterPath, wantPosterPath)
+	}
+	if _, err := os.Stat(wantPosterPath); err != nil {
+		t.Fatalf("hidden poster should exist: %v", err)
+	}
+	if _, err := os.Stat(visiblePosterPath); !os.IsNotExist(err) {
+		t.Fatalf("visible poster should be removed, err=%v", err)
+	}
+
+	got, err := repo.GetMediaAsset("asset-ready")
+	if err != nil {
+		t.Fatalf("GetMediaAsset() error = %v", err)
+	}
+	if got.PosterPath != wantPosterPath {
+		t.Fatalf("persisted poster path = %q, want %q", got.PosterPath, wantPosterPath)
+	}
+}
+
 func TestSaveBase64StoresGeneratedAssetsByStudioSession(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
@@ -439,7 +688,7 @@ func TestSaveBase64StoresGeneratedAssetsByStudioSession(t *testing.T) {
 		t.Fatalf("SaveBase64ForStudioSession() error = %v", err)
 	}
 
-	wantDir := filepath.Join(globalDir, "images", "toolbox", "conversation-1")
+	wantDir := mediaAssetTestDateDir(asset, globalDir)
 	if got := filepath.Dir(asset.FilePath); got != wantDir {
 		t.Fatalf("studio asset dir = %q, want %q", got, wantDir)
 	}
@@ -453,14 +702,14 @@ func TestSaveBase64StoresGeneratedAssetsByStudioSession(t *testing.T) {
 
 func TestSaveBase64StoresGeneratedAssetsByStudioDir(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
 	}
 	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
 
-	studioDir := filepath.Join(workspaceRoot, "toolbox", "image-generation", "2026-06", "conversation-1")
+	studioDir := shared.WorkspacePathsFor(workspaceRoot).StudioGenerationSessionDir("image", "conversation-1", "2026-06-06T12:00:00Z")
 	asset, err := store.SaveBase64ForStudioDir(
 		MediaKindImage,
 		"image/png",
@@ -472,7 +721,7 @@ func TestSaveBase64StoresGeneratedAssetsByStudioDir(t *testing.T) {
 		t.Fatalf("SaveBase64ForStudioDir() error = %v", err)
 	}
 
-	wantDir := filepath.Join(globalDir, "images", "toolbox", "conversation-1")
+	wantDir := mediaAssetTestDateDir(asset, globalDir)
 	if got := filepath.Dir(asset.FilePath); got != wantDir {
 		t.Fatalf("studio asset dir = %q, want %q", got, wantDir)
 	}
@@ -486,13 +735,13 @@ func TestSaveBase64StoresGeneratedAssetsByStudioDir(t *testing.T) {
 
 func TestServeFilePathRejectsPathsOutsideAllowedRoots(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	outsideDir := t.TempDir()
 	store := &MediaAssets{dir: globalDir, workspaceRoot: workspaceRoot}
 
 	for _, filePath := range []string{
 		filepath.Join(globalDir, "image.png"),
-		filepath.Join(workspaceRoot, "toolbox", "image-generation", "image.png"),
+		filepath.Join(shared.WorkspacePathsFor(workspaceRoot).StudioSessionDir(""), "image-generation", "image.png"),
 	} {
 		resolved, err := store.ServeFilePath(MediaAsset{ID: "asset", FilePath: filePath})
 		if err != nil {
@@ -517,7 +766,7 @@ func TestServeFilePathRejectsPathsOutsideAllowedRoots(t *testing.T) {
 
 func TestServePosterFilePathRejectsPathsOutsideAllowedRoots(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	outsideDir := t.TempDir()
 	store := &MediaAssets{dir: globalDir, workspaceRoot: workspaceRoot}
 
@@ -564,7 +813,7 @@ func requireMediaTestProject(t *testing.T, repo *repository.WorkspaceRepository,
 func TestSaveBase64UsesPersistedProjectDir(t *testing.T) {
 	workspaceRoot := t.TempDir()
 	customProjectDir := filepath.Join(t.TempDir(), "custom-project")
-	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	globalDir := filepath.Join(workspaceRoot, "library")
 	mediaRepo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
@@ -602,10 +851,18 @@ func TestSaveBase64UsesPersistedProjectDir(t *testing.T) {
 		t.Fatalf("SaveBase64() error = %v", err)
 	}
 
-	wantDir := filepath.Join(customProjectDir, "library", "assets", "images", "generation")
+	wantDir := mediaAssetTestDateDir(asset, filepath.Join(customProjectDir, "library"))
 	if got := filepath.Dir(asset.FilePath); got != wantDir {
 		t.Fatalf("asset dir = %q, want %q", got, wantDir)
 	}
+}
+
+func mediaAssetTestDateDir(asset MediaAsset, libraryDir string) string {
+	return filepath.Join(libraryDir, mediaAssetDateDirFromTimestamp(asset.CreatedAt))
+}
+
+func mediaAssetTestRelativePath(asset MediaAsset) string {
+	return filepath.ToSlash(filepath.Join("library", mediaAssetDateDirFromTimestamp(asset.CreatedAt), filepath.Base(asset.FilePath)))
 }
 
 func multipartFileHeader(t *testing.T, filename string, data []byte) *multipart.FileHeader {

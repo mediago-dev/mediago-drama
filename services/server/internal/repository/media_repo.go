@@ -80,6 +80,49 @@ func (repo *MediaAssetRepository) FindMediaAssetBySourceURL(sourceURL string) (d
 	return model, nil
 }
 
+// FindMediaAssetBySourceURLAndScope returns the latest media asset for a source URL in one generation scope.
+func (repo *MediaAssetRepository) FindMediaAssetBySourceURLAndScope(sourceURL string, projectID string, source string, conversationID string) (domain.MediaAssetModel, error) {
+	var model domain.MediaAssetModel
+	err := repo.db.Where(
+		"source_url = ? AND project_id = ? AND source = ? AND conversation_id = ?",
+		strings.TrimSpace(sourceURL),
+		domain.CleanProjectID(projectID),
+		strings.TrimSpace(source),
+		strings.TrimSpace(conversationID),
+	).
+		Order("updated_at DESC").
+		First(&model).Error
+	if IsRecordNotFound(err) {
+		return domain.MediaAssetModel{}, ErrRecordNotFound
+	}
+	if err != nil {
+		return domain.MediaAssetModel{}, fmt.Errorf("finding media asset by source URL and scope: %w", err)
+	}
+	return model, nil
+}
+
+// FindMediaAssetByContentHashAndScope returns the latest generated asset with identical content in one generation scope.
+func (repo *MediaAssetRepository) FindMediaAssetByContentHashAndScope(contentHash string, kind string, projectID string, source string, conversationID string) (domain.MediaAssetModel, error) {
+	var model domain.MediaAssetModel
+	err := repo.db.Where(
+		"content_hash = ? AND kind = ? AND project_id = ? AND source = ? AND conversation_id = ?",
+		strings.TrimSpace(contentHash),
+		strings.TrimSpace(kind),
+		domain.CleanProjectID(projectID),
+		strings.TrimSpace(source),
+		strings.TrimSpace(conversationID),
+	).
+		Order("updated_at DESC").
+		First(&model).Error
+	if IsRecordNotFound(err) {
+		return domain.MediaAssetModel{}, ErrRecordNotFound
+	}
+	if err != nil {
+		return domain.MediaAssetModel{}, fmt.Errorf("finding media asset by content hash and scope: %w", err)
+	}
+	return model, nil
+}
+
 // CreateMediaAsset inserts a media asset.
 func (repo *MediaAssetRepository) CreateMediaAsset(model domain.MediaAssetModel) error {
 	model.ProjectID = domain.CleanProjectID(model.ProjectID)

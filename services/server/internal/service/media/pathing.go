@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 )
+
+const mediaAssetDateDirLayout = "2006-01-02"
 
 type mediaAssetTargetLocation struct {
 	Directory   string
@@ -46,24 +50,17 @@ func normalizeMediaAssetSource(source string) string {
 	}
 }
 
-func (store *MediaAssets) targetLocation(kind string, options MediaAssetSaveOptions) (mediaAssetTargetLocation, error) {
-	kindDir := shared.AssetKindDirName(kind)
+func (store *MediaAssets) targetLocation(options MediaAssetSaveOptions, dateDir string) (mediaAssetTargetLocation, error) {
+	dateDir = strings.TrimSpace(dateDir)
+	if dateDir == "" {
+		dateDir = mediaAssetDateDirForTime(time.Now())
+	}
 	if options.ProjectID != "" {
 		projectDir, err := store.projectDir(options.ProjectID)
 		if err != nil {
 			return mediaAssetTargetLocation{}, err
 		}
-		relativeDir := filepath.Join("library", "assets", kindDir)
-		if kind == MediaKindImage && options.Source == MediaSourceGeneration && strings.TrimSpace(options.SectionID) != "" {
-			documentID, blockID := SectionAssetPathSegments(options.SectionID)
-			relativeDir = filepath.Join(relativeDir, documentID, blockID)
-		} else if options.Source == MediaSourceUpload {
-			relativeDir = filepath.Join(relativeDir, "uploads")
-		} else if options.ConversationID != "" {
-			relativeDir = filepath.Join(relativeDir, "generation", options.ConversationID)
-		} else {
-			relativeDir = filepath.Join(relativeDir, "generation")
-		}
+		relativeDir := filepath.Join("library", dateDir)
 		return mediaAssetTargetLocation{
 			Directory:   filepath.Join(projectDir, relativeDir),
 			RelativeDir: filepath.ToSlash(relativeDir),
@@ -78,28 +75,25 @@ func (store *MediaAssets) targetLocation(kind string, options MediaAssetSaveOpti
 			baseDir = defaultMediaDir()
 		}
 	}
-	relativeDir := filepath.Join("library", "assets", kindDir)
-	switch {
-	case options.Source == MediaSourceUpload:
-		relativeDir = filepath.Join(relativeDir, "uploads")
-	case options.Source == MediaSourcePreview:
-		relativeDir = filepath.Join(relativeDir, "previews")
-	case options.Source == MediaSourceToolbox && options.ConversationID != "":
-		relativeDir = filepath.Join(relativeDir, "toolbox", options.ConversationID)
-	case options.Source == MediaSourceToolbox:
-		relativeDir = filepath.Join(relativeDir, "toolbox")
-	case options.ConversationID != "":
-		relativeDir = filepath.Join(relativeDir, "generation", options.ConversationID)
-	default:
-		relativeDir = filepath.Join(relativeDir, "uploads")
-	}
-	storageSubdir := strings.TrimPrefix(relativeDir, filepath.Join("library", "assets"))
+	relativeDir := filepath.Join("library", dateDir)
+	storageSubdir := strings.TrimPrefix(relativeDir, "library")
 	storageSubdir = strings.TrimPrefix(storageSubdir, string(filepath.Separator))
 	directory := filepath.Join(baseDir, storageSubdir)
 	return mediaAssetTargetLocation{
 		Directory:   filepath.Clean(directory),
 		RelativeDir: filepath.ToSlash(relativeDir),
 	}, nil
+}
+
+func mediaAssetDateDirForTime(value time.Time) string {
+	return value.Local().Format(mediaAssetDateDirLayout)
+}
+
+func mediaAssetDateDirFromTimestamp(value string) string {
+	if parsed, err := timestamp.ParseRFC3339Nano(value); err == nil {
+		return mediaAssetDateDirForTime(parsed)
+	}
+	return mediaAssetDateDirForTime(time.Now())
 }
 
 func (store *MediaAssets) projectDir(projectID string) (string, error) {

@@ -200,6 +200,7 @@ func deprecatedStudioProjectRoots(workspaceDir string) []string {
 	paths := shared.WorkspacePathsFor(workspaceDir)
 	return []string{
 		paths.StudioSessionDir(""),
+		filepath.Join(paths.Root, "toolbox"),
 		filepath.Join(paths.Root, "studio"),
 	}
 }

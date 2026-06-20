@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 )
 
 const mediaMetadataTimeout = 45 * time.Second
@@ -37,13 +39,19 @@ func (store *MediaAssets) enrichVideoMetadata(asset MediaAsset, updatedAt string
 	asset.MetadataStatus = MetadataStatusReady
 	asset.MetadataError = ""
 
-	posterPath, err := store.extractVideoPoster(asset.FilePath, asset.ID, metadata.DurationSeconds)
+	previousPosterPath := strings.TrimSpace(asset.PosterPath)
+	posterPath, err := store.extractVideoPoster(asset, metadata.DurationSeconds)
 	if err != nil {
 		asset.MetadataError = err.Error()
 		return asset
 	}
 	asset.PosterPath = posterPath
 	asset.PosterURL = "/api/v1/media-assets/" + url.PathEscape(asset.ID) + "/poster"
+	if previousPosterPath != "" &&
+		!sameMediaAssetPath(previousPosterPath, posterPath) &&
+		!sameMediaAssetPath(previousPosterPath, asset.FilePath) {
+		_ = os.Remove(previousPosterPath)
+	}
 	return asset
 }
 
@@ -81,13 +89,16 @@ func (store *MediaAssets) probeVideoMetadata(filePath string) (probedVideoMetada
 	return metadata, nil
 }
 
-func (store *MediaAssets) extractVideoPoster(filePath string, assetID string, durationSeconds float64) (string, error) {
+func (store *MediaAssets) extractVideoPoster(asset MediaAsset, durationSeconds float64) (string, error) {
 	ffmpegPath, err := ResolveFFmpegPath(store.ffmpegPath, store.ffmpegBinDir)
 	if err != nil {
 		return "", err
 	}
 
-	posterPath := posterPathForVideo(filePath)
+	posterPath, err := store.videoPosterPath(asset)
+	if err != nil {
+		return "", err
+	}
 	seek := posterSeekTime(durationSeconds)
 	ctx, cancel := context.WithTimeout(context.Background(), mediaMetadataTimeout)
 	defer cancel()
@@ -101,7 +112,7 @@ func (store *MediaAssets) extractVideoPoster(filePath string, assetID string, du
 		"-ss",
 		fmt.Sprintf("%.3f", seek),
 		"-i",
-		filePath,
+		asset.FilePath,
 		"-frames:v",
 		"1",
 		"-vf",
@@ -110,7 +121,7 @@ func (store *MediaAssets) extractVideoPoster(filePath string, assetID string, du
 		"3",
 		posterPath,
 	).Run(); err != nil {
-		return "", fmt.Errorf("extracting video poster for %s: %w", assetID, err)
+		return "", fmt.Errorf("extracting video poster for %s: %w", asset.ID, err)
 	}
 	if info, err := os.Stat(posterPath); err != nil || info.Size() == 0 {
 		if err != nil {
@@ -119,6 +130,43 @@ func (store *MediaAssets) extractVideoPoster(filePath string, assetID string, du
 		return "", fmt.Errorf("video poster is empty")
 	}
 	return posterPath, nil
+}
+
+func (store *MediaAssets) videoPosterPath(asset MediaAsset) (string, error) {
+	posterPath, err := store.expectedVideoPosterPath(asset)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(posterPath), 0o755); err != nil {
+		return "", fmt.Errorf("creating video poster cache: %w", err)
+	}
+	return posterPath, nil
+}
+
+func (store *MediaAssets) expectedVideoPosterPath(asset MediaAsset) (string, error) {
+	posterDir, err := store.videoPosterCacheDir(asset)
+	if err != nil {
+		return "", err
+	}
+	return posterPathForVideo(posterDir, asset.ID), nil
+}
+
+func (store *MediaAssets) videoPosterCacheDir(asset MediaAsset) (string, error) {
+	if strings.TrimSpace(asset.ProjectID) != "" {
+		projectDir, err := store.projectDir(asset.ProjectID)
+		if err != nil {
+			return "", err
+		}
+		return shared.ProjectMediaPosterCacheDir(projectDir), nil
+	}
+	if strings.TrimSpace(store.workspaceRoot) != "" {
+		return shared.WorkspacePathsFor(store.workspaceRoot).MediaPosterCacheDir(), nil
+	}
+	baseDir := strings.TrimSpace(store.dir)
+	if baseDir == "" {
+		baseDir = defaultMediaDir()
+	}
+	return filepath.Join(baseDir, ".posters"), nil
 }
 
 type ffprobePayload struct {
@@ -163,12 +211,22 @@ func parsePositiveFloat(value string) float64 {
 	return parsed
 }
 
-func posterPathForVideo(filePath string) string {
-	extension := filepath.Ext(filePath)
-	if extension == "" {
-		return filePath + ".poster.jpg"
+func posterPathForVideo(posterDir string, assetID string) string {
+	return filepath.Join(posterDir, shared.AssetPathSegment(assetID, "asset")+".poster.jpg")
+}
+
+func sameMediaAssetPath(left string, right string) bool {
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	if left == "" || right == "" {
+		return left == right
 	}
-	return strings.TrimSuffix(filePath, extension) + ".poster.jpg"
+	leftAbs, leftErr := filepath.Abs(left)
+	rightAbs, rightErr := filepath.Abs(right)
+	if leftErr == nil && rightErr == nil {
+		return leftAbs == rightAbs
+	}
+	return filepath.Clean(left) == filepath.Clean(right)
 }
 
 func posterSeekTime(durationSeconds float64) float64 {

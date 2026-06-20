@@ -170,6 +170,9 @@ func TestOpenSettingsRepositoriesMigratesAllSettingsSchemas(t *testing.T) {
 	if !repos.DB.Migrator().HasIndex(&domain.MediaAssetModel{}, "library_assets_source_url_idx") {
 		t.Fatal("library_assets should include source_url index")
 	}
+	if !repos.DB.Migrator().HasIndex(&domain.MediaAssetModel{}, "library_assets_content_hash_idx") {
+		t.Fatal("library_assets should include content_hash index")
+	}
 }
 
 func TestEnsureMediaAssetSchemaRenamesLegacyMediaAssetsTable(t *testing.T) {
@@ -218,6 +221,9 @@ func TestEnsureMediaAssetSchemaRenamesLegacyMediaAssetsTable(t *testing.T) {
 	}
 	if !db.Migrator().HasIndex(&domain.MediaAssetModel{}, "library_assets_source_url_idx") {
 		t.Fatal("library_assets should include source_url index")
+	}
+	if !db.Migrator().HasIndex(&domain.MediaAssetModel{}, "library_assets_content_hash_idx") {
+		t.Fatal("library_assets should include content_hash index")
 	}
 	assertSchemaMigrationRecorded(t, db, mediaAssetLibraryTableMigrationKey)
 	if err := EnsureMediaAssetSchema(db); err != nil {

@@ -191,27 +191,22 @@ func (paths WorkspacePaths) DatabasePath() string {
 	return filepath.Join(paths.DatabaseDir(), "app.db")
 }
 
-// LibraryAssetsDir returns the global typed media library root.
+// MediaPosterCacheDir returns the hidden cache for generated video preview posters.
+func (paths WorkspacePaths) MediaPosterCacheDir() string {
+	return filepath.Join(paths.GlobalMetadataDir(), "cache", "media-posters")
+}
+
+// LibraryAssetsDir returns the visible global media library root.
 func (paths WorkspacePaths) LibraryAssetsDir() string {
-	return filepath.Join(paths.Root, "library", "assets")
+	return filepath.Join(paths.Root, "library")
 }
 
-// LibraryAssetKindDir returns the global media library directory for one kind.
-func (paths WorkspacePaths) LibraryAssetKindDir(kind string) string {
-	return filepath.Join(paths.LibraryAssetsDir(), AssetKindDirName(kind))
-}
-
-// ProjectLibraryAssetsDir returns a project's typed media library root.
+// ProjectLibraryAssetsDir returns a project's visible media library root.
 func ProjectLibraryAssetsDir(projectDir string) string {
-	return filepath.Join(ResolveWorkspaceDir(projectDir), "library", "assets")
+	return filepath.Join(ResolveWorkspaceDir(projectDir), "library")
 }
 
-// ProjectLibraryAssetKindDir returns a project's media library directory for one kind.
-func ProjectLibraryAssetKindDir(projectDir string, kind string) string {
-	return filepath.Join(ProjectLibraryAssetsDir(projectDir), AssetKindDirName(kind))
-}
-
-// AssetKindDirName maps media kinds to stable filesystem directory names.
+// AssetKindDirName maps media kinds to legacy filesystem directory names.
 func AssetKindDirName(kind string) string {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case AssetKindImage:
@@ -262,9 +257,9 @@ func (paths WorkspacePaths) AgentDir(projectID string) string {
 func (paths WorkspacePaths) StudioSessionDir(sessionID string) string {
 	sessionID = domain.CleanProjectID(sessionID)
 	if sessionID == "" {
-		return filepath.Join(paths.Root, "toolbox")
+		return filepath.Join(paths.GlobalMetadataDir(), "toolbox")
 	}
-	return filepath.Join(paths.Root, "toolbox", sessionID)
+	return filepath.Join(paths.GlobalMetadataDir(), "toolbox", sessionID)
 }
 
 // StudioRunDir returns the root directory for one studio capability run.
@@ -386,6 +381,11 @@ func ProjectMetadataDir(projectDir string) string {
 	return filepath.Join(ResolveWorkspaceDir(projectDir), metadataDirName)
 }
 
+// ProjectMediaPosterCacheDir returns the hidden project cache for generated video preview posters.
+func ProjectMediaPosterCacheDir(projectDir string) string {
+	return filepath.Join(ProjectMetadataDir(projectDir), "cache", "media-posters")
+}
+
 // DocumentsDir returns the project documents directory.
 func (paths WorkspacePaths) DocumentsDir(projectID string) string {
 	projectDir := paths.ProjectDir(projectID)
@@ -407,19 +407,20 @@ func (paths WorkspacePaths) AgentHistoryPath(projectID string) string {
 // EnsureWorkspaceLayout creates the standard workspace directory tree and config files.
 func EnsureWorkspaceLayout(root string) error {
 	paths := WorkspacePathsFor(root)
+	if err := migrateDeprecatedWorkspaceToolboxDir(paths); err != nil {
+		return err
+	}
 	dirs := []string{
 		paths.Root,
 		paths.ConfigDir(),
 		paths.DatabaseDir(),
 		filepath.Join(paths.GlobalMetadataDir(), "logs"),
 		filepath.Join(paths.GlobalMetadataDir(), "cache"),
+		paths.MediaPosterCacheDir(),
 		filepath.Join(paths.GlobalMetadataDir(), "temp"),
 		filepath.Join(paths.GlobalMetadataDir(), "locks"),
 		filepath.Join(paths.GlobalMetadataDir(), "trash"),
-		paths.LibraryAssetKindDir(AssetKindImage),
-		paths.LibraryAssetKindDir(AssetKindVideo),
-		paths.LibraryAssetKindDir(AssetKindAudio),
-		paths.LibraryAssetKindDir(AssetKindText),
+		paths.LibraryAssetsDir(),
 		paths.AgentDir(""),
 		paths.StudioSessionDir(""),
 	}
@@ -482,10 +483,7 @@ func EnsureProjectLayout(root string, project mediamcp.Project) error {
 	}
 	for _, dir := range []string{
 		filepath.Join(projectDir, "work"),
-		ProjectLibraryAssetKindDir(projectDir, AssetKindImage),
-		ProjectLibraryAssetKindDir(projectDir, AssetKindVideo),
-		ProjectLibraryAssetKindDir(projectDir, AssetKindAudio),
-		ProjectLibraryAssetKindDir(projectDir, AssetKindText),
+		ProjectLibraryAssetsDir(projectDir),
 	} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("creating project directory %s: %w", dir, err)
@@ -500,6 +498,66 @@ func EnsureProjectLayout(root string, project mediamcp.Project) error {
 		"# "+project.Name+"\n\n"+strings.TrimSpace(project.Description)+"\n",
 	); err != nil {
 		return err
+	}
+	return nil
+}
+
+func migrateDeprecatedWorkspaceToolboxDir(paths WorkspacePaths) error {
+	oldDir := filepath.Join(paths.Root, "toolbox")
+	newDir := paths.StudioSessionDir("")
+	oldInfo, err := os.Stat(oldDir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("checking deprecated workspace toolbox directory: %w", err)
+	}
+	if !oldInfo.IsDir() {
+		return nil
+	}
+	if _, err := os.Stat(newDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(filepath.Dir(newDir), 0o755); err != nil {
+			return fmt.Errorf("creating metadata directory for toolbox migration: %w", err)
+		}
+		if err := os.Rename(oldDir, newDir); err == nil {
+			return nil
+		}
+	}
+	if err := os.MkdirAll(newDir, 0o755); err != nil {
+		return fmt.Errorf("creating workspace toolbox metadata directory: %w", err)
+	}
+	if err := moveWorkspaceDirContents(oldDir, newDir); err != nil {
+		return err
+	}
+	_ = os.Remove(oldDir)
+	return nil
+}
+
+func moveWorkspaceDirContents(oldDir string, newDir string) error {
+	entries, err := os.ReadDir(oldDir)
+	if err != nil {
+		return fmt.Errorf("reading deprecated workspace toolbox directory: %w", err)
+	}
+	for _, entry := range entries {
+		oldPath := filepath.Join(oldDir, entry.Name())
+		newPath := filepath.Join(newDir, entry.Name())
+		if _, err := os.Stat(newPath); err == nil {
+			if entry.IsDir() {
+				if err := moveWorkspaceDirContents(oldPath, newPath); err != nil {
+					return err
+				}
+				_ = os.Remove(oldPath)
+			}
+			continue
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("checking toolbox migration target %s: %w", newPath, err)
+		}
+		if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
+			return fmt.Errorf("creating toolbox migration target directory: %w", err)
+		}
+		if err := os.Rename(oldPath, newPath); err != nil {
+			return fmt.Errorf("moving deprecated toolbox path %s: %w", oldPath, err)
+		}
 	}
 	return nil
 }

@@ -95,17 +95,22 @@ func TestWorkspacePathsGlobalProjectAndStudioDirs(t *testing.T) {
 		{
 			name: "studio session",
 			got:  paths.StudioSessionDir("conversation-1"),
-			want: filepath.Join(root, "toolbox", "conversation-1"),
+			want: filepath.Join(root, ".mediago-drama", "toolbox", "conversation-1"),
 		},
 		{
 			name: "studio capability run",
 			got:  paths.StudioRunDir("video.chunk", "run-1", "2026-06-06T12:00:00Z"),
-			want: filepath.Join(root, "toolbox", "video-chunk", "2026-06", "run-1"),
+			want: filepath.Join(root, ".mediago-drama", "toolbox", "video-chunk", "2026-06", "run-1"),
 		},
 		{
 			name: "studio generation session",
 			got:  paths.StudioGenerationSessionDir("text", "conversation-1", "2026-06-06T12:00:00Z"),
-			want: filepath.Join(root, "toolbox", "text-generation", "2026-06", "conversation-1"),
+			want: filepath.Join(root, ".mediago-drama", "toolbox", "text-generation", "2026-06", "conversation-1"),
+		},
+		{
+			name: "media poster cache",
+			got:  paths.MediaPosterCacheDir(),
+			want: filepath.Join(root, ".mediago-drama", "cache", "media-posters"),
 		},
 	}
 	for _, test := range tests {
@@ -114,6 +119,29 @@ func TestWorkspacePathsGlobalProjectAndStudioDirs(t *testing.T) {
 				t.Fatalf("path = %q, want %q", test.got, test.want)
 			}
 		})
+	}
+}
+
+func TestEnsureWorkspaceLayoutMigratesVisibleToolboxToMetadata(t *testing.T) {
+	root := t.TempDir()
+	oldTranscriptPath := filepath.Join(root, "toolbox", "text-generation", "2026-06", "session-1", "transcript.jsonl")
+	if err := os.MkdirAll(filepath.Dir(oldTranscriptPath), 0o755); err != nil {
+		t.Fatalf("creating legacy toolbox dir: %v", err)
+	}
+	if err := os.WriteFile(oldTranscriptPath, []byte(`{"role":"assistant"}`+"\n"), 0o600); err != nil {
+		t.Fatalf("writing legacy transcript: %v", err)
+	}
+
+	if err := EnsureWorkspaceLayout(root); err != nil {
+		t.Fatal(err)
+	}
+
+	newTranscriptPath := filepath.Join(root, ".mediago-drama", "toolbox", "text-generation", "2026-06", "session-1", "transcript.jsonl")
+	if _, err := os.Stat(newTranscriptPath); err != nil {
+		t.Fatalf("transcript should be migrated to metadata toolbox: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "toolbox")); !os.IsNotExist(err) {
+		t.Fatalf("visible toolbox should be removed after migration, err=%v", err)
 	}
 }
 
@@ -138,10 +166,7 @@ func TestEnsureProjectLayoutCreatesMinimalVisibleProjectTree(t *testing.T) {
 
 	for _, path := range []string{
 		filepath.Join(projectDir, "work"),
-		filepath.Join(projectDir, "library", "assets", "images"),
-		filepath.Join(projectDir, "library", "assets", "video"),
-		filepath.Join(projectDir, "library", "assets", "audio"),
-		filepath.Join(projectDir, "library", "assets", "text"),
+		filepath.Join(projectDir, "library"),
 		filepath.Join(projectDir, "project.media.json"),
 		filepath.Join(projectDir, "README.md"),
 	} {
@@ -176,6 +201,10 @@ func TestEnsureProjectLayoutCreatesMinimalVisibleProjectTree(t *testing.T) {
 	for _, path := range []string{
 		filepath.Join(projectDir, "assets", "raw"),
 		filepath.Join(projectDir, "docs", "notes"),
+		filepath.Join(projectDir, "library", "assets", "images"),
+		filepath.Join(projectDir, "library", "assets", "video"),
+		filepath.Join(projectDir, "library", "assets", "audio"),
+		filepath.Join(projectDir, "library", "assets", "text"),
 		filepath.Join(projectDir, "logs"),
 		filepath.Join(projectDir, "canvases", "main.canvas.json"),
 		filepath.Join(projectDir, "workbenches", "clips", "episode-01.clip.json"),

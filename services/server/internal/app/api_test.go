@@ -417,14 +417,20 @@ func TestAPIHandler(t *testing.T) {
 			filepath.Join(workspaceDir, "media.workspace.json"),
 			filepath.Join(workspaceDir, ".mediago-drama", "config", "workspace.json"),
 			filepath.Join(workspaceDir, ".mediago-drama", "db", "app.db"),
+			filepath.Join(workspaceDir, ".mediago-drama", "toolbox"),
+			filepath.Join(workspaceDir, "library"),
+			filepath.Join(workspaceDir, "projects"),
+		} {
+			assertPathExists(t, path)
+		}
+		for _, path := range []string{
 			filepath.Join(workspaceDir, "library", "assets", "images"),
 			filepath.Join(workspaceDir, "library", "assets", "video"),
 			filepath.Join(workspaceDir, "library", "assets", "audio"),
 			filepath.Join(workspaceDir, "library", "assets", "text"),
-			filepath.Join(workspaceDir, "projects"),
 			filepath.Join(workspaceDir, "toolbox"),
 		} {
-			assertPathExists(t, path)
+			assertPathMissing(t, path)
 		}
 
 		nameOnlyCreate := requestJSON(t, projectHandler, http.MethodPost, "/api/v1/projects", `{"name":"无目录项目"}`)

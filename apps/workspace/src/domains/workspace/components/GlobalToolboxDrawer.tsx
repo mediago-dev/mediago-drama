@@ -12,12 +12,13 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import useSWR, { mutate as mutateSWR } from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import {
 	createGenerationConversation,
 	generationConversationsQueryKey,
 	getGenerationConversations,
 	type GenerationConversation,
+	type GenerationConversationsResponse,
 } from "@/domains/generation/api/generation";
 import { Button } from "@/shared/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
@@ -98,6 +99,7 @@ const GlobalToolboxDrawer: React.FC<{
 	const [isCreatingConversation, setIsCreatingConversation] = useState(false);
 	const sheetContentRef = useRef<HTMLDivElement>(null);
 	const toast = useToast();
+	const { mutate } = useSWRConfig();
 
 	const videoConversations = useToolboxConversations("video", open);
 	const imageConversations = useToolboxConversations("image", open);
@@ -145,19 +147,22 @@ const GlobalToolboxDrawer: React.FC<{
 
 	useEffect(() => {
 		if (!open) return;
-		if (
-			activeConversation &&
-			allConversations.some(
-				(conversation) =>
-					conversation.kind === activeConversation.kind &&
-					conversation.id === activeConversation.id,
-			)
-		) {
+		if (activeConversation) {
+			if (
+				allConversations.some(
+					(conversation) =>
+						conversation.kind === activeConversation.kind &&
+						conversation.id === activeConversation.id,
+				)
+			) {
+				return;
+			}
+			if (isLoadingConversations) return;
 			return;
 		}
 		if (allConversations[0]) {
 			setActiveConversation(allConversations[0]);
-		} else if (!isLoadingConversations && allConversations.length > 0 && activeConversation) {
+		} else if (!isLoadingConversations) {
 			setActiveConversation(null);
 		}
 	}, [activeConversation, allConversations, isLoadingConversations, open]);
@@ -186,10 +191,14 @@ const GlobalToolboxDrawer: React.FC<{
 					scopeId: globalToolboxScopeId,
 					title: trimmedTitle,
 				});
-				await mutateSWR(
-					generationConversationsQueryKey(kind, globalToolboxScopeId, {
-						allScopes: true,
-					}),
+				const conversationsKey = generationConversationsQueryKey(kind, globalToolboxScopeId, {
+					allScopes: true,
+				});
+				await mutate(
+					conversationsKey,
+					(current?: GenerationConversationsResponse) =>
+						upsertGenerationConversation(current, conversation),
+					{ revalidate: false },
 				);
 				setActiveConversation(conversation);
 			} catch (err) {
@@ -199,7 +208,7 @@ const GlobalToolboxDrawer: React.FC<{
 				setIsCreatingConversation(false);
 			}
 		},
-		[isCreatingConversation, toast],
+		[isCreatingConversation, mutate, toast],
 	);
 
 	return (
@@ -412,6 +421,23 @@ const ToolboxConversationGroup: React.FC<{
 		)}
 	</section>
 );
+
+const upsertGenerationConversation = (
+	current: GenerationConversationsResponse | undefined,
+	conversation: GenerationConversation,
+): GenerationConversationsResponse => {
+	const conversations = [
+		conversation,
+		...(current?.conversations ?? []).filter(
+			(item) => !(item.kind === conversation.kind && item.id === conversation.id),
+		),
+	].sort(compareGenerationConversationsByUpdatedAt);
+	return {
+		...(current ?? { conversations: [] }),
+		conversations,
+		sessions: conversations,
+	};
+};
 
 const ToolboxConversationItem: React.FC<{
 	conversation: GenerationConversation;

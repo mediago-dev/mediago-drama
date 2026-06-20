@@ -1,6 +1,9 @@
 package media
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestMetadataFromFFprobePayload(t *testing.T) {
 	metadata := metadataFromFFprobePayload(ffprobePayload{
@@ -17,8 +20,10 @@ func TestMetadataFromFFprobePayload(t *testing.T) {
 }
 
 func TestPosterPathForVideo(t *testing.T) {
-	if got := posterPathForVideo("/tmp/video.mp4"); got != "/tmp/video.poster.jpg" {
-		t.Fatalf("posterPathForVideo() = %q, want /tmp/video.poster.jpg", got)
+	cacheDir := filepath.Join("tmp", "posters")
+	want := filepath.Join(cacheDir, "asset-video-1.poster.jpg")
+	if got := posterPathForVideo(cacheDir, "asset video/1"); got != want {
+		t.Fatalf("posterPathForVideo() = %q, want %q", got, want)
 	}
 }
 

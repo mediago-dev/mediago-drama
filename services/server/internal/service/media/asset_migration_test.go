@@ -56,7 +56,11 @@ func TestRunAssetMigrationDryRunAndApply(t *testing.T) {
 	if err := os.WriteFile(oldVideoPath, []byte("video-bytes"), 0o600); err != nil {
 		t.Fatalf("writing video asset: %v", err)
 	}
-	oldTextToolboxDir := filepath.Join(paths.LibraryAssetsDir(), "text", "toolbox", "session-text-old")
+	oldVideoPosterPath := filepath.Join(legacySourceDir, "asset-video.poster.jpg")
+	if err := os.WriteFile(oldVideoPosterPath, []byte("poster-bytes"), 0o600); err != nil {
+		t.Fatalf("writing video poster: %v", err)
+	}
+	oldTextToolboxDir := filepath.Join(workspaceDir, "library", "assets", "text", "toolbox", "session-text-old")
 	if err := os.MkdirAll(oldTextToolboxDir, 0o755); err != nil {
 		t.Fatalf("creating text toolbox dir: %v", err)
 	}
@@ -107,7 +111,7 @@ func TestRunAssetMigrationDryRunAndApply(t *testing.T) {
 			MIMEType:   "video/mp4",
 			SizeBytes:  11,
 			Path:       oldVideoPath,
-			PosterPath: filepath.Join(legacySourceDir, "asset-video.poster.jpg"),
+			PosterPath: oldVideoPosterPath,
 			URL:        "/api/v1/media-assets/asset-video/content",
 			CreatedAt:  "2026-06-20T00:00:00Z",
 			UpdatedAt:  "2026-06-20T00:00:00Z",
@@ -153,8 +157,10 @@ func TestRunAssetMigrationDryRunAndApply(t *testing.T) {
 		t.Fatalf("RunAssetMigration(dry-run) error = %v", err)
 	}
 	sectionEntry := assetMigrationEntryByID(dryRun.Entries, "asset-section")
-	wantSectionPath := filepath.Join(projectDir, "library", "assets", "images", "document-1", "block-2", "asset-section.png")
-	if sectionEntry.NewPath != wantSectionPath || sectionEntry.RelativePath != "library/assets/images/document-1/block-2/asset-section.png" {
+	wantDateDir := mediaAssetDateDirFromTimestamp("2026-06-20T00:00:00Z")
+	wantSectionRelativePath := filepath.ToSlash(filepath.Join("library", wantDateDir, "asset-section.png"))
+	wantSectionPath := filepath.Join(projectDir, "library", wantDateDir, "asset-section.png")
+	if sectionEntry.NewPath != wantSectionPath || sectionEntry.RelativePath != wantSectionRelativePath {
 		t.Fatalf("section entry = %#v, want %s", sectionEntry, wantSectionPath)
 	}
 	if _, err := os.Stat(oldSectionPath); err != nil {
@@ -163,9 +169,10 @@ func TestRunAssetMigrationDryRunAndApply(t *testing.T) {
 	if assetMigrationEntryByID(dryRun.Entries, "asset-missing").Status != "missing" {
 		t.Fatalf("missing entry = %#v", assetMigrationEntryByID(dryRun.Entries, "asset-missing"))
 	}
+	wantVideoPosterPath := filepath.Join(paths.MediaPosterCacheDir(), "asset-video.poster.jpg")
 	videoEntry := assetMigrationEntryByID(dryRun.Entries, "asset-video")
-	if videoEntry.PosterStatus != "missing" || videoEntry.PosterError == "" {
-		t.Fatalf("video poster entry = %#v, want missing poster status", videoEntry)
+	if videoEntry.NewPosterPath != wantVideoPosterPath || videoEntry.PosterStatus != "planned" {
+		t.Fatalf("video poster entry = %#v, want hidden poster path %s", videoEntry, wantVideoPosterPath)
 	}
 	textEntry := assetMigrationEntryByRelativePath(
 		dryRun.Entries,
@@ -198,8 +205,14 @@ func TestRunAssetMigrationDryRunAndApply(t *testing.T) {
 	if _, err := os.Stat(oldSectionPath); !os.IsNotExist(err) {
 		t.Fatalf("old section asset should be moved, err=%v", err)
 	}
+	if _, err := os.Stat(wantVideoPosterPath); err != nil {
+		t.Fatalf("migrated video poster should exist: %v", err)
+	}
+	if _, err := os.Stat(oldVideoPosterPath); !os.IsNotExist(err) {
+		t.Fatalf("old video poster should be moved, err=%v", err)
+	}
 	globalEntry := assetMigrationEntryByID(applied.Entries, "asset-global")
-	if globalEntry.NewPath != filepath.Join(workspaceDir, "library", "assets", "images", "uploads", "asset-global.png") {
+	if globalEntry.NewPath != filepath.Join(workspaceDir, "library", wantDateDir, "asset-global.png") {
 		t.Fatalf("global entry = %#v", globalEntry)
 	}
 
@@ -211,7 +224,7 @@ func TestRunAssetMigrationDryRunAndApply(t *testing.T) {
 		got.Source != MediaSourceGeneration ||
 		got.ConversationID != "conversation-1" ||
 		got.SectionID != "document%201:block%2F2" ||
-		got.RelativePath != "library/assets/images/document-1/block-2/asset-section.png" {
+		got.RelativePath != wantSectionRelativePath {
 		t.Fatalf("migrated model = %#v", got)
 	}
 	missing, err := settingsRepos.MediaAssets.GetMediaAsset("asset-missing")
@@ -220,6 +233,13 @@ func TestRunAssetMigrationDryRunAndApply(t *testing.T) {
 	}
 	if missing.StorageStatus != StorageStatusMissing || missing.StorageError == "" {
 		t.Fatalf("missing model storage = %q/%q, want missing status and error", missing.StorageStatus, missing.StorageError)
+	}
+	videoAsset, err := settingsRepos.MediaAssets.GetMediaAsset("asset-video")
+	if err != nil {
+		t.Fatalf("GetMediaAsset(video) error = %v", err)
+	}
+	if videoAsset.PosterPath != wantVideoPosterPath {
+		t.Fatalf("video poster path = %q, want %q", videoAsset.PosterPath, wantVideoPosterPath)
 	}
 	appliedTextEntry := assetMigrationEntryByRelativePath(
 		applied.Entries,

@@ -95,9 +95,22 @@ describe("GlobalToolboxButton", () => {
 	});
 
 	it("creates a studio conversation from the drawer", async () => {
-		vi.mocked(getGenerationConversations).mockResolvedValue({ conversations: [] });
+		vi.mocked(getGenerationConversations).mockImplementation(async (kind) => ({
+			conversations:
+				kind === "video"
+					? [
+							generationConversation(
+								"video-old",
+								"video",
+								"旧视频会话",
+								"studio",
+								"2026-06-06T10:00:00Z",
+							),
+						]
+					: [],
+		}));
 		vi.mocked(createGenerationConversation).mockResolvedValue(
-			generationConversation("video-new", "video", "视频草稿"),
+			generationConversation("video-new", "video", "视频草稿", "studio", "2026-06-06T13:00:00Z"),
 		);
 
 		renderGlobalToolboxButton();
@@ -118,6 +131,10 @@ describe("GlobalToolboxButton", () => {
 		expect(workspace).toHaveAttribute("data-conversation-id", "video-new");
 		expect(workspace).toHaveAttribute("data-kind", "video");
 		expect(workspace).toHaveAttribute("data-scope-id", "studio");
+
+		fireEvent.click(screen.getByRole("button", { name: "历史会话" }));
+		expect(await screen.findByRole("button", { name: "视频草稿" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "旧视频会话" })).toBeTruthy();
 	});
 
 	it("closes the drawer when the embedded workspace opens provider settings", async () => {

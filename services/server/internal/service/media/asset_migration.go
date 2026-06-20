@@ -324,7 +324,7 @@ func planAssetMigrationEntry(
 		extension = ".bin"
 	}
 
-	relativeDir, rootDir, err := migrationTargetDir(workspaceDir, kind, projectID, source, conversationID, sectionID, projectDirs)
+	relativeDir, rootDir, err := migrationTargetDir(workspaceDir, projectID, mediaAssetDateDirFromTimestamp(asset.CreatedAt), projectDirs)
 	if err != nil {
 		entry.Status = "error"
 		entry.Error = err.Error()
@@ -335,11 +335,12 @@ func planAssetMigrationEntry(
 
 	if entry.OldPosterPath != "" {
 		if _, err := os.Stat(entry.OldPosterPath); err == nil {
-			posterExt := filepath.Ext(entry.OldPosterPath)
-			if posterExt == "" {
-				posterExt = ".jpg"
+			entry.NewPosterPath, err = migrationPosterTargetPath(workspaceDir, projectID, entry.AssetID, projectDirs)
+			if err != nil {
+				entry.Status = "error"
+				entry.Error = err.Error()
+				return entry
 			}
-			entry.NewPosterPath = filepath.Join(filepath.Dir(entry.NewPath), entry.AssetID+".poster"+posterExt)
 			entry.PosterStatus = "planned"
 		} else {
 			entry.PosterStatus = "missing"
@@ -370,40 +371,39 @@ func migrationSourceForAsset(asset domain.MediaAssetModel, task migrationTaskCon
 
 func migrationTargetDir(
 	workspaceDir string,
-	kind string,
 	projectID string,
-	source string,
-	conversationID string,
-	sectionID string,
+	dateDir string,
 	projectDirs map[string]string,
 ) (string, string, error) {
-	kindDir := shared.AssetKindDirName(kind)
+	dateDir = strings.TrimSpace(dateDir)
+	if dateDir == "" {
+		dateDir = mediaAssetDateDirForTime(time.Now())
+	}
+	relativeDir := filepath.Join("library", dateDir)
 	if projectID != "" {
 		projectDir := strings.TrimSpace(projectDirs[projectID])
 		if projectDir == "" {
 			return "", "", fmt.Errorf("project %s was not found", projectID)
 		}
-		relativeDir := filepath.Join("library", "assets", kindDir)
-		if kind == MediaKindImage && source == MediaSourceGeneration && strings.TrimSpace(sectionID) != "" {
-			documentID, blockID := SectionAssetPathSegments(sectionID)
-			relativeDir = filepath.Join(relativeDir, documentID, blockID)
-		} else if source == MediaSourceUpload {
-			relativeDir = filepath.Join(relativeDir, "uploads")
-		} else if conversationID != "" {
-			relativeDir = filepath.Join(relativeDir, "generation", conversationID)
-		} else {
-			relativeDir = filepath.Join(relativeDir, "generation")
-		}
 		return filepath.ToSlash(relativeDir), projectDir, nil
 	}
-
-	relativeDir := filepath.Join("library", "assets", kindDir)
-	if source == MediaSourceToolbox && conversationID != "" {
-		relativeDir = filepath.Join(relativeDir, "toolbox", conversationID)
-	} else {
-		relativeDir = filepath.Join(relativeDir, "uploads")
-	}
 	return filepath.ToSlash(relativeDir), workspaceDir, nil
+}
+
+func migrationPosterTargetPath(
+	workspaceDir string,
+	projectID string,
+	assetID string,
+	projectDirs map[string]string,
+) (string, error) {
+	if projectID != "" {
+		projectDir := strings.TrimSpace(projectDirs[projectID])
+		if projectDir == "" {
+			return "", fmt.Errorf("project %s was not found", projectID)
+		}
+		return posterPathForVideo(shared.ProjectMediaPosterCacheDir(projectDir), assetID), nil
+	}
+	return posterPathForVideo(shared.WorkspacePathsFor(workspaceDir).MediaPosterCacheDir(), assetID), nil
 }
 
 func applyAssetMigrationEntry(entry *AssetMigrationEntry, repo *repository.MediaAssetRepository) error {

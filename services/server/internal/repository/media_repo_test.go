@@ -23,10 +23,11 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 		Path:           "/tmp/draft.png",
 		URL:            "/api/v1/media-assets/asset-1/content",
 		SourceURL:      "https://example.test/draft.png",
+		ContentHash:    "hash-1",
 		Source:         "generation",
 		ConversationID: "conversation-1",
 		SectionID:      "document-a:block-a",
-		RelativePath:   "library/assets/images/document-a/block-a/asset-1.png",
+		RelativePath:   "library/2026-05-22/asset-1.png",
 		CreatedAt:      "2026-05-22T00:00:00Z",
 		UpdatedAt:      "2026-05-22T00:00:00Z",
 	}
@@ -48,6 +49,48 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	}
 	if bySource.ID != asset.ID {
 		t.Fatalf("FindMediaAssetBySourceURL().ID = %q, want %q", bySource.ID, asset.ID)
+	}
+	byScopedSource, err := repo.FindMediaAssetBySourceURLAndScope(
+		asset.SourceURL,
+		asset.ProjectID,
+		asset.Source,
+		asset.ConversationID,
+	)
+	if err != nil {
+		t.Fatalf("FindMediaAssetBySourceURLAndScope() error = %v", err)
+	}
+	if byScopedSource.ID != asset.ID {
+		t.Fatalf("FindMediaAssetBySourceURLAndScope().ID = %q, want %q", byScopedSource.ID, asset.ID)
+	}
+	byContentHash, err := repo.FindMediaAssetByContentHashAndScope(
+		asset.ContentHash,
+		asset.Kind,
+		asset.ProjectID,
+		asset.Source,
+		asset.ConversationID,
+	)
+	if err != nil {
+		t.Fatalf("FindMediaAssetByContentHashAndScope() error = %v", err)
+	}
+	if byContentHash.ID != asset.ID {
+		t.Fatalf("FindMediaAssetByContentHashAndScope().ID = %q, want %q", byContentHash.ID, asset.ID)
+	}
+	if _, err := repo.FindMediaAssetBySourceURLAndScope(
+		asset.SourceURL,
+		asset.ProjectID,
+		asset.Source,
+		"other-conversation",
+	); !errors.Is(err, ErrRecordNotFound) {
+		t.Fatalf("FindMediaAssetBySourceURLAndScope(other) error = %v, want ErrRecordNotFound", err)
+	}
+	if _, err := repo.FindMediaAssetByContentHashAndScope(
+		asset.ContentHash,
+		asset.Kind,
+		asset.ProjectID,
+		asset.Source,
+		"other-conversation",
+	); !errors.Is(err, ErrRecordNotFound) {
+		t.Fatalf("FindMediaAssetByContentHashAndScope(other) error = %v, want ErrRecordNotFound", err)
 	}
 
 	assets, err := repo.ListMediaAssets(10, "")
@@ -97,7 +140,7 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 		"source":          "upload",
 		"conversation_id": "",
 		"section_id":      "",
-		"relative_path":   "library/assets/images/uploads/asset-1.png",
+		"relative_path":   "library/2026-05-22/asset-1.png",
 	}); err != nil {
 		t.Fatalf("UpdateMediaAssetStorage() error = %v", err)
 	}
@@ -105,7 +148,7 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetMediaAsset() after storage update error = %v", err)
 	}
-	if got.Path != "/tmp/final.png" || got.Source != "upload" || got.RelativePath != "library/assets/images/uploads/asset-1.png" {
+	if got.Path != "/tmp/final.png" || got.Source != "upload" || got.RelativePath != "library/2026-05-22/asset-1.png" {
 		t.Fatalf("storage fields = %#v", got)
 	}
 

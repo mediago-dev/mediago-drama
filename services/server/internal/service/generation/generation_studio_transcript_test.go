@@ -19,7 +19,7 @@ func TestAppendStudioTranscriptWritesJSONLAndTextResult(t *testing.T) {
 	}
 	mediaAssets := media.NewMediaAssetsFromRepository(
 		mediaRepo,
-		filepath.Join(workspaceRoot, "library", "assets"),
+		filepath.Join(workspaceRoot, "library"),
 		workspaceRoot,
 		nil,
 		nil,
@@ -42,7 +42,7 @@ func TestAppendStudioTranscriptWritesJSONLAndTextResult(t *testing.T) {
 		Text:   "夜色落下。",
 	})
 
-	sessionDir := filepath.Join(workspaceRoot, "toolbox", "text-generation", "2026-06", "session-text-1")
+	sessionDir := filepath.Join(workspaceRoot, ".mediago-drama", "toolbox", "text-generation", "2026-06", "session-text-1")
 	transcriptPath := filepath.Join(sessionDir, "transcript.jsonl")
 	data, err := os.ReadFile(transcriptPath)
 	if err != nil {
@@ -58,7 +58,8 @@ func TestAppendStudioTranscriptWritesJSONLAndTextResult(t *testing.T) {
 	if !strings.Contains(lines[1], `"role":"assistant"`) || !strings.Contains(lines[1], "夜色落下。") {
 		t.Fatalf("assistant line = %s, want assistant text", lines[1])
 	}
-	if !strings.Contains(lines[1], `"library/assets/text/toolbox/session-text-1/`) ||
+	if !strings.Contains(lines[1], `"library/`) ||
+		strings.Contains(lines[1], `"library/assets/`) ||
 		!strings.Contains(lines[1], `.txt"`) {
 		t.Fatalf("assistant line = %s, want library text file path", lines[1])
 	}
@@ -108,7 +109,7 @@ func TestStudioGenerationAssetUsesGenerationSessionDir(t *testing.T) {
 	}
 	mediaAssets := media.NewMediaAssetsFromRepository(
 		mediaRepo,
-		filepath.Join(workspaceRoot, "library", "assets"),
+		filepath.Join(workspaceRoot, "library"),
 		workspaceRoot,
 		nil,
 		nil,
@@ -127,7 +128,10 @@ func TestStudioGenerationAssetUsesGenerationSessionDir(t *testing.T) {
 		t.Fatalf("saveGenerationBase64Asset() error = %v", err)
 	}
 
-	wantDir := filepath.Join(workspaceRoot, "library", "assets", "images", "toolbox", "session-image-1")
+	if !strings.HasPrefix(asset.RelativePath, "library/") || strings.Contains(asset.RelativePath, "library/assets/") {
+		t.Fatalf("studio generation asset relative path = %q, want library date path", asset.RelativePath)
+	}
+	wantDir := filepath.Join(workspaceRoot, filepath.FromSlash(filepath.Dir(asset.RelativePath)))
 	if got := filepath.Dir(asset.FilePath); got != wantDir {
 		t.Fatalf("studio generation asset dir = %q, want %q", got, wantDir)
 	}
@@ -153,7 +157,7 @@ func TestAgentGenerationAssetUsesGenerationSessionDir(t *testing.T) {
 	}
 	mediaAssets := media.NewMediaAssetsFromRepository(
 		mediaRepo,
-		filepath.Join(workspaceRoot, "library", "assets"),
+		filepath.Join(workspaceRoot, "library"),
 		workspaceRoot,
 		nil,
 		nil,
@@ -172,7 +176,10 @@ func TestAgentGenerationAssetUsesGenerationSessionDir(t *testing.T) {
 		t.Fatalf("saveGenerationBase64Asset() error = %v", err)
 	}
 
-	wantDir := filepath.Join(workspaceRoot, "library", "assets", "images", "toolbox", "project-alpha")
+	if !strings.HasPrefix(asset.RelativePath, "library/") || strings.Contains(asset.RelativePath, "library/assets/") {
+		t.Fatalf("agent generation asset relative path = %q, want library date path", asset.RelativePath)
+	}
+	wantDir := filepath.Join(workspaceRoot, filepath.FromSlash(filepath.Dir(asset.RelativePath)))
 	if got := filepath.Dir(asset.FilePath); got != wantDir {
 		t.Fatalf("agent generation asset dir = %q, want %q", got, wantDir)
 	}

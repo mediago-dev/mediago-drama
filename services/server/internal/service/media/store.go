@@ -2,7 +2,9 @@ package media
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -61,6 +63,7 @@ type MediaAsset struct {
 	SizeBytes         int64   `json:"sizeBytes"`
 	URL               string  `json:"url"`
 	SourceURL         string  `json:"sourceUrl,omitempty"`
+	ContentHash       string  `json:"-"`
 	ProjectID         string  `json:"projectId,omitempty"`
 	Source            string  `json:"source,omitempty"`
 	ConversationID    string  `json:"conversationId,omitempty"`
@@ -311,6 +314,71 @@ func (store *MediaAssets) FindBySourceURL(sourceURL string) (MediaAsset, bool, e
 	return mediaAssetRecordFromModel(model), true, nil
 }
 
+func (store *MediaAssets) FindBySourceURLAndScope(sourceURL string, options MediaAssetSaveOptions) (MediaAsset, bool, error) {
+	if store.initErr != nil {
+		return MediaAsset{}, false, store.initErr
+	}
+	if strings.TrimSpace(sourceURL) == "" {
+		return MediaAsset{}, false, nil
+	}
+	options = normalizeMediaAssetSaveOptions(options)
+
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	model, err := store.repo.FindMediaAssetBySourceURLAndScope(
+		sourceURL,
+		options.ProjectID,
+		options.Source,
+		options.ConversationID,
+	)
+	if repository.IsRecordNotFound(err) {
+		return MediaAsset{}, false, nil
+	}
+	if err != nil {
+		return MediaAsset{}, false, err
+	}
+
+	return mediaAssetRecordFromModel(model), true, nil
+}
+
+func (store *MediaAssets) FindByContentHashAndScope(contentHash string, kind string, options MediaAssetSaveOptions) (MediaAsset, bool, error) {
+	if store.initErr != nil {
+		return MediaAsset{}, false, store.initErr
+	}
+	contentHash = strings.TrimSpace(contentHash)
+	if contentHash == "" {
+		return MediaAsset{}, false, nil
+	}
+	options = normalizeMediaAssetSaveOptions(options)
+
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	model, err := store.repo.FindMediaAssetByContentHashAndScope(
+		contentHash,
+		kind,
+		options.ProjectID,
+		options.Source,
+		options.ConversationID,
+	)
+	if repository.IsRecordNotFound(err) {
+		return MediaAsset{}, false, nil
+	}
+	if err != nil {
+		return MediaAsset{}, false, err
+	}
+
+	asset := mediaAssetRecordFromModel(model)
+	if _, err := store.ServeFilePath(asset); err != nil {
+		return MediaAsset{}, false, nil
+	}
+	if _, err := os.Stat(asset.FilePath); err != nil {
+		return MediaAsset{}, false, nil
+	}
+	return asset, true, nil
+}
+
 func (store *MediaAssets) SaveMultipartFile(header *multipart.FileHeader, projectID string) (MediaAsset, error) {
 	if store.initErr != nil {
 		return MediaAsset{}, store.initErr
@@ -511,12 +579,11 @@ func (store *MediaAssets) saveRemoteAssetWithOptions(ctx context.Context, kind s
 	if remoteURL == "" {
 		return MediaAsset{}, fmt.Errorf("remote asset url is empty")
 	}
-	if strings.TrimSpace(options.ConversationID) == "" {
-		if existing, ok, err := store.FindBySourceURL(remoteURL); err != nil {
-			return MediaAsset{}, err
-		} else if ok {
-			return existing, nil
-		}
+	options = normalizeMediaAssetSaveOptions(options)
+	if existing, ok, err := store.FindBySourceURLAndScope(remoteURL, options); err != nil {
+		return MediaAsset{}, err
+	} else if ok {
+		return existing, nil
 	}
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, remoteURL, nil)
@@ -757,6 +824,18 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 		return MediaAsset{}, unsupportedMediaAssetKindError()
 	}
 
+	nowTime := time.Now()
+	now := timestamp.FormatRFC3339Nano(nowTime)
+	options = normalizeMediaAssetSaveOptions(options)
+	contentHash := mediaAssetContentHash(data)
+	if shouldReuseMediaAssetContent(options.Source) {
+		if existing, ok, err := store.FindByContentHashAndScope(contentHash, kind, options); err != nil {
+			return MediaAsset{}, err
+		} else if ok {
+			return existing, nil
+		}
+	}
+
 	id, err := shared.RandomID("asset")
 	if err != nil {
 		return MediaAsset{}, err
@@ -774,8 +853,7 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 		filename += ext
 	}
 
-	options = normalizeMediaAssetSaveOptions(options)
-	target, err := store.targetLocation(kind, options)
+	target, err := store.targetLocation(options, mediaAssetDateDirForTime(nowTime))
 	if err != nil {
 		return MediaAsset{}, err
 	}
@@ -789,7 +867,6 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 	}
 	relativePath := joinAssetRelativePath(target.RelativeDir, filepath.Base(filePath))
 
-	now := timestamp.NowRFC3339Nano()
 	asset := MediaAsset{
 		ID:             id,
 		Kind:           kind,
@@ -798,6 +875,7 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 		SizeBytes:      int64(len(data)),
 		URL:            "/api/v1/media-assets/" + url.PathEscape(id) + "/content",
 		SourceURL:      strings.TrimSpace(sourceURL),
+		ContentHash:    contentHash,
 		ProjectID:      options.ProjectID,
 		Source:         options.Source,
 		ConversationID: options.ConversationID,
@@ -824,6 +902,7 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 		Path:              asset.FilePath,
 		URL:               asset.URL,
 		SourceURL:         asset.SourceURL,
+		ContentHash:       asset.ContentHash,
 		ProjectID:         asset.ProjectID,
 		Source:            asset.Source,
 		ConversationID:    asset.ConversationID,
@@ -859,6 +938,20 @@ func isSupportedMediaAssetKind(kind string) bool {
 	default:
 		return false
 	}
+}
+
+func shouldReuseMediaAssetContent(source string) bool {
+	switch normalizeMediaAssetSource(source) {
+	case MediaSourceGeneration, MediaSourceToolbox, MediaSourcePreview:
+		return true
+	default:
+		return false
+	}
+}
+
+func mediaAssetContentHash(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 func unsupportedMediaAssetKindError() error {
@@ -1005,6 +1098,9 @@ func (store *MediaAssets) needsVideoMetadataBackfill(asset MediaAsset) bool {
 	if strings.TrimSpace(asset.PosterURL) == "" || strings.TrimSpace(asset.PosterPath) == "" {
 		return true
 	}
+	if expectedPosterPath, err := store.expectedVideoPosterPath(asset); err != nil || !sameMediaAssetPath(asset.PosterPath, expectedPosterPath) {
+		return true
+	}
 	posterPath, err := store.ServePosterFilePath(asset)
 	if err != nil {
 		return true
@@ -1035,6 +1131,7 @@ func mediaAssetRecordFromModel(model mediaAssetModel) MediaAsset {
 		SizeBytes:         model.SizeBytes,
 		URL:               model.URL,
 		SourceURL:         model.SourceURL,
+		ContentHash:       model.ContentHash,
 		ProjectID:         model.ProjectID,
 		Source:            model.Source,
 		ConversationID:    model.ConversationID,
