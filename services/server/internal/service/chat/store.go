@@ -28,8 +28,8 @@ func (store *Service) loadAgentChat(projectID string, sessionIDs ...string) (age
 		return agentChatStateResponse{}, store.initErr
 	}
 
-	store.mu.RLock()
-	defer store.mu.RUnlock()
+	store.mu.Lock()
+	defer store.mu.Unlock()
 
 	sessionID := ""
 	if len(sessionIDs) > 0 {
@@ -494,8 +494,8 @@ func (store *Service) loadAgentEvents(projectID string, sessionID string, afterS
 		return nil, store.initErr
 	}
 
-	store.mu.RLock()
-	defer store.mu.RUnlock()
+	store.mu.Lock()
+	defer store.mu.Unlock()
 
 	return store.loadAgentEventsUnlocked(projectID, sessionID, afterSequence, limit)
 }

@@ -2,9 +2,11 @@ package chat
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
@@ -583,6 +585,53 @@ func TestAgentChatSnapshotKeepsAssistantTextInterleavedWithTools(t *testing.T) {
 		if got[index] != want[index] {
 			t.Fatalf("entry %d = %q, want %q; messages = %#v", index, got[index], want[index], messages)
 		}
+	}
+}
+
+func TestAgentChatConcurrentLoadsSerializeProjectionCaches(t *testing.T) {
+	store := newTestChatStore(t)
+	projectID := "project-concurrent-chat-load"
+	sessionID := "session-concurrent-chat-load"
+	for index := range 50 {
+		if _, err := store.AppendAgentEvent(AgentEvent{
+			ID:        fmt.Sprintf("event-%02d", index),
+			SessionID: sessionID,
+			ProjectID: projectID,
+			RunID:     "run-concurrent",
+			Type:      "agent.message.delta",
+			Message:   fmt.Sprintf("片段 %02d", index),
+			Delta:     fmt.Sprintf("片段 %02d", index),
+			CreatedAt: fmt.Sprintf("2026-05-22T02:01:%02dZ", index%60),
+		}); err != nil {
+			t.Fatalf("appending event %d: %v", index, err)
+		}
+	}
+
+	const goroutineCount = 24
+	const iterationCount = 40
+	start := make(chan struct{})
+	errs := make(chan error, goroutineCount*iterationCount*2)
+	var wg sync.WaitGroup
+	for worker := range goroutineCount {
+		wg.Add(1)
+		go func(worker int) {
+			defer wg.Done()
+			<-start
+			for iteration := range iterationCount {
+				if _, err := store.LoadAgentChat(projectID, sessionID); err != nil {
+					errs <- fmt.Errorf("worker %d chat load %d: %w", worker, iteration, err)
+				}
+				if _, err := store.LoadAgentEvents(projectID, sessionID, 0, 1000); err != nil {
+					errs <- fmt.Errorf("worker %d event load %d: %w", worker, iteration, err)
+				}
+			}
+		}(worker)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
 	}
 }
 

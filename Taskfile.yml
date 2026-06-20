@@ -67,6 +67,7 @@ tasks:
   dev:
     desc: Run the built server binary and web workspace for browser development
     deps:
+      - task: build:server
       - task: prepare-agent
         vars:
           AGENT: "{{.AGENT}}"
@@ -97,6 +98,7 @@ tasks:
   dev:server:
     desc: Run only the built server binary for desktop development
     deps:
+      - task: build:server
       - task: prepare-agent
         vars:
           AGENT: "{{.AGENT}}"
