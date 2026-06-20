@@ -316,6 +316,7 @@ const GlobalToolboxDrawer: React.FC<{
 									conversationTitle={selectedConversation.title}
 									initialKind={selectedConversation.kind}
 									lockKind
+									onOpenSettings={() => onOpenChange(false)}
 									projectHistory={false}
 									requireConversation
 									uploadIdPrefix={`global-toolbox-${selectedConversation.kind}`}

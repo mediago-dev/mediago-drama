@@ -58,10 +58,11 @@ const voiceParam: GenerationParam = {
 
 describe("ReferenceSelectionDialog", () => {
 	afterEach(() => {
+		vi.restoreAllMocks();
 		cleanup();
 	});
 
-	it("filters reference materials by all, video, and image tabs", () => {
+	it("filters reference materials by all, video, image, and audio tabs", () => {
 		render(
 			<ReferenceSelectionDialog
 				disabled={false}
@@ -77,11 +78,18 @@ describe("ReferenceSelectionDialog", () => {
 						mimeType: "video/mp4",
 						url: "/api/v1/media-assets/video-1/content",
 					}),
+					mediaAsset({
+						id: "audio-1",
+						filename: "audio.mp3",
+						kind: "audio",
+						mimeType: "audio/mpeg",
+						url: "/api/v1/media-assets/audio-1/content",
+					}),
 				]}
 				open
 				references={[]}
 				requiresReference={false}
-				selectableKinds={new Set(["image", "video"])}
+				selectableKinds={new Set(["image", "video", "audio"])}
 				selectedAssetIds={[]}
 				onOpenChange={vi.fn()}
 				onRefreshAssets={vi.fn()}
@@ -93,6 +101,7 @@ describe("ReferenceSelectionDialog", () => {
 
 		expect(screen.getByText("still.png")).toBeTruthy();
 		expect(screen.getByText("scene.mp4")).toBeTruthy();
+		expect(screen.getByText("audio.mp3")).toBeTruthy();
 		expect(screen.getByRole("dialog", { name: "选择参考图" })).toBeTruthy();
 
 		const videoTab = screen.getByRole("tab", { name: /视频/ });
@@ -101,6 +110,7 @@ describe("ReferenceSelectionDialog", () => {
 
 		expect(screen.queryByText("still.png")).toBeNull();
 		expect(screen.getByText("scene.mp4")).toBeTruthy();
+		expect(screen.queryByText("audio.mp3")).toBeNull();
 
 		const imageTab = screen.getByRole("tab", { name: /图片/ });
 		fireEvent.mouseDown(imageTab, { button: 0 });
@@ -108,6 +118,53 @@ describe("ReferenceSelectionDialog", () => {
 
 		expect(screen.getByText("still.png")).toBeTruthy();
 		expect(screen.queryByText("scene.mp4")).toBeNull();
+		expect(screen.queryByText("audio.mp3")).toBeNull();
+
+		const audioTab = screen.getByRole("tab", { name: /音频/ });
+		fireEvent.mouseDown(audioTab, { button: 0 });
+		fireEvent.click(audioTab);
+
+		expect(screen.queryByText("still.png")).toBeNull();
+		expect(screen.queryByText("scene.mp4")).toBeNull();
+		expect(screen.getByText("audio.mp3")).toBeTruthy();
+	});
+
+	it("renders audio references with a playback button instead of an image preview", async () => {
+		const play = vi.spyOn(window.HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+		render(
+			<ReferenceSelectionDialog
+				disabled={false}
+				entries={[]}
+				inputId="reference-upload"
+				isUploading={false}
+				mediaAssets={[
+					mediaAsset({
+						id: "audio-1",
+						filename: "audio.mp3",
+						kind: "audio",
+						mimeType: "audio/mpeg",
+						url: "/api/v1/media-assets/audio-1/content",
+					}),
+				]}
+				open
+				references={[]}
+				requiresReference={false}
+				selectableKinds={new Set(["image"])}
+				selectedAssetIds={[]}
+				onOpenChange={vi.fn()}
+				onRefreshAssets={vi.fn()}
+				onRemoveReference={vi.fn()}
+				onToggleReference={vi.fn()}
+				onUpload={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByText("audio.mp3")).toBeTruthy();
+		expect(document.querySelector('img[src="/api/v1/media-assets/audio-1/content"]')).toBeNull();
+
+		fireEvent.click(screen.getByRole("button", { name: "播放 audio.mp3" }));
+
+		await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
 	});
 
 	it("allows callers to label mixed video references as material", () => {
@@ -188,9 +245,11 @@ describe("ReferenceSelectionDialog", () => {
 			'img[src="/api/v1/media-assets/node-image-1/content"]',
 		);
 		expect(nodeImagePreview?.className).toContain("object-contain");
-		expect(nodeImagePreview?.parentElement?.className).toContain("bg-muted-foreground/10");
+		expect(nodeImagePreview?.parentElement?.parentElement?.className).toContain(
+			"bg-muted-foreground/10",
+		);
 
-		fireEvent.click(screen.getByRole("button", { name: /第 01 组/ }));
+		fireEvent.click(screen.getAllByRole("button", { name: /第 01 组/ })[1]);
 
 		expect(onToggleShortcutReference).toHaveBeenCalledWith(nodeImage);
 	});

@@ -21,6 +21,7 @@ const (
 	VersionNanoBananaPro        = "gemini-3-pro-image-preview"
 	VersionNanoBanana25         = "gemini-2.5-flash-image"
 	VersionSeedance20Fast       = "seedance-2.0-fast"
+	VersionSeedance20Mini       = "seedance-2.0-mini"
 	VersionSeedance20           = "seedance-2.0"
 	VersionSeedance20FastVIP    = "seedance-2.0-fast-vip"
 	VersionSeedance20VIP        = "seedance-2.0-vip"

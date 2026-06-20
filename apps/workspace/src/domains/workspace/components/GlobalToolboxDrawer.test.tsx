@@ -24,6 +24,7 @@ vi.mock("@/domains/generation/components/GenerationWorkspace", () => ({
 		conversationScopeId?: string | null;
 		conversationTitle?: string | null;
 		initialKind?: string;
+		onOpenSettings?: () => void;
 	}) => (
 		<div
 			data-testid="global-generation-workspace"
@@ -32,6 +33,9 @@ vi.mock("@/domains/generation/components/GenerationWorkspace", () => ({
 			data-scope-id={props.conversationScopeId ?? ""}
 		>
 			{props.conversationTitle}
+			<button type="button" onClick={props.onOpenSettings}>
+				打开供应商设置
+			</button>
 		</div>
 	),
 }));
@@ -115,6 +119,33 @@ describe("GlobalToolboxButton", () => {
 		expect(workspace).toHaveAttribute("data-kind", "video");
 		expect(workspace).toHaveAttribute("data-scope-id", "studio");
 	});
+
+	it("closes the drawer when the embedded workspace opens provider settings", async () => {
+		vi.mocked(getGenerationConversations).mockImplementation(async (kind) => ({
+			conversations:
+				kind === "audio"
+					? [
+							generationConversation(
+								"audio-one",
+								"audio",
+								"音频会话",
+								"studio",
+								"2026-06-06T14:00:00Z",
+							),
+						]
+					: [],
+		}));
+
+		renderGlobalToolboxButton();
+
+		fireEvent.click(screen.getByRole("button", { name: "打开工具箱" }));
+		expect(await screen.findByRole("dialog", { name: "工具箱" })).toBeTruthy();
+		fireEvent.click(await screen.findByRole("button", { name: "打开供应商设置" }));
+
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog", { name: "工具箱" })).not.toBeInTheDocument(),
+		);
+	});
 });
 
 const renderGlobalToolboxButton = () =>
@@ -127,7 +158,7 @@ const renderGlobalToolboxButton = () =>
 
 const generationConversation = (
 	id: string,
-	kind: "image" | "video" | "text",
+	kind: "image" | "video" | "text" | "audio",
 	title: string,
 	scopeId = "studio",
 	updatedAt = "2026-06-06T11:00:00Z",

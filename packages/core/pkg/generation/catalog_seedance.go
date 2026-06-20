@@ -13,6 +13,19 @@ func dmxSeedanceParams() RouteParamConfig {
 }
 
 func jimengSeedanceParams() RouteParamConfig {
+	return jimengSeedanceRouteParams(false)
+}
+
+func jimengSeedanceVIPParams() RouteParamConfig {
+	return jimengSeedanceRouteParams(true)
+}
+
+func jimengSeedanceRouteParams(allow1080p bool) RouteParamConfig {
+	resolutionOptions := []ParamOption{{Label: "720p", Value: "720p"}}
+	if allow1080p {
+		resolutionOptions = append(resolutionOptions, ParamOption{Label: "1080p", Value: "1080p"})
+	}
+
 	params := []RouteParam{
 		selectRouteParam(ParamAspectRatio, "16:9", []ParamOption{
 			{Label: "16:9", Value: "16:9"},
@@ -22,10 +35,7 @@ func jimengSeedanceParams() RouteParamConfig {
 			{Label: "9:16", Value: "9:16"},
 			{Label: "21:9", Value: "21:9"},
 		}),
-		selectRouteParam(ParamResolution, "720p", []ParamOption{
-			{Label: "720p", Value: "720p"},
-			{Label: "1080p", Value: "1080p"},
-		}),
+		selectRouteParam(ParamResolution, "720p", resolutionOptions),
 		withRouteHelp(selectRouteParam(ParamDuration, "5", jimengSeedanceDurationOptions()), "即梦支持 4-15 秒视频。"),
 	}
 	return routeParamConfig(params, ParamTranslation{

@@ -1,6 +1,6 @@
-import { Check, Film, Loader2, UploadCloud } from "lucide-react";
+import { AudioLines, Check, Film, Loader2, Pause, Play, UploadCloud } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GenerationDialogShell } from "@/domains/generation/components/GenerationDialogShell";
 import {
 	buildGeneratedReferenceOptions,
@@ -111,6 +111,7 @@ const useReferenceSelectionDialogController = ({
 			all: options.length,
 			image: options.filter((option) => option.kind === "image").length,
 			video: options.filter((option) => option.kind === "video").length,
+			audio: options.filter((option) => option.kind === "audio").length,
 		}),
 		[options],
 	);
@@ -184,7 +185,7 @@ const ReferenceSelectionDialogView: React.FC<{
 					<input
 						id={controller.inputId}
 						type="file"
-						accept="image/*,video/*"
+						accept="image/*,video/*,audio/*"
 						className="sr-only"
 						disabled={controller.disabled || controller.isUploading}
 						onChange={controller.onUpload}
@@ -234,7 +235,7 @@ const ReferenceSelectionDialogView: React.FC<{
 					value={controller.kindFilter}
 					onValueChange={(value) => controller.onKindFilterChange(value as ReferenceKindFilter)}
 				>
-					<TabsList className="grid h-8 w-full grid-cols-3 sm:w-72">
+					<TabsList className="grid h-8 w-full grid-cols-4 sm:w-96">
 						{referenceKindTabs.map((tab) => (
 							<TabsTrigger key={tab.value} value={tab.value} className="text-xs">
 								<span>{tab.label}</span>
@@ -247,7 +248,7 @@ const ReferenceSelectionDialogView: React.FC<{
 				</Tabs>
 				{controller.options.length === 0 ? (
 					<div className="flex min-h-56 items-center justify-center rounded-sm border border-dashed border-border bg-muted px-4 text-center text-xs text-muted-foreground">
-						当前项目暂无可选择的图片或视频素材。
+						当前项目暂无可选择的图片、视频或音频素材。
 					</div>
 				) : controller.visibleOptions.length === 0 ? (
 					<div className="flex min-h-56 items-center justify-center rounded-sm border border-dashed border-border bg-muted px-4 text-center text-xs text-muted-foreground">
@@ -284,17 +285,19 @@ const ReferenceSelectionDialogView: React.FC<{
 	);
 };
 
-type ReferenceKindFilter = "all" | "video" | "image";
+type ReferenceKindFilter = "all" | "video" | "image" | "audio";
 
 const referenceKindTabs: Array<{ label: string; value: ReferenceKindFilter }> = [
 	{ label: "全部", value: "all" },
 	{ label: "视频", value: "video" },
 	{ label: "图片", value: "image" },
+	{ label: "音频", value: "audio" },
 ];
 
 const referenceKindFilterLabel = (value: ReferenceKindFilter) => {
 	if (value === "video") return "视频";
 	if (value === "image") return "图片";
+	if (value === "audio") return "音频";
 	return "参考";
 };
 
@@ -352,28 +355,38 @@ const ReferenceShortcutCard: React.FC<{
 	selected: boolean;
 	supported: boolean;
 }> = ({ item, onToggle, selectable, selected, supported }) => (
-	<button
-		type="button"
-		disabled={!selectable}
+	<div
 		className={cn(
 			"min-w-0 overflow-hidden rounded-sm border bg-card text-left transition-colors",
 			selected ? "border-primary ring-1 ring-primary" : "border-border",
 			selectable ? "hover:border-input" : "opacity-60",
 		)}
-		onClick={onToggle}
 	>
 		<div className="relative aspect-[4/3] bg-muted-foreground/10">
-			{item.asset.kind === "video" ? (
-				<GenerationVideoThumbnail source={item.asset.url} />
+			{item.asset.kind === "audio" ? (
+				<ReferenceMediaPreview
+					kind={item.asset.kind}
+					mimeType={item.asset.mimeType}
+					source={item.asset.url}
+					title={item.asset.filename}
+				/>
 			) : (
-				<img src={item.asset.url} alt="" className="size-full object-contain" />
+				<button
+					type="button"
+					disabled={!selectable}
+					className="size-full disabled:cursor-default"
+					aria-label={`选择 ${item.title}`}
+					onClick={onToggle}
+				>
+					<ReferenceMediaPreview
+						kind={item.asset.kind}
+						mimeType={item.asset.mimeType}
+						source={item.asset.url}
+						title={item.asset.filename}
+					/>
+				</button>
 			)}
-			{item.asset.kind === "video" ? (
-				<span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-sm bg-background/90 px-1.5 py-1 text-2xs font-medium text-foreground shadow-sm">
-					<Film className="size-3" />
-					视频
-				</span>
-			) : null}
+			<ReferenceKindBadge kind={item.asset.kind} />
 			{selected ? (
 				<span className="absolute right-1.5 top-1.5 flex items-center gap-1 rounded-sm bg-primary px-1.5 py-1 text-xs font-medium text-primary-foreground shadow-sm">
 					<Check className="size-3" />
@@ -381,13 +394,63 @@ const ReferenceShortcutCard: React.FC<{
 				</span>
 			) : null}
 		</div>
-		<div className="grid gap-1 p-2">
+		<button
+			type="button"
+			disabled={!selectable}
+			className="grid w-full gap-1 p-2 text-left disabled:cursor-default"
+			onClick={onToggle}
+		>
 			<p className="truncate text-xs font-medium text-foreground">{item.title}</p>
 			<p className="truncate text-2xs text-muted-foreground">
 				{supported ? (item.subtitle ?? "可作为参考") : "当前模型不可用"}
 			</p>
+		</button>
+	</div>
+);
+
+const GeneratedReferenceOptionCardContent: React.FC<{
+	onToggle: () => void;
+	option: GeneratedReferenceOption;
+	selectable: boolean;
+	selected: boolean;
+	supported: boolean;
+	title: string;
+}> = ({ onToggle, option, selectable, selected, supported, title }) => (
+	<>
+		<div className="relative aspect-square bg-muted-foreground/10">
+			{option.kind === "audio" ? (
+				<GeneratedReferenceOptionPreview option={option} title={title} />
+			) : (
+				<button
+					type="button"
+					disabled={!selectable}
+					className="size-full disabled:cursor-default"
+					aria-label={`选择 ${title}`}
+					onClick={onToggle}
+				>
+					<GeneratedReferenceOptionPreview option={option} title={title} />
+				</button>
+			)}
+			<ReferenceKindBadge kind={option.kind} />
+			{selected ? (
+				<span className="absolute right-1.5 top-1.5 flex items-center gap-1 rounded-sm bg-primary px-1.5 py-1 text-xs font-medium text-primary-foreground shadow-sm">
+					<Check className="size-3" />
+					已选
+				</span>
+			) : null}
 		</div>
-	</button>
+		<button
+			type="button"
+			disabled={!selectable}
+			className="grid w-full gap-1 p-2 text-left disabled:cursor-default"
+			onClick={onToggle}
+		>
+			<p className="line-clamp-2 text-xs leading-4 text-muted-foreground">{title}</p>
+			<p className="truncate text-xs text-muted-foreground">
+				{referenceOptionStatusText(option, supported)}
+			</p>
+		</button>
+	</>
 );
 
 const GeneratedReferenceOptionCard: React.FC<{
@@ -396,56 +459,138 @@ const GeneratedReferenceOptionCard: React.FC<{
 	selectable: boolean;
 	selected: boolean;
 	supported: boolean;
-}> = ({ option, onToggle, selectable, selected, supported }) => (
-	<button
-		type="button"
-		disabled={!selectable}
-		className={cn(
-			"min-w-0 overflow-hidden rounded-sm border bg-card text-left transition-colors",
-			selected ? "border-primary" : "border-border",
-			selectable ? "hover:border-input" : "opacity-60",
-		)}
-		onClick={onToggle}
-	>
-		<div className="relative aspect-square bg-muted-foreground/10">
-			<GeneratedReferenceOptionPreview option={option} />
-			{option.kind === "video" ? (
-				<span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-sm bg-background/90 px-1.5 py-1 text-2xs font-medium text-foreground shadow-sm">
-					<Film className="size-3" />
-					视频
-				</span>
-			) : null}
-			{selected ? (
-				<span className="absolute right-1.5 top-1.5 flex items-center gap-1 rounded-sm bg-primary px-1.5 py-1 text-xs font-medium text-primary-foreground shadow-sm">
-					<Check className="size-3" />
-					已选
-				</span>
-			) : null}
+}> = ({ option, onToggle, selectable, selected, supported }) => {
+	const title = referenceOptionTitle(option);
+
+	return (
+		<div
+			className={cn(
+				"min-w-0 overflow-hidden rounded-sm border bg-card text-left transition-colors",
+				selected ? "border-primary" : "border-border",
+				selectable ? "hover:border-input" : "opacity-60",
+			)}
+		>
+			<GeneratedReferenceOptionCardContent
+				option={option}
+				selectable={selectable}
+				selected={selected}
+				supported={supported}
+				title={title}
+				onToggle={onToggle}
+			/>
 		</div>
-		<div className="grid gap-1 p-2">
-			<p className="line-clamp-2 text-xs leading-4 text-muted-foreground">
-				{option.entry
-					? entryPromptText(option.entry) ||
-						option.mediaAsset?.filename ||
-						fallbackOptionTitle(option)
-					: option.mediaAsset?.filename || fallbackOptionTitle(option)}
-			</p>
-			<p className="truncate text-xs text-muted-foreground">
-				{referenceOptionStatusText(option, supported)}
-			</p>
-		</div>
-	</button>
+	);
+};
+
+const GeneratedReferenceOptionPreview: React.FC<{
+	option: GeneratedReferenceOption;
+	title: string;
+}> = ({ option, title }) => (
+	<ReferenceMediaPreview
+		kind={option.kind}
+		mimeType={option.mediaAsset?.mimeType}
+		source={option.source}
+		title={title}
+	/>
 );
 
-const GeneratedReferenceOptionPreview: React.FC<{ option: GeneratedReferenceOption }> = ({
-	option,
-}) => {
-	if (option.kind === "video") {
-		return <GenerationVideoThumbnail source={option.source} />;
+const ReferenceMediaPreview: React.FC<{
+	kind: MediaAsset["kind"];
+	mimeType?: string;
+	source: string;
+	title: string;
+}> = ({ kind, mimeType, source, title }) => {
+	if (kind === "video") {
+		return <GenerationVideoThumbnail source={source} />;
 	}
 
-	return <img src={option.source} alt="" className="size-full object-contain" />;
+	if (kind === "audio") {
+		return <ReferenceAudioPreview mimeType={mimeType} source={source} title={title} />;
+	}
+
+	return <img src={source} alt="" className="size-full object-contain" />;
 };
+
+const ReferenceAudioPreview: React.FC<{
+	mimeType?: string;
+	source: string;
+	title: string;
+}> = ({ mimeType, source, title }) => {
+	const audioRef = useRef<HTMLAudioElement | null>(null);
+	const [isPlaying, setIsPlaying] = useState(false);
+	const [playFailed, setPlayFailed] = useState(false);
+
+	const togglePlayback = () => {
+		const audio = audioRef.current;
+		if (!audio) return;
+
+		if (isPlaying) {
+			audio.pause();
+			setIsPlaying(false);
+			return;
+		}
+
+		setPlayFailed(false);
+		const playPromise = audio.play();
+		void playPromise
+			.then(() => setIsPlaying(true))
+			.catch(() => {
+				setIsPlaying(false);
+				setPlayFailed(true);
+			});
+	};
+
+	return (
+		<div className="relative flex size-full items-center justify-center overflow-hidden bg-muted">
+			<audio
+				ref={audioRef}
+				src={source}
+				preload="metadata"
+				className="hidden"
+				onEnded={() => setIsPlaying(false)}
+				onPause={() => setIsPlaying(false)}
+				onPlay={() => setIsPlaying(true)}
+			>
+				{mimeType ? <source src={source} type={mimeType} /> : null}
+			</audio>
+			<AudioLines className="absolute size-12 text-muted-foreground/20" aria-hidden="true" />
+			<button
+				type="button"
+				className="relative flex size-11 items-center justify-center rounded-full border border-border bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				aria-label={`${isPlaying ? "暂停" : "播放"} ${title}`}
+				onClick={(event) => {
+					event.stopPropagation();
+					togglePlayback();
+				}}
+			>
+				{isPlaying ? <Pause className="size-5" /> : <Play className="ml-0.5 size-5" />}
+			</button>
+			{playFailed ? (
+				<span className="absolute bottom-2 rounded-sm bg-background/90 px-1.5 py-0.5 text-2xs text-destructive shadow-sm">
+					无法播放
+				</span>
+			) : null}
+		</div>
+	);
+};
+
+const ReferenceKindBadge: React.FC<{ kind: MediaAsset["kind"] }> = ({ kind }) => {
+	if (kind === "image") return null;
+
+	const Icon = kind === "audio" ? AudioLines : Film;
+
+	return (
+		<span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-sm bg-background/90 px-1.5 py-1 text-2xs font-medium text-foreground shadow-sm">
+			<Icon className="size-3" />
+			{referenceKindFilterLabel(kind)}
+		</span>
+	);
+};
+
+const referenceOptionTitle = (option: GeneratedReferenceOption) =>
+	option.entry
+		? entryPromptText(option.entry) || option.mediaAsset?.filename || fallbackOptionTitle(option)
+		: option.mediaAsset?.filename || fallbackOptionTitle(option);
 
 const referenceOptionStatusText = (option: GeneratedReferenceOption, supported: boolean) => {
 	if (!option.mediaAsset) return "暂不可作为参考";
@@ -456,7 +601,7 @@ const referenceOptionStatusText = (option: GeneratedReferenceOption, supported: 
 };
 
 const fallbackOptionTitle = (option: GeneratedReferenceOption) => {
-	const kindLabel = option.kind === "video" ? "视频" : "图片";
+	const kindLabel = referenceKindFilterLabel(option.kind);
 
 	return option.entry ? `历史生成${kindLabel}` : `项目${kindLabel}素材`;
 };

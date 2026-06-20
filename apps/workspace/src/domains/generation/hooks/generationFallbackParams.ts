@@ -421,6 +421,14 @@ export function dmxSeedanceParams(): GenerationParam[] {
 }
 
 export function jimengSeedanceParams(): GenerationParam[] {
+	return jimengSeedanceParamSet(false);
+}
+
+export function jimengSeedanceVIPParams(): GenerationParam[] {
+	return jimengSeedanceParamSet(true);
+}
+
+function jimengSeedanceParamSet(allow1080p: boolean): GenerationParam[] {
 	return [
 		selectParam("aspectRatio", "比例", "16:9", [
 			{ label: "16:9", value: "16:9" },
@@ -430,10 +438,17 @@ export function jimengSeedanceParams(): GenerationParam[] {
 			{ label: "9:16", value: "9:16" },
 			{ label: "21:9", value: "21:9" },
 		]),
-		selectParam("resolution", "分辨率", "720p", [
-			{ label: "720p", value: "720p" },
-			{ label: "1080p", value: "1080p" },
-		]),
+		selectParam(
+			"resolution",
+			"分辨率",
+			"720p",
+			allow1080p
+				? [
+						{ label: "720p", value: "720p" },
+						{ label: "1080p", value: "1080p" },
+					]
+				: [{ label: "720p", value: "720p" }],
+		),
 		selectParam("duration", "时长", "5", jimengSeedanceDurationOptions()),
 	];
 }

@@ -149,6 +149,12 @@
       "perCallPrice": 0
     },
     {
+      "routeId": "jimeng.seedance-2.0-mini",
+      "currency": "CNY",
+      "unit": "per_call",
+      "perCallPrice": 0
+    },
+    {
       "routeId": "jimeng.seedance-2.0",
       "currency": "CNY",
       "unit": "per_call",

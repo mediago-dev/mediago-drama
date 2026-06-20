@@ -127,13 +127,21 @@ describe("fallback generation catalog params", () => {
 			"resolution",
 			"duration",
 		]);
+		expect(param("jimeng.seedance-2.0-mini", "resolution").options).toEqual([
+			{ label: "720p", value: "720p" },
+		]);
 		expect(param("jimeng.seedance-2.0-vip", "duration").default).toBe("5");
+		expect(param("jimeng.seedance-2.0-vip", "resolution").options).toEqual([
+			{ label: "720p", value: "720p" },
+			{ label: "1080p", value: "1080p" },
+		]);
 		expect(
 			fallbackCatalog.routes
 				.filter((route) => route.id.startsWith("jimeng.seedance-2.0"))
 				.map((route) => route.id),
 		).toEqual([
 			"jimeng.seedance-2.0-fast",
+			"jimeng.seedance-2.0-mini",
 			"jimeng.seedance-2.0",
 			"jimeng.seedance-2.0-fast-vip",
 			"jimeng.seedance-2.0-vip",

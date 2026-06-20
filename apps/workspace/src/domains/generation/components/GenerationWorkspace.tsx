@@ -61,6 +61,7 @@ export interface GenerationWorkspaceProps {
 	lockKind?: boolean;
 	mediaAssetProjectId?: string | null;
 	onActiveEntryChange?: (entryId: string | null) => void;
+	onOpenSettings?: () => void;
 	onSelectGeneratedAsset?: (asset: GenerationAsset) => void;
 	projectHistory?: boolean;
 	projectId?: string;
@@ -92,6 +93,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	lockKind = false,
 	mediaAssetProjectId,
 	onActiveEntryChange,
+	onOpenSettings,
 	onSelectGeneratedAsset,
 	projectHistory = false,
 	projectId,
@@ -256,6 +258,10 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	const copyComposerPrompt = () => {
 		void resultActions.copyText(ws.fullPrompt, "没有可复制的完整提示词");
 	};
+	const openSettings = () => {
+		onOpenSettings?.();
+		navigate("/settings");
+	};
 	const promptSlashItems = useMemo(
 		() => promptInsertItemsFromLayers(ws.composerLayers, ws.kind),
 		[ws.composerLayers, ws.kind],
@@ -389,7 +395,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 				<GenerationSetupNotice
 					isLoading={!ws.hasLiveCatalog}
 					kind={ws.kind}
-					onSettingsClick={() => navigate("/settings")}
+					onSettingsClick={openSettings}
 				/>
 			)}
 		</form>

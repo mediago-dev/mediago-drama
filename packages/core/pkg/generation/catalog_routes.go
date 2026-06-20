@@ -11,6 +11,7 @@ const (
 	RouteJimengSeedream50             = "jimeng.seedream-5.0"
 	RouteJimengSeedream47             = "jimeng.seedream-4.7"
 	RouteJimengSeedance20Fast         = "jimeng.seedance-2.0-fast"
+	RouteJimengSeedance20Mini         = "jimeng.seedance-2.0-mini"
 	RouteJimengSeedance20             = "jimeng.seedance-2.0"
 	RouteJimengSeedance20FastVIP      = "jimeng.seedance-2.0-fast-vip"
 	RouteJimengSeedance20VIP          = "jimeng.seedance-2.0-vip"

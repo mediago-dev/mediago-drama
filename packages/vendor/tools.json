@@ -53,11 +53,11 @@
   },
   "dreamina": {
     "bin": "dreamina",
-    "version": "1.4.5",
+    "version": "1.4.8",
     "platforms": {
       "darwin-arm64": {
         "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_darwin_arm64",
-        "sizeBytes": 27597858
+        "sizeBytes": 27614370
       },
       "darwin-x64": {
         "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_darwin_amd64",
@@ -73,7 +73,7 @@
       },
       "win32-x64": {
         "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_windows_amd64.exe",
-        "sizeBytes": 31878144
+        "sizeBytes": 31878656
       }
     }
   }

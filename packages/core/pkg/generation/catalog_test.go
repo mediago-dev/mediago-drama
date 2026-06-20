@@ -443,12 +443,25 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 	if !jimengSeedance.SupportsReferenceURLs {
 		t.Fatal("jimeng seedance route should support reference images")
 	}
+	jimengSeedanceResolution := mustParam(t, jimengSeedance, "resolution")
+	assertHasOptions(t, jimengSeedanceResolution, "720p")
+	assertLacksOption(t, jimengSeedanceResolution, "1080p")
+
+	jimengSeedanceMini := mustRoute(t, RouteJimengSeedance20Mini)
+	assertHasParams(t, jimengSeedanceMini, "aspectRatio", "resolution", "duration")
+	if jimengSeedanceMini.Model != "seedance2.0mini" {
+		t.Fatalf("jimeng seedance mini model = %q", jimengSeedanceMini.Model)
+	}
+	jimengSeedanceMiniResolution := mustParam(t, jimengSeedanceMini, "resolution")
+	assertHasOptions(t, jimengSeedanceMiniResolution, "720p")
+	assertLacksOption(t, jimengSeedanceMiniResolution, "1080p")
 
 	jimengSeedanceVIP := mustRoute(t, RouteJimengSeedance20VIP)
 	assertHasParams(t, jimengSeedanceVIP, "aspectRatio", "resolution", "duration")
 	if jimengSeedanceVIP.Model != "seedance2.0_vip" {
 		t.Fatalf("jimeng seedance vip model = %q", jimengSeedanceVIP.Model)
 	}
+	assertHasOptions(t, mustParam(t, jimengSeedanceVIP, "resolution"), "720p", "1080p")
 
 	minimaxSpeech := mustRoute(t, RouteOfficialMiniMaxSpeech28HD)
 	if minimaxSpeech.Label != "MiniMax 国内" {
@@ -549,6 +562,16 @@ func assertHasOptions(t *testing.T, param ParamSpec, values ...string) {
 	for _, value := range values {
 		if !options[value] {
 			t.Fatalf("param %q missing option %q", param.Name, value)
+		}
+	}
+}
+
+func assertLacksOption(t *testing.T, param ParamSpec, value string) {
+	t.Helper()
+
+	for _, option := range param.Options {
+		if option.Value == value {
+			t.Fatalf("param %q should not expose option %q", param.Name, value)
 		}
 	}
 }

@@ -191,7 +191,8 @@ export const entryImageAssets = (entry: GenerationEntry) => entryGeneratedAssets
 export const entryReferenceAssets = (entry: GenerationEntry) =>
 	entry.assets?.filter(
 		(asset): asset is typeof asset & { kind: MediaAsset["kind"] } =>
-			(asset.kind === "image" || asset.kind === "video") && Boolean(generationAssetSource(asset)),
+			(asset.kind === "image" || asset.kind === "video" || asset.kind === "audio") &&
+			Boolean(generationAssetSource(asset)),
 	) ?? [];
 
 export const entrySelectionState = (assets: GenerationAsset[], selectedAssetKeys: string[]) => {

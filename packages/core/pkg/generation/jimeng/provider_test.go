@@ -308,6 +308,30 @@ func TestGenerateVideoWithMultipleReferencesUsesMultimodalCLI(t *testing.T) {
 	assertContainsArg(t, gotArgs, "--poll=10")
 }
 
+func TestGenerateVideoUsesMiniRouteModel(t *testing.T) {
+	var gotArgs []string
+	provider := testProvider(t, CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		gotArgs = append([]string{}, args...)
+		return []byte(`{"submit_id":"video_1","gen_status":"querying"}`), nil
+	}))
+
+	_, err := provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindVideo,
+		RouteID: generation.RouteJimengSeedance20Mini,
+		Prompt:  "更快生成一个720p短镜头",
+		Params: map[string]any{
+			"aspectRatio": "16:9",
+			"duration":    "5",
+			"resolution":  "720p",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	assertContainsArg(t, gotArgs, "--model_version=seedance2.0mini")
+	assertContainsArg(t, gotArgs, "--video_resolution=720p")
+}
+
 func TestGenerateVideoPreservesLegacyModelVersionParam(t *testing.T) {
 	var gotArgs []string
 	provider := testProvider(t, CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
