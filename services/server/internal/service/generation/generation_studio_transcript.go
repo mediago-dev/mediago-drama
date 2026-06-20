@@ -10,6 +10,7 @@ import (
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 )
 
@@ -105,32 +106,26 @@ func (workflow *GenerationService) writeLibraryTextResult(conversation Generatio
 	if workflow == nil || workflow.mediaAssets == nil {
 		return ""
 	}
-	workspaceRoot := workflow.mediaAssets.WorkspaceRoot()
-	if strings.TrimSpace(workspaceRoot) == "" {
-		return ""
-	}
 	filename := shared.SafeFilename(domain.CleanProjectID(id))
 	if filename == "" {
 		filename = fmt.Sprintf("text-%d", time.Now().UnixNano())
 	}
 	filename += ".txt"
-	conversationDir := shared.AssetPathSegment(conversation.ID, "conversation")
-	relativePath := filepath.Join(
-		"library",
-		"assets",
-		shared.AssetKindDirName(shared.AssetKindText),
-		"toolbox",
-		conversationDir,
-		filename,
-	)
-	path := filepath.Join(workspaceRoot, relativePath)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+
+	projectID := GenerationProjectIDFromScopeID(conversation.ScopeID)
+	source := media.MediaSourceToolbox
+	if projectID != "" {
+		source = media.MediaSourceGeneration
+	}
+	asset, err := workflow.mediaAssets.SaveTextWithOptions(content, filename, "", media.MediaAssetSaveOptions{
+		ProjectID:      projectID,
+		Source:         source,
+		ConversationID: conversation.ID,
+	})
+	if err != nil {
 		return ""
 	}
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		return ""
-	}
-	return filepath.ToSlash(relativePath)
+	return filepath.ToSlash(asset.RelativePath)
 }
 
 func isStudioGenerationConversation(conversation GenerationConversationRecord) bool {

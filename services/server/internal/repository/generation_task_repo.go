@@ -208,6 +208,62 @@ func (repo *GenerationTaskRepository) UpdateGenerationTaskDeletedAssetSlots(id s
 	return result.RowsAffected > 0, nil
 }
 
+// ReplaceGenerationTaskAssetRows replaces normalized asset rows for one task.
+func (repo *GenerationTaskRepository) ReplaceGenerationTaskAssetRows(taskID string, rows []domain.GenerationTaskAssetModel) error {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil
+	}
+	return repo.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&domain.GenerationTaskAssetModel{}, "task_id = ?", taskID).Error; err != nil {
+			return fmt.Errorf("deleting generation task asset rows: %w", err)
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		if err := tx.Create(&rows).Error; err != nil {
+			return fmt.Errorf("creating generation task asset rows: %w", err)
+		}
+		return nil
+	})
+}
+
+// ReplaceProjectResourceAssetRowsForTask replaces selected project resource rows for one task.
+func (repo *GenerationTaskRepository) ReplaceProjectResourceAssetRowsForTask(taskID string, rows []domain.ProjectResourceAssetModel) error {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil
+	}
+	return repo.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&domain.ProjectResourceAssetModel{}, "task_id = ?", taskID).Error; err != nil {
+			return fmt.Errorf("deleting project resource asset rows: %w", err)
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		if err := tx.Create(&rows).Error; err != nil {
+			return fmt.Errorf("creating project resource asset rows: %w", err)
+		}
+		return nil
+	})
+}
+
+// ListProjectResourceAssets returns selected project resource assets.
+func (repo *GenerationTaskRepository) ListProjectResourceAssets(projectID string) ([]domain.ProjectResourceAssetModel, error) {
+	projectID = domain.CleanProjectID(projectID)
+	models := []domain.ProjectResourceAssetModel{}
+	if projectID == "" {
+		return models, nil
+	}
+	if err := repo.db.
+		Where("project_id = ?", projectID).
+		Order("updated_at DESC").
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing project resource assets: %w", err)
+	}
+	return models, nil
+}
+
 // UpdateGenerationTaskProjectID rewrites legacy project identifiers on tasks.
 func (repo *GenerationTaskRepository) UpdateGenerationTaskProjectID(oldProjectID string, newProjectID string) (int64, error) {
 	oldProjectID = domain.CleanProjectID(oldProjectID)
@@ -280,6 +336,12 @@ func (repo *GenerationTaskRepository) DeleteGenerationConversation(id string) (b
 	deleted := false
 	err := repo.db.Transaction(func(tx *gorm.DB) error {
 		taskIDs := tx.Model(&domain.GenerationTaskModel{}).Select("id").Where("conversation_id = ?", id)
+		if err := tx.Where("task_id IN (?)", taskIDs).Delete(&domain.ProjectResourceAssetModel{}).Error; err != nil {
+			return fmt.Errorf("deleting project resource assets by conversation: %w", err)
+		}
+		if err := tx.Where("task_id IN (?)", taskIDs).Delete(&domain.GenerationTaskAssetModel{}).Error; err != nil {
+			return fmt.Errorf("deleting generation task assets by conversation: %w", err)
+		}
 		if err := tx.Where("task_id IN (?)", taskIDs).Delete(&domain.GenerationTaskAttemptModel{}).Error; err != nil {
 			return fmt.Errorf("deleting generation task attempts by conversation: %w", err)
 		}
@@ -407,15 +469,30 @@ func (repo *GenerationTaskRepository) ListAllGenerationTaskAttempts(taskID strin
 
 // DeleteGenerationTask deletes a task and its attempts.
 func (repo *GenerationTaskRepository) DeleteGenerationTask(id string) (bool, error) {
-	result := repo.db.Delete(&domain.GenerationTaskModel{}, "id = ?", strings.TrimSpace(id))
-	if result.Error != nil {
-		return false, fmt.Errorf("deleting generation task: %w", result.Error)
-	}
-	deleted := result.RowsAffected > 0
-	if deleted {
-		if err := repo.db.Delete(&domain.GenerationTaskAttemptModel{}, "task_id = ?", strings.TrimSpace(id)).Error; err != nil {
-			return false, fmt.Errorf("deleting generation task attempts: %w", err)
+	id = strings.TrimSpace(id)
+	deleted := false
+	err := repo.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Delete(&domain.GenerationTaskModel{}, "id = ?", id)
+		if result.Error != nil {
+			return fmt.Errorf("deleting generation task: %w", result.Error)
 		}
+		deleted = result.RowsAffected > 0
+		if !deleted {
+			return nil
+		}
+		if err := tx.Delete(&domain.ProjectResourceAssetModel{}, "task_id = ?", id).Error; err != nil {
+			return fmt.Errorf("deleting project resource assets: %w", err)
+		}
+		if err := tx.Delete(&domain.GenerationTaskAssetModel{}, "task_id = ?", id).Error; err != nil {
+			return fmt.Errorf("deleting generation task assets: %w", err)
+		}
+		if err := tx.Delete(&domain.GenerationTaskAttemptModel{}, "task_id = ?", id).Error; err != nil {
+			return fmt.Errorf("deleting generation task attempts: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
 	}
 	return deleted, nil
 }

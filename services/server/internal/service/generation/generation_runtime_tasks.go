@@ -279,37 +279,10 @@ func (workflow *GenerationService) ListSelectedGenerationAssets(projectID string
 		return SelectedGenerationAssetsResponse{Assets: []SelectedGenerationAssetRecord{}}, nil
 	}
 
-	tasks, err := workflow.generationTasks.ListByProject("", projectID)
+	assets, err := workflow.generationTasks.ListProjectResourceAssets(projectID)
 	if err != nil {
 		return SelectedGenerationAssetsResponse{}, err
 	}
-
-	assets := make([]SelectedGenerationAssetRecord, 0)
-	for _, task := range tasks {
-		resourceType := selectedGenerationResourceType(task.CapabilityID)
-		if resourceType == "" {
-			continue
-		}
-		for _, asset := range GenerationTaskForClient(task).Assets {
-			if !asset.Selected || asset.Kind != string(coregeneration.KindImage) {
-				continue
-			}
-			assets = append(assets, SelectedGenerationAssetRecord{
-				ID:           fmt.Sprintf("%s:%d", task.ID, asset.SlotIndex),
-				TaskID:       task.ID,
-				AssetIndex:   asset.SlotIndex,
-				ResourceType: resourceType,
-				Kind:         asset.Kind,
-				Title:        strings.TrimSpace(asset.Title),
-				URL:          asset.URL,
-				Base64:       asset.Base64,
-				MIMEType:     asset.MIMEType,
-				CreatedAt:    task.CreatedAt,
-				UpdatedAt:    task.UpdatedAt,
-			})
-		}
-	}
-
 	return SelectedGenerationAssetsResponse{Assets: assets}, nil
 }
 

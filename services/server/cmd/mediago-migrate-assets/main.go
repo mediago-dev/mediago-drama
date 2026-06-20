@@ -41,7 +41,7 @@ func main() {
 		report.Errors,
 	)
 	if !report.Apply {
-		fmt.Println("rerun with --apply to move files and update media_assets")
+		fmt.Println("rerun with --apply to move files and update library_assets")
 	}
 	if report.Errors > 0 {
 		os.Exit(2)

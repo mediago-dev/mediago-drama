@@ -1,10 +1,9 @@
 import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
-import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import type { AgentResourceType } from "@/domains/workspace/lib/workbench-route";
 
 export type AssetLibraryKind = "image" | "video" | "audio" | "text" | "binary";
-export type AssetLibrarySource = "media" | "project" | "selected";
+export type AssetLibrarySource = "media" | "selected";
 export type AssetLibraryKindFilter = "all" | AssetLibraryKind;
 export type AssetLibrarySourceFilter = "all" | AssetLibrarySource;
 export type AssetLibraryResourceFilter = "all" | AgentResourceType;
@@ -17,7 +16,6 @@ export interface AssetLibraryItem {
 	kind: AssetLibraryKind;
 	mediaAsset?: MediaAsset;
 	mimeType: string;
-	projectAsset?: ProjectAsset;
 	selectedAssets: SelectedGenerationAsset[];
 	selectedResourceTypes: AgentResourceType[];
 	sizeBytes: number;
@@ -29,7 +27,6 @@ export interface AssetLibraryItem {
 
 export interface BuildAssetLibraryItemsInput {
 	mediaAssets?: MediaAsset[];
-	projectAssets?: ProjectAsset[];
 	selectedAssets?: SelectedGenerationAsset[];
 }
 
@@ -46,7 +43,6 @@ const mediaContentURLPattern =
 
 export const buildAssetLibraryItems = ({
 	mediaAssets = [],
-	projectAssets = [],
 	selectedAssets = [],
 }: BuildAssetLibraryItemsInput): AssetLibraryItem[] => {
 	const items: AssetLibraryItem[] = [];
@@ -71,24 +67,6 @@ export const buildAssetLibraryItems = ({
 		};
 		items.push(item);
 		for (const key of mediaMatchKeys(asset)) mediaItemByMatchKey.set(key, item);
-	}
-
-	for (const asset of projectAssets) {
-		items.push({
-			createdAt: asset.createdAt,
-			id: asset.id,
-			key: `project:${asset.id}`,
-			kind: normalizeAssetKind(asset.kind),
-			mimeType: asset.mimeType,
-			projectAsset: asset,
-			selectedAssets: [],
-			selectedResourceTypes: [],
-			sizeBytes: asset.sizeBytes,
-			sourceType: "project",
-			title: asset.filename || "untitled",
-			updatedAt: asset.updatedAt,
-			url: asset.url,
-		});
 	}
 
 	for (const asset of selectedAssets) {

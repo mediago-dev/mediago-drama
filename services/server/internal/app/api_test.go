@@ -416,7 +416,7 @@ func TestAPIHandler(t *testing.T) {
 		for _, path := range []string{
 			filepath.Join(workspaceDir, "media.workspace.json"),
 			filepath.Join(workspaceDir, ".mediago-drama", "config", "workspace.json"),
-			filepath.Join(workspaceDir, ".mediago-drama", "db", "mediacli.sqlite"),
+			filepath.Join(workspaceDir, ".mediago-drama", "db", "app.db"),
 			filepath.Join(workspaceDir, "library", "assets", "images"),
 			filepath.Join(workspaceDir, "library", "assets", "video"),
 			filepath.Join(workspaceDir, "library", "assets", "audio"),

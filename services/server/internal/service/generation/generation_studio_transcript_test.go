@@ -58,18 +58,24 @@ func TestAppendStudioTranscriptWritesJSONLAndTextResult(t *testing.T) {
 	if !strings.Contains(lines[1], `"role":"assistant"`) || !strings.Contains(lines[1], "夜色落下。") {
 		t.Fatalf("assistant line = %s, want assistant text", lines[1])
 	}
-	if !strings.Contains(lines[1], `"library/assets/text/toolbox/session-text-1/generation-1.txt"`) {
+	if !strings.Contains(lines[1], `"library/assets/text/toolbox/session-text-1/`) ||
+		!strings.Contains(lines[1], `.txt"`) {
 		t.Fatalf("assistant line = %s, want library text file path", lines[1])
 	}
-	textPath := filepath.Join(
-		workspaceRoot,
-		"library",
-		"assets",
-		"text",
-		"toolbox",
-		"session-text-1",
-		"generation-1.txt",
-	)
+	assets, err := mediaAssets.List("")
+	if err != nil {
+		t.Fatalf("listing media assets: %v", err)
+	}
+	if len(assets) != 1 {
+		t.Fatalf("media assets = %#v, want one text library asset", assets)
+	}
+	if assets[0].Kind != media.MediaKindText ||
+		assets[0].Filename != "generation-1.txt" ||
+		assets[0].Source != media.MediaSourceToolbox ||
+		assets[0].ConversationID != "session-text-1" {
+		t.Fatalf("text asset = %#v, want toolbox text asset for session", assets[0])
+	}
+	textPath := filepath.Join(workspaceRoot, filepath.FromSlash(assets[0].RelativePath))
 	text, err := os.ReadFile(textPath)
 	if err != nil {
 		t.Fatalf("reading text result: %v", err)

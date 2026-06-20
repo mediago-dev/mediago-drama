@@ -1,6 +1,6 @@
 package domain
 
-// MediaAssetModel is the GORM model for local media assets.
+// MediaAssetModel is the GORM model for local asset library entries.
 type MediaAssetModel struct {
 	ID                string  `gorm:"column:id;primaryKey"`
 	Kind              string  `gorm:"column:kind;not null"`
@@ -9,11 +9,11 @@ type MediaAssetModel struct {
 	SizeBytes         int64   `gorm:"column:size_bytes;not null"`
 	Path              string  `gorm:"column:path;not null"`
 	URL               string  `gorm:"column:url;not null"`
-	SourceURL         string  `gorm:"column:source_url;not null;default:'';index:media_assets_source_url_idx"`
-	ProjectID         string  `gorm:"column:project_id;not null;default:'';index:media_assets_project_id_idx"`
-	Source            string  `gorm:"column:source;not null;default:'';index:media_assets_source_idx"`
-	ConversationID    string  `gorm:"column:conversation_id;not null;default:'';index:media_assets_conversation_id_idx"`
-	SectionID         string  `gorm:"column:section_id;not null;default:'';index:media_assets_section_id_idx"`
+	SourceURL         string  `gorm:"column:source_url;not null;default:'';index:library_assets_source_url_idx"`
+	ProjectID         string  `gorm:"column:project_id;not null;default:'';index:library_assets_project_id_idx"`
+	Source            string  `gorm:"column:source;not null;default:'';index:library_assets_source_idx"`
+	ConversationID    string  `gorm:"column:conversation_id;not null;default:'';index:library_assets_conversation_id_idx"`
+	SectionID         string  `gorm:"column:section_id;not null;default:'';index:library_assets_section_id_idx"`
 	RelativePath      string  `gorm:"column:relative_path;not null;default:''"`
 	DurationSeconds   float64 `gorm:"column:duration_seconds;not null;default:0"`
 	Width             int     `gorm:"column:width;not null;default:0"`
@@ -23,11 +23,13 @@ type MediaAssetModel struct {
 	MetadataStatus    string  `gorm:"column:metadata_status;not null;default:''"`
 	MetadataError     string  `gorm:"column:metadata_error;not null;default:''"`
 	MetadataUpdatedAt string  `gorm:"column:metadata_updated_at;not null;default:''"`
+	StorageStatus     string  `gorm:"column:storage_status;not null;default:'ready';index:library_assets_storage_status_idx"`
+	StorageError      string  `gorm:"column:storage_error;not null;default:''"`
 	CreatedAt         string  `gorm:"column:created_at;not null"`
 	UpdatedAt         string  `gorm:"column:updated_at;not null"`
 }
 
 // TableName returns the backing table name.
 func (MediaAssetModel) TableName() string {
-	return "media_assets"
+	return "library_assets"
 }

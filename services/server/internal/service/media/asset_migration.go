@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,6 +41,7 @@ type AssetMigrationReport struct {
 	Updated              int                   `json:"updated"`
 	Moved                int                   `json:"moved"`
 	Missing              int                   `json:"missing"`
+	Registered           int                   `json:"registered"`
 	Skipped              int                   `json:"skipped"`
 	Errors               int                   `json:"errors"`
 	TaskProjectIDUpdates int                   `json:"taskProjectIdUpdates"`
@@ -54,6 +56,8 @@ type AssetMigrationEntry struct {
 	NewPath        string `json:"newPath"`
 	OldPosterPath  string `json:"oldPosterPath,omitempty"`
 	NewPosterPath  string `json:"newPosterPath,omitempty"`
+	PosterStatus   string `json:"posterStatus,omitempty"`
+	PosterError    string `json:"posterError,omitempty"`
 	Source         string `json:"source"`
 	ProjectID      string `json:"projectId,omitempty"`
 	ConversationID string `json:"conversationId,omitempty"`
@@ -61,6 +65,7 @@ type AssetMigrationEntry struct {
 	RelativePath   string `json:"relativePath"`
 	Status         string `json:"status"`
 	Error          string `json:"error,omitempty"`
+	CreatedAt      string `json:"createdAt,omitempty"`
 }
 
 type migrationTaskContext struct {
@@ -122,6 +127,7 @@ func RunAssetMigration(ctx context.Context, options AssetMigrationOptions) (Asse
 	projectDirs := migrationProjectDirs(projects)
 	projectAliases := migrationProjectAliases(projectDirs)
 	report.Entries = planAssetMigrationEntries(workspaceDir, assets, taskContexts, projectDirs)
+	report.Entries = append(report.Entries, planTextToolboxAssetRegistrationEntries(workspaceDir, assets)...)
 	tallyAssetMigrationReport(&report)
 
 	if err := writeAssetMigrationManifest(report.ManifestPath, report); err != nil {
@@ -141,7 +147,23 @@ func RunAssetMigration(ctx context.Context, options AssetMigrationOptions) (Asse
 
 	for index := range report.Entries {
 		entry := &report.Entries[index]
-		if entry.Status == "missing" || entry.Status == "error" {
+		if entry.Status == "missing" {
+			if err := markMissingAssetMigrationEntry(entry, settingsRepos.MediaAssets, timestamp.NowRFC3339Nano()); err != nil {
+				entry.Status = "error"
+				entry.Error = err.Error()
+			}
+			continue
+		}
+		if entry.Status == "register" {
+			if err := registerTextToolboxAssetMigrationEntry(entry, settingsRepos.MediaAssets); err != nil {
+				entry.Status = "error"
+				entry.Error = err.Error()
+				continue
+			}
+			entry.Status = "registered"
+			continue
+		}
+		if entry.Status == "error" {
 			continue
 		}
 		if err := applyAssetMigrationEntry(entry, settingsRepos.MediaAssets); err != nil {
@@ -171,6 +193,88 @@ func planAssetMigrationEntries(
 		entries = append(entries, planAssetMigrationEntry(workspaceDir, asset, taskContexts[asset.ID], projectDirs))
 	}
 	return entries
+}
+
+func planTextToolboxAssetRegistrationEntries(workspaceDir string, assets []domain.MediaAssetModel) []AssetMigrationEntry {
+	toolboxDir := filepath.Join(
+		workspaceDir,
+		"library",
+		"assets",
+		shared.AssetKindDirName(MediaKindText),
+		"toolbox",
+	)
+	if info, err := os.Stat(toolboxDir); err != nil || !info.IsDir() {
+		return []AssetMigrationEntry{}
+	}
+
+	knownPaths := migrationKnownAssetPaths(workspaceDir, assets)
+	entries := []AssetMigrationEntry{}
+	_ = filepath.WalkDir(toolboxDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() {
+			return nil
+		}
+		extension := strings.ToLower(filepath.Ext(path))
+		if extension != ".txt" && extension != ".md" && extension != ".json" {
+			return nil
+		}
+		absolutePath := filepath.Clean(path)
+		if knownPaths[absolutePath] {
+			return nil
+		}
+		relativePath, err := filepath.Rel(workspaceDir, absolutePath)
+		if err != nil {
+			return nil
+		}
+		conversationID := textToolboxConversationIDForPath(toolboxDir, absolutePath)
+		info, err := entry.Info()
+		if err != nil {
+			return nil
+		}
+		assetID := textToolboxAssetID(filepath.ToSlash(relativePath))
+		entries = append(entries, AssetMigrationEntry{
+			AssetID:        assetID,
+			Kind:           MediaKindText,
+			NewPath:        absolutePath,
+			Source:         MediaSourceToolbox,
+			ConversationID: conversationID,
+			RelativePath:   filepath.ToSlash(relativePath),
+			Status:         "register",
+			CreatedAt:      info.ModTime().UTC().Format(time.RFC3339Nano),
+		})
+		return nil
+	})
+	return entries
+}
+
+func migrationKnownAssetPaths(workspaceDir string, assets []domain.MediaAssetModel) map[string]bool {
+	known := make(map[string]bool, len(assets)*2)
+	for _, asset := range assets {
+		for _, path := range []string{asset.Path, asset.RelativePath} {
+			absolutePath := absoluteMigrationPath(workspaceDir, path)
+			if absolutePath == "" {
+				continue
+			}
+			known[filepath.Clean(absolutePath)] = true
+		}
+	}
+	return known
+}
+
+func textToolboxConversationIDForPath(toolboxDir string, path string) string {
+	relative, err := filepath.Rel(toolboxDir, path)
+	if err != nil {
+		return ""
+	}
+	segments := strings.Split(filepath.ToSlash(relative), "/")
+	if len(segments) <= 1 {
+		return ""
+	}
+	return shared.AssetPathSegment(segments[0], "conversation")
+}
+
+func textToolboxAssetID(relativePath string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(relativePath)))
+	return fmt.Sprintf("asset-text-%x", sum[:8])
 }
 
 func planAssetMigrationEntry(
@@ -236,6 +340,10 @@ func planAssetMigrationEntry(
 				posterExt = ".jpg"
 			}
 			entry.NewPosterPath = filepath.Join(filepath.Dir(entry.NewPath), entry.AssetID+".poster"+posterExt)
+			entry.PosterStatus = "planned"
+		} else {
+			entry.PosterStatus = "missing"
+			entry.PosterError = err.Error()
 		}
 	}
 	if sameMigrationPath(entry.OldPath, entry.NewPath) && sameMigrationPath(entry.OldPosterPath, entry.NewPosterPath) {
@@ -320,6 +428,8 @@ func applyAssetMigrationEntry(entry *AssetMigrationEntry, repo *repository.Media
 		"conversation_id": entry.ConversationID,
 		"section_id":      entry.SectionID,
 		"relative_path":   entry.RelativePath,
+		"storage_status":  StorageStatusReady,
+		"storage_error":   "",
 	}
 	if entry.NewPosterPath != "" {
 		updates["poster_path"] = entry.NewPosterPath
@@ -328,6 +438,59 @@ func applyAssetMigrationEntry(entry *AssetMigrationEntry, repo *repository.Media
 		return err
 	}
 	return nil
+}
+
+func markMissingAssetMigrationEntry(entry *AssetMigrationEntry, repo *repository.MediaAssetRepository, updatedAt string) error {
+	return repo.UpdateMediaAssetStorage(entry.AssetID, map[string]any{
+		"storage_status": StorageStatusMissing,
+		"storage_error":  entry.Error,
+		"updated_at":     updatedAt,
+	})
+}
+
+func registerTextToolboxAssetMigrationEntry(entry *AssetMigrationEntry, repo *repository.MediaAssetRepository) error {
+	info, err := os.Stat(entry.NewPath)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return fmt.Errorf("text toolbox asset path is a directory: %s", entry.NewPath)
+	}
+	createdAt := strings.TrimSpace(entry.CreatedAt)
+	if createdAt == "" {
+		createdAt = info.ModTime().UTC().Format(time.RFC3339Nano)
+	}
+	if createdAt == "" {
+		createdAt = timestamp.NowRFC3339Nano()
+	}
+	filename := shared.SafeFilename(filepath.Base(entry.NewPath))
+	return repo.CreateMediaAsset(domain.MediaAssetModel{
+		ID:             entry.AssetID,
+		Kind:           MediaKindText,
+		Filename:       filename,
+		MIMEType:       textAssetMIMETypeForFilename(filename),
+		SizeBytes:      info.Size(),
+		Path:           entry.NewPath,
+		URL:            "/api/v1/media-assets/" + url.PathEscape(entry.AssetID) + "/content",
+		ProjectID:      "",
+		Source:         MediaSourceToolbox,
+		ConversationID: entry.ConversationID,
+		RelativePath:   entry.RelativePath,
+		StorageStatus:  StorageStatusReady,
+		CreatedAt:      createdAt,
+		UpdatedAt:      createdAt,
+	})
+}
+
+func textAssetMIMETypeForFilename(filename string) string {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".md":
+		return "text/markdown"
+	case ".json":
+		return "application/json"
+	default:
+		return "text/plain"
+	}
 }
 
 func moveMigrationFile(oldPath string, newPath string) error {
@@ -464,10 +627,10 @@ func migrationCanonicalProjectID(projectID string, projectDirs map[string]string
 
 func normalizeMigrationKind(kind string, mimeType string) string {
 	kind = strings.TrimSpace(kind)
-	if kind == MediaKindImage || kind == MediaKindVideo || kind == MediaKindAudio {
+	if kind == MediaKindImage || kind == MediaKindVideo || kind == MediaKindAudio || kind == MediaKindText {
 		return kind
 	}
-	if detected := shared.KindFromMIMEType(mimeType); detected == MediaKindImage || detected == MediaKindVideo || detected == MediaKindAudio {
+	if detected := shared.KindFromMIMEType(mimeType); detected == MediaKindImage || detected == MediaKindVideo || detected == MediaKindAudio || detected == MediaKindText {
 		return detected
 	}
 	return MediaKindImage
@@ -566,6 +729,7 @@ func tallyAssetMigrationReport(report *AssetMigrationReport) {
 	report.Updated = 0
 	report.Moved = 0
 	report.Missing = 0
+	report.Registered = 0
 	report.Skipped = 0
 	report.Errors = 0
 	for _, entry := range report.Entries {
@@ -574,6 +738,9 @@ func tallyAssetMigrationReport(report *AssetMigrationReport) {
 			report.Moved++
 			report.Updated++
 		case "updated":
+			report.Updated++
+		case "registered":
+			report.Registered++
 			report.Updated++
 		case "missing":
 			report.Missing++

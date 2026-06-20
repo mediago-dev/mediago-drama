@@ -28,8 +28,11 @@ const (
 	MediaKindImage          = shared.AssetKindImage
 	MediaKindVideo          = shared.AssetKindVideo
 	MediaKindAudio          = shared.AssetKindAudio
+	MediaKindText           = shared.AssetKindText
 	MetadataStatusReady     = "ready"
 	MetadataStatusFailed    = "failed"
+	StorageStatusReady      = "ready"
+	StorageStatusMissing    = "missing"
 	MediaSourceUpload       = "upload"
 	MediaSourceGeneration   = "generation"
 	MediaSourceToolbox      = "toolbox"
@@ -70,6 +73,8 @@ type MediaAsset struct {
 	MetadataStatus    string  `json:"metadataStatus,omitempty"`
 	MetadataError     string  `json:"metadataError,omitempty"`
 	MetadataUpdatedAt string  `json:"metadataUpdatedAt,omitempty"`
+	StorageStatus     string  `json:"storageStatus,omitempty"`
+	StorageError      string  `json:"storageError,omitempty"`
 	CreatedAt         string  `json:"createdAt"`
 	UpdatedAt         string  `json:"updatedAt"`
 	FilePath          string  `json:"-"`
@@ -347,6 +352,15 @@ func (store *MediaAssets) SaveBase64WithOptions(kind string, mimeType string, va
 	return store.saveBase64WithOptions(kind, mimeType, value, sourceURL, options)
 }
 
+// SaveTextWithOptions stores a text asset using explicit placement metadata.
+func (store *MediaAssets) SaveTextWithOptions(content string, filename string, sourceURL string, options MediaAssetSaveOptions) (MediaAsset, error) {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		filename = defaultAssetFilename(MediaKindText, "text/plain")
+	}
+	return store.saveBytesWithKind([]byte(content), MediaKindText, filename, "text/plain", sourceURL, options)
+}
+
 // SaveBase64ForStudioSession is a legacy wrapper for toolbox conversation assets.
 func (store *MediaAssets) SaveBase64ForStudioSession(kind string, mimeType string, value string, sourceURL string, sessionID string) (MediaAsset, error) {
 	return store.SaveBase64WithOptions(kind, mimeType, value, sourceURL, MediaAssetSaveOptions{
@@ -451,8 +465,8 @@ func (store *MediaAssets) SaveGeneratedAssetFile(ctx context.Context, request Ge
 	} else if sourceURL == "" {
 		return GeneratedAssetFileSaveResponse{}, fmt.Errorf("生成结果没有可保存的素材 ID")
 	}
-	if kind != MediaKindImage && kind != MediaKindVideo && kind != MediaKindAudio {
-		return GeneratedAssetFileSaveResponse{}, fmt.Errorf("only image, video, and audio assets are supported")
+	if !isSupportedMediaAssetKind(kind) {
+		return GeneratedAssetFileSaveResponse{}, unsupportedMediaAssetKindError()
 	}
 	if mimeType == "" {
 		mimeType = defaultAssetMIMEType(kind)
@@ -637,6 +651,9 @@ func defaultAssetMIMEType(kind string) string {
 	if kind == MediaKindAudio {
 		return "audio/mpeg"
 	}
+	if kind == MediaKindText {
+		return "text/plain"
+	}
 	return "image/png"
 }
 
@@ -650,6 +667,9 @@ func generatedAssetExportExtension(mimeType string, kind string) string {
 	}
 	if kind == MediaKindAudio {
 		return ".mp3"
+	}
+	if kind == MediaKindText {
+		return ".txt"
 	}
 	return ".png"
 }
@@ -708,8 +728,8 @@ func (store *MediaAssets) saveBytesForProject(data []byte, filename string, cont
 		mimeType = http.DetectContentType(data)
 	}
 	kind := shared.KindFromMIMEType(mimeType)
-	if kind == "" {
-		return MediaAsset{}, fmt.Errorf("only image, video, and audio assets are supported")
+	if !isSupportedMediaAssetKind(kind) {
+		return MediaAsset{}, unsupportedMediaAssetKindError()
 	}
 
 	return store.saveBytesWithKind(data, kind, filename, mimeType, sourceURL, MediaAssetSaveOptions{
@@ -722,14 +742,19 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 	if store.initErr != nil {
 		return MediaAsset{}, store.initErr
 	}
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	mimeType = shared.NormalizeMIMEType(mimeType)
+	if mimeType == "" {
+		mimeType = defaultAssetMIMEType(kind)
+	}
 	if len(data) == 0 {
 		return MediaAsset{}, fmt.Errorf("asset file is empty")
 	}
 	if len(data) > MaxMediaAssetUploadSize {
 		return MediaAsset{}, fmt.Errorf("asset is larger than %d bytes", MaxMediaAssetUploadSize)
 	}
-	if kind != MediaKindImage && kind != MediaKindVideo && kind != MediaKindAudio {
-		return MediaAsset{}, fmt.Errorf("only image, video, and audio assets are supported")
+	if !isSupportedMediaAssetKind(kind) {
+		return MediaAsset{}, unsupportedMediaAssetKindError()
 	}
 
 	id, err := shared.RandomID("asset")
@@ -779,6 +804,7 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 		SectionID:      options.SectionID,
 		RelativePath:   relativePath,
 		MetadataStatus: "",
+		StorageStatus:  StorageStatusReady,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 		FilePath:       filePath,
@@ -811,6 +837,8 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 		MetadataStatus:    asset.MetadataStatus,
 		MetadataError:     asset.MetadataError,
 		MetadataUpdatedAt: asset.MetadataUpdatedAt,
+		StorageStatus:     asset.StorageStatus,
+		StorageError:      asset.StorageError,
 		CreatedAt:         asset.CreatedAt,
 		UpdatedAt:         asset.UpdatedAt,
 	}); err != nil {
@@ -822,6 +850,19 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 	}
 
 	return asset, nil
+}
+
+func isSupportedMediaAssetKind(kind string) bool {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case MediaKindImage, MediaKindVideo, MediaKindAudio, MediaKindText:
+		return true
+	default:
+		return false
+	}
+}
+
+func unsupportedMediaAssetKindError() error {
+	return fmt.Errorf("only image, video, audio, and text assets are supported")
 }
 
 func (store *MediaAssets) Delete(id string) (bool, error) {
@@ -1006,6 +1047,8 @@ func mediaAssetRecordFromModel(model mediaAssetModel) MediaAsset {
 		MetadataStatus:    model.MetadataStatus,
 		MetadataError:     model.MetadataError,
 		MetadataUpdatedAt: model.MetadataUpdatedAt,
+		StorageStatus:     model.StorageStatus,
+		StorageError:      model.StorageError,
 		CreatedAt:         model.CreatedAt,
 		UpdatedAt:         model.UpdatedAt,
 		FilePath:          model.Path,
@@ -1036,6 +1079,9 @@ func defaultAssetFilename(kind string, mimeType string) string {
 	}
 	if kind == MediaKindAudio {
 		prefix = "audio"
+	}
+	if kind == MediaKindText {
+		prefix = "text"
 	}
 
 	return prefix + shared.ExtensionForMIMEType(mimeType)

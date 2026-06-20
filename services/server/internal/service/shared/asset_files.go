@@ -80,6 +80,8 @@ func SafeFilename(filename string) string {
 func ExtensionForMIMEType(mimeType string) string {
 	normalized := NormalizeMIMEType(mimeType)
 	switch normalized {
+	case "text/plain", "text/markdown":
+		return ".txt"
 	case "audio/mpeg":
 		return ".mp3"
 	case "audio/mp4", "audio/x-m4a":

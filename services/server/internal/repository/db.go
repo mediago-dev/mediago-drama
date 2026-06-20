@@ -2,8 +2,10 @@
 package repository
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,8 +31,10 @@ var settingsSchemaMigrated sync.Map
 const (
 	workspaceDropDeprecatedStorageMigrationKey = "workspace.drop_deprecated_storage.v1"
 	agentModelProfileMiniMaxMigrationKey       = "settings.agent_model_profiles.minimax_domestic_endpoint.v1"
+	mediaAssetLibraryTableMigrationKey         = "settings.media_assets.rename_to_library_assets.v1"
 	generationTaskProviderBackfillMigrationKey = "settings.generation_tasks.backfill_official_providers.v1"
 	generationTaskStatusNormalizeMigrationKey  = "settings.generation_tasks.normalize_status.v1"
+	generationTaskAssetsBackfillMigrationKey   = "settings.generation_task_assets.backfill.v1"
 )
 
 // OpenGormSQLite opens a SQLite database with local server pragmas.
@@ -300,8 +304,36 @@ func migrateMiniMaxAgentProfileToDomesticEndpoint(db *gorm.DB) error {
 
 // EnsureMediaAssetSchema migrates media asset tables.
 func EnsureMediaAssetSchema(db *gorm.DB) error {
+	if err := runSchemaMigrationOnce(
+		db,
+		mediaAssetLibraryTableMigrationKey,
+		renameMediaAssetsToLibraryAssets,
+	); err != nil {
+		return fmt.Errorf("migrating media assets table to library assets: %w", err)
+	}
 	if err := db.AutoMigrate(&domain.MediaAssetModel{}); err != nil {
 		return fmt.Errorf("initializing media asset database: %w", err)
+	}
+	return nil
+}
+
+func renameMediaAssetsToLibraryAssets(db *gorm.DB) error {
+	migrator := db.Migrator()
+	if migrator.HasTable("media_assets") && !migrator.HasTable("library_assets") {
+		if err := db.Exec("ALTER TABLE media_assets RENAME TO library_assets").Error; err != nil {
+			return fmt.Errorf("renaming media_assets table: %w", err)
+		}
+	}
+	for _, indexName := range []string{
+		"media_assets_source_url_idx",
+		"media_assets_project_id_idx",
+		"media_assets_source_idx",
+		"media_assets_conversation_id_idx",
+		"media_assets_section_id_idx",
+	} {
+		if err := db.Exec("DROP INDEX IF EXISTS " + indexName).Error; err != nil {
+			return fmt.Errorf("dropping legacy media asset index %s: %w", indexName, err)
+		}
 	}
 	return nil
 }
@@ -315,6 +347,8 @@ func EnsureGenerationTaskSchema(db *gorm.DB) error {
 		&domain.GenerationConversationModel{},
 		&domain.GenerationTaskModel{},
 		&domain.GenerationTaskAttemptModel{},
+		&domain.GenerationTaskAssetModel{},
+		&domain.ProjectResourceAssetModel{},
 	); err != nil {
 		return fmt.Errorf("initializing generation task database: %w", err)
 	}
@@ -331,6 +365,13 @@ func EnsureGenerationTaskSchema(db *gorm.DB) error {
 		normalizePersistedGenerationTaskStatuses,
 	); err != nil {
 		return fmt.Errorf("normalizing generation task statuses: %w", err)
+	}
+	if err := runSchemaMigrationOnce(
+		db,
+		generationTaskAssetsBackfillMigrationKey,
+		backfillNormalizedGenerationAssetRows,
+	); err != nil {
+		return fmt.Errorf("backfilling normalized generation asset rows: %w", err)
 	}
 	return nil
 }
@@ -409,6 +450,150 @@ func normalizePersistedGenerationTaskStatuses(db *gorm.DB) error {
 	return db.Model(&domain.GenerationTaskModel{}).
 		Where("status <> lower(trim(status))").
 		Update("status", gorm.Expr("lower(trim(status))")).Error
+}
+
+type persistedGenerationAssetForBackfill struct {
+	Kind      string `json:"kind"`
+	Title     string `json:"title"`
+	URL       string `json:"url"`
+	Base64    string `json:"base64"`
+	MIMEType  string `json:"mimeType"`
+	SlotIndex int    `json:"slotIndex"`
+	Selected  bool   `json:"selected"`
+}
+
+func backfillNormalizedGenerationAssetRows(db *gorm.DB) error {
+	tasks := []domain.GenerationTaskModel{}
+	if err := db.Find(&tasks).Error; err != nil {
+		return fmt.Errorf("loading generation tasks for asset backfill: %w", err)
+	}
+	for _, task := range tasks {
+		assets := decodePersistedGenerationAssetsForBackfill(task.AssetsJSON)
+		if len(assets) == 0 {
+			continue
+		}
+		deletedSlots := decodeDeletedAssetSlotsForBackfill(task.DeletedAssetSlotsJSON)
+		taskAssetRows := generationTaskAssetBackfillRows(task, assets, deletedSlots)
+		projectResourceRows := projectResourceAssetBackfillRows(task, assets, deletedSlots)
+		if len(taskAssetRows) > 0 {
+			if err := db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&taskAssetRows).Error; err != nil {
+				return fmt.Errorf("backfilling generation task assets for %s: %w", task.ID, err)
+			}
+		}
+		if len(projectResourceRows) > 0 {
+			if err := db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&projectResourceRows).Error; err != nil {
+				return fmt.Errorf("backfilling project resource assets for %s: %w", task.ID, err)
+			}
+		}
+	}
+	return nil
+}
+
+func decodePersistedGenerationAssetsForBackfill(raw string) []persistedGenerationAssetForBackfill {
+	assets := []persistedGenerationAssetForBackfill{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &assets); err != nil {
+		return []persistedGenerationAssetForBackfill{}
+	}
+	return assets
+}
+
+func decodeDeletedAssetSlotsForBackfill(raw string) map[int]struct{} {
+	slots := []int{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &slots); err != nil {
+		return map[int]struct{}{}
+	}
+	deleted := make(map[int]struct{}, len(slots))
+	for _, slot := range slots {
+		if slot >= 0 {
+			deleted[slot] = struct{}{}
+		}
+	}
+	return deleted
+}
+
+func generationTaskAssetBackfillRows(task domain.GenerationTaskModel, assets []persistedGenerationAssetForBackfill, deletedSlots map[int]struct{}) []domain.GenerationTaskAssetModel {
+	rows := make([]domain.GenerationTaskAssetModel, 0, len(assets))
+	for index, asset := range assets {
+		if _, deleted := deletedSlots[index]; deleted {
+			continue
+		}
+		rows = append(rows, domain.GenerationTaskAssetModel{
+			TaskID:         task.ID,
+			AssetIndex:     index,
+			LibraryAssetID: libraryAssetIDFromGeneratedAssetURL(asset.URL),
+			Kind:           strings.TrimSpace(asset.Kind),
+			Title:          strings.TrimSpace(asset.Title),
+			URL:            strings.TrimSpace(asset.URL),
+			Base64:         strings.TrimSpace(asset.Base64),
+			MIMEType:       strings.TrimSpace(asset.MIMEType),
+			Selected:       asset.Selected,
+			CreatedAt:      task.CreatedAt,
+			UpdatedAt:      task.UpdatedAt,
+		})
+	}
+	return rows
+}
+
+func projectResourceAssetBackfillRows(task domain.GenerationTaskModel, assets []persistedGenerationAssetForBackfill, deletedSlots map[int]struct{}) []domain.ProjectResourceAssetModel {
+	projectID := domain.CleanProjectID(task.ProjectID)
+	resourceType := normalizedProjectResourceTypeForBackfill(task.CapabilityID)
+	if projectID == "" || resourceType == "" {
+		return []domain.ProjectResourceAssetModel{}
+	}
+	rows := []domain.ProjectResourceAssetModel{}
+	for index, asset := range assets {
+		if _, deleted := deletedSlots[index]; deleted || !asset.Selected || strings.TrimSpace(asset.Kind) != "image" {
+			continue
+		}
+		rows = append(rows, domain.ProjectResourceAssetModel{
+			ID:             fmt.Sprintf("%s:%d", task.ID, index),
+			ProjectID:      projectID,
+			ResourceType:   resourceType,
+			TaskID:         task.ID,
+			AssetIndex:     index,
+			LibraryAssetID: libraryAssetIDFromGeneratedAssetURL(asset.URL),
+			Kind:           strings.TrimSpace(asset.Kind),
+			Title:          strings.TrimSpace(asset.Title),
+			URL:            strings.TrimSpace(asset.URL),
+			Base64:         strings.TrimSpace(asset.Base64),
+			MIMEType:       strings.TrimSpace(asset.MIMEType),
+			CreatedAt:      task.CreatedAt,
+			UpdatedAt:      task.UpdatedAt,
+		})
+	}
+	return rows
+}
+
+func normalizedProjectResourceTypeForBackfill(value string) string {
+	switch strings.TrimSpace(value) {
+	case "character", "scene", "storyboard", "prop":
+		return strings.TrimSpace(value)
+	default:
+		return ""
+	}
+}
+
+func libraryAssetIDFromGeneratedAssetURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return ""
+	}
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	for index, segment := range segments {
+		if segment != "media-assets" || index+2 >= len(segments) || segments[index+2] != "content" {
+			continue
+		}
+		id, err := url.PathUnescape(segments[index+1])
+		if err != nil {
+			return segments[index+1]
+		}
+		return strings.TrimSpace(id)
+	}
+	return ""
 }
 
 // IsRecordNotFound reports whether err is the repository not-found sentinel.

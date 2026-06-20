@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -144,6 +145,38 @@ func (service *GenerationTaskService) ListByProject(kind string, projectID strin
 	return tasks, nil
 }
 
+// ListProjectResourceAssets returns normalized selected project resources.
+func (service *GenerationTaskService) ListProjectResourceAssets(projectID string) ([]SelectedGenerationAssetRecord, error) {
+	if service.initErr != nil {
+		return nil, service.initErr
+	}
+
+	service.mu.RLock()
+	models, err := service.repo.ListProjectResourceAssets(projectID)
+	service.mu.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+
+	assets := make([]SelectedGenerationAssetRecord, 0, len(models))
+	for _, model := range models {
+		assets = append(assets, SelectedGenerationAssetRecord{
+			ID:           model.ID,
+			TaskID:       model.TaskID,
+			AssetIndex:   model.AssetIndex,
+			ResourceType: model.ResourceType,
+			Kind:         model.Kind,
+			Title:        model.Title,
+			URL:          model.URL,
+			Base64:       model.Base64,
+			MIMEType:     model.MIMEType,
+			CreatedAt:    model.CreatedAt,
+			UpdatedAt:    model.UpdatedAt,
+		})
+	}
+	return assets, nil
+}
+
 // ListPending returns pending video generation tasks.
 func (service *GenerationTaskService) ListPending(limit int) ([]GenerationTaskRecord, error) {
 	if service.initErr != nil {
@@ -270,7 +303,13 @@ func (service *GenerationTaskService) deleteAssetRecord(id string, assetIndex in
 	}
 
 	updated, err := service.repo.UpdateGenerationTaskDeletedAssetSlots(id, string(deletedAssetSlotsJSON), task.UpdatedAt)
-	return task, updated, err
+	if err != nil || !updated {
+		return task, updated, err
+	}
+	if err := service.syncNormalizedTaskAssetRowsLocked(task); err != nil {
+		return task, true, err
+	}
+	return task, true, nil
 }
 
 func (service *GenerationTaskService) updateAssetRecord(id string, assetIndex int, patch UpdateGenerationTaskAssetRequest) (GenerationTaskRecord, bool, error) {
@@ -310,7 +349,13 @@ func (service *GenerationTaskService) updateAssetRecord(id string, assetIndex in
 	}
 
 	updated, err := service.repo.UpdateGenerationTaskAssets(id, string(assetsJSON), task.CapabilityID, task.UpdatedAt)
-	return task, updated, err
+	if err != nil || !updated {
+		return task, updated, err
+	}
+	if err := service.syncNormalizedTaskAssetRowsLocked(task); err != nil {
+		return task, true, err
+	}
+	return task, true, nil
 }
 
 // Upsert creates or updates a generation task.
@@ -365,7 +410,7 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 
-	return service.repo.UpsertGenerationTask(generationTaskModel{
+	if err := service.repo.UpsertGenerationTask(generationTaskModel{
 		ID:                    task.ID,
 		ProviderTaskID:        task.ProviderTaskID,
 		ConversationID:        task.ConversationID,
@@ -395,7 +440,20 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 		Retryable:             task.Retryable,
 		CreatedAt:             task.CreatedAt,
 		UpdatedAt:             task.UpdatedAt,
-	})
+	}); err != nil {
+		return err
+	}
+	return service.syncNormalizedTaskAssetRowsLocked(task)
+}
+
+func (service *GenerationTaskService) syncNormalizedTaskAssetRowsLocked(task GenerationTaskRecord) error {
+	if service.repo == nil {
+		return nil
+	}
+	if err := service.repo.ReplaceGenerationTaskAssetRows(task.ID, generationTaskAssetModelsFromRecord(task)); err != nil {
+		return err
+	}
+	return service.repo.ReplaceProjectResourceAssetRowsForTask(task.ID, projectResourceAssetModelsFromRecord(task))
 }
 
 func generationTaskListOptions(limit int, offset int) repository.GenerationTaskListOptions {
@@ -727,6 +785,84 @@ func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRec
 	task.DeletedAssetSlots = normalizeGenerationDeletedAssetSlots(task.DeletedAssetSlots)
 
 	return task, nil
+}
+
+func generationTaskAssetModelsFromRecord(task GenerationTaskRecord) []domain.GenerationTaskAssetModel {
+	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
+	rows := make([]domain.GenerationTaskAssetModel, 0, len(task.Assets))
+	for index, asset := range task.Assets {
+		if deletedSlots[index] {
+			continue
+		}
+		rows = append(rows, domain.GenerationTaskAssetModel{
+			TaskID:         task.ID,
+			AssetIndex:     index,
+			LibraryAssetID: libraryAssetIDFromGenerationAssetURL(asset.URL),
+			Kind:           strings.TrimSpace(asset.Kind),
+			Title:          strings.TrimSpace(asset.Title),
+			URL:            strings.TrimSpace(asset.URL),
+			Base64:         strings.TrimSpace(asset.Base64),
+			MIMEType:       strings.TrimSpace(asset.MIMEType),
+			Selected:       asset.Selected,
+			CreatedAt:      task.CreatedAt,
+			UpdatedAt:      task.UpdatedAt,
+		})
+	}
+	return rows
+}
+
+func projectResourceAssetModelsFromRecord(task GenerationTaskRecord) []domain.ProjectResourceAssetModel {
+	projectID := GenerationProjectIDForRequest(task.ProjectID, "")
+	resourceType := selectedGenerationResourceType(task.CapabilityID)
+	if projectID == "" || resourceType == "" {
+		return []domain.ProjectResourceAssetModel{}
+	}
+	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
+	rows := []domain.ProjectResourceAssetModel{}
+	for index, asset := range task.Assets {
+		if deletedSlots[index] || !asset.Selected || strings.TrimSpace(asset.Kind) != "image" {
+			continue
+		}
+		rows = append(rows, domain.ProjectResourceAssetModel{
+			ID:             fmt.Sprintf("%s:%d", task.ID, index),
+			ProjectID:      projectID,
+			ResourceType:   resourceType,
+			TaskID:         task.ID,
+			AssetIndex:     index,
+			LibraryAssetID: libraryAssetIDFromGenerationAssetURL(asset.URL),
+			Kind:           strings.TrimSpace(asset.Kind),
+			Title:          strings.TrimSpace(asset.Title),
+			URL:            strings.TrimSpace(asset.URL),
+			Base64:         strings.TrimSpace(asset.Base64),
+			MIMEType:       strings.TrimSpace(asset.MIMEType),
+			CreatedAt:      task.CreatedAt,
+			UpdatedAt:      task.UpdatedAt,
+		})
+	}
+	return rows
+}
+
+func libraryAssetIDFromGenerationAssetURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return ""
+	}
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	for index, segment := range segments {
+		if segment != "media-assets" || index+2 >= len(segments) || segments[index+2] != "content" {
+			continue
+		}
+		id, err := url.PathUnescape(segments[index+1])
+		if err != nil {
+			return strings.TrimSpace(segments[index+1])
+		}
+		return strings.TrimSpace(id)
+	}
+	return ""
 }
 
 func appendGenerationDeletedAssetSlot(slots []int, slot int) []int {

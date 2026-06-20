@@ -8,6 +8,12 @@ func TestKindFromMIMETypeMapsAudio(t *testing.T) {
 	}
 }
 
+func TestKindFromMIMETypeMapsText(t *testing.T) {
+	if got := KindFromMIMEType("text/plain; charset=utf-8"); got != AssetKindText {
+		t.Fatalf("KindFromMIMEType(text/plain) = %q, want %q", got, AssetKindText)
+	}
+}
+
 func TestExtensionForMIMETypeMapsCommonAudioTypes(t *testing.T) {
 	tests := []struct {
 		mimeType string
@@ -25,5 +31,11 @@ func TestExtensionForMIMETypeMapsCommonAudioTypes(t *testing.T) {
 				t.Fatalf("ExtensionForMIMEType(%q) = %q, want %q", test.mimeType, got, test.want)
 			}
 		})
+	}
+}
+
+func TestExtensionForMIMETypeMapsPlainTextToTxt(t *testing.T) {
+	if got := ExtensionForMIMEType("text/plain; charset=utf-8"); got != ".txt" {
+		t.Fatalf("ExtensionForMIMEType(text/plain) = %q, want .txt", got)
 	}
 }

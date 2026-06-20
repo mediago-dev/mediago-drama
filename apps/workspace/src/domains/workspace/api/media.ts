@@ -1,6 +1,6 @@
 import httpClient from "@/shared/lib/http";
 
-export type MediaAssetKind = "image" | "video" | "audio";
+export type MediaAssetKind = "image" | "video" | "audio" | "text";
 
 export interface MediaAsset {
 	id: string;
@@ -22,6 +22,8 @@ export interface MediaAsset {
 	metadataStatus?: "ready" | "failed" | string;
 	metadataError?: string;
 	metadataUpdatedAt?: string;
+	storageStatus?: "ready" | "missing" | string;
+	storageError?: string;
 	createdAt: string;
 	updatedAt: string;
 }

@@ -141,6 +141,51 @@ func TestSaveWithOptionsStoresToolboxGenerationByConversation(t *testing.T) {
 	}
 }
 
+func TestSaveTextWithOptionsStoresToolboxTextAsset(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library", "assets")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+
+	asset, err := store.SaveTextWithOptions(
+		"一段文本结果",
+		"scene.txt",
+		"",
+		MediaAssetSaveOptions{Source: MediaSourceToolbox, ConversationID: "conversation-1"},
+	)
+	if err != nil {
+		t.Fatalf("SaveTextWithOptions() error = %v", err)
+	}
+
+	wantDir := filepath.Join(globalDir, "text", "toolbox", "conversation-1")
+	if got := filepath.Dir(asset.FilePath); got != wantDir {
+		t.Fatalf("toolbox text dir = %q, want %q", got, wantDir)
+	}
+	if asset.Kind != MediaKindText || asset.MIMEType != "text/plain" {
+		t.Fatalf("text asset kind/mime = %q/%q, want text/text/plain", asset.Kind, asset.MIMEType)
+	}
+	if asset.Source != MediaSourceToolbox || asset.ConversationID != "conversation-1" {
+		t.Fatalf("text source/conversation = %q/%q", asset.Source, asset.ConversationID)
+	}
+	data, err := os.ReadFile(asset.FilePath)
+	if err != nil {
+		t.Fatalf("reading text asset: %v", err)
+	}
+	if string(data) != "一段文本结果" {
+		t.Fatalf("text asset content = %q", string(data))
+	}
+	assets, err := store.List("")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(assets) != 1 || assets[0].ID != asset.ID || assets[0].Kind != MediaKindText {
+		t.Fatalf("listed assets = %#v, want stored text asset", assets)
+	}
+}
+
 func TestSaveWithOptionsStoresProjectSectionImagesByDocumentAndBlock(t *testing.T) {
 	workspaceRoot := t.TempDir()
 	globalDir := filepath.Join(workspaceRoot, "library", "assets")

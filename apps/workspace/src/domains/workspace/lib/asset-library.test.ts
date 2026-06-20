@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
-import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import {
 	buildAssetLibraryItems,
 	filterAssetLibraryItems,
@@ -18,7 +17,6 @@ describe("asset-library", () => {
 					url: "/api/v1/media-assets/media-a/content",
 				}),
 			],
-			projectAssets: [projectAsset({ id: "project-a" })],
 			selectedAssets: [
 				selectedAsset({
 					id: "selected-a",
@@ -29,7 +27,7 @@ describe("asset-library", () => {
 			],
 		});
 
-		expect(items).toHaveLength(2);
+		expect(items).toHaveLength(1);
 		const mediaItem = items.find((item) => item.key === "media:media-a");
 		expect(mediaItem?.selectedAssets.map((asset) => asset.id)).toEqual(["selected-a"]);
 		expect(mediaItem?.selectedResourceTypes).toEqual(["character"]);
@@ -114,22 +112,6 @@ const mediaAsset = (overrides: Partial<MediaAsset> = {}): MediaAsset => ({
 	sizeBytes: 1024,
 	updatedAt: "2026-06-01T09:00:00Z",
 	url: "/api/v1/media-assets/media-a/content",
-	...overrides,
-});
-
-const projectAsset = (overrides: Partial<ProjectAsset> = {}): ProjectAsset => ({
-	createdAt: "2026-06-01T07:00:00Z",
-	filename: "source.txt",
-	folderId: null,
-	id: "project-a",
-	kind: "text",
-	mimeType: "text/plain",
-	parentId: null,
-	projectId: "project-a",
-	sizeBytes: 12,
-	sortOrder: 0,
-	updatedAt: "2026-06-01T07:30:00Z",
-	url: "/api/v1/projects/project-a/assets/project-a/content",
 	...overrides,
 });
 

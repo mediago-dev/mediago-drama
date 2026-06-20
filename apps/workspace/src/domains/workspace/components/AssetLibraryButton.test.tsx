@@ -8,7 +8,6 @@ import {
 } from "@/domains/generation/api/generation";
 import { getProjects } from "@/domains/projects/api/projects";
 import { getMediaAssets, type MediaAsset } from "@/domains/workspace/api/media";
-import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import { getWorkspaceDocuments } from "@/domains/workspace/api/workspace";
 import { AssetLibraryButton } from "./AssetLibraryButton";
 
@@ -128,7 +127,7 @@ describe("AssetLibraryButton", () => {
 		expect(getSelectedGenerationAssets).not.toHaveBeenCalled();
 	});
 
-	it("opens the project asset library and merges project resources", async () => {
+	it("opens the project asset library without project document uploads", async () => {
 		vi.mocked(getMediaAssets).mockResolvedValue({
 			assets: [
 				mediaAsset({
@@ -137,13 +136,6 @@ describe("AssetLibraryButton", () => {
 					url: "/api/v1/media-assets/hero-media/content",
 				}),
 			],
-		});
-		vi.mocked(getWorkspaceDocuments).mockResolvedValue({
-			assets: [projectAsset({ filename: "source-notes.txt", id: "project-file" })],
-			documents: [],
-			folders: [],
-			projectId: "project-a",
-			workspaceDir: "/tmp/project-a",
 		});
 		vi.mocked(getSelectedGenerationAssets).mockResolvedValue({
 			assets: [
@@ -161,11 +153,11 @@ describe("AssetLibraryButton", () => {
 
 		expect(await screen.findByRole("dialog", { name: "项目素材库" })).toBeTruthy();
 		expect((await screen.findAllByText("hero-media.png")).length).toBeGreaterThan(0);
-		expect((await screen.findAllByText("source-notes.txt")).length).toBeGreaterThan(0);
 		expect(screen.getAllByText("角色").length).toBeGreaterThan(0);
 		expect(screen.queryByText("selected image")).not.toBeInTheDocument();
+		expect(screen.queryByText("source-notes.txt")).not.toBeInTheDocument();
 		expect(getMediaAssets).toHaveBeenCalledWith({ projectId: "project-a" });
-		expect(getWorkspaceDocuments).toHaveBeenCalledWith("project-a");
+		expect(getWorkspaceDocuments).not.toHaveBeenCalled();
 		expect(getSelectedGenerationAssets).toHaveBeenCalledWith("project-a");
 		expect(updateGenerationTaskAsset).not.toHaveBeenCalled();
 	});
@@ -186,19 +178,6 @@ describe("AssetLibraryButton", () => {
 				],
 			};
 		});
-		vi.mocked(getWorkspaceDocuments).mockImplementation(async (projectId) => ({
-			assets: [
-				projectAsset({
-					filename: `${projectId}-file.txt`,
-					id: `${projectId}-file`,
-					projectId: projectId ?? "",
-				}),
-			],
-			documents: [],
-			folders: [],
-			projectId: projectId ?? "",
-			workspaceDir: `/tmp/${projectId ?? ""}`,
-		}));
 		vi.mocked(getSelectedGenerationAssets).mockResolvedValue({ assets: [] });
 
 		renderAssetLibraryButton("/");
@@ -221,9 +200,9 @@ describe("AssetLibraryButton", () => {
 
 		expect(await screen.findByRole("dialog", { name: "项目素材库" })).toBeTruthy();
 		expect((await screen.findAllByText("project-b-media.png")).length).toBeGreaterThan(0);
-		expect((await screen.findAllByText("project-b-file.txt")).length).toBeGreaterThan(0);
+		expect(screen.queryByText("project-b-file.txt")).not.toBeInTheDocument();
 		expect(getMediaAssets).toHaveBeenCalledWith({ projectId: "project-b" });
-		expect(getWorkspaceDocuments).toHaveBeenCalledWith("project-b");
+		expect(getWorkspaceDocuments).not.toHaveBeenCalled();
 		expect(getSelectedGenerationAssets).toHaveBeenCalledWith("project-b");
 	});
 });
@@ -246,22 +225,6 @@ const mediaAsset = (overrides: Partial<MediaAsset> = {}): MediaAsset => ({
 	sizeBytes: 1024,
 	updatedAt: "2026-06-01T09:00:00Z",
 	url: "/api/v1/media-assets/media-a/content",
-	...overrides,
-});
-
-const projectAsset = (overrides: Partial<ProjectAsset> = {}): ProjectAsset => ({
-	createdAt: "2026-06-01T07:00:00Z",
-	filename: "source.txt",
-	folderId: null,
-	id: "project-a",
-	kind: "text",
-	mimeType: "text/plain",
-	parentId: null,
-	projectId: "project-a",
-	sizeBytes: 12,
-	sortOrder: 0,
-	updatedAt: "2026-06-01T07:30:00Z",
-	url: "/api/v1/projects/project-a/assets/project-a/content",
 	...overrides,
 });
 

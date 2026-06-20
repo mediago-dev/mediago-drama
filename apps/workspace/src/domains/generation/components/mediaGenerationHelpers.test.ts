@@ -61,6 +61,27 @@ describe("media generation helpers", () => {
 		});
 	});
 
+	it("excludes text assets from generation reference options", () => {
+		const options = buildGeneratedReferenceOptions(
+			[
+				generationEntry({
+					assets: [{ kind: "text", url: "/api/v1/media-assets/text-1/content" }],
+				}),
+			],
+			[
+				mediaAsset({
+					id: "text-1",
+					filename: "notes.txt",
+					kind: "text",
+					mimeType: "text/plain",
+					url: "/api/v1/media-assets/text-1/content",
+				}),
+			],
+		);
+
+		expect(options).toEqual([]);
+	});
+
 	it("deduplicates generated media that are already present in project media assets", () => {
 		const entry = generationEntry({
 			assets: [

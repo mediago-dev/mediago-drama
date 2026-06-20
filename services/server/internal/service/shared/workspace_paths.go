@@ -188,7 +188,7 @@ func (paths WorkspacePaths) DatabaseDir() string {
 
 // DatabasePath returns the workspace SQLite database path.
 func (paths WorkspacePaths) DatabasePath() string {
-	return filepath.Join(paths.DatabaseDir(), "mediacli.sqlite")
+	return filepath.Join(paths.DatabaseDir(), "app.db")
 }
 
 // LibraryAssetsDir returns the global typed media library root.

@@ -54,6 +54,48 @@ func (GenerationTaskAttemptModel) TableName() string {
 	return "generation_task_attempts"
 }
 
+// GenerationTaskAssetModel indexes generated assets outside the task JSON payload.
+type GenerationTaskAssetModel struct {
+	TaskID         string `gorm:"column:task_id;primaryKey;index:generation_task_assets_task_idx,priority:1"`
+	AssetIndex     int    `gorm:"column:asset_index;primaryKey;index:generation_task_assets_task_idx,priority:2"`
+	LibraryAssetID string `gorm:"column:library_asset_id;not null;default:'';index:generation_task_assets_library_asset_idx"`
+	Kind           string `gorm:"column:kind;not null;default:''"`
+	Title          string `gorm:"column:title;not null;default:''"`
+	URL            string `gorm:"column:url;not null;default:''"`
+	Base64         string `gorm:"column:base64;not null;default:'';type:text"`
+	MIMEType       string `gorm:"column:mime_type;not null;default:''"`
+	Selected       bool   `gorm:"column:selected;not null;default:false;index:generation_task_assets_selected_idx"`
+	CreatedAt      string `gorm:"column:created_at;not null"`
+	UpdatedAt      string `gorm:"column:updated_at;not null"`
+}
+
+// TableName returns the backing table name.
+func (GenerationTaskAssetModel) TableName() string {
+	return "generation_task_assets"
+}
+
+// ProjectResourceAssetModel indexes project-level selected generation assets.
+type ProjectResourceAssetModel struct {
+	ID             string `gorm:"column:id;primaryKey"`
+	ProjectID      string `gorm:"column:project_id;not null;index:project_resource_assets_project_resource_idx,priority:1"`
+	ResourceType   string `gorm:"column:resource_type;not null;index:project_resource_assets_project_resource_idx,priority:2"`
+	TaskID         string `gorm:"column:task_id;not null;index:project_resource_assets_task_idx"`
+	AssetIndex     int    `gorm:"column:asset_index;not null"`
+	LibraryAssetID string `gorm:"column:library_asset_id;not null;default:'';index:project_resource_assets_library_asset_idx"`
+	Kind           string `gorm:"column:kind;not null;default:''"`
+	Title          string `gorm:"column:title;not null;default:''"`
+	URL            string `gorm:"column:url;not null;default:''"`
+	Base64         string `gorm:"column:base64;not null;default:'';type:text"`
+	MIMEType       string `gorm:"column:mime_type;not null;default:''"`
+	CreatedAt      string `gorm:"column:created_at;not null"`
+	UpdatedAt      string `gorm:"column:updated_at;not null;index:project_resource_assets_project_resource_idx,priority:3,sort:desc"`
+}
+
+// TableName returns the backing table name.
+func (ProjectResourceAssetModel) TableName() string {
+	return "project_resource_assets"
+}
+
 // GenerationConversationModel is the GORM model for generation conversations.
 type GenerationConversationModel struct {
 	ID        string `gorm:"column:id;primaryKey"`

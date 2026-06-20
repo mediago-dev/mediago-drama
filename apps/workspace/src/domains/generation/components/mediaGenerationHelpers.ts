@@ -97,10 +97,12 @@ const deriveParamGroups = (
 export interface GeneratedReferenceOption {
 	entry: GenerationEntry | null;
 	key: string;
-	kind: MediaAsset["kind"];
+	kind: ReferenceMediaAssetKind;
 	mediaAsset: MediaAsset | null;
 	source: string;
 }
+
+type ReferenceMediaAssetKind = Extract<MediaAsset["kind"], "image" | "video" | "audio">;
 
 export const buildGeneratedReferenceOptions = (
 	entries: GenerationEntry[],
@@ -120,11 +122,19 @@ export const buildGeneratedReferenceOptions = (
 
 			seen.add(key);
 			seen.add(source);
-			options.push({ entry, key, kind: mediaAsset?.kind ?? asset.kind, mediaAsset, source });
+			options.push({
+				entry,
+				key,
+				kind:
+					mediaAsset && isReferenceMediaAssetKind(mediaAsset.kind) ? mediaAsset.kind : asset.kind,
+				mediaAsset,
+				source,
+			});
 		}
 	}
 
 	for (const asset of mediaAssets) {
+		if (!isReferenceMediaAssetKind(asset.kind)) continue;
 		const source = generationAssetSource({
 			kind: asset.kind,
 			url: asset.url,
@@ -190,10 +200,13 @@ export const entryImageAssets = (entry: GenerationEntry) => entryGeneratedAssets
 
 export const entryReferenceAssets = (entry: GenerationEntry) =>
 	entry.assets?.filter(
-		(asset): asset is typeof asset & { kind: MediaAsset["kind"] } =>
+		(asset): asset is typeof asset & { kind: ReferenceMediaAssetKind } =>
 			(asset.kind === "image" || asset.kind === "video" || asset.kind === "audio") &&
 			Boolean(generationAssetSource(asset)),
 	) ?? [];
+
+const isReferenceMediaAssetKind = (kind: MediaAsset["kind"]): kind is ReferenceMediaAssetKind =>
+	kind === "image" || kind === "video" || kind === "audio";
 
 export const entrySelectionState = (assets: GenerationAsset[], selectedAssetKeys: string[]) => {
 	const selectableAssets = assets.filter((asset) => generationAssetSelectionKey(asset));

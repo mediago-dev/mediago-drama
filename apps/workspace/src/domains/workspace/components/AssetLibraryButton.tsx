@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import useSWR, { mutate as mutateSWR } from "swr";
+import useSWR from "swr";
 import {
 	getSelectedGenerationAssets,
 	selectedGenerationAssetsQueryKey,
@@ -29,10 +29,8 @@ import { generationAssetSource } from "@/domains/generation/hooks/useGenerationW
 import { selectedGenerationResourceDescriptorMap } from "@/domains/generation/lib/selected-resources";
 import {
 	fetchTextAsset,
-	projectAssetContentURL,
 	truncateTextPreview,
 } from "@/domains/documents/components/project-asset-preview.helpers";
-import { useDocumentsStore } from "@/domains/documents/stores";
 import {
 	deleteMediaAsset,
 	getMediaAssets,
@@ -40,12 +38,6 @@ import {
 	updateMediaAsset,
 	uploadMediaAsset,
 } from "@/domains/workspace/api/media";
-import {
-	deleteProjectAsset,
-	updateProjectAsset,
-	uploadProjectAsset,
-} from "@/domains/workspace/api/project-assets";
-import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspace/api/workspace";
 import {
 	type AssetLibraryItem,
 	type AssetLibraryKind,
@@ -92,7 +84,6 @@ const kindOptions: Array<{ label: string; value: AssetLibraryKindFilter }> = [
 
 const projectSourceOptions: Array<{ label: string; value: AssetLibrarySourceFilter }> = [
 	{ label: "全部来源", value: "all" },
-	{ label: "项目文件", value: "project" },
 	{ label: "媒体素材", value: "media" },
 	{ label: "已选资源", value: "selected" },
 ];
@@ -157,7 +148,6 @@ const AssetLibraryDialog: React.FC<{
 	projectId: string | null;
 }> = ({ onOpenChange, open, projectId }) => {
 	const toast = useToast();
-	const projectUploadRef = useRef<HTMLInputElement | null>(null);
 	const mediaUploadRef = useRef<HTMLInputElement | null>(null);
 	const [activeKey, setActiveKey] = useState("");
 	const [busyKey, setBusyKey] = useState("");
@@ -168,7 +158,7 @@ const AssetLibraryDialog: React.FC<{
 	const [sort, setSort] = useState<AssetLibrarySort>("updatedDesc");
 	const [sourceFilter, setSourceFilter] = useState<AssetLibrarySourceFilter>("all");
 	const [uploadOpen, setUploadOpen] = useState(false);
-	const [uploading, setUploading] = useState<"media" | "project" | null>(null);
+	const [uploading, setUploading] = useState<"media" | null>(null);
 	const projectMode = Boolean(selectedProjectId);
 	const mediaProjectId = selectedProjectId;
 	const { data: projectsData, isLoading: isProjectsLoading } = useSWR(
@@ -176,8 +166,6 @@ const AssetLibraryDialog: React.FC<{
 		() => getProjects(),
 	);
 	const mediaQueryKey = open ? [mediaAssetsKey, mediaProjectId] : null;
-	const workspaceQueryKey =
-		open && selectedProjectId ? workspaceDocumentsKey(selectedProjectId) : null;
 	const selectedQueryKey =
 		open && selectedProjectId ? selectedGenerationAssetsQueryKey(selectedProjectId) : null;
 	const {
@@ -186,12 +174,6 @@ const AssetLibraryDialog: React.FC<{
 		isLoading: isMediaLoading,
 		mutate: mutateMediaAssets,
 	} = useSWR(mediaQueryKey, () => getMediaAssets({ projectId: selectedProjectId || undefined }));
-	const {
-		data: workspaceData,
-		error: workspaceError,
-		isLoading: isWorkspaceLoading,
-		mutate: mutateWorkspace,
-	} = useSWR(workspaceQueryKey, () => getWorkspaceDocuments(selectedProjectId));
 	const {
 		data: selectedData,
 		error: selectedError,
@@ -217,10 +199,9 @@ const AssetLibraryDialog: React.FC<{
 		() =>
 			buildAssetLibraryItems({
 				mediaAssets: mediaData?.assets ?? [],
-				projectAssets: projectMode ? (workspaceData?.assets ?? []) : [],
 				selectedAssets: projectMode ? (selectedData?.assets ?? []) : [],
 			}),
-		[mediaData?.assets, projectMode, selectedData?.assets, workspaceData?.assets],
+		[mediaData?.assets, projectMode, selectedData?.assets],
 	);
 	const filteredItems = useMemo(
 		() =>
@@ -229,7 +210,7 @@ const AssetLibraryDialog: React.FC<{
 				query,
 				resourceType: projectMode ? resourceFilter : "all",
 				sort,
-				source: projectMode ? sourceFilter : sourceFilter === "project" ? "all" : sourceFilter,
+				source: sourceFilter,
 			}),
 		[items, kindFilter, projectMode, query, resourceFilter, sort, sourceFilter],
 	);
@@ -237,8 +218,8 @@ const AssetLibraryDialog: React.FC<{
 		() => filteredItems.find((item) => item.key === activeKey) ?? filteredItems[0] ?? null,
 		[activeKey, filteredItems],
 	);
-	const isLoading = isMediaLoading || (projectMode && (isWorkspaceLoading || isSelectedLoading));
-	const error = mediaError ?? workspaceError ?? selectedError;
+	const isLoading = isMediaLoading || (projectMode && isSelectedLoading);
+	const error = mediaError ?? selectedError;
 
 	useEffect(() => {
 		if (!open) return;
@@ -259,33 +240,6 @@ const AssetLibraryDialog: React.FC<{
 		}
 		if (activeItem.key !== activeKey) setActiveKey(activeItem.key);
 	}, [activeItem, activeKey]);
-
-	const refreshWorkspace = async () => {
-		if (!selectedProjectId) return null;
-		const state = await getWorkspaceDocuments(selectedProjectId);
-		useDocumentsStore.getState().hydrateWorkspaceDocuments(state);
-		await mutateWorkspace(state, false);
-		await mutateSWR(workspaceDocumentsKey(selectedProjectId), state, false);
-		return state;
-	};
-
-	const uploadProjectFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-		const file = event.currentTarget.files?.[0] ?? null;
-		event.currentTarget.value = "";
-		if (!file || !selectedProjectId || uploading) return;
-
-		setUploading("project");
-		try {
-			const asset = await uploadProjectAsset(selectedProjectId, file);
-			await refreshWorkspace();
-			setActiveKey(`project:${asset.id}`);
-			toast.success("项目文件已上传", { description: asset.filename || file.name });
-		} catch (err) {
-			toast.error("上传失败", { description: errorMessage(err, "项目文件上传失败。") });
-		} finally {
-			setUploading(null);
-		}
-	};
 
 	const uploadMediaFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
 		const file = event.currentTarget.files?.[0] ?? null;
@@ -316,9 +270,6 @@ const AssetLibraryDialog: React.FC<{
 			if (item.sourceType === "media" && item.mediaAsset) {
 				await updateMediaAsset(item.mediaAsset.id, filename, selectedProjectId || null);
 				await mutateMediaAssets();
-			} else if (item.sourceType === "project" && item.projectAsset && selectedProjectId) {
-				await updateProjectAsset(selectedProjectId, item.projectAsset.id, { filename });
-				await refreshWorkspace();
 			}
 			toast.success("素材已重命名", { description: filename });
 		} catch (err) {
@@ -350,9 +301,6 @@ const AssetLibraryDialog: React.FC<{
 					selectedProjectId || undefined,
 				);
 				await mutateMediaAssets(nextAssets, false);
-			} else if (item.sourceType === "project" && item.projectAsset && selectedProjectId) {
-				await deleteProjectAsset(selectedProjectId, item.projectAsset.id);
-				await refreshWorkspace();
 			} else {
 				await unselectGenerationAssets(item.selectedAssets);
 			}
@@ -393,16 +341,9 @@ const AssetLibraryDialog: React.FC<{
 	return (
 		<>
 			<input
-				ref={projectUploadRef}
-				type="file"
-				className="sr-only"
-				disabled={!selectedProjectId || Boolean(uploading)}
-				onChange={(event) => void uploadProjectFile(event)}
-			/>
-			<input
 				ref={mediaUploadRef}
 				type="file"
-				accept="image/*,video/*,audio/*"
+				accept="image/*,video/*,audio/*,text/*,.txt,.md,.json"
 				className="sr-only"
 				disabled={Boolean(uploading)}
 				onChange={(event) => void uploadMediaFile(event)}
@@ -427,8 +368,8 @@ const AssetLibraryDialog: React.FC<{
 									className="mt-1 truncate text-xs text-muted-foreground"
 								>
 									{projectMode
-										? `管理${selectedProject?.name || "当前项目"}的文件、生成媒体和已选生成资源。`
-										: "管理可在工具箱中复用的全局媒体素材。"}
+										? `管理${selectedProject?.name || "当前项目"}的生成素材、上传素材和已选生成资源。`
+										: "管理可在工具箱中复用的全局素材。"}
 								</DialogPrimitive.Description>
 							</div>
 							<div className="flex shrink-0 items-center gap-2">
@@ -506,19 +447,9 @@ const AssetLibraryDialog: React.FC<{
 										</Button>
 									</PopoverTrigger>
 									<PopoverContent align="end" className="w-48 p-1.5">
-										{projectMode ? (
-											<UploadMenuButton
-												disabled={Boolean(uploading)}
-												label="上传项目文件"
-												onClick={() => {
-													setUploadOpen(false);
-													projectUploadRef.current?.click();
-												}}
-											/>
-										) : null}
 										<UploadMenuButton
 											disabled={Boolean(uploading)}
-											label={projectMode ? "上传媒体素材" : "上传素材"}
+											label="上传素材"
 											onClick={() => {
 												setUploadOpen(false);
 												mediaUploadRef.current?.click();
@@ -554,7 +485,6 @@ const AssetLibraryDialog: React.FC<{
 												active={item.key === activeItem?.key}
 												busy={busyKey === item.key}
 												item={item}
-												projectId={selectedProjectId}
 												onCancelSelected={() => void cancelSelectedAssets(item)}
 												onDelete={() => void deleteItem(item)}
 												onPreview={() => setActiveKey(item.key)}
@@ -564,7 +494,7 @@ const AssetLibraryDialog: React.FC<{
 									</section>
 								)}
 							</div>
-							<AssetLibraryPreview item={activeItem} projectId={selectedProjectId} />
+							<AssetLibraryPreview item={activeItem} />
 						</div>
 					</DialogPrimitive.Content>
 				</DialogPrimitive.Portal>
@@ -581,11 +511,10 @@ const AssetLibraryCard: React.FC<{
 	onDelete: () => void;
 	onPreview: () => void;
 	onRename: () => void;
-	projectId: string | null;
-}> = ({ active, busy, item, onCancelSelected, onDelete, onPreview, onRename, projectId }) => {
-	const source = assetLibraryItemSource(item, projectId);
+}> = ({ active, busy, item, onCancelSelected, onDelete, onPreview, onRename }) => {
+	const source = assetLibraryItemSource(item);
 	const Icon = iconForKind(item.kind);
-	const canRename = item.sourceType === "media" || item.sourceType === "project";
+	const canRename = item.sourceType === "media";
 	const canCancelSelected = item.selectedAssets.length > 0;
 
 	return (
@@ -690,9 +619,8 @@ const AssetLibraryCard: React.FC<{
 
 const AssetLibraryPreview: React.FC<{
 	item: AssetLibraryItem | null;
-	projectId: string | null;
-}> = ({ item, projectId }) => {
-	const source = item ? assetLibraryItemSource(item, projectId) : "";
+}> = ({ item }) => {
+	const source = item ? assetLibraryItemSource(item) : "";
 	const textKey = item?.kind === "text" && source ? source : null;
 	const {
 		data: text,
@@ -857,8 +785,8 @@ const AssetLibraryEmpty: React.FC<{ projectMode: boolean }> = ({ projectMode }) 
 			<p className="text-sm font-medium text-foreground">暂无匹配素材</p>
 			<p className="max-w-sm text-xs leading-5 text-muted-foreground">
 				{projectMode
-					? "可上传项目文件、上传媒体素材，或从生成结果中选入资源。"
-					: "可上传图片、视频或音频素材，供工具箱生成时复用。"}
+					? "可上传素材，或从生成结果中选入资源。"
+					: "可上传图片、视频、音频或文本素材，供工具箱生成时复用。"}
 			</p>
 		</div>
 	</div>
@@ -870,10 +798,7 @@ const SourceBadge: React.FC<{ source: AssetLibrarySource }> = ({ source }) => (
 	</span>
 );
 
-const assetLibraryItemSource = (item: AssetLibraryItem, projectId: string | null) => {
-	if (item.sourceType === "project" && item.projectAsset) {
-		return projectAssetContentURL(item.projectAsset, projectId);
-	}
+const assetLibraryItemSource = (item: AssetLibraryItem) => {
 	if (item.sourceType === "media" && item.mediaAsset) {
 		return apiResourceURL(item.mediaAsset.url);
 	}
@@ -904,7 +829,6 @@ const kindLabel = (kind: AssetLibraryKind) => {
 };
 
 const sourceTypeLabel = (source: AssetLibrarySource) => {
-	if (source === "project") return "项目文件";
 	if (source === "selected") return "已选资源";
 	return "媒体素材";
 };

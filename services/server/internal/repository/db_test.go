@@ -155,12 +155,73 @@ func TestOpenSettingsRepositoriesMigratesAllSettingsSchemas(t *testing.T) {
 		&domain.GenerationPreferenceModel{},
 		&domain.GenerationTaskModel{},
 		&domain.GenerationTaskAttemptModel{},
+		&domain.GenerationTaskAssetModel{},
+		&domain.ProjectResourceAssetModel{},
 		&domain.PromptLibraryEntryModel{},
 	}
 	for _, model := range models {
 		if !repos.DB.Migrator().HasTable(model) {
 			t.Fatalf("expected table for %T to exist", model)
 		}
+	}
+	if repos.DB.Migrator().HasTable("media_assets") {
+		t.Fatal("settings schema should not create legacy media_assets table")
+	}
+	if !repos.DB.Migrator().HasIndex(&domain.MediaAssetModel{}, "library_assets_source_url_idx") {
+		t.Fatal("library_assets should include source_url index")
+	}
+}
+
+func TestEnsureMediaAssetSchemaRenamesLegacyMediaAssetsTable(t *testing.T) {
+	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "settings.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenGormSQLite returned error: %v", err)
+	}
+	if err := db.AutoMigrate(&legacyMediaAssetModel{}); err != nil {
+		t.Fatalf("creating legacy media_assets table: %v", err)
+	}
+	insertedAt := "2026-06-01T00:00:00Z"
+	if err := db.Create(&legacyMediaAssetModel{
+		ID:        "asset-legacy",
+		Kind:      "image",
+		Filename:  "legacy.png",
+		MIMEType:  "image/png",
+		SizeBytes: 12,
+		Path:      "/tmp/legacy.png",
+		URL:       "/api/v1/media-assets/asset-legacy/content",
+		SourceURL: "https://example.test/legacy.png",
+		Source:    "generation",
+		CreatedAt: insertedAt,
+		UpdatedAt: insertedAt,
+	}).Error; err != nil {
+		t.Fatalf("inserting legacy media asset: %v", err)
+	}
+
+	if err := EnsureMediaAssetSchema(db); err != nil {
+		t.Fatalf("EnsureMediaAssetSchema returned error: %v", err)
+	}
+	if db.Migrator().HasTable("media_assets") {
+		t.Fatal("legacy media_assets table should have been renamed")
+	}
+	if !db.Migrator().HasTable(&domain.MediaAssetModel{}) {
+		t.Fatal("library_assets table should exist")
+	}
+	var asset domain.MediaAssetModel
+	if err := db.First(&asset, "id = ?", "asset-legacy").Error; err != nil {
+		t.Fatalf("loading migrated media asset: %v", err)
+	}
+	if asset.Filename != "legacy.png" || asset.Source != "generation" {
+		t.Fatalf("migrated asset = %#v, want legacy values preserved", asset)
+	}
+	if db.Migrator().HasIndex(&domain.MediaAssetModel{}, "media_assets_source_url_idx") {
+		t.Fatal("legacy media_assets source_url index should be dropped")
+	}
+	if !db.Migrator().HasIndex(&domain.MediaAssetModel{}, "library_assets_source_url_idx") {
+		t.Fatal("library_assets should include source_url index")
+	}
+	assertSchemaMigrationRecorded(t, db, mediaAssetLibraryTableMigrationKey)
+	if err := EnsureMediaAssetSchema(db); err != nil {
+		t.Fatalf("EnsureMediaAssetSchema second run returned error: %v", err)
 	}
 }
 
@@ -297,6 +358,68 @@ func TestEnsureGenerationTaskSchemaRenamesAndBackfillsProvider(t *testing.T) {
 	}
 }
 
+func TestEnsureGenerationTaskSchemaBackfillsNormalizedAssetRows(t *testing.T) {
+	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "settings.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenGormSQLite returned error: %v", err)
+	}
+	if err := db.AutoMigrate(&domain.GenerationTaskModel{}); err != nil {
+		t.Fatalf("creating legacy generation_tasks table: %v", err)
+	}
+	if err := db.Create(&domain.GenerationTaskModel{
+		ID:                    "task-selected",
+		ConversationID:        "conversation-1",
+		ProjectID:             "project-a",
+		CapabilityID:          "character",
+		Kind:                  "image",
+		RouteID:               "route",
+		FamilyID:              "family",
+		VersionID:             "version",
+		Provider:              "provider",
+		ModelID:               "model-id",
+		Model:                 "model",
+		Prompt:                "prompt",
+		ReferenceURLsJSON:     "[]",
+		ReferenceAssetIDsJSON: "[]",
+		ParamsJSON:            "{}",
+		Status:                "completed",
+		Message:               "done",
+		AssetsJSON:            `[{"kind":"image","url":"/api/v1/media-assets/asset-a/content","title":"角色图","mimeType":"image/png","selected":true},{"kind":"image","url":"/api/v1/media-assets/asset-b/content","selected":true}]`,
+		DeletedAssetSlotsJSON: "[1]",
+		UsageJSON:             "{}",
+		CreatedAt:             "2026-06-01T00:00:00Z",
+		UpdatedAt:             "2026-06-01T00:01:00Z",
+	}).Error; err != nil {
+		t.Fatalf("inserting legacy selected task: %v", err)
+	}
+
+	if err := EnsureGenerationTaskSchema(db); err != nil {
+		t.Fatalf("EnsureGenerationTaskSchema returned error: %v", err)
+	}
+
+	var taskAssets []domain.GenerationTaskAssetModel
+	if err := db.Find(&taskAssets, "task_id = ?", "task-selected").Error; err != nil {
+		t.Fatalf("loading normalized task assets: %v", err)
+	}
+	if len(taskAssets) != 1 ||
+		taskAssets[0].AssetIndex != 0 ||
+		taskAssets[0].LibraryAssetID != "asset-a" ||
+		!taskAssets[0].Selected {
+		t.Fatalf("task assets = %#v, want selected non-deleted asset row", taskAssets)
+	}
+	var resourceAssets []domain.ProjectResourceAssetModel
+	if err := db.Find(&resourceAssets, "project_id = ?", "project-a").Error; err != nil {
+		t.Fatalf("loading project resource assets: %v", err)
+	}
+	if len(resourceAssets) != 1 ||
+		resourceAssets[0].ID != "task-selected:0" ||
+		resourceAssets[0].ResourceType != "character" ||
+		resourceAssets[0].URL != "/api/v1/media-assets/asset-a/content" {
+		t.Fatalf("resource assets = %#v, want selected character resource row", resourceAssets)
+	}
+	assertSchemaMigrationRecorded(t, db, generationTaskAssetsBackfillMigrationKey)
+}
+
 type legacyGenerationTaskWithChannelModel struct {
 	ID                    string `gorm:"column:id;primaryKey"`
 	ProviderTaskID        string `gorm:"column:provider_task_id;not null;default:'';index:generation_tasks_provider_task_id_idx"`
@@ -329,6 +452,36 @@ type legacyGenerationTaskWithChannelModel struct {
 
 func (legacyGenerationTaskWithChannelModel) TableName() string {
 	return "generation_tasks"
+}
+
+type legacyMediaAssetModel struct {
+	ID                string  `gorm:"column:id;primaryKey"`
+	Kind              string  `gorm:"column:kind;not null"`
+	Filename          string  `gorm:"column:filename;not null"`
+	MIMEType          string  `gorm:"column:mime_type;not null"`
+	SizeBytes         int64   `gorm:"column:size_bytes;not null"`
+	Path              string  `gorm:"column:path;not null"`
+	URL               string  `gorm:"column:url;not null"`
+	SourceURL         string  `gorm:"column:source_url;not null;default:'';index:media_assets_source_url_idx"`
+	ProjectID         string  `gorm:"column:project_id;not null;default:'';index:media_assets_project_id_idx"`
+	Source            string  `gorm:"column:source;not null;default:'';index:media_assets_source_idx"`
+	ConversationID    string  `gorm:"column:conversation_id;not null;default:'';index:media_assets_conversation_id_idx"`
+	SectionID         string  `gorm:"column:section_id;not null;default:'';index:media_assets_section_id_idx"`
+	RelativePath      string  `gorm:"column:relative_path;not null;default:''"`
+	DurationSeconds   float64 `gorm:"column:duration_seconds;not null;default:0"`
+	Width             int     `gorm:"column:width;not null;default:0"`
+	Height            int     `gorm:"column:height;not null;default:0"`
+	PosterPath        string  `gorm:"column:poster_path;not null;default:''"`
+	PosterURL         string  `gorm:"column:poster_url;not null;default:''"`
+	MetadataStatus    string  `gorm:"column:metadata_status;not null;default:''"`
+	MetadataError     string  `gorm:"column:metadata_error;not null;default:''"`
+	MetadataUpdatedAt string  `gorm:"column:metadata_updated_at;not null;default:''"`
+	CreatedAt         string  `gorm:"column:created_at;not null"`
+	UpdatedAt         string  `gorm:"column:updated_at;not null"`
+}
+
+func (legacyMediaAssetModel) TableName() string {
+	return "media_assets"
 }
 
 func assertSchemaMigrationRecorded(t *testing.T, db *gorm.DB, key string) {

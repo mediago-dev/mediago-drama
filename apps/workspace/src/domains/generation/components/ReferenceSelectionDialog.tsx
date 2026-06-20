@@ -301,6 +301,13 @@ const referenceKindFilterLabel = (value: ReferenceKindFilter) => {
 	return "参考";
 };
 
+const referenceKindFromMediaAssetKind = (
+	kind: MediaAsset["kind"],
+): Exclude<ReferenceKindFilter, "all"> | null => {
+	if (kind === "image" || kind === "video" || kind === "audio") return kind;
+	return null;
+};
+
 const ReferenceShortcutGroup: React.FC<{
 	disabled: boolean;
 	group: ReferenceSelectionShortcutGroup;
@@ -328,6 +335,8 @@ const ReferenceShortcutGroup: React.FC<{
 		</div>
 		<div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">
 			{group.items.map((item) => {
+				const referenceKind = referenceKindFromMediaAssetKind(item.asset.kind);
+				if (!referenceKind) return null;
 				const supported = selectableKinds.has(item.asset.kind);
 				const selectable = !disabled && supported;
 				const selected =
@@ -337,6 +346,7 @@ const ReferenceShortcutGroup: React.FC<{
 					<ReferenceShortcutCard
 						key={`${group.id}:${item.asset.id}`}
 						item={item}
+						referenceKind={referenceKind}
 						selectable={selectable}
 						selected={selected}
 						supported={supported}
@@ -351,10 +361,11 @@ const ReferenceShortcutGroup: React.FC<{
 const ReferenceShortcutCard: React.FC<{
 	item: ReferenceSelectionShortcutItem;
 	onToggle: () => void;
+	referenceKind: Exclude<ReferenceKindFilter, "all">;
 	selectable: boolean;
 	selected: boolean;
 	supported: boolean;
-}> = ({ item, onToggle, selectable, selected, supported }) => (
+}> = ({ item, onToggle, referenceKind, selectable, selected, supported }) => (
 	<div
 		className={cn(
 			"min-w-0 overflow-hidden rounded-sm border bg-card text-left transition-colors",
@@ -363,9 +374,9 @@ const ReferenceShortcutCard: React.FC<{
 		)}
 	>
 		<div className="relative aspect-[4/3] bg-muted-foreground/10">
-			{item.asset.kind === "audio" ? (
+			{referenceKind === "audio" ? (
 				<ReferenceMediaPreview
-					kind={item.asset.kind}
+					kind={referenceKind}
 					mimeType={item.asset.mimeType}
 					source={item.asset.url}
 					title={item.asset.filename}
@@ -379,14 +390,14 @@ const ReferenceShortcutCard: React.FC<{
 					onClick={onToggle}
 				>
 					<ReferenceMediaPreview
-						kind={item.asset.kind}
+						kind={referenceKind}
 						mimeType={item.asset.mimeType}
 						source={item.asset.url}
 						title={item.asset.filename}
 					/>
 				</button>
 			)}
-			<ReferenceKindBadge kind={item.asset.kind} />
+			<ReferenceKindBadge kind={referenceKind} />
 			{selected ? (
 				<span className="absolute right-1.5 top-1.5 flex items-center gap-1 rounded-sm bg-primary px-1.5 py-1 text-xs font-medium text-primary-foreground shadow-sm">
 					<Check className="size-3" />
@@ -495,7 +506,7 @@ const GeneratedReferenceOptionPreview: React.FC<{
 );
 
 const ReferenceMediaPreview: React.FC<{
-	kind: MediaAsset["kind"];
+	kind: Exclude<ReferenceKindFilter, "all">;
 	mimeType?: string;
 	source: string;
 	title: string;
@@ -574,7 +585,7 @@ const ReferenceAudioPreview: React.FC<{
 	);
 };
 
-const ReferenceKindBadge: React.FC<{ kind: MediaAsset["kind"] }> = ({ kind }) => {
+const ReferenceKindBadge: React.FC<{ kind: Exclude<ReferenceKindFilter, "all"> }> = ({ kind }) => {
 	if (kind === "image") return null;
 
 	const Icon = kind === "audio" ? AudioLines : Film;
