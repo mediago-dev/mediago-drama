@@ -37,7 +37,7 @@ func newAPIHandler(config Config) *apiHandler {
 	}
 	mediaDir := config.MediaDir
 	if mediaDir == "" {
-		mediaDir = workspaceState.LibraryGeneratedDir()
+		mediaDir = workspaceState.LibraryAssetsDir()
 	}
 
 	backendService := serviceagent.NewAgentBackendServiceWithBinDir(config.ACPCommand, config.AgentBinDir, config.AgentID)

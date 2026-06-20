@@ -129,7 +129,6 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 		payload.ProjectID = GenerationProjectIDFromScopeID(conversation.ScopeID)
 	}
 	projectID := payload.ProjectID
-	studioSessionID := workflow.studioSessionIDForConversation(conversation, projectID)
 	workflow.appendStudioUserTranscript(conversation, payload)
 
 	provider, err := workflow.newGenerationProvider(route)
@@ -151,7 +150,7 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 		workflow.trackGenerationNotificationTarget(task, payload.NotificationTarget)
 		workflow.syncGenerationNotificationTask(task)
 		_ = workflow.generationTasks.RecordAttempt(task.ID, "create", messageResponse.Status, messageResponse.Message, nil)
-		go workflow.submitPendingGeneration(context.Background(), task, provider, generationRequest, "create", projectID, studioSessionID)
+		go workflow.submitPendingGeneration(context.Background(), task, provider, generationRequest, "create", projectID, payload.ConversationID)
 		return messageResponse, http.StatusOK, nil
 	}
 	if ShouldRunGenerationInBackground(route) {
@@ -163,7 +162,7 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 		workflow.trackGenerationNotificationTarget(task, payload.NotificationTarget)
 		workflow.syncGenerationNotificationTask(task)
 		_ = workflow.generationTasks.RecordAttempt(task.ID, "create", messageResponse.Status, messageResponse.Message, nil)
-		go workflow.completeSubmittedGeneration(context.Background(), task, provider, generationRequest, "create", projectID, studioSessionID)
+		go workflow.completeSubmittedGeneration(context.Background(), task, provider, generationRequest, "create", projectID, payload.ConversationID)
 		return messageResponse, http.StatusOK, nil
 	}
 
@@ -191,7 +190,7 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 		}
 		return messageResponse, http.StatusOK, nil
 	}
-	response = workflow.cacheGenerationResponseAssetsForScope(ctx, response, projectID, studioSessionID)
+	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptions(projectID, payload.ConversationID, payload.SectionID))
 
 	messageResponse := GenerationResponseFromCore(response, payload.Kind)
 	if ShouldPersistGenerationTask(route) {

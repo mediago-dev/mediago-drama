@@ -61,14 +61,34 @@ func (workflow *GenerationService) cacheGenerationResponseAssets(
 	response coregeneration.Response,
 	projectID string,
 ) coregeneration.Response {
-	return workflow.cacheGenerationResponseAssetsForScope(ctx, response, projectID, "")
+	return workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptions(projectID, "", ""))
 }
 
 func (workflow *GenerationService) cacheGenerationResponseAssetsForScope(
 	ctx context.Context,
 	response coregeneration.Response,
 	projectID string,
-	studioSessionID string,
+	conversationID string,
+) coregeneration.Response {
+	return workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptions(projectID, conversationID, ""))
+}
+
+func (workflow *GenerationService) cacheGenerationResponseAssetsForTask(
+	ctx context.Context,
+	response coregeneration.Response,
+	task generationTaskRecord,
+) coregeneration.Response {
+	return workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptions(
+		workflow.projectIDForTask(task),
+		task.ConversationID,
+		task.SectionID,
+	))
+}
+
+func (workflow *GenerationService) cacheGenerationResponseAssetsWithOptions(
+	ctx context.Context,
+	response coregeneration.Response,
+	options media.MediaAssetSaveOptions,
 ) coregeneration.Response {
 	if workflow.mediaAssets == nil || len(response.Assets) == 0 {
 		return response
@@ -76,7 +96,7 @@ func (workflow *GenerationService) cacheGenerationResponseAssetsForScope(
 
 	warnings := []string{}
 	for index, asset := range response.Assets {
-		cached, err := workflow.cacheGenerationAsset(ctx, asset, projectID, studioSessionID)
+		cached, err := workflow.cacheGenerationAsset(ctx, asset, options)
 		if err != nil {
 			warnings = append(warnings, err.Error())
 			slog.Warn(
@@ -118,12 +138,11 @@ func (workflow *GenerationService) CacheGenerationResponseAssets(
 func (workflow *GenerationService) cacheGenerationAsset(
 	ctx context.Context,
 	asset coregeneration.Asset,
-	projectID string,
-	studioSessionID string,
+	options media.MediaAssetSaveOptions,
 ) (media.MediaAsset, error) {
 	kind := string(asset.Kind)
 	if asset.Base64 != "" {
-		cached, err := workflow.saveGenerationBase64Asset(kind, asset.MIMEType, asset.Base64, "", projectID, studioSessionID)
+		cached, err := workflow.mediaAssets.SaveBase64WithOptions(kind, asset.MIMEType, asset.Base64, "", options)
 		if err != nil {
 			return media.MediaAsset{}, fmt.Errorf("saving base64 asset: %w", err)
 		}
@@ -134,7 +153,7 @@ func (workflow *GenerationService) cacheGenerationAsset(
 		return media.MediaAsset{}, nil
 	}
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "data:") {
-		cached, err := workflow.saveGenerationBase64Asset(kind, asset.MIMEType, asset.URL, "", projectID, studioSessionID)
+		cached, err := workflow.mediaAssets.SaveBase64WithOptions(kind, asset.MIMEType, asset.URL, "", options)
 		if err != nil {
 			return media.MediaAsset{}, fmt.Errorf("saving data uri asset: %w", err)
 		}
@@ -146,7 +165,7 @@ func (workflow *GenerationService) cacheGenerationAsset(
 		return media.MediaAsset{}, fmt.Errorf("unsupported generated asset url %q", asset.URL)
 	}
 
-	cached, err := workflow.saveGenerationRemoteAsset(ctx, kind, asset.URL, projectID, studioSessionID)
+	cached, err := workflow.mediaAssets.SaveRemoteAssetWithOptions(ctx, kind, asset.URL, options)
 	if err != nil {
 		return media.MediaAsset{}, fmt.Errorf("caching remote asset: %w", err)
 	}
@@ -154,28 +173,29 @@ func (workflow *GenerationService) cacheGenerationAsset(
 	return cached, nil
 }
 
-func (workflow *GenerationService) saveGenerationBase64Asset(kind string, mimeType string, value string, sourceURL string, projectID string, studioSessionID string) (media.MediaAsset, error) {
-	if strings.TrimSpace(studioSessionID) != "" && strings.TrimSpace(projectID) == "" {
-		if studioDir := workflow.studioDirForSessionID(studioSessionID); studioDir != "" {
-			return workflow.mediaAssets.SaveBase64ForStudioDir(kind, mimeType, value, sourceURL, studioDir)
-		}
-		return workflow.mediaAssets.SaveBase64ForStudioSession(kind, mimeType, value, sourceURL, studioSessionID)
-	}
-	return workflow.mediaAssets.SaveBase64(kind, mimeType, value, sourceURL, projectID)
-}
-
-func (workflow *GenerationService) saveGenerationRemoteAsset(ctx context.Context, kind string, remoteURL string, projectID string, studioSessionID string) (media.MediaAsset, error) {
-	if strings.TrimSpace(studioSessionID) != "" && strings.TrimSpace(projectID) == "" {
-		if studioDir := workflow.studioDirForSessionID(studioSessionID); studioDir != "" {
-			return workflow.mediaAssets.SaveRemoteAssetForStudioDir(ctx, kind, remoteURL, studioDir)
-		}
-		return workflow.mediaAssets.SaveRemoteAssetForStudioSession(ctx, kind, remoteURL, studioSessionID)
-	}
-	return workflow.mediaAssets.SaveRemoteAsset(ctx, kind, remoteURL, projectID)
-}
-
 func isLocalMediaAssetURL(value string) bool {
 	return strings.HasPrefix(strings.TrimSpace(value), "/api/v1/media-assets/")
+}
+
+func generationMediaSaveOptions(projectID string, conversationID string, sectionID string) media.MediaAssetSaveOptions {
+	source := media.MediaSourceGeneration
+	if strings.TrimSpace(projectID) == "" && strings.TrimSpace(conversationID) != "" {
+		source = media.MediaSourceToolbox
+	}
+	return media.MediaAssetSaveOptions{
+		ProjectID:      projectID,
+		Source:         source,
+		ConversationID: conversationID,
+		SectionID:      sectionID,
+	}
+}
+
+func (workflow *GenerationService) saveGenerationBase64Asset(kind string, mimeType string, value string, sourceURL string, projectID string, conversationID string) (media.MediaAsset, error) {
+	return workflow.mediaAssets.SaveBase64WithOptions(kind, mimeType, value, sourceURL, generationMediaSaveOptions(projectID, conversationID, ""))
+}
+
+func (workflow *GenerationService) saveGenerationRemoteAsset(ctx context.Context, kind string, remoteURL string, projectID string, conversationID string) (media.MediaAsset, error) {
+	return workflow.mediaAssets.SaveRemoteAssetWithOptions(ctx, kind, remoteURL, generationMediaSaveOptions(projectID, conversationID, ""))
 }
 
 func (workflow *GenerationService) projectIDForConversation(conversationID string) string {

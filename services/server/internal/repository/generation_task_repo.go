@@ -54,6 +54,15 @@ func (repo *GenerationTaskRepository) ListGenerationTasks(options ...GenerationT
 	return models, nil
 }
 
+// ListAllGenerationTasks returns every generation task ordered by update time.
+func (repo *GenerationTaskRepository) ListAllGenerationTasks() ([]domain.GenerationTaskModel, error) {
+	models := []domain.GenerationTaskModel{}
+	if err := repo.db.Order("updated_at DESC").Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing all generation tasks: %w", err)
+	}
+	return models, nil
+}
+
 // ListGenerationTasksByConversation returns generation tasks for one conversation.
 func (repo *GenerationTaskRepository) ListGenerationTasksByConversation(kind string, conversationID string, includeLegacyDefault bool, options ...GenerationTaskListOptions) ([]domain.GenerationTaskModel, error) {
 	models := []domain.GenerationTaskModel{}
@@ -137,6 +146,7 @@ func (repo *GenerationTaskRepository) UpsertGenerationTask(model domain.Generati
 			"provider_task_id",
 			"conversation_id",
 			"project_id",
+			"section_id",
 			"capability_id",
 			"route_id",
 			"family_id",
@@ -196,6 +206,22 @@ func (repo *GenerationTaskRepository) UpdateGenerationTaskDeletedAssetSlots(id s
 		return false, fmt.Errorf("updating generation task deleted asset slots: %w", result.Error)
 	}
 	return result.RowsAffected > 0, nil
+}
+
+// UpdateGenerationTaskProjectID rewrites legacy project identifiers on tasks.
+func (repo *GenerationTaskRepository) UpdateGenerationTaskProjectID(oldProjectID string, newProjectID string) (int64, error) {
+	oldProjectID = domain.CleanProjectID(oldProjectID)
+	newProjectID = domain.CleanProjectID(newProjectID)
+	if oldProjectID == "" || newProjectID == "" || oldProjectID == newProjectID {
+		return 0, nil
+	}
+	result := repo.db.Model(&domain.GenerationTaskModel{}).
+		Where("project_id = ?", oldProjectID).
+		Update("project_id", newProjectID)
+	if result.Error != nil {
+		return 0, fmt.Errorf("updating generation task project id: %w", result.Error)
+	}
+	return result.RowsAffected, nil
 }
 
 // UpsertGenerationConversation inserts or updates a generation conversation.

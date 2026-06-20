@@ -43,6 +43,15 @@ func (repo *MediaAssetRepository) ListMediaAssets(limit int, projectID string) (
 	return models, nil
 }
 
+// ListAllMediaAssets returns every media asset ordered by update time.
+func (repo *MediaAssetRepository) ListAllMediaAssets() ([]domain.MediaAssetModel, error) {
+	models := []domain.MediaAssetModel{}
+	if err := repo.db.Order("updated_at DESC").Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing all media assets: %w", err)
+	}
+	return models, nil
+}
+
 // GetMediaAsset returns a media asset by ID.
 func (repo *MediaAssetRepository) GetMediaAsset(id string) (domain.MediaAssetModel, error) {
 	var model domain.MediaAssetModel
@@ -113,6 +122,20 @@ func (repo *MediaAssetRepository) UpdateMediaAssetMetadata(id string, updates ma
 		Updates(updates).Error
 	if err != nil {
 		return fmt.Errorf("updating media asset metadata: %w", err)
+	}
+	return nil
+}
+
+// UpdateMediaAssetStorage updates the physical storage metadata for an asset.
+func (repo *MediaAssetRepository) UpdateMediaAssetStorage(id string, updates map[string]any) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	err := repo.db.Model(&domain.MediaAssetModel{}).
+		Where("id = ?", strings.TrimSpace(id)).
+		Updates(updates).Error
+	if err != nil {
+		return fmt.Errorf("updating media asset storage: %w", err)
 	}
 	return nil
 }

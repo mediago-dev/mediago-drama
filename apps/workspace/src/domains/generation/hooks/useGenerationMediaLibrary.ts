@@ -58,7 +58,7 @@ export const useGenerationMediaLibrary = ({
 			setActiveMediaAssetId(asset.id);
 			setError(null);
 			try {
-				await updateMediaAsset(asset.id, filename);
+				await updateMediaAsset(asset.id, filename, mediaAssetProjectId || null);
 				await mutateMediaAssets();
 			} catch (err) {
 				const message = err instanceof Error ? err.message : "素材重命名失败。";
@@ -67,7 +67,7 @@ export const useGenerationMediaLibrary = ({
 				setActiveMediaAssetId(null);
 			}
 		},
-		[mutateMediaAssets, setError],
+		[mediaAssetProjectId, mutateMediaAssets, setError],
 	);
 
 	return {

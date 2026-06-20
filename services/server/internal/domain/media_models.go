@@ -11,6 +11,10 @@ type MediaAssetModel struct {
 	URL               string  `gorm:"column:url;not null"`
 	SourceURL         string  `gorm:"column:source_url;not null;default:'';index:media_assets_source_url_idx"`
 	ProjectID         string  `gorm:"column:project_id;not null;default:'';index:media_assets_project_id_idx"`
+	Source            string  `gorm:"column:source;not null;default:'';index:media_assets_source_idx"`
+	ConversationID    string  `gorm:"column:conversation_id;not null;default:'';index:media_assets_conversation_id_idx"`
+	SectionID         string  `gorm:"column:section_id;not null;default:'';index:media_assets_section_id_idx"`
+	RelativePath      string  `gorm:"column:relative_path;not null;default:''"`
 	DurationSeconds   float64 `gorm:"column:duration_seconds;not null;default:0"`
 	Width             int     `gorm:"column:width;not null;default:0"`
 	Height            int     `gorm:"column:height;not null;default:0"`

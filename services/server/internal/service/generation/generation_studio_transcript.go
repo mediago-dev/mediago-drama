@@ -59,8 +59,8 @@ func (workflow *GenerationService) appendStudioTranscript(conversation Generatio
 		entry.ID = fmt.Sprintf("transcript-%d", time.Now().UnixNano())
 	}
 	if strings.TrimSpace(entry.Content) != "" && entry.Role == "assistant" && entry.Kind == "text" {
-		if filename := writeStudioTextResult(sessionDir, entry.ID, entry.Content); filename != "" {
-			entry.Files = append(entry.Files, filename)
+		if relativePath := workflow.writeLibraryTextResult(conversation, entry.ID, entry.Content); relativePath != "" {
+			entry.Files = append(entry.Files, relativePath)
 		}
 	}
 	data, err := json.Marshal(entry)
@@ -101,16 +101,36 @@ func (workflow *GenerationService) ensureStudioSessionDir(conversation Generatio
 	return sessionDir
 }
 
-func writeStudioTextResult(sessionDir string, id string, content string) string {
+func (workflow *GenerationService) writeLibraryTextResult(conversation GenerationConversationRecord, id string, content string) string {
+	if workflow == nil || workflow.mediaAssets == nil {
+		return ""
+	}
+	workspaceRoot := workflow.mediaAssets.WorkspaceRoot()
+	if strings.TrimSpace(workspaceRoot) == "" {
+		return ""
+	}
 	filename := shared.SafeFilename(domain.CleanProjectID(id))
 	if filename == "" {
 		filename = fmt.Sprintf("text-%d", time.Now().UnixNano())
 	}
 	filename += ".txt"
-	if err := os.WriteFile(filepath.Join(sessionDir, filename), []byte(content), 0o600); err != nil {
+	conversationDir := shared.AssetPathSegment(conversation.ID, "conversation")
+	relativePath := filepath.Join(
+		"library",
+		"assets",
+		shared.AssetKindDirName(shared.AssetKindText),
+		"toolbox",
+		conversationDir,
+		filename,
+	)
+	path := filepath.Join(workspaceRoot, relativePath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return ""
 	}
-	return filename
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return ""
+	}
+	return filepath.ToSlash(relativePath)
 }
 
 func isStudioGenerationConversation(conversation GenerationConversationRecord) bool {

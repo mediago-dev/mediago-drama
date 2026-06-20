@@ -11,6 +11,10 @@ export interface MediaAsset {
 	url: string;
 	sourceUrl?: string;
 	projectId?: string;
+	source?: "upload" | "generation" | "toolbox" | "preview" | string;
+	conversationId?: string;
+	sectionId?: string;
+	relativePath?: string;
 	durationSeconds?: number;
 	width?: number;
 	height?: number;

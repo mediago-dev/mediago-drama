@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -190,9 +191,62 @@ func (paths WorkspacePaths) DatabasePath() string {
 	return filepath.Join(paths.DatabaseDir(), "mediacli.sqlite")
 }
 
-// LibraryGeneratedDir returns the generated library asset directory.
-func (paths WorkspacePaths) LibraryGeneratedDir() string {
-	return filepath.Join(paths.Root, "library", "assets", "generated")
+// LibraryAssetsDir returns the global typed media library root.
+func (paths WorkspacePaths) LibraryAssetsDir() string {
+	return filepath.Join(paths.Root, "library", "assets")
+}
+
+// LibraryAssetKindDir returns the global media library directory for one kind.
+func (paths WorkspacePaths) LibraryAssetKindDir(kind string) string {
+	return filepath.Join(paths.LibraryAssetsDir(), AssetKindDirName(kind))
+}
+
+// ProjectLibraryAssetsDir returns a project's typed media library root.
+func ProjectLibraryAssetsDir(projectDir string) string {
+	return filepath.Join(ResolveWorkspaceDir(projectDir), "library", "assets")
+}
+
+// ProjectLibraryAssetKindDir returns a project's media library directory for one kind.
+func ProjectLibraryAssetKindDir(projectDir string, kind string) string {
+	return filepath.Join(ProjectLibraryAssetsDir(projectDir), AssetKindDirName(kind))
+}
+
+// AssetKindDirName maps media kinds to stable filesystem directory names.
+func AssetKindDirName(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case AssetKindImage:
+		return "images"
+	case AssetKindVideo:
+		return "video"
+	case AssetKindAudio:
+		return "audio"
+	case AssetKindText:
+		return "text"
+	default:
+		return "text"
+	}
+}
+
+var assetPathSegmentPattern = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+// AssetPathSegment returns a stable, safe path segment for generated asset grouping.
+func AssetPathSegment(value string, fallback string) string {
+	segment := strings.TrimSpace(value)
+	if unescaped, err := url.QueryUnescape(segment); err == nil {
+		segment = unescaped
+	}
+	segment = strings.ReplaceAll(segment, string(filepath.Separator), "-")
+	segment = strings.ReplaceAll(segment, "/", "-")
+	segment = strings.ReplaceAll(segment, "\\", "-")
+	segment = assetPathSegmentPattern.ReplaceAllString(segment, "-")
+	segment = strings.Trim(segment, ".- ")
+	if segment == "" {
+		segment = strings.TrimSpace(fallback)
+	}
+	if segment == "" {
+		segment = "ungrouped"
+	}
+	return segment
 }
 
 // AgentDir returns the default root directory for an agent project.
@@ -362,14 +416,10 @@ func EnsureWorkspaceLayout(root string) error {
 		filepath.Join(paths.GlobalMetadataDir(), "temp"),
 		filepath.Join(paths.GlobalMetadataDir(), "locks"),
 		filepath.Join(paths.GlobalMetadataDir(), "trash"),
-		filepath.Join(paths.Root, "library", "inbox"),
-		filepath.Join(paths.Root, "library", "assets", "images"),
-		filepath.Join(paths.Root, "library", "assets", "audio"),
-		filepath.Join(paths.Root, "library", "assets", "video"),
-		filepath.Join(paths.Root, "library", "assets", "documents"),
-		paths.LibraryGeneratedDir(),
-		filepath.Join(paths.Root, "library", "references"),
-		filepath.Join(paths.Root, "library", "exports"),
+		paths.LibraryAssetKindDir(AssetKindImage),
+		paths.LibraryAssetKindDir(AssetKindVideo),
+		paths.LibraryAssetKindDir(AssetKindAudio),
+		paths.LibraryAssetKindDir(AssetKindText),
 		paths.AgentDir(""),
 		paths.StudioSessionDir(""),
 	}
@@ -430,7 +480,13 @@ func EnsureProjectLayout(root string, project mediamcp.Project) error {
 	if err := migrateDeprecatedProjectDocsDir(projectDir); err != nil {
 		return err
 	}
-	for _, dir := range []string{filepath.Join(projectDir, "work")} {
+	for _, dir := range []string{
+		filepath.Join(projectDir, "work"),
+		ProjectLibraryAssetKindDir(projectDir, AssetKindImage),
+		ProjectLibraryAssetKindDir(projectDir, AssetKindVideo),
+		ProjectLibraryAssetKindDir(projectDir, AssetKindAudio),
+		ProjectLibraryAssetKindDir(projectDir, AssetKindText),
+	} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("creating project directory %s: %w", dir, err)
 		}

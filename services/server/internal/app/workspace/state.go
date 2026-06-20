@@ -129,9 +129,9 @@ func (store *WorkspaceStateService) DatabasePath() string {
 	return serviceshared.WorkspacePathsFor(store.dir).DatabasePath()
 }
 
-// LibraryGeneratedDir returns the generated media assets directory.
-func (store *WorkspaceStateService) LibraryGeneratedDir() string {
-	return serviceshared.WorkspacePathsFor(store.dir).LibraryGeneratedDir()
+// LibraryAssetsDir returns the typed media assets root.
+func (store *WorkspaceStateService) LibraryAssetsDir() string {
+	return serviceshared.WorkspacePathsFor(store.dir).LibraryAssetsDir()
 }
 
 // LoadWorkspaceState returns complete project workspace state.

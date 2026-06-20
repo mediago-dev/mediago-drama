@@ -138,6 +138,10 @@ func TestEnsureProjectLayoutCreatesMinimalVisibleProjectTree(t *testing.T) {
 
 	for _, path := range []string{
 		filepath.Join(projectDir, "work"),
+		filepath.Join(projectDir, "library", "assets", "images"),
+		filepath.Join(projectDir, "library", "assets", "video"),
+		filepath.Join(projectDir, "library", "assets", "audio"),
+		filepath.Join(projectDir, "library", "assets", "text"),
 		filepath.Join(projectDir, "project.media.json"),
 		filepath.Join(projectDir, "README.md"),
 	} {
@@ -155,6 +159,7 @@ func TestEnsureProjectLayoutCreatesMinimalVisibleProjectTree(t *testing.T) {
 		got[entry.Name()] = true
 	}
 	want := map[string]bool{
+		"library":            true,
 		"work":               true,
 		"project.media.json": true,
 		"README.md":          true,

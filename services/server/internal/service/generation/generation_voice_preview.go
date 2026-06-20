@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 )
 
 const generationVoicePreviewPrompt = "你好，这是一段音色试听。"
@@ -74,7 +75,9 @@ func (workflow *GenerationService) PreviewGenerationVoice(
 		return GenerationVoicePreviewResponse{}, http.StatusBadGateway, err
 	}
 
-	response = workflow.cacheGenerationResponseAssets(ctx, response, "")
+	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, media.MediaAssetSaveOptions{
+		Source: media.MediaSourcePreview,
+	})
 	message := GenerationResponseFromCore(response, string(coregeneration.KindAudio))
 	if message.Status == "failed" {
 		return GenerationVoicePreviewResponse{}, http.StatusBadGateway, errors.New(message.Message)

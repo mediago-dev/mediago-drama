@@ -41,6 +41,7 @@ import { debugTabs, type DebugTabValue } from "@/pages/Debug";
 import { GenerationNotificationButton } from "./GenerationNotificationButton";
 import { openGenerationConversationCreateDialog } from "./GenerationConversationCreateDialog";
 import { GlobalToolboxButton } from "./GlobalToolboxDrawer";
+import { AssetLibraryButton } from "./AssetLibraryButton";
 import type { ActiveStudioTab, StudioTab } from "./ProjectNavigatorTypes";
 
 interface StudioToolItem {
@@ -209,6 +210,7 @@ export const StudioSessionsScreen: React.FC<{
 						<div className="min-w-0 flex-1">
 							<SettingsButton isActive={false} onClick={onOpenSettings} />
 						</div>
+						<AssetLibraryButton />
 						<GlobalToolboxButton />
 						{onOpenGenerationNotification ? (
 							<GenerationNotificationButton onOpenNotification={onOpenGenerationNotification} />
@@ -284,6 +286,7 @@ export const StudioTypesScreen: React.FC<{
 					<div className="min-w-0 flex-1">
 						<SettingsButton isActive={false} onClick={onOpenSettings} />
 					</div>
+					<AssetLibraryButton />
 					<GlobalToolboxButton />
 					{onOpenGenerationNotification ? (
 						<GenerationNotificationButton onOpenNotification={onOpenGenerationNotification} />
@@ -659,6 +662,7 @@ export const SettingsSidebarPanel: React.FC<{
 			</div>
 		)}
 		<div className="mt-auto flex justify-end gap-1 pt-2">
+			<AssetLibraryButton />
 			<GlobalToolboxButton />
 			{onOpenGenerationNotification ? (
 				<GenerationNotificationButton onOpenNotification={onOpenGenerationNotification} />

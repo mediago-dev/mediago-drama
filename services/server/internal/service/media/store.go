@@ -30,6 +30,10 @@ const (
 	MediaKindAudio          = shared.AssetKindAudio
 	MetadataStatusReady     = "ready"
 	MetadataStatusFailed    = "failed"
+	MediaSourceUpload       = "upload"
+	MediaSourceGeneration   = "generation"
+	MediaSourceToolbox      = "toolbox"
+	MediaSourcePreview      = "preview"
 )
 
 var mediaAssetHTTPClient = &http.Client{Timeout: 2 * time.Minute}
@@ -37,6 +41,7 @@ var mediaAssetHTTPClient = &http.Client{Timeout: 2 * time.Minute}
 type MediaAssets struct {
 	mu                       sync.RWMutex
 	repo                     *repository.MediaAssetRepository
+	workspaceRepo            *repository.WorkspaceRepository
 	dir                      string
 	workspaceRoot            string
 	ffmpegPath               string
@@ -54,6 +59,10 @@ type MediaAsset struct {
 	URL               string  `json:"url"`
 	SourceURL         string  `json:"sourceUrl,omitempty"`
 	ProjectID         string  `json:"projectId,omitempty"`
+	Source            string  `json:"source,omitempty"`
+	ConversationID    string  `json:"conversationId,omitempty"`
+	SectionID         string  `json:"sectionId,omitempty"`
+	RelativePath      string  `json:"relativePath,omitempty"`
 	DurationSeconds   float64 `json:"durationSeconds,omitempty"`
 	Width             int     `json:"width,omitempty"`
 	Height            int     `json:"height,omitempty"`
@@ -89,6 +98,14 @@ type GeneratedAssetFileSaveResponse struct {
 	Filename string `json:"filename"`
 }
 
+// MediaAssetSaveOptions describes where a new media asset should live.
+type MediaAssetSaveOptions struct {
+	ProjectID      string
+	Source         string
+	ConversationID string
+	SectionID      string
+}
+
 type mediaAssetModel = domain.MediaAssetModel
 
 func NewMediaAssets(dbPath string, mediaDir string) *MediaAssets {
@@ -117,13 +134,18 @@ func NewMediaAssets(dbPath string, mediaDir string) *MediaAssets {
 
 // NewMediaAssetsFromRepository returns a media asset service backed by an
 // already constructed repository.
-func NewMediaAssetsFromRepository(repo *repository.MediaAssetRepository, mediaDir string, workspaceRoot string, _ *repository.WorkspaceRepository, initErr error) *MediaAssets {
+func NewMediaAssetsFromRepository(repo *repository.MediaAssetRepository, mediaDir string, workspaceRoot string, workspaceRepo *repository.WorkspaceRepository, initErr error) *MediaAssets {
 	if mediaDir == "" {
-		mediaDir = defaultMediaDir()
+		if strings.TrimSpace(workspaceRoot) != "" {
+			mediaDir = shared.WorkspacePathsFor(workspaceRoot).LibraryAssetsDir()
+		} else {
+			mediaDir = defaultMediaDir()
+		}
 	}
 
 	store := &MediaAssets{
 		repo:          repo,
+		workspaceRepo: workspaceRepo,
 		dir:           mediaDir,
 		workspaceRoot: strings.TrimSpace(workspaceRoot),
 		initErr:       initErr,
@@ -171,7 +193,7 @@ func (store *MediaAssets) ServeFilePath(asset MediaAsset) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolving media asset path: %w", err)
 	}
-	for _, root := range []string{store.dir, store.workspaceRoot} {
+	for _, root := range store.allowedRootsForAsset(asset) {
 		ok, err := pathWithinRoot(absolutePath, root)
 		if err != nil {
 			return "", err
@@ -196,7 +218,7 @@ func (store *MediaAssets) ServePosterFilePath(asset MediaAsset) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("resolving media asset poster path: %w", err)
 	}
-	for _, root := range []string{store.dir, store.workspaceRoot} {
+	for _, root := range store.allowedRootsForAsset(asset) {
 		ok, err := pathWithinRoot(absolutePath, root)
 		if err != nil {
 			return "", err
@@ -300,7 +322,7 @@ func (store *MediaAssets) SaveMultipartFile(header *multipart.FileHeader, projec
 		return MediaAsset{}, err
 	}
 
-	return store.saveBytesForProject(data, header.Filename, header.Header.Get("Content-Type"), "", projectID)
+	return store.saveBytesForProject(data, header.Filename, header.Header.Get("Content-Type"), "", projectID, MediaSourceUpload)
 }
 
 func (store *MediaAssets) SaveReader(ctx context.Context, reader io.Reader, filename string, contentType string, sourceURL string) (MediaAsset, error) {
@@ -310,24 +332,38 @@ func (store *MediaAssets) SaveReader(ctx context.Context, reader io.Reader, file
 		return MediaAsset{}, err
 	}
 
-	return store.saveBytesForProject(data, filename, contentType, sourceURL, "")
+	return store.saveBytesForProject(data, filename, contentType, sourceURL, "", MediaSourceUpload)
 }
 
 func (store *MediaAssets) SaveBase64(kind string, mimeType string, value string, sourceURL string, projectID string) (MediaAsset, error) {
-	return store.saveBase64ForScope(kind, mimeType, value, sourceURL, projectID, "", "")
+	return store.SaveBase64WithOptions(kind, mimeType, value, sourceURL, MediaAssetSaveOptions{
+		ProjectID: projectID,
+		Source:    MediaSourceGeneration,
+	})
 }
 
-// SaveBase64ForStudioSession stores a generated asset in a studio session directory.
+// SaveBase64WithOptions stores a base64 media asset using explicit placement metadata.
+func (store *MediaAssets) SaveBase64WithOptions(kind string, mimeType string, value string, sourceURL string, options MediaAssetSaveOptions) (MediaAsset, error) {
+	return store.saveBase64WithOptions(kind, mimeType, value, sourceURL, options)
+}
+
+// SaveBase64ForStudioSession is a legacy wrapper for toolbox conversation assets.
 func (store *MediaAssets) SaveBase64ForStudioSession(kind string, mimeType string, value string, sourceURL string, sessionID string) (MediaAsset, error) {
-	return store.saveBase64ForScope(kind, mimeType, value, sourceURL, "", sessionID, "")
+	return store.SaveBase64WithOptions(kind, mimeType, value, sourceURL, MediaAssetSaveOptions{
+		Source:         MediaSourceToolbox,
+		ConversationID: sessionID,
+	})
 }
 
-// SaveBase64ForStudioDir stores a generated asset in a caller-owned studio directory.
+// SaveBase64ForStudioDir is a legacy wrapper for toolbox conversation assets.
 func (store *MediaAssets) SaveBase64ForStudioDir(kind string, mimeType string, value string, sourceURL string, studioDir string) (MediaAsset, error) {
-	return store.saveBase64ForScope(kind, mimeType, value, sourceURL, "", "", studioDir)
+	return store.SaveBase64WithOptions(kind, mimeType, value, sourceURL, MediaAssetSaveOptions{
+		Source:         MediaSourceToolbox,
+		ConversationID: filepath.Base(strings.TrimSpace(studioDir)),
+	})
 }
 
-func (store *MediaAssets) saveBase64ForScope(kind string, mimeType string, value string, sourceURL string, projectID string, studioSessionID string, studioDir string) (MediaAsset, error) {
+func (store *MediaAssets) saveBase64WithOptions(kind string, mimeType string, value string, sourceURL string, options MediaAssetSaveOptions) (MediaAsset, error) {
 	if store.initErr != nil {
 		return MediaAsset{}, store.initErr
 	}
@@ -350,11 +386,19 @@ func (store *MediaAssets) saveBase64ForScope(kind string, mimeType string, value
 		kind = shared.KindFromMIMEType(mimeType)
 	}
 
-	return store.saveBytesWithKind(data, kind, defaultAssetFilename(kind, mimeType), mimeType, sourceURL, projectID, studioSessionID, studioDir)
+	return store.saveBytesWithKind(data, kind, defaultAssetFilename(kind, mimeType), mimeType, sourceURL, options)
 }
 
 func (store *MediaAssets) SaveRemoteAsset(ctx context.Context, kind string, remoteURL string, projectID string) (MediaAsset, error) {
-	return store.saveRemoteAssetForScope(ctx, kind, remoteURL, projectID, "", "")
+	return store.SaveRemoteAssetWithOptions(ctx, kind, remoteURL, MediaAssetSaveOptions{
+		ProjectID: projectID,
+		Source:    MediaSourceGeneration,
+	})
+}
+
+// SaveRemoteAssetWithOptions downloads and stores a remote media asset using explicit placement metadata.
+func (store *MediaAssets) SaveRemoteAssetWithOptions(ctx context.Context, kind string, remoteURL string, options MediaAssetSaveOptions) (MediaAsset, error) {
+	return store.saveRemoteAssetWithOptions(ctx, kind, remoteURL, options)
 }
 
 // SaveGeneratedAssetFile exports a generated media asset to a user-selected local directory.
@@ -429,17 +473,23 @@ func (store *MediaAssets) SaveGeneratedAssetFile(ctx context.Context, request Ge
 	return GeneratedAssetFileSaveResponse{Path: path, Filename: finalFilename}, nil
 }
 
-// SaveRemoteAssetForStudioSession downloads and stores a remote asset in a studio session directory.
+// SaveRemoteAssetForStudioSession is a legacy wrapper for toolbox conversation assets.
 func (store *MediaAssets) SaveRemoteAssetForStudioSession(ctx context.Context, kind string, remoteURL string, sessionID string) (MediaAsset, error) {
-	return store.saveRemoteAssetForScope(ctx, kind, remoteURL, "", sessionID, "")
+	return store.SaveRemoteAssetWithOptions(ctx, kind, remoteURL, MediaAssetSaveOptions{
+		Source:         MediaSourceToolbox,
+		ConversationID: sessionID,
+	})
 }
 
-// SaveRemoteAssetForStudioDir downloads and stores a remote asset in a caller-owned studio directory.
+// SaveRemoteAssetForStudioDir is a legacy wrapper for toolbox conversation assets.
 func (store *MediaAssets) SaveRemoteAssetForStudioDir(ctx context.Context, kind string, remoteURL string, studioDir string) (MediaAsset, error) {
-	return store.saveRemoteAssetForScope(ctx, kind, remoteURL, "", "", studioDir)
+	return store.SaveRemoteAssetWithOptions(ctx, kind, remoteURL, MediaAssetSaveOptions{
+		Source:         MediaSourceToolbox,
+		ConversationID: filepath.Base(strings.TrimSpace(studioDir)),
+	})
 }
 
-func (store *MediaAssets) saveRemoteAssetForScope(ctx context.Context, kind string, remoteURL string, projectID string, studioSessionID string, studioDir string) (MediaAsset, error) {
+func (store *MediaAssets) saveRemoteAssetWithOptions(ctx context.Context, kind string, remoteURL string, options MediaAssetSaveOptions) (MediaAsset, error) {
 	if store.initErr != nil {
 		return MediaAsset{}, store.initErr
 	}
@@ -447,7 +497,7 @@ func (store *MediaAssets) saveRemoteAssetForScope(ctx context.Context, kind stri
 	if remoteURL == "" {
 		return MediaAsset{}, fmt.Errorf("remote asset url is empty")
 	}
-	if strings.TrimSpace(studioSessionID) == "" && strings.TrimSpace(studioDir) == "" {
+	if strings.TrimSpace(options.ConversationID) == "" {
 		if existing, ok, err := store.FindBySourceURL(remoteURL); err != nil {
 			return MediaAsset{}, err
 		} else if ok {
@@ -490,7 +540,7 @@ func (store *MediaAssets) saveRemoteAssetForScope(ctx context.Context, kind stri
 		filename = defaultAssetFilename(kind, mimeType)
 	}
 
-	return store.saveBytesWithKind(data, kind, filename, mimeType, remoteURL, projectID, studioSessionID, studioDir)
+	return store.saveBytesWithKind(data, kind, filename, mimeType, remoteURL, options)
 }
 
 func copyGeneratedAssetFile(sourcePath string, destinationPath string) error {
@@ -649,10 +699,10 @@ func (store *MediaAssets) DataURIValue(asset MediaAsset) (string, error) {
 }
 
 func (store *MediaAssets) saveBytes(data []byte, filename string, contentType string, sourceURL string) (MediaAsset, error) {
-	return store.saveBytesForProject(data, filename, contentType, sourceURL, "")
+	return store.saveBytesForProject(data, filename, contentType, sourceURL, "", MediaSourceUpload)
 }
 
-func (store *MediaAssets) saveBytesForProject(data []byte, filename string, contentType string, sourceURL string, projectID string) (MediaAsset, error) {
+func (store *MediaAssets) saveBytesForProject(data []byte, filename string, contentType string, sourceURL string, projectID string, source string) (MediaAsset, error) {
 	mimeType := strings.TrimSpace(strings.Split(contentType, ";")[0])
 	if mimeType == "" || mimeType == "application/octet-stream" {
 		mimeType = http.DetectContentType(data)
@@ -662,10 +712,13 @@ func (store *MediaAssets) saveBytesForProject(data []byte, filename string, cont
 		return MediaAsset{}, fmt.Errorf("only image, video, and audio assets are supported")
 	}
 
-	return store.saveBytesWithKind(data, kind, filename, mimeType, sourceURL, projectID, "", "")
+	return store.saveBytesWithKind(data, kind, filename, mimeType, sourceURL, MediaAssetSaveOptions{
+		ProjectID: projectID,
+		Source:    source,
+	})
 }
 
-func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename string, mimeType string, sourceURL string, projectID string, studioSessionID string, studioDir string) (MediaAsset, error) {
+func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename string, mimeType string, sourceURL string, options MediaAssetSaveOptions) (MediaAsset, error) {
 	if store.initErr != nil {
 		return MediaAsset{}, store.initErr
 	}
@@ -696,20 +749,20 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 		filename += ext
 	}
 
-	projectID = domain.CleanProjectID(projectID)
-	studioSessionID = domain.CleanProjectID(studioSessionID)
-	targetDir, err := store.targetDir(projectID, studioSessionID, studioDir)
+	options = normalizeMediaAssetSaveOptions(options)
+	target, err := store.targetLocation(kind, options)
 	if err != nil {
 		return MediaAsset{}, err
 	}
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+	if err := os.MkdirAll(target.Directory, 0o755); err != nil {
 		return MediaAsset{}, fmt.Errorf("creating media asset directory: %w", err)
 	}
 
-	filePath := filepath.Join(targetDir, id+filepath.Ext(filename))
+	filePath := filepath.Join(target.Directory, id+filepath.Ext(filename))
 	if err := os.WriteFile(filePath, data, 0o600); err != nil {
 		return MediaAsset{}, err
 	}
+	relativePath := joinAssetRelativePath(target.RelativeDir, filepath.Base(filePath))
 
 	now := timestamp.NowRFC3339Nano()
 	asset := MediaAsset{
@@ -720,7 +773,11 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 		SizeBytes:      int64(len(data)),
 		URL:            "/api/v1/media-assets/" + url.PathEscape(id) + "/content",
 		SourceURL:      strings.TrimSpace(sourceURL),
-		ProjectID:      projectID,
+		ProjectID:      options.ProjectID,
+		Source:         options.Source,
+		ConversationID: options.ConversationID,
+		SectionID:      options.SectionID,
+		RelativePath:   relativePath,
 		MetadataStatus: "",
 		CreatedAt:      now,
 		UpdatedAt:      now,
@@ -742,6 +799,10 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 		URL:               asset.URL,
 		SourceURL:         asset.SourceURL,
 		ProjectID:         asset.ProjectID,
+		Source:            asset.Source,
+		ConversationID:    asset.ConversationID,
+		SectionID:         asset.SectionID,
+		RelativePath:      asset.RelativePath,
 		DurationSeconds:   asset.DurationSeconds,
 		Width:             asset.Width,
 		Height:            asset.Height,
@@ -761,25 +822,6 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 	}
 
 	return asset, nil
-}
-
-func (store *MediaAssets) targetDir(projectID string, studioSessionID string, studioDir string) (string, error) {
-	projectID = domain.CleanProjectID(projectID)
-	studioSessionID = domain.CleanProjectID(studioSessionID)
-	studioDir = strings.TrimSpace(studioDir)
-	if studioDir != "" {
-		return filepath.Clean(studioDir), nil
-	}
-	if studioSessionID != "" {
-		if strings.TrimSpace(store.workspaceRoot) == "" {
-			return "", fmt.Errorf("workspace root is required for studio session media")
-		}
-		return shared.WorkspacePathsFor(store.workspaceRoot).StudioSessionDir(studioSessionID), nil
-	}
-	if projectID != "" {
-		return store.dir, nil
-	}
-	return store.dir, nil
 }
 
 func (store *MediaAssets) Delete(id string) (bool, error) {
@@ -855,6 +897,7 @@ func FilterMediaAssets(assets []MediaAsset, kind string, query string) []MediaAs
 		if query != "" &&
 			!strings.Contains(strings.ToLower(asset.Filename), query) &&
 			!strings.Contains(strings.ToLower(asset.SourceURL), query) &&
+			!strings.Contains(strings.ToLower(asset.RelativePath), query) &&
 			!strings.Contains(strings.ToLower(asset.MIMEType), query) {
 			continue
 		}
@@ -952,6 +995,10 @@ func mediaAssetRecordFromModel(model mediaAssetModel) MediaAsset {
 		URL:               model.URL,
 		SourceURL:         model.SourceURL,
 		ProjectID:         model.ProjectID,
+		Source:            model.Source,
+		ConversationID:    model.ConversationID,
+		SectionID:         model.SectionID,
+		RelativePath:      model.RelativePath,
 		DurationSeconds:   model.DurationSeconds,
 		Width:             model.Width,
 		Height:            model.Height,

@@ -43,12 +43,14 @@ func (workflow *GenerationService) GetGenerationVideo(ctx context.Context, id st
 		return generationMessageResponse{}, http.StatusBadGateway, err
 	}
 	projectID := ""
-	studioSessionID := ""
 	if found {
 		projectID = workflow.projectIDForTask(storedTask)
-		studioSessionID = workflow.studioSessionIDForTask(storedTask)
 	}
-	response = workflow.cacheGenerationResponseAssetsForScope(ctx, response, projectID, studioSessionID)
+	if found {
+		response = workflow.cacheGenerationResponseAssetsForTask(ctx, response, storedTask)
+	} else {
+		response = workflow.cacheGenerationResponseAssetsForScope(ctx, response, projectID, "")
+	}
 
 	messageResponse := GenerationResponseFromCore(response, string(coregeneration.KindVideo))
 	if found {
@@ -137,7 +139,7 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		}
 		workflow.syncGenerationNotificationTask(nextTask)
 		_ = workflow.generationTasks.RecordAttempt(task.ID, "retry", messageResponse.Status, messageResponse.Message, nil)
-		go workflow.submitPendingGeneration(context.Background(), nextTask, provider, generationRequest, "retry", projectID, workflow.studioSessionIDForTask(task))
+		go workflow.submitPendingGeneration(context.Background(), nextTask, provider, generationRequest, "retry", projectID, nextTask.ConversationID)
 		return messageResponse, http.StatusOK, nil
 	}
 	if ShouldRunGenerationInBackground(route) {
@@ -148,7 +150,7 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		}
 		workflow.syncGenerationNotificationTask(nextTask)
 		_ = workflow.generationTasks.RecordAttempt(task.ID, "retry", messageResponse.Status, messageResponse.Message, nil)
-		go workflow.completeSubmittedGeneration(context.Background(), nextTask, provider, generationRequest, "retry", projectID, workflow.studioSessionIDForTask(task))
+		go workflow.completeSubmittedGeneration(context.Background(), nextTask, provider, generationRequest, "retry", projectID, nextTask.ConversationID)
 		return messageResponse, http.StatusOK, nil
 	}
 
@@ -172,7 +174,7 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		}
 		return messageResponse, http.StatusOK, nil
 	}
-	response = workflow.cacheGenerationResponseAssetsForScope(ctx, response, projectID, workflow.studioSessionIDForTask(task))
+	response = workflow.cacheGenerationResponseAssetsForTask(ctx, response, task)
 
 	messageResponse := GenerationResponseFromCore(response, payload.Kind)
 	if ShouldPersistGenerationTask(route) {
@@ -411,7 +413,7 @@ func (workflow *GenerationService) PollGenerationTask(ctx context.Context, task 
 			_ = workflow.generationTasks.RecordAttempt(task.ID, "create", task.Status, "后台提交视频任务失败。", err)
 			return
 		}
-		workflow.submitPendingGeneration(ctx, task, provider, generationRequest, "create", workflow.projectIDForTask(task), workflow.studioSessionIDForTask(task))
+		workflow.submitPendingGeneration(ctx, task, provider, generationRequest, "create", workflow.projectIDForTask(task), task.ConversationID)
 		return
 	}
 	pollID := GenerationTaskProviderPollID(task)
@@ -430,7 +432,7 @@ func (workflow *GenerationService) PollGenerationTask(ctx context.Context, task 
 		return
 	}
 
-	response = workflow.cacheGenerationResponseAssetsForScope(ctx, response, workflow.projectIDForTask(task), workflow.studioSessionIDForTask(task))
+	response = workflow.cacheGenerationResponseAssetsForTask(ctx, response, task)
 	messageResponse := GenerationResponseFromCore(response, task.Kind)
 	messageResponse.ID = task.ID
 	task = GenerationTaskWithMessage(task, messageResponse)
@@ -450,7 +452,7 @@ func (workflow *GenerationService) submitPendingGeneration(
 	request coregeneration.Request,
 	action string,
 	projectID string,
-	studioSessionID string,
+	conversationID string,
 ) {
 	submittingTask := task
 	submittingTask.Status = "submitting"
@@ -488,7 +490,7 @@ func (workflow *GenerationService) submitPendingGeneration(
 	}
 
 	providerTaskID := strings.TrimSpace(response.ID)
-	response = workflow.cacheGenerationResponseAssetsForScope(ctx, response, projectID, studioSessionID)
+	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptions(projectID, conversationID, task.SectionID))
 	messageResponse := GenerationResponseFromCore(response, task.Kind)
 	messageResponse.ID = task.ID
 	submittedTask := GenerationTaskWithMessage(submittingTask, messageResponse)
@@ -513,7 +515,7 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 	request coregeneration.Request,
 	action string,
 	projectID string,
-	studioSessionID string,
+	conversationID string,
 ) {
 	runningTask := task
 	runningTask.Status = "running"
@@ -529,7 +531,7 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 	generationCtx, cancel := context.WithTimeout(ctx, generationRequestTimeout)
 	defer cancel()
 
-	request = workflow.requestWithGenerationProgressCallback(request, runningTask, projectID, studioSessionID)
+	request = workflow.requestWithGenerationProgressCallback(request, runningTask, projectID, conversationID)
 	response, err := workflow.generateWithProvider(
 		generationCtx,
 		provider,
@@ -553,7 +555,7 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 	}
 
 	response = workflow.responseWithCachedProgressAssets(task.ID, response)
-	response = workflow.cacheGenerationResponseAssetsForScope(ctx, response, projectID, studioSessionID)
+	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptions(projectID, conversationID, task.SectionID))
 	messageResponse := GenerationResponseFromCore(response, task.Kind)
 	messageResponse.ID = task.ID
 	completedTask := GenerationTaskWithMessage(runningTask, messageResponse)
@@ -572,7 +574,7 @@ func (workflow *GenerationService) requestWithGenerationProgressCallback(
 	request coregeneration.Request,
 	task generationTaskRecord,
 	projectID string,
-	studioSessionID string,
+	conversationID string,
 ) coregeneration.Request {
 	if request.Kind != coregeneration.KindImage || workflow.generationTasks == nil {
 		return request
@@ -584,7 +586,7 @@ func (workflow *GenerationService) requestWithGenerationProgressCallback(
 	}
 	options[coregeneration.ProgressCallbackOption] = coregeneration.ProgressCallback(
 		func(ctx context.Context, event coregeneration.ProgressEvent) {
-			workflow.persistGenerationProgress(ctx, task, event, projectID, studioSessionID)
+			workflow.persistGenerationProgress(ctx, task, event, projectID, conversationID)
 		},
 	)
 	request.Options = options
@@ -597,7 +599,7 @@ func (workflow *GenerationService) persistGenerationProgress(
 	task generationTaskRecord,
 	event coregeneration.ProgressEvent,
 	projectID string,
-	studioSessionID string,
+	conversationID string,
 ) {
 	if workflow.generationTasks == nil || len(event.Response.Assets) == 0 {
 		return
@@ -605,7 +607,7 @@ func (workflow *GenerationService) persistGenerationProgress(
 
 	response := event.Response
 	response.Status = "running"
-	response = workflow.cacheGenerationResponseAssetsForScope(ctx, response, projectID, studioSessionID)
+	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptions(projectID, conversationID, task.SectionID))
 
 	messageResponse := GenerationResponseFromCore(response, task.Kind)
 	messageResponse.ID = task.ID

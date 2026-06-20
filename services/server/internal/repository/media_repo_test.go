@@ -15,16 +15,20 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	}
 
 	asset := domain.MediaAssetModel{
-		ID:        "asset-1",
-		Kind:      "image",
-		Filename:  "draft.png",
-		MIMEType:  "image/png",
-		SizeBytes: 12,
-		Path:      "/tmp/draft.png",
-		URL:       "/api/v1/media-assets/asset-1/content",
-		SourceURL: "https://example.test/draft.png",
-		CreatedAt: "2026-05-22T00:00:00Z",
-		UpdatedAt: "2026-05-22T00:00:00Z",
+		ID:             "asset-1",
+		Kind:           "image",
+		Filename:       "draft.png",
+		MIMEType:       "image/png",
+		SizeBytes:      12,
+		Path:           "/tmp/draft.png",
+		URL:            "/api/v1/media-assets/asset-1/content",
+		SourceURL:      "https://example.test/draft.png",
+		Source:         "generation",
+		ConversationID: "conversation-1",
+		SectionID:      "document-a:block-a",
+		RelativePath:   "library/assets/images/document-a/block-a/asset-1.png",
+		CreatedAt:      "2026-05-22T00:00:00Z",
+		UpdatedAt:      "2026-05-22T00:00:00Z",
 	}
 	if err := repo.CreateMediaAsset(asset); err != nil {
 		t.Fatalf("CreateMediaAsset() error = %v", err)
@@ -34,8 +38,8 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetMediaAsset() error = %v", err)
 	}
-	if got.Filename != asset.Filename {
-		t.Fatalf("GetMediaAsset().Filename = %q, want %q", got.Filename, asset.Filename)
+	if got.Filename != asset.Filename || got.RelativePath != asset.RelativePath || got.Source != asset.Source {
+		t.Fatalf("GetMediaAsset() = %#v, want persisted filename/source/relative path", got)
 	}
 
 	bySource, err := repo.FindMediaAssetBySourceURL(asset.SourceURL)
@@ -86,6 +90,23 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	}
 	if got.PosterURL != "/api/v1/media-assets/asset-1/poster" || got.MetadataStatus != "ready" {
 		t.Fatalf("poster/status = %q/%q, want poster URL and ready", got.PosterURL, got.MetadataStatus)
+	}
+
+	if err := repo.UpdateMediaAssetStorage(asset.ID, map[string]any{
+		"path":            "/tmp/final.png",
+		"source":          "upload",
+		"conversation_id": "",
+		"section_id":      "",
+		"relative_path":   "library/assets/images/uploads/asset-1.png",
+	}); err != nil {
+		t.Fatalf("UpdateMediaAssetStorage() error = %v", err)
+	}
+	got, err = repo.GetMediaAsset(asset.ID)
+	if err != nil {
+		t.Fatalf("GetMediaAsset() after storage update error = %v", err)
+	}
+	if got.Path != "/tmp/final.png" || got.Source != "upload" || got.RelativePath != "library/assets/images/uploads/asset-1.png" {
+		t.Fatalf("storage fields = %#v", got)
 	}
 
 	deleted, err := repo.DeleteMediaAsset(asset.ID)

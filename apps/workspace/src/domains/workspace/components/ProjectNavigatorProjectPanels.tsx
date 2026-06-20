@@ -24,6 +24,7 @@ import { ProjectDirectoryTree } from "@/domains/workspace/components/ProjectDire
 import { SettingsButton } from "@/domains/workspace/components/ProjectNavigatorPanels";
 import { GenerationNotificationButton } from "@/domains/workspace/components/GenerationNotificationButton";
 import { GlobalToolboxButton } from "@/domains/workspace/components/GlobalToolboxDrawer";
+import { AssetLibraryButton } from "@/domains/workspace/components/AssetLibraryButton";
 import {
 	getRouteAssetId,
 	getRouteDocumentId,
@@ -304,6 +305,7 @@ const SidebarFooterActions: React.FC<{
 			<div className="min-w-0 flex-1">
 				<SettingsButton isActive={settingsActive} onClick={onOpenSettings} />
 			</div>
+			<AssetLibraryButton />
 			<GlobalToolboxButton />
 			{onOpenGenerationNotification ? (
 				<GenerationNotificationButton onOpenNotification={onOpenGenerationNotification} />
