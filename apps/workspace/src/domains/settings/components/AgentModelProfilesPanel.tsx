@@ -40,6 +40,7 @@ interface ProfileDraft {
 	isDefault: boolean;
 	supportsImages: boolean;
 	supportsTools: boolean;
+	supportsReasoning: boolean;
 	contextWindow: string;
 	maxOutputTokens: string;
 	temperature: string;
@@ -331,7 +332,7 @@ export const AgentModelProfilesPanel: React.FC = () => {
 							/>
 						</div>
 
-						<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+						<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
 							<ToggleField
 								label="启用"
 								checked={draft.enabled}
@@ -346,6 +347,11 @@ export const AgentModelProfilesPanel: React.FC = () => {
 								label="工具调用"
 								checked={draft.supportsTools}
 								onChange={(value) => updateDraft("supportsTools", value)}
+							/>
+							<ToggleField
+								label="推理"
+								checked={draft.supportsReasoning}
+								onChange={(value) => updateDraft("supportsReasoning", value)}
 							/>
 							<ToggleField
 								label="默认"
@@ -556,6 +562,7 @@ const profileDraftFromProfile = (profile: AgentModelProfile): ProfileDraft => ({
 	isDefault: profile.isDefault,
 	supportsImages: profile.supportsImages,
 	supportsTools: profile.supportsTools,
+	supportsReasoning: profile.supportsReasoning,
 	contextWindow: numberDraft(profile.contextWindow),
 	maxOutputTokens: numberDraft(profile.maxOutputTokens),
 	temperature: numberDraft(profile.temperature),
@@ -572,6 +579,7 @@ const mutationFromDraft = (draft: ProfileDraft): AgentModelProfileMutation => ({
 	isDefault: draft.isDefault,
 	supportsImages: draft.supportsImages,
 	supportsTools: draft.supportsTools,
+	supportsReasoning: draft.supportsReasoning,
 	contextWindow: numberValue(draft.contextWindow),
 	maxOutputTokens: numberValue(draft.maxOutputTokens),
 	temperature: numberValue(draft.temperature),

@@ -47,6 +47,7 @@ export interface AgentModelProfile {
 	isDefault: boolean;
 	supportsImages: boolean;
 	supportsTools: boolean;
+	supportsReasoning: boolean;
 	contextWindow?: number;
 	maxOutputTokens?: number;
 	temperature?: number;
@@ -63,6 +64,7 @@ export interface AgentModelProfileTemplate {
 	modelDisplayName: string;
 	supportsImages: boolean;
 	supportsTools: boolean;
+	supportsReasoning: boolean;
 	contextWindow?: number;
 	maxOutputTokens?: number;
 	temperature?: number;
@@ -86,6 +88,7 @@ export interface AgentModelProfileMutation {
 	isDefault?: boolean;
 	supportsImages?: boolean;
 	supportsTools?: boolean;
+	supportsReasoning?: boolean;
 	contextWindow?: number;
 	maxOutputTokens?: number;
 	temperature?: number;

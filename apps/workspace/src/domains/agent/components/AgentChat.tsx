@@ -2,7 +2,11 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import useSWR, { mutate as mutateSWR } from "swr";
 import type { A2uiClientAction } from "@a2ui/web_core/v0_9";
-import { agentRuntimeConfigKey, getAgentRuntimeConfig } from "@/domains/agent/api/agent";
+import {
+	type AgentACPConfigSelection,
+	agentRuntimeConfigKey,
+	getAgentRuntimeConfig,
+} from "@/domains/agent/api/agent";
 import { agentDisplayPrompt } from "@/domains/agent/lib/display-prompt";
 import { actionContextString } from "@/domains/agent/lib/a2ui-actions";
 import { uploadProjectAsset, type ProjectAsset } from "@/domains/workspace/api/project-assets";
@@ -17,7 +21,7 @@ import {
 	type ComposerContext,
 } from "@/domains/agent/components/chat/AgentChatComposerForm";
 import {
-	buildRuntimeConfigSelection,
+	buildRuntimeConfigSelections,
 	getRuntimeConfigError,
 	normalizeRuntimeConfigValue,
 } from "@/domains/agent/components/chat/AgentRuntimeConfigControls";
@@ -60,9 +64,7 @@ export const AgentChat: React.FC = () => {
 		referenceCount: 0,
 	});
 	const [isStopping, setIsStopping] = useState(false);
-	const [selectedModel, setSelectedModel] = useState("");
-	const [selectedReasoning, setSelectedReasoning] = useState("");
-	const [selectedPermission, setSelectedPermission] = useState("");
+	const [selections, setSelections] = useState<Record<string, string>>({});
 	const [pendingAttachmentDecisionId, setPendingAttachmentDecisionId] = useState<string | null>(
 		null,
 	);
@@ -104,13 +106,14 @@ export const AgentChat: React.FC = () => {
 		!pendingAttachmentDecisionId;
 
 	useEffect(() => {
-		setSelectedModel((current) => normalizeRuntimeConfigValue(runtimeConfig?.model, current));
-		setSelectedReasoning((current) =>
-			normalizeRuntimeConfigValue(runtimeConfig?.reasoning, current),
-		);
-		setSelectedPermission((current) =>
-			normalizeRuntimeConfigValue(runtimeConfig?.permission, current),
-		);
+		setSelections((current) => {
+			const next: Record<string, string> = {};
+			for (const option of runtimeConfig?.options ?? []) {
+				const key = option.configId ?? "";
+				next[key] = normalizeRuntimeConfigValue(option, current[key] ?? "");
+			}
+			return next;
+		});
 	}, [runtimeConfig]);
 
 	useEffect(() => {
@@ -164,11 +167,9 @@ export const AgentChat: React.FC = () => {
 				references: composerValue.references,
 			}),
 			displayMetadata: attachmentDisplayMetadata(readyAttachments),
-			model: buildRuntimeConfigSelection(runtimeConfig?.model, selectedModel),
-			permission: buildRuntimeConfigSelection(runtimeConfig?.permission, selectedPermission),
+			selections: buildRuntimeConfigSelections(runtimeConfig, selections),
 			promptWithAttachments: appendAttachmentContext(effectivePrompt, readyAttachments),
 			references: composerValue.references,
-			reasoning: buildRuntimeConfigSelection(runtimeConfig?.reasoning, selectedReasoning),
 			comments: openComments,
 		};
 
@@ -196,12 +197,10 @@ export const AgentChat: React.FC = () => {
 		const run = runAgentPrompt(pendingSend.promptWithAttachments, {
 			displayMetadata: pendingSend.displayMetadata,
 			displayPrompt: pendingSend.displayPrompt,
-			model: pendingSend.model,
+			selections: pendingSend.selections,
 			comments: pendingSend.comments,
 			references: pendingSend.references,
 			reuseCurrentRun: pendingSend.reuseCurrentRun,
-			reasoning: pendingSend.reasoning,
-			permission: pendingSend.permission,
 		});
 		composerRef.current?.clear();
 		setAttachments([]);
@@ -350,21 +349,19 @@ export const AgentChat: React.FC = () => {
 				isRuntimeConfigLoading={isRuntimeConfigLoading}
 				isStopping={isStopping}
 				openComments={openComments}
-				permissionValue={selectedPermission}
-				reasoningValue={selectedReasoning}
 				runtimeConfig={runtimeConfig}
 				runtimeConfigErrorMessage={
 					runtimeConfigError ? getRuntimeConfigError(runtimeConfigError) : ""
 				}
-				selectedModel={selectedModel}
+				selections={selections}
 				onAttachFiles={(event) => void attachFiles(event)}
 				onComposerChange={handleComposerChange}
-				onModelChange={setSelectedModel}
-				onPermissionChange={setSelectedPermission}
-				onReasoningChange={setSelectedReasoning}
 				onRemoveAttachment={removeAttachment}
 				onRemoveComment={removeComment}
 				onRunPrompt={() => void runPrompt()}
+				onSelectionChange={(configId, value) =>
+					setSelections((current) => ({ ...current, [configId]: value }))
+				}
 				onStopRun={() => void stopRun()}
 				onSubmit={submit}
 			/>
@@ -372,17 +369,13 @@ export const AgentChat: React.FC = () => {
 	);
 };
 
-type RuntimeConfigSelection = ReturnType<typeof buildRuntimeConfigSelection>;
-
 interface PendingAttachmentSend {
 	batchId?: string;
 	attachments: AgentAttachment[];
 	displayMetadata?: AgentMessageMetadata;
 	displayPrompt: string;
-	model: RuntimeConfigSelection;
-	permission: RuntimeConfigSelection;
+	selections: AgentACPConfigSelection[];
 	promptWithAttachments: string;
-	reasoning: RuntimeConfigSelection;
 	references: AgentComposerValue["references"];
 	comments: DocumentComment[];
 	reuseCurrentRun?: boolean;

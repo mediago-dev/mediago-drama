@@ -227,13 +227,20 @@ func TestEnsureAgentModelProfileSchemaMigratesMiniMaxTemplateToDomesticEndpoint(
 	if minimax.APIKeyName != "agent-model:minimax:api-key" {
 		t.Fatalf("minimax apiKeyName = %q, want existing profile key preserved", minimax.APIKeyName)
 	}
+	if !minimax.SupportsReasoning {
+		t.Fatalf("minimax supportsReasoning = false, want true after reasoning migration")
+	}
 	assertSchemaMigrationRecorded(t, db, agentModelProfileMiniMaxMigrationKey)
+	assertSchemaMigrationRecorded(t, db, agentModelProfileMiniMaxReasoningMigrationKey)
 	var custom domain.AgentModelProfileModel
 	if err := db.First(&custom, "id = ?", "minimax-proxy").Error; err != nil {
 		t.Fatalf("loading custom profile: %v", err)
 	}
 	if custom.BaseURL != "https://proxy.example.com/v1" {
 		t.Fatalf("custom baseURL = %q, want unchanged", custom.BaseURL)
+	}
+	if custom.SupportsReasoning {
+		t.Fatalf("custom supportsReasoning = true, want false (only minimax migrated)")
 	}
 }
 

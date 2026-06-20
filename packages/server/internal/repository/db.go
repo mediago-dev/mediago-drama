@@ -27,10 +27,11 @@ var workspaceSchemaMigrated sync.Map
 var settingsSchemaMigrated sync.Map
 
 const (
-	workspaceDropDeprecatedStorageMigrationKey = "workspace.drop_deprecated_storage.v1"
-	agentModelProfileMiniMaxMigrationKey       = "settings.agent_model_profiles.minimax_domestic_endpoint.v1"
-	generationTaskProviderBackfillMigrationKey = "settings.generation_tasks.backfill_official_providers.v1"
-	generationTaskStatusNormalizeMigrationKey  = "settings.generation_tasks.normalize_status.v1"
+	workspaceDropDeprecatedStorageMigrationKey    = "workspace.drop_deprecated_storage.v1"
+	agentModelProfileMiniMaxMigrationKey          = "settings.agent_model_profiles.minimax_domestic_endpoint.v1"
+	agentModelProfileMiniMaxReasoningMigrationKey = "settings.agent_model_profiles.minimax_reasoning.v1"
+	generationTaskProviderBackfillMigrationKey    = "settings.generation_tasks.backfill_official_providers.v1"
+	generationTaskStatusNormalizeMigrationKey     = "settings.generation_tasks.normalize_status.v1"
 )
 
 // OpenGormSQLite opens a SQLite database with local server pragmas.
@@ -255,6 +256,25 @@ func EnsureAgentModelProfileSchema(db *gorm.DB) error {
 		migrateMiniMaxAgentProfileToDomesticEndpoint,
 	); err != nil {
 		return err
+	}
+	if err := runSchemaMigrationOnce(
+		db,
+		agentModelProfileMiniMaxReasoningMigrationKey,
+		migrateMiniMaxAgentProfileToReasoning,
+	); err != nil {
+		return err
+	}
+	return nil
+}
+
+// migrateMiniMaxAgentProfileToReasoning enables reasoning for the built-in MiniMax
+// profile so opencode exposes the ACP thought_level config option.
+func migrateMiniMaxAgentProfileToReasoning(db *gorm.DB) error {
+	result := db.Model(&domain.AgentModelProfileModel{}).
+		Where("id = ? AND provider_id = ?", "minimax", "minimax-cn").
+		Update("supports_reasoning", true)
+	if result.Error != nil {
+		return fmt.Errorf("enabling minimax agent model profile reasoning: %w", result.Error)
 	}
 	return nil
 }

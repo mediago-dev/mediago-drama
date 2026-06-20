@@ -34,19 +34,15 @@ export const AgentChatComposerForm: React.FC<{
 	openComments: DocumentComment[];
 	onAttachFiles: (event: React.ChangeEvent<HTMLInputElement>) => void;
 	onComposerChange: (nextState: AgentComposerState) => void;
-	onModelChange: (value: string) => void;
-	onPermissionChange: (value: string) => void;
-	onReasoningChange: (value: string) => void;
 	onRemoveAttachment: (id: string) => void;
 	onRemoveComment: (id: string) => void;
 	onRunPrompt: () => void;
+	onSelectionChange: (configId: string, value: string) => void;
 	onStopRun: () => void;
 	onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
-	permissionValue: string;
-	reasoningValue: string;
 	runtimeConfig?: AgentRuntimeConfigPayload;
 	runtimeConfigErrorMessage: string;
-	selectedModel: string;
+	selections: Record<string, string>;
 }> = ({
 	attachments,
 	canSubmit,
@@ -59,19 +55,15 @@ export const AgentChatComposerForm: React.FC<{
 	openComments,
 	onAttachFiles,
 	onComposerChange,
-	onModelChange,
-	onPermissionChange,
-	onReasoningChange,
 	onRemoveAttachment,
 	onRemoveComment,
 	onRunPrompt,
+	onSelectionChange,
 	onStopRun,
 	onSubmit,
-	permissionValue,
-	reasoningValue,
 	runtimeConfig,
 	runtimeConfigErrorMessage,
-	selectedModel,
+	selections,
 }) => (
 	<form onSubmit={onSubmit} className="agent-composer-form">
 		{attachments.length > 0 || openComments.length > 0 ? (
@@ -121,15 +113,11 @@ export const AgentChatComposerForm: React.FC<{
 		<div className="agent-composer-footer">
 			<AgentRuntimeConfigControls
 				config={runtimeConfig}
-				modelValue={selectedModel}
-				reasoningValue={reasoningValue}
-				permissionValue={permissionValue}
+				selections={selections}
 				disabled={disabled}
 				errorMessage={runtimeConfigErrorMessage}
 				isLoading={isRuntimeConfigLoading}
-				onModelChange={onModelChange}
-				onReasoningChange={onReasoningChange}
-				onPermissionChange={onPermissionChange}
+				onSelectionChange={onSelectionChange}
 			/>
 			<div className="agent-composer-actions">
 				<span className="agent-composer-hint">@ 引用文档 · Enter 发送</span>

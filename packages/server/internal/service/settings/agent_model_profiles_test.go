@@ -216,6 +216,94 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	}
 }
 
+func TestPrepareOpenCodeRuntimeConfigEmitsReasoningForReasoningModels(t *testing.T) {
+	settings := NewSettingsWithAgentModelProfiles(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
+	)
+	ctx := context.Background()
+
+	minimaxTemplateID := "minimax"
+	if _, err := settings.CreateAgentModelProfile(ctx, AgentModelProfileMutation{TemplateID: &minimaxTemplateID}); err != nil {
+		t.Fatalf("CreateAgentModelProfile minimax returned error: %v", err)
+	}
+	if _, err := settings.SetAgentModelProfileAPIKey(ctx, "minimax-cn", "sk-minimax-secret"); err != nil {
+		t.Fatalf("SetAgentModelProfileAPIKey returned error: %v", err)
+	}
+
+	workspaceDir := t.TempDir()
+	config, err := settings.PrepareOpenCodeRuntimeConfig(ctx, workspaceDir)
+	if err != nil {
+		t.Fatalf("PrepareOpenCodeRuntimeConfig returned error: %v", err)
+	}
+	if config.DefaultProfileID != "minimax-cn" {
+		t.Fatalf("DefaultProfileID = %q, want minimax-cn", config.DefaultProfileID)
+	}
+
+	data, err := os.ReadFile(filepath.Join(config.ConfigDir, "opencode.json"))
+	if err != nil {
+		t.Fatalf("reading opencode.json: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `"reasoning": true`) {
+		t.Fatalf("opencode.json should declare reasoning for minimax:\n%s", text)
+	}
+
+	var parsed openCodeConfigFile
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("opencode.json is invalid json: %v", err)
+	}
+	provider, ok := parsed.Provider["minimax-cn"]
+	if !ok {
+		t.Fatalf("opencode.json missing minimax-cn provider: %#v", parsed.Provider)
+	}
+	model, ok := provider.Models["MiniMax-M3"]
+	if !ok {
+		t.Fatalf("opencode.json missing MiniMax-M3 model: %#v", provider.Models)
+	}
+	if !model.Reasoning {
+		t.Fatalf("minimax model reasoning = %v, want true", model.Reasoning)
+	}
+
+	list, err := settings.ListAgentModelProfiles(ctx)
+	if err != nil {
+		t.Fatalf("ListAgentModelProfiles returned error: %v", err)
+	}
+	minimax := agentProfileByID(t, list, "minimax-cn")
+	if !minimax.SupportsReasoning {
+		t.Fatalf("minimax profile supportsReasoning = false, want true")
+	}
+}
+
+func TestPrepareOpenCodeRuntimeConfigOmitsReasoningForNonReasoningModels(t *testing.T) {
+	settings := NewSettingsWithAgentModelProfiles(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
+	)
+	ctx := context.Background()
+
+	templateID := "openrouter"
+	if _, err := settings.CreateAgentModelProfile(ctx, AgentModelProfileMutation{TemplateID: &templateID}); err != nil {
+		t.Fatalf("CreateAgentModelProfile openrouter returned error: %v", err)
+	}
+	if _, err := settings.SetAgentModelProfileAPIKey(ctx, "openrouter", "sk-openrouter-secret"); err != nil {
+		t.Fatalf("SetAgentModelProfileAPIKey returned error: %v", err)
+	}
+
+	workspaceDir := t.TempDir()
+	config, err := settings.PrepareOpenCodeRuntimeConfig(ctx, workspaceDir)
+	if err != nil {
+		t.Fatalf("PrepareOpenCodeRuntimeConfig returned error: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(config.ConfigDir, "opencode.json"))
+	if err != nil {
+		t.Fatalf("reading opencode.json: %v", err)
+	}
+	if strings.Contains(string(data), `"reasoning"`) {
+		t.Fatalf("opencode.json should not declare reasoning for openrouter:\n%s", string(data))
+	}
+}
+
 func agentProfileByID(t *testing.T, list AgentModelProfilesResponse, id string) AgentModelProfile {
 	t.Helper()
 	for _, profile := range list.Profiles {

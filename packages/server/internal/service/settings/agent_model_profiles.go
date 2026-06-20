@@ -42,37 +42,39 @@ type AgentModelProfileAPIKeyStatus struct {
 
 // AgentModelProfile describes one global ACP model profile.
 type AgentModelProfile struct {
-	ID               string                        `json:"id"`
-	Name             string                        `json:"name"`
-	ProviderID       string                        `json:"providerId"`
-	ProviderLabel    string                        `json:"providerLabel"`
-	BaseURL          string                        `json:"baseURL"`
-	Model            string                        `json:"model"`
-	ModelDisplayName string                        `json:"modelDisplayName"`
-	Enabled          bool                          `json:"enabled"`
-	IsDefault        bool                          `json:"isDefault"`
-	SupportsImages   bool                          `json:"supportsImages"`
-	SupportsTools    bool                          `json:"supportsTools"`
-	ContextWindow    int                           `json:"contextWindow,omitempty"`
-	MaxOutputTokens  int                           `json:"maxOutputTokens,omitempty"`
-	Temperature      *float64                      `json:"temperature,omitempty"`
-	APIKey           AgentModelProfileAPIKeyStatus `json:"apiKey"`
+	ID                string                        `json:"id"`
+	Name              string                        `json:"name"`
+	ProviderID        string                        `json:"providerId"`
+	ProviderLabel     string                        `json:"providerLabel"`
+	BaseURL           string                        `json:"baseURL"`
+	Model             string                        `json:"model"`
+	ModelDisplayName  string                        `json:"modelDisplayName"`
+	Enabled           bool                          `json:"enabled"`
+	IsDefault         bool                          `json:"isDefault"`
+	SupportsImages    bool                          `json:"supportsImages"`
+	SupportsTools     bool                          `json:"supportsTools"`
+	SupportsReasoning bool                          `json:"supportsReasoning"`
+	ContextWindow     int                           `json:"contextWindow,omitempty"`
+	MaxOutputTokens   int                           `json:"maxOutputTokens,omitempty"`
+	Temperature       *float64                      `json:"temperature,omitempty"`
+	APIKey            AgentModelProfileAPIKeyStatus `json:"apiKey"`
 }
 
 // AgentModelProfileTemplate is a built-in OpenAI-compatible profile starter.
 type AgentModelProfileTemplate struct {
-	ID               string   `json:"id"`
-	Name             string   `json:"name"`
-	ProviderID       string   `json:"providerId"`
-	ProviderLabel    string   `json:"providerLabel"`
-	BaseURL          string   `json:"baseURL"`
-	Model            string   `json:"model"`
-	ModelDisplayName string   `json:"modelDisplayName"`
-	SupportsImages   bool     `json:"supportsImages"`
-	SupportsTools    bool     `json:"supportsTools"`
-	ContextWindow    int      `json:"contextWindow,omitempty"`
-	MaxOutputTokens  int      `json:"maxOutputTokens,omitempty"`
-	Temperature      *float64 `json:"temperature,omitempty"`
+	ID                string   `json:"id"`
+	Name              string   `json:"name"`
+	ProviderID        string   `json:"providerId"`
+	ProviderLabel     string   `json:"providerLabel"`
+	BaseURL           string   `json:"baseURL"`
+	Model             string   `json:"model"`
+	ModelDisplayName  string   `json:"modelDisplayName"`
+	SupportsImages    bool     `json:"supportsImages"`
+	SupportsTools     bool     `json:"supportsTools"`
+	SupportsReasoning bool     `json:"supportsReasoning"`
+	ContextWindow     int      `json:"contextWindow,omitempty"`
+	MaxOutputTokens   int      `json:"maxOutputTokens,omitempty"`
+	Temperature       *float64 `json:"temperature,omitempty"`
 }
 
 // AgentModelProfilesResponse is the settings payload for global ACP model profiles.
@@ -84,20 +86,21 @@ type AgentModelProfilesResponse struct {
 
 // AgentModelProfileMutation updates or creates one profile.
 type AgentModelProfileMutation struct {
-	TemplateID       *string  `json:"templateId,omitempty"`
-	Name             *string  `json:"name,omitempty"`
-	ProviderID       *string  `json:"providerId,omitempty"`
-	ProviderLabel    *string  `json:"providerLabel,omitempty"`
-	BaseURL          *string  `json:"baseURL,omitempty"`
-	Model            *string  `json:"model,omitempty"`
-	ModelDisplayName *string  `json:"modelDisplayName,omitempty"`
-	Enabled          *bool    `json:"enabled,omitempty"`
-	IsDefault        *bool    `json:"isDefault,omitempty"`
-	SupportsImages   *bool    `json:"supportsImages,omitempty"`
-	SupportsTools    *bool    `json:"supportsTools,omitempty"`
-	ContextWindow    *int     `json:"contextWindow,omitempty"`
-	MaxOutputTokens  *int     `json:"maxOutputTokens,omitempty"`
-	Temperature      *float64 `json:"temperature,omitempty"`
+	TemplateID        *string  `json:"templateId,omitempty"`
+	Name              *string  `json:"name,omitempty"`
+	ProviderID        *string  `json:"providerId,omitempty"`
+	ProviderLabel     *string  `json:"providerLabel,omitempty"`
+	BaseURL           *string  `json:"baseURL,omitempty"`
+	Model             *string  `json:"model,omitempty"`
+	ModelDisplayName  *string  `json:"modelDisplayName,omitempty"`
+	Enabled           *bool    `json:"enabled,omitempty"`
+	IsDefault         *bool    `json:"isDefault,omitempty"`
+	SupportsImages    *bool    `json:"supportsImages,omitempty"`
+	SupportsTools     *bool    `json:"supportsTools,omitempty"`
+	SupportsReasoning *bool    `json:"supportsReasoning,omitempty"`
+	ContextWindow     *int     `json:"contextWindow,omitempty"`
+	MaxOutputTokens   *int     `json:"maxOutputTokens,omitempty"`
+	Temperature       *float64 `json:"temperature,omitempty"`
 }
 
 // OpenCodeRuntimeConfig is the generated process config for opencode ACP.
@@ -409,20 +412,21 @@ func (service *Settings) agentModelProfileResponse(model domainAgentModelProfile
 		masked = maskAPIKey(value)
 	}
 	return AgentModelProfile{
-		ID:               model.ID,
-		Name:             model.Name,
-		ProviderID:       model.ProviderID,
-		ProviderLabel:    model.ProviderLabel,
-		BaseURL:          model.BaseURL,
-		Model:            model.Model,
-		ModelDisplayName: model.ModelDisplayName,
-		Enabled:          model.Enabled,
-		IsDefault:        model.IsDefault,
-		SupportsImages:   model.SupportsImages,
-		SupportsTools:    model.SupportsTools,
-		ContextWindow:    model.ContextWindow,
-		MaxOutputTokens:  model.MaxOutputTokens,
-		Temperature:      cloneFloat(model.Temperature),
+		ID:                model.ID,
+		Name:              model.Name,
+		ProviderID:        model.ProviderID,
+		ProviderLabel:     model.ProviderLabel,
+		BaseURL:           model.BaseURL,
+		Model:             model.Model,
+		ModelDisplayName:  model.ModelDisplayName,
+		Enabled:           model.Enabled,
+		IsDefault:         model.IsDefault,
+		SupportsImages:    model.SupportsImages,
+		SupportsTools:     model.SupportsTools,
+		SupportsReasoning: model.SupportsReasoning,
+		ContextWindow:     model.ContextWindow,
+		MaxOutputTokens:   model.MaxOutputTokens,
+		Temperature:       cloneFloat(model.Temperature),
 		APIKey: AgentModelProfileAPIKeyStatus{
 			Configured: configured,
 			Source:     source,
@@ -463,15 +467,16 @@ func AgentModelProfileTemplates() []AgentModelProfileTemplate {
 	zero := 0.0
 	templates := []AgentModelProfileTemplate{
 		{
-			ID:               "minimax",
-			Name:             "MiniMax 国内",
-			ProviderID:       "minimax-cn",
-			ProviderLabel:    "MiniMax 国内",
-			BaseURL:          "https://api.minimaxi.com/v1",
-			Model:            "MiniMax-M3",
-			ModelDisplayName: "MiniMax M3",
-			SupportsTools:    true,
-			Temperature:      &zero,
+			ID:                "minimax",
+			Name:              "MiniMax 国内",
+			ProviderID:        "minimax-cn",
+			ProviderLabel:     "MiniMax 国内",
+			BaseURL:           "https://api.minimaxi.com/v1",
+			Model:             "MiniMax-M3",
+			ModelDisplayName:  "MiniMax M3",
+			SupportsTools:     true,
+			SupportsReasoning: true,
+			Temperature:       &zero,
 		},
 		{
 			ID:               "deepseek",
@@ -530,19 +535,20 @@ func inputTemplate(id *string) AgentModelProfileTemplate {
 
 func profileModelFromTemplate(template AgentModelProfileTemplate) domainAgentModelProfile {
 	return domainAgentModelProfile{
-		ID:               profileIDFromProviderID(template.ProviderID),
-		Name:             strings.TrimSpace(template.Name),
-		ProviderID:       strings.TrimSpace(template.ProviderID),
-		ProviderLabel:    strings.TrimSpace(template.ProviderLabel),
-		BaseURL:          strings.TrimSpace(template.BaseURL),
-		Model:            strings.TrimSpace(template.Model),
-		ModelDisplayName: strings.TrimSpace(template.ModelDisplayName),
-		Enabled:          true,
-		SupportsImages:   template.SupportsImages,
-		SupportsTools:    template.SupportsTools,
-		ContextWindow:    template.ContextWindow,
-		MaxOutputTokens:  template.MaxOutputTokens,
-		Temperature:      cloneFloat(template.Temperature),
+		ID:                profileIDFromProviderID(template.ProviderID),
+		Name:              strings.TrimSpace(template.Name),
+		ProviderID:        strings.TrimSpace(template.ProviderID),
+		ProviderLabel:     strings.TrimSpace(template.ProviderLabel),
+		BaseURL:           strings.TrimSpace(template.BaseURL),
+		Model:             strings.TrimSpace(template.Model),
+		ModelDisplayName:  strings.TrimSpace(template.ModelDisplayName),
+		Enabled:           true,
+		SupportsImages:    template.SupportsImages,
+		SupportsTools:     template.SupportsTools,
+		SupportsReasoning: template.SupportsReasoning,
+		ContextWindow:     template.ContextWindow,
+		MaxOutputTokens:   template.MaxOutputTokens,
+		Temperature:       cloneFloat(template.Temperature),
 	}
 }
 
@@ -579,6 +585,9 @@ func applyProfileMutation(model *domainAgentModelProfile, input AgentModelProfil
 	}
 	if input.SupportsTools != nil {
 		model.SupportsTools = *input.SupportsTools
+	}
+	if input.SupportsReasoning != nil {
+		model.SupportsReasoning = *input.SupportsReasoning
 	}
 	if input.ContextWindow != nil {
 		model.ContextWindow = *input.ContextWindow
@@ -681,6 +690,7 @@ type openCodeModelConfig struct {
 	Name       string                   `json:"name"`
 	Attachment bool                     `json:"attachment,omitempty"`
 	ToolCall   bool                     `json:"tool_call,omitempty"`
+	Reasoning  bool                     `json:"reasoning,omitempty"`
 	Limit      *openCodeModelLimit      `json:"limit,omitempty"`
 	Modalities *openCodeModelModalities `json:"modalities,omitempty"`
 }
@@ -712,6 +722,7 @@ func renderOpenCodeConfig(profiles []domainAgentModelProfile) openCodeConfigFile
 			Name:       firstNonEmpty(strings.TrimSpace(profile.ModelDisplayName), strings.TrimSpace(profile.Model)),
 			ToolCall:   profile.SupportsTools,
 			Attachment: profile.SupportsImages,
+			Reasoning:  profile.SupportsReasoning,
 			Modalities: &openCodeModelModalities{
 				Input:  openCodeInputModalities(profile.SupportsImages),
 				Output: []string{"text"},

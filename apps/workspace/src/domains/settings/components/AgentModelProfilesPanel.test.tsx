@@ -96,6 +96,7 @@ const responseWithMiniMax = (configured = false): AgentModelProfilesResponse => 
 			isDefault: true,
 			supportsImages: false,
 			supportsTools: true,
+			supportsReasoning: true,
 			temperature: 0,
 			apiKey: {
 				configured,
@@ -117,5 +118,6 @@ const minimaxTemplate = {
 	modelDisplayName: "MiniMax M3",
 	supportsImages: false,
 	supportsTools: true,
+	supportsReasoning: true,
 	temperature: 0,
 };

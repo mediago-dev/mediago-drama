@@ -14,23 +14,24 @@ func (APIKeyModel) TableName() string {
 
 // AgentModelProfileModel is the GORM model for global ACP model profiles.
 type AgentModelProfileModel struct {
-	ID               string   `gorm:"column:id;primaryKey"`
-	Name             string   `gorm:"column:name;not null"`
-	ProviderID       string   `gorm:"column:provider_id;not null;uniqueIndex:agent_model_profiles_provider_id_idx"`
-	ProviderLabel    string   `gorm:"column:provider_label;not null"`
-	BaseURL          string   `gorm:"column:base_url;not null"`
-	Model            string   `gorm:"column:model;not null"`
-	ModelDisplayName string   `gorm:"column:model_display_name;not null"`
-	Enabled          bool     `gorm:"column:enabled;not null;default:true"`
-	IsDefault        bool     `gorm:"column:is_default;not null;default:false;index"`
-	SupportsImages   bool     `gorm:"column:supports_images;not null;default:false"`
-	SupportsTools    bool     `gorm:"column:supports_tools;not null;default:true"`
-	ContextWindow    int      `gorm:"column:context_window;not null;default:0"`
-	MaxOutputTokens  int      `gorm:"column:max_output_tokens;not null;default:0"`
-	Temperature      *float64 `gorm:"column:temperature"`
-	APIKeyName       string   `gorm:"column:api_key_name;not null"`
-	CreatedAt        string   `gorm:"column:created_at;not null"`
-	UpdatedAt        string   `gorm:"column:updated_at;not null"`
+	ID                string   `gorm:"column:id;primaryKey"`
+	Name              string   `gorm:"column:name;not null"`
+	ProviderID        string   `gorm:"column:provider_id;not null;uniqueIndex:agent_model_profiles_provider_id_idx"`
+	ProviderLabel     string   `gorm:"column:provider_label;not null"`
+	BaseURL           string   `gorm:"column:base_url;not null"`
+	Model             string   `gorm:"column:model;not null"`
+	ModelDisplayName  string   `gorm:"column:model_display_name;not null"`
+	Enabled           bool     `gorm:"column:enabled;not null;default:true"`
+	IsDefault         bool     `gorm:"column:is_default;not null;default:false;index"`
+	SupportsImages    bool     `gorm:"column:supports_images;not null;default:false"`
+	SupportsTools     bool     `gorm:"column:supports_tools;not null;default:true"`
+	SupportsReasoning bool     `gorm:"column:supports_reasoning;not null;default:false"`
+	ContextWindow     int      `gorm:"column:context_window;not null;default:0"`
+	MaxOutputTokens   int      `gorm:"column:max_output_tokens;not null;default:0"`
+	Temperature       *float64 `gorm:"column:temperature"`
+	APIKeyName        string   `gorm:"column:api_key_name;not null"`
+	CreatedAt         string   `gorm:"column:created_at;not null"`
+	UpdatedAt         string   `gorm:"column:updated_at;not null"`
 }
 
 // TableName returns the backing table name.

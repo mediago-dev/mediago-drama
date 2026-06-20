@@ -65,6 +65,7 @@ func (repo *AgentModelProfileRepository) UpsertAgentModelProfile(model domain.Ag
 			"is_default",
 			"supports_images",
 			"supports_tools",
+			"supports_reasoning",
 			"context_window",
 			"max_output_tokens",
 			"temperature",

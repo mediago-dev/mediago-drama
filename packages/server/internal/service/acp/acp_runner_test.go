@@ -205,6 +205,10 @@ func TestAgentRuntimeConfigFromACPSession(t *testing.T) {
 		{Name: "Low", Value: acp.SessionConfigValueId("low")},
 		{Name: "High", Value: acp.SessionConfigValueId("high")},
 	}
+	customOptions := acp.SessionConfigSelectOptionsUngrouped{
+		{Name: "On", Value: acp.SessionConfigValueId("on")},
+		{Name: "Off", Value: acp.SessionConfigValueId("off")},
+	}
 	config := AgentRuntimeConfigFromACPSession(acp.NewSessionResponse{
 		SessionId: acp.SessionId("session-1"),
 		Modes: &acp.SessionModeState{
@@ -240,37 +244,55 @@ func TestAgentRuntimeConfigFromACPSession(t *testing.T) {
 					Options:      acp.SessionConfigSelectOptions{Ungrouped: &reasoningOptions},
 				},
 			},
+			{
+				Select: &acp.SessionConfigOptionSelect{
+					Id:           acp.SessionConfigId("custom_toggle"),
+					Name:         "Custom toggle",
+					CurrentValue: acp.SessionConfigValueId("on"),
+					Options:      acp.SessionConfigSelectOptions{Ungrouped: &customOptions},
+				},
+			},
 		},
 	})
 
-	if config.Model == nil {
-		t.Fatal("model config is nil")
-	}
-	if config.Model.ConfigID != "model" || config.Model.Source != AgentRuntimeConfigSourceOption || config.Model.CurrentValue != "gpt-5.5" {
-		t.Fatalf("model config = %#v, want ACP config option and current value", config.Model)
-	}
-	if len(config.Model.Options) != 1 || config.Model.Options[0].Value != "gpt-5.5" || config.Model.Options[0].Description != modelDescription {
-		t.Fatalf("model options = %#v, want gpt-5.5", config.Model.Options)
+	// All select config options are preserved in server order; the synthesized
+	// mode config is appended last.
+	if len(config.Options) != 4 {
+		t.Fatalf("options = %#v, want 4 entries (model, reasoning, custom, mode)", config.Options)
 	}
 
-	if config.Reasoning == nil {
-		t.Fatal("reasoning config is nil")
+	model := config.Options[0]
+	if model.ConfigID != "model" || model.Source != AgentRuntimeConfigSourceOption || model.Category != string(modelCategory) || model.CurrentValue != "gpt-5.5" {
+		t.Fatalf("model config = %#v, want ACP config option with category and current value", model)
 	}
-	if config.Reasoning.ConfigID != "reasoning_effort" || config.Reasoning.Source != AgentRuntimeConfigSourceOption || config.Reasoning.CurrentValue != "high" {
-		t.Fatalf("reasoning config = %#v, want ACP config option", config.Reasoning)
-	}
-	if len(config.Reasoning.Options) != 2 || config.Reasoning.Options[1].Value != "high" {
-		t.Fatalf("reasoning options = %#v, want low/high", config.Reasoning.Options)
+	if len(model.Options) != 1 || model.Options[0].Value != "gpt-5.5" || model.Options[0].Description != modelDescription {
+		t.Fatalf("model options = %#v, want gpt-5.5", model.Options)
 	}
 
-	if config.Permission == nil {
-		t.Fatal("permission config is nil")
+	reasoning := config.Options[1]
+	if reasoning.ConfigID != "reasoning_effort" || reasoning.Source != AgentRuntimeConfigSourceOption || reasoning.Category != string(reasoningCategory) || reasoning.CurrentValue != "high" {
+		t.Fatalf("reasoning config = %#v, want ACP config option with category", reasoning)
 	}
-	if config.Permission.Source != AgentRuntimeConfigSourceMode || config.Permission.CurrentValue != "ask" {
-		t.Fatalf("permission config = %#v, want ACP mode source and current value", config.Permission)
+	if len(reasoning.Options) != 2 || reasoning.Options[1].Value != "high" {
+		t.Fatalf("reasoning options = %#v, want low/high", reasoning.Options)
 	}
-	if len(config.Permission.Options) != 2 || config.Permission.Options[0].Description != modeDescription {
-		t.Fatalf("permission options = %#v, want ask/full-access modes", config.Permission.Options)
+
+	// An unknown-category config option must be preserved (regression guard for
+	// the fixed-three-bucket design that used to drop anything it could not classify).
+	custom := config.Options[2]
+	if custom.ConfigID != "custom_toggle" || custom.Source != AgentRuntimeConfigSourceOption || custom.Category != "" || custom.CurrentValue != "on" {
+		t.Fatalf("custom config = %#v, want preserved unknown-category config option", custom)
+	}
+	if len(custom.Options) != 2 || custom.Options[0].Value != "on" {
+		t.Fatalf("custom options = %#v, want on/off", custom.Options)
+	}
+
+	mode := config.Options[3]
+	if mode.Source != AgentRuntimeConfigSourceMode || mode.Category != string(acp.SessionConfigOptionCategoryMode) || mode.CurrentValue != "ask" {
+		t.Fatalf("mode config = %#v, want ACP mode source and current value", mode)
+	}
+	if len(mode.Options) != 2 || mode.Options[0].Description != modeDescription {
+		t.Fatalf("mode options = %#v, want ask/full-access modes", mode.Options)
 	}
 }
 

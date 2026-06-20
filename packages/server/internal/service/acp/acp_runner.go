@@ -260,9 +260,7 @@ func (runner *acpAgentRunner) InspectSessionConfig(ctx context.Context, projectI
 		"acp config probe completed",
 		append(logArgs,
 			"acp_session_id", session.SessionId,
-			"has_model", config.Model != nil,
-			"has_reasoning", config.Reasoning != nil,
-			"has_permission", config.Permission != nil,
+			"config_options", len(config.Options),
 		)...,
 	)
 	return config, nil
@@ -354,31 +352,27 @@ func isOpenCodeACPCommand(command string, args []string) bool {
 }
 
 func applyACPSessionSelections(ctx context.Context, conn *acp.ClientSideConnection, sessionID acp.SessionId, request agentRunRequest, logArgs []any) error {
-	if err := applyACPConfigSelection(ctx, conn, sessionID, request.Model, "model", logArgs); err != nil {
-		return err
-	}
-	if err := applyACPConfigSelection(ctx, conn, sessionID, request.Reasoning, "reasoning", logArgs); err != nil {
-		return err
-	}
-	if err := applyACPConfigSelection(ctx, conn, sessionID, request.Permission, "permission", logArgs); err != nil {
-		return err
+	for _, selection := range request.Selections {
+		if err := applyACPConfigSelection(ctx, conn, sessionID, selection, logArgs); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func applyACPConfigSelection(ctx context.Context, conn *acp.ClientSideConnection, sessionID acp.SessionId, selection agentACPConfigSelection, label string, logArgs []any) error {
+func applyACPConfigSelection(ctx context.Context, conn *acp.ClientSideConnection, sessionID acp.SessionId, selection agentACPConfigSelection, logArgs []any) error {
 	value := strings.TrimSpace(selection.Value)
 	if value == "" {
 		return nil
 	}
 	source := strings.TrimSpace(selection.Source)
 	configID := strings.TrimSpace(selection.ConfigID)
-	if source == AgentRuntimeConfigSourceMode || (label == "permission" && configID == "") {
+	if source == AgentRuntimeConfigSourceMode {
 		if _, err := conn.SetSessionMode(ctx, acp.SetSessionModeRequest{
 			SessionId: sessionID,
 			ModeId:    acp.SessionModeId(value),
 		}); err != nil {
-			return fmt.Errorf("setting ACP %s: %w", label, err)
+			return fmt.Errorf("setting ACP session mode: %w", err)
 		}
 		acpLog().Debug(
 			"acp session mode selected",
@@ -387,7 +381,7 @@ func applyACPConfigSelection(ctx context.Context, conn *acp.ClientSideConnection
 		return nil
 	}
 	if configID == "" {
-		return fmt.Errorf("setting ACP %s: missing config id", label)
+		return fmt.Errorf("setting ACP session config: missing config id")
 	}
 	if _, err := conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{
 		ValueId: &acp.SetSessionConfigOptionValueId{
@@ -396,7 +390,7 @@ func applyACPConfigSelection(ctx context.Context, conn *acp.ClientSideConnection
 			Value:     acp.SessionConfigValueId(value),
 		},
 	}); err != nil {
-		return fmt.Errorf("setting ACP %s: %w", label, err)
+		return fmt.Errorf("setting ACP session config: %w", err)
 	}
 	acpLog().Debug(
 		"acp session config selected",
