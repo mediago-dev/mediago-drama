@@ -56,10 +56,10 @@ export const ProjectSelectedResources: React.FC = () => {
 								<Icon className="size-5 shrink-0 text-muted-foreground" />
 								<div className="min-w-0">
 									<p className="truncate text-sm font-medium text-foreground">
-										{descriptor.label} · 已选生成资源
+										{descriptor.label} · 已选资源
 									</p>
 									<p className="truncate text-xs text-muted-foreground">
-										只展示生成列表中已选中的图片。
+										展示项目中已选入该资源类型的图片。
 									</p>
 								</div>
 							</div>

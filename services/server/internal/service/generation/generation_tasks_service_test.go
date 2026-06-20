@@ -294,9 +294,180 @@ func TestGenerationServiceListSelectedGenerationAssets(t *testing.T) {
 	if asset.TaskID != "task-character" ||
 		asset.AssetIndex != 0 ||
 		asset.ResourceType != "character" ||
+		asset.MediaAssetID != "character" ||
+		asset.SourceType != "generated" ||
 		asset.Title != "角色图" ||
 		asset.URL != "/api/v1/media-assets/character/content" {
 		t.Fatalf("asset = %+v, want selected character image summary", asset)
+	}
+}
+
+func TestGenerationServiceUpdateSelectedGenerationAssetFromTask(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	projectID := "project-selected-from-task"
+	taskID := "task-select-source"
+	service := NewGenerationTaskService(dbPath, nil)
+	workflow := &GenerationService{generationTasks: service}
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:        taskID,
+		ProjectID: projectID,
+		Kind:      "image",
+		Status:    "completed",
+		Prompt:    "character",
+		Assets: []GenerationAsset{
+			{Kind: "image", URL: "/api/v1/media-assets/image-a/content", MIMEType: "image/png"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting task: %v", err)
+	}
+
+	selected := true
+	assetIndex := 0
+	response, status, err := workflow.UpdateSelectedGenerationAsset(projectID, UpdateSelectedGenerationAssetRequest{
+		Selected:     &selected,
+		ResourceType: "character",
+		TaskID:       taskID,
+		AssetIndex:   &assetIndex,
+		Title:        "陈远",
+	})
+	if err != nil || status != 200 {
+		t.Fatalf("selecting generated asset status=%d error=%v", status, err)
+	}
+	if response.Asset == nil ||
+		response.Asset.TaskID != taskID ||
+		response.Asset.AssetIndex != 0 ||
+		response.Asset.ResourceType != "character" ||
+		response.Asset.MediaAssetID != "image-a" ||
+		response.Asset.Title != "陈远" {
+		t.Fatalf("response = %+v, want selected task asset", response)
+	}
+
+	reloaded, ok, err := service.Get(taskID)
+	if err != nil || !ok {
+		t.Fatalf("getting task ok=%v error=%v", ok, err)
+	}
+	if !reloaded.Assets[0].Selected || reloaded.Assets[0].Title != "陈远" || reloaded.CapabilityID != "character" {
+		t.Fatalf("task = %+v, want mirrored selected asset state", reloaded)
+	}
+
+	listed, err := workflow.ListSelectedGenerationAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing selected assets: %v", err)
+	}
+	if len(listed.Assets) != 1 || listed.Assets[0].ID != response.Asset.ID {
+		t.Fatalf("listed assets = %+v, want selected asset", listed.Assets)
+	}
+
+	selected = false
+	deleteResponse, status, err := workflow.UpdateSelectedGenerationAsset(projectID, UpdateSelectedGenerationAssetRequest{
+		Selected:     &selected,
+		ResourceType: "character",
+		TaskID:       taskID,
+		AssetIndex:   &assetIndex,
+	})
+	if err != nil || status != 200 || !deleteResponse.Deleted {
+		t.Fatalf("unselecting generated asset status=%d response=%+v error=%v", status, deleteResponse, err)
+	}
+	listed, err = workflow.ListSelectedGenerationAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing after unselect: %v", err)
+	}
+	if len(listed.Assets) != 0 {
+		t.Fatalf("listed assets after unselect = %+v, want none", listed.Assets)
+	}
+	reloaded, ok, err = service.Get(taskID)
+	if err != nil || !ok {
+		t.Fatalf("getting task after unselect ok=%v error=%v", ok, err)
+	}
+	if reloaded.Assets[0].Selected {
+		t.Fatalf("task = %+v, want mirrored unselected asset state", reloaded)
+	}
+}
+
+func TestGenerationServiceUpdateSelectedGenerationAssetWithMissingTaskSource(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	projectID := "project-selected-missing-task"
+	taskID := "task-select-missing"
+	service := NewGenerationTaskService(dbPath, nil)
+	workflow := &GenerationService{generationTasks: service}
+
+	selected := true
+	assetIndex := 0
+	response, status, err := workflow.UpdateSelectedGenerationAsset(projectID, UpdateSelectedGenerationAssetRequest{
+		Selected:     &selected,
+		ResourceType: "scene",
+		TaskID:       taskID,
+		AssetIndex:   &assetIndex,
+		Title:        "湖南校门口晨光",
+		URL:          "/api/v1/media-assets/scene-direct/content",
+		MIMEType:     "image/png",
+	})
+	if err != nil || status != 200 {
+		t.Fatalf("selecting asset with missing task status=%d error=%v", status, err)
+	}
+	if response.Asset == nil ||
+		response.Asset.TaskID != taskID ||
+		response.Asset.AssetIndex != 0 ||
+		response.Asset.ResourceType != "scene" ||
+		response.Asset.MediaAssetID != "scene-direct" ||
+		response.Asset.Kind != "image" ||
+		response.Asset.SourceType != "generated" ||
+		response.Asset.Title != "湖南校门口晨光" {
+		t.Fatalf("response = %+v, want selected direct asset with task source metadata", response)
+	}
+
+	listed, err := workflow.ListSelectedGenerationAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing selected assets: %v", err)
+	}
+	if len(listed.Assets) != 1 || listed.Assets[0].ID != response.Asset.ID {
+		t.Fatalf("listed assets = %+v, want saved selected asset", listed.Assets)
+	}
+}
+
+func TestGenerationTaskServiceUpsertSelectedAssetWithoutTask(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	projectID := "project-selected-direct"
+	service := NewGenerationTaskService(dbPath, nil)
+
+	asset, ok, err := service.UpsertSelectedAsset(projectID, UpdateSelectedGenerationAssetRequest{
+		ResourceType:  "character",
+		ResourceTitle: "陈远",
+		MediaAssetID:  "media-direct",
+		Kind:          "image",
+		Title:         "陈远设定图",
+		URL:           "/api/v1/media-assets/media-direct/content",
+		MIMEType:      "image/png",
+		SourceType:    "uploaded",
+	})
+	if err != nil || !ok {
+		t.Fatalf("upserting selected asset ok=%v error=%v", ok, err)
+	}
+	if asset.TaskID != "" ||
+		asset.AssetIndex != -1 ||
+		asset.MediaAssetID != "media-direct" ||
+		asset.ResourceTitle != "陈远" ||
+		asset.SourceType != "uploaded" {
+		t.Fatalf("asset = %+v, want direct selected media asset", asset)
+	}
+
+	assets, err := service.ListProjectSelectedAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing selected assets: %v", err)
+	}
+	if len(assets) != 1 || assets[0].ID != asset.ID {
+		t.Fatalf("assets = %+v, want direct selected asset", assets)
+	}
+	deleted, err := service.DeleteSelectedAsset(projectID, asset.ID)
+	if err != nil || !deleted {
+		t.Fatalf("deleting selected asset deleted=%v error=%v", deleted, err)
+	}
+	assets, err = service.ListProjectSelectedAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing after delete: %v", err)
+	}
+	if len(assets) != 0 {
+		t.Fatalf("assets after delete = %+v, want none", assets)
 	}
 }
 

@@ -423,7 +423,20 @@ func TestEnsureGenerationTaskSchemaBackfillsNormalizedAssetRows(t *testing.T) {
 		resourceAssets[0].URL != "/api/v1/media-assets/asset-a/content" {
 		t.Fatalf("resource assets = %#v, want selected character resource row", resourceAssets)
 	}
+	var selectedAssets []domain.ProjectSelectedAssetModel
+	if err := db.Find(&selectedAssets, "project_id = ?", "project-a").Error; err != nil {
+		t.Fatalf("loading project selected assets: %v", err)
+	}
+	if len(selectedAssets) != 1 ||
+		selectedAssets[0].ResourceType != "character" ||
+		selectedAssets[0].MediaAssetID != "asset-a" ||
+		selectedAssets[0].SourceTaskID != "task-selected" ||
+		selectedAssets[0].SourceAssetIndex != 0 ||
+		selectedAssets[0].URL != "/api/v1/media-assets/asset-a/content" {
+		t.Fatalf("selected assets = %#v, want selected character asset row", selectedAssets)
+	}
 	assertSchemaMigrationRecorded(t, db, generationTaskAssetsBackfillMigrationKey)
+	assertSchemaMigrationRecorded(t, db, projectSelectedAssetsBackfillMigrationKey)
 }
 
 type legacyGenerationTaskWithChannelModel struct {

@@ -248,6 +248,26 @@ func (repo *GenerationTaskRepository) ReplaceProjectResourceAssetRowsForTask(tas
 	})
 }
 
+// ReplaceProjectSelectedAssetRowsForTask replaces selected project asset rows sourced from one task.
+func (repo *GenerationTaskRepository) ReplaceProjectSelectedAssetRowsForTask(taskID string, rows []domain.ProjectSelectedAssetModel) error {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil
+	}
+	return repo.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&domain.ProjectSelectedAssetModel{}, "source_task_id = ?", taskID).Error; err != nil {
+			return fmt.Errorf("deleting project selected asset rows: %w", err)
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&rows).Error; err != nil {
+			return fmt.Errorf("creating project selected asset rows: %w", err)
+		}
+		return nil
+	})
+}
+
 // ListProjectResourceAssets returns selected project resource assets.
 func (repo *GenerationTaskRepository) ListProjectResourceAssets(projectID string) ([]domain.ProjectResourceAssetModel, error) {
 	projectID = domain.CleanProjectID(projectID)
@@ -262,6 +282,82 @@ func (repo *GenerationTaskRepository) ListProjectResourceAssets(projectID string
 		return nil, fmt.Errorf("listing project resource assets: %w", err)
 	}
 	return models, nil
+}
+
+// ListProjectSelectedAssets returns selected project assets.
+func (repo *GenerationTaskRepository) ListProjectSelectedAssets(projectID string) ([]domain.ProjectSelectedAssetModel, error) {
+	projectID = domain.CleanProjectID(projectID)
+	models := []domain.ProjectSelectedAssetModel{}
+	if projectID == "" {
+		return models, nil
+	}
+	if err := repo.db.
+		Where("project_id = ? AND deleted_at = ''", projectID).
+		Order("updated_at DESC").
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing project selected assets: %w", err)
+	}
+	return models, nil
+}
+
+// GetProjectSelectedAsset returns one selected project asset by ID.
+func (repo *GenerationTaskRepository) GetProjectSelectedAsset(id string) (domain.ProjectSelectedAssetModel, error) {
+	var model domain.ProjectSelectedAssetModel
+	err := repo.db.First(&model, "id = ? AND deleted_at = ''", strings.TrimSpace(id)).Error
+	if IsRecordNotFound(err) {
+		return domain.ProjectSelectedAssetModel{}, ErrRecordNotFound
+	}
+	if err != nil {
+		return domain.ProjectSelectedAssetModel{}, fmt.Errorf("getting project selected asset: %w", err)
+	}
+	return model, nil
+}
+
+// UpsertProjectSelectedAsset inserts or updates one selected project asset.
+func (repo *GenerationTaskRepository) UpsertProjectSelectedAsset(model domain.ProjectSelectedAssetModel) error {
+	model.ProjectID = domain.CleanProjectID(model.ProjectID)
+	if strings.TrimSpace(model.ID) == "" || model.ProjectID == "" {
+		return nil
+	}
+	if err := repo.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"project_id",
+			"resource_type",
+			"resource_id",
+			"resource_title",
+			"media_asset_id",
+			"kind",
+			"title",
+			"url",
+			"base64",
+			"mime_type",
+			"source_type",
+			"source_task_id",
+			"source_asset_index",
+			"source_document_id",
+			"source_key",
+			"sort_order",
+			"deleted_at",
+			"updated_at",
+		}),
+	}).Create(&model).Error; err != nil {
+		return fmt.Errorf("upserting project selected asset: %w", err)
+	}
+	return nil
+}
+
+// DeleteProjectSelectedAsset deletes one selected project asset by ID.
+func (repo *GenerationTaskRepository) DeleteProjectSelectedAsset(id string) (bool, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false, nil
+	}
+	result := repo.db.Delete(&domain.ProjectSelectedAssetModel{}, "id = ?", id)
+	if result.Error != nil {
+		return false, fmt.Errorf("deleting project selected asset: %w", result.Error)
+	}
+	return result.RowsAffected > 0, nil
 }
 
 // UpdateGenerationTaskProjectID rewrites legacy project identifiers on tasks.
@@ -338,6 +434,9 @@ func (repo *GenerationTaskRepository) DeleteGenerationConversation(id string) (b
 		taskIDs := tx.Model(&domain.GenerationTaskModel{}).Select("id").Where("conversation_id = ?", id)
 		if err := tx.Where("task_id IN (?)", taskIDs).Delete(&domain.ProjectResourceAssetModel{}).Error; err != nil {
 			return fmt.Errorf("deleting project resource assets by conversation: %w", err)
+		}
+		if err := tx.Where("source_task_id IN (?)", taskIDs).Delete(&domain.ProjectSelectedAssetModel{}).Error; err != nil {
+			return fmt.Errorf("deleting project selected assets by conversation: %w", err)
 		}
 		if err := tx.Where("task_id IN (?)", taskIDs).Delete(&domain.GenerationTaskAssetModel{}).Error; err != nil {
 			return fmt.Errorf("deleting generation task assets by conversation: %w", err)
@@ -482,6 +581,9 @@ func (repo *GenerationTaskRepository) DeleteGenerationTask(id string) (bool, err
 		}
 		if err := tx.Delete(&domain.ProjectResourceAssetModel{}, "task_id = ?", id).Error; err != nil {
 			return fmt.Errorf("deleting project resource assets: %w", err)
+		}
+		if err := tx.Delete(&domain.ProjectSelectedAssetModel{}, "source_task_id = ?", id).Error; err != nil {
+			return fmt.Errorf("deleting project selected assets: %w", err)
 		}
 		if err := tx.Delete(&domain.GenerationTaskAssetModel{}, "task_id = ?", id).Error; err != nil {
 			return fmt.Errorf("deleting generation task assets: %w", err)

@@ -169,6 +169,7 @@ const mediaMatchKeys = (asset: MediaAsset) => {
 
 const selectedAssetMatchKeys = (asset: SelectedGenerationAsset) => {
 	const keys = new Set<string>();
+	if (asset.mediaAssetId) keys.add(`media:${asset.mediaAssetId}`);
 	const explicitID = mediaAssetIdFromURL(asset.url);
 	if (explicitID) keys.add(`media:${explicitID}`);
 	const normalizedURL = normalizedAssetURL(asset.url);
@@ -202,7 +203,7 @@ const uniqueResourceTypes = (types: AgentResourceType[]) => {
 	return unique;
 };
 
-const selectedAssetID = (asset: SelectedGenerationAsset) => `${asset.taskId}:${asset.assetIndex}`;
+const selectedAssetID = (asset: SelectedGenerationAsset) => asset.id;
 
 const compareAssetLibraryItems = (
 	left: AssetLibraryItem,

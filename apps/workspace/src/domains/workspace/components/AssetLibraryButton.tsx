@@ -19,9 +19,9 @@ import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import {
+	deleteSelectedGenerationAsset,
 	getSelectedGenerationAssets,
 	selectedGenerationAssetsQueryKey,
-	updateGenerationTaskAsset,
 	type SelectedGenerationAsset,
 } from "@/domains/generation/api/generation";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
@@ -330,10 +330,9 @@ const AssetLibraryDialog: React.FC<{
 	};
 
 	const unselectGenerationAssets = async (assets: SelectedGenerationAsset[]) => {
+		if (!selectedProjectId) return;
 		await Promise.all(
-			assets.map((asset) =>
-				updateGenerationTaskAsset(asset.taskId, asset.assetIndex, { selected: false }),
-			),
+			assets.map((asset) => deleteSelectedGenerationAsset(selectedProjectId, asset.id)),
 		);
 		await mutateSelectedAssets();
 	};

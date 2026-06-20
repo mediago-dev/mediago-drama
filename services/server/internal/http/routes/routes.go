@@ -214,6 +214,14 @@ func registerProjectRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
 		"/generation/selected-assets",
 		handlers.GenerationTasks.HandleSelectedGenerationAssets,
 	)
+	projectRoutes.POST(
+		"/generation/selected-assets",
+		handlers.GenerationTasks.HandleUpdateSelectedGenerationAsset,
+	)
+	projectRoutes.DELETE(
+		"/generation/selected-assets/:selectedAssetId",
+		handlers.GenerationTasks.HandleDeleteSelectedGenerationAsset,
+	)
 	registerWorkspaceRoutes(projectRoutes, handlers)
 	registerAgentRoutes(projectRoutes, handlers)
 	registerProjectGenerationNotificationRoutes(projectRoutes, handlers.GenerationTasks)

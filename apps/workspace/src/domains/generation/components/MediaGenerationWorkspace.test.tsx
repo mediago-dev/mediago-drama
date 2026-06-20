@@ -28,7 +28,7 @@ const generationApiMocks = vi.hoisted(() => ({
 		"generation-selected-assets",
 		projectId,
 	]),
-	updateGenerationTaskAsset: vi.fn(async () => undefined),
+	updateSelectedGenerationAsset: vi.fn(async () => undefined),
 }));
 const mediaApiMocks = vi.hoisted(() => ({
 	uploadMediaAsset: vi.fn(),
@@ -45,7 +45,7 @@ vi.mock("@/domains/generation/api/generation", async (importOriginal) => {
 		...actual,
 		previewGenerationVoice: generationApiMocks.previewGenerationVoice,
 		selectedGenerationAssetsQueryKey: generationApiMocks.selectedGenerationAssetsQueryKey,
-		updateGenerationTaskAsset: generationApiMocks.updateGenerationTaskAsset,
+		updateSelectedGenerationAsset: generationApiMocks.updateSelectedGenerationAsset,
 	};
 });
 
@@ -278,7 +278,6 @@ const audioVoiceParam: GenerationParam = {
 
 const workspaceDefaults = {
 	activeEntryId: "entry-image",
-	addEditedGenerationEntry: vi.fn(),
 	canSubmit: true,
 	composerLayers: [],
 	deletedAssetPlaceholderCounts: {},
@@ -748,18 +747,137 @@ describe("MediaGenerationWorkspace", () => {
 		fireEvent.click(screen.getByRole("checkbox", { name: "选入结果" }));
 
 		await waitFor(() => {
-			expect(generationApiMocks.updateGenerationTaskAsset).toHaveBeenCalledWith("task-a", 2, {
-				resourceType: "character",
-				selected: true,
-				title: "主角 底层青年 / 低阶散修",
-			});
+			expect(generationApiMocks.updateSelectedGenerationAsset).toHaveBeenCalledWith(
+				"project-a",
+				expect.objectContaining({
+					assetIndex: 2,
+					kind: "image",
+					mimeType: "image/png",
+					resourceTitle: "主角 底层青年 / 低阶散修",
+					resourceType: "character",
+					selected: true,
+					sourceAssetIndex: 2,
+					sourceTaskId: "task-a",
+					sourceType: "generated",
+					taskId: "task-a",
+					title: "主角 底层青年 / 低阶散修",
+					url: "/api/v1/media-assets/media-a/content",
+				}),
+			);
 		});
 	});
 
-	it("uploads edited images to the media library instead of storing base64 in history", async () => {
-		const addEditedGenerationEntry = vi.fn(
-			(_options: { asset: GenerationAsset }) => "edited-entry",
+	it("persists the first generated image when the response omits slotIndex zero", async () => {
+		const selectedEntry: GenerationEntry = {
+			...imageEntry,
+			id: "task-first",
+			assets: [
+				{
+					kind: "image",
+					mimeType: "image/png",
+					taskId: "task-first",
+					url: "/api/v1/media-assets/media-first/content",
+				},
+			],
+		};
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: selectedEntry.id,
+			orderedGenerationEntries: [selectedEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				projectId="project-a"
+				selectedAssetTitle="陈远"
+				taskType="character"
+				viewMode="history"
+			/>,
 		);
+
+		fireEvent.click(screen.getByRole("checkbox", { name: "选入结果" }));
+
+		await waitFor(() => {
+			expect(generationApiMocks.updateSelectedGenerationAsset).toHaveBeenCalledWith(
+				"project-a",
+				expect.objectContaining({
+					assetIndex: 0,
+					resourceType: "character",
+					selected: true,
+					sourceAssetIndex: 0,
+					sourceTaskId: "task-first",
+					taskId: "task-first",
+					title: "陈远",
+				}),
+			);
+		});
+	});
+
+	it("syncs document-selected generated images into selected project resources", async () => {
+		const selectedEntry: GenerationEntry = {
+			...imageEntry,
+			id: "task-document-selected",
+			assets: [
+				{
+					kind: "image",
+					mimeType: "image/png",
+					taskId: "task-document-selected",
+					url: "/api/v1/media-assets/media-document-selected/content",
+				},
+			],
+		};
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: selectedEntry.id,
+			orderedGenerationEntries: [selectedEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				projectId="project-a"
+				selectedAssetKeys={["image:/api/v1/media-assets/media-document-selected/content"]}
+				selectedAssetTitle="陈远"
+				taskType="character"
+				viewMode="history"
+			/>,
+		);
+
+		await waitFor(() => {
+			expect(generationApiMocks.updateSelectedGenerationAsset).toHaveBeenCalledWith(
+				"project-a",
+				expect.objectContaining({
+					resourceType: "character",
+					selected: true,
+					sourceAssetIndex: 0,
+					sourceTaskId: "task-document-selected",
+					taskId: "task-document-selected",
+					title: "陈远",
+				}),
+			);
+		});
+	});
+
+	it("uploads edited images, imports them into history, and selects them for project resources", async () => {
+		const editedAsset: GenerationAsset = {
+			kind: "image",
+			mimeType: "image/png",
+			slotIndex: 0,
+			taskId: "edited-entry",
+			title: "原图 编辑版",
+			url: "/api/v1/media-assets/edited-media/content",
+		};
+		const importMediaAssetsToHistory = vi.fn().mockResolvedValue([
+			{
+				id: "edited-entry",
+				assets: [editedAsset],
+			},
+		]);
 		const mutateMediaAssets = vi.fn(async () => undefined);
 		const onToggleAsset = vi.fn();
 		const setActiveEntryId = vi.fn();
@@ -783,7 +901,7 @@ describe("MediaGenerationWorkspace", () => {
 		vi.mocked(useGenerationWorkspace).mockReturnValue({
 			...workspaceDefaults,
 			activeEntryId: editableEntry.id,
-			addEditedGenerationEntry,
+			importMediaAssetsToHistory,
 			mutateMediaAssets,
 			orderedGenerationEntries: [editableEntry],
 			setActiveEntryId,
@@ -796,6 +914,8 @@ describe("MediaGenerationWorkspace", () => {
 				kind="image"
 				onToggleAsset={onToggleAsset}
 				projectId="project-a"
+				selectedAssetTitle="陈远"
+				taskType="character"
 				viewMode="history"
 			/>,
 		);
@@ -805,25 +925,49 @@ describe("MediaGenerationWorkspace", () => {
 
 		await waitFor(() => {
 			expect(mediaApiMocks.uploadMediaAsset).toHaveBeenCalledWith(expect.any(File), "project-a");
-			expect(addEditedGenerationEntry).toHaveBeenCalled();
+			expect(importMediaAssetsToHistory).toHaveBeenCalledWith(
+				[
+					expect.objectContaining({
+						id: "edited-media",
+						url: "/api/v1/media-assets/edited-media/content",
+					}),
+				],
+				{
+					assetTitle: "原图 编辑版",
+					prompt: "旧提示词",
+				},
+			);
 		});
 
 		const uploadedFile = mediaApiMocks.uploadMediaAsset.mock.calls[0]?.[0] as File;
 		expect(uploadedFile.name).toBe("原图 编辑版.png");
 		expect(uploadedFile.type).toBe("image/png");
-		const editedAsset = addEditedGenerationEntry.mock.calls[0]?.[0].asset;
 		expect(editedAsset).toEqual(
 			expect.objectContaining({
 				kind: "image",
 				mimeType: "image/png",
-				selected: true,
+				slotIndex: 0,
+				taskId: "edited-entry",
 				title: "原图 编辑版",
 				url: "/api/v1/media-assets/edited-media/content",
 			}),
 		);
-		expect(editedAsset.base64).toBeUndefined();
 		expect(mutateMediaAssets).toHaveBeenCalled();
 		expect(onToggleAsset).toHaveBeenCalledWith(editedAsset, true);
+		expect(generationApiMocks.updateSelectedGenerationAsset).toHaveBeenCalledWith(
+			"project-a",
+			expect.objectContaining({
+				assetIndex: 0,
+				resourceTitle: "陈远",
+				resourceType: "character",
+				selected: true,
+				sourceAssetIndex: 0,
+				sourceTaskId: "edited-entry",
+				sourceType: "edited",
+				taskId: "edited-entry",
+				title: "原图 编辑版",
+			}),
+		);
 		expect(setActiveEntryId).toHaveBeenCalledWith("edited-entry");
 	});
 

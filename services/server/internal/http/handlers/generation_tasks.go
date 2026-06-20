@@ -31,6 +31,8 @@ type GenerationTaskService interface {
 	ListGenerationConversations(scopeID string, kind string) (dto.GenerationConversationsResponse, error)
 	ListGenerationTasks(query service.GenerationTaskListQuery) (dto.GenerationTasksResponse, error)
 	ListSelectedGenerationAssets(projectID string) (dto.SelectedGenerationAssetsResponse, error)
+	UpdateSelectedGenerationAsset(projectID string, payload dto.UpdateSelectedGenerationAssetRequest) (dto.UpdateSelectedGenerationAssetResponse, int, error)
+	DeleteSelectedGenerationAsset(projectID string, id string) (bool, error)
 	GetGenerationTask(id string) (dto.GenerationTaskRecord, bool, error)
 	UpdateGenerationTaskAsset(id string, assetIndex int, patch dto.UpdateGenerationTaskAssetRequest) (dto.GenerationTaskRecord, bool, error)
 	DeleteGenerationTaskAsset(id string, assetIndex int) (dto.GenerationTaskRecord, bool, error)
@@ -444,6 +446,71 @@ func (handler GenerationTasks) HandleSelectedGenerationAssets(context *gin.Conte
 	}
 
 	httpresponse.OK(context, assets)
+}
+
+// HandleUpdateSelectedGenerationAsset godoc
+// @Summary 更新项目选中资产
+// @Description 将图片等素材选入或取消选入项目资源概览。
+// @Tags Generation
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param payload body SwaggerObject true "Selected asset payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/generation/selected-assets [post]
+func (handler GenerationTasks) HandleUpdateSelectedGenerationAsset(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+	payload, err := decodeJSON[dto.UpdateSelectedGenerationAssetRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+
+	response, status, err := handler.service.UpdateSelectedGenerationAsset(projectID, payload)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, status, err)
+		return
+	}
+	httpresponse.OK(context, response)
+}
+
+// HandleDeleteSelectedGenerationAsset godoc
+// @Summary 取消项目选中资产
+// @Description 按已选资源 ID 取消选入项目资源概览。
+// @Tags Generation
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param selectedAssetId path string true "Selected asset ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/generation/selected-assets/{selectedAssetId} [delete]
+func (handler GenerationTasks) HandleDeleteSelectedGenerationAsset(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+	id, ok := requiredPathParam(context, "selectedAssetId", "selectedAssetId")
+	if !ok {
+		return
+	}
+
+	deleted, err := handler.service.DeleteSelectedGenerationAsset(projectID, id)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+	if !deleted {
+		httpresponse.Error(context, http.StatusNotFound, "selected asset not found")
+		return
+	}
+	httpresponse.OK(context, map[string]bool{"deleted": true})
 }
 
 func nonNegativeIntQuery(context *gin.Context, name string) (int, bool) {

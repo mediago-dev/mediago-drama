@@ -34,6 +34,26 @@ describe("asset-library", () => {
 		expect(items.some((item) => item.key === "selected:selected-a")).toBe(false);
 	});
 
+	it("merges selected assets by explicit media asset id", () => {
+		const items = buildAssetLibraryItems({
+			mediaAssets: [
+				mediaAsset({ id: "media-direct", url: "/api/v1/media-assets/media-direct/content" }),
+			],
+			selectedAssets: [
+				selectedAsset({
+					id: "selected-direct",
+					mediaAssetId: "media-direct",
+					resourceType: "character",
+					url: "",
+				}),
+			],
+		});
+
+		expect(items).toHaveLength(1);
+		expect(items[0].key).toBe("media:media-direct");
+		expect(items[0].selectedAssets.map((asset) => asset.id)).toEqual(["selected-direct"]);
+	});
+
 	it("keeps unmatched selected generated assets as read-only items", () => {
 		const items = buildAssetLibraryItems({
 			selectedAssets: [

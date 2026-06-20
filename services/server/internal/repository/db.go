@@ -2,6 +2,8 @@
 package repository
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +37,7 @@ const (
 	generationTaskProviderBackfillMigrationKey = "settings.generation_tasks.backfill_official_providers.v1"
 	generationTaskStatusNormalizeMigrationKey  = "settings.generation_tasks.normalize_status.v1"
 	generationTaskAssetsBackfillMigrationKey   = "settings.generation_task_assets.backfill.v1"
+	projectSelectedAssetsBackfillMigrationKey  = "settings.project_selected_assets.backfill.v1"
 )
 
 // OpenGormSQLite opens a SQLite database with local server pragmas.
@@ -349,6 +352,7 @@ func EnsureGenerationTaskSchema(db *gorm.DB) error {
 		&domain.GenerationTaskAttemptModel{},
 		&domain.GenerationTaskAssetModel{},
 		&domain.ProjectResourceAssetModel{},
+		&domain.ProjectSelectedAssetModel{},
 	); err != nil {
 		return fmt.Errorf("initializing generation task database: %w", err)
 	}
@@ -372,6 +376,13 @@ func EnsureGenerationTaskSchema(db *gorm.DB) error {
 		backfillNormalizedGenerationAssetRows,
 	); err != nil {
 		return fmt.Errorf("backfilling normalized generation asset rows: %w", err)
+	}
+	if err := runSchemaMigrationOnce(
+		db,
+		projectSelectedAssetsBackfillMigrationKey,
+		backfillProjectSelectedAssetRows,
+	); err != nil {
+		return fmt.Errorf("backfilling project selected asset rows: %w", err)
 	}
 	return nil
 }
@@ -475,6 +486,7 @@ func backfillNormalizedGenerationAssetRows(db *gorm.DB) error {
 		deletedSlots := decodeDeletedAssetSlotsForBackfill(task.DeletedAssetSlotsJSON)
 		taskAssetRows := generationTaskAssetBackfillRows(task, assets, deletedSlots)
 		projectResourceRows := projectResourceAssetBackfillRows(task, assets, deletedSlots)
+		projectSelectedRows := projectSelectedAssetBackfillRows(task, assets, deletedSlots)
 		if len(taskAssetRows) > 0 {
 			if err := db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&taskAssetRows).Error; err != nil {
 				return fmt.Errorf("backfilling generation task assets for %s: %w", task.ID, err)
@@ -485,6 +497,29 @@ func backfillNormalizedGenerationAssetRows(db *gorm.DB) error {
 				return fmt.Errorf("backfilling project resource assets for %s: %w", task.ID, err)
 			}
 		}
+		if len(projectSelectedRows) > 0 {
+			if err := db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&projectSelectedRows).Error; err != nil {
+				return fmt.Errorf("backfilling project selected assets for %s: %w", task.ID, err)
+			}
+		}
+	}
+	return nil
+}
+
+func backfillProjectSelectedAssetRows(db *gorm.DB) error {
+	resourceRows := []domain.ProjectResourceAssetModel{}
+	if err := db.Find(&resourceRows).Error; err != nil {
+		return fmt.Errorf("loading project resource assets for selected asset backfill: %w", err)
+	}
+	if len(resourceRows) == 0 {
+		return nil
+	}
+	selectedRows := make([]domain.ProjectSelectedAssetModel, 0, len(resourceRows))
+	for _, row := range resourceRows {
+		selectedRows = append(selectedRows, projectSelectedAssetBackfillRowFromResource(row))
+	}
+	if err := db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&selectedRows).Error; err != nil {
+		return fmt.Errorf("creating project selected asset backfill rows: %w", err)
 	}
 	return nil
 }
@@ -562,6 +597,86 @@ func projectResourceAssetBackfillRows(task domain.GenerationTaskModel, assets []
 		})
 	}
 	return rows
+}
+
+func projectSelectedAssetBackfillRows(task domain.GenerationTaskModel, assets []persistedGenerationAssetForBackfill, deletedSlots map[int]struct{}) []domain.ProjectSelectedAssetModel {
+	projectID := domain.CleanProjectID(task.ProjectID)
+	resourceType := normalizedProjectResourceTypeForBackfill(task.CapabilityID)
+	if projectID == "" || resourceType == "" {
+		return []domain.ProjectSelectedAssetModel{}
+	}
+	rows := []domain.ProjectSelectedAssetModel{}
+	for index, asset := range assets {
+		if _, deleted := deletedSlots[index]; deleted || !asset.Selected || strings.TrimSpace(asset.Kind) != "image" {
+			continue
+		}
+		libraryAssetID := libraryAssetIDFromGeneratedAssetURL(asset.URL)
+		row := domain.ProjectSelectedAssetModel{
+			ProjectID:        projectID,
+			ResourceType:     resourceType,
+			ResourceTitle:    strings.TrimSpace(asset.Title),
+			MediaAssetID:     libraryAssetID,
+			Kind:             strings.TrimSpace(asset.Kind),
+			Title:            strings.TrimSpace(asset.Title),
+			URL:              strings.TrimSpace(asset.URL),
+			Base64:           strings.TrimSpace(asset.Base64),
+			MIMEType:         strings.TrimSpace(asset.MIMEType),
+			SourceType:       "generated",
+			SourceTaskID:     task.ID,
+			SourceAssetIndex: index,
+			CreatedAt:        task.CreatedAt,
+			UpdatedAt:        task.UpdatedAt,
+		}
+		row.ID = projectSelectedAssetBackfillID(row)
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func projectSelectedAssetBackfillRowFromResource(resource domain.ProjectResourceAssetModel) domain.ProjectSelectedAssetModel {
+	row := domain.ProjectSelectedAssetModel{
+		ProjectID:        domain.CleanProjectID(resource.ProjectID),
+		ResourceType:     strings.TrimSpace(resource.ResourceType),
+		ResourceTitle:    strings.TrimSpace(resource.Title),
+		MediaAssetID:     strings.TrimSpace(resource.LibraryAssetID),
+		Kind:             strings.TrimSpace(resource.Kind),
+		Title:            strings.TrimSpace(resource.Title),
+		URL:              strings.TrimSpace(resource.URL),
+		Base64:           strings.TrimSpace(resource.Base64),
+		MIMEType:         strings.TrimSpace(resource.MIMEType),
+		SourceType:       "generated",
+		SourceTaskID:     strings.TrimSpace(resource.TaskID),
+		SourceAssetIndex: resource.AssetIndex,
+		CreatedAt:        resource.CreatedAt,
+		UpdatedAt:        resource.UpdatedAt,
+	}
+	row.ID = projectSelectedAssetBackfillID(row)
+	return row
+}
+
+func projectSelectedAssetBackfillID(row domain.ProjectSelectedAssetModel) string {
+	source := ""
+	if strings.TrimSpace(row.SourceTaskID) != "" && row.SourceAssetIndex >= 0 {
+		source = fmt.Sprintf("task:%s:%d", strings.TrimSpace(row.SourceTaskID), row.SourceAssetIndex)
+	}
+	if source == "" {
+		source = strings.TrimSpace(row.MediaAssetID)
+	}
+	if source == "" {
+		source = strings.TrimSpace(row.URL)
+	}
+	if source == "" {
+		source = strings.TrimSpace(row.Base64)
+	}
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		domain.CleanProjectID(row.ProjectID),
+		strings.TrimSpace(row.ResourceType),
+		strings.TrimSpace(row.ResourceID),
+		strings.TrimSpace(row.ResourceTitle),
+		strings.TrimSpace(row.Kind),
+		source,
+	}, "\x00")))
+	return "selected-" + hex.EncodeToString(sum[:])[:24]
 }
 
 func normalizedProjectResourceTypeForBackfill(value string) string {

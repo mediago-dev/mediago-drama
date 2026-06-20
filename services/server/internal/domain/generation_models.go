@@ -96,6 +96,35 @@ func (ProjectResourceAssetModel) TableName() string {
 	return "project_resource_assets"
 }
 
+// ProjectSelectedAssetModel stores project-level selected creative assets.
+type ProjectSelectedAssetModel struct {
+	ID               string `gorm:"column:id;primaryKey"`
+	ProjectID        string `gorm:"column:project_id;not null;index:project_selected_assets_project_resource_idx,priority:1"`
+	ResourceType     string `gorm:"column:resource_type;not null;index:project_selected_assets_project_resource_idx,priority:2"`
+	ResourceID       string `gorm:"column:resource_id;not null;default:'';index:project_selected_assets_resource_id_idx"`
+	ResourceTitle    string `gorm:"column:resource_title;not null;default:''"`
+	MediaAssetID     string `gorm:"column:media_asset_id;not null;default:'';index:project_selected_assets_media_asset_idx"`
+	Kind             string `gorm:"column:kind;not null;default:''"`
+	Title            string `gorm:"column:title;not null;default:''"`
+	URL              string `gorm:"column:url;not null;default:''"`
+	Base64           string `gorm:"column:base64;not null;default:'';type:text"`
+	MIMEType         string `gorm:"column:mime_type;not null;default:''"`
+	SourceType       string `gorm:"column:source_type;not null;default:'';index:project_selected_assets_source_idx,priority:1"`
+	SourceTaskID     string `gorm:"column:source_task_id;not null;default:'';index:project_selected_assets_source_task_idx"`
+	SourceAssetIndex int    `gorm:"column:source_asset_index;not null"`
+	SourceDocumentID string `gorm:"column:source_document_id;not null;default:'';index:project_selected_assets_source_document_idx"`
+	SourceKey        string `gorm:"column:source_key;not null;default:'';index:project_selected_assets_source_idx,priority:2"`
+	SortOrder        int    `gorm:"column:sort_order;not null;default:0"`
+	DeletedAt        string `gorm:"column:deleted_at;not null;default:'';index:project_selected_assets_deleted_idx"`
+	CreatedAt        string `gorm:"column:created_at;not null"`
+	UpdatedAt        string `gorm:"column:updated_at;not null;index:project_selected_assets_project_resource_idx,priority:3,sort:desc"`
+}
+
+// TableName returns the backing table name.
+func (ProjectSelectedAssetModel) TableName() string {
+	return "project_selected_assets"
+}
+
 // GenerationConversationModel is the GORM model for generation conversations.
 type GenerationConversationModel struct {
 	ID        string `gorm:"column:id;primaryKey"`

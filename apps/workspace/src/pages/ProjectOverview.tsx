@@ -359,7 +359,7 @@ const SelectedGenerationResourcesDialog: React.FC<{
 			title={
 				<span className="flex min-w-0 items-center gap-2">
 					<Icon className="size-4 shrink-0 text-muted-foreground" />
-					<span className="truncate">{descriptor.label} · 已选生成资源</span>
+					<span className="truncate">{descriptor.label} · 已选资源</span>
 				</span>
 			}
 			titleAside={

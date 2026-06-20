@@ -39,6 +39,8 @@ import type {
 	ProviderType,
 	RouteStatus,
 	UpdateGenerationTaskAssetRequest as GeneratedUpdateGenerationTaskAssetRequest,
+	UpdateSelectedGenerationAssetRequest as GeneratedUpdateSelectedGenerationAssetRequest,
+	UpdateSelectedGenerationAssetResponse as GeneratedUpdateSelectedGenerationAssetResponse,
 	UpdateGenerationPreferenceRequest as GeneratedUpdateGenerationPreferenceRequest,
 } from "@/api/types/generation";
 
@@ -82,6 +84,8 @@ export type GenerationNotificationOpenTarget = GenerationNotificationTarget;
 export type SelectedGenerationAsset = GeneratedSelectedGenerationAssetRecord;
 export type SelectedGenerationAssetsResponse = GeneratedSelectedGenerationAssetsResponse;
 export type UpdateGenerationTaskAssetRequest = GeneratedUpdateGenerationTaskAssetRequest;
+export type UpdateSelectedGenerationAssetRequest = GeneratedUpdateSelectedGenerationAssetRequest;
+export type UpdateSelectedGenerationAssetResponse = GeneratedUpdateSelectedGenerationAssetResponse;
 export type GenerationTask = GenerationTaskRecord & {
 	conversationId?: string;
 	sessionId?: string;
@@ -404,6 +408,24 @@ export const updateGenerationTaskAsset = async (
 		request,
 	);
 	return normalizeGenerationTask(response.data);
+};
+
+export const updateSelectedGenerationAsset = async (
+	projectId: string,
+	request: UpdateSelectedGenerationAssetRequest,
+) => {
+	const response = await httpClient.post<UpdateSelectedGenerationAssetResponse>(
+		`/projects/${encodeURIComponent(projectId)}/generation/selected-assets`,
+		request,
+	);
+	return response.data;
+};
+
+export const deleteSelectedGenerationAsset = async (projectId: string, id: string) => {
+	const response = await httpClient.delete<{ deleted: boolean }>(
+		`/projects/${encodeURIComponent(projectId)}/generation/selected-assets/${encodeURIComponent(id)}`,
+	);
+	return response.data;
 };
 
 export const importGenerationMediaAssets = async (request: ImportGenerationMediaAssetsRequest) => {

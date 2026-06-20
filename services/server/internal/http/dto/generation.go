@@ -154,7 +154,7 @@ type GenerationAsset struct {
 	URL       string `json:"url,omitempty"`
 	Base64    string `json:"base64,omitempty"`
 	MIMEType  string `json:"mimeType,omitempty"`
-	SlotIndex int    `json:"slotIndex,omitempty"`
+	SlotIndex int    `json:"slotIndex"`
 	Selected  bool   `json:"selected,omitempty"`
 }
 
@@ -227,22 +227,59 @@ type UpdateGenerationTaskAssetRequest struct {
 	ResourceType string  `json:"resourceType,omitempty"`
 }
 
-// SelectedGenerationAssetRecord is one image selected into a project's resource overview.
-type SelectedGenerationAssetRecord struct {
-	ID           string `json:"id"`
-	TaskID       string `json:"taskId"`
-	AssetIndex   int    `json:"assetIndex"`
-	ResourceType string `json:"resourceType"`
-	Kind         string `json:"kind" ts:"Kind"`
-	Title        string `json:"title,omitempty"`
-	URL          string `json:"url,omitempty"`
-	Base64       string `json:"base64,omitempty"`
-	MIMEType     string `json:"mimeType,omitempty"`
-	CreatedAt    string `json:"createdAt,omitempty"`
-	UpdatedAt    string `json:"updatedAt,omitempty"`
+// UpdateSelectedGenerationAssetRequest selects or unselects one project asset.
+type UpdateSelectedGenerationAssetRequest struct {
+	Selected         *bool  `json:"selected,omitempty"`
+	ResourceType     string `json:"resourceType,omitempty"`
+	ResourceID       string `json:"resourceId,omitempty"`
+	ResourceTitle    string `json:"resourceTitle,omitempty"`
+	MediaAssetID     string `json:"mediaAssetId,omitempty"`
+	Kind             string `json:"kind,omitempty" ts:"Kind"`
+	Title            string `json:"title,omitempty"`
+	URL              string `json:"url,omitempty"`
+	Base64           string `json:"base64,omitempty"`
+	MIMEType         string `json:"mimeType,omitempty"`
+	SourceType       string `json:"sourceType,omitempty"`
+	TaskID           string `json:"taskId,omitempty"`
+	AssetIndex       *int   `json:"assetIndex,omitempty"`
+	SourceTaskID     string `json:"sourceTaskId,omitempty"`
+	SourceAssetIndex *int   `json:"sourceAssetIndex,omitempty"`
+	SourceDocumentID string `json:"sourceDocumentId,omitempty"`
+	SourceKey        string `json:"sourceKey,omitempty"`
+	SortOrder        int    `json:"sortOrder,omitempty"`
 }
 
-// SelectedGenerationAssetsResponse lists selected generated image resources.
+// UpdateSelectedGenerationAssetResponse returns the selected asset mutation result.
+type UpdateSelectedGenerationAssetResponse struct {
+	Asset   *SelectedGenerationAssetRecord `json:"asset,omitempty"`
+	Deleted bool                           `json:"deleted,omitempty"`
+}
+
+// SelectedGenerationAssetRecord is one asset selected into a project's resource overview.
+type SelectedGenerationAssetRecord struct {
+	ID               string `json:"id"`
+	TaskID           string `json:"taskId,omitempty"`
+	AssetIndex       int    `json:"assetIndex"`
+	ResourceType     string `json:"resourceType"`
+	ResourceID       string `json:"resourceId,omitempty"`
+	ResourceTitle    string `json:"resourceTitle,omitempty"`
+	MediaAssetID     string `json:"mediaAssetId,omitempty"`
+	Kind             string `json:"kind" ts:"Kind"`
+	Title            string `json:"title,omitempty"`
+	URL              string `json:"url,omitempty"`
+	Base64           string `json:"base64,omitempty"`
+	MIMEType         string `json:"mimeType,omitempty"`
+	SourceType       string `json:"sourceType,omitempty"`
+	SourceTaskID     string `json:"sourceTaskId,omitempty"`
+	SourceAssetIndex int    `json:"sourceAssetIndex,omitempty"`
+	SourceDocumentID string `json:"sourceDocumentId,omitempty"`
+	SourceKey        string `json:"sourceKey,omitempty"`
+	SortOrder        int    `json:"sortOrder,omitempty"`
+	CreatedAt        string `json:"createdAt,omitempty"`
+	UpdatedAt        string `json:"updatedAt,omitempty"`
+}
+
+// SelectedGenerationAssetsResponse lists project-selected creative resources.
 type SelectedGenerationAssetsResponse struct {
 	Assets []SelectedGenerationAssetRecord `json:"assets"`
 }

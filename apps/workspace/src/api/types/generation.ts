@@ -350,20 +350,55 @@ export interface UpdateGenerationTaskAssetRequest {
 	title?: string;
 }
 
+export interface UpdateSelectedGenerationAssetRequest {
+	assetIndex?: number;
+	base64?: string;
+	kind?: Kind;
+	mediaAssetId?: string;
+	mimeType?: string;
+	resourceId?: string;
+	resourceTitle?: string;
+	resourceType?: SelectedGenerationResourceType;
+	selected?: boolean;
+	sortOrder?: number;
+	sourceAssetIndex?: number;
+	sourceDocumentId?: string;
+	sourceKey?: string;
+	sourceTaskId?: string;
+	sourceType?: "generated" | "edited" | "uploaded" | "document" | "imported";
+	taskId?: string;
+	title?: string;
+	url?: string;
+}
+
+export interface UpdateSelectedGenerationAssetResponse {
+	asset?: SelectedGenerationAssetRecord;
+	deleted?: boolean;
+}
+
 export type SelectedGenerationResourceType = "character" | "scene" | "storyboard" | "prop";
 
 export interface SelectedGenerationAssetRecord {
-	id: string;
-	taskId: string;
 	assetIndex: number;
-	resourceType: SelectedGenerationResourceType;
-	kind: Kind;
-	title?: string;
-	url?: string;
 	base64?: string;
-	mimeType?: string;
 	createdAt?: string;
+	id: string;
+	kind: Kind;
+	mediaAssetId?: string;
+	mimeType?: string;
+	resourceId?: string;
+	resourceTitle?: string;
+	resourceType: SelectedGenerationResourceType;
+	sortOrder?: number;
+	sourceAssetIndex?: number;
+	sourceDocumentId?: string;
+	sourceKey?: string;
+	sourceTaskId?: string;
+	sourceType?: string;
+	taskId?: string;
+	title?: string;
 	updatedAt?: string;
+	url?: string;
 }
 
 export interface SelectedGenerationAssetsResponse {

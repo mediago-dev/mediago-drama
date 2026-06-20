@@ -59,10 +59,16 @@ type GenerationTasksResponse = dto.GenerationTasksResponse
 // UpdateGenerationTaskAssetRequest updates user-facing generated asset metadata.
 type UpdateGenerationTaskAssetRequest = dto.UpdateGenerationTaskAssetRequest
 
-// SelectedGenerationAssetRecord is one selected generated image resource.
+// UpdateSelectedGenerationAssetRequest selects or unselects one project asset.
+type UpdateSelectedGenerationAssetRequest = dto.UpdateSelectedGenerationAssetRequest
+
+// UpdateSelectedGenerationAssetResponse returns the selected asset mutation result.
+type UpdateSelectedGenerationAssetResponse = dto.UpdateSelectedGenerationAssetResponse
+
+// SelectedGenerationAssetRecord is one project-selected creative resource.
 type SelectedGenerationAssetRecord = dto.SelectedGenerationAssetRecord
 
-// SelectedGenerationAssetsResponse lists selected generated image resources.
+// SelectedGenerationAssetsResponse lists project-selected creative resources.
 type SelectedGenerationAssetsResponse = dto.SelectedGenerationAssetsResponse
 
 // GenerationPreferenceRecord is a persisted generation preference set.

@@ -272,18 +272,91 @@ func (workflow *GenerationService) ListGenerationTasks(query GenerationTaskListQ
 	return generationTasksResponse{Tasks: GenerationTasksForClient(tasks)}, nil
 }
 
-// ListSelectedGenerationAssets lists selected generated project images grouped by creative resource type.
+// ListSelectedGenerationAssets lists project-selected assets grouped by creative resource type.
 func (workflow *GenerationService) ListSelectedGenerationAssets(projectID string) (SelectedGenerationAssetsResponse, error) {
 	projectID = GenerationProjectIDForRequest(projectID, "")
 	if projectID == "" {
 		return SelectedGenerationAssetsResponse{Assets: []SelectedGenerationAssetRecord{}}, nil
 	}
 
-	assets, err := workflow.generationTasks.ListProjectResourceAssets(projectID)
+	assets, err := workflow.generationTasks.ListProjectSelectedAssets(projectID)
 	if err != nil {
 		return SelectedGenerationAssetsResponse{}, err
 	}
 	return SelectedGenerationAssetsResponse{Assets: assets}, nil
+}
+
+// UpdateSelectedGenerationAsset selects or unselects one project asset.
+func (workflow *GenerationService) UpdateSelectedGenerationAsset(projectID string, request UpdateSelectedGenerationAssetRequest) (UpdateSelectedGenerationAssetResponse, int, error) {
+	projectID = GenerationProjectIDForRequest(projectID, "")
+	if projectID == "" {
+		return UpdateSelectedGenerationAssetResponse{}, http.StatusBadRequest, fmt.Errorf("project id is required")
+	}
+	selected := true
+	if request.Selected != nil {
+		selected = *request.Selected
+	}
+	if !selected {
+		deleted, err := workflow.generationTasks.DeleteSelectedAssetByRequest(projectID, request)
+		if err != nil {
+			return UpdateSelectedGenerationAssetResponse{}, http.StatusInternalServerError, err
+		}
+		return UpdateSelectedGenerationAssetResponse{Deleted: deleted}, http.StatusOK, nil
+	}
+	if selectedGenerationResourceType(request.ResourceType) == "" {
+		return UpdateSelectedGenerationAssetResponse{}, http.StatusBadRequest, fmt.Errorf("resourceType is required")
+	}
+	workflow.hydrateSelectedAssetRequestFromMedia(&request, projectID)
+	asset, ok, err := workflow.generationTasks.UpsertSelectedAsset(projectID, request)
+	if err != nil {
+		return UpdateSelectedGenerationAssetResponse{}, http.StatusInternalServerError, err
+	}
+	if !ok {
+		return UpdateSelectedGenerationAssetResponse{}, http.StatusNotFound, fmt.Errorf("selected asset source was not found")
+	}
+	return UpdateSelectedGenerationAssetResponse{Asset: &asset}, http.StatusOK, nil
+}
+
+// DeleteSelectedGenerationAsset removes one selected project asset by ID.
+func (workflow *GenerationService) DeleteSelectedGenerationAsset(projectID string, id string) (bool, error) {
+	projectID = GenerationProjectIDForRequest(projectID, "")
+	if projectID == "" {
+		return false, fmt.Errorf("project id is required")
+	}
+	return workflow.generationTasks.DeleteSelectedAsset(projectID, id)
+}
+
+func (workflow *GenerationService) hydrateSelectedAssetRequestFromMedia(request *UpdateSelectedGenerationAssetRequest, projectID string) {
+	if workflow == nil || workflow.mediaAssets == nil || request == nil {
+		return
+	}
+	mediaAssetID := strings.TrimSpace(request.MediaAssetID)
+	if mediaAssetID == "" {
+		mediaAssetID = libraryAssetIDFromGenerationAssetURL(request.URL)
+	}
+	if mediaAssetID == "" {
+		return
+	}
+	asset, ok, err := workflow.mediaAssets.Get(mediaAssetID)
+	if err != nil || !ok || !mediaAssetMatchesGenerationProject(asset.ProjectID, projectID) {
+		return
+	}
+	request.MediaAssetID = asset.ID
+	if strings.TrimSpace(request.Kind) == "" {
+		request.Kind = asset.Kind
+	}
+	if strings.TrimSpace(request.Title) == "" {
+		request.Title = asset.Filename
+	}
+	if strings.TrimSpace(request.URL) == "" {
+		request.URL = asset.URL
+	}
+	if strings.TrimSpace(request.MIMEType) == "" {
+		request.MIMEType = asset.MIMEType
+	}
+	if strings.TrimSpace(request.SourceType) == "" {
+		request.SourceType = "uploaded"
+	}
 }
 
 // GetGenerationTask returns a generation task for HTTP handlers.

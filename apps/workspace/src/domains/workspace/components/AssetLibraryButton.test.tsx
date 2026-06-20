@@ -2,9 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	deleteSelectedGenerationAsset,
 	getSelectedGenerationAssets,
 	type SelectedGenerationAsset,
-	updateGenerationTaskAsset,
 } from "@/domains/generation/api/generation";
 import { getProjects } from "@/domains/projects/api/projects";
 import { getMediaAssets, type MediaAsset } from "@/domains/workspace/api/media";
@@ -81,12 +81,12 @@ vi.mock("@/domains/workspace/api/workspace", () => ({
 }));
 
 vi.mock("@/domains/generation/api/generation", () => ({
+	deleteSelectedGenerationAsset: vi.fn(),
 	getSelectedGenerationAssets: vi.fn(),
 	selectedGenerationAssetsQueryKey: (projectId?: string | null) => [
 		"/generation/selected-assets",
 		projectId ?? "",
 	],
-	updateGenerationTaskAsset: vi.fn(),
 }));
 
 vi.mock("@/domains/projects/api/projects", () => ({
@@ -159,7 +159,7 @@ describe("AssetLibraryButton", () => {
 		expect(getMediaAssets).toHaveBeenCalledWith({ projectId: "project-a" });
 		expect(getWorkspaceDocuments).not.toHaveBeenCalled();
 		expect(getSelectedGenerationAssets).toHaveBeenCalledWith("project-a");
-		expect(updateGenerationTaskAsset).not.toHaveBeenCalled();
+		expect(deleteSelectedGenerationAsset).not.toHaveBeenCalled();
 	});
 
 	it("switches the library to another project from the project filter", async () => {

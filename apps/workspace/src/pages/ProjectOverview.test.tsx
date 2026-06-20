@@ -84,7 +84,7 @@ describe("ProjectOverview", () => {
 		cleanup();
 	});
 
-	it("opens selected generated resources in a dialog from the overview cards", async () => {
+	it("opens selected resources in a dialog from the overview cards", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
 				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
@@ -100,7 +100,7 @@ describe("ProjectOverview", () => {
 		await waitFor(() =>
 			expect(within(dialog).getByText("主角 底层青年 / 低阶散修")).toBeInTheDocument(),
 		);
-		expect(within(dialog).getByText("角色 · 已选生成资源")).toBeInTheDocument();
+		expect(within(dialog).getByText("角色 · 已选资源")).toBeInTheDocument();
 	});
 });
 

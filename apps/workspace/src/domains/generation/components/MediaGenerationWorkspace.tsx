@@ -13,7 +13,7 @@ import {
 	generationModelsKey,
 	previewGenerationVoice,
 	selectedGenerationAssetsQueryKey,
-	updateGenerationTaskAsset,
+	updateSelectedGenerationAsset,
 } from "@/domains/generation/api/generation";
 import { uploadMediaAsset, type MediaAsset } from "@/domains/workspace/api/media";
 import { HistoryGenerationList } from "@/domains/generation/components/MediaGenerationHistory";
@@ -74,6 +74,7 @@ import {
 	generationAssetSelectionKey,
 	generationAssetSource,
 	routeProviderLabel,
+	taskIdFromGenerationEntryId,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useToast } from "@/hooks/useToast";
 import { Button } from "@/shared/components/ui/button";
@@ -202,6 +203,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const [assetSelectionOverrides, setAssetSelectionOverrides] = useState<Record<string, boolean>>(
 		{},
 	);
+	const syncedDocumentSelectionKeysRef = useRef<Set<string>>(new Set());
 	const [editingImageTarget, setEditingImageTarget] = useState<{
 		asset: GenerationAsset;
 		entry: GenerationEntry;
@@ -764,41 +766,60 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			ws.selectReferenceAsset,
 		],
 	);
-	const toggleGeneratedAsset = useCallback(
-		(asset: GenerationAsset, selected: boolean) => {
-			const selectionKey = generationAssetSelectionKey(asset);
-			if (selectionKey) {
-				setAssetSelectionOverrides((current) => ({ ...current, [selectionKey]: selected }));
-			}
-
-			onToggleAsset?.(asset, selected);
-
-			if (
-				!projectId?.trim() ||
-				asset.kind !== "image" ||
-				!asset.taskId ||
-				asset.slotIndex === undefined
-			) {
+	const persistGeneratedAssetSelection = useCallback(
+		(
+			asset: GenerationAsset,
+			selected: boolean,
+			sourceType: "edited" | "generated" = "generated",
+		) => {
+			const persistTarget = resolveGeneratedAssetTaskSlot(asset, generationEntries);
+			const normalizedProjectId = projectId?.trim();
+			const resourceType = selectedGenerationResourceTypeForTaskType(taskType);
+			if (!normalizedProjectId || asset.kind !== "image" || !persistTarget || !resourceType) {
 				return;
 			}
 
 			const persistedTitle = asset.title?.trim() || selectedAssetTitle?.trim() || undefined;
 
-			void updateGenerationTaskAsset(asset.taskId, asset.slotIndex, {
-				resourceType: selectedGenerationResourceTypeForTaskType(taskType),
+			void updateSelectedGenerationAsset(normalizedProjectId, {
+				assetIndex: persistTarget.slotIndex,
+				base64: asset.base64,
+				kind: asset.kind,
+				mimeType: asset.mimeType,
+				resourceTitle: selectedAssetTitle?.trim() || asset.title?.trim() || undefined,
+				resourceType,
 				selected,
+				sourceAssetIndex: persistTarget.slotIndex,
+				sourceTaskId: persistTarget.taskId,
+				sourceType,
+				taskId: persistTarget.taskId,
 				title: persistedTitle,
+				url: asset.url,
 			})
 				.then(() => {
 					void ws.mutateTasks();
-					void mutateSWR(selectedGenerationAssetsQueryKey(projectId));
+					void mutateSWR(selectedGenerationAssetsQueryKey(normalizedProjectId));
 				})
 				.catch((err) => {
 					const message = err instanceof Error ? err.message : "已选资源保存失败。";
 					toast.error(message);
 				});
 		},
-		[onToggleAsset, projectId, selectedAssetTitle, taskType, toast, ws.mutateTasks],
+		[generationEntries, projectId, selectedAssetTitle, taskType, toast, ws.mutateTasks],
+	);
+	const toggleGeneratedAsset = useCallback(
+		(asset: GenerationAsset, selected: boolean) => {
+			const selectionKey = generationAssetSelectionKey(asset);
+			if (selectionKey) {
+				setAssetSelectionOverrides((current) => ({ ...current, [selectionKey]: selected }));
+				if (selected) syncedDocumentSelectionKeysRef.current.add(selectionKey);
+				else syncedDocumentSelectionKeysRef.current.delete(selectionKey);
+			}
+
+			onToggleAsset?.(asset, selected);
+			persistGeneratedAssetSelection(asset, selected);
+		},
+		[onToggleAsset, persistGeneratedAssetSelection],
 	);
 	const confirmMaterialAssets = useCallback(
 		async (selectedAssets: MediaAsset[]) => {
@@ -860,6 +881,24 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	);
 	const generatedAssetToggleHandler =
 		onToggleAsset || projectId?.trim() ? toggleGeneratedAsset : undefined;
+
+	useEffect(() => {
+		if (!projectId?.trim() || selectedAssetKeys.length === 0) return;
+
+		const selectedKeys = new Set(selectedAssetKeys);
+		for (const entry of generationEntries) {
+			for (const asset of entry.assets ?? []) {
+				if (asset.kind !== "image" || asset.selected) continue;
+
+				const selectionKey = generationAssetSelectionKey(asset);
+				if (!selectionKey || !selectedKeys.has(selectionKey)) continue;
+				if (syncedDocumentSelectionKeysRef.current.has(selectionKey)) continue;
+
+				syncedDocumentSelectionKeysRef.current.add(selectionKey);
+				persistGeneratedAssetSelection(asset, true);
+			}
+		}
+	}, [generationEntries, persistGeneratedAssetSelection, projectId, selectedAssetKeys]);
 	const releaseEditingImageObjectUrl = useCallback(() => {
 		if (!editingImageObjectUrlRef.current) return;
 		URL.revokeObjectURL(editingImageObjectUrlRef.current);
@@ -914,24 +953,25 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				const file = renameFile(result.file, `${editedTitle}.png`, result.mimeType);
 				const mediaAsset = await uploadMediaAsset(file, resolvedMediaAssetProjectId);
 				await ws.mutateMediaAssets();
-				const editedAsset: GenerationAsset = {
+				const importedTasks = await ws.importMediaAssetsToHistory([mediaAsset], {
+					assetTitle: editedTitle,
+					prompt: editingImageTarget.entry.prompt,
+				});
+				const editedTask = importedTasks.at(-1);
+				const editedAsset: GenerationAsset = editedTask?.assets?.[0] ?? {
 					kind: "image",
 					mimeType: mediaAsset.mimeType || result.mimeType,
-					selected: true,
 					title: editedTitle,
 					url: mediaAsset.url,
 				};
-				const editedEntryId = ws.addEditedGenerationEntry({
-					asset: editedAsset,
-					sourceEntry: editingImageTarget.entry,
-					title: "图片编辑",
-				});
 				const selectionKey = generationAssetSelectionKey(editedAsset);
 				if (selectionKey) {
 					setAssetSelectionOverrides((current) => ({ ...current, [selectionKey]: true }));
+					syncedDocumentSelectionKeysRef.current.add(selectionKey);
 				}
 				onToggleAsset?.(editedAsset, true);
-				ws.setActiveEntryId(editedEntryId);
+				persistGeneratedAssetSelection(editedAsset, true, "edited");
+				if (editedTask?.id) ws.setActiveEntryId(editedTask.id);
 				setEditingImageTarget(null);
 				releaseEditingImageObjectUrl();
 				toast.success("已保存编辑版", { description: "编辑后的图片已加入历史记录。" });
@@ -945,6 +985,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		[
 			editingImageTarget,
 			onToggleAsset,
+			persistGeneratedAssetSelection,
 			releaseEditingImageObjectUrl,
 			resolvedMediaAssetProjectId,
 			selectedAssetTitle,
@@ -1353,6 +1394,41 @@ const selectedGenerationResourceTypeForTaskType = (taskType?: GenerationTaskType
 			return undefined;
 	}
 };
+
+const resolveGeneratedAssetTaskSlot = (
+	asset: GenerationAsset,
+	entries: GenerationEntry[],
+): { slotIndex: number; taskId: string } | null => {
+	const directTaskId = asset.taskId?.trim();
+	const directSlotIndex = normalizedGeneratedAssetSlotIndex(asset.slotIndex);
+	if (directTaskId && directSlotIndex !== null) {
+		return { slotIndex: directSlotIndex, taskId: directTaskId };
+	}
+
+	const source = generationAssetSource(asset);
+	if (!source) return null;
+
+	for (const entry of entries) {
+		const entryTaskId = directTaskId || taskIdFromGenerationEntryId(entry.id);
+		if (!entryTaskId) continue;
+
+		const entryAssets = entry.assets ?? [];
+		for (const [index, candidate] of entryAssets.entries()) {
+			if (candidate.kind !== asset.kind) continue;
+			const candidateSource = generationAssetSource(candidate);
+			if (candidate !== asset && candidateSource !== source) continue;
+
+			const slotIndex = normalizedGeneratedAssetSlotIndex(candidate.slotIndex) ?? index;
+			const taskId = candidate.taskId?.trim() || entryTaskId;
+			return { slotIndex, taskId };
+		}
+	}
+
+	return null;
+};
+
+const normalizedGeneratedAssetSlotIndex = (value: number | undefined) =>
+	typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 
 const historyReferencePreviewAssetsFromEntry = (entry: GenerationEntry): MediaAsset[] =>
 	(entry.requestAssets ?? []).flatMap((asset, index) => {
