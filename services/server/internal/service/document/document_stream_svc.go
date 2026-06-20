@@ -2,7 +2,6 @@ package document
 
 import (
 	"fmt"
-	"strings"
 
 	docs "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/documents"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
@@ -181,9 +180,9 @@ func StreamDocumentCreateRequest(input StreamDocumentEditInput) (CreateWorkspace
 	if err := ValidateDocumentCategory(input.Category); err != nil {
 		return CreateWorkspaceDocumentRequest{}, err
 	}
-	category := strings.TrimSpace(input.Category)
+	category := NormalizeDocumentCategoryValue(input.Category)
 	if category == "" {
-		category = sourceMaterialCategory
+		category = referenceDocumentCategory
 	}
 	return CreateWorkspaceDocumentRequest{
 		ID:       input.DocumentID,

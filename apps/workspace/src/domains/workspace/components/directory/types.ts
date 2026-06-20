@@ -25,7 +25,7 @@ export type DirectoryFileEntry =
 			folderId: string | null;
 			sortOrder: number;
 			updatedAt: string;
-			category: "source-material";
+			category: "reference";
 			asset: ProjectAsset;
 	  };
 

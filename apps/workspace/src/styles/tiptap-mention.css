@@ -87,7 +87,7 @@
 	color: var(--doc-category-storyboard);
 }
 
-.agent-reference-mention[data-category="source-material"] {
+.agent-reference-mention[data-category="reference"] {
 	border-color: var(--border);
 	background: var(--muted);
 	color: var(--muted-foreground);

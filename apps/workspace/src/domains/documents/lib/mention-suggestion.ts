@@ -38,7 +38,9 @@ import {
 } from "@/domains/documents/lib/sections";
 import {
 	type DocumentCategory,
+	legacySourceMaterialDocumentCategory,
 	type MarkdownDocument,
+	referenceDocumentCategory,
 	useDocumentsStore,
 } from "@/domains/documents/stores";
 import { apiResourceURL } from "@/shared/lib/api-base";
@@ -78,7 +80,7 @@ interface AgentMentionGroup {
 	meta: string;
 }
 
-export const fallbackMentionCategory: DocumentCategory = "source-material";
+export const fallbackMentionCategory: DocumentCategory = "reference";
 
 const maxMentionItems = 100;
 const maxDocumentMentionItems = 72;
@@ -490,6 +492,7 @@ export const referenceFromMentionNode = (node: ProseMirrorNode): AgentReference 
 
 export const documentCategory = (value: unknown): DocumentCategory | undefined => {
 	if (typeof value !== "string") return undefined;
+	if (value === legacySourceMaterialDocumentCategory) return referenceDocumentCategory;
 	return documentCategoryDescriptors.some((descriptor) => descriptor.key === value)
 		? (value as DocumentCategory)
 		: undefined;

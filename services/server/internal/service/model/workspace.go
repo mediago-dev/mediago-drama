@@ -176,9 +176,15 @@ type DocumentToolApprovalDecisionPayload struct {
 
 // DocumentToolApprovalConfig configures an approved document tool action.
 type DocumentToolApprovalConfig struct {
-	Prompt             string `json:"prompt,omitempty"`
-	SaveSourceMaterial bool   `json:"saveSourceMaterial,omitempty"`
+	Prompt string `json:"prompt,omitempty"`
+	// SaveSourceMaterial is the existing approval flag for saving raw attachments to the asset library.
+	SaveSourceMaterial bool `json:"saveSourceMaterial,omitempty"`
 }
+
+const (
+	ReferenceDocumentCategory            = "reference"
+	LegacySourceMaterialDocumentCategory = "source-material"
+)
 
 // WorkspaceVersionConflictError reports an optimistic locking conflict.
 type WorkspaceVersionConflictError struct {
@@ -205,21 +211,30 @@ func IsWorkspaceVersionConflict(err error) bool {
 
 // ValidateDocumentCategory validates optional document categories.
 func ValidateDocumentCategory(category string) error {
-	category = strings.TrimSpace(category)
+	category = NormalizeDocumentCategoryValue(category)
 	if category == "" {
 		return nil
 	}
 	switch category {
-	case "screenplay", "character", "scene", "prop", "storyboard", "source-material":
+	case "screenplay", "character", "scene", "prop", "storyboard", ReferenceDocumentCategory:
 		return nil
 	default:
 		return fmt.Errorf("unsupported document category: %s", category)
 	}
 }
 
+// NormalizeDocumentCategoryValue maps legacy category values to their current names.
+func NormalizeDocumentCategoryValue(category string) string {
+	category = strings.ToLower(strings.TrimSpace(category))
+	if category == LegacySourceMaterialDocumentCategory {
+		return ReferenceDocumentCategory
+	}
+	return category
+}
+
 // ValidateRequiredDocumentCategory validates required document categories.
 func ValidateRequiredDocumentCategory(category string) error {
-	category = strings.TrimSpace(category)
+	category = NormalizeDocumentCategoryValue(category)
 	if category == "" {
 		return fmt.Errorf("document category is required")
 	}

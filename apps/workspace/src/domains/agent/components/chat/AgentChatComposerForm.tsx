@@ -17,10 +17,10 @@ import {
 import type { DocumentComment } from "@/domains/documents/stores";
 
 const defaultComposerPlaceholder = "告诉智能体要在当前文档中插入或改写什么";
-const sourceMaterialComposerPlaceholder =
-	"问我关于这份素材的任何问题：整理前 30 章、梳理人物与剧情、概括全文…";
+const referenceComposerPlaceholder =
+	"问我关于这份资料的任何问题：整理前 30 章、梳理人物与剧情、概括全文…";
 
-export type ComposerContext = "default" | "source-material";
+export type ComposerContext = "default" | "reference";
 
 export const AgentChatComposerForm: React.FC<{
 	attachments: AgentAttachment[];
@@ -107,8 +107,8 @@ export const AgentChatComposerForm: React.FC<{
 				placeholder={
 					openComments.length > 0
 						? "可直接发送，让智能体处理未解决批注"
-						: composerContext === "source-material"
-							? sourceMaterialComposerPlaceholder
+						: composerContext === "reference"
+							? referenceComposerPlaceholder
 							: defaultComposerPlaceholder
 				}
 				onChange={onComposerChange}

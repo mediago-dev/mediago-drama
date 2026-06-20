@@ -10,7 +10,7 @@ func TestNormalizeStreamDocumentEditInput(t *testing.T) {
 		Mode:             " append ",
 		AnchorText:       " anchor ",
 		Title:            " title ",
-		Category:         " source-material ",
+		Category:         " reference ",
 		ParentDocumentID: &parent,
 		Summary:          " summary ",
 	})
@@ -20,7 +20,7 @@ func TestNormalizeStreamDocumentEditInput(t *testing.T) {
 		input.Mode != "append" ||
 		input.AnchorText != "anchor" ||
 		input.Title != "title" ||
-		input.Category != "source-material" ||
+		input.Category != "reference" ||
 		input.ParentDocumentID == nil ||
 		*input.ParentDocumentID != "parent" ||
 		input.Summary != "summary" {

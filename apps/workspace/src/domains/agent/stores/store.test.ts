@@ -11,7 +11,7 @@ const assetReference: AgentReference = {
 	assetKind: "text",
 	mimeType: "text/plain",
 	title: "素材.txt",
-	category: "source-material",
+	category: "reference",
 	url: "/assets/asset-1.txt",
 };
 

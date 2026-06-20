@@ -69,7 +69,7 @@ const documentEntry = (document: MarkdownDocument): DirectoryFileEntry => ({
 	folderId: document.folderId ?? null,
 	sortOrder: document.sortOrder,
 	updatedAt: document.updatedAt,
-	category: document.category ?? "source-material",
+	category: document.category ?? "reference",
 	document,
 });
 
@@ -80,7 +80,7 @@ const assetEntry = (asset: ProjectAsset): DirectoryFileEntry => ({
 	folderId: asset.folderId ?? null,
 	sortOrder: asset.sortOrder,
 	updatedAt: asset.updatedAt,
-	category: "source-material",
+	category: "reference",
 	asset,
 });
 
@@ -169,7 +169,7 @@ export const previewForPayload = (
 	if (payload.kind === "asset") {
 		const asset = assets.find((item) => item.id === payload.id);
 		if (!asset) return null;
-		const descriptor = documentCategoryDescriptorMap["source-material"];
+		const descriptor = documentCategoryDescriptorMap["reference"];
 		return {
 			colorVar: descriptor.colorVar,
 			icon: assetIcon(asset.kind),
@@ -181,8 +181,8 @@ export const previewForPayload = (
 	const document = documents.find((item) => item.id === payload.id);
 	if (!document) return null;
 	const descriptor =
-		documentCategoryDescriptorMap[document.category ?? "source-material"] ??
-		documentCategoryDescriptorMap["source-material"];
+		documentCategoryDescriptorMap[document.category ?? "reference"] ??
+		documentCategoryDescriptorMap["reference"];
 	return {
 		colorVar: descriptor.colorVar,
 		icon: descriptor.icon,

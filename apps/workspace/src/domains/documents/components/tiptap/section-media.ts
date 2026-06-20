@@ -132,11 +132,12 @@ const markdownLinkFromLine = (line: string) => {
 const sectionMediaLabelFromText = (label: string) => {
 	for (const kind of sectionMediaKinds) {
 		const prefix = sectionMediaLabelPrefix[kind];
-		if (label === prefix) return { kind, title: "" };
 		if (label.startsWith(`${prefix}：`) || label.startsWith(`${prefix}:`)) {
+			const title = label.slice(prefix.length + 1).trim();
+			if (!title) return null;
 			return {
 				kind,
-				title: label.slice(prefix.length + 1).trim(),
+				title,
 			};
 		}
 	}

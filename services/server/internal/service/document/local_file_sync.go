@@ -197,7 +197,7 @@ func localMarkdownMetadata(content string) documentMarkdownFrontmatter {
 	if err := yaml.Unmarshal([]byte(frontmatter), &metadata); err != nil {
 		return documentMarkdownFrontmatter{}
 	}
-	metadata.Category = strings.TrimSpace(strings.ToLower(metadata.Category))
+	metadata.Category = NormalizeDocumentCategoryValue(metadata.Category)
 	if ValidateDocumentCategory(metadata.Category) != nil {
 		metadata.Category = ""
 	}
@@ -224,7 +224,7 @@ func localMarkdownDocumentCategory(content string) string {
 	if category := localMarkdownCategoryMarker(content); category != "" {
 		return category
 	}
-	return sourceMaterialCategory
+	return referenceDocumentCategory
 }
 
 func localMarkdownDocumentTitle(metadata documentMarkdownFrontmatter, fallback string) string {
@@ -235,9 +235,9 @@ func localMarkdownDocumentTitle(metadata documentMarkdownFrontmatter, fallback s
 }
 
 func localMarkdownProjectionContent(document mediamcp.WorkspaceDocument) string {
-	category := strings.TrimSpace(document.Category)
+	category := NormalizeDocumentCategoryValue(document.Category)
 	if category == "" || ValidateDocumentCategory(category) != nil {
-		category = sourceMaterialCategory
+		category = referenceDocumentCategory
 	}
 	frontmatter, err := yaml.Marshal(documentMarkdownFrontmatter{
 		ID:             strings.TrimSpace(document.ID),

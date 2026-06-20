@@ -9,6 +9,11 @@ import {
 	type TextAnchor,
 } from "@/domains/documents/lib/operations";
 import type { DocumentRollbackSnapshot } from "./action-types";
+import {
+	legacySourceMaterialDocumentCategory,
+	overviewDocumentCategory,
+	referenceDocumentCategory,
+} from "./types";
 import type {
 	CreateDocumentOptions,
 	DocumentCategory,
@@ -31,8 +36,8 @@ export const defaultDocumentTitles: Record<DocumentCategory, string> = {
 	scene: "新场景",
 	prop: "新道具",
 	storyboard: "新分镜",
-	"source-material": "新素材",
-	overview: "项目概览",
+	[referenceDocumentCategory]: "新资料",
+	[overviewDocumentCategory]: "项目概览",
 };
 
 export const defaultTitleForCategory = (category: DocumentCategory) =>
@@ -44,12 +49,21 @@ const documentCategories = new Set<DocumentCategory>([
 	"scene",
 	"prop",
 	"storyboard",
-	"source-material",
-	"overview",
+	referenceDocumentCategory,
+	overviewDocumentCategory,
 ]);
 
 export const isDocumentCategory = (value: string | undefined): value is DocumentCategory =>
 	Boolean(value && documentCategories.has(value as DocumentCategory));
+
+export const normalizeDocumentCategoryValue = (
+	value: string | null | undefined,
+): DocumentCategory | undefined => {
+	const category = value?.trim();
+	if (!category) return undefined;
+	if (category === legacySourceMaterialDocumentCategory) return referenceDocumentCategory;
+	return isDocumentCategory(category) ? category : undefined;
+};
 
 export const createUntitledDocument = (
 	options: CreateDocumentOptions,
@@ -160,10 +174,8 @@ export const normalizeDocumentTags = (tags: string[] | undefined) =>
 
 const normalizeDocumentCategory = (document: MarkdownDocument): DocumentCategory =>
 	isOverviewDocumentId(document.id)
-		? "overview"
-		: isDocumentCategory(document.category)
-			? document.category
-			: "source-material";
+		? overviewDocumentCategory
+		: (normalizeDocumentCategoryValue(document.category) ?? referenceDocumentCategory);
 
 const normalizeComment = (
 	content: string,

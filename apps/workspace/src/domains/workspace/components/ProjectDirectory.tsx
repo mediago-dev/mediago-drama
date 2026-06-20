@@ -156,7 +156,7 @@ export const ProjectDirectory: React.FC<{
 			documentCategoryDescriptors.map((descriptor) => {
 				const categoryDocuments = documentsForCategory(projectDocuments, descriptor.key);
 				const entries =
-					descriptor.key === "source-material"
+					descriptor.key === "reference"
 						? [...categoryDocuments.map(documentEntry), ...projectAssets.map(assetEntry)]
 						: categoryDocuments.map(documentEntry);
 				return {
@@ -246,15 +246,14 @@ const ProjectCategoryHeader: React.FC<{
 		event.preventDefault();
 		setMenuPosition({ x: event.clientX, y: event.clientY });
 	};
-	const createItemLabel =
-		descriptor.key === "source-material" ? "新建素材" : `新建${descriptor.label}`;
+	const createItemLabel = `新建${descriptor.label}`;
 	const menuItems: DirectoryItemMenuItem[] = [
 		{
 			icon: FilePlus2,
 			label: createItemLabel,
 			onSelect: () => {
-				if (descriptor.key === "source-material") {
-					onOpenNewDocument("source-material");
+				if (descriptor.key === "reference") {
+					onOpenNewDocument("reference");
 					return;
 				}
 				onCreateDocumentInCategory(descriptor.key);
@@ -338,8 +337,8 @@ const ProjectDocumentItem: React.FC<{
 	const childDocumentCount = deletedIds.length - 1;
 	const entryDescriptor =
 		documentCategoryDescriptorMap[
-			entry.kind === "document" ? (entry.document.category ?? "source-material") : "source-material"
-		] ?? documentCategoryDescriptorMap["source-material"];
+			entry.kind === "document" ? (entry.document.category ?? "reference") : "reference"
+		] ?? documentCategoryDescriptorMap["reference"];
 	const EntryIcon = entry.kind === "asset" ? assetIcon(entry.asset.kind) : entryDescriptor.icon;
 	const canRevealInFileManager = canShowInFileManager(workspaceDir);
 	const canOpenContextMenu = canMutate || canRevealInFileManager;
@@ -399,7 +398,7 @@ const ProjectDocumentItem: React.FC<{
 						label: "变更类型",
 						onSelect: () => undefined,
 						children: documentCategoryDescriptors
-							.filter((descriptor) => descriptor.key !== "source-material")
+							.filter((descriptor) => descriptor.key !== "reference")
 							.map((descriptor) => ({
 								icon: descriptor.icon,
 								iconStyle: { color: `var(${descriptor.colorVar})` },

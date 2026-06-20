@@ -16,7 +16,7 @@ import {
 } from "@/domains/documents/components/tiptap/section-media";
 
 const sectionMediaNodeName = "sectionMediaPreview";
-const sectionMediaStartPattern = /\[章节(?:音频|视频)(?::|：|\])/;
+const sectionMediaStartPattern = /\[章节(?:音频|视频)(?::|：)/;
 
 export const SectionMediaPreview = TiptapNode.create({
 	name: sectionMediaNodeName,
@@ -111,9 +111,6 @@ interface SectionMediaPreviewAttrs {
 }
 
 const sectionMediaPreviewDOMSpec = (attrs: SectionMediaPreviewAttrs): DOMOutputSpec => {
-	const label = sectionMediaLabel(attrs);
-	const linkLabel = attrs.kind === "audio" ? "打开音频" : "打开视频";
-
 	return [
 		"div",
 		mergeAttributes({
@@ -123,27 +120,11 @@ const sectionMediaPreviewDOMSpec = (attrs: SectionMediaPreviewAttrs): DOMOutputS
 			"data-src": attrs.src,
 			"data-title": attrs.title,
 		}),
-		[
-			"div",
-			{ class: "tiptap-section-media-header" },
-			["span", { class: "tiptap-section-media-label" }, label],
-			[
-				"a",
-				{
-					class: "tiptap-section-media-link",
-					href: attrs.src,
-					rel: "noreferrer",
-					target: "_blank",
-				},
-				linkLabel,
-			],
-		],
 	];
 };
 
 const SectionMediaPreviewView: React.FC<NodeViewProps> = ({ node }) => {
 	const attrs = sectionMediaPreviewAttrs(node.attrs);
-	const linkLabel = attrs.kind === "audio" ? "打开音频" : "打开视频";
 
 	return (
 		<NodeViewWrapper
@@ -153,12 +134,6 @@ const SectionMediaPreviewView: React.FC<NodeViewProps> = ({ node }) => {
 			data-src={attrs.src}
 			data-title={attrs.title}
 		>
-			<div className="tiptap-section-media-header">
-				<span className="tiptap-section-media-label">{sectionMediaLabel(attrs)}</span>
-				<a className="tiptap-section-media-link" href={attrs.src} rel="noreferrer" target="_blank">
-					{linkLabel}
-				</a>
-			</div>
 			{attrs.kind === "audio" ? (
 				<AudioPlayer
 					className="tiptap-section-media-player"
@@ -185,11 +160,6 @@ const sectionMediaPreviewAttrs = (attrs: Record<string, unknown>): SectionMediaP
 	src: stringAttribute(attrs.src),
 	title: stringAttribute(attrs.title),
 });
-
-const sectionMediaLabel = (attrs: SectionMediaPreviewAttrs) => {
-	const prefix = attrs.kind === "audio" ? "章节音频" : "章节视频";
-	return attrs.title ? `${prefix}：${attrs.title}` : prefix;
-};
 
 const sectionMediaKind = (value: unknown): MarkdownSectionMediaKind =>
 	value === "video" ? "video" : "audio";

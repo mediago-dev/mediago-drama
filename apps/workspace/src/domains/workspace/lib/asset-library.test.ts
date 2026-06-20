@@ -84,7 +84,7 @@ describe("asset-library", () => {
 				document({ category: "prop", id: "doc-prop" }),
 				document({ category: "storyboard", id: "doc-storyboard" }),
 				document({ category: "screenplay", id: "doc-screenplay" }),
-				document({ category: "source-material", id: "doc-source" }),
+				document({ category: "reference", id: "doc-reference" }),
 			],
 			mediaAssets: [
 				mediaAsset({
@@ -113,9 +113,9 @@ describe("asset-library", () => {
 					url: "/api/v1/media-assets/storyboard-image/content",
 				}),
 				mediaAsset({
-					id: "source-image",
-					conversationId: "section:doc-source:section-c",
-					url: "/api/v1/media-assets/source-image/content",
+					id: "reference-image",
+					conversationId: "section:doc-reference:section-c",
+					url: "/api/v1/media-assets/reference-image/content",
 				}),
 			],
 		});
@@ -133,12 +133,12 @@ describe("asset-library", () => {
 		expect(items.find((item) => item.id === "storyboard-image")?.selectedResourceTypes).toEqual([
 			"storyboard",
 		]);
-		expect(items.find((item) => item.id === "source-image")?.selectedResourceTypes).toEqual([
-			"source-material",
+		expect(items.find((item) => item.id === "reference-image")?.selectedResourceTypes).toEqual([
+			"reference",
 		]);
 		expect(
-			filterAssetLibraryItems(items, { resourceType: "source-material" }).map((item) => item.id),
-		).toEqual(["source-image"]);
+			filterAssetLibraryItems(items, { resourceType: "reference" }).map((item) => item.id),
+		).toEqual(["reference-image"]);
 	});
 
 	it("deduplicates document and selected resource labels", () => {

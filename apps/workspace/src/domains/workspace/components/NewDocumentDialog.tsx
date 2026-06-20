@@ -29,11 +29,11 @@ export interface UploadAssetChoice {
 }
 
 export type NewDocumentDialogChoice = NewDocumentChoice | UploadAssetChoice;
-export type NewDocumentDialogResult = NewDocumentDialogChoice | { kind: "source-material" } | null;
+export type NewDocumentDialogResult = NewDocumentDialogChoice | { kind: "reference" } | null;
 
 interface NewDocumentDialogProps {
 	initialCategory?: DocumentCategory | null;
-	showSourceMaterialHandoff?: boolean;
+	showReferenceHandoff?: boolean;
 }
 
 interface TemplateOption {
@@ -44,7 +44,7 @@ interface TemplateOption {
 }
 
 export const NewDocumentDialog = createCallable<NewDocumentDialogProps, NewDocumentDialogResult>(
-	({ initialCategory, showSourceMaterialHandoff = false, call }) => {
+	({ initialCategory, showReferenceHandoff = false, call }) => {
 		const options = useMemo(() => buildTemplateOptions(), []);
 		const [selectedId, setSelectedId] = useState(options[0]?.id ?? "");
 		const selectedOption = options.find((option) => option.id === selectedId) ?? options[0];
@@ -84,11 +84,11 @@ export const NewDocumentDialog = createCallable<NewDocumentDialogProps, NewDocum
 								onSelect={() => setSelectedId(option.id)}
 							/>
 						))}
-						{showSourceMaterialHandoff ? (
+						{showReferenceHandoff ? (
 							<TemplateOptionButton
-								option={sourceMaterialOption}
+								option={referenceOption}
 								selected={false}
-								onSelect={() => call.end({ kind: "source-material" })}
+								onSelect={() => call.end({ kind: "reference" })}
 							/>
 						) : null}
 					</div>
@@ -166,7 +166,7 @@ const TemplateOptionButton: React.FC<TemplateOptionButtonProps> = ({
 
 const buildTemplateOptions = (): TemplateOption[] =>
 	documentCategoryDescriptors
-		.filter((descriptor) => descriptor.key !== "source-material")
+		.filter((descriptor) => descriptor.key !== "reference")
 		.map(
 			(descriptor): TemplateOption => ({
 				id: `category-${descriptor.key}`,
@@ -176,9 +176,9 @@ const buildTemplateOptions = (): TemplateOption[] =>
 			}),
 		);
 
-const sourceMaterialOption: TemplateOption = {
-	id: "category-source-material",
-	name: "素材",
-	description: "上传本地文件或创建空白素材文档。",
-	category: "source-material",
+const referenceOption: TemplateOption = {
+	id: "category-reference",
+	name: "资料",
+	description: "上传本地文件或创建空白资料文档。",
+	category: "reference",
 };

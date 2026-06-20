@@ -88,11 +88,6 @@ const projectSourceOptions: Array<{ label: string; value: AssetLibrarySourceFilt
 	{ label: "已选资源", value: "selected" },
 ];
 
-const globalSourceOptions: Array<{ label: string; value: AssetLibrarySourceFilter }> = [
-	{ label: "全部来源", value: "all" },
-	{ label: "媒体素材", value: "media" },
-];
-
 const resourceOptions: Array<{ label: string; value: AssetLibraryResourceFilter }> = [
 	{ label: "全部资源标签", value: "all" },
 	{ label: "剧本", value: "screenplay" },
@@ -100,7 +95,7 @@ const resourceOptions: Array<{ label: string; value: AssetLibraryResourceFilter 
 	{ label: "场景", value: "scene" },
 	{ label: "分镜", value: "storyboard" },
 	{ label: "道具", value: "prop" },
-	{ label: "素材", value: "source-material" },
+	{ label: "资料", value: "reference" },
 ];
 
 const globalProjectValue = "__global__";
@@ -211,7 +206,7 @@ const AssetLibraryDialog: React.FC<{
 				kind: kindFilter,
 				query,
 				resourceType: projectMode ? resourceFilter : "all",
-				source: sourceFilter,
+				source: projectMode ? sourceFilter : "all",
 			}),
 		[items, kindFilter, projectMode, query, resourceFilter, sourceFilter],
 	);
@@ -359,7 +354,7 @@ const AssetLibraryDialog: React.FC<{
 								"grid shrink-0 gap-2 border-b border-border bg-card px-4 py-3",
 								projectMode
 									? "lg:grid-cols-[minmax(16rem,18rem)_minmax(10rem,14rem)_auto_auto_auto_auto]"
-									: "lg:grid-cols-[minmax(16rem,18rem)_minmax(10rem,14rem)_auto_auto_auto]",
+									: "lg:grid-cols-[minmax(16rem,18rem)_minmax(10rem,14rem)_auto_auto]",
 							)}
 						>
 							<div className="relative min-w-0">
@@ -386,19 +381,23 @@ const AssetLibraryDialog: React.FC<{
 								options={kindOptions}
 								onValueChange={(value) => setKindFilter(value as AssetLibraryKindFilter)}
 							/>
-							<AssetLibrarySelect
-								label="来源"
-								value={sourceFilter}
-								options={projectMode ? projectSourceOptions : globalSourceOptions}
-								onValueChange={(value) => setSourceFilter(value as AssetLibrarySourceFilter)}
-							/>
 							{projectMode ? (
-								<AssetLibrarySelect
-									label="资源标签"
-									value={resourceFilter}
-									options={resourceOptions}
-									onValueChange={(value) => setResourceFilter(value as AssetLibraryResourceFilter)}
-								/>
+								<>
+									<AssetLibrarySelect
+										label="来源"
+										value={sourceFilter}
+										options={projectSourceOptions}
+										onValueChange={(value) => setSourceFilter(value as AssetLibrarySourceFilter)}
+									/>
+									<AssetLibrarySelect
+										label="资源标签"
+										value={resourceFilter}
+										options={resourceOptions}
+										onValueChange={(value) =>
+											setResourceFilter(value as AssetLibraryResourceFilter)
+										}
+									/>
+								</>
 							) : null}
 							<div className="flex items-center gap-2">
 								<Popover open={uploadOpen} onOpenChange={setUploadOpen}>
@@ -830,7 +829,7 @@ const resourceTypeBadgeClassNames: Record<AssetLibraryResourceType, string> = {
 	prop: "border-amber-200 bg-amber-50/95 text-amber-800 shadow-amber-900/5",
 	scene: "border-emerald-200 bg-emerald-50/95 text-emerald-800 shadow-emerald-900/5",
 	screenplay: "border-sky-200 bg-sky-50/95 text-sky-800 shadow-sky-900/5",
-	"source-material": "border-stone-200 bg-stone-50/95 text-stone-800 shadow-stone-900/5",
+	reference: "border-stone-200 bg-stone-50/95 text-stone-800 shadow-stone-900/5",
 	storyboard: "border-indigo-200 bg-indigo-50/95 text-indigo-800 shadow-indigo-900/5",
 };
 
@@ -854,7 +853,7 @@ const iconForKind = (kind: AssetLibraryKind) => {
 
 const resourceTypeLabel = (type: AssetLibraryResourceType) => {
 	if (type === "screenplay") return "剧本";
-	if (type === "source-material") return "素材";
+	if (type === "reference") return "资料";
 	return selectedGenerationResourceDescriptorMap[type]?.label ?? type;
 };
 

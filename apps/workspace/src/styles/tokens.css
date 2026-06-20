@@ -300,7 +300,7 @@
 		--doc-category-scene: var(--warning-foreground);
 		--doc-category-prop: var(--pink-500);
 		--doc-category-storyboard: var(--violet-600);
-		--doc-category-source-material: var(--muted-foreground);
+		--doc-category-reference: var(--muted-foreground);
 
 		--surface-subtle: color-mix(in srgb, var(--slate-50) 84%, transparent);
 		--surface-raised: var(--slate-0);
@@ -424,7 +424,7 @@
 		--doc-category-scene: var(--warning-foreground);
 		--doc-category-prop: var(--pink-300);
 		--doc-category-storyboard: var(--violet-300);
-		--doc-category-source-material: var(--muted-foreground);
+		--doc-category-reference: var(--muted-foreground);
 
 		--surface-subtle: color-mix(in srgb, var(--ink-800) 78%, transparent);
 		--surface-raised: var(--ink-800);

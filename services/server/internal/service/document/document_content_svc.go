@@ -95,7 +95,7 @@ func (store *Service) SetWorkspaceDocumentTitle(projectID string, input SetDocum
 
 // SetWorkspaceDocumentCategory updates a document category from MCP input.
 func (store *Service) SetWorkspaceDocumentCategory(projectID string, input SetDocumentCategoryInput, expectedVersion int) (WorkspaceDocumentMetadataMutationResult, error) {
-	category := strings.TrimSpace(input.Category)
+	category := NormalizeDocumentCategoryValue(input.Category)
 	if err := ValidateDocumentCategory(category); err != nil {
 		return WorkspaceDocumentMetadataMutationResult{}, err
 	}

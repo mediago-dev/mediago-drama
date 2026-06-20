@@ -133,17 +133,17 @@ describe("ProjectSidebarPanel", () => {
 		expect(onCreateDocumentInCategory).toHaveBeenCalledWith("character");
 	});
 
-	it("opens the upload-ready new document dialog from the source material header menu", () => {
+	it("opens the upload-ready new document dialog from the reference header menu", () => {
 		const onOpenNewDocument = vi.fn();
 		renderProjectSidebar(true, { onOpenNewDocument });
 
-		fireEvent.contextMenu(screen.getByRole("button", { name: "素材" }), {
+		fireEvent.contextMenu(screen.getByRole("button", { name: "资料" }), {
 			clientX: 72,
 			clientY: 96,
 		});
-		fireEvent.click(screen.getByRole("menuitem", { name: "新建素材" }));
+		fireEvent.click(screen.getByRole("menuitem", { name: "新建资料" }));
 
-		expect(onOpenNewDocument).toHaveBeenCalledWith("source-material");
+		expect(onOpenNewDocument).toHaveBeenCalledWith("reference");
 	});
 });
 

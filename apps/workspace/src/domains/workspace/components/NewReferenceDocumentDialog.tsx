@@ -14,7 +14,7 @@ import {
 import { Button } from "@/shared/components/ui/button";
 import type { NewDocumentDialogChoice } from "./NewDocumentDialog";
 
-export const NewSourceMaterialDialog = createCallable<void, NewDocumentDialogChoice | null>(
+export const NewReferenceDocumentDialog = createCallable<void, NewDocumentDialogChoice | null>(
 	({ call }) => {
 		const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -34,8 +34,8 @@ export const NewSourceMaterialDialog = createCallable<void, NewDocumentDialogCho
 			>
 				<AlertDialogContent className="max-w-md">
 					<AlertDialogHeader>
-						<AlertDialogTitle>新建素材</AlertDialogTitle>
-						<AlertDialogDescription>上传本地文件或创建空白素材文档。</AlertDialogDescription>
+						<AlertDialogTitle>新建资料</AlertDialogTitle>
+						<AlertDialogDescription>上传本地文件或创建空白资料文档。</AlertDialogDescription>
 					</AlertDialogHeader>
 
 					<div className="grid gap-2">
@@ -52,10 +52,10 @@ export const NewSourceMaterialDialog = createCallable<void, NewDocumentDialogCho
 							type="button"
 							variant="outline"
 							className="h-12 justify-start rounded-sm px-3"
-							onClick={() => call.end({ kind: "document", category: "source-material" })}
+							onClick={() => call.end({ kind: "document", category: "reference" })}
 						>
 							<FileText className="size-4" />
-							<span>新建空白素材</span>
+							<span>新建空白资料</span>
 						</Button>
 					</div>
 
@@ -65,7 +65,7 @@ export const NewSourceMaterialDialog = createCallable<void, NewDocumentDialogCho
 							ref={fileInputRef}
 							type="file"
 							className="hidden"
-							aria-label="选择素材文件"
+							aria-label="选择资料文件"
 							onChange={uploadSelectedFile}
 						/>
 					</AlertDialogFooter>
@@ -74,6 +74,6 @@ export const NewSourceMaterialDialog = createCallable<void, NewDocumentDialogCho
 		);
 	},
 );
-NewSourceMaterialDialog.displayName = "NewSourceMaterialDialog";
+NewReferenceDocumentDialog.displayName = "NewReferenceDocumentDialog";
 
-export const openNewSourceMaterialDialog = () => NewSourceMaterialDialog.call();
+export const openNewReferenceDocumentDialog = () => NewReferenceDocumentDialog.call();

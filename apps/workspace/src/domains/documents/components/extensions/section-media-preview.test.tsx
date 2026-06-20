@@ -102,4 +102,19 @@ describe("SectionMediaPreview", () => {
 
 		editor.destroy();
 	});
+
+	it("leaves bare section audio links as regular markdown links", () => {
+		const editor = new Editor({
+			extensions: [StarterKit, SectionMediaPreview, Markdown],
+			content: "[章节音频](</api/v1/media-assets/audio-1/content>)",
+			contentType: "markdown",
+		});
+
+		expect(editor.getJSON().content?.[0]?.type).not.toBe("sectionMediaPreview");
+		render(<EditorContent editor={editor} />);
+		expect(screen.queryByTestId("audio-player")).toBeNull();
+		expect(editor.getMarkdown()).toContain("[章节音频](/api/v1/media-assets/audio-1/content)");
+
+		editor.destroy();
+	});
 });

@@ -11,7 +11,7 @@ const assetReference: AgentReference = {
 	assetKind: "text",
 	mimeType: "text/plain",
 	title: "完美世界.txt",
-	category: "source-material",
+	category: "reference",
 	url: "/api/v1/projects/project-1/assets/asset-1/content",
 };
 

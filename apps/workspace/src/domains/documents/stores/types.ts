@@ -30,14 +30,18 @@ export interface DocumentWorkbenchDraft {
 	updatedAt: string;
 }
 
+export const referenceDocumentCategory = "reference" as const;
+export const legacySourceMaterialDocumentCategory = "source-material" as const;
+export const overviewDocumentCategory = "overview" as const;
+
 export type DocumentCategory =
 	| "screenplay"
 	| "character"
 	| "scene"
 	| "prop"
 	| "storyboard"
-	| "source-material"
-	| "overview";
+	| typeof referenceDocumentCategory
+	| typeof overviewDocumentCategory;
 
 export interface MarkdownDocument {
 	id: string;

@@ -186,7 +186,7 @@ func TestAPIHandler(t *testing.T) {
 			t.Fatalf("body = %s, want nested updated document", listBody)
 		}
 
-		siblingCreate := requestJSON(t, handler, http.MethodPost, documentsPath, `{"title":"保留文档","content":"# 保留文档","category":"source-material"}`)
+		siblingCreate := requestJSON(t, handler, http.MethodPost, documentsPath, `{"title":"保留文档","content":"# 保留文档","category":"reference"}`)
 		defer siblingCreate.Body.Close()
 		if siblingCreate.StatusCode != http.StatusOK {
 			t.Fatalf("sibling create status code = %d, want %d: %s", siblingCreate.StatusCode, http.StatusOK, readBody(t, siblingCreate.Body))

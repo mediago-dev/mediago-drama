@@ -47,7 +47,7 @@ import { useSettingsNavigationStore } from "@/lib/stores/settings";
 import { useWorkModeStore } from "@/lib/stores/work-mode";
 import { openAgentProjectCreateDialog } from "./AgentProjectCreateDialog";
 import { openNewDocumentDialog, type NewDocumentDialogChoice } from "./NewDocumentDialog";
-import { openNewSourceMaterialDialog } from "./NewSourceMaterialDialog";
+import { openNewReferenceDocumentDialog } from "./NewReferenceDocumentDialog";
 import { SettingsSidebarPanel, StudioSessionsScreen } from "./ProjectNavigatorPanels";
 import { ProjectSidebarPanel, ProjectsSidebarPanel } from "./ProjectNavigatorProjectPanels";
 import type { StudioTab } from "./ProjectNavigatorTypes";
@@ -358,16 +358,16 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	const requestNewDocument = useCallback(
 		async (category?: DocumentCategory) => {
 			const choice =
-				category === "source-material"
-					? await openNewSourceMaterialDialog()
+				category === "reference"
+					? await openNewReferenceDocumentDialog()
 					: await openNewDocumentDialog({
 							initialCategory: category ?? null,
-							showSourceMaterialHandoff: true,
+							showReferenceHandoff: true,
 						});
 			if (!choice) return;
 
 			const finalChoice =
-				choice.kind === "source-material" ? await openNewSourceMaterialDialog() : choice;
+				choice.kind === "reference" ? await openNewReferenceDocumentDialog() : choice;
 			if (!finalChoice) return;
 			createDocumentFromTemplate(finalChoice);
 		},

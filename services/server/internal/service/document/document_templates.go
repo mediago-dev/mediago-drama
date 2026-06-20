@@ -4,9 +4,10 @@ import (
 	"strings"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/model"
 )
 
-const sourceMaterialCategory = "source-material"
+const referenceDocumentCategory = model.ReferenceDocumentCategory
 
 // IsBusinessTemplateCategory reports whether a category is backed by a creative document template.
 func IsBusinessTemplateCategory(category string) bool {
@@ -14,15 +15,15 @@ func IsBusinessTemplateCategory(category string) bool {
 }
 
 func normalizeCreateDocumentRequest(request createWorkspaceDocumentRequest) (createWorkspaceDocumentRequest, error) {
-	request.Category = strings.TrimSpace(request.Category)
+	request.Category = NormalizeDocumentCategoryValue(request.Category)
 	if err := ValidateDocumentCategory(request.Category); err != nil {
 		return request, err
 	}
 	if request.Category == "" {
-		request.Category = sourceMaterialCategory
+		request.Category = referenceDocumentCategory
 		return request, nil
 	}
-	if request.Category == sourceMaterialCategory {
+	if request.Category == referenceDocumentCategory {
 		return request, nil
 	}
 

@@ -159,6 +159,7 @@ describe("AssetLibraryButton", () => {
 
 		expect(await screen.findByRole("dialog", { name: "全局素材库" })).toBeTruthy();
 		expect((await screen.findAllByText("global-still.png")).length).toBeGreaterThan(0);
+		expect(screen.queryByRole("combobox", { name: "来源" })).not.toBeInTheDocument();
 		expect(getMediaAssets).toHaveBeenCalledWith({ projectId: undefined });
 		expect(getWorkspaceDocuments).not.toHaveBeenCalled();
 		expect(getSelectedGenerationAssets).not.toHaveBeenCalled();
@@ -191,6 +192,7 @@ describe("AssetLibraryButton", () => {
 
 		expect(await screen.findByRole("dialog", { name: "项目素材库" })).toBeTruthy();
 		expect((await screen.findAllByText("hero-media.png")).length).toBeGreaterThan(0);
+		expect(screen.getByRole("combobox", { name: "来源" })).toBeTruthy();
 		expect(screen.getAllByText("角色").length).toBeGreaterThan(0);
 		expect(
 			screen.getByPlaceholderText("搜索素材").parentElement?.parentElement?.className,
@@ -223,9 +225,9 @@ describe("AssetLibraryButton", () => {
 				documents: [
 					workspaceDocument({ category: "character", id: "doc-character", title: "角色设定" }),
 					workspaceDocument({
-						category: "source-material",
-						id: "doc-source",
-						title: "素材文档",
+						category: "reference",
+						id: "doc-reference",
+						title: "资料文档",
 					}),
 				],
 			}),
@@ -239,10 +241,10 @@ describe("AssetLibraryButton", () => {
 					url: "/api/v1/media-assets/character-media/content",
 				}),
 				mediaAsset({
-					filename: "source-still.png",
-					id: "source-media",
-					sectionId: "doc-source:section-b",
-					url: "/api/v1/media-assets/source-media/content",
+					filename: "reference-still.png",
+					id: "reference-media",
+					sectionId: "doc-reference:section-b",
+					url: "/api/v1/media-assets/reference-media/content",
 				}),
 			],
 		});
@@ -253,11 +255,11 @@ describe("AssetLibraryButton", () => {
 		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
 
 		expect((await screen.findAllByText("character-still.png")).length).toBeGreaterThan(0);
-		expect((await screen.findAllByText("source-still.png")).length).toBeGreaterThan(0);
+		expect((await screen.findAllByText("reference-still.png")).length).toBeGreaterThan(0);
 		const characterPreviewButton = screen.getByRole("button", {
 			name: "预览 character-still.png",
 		});
-		const sourcePreviewButton = screen.getByRole("button", { name: "预览 source-still.png" });
+		const sourcePreviewButton = screen.getByRole("button", { name: "预览 reference-still.png" });
 		const characterCard = characterPreviewButton.closest("article");
 		const sourceCard = sourcePreviewButton.closest("article");
 		const characterThumbnail = characterPreviewButton.firstElementChild;
@@ -266,16 +268,16 @@ describe("AssetLibraryButton", () => {
 		const sourceInfo = sourceThumbnail?.nextElementSibling;
 		const characterBadge = characterCard?.querySelector('span[title="角色"]');
 		const characterKindBadge = characterCard?.querySelector('span[title="图片"]');
-		const sourceBadge = sourceCard?.querySelector('span[title="素材"]');
+		const sourceBadge = sourceCard?.querySelector('span[title="资料"]');
 		const sourceKindBadge = sourceCard?.querySelector('span[title="图片"]');
 		expect(characterCard?.querySelectorAll('span[title="角色"]')).toHaveLength(1);
 		expect(characterCard?.querySelectorAll('span[title="图片"]')).toHaveLength(1);
-		expect(sourceCard?.querySelectorAll('span[title="素材"]')).toHaveLength(1);
+		expect(sourceCard?.querySelectorAll('span[title="资料"]')).toHaveLength(1);
 		expect(sourceCard?.querySelectorAll('span[title="图片"]')).toHaveLength(1);
 		expect(characterThumbnail?.querySelector('span[title="角色"]')).toBeTruthy();
 		expect(characterThumbnail?.querySelector('span[title="图片"]')).toBeNull();
 		expect(characterInfo?.querySelector('span[title="图片"]')).toBeTruthy();
-		expect(sourceThumbnail?.querySelector('span[title="素材"]')).toBeTruthy();
+		expect(sourceThumbnail?.querySelector('span[title="资料"]')).toBeTruthy();
 		expect(sourceThumbnail?.querySelector('span[title="图片"]')).toBeNull();
 		expect(sourceInfo?.querySelector('span[title="图片"]')).toBeTruthy();
 		expect(characterBadge).toBeTruthy();

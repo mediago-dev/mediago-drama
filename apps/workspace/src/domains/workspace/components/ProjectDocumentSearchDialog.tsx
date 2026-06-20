@@ -285,7 +285,7 @@ const pushDocumentRecords = (
 	for (const document of documents) {
 		if (isOverviewDocumentId(document.id)) continue;
 		const descriptor =
-			documentCategoryDescriptorMap[document.category ?? "source-material"] ??
+			documentCategoryDescriptorMap[document.category ?? "reference"] ??
 			documentCategoryDescriptors.at(-1);
 		if (!descriptor) continue;
 		records.push({

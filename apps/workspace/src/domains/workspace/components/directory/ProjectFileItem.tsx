@@ -74,8 +74,7 @@ export const ProjectFileItem: React.FC<{
 	const isActive = showActiveSelection && (isDocumentActive || isAssetActive);
 	const itemTitle = entry.title || (isAsset ? "未命名文件" : "未命名文档");
 	const descriptor =
-		documentCategoryDescriptorMap[entry.category] ??
-		documentCategoryDescriptorMap["source-material"];
+		documentCategoryDescriptorMap[entry.category] ?? documentCategoryDescriptorMap["reference"];
 	const EntryIcon = entry.kind === "asset" ? assetIcon(entry.asset.kind) : descriptor.icon;
 	const canRevealInFileManager = canShowInFileManager(workspaceDir);
 	const canOpenContextMenu = canMutate || canRevealInFileManager;
@@ -141,7 +140,7 @@ export const ProjectFileItem: React.FC<{
 						label: "变更类型",
 						onSelect: () => undefined,
 						children: documentCategoryDescriptors
-							.filter((categoryDescriptor) => categoryDescriptor.key !== "source-material")
+							.filter((categoryDescriptor) => categoryDescriptor.key !== "reference")
 							.map((categoryDescriptor) => ({
 								icon: categoryDescriptor.icon,
 								iconStyle: { color: `var(${categoryDescriptor.colorVar})` },

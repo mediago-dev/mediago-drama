@@ -103,7 +103,7 @@ func TestPromptBuilderDoesNotInlineAssetReferences(t *testing.T) {
 				AssetKind:  "image",
 				MIMEType:   "image/png",
 				Title:      "参考图.png",
-				Category:   "source-material",
+				Category:   "reference",
 				URL:        "/api/v1/projects/project-1/assets/asset-1/content",
 			},
 		},
@@ -226,11 +226,11 @@ func TestPromptBuilderDoesNotInlineCategoryGuidance(t *testing.T) {
 			document: nil,
 		},
 		{
-			name: "source material",
+			name: "reference",
 			document: &AgentDocumentContext{
 				ID:       "doc-1",
 				Title:    "原素材",
-				Category: "source-material",
+				Category: "reference",
 				Content:  "原始素材",
 			},
 		},

@@ -40,8 +40,8 @@ func DefaultProjectOverviewMarkdown(projectName string, projectDescription strin
 	builder.WriteString("<!-- section-doc-list category=\"prop\" -->\n\n")
 	builder.WriteString("## 分镜\n\n")
 	builder.WriteString("<!-- section-doc-list category=\"storyboard\" -->\n\n")
-	builder.WriteString("## 素材\n\n")
-	builder.WriteString("<!-- section-doc-list category=\"source-material\" -->\n")
+	builder.WriteString("## 资料\n\n")
+	builder.WriteString("<!-- section-doc-list category=\"reference\" -->\n")
 	return builder.String()
 }
 

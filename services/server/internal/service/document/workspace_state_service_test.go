@@ -98,20 +98,20 @@ func TestWorkspaceStateServicePersistsDocumentCategory(t *testing.T) {
 	document, _, err := store.createDocument(projectID, createWorkspaceDocumentRequest{
 		Title:    "原素材",
 		Content:  "# 原素材\n\n一个漫剧创意。",
-		Category: "source-material",
+		Category: "reference",
 	})
 	if err != nil {
 		t.Fatalf("creating categorized document: %v", err)
 	}
-	if document.Category != "source-material" {
-		t.Fatalf("created category = %q, want source-material", document.Category)
+	if document.Category != "reference" {
+		t.Fatalf("created category = %q, want reference", document.Category)
 	}
 	projected, err := os.ReadFile(filepath.Join(store.documentsDir(projectID), "原素材.md"))
 	if err != nil {
 		t.Fatalf("reading created markdown file: %v", err)
 	}
-	if !strings.Contains(string(projected), "category: source-material") {
-		t.Fatalf("created markdown projection = %q, want source-material frontmatter", string(projected))
+	if !strings.Contains(string(projected), "category: reference") {
+		t.Fatalf("created markdown projection = %q, want reference frontmatter", string(projected))
 	}
 	if !strings.Contains(string(projected), "title: 原素材") {
 		t.Fatalf("created markdown projection = %q, want title frontmatter", string(projected))
@@ -156,6 +156,47 @@ func TestWorkspaceStateServicePersistsDocumentCategory(t *testing.T) {
 	}
 	if len(metadata.Documents) != 1 || metadata.Documents[0].Category != "screenplay" {
 		t.Fatalf("metadata category = %#v, want screenplay", metadata.Documents)
+	}
+}
+
+func TestWorkspaceStateServiceNormalizesLegacySourceMaterialCategory(t *testing.T) {
+	store := newWorkspaceStateService(t.TempDir())
+	if store.initErr != nil {
+		t.Fatalf("initializing workspace store: %v", store.initErr)
+	}
+	projectID := "project-legacy-source-material-category"
+	requireTestProject(t, store, projectID)
+
+	document, _, err := store.createDocument(projectID, createWorkspaceDocumentRequest{
+		Title:    "旧分类资料",
+		Content:  "# 旧分类资料\n\n一个旧项目里的原始文本。",
+		Category: "source-material",
+	})
+	if err != nil {
+		t.Fatalf("creating legacy category document: %v", err)
+	}
+	if document.Category != referenceDocumentCategory {
+		t.Fatalf("created category = %q, want %q", document.Category, referenceDocumentCategory)
+	}
+
+	projected, err := os.ReadFile(filepath.Join(store.documentsDir(projectID), "旧分类资料.md"))
+	if err != nil {
+		t.Fatalf("reading created markdown file: %v", err)
+	}
+	if strings.Contains(string(projected), "category: source-material") ||
+		!strings.Contains(string(projected), "category: reference") {
+		t.Fatalf("created markdown projection = %q, want normalized reference frontmatter", string(projected))
+	}
+
+	nextCategory := "source-material"
+	updated, _, err := store.updateDocument(projectID, document.ID, updateWorkspaceDocumentRequest{
+		Category: &nextCategory,
+	})
+	if err != nil {
+		t.Fatalf("updating legacy category document: %v", err)
+	}
+	if updated.Category != referenceDocumentCategory {
+		t.Fatalf("updated category = %q, want %q", updated.Category, referenceDocumentCategory)
 	}
 }
 
@@ -575,7 +616,7 @@ func TestWorkspaceStateServicePrunesDeletedProjectedMarkdownFiles(t *testing.T) 
 	_, _, err = store.createDocument(projectID, createWorkspaceDocumentRequest{
 		Title:    "新素材",
 		Content:  "# 新素材\n\n正文。",
-		Category: sourceMaterialCategory,
+		Category: referenceDocumentCategory,
 	})
 	if err != nil {
 		t.Fatalf("creating document after local delete: %v", err)
@@ -597,7 +638,7 @@ func TestWorkspaceStateServiceSyncsExistingLocalMarkdownMetadata(t *testing.T) {
 	document, _, err := store.createDocument(projectID, createWorkspaceDocumentRequest{
 		Title:    "同步文档",
 		Content:  "# 同步文档\n\n旧正文。",
-		Category: sourceMaterialCategory,
+		Category: referenceDocumentCategory,
 	})
 	if err != nil {
 		t.Fatalf("creating document: %v", err)
@@ -648,8 +689,8 @@ func TestWorkspaceStateServiceImportsLocalMarkdownFilesFromWorkDir(t *testing.T)
 	if imported.ID == "" {
 		t.Fatalf("documents = %+v, want imported local markdown", state.Documents)
 	}
-	if imported.Category != sourceMaterialCategory || imported.Content != "# 第一章\n\n本地创建。" {
-		t.Fatalf("imported document = %+v, want source material with local content", imported)
+	if imported.Category != referenceDocumentCategory || imported.Content != "# 第一章\n\n本地创建。" {
+		t.Fatalf("imported document = %+v, want reference with local content", imported)
 	}
 	if imported.FolderID == "" {
 		t.Fatalf("imported folder id is empty, folders = %+v", state.Folders)
@@ -779,8 +820,8 @@ func TestWorkspaceStateServiceDoesNotInferLocalMarkdownCategoryWithoutFrontmatte
 	if imported.ID == "" {
 		t.Fatalf("documents = %+v, want imported screenplay-like markdown", state.Documents)
 	}
-	if imported.Category != sourceMaterialCategory {
-		t.Fatalf("category = %q, want source material without frontmatter", imported.Category)
+	if imported.Category != referenceDocumentCategory {
+		t.Fatalf("category = %q, want reference without frontmatter", imported.Category)
 	}
 }
 
@@ -806,8 +847,8 @@ func TestWorkspaceStateServiceImportsProjectOverviewMarkdownAsRegularDocument(t 
 	if imported.ID == "" {
 		t.Fatalf("documents = %+v, want imported local markdown", state.Documents)
 	}
-	if IsOverviewDocumentID(imported.ID) || imported.Category != sourceMaterialCategory {
-		t.Fatalf("imported document = %+v, want regular source material", imported)
+	if IsOverviewDocumentID(imported.ID) || imported.Category != referenceDocumentCategory {
+		t.Fatalf("imported document = %+v, want regular reference", imported)
 	}
 }
 

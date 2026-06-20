@@ -94,6 +94,7 @@ var (
 	NormalizeProjectRecords                 = model.NormalizeProjectRecords
 	WorkspaceProjectRecordsFromModels       = model.WorkspaceProjectRecordsFromModels
 	NormalizeWorkspaceDocuments             = model.NormalizeWorkspaceDocuments
+	NormalizeDocumentCategoryValue          = model.NormalizeDocumentCategoryValue
 	NormalizeDocumentFolders                = model.NormalizeDocumentFolders
 	NormalizeWorkbenchDraftRecord           = model.NormalizeWorkbenchDraftRecord
 	NormalizedDocumentVersion               = model.NormalizedDocumentVersion

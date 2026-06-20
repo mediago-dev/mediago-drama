@@ -5,7 +5,7 @@ import type { AgentResourceType } from "@/domains/workspace/lib/workbench-route"
 
 export type AssetLibraryKind = "image" | "video" | "audio" | "text" | "binary";
 export type AssetLibrarySource = "media" | "selected";
-export type AssetLibraryResourceType = AgentResourceType | "screenplay" | "source-material";
+export type AssetLibraryResourceType = AgentResourceType | "screenplay" | "reference";
 export type AssetLibraryKindFilter = "all" | AssetLibraryKind;
 export type AssetLibrarySourceFilter = "all" | AssetLibrarySource;
 export type AssetLibraryResourceFilter = "all" | AssetLibraryResourceType;
@@ -220,7 +220,7 @@ const resourceTypeForDocumentCategory = (
 		category === "scene" ||
 		category === "prop" ||
 		category === "storyboard" ||
-		category === "source-material"
+		category === "reference"
 	) {
 		return category;
 	}

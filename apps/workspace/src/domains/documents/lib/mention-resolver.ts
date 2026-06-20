@@ -1,6 +1,10 @@
 import type { AgentReference } from "@/domains/agent/api/agent";
 import { documentCategoryDescriptors } from "@/domains/documents/lib/categories";
 import {
+	legacySourceMaterialDocumentCategory,
+	referenceDocumentCategory,
+} from "@/domains/documents/stores";
+import {
 	createSectionBlockId,
 	findMarkdownSectionEndLine,
 	findMarkdownSectionHeadingLine,
@@ -75,7 +79,7 @@ export const resolveMentionPayload = (
 				...reference,
 				assetId: asset.id,
 				assetKind: asset.kind,
-				category: "source-material",
+				category: "reference",
 				documentId: asset.id,
 				mimeType: asset.mimeType,
 				title: reference.title || asset.filename,
@@ -135,7 +139,7 @@ export const parseMentionHref = (href: string, title: string): AgentReference | 
 			documentId: assetId,
 			assetId,
 			assetKind: params.get("kind") ?? undefined,
-			category: "source-material",
+			category: "reference",
 			mimeType: params.get("mimeType") ?? undefined,
 			title,
 			url: params.get("url") ?? undefined,
@@ -285,10 +289,12 @@ const isPlaceholderImage = (image: { alt: string; url: string }) =>
 	placeholderImageAltPrefixes.some((prefix) => image.alt.startsWith(prefix)) ||
 	image.url.startsWith("data:image/svg+xml");
 
-const normalizeCategory = (value: string | null): DocumentCategory | undefined =>
-	value && documentCategories.has(value as DocumentCategory)
+const normalizeCategory = (value: string | null): DocumentCategory | undefined => {
+	if (value === legacySourceMaterialDocumentCategory) return referenceDocumentCategory;
+	return value && documentCategories.has(value as DocumentCategory)
 		? (value as DocumentCategory)
 		: undefined;
+};
 
 const escapeMentionLabel = (value: string) => value.replace(/[[\]\\]/g, "\\$&");
 

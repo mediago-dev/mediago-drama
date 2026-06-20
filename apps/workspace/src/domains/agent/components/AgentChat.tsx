@@ -115,9 +115,7 @@ export const AgentChat: React.FC = () => {
 
 	useEffect(() => {
 		if (!composerSeed) return;
-		setComposerContext(
-			composerSeed.reference?.category === "source-material" ? "source-material" : "default",
-		);
+		setComposerContext(composerSeed.reference?.category === "reference" ? "reference" : "default");
 
 		const applySeed = () => {
 			const inserted = composerRef.current?.seed({
@@ -275,9 +273,7 @@ export const AgentChat: React.FC = () => {
 		if (decision === "add_to_library") {
 			try {
 				const uploadedAssets = await Promise.all(
-					pendingSend.attachments.map((attachment) =>
-						uploadSourceMaterialAsset(attachment, projectId),
-					),
+					pendingSend.attachments.map((attachment) => uploadAttachmentAsset(attachment, projectId)),
 				);
 				await refreshProjectAssets(projectId);
 				pendingSend.promptWithAttachments = appendUploadedAssetContext(
@@ -319,11 +315,7 @@ export const AgentChat: React.FC = () => {
 
 	const handleComposerChange = (nextState: AgentComposerState) => {
 		setComposerState(nextState);
-		if (
-			composerContext === "source-material" &&
-			!nextState.hasText &&
-			nextState.referenceCount === 0
-		) {
+		if (composerContext === "reference" && !nextState.hasText && nextState.referenceCount === 0) {
 			setComposerContext("default");
 		}
 	};
@@ -422,7 +414,7 @@ const attachmentDisplayMetadata = (
 	return displayAttachments.length > 0 ? { displayAttachments } : undefined;
 };
 
-const uploadSourceMaterialAsset = async (attachment: AgentAttachment, projectId: string | null) => {
+const uploadAttachmentAsset = async (attachment: AgentAttachment, projectId: string | null) => {
 	if (!projectId) throw new Error("请先进入项目后再添加素材库。");
 	return uploadProjectAsset(projectId, attachment.file);
 };

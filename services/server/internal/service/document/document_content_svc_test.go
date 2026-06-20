@@ -158,7 +158,7 @@ func TestCreateWorkspaceDocumentDoesNotInjectTemplateBody(t *testing.T) {
 	}
 }
 
-func TestCreateWorkspaceDocumentFromInputWithoutTemplateFallsBackToSourceMaterial(t *testing.T) {
+func TestCreateWorkspaceDocumentFromInputWithoutTemplateFallsBackToReference(t *testing.T) {
 	store := newWorkspaceStateService(t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
@@ -175,11 +175,11 @@ func TestCreateWorkspaceDocumentFromInputWithoutTemplateFallsBackToSourceMateria
 	if err != nil {
 		t.Fatalf("CreateWorkspaceDocumentFromInput returned error: %v", err)
 	}
-	if document.Category != "source-material" {
-		t.Fatalf("document category = %q, want source-material", document.Category)
+	if document.Category != "reference" {
+		t.Fatalf("document category = %q, want reference", document.Category)
 	}
 	if !strings.Contains(document.Content, "一段原始材料。") {
-		t.Fatalf("document content = %q, want provided source material", document.Content)
+		t.Fatalf("document content = %q, want provided reference", document.Content)
 	}
 }
 

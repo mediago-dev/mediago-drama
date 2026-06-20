@@ -7,7 +7,12 @@ import {
 	UserRound,
 	type LucideIcon,
 } from "lucide-react";
-import type { DocumentCategory, MarkdownDocument } from "@/domains/documents/stores";
+import {
+	legacySourceMaterialDocumentCategory,
+	referenceDocumentCategory,
+	type DocumentCategory,
+	type MarkdownDocument,
+} from "@/domains/documents/stores";
 import { isOverviewDocumentId } from "@/lib/overview/overview-template";
 
 export interface DocumentCategoryDescriptor {
@@ -25,10 +30,10 @@ export const documentCategoryDescriptors: readonly DocumentCategoryDescriptor[] 
 	{ key: "prop", label: "道具", icon: Package, colorVar: "--doc-category-prop" },
 	{ key: "storyboard", label: "分镜", icon: Film, colorVar: "--doc-category-storyboard" },
 	{
-		key: "source-material",
-		label: "素材",
+		key: referenceDocumentCategory,
+		label: "资料",
 		icon: FileInput,
-		colorVar: "--doc-category-source-material",
+		colorVar: "--doc-category-reference",
 	},
 ] as const;
 
@@ -40,15 +45,18 @@ export const documentCategoryDescriptorMap = Object.fromEntries(
 	documentCategoryDescriptors.map((descriptor) => [descriptor.key, descriptor]),
 ) as Record<DocumentCategory, DocumentCategoryDescriptor>;
 
-// Legacy uncategorized documents are shown under source material.
+// Uncategorized and legacy source-material documents are shown under reference documents.
 export const documentsForCategory = (
 	documents: MarkdownDocument[],
 	key: DocumentCategory,
 ): MarkdownDocument[] =>
-	documents.filter(
-		(document) =>
-			!isOverviewDocumentId(document.id) &&
-			(key === "source-material"
-				? document.category === "source-material" || document.category == null
-				: document.category === key),
-	);
+	documents.filter((document) => {
+		if (isOverviewDocumentId(document.id)) return false;
+
+		const category = document.category as string | undefined;
+		return key === referenceDocumentCategory
+			? category === referenceDocumentCategory ||
+					category === legacySourceMaterialDocumentCategory ||
+					category == null
+			: category === key;
+	});

@@ -4,6 +4,7 @@ import { sectionIdBeforeHeadingLine } from "@/domains/documents/lib/sections";
 import {
 	appendSectionMediaMarkdown,
 	removeSectionMediaMarkdown,
+	sectionMediaFromMarkdownLine,
 	sectionMediaSourceFromLine,
 } from "./section-media";
 
@@ -71,5 +72,14 @@ describe("section media markdown", () => {
 		expect(result?.markdown).toContain("[章节视频：旁白](</api/v1/media-assets/video-1/content>)");
 		expect(nextHeadingIndex).toBeGreaterThan(0);
 		expect(sectionIdBeforeHeadingLine(lines, nextHeadingIndex)).toBe("section_next");
+	});
+
+	it("does not treat bare section media labels as selected media", () => {
+		expect(
+			sectionMediaFromMarkdownLine("[章节音频](</api/v1/media-assets/audio-1/content>)"),
+		).toBeNull();
+		expect(
+			sectionMediaFromMarkdownLine("[章节视频：](</api/v1/media-assets/video-1/content>)"),
+		).toBeNull();
 	});
 });

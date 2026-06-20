@@ -136,7 +136,7 @@ func (store *Service) RestoreDocumentHistoryVersion(projectID string, documentID
 	if title != "" {
 		request.Title = &title
 	}
-	if category := strings.TrimSpace(version.Version.Category); category != "" && ValidateDocumentCategory(category) == nil {
+	if category := NormalizeDocumentCategoryValue(version.Version.Category); category != "" && ValidateDocumentCategory(category) == nil {
 		request.Category = &category
 	}
 	if version.Version.Tags != nil {

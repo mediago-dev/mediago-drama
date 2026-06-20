@@ -86,7 +86,7 @@ func TestBuildReferenceIndexItemsIgnoresAssetReferences(t *testing.T) {
 				DocumentID: "asset-1",
 				AssetID:    "asset-1",
 				AssetKind:  "image",
-				Category:   "source-material",
+				Category:   "reference",
 				Title:      "参考图.png",
 				URL:        "/api/media/assets/asset-1/content",
 			},

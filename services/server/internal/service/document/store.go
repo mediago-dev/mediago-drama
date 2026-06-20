@@ -501,7 +501,7 @@ func (store *Service) updateDocument(projectID string, documentID string, reques
 		document.Content = *request.Content
 	}
 	if request.Category != nil {
-		document.Category = strings.TrimSpace(*request.Category)
+		document.Category = NormalizeDocumentCategoryValue(*request.Category)
 	}
 	if request.ParentID != nil {
 		document.ParentID = ValidWorkspaceParentID(state.Documents, request.ParentID, document.ID)

@@ -99,7 +99,7 @@ func NormalizeWorkspaceDocuments(documents []mediamcp.WorkspaceDocument) []media
 		if document.Title == "" {
 			document.Title = "未命名"
 		}
-		document.Category = strings.TrimSpace(document.Category)
+		document.Category = NormalizeDocumentCategoryValue(document.Category)
 		if document.UpdatedAt == "" {
 			document.UpdatedAt = now
 		}
