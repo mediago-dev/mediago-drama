@@ -6,6 +6,8 @@ type Unit string
 const (
 	// UnitPerMillionTokens prices input and output tokens per million.
 	UnitPerMillionTokens Unit = "per_million_tokens"
+	// UnitPerMillionCharacters prices text-to-speech input characters per million.
+	UnitPerMillionCharacters Unit = "per_million_characters"
 	// UnitPerCall prices each generation call.
 	UnitPerCall Unit = "per_call"
 )
@@ -18,6 +20,7 @@ type RoutePrice struct {
 	InputTokenPrice  float64 `json:"inputTokenPrice"`
 	OutputTokenPrice float64 `json:"outputTokenPrice"`
 	CachedTokenPrice float64 `json:"cachedTokenPrice,omitempty"`
+	CharacterPrice   float64 `json:"characterPrice,omitempty"`
 	PerCallPrice     float64 `json:"perCallPrice,omitempty"`
 }
 
@@ -26,6 +29,7 @@ type Usage struct {
 	InputTokens  int
 	OutputTokens int
 	CachedTokens int
+	Characters   int
 	Calls        int
 }
 

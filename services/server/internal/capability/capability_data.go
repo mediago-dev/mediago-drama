@@ -10,6 +10,21 @@ type capabilitySpec struct {
 var capabilitySpecs = []capabilitySpec{
 	{
 		Capability: AtomicCapability{
+			ID:          "audio.generate",
+			Name:        "音频生成",
+			Description: "根据文本生成配音和旁白音频。",
+			Kind:        string(coregeneration.KindAudio),
+			Category:    CategoryGeneration,
+			Inputs:      []IOKind{IOKindText},
+			Outputs:     []IOKind{IOKindAudio},
+			Status:      StatusAvailable,
+			Icon:        "AudioLines",
+			Surface:     "generation",
+		},
+		RelatedRoutes: routesByKind(coregeneration.KindAudio),
+	},
+	{
+		Capability: AtomicCapability{
 			ID:          "image.generate",
 			Name:        "图片生成",
 			Description: "根据提示词和参考图生成图片素材。",

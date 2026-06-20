@@ -9,6 +9,12 @@ vi.mock("@/components/VideoPlayer", () => ({
 	VideoPlayer: ({ src }: { src: string }) => <div data-testid="video-player" data-src={src} />,
 }));
 
+vi.mock("@/components/AudioPlayer", () => ({
+	AudioPlayer: ({ mimeType, src }: { mimeType?: string; src: string }) => (
+		<div data-testid="audio-player" data-mime-type={mimeType} data-src={src} />
+	),
+}));
+
 vi.mock("react-photo-view", () => ({
 	PhotoProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 	PhotoSlider: ({
@@ -58,6 +64,15 @@ const imageEntry = (): GenerationEntry => ({
 	],
 });
 
+const audioEntry = (): GenerationEntry => ({
+	id: "entry-audio",
+	kind: "audio",
+	status: "completed",
+	content: "",
+	prompt: "把这段旁白生成配音",
+	assets: [{ kind: "audio", url: "https://example.test/narration.mp3", mimeType: "audio/mpeg" }],
+});
+
 describe("GenerationResultGallery", () => {
 	afterEach(() => {
 		cleanup();
@@ -103,6 +118,28 @@ describe("GenerationResultGallery", () => {
 			/>,
 		);
 
+		fireEvent.click(screen.getByRole("button", { name: "保存素材" }));
+
+		expect(onSaveAsset).toHaveBeenCalledWith(entry, entry.assets?.[0]);
+	});
+
+	it("renders generated audio assets with the shared audio player", () => {
+		const entry = audioEntry();
+		const onSaveAsset = vi.fn();
+
+		render(
+			<GenerationResultGallery
+				emptyText="暂无音频"
+				entries={[entry]}
+				kind="audio"
+				selectedAssetKeys={[]}
+				onSaveAsset={onSaveAsset}
+			/>,
+		);
+
+		const audioPlayer = screen.getByTestId("audio-player");
+		expect(audioPlayer.getAttribute("data-src")).toBe("https://example.test/narration.mp3");
+		expect(audioPlayer.getAttribute("data-mime-type")).toBe("audio/mpeg");
 		fireEvent.click(screen.getByRole("button", { name: "保存素材" }));
 
 		expect(onSaveAsset).toHaveBeenCalledWith(entry, entry.assets?.[0]);

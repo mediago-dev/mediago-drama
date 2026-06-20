@@ -32,5 +32,6 @@ describe("sidebar navigation", () => {
 			"studio-types",
 		);
 		expect(studioTabFromPath("/studio/video")).toBe("video");
+		expect(studioTabFromPath("/studio/audio")).toBe("audio");
 	});
 });

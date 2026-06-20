@@ -6,6 +6,8 @@ import "context"
 type Kind string
 
 const (
+	// KindAudio requests generated audio.
+	KindAudio Kind = "audio"
 	// KindImage requests generated images.
 	KindImage Kind = "image"
 	// KindText requests generated text.

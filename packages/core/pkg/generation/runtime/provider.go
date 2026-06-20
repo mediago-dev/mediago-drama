@@ -47,6 +47,7 @@ type Config struct {
 
 	OpenAIBaseURL     string
 	GoogleBaseURL     string
+	MiniMaxBaseURL    string
 	VolcengineBaseURL string
 	JimengBinPath     string
 	JimengBinDir      string
@@ -269,6 +270,7 @@ func (provider *Provider) officialProvider(ctx context.Context, route generation
 		apiKey,
 		provider.config.OpenAIBaseURL,
 		provider.config.GoogleBaseURL,
+		provider.config.MiniMaxBaseURL,
 		provider.config.VolcengineBaseURL,
 	)
 	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
@@ -276,6 +278,7 @@ func (provider *Provider) officialProvider(ctx context.Context, route generation
 			APIKey:            apiKey,
 			OpenAIBaseURL:     provider.config.OpenAIBaseURL,
 			GoogleBaseURL:     provider.config.GoogleBaseURL,
+			MiniMaxBaseURL:    provider.config.MiniMaxBaseURL,
 			VolcengineBaseURL: provider.config.VolcengineBaseURL,
 			HTTPClient:        provider.config.HTTPClient,
 		})

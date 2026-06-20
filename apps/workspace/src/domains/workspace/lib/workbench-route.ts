@@ -82,7 +82,7 @@ export const agentProjectPath = (
 };
 
 export const studioTabPath = (
-	tab: "image" | "text" | "video",
+	tab: "image" | "text" | "video" | "audio",
 	options: { conversationId?: string | null } = {},
 ) => {
 	const params = new URLSearchParams();

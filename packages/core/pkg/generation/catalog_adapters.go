@@ -3,6 +3,7 @@ package generation
 const (
 	ProviderOpenAI     = "openai"
 	ProviderGoogle     = "google"
+	ProviderMiniMax    = "minimax"
 	ProviderVolcengine = "volcengine"
 	ProviderDMX        = "dmx"
 	ProviderOpenRouter = "openrouter"
@@ -12,6 +13,7 @@ const (
 	AdapterOfficialOpenAIImage     = "official.openai.image"
 	AdapterOfficialOpenAIChatText  = "official.openai.chat_text"
 	AdapterOfficialGoogleImage     = "official.google.image"
+	AdapterOfficialMiniMaxSpeech   = "official.minimax.speech"
 	AdapterOfficialVolcengineImage = "official.volcengine.image"
 	AdapterOfficialVolcengineVideo = "official.volcengine.video"
 	AdapterOpenRouterChatImage     = "openrouter.chat.image"

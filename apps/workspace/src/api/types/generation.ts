@@ -66,7 +66,7 @@ export interface ModelSpec {
 }
 
 export type ParamMenu = "primary" | "secondary";
-export type ParamGroupID = "size" | "duration" | "count" | "other";
+export type ParamGroupID = "size" | "duration" | "count" | "voice" | "audio" | "other";
 
 export interface ParamSpec {
 	name: string;
@@ -124,7 +124,7 @@ export interface ProviderInfo {
 	providerType: ProviderType;
 }
 
-export type Kind = "image" | "text" | "video";
+export type Kind = "image" | "text" | "video" | "audio";
 
 export interface CapabilityManifestResponse {
 	capabilities: CapabilityRecord[];
@@ -170,6 +170,16 @@ export interface GenerationMessageRequest {
 	referenceUrls: string[];
 	referenceAssetIds: string[];
 	params: Record<string, unknown>;
+}
+
+export interface GenerationVoicePreviewRequest {
+	routeId: string;
+	voiceId: string;
+	params?: Record<string, unknown>;
+}
+
+export interface GenerationVoicePreviewResponse {
+	asset: GenerationAsset;
 }
 
 export interface ImportGenerationMediaAssetsRequest {

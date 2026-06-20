@@ -1,4 +1,5 @@
 import {
+	AudioLines,
 	ChevronDown,
 	FileText,
 	Film,
@@ -56,6 +57,7 @@ const toolboxConversationGroups: Array<{
 	{ icon: <Film />, kind: "video", label: "视频生成" },
 	{ icon: <ImageIcon />, kind: "image", label: "图片生成" },
 	{ icon: <FileText />, kind: "text", label: "文本生成" },
+	{ icon: <AudioLines />, kind: "audio", label: "音频生成" },
 ];
 
 export const GlobalToolboxButton: React.FC = () => {
@@ -100,13 +102,15 @@ const GlobalToolboxDrawer: React.FC<{
 	const videoConversations = useToolboxConversations("video", open);
 	const imageConversations = useToolboxConversations("image", open);
 	const textConversations = useToolboxConversations("text", open);
+	const audioConversations = useToolboxConversations("audio", open);
 	const conversationStateByKind = useMemo(
 		() => ({
 			video: videoConversations,
 			image: imageConversations,
 			text: textConversations,
+			audio: audioConversations,
 		}),
-		[imageConversations, textConversations, videoConversations],
+		[audioConversations, imageConversations, textConversations, videoConversations],
 	);
 	const allConversations = useMemo(
 		() =>
@@ -114,8 +118,10 @@ const GlobalToolboxDrawer: React.FC<{
 				...videoConversations.conversations,
 				...imageConversations.conversations,
 				...textConversations.conversations,
+				...audioConversations.conversations,
 			].sort(compareGenerationConversationsByUpdatedAt),
 		[
+			audioConversations.conversations,
 			imageConversations.conversations,
 			textConversations.conversations,
 			videoConversations.conversations,
@@ -132,7 +138,10 @@ const GlobalToolboxDrawer: React.FC<{
 		);
 	}, [activeConversation, allConversations]);
 	const isLoadingConversations =
-		videoConversations.isLoading || imageConversations.isLoading || textConversations.isLoading;
+		videoConversations.isLoading ||
+		imageConversations.isLoading ||
+		textConversations.isLoading ||
+		audioConversations.isLoading;
 
 	useEffect(() => {
 		if (!open) return;
@@ -437,7 +446,7 @@ const ToolboxConversationItem: React.FC<{
 };
 
 const isToolboxKind = (kind: string | undefined): kind is StudioTab =>
-	kind === "video" || kind === "image" || kind === "text";
+	kind === "video" || kind === "image" || kind === "text" || kind === "audio";
 
 const toolboxConversationTime = (value: string) => {
 	const date = new Date(value);

@@ -1,4 +1,4 @@
-import { FileText, Film, Image as ImageIcon, KeyRound, Loader2 } from "lucide-react";
+import { AudioLines, FileText, Film, Image as ImageIcon, KeyRound, Loader2 } from "lucide-react";
 import type React from "react";
 import type { GenerationKind } from "@/domains/generation/api/generation";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/components/ui/alert";
@@ -51,7 +51,7 @@ export const ModeToggle: React.FC<{
 		onValueChange={(value) => onChange(value as GenerationKind)}
 		className={compact ? undefined : "w-full"}
 	>
-		<TabsList className={cn("grid grid-cols-3", compact ? "w-auto" : "w-full")}>
+		<TabsList className={cn("grid grid-cols-4", compact ? "w-auto" : "w-full")}>
 			<TabsTrigger value="image" className={compact ? "px-2" : undefined}>
 				<ImageIcon className="size-4" />
 				{compact ? null : <span>图像</span>}
@@ -63,6 +63,10 @@ export const ModeToggle: React.FC<{
 			<TabsTrigger value="video" className={compact ? "px-2" : undefined}>
 				<Film className="size-4" />
 				{compact ? null : <span>视频</span>}
+			</TabsTrigger>
+			<TabsTrigger value="audio" className={compact ? "px-2" : undefined}>
+				<AudioLines className="size-4" />
+				{compact ? null : <span>音频</span>}
 			</TabsTrigger>
 		</TabsList>
 	</Tabs>

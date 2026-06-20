@@ -19,7 +19,7 @@ export const useGenerationMediaLibrary = ({
 	setError,
 }: UseGenerationMediaLibraryOptions) => {
 	const [activeMediaAssetId, setActiveMediaAssetId] = useState<string | null>(null);
-	const [mediaKindFilter, setMediaKindFilter] = useState<"all" | "image" | "video">("all");
+	const [mediaKindFilter, setMediaKindFilter] = useState<"all" | MediaAsset["kind"]>("all");
 	const [mediaQuery, setMediaQuery] = useState("");
 	const { data: mediaData, mutate: mutateMediaAssets } = useSWR(
 		[mediaAssetsKey, mediaAssetProjectId],

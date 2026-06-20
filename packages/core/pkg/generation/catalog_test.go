@@ -41,6 +41,7 @@ func TestCatalogRoutesReferenceKnownFamiliesAndVersions(t *testing.T) {
 	for _, provider := range []string{
 		ProviderOpenAI,
 		ProviderGoogle,
+		ProviderMiniMax,
 		ProviderVolcengine,
 		ProviderDMX,
 		ProviderOpenRouter,
@@ -225,6 +226,14 @@ func TestDefaultRoutes(t *testing.T) {
 	}
 	if textRoute.ID != RouteDMXGPT41MiniText {
 		t.Fatalf("text default route = %q, want %q", textRoute.ID, RouteDMXGPT41MiniText)
+	}
+
+	audioRoute, ok := DefaultRoute(KindAudio)
+	if !ok {
+		t.Fatal("audio default route is missing")
+	}
+	if audioRoute.ID != RouteOfficialMiniMaxSpeech28HD {
+		t.Fatalf("audio default route = %q, want %q", audioRoute.ID, RouteOfficialMiniMaxSpeech28HD)
 	}
 }
 
@@ -440,6 +449,25 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 	if jimengSeedanceVIP.Model != "seedance2.0_vip" {
 		t.Fatalf("jimeng seedance vip model = %q", jimengSeedanceVIP.Model)
 	}
+
+	minimaxSpeech := mustRoute(t, RouteOfficialMiniMaxSpeech28HD)
+	if minimaxSpeech.Label != "MiniMax 国内" {
+		t.Fatalf("minimax speech label = %q, want MiniMax 国内", minimaxSpeech.Label)
+	}
+	if minimaxSpeech.DocURL != "https://platform.minimaxi.com/docs/api-reference/speech-t2a-http" {
+		t.Fatalf("minimax speech doc url = %q, want MiniMax domestic docs", minimaxSpeech.DocURL)
+	}
+	assertHasParams(t, minimaxSpeech, "voiceId", "speed", "volume", "pitch", "outputFormat", "sampleRate", "bitrate")
+	voiceID := mustParam(t, minimaxSpeech, "voiceId")
+	if voiceID.Type != "select" || voiceID.Group != string(ParamGroupVoice) {
+		t.Fatalf("voiceId param = type %q group %q, want select/%s", voiceID.Type, voiceID.Group, ParamGroupVoice)
+	}
+	if len(voiceID.Options) < 300 {
+		t.Fatalf("voiceId options = %d, want official system voice list", len(voiceID.Options))
+	}
+	assertHasOptions(t, voiceID, "Chinese (Mandarin)_Warm_Bestie", "male-qn-qingse", "English_Aussie_Bloke")
+	assertParamDefault(t, minimaxSpeech, "voiceId", "Chinese (Mandarin)_Warm_Bestie")
+	assertParamDefault(t, minimaxSpeech, "outputFormat", "mp3")
 }
 
 func TestRouteParamsDefaultToLowestCostOptions(t *testing.T) {

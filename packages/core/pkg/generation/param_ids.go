@@ -21,6 +21,12 @@ const (
 	ParamOutputCompression     ParamID = "outputCompression"
 	ParamTemperature           ParamID = "temperature"
 	ParamMaxTokens             ParamID = "maxTokens"
+	ParamVoiceID               ParamID = "voiceId"
+	ParamSpeed                 ParamID = "speed"
+	ParamVolume                ParamID = "volume"
+	ParamPitch                 ParamID = "pitch"
+	ParamSampleRate            ParamID = "sampleRate"
+	ParamBitrate               ParamID = "bitrate"
 )
 
 type ParamGroupID string
@@ -29,6 +35,8 @@ const (
 	ParamGroupSize     ParamGroupID = "size"
 	ParamGroupDuration ParamGroupID = "duration"
 	ParamGroupCount    ParamGroupID = "count"
+	ParamGroupVoice    ParamGroupID = "voice"
+	ParamGroupAudio    ParamGroupID = "audio"
 	ParamGroupOther    ParamGroupID = "other"
 )
 
@@ -38,12 +46,14 @@ type ParamGroupSpec struct {
 }
 
 var paramRegistryByKind = map[Kind]map[ParamID]CanonicalParamSpec{
+	KindAudio: audioParamRegistry,
 	KindImage: imageParamRegistry,
 	KindVideo: videoParamRegistry,
 	KindText:  textParamRegistry,
 }
 
 var paramGroupsByKind = map[Kind][]ParamGroupSpec{
+	KindAudio: audioParamGroups,
 	KindImage: imageParamGroups,
 	KindVideo: videoParamGroups,
 	KindText:  textParamGroups,

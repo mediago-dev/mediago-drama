@@ -1,6 +1,6 @@
 import httpClient from "@/shared/lib/http";
 
-export type MediaAssetKind = "image" | "video";
+export type MediaAssetKind = "image" | "video" | "audio";
 
 export interface MediaAsset {
 	id: string;

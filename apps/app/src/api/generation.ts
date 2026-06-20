@@ -23,6 +23,7 @@ export interface GenerationParam {
 export type GenerationProvider =
 	| "openai"
 	| "google"
+	| "minimax"
 	| "volcengine"
 	| "dmx"
 	| "openrouter"

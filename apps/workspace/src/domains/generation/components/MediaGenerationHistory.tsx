@@ -1,4 +1,5 @@
 import {
+	AudioLines,
 	Check,
 	Clipboard,
 	Download,
@@ -943,6 +944,8 @@ const HistoryGenerationItem: React.FC<{
 				<div className="flex h-16 w-20 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted-foreground/10">
 					{source && thumbnail?.kind === "video" ? (
 						<GenerationVideoThumbnail source={source} />
+					) : source && thumbnail?.kind === "audio" ? (
+						<AudioLines className="size-5 text-muted-foreground" />
 					) : source ? (
 						<img src={source} alt="" className="size-full object-contain" />
 					) : loading ? (
@@ -969,7 +972,7 @@ const HistoryGenerationItem: React.FC<{
 									failed && "text-error-foreground",
 								)}
 							>
-								{displayAssetCount} {kind === "image" ? "张" : "个"}
+								{displayAssetCount} {historyAssetUnit(kind)}
 							</span>
 						</span>
 						{selection.selectedCount > 0 ? (
@@ -1029,7 +1032,7 @@ const HistoryAssetStrip: React.FC<{
 	if (assets.length === 0 && pendingPlaceholderCount === 0) {
 		return (
 			<div className="mt-3 flex h-24 items-center justify-center rounded-sm border border-dashed border-border bg-muted/50 text-xs text-muted-foreground">
-				{kind === "image" ? "暂无图片" : "暂无视频"}
+				{kind === "image" ? "暂无图片" : kind === "audio" ? "暂无音频" : "暂无视频"}
 			</div>
 		);
 	}
@@ -1070,7 +1073,7 @@ const HistoryPendingAssetThumb: React.FC<{
 }> = ({ index, kind }) => (
 	<div
 		role="img"
-		aria-label={`第 ${index + 1} ${kind === "image" ? "张" : "个"}生成中`}
+		aria-label={`第 ${index + 1} ${historyAssetUnit(kind)}生成中`}
 		className="flex h-24 w-32 shrink-0 flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-border bg-muted/50 text-2xs text-muted-foreground"
 	>
 		<Loader2 className="size-4 animate-spin" />
@@ -1105,6 +1108,11 @@ const HistoryAssetThumb: React.FC<{
 	>
 		{asset.kind === "video" ? (
 			<GenerationVideoThumbnail source={source} />
+		) : asset.kind === "audio" ? (
+			<div className="flex size-full flex-col items-center justify-center gap-2 bg-ide-toolbar text-2xs text-muted-foreground">
+				<AudioLines className="size-5" />
+				<span>音频</span>
+			</div>
 		) : (
 			<img src={source} alt="" className="size-full object-contain" />
 		)}
@@ -1196,6 +1204,9 @@ const pendingGenerationAssetCount = (
 
 	return requestGenerationCount(entry.requestDetails ?? []);
 };
+
+const historyAssetUnit = (kind: GenerationKind) =>
+	kind === "image" ? "张" : kind === "audio" ? "段" : "个";
 
 const requestGenerationCount = (details: Array<{ label: string; value: string }>) => {
 	const countDetail = details.find((detail) => isCountDetailLabel(detail.label));

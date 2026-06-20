@@ -7,7 +7,7 @@ import {
 	IonToolbar,
 } from "@ionic/react";
 import { useHistory } from "react-router-dom";
-import { filmOutline, imageOutline } from "ionicons/icons";
+import { filmOutline, imageOutline, micOutline } from "ionicons/icons";
 import useSWR from "swr";
 import {
 	type GenerationKind,
@@ -42,6 +42,12 @@ const generationKindItems: Array<{
 		title: "视频",
 		description: "进入视频会话，提交任务并跟踪生成状态。",
 		icon: filmOutline,
+	},
+	{
+		kind: "audio",
+		title: "音频",
+		description: "进入音频会话，把文案生成配音或旁白。",
+		icon: micOutline,
 	},
 ];
 

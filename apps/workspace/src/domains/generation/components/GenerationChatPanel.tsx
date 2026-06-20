@@ -1,5 +1,6 @@
 import {
 	AlertCircle,
+	AudioLines,
 	Check,
 	ChevronDown,
 	Clipboard,
@@ -14,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { PhotoProvider, PhotoView } from "react-photo-view";
 import "react-photo-view/dist/react-photo-view.css";
 import { Virtuoso } from "react-virtuoso";
+import { AudioPlayer } from "@/components/AudioPlayer";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import type { GenerationAsset } from "@/domains/generation/api/generation";
 import { MarkdownContent } from "@/domains/agent/components/timeline/MarkdownContent";
@@ -171,6 +173,8 @@ const GenerationChatEntry: React.FC<{
 										<Loader2 className="size-4 animate-spin" />
 									) : entry.kind === "image" ? (
 										<ImageIcon className="size-4" />
+									) : entry.kind === "audio" ? (
+										<AudioLines className="size-4" />
 									) : (
 										<Film className="size-4" />
 									)}
@@ -430,11 +434,15 @@ const GenerationChatAssetStrip: React.FC<{
 						key={`${asset.kind}:${source}`}
 						className={cn(
 							"flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border",
-							asset.kind === "video" ? "bg-ide-toolbar" : "bg-muted-foreground/10",
+							asset.kind === "video" || asset.kind === "audio"
+								? "bg-ide-toolbar"
+								: "bg-muted-foreground/10",
 						)}
 					>
 						{asset.kind === "video" ? (
 							<video src={source} muted preload="metadata" className="size-full object-cover" />
+						) : asset.kind === "audio" ? (
+							<AudioLines className="size-5 text-muted-foreground" />
 						) : (
 							<img src={source} alt="" className="size-full object-contain" />
 						)}
@@ -588,7 +596,37 @@ const GenerationAssetGallery: React.FC<{
 						asset.kind === "image" &&
 						selectedGeneratedAssetKey === generationAssetSelectionKey(asset);
 
-					return asset.kind === "video" ? (
+					return asset.kind === "audio" ? (
+						<div
+							key={source}
+							className="relative flex w-[min(36rem,78vw)] shrink-0 flex-col gap-3 overflow-hidden rounded-sm border border-border bg-ide-panel p-3"
+						>
+							<div className="flex min-w-0 items-center gap-2 pr-20">
+								<span className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
+									<AudioLines className="size-4" />
+								</span>
+								<div className="min-w-0">
+									<p className="truncate text-xs font-medium text-foreground">生成音频</p>
+									<p className="truncate text-2xs text-muted-foreground">
+										{asset.mimeType || "audio/mpeg"}
+									</p>
+								</div>
+							</div>
+							<AudioPlayer
+								src={source}
+								mimeType={asset.mimeType || "audio/mpeg"}
+								title="生成音频"
+							/>
+							{onSaveAsset ? (
+								<SaveGeneratedResultButton
+									className="absolute right-2 top-2 z-10"
+									saved={savedKeys.includes(generatedAssetSaveKey(entry, asset))}
+									saving={savingKeys.includes(generatedAssetSaveKey(entry, asset))}
+									onSave={() => onSaveAsset(entry, asset)}
+								/>
+							) : null}
+						</div>
+					) : asset.kind === "video" ? (
 						<div
 							key={source}
 							className="relative w-[min(44rem,78vw)] shrink-0 overflow-hidden rounded-sm border border-border bg-ide-toolbar"

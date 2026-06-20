@@ -10,6 +10,8 @@ import type {
 	GenerationMessageRequest as GeneratedGenerationMessageRequest,
 	GenerationMessageResponse as GeneratedGenerationMessageResponse,
 	GenerationModelsResponse as GeneratedGenerationModelsResponse,
+	GenerationVoicePreviewRequest as GeneratedGenerationVoicePreviewRequest,
+	GenerationVoicePreviewResponse as GeneratedGenerationVoicePreviewResponse,
 	ImportGenerationMediaAssetsRequest as GeneratedImportGenerationMediaAssetsRequest,
 	GenerationNotificationEvent as GeneratedGenerationNotificationEvent,
 	GenerationNotificationRecord,
@@ -71,6 +73,8 @@ export type ImportGenerationMediaAssetsRequest = Omit<
 export type GenerationAsset = GeneratedGenerationAsset;
 export type GenerationUsage = GeneratedGenerationUsage;
 export type GenerationMessageResponse = GeneratedGenerationMessageResponse;
+export type GenerationVoicePreviewRequest = GeneratedGenerationVoicePreviewRequest;
+export type GenerationVoicePreviewResponse = GeneratedGenerationVoicePreviewResponse;
 export type GenerationNotification = GenerationNotificationRecord;
 export type GenerationNotificationEvent = GeneratedGenerationNotificationEvent;
 export type GenerationNotificationsResponse = GeneratedGenerationNotificationsResponse;
@@ -150,6 +154,7 @@ const projectGenerationKindLabel: Record<GenerationKind, string> = {
 	image: "图片",
 	video: "视频",
 	text: "文本",
+	audio: "音频",
 };
 
 export interface ProjectGenerationConversation {
@@ -418,6 +423,17 @@ export const sendGenerationMessage = async (request: GenerationMessageRequest) =
 	const response = await httpClient.post<GenerationMessageResponse>(
 		`${generationConversationsKey}/${encodeURIComponent(payload.sessionId)}/messages`,
 		payload,
+		{
+			timeout: generationRequestTimeoutMs,
+		},
+	);
+	return response.data;
+};
+
+export const previewGenerationVoice = async (request: GenerationVoicePreviewRequest) => {
+	const response = await httpClient.post<GenerationVoicePreviewResponse>(
+		"/generation/voice-preview",
+		request,
 		{
 			timeout: generationRequestTimeoutMs,
 		},

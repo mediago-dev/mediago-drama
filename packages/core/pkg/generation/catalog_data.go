@@ -109,4 +109,20 @@ var familySpecs = []familySpec{
 			openRouterRoute(RouteOpenRouterSeedance15Pro, FamilySeedance, VersionSeedance15Pro, KindVideo, "OpenRouter", "bytedance/seedance-1-5-pro", AdapterOpenRouterVideo, openRouterVideoDocs, openRouterVideoParams(), true, true),
 		},
 	},
+	{
+		Family: ModelFamily{
+			ID:          FamilyMiniMaxSpeech,
+			Label:       "MiniMax 国内 Speech",
+			Kind:        KindAudio,
+			Description: "MiniMax 国内文本转语音模型",
+		},
+		Versions: []ModelVersion{
+			version(VersionMiniMaxSpeech28HD, FamilyMiniMaxSpeech, "Minimax-speech-2.8-hd", KindAudio, "speech-2.8-hd", false, false),
+			version(VersionMiniMaxSpeech28Turbo, FamilyMiniMaxSpeech, "Minimax-speech-2.8-turbo", KindAudio, "speech-2.8-turbo", false, false),
+		},
+		Routes: []ModelRoute{
+			officialRoute(RouteOfficialMiniMaxSpeech28HD, FamilyMiniMaxSpeech, VersionMiniMaxSpeech28HD, KindAudio, "MiniMax 国内", "speech-2.8-hd", AdapterOfficialMiniMaxSpeech, "https://platform.minimaxi.com/docs/api-reference/speech-t2a-http", []string{ProviderMiniMax}, minimaxSpeechParams(), false, false),
+			officialRoute(RouteOfficialMiniMaxSpeech28Turbo, FamilyMiniMaxSpeech, VersionMiniMaxSpeech28Turbo, KindAudio, "MiniMax 国内", "speech-2.8-turbo", AdapterOfficialMiniMaxSpeech, "https://platform.minimaxi.com/docs/api-reference/speech-t2a-http", []string{ProviderMiniMax}, minimaxSpeechParams(), false, false),
+		},
+	},
 }

@@ -188,6 +188,97 @@ func TestGenerateGoogleImage(t *testing.T) {
 	}
 }
 
+func TestGenerateMiniMaxSpeech(t *testing.T) {
+	var authHeader string
+	var payload miniMaxSpeechRequest
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authHeader = request.Header.Get("Authorization")
+		if request.URL.Path != "/v1/t2a_v2" {
+			t.Fatalf("path = %q, want /v1/t2a_v2", request.URL.Path)
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"data":{"audio":"68656c6c6f","status":2},
+			"extra_info":{
+				"audio_length":1000,
+				"audio_sample_rate":32000,
+				"audio_size":5,
+				"bitrate":128000,
+				"word_count":2,
+				"usage_characters":7,
+				"audio_format":"mp3",
+				"audio_channel":1
+			},
+			"trace_id":"trace-tts",
+			"base_resp":{"status_code":0,"status_msg":"success"}
+		}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{MiniMaxBaseURL: server.URL, APIKey: "sk-minimax"})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindAudio,
+		RouteID: generation.RouteOfficialMiniMaxSpeech28HD,
+		Prompt:  "你好，世界",
+		Params: map[string]any{
+			"voiceId":      "Chinese (Mandarin)_News_Anchor",
+			"speed":        1.2,
+			"volume":       1.5,
+			"pitch":        -1,
+			"outputFormat": "mp3",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if authHeader != "Bearer sk-minimax" {
+		t.Fatalf("Authorization = %q, want Bearer sk-minimax", authHeader)
+	}
+	if payload.Model != "speech-2.8-hd" || payload.Text != "你好，世界" || payload.Stream {
+		t.Fatalf("payload basics = %#v", payload)
+	}
+	if payload.VoiceSetting.VoiceID != "Chinese (Mandarin)_News_Anchor" ||
+		payload.VoiceSetting.Speed != 1.2 ||
+		payload.VoiceSetting.Volume != 1.5 ||
+		payload.VoiceSetting.Pitch != -1 {
+		t.Fatalf("voice setting = %#v", payload.VoiceSetting)
+	}
+	if payload.OutputFormat != "hex" ||
+		payload.AudioSetting.Format != "mp3" ||
+		payload.AudioSetting.SampleRate != 32000 ||
+		payload.AudioSetting.Bitrate != 128000 {
+		t.Fatalf("audio setting = %#v output=%q", payload.AudioSetting, payload.OutputFormat)
+	}
+	if len(response.Assets) != 1 || response.Assets[0].Kind != generation.KindAudio {
+		t.Fatalf("assets = %#v", response.Assets)
+	}
+	if response.Assets[0].Base64 != "aGVsbG8=" || response.Assets[0].MIMEType != "audio/mpeg" {
+		t.Fatalf("audio asset = %#v", response.Assets[0])
+	}
+	if response.Usage.TotalTokens != 7 {
+		t.Fatalf("usage = %#v", response.Usage)
+	}
+}
+
+func TestNewProviderDefaultsMiniMaxToDomesticEndpoint(t *testing.T) {
+	provider, err := NewProvider(Config{APIKey: "sk-minimax"})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+	if provider.miniMaxBaseURL != "https://api.minimaxi.com" {
+		t.Fatalf("miniMaxBaseURL = %q, want domestic endpoint", provider.miniMaxBaseURL)
+	}
+}
+
 func TestGenerateVolcengineImage(t *testing.T) {
 	var authHeader string
 	var payload volcengineImagesRequest

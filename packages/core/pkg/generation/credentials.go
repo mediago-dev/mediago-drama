@@ -35,6 +35,14 @@ func CredentialSpecs() []CredentialSpec {
 			Description: "Google official image routes",
 		},
 		{
+			ID:              ProviderMiniMax,
+			Label:           "MiniMax 国内",
+			Description:     "MiniMax 国内语音生成路由",
+			CredentialLabel: "MiniMax 国内 API Key",
+			Placeholder:     "输入 MiniMax 国内 API Key",
+			Help:            "用于 MiniMax 国内 speech-2.8-hd / speech-2.8-turbo 文本转语音生成。",
+		},
+		{
 			ID:          ProviderVolcengine,
 			Label:       "Volcengine",
 			Description: "Seedream and Seedance official routes",

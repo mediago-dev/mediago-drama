@@ -43,6 +43,19 @@ const compressionParam: GenerationParam = {
 	max: 100,
 };
 
+const voiceParam: GenerationParam = {
+	name: "voiceId",
+	label: "音色",
+	type: "select",
+	menu: "primary",
+	default: "Chinese (Mandarin)_Warm_Bestie",
+	options: [
+		{ label: "中文 (普通话) · 温暖闺蜜", value: "Chinese (Mandarin)_Warm_Bestie" },
+		{ label: "中文 (普通话) · 播报男声", value: "Chinese (Mandarin)_Male_Announcer" },
+		{ label: "英文 · Aussie Bloke", value: "English_Aussie_Bloke" },
+	],
+};
+
 describe("ReferenceSelectionDialog", () => {
 	afterEach(() => {
 		cleanup();
@@ -327,6 +340,34 @@ describe("PrimaryParamControl", () => {
 
 		expect(onChange).toHaveBeenCalledWith("5");
 		await waitFor(() => expect(screen.queryByRole("dialog", { name: "时长" })).toBeNull());
+	});
+
+	it("renders voice options as a compact voice picker with preview", async () => {
+		const onChange = vi.fn();
+		const onPreviewVoice = vi.fn();
+		render(
+			<PrimaryParamControl
+				param={voiceParam}
+				value="Chinese (Mandarin)_Warm_Bestie"
+				onChange={onChange}
+				onPreviewVoice={onPreviewVoice}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "音色：中文 (普通话) · 温暖闺蜜" }));
+		await screen.findByRole("dialog", { name: "音色" });
+
+		expect(screen.getByRole("button", { name: "全部音色" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "我的音色" })).toBeNull();
+		expect(screen.getByRole("combobox", { name: "语言" })).toBeTruthy();
+
+		fireEvent.click(screen.getByRole("button", { name: "预览 英文 · Aussie Bloke" }));
+		expect(onPreviewVoice).toHaveBeenCalledWith("English_Aussie_Bloke");
+
+		fireEvent.click(screen.getByRole("button", { name: "选择 英文 · Aussie Bloke" }));
+
+		expect(onChange).toHaveBeenCalledWith("English_Aussie_Bloke");
+		await waitFor(() => expect(screen.queryByRole("dialog", { name: "音色" })).toBeNull());
 	});
 });
 

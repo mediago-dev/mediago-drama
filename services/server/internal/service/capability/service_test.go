@@ -13,13 +13,17 @@ func TestListCapabilitiesComputesAvailability(t *testing.T) {
 	})
 
 	response := service.ListCapabilities()
-	if len(response.Capabilities) != 3 {
-		t.Fatalf("capabilities = %d, want 3", len(response.Capabilities))
+	if len(response.Capabilities) != 4 {
+		t.Fatalf("capabilities = %d, want 4", len(response.Capabilities))
 	}
 
 	text := findRecord(t, response.Capabilities, "text.generate")
 	if !text.Available {
 		t.Fatal("text.generate should be available when a related route is configured")
+	}
+	audio := findRecord(t, response.Capabilities, "audio.generate")
+	if audio.Available {
+		t.Fatal("audio.generate should be unavailable without a configured audio route")
 	}
 	image := findRecord(t, response.Capabilities, "image.generate")
 	if image.Available {

@@ -1,4 +1,5 @@
 import {
+	AudioLines,
 	ChevronLeft,
 	Bot,
 	Ellipsis,
@@ -77,6 +78,14 @@ const fallbackStudioToolItems: StudioToolItem[] = [
 		label: "文本生成",
 		sourceIndex: 2,
 		value: "text.generate",
+	},
+	{
+		category: "generation",
+		generationTab: "audio",
+		icon: <AudioLines />,
+		label: "音频生成",
+		sourceIndex: 3,
+		value: "audio.generate",
 	},
 ];
 
@@ -291,6 +300,7 @@ const studioTabOrder: Record<StudioTab, number> = {
 	video: 0,
 	image: 1,
 	text: 2,
+	audio: 3,
 };
 
 const defaultStudioConversationKind: StudioTab = "video";
@@ -303,6 +313,7 @@ const studioConversationGroups: Array<{
 	{ icon: <Film />, kind: "video", label: "视频生成" },
 	{ icon: <ImageIcon />, kind: "image", label: "图片生成" },
 	{ icon: <FileText />, kind: "text", label: "文本生成" },
+	{ icon: <AudioLines />, kind: "audio", label: "音频生成" },
 ];
 
 const studioToolItemsFromCapabilities = (capabilities: CapabilityRecord[]): StudioToolItem[] =>
@@ -362,7 +373,7 @@ const compareStudioToolItems = (left: StudioToolItem, right: StudioToolItem) => 
 };
 
 const isStudioTabKind = (kind: string): kind is StudioTab =>
-	kind === "image" || kind === "video" || kind === "text";
+	kind === "image" || kind === "video" || kind === "text" || kind === "audio";
 
 const StudioConversationGroup: React.FC<{
 	activeConversationId: string;

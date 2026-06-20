@@ -22,6 +22,15 @@ func buildRoutePrices() []RoutePrice {
 		case coregeneration.KindVideo:
 			price.Unit = UnitPerCall
 			price.PerCallPrice = 0.20
+		case coregeneration.KindAudio:
+			price.Currency = "CNY"
+			price.Unit = UnitPerMillionCharacters
+			switch route.ID {
+			case coregeneration.RouteOfficialMiniMaxSpeech28HD:
+				price.CharacterPrice = 350
+			case coregeneration.RouteOfficialMiniMaxSpeech28Turbo:
+				price.CharacterPrice = 200
+			}
 		default:
 			price.Unit = UnitPerCall
 		}

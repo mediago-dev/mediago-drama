@@ -9,7 +9,7 @@ import {
 import React from "react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GenerationAsset } from "@/domains/generation/api/generation";
+import type { GenerationAsset, GenerationParam } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { GenerationEntry } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
@@ -23,6 +23,7 @@ const toastMocks = vi.hoisted(() => ({
 	warning: vi.fn(),
 }));
 const generationApiMocks = vi.hoisted(() => ({
+	previewGenerationVoice: vi.fn(),
 	selectedGenerationAssetsQueryKey: vi.fn((projectId: string) => [
 		"generation-selected-assets",
 		projectId,
@@ -42,6 +43,7 @@ vi.mock("@/domains/generation/api/generation", async (importOriginal) => {
 
 	return {
 		...actual,
+		previewGenerationVoice: generationApiMocks.previewGenerationVoice,
 		selectedGenerationAssetsQueryKey: generationApiMocks.selectedGenerationAssetsQueryKey,
 		updateGenerationTaskAsset: generationApiMocks.updateGenerationTaskAsset,
 	};
@@ -171,6 +173,12 @@ vi.mock("@/components/VideoPlayer", () => ({
 	VideoPlayer: ({ src }: { src: string }) => <div data-testid="video-player" data-src={src} />,
 }));
 
+vi.mock("@/components/AudioPlayer", () => ({
+	AudioPlayer: ({ mimeType, src }: { mimeType?: string; src: string }) => (
+		<div data-testid="audio-player" data-mime-type={mimeType} data-src={src} />
+	),
+}));
+
 const render = (ui: React.ReactElement) =>
 	testingRender(
 		<>
@@ -253,6 +261,19 @@ const mediaAsset: MediaAsset = {
 	url: "/api/v1/media-assets/media-a/content",
 	createdAt: "2026-01-01T00:00:00.000Z",
 	updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+const audioVoiceParam: GenerationParam = {
+	name: "voiceId",
+	label: "音色",
+	type: "select",
+	group: "voice",
+	menu: "primary",
+	default: "female-shaonv",
+	options: [
+		{ label: "中文 (普通话) · 少女音色", value: "female-shaonv" },
+		{ label: "中文 (普通话) · 精英青年音色", value: "male-qn-jingying" },
+	],
 };
 
 const workspaceDefaults = {
@@ -341,6 +362,123 @@ describe("MediaGenerationWorkspace", () => {
 			callback(0);
 			return 0;
 		}) as typeof window.requestAnimationFrame;
+	});
+
+	it("caches generated voice previews when the browser blocks autoplay", async () => {
+		const originalAudio = globalThis.Audio;
+		const playMock = vi
+			.fn<() => Promise<void>>()
+			.mockRejectedValueOnce(new DOMException("autoplay blocked", "NotAllowedError"))
+			.mockResolvedValue(undefined);
+		const pauseMock = vi.fn();
+		const audioSources: string[] = [];
+
+		class MockAudio {
+			src: string;
+
+			constructor(src?: string) {
+				this.src = src ?? "";
+				audioSources.push(this.src);
+			}
+
+			play = playMock;
+			pause = pauseMock;
+		}
+
+		Object.defineProperty(globalThis, "Audio", {
+			configurable: true,
+			value: MockAudio,
+			writable: true,
+		});
+
+		generationApiMocks.previewGenerationVoice.mockResolvedValue({
+			asset: {
+				base64: "cHJldmlldw==",
+				kind: "audio",
+				mimeType: "audio/mpeg",
+			},
+		});
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			kind: "audio",
+			selectedFamily: { id: "minimax-speech", label: "MiniMax 国内 Speech" },
+			selectedParams: {
+				voiceId: "female-shaonv",
+			},
+			selectedRoute: {
+				...workspaceDefaults.selectedRoute,
+				adapter: "official.minimax.speech",
+				familyId: "minimax-speech",
+				id: "official.minimax-speech-2.8-turbo",
+				kind: "audio",
+				model: "speech-2.8-turbo",
+				params: [audioVoiceParam],
+				provider: "minimax",
+				supportsReferenceUrls: false,
+				versionId: "minimax-speech-2.8-turbo",
+			},
+			selectedVersion: { id: "minimax-speech-2.8-turbo", label: "Minimax-speech-2.8-turbo" },
+			visibleFamilies: [{ id: "minimax-speech", label: "MiniMax 国内 Speech" }],
+			visibleFamilyRoutes: [
+				{
+					...workspaceDefaults.selectedRoute,
+					adapter: "official.minimax.speech",
+					familyId: "minimax-speech",
+					id: "official.minimax-speech-2.8-turbo",
+					kind: "audio",
+					model: "speech-2.8-turbo",
+					params: [audioVoiceParam],
+					provider: "minimax",
+					supportsReferenceUrls: false,
+					versionId: "minimax-speech-2.8-turbo",
+				},
+			],
+			visibleVersions: [{ id: "minimax-speech-2.8-turbo", label: "Minimax-speech-2.8-turbo" }],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		try {
+			render(
+				<MediaGenerationWorkspace
+					historyScopeId="history-a"
+					initialPrompt="初始提示词"
+					kind="audio"
+				/>,
+			);
+
+			fireEvent.click(screen.getByRole("button", { name: "音色：中文 (普通话) · 少女音色" }));
+			await screen.findByRole("dialog", { name: "音色" });
+			fireEvent.click(screen.getByRole("button", { name: "预览 中文 (普通话) · 精英青年音色" }));
+
+			await waitFor(() => {
+				expect(generationApiMocks.previewGenerationVoice).toHaveBeenCalledWith({
+					params: {
+						voiceId: "male-qn-jingying",
+					},
+					routeId: "official.minimax-speech-2.8-turbo",
+					voiceId: "male-qn-jingying",
+				});
+				expect(toastMocks.warning).toHaveBeenCalledWith("试听已生成", {
+					description: "浏览器拦截了自动播放，请再点一次播放。",
+				});
+			});
+
+			fireEvent.click(screen.getByRole("button", { name: "预览 中文 (普通话) · 精英青年音色" }));
+
+			await waitFor(() => {
+				expect(playMock).toHaveBeenCalledTimes(2);
+			});
+			expect(generationApiMocks.previewGenerationVoice).toHaveBeenCalledTimes(1);
+			expect(audioSources).toEqual([
+				"data:audio/mpeg;base64,cHJldmlldw==",
+				"data:audio/mpeg;base64,cHJldmlldw==",
+			]);
+		} finally {
+			Object.defineProperty(globalThis, "Audio", {
+				configurable: true,
+				value: originalAudio,
+				writable: true,
+			});
+		}
 	});
 
 	it("submits prompts from the modal without workspace prompt enrichment", () => {

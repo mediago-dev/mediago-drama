@@ -18,6 +18,7 @@ import (
 const (
 	defaultOpenAIBaseURL     = "https://api.openai.com"
 	defaultGoogleBaseURL     = "https://generativelanguage.googleapis.com"
+	defaultMiniMaxBaseURL    = "https://api.minimaxi.com"
 	defaultVolcengineBaseURL = "https://ark.cn-beijing.volces.com/api/v3"
 	defaultHTTPClient        = 90 * time.Second
 )
@@ -27,6 +28,7 @@ type Config struct {
 	APIKey            string
 	OpenAIBaseURL     string
 	GoogleBaseURL     string
+	MiniMaxBaseURL    string
 	VolcengineBaseURL string
 	HTTPClient        *http.Client
 }
@@ -36,6 +38,7 @@ type Provider struct {
 	apiKey            string
 	openAIBaseURL     string
 	googleBaseURL     string
+	miniMaxBaseURL    string
 	volcengineBaseURL string
 	client            *http.Client
 }
@@ -55,6 +58,7 @@ func NewProvider(config Config) (*Provider, error) {
 		apiKey:            config.APIKey,
 		openAIBaseURL:     valueOrDefault(strings.TrimRight(config.OpenAIBaseURL, "/"), defaultOpenAIBaseURL),
 		googleBaseURL:     valueOrDefault(strings.TrimRight(config.GoogleBaseURL, "/"), defaultGoogleBaseURL),
+		miniMaxBaseURL:    valueOrDefault(strings.TrimRight(config.MiniMaxBaseURL, "/"), defaultMiniMaxBaseURL),
 		volcengineBaseURL: valueOrDefault(strings.TrimRight(config.VolcengineBaseURL, "/"), defaultVolcengineBaseURL),
 		client:            client,
 	}, nil
@@ -87,6 +91,8 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 		return provider.generateOpenAIImage(ctx, request)
 	case generation.AdapterOfficialGoogleImage:
 		return provider.generateGoogleImage(ctx, request)
+	case generation.AdapterOfficialMiniMaxSpeech:
+		return provider.generateMiniMaxSpeech(ctx, request)
 	case generation.AdapterOfficialVolcengineImage:
 		return provider.generateVolcengineImage(ctx, request)
 	case generation.AdapterOfficialVolcengineVideo:

@@ -70,6 +70,18 @@
       "cachedTokenPrice": 0.025
     },
     {
+      "routeId": "official.minimax-speech-2.8-hd",
+      "currency": "CNY",
+      "unit": "per_million_characters",
+      "characterPrice": 350
+    },
+    {
+      "routeId": "official.minimax-speech-2.8-turbo",
+      "currency": "CNY",
+      "unit": "per_million_characters",
+      "characterPrice": 200
+    },
+    {
       "routeId": "official.gpt-image-2",
       "currency": "USD",
       "unit": "per_call",

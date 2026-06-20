@@ -9,6 +9,7 @@ import type {
 import doubaoIcon from "@lobehub/icons-static-svg/icons/doubao-color.svg";
 import geminiIcon from "@lobehub/icons-static-svg/icons/gemini-color.svg";
 import jimengIcon from "@lobehub/icons-static-svg/icons/jimeng-color.svg";
+import minimaxIcon from "@lobehub/icons-static-svg/icons/minimax-color.svg";
 import openAIIcon from "@lobehub/icons-static-svg/icons/openai.svg";
 import openRouterIcon from "@lobehub/icons-static-svg/icons/openrouter.svg";
 import volcengineIcon from "@lobehub/icons-static-svg/icons/volcengine-color.svg";
@@ -20,6 +21,7 @@ export type GenerationBrandKey =
 	| "gemini"
 	| "gpt"
 	| "jimeng"
+	| "minimax"
 	| "model"
 	| "openai"
 	| "openrouter"
@@ -36,6 +38,7 @@ const brandSpecs: Record<GenerationBrandKey, BrandSpec> = {
 	gemini: { icon: geminiIcon, label: "Gemini" },
 	gpt: { icon: openAIIcon, label: "GPT / OpenAI" },
 	jimeng: { icon: jimengIcon, label: "即梦" },
+	minimax: { icon: minimaxIcon, label: "MiniMax 国内" },
 	model: { label: "模型" },
 	openai: { icon: openAIIcon, label: "OpenAI" },
 	openrouter: {
@@ -107,6 +110,8 @@ export const generationProviderBrand = (provider: string): GenerationBrandKey =>
 			return "openrouter";
 		case "jimeng":
 			return "jimeng";
+		case "minimax":
+			return "minimax";
 		default:
 			return generationBrandFromTokens([provider]);
 	}
@@ -153,6 +158,7 @@ const generationBrandFromTokens = (tokens: Array<string | undefined>): Generatio
 		return "doubao";
 	}
 	if (normalized.includes("jimeng") || normalized.includes("即梦")) return "jimeng";
+	if (normalized.includes("minimax") || normalized.includes("speech-2.8")) return "minimax";
 	if (normalized === "text" || normalized.includes("gpt text")) return "gpt";
 	if (normalized.includes("volc") || normalized.includes("火山")) return "volcengine";
 	if (normalized.includes("dmx")) return "dmx";

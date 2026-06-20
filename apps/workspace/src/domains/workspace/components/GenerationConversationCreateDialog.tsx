@@ -1,4 +1,4 @@
-import { FileText, Film, Image as ImageIcon, Plus } from "lucide-react";
+import { AudioLines, FileText, Film, Image as ImageIcon, Plus } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { createCallable } from "react-call";
@@ -41,6 +41,7 @@ const defaultConversationGroups: GenerationConversationGroup[] = [
 	{ kind: "video", label: "视频生成" },
 	{ kind: "image", label: "图片生成" },
 	{ kind: "text", label: "文本生成" },
+	{ kind: "audio", label: "音频生成" },
 ];
 
 export const GenerationConversationCreateDialog = createCallable<
@@ -127,6 +128,8 @@ const conversationKindLabel = (kind: StudioTab) => {
 	switch (kind) {
 		case "text":
 			return "文本生成";
+		case "audio":
+			return "音频生成";
 		case "video":
 			return "视频生成";
 		default:
@@ -138,6 +141,8 @@ const conversationKindIcon = (kind: StudioTab) => {
 	switch (kind) {
 		case "text":
 			return <FileText className="size-3.5" />;
+		case "audio":
+			return <AudioLines className="size-3.5" />;
 		case "video":
 			return <Film className="size-3.5" />;
 		default:

@@ -33,6 +33,8 @@ export const StudioVideo: React.FC = () => <StudioGenerationPage kind="video" />
 
 export const StudioText: React.FC = () => <StudioGenerationPage kind="text" />;
 
+export const StudioAudio: React.FC = () => <StudioGenerationPage kind="audio" />;
+
 export const StudioNovelUnderstand: React.FC = () => <StudioComingSoonPage title="小说理解" />;
 
 export const StudioVideoUnderstand: React.FC = () => <StudioComingSoonPage title="视频理解" />;

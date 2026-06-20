@@ -8,6 +8,12 @@ type GenerationModelsResponse = dto.GenerationModelsResponse
 // GenerationMessageRequest creates or retries a generation request.
 type GenerationMessageRequest = dto.GenerationMessageRequest
 
+// GenerationVoicePreviewRequest creates a short audio sample for a voice.
+type GenerationVoicePreviewRequest = dto.GenerationVoicePreviewRequest
+
+// GenerationVoicePreviewResponse returns a playable audio asset for a voice preview.
+type GenerationVoicePreviewResponse = dto.GenerationVoicePreviewResponse
+
 // ImportGenerationMediaAssetsRequest imports media library assets into generation history.
 type ImportGenerationMediaAssetsRequest = dto.ImportGenerationMediaAssetsRequest
 

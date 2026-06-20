@@ -1,6 +1,6 @@
 import { createStore } from "@/lib/utils";
 
-export type GenerationKind = "image" | "video";
+export type GenerationKind = "image" | "video" | "audio";
 
 interface GenerationDraftState {
 	kind: GenerationKind;

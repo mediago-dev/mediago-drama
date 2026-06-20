@@ -39,6 +39,12 @@ func EstimateCost(table Table, routeID string, usage Usage) (Cost, bool) {
 		amount += float64(usage.InputTokens) * price.InputTokenPrice / 1_000_000
 		amount += float64(usage.OutputTokens) * price.OutputTokenPrice / 1_000_000
 		amount += float64(usage.CachedTokens) * price.CachedTokenPrice / 1_000_000
+	case UnitPerMillionCharacters:
+		characters := usage.Characters
+		if characters == 0 {
+			characters = usage.InputTokens
+		}
+		amount += float64(characters) * price.CharacterPrice / 1_000_000
 	case UnitPerCall:
 		amount += float64(usage.Calls) * price.PerCallPrice
 	}

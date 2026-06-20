@@ -84,6 +84,12 @@ func TestEstimateCost(t *testing.T) {
 			Unit:         UnitPerCall,
 			PerCallPrice: 0.5,
 		},
+		"speech.usd": {
+			RouteID:        "speech.usd",
+			Currency:       "USD",
+			Unit:           UnitPerMillionCharacters,
+			CharacterPrice: 60,
+		},
 	}
 
 	tests := []struct {
@@ -109,6 +115,14 @@ func TestEstimateCost(t *testing.T) {
 			wantOK:    true,
 			wantCost:  1.5,
 			wantMoney: "CNY",
+		},
+		{
+			name:      "million character pricing",
+			routeID:   "speech.usd",
+			usage:     Usage{Characters: 500_000},
+			wantOK:    true,
+			wantCost:  30,
+			wantMoney: "USD",
 		},
 		{
 			name:    "missing route",
@@ -145,6 +159,20 @@ func TestDefaultTableCoversCatalogRoutesAndReturnsCopies(t *testing.T) {
 	}
 	if price.Unit != UnitPerMillionTokens {
 		t.Fatalf("text route unit = %q, want %q", price.Unit, UnitPerMillionTokens)
+	}
+	miniMaxHD, ok := table.Find(coregeneration.RouteOfficialMiniMaxSpeech28HD)
+	if !ok {
+		t.Fatalf("default price table misses %q", coregeneration.RouteOfficialMiniMaxSpeech28HD)
+	}
+	if miniMaxHD.Currency != "CNY" || miniMaxHD.Unit != UnitPerMillionCharacters || miniMaxHD.CharacterPrice != 350 {
+		t.Fatalf("minimax hd price = %#v, want CNY 350 per million characters", miniMaxHD)
+	}
+	miniMaxTurbo, ok := table.Find(coregeneration.RouteOfficialMiniMaxSpeech28Turbo)
+	if !ok {
+		t.Fatalf("default price table misses %q", coregeneration.RouteOfficialMiniMaxSpeech28Turbo)
+	}
+	if miniMaxTurbo.Currency != "CNY" || miniMaxTurbo.Unit != UnitPerMillionCharacters || miniMaxTurbo.CharacterPrice != 200 {
+		t.Fatalf("minimax turbo price = %#v, want CNY 200 per million characters", miniMaxTurbo)
 	}
 
 	list := table.List()

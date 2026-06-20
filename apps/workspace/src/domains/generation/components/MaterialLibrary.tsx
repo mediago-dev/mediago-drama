@@ -1,4 +1,4 @@
-import { Check, Film, Loader2, Pencil, UploadCloud, X } from "lucide-react";
+import { AudioLines, Check, Film, Loader2, Pencil, UploadCloud, X } from "lucide-react";
 import type React from "react";
 import { PhotoProvider, PhotoView } from "react-photo-view";
 import "react-photo-view/dist/react-photo-view.css";
@@ -21,11 +21,11 @@ export const MaterialLibrary: React.FC<{
 	disabled?: boolean;
 	inputId: string;
 	isUploading?: boolean;
-	kindFilter: "all" | "image" | "video";
+	kindFilter: "all" | "image" | "video" | "audio";
 	listClassName?: string;
 	enableImagePreview?: boolean;
 	onDelete: (asset: MediaAsset) => void;
-	onKindFilterChange: (value: "all" | "image" | "video") => void;
+	onKindFilterChange: (value: "all" | "image" | "video" | "audio") => void;
 	onQueryChange: (value: string) => void;
 	onRename: (asset: MediaAsset) => void;
 	onToggle: (asset: MediaAsset) => void;
@@ -79,7 +79,7 @@ export const MaterialLibrary: React.FC<{
 		<input
 			id={inputId}
 			type="file"
-			accept="image/*,video/*"
+			accept="image/*,video/*,audio/*"
 			className="sr-only"
 			disabled={disabled || isUploading}
 			onChange={onUpload}
@@ -116,7 +116,7 @@ export const MaterialLibrary: React.FC<{
 				value={kindFilter}
 				onValueChange={(value) => onKindFilterChange(value as typeof kindFilter)}
 			>
-				<TabsList className="grid h-8 w-full grid-cols-3">
+				<TabsList className="grid h-8 w-full grid-cols-4">
 					<TabsTrigger value="all" className="text-xs">
 						全部
 					</TabsTrigger>
@@ -125,6 +125,9 @@ export const MaterialLibrary: React.FC<{
 					</TabsTrigger>
 					<TabsTrigger value="video" className="text-xs">
 						视频
+					</TabsTrigger>
+					<TabsTrigger value="audio" className="text-xs">
+						音频
 					</TabsTrigger>
 				</TabsList>
 			</Tabs>
@@ -267,7 +270,11 @@ const MaterialAssetThumbnail: React.FC<{
 	if (asset.kind !== "image") {
 		return (
 			<div className={className}>
-				<Film className="size-4 text-muted-foreground" />
+				{asset.kind === "audio" ? (
+					<AudioLines className="size-4 text-muted-foreground" />
+				) : (
+					<Film className="size-4 text-muted-foreground" />
+				)}
 			</div>
 		);
 	}

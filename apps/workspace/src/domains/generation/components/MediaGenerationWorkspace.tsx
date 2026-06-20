@@ -10,6 +10,7 @@ import type {
 	GenerationNotificationOpenTarget,
 } from "@/domains/generation/api/generation";
 import {
+	previewGenerationVoice,
 	selectedGenerationAssetsQueryKey,
 	updateGenerationTaskAsset,
 } from "@/domains/generation/api/generation";
@@ -91,6 +92,20 @@ const openDocumentationUrl = async (url: string) => {
 		window.open(url, "_blank", "noopener,noreferrer");
 	}
 };
+
+const voicePreviewPlaybackBlockedMessage = "浏览器拦截了自动播放，请再点一次播放。";
+
+const errorMessage = (err: unknown) =>
+	err && typeof err === "object" && "message" in err
+		? String((err as { message?: unknown }).message || "")
+		: "";
+
+const isPlaybackBlockedError = (err: unknown) =>
+	err instanceof DOMException
+		? err.name === "NotAllowedError"
+		: err && typeof err === "object" && "name" in err
+			? String((err as { name?: unknown }).name || "") === "NotAllowedError"
+			: false;
 
 export interface MediaGenerationWorkspaceProps {
 	className?: string;
@@ -195,8 +210,11 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const syncedPromptEntryIdRef = useRef<string | null>(null);
 	const editingImageObjectUrlRef = useRef<string | null>(null);
 	const editingImageRequestIdRef = useRef(0);
+	const voicePreviewAudioRef = useRef<HTMLAudioElement | null>(null);
+	const voicePreviewSourceCacheRef = useRef(new Map<string, string>());
 	const workspaceRef = useRef<HTMLFormElement>(null);
 	const rightPaneRef = useRef<HTMLDivElement>(null);
+	const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
 	const inlineReferenceAssets = useMemo(
 		() =>
 			mergeReferencePreviewAssets(
@@ -302,6 +320,15 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	useEffect(() => {
 		if (ws.kind !== kind) ws.setKind(kind);
 	}, [kind, ws.kind, ws.setKind]);
+
+	useEffect(
+		() => () => {
+			voicePreviewAudioRef.current?.pause();
+			voicePreviewAudioRef.current = null;
+			voicePreviewSourceCacheRef.current.clear();
+		},
+		[],
+	);
 
 	const modelSummary = ws.hasConfiguredRoutesForKind
 		? `${ws.selectedFamily.label} / ${ws.selectedVersion.label} / ${routeProviderLabel(ws.selectedRoute)}`
@@ -414,6 +441,82 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		() => countGroupParams.find((param) => param.name === "n" && param.type === "number")?.name,
 		[countGroupParams],
 	);
+	const playVoicePreviewSource = useCallback(async (source: string) => {
+		voicePreviewAudioRef.current?.pause();
+		const audio = new Audio(source);
+		voicePreviewAudioRef.current = audio;
+		await audio.play();
+	}, []);
+	const previewVoice = useCallback(
+		async (voiceID: string) => {
+			const normalizedVoiceID = voiceID.trim();
+			if (!normalizedVoiceID) return;
+			if (!ws.hasConfiguredRoutesForKind || ws.selectedRoute.kind !== "audio") {
+				toast.warning("当前模型不支持音色预览。");
+				return;
+			}
+
+			const previewParams = {
+				...ws.selectedParams,
+				voiceId: normalizedVoiceID,
+			};
+			const cacheKey = JSON.stringify({
+				params: previewParams,
+				routeId: ws.selectedRoute.id,
+				voiceId: normalizedVoiceID,
+			});
+			const cachedSource = voicePreviewSourceCacheRef.current.get(cacheKey);
+			if (cachedSource) {
+				try {
+					await playVoicePreviewSource(cachedSource);
+				} catch (err) {
+					const message = errorMessage(err);
+					toast.error("音色预览失败", {
+						description: message || "浏览器暂时无法播放这个试听音频。",
+					});
+				}
+				return;
+			}
+
+			setPreviewingVoiceId(normalizedVoiceID);
+			try {
+				const response = await previewGenerationVoice({
+					routeId: ws.selectedRoute.id,
+					voiceId: normalizedVoiceID,
+					params: previewParams,
+				});
+				const source = generationAssetSource(response.asset);
+				if (!source) throw new Error("音色预览未返回可播放音频。");
+
+				voicePreviewSourceCacheRef.current.set(cacheKey, source);
+				try {
+					await playVoicePreviewSource(source);
+				} catch (err) {
+					if (isPlaybackBlockedError(err)) {
+						toast.warning("试听已生成", {
+							description: voicePreviewPlaybackBlockedMessage,
+						});
+						return;
+					}
+					throw err;
+				}
+			} catch (err) {
+				const message = errorMessage(err);
+				toast.error("音色预览失败", {
+					description: message || "请检查 MiniMax 国内 API Key 或稍后重试。",
+				});
+			} finally {
+				setPreviewingVoiceId((current) => (current === normalizedVoiceID ? null : current));
+			}
+		},
+		[
+			playVoicePreviewSource,
+			toast,
+			ws.hasConfiguredRoutesForKind,
+			ws.selectedParams,
+			ws.selectedRoute,
+		],
+	);
 	const imageSpecControlledParamNames = useMemo(
 		() => new Set(imageSpec?.controlledParamNames ?? []),
 		[imageSpec],
@@ -465,12 +568,14 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 						key={`${group.id}:${param.name}`}
 						label={group.label}
 						param={param}
+						previewingVoiceId={previewingVoiceId}
 						value={ws.selectedParams[param.name]}
 						onChange={(value) => ws.updateParam(param.name, value)}
+						onPreviewVoice={previewVoice}
 					/>
 				);
 			}),
-		[primaryParamGroups, ws.selectedParams, ws.updateParam],
+		[previewVoice, previewingVoiceId, primaryParamGroups, ws.selectedParams, ws.updateParam],
 	);
 	const secondaryParamControls = useMemo(
 		() =>

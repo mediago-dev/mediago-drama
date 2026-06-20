@@ -1,6 +1,7 @@
-import { Check, Loader2, Save, Sparkles } from "lucide-react";
+import { AudioLines, Check, Loader2, Save, Sparkles } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AudioPlayer } from "@/components/AudioPlayer";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import type { GenerationAsset, GenerationKind } from "@/domains/generation/api/generation";
 import {
@@ -131,6 +132,8 @@ const GenerationResultEntry: React.FC<{
 						</span>
 					) : kind === "image" ? (
 						"暂无图片"
+					) : kind === "audio" ? (
+						"暂无音频"
 					) : (
 						"暂无视频"
 					)}
@@ -149,6 +152,23 @@ const GenerationResultEntry: React.FC<{
 				if (asset.kind === "video") {
 					return (
 						<GenerationVideoResultAsset
+							key={`${entry.id}:${source}:${index}`}
+							asset={asset}
+							entry={entry}
+							selectable={Boolean(selectionKey && onToggleAsset)}
+							selected={selected}
+							saved={savedAssetKeys.includes(generatedAssetSaveKey(entry, asset))}
+							saving={savingAssetKeys.includes(generatedAssetSaveKey(entry, asset))}
+							source={source}
+							onSaveAsset={onSaveAsset}
+							onToggleAsset={onToggleAsset}
+						/>
+					);
+				}
+
+				if (asset.kind === "audio") {
+					return (
+						<GenerationAudioResultAsset
 							key={`${entry.id}:${source}:${index}`}
 							asset={asset}
 							entry={entry}
@@ -252,6 +272,82 @@ const GenerationVideoResultAsset: React.FC<{
 					}}
 				>
 					<Check className={cn("size-4", selected ? "opacity-100" : "opacity-0")} />
+				</button>
+			) : null}
+		</div>
+	</article>
+);
+
+const GenerationAudioResultAsset: React.FC<{
+	asset: GenerationAsset;
+	entry: GenerationEntry;
+	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
+	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
+	selectable: boolean;
+	selected: boolean;
+	saved: boolean;
+	saving: boolean;
+	source: string;
+}> = ({
+	asset,
+	entry,
+	onSaveAsset,
+	onToggleAsset,
+	selectable,
+	selected,
+	saved,
+	saving,
+	source,
+}) => (
+	<article className="flex h-full min-w-0 max-w-full items-center justify-center bg-transparent">
+		<div
+			className={cn(
+				"relative flex w-[min(34rem,78vw)] max-w-full flex-col gap-3 rounded-sm border bg-ide-panel p-4 shadow-sm",
+				selected ? "border-primary ring-1 ring-primary" : "border-border",
+			)}
+		>
+			<div className="flex min-w-0 items-center gap-3 pr-10">
+				<span className="flex size-9 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
+					<AudioLines className="size-4" />
+				</span>
+				<div className="min-w-0 flex-1">
+					<p className="truncate text-sm font-medium text-foreground">生成音频</p>
+					<p className="truncate text-xs text-muted-foreground">{asset.mimeType || "audio/mpeg"}</p>
+				</div>
+			</div>
+			<AudioPlayer src={source} mimeType={asset.mimeType || "audio/mpeg"} title="生成音频" />
+			{onSaveAsset ? (
+				<SaveGeneratedAssetButton
+					className="absolute right-2 top-2 z-10"
+					saved={saved}
+					saving={saving}
+					onSave={(event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						onSaveAsset(entry, asset);
+					}}
+				/>
+			) : null}
+			{selectable && onToggleAsset ? (
+				<button
+					type="button"
+					role="checkbox"
+					aria-checked={selected}
+					aria-label={selected ? "取消选入音频" : "选入音频"}
+					title={selected ? "取消选入音频" : "选入音频"}
+					className={cn(
+						"absolute left-2 top-2 z-10 flex size-5 items-center justify-center rounded-sm border shadow-sm transition-colors",
+						selected
+							? "border-primary bg-primary text-primary-foreground"
+							: "border-border bg-card/90 text-transparent hover:bg-muted",
+					)}
+					onClick={(event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						onToggleAsset(asset, !selected);
+					}}
+				>
+					<Check className={cn("size-3", selected ? "opacity-100" : "opacity-0")} />
 				</button>
 			) : null}
 		</div>

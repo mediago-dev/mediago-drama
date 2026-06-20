@@ -4,5 +4,5 @@ export type SidebarScreenId =
 	| "studio-types"
 	| "studio-conversations"
 	| "settings";
-export type StudioTab = "video" | "image" | "text";
+export type StudioTab = "video" | "image" | "text" | "audio";
 export type ActiveStudioTab = StudioTab | null;

@@ -27,6 +27,7 @@ const (
 	MaxMediaAssetUploadSize = 200 << 20
 	MediaKindImage          = shared.AssetKindImage
 	MediaKindVideo          = shared.AssetKindVideo
+	MediaKindAudio          = shared.AssetKindAudio
 	MetadataStatusReady     = "ready"
 	MetadataStatusFailed    = "failed"
 )
@@ -356,7 +357,7 @@ func (store *MediaAssets) SaveRemoteAsset(ctx context.Context, kind string, remo
 	return store.saveRemoteAssetForScope(ctx, kind, remoteURL, projectID, "", "")
 }
 
-// SaveGeneratedAssetFile exports a generated image or video to a user-selected local directory.
+// SaveGeneratedAssetFile exports a generated media asset to a user-selected local directory.
 func (store *MediaAssets) SaveGeneratedAssetFile(ctx context.Context, request GeneratedAssetFileSaveRequest) (GeneratedAssetFileSaveResponse, error) {
 	if store.initErr != nil {
 		return GeneratedAssetFileSaveResponse{}, store.initErr
@@ -406,8 +407,8 @@ func (store *MediaAssets) SaveGeneratedAssetFile(ctx context.Context, request Ge
 	} else if sourceURL == "" {
 		return GeneratedAssetFileSaveResponse{}, fmt.Errorf("生成结果没有可保存的素材 ID")
 	}
-	if kind != MediaKindImage && kind != MediaKindVideo {
-		return GeneratedAssetFileSaveResponse{}, fmt.Errorf("only image and video assets are supported")
+	if kind != MediaKindImage && kind != MediaKindVideo && kind != MediaKindAudio {
+		return GeneratedAssetFileSaveResponse{}, fmt.Errorf("only image, video, and audio assets are supported")
 	}
 	if mimeType == "" {
 		mimeType = defaultAssetMIMEType(kind)
@@ -583,6 +584,9 @@ func defaultAssetMIMEType(kind string) string {
 	if kind == MediaKindVideo {
 		return "video/mp4"
 	}
+	if kind == MediaKindAudio {
+		return "audio/mpeg"
+	}
 	return "image/png"
 }
 
@@ -593,6 +597,9 @@ func generatedAssetExportExtension(mimeType string, kind string) string {
 	}
 	if kind == MediaKindVideo {
 		return ".mp4"
+	}
+	if kind == MediaKindAudio {
+		return ".mp3"
 	}
 	return ".png"
 }
@@ -652,7 +659,7 @@ func (store *MediaAssets) saveBytesForProject(data []byte, filename string, cont
 	}
 	kind := shared.KindFromMIMEType(mimeType)
 	if kind == "" {
-		return MediaAsset{}, fmt.Errorf("only image and video assets are supported")
+		return MediaAsset{}, fmt.Errorf("only image, video, and audio assets are supported")
 	}
 
 	return store.saveBytesWithKind(data, kind, filename, mimeType, sourceURL, projectID, "", "")
@@ -668,8 +675,8 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 	if len(data) > MaxMediaAssetUploadSize {
 		return MediaAsset{}, fmt.Errorf("asset is larger than %d bytes", MaxMediaAssetUploadSize)
 	}
-	if kind != MediaKindImage && kind != MediaKindVideo {
-		return MediaAsset{}, fmt.Errorf("only image and video assets are supported")
+	if kind != MediaKindImage && kind != MediaKindVideo && kind != MediaKindAudio {
+		return MediaAsset{}, fmt.Errorf("only image, video, and audio assets are supported")
 	}
 
 	id, err := shared.RandomID("asset")
@@ -979,6 +986,9 @@ func defaultAssetFilename(kind string, mimeType string) string {
 	}
 	if kind == MediaKindVideo {
 		prefix = "video"
+	}
+	if kind == MediaKindAudio {
+		prefix = "audio"
 	}
 
 	return prefix + shared.ExtensionForMIMEType(mimeType)

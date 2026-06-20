@@ -43,6 +43,13 @@ func GenerationResponseFromCore(response coregeneration.Response, kind string) G
 			message = "文本生成已完成，但未返回文本。"
 		}
 	}
+	if coregeneration.Kind(kind) == coregeneration.KindAudio {
+		message = "音频生成已完成。"
+		if len(response.Assets) == 0 &&
+			(response.Status == "" || response.Status == "completed") {
+			message = "音频生成已完成，但未返回音频素材。"
+		}
+	}
 	if coregeneration.Kind(kind) == coregeneration.KindImage &&
 		len(response.Assets) == 0 &&
 		(response.Status == "" || response.Status == "completed") {
@@ -176,6 +183,20 @@ func GenerationRequestFromMessage(
 	referenceURLs []string,
 ) coregeneration.Request {
 	if route.Kind == coregeneration.KindText {
+		return coregeneration.Request{
+			Kind:          coregeneration.Kind(payload.Kind),
+			RouteID:       payload.RouteID,
+			FamilyID:      payload.FamilyID,
+			VersionID:     payload.VersionID,
+			Provider:      payload.Provider,
+			ModelID:       payload.ModelID,
+			Model:         payload.Model,
+			Prompt:        payload.Prompt,
+			ReferenceURLs: referenceURLs,
+			Params:        providerGenerationParams(payload.Params),
+		}
+	}
+	if route.Kind == coregeneration.KindAudio {
 		return coregeneration.Request{
 			Kind:          coregeneration.Kind(payload.Kind),
 			RouteID:       payload.RouteID,
@@ -451,6 +472,8 @@ func GenerationCapabilityIDForRequest(capabilityID string, route coregeneration.
 		return "video.generate"
 	case coregeneration.KindText:
 		return "text.generate"
+	case coregeneration.KindAudio:
+		return "audio.generate"
 	default:
 		return ""
 	}

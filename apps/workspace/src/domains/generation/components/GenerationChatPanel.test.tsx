@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import { GenerationChatPanel } from "./GenerationChatPanel";
 import type { GenerationEntry } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 
+vi.mock("@/components/AudioPlayer", () => ({
+	AudioPlayer: ({ mimeType, src }: { mimeType?: string; src: string }) => (
+		<div data-testid="audio-player" data-mime-type={mimeType} data-src={src} />
+	),
+}));
+
 describe("GenerationChatPanel", () => {
 	it("shows a loading label for empty streaming text results", () => {
 		HTMLElement.prototype.scrollTo = vi.fn();
@@ -131,6 +137,34 @@ describe("GenerationChatPanel", () => {
 		fireEvent.click(screen.getByRole("button", { name: "保存素材" }));
 
 		expect(onSaveText).toHaveBeenCalledWith(entries[0]);
+	});
+
+	it("renders generated audio assets with the shared audio player", () => {
+		HTMLElement.prototype.scrollTo = vi.fn();
+		const entries: GenerationEntry[] = [
+			{
+				id: "task-audio",
+				kind: "audio",
+				status: "completed",
+				content: "",
+				prompt: "生成一句旁白",
+				assets: [
+					{
+						kind: "audio",
+						url: "https://example.test/narration.mp3",
+						mimeType: "audio/mpeg",
+					},
+				],
+			},
+		];
+
+		render(
+			<GenerationChatPanel entries={entries} onRefreshVideo={vi.fn()} onSelectEntry={vi.fn()} />,
+		);
+
+		const audioPlayer = screen.getByTestId("audio-player");
+		expect(audioPlayer.getAttribute("data-src")).toBe("https://example.test/narration.mp3");
+		expect(audioPlayer.getAttribute("data-mime-type")).toBe("audio/mpeg");
 	});
 
 	it("keeps pending image slots visible after a multi-image task partially returns assets", () => {

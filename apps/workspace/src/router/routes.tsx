@@ -23,6 +23,9 @@ const StudioVideo = lazy(() =>
 const StudioText = lazy(() =>
 	import("@/pages/Studio").then((module) => ({ default: module.StudioText })),
 );
+const StudioAudio = lazy(() =>
+	import("@/pages/Studio").then((module) => ({ default: module.StudioAudio })),
+);
 const StudioNovelUnderstand = lazy(() =>
 	import("@/pages/Studio").then((module) => ({ default: module.StudioNovelUnderstand })),
 );
@@ -46,6 +49,7 @@ const routes: RouteObject[] = [
 	{ path: "/studio/image", element: <StudioImage /> },
 	{ path: "/studio/video", element: <StudioVideo /> },
 	{ path: "/studio/text", element: <StudioText /> },
+	{ path: "/studio/audio", element: <StudioAudio /> },
 	{ path: "/studio/novel-understand", element: <StudioNovelUnderstand /> },
 	{ path: "/studio/video-understand", element: <StudioVideoUnderstand /> },
 	{ path: "/studio/audio-transcribe", element: <StudioAudioTranscribe /> },

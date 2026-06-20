@@ -45,11 +45,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatDate } from "@/lib/utils";
 
 const routeKind = (kind?: string): GenerationKind | null => {
-	if (kind === "image" || kind === "video") return kind;
+	if (kind === "image" || kind === "video" || kind === "audio") return kind;
 	return null;
 };
 
-const kindLabel = (kind: GenerationKind) => (kind === "image" ? "图片" : "视频");
+const kindLabel = (kind: GenerationKind) =>
+	kind === "image" ? "图片" : kind === "audio" ? "音频" : "视频";
 
 const statusLabel = (status?: string) => {
 	if (status === "completed") return "已完成";
@@ -293,7 +294,14 @@ const GenerationSession: React.FC = () => {
 										{(task.assets ?? []).map((asset, index) => {
 											const source = assetSource(asset);
 											if (!source) return null;
-											return asset.kind === "video" ? (
+											return asset.kind === "audio" ? (
+												<audio
+													key={`${task.id}-${index}`}
+													src={source}
+													controls
+													className="w-full"
+												/>
+											) : asset.kind === "video" ? (
 												<video
 													key={`${task.id}-${index}`}
 													src={source}
@@ -342,7 +350,9 @@ const GenerationSession: React.FC = () => {
 							placeholder={
 								kind === "image"
 									? "描述图像内容、风格、主体和光线"
-									: "描述视频镜头、运动、机位和节奏"
+									: kind === "audio"
+										? "输入要转成语音的旁白、台词或配音文案"
+										: "描述视频镜头、运动、机位和节奏"
 							}
 							className="max-h-40 min-h-24"
 							onChange={(event) => setPrompt(event.target.value)}
@@ -352,7 +362,13 @@ const GenerationSession: React.FC = () => {
 							disabled={!prompt.trim() || !selectedRoute || !activeConversationId || isSubmitting}
 						>
 							<IonIcon aria-hidden="true" icon={sparklesOutline} />
-							{isSubmitting ? "提交中" : kind === "image" ? "生成图片" : "生成视频"}
+							{isSubmitting
+								? "提交中"
+								: kind === "image"
+									? "生成图片"
+									: kind === "audio"
+										? "生成音频"
+										: "生成视频"}
 						</Button>
 					</div>
 				</form>

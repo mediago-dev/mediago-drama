@@ -1,4 +1,4 @@
-import { FileText, Film, Image as ImageIcon, Loader2 } from "lucide-react";
+import { AudioLines, FileText, Film, Image as ImageIcon, Loader2 } from "lucide-react";
 import type React from "react";
 import {
 	generationAssetSource,
@@ -72,6 +72,8 @@ const GenerationHistoryItem: React.FC<{
 					<ImageIcon className="size-4 text-muted-foreground" />
 				) : entry.kind === "text" ? (
 					<FileText className="size-4 text-muted-foreground" />
+				) : entry.kind === "audio" ? (
+					<AudioLines className="size-4 text-muted-foreground" />
 				) : (
 					<Film className="size-4 text-muted-foreground" />
 				)}

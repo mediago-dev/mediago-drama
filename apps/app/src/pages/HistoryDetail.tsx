@@ -57,6 +57,12 @@ const getErrorMessage = (error: unknown) => {
 	return "加载历史详情失败";
 };
 
+const getKindLabel = (kind: string) => {
+	if (kind === "image") return "图片";
+	if (kind === "audio") return "音频";
+	return "视频";
+};
+
 const HistoryDetail: React.FC = () => {
 	const { id = "" } = useParams<{ id: string }>();
 	const { data: task, error, isLoading } = useSWR(
@@ -96,7 +102,7 @@ const HistoryDetail: React.FC = () => {
 								<CardHeader className="px-4">
 									<div className="min-w-0">
 										<CardDescription>
-											{task.kind === "image" ? "图片" : "视频"} · {task.model}
+											{getKindLabel(task.kind)} · {task.model}
 										</CardDescription>
 										<CardTitle className="mt-2 text-base leading-6">{task.prompt}</CardTitle>
 									</div>
@@ -141,7 +147,14 @@ const HistoryDetail: React.FC = () => {
 										(task.assets ?? []).map((asset, index) => {
 											const source = getAssetSource(asset);
 											if (!source) return null;
-											return asset.kind === "video" ? (
+											return asset.kind === "audio" ? (
+												<audio
+													key={`${task.id}-${index}`}
+													src={source}
+													controls
+													className="w-full"
+												/>
+											) : asset.kind === "video" ? (
 												<video
 													key={`${task.id}-${index}`}
 													src={source}

@@ -1,4 +1,5 @@
 import {
+	AudioLines,
 	Clipboard,
 	ImagePlus,
 	Loader2,
@@ -10,7 +11,7 @@ import type React from "react";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/lib/utils";
 
-export type GenerationComposerSubmitTone = "image" | "text" | "video";
+export type GenerationComposerSubmitTone = "image" | "text" | "video" | "audio";
 
 export interface GenerationComposerPanelProps {
 	canCopyPrompt?: boolean;
@@ -181,4 +182,5 @@ const submitToneIconByTone: Record<GenerationComposerSubmitTone, LucideIcon> = {
 	image: Sparkles,
 	text: SendHorizontal,
 	video: SendHorizontal,
+	audio: AudioLines,
 };

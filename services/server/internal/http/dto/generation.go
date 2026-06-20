@@ -32,6 +32,18 @@ type GenerationMessageRequest struct {
 	Params             map[string]any                `json:"params"`
 }
 
+// GenerationVoicePreviewRequest creates a short audio sample for a voice.
+type GenerationVoicePreviewRequest struct {
+	RouteID string         `json:"routeId"`
+	VoiceID string         `json:"voiceId"`
+	Params  map[string]any `json:"params,omitempty"`
+}
+
+// GenerationVoicePreviewResponse returns a playable audio asset for a voice preview.
+type GenerationVoicePreviewResponse struct {
+	Asset GenerationAsset `json:"asset"`
+}
+
 // ImportGenerationMediaAssetsRequest creates completed generation history
 // records that reference existing media library assets.
 type ImportGenerationMediaAssetsRequest struct {

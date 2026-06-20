@@ -20,6 +20,7 @@ import (
 type GenerationTaskService interface {
 	ListGenerationModels() dto.GenerationModelsResponse
 	CreateGenerationMessage(ctx context.Context, payload dto.GenerationMessageRequest) (dto.GenerationMessageResponse, int, error)
+	PreviewGenerationVoice(ctx context.Context, payload dto.GenerationVoicePreviewRequest) (dto.GenerationVoicePreviewResponse, int, error)
 	ImportGenerationMediaAssets(payload dto.ImportGenerationMediaAssetsRequest) (dto.GenerationTasksResponse, int, error)
 	StreamGenerationText(ctx context.Context, payload dto.GenerationMessageRequest, emit func(dto.GenerationTextStreamEvent) error) (int, error)
 	CreateGenerationConversation(payload dto.CreateGenerationConversationRequest) (dto.GenerationConversationRecord, int, error)
@@ -85,6 +86,32 @@ func (handler GenerationTasks) HandleGenerationMessage(context *gin.Context) {
 	}
 
 	response, status, err := handler.service.CreateGenerationMessage(context.Request.Context(), payload)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, status, err)
+		return
+	}
+	httpresponse.OK(context, response)
+}
+
+// HandleGenerationVoicePreview godoc
+// @Summary 生成音色试听
+// @Description 为音频生成路由和音色生成短试听，不写入生成历史。
+// @Tags Generation
+// @Accept json
+// @Produce json
+// @Param payload body SwaggerObject true "Voice preview payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 503 {object} SwaggerEnvelope
+// @Router /api/v1/generation/voice-preview [post]
+func (handler GenerationTasks) HandleGenerationVoicePreview(context *gin.Context) {
+	payload, err := decodeJSON[dto.GenerationVoicePreviewRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+
+	response, status, err := handler.service.PreviewGenerationVoice(context.Request.Context(), payload)
 	if err != nil {
 		httpresponse.ErrorFromStatus(context, status, err)
 		return

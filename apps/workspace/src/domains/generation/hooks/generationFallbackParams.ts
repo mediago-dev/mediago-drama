@@ -6,6 +6,10 @@ import type {
 	GenerationRouteParamGroup,
 	GenerationVersion,
 } from "@/domains/generation/api/generation";
+import {
+	defaultMiniMaxVoiceId,
+	minimaxSystemVoiceOptions,
+} from "@/domains/generation/hooks/minimaxSystemVoiceOptions";
 
 const paramGroupByName: Record<string, NonNullable<GenerationParam["group"]>> = {
 	aspectRatio: "size",
@@ -28,6 +32,7 @@ const paramGroupByName: Record<string, NonNullable<GenerationParam["group"]>> = 
 	maxTokens: "other",
 	generateAudio: "other",
 	temperature: "other",
+	voiceId: "voice",
 };
 
 const paramGroupSpecsByKind: Record<GenerationKind, Array<{ id: string; label: string }>> = {
@@ -42,6 +47,11 @@ const paramGroupSpecsByKind: Record<GenerationKind, Array<{ id: string; label: s
 		{ id: "other", label: "其他" },
 	],
 	text: [{ id: "other", label: "其他" }],
+	audio: [
+		{ id: "voice", label: "音色" },
+		{ id: "audio", label: "音频" },
+		{ id: "other", label: "其他" },
+	],
 };
 
 const withParamGroup = (param: GenerationParam): GenerationParam => {
@@ -501,5 +511,28 @@ export function textParams(): GenerationParam[] {
 	return [
 		numberParam("temperature", "温度", 0.7, 0, 2),
 		optionalNumberParam("maxTokens", "最大令牌数", 1, 32768),
+	];
+}
+
+export function minimaxSpeechParams(): GenerationParam[] {
+	return [
+		selectParam("voiceId", "音色", defaultMiniMaxVoiceId, minimaxSystemVoiceOptions),
+		numberParam("speed", "语速", 1, 0.5, 2),
+		numberParam("volume", "音量", 1, 0, 10),
+		numberParam("pitch", "音调", 0, -12, 12),
+		withParamGroup({
+			name: "outputFormat",
+			label: "输出格式",
+			type: "select",
+			default: "mp3",
+			group: "audio",
+			options: [
+				{ label: "MP3", value: "mp3" },
+				{ label: "WAV", value: "wav" },
+				{ label: "FLAC", value: "flac" },
+			],
+		}),
+		numberParam("sampleRate", "采样率", 32000, 8000, 44100),
+		numberParam("bitrate", "码率", 128000, 32000, 256000),
 	];
 }

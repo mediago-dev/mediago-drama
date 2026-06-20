@@ -17,6 +17,7 @@ export const defaultFamilyIds: Record<GenerationKind, string> = {
 	image: "gpt-image",
 	text: "text",
 	video: "seedance",
+	audio: "minimax-speech",
 };
 
 export const catalogOrFallback = (catalog?: GenerationModelsResponse): GenerationModelsResponse => {
@@ -71,6 +72,7 @@ const fallbackProviderTypes: Record<string, GenerationProviderType> = {
 	openai: "official",
 	google: "official",
 	volcengine: "official",
+	minimax: "official",
 	dmx: "aggregator",
 	openrouter: "aggregator",
 	jimeng: "local",
@@ -192,7 +194,9 @@ export const generationAssetSource = (asset: GenerationAsset) => {
 
 export const generationAssetSelectionKey = (asset: GenerationAsset) => {
 	const source = generationAssetSource(asset);
-	if (!source || (asset.kind !== "image" && asset.kind !== "video")) return null;
+	if (!source || (asset.kind !== "image" && asset.kind !== "video" && asset.kind !== "audio")) {
+		return null;
+	}
 
 	return `${asset.kind}:${source}`;
 };

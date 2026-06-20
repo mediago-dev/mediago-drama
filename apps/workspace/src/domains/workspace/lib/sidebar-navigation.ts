@@ -49,7 +49,7 @@ export const workModeForScreen = (screen: SidebarScreenId): WorkMode | null => {
 
 export const studioTabFromPath = (pathname: string): ActiveStudioTab => {
 	const tab = studioPathSegment(pathname);
-	return tab === "image" || tab === "video" || tab === "text" ? tab : null;
+	return tab === "image" || tab === "video" || tab === "text" || tab === "audio" ? tab : null;
 };
 
 const isSettingsRoute = (pathname: string) =>

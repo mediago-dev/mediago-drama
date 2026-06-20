@@ -26,12 +26,15 @@ const paramGroupOrderByKind: Record<GenerationKind, string[]> = {
 	image: ["size", "count", "other"],
 	video: ["size", "duration", "other"],
 	text: ["other"],
+	audio: ["audio", "other"],
 };
 
 const paramGroupLabelByID: Record<string, string> = {
 	size: "大小",
 	duration: "秒数",
 	count: "数量",
+	voice: "音色",
+	audio: "音频",
 	other: "其他",
 };
 

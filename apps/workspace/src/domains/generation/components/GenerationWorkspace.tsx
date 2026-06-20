@@ -126,18 +126,23 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 
 	const activeGenerationKind = ws.kind;
 	const isTextGeneration = activeGenerationKind === "text";
+	const isAudioGeneration = activeGenerationKind === "audio";
 	const compactPromptPlaceholder =
 		activeGenerationKind === "image"
 			? "描述想生成的图像内容、风格、主体和光线"
 			: activeGenerationKind === "text"
 				? "描述你想生成的文本..."
-				: "描述想生成的视频镜头、运动、机位和节奏";
+				: activeGenerationKind === "audio"
+					? "输入要转成语音的旁白、台词或配音文案"
+					: "描述想生成的视频镜头、运动、机位和节奏";
 	const submitLabel =
 		activeGenerationKind === "image"
 			? "生成图像"
 			: activeGenerationKind === "text"
 				? "生成文本"
-				: "生成视频";
+				: activeGenerationKind === "audio"
+					? "生成音频"
+					: "生成视频";
 	const selectedFamilyBrand = generationModelBrand({
 		family: ws.selectedFamily,
 		route: ws.selectedRoute,
@@ -267,7 +272,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 					errorTone={ws.error ? "error" : "warning"}
 					isSubmitting={ws.isSubmitting}
 					layeredComposer={
-						isTextGeneration ? null : (
+						isTextGeneration || isAudioGeneration ? null : (
 							<LayeredPromptComposer
 								layers={ws.composerLayers}
 								variant="composer"
@@ -334,7 +339,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 					}
 					referenceButtonLabel={referenceButtonLabel}
 					referencePreview={
-						isTextGeneration ? null : (
+						canSelectReferenceAssets ? (
 							<ReferencePreviewStrip
 								disabled={!ws.hasConfiguredRoutesForKind || !ws.selectedRoute.supportsReferenceUrls}
 								enableImagePreview
@@ -342,7 +347,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 								simple
 								onRemove={ws.toggleReferenceAsset}
 							/>
-						)
+						) : null
 					}
 					rightControls={
 						<>
@@ -376,7 +381,9 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 					submitLabel={submitLabel}
 					submitTone={activeGenerationKind}
 					onCopyPrompt={copyComposerPrompt}
-					onOpenReferenceDialog={isTextGeneration ? undefined : () => setReferenceDialogOpen(true)}
+					onOpenReferenceDialog={
+						canSelectReferenceAssets ? () => setReferenceDialogOpen(true) : undefined
+					}
 				/>
 			) : (
 				<GenerationSetupNotice

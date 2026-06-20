@@ -80,7 +80,7 @@ export const generationRequestPrompt = ({
 	if (useRawPrompt) return prompt;
 
 	const promptWithContext = promptWithExtraContext(prompt, extraPrompt);
-	if (kind === "text") return promptWithContext;
+	if (kind === "text" || kind === "audio") return promptWithContext;
 
 	return applyVisualStyle(promptWithContext, {
 		briefStyle: projectStylePrompt,
@@ -191,7 +191,7 @@ export const useGenerationSubmit = ({
 			setError(null);
 			setActiveSubmitCount((count) => count + 1);
 			const requestKind = selectedRoute.kind;
-			if (requestKind === "image" || requestKind === "video") {
+			if (requestKind === "image" || requestKind === "video" || requestKind === "audio") {
 				try {
 					rememberSelectedModel?.();
 				} catch {
@@ -242,7 +242,9 @@ export const useGenerationSubmit = ({
 						? "正在生成图像..."
 						: requestKind === "text"
 							? ""
-							: "正在提交视频任务...",
+							: requestKind === "audio"
+								? "正在生成音频..."
+								: "正在提交视频任务...",
 				createdAt: submittedAtValue,
 				updatedAt: submittedAtValue,
 			};

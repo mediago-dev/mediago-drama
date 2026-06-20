@@ -22,7 +22,7 @@ export const formatBytes = (value: number) => {
 
 export const filterMediaAssets = (
 	assets: MediaAsset[],
-	kind: "all" | "image" | "video",
+	kind: "all" | MediaAsset["kind"],
 	query: string,
 ) => {
 	const normalizedQuery = query.trim().toLowerCase();
@@ -196,6 +196,8 @@ export const providerLabel = (provider: string) => {
 			return "OpenAI";
 		case "google":
 			return "Google";
+		case "minimax":
+			return "MiniMax 国内";
 		case "volcengine":
 			return "火山引擎";
 		case "dmx":
@@ -226,9 +228,10 @@ export const routeProviderLabel = (route: GenerationRoute, providers?: Generatio
 	`${providerLabel(route.provider)} · ${providerTypeLabel(providerTypeOf(route.provider, providers))}`;
 
 export const kindLabel = (kind: GenerationKind) =>
-	kind === "image" ? "图像" : kind === "text" ? "文本" : "视频";
+	kind === "image" ? "图像" : kind === "text" ? "文本" : kind === "audio" ? "音频" : "视频";
 
-export const mediaKindLabel = (kind: MediaAsset["kind"]) => (kind === "image" ? "图像" : "视频");
+export const mediaKindLabel = (kind: MediaAsset["kind"]) =>
+	kind === "image" ? "图像" : kind === "audio" ? "音频" : "视频";
 
 export const generationStatusLabel = (status: string) => {
 	const labels: Record<string, string> = {
@@ -277,6 +280,13 @@ export const paramLabel = (label: string) => {
 		Mode: "模式",
 		"Negative prompt": "负向提示词",
 		Audio: "音频",
+		Voice: "音色",
+		Speed: "语速",
+		Volume: "音量",
+		Pitch: "音调",
+		"Voice ID": "音色 ID",
+		"Sample rate": "采样率",
+		Bitrate: "码率",
 		"Prompt optimizer": "提示词优化",
 		"Fast pretreatment": "快速预处理",
 	};

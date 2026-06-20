@@ -223,8 +223,8 @@ const saveGeneratedAssetWithTauriDirectory = async (
 	fallbackFilename: string,
 	directory: string,
 ) => {
-	if (asset.kind !== "image" && asset.kind !== "video") {
-		throw new Error("只支持保存图片和视频生成结果。");
+	if (asset.kind !== "image" && asset.kind !== "video" && asset.kind !== "audio") {
+		throw new Error("只支持保存图片、视频和音频生成结果。");
 	}
 
 	const assetId = mediaAssetIdFromGeneratedSource(source) ?? undefined;
@@ -413,12 +413,16 @@ const extensionForMimeType = (mimeType: string, kind: GenerationAsset["kind"]) =
 	if (normalized.includes("quicktime")) return ".mov";
 	if (normalized.includes("webm")) return ".webm";
 	if (normalized.includes("mp4")) return ".mp4";
+	if (normalized.includes("mpeg") || normalized.includes("mp3")) return ".mp3";
+	if (normalized.includes("wav")) return ".wav";
+	if (normalized.includes("flac")) return ".flac";
 	if (normalized.includes("plain")) return ".txt";
-	return kind === "video" ? ".mp4" : kind === "text" ? ".txt" : ".png";
+	return kind === "video" ? ".mp4" : kind === "audio" ? ".mp3" : kind === "text" ? ".txt" : ".png";
 };
 
 const defaultMimeType = (kind: GenerationAsset["kind"]) => {
 	if (kind === "video") return "video/mp4";
+	if (kind === "audio") return "audio/mpeg";
 	if (kind === "text") return "text/plain;charset=utf-8";
 	return "image/png";
 };

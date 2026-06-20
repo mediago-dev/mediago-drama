@@ -23,6 +23,12 @@ const getStatusVariant = (
 	return "outline";
 };
 
+const getKindLabel = (kind: string) => {
+	if (kind === "image") return "图片";
+	if (kind === "audio") return "音频";
+	return "视频";
+};
+
 const History: React.FC = () => {
 	const navigation = useHistory();
 	const { data, isLoading } = useSWR(generationTasksKey, () => getGenerationTasks());
@@ -65,7 +71,7 @@ const History: React.FC = () => {
 									</CardAction>
 								</CardHeader>
 								<CardContent className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 text-xs text-muted-foreground">
-									<span>{task.kind === "image" ? "图片" : "视频"}</span>
+									<span>{getKindLabel(task.kind)}</span>
 									<span>{task.model}</span>
 									<span>{formatDate(task.updatedAt)}</span>
 								</CardContent>

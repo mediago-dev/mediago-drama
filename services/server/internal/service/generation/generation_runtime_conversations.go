@@ -43,7 +43,7 @@ func (workflow *GenerationService) CreateGenerationConversation(payload CreateGe
 	if kind == "" {
 		return GenerationConversationRecord{}, http.StatusBadRequest, fmt.Errorf("generation kind is required")
 	}
-	if kind != string(coregeneration.KindImage) && kind != string(coregeneration.KindVideo) && kind != string(coregeneration.KindText) {
+	if !isSupportedGenerationConversationKind(kind) {
 		return GenerationConversationRecord{}, http.StatusBadRequest, fmt.Errorf("unsupported generation kind")
 	}
 	title := strings.TrimSpace(payload.Title)
@@ -99,7 +99,7 @@ func (workflow *GenerationService) resolveGenerationConversationWithScopeFilter(
 	if kind == "" {
 		kind = string(coregeneration.KindImage)
 	}
-	if kind != string(coregeneration.KindImage) && kind != string(coregeneration.KindVideo) && kind != string(coregeneration.KindText) {
+	if !isSupportedGenerationConversationKind(kind) {
 		return GenerationConversationRecord{}, http.StatusBadRequest, fmt.Errorf("unsupported generation kind")
 	}
 
@@ -143,4 +143,11 @@ func (workflow *GenerationService) resolveGenerationConversationWithScopeFilter(
 		}, http.StatusOK, nil
 	}
 	return GenerationConversationRecord{}, http.StatusNotFound, fmt.Errorf("generation conversation not found")
+}
+
+func isSupportedGenerationConversationKind(kind string) bool {
+	return kind == string(coregeneration.KindImage) ||
+		kind == string(coregeneration.KindVideo) ||
+		kind == string(coregeneration.KindText) ||
+		kind == string(coregeneration.KindAudio)
 }
