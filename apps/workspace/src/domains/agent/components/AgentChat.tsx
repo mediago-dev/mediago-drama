@@ -285,8 +285,8 @@ export const AgentChat: React.FC = () => {
 					.getState()
 					.recordActivity(
 						"runtime",
-						"素材保存失败",
-						err instanceof Error ? err.message : "附件写入素材库失败。",
+						"资料保存失败",
+						err instanceof Error ? err.message : "附件写入资料失败。",
 					);
 				return true;
 			}
@@ -415,7 +415,7 @@ const attachmentDisplayMetadata = (
 };
 
 const uploadAttachmentAsset = async (attachment: AgentAttachment, projectId: string | null) => {
-	if (!projectId) throw new Error("请先进入项目后再添加素材库。");
+	if (!projectId) throw new Error("请先进入项目后再添加资料。");
 	return uploadProjectAsset(projectId, attachment.file);
 };
 
@@ -441,5 +441,5 @@ const appendUploadedAssetContext = (prompt: string, assets: ProjectAsset[]) => {
 			].join("\n"),
 		)
 		.join("\n\n");
-	return `${prompt}\n\n已保存到素材库的原始文件：\n${assetContext}`;
+	return `${prompt}\n\n已保存到资料的原始文件：\n${assetContext}`;
 };

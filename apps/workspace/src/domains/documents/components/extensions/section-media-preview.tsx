@@ -11,6 +11,7 @@ import { AudioPlayer } from "@/components/AudioPlayer";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import type { MarkdownSectionMediaKind } from "@/domains/documents/lib/editor-registry";
 import {
+	isRenderableSectionMedia,
 	sectionMediaFromMarkdownLine,
 	sectionMediaMarkdown,
 } from "@/domains/documents/components/tiptap/section-media";
@@ -96,11 +97,14 @@ export const SectionMediaPreview = TiptapNode.create({
 	},
 
 	renderMarkdown(node: JSONContent) {
-		return sectionMediaMarkdown({
+		const media = {
 			kind: sectionMediaKind(node.attrs?.kind),
 			src: stringAttribute(node.attrs?.src),
 			title: stringAttribute(node.attrs?.title),
-		});
+		};
+		if (!isRenderableSectionMedia(media)) return "";
+
+		return sectionMediaMarkdown(media);
 	},
 });
 
@@ -125,6 +129,17 @@ const sectionMediaPreviewDOMSpec = (attrs: SectionMediaPreviewAttrs): DOMOutputS
 
 const SectionMediaPreviewView: React.FC<NodeViewProps> = ({ node }) => {
 	const attrs = sectionMediaPreviewAttrs(node.attrs);
+	if (!isRenderableSectionMedia(attrs)) {
+		return (
+			<NodeViewWrapper
+				className="hidden"
+				contentEditable={false}
+				data-section-media={attrs.kind}
+				data-src={attrs.src}
+				data-title={attrs.title}
+			/>
+		);
+	}
 
 	return (
 		<NodeViewWrapper

@@ -9,9 +9,9 @@ describe("AgentA2UIMessage", () => {
 	afterEach(() => cleanup());
 
 	it("renders a model-returned A2UI surface", () => {
-		render(<AgentA2UIMessage message={a2uiMessage("是否添加到素材库？")} />);
+		render(<AgentA2UIMessage message={a2uiMessage("是否添加到资料？")} />);
 
-		expect(screen.getByText("是否添加到素材库？")).toBeTruthy();
+		expect(screen.getByText("是否添加到资料？")).toBeTruthy();
 	});
 
 	it("dispatches deterministic attachment action context", () => {
@@ -30,7 +30,7 @@ describe("AgentA2UIMessage", () => {
 		};
 
 		render(<AgentA2UIMessage message={message} onAction={onAction} />);
-		fireEvent.click(screen.getByText("添加到素材库"));
+		fireEvent.click(screen.getByText("添加到资料"));
 
 		expect(onAction).toHaveBeenCalledWith(
 			message,
@@ -63,12 +63,12 @@ describe("AgentA2UIMessage", () => {
 			/>,
 		);
 
-		expect(await screen.findByText("是否添加到素材库？")).toBeTruthy();
-		expect(screen.getByText("附件可以作为本次对话上下文，也可以原文件保存到素材库。")).toBeTruthy();
+		expect(await screen.findByText("是否添加到资料？")).toBeTruthy();
+		expect(screen.getByText("附件可以作为本次对话上下文，也可以原文件保存到资料。")).toBeTruthy();
 		expect(
 			screen.queryByText("附件可以作为本次对话上下文，也可以创建为素材分类文档。"),
 		).toBeFalsy();
-		expect(screen.queryByText("##### 是否添加到素材库？")).toBeFalsy();
+		expect(screen.queryByText("##### 是否添加到资料？")).toBeFalsy();
 		expect(screen.queryByText("*1. notes.txt（5 B）*")).toBeFalsy();
 		expect(screen.getByText("1. notes.txt（5 B）")).toBeTruthy();
 	});

@@ -117,4 +117,40 @@ describe("SectionMediaPreview", () => {
 
 		editor.destroy();
 	});
+
+	it("does not serialize empty section media preview nodes", () => {
+		const editor = new Editor({
+			extensions: [StarterKit, SectionMediaPreview, Markdown],
+			content: {
+				type: "doc",
+				content: [
+					{
+						type: "sectionMediaPreview",
+						attrs: { kind: "audio", src: "", title: "" },
+					},
+				],
+			},
+		});
+
+		render(<EditorContent editor={editor} />);
+		expect(screen.queryByTestId("audio-player")).toBeNull();
+		expect(editor.getMarkdown()).not.toContain("[章节音频](<>)");
+		expect(editor.getMarkdown().trim()).toBe("");
+
+		editor.destroy();
+	});
+
+	it("does not serialize empty section media HTML nodes", () => {
+		const editor = new Editor({
+			extensions: [StarterKit, SectionMediaPreview, Markdown],
+			content: '<div data-section-media="audio" data-src="" data-title=""></div>',
+		});
+
+		render(<EditorContent editor={editor} />);
+		expect(screen.queryByTestId("audio-player")).toBeNull();
+		expect(editor.getMarkdown()).not.toContain("[章节音频](<>)");
+		expect(editor.getMarkdown().trim()).toBe("");
+
+		editor.destroy();
+	});
 });

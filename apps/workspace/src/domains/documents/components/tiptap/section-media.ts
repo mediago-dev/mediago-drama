@@ -13,6 +13,8 @@ export const appendSectionMediaMarkdown = (
 	section: MarkdownSectionIdentity,
 	media: MarkdownSectionMedia,
 ) => {
+	if (!isRenderableSectionMedia(media)) return null;
+
 	const lines = markdown.split("\n");
 	const headingIndex = findSectionHeadingLine(lines, section);
 	if (headingIndex < 0) return null;
@@ -47,6 +49,8 @@ export const removeSectionMediaMarkdown = (
 	section: MarkdownSectionIdentity,
 	media: MarkdownSectionMedia,
 ) => {
+	if (!media.src.trim()) return null;
+
 	const lines = markdown.split("\n");
 	const headingIndex = findSectionHeadingLine(lines, section);
 	if (headingIndex < 0) return null;
@@ -88,10 +92,12 @@ export const sectionMediaFromMarkdownLine = (line: string): MarkdownSectionMedia
 
 	const label = sectionMediaLabelFromText(link.label);
 	if (!label) return null;
+	const source = link.source.trim();
+	if (!source) return null;
 
 	return {
 		kind: label.kind,
-		src: link.source,
+		src: source,
 		...(label.title ? { title: label.title } : {}),
 	};
 };
@@ -110,12 +116,18 @@ const sectionMediaLabelPrefix: Record<MarkdownSectionMediaKind, string> = {
 };
 
 export const sectionMediaMarkdown = (media: MarkdownSectionMedia) => {
+	if (!isRenderableSectionMedia(media)) return "";
+
 	const prefix = sectionMediaLabelPrefix[media.kind];
 	const title = media.title?.trim();
-	const label = title ? `${prefix}：${title}` : prefix;
+	const label = `${prefix}：${title}`;
+	const source = media.src.trim();
 
-	return `[${escapeMarkdownLinkText(label)}](<${media.src}>)`;
+	return `[${escapeMarkdownLinkText(label)}](<${source}>)`;
 };
+
+export const isRenderableSectionMedia = (media: MarkdownSectionMedia) =>
+	media.src.trim() !== "" && media.title?.trim() !== "";
 
 const markdownLinkLinePattern = /^\[((?:\\.|[^\]\\])*)\]\((?:<([^>]+)>|([^\s)]+))\)$/;
 
@@ -125,9 +137,12 @@ const markdownLinkFromLine = (line: string) => {
 
 	return {
 		label: unescapeMarkdownLinkText(match[1]),
-		source: match[2] ?? match[3] ?? "",
+		source: normalizeMarkdownLinkSource(match[2] ?? match[3] ?? ""),
 	};
 };
+
+const normalizeMarkdownLinkSource = (source: string) =>
+	/^<\s*>$/.test(source.trim()) ? "" : source;
 
 const sectionMediaLabelFromText = (label: string) => {
 	for (const kind of sectionMediaKinds) {

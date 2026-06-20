@@ -85,13 +85,13 @@ export const createAttachmentDecisionA2UIPayload = (
 						{
 							id: "title",
 							component: "Text",
-							text: "是否添加到素材库？",
+							text: "是否添加到资料？",
 							variant: "h5",
 						},
 						{
 							id: "summary",
 							component: "Text",
-							text: "附件可以作为本次对话上下文，也可以原文件保存到素材库。",
+							text: "附件可以作为本次对话上下文，也可以原文件保存到资料。",
 						},
 						{
 							id: "files",
@@ -119,7 +119,7 @@ export const createAttachmentDecisionA2UIPayload = (
 						{
 							id: "add-to-library-label",
 							component: "Text",
-							text: "添加到素材库",
+							text: "添加到资料",
 						},
 						attachmentDecisionButton("cancel", "cancel-label", "borderless", batchId, "cancel"),
 						attachmentDecisionButton("use-once", "use-once-label", "default", batchId, "use_once"),

@@ -82,4 +82,18 @@ describe("section media markdown", () => {
 			sectionMediaFromMarkdownLine("[章节视频：](</api/v1/media-assets/video-1/content>)"),
 		).toBeNull();
 	});
+
+	it("ignores section media links without a source", () => {
+		expect(sectionMediaFromMarkdownLine("[章节音频：旁白](<>)")).toBeNull();
+		expect(sectionMediaFromMarkdownLine("[章节视频：旁白]()")).toBeNull();
+
+		const markdown = ["<!-- section-id: section_voice -->", "## 旁白", "", "台词。"].join("\n");
+		expect(
+			appendSectionMediaMarkdown(markdown, section, {
+				kind: "audio",
+				src: "",
+				title: "旁白",
+			}),
+		).toBeNull();
+	});
 });

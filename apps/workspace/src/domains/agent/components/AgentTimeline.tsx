@@ -239,7 +239,8 @@ const firstLegacyAttachmentMarkerIndex = (content: string) => {
 	return indexes.length > 0 ? Math.min(...indexes) : -1;
 };
 
-const legacyAttachmentMarkers = ["附件上下文：", "已保存到素材库的原始文件："];
+const savedAssetAttachmentMarkers = ["已保存到资料的原始文件：", "已保存到素材库的原始文件："];
+const legacyAttachmentMarkers = ["附件上下文：", ...savedAssetAttachmentMarkers];
 
 const legacyInlineAttachments = (content: string): AgentDisplayAttachment[] => {
 	const section = legacySection(content, "附件上下文：");
@@ -264,23 +265,25 @@ const legacyInlineAttachments = (content: string): AgentDisplayAttachment[] => {
 };
 
 const legacySavedAssetAttachments = (content: string): AgentDisplayAttachment[] => {
-	const section = legacySection(content, "已保存到素材库的原始文件：");
-	if (!section) return [];
-
 	const attachments: AgentDisplayAttachment[] = [];
-	const headingPattern = /^(\d+)\.\s*(.+)$/gm;
-	let match: RegExpExecArray | null;
-	while ((match = headingPattern.exec(section)) !== null) {
-		const start = match.index + match[0].length;
-		const next = section.slice(start).search(/\n\d+\.\s*.+/);
-		const block = next >= 0 ? section.slice(start, start + next) : section.slice(start);
-		attachments.push({
-			kind: legacyLineValue(block, "类型") || "file",
-			mimeType: legacyLineValue(block, "MIME"),
-			name: match[2].trim(),
-			size: parseLegacySize(legacyLineValue(block, "大小")),
-			url: legacyLineValue(block, "URL"),
-		});
+	for (const marker of savedAssetAttachmentMarkers) {
+		const section = legacySection(content, marker);
+		if (!section) continue;
+
+		const headingPattern = /^(\d+)\.\s*(.+)$/gm;
+		let match: RegExpExecArray | null;
+		while ((match = headingPattern.exec(section)) !== null) {
+			const start = match.index + match[0].length;
+			const next = section.slice(start).search(/\n\d+\.\s*.+/);
+			const block = next >= 0 ? section.slice(start, start + next) : section.slice(start);
+			attachments.push({
+				kind: legacyLineValue(block, "类型") || "file",
+				mimeType: legacyLineValue(block, "MIME"),
+				name: match[2].trim(),
+				size: parseLegacySize(legacyLineValue(block, "大小")),
+				url: legacyLineValue(block, "URL"),
+			});
+		}
 	}
 	return attachments;
 };
