@@ -1,12 +1,14 @@
 import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
+import type { DocumentCategory, MarkdownDocument } from "@/domains/documents/stores";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { AgentResourceType } from "@/domains/workspace/lib/workbench-route";
 
 export type AssetLibraryKind = "image" | "video" | "audio" | "text" | "binary";
 export type AssetLibrarySource = "media" | "selected";
+export type AssetLibraryResourceType = AgentResourceType | "screenplay" | "source-material";
 export type AssetLibraryKindFilter = "all" | AssetLibraryKind;
 export type AssetLibrarySourceFilter = "all" | AssetLibrarySource;
-export type AssetLibraryResourceFilter = "all" | AgentResourceType;
+export type AssetLibraryResourceFilter = "all" | AssetLibraryResourceType;
 export type AssetLibrarySort = "updatedDesc" | "createdDesc" | "nameAsc" | "sizeDesc";
 
 export interface AssetLibraryItem {
@@ -17,7 +19,7 @@ export interface AssetLibraryItem {
 	mediaAsset?: MediaAsset;
 	mimeType: string;
 	selectedAssets: SelectedGenerationAsset[];
-	selectedResourceTypes: AgentResourceType[];
+	selectedResourceTypes: AssetLibraryResourceType[];
 	sizeBytes: number;
 	sourceType: AssetLibrarySource;
 	title: string;
@@ -26,6 +28,7 @@ export interface AssetLibraryItem {
 }
 
 export interface BuildAssetLibraryItemsInput {
+	documents?: MarkdownDocument[];
 	mediaAssets?: MediaAsset[];
 	selectedAssets?: SelectedGenerationAsset[];
 }
@@ -42,12 +45,19 @@ const mediaContentURLPattern =
 	/\/api(?:\/v1)?\/(?:projects\/[^/]+\/)?(?:media\/assets|media-assets)\/([^/?#]+)\/content/i;
 
 export const buildAssetLibraryItems = ({
+	documents = [],
 	mediaAssets = [],
 	selectedAssets = [],
 }: BuildAssetLibraryItemsInput): AssetLibraryItem[] => {
 	const items: AssetLibraryItem[] = [];
 	const mediaItemByMatchKey = new Map<string, AssetLibraryItem>();
 	const selectedAssetIDs = new Set<string>();
+	const documentResourceTypesByID = new Map(
+		documents.flatMap((document) => {
+			const resourceType = resourceTypeForDocumentCategory(document.category);
+			return resourceType ? [[document.id, resourceType] as const] : [];
+		}),
+	);
 
 	for (const asset of mediaAssets) {
 		const item: AssetLibraryItem = {
@@ -58,7 +68,7 @@ export const buildAssetLibraryItems = ({
 			mediaAsset: asset,
 			mimeType: asset.mimeType,
 			selectedAssets: [],
-			selectedResourceTypes: [],
+			selectedResourceTypes: mediaAssetDocumentResourceTypes(asset, documentResourceTypesByID),
 			sizeBytes: asset.sizeBytes,
 			sourceType: "media",
 			title: asset.filename || "untitled",
@@ -78,7 +88,7 @@ export const buildAssetLibraryItems = ({
 				match.selectedAssets.push(asset);
 				match.selectedResourceTypes = uniqueResourceTypes([
 					...match.selectedResourceTypes,
-					asset.resourceType,
+					asset.resourceType as AssetLibraryResourceType,
 				]);
 				selectedAssetIDs.add(selectedAssetID(asset));
 			}
@@ -92,7 +102,7 @@ export const buildAssetLibraryItems = ({
 			kind: normalizeAssetKind(asset.kind),
 			mimeType: asset.mimeType ?? "",
 			selectedAssets: [asset],
-			selectedResourceTypes: [asset.resourceType],
+			selectedResourceTypes: [asset.resourceType as AssetLibraryResourceType],
 			sizeBytes: 0,
 			sourceType: "selected",
 			title: asset.title?.trim() || "untitled",
@@ -117,7 +127,7 @@ export const filterAssetLibraryItems = (
 	const normalizedQuery = query.trim().toLowerCase();
 	const filtered = items.filter((item) => {
 		if (kind !== "all" && item.kind !== kind) return false;
-		if (source !== "all" && item.sourceType !== source) return false;
+		if (source !== "all" && !assetLibraryItemMatchesSource(item, source)) return false;
 		if (resourceType !== "all" && !item.selectedResourceTypes.includes(resourceType)) return false;
 		if (!normalizedQuery) return true;
 		return [
@@ -134,6 +144,15 @@ export const filterAssetLibraryItems = (
 	});
 
 	return filtered.sort((left, right) => compareAssetLibraryItems(left, right, sort));
+};
+
+const assetLibraryItemMatchesSource = (
+	item: AssetLibraryItem,
+	source: AssetLibrarySourceFilter,
+) => {
+	if (source === "all") return true;
+	if (source === "selected") return item.selectedAssets.length > 0;
+	return item.sourceType === source;
 };
 
 export const mediaAssetIdFromURL = (value: string | undefined | null) => {
@@ -192,9 +211,65 @@ const normalizeAssetKind = (kind: string): AssetLibraryKind => {
 	return "binary";
 };
 
-const uniqueResourceTypes = (types: AgentResourceType[]) => {
-	const seen = new Set<AgentResourceType>();
-	const unique: AgentResourceType[] = [];
+const resourceTypeForDocumentCategory = (
+	category: DocumentCategory | undefined,
+): AssetLibraryResourceType | null => {
+	if (
+		category === "screenplay" ||
+		category === "character" ||
+		category === "scene" ||
+		category === "prop" ||
+		category === "storyboard" ||
+		category === "source-material"
+	) {
+		return category;
+	}
+	return null;
+};
+
+const mediaAssetDocumentResourceTypes = (
+	asset: MediaAsset,
+	resourceTypeByDocumentID: Map<string, AssetLibraryResourceType>,
+) => {
+	const types: AssetLibraryResourceType[] = [];
+	for (const documentID of mediaAssetCandidateDocumentIDs(asset)) {
+		const type = resourceTypeByDocumentID.get(documentID);
+		if (type) types.push(type);
+	}
+	return uniqueResourceTypes(types);
+};
+
+const mediaAssetCandidateDocumentIDs = (asset: MediaAsset) => {
+	const ids = new Set<string>();
+	for (const value of [asset.sectionId, asset.conversationId]) {
+		for (const id of documentIDsFromGenerationScope(value)) ids.add(id);
+	}
+	return [...ids];
+};
+
+const documentIDsFromGenerationScope = (value: string | undefined | null) => {
+	const trimmed = value?.trim() ?? "";
+	if (!trimmed) return [];
+
+	const parts = trimmed.split(":").filter(Boolean).map(decodeScopePart);
+	const ids = new Set<string>();
+	if (parts.length > 0) ids.add(parts[0]);
+	const sectionIndex = parts.indexOf("section");
+	if (sectionIndex >= 0 && parts[sectionIndex + 1]) ids.add(parts[sectionIndex + 1]);
+	return [...ids];
+};
+
+const decodeScopePart = (value: string) => {
+	try {
+		return decodeURIComponent(value);
+	} catch {
+		return value;
+	}
+};
+
+const uniqueResourceTypes = (types: AssetLibraryResourceType[]) => {
+	const seen = new Set<AssetLibraryResourceType>();
+	const unique: AssetLibraryResourceType[] = [];
 	for (const type of types) {
 		if (seen.has(type)) continue;
 		seen.add(type);

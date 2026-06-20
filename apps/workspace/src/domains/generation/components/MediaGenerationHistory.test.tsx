@@ -44,6 +44,12 @@ vi.mock("@/components/VideoPlayer", () => ({
 	),
 }));
 
+vi.mock("@/components/AudioPlayer", () => ({
+	AudioPlayer: ({ mimeType, src }: { mimeType?: string; src: string }) => (
+		<div data-testid="audio-player" data-mime-type={mimeType} data-src={src} />
+	),
+}));
+
 const render = (ui: React.ReactElement) =>
 	testingRender(
 		<>
@@ -59,6 +65,15 @@ const videoEntry = (): GenerationEntry => ({
 	content: "",
 	prompt: "生成一个街景镜头",
 	assets: [{ kind: "video", url: "https://example.test/scene.mp4", mimeType: "video/mp4" }],
+});
+
+const audioEntry = (): GenerationEntry => ({
+	id: "entry-audio",
+	kind: "audio",
+	status: "completed",
+	content: "",
+	prompt: "把这段旁白生成配音",
+	assets: [{ kind: "audio", url: "https://example.test/narration.mp3", mimeType: "audio/mpeg" }],
 });
 
 const imageEntry = (): GenerationEntry => ({
@@ -190,6 +205,52 @@ describe("HistoryGenerationList", () => {
 		fireEvent.click(screen.getByRole("button", { name: "删除视频" }));
 		fireEvent.click(
 			within(screen.getByRole("alertdialog", { name: "删除这个视频？" })).getByRole("button", {
+				name: "删除",
+			}),
+		);
+
+		expect(onDeleteAsset).toHaveBeenCalledWith(entry, entry.assets?.[0], 0);
+	});
+
+	it("renders full-page audio history with the same media grid style", () => {
+		const entry = audioEntry();
+		const onDeleteAsset = vi.fn();
+		const onSaveAsset = vi.fn();
+		const { container } = render(
+			<HistoryGenerationList
+				activeEntryId="entry-audio"
+				deletingEntryIds={[]}
+				entries={[entry]}
+				kind="audio"
+				selectedAssetKeys={[]}
+				variant="list"
+				onDeleteEntry={vi.fn()}
+				onDeleteAsset={onDeleteAsset}
+				onSaveAsset={onSaveAsset}
+				onSelectEntry={vi.fn()}
+			/>,
+		);
+
+		const card = container.querySelector("article");
+		const audioPlayer = screen.getByTestId("audio-player");
+
+		expect(card?.className).toContain("aspect-[4/3]");
+		expect(audioPlayer.getAttribute("data-src")).toBe("https://example.test/narration.mp3");
+		expect(audioPlayer.getAttribute("data-mime-type")).toBe("audio/mpeg");
+		expect(screen.queryByText("把这段旁白生成配音")).toBeNull();
+		expect(screen.queryByText("已完成")).toBeNull();
+		expect(screen.getByRole("button", { name: "下载音频" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "删除音频" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "派生音频" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "预览音频" })).toBeNull();
+
+		fireEvent.click(screen.getByRole("button", { name: "下载音频" }));
+
+		expect(onSaveAsset).toHaveBeenCalledWith(entry, entry.assets?.[0]);
+
+		fireEvent.click(screen.getByRole("button", { name: "删除音频" }));
+		fireEvent.click(
+			within(screen.getByRole("alertdialog", { name: "删除这个音频？" })).getByRole("button", {
 				name: "删除",
 			}),
 		);

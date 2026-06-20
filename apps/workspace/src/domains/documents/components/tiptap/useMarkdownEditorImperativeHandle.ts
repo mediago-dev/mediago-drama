@@ -8,6 +8,7 @@ import type {
 	MarkdownSectionIdentity,
 	MarkdownSectionImage,
 	MarkdownSectionImagePlaceholder,
+	MarkdownSectionMedia,
 } from "@/domains/documents/lib/editor-registry";
 import {
 	findTextNodeRange,
@@ -22,6 +23,7 @@ import {
 	removeSectionImagePlaceholderMarkdown,
 	replaceSectionImagePlaceholderMarkdown,
 } from "./section-images";
+import { appendSectionMediaMarkdown, removeSectionMediaMarkdown } from "./section-media";
 import type { StreamingBlockTarget } from "./types";
 
 interface MarkdownEditorImperativeHandleOptions {
@@ -145,6 +147,45 @@ export const useMarkdownEditorImperativeHandle = ({
 		[editor, emittedMarkdownRef, onChangeRef],
 	);
 
+	const setSectionMedia = useCallback(
+		(section: MarkdownSectionIdentity, media: MarkdownSectionMedia) => {
+			if (!editor) return false;
+
+			const currentMarkdown = editor.getMarkdown();
+			const result = appendSectionMediaMarkdown(currentMarkdown, section, media);
+			if (!result) return false;
+			if (!result.changed) return true;
+
+			emittedMarkdownRef.current = result.markdown;
+			editor.commands.setContent(result.markdown, {
+				contentType: "markdown",
+				emitUpdate: false,
+			});
+			onChangeRef.current(result.markdown);
+			return true;
+		},
+		[editor, emittedMarkdownRef, onChangeRef],
+	);
+
+	const removeSectionMedia = useCallback(
+		(section: MarkdownSectionIdentity, media: MarkdownSectionMedia) => {
+			if (!editor) return false;
+
+			const currentMarkdown = editor.getMarkdown();
+			const result = removeSectionMediaMarkdown(currentMarkdown, section, media);
+			if (!result?.changed) return false;
+
+			emittedMarkdownRef.current = result.markdown;
+			editor.commands.setContent(result.markdown, {
+				contentType: "markdown",
+				emitUpdate: false,
+			});
+			onChangeRef.current(result.markdown);
+			return true;
+		},
+		[editor, emittedMarkdownRef, onChangeRef],
+	);
+
 	const setSectionImagePlaceholder = useCallback(
 		(section: MarkdownSectionIdentity, placeholder: MarkdownSectionImagePlaceholder) => {
 			if (!editor) return false;
@@ -217,6 +258,8 @@ export const useMarkdownEditorImperativeHandle = ({
 			setSelection: setStructuredSelection,
 			setSectionImage,
 			removeSectionImage,
+			setSectionMedia,
+			removeSectionMedia,
 			setSectionImagePlaceholder,
 			replaceSectionImagePlaceholder,
 			removeSectionImagePlaceholder,
@@ -230,10 +273,12 @@ export const useMarkdownEditorImperativeHandle = ({
 			hasPendingBlockDelta,
 			removeSectionImage,
 			removeSectionImagePlaceholder,
+			removeSectionMedia,
 			replaceSectionImagePlaceholder,
 			ref,
 			setSectionImage,
 			setSectionImagePlaceholder,
+			setSectionMedia,
 			setStructuredSelection,
 		],
 	);

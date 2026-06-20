@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import type {
 	GenerationAsset,
+	GenerationKind,
 	GenerationMessageResponse,
 	GenerationNotificationOpenTarget,
 } from "@/domains/generation/api/generation";
@@ -42,6 +43,7 @@ import {
 import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
 
 export interface DocumentSectionGeneratorProps {
+	kind?: GenerationKind;
 	section: MarkdownSectionContext;
 	selectedAssetKeys: string[];
 	materialLibraryImportOpen?: boolean;
@@ -57,12 +59,13 @@ export interface DocumentSectionGeneratorProps {
 	onHistoryCountChange?: (count: number) => void;
 	onMaterialLibraryImportOpenChange?: (open: boolean) => void;
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
-	onToggleImage: (asset: GenerationAsset, selected: boolean) => void;
+	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	onViewModeChange?: (viewMode: MediaGenerationWorkspaceViewMode) => void;
 	viewMode?: MediaGenerationWorkspaceViewMode;
 }
 
 export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> = ({
+	kind = "image",
 	materialLibraryImportOpen,
 	onGenerationComplete,
 	onGenerationError,
@@ -71,13 +74,14 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	onHistoryCountChange,
 	onMaterialLibraryImportOpenChange,
 	onOpenReferenceGeneration,
-	onToggleImage,
+	onToggleAsset,
 	onViewModeChange,
 	projectId,
 	section,
 	selectedAssetKeys,
 	viewMode,
 }) => {
+	const generationKind = kind;
 	const allDocuments = useDocumentsStore((state) => state.documents);
 	const allAssets = useDocumentsStore((state) => state.assets);
 	const [removedMentionKeys, setRemovedMentionKeys] = useState<string[]>([]);
@@ -114,27 +118,38 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 		[projectsData, projectId],
 	);
 	const projectConversation = useMemo(
-		() => projectGenerationConversation(projectId, "image", projectName),
-		[projectId, projectName],
+		() => projectGenerationConversation(projectId, generationKind, projectName),
+		[generationKind, projectId, projectName],
 	);
 	const conversationScopeId = useMemo(
 		() =>
 			projectConversation?.conversationScopeId ??
-			sectionGenerationConversationScopeId(section, projectId),
-		[projectConversation, projectId, section],
+			sectionGenerationKindScopeId(
+				sectionGenerationConversationScopeId(section, projectId),
+				generationKind,
+			),
+		[generationKind, projectConversation, projectId, section],
 	);
 	// 本地乐观缓存始终按章节隔离；项目级会话里再用 sectionId 过滤出本章节的服务端任务。
 	const historyScopeId = useMemo(
-		() => sectionGenerationHistoryScopeId(section, projectId),
-		[projectId, section],
+		() =>
+			sectionGenerationKindScopeId(
+				sectionGenerationHistoryScopeId(section, projectId),
+				generationKind,
+			),
+		[generationKind, projectId, section],
 	);
 	const sectionId = useMemo(
 		() => (projectConversation ? sectionGenerationIdentityKey(section) : undefined),
 		[projectConversation, section],
 	);
 	const modelPreferenceScopeId = useMemo(
-		() => sectionGenerationPreferenceScopeId(section, projectId),
-		[projectId, section],
+		() =>
+			sectionGenerationKindScopeId(
+				sectionGenerationPreferenceScopeId(section, projectId),
+				generationKind,
+			),
+		[generationKind, projectId, section],
 	);
 	const notificationTarget = useMemo<GenerationNotificationOpenTarget | undefined>(() => {
 		const normalizedProjectId = projectId?.trim();
@@ -216,9 +231,11 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	return (
 		<>
 			<MediaGenerationWorkspace
-				kind="image"
-				defaultHistorySourceLabel="文章生成"
-				emptyResultText="生成后会在这里显示可选用的章节插图。"
+				kind={generationKind}
+				defaultHistorySourceLabel={
+					sectionGenerationWorkspaceCopy[generationKind].historySourceLabel
+				}
+				emptyResultText={sectionGenerationWorkspaceCopy[generationKind].emptyResultText}
 				extraReferenceAssetIds={mentionReferenceAssetIds}
 				extraReferenceUrls={mentionReferenceUrls}
 				conversationId={projectConversation?.conversationId}
@@ -232,7 +249,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				materialLibraryImportOpen={materialLibraryImportOpen}
 				notificationTarget={notificationTarget}
 				projectId={projectId}
-				promptPlaceholder="描述要放入当前章节的视觉素材"
+				promptPlaceholder={sectionGenerationWorkspaceCopy[generationKind].promptPlaceholder}
 				referenceBadges={(prompt) => getMentionPreview(prompt).preview.badges}
 				referencePreviewAssets={(prompt) => getMentionPreview(prompt).preview.references}
 				referenceShortcutGroups={selectedNodeReferenceGroups}
@@ -246,7 +263,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				)}
 				selectedAssetKeys={selectedAssetKeys}
 				selectedAssetTitle={section.headingText}
-				submitLabel="生成插图"
+				submitLabel={sectionGenerationWorkspaceCopy[generationKind].submitLabel}
 				uploadIdPrefix="section-generation"
 				onGenerationComplete={onGenerationComplete}
 				onGenerationError={onGenerationError}
@@ -255,13 +272,51 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				onHistoryCountChange={onHistoryCountChange}
 				onMaterialLibraryImportOpenChange={onMaterialLibraryImportOpenChange}
 				onRemoveReferencePreview={removePreviewReferenceAsset}
-				onToggleAsset={onToggleImage}
+				onToggleAsset={onToggleAsset}
 				onViewModeChange={onViewModeChange}
 				viewMode={viewMode}
 			/>
 		</>
 	);
 };
+
+const sectionGenerationWorkspaceCopy: Record<
+	GenerationKind,
+	{
+		emptyResultText: string;
+		historySourceLabel: string;
+		promptPlaceholder: string;
+		submitLabel: string;
+	}
+> = {
+	audio: {
+		emptyResultText: "生成后会在这里显示可试听的语音素材。",
+		historySourceLabel: "文章语音",
+		promptPlaceholder: "输入要合成的语音文案、语气、角色声线和节奏",
+		submitLabel: "生成语音",
+	},
+	image: {
+		emptyResultText: "生成后会在这里显示可选用的章节插图。",
+		historySourceLabel: "文章生成",
+		promptPlaceholder: "描述要放入当前章节的视觉素材",
+		submitLabel: "生成插图",
+	},
+	text: {
+		emptyResultText: "生成后会在这里显示文本结果。",
+		historySourceLabel: "文章文本",
+		promptPlaceholder: "描述要生成或改写的文本内容",
+		submitLabel: "生成文本",
+	},
+	video: {
+		emptyResultText: "生成后会在这里显示可预览的视频素材。",
+		historySourceLabel: "文章视频",
+		promptPlaceholder: "描述当前章节的视频镜头、运动、机位、时长、画幅和质量",
+		submitLabel: "生成视频",
+	},
+};
+
+const sectionGenerationKindScopeId = (scopeId: string, kind: GenerationKind) =>
+	kind === "image" ? scopeId : `${scopeId}:${kind}`;
 
 const useDocumentsMediaAssets = () => {
 	const allDocuments = useDocumentsStore((state) => state.documents);

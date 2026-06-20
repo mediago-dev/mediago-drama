@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DocumentSectionGeneratorProps } from "@/domains/documents/components/DocumentSectionGenerator";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
-import { SectionGenerationDialog } from "@/domains/documents/components/SectionGenerationDialog";
+import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
 
 let capturedGeneratorProps: DocumentSectionGeneratorProps | null = null;
 let capturedGeneratorPropsList: DocumentSectionGeneratorProps[] = [];
@@ -26,7 +26,7 @@ const section: MarkdownSectionContext = {
 	prompt: "角色设定。",
 };
 
-describe("SectionGenerationDialog", () => {
+describe("ImageGenerationDialog", () => {
 	afterEach(() => {
 		cleanup();
 		capturedGeneratorProps = null;
@@ -35,7 +35,7 @@ describe("SectionGenerationDialog", () => {
 
 	it("opens the material library picker from the title bar", async () => {
 		render(
-			<SectionGenerationDialog
+			<ImageGenerationDialog
 				open
 				section={section}
 				onGenerationComplete={vi.fn()}
@@ -51,6 +51,7 @@ describe("SectionGenerationDialog", () => {
 		await waitFor(() => {
 			expect(capturedGeneratorProps?.materialLibraryImportOpen).toBe(true);
 		});
+		expect(capturedGeneratorProps?.kind).toBeUndefined();
 	});
 
 	it("opens reference generation in a child dialog without replacing the current section", async () => {
@@ -70,7 +71,7 @@ describe("SectionGenerationDialog", () => {
 		};
 
 		render(
-			<SectionGenerationDialog
+			<ImageGenerationDialog
 				open
 				section={section}
 				selectedAssetKeys={selectedAssetKeys}
@@ -123,7 +124,7 @@ describe("SectionGenerationDialog", () => {
 		};
 
 		render(
-			<SectionGenerationDialog
+			<ImageGenerationDialog
 				open
 				section={section}
 				onGenerationComplete={vi.fn()}

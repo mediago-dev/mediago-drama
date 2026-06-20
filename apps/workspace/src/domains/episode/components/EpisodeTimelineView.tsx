@@ -23,7 +23,6 @@ import {
 import type { GenerationAsset } from "@/domains/generation/api/generation";
 import { Button } from "@/shared/components/ui/button";
 import { useToast } from "@/hooks/useToast";
-import { SectionGenerationDialog } from "@/domains/documents/components/SectionGenerationDialog";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import {
 	appendSectionImageMarkdown,
@@ -55,6 +54,7 @@ import {
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useTauriWindowDrag } from "@/domains/workspace/lib/tauri-window-drag";
 import { agentProjectPath, agentProjectRouteState } from "@/domains/workspace/lib/workbench-route";
+import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
 
 interface EpisodeTimelineViewProps {
 	documentId?: string;
@@ -568,7 +568,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 				onOpenReferenceGeneration={openReferenceSectionGeneration}
 				onGeneratedVideoReady={handleGeneratedVideoReady}
 			/>
-			<SectionGenerationDialog
+			<ImageGenerationDialog
 				open={Boolean(referenceSectionGeneration)}
 				projectId={projectId ?? undefined}
 				section={referenceSectionGeneration}

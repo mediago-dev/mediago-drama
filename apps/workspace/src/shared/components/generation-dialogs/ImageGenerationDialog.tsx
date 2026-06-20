@@ -11,7 +11,7 @@ import type { MarkdownSectionContext } from "@/domains/documents/components/Mark
 import { sectionGenerationIdentityKey } from "@/domains/documents/lib/section-generation";
 import { Button } from "@/shared/components/ui/button";
 
-interface SectionGenerationDialogProps {
+interface ImageGenerationDialogProps {
 	onGenerationComplete: (
 		section: MarkdownSectionContext,
 		pendingId: string,
@@ -38,11 +38,11 @@ interface SectionGenerationDialogProps {
 	section: MarkdownSectionContext | null;
 }
 
-interface SectionGenerationDialogController {
-	dialogs: SectionGenerationDialogPanelController[];
+interface ImageGenerationDialogController {
+	dialogs: ImageGenerationDialogPanelController[];
 }
 
-interface SectionGenerationDialogPanelController {
+interface ImageGenerationDialogPanelController {
 	dialogId: string;
 	generatorKey: string;
 	materialLibraryOpen: boolean;
@@ -67,12 +67,12 @@ interface SectionGenerationDialogPanelController {
 	titleId: string;
 }
 
-export const SectionGenerationDialog: React.FC<SectionGenerationDialogProps> = (props) => {
-	const controller = useSectionGenerationDialogController(props);
-	return <SectionGenerationDialogView controller={controller} />;
+export const ImageGenerationDialog: React.FC<ImageGenerationDialogProps> = (props) => {
+	const controller = useImageGenerationDialogController(props);
+	return <ImageGenerationDialogView controller={controller} />;
 };
 
-const useSectionGenerationDialogController = ({
+const useImageGenerationDialogController = ({
 	onGenerationComplete,
 	onGenerationError,
 	onGenerationResponse,
@@ -83,7 +83,7 @@ const useSectionGenerationDialogController = ({
 	projectId,
 	selectedAssetKeys,
 	section,
-}: SectionGenerationDialogProps): SectionGenerationDialogController => {
+}: ImageGenerationDialogProps): ImageGenerationDialogController => {
 	const [lastSection, setLastSection] = useState<MarkdownSectionContext | null>(section);
 	const [referenceSections, setReferenceSections] = useState<MarkdownSectionContext[]>([]);
 	const [materialLibraryOpenByDialog, setMaterialLibraryOpenByDialog] = useState<
@@ -176,18 +176,18 @@ const useSectionGenerationDialogController = ({
 	};
 };
 
-const SectionGenerationDialogView: React.FC<{ controller: SectionGenerationDialogController }> = ({
+const ImageGenerationDialogView: React.FC<{ controller: ImageGenerationDialogController }> = ({
 	controller,
 }) => (
 	<>
 		{controller.dialogs.map((dialog) => (
-			<SectionGenerationDialogPanel key={dialog.dialogId} controller={dialog} />
+			<ImageGenerationDialogPanel key={dialog.dialogId} controller={dialog} />
 		))}
 	</>
 );
 
-const SectionGenerationDialogPanel: React.FC<{
-	controller: SectionGenerationDialogPanelController;
+const ImageGenerationDialogPanel: React.FC<{
+	controller: ImageGenerationDialogPanelController;
 }> = ({ controller }) => (
 	<GenerationModalShell
 		open={controller.open}
@@ -220,13 +220,13 @@ const SectionGenerationDialogPanel: React.FC<{
 			onGenerationStart={controller.onGenerationStart}
 			onMaterialLibraryImportOpenChange={controller.onMaterialLibraryImportOpenChange}
 			onOpenReferenceGeneration={controller.onOpenReferenceGeneration}
-			onToggleImage={controller.onToggleImage}
+			onToggleAsset={controller.onToggleImage}
 		/>
 	</GenerationModalShell>
 );
 
 const resolveSelectedAssetKeys = (
-	selectedAssetKeys: SectionGenerationDialogProps["selectedAssetKeys"],
+	selectedAssetKeys: ImageGenerationDialogProps["selectedAssetKeys"],
 	section: MarkdownSectionContext,
 ) =>
 	typeof selectedAssetKeys === "function" ? selectedAssetKeys(section) : (selectedAssetKeys ?? []);

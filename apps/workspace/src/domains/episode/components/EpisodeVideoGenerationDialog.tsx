@@ -9,7 +9,6 @@ import { projectGenerationConversation } from "@/domains/generation/api/generati
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { DocumentMentionHoverPopover } from "@/domains/documents/components/DocumentMentionHoverPopover";
 import { DocumentMention } from "@/domains/documents/components/extensions/document-mention";
-import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import {
 	buildMentionPreviewReferences,
@@ -26,10 +25,9 @@ import {
 import { normalizeHeadingText, stripSectionIdCommentLines } from "@/domains/documents/lib/sections";
 import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
 import { formatTimelineTime, type Episode, type TimelineClip } from "@/domains/episode/lib/sample";
-import {
-	MediaGenerationWorkspace,
-	type MediaGenerationWorkspaceProps,
-	type PromptEditorProps,
+import type {
+	MediaGenerationWorkspaceProps,
+	PromptEditorProps,
 } from "@/domains/generation/components/MediaGenerationWorkspace";
 import { PromptEditor } from "@/domains/generation/components/PromptEditor";
 import {
@@ -38,6 +36,7 @@ import {
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
+import { VideoGenerationDialog } from "@/shared/components/generation-dialogs/VideoGenerationDialog";
 
 interface EpisodeVideoGenerationDialogProps {
 	documentId?: string;
@@ -77,7 +76,7 @@ interface EpisodeVideoGenerationDialogController {
 	onOpenChange: (open: boolean) => void;
 	open: boolean;
 	title: string;
-	workspaceProps: MediaGenerationWorkspaceProps;
+	workspaceProps: Omit<MediaGenerationWorkspaceProps, "kind">;
 }
 
 export const EpisodeVideoGenerationDialog: React.FC<EpisodeVideoGenerationDialogProps> = (
@@ -235,7 +234,6 @@ const useEpisodeVideoGenerationDialogController = ({
 		title: `生成视频素材 · ${selectedClip?.title ?? episode.title}`,
 		workspaceProps: {
 			className: "min-h-0 flex-1",
-			kind: "video",
 			emptyResultText: "生成后会在这里显示可预览的视频素材。",
 			conversationId: projectConversation?.conversationId,
 			conversationScopeId,
@@ -277,14 +275,13 @@ const useEpisodeVideoGenerationDialogController = ({
 const EpisodeVideoGenerationDialogView: React.FC<{
 	controller: EpisodeVideoGenerationDialogController;
 }> = ({ controller }) => (
-	<GenerationModalShell
+	<VideoGenerationDialog
 		open={controller.open}
 		title={controller.title}
 		titleId={titleId}
+		workspaceProps={controller.workspaceProps}
 		onOpenChange={controller.onOpenChange}
-	>
-		<MediaGenerationWorkspace {...controller.workspaceProps} />
-	</GenerationModalShell>
+	/>
 );
 
 const buildEpisodeVideoContext = (

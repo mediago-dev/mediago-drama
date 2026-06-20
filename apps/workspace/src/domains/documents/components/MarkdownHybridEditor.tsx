@@ -18,6 +18,7 @@ import {
 	LockedHeading,
 } from "@/domains/documents/components/extensions/locked-heading";
 import { SectionIdAnchor } from "@/domains/documents/components/extensions/section-id-anchor";
+import { SectionMediaPreview } from "@/domains/documents/components/extensions/section-media-preview";
 import {
 	commentAnchorExtension,
 	createBlockHandleExtension,
@@ -26,6 +27,7 @@ import {
 	BlockHandle,
 	HeadingActionButton,
 	SectionGenerateButton,
+	type SectionGenerateKind,
 } from "@/domains/documents/components/tiptap/editor-overlays";
 import {
 	diffTopLevelBlocks,
@@ -75,7 +77,7 @@ export interface MarkdownHybridEditorProps {
 	onChange: (value: string) => void;
 	onCommentAnchorClick?: (commentId: string) => void;
 	onHeadingAction?: (heading: MarkdownHeadingContext) => void;
-	onSectionGenerate?: (section: MarkdownSectionContext) => void;
+	onSectionGenerate?: (section: MarkdownSectionContext, kind: SectionGenerateKind) => void;
 	onSelectionChange?: (value: string) => void;
 	onSelectionCoordChange?: (coords: SelectionCoords | null) => void;
 	onSelectionRangeChange?: (range: InlineDecorationRange | null) => void;
@@ -83,7 +85,7 @@ export interface MarkdownHybridEditorProps {
 
 export type { MarkdownHybridEditorHandle };
 
-export type { MarkdownHeadingContext, MarkdownSectionContext };
+export type { MarkdownHeadingContext, MarkdownSectionContext, SectionGenerateKind };
 
 export interface SelectionCoords {
 	x: number;
@@ -144,6 +146,7 @@ const createMarkdownSchemaExtensions = (
 	}),
 	LockedHeading.configure({ levels: [1, 2, 3, 4] }),
 	SectionIdAnchor,
+	SectionMediaPreview,
 	Image.configure({
 		allowBase64: true,
 	}),
@@ -514,21 +517,24 @@ export const MarkdownHybridEditor = forwardRef<
 		clearHoveredBlockHandle();
 	}, [clearHoveredBlockHandle, editor]);
 
-	const openSectionGeneration = useCallback(() => {
-		if (!editor || !onSectionGenerateRef.current) return;
+	const openSectionGeneration = useCallback(
+		(kind: SectionGenerateKind) => {
+			if (!editor || !onSectionGenerateRef.current) return;
 
-		const range = blockHandleStorage(editor).hoveredRange;
-		if (!range || range.nodeType !== "heading") return;
+			const range = blockHandleStorage(editor).hoveredRange;
+			if (!range || range.nodeType !== "heading") return;
 
-		const sectionRange = ensureMarkdownHeadingSectionId(editor, range);
-		if (!sectionRange) return;
+			const sectionRange = ensureMarkdownHeadingSectionId(editor, range);
+			if (!sectionRange) return;
 
-		const section = createMarkdownSectionContext(editor, documentId, sectionRange);
-		if (!section) return;
+			const section = createMarkdownSectionContext(editor, documentId, sectionRange);
+			if (!section) return;
 
-		onSectionGenerateRef.current(section);
-		clearHoveredBlockHandle();
-	}, [clearHoveredBlockHandle, documentId, editor]);
+			onSectionGenerateRef.current(section, kind);
+			clearHoveredBlockHandle();
+		},
+		[clearHoveredBlockHandle, documentId, editor],
+	);
 
 	const hoveredHeadingContext = useMemo(() => {
 		if (!editor || !hoveredBlockRect?.range || hoveredBlockRect.range.nodeType !== "heading") {

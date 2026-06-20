@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { MarkdownDocument } from "@/domains/documents/stores";
 import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import {
@@ -75,6 +76,93 @@ describe("asset-library", () => {
 		});
 	});
 
+	it("adds document category resource labels to matching media assets", () => {
+		const items = buildAssetLibraryItems({
+			documents: [
+				document({ category: "character", id: "doc-character" }),
+				document({ category: "scene", id: "doc-scene" }),
+				document({ category: "prop", id: "doc-prop" }),
+				document({ category: "storyboard", id: "doc-storyboard" }),
+				document({ category: "screenplay", id: "doc-screenplay" }),
+				document({ category: "source-material", id: "doc-source" }),
+			],
+			mediaAssets: [
+				mediaAsset({
+					id: "character-image",
+					sectionId: "doc-character:section-a",
+					url: "/api/v1/media-assets/character-image/content",
+				}),
+				mediaAsset({
+					id: "screenplay-image",
+					sectionId: "agent:project-a:section:doc-screenplay:section-b",
+					url: "/api/v1/media-assets/screenplay-image/content",
+				}),
+				mediaAsset({
+					id: "scene-image",
+					sectionId: "doc-scene:section-c",
+					url: "/api/v1/media-assets/scene-image/content",
+				}),
+				mediaAsset({
+					id: "prop-image",
+					sectionId: "doc-prop:section-d",
+					url: "/api/v1/media-assets/prop-image/content",
+				}),
+				mediaAsset({
+					id: "storyboard-image",
+					sectionId: "doc-storyboard:section-e",
+					url: "/api/v1/media-assets/storyboard-image/content",
+				}),
+				mediaAsset({
+					id: "source-image",
+					conversationId: "section:doc-source:section-c",
+					url: "/api/v1/media-assets/source-image/content",
+				}),
+			],
+		});
+
+		expect(items.find((item) => item.id === "character-image")?.selectedResourceTypes).toEqual([
+			"character",
+		]);
+		expect(items.find((item) => item.id === "screenplay-image")?.selectedResourceTypes).toEqual([
+			"screenplay",
+		]);
+		expect(items.find((item) => item.id === "scene-image")?.selectedResourceTypes).toEqual([
+			"scene",
+		]);
+		expect(items.find((item) => item.id === "prop-image")?.selectedResourceTypes).toEqual(["prop"]);
+		expect(items.find((item) => item.id === "storyboard-image")?.selectedResourceTypes).toEqual([
+			"storyboard",
+		]);
+		expect(items.find((item) => item.id === "source-image")?.selectedResourceTypes).toEqual([
+			"source-material",
+		]);
+		expect(
+			filterAssetLibraryItems(items, { resourceType: "source-material" }).map((item) => item.id),
+		).toEqual(["source-image"]);
+	});
+
+	it("deduplicates document and selected resource labels", () => {
+		const items = buildAssetLibraryItems({
+			documents: [document({ category: "character", id: "doc-character" })],
+			mediaAssets: [
+				mediaAsset({
+					id: "character-image",
+					sectionId: "doc-character:section-a",
+					url: "/api/v1/media-assets/character-image/content",
+				}),
+			],
+			selectedAssets: [
+				selectedAsset({
+					mediaAssetId: "character-image",
+					resourceType: "character",
+					url: "",
+				}),
+			],
+		});
+
+		expect(items[0].selectedResourceTypes).toEqual(["character"]);
+	});
+
 	it("filters by kind, source, resource type, and query", () => {
 		const items = buildAssetLibraryItems({
 			mediaAssets: [
@@ -104,6 +192,9 @@ describe("asset-library", () => {
 			"hero",
 		]);
 		expect(filterAssetLibraryItems(items, { source: "media" })).toHaveLength(2);
+		expect(filterAssetLibraryItems(items, { source: "selected" }).map((item) => item.id)).toEqual([
+			"hero",
+		]);
 		expect(filterAssetLibraryItems(items, { resourceType: "prop" }).map((item) => item.id)).toEqual(
 			["hero"],
 		);
@@ -132,6 +223,21 @@ const mediaAsset = (overrides: Partial<MediaAsset> = {}): MediaAsset => ({
 	sizeBytes: 1024,
 	updatedAt: "2026-06-01T09:00:00Z",
 	url: "/api/v1/media-assets/media-a/content",
+	...overrides,
+});
+
+const document = (overrides: Partial<MarkdownDocument> = {}): MarkdownDocument => ({
+	category: "screenplay",
+	comments: [],
+	content: "",
+	id: "doc-a",
+	isDirty: false,
+	parentId: null,
+	sortOrder: 0,
+	title: "文档",
+	updatedAt: "2026-06-01T09:00:00Z",
+	version: 1,
+	workbenchDraft: null,
 	...overrides,
 });
 

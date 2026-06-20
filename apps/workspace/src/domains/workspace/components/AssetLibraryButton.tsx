@@ -9,7 +9,6 @@ import {
 	Images,
 	LibraryBig,
 	Loader2,
-	MoreHorizontal,
 	Search,
 	Trash2,
 	UploadCloud,
@@ -18,6 +17,8 @@ import {
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
+import { AudioPlayer } from "@/components/AudioPlayer";
+import { VideoPlayer } from "@/components/VideoPlayer";
 import {
 	deleteSelectedGenerationAsset,
 	getSelectedGenerationAssets,
@@ -35,7 +36,6 @@ import {
 	deleteMediaAsset,
 	getMediaAssets,
 	mediaAssetsKey,
-	updateMediaAsset,
 	uploadMediaAsset,
 } from "@/domains/workspace/api/media";
 import {
@@ -43,15 +43,15 @@ import {
 	type AssetLibraryKind,
 	type AssetLibraryKindFilter,
 	type AssetLibraryResourceFilter,
-	type AssetLibrarySort,
+	type AssetLibraryResourceType,
 	type AssetLibrarySource,
 	type AssetLibrarySourceFilter,
 	buildAssetLibraryItems,
 	filterAssetLibraryItems,
 } from "@/domains/workspace/lib/asset-library";
-import { getRouteProjectId, type AgentResourceType } from "@/domains/workspace/lib/workbench-route";
+import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspace/api/workspace";
+import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { useToast } from "@/hooks/useToast";
-import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { Input } from "@/shared/components/ui/input";
@@ -95,17 +95,12 @@ const globalSourceOptions: Array<{ label: string; value: AssetLibrarySourceFilte
 
 const resourceOptions: Array<{ label: string; value: AssetLibraryResourceFilter }> = [
 	{ label: "全部资源标签", value: "all" },
+	{ label: "剧本", value: "screenplay" },
 	{ label: "角色", value: "character" },
 	{ label: "场景", value: "scene" },
 	{ label: "分镜", value: "storyboard" },
 	{ label: "道具", value: "prop" },
-];
-
-const sortOptions: Array<{ label: string; value: AssetLibrarySort }> = [
-	{ label: "最近更新", value: "updatedDesc" },
-	{ label: "最近创建", value: "createdDesc" },
-	{ label: "名称 A-Z", value: "nameAsc" },
-	{ label: "文件大小", value: "sizeDesc" },
+	{ label: "素材", value: "source-material" },
 ];
 
 const globalProjectValue = "__global__";
@@ -155,7 +150,6 @@ const AssetLibraryDialog: React.FC<{
 	const [selectedProjectId, setSelectedProjectId] = useState(projectId ?? "");
 	const [query, setQuery] = useState("");
 	const [resourceFilter, setResourceFilter] = useState<AssetLibraryResourceFilter>("all");
-	const [sort, setSort] = useState<AssetLibrarySort>("updatedDesc");
 	const [sourceFilter, setSourceFilter] = useState<AssetLibrarySourceFilter>("all");
 	const [uploadOpen, setUploadOpen] = useState(false);
 	const [uploading, setUploading] = useState<"media" | null>(null);
@@ -166,6 +160,8 @@ const AssetLibraryDialog: React.FC<{
 		() => getProjects(),
 	);
 	const mediaQueryKey = open ? [mediaAssetsKey, mediaProjectId] : null;
+	const documentsQueryKey =
+		open && selectedProjectId ? workspaceDocumentsKey(selectedProjectId) : null;
 	const selectedQueryKey =
 		open && selectedProjectId ? selectedGenerationAssetsQueryKey(selectedProjectId) : null;
 	const {
@@ -180,6 +176,11 @@ const AssetLibraryDialog: React.FC<{
 		isLoading: isSelectedLoading,
 		mutate: mutateSelectedAssets,
 	} = useSWR(selectedQueryKey, () => getSelectedGenerationAssets(selectedProjectId));
+	const {
+		data: documentsData,
+		error: documentsError,
+		isLoading: isDocumentsLoading,
+	} = useSWR(documentsQueryKey, () => getWorkspaceDocuments(selectedProjectId));
 	const projects = useMemo(() => projectsData?.projects ?? [], [projectsData?.projects]);
 	const selectedProject = useMemo(
 		() => projects.find((project) => project.id === selectedProjectId) ?? null,
@@ -198,10 +199,11 @@ const AssetLibraryDialog: React.FC<{
 	const items = useMemo(
 		() =>
 			buildAssetLibraryItems({
+				documents: projectMode ? (documentsData?.documents ?? []) : [],
 				mediaAssets: mediaData?.assets ?? [],
 				selectedAssets: projectMode ? (selectedData?.assets ?? []) : [],
 			}),
-		[mediaData?.assets, projectMode, selectedData?.assets],
+		[documentsData?.documents, mediaData?.assets, projectMode, selectedData?.assets],
 	);
 	const filteredItems = useMemo(
 		() =>
@@ -209,17 +211,16 @@ const AssetLibraryDialog: React.FC<{
 				kind: kindFilter,
 				query,
 				resourceType: projectMode ? resourceFilter : "all",
-				sort,
 				source: sourceFilter,
 			}),
-		[items, kindFilter, projectMode, query, resourceFilter, sort, sourceFilter],
+		[items, kindFilter, projectMode, query, resourceFilter, sourceFilter],
 	);
 	const activeItem = useMemo(
 		() => filteredItems.find((item) => item.key === activeKey) ?? filteredItems[0] ?? null,
 		[activeKey, filteredItems],
 	);
-	const isLoading = isMediaLoading || (projectMode && isSelectedLoading);
-	const error = mediaError ?? selectedError;
+	const isLoading = isMediaLoading || (projectMode && (isSelectedLoading || isDocumentsLoading));
+	const error = mediaError ?? selectedError ?? documentsError;
 
 	useEffect(() => {
 		if (!open) return;
@@ -261,24 +262,6 @@ const AssetLibraryDialog: React.FC<{
 		}
 	};
 
-	const renameItem = async (item: AssetLibraryItem) => {
-		const filename = window.prompt("重命名素材", item.title)?.trim();
-		if (!filename || filename === item.title || busyKey) return;
-
-		setBusyKey(item.key);
-		try {
-			if (item.sourceType === "media" && item.mediaAsset) {
-				await updateMediaAsset(item.mediaAsset.id, filename, selectedProjectId || null);
-				await mutateMediaAssets();
-			}
-			toast.success("素材已重命名", { description: filename });
-		} catch (err) {
-			toast.error("重命名失败", { description: errorMessage(err, "素材重命名失败。") });
-		} finally {
-			setBusyKey("");
-		}
-	};
-
 	const deleteItem = async (item: AssetLibraryItem) => {
 		if (busyKey) return;
 		const confirmed = await confirmDialog({
@@ -311,19 +294,6 @@ const AssetLibraryDialog: React.FC<{
 			toast.error(item.sourceType === "selected" ? "取消选入失败" : "删除失败", {
 				description: errorMessage(err, "素材操作失败。"),
 			});
-		} finally {
-			setBusyKey("");
-		}
-	};
-
-	const cancelSelectedAssets = async (item: AssetLibraryItem) => {
-		if (busyKey || item.selectedAssets.length === 0) return;
-		setBusyKey(item.key);
-		try {
-			await unselectGenerationAssets(item.selectedAssets);
-			toast.success("已取消选入", { description: item.title });
-		} catch (err) {
-			toast.error("取消选入失败", { description: errorMessage(err, "已选资源更新失败。") });
 		} finally {
 			setBusyKey("");
 		}
@@ -371,19 +341,27 @@ const AssetLibraryDialog: React.FC<{
 										: "管理可在工具箱中复用的全局素材。"}
 								</DialogPrimitive.Description>
 							</div>
-							<div className="flex shrink-0 items-center gap-2">
-								<Badge variant="secondary" className="hidden sm:inline-flex">
-									{filteredItems.length} / {items.length}
-								</Badge>
-								<DialogPrimitive.Close asChild>
-									<Button type="button" variant="ghost" size="icon" aria-label="关闭素材库">
-										<X className="size-4" />
-									</Button>
-								</DialogPrimitive.Close>
-							</div>
+							<DialogPrimitive.Close asChild>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon"
+									className="shrink-0"
+									aria-label="关闭素材库"
+								>
+									<X className="size-4" />
+								</Button>
+							</DialogPrimitive.Close>
 						</header>
 
-						<div className="grid shrink-0 gap-2 border-b border-border bg-card px-4 py-3 lg:grid-cols-[minmax(10rem,1fr)_minmax(10rem,14rem)_auto_auto_auto_auto]">
+						<div
+							className={cn(
+								"grid shrink-0 gap-2 border-b border-border bg-card px-4 py-3",
+								projectMode
+									? "lg:grid-cols-[minmax(16rem,18rem)_minmax(10rem,14rem)_auto_auto_auto_auto]"
+									: "lg:grid-cols-[minmax(16rem,18rem)_minmax(10rem,14rem)_auto_auto_auto]",
+							)}
+						>
 							<div className="relative min-w-0">
 								<Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
 								<Input
@@ -423,12 +401,6 @@ const AssetLibraryDialog: React.FC<{
 								/>
 							) : null}
 							<div className="flex items-center gap-2">
-								<AssetLibrarySelect
-									label="排序"
-									value={sort}
-									options={sortOptions}
-									onValueChange={(value) => setSort(value as AssetLibrarySort)}
-								/>
 								<Popover open={uploadOpen} onOpenChange={setUploadOpen}>
 									<PopoverTrigger asChild>
 										<Button
@@ -484,10 +456,8 @@ const AssetLibraryDialog: React.FC<{
 												active={item.key === activeItem?.key}
 												busy={busyKey === item.key}
 												item={item}
-												onCancelSelected={() => void cancelSelectedAssets(item)}
 												onDelete={() => void deleteItem(item)}
 												onPreview={() => setActiveKey(item.key)}
-												onRename={() => void renameItem(item)}
 											/>
 										))}
 									</section>
@@ -506,15 +476,14 @@ const AssetLibraryCard: React.FC<{
 	active: boolean;
 	busy: boolean;
 	item: AssetLibraryItem;
-	onCancelSelected: () => void;
 	onDelete: () => void;
 	onPreview: () => void;
-	onRename: () => void;
-}> = ({ active, busy, item, onCancelSelected, onDelete, onPreview, onRename }) => {
+}> = ({ active, busy, item, onDelete, onPreview }) => {
 	const source = assetLibraryItemSource(item);
+	const thumbnailSource = assetLibraryItemThumbnailSource(item);
+	const kindTag = assetLibraryKindTag(item);
+	const resourceTags = assetLibraryResourceTags(item);
 	const Icon = iconForKind(item.kind);
-	const canRename = item.sourceType === "media";
-	const canCancelSelected = item.selectedAssets.length > 0;
 
 	return (
 		<article
@@ -530,39 +499,24 @@ const AssetLibraryCard: React.FC<{
 				aria-label={`预览 ${item.title}`}
 			>
 				<div className="relative aspect-[4/3] bg-ide-toolbar">
-					{item.kind === "image" && source ? (
-						<img src={source} alt="" className="size-full object-contain" />
+					{thumbnailSource ? (
+						<img src={thumbnailSource} alt="" className="size-full object-contain" />
 					) : (
 						<div className="grid size-full place-items-center">
 							<Icon className="size-8 text-muted-foreground" />
 						</div>
 					)}
-					<SourceBadge source={item.sourceType} />
+					<AssetCornerTags tags={resourceTags} />
 				</div>
 				<div className="grid gap-1 px-3 py-2">
 					<p className="truncate text-xs font-semibold text-foreground" title={item.title}>
 						{item.title}
 					</p>
-					<p className="truncate text-2xs text-muted-foreground">
-						{kindLabel(item.kind)} · {formatBytes(item.sizeBytes)}
-					</p>
-					{item.mediaAsset?.relativePath ? (
-						<p
-							className="truncate text-2xs text-muted-foreground"
-							title={item.mediaAsset.relativePath}
-						>
-							{item.mediaAsset.relativePath}
-						</p>
-					) : null}
-					{item.selectedResourceTypes.length > 0 ? (
-						<div className="flex flex-wrap gap-1">
-							{item.selectedResourceTypes.map((type) => (
-								<Badge key={type} variant="outline" className="px-1 py-0 text-2xs">
-									{resourceTypeLabel(type)}
-								</Badge>
-							))}
-						</div>
-					) : null}
+					<div className="flex min-w-0 items-center gap-1 text-2xs text-muted-foreground">
+						<AssetTagBadge tag={kindTag} className="px-1 py-0 text-2xs shadow-none" />
+						<span aria-hidden="true">·</span>
+						<span className="truncate">{formatBytes(item.sizeBytes)}</span>
+					</div>
 				</div>
 			</button>
 			<div className="flex items-center justify-between gap-1 border-t border-border px-2 py-1.5">
@@ -572,31 +526,6 @@ const AssetLibraryCard: React.FC<{
 					</a>
 				</Button>
 				<div className="flex items-center gap-1">
-					{canCancelSelected ? (
-						<Button
-							type="button"
-							size="sm"
-							variant="ghost"
-							className="h-7 px-2 text-2xs"
-							disabled={busy}
-							onClick={onCancelSelected}
-						>
-							取消选入
-						</Button>
-					) : null}
-					{canRename ? (
-						<Button
-							type="button"
-							size="sm"
-							variant="ghost"
-							className="h-7 px-2"
-							disabled={busy}
-							onClick={onRename}
-							aria-label={`重命名 ${item.title}`}
-						>
-							<MoreHorizontal className="size-3.5" />
-						</Button>
-					) : null}
 					<Button
 						type="button"
 						size="sm"
@@ -620,6 +549,8 @@ const AssetLibraryPreview: React.FC<{
 	item: AssetLibraryItem | null;
 }> = ({ item }) => {
 	const source = item ? assetLibraryItemSource(item) : "";
+	const posterSource = item ? assetLibraryItemPosterSource(item) : "";
+	const tags = item ? assetLibraryItemTags(item) : [];
 	const textKey = item?.kind === "text" && source ? source : null;
 	const {
 		data: text,
@@ -655,6 +586,7 @@ const AssetLibraryPreview: React.FC<{
 						error={error}
 						isTextLoading={isLoading}
 						item={item}
+						posterSource={posterSource}
 						source={source}
 						text={text}
 					/>
@@ -670,15 +602,7 @@ const AssetLibraryPreview: React.FC<{
 						<p className="break-all">路径：{item.mediaAsset.relativePath}</p>
 					) : null}
 				</div>
-				{item.selectedResourceTypes.length > 0 ? (
-					<div className="flex flex-wrap gap-1.5">
-						{item.selectedResourceTypes.map((type) => (
-							<Badge key={type} variant="secondary">
-								{resourceTypeLabel(type)}
-							</Badge>
-						))}
-					</div>
-				) : null}
+				<AssetTagList tags={tags} className="gap-1.5" />
 			</div>
 		</aside>
 	);
@@ -688,20 +612,35 @@ const AssetPreviewMedia: React.FC<{
 	error: unknown;
 	isTextLoading: boolean;
 	item: AssetLibraryItem;
+	posterSource: string;
 	source: string;
 	text?: string;
-}> = ({ error, isTextLoading, item, source, text }) => {
+}> = ({ error, isTextLoading, item, posterSource, source, text }) => {
 	if (item.kind === "image" && source) {
 		return <img src={source} alt={item.title} className="max-h-[24rem] w-full object-contain" />;
 	}
 	if (item.kind === "video" && source) {
-		return <video src={source} controls className="aspect-video w-full bg-background" />;
+		return (
+			<VideoPlayer
+				src={source}
+				poster={posterSource || undefined}
+				mimeType={item.mimeType || "video/mp4"}
+				title={item.title}
+				showTitleInControls={false}
+				className="h-full w-full"
+			/>
+		);
 	}
 	if (item.kind === "audio" && source) {
 		return (
-			<div className="grid min-h-40 place-items-center p-4">
-				<AudioLines className="mb-3 size-8 text-muted-foreground" />
-				<audio src={source} controls className="w-full" />
+			<div className="grid min-h-40 content-center gap-3 p-4">
+				<div className="flex items-center gap-2 text-sm font-medium text-foreground">
+					<span className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
+						<AudioLines className="size-4" />
+					</span>
+					<span className="min-w-0 truncate">{item.title}</span>
+				</div>
+				<AudioPlayer src={source} mimeType={item.mimeType || "audio/mpeg"} title={item.title} />
 			</div>
 		);
 	}
@@ -791,9 +730,48 @@ const AssetLibraryEmpty: React.FC<{ projectMode: boolean }> = ({ projectMode }) 
 	</div>
 );
 
-const SourceBadge: React.FC<{ source: AssetLibrarySource }> = ({ source }) => (
-	<span className="absolute left-2 top-2 rounded-sm border border-border bg-card/90 px-1.5 py-0.5 text-2xs font-medium text-foreground shadow-sm">
-		{sourceTypeLabel(source)}
+type AssetLibraryTag = {
+	className: string;
+	key: string;
+	label: string;
+};
+
+const AssetCornerTags: React.FC<{ tags: AssetLibraryTag[] }> = ({ tags }) => {
+	if (tags.length === 0) return null;
+	return (
+		<div className="absolute left-2 right-2 top-2 flex flex-wrap gap-1">
+			{tags.map((tag) => (
+				<AssetTagBadge key={tag.key} tag={tag} />
+			))}
+		</div>
+	);
+};
+
+const AssetTagList: React.FC<{
+	className?: string;
+	tagClassName?: string;
+	tags: AssetLibraryTag[];
+}> = ({ className, tagClassName, tags }) => (
+	<div className={cn("flex flex-wrap", className)}>
+		{tags.map((tag) => (
+			<AssetTagBadge key={tag.key} tag={tag} className={tagClassName} />
+		))}
+	</div>
+);
+
+const AssetTagBadge: React.FC<{ className?: string; tag: AssetLibraryTag }> = ({
+	className,
+	tag,
+}) => (
+	<span
+		className={cn(
+			"inline-flex max-w-[9rem] items-center rounded-sm border px-1.5 py-0.5 text-2xs font-medium shadow-sm",
+			tag.className,
+			className,
+		)}
+		title={tag.label}
+	>
+		<span className="min-w-0 truncate">{tag.label}</span>
 	</span>
 );
 
@@ -808,6 +786,64 @@ const assetLibraryItemSource = (item: AssetLibraryItem) => {
 	return apiResourceURL(item.url);
 };
 
+const assetLibraryItemThumbnailSource = (item: AssetLibraryItem) => {
+	if (item.kind === "image") return assetLibraryItemSource(item);
+	return assetLibraryItemPosterSource(item);
+};
+
+const assetLibraryItemPosterSource = (item: AssetLibraryItem) => {
+	if (item.kind !== "video") return "";
+	const posterURL = item.mediaAsset?.posterUrl?.trim();
+	return posterURL ? apiResourceURL(posterURL) : "";
+};
+
+const assetLibraryItemTags = (item: AssetLibraryItem): AssetLibraryTag[] => [
+	...assetLibraryResourceTags(item),
+	assetLibraryKindTag(item),
+];
+
+const assetLibraryResourceTags = (item: AssetLibraryItem): AssetLibraryTag[] =>
+	item.selectedResourceTypes.map((type) => ({
+		className: resourceTypeBadgeClassName(type),
+		key: `resource-${type}`,
+		label: resourceTypeLabel(type),
+	}));
+
+const assetLibraryKindTag = (item: AssetLibraryItem): AssetLibraryTag => ({
+	className: kindBadgeClassName(item.kind),
+	key: `kind-${item.kind}`,
+	label: kindLabel(item.kind),
+});
+
+const resourceTypeBadgeClassName = (type: AssetLibraryResourceType) => {
+	const className = resourceTypeBadgeClassNames[type];
+	return className ?? fallbackBadgeClassName;
+};
+
+const kindBadgeClassName = (kind: AssetLibraryKind) => {
+	const className = kindBadgeClassNames[kind];
+	return className ?? fallbackBadgeClassName;
+};
+
+const resourceTypeBadgeClassNames: Record<AssetLibraryResourceType, string> = {
+	character: "border-fuchsia-200 bg-fuchsia-50/95 text-fuchsia-800 shadow-fuchsia-900/5",
+	prop: "border-amber-200 bg-amber-50/95 text-amber-800 shadow-amber-900/5",
+	scene: "border-emerald-200 bg-emerald-50/95 text-emerald-800 shadow-emerald-900/5",
+	screenplay: "border-sky-200 bg-sky-50/95 text-sky-800 shadow-sky-900/5",
+	"source-material": "border-stone-200 bg-stone-50/95 text-stone-800 shadow-stone-900/5",
+	storyboard: "border-indigo-200 bg-indigo-50/95 text-indigo-800 shadow-indigo-900/5",
+};
+
+const kindBadgeClassNames: Record<AssetLibraryKind, string> = {
+	audio: "border-rose-200 bg-rose-50/95 text-rose-800 shadow-rose-900/5",
+	binary: "border-zinc-200 bg-zinc-50/95 text-zinc-700 shadow-zinc-900/5",
+	image: "border-cyan-200 bg-cyan-50/95 text-cyan-800 shadow-cyan-900/5",
+	text: "border-slate-200 bg-slate-50/95 text-slate-700 shadow-slate-900/5",
+	video: "border-violet-200 bg-violet-50/95 text-violet-800 shadow-violet-900/5",
+};
+
+const fallbackBadgeClassName = "border-border bg-card/90 text-foreground";
+
 const iconForKind = (kind: AssetLibraryKind) => {
 	if (kind === "image") return ImageIcon;
 	if (kind === "video") return Film;
@@ -816,8 +852,11 @@ const iconForKind = (kind: AssetLibraryKind) => {
 	return File;
 };
 
-const resourceTypeLabel = (type: AgentResourceType) =>
-	selectedGenerationResourceDescriptorMap[type]?.label ?? type;
+const resourceTypeLabel = (type: AssetLibraryResourceType) => {
+	if (type === "screenplay") return "剧本";
+	if (type === "source-material") return "素材";
+	return selectedGenerationResourceDescriptorMap[type]?.label ?? type;
+};
 
 const kindLabel = (kind: AssetLibraryKind) => {
 	if (kind === "image") return "图片";

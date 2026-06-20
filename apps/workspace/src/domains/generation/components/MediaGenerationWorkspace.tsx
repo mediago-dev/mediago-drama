@@ -97,6 +97,46 @@ const openDocumentationUrl = async (url: string) => {
 
 const voicePreviewPlaybackBlockedMessage = "浏览器拦截了自动播放，请再点一次播放。";
 
+const generationKindCopy: Record<
+	GenerationKind,
+	{
+		emptyResultText: string;
+		generatedLabel: string;
+		mediaLabel: string;
+		promptPlaceholder: string;
+		submitLabel: string;
+	}
+> = {
+	audio: {
+		emptyResultText: "生成后会在这里显示可试听的音频素材。",
+		generatedLabel: "音频",
+		mediaLabel: "音频",
+		promptPlaceholder: "输入要合成的语音文案、语气、角色声线和节奏",
+		submitLabel: "生成语音",
+	},
+	image: {
+		emptyResultText: "生成后会在这里显示图片素材。",
+		generatedLabel: "图像",
+		mediaLabel: "图片",
+		promptPlaceholder: "描述要生成的图片素材",
+		submitLabel: "生成图片",
+	},
+	text: {
+		emptyResultText: "生成后会在这里显示文本结果。",
+		generatedLabel: "文本",
+		mediaLabel: "文本",
+		promptPlaceholder: "描述要生成或改写的文本内容",
+		submitLabel: "生成文本",
+	},
+	video: {
+		emptyResultText: "生成后会在这里显示可预览的视频素材。",
+		generatedLabel: "视频",
+		mediaLabel: "视频",
+		promptPlaceholder: "描述当前分镜的视频镜头、运动、机位、时长、画幅和质量",
+		submitLabel: "生成视频",
+	},
+};
+
 const errorMessage = (err: unknown) =>
 	err && typeof err === "object" && "message" in err
 		? String((err as { message?: unknown }).message || "")
@@ -247,18 +287,12 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const { historyWidth, nudgeHistoryWidth, startHistoryResize } = useMediaGenerationWorkspaceLayout(
 		{ rightPaneRef, workspaceRef },
 	);
-	const generatedKindLabel = kind === "image" ? "图像" : "视频";
-	const resolvedSubmitLabel = submitLabel ?? (kind === "image" ? "生成图片" : "生成视频");
-	const resolvedPromptPlaceholder =
-		promptPlaceholder ??
-		(kind === "image"
-			? "描述要生成的图片素材"
-			: "描述当前分镜的视频镜头、运动、机位、时长、画幅和质量");
-	const resolvedEmptyResultText =
-		emptyResultText ??
-		(kind === "image" ? "生成后会在这里显示图片素材。" : "生成后会在这里显示可预览的视频素材。");
-	const mediaKindLabel = kind === "video" ? "视频" : "图片";
-	const referenceButtonLabel = kind === "video" ? "参考素材" : "参考图";
+	const generatedKindLabel = generationKindCopy[kind].generatedLabel;
+	const resolvedSubmitLabel = submitLabel ?? generationKindCopy[kind].submitLabel;
+	const resolvedPromptPlaceholder = promptPlaceholder ?? generationKindCopy[kind].promptPlaceholder;
+	const resolvedEmptyResultText = emptyResultText ?? generationKindCopy[kind].emptyResultText;
+	const mediaKindLabel = generationKindCopy[kind].mediaLabel;
+	const referenceButtonLabel = kind === "image" ? "参考图" : "参考素材";
 	const {
 		clearDeletedEntry,
 		syncGenerationEntries,

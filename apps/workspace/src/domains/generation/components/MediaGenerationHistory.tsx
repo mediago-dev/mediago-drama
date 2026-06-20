@@ -15,6 +15,7 @@ import {
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useState } from "react";
 import type React from "react";
+import { AudioPlayer } from "@/components/AudioPlayer";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import type { GenerationAsset, GenerationKind } from "@/domains/generation/api/generation";
 import {
@@ -107,7 +108,7 @@ export const HistoryGenerationList: React.FC<{
 		);
 	}
 
-	if (variant === "list" && (kind === "image" || kind === "video")) {
+	if (variant === "list" && (kind === "image" || kind === "audio" || kind === "video")) {
 		return (
 			<HistoryImageGrid
 				deletingAssetKeys={deletingAssetKeys}
@@ -222,7 +223,11 @@ const HistoryImageGrid: React.FC<{
 	if (records.length === 0) {
 		return (
 			<div className="flex min-h-0 flex-1 items-center justify-center p-4 text-center text-xs text-muted-foreground">
-				{kind === "image" ? "暂无生成图片。" : "暂无生成视频。"}
+				{kind === "image"
+					? "暂无生成图片。"
+					: kind === "audio"
+						? "暂无生成音频。"
+						: "暂无生成视频。"}
 			</div>
 		);
 	}
@@ -299,9 +304,9 @@ const HistoryImageCard: React.FC<{
 	const isAssetRecord = record.kind === "asset";
 	const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
 	if (!isAssetRecord) {
-		const mediaLabel = entry.kind === "video" ? "视频" : "图片";
-		const deleteTitle = entry.kind === "video" ? "删除这个视频？" : "删除这张图片？";
-		const showDeriveAction = entry.kind !== "video";
+		const mediaLabel = historyAssetMediaLabel(entry.kind);
+		const deleteTitle = historyAssetDeleteTitle(entry.kind);
+		const showDeriveAction = entry.kind === "image";
 		const confirmPlaceholderDelete = () => {
 			void confirmDialog({
 				title: deleteTitle,
@@ -318,7 +323,7 @@ const HistoryImageCard: React.FC<{
 						<article
 							className={cn(
 								"relative min-w-0 overflow-hidden rounded-sm border border-border bg-muted-foreground/10",
-								record.entry.kind === "video" ? "aspect-video" : "aspect-[4/3]",
+								historyAssetCardAspectClassName(record.entry.kind),
 							)}
 						>
 							<HistoryImagePlaceholder record={record} />
@@ -368,11 +373,15 @@ const HistoryImageCard: React.FC<{
 	const selectionKey = generationAssetSelectionKey(record.asset);
 	const selectable = Boolean(selectionKey && onToggleAsset);
 	const selected = Boolean(selectionKey && selectedAssetKeys.includes(selectionKey));
-	const isVideo = record.asset.kind === "video";
-	const mediaLabel = isVideo ? "视频" : "图片";
-	const deleteTitle = isVideo ? "删除这个视频？" : "删除这张图片？";
-	const showDeriveAction = !isVideo;
-	const showEditAction = !isVideo && Boolean(onEditAsset);
+	const mediaKind = record.asset.kind;
+	const isAudio = mediaKind === "audio";
+	const isVideo = mediaKind === "video";
+	const isImage = mediaKind === "image";
+	const mediaLabel = historyAssetMediaLabel(mediaKind);
+	const deleteTitle = historyAssetDeleteTitle(mediaKind);
+	const showDeriveAction = isImage;
+	const showEditAction = isImage && Boolean(onEditAsset);
+	const showPreviewAction = !isAudio;
 	const saveAsset = () => onSaveAsset?.(entry, record.asset);
 	const editAsset = () => onEditAsset?.(entry, record.asset);
 	const previewAsset = () => {
@@ -380,7 +389,7 @@ const HistoryImageCard: React.FC<{
 		setPreviewDialogOpen(true);
 	};
 	const previewImage = () => {
-		if (isVideo) return;
+		if (!isImage) return;
 		onPreviewImage(record);
 	};
 	const deriveAsset = () => {
@@ -406,6 +415,82 @@ const HistoryImageCard: React.FC<{
 			onConfirm: confirmDelete,
 		});
 	};
+	const actionButtons = (
+		<>
+			{showPreviewAction ? (
+				isVideo ? (
+					<HistoryImageActionButton ariaLabel="预览视频" tooltip="预览" onClick={previewAsset}>
+						<Eye className="size-4" />
+					</HistoryImageActionButton>
+				) : (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								aria-label="预览图片"
+								className={historyImageActionButtonClassName}
+								onClick={(event) => {
+									event.preventDefault();
+									event.stopPropagation();
+									previewImage();
+								}}
+							>
+								<Eye className="size-4" />
+							</button>
+						</TooltipTrigger>
+						<TooltipContent>预览</TooltipContent>
+					</Tooltip>
+				)
+			) : null}
+			{showEditAction ? (
+				<HistoryImageActionButton ariaLabel="编辑图片" tooltip="编辑" onClick={editAsset}>
+					<Pencil className="size-4" />
+				</HistoryImageActionButton>
+			) : null}
+			<HistoryImageActionButton
+				ariaLabel={
+					saved ? `${mediaLabel}已下载` : saving ? `正在下载${mediaLabel}` : `下载${mediaLabel}`
+				}
+				disabled={!onSaveAsset || saving || saved}
+				tooltip={saved ? "已下载" : saving ? "正在下载" : "下载"}
+				onClick={saveAsset}
+			>
+				{saving ? (
+					<Loader2 className="size-4 animate-spin" />
+				) : saved ? (
+					<Check className="size-4" />
+				) : (
+					<Download className="size-4" />
+				)}
+			</HistoryImageActionButton>
+			{showDeriveAction ? (
+				<HistoryImageActionButton
+					ariaLabel="派生图片"
+					disabled={!canDerive}
+					tooltip="派生"
+					onClick={deriveAsset}
+				>
+					<WandSparkles className="size-4" />
+				</HistoryImageActionButton>
+			) : null}
+			<HistoryImageActionButton
+				ariaLabel="使用此提示词"
+				disabled={!onUsePrompt}
+				tooltip="使用此提示词"
+				onClick={usePrompt}
+			>
+				<FileText className="size-4" />
+			</HistoryImageActionButton>
+			<HistoryImageActionButton
+				ariaLabel={`删除${mediaLabel}`}
+				disabled={deleting}
+				tooltip={deleting ? "正在删除" : "删除"}
+				onClick={openDeleteDialog}
+			>
+				{deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+			</HistoryImageActionButton>
+		</>
+	);
 
 	return (
 		<TooltipProvider delayDuration={180}>
@@ -415,110 +500,30 @@ const HistoryImageCard: React.FC<{
 						<article
 							className={cn(
 								"group/history-image relative min-w-0 overflow-hidden rounded-sm border bg-muted-foreground/10",
-								isVideo ? "aspect-video" : "aspect-[4/3]",
+								historyAssetCardAspectClassName(mediaKind),
 								selected ? "border-primary ring-1 ring-primary" : "border-border",
 							)}
 						>
 							{isVideo ? (
 								<GenerationVideoThumbnail source={source} />
+							) : isAudio ? (
+								<HistoryAudioCardBody asset={record.asset} source={source} />
 							) : (
 								<img src={source} alt="" className="size-full object-contain" />
 							)}
-							<div className="absolute inset-0 flex items-center justify-center bg-foreground/55 opacity-0 transition-opacity group-hover/history-image:opacity-100 group-focus-within/history-image:opacity-100">
-								<div
-									className={cn(
-										"grid max-w-[calc(100%-2rem)] items-center justify-center gap-2",
-										isVideo ? "grid-cols-4" : showEditAction ? "grid-cols-6" : "grid-cols-5",
-									)}
-								>
-									{isVideo ? (
-										<HistoryImageActionButton
-											ariaLabel="预览视频"
-											tooltip="预览"
-											onClick={previewAsset}
-										>
-											<Eye className="size-4" />
-										</HistoryImageActionButton>
-									) : (
-										<Tooltip>
-											<TooltipTrigger asChild>
-												<button
-													type="button"
-													aria-label="预览图片"
-													className={historyImageActionButtonClassName}
-													onClick={(event) => {
-														event.preventDefault();
-														event.stopPropagation();
-														previewImage();
-													}}
-												>
-													<Eye className="size-4" />
-												</button>
-											</TooltipTrigger>
-											<TooltipContent>预览</TooltipContent>
-										</Tooltip>
-									)}
-									{showEditAction ? (
-										<HistoryImageActionButton
-											ariaLabel="编辑图片"
-											tooltip="编辑"
-											onClick={editAsset}
-										>
-											<Pencil className="size-4" />
-										</HistoryImageActionButton>
-									) : null}
-									<HistoryImageActionButton
-										ariaLabel={
-											saved
-												? `${mediaLabel}已下载`
-												: saving
-													? `正在下载${mediaLabel}`
-													: `下载${mediaLabel}`
-										}
-										disabled={!onSaveAsset || saving || saved}
-										tooltip={saved ? "已下载" : saving ? "正在下载" : "下载"}
-										onClick={saveAsset}
-									>
-										{saving ? (
-											<Loader2 className="size-4 animate-spin" />
-										) : saved ? (
-											<Check className="size-4" />
-										) : (
-											<Download className="size-4" />
-										)}
-									</HistoryImageActionButton>
-									{showDeriveAction ? (
-										<HistoryImageActionButton
-											ariaLabel="派生图片"
-											disabled={!canDerive}
-											tooltip="派生"
-											onClick={deriveAsset}
-										>
-											<WandSparkles className="size-4" />
-										</HistoryImageActionButton>
-									) : null}
-									<HistoryImageActionButton
-										ariaLabel="使用此提示词"
-										disabled={!onUsePrompt}
-										tooltip="使用此提示词"
-										onClick={usePrompt}
-									>
-										<FileText className="size-4" />
-									</HistoryImageActionButton>
-									<HistoryImageActionButton
-										ariaLabel={`删除${mediaLabel}`}
-										disabled={deleting}
-										tooltip={deleting ? "正在删除" : "删除"}
-										onClick={openDeleteDialog}
-									>
-										{deleting ? (
-											<Loader2 className="size-4 animate-spin" />
-										) : (
-											<Trash2 className="size-4" />
-										)}
-									</HistoryImageActionButton>
+							{isAudio ? (
+								<div className="pointer-events-none absolute right-2 top-2 z-20 opacity-0 transition-opacity group-hover/history-image:opacity-100 group-focus-within/history-image:opacity-100">
+									<div className="pointer-events-auto flex flex-wrap justify-end gap-1.5">
+										{actionButtons}
+									</div>
 								</div>
-							</div>
+							) : (
+								<div className="absolute inset-0 flex items-center justify-center bg-foreground/55 opacity-0 transition-opacity group-hover/history-image:opacity-100 group-focus-within/history-image:opacity-100">
+									<div className="flex max-w-[calc(100%-2rem)] flex-wrap items-center justify-center gap-2">
+										{actionButtons}
+									</div>
+								</div>
+							)}
 							{selectable && onToggleAsset ? (
 								<HistoryImageSelectionButton
 									selected={selected}
@@ -533,12 +538,12 @@ const HistoryImageCard: React.FC<{
 								<Eye className="size-4" />
 								<span>预览</span>
 							</ContextMenuItem>
-						) : (
+						) : isImage ? (
 							<ContextMenuItem onSelect={previewImage}>
 								<Eye className="size-4" />
 								<span>预览</span>
 							</ContextMenuItem>
-						)}
+						) : null}
 						{showEditAction ? (
 							<ContextMenuItem onSelect={editAsset}>
 								<Pencil className="size-4" />
@@ -632,6 +637,29 @@ const HistoryVideoPreviewDialog: React.FC<{
 	</DialogPrimitive.Root>
 );
 
+const HistoryAudioCardBody: React.FC<{
+	asset: GenerationAsset;
+	source: string;
+}> = ({ asset, source }) => (
+	<div className="flex size-full flex-col justify-between gap-3 bg-ide-toolbar p-3 text-foreground">
+		<div className="flex min-w-0 items-center gap-2">
+			<span className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-border bg-card text-muted-foreground">
+				<AudioLines className="size-4" />
+			</span>
+			<div className="min-w-0 flex-1">
+				<p className="truncate text-xs font-semibold text-foreground">生成音频</p>
+				<p className="truncate text-2xs text-muted-foreground">{asset.mimeType || "audio/mpeg"}</p>
+			</div>
+		</div>
+		<AudioPlayer
+			src={source}
+			mimeType={asset.mimeType || "audio/mpeg"}
+			title="生成音频"
+			className="h-[52px] shrink-0"
+		/>
+	</div>
+);
+
 const HistoryImageSelectionButton: React.FC<{
 	onToggle: () => void;
 	selected: boolean;
@@ -666,9 +694,10 @@ const HistoryImagePlaceholder: React.FC<{ record: HistoryImagePlaceholderRecord 
 	record,
 }) => {
 	const failed = record.kind === "failed";
-	const unit = record.entry.kind === "video" ? "个" : "张";
+	const unit = historyAssetUnit(record.entry.kind);
 	const label = `第 ${record.displayIndex + 1} ${unit}${failed ? "生成失败" : "生成中"}`;
 	const errorMessage = failed ? entryErrorText(record.entry) : "";
+	const Icon = record.entry.kind === "audio" ? AudioLines : ImageIcon;
 
 	return (
 		<div
@@ -682,11 +711,26 @@ const HistoryImagePlaceholder: React.FC<{ record: HistoryImagePlaceholderRecord 
 					: "border-border text-muted-foreground",
 			)}
 		>
-			{failed ? <ImageIcon className="size-5" /> : <Loader2 className="size-5 animate-spin" />}
+			{failed ? <Icon className="size-5" /> : <Loader2 className="size-5 animate-spin" />}
 			<span>{failed ? "生成失败" : "生成中"}</span>
 		</div>
 	);
 };
+
+const historyAssetCardAspectClassName = (kind: GenerationKind) =>
+	kind === "video" ? "aspect-video" : "aspect-[4/3]";
+
+const historyAssetMediaLabel = (kind: GenerationKind) =>
+	kind === "image" ? "图片" : kind === "audio" ? "音频" : kind === "video" ? "视频" : "文本";
+
+const historyAssetDeleteTitle = (kind: GenerationKind) =>
+	kind === "image"
+		? "删除这张图片？"
+		: kind === "audio"
+			? "删除这个音频？"
+			: kind === "video"
+				? "删除这个视频？"
+				: "删除这个结果？";
 
 const historyImageActionButtonClassName = cn(
 	"flex size-9 items-center justify-center rounded-full border border-white/25 bg-background text-foreground shadow-lg transition-colors",

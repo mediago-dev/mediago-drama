@@ -18,6 +18,14 @@ export interface MarkdownSectionImage {
 	title?: string;
 }
 
+export type MarkdownSectionMediaKind = "audio" | "video";
+
+export interface MarkdownSectionMedia {
+	kind: MarkdownSectionMediaKind;
+	src: string;
+	title?: string;
+}
+
 export interface MarkdownSectionImagePlaceholder {
 	id: string;
 	prompt?: string;
@@ -34,6 +42,8 @@ export interface MarkdownHybridEditorHandle {
 	setSelection: (selection: DocumentRangeSelection) => boolean;
 	setSectionImage: (section: MarkdownSectionIdentity, image: MarkdownSectionImage) => boolean;
 	removeSectionImage: (section: MarkdownSectionIdentity, image: MarkdownSectionImage) => boolean;
+	setSectionMedia: (section: MarkdownSectionIdentity, media: MarkdownSectionMedia) => boolean;
+	removeSectionMedia: (section: MarkdownSectionIdentity, media: MarkdownSectionMedia) => boolean;
 	setSectionImagePlaceholder: (
 		section: MarkdownSectionIdentity,
 		placeholder: MarkdownSectionImagePlaceholder,

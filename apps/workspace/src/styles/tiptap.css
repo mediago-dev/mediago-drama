@@ -91,6 +91,7 @@
 .tiptap-content > pre,
 .tiptap-content > table,
 .tiptap-content > img,
+.tiptap-content > [data-section-media],
 .tiptap-content > h1,
 .tiptap-content > h2,
 .tiptap-content > h3,
@@ -143,6 +144,11 @@
 	position: absolute;
 	left: 2rem;
 	z-index: 18;
+	display: flex;
+	max-width: calc(100% - 2rem);
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.25rem;
 	color: var(--ide-toolbar-foreground);
 }
 
@@ -158,6 +164,7 @@
 	color: inherit;
 	font-size: var(--font-size-xs);
 	line-height: 1;
+	white-space: nowrap;
 	box-shadow: var(--shadow-sm);
 	transition:
 		background-color 120ms ease,
@@ -365,6 +372,58 @@
 	border-radius: var(--radius-scale-sm);
 	background: var(--muted);
 	cursor: zoom-in;
+	object-fit: contain;
+}
+
+.tiptap-section-media {
+	display: flex;
+	width: min(100%, 28rem);
+	flex-direction: column;
+	gap: 0.5rem;
+	margin: 0.75rem 0;
+	border: var(--border-width-scale-sm) solid var(--border);
+	border-radius: var(--radius-scale-sm);
+	background: color-mix(in srgb, var(--card) 92%, var(--muted));
+	padding: 0.625rem;
+	box-shadow: var(--shadow-xs);
+}
+
+.tiptap-section-media-header {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	font-size: var(--font-size-xs);
+	line-height: 1.3;
+}
+
+.tiptap-section-media-label {
+	min-width: 0;
+	overflow: hidden;
+	color: var(--foreground);
+	font-weight: var(--font-weight-scale-semibold);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.tiptap-section-media-link {
+	flex: none;
+	font-size: var(--font-size-xs);
+	font-weight: var(--font-weight-scale-medium);
+}
+
+.tiptap-section-media-player {
+	display: block;
+	width: 100%;
+	min-width: 0;
+}
+
+.tiptap-section-media-video {
+	aspect-ratio: 16 / 9;
+	overflow: hidden;
+	border-radius: var(--radius-scale-sm);
+	background: var(--muted);
 	object-fit: contain;
 }
 

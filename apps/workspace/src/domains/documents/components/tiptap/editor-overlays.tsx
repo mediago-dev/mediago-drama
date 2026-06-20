@@ -1,9 +1,41 @@
 import type React from "react";
-import { Plus, Sparkles } from "lucide-react";
+import { AudioLines, Film, Image as ImageIcon, Plus } from "lucide-react";
 import type { HoveredBlockRect } from "./types";
 
+export type SectionGenerateKind = "image" | "audio" | "video";
+
+const sectionGenerateActions: Array<{
+	ariaLabel: string;
+	icon: React.ReactNode;
+	kind: SectionGenerateKind;
+	label: string;
+	title: string;
+}> = [
+	{
+		ariaLabel: "根据当前标题区域生成图片",
+		icon: <ImageIcon className="size-3.5" />,
+		kind: "image",
+		label: "生成图片",
+		title: "根据当前标题区域生成图片",
+	},
+	{
+		ariaLabel: "根据当前标题区域生成语音",
+		icon: <AudioLines className="size-3.5" />,
+		kind: "audio",
+		label: "生成语音",
+		title: "根据当前标题区域生成语音",
+	},
+	{
+		ariaLabel: "根据当前标题区域生成视频",
+		icon: <Film className="size-3.5" />,
+		kind: "video",
+		label: "生成视频",
+		title: "根据当前标题区域生成视频",
+	},
+];
+
 export const SectionGenerateButton: React.FC<{
-	onGenerate: () => void;
+	onGenerate: (kind: SectionGenerateKind) => void;
 	onMouseLeave: () => void;
 	rect: HoveredBlockRect;
 }> = ({ onGenerate, onMouseLeave, rect }) => (
@@ -13,16 +45,19 @@ export const SectionGenerateButton: React.FC<{
 		onMouseDown={(event) => event.preventDefault()}
 		onMouseLeave={onMouseLeave}
 	>
-		<button
-			type="button"
-			className="tiptap-section-generate-button"
-			aria-label="根据当前标题区域生成素材"
-			title="根据当前标题区域生成素材"
-			onClick={onGenerate}
-		>
-			<Sparkles className="size-3.5" />
-			<span>生成</span>
-		</button>
+		{sectionGenerateActions.map((action) => (
+			<button
+				key={action.kind}
+				type="button"
+				className="tiptap-section-generate-button"
+				aria-label={action.ariaLabel}
+				title={action.title}
+				onClick={() => onGenerate(action.kind)}
+			>
+				{action.icon}
+				<span>{action.label}</span>
+			</button>
+		))}
 	</div>
 );
 

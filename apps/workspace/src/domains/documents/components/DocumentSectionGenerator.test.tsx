@@ -97,7 +97,7 @@ describe("DocumentSectionGenerator", () => {
 				onGenerationComplete={vi.fn()}
 				onGenerationError={vi.fn()}
 				onGenerationStart={vi.fn()}
-				onToggleImage={vi.fn()}
+				onToggleAsset={vi.fn()}
 			/>,
 		);
 
@@ -105,6 +105,8 @@ describe("DocumentSectionGenerator", () => {
 		expect(screen.getByTestId("reference-preview-count").textContent).toBe("1");
 		expect(screen.getByTestId("reference-asset-ids").textContent).toBe("ref-a");
 		expect(capturedWorkspaceProps?.extraPrompt).toBeUndefined();
+		expect(capturedWorkspaceProps?.kind).toBe("image");
+		expect(capturedWorkspaceProps?.onToggleAsset).toBeTruthy();
 		expect(capturedWorkspaceProps?.selectedAssetTitle).toBe("第 01 组");
 	});
 
@@ -140,7 +142,7 @@ describe("DocumentSectionGenerator", () => {
 				onGenerationComplete={vi.fn()}
 				onGenerationError={vi.fn()}
 				onGenerationStart={vi.fn()}
-				onToggleImage={vi.fn()}
+				onToggleAsset={vi.fn()}
 			/>,
 		);
 
@@ -148,6 +150,48 @@ describe("DocumentSectionGenerator", () => {
 		expect(group?.title).toBe("已选节点图片");
 		expect(group?.items.map((item) => item.title)).toEqual(["第 01 组", "第 02 组"]);
 		expect(group?.items.map((item) => item.subtitle)).toEqual(["第 01 组", "第 02 组"]);
+	});
+
+	it("opens audio generation with section asset selection", () => {
+		render(
+			<DocumentSectionGenerator
+				kind="audio"
+				section={section}
+				selectedAssetKeys={["audio:existing"]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		expect(capturedWorkspaceProps?.kind).toBe("audio");
+		expect(capturedWorkspaceProps?.submitLabel).toBe("生成语音");
+		expect(capturedWorkspaceProps?.selectedAssetKeys).toEqual(["audio:existing"]);
+		expect(capturedWorkspaceProps?.selectedAssetTitle).toBe("第 01 组");
+		expect(capturedWorkspaceProps?.onToggleAsset).toBeTruthy();
+		expect(capturedWorkspaceProps?.historyScopeId).toContain(":audio");
+	});
+
+	it("opens video generation with section asset selection", () => {
+		render(
+			<DocumentSectionGenerator
+				kind="video"
+				section={section}
+				selectedAssetKeys={["video:existing"]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		expect(capturedWorkspaceProps?.kind).toBe("video");
+		expect(capturedWorkspaceProps?.submitLabel).toBe("生成视频");
+		expect(capturedWorkspaceProps?.selectedAssetKeys).toEqual(["video:existing"]);
+		expect(capturedWorkspaceProps?.selectedAssetTitle).toBe("第 01 组");
+		expect(capturedWorkspaceProps?.onToggleAsset).toBeTruthy();
+		expect(capturedWorkspaceProps?.historyScopeId).toContain(":video");
 	});
 });
 
