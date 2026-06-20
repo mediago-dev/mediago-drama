@@ -149,15 +149,14 @@ export interface AgentConversationRecord {
 }
 
 export interface AgentRuntimeConfigResponse {
-	model?: AgentRuntimeSelectConfig;
-	reasoning?: AgentRuntimeSelectConfig;
-	permission?: AgentRuntimeSelectConfig;
+	options: AgentRuntimeSelectConfig[];
 }
 
 export interface AgentRuntimeSelectConfig {
 	configId?: string;
 	name?: string;
 	source?: string;
+	category?: string;
 	currentValue?: string;
 	options: AgentRuntimeSelectOption[];
 }
@@ -310,9 +309,7 @@ export interface AgentMessageRequest {
 	documents?: AgentDocumentContext[];
 	references?: AgentReference[];
 	selectionText?: string;
-	model?: AgentACPConfigSelection;
-	reasoning?: AgentACPConfigSelection;
-	permission?: AgentACPConfigSelection;
+	selections?: AgentACPConfigSelection[];
 }
 
 export interface AgentFinalResponse {

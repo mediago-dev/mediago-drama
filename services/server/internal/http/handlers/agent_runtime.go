@@ -34,7 +34,7 @@ func NewAgentRuntime(inspect AgentRuntimeConfigInspector) AgentRuntime {
 // @Router /api/v1/projects/{projectId}/agent/runtime-config [get]
 func (handler AgentRuntime) HandleAgentRuntimeConfig(context *gin.Context) {
 	if handler.inspect == nil {
-		httpresponse.OK(context, service.AgentRuntimeConfigResponse{})
+		httpresponse.OK(context, service.AgentRuntimeConfigResponse{Options: []service.AgentRuntimeSelectConfig{}})
 		return
 	}
 	projectID, ok := requiredProjectID(context)
@@ -44,7 +44,7 @@ func (handler AgentRuntime) HandleAgentRuntimeConfig(context *gin.Context) {
 	config, err := handler.inspect(context.Request.Context(), projectID)
 	if err != nil {
 		slog.Warn("agent runtime config probe failed", "error", err)
-		httpresponse.OK(context, service.AgentRuntimeConfigResponse{})
+		httpresponse.OK(context, service.AgentRuntimeConfigResponse{Options: []service.AgentRuntimeSelectConfig{}})
 		return
 	}
 	httpresponse.OK(context, config)

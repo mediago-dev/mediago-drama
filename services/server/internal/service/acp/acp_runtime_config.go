@@ -14,12 +14,10 @@ const (
 )
 
 // AgentRuntimeConfigFromACPSession maps ACP session metadata to UI runtime config.
+// All select config options are preserved (in server-returned order); session
+// modes are synthesized into one mode-sourced config appended last.
 func AgentRuntimeConfigFromACPSession(session acp.NewSessionResponse) AgentRuntimeConfigResponse {
 	config := AgentRuntimeConfigResponse{}
-	if session.Modes != nil {
-		config.Permission = AgentRuntimeModeConfig(*session.Modes)
-	}
-
 	for _, option := range session.ConfigOptions {
 		if option.Select == nil {
 			continue
@@ -28,25 +26,13 @@ func AgentRuntimeConfigFromACPSession(session acp.NewSessionResponse) AgentRunti
 		if selectConfig == nil {
 			continue
 		}
-		if IsACPModelConfig(*option.Select) {
-			if config.Model == nil {
-				config.Model = selectConfig
-			}
-			continue
-		}
-		if IsACPReasoningConfig(*option.Select) {
-			if config.Reasoning == nil {
-				config.Reasoning = selectConfig
-			}
-			continue
-		}
-		if IsACPPermissionConfig(*option.Select) {
-			if config.Permission == nil {
-				config.Permission = selectConfig
-			}
+		config.Options = append(config.Options, *selectConfig)
+	}
+	if session.Modes != nil {
+		if modeConfig := AgentRuntimeModeConfig(*session.Modes); modeConfig != nil {
+			config.Options = append(config.Options, *modeConfig)
 		}
 	}
-
 	return config
 }
 
@@ -74,6 +60,7 @@ func AgentRuntimeModeConfig(modes acp.SessionModeState) *AgentRuntimeSelectConfi
 	return &AgentRuntimeSelectConfig{
 		Name:         "权限",
 		Source:       AgentRuntimeConfigSourceMode,
+		Category:     string(acp.SessionConfigOptionCategoryMode),
 		CurrentValue: strings.TrimSpace(string(modes.CurrentModeId)),
 		Options:      options,
 	}
@@ -89,6 +76,7 @@ func AgentRuntimeSelectConfigFromACP(option acp.SessionConfigOptionSelect) *Agen
 		ConfigID:     strings.TrimSpace(string(option.Id)),
 		Name:         strings.TrimSpace(option.Name),
 		Source:       AgentRuntimeConfigSourceOption,
+		Category:     acpCategoryString(option.Category),
 		CurrentValue: strings.TrimSpace(string(option.CurrentValue)),
 		Options:      options,
 	}
@@ -134,38 +122,12 @@ func AgentRuntimeSelectOptionsFromACP(options acp.SessionConfigSelectOptions) []
 	return result
 }
 
-// IsACPModelConfig reports whether an ACP option selects a model.
-func IsACPModelConfig(option acp.SessionConfigOptionSelect) bool {
-	return HasACPConfigCategory(option, acp.SessionConfigOptionCategoryModel) ||
-		ACPConfigNameContains(option, "model", "模型")
-}
-
-// IsACPReasoningConfig reports whether an ACP option selects reasoning effort.
-func IsACPReasoningConfig(option acp.SessionConfigOptionSelect) bool {
-	return HasACPConfigCategory(option, acp.SessionConfigOptionCategoryThoughtLevel) ||
-		ACPConfigNameContains(option, "reasoning", "thought", "thinking", "effort", "推理", "思考")
-}
-
-// IsACPPermissionConfig reports whether an ACP option selects permission mode.
-func IsACPPermissionConfig(option acp.SessionConfigOptionSelect) bool {
-	return HasACPConfigCategory(option, acp.SessionConfigOptionCategoryMode) ||
-		ACPConfigNameContains(option, "permission", "permissions", "approval", "approvals", "mode", "sandbox", "access", "权限", "批准")
-}
-
-// HasACPConfigCategory reports whether an ACP option has a category.
-func HasACPConfigCategory(option acp.SessionConfigOptionSelect, category acp.SessionConfigOptionCategory) bool {
-	return option.Category != nil && *option.Category == category
-}
-
-// ACPConfigNameContains reports whether an ACP option id/name contains any token.
-func ACPConfigNameContains(option acp.SessionConfigOptionSelect, tokens ...string) bool {
-	text := strings.ToLower(strings.TrimSpace(string(option.Id) + " " + option.Name))
-	for _, token := range tokens {
-		if strings.Contains(text, strings.ToLower(token)) {
-			return true
-		}
+// acpCategoryString dereferences an optional ACP config option category.
+func acpCategoryString(category *acp.SessionConfigOptionCategory) string {
+	if category == nil {
+		return ""
 	}
-	return false
+	return strings.TrimSpace(string(*category))
 }
 
 // OptionalACPString dereferences and trims an optional ACP string.

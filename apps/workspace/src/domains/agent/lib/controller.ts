@@ -49,9 +49,7 @@ interface RunAgentPromptOptions {
 	comments?: DocumentComment[];
 	displayPrompt?: string;
 	displayMetadata?: AgentMessageMetadata;
-	model?: AgentACPConfigSelection;
-	reasoning?: AgentACPConfigSelection;
-	permission?: AgentACPConfigSelection;
+	selections?: AgentACPConfigSelection[];
 	references?: AgentReference[];
 	reuseCurrentRun?: boolean;
 	selection?: string;
@@ -369,9 +367,7 @@ const runStreamingACPAgent = async (
 			commentId: context.commentId,
 			comments: context.comments,
 			selectionText: selection || undefined,
-			model: options.model,
-			reasoning: options.reasoning,
-			permission: options.permission,
+			selections: options.selections,
 		});
 
 		await waitForStreamingRun(connection.sessionId, projectId);

@@ -880,7 +880,7 @@ func TestAPIHandler(t *testing.T) {
 			},
 		)
 		sessionID := createAgentSessionForProject(t, agentHandler, "")
-		payload := `{"sessionId":"` + sessionID + `","prompt":"hello","model":{"source":"model","value":"gpt-5"},"reasoning":{"source":"configOption","configId":"reasoning_effort","value":"high"},"permission":{"source":"mode","value":"ask"}}`
+		payload := `{"sessionId":"` + sessionID + `","prompt":"hello","selections":[{"source":"configOption","configId":"model","value":"gpt-5"},{"source":"configOption","configId":"reasoning_effort","value":"high"},{"source":"mode","value":"ask"}]}`
 		response := requestJSON(t, agentHandler, http.MethodPost, "/api/v1/agent/message", payload)
 		defer response.Body.Close()
 		if response.StatusCode != http.StatusOK {
@@ -888,8 +888,22 @@ func TestAPIHandler(t *testing.T) {
 		}
 		select {
 		case request := <-requests:
-			if request.Model.Value != "gpt-5" || request.Reasoning.ConfigID != "reasoning_effort" || request.Permission.Value != "ask" {
-				t.Fatalf("runtime config selections = %#v %#v %#v, want model/reasoning/permission", request.Model, request.Reasoning, request.Permission)
+			if len(request.Selections) != 3 {
+				t.Fatalf("selections = %#v, want 3 entries", request.Selections)
+			}
+			hasModel, hasReasoning, hasMode := false, false, false
+			for _, selection := range request.Selections {
+				switch {
+				case selection.Source == "configOption" && selection.ConfigID == "model" && selection.Value == "gpt-5":
+					hasModel = true
+				case selection.Source == "configOption" && selection.ConfigID == "reasoning_effort" && selection.Value == "high":
+					hasReasoning = true
+				case selection.Source == "mode" && selection.Value == "ask":
+					hasMode = true
+				}
+			}
+			if !hasModel || !hasReasoning || !hasMode {
+				t.Fatalf("selections = %#v, want model/reasoning/mode", request.Selections)
 			}
 		case <-time.After(time.Second):
 			t.Fatal("agent runner was not called")

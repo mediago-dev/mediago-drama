@@ -377,9 +377,7 @@ func (runtime *AgentRuntime) runAgent(
 		BridgeURL:             runtime.config.BridgeURL,
 		BridgeToken:           runtime.config.BridgeToken,
 		DocumentMCPConfigPath: runtime.config.DocumentMCPConfigPath,
-		Model:                 payload.Model,
-		Reasoning:             payload.Reasoning,
-		Permission:            payload.Permission,
+		Selections:            payload.Selections,
 	}, publish)
 	if err != nil && ctx.Err() == context.Canceled {
 		_ = finishRun("cancelled", "Agent 运行已中断。")

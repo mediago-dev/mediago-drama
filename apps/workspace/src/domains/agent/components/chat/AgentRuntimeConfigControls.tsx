@@ -1,6 +1,7 @@
 import { Bot, LayoutGrid, Loader2, type LucideIcon, Sparkles } from "lucide-react";
 import type React from "react";
 import type {
+	AgentACPConfigSelection,
 	AgentRuntimeConfigPayload,
 	AgentRuntimeSelectConfig,
 } from "@/domains/agent/api/agent";
@@ -14,31 +15,22 @@ import {
 
 interface AgentRuntimeConfigControlsProps {
 	config?: AgentRuntimeConfigPayload;
-	modelValue: string;
-	reasoningValue: string;
-	permissionValue: string;
+	selections: Record<string, string>;
 	disabled: boolean;
 	errorMessage: string;
 	isLoading: boolean;
-	onModelChange: (value: string) => void;
-	onReasoningChange: (value: string) => void;
-	onPermissionChange: (value: string) => void;
+	onSelectionChange: (configId: string, value: string) => void;
 }
 
 export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProps> = ({
 	config,
-	modelValue,
-	reasoningValue,
-	permissionValue,
+	selections,
 	disabled,
 	isLoading,
-	onModelChange,
-	onReasoningChange,
-	onPermissionChange,
+	onSelectionChange,
 }) => {
-	const hasRuntimeConfigOptions = [config?.model, config?.reasoning, config?.permission].some(
-		(item) => runtimeConfigOptions(item).length > 0,
-	);
+	const options = config?.options ?? [];
+	const hasRuntimeConfigOptions = options.some((item) => runtimeConfigOptions(item).length > 0);
 	if (!hasRuntimeConfigOptions && isLoading) {
 		return (
 			<div className="agent-runtime-config-loading" role="status">
@@ -51,37 +43,20 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 
 	return (
 		<div className="agent-runtime-config">
-			<AgentRuntimeConfigSelect
-				label="模型"
-				icon={Bot}
-				config={config?.model}
-				value={modelValue}
-				disabled={disabled}
-				onChange={onModelChange}
-			/>
-			<AgentRuntimeConfigSelect
-				label="推理强度"
-				icon={Sparkles}
-				config={config?.reasoning}
-				value={reasoningValue}
-				disabled={disabled}
-				onChange={onReasoningChange}
-			/>
-			<AgentRuntimeConfigSelect
-				label="模式"
-				icon={LayoutGrid}
-				config={config?.permission}
-				value={permissionValue}
-				disabled={disabled}
-				onChange={onPermissionChange}
-			/>
+			{options.map((option) => (
+				<AgentRuntimeConfigSelect
+					key={option.configId ?? "__mode__"}
+					config={option}
+					value={selections[option.configId ?? ""] ?? ""}
+					disabled={disabled}
+					onChange={(value) => onSelectionChange(option.configId ?? "", value)}
+				/>
+			))}
 		</div>
 	);
 };
 
 interface AgentRuntimeConfigSelectProps {
-	label: string;
-	icon: LucideIcon;
 	config?: AgentRuntimeSelectConfig;
 	value: string;
 	disabled: boolean;
@@ -89,8 +64,6 @@ interface AgentRuntimeConfigSelectProps {
 }
 
 const AgentRuntimeConfigSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
-	label,
-	icon: Icon,
 	config,
 	value,
 	disabled,
@@ -99,6 +72,8 @@ const AgentRuntimeConfigSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	const options = runtimeConfigOptions(config);
 	if (options.length === 0) return null;
 
+	const label = configLabel(config);
+	const Icon = configIcon(config);
 	const resolvedValue = normalizeRuntimeConfigValue(config, value);
 
 	return (
@@ -131,6 +106,27 @@ const AgentRuntimeConfigSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 const runtimeConfigOptions = (config?: AgentRuntimeSelectConfig) =>
 	(config?.options ?? []).filter((option) => option.value.trim().length > 0);
 
+const configLabel = (config?: AgentRuntimeSelectConfig): string => {
+	const name = config?.name?.trim();
+	if (name) return name;
+	switch (config?.category) {
+		case "model":
+			return "模型";
+		case "thought_level":
+			return "推理强度";
+		case "mode":
+			return "模式";
+		default:
+			return "配置";
+	}
+};
+
+const configIcon = (config?: AgentRuntimeSelectConfig): LucideIcon => {
+	if (config?.source === "mode" || config?.category === "mode") return LayoutGrid;
+	if (config?.category === "model") return Bot;
+	return Sparkles;
+};
+
 export const normalizeRuntimeConfigValue = (
 	config: AgentRuntimeSelectConfig | undefined,
 	current: string,
@@ -144,17 +140,18 @@ export const normalizeRuntimeConfigValue = (
 	return options[0]?.value ?? "";
 };
 
-export const buildRuntimeConfigSelection = (
-	config: AgentRuntimeSelectConfig | undefined,
-	value: string,
-) => {
-	const trimmed = normalizeRuntimeConfigValue(config, value).trim();
-	if (!config || !trimmed) return undefined;
-	return {
-		configId: config.configId,
-		source: config.source,
-		value: trimmed,
-	};
+export const buildRuntimeConfigSelections = (
+	config: AgentRuntimeConfigPayload | undefined,
+	selections: Record<string, string>,
+): AgentACPConfigSelection[] => {
+	const result: AgentACPConfigSelection[] = [];
+	for (const option of config?.options ?? []) {
+		const key = option.configId ?? "";
+		const value = normalizeRuntimeConfigValue(option, selections[key] ?? "").trim();
+		if (!value) continue;
+		result.push({ configId: option.configId, source: option.source, value });
+	}
+	return result;
 };
 
 export const getRuntimeConfigError = (err: unknown) => {

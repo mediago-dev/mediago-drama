@@ -128,9 +128,7 @@ type AgentConversationRecord struct {
 
 // AgentRuntimeConfigResponse describes runtime-selectable agent configuration.
 type AgentRuntimeConfigResponse struct {
-	Model      *AgentRuntimeSelectConfig `json:"model,omitempty"`
-	Reasoning  *AgentRuntimeSelectConfig `json:"reasoning,omitempty"`
-	Permission *AgentRuntimeSelectConfig `json:"permission,omitempty"`
+	Options []AgentRuntimeSelectConfig `json:"options"`
 }
 
 // AgentRuntimeSelectConfig is one runtime select control.
@@ -138,6 +136,7 @@ type AgentRuntimeSelectConfig struct {
 	ConfigID     string                     `json:"configId,omitempty"`
 	Name         string                     `json:"name,omitempty"`
 	Source       string                     `json:"source,omitempty"`
+	Category     string                     `json:"category,omitempty"`
 	CurrentValue string                     `json:"currentValue,omitempty"`
 	Options      []AgentRuntimeSelectOption `json:"options"`
 }
@@ -307,9 +306,7 @@ type AgentMessageRequest struct {
 	Documents     []AgentDocumentContext     `json:"documents,omitempty"`
 	References    []AgentReference           `json:"references,omitempty"`
 	SelectionText string                     `json:"selectionText,omitempty"`
-	Model         AgentACPConfigSelection    `json:"model,omitempty"`
-	Reasoning     AgentACPConfigSelection    `json:"reasoning,omitempty"`
-	Permission    AgentACPConfigSelection    `json:"permission,omitempty"`
+	Selections    []AgentACPConfigSelection  `json:"selections,omitempty"`
 }
 
 // AgentRunRequest is the normalized runtime request passed to an agent runner.
@@ -334,9 +331,7 @@ type AgentRunRequest struct {
 	BridgeURL             string
 	BridgeToken           string
 	DocumentMCPConfigPath string
-	Model                 AgentACPConfigSelection
-	Reasoning             AgentACPConfigSelection
-	Permission            AgentACPConfigSelection
+	Selections            []AgentACPConfigSelection
 }
 
 // AgentRunResult is returned by an agent runner.
