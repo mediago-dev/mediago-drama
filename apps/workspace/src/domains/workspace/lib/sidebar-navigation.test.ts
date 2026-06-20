@@ -13,25 +13,25 @@ describe("sidebar navigation", () => {
 	});
 
 	it("uses the project sidebar for agent project routes", () => {
-		expect(resolveSidebarScreen("/agent", "?projectId=project-1", { workMode: "agent" })).toBe(
+		expect(resolveSidebarScreen("/projects", "?projectId=project-1", { workMode: "agent" })).toBe(
 			"project",
 		);
 		expect(
-			resolveSidebarScreen("/agent", "?projectId=project-1&documentId=doc-1", {
+			resolveSidebarScreen("/projects", "?projectId=project-1&documentId=doc-1", {
 				workMode: "agent",
 			}),
 		).toBe("project");
 	});
 
 	it("uses explicit studio path segments for generation conversations", () => {
-		expect(resolveSidebarScreen("/studio/image", "", { workMode: "studio" })).toBe("studio-types");
-		expect(resolveSidebarScreen("/studio/audio-transcribe", "", { workMode: "studio" })).toBe(
+		expect(resolveSidebarScreen("/toolbox/image", "", { workMode: "studio" })).toBe("studio-types");
+		expect(resolveSidebarScreen("/toolbox/audio-transcribe", "", { workMode: "studio" })).toBe(
 			"studio-types",
 		);
-		expect(resolveSidebarScreen("/studio/unmapped-tool", "", { workMode: "studio" })).toBe(
+		expect(resolveSidebarScreen("/toolbox/unmapped-tool", "", { workMode: "studio" })).toBe(
 			"studio-types",
 		);
-		expect(studioTabFromPath("/studio/video")).toBe("video");
-		expect(studioTabFromPath("/studio/audio")).toBe("audio");
+		expect(studioTabFromPath("/toolbox/video")).toBe("video");
+		expect(studioTabFromPath("/toolbox/audio")).toBe("audio");
 	});
 });

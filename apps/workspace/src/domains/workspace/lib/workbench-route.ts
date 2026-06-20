@@ -25,7 +25,7 @@ export const getRouteDocumentWorkbench = (search: string): AgentDocumentWorkbenc
 	return value === "timeline" ? value : null;
 };
 
-export const isAgentRoute = (pathname: string) => pathname === "/agent";
+export const isAgentRoute = (pathname: string) => pathname === "/projects";
 
 export const isProjectSettingsRoute = (pathname: string, search: string) =>
 	isSettingsRoute(pathname) && Boolean(getRouteProjectId(search));
@@ -46,7 +46,7 @@ export const workbenchModeForRoute = (
 	workMode?: WorkMode | null,
 ): WorkMode | null => {
 	if (isAgentRoute(pathname)) return "agent";
-	if (pathname === "/studio" || pathname.startsWith("/studio/")) return "studio";
+	if (pathname === "/toolbox" || pathname.startsWith("/toolbox/")) return "studio";
 	if (pathname === "/") return workMode ?? null;
 	return null;
 };
@@ -78,7 +78,7 @@ export const agentProjectPath = (
 	}
 	if (options.agentSessionId) params.set("agentSessionId", options.agentSessionId);
 	if (options.documentId && options.workbench) params.set("workbench", options.workbench);
-	return `/agent?${params.toString()}`;
+	return `/projects?${params.toString()}`;
 };
 
 export const studioTabPath = (
@@ -88,7 +88,7 @@ export const studioTabPath = (
 	const params = new URLSearchParams();
 	if (options.conversationId) params.set("conversation", options.conversationId);
 	const query = params.toString();
-	return query ? `/studio/${tab}?${query}` : `/studio/${tab}`;
+	return query ? `/toolbox/${tab}?${query}` : `/toolbox/${tab}`;
 };
 
 export const settingsPath = (projectId?: string | null) => {

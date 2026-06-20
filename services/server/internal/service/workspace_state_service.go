@@ -186,12 +186,22 @@ func removeDeprecatedStudioProjectDir(workspaceDir string, project domain.Worksp
 
 func isDeprecatedStudioProjectDir(workspaceDir string, projectDir string) bool {
 	projectDir = shared.ResolveWorkspaceDir(projectDir)
-	studioDir := shared.WorkspacePathsFor(workspaceDir).StudioSessionDir("")
-	relative, err := filepath.Rel(studioDir, projectDir)
-	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
-		return false
+	for _, studioDir := range deprecatedStudioProjectRoots(workspaceDir) {
+		relative, err := filepath.Rel(studioDir, projectDir)
+		if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+			continue
+		}
+		return strings.HasPrefix(filepath.Base(projectDir), "project-")
 	}
-	return strings.HasPrefix(filepath.Base(projectDir), "project-")
+	return false
+}
+
+func deprecatedStudioProjectRoots(workspaceDir string) []string {
+	paths := shared.WorkspacePathsFor(workspaceDir)
+	return []string{
+		paths.StudioSessionDir(""),
+		filepath.Join(paths.Root, "studio"),
+	}
 }
 
 func migrateDeprecatedLocalProjectDirs(workspaceDir string, repos WorkspaceStateRepositories) (int, error) {
@@ -206,7 +216,8 @@ func migrateDeprecatedLocalProjectDirs(workspaceDir string, repos WorkspaceState
 	migrated := 0
 	for _, project := range projects {
 		projectDir := shared.ResolveWorkspaceDir(project.ProjectDir)
-		if !isDeprecatedLocalProjectDir(workspaceDir, project.ID, projectDir) {
+		if !isDeprecatedLocalProjectDir(workspaceDir, project.ID, projectDir) &&
+			!isLegacyAgentProjectDir(workspaceDir, project.ID, projectDir) {
 			continue
 		}
 		nextDir := canonicalProjectDir(workspaceDir, project)
@@ -233,6 +244,7 @@ func migrateDeprecatedLocalProjectDirs(workspaceDir string, repos WorkspaceState
 		}
 	}
 	removeDeprecatedLocalProjectsRootIfEmpty(workspaceDir)
+	removeLegacyAgentProjectsRootIfEmpty(workspaceDir)
 	return migrated, nil
 }
 
@@ -252,6 +264,20 @@ func isDeprecatedLocalProjectDir(workspaceDir string, projectID string, projectD
 	projectDir = shared.ResolveWorkspaceDir(projectDir)
 	localProjectsDir := filepath.Join(shared.WorkspacePathsFor(workspaceDir).Root, "local-projects")
 	relative, err := filepath.Rel(localProjectsDir, projectDir)
+	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+		return false
+	}
+	return relative == projectID && strings.HasPrefix(projectID, "project-")
+}
+
+func isLegacyAgentProjectDir(workspaceDir string, projectID string, projectDir string) bool {
+	projectID = domain.CleanProjectID(projectID)
+	if projectID == "" {
+		return false
+	}
+	projectDir = shared.ResolveWorkspaceDir(projectDir)
+	legacyAgentDir := filepath.Join(shared.WorkspacePathsFor(workspaceDir).Root, "agent")
+	relative, err := filepath.Rel(legacyAgentDir, projectDir)
 	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
 		return false
 	}
@@ -291,4 +317,9 @@ func moveDeprecatedLocalProjectDir(oldDir string, newDir string) error {
 func removeDeprecatedLocalProjectsRootIfEmpty(workspaceDir string) {
 	localProjectsDir := filepath.Join(shared.WorkspacePathsFor(workspaceDir).Root, "local-projects")
 	_ = os.Remove(localProjectsDir)
+}
+
+func removeLegacyAgentProjectsRootIfEmpty(workspaceDir string) {
+	legacyAgentDir := filepath.Join(shared.WorkspacePathsFor(workspaceDir).Root, "agent")
+	_ = os.Remove(legacyAgentDir)
 }

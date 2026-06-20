@@ -85,27 +85,27 @@ func TestWorkspacePathsGlobalProjectAndStudioDirs(t *testing.T) {
 		{
 			name: "agent root",
 			got:  paths.AgentDir(""),
-			want: filepath.Join(root, "agent"),
+			want: filepath.Join(root, "projects"),
 		},
 		{
 			name: "agent project",
 			got:  paths.AgentDir("project-1"),
-			want: filepath.Join(root, "agent", "project-1"),
+			want: filepath.Join(root, "projects", "project-1"),
 		},
 		{
 			name: "studio session",
 			got:  paths.StudioSessionDir("conversation-1"),
-			want: filepath.Join(root, "studio", "conversation-1"),
+			want: filepath.Join(root, "toolbox", "conversation-1"),
 		},
 		{
 			name: "studio capability run",
 			got:  paths.StudioRunDir("video.chunk", "run-1", "2026-06-06T12:00:00Z"),
-			want: filepath.Join(root, "studio", "video-chunk", "2026-06", "run-1"),
+			want: filepath.Join(root, "toolbox", "video-chunk", "2026-06", "run-1"),
 		},
 		{
 			name: "studio generation session",
 			got:  paths.StudioGenerationSessionDir("text", "conversation-1", "2026-06-06T12:00:00Z"),
-			want: filepath.Join(root, "studio", "text-generation", "2026-06", "conversation-1"),
+			want: filepath.Join(root, "toolbox", "text-generation", "2026-06", "conversation-1"),
 		},
 	}
 	for _, test := range tests {

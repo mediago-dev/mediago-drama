@@ -37,7 +37,7 @@ const renderDirectoryTree = () =>
 	render(
 		<ProjectDirectoryTree
 			project={project}
-			locationPathname="/agent"
+			locationPathname="/projects"
 			onOpenAsset={vi.fn()}
 			onOpenDocument={vi.fn()}
 			onDeleteAsset={vi.fn()}

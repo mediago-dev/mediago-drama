@@ -215,7 +215,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 			void mutateSWR(projectsKey);
 
 			if (
-				location.pathname === "/agent" &&
+				location.pathname === "/projects" &&
 				getRouteProjectId(location.search) === project.id &&
 				deletedIdSet.has(activeDocumentId)
 			) {

@@ -147,7 +147,7 @@ describe("AssetLibraryButton", () => {
 			],
 		});
 
-		renderAssetLibraryButton("/agent?projectId=project-a");
+		renderAssetLibraryButton("/projects?projectId=project-a");
 
 		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
 

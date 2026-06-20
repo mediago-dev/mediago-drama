@@ -253,18 +253,18 @@ func AssetPathSegment(value string, fallback string) string {
 func (paths WorkspacePaths) AgentDir(projectID string) string {
 	projectID = domain.CleanProjectID(projectID)
 	if projectID == "" {
-		return filepath.Join(paths.Root, "agent")
+		return filepath.Join(paths.Root, "projects")
 	}
-	return filepath.Join(paths.Root, "agent", projectID)
+	return filepath.Join(paths.Root, "projects", projectID)
 }
 
 // StudioSessionDir returns the root directory for a studio session.
 func (paths WorkspacePaths) StudioSessionDir(sessionID string) string {
 	sessionID = domain.CleanProjectID(sessionID)
 	if sessionID == "" {
-		return filepath.Join(paths.Root, "studio")
+		return filepath.Join(paths.Root, "toolbox")
 	}
-	return filepath.Join(paths.Root, "studio", sessionID)
+	return filepath.Join(paths.Root, "toolbox", sessionID)
 }
 
 // StudioRunDir returns the root directory for one studio capability run.

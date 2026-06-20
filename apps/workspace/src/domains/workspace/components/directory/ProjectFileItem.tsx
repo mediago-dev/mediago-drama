@@ -67,7 +67,7 @@ export const ProjectFileItem: React.FC<{
 	const setDocumentCategory = useDocumentsStore((state) => state.setDocumentCategory);
 	const toast = useToast();
 	const isAsset = entry.kind === "asset";
-	const isAgentProjectRoute = locationPathname === "/agent";
+	const isAgentProjectRoute = locationPathname === "/projects";
 	const isDocumentActive =
 		entry.kind === "document" && isAgentProjectRoute && entry.id === activeDocumentId;
 	const isAssetActive = entry.kind === "asset" && isAgentProjectRoute && entry.id === activeAssetId;

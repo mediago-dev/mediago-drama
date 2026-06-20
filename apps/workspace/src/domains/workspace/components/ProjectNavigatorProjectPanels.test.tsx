@@ -157,7 +157,7 @@ const renderProjectSidebar = (
 			documentsProjectId={project.id}
 			isOverviewActive
 			isLoading={false}
-			locationPathname="/agent"
+			locationPathname="/projects"
 			locationSearch="?projectId=project-a"
 			showActiveSelection={showActiveSelection}
 			onBack={vi.fn()}

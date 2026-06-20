@@ -403,7 +403,7 @@ func TestProjectAssetsSaveReaderInDirDoesNotRequireProjectRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
-	targetDir := filepath.Join(t.TempDir(), "studio", "novel-chunk", "2026-06", "run-1")
+	targetDir := filepath.Join(t.TempDir(), "toolbox", "novel-chunk", "2026-06", "run-1")
 	store := NewProjectAssetsFromRepository(
 		repos.ProjectAssets,
 		filepath.Join(t.TempDir(), "global-assets"),

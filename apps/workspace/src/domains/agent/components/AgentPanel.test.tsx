@@ -54,18 +54,18 @@ const LocationProbe = () => {
 const ProjectSwitchProbe = () => {
 	const navigate = useNavigate();
 	return (
-		<button type="button" onClick={() => navigate("/agent?projectId=project-2")}>
+		<button type="button" onClick={() => navigate("/projects?projectId=project-2")}>
 			切换项目
 		</button>
 	);
 };
 
-const renderAgentPanel = (initialEntry = "/agent?projectId=project-1") =>
+const renderAgentPanel = (initialEntry = "/projects?projectId=project-1") =>
 	render(
 		<MemoryRouter initialEntries={[initialEntry]}>
 			<Routes>
 				<Route
-					path="/agent"
+					path="/projects"
 					element={
 						<>
 							<AgentPanel />
@@ -123,13 +123,13 @@ describe("AgentPanel", () => {
 			lastEventId: "8",
 		});
 
-		renderAgentPanel("/agent?projectId=project-1&documentId=doc-1");
+		renderAgentPanel("/projects?projectId=project-1&documentId=doc-1");
 		fireEvent.click(screen.getByRole("button", { name: /历史会话/ }));
 		fireEvent.click(screen.getByRole("menuitem", { name: /整理素材清单/ }));
 
 		await waitFor(() =>
 			expect(screen.getByTestId("location").dataset.path).toBe(
-				"/agent?projectId=project-1&agentSessionId=session-history-1",
+				"/projects?projectId=project-1&agentSessionId=session-history-1",
 			),
 		);
 		expect(useAgentStore.getState().sessionId).toBe("session-history-1");
@@ -154,7 +154,7 @@ describe("AgentPanel", () => {
 			lastEventId: "8",
 		});
 
-		renderAgentPanel("/agent?projectId=project-1");
+		renderAgentPanel("/projects?projectId=project-1");
 		fireEvent.click(screen.getByRole("button", { name: /历史会话/ }));
 		fireEvent.click(screen.getByRole("menuitem", { name: /整理素材清单/ }));
 
@@ -166,7 +166,7 @@ describe("AgentPanel", () => {
 		});
 		await waitFor(() =>
 			expect(screen.getByTestId("location").dataset.path).toBe(
-				"/agent?projectId=project-1&agentSessionId=session-history-1",
+				"/projects?projectId=project-1&agentSessionId=session-history-1",
 			),
 		);
 		expect(useAgentStore.getState().sessionId).toBe("session-history-1");

@@ -309,7 +309,7 @@ func TestWorkspaceRepositoryUpdatesProjectStorageLocation(t *testing.T) {
 	projectID := "project-local"
 	otherProjectID := "project-other"
 	oldDir := filepath.Join(t.TempDir(), "workspace", "local-projects", projectID)
-	newDir := filepath.Join(t.TempDir(), "workspace", "agent", projectID)
+	newDir := filepath.Join(t.TempDir(), "workspace", "projects", projectID)
 	now := "2026-06-06T00:00:00Z"
 
 	for _, project := range []domain.WorkspaceProjectModel{
@@ -377,7 +377,7 @@ func TestWorkspaceRepositoryUpdatesProjectStorageLocation(t *testing.T) {
 	updated, err := repo.UpdateProjectStorageLocation(
 		projectID,
 		newDir,
-		"agent/"+projectID,
+		"projects/"+projectID,
 		oldDir,
 		newDir,
 		updatedAt,
@@ -393,7 +393,7 @@ func TestWorkspaceRepositoryUpdatesProjectStorageLocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetProject() error = %v", err)
 	}
-	if project.ProjectDir != newDir || project.RelativeDir != "agent/"+projectID || project.UpdatedAt != updatedAt {
+	if project.ProjectDir != newDir || project.RelativeDir != "projects/"+projectID || project.UpdatedAt != updatedAt {
 		t.Fatalf("project storage = (%q, %q, %q), want new location", project.ProjectDir, project.RelativeDir, project.UpdatedAt)
 	}
 	asset, err := assetRepo.GetProjectAsset(projectID, "asset-1")

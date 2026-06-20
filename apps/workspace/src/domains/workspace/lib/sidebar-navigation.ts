@@ -24,11 +24,11 @@ export const resolveSidebarScreen = (
 ): SidebarScreenId => {
 	if (isSettingsRoute(pathname)) return "settings";
 
-	if (pathname.startsWith("/studio/")) {
+	if (pathname === "/toolbox" || pathname.startsWith("/toolbox/")) {
 		return "studio-types";
 	}
 
-	if (pathname === "/agent") return "project";
+	if (pathname === "/projects") return "project";
 
 	if (pathname === "/") {
 		if (workMode === "studio") return "studio-types";
@@ -57,6 +57,6 @@ const isSettingsRoute = (pathname: string) =>
 
 const studioPathSegment = (pathname: string) =>
 	pathname
-		.replace(/^\/studio\/?/, "")
+		.replace(/^\/toolbox\/?/, "")
 		.split("/")[0]
 		.trim();

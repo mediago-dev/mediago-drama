@@ -21,7 +21,7 @@ const renderHeaderActions = (initialEntry: string) =>
 		<MemoryRouter initialEntries={[initialEntry]}>
 			<Routes>
 				<Route
-					path="/agent"
+					path="/projects"
 					element={
 						<>
 							<AgentWorkbenchHeaderActions mode="agent" showTabs />
@@ -43,11 +43,11 @@ describe("AgentWorkbenchHeaderActions", () => {
 	it("clears document targets when switching from an asset preview to agent", async () => {
 		useAgentLayoutStore.getState().setTab("document");
 
-		renderHeaderActions("/agent?projectId=project-1&assetId=asset-1");
+		renderHeaderActions("/projects?projectId=project-1&assetId=asset-1");
 		fireEvent.click(screen.getByRole("button", { name: "agent" }));
 
 		await waitFor(() =>
-			expect(screen.getByTestId("location").dataset.path).toBe("/agent?projectId=project-1"),
+			expect(screen.getByTestId("location").dataset.path).toBe("/projects?projectId=project-1"),
 		);
 		expect(screen.getByTestId("location").dataset.projectView).toBe("agent");
 	});
@@ -55,12 +55,12 @@ describe("AgentWorkbenchHeaderActions", () => {
 	it("keeps the route agent session when switching back to agent", async () => {
 		useAgentLayoutStore.getState().setTab("document");
 
-		renderHeaderActions("/agent?projectId=project-1&assetId=asset-1&agentSessionId=session-1");
+		renderHeaderActions("/projects?projectId=project-1&assetId=asset-1&agentSessionId=session-1");
 		fireEvent.click(screen.getByRole("button", { name: "agent" }));
 
 		await waitFor(() =>
 			expect(screen.getByTestId("location").dataset.path).toBe(
-				"/agent?projectId=project-1&agentSessionId=session-1",
+				"/projects?projectId=project-1&agentSessionId=session-1",
 			),
 		);
 		expect(screen.getByTestId("location").dataset.projectView).toBe("agent");
@@ -69,12 +69,12 @@ describe("AgentWorkbenchHeaderActions", () => {
 	it("marks the clean project route as overview when switching to document", async () => {
 		useAgentLayoutStore.getState().setTab("agent");
 
-		renderHeaderActions("/agent?projectId=project-1");
+		renderHeaderActions("/projects?projectId=project-1");
 		fireEvent.click(screen.getByRole("button", { name: "文档" }));
 
 		await waitFor(() =>
 			expect(screen.getByTestId("location").dataset.projectView).toBe("overview"),
 		);
-		expect(screen.getByTestId("location").dataset.path).toBe("/agent?projectId=project-1");
+		expect(screen.getByTestId("location").dataset.path).toBe("/projects?projectId=project-1");
 	});
 });

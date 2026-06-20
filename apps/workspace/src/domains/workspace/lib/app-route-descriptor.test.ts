@@ -20,7 +20,7 @@ describe("app route descriptor", () => {
 
 	it("marks project and detail pages as second-level pages", () => {
 		expect(
-			resolveAppRouteDescriptor("/agent", "?projectId=project-1", {
+			resolveAppRouteDescriptor("/projects", "?projectId=project-1", {
 				workMode: "agent",
 				projectId: "project-1",
 			}),
@@ -30,7 +30,7 @@ describe("app route descriptor", () => {
 			sidebarScreen: "project",
 		});
 		expect(
-			resolveAppRouteDescriptor("/agent", "?projectId=project-1&documentId=doc-1", {
+			resolveAppRouteDescriptor("/projects", "?projectId=project-1&documentId=doc-1", {
 				workMode: "agent",
 				projectId: "project-1",
 			}),
@@ -41,7 +41,7 @@ describe("app route descriptor", () => {
 		});
 		expect(
 			resolveAppRouteDescriptor(
-				"/agent",
+				"/projects",
 				"?projectId=project-1&documentId=doc-1&workbench=timeline",
 				{
 					workMode: "agent",
@@ -53,7 +53,7 @@ describe("app route descriptor", () => {
 			sidebarHidden: true,
 			sidebarScreen: "project",
 		});
-		expect(resolveAppRouteDescriptor("/studio/video", "", { workMode: "studio" })).toMatchObject({
+		expect(resolveAppRouteDescriptor("/toolbox/video", "", { workMode: "studio" })).toMatchObject({
 			level: 1,
 			sidebarScreen: "studio-types",
 		});

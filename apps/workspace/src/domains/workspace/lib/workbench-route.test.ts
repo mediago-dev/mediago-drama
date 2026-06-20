@@ -30,46 +30,46 @@ describe("workbench route", () => {
 
 	it("detects route work modes", () => {
 		expect(workbenchModeForRoute("/", "studio")).toBe("studio");
-		expect(workbenchModeForRoute("/agent")).toBe("agent");
+		expect(workbenchModeForRoute("/projects")).toBe("agent");
 		expect(workbenchModeForRoute("/unknown")).toBeNull();
-		expect(workbenchModeForRoute("/studio/image")).toBe("studio");
+		expect(workbenchModeForRoute("/toolbox/image")).toBe("studio");
 	});
 
 	it("forces document content only for timeline workbenches and studio workbenches", () => {
-		expect(shouldForceDocumentWorkbench("/agent", "?projectId=project-1")).toBe(false);
-		expect(shouldForceDocumentWorkbench("/agent", "?projectId=project-1&documentId=doc-1")).toBe(
+		expect(shouldForceDocumentWorkbench("/projects", "?projectId=project-1")).toBe(false);
+		expect(shouldForceDocumentWorkbench("/projects", "?projectId=project-1&documentId=doc-1")).toBe(
 			false,
 		);
 		expect(
 			shouldForceDocumentWorkbench(
-				"/agent",
+				"/projects",
 				"?projectId=project-1&documentId=doc-1&workbench=timeline",
 			),
 		).toBe(true);
-		expect(isAgentDocumentRoute("/agent", "?projectId=project-1&documentId=doc-1")).toBe(false);
+		expect(isAgentDocumentRoute("/projects", "?projectId=project-1&documentId=doc-1")).toBe(false);
 		expect(
-			isAgentDocumentRoute("/agent", "?projectId=project-1&documentId=doc-1&workbench=timeline"),
+			isAgentDocumentRoute("/projects", "?projectId=project-1&documentId=doc-1&workbench=timeline"),
 		).toBe(true);
 		expect(shouldForceDocumentWorkbench("/unknown", "")).toBe(false);
-		expect(shouldForceDocumentWorkbench("/studio/image", "")).toBe(true);
+		expect(shouldForceDocumentWorkbench("/toolbox/image", "")).toBe(true);
 	});
 
 	it("builds shallow app routes", () => {
-		expect(agentProjectPath("project-1")).toBe("/agent?projectId=project-1");
+		expect(agentProjectPath("project-1")).toBe("/projects?projectId=project-1");
 		expect(agentProjectPath("project-1", { documentId: "doc-1" })).toBe(
-			"/agent?projectId=project-1&documentId=doc-1",
+			"/projects?projectId=project-1&documentId=doc-1",
 		);
 		expect(agentProjectPath("project-1", { assetId: "asset-1" })).toBe(
-			"/agent?projectId=project-1&assetId=asset-1",
+			"/projects?projectId=project-1&assetId=asset-1",
 		);
 		expect(agentProjectPath("project-1", { documentId: "doc-1", workbench: "timeline" })).toBe(
-			"/agent?projectId=project-1&documentId=doc-1&workbench=timeline",
+			"/projects?projectId=project-1&documentId=doc-1&workbench=timeline",
 		);
 		expect(agentProjectPath("project-1", { agentSessionId: "session-1" })).toBe(
-			"/agent?projectId=project-1&agentSessionId=session-1",
+			"/projects?projectId=project-1&agentSessionId=session-1",
 		);
 		expect(studioTabPath("image", { conversationId: "session-1" })).toBe(
-			"/studio/image?conversation=session-1",
+			"/toolbox/image?conversation=session-1",
 		);
 		expect(settingsPath("project-1")).toBe("/settings?projectId=project-1");
 		expect(isProjectSettingsRoute("/settings", "?projectId=project-1")).toBe(true);

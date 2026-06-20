@@ -460,7 +460,7 @@ func TestSaveBase64StoresGeneratedAssetsByStudioDir(t *testing.T) {
 	}
 	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
 
-	studioDir := filepath.Join(workspaceRoot, "studio", "image-generation", "2026-06", "conversation-1")
+	studioDir := filepath.Join(workspaceRoot, "toolbox", "image-generation", "2026-06", "conversation-1")
 	asset, err := store.SaveBase64ForStudioDir(
 		MediaKindImage,
 		"image/png",
@@ -492,7 +492,7 @@ func TestServeFilePathRejectsPathsOutsideAllowedRoots(t *testing.T) {
 
 	for _, filePath := range []string{
 		filepath.Join(globalDir, "image.png"),
-		filepath.Join(workspaceRoot, "studio", "image-generation", "image.png"),
+		filepath.Join(workspaceRoot, "toolbox", "image-generation", "image.png"),
 	} {
 		resolved, err := store.ServeFilePath(MediaAsset{ID: "asset", FilePath: filePath})
 		if err != nil {

@@ -155,14 +155,15 @@ pnpm install
 pnpm dev
 ```
 
-该命令会准备 Agent 与媒体工具，启动 Go 服务端，并启动 `apps/workspace` 前端工作台。
+该命令会准备 Agent 与媒体工具，启动已构建的 `bin/mediago-server`，并启动 `apps/workspace` 前端工作台。修改服务端或 Agent MCP 代码后，先运行 `pnpm build:server` 手动更新服务端相关二进制。
 
 ### 常用命令
 
 ```bash
+pnpm build:server    # 手动构建服务端与 Agent MCP 二进制
 pnpm workspace:dev    # 仅启动前端工作台
-pnpm dev:server       # 仅启动服务端
-pnpm dev:desktop      # 启动 Tauri 桌面端
+pnpm dev:server       # 使用 bin/mediago-server 启动服务端
+pnpm dev:desktop      # 仅启动 Tauri 桌面端，需另开 dev:server
 pnpm build            # 构建完整项目
 pnpm check:go         # 检查 Go packages
 ```

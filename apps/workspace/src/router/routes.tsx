@@ -1,6 +1,6 @@
 import type React from "react";
 import { lazy, Suspense } from "react";
-import { type RouteObject, useRoutes } from "react-router-dom";
+import { Navigate, type RouteObject, useLocation, useRoutes } from "react-router-dom";
 import { WorkspaceContentFallback } from "@/domains/workspace/components/WorkspaceContentFallback";
 import { Home } from "@/pages/Home";
 import { useWorkModeStore } from "@/lib/stores/work-mode";
@@ -43,16 +43,29 @@ function RootShell() {
 	return <Projects />;
 }
 
+function LegacyWorkspaceRouteRedirect() {
+	const location = useLocation();
+	const pathname =
+		location.pathname === "/agent"
+			? "/projects"
+			: location.pathname.replace(/^\/studio(?=\/|$)/, "/toolbox");
+
+	return <Navigate to={`${pathname}${location.search}${location.hash}`} replace />;
+}
+
 const routes: RouteObject[] = [
 	{ path: "/", element: <RootShell /> },
-	{ path: "/agent", element: <Home /> },
-	{ path: "/studio/image", element: <StudioImage /> },
-	{ path: "/studio/video", element: <StudioVideo /> },
-	{ path: "/studio/text", element: <StudioText /> },
-	{ path: "/studio/audio", element: <StudioAudio /> },
-	{ path: "/studio/novel-understand", element: <StudioNovelUnderstand /> },
-	{ path: "/studio/video-understand", element: <StudioVideoUnderstand /> },
-	{ path: "/studio/audio-transcribe", element: <StudioAudioTranscribe /> },
+	{ path: "/projects", element: <Home /> },
+	{ path: "/toolbox", element: <StudioHome /> },
+	{ path: "/toolbox/image", element: <StudioImage /> },
+	{ path: "/toolbox/video", element: <StudioVideo /> },
+	{ path: "/toolbox/text", element: <StudioText /> },
+	{ path: "/toolbox/audio", element: <StudioAudio /> },
+	{ path: "/toolbox/novel-understand", element: <StudioNovelUnderstand /> },
+	{ path: "/toolbox/video-understand", element: <StudioVideoUnderstand /> },
+	{ path: "/toolbox/audio-transcribe", element: <StudioAudioTranscribe /> },
+	{ path: "/agent", element: <LegacyWorkspaceRouteRedirect /> },
+	{ path: "/studio/*", element: <LegacyWorkspaceRouteRedirect /> },
 	{ path: "/settings", element: <Settings /> },
 	{ path: "*", element: <div>404 - 页面未找到</div> },
 ];

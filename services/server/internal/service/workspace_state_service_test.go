@@ -64,16 +64,25 @@ func TestWorkspaceStateServiceCleansDeprecatedStudioProjectDirs(t *testing.T) {
 func TestWorkspaceStateServiceMigratesDeprecatedLocalProjectDirs(t *testing.T) {
 	workspaceDir := t.TempDir()
 	legacyProjectID := "project-legacy-local"
+	legacyAgentProjectID := "project-legacy-agent"
 	retainedProjectID := "project-retained-local"
 	legacyDir := filepath.Join(workspaceDir, "local-projects", legacyProjectID)
+	legacyAgentDir := filepath.Join(workspaceDir, "agent", legacyAgentProjectID)
 	retainedDir := filepath.Join(workspaceDir, "local-projects", "manually-picked")
-	canonicalDir := filepath.Join(workspaceDir, "agent", legacyProjectID)
+	canonicalDir := filepath.Join(workspaceDir, "projects", legacyProjectID)
+	canonicalAgentDir := filepath.Join(workspaceDir, "projects", legacyAgentProjectID)
 	assetPath := filepath.Join(legacyDir, "assets", "asset-1.txt")
 	if err := os.MkdirAll(filepath.Dir(assetPath), 0o755); err != nil {
 		t.Fatalf("creating legacy asset dir: %v", err)
 	}
 	if err := os.WriteFile(assetPath, []byte("story"), 0o644); err != nil {
 		t.Fatalf("writing legacy asset: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(legacyAgentDir, "work"), 0o755); err != nil {
+		t.Fatalf("creating legacy agent project dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyAgentDir, "project.media.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("writing legacy agent manifest: %v", err)
 	}
 	if err := os.MkdirAll(retainedDir, 0o755); err != nil {
 		t.Fatalf("creating retained dir: %v", err)
@@ -94,6 +103,15 @@ func TestWorkspaceStateServiceMigratesDeprecatedLocalProjectDirs(t *testing.T) {
 			Category:    "agent",
 			ProjectDir:  legacyDir,
 			RelativeDir: "local-projects/" + legacyProjectID,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		},
+		{
+			ID:          legacyAgentProjectID,
+			Name:        "Legacy Agent",
+			Category:    "agent",
+			ProjectDir:  legacyAgentDir,
+			RelativeDir: "agent/" + legacyAgentProjectID,
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		},
@@ -131,8 +149,14 @@ func TestWorkspaceStateServiceMigratesDeprecatedLocalProjectDirs(t *testing.T) {
 	if _, err := os.Stat(legacyDir); !os.IsNotExist(err) {
 		t.Fatalf("legacy dir stat error = %v, want not exist", err)
 	}
+	if _, err := os.Stat(legacyAgentDir); !os.IsNotExist(err) {
+		t.Fatalf("legacy agent dir stat error = %v, want not exist", err)
+	}
 	if _, err := os.Stat(filepath.Join(canonicalDir, "assets", "asset-1.txt")); err != nil {
 		t.Fatalf("canonical asset should exist: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(canonicalAgentDir, "project.media.json")); err != nil {
+		t.Fatalf("canonical agent manifest should exist: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(retainedDir, "notes.txt")); err != nil {
 		t.Fatalf("retained local project dir should remain: %v", err)
@@ -142,8 +166,8 @@ func TestWorkspaceStateServiceMigratesDeprecatedLocalProjectDirs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetProject(legacy) error = %v", err)
 	}
-	if project.ProjectDir != canonicalDir || project.RelativeDir != "agent/"+legacyProjectID {
-		t.Fatalf("project location = (%q, %q), want canonical agent dir", project.ProjectDir, project.RelativeDir)
+	if project.ProjectDir != canonicalDir || project.RelativeDir != "projects/"+legacyProjectID {
+		t.Fatalf("project location = (%q, %q), want canonical projects dir", project.ProjectDir, project.RelativeDir)
 	}
 	asset, err := repos.ProjectAssets.GetProjectAsset(legacyProjectID, "asset-1")
 	if err != nil {
@@ -151,6 +175,13 @@ func TestWorkspaceStateServiceMigratesDeprecatedLocalProjectDirs(t *testing.T) {
 	}
 	if asset.Path != filepath.Join(canonicalDir, "assets", "asset-1.txt") {
 		t.Fatalf("asset path = %q, want canonical path", asset.Path)
+	}
+	agentProject, err := repos.Workspace.GetProject(legacyAgentProjectID)
+	if err != nil {
+		t.Fatalf("GetProject(legacy agent) error = %v", err)
+	}
+	if agentProject.ProjectDir != canonicalAgentDir || agentProject.RelativeDir != "projects/"+legacyAgentProjectID {
+		t.Fatalf("agent project location = (%q, %q), want canonical projects dir", agentProject.ProjectDir, agentProject.RelativeDir)
 	}
 	retainedProject, err := repos.Workspace.GetProject(retainedProjectID)
 	if err != nil {

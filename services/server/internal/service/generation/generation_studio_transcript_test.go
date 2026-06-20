@@ -42,7 +42,7 @@ func TestAppendStudioTranscriptWritesJSONLAndTextResult(t *testing.T) {
 		Text:   "夜色落下。",
 	})
 
-	sessionDir := filepath.Join(workspaceRoot, "studio", "text-generation", "2026-06", "session-text-1")
+	sessionDir := filepath.Join(workspaceRoot, "toolbox", "text-generation", "2026-06", "session-text-1")
 	transcriptPath := filepath.Join(sessionDir, "transcript.jsonl")
 	data, err := os.ReadFile(transcriptPath)
 	if err != nil {

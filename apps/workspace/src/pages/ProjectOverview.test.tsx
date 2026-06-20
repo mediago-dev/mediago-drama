@@ -87,7 +87,7 @@ describe("ProjectOverview", () => {
 	it("opens selected generated resources in a dialog from the overview cards", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/agent?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
 					<ProjectOverview />
 				</MemoryRouter>
 			</SWRConfig>,

@@ -43,10 +43,10 @@ const LocationProbe = () => {
 const renderStudioImage = () =>
 	render(
 		<SWRConfig value={{ provider: () => new Map() }}>
-			<MemoryRouter initialEntries={["/studio/image"]}>
+			<MemoryRouter initialEntries={["/toolbox/image"]}>
 				<Routes>
 					<Route
-						path="/studio/image"
+						path="/toolbox/image"
 						element={
 							<>
 								<StudioImage />
@@ -62,9 +62,9 @@ const renderStudioImage = () =>
 const renderStudioVideoUnderstand = () =>
 	render(
 		<SWRConfig value={{ provider: () => new Map() }}>
-			<MemoryRouter initialEntries={["/studio/video-understand?run=run-1"]}>
+			<MemoryRouter initialEntries={["/toolbox/video-understand?run=run-1"]}>
 				<Routes>
-					<Route path="/studio/video-understand" element={<StudioVideoUnderstand />} />
+					<Route path="/toolbox/video-understand" element={<StudioVideoUnderstand />} />
 				</Routes>
 			</MemoryRouter>
 		</SWRConfig>,
@@ -100,7 +100,7 @@ describe("StudioGenerationPage", () => {
 			}),
 		);
 		expect(screen.queryByTestId("generation-workspace")).toBeNull();
-		expect(screen.getByTestId("location").textContent).toBe("/studio/image");
+		expect(screen.getByTestId("location").textContent).toBe("/toolbox/image");
 	});
 
 	it("opens the latest session when no session is selected", async () => {
@@ -115,7 +115,7 @@ describe("StudioGenerationPage", () => {
 
 		await waitFor(() =>
 			expect(screen.getByTestId("location").textContent).toBe(
-				"/studio/image?conversation=session-new",
+				"/toolbox/image?conversation=session-new",
 			),
 		);
 		expect(screen.getByTestId("generation-workspace").getAttribute("data-conversation-id")).toBe(

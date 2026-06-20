@@ -421,8 +421,8 @@ func TestAPIHandler(t *testing.T) {
 			filepath.Join(workspaceDir, "library", "assets", "video"),
 			filepath.Join(workspaceDir, "library", "assets", "audio"),
 			filepath.Join(workspaceDir, "library", "assets", "text"),
-			filepath.Join(workspaceDir, "agent"),
-			filepath.Join(workspaceDir, "studio"),
+			filepath.Join(workspaceDir, "projects"),
+			filepath.Join(workspaceDir, "toolbox"),
 		} {
 			assertPathExists(t, path)
 		}
@@ -441,8 +441,8 @@ func TestAPIHandler(t *testing.T) {
 		if nameOnlyEnvelope.Data.ID == "" || nameOnlyEnvelope.Data.Name != "无目录项目" {
 			t.Fatalf("project = %+v, want name-only project", nameOnlyEnvelope.Data)
 		}
-		if !strings.Contains(nameOnlyEnvelope.Data.ProjectDir, filepath.Join(workspaceDir, "agent")) {
-			t.Fatalf("projectDir = %q, want default agent project dir under workspace", nameOnlyEnvelope.Data.ProjectDir)
+		if !strings.Contains(nameOnlyEnvelope.Data.ProjectDir, filepath.Join(workspaceDir, "projects")) {
+			t.Fatalf("projectDir = %q, want default projects dir under workspace", nameOnlyEnvelope.Data.ProjectDir)
 		}
 		for _, path := range []string{
 			filepath.Join(nameOnlyEnvelope.Data.ProjectDir, "project.media.json"),
@@ -520,7 +520,7 @@ func TestAPIHandler(t *testing.T) {
 		if !stylePatchEnvelope.Data.Changed || stylePatchEnvelope.Data.Config.Overview.Style != "冷调写实" {
 			t.Fatalf("project config patch = %+v, want changed style", stylePatchEnvelope.Data)
 		}
-		if _, err := os.Stat(filepath.Join(workspaceDir, "projects")); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(workspaceDir, "local-projects")); !os.IsNotExist(err) {
 			t.Fatalf("deprecated workspace projects dir exists, err=%v", err)
 		}
 
