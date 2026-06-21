@@ -50,6 +50,18 @@
       }
     },
     {
+      "name": "instructions",
+      "relativeDir": "packages/instructions",
+      "templateId": "go-lib",
+      "toolchain": "go",
+      "buildVersion": "0.1.0",
+      "domains": {
+        "dev": {
+          "command": "go test ./..."
+        }
+      }
+    },
+    {
       "name": "mcp",
       "relativeDir": "packages/mcp",
       "templateId": "go-lib",
@@ -58,18 +70,6 @@
       "domains": {
         "dev": {
           "command": "go test ./..."
-        }
-      }
-    },
-    {
-      "name": "server",
-      "relativeDir": "services/server",
-      "templateId": "go-api",
-      "toolchain": "go",
-      "buildVersion": "0.0.1",
-      "domains": {
-        "dev": {
-          "command": "go run ./cmd/mediago-server --config configs/server.yaml"
         }
       }
     },
@@ -94,6 +94,18 @@
       "domains": {
         "dev": {
           "command": "go test ./..."
+        }
+      }
+    },
+    {
+      "name": "server",
+      "relativeDir": "services/server",
+      "templateId": "go-api",
+      "toolchain": "go",
+      "buildVersion": "0.0.1",
+      "domains": {
+        "dev": {
+          "command": "go run ./cmd/mediago-server --config configs/server.yaml"
         }
       }
     }
