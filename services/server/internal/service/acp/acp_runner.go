@@ -363,17 +363,35 @@ func applyACPSessionSelections(ctx context.Context, conn acpSessionConfigurator,
 	if err := applyACPConfigSelection(ctx, conn, sessionID, request.Model, "model", logArgs); err != nil {
 		return err
 	}
-	if err := applyACPConfigSelection(ctx, conn, sessionID, request.Reasoning, "reasoning", logArgs); err != nil {
-		if isACPInvalidParamsError(err) {
-			acpLog().Warn("acp reasoning config ignored", append(logArgs, "acp_session_id", sessionID, "error", err)...)
-		} else {
-			return err
+	if shouldApplyACPReasoningSelection(request) {
+		if err := applyACPConfigSelection(ctx, conn, sessionID, request.Reasoning, "reasoning", logArgs); err != nil {
+			if isACPInvalidParamsError(err) {
+				acpLog().Warn("acp reasoning config ignored", append(logArgs, "acp_session_id", sessionID, "error", err)...)
+			} else {
+				return err
+			}
 		}
 	}
 	if err := applyACPConfigSelection(ctx, conn, sessionID, request.Permission, "permission", logArgs); err != nil {
 		return err
 	}
 	return nil
+}
+
+func shouldApplyACPReasoningSelection(request agentRunRequest) bool {
+	if strings.TrimSpace(request.Reasoning.Value) == "" {
+		return false
+	}
+	provider, _, ok := strings.Cut(strings.TrimSpace(request.Model.Value), "/")
+	if !ok {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "deepseek", "minimax-cn", "openrouter":
+		return false
+	default:
+		return true
+	}
 }
 
 func applyACPConfigSelection(ctx context.Context, conn acpSessionConfigurator, sessionID acp.SessionId, selection agentACPConfigSelection, label string, logArgs []any) error {

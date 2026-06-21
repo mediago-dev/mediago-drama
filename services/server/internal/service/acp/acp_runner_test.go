@@ -274,7 +274,7 @@ func TestAgentRuntimeConfigFromACPSession(t *testing.T) {
 	}
 }
 
-func TestApplyACPSessionSelectionsIgnoresInvalidReasoningValue(t *testing.T) {
+func TestApplyACPSessionSelectionsSkipsReasoningForExternalProviderModel(t *testing.T) {
 	configurator := &recordingACPSessionConfigurator{}
 
 	err := applyACPSessionSelections(
@@ -302,11 +302,47 @@ func TestApplyACPSessionSelectionsIgnoresInvalidReasoningValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("applyACPSessionSelections returned error: %v", err)
 	}
-	if len(configurator.configRequests) != 2 {
-		t.Fatalf("config requests = %#v, want model and reasoning attempts", configurator.configRequests)
+	if len(configurator.configRequests) != 1 {
+		t.Fatalf("config requests = %#v, want only model attempt", configurator.configRequests)
 	}
 	if got := string(configurator.configRequests[0].ValueId.Value); got != "deepseek/deepseek-chat" {
 		t.Fatalf("model value = %q, want deepseek/deepseek-chat", got)
+	}
+	if len(configurator.modeRequests) != 1 || configurator.modeRequests[0].ModeId != acp.SessionModeId("ask") {
+		t.Fatalf("mode requests = %#v, want ask applied after skipped reasoning", configurator.modeRequests)
+	}
+}
+
+func TestApplyACPSessionSelectionsIgnoresInvalidReasoningValue(t *testing.T) {
+	configurator := &recordingACPSessionConfigurator{}
+
+	err := applyACPSessionSelections(
+		context.Background(),
+		configurator,
+		acp.SessionId("session-1"),
+		agentRunRequest{
+			Model: agentACPConfigSelection{
+				ConfigID: "model",
+				Source:   AgentRuntimeConfigSourceOption,
+				Value:    "gpt-5",
+			},
+			Reasoning: agentACPConfigSelection{
+				ConfigID: "effort",
+				Source:   AgentRuntimeConfigSourceOption,
+				Value:    "thinking",
+			},
+			Permission: agentACPConfigSelection{
+				Source: AgentRuntimeConfigSourceMode,
+				Value:  "ask",
+			},
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("applyACPSessionSelections returned error: %v", err)
+	}
+	if len(configurator.configRequests) != 2 {
+		t.Fatalf("config requests = %#v, want model and reasoning attempts", configurator.configRequests)
 	}
 	if got := string(configurator.configRequests[1].ValueId.Value); got != "thinking" {
 		t.Fatalf("reasoning value = %q, want thinking", got)
