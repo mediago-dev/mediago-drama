@@ -9,6 +9,6 @@
     "repo": "anomalyco/opencode",
     "bin": "opencode",
     "args": ["acp"],
-    "version": "v1.15.13"
+    "version": "v1.17.0"
   }
 }
