@@ -22,9 +22,10 @@ import (
 type domainAgentModelProfile = domain.AgentModelProfileModel
 
 const (
-	opencodeConfigSchema = "https://opencode.ai/config.json"
-	agentModelKeyPrefix  = "agent-model:"
-	agentModelKeySuffix  = ":api-key"
+	opencodeConfigSchema       = "https://opencode.ai/config.json"
+	agentModelKeyPrefix        = "agent-model:"
+	agentModelKeySuffix        = ":api-key"
+	agentModelProviderDeepSeek = "deepseek"
 )
 
 var (
@@ -300,35 +301,12 @@ func (service *Settings) ClearAgentModelProfileAPIKey(ctx context.Context, id st
 
 // PrepareOpenCodeRuntimeConfig renders opencode config and resolves process env.
 func (service *Settings) PrepareOpenCodeRuntimeConfig(ctx context.Context, workspaceDir string) (OpenCodeRuntimeConfig, error) {
-	models, err := service.listAgentModelProfileModels()
-	if errors.Is(err, ErrAgentModelStoreMissing) {
-		return OpenCodeRuntimeConfig{}, nil
-	}
+	enabled, env, err := service.officialAgentRuntimeProfiles(ctx)
 	if err != nil {
 		return OpenCodeRuntimeConfig{}, err
 	}
-	enabled := make([]domainAgentModelProfile, 0, len(models))
-	for _, model := range models {
-		if model.Enabled {
-			enabled = append(enabled, model)
-		}
-	}
 	if len(enabled) == 0 {
 		return OpenCodeRuntimeConfig{}, nil
-	}
-	env := map[string]string{}
-	for _, model := range enabled {
-		if service.apiKeys == nil {
-			continue
-		}
-		value, _, err := service.apiKeys.Get(AgentModelProfileAPIKeyName(model.ID))
-		if err != nil {
-			return OpenCodeRuntimeConfig{}, err
-		}
-		value = strings.TrimSpace(value)
-		if value != "" {
-			env[AgentModelProfileEnvName(model.ID)] = value
-		}
 	}
 	configDir := filepath.Join(shared.WorkspacePathsFor(workspaceDir).GlobalMetadataDir(), "runtime", "agents", "opencode", "config")
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
@@ -344,6 +322,52 @@ func (service *Settings) PrepareOpenCodeRuntimeConfig(ctx context.Context, works
 		ProfileCount:     len(enabled),
 		DefaultProfileID: defaultProfileID(enabled),
 	}, nil
+}
+
+func (service *Settings) officialAgentRuntimeProfiles(ctx context.Context) ([]domainAgentModelProfile, map[string]string, error) {
+	_ = ctx
+	env := map[string]string{}
+	if service == nil || service.apiKeys == nil {
+		return nil, env, nil
+	}
+
+	profiles := []domainAgentModelProfile{}
+	for _, spec := range officialAgentModelProfileSpecs() {
+		template := agentModelProfileTemplateByID(spec.TemplateID)
+		if template.ID == "" {
+			continue
+		}
+		profile := profileModelFromTemplate(template)
+		value, err := service.agentRuntimeAPIKey(spec.CredentialKeyName, profile.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if value == "" {
+			continue
+		}
+		profile.IsDefault = len(profiles) == 0
+		profiles = append(profiles, profile)
+		env[AgentModelProfileEnvName(profile.ID)] = value
+	}
+
+	return profiles, env, nil
+}
+
+func (service *Settings) agentRuntimeAPIKey(providerKeyName string, profileID string) (string, error) {
+	value, _, err := service.apiKeys.Get(providerKeyName)
+	if err != nil {
+		return "", err
+	}
+	value = strings.TrimSpace(value)
+	if value != "" {
+		return value, nil
+	}
+
+	legacyValue, _, err := service.apiKeys.Get(AgentModelProfileAPIKeyName(profileID))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(legacyValue), nil
 }
 
 // AgentModelProfileAPIKeyName returns the stable credential key for one profile.
@@ -496,17 +520,6 @@ func AgentModelProfileTemplates() []AgentModelProfileTemplate {
 			SupportsTools:    true,
 			Temperature:      &zero,
 		},
-		{
-			ID:               "custom",
-			Name:             "自定义 OpenAI-compatible",
-			ProviderID:       "custom",
-			ProviderLabel:    "Custom",
-			BaseURL:          "https://api.example.com/v1",
-			Model:            "model-name",
-			ModelDisplayName: "Custom Model",
-			SupportsTools:    true,
-			Temperature:      &zero,
-		},
 	}
 	result := make([]AgentModelProfileTemplate, len(templates))
 	copy(result, templates)
@@ -515,17 +528,40 @@ func AgentModelProfileTemplates() []AgentModelProfileTemplate {
 
 func inputTemplate(id *string) AgentModelProfileTemplate {
 	value := strings.TrimSpace(stringValue(id))
+	return agentModelProfileTemplateByID(value)
+}
+
+func agentModelProfileTemplateByID(id string) AgentModelProfileTemplate {
+	id = strings.TrimSpace(id)
 	for _, template := range AgentModelProfileTemplates() {
-		if template.ID == value {
-			return template
-		}
-	}
-	for _, template := range AgentModelProfileTemplates() {
-		if template.ID == "custom" {
+		if template.ID == id {
 			return template
 		}
 	}
 	return AgentModelProfileTemplate{}
+}
+
+type officialAgentModelProfileSpec struct {
+	TemplateID        string
+	CredentialKeyName string
+}
+
+func officialAgentModelProfileSpecs() []officialAgentModelProfileSpec {
+	return []officialAgentModelProfileSpec{
+		{TemplateID: "openrouter", CredentialKeyName: "openrouter"},
+		{TemplateID: "minimax", CredentialKeyName: "minimax"},
+		{TemplateID: "deepseek", CredentialKeyName: agentModelProviderDeepSeek},
+	}
+}
+
+func supportsOfficialAgentModel(providerID string) bool {
+	providerID = strings.TrimSpace(providerID)
+	for _, spec := range officialAgentModelProfileSpecs() {
+		if spec.CredentialKeyName == providerID {
+			return true
+		}
+	}
+	return false
 }
 
 func profileModelFromTemplate(template AgentModelProfileTemplate) domainAgentModelProfile {

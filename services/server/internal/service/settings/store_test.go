@@ -51,6 +51,9 @@ func TestSettingsSetListAndClearAPIKey(t *testing.T) {
 	if !provider.Configured || provider.Source != "settings" || provider.Masked == "" {
 		t.Fatalf("provider after set = %#v, want configured settings provider", provider)
 	}
+	if !stringSliceContains(provider.Capabilities, "generation") || !stringSliceContains(provider.Capabilities, "agent") {
+		t.Fatalf("openrouter capabilities = %#v, want generation and agent", provider.Capabilities)
+	}
 
 	list, err = settings.ClearAPIKey(context.Background(), "openrouter")
 	if err != nil {
@@ -59,6 +62,23 @@ func TestSettingsSetListAndClearAPIKey(t *testing.T) {
 	provider = providerByID(t, list, "openrouter")
 	if provider.Configured || provider.Source != "none" || provider.Masked != "" {
 		t.Fatalf("provider after clear = %#v, want unconfigured provider", provider)
+	}
+}
+
+func TestSettingsListAPIKeysIncludesAgentOnlyDeepSeek(t *testing.T) {
+	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
+
+	list, err := settings.ListAPIKeys(context.Background())
+	if err != nil {
+		t.Fatalf("ListAPIKeys returned error: %v", err)
+	}
+
+	provider := providerByID(t, list, "deepseek")
+	if provider.Configured || provider.Source != "none" {
+		t.Fatalf("deepseek provider = %#v, want unconfigured provider", provider)
+	}
+	if provider.Label != "DeepSeek" || !stringSliceContains(provider.Capabilities, "agent") || stringSliceContains(provider.Capabilities, "generation") {
+		t.Fatalf("deepseek provider = %#v, want agent-only DeepSeek provider", provider)
 	}
 }
 
@@ -192,4 +212,13 @@ func providerByID(t *testing.T, list APIKeyList, id string) APIKeyProvider {
 	}
 	t.Fatalf("provider %q not found", id)
 	return APIKeyProvider{}
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

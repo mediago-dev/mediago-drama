@@ -54,16 +54,17 @@ type AgentModelProfileStore interface {
 
 // APIKeyProvider describes one configurable API key provider.
 type APIKeyProvider struct {
-	ID              string `json:"id"`
-	Label           string `json:"label"`
-	Description     string `json:"description"`
-	Configured      bool   `json:"configured"`
-	Source          string `json:"source"`
-	Masked          string `json:"masked,omitempty"`
-	CredentialLabel string `json:"credentialLabel,omitempty"`
-	Placeholder     string `json:"placeholder,omitempty"`
-	Help            string `json:"help,omitempty"`
-	CredentialKind  string `json:"credentialKind,omitempty"`
+	ID              string   `json:"id"`
+	Label           string   `json:"label"`
+	Description     string   `json:"description"`
+	Configured      bool     `json:"configured"`
+	Source          string   `json:"source"`
+	Masked          string   `json:"masked,omitempty"`
+	CredentialLabel string   `json:"credentialLabel,omitempty"`
+	Placeholder     string   `json:"placeholder,omitempty"`
+	Help            string   `json:"help,omitempty"`
+	CredentialKind  string   `json:"credentialKind,omitempty"`
+	Capabilities    []string `json:"capabilities,omitempty"`
 	keyName         string
 }
 
@@ -450,7 +451,7 @@ func (service *Settings) ProviderLabel(keyName string) string {
 
 func apiKeyProviders() []APIKeyProvider {
 	specs := generation.CredentialSpecs()
-	providers := make([]APIKeyProvider, 0, len(specs))
+	providers := make([]APIKeyProvider, 0, len(specs)+1)
 	for _, spec := range specs {
 		providers = append(providers, APIKeyProvider{
 			ID:              spec.ID,
@@ -460,11 +461,34 @@ func apiKeyProviders() []APIKeyProvider {
 			Placeholder:     spec.Placeholder,
 			Help:            spec.Help,
 			CredentialKind:  spec.CredentialKind,
+			Capabilities:    apiKeyProviderCapabilities(spec.ID, true),
 			keyName:         spec.ID,
 		})
 	}
 
+	providers = append(providers, APIKeyProvider{
+		ID:              agentModelProviderDeepSeek,
+		Label:           "DeepSeek",
+		Description:     "DeepSeek agent routes",
+		CredentialLabel: "DeepSeek API Key",
+		Placeholder:     "输入 DeepSeek API Key",
+		Help:            "用于智能体默认 DeepSeek Chat 模型。",
+		Capabilities:    apiKeyProviderCapabilities(agentModelProviderDeepSeek, false),
+		keyName:         agentModelProviderDeepSeek,
+	})
+
 	return providers
+}
+
+func apiKeyProviderCapabilities(providerID string, supportsGeneration bool) []string {
+	capabilities := []string{}
+	if supportsGeneration {
+		capabilities = append(capabilities, "generation")
+	}
+	if supportsOfficialAgentModel(providerID) {
+		capabilities = append(capabilities, "agent")
+	}
+	return capabilities
 }
 
 func findAPIKeyProvider(id string) (APIKeyProvider, bool) {

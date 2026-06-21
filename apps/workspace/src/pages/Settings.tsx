@@ -23,7 +23,6 @@ import {
 	getAPIKeys,
 	saveAPIKey,
 } from "@/domains/settings/api/settings";
-import { AgentModelProfilesPanel } from "@/domains/settings/components/AgentModelProfilesPanel";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
 import { BillingPanel } from "@/domains/billing/components/BillingPanel";
 import { Badge } from "@/shared/components/ui/badge";
@@ -49,21 +48,17 @@ import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { isTauriRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
 
-type SettingsTabValue =
-	| "appearance"
-	| "api-keys"
-	| "agent-model-profiles"
-	| "billing"
-	| "shortcuts"
-	| DebugTabValue;
+type SettingsTabValue = "appearance" | "api-keys" | "billing" | "shortcuts" | DebugTabValue;
 
 const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	value === "appearance" ||
 	value === "api-keys" ||
-	value === "agent-model-profiles" ||
 	value === "billing" ||
 	value === "shortcuts" ||
 	debugTabs.some((tab) => tab.value === value);
+
+const normalizeSettingsTab = (value: string) =>
+	value === "agent-model-profiles" ? "api-keys" : value;
 
 export const Settings: React.FC = () => {
 	const location = useLocation();
@@ -71,7 +66,8 @@ export const Settings: React.FC = () => {
 	const themeMode = useThemeStore((state) => state.mode);
 	const setThemeMode = useThemeStore((state) => state.setMode);
 	const activeTab = useSettingsNavigationStore((state) => state.activeTab);
-	const visibleTab = isSettingsTabValue(activeTab) ? activeTab : "appearance";
+	const normalizedTab = normalizeSettingsTab(activeTab);
+	const visibleTab = isSettingsTabValue(normalizedTab) ? normalizedTab : "appearance";
 
 	if (projectId) return <ProjectSettings />;
 
@@ -82,7 +78,6 @@ export const Settings: React.FC = () => {
 			) : null}
 
 			{visibleTab === "api-keys" ? <APIKeysPanel /> : null}
-			{visibleTab === "agent-model-profiles" ? <AgentModelProfilesPanel /> : null}
 			{visibleTab === "billing" ? <BillingPanel /> : null}
 			{visibleTab === "shortcuts" ? <ShortcutKeysPanel /> : null}
 
@@ -226,7 +221,7 @@ const APIKeysPanel: React.FC = () => {
 	return (
 		<SettingsPanelLayout
 			title="API 密钥"
-			description="管理所有供应商凭据。"
+			description="管理生成和智能体使用的官方供应商凭据。"
 			icon={<KeyRound className="size-4" />}
 		>
 			<div className="space-y-3">
@@ -420,11 +415,17 @@ const APIKeyProviderRow: React.FC<{
 	const canConfirmLogin = isLoginPending && Boolean(loginChallenge?.deviceCode);
 
 	return (
-		<section className="grid gap-3 py-2 lg:grid-cols-[minmax(var(--settings-provider-column-min),var(--settings-provider-column-max))_minmax(0,1fr)_auto] lg:items-start">
+		<section
+			className={cn(
+				settingsInsetRowClassName,
+				"grid gap-3 lg:grid-cols-[minmax(var(--settings-provider-column-min),var(--settings-provider-column-max))_minmax(0,1fr)_auto] lg:items-start",
+			)}
+		>
 			<div className="min-w-0">
-				<div className="flex items-center gap-2">
+				<div className="flex min-w-0 flex-wrap items-center gap-2">
 					<h3 className="truncate text-sm font-semibold text-foreground">{provider.label}</h3>
 					<ProviderBadge provider={provider} />
+					<ProviderCapabilityBadges provider={provider} />
 				</div>
 				<p className="mt-1 text-xs text-muted-foreground">
 					{providerDescription(provider.description)}
@@ -561,6 +562,23 @@ const APIKeyProviderRow: React.FC<{
 	);
 };
 
+const ProviderCapabilityBadges: React.FC<{
+	provider: APIKeyProvider;
+}> = ({ provider }) => {
+	const capabilities = provider.capabilities ?? [];
+	if (capabilities.length === 0) return null;
+
+	return (
+		<>
+			{capabilities.map((capability) => (
+				<Badge key={capability} variant="outline" className="rounded-md">
+					{providerCapabilityLabel(capability)}
+				</Badge>
+			))}
+		</>
+	);
+};
+
 const ProviderBadge: React.FC<{
 	provider: APIKeyProvider;
 }> = ({ provider }) => {
@@ -587,8 +605,17 @@ const providerDescription = (description: string) => {
 		"Google official image routes": "Google 官方图像供应商",
 		"Seedream and Seedance official routes": "Seedream 和 Seedance 官方供应商",
 		"Jimeng CLI local OAuth session": "即梦 CLI 本地登录",
+		"DeepSeek agent routes": "DeepSeek 智能体供应商",
 	};
 	return descriptions[description] ?? description;
+};
+
+const providerCapabilityLabel = (capability: string) => {
+	const labels: Record<string, string> = {
+		generation: "生成",
+		agent: "智能体",
+	};
+	return labels[capability] ?? capability;
 };
 
 const providerCredentialLabel = (label?: string) => {

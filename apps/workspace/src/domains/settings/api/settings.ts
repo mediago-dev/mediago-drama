@@ -11,6 +11,7 @@ export interface APIKeyProvider {
 	placeholder?: string;
 	help?: string;
 	credentialKind?: "apiKey" | "oauth" | string;
+	capabilities?: string[];
 }
 
 export interface APIKeyListResponse {

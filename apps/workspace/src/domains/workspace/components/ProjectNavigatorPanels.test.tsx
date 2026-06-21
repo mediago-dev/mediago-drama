@@ -24,4 +24,23 @@ describe("SettingsSidebarPanel", () => {
 
 		expect(onSelectTab).toHaveBeenCalledWith("shortcuts");
 	});
+
+	it("shows API keys without the retired agent model profile entry", () => {
+		const onSelectTab = vi.fn();
+
+		render(
+			<SettingsSidebarPanel
+				activeTab="appearance"
+				isProjectSettings={false}
+				projectName=""
+				onBack={vi.fn()}
+				onSelectTab={onSelectTab}
+			/>,
+		);
+
+		expect(screen.queryByRole("button", { name: "模型接入" })).toBeNull();
+
+		fireEvent.click(screen.getByRole("button", { name: "API 密钥" }));
+		expect(onSelectTab).toHaveBeenCalledWith("api-keys");
+	});
 });

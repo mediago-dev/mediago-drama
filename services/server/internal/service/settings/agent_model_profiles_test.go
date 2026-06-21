@@ -153,20 +153,8 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	)
 	ctx := context.Background()
 
-	templateID := "openrouter"
-	contextWindow := 128000
-	maxOutputTokens := 8192
-	temperature := 0.2
-	if _, err := settings.CreateAgentModelProfile(ctx, AgentModelProfileMutation{
-		TemplateID:      &templateID,
-		ContextWindow:   &contextWindow,
-		MaxOutputTokens: &maxOutputTokens,
-		Temperature:     &temperature,
-	}); err != nil {
-		t.Fatalf("CreateAgentModelProfile returned error: %v", err)
-	}
-	if _, err := settings.SetAgentModelProfileAPIKey(ctx, "openrouter", "sk-openrouter-secret"); err != nil {
-		t.Fatalf("SetAgentModelProfileAPIKey returned error: %v", err)
+	if _, err := settings.SetAPIKey(ctx, "openrouter", "sk-openrouter-secret"); err != nil {
+		t.Fatalf("SetAPIKey returned error: %v", err)
 	}
 
 	workspaceDir := t.TempDir()
@@ -199,11 +187,9 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 		`"apiKey": "{env:MEDIAGO_AGENT_MODEL_OPENROUTER_API_KEY}"`,
 		`"tool_call": true`,
 		`"attachment": true`,
-		`"context": 128000`,
-		`"output": 8192`,
 		`"input": [`,
 		`"image"`,
-		`"temperature": 0.2`,
+		`"temperature": 0`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("opencode.json missing %q:\n%s", want, text)
@@ -213,6 +199,25 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("opencode.json is invalid json: %v", err)
+	}
+}
+
+func TestPrepareOpenCodeRuntimeConfigUsesLegacyOfficialProfileKey(t *testing.T) {
+	settings := NewSettingsWithAgentModelProfiles(
+		&memoryAPIKeyStore{values: map[string]string{
+			AgentModelProfileAPIKeyName("openrouter"): "sk-legacy-openrouter-secret",
+		}},
+		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
+	)
+
+	config, err := settings.PrepareOpenCodeRuntimeConfig(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("PrepareOpenCodeRuntimeConfig returned error: %v", err)
+	}
+
+	envName := AgentModelProfileEnvName("openrouter")
+	if config.ProfileCount != 1 || config.Env[envName] != "sk-legacy-openrouter-secret" {
+		t.Fatalf("runtime config = %#v, want legacy official key fallback", config)
 	}
 }
 

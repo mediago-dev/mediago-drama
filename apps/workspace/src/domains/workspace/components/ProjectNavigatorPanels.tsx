@@ -1,7 +1,6 @@
 import {
 	AudioLines,
 	ChevronLeft,
-	Bot,
 	Ellipsis,
 	FileText,
 	Film,
@@ -598,11 +597,7 @@ const settingsNavGroups: SettingsNavGroup[] = [
 	},
 	{
 		label: "智能体",
-		items: [
-			{ value: "agent-model-profiles", label: "模型接入", icon: Bot },
-			debugNavItem("prompts"),
-			debugNavItem("skills"),
-		],
+		items: [debugNavItem("prompts"), debugNavItem("skills")],
 	},
 ];
 
