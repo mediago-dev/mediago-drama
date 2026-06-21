@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -24,6 +25,11 @@ type agentRunResult = AgentRunResult
 type agentDocumentContext = AgentDocumentContext
 type agentACPConfigSelection = AgentACPConfigSelection
 type agentACPEvent = AgentACPEvent
+
+type acpSessionConfigurator interface {
+	SetSessionConfigOption(context.Context, acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error)
+	SetSessionMode(context.Context, acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error)
+}
 
 type acpAgentRunner struct {
 	commandFn             func() string
@@ -353,12 +359,16 @@ func isOpenCodeACPCommand(command string, args []string) bool {
 	return len(args) > 0 && strings.TrimSpace(args[0]) == "acp"
 }
 
-func applyACPSessionSelections(ctx context.Context, conn *acp.ClientSideConnection, sessionID acp.SessionId, request agentRunRequest, logArgs []any) error {
+func applyACPSessionSelections(ctx context.Context, conn acpSessionConfigurator, sessionID acp.SessionId, request agentRunRequest, logArgs []any) error {
 	if err := applyACPConfigSelection(ctx, conn, sessionID, request.Model, "model", logArgs); err != nil {
 		return err
 	}
 	if err := applyACPConfigSelection(ctx, conn, sessionID, request.Reasoning, "reasoning", logArgs); err != nil {
-		return err
+		if isACPInvalidParamsError(err) {
+			acpLog().Warn("acp reasoning config ignored", append(logArgs, "acp_session_id", sessionID, "error", err)...)
+		} else {
+			return err
+		}
 	}
 	if err := applyACPConfigSelection(ctx, conn, sessionID, request.Permission, "permission", logArgs); err != nil {
 		return err
@@ -366,7 +376,7 @@ func applyACPSessionSelections(ctx context.Context, conn *acp.ClientSideConnecti
 	return nil
 }
 
-func applyACPConfigSelection(ctx context.Context, conn *acp.ClientSideConnection, sessionID acp.SessionId, selection agentACPConfigSelection, label string, logArgs []any) error {
+func applyACPConfigSelection(ctx context.Context, conn acpSessionConfigurator, sessionID acp.SessionId, selection agentACPConfigSelection, label string, logArgs []any) error {
 	value := strings.TrimSpace(selection.Value)
 	if value == "" {
 		return nil
@@ -403,6 +413,11 @@ func applyACPConfigSelection(ctx context.Context, conn *acp.ClientSideConnection
 		append(logArgs, "acp_session_id", sessionID, "config_id", configID, "value", value)...,
 	)
 	return nil
+}
+
+func isACPInvalidParamsError(err error) bool {
+	var requestErr *acp.RequestError
+	return errors.As(err, &requestErr) && requestErr.Code == -32602
 }
 
 func (runner *acpAgentRunner) absoluteWorkspaceDir() string {

@@ -274,6 +274,69 @@ func TestAgentRuntimeConfigFromACPSession(t *testing.T) {
 	}
 }
 
+func TestApplyACPSessionSelectionsIgnoresInvalidReasoningValue(t *testing.T) {
+	configurator := &recordingACPSessionConfigurator{}
+
+	err := applyACPSessionSelections(
+		context.Background(),
+		configurator,
+		acp.SessionId("session-1"),
+		agentRunRequest{
+			Model: agentACPConfigSelection{
+				ConfigID: "model",
+				Source:   AgentRuntimeConfigSourceOption,
+				Value:    "deepseek/deepseek-chat",
+			},
+			Reasoning: agentACPConfigSelection{
+				ConfigID: "effort",
+				Source:   AgentRuntimeConfigSourceOption,
+				Value:    "thinking",
+			},
+			Permission: agentACPConfigSelection{
+				Source: AgentRuntimeConfigSourceMode,
+				Value:  "ask",
+			},
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("applyACPSessionSelections returned error: %v", err)
+	}
+	if len(configurator.configRequests) != 2 {
+		t.Fatalf("config requests = %#v, want model and reasoning attempts", configurator.configRequests)
+	}
+	if got := string(configurator.configRequests[0].ValueId.Value); got != "deepseek/deepseek-chat" {
+		t.Fatalf("model value = %q, want deepseek/deepseek-chat", got)
+	}
+	if got := string(configurator.configRequests[1].ValueId.Value); got != "thinking" {
+		t.Fatalf("reasoning value = %q, want thinking", got)
+	}
+	if len(configurator.modeRequests) != 1 || configurator.modeRequests[0].ModeId != acp.SessionModeId("ask") {
+		t.Fatalf("mode requests = %#v, want ask applied after ignored reasoning", configurator.modeRequests)
+	}
+}
+
+func TestApplyACPSessionSelectionsReturnsModelInvalidParams(t *testing.T) {
+	configurator := &recordingACPSessionConfigurator{invalidModelValue: "missing-model"}
+
+	err := applyACPSessionSelections(
+		context.Background(),
+		configurator,
+		acp.SessionId("session-1"),
+		agentRunRequest{
+			Model: agentACPConfigSelection{
+				ConfigID: "model",
+				Source:   AgentRuntimeConfigSourceOption,
+				Value:    "missing-model",
+			},
+		},
+		nil,
+	)
+	if err == nil {
+		t.Fatal("applyACPSessionSelections returned nil, want model error")
+	}
+}
+
 func TestACPClientSessionUpdatePublishesToolCallPayload(t *testing.T) {
 	events := []agentEvent{}
 	client := &acpClient{
@@ -327,6 +390,32 @@ type recordingProcessConfigProvider struct {
 func (provider *recordingProcessConfigProvider) PrepareACPProcessConfig(_ context.Context, request ProcessConfigRequest) (ProcessConfig, error) {
 	provider.requests = append(provider.requests, request)
 	return provider.config, nil
+}
+
+type recordingACPSessionConfigurator struct {
+	configRequests    []acp.SetSessionConfigOptionRequest
+	modeRequests      []acp.SetSessionModeRequest
+	invalidModelValue string
+}
+
+func (configurator *recordingACPSessionConfigurator) SetSessionConfigOption(_ context.Context, request acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
+	configurator.configRequests = append(configurator.configRequests, request)
+	if request.ValueId != nil && string(request.ValueId.Value) == configurator.invalidModelValue {
+		return acp.SetSessionConfigOptionResponse{}, acp.NewInvalidParams(map[string]any{
+			"model": request.ValueId.Value,
+		})
+	}
+	if request.ValueId != nil && request.ValueId.ConfigId == acp.SessionConfigId("effort") && request.ValueId.Value == acp.SessionConfigValueId("thinking") {
+		return acp.SetSessionConfigOptionResponse{}, acp.NewInvalidParams(map[string]any{
+			"effort": "thinking",
+		})
+	}
+	return acp.SetSessionConfigOptionResponse{}, nil
+}
+
+func (configurator *recordingACPSessionConfigurator) SetSessionMode(_ context.Context, request acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {
+	configurator.modeRequests = append(configurator.modeRequests, request)
+	return acp.SetSessionModeResponse{}, nil
 }
 
 func envValue(env []string, key string) string {
