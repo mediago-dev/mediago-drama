@@ -2,8 +2,7 @@
 name: prop-writer
 title: 道具设定写作
 description: 编辑 prop 类型文档时使用：梳理剧情中的关键道具，产出可拍摄、可成像、可跨分镜复用的道具设定与模板格式
-hint:
-  document_category: prop
+document_category: prop
 ---
 # 类型专属写作指导：道具设定（prop）
 

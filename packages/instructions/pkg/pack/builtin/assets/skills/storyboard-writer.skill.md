@@ -2,8 +2,7 @@
 name: storyboard-writer
 title: 分镜脚本写作
 description: 编辑 storyboard 类型文档时使用：将原文剧情拆成短剧/视频分镜，输出可直接供 Seedance 2.0 等视频模型使用的电影级镜头提示词与模板格式
-hint:
-  document_category: storyboard
+document_category: storyboard
 ---
 # 类型专属写作指导：电影级分镜（storyboard）
 

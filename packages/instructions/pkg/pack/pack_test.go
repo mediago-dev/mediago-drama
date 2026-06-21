@@ -12,7 +12,7 @@ func TestParseFSParsesAllKinds(t *testing.T) {
 	bundle, err := ParseFS(context.Background(), fstest.MapFS{
 		"pack.json":              &fstest.MapFile{Data: []byte(`{"id":"sample","name":"Sample","version":"1.0.0","categories":[{"id":"extra","label":"Extra"}]}`)},
 		"instructions/AGENTS.md": &fstest.MapFile{Data: []byte("---\nslug: AGENTS\ntitle: Agents\norder: 0\neditable: true\n---\nInstruction body\n")},
-		"skills/writer.skill.md": &fstest.MapFile{Data: []byte("---\nname: writer\ndescription: Writes\nhint:\n  document_category: screenplay\n---\nSkill body\n")},
+		"skills/writer.skill.md": &fstest.MapFile{Data: []byte("---\nname: writer\ndescription: Writes\ndocument_category: screenplay\n---\nSkill body\n")},
 		"prompts/image.md":       &fstest.MapFile{Data: []byte("---\nid: image\nname: Image\ntype: image\ncategory: extra\n---\nPrompt body\n")},
 	})
 	if err != nil {
@@ -25,6 +25,29 @@ func TestParseFSParsesAllKinds(t *testing.T) {
 		if entry.ID == "" || entry.PackID != "sample" || entry.Body == "" {
 			t.Fatalf("entry = %#v, want normalized IDs and body", entry)
 		}
+		if entry.Slug == "writer" {
+			hint, ok := entry.Metadata["hint"].(map[string]string)
+			if !ok || hint["document_category"] != "screenplay" {
+				t.Fatalf("skill hint = %#v, want document_category", entry.Metadata["hint"])
+			}
+		}
+	}
+}
+
+func TestParseFSAcceptsLegacyNestedSkillDocumentCategory(t *testing.T) {
+	bundle, err := ParseFS(context.Background(), fstest.MapFS{
+		"pack.json":              &fstest.MapFile{Data: []byte(`{"id":"sample","name":"Sample","version":"1.0.0"}`)},
+		"skills/writer.skill.md": &fstest.MapFile{Data: []byte("---\nname: writer\ndescription: Writes\nhint:\n  document_category: screenplay\n---\nSkill body\n")},
+	})
+	if err != nil {
+		t.Fatalf("ParseFS() error = %v", err)
+	}
+	if len(bundle.Entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(bundle.Entries))
+	}
+	hint, ok := bundle.Entries[0].Metadata["hint"].(map[string]string)
+	if !ok || hint["document_category"] != "screenplay" {
+		t.Fatalf("skill hint = %#v, want document_category", bundle.Entries[0].Metadata["hint"])
 	}
 }
 

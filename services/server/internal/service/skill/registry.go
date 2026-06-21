@@ -71,10 +71,11 @@ type Registry struct {
 }
 
 type skillFrontmatter struct {
-	Name        string            `yaml:"name"`
-	Title       string            `yaml:"title,omitempty"`
-	Description string            `yaml:"description"`
-	Hint        map[string]string `yaml:"hint,omitempty"`
+	Name             string            `yaml:"name"`
+	Title            string            `yaml:"title,omitempty"`
+	Description      string            `yaml:"description"`
+	DocumentCategory string            `yaml:"document_category,omitempty"`
+	Hint             map[string]string `yaml:"hint,omitempty"`
 }
 
 var (
@@ -273,7 +274,7 @@ func parseRaw(raw string, source Source) (Skill, error) {
 			Title:       strings.TrimSpace(meta.Title),
 			Description: description,
 			Source:      source,
-			Hint:        normalizeHint(meta.Hint),
+			Hint:        normalizeSkillHint(meta.Hint, meta.DocumentCategory),
 		},
 		Content: normalizeBody(body),
 		Raw:     raw,
@@ -328,11 +329,13 @@ func entryFromSkill(item Skill) promptpack.Entry {
 }
 
 func rawFromSkill(item Skill) string {
+	hint, documentCategory := splitDocumentCategoryHint(item.Hint)
 	frontmatter, _ := yaml.Marshal(skillFrontmatter{
-		Name:        item.Name,
-		Title:       item.Title,
-		Description: item.Description,
-		Hint:        item.Hint,
+		Name:             item.Name,
+		Title:            item.Title,
+		Description:      item.Description,
+		DocumentCategory: documentCategory,
+		Hint:             hint,
 	})
 	return "---\n" + strings.TrimSpace(string(frontmatter)) + "\n---\n" + normalizeBody(item.Content)
 }
@@ -377,6 +380,32 @@ func normalizeHint(values map[string]string) map[string]string {
 		return nil
 	}
 	return hint
+}
+
+func normalizeSkillHint(values map[string]string, documentCategory string) map[string]string {
+	hint := normalizeHint(values)
+	documentCategory = strings.TrimSpace(documentCategory)
+	if documentCategory == "" {
+		return hint
+	}
+	if hint == nil {
+		hint = map[string]string{}
+	}
+	hint["document_category"] = documentCategory
+	return hint
+}
+
+func splitDocumentCategoryHint(values map[string]string) (map[string]string, string) {
+	hint := normalizeHint(values)
+	if hint == nil {
+		return nil, ""
+	}
+	documentCategory := strings.TrimSpace(hint["document_category"])
+	delete(hint, "document_category")
+	if len(hint) == 0 {
+		return nil, documentCategory
+	}
+	return hint, documentCategory
 }
 
 func normalizeRaw(raw string) string {

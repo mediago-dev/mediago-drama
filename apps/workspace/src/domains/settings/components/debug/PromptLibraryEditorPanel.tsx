@@ -1,4 +1,4 @@
-import { Library, Loader2, Plus, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
+import { Loader2, Pencil, Plus, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -25,7 +25,7 @@ import {
 	promptCategoryLabel,
 	stylePromptCategory,
 } from "@/domains/generation/lib/prompt-categories";
-import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
+import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -42,6 +42,8 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { useToast } from "@/hooks/useToast";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
+import { PromptPackActions } from "./PromptPackActionsSlot";
+import { SettingsMarkdownPreview } from "./SettingsMarkdownEditor";
 
 interface Draft {
 	id: string;
@@ -77,6 +79,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 	const [createDraft, setCreateDraft] = useState<Draft>(emptyDraft("style"));
 	const [createError, setCreateError] = useState("");
 	const [createDialogOpen, setCreateDialogOpen] = useState(false);
+	const [editDialogOpen, setEditDialogOpen] = useState(false);
 	const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
 	const [categoryDialogTarget, setCategoryDialogTarget] = useState<CategoryDialogTarget>("edit");
 	const [categoryDraftName, setCategoryDraftName] = useState("");
@@ -141,6 +144,19 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		setCreateError("");
 	};
 
+	const openEditDialog = () => {
+		if (!selectedPreset) return;
+		setDraft(draftFromPreset(selectedPreset));
+		setError("");
+		setEditDialogOpen(true);
+	};
+
+	const closeEditDialog = () => {
+		setEditDialogOpen(false);
+		if (selectedPreset) setDraft(draftFromPreset(selectedPreset));
+		setError("");
+	};
+
 	const selectPreset = (id: string) => {
 		setSelectedId(id);
 	};
@@ -160,6 +176,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 			await mutate();
 			setCategoryFilter(saved.category);
 			setSelectedId(saved.id);
+			setEditDialogOpen(false);
 			toast.success("已保存", { description: saved.name });
 		} catch (err) {
 			const message = errorMessage(err);
@@ -240,7 +257,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 	};
 
 	const removeOrReset = async () => {
-		if (!selectedPreset) return;
+		if (!selectedPreset) return false;
 		setIsDeleting(true);
 		setError("");
 		try {
@@ -249,37 +266,73 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 				await mutate();
 				setSelectedId(reset.id);
 				toast.success("已恢复默认");
+				return true;
 			} else if (selectedPreset.source === "user") {
 				await deletePromptPreset(selectedPreset.id);
 				await mutate();
 				setSelectedId("");
 				toast.success("已删除");
+				return true;
 			} else {
-				return;
+				return false;
 			}
 		} catch (err) {
 			const message = errorMessage(err);
 			setError(message);
 			toast.error("操作失败", { description: message });
+			return false;
 		} finally {
 			setIsDeleting(false);
 		}
 	};
 
+	const confirmRemoveOrReset = () => {
+		if (!selectedPreset) return;
+		if (canDeletePreset) {
+			void confirmDialog({
+				title: "删除提示词预设？",
+				description: `确定要删除“${selectedPreset.name}”吗？此操作无法撤销。`,
+				confirmLabel: "删除",
+				confirmIcon: <Trash2 className="size-4" />,
+				onConfirm: removeOrReset,
+			});
+			return;
+		}
+		void removeOrReset();
+	};
+
 	return (
 		<>
-			<SettingsPanelLayout
-				title="提示词库"
-				description="按分类管理可复用的提示词预设。"
-				icon={<Library className="size-4" />}
-				actions={
-					<Button type="button" variant="outline" onClick={startCreate}>
-						<Plus className="size-4" />
-						<span>新建</span>
+			<PromptPackActions>
+				<Button type="button" variant="outline" onClick={startCreate}>
+					<Plus className="size-4" />
+					<span>新建</span>
+				</Button>
+				{canResetPreset || canDeletePreset ? (
+					<Button
+						type="button"
+						variant={canResetPreset ? "outline" : "destructive"}
+						onClick={confirmRemoveOrReset}
+						disabled={isDeleting}
+					>
+						{isDeleting ? (
+							<Loader2 className="size-4 animate-spin" />
+						) : canResetPreset ? (
+							<RotateCcw className="size-4" />
+						) : (
+							<Trash2 className="size-4" />
+						)}
+						<span>{isDeleting ? "处理中" : canResetPreset ? "恢复默认" : "删除"}</span>
 					</Button>
-				}
-			>
-				<div className="mb-3 flex flex-wrap items-center gap-2">
+				) : null}
+				<Button type="button" onClick={openEditDialog} disabled={!selectedPreset}>
+					<Pencil className="size-4" />
+					<span>编辑</span>
+				</Button>
+			</PromptPackActions>
+
+			<div className="flex h-full min-h-0 flex-col overflow-hidden px-5 py-5">
+				<div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
 					<CategoryChip
 						active={categoryFilter === "all"}
 						onClick={() => setCategoryFilter("all")}
@@ -304,8 +357,8 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 					</div>
 				</div>
 
-				<div className="grid min-h-0 gap-3 md:grid-cols-[15rem_minmax(0,1fr)]">
-					<div className="max-h-[28rem] min-h-0 overflow-y-auto rounded-md border border-border">
+				<div className="grid min-h-0 flex-1 grid-rows-[minmax(10rem,16rem)_minmax(0,1fr)] gap-3 md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-1">
+					<div className="min-h-0 overflow-y-auto rounded-md border border-border">
 						{isLoading && presets.length === 0 ? (
 							<div className="flex items-center gap-2 p-3 text-xs text-muted-foreground">
 								<Loader2 className="size-4 animate-spin" />
@@ -340,10 +393,10 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 						)}
 					</div>
 
-					<div className="min-w-0 rounded-md border border-border p-3">
+					<div className="min-h-0 min-w-0 overflow-y-auto rounded-md border border-border p-3">
 						{!selectedPreset ? (
 							<p className="py-6 text-center text-sm text-muted-foreground">
-								选择左侧预设进行编辑，或点击「新建」。
+								选择左侧预设查看详情，或点击「新建」。
 							</p>
 						) : (
 							<div className="space-y-3">
@@ -366,71 +419,36 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 								) : null}
 
 								<FieldRow label="名称">
-									<Input
-										value={draft.name}
-										className="rounded-md"
-										onChange={(event) =>
-											setDraft((current) => ({ ...current, name: event.target.value }))
-										}
-									/>
+									<p className="min-h-8 rounded-md border border-border bg-ide-panel px-3 py-1.5 text-sm leading-5 text-foreground">
+										{selectedPreset.name}
+									</p>
 								</FieldRow>
 
 								<FieldRow label="分类">
-									<CategorySelectField
-										value={draft.category}
-										options={categoryOptions}
-										onCreate={() => openCategoryDialog("edit")}
-										onChange={(value) => setDraft((current) => ({ ...current, category: value }))}
-									/>
+									<p className="min-h-8 rounded-md border border-border bg-ide-panel px-3 py-1.5 text-sm leading-5 text-foreground">
+										{promptCategoryOptionLabel(selectedPreset.category, categoryOptions)}
+									</p>
 								</FieldRow>
 
 								<div className="grid gap-2">
-									<Label className="text-sm font-medium text-foreground">提示词</Label>
-									<Textarea
-										value={draft.prompt}
-										className="min-h-40 resize-y rounded-md text-sm leading-6"
-										onChange={(event) =>
-											setDraft((current) => ({ ...current, prompt: event.target.value }))
-										}
-									/>
-								</div>
-
-								<div className="flex justify-end gap-2">
-									{canResetPreset || canDeletePreset ? (
-										<Button
-											type="button"
-											variant={canResetPreset ? "outline" : "destructive"}
-											onClick={() => void removeOrReset()}
-											disabled={isDeleting}
-										>
-											{isDeleting ? (
-												<Loader2 className="size-4 animate-spin" />
-											) : canResetPreset ? (
-												<RotateCcw className="size-4" />
-											) : (
-												<Trash2 className="size-4" />
-											)}
-											<span>{canResetPreset ? "恢复默认" : "删除"}</span>
-										</Button>
-									) : null}
-									<Button
-										type="button"
-										onClick={() => void saveEdit()}
-										disabled={!draftValid || isSaving}
+									<Label
+										id="prompt-preset-preview-label"
+										className="text-sm font-medium text-foreground"
 									>
-										{isSaving ? (
-											<Loader2 className="size-4 animate-spin" />
-										) : (
-											<Save className="size-4" />
-										)}
-										<span>保存</span>
-									</Button>
+										提示词
+									</Label>
+									<SettingsMarkdownPreview
+										ariaLabelledBy="prompt-preset-preview-label"
+										className="min-h-40"
+										placeholder="暂无提示词。"
+										value={selectedPreset.prompt}
+									/>
 								</div>
 							</div>
 						)}
 					</div>
 				</div>
-			</SettingsPanelLayout>
+			</div>
 
 			<PromptPresetCreateDialog
 				draft={createDraft}
@@ -450,6 +468,25 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 					cancelCreate();
 				}}
 				onSave={() => void saveCreate()}
+			/>
+			<PromptPresetEditDialog
+				draft={draft}
+				error={error}
+				isSaving={isSaving}
+				open={editDialogOpen}
+				categoryOptions={categoryOptions}
+				valid={draftValid}
+				onCancel={closeEditDialog}
+				onCreateCategory={() => openCategoryDialog("edit")}
+				onDraftChange={setDraft}
+				onOpenChange={(open) => {
+					if (open) {
+						openEditDialog();
+						return;
+					}
+					closeEditDialog();
+				}}
+				onSave={() => void saveEdit()}
 			/>
 			<CategoryCreateDialog
 				error={categoryError}
@@ -626,6 +663,123 @@ const CategoryCreateDialog: React.FC<{
 					<Button type="button" onClick={onSave} disabled={!name.trim() || isSaving}>
 						{isSaving ? <Loader2 className="size-4 animate-spin" /> : null}
 						<span>创建</span>
+					</Button>
+				</footer>
+			</DialogPrimitive.Content>
+		</DialogPrimitive.Portal>
+	</DialogPrimitive.Root>
+);
+
+const PromptPresetEditDialog: React.FC<{
+	categoryOptions: PromptCategoryOption[];
+	draft: Draft;
+	error: string;
+	isSaving: boolean;
+	open: boolean;
+	valid: boolean;
+	onCancel: () => void;
+	onCreateCategory: () => void;
+	onDraftChange: React.Dispatch<React.SetStateAction<Draft>>;
+	onOpenChange: (open: boolean) => void;
+	onSave: () => void;
+}> = ({
+	categoryOptions,
+	draft,
+	error,
+	isSaving,
+	open,
+	valid,
+	onCancel,
+	onCreateCategory,
+	onDraftChange,
+	onOpenChange,
+	onSave,
+}) => (
+	<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+		<DialogPrimitive.Portal>
+			<DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
+			<DialogPrimitive.Content
+				className={cn(
+					"fixed left-1/2 top-1/2 z-50 flex max-h-[min(86vh,46rem)] w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-2xl outline-none",
+					dialogContentMotion,
+				)}
+				aria-describedby="prompt-preset-edit-description"
+			>
+				<header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3">
+					<div className="min-w-0">
+						<DialogPrimitive.Title className="text-sm font-semibold text-foreground">
+							编辑提示词
+						</DialogPrimitive.Title>
+						<DialogPrimitive.Description
+							id="prompt-preset-edit-description"
+							className="mt-1 text-xs text-muted-foreground"
+						>
+							修改当前分类提示词预设。
+						</DialogPrimitive.Description>
+					</div>
+					<DialogPrimitive.Close asChild>
+						<Button type="button" variant="ghost" size="icon" aria-label="关闭编辑提示词">
+							<X className="size-4" />
+						</Button>
+					</DialogPrimitive.Close>
+				</header>
+
+				<div className="min-h-0 overflow-y-auto p-4">
+					<div className="space-y-3">
+						<div className="flex items-center gap-2">
+							<Badge variant="secondary" className="rounded-md">
+								{promptCategoryOptionLabel(draft.category, categoryOptions)}
+							</Badge>
+							<Badge variant="outline" className="rounded-md">
+								编辑
+							</Badge>
+						</div>
+
+						{error ? (
+							<Alert variant="destructive" className="rounded-md">
+								<AlertDescription>{error}</AlertDescription>
+							</Alert>
+						) : null}
+
+						<FieldRow label="分类">
+							<CategorySelectField
+								value={draft.category}
+								options={categoryOptions}
+								onCreate={onCreateCategory}
+								onChange={(value) => onDraftChange((current) => ({ ...current, category: value }))}
+							/>
+						</FieldRow>
+
+						<FieldRow label="名称">
+							<Input
+								value={draft.name}
+								className="rounded-md"
+								onChange={(event) =>
+									onDraftChange((current) => ({ ...current, name: event.target.value }))
+								}
+							/>
+						</FieldRow>
+
+						<div className="grid gap-2">
+							<Label className="text-sm font-medium text-foreground">提示词</Label>
+							<Textarea
+								value={draft.prompt}
+								className="min-h-48 resize-y rounded-md text-sm leading-6"
+								onChange={(event) =>
+									onDraftChange((current) => ({ ...current, prompt: event.target.value }))
+								}
+							/>
+						</div>
+					</div>
+				</div>
+
+				<footer className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-3">
+					<Button type="button" variant="ghost" onClick={onCancel}>
+						取消
+					</Button>
+					<Button type="button" onClick={onSave} disabled={!valid || isSaving}>
+						{isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+						<span>{isSaving ? "保存中" : "保存"}</span>
 					</Button>
 				</footer>
 			</DialogPrimitive.Content>

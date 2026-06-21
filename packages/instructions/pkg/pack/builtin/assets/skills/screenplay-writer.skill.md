@@ -2,8 +2,7 @@
 name: screenplay-writer
 title: 剧本写作
 description: 编辑 screenplay 类型文档时使用，给出剧本字段填写规则与模板格式
-hint:
-  document_category: screenplay
+document_category: screenplay
 ---
 # 类型专属写作指导：剧本（screenplay）
 

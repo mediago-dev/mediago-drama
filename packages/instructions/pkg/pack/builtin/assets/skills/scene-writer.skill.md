@@ -2,8 +2,7 @@
 name: scene-writer
 title: 场景设定写作
 description: 编辑 scene 类型文档时使用，给出场景设定字段填写规则与模板格式
-hint:
-  document_category: scene
+document_category: scene
 ---
 # 类型专属写作指导：场景设定（scene）
 

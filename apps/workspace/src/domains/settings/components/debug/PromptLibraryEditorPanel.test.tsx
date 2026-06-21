@@ -1,11 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createPromptCategory,
 	listPromptCategories,
 } from "@/domains/generation/api/prompt-categories";
-import { listPromptPresets } from "@/domains/generation/api/prompt-presets";
+import { deletePromptPreset, listPromptPresets } from "@/domains/generation/api/prompt-presets";
+import { ConfirmDialog } from "@/shared/components/callable/ConfirmDialog";
+import { PromptPackActionsSlotProvider } from "./PromptPackActionsSlot";
 import { PromptLibraryEditorPanel } from "./PromptLibraryEditorPanel";
 
 vi.mock("@/domains/generation/api/prompt-categories", () => ({
@@ -103,11 +106,47 @@ describe("PromptLibraryEditorPanel", () => {
 			expect(within(promptDialog).getAllByText("镜头").length).toBeGreaterThan(0);
 		});
 	});
+
+	it("confirms before deleting a user prompt preset", async () => {
+		vi.mocked(listPromptPresets).mockResolvedValue([
+			{
+				id: "custom-style",
+				name: "自定义风格",
+				category: "style",
+				prompt: "custom style",
+				source: "user",
+			},
+		]);
+		vi.mocked(deletePromptPreset).mockResolvedValue(undefined);
+
+		renderPanel();
+
+		await screen.findByText("自定义风格");
+		fireEvent.click(screen.getByRole("button", { name: "删除" }));
+
+		expect(deletePromptPreset).not.toHaveBeenCalled();
+		const dialog = await screen.findByRole("alertdialog", { name: "删除提示词预设？" });
+		fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+
+		await waitFor(() => expect(deletePromptPreset).toHaveBeenCalledWith("custom-style"));
+	});
 });
 
 const renderPanel = () =>
 	render(
 		<SWRConfig value={{ provider: () => new Map() }}>
-			<PromptLibraryEditorPanel />
+			<ConfirmDialog />
+			<PromptLibraryEditorPanelHarness />
 		</SWRConfig>,
 	);
+
+const PromptLibraryEditorPanelHarness = () => {
+	const [slotEl, setSlotEl] = useState<HTMLDivElement | null>(null);
+
+	return (
+		<PromptPackActionsSlotProvider slotEl={slotEl}>
+			<div ref={setSlotEl} />
+			<PromptLibraryEditorPanel />
+		</PromptPackActionsSlotProvider>
+	);
+};

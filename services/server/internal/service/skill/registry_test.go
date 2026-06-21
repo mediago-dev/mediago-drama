@@ -23,6 +23,16 @@ func TestParseRawSkillFrontmatter(t *testing.T) {
 	}
 }
 
+func TestParseRawSkillFrontmatterAcceptsLegacyHintDocumentCategory(t *testing.T) {
+	item, err := ParseRaw("screenplay-writer", legacyHintSkillRaw("screenplay-writer", "剧本指导", "正文"))
+	if err != nil {
+		t.Fatalf("ParseRaw() error = %v", err)
+	}
+	if item.Hint["document_category"] != "screenplay" {
+		t.Fatalf("hint = %#v, want document_category", item.Hint)
+	}
+}
+
 func TestRegistryListsAndGetsSkillsFromPackStore(t *testing.T) {
 	registry := NewRegistryWithStore(newFakeSkillPackStore())
 
@@ -39,6 +49,21 @@ func TestRegistryListsAndGetsSkillsFromPackStore(t *testing.T) {
 	}
 	if item.Source != SourcePack || item.Description != "剧本指导" || !strings.Contains(item.Content, "正文") {
 		t.Fatalf("skill = %#v, want pack-backed skill", item)
+	}
+}
+
+func TestRegistryGetRawFlattensDocumentCategory(t *testing.T) {
+	registry := NewRegistryWithStore(newFakeSkillPackStore())
+
+	item, err := registry.GetRaw(context.Background(), "screenplay-writer")
+	if err != nil {
+		t.Fatalf("GetRaw() error = %v", err)
+	}
+	if !strings.Contains(item.Raw, "\ndocument_category: screenplay\n") {
+		t.Fatalf("raw = %q, want flattened document_category", item.Raw)
+	}
+	if strings.Contains(item.Raw, "hint:\n  document_category: screenplay") {
+		t.Fatalf("raw = %q, should not nest document_category under hint", item.Raw)
 	}
 }
 
@@ -182,6 +207,18 @@ func (store *fakeSkillPackStore) DeleteEntry(_ context.Context, _ instructionpac
 }
 
 func testSkillRaw(name string, description string, body string) string {
+	return `---
+name: ` + name + `
+description: ` + description + `
+document_category: screenplay
+---
+# Heading
+
+` + body + `
+`
+}
+
+func legacyHintSkillRaw(name string, description string, body string) string {
 	return `---
 name: ` + name + `
 description: ` + description + `

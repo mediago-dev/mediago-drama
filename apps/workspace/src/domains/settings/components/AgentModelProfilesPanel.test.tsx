@@ -1,12 +1,15 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentModelProfilesResponse } from "@/domains/settings/api/settings";
 import {
+	clearAgentModelProfileAPIKey,
 	createAgentModelProfile,
+	deleteAgentModelProfile,
 	getAgentModelProfiles,
 	saveAgentModelProfileAPIKey,
 } from "@/domains/settings/api/settings";
+import { ConfirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { AgentModelProfilesPanel } from "./AgentModelProfilesPanel";
 
 vi.mock("@/domains/settings/api/settings", () => ({
@@ -66,11 +69,46 @@ describe("AgentModelProfilesPanel", () => {
 		);
 		await waitFor(() => expect(input.value).toBe(""));
 	});
+
+	it("confirms before deleting a model profile", async () => {
+		vi.mocked(getAgentModelProfiles).mockResolvedValue(responseWithMiniMax());
+		vi.mocked(deleteAgentModelProfile).mockResolvedValue(emptyResponse());
+
+		renderPanel();
+
+		const deleteButton = await screen.findByRole("button", { name: "删除" });
+		fireEvent.click(deleteButton);
+
+		expect(deleteAgentModelProfile).not.toHaveBeenCalled();
+		const dialog = await screen.findByRole("alertdialog", { name: "删除模型配置？" });
+		fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+
+		await waitFor(() => expect(deleteAgentModelProfile).toHaveBeenCalledWith("minimax"));
+		expect(within(dialog).getByText(/确定要删除/)).toBeTruthy();
+	});
+
+	it("confirms before clearing the model profile API key", async () => {
+		vi.mocked(getAgentModelProfiles).mockResolvedValue(responseWithMiniMax(true));
+		vi.mocked(clearAgentModelProfileAPIKey).mockResolvedValue(responseWithMiniMax(false));
+
+		renderPanel();
+
+		const clearButton = await screen.findByRole("button", { name: "清除" });
+		fireEvent.click(clearButton);
+
+		expect(clearAgentModelProfileAPIKey).not.toHaveBeenCalled();
+		const dialog = await screen.findByRole("alertdialog", { name: "清除 API Key？" });
+		fireEvent.click(within(dialog).getByRole("button", { name: "清除" }));
+
+		await waitFor(() => expect(clearAgentModelProfileAPIKey).toHaveBeenCalledWith("minimax"));
+		expect(within(dialog).getByText(/重新填写/)).toBeTruthy();
+	});
 });
 
 const renderPanel = () =>
 	render(
 		<SWRConfig value={{ provider: () => new Map() }}>
+			<ConfirmDialog />
 			<AgentModelProfilesPanel />
 		</SWRConfig>,
 	);

@@ -16,6 +16,15 @@ export interface SettingsMarkdownEditorProps {
 	value: string;
 }
 
+export interface SettingsMarkdownPreviewProps {
+	ariaLabel?: string;
+	ariaLabelledBy?: string;
+	className?: string;
+	editorClassName?: string;
+	placeholder?: string;
+	value: string;
+}
+
 export const SettingsMarkdownEditor: React.FC<SettingsMarkdownEditorProps> = ({
 	ariaLabel = "Markdown 编辑器",
 	ariaLabelledBy,
@@ -23,6 +32,74 @@ export const SettingsMarkdownEditor: React.FC<SettingsMarkdownEditorProps> = ({
 	onChange,
 	placeholder = "编写 Markdown...",
 	value,
+}) => {
+	const editor = useSettingsMarkdownEditor({
+		ariaLabel,
+		ariaLabelledBy,
+		editable: true,
+		onChange,
+		placeholder,
+		value,
+	});
+
+	return (
+		<div
+			className={cn(
+				"min-h-[560px] overflow-y-auto rounded-md border border-input bg-ide-editor px-4 py-3 text-sm leading-6 text-foreground shadow-sm transition-[border-color,box-shadow] focus-within:border-ring",
+				className,
+			)}
+			onClick={() => editor?.chain().focus().run()}
+		>
+			<EditorContent editor={editor} />
+		</div>
+	);
+};
+
+export const SettingsMarkdownPreview: React.FC<SettingsMarkdownPreviewProps> = ({
+	ariaLabel = "Markdown 预览",
+	ariaLabelledBy,
+	className,
+	editorClassName,
+	placeholder = "暂无内容。",
+	value,
+}) => {
+	const editor = useSettingsMarkdownEditor({
+		ariaLabel,
+		ariaLabelledBy,
+		editable: false,
+		editorClassName,
+		placeholder,
+		value,
+	});
+
+	return (
+		<div
+			className={cn(
+				"min-h-40 overflow-y-auto rounded-md border border-border bg-ide-panel px-3 py-2 text-sm leading-6 text-foreground",
+				className,
+			)}
+		>
+			<EditorContent editor={editor} />
+		</div>
+	);
+};
+
+const useSettingsMarkdownEditor = ({
+	ariaLabel,
+	ariaLabelledBy,
+	editable,
+	editorClassName,
+	onChange,
+	placeholder,
+	value,
+}: {
+	ariaLabel: string;
+	ariaLabelledBy?: string;
+	editable: boolean;
+	editorClassName?: string;
+	onChange?: (value: string) => void;
+	placeholder: string;
+	value: string;
 }) => {
 	const onChangeRef = useRef(onChange);
 	const emittedMarkdownRef = useRef(value);
@@ -34,7 +111,7 @@ export const SettingsMarkdownEditor: React.FC<SettingsMarkdownEditorProps> = ({
 					defaultProtocol: "https",
 					enableClickSelection: true,
 					linkOnPaste: true,
-					openOnClick: false,
+					openOnClick: !editable,
 				},
 			}),
 			Placeholder.configure({ placeholder }),
@@ -45,27 +122,33 @@ export const SettingsMarkdownEditor: React.FC<SettingsMarkdownEditorProps> = ({
 				},
 			}),
 		],
-		[placeholder],
+		[editable, placeholder],
 	);
 	const editor = useEditor(
 		{
+			editable,
 			extensions,
 			content: value,
 			contentType: "markdown",
 			editorProps: {
 				attributes: {
 					...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : { "aria-label": ariaLabel }),
-					class: "settings-markdown-prosemirror tiptap-content min-h-full outline-none",
+					class: cn(
+						"settings-markdown-prosemirror tiptap-content min-h-full outline-none",
+						editorClassName,
+					),
 				},
 			},
 			immediatelyRender: false,
 			onUpdate: ({ editor: nextEditor }) => {
+				if (!editable) return;
+
 				const markdown = nextEditor.getMarkdown();
 				emittedMarkdownRef.current = markdown;
-				onChangeRef.current(markdown);
+				onChangeRef.current?.(markdown);
 			},
 		},
-		[ariaLabel, ariaLabelledBy, extensions],
+		[ariaLabel, ariaLabelledBy, editable, editorClassName, extensions],
 	);
 
 	useEffect(() => {
@@ -82,15 +165,5 @@ export const SettingsMarkdownEditor: React.FC<SettingsMarkdownEditorProps> = ({
 		});
 	}, [editor, value]);
 
-	return (
-		<div
-			className={cn(
-				"min-h-[560px] overflow-y-auto rounded-md border border-input bg-ide-editor px-4 py-3 text-sm leading-6 text-foreground shadow-sm transition-[border-color,box-shadow] focus-within:border-ring",
-				className,
-			)}
-			onClick={() => editor?.chain().focus().run()}
-		>
-			<EditorContent editor={editor} />
-		</div>
-	);
+	return editor;
 };

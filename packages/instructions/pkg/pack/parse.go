@@ -38,10 +38,11 @@ type instructionFrontmatter struct {
 }
 
 type skillFrontmatter struct {
-	Name        string         `yaml:"name"`
-	Title       string         `yaml:"title"`
-	Description string         `yaml:"description"`
-	Hint        map[string]any `yaml:"hint"`
+	Name             string         `yaml:"name"`
+	Title            string         `yaml:"title"`
+	Description      string         `yaml:"description"`
+	DocumentCategory string         `yaml:"document_category"`
+	Hint             map[string]any `yaml:"hint"`
 }
 
 type promptFrontmatter struct {
@@ -172,7 +173,7 @@ func parseSkillEntries(ctx context.Context, fsys fs.FS, packID string, entries *
 			Body:        normalizeBody(body),
 			Raw:         raw,
 			Metadata: map[string]any{
-				"hint": normalizeStringMap(meta.Hint),
+				"hint": normalizeSkillHint(meta.Hint, meta.DocumentCategory),
 			},
 		})
 		return nil
@@ -350,6 +351,19 @@ func normalizeStringMap(values map[string]any) map[string]string {
 		return nil
 	}
 	return result
+}
+
+func normalizeSkillHint(values map[string]any, documentCategory string) map[string]string {
+	hint := normalizeStringMap(values)
+	documentCategory = strings.TrimSpace(documentCategory)
+	if documentCategory == "" {
+		return hint
+	}
+	if hint == nil {
+		hint = map[string]string{}
+	}
+	hint["document_category"] = documentCategory
+	return hint
 }
 
 func isSafePackID(id string) bool {

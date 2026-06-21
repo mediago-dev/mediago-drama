@@ -16,6 +16,7 @@ import {
 } from "@/domains/settings/api/settings";
 import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
 import { useToast } from "@/hooks/useToast";
+import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -124,17 +125,30 @@ export const AgentModelProfilesPanel: React.FC = () => {
 	};
 
 	const removeProfile = async () => {
-		if (!selectedProfile || busy) return;
+		if (!selectedProfile || busy) return false;
 		setBusy(`delete:${selectedProfile.id}`);
 		try {
 			const nextData = await deleteAgentModelProfile(selectedProfile.id);
 			await mutate(nextData, false);
 			toast.success("模型配置已删除", { description: selectedProfile.name });
+			return true;
 		} catch (err) {
 			toast.error("删除失败", { description: errorMessage(err, "删除模型配置失败。") });
+			return false;
 		} finally {
 			setBusy("");
 		}
+	};
+
+	const confirmRemoveProfile = () => {
+		if (!selectedProfile || busy) return;
+		void confirmDialog({
+			title: "删除模型配置？",
+			description: `确定要删除“${selectedProfile.name}”吗？此操作无法撤销。`,
+			confirmLabel: "删除",
+			confirmIcon: <Trash2 />,
+			onConfirm: removeProfile,
+		});
 	};
 
 	const makeDefault = async () => {
@@ -169,18 +183,31 @@ export const AgentModelProfilesPanel: React.FC = () => {
 	};
 
 	const clearAPIKey = async () => {
-		if (!selectedProfile || busy) return;
+		if (!selectedProfile || busy) return false;
 		setBusy(`clear-key:${selectedProfile.id}`);
 		try {
 			const nextData = await clearAgentModelProfileAPIKey(selectedProfile.id);
 			await mutate(nextData, false);
 			setAPIKeys((current) => ({ ...current, [selectedProfile.id]: "" }));
 			toast.success("API Key 已清除", { description: selectedProfile.name });
+			return true;
 		} catch (err) {
 			toast.error("清除失败", { description: errorMessage(err, "清除 API Key 失败。") });
+			return false;
 		} finally {
 			setBusy("");
 		}
+	};
+
+	const confirmClearAPIKey = () => {
+		if (!selectedProfile || busy) return;
+		void confirmDialog({
+			title: "清除 API Key？",
+			description: `确定要清除“${selectedProfile.name}”的 API Key 吗？清除后需要重新填写才能使用该配置。`,
+			confirmLabel: "清除",
+			confirmIcon: <Trash2 />,
+			onConfirm: clearAPIKey,
+		});
 	};
 
 	return (
@@ -286,7 +313,7 @@ export const AgentModelProfilesPanel: React.FC = () => {
 									size="sm"
 									className="rounded-md"
 									disabled={busy !== ""}
-									onClick={() => void removeProfile()}
+									onClick={confirmRemoveProfile}
 								>
 									{busy === `delete:${selectedProfile.id}` ? (
 										<Loader2 className="animate-spin" />
@@ -414,7 +441,7 @@ export const AgentModelProfilesPanel: React.FC = () => {
 											busy !== "" ||
 											(!selectedProfile.apiKey.configured && !apiKeys[selectedProfile.id]?.trim())
 										}
-										onClick={() => void clearAPIKey()}
+										onClick={confirmClearAPIKey}
 									>
 										{busy === `clear-key:${selectedProfile.id}` ? (
 											<Loader2 className="animate-spin" />
