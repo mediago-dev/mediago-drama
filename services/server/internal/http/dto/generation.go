@@ -148,6 +148,7 @@ type GenerationNotificationEvent struct {
 
 // GenerationAsset is a generated asset reference or inline payload.
 type GenerationAsset struct {
+	AssetID   string `json:"assetId,omitempty"`
 	Kind      string `json:"kind" ts:"Kind"`
 	TaskID    string `json:"taskId,omitempty"`
 	Title     string `json:"title,omitempty"`

@@ -51,7 +51,7 @@ type ProjectAssetUpdateRequest struct {
 	SortOrder *int    `json:"sortOrder,omitempty"`
 }
 
-type projectAssetModel = domain.ProjectAssetModel
+type projectReferenceAssetModel = domain.ProjectReferenceAssetModel
 
 // NewProjectAssets returns a project asset service backed by the workspace DB.
 func NewProjectAssets(dbPath string, mediaDir string) *ProjectAssets {
@@ -105,11 +105,11 @@ func (store *ProjectAssets) List(projectID string) ([]ProjectAsset, error) {
 	if err != nil {
 		return nil, err
 	}
-	models, err = store.pruneMissingProjectAssetModels(projectID, models)
+	models, err = store.pruneMissingProjectReferenceAssetModels(projectID, models)
 	if err != nil {
 		return nil, err
 	}
-	return recordsFromModels(models), nil
+	return store.recordsFromModels(models), nil
 }
 
 // Get returns one project asset.
@@ -135,7 +135,7 @@ func (store *ProjectAssets) Get(projectID string, id string) (ProjectAsset, bool
 	if err != nil {
 		return ProjectAsset{}, false, err
 	}
-	if projectAssetFileMissing(model.Path) {
+	if projectAssetFileMissing(store.projectReferenceAssetModelFilePath(model)) {
 		store.mu.Lock()
 		_, deleteErr := store.repo.DeleteProjectAssets(projectID, []string{id})
 		store.mu.Unlock()
@@ -144,7 +144,7 @@ func (store *ProjectAssets) Get(projectID string, id string) (ProjectAsset, bool
 		}
 		return ProjectAsset{}, false, nil
 	}
-	return recordFromModel(model), true, nil
+	return store.recordFromModel(model), true, nil
 }
 
 // SaveMultipartFile stores a multipart upload as a project asset.
@@ -298,22 +298,33 @@ func (store *ProjectAssets) saveReaderToDir(
 		UpdatedAt: now,
 		FilePath:  filePath,
 	}
+	relPath := store.projectAssetRelPath(projectID, filePath)
 
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	if err := store.repo.CreateProjectAsset(projectAssetModel{
+	if err := store.repo.CreateProjectAsset(projectReferenceAssetModel{
 		ProjectID: asset.ProjectID,
 		ID:        asset.ID,
-		Kind:      asset.Kind,
-		Filename:  asset.Filename,
-		MIMEType:  asset.MIMEType,
-		SizeBytes: asset.SizeBytes,
-		Path:      asset.FilePath,
-		ParentID:  asset.ParentID,
-		FolderID:  asset.FolderID,
+		AssetID:   asset.ID,
+		ParentID:  domain.StringPtr(asset.ParentID),
+		FolderID:  domain.StringPtr(asset.FolderID),
 		SortOrder: asset.SortOrder,
-		CreatedAt: asset.CreatedAt,
-		UpdatedAt: asset.UpdatedAt,
+		CreatedAt: domain.TimeFromString(asset.CreatedAt),
+		UpdatedAt: domain.TimeFromString(asset.UpdatedAt),
+		Asset: domain.AssetModel{
+			ID:            asset.ID,
+			ProjectID:     domain.StringPtr(asset.ProjectID),
+			Kind:          asset.Kind,
+			Filename:      asset.Filename,
+			MIMEType:      asset.MIMEType,
+			SizeBytes:     asset.SizeBytes,
+			RelPath:       relPath,
+			URL:           asset.URL,
+			Source:        "upload",
+			StorageStatus: "ready",
+			CreatedAt:     domain.TimeFromString(asset.CreatedAt),
+			UpdatedAt:     domain.TimeFromString(asset.UpdatedAt),
+		},
 	}); err != nil {
 		_ = os.Remove(filePath)
 		return ProjectAsset{}, err
@@ -386,7 +397,7 @@ func (store *ProjectAssets) Update(projectID string, id string, request ProjectA
 	}
 	if request.ParentID != nil {
 		asset.ParentID = strings.TrimSpace(*request.ParentID)
-		updates["parent_id"] = asset.ParentID
+		updates["parent_id"] = domain.StringPtr(asset.ParentID)
 	}
 	if request.FolderID != nil {
 		folderID, err := store.cleanProjectAssetFolderID(asset.ProjectID, *request.FolderID)
@@ -394,7 +405,7 @@ func (store *ProjectAssets) Update(projectID string, id string, request ProjectA
 			return ProjectAsset{}, false, err
 		}
 		asset.FolderID = folderID
-		updates["folder_id"] = asset.FolderID
+		updates["folder_id"] = domain.StringPtr(asset.FolderID)
 	}
 	if request.Filename != nil || request.FolderID != nil {
 		movedAsset, err := store.moveProjectAssetFile(asset)
@@ -403,7 +414,7 @@ func (store *ProjectAssets) Update(projectID string, id string, request ProjectA
 		}
 		asset = movedAsset
 		updates["filename"] = asset.Filename
-		updates["path"] = asset.FilePath
+		updates["rel_path"] = store.projectAssetRelPath(asset.ProjectID, asset.FilePath)
 	}
 	if request.SortOrder != nil {
 		asset.SortOrder = *request.SortOrder
@@ -551,19 +562,19 @@ func (store *ProjectAssets) Delete(projectID string, id string) (bool, error) {
 	return true, nil
 }
 
-func recordsFromModels(models []projectAssetModel) []ProjectAsset {
+func (store *ProjectAssets) recordsFromModels(models []projectReferenceAssetModel) []ProjectAsset {
 	assets := make([]ProjectAsset, 0, len(models))
 	for _, model := range models {
-		assets = append(assets, recordFromModel(model))
+		assets = append(assets, store.recordFromModel(model))
 	}
 	return assets
 }
 
-func (store *ProjectAssets) pruneMissingProjectAssetModels(projectID string, models []projectAssetModel) ([]projectAssetModel, error) {
+func (store *ProjectAssets) pruneMissingProjectReferenceAssetModels(projectID string, models []projectReferenceAssetModel) ([]projectReferenceAssetModel, error) {
 	missingIDs := []string{}
-	kept := make([]projectAssetModel, 0, len(models))
+	kept := make([]projectReferenceAssetModel, 0, len(models))
 	for _, model := range models {
-		if projectAssetFileMissing(model.Path) {
+		if projectAssetFileMissing(store.projectReferenceAssetModelFilePath(model)) {
 			missingIDs = append(missingIDs, model.ID)
 			continue
 		}
@@ -590,22 +601,50 @@ func projectAssetFileMissing(path string) bool {
 	return os.IsNotExist(err)
 }
 
-func recordFromModel(model projectAssetModel) ProjectAsset {
+func (store *ProjectAssets) recordFromModel(model projectReferenceAssetModel) ProjectAsset {
 	return ProjectAsset{
 		ID:        model.ID,
 		ProjectID: model.ProjectID,
-		Kind:      model.Kind,
-		Filename:  model.Filename,
-		MIMEType:  model.MIMEType,
-		SizeBytes: model.SizeBytes,
+		Kind:      model.Asset.Kind,
+		Filename:  model.Asset.Filename,
+		MIMEType:  model.Asset.MIMEType,
+		SizeBytes: model.Asset.SizeBytes,
 		URL:       projectAssetContentURL(model.ProjectID, model.ID),
-		ParentID:  model.ParentID,
-		FolderID:  model.FolderID,
+		ParentID:  domain.StringValue(model.ParentID),
+		FolderID:  domain.StringValue(model.FolderID),
 		SortOrder: model.SortOrder,
-		CreatedAt: model.CreatedAt,
-		UpdatedAt: model.UpdatedAt,
-		FilePath:  model.Path,
+		CreatedAt: domain.StringFromTime(model.CreatedAt),
+		UpdatedAt: domain.StringFromTime(model.UpdatedAt),
+		FilePath:  store.projectReferenceAssetModelFilePath(model),
 	}
+}
+
+func (store *ProjectAssets) projectReferenceAssetModelFilePath(model projectReferenceAssetModel) string {
+	relPath := strings.TrimSpace(model.Asset.RelPath)
+	if relPath == "" || filepath.IsAbs(relPath) {
+		return relPath
+	}
+	if projectDir := store.projectDir(model.ProjectID); projectDir != "" {
+		return filepath.Join(projectDir, filepath.FromSlash(relPath))
+	}
+	return relPath
+}
+
+func (store *ProjectAssets) projectAssetRelPath(projectID string, filePath string) string {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return ""
+	}
+	if projectDir := store.projectDir(projectID); projectDir != "" {
+		if rel, err := filepath.Rel(projectDir, filePath); err == nil &&
+			rel != "." &&
+			!filepath.IsAbs(rel) &&
+			rel != ".." &&
+			!strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return filepath.ToSlash(rel)
+		}
+	}
+	return filePath
 }
 
 func cleanRequiredProjectID(projectID string) (string, error) {

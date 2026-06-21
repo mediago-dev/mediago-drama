@@ -12,9 +12,9 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 	"gorm.io/gorm"
 )
@@ -138,7 +138,7 @@ func (service *Settings) CreateAgentModelProfile(ctx context.Context, input Agen
 			return AgentModelProfilesResponse{}, ErrAgentModelConflict
 		}
 	}
-	now := timestamp.NowRFC3339Nano()
+	now := time.Now().UTC()
 	model.CreatedAt = now
 	model.UpdatedAt = now
 	model.APIKeyName = AgentModelProfileAPIKeyName(model.ID)
@@ -182,7 +182,7 @@ func (service *Settings) UpdateAgentModelProfile(ctx context.Context, id string,
 	if model.IsDefault && !model.Enabled {
 		return AgentModelProfilesResponse{}, fmt.Errorf("%w: default profile must be enabled", ErrAgentModelInvalid)
 	}
-	model.UpdatedAt = timestamp.NowRFC3339Nano()
+	model.UpdatedAt = time.Now().UTC()
 	if model.APIKeyName == "" {
 		model.APIKeyName = AgentModelProfileAPIKeyName(model.ID)
 	}

@@ -26,7 +26,6 @@ import (
 )
 
 func newAPIHandler(config Config) *apiHandler {
-	archiveLegacyDocumentTemplates()
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 	skillRegistry := serviceskill.NewRegistry()
 	workspaceState := appworkspace.NewStateService(config.WorkspaceDir)
@@ -89,9 +88,9 @@ func newAPIHandler(config Config) *apiHandler {
 		}))
 	}
 	generationPreferences := servicegeneration.NewGenerationPreferenceServiceFromRepository(settingsRepos.GenerationPreferences, settingsReposErr)
-	generationNotifications := servicegeneration.NewGenerationNotificationServiceFromRepository(settingsRepos.GenerationNotifications, settingsReposErr, randomID)
-	generationTasks := servicegeneration.NewGenerationTaskServiceFromRepository(settingsRepos.GenerationTasks, settingsReposErr, randomID)
-	mediaAssets := servicemedia.NewMediaAssetsFromRepository(settingsRepos.MediaAssets, mediaDir, workspaceState.Dir(), workspaceRepos.Workspace, settingsReposErr)
+	generationNotifications := servicegeneration.NewGenerationNotificationServiceFromRepository(workspaceRepos.GenerationNotifications, workspaceReposErr, randomID)
+	generationTasks := servicegeneration.NewGenerationTaskServiceFromRepository(workspaceRepos.GenerationTasks, workspaceReposErr, randomID)
+	mediaAssets := servicemedia.NewMediaAssetsFromRepository(workspaceRepos.MediaAssets, mediaDir, workspaceState.Dir(), workspaceRepos.Workspace, workspaceReposErr)
 	mediaAssets.SetMediaToolPaths(config.FFmpegPath, config.FFmpegBinDir)
 	previewStreamer := servicemedia.NewFFmpegPreviewStreamer(config.FFmpegPath, config.FFmpegBinDir)
 	generationService := servicegeneration.NewGenerationService(settings, generationTasks, mediaAssets, generationPreferences)
@@ -104,7 +103,7 @@ func newAPIHandler(config Config) *apiHandler {
 	if billingPrices == nil {
 		billingPrices = corepricing.Default()
 	}
-	billingService := servicebilling.NewService(settingsRepos.Billing, billingPrices, capabilityRegistry)
+	billingService := servicebilling.NewService(workspaceRepos.Billing, billingPrices, capabilityRegistry)
 	projectAssets := serviceprojectasset.NewProjectAssetsFromRepository(workspaceRepos.ProjectAssets, mediaDir, workspaceState.Dir(), workspaceRepos.Workspace, workspaceReposErr)
 	events := appevents.NewBroker(workspaceState.AppendAgentEvent)
 	workspaceEvents := serviceworkspaceevent.NewBroker()

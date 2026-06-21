@@ -25,8 +25,8 @@ func TestAgentModelProfileRepositoryCRUDAndDefault(t *testing.T) {
 		IsDefault:        true,
 		SupportsTools:    true,
 		APIKeyName:       "agent-model:minimax:api-key",
-		CreatedAt:        "2026-06-01T00:00:00Z",
-		UpdatedAt:        "2026-06-01T00:00:00Z",
+		CreatedAt:        domain.TimeFromString("2026-06-01T00:00:00Z"),
+		UpdatedAt:        domain.TimeFromString("2026-06-01T00:00:00Z"),
 	}
 	if err := repo.UpsertAgentModelProfile(first); err != nil {
 		t.Fatalf("Upsert first returned error: %v", err)
@@ -42,8 +42,8 @@ func TestAgentModelProfileRepositoryCRUDAndDefault(t *testing.T) {
 		Enabled:          true,
 		SupportsTools:    true,
 		APIKeyName:       "agent-model:deepseek:api-key",
-		CreatedAt:        "2026-06-01T00:00:00Z",
-		UpdatedAt:        "2026-06-01T00:00:00Z",
+		CreatedAt:        domain.TimeFromString("2026-06-01T00:00:00Z"),
+		UpdatedAt:        domain.TimeFromString("2026-06-01T00:00:00Z"),
 	}
 	if err := repo.UpsertAgentModelProfile(second); err != nil {
 		t.Fatalf("Upsert second returned error: %v", err)

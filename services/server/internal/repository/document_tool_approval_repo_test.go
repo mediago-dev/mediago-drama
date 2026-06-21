@@ -14,6 +14,7 @@ func TestDocumentToolApprovalRepositoryLifecycle(t *testing.T) {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
 	repo := NewDocumentToolApprovalRepository(db)
+	seedRepositoryProject(t, db, "project-1")
 
 	approval := domain.DocumentToolApprovalModel{
 		ProjectID:   "project-1",
@@ -22,7 +23,7 @@ func TestDocumentToolApprovalRepositoryLifecycle(t *testing.T) {
 		DocumentID:  "doc-1",
 		Status:      "pending",
 		RequestJSON: `{"id":"call-1","name":"delete_document"}`,
-		CreatedAt:   "2026-05-22T00:00:00Z",
+		CreatedAt:   domain.TimeFromString("2026-05-22T00:00:00Z"),
 	}
 	if err := repo.CreateDocumentToolApproval(approval); err != nil {
 		t.Fatalf("CreateDocumentToolApproval() error = %v", err)

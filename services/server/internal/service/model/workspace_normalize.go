@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
@@ -68,13 +69,20 @@ func WorkspaceProjectRecordsFromModels(models []domain.WorkspaceProjectModel) []
 			RelativeDir:        model.RelativeDir,
 			OriginalProjectDir: model.OriginalProjectDir,
 			TrashProjectDir:    model.TrashProjectDir,
-			ArchivedAt:         model.ArchivedAt,
-			TrashedAt:          model.TrashedAt,
-			CreatedAt:          model.CreatedAt,
-			UpdatedAt:          model.UpdatedAt,
+			ArchivedAt:         domain.StringFromTime(timePtrValue(model.ArchivedAt)),
+			TrashedAt:          domain.StringFromTime(timePtrValue(model.TrashedAt)),
+			CreatedAt:          domain.StringFromTime(model.CreatedAt),
+			UpdatedAt:          domain.StringFromTime(model.UpdatedAt),
 		})
 	}
 	return projects
+}
+
+func timePtrValue(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return *value
 }
 
 func workspaceProjectStatus(status string) string {

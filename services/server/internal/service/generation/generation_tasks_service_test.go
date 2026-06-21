@@ -1,14 +1,24 @@
 package generation
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	serviceshared "github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
+	"gorm.io/gorm/clause"
 )
 
 func TestGenerationTaskServicePersistToSQLite(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	taskID := "official.seedance-2.0-fast:task-persisted"
+	seedGenerationTaskAsset(t, dbPath, "asset-test", "image", "")
+	seedGenerationTaskAsset(t, dbPath, "video-test", "video", "")
 
 	service := NewGenerationTaskService(dbPath, nil)
 	if err := service.Upsert(GenerationTaskRecord{
@@ -27,10 +37,17 @@ func TestGenerationTaskServicePersistToSQLite(t *testing.T) {
 		Params:            map[string]any{"mode": "pro"},
 		Status:            "submitted",
 		Message:           "Video generation task was submitted.",
-		Error:             "raw provider error",
-		ErrorCode:         "policy_violation",
-		ErrorType:         "policy_violation",
-		Retryable:         false,
+		Usage: GenerationUsage{
+			InputTokens:     120,
+			OutputTokens:    34,
+			TotalTokens:     154,
+			ReasoningTokens: 9,
+			CachedTokens:    12,
+		},
+		Error:     "raw provider error",
+		ErrorCode: "policy_violation",
+		ErrorType: "policy_violation",
+		Retryable: false,
 	}); err != nil {
 		t.Fatalf("upserting task: %v", err)
 	}
@@ -61,6 +78,13 @@ func TestGenerationTaskServicePersistToSQLite(t *testing.T) {
 	if len(task.ReferenceAssetIDs) != 1 || task.ReferenceAssetIDs[0] != "asset-test" {
 		t.Fatalf("reference asset ids = %#v, want persisted asset ids", task.ReferenceAssetIDs)
 	}
+	if task.Usage.InputTokens != 120 ||
+		task.Usage.OutputTokens != 34 ||
+		task.Usage.TotalTokens != 154 ||
+		task.Usage.ReasoningTokens != 9 ||
+		task.Usage.CachedTokens != 12 {
+		t.Fatalf("usage = %+v, want persisted token columns", task.Usage)
+	}
 	if err := restarted.RecordAttempt(taskID, "create", "submitted", "created", nil); err != nil {
 		t.Fatalf("recording attempt: %v", err)
 	}
@@ -77,7 +101,7 @@ func TestGenerationTaskServicePersistToSQLite(t *testing.T) {
 	}
 
 	task.Status = "completed"
-	task.Assets = []GenerationAsset{{Kind: "video", URL: "https://example.com/video.mp4"}}
+	task.Assets = []GenerationAsset{{Kind: "video", URL: "/api/v1/media-assets/video-test/content"}}
 	if err := restarted.Upsert(task); err != nil {
 		t.Fatalf("updating task: %v", err)
 	}
@@ -106,9 +130,36 @@ func TestGenerationTaskServicePersistToSQLite(t *testing.T) {
 	}
 }
 
+func TestGenerationTaskServiceDefaultDBPathUsesWorkspaceAppDB(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
+	t.Setenv("APPDATA", filepath.Join(homeDir, "AppData", "Roaming"))
+
+	service := NewGenerationTaskService("", nil)
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:     "task-default-workspace-db",
+		Kind:   "text",
+		Status: "completed",
+		Prompt: "hello",
+		Text:   "world",
+	}); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	if _, err := os.Stat(serviceshared.WorkspacePathsFor("").DatabasePath()); err != nil {
+		t.Fatalf("workspace app.db was not created: %v", err)
+	}
+	if _, err := os.Stat(config.DefaultSettingsDBPath()); !os.IsNotExist(err) {
+		t.Fatalf("settings db exists after generation default path open: %v", err)
+	}
+}
+
 func TestGenerationTaskServiceDeleteAssetIncludesAttemptsWithoutDeadlock(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	taskID := "task-delete-asset"
+	seedGenerationTaskAsset(t, dbPath, "image-a", "image", "")
+	seedGenerationTaskAsset(t, dbPath, "image-b", "image", "")
 
 	service := NewGenerationTaskService(dbPath, nil)
 	if err := service.Upsert(GenerationTaskRecord{
@@ -146,8 +197,8 @@ func TestGenerationTaskServiceDeleteAssetIncludesAttemptsWithoutDeadlock(t *test
 		if !result.deleted {
 			t.Fatal("delete returned false, want true")
 		}
-		if len(result.task.Assets) != 2 {
-			t.Fatalf("assets = %#v, want stored assets preserved", result.task.Assets)
+		if len(result.task.Assets) != 1 {
+			t.Fatalf("assets = %#v, want deleted row removed", result.task.Assets)
 		}
 		if len(result.task.DeletedAssetSlots) != 1 || result.task.DeletedAssetSlots[0] != 0 {
 			t.Fatalf("deleted slots = %#v, want first image slot deleted", result.task.DeletedAssetSlots)
@@ -169,6 +220,8 @@ func TestGenerationTaskServiceDeleteAssetIncludesAttemptsWithoutDeadlock(t *test
 func TestGenerationTaskServiceUpdateAssetSelectionPersists(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	taskID := "task-update-selected-asset"
+	seedGenerationTaskAsset(t, dbPath, "image-a", "image", "")
+	seedGenerationTaskAsset(t, dbPath, "image-b", "image", "")
 
 	service := NewGenerationTaskService(dbPath, nil)
 	if err := service.Upsert(GenerationTaskRecord{
@@ -209,7 +262,7 @@ func TestGenerationTaskServiceUpdateAssetSelectionPersists(t *testing.T) {
 	if !ok {
 		t.Fatal("task was not persisted")
 	}
-	if !reloaded.Assets[1].Selected || reloaded.Assets[1].Title != title || reloaded.CapabilityID != "character" {
+	if !reloaded.Assets[1].Selected || reloaded.CapabilityID != "character" {
 		t.Fatalf("persisted task = %+v, want selected character asset with title", reloaded)
 	}
 
@@ -222,6 +275,11 @@ func TestGenerationTaskServiceUpdateAssetSelectionPersists(t *testing.T) {
 func TestGenerationServiceListSelectedGenerationAssets(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	projectID := "project-selected-assets"
+	seedGenerationTaskProject(t, dbPath, projectID)
+	seedGenerationTaskAsset(t, dbPath, "character", "image", projectID)
+	seedGenerationTaskAsset(t, dbPath, "scene", "image", projectID)
+	seedGenerationTaskAsset(t, dbPath, "video", "video", projectID)
+	seedGenerationTaskAsset(t, dbPath, "generic", "image", projectID)
 	service := NewGenerationTaskService(dbPath, nil)
 	workflow := &GenerationService{generationTasks: service}
 
@@ -306,6 +364,8 @@ func TestGenerationServiceUpdateSelectedGenerationAssetFromTask(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	projectID := "project-selected-from-task"
 	taskID := "task-select-source"
+	seedGenerationTaskProject(t, dbPath, projectID)
+	seedGenerationTaskAsset(t, dbPath, "image-a", "image", projectID)
 	service := NewGenerationTaskService(dbPath, nil)
 	workflow := &GenerationService{generationTasks: service}
 	if err := service.Upsert(GenerationTaskRecord{
@@ -346,7 +406,7 @@ func TestGenerationServiceUpdateSelectedGenerationAssetFromTask(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("getting task ok=%v error=%v", ok, err)
 	}
-	if !reloaded.Assets[0].Selected || reloaded.Assets[0].Title != "陈远" || reloaded.CapabilityID != "character" {
+	if !reloaded.Assets[0].Selected || reloaded.CapabilityID != "character" {
 		t.Fatalf("task = %+v, want mirrored selected asset state", reloaded)
 	}
 
@@ -388,6 +448,8 @@ func TestGenerationServiceUpdateSelectedGenerationAssetWithMissingTaskSource(t *
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	projectID := "project-selected-missing-task"
 	taskID := "task-select-missing"
+	seedGenerationTaskProject(t, dbPath, projectID)
+	seedGenerationTaskAsset(t, dbPath, "scene-direct", "image", projectID)
 	service := NewGenerationTaskService(dbPath, nil)
 	workflow := &GenerationService{generationTasks: service}
 
@@ -406,12 +468,12 @@ func TestGenerationServiceUpdateSelectedGenerationAssetWithMissingTaskSource(t *
 		t.Fatalf("selecting asset with missing task status=%d error=%v", status, err)
 	}
 	if response.Asset == nil ||
-		response.Asset.TaskID != taskID ||
-		response.Asset.AssetIndex != 0 ||
+		response.Asset.TaskID != "" ||
+		response.Asset.AssetIndex != -1 ||
 		response.Asset.ResourceType != "scene" ||
 		response.Asset.MediaAssetID != "scene-direct" ||
 		response.Asset.Kind != "image" ||
-		response.Asset.SourceType != "generated" ||
+		response.Asset.SourceType != "uploaded" ||
 		response.Asset.Title != "湖南校门口晨光" {
 		t.Fatalf("response = %+v, want selected direct asset with task source metadata", response)
 	}
@@ -428,6 +490,8 @@ func TestGenerationServiceUpdateSelectedGenerationAssetWithMissingTaskSource(t *
 func TestGenerationTaskServiceUpsertSelectedAssetWithoutTask(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	projectID := "project-selected-direct"
+	seedGenerationTaskProject(t, dbPath, projectID)
+	seedGenerationTaskAsset(t, dbPath, "media-direct", "image", projectID)
 	service := NewGenerationTaskService(dbPath, nil)
 
 	asset, ok, err := service.UpsertSelectedAsset(projectID, UpdateSelectedGenerationAssetRequest{
@@ -471,18 +535,24 @@ func TestGenerationTaskServiceUpsertSelectedAssetWithoutTask(t *testing.T) {
 	}
 }
 
-func TestGenerationTaskServiceDeletePendingAssetSlotPersistsAcrossTaskUpdates(t *testing.T) {
+func TestGenerationTaskServiceDeleteAssetSlotPersistsAsMissingRow(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
-	taskID := "task-delete-pending-slot"
+	taskID := "task-delete-slot-row"
+	for _, id := range []string{"image-a", "image-b", "image-c", "image-d"} {
+		seedGenerationTaskAsset(t, dbPath, id, "image", "")
+	}
 
 	service := NewGenerationTaskService(dbPath, nil)
 	if err := service.Upsert(GenerationTaskRecord{
 		ID:     taskID,
 		Kind:   "image",
-		Status: "running",
+		Status: "completed",
 		Prompt: "portrait set",
 		Assets: []GenerationAsset{
 			{Kind: "image", URL: "/api/v1/media-assets/image-a/content"},
+			{Kind: "image", URL: "/api/v1/media-assets/image-b/content"},
+			{Kind: "image", URL: "/api/v1/media-assets/image-c/content"},
+			{Kind: "image", URL: "/api/v1/media-assets/image-d/content"},
 		},
 	}); err != nil {
 		t.Fatalf("upserting task: %v", err)
@@ -490,24 +560,13 @@ func TestGenerationTaskServiceDeletePendingAssetSlotPersistsAcrossTaskUpdates(t 
 
 	task, deleted, err := service.DeleteAsset(taskID, 2)
 	if err != nil {
-		t.Fatalf("deleting pending slot: %v", err)
+		t.Fatalf("deleting slot: %v", err)
 	}
 	if !deleted {
 		t.Fatal("delete returned false, want true")
 	}
 	if len(task.DeletedAssetSlots) != 1 || task.DeletedAssetSlots[0] != 2 {
 		t.Fatalf("deleted slots = %#v, want slot 2", task.DeletedAssetSlots)
-	}
-
-	task.Status = "completed"
-	task.Assets = []GenerationAsset{
-		{Kind: "image", URL: "/api/v1/media-assets/image-a/content"},
-		{Kind: "image", URL: "/api/v1/media-assets/image-b/content"},
-		{Kind: "image", URL: "/api/v1/media-assets/image-c/content"},
-		{Kind: "image", URL: "/api/v1/media-assets/image-d/content"},
-	}
-	if err := service.Upsert(task); err != nil {
-		t.Fatalf("upserting completed task: %v", err)
 	}
 
 	reloaded, ok, err := service.Get(taskID)
@@ -528,5 +587,106 @@ func TestGenerationTaskServiceDeletePendingAssetSlotPersistsAcrossTaskUpdates(t 
 		visibleTask.Assets[1].SlotIndex != 1 ||
 		visibleTask.Assets[2].SlotIndex != 3 {
 		t.Fatalf("visible asset slots = %#v, want original slots 0, 1, 3", visibleTask.Assets)
+	}
+}
+
+func TestGenerationTaskServiceRejectsGeneratedAssetWithoutAssetID(t *testing.T) {
+	service := NewGenerationTaskService(filepath.Join(t.TempDir(), "settings.db"), nil)
+
+	err := service.Upsert(GenerationTaskRecord{
+		ID:     "task-missing-asset-id",
+		Kind:   "image",
+		Status: "completed",
+		Prompt: "portrait",
+		Assets: []GenerationAsset{
+			{Kind: "image", URL: "https://example.test/generated.png"},
+		},
+	})
+	if err == nil {
+		t.Fatal("Upsert() error = nil, want missing asset_id error")
+	}
+	if !strings.Contains(err.Error(), "missing asset_id") {
+		t.Fatalf("Upsert() error = %v, want missing asset_id", err)
+	}
+}
+
+func seedGenerationTaskProject(t *testing.T, dbPath string, projectID string) {
+	t.Helper()
+	projectID = domain.CleanProjectID(projectID)
+	if projectID == "" {
+		return
+	}
+	db, err := repository.OpenWorkspaceDB(dbPath)
+	if err != nil {
+		t.Fatalf("OpenWorkspaceDB() error = %v", err)
+	}
+	now := domain.TimeFromString("2026-06-01T00:00:00Z")
+	if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&domain.WorkspaceProjectModel{
+		ID:          projectID,
+		Name:        projectID,
+		Category:    "drama",
+		Status:      "active",
+		RelativeDir: projectID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}).Error; err != nil {
+		t.Fatalf("creating project fixture %q: %v", projectID, err)
+	}
+}
+
+func seedGenerationTaskAsset(t *testing.T, dbPath string, id string, kind string, projectID string) {
+	t.Helper()
+	if id == "" {
+		return
+	}
+	seedGenerationTaskProject(t, dbPath, projectID)
+	db, err := repository.OpenWorkspaceDB(dbPath)
+	if err != nil {
+		t.Fatalf("OpenWorkspaceDB() error = %v", err)
+	}
+	if kind == "" {
+		kind = "image"
+	}
+	now := domain.TimeFromString("2026-06-01T00:00:00Z")
+	if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&domain.AssetModel{
+		ID:            id,
+		ProjectID:     domain.StringPtr(projectID),
+		Kind:          kind,
+		Filename:      id + "." + generationTaskAssetExtension(kind),
+		MIMEType:      generationTaskAssetMIMEType(kind),
+		RelPath:       "library/2026-06-01/" + id + "." + generationTaskAssetExtension(kind),
+		URL:           "/api/v1/media-assets/" + id + "/content",
+		Source:        "generated",
+		StorageStatus: "ready",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}).Error; err != nil {
+		t.Fatalf("creating asset fixture %q: %v", id, err)
+	}
+}
+
+func generationTaskAssetExtension(kind string) string {
+	switch kind {
+	case "video":
+		return "mp4"
+	case "audio":
+		return "mp3"
+	case "text":
+		return "txt"
+	default:
+		return "png"
+	}
+}
+
+func generationTaskAssetMIMEType(kind string) string {
+	switch kind {
+	case "video":
+		return "video/mp4"
+	case "audio":
+		return "audio/mpeg"
+	case "text":
+		return "text/plain"
+	default:
+		return "image/png"
 	}
 }

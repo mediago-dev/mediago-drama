@@ -13,6 +13,17 @@ func TestAgentSessionRepositoryLifecycle(t *testing.T) {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
 	repo := NewAgentSessionRepository(db)
+	if err := db.Create(&domain.WorkspaceProjectModel{
+		ID:          "project-1",
+		Name:        "Project 1",
+		Category:    "agent",
+		Status:      "active",
+		RelativeDir: "project-1",
+		CreatedAt:   domain.TimeFromString("2026-05-22T00:00:00Z"),
+		UpdatedAt:   domain.TimeFromString("2026-05-22T00:00:00Z"),
+	}).Error; err != nil {
+		t.Fatalf("creating project fixture: %v", err)
+	}
 
 	session := domain.AgentSessionModel{
 		SessionID:   "session-1",
@@ -20,7 +31,7 @@ func TestAgentSessionRepositoryLifecycle(t *testing.T) {
 		Title:       "整理素材清单",
 		LastStatus:  "running",
 		LastMessage: "Agent running",
-		UpdatedAt:   "2026-05-22T00:00:00Z",
+		UpdatedAt:   domain.TimeFromString("2026-05-22T00:00:00Z"),
 	}
 	if err := repo.UpsertAgentSession(session); err != nil {
 		t.Fatalf("UpsertAgentSession() error = %v", err)

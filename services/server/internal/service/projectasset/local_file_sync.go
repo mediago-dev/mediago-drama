@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 )
@@ -52,11 +53,11 @@ func (store *ProjectAssets) syncProjectWorkAssetsUnlocked(projectID string) erro
 	if err != nil {
 		return err
 	}
-	modelByPath := map[string]projectAssetModel{}
+	modelByPath := map[string]projectReferenceAssetModel{}
 	usedIDs := map[string]bool{}
 	nextSortOrder := 0
 	for _, model := range models {
-		modelByPath[filepath.Clean(model.Path)] = model
+		modelByPath[filepath.Clean(store.projectReferenceAssetModelFilePath(model))] = model
 		usedIDs[model.ID] = true
 		if model.SortOrder >= nextSortOrder {
 			nextSortOrder = model.SortOrder + 1
@@ -67,23 +68,23 @@ func (store *ProjectAssets) syncProjectWorkAssetsUnlocked(projectID string) erro
 		folderID := folderIDByDir[strings.ToLower(filepath.ToSlash(file.Dir))]
 		if existing, ok := modelByPath[filepath.Clean(file.Path)]; ok {
 			updates := map[string]any{}
-			if existing.Filename != file.Filename {
+			if existing.Asset.Filename != file.Filename {
 				updates["filename"] = file.Filename
 			}
-			if existing.Kind != file.Kind {
+			if existing.Asset.Kind != file.Kind {
 				updates["kind"] = file.Kind
 			}
-			if existing.MIMEType != file.MIMEType {
+			if existing.Asset.MIMEType != file.MIMEType {
 				updates["mime_type"] = file.MIMEType
 			}
-			if existing.SizeBytes != file.SizeBytes {
+			if existing.Asset.SizeBytes != file.SizeBytes {
 				updates["size_bytes"] = file.SizeBytes
 			}
-			if existing.FolderID != folderID {
-				updates["folder_id"] = folderID
+			if domain.StringValue(existing.FolderID) != folderID {
+				updates["folder_id"] = domain.StringPtr(folderID)
 			}
-			if existing.UpdatedAt != file.UpdatedAt {
-				updates["updated_at"] = file.UpdatedAt
+			if domain.StringFromTime(existing.UpdatedAt) != file.UpdatedAt {
+				updates["updated_at"] = domain.TimeFromString(file.UpdatedAt)
 			}
 			if len(updates) > 0 {
 				if _, err := store.repo.UpdateProjectAsset(projectID, existing.ID, updates); err != nil {
@@ -94,18 +95,29 @@ func (store *ProjectAssets) syncProjectWorkAssetsUnlocked(projectID string) erro
 		}
 
 		id := uniqueProjectWorkFileID("asset-file-", projectID, file.RelativePath, usedIDs)
-		if err := store.repo.CreateProjectAsset(projectAssetModel{
+		relPath := store.projectAssetRelPath(projectID, file.Path)
+		if err := store.repo.CreateProjectAsset(projectReferenceAssetModel{
 			ProjectID: projectID,
 			ID:        id,
-			Kind:      file.Kind,
-			Filename:  file.Filename,
-			MIMEType:  file.MIMEType,
-			SizeBytes: file.SizeBytes,
-			Path:      file.Path,
-			FolderID:  folderID,
+			AssetID:   id,
+			FolderID:  domain.StringPtr(folderID),
 			SortOrder: nextSortOrder,
-			CreatedAt: file.UpdatedAt,
-			UpdatedAt: file.UpdatedAt,
+			CreatedAt: domain.TimeFromString(file.UpdatedAt),
+			UpdatedAt: domain.TimeFromString(file.UpdatedAt),
+			Asset: domain.AssetModel{
+				ID:            id,
+				ProjectID:     domain.StringPtr(projectID),
+				Kind:          file.Kind,
+				Filename:      file.Filename,
+				MIMEType:      file.MIMEType,
+				SizeBytes:     file.SizeBytes,
+				RelPath:       relPath,
+				URL:           projectAssetContentURL(projectID, id),
+				Source:        "imported",
+				StorageStatus: "ready",
+				CreatedAt:     domain.TimeFromString(file.UpdatedAt),
+				UpdatedAt:     domain.TimeFromString(file.UpdatedAt),
+			},
 		}); err != nil {
 			return err
 		}

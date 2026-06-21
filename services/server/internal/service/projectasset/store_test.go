@@ -126,8 +126,8 @@ func requireProjectAssetTestProject(t *testing.T, repo *repository.WorkspaceRepo
 		Name:        projectID,
 		ProjectDir:  projectDir,
 		RelativeDir: projectDir,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		CreatedAt:   domain.TimeFromString(now),
+		UpdatedAt:   domain.TimeFromString(now),
 	}); err != nil {
 		t.Fatalf("UpsertProject(%s) error = %v", projectID, err)
 	}
@@ -201,8 +201,8 @@ func TestProjectAssetsSaveReaderUsesPersistedProjectDir(t *testing.T) {
 		Name:        "Custom",
 		ProjectDir:  projectDir,
 		RelativeDir: projectDir,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		CreatedAt:   domain.TimeFromString(now),
+		UpdatedAt:   domain.TimeFromString(now),
 	}); err != nil {
 		t.Fatalf("UpsertProject() error = %v", err)
 	}
@@ -398,11 +398,12 @@ func TestProjectAssetsListPrunesMissingFiles(t *testing.T) {
 	}
 }
 
-func TestProjectAssetsSaveReaderInDirDoesNotRequireProjectRecord(t *testing.T) {
+func TestProjectAssetsSaveReaderInDirUsesRegisteredProject(t *testing.T) {
 	repos, err := repository.OpenWorkspaceRepositories(filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	requireProjectAssetTestProject(t, repos.Workspace, "studio-novel-chunk")
 	targetDir := filepath.Join(t.TempDir(), "toolbox", "novel-chunk", "2026-06", "run-1")
 	store := NewProjectAssetsFromRepository(
 		repos.ProjectAssets,

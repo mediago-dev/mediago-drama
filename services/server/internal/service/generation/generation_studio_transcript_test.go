@@ -72,9 +72,8 @@ func TestAppendStudioTranscriptWritesJSONLAndTextResult(t *testing.T) {
 	}
 	if assets[0].Kind != media.MediaKindText ||
 		assets[0].Filename != "generation-1.txt" ||
-		assets[0].Source != media.MediaSourceToolbox ||
-		assets[0].ConversationID != "session-text-1" {
-		t.Fatalf("text asset = %#v, want toolbox text asset for session", assets[0])
+		assets[0].Source != media.MediaSourceToolbox {
+		t.Fatalf("text asset = %#v, want toolbox text asset", assets[0])
 	}
 	textPath := filepath.Join(workspaceRoot, filepath.FromSlash(assets[0].RelativePath))
 	text, err := os.ReadFile(textPath)

@@ -29,46 +29,54 @@ func (table priceTable) List() []corepricing.RoutePrice {
 func TestSummaryGroupsCostsAndFlagsMissingPrices(t *testing.T) {
 	repos := billingTestRepos(t)
 	insertBillingTask(t, repos.DB, domain.GenerationTaskModel{
-		ID:        "task-1",
-		Kind:      "text",
-		RouteID:   "dmx.gpt-4.1-mini-text",
-		FamilyID:  "text",
-		VersionID: "gpt-4.1-mini-text",
-		Provider:  "dmx",
-		ModelID:   "gpt-4.1-mini-text",
-		Model:     "gpt-4.1-mini",
-		Status:    "completed",
-		UsageJSON: `{"inputTokens":1000000,"outputTokens":500000,"totalTokens":1500000,"reasoningTokens":125000,"cachedTokens":250000}`,
-		CreatedAt: "2026-06-01T10:00:00Z",
-		UpdatedAt: "2026-06-01T10:00:00Z",
+		ID:              "task-1",
+		Kind:            "text",
+		RouteID:         "dmx.gpt-4.1-mini-text",
+		FamilyID:        "text",
+		VersionID:       "gpt-4.1-mini-text",
+		Provider:        "dmx",
+		ModelID:         "gpt-4.1-mini-text",
+		Model:           "gpt-4.1-mini",
+		Status:          "completed",
+		InputTokens:     1000000,
+		OutputTokens:    500000,
+		TotalTokens:     1500000,
+		ReasoningTokens: 125000,
+		CachedTokens:    250000,
+		CreatedAt:       domain.TimeFromString("2026-06-01T10:00:00Z"),
+		UpdatedAt:       domain.TimeFromString("2026-06-01T10:00:00Z"),
 	})
 	insertBillingTask(t, repos.DB, domain.GenerationTaskModel{
-		ID:        "task-2",
-		Kind:      "text",
-		RouteID:   "missing.route",
-		FamilyID:  "text",
-		VersionID: "unknown",
-		Provider:  "custom",
-		ModelID:   "custom-model",
-		Model:     "custom-model",
-		Status:    "completed",
-		UsageJSON: `{"inputTokens":100,"outputTokens":50,"totalTokens":150}`,
-		CreatedAt: "2026-06-02T10:00:00Z",
-		UpdatedAt: "2026-06-02T10:00:00Z",
+		ID:           "task-2",
+		Kind:         "text",
+		RouteID:      "missing.route",
+		FamilyID:     "text",
+		VersionID:    "unknown",
+		Provider:     "custom",
+		ModelID:      "custom-model",
+		Model:        "custom-model",
+		Status:       "completed",
+		InputTokens:  100,
+		OutputTokens: 50,
+		TotalTokens:  150,
+		CreatedAt:    domain.TimeFromString("2026-06-02T10:00:00Z"),
+		UpdatedAt:    domain.TimeFromString("2026-06-02T10:00:00Z"),
 	})
 	insertBillingTask(t, repos.DB, domain.GenerationTaskModel{
-		ID:        "task-3",
-		Kind:      "text",
-		RouteID:   "dmx.gpt-4.1-mini-text",
-		FamilyID:  "text",
-		VersionID: "gpt-4.1-mini-text",
-		Provider:  "dmx",
-		ModelID:   "gpt-4.1-mini-text",
-		Model:     "gpt-4.1-mini",
-		Status:    "failed",
-		UsageJSON: `{"inputTokens":1000000,"outputTokens":1000000,"totalTokens":2000000}`,
-		CreatedAt: "2026-06-03T10:00:00Z",
-		UpdatedAt: "2026-06-03T10:00:00Z",
+		ID:           "task-3",
+		Kind:         "text",
+		RouteID:      "dmx.gpt-4.1-mini-text",
+		FamilyID:     "text",
+		VersionID:    "gpt-4.1-mini-text",
+		Provider:     "dmx",
+		ModelID:      "gpt-4.1-mini-text",
+		Model:        "gpt-4.1-mini",
+		Status:       "failed",
+		InputTokens:  1000000,
+		OutputTokens: 1000000,
+		TotalTokens:  2000000,
+		CreatedAt:    domain.TimeFromString("2026-06-03T10:00:00Z"),
+		UpdatedAt:    domain.TimeFromString("2026-06-03T10:00:00Z"),
 	})
 
 	service := NewService(repos.Billing, priceTable{
@@ -106,18 +114,19 @@ func TestSummaryGroupsCostsAndFlagsMissingPrices(t *testing.T) {
 func TestSummaryGroupsByCapability(t *testing.T) {
 	repos := billingTestRepos(t)
 	insertBillingTask(t, repos.DB, domain.GenerationTaskModel{
-		ID:        "task-1",
-		Kind:      "image",
-		RouteID:   "dmx.gpt-image-2",
-		FamilyID:  "gpt-image",
-		VersionID: "gpt-image-2",
-		Provider:  "dmx",
-		ModelID:   "gpt-image-2",
-		Model:     "gpt-image-2",
-		Status:    "completed",
-		UsageJSON: `{"inputTokens":1,"outputTokens":0,"totalTokens":1}`,
-		CreatedAt: "2026-06-01T10:00:00Z",
-		UpdatedAt: "2026-06-01T10:00:00Z",
+		ID:          "task-1",
+		Kind:        "image",
+		RouteID:     "dmx.gpt-image-2",
+		FamilyID:    "gpt-image",
+		VersionID:   "gpt-image-2",
+		Provider:    "dmx",
+		ModelID:     "gpt-image-2",
+		Model:       "gpt-image-2",
+		Status:      "completed",
+		InputTokens: 1,
+		TotalTokens: 1,
+		CreatedAt:   domain.TimeFromString("2026-06-01T10:00:00Z"),
+		UpdatedAt:   domain.TimeFromString("2026-06-01T10:00:00Z"),
 	})
 
 	service := NewService(repos.Billing, priceTable{
@@ -142,7 +151,7 @@ func TestSummaryGroupsByCapabilityPrefersStoredCapabilityID(t *testing.T) {
 	repos := billingTestRepos(t)
 	insertBillingTask(t, repos.DB, domain.GenerationTaskModel{
 		ID:           "task-1",
-		CapabilityID: "novel.understand",
+		CapabilityID: domain.StringPtr("novel.understand"),
 		Kind:         "text",
 		RouteID:      "dmx.gpt-4.1-mini-text",
 		FamilyID:     "text",
@@ -151,9 +160,10 @@ func TestSummaryGroupsByCapabilityPrefersStoredCapabilityID(t *testing.T) {
 		ModelID:      "gpt-4.1-mini-text",
 		Model:        "gpt-4.1-mini",
 		Status:       "completed",
-		UsageJSON:    `{"inputTokens":1000000,"outputTokens":0,"totalTokens":1000000}`,
-		CreatedAt:    "2026-06-01T10:00:00Z",
-		UpdatedAt:    "2026-06-01T10:00:00Z",
+		InputTokens:  1000000,
+		TotalTokens:  1000000,
+		CreatedAt:    domain.TimeFromString("2026-06-01T10:00:00Z"),
+		UpdatedAt:    domain.TimeFromString("2026-06-01T10:00:00Z"),
 	})
 
 	service := NewService(repos.Billing, priceTable{
@@ -177,34 +187,38 @@ func TestSummaryGroupsByCapabilityPrefersStoredCapabilityID(t *testing.T) {
 func TestSummaryFiltersByProject(t *testing.T) {
 	repos := billingTestRepos(t)
 	insertBillingTask(t, repos.DB, domain.GenerationTaskModel{
-		ID:        "task-1",
-		ProjectID: "project-a",
-		Kind:      "text",
-		RouteID:   "dmx.gpt-4.1-mini-text",
-		FamilyID:  "text",
-		VersionID: "gpt-4.1-mini-text",
-		Provider:  "dmx",
-		ModelID:   "gpt-4.1-mini-text",
-		Model:     "gpt-4.1-mini",
-		Status:    "completed",
-		UsageJSON: `{"inputTokens":1000000,"outputTokens":500000,"totalTokens":1500000}`,
-		CreatedAt: "2026-06-01T10:00:00Z",
-		UpdatedAt: "2026-06-01T10:00:00Z",
+		ID:           "task-1",
+		ProjectID:    domain.StringPtr("project-a"),
+		Kind:         "text",
+		RouteID:      "dmx.gpt-4.1-mini-text",
+		FamilyID:     "text",
+		VersionID:    "gpt-4.1-mini-text",
+		Provider:     "dmx",
+		ModelID:      "gpt-4.1-mini-text",
+		Model:        "gpt-4.1-mini",
+		Status:       "completed",
+		InputTokens:  1000000,
+		OutputTokens: 500000,
+		TotalTokens:  1500000,
+		CreatedAt:    domain.TimeFromString("2026-06-01T10:00:00Z"),
+		UpdatedAt:    domain.TimeFromString("2026-06-01T10:00:00Z"),
 	})
 	insertBillingTask(t, repos.DB, domain.GenerationTaskModel{
-		ID:        "task-2",
-		ProjectID: "project-b",
-		Kind:      "text",
-		RouteID:   "dmx.gpt-4.1-mini-text",
-		FamilyID:  "text",
-		VersionID: "gpt-4.1-mini-text",
-		Provider:  "dmx",
-		ModelID:   "gpt-4.1-mini-text",
-		Model:     "gpt-4.1-mini",
-		Status:    "completed",
-		UsageJSON: `{"inputTokens":2000000,"outputTokens":1000000,"totalTokens":3000000}`,
-		CreatedAt: "2026-06-01T11:00:00Z",
-		UpdatedAt: "2026-06-01T11:00:00Z",
+		ID:           "task-2",
+		ProjectID:    domain.StringPtr("project-b"),
+		Kind:         "text",
+		RouteID:      "dmx.gpt-4.1-mini-text",
+		FamilyID:     "text",
+		VersionID:    "gpt-4.1-mini-text",
+		Provider:     "dmx",
+		ModelID:      "gpt-4.1-mini-text",
+		Model:        "gpt-4.1-mini",
+		Status:       "completed",
+		InputTokens:  2000000,
+		OutputTokens: 1000000,
+		TotalTokens:  3000000,
+		CreatedAt:    domain.TimeFromString("2026-06-01T11:00:00Z"),
+		UpdatedAt:    domain.TimeFromString("2026-06-01T11:00:00Z"),
 	})
 
 	service := NewService(repos.Billing, priceTable{
@@ -231,11 +245,11 @@ func TestSummaryFiltersByProject(t *testing.T) {
 	}
 }
 
-func billingTestRepos(t *testing.T) repository.SettingsRepositories {
+func billingTestRepos(t *testing.T) repository.WorkspaceRepositories {
 	t.Helper()
-	repos, err := repository.OpenSettingsRepositories(filepath.Join(t.TempDir(), "settings.sqlite"))
+	repos, err := repository.OpenWorkspaceRepositories(filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
-		t.Fatalf("OpenSettingsRepositories() error = %v", err)
+		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
 	return repos
 }
@@ -243,15 +257,26 @@ func billingTestRepos(t *testing.T) repository.SettingsRepositories {
 func insertBillingTask(t *testing.T, db *gorm.DB, task domain.GenerationTaskModel) {
 	t.Helper()
 	task.Prompt = "prompt"
-	task.ReferenceURLsJSON = "[]"
-	task.ReferenceAssetIDsJSON = "[]"
 	task.ParamsJSON = "{}"
 	task.Message = ""
-	task.AssetsJSON = "[]"
-	if task.CreatedAt == "" {
-		task.CreatedAt = "2026-06-01T00:00:00Z"
+	if projectID := domain.StringValue(task.ProjectID); projectID != "" {
+		project := domain.WorkspaceProjectModel{
+			ID:          projectID,
+			Name:        projectID,
+			Category:    "drama",
+			Status:      "active",
+			RelativeDir: projectID,
+			CreatedAt:   domain.TimeFromString("2026-06-01T00:00:00Z"),
+			UpdatedAt:   domain.TimeFromString("2026-06-01T00:00:00Z"),
+		}
+		if err := db.Where("id = ?", projectID).FirstOrCreate(&project).Error; err != nil {
+			t.Fatalf("creating project fixture %q: %v", projectID, err)
+		}
 	}
-	if task.UpdatedAt == "" {
+	if task.CreatedAt.IsZero() {
+		task.CreatedAt = domain.TimeFromString("2026-06-01T00:00:00Z")
+	}
+	if task.UpdatedAt.IsZero() {
 		task.UpdatedAt = task.CreatedAt
 	}
 	if err := db.Create(&task).Error; err != nil {

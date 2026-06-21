@@ -3,9 +3,9 @@ package repository
 import (
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -69,7 +69,7 @@ func (store *APIKeyStore) Set(keyName string, value string) error {
 	record := domain.APIKeyModel{
 		KeyName:   keyName,
 		APIKey:    strings.TrimSpace(value),
-		UpdatedAt: timestamp.NowRFC3339Nano(),
+		UpdatedAt: time.Now().UTC(),
 	}
 	return store.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "key_name"}},

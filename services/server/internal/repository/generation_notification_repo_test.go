@@ -12,16 +12,47 @@ func TestGenerationNotificationRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewGenerationNotificationRepository() error = %v", err)
 	}
+	seedRepositoryProject(t, repo.db, "project-a")
+	if err := repo.db.Create(&domain.GenerationConversationModel{
+		ID:        "conversation-1",
+		ScopeID:   "studio",
+		Kind:      "image",
+		Title:     "Images",
+		CreatedAt: domain.TimeFromString("2026-06-09T00:00:00Z"),
+		UpdatedAt: domain.TimeFromString("2026-06-09T00:00:00Z"),
+	}).Error; err != nil {
+		t.Fatalf("creating conversation fixture: %v", err)
+	}
+	if err := repo.db.Create(&domain.GenerationTaskModel{
+		ID:             "task-1",
+		ConversationID: domain.StringPtr("conversation-1"),
+		ProjectID:      domain.StringPtr("project-a"),
+		Kind:           "image",
+		RouteID:        "route",
+		FamilyID:       "family",
+		VersionID:      "version",
+		Provider:       "provider",
+		ModelID:        "model-id",
+		Model:          "model",
+		Prompt:         "prompt",
+		ParamsJSON:     "{}",
+		Status:         "completed",
+		Message:        "done",
+		CreatedAt:      domain.TimeFromString("2026-06-09T00:00:00Z"),
+		UpdatedAt:      domain.TimeFromString("2026-06-09T00:00:00Z"),
+	}).Error; err != nil {
+		t.Fatalf("creating task fixture: %v", err)
+	}
 
 	notification := domain.GenerationNotificationModel{
 		ID:         "notification-1",
 		TaskID:     "task-1",
 		TaskKind:   "image",
 		TaskStatus: "pending",
-		ProjectID:  "project-a",
+		ProjectID:  domain.StringPtr("project-a"),
 		TargetJSON: `{"kind":"document-section","projectId":"project-a","documentId":"doc-a","documentTitle":"第一集","section":{"blockId":"section-a","documentId":"doc-a","headingLevel":2,"headingOccurrence":1,"headingText":"画面","markdown":"## 画面","plainText":"画面","prompt":"生成画面"}}`,
-		CreatedAt:  "2026-06-09T00:00:00Z",
-		UpdatedAt:  "2026-06-09T00:00:00Z",
+		CreatedAt:  domain.TimeFromString("2026-06-09T00:00:00Z"),
+		UpdatedAt:  domain.TimeFromString("2026-06-09T00:00:00Z"),
 	}
 	if err := repo.UpsertGenerationNotification(notification); err != nil {
 		t.Fatalf("UpsertGenerationNotification() error = %v", err)
@@ -31,7 +62,7 @@ func TestGenerationNotificationRepositoryLifecycle(t *testing.T) {
 	notification.Title = "生成完成"
 	notification.Description = "第一集 · 画面 已生成图片。"
 	notification.AssetCount = 1
-	notification.UpdatedAt = "2026-06-09T00:01:00Z"
+	notification.UpdatedAt = domain.TimeFromString("2026-06-09T00:01:00Z")
 	if err := repo.UpsertGenerationNotification(notification); err != nil {
 		t.Fatalf("UpsertGenerationNotification(completed) error = %v", err)
 	}
@@ -56,7 +87,7 @@ func TestGenerationNotificationRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarkGenerationNotificationRead() error = %v", err)
 	}
-	if read.ReadAt == "" {
+	if read.ReadAt == nil || read.ReadAt.IsZero() {
 		t.Fatalf("ReadAt = empty, want timestamp")
 	}
 }

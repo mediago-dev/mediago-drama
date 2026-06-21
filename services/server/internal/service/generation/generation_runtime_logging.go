@@ -112,9 +112,6 @@ func sanitizedGenerationAssets(assets []coregeneration.Asset) []map[string]any {
 			"mime_type": asset.MIMEType,
 			"metadata":  sanitizedLogValue(asset.Metadata),
 		}
-		if asset.Base64 != "" {
-			value["base64"] = base64OmittedSummary(asset.MIMEType, asset.Base64)
-		}
 		values = append(values, value)
 	}
 

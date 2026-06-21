@@ -31,7 +31,7 @@ func (store *SessionService) persistSessionUnlocked(sessionID string, session *a
 		ACPSessionID: strings.TrimSpace(session.ACPSessionID),
 		LastStatus:   strings.TrimSpace(session.lastStatus),
 		LastMessage:  strings.TrimSpace(session.lastMessage),
-		UpdatedAt:    now,
+		UpdatedAt:    domain.TimeFromString(now),
 	}
 	_ = store.repo.UpsertAgentSession(model)
 }

@@ -125,8 +125,8 @@ func (service *GenerationPreferenceService) UpsertPreference(request UpdateGener
 		VersionIDsJSON:  string(versionIDsJSON),
 		RouteParamsJSON: string(routeParamsJSON),
 		StylePresetID:   record.StylePresetID,
-		CreatedAt:       record.CreatedAt,
-		UpdatedAt:       record.UpdatedAt,
+		CreatedAt:       domain.TimeFromString(record.CreatedAt),
+		UpdatedAt:       domain.TimeFromString(record.UpdatedAt),
 	})
 	if err != nil {
 		return GenerationPreferenceRecord{}, err
@@ -140,8 +140,8 @@ func generationPreferenceRecordFromModel(model generationPreferenceModel) (Gener
 		SessionID:     GenerationSessionIDFromScopeID(model.ScopeID),
 		ScopeID:       model.ScopeID,
 		StylePresetID: model.StylePresetID,
-		CreatedAt:     model.CreatedAt,
-		UpdatedAt:     model.UpdatedAt,
+		CreatedAt:     domain.StringFromTime(model.CreatedAt),
+		UpdatedAt:     domain.StringFromTime(model.UpdatedAt),
 	}
 
 	if err := decodeGenerationTaskJSON(model.FamilyIDsJSON, &record.FamilyIDs); err != nil {

@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 )
 
@@ -14,6 +15,18 @@ func TestStorePersistsDocumentToolApprovalPayload(t *testing.T) {
 	}
 	store := NewService(repository.NewDocumentToolApprovalRepository(db), nil)
 	projectID := "project-approval"
+	now := domain.TimeFromString("2026-06-01T00:00:00Z")
+	if err := db.Create(&domain.WorkspaceProjectModel{
+		ID:          projectID,
+		Name:        "Project Approval",
+		Category:    "drama",
+		Status:      "active",
+		RelativeDir: projectID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}).Error; err != nil {
+		t.Fatalf("creating project fixture: %v", err)
+	}
 
 	approval, err := store.createDocumentToolApproval(projectID, DocumentToolApprovalRequest{
 		Name:    "delete_document",

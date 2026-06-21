@@ -3,6 +3,7 @@ package repository
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"gorm.io/gorm"
@@ -14,23 +15,23 @@ type GenerationNotificationRepository struct {
 	db *gorm.DB
 }
 
-// NewGenerationNotificationRepository opens the settings database via the central settings schema owner.
+// NewGenerationNotificationRepository opens the workspace database via the central workspace schema owner.
 func NewGenerationNotificationRepository(dbPath string) (*GenerationNotificationRepository, error) {
-	db, err := OpenSettingsDB(dbPath)
+	db, err := OpenWorkspaceDB(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening generation notification repository database: %w", err)
 	}
 	return NewGenerationNotificationRepositoryFromDB(db), nil
 }
 
-// NewGenerationNotificationRepositoryFromDB creates a repository from an existing settings DB.
+// NewGenerationNotificationRepositoryFromDB creates a repository from an existing workspace DB.
 func NewGenerationNotificationRepositoryFromDB(db *gorm.DB) *GenerationNotificationRepository {
 	return &GenerationNotificationRepository{db: db}
 }
 
 // UpsertGenerationNotification inserts or updates a notification by task id.
 func (repo *GenerationNotificationRepository) UpsertGenerationNotification(model domain.GenerationNotificationModel) error {
-	model.ProjectID = domain.CleanProjectID(model.ProjectID)
+	model.ProjectID = domain.StringPtr(domain.StringValue(model.ProjectID))
 	err := repo.db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "task_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -101,11 +102,15 @@ func (repo *GenerationNotificationRepository) MarkGenerationNotificationRead(id 
 	if id == "" {
 		return domain.GenerationNotificationModel{}, ErrRecordNotFound
 	}
+	readAtTime := domain.TimeFromString(readAt)
+	if readAtTime.IsZero() {
+		readAtTime = time.Now().UTC()
+	}
 	if err := repo.db.Model(&domain.GenerationNotificationModel{}).
 		Where("id = ?", id).
 		Updates(map[string]any{
-			"read_at":    strings.TrimSpace(readAt),
-			"updated_at": strings.TrimSpace(readAt),
+			"read_at":    readAtTime,
+			"updated_at": readAtTime,
 		}).Error; err != nil {
 		return domain.GenerationNotificationModel{}, fmt.Errorf("marking generation notification read: %w", err)
 	}
@@ -115,13 +120,17 @@ func (repo *GenerationNotificationRepository) MarkGenerationNotificationRead(id 
 // MarkAllGenerationNotificationsRead marks completed notifications read.
 func (repo *GenerationNotificationRepository) MarkAllGenerationNotificationsRead(projectID string, readAt string) error {
 	query := repo.db.Model(&domain.GenerationNotificationModel{}).
-		Where("task_status = ? AND read_at = ?", "completed", "")
+		Where("task_status = ? AND read_at IS NULL", "completed")
 	if cleaned := domain.CleanProjectID(projectID); cleaned != "" {
 		query = query.Where("project_id = ?", cleaned)
 	}
+	readAtTime := domain.TimeFromString(readAt)
+	if readAtTime.IsZero() {
+		readAtTime = time.Now().UTC()
+	}
 	if err := query.Updates(map[string]any{
-		"read_at":    strings.TrimSpace(readAt),
-		"updated_at": strings.TrimSpace(readAt),
+		"read_at":    readAtTime,
+		"updated_at": readAtTime,
 	}).Error; err != nil {
 		return fmt.Errorf("marking generation notifications read: %w", err)
 	}

@@ -39,12 +39,12 @@ type UsageBucketRow struct {
 	CachedTokens    int64  `gorm:"column:cached_tokens"`
 }
 
-// NewBillingRepositoryFromDB creates a billing repository from a settings DB.
+// NewBillingRepositoryFromDB creates a billing repository from a workspace DB.
 func NewBillingRepositoryFromDB(db *gorm.DB) *BillingRepository {
 	return &BillingRepository{db: db}
 }
 
-// ListUsageBuckets returns route/day usage buckets aggregated by SQLite JSON functions.
+// ListUsageBuckets returns route/day usage buckets aggregated from typed token columns.
 func (repo *BillingRepository) ListUsageBuckets(query UsageQuery) ([]UsageBucketRow, error) {
 	if repo == nil || repo.db == nil {
 		return nil, fmt.Errorf("billing repository database is nil")
@@ -53,16 +53,14 @@ func (repo *BillingRepository) ListUsageBuckets(query UsageQuery) ([]UsageBucket
 	rows := []UsageBucketRow{}
 	clauses := []string{
 		"LOWER(TRIM(status)) IN ('completed', 'succeeded', 'success')",
-		"TRIM(usage_json) <> ''",
-		"json_valid(usage_json)",
 	}
 	args := []any{}
 	if start := strings.TrimSpace(query.Start); start != "" {
-		clauses = append(clauses, "created_at >= ?")
+		clauses = append(clauses, "datetime(created_at) >= datetime(?)")
 		args = append(args, start)
 	}
 	if end := strings.TrimSpace(query.End); end != "" {
-		clauses = append(clauses, "created_at < ?")
+		clauses = append(clauses, "datetime(created_at) < datetime(?)")
 		args = append(args, end)
 	}
 	if kind := strings.TrimSpace(query.Kind); kind != "" {
@@ -70,7 +68,7 @@ func (repo *BillingRepository) ListUsageBuckets(query UsageQuery) ([]UsageBucket
 		args = append(args, kind)
 	}
 	if projectID := strings.TrimSpace(query.ProjectID); projectID != "" {
-		clauses = append(clauses, "project_id = ?")
+		clauses = append(clauses, "COALESCE(project_id, '') = ?")
 		args = append(args, projectID)
 	}
 
@@ -84,7 +82,7 @@ SELECT
 	model_id,
 	model,
 	kind,
-	SUBSTR(created_at, 1, 10) AS bucket,
+	DATE(created_at) AS bucket,
 	COUNT(*) AS calls,
 	SUM(` + inputTokenExpr + `) AS input_tokens,
 	SUM(` + outputTokenExpr + `) AS output_tokens,
@@ -102,11 +100,11 @@ ORDER BY bucket ASC, route_id ASC`
 }
 
 const (
-	inputTokenExpr     = "COALESCE(CAST(json_extract(usage_json, '$.inputTokens') AS INTEGER), 0)"
-	outputTokenExpr    = "COALESCE(CAST(json_extract(usage_json, '$.outputTokens') AS INTEGER), 0)"
-	totalTokenExpr     = "COALESCE(CAST(json_extract(usage_json, '$.totalTokens') AS INTEGER), 0)"
-	reasoningTokenExpr = "COALESCE(CAST(json_extract(usage_json, '$.reasoningTokens') AS INTEGER), 0)"
-	cachedTokenExpr    = "COALESCE(CAST(json_extract(usage_json, '$.cachedTokens') AS INTEGER), 0)"
+	inputTokenExpr     = "COALESCE(input_tokens, 0)"
+	outputTokenExpr    = "COALESCE(output_tokens, 0)"
+	totalTokenExpr     = "COALESCE(total_tokens, 0)"
+	reasoningTokenExpr = "COALESCE(reasoning_tokens, 0)"
+	cachedTokenExpr    = "COALESCE(cached_tokens, 0)"
 )
 
 const totalTokenForBillingExpr = "CASE WHEN " + totalTokenExpr + " > 0 THEN " + totalTokenExpr + " ELSE " + inputTokenExpr + " + " + outputTokenExpr + " END"

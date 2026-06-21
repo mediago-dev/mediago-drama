@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 )
 
@@ -176,7 +177,7 @@ func (store *SessionService) sessionSummariesFromModelsUnlocked(models []agentSe
 			Title:       strings.TrimSpace(model.Title),
 			LastStatus:  lastStatus,
 			LastMessage: strings.TrimSpace(model.LastMessage),
-			UpdatedAt:   strings.TrimSpace(model.UpdatedAt),
+			UpdatedAt:   domain.StringFromTime(model.UpdatedAt),
 			Running:     lastStatus != "" && !isTerminalRunStatus(lastStatus),
 		})
 		if session, ok := store.loadSessionUnlocked(sessionID); ok {

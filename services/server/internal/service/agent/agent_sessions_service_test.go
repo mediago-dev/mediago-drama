@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 )
 
@@ -110,6 +111,18 @@ func newTestAgentSessionRepository(t *testing.T) *repository.AgentSessionReposit
 	db, err := repository.OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("opening workspace database: %v", err)
+	}
+	now := domain.TimeFromString("2026-06-01T00:00:00Z")
+	if err := db.Create(&domain.WorkspaceProjectModel{
+		ID:          "project-1",
+		Name:        "Project 1",
+		Category:    "agent",
+		Status:      "active",
+		RelativeDir: "project-1",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}).Error; err != nil {
+		t.Fatalf("creating project fixture: %v", err)
 	}
 	return repository.NewAgentSessionRepository(db)
 }

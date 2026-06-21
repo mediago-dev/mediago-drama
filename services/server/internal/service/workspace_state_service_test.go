@@ -32,7 +32,7 @@ func TestWorkspaceStateServiceCleansDeprecatedStudioProjectDirs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
-	now := "2026-06-06T00:00:00Z"
+	now := domain.TimeFromString("2026-06-06T00:00:00Z")
 	if err := repos.Workspace.UpsertProject(domain.WorkspaceProjectModel{
 		ID:          legacyProjectID,
 		Name:        "Legacy Studio",
@@ -95,7 +95,7 @@ func TestWorkspaceStateServiceMigratesDeprecatedLocalProjectDirs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
-	now := "2026-06-06T00:00:00Z"
+	now := domain.TimeFromString("2026-06-06T00:00:00Z")
 	for _, project := range []domain.WorkspaceProjectModel{
 		{
 			ID:          legacyProjectID,
@@ -129,15 +129,20 @@ func TestWorkspaceStateServiceMigratesDeprecatedLocalProjectDirs(t *testing.T) {
 			t.Fatalf("UpsertProject(%s) error = %v", project.ID, err)
 		}
 	}
-	if err := repos.ProjectAssets.CreateProjectAsset(domain.ProjectAssetModel{
+	if err := repos.ProjectAssets.CreateProjectAsset(domain.ProjectReferenceAssetModel{
 		ProjectID: legacyProjectID,
-		ID:        "asset-1",
-		Kind:      "text",
-		Filename:  "story.txt",
-		MIMEType:  "text/plain",
-		Path:      assetPath,
+		ID:        "reference-1",
 		CreatedAt: now,
 		UpdatedAt: now,
+		Asset: domain.AssetModel{
+			ID:        "asset-1",
+			Kind:      "text",
+			Filename:  "story.txt",
+			MIMEType:  "text/plain",
+			RelPath:   "assets/asset-1.txt",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
 	}); err != nil {
 		t.Fatalf("CreateProjectAsset() error = %v", err)
 	}
@@ -169,12 +174,12 @@ func TestWorkspaceStateServiceMigratesDeprecatedLocalProjectDirs(t *testing.T) {
 	if project.ProjectDir != canonicalDir || project.RelativeDir != "projects/"+legacyProjectID {
 		t.Fatalf("project location = (%q, %q), want canonical projects dir", project.ProjectDir, project.RelativeDir)
 	}
-	asset, err := repos.ProjectAssets.GetProjectAsset(legacyProjectID, "asset-1")
+	asset, err := repos.ProjectAssets.GetProjectAsset(legacyProjectID, "reference-1")
 	if err != nil {
 		t.Fatalf("GetProjectAsset() error = %v", err)
 	}
-	if asset.Path != filepath.Join(canonicalDir, "assets", "asset-1.txt") {
-		t.Fatalf("asset path = %q, want canonical path", asset.Path)
+	if asset.Asset.RelPath != "assets/asset-1.txt" {
+		t.Fatalf("asset rel_path = %q, want stable project-relative path", asset.Asset.RelPath)
 	}
 	agentProject, err := repos.Workspace.GetProject(legacyAgentProjectID)
 	if err != nil {

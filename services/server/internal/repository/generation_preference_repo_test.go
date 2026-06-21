@@ -25,8 +25,8 @@ func TestGenerationPreferenceRepositoryLifecycle(t *testing.T) {
 		VersionIDsJSON:  `{"seedream":"seedream-5-lite"}`,
 		RouteParamsJSON: `{"official.seedream-5-lite":{"size":"2K"}}`,
 		StylePresetID:   "preset-cinematic",
-		CreatedAt:       "2026-05-22T00:00:00Z",
-		UpdatedAt:       "2026-05-22T00:00:00Z",
+		CreatedAt:       domain.TimeFromString("2026-05-22T00:00:00Z"),
+		UpdatedAt:       domain.TimeFromString("2026-05-22T00:00:00Z"),
 	}
 	if err := repo.UpsertGenerationPreference(preference); err != nil {
 		t.Fatalf("UpsertGenerationPreference() error = %v", err)
@@ -41,7 +41,7 @@ func TestGenerationPreferenceRepositoryLifecycle(t *testing.T) {
 	}
 
 	preference.StylePresetID = "preset-documentary"
-	preference.UpdatedAt = "2026-05-22T00:01:00Z"
+	preference.UpdatedAt = domain.TimeFromString("2026-05-22T00:01:00Z")
 	if err := repo.UpsertGenerationPreference(preference); err != nil {
 		t.Fatalf("UpsertGenerationPreference() update error = %v", err)
 	}
@@ -50,7 +50,7 @@ func TestGenerationPreferenceRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetGenerationPreference() after update error = %v", err)
 	}
-	if got.StylePresetID != "preset-documentary" || got.CreatedAt != "2026-05-22T00:00:00Z" {
+	if got.StylePresetID != "preset-documentary" || !got.CreatedAt.Equal(domain.TimeFromString("2026-05-22T00:00:00Z")) {
 		t.Fatalf("updated preference = %+v, want updated style and preserved created_at", got)
 	}
 }

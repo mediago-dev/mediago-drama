@@ -1,10 +1,12 @@
 package domain
 
+import "time"
+
 // APIKeyModel is the GORM model for stored API keys.
 type APIKeyModel struct {
 	KeyName   string `gorm:"column:key_name;primaryKey"`
 	APIKey    string `gorm:"column:api_key;not null"`
-	UpdatedAt string `gorm:"column:updated_at;not null"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null;autoUpdateTime:nano"`
 }
 
 // TableName returns the backing table name.
@@ -29,8 +31,8 @@ type AgentModelProfileModel struct {
 	MaxOutputTokens  int      `gorm:"column:max_output_tokens;not null;default:0"`
 	Temperature      *float64 `gorm:"column:temperature"`
 	APIKeyName       string   `gorm:"column:api_key_name;not null"`
-	CreatedAt        string   `gorm:"column:created_at;not null"`
-	UpdatedAt        string   `gorm:"column:updated_at;not null"`
+	CreatedAt        time.Time `gorm:"column:created_at;not null;autoCreateTime:nano"`
+	UpdatedAt        time.Time `gorm:"column:updated_at;not null;autoUpdateTime:nano"`
 }
 
 // TableName returns the backing table name.

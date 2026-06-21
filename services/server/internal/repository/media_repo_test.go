@@ -9,27 +9,26 @@ import (
 )
 
 func TestMediaAssetRepositoryLifecycle(t *testing.T) {
-	repo, err := NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	repo, err := NewMediaAssetRepository(filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
 	}
+	seedRepositoryProject(t, repo.db, "alpha")
 
-	asset := domain.MediaAssetModel{
-		ID:             "asset-1",
-		Kind:           "image",
-		Filename:       "draft.png",
-		MIMEType:       "image/png",
-		SizeBytes:      12,
-		Path:           "/tmp/draft.png",
-		URL:            "/api/v1/media-assets/asset-1/content",
-		SourceURL:      "https://example.test/draft.png",
-		ContentHash:    "hash-1",
-		Source:         "generation",
-		ConversationID: "conversation-1",
-		SectionID:      "document-a:block-a",
-		RelativePath:   "library/2026-05-22/asset-1.png",
-		CreatedAt:      "2026-05-22T00:00:00Z",
-		UpdatedAt:      "2026-05-22T00:00:00Z",
+	asset := domain.AssetModel{
+		ID:          "asset-1",
+		ProjectID:   domain.StringPtr("alpha"),
+		Kind:        "image",
+		Filename:    "draft.png",
+		MIMEType:    "image/png",
+		SizeBytes:   12,
+		URL:         "/api/v1/media-assets/asset-1/content",
+		SourceURL:   "https://example.test/draft.png",
+		ContentHash: "hash-1",
+		Source:      "generated",
+		RelPath:     "library/2026-05-22/asset-1.png",
+		CreatedAt:   domain.TimeFromString("2026-05-22T00:00:00Z"),
+		UpdatedAt:   domain.TimeFromString("2026-05-22T00:00:00Z"),
 	}
 	if err := repo.CreateMediaAsset(asset); err != nil {
 		t.Fatalf("CreateMediaAsset() error = %v", err)
@@ -39,7 +38,7 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetMediaAsset() error = %v", err)
 	}
-	if got.Filename != asset.Filename || got.RelativePath != asset.RelativePath || got.Source != asset.Source {
+	if got.Filename != asset.Filename || got.RelPath != asset.RelPath || got.Source != asset.Source {
 		t.Fatalf("GetMediaAsset() = %#v, want persisted filename/source/relative path", got)
 	}
 
@@ -52,9 +51,9 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	}
 	byScopedSource, err := repo.FindMediaAssetBySourceURLAndScope(
 		asset.SourceURL,
-		asset.ProjectID,
+		domain.StringValue(asset.ProjectID),
 		asset.Source,
-		asset.ConversationID,
+		"",
 	)
 	if err != nil {
 		t.Fatalf("FindMediaAssetBySourceURLAndScope() error = %v", err)
@@ -65,9 +64,9 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	byContentHash, err := repo.FindMediaAssetByContentHashAndScope(
 		asset.ContentHash,
 		asset.Kind,
-		asset.ProjectID,
+		domain.StringValue(asset.ProjectID),
 		asset.Source,
-		asset.ConversationID,
+		"",
 	)
 	if err != nil {
 		t.Fatalf("FindMediaAssetByContentHashAndScope() error = %v", err)
@@ -77,7 +76,7 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	}
 	if _, err := repo.FindMediaAssetBySourceURLAndScope(
 		asset.SourceURL,
-		asset.ProjectID,
+		"beta",
 		asset.Source,
 		"other-conversation",
 	); !errors.Is(err, ErrRecordNotFound) {
@@ -86,14 +85,14 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	if _, err := repo.FindMediaAssetByContentHashAndScope(
 		asset.ContentHash,
 		asset.Kind,
-		asset.ProjectID,
+		"beta",
 		asset.Source,
 		"other-conversation",
 	); !errors.Is(err, ErrRecordNotFound) {
 		t.Fatalf("FindMediaAssetByContentHashAndScope(other) error = %v, want ErrRecordNotFound", err)
 	}
 
-	assets, err := repo.ListMediaAssets(10, "")
+	assets, err := repo.ListMediaAssets(10, "alpha")
 	if err != nil {
 		t.Fatalf("ListMediaAssets() error = %v", err)
 	}
@@ -113,14 +112,12 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	}
 
 	if err := repo.UpdateMediaAssetMetadata(asset.ID, map[string]any{
-		"duration_seconds":    3.5,
-		"width":               640,
-		"height":              360,
-		"poster_path":         "/tmp/draft.poster.jpg",
-		"poster_url":          "/api/v1/media-assets/asset-1/poster",
-		"metadata_status":     "ready",
-		"metadata_error":      "",
-		"metadata_updated_at": "2026-05-22T00:02:00Z",
+		"duration_seconds": 3.5,
+		"width":            640,
+		"height":           360,
+		"poster_rel_path":  "library/2026-05-22/asset-1.poster.jpg",
+		"poster_url":       "/api/v1/media-assets/asset-1/poster",
+		"metadata_status":  "ready",
 	}); err != nil {
 		t.Fatalf("UpdateMediaAssetMetadata() error = %v", err)
 	}
@@ -136,11 +133,8 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	}
 
 	if err := repo.UpdateMediaAssetStorage(asset.ID, map[string]any{
-		"path":            "/tmp/final.png",
-		"source":          "upload",
-		"conversation_id": "",
-		"section_id":      "",
-		"relative_path":   "library/2026-05-22/asset-1.png",
+		"source":   "upload",
+		"rel_path": "library/2026-05-22/asset-1.png",
 	}); err != nil {
 		t.Fatalf("UpdateMediaAssetStorage() error = %v", err)
 	}
@@ -148,7 +142,7 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetMediaAsset() after storage update error = %v", err)
 	}
-	if got.Path != "/tmp/final.png" || got.Source != "upload" || got.RelativePath != "library/2026-05-22/asset-1.png" {
+	if got.Source != "upload" || got.RelPath != "library/2026-05-22/asset-1.png" {
 		t.Fatalf("storage fields = %#v", got)
 	}
 
@@ -165,15 +159,17 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 }
 
 func TestMediaAssetRepositoryListMediaAssetsFiltersByProject(t *testing.T) {
-	repo, err := NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	repo, err := NewMediaAssetRepository(filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
 	}
+	seedRepositoryProject(t, repo.db, "alpha")
+	seedRepositoryProject(t, repo.db, "beta")
 
-	for _, asset := range []domain.MediaAssetModel{
-		testMediaAssetModel("asset-global", "", "2026-05-22T00:00:00Z"),
-		testMediaAssetModel("asset-alpha", "alpha", "2026-05-22T00:01:00Z"),
-		testMediaAssetModel("asset-beta", "beta", "2026-05-22T00:02:00Z"),
+	for _, asset := range []domain.AssetModel{
+		testAssetModel("asset-global", "", "2026-05-22T00:00:00Z"),
+		testAssetModel("asset-alpha", "alpha", "2026-05-22T00:01:00Z"),
+		testAssetModel("asset-beta", "beta", "2026-05-22T00:02:00Z"),
 	} {
 		if err := repo.CreateMediaAsset(asset); err != nil {
 			t.Fatalf("CreateMediaAsset(%q) error = %v", asset.ID, err)
@@ -197,22 +193,22 @@ func TestMediaAssetRepositoryListMediaAssetsFiltersByProject(t *testing.T) {
 	}
 }
 
-func testMediaAssetModel(id string, projectID string, updatedAt string) domain.MediaAssetModel {
-	return domain.MediaAssetModel{
+func testAssetModel(id string, projectID string, updatedAt string) domain.AssetModel {
+	return domain.AssetModel{
 		ID:        id,
 		Kind:      "image",
 		Filename:  id + ".png",
 		MIMEType:  "image/png",
 		SizeBytes: 12,
-		Path:      "/tmp/" + id + ".png",
 		URL:       "/api/v1/media-assets/" + id + "/content",
-		ProjectID: projectID,
-		CreatedAt: "2026-05-22T00:00:00Z",
-		UpdatedAt: updatedAt,
+		ProjectID: domain.StringPtr(projectID),
+		RelPath:   "library/2026-05-22/" + id + ".png",
+		CreatedAt: domain.TimeFromString("2026-05-22T00:00:00Z"),
+		UpdatedAt: domain.TimeFromString(updatedAt),
 	}
 }
 
-func mediaAssetIDs(assets []domain.MediaAssetModel) []string {
+func mediaAssetIDs(assets []domain.AssetModel) []string {
 	ids := make([]string, 0, len(assets))
 	for _, asset := range assets {
 		ids = append(ids, asset.ID)

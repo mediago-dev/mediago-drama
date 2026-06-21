@@ -26,6 +26,7 @@ func GenerationResponseFromCore(response coregeneration.Response, kind string) G
 			continue
 		}
 		assets = append(assets, GenerationAsset{
+			AssetID:  libraryAssetIDFromGenerationAssetURL(asset.URL),
 			Kind:     string(asset.Kind),
 			URL:      asset.URL,
 			Base64:   asset.Base64,

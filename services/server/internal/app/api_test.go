@@ -1312,7 +1312,7 @@ func TestAPIHandler(t *testing.T) {
 
 	t.Run("generation tasks returns persisted tasks", func(t *testing.T) {
 		taskID := "official.seedance-2.0-fast:task-api"
-		store := servicegeneration.NewGenerationTaskService(dbPath, randomID)
+		store := servicegeneration.NewGenerationTaskService(testWorkspaceDBPathForSettings(dbPath), randomID)
 		createConversation := requestJSON(t, handler, http.MethodPost, "/api/v1/generation/sessions", `{"kind":"video","title":"Video session"}`)
 		defer createConversation.Body.Close()
 		if createConversation.StatusCode != http.StatusOK {
@@ -1377,8 +1377,20 @@ func TestAPIHandler(t *testing.T) {
 			t.Fatalf("body = %s, want generation task filtered by conversation", filteredBody)
 		}
 
-		projectSessionID := "project-alpha"
-		createProjectConversation := requestJSON(t, handler, http.MethodPost, "/api/v1/generation/sessions", `{"sessionId":"project-alpha","scopeId":"agent","kind":"image","title":"Project image session"}`)
+		project, _ := createExternalProjectForTest(t, handler, "Project Generation")
+		projectSessionID := project.ID
+		projectImageA := uploadImageAssetForTest(t, handler, projectSessionID, "project-a.png")
+		projectImageB := uploadImageAssetForTest(t, handler, projectSessionID, "project-b.png")
+		createProjectConversationPayload, err := json.Marshal(map[string]any{
+			"sessionId": projectSessionID,
+			"scopeId":   "agent",
+			"kind":      "image",
+			"title":     "Project image session",
+		})
+		if err != nil {
+			t.Fatalf("encoding project conversation payload: %v", err)
+		}
+		createProjectConversation := requestJSON(t, handler, http.MethodPost, "/api/v1/generation/sessions", string(createProjectConversationPayload))
 		defer createProjectConversation.Body.Close()
 		if createProjectConversation.StatusCode != http.StatusOK {
 			t.Fatalf("create project conversation status code = %d, want %d", createProjectConversation.StatusCode, http.StatusOK)
@@ -1413,8 +1425,8 @@ func TestAPIHandler(t *testing.T) {
 			Status:         "completed",
 			Message:        "Image generation completed.",
 			Assets: []generationAsset{
-				{Kind: "image", URL: "/api/v1/media-assets/project-a/content"},
-				{Kind: "image", URL: "/api/v1/media-assets/project-b/content"},
+				{Kind: "image", URL: projectImageA.URL},
+				{Kind: "image", URL: projectImageB.URL},
 			},
 		}); err != nil {
 			t.Fatalf("seeding project scoped task: %v", err)
@@ -1459,7 +1471,7 @@ func TestAPIHandler(t *testing.T) {
 		}
 		allImageConversationsBody := readBody(t, allImageConversations.Body)
 		if !strings.Contains(allImageConversationsBody, projectConversation.ID) ||
-			!strings.Contains(allImageConversationsBody, `"sessionId":"project-alpha"`) ||
+			!strings.Contains(allImageConversationsBody, `"sessionId":"`+projectSessionID+`"`) ||
 			!strings.Contains(allImageConversationsBody, `"scopeId":"agent"`) {
 			t.Fatalf("body = %s, want public session conversations with scopeId", allImageConversationsBody)
 		}
@@ -1481,8 +1493,8 @@ func TestAPIHandler(t *testing.T) {
 			t.Fatalf("delete asset status code = %d, want %d: %s", removeAsset.StatusCode, http.StatusOK, readBody(t, removeAsset.Body))
 		}
 		removeAssetBody := readBody(t, removeAsset.Body)
-		if strings.Contains(removeAssetBody, "/api/v1/media-assets/project-a/content") ||
-			!strings.Contains(removeAssetBody, "/api/v1/media-assets/project-b/content") {
+		if strings.Contains(removeAssetBody, projectImageA.URL) ||
+			!strings.Contains(removeAssetBody, projectImageB.URL) {
 			t.Fatalf("body = %s, want only deleted asset removed", removeAssetBody)
 		}
 
@@ -1747,6 +1759,10 @@ func newTestHandler(t *testing.T, dbPath string) http.Handler {
 			documentOperationRunner: fakeDocumentOperationRunner{},
 		},
 	)
+}
+
+func testWorkspaceDBPathForSettings(dbPath string) string {
+	return filepath.Join(filepath.Dir(dbPath), "workspace", ".mediago-drama", "db", "app.db")
 }
 
 func createExternalProjectForTest(t *testing.T, handler http.Handler, name string) (workspaceProjectRecord, string) {

@@ -13,19 +13,26 @@ func TestProjectAssetRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewProjectAssetRepository() error = %v", err)
 	}
+	seedRepositoryProject(t, repo.db, "project-a")
+	seedRepositoryProject(t, repo.db, "project-b")
 
-	asset := domain.ProjectAssetModel{
+	asset := domain.ProjectReferenceAssetModel{
 		ProjectID: "project-a",
-		ID:        "asset-1",
-		Kind:      "binary",
-		Filename:  "brief.pdf",
-		MIMEType:  "application/pdf",
-		SizeBytes: 32,
-		Path:      "/tmp/brief.pdf",
-		ParentID:  "",
+		ID:        "reference-1",
 		SortOrder: 1,
-		CreatedAt: "2026-05-22T00:00:00Z",
-		UpdatedAt: "2026-05-22T00:00:00Z",
+		CreatedAt: domain.TimeFromString("2026-05-22T00:00:00Z"),
+		UpdatedAt: domain.TimeFromString("2026-05-22T00:00:00Z"),
+		Asset: domain.AssetModel{
+			ID:        "asset-1",
+			Kind:      "binary",
+			Filename:  "brief.pdf",
+			MIMEType:  "application/pdf",
+			SizeBytes: 32,
+			RelPath:   "projects/project-a/references/brief.pdf",
+			Source:    "upload",
+			CreatedAt: domain.TimeFromString("2026-05-22T00:00:00Z"),
+			UpdatedAt: domain.TimeFromString("2026-05-22T00:00:00Z"),
+		},
 	}
 	if err := repo.CreateProjectAsset(asset); err != nil {
 		t.Fatalf("CreateProjectAsset() error = %v", err)
@@ -33,7 +40,9 @@ func TestProjectAssetRepositoryLifecycle(t *testing.T) {
 
 	otherProjectAsset := asset
 	otherProjectAsset.ProjectID = "project-b"
-	otherProjectAsset.ID = "asset-other"
+	otherProjectAsset.ID = "reference-other"
+	otherProjectAsset.Asset.ID = "asset-other"
+	otherProjectAsset.Asset.RelPath = "projects/project-b/references/brief.pdf"
 	if err := repo.CreateProjectAsset(otherProjectAsset); err != nil {
 		t.Fatalf("CreateProjectAsset(other) error = %v", err)
 	}
@@ -42,8 +51,8 @@ func TestProjectAssetRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetProjectAsset() error = %v", err)
 	}
-	if got.Filename != asset.Filename {
-		t.Fatalf("GetProjectAsset().Filename = %q, want %q", got.Filename, asset.Filename)
+	if got.Asset.Filename != asset.Asset.Filename {
+		t.Fatalf("GetProjectAsset().Asset.Filename = %q, want %q", got.Asset.Filename, asset.Asset.Filename)
 	}
 
 	assets, err := repo.ListProjectAssets(asset.ProjectID)
@@ -70,7 +79,7 @@ func TestProjectAssetRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetProjectAsset() after update error = %v", err)
 	}
-	if got.Filename != "renamed.pdf" || got.ParentID != "folder-1" || got.SortOrder != 4 {
+	if got.Asset.Filename != "renamed.pdf" || domain.StringValue(got.ParentID) != "folder-1" || got.SortOrder != 4 {
 		t.Fatalf("updated asset = %+v, want renamed and moved", got)
 	}
 

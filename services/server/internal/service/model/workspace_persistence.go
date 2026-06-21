@@ -43,7 +43,7 @@ func DocumentOperationLogModelsFromRecords(projectID string, records []DocumentO
 			ID:         record.ID,
 			DocumentID: record.DocumentID,
 			RecordJSON: string(recordJSON),
-			CreatedAt:  record.CreatedAt,
+			CreatedAt:  domain.TimeFromString(record.CreatedAt),
 		})
 	}
 	return normalized, models, nil

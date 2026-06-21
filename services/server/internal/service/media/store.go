@@ -17,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
@@ -114,11 +113,11 @@ type MediaAssetSaveOptions struct {
 	SectionID      string
 }
 
-type mediaAssetModel = domain.MediaAssetModel
+type mediaAssetModel = domain.AssetModel
 
 func NewMediaAssets(dbPath string, mediaDir string) *MediaAssets {
 	if dbPath == "" {
-		dbPath = config.DefaultSettingsDBPath()
+		dbPath = shared.WorkspacePathsFor("").DatabasePath()
 	}
 	if mediaDir == "" {
 		mediaDir = defaultMediaDir()
@@ -130,13 +129,13 @@ func NewMediaAssets(dbPath string, mediaDir string) *MediaAssets {
 		return store
 	}
 
-	repos, err := repository.OpenSettingsRepositories(dbPath)
+	repo, err := repository.NewMediaAssetRepository(dbPath)
 	if err != nil {
 		store.initErr = err
 		return store
 	}
 
-	store.repo = repos.MediaAssets
+	store.repo = repo
 	return store
 }
 
@@ -269,7 +268,7 @@ func (store *MediaAssets) List(projectID string) ([]MediaAsset, error) {
 		return nil, err
 	}
 
-	assets := mediaAssetRecordsFromModels(models)
+	assets := store.mediaAssetRecordsFromModels(models)
 	return store.backfillListedVideoMetadata(assets)
 }
 
@@ -289,7 +288,7 @@ func (store *MediaAssets) Get(id string) (MediaAsset, bool, error) {
 		return MediaAsset{}, false, err
 	}
 
-	return mediaAssetRecordFromModel(model), true, nil
+	return store.mediaAssetRecordFromModel(model), true, nil
 }
 
 func (store *MediaAssets) FindBySourceURL(sourceURL string) (MediaAsset, bool, error) {
@@ -311,7 +310,7 @@ func (store *MediaAssets) FindBySourceURL(sourceURL string) (MediaAsset, bool, e
 		return MediaAsset{}, false, err
 	}
 
-	return mediaAssetRecordFromModel(model), true, nil
+	return store.mediaAssetRecordFromModel(model), true, nil
 }
 
 func (store *MediaAssets) FindBySourceURLAndScope(sourceURL string, options MediaAssetSaveOptions) (MediaAsset, bool, error) {
@@ -339,7 +338,7 @@ func (store *MediaAssets) FindBySourceURLAndScope(sourceURL string, options Medi
 		return MediaAsset{}, false, err
 	}
 
-	return mediaAssetRecordFromModel(model), true, nil
+	return store.mediaAssetRecordFromModel(model), true, nil
 }
 
 func (store *MediaAssets) FindByContentHashAndScope(contentHash string, kind string, options MediaAssetSaveOptions) (MediaAsset, bool, error) {
@@ -369,7 +368,7 @@ func (store *MediaAssets) FindByContentHashAndScope(contentHash string, kind str
 		return MediaAsset{}, false, err
 	}
 
-	asset := mediaAssetRecordFromModel(model)
+	asset := store.mediaAssetRecordFromModel(model)
 	if _, err := store.ServeFilePath(asset); err != nil {
 		return MediaAsset{}, false, nil
 	}
@@ -894,32 +893,26 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	if err := store.repo.CreateMediaAsset(mediaAssetModel{
-		ID:                asset.ID,
-		Kind:              asset.Kind,
-		Filename:          asset.Filename,
-		MIMEType:          asset.MIMEType,
-		SizeBytes:         asset.SizeBytes,
-		Path:              asset.FilePath,
-		URL:               asset.URL,
-		SourceURL:         asset.SourceURL,
-		ContentHash:       asset.ContentHash,
-		ProjectID:         asset.ProjectID,
-		Source:            asset.Source,
-		ConversationID:    asset.ConversationID,
-		SectionID:         asset.SectionID,
-		RelativePath:      asset.RelativePath,
-		DurationSeconds:   asset.DurationSeconds,
-		Width:             asset.Width,
-		Height:            asset.Height,
-		PosterPath:        asset.PosterPath,
-		PosterURL:         asset.PosterURL,
-		MetadataStatus:    asset.MetadataStatus,
-		MetadataError:     asset.MetadataError,
-		MetadataUpdatedAt: asset.MetadataUpdatedAt,
-		StorageStatus:     asset.StorageStatus,
-		StorageError:      asset.StorageError,
-		CreatedAt:         asset.CreatedAt,
-		UpdatedAt:         asset.UpdatedAt,
+		ID:              asset.ID,
+		Kind:            asset.Kind,
+		Filename:        asset.Filename,
+		MIMEType:        asset.MIMEType,
+		SizeBytes:       asset.SizeBytes,
+		RelPath:         asset.RelativePath,
+		URL:             asset.URL,
+		SourceURL:       asset.SourceURL,
+		ContentHash:     asset.ContentHash,
+		ProjectID:       domain.StringPtr(asset.ProjectID),
+		Source:          asset.Source,
+		DurationSeconds: asset.DurationSeconds,
+		Width:           asset.Width,
+		Height:          asset.Height,
+		PosterRelPath:   store.mediaAssetDBRelPath(asset.ProjectID, asset.PosterPath),
+		PosterURL:       asset.PosterURL,
+		MetadataStatus:  asset.MetadataStatus,
+		StorageStatus:   asset.StorageStatus,
+		CreatedAt:       domain.TimeFromString(asset.CreatedAt),
+		UpdatedAt:       domain.TimeFromString(asset.UpdatedAt),
 	}); err != nil {
 		_ = os.Remove(filePath)
 		if asset.PosterPath != "" {
@@ -1041,14 +1034,6 @@ func FilterMediaAssets(assets []MediaAsset, kind string, query string) []MediaAs
 	return filtered
 }
 
-func mediaAssetRecordsFromModels(models []mediaAssetModel) []MediaAsset {
-	assets := make([]MediaAsset, 0, len(models))
-	for _, model := range models {
-		assets = append(assets, mediaAssetRecordFromModel(model))
-	}
-	return assets
-}
-
 func (store *MediaAssets) backfillListedVideoMetadata(assets []MediaAsset) ([]MediaAsset, error) {
 	for index := range assets {
 		asset := assets[index]
@@ -1058,7 +1043,7 @@ func (store *MediaAssets) backfillListedVideoMetadata(assets []MediaAsset) ([]Me
 
 		updated := store.enrichVideoMetadata(asset, timestamp.NowRFC3339Nano())
 		store.mu.Lock()
-		err := store.repo.UpdateMediaAssetMetadata(updated.ID, mediaAssetMetadataUpdates(updated))
+		err := store.repo.UpdateMediaAssetMetadata(updated.ID, store.mediaAssetMetadataUpdates(updated))
 		store.mu.Unlock()
 		if err != nil {
 			return nil, err
@@ -1109,48 +1094,113 @@ func (store *MediaAssets) needsVideoMetadataBackfill(asset MediaAsset) bool {
 	return err != nil || info.Size() == 0
 }
 
-func mediaAssetMetadataUpdates(asset MediaAsset) map[string]any {
+func (store *MediaAssets) mediaAssetMetadataUpdates(asset MediaAsset) map[string]any {
 	return map[string]any{
-		"duration_seconds":    asset.DurationSeconds,
-		"width":               asset.Width,
-		"height":              asset.Height,
-		"poster_path":         asset.PosterPath,
-		"poster_url":          asset.PosterURL,
-		"metadata_status":     asset.MetadataStatus,
-		"metadata_error":      asset.MetadataError,
-		"metadata_updated_at": asset.MetadataUpdatedAt,
+		"duration_seconds": asset.DurationSeconds,
+		"width":            asset.Width,
+		"height":           asset.Height,
+		"poster_rel_path":  store.mediaAssetDBRelPath(asset.ProjectID, asset.PosterPath),
+		"poster_url":       asset.PosterURL,
+		"metadata_status":  asset.MetadataStatus,
 	}
 }
 
-func mediaAssetRecordFromModel(model mediaAssetModel) MediaAsset {
-	return MediaAsset{
-		ID:                model.ID,
-		Kind:              model.Kind,
-		Filename:          model.Filename,
-		MIMEType:          model.MIMEType,
-		SizeBytes:         model.SizeBytes,
-		URL:               model.URL,
-		SourceURL:         model.SourceURL,
-		ContentHash:       model.ContentHash,
-		ProjectID:         model.ProjectID,
-		Source:            model.Source,
-		ConversationID:    model.ConversationID,
-		SectionID:         model.SectionID,
-		RelativePath:      model.RelativePath,
-		DurationSeconds:   model.DurationSeconds,
-		Width:             model.Width,
-		Height:            model.Height,
-		PosterURL:         model.PosterURL,
-		MetadataStatus:    model.MetadataStatus,
-		MetadataError:     model.MetadataError,
-		MetadataUpdatedAt: model.MetadataUpdatedAt,
-		StorageStatus:     model.StorageStatus,
-		StorageError:      model.StorageError,
-		CreatedAt:         model.CreatedAt,
-		UpdatedAt:         model.UpdatedAt,
-		FilePath:          model.Path,
-		PosterPath:        model.PosterPath,
+func (store *MediaAssets) mediaAssetRecordsFromModels(models []mediaAssetModel) []MediaAsset {
+	assets := make([]MediaAsset, 0, len(models))
+	for _, model := range models {
+		assets = append(assets, store.mediaAssetRecordFromModel(model))
 	}
+	return assets
+}
+
+func (store *MediaAssets) mediaAssetRecordFromModel(model mediaAssetModel) MediaAsset {
+	return MediaAsset{
+		ID:              model.ID,
+		Kind:            model.Kind,
+		Filename:        model.Filename,
+		MIMEType:        model.MIMEType,
+		SizeBytes:       model.SizeBytes,
+		URL:             model.URL,
+		SourceURL:       model.SourceURL,
+		ContentHash:     model.ContentHash,
+		ProjectID:       domain.StringValue(model.ProjectID),
+		Source:          model.Source,
+		RelativePath:    model.RelPath,
+		DurationSeconds: model.DurationSeconds,
+		Width:           model.Width,
+		Height:          model.Height,
+		PosterURL:       model.PosterURL,
+		MetadataStatus:  model.MetadataStatus,
+		StorageStatus:   model.StorageStatus,
+		CreatedAt:       domain.StringFromTime(model.CreatedAt),
+		UpdatedAt:       domain.StringFromTime(model.UpdatedAt),
+		FilePath:        store.assetFilePath(domain.StringValue(model.ProjectID), model.RelPath),
+		PosterPath:      store.assetFilePath(domain.StringValue(model.ProjectID), model.PosterRelPath),
+	}
+}
+
+func (store *MediaAssets) assetFilePath(projectID string, relPath string) string {
+	relPath = strings.TrimSpace(relPath)
+	if relPath == "" || filepath.IsAbs(relPath) {
+		return relPath
+	}
+	projectID = domain.CleanProjectID(projectID)
+	if projectID != "" {
+		if projectDir, err := store.projectDir(projectID); err == nil && projectDir != "" {
+			return filepath.Join(projectDir, filepath.FromSlash(relPath))
+		}
+	}
+	baseDir := strings.TrimSpace(store.dir)
+	if baseDir == "" && strings.TrimSpace(store.workspaceRoot) != "" {
+		baseDir = shared.WorkspacePathsFor(store.workspaceRoot).LibraryAssetsDir()
+	}
+	if strings.HasPrefix(filepath.ToSlash(relPath), ".mediago-drama/") && strings.TrimSpace(store.workspaceRoot) != "" {
+		return filepath.Join(store.workspaceRoot, filepath.FromSlash(relPath))
+	}
+	if baseDir == "" {
+		baseDir = defaultMediaDir()
+	}
+	rel := strings.TrimPrefix(filepath.ToSlash(relPath), "library/")
+	return filepath.Join(baseDir, filepath.FromSlash(rel))
+}
+
+func (store *MediaAssets) mediaAssetDBRelPath(projectID string, filePath string) string {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" || !filepath.IsAbs(filePath) {
+		return filepath.ToSlash(filePath)
+	}
+	projectID = domain.CleanProjectID(projectID)
+	if projectID != "" {
+		if projectDir, err := store.projectDir(projectID); err == nil && projectDir != "" {
+			if rel, ok := relativePathUnder(projectDir, filePath); ok {
+				return rel
+			}
+		}
+	}
+	if strings.TrimSpace(store.workspaceRoot) != "" {
+		if rel, ok := relativePathUnder(store.workspaceRoot, filePath); ok {
+			return rel
+		}
+	}
+	if strings.TrimSpace(store.dir) != "" {
+		if rel, ok := relativePathUnder(store.dir, filePath); ok {
+			return rel
+		}
+	}
+	return filePath
+}
+
+func relativePathUnder(root string, path string) (string, bool) {
+	root = strings.TrimSpace(root)
+	path = strings.TrimSpace(path)
+	if root == "" || path == "" {
+		return "", false
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." || filepath.IsAbs(rel) {
+		return "", false
+	}
+	return filepath.ToSlash(rel), true
 }
 
 func defaultMediaDir() string {

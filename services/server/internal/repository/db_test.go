@@ -2,9 +2,9 @@ package repository
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
-	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"gorm.io/gorm"
 )
@@ -20,68 +20,38 @@ func TestOpenWorkspaceDBMigratesWorkspaceSchema(t *testing.T) {
 		&domain.EpisodeTimelineModel{},
 		&domain.DocumentOperationLogModel{},
 		&domain.DocumentToolApprovalModel{},
-		&domain.AgentSessionModel{},
 		&domain.DocumentEditStreamModel{},
-		&domain.ProjectAssetModel{},
+		&domain.AgentSessionModel{},
+		&domain.AssetModel{},
+		&domain.GenerationConversationModel{},
+		&domain.GenerationTaskModel{},
+		&domain.GenerationTaskAttemptModel{},
+		&domain.GenerationTaskReferenceModel{},
+		&domain.GenerationTaskAssetModel{},
+		&domain.ProjectSelectedAssetModel{},
+		&domain.ProjectReferenceAssetModel{},
+		&domain.GenerationNotificationModel{},
 	}
 	for _, model := range models {
 		if !db.Migrator().HasTable(model) {
 			t.Fatalf("expected table for %T to exist", model)
 		}
 	}
+
 	removedTables := []string{
 		"documents",
 		"document_folders",
 		"asset_folders",
-		"agent_runs",
-		"agent_event_logs",
-		"agent_chat_snapshots",
+		"library_assets",
+		"media_assets",
+		"project_assets",
+		"project_resource_assets",
 	}
 	for _, table := range removedTables {
 		if db.Migrator().HasTable(table) {
 			t.Fatalf("table %s should not be created", table)
 		}
 	}
-	if sqliteColumnExists(db, "projects", "document_count") {
-		t.Fatal("projects should not include deprecated document_count column")
-	}
-	if !db.Migrator().HasColumn(&domain.ProjectAssetModel{}, "folder_id") {
-		t.Fatal("project_assets should include folder_id column")
-	}
-}
-
-func TestEnsureWorkspaceSchemaDropsDeprecatedDocumentStorage(t *testing.T) {
-	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "workspace.sqlite"))
-	if err != nil {
-		t.Fatalf("OpenGormSQLite returned error: %v", err)
-	}
-	for _, statement := range []string{
-		`CREATE TABLE projects (id text primary key, name text not null, category text, description text, project_dir text, relative_dir text, document_count integer, created_at text, updated_at text)`,
-		`CREATE TABLE documents (project_id text, id text, title text, content text, content_persisted boolean, folder_id text)`,
-		`CREATE TABLE document_folders (project_id text, id text, name text, parent_id text)`,
-		`CREATE TABLE asset_folders (project_id text, id text, name text, parent_id text)`,
-	} {
-		if err := db.Exec(statement).Error; err != nil {
-			t.Fatalf("preparing legacy schema: %v", err)
-		}
-	}
-
-	if err := EnsureWorkspaceSchema(db); err != nil {
-		t.Fatalf("EnsureWorkspaceSchema returned error: %v", err)
-	}
-	if db.Migrator().HasTable("documents") {
-		t.Fatal("documents table should be dropped")
-	}
-	if db.Migrator().HasTable("document_folders") {
-		t.Fatal("document_folders table should be dropped")
-	}
-	if db.Migrator().HasTable("asset_folders") {
-		t.Fatal("asset_folders table should be dropped")
-	}
-	if sqliteColumnExists(db, "projects", "document_count") {
-		t.Fatal("projects.document_count should be dropped")
-	}
-	assertSchemaMigrationRecorded(t, db, workspaceDropDeprecatedStorageMigrationKey)
 }
 
 func TestOpenGormSQLiteCachesByPath(t *testing.T) {
@@ -120,6 +90,14 @@ func TestOpenGormSQLiteConfiguresLocalPragmas(t *testing.T) {
 	if synchronous != 1 {
 		t.Fatalf("synchronous = %d, want 1 (NORMAL)", synchronous)
 	}
+
+	var foreignKeys int
+	if err := db.Raw("PRAGMA foreign_keys").Scan(&foreignKeys).Error; err != nil {
+		t.Fatalf("reading foreign_keys: %v", err)
+	}
+	if foreignKeys != 1 {
+		t.Fatalf("foreign_keys = %d, want 1", foreignKeys)
+	}
 }
 
 func TestOpenWorkspaceRepositoriesBuildsAllWorkspaceRepositories(t *testing.T) {
@@ -132,419 +110,305 @@ func TestOpenWorkspaceRepositoriesBuildsAllWorkspaceRepositories(t *testing.T) {
 		repos.EditStreams == nil ||
 		repos.AgentSessions == nil ||
 		repos.Approvals == nil ||
+		repos.Billing == nil ||
+		repos.GenerationNotifications == nil ||
+		repos.GenerationTasks == nil ||
+		repos.MediaAssets == nil ||
 		repos.ProjectAssets == nil {
 		t.Fatalf("repositories = %#v, want all workspace repositories", repos)
 	}
 }
 
-func TestOpenSettingsRepositoriesMigratesAllSettingsSchemas(t *testing.T) {
+func TestOpenSettingsRepositoriesMigratesOnlyGlobalSettingsSchemas(t *testing.T) {
 	repos, err := OpenSettingsRepositories(filepath.Join(t.TempDir(), "settings.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenSettingsRepositories returned error: %v", err)
 	}
-	if repos.DB == nil || repos.APIKeys == nil || repos.AgentModelProfiles == nil || repos.Billing == nil || repos.GenerationNotifications == nil || repos.GenerationPreferences == nil || repos.GenerationTasks == nil || repos.MediaAssets == nil || repos.PromptLibrary == nil {
+	if repos.DB == nil ||
+		repos.APIKeys == nil ||
+		repos.AgentModelProfiles == nil ||
+		repos.GenerationPreferences == nil ||
+		repos.PromptLibrary == nil {
 		t.Fatalf("repositories = %#v, want all settings repositories", repos)
 	}
 
-	models := []any{
+	settingsModels := []any{
 		&domain.APIKeyModel{},
 		&domain.AgentModelProfileModel{},
-		&domain.MediaAssetModel{},
-		&domain.GenerationConversationModel{},
-		&domain.GenerationNotificationModel{},
-		&domain.GenerationPreferenceModel{},
-		&domain.GenerationTaskModel{},
-		&domain.GenerationTaskAttemptModel{},
-		&domain.GenerationTaskAssetModel{},
-		&domain.ProjectResourceAssetModel{},
 		&domain.PromptCategoryModel{},
 		&domain.PromptLibraryEntryModel{},
+		&domain.GenerationPreferenceModel{},
 	}
-	for _, model := range models {
+	for _, model := range settingsModels {
 		if !repos.DB.Migrator().HasTable(model) {
-			t.Fatalf("expected table for %T to exist", model)
-		}
-	}
-	if repos.DB.Migrator().HasTable("media_assets") {
-		t.Fatal("settings schema should not create legacy media_assets table")
-	}
-	if !repos.DB.Migrator().HasIndex(&domain.MediaAssetModel{}, "library_assets_source_url_idx") {
-		t.Fatal("library_assets should include source_url index")
-	}
-	if !repos.DB.Migrator().HasIndex(&domain.MediaAssetModel{}, "library_assets_content_hash_idx") {
-		t.Fatal("library_assets should include content_hash index")
-	}
-}
-
-func TestEnsurePromptLibrarySchemaMigratesLayerToCategory(t *testing.T) {
-	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "settings.sqlite"))
-	if err != nil {
-		t.Fatalf("OpenGormSQLite returned error: %v", err)
-	}
-	for _, statement := range []string{
-		`CREATE TABLE prompt_library_entries (id text primary key, name text not null, layer text not null default '', type text not null, kind text not null, category text not null default '', prompt text not null, source text not null default 'user', builtin boolean not null default false, created_at text not null, updated_at text not null)`,
-		`CREATE INDEX prompt_library_entries_layer_idx ON prompt_library_entries(layer)`,
-		`CREATE INDEX prompt_library_entries_type_kind_idx ON prompt_library_entries(type, kind)`,
-		`INSERT INTO prompt_library_entries (id, name, layer, type, kind, category, prompt, source, builtin, created_at, updated_at) VALUES ('character-multi-view', '多视图', 'extra', 'image', 'image', 'character', '旧提示', 'builtin', true, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z')`,
-	} {
-		if err := db.Exec(statement).Error; err != nil {
-			t.Fatalf("preparing legacy prompt library schema: %v", err)
+			t.Fatalf("expected settings table for %T to exist", model)
 		}
 	}
 
-	if err := EnsurePromptLibrarySchema(db); err != nil {
-		t.Fatalf("EnsurePromptLibrarySchema returned error: %v", err)
+	workspaceTables := []string{
+		"projects",
+		"assets",
+		"generation_tasks",
+		"generation_task_assets",
+		"project_selected_assets",
+		"project_reference_assets",
+		"generation_notifications",
 	}
-	if sqliteColumnExists(db, "prompt_library_entries", "layer") {
-		t.Fatal("prompt_library_entries.layer should be dropped")
-	}
-	if sqliteColumnExists(db, "prompt_library_entries", "kind") {
-		t.Fatal("prompt_library_entries.kind should be dropped")
+	for _, table := range workspaceTables {
+		if repos.DB.Migrator().HasTable(table) {
+			t.Fatalf("settings schema should not create workspace table %s", table)
+		}
 	}
 
-	var entry domain.PromptLibraryEntryModel
-	if err := db.First(&entry, "id = ?", "character-multi-view").Error; err != nil {
-		t.Fatalf("loading migrated prompt library entry: %v", err)
+	err = repos.DB.Create(&domain.AssetModel{
+		ID:            "asset-settings-db",
+		Kind:          "image",
+		Filename:      "settings-db.png",
+		MIMEType:      "image/png",
+		RelPath:       "library/settings-db.png",
+		URL:           "/api/v1/media-assets/asset-settings-db/content",
+		StorageStatus: "ready",
+		CreatedAt:     domain.TimeFromString("2026-06-21T00:00:00Z"),
+		UpdatedAt:     domain.TimeFromString("2026-06-21T00:00:00Z"),
+	}).Error
+	if err == nil {
+		t.Fatal("settings database accepted workspace asset row; assets should only live in app.db")
 	}
-	if entry.Category != "extra" {
-		t.Fatalf("category = %q, want migrated layer value extra", entry.Category)
-	}
-	assertSchemaMigrationRecorded(t, db, promptLibraryCategoryMigrationKey)
-	assertSchemaMigrationRecorded(t, db, promptLibraryDropKindMigrationKey)
 }
 
-func TestEnsureMediaAssetSchemaRenamesLegacyMediaAssetsTable(t *testing.T) {
-	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "settings.sqlite"))
+func TestWorkspaceSchemaCascadesProjectOwnedRows(t *testing.T) {
+	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
-		t.Fatalf("OpenGormSQLite returned error: %v", err)
+		t.Fatalf("OpenWorkspaceDB returned error: %v", err)
 	}
-	if err := db.AutoMigrate(&legacyMediaAssetModel{}); err != nil {
-		t.Fatalf("creating legacy media_assets table: %v", err)
+
+	now := domain.TimeFromString("2026-06-21T00:00:00Z")
+	projectID := "project-cascade"
+	assetID := "asset-cascade"
+	taskID := "task-cascade"
+	if err := db.Create(&domain.WorkspaceProjectModel{
+		ID:          projectID,
+		Name:        "Cascade",
+		Category:    "drama",
+		Status:      "active",
+		RelativeDir: "projects/cascade",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}).Error; err != nil {
+		t.Fatalf("creating project fixture: %v", err)
 	}
-	insertedAt := "2026-06-01T00:00:00Z"
-	if err := db.Create(&legacyMediaAssetModel{
-		ID:        "asset-legacy",
+	if err := db.Create(&domain.AssetModel{
+		ID:            assetID,
+		ProjectID:     domain.StringPtr(projectID),
+		Kind:          "image",
+		Filename:      "cascade.png",
+		MIMEType:      "image/png",
+		RelPath:       "library/cascade.png",
+		URL:           "/api/v1/media-assets/asset-cascade/content",
+		Source:        "generated",
+		StorageStatus: "ready",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}).Error; err != nil {
+		t.Fatalf("creating asset fixture: %v", err)
+	}
+	if err := db.Create(&domain.GenerationConversationModel{
+		ID:        "session-cascade",
+		ScopeID:   "project:" + projectID,
 		Kind:      "image",
-		Filename:  "legacy.png",
-		MIMEType:  "image/png",
-		SizeBytes: 12,
-		Path:      "/tmp/legacy.png",
-		URL:       "/api/v1/media-assets/asset-legacy/content",
-		SourceURL: "https://example.test/legacy.png",
-		Source:    "generation",
-		CreatedAt: insertedAt,
-		UpdatedAt: insertedAt,
+		Title:     "Cascade session",
+		CreatedAt: now,
+		UpdatedAt: now,
 	}).Error; err != nil {
-		t.Fatalf("inserting legacy media asset: %v", err)
-	}
-
-	if err := EnsureMediaAssetSchema(db); err != nil {
-		t.Fatalf("EnsureMediaAssetSchema returned error: %v", err)
-	}
-	if db.Migrator().HasTable("media_assets") {
-		t.Fatal("legacy media_assets table should have been renamed")
-	}
-	if !db.Migrator().HasTable(&domain.MediaAssetModel{}) {
-		t.Fatal("library_assets table should exist")
-	}
-	var asset domain.MediaAssetModel
-	if err := db.First(&asset, "id = ?", "asset-legacy").Error; err != nil {
-		t.Fatalf("loading migrated media asset: %v", err)
-	}
-	if asset.Filename != "legacy.png" || asset.Source != "generation" {
-		t.Fatalf("migrated asset = %#v, want legacy values preserved", asset)
-	}
-	if db.Migrator().HasIndex(&domain.MediaAssetModel{}, "media_assets_source_url_idx") {
-		t.Fatal("legacy media_assets source_url index should be dropped")
-	}
-	if !db.Migrator().HasIndex(&domain.MediaAssetModel{}, "library_assets_source_url_idx") {
-		t.Fatal("library_assets should include source_url index")
-	}
-	if !db.Migrator().HasIndex(&domain.MediaAssetModel{}, "library_assets_content_hash_idx") {
-		t.Fatal("library_assets should include content_hash index")
-	}
-	assertSchemaMigrationRecorded(t, db, mediaAssetLibraryTableMigrationKey)
-	if err := EnsureMediaAssetSchema(db); err != nil {
-		t.Fatalf("EnsureMediaAssetSchema second run returned error: %v", err)
-	}
-}
-
-func TestEnsureAgentModelProfileSchemaMigratesMiniMaxTemplateToDomesticEndpoint(t *testing.T) {
-	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "settings.sqlite"))
-	if err != nil {
-		t.Fatalf("OpenGormSQLite returned error: %v", err)
-	}
-	if err := db.AutoMigrate(&domain.AgentModelProfileModel{}); err != nil {
-		t.Fatalf("AutoMigrate returned error: %v", err)
-	}
-	insertedAt := "2026-06-01T00:00:00Z"
-	profiles := []domain.AgentModelProfileModel{
-		{
-			ID:               "minimax",
-			Name:             "MiniMax",
-			ProviderID:       "minimax",
-			ProviderLabel:    "MiniMax",
-			BaseURL:          "https://api.minimax.io/v1",
-			Model:            "MiniMax-M3",
-			ModelDisplayName: "MiniMax M3",
-			Enabled:          true,
-			APIKeyName:       "agent-model:minimax:api-key",
-			CreatedAt:        insertedAt,
-			UpdatedAt:        insertedAt,
-		},
-		{
-			ID:               "minimax-proxy",
-			Name:             "MiniMax Proxy",
-			ProviderID:       "minimax-proxy",
-			ProviderLabel:    "MiniMax Proxy",
-			BaseURL:          "https://proxy.example.com/v1",
-			Model:            "MiniMax-M3",
-			ModelDisplayName: "MiniMax M3",
-			Enabled:          true,
-			APIKeyName:       "agent-model:minimax-proxy:api-key",
-			CreatedAt:        insertedAt,
-			UpdatedAt:        insertedAt,
-		},
-	}
-	for _, profile := range profiles {
-		if err := db.Create(&profile).Error; err != nil {
-			t.Fatalf("inserting profile %q: %v", profile.ID, err)
-		}
-	}
-
-	if err := EnsureAgentModelProfileSchema(db); err != nil {
-		t.Fatalf("EnsureAgentModelProfileSchema returned error: %v", err)
-	}
-
-	var minimax domain.AgentModelProfileModel
-	if err := db.First(&minimax, "id = ?", "minimax").Error; err != nil {
-		t.Fatalf("loading migrated minimax profile: %v", err)
-	}
-	if minimax.BaseURL != "https://api.minimaxi.com/v1" {
-		t.Fatalf("minimax baseURL = %q, want domestic endpoint", minimax.BaseURL)
-	}
-	if minimax.ProviderID != "minimax-cn" {
-		t.Fatalf("minimax providerID = %q, want minimax-cn", minimax.ProviderID)
-	}
-	if minimax.Name != "MiniMax 国内" || minimax.ProviderLabel != "MiniMax 国内" {
-		t.Fatalf("minimax labels = (%q, %q), want domestic labels", minimax.Name, minimax.ProviderLabel)
-	}
-	if minimax.APIKeyName != "agent-model:minimax:api-key" {
-		t.Fatalf("minimax apiKeyName = %q, want existing profile key preserved", minimax.APIKeyName)
-	}
-	assertSchemaMigrationRecorded(t, db, agentModelProfileMiniMaxMigrationKey)
-	var custom domain.AgentModelProfileModel
-	if err := db.First(&custom, "id = ?", "minimax-proxy").Error; err != nil {
-		t.Fatalf("loading custom profile: %v", err)
-	}
-	if custom.BaseURL != "https://proxy.example.com/v1" {
-		t.Fatalf("custom baseURL = %q, want unchanged", custom.BaseURL)
-	}
-}
-
-func TestEnsureGenerationTaskSchemaRenamesAndBackfillsProvider(t *testing.T) {
-	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "settings.sqlite"))
-	if err != nil {
-		t.Fatalf("OpenGormSQLite returned error: %v", err)
-	}
-	if err := db.AutoMigrate(&legacyGenerationTaskWithChannelModel{}); err != nil {
-		t.Fatalf("creating legacy generation_tasks table: %v", err)
-	}
-	if err := db.Create(&legacyGenerationTaskWithChannelModel{
-		ID:                    "task-official",
-		Kind:                  "image",
-		RouteID:               coregeneration.RouteOfficialSeedream5Lite,
-		FamilyID:              coregeneration.FamilySeedream,
-		VersionID:             coregeneration.VersionSeedream5Lite,
-		Channel:               string(coregeneration.ProviderTypeOfficial),
-		Model:                 "doubao-seedream-5-0-260128",
-		Prompt:                "prompt",
-		ReferenceURLsJSON:     "[]",
-		ReferenceAssetIDsJSON: "[]",
-		ParamsJSON:            "{}",
-		Status:                " COMPLETED ",
-		Message:               "done",
-		AssetsJSON:            "[]",
-		UsageJSON:             "{}",
-		CreatedAt:             "2026-06-01T00:00:00Z",
-		UpdatedAt:             "2026-06-01T00:00:00Z",
-	}).Error; err != nil {
-		t.Fatalf("inserting legacy generation task: %v", err)
-	}
-
-	if err := EnsureGenerationTaskSchema(db); err != nil {
-		t.Fatalf("EnsureGenerationTaskSchema returned error: %v", err)
-	}
-	if db.Migrator().HasColumn(&legacyGenerationTaskProviderModel{}, "channel") {
-		t.Fatal("legacy channel column should have been renamed")
-	}
-	if !db.Migrator().HasColumn(&domain.GenerationTaskModel{}, "provider") {
-		t.Fatal("generation_tasks should include provider column")
-	}
-
-	var task domain.GenerationTaskModel
-	if err := db.First(&task, "id = ?", "task-official").Error; err != nil {
-		t.Fatalf("loading migrated task: %v", err)
-	}
-	if task.Provider != coregeneration.ProviderVolcengine {
-		t.Fatalf("provider = %q, want %q", task.Provider, coregeneration.ProviderVolcengine)
-	}
-	if task.Status != "completed" {
-		t.Fatalf("status = %q, want completed", task.Status)
-	}
-	if !db.Migrator().HasIndex(&domain.GenerationTaskModel{}, "generation_tasks_kind_status_updated_idx") {
-		t.Fatal("generation_tasks should include kind/status/updated_at index")
-	}
-	assertSchemaMigrationRecorded(t, db, generationTaskProviderBackfillMigrationKey)
-	assertSchemaMigrationRecorded(t, db, generationTaskStatusNormalizeMigrationKey)
-	if err := EnsureGenerationTaskSchema(db); err != nil {
-		t.Fatalf("EnsureGenerationTaskSchema second run returned error: %v", err)
-	}
-}
-
-func TestEnsureGenerationTaskSchemaBackfillsNormalizedAssetRows(t *testing.T) {
-	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "settings.sqlite"))
-	if err != nil {
-		t.Fatalf("OpenGormSQLite returned error: %v", err)
-	}
-	if err := db.AutoMigrate(&domain.GenerationTaskModel{}); err != nil {
-		t.Fatalf("creating legacy generation_tasks table: %v", err)
+		t.Fatalf("creating conversation fixture: %v", err)
 	}
 	if err := db.Create(&domain.GenerationTaskModel{
-		ID:                    "task-selected",
-		ConversationID:        "conversation-1",
-		ProjectID:             "project-a",
-		CapabilityID:          "character",
-		Kind:                  "image",
-		RouteID:               "route",
-		FamilyID:              "family",
-		VersionID:             "version",
-		Provider:              "provider",
-		ModelID:               "model-id",
-		Model:                 "model",
-		Prompt:                "prompt",
-		ReferenceURLsJSON:     "[]",
-		ReferenceAssetIDsJSON: "[]",
-		ParamsJSON:            "{}",
-		Status:                "completed",
-		Message:               "done",
-		AssetsJSON:            `[{"kind":"image","url":"/api/v1/media-assets/asset-a/content","title":"角色图","mimeType":"image/png","selected":true},{"kind":"image","url":"/api/v1/media-assets/asset-b/content","selected":true}]`,
-		DeletedAssetSlotsJSON: "[1]",
-		UsageJSON:             "{}",
-		CreatedAt:             "2026-06-01T00:00:00Z",
-		UpdatedAt:             "2026-06-01T00:01:00Z",
+		ID:             taskID,
+		ConversationID: domain.StringPtr("session-cascade"),
+		ProjectID:      domain.StringPtr(projectID),
+		CapabilityID:   domain.StringPtr("character"),
+		Kind:           "image",
+		RouteID:        "route",
+		FamilyID:       "family",
+		VersionID:      "version",
+		Provider:       "provider",
+		ModelID:        "model-id",
+		Model:          "model",
+		Prompt:         "prompt",
+		ParamsJSON:     "{}",
+		Status:         "completed",
+		Message:        "done",
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}).Error; err != nil {
-		t.Fatalf("inserting legacy selected task: %v", err)
+		t.Fatalf("creating generation task fixture: %v", err)
+	}
+	if err := db.Create(&domain.GenerationTaskReferenceModel{
+		TaskID:    taskID,
+		RefIndex:  0,
+		AssetID:   domain.StringPtr(assetID),
+		CreatedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("creating task reference fixture: %v", err)
+	}
+	if err := db.Create(&domain.GenerationTaskAssetModel{
+		TaskID:    taskID,
+		SlotIndex: 0,
+		AssetID:   assetID,
+		Selected:  true,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("creating task asset fixture: %v", err)
+	}
+	if err := db.Create(&domain.GenerationTaskAttemptModel{
+		ID:        "attempt-cascade",
+		TaskID:    taskID,
+		Action:    "create",
+		Status:    "completed",
+		CreatedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("creating task attempt fixture: %v", err)
+	}
+	if err := db.Create(&domain.ProjectSelectedAssetModel{
+		ID:              "selected-cascade",
+		ProjectID:       projectID,
+		ResourceType:    "character",
+		ResourceTitle:   domain.StringPtr("Cascade"),
+		AssetID:         assetID,
+		SourceType:      domain.StringPtr("generated"),
+		SourceTaskID:    domain.StringPtr(taskID),
+		SourceSlotIndex: 0,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}).Error; err != nil {
+		t.Fatalf("creating selected asset fixture: %v", err)
+	}
+	if err := db.Create(&domain.ProjectReferenceAssetModel{
+		ID:        "reference-cascade",
+		ProjectID: projectID,
+		AssetID:   assetID,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("creating project reference fixture: %v", err)
+	}
+	if err := db.Create(&domain.GenerationNotificationModel{
+		ID:          "notification-cascade",
+		TaskID:      taskID,
+		TaskKind:    "image",
+		TaskStatus:  "completed",
+		ProjectID:   domain.StringPtr(projectID),
+		Title:       "Done",
+		Description: "Done",
+		TargetJSON:  "{}",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}).Error; err != nil {
+		t.Fatalf("creating notification fixture: %v", err)
 	}
 
-	if err := EnsureGenerationTaskSchema(db); err != nil {
-		t.Fatalf("EnsureGenerationTaskSchema returned error: %v", err)
+	if err := db.Delete(&domain.WorkspaceProjectModel{ID: projectID}).Error; err != nil {
+		t.Fatalf("deleting project: %v", err)
 	}
-
-	var taskAssets []domain.GenerationTaskAssetModel
-	if err := db.Find(&taskAssets, "task_id = ?", "task-selected").Error; err != nil {
-		t.Fatalf("loading normalized task assets: %v", err)
+	for _, tc := range []struct {
+		name  string
+		model any
+	}{
+		{name: "projects", model: &domain.WorkspaceProjectModel{}},
+		{name: "assets", model: &domain.AssetModel{}},
+		{name: "generation_tasks", model: &domain.GenerationTaskModel{}},
+		{name: "generation_task_references", model: &domain.GenerationTaskReferenceModel{}},
+		{name: "generation_task_assets", model: &domain.GenerationTaskAssetModel{}},
+		{name: "generation_task_attempts", model: &domain.GenerationTaskAttemptModel{}},
+		{name: "project_selected_assets", model: &domain.ProjectSelectedAssetModel{}},
+		{name: "project_reference_assets", model: &domain.ProjectReferenceAssetModel{}},
+		{name: "generation_notifications", model: &domain.GenerationNotificationModel{}},
+	} {
+		assertModelCount(t, db, tc.name, tc.model, 0)
 	}
-	if len(taskAssets) != 1 ||
-		taskAssets[0].AssetIndex != 0 ||
-		taskAssets[0].LibraryAssetID != "asset-a" ||
-		!taskAssets[0].Selected {
-		t.Fatalf("task assets = %#v, want selected non-deleted asset row", taskAssets)
-	}
-	var resourceAssets []domain.ProjectResourceAssetModel
-	if err := db.Find(&resourceAssets, "project_id = ?", "project-a").Error; err != nil {
-		t.Fatalf("loading project resource assets: %v", err)
-	}
-	if len(resourceAssets) != 1 ||
-		resourceAssets[0].ID != "task-selected:0" ||
-		resourceAssets[0].ResourceType != "character" ||
-		resourceAssets[0].URL != "/api/v1/media-assets/asset-a/content" {
-		t.Fatalf("resource assets = %#v, want selected character resource row", resourceAssets)
-	}
-	var selectedAssets []domain.ProjectSelectedAssetModel
-	if err := db.Find(&selectedAssets, "project_id = ?", "project-a").Error; err != nil {
-		t.Fatalf("loading project selected assets: %v", err)
-	}
-	if len(selectedAssets) != 1 ||
-		selectedAssets[0].ResourceType != "character" ||
-		selectedAssets[0].MediaAssetID != "asset-a" ||
-		selectedAssets[0].SourceTaskID != "task-selected" ||
-		selectedAssets[0].SourceAssetIndex != 0 ||
-		selectedAssets[0].URL != "/api/v1/media-assets/asset-a/content" {
-		t.Fatalf("selected assets = %#v, want selected character asset row", selectedAssets)
-	}
-	assertSchemaMigrationRecorded(t, db, generationTaskAssetsBackfillMigrationKey)
-	assertSchemaMigrationRecorded(t, db, projectSelectedAssetsBackfillMigrationKey)
+	assertModelCount(t, db, "generation_conversations", &domain.GenerationConversationModel{}, 1)
 }
 
-type legacyGenerationTaskWithChannelModel struct {
-	ID                    string `gorm:"column:id;primaryKey"`
-	ProviderTaskID        string `gorm:"column:provider_task_id;not null;default:'';index:generation_tasks_provider_task_id_idx"`
-	ConversationID        string `gorm:"column:conversation_id;not null;default:'';index:generation_tasks_conversation_idx,priority:1"`
-	ProjectID             string `gorm:"column:project_id;not null;default:'';index:generation_tasks_project_id_idx"`
-	CapabilityID          string `gorm:"column:capability_id;not null;default:'';index:generation_tasks_capability_idx"`
-	Kind                  string `gorm:"column:kind;not null"`
-	RouteID               string `gorm:"column:route_id;not null"`
-	FamilyID              string `gorm:"column:family_id;not null"`
-	VersionID             string `gorm:"column:version_id;not null"`
-	Channel               string `gorm:"column:channel;not null"`
-	ModelID               string `gorm:"column:model_id;not null"`
-	Model                 string `gorm:"column:model;not null"`
-	Prompt                string `gorm:"column:prompt;not null"`
-	ReferenceURLsJSON     string `gorm:"column:reference_urls_json;not null"`
-	ReferenceAssetIDsJSON string `gorm:"column:reference_asset_ids_json;not null;default:'[]'"`
-	ParamsJSON            string `gorm:"column:params_json;not null"`
-	Status                string `gorm:"column:status;not null"`
-	Message               string `gorm:"column:message;not null"`
-	Text                  string `gorm:"column:text;not null;default:''"`
-	AssetsJSON            string `gorm:"column:assets_json;not null"`
-	UsageJSON             string `gorm:"column:usage_json;not null"`
-	Error                 string `gorm:"column:error;not null;default:''"`
-	ErrorCode             string `gorm:"column:error_code;not null;default:''"`
-	ErrorType             string `gorm:"column:error_type;not null;default:''"`
-	Retryable             bool   `gorm:"column:retryable;not null;default:false"`
-	CreatedAt             string `gorm:"column:created_at;not null"`
-	UpdatedAt             string `gorm:"column:updated_at;not null"`
-}
-
-func (legacyGenerationTaskWithChannelModel) TableName() string {
-	return "generation_tasks"
-}
-
-type legacyMediaAssetModel struct {
-	ID                string  `gorm:"column:id;primaryKey"`
-	Kind              string  `gorm:"column:kind;not null"`
-	Filename          string  `gorm:"column:filename;not null"`
-	MIMEType          string  `gorm:"column:mime_type;not null"`
-	SizeBytes         int64   `gorm:"column:size_bytes;not null"`
-	Path              string  `gorm:"column:path;not null"`
-	URL               string  `gorm:"column:url;not null"`
-	SourceURL         string  `gorm:"column:source_url;not null;default:'';index:media_assets_source_url_idx"`
-	ProjectID         string  `gorm:"column:project_id;not null;default:'';index:media_assets_project_id_idx"`
-	Source            string  `gorm:"column:source;not null;default:'';index:media_assets_source_idx"`
-	ConversationID    string  `gorm:"column:conversation_id;not null;default:'';index:media_assets_conversation_id_idx"`
-	SectionID         string  `gorm:"column:section_id;not null;default:'';index:media_assets_section_id_idx"`
-	RelativePath      string  `gorm:"column:relative_path;not null;default:''"`
-	DurationSeconds   float64 `gorm:"column:duration_seconds;not null;default:0"`
-	Width             int     `gorm:"column:width;not null;default:0"`
-	Height            int     `gorm:"column:height;not null;default:0"`
-	PosterPath        string  `gorm:"column:poster_path;not null;default:''"`
-	PosterURL         string  `gorm:"column:poster_url;not null;default:''"`
-	MetadataStatus    string  `gorm:"column:metadata_status;not null;default:''"`
-	MetadataError     string  `gorm:"column:metadata_error;not null;default:''"`
-	MetadataUpdatedAt string  `gorm:"column:metadata_updated_at;not null;default:''"`
-	CreatedAt         string  `gorm:"column:created_at;not null"`
-	UpdatedAt         string  `gorm:"column:updated_at;not null"`
-}
-
-func (legacyMediaAssetModel) TableName() string {
-	return "media_assets"
-}
-
-func assertSchemaMigrationRecorded(t *testing.T, db *gorm.DB, key string) {
+func assertModelCount(t *testing.T, db *gorm.DB, name string, model any, want int64) {
 	t.Helper()
-	var record schemaMigrationRecord
-	if err := db.First(&record, "key = ?", key).Error; err != nil {
-		t.Fatalf("schema migration %q was not recorded: %v", key, err)
+	var count int64
+	if err := db.Model(model).Count(&count).Error; err != nil {
+		t.Fatalf("counting %s: %v", name, err)
 	}
+	if count != want {
+		t.Fatalf("%s count = %d, want %d", name, count, want)
+	}
+}
+
+func TestEnsureWorkspaceSchemaUsesNormalizedGenerationTaskColumns(t *testing.T) {
+	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "workspace.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenGormSQLite returned error: %v", err)
+	}
+	if err := EnsureWorkspaceSchema(db); err != nil {
+		t.Fatalf("EnsureWorkspaceSchema returned error: %v", err)
+	}
+
+	for _, column := range []string{
+		"assets_json",
+		"deleted_asset_slots_json",
+		"usage_json",
+		"reference_urls_json",
+		"reference_asset_ids_json",
+	} {
+		if testColumnExists(t, db, "generation_tasks", column) {
+			t.Fatalf("generation_tasks should not include removed column %s", column)
+		}
+	}
+	for _, column := range []string{
+		"input_tokens",
+		"output_tokens",
+		"total_tokens",
+		"reasoning_tokens",
+		"cached_tokens",
+	} {
+		if !testColumnExists(t, db, "generation_tasks", column) {
+			t.Fatalf("generation_tasks should include token column %s", column)
+		}
+	}
+	if !db.Migrator().HasTable(&domain.GenerationTaskReferenceModel{}) {
+		t.Fatal("generation_task_references table should exist")
+	}
+	if !db.Migrator().HasTable(&domain.GenerationTaskAssetModel{}) {
+		t.Fatal("generation_task_assets table should exist")
+	}
+}
+
+func TestEnsureWorkspaceSchemaCreatesAssetsWithoutBase64(t *testing.T) {
+	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "workspace.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenGormSQLite returned error: %v", err)
+	}
+	if err := EnsureWorkspaceSchema(db); err != nil {
+		t.Fatalf("EnsureWorkspaceSchema returned error: %v", err)
+	}
+	if !db.Migrator().HasTable(&domain.AssetModel{}) {
+		t.Fatal("assets table should exist")
+	}
+	if testColumnExists(t, db, "assets", "base64") {
+		t.Fatal("assets should not persist base64")
+	}
+	if !testColumnExists(t, db, "assets", "rel_path") {
+		t.Fatal("assets should include rel_path")
+	}
+}
+
+func testColumnExists(t *testing.T, db *gorm.DB, table string, column string) bool {
+	t.Helper()
+	columns, err := db.Migrator().ColumnTypes(table)
+	if err != nil {
+		t.Fatalf("reading columns for %s: %v", table, err)
+	}
+	for _, info := range columns {
+		if strings.EqualFold(info.Name(), column) {
+			return true
+		}
+	}
+	return false
 }

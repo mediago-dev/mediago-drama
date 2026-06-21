@@ -239,6 +239,9 @@ func (store *Service) appendAgentEvent(event agentEvent) (agentEvent, error) {
 	if strings.TrimSpace(event.SessionID) == "" {
 		return event, fmt.Errorf("agent event sessionID is required")
 	}
+	if err := store.ensureProjectRecord(event.ProjectID); err != nil {
+		return event, err
+	}
 	path, err := store.agentSessionHistoryPathFor(event.ProjectID, event.SessionID)
 	if err != nil {
 		return event, err
@@ -458,7 +461,7 @@ func (store *Service) upsertAgentSessionIndexUnlocked(event agentEvent) error {
 	existing, _ := store.agentSessions.GetAgentSession(sessionID)
 	status := FirstNonEmpty(sessionStatusFromAgentEvent(event), existing.LastStatus)
 	message := FirstNonEmpty(event.Message, existing.LastMessage)
-	updatedAt := FirstNonEmpty(event.CreatedAt, existing.UpdatedAt, timestamp.NowRFC3339Nano())
+	updatedAt := FirstNonEmpty(event.CreatedAt, domain.StringFromTime(existing.UpdatedAt), timestamp.NowRFC3339Nano())
 	return store.agentSessions.UpsertAgentSession(domain.AgentSessionModel{
 		SessionID:    sessionID,
 		ProjectID:    FirstNonEmpty(projectID, existing.ProjectID),
@@ -466,7 +469,7 @@ func (store *Service) upsertAgentSessionIndexUnlocked(event agentEvent) error {
 		ACPSessionID: existing.ACPSessionID,
 		LastStatus:   status,
 		LastMessage:  message,
-		UpdatedAt:    updatedAt,
+		UpdatedAt:    domain.TimeFromString(updatedAt),
 	})
 }
 

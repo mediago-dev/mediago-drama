@@ -133,6 +133,7 @@ func TestResolveGenerationReferencesCompressesImageAssets(t *testing.T) {
 
 func TestImportGenerationMediaAssetsCreatesReferenceHistoryTasks(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	seedGenerationTaskProject(t, dbPath, "project-alpha")
 	mediaAssets := media.NewMediaAssets(dbPath, t.TempDir())
 	generatedID := 0
 	generationTasks := NewGenerationTaskService(dbPath, func(prefix string) (string, error) {
@@ -177,7 +178,7 @@ func TestImportGenerationMediaAssetsCreatesReferenceHistoryTasks(t *testing.T) {
 	}
 	if len(task.Assets) != 1 ||
 		task.Assets[0].URL != asset.URL ||
-		task.Assets[0].Title != "场景图" ||
+		task.Assets[0].Title != asset.Filename ||
 		task.Assets[0].Selected {
 		t.Fatalf("assets = %+v, want unselected reference to media asset", task.Assets)
 	}
@@ -595,7 +596,8 @@ func TestCreateVideoGenerationSubmitsProviderTaskInBackground(t *testing.T) {
 }
 
 func TestCreateJimengImageGenerationPersistsOneTaskForRequestedCount(t *testing.T) {
-	repo, err := repository.NewGenerationTaskRepository(filepath.Join(t.TempDir(), "settings.db"))
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	repo, err := repository.NewGenerationTaskRepository(dbPath)
 	if err != nil {
 		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
 	}
@@ -609,7 +611,8 @@ func TestCreateJimengImageGenerationPersistsOneTaskForRequestedCount(t *testing.
 		started: make(chan coregeneration.Request, 3),
 		release: make(chan struct{}),
 	}
-	workflow := NewGenerationService(settingsSvc, store, nil)
+	mediaAssets := media.NewMediaAssets(dbPath, t.TempDir())
+	workflow := NewGenerationService(settingsSvc, store, mediaAssets)
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
 		if route.ID != coregeneration.RouteJimengSeedream50 {
 			t.Fatalf("route = %q, want jimeng seedream route", route.ID)
@@ -678,7 +681,8 @@ func TestCreateJimengImageGenerationPersistsOneTaskForRequestedCount(t *testing.
 }
 
 func TestCreateJimengImageGenerationPreservesPartialAssetsOnFailure(t *testing.T) {
-	repo, err := repository.NewGenerationTaskRepository(filepath.Join(t.TempDir(), "settings.db"))
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	repo, err := repository.NewGenerationTaskRepository(dbPath)
 	if err != nil {
 		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
 	}
@@ -693,7 +697,8 @@ func TestCreateJimengImageGenerationPreservesPartialAssetsOnFailure(t *testing.T
 		release: make(chan struct{}),
 		err:     fmt.Errorf("third image failed"),
 	}
-	workflow := NewGenerationService(settingsSvc, store, nil)
+	mediaAssets := media.NewMediaAssets(dbPath, t.TempDir())
+	workflow := NewGenerationService(settingsSvc, store, mediaAssets)
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
 		return provider, nil
 	}
@@ -1239,8 +1244,8 @@ func (provider *blockingMultiAssetImageGenerateProvider) Generate(ctx context.Co
 				ID:     "image-batch",
 				Status: "completed",
 				Assets: []coregeneration.Asset{
-					{Kind: coregeneration.KindImage, URL: "https://example.test/generated-1.png"},
-					{Kind: coregeneration.KindImage, URL: "https://example.test/generated-2.png"},
+					{Kind: coregeneration.KindImage, MIMEType: "image/png", Base64: base64.StdEncoding.EncodeToString([]byte("generated-1"))},
+					{Kind: coregeneration.KindImage, MIMEType: "image/png", Base64: base64.StdEncoding.EncodeToString([]byte("generated-2"))},
 				},
 			},
 			Completed: 2,
@@ -1256,9 +1261,9 @@ func (provider *blockingMultiAssetImageGenerateProvider) Generate(ctx context.Co
 		ID:     "image-batch",
 		Status: "completed",
 		Assets: []coregeneration.Asset{
-			{Kind: coregeneration.KindImage, URL: "https://example.test/generated-1.png"},
-			{Kind: coregeneration.KindImage, URL: "https://example.test/generated-2.png"},
-			{Kind: coregeneration.KindImage, URL: "https://example.test/generated-3.png"},
+			{Kind: coregeneration.KindImage, MIMEType: "image/png", Base64: base64.StdEncoding.EncodeToString([]byte("generated-1"))},
+			{Kind: coregeneration.KindImage, MIMEType: "image/png", Base64: base64.StdEncoding.EncodeToString([]byte("generated-2"))},
+			{Kind: coregeneration.KindImage, MIMEType: "image/png", Base64: base64.StdEncoding.EncodeToString([]byte("generated-3"))},
 		},
 	}, provider.err
 }

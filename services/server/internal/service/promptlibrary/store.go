@@ -316,7 +316,7 @@ func (store *Service) Update(ctx context.Context, id string, entry PromptEntry) 
 
 	entry.Builtin = current.Builtin
 	now := timestamp.NowRFC3339Nano()
-	model := promptEntryModelFromEntry(entry, current.CreatedAt, now)
+	model := promptEntryModelFromEntry(entry, domain.StringFromTime(current.CreatedAt), now)
 	if err := store.repo.UpsertPromptLibraryEntry(model); err != nil {
 		return PromptEntry{}, err
 	}
@@ -342,18 +342,18 @@ func (store *Service) Reset(ctx context.Context, id string) (PromptEntry, error)
 	}
 	current, err := store.repo.GetPromptLibraryEntry(id)
 	if repository.IsRecordNotFound(err) {
-		current.CreatedAt = timestamp.NowRFC3339Nano()
+		current.CreatedAt = domain.TimeFromString(timestamp.NowRFC3339Nano())
 	} else if err != nil {
 		return PromptEntry{}, err
 	}
 
 	now := timestamp.NowRFC3339Nano()
-	if strings.TrimSpace(current.CreatedAt) == "" {
-		current.CreatedAt = now
+	if current.CreatedAt.IsZero() {
+		current.CreatedAt = domain.TimeFromString(now)
 	}
 	defaultEntry.Source = SourceBuiltin
 	defaultEntry.Builtin = true
-	model := promptEntryModelFromEntry(defaultEntry, current.CreatedAt, now)
+	model := promptEntryModelFromEntry(defaultEntry, domain.StringFromTime(current.CreatedAt), now)
 	if err := store.repo.UpsertPromptLibraryEntry(model); err != nil {
 		return PromptEntry{}, err
 	}
@@ -421,10 +421,10 @@ func (store *Service) syncBuiltinsLocked(ctx context.Context) error {
 		if exists && !builtinModelNeedsSync(current, defaultEntry) {
 			continue
 		}
-		createdAt := now
-		if exists && strings.TrimSpace(current.CreatedAt) != "" {
-			createdAt = current.CreatedAt
-		}
+	createdAt := now
+	if exists && !current.CreatedAt.IsZero() {
+		createdAt = domain.StringFromTime(current.CreatedAt)
+	}
 		defaultEntry.Source = SourceBuiltin
 		defaultEntry.Builtin = true
 		model := promptEntryModelFromEntry(defaultEntry, createdAt, now)
@@ -741,8 +741,8 @@ func promptEntryModelFromEntry(entry PromptEntry, createdAt string, updatedAt st
 		Prompt:    entry.Prompt,
 		Source:    string(entry.Source),
 		Builtin:   entry.Builtin,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
+		CreatedAt: domain.TimeFromString(createdAt),
+		UpdatedAt: domain.TimeFromString(updatedAt),
 	}
 }
 
@@ -752,8 +752,8 @@ func promptCategoryFromModel(model promptCategoryModel) PromptCategory {
 		Label:     model.Label,
 		Source:    Source(model.Source),
 		Builtin:   model.Builtin,
-		CreatedAt: model.CreatedAt,
-		UpdatedAt: model.UpdatedAt,
+		CreatedAt: domain.StringFromTime(model.CreatedAt),
+		UpdatedAt: domain.StringFromTime(model.UpdatedAt),
 	})
 }
 
@@ -764,8 +764,8 @@ func promptCategoryModelFromCategory(category PromptCategory, createdAt string, 
 		Label:     category.Label,
 		Source:    string(category.Source),
 		Builtin:   category.Builtin,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
+		CreatedAt: domain.TimeFromString(createdAt),
+		UpdatedAt: domain.TimeFromString(updatedAt),
 	}
 }
 

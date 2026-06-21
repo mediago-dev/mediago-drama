@@ -429,10 +429,10 @@ func (store *Service) loadProjectBriefUnlocked(projectID string) (ProjectBrief, 
 		}
 		return ProjectBrief{}, fmt.Errorf("reading project brief for %s: %w", projectID, err)
 	}
-	if !model.BriefJSON.Valid {
+	if model.BriefJSON == nil {
 		return ProjectBrief{}, nil
 	}
-	return DecodeProjectBriefJSON(projectID, model.BriefJSON.String)
+	return DecodeProjectBriefJSON(projectID, *model.BriefJSON)
 }
 
 func (store *Service) loadProjectsUnlocked(status string) ([]workspaceProjectRecord, error) {
@@ -494,8 +494,8 @@ func (store *Service) insertProjectUnlocked(project workspaceProjectRecord) erro
 		Description: project.Description,
 		ProjectDir:  project.ProjectDir,
 		RelativeDir: project.RelativeDir,
-		CreatedAt:   project.CreatedAt,
-		UpdatedAt:   project.UpdatedAt,
+		CreatedAt:   domain.TimeFromString(project.CreatedAt),
+		UpdatedAt:   domain.TimeFromString(project.UpdatedAt),
 	}
 	if err := store.workspace.UpsertProject(model); err != nil {
 		return fmt.Errorf("saving project %s: %w", project.ID, err)

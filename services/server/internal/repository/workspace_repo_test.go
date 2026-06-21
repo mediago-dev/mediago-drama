@@ -2,8 +2,8 @@ package repository
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 )
@@ -19,8 +19,8 @@ func TestWorkspaceRepositoryProjectAndOperationLogLifecycle(t *testing.T) {
 		ID:          "project-1",
 		Name:        "Project One",
 		RelativeDir: "projects/project-1",
-		CreatedAt:   "2026-05-22T00:00:00Z",
-		UpdatedAt:   "2026-05-22T00:00:00Z",
+		CreatedAt:   domain.TimeFromString("2026-05-22T00:00:00Z"),
+		UpdatedAt:   domain.TimeFromString("2026-05-22T00:00:00Z"),
 	}
 	if err := repo.UpsertProject(project); err != nil {
 		t.Fatalf("UpsertProject() error = %v", err)
@@ -41,8 +41,8 @@ func TestWorkspaceRepositoryProjectAndOperationLogLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetProject() error = %v", err)
 	}
-	if !gotProject.BriefJSON.Valid {
-		t.Fatal("BriefJSON.Valid = false, want true")
+	if gotProject.BriefJSON == nil || *gotProject.BriefJSON == "" {
+		t.Fatal("BriefJSON is empty, want persisted brief")
 	}
 
 	operations := []domain.DocumentOperationLogModel{
@@ -51,7 +51,7 @@ func TestWorkspaceRepositoryProjectAndOperationLogLifecycle(t *testing.T) {
 			ID:         "op-1",
 			DocumentID: "doc-1",
 			RecordJSON: `{"id":"op-1"}`,
-			CreatedAt:  "2026-05-22T00:04:00Z",
+			CreatedAt:  domain.TimeFromString("2026-05-22T00:04:00Z"),
 		},
 	}
 	if err := repo.ReplaceDocumentOperationLogs(project.ID, operations); err != nil {
@@ -88,7 +88,7 @@ func TestWorkspaceRepositoryProjectLifecycleFieldsMigrate(t *testing.T) {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
 	repo := NewWorkspaceRepository(db)
-	now := "2026-06-17T00:00:00Z"
+	now := domain.TimeFromString("2026-06-17T00:00:00Z")
 
 	if err := repo.UpsertProject(domain.WorkspaceProjectModel{
 		ID:          "project-status",
@@ -119,7 +119,7 @@ func TestWorkspaceRepositoryProjectStatusLifecycle(t *testing.T) {
 	}
 	repo := NewWorkspaceRepository(db)
 	rootDir := t.TempDir()
-	now := "2026-06-17T00:00:00Z"
+	now := domain.TimeFromString("2026-06-17T00:00:00Z")
 
 	for _, project := range []domain.WorkspaceProjectModel{
 		{
@@ -182,7 +182,7 @@ func TestWorkspaceRepositoryProjectStatusLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListProjectsByStatus(archived) error = %v", err)
 	}
-	if len(archived) != 1 || archived[0].ID != "project-archived" || archived[0].ArchivedAt != archivedAt {
+	if len(archived) != 1 || archived[0].ID != "project-archived" || timePtrString(archived[0].ArchivedAt) != archivedAt {
 		t.Fatalf("archived = %#v, want archived project", archived)
 	}
 	trashed, err := repo.ListProjectsByStatus(ProjectStatusTrashed)
@@ -192,7 +192,7 @@ func TestWorkspaceRepositoryProjectStatusLifecycle(t *testing.T) {
 	if len(trashed) != 1 || trashed[0].ID != "project-trashed" ||
 		trashed[0].OriginalProjectDir != originalDir ||
 		trashed[0].TrashProjectDir != trashDir ||
-		trashed[0].TrashedAt != trashedAt {
+		timePtrString(trashed[0].TrashedAt) != trashedAt {
 		t.Fatalf("trashed = %#v, want trashed project metadata", trashed)
 	}
 
@@ -209,7 +209,7 @@ func TestWorkspaceRepositoryProjectStatusLifecycle(t *testing.T) {
 		restored.ProjectDir != restoredDir ||
 		restored.OriginalProjectDir != "" ||
 		restored.TrashProjectDir != "" ||
-		restored.TrashedAt != "" {
+		restored.TrashedAt != nil {
 		t.Fatalf("restored project = %#v, want active with cleared trash metadata", restored)
 	}
 
@@ -228,7 +228,7 @@ func TestWorkspaceRepositoryDeletesDeprecatedStudioCapabilityProjects(t *testing
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
 	repo := NewWorkspaceRepository(db)
-	now := "2026-06-06T00:00:00Z"
+	now := domain.TimeFromString("2026-06-06T00:00:00Z")
 	legacyProjectID := "project-legacy-studio"
 	retainedProjectID := "project-retained-studio"
 
@@ -256,18 +256,26 @@ func TestWorkspaceRepositoryDeletesDeprecatedStudioCapabilityProjects(t *testing
 	}); err != nil {
 		t.Fatalf("UpsertProject(retained) error = %v", err)
 	}
-	if err := db.Create(&domain.ProjectAssetModel{
-		ProjectID: legacyProjectID,
+	if err := db.Create(&domain.AssetModel{
 		ID:        "asset-1",
+		ProjectID: domain.StringPtr(legacyProjectID),
 		Kind:      "text",
 		Filename:  "story.txt",
 		MIMEType:  "text/plain",
-		SizeBytes: 12,
-		Path:      "/tmp/story.txt",
+		RelPath:   "studio/project-legacy-studio/story.txt",
 		CreatedAt: now,
 		UpdatedAt: now,
 	}).Error; err != nil {
-		t.Fatalf("Create(ProjectAssetModel) error = %v", err)
+		t.Fatalf("Create(AssetModel) error = %v", err)
+	}
+	if err := db.Create(&domain.ProjectReferenceAssetModel{
+		ProjectID: legacyProjectID,
+		ID:        "reference-1",
+		AssetID:   "asset-1",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("Create(ProjectReferenceAssetModel) error = %v", err)
 	}
 
 	deleted, err := repo.DeleteDeprecatedStudioCapabilityProjects()
@@ -288,7 +296,7 @@ func TestWorkspaceRepositoryDeletesDeprecatedStudioCapabilityProjects(t *testing
 		name  string
 		model any
 	}{
-		{name: "project assets", model: &domain.ProjectAssetModel{}},
+		{name: "project assets", model: &domain.ProjectReferenceAssetModel{}},
 	} {
 		var count int64
 		if err := db.Model(table.model).Where("project_id = ?", legacyProjectID).Count(&count).Error; err != nil {
@@ -310,7 +318,7 @@ func TestWorkspaceRepositoryUpdatesProjectStorageLocation(t *testing.T) {
 	otherProjectID := "project-other"
 	oldDir := filepath.Join(t.TempDir(), "workspace", "local-projects", projectID)
 	newDir := filepath.Join(t.TempDir(), "workspace", "projects", projectID)
-	now := "2026-06-06T00:00:00Z"
+	now := domain.TimeFromString("2026-06-06T00:00:00Z")
 
 	for _, project := range []domain.WorkspaceProjectModel{
 		{
@@ -337,36 +345,51 @@ func TestWorkspaceRepositoryUpdatesProjectStorageLocation(t *testing.T) {
 		}
 	}
 	assetRepo := NewProjectAssetRepositoryFromDB(db)
-	for _, asset := range []domain.ProjectAssetModel{
+	for _, asset := range []domain.ProjectReferenceAssetModel{
 		{
 			ProjectID: projectID,
-			ID:        "asset-1",
-			Kind:      "text",
-			Filename:  "story.txt",
-			MIMEType:  "text/plain",
-			Path:      filepath.Join(oldDir, "assets", "asset-1.txt"),
+			ID:        "reference-1",
 			CreatedAt: now,
 			UpdatedAt: now,
+			Asset: domain.AssetModel{
+				ID:        "asset-1",
+				Kind:      "text",
+				Filename:  "story.txt",
+				MIMEType:  "text/plain",
+				RelPath:   "local-projects/" + projectID + "/assets/asset-1.txt",
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
 		},
 		{
 			ProjectID: projectID,
-			ID:        "asset-outside",
-			Kind:      "text",
-			Filename:  "outside.txt",
-			MIMEType:  "text/plain",
-			Path:      filepath.Join(t.TempDir(), "outside.txt"),
+			ID:        "reference-outside",
 			CreatedAt: now,
 			UpdatedAt: now,
+			Asset: domain.AssetModel{
+				ID:        "asset-outside",
+				Kind:      "text",
+				Filename:  "outside.txt",
+				MIMEType:  "text/plain",
+				RelPath:   "external/outside.txt",
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
 		},
 		{
 			ProjectID: otherProjectID,
-			ID:        "asset-other",
-			Kind:      "text",
-			Filename:  "other.txt",
-			MIMEType:  "text/plain",
-			Path:      filepath.Join(oldDir, "assets", "other.txt"),
+			ID:        "reference-other",
 			CreatedAt: now,
 			UpdatedAt: now,
+			Asset: domain.AssetModel{
+				ID:        "asset-other",
+				Kind:      "text",
+				Filename:  "other.txt",
+				MIMEType:  "text/plain",
+				RelPath:   "local-projects/" + projectID + "/assets/other.txt",
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
 		},
 	} {
 		if err := assetRepo.CreateProjectAsset(asset); err != nil {
@@ -393,28 +416,35 @@ func TestWorkspaceRepositoryUpdatesProjectStorageLocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetProject() error = %v", err)
 	}
-	if project.ProjectDir != newDir || project.RelativeDir != "projects/"+projectID || project.UpdatedAt != updatedAt {
-		t.Fatalf("project storage = (%q, %q, %q), want new location", project.ProjectDir, project.RelativeDir, project.UpdatedAt)
+	if project.ProjectDir != newDir || project.RelativeDir != "projects/"+projectID || domain.StringFromTime(project.UpdatedAt) != updatedAt {
+		t.Fatalf("project storage = (%q, %q, %q), want new location", project.ProjectDir, project.RelativeDir, domain.StringFromTime(project.UpdatedAt))
 	}
-	asset, err := assetRepo.GetProjectAsset(projectID, "asset-1")
+	asset, err := assetRepo.GetProjectAsset(projectID, "reference-1")
 	if err != nil {
-		t.Fatalf("GetProjectAsset(asset-1) error = %v", err)
+		t.Fatalf("GetProjectAsset(reference-1) error = %v", err)
 	}
-	if asset.Path != filepath.Join(newDir, "assets", "asset-1.txt") {
-		t.Fatalf("asset path = %q, want rewritten path", asset.Path)
+	if asset.Asset.RelPath != "local-projects/"+projectID+"/assets/asset-1.txt" {
+		t.Fatalf("asset rel_path = %q, want stable relative path", asset.Asset.RelPath)
 	}
-	outsideAsset, err := assetRepo.GetProjectAsset(projectID, "asset-outside")
+	outsideAsset, err := assetRepo.GetProjectAsset(projectID, "reference-outside")
 	if err != nil {
-		t.Fatalf("GetProjectAsset(asset-outside) error = %v", err)
+		t.Fatalf("GetProjectAsset(reference-outside) error = %v", err)
 	}
-	if strings.Contains(outsideAsset.Path, newDir) {
-		t.Fatalf("outside asset path = %q, should not be rewritten", outsideAsset.Path)
+	if outsideAsset.Asset.RelPath != "external/outside.txt" {
+		t.Fatalf("outside asset rel_path = %q, should stay unchanged", outsideAsset.Asset.RelPath)
 	}
-	otherAsset, err := assetRepo.GetProjectAsset(otherProjectID, "asset-other")
+	otherAsset, err := assetRepo.GetProjectAsset(otherProjectID, "reference-other")
 	if err != nil {
-		t.Fatalf("GetProjectAsset(asset-other) error = %v", err)
+		t.Fatalf("GetProjectAsset(reference-other) error = %v", err)
 	}
-	if otherAsset.Path != filepath.Join(oldDir, "assets", "other.txt") {
-		t.Fatalf("other project asset path = %q, should not be rewritten", otherAsset.Path)
+	if otherAsset.Asset.RelPath != "local-projects/"+projectID+"/assets/other.txt" {
+		t.Fatalf("other project asset rel_path = %q, should not be rewritten", otherAsset.Asset.RelPath)
 	}
+}
+
+func timePtrString(value *time.Time) string {
+	if value == nil {
+		return ""
+	}
+	return domain.StringFromTime(*value)
 }

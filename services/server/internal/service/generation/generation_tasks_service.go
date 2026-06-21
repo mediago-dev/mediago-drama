@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	serviceshared "github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 )
 
 const generationTaskAttemptListLimit = 8
@@ -35,23 +35,23 @@ type generationTaskAttemptModel = domain.GenerationTaskAttemptModel
 type generationConversationModel = domain.GenerationConversationModel
 type projectSelectedAssetModel = domain.ProjectSelectedAssetModel
 
-// NewGenerationTaskService returns a generation task service backed by settings DB.
+// NewGenerationTaskService returns a generation task service backed by the workspace DB.
 func NewGenerationTaskService(dbPath string, idGenerator func(string) (string, error)) *GenerationTaskService {
 	if dbPath == "" {
-		dbPath = config.DefaultSettingsDBPath()
+		dbPath = serviceshared.WorkspacePathsFor("").DatabasePath()
 	}
 	if idGenerator == nil {
 		idGenerator = defaultGenerationTaskID
 	}
 
 	service := &GenerationTaskService{idGenerator: idGenerator}
-	repos, err := repository.OpenSettingsRepositories(dbPath)
+	repo, err := repository.NewGenerationTaskRepository(dbPath)
 	if err != nil {
 		service.initErr = err
 		return service
 	}
 
-	service.repo = repos.GenerationTasks
+	service.repo = repo
 	return service
 }
 
@@ -147,36 +147,9 @@ func (service *GenerationTaskService) ListByProject(kind string, projectID strin
 	return tasks, nil
 }
 
-// ListProjectResourceAssets returns normalized selected project resources.
+// ListProjectResourceAssets returns selected project resources from the unified selection table.
 func (service *GenerationTaskService) ListProjectResourceAssets(projectID string) ([]SelectedGenerationAssetRecord, error) {
-	if service.initErr != nil {
-		return nil, service.initErr
-	}
-
-	service.mu.RLock()
-	models, err := service.repo.ListProjectResourceAssets(projectID)
-	service.mu.RUnlock()
-	if err != nil {
-		return nil, err
-	}
-
-	assets := make([]SelectedGenerationAssetRecord, 0, len(models))
-	for _, model := range models {
-		assets = append(assets, SelectedGenerationAssetRecord{
-			ID:           model.ID,
-			TaskID:       model.TaskID,
-			AssetIndex:   model.AssetIndex,
-			ResourceType: model.ResourceType,
-			Kind:         model.Kind,
-			Title:        model.Title,
-			URL:          model.URL,
-			Base64:       model.Base64,
-			MIMEType:     model.MIMEType,
-			CreatedAt:    model.CreatedAt,
-			UpdatedAt:    model.UpdatedAt,
-		})
-	}
-	return assets, nil
+	return service.ListProjectSelectedAssets(projectID)
 }
 
 // ListProjectSelectedAssets returns project-selected assets from the dedicated selection table.
@@ -337,8 +310,9 @@ func (service *GenerationTaskService) DeleteSelectedAsset(projectID string, id s
 	if err != nil || !deleted {
 		return deleted, err
 	}
-	if strings.TrimSpace(model.SourceTaskID) != "" && model.SourceAssetIndex >= 0 {
-		if err := service.setTaskAssetSelectedLocked(model.SourceTaskID, model.SourceAssetIndex, false, "", ""); err != nil {
+	sourceTaskID := domain.StringValue(model.SourceTaskID)
+	if sourceTaskID != "" && model.SourceSlotIndex >= 0 {
+		if err := service.setTaskAssetSelectedLocked(sourceTaskID, model.SourceSlotIndex, false, "", ""); err != nil {
 			return true, err
 		}
 	}
@@ -369,7 +343,13 @@ func (service *GenerationTaskService) DeleteSelectedAssetByRequest(projectID str
 
 	deleted, err := service.repo.DeleteProjectSelectedAsset(model.ID)
 	if err != nil || !deleted {
-		return deleted, err
+		if err != nil {
+			return deleted, err
+		}
+		deleted, err = service.repo.DeleteProjectSelectedAssetByTaskSlot(model.ProjectID, model.ResourceType, taskID, assetIndex)
+		if err != nil || !deleted {
+			return deleted, err
+		}
 	}
 	if taskID != "" && assetIndex >= 0 {
 		if err := service.setTaskAssetSelectedLocked(taskID, assetIndex, false, "", ""); err != nil {
@@ -401,31 +381,16 @@ func (service *GenerationTaskService) hydrateProjectSelectedAssetModelFromTaskLo
 	if strings.TrimSpace(model.ProjectID) == "" {
 		model.ProjectID = GenerationProjectIDForRequest(task.ProjectID, "")
 	}
-	model.SourceTaskID = task.ID
-	model.SourceAssetIndex = assetIndex
-	if strings.TrimSpace(model.SourceType) == "" {
-		model.SourceType = "generated"
+	model.SourceTaskID = domain.StringPtr(task.ID)
+	model.SourceSlotIndex = assetIndex
+	if domain.StringValue(model.SourceType) == "" {
+		model.SourceType = domain.StringPtr("generated")
 	}
-	if strings.TrimSpace(model.MediaAssetID) == "" {
-		model.MediaAssetID = libraryAssetIDFromGenerationAssetURL(asset.URL)
+	if strings.TrimSpace(model.AssetID) == "" {
+		model.AssetID = firstNonEmpty(asset.AssetID, libraryAssetIDFromGenerationAssetURL(asset.URL))
 	}
-	if strings.TrimSpace(model.Kind) == "" {
-		model.Kind = strings.TrimSpace(asset.Kind)
-	}
-	if strings.TrimSpace(model.Title) == "" {
-		model.Title = strings.TrimSpace(asset.Title)
-	}
-	if strings.TrimSpace(model.ResourceTitle) == "" {
-		model.ResourceTitle = strings.TrimSpace(asset.Title)
-	}
-	if strings.TrimSpace(model.URL) == "" {
-		model.URL = strings.TrimSpace(asset.URL)
-	}
-	if strings.TrimSpace(model.Base64) == "" {
-		model.Base64 = strings.TrimSpace(asset.Base64)
-	}
-	if strings.TrimSpace(model.MIMEType) == "" {
-		model.MIMEType = strings.TrimSpace(asset.MIMEType)
+	if domain.StringValue(model.ResourceTitle) == "" {
+		model.ResourceTitle = domain.StringPtr(asset.Title)
 	}
 	return nil
 }
@@ -446,22 +411,29 @@ func (service *GenerationTaskService) deleteAssetRecord(id string, assetIndex in
 	if err != nil {
 		return GenerationTaskRecord{}, false, err
 	}
-	task.DeletedAssetSlots = appendGenerationDeletedAssetSlot(task.DeletedAssetSlots, assetIndex)
-	task.UpdatedAt = timestamp.NowRFC3339Nano()
-	deletedAssetSlotsJSON, err := json.Marshal(task.DeletedAssetSlots)
-	if err != nil {
-		return GenerationTaskRecord{}, false, err
-	}
-
-	updated, err := service.repo.UpdateGenerationTaskDeletedAssetSlots(id, string(deletedAssetSlotsJSON), task.UpdatedAt)
-	if err != nil || !updated {
-		return task, updated, err
-	}
-	if err := service.syncNormalizedTaskAssetRowsLocked(task); err != nil {
-		return task, true, err
+	if _, ok := generationAssetAtSlot(task, assetIndex); !ok {
+		return GenerationTaskRecord{}, false, nil
 	}
 	if err := service.deleteProjectSelectedAssetRowForTaskAssetLocked(task, assetIndex); err != nil {
 		return task, true, err
+	}
+	task.UpdatedAt = timestamp.NowRFC3339Nano()
+
+	deleted, err := service.repo.DeleteGenerationTaskAssetSlot(id, assetIndex)
+	if err != nil || !deleted {
+		return task, deleted, err
+	}
+	updated, err := service.repo.UpdateGenerationTaskAssets(id, task.CapabilityID, task.UpdatedAt)
+	if err != nil || !updated {
+		return task, updated, err
+	}
+	model, err = service.repo.GetGenerationTask(id)
+	if err != nil {
+		return task, true, err
+	}
+	task, err = generationTaskRecordFromModel(model)
+	if err != nil {
+		return GenerationTaskRecord{}, false, err
 	}
 	return task, true, nil
 }
@@ -497,28 +469,22 @@ func (service *GenerationTaskService) upsertSelectedAssetRecord(projectID string
 			if err != nil {
 				return projectSelectedAssetModel{}, false, err
 			}
-			if assetIndex >= len(task.Assets) || generationDeletedAssetSlotSet(task.DeletedAssetSlots)[assetIndex] {
+			assetSliceIndex, ok := generationAssetSliceIndexForSlot(task, assetIndex)
+			if !ok || generationDeletedAssetSlotSet(task.DeletedAssetSlots)[assetIndex] {
 				return projectSelectedAssetModel{}, false, nil
 			}
-			asset := task.Assets[assetIndex]
-			title := strings.TrimSpace(model.Title)
-			if title == "" {
-				title = strings.TrimSpace(model.ResourceTitle)
-			}
+			asset := task.Assets[assetSliceIndex]
+			title := domain.StringValue(model.ResourceTitle)
 			if title == "" {
 				title = strings.TrimSpace(asset.Title)
 			}
-			task.Assets[assetIndex].Selected = true
+			task.Assets[assetSliceIndex].Selected = true
 			if title != "" {
-				task.Assets[assetIndex].Title = title
+				task.Assets[assetSliceIndex].Title = title
 			}
 			task.CapabilityID = resourceType
 			task.UpdatedAt = timestamp.NowRFC3339Nano()
-			assetsJSON, err := json.Marshal(task.Assets)
-			if err != nil {
-				return projectSelectedAssetModel{}, false, err
-			}
-			updated, err := service.repo.UpdateGenerationTaskAssets(task.ID, string(assetsJSON), task.CapabilityID, task.UpdatedAt)
+			updated, err := service.repo.UpdateGenerationTaskAssets(task.ID, task.CapabilityID, task.UpdatedAt)
 			if err != nil || !updated {
 				return projectSelectedAssetModel{}, updated, err
 			}
@@ -526,58 +492,56 @@ func (service *GenerationTaskService) upsertSelectedAssetRecord(projectID string
 				return projectSelectedAssetModel{}, true, err
 			}
 
-			asset = task.Assets[assetIndex]
-			model.SourceTaskID = task.ID
-			model.SourceAssetIndex = assetIndex
-			if strings.TrimSpace(model.SourceType) == "" {
-				model.SourceType = "generated"
+			asset = task.Assets[assetSliceIndex]
+			model.SourceTaskID = domain.StringPtr(task.ID)
+			model.SourceSlotIndex = assetIndex
+			if domain.StringValue(model.SourceType) == "" {
+				model.SourceType = domain.StringPtr("generated")
 			}
 			if strings.TrimSpace(model.ProjectID) == "" {
 				model.ProjectID = GenerationProjectIDForRequest(task.ProjectID, "")
 			}
-			if strings.TrimSpace(model.MediaAssetID) == "" {
-				model.MediaAssetID = libraryAssetIDFromGenerationAssetURL(asset.URL)
+			if strings.TrimSpace(model.AssetID) == "" {
+				model.AssetID = firstNonEmpty(asset.AssetID, libraryAssetIDFromGenerationAssetURL(asset.URL))
 			}
-			if strings.TrimSpace(model.Kind) == "" {
-				model.Kind = strings.TrimSpace(asset.Kind)
+			if domain.StringValue(model.ResourceTitle) == "" {
+				model.ResourceTitle = domain.StringPtr(asset.Title)
 			}
-			if strings.TrimSpace(model.Title) == "" {
-				model.Title = strings.TrimSpace(asset.Title)
-			}
-			if strings.TrimSpace(model.ResourceTitle) == "" {
-				model.ResourceTitle = strings.TrimSpace(asset.Title)
-			}
-			if strings.TrimSpace(model.URL) == "" {
-				model.URL = strings.TrimSpace(asset.URL)
-			}
-			if strings.TrimSpace(model.Base64) == "" {
-				model.Base64 = strings.TrimSpace(asset.Base64)
-			}
-			if strings.TrimSpace(model.MIMEType) == "" {
-				model.MIMEType = strings.TrimSpace(asset.MIMEType)
-			}
-			if strings.TrimSpace(model.CreatedAt) == "" {
-				model.CreatedAt = task.CreatedAt
+			if model.CreatedAt.IsZero() {
+				model.CreatedAt = domain.TimeFromString(task.CreatedAt)
 			}
 			resolvedTaskSource = true
 		}
 	}
 	model = normalizeProjectSelectedAssetModelForUpsert(model)
+	if !resolvedTaskSource && taskID != "" {
+		model.SourceTaskID = nil
+		model.SourceSlotIndex = -1
+		if domain.StringValue(model.SourceType) == "generated" {
+			model.SourceType = domain.StringPtr("uploaded")
+		}
+	}
 	if !resolvedTaskSource && !projectSelectedAssetModelHasDirectPayload(model) {
+		return projectSelectedAssetModel{}, false, nil
+	}
+	if strings.TrimSpace(model.AssetID) == "" {
 		return projectSelectedAssetModel{}, false, nil
 	}
 
 	now := timestamp.NowRFC3339Nano()
-	if strings.TrimSpace(model.CreatedAt) == "" {
-		model.CreatedAt = now
+	if model.CreatedAt.IsZero() {
+		model.CreatedAt = domain.TimeFromString(now)
 	}
-	model.UpdatedAt = now
-	model.DeletedAt = ""
+	model.UpdatedAt = domain.TimeFromString(now)
 	model.ID = projectSelectedAssetID(model)
 	if err := service.repo.UpsertProjectSelectedAsset(model); err != nil {
 		return projectSelectedAssetModel{}, false, err
 	}
-	return model, true, nil
+	persisted, err := service.repo.GetProjectSelectedAsset(model.ID)
+	if err != nil {
+		return projectSelectedAssetModel{}, false, err
+	}
+	return persisted, true, nil
 }
 
 func (service *GenerationTaskService) setTaskAssetSelectedLocked(taskID string, assetIndex int, selected bool, title string, resourceType string) error {
@@ -595,22 +559,19 @@ func (service *GenerationTaskService) setTaskAssetSelectedLocked(taskID string, 
 	if err != nil {
 		return err
 	}
-	if assetIndex >= len(task.Assets) || generationDeletedAssetSlotSet(task.DeletedAssetSlots)[assetIndex] {
+	assetSliceIndex, ok := generationAssetSliceIndexForSlot(task, assetIndex)
+	if !ok || generationDeletedAssetSlotSet(task.DeletedAssetSlots)[assetIndex] {
 		return nil
 	}
-	task.Assets[assetIndex].Selected = selected
+	task.Assets[assetSliceIndex].Selected = selected
 	if title = strings.TrimSpace(title); title != "" {
-		task.Assets[assetIndex].Title = title
+		task.Assets[assetSliceIndex].Title = title
 	}
 	if resourceType = selectedGenerationResourceType(resourceType); resourceType != "" {
 		task.CapabilityID = resourceType
 	}
 	task.UpdatedAt = timestamp.NowRFC3339Nano()
-	assetsJSON, err := json.Marshal(task.Assets)
-	if err != nil {
-		return err
-	}
-	updated, err := service.repo.UpdateGenerationTaskAssets(task.ID, string(assetsJSON), task.CapabilityID, task.UpdatedAt)
+	updated, err := service.repo.UpdateGenerationTaskAssets(task.ID, task.CapabilityID, task.UpdatedAt)
 	if err != nil || !updated {
 		return err
 	}
@@ -633,27 +594,23 @@ func (service *GenerationTaskService) updateAssetRecord(id string, assetIndex in
 	if err != nil {
 		return GenerationTaskRecord{}, false, err
 	}
-	if assetIndex >= len(task.Assets) || generationDeletedAssetSlotSet(task.DeletedAssetSlots)[assetIndex] {
+	assetSliceIndex, ok := generationAssetSliceIndexForSlot(task, assetIndex)
+	if !ok || generationDeletedAssetSlotSet(task.DeletedAssetSlots)[assetIndex] {
 		return GenerationTaskRecord{}, false, nil
 	}
 
 	if patch.Selected != nil {
-		task.Assets[assetIndex].Selected = *patch.Selected
+		task.Assets[assetSliceIndex].Selected = *patch.Selected
 	}
 	if patch.Title != nil {
-		task.Assets[assetIndex].Title = strings.TrimSpace(*patch.Title)
+		task.Assets[assetSliceIndex].Title = strings.TrimSpace(*patch.Title)
 	}
 	if resourceType := selectedGenerationResourceType(patch.ResourceType); resourceType != "" {
 		task.CapabilityID = resourceType
 	}
 	task.UpdatedAt = timestamp.NowRFC3339Nano()
 
-	assetsJSON, err := json.Marshal(task.Assets)
-	if err != nil {
-		return GenerationTaskRecord{}, false, err
-	}
-
-	updated, err := service.repo.UpdateGenerationTaskAssets(id, string(assetsJSON), task.CapabilityID, task.UpdatedAt)
+	updated, err := service.repo.UpdateGenerationTaskAssets(id, task.CapabilityID, task.UpdatedAt)
 	if err != nil || !updated {
 		return task, updated, err
 	}
@@ -690,27 +647,7 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 		task.Assets = []GenerationAsset{}
 	}
 
-	referenceURLsJSON, err := json.Marshal(task.ReferenceURLs)
-	if err != nil {
-		return err
-	}
-	referenceAssetIDsJSON, err := json.Marshal(task.ReferenceAssetIDs)
-	if err != nil {
-		return err
-	}
 	paramsJSON, err := json.Marshal(task.Params)
-	if err != nil {
-		return err
-	}
-	assetsJSON, err := json.Marshal(task.Assets)
-	if err != nil {
-		return err
-	}
-	deletedAssetSlotsJSON, err := json.Marshal(normalizeGenerationDeletedAssetSlots(task.DeletedAssetSlots))
-	if err != nil {
-		return err
-	}
-	usageJSON, err := json.Marshal(task.Usage)
 	if err != nil {
 		return err
 	}
@@ -718,37 +655,43 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 
+	if err := service.ensureTaskConversationLocked(task); err != nil {
+		return err
+	}
 	if err := service.repo.UpsertGenerationTask(generationTaskModel{
-		ID:                    task.ID,
-		ProviderTaskID:        task.ProviderTaskID,
-		ConversationID:        task.ConversationID,
-		ProjectID:             task.ProjectID,
-		SectionID:             task.SectionID,
-		CapabilityID:          task.CapabilityID,
-		Kind:                  task.Kind,
-		RouteID:               task.RouteID,
-		FamilyID:              task.FamilyID,
-		VersionID:             task.VersionID,
-		Provider:              task.Provider,
-		ModelID:               task.ModelID,
-		Model:                 task.Model,
-		Prompt:                task.Prompt,
-		ReferenceURLsJSON:     string(referenceURLsJSON),
-		ReferenceAssetIDsJSON: string(referenceAssetIDsJSON),
-		ParamsJSON:            string(paramsJSON),
-		Status:                strings.ToLower(strings.TrimSpace(task.Status)),
-		Message:               task.Message,
-		Text:                  task.Text,
-		AssetsJSON:            string(assetsJSON),
-		DeletedAssetSlotsJSON: string(deletedAssetSlotsJSON),
-		UsageJSON:             string(usageJSON),
-		Error:                 task.Error,
-		ErrorCode:             task.ErrorCode,
-		ErrorType:             task.ErrorType,
-		Retryable:             task.Retryable,
-		CreatedAt:             task.CreatedAt,
-		UpdatedAt:             task.UpdatedAt,
+		ID:              task.ID,
+		ProviderTaskID:  task.ProviderTaskID,
+		ConversationID:  domain.StringPtr(task.ConversationID),
+		ProjectID:       domain.StringPtr(GenerationProjectIDForRequest(task.ProjectID, "")),
+		SectionID:       domain.StringPtr(task.SectionID),
+		CapabilityID:    domain.StringPtr(task.CapabilityID),
+		Kind:            task.Kind,
+		RouteID:         task.RouteID,
+		FamilyID:        task.FamilyID,
+		VersionID:       task.VersionID,
+		Provider:        task.Provider,
+		ModelID:         task.ModelID,
+		Model:           task.Model,
+		Prompt:          task.Prompt,
+		ParamsJSON:      string(paramsJSON),
+		Status:          strings.ToLower(strings.TrimSpace(task.Status)),
+		Message:         task.Message,
+		Text:            task.Text,
+		InputTokens:     task.Usage.InputTokens,
+		OutputTokens:    task.Usage.OutputTokens,
+		TotalTokens:     task.Usage.TotalTokens,
+		ReasoningTokens: task.Usage.ReasoningTokens,
+		CachedTokens:    task.Usage.CachedTokens,
+		Error:           task.Error,
+		ErrorCode:       task.ErrorCode,
+		ErrorType:       task.ErrorType,
+		Retryable:       task.Retryable,
+		CreatedAt:       domain.TimeFromString(task.CreatedAt),
+		UpdatedAt:       domain.TimeFromString(task.UpdatedAt),
 	}); err != nil {
+		return err
+	}
+	if err := service.syncNormalizedTaskReferenceRowsLocked(task); err != nil {
 		return err
 	}
 	if err := service.syncNormalizedTaskAssetRowsLocked(task); err != nil {
@@ -757,14 +700,69 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 	return service.upsertProjectSelectedAssetRowsLocked(projectSelectedAssetModelsFromRecord(task))
 }
 
+func (service *GenerationTaskService) ensureTaskConversationLocked(task GenerationTaskRecord) error {
+	conversationID := strings.TrimSpace(task.ConversationID)
+	if service.repo == nil || conversationID == "" {
+		return nil
+	}
+	if _, err := service.repo.GetGenerationConversation(conversationID); err == nil {
+		return nil
+	} else if !repository.IsRecordNotFound(err) {
+		return err
+	}
+	now := timestamp.NowRFC3339Nano()
+	scopeID := generationConversationScopeIDForTask(task)
+	return service.repo.UpsertGenerationConversation(generationConversationModel{
+		ID:        conversationID,
+		ScopeID:   scopeID,
+		Kind:      strings.TrimSpace(task.Kind),
+		Title:     "",
+		CreatedAt: domain.TimeFromString(now),
+		UpdatedAt: domain.TimeFromString(now),
+	})
+}
+
+func generationConversationScopeIDForTask(task GenerationTaskRecord) string {
+	kind := strings.TrimSpace(task.Kind)
+	conversationID := strings.TrimSpace(task.ConversationID)
+	if scopeID := defaultConversationScopeIDFromID(conversationID, kind); scopeID != "" {
+		return NormalizeGenerationConversationScopeID(scopeID)
+	}
+	if projectID := domain.CleanProjectID(task.ProjectID); projectID != "" {
+		return generationProjectScopePrefix + projectID
+	}
+	return defaultGenerationConversationScopeID
+}
+
+func defaultConversationScopeIDFromID(conversationID string, kind string) string {
+	conversationID = strings.TrimSpace(conversationID)
+	kindPart := normalizeGenerationConversationIDPart(kind)
+	if kindPart == "" {
+		return ""
+	}
+	const prefix = "conversation-"
+	suffix := "-" + kindPart + "-default"
+	if !strings.HasPrefix(conversationID, prefix) || !strings.HasSuffix(conversationID, suffix) {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(conversationID, prefix), suffix)
+}
+
+func (service *GenerationTaskService) syncNormalizedTaskReferenceRowsLocked(task GenerationTaskRecord) error {
+	if service.repo == nil {
+		return nil
+	}
+	if err := service.repo.ReplaceGenerationTaskReferenceRows(task.ID, generationTaskReferenceModelsFromRecord(task)); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (service *GenerationTaskService) syncNormalizedTaskAssetRowsLocked(task GenerationTaskRecord) error {
 	if service.repo == nil {
 		return nil
 	}
 	if err := service.repo.ReplaceGenerationTaskAssetRows(task.ID, generationTaskAssetModelsFromRecord(task)); err != nil {
-		return err
-	}
-	if err := service.repo.ReplaceProjectResourceAssetRowsForTask(task.ID, projectResourceAssetModelsFromRecord(task)); err != nil {
 		return err
 	}
 	return nil
@@ -803,8 +801,8 @@ func (service *GenerationTaskService) UpsertConversation(conversation Generation
 		ScopeID:   strings.TrimSpace(conversation.ScopeID),
 		Kind:      strings.TrimSpace(conversation.Kind),
 		Title:     strings.TrimSpace(conversation.Title),
-		CreatedAt: conversation.CreatedAt,
-		UpdatedAt: conversation.UpdatedAt,
+		CreatedAt: domain.TimeFromString(conversation.CreatedAt),
+		UpdatedAt: domain.TimeFromString(conversation.UpdatedAt),
 	})
 }
 
@@ -896,7 +894,7 @@ func (service *GenerationTaskService) attachConversationSummary(conversation *Ge
 		return err
 	}
 	conversation.LatestPrompt = latest.Prompt
-	conversation.UpdatedAt = maxString(conversation.UpdatedAt, latest.UpdatedAt)
+	conversation.UpdatedAt = maxString(conversation.UpdatedAt, domain.StringFromTime(latest.UpdatedAt))
 	return nil
 }
 
@@ -955,7 +953,7 @@ func (service *GenerationTaskService) RecordAttempt(taskID string, action string
 		Status:    strings.TrimSpace(status),
 		Message:   strings.TrimSpace(message),
 		Error:     errorMessage,
-		CreatedAt: timestamp.NowRFC3339Nano(),
+		CreatedAt: domain.TimeFromString(timestamp.NowRFC3339Nano()),
 	})
 }
 
@@ -1017,8 +1015,9 @@ func (service *GenerationTaskService) attemptStats(taskID string) (int, string, 
 		if model.Action == "retry" {
 			retryCount++
 		}
-		if model.CreatedAt > lastAttemptAt {
-			lastAttemptAt = model.CreatedAt
+		createdAt := domain.StringFromTime(model.CreatedAt)
+		if createdAt > lastAttemptAt {
+			lastAttemptAt = createdAt
 		}
 	}
 	return retryCount, lastAttemptAt, nil
@@ -1052,10 +1051,10 @@ func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRec
 	task := GenerationTaskRecord{
 		ID:             model.ID,
 		ProviderTaskID: model.ProviderTaskID,
-		ConversationID: model.ConversationID,
-		ProjectID:      model.ProjectID,
-		SectionID:      model.SectionID,
-		CapabilityID:   model.CapabilityID,
+		ConversationID: domain.StringValue(model.ConversationID),
+		ProjectID:      domain.StringValue(model.ProjectID),
+		SectionID:      domain.StringValue(model.SectionID),
+		CapabilityID:   domain.StringValue(model.CapabilityID),
 		Kind:           model.Kind,
 		RouteID:        model.RouteID,
 		FamilyID:       model.FamilyID,
@@ -1071,98 +1070,147 @@ func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRec
 		ErrorCode:      model.ErrorCode,
 		ErrorType:      model.ErrorType,
 		Retryable:      model.Retryable,
-		CreatedAt:      model.CreatedAt,
-		UpdatedAt:      model.UpdatedAt,
+		CreatedAt:      domain.StringFromTime(model.CreatedAt),
+		UpdatedAt:      domain.StringFromTime(model.UpdatedAt),
+		Usage: GenerationUsage{
+			InputTokens:     model.InputTokens,
+			OutputTokens:    model.OutputTokens,
+			TotalTokens:     model.TotalTokens,
+			ReasoningTokens: model.ReasoningTokens,
+			CachedTokens:    model.CachedTokens,
+		},
 	}
 
-	if err := decodeGenerationTaskJSON(model.ReferenceURLsJSON, &task.ReferenceURLs); err != nil {
-		return GenerationTaskRecord{}, err
-	}
-	if err := decodeGenerationTaskJSON(model.ReferenceAssetIDsJSON, &task.ReferenceAssetIDs); err != nil {
-		return GenerationTaskRecord{}, err
-	}
 	if err := decodeGenerationTaskJSON(model.ParamsJSON, &task.Params); err != nil {
 		return GenerationTaskRecord{}, err
 	}
-	if err := decodeGenerationTaskJSON(model.AssetsJSON, &task.Assets); err != nil {
-		return GenerationTaskRecord{}, err
-	}
-	if err := decodeGenerationTaskJSON(model.DeletedAssetSlotsJSON, &task.DeletedAssetSlots); err != nil {
-		return GenerationTaskRecord{}, err
-	}
-	if err := decodeGenerationTaskJSON(model.UsageJSON, &task.Usage); err != nil {
-		return GenerationTaskRecord{}, err
-	}
-	if task.ReferenceURLs == nil {
-		task.ReferenceURLs = []string{}
-	}
-	if task.ReferenceAssetIDs == nil {
-		task.ReferenceAssetIDs = []string{}
-	}
+	task.ReferenceURLs, task.ReferenceAssetIDs = generationTaskReferencesFromModels(model.References)
 	if task.Params == nil {
 		task.Params = map[string]any{}
 	}
-	if task.Assets == nil {
-		task.Assets = []GenerationAsset{}
-	}
-	task.DeletedAssetSlots = normalizeGenerationDeletedAssetSlots(task.DeletedAssetSlots)
+	task.Assets, task.DeletedAssetSlots = generationAssetsFromTaskAssetModels(model.ID, model.Assets)
 
 	return task, nil
+}
+
+func generationTaskReferencesFromModels(models []domain.GenerationTaskReferenceModel) ([]string, []string) {
+	if len(models) == 0 {
+		return []string{}, []string{}
+	}
+	sort.SliceStable(models, func(i, j int) bool {
+		return models[i].RefIndex < models[j].RefIndex
+	})
+	urls := []string{}
+	assetIDs := []string{}
+	for _, model := range models {
+		if url := domain.StringValue(model.URL); url != "" {
+			urls = append(urls, url)
+		}
+		if assetID := domain.StringValue(model.AssetID); assetID != "" {
+			assetIDs = append(assetIDs, assetID)
+		}
+	}
+	return urls, assetIDs
+}
+
+func generationTaskReferenceModelsFromRecord(task GenerationTaskRecord) []domain.GenerationTaskReferenceModel {
+	rows := make([]domain.GenerationTaskReferenceModel, 0, len(task.ReferenceURLs)+len(task.ReferenceAssetIDs))
+	createdAt := domain.TimeFromString(task.CreatedAt)
+	refIndex := 0
+	for _, value := range task.ReferenceURLs {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		rows = append(rows, domain.GenerationTaskReferenceModel{
+			TaskID:    task.ID,
+			RefIndex:  refIndex,
+			URL:       domain.StringPtr(value),
+			CreatedAt: createdAt,
+		})
+		refIndex++
+	}
+	for _, value := range task.ReferenceAssetIDs {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		rows = append(rows, domain.GenerationTaskReferenceModel{
+			TaskID:    task.ID,
+			RefIndex:  refIndex,
+			AssetID:   domain.StringPtr(value),
+			CreatedAt: createdAt,
+		})
+		refIndex++
+	}
+	return rows
+}
+
+func generationAssetsFromTaskAssetModels(taskID string, rows []domain.GenerationTaskAssetModel) ([]GenerationAsset, []int) {
+	if len(rows) == 0 {
+		return []GenerationAsset{}, []int{}
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		return rows[i].SlotIndex < rows[j].SlotIndex
+	})
+	assets := make([]GenerationAsset, 0, len(rows))
+	deleted := []int{}
+	nextSlot := 0
+	for _, row := range rows {
+		for nextSlot < row.SlotIndex {
+			deleted = append(deleted, nextSlot)
+			nextSlot++
+		}
+		asset := row.Asset
+		assets = append(assets, GenerationAsset{
+			AssetID:   row.AssetID,
+			Kind:      asset.Kind,
+			TaskID:    taskID,
+			Title:     asset.Filename,
+			URL:       asset.URL,
+			MIMEType:  asset.MIMEType,
+			SlotIndex: row.SlotIndex,
+			Selected:  row.Selected,
+		})
+		nextSlot = row.SlotIndex + 1
+	}
+	return assets, normalizeGenerationDeletedAssetSlots(deleted)
 }
 
 func generationTaskAssetModelsFromRecord(task GenerationTaskRecord) []domain.GenerationTaskAssetModel {
 	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
 	rows := make([]domain.GenerationTaskAssetModel, 0, len(task.Assets))
 	for index, asset := range task.Assets {
-		if deletedSlots[index] {
+		slotIndex := assetSlotIndex(index, asset)
+		if deletedSlots[slotIndex] {
 			continue
 		}
 		rows = append(rows, domain.GenerationTaskAssetModel{
-			TaskID:         task.ID,
-			AssetIndex:     index,
-			LibraryAssetID: libraryAssetIDFromGenerationAssetURL(asset.URL),
-			Kind:           strings.TrimSpace(asset.Kind),
-			Title:          strings.TrimSpace(asset.Title),
-			URL:            strings.TrimSpace(asset.URL),
-			Base64:         strings.TrimSpace(asset.Base64),
-			MIMEType:       strings.TrimSpace(asset.MIMEType),
-			Selected:       asset.Selected,
-			CreatedAt:      task.CreatedAt,
-			UpdatedAt:      task.UpdatedAt,
+			TaskID:    task.ID,
+			SlotIndex: slotIndex,
+			AssetID:   firstNonEmpty(asset.AssetID, libraryAssetIDFromGenerationAssetURL(asset.URL)),
+			Selected:  asset.Selected,
+			CreatedAt: domain.TimeFromString(task.CreatedAt),
+			UpdatedAt: domain.TimeFromString(task.UpdatedAt),
 		})
 	}
 	return rows
 }
 
-func projectResourceAssetModelsFromRecord(task GenerationTaskRecord) []domain.ProjectResourceAssetModel {
-	projectID := GenerationProjectIDForRequest(task.ProjectID, "")
-	resourceType := selectedGenerationResourceType(task.CapabilityID)
-	if projectID == "" || resourceType == "" {
-		return []domain.ProjectResourceAssetModel{}
+func assetSlotIndex(fallback int, asset GenerationAsset) int {
+	if asset.SlotIndex > 0 || fallback == 0 {
+		return asset.SlotIndex
 	}
-	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
-	rows := []domain.ProjectResourceAssetModel{}
-	for index, asset := range task.Assets {
-		if deletedSlots[index] || !asset.Selected || strings.TrimSpace(asset.Kind) != "image" {
-			continue
+	return fallback
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
 		}
-		rows = append(rows, domain.ProjectResourceAssetModel{
-			ID:             fmt.Sprintf("%s:%d", task.ID, index),
-			ProjectID:      projectID,
-			ResourceType:   resourceType,
-			TaskID:         task.ID,
-			AssetIndex:     index,
-			LibraryAssetID: libraryAssetIDFromGenerationAssetURL(asset.URL),
-			Kind:           strings.TrimSpace(asset.Kind),
-			Title:          strings.TrimSpace(asset.Title),
-			URL:            strings.TrimSpace(asset.URL),
-			Base64:         strings.TrimSpace(asset.Base64),
-			MIMEType:       strings.TrimSpace(asset.MIMEType),
-			CreatedAt:      task.CreatedAt,
-			UpdatedAt:      task.UpdatedAt,
-		})
 	}
-	return rows
+	return ""
 }
 
 func projectSelectedAssetModelsFromRecord(task GenerationTaskRecord) []domain.ProjectSelectedAssetModel {
@@ -1174,24 +1222,23 @@ func projectSelectedAssetModelsFromRecord(task GenerationTaskRecord) []domain.Pr
 	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
 	rows := []domain.ProjectSelectedAssetModel{}
 	for index, asset := range task.Assets {
-		if deletedSlots[index] || !asset.Selected || strings.TrimSpace(asset.Kind) != "image" {
+		slotIndex := assetSlotIndex(index, asset)
+		if deletedSlots[slotIndex] || !asset.Selected || strings.TrimSpace(asset.Kind) != "image" {
 			continue
 		}
 		row := domain.ProjectSelectedAssetModel{
-			ProjectID:        projectID,
-			ResourceType:     resourceType,
-			ResourceTitle:    strings.TrimSpace(asset.Title),
-			MediaAssetID:     libraryAssetIDFromGenerationAssetURL(asset.URL),
-			Kind:             strings.TrimSpace(asset.Kind),
-			Title:            strings.TrimSpace(asset.Title),
-			URL:              strings.TrimSpace(asset.URL),
-			Base64:           strings.TrimSpace(asset.Base64),
-			MIMEType:         strings.TrimSpace(asset.MIMEType),
-			SourceType:       "generated",
-			SourceTaskID:     task.ID,
-			SourceAssetIndex: index,
-			CreatedAt:        task.CreatedAt,
-			UpdatedAt:        task.UpdatedAt,
+			ProjectID:       projectID,
+			ResourceType:    resourceType,
+			ResourceTitle:   domain.StringPtr(asset.Title),
+			AssetID:         firstNonEmpty(asset.AssetID, libraryAssetIDFromGenerationAssetURL(asset.URL)),
+			SourceType:      domain.StringPtr("generated"),
+			SourceTaskID:    domain.StringPtr(task.ID),
+			SourceSlotIndex: slotIndex,
+			CreatedAt:       domain.TimeFromString(task.CreatedAt),
+			UpdatedAt:       domain.TimeFromString(task.UpdatedAt),
+		}
+		if strings.TrimSpace(row.AssetID) == "" {
+			continue
 		}
 		row.ID = projectSelectedAssetID(row)
 		rows = append(rows, row)
@@ -1204,7 +1251,8 @@ func (service *GenerationTaskService) syncProjectSelectedAssetRowForTaskAssetLoc
 	if !ok {
 		return nil
 	}
-	if task.Assets[assetIndex].Selected {
+	asset, ok := generationAssetAtSlot(task, assetIndex)
+	if ok && asset.Selected {
 		return service.repo.UpsertProjectSelectedAsset(row)
 	}
 	_, err := service.repo.DeleteProjectSelectedAsset(row.ID)
@@ -1223,34 +1271,55 @@ func (service *GenerationTaskService) deleteProjectSelectedAssetRowForTaskAssetL
 func projectSelectedAssetModelFromTaskAsset(task GenerationTaskRecord, assetIndex int, includeDeleted bool) (domain.ProjectSelectedAssetModel, bool) {
 	projectID := GenerationProjectIDForRequest(task.ProjectID, "")
 	resourceType := selectedGenerationResourceType(task.CapabilityID)
-	if projectID == "" || resourceType == "" || assetIndex < 0 || assetIndex >= len(task.Assets) {
+	if projectID == "" || resourceType == "" || assetIndex < 0 {
 		return domain.ProjectSelectedAssetModel{}, false
 	}
 	if !includeDeleted && generationDeletedAssetSlotSet(task.DeletedAssetSlots)[assetIndex] {
 		return domain.ProjectSelectedAssetModel{}, false
 	}
-	asset := task.Assets[assetIndex]
+	asset, ok := generationAssetAtSlot(task, assetIndex)
+	if !ok {
+		return domain.ProjectSelectedAssetModel{}, false
+	}
 	if strings.TrimSpace(asset.Kind) != "image" {
 		return domain.ProjectSelectedAssetModel{}, false
 	}
 	row := domain.ProjectSelectedAssetModel{
-		ProjectID:        projectID,
-		ResourceType:     resourceType,
-		ResourceTitle:    strings.TrimSpace(asset.Title),
-		MediaAssetID:     libraryAssetIDFromGenerationAssetURL(asset.URL),
-		Kind:             strings.TrimSpace(asset.Kind),
-		Title:            strings.TrimSpace(asset.Title),
-		URL:              strings.TrimSpace(asset.URL),
-		Base64:           strings.TrimSpace(asset.Base64),
-		MIMEType:         strings.TrimSpace(asset.MIMEType),
-		SourceType:       "generated",
-		SourceTaskID:     task.ID,
-		SourceAssetIndex: assetIndex,
-		CreatedAt:        task.CreatedAt,
-		UpdatedAt:        task.UpdatedAt,
+		ProjectID:       projectID,
+		ResourceType:    resourceType,
+		ResourceTitle:   domain.StringPtr(asset.Title),
+		AssetID:         firstNonEmpty(asset.AssetID, libraryAssetIDFromGenerationAssetURL(asset.URL)),
+		SourceType:      domain.StringPtr("generated"),
+		SourceTaskID:    domain.StringPtr(task.ID),
+		SourceSlotIndex: assetIndex,
+		CreatedAt:       domain.TimeFromString(task.CreatedAt),
+		UpdatedAt:       domain.TimeFromString(task.UpdatedAt),
+	}
+	if strings.TrimSpace(row.AssetID) == "" {
+		return domain.ProjectSelectedAssetModel{}, false
 	}
 	row.ID = projectSelectedAssetID(row)
 	return row, true
+}
+
+func generationAssetAtSlot(task GenerationTaskRecord, slotIndex int) (GenerationAsset, bool) {
+	index, ok := generationAssetSliceIndexForSlot(task, slotIndex)
+	if !ok {
+		return GenerationAsset{}, false
+	}
+	return task.Assets[index], true
+}
+
+func generationAssetSliceIndexForSlot(task GenerationTaskRecord, slotIndex int) (int, bool) {
+	if slotIndex < 0 {
+		return 0, false
+	}
+	for index, asset := range task.Assets {
+		if assetSlotIndex(index, asset) == slotIndex {
+			return index, true
+		}
+	}
+	return 0, false
 }
 
 func projectSelectedAssetModelFromRequest(projectID string, request UpdateSelectedGenerationAssetRequest) domain.ProjectSelectedAssetModel {
@@ -1258,82 +1327,65 @@ func projectSelectedAssetModelFromRequest(projectID string, request UpdateSelect
 	if sourceTaskID == "" {
 		sourceTaskID = strings.TrimSpace(request.TaskID)
 	}
+	assetID := firstNonEmpty(request.MediaAssetID, libraryAssetIDFromGenerationAssetURL(request.URL))
+	resourceTitle := strings.TrimSpace(request.ResourceTitle)
+	if resourceTitle == "" {
+		resourceTitle = strings.TrimSpace(request.Title)
+	}
 	return domain.ProjectSelectedAssetModel{
 		ProjectID:        GenerationProjectIDForRequest(projectID, ""),
 		ResourceType:     selectedGenerationResourceType(request.ResourceType),
-		ResourceID:       strings.TrimSpace(request.ResourceID),
-		ResourceTitle:    strings.TrimSpace(request.ResourceTitle),
-		MediaAssetID:     strings.TrimSpace(request.MediaAssetID),
-		Kind:             strings.TrimSpace(request.Kind),
-		Title:            strings.TrimSpace(request.Title),
-		URL:              strings.TrimSpace(request.URL),
-		Base64:           strings.TrimSpace(request.Base64),
-		MIMEType:         strings.TrimSpace(request.MIMEType),
-		SourceType:       normalizeProjectSelectedAssetSourceType(request.SourceType),
-		SourceTaskID:     sourceTaskID,
-		SourceAssetIndex: selectedAssetRequestSourceIndex(request),
-		SourceDocumentID: strings.TrimSpace(request.SourceDocumentID),
-		SourceKey:        strings.TrimSpace(request.SourceKey),
+		ResourceID:       domain.StringPtr(request.ResourceID),
+		ResourceTitle:    domain.StringPtr(resourceTitle),
+		AssetID:          assetID,
+		SourceType:       domain.StringPtr(normalizeProjectSelectedAssetSourceType(request.SourceType)),
+		SourceTaskID:     domain.StringPtr(sourceTaskID),
+		SourceSlotIndex:  selectedAssetRequestSourceIndex(request),
+		SourceDocumentID: domain.StringPtr(request.SourceDocumentID),
 		SortOrder:        request.SortOrder,
 	}
 }
 
 func normalizeProjectSelectedAssetModelForUpsert(model domain.ProjectSelectedAssetModel) domain.ProjectSelectedAssetModel {
-	if strings.TrimSpace(model.MediaAssetID) == "" {
-		model.MediaAssetID = libraryAssetIDFromGenerationAssetURL(model.URL)
-	}
-	if strings.TrimSpace(model.Kind) == "" && projectSelectedAssetModelHasDirectPayload(model) {
-		model.Kind = "image"
-	}
-	if strings.TrimSpace(model.SourceType) == "" {
+	if domain.StringValue(model.SourceType) == "" {
 		switch {
-		case strings.TrimSpace(model.SourceTaskID) != "":
-			model.SourceType = "generated"
-		case strings.TrimSpace(model.SourceDocumentID) != "":
-			model.SourceType = "document"
-		case strings.TrimSpace(model.MediaAssetID) != "" || strings.TrimSpace(model.URL) != "" || strings.TrimSpace(model.Base64) != "":
-			model.SourceType = "uploaded"
+		case domain.StringValue(model.SourceTaskID) != "":
+			model.SourceType = domain.StringPtr("generated")
+		case domain.StringValue(model.SourceDocumentID) != "":
+			model.SourceType = domain.StringPtr("document")
+		case strings.TrimSpace(model.AssetID) != "":
+			model.SourceType = domain.StringPtr("uploaded")
 		}
-	}
-	if strings.TrimSpace(model.Title) == "" {
-		model.Title = strings.TrimSpace(model.ResourceTitle)
-	}
-	if strings.TrimSpace(model.ResourceTitle) == "" {
-		model.ResourceTitle = strings.TrimSpace(model.Title)
 	}
 	return model
 }
 
 func projectSelectedAssetModelHasDirectPayload(model domain.ProjectSelectedAssetModel) bool {
-	return strings.TrimSpace(model.MediaAssetID) != "" ||
-		strings.TrimSpace(model.URL) != "" ||
-		strings.TrimSpace(model.Base64) != "" ||
-		strings.TrimSpace(model.SourceKey) != "" ||
-		strings.TrimSpace(model.SourceDocumentID) != ""
+	return strings.TrimSpace(model.AssetID) != "" ||
+		domain.StringValue(model.SourceDocumentID) != ""
 }
 
 func selectedGenerationAssetRecordFromModel(model domain.ProjectSelectedAssetModel) SelectedGenerationAssetRecord {
+	asset := model.Asset
 	return SelectedGenerationAssetRecord{
 		ID:               model.ID,
-		TaskID:           model.SourceTaskID,
-		AssetIndex:       model.SourceAssetIndex,
+		TaskID:           domain.StringValue(model.SourceTaskID),
+		AssetIndex:       model.SourceSlotIndex,
 		ResourceType:     model.ResourceType,
-		ResourceID:       model.ResourceID,
-		ResourceTitle:    model.ResourceTitle,
-		MediaAssetID:     model.MediaAssetID,
-		Kind:             model.Kind,
-		Title:            model.Title,
-		URL:              model.URL,
-		Base64:           model.Base64,
-		MIMEType:         model.MIMEType,
-		SourceType:       model.SourceType,
-		SourceTaskID:     model.SourceTaskID,
-		SourceAssetIndex: model.SourceAssetIndex,
-		SourceDocumentID: model.SourceDocumentID,
-		SourceKey:        model.SourceKey,
+		ResourceID:       domain.StringValue(model.ResourceID),
+		ResourceTitle:    domain.StringValue(model.ResourceTitle),
+		MediaAssetID:     model.AssetID,
+		Kind:             asset.Kind,
+		Title:            firstNonEmpty(domain.StringValue(model.ResourceTitle), asset.Filename),
+		URL:              asset.URL,
+		MIMEType:         asset.MIMEType,
+		SourceType:       domain.StringValue(model.SourceType),
+		SourceTaskID:     domain.StringValue(model.SourceTaskID),
+		SourceAssetIndex: model.SourceSlotIndex,
+		SourceDocumentID: domain.StringValue(model.SourceDocumentID),
 		SortOrder:        model.SortOrder,
-		CreatedAt:        model.CreatedAt,
-		UpdatedAt:        model.UpdatedAt,
+		CreatedAt:        domain.StringFromTime(model.CreatedAt),
+		UpdatedAt:        domain.StringFromTime(model.UpdatedAt),
 	}
 }
 
@@ -1358,27 +1410,17 @@ func normalizeProjectSelectedAssetSourceType(value string) string {
 
 func projectSelectedAssetID(row domain.ProjectSelectedAssetModel) string {
 	source := ""
-	if strings.TrimSpace(row.SourceTaskID) != "" && row.SourceAssetIndex >= 0 {
-		source = fmt.Sprintf("task:%s:%d", strings.TrimSpace(row.SourceTaskID), row.SourceAssetIndex)
+	if domain.StringValue(row.SourceTaskID) != "" && row.SourceSlotIndex >= 0 {
+		source = fmt.Sprintf("task:%s:%d", domain.StringValue(row.SourceTaskID), row.SourceSlotIndex)
 	}
 	if source == "" {
-		source = strings.TrimSpace(row.MediaAssetID)
-	}
-	if source == "" {
-		source = strings.TrimSpace(row.SourceKey)
-	}
-	if source == "" {
-		source = strings.TrimSpace(row.URL)
-	}
-	if source == "" {
-		source = strings.TrimSpace(row.Base64)
+		source = strings.TrimSpace(row.AssetID)
 	}
 	sum := sha256.Sum256([]byte(strings.Join([]string{
 		GenerationProjectIDForRequest(row.ProjectID, ""),
 		strings.TrimSpace(row.ResourceType),
-		strings.TrimSpace(row.ResourceID),
-		strings.TrimSpace(row.ResourceTitle),
-		strings.TrimSpace(row.Kind),
+		domain.StringValue(row.ResourceID),
+		domain.StringValue(row.ResourceTitle),
 		source,
 	}, "\x00")))
 	return "selected-" + hex.EncodeToString(sum[:])[:24]
@@ -1405,13 +1447,6 @@ func libraryAssetIDFromGenerationAssetURL(value string) string {
 		return strings.TrimSpace(id)
 	}
 	return ""
-}
-
-func appendGenerationDeletedAssetSlot(slots []int, slot int) []int {
-	if slot < 0 {
-		return normalizeGenerationDeletedAssetSlots(slots)
-	}
-	return normalizeGenerationDeletedAssetSlots(append(slots, slot))
 }
 
 func normalizeGenerationDeletedAssetSlots(slots []int) []int {
@@ -1442,10 +1477,11 @@ func GenerationTaskForClient(task GenerationTaskRecord) GenerationTaskRecord {
 
 	assets := make([]GenerationAsset, 0, len(task.Assets))
 	for index, asset := range task.Assets {
-		if deletedSlots[index] {
+		slotIndex := assetSlotIndex(index, asset)
+		if deletedSlots[slotIndex] {
 			continue
 		}
-		asset.SlotIndex = index
+		asset.SlotIndex = slotIndex
 		asset.TaskID = task.ID
 		assets = append(assets, asset)
 	}
@@ -1503,8 +1539,8 @@ func generationConversationRecordFromModel(model generationConversationModel) Ge
 		Kind:      model.Kind,
 		Title:     model.Title,
 		Default:   IsDefaultGenerationConversationID(model.ID),
-		CreatedAt: model.CreatedAt,
-		UpdatedAt: model.UpdatedAt,
+		CreatedAt: domain.StringFromTime(model.CreatedAt),
+		UpdatedAt: domain.StringFromTime(model.UpdatedAt),
 	}
 }
 
@@ -1518,7 +1554,7 @@ func generationTaskAttemptRecordsFromModels(models []generationTaskAttemptModel)
 			Status:    model.Status,
 			Message:   model.Message,
 			Error:     model.Error,
-			CreatedAt: model.CreatedAt,
+			CreatedAt: domain.StringFromTime(model.CreatedAt),
 		})
 	}
 	return attempts

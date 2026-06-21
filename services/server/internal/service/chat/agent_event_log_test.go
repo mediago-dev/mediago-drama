@@ -9,8 +9,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func newTestChatStore(t *testing.T) *Service {
@@ -26,18 +28,35 @@ func newTestChatStoreWithDB(t *testing.T) (*Service, *gorm.DB) {
 		t.Fatalf("opening workspace db: %v", err)
 	}
 	workspaceDir := t.TempDir()
-	projects := testProjectProvider{root: workspaceDir}
+	projects := testProjectProvider{root: workspaceDir, db: db}
 	store := NewService(workspaceDir, repository.NewAgentSessionRepository(db), projects, nil)
 	return store, db
 }
 
 type testProjectProvider struct {
 	root string
+	db   *gorm.DB
 }
 
 func (provider testProjectProvider) EnsureProjectRecord(projectID string) error {
-	_, err := provider.ProjectDir(projectID)
-	return err
+	dir, err := provider.ProjectDir(projectID)
+	if err != nil {
+		return err
+	}
+	if provider.db == nil {
+		return nil
+	}
+	now := domain.TimeFromString("2026-06-01T00:00:00Z")
+	return provider.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&domain.WorkspaceProjectModel{
+		ID:          projectID,
+		Name:        projectID,
+		Category:    "agent",
+		Status:      "active",
+		ProjectDir:  dir,
+		RelativeDir: projectID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}).Error
 }
 
 func (provider testProjectProvider) ProjectDir(projectID string) (string, error) {

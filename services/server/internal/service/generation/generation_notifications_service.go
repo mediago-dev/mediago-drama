@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
@@ -81,10 +82,10 @@ func (service *GenerationNotificationService) TrackTaskTarget(task GenerationTas
 		TaskID:     taskID,
 		TaskKind:   strings.TrimSpace(task.Kind),
 		TaskStatus: "pending",
-		ProjectID:  normalizedTarget.ProjectID,
+		ProjectID:  domain.StringPtr(normalizedTarget.ProjectID),
 		TargetJSON: string(targetJSON),
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		CreatedAt:  domain.TimeFromString(now),
+		UpdatedAt:  domain.TimeFromString(now),
 	}
 
 	service.mu.Lock()
@@ -213,7 +214,7 @@ func (service *GenerationNotificationService) completeTaskNotification(task Gene
 
 	model.TaskKind = strings.TrimSpace(task.Kind)
 	model.TaskStatus = nextStatus
-	model.UpdatedAt = timestamp.NowRFC3339Nano()
+	model.UpdatedAt = domain.TimeFromString(timestamp.NowRFC3339Nano())
 	if nextStatus != "completed" {
 		if err := service.repo.UpsertGenerationNotification(model); err != nil {
 			return generationNotificationModel{}, err
@@ -315,15 +316,22 @@ func generationNotificationRecordFromModel(model generationNotificationModel) (G
 		TaskID:      model.TaskID,
 		TaskKind:    model.TaskKind,
 		TaskStatus:  model.TaskStatus,
-		ProjectID:   model.ProjectID,
+		ProjectID:   domain.StringValue(model.ProjectID),
 		Title:       model.Title,
 		Description: model.Description,
 		AssetCount:  model.AssetCount,
-		ReadAt:      model.ReadAt,
+		ReadAt:      domain.StringFromTime(generationTimePtrValue(model.ReadAt)),
 		Target:      target,
-		CreatedAt:   model.CreatedAt,
-		UpdatedAt:   model.UpdatedAt,
+		CreatedAt:   domain.StringFromTime(model.CreatedAt),
+		UpdatedAt:   domain.StringFromTime(model.UpdatedAt),
 	}, nil
+}
+
+func generationTimePtrValue(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return *value
 }
 
 func generationNotificationTargetFromModel(model generationNotificationModel) (GenerationNotificationTarget, error) {

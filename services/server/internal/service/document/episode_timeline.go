@@ -79,8 +79,8 @@ func (store *Service) saveEpisodeTimelineState(
 		ProjectID:   projectID,
 		DocumentID:  documentID,
 		EpisodeJSON: string(episodeJSON),
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		CreatedAt:   domain.TimeFromString(now),
+		UpdatedAt:   domain.TimeFromString(now),
 	}
 	if err := store.workspace.UpsertEpisodeTimeline(model); err != nil {
 		return episodeTimelineStateResponse{}, err
@@ -108,7 +108,7 @@ func episodeTimelineStateFromModel(workspaceDir string, model domain.EpisodeTime
 		ProjectID:    model.ProjectID,
 		DocumentID:   model.DocumentID,
 		Episode:      json.RawMessage(model.EpisodeJSON),
-		CreatedAt:    model.CreatedAt,
-		UpdatedAt:    model.UpdatedAt,
+		CreatedAt:    domain.StringFromTime(model.CreatedAt),
+		UpdatedAt:    domain.StringFromTime(model.UpdatedAt),
 	}
 }

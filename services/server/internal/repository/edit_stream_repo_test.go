@@ -14,6 +14,7 @@ func TestDocumentEditStreamRepositoryUpsertAndGet(t *testing.T) {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
 	repo := NewDocumentEditStreamRepository(db)
+	seedRepositoryProject(t, db, "project-1")
 
 	if _, err := repo.GetDocumentEditStream("project-1", "stream-1"); !errors.Is(err, ErrRecordNotFound) {
 		t.Fatalf("GetDocumentEditStream() missing error = %v, want ErrRecordNotFound", err)
@@ -29,15 +30,15 @@ func TestDocumentEditStreamRepositoryUpsertAndGet(t *testing.T) {
 		Buffer:      "updated text",
 		Status:      "streaming",
 		BeforeJSON:  `{"content":"draft"}`,
-		CreatedAt:   "2026-05-22T00:00:00Z",
-		UpdatedAt:   "2026-05-22T00:00:00Z",
+		CreatedAt:   domain.TimeFromString("2026-05-22T00:00:00Z"),
+		UpdatedAt:   domain.TimeFromString("2026-05-22T00:00:00Z"),
 	}
 	if err := repo.UpsertDocumentEditStream(record); err != nil {
 		t.Fatalf("UpsertDocumentEditStream() error = %v", err)
 	}
 
 	record.Status = "completed"
-	record.UpdatedAt = "2026-05-22T00:01:00Z"
+	record.UpdatedAt = domain.TimeFromString("2026-05-22T00:01:00Z")
 	if err := repo.UpsertDocumentEditStream(record); err != nil {
 		t.Fatalf("UpsertDocumentEditStream() update error = %v", err)
 	}

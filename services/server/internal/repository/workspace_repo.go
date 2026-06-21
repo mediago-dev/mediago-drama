@@ -3,7 +3,6 @@ package repository
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
@@ -115,9 +114,9 @@ func (repo *WorkspaceRepository) ArchiveProject(projectID string, archivedAt str
 		Where("id = ? AND status <> ?", projectID, ProjectStatusTrashed).
 		Updates(map[string]any{
 			"status":      ProjectStatusArchived,
-			"archived_at": archivedAt,
-			"trashed_at":  "",
-			"updated_at":  archivedAt,
+			"archived_at": domain.TimeFromString(archivedAt),
+			"trashed_at":  nil,
+			"updated_at":  domain.TimeFromString(archivedAt),
 		})
 	if result.Error != nil {
 		return false, fmt.Errorf("archiving project %s: %w", projectID, result.Error)
@@ -146,9 +145,9 @@ func (repo *WorkspaceRepository) TrashProject(projectID string, originalProjectD
 			"relative_dir":         relativeDir,
 			"original_project_dir": originalProjectDir,
 			"trash_project_dir":    trashProjectDir,
-			"archived_at":          "",
-			"trashed_at":           trashedAt,
-			"updated_at":           trashedAt,
+			"archived_at":          nil,
+			"trashed_at":           domain.TimeFromString(trashedAt),
+			"updated_at":           domain.TimeFromString(trashedAt),
 		})
 	if result.Error != nil {
 		return false, fmt.Errorf("trashing project %s: %w", projectID, result.Error)
@@ -187,9 +186,9 @@ func (repo *WorkspaceRepository) RestoreProject(projectID string, projectDir str
 				"relative_dir":         relativeDir,
 				"original_project_dir": "",
 				"trash_project_dir":    "",
-				"archived_at":          "",
-				"trashed_at":           "",
-				"updated_at":           updatedAt,
+				"archived_at":          nil,
+				"trashed_at":           nil,
+				"updated_at":           domain.TimeFromString(updatedAt),
 			})
 		if result.Error != nil {
 			return fmt.Errorf("restoring project: %w", result.Error)
@@ -197,16 +196,6 @@ func (repo *WorkspaceRepository) RestoreProject(projectID string, projectDir str
 		updated = result.RowsAffected > 0
 		if !updated {
 			return nil
-		}
-		oldDir := project.OriginalProjectDir
-		if oldDir == "" {
-			oldDir = project.ProjectDir
-		}
-		if oldDir == "" || oldDir == projectDir {
-			return nil
-		}
-		if err := updateProjectPathPrefix(tx, &domain.ProjectAssetModel{}, "path", projectID, oldDir, projectDir); err != nil {
-			return fmt.Errorf("updating project asset paths: %w", err)
 		}
 		return nil
 	})
@@ -248,7 +237,7 @@ func (repo *WorkspaceRepository) UpdateProjectStorageLocation(
 			"relative_dir": relativeDir,
 		}
 		if updatedAt != "" {
-			updates["updated_at"] = updatedAt
+			updates["updated_at"] = domain.TimeFromString(updatedAt)
 		}
 		result := tx.Model(&domain.WorkspaceProjectModel{}).
 			Where("id = ?", projectID).
@@ -257,38 +246,12 @@ func (repo *WorkspaceRepository) UpdateProjectStorageLocation(
 			return fmt.Errorf("updating project storage location: %w", result.Error)
 		}
 		updated = result.RowsAffected > 0
-		if !updated || oldDir == "" || newDir == "" || oldDir == newDir {
-			return nil
-		}
-
-		if err := updateProjectPathPrefix(tx, &domain.ProjectAssetModel{}, "path", projectID, oldDir, newDir); err != nil {
-			return fmt.Errorf("updating project asset paths: %w", err)
-		}
 		return nil
 	})
 	if err != nil {
 		return false, fmt.Errorf("updating project %s storage location: %w", projectID, err)
 	}
 	return updated, nil
-}
-
-func updateProjectPathPrefix(
-	tx *gorm.DB,
-	model any,
-	column string,
-	projectID string,
-	oldDir string,
-	newDir string,
-) error {
-	oldChildPrefix := oldDir + string(filepath.Separator)
-	err := tx.Model(model).
-		Where("project_id = ? AND (? = "+column+" OR instr("+column+", ?) = 1)", projectID, oldDir, oldChildPrefix).
-		Update(column, gorm.Expr("replace("+column+", ?, ?)", oldDir, newDir)).
-		Error
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // DeleteProject permanently deletes a project and project-scoped workspace records.
@@ -323,7 +286,7 @@ func (repo *WorkspaceRepository) PermanentlyDeleteProject(projectID string) (boo
 		if err := tx.Delete(&domain.DocumentEditStreamModel{}, "project_id = ?", projectID).Error; err != nil {
 			return fmt.Errorf("deleting document edit streams: %w", err)
 		}
-		if err := tx.Delete(&domain.ProjectAssetModel{}, "project_id = ?", projectID).Error; err != nil {
+		if err := tx.Delete(&domain.ProjectReferenceAssetModel{}, "project_id = ?", projectID).Error; err != nil {
 			return fmt.Errorf("deleting project assets: %w", err)
 		}
 

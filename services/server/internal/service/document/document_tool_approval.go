@@ -28,8 +28,8 @@ func DocumentToolApprovalRecordFromModel(model domain.DocumentToolApprovalModel)
 		Title:      model.Title,
 		Summary:    model.Summary,
 		Status:     model.Status,
-		CreatedAt:  model.CreatedAt,
-		DecidedAt:  model.DecidedAt,
+		CreatedAt:  domain.StringFromTime(model.CreatedAt),
+		DecidedAt:  domain.StringFromTime(documentTimePtrValue(model.DecidedAt)),
 	}
 	if model.RequestJSON != "" {
 		if err := json.Unmarshal([]byte(model.RequestJSON), &record.Request); err != nil {
@@ -82,10 +82,17 @@ func PrepareDocumentToolApprovalModel(
 		Summary:     approval.Summary,
 		Status:      approval.Status,
 		RequestJSON: string(requestJSON),
-		CreatedAt:   approval.CreatedAt,
-		DecidedAt:   "",
+		CreatedAt:   domain.TimeFromString(approval.CreatedAt),
+		DecidedAt:   nil,
 	}
 	return approval, model, nil
+}
+
+func documentTimePtrValue(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return *value
 }
 
 // PrepareDocumentToolApprovalDecision normalizes an approval decision update.

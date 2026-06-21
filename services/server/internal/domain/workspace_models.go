@@ -1,23 +1,23 @@
 package domain
 
-import "database/sql"
+import "time"
 
 // WorkspaceProjectModel is the GORM model for workspace projects.
 type WorkspaceProjectModel struct {
-	ID                 string         `gorm:"column:id;primaryKey"`
-	Name               string         `gorm:"column:name;not null"`
-	Category           string         `gorm:"column:category;not null;default:'agent';index:projects_category_idx"`
-	Status             string         `gorm:"column:status;not null;default:'active';index:projects_status_idx"`
-	Description        string         `gorm:"column:description;not null;default:''"`
-	ProjectDir         string         `gorm:"column:project_dir;not null;default:''"`
-	RelativeDir        string         `gorm:"column:relative_dir;not null"`
-	OriginalProjectDir string         `gorm:"column:original_project_dir;not null;default:''"`
-	TrashProjectDir    string         `gorm:"column:trash_project_dir;not null;default:''"`
-	BriefJSON          sql.NullString `gorm:"column:brief_json;type:text"`
-	ArchivedAt         string         `gorm:"column:archived_at;not null;default:''"`
-	TrashedAt          string         `gorm:"column:trashed_at;not null;default:'';index:projects_status_idx"`
-	CreatedAt          string         `gorm:"column:created_at;not null"`
-	UpdatedAt          string         `gorm:"column:updated_at;not null"`
+	ID                 string     `gorm:"column:id;primaryKey"`
+	Name               string     `gorm:"column:name;not null"`
+	Category           string     `gorm:"column:category;not null;default:'agent';index:projects_category_idx"`
+	Status             string     `gorm:"column:status;not null;default:'active';index:projects_status_idx"`
+	Description        string     `gorm:"column:description;not null;default:''"`
+	ProjectDir         string     `gorm:"column:project_dir;not null;default:''"`
+	RelativeDir        string     `gorm:"column:relative_dir;not null"`
+	OriginalProjectDir string     `gorm:"column:original_project_dir;not null;default:''"`
+	TrashProjectDir    string     `gorm:"column:trash_project_dir;not null;default:''"`
+	BriefJSON          *string    `gorm:"column:brief_json;type:text"`
+	ArchivedAt         *time.Time `gorm:"column:archived_at"`
+	TrashedAt          *time.Time `gorm:"column:trashed_at;index:projects_status_idx"`
+	CreatedAt          time.Time  `gorm:"column:created_at;not null;autoCreateTime:nano"`
+	UpdatedAt          time.Time  `gorm:"column:updated_at;not null;autoUpdateTime:nano"`
 }
 
 // TableName returns the backing table name.
@@ -30,8 +30,10 @@ type EpisodeTimelineModel struct {
 	ProjectID   string `gorm:"column:project_id;primaryKey;default:'';index:episode_timelines_project_idx,priority:1"`
 	DocumentID  string `gorm:"column:document_id;primaryKey;index:episode_timelines_project_idx,priority:2"`
 	EpisodeJSON string `gorm:"column:episode_json;not null;type:text"`
-	CreatedAt   string `gorm:"column:created_at;not null"`
-	UpdatedAt   string `gorm:"column:updated_at;not null;index:episode_timelines_project_idx,priority:3,sort:desc"`
+	CreatedAt   time.Time `gorm:"column:created_at;not null;autoCreateTime:nano"`
+	UpdatedAt   time.Time `gorm:"column:updated_at;not null;autoUpdateTime:nano;index:episode_timelines_project_idx,priority:3,sort:desc"`
+
+	Project WorkspaceProjectModel `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:CASCADE"`
 }
 
 // TableName returns the backing table name.
@@ -45,7 +47,9 @@ type DocumentOperationLogModel struct {
 	ID         string `gorm:"column:id;primaryKey"`
 	DocumentID string `gorm:"column:document_id;not null"`
 	RecordJSON string `gorm:"column:record_json;not null"`
-	CreatedAt  string `gorm:"column:created_at;not null;index:document_operation_logs_project_idx,priority:2,sort:desc"`
+	CreatedAt  time.Time `gorm:"column:created_at;not null;autoCreateTime:nano;index:document_operation_logs_project_idx,priority:2,sort:desc"`
+
+	Project WorkspaceProjectModel `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:CASCADE"`
 }
 
 // TableName returns the backing table name.
@@ -64,8 +68,10 @@ type DocumentToolApprovalModel struct {
 	Status              string `gorm:"column:status;not null;index:document_tool_approvals_status_idx,priority:2"`
 	RequestJSON         string `gorm:"column:request_json;not null"`
 	DecisionPayloadJSON string `gorm:"column:decision_payload_json;not null;default:''"`
-	CreatedAt           string `gorm:"column:created_at;not null;index:document_tool_approvals_status_idx,priority:3,sort:asc"`
-	DecidedAt           string `gorm:"column:decided_at;not null;default:''"`
+	CreatedAt           time.Time  `gorm:"column:created_at;not null;autoCreateTime:nano;index:document_tool_approvals_status_idx,priority:3,sort:asc"`
+	DecidedAt           *time.Time `gorm:"column:decided_at"`
+
+	Project WorkspaceProjectModel `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:CASCADE"`
 }
 
 // TableName returns the backing table name.
@@ -88,8 +94,10 @@ type DocumentEditStreamModel struct {
 	RunID           string `gorm:"column:run_id;not null;default:''"`
 	BeforeJSON      string `gorm:"column:before_json;not null;default:''"`
 	OperationLogged bool   `gorm:"column:operation_logged;not null;default:false"`
-	CreatedAt       string `gorm:"column:created_at;not null"`
-	UpdatedAt       string `gorm:"column:updated_at;not null"`
+	CreatedAt       time.Time `gorm:"column:created_at;not null;autoCreateTime:nano"`
+	UpdatedAt       time.Time `gorm:"column:updated_at;not null;autoUpdateTime:nano"`
+
+	Project WorkspaceProjectModel `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:CASCADE"`
 }
 
 // TableName returns the backing table name.

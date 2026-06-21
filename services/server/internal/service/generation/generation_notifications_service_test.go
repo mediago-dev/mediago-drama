@@ -9,22 +9,30 @@ import (
 )
 
 func TestGenerationNotificationServicePublishesCompletedTask(t *testing.T) {
-	repo, err := repository.NewGenerationNotificationRepository(filepath.Join(t.TempDir(), "settings.db"))
-	if err != nil {
-		t.Fatalf("NewGenerationNotificationRepository() error = %v", err)
+	dbPath := filepath.Join(t.TempDir(), "workspace.db")
+	seedGenerationTaskProject(t, dbPath, "project-a")
+	seedGenerationTaskAsset(t, dbPath, "image-1", "image", "project-a")
+	task := GenerationTaskRecord{
+		ID:        "task-1",
+		ProjectID: "project-a",
+		Kind:      "image",
+		Status:    "completed",
+		Assets:    []GenerationAsset{{Kind: "image", URL: "/api/v1/media-assets/image-1/content"}},
 	}
-	service := NewGenerationNotificationServiceFromRepository(repo, nil, func(prefix string) (string, error) {
+	taskService := NewGenerationTaskService(dbPath, nil)
+	if err := taskService.Upsert(task); err != nil {
+		t.Fatalf("Upsert(task) error = %v", err)
+	}
+	repos, err := repository.OpenWorkspaceRepositories(dbPath)
+	if err != nil {
+		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
+	}
+	service := NewGenerationNotificationServiceFromRepository(repos.GenerationNotifications, nil, func(prefix string) (string, error) {
 		return prefix + "-1", nil
 	})
 	events, unsubscribe := service.Subscribe()
 	defer unsubscribe()
 
-	task := GenerationTaskRecord{
-		ID:     "task-1",
-		Kind:   "image",
-		Status: "completed",
-		Assets: []GenerationAsset{{Kind: "image", URL: "/api/v1/media-assets/image-1/content"}},
-	}
 	target := &GenerationNotificationTarget{
 		Kind:          "document-section",
 		ProjectID:     "project-a",
@@ -76,22 +84,30 @@ func TestGenerationNotificationServicePublishesCompletedTask(t *testing.T) {
 }
 
 func TestGenerationNotificationServicePublishesCompletedVideoTask(t *testing.T) {
-	repo, err := repository.NewGenerationNotificationRepository(filepath.Join(t.TempDir(), "settings.db"))
-	if err != nil {
-		t.Fatalf("NewGenerationNotificationRepository() error = %v", err)
+	dbPath := filepath.Join(t.TempDir(), "workspace.db")
+	seedGenerationTaskProject(t, dbPath, "project-a")
+	seedGenerationTaskAsset(t, dbPath, "video-1", "video", "project-a")
+	task := GenerationTaskRecord{
+		ID:        "task-video",
+		ProjectID: "project-a",
+		Kind:      "video",
+		Status:    "completed",
+		Assets:    []GenerationAsset{{Kind: "video", URL: "/api/v1/media-assets/video-1/content"}},
 	}
-	service := NewGenerationNotificationServiceFromRepository(repo, nil, func(prefix string) (string, error) {
+	taskService := NewGenerationTaskService(dbPath, nil)
+	if err := taskService.Upsert(task); err != nil {
+		t.Fatalf("Upsert(task) error = %v", err)
+	}
+	repos, err := repository.OpenWorkspaceRepositories(dbPath)
+	if err != nil {
+		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
+	}
+	service := NewGenerationNotificationServiceFromRepository(repos.GenerationNotifications, nil, func(prefix string) (string, error) {
 		return prefix + "-video", nil
 	})
 	events, unsubscribe := service.Subscribe()
 	defer unsubscribe()
 
-	task := GenerationTaskRecord{
-		ID:     "task-video",
-		Kind:   "video",
-		Status: "completed",
-		Assets: []GenerationAsset{{Kind: "video", URL: "/api/v1/media-assets/video-1/content"}},
-	}
 	target := &GenerationNotificationTarget{
 		Kind:          "document-section",
 		ProjectID:     "project-a",

@@ -50,8 +50,8 @@ func DocumentEditStreamRecordFromModel(model domain.DocumentEditStreamModel) (Do
 		RunID:           model.RunID,
 		Before:          before,
 		OperationLogged: model.OperationLogged,
-		CreatedAt:       model.CreatedAt,
-		UpdatedAt:       model.UpdatedAt,
+		CreatedAt:       domain.StringFromTime(model.CreatedAt),
+		UpdatedAt:       domain.StringFromTime(model.UpdatedAt),
 	}, nil
 }
 
@@ -88,8 +88,8 @@ func PrepareDocumentEditStreamModel(record DocumentEditStreamRecord) (DocumentEd
 		RunID:           strings.TrimSpace(record.RunID),
 		BeforeJSON:      string(beforeJSON),
 		OperationLogged: record.OperationLogged,
-		CreatedAt:       record.CreatedAt,
-		UpdatedAt:       record.UpdatedAt,
+		CreatedAt:       domain.TimeFromString(record.CreatedAt),
+		UpdatedAt:       domain.TimeFromString(record.UpdatedAt),
 	}
 	return record, model, nil
 }
