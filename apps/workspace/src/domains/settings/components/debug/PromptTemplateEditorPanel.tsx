@@ -1,4 +1,4 @@
-import { MessageSquareText, Save } from "lucide-react";
+import { MessageSquareText, RotateCcw, Save } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
@@ -6,9 +6,11 @@ import {
 	type PromptTemplate,
 	listPromptTemplates,
 	promptTemplatesKey,
+	resetPromptTemplate,
 	updatePromptTemplate,
 } from "@/domains/settings/api/prompt-templates";
 import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
+import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
 import {
@@ -38,6 +40,7 @@ export const PromptTemplateEditorPanel: React.FC = () => {
 		[selectedId, templateList],
 	);
 	const [draft, setDraft] = useState<PromptTemplate | null>(selectedTemplate);
+	const [isResetting, setIsResetting] = useState(false);
 
 	useEffect(() => {
 		if (!templateList.length) return;
@@ -71,16 +74,49 @@ export const PromptTemplateEditorPanel: React.FC = () => {
 		}
 	};
 
+	const reset = async () => {
+		if (!selectedTemplate?.overridden) return;
+		setIsResetting(true);
+		try {
+			const resetTemplate = await resetPromptTemplate(selectedTemplate.id);
+			await mutate(
+				templateList.map((template) =>
+					template.id === resetTemplate.id ? resetTemplate : template,
+				),
+				false,
+			);
+			setDraft(cloneTemplate(resetTemplate));
+			toast.success("系统指令已恢复默认");
+		} catch (error) {
+			toast.error("恢复默认失败", { description: errorMessage(error) });
+		} finally {
+			setIsResetting(false);
+		}
+	};
+
 	return (
 		<SettingsPanelLayout
 			title="系统指令"
 			icon={<MessageSquareText className="size-4" />}
 			actions={
 				draft ? (
-					<Button type="button" onClick={() => void save()} disabled={isSaving}>
-						<Save className="size-4" />
-						<span>{isSaving ? "保存中" : "保存"}</span>
-					</Button>
+					<>
+						{selectedTemplate?.overridden ? (
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => void reset()}
+								disabled={isResetting}
+							>
+								<RotateCcw className="size-4" />
+								<span>{isResetting ? "恢复中" : "恢复默认"}</span>
+							</Button>
+						) : null}
+						<Button type="button" onClick={() => void save()} disabled={isSaving}>
+							<Save className="size-4" />
+							<span>{isSaving ? "保存中" : "保存"}</span>
+						</Button>
+					</>
 				) : null
 			}
 		>
@@ -108,11 +144,24 @@ export const PromptTemplateEditorPanel: React.FC = () => {
 								<SelectContent align="start">
 									{templateList.map((template) => (
 										<SelectItem key={template.id} value={template.id}>
-											{template.name}
+											<span className="flex min-w-0 w-full items-center gap-2">
+												<span className="min-w-0 flex-1 truncate">{template.name}</span>
+												<EntrySourceBadge
+													source={template.source}
+													overridden={template.overridden}
+												/>
+											</span>
 										</SelectItem>
 									))}
 								</SelectContent>
 							</Select>
+						</div>
+
+						<div className={settingsFormRowClassName}>
+							<Label className="text-sm font-medium text-foreground">来源</Label>
+							<div>
+								<EntrySourceBadge source={draft.source} overridden={draft.overridden} />
+							</div>
 						</div>
 
 						{draft.description ? (
@@ -157,6 +206,21 @@ const settingsFormRowClassName = cn(
 const promptBodyRowClassName = "grid gap-2 py-2";
 
 const templateMessageClassName = "py-2 text-sm text-muted-foreground";
+
+const EntrySourceBadge: React.FC<Pick<PromptTemplate, "source" | "overridden">> = ({
+	overridden,
+	source,
+}) => (
+	<Badge variant={overridden || source === "pack" ? "secondary" : "outline"} className="rounded-md">
+		{entrySourceLabel(source, overridden)}
+	</Badge>
+);
+
+const entrySourceLabel = (source: PromptTemplate["source"], overridden?: boolean) => {
+	if (overridden) return "已覆盖";
+	if (source === "pack") return "来自包";
+	return "用户新增";
+};
 
 const sanitizeTemplate = (template: PromptTemplate): PromptTemplate => ({
 	...template,

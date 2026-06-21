@@ -165,6 +165,9 @@ func EnsureSettingsSchema(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&domain.APIKeyModel{},
 		&domain.AgentModelProfileModel{},
+		&domain.PackModel{},
+		&domain.PackEntryModel{},
+		&domain.PackCategoryModel{},
 		&domain.PromptCategoryModel{},
 		&domain.PromptLibraryEntryModel{},
 		&domain.GenerationPreferenceModel{},

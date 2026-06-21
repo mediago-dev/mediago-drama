@@ -22,8 +22,7 @@ type ProjectBriefUpdateMask = model.ProjectBriefUpdateMask
 const DefaultMaxSectionChars = 12000
 
 var (
-	ResolveAgentScopedEdit           = agent.ResolveAgentScopedEdit
-	RenderOverviewProjectBriefPrompt = model.RenderOverviewProjectBriefPrompt
+	ResolveAgentScopedEdit = agent.ResolveAgentScopedEdit
 )
 
 // MediaGoDramaMCPToolName returns a fully qualified MediaGo Drama MCP tool name.

@@ -32,6 +32,7 @@ type skillResponse struct {
 	Title       string              `json:"title,omitempty"`
 	Description string              `json:"description"`
 	Source      serviceskill.Source `json:"source"`
+	Overridden  bool                `json:"overridden,omitempty"`
 	Hint        map[string]string   `json:"hint,omitempty"`
 	Content     string              `json:"content"`
 }
@@ -47,7 +48,7 @@ type deleteSkillResponse struct {
 
 // HandleListSkills godoc
 // @Summary 获取 Skills 列表
-// @Description 返回内置和用户自定义的 Agent Skills。
+// @Description 返回来自提示词包和用户自定义的 Agent Skills。
 // @Tags Skills
 // @Produce json
 // @Success 200 {object} SwaggerEnvelope
@@ -83,7 +84,7 @@ func (handler Skills) HandleGetSkill(context *gin.Context) {
 
 // HandlePutSkill godoc
 // @Summary 保存 Skill
-// @Description 保存 Skill Markdown，必要时为内置 Skill 创建用户覆盖。
+// @Description 保存 Skill Markdown，必要时为包内 Skill 创建用户覆盖。
 // @Tags Skills
 // @Accept text/plain
 // @Produce json
@@ -150,6 +151,26 @@ func (handler Skills) HandleDeleteSkill(context *gin.Context) {
 	httpresponse.OK(context, deleteSkillResponse{Deleted: true})
 }
 
+// HandleResetSkill godoc
+// @Summary 恢复 Skill
+// @Description 将一个包内 Skill 恢复为所属提示词包的默认内容。
+// @Tags Skills
+// @Produce json
+// @Param name path string true "Skill name"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/skills/{name}/reset [post]
+func (handler Skills) HandleResetSkill(context *gin.Context) {
+	item, err := handler.registry.Reset(context.Request.Context(), context.Param("name"))
+	if err != nil {
+		writeSkillError(context, err)
+		return
+	}
+	httpresponse.OK(context, skillHTTPResponse(item))
+}
+
 func decodeRawMarkdown(context *gin.Context) (string, error) {
 	data, err := io.ReadAll(context.Request.Body)
 	if err != nil {
@@ -174,6 +195,7 @@ func skillHTTPResponse(item serviceskill.Skill) skillResponse {
 		Title:       item.Title,
 		Description: item.Description,
 		Source:      item.Source,
+		Overridden:  item.Overridden,
 		Hint:        item.Hint,
 		Content:     item.Raw,
 	}

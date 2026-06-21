@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 )
 
@@ -25,7 +27,7 @@ type agentsMdData struct {
 	SkillIndex   []serviceskill.SkillMeta
 }
 
-var sections = []SectionDescriptor{
+var fallbackSections = []SectionDescriptor{
 	{
 		ID:          "AGENTS",
 		Name:        "AGENTS.md",
@@ -51,13 +53,22 @@ var sections = []SectionDescriptor{
 
 // SectionDescriptors returns every registered prompt section in injection order.
 func SectionDescriptors() []SectionDescriptor {
-	return sortedSectionDescriptors(sections)
+	entries, err := currentPackStore().ListEntries(context.Background(), instructionpack.KindInstruction)
+	if err != nil {
+		slog.Warn("prompt instruction registry unavailable", "error", err)
+		return sortedSectionDescriptors(fallbackSections)
+	}
+	descriptors := descriptorsFromEntries(entries)
+	if len(descriptors) == 0 {
+		return sortedSectionDescriptors(fallbackSections)
+	}
+	return sortedSectionDescriptors(descriptors)
 }
 
 // EditableSectionDescriptors returns registered sections that Settings may expose.
 func EditableSectionDescriptors() []SectionDescriptor {
-	descriptors := make([]SectionDescriptor, 0, len(sections))
-	for _, descriptor := range sections {
+	descriptors := make([]SectionDescriptor, 0, len(fallbackSections))
+	for _, descriptor := range SectionDescriptors() {
 		if descriptor.Editable {
 			descriptors = append(descriptors, descriptor)
 		}
@@ -68,7 +79,7 @@ func EditableSectionDescriptors() []SectionDescriptor {
 // SectionDescriptorByID returns the registered prompt section metadata for an ID.
 func SectionDescriptorByID(id string) (SectionDescriptor, bool) {
 	id = strings.TrimSpace(id)
-	for _, descriptor := range sections {
+	for _, descriptor := range SectionDescriptors() {
 		if descriptor.ID == id {
 			return descriptor, true
 		}
@@ -89,6 +100,30 @@ func promptContextData(ctx PromptContext) any {
 	return ctx
 }
 
+func descriptorsFromEntries(entries []promptpack.Entry) []SectionDescriptor {
+	descriptors := make([]SectionDescriptor, 0, len(entries))
+	for _, entry := range entries {
+		descriptor := SectionDescriptor{
+			ID:          entry.Slug,
+			Name:        nonEmpty(entry.Title, entry.Name),
+			Description: entry.Description,
+			Order:       metadataInt(entry.Metadata, "order"),
+			Editable:    metadataBool(entry.Metadata, "editable"),
+			DataFn:      promptContextData,
+		}
+		if descriptor.ID == "AGENTS" {
+			descriptor.DataFn = func(ctx PromptContext) any {
+				return agentsMdData{
+					SystemPrompt: strings.TrimSpace(ctx.Request.SystemPrompt),
+					SkillIndex:   loadSkillIndex(ctx),
+				}
+			}
+		}
+		descriptors = append(descriptors, descriptor)
+	}
+	return descriptors
+}
+
 func sortedSectionDescriptors(input []SectionDescriptor) []SectionDescriptor {
 	descriptors := append([]SectionDescriptor(nil), input...)
 	sort.SliceStable(descriptors, func(first, second int) bool {
@@ -98,4 +133,36 @@ func sortedSectionDescriptors(input []SectionDescriptor) []SectionDescriptor {
 		return descriptors[first].ID < descriptors[second].ID
 	})
 	return descriptors
+}
+
+func metadataBool(metadata map[string]any, key string) bool {
+	value, ok := metadata[key]
+	if !ok || value == nil {
+		return false
+	}
+	typed, ok := value.(bool)
+	return ok && typed
+}
+
+func metadataInt(metadata map[string]any, key string) int {
+	value, ok := metadata[key]
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case float64:
+		return int(typed)
+	default:
+		return 0
+	}
+}
+
+func nonEmpty(value string, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return strings.TrimSpace(fallback)
+	}
+	return value
 }

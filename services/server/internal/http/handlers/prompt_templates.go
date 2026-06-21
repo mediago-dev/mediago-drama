@@ -14,6 +14,7 @@ import (
 type PromptTemplateService interface {
 	Load(ctx context.Context) (map[string]service.PromptTemplate, error)
 	Save(ctx context.Context, id string, template service.PromptTemplate) (service.PromptTemplate, error)
+	Reset(ctx context.Context, id string) (service.PromptTemplate, error)
 }
 
 // PromptTemplates handles prompt template HTTP routes.
@@ -71,6 +72,26 @@ func (handler PromptTemplates) HandlePutPromptTemplate(context *gin.Context) {
 
 	templateID := context.Param("id")
 	template, err := handler.store.Save(context.Request.Context(), templateID, payload)
+	if err != nil {
+		writePromptTemplateError(context, err)
+		return
+	}
+
+	httpresponse.OK(context, template)
+}
+
+// HandleResetPromptTemplate godoc
+// @Summary 恢复系统提示词模板
+// @Description 将一个可编辑系统提示词模板恢复为所属提示词包的默认内容。
+// @Tags Prompt Templates
+// @Produce json
+// @Param id path string true "Template ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/prompt-templates/{id}/reset [post]
+func (handler PromptTemplates) HandleResetPromptTemplate(context *gin.Context) {
+	template, err := handler.store.Reset(context.Request.Context(), context.Param("id"))
 	if err != nil {
 		writePromptTemplateError(context, err)
 		return

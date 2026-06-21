@@ -1,3 +1,10 @@
+---
+slug: TOOLS
+title: TOOLS.md
+description: 跨工具编排策略：项目级审查、局部编辑触发和连续编辑复用。
+order: 1
+editable: true
+---
 # 工具使用原则
 
 - 使用中文回复用户。

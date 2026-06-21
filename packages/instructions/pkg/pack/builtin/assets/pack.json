@@ -1,0 +1,19 @@
+{
+  "id": "builtin",
+  "name": "MediaGo Drama Built-in Prompts",
+  "version": "1.0.0",
+  "author": "MediaGo Drama",
+  "description": "Default system instructions, agent skills, reusable prompt presets, and visual styles.",
+  "categories": [
+    {
+      "id": "style",
+      "label": "风格",
+      "order": 0
+    },
+    {
+      "id": "extra",
+      "label": "其他",
+      "order": 1
+    }
+  ]
+}

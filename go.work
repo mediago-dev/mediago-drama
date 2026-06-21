@@ -1,10 +1,10 @@
 go 1.25.0
 
 use (
-	./services/server
 	./packages/core
 	./packages/instructions
 	./packages/mcp
 	./packages/tools
 	./packages/vendor
+	./services/server
 )

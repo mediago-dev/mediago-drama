@@ -96,17 +96,16 @@ func (streamer *FFmpegPreviewStreamer) RenderMP4(ctx context.Context, outputPath
 
 	if err := runPreviewFFmpeg(ctx, ffmpegPath, args); err == nil {
 		return nil
-	} else {
-		videoOnlyArgs, fallbackErr := buildFFmpegPreviewFileArgs(files, outputPath, false)
-		if fallbackErr != nil {
-			return err
-		}
-		_ = os.Remove(outputPath)
-		if videoOnlyErr := runPreviewFFmpeg(ctx, ffmpegPath, videoOnlyArgs); videoOnlyErr != nil {
-			return err
-		}
-		return nil
 	}
+	videoOnlyArgs, fallbackErr := buildFFmpegPreviewFileArgs(files, outputPath, false)
+	if fallbackErr != nil {
+		return err
+	}
+	_ = os.Remove(outputPath)
+	if videoOnlyErr := runPreviewFFmpeg(ctx, ffmpegPath, videoOnlyArgs); videoOnlyErr != nil {
+		return err
+	}
+	return nil
 }
 
 func runPreviewFFmpeg(ctx context.Context, ffmpegPath string, args []string) error {
@@ -236,7 +235,7 @@ func buildPreviewTranscodeArgs(paths []string, includeAudio bool) []string {
 func previewFilterGraph(count int, includeAudio bool) string {
 	parts := make([]string, 0, count+1)
 	concatInputs := strings.Builder{}
-	for index := 0; index < count; index += 1 {
+	for index := 0; index < count; index++ {
 		videoLabel := fmt.Sprintf("v%d", index)
 		parts = append(parts, fmt.Sprintf(
 			"[%d:v:0]scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p,setpts=PTS-STARTPTS[%s]",

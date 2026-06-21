@@ -19,7 +19,9 @@ import (
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	serviceprojectasset "github.com/mediago-dev/mediago-drama/services/server/internal/service/projectasset"
+	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
 	servicepromptlibrary "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptlibrary"
+	servicepromptpack "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 	serviceworkspaceevent "github.com/mediago-dev/mediago-drama/services/server/internal/service/workspaceevent"
@@ -27,7 +29,6 @@ import (
 
 func newAPIHandler(config Config) *apiHandler {
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
-	skillRegistry := serviceskill.NewRegistry()
 	workspaceState := appworkspace.NewStateService(config.WorkspaceDir)
 	config.WorkspaceDir = workspaceState.Dir()
 	settingsDBPath := config.SettingsDBPath
@@ -96,7 +97,11 @@ func newAPIHandler(config Config) *apiHandler {
 	generationService := servicegeneration.NewGenerationService(settings, generationTasks, mediaAssets, generationPreferences)
 	generationService.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
 	generationService.SetGenerationNotifications(generationNotifications)
-	promptLibrary := servicepromptlibrary.NewServiceFromRepository(settingsRepos.PromptLibrary, settingsReposErr)
+	promptPack := servicepromptpack.NewServiceFromRepository(settingsRepos.Packs, settingsRepos.PromptLibrary, settingsReposErr)
+	serviceprompt.SetPromptPackStore(promptPack)
+	serviceskill.SetPromptPackStore(promptPack)
+	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
+	promptLibrary := servicepromptlibrary.NewServiceFromPromptPack(promptPack, settingsReposErr)
 	capabilityRegistry := corecapability.Default()
 	capabilityService := servicecapability.NewService(capabilityRegistry, generationService.RouteConfigured)
 	billingPrices := config.BillingPrices
@@ -131,6 +136,7 @@ func newAPIHandler(config Config) *apiHandler {
 		mediaAssets:      mediaAssets,
 		previewStreamer:  previewStreamer,
 		projectAssets:    projectAssets,
+		promptPack:       promptPack,
 		promptLibrary:    promptLibrary,
 		skillRegistry:    skillRegistry,
 		shutdownCtx:      shutdownCtx,

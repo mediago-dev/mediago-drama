@@ -11,7 +11,28 @@ import (
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
+	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 )
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "acp-tests-*")
+	if err != nil {
+		panic(err)
+	}
+	repos, err := repository.OpenSettingsRepositories(filepath.Join(dir, "settings.sqlite"))
+	if err != nil {
+		panic(err)
+	}
+	store := promptpack.NewServiceFromRepository(repos.Packs, repos.PromptLibrary, nil)
+	serviceprompt.SetPromptPackStore(store)
+	serviceskill.SetPromptPackStore(store)
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
 
 func TestParseACPFinalResponseWithTrailingDocumentProposal(t *testing.T) {
 	response := ParseACPFinalResponse(

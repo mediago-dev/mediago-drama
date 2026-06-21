@@ -32,7 +32,7 @@ export const defaultPromptCategories: PromptCategory[] = defaultPromptCategoryOp
 	(option) => ({
 		id: option.value,
 		label: option.label,
-		source: "builtin",
+		source: "pack",
 		builtin: true,
 	}),
 );

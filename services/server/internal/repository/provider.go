@@ -47,6 +47,7 @@ type SettingsRepositories struct {
 	APIKeys               *APIKeyStore
 	AgentModelProfiles    *AgentModelProfileRepository
 	GenerationPreferences *GenerationPreferenceRepository
+	Packs                 *PackRepository
 	PromptLibrary         *PromptLibraryRepository
 }
 
@@ -76,6 +77,7 @@ func OpenSettingsRepositories(dbPath string) (SettingsRepositories, error) {
 		APIKeys:               NewAPIKeyStoreFromDB(db, nil),
 		AgentModelProfiles:    NewAgentModelProfileRepositoryFromDB(db),
 		GenerationPreferences: NewGenerationPreferenceRepositoryFromDB(db),
+		Packs:                 NewPackRepositoryFromDB(db),
 		PromptLibrary:         NewPromptLibraryRepositoryFromDB(db),
 	}, nil
 }

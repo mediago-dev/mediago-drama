@@ -19,7 +19,7 @@ export const promptInsertItemsFromPresets = (
 			categoryLabel: promptCategoryLabel(preset.category, categories),
 			name: preset.name,
 			prompt: preset.prompt,
-			sourceLabel: preset.source === "builtin" ? "内置" : "用户",
+			sourceLabel: preset.source === "pack" ? "来自包" : "用户新增",
 		}));
 
 const comparePromptPresetsForInsertion = (left: PromptPreset, right: PromptPreset) => {

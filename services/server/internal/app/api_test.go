@@ -98,10 +98,10 @@ func TestAPIHandler(t *testing.T) {
 			t.Fatalf("reset status code = %d, want %d: %s", reset.StatusCode, http.StatusOK, readBody(t, reset.Body))
 		}
 		resetBody := readBody(t, reset.Body)
-		if !strings.Contains(resetBody, `"source":"builtin"`) ||
+		if !strings.Contains(resetBody, `"source":"pack"`) ||
 			!strings.Contains(resetBody, `"name":"多视图设定图"`) ||
 			strings.Contains(resetBody, `用户覆盖提示词`) {
-			t.Fatalf("body = %s, want reset to system default", resetBody)
+			t.Fatalf("body = %s, want reset to package default", resetBody)
 		}
 	})
 

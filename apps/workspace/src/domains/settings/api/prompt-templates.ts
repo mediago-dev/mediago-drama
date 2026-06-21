@@ -1,10 +1,14 @@
 import httpClient from "@/shared/lib/http";
 
+export type PromptTemplateSource = "pack" | "user";
+
 export interface PromptTemplate {
 	id: string;
 	name: string;
 	description?: string;
 	content: string;
+	source: PromptTemplateSource;
+	overridden?: boolean;
 }
 
 export const promptTemplatesKey = "/prompt-templates";
@@ -25,6 +29,13 @@ export const updatePromptTemplate = async (
 	const response = await httpClient.put<PromptTemplate>(
 		`/prompt-templates/${encodeURIComponent(id)}`,
 		template,
+	);
+	return response.data;
+};
+
+export const resetPromptTemplate = async (id: string): Promise<PromptTemplate> => {
+	const response = await httpClient.post<PromptTemplate>(
+		`/prompt-templates/${encodeURIComponent(id)}/reset`,
 	);
 	return response.data;
 };

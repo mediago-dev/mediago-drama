@@ -16,7 +16,7 @@ const presets: PromptPreset[] = [
 		category: "style",
 		name: "电影感",
 		prompt: "电影感柔光。",
-		source: "builtin",
+		source: "pack",
 	},
 	{
 		id: "extra-image",
@@ -35,8 +35,8 @@ const presets: PromptPreset[] = [
 ];
 
 const categories: PromptCategory[] = [
-	{ id: "style", label: "风格", source: "builtin", builtin: true },
-	{ id: "extra", label: "通用", source: "builtin", builtin: true },
+	{ id: "style", label: "风格", source: "pack", builtin: true },
+	{ id: "extra", label: "通用", source: "pack", builtin: true },
 ];
 
 describe("promptInsertItemsFromPresets", () => {
@@ -47,13 +47,13 @@ describe("promptInsertItemsFromPresets", () => {
 		expect(items[0]).toEqual(
 			expect.objectContaining({
 				categoryLabel: "风格",
-				sourceLabel: "内置",
+				sourceLabel: "来自包",
 			}),
 		);
 		expect(items[1]).toEqual(
 			expect.objectContaining({
 				categoryLabel: "通用",
-				sourceLabel: "用户",
+				sourceLabel: "用户新增",
 			}),
 		);
 	});

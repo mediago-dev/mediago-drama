@@ -1,4 +1,4 @@
-// Package skill loads built-in and user-defined agent skills.
+// Package skill loads prompt-pack backed agent skills.
 package skill
 
 import (
@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,21 +13,17 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	configassets "github.com/mediago-dev/mediago-drama/services/server/configs"
-)
-
-const (
-	builtinSkillsDir = "skills/builtin"
-	defaultExtension = ".skill.md"
+	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 )
 
 // Source identifies where a skill was loaded from.
 type Source string
 
 const (
-	// SourceBuiltin marks repository-shipped skills.
-	SourceBuiltin Source = "builtin"
-	// SourceUser marks workspace-local user skills.
+	// SourcePack marks skills loaded from an installed prompt pack.
+	SourcePack Source = "pack"
+	// SourceUser marks user-created or user-overridden skills.
 	SourceUser Source = "user"
 )
 
@@ -40,8 +34,8 @@ var (
 	ErrSkillNotFound = errors.New("skill not found")
 	// ErrSkillExists reports a duplicate skill creation request.
 	ErrSkillExists = errors.New("skill already exists")
-	// ErrBuiltinSkillReadonly reports attempts to mutate a built-in skill.
-	ErrBuiltinSkillReadonly = errors.New("builtin skill is read-only")
+	// ErrBuiltinSkillReadonly reports attempts to delete or reset a package-backed skill incorrectly.
+	ErrBuiltinSkillReadonly = errors.New("package skill is read-only")
 )
 
 // SkillMeta is the public skill index entry.
@@ -50,6 +44,7 @@ type SkillMeta struct {
 	Title       string            `json:"title,omitempty"`
 	Description string            `json:"description"`
 	Source      Source            `json:"source"`
+	Overridden  bool              `json:"overridden,omitempty"`
 	Hint        map[string]string `json:"hint,omitempty"`
 }
 
@@ -60,44 +55,90 @@ type Skill struct {
 	Raw     string `json:"raw,omitempty"`
 }
 
-// Registry loads skills from embedded defaults and a user skill directory.
+// PackStore supplies prompt-pack skill persistence.
+type PackStore interface {
+	ListEntries(ctx context.Context, kind instructionpack.Kind) ([]promptpack.Entry, error)
+	GetEntry(ctx context.Context, kind instructionpack.Kind, slug string) (promptpack.Entry, error)
+	SaveEntry(ctx context.Context, kind instructionpack.Kind, slug string, entry promptpack.Entry) (promptpack.Entry, error)
+	CreateEntry(ctx context.Context, kind instructionpack.Kind, entry promptpack.Entry) (promptpack.Entry, error)
+	ResetEntry(ctx context.Context, kind instructionpack.Kind, slug string) (promptpack.Entry, error)
+	DeleteEntry(ctx context.Context, kind instructionpack.Kind, slug string) error
+}
+
+// Registry loads skills from the prompt pack store.
 type Registry struct {
-	mu          sync.RWMutex
-	defaults    fs.FS
-	builtinRoot string
-	userDir     string
+	store PackStore
 }
 
 type skillFrontmatter struct {
-	Name        string         `yaml:"name"`
-	Title       string         `yaml:"title"`
-	Description string         `yaml:"description"`
-	Hint        map[string]any `yaml:"hint"`
+	Name        string            `yaml:"name"`
+	Title       string            `yaml:"title,omitempty"`
+	Description string            `yaml:"description"`
+	Hint        map[string]string `yaml:"hint,omitempty"`
 }
 
-// NewRegistry creates a skill registry backed by built-in defaults and configs/skills/user.
-func NewRegistry() *Registry {
-	return NewRegistryWithSource(configassets.Skills, builtinSkillsDir, configassets.SourceSkillDir("user"))
-}
+var (
+	defaultStoreMu   sync.RWMutex
+	defaultStore     PackStore
+	defaultStoreOnce sync.Once
+)
 
-// NewRegistryWithSource creates a skill registry with explicit sources.
-func NewRegistryWithSource(defaults fs.FS, builtinRoot string, userDir string) *Registry {
-	return &Registry{
-		defaults:    defaults,
-		builtinRoot: strings.TrimSpace(builtinRoot),
-		userDir:     strings.TrimSpace(userDir),
+// SetPromptPackStore sets the default prompt pack store used by NewRegistry.
+func SetPromptPackStore(store PackStore) {
+	if store == nil {
+		return
 	}
+	defaultStoreMu.Lock()
+	defer defaultStoreMu.Unlock()
+	defaultStore = store
 }
 
-// List returns skill metadata, with user skills overriding built-ins of the same name.
+// NewRegistry creates a skill registry backed by the global prompt pack store.
+func NewRegistry() *Registry {
+	return NewRegistryWithStore(currentDefaultStore())
+}
+
+// NewRegistryWithSource is retained for older callers; it now uses the global pack store.
+func NewRegistryWithSource(_ fs.FS, _ string, _ string) *Registry {
+	return NewRegistry()
+}
+
+// NewRegistryWithStore creates a skill registry with an explicit pack store.
+func NewRegistryWithStore(store PackStore) *Registry {
+	return &Registry{store: store}
+}
+
+func currentDefaultStore() PackStore {
+	defaultStoreMu.RLock()
+	store := defaultStore
+	defaultStoreMu.RUnlock()
+	if store != nil {
+		return store
+	}
+	defaultStoreOnce.Do(func() {
+		defaultStoreMu.Lock()
+		defer defaultStoreMu.Unlock()
+		if defaultStore == nil {
+			defaultStore = promptpack.NewService()
+		}
+	})
+	defaultStoreMu.RLock()
+	defer defaultStoreMu.RUnlock()
+	return defaultStore
+}
+
+// List returns skill metadata.
 func (registry *Registry) List(ctx context.Context) ([]SkillMeta, error) {
-	skills, err := registry.load(ctx)
+	if registry == nil || registry.store == nil {
+		return nil, errors.New("skill registry store is nil")
+	}
+	entries, err := registry.store.ListEntries(ctx, instructionpack.KindSkill)
 	if err != nil {
 		return nil, err
 	}
-	metas := make([]SkillMeta, 0, len(skills))
-	for _, item := range skills {
-		metas = append(metas, item.SkillMeta)
+	metas := make([]SkillMeta, 0, len(entries))
+	for _, entry := range entries {
+		metas = append(metas, skillFromEntry(entry).SkillMeta)
 	}
 	sort.SliceStable(metas, func(first, second int) bool {
 		return metas[first].Name < metas[second].Name
@@ -107,16 +148,19 @@ func (registry *Registry) List(ctx context.Context) ([]SkillMeta, error) {
 
 // Get returns one skill by name, including frontmatter-free body content.
 func (registry *Registry) Get(ctx context.Context, name string) (Skill, error) {
+	if registry == nil || registry.store == nil {
+		return Skill{}, errors.New("skill registry store is nil")
+	}
 	name = strings.TrimSpace(name)
-	skills, err := registry.load(ctx)
+	entry, err := registry.store.GetEntry(ctx, instructionpack.KindSkill, name)
 	if err != nil {
+		if errors.Is(err, promptpack.ErrEntryNotFound) {
+			metas, _ := registry.List(ctx)
+			return Skill{}, NotFoundError{Name: name, Available: metas}
+		}
 		return Skill{}, err
 	}
-	item, ok := skills[name]
-	if !ok {
-		return Skill{}, NotFoundError{Name: name, Available: sortedMetas(skills)}
-	}
-	return item, nil
+	return skillFromEntry(entry), nil
 }
 
 // GetRaw returns one skill by name, including the full raw Markdown file.
@@ -124,165 +168,69 @@ func (registry *Registry) GetRaw(ctx context.Context, name string) (Skill, error
 	return registry.Get(ctx, name)
 }
 
-// Save validates and writes an existing skill, creating a user override for built-ins.
+// Save validates and writes an existing skill as a user override.
 func (registry *Registry) Save(ctx context.Context, name string, raw string) (Skill, error) {
-	registry.mu.Lock()
-	defer registry.mu.Unlock()
-
-	if err := ctxErr(ctx); err != nil {
-		return Skill{}, err
-	}
-	name = strings.TrimSpace(name)
-	if !isSafeSkillName(name) {
-		return Skill{}, fmt.Errorf("%w: skill name is required", ErrInvalidSkill)
-	}
-	current, err := registry.loadLocked(ctx)
-	if err != nil {
-		return Skill{}, err
-	}
-	if _, ok := current[name]; !ok {
-		return Skill{}, NotFoundError{Name: name, Available: sortedMetas(current)}
-	}
 	parsed, err := ParseRaw(name, raw)
 	if err != nil {
 		return Skill{}, err
 	}
-	if err := writeUserSkill(registry.userDir, name, parsed.Raw); err != nil {
+	entry := entryFromSkill(parsed)
+	saved, err := registry.store.SaveEntry(ctx, instructionpack.KindSkill, parsed.Name, entry)
+	if err != nil {
+		if errors.Is(err, promptpack.ErrEntryNotFound) {
+			metas, _ := registry.List(ctx)
+			return Skill{}, NotFoundError{Name: parsed.Name, Available: metas}
+		}
 		return Skill{}, err
 	}
-	return parsed, nil
+	return skillFromEntry(saved), nil
 }
 
 // Create validates and writes a new user skill.
 func (registry *Registry) Create(ctx context.Context, name string, raw string) (Skill, error) {
-	registry.mu.Lock()
-	defer registry.mu.Unlock()
-
-	if err := ctxErr(ctx); err != nil {
-		return Skill{}, err
-	}
-	name = strings.TrimSpace(name)
-	if !isSafeSkillName(name) {
-		return Skill{}, fmt.Errorf("%w: skill name is required", ErrInvalidSkill)
-	}
-	current, err := registry.loadLocked(ctx)
-	if err != nil {
-		return Skill{}, err
-	}
-	if _, ok := current[name]; ok {
-		return Skill{}, fmt.Errorf("%w: %s", ErrSkillExists, name)
-	}
 	parsed, err := ParseRaw(name, raw)
 	if err != nil {
 		return Skill{}, err
 	}
-	if err := writeUserSkill(registry.userDir, name, parsed.Raw); err != nil {
+	created, err := registry.store.CreateEntry(ctx, instructionpack.KindSkill, entryFromSkill(parsed))
+	if err != nil {
+		if errors.Is(err, promptpack.ErrEntryExists) {
+			return Skill{}, fmt.Errorf("%w: %s", ErrSkillExists, parsed.Name)
+		}
 		return Skill{}, err
 	}
-	return parsed, nil
+	return skillFromEntry(created), nil
 }
 
-// Delete removes an existing user skill.
+// Delete removes an existing user-created skill.
 func (registry *Registry) Delete(ctx context.Context, name string) error {
-	registry.mu.Lock()
-	defer registry.mu.Unlock()
-
-	if err := ctxErr(ctx); err != nil {
-		return err
-	}
-	name = strings.TrimSpace(name)
-	current, err := registry.loadLocked(ctx)
+	err := registry.store.DeleteEntry(ctx, instructionpack.KindSkill, strings.TrimSpace(name))
 	if err != nil {
-		return err
+		if errors.Is(err, promptpack.ErrEntryNotFound) {
+			metas, _ := registry.List(ctx)
+			return NotFoundError{Name: strings.TrimSpace(name), Available: metas}
+		}
+		if errors.Is(err, promptpack.ErrPackReadonly) {
+			return fmt.Errorf("%w: %s", ErrBuiltinSkillReadonly, strings.TrimSpace(name))
+		}
 	}
-	if existing, ok := current[name]; !ok {
-		return NotFoundError{Name: name, Available: sortedMetas(current)}
-	} else if existing.Source != SourceUser {
-		return fmt.Errorf("%w: %s", ErrBuiltinSkillReadonly, name)
-	}
-	if err := os.Remove(filepath.Join(registry.userDir, filenameForSkill(name))); err != nil {
-		return fmt.Errorf("deleting skill %s: %w", name, err)
-	}
-	return nil
+	return err
 }
 
-func (registry *Registry) load(ctx context.Context) (map[string]Skill, error) {
-	registry.mu.RLock()
-	defer registry.mu.RUnlock()
-	return registry.loadLocked(ctx)
-}
-
-func (registry *Registry) loadLocked(ctx context.Context) (map[string]Skill, error) {
-	if err := ctxErr(ctx); err != nil {
-		return nil, err
-	}
-	skills := map[string]Skill{}
-	if err := loadSkillFS(ctx, registry.defaults, registry.builtinRoot, SourceBuiltin, skills); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("loading built-in skills: %w", err)
-	}
-	if err := loadSkillDir(ctx, registry.userDir, SourceUser, skills); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("loading user skills: %w", err)
-	}
-	return skills, nil
-}
-
-func loadSkillFS(ctx context.Context, filesystem fs.FS, root string, source Source, skills map[string]Skill) error {
-	if strings.TrimSpace(root) == "" {
-		return fs.ErrNotExist
-	}
-	entries, err := fs.ReadDir(filesystem, root)
+// Reset restores a package-backed skill to the version from its installed prompt pack.
+func (registry *Registry) Reset(ctx context.Context, name string) (Skill, error) {
+	reset, err := registry.store.ResetEntry(ctx, instructionpack.KindSkill, strings.TrimSpace(name))
 	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if err := ctxErr(ctx); err != nil {
-			return err
+		if errors.Is(err, promptpack.ErrEntryNotFound) {
+			metas, _ := registry.List(ctx)
+			return Skill{}, NotFoundError{Name: strings.TrimSpace(name), Available: metas}
 		}
-		if entry.IsDir() || !isSkillFilename(entry.Name()) {
-			continue
+		if errors.Is(err, promptpack.ErrPackReadonly) {
+			return Skill{}, fmt.Errorf("%w: %s", ErrBuiltinSkillReadonly, strings.TrimSpace(name))
 		}
-		path := filepath.ToSlash(filepath.Join(root, entry.Name()))
-		data, err := fs.ReadFile(filesystem, path)
-		if err != nil {
-			return err
-		}
-		addParsedSkill(skills, path, data, source)
+		return Skill{}, err
 	}
-	return nil
-}
-
-func loadSkillDir(ctx context.Context, dir string, source Source, skills map[string]Skill) error {
-	if strings.TrimSpace(dir) == "" {
-		return fs.ErrNotExist
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if err := ctxErr(ctx); err != nil {
-			return err
-		}
-		if entry.IsDir() || !isSkillFilename(entry.Name()) {
-			continue
-		}
-		path := filepath.Join(dir, entry.Name())
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		addParsedSkill(skills, path, data, source)
-	}
-	return nil
-}
-
-func addParsedSkill(skills map[string]Skill, path string, data []byte, source Source) {
-	item, err := parseRaw(string(data), source)
-	if err != nil {
-		slog.Warn("skill file skipped", "path", path, "error", err)
-		return
-	}
-	skills[item.Name] = item
+	return skillFromEntry(reset), nil
 }
 
 // ParseRaw validates full skill Markdown for a specific skill name.
@@ -348,47 +296,87 @@ func splitFrontmatter(raw string) (string, string, error) {
 	return frontmatter, body, nil
 }
 
-func normalizeHint(values map[string]any) map[string]string {
+func skillFromEntry(entry promptpack.Entry) Skill {
+	hint := metadataStringMap(entry.Metadata, "hint")
+	item := Skill{
+		SkillMeta: SkillMeta{
+			Name:        entry.Slug,
+			Title:       entry.Title,
+			Description: entry.Description,
+			Source:      Source(entry.Source),
+			Overridden:  entry.Source == string(SourceUser) && entry.OverriddenFrom != "",
+			Hint:        hint,
+		},
+		Content: normalizeBody(entry.Body),
+	}
+	item.Raw = rawFromSkill(item)
+	return item
+}
+
+func entryFromSkill(item Skill) promptpack.Entry {
+	return promptpack.Entry{
+		Kind:        instructionpack.KindSkill,
+		Slug:        item.Name,
+		Name:        item.Name,
+		Title:       item.Title,
+		Description: item.Description,
+		Body:        item.Content,
+		Metadata: map[string]any{
+			"hint": item.Hint,
+		},
+	}
+}
+
+func rawFromSkill(item Skill) string {
+	frontmatter, _ := yaml.Marshal(skillFrontmatter{
+		Name:        item.Name,
+		Title:       item.Title,
+		Description: item.Description,
+		Hint:        item.Hint,
+	})
+	return "---\n" + strings.TrimSpace(string(frontmatter)) + "\n---\n" + normalizeBody(item.Content)
+}
+
+func metadataStringMap(metadata map[string]any, key string) map[string]string {
+	value, ok := metadata[key]
+	if !ok || value == nil {
+		return nil
+	}
+	result := map[string]string{}
+	switch typed := value.(type) {
+	case map[string]string:
+		for key, value := range typed {
+			result[key] = value
+		}
+	case map[string]any:
+		for key, value := range typed {
+			if value != nil {
+				result[key] = strings.TrimSpace(fmt.Sprint(value))
+			}
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func normalizeHint(values map[string]string) map[string]string {
 	if len(values) == 0 {
 		return nil
 	}
 	hint := make(map[string]string, len(values))
 	for key, value := range values {
 		key = strings.TrimSpace(key)
-		if key == "" || value == nil {
+		if key == "" {
 			continue
 		}
-		hint[key] = strings.TrimSpace(fmt.Sprint(value))
+		hint[key] = strings.TrimSpace(value)
 	}
 	if len(hint) == 0 {
 		return nil
 	}
 	return hint
-}
-
-func writeUserSkill(dir string, name string, raw string) error {
-	if strings.TrimSpace(dir) == "" {
-		return fmt.Errorf("user skill directory is not configured")
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("creating user skill directory: %w", err)
-	}
-	path := filepath.Join(dir, filenameForSkill(name))
-	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
-		return fmt.Errorf("writing skill %s: %w", name, err)
-	}
-	return nil
-}
-
-func sortedMetas(skills map[string]Skill) []SkillMeta {
-	metas := make([]SkillMeta, 0, len(skills))
-	for _, item := range skills {
-		metas = append(metas, item.SkillMeta)
-	}
-	sort.SliceStable(metas, func(first, second int) bool {
-		return metas[first].Name < metas[second].Name
-	})
-	return metas
 }
 
 func normalizeRaw(raw string) string {
@@ -406,14 +394,6 @@ func normalizeBody(body string) string {
 		return ""
 	}
 	return body + "\n"
-}
-
-func isSkillFilename(filename string) bool {
-	return strings.HasSuffix(filename, defaultExtension)
-}
-
-func filenameForSkill(name string) string {
-	return name + defaultExtension
 }
 
 func isSafeSkillName(name string) bool {
@@ -435,13 +415,6 @@ func isSafeSkillName(name string) bool {
 		}
 	}
 	return true
-}
-
-func ctxErr(ctx context.Context) error {
-	if ctx == nil {
-		return nil
-	}
-	return ctx.Err()
 }
 
 // NotFoundError includes the current available skill list.

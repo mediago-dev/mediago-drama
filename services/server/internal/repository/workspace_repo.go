@@ -220,8 +220,6 @@ func (repo *WorkspaceRepository) UpdateProjectStorageLocation(
 	projectID = strings.TrimSpace(projectID)
 	projectDir = strings.TrimSpace(projectDir)
 	relativeDir = strings.TrimSpace(relativeDir)
-	oldDir = strings.TrimSpace(oldDir)
-	newDir = strings.TrimSpace(newDir)
 	updatedAt = strings.TrimSpace(updatedAt)
 	if projectID == "" {
 		return false, fmt.Errorf("project id is required")

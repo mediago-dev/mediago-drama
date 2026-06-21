@@ -2,9 +2,9 @@ import type { AxiosRequestConfig } from "axios";
 import { createResource } from "@/shared/lib/api-factory";
 import httpClient from "@/shared/lib/http";
 
-export type PromptPresetSource = "builtin" | "user";
+export type PromptPresetSource = "pack" | "user";
 
-// 提示词分类(内置 style/extra，也允许用户自定义)。
+// 提示词分类(默认 style/extra，也允许用户自定义)。
 export type PromptPresetCategory = string;
 
 // 旧的类型维度,已被 category 取代,仅保留兼容字段。
@@ -18,6 +18,7 @@ export interface PromptPreset {
 	prompt: string;
 	source: PromptPresetSource;
 	builtin?: boolean;
+	overridden?: boolean;
 }
 
 export interface PromptPresetFilter {

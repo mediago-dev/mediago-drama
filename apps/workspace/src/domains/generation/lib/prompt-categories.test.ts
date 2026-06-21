@@ -22,9 +22,7 @@ describe("promptCategoryLabel", () => {
 		expect(promptCategoryLabel("extra")).toBe("其他");
 		expect(promptCategoryLabel("镜头")).toBe("镜头");
 		expect(
-			promptCategoryLabel("extra", [
-				{ id: "extra", label: "通用", source: "builtin", builtin: true },
-			]),
+			promptCategoryLabel("extra", [{ id: "extra", label: "通用", source: "pack", builtin: true }]),
 		).toBe("通用");
 	});
 });

@@ -1,4 +1,4 @@
-import { BookOpenCheck, Copy, Loader2, Plus, Save, Trash2, X } from "lucide-react";
+import { BookOpenCheck, Copy, Loader2, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
@@ -8,6 +8,7 @@ import {
 	deleteSkill,
 	getSkill,
 	listSkills,
+	resetSkill,
 	skillsKey,
 	updateSkill,
 } from "@/domains/settings/api/skills";
@@ -48,6 +49,7 @@ export const SkillsEditorPanel: React.FC = () => {
 	const [error, setError] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const [isResetting, setIsResetting] = useState(false);
 	const [isCreating, setIsCreating] = useState(false);
 	const [newSkillName, setNewSkillName] = useState("");
 	const draft = useMemo(
@@ -73,7 +75,11 @@ export const SkillsEditorPanel: React.FC = () => {
 		setError("");
 	}, [selectedSkill]);
 
-	const builtin = selectedSkill?.source === "builtin";
+	const selectedEntry = selectedSkill ?? selectedMeta;
+	const canDelete = Boolean(
+		selectedEntry && selectedEntry.source === "user" && !selectedEntry.overridden,
+	);
+	const canReset = Boolean(selectedEntry?.overridden);
 
 	const save = async () => {
 		if (!selectedSkill) return;
@@ -122,7 +128,7 @@ export const SkillsEditorPanel: React.FC = () => {
 	};
 
 	const remove = async () => {
-		if (!selectedSkill || builtin) return;
+		if (!selectedSkill || !canDelete) return;
 		setIsDeleting(true);
 		setError("");
 		try {
@@ -137,6 +143,27 @@ export const SkillsEditorPanel: React.FC = () => {
 			toast.error("Skill 删除失败", { description: message });
 		} finally {
 			setIsDeleting(false);
+		}
+	};
+
+	const reset = async () => {
+		if (!selectedEntry?.overridden) return;
+		setIsResetting(true);
+		setError("");
+		try {
+			const resetDocument = await resetSkill(selectedEntry.name);
+			await mutateSkill(resetDocument, false);
+			await mutateSkills();
+			const parts = splitSkillMarkdown(resetDocument.content);
+			setFrontmatterDraft(parts.frontmatter);
+			setBodyDraft(parts.body);
+			toast.success("Skill 已恢复默认", { description: resetDocument.name });
+		} catch (err) {
+			const message = errorMessage(err);
+			setError(message);
+			toast.error("恢复默认失败", { description: message });
+		} finally {
+			setIsResetting(false);
 		}
 	};
 
@@ -186,11 +213,22 @@ export const SkillsEditorPanel: React.FC = () => {
 						<Save className="size-4" />
 						<span>{isSaving ? "保存中" : "保存"}</span>
 					</Button>
+					{canReset ? (
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => void reset()}
+							disabled={isResetting}
+						>
+							<RotateCcw className="size-4" />
+							<span>{isResetting ? "恢复中" : "恢复默认"}</span>
+						</Button>
+					) : null}
 					<Button
 						type="button"
 						variant="destructive"
 						onClick={() => void remove()}
-						disabled={!selectedSkill || builtin || isDeleting}
+						disabled={!selectedSkill || !canDelete || isDeleting}
 					>
 						<Trash2 className="size-4" />
 						<span>{isDeleting ? "删除中" : "删除"}</span>
@@ -258,7 +296,7 @@ export const SkillsEditorPanel: React.FC = () => {
 										<SelectItem key={skill.name} value={skill.name}>
 											<span className="flex min-w-0 w-full items-center gap-2">
 												<span className="min-w-0 flex-1 truncate">{skill.title || skill.name}</span>
-												<SkillSourceBadge source={skill.source} />
+												<SkillSourceBadge source={skill.source} overridden={skill.overridden} />
 											</span>
 										</SelectItem>
 									))}
@@ -270,7 +308,10 @@ export const SkillsEditorPanel: React.FC = () => {
 							<Label className="text-sm font-medium text-foreground">说明</Label>
 							<div className="flex min-w-0 flex-wrap items-center gap-2 text-sm leading-6 text-muted-foreground">
 								<span>{selectedMeta.description}</span>
-								<SkillSourceBadge source={selectedMeta.source} />
+								<SkillSourceBadge
+									source={selectedEntry?.source ?? selectedMeta.source}
+									overridden={selectedEntry?.overridden ?? selectedMeta.overridden}
+								/>
 							</div>
 						</div>
 
@@ -324,11 +365,23 @@ const settingsFormRowClassName = cn(
 const skillBodyRowClassName = "grid gap-2 py-2";
 const skillMessageClassName = "py-2 text-sm text-muted-foreground";
 
-const SkillSourceBadge: React.FC<{ source: SkillMeta["source"] }> = ({ source }) => (
-	<Badge variant={source === "builtin" ? "secondary" : "outline"} className="shrink-0 rounded-md">
-		{source}
+const SkillSourceBadge: React.FC<Pick<SkillMeta, "source" | "overridden">> = ({
+	overridden,
+	source,
+}) => (
+	<Badge
+		variant={overridden || source === "pack" ? "secondary" : "outline"}
+		className="shrink-0 rounded-md"
+	>
+		{entrySourceLabel(source, overridden)}
 	</Badge>
 );
+
+const entrySourceLabel = (source: SkillMeta["source"], overridden?: boolean) => {
+	if (overridden) return "已覆盖";
+	if (source === "pack") return "来自包";
+	return "用户新增";
+};
 
 const skillFrontmatterDisplay = (skill: SkillMeta) => ({
 	name: skill.name,

@@ -1,4 +1,4 @@
-// Package prompttemplates stores editable system prompt templates.
+// Package prompttemplates stores editable system prompt instructions.
 package prompttemplates
 
 import (
@@ -6,18 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 
-	configassets "github.com/mediago-dev/mediago-drama/services/server/configs"
-	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
+	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 )
-
-const embeddedTemplatesDir = "templates/prompts"
 
 // ErrInvalidTemplate reports an invalid prompt template payload.
 var ErrInvalidTemplate = errors.New("invalid prompt template")
@@ -28,77 +22,107 @@ type PromptTemplate struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Content     string `json:"content"`
+	Source      string `json:"source"`
+	Overridden  bool   `json:"overridden,omitempty"`
+	Order       int    `json:"-"`
 }
 
-// Service loads embedded prompt templates and persists source edits.
+// PackStore supplies prompt instruction persistence.
+type PackStore interface {
+	ListEntries(ctx context.Context, kind instructionpack.Kind) ([]promptpack.Entry, error)
+	GetEntry(ctx context.Context, kind instructionpack.Kind, slug string) (promptpack.Entry, error)
+	SaveEntry(ctx context.Context, kind instructionpack.Kind, slug string, entry promptpack.Entry) (promptpack.Entry, error)
+	ResetEntry(ctx context.Context, kind instructionpack.Kind, slug string) (promptpack.Entry, error)
+}
+
+// Service loads and saves editable system prompt instructions.
 type Service struct {
-	mu        sync.RWMutex
-	defaults  fs.FS
-	sourceDir string
+	store PackStore
 }
 
-// NewService creates a prompt template service backed by the repository configs directory.
+// NewService creates a prompt template service backed by the global prompt pack store.
 func NewService() *Service {
-	return NewServiceWithSource(configassets.PromptTemplates, configassets.SourceTemplateDir("prompts"))
+	return NewServiceWithStore(promptpack.NewService())
 }
 
-// NewServiceWithSource creates a prompt template service with explicit defaults and source path.
-func NewServiceWithSource(defaults fs.FS, sourceDir string) *Service {
-	return &Service{
-		defaults:  defaults,
-		sourceDir: strings.TrimSpace(sourceDir),
-	}
+// NewServiceWithSource is retained for compatibility with older tests and callers.
+func NewServiceWithSource(_ fs.FS, _ string) *Service {
+	return NewService()
 }
 
-// Load returns editable system prompt templates.
+// NewServiceWithStore creates a prompt template service with an explicit pack store.
+func NewServiceWithStore(store PackStore) *Service {
+	return &Service{store: store}
+}
+
+// Load returns editable system prompt instructions.
 func (store *Service) Load(ctx context.Context) (map[string]PromptTemplate, error) {
-	store.mu.Lock()
-	defer store.mu.Unlock()
-
-	templates, err := loadTemplateFS(ctx, store.defaults, embeddedTemplatesDir)
-	if err != nil {
-		return nil, fmt.Errorf("loading embedded prompt templates: %w", err)
+	if store == nil || store.store == nil {
+		return nil, errors.New("prompt template store is nil")
 	}
-
-	if err := archiveLegacyPromptTemplates(ctx, store.sourceDir); err != nil {
+	entries, err := store.store.ListEntries(ctx, instructionpack.KindInstruction)
+	if err != nil {
 		return nil, err
 	}
-	diskTemplates, err := loadTemplateDir(ctx, store.sourceDir)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return editableTemplates(templates), nil
+	templates := map[string]PromptTemplate{}
+	for _, entry := range entries {
+		if !metadataBool(entry.Metadata, "editable") {
+			continue
 		}
-		return nil, fmt.Errorf("loading prompt templates from disk: %w", err)
+		templates[entry.Slug] = templateFromEntry(entry)
 	}
-	for id, template := range diskTemplates {
-		templates[id] = template
-	}
-
-	return editableTemplates(templates), nil
+	return templates, nil
 }
 
-// Save validates and writes one prompt template to the source configs directory.
+// Save validates and writes one prompt instruction as a user override.
 func (store *Service) Save(ctx context.Context, id string, template PromptTemplate) (PromptTemplate, error) {
-	store.mu.Lock()
-	defer store.mu.Unlock()
-
-	if err := ctxErr(ctx); err != nil {
-		return PromptTemplate{}, err
+	if store == nil || store.store == nil {
+		return PromptTemplate{}, errors.New("prompt template store is nil")
+	}
+	id = strings.TrimSpace(id)
+	if strings.TrimSpace(template.ID) == "" {
+		template.ID = id
 	}
 	if err := validateTemplate(id, template); err != nil {
 		return PromptTemplate{}, err
 	}
-	template = normalizeTemplate(template)
+	current, err := store.store.GetEntry(ctx, instructionpack.KindInstruction, id)
+	if errors.Is(err, promptpack.ErrEntryNotFound) {
+		return PromptTemplate{}, fmt.Errorf("%w: template %q is not editable", ErrInvalidTemplate, id)
+	}
+	if err != nil {
+		return PromptTemplate{}, err
+	}
+	if !metadataBool(current.Metadata, "editable") {
+		return PromptTemplate{}, fmt.Errorf("%w: template %q is not editable", ErrInvalidTemplate, id)
+	}
+	current.Body = normalizeContent(template.Content)
+	current.Name = nonEmpty(current.Name, template.Name)
+	current.Title = nonEmpty(current.Title, template.Name)
+	saved, err := store.store.SaveEntry(ctx, instructionpack.KindInstruction, id, current)
+	if err != nil {
+		return PromptTemplate{}, err
+	}
+	return templateFromEntry(saved), nil
+}
 
-	if err := os.MkdirAll(store.sourceDir, 0o755); err != nil {
-		return PromptTemplate{}, fmt.Errorf("creating prompt templates directory: %w", err)
+// Reset restores one prompt instruction from its installed prompt pack.
+func (store *Service) Reset(ctx context.Context, id string) (PromptTemplate, error) {
+	if store == nil || store.store == nil {
+		return PromptTemplate{}, errors.New("prompt template store is nil")
 	}
-	path := filepath.Join(store.sourceDir, strings.TrimSpace(id)+".md")
-	if err := os.WriteFile(path, []byte(template.Content), 0o644); err != nil {
-		return PromptTemplate{}, fmt.Errorf("writing prompt template %s: %w", id, err)
+	id = strings.TrimSpace(id)
+	reset, err := store.store.ResetEntry(ctx, instructionpack.KindInstruction, id)
+	if errors.Is(err, promptpack.ErrEntryNotFound) || errors.Is(err, promptpack.ErrPackReadonly) {
+		return PromptTemplate{}, fmt.Errorf("%w: template %q cannot be reset", ErrInvalidTemplate, id)
 	}
-	serviceprompt.InvalidateTemplateCache(id)
-	return template, nil
+	if err != nil {
+		return PromptTemplate{}, err
+	}
+	if !metadataBool(reset.Metadata, "editable") {
+		return PromptTemplate{}, fmt.Errorf("%w: template %q is not editable", ErrInvalidTemplate, id)
+	}
+	return templateFromEntry(reset), nil
 }
 
 // OrderedTemplates returns prompt templates in system prompt assembly order.
@@ -108,106 +132,33 @@ func OrderedTemplates(templateMap map[string]PromptTemplate) []PromptTemplate {
 		templates = append(templates, template)
 	}
 	sort.SliceStable(templates, func(first, second int) bool {
-		firstOrder, firstKnown := templateOrder(templates[first].ID)
-		secondOrder, secondKnown := templateOrder(templates[second].ID)
-		if firstKnown != secondKnown {
-			return firstKnown
-		}
-		if firstOrder != secondOrder {
-			return firstOrder < secondOrder
+		if templates[first].Order != templates[second].Order {
+			return templates[first].Order < templates[second].Order
 		}
 		return templates[first].ID < templates[second].ID
 	})
 	return templates
 }
 
-func loadTemplateFS(ctx context.Context, filesystem fs.FS, root string) (map[string]PromptTemplate, error) {
-	if err := ctxErr(ctx); err != nil {
-		return nil, err
+func templateFromEntry(entry promptpack.Entry) PromptTemplate {
+	name := nonEmpty(entry.Title, entry.Name)
+	return PromptTemplate{
+		ID:          entry.Slug,
+		Name:        name,
+		Description: entry.Description,
+		Content:     normalizeContent(entry.Body),
+		Source:      entry.Source,
+		Overridden:  entry.Source == "user" && entry.OverriddenFrom != "",
+		Order:       metadataInt(entry.Metadata, "order"),
 	}
-
-	entries, err := fs.ReadDir(filesystem, root)
-	if err != nil {
-		return nil, err
-	}
-
-	templates := map[string]PromptTemplate{}
-	for _, entry := range entries {
-		if err := ctxErr(ctx); err != nil {
-			return nil, err
-		}
-		if entry.IsDir() || !isTemplateFilename(entry.Name()) {
-			continue
-		}
-		path := filepath.ToSlash(filepath.Join(root, entry.Name()))
-		data, err := fs.ReadFile(filesystem, path)
-		if err != nil {
-			return nil, err
-		}
-		template := decodeTemplate(data, templateIDFromFilename(entry.Name()))
-		templates[template.ID] = template
-	}
-	if len(templates) == 0 {
-		return nil, fs.ErrNotExist
-	}
-	return templates, nil
-}
-
-func loadTemplateDir(ctx context.Context, dir string) (map[string]PromptTemplate, error) {
-	if err := ctxErr(ctx); err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(dir) == "" {
-		return nil, fs.ErrNotExist
-	}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	templates := map[string]PromptTemplate{}
-	for _, entry := range entries {
-		if err := ctxErr(ctx); err != nil {
-			return nil, err
-		}
-		if entry.IsDir() || !isTemplateFilename(entry.Name()) {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if err != nil {
-			return nil, err
-		}
-		template := decodeTemplate(data, templateIDFromFilename(entry.Name()))
-		templates[template.ID] = template
-	}
-	return templates, nil
-}
-
-func decodeTemplate(data []byte, id string) PromptTemplate {
-	template := PromptTemplate{
-		ID:      id,
-		Content: normalizeContent(string(data)),
-	}
-	if descriptor, ok := serviceprompt.SectionDescriptorByID(id); ok {
-		template.Name = descriptor.Name
-		template.Description = descriptor.Description
-	} else {
-		template.Name = fallbackTemplateName(id)
-	}
-	return template
 }
 
 func validateTemplate(id string, template PromptTemplate) error {
-	id = strings.TrimSpace(id)
 	if !isSafeTemplateID(id) {
 		return fmt.Errorf("%w: template id is required", ErrInvalidTemplate)
 	}
 	if strings.TrimSpace(template.ID) != id {
 		return fmt.Errorf("%w: template id must match path id %q", ErrInvalidTemplate, id)
-	}
-	if !isEditableTemplateID(id) {
-		return fmt.Errorf("%w: template %q is not editable", ErrInvalidTemplate, id)
 	}
 	if strings.TrimSpace(template.Content) == "" {
 		return fmt.Errorf("%w: content is required", ErrInvalidTemplate)
@@ -215,139 +166,63 @@ func validateTemplate(id string, template PromptTemplate) error {
 	return nil
 }
 
-func normalizeTemplate(template PromptTemplate) PromptTemplate {
-	template = decodeTemplate([]byte(template.Content), strings.TrimSpace(template.ID))
-	return template
-}
-
 func normalizeContent(content string) string {
 	text := strings.TrimSpace(strings.ReplaceAll(content, "\r\n", "\n"))
+	if text == "" {
+		return ""
+	}
 	return text + "\n"
 }
 
-func fallbackTemplateName(id string) string {
-	words := strings.Split(strings.ReplaceAll(id, "-", "_"), "_")
-	for index, word := range words {
-		if word == "" {
-			continue
-		}
-		words[index] = strings.ToUpper(word[:1]) + word[1:]
+func metadataBool(metadata map[string]any, key string) bool {
+	value, ok := metadata[key]
+	if !ok || value == nil {
+		return false
 	}
-	return strings.Join(words, " ")
+	typed, ok := value.(bool)
+	return ok && typed
+}
+
+func metadataInt(metadata map[string]any, key string) int {
+	value, ok := metadata[key]
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case float64:
+		return int(typed)
+	default:
+		return 0
+	}
 }
 
 func isSafeTemplateID(id string) bool {
-	return id != "" && id != "." && id != ".." && filepath.Base(id) == id && !strings.Contains(id, "\\")
-}
-
-func templateIDFromFilename(filename string) string {
-	return strings.TrimSuffix(filename, ".md")
-}
-
-func isTemplateFilename(filename string) bool {
-	return strings.HasSuffix(filename, ".md")
-}
-
-func archiveLegacyPromptTemplates(ctx context.Context, dir string) error {
-	if err := ctxErr(ctx); err != nil {
-		return err
+	id = strings.TrimSpace(id)
+	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, `/\`) {
+		return false
 	}
-	if strings.TrimSpace(dir) == "" {
-		return nil
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
+	for index, char := range id {
+		valid := char >= 'a' && char <= 'z' ||
+			char >= 'A' && char <= 'Z' ||
+			char >= '0' && char <= '9' ||
+			char == '-' ||
+			char == '_'
+		if !valid {
+			return false
 		}
-		return fmt.Errorf("reading prompt template overrides: %w", err)
-	}
-	for _, entry := range entries {
-		if err := ctxErr(ctx); err != nil {
-			return err
-		}
-		if entry.IsDir() || !isLegacyTemplateID(templateIDFromFilename(entry.Name())) {
-			continue
-		}
-		sourcePath := filepath.Join(dir, entry.Name())
-		legacyDir := filepath.Join(dir, "legacy")
-		if err := os.MkdirAll(legacyDir, 0o755); err != nil {
-			return fmt.Errorf("creating legacy prompt template directory: %w", err)
-		}
-		targetPath := nextLegacyTemplatePath(legacyDir, entry.Name())
-		if err := os.Rename(sourcePath, targetPath); err != nil {
-			return fmt.Errorf("archiving legacy prompt template %s: %w", entry.Name(), err)
-		}
-		slog.Warn("legacy prompt template override archived", "source", sourcePath, "target", targetPath)
-	}
-	return nil
-}
-
-func nextLegacyTemplatePath(dir string, filename string) string {
-	path := filepath.Join(dir, filename)
-	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-		return path
-	}
-	extension := filepath.Ext(filename)
-	base := strings.TrimSuffix(filename, extension)
-	for index := 1; ; index++ {
-		candidate := filepath.Join(dir, fmt.Sprintf("%s.%d%s", base, index, extension))
-		if _, err := os.Stat(candidate); errors.Is(err, fs.ErrNotExist) {
-			return candidate
+		if index == 0 && (char == '-' || char == '_') {
+			return false
 		}
 	}
+	return true
 }
 
-func isLegacyTemplateID(id string) bool {
-	_, ok := legacyTemplateIDs[id]
-	return ok
-}
-
-func editableTemplates(templateMap map[string]PromptTemplate) map[string]PromptTemplate {
-	templates := map[string]PromptTemplate{}
-	for _, descriptor := range serviceprompt.EditableSectionDescriptors() {
-		if template, ok := templateMap[descriptor.ID]; ok {
-			templates[descriptor.ID] = template
-		}
+func nonEmpty(value string, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return strings.TrimSpace(fallback)
 	}
-	return templates
-}
-
-func templateOrder(id string) (int, bool) {
-	descriptor, ok := serviceprompt.SectionDescriptorByID(id)
-	if !ok {
-		return 0, false
-	}
-	return descriptor.Order, true
-}
-
-func isEditableTemplateID(id string) bool {
-	descriptor, ok := serviceprompt.SectionDescriptorByID(id)
-	return ok && descriptor.Editable
-}
-
-var legacyTemplateIDs = map[string]struct{}{
-	"role_persona":               {},
-	"project_brief":              {},
-	"tool_usage_rules":           {},
-	"writing_strategy":           {},
-	"category_screenplay":        {},
-	"category_character":         {},
-	"category_scene":             {},
-	"category_prop":              {},
-	"category_storyboard":        {},
-	"workflow_gate":              {},
-	"project_document_tree":      {},
-	"document_templates_catalog": {},
-	"focused_document":           {},
-	"scoped_edit":                {},
-	"editor_state_snapshot":      {},
-	"user_prompt":                {},
-}
-
-func ctxErr(ctx context.Context) error {
-	if ctx == nil {
-		return nil
-	}
-	return ctx.Err()
+	return value
 }

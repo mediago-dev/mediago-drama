@@ -119,7 +119,10 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		setError("");
 	}, [selectedPreset]);
 
-	const readonlyBuiltin = selectedPreset?.source === "builtin";
+	const canResetPreset = Boolean(selectedPreset?.overridden);
+	const canDeletePreset = Boolean(
+		selectedPreset && selectedPreset.source === "user" && !selectedPreset.overridden,
+	);
 	const draftValid = Boolean(draft.category.trim() && draft.name.trim() && draft.prompt.trim());
 	const createDraftValid = Boolean(
 		createDraft.category.trim() && createDraft.name.trim() && createDraft.prompt.trim(),
@@ -193,18 +196,6 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		}
 	};
 
-	const saveAsCustom = () => {
-		if (!selectedPreset) return;
-		setCreateDraft({
-			id: "",
-			name: `${selectedPreset.name} 副本`,
-			category: selectedPreset.category,
-			prompt: selectedPreset.prompt,
-		});
-		setCreateError("");
-		setCreateDialogOpen(true);
-	};
-
 	const openCategoryDialog = (target: CategoryDialogTarget) => {
 		setCategoryDialogTarget(target);
 		setCategoryDraftName("");
@@ -253,16 +244,18 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		setIsDeleting(true);
 		setError("");
 		try {
-			if (selectedPreset.builtin) {
+			if (selectedPreset.overridden) {
 				const reset = await resetPromptPreset(selectedPreset.id);
 				await mutate();
 				setSelectedId(reset.id);
 				toast.success("已恢复默认");
-			} else {
+			} else if (selectedPreset.source === "user") {
 				await deletePromptPreset(selectedPreset.id);
 				await mutate();
 				setSelectedId("");
 				toast.success("已删除");
+			} else {
+				return;
 			}
 		} catch (err) {
 			const message = errorMessage(err);
@@ -340,7 +333,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 										{promptCategoryOptionLabel(preset.category, categoryOptions)}
 									</span>
 									<span className="shrink-0 text-2xs text-muted-foreground">
-										{preset.source === "builtin" ? "内置" : "自定义"}
+										{entrySourceLabel(preset.source, preset.overridden)}
 									</span>
 								</button>
 							))
@@ -359,17 +352,11 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 										<Badge variant="secondary" className="rounded-md">
 											{promptCategoryOptionLabel(draft.category, categoryOptions)}
 										</Badge>
-										{readonlyBuiltin ? (
-											<Badge variant="outline" className="rounded-md">
-												内置 · 只读
-											</Badge>
-										) : null}
+										<EntrySourceBadge
+											source={selectedPreset.source}
+											overridden={selectedPreset.overridden}
+										/>
 									</div>
-									{readonlyBuiltin ? (
-										<Button type="button" variant="outline" size="sm" onClick={saveAsCustom}>
-											另存为自定义
-										</Button>
-									) : null}
 								</div>
 
 								{error ? (
@@ -381,7 +368,6 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 								<FieldRow label="名称">
 									<Input
 										value={draft.name}
-										disabled={readonlyBuiltin}
 										className="rounded-md"
 										onChange={(event) =>
 											setDraft((current) => ({ ...current, name: event.target.value }))
@@ -392,7 +378,6 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 								<FieldRow label="分类">
 									<CategorySelectField
 										value={draft.category}
-										disabled={readonlyBuiltin}
 										options={categoryOptions}
 										onCreate={() => openCategoryDialog("edit")}
 										onChange={(value) => setDraft((current) => ({ ...current, category: value }))}
@@ -403,7 +388,6 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 									<Label className="text-sm font-medium text-foreground">提示词</Label>
 									<Textarea
 										value={draft.prompt}
-										disabled={readonlyBuiltin}
 										className="min-h-40 resize-y rounded-md text-sm leading-6"
 										onChange={(event) =>
 											setDraft((current) => ({ ...current, prompt: event.target.value }))
@@ -412,27 +396,27 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 								</div>
 
 								<div className="flex justify-end gap-2">
-									{selectedPreset ? (
+									{canResetPreset || canDeletePreset ? (
 										<Button
 											type="button"
-											variant={selectedPreset.builtin ? "outline" : "destructive"}
+											variant={canResetPreset ? "outline" : "destructive"}
 											onClick={() => void removeOrReset()}
 											disabled={isDeleting}
 										>
 											{isDeleting ? (
 												<Loader2 className="size-4 animate-spin" />
-											) : selectedPreset.builtin ? (
+											) : canResetPreset ? (
 												<RotateCcw className="size-4" />
 											) : (
 												<Trash2 className="size-4" />
 											)}
-											<span>{selectedPreset.builtin ? "恢复默认" : "删除"}</span>
+											<span>{canResetPreset ? "恢复默认" : "删除"}</span>
 										</Button>
 									) : null}
 									<Button
 										type="button"
 										onClick={() => void saveEdit()}
-										disabled={readonlyBuiltin || !draftValid || isSaving}
+										disabled={!draftValid || isSaving}
 									>
 										{isSaving ? (
 											<Loader2 className="size-4 animate-spin" />
@@ -514,6 +498,21 @@ const CategoryChip: React.FC<{ active: boolean; label: string; onClick: () => vo
 		{label}
 	</button>
 );
+
+const EntrySourceBadge: React.FC<Pick<PromptPreset, "source" | "overridden">> = ({
+	overridden,
+	source,
+}) => (
+	<Badge variant={overridden || source === "pack" ? "secondary" : "outline"} className="rounded-md">
+		{entrySourceLabel(source, overridden)}
+	</Badge>
+);
+
+const entrySourceLabel = (source: PromptPreset["source"], overridden?: boolean) => {
+	if (overridden) return "已覆盖";
+	if (source === "pack") return "来自包";
+	return "用户新增";
+};
 
 const FieldRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
 	<div className="grid items-center gap-2 md:grid-cols-[5rem_minmax(0,1fr)]">

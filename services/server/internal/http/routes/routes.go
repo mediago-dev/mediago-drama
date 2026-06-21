@@ -22,6 +22,7 @@ type Handlers struct {
 	Workspace             httphandlers.Workspace
 	EpisodePreview        httphandlers.EpisodePreview
 	WorkspaceEvents       httphandlers.WorkspaceEvents
+	PromptPacks           httphandlers.PromptPacks
 	PromptTemplates       httphandlers.PromptTemplates
 	PromptLibrary         httphandlers.PromptLibrary
 	Skills                httphandlers.Skills
@@ -56,8 +57,13 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.GET("/billing/summary", handlers.Billing.HandleBillingSummary)
 	apiRoutes.GET("/projects", handlers.Projects.HandleListProjects)
 	apiRoutes.POST("/projects", handlers.Projects.HandleCreateProject)
+	apiRoutes.GET("/packs", handlers.PromptPacks.HandleListPacks)
+	apiRoutes.POST("/packs/install", handlers.PromptPacks.HandleInstallPack)
+	apiRoutes.PATCH("/packs/:id", handlers.PromptPacks.HandlePatchPack)
+	apiRoutes.DELETE("/packs/:id", handlers.PromptPacks.HandleDeletePack)
 	apiRoutes.GET("/prompt-templates", handlers.PromptTemplates.HandleListPromptTemplates)
 	apiRoutes.PUT("/prompt-templates/:id", handlers.PromptTemplates.HandlePutPromptTemplate)
+	apiRoutes.POST("/prompt-templates/:id/reset", handlers.PromptTemplates.HandleResetPromptTemplate)
 	apiRoutes.GET("/prompt-categories", handlers.PromptLibrary.HandleListCategories)
 	apiRoutes.POST("/prompt-categories", handlers.PromptLibrary.HandlePostCategory)
 	apiRoutes.GET("/prompt-presets", handlers.PromptLibrary.HandleListPrompts)
@@ -70,6 +76,7 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.POST("/skills", handlers.Skills.HandlePostSkill)
 	apiRoutes.GET("/skills/:name", handlers.Skills.HandleGetSkill)
 	apiRoutes.PUT("/skills/:name", handlers.Skills.HandlePutSkill)
+	apiRoutes.POST("/skills/:name/reset", handlers.Skills.HandleResetSkill)
 	apiRoutes.DELETE("/skills/:name", handlers.Skills.HandleDeleteSkill)
 	apiRoutes.GET("/agent/backends", handlers.AgentBackends.HandleListBackends)
 	apiRoutes.GET("/media-assets", handlers.MediaAssets.HandleMediaAssets)

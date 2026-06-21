@@ -37,13 +37,13 @@ describe("PromptLibraryEditorPanel", () => {
 			{
 				id: "style",
 				label: "风格",
-				source: "builtin",
+				source: "pack",
 				builtin: true,
 			},
 			{
 				id: "extra",
 				label: "其他",
-				source: "builtin",
+				source: "pack",
 				builtin: true,
 			},
 		]);
@@ -58,7 +58,7 @@ describe("PromptLibraryEditorPanel", () => {
 				name: "2D动漫",
 				category: "style",
 				prompt: "2D anime style",
-				source: "builtin",
+				source: "pack",
 				builtin: true,
 			},
 		]);

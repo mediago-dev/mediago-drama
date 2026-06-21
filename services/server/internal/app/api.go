@@ -15,6 +15,7 @@ import (
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	serviceprojectasset "github.com/mediago-dev/mediago-drama/services/server/internal/service/projectasset"
 	servicepromptlibrary "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptlibrary"
+	servicepromptpack "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	serviceshared "github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
@@ -40,6 +41,7 @@ type apiHandler struct {
 	mediaAssets      *servicemedia.MediaAssets
 	previewStreamer  *servicemedia.FFmpegPreviewStreamer
 	projectAssets    *serviceprojectasset.ProjectAssets
+	promptPack       *servicepromptpack.Service
 	promptLibrary    *servicepromptlibrary.Service
 	skillRegistry    *serviceskill.Registry
 	shutdownCtx      context.Context

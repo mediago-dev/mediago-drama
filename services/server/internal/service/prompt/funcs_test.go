@@ -5,27 +5,6 @@ import (
 	"testing"
 )
 
-func TestMdFenceSelectsSafeFence(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-		want    string
-	}{
-		{name: "empty", content: "", want: "```"},
-		{name: "single backtick", content: "`code`", want: "```"},
-		{name: "triple backticks", content: "```markdown\nbody\n```", want: "````"},
-		{name: "four backticks", content: "````\nbody\n````", want: "`````"},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := mdFence(test.content); got != test.want {
-				t.Fatalf("mdFence() = %q, want %q", got, test.want)
-			}
-		})
-	}
-}
-
 func TestTruncatePromptContent(t *testing.T) {
 	tests := []struct {
 		name    string

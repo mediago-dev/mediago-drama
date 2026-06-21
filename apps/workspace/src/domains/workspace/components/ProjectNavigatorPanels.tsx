@@ -590,14 +590,7 @@ const settingsNavGroups: SettingsNavGroup[] = [
 	},
 	{
 		label: "生成配置",
-		items: [
-			{ value: "api-keys", label: "API 密钥", icon: KeyRound },
-			debugNavItem("prompt-library"),
-		],
-	},
-	{
-		label: "智能体",
-		items: [debugNavItem("prompts"), debugNavItem("skills")],
+		items: [{ value: "api-keys", label: "API 密钥", icon: KeyRound }, debugNavItem("prompt-packs")],
 	},
 ];
 

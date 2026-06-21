@@ -58,7 +58,11 @@ const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	debugTabs.some((tab) => tab.value === value);
 
 const normalizeSettingsTab = (value: string) =>
-	value === "agent-model-profiles" ? "api-keys" : value;
+	value === "agent-model-profiles"
+		? "api-keys"
+		: value === "prompts" || value === "skills" || value === "prompt-library"
+			? "prompt-packs"
+			: value;
 
 export const Settings: React.FC = () => {
 	const location = useLocation();

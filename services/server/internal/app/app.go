@@ -122,7 +122,8 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	workspaceHandler := httphandlers.NewWorkspace(api.workspaceState, repository.IsRecordNotFound, servicedocument.IsWorkspaceVersionConflict, api.projectAssets)
 	episodePreviewHandler := httphandlers.NewEpisodePreview(api.workspaceState, api.mediaAssets, api.previewStreamer)
 	workspaceEventHandler := httphandlers.NewWorkspaceEvents(api)
-	promptTemplateHandler := httphandlers.NewPromptTemplates(serviceprompttemplates.NewService())
+	promptPackHandler := httphandlers.NewPromptPacks(api.promptPack)
+	promptTemplateHandler := httphandlers.NewPromptTemplates(serviceprompttemplates.NewServiceWithStore(api.promptPack))
 	promptLibraryHandler := httphandlers.NewPromptLibrary(api.promptLibrary)
 	skillHandler := httphandlers.NewSkills(api.skillRegistry)
 	approvalHandler := httphandlers.NewDocumentToolApprovals(api.workspaceState, repository.IsRecordNotFound)
@@ -169,6 +170,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		Workspace:             workspaceHandler,
 		EpisodePreview:        episodePreviewHandler,
 		WorkspaceEvents:       workspaceEventHandler,
+		PromptPacks:           promptPackHandler,
 		PromptTemplates:       promptTemplateHandler,
 		PromptLibrary:         promptLibraryHandler,
 		Skills:                skillHandler,

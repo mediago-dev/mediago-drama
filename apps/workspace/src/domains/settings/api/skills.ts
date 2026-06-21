@@ -1,12 +1,14 @@
 import { createResource } from "@/shared/lib/api-factory";
+import httpClient from "@/shared/lib/http";
 
-export type SkillSource = "builtin" | "user";
+export type SkillSource = "pack" | "user";
 
 export interface SkillMeta {
 	name: string;
 	title?: string;
 	description: string;
 	source: SkillSource;
+	overridden?: boolean;
 	hint?: Record<string, string>;
 }
 
@@ -48,3 +50,10 @@ export const createSkill = (name: string, content: string): Promise<SkillDocumen
 	skillResource.create({ name, content });
 
 export const deleteSkill = skillResource.remove;
+
+export const resetSkill = async (name: string): Promise<SkillDocument> => {
+	const response = await httpClient.post<SkillDocument>(
+		`${skillsKey}/${encodeURIComponent(name)}/reset`,
+	);
+	return response.data;
+};

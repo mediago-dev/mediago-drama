@@ -27,9 +27,9 @@ func (WorkspaceProjectModel) TableName() string {
 
 // EpisodeTimelineModel is the GORM model for persisted episode timeline state.
 type EpisodeTimelineModel struct {
-	ProjectID   string `gorm:"column:project_id;primaryKey;default:'';index:episode_timelines_project_idx,priority:1"`
-	DocumentID  string `gorm:"column:document_id;primaryKey;index:episode_timelines_project_idx,priority:2"`
-	EpisodeJSON string `gorm:"column:episode_json;not null;type:text"`
+	ProjectID   string    `gorm:"column:project_id;primaryKey;default:'';index:episode_timelines_project_idx,priority:1"`
+	DocumentID  string    `gorm:"column:document_id;primaryKey;index:episode_timelines_project_idx,priority:2"`
+	EpisodeJSON string    `gorm:"column:episode_json;not null;type:text"`
 	CreatedAt   time.Time `gorm:"column:created_at;not null;autoCreateTime:nano"`
 	UpdatedAt   time.Time `gorm:"column:updated_at;not null;autoUpdateTime:nano;index:episode_timelines_project_idx,priority:3,sort:desc"`
 
@@ -43,10 +43,10 @@ func (EpisodeTimelineModel) TableName() string {
 
 // DocumentOperationLogModel is the GORM model for document operation logs.
 type DocumentOperationLogModel struct {
-	ProjectID  string `gorm:"column:project_id;primaryKey;default:'';index:document_operation_logs_project_idx,priority:1"`
-	ID         string `gorm:"column:id;primaryKey"`
-	DocumentID string `gorm:"column:document_id;not null"`
-	RecordJSON string `gorm:"column:record_json;not null"`
+	ProjectID  string    `gorm:"column:project_id;primaryKey;default:'';index:document_operation_logs_project_idx,priority:1"`
+	ID         string    `gorm:"column:id;primaryKey"`
+	DocumentID string    `gorm:"column:document_id;not null"`
+	RecordJSON string    `gorm:"column:record_json;not null"`
 	CreatedAt  time.Time `gorm:"column:created_at;not null;autoCreateTime:nano;index:document_operation_logs_project_idx,priority:2,sort:desc"`
 
 	Project WorkspaceProjectModel `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:CASCADE"`
@@ -59,15 +59,15 @@ func (DocumentOperationLogModel) TableName() string {
 
 // DocumentToolApprovalModel is the GORM model for document tool approvals.
 type DocumentToolApprovalModel struct {
-	ProjectID           string `gorm:"column:project_id;primaryKey;default:'';index:document_tool_approvals_status_idx,priority:1"`
-	ID                  string `gorm:"column:id;primaryKey"`
-	ToolName            string `gorm:"column:tool_name;not null"`
-	DocumentID          string `gorm:"column:document_id;not null;default:''"`
-	Title               string `gorm:"column:title;not null;default:''"`
-	Summary             string `gorm:"column:summary;not null;default:''"`
-	Status              string `gorm:"column:status;not null;index:document_tool_approvals_status_idx,priority:2"`
-	RequestJSON         string `gorm:"column:request_json;not null"`
-	DecisionPayloadJSON string `gorm:"column:decision_payload_json;not null;default:''"`
+	ProjectID           string     `gorm:"column:project_id;primaryKey;default:'';index:document_tool_approvals_status_idx,priority:1"`
+	ID                  string     `gorm:"column:id;primaryKey"`
+	ToolName            string     `gorm:"column:tool_name;not null"`
+	DocumentID          string     `gorm:"column:document_id;not null;default:''"`
+	Title               string     `gorm:"column:title;not null;default:''"`
+	Summary             string     `gorm:"column:summary;not null;default:''"`
+	Status              string     `gorm:"column:status;not null;index:document_tool_approvals_status_idx,priority:2"`
+	RequestJSON         string     `gorm:"column:request_json;not null"`
+	DecisionPayloadJSON string     `gorm:"column:decision_payload_json;not null;default:''"`
 	CreatedAt           time.Time  `gorm:"column:created_at;not null;autoCreateTime:nano;index:document_tool_approvals_status_idx,priority:3,sort:asc"`
 	DecidedAt           *time.Time `gorm:"column:decided_at"`
 
@@ -81,19 +81,19 @@ func (DocumentToolApprovalModel) TableName() string {
 
 // DocumentEditStreamModel is the GORM model for streamed document edits.
 type DocumentEditStreamModel struct {
-	ProjectID       string `gorm:"column:project_id;primaryKey;default:'';index:document_edit_streams_project_idx,priority:1"`
-	StreamID        string `gorm:"column:stream_id;primaryKey"`
-	DocumentID      string `gorm:"column:document_id;not null;default:''"`
-	Mode            string `gorm:"column:mode;not null;default:''"`
-	AnchorText      string `gorm:"column:anchor_text;not null;default:''"`
-	Title           string `gorm:"column:title;not null;default:''"`
-	ParentID        string `gorm:"column:parent_id;not null;default:''"`
-	BaseVersion     int    `gorm:"column:base_version;not null;default:0"`
-	Buffer          string `gorm:"column:buffer;not null;default:''"`
-	Status          string `gorm:"column:status;not null;default:'streaming';index:document_edit_streams_status_idx"`
-	RunID           string `gorm:"column:run_id;not null;default:''"`
-	BeforeJSON      string `gorm:"column:before_json;not null;default:''"`
-	OperationLogged bool   `gorm:"column:operation_logged;not null;default:false"`
+	ProjectID       string    `gorm:"column:project_id;primaryKey;default:'';index:document_edit_streams_project_idx,priority:1"`
+	StreamID        string    `gorm:"column:stream_id;primaryKey"`
+	DocumentID      string    `gorm:"column:document_id;not null;default:''"`
+	Mode            string    `gorm:"column:mode;not null;default:''"`
+	AnchorText      string    `gorm:"column:anchor_text;not null;default:''"`
+	Title           string    `gorm:"column:title;not null;default:''"`
+	ParentID        string    `gorm:"column:parent_id;not null;default:''"`
+	BaseVersion     int       `gorm:"column:base_version;not null;default:0"`
+	Buffer          string    `gorm:"column:buffer;not null;default:''"`
+	Status          string    `gorm:"column:status;not null;default:'streaming';index:document_edit_streams_status_idx"`
+	RunID           string    `gorm:"column:run_id;not null;default:''"`
+	BeforeJSON      string    `gorm:"column:before_json;not null;default:''"`
+	OperationLogged bool      `gorm:"column:operation_logged;not null;default:false"`
 	CreatedAt       time.Time `gorm:"column:created_at;not null;autoCreateTime:nano"`
 	UpdatedAt       time.Time `gorm:"column:updated_at;not null;autoUpdateTime:nano"`
 

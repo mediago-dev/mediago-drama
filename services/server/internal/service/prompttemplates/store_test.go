@@ -3,123 +3,70 @@ package prompttemplates
 import (
 	"context"
 	"errors"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
-	"testing/fstest"
 
-	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
+	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 )
 
-func TestStoreLoadFallsBackToEmbeddedTemplates(t *testing.T) {
-	store := NewServiceWithSource(testDefaultsFS("Embedded"), filepath.Join(t.TempDir(), "missing"))
+func TestStoreLoadReturnsEditableInstructions(t *testing.T) {
+	store := NewServiceWithStore(newFakeTemplatePackStore())
 
 	templates, err := store.Load(context.Background())
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-
-	template := templates["TOOLS"]
-	if template.Content != "Embedded\n" {
-		t.Fatalf("Load() content = %q, want Embedded", template.Content)
+	if _, ok := templates["RUNTIME"]; ok {
+		t.Fatalf("Load() returned non-editable runtime template")
+	}
+	if templates["TOOLS"].Content != "Tools body\n" {
+		t.Fatalf("TOOLS content = %q, want pack body", templates["TOOLS"].Content)
 	}
 }
 
-func TestStoreLoadOverlaysDiskTemplates(t *testing.T) {
-	sourceDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(sourceDir, "TOOLS.md"), []byte("Disk\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	store := NewServiceWithSource(testDefaultsFS("Embedded"), sourceDir)
+func TestStoreSaveWritesUserOverride(t *testing.T) {
+	packStore := newFakeTemplatePackStore()
+	store := NewServiceWithStore(packStore)
 
-	templates, err := store.Load(context.Background())
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-
-	template := templates["TOOLS"]
-	if template.Content != "Disk\n" {
-		t.Fatalf("Load() content = %q, want Disk", template.Content)
-	}
-}
-
-func TestStoreSaveWritesPromptTemplate(t *testing.T) {
-	sourceDir := t.TempDir()
-	store := NewServiceWithSource(testDefaultsFS("Embedded"), sourceDir)
-	template := PromptTemplate{ID: "TOOLS", Content: "Saved"}
-
-	saved, err := store.Save(context.Background(), template.ID, template)
+	saved, err := store.Save(context.Background(), "TOOLS", PromptTemplate{ID: "TOOLS", Content: "Saved"})
 	if err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
-	if saved.Name != "TOOLS.md" || saved.Content != "Saved\n" {
-		t.Fatalf("Save() = %#v, want metadata and normalized content", saved)
-	}
-
-	data, err := os.ReadFile(filepath.Join(sourceDir, "TOOLS.md"))
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	if string(data) != "Saved\n" {
-		t.Fatalf("saved file = %q, want normalized content", data)
+	if saved.Content != "Saved\n" || packStore.entries["TOOLS"].Source != "user" || !saved.Overridden {
+		t.Fatalf("saved = %#v source=%q, want normalized user override", saved, packStore.entries["TOOLS"].Source)
 	}
 }
 
-func TestStoreSaveInvalidatesPromptCache(t *testing.T) {
-	serviceprompt.InvalidateTemplateCache("AGENTS")
-	t.Cleanup(func() {
-		if err := os.RemoveAll("configs"); err != nil {
-			t.Fatalf("RemoveAll() error = %v", err)
-		}
-		serviceprompt.InvalidateTemplateCache("AGENTS")
-	})
+func TestStoreResetRestoresPackInstruction(t *testing.T) {
+	packStore := newFakeTemplatePackStore()
+	store := NewServiceWithStore(packStore)
 
-	initial := serviceprompt.BuildWorkspaceACPPrompt(serviceprompt.AgentRunRequest{
-		WorkspaceDir: t.TempDir(),
-	})
-	if strings.Contains(initial, "cache invalidated marker") {
-		t.Fatalf("initial prompt unexpectedly contains saved marker")
-	}
-
-	store := NewService()
-	_, err := store.Save(context.Background(), "AGENTS", PromptTemplate{
-		ID:      "AGENTS",
-		Content: "cache invalidated marker",
-	})
-	if err != nil {
+	if _, err := store.Save(context.Background(), "TOOLS", PromptTemplate{ID: "TOOLS", Content: "Saved"}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
-
-	prompt := serviceprompt.BuildWorkspaceACPPrompt(serviceprompt.AgentRunRequest{
-		WorkspaceDir: t.TempDir(),
-	})
-	if !strings.Contains(prompt, "cache invalidated marker") {
-		t.Fatalf("prompt = %q, want saved template after cache invalidation", prompt)
+	reset, err := store.Reset(context.Background(), "TOOLS")
+	if err != nil {
+		t.Fatalf("Reset() error = %v", err)
+	}
+	if reset.Content != "Tools body\n" || reset.Source != "pack" || reset.Overridden {
+		t.Fatalf("reset = %#v, want pack instruction", reset)
 	}
 }
 
 func TestStoreSaveRejectsInvalidTemplate(t *testing.T) {
-	store := NewServiceWithSource(testDefaultsFS("Embedded"), t.TempDir())
-	template := PromptTemplate{ID: "TOOLS"}
+	store := NewServiceWithStore(newFakeTemplatePackStore())
 
-	_, err := store.Save(context.Background(), template.ID, template)
+	_, err := store.Save(context.Background(), "TOOLS", PromptTemplate{ID: "TOOLS"})
 	if !errors.Is(err, ErrInvalidTemplate) {
 		t.Fatalf("Save() error = %v, want ErrInvalidTemplate", err)
 	}
 }
 
-func testDefaultsFS(content string) fs.FS {
-	return fstest.MapFS{
-		"templates/prompts/TOOLS.md": &fstest.MapFile{Data: []byte(content)},
-	}
-}
-
 func TestOrderedTemplatesUsesPromptAssemblyOrder(t *testing.T) {
 	ordered := OrderedTemplates(map[string]PromptTemplate{
-		"TOOLS":  {ID: "TOOLS"},
-		"AGENTS": {ID: "AGENTS"},
+		"TOOLS":  {ID: "TOOLS", Order: 1},
+		"AGENTS": {ID: "AGENTS", Order: 0},
 	})
 
 	ids := make([]string, 0, len(ordered))
@@ -131,58 +78,81 @@ func TestOrderedTemplatesUsesPromptAssemblyOrder(t *testing.T) {
 	}
 }
 
-func TestStoreLoadUsesEditableRegistry(t *testing.T) {
-	defaults := fstest.MapFS{
-		"templates/prompts/AGENTS.md":        &fstest.MapFile{Data: []byte("Role")},
-		"templates/prompts/CONTEXT.md":       &fstest.MapFile{Data: []byte("Context")},
-		"templates/prompts/unknown_extra.md": &fstest.MapFile{Data: []byte("Unknown")},
-	}
-	store := NewServiceWithSource(defaults, filepath.Join(t.TempDir(), "missing"))
+type fakeTemplatePackStore struct {
+	entries map[string]promptpack.Entry
+}
 
-	templates, err := store.Load(context.Background())
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if _, ok := templates["unknown_extra"]; ok {
-		t.Fatalf("Load() returned unknown template: %#v", templates["unknown_extra"])
-	}
-	if _, ok := templates["CONTEXT"]; ok {
-		t.Fatalf("Load() returned runtime-only CONTEXT template: %#v", templates["CONTEXT"])
-	}
-	template, ok := templates["AGENTS"]
-	if !ok {
-		t.Fatalf("Load() missing AGENTS template")
-	}
-	if template.Name != "AGENTS.md" {
-		t.Fatalf("AGENTS name = %q, want registry metadata", template.Name)
+func newFakeTemplatePackStore() *fakeTemplatePackStore {
+	return &fakeTemplatePackStore{
+		entries: map[string]promptpack.Entry{
+			"AGENTS": {
+				ID: "builtin/instruction/AGENTS", PackID: "builtin", Kind: instructionpack.KindInstruction,
+				Slug: "AGENTS", Name: "AGENTS.md", Title: "AGENTS.md", Body: "Agents body",
+				Metadata: map[string]any{"order": 0, "editable": true}, Source: "pack",
+			},
+			"TOOLS": {
+				ID: "builtin/instruction/TOOLS", PackID: "builtin", Kind: instructionpack.KindInstruction,
+				Slug: "TOOLS", Name: "TOOLS.md", Title: "TOOLS.md", Body: "Tools body",
+				Metadata: map[string]any{"order": 1, "editable": true}, Source: "pack",
+			},
+			"RUNTIME": {
+				ID: "builtin/instruction/RUNTIME", PackID: "builtin", Kind: instructionpack.KindInstruction,
+				Slug: "RUNTIME", Name: "Runtime", Title: "Runtime", Body: "Runtime body",
+				Metadata: map[string]any{"order": 2, "editable": false}, Source: "pack",
+			},
+		},
 	}
 }
 
-func TestStoreLoadArchivesLegacyDiskTemplates(t *testing.T) {
-	sourceDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(sourceDir, "role_persona.md"), []byte("Legacy\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() legacy error = %v", err)
+func (store *fakeTemplatePackStore) ListEntries(_ context.Context, kind instructionpack.Kind) ([]promptpack.Entry, error) {
+	entries := []promptpack.Entry{}
+	for _, entry := range store.entries {
+		if entry.Kind == kind {
+			entries = append(entries, entry)
+		}
 	}
-	if err := os.WriteFile(filepath.Join(sourceDir, "TOOLS.md"), []byte("Disk\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() current error = %v", err)
-	}
-	store := NewServiceWithSource(testDefaultsFS("Embedded"), sourceDir)
+	return entries, nil
+}
 
-	templates, err := store.Load(context.Background())
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+func (store *fakeTemplatePackStore) GetEntry(_ context.Context, kind instructionpack.Kind, slug string) (promptpack.Entry, error) {
+	entry, ok := store.entries[slug]
+	if !ok || entry.Kind != kind {
+		return promptpack.Entry{}, promptpack.ErrEntryNotFound
 	}
-	if templates["TOOLS"].Content != "Disk\n" {
-		t.Fatalf("TOOLS content = %q, want current disk override", templates["TOOLS"].Content)
+	return entry, nil
+}
+
+func (store *fakeTemplatePackStore) SaveEntry(_ context.Context, _ instructionpack.Kind, slug string, entry promptpack.Entry) (promptpack.Entry, error) {
+	current, ok := store.entries[slug]
+	if !ok {
+		return promptpack.Entry{}, promptpack.ErrEntryNotFound
 	}
-	if _, err := os.Stat(filepath.Join(sourceDir, "role_persona.md")); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("legacy source stat error = %v, want not exist", err)
+	entry.ID = current.ID
+	entry.PackID = current.PackID
+	entry.Slug = slug
+	entry.Source = "user"
+	entry.OverriddenFrom = current.ID
+	store.entries[slug] = entry
+	return entry, nil
+}
+
+func (store *fakeTemplatePackStore) ResetEntry(_ context.Context, _ instructionpack.Kind, slug string) (promptpack.Entry, error) {
+	entry, ok := store.entries[slug]
+	if !ok {
+		return promptpack.Entry{}, promptpack.ErrEntryNotFound
 	}
-	archived, err := os.ReadFile(filepath.Join(sourceDir, "legacy", "role_persona.md"))
-	if err != nil {
-		t.Fatalf("ReadFile() archived legacy error = %v", err)
+	if entry.Source == "user" && entry.OverriddenFrom == "" {
+		return promptpack.Entry{}, promptpack.ErrPackReadonly
 	}
-	if string(archived) != "Legacy\n" {
-		t.Fatalf("archived legacy = %q, want original content", archived)
+	entry.Body = strings.TrimSuffix(entry.Title, ".md") + " body"
+	if slug == "TOOLS" {
+		entry.Body = "Tools body"
 	}
+	if slug == "AGENTS" {
+		entry.Body = "Agents body"
+	}
+	entry.Source = "pack"
+	entry.OverriddenFrom = ""
+	store.entries[slug] = entry
+	return entry, nil
 }
