@@ -173,7 +173,6 @@ const renderSubmitHook = (
 		extraPrompt?: GenerationExtraValue<string>;
 		prompt?: string;
 		promptRef?: React.MutableRefObject<string>;
-		projectStylePrompt?: string;
 		selectedFamily?: GenerationFamily;
 		selectedRoute?: GenerationRoute;
 		selectedVersion?: GenerationVersion;
@@ -205,7 +204,6 @@ const renderSubmitHook = (
 				effectiveReferenceAssetIds: ["asset-1"],
 				effectiveReferenceUrls: ["https://example.test/reference.png"],
 				extraPrompt: options.extraPrompt ?? "",
-				isLoadingProjectBrief: false,
 				mediaAssetProjectId: "project-1",
 				mediaAssets: [
 					{
@@ -229,8 +227,6 @@ const renderSubmitHook = (
 				onSubmitStart: options.onSubmitStart,
 				onSubmitSuccess: options.onSubmitSuccess,
 				rememberSelectedModel: options.rememberSelectedModel,
-				projectId: "project-1",
-				projectStylePrompt: options.projectStylePrompt,
 				prompt,
 				promptRef: options.promptRef,
 				resolvedConversationScopeId: "scope-1",
@@ -262,26 +258,21 @@ describe("useGenerationSubmit", () => {
 		vi.clearAllMocks();
 	});
 
-	it("builds the full visual prompt with extra context and style layers", () => {
+	it("builds the request prompt with explicit extra context only", () => {
 		const prompt = generationRequestPrompt({
 			extraPrompt: "引用资料：角色设定",
-			kind: "image",
-			projectStylePrompt: "电影感光影\n冷色调",
 			prompt: "生成角色设定图",
 		});
 
 		expect(prompt).toContain("生成角色设定图");
 		expect(prompt).toContain("引用资料：角色设定");
-		expect(prompt).toContain("项目视觉风格：");
-		expect(prompt).toContain("电影感光影\n冷色调");
-		expect(prompt).toContain("本次图片/视频生成必须遵循这个风格。");
+		expect(prompt).not.toContain("项目视觉风格：");
+		expect(prompt).not.toContain("本次图片/视频生成必须遵循这个风格。");
 	});
 
 	it("can bypass prompt enrichment and keep the prompt unchanged", () => {
 		const prompt = generationRequestPrompt({
 			extraPrompt: "引用资料：角色设定",
-			kind: "image",
-			projectStylePrompt: "电影感光影",
 			prompt: "  生成角色设定图\n",
 			useRawPrompt: true,
 		});
@@ -374,7 +365,6 @@ describe("useGenerationSubmit", () => {
 		const extraPrompt = vi.fn(() => "引用资料：不应附加");
 		const { result } = renderSubmitHook({
 			extraPrompt,
-			projectStylePrompt: "项目视觉风格不应附加",
 			prompt: "  draw a cat\nwith props  ",
 			useRawPrompt: true,
 		});

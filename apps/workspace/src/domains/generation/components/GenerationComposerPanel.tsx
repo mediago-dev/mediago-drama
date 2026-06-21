@@ -76,22 +76,9 @@ export const GenerationComposerPanel: React.FC<GenerationComposerPanelProps> = (
 				)}
 			>
 				{promptExtras}
-				{layeredComposer || onCopyPrompt ? (
+				{layeredComposer ? (
 					<div className="flex min-w-0 items-start justify-between gap-3">
 						<div className="min-w-0 flex-1">{layeredComposer}</div>
-						{onCopyPrompt ? (
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								disabled={!canCopyPrompt}
-								className="h-[var(--generation-control-height)] shrink-0 rounded-[var(--generation-control-radius)] border-input bg-card px-[var(--generation-control-padding-x)] text-2xs font-semibold text-muted-foreground shadow-none hover:bg-ide-list-hover hover:text-foreground disabled:bg-card"
-								onClick={onCopyPrompt}
-							>
-								<Clipboard className="size-4" />
-								<span>复制 Prompt</span>
-							</Button>
-						) : null}
 					</div>
 				) : null}
 				{referencePreview}
@@ -132,6 +119,22 @@ export const GenerationComposerPanel: React.FC<GenerationComposerPanelProps> = (
 						{leftControls}
 					</div>
 					<div className="flex min-w-0 flex-wrap items-center gap-[var(--generation-composer-toolbar-gap)] lg:justify-end">
+						{onCopyPrompt ? (
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								aria-label="复制 Prompt"
+								title="复制 Prompt"
+								disabled={!canCopyPrompt}
+								className={generationComposerToolbarButtonClassName(
+									"w-[var(--generation-control-height)] px-0",
+								)}
+								onClick={onCopyPrompt}
+							>
+								<Clipboard className="size-4" />
+							</Button>
+						) : null}
 						{rightControls}
 						<Button
 							type="submit"

@@ -279,7 +279,6 @@ const audioVoiceParam: GenerationParam = {
 const workspaceDefaults = {
 	activeEntryId: "entry-image",
 	canSubmit: true,
-	composerLayers: [],
 	deletedAssetPlaceholderCounts: {},
 	deleteGenerationEntry: vi.fn(),
 	deleteGenerationEntryAsset: vi.fn(),
@@ -298,6 +297,7 @@ const workspaceDefaults = {
 	orderedGenerationEntries: [imageEntry, secondImageEntry],
 	fullPrompt: "完整提示词",
 	prompt: "旧提示词",
+	promptInsertItems: [],
 	selectableReferenceKinds: new Set(["image"]),
 	selectedFamily: { id: "image-family", label: "图像模型" },
 	selectedParams: {},
@@ -320,7 +320,6 @@ const workspaceDefaults = {
 	selectedVersion: { id: "version-image", label: "v1" },
 	setActiveEntryId: vi.fn(),
 	setKind: vi.fn(),
-	setLayerSelection: vi.fn(),
 	setPrompt: vi.fn(),
 	submit: vi.fn((event: React.FormEvent<HTMLFormElement>) => event.preventDefault()),
 	toggleReferenceAsset: vi.fn(),

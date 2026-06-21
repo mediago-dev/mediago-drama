@@ -15,24 +15,14 @@ import {
 	importGenerationMediaAssets,
 } from "@/domains/generation/api/generation";
 import {
-	getProjectBrief,
-	getProjectConfig,
-	projectBriefKey,
-	projectConfigKey,
-} from "@/domains/projects/api/projects";
-import {
-	type PromptLayer,
 	type PromptPreset,
 	listPromptPresets,
 	listStylePresets,
 	promptPresetsKey,
 	stylePresetsKey,
 } from "@/domains/generation/api/prompt-presets";
-import {
-	type GenerationTaskType,
-	composeLayerStyle,
-	taskTypeLayers,
-} from "@/domains/generation/lib/prompt-layers";
+import type { GenerationTaskType } from "@/domains/generation/lib/prompt-layers";
+import { promptInsertItemsFromPresets } from "@/domains/generation/lib/prompt-insertions";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import {
 	isConfiguredRoute,
@@ -59,7 +49,7 @@ export type {
 	GenerationSubmitStartEvent,
 } from "./useGenerationSubmit";
 
-// 稳定的空数组引用,避免 SWR 加载中的新 `[]` 引用引发组合器 memo 反复重算。
+// 稳定的空数组引用,避免 SWR 加载中的新 `[]` 引用引发 slash 插入项反复重算。
 const emptyPromptPresets: PromptPreset[] = [];
 
 export interface UseGenerationWorkspaceOptions {
@@ -165,57 +155,13 @@ export const useGenerationWorkspace = ({
 			: generationTasksQueryKey(conversationId, initialKind, taskScopeId, taskProjectId),
 		() => getGenerationTasks(conversationId, initialKind, taskScopeId, taskProjectId),
 	);
-	const { data: projectBrief, isLoading: isLoadingProjectBrief } = useSWR(
-		projectId ? projectBriefKey(projectId) : null,
-		() => getProjectBrief(projectId ?? ""),
-	);
 	const { data: stylePresets = [] } = useSWR(
 		projectStyleOnly ? null : stylePresetsKey,
 		listStylePresets,
 	);
-	// 项目每层默认:载入项目配置 + 全部预设,把默认层(风格/其他)解析成可叠加的风格串。
-	const { data: projectConfig } = useSWR(projectId ? projectConfigKey(projectId) : null, () =>
-		getProjectConfig(projectId ?? ""),
-	);
 	const { data: allPresets = emptyPromptPresets } = useSWR(promptPresetsKey, () =>
 		listPromptPresets(),
 	);
-	// 分层组合器:该任务类型展示的库内文字层 + 每层选择(从项目默认初始化,可在生成处改)。
-	const composerLayerKeys = useMemo(() => taskTypeLayers(taskType), [taskType]);
-	const [layerSelections, setLayerSelections] = useState<Partial<Record<PromptLayer, string>>>({});
-	useEffect(() => {
-		const layerDefaults = projectConfig?.overview.layerDefaults ?? {};
-		setLayerSelections(() => {
-			const next: Partial<Record<PromptLayer, string>> = {};
-			for (const layer of composerLayerKeys) next[layer] = layerDefaults[layer] ?? "";
-			return next;
-		});
-	}, [projectConfig, composerLayerKeys]);
-	const setLayerSelection = useCallback((layer: PromptLayer, presetId: string) => {
-		setLayerSelections((current) => ({ ...current, [layer]: presetId }));
-	}, []);
-	const composerLayers = useMemo(
-		() =>
-			composerLayerKeys.map((layer) => ({
-				layer,
-				presets: allPresets.filter((preset) => preset.layer === layer),
-				selectedId: layerSelections[layer] ?? "",
-			})),
-		[composerLayerKeys, allPresets, layerSelections],
-	);
-	const projectStylePrompt = useMemo(() => {
-		const texts = composerLayerKeys.flatMap((layer) => {
-			const presetID = layerSelections[layer];
-			if (!presetID) return [];
-			const preset = allPresets.find((item) => item.id === presetID && item.layer === layer);
-			const text = preset?.prompt.trim();
-			return text ? [text] : [];
-		});
-		const composed = composeLayerStyle(texts);
-		if (composed) return composed;
-		// 回退:旧 freeform 风格(无损迁移期)。
-		return projectConfig?.overview.style?.trim() || projectBrief?.style?.trim() || "";
-	}, [composerLayerKeys, layerSelections, allPresets, projectConfig, projectBrief]);
 	const {
 		catalog,
 		hasConfiguredRoutesForKind,
@@ -247,6 +193,10 @@ export const useGenerationWorkspace = ({
 		preferenceScopeId: resolvedPreferenceScopeId,
 		stylePresets,
 	});
+	const promptInsertItems = useMemo(
+		() => promptInsertItemsFromPresets(allPresets, kind),
+		[allPresets, kind],
+	);
 	// 项目级会话里混了同项目所有章节/分镜的任务；按 sectionId 过滤出当前章节自己的。
 	// 创作台不传 sectionId，看到全部。
 	const trimmedSectionId = sectionId?.trim() ?? "";
@@ -339,7 +289,6 @@ export const useGenerationWorkspace = ({
 		effectiveReferenceAssetIds,
 		effectiveReferenceUrls,
 		extraPrompt,
-		isLoadingProjectBrief,
 		mediaAssetProjectId,
 		mediaAssets,
 		mutateMediaAssets,
@@ -352,9 +301,6 @@ export const useGenerationWorkspace = ({
 		onSubmitStart,
 		onSubmitSuccess,
 		rememberSelectedModel,
-		projectBrief,
-		projectStylePrompt,
-		projectId,
 		prompt,
 		promptRef,
 		requireConversation,
@@ -441,7 +387,6 @@ export const useGenerationWorkspace = ({
 		hasConfiguredRoutesForKind &&
 		Boolean(prompt.trim()) &&
 		!needsConversation &&
-		!(projectId && isLoadingProjectBrief) &&
 		isConfiguredRoute(selectedRoute);
 	const fullPrompt = useMemo(() => {
 		const nextPrompt = prompt.trim();
@@ -450,18 +395,9 @@ export const useGenerationWorkspace = ({
 
 		return generationRequestPrompt({
 			extraPrompt: resolveGenerationExtraValue(extraPrompt, nextPrompt),
-			kind: selectedRoute.kind,
-			projectStylePrompt: projectStylePrompt?.trim() || projectBrief?.style,
 			prompt: nextPrompt,
 		});
-	}, [
-		extraPrompt,
-		projectBrief?.style,
-		projectStylePrompt,
-		prompt,
-		selectedRoute.kind,
-		useRawPrompt,
-	]);
+	}, [extraPrompt, prompt, useRawPrompt]);
 
 	return {
 		activeEntry,
@@ -469,14 +405,12 @@ export const useGenerationWorkspace = ({
 		activeMediaAssetId,
 		canSubmit,
 		catalog,
-		composerLayers,
 		conversationMessages,
 		deletedAssetPlaceholderCounts,
 		deleteGenerationEntry,
 		deleteGenerationEntryAsset,
 		deleteGenerationEntryAssetPlaceholder,
 		deletingAssetKeys,
-		setLayerSelection,
 		deletingEntryIds,
 		error,
 		filteredMediaAssets,
@@ -497,6 +431,7 @@ export const useGenerationWorkspace = ({
 		needsConversation,
 		orderedGenerationEntries,
 		prompt,
+		promptInsertItems,
 		referenceCount,
 		refreshVideo,
 		removeMediaAsset,

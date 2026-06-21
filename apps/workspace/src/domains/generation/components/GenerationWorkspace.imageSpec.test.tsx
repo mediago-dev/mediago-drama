@@ -47,10 +47,6 @@ vi.mock("@/domains/generation/components/MaterialLibrary", () => ({
 	MaterialLibrary: () => <div data-testid="material-library" />,
 }));
 
-vi.mock("@/domains/generation/components/LayeredPromptComposer", () => ({
-	LayeredPromptComposer: () => null,
-}));
-
 vi.mock("@/domains/generation/components/ReferencePreviewStrip", () => ({
 	ReferencePreviewStrip: () => null,
 }));
@@ -154,7 +150,6 @@ const workspaceDefaults = {
 	activeEntryId: null,
 	activeMediaAssetId: null,
 	canSubmit: true,
-	composerLayers: [],
 	error: null,
 	filteredMediaAssets: [],
 	fullPrompt: "",
@@ -169,6 +164,7 @@ const workspaceDefaults = {
 	mediaQuery: "",
 	mutateMediaAssets: vi.fn(),
 	prompt: "",
+	promptInsertItems: [],
 	referenceCount: 0,
 	refreshVideo: vi.fn(),
 	removeMediaAsset: vi.fn(),
@@ -201,7 +197,6 @@ const workspaceDefaults = {
 	selectedVersion: { id: "version-image", label: "Image 1" },
 	setActiveEntryId: vi.fn(),
 	setKind: vi.fn(),
-	setLayerSelection: vi.fn(),
 	setMediaKindFilter: vi.fn(),
 	setMediaQuery: vi.fn(),
 	setPrompt: vi.fn(),

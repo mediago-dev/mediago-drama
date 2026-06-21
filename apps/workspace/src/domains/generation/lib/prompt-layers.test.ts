@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { composeLayerStyle, taskTypeForCategory, taskTypeLayers } from "./prompt-layers";
+import { promptLayerLabels, taskTypeForCategory } from "./prompt-layers";
 
 describe("taskTypeForCategory", () => {
 	it("maps document categories to task types", () => {
@@ -16,19 +16,9 @@ describe("taskTypeForCategory", () => {
 	});
 });
 
-describe("taskTypeLayers", () => {
-	it("returns the fixed layer stack per task type", () => {
-		expect(taskTypeLayers("character")).toEqual(["style", "extra"]);
-		expect(taskTypeLayers("scene")).toEqual(["style", "extra"]);
-		expect(taskTypeLayers("storyboard")).toEqual(["style", "extra"]);
-		expect(taskTypeLayers("prop")).toEqual(["style", "extra"]);
-		expect(taskTypeLayers("studio")).toEqual(["style", "extra"]);
-	});
-});
-
-describe("composeLayerStyle", () => {
-	it("joins non-empty layer texts in order and drops blanks", () => {
-		expect(composeLayerStyle(["超写实", "", "  冷调  ", undefined, null])).toBe("超写实\n冷调");
-		expect(composeLayerStyle([])).toBe("");
+describe("promptLayerLabels", () => {
+	it("keeps prompt preset groups readable in slash insertion", () => {
+		expect(promptLayerLabels.style).toBe("风格");
+		expect(promptLayerLabels.extra).toBe("其他");
 	});
 });

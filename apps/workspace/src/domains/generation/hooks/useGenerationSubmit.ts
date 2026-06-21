@@ -19,8 +19,6 @@ import {
 	streamGenerationText,
 } from "@/domains/generation/api/generation";
 import type { GenerationTaskType } from "@/domains/generation/lib/prompt-layers";
-import type { ProjectBrief } from "@/domains/projects/api/projects";
-import { applyVisualStyle } from "@/lib/style-presets";
 import {
 	generationParamsWithRequestDetails,
 	generatedAssetsIncludeMediaAssets,
@@ -66,25 +64,15 @@ export interface GenerationSubmitOverrides {
 
 export const generationRequestPrompt = ({
 	extraPrompt,
-	kind,
-	projectStylePrompt,
 	prompt,
 	useRawPrompt = false,
 }: {
 	extraPrompt: string;
-	kind: GenerationKind;
-	projectStylePrompt?: string;
 	prompt: string;
 	useRawPrompt?: boolean;
 }) => {
 	if (useRawPrompt) return prompt;
-
-	const promptWithContext = promptWithExtraContext(prompt, extraPrompt);
-	if (kind === "text" || kind === "audio") return promptWithContext;
-
-	return applyVisualStyle(promptWithContext, {
-		briefStyle: projectStylePrompt,
-	});
+	return promptWithExtraContext(prompt, extraPrompt);
 };
 
 interface UseGenerationSubmitOptions {
@@ -92,7 +80,6 @@ interface UseGenerationSubmitOptions {
 	effectiveReferenceAssetIds: string[];
 	effectiveReferenceUrls: string[];
 	extraPrompt: GenerationExtraValue<string>;
-	isLoadingProjectBrief: boolean;
 	mediaAssetProjectId: string;
 	mediaAssets: MediaAsset[];
 	mutateMediaAssets: KeyedMutator<MediaAssetsResponse>;
@@ -106,9 +93,6 @@ interface UseGenerationSubmitOptions {
 	onSubmitStart?: (event: GenerationSubmitStartEvent) => void;
 	onSubmitSuccess?: (kind: GenerationKind) => void;
 	rememberSelectedModel?: () => void;
-	projectBrief?: ProjectBrief;
-	projectStylePrompt?: string;
-	projectId?: string;
 	prompt: string;
 	promptRef?: React.MutableRefObject<string>;
 	requireConversation?: boolean;
@@ -132,7 +116,6 @@ export const useGenerationSubmit = ({
 	effectiveReferenceAssetIds,
 	effectiveReferenceUrls,
 	extraPrompt,
-	isLoadingProjectBrief,
 	mediaAssetProjectId,
 	mediaAssets,
 	mutateMediaAssets,
@@ -145,9 +128,6 @@ export const useGenerationSubmit = ({
 	onSubmitStart,
 	onSubmitSuccess,
 	rememberSelectedModel,
-	projectBrief,
-	projectStylePrompt,
-	projectId,
 	prompt,
 	promptRef,
 	requireConversation = false,
@@ -179,12 +159,7 @@ export const useGenerationSubmit = ({
 				notifySubmitCallback(onSubmitError, message);
 				return;
 			}
-			if (
-				!nextPrompt ||
-				selectedRoute.status !== "available" ||
-				!selectedRoute.configured ||
-				(projectId && isLoadingProjectBrief)
-			) {
+			if (!nextPrompt || selectedRoute.status !== "available" || !selectedRoute.configured) {
 				return;
 			}
 
@@ -203,8 +178,6 @@ export const useGenerationSubmit = ({
 				: (overrides.extraPrompt ?? resolveGenerationExtraValue(extraPrompt, nextPrompt));
 			const requestPrompt = generationRequestPrompt({
 				extraPrompt: requestExtraPrompt,
-				kind: requestKind,
-				projectStylePrompt: projectStylePrompt?.trim() || projectBrief?.style,
 				prompt: useRawPrompt ? promptInput : nextPrompt,
 				useRawPrompt,
 			});
@@ -461,7 +434,6 @@ export const useGenerationSubmit = ({
 			effectiveReferenceAssetIds,
 			effectiveReferenceUrls,
 			extraPrompt,
-			isLoadingProjectBrief,
 			mediaAssetProjectId,
 			mediaAssets,
 			mutateMediaAssets,
@@ -474,9 +446,6 @@ export const useGenerationSubmit = ({
 			onSubmitStart,
 			onSubmitSuccess,
 			rememberSelectedModel,
-			projectBrief?.style,
-			projectStylePrompt,
-			projectId,
 			prompt,
 			promptRef,
 			requireConversation,

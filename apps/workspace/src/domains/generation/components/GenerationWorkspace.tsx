@@ -38,7 +38,6 @@ import {
 	ReferenceSelectionDialog,
 	SecondaryParamsDropdown,
 } from "@/domains/generation/components/MediaGenerationDialogs";
-import { LayeredPromptComposer } from "@/domains/generation/components/LayeredPromptComposer";
 import { PromptEditor } from "@/domains/generation/components/PromptEditor";
 import { ReferencePreviewStrip } from "@/domains/generation/components/ReferencePreviewStrip";
 import { Button } from "@/shared/components/ui/button";
@@ -46,7 +45,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/compo
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import { useGeneratedResultActions } from "@/domains/generation/components/generatedResultActions";
 import { resolveParamGroups } from "@/domains/generation/components/mediaGenerationHelpers";
-import { promptInsertItemsFromLayers } from "@/domains/generation/lib/prompt-insertions";
 import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useToast } from "@/hooks/useToast";
 
@@ -156,7 +154,6 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 
 	const activeGenerationKind = ws.kind;
 	const isTextGeneration = activeGenerationKind === "text";
-	const isAudioGeneration = activeGenerationKind === "audio";
 	const compactPromptPlaceholder =
 		activeGenerationKind === "image"
 			? "描述想生成的图像内容、风格、主体和光线"
@@ -456,10 +453,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 		onOpenSettings?.();
 		navigate("/settings");
 	};
-	const promptSlashItems = useMemo(
-		() => promptInsertItemsFromLayers(ws.composerLayers, ws.kind),
-		[ws.composerLayers, ws.kind],
-	);
+	const promptSlashItems = ws.promptInsertItems;
 
 	const generationComposer = (
 		<form onSubmit={ws.submit} className="shrink-0">
@@ -471,15 +465,6 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 					error={ws.error || sessionRequiredMessage}
 					errorTone={ws.error ? "error" : "warning"}
 					isSubmitting={ws.isSubmitting}
-					layeredComposer={
-						isTextGeneration || isAudioGeneration ? null : (
-							<LayeredPromptComposer
-								layers={ws.composerLayers}
-								variant="composer"
-								onSelect={ws.setLayerSelection}
-							/>
-						)
-					}
 					leftControls={
 						<>
 							{lockKind ? null : <ModeToggle compact kind={ws.kind} onChange={ws.setKind} />}

@@ -45,7 +45,6 @@ import {
 	type ReferenceSelectionShortcutGroup,
 	SecondaryParamsDropdown,
 } from "@/domains/generation/components/MediaGenerationDialogs";
-import { LayeredPromptComposer } from "@/domains/generation/components/LayeredPromptComposer";
 import type { GenerationTaskType } from "@/domains/generation/lib/prompt-layers";
 import {
 	entryPromptText,
@@ -68,7 +67,6 @@ import {
 } from "@/domains/generation/components/generatedResultActions";
 import { useGenerationCountControl } from "@/domains/generation/components/useGenerationCountControl";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
-import { promptInsertItemsFromLayers } from "@/domains/generation/lib/prompt-insertions";
 import {
 	type GenerationEntry,
 	generationAssetSelectionKey,
@@ -1146,10 +1144,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		},
 		[onViewModeChange, showTabbedHistory, ws.setPrompt],
 	);
-	const promptSlashItems = useMemo(
-		() => promptInsertItemsFromLayers(ws.composerLayers, kind),
-		[ws.composerLayers, kind],
-	);
+	const promptSlashItems = ws.promptInsertItems;
 	const promptEditorClassName = generationComposerPromptInputClassName;
 
 	const promptEditor = renderPromptEditor ? (
@@ -1229,13 +1224,6 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				previewReferenceAssets={previewReferenceAssets}
 				primaryParamControls={primaryParamControls}
 				referenceButtonLabel={referenceButtonLabel}
-				layeredComposer={
-					<LayeredPromptComposer
-						layers={ws.composerLayers}
-						variant="composer"
-						onSelect={ws.setLayerSelection}
-					/>
-				}
 				promptEditor={promptEditor}
 				promptExtras={renderedPromptExtras}
 				referenceBadges={resolvedReferenceBadges}
