@@ -1,8 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Editor } from "@tiptap/core";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PromptEditor, PromptMarkdownPreview, promptEditorTestInternals } from "./PromptEditor";
 import {
 	PromptSlashMenu,
@@ -26,6 +26,11 @@ const slashItems: PromptInsertItem[] = [
 		sourceLabel: "用户",
 	},
 ];
+
+afterEach(() => {
+	cleanup();
+	document.querySelectorAll(".prompt-slash-menu-layer").forEach((element) => element.remove());
+});
 
 describe("PromptEditor", () => {
 	it("renders editable prompt markdown as rich content", () => {
@@ -100,6 +105,25 @@ describe("PromptEditor", () => {
 		}
 	});
 
+	it("moves slash selection within a group and across groups", () => {
+		const items: PromptInsertItem[] = [
+			slashItems[0],
+			{
+				id: "watercolor-style",
+				layerLabel: "风格",
+				name: "水彩",
+				prompt: "水彩质感。",
+				sourceLabel: "内置",
+			},
+			slashItems[1],
+		];
+
+		expect(promptEditorTestInternals.movePromptSlashSelectionInGroup(items, 0, 1)).toBe(1);
+		expect(promptEditorTestInternals.movePromptSlashSelectionInGroup(items, 1, 1)).toBe(0);
+		expect(promptEditorTestInternals.movePromptSlashSelectionGroup(items, 0, 1)).toBe(2);
+		expect(promptEditorTestInternals.movePromptSlashSelectionGroup(items, 2, -1)).toBe(0);
+	});
+
 	it("flushes pending editor DOM changes before emitting on blur", () => {
 		let markdown = "第一行\n\n第二行";
 		const flush = vi.fn(() => {
@@ -144,5 +168,29 @@ describe("PromptEditor", () => {
 		fireEvent.mouseDown(option as HTMLButtonElement);
 
 		expect(onSelect).toHaveBeenCalledWith(slashItems[0]);
+	});
+
+	it("switches slash prompt groups through the cascader source list", () => {
+		const onHover = vi.fn();
+
+		render(
+			<PromptSlashMenu
+				items={slashItems}
+				position={{ left: 16, placement: "bottom", top: 16 }}
+				selectedIndex={0}
+				onHover={onHover}
+				onSelect={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByText("分类")).toBeTruthy();
+		expect(screen.getByText("提示词")).toBeTruthy();
+		expect(screen.getByText("电影感柔光")).toBeTruthy();
+		expect(screen.queryByText("角色多视图")).toBeNull();
+
+		const extraGroup = screen.getByRole("button", { name: "其他 1 项" });
+		fireEvent.mouseEnter(extraGroup);
+
+		expect(onHover).toHaveBeenCalledWith(1);
 	});
 });

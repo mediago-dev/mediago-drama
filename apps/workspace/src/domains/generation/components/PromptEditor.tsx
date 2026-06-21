@@ -135,8 +135,32 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
 					state
 						? {
 								...state,
-								selectedIndex:
-									(state.selectedIndex + state.items.length + step) % state.items.length,
+								selectedIndex: movePromptSlashSelectionInGroup(
+									state.items,
+									state.selectedIndex,
+									step,
+								),
+							}
+						: state,
+				);
+				return;
+			}
+
+			if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+				event.preventDefault();
+				event.stopPropagation();
+				if (current.items.length === 0) return;
+
+				const step = event.key === "ArrowRight" ? 1 : -1;
+				setSlashState((state) =>
+					state
+						? {
+								...state,
+								selectedIndex: movePromptSlashSelectionGroup(
+									state.items,
+									state.selectedIndex,
+									step,
+								),
 							}
 						: state,
 				);
@@ -161,6 +185,10 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
 		[selectSlashItem],
 	);
 
+	const handleKeyUpCapture = useCallback(() => {
+		refreshSlashState();
+	}, [refreshSlashState]);
+
 	return (
 		<div
 			ref={surfaceRef}
@@ -170,6 +198,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
 			)}
 			onClick={() => editor?.chain().focus().run()}
 			onKeyDownCapture={handleKeyDownCapture}
+			onKeyUpCapture={handleKeyUpCapture}
 		>
 			<EditorContent editor={editor} />
 			{slashState ? (
@@ -318,17 +347,13 @@ const flushPromptEditorDomObserver = (editor: Pick<Editor, "view">) => {
 	view.domObserver?.flush?.();
 };
 
-export const promptEditorTestInternals = {
-	emitPromptMarkdownChange,
-	findPromptSlashMatchFromText,
-	flushPromptEditorDomObserver,
-};
-
 const resolvePromptSlashState = (
 	editor: Editor | null,
 	items: PromptInsertItem[],
 ): Omit<PromptSlashState, "selectedIndex"> | null => {
-	if (!editor || !editor.isEditable || !editor.isFocused || items.length === 0) return null;
+	if (!editor || !editor.isEditable || !promptEditorHasDomFocus(editor) || items.length === 0) {
+		return null;
+	}
 
 	const match = findPromptSlashMatch(editor);
 	if (!match) return null;
@@ -350,6 +375,11 @@ const findPromptSlashMatch = (editor: Editor): { query: string; range: Range } |
 
 	const textBeforeCursor = $from.parent.textBetween(0, $from.parentOffset, "\n", "\n");
 	return findPromptSlashMatchFromText(textBeforeCursor, selection.from);
+};
+
+const promptEditorHasDomFocus = (editor: Editor) => {
+	const activeElement = editor.view.dom.ownerDocument.activeElement;
+	return activeElement === editor.view.dom || editor.view.dom.contains(activeElement);
 };
 
 function findPromptSlashMatchFromText(
@@ -376,7 +406,7 @@ function findPromptSlashMatchFromText(
 const promptSlashMenuPosition = (editor: Editor, range: Range): PromptSlashMenuPosition => {
 	const coords = editor.view.coordsAtPos(range.from);
 	const viewportMargin = 12;
-	const menuWidth = Math.min(416, window.innerWidth - viewportMargin * 2);
+	const menuWidth = Math.min(560, window.innerWidth - viewportMargin * 2);
 	const menuHeight = 304;
 	const availableBelow = window.innerHeight - coords.bottom;
 	const availableAbove = coords.top;
@@ -392,4 +422,79 @@ const promptSlashMenuPosition = (editor: Editor, range: Range): PromptSlashMenuP
 		placement,
 		top: placement === "top" ? coords.top - 6 : coords.bottom + 6,
 	};
+};
+
+interface PromptSlashGroupRange {
+	end: number;
+	label: string;
+	start: number;
+}
+
+const movePromptSlashSelectionInGroup = (
+	items: PromptInsertItem[],
+	selectedIndex: number,
+	step: number,
+) => {
+	const range = promptSlashSelectedGroupRange(items, selectedIndex);
+	if (!range) return 0;
+
+	const groupLength = range.end - range.start + 1;
+	const offset =
+		selectedIndex >= range.start && selectedIndex <= range.end ? selectedIndex - range.start : 0;
+
+	return range.start + ((offset + groupLength + step) % groupLength);
+};
+
+const movePromptSlashSelectionGroup = (
+	items: PromptInsertItem[],
+	selectedIndex: number,
+	step: number,
+) => {
+	const ranges = promptSlashGroupRanges(items);
+	if (ranges.length === 0) return 0;
+
+	const currentGroupIndex = Math.max(
+		0,
+		ranges.findIndex((range) => selectedIndex >= range.start && selectedIndex <= range.end),
+	);
+	const nextGroupIndex = (currentGroupIndex + ranges.length + step) % ranges.length;
+	return ranges[nextGroupIndex]?.start ?? 0;
+};
+
+const promptSlashSelectedGroupRange = (
+	items: PromptInsertItem[],
+	selectedIndex: number,
+): PromptSlashGroupRange | null => {
+	const ranges = promptSlashGroupRanges(items);
+	if (ranges.length === 0) return null;
+
+	return (
+		ranges.find((range) => selectedIndex >= range.start && selectedIndex <= range.end) ?? ranges[0]
+	);
+};
+
+const promptSlashGroupRanges = (items: PromptInsertItem[]): PromptSlashGroupRange[] => {
+	const ranges: PromptSlashGroupRange[] = [];
+
+	items.forEach((item, index) => {
+		const label = item.layerLabel || "提示词";
+		const lastRange = ranges[ranges.length - 1];
+
+		if (lastRange && lastRange.label === label) {
+			lastRange.end = index;
+			return;
+		}
+
+		ranges.push({ end: index, label, start: index });
+	});
+
+	return ranges;
+};
+
+export const promptEditorTestInternals = {
+	emitPromptMarkdownChange,
+	findPromptSlashMatchFromText,
+	flushPromptEditorDomObserver,
+	movePromptSlashSelectionGroup,
+	movePromptSlashSelectionInGroup,
 };

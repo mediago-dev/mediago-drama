@@ -1,8 +1,8 @@
 import type { Editor, JSONContent, Range } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
-import { Library, Sparkles } from "lucide-react";
+import { ChevronRight, Library, Sparkles, type LucideIcon } from "lucide-react";
 import type React from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import "@/styles/tiptap-prompt-slash.css";
 
@@ -28,6 +28,19 @@ export interface PromptSlashMenuProps {
 	selectedIndex: number;
 }
 
+interface PromptInsertIndexedItem {
+	index: number;
+	item: PromptInsertItem;
+}
+
+interface PromptInsertGroup {
+	icon: LucideIcon;
+	id: string;
+	items: PromptInsertIndexedItem[];
+	label: string;
+	meta: string;
+}
+
 const maxPromptSlashItems = 40;
 
 export const PromptSlashMenu: React.FC<PromptSlashMenuProps> = ({
@@ -38,13 +51,16 @@ export const PromptSlashMenu: React.FC<PromptSlashMenuProps> = ({
 	selectedIndex,
 }) => {
 	const menuRef = useRef<HTMLDivElement | null>(null);
+	const groups = useMemo(() => groupPromptInsertItems(items), [items]);
+	const selectedGroupIndex = promptSlashSelectedGroupIndex(groups, selectedIndex);
+	const activeGroup = groups[selectedGroupIndex] ?? groups[0];
 
 	useEffect(() => {
 		const selectedElement = menuRef.current?.querySelector<HTMLElement>(
 			".prompt-slash-option[data-selected='true']",
 		);
 		selectedElement?.scrollIntoView?.({ block: "nearest" });
-	}, [selectedIndex, items]);
+	}, [selectedIndex, items, selectedGroupIndex]);
 
 	if (typeof document === "undefined") return null;
 
@@ -67,7 +83,9 @@ export const PromptSlashMenu: React.FC<PromptSlashMenuProps> = ({
 				<div className="prompt-slash-menu-empty">无匹配提示词</div>
 			) : (
 				<PromptSlashOptions
-					items={items}
+					activeGroup={activeGroup}
+					groups={groups}
+					selectedGroupIndex={selectedGroupIndex}
 					selectedIndex={selectedIndex}
 					onHover={onHover}
 					onSelect={onSelect}
@@ -79,25 +97,53 @@ export const PromptSlashMenu: React.FC<PromptSlashMenuProps> = ({
 };
 
 const PromptSlashOptions: React.FC<{
-	items: PromptInsertItem[];
+	activeGroup?: PromptInsertGroup;
+	groups: PromptInsertGroup[];
 	onHover: (index: number) => void;
 	onSelect: (item: PromptInsertItem) => void;
+	selectedGroupIndex: number;
 	selectedIndex: number;
-}> = ({ items, onHover, onSelect, selectedIndex }) => {
-	let previousLayer = "";
-
+}> = ({ activeGroup, groups, onHover, onSelect, selectedGroupIndex, selectedIndex }) => {
 	return (
-		<div className="prompt-slash-menu" role="listbox">
-			{items.map((item, index) => {
-				const showGroup = item.layerLabel !== previousLayer;
-				previousLayer = item.layerLabel;
-				const selected = index === selectedIndex;
-				const Icon = item.layerLabel === "风格" ? Sparkles : Library;
+		<div className="prompt-slash-cascader">
+			<div className="prompt-slash-pane prompt-slash-primary">
+				<div className="prompt-slash-pane-label">分类</div>
+				{groups.map((group, index) => {
+					const Icon = group.icon;
 
-				return (
-					<div key={item.id}>
-						{showGroup ? <div className="prompt-slash-group">{item.layerLabel}</div> : null}
+					return (
 						<button
+							key={group.id}
+							aria-label={`${group.label} ${group.meta}`}
+							className="prompt-slash-source"
+							data-selected={index === selectedGroupIndex ? "true" : "false"}
+							onMouseDown={(event) => {
+								event.preventDefault();
+								event.stopPropagation();
+							}}
+							onMouseEnter={() => onHover(group.items[0]?.index ?? 0)}
+							onClick={stopPromptSlashEvent}
+							type="button"
+						>
+							<Icon className="prompt-slash-source-icon" />
+							<span className="prompt-slash-source-body">
+								<span className="prompt-slash-source-title">{group.label}</span>
+								<span className="prompt-slash-source-meta">{group.meta}</span>
+							</span>
+							<ChevronRight className="prompt-slash-source-chevron" />
+						</button>
+					);
+				})}
+			</div>
+			<div className="prompt-slash-pane prompt-slash-secondary" role="listbox">
+				<div className="prompt-slash-pane-label">提示词</div>
+				{activeGroup?.items.map(({ index, item }) => {
+					const selected = index === selectedIndex;
+					const Icon = promptSlashItemIcon(item);
+
+					return (
+						<button
+							key={item.id}
 							type="button"
 							className="prompt-slash-option"
 							data-selected={selected ? "true" : "false"}
@@ -120,9 +166,9 @@ const PromptSlashOptions: React.FC<{
 								<span className="prompt-slash-option-preview">{promptPreview(item.prompt)}</span>
 							</span>
 						</button>
-					</div>
-				);
-			})}
+					);
+				})}
+			</div>
 		</div>
 	);
 };
@@ -183,6 +229,43 @@ const parsePromptMarkdown = (
 
 const normalizePromptSearchText = (value: string) => value.trim().toLocaleLowerCase("zh-Hans-CN");
 
+const groupPromptInsertItems = (items: PromptInsertItem[]): PromptInsertGroup[] => {
+	const groups: PromptInsertGroup[] = [];
+	const groupById = new Map<string, PromptInsertGroup>();
+
+	items.forEach((item, index) => {
+		const label = item.layerLabel || "提示词";
+		let group = groupById.get(label);
+
+		if (!group) {
+			group = {
+				icon: promptSlashItemIcon(item),
+				id: label,
+				items: [],
+				label,
+				meta: "",
+			};
+			groupById.set(label, group);
+			groups.push(group);
+		}
+
+		group.items.push({ index, item });
+		group.meta = `${group.items.length} 项`;
+	});
+
+	return groups;
+};
+
+const promptSlashSelectedGroupIndex = (groups: PromptInsertGroup[], selectedIndex: number) => {
+	const index = groups.findIndex((group) =>
+		group.items.some((groupItem) => groupItem.index === selectedIndex),
+	);
+	return index >= 0 ? index : 0;
+};
+
+const promptSlashItemIcon = (item: PromptInsertItem) =>
+	item.layerLabel === "风格" ? Sparkles : Library;
+
 const promptPreview = (prompt: string) =>
 	prompt
 		.split(/\r\n|\r|\n/u)
@@ -191,5 +274,7 @@ const promptPreview = (prompt: string) =>
 
 export const promptSlashCommandTestInternals = {
 	filterPromptInsertItems,
+	groupPromptInsertItems,
 	insertPromptItem,
+	promptSlashSelectedGroupIndex,
 };
