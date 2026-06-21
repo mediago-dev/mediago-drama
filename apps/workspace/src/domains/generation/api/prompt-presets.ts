@@ -4,28 +4,24 @@ import httpClient from "@/shared/lib/http";
 
 export type PromptPresetSource = "builtin" | "user";
 
-// 固定的提示词层(库内可复用的"积木")。
-export type PromptLayer = "style" | "extra";
+// 提示词分类(内置 style/extra，也允许用户自定义)。
+export type PromptPresetCategory = string;
 
-export type PromptPresetKind = "image" | "text" | "video";
-// 旧的类型维度,已被 layer 取代,仅保留兼容字段。
+// 旧的类型维度,已被 category 取代,仅保留兼容字段。
 export type PromptPresetType = "image" | "video";
 
 export interface PromptPreset {
 	id: string;
 	name: string;
-	layer: PromptLayer;
+	category: PromptPresetCategory;
 	type?: PromptPresetType;
-	kind?: PromptPresetKind;
-	category?: string;
 	prompt: string;
 	source: PromptPresetSource;
 	builtin?: boolean;
 }
 
 export interface PromptPresetFilter {
-	layer?: PromptLayer;
-	kind?: PromptPresetKind;
+	category?: PromptPresetCategory;
 	type?: PromptPresetType;
 }
 
@@ -35,8 +31,8 @@ interface PromptPresetsResponse {
 	prompts: PromptPreset[];
 }
 
-export type PromptPresetInput = Pick<PromptPreset, "id" | "name" | "layer" | "prompt"> &
-	Partial<Pick<PromptPreset, "kind" | "type" | "category">>;
+export type PromptPresetInput = Pick<PromptPreset, "id" | "name" | "category" | "prompt"> &
+	Partial<Pick<PromptPreset, "type">>;
 
 const promptPresetResource = createResource<
 	PromptPreset,
@@ -70,20 +66,18 @@ export const resetPromptPreset = async (id: string | number): Promise<PromptPres
 	return response.data;
 };
 
-// 按层取预设的 SWR key（稳定且唯一）。
-export const promptPresetsLayerKey = (layer: PromptLayer) => `${promptPresetsKey}?layer=${layer}`;
+// 按分类取预设的 SWR key（稳定且唯一）。
+export const promptPresetsCategoryKey = (category: PromptPresetCategory) =>
+	`${promptPresetsKey}?category=${encodeURIComponent(category)}`;
 
-// —— 向后兼容导出（风格层）：消费方只需把 import 路径换到本模块 ——
+// —— 向后兼容导出（风格分类）：消费方只需把 import 路径换到本模块 ——
 export type StylePreset = PromptPreset;
-export const stylePresetsKey = promptPresetsLayerKey("style");
+export const stylePresetsKey = promptPresetsCategoryKey("style");
 export const listStylePresets = (config?: AxiosRequestConfig): Promise<PromptPreset[]> =>
-	listPromptPresets({ layer: "style" }, config);
+	listPromptPresets({ category: "style" }, config);
 
-// —— 向后兼容导出（其他层 = 旧的可复用提示词条目）——
+// —— 向后兼容导出（其他分类 = 旧的可复用提示词条目）——
 export type PromptEntry = PromptPreset;
-export type PromptEntryKind = PromptPresetKind;
 export const promptsKey = promptPresetsKey;
-export const listPrompts = (
-	filter: { kind?: PromptPresetKind } = {},
-	config?: AxiosRequestConfig,
-): Promise<PromptPreset[]> => listPromptPresets({ layer: "extra", kind: filter.kind }, config);
+export const listPrompts = (config?: AxiosRequestConfig): Promise<PromptPreset[]> =>
+	listPromptPresets({ category: "extra" }, config);

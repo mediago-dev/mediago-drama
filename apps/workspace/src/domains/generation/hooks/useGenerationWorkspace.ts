@@ -21,7 +21,15 @@ import {
 	promptPresetsKey,
 	stylePresetsKey,
 } from "@/domains/generation/api/prompt-presets";
-import type { GenerationTaskType } from "@/domains/generation/lib/prompt-layers";
+import {
+	listPromptCategories,
+	type PromptCategory,
+	promptCategoriesKey,
+} from "@/domains/generation/api/prompt-categories";
+import {
+	defaultPromptCategories,
+	type GenerationTaskType,
+} from "@/domains/generation/lib/prompt-categories";
 import { promptInsertItemsFromPresets } from "@/domains/generation/lib/prompt-insertions";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import {
@@ -51,6 +59,7 @@ export type {
 
 // 稳定的空数组引用,避免 SWR 加载中的新 `[]` 引用引发 slash 插入项反复重算。
 const emptyPromptPresets: PromptPreset[] = [];
+const emptyPromptCategories: PromptCategory[] = defaultPromptCategories;
 
 export interface UseGenerationWorkspaceOptions {
 	extraPrompt?: GenerationExtraValue<string>;
@@ -162,6 +171,10 @@ export const useGenerationWorkspace = ({
 	const { data: allPresets = emptyPromptPresets } = useSWR(promptPresetsKey, () =>
 		listPromptPresets(),
 	);
+	const { data: promptCategories = emptyPromptCategories } = useSWR(
+		promptCategoriesKey,
+		listPromptCategories,
+	);
 	const {
 		catalog,
 		hasConfiguredRoutesForKind,
@@ -194,8 +207,8 @@ export const useGenerationWorkspace = ({
 		stylePresets,
 	});
 	const promptInsertItems = useMemo(
-		() => promptInsertItemsFromPresets(allPresets, kind),
-		[allPresets, kind],
+		() => promptInsertItemsFromPresets(allPresets, promptCategories),
+		[allPresets, promptCategories],
 	);
 	// 项目级会话里混了同项目所有章节/分镜的任务；按 sectionId 过滤出当前章节自己的。
 	// 创作台不传 sectionId，看到全部。

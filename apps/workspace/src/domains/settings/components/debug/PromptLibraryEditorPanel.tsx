@@ -4,9 +4,8 @@ import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import {
-	type PromptLayer,
+	type PromptPresetCategory,
 	type PromptPreset,
-	type PromptPresetKind,
 	createPromptPreset,
 	deletePromptPreset,
 	listPromptPresets,
@@ -14,6 +13,18 @@ import {
 	resetPromptPreset,
 	updatePromptPreset,
 } from "@/domains/generation/api/prompt-presets";
+import {
+	createPromptCategory,
+	listPromptCategories,
+	promptCategoriesKey,
+	type PromptCategory,
+} from "@/domains/generation/api/prompt-categories";
+import {
+	defaultPromptCategories,
+	extraPromptCategory,
+	promptCategoryLabel,
+	stylePromptCategory,
+} from "@/domains/generation/lib/prompt-categories";
 import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { Badge } from "@/shared/components/ui/badge";
@@ -32,35 +43,19 @@ import { useToast } from "@/hooks/useToast";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 
-const layers: { value: PromptLayer; label: string }[] = [
-	{ value: "style", label: "风格" },
-	{ value: "extra", label: "其他" },
-];
-const layerLabelMap = Object.fromEntries(
-	layers.map((layer) => [layer.value, layer.label]),
-) as Record<PromptLayer, string>;
-
-const kinds: { value: PromptPresetKind; label: string }[] = [
-	{ value: "image", label: "图片" },
-	{ value: "video", label: "视频" },
-	{ value: "text", label: "文本" },
-];
-
 interface Draft {
 	id: string;
 	name: string;
-	layer: PromptLayer;
-	kind: PromptPresetKind;
-	category: string;
+	category: PromptPresetCategory;
 	prompt: string;
 }
 
-const emptyDraft = (layer: PromptLayer): Draft => ({
+type CategoryDialogTarget = "edit" | "create";
+
+const emptyDraft = (category: PromptPresetCategory): Draft => ({
 	id: "",
 	name: "",
-	layer,
-	kind: "image",
-	category: "",
+	category,
 	prompt: "",
 });
 
@@ -71,13 +66,22 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		isLoading,
 		mutate,
 	} = useSWR(promptPresetsKey, () => listPromptPresets());
-	const [layerFilter, setLayerFilter] = useState<PromptLayer | "all">("all");
+	const { data: categories = defaultPromptCategories, mutate: mutateCategories } = useSWR(
+		promptCategoriesKey,
+		listPromptCategories,
+	);
+	const [categoryFilter, setCategoryFilter] = useState<PromptPresetCategory | "all">("all");
 	const [query, setQuery] = useState("");
 	const [selectedId, setSelectedId] = useState("");
 	const [draft, setDraft] = useState<Draft>(emptyDraft("style"));
 	const [createDraft, setCreateDraft] = useState<Draft>(emptyDraft("style"));
 	const [createError, setCreateError] = useState("");
 	const [createDialogOpen, setCreateDialogOpen] = useState(false);
+	const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+	const [categoryDialogTarget, setCategoryDialogTarget] = useState<CategoryDialogTarget>("edit");
+	const [categoryDraftName, setCategoryDraftName] = useState("");
+	const [categoryError, setCategoryError] = useState("");
+	const [isCategorySaving, setIsCategorySaving] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [error, setError] = useState("");
@@ -85,13 +89,18 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 	const visiblePresets = useMemo(() => {
 		const keyword = query.trim().toLowerCase();
 		return presets.filter((preset) => {
-			if (layerFilter !== "all" && preset.layer !== layerFilter) return false;
+			if (categoryFilter !== "all" && preset.category !== categoryFilter) return false;
 			if (!keyword) return true;
 			return (
 				preset.name.toLowerCase().includes(keyword) || preset.id.toLowerCase().includes(keyword)
 			);
 		});
-	}, [presets, layerFilter, query]);
+	}, [presets, categoryFilter, query]);
+
+	const categoryOptions = useMemo(
+		() => promptCategoryOptions(categories, draft.category, createDraft.category),
+		[categories, draft.category, createDraft.category],
+	);
 
 	const selectedPreset = useMemo(
 		() => presets.find((preset) => preset.id === selectedId),
@@ -111,21 +120,21 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 	}, [selectedPreset]);
 
 	const readonlyBuiltin = selectedPreset?.source === "builtin";
-	const hasKind = draft.layer !== "style";
-	const draftValid = Boolean(draft.name.trim() && draft.prompt.trim());
-	const createHasKind = createDraft.layer !== "style";
-	const createDraftValid = Boolean(createDraft.name.trim() && createDraft.prompt.trim());
+	const draftValid = Boolean(draft.category.trim() && draft.name.trim() && draft.prompt.trim());
+	const createDraftValid = Boolean(
+		createDraft.category.trim() && createDraft.name.trim() && createDraft.prompt.trim(),
+	);
 
 	const startCreate = () => {
-		const layer = layerFilter === "all" ? "style" : layerFilter;
-		setCreateDraft(emptyDraft(layer));
+		const category = categoryFilter === "all" ? stylePromptCategory : categoryFilter;
+		setCreateDraft(emptyDraft(category));
 		setCreateError("");
 		setCreateDialogOpen(true);
 	};
 
 	const cancelCreate = () => {
 		setCreateDialogOpen(false);
-		setCreateDraft(emptyDraft(layerFilter === "all" ? "style" : layerFilter));
+		setCreateDraft(emptyDraft(categoryFilter === "all" ? stylePromptCategory : categoryFilter));
 		setCreateError("");
 	};
 
@@ -141,14 +150,12 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 			const input = {
 				id: draft.id,
 				name: draft.name.trim(),
-				layer: draft.layer,
-				kind: hasKind ? draft.kind : undefined,
-				category: draft.category.trim() || undefined,
+				category: draft.category.trim() || extraPromptCategory,
 				prompt: draft.prompt.trim(),
 			};
 			const saved = await updatePromptPreset(input.id, input);
 			await mutate();
-			setLayerFilter(saved.layer);
+			setCategoryFilter(saved.category);
 			setSelectedId(saved.id);
 			toast.success("已保存", { description: saved.name });
 		} catch (err) {
@@ -168,15 +175,13 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 			const input = {
 				id: createDraft.id.trim() || slugify(createDraft.name),
 				name: createDraft.name.trim(),
-				layer: createDraft.layer,
-				kind: createHasKind ? createDraft.kind : undefined,
-				category: createDraft.category.trim() || undefined,
+				category: createDraft.category.trim() || extraPromptCategory,
 				prompt: createDraft.prompt.trim(),
 			};
 			const saved = await createPromptPreset(input);
 			await mutate();
 			setCreateDialogOpen(false);
-			setLayerFilter(saved.layer);
+			setCategoryFilter(saved.category);
 			setSelectedId(saved.id);
 			toast.success("已创建", { description: saved.name });
 		} catch (err) {
@@ -193,13 +198,54 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		setCreateDraft({
 			id: "",
 			name: `${selectedPreset.name} 副本`,
-			layer: selectedPreset.layer,
-			kind: (selectedPreset.kind as PromptPresetKind) ?? "image",
-			category: selectedPreset.category ?? "",
+			category: selectedPreset.category,
 			prompt: selectedPreset.prompt,
 		});
 		setCreateError("");
 		setCreateDialogOpen(true);
+	};
+
+	const openCategoryDialog = (target: CategoryDialogTarget) => {
+		setCategoryDialogTarget(target);
+		setCategoryDraftName("");
+		setCategoryError("");
+		setCategoryDialogOpen(true);
+	};
+
+	const saveCategory = async () => {
+		const category = resolveCategoryValue(categoryDraftName, categoryOptions);
+		const validationError = categoryValidationError(category);
+		if (validationError) {
+			setCategoryError(validationError);
+			return;
+		}
+		const existing = categoryOptions.find((option) => option.value === category);
+		if (existing) {
+			selectCategory(category);
+			return;
+		}
+		setIsCategorySaving(true);
+		setCategoryError("");
+		try {
+			const created = await createPromptCategory({ label: category });
+			await mutateCategories();
+			selectCategory(created.id);
+		} catch (err) {
+			setCategoryError(errorMessage(err));
+		} finally {
+			setIsCategorySaving(false);
+		}
+	};
+
+	const selectCategory = (category: PromptPresetCategory) => {
+		if (categoryDialogTarget === "edit") {
+			setDraft((current) => ({ ...current, category }));
+		} else {
+			setCreateDraft((current) => ({ ...current, category }));
+		}
+		setCategoryDialogOpen(false);
+		setCategoryDraftName("");
+		setCategoryError("");
 	};
 
 	const removeOrReset = async () => {
@@ -231,7 +277,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		<>
 			<SettingsPanelLayout
 				title="提示词库"
-				description="按层管理可复用的提示词预设（风格 / 其他）。"
+				description="按分类管理可复用的提示词预设。"
 				icon={<Library className="size-4" />}
 				actions={
 					<Button type="button" variant="outline" onClick={startCreate}>
@@ -241,17 +287,17 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 				}
 			>
 				<div className="mb-3 flex flex-wrap items-center gap-2">
-					<LayerChip
-						active={layerFilter === "all"}
-						onClick={() => setLayerFilter("all")}
+					<CategoryChip
+						active={categoryFilter === "all"}
+						onClick={() => setCategoryFilter("all")}
 						label="全部"
 					/>
-					{layers.map((layer) => (
-						<LayerChip
-							key={layer.value}
-							active={layerFilter === layer.value}
-							onClick={() => setLayerFilter(layer.value)}
-							label={layer.label}
+					{categoryOptions.map((category) => (
+						<CategoryChip
+							key={category.value}
+							active={categoryFilter === category.value}
+							onClick={() => setCategoryFilter(category.value)}
+							label={category.label}
 						/>
 					))}
 					<div className="ml-auto flex items-center gap-1.5 rounded-md border border-border px-2 py-1.5">
@@ -291,7 +337,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 										{preset.name}
 									</span>
 									<span className="shrink-0 text-2xs text-muted-foreground">
-										{layerLabelMap[preset.layer]}
+										{promptCategoryOptionLabel(preset.category, categoryOptions)}
 									</span>
 									<span className="shrink-0 text-2xs text-muted-foreground">
 										{preset.source === "builtin" ? "内置" : "自定义"}
@@ -311,7 +357,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 								<div className="flex flex-wrap items-center justify-between gap-2">
 									<div className="flex items-center gap-2">
 										<Badge variant="secondary" className="rounded-md">
-											{layerLabelMap[draft.layer]}
+											{promptCategoryOptionLabel(draft.category, categoryOptions)}
 										</Badge>
 										{readonlyBuiltin ? (
 											<Badge variant="outline" className="rounded-md">
@@ -343,38 +389,13 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 									/>
 								</FieldRow>
 
-								{hasKind ? (
-									<FieldRow label="适用">
-										<Select
-											value={draft.kind}
-											disabled={readonlyBuiltin}
-											onValueChange={(value) =>
-												setDraft((current) => ({ ...current, kind: value as PromptPresetKind }))
-											}
-										>
-											<SelectTrigger className="rounded-md text-foreground">
-												<SelectValue />
-											</SelectTrigger>
-											<SelectContent align="start">
-												{kinds.map((kind) => (
-													<SelectItem key={kind.value} value={kind.value}>
-														{kind.label}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
-									</FieldRow>
-								) : null}
-
 								<FieldRow label="分类">
-									<Input
+									<CategorySelectField
 										value={draft.category}
 										disabled={readonlyBuiltin}
-										placeholder="可选，如 character / scene"
-										className="rounded-md"
-										onChange={(event) =>
-											setDraft((current) => ({ ...current, category: event.target.value }))
-										}
+										options={categoryOptions}
+										onCreate={() => openCategoryDialog("edit")}
+										onChange={(value) => setDraft((current) => ({ ...current, category: value }))}
 									/>
 								</FieldRow>
 
@@ -432,8 +453,10 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 				error={createError}
 				isSaving={isSaving}
 				open={createDialogOpen}
+				categoryOptions={categoryOptions}
 				valid={createDraftValid}
 				onCancel={cancelCreate}
+				onCreateCategory={() => openCategoryDialog("create")}
 				onDraftChange={setCreateDraft}
 				onOpenChange={(open) => {
 					if (open) {
@@ -444,11 +467,36 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 				}}
 				onSave={() => void saveCreate()}
 			/>
+			<CategoryCreateDialog
+				error={categoryError}
+				isSaving={isCategorySaving}
+				name={categoryDraftName}
+				open={categoryDialogOpen}
+				onNameChange={(value) => {
+					setCategoryDraftName(value);
+					setCategoryError("");
+				}}
+				onCancel={() => {
+					setCategoryDialogOpen(false);
+					setCategoryDraftName("");
+					setCategoryError("");
+				}}
+				onOpenChange={(open) => {
+					if (open) {
+						setCategoryDialogOpen(true);
+						return;
+					}
+					setCategoryDialogOpen(false);
+					setCategoryDraftName("");
+					setCategoryError("");
+				}}
+				onSave={() => void saveCategory()}
+			/>
 		</>
 	);
 };
 
-const LayerChip: React.FC<{ active: boolean; label: string; onClick: () => void }> = ({
+const CategoryChip: React.FC<{ active: boolean; label: string; onClick: () => void }> = ({
 	active,
 	label,
 	onClick,
@@ -474,19 +522,143 @@ const FieldRow: React.FC<{ label: string; children: React.ReactNode }> = ({ labe
 	</div>
 );
 
+interface PromptCategoryOption {
+	value: PromptPresetCategory;
+	label: string;
+}
+
+const CategorySelectField: React.FC<{
+	disabled?: boolean;
+	onCreate: () => void;
+	onChange: (value: string) => void;
+	options: PromptCategoryOption[];
+	value: string;
+}> = ({ disabled = false, onCreate, onChange, options, value }) => (
+	<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2rem] gap-2">
+		<Select value={value} disabled={disabled} onValueChange={onChange}>
+			<SelectTrigger className="rounded-md text-foreground">
+				<SelectValue placeholder="选择分类" />
+			</SelectTrigger>
+			<SelectContent align="start">
+				{options.map((option) => (
+					<SelectItem key={option.value} value={option.value}>
+						{option.label}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
+		<Button
+			type="button"
+			variant="outline"
+			size="icon"
+			disabled={disabled}
+			aria-label="新建分类"
+			title="新建分类"
+			onClick={onCreate}
+		>
+			<Plus className="size-4" />
+		</Button>
+	</div>
+);
+
+const CategoryCreateDialog: React.FC<{
+	error: string;
+	isSaving: boolean;
+	name: string;
+	open: boolean;
+	onCancel: () => void;
+	onNameChange: (value: string) => void;
+	onOpenChange: (open: boolean) => void;
+	onSave: () => void;
+}> = ({ error, isSaving, name, open, onCancel, onNameChange, onOpenChange, onSave }) => (
+	<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+		<DialogPrimitive.Portal>
+			<DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
+			<DialogPrimitive.Content
+				className={cn(
+					"fixed left-1/2 top-1/2 z-50 flex w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-2xl outline-none",
+					dialogContentMotion,
+				)}
+				aria-describedby="prompt-category-create-description"
+			>
+				<header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3">
+					<div className="min-w-0">
+						<DialogPrimitive.Title className="text-sm font-semibold text-foreground">
+							新建分类
+						</DialogPrimitive.Title>
+						<DialogPrimitive.Description
+							id="prompt-category-create-description"
+							className="mt-1 text-xs text-muted-foreground"
+						>
+							创建提示词分类。
+						</DialogPrimitive.Description>
+					</div>
+					<DialogPrimitive.Close asChild>
+						<Button type="button" variant="ghost" size="icon" aria-label="关闭新建分类">
+							<X className="size-4" />
+						</Button>
+					</DialogPrimitive.Close>
+				</header>
+
+				<div className="space-y-3 p-4">
+					{error ? (
+						<Alert variant="destructive" className="rounded-md">
+							<AlertDescription>{error}</AlertDescription>
+						</Alert>
+					) : null}
+					<div className="grid gap-2">
+						<Label htmlFor="prompt-category-name" className="text-sm font-medium text-foreground">
+							分类名称
+						</Label>
+						<Input
+							id="prompt-category-name"
+							value={name}
+							placeholder="如 镜头"
+							className="rounded-md"
+							onChange={(event) => onNameChange(event.target.value)}
+						/>
+					</div>
+				</div>
+
+				<footer className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-3">
+					<Button type="button" variant="ghost" onClick={onCancel}>
+						取消
+					</Button>
+					<Button type="button" onClick={onSave} disabled={!name.trim() || isSaving}>
+						{isSaving ? <Loader2 className="size-4 animate-spin" /> : null}
+						<span>创建</span>
+					</Button>
+				</footer>
+			</DialogPrimitive.Content>
+		</DialogPrimitive.Portal>
+	</DialogPrimitive.Root>
+);
+
 const PromptPresetCreateDialog: React.FC<{
+	categoryOptions: PromptCategoryOption[];
 	draft: Draft;
 	error: string;
 	isSaving: boolean;
 	open: boolean;
 	valid: boolean;
 	onCancel: () => void;
+	onCreateCategory: () => void;
 	onDraftChange: React.Dispatch<React.SetStateAction<Draft>>;
 	onOpenChange: (open: boolean) => void;
 	onSave: () => void;
-}> = ({ draft, error, isSaving, open, valid, onCancel, onDraftChange, onOpenChange, onSave }) => {
-	const hasKind = draft.layer !== "style";
-
+}> = ({
+	categoryOptions,
+	draft,
+	error,
+	isSaving,
+	open,
+	valid,
+	onCancel,
+	onCreateCategory,
+	onDraftChange,
+	onOpenChange,
+	onSave,
+}) => {
 	return (
 		<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
 			<DialogPrimitive.Portal>
@@ -507,7 +679,7 @@ const PromptPresetCreateDialog: React.FC<{
 								id="prompt-preset-create-description"
 								className="mt-1 text-xs text-muted-foreground"
 							>
-								创建可复用的分层提示词预设。
+								创建可复用的分类提示词预设。
 							</DialogPrimitive.Description>
 						</div>
 						<DialogPrimitive.Close asChild>
@@ -521,7 +693,7 @@ const PromptPresetCreateDialog: React.FC<{
 						<div className="space-y-3">
 							<div className="flex items-center gap-2">
 								<Badge variant="secondary" className="rounded-md">
-									{layerLabelMap[draft.layer]}
+									{promptCategoryOptionLabel(draft.category, categoryOptions)}
 								</Badge>
 								<Badge variant="outline" className="rounded-md">
 									新建
@@ -534,24 +706,15 @@ const PromptPresetCreateDialog: React.FC<{
 								</Alert>
 							) : null}
 
-							<FieldRow label="层">
-								<Select
-									value={draft.layer}
-									onValueChange={(value) =>
-										onDraftChange((current) => ({ ...current, layer: value as PromptLayer }))
+							<FieldRow label="分类">
+								<CategorySelectField
+									value={draft.category}
+									options={categoryOptions}
+									onCreate={onCreateCategory}
+									onChange={(value) =>
+										onDraftChange((current) => ({ ...current, category: value }))
 									}
-								>
-									<SelectTrigger className="rounded-md text-foreground">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent align="start">
-										{layers.map((layer) => (
-											<SelectItem key={layer.value} value={layer.value}>
-												{layer.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								/>
 							</FieldRow>
 
 							<FieldRow label="名称">
@@ -560,42 +723,6 @@ const PromptPresetCreateDialog: React.FC<{
 									className="rounded-md"
 									onChange={(event) =>
 										onDraftChange((current) => ({ ...current, name: event.target.value }))
-									}
-								/>
-							</FieldRow>
-
-							{hasKind ? (
-								<FieldRow label="适用">
-									<Select
-										value={draft.kind}
-										onValueChange={(value) =>
-											onDraftChange((current) => ({
-												...current,
-												kind: value as PromptPresetKind,
-											}))
-										}
-									>
-										<SelectTrigger className="rounded-md text-foreground">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent align="start">
-											{kinds.map((kind) => (
-												<SelectItem key={kind.value} value={kind.value}>
-													{kind.label}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-								</FieldRow>
-							) : null}
-
-							<FieldRow label="分类">
-								<Input
-									value={draft.category}
-									placeholder="可选，如 character / scene"
-									className="rounded-md"
-									onChange={(event) =>
-										onDraftChange((current) => ({ ...current, category: event.target.value }))
 									}
 								/>
 							</FieldRow>
@@ -631,11 +758,75 @@ const PromptPresetCreateDialog: React.FC<{
 const draftFromPreset = (preset: PromptPreset): Draft => ({
 	id: preset.id,
 	name: preset.name,
-	layer: preset.layer,
-	kind: (preset.kind as PromptPresetKind) ?? "image",
-	category: preset.category ?? "",
+	category: preset.category || extraPromptCategory,
 	prompt: preset.prompt,
 });
+
+const promptCategoryOptions = (
+	categories: PromptCategory[],
+	...activeCategories: string[]
+): PromptCategoryOption[] => {
+	const values = new Map<PromptPresetCategory, string>();
+	for (const category of [...defaultPromptCategories, ...categories]) {
+		if (category.id.trim())
+			values.set(category.id.trim(), category.label.trim() || category.id.trim());
+	}
+	for (const category of activeCategories) {
+		if (category.trim())
+			values.set(category.trim(), promptCategoryLabel(category.trim(), categories));
+	}
+	return Array.from(values.entries())
+		.map(([value, label]) => ({ value, label }))
+		.sort((left, right) => {
+			const leftDefaultIndex = defaultPromptCategories.findIndex(
+				(category) => category.id === left.value,
+			);
+			const rightDefaultIndex = defaultPromptCategories.findIndex(
+				(category) => category.id === right.value,
+			);
+			if (leftDefaultIndex >= 0 || rightDefaultIndex >= 0) {
+				return (
+					(leftDefaultIndex >= 0 ? leftDefaultIndex : Number.MAX_SAFE_INTEGER) -
+					(rightDefaultIndex >= 0 ? rightDefaultIndex : Number.MAX_SAFE_INTEGER)
+				);
+			}
+			return left.label.localeCompare(right.label, "zh-Hans-CN");
+		});
+};
+
+const promptCategoryOptionLabel = (
+	category: PromptPresetCategory,
+	options: PromptCategoryOption[],
+) => options.find((option) => option.value === category)?.label ?? promptCategoryLabel(category);
+
+const resolveCategoryValue = (name: string, options: PromptCategoryOption[]) => {
+	const normalized = name.trim();
+	const existing = options.find(
+		(option) => option.value === normalized || option.label === normalized,
+	);
+	return existing?.value ?? normalized;
+};
+
+const categoryValidationError = (category: string) => {
+	const normalized = category.trim();
+	if (!normalized) return "请输入分类名称。";
+	if (
+		normalized === "." ||
+		normalized === ".." ||
+		normalized.includes("/") ||
+		normalized.includes("\\")
+	) {
+		return "分类名称不能包含路径字符。";
+	}
+	if ([...normalized].length > 64) return "分类名称不能超过 64 个字符。";
+	for (const char of normalized) {
+		const codePoint = char.codePointAt(0);
+		if (codePoint !== undefined && (codePoint < 32 || codePoint === 127)) {
+			return "分类名称不能包含控制字符。";
+		}
+	}
+	return "";
+};
 
 const slugify = (value: string) => {
 	const slug = value

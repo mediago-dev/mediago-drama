@@ -1,5 +1,7 @@
 package mcp
 
+import "encoding/json"
+
 // DocumentTextRange is a UTF-16 code-unit range within one document block.
 type DocumentTextRange struct {
 	Start int `json:"start"`
@@ -145,8 +147,25 @@ type ProjectList struct {
 // ProjectOverviewConfig is the structured Overview page config.
 type ProjectOverviewConfig struct {
 	Style string `json:"style"`
-	// LayerDefaults maps a prompt layer (style/scene_style/tone) to a default preset id.
-	LayerDefaults map[string]string `json:"layerDefaults,omitempty"`
+	// CategoryDefaults maps a prompt category to a default preset id.
+	CategoryDefaults map[string]string `json:"categoryDefaults,omitempty"`
+}
+
+// UnmarshalJSON accepts the legacy layerDefaults key while normalizing to CategoryDefaults.
+func (config *ProjectOverviewConfig) UnmarshalJSON(data []byte) error {
+	type projectOverviewConfigAlias ProjectOverviewConfig
+	payload := struct {
+		projectOverviewConfigAlias
+		LegacyLayerDefaults map[string]string `json:"layerDefaults,omitempty"`
+	}{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	*config = ProjectOverviewConfig(payload.projectOverviewConfigAlias)
+	if len(config.CategoryDefaults) == 0 && len(payload.LegacyLayerDefaults) > 0 {
+		config.CategoryDefaults = payload.LegacyLayerDefaults
+	}
+	return nil
 }
 
 // ProjectConfig is the canonical project.media.json contract.
@@ -170,13 +189,30 @@ type ExternalGetProjectConfigInput struct {
 // ProjectOverviewConfigPatch is a sparse Overview config update.
 type ProjectOverviewConfigPatch struct {
 	Style *string `json:"style,omitempty" jsonschema:"项目 Overview 的风格描述。"`
-	// LayerDefaults, when provided, replaces the per-layer default preset map.
-	LayerDefaults map[string]string `json:"layerDefaults,omitempty" jsonschema:"每层默认预设：层(style/scene_style/tone)到预设 id。"`
+	// CategoryDefaults, when provided, replaces the per-category default preset map.
+	CategoryDefaults map[string]string `json:"categoryDefaults,omitempty" jsonschema:"每分类默认预设：分类到预设 id。"`
+}
+
+// UnmarshalJSON accepts the legacy layerDefaults key while normalizing to CategoryDefaults.
+func (patch *ProjectOverviewConfigPatch) UnmarshalJSON(data []byte) error {
+	type projectOverviewConfigPatchAlias ProjectOverviewConfigPatch
+	payload := struct {
+		projectOverviewConfigPatchAlias
+		LegacyLayerDefaults map[string]string `json:"layerDefaults,omitempty"`
+	}{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	*patch = ProjectOverviewConfigPatch(payload.projectOverviewConfigPatchAlias)
+	if len(patch.CategoryDefaults) == 0 && len(payload.LegacyLayerDefaults) > 0 {
+		patch.CategoryDefaults = payload.LegacyLayerDefaults
+	}
+	return nil
 }
 
 // ProjectConfigPatchInput is a sparse project.media.json update.
 type ProjectConfigPatchInput struct {
-	Overview *ProjectOverviewConfigPatch `json:"overview,omitempty" jsonschema:"项目 Overview 配置。当前仅支持 style。"`
+	Overview *ProjectOverviewConfigPatch `json:"overview,omitempty" jsonschema:"项目 Overview 配置。支持 style 和 categoryDefaults。"`
 }
 
 // ProjectConfigToolOutput is returned by project config tools.

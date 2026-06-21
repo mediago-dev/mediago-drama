@@ -63,8 +63,25 @@ type ProjectManifestFile struct {
 
 // ProjectManifestOverviewFile is the overview config stored in project.media.json.
 type ProjectManifestOverviewFile struct {
-	Style         string            `json:"style"`
-	LayerDefaults map[string]string `json:"layerDefaults,omitempty"`
+	Style            string            `json:"style"`
+	CategoryDefaults map[string]string `json:"categoryDefaults,omitempty"`
+}
+
+// UnmarshalJSON accepts project files written with the legacy layerDefaults key.
+func (overview *ProjectManifestOverviewFile) UnmarshalJSON(data []byte) error {
+	type projectManifestOverviewFileAlias ProjectManifestOverviewFile
+	payload := struct {
+		projectManifestOverviewFileAlias
+		LegacyLayerDefaults map[string]string `json:"layerDefaults,omitempty"`
+	}{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	*overview = ProjectManifestOverviewFile(payload.projectManifestOverviewFileAlias)
+	if len(overview.CategoryDefaults) == 0 && len(payload.LegacyLayerDefaults) > 0 {
+		overview.CategoryDefaults = payload.LegacyLayerDefaults
+	}
+	return nil
 }
 
 // EnsureProjectManifestFile writes the canonical project.media.json shape.
@@ -118,8 +135,8 @@ func NormalizeProjectManifestFile(project mediamcp.Project, current ProjectManif
 		Name:          name,
 		Description:   description,
 		Overview: ProjectManifestOverviewFile{
-			Style:         strings.TrimSpace(current.Overview.Style),
-			LayerDefaults: current.Overview.LayerDefaults,
+			Style:            strings.TrimSpace(current.Overview.Style),
+			CategoryDefaults: current.Overview.CategoryDefaults,
 		},
 		CreatedAt: createdAt,
 	}

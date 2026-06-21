@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
 
 	configassets "github.com/mediago-dev/mediago-drama/services/server/configs"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
@@ -25,12 +26,14 @@ const (
 	defaultExtension        = ".md"
 )
 
-// Prompt layers (the fixed building blocks composed at generation time).
+// Prompt categories group reusable prompt presets in the library.
 const (
-	layerStyle      = "style"       // 艺术风格
-	layerSceneStyle = "scene_style" // 旧层:归并到 layerExtra
-	layerTone       = "tone"        // 旧层:归并到 layerExtra
-	layerExtra      = "extra"       // 其他可复用提示词
+	categoryStyle         = "style" // 艺术风格
+	categoryStyleLabel    = "风格"
+	categoryExtra         = "extra" // 其他可复用提示词
+	categoryExtraLabel    = "其他"
+	legacyLayerSceneStyle = "scene_style" // 旧层:归并到 categoryExtra
+	legacyLayerTone       = "tone"        // 旧层:归并到 categoryExtra
 )
 
 // Source identifies where a prompt entry currently comes from.
@@ -52,16 +55,28 @@ var (
 	ErrPromptEntryExists = errors.New("prompt entry already exists")
 	// ErrBuiltinPromptEntryReadonly reports attempts to delete a system-default prompt entry.
 	ErrBuiltinPromptEntryReadonly = errors.New("builtin prompt entry cannot be deleted")
+	// ErrInvalidPromptCategory reports an invalid prompt category payload.
+	ErrInvalidPromptCategory = errors.New("invalid prompt category")
+	// ErrPromptCategoryExists reports a duplicate user prompt category creation request.
+	ErrPromptCategoryExists = errors.New("prompt category already exists")
 )
 
-// PromptEntry describes a reusable generation prompt layer preset.
+// PromptCategory describes a reusable generation prompt category.
+type PromptCategory struct {
+	ID        string `json:"id"`
+	Label     string `json:"label"`
+	Source    Source `json:"source"`
+	Builtin   bool   `json:"builtin,omitempty"`
+	CreatedAt string `json:"createdAt,omitempty"`
+	UpdatedAt string `json:"updatedAt,omitempty"`
+}
+
+// PromptEntry describes a reusable generation prompt category preset.
 type PromptEntry struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
-	Layer    string `json:"layer"`
+	Category string `json:"category"`
 	Type     string `json:"type,omitempty"`
-	Kind     string `json:"kind,omitempty"`
-	Category string `json:"category,omitempty"`
 	Prompt   string `json:"prompt"`
 	Source   Source `json:"source"`
 	Builtin  bool   `json:"builtin,omitempty"`
@@ -69,9 +84,8 @@ type PromptEntry struct {
 
 // Filter limits prompt library list results.
 type Filter struct {
-	Layer string
-	Type  string
-	Kind  string
+	Category string
+	Type     string
 }
 
 // Service loads embedded prompt defaults into the settings DB and persists edits there.
@@ -79,8 +93,8 @@ type Service struct {
 	mu            sync.RWMutex
 	defaults      fs.FS
 	builtinRoot   string
-	styleDefaults fs.FS  // 风格层内嵌默认(生产环境注入;测试留空以隔离)
-	styleRoot     string // 风格层内嵌目录
+	styleDefaults fs.FS  // 风格分类内嵌默认(生产环境注入;测试留空以隔离)
+	styleRoot     string // 风格分类内嵌目录
 	repo          *repository.PromptLibraryRepository
 	initErr       error
 }
@@ -88,13 +102,13 @@ type Service struct {
 type promptEntryFrontmatter struct {
 	ID       string `yaml:"id"`
 	Name     string `yaml:"name"`
-	Layer    string `yaml:"layer,omitempty"`
-	Type     string `yaml:"type,omitempty"`
-	Kind     string `yaml:"kind,omitempty"`
+	Layer    string `yaml:"layer,omitempty"` // legacy frontmatter key.
 	Category string `yaml:"category,omitempty"`
+	Type     string `yaml:"type,omitempty"`
 }
 
 type promptEntryModel = domain.PromptLibraryEntryModel
+type promptCategoryModel = domain.PromptCategoryModel
 
 // NewService creates a prompt library service backed by built-in defaults and the settings DB.
 func NewService() *Service {
@@ -105,7 +119,7 @@ func NewService() *Service {
 // NewServiceFromRepository creates a prompt library service from an existing settings repository.
 func NewServiceFromRepository(repo *repository.PromptLibraryRepository, initErr error) *Service {
 	service := NewServiceWithRepository(configassets.PromptLibrary, builtinPromptLibraryDir, repo, initErr)
-	// 风格层默认从独立的内嵌目录种入(仅生产路径;测试通过 NewServiceWithRepository 注入隔离的 FS)。
+	// 风格分类默认从独立的内嵌目录种入(仅生产路径;测试通过 NewServiceWithRepository 注入隔离的 FS)。
 	service.styleDefaults = configassets.StylePresets
 	service.styleRoot = builtinStylePresetDir
 	return service
@@ -149,20 +163,72 @@ func (store *Service) List(ctx context.Context, filter Filter) ([]PromptEntry, e
 	items := make([]PromptEntry, 0, len(models))
 	for _, model := range models {
 		entry := promptEntryFromModel(model)
-		if filter.Layer != "" && entry.Layer != filter.Layer {
+		if filter.Category != "" && entry.Category != filter.Category {
 			continue
 		}
 		if filter.Type != "" && entry.Type != filter.Type {
-			continue
-		}
-		// 风格层图/视频通用,不按 kind 过滤。
-		if filter.Kind != "" && entry.Layer != layerStyle && entry.Kind != filter.Kind {
 			continue
 		}
 		items = append(items, entry)
 	}
 	sortPromptEntries(items)
 	return items, nil
+}
+
+// ListCategories returns prompt categories from the settings DB after syncing defaults.
+func (store *Service) ListCategories(ctx context.Context) ([]PromptCategory, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	if err := store.ensureReady(ctx); err != nil {
+		return nil, err
+	}
+	if err := store.syncCategoriesLocked(ctx); err != nil {
+		return nil, err
+	}
+	models, err := store.repo.ListPromptCategories()
+	if err != nil {
+		return nil, err
+	}
+	categories := make([]PromptCategory, 0, len(models))
+	for _, model := range models {
+		categories = append(categories, promptCategoryFromModel(model))
+	}
+	sortPromptCategories(categories)
+	return categories, nil
+}
+
+// CreateCategory validates and writes a new user prompt category.
+func (store *Service) CreateCategory(ctx context.Context, category PromptCategory) (PromptCategory, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	if err := store.ensureReady(ctx); err != nil {
+		return PromptCategory{}, err
+	}
+	if err := store.syncCategoriesLocked(ctx); err != nil {
+		return PromptCategory{}, err
+	}
+	category = categoryForUserWrite(category)
+	if err := validatePromptCategory(category); err != nil {
+		return PromptCategory{}, err
+	}
+	currentCategories, err := store.repo.ListPromptCategories()
+	if err != nil {
+		return PromptCategory{}, err
+	}
+	for _, current := range currentCategories {
+		if normalizeCategory(current.ID) == category.ID || strings.TrimSpace(current.Label) == category.Label {
+			return PromptCategory{}, fmt.Errorf("%w: %s", ErrPromptCategoryExists, category.ID)
+		}
+	}
+
+	now := timestamp.NowRFC3339Nano()
+	model := promptCategoryModelFromCategory(category, now, now)
+	if err := store.repo.CreatePromptCategory(model); err != nil {
+		return PromptCategory{}, err
+	}
+	return promptCategoryFromModel(model), nil
 }
 
 // Get returns one prompt entry by ID.
@@ -201,6 +267,9 @@ func (store *Service) Create(ctx context.Context, entry PromptEntry) (PromptEntr
 	if err := validatePromptEntry(entry.ID, entry); err != nil {
 		return PromptEntry{}, err
 	}
+	if err := store.ensureUserCategoryLocked(entry.Category); err != nil {
+		return PromptEntry{}, err
+	}
 	if _, err := store.repo.GetPromptLibraryEntry(entry.ID); err == nil {
 		return PromptEntry{}, fmt.Errorf("%w: %s", ErrPromptEntryExists, entry.ID)
 	} else if !repository.IsRecordNotFound(err) {
@@ -232,6 +301,9 @@ func (store *Service) Update(ctx context.Context, id string, entry PromptEntry) 
 	}
 	entry = entryForUserWrite(entry)
 	if err := validatePromptEntry(id, entry); err != nil {
+		return PromptEntry{}, err
+	}
+	if err := store.ensureUserCategoryLocked(entry.Category); err != nil {
 		return PromptEntry{}, err
 	}
 	current, err := store.repo.GetPromptLibraryEntry(id)
@@ -360,7 +432,73 @@ func (store *Service) syncBuiltinsLocked(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := store.syncCategoriesLocked(ctx); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (store *Service) syncCategoriesLocked(ctx context.Context) error {
+	if err := ctxErr(ctx); err != nil {
+		return err
+	}
+	now := timestamp.NowRFC3339Nano()
+	for _, category := range builtinPromptCategories() {
+		model := promptCategoryModelFromCategory(category, now, now)
+		if err := store.repo.UpsertPromptCategory(model); err != nil {
+			return err
+		}
+	}
+
+	currentModels, err := store.repo.ListPromptCategories()
+	if err != nil {
+		return err
+	}
+	currentByID := map[string]struct{}{}
+	for _, model := range currentModels {
+		currentByID[normalizeCategory(model.ID)] = struct{}{}
+	}
+	entryModels, err := store.repo.ListPromptLibraryEntries()
+	if err != nil {
+		return err
+	}
+	for _, entry := range entryModels {
+		categoryID := normalizeCategory(entry.Category)
+		if _, exists := currentByID[categoryID]; exists || !isSafeCategory(categoryID) {
+			continue
+		}
+		category := PromptCategory{
+			ID:      categoryID,
+			Label:   categoryLabelForID(categoryID),
+			Source:  SourceUser,
+			Builtin: false,
+		}
+		if err := store.repo.UpsertPromptCategory(promptCategoryModelFromCategory(category, now, now)); err != nil {
+			return err
+		}
+		currentByID[categoryID] = struct{}{}
+	}
+	return nil
+}
+
+func (store *Service) ensureUserCategoryLocked(categoryID string) error {
+	categoryID = normalizeCategory(categoryID)
+	if !isSafeCategory(categoryID) {
+		return fmt.Errorf("%w: category is invalid", ErrInvalidPromptCategory)
+	}
+	if _, err := store.repo.GetPromptCategory(categoryID); err == nil {
+		return nil
+	} else if !repository.IsRecordNotFound(err) {
+		return err
+	}
+	now := timestamp.NowRFC3339Nano()
+	category := PromptCategory{
+		ID:      categoryID,
+		Label:   categoryLabelForID(categoryID),
+		Source:  SourceUser,
+		Builtin: false,
+	}
+	return store.repo.CreatePromptCategory(promptCategoryModelFromCategory(category, now, now))
 }
 
 func (store *Service) loadBuiltinEntries(ctx context.Context) (map[string]PromptEntry, error) {
@@ -368,13 +506,13 @@ func (store *Service) loadBuiltinEntries(ctx context.Context) (map[string]Prompt
 		return nil, err
 	}
 	entries := map[string]PromptEntry{}
-	// 提示词层(style/extra):layer 从 frontmatter 或 type 推断。
+	// 提示词分类(style/extra/自定义):category 从 frontmatter 或 type 推断。
 	if err := loadPromptEntryFS(ctx, store.defaults, store.builtinRoot, SourceBuiltin, "", entries); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("loading built-in prompt entries: %w", err)
 	}
-	// 风格层:从 style-presets/builtin 内嵌目录种入,强制 layer=style(仅当生产路径注入了 styleDefaults)。
+	// 风格分类:从 style-presets/builtin 内嵌目录种入,强制 category=style(仅当生产路径注入了 styleDefaults)。
 	if store.styleDefaults != nil && strings.TrimSpace(store.styleRoot) != "" {
-		if err := loadPromptEntryFS(ctx, store.styleDefaults, store.styleRoot, SourceBuiltin, layerStyle, entries); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if err := loadPromptEntryFS(ctx, store.styleDefaults, store.styleRoot, SourceBuiltin, categoryStyle, entries); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("loading built-in style presets: %w", err)
 		}
 	}
@@ -386,7 +524,7 @@ func (store *Service) loadBuiltinEntries(ctx context.Context) (map[string]Prompt
 	return entries, nil
 }
 
-func loadPromptEntryFS(ctx context.Context, filesystem fs.FS, root string, source Source, forceLayer string, entries map[string]PromptEntry) error {
+func loadPromptEntryFS(ctx context.Context, filesystem fs.FS, root string, source Source, forceCategory string, entries map[string]PromptEntry) error {
 	if filesystem == nil || strings.TrimSpace(root) == "" {
 		return fs.ErrNotExist
 	}
@@ -406,7 +544,7 @@ func loadPromptEntryFS(ctx context.Context, filesystem fs.FS, root string, sourc
 		if err != nil {
 			return err
 		}
-		entry, err := decodePromptEntry(data, source, forceLayer)
+		entry, err := decodePromptEntry(data, source, forceCategory)
 		if err != nil {
 			return fmt.Errorf("decoding %s: %w", path, err)
 		}
@@ -415,7 +553,7 @@ func loadPromptEntryFS(ctx context.Context, filesystem fs.FS, root string, sourc
 	return nil
 }
 
-func decodePromptEntry(data []byte, source Source, forceLayer string) (PromptEntry, error) {
+func decodePromptEntry(data []byte, source Source, forceCategory string) (PromptEntry, error) {
 	frontmatter, body, err := splitFrontmatter(string(data))
 	if err != nil {
 		return PromptEntry{}, err
@@ -424,17 +562,17 @@ func decodePromptEntry(data []byte, source Source, forceLayer string) (PromptEnt
 	if err := yaml.Unmarshal([]byte(frontmatter), &meta); err != nil {
 		return PromptEntry{}, fmt.Errorf("%w: parsing frontmatter: %w", ErrInvalidPromptEntry, err)
 	}
-	layer := meta.Layer
-	if strings.TrimSpace(forceLayer) != "" {
-		layer = forceLayer
+	category := meta.Category
+	if strings.TrimSpace(forceCategory) != "" {
+		category = forceCategory
+	} else if strings.TrimSpace(category) == "" && strings.TrimSpace(meta.Layer) != "" {
+		category = categoryFromLegacyLayer(meta.Layer)
 	}
 	entry := normalizePromptEntry(PromptEntry{
 		ID:       meta.ID,
 		Name:     meta.Name,
-		Layer:    layer,
+		Category: category,
 		Type:     meta.Type,
-		Kind:     meta.Kind,
-		Category: meta.Category,
 		Prompt:   body,
 		Source:   source,
 	})
@@ -455,21 +593,11 @@ func validatePromptEntry(id string, entry PromptEntry) error {
 	if strings.TrimSpace(entry.Name) == "" {
 		return fmt.Errorf("%w: name is required", ErrInvalidPromptEntry)
 	}
-	if !isSupportedLayer(entry.Layer) {
-		return fmt.Errorf("%w: unsupported layer %q", ErrInvalidPromptEntry, entry.Layer)
+	if !isSafeCategory(entry.Category) {
+		return fmt.Errorf("%w: category is invalid", ErrInvalidPromptEntry)
 	}
 	if strings.TrimSpace(entry.Type) != "" && !isSupportedType(entry.Type) {
 		return fmt.Errorf("%w: unsupported prompt type %q", ErrInvalidPromptEntry, entry.Type)
-	}
-	// 风格层与生成 kind 无关(图/视频通用);其余层需指定 kind。
-	if entry.Layer != layerStyle && !isSupportedKind(entry.Kind) {
-		return fmt.Errorf("%w: unsupported generation kind %q", ErrInvalidPromptEntry, entry.Kind)
-	}
-	if entry.Layer == layerStyle && strings.TrimSpace(entry.Kind) != "" && !isSupportedKind(entry.Kind) {
-		return fmt.Errorf("%w: unsupported generation kind %q", ErrInvalidPromptEntry, entry.Kind)
-	}
-	if strings.TrimSpace(entry.Category) != "" && !isSafeIdentifier(entry.Category) {
-		return fmt.Errorf("%w: category is invalid", ErrInvalidPromptEntry)
 	}
 	if strings.TrimSpace(entry.Prompt) == "" {
 		return fmt.Errorf("%w: prompt is required", ErrInvalidPromptEntry)
@@ -477,63 +605,71 @@ func validatePromptEntry(id string, entry PromptEntry) error {
 	return nil
 }
 
+func validatePromptCategory(category PromptCategory) error {
+	if !isSafeCategory(category.ID) {
+		return fmt.Errorf("%w: category id is invalid", ErrInvalidPromptCategory)
+	}
+	if !isSafeCategoryLabel(category.Label) {
+		return fmt.Errorf("%w: category label is invalid", ErrInvalidPromptCategory)
+	}
+	return nil
+}
+
 func validateFilter(filter Filter) error {
-	if filter.Layer != "" && !isSupportedLayer(filter.Layer) {
-		return fmt.Errorf("%w: unsupported layer %q", ErrInvalidPromptEntry, filter.Layer)
+	if filter.Category != "" && !isSafeCategory(filter.Category) {
+		return fmt.Errorf("%w: category is invalid", ErrInvalidPromptEntry)
 	}
 	if filter.Type != "" && !isSupportedType(filter.Type) {
 		return fmt.Errorf("%w: unsupported prompt type %q", ErrInvalidPromptEntry, filter.Type)
-	}
-	if filter.Kind != "" && !isSupportedKind(filter.Kind) {
-		return fmt.Errorf("%w: unsupported generation kind %q", ErrInvalidPromptEntry, filter.Kind)
 	}
 	return nil
 }
 
 func normalizeFilter(filter Filter) Filter {
-	filter.Layer = normalizeLayer(filter.Layer)
+	filter.Category = normalizeCategory(filter.Category)
 	filter.Type = strings.TrimSpace(filter.Type)
-	filter.Kind = strings.TrimSpace(filter.Kind)
 	return filter
 }
 
 func normalizePromptEntry(entry PromptEntry) PromptEntry {
 	entry.ID = strings.TrimSpace(entry.ID)
 	entry.Name = strings.TrimSpace(entry.Name)
-	entry.Layer = normalizeLayer(entry.Layer)
+	entry.Category = normalizeCategory(entry.Category)
 	entry.Type = strings.TrimSpace(entry.Type)
-	entry.Kind = strings.TrimSpace(entry.Kind)
-	entry.Category = strings.TrimSpace(entry.Category)
-	if entry.Kind == "" && (entry.Type == "image" || entry.Type == "video") {
-		entry.Kind = entry.Type
-	}
-	// 旧数据没有 layer:从 type 回填(读时即生效,库页按层过滤不依赖 DB 列)。
-	if entry.Layer == "" {
-		entry.Layer = layerForType(entry.Type)
+	// 旧数据没有 category:从 type 回填(读时即生效,库页按分类过滤不依赖 DB 列)。
+	if entry.Category == "" {
+		entry.Category = categoryForType(entry.Type)
 	}
 	entry.Prompt = strings.TrimSpace(strings.ReplaceAll(entry.Prompt, "\r\n", "\n"))
 	return entry
 }
 
-func layerForType(promptType string) string {
-	return layerExtra
+func normalizePromptCategory(category PromptCategory) PromptCategory {
+	category.ID = normalizeCategory(category.ID)
+	category.Label = strings.TrimSpace(category.Label)
+	if category.ID == "" {
+		category.ID = normalizeCategory(category.Label)
+	}
+	if category.Label == "" {
+		category.Label = categoryLabelForID(category.ID)
+	}
+	return category
 }
 
-func normalizeLayer(layer string) string {
+func categoryForType(promptType string) string {
+	return categoryExtra
+}
+
+func normalizeCategory(category string) string {
+	return strings.TrimSpace(category)
+}
+
+func categoryFromLegacyLayer(layer string) string {
 	switch strings.TrimSpace(layer) {
-	case layerSceneStyle, layerTone:
-		return layerExtra
+	case legacyLayerSceneStyle, legacyLayerTone:
+		return categoryExtra
 	default:
 		return strings.TrimSpace(layer)
-	}
-}
-
-func isSupportedLayer(layer string) bool {
-	switch layer {
-	case layerStyle, layerExtra:
-		return true
-	default:
-		return false
 	}
 }
 
@@ -543,14 +679,52 @@ func entryForUserWrite(entry PromptEntry) PromptEntry {
 	return entry
 }
 
+func categoryForUserWrite(category PromptCategory) PromptCategory {
+	category = normalizePromptCategory(category)
+	category.Source = SourceUser
+	category.Builtin = false
+	return category
+}
+
+func builtinPromptCategories() []PromptCategory {
+	now := timestamp.NowRFC3339Nano()
+	return []PromptCategory{
+		{
+			ID:        categoryStyle,
+			Label:     categoryStyleLabel,
+			Source:    SourceBuiltin,
+			Builtin:   true,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		{
+			ID:        categoryExtra,
+			Label:     categoryExtraLabel,
+			Source:    SourceBuiltin,
+			Builtin:   true,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+}
+
+func categoryLabelForID(categoryID string) string {
+	switch normalizeCategory(categoryID) {
+	case categoryStyle:
+		return categoryStyleLabel
+	case categoryExtra:
+		return categoryExtraLabel
+	default:
+		return strings.TrimSpace(categoryID)
+	}
+}
+
 func promptEntryFromModel(model promptEntryModel) PromptEntry {
 	return normalizePromptEntry(PromptEntry{
 		ID:       model.ID,
 		Name:     model.Name,
-		Layer:    model.Layer,
-		Type:     model.Type,
-		Kind:     model.Kind,
 		Category: model.Category,
+		Type:     model.Type,
 		Prompt:   model.Prompt,
 		Source:   Source(model.Source),
 		Builtin:  model.Builtin,
@@ -562,10 +736,8 @@ func promptEntryModelFromEntry(entry PromptEntry, createdAt string, updatedAt st
 	return promptEntryModel{
 		ID:        entry.ID,
 		Name:      entry.Name,
-		Layer:     entry.Layer,
-		Type:      entry.Type,
-		Kind:      entry.Kind,
 		Category:  entry.Category,
+		Type:      entry.Type,
 		Prompt:    entry.Prompt,
 		Source:    string(entry.Source),
 		Builtin:   entry.Builtin,
@@ -574,23 +746,44 @@ func promptEntryModelFromEntry(entry PromptEntry, createdAt string, updatedAt st
 	}
 }
 
+func promptCategoryFromModel(model promptCategoryModel) PromptCategory {
+	return normalizePromptCategory(PromptCategory{
+		ID:        model.ID,
+		Label:     model.Label,
+		Source:    Source(model.Source),
+		Builtin:   model.Builtin,
+		CreatedAt: model.CreatedAt,
+		UpdatedAt: model.UpdatedAt,
+	})
+}
+
+func promptCategoryModelFromCategory(category PromptCategory, createdAt string, updatedAt string) promptCategoryModel {
+	category = normalizePromptCategory(category)
+	return promptCategoryModel{
+		ID:        category.ID,
+		Label:     category.Label,
+		Source:    string(category.Source),
+		Builtin:   category.Builtin,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+	}
+}
+
 func builtinModelNeedsSync(model promptEntryModel, defaultEntry PromptEntry) bool {
 	defaultEntry = normalizePromptEntry(defaultEntry)
 	return model.Name != defaultEntry.Name ||
-		normalizedLayer(model.Layer, model.Type) != defaultEntry.Layer ||
+		normalizedCategory(model.Category, model.Type) != defaultEntry.Category ||
 		model.Type != defaultEntry.Type ||
-		model.Kind != defaultEntry.Kind ||
-		model.Category != defaultEntry.Category ||
 		model.Prompt != defaultEntry.Prompt ||
 		model.Source != string(SourceBuiltin) ||
 		!model.Builtin
 }
 
-func normalizedLayer(layer string, promptType string) string {
-	if normalizeLayer(layer) != "" {
-		return normalizeLayer(layer)
+func normalizedCategory(category string, promptType string) string {
+	if normalizeCategory(category) != "" {
+		return normalizeCategory(category)
 	}
-	return layerForType(promptType)
+	return categoryForType(promptType)
 }
 
 func splitFrontmatter(raw string) (string, string, error) {
@@ -613,14 +806,14 @@ func sortPromptEntries(entries []PromptEntry) {
 	sort.SliceStable(entries, func(first, second int) bool {
 		firstEntry := entries[first]
 		secondEntry := entries[second]
-		if layerOrder(firstEntry.Layer) != layerOrder(secondEntry.Layer) {
-			return layerOrder(firstEntry.Layer) < layerOrder(secondEntry.Layer)
-		}
-		if typeOrder(firstEntry.Type) != typeOrder(secondEntry.Type) {
-			return typeOrder(firstEntry.Type) < typeOrder(secondEntry.Type)
+		if categoryOrder(firstEntry.Category) != categoryOrder(secondEntry.Category) {
+			return categoryOrder(firstEntry.Category) < categoryOrder(secondEntry.Category)
 		}
 		if firstEntry.Category != secondEntry.Category {
 			return firstEntry.Category < secondEntry.Category
+		}
+		if typeOrder(firstEntry.Type) != typeOrder(secondEntry.Type) {
+			return typeOrder(firstEntry.Type) < typeOrder(secondEntry.Type)
 		}
 		if firstEntry.Builtin != secondEntry.Builtin {
 			return firstEntry.Builtin
@@ -632,11 +825,28 @@ func sortPromptEntries(entries []PromptEntry) {
 	})
 }
 
-func layerOrder(layer string) int {
-	switch normalizeLayer(layer) {
-	case layerStyle:
+func sortPromptCategories(categories []PromptCategory) {
+	sort.SliceStable(categories, func(first, second int) bool {
+		firstCategory := categories[first]
+		secondCategory := categories[second]
+		if categoryOrder(firstCategory.ID) != categoryOrder(secondCategory.ID) {
+			return categoryOrder(firstCategory.ID) < categoryOrder(secondCategory.ID)
+		}
+		if firstCategory.Builtin != secondCategory.Builtin {
+			return firstCategory.Builtin
+		}
+		if firstCategory.Label != secondCategory.Label {
+			return firstCategory.Label < secondCategory.Label
+		}
+		return firstCategory.ID < secondCategory.ID
+	})
+}
+
+func categoryOrder(category string) int {
+	switch normalizeCategory(category) {
+	case categoryStyle:
 		return 0
-	case layerExtra:
+	case categoryExtra:
 		return 1
 	default:
 		return 99
@@ -663,17 +873,40 @@ func isSupportedType(promptType string) bool {
 	}
 }
 
-func isSupportedKind(kind string) bool {
-	switch kind {
-	case "image", "video", "text":
-		return true
-	default:
-		return false
-	}
-}
-
 func isPromptEntryFilename(filename string) bool {
 	return strings.HasSuffix(filename, defaultExtension)
+}
+
+func isSafeCategory(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "." || value == ".." || strings.ContainsAny(value, `/\`) {
+		return false
+	}
+	if len([]rune(value)) > 64 {
+		return false
+	}
+	for _, char := range value {
+		if unicode.IsControl(char) {
+			return false
+		}
+	}
+	return true
+}
+
+func isSafeCategoryLabel(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "." || value == ".." || strings.ContainsAny(value, `/\`) {
+		return false
+	}
+	if len([]rune(value)) > 64 {
+		return false
+	}
+	for _, char := range value {
+		if unicode.IsControl(char) {
+			return false
+		}
+	}
+	return true
 }
 
 func isSafeIdentifier(value string) bool {

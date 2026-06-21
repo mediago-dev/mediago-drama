@@ -157,6 +157,7 @@ func TestOpenSettingsRepositoriesMigratesAllSettingsSchemas(t *testing.T) {
 		&domain.GenerationTaskAttemptModel{},
 		&domain.GenerationTaskAssetModel{},
 		&domain.ProjectResourceAssetModel{},
+		&domain.PromptCategoryModel{},
 		&domain.PromptLibraryEntryModel{},
 	}
 	for _, model := range models {
@@ -173,6 +174,43 @@ func TestOpenSettingsRepositoriesMigratesAllSettingsSchemas(t *testing.T) {
 	if !repos.DB.Migrator().HasIndex(&domain.MediaAssetModel{}, "library_assets_content_hash_idx") {
 		t.Fatal("library_assets should include content_hash index")
 	}
+}
+
+func TestEnsurePromptLibrarySchemaMigratesLayerToCategory(t *testing.T) {
+	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "settings.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenGormSQLite returned error: %v", err)
+	}
+	for _, statement := range []string{
+		`CREATE TABLE prompt_library_entries (id text primary key, name text not null, layer text not null default '', type text not null, kind text not null, category text not null default '', prompt text not null, source text not null default 'user', builtin boolean not null default false, created_at text not null, updated_at text not null)`,
+		`CREATE INDEX prompt_library_entries_layer_idx ON prompt_library_entries(layer)`,
+		`CREATE INDEX prompt_library_entries_type_kind_idx ON prompt_library_entries(type, kind)`,
+		`INSERT INTO prompt_library_entries (id, name, layer, type, kind, category, prompt, source, builtin, created_at, updated_at) VALUES ('character-multi-view', '多视图', 'extra', 'image', 'image', 'character', '旧提示', 'builtin', true, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z')`,
+	} {
+		if err := db.Exec(statement).Error; err != nil {
+			t.Fatalf("preparing legacy prompt library schema: %v", err)
+		}
+	}
+
+	if err := EnsurePromptLibrarySchema(db); err != nil {
+		t.Fatalf("EnsurePromptLibrarySchema returned error: %v", err)
+	}
+	if sqliteColumnExists(db, "prompt_library_entries", "layer") {
+		t.Fatal("prompt_library_entries.layer should be dropped")
+	}
+	if sqliteColumnExists(db, "prompt_library_entries", "kind") {
+		t.Fatal("prompt_library_entries.kind should be dropped")
+	}
+
+	var entry domain.PromptLibraryEntryModel
+	if err := db.First(&entry, "id = ?", "character-multi-view").Error; err != nil {
+		t.Fatalf("loading migrated prompt library entry: %v", err)
+	}
+	if entry.Category != "extra" {
+		t.Fatalf("category = %q, want migrated layer value extra", entry.Category)
+	}
+	assertSchemaMigrationRecorded(t, db, promptLibraryCategoryMigrationKey)
+	assertSchemaMigrationRecorded(t, db, promptLibraryDropKindMigrationKey)
 }
 
 func TestEnsureMediaAssetSchemaRenamesLegacyMediaAssetsTable(t *testing.T) {

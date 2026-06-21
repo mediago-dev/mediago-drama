@@ -477,7 +477,7 @@ const promptSlashGroupRanges = (items: PromptInsertItem[]): PromptSlashGroupRang
 	const ranges: PromptSlashGroupRange[] = [];
 
 	items.forEach((item, index) => {
-		const label = item.layerLabel || "提示词";
+		const label = item.categoryLabel || "提示词";
 		const lastRange = ranges[ranges.length - 1];
 
 		if (lastRange && lastRange.label === label) {

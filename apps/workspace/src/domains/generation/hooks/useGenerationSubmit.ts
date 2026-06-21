@@ -18,7 +18,7 @@ import {
 	sendGenerationMessage,
 	streamGenerationText,
 } from "@/domains/generation/api/generation";
-import type { GenerationTaskType } from "@/domains/generation/lib/prompt-layers";
+import type { GenerationTaskType } from "@/domains/generation/lib/prompt-categories";
 import {
 	generationParamsWithRequestDetails,
 	generatedAssetsIncludeMediaAssets,

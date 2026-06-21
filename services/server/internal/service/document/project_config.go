@@ -48,8 +48,8 @@ func (store *Service) SaveProjectConfigPatchInput(projectID string, input mediam
 		if input.Overview.Style != nil {
 			next.Overview.Style = strings.TrimSpace(*input.Overview.Style)
 		}
-		if input.Overview.LayerDefaults != nil {
-			next.Overview.LayerDefaults = normalizeLayerDefaults(input.Overview.LayerDefaults)
+		if input.Overview.CategoryDefaults != nil {
+			next.Overview.CategoryDefaults = normalizeCategoryDefaults(input.Overview.CategoryDefaults)
 		}
 	}
 	if reflect.DeepEqual(next, config) {
@@ -102,26 +102,26 @@ func mcpProjectConfigFromManifest(manifest shared.ProjectManifestFile) mediamcp.
 		Name:          manifest.Name,
 		Description:   manifest.Description,
 		Overview: mediamcp.ProjectOverviewConfig{
-			Style:         manifest.Overview.Style,
-			LayerDefaults: normalizeLayerDefaults(manifest.Overview.LayerDefaults),
+			Style:            manifest.Overview.Style,
+			CategoryDefaults: normalizeCategoryDefaults(manifest.Overview.CategoryDefaults),
 		},
 		CreatedAt: manifest.CreatedAt,
 	}
 }
 
-// normalizeLayerDefaults trims and drops empty entries; returns nil when empty.
-func normalizeLayerDefaults(defaults map[string]string) map[string]string {
+// normalizeCategoryDefaults trims and drops empty entries; returns nil when empty.
+func normalizeCategoryDefaults(defaults map[string]string) map[string]string {
 	if len(defaults) == 0 {
 		return nil
 	}
 	normalized := map[string]string{}
-	for layer, presetID := range defaults {
-		layer = strings.TrimSpace(layer)
+	for category, presetID := range defaults {
+		category = strings.TrimSpace(category)
 		presetID = strings.TrimSpace(presetID)
-		if layer == "" || presetID == "" {
+		if category == "" || presetID == "" {
 			continue
 		}
-		normalized[layer] = presetID
+		normalized[category] = presetID
 	}
 	if len(normalized) == 0 {
 		return nil
@@ -136,8 +136,8 @@ func projectManifestFromMCPConfig(config mediamcp.ProjectConfig) shared.ProjectM
 		Name:          strings.TrimSpace(config.Name),
 		Description:   strings.TrimSpace(config.Description),
 		Overview: shared.ProjectManifestOverviewFile{
-			Style:         strings.TrimSpace(config.Overview.Style),
-			LayerDefaults: normalizeLayerDefaults(config.Overview.LayerDefaults),
+			Style:            strings.TrimSpace(config.Overview.Style),
+			CategoryDefaults: normalizeCategoryDefaults(config.Overview.CategoryDefaults),
 		},
 		CreatedAt: strings.TrimSpace(config.CreatedAt),
 	}

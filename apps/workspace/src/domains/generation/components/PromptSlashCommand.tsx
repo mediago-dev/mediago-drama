@@ -8,7 +8,7 @@ import "@/styles/tiptap-prompt-slash.css";
 
 export interface PromptInsertItem {
 	id: string;
-	layerLabel: string;
+	categoryLabel: string;
 	name: string;
 	prompt: string;
 	sourceLabel?: string;
@@ -161,7 +161,9 @@ const PromptSlashOptions: React.FC<{
 							<span className="prompt-slash-option-body">
 								<span className="prompt-slash-option-title">{item.name}</span>
 								<span className="prompt-slash-option-meta">
-									{item.sourceLabel ? `${item.layerLabel} · ${item.sourceLabel}` : item.layerLabel}
+									{item.sourceLabel
+										? `${item.categoryLabel} · ${item.sourceLabel}`
+										: item.categoryLabel}
 								</span>
 								<span className="prompt-slash-option-preview">{promptPreview(item.prompt)}</span>
 							</span>
@@ -183,7 +185,7 @@ export const filterPromptInsertItems = (items: PromptInsertItem[], query: string
 
 	return items
 		.filter((item) =>
-			[item.name, item.layerLabel, item.sourceLabel ?? "", item.prompt].some((value) =>
+			[item.name, item.categoryLabel, item.sourceLabel ?? "", item.prompt].some((value) =>
 				normalizePromptSearchText(value).includes(normalizedQuery),
 			),
 		)
@@ -234,7 +236,7 @@ const groupPromptInsertItems = (items: PromptInsertItem[]): PromptInsertGroup[] 
 	const groupById = new Map<string, PromptInsertGroup>();
 
 	items.forEach((item, index) => {
-		const label = item.layerLabel || "提示词";
+		const label = item.categoryLabel || "提示词";
 		let group = groupById.get(label);
 
 		if (!group) {
@@ -264,7 +266,7 @@ const promptSlashSelectedGroupIndex = (groups: PromptInsertGroup[], selectedInde
 };
 
 const promptSlashItemIcon = (item: PromptInsertItem) =>
-	item.layerLabel === "风格" ? Sparkles : Library;
+	item.categoryLabel === "风格" ? Sparkles : Library;
 
 const promptPreview = (prompt: string) =>
 	prompt

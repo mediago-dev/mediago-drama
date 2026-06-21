@@ -1,13 +1,13 @@
 import httpClient from "@/shared/lib/http";
-import type { PromptLayer } from "@/domains/generation/api/prompt-presets";
+import type { PromptPresetCategory } from "@/domains/generation/api/prompt-presets";
 import type {
 	CreateWorkspaceProjectRequest as GeneratedCreateWorkspaceProjectRequest,
 	ProjectBrief,
 	ProjectBriefPatch,
 } from "@/api/types/documents";
 
-// 项目每层默认预设：层 → 预设 id。
-export type ProjectLayerDefaults = Partial<Record<PromptLayer, string>>;
+// 项目每个提示词分类的默认预设：分类 → 预设 id。
+export type ProjectCategoryDefaults = Partial<Record<PromptPresetCategory, string>>;
 
 export const projectsKey = "/projects";
 
@@ -38,7 +38,7 @@ export interface WorkspaceProjectsPayload {
 
 export interface ProjectOverviewConfig {
 	style: string;
-	layerDefaults?: ProjectLayerDefaults;
+	categoryDefaults?: ProjectCategoryDefaults;
 }
 
 export interface ProjectConfig {
@@ -52,7 +52,7 @@ export interface ProjectConfig {
 
 export interface ProjectOverviewConfigPatch {
 	style?: string | null;
-	layerDefaults?: ProjectLayerDefaults | null;
+	categoryDefaults?: ProjectCategoryDefaults | null;
 }
 
 export interface ProjectConfigPatch {
@@ -163,7 +163,7 @@ const normalizeProjectConfig = (config: Partial<ProjectConfig> | undefined): Pro
 	description: config?.description ?? "",
 	overview: {
 		style: config?.overview?.style ?? "",
-		layerDefaults: config?.overview?.layerDefaults ?? {},
+		categoryDefaults: config?.overview?.categoryDefaults ?? {},
 	},
 	createdAt: config?.createdAt ?? "",
 });

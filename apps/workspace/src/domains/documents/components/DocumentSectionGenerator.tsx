@@ -28,7 +28,7 @@ import {
 	type MediaGenerationWorkspaceViewMode,
 } from "@/domains/generation/components/MediaGenerationWorkspace";
 import { PromptEditor, type PromptEditorProps } from "@/domains/generation/components/PromptEditor";
-import { taskTypeForCategory } from "@/domains/generation/lib/prompt-layers";
+import { taskTypeForCategory } from "@/domains/generation/lib/prompt-categories";
 import {
 	mentionReferenceKey,
 	parseMentionsFromMarkdown,

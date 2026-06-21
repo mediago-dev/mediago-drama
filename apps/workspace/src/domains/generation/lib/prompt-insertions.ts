@@ -1,29 +1,32 @@
-import type { GenerationKind } from "@/domains/generation/api/generation";
-import type { PromptLayer, PromptPreset } from "@/domains/generation/api/prompt-presets";
+import type { PromptCategory } from "@/domains/generation/api/prompt-categories";
+import type { PromptPreset } from "@/domains/generation/api/prompt-presets";
 import type { PromptInsertItem } from "@/domains/generation/components/PromptSlashCommand";
-import { promptLayerLabels } from "@/domains/generation/lib/prompt-layers";
-
-const promptInsertLayerOrder: PromptLayer[] = ["style", "extra"];
+import {
+	promptCategoryLabel,
+	promptCategoryOrder,
+} from "@/domains/generation/lib/prompt-categories";
 
 export const promptInsertItemsFromPresets = (
 	presets: PromptPreset[],
-	kind: GenerationKind,
+	categories: PromptCategory[] = [],
 ): PromptInsertItem[] =>
-	promptInsertLayerOrder.flatMap((layer) =>
-		presets
-			.filter((preset) => preset.layer === layer)
-			.filter((preset) => shouldExposePromptPreset(preset, kind))
-			.map((preset) => ({
-				id: preset.id,
-				layerLabel: promptLayerLabels[preset.layer] ?? preset.layer,
-				name: preset.name,
-				prompt: preset.prompt,
-				sourceLabel: preset.source === "builtin" ? "内置" : "用户",
-			})),
-	);
+	presets
+		.filter((preset) => preset.prompt.trim())
+		.slice()
+		.sort(comparePromptPresetsForInsertion)
+		.map((preset) => ({
+			id: preset.id,
+			categoryLabel: promptCategoryLabel(preset.category, categories),
+			name: preset.name,
+			prompt: preset.prompt,
+			sourceLabel: preset.source === "builtin" ? "内置" : "用户",
+		}));
 
-const shouldExposePromptPreset = (preset: PromptPreset, kind: GenerationKind) => {
-	if (!preset.prompt.trim()) return false;
-	if (preset.layer === "style") return true;
-	return !preset.kind || preset.kind === kind;
+const comparePromptPresetsForInsertion = (left: PromptPreset, right: PromptPreset) => {
+	const categoryDelta = promptCategoryOrder(left.category) - promptCategoryOrder(right.category);
+	if (categoryDelta !== 0) return categoryDelta;
+	if (left.category !== right.category)
+		return left.category.localeCompare(right.category, "zh-Hans-CN");
+	if (left.name !== right.name) return left.name.localeCompare(right.name, "zh-Hans-CN");
+	return left.id.localeCompare(right.id, "zh-Hans-CN");
 };

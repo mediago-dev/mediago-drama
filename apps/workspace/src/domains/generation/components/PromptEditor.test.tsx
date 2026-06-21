@@ -13,14 +13,14 @@ import {
 const slashItems: PromptInsertItem[] = [
 	{
 		id: "cinematic-style",
-		layerLabel: "风格",
+		categoryLabel: "风格",
 		name: "电影感柔光",
 		prompt: "**电影感柔光**\n\n- 保持自然肤色\n- 低对比暖光",
 		sourceLabel: "内置",
 	},
 	{
 		id: "character-extra",
-		layerLabel: "其他",
+		categoryLabel: "其他",
 		name: "角色多视图",
 		prompt: "同一角色三视图，正面、侧面、背面保持服饰一致。",
 		sourceLabel: "用户",
@@ -110,7 +110,7 @@ describe("PromptEditor", () => {
 			slashItems[0],
 			{
 				id: "watercolor-style",
-				layerLabel: "风格",
+				categoryLabel: "风格",
 				name: "水彩",
 				prompt: "水彩质感。",
 				sourceLabel: "内置",

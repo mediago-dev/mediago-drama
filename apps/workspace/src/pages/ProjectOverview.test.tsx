@@ -26,7 +26,7 @@ const projectConfig: ProjectConfig = {
 	createdAt: "2026-06-19T02:08:41.000Z",
 	description: "",
 	name: "222",
-	overview: { layerDefaults: {}, style: "" },
+	overview: { categoryDefaults: {}, style: "" },
 	projectId: "project-a",
 	schemaVersion: 1,
 };

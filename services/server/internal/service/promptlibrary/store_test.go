@@ -42,20 +42,44 @@ func TestStoreSeedsBuiltinPromptEntriesIntoDatabase(t *testing.T) {
 func TestStoreListFiltersPromptEntries(t *testing.T) {
 	store, _ := newTestStore(t, testDefaultsFS())
 
-	imagePrompts, err := store.List(context.Background(), Filter{Kind: "image"})
+	extraPrompts, err := store.List(context.Background(), Filter{Category: categoryExtra})
 	if err != nil {
-		t.Fatalf("List(kind=image) error = %v", err)
+		t.Fatalf("List(category=extra) error = %v", err)
 	}
-	if len(imagePrompts) != 2 {
-		t.Fatalf("imagePrompts = %#v, want image prompts", imagePrompts)
+	if !hasPromptEntry(extraPrompts, "character-multi-view") {
+		t.Fatalf("extraPrompts = %#v, want character prompt", extraPrompts)
+	}
+}
+
+func TestStoreListsAndCreatesPromptCategories(t *testing.T) {
+	store, repo := newTestStore(t, testDefaultsFS())
+
+	categories, err := store.ListCategories(context.Background())
+	if err != nil {
+		t.Fatalf("ListCategories() error = %v", err)
+	}
+	if !hasPromptCategory(categories, categoryStyle) || !hasPromptCategory(categories, categoryExtra) {
+		t.Fatalf("categories = %#v, want built-in prompt categories", categories)
 	}
 
-	extraImagePrompts, err := store.List(context.Background(), Filter{Layer: layerExtra, Kind: "image"})
+	created, err := store.CreateCategory(context.Background(), PromptCategory{Label: "镜头"})
 	if err != nil {
-		t.Fatalf("List(layer=extra, kind=image) error = %v", err)
+		t.Fatalf("CreateCategory() error = %v", err)
 	}
-	if !hasPromptEntry(extraImagePrompts, "character-multi-view") {
-		t.Fatalf("extraImagePrompts = %#v, want character prompt", extraImagePrompts)
+	if created.ID != "镜头" || created.Label != "镜头" || created.Source != SourceUser || created.Builtin {
+		t.Fatalf("created = %#v, want user category", created)
+	}
+
+	model, err := repo.GetPromptCategory("镜头")
+	if err != nil {
+		t.Fatalf("GetPromptCategory() error = %v", err)
+	}
+	if model.Label != "镜头" || model.Source != string(SourceUser) || model.Builtin {
+		t.Fatalf("model = %#v, want stored user category", model)
+	}
+
+	if _, err := store.CreateCategory(context.Background(), PromptCategory{Label: categoryStyleLabel}); !errors.Is(err, ErrPromptCategoryExists) {
+		t.Fatalf("CreateCategory(duplicate label) error = %v, want ErrPromptCategoryExists", err)
 	}
 }
 
@@ -66,7 +90,6 @@ func TestStoreUpdateBuiltinCreatesDatabaseOverrideAndResetRestoresDefault(t *tes
 		ID:     "image-concept",
 		Name:   "自定义概念图",
 		Type:   "image",
-		Kind:   "image",
 		Prompt: "用户覆盖。",
 	})
 	if err != nil {
@@ -100,24 +123,25 @@ func TestStoreCreateUpdateAndDeleteUserPromptEntry(t *testing.T) {
 	store, _ := newTestStore(t, testDefaultsFS())
 
 	created, err := store.Create(context.Background(), PromptEntry{
-		ID:     "noir-image",
-		Name:   "黑色电影图像",
-		Type:   "image",
-		Prompt: "低调光，强反差。",
+		ID:       "noir-image",
+		Name:     "黑色电影图像",
+		Category: "镜头",
+		Type:     "image",
+		Prompt:   "低调光，强反差。",
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	if created.Source != SourceUser || created.Builtin || created.Kind != "image" {
-		t.Fatalf("created = %#v, want user image prompt with default kind", created)
+	if created.Source != SourceUser || created.Builtin || created.Category != "镜头" {
+		t.Fatalf("created = %#v, want user image prompt with custom category", created)
 	}
 
 	updated, err := store.Update(context.Background(), "noir-image", PromptEntry{
-		ID:     "noir-image",
-		Name:   "黑色电影图像",
-		Type:   "image",
-		Kind:   "image",
-		Prompt: "雨夜，强反差。",
+		ID:       "noir-image",
+		Name:     "黑色电影图像",
+		Category: "镜头",
+		Type:     "image",
+		Prompt:   "雨夜，强反差。",
 	})
 	if err != nil {
 		t.Fatalf("Update() error = %v", err)
@@ -134,37 +158,18 @@ func TestStoreCreateUpdateAndDeleteUserPromptEntry(t *testing.T) {
 	}
 }
 
-func TestStoreCollapsesLegacyLayersToExtra(t *testing.T) {
+func TestStoreReadsLegacyFrontmatterLayersAsCategories(t *testing.T) {
 	store, _ := newTestStore(t, testDefaultsFS())
-
-	created, err := store.Create(context.Background(), PromptEntry{
-		ID:     "legacy-tone",
-		Name:   "旧语气层",
-		Layer:  layerTone,
-		Kind:   "image",
-		Prompt: "保持克制语气。",
-	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
-	if created.Layer != layerExtra {
-		t.Fatalf("created.Layer = %q, want %q", created.Layer, layerExtra)
+	store.defaults = fstest.MapFS{
+		"prompt-library/builtin/legacy-tone.md": &fstest.MapFile{Data: []byte(testLegacyPromptEntryRaw("legacy-tone", "旧语气层", legacyLayerTone, "", "保持克制语气。"))},
 	}
 
-	extraEntries, err := store.List(context.Background(), Filter{Layer: layerExtra})
+	extraEntries, err := store.List(context.Background(), Filter{Category: categoryExtra})
 	if err != nil {
-		t.Fatalf("List(layer=extra) error = %v", err)
+		t.Fatalf("List(category=extra) error = %v", err)
 	}
 	if !hasPromptEntry(extraEntries, "legacy-tone") {
 		t.Fatalf("extraEntries = %#v, want legacy-tone", extraEntries)
-	}
-
-	legacyEntries, err := store.List(context.Background(), Filter{Layer: layerSceneStyle})
-	if err != nil {
-		t.Fatalf("List(layer=scene_style) error = %v", err)
-	}
-	if !hasPromptEntry(legacyEntries, "legacy-tone") {
-		t.Fatalf("legacyEntries = %#v, want legacy filter to map to extra", legacyEntries)
 	}
 }
 
@@ -184,7 +189,7 @@ func TestStoreSyncsChangedMarkdownForUnmodifiedBuiltins(t *testing.T) {
 	}
 
 	store.defaults = fstest.MapFS{
-		"prompt-library/builtin/image-concept.md": &fstest.MapFile{Data: []byte(testPromptEntryRaw("image-concept", "新版概念图", "image", "image", "", "新版内置提示"))},
+		"prompt-library/builtin/image-concept.md": &fstest.MapFile{Data: []byte(testPromptEntryRaw("image-concept", "新版概念图", categoryExtra, "image", "新版内置提示"))},
 	}
 	updated, err := store.Get(context.Background(), "image-concept")
 	if err != nil {
@@ -199,10 +204,9 @@ func TestStoreRejectsInvalidPromptEntries(t *testing.T) {
 	store, _ := newTestStore(t, testDefaultsFS())
 
 	cases := []PromptEntry{
-		{ID: "../bad", Name: "Bad", Type: "image", Kind: "image", Prompt: "Bad"},
-		{ID: "bad-type", Name: "Bad", Type: "audio", Kind: "image", Prompt: "Bad"},
-		{ID: "bad-kind", Name: "Bad", Type: "image", Kind: "audio", Prompt: "Bad"},
-		{ID: "bad-category", Name: "Bad", Type: "image", Kind: "image", Category: "../bad", Prompt: "Bad"},
+		{ID: "../bad", Name: "Bad", Type: "image", Prompt: "Bad"},
+		{ID: "bad-type", Name: "Bad", Type: "audio", Prompt: "Bad"},
+		{ID: "bad-category", Name: "Bad", Type: "image", Category: "../bad", Prompt: "Bad"},
 	}
 	for _, entry := range cases {
 		_, err := store.Create(context.Background(), entry)
@@ -227,7 +231,7 @@ func TestNewServiceLoadsBuiltinPromptEntries(t *testing.T) {
 		t.Fatalf("OpenSettingsRepositories() error = %v", err)
 	}
 	store := NewServiceWithRepository(configassets.PromptLibrary, builtinPromptLibraryDir, repos.PromptLibrary, nil)
-	entries, err := store.List(context.Background(), Filter{Layer: layerExtra, Kind: "image"})
+	entries, err := store.List(context.Background(), Filter{Category: categoryExtra})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -248,14 +252,14 @@ func newTestStore(t *testing.T, defaults fstest.MapFS) (*Service, *repository.Pr
 
 func testDefaultsFS() fstest.MapFS {
 	return fstest.MapFS{
-		"prompt-library/builtin/image-concept.md":        &fstest.MapFile{Data: []byte(testPromptEntryRaw("image-concept", "概念图", "image", "image", "", "内置提示"))},
-		"prompt-library/builtin/video-shot.md":           &fstest.MapFile{Data: []byte(testPromptEntryRaw("video-shot", "镜头运动", "video", "video", "", "视频提示"))},
-		"prompt-library/builtin/character-multi-view.md": &fstest.MapFile{Data: []byte(testPromptEntryRaw("character-multi-view", "多视图设定图", "image", "image", "character", "生成角色设定多视图。"))},
-		"prompt-library/builtin/text-outline.md":         &fstest.MapFile{Data: []byte(testPromptEntryRaw("text-outline", "文本扩写", "", "text", "screenplay", "扩写文本。"))},
+		"prompt-library/builtin/image-concept.md":        &fstest.MapFile{Data: []byte(testPromptEntryRaw("image-concept", "概念图", categoryExtra, "image", "内置提示"))},
+		"prompt-library/builtin/video-shot.md":           &fstest.MapFile{Data: []byte(testPromptEntryRaw("video-shot", "镜头运动", categoryExtra, "video", "视频提示"))},
+		"prompt-library/builtin/character-multi-view.md": &fstest.MapFile{Data: []byte(testPromptEntryRaw("character-multi-view", "多视图设定图", categoryExtra, "image", "生成角色设定多视图。"))},
+		"prompt-library/builtin/text-outline.md":         &fstest.MapFile{Data: []byte(testPromptEntryRaw("text-outline", "文本扩写", categoryExtra, "", "扩写文本。"))},
 	}
 }
 
-func testPromptEntryRaw(id string, name string, promptType string, kind string, category string, prompt string) string {
+func testPromptEntryRaw(id string, name string, category string, promptType string, prompt string) string {
 	categoryLine := ""
 	if category != "" {
 		categoryLine = "category: " + category + "\n"
@@ -264,8 +268,18 @@ func testPromptEntryRaw(id string, name string, promptType string, kind string, 
 id: ` + id + `
 name: ` + name + `
 type: ` + promptType + `
-kind: ` + kind + `
 ` + categoryLine + `---
+` + prompt + `
+`
+}
+
+func testLegacyPromptEntryRaw(id string, name string, layer string, promptType string, prompt string) string {
+	return `---
+id: ` + id + `
+name: ` + name + `
+layer: ` + layer + `
+type: ` + promptType + `
+---
 ` + prompt + `
 `
 }
@@ -273,6 +287,15 @@ kind: ` + kind + `
 func hasPromptEntry(entries []PromptEntry, id string) bool {
 	for _, entry := range entries {
 		if entry.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPromptCategory(categories []PromptCategory, id string) bool {
+	for _, category := range categories {
+		if category.ID == id {
 			return true
 		}
 	}

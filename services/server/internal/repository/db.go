@@ -38,6 +38,8 @@ const (
 	generationTaskStatusNormalizeMigrationKey  = "settings.generation_tasks.normalize_status.v1"
 	generationTaskAssetsBackfillMigrationKey   = "settings.generation_task_assets.backfill.v1"
 	projectSelectedAssetsBackfillMigrationKey  = "settings.project_selected_assets.backfill.v1"
+	promptLibraryCategoryMigrationKey          = "settings.prompt_library_entries.layer_to_category.v1"
+	promptLibraryDropKindMigrationKey          = "settings.prompt_library_entries.drop_kind.v1"
 )
 
 // OpenGormSQLite opens a SQLite database with local server pragmas.
@@ -405,8 +407,66 @@ func EnsureGenerationNotificationSchema(db *gorm.DB) error {
 
 // EnsurePromptLibrarySchema migrates prompt library tables.
 func EnsurePromptLibrarySchema(db *gorm.DB) error {
-	if err := db.AutoMigrate(&domain.PromptLibraryEntryModel{}); err != nil {
+	if err := runSchemaMigrationOnce(
+		db,
+		promptLibraryCategoryMigrationKey,
+		migratePromptLibraryLayerToCategory,
+	); err != nil {
+		return fmt.Errorf("migrating prompt library layer to category: %w", err)
+	}
+	if err := runSchemaMigrationOnce(
+		db,
+		promptLibraryDropKindMigrationKey,
+		dropPromptLibraryKindColumn,
+	); err != nil {
+		return fmt.Errorf("dropping prompt library kind column: %w", err)
+	}
+	if err := db.AutoMigrate(&domain.PromptCategoryModel{}, &domain.PromptLibraryEntryModel{}); err != nil {
 		return fmt.Errorf("initializing prompt library database: %w", err)
+	}
+	return nil
+}
+
+func migratePromptLibraryLayerToCategory(db *gorm.DB) error {
+	const tableName = "prompt_library_entries"
+	if !db.Migrator().HasTable(tableName) || !sqliteColumnExists(db, tableName, "layer") {
+		return nil
+	}
+	if !sqliteColumnExists(db, tableName, "category") {
+		if err := db.Exec("ALTER TABLE " + tableName + " ADD COLUMN category text NOT NULL DEFAULT ''").Error; err != nil {
+			return fmt.Errorf("adding prompt library category column: %w", err)
+		}
+	}
+	if err := db.Exec(`
+UPDATE prompt_library_entries
+SET category = CASE
+	WHEN trim(layer) IN ('scene_style', 'tone') THEN 'extra'
+	WHEN trim(layer) <> '' THEN trim(layer)
+	WHEN trim(category) <> '' THEN trim(category)
+	ELSE 'extra'
+END
+`).Error; err != nil {
+		return fmt.Errorf("copying prompt library layer values to category: %w", err)
+	}
+	if err := db.Exec("DROP INDEX IF EXISTS prompt_library_entries_layer_idx").Error; err != nil {
+		return fmt.Errorf("dropping prompt library layer index: %w", err)
+	}
+	if err := db.Exec("ALTER TABLE " + tableName + " DROP COLUMN layer").Error; err != nil {
+		return fmt.Errorf("dropping prompt library layer column: %w", err)
+	}
+	return nil
+}
+
+func dropPromptLibraryKindColumn(db *gorm.DB) error {
+	const tableName = "prompt_library_entries"
+	if !db.Migrator().HasTable(tableName) || !sqliteColumnExists(db, tableName, "kind") {
+		return nil
+	}
+	if err := db.Exec("DROP INDEX IF EXISTS prompt_library_entries_type_kind_idx").Error; err != nil {
+		return fmt.Errorf("dropping prompt library type/kind index: %w", err)
+	}
+	if err := db.Exec("ALTER TABLE " + tableName + " DROP COLUMN kind").Error; err != nil {
+		return fmt.Errorf("dropping prompt library kind column: %w", err)
 	}
 	return nil
 }

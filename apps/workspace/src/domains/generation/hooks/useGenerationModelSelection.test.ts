@@ -178,7 +178,7 @@ const catalog: GenerationModelsResponse = {
 const stylePreset: StylePreset = {
 	id: "preset-1",
 	name: "Preset",
-	layer: "style",
+	category: "style",
 	prompt: "high contrast",
 	source: "user",
 };

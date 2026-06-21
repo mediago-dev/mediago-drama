@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { promptLayerLabels, taskTypeForCategory } from "./prompt-layers";
+import { promptCategoryLabel, taskTypeForCategory } from "./prompt-categories";
 
 describe("taskTypeForCategory", () => {
 	it("maps document categories to task types", () => {
@@ -16,9 +16,15 @@ describe("taskTypeForCategory", () => {
 	});
 });
 
-describe("promptLayerLabels", () => {
+describe("promptCategoryLabel", () => {
 	it("keeps prompt preset groups readable in slash insertion", () => {
-		expect(promptLayerLabels.style).toBe("风格");
-		expect(promptLayerLabels.extra).toBe("其他");
+		expect(promptCategoryLabel("style")).toBe("风格");
+		expect(promptCategoryLabel("extra")).toBe("其他");
+		expect(promptCategoryLabel("镜头")).toBe("镜头");
+		expect(
+			promptCategoryLabel("extra", [
+				{ id: "extra", label: "通用", source: "builtin", builtin: true },
+			]),
+		).toBe("通用");
 	});
 });

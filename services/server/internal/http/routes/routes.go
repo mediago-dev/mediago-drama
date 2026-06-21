@@ -58,6 +58,8 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.POST("/projects", handlers.Projects.HandleCreateProject)
 	apiRoutes.GET("/prompt-templates", handlers.PromptTemplates.HandleListPromptTemplates)
 	apiRoutes.PUT("/prompt-templates/:id", handlers.PromptTemplates.HandlePutPromptTemplate)
+	apiRoutes.GET("/prompt-categories", handlers.PromptLibrary.HandleListCategories)
+	apiRoutes.POST("/prompt-categories", handlers.PromptLibrary.HandlePostCategory)
 	apiRoutes.GET("/prompt-presets", handlers.PromptLibrary.HandleListPrompts)
 	apiRoutes.POST("/prompt-presets", handlers.PromptLibrary.HandlePostPrompt)
 	apiRoutes.GET("/prompt-presets/:id", handlers.PromptLibrary.HandleGetPrompt)

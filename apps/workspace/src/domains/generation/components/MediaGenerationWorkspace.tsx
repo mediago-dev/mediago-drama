@@ -45,7 +45,7 @@ import {
 	type ReferenceSelectionShortcutGroup,
 	SecondaryParamsDropdown,
 } from "@/domains/generation/components/MediaGenerationDialogs";
-import type { GenerationTaskType } from "@/domains/generation/lib/prompt-layers";
+import type { GenerationTaskType } from "@/domains/generation/lib/prompt-categories";
 import {
 	entryPromptText,
 	mediaAssetIdFromGeneratedSource,

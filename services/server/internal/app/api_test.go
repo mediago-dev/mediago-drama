@@ -45,7 +45,30 @@ func TestAPIHandler(t *testing.T) {
 	})
 
 	t.Run("prompt library can be listed", func(t *testing.T) {
-		response := requestJSON(t, handler, http.MethodGet, "/api/v1/prompt-presets?layer=extra&kind=image", "")
+		categories := requestJSON(t, handler, http.MethodGet, "/api/v1/prompt-categories", "")
+		defer categories.Body.Close()
+		if categories.StatusCode != http.StatusOK {
+			t.Fatalf("categories status code = %d, want %d: %s", categories.StatusCode, http.StatusOK, readBody(t, categories.Body))
+		}
+		categoriesBody := readBody(t, categories.Body)
+		if !strings.Contains(categoriesBody, `"categories"`) ||
+			!strings.Contains(categoriesBody, `"id":"style"`) ||
+			!strings.Contains(categoriesBody, `"label":"风格"`) {
+			t.Fatalf("body = %s, want built-in prompt categories", categoriesBody)
+		}
+
+		createCategory := requestJSON(t, handler, http.MethodPost, "/api/v1/prompt-categories", `{"label":"镜头"}`)
+		defer createCategory.Body.Close()
+		if createCategory.StatusCode != http.StatusOK {
+			t.Fatalf("create category status code = %d, want %d: %s", createCategory.StatusCode, http.StatusOK, readBody(t, createCategory.Body))
+		}
+		createCategoryBody := readBody(t, createCategory.Body)
+		if !strings.Contains(createCategoryBody, `"id":"镜头"`) ||
+			!strings.Contains(createCategoryBody, `"source":"user"`) {
+			t.Fatalf("body = %s, want created user prompt category", createCategoryBody)
+		}
+
+		response := requestJSON(t, handler, http.MethodGet, "/api/v1/prompt-presets?category=extra", "")
 		defer response.Body.Close()
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("status code = %d, want %d: %s", response.StatusCode, http.StatusOK, readBody(t, response.Body))
@@ -54,12 +77,12 @@ func TestAPIHandler(t *testing.T) {
 		body := readBody(t, response.Body)
 		if !strings.Contains(body, `"prompts"`) ||
 			!strings.Contains(body, `"id":"character-multi-view"`) ||
-			!strings.Contains(body, `"type":"image"`) ||
-			!strings.Contains(body, `"kind":"image"`) {
+			!strings.Contains(body, `"category":"extra"`) ||
+			!strings.Contains(body, `"type":"image"`) {
 			t.Fatalf("body = %s, want filtered prompt library entries", body)
 		}
 
-		update := requestJSON(t, handler, http.MethodPut, "/api/v1/prompt-presets/character-multi-view", `{"id":"character-multi-view","name":"自定义多视图","layer":"extra","type":"image","kind":"image","category":"character","prompt":"用户覆盖提示词"}`)
+		update := requestJSON(t, handler, http.MethodPut, "/api/v1/prompt-presets/character-multi-view", `{"id":"character-multi-view","name":"自定义多视图","category":"extra","type":"image","prompt":"用户覆盖提示词"}`)
 		defer update.Body.Close()
 		if update.StatusCode != http.StatusOK {
 			t.Fatalf("update status code = %d, want %d: %s", update.StatusCode, http.StatusOK, readBody(t, update.Body))

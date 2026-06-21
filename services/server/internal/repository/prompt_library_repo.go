@@ -37,6 +37,53 @@ func (repo *PromptLibraryRepository) ListPromptLibraryEntries() ([]domain.Prompt
 	return models, nil
 }
 
+// ListPromptCategories returns all reusable generation prompt categories.
+func (repo *PromptLibraryRepository) ListPromptCategories() ([]domain.PromptCategoryModel, error) {
+	models := []domain.PromptCategoryModel{}
+	if err := repo.db.Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing prompt categories: %w", err)
+	}
+	return models, nil
+}
+
+// GetPromptCategory returns one reusable generation prompt category by ID.
+func (repo *PromptLibraryRepository) GetPromptCategory(id string) (domain.PromptCategoryModel, error) {
+	var model domain.PromptCategoryModel
+	err := repo.db.First(&model, "id = ?", strings.TrimSpace(id)).Error
+	if IsRecordNotFound(err) {
+		return domain.PromptCategoryModel{}, ErrRecordNotFound
+	}
+	if err != nil {
+		return domain.PromptCategoryModel{}, fmt.Errorf("getting prompt category: %w", err)
+	}
+	return model, nil
+}
+
+// CreatePromptCategory inserts one reusable generation prompt category.
+func (repo *PromptLibraryRepository) CreatePromptCategory(model domain.PromptCategoryModel) error {
+	if err := repo.db.Create(&model).Error; err != nil {
+		return fmt.Errorf("creating prompt category: %w", err)
+	}
+	return nil
+}
+
+// UpsertPromptCategory inserts or updates one reusable generation prompt category.
+func (repo *PromptLibraryRepository) UpsertPromptCategory(model domain.PromptCategoryModel) error {
+	err := repo.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"label",
+			"source",
+			"builtin",
+			"updated_at",
+		}),
+	}).Create(&model).Error
+	if err != nil {
+		return fmt.Errorf("upserting prompt category: %w", err)
+	}
+	return nil
+}
+
 // GetPromptLibraryEntry returns one reusable generation prompt by ID.
 func (repo *PromptLibraryRepository) GetPromptLibraryEntry(id string) (domain.PromptLibraryEntryModel, error) {
 	var model domain.PromptLibraryEntryModel
@@ -56,10 +103,8 @@ func (repo *PromptLibraryRepository) UpsertPromptLibraryEntry(model domain.Promp
 		Columns: []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"name",
-			"layer",
-			"type",
-			"kind",
 			"category",
+			"type",
 			"prompt",
 			"source",
 			"builtin",

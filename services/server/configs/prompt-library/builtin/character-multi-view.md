@@ -2,8 +2,7 @@
 id: character-multi-view
 name: 多视图设定图
 type: image
-kind: image
-category: character
+category: extra
 ---
 用当前选择的图片，生成角色设定多视图：
 
