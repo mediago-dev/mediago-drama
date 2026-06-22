@@ -495,7 +495,7 @@ func (service *GenerationTaskService) upsertSelectedAssetRecord(projectID string
 			asset = task.Assets[assetSliceIndex]
 			model.SourceTaskID = domain.StringPtr(task.ID)
 			model.SourceSlotIndex = assetIndex
-			sourceDocumentID, resourceID := selectedAssetResourceFromTaskSection(task.SectionID)
+			sourceDocumentID, resourceID := selectedAssetResourceFromTask(task)
 			if domain.StringValue(model.SourceDocumentID) == "" && sourceDocumentID != "" {
 				model.SourceDocumentID = domain.StringPtr(sourceDocumentID)
 			}
@@ -670,6 +670,7 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 		ProviderTaskID:  task.ProviderTaskID,
 		ConversationID:  domain.StringPtr(task.ConversationID),
 		ProjectID:       domain.StringPtr(GenerationProjectIDForRequest(task.ProjectID, "")),
+		DocumentID:      domain.StringPtr(task.DocumentID),
 		SectionID:       domain.StringPtr(task.SectionID),
 		CapabilityID:    domain.StringPtr(task.CapabilityID),
 		Kind:            task.Kind,
@@ -1060,6 +1061,7 @@ func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRec
 		ProviderTaskID: model.ProviderTaskID,
 		ConversationID: domain.StringValue(model.ConversationID),
 		ProjectID:      domain.StringValue(model.ProjectID),
+		DocumentID:     domain.StringValue(model.DocumentID),
 		SectionID:      domain.StringValue(model.SectionID),
 		CapabilityID:   domain.StringValue(model.CapabilityID),
 		Kind:           model.Kind,
@@ -1234,15 +1236,17 @@ func projectSelectedAssetModelsFromRecord(task GenerationTaskRecord) []domain.Pr
 			continue
 		}
 		row := domain.ProjectSelectedAssetModel{
-			ProjectID:       projectID,
-			ResourceType:    resourceType,
-			ResourceTitle:   domain.StringPtr(asset.Title),
-			AssetID:         firstNonEmpty(asset.AssetID, libraryAssetIDFromGenerationAssetURL(asset.URL)),
-			SourceType:      domain.StringPtr("generated"),
-			SourceTaskID:    domain.StringPtr(task.ID),
-			SourceSlotIndex: slotIndex,
-			CreatedAt:       domain.TimeFromString(task.CreatedAt),
-			UpdatedAt:       domain.TimeFromString(task.UpdatedAt),
+			ProjectID:        projectID,
+			ResourceType:     resourceType,
+			ResourceTitle:    domain.StringPtr(asset.Title),
+			AssetID:          firstNonEmpty(asset.AssetID, libraryAssetIDFromGenerationAssetURL(asset.URL)),
+			SourceType:       domain.StringPtr("generated"),
+			SourceTaskID:     domain.StringPtr(task.ID),
+			SourceSlotIndex:  slotIndex,
+			SourceDocumentID: domain.StringPtr(task.DocumentID),
+			ResourceID:       domain.StringPtr(task.SectionID),
+			CreatedAt:        domain.TimeFromString(task.CreatedAt),
+			UpdatedAt:        domain.TimeFromString(task.UpdatedAt),
 		}
 		if strings.TrimSpace(row.AssetID) == "" {
 			continue
@@ -1292,15 +1296,17 @@ func projectSelectedAssetModelFromTaskAsset(task GenerationTaskRecord, assetInde
 		return domain.ProjectSelectedAssetModel{}, false
 	}
 	row := domain.ProjectSelectedAssetModel{
-		ProjectID:       projectID,
-		ResourceType:    resourceType,
-		ResourceTitle:   domain.StringPtr(asset.Title),
-		AssetID:         firstNonEmpty(asset.AssetID, libraryAssetIDFromGenerationAssetURL(asset.URL)),
-		SourceType:      domain.StringPtr("generated"),
-		SourceTaskID:    domain.StringPtr(task.ID),
-		SourceSlotIndex: assetIndex,
-		CreatedAt:       domain.TimeFromString(task.CreatedAt),
-		UpdatedAt:       domain.TimeFromString(task.UpdatedAt),
+		ProjectID:        projectID,
+		ResourceType:     resourceType,
+		ResourceTitle:    domain.StringPtr(asset.Title),
+		AssetID:          firstNonEmpty(asset.AssetID, libraryAssetIDFromGenerationAssetURL(asset.URL)),
+		SourceType:       domain.StringPtr("generated"),
+		SourceTaskID:     domain.StringPtr(task.ID),
+		SourceSlotIndex:  assetIndex,
+		SourceDocumentID: domain.StringPtr(task.DocumentID),
+		ResourceID:       domain.StringPtr(task.SectionID),
+		CreatedAt:        domain.TimeFromString(task.CreatedAt),
+		UpdatedAt:        domain.TimeFromString(task.UpdatedAt),
 	}
 	if strings.TrimSpace(row.AssetID) == "" {
 		return domain.ProjectSelectedAssetModel{}, false
@@ -1406,12 +1412,13 @@ func selectedAssetRequestSourceIndex(request UpdateSelectedGenerationAssetReques
 	return -1
 }
 
-func selectedAssetResourceFromTaskSection(sectionID string) (string, string) {
-	parts := strings.SplitN(strings.TrimSpace(sectionID), ":", 2)
-	if len(parts) != 2 {
+func selectedAssetResourceFromTask(task GenerationTaskRecord) (string, string) {
+	documentID := strings.TrimSpace(task.DocumentID)
+	sectionID := strings.TrimSpace(task.SectionID)
+	if documentID == "" || sectionID == "" {
 		return "", ""
 	}
-	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	return documentID, sectionID
 }
 
 func normalizeProjectSelectedAssetSourceType(value string) string {

@@ -49,6 +49,8 @@ export {
 	writeScopedGenerationMessages,
 } from "./generationHistory";
 export type { ChatMessage, ChatMessageDetail, GenerationEntry } from "./generationTypes";
+export { filterGenerationTasksForScope, generationTaskScopeKey } from "./generationTaskScope";
+export type { GenerationTaskScope } from "./generationTaskScope";
 export {
 	emptyGenerationModelSelection,
 	generationParamsWithRequestDetails,

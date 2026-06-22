@@ -166,6 +166,7 @@ export const useGenerationSubmit = ({
 			const requestSectionId = overrides.sectionId ?? sectionId;
 			const requestTaskType = overrides.taskType ?? taskType;
 			const requestDocumentContext = overrides.documentContext ?? documentContext;
+			const requestDocumentId = requestDocumentContext?.documentId?.trim() ?? "";
 			const shouldResolvePromptFromDocumentContext =
 				Boolean(requestDocumentContext) &&
 				useRawPrompt &&
@@ -269,6 +270,7 @@ export const useGenerationSubmit = ({
 							conversationId: conversationId ?? undefined,
 							scopeId: resolvedConversationScopeId,
 							projectId: mediaAssetProjectId || undefined,
+							documentId: requestDocumentId || undefined,
 							sectionId: requestSectionId || undefined,
 							documentContext: requestDocumentContext ?? undefined,
 							capabilityId: requestTaskType,
@@ -356,6 +358,7 @@ export const useGenerationSubmit = ({
 					conversationId: conversationId ?? undefined,
 					scopeId: resolvedConversationScopeId,
 					projectId: mediaAssetProjectId || undefined,
+					documentId: requestDocumentId || undefined,
 					sectionId: requestSectionId || undefined,
 					documentContext: requestDocumentContext ?? undefined,
 					capabilityId: requestTaskType,
@@ -478,6 +481,7 @@ export const useGenerationSubmit = ({
 			promptRef,
 			requireConversation,
 			resolvedConversationScopeId,
+			sectionId,
 			taskType,
 			selectedFamily.id,
 			selectedParams,

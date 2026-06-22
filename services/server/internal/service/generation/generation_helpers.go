@@ -431,11 +431,16 @@ func GenerationTaskFromMessage(
 	route coregeneration.ModelRoute,
 	response GenerationMessageResponse,
 ) GenerationTaskRecord {
+	documentID := strings.TrimSpace(request.DocumentID)
+	if documentID == "" && request.DocumentContext != nil {
+		documentID = strings.TrimSpace(request.DocumentContext.DocumentID)
+	}
 	return GenerationTaskRecord{
 		ID:                response.ID,
 		ProviderTaskID:    generationProviderTaskIDForResponse(route, response),
 		ConversationID:    request.ConversationID,
 		ProjectID:         GenerationProjectIDForRequest(request.ProjectID, request.ScopeID),
+		DocumentID:        documentID,
 		SectionID:         strings.TrimSpace(request.SectionID),
 		CapabilityID:      GenerationCapabilityIDForRequest(request.CapabilityID, route),
 		Kind:              string(route.Kind),

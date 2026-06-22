@@ -415,6 +415,7 @@ describe("useGenerationSubmit", () => {
 
 		expect(sendGenerationMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
+				documentId: "doc-a",
 				documentContext: {
 					projectId: "project-1",
 					documentId: "doc-a",
@@ -452,6 +453,7 @@ describe("useGenerationSubmit", () => {
 
 		expect(sendGenerationMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
+				documentId: "doc-a",
 				prompt: "用户改过的提示词",
 			}),
 		);

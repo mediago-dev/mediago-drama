@@ -369,12 +369,13 @@ func TestGenerationServiceUpdateSelectedGenerationAssetFromTask(t *testing.T) {
 	service := NewGenerationTaskService(dbPath, nil)
 	workflow := &GenerationService{generationTasks: service}
 	if err := service.Upsert(GenerationTaskRecord{
-		ID:        taskID,
-		ProjectID: projectID,
-		SectionID: "character-doc:section-chenyuan",
-		Kind:      "image",
-		Status:    "completed",
-		Prompt:    "character",
+		ID:         taskID,
+		ProjectID:  projectID,
+		DocumentID: "character-doc",
+		SectionID:  "section-chenyuan",
+		Kind:       "image",
+		Status:     "completed",
+		Prompt:     "character",
 		Assets: []GenerationAsset{
 			{Kind: "image", URL: "/api/v1/media-assets/image-a/content", MIMEType: "image/png"},
 		},

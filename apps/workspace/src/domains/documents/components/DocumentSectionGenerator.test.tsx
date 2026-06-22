@@ -113,6 +113,7 @@ describe("DocumentSectionGenerator", () => {
 		expect(capturedWorkspaceProps?.kind).toBe("image");
 		expect(capturedWorkspaceProps?.onToggleAsset).toBeTruthy();
 		expect(capturedWorkspaceProps?.projectId).toBe("project-a");
+		expect(capturedWorkspaceProps?.sectionId).toBe("section_current");
 		expect(capturedWorkspaceProps?.selectedAssetResourceId).toBe("section_current");
 		expect(capturedWorkspaceProps?.selectedAssetSourceDocumentId).toBe("story-doc");
 		expect(capturedWorkspaceProps?.selectedAssetTitle).toBe("第 01 组");
@@ -200,6 +201,34 @@ describe("DocumentSectionGenerator", () => {
 		expect(capturedWorkspaceProps?.selectedAssetTitle).toBe("第 01 组");
 		expect(capturedWorkspaceProps?.onToggleAsset).toBeTruthy();
 		expect(capturedWorkspaceProps?.historyScopeId).toContain(":video");
+	});
+
+	it("opens video generation with the latest section title and mention references", () => {
+		const staleSection: MarkdownSectionContext = {
+			...section,
+			markdown: "动作：沈阔 从水中下沉。",
+			plainText: "动作：沈阔 从水中下沉。",
+			prompt: "动作：沈阔 从水中下沉。",
+		};
+
+		render(
+			<DocumentSectionGenerator
+				kind="video"
+				section={staleSection}
+				selectedAssetKeys={[]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		expect(capturedWorkspaceProps?.kind).toBe("video");
+		expect(capturedWorkspaceProps?.initialPrompt).toContain("## 第 01 组");
+		expect(capturedWorkspaceProps?.initialPrompt).toContain(
+			"@[沈阔（普通状态）](mention://character-doc/section_character?kind=section&category=character)",
+		);
+		expect(screen.getByTestId("reference-preview-count").textContent).toBe("1");
 	});
 });
 

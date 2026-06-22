@@ -37,6 +37,7 @@ describe("generation notification store", () => {
 		expect(opened?.id).toBe(notification.id);
 		expect(useGenerationNotificationStore.getState().notifications[0]?.readAt).toBeTruthy();
 		expect(useGenerationNotificationStore.getState().pendingOpenRequest).toMatchObject({
+			kind: "image",
 			notificationId: notification.id,
 			target: { documentId: "doc-a", projectId: "project-a" },
 		});
@@ -52,10 +53,35 @@ describe("generation notification store", () => {
 			expect.objectContaining({
 				id: "notification-1",
 				sourceTaskId: "task-1",
+				kind: "image",
 				readAt: null,
 				description: "第一集 · 画面 已生成图片。",
 			}),
 		]);
+	});
+
+	it("keeps the server task kind when opening video notifications", () => {
+		useGenerationNotificationStore.getState().setNotificationsFromServer([
+			serverNotification({
+				taskKind: "video",
+				description: "第一集 · 分镜 01 已生成视频。",
+			}),
+		]);
+
+		const notification = useGenerationNotificationStore.getState().notifications[0];
+
+		expect(notification).toMatchObject({
+			kind: "video",
+			description: "第一集 · 分镜 01 已生成视频。",
+		});
+
+		useGenerationNotificationStore.getState().requestOpenNotification(notification!.id);
+
+		expect(useGenerationNotificationStore.getState().pendingOpenRequest).toMatchObject({
+			kind: "video",
+			notificationId: notification!.id,
+			target: { documentId: "doc-a", projectId: "project-a" },
+		});
 	});
 
 	it("upserts server notifications without duplicating task records", () => {

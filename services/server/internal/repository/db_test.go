@@ -365,6 +365,7 @@ func TestEnsureWorkspaceSchemaUsesNormalizedGenerationTaskColumns(t *testing.T) 
 		}
 	}
 	for _, column := range []string{
+		"document_id",
 		"input_tokens",
 		"output_tokens",
 		"total_tokens",

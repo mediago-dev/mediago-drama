@@ -26,6 +26,7 @@ type GenerationMessageRequest struct {
 	ConversationID     string                        `json:"sessionId,omitempty"`
 	ScopeID            string                        `json:"-"`
 	ProjectID          string                        `json:"projectId,omitempty"`
+	DocumentID         string                        `json:"documentId,omitempty"`
 	SectionID          string                        `json:"sectionId,omitempty"`
 	DocumentContext    *GenerationDocumentContext    `json:"documentContext,omitempty"`
 	CapabilityID       string                        `json:"capabilityId,omitempty"`
@@ -69,6 +70,7 @@ type ImportGenerationMediaAssetsRequest struct {
 	ScopeID           string   `json:"scopeId,omitempty"`
 	ConversationTitle string   `json:"conversationTitle,omitempty"`
 	ProjectID         string   `json:"projectId,omitempty"`
+	DocumentID        string   `json:"documentId,omitempty"`
 	SectionID         string   `json:"sectionId,omitempty"`
 	CapabilityID      string   `json:"capabilityId,omitempty"`
 	AssetIDs          []string `json:"assetIds"`
@@ -182,6 +184,7 @@ type GenerationTaskRecord struct {
 	ProviderTaskID    string                        `json:"providerTaskId,omitempty"`
 	ConversationID    string                        `json:"sessionId,omitempty"`
 	ProjectID         string                        `json:"projectId,omitempty"`
+	DocumentID        string                        `json:"documentId,omitempty"`
 	SectionID         string                        `json:"sectionId,omitempty"`
 	CapabilityID      string                        `json:"capabilityId,omitempty"`
 	Kind              string                        `json:"kind" ts:"Kind"`

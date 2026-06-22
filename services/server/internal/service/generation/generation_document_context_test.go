@@ -62,6 +62,9 @@ func TestApplyGenerationDocumentContextResolvesMentionReferencesFromDocuments(t 
 	if payload.SectionID != storySectionID {
 		t.Fatalf("section id = %q, want %q", payload.SectionID, storySectionID)
 	}
+	if payload.DocumentID != "story-doc" {
+		t.Fatalf("document id = %q, want story-doc", payload.DocumentID)
+	}
 	if len(payload.ReferenceAssetIDs) != 1 || payload.ReferenceAssetIDs[0] != asset.ID {
 		t.Fatalf("reference asset ids = %#v, want %q", payload.ReferenceAssetIDs, asset.ID)
 	}

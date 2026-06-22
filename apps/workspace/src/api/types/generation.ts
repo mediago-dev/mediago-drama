@@ -159,6 +159,7 @@ export interface GenerationMessageRequest {
 	kind: Kind;
 	sessionId?: string;
 	projectId?: string;
+	documentId?: string;
 	sectionId?: string;
 	documentContext?: GenerationDocumentContext;
 	capabilityId?: string;
@@ -204,6 +205,7 @@ export interface ImportGenerationMediaAssetsRequest {
 	scopeId?: string;
 	conversationTitle?: string;
 	projectId?: string;
+	documentId?: string;
 	sectionId?: string;
 	capabilityId?: string;
 	assetIds: string[];
@@ -306,6 +308,7 @@ export interface GenerationTaskRecord {
 	providerTaskId?: string;
 	sessionId?: string;
 	projectId?: string;
+	documentId?: string;
 	sectionId?: string;
 	capabilityId?: string;
 	kind: Kind;

@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MediaAsset } from "@/domains/workspace/api/media";
-import type { GenerationParam } from "@/domains/generation/api/generation";
+import type { GenerationParam, GenerationTask } from "@/domains/generation/api/generation";
 import {
 	filterMediaAssets,
+	filterGenerationTasksForScope,
 	formatBytes,
 	generatedAssetsIncludeMediaAssets,
 	generationAssetSelectionKey,
@@ -121,6 +122,39 @@ describe("generation workspace helpers", () => {
 		expect(filterMediaAssets(assets, "all", "teaser").map((asset) => asset.id)).toEqual([
 			"video-1",
 		]);
+	});
+
+	it("filters generation tasks by project, document, and section fields", () => {
+		const matchingTask = {
+			id: "task-current",
+			projectId: "project-a",
+			documentId: "doc-a",
+			sectionId: "section-a",
+		};
+		const otherDocumentTask = {
+			id: "task-other-doc",
+			projectId: "project-a",
+			documentId: "doc-b",
+			sectionId: "section-a",
+		};
+		const oldCompositeSectionTask = {
+			id: "task-old-composite",
+			projectId: "project-a",
+			sectionId: "doc-a:section-a",
+		};
+		const tasks = [
+			matchingTask,
+			otherDocumentTask,
+			oldCompositeSectionTask,
+		] as unknown as GenerationTask[];
+
+		expect(
+			filterGenerationTasksForScope(tasks, {
+				projectId: "project-a",
+				documentId: "doc-a",
+				sectionId: "section-a",
+			}).map((task) => task.id),
+		).toEqual(["task-current"]);
 	});
 
 	it("formats status labels and byte sizes for display", () => {

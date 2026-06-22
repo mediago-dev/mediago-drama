@@ -97,6 +97,7 @@ func (workflow *GenerationService) ImportGenerationMediaAssets(payload ImportGen
 			ID:                taskID,
 			ConversationID:    conversation.ID,
 			ProjectID:         payload.ProjectID,
+			DocumentID:        strings.TrimSpace(payload.DocumentID),
 			SectionID:         strings.TrimSpace(payload.SectionID),
 			CapabilityID:      importedMediaGenerationCapabilityID(payload.CapabilityID),
 			Kind:              kind,

@@ -10,11 +10,14 @@ export interface DocumentSectionGenerationNotificationTarget {
 	section: MarkdownSectionContext;
 }
 
+export type GenerationNotificationOpenKind = "image" | "audio" | "video";
+
 export interface GenerationSuccessNotification {
 	assetCount: number;
 	createdAt: string;
 	description: string;
 	id: string;
+	kind: GenerationNotificationOpenKind;
 	readAt: string | null;
 	sourceTaskId: string | null;
 	target: DocumentSectionGenerationNotificationTarget;
@@ -23,11 +26,13 @@ export interface GenerationSuccessNotification {
 
 interface AddGenerationSuccessNotificationInput {
 	assetCount: number;
+	kind?: GenerationNotificationOpenKind;
 	sourceTaskId?: string | null;
 	target: DocumentSectionGenerationNotificationTarget;
 }
 
 export interface PendingGenerationNotificationOpenRequest {
+	kind: GenerationNotificationOpenKind;
 	notificationId: string;
 	target: DocumentSectionGenerationNotificationTarget;
 }
@@ -112,6 +117,7 @@ export const useGenerationNotificationStore = createStore<GenerationNotification
 					item.id === notificationId && !item.readAt ? { ...item, readAt } : item,
 				),
 				pendingOpenRequest: {
+					kind: notification.kind,
 					notificationId,
 					target: notification.target,
 				},
@@ -172,6 +178,7 @@ const generationNotificationFromRecord = (
 		createdAt: record.createdAt,
 		description: record.description,
 		id: record.id,
+		kind: generationNotificationKindFromTaskKind(record.taskKind),
 		readAt: record.readAt?.trim() || null,
 		sourceTaskId: record.taskId?.trim() || null,
 		target,
@@ -206,26 +213,59 @@ const generationNotificationTargetFromRecord = (
 
 const createGenerationSuccessNotification = ({
 	assetCount,
+	kind = "image",
 	sourceTaskId,
 	target,
 }: AddGenerationSuccessNotificationInput): GenerationSuccessNotification => {
 	const documentTitle = target.documentTitle.trim() || "未命名文档";
 	const sectionTitle = target.section.headingText.trim() || "未命名章节";
-	const description =
-		assetCount > 1
-			? `${documentTitle} · ${sectionTitle} 已生成 ${assetCount} 张图片。`
-			: `${documentTitle} · ${sectionTitle} 已生成图片。`;
+	const description = generationNotificationDescription(
+		kind,
+		documentTitle,
+		sectionTitle,
+		assetCount,
+	);
 
 	return {
 		assetCount,
 		createdAt: new Date().toISOString(),
 		description,
 		id: generationNotificationId(),
+		kind,
 		readAt: null,
 		sourceTaskId: sourceTaskId?.trim() || null,
 		target,
 		title: "生成完成",
 	};
+};
+
+const generationNotificationKindFromTaskKind = (
+	taskKind: string,
+): GenerationNotificationOpenKind => {
+	const normalizedKind = taskKind.trim();
+	if (normalizedKind === "audio" || normalizedKind === "video") return normalizedKind;
+	return "image";
+};
+
+const generationNotificationDescription = (
+	kind: GenerationNotificationOpenKind,
+	documentTitle: string,
+	sectionTitle: string,
+	assetCount: number,
+) => {
+	if (kind === "video") {
+		return assetCount > 1
+			? `${documentTitle} · ${sectionTitle} 已生成 ${assetCount} 个视频。`
+			: `${documentTitle} · ${sectionTitle} 已生成视频。`;
+	}
+	if (kind === "audio") {
+		return assetCount > 1
+			? `${documentTitle} · ${sectionTitle} 已生成 ${assetCount} 条音频。`
+			: `${documentTitle} · ${sectionTitle} 已生成音频。`;
+	}
+	return assetCount > 1
+		? `${documentTitle} · ${sectionTitle} 已生成 ${assetCount} 张图片。`
+		: `${documentTitle} · ${sectionTitle} 已生成图片。`;
 };
 
 const findMatchingNotification = (

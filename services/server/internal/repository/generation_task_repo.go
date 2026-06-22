@@ -150,6 +150,7 @@ func (repo *GenerationTaskRepository) UpsertGenerationTask(model domain.Generati
 			"provider_task_id",
 			"conversation_id",
 			"project_id",
+			"document_id",
 			"section_id",
 			"capability_id",
 			"route_id",

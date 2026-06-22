@@ -27,6 +27,10 @@ const testState = vi.hoisted(() => ({
 		open: boolean;
 		section: MarkdownSectionContext | null;
 	},
+	videoDialogProps: null as null | {
+		open: boolean;
+		section: MarkdownSectionContext | null;
+	},
 }));
 
 vi.mock("@/domains/documents/components/MarkdownHybridEditor", async () => {
@@ -85,7 +89,16 @@ vi.mock("@/shared/components/generation-dialogs/ImageGenerationDialog", () => ({
 }));
 
 vi.mock("@/shared/components/generation-dialogs/VideoGenerationDialog", () => ({
-	VideoGenerationDialog: () => null,
+	VideoGenerationDialog: (props: typeof testState.videoDialogProps) => {
+		testState.videoDialogProps = props;
+		return (
+			<div
+				data-open={props?.open ? "true" : "false"}
+				data-section-id={props?.section?.blockId ?? ""}
+				data-testid="video-generation-dialog"
+			/>
+		);
+	},
 }));
 
 vi.mock("@/shared/components/generation-dialogs/AudioGenerationDialog", () => ({
@@ -134,6 +147,7 @@ describe("WritingEditor", () => {
 		useGenerationNotificationStore.getState().clearNotifications();
 		vi.mocked(updateWorkspaceDocumentSectionImage).mockReset();
 		testState.imageDialogProps = null;
+		testState.videoDialogProps = null;
 		Object.values(testState.editorHandle).forEach((value) => {
 			if (typeof value === "function" && "mockClear" in value) value.mockClear();
 		});
@@ -227,5 +241,42 @@ describe("WritingEditor", () => {
 				"![画面](</api/v1/media-assets/generated/content>)",
 			);
 		});
+	});
+
+	it("opens the video generation dialog for completed video notifications", async () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			documents: [makeDocument()],
+			projectId: "project-a",
+			workspaceDir: "/workspace/project-a",
+		});
+		const notification = useGenerationNotificationStore.getState().addNotification({
+			assetCount: 1,
+			kind: "video",
+			sourceTaskId: "task-1",
+			target: {
+				kind: "document-section",
+				documentId: "story-doc",
+				documentTitle: "第一集",
+				projectId: "project-a",
+				section,
+			},
+		});
+		useGenerationNotificationStore.getState().requestOpenNotification(notification.id);
+
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<WritingEditor />
+			</MemoryRouter>,
+		);
+
+		await waitFor(() => {
+			expect(testState.videoDialogProps?.open).toBe(true);
+		});
+		expect(testState.videoDialogProps?.section).toMatchObject({
+			blockId: "section_visual",
+			documentId: "story-doc",
+		});
+		expect(testState.imageDialogProps?.open).toBe(false);
+		expect(useGenerationNotificationStore.getState().pendingOpenRequest).toBeNull();
 	});
 });

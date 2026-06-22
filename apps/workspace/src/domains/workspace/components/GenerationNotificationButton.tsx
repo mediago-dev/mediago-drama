@@ -1,8 +1,16 @@
-import { Bell, CheckCheck, Image as ImageIcon } from "lucide-react";
+import {
+	AudioLines,
+	Bell,
+	CheckCheck,
+	Film,
+	Image as ImageIcon,
+	type LucideIcon,
+} from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+	type GenerationNotificationOpenKind,
 	type GenerationSuccessNotification,
 	useGenerationNotificationStore,
 } from "@/domains/generation/stores/generation-notifications";
@@ -183,35 +191,47 @@ export const GenerationNotificationButton: React.FC<GenerationNotificationButton
 const GenerationNotificationItem: React.FC<{
 	notification: GenerationSuccessNotification;
 	onClick: () => void;
-}> = ({ notification, onClick }) => (
-	<button
-		type="button"
-		className={cn(
-			"grid w-full grid-cols-[1.75rem_minmax(0,1fr)] gap-2 rounded-sm border border-transparent px-2 py-2 text-left transition-colors hover:border-border hover:bg-ide-list-hover",
-			!notification.readAt && "bg-info-surface/70",
-		)}
-		aria-label={`打开 ${notification.description}`}
-		onClick={onClick}
-	>
-		<span className="relative mt-0.5 flex size-6 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
-			<ImageIcon className="size-3.5" />
-			{notification.readAt ? null : (
-				<span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary" />
+}> = ({ notification, onClick }) => {
+	const Icon = generationNotificationKindIcons[notification.kind] ?? ImageIcon;
+
+	return (
+		<button
+			type="button"
+			className={cn(
+				"grid w-full grid-cols-[1.75rem_minmax(0,1fr)] gap-2 rounded-sm border border-transparent px-2 py-2 text-left transition-colors hover:border-border hover:bg-ide-list-hover",
+				!notification.readAt && "bg-info-surface/70",
 			)}
-		</span>
-		<span className="min-w-0">
-			<span className="flex min-w-0 items-center justify-between gap-2">
-				<span className="truncate text-xs font-semibold text-foreground">{notification.title}</span>
-				<time className="shrink-0 text-2xs text-muted-foreground">
-					{generationNotificationTime(notification.createdAt)}
-				</time>
+			aria-label={`打开 ${notification.description}`}
+			onClick={onClick}
+		>
+			<span className="relative mt-0.5 flex size-6 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
+				<Icon className="size-3.5" />
+				{notification.readAt ? null : (
+					<span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary" />
+				)}
 			</span>
-			<span className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-				{notification.description}
+			<span className="min-w-0">
+				<span className="flex min-w-0 items-center justify-between gap-2">
+					<span className="truncate text-xs font-semibold text-foreground">
+						{notification.title}
+					</span>
+					<time className="shrink-0 text-2xs text-muted-foreground">
+						{generationNotificationTime(notification.createdAt)}
+					</time>
+				</span>
+				<span className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+					{notification.description}
+				</span>
 			</span>
-		</span>
-	</button>
-);
+		</button>
+	);
+};
+
+const generationNotificationKindIcons: Record<GenerationNotificationOpenKind, LucideIcon> = {
+	audio: AudioLines,
+	image: ImageIcon,
+	video: Film,
+};
 
 const samePopoverStyle = (current: React.CSSProperties | null, next: React.CSSProperties) => {
 	if (!current) return false;

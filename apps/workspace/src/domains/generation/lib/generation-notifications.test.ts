@@ -27,6 +27,7 @@ const notification: GenerationSuccessNotification = {
 	createdAt: "2026-06-09T00:00:00.000Z",
 	description: "第一集 · 画面 已生成图片。",
 	id: "generation-1",
+	kind: "image",
 	readAt: null,
 	sourceTaskId: null,
 	target: {

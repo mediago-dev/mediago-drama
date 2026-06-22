@@ -206,6 +206,7 @@ func (workflow *GenerationService) generationRequestForTask(
 		ModelID:           task.ModelID,
 		Model:             task.Model,
 		ProjectID:         task.ProjectID,
+		DocumentID:        task.DocumentID,
 		ConversationID:    task.ConversationID,
 		Prompt:            task.Prompt,
 		ReferenceURLs:     task.ReferenceURLs,

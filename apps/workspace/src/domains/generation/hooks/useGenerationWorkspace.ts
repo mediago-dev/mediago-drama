@@ -34,6 +34,7 @@ import {
 import { promptInsertItemsFromPresets } from "@/domains/generation/lib/prompt-insertions";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import {
+	filterGenerationTasksForScope,
 	isConfiguredRoute,
 	resolveGenerationExtraValue,
 	type GenerationExtraValue,
@@ -213,13 +214,18 @@ export const useGenerationWorkspace = ({
 		() => promptInsertItemsFromPresets(allPresets, promptCategories),
 		[allPresets, promptCategories],
 	);
-	// 项目级会话里混了同项目所有章节/分镜的任务；按 sectionId 过滤出当前章节自己的。
+	// 项目级会话里混了同项目所有章节/分镜的任务；按 project/document/section 过滤出当前节点自己的。
 	// 创作台不传 sectionId，看到全部。
 	const trimmedSectionId = sectionId?.trim() ?? "";
+	const trimmedDocumentId = documentContext?.documentId?.trim() ?? "";
+	const trimmedTaskProjectId =
+		documentContext?.projectId?.trim() || mediaAssetProjectId || projectId?.trim() || "";
 	const allRecentTasks = taskData?.tasks ?? [];
-	const recentTasks = trimmedSectionId
-		? allRecentTasks.filter((task) => task.sectionId === trimmedSectionId)
-		: allRecentTasks;
+	const recentTasks = filterGenerationTasksForScope(allRecentTasks, {
+		documentId: trimmedDocumentId,
+		projectId: trimmedTaskProjectId,
+		sectionId: trimmedSectionId,
+	});
 	const mutateProjectGenerationTasks = useCallback(
 		(requestKind: GenerationKind) => {
 			if (!mediaAssetProjectId) return;
@@ -374,6 +380,7 @@ export const useGenerationWorkspace = ({
 					scopeId: resolvedConversationScopeId,
 					conversationTitle: conversationTitle ?? undefined,
 					projectId: mediaAssetProjectId || undefined,
+					documentId: trimmedDocumentId || undefined,
 					sectionId: trimmedSectionId || undefined,
 					capabilityId: taskType,
 					assetIds,

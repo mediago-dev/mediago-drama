@@ -70,11 +70,12 @@ describe("EpisodeVideoGenerationDialog", () => {
 					headingOccurrence: 1,
 					headingText: selectedClip?.title,
 					plainText: selectedClip?.content,
-					prompt: selectedClip?.prompt,
+					prompt: expect.stringContaining(selectedClip?.prompt ?? ""),
 				},
 			},
 		});
-		expect(workspaceProps?.initialPrompt).toBe(selectedClip?.prompt);
+		expect(workspaceProps?.initialPrompt).toContain(`## ${selectedClip?.title}`);
+		expect(workspaceProps?.initialPrompt).toContain(selectedClip?.prompt ?? "");
 		expect(workspaceProps?.initialPrompt).not.toContain("画面内容：");
 		expect(workspaceProps?.initialPrompt).not.toContain("要求：");
 	});
@@ -150,12 +151,16 @@ describe("EpisodeVideoGenerationDialog", () => {
 
 		const workspaceProps = lastWorkspaceProps();
 		const storyboardSectionBlockId = createSectionBlockId("story-doc", 2, 1, "第 01 组");
+		expect(workspaceProps?.initialPrompt).toContain("## 第 01 组");
 		expect(workspaceProps?.initialPrompt).toContain("**动作：**");
-		expect(workspaceProps?.initialPrompt).toContain("@沈阔（普通状态）");
+		expect(workspaceProps?.initialPrompt).toContain(
+			"@[沈阔（普通状态）](mention://character-doc/section_character?kind=section&category=character)",
+		);
+		expect(workspaceProps?.initialPrompt).toContain(
+			"**引用资源**：角色 @[沈阔（普通状态）](mention://character-doc/section_character?kind=section&category=character)",
+		);
 		expect(workspaceProps?.initialPrompt).toContain("- 镜头：低角度跟拍");
 		expect(workspaceProps?.initialPrompt).toContain("### 标志性细节");
-		expect(workspaceProps?.initialPrompt).not.toContain("mention://");
-		expect(workspaceProps?.initialPrompt).not.toContain("引用资源");
 		expect(workspaceProps?.initialPrompt).not.toContain("分组标题：");
 		expect(workspaceProps?.initialPrompt).not.toContain("画面内容：");
 		expect(workspaceProps?.initialPrompt).not.toContain("时间位置：");

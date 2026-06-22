@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/useToast";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { sectionImageAssetKeysFromDocuments } from "@/domains/documents/components/section-generation-asset-keys";
 import { findDocumentById, selectDocumentById } from "@/domains/documents/lib/filters";
+import { latestMarkdownSectionContextFromDocuments } from "@/domains/documents/lib/markdown-section-context";
 import {
 	findEpisodeClip,
 	findEpisodeTrackForClip,
@@ -123,8 +124,9 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		[episode, selectedClipId],
 	);
 	const openReferenceSectionGeneration = useCallback(
-		(section: MarkdownSectionContext) => setReferenceSectionGeneration(section),
-		[],
+		(section: MarkdownSectionContext) =>
+			setReferenceSectionGeneration(latestMarkdownSectionContextFromDocuments(documents, section)),
+		[documents],
 	);
 	const toggleReferenceSectionImage = useCallback(
 		(section: MarkdownSectionContext, asset: GenerationAsset, selected: boolean) => {

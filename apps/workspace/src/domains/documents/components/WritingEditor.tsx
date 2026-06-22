@@ -238,7 +238,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 
 		handledGenerationOpenRequestRef.current = request;
 		consumeGenerationOpenRequest(request.notificationId);
-		openSectionGeneration(request.target.section, "image");
+		openSectionGeneration(request.target.section, request.kind);
 	}, [
 		activeDocument,
 		consumeGenerationOpenRequest,

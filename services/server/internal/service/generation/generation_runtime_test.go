@@ -200,6 +200,7 @@ func TestImportGenerationMediaAssetsCreatesReferenceHistoryTasks(t *testing.T) {
 		ScopeID:           "agent",
 		ConversationTitle: "Project image session",
 		ProjectID:         "project-alpha",
+		DocumentID:        "story-doc",
 		SectionID:         "section-a",
 		CapabilityID:      "scene",
 		AssetIDs:          []string{asset.ID},
@@ -218,6 +219,7 @@ func TestImportGenerationMediaAssetsCreatesReferenceHistoryTasks(t *testing.T) {
 	if task.ID != "media-library-1" ||
 		task.ConversationID != "project-alpha-image" ||
 		task.ProjectID != "project-alpha" ||
+		task.DocumentID != "story-doc" ||
 		task.SectionID != "section-a" ||
 		task.CapabilityID != "scene" ||
 		task.RouteID != importedMediaGenerationRouteID ||

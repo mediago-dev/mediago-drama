@@ -19,16 +19,17 @@ const fixtures = vi.hoisted(() => ({
 		documentId: "character-doc",
 		headingLevel: 2,
 		headingOccurrence: 1,
-		headingText: "林书彤",
-		markdown: ["## 林书彤", "", "形象定位：21岁女大学生，身高163cm，48kg。"].join("\n"),
-		plainText: "林书彤\n形象定位：21岁女大学生，身高163cm，48kg。",
-		prompt: "林书彤\n形象定位：21岁女大学生，身高163cm，48kg。",
+		headingText: "旧林书彤",
+		markdown: ["## 旧林书彤", "", "旧形象定位。"].join("\n"),
+		plainText: "旧林书彤\n旧形象定位。",
+		prompt: "旧形象定位。",
 	} satisfies MarkdownSectionContext,
 	generatedAsset: {
 		kind: "image" as const,
 		title: "林书彤素材图",
 		url: "/api/v1/media-assets/generated-lin/content",
 	},
+	imageDialogSection: null as MarkdownSectionContext | null,
 }));
 
 vi.mock("swr", () => ({
@@ -160,11 +161,14 @@ vi.mock("@/shared/components/generation-dialogs/ImageGenerationDialog", () => ({
 			selected: boolean,
 		) => void;
 	}) =>
-		open && section ? (
-			<button type="button" onClick={() => onToggleImage(section, fixtures.generatedAsset, true)}>
-				选择画布生成图片
-			</button>
-		) : null,
+		(() => {
+			fixtures.imageDialogSection = open ? section : null;
+			return open && section ? (
+				<button type="button" onClick={() => onToggleImage(section, fixtures.generatedAsset, true)}>
+					选择画布生成图片
+				</button>
+			) : null;
+		})(),
 }));
 
 const makeDocument = (overrides: Partial<MarkdownDocument> = {}): MarkdownDocument => ({
@@ -188,6 +192,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 	});
 
 	beforeEach(() => {
+		fixtures.imageDialogSection = null;
 		vi.mocked(updateWorkspaceEpisode).mockReset();
 		vi.mocked(updateWorkspaceEpisode).mockImplementation(
 			async (documentId, episode, projectId) => ({
@@ -270,6 +275,10 @@ describe("EpisodeTimelineView canvas generation", () => {
 		await waitFor(() => {
 			expect(screen.getByRole("button", { name: "选择画布生成图片" })).toBeInTheDocument();
 		});
+		expect(fixtures.imageDialogSection?.headingText).toBe("林书彤");
+		expect(fixtures.imageDialogSection?.prompt).toContain("## 林书彤");
+		expect(fixtures.imageDialogSection?.prompt).toContain("形象定位：21岁女大学生");
+		expect(fixtures.imageDialogSection?.prompt).not.toContain("旧形象定位");
 
 		screen.getByRole("button", { name: "选择画布生成图片" }).click();
 

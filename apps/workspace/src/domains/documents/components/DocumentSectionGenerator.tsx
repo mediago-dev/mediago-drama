@@ -37,9 +37,9 @@ import {
 import {
 	sectionGenerationConversationScopeId,
 	sectionGenerationHistoryScopeId,
-	sectionGenerationIdentityKey,
 	sectionGenerationPreferenceScopeId,
 } from "@/domains/documents/lib/section-generation";
+import { latestMarkdownSectionContextFromDocuments } from "@/domains/documents/lib/markdown-section-context";
 import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
 
 export interface DocumentSectionGeneratorProps {
@@ -85,6 +85,10 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	const allDocuments = useDocumentsStore((state) => state.documents);
 	const allAssets = useDocumentsStore((state) => state.assets);
 	const workspaceProjectId = useDocumentsStore((state) => state.projectId);
+	const activeSection = useMemo(
+		() => latestMarkdownSectionContextFromDocuments(allDocuments, section),
+		[allDocuments, section],
+	);
 	const [removedMentionKeys, setRemovedMentionKeys] = useState<string[]>([]);
 	const removedMentionKeySet = useMemo(() => new Set(removedMentionKeys), [removedMentionKeys]);
 	const normalizedProjectId = useMemo(
@@ -92,11 +96,11 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 		[projectId, workspaceProjectId],
 	);
 	const documentCategory = useMemo(
-		() => allDocuments.find((document) => document.id === section.documentId)?.category,
-		[allDocuments, section.documentId],
+		() => allDocuments.find((document) => document.id === activeSection.documentId)?.category,
+		[activeSection.documentId, allDocuments],
 	);
 	const selectedNodeReferenceGroups = useMemo<ReferenceSelectionShortcutGroup[]>(() => {
-		const document = allDocuments.find((item) => item.id === section.documentId);
+		const document = allDocuments.find((item) => item.id === activeSection.documentId);
 		if (!document) return [];
 
 		const references = extractDocumentSectionImageReferences(document.id, document.content);
@@ -114,7 +118,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				})),
 			},
 		];
-	}, [allDocuments, section.documentId]);
+	}, [activeSection.documentId, allDocuments]);
 	const mediaAssets = useDocumentsMediaAssets();
 	// 在智能体项目里把生成统一归到「项目级命名会话」，让创作台可见；非项目场景回退到章节 scope。
 	const { data: projectsData } = useSWR(normalizedProjectId ? projectsKey : null, getProjects);
@@ -130,35 +134,35 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 		() =>
 			projectConversation?.conversationScopeId ??
 			sectionGenerationKindScopeId(
-				sectionGenerationConversationScopeId(section, normalizedProjectId),
+				sectionGenerationConversationScopeId(activeSection, normalizedProjectId),
 				generationKind,
 			),
-		[generationKind, normalizedProjectId, projectConversation, section],
+		[activeSection, generationKind, normalizedProjectId, projectConversation],
 	);
-	// 本地乐观缓存始终按章节隔离；项目级会话里再用 sectionId 过滤出本章节的服务端任务。
+	// 本地乐观缓存始终按章节隔离；项目级会话里用 project/document/section 字段过滤服务端任务。
 	const historyScopeId = useMemo(
 		() =>
 			sectionGenerationKindScopeId(
-				sectionGenerationHistoryScopeId(section, normalizedProjectId),
+				sectionGenerationHistoryScopeId(activeSection, normalizedProjectId),
 				generationKind,
 			),
-		[generationKind, normalizedProjectId, section],
+		[activeSection, generationKind, normalizedProjectId],
 	);
 	const sectionId = useMemo(
-		() => (projectConversation ? sectionGenerationIdentityKey(section) : undefined),
-		[projectConversation, section],
+		() => (projectConversation ? activeSection.blockId.trim() : undefined),
+		[activeSection.blockId, projectConversation],
 	);
 	const modelPreferenceScopeId = useMemo(
 		() =>
 			sectionGenerationKindScopeId(
-				sectionGenerationPreferenceScopeId(section, normalizedProjectId),
+				sectionGenerationPreferenceScopeId(activeSection, normalizedProjectId),
 				generationKind,
 			),
-		[generationKind, normalizedProjectId, section],
+		[activeSection, generationKind, normalizedProjectId],
 	);
 	const documentContext = useMemo<GenerationMessageRequest["documentContext"] | undefined>(() => {
-		const documentId = section.documentId.trim();
-		const sectionId = section.blockId.trim();
+		const documentId = activeSection.documentId.trim();
+		const sectionId = activeSection.blockId.trim();
 		if (!documentId || !sectionId) return undefined;
 
 		return {
@@ -166,30 +170,30 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 			documentId,
 			sectionId,
 		};
-	}, [normalizedProjectId, section.blockId, section.documentId]);
+	}, [activeSection.blockId, activeSection.documentId, normalizedProjectId]);
 	const notificationTarget = useMemo<GenerationNotificationOpenTarget | undefined>(() => {
 		if (!normalizedProjectId) return undefined;
 
 		const documentTitle =
-			allDocuments.find((document) => document.id === section.documentId)?.title ||
-			section.headingText;
+			allDocuments.find((document) => document.id === activeSection.documentId)?.title ||
+			activeSection.headingText;
 		return {
 			kind: "document-section",
 			projectId: normalizedProjectId,
-			documentId: section.documentId,
+			documentId: activeSection.documentId,
 			documentTitle,
 			section: {
-				blockId: section.blockId,
-				documentId: section.documentId,
-				headingLevel: section.headingLevel,
-				headingOccurrence: section.headingOccurrence,
-				headingText: section.headingText,
-				markdown: section.markdown,
-				plainText: section.plainText,
-				prompt: section.prompt,
+				blockId: activeSection.blockId,
+				documentId: activeSection.documentId,
+				headingLevel: activeSection.headingLevel,
+				headingOccurrence: activeSection.headingOccurrence,
+				headingText: activeSection.headingText,
+				markdown: activeSection.markdown,
+				plainText: activeSection.plainText,
+				prompt: activeSection.prompt,
 			},
 		};
-	}, [allDocuments, normalizedProjectId, section]);
+	}, [activeSection, allDocuments, normalizedProjectId]);
 	const latestMentionPreviewRef = useRef<MentionPreviewReferences>({
 		assetMentionKeys: {},
 		badges: {},
@@ -198,10 +202,10 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 
 	const resolveAllMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
-			parseMentionsFromMarkdown(`${section.markdown}\n\n${promptMarkdown}`)
+			parseMentionsFromMarkdown(`${activeSection.markdown}\n\n${promptMarkdown}`)
 				.map((reference) => resolveMentionPayload(reference, allDocuments, allAssets))
 				.filter(uniqueResolvedMention),
-		[allAssets, allDocuments, section.markdown],
+		[activeSection.markdown, allAssets, allDocuments],
 	);
 	const resolveActiveMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
@@ -231,7 +235,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	}, []);
 	useEffect(() => {
 		setRemovedMentionKeys([]);
-	}, [section.blockId, section.documentId]);
+	}, [activeSection.blockId, activeSection.documentId, activeSection.markdown]);
 
 	return (
 		<>
@@ -248,7 +252,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				historyScopeId={historyScopeId}
 				sectionId={sectionId}
 				taskType={taskTypeForCategory(documentCategory)}
-				initialPrompt={section.prompt}
+				initialPrompt={activeSection.prompt}
 				modelPreferenceScopeId={modelPreferenceScopeId}
 				materialLibraryImportOpen={materialLibraryImportOpen}
 				notificationTarget={notificationTarget}
@@ -266,9 +270,9 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 					/>
 				)}
 				selectedAssetKeys={selectedAssetKeys}
-				selectedAssetResourceId={section.blockId}
-				selectedAssetSourceDocumentId={section.documentId}
-				selectedAssetTitle={section.headingText}
+				selectedAssetResourceId={activeSection.blockId}
+				selectedAssetSourceDocumentId={activeSection.documentId}
+				selectedAssetTitle={activeSection.headingText}
 				submitLabel={sectionGenerationWorkspaceCopy[generationKind].submitLabel}
 				uploadIdPrefix="section-generation"
 				onGenerationComplete={onGenerationComplete}

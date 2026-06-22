@@ -10,6 +10,7 @@ import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { DocumentMentionHoverPopover } from "@/domains/documents/components/DocumentMentionHoverPopover";
 import { DocumentMention } from "@/domains/documents/components/extensions/document-mention";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
+import { createSectionGenerationPrompt } from "@/domains/documents/lib/section-generation-prompt";
 import {
 	buildMentionPreviewReferences,
 	buildMentionReferenceInputs,
@@ -338,12 +339,15 @@ export const buildEpisodeVideoPrompt = (
 	}
 
 	const sourcePrompt = stripEpisodeVideoPromptInternalReferences(
-		sourceSection?.bodyMarkdown ||
-			selectedClip.prompt ||
-			selectedClip.content ||
-			selectedClip.title,
+		sourceSection?.markdown || selectedClip.prompt || selectedClip.content || selectedClip.title,
 	).trim();
-	return sourcePrompt || selectedClip.title;
+	if (sourceSection) {
+		return createSectionGenerationPrompt(sourcePrompt, sourceSection.headingText);
+	}
+
+	const title = selectedClip.title.trim();
+	if (!sourcePrompt) return title;
+	return [`## ${title}`, "", sourcePrompt].filter(Boolean).join("\n");
 };
 
 const EpisodeVideoPromptMentionEditor: React.FC<
@@ -427,15 +431,13 @@ const episodeClipSourceIndex = (clipId: string) => {
 const stripEpisodeVideoPromptInternalReferences = (markdown: string) =>
 	markdown
 		.split("\n")
-		.filter((line) => !/^\s*\*\*引用资源\*\*\s*[：:]/.test(line))
+		.filter((line) => {
+			const trimmed = line.trim();
+			if (/^!\[([^\]]*)\]\((?:<[^>]+>|[^\s)]+)\)$/.test(trimmed)) return false;
+			return true;
+		})
 		.join("\n")
-		.replace(
-			/@\[((?:\\.|[^\]\\])*)\]\((?:<[^>]+>|[^\s)]+)\)/g,
-			(_, label: string) => `@${unescapeMentionLabelForPrompt(label)}`,
-		)
 		.replace(/\n{3,}/g, "\n\n");
-
-const unescapeMentionLabelForPrompt = (value: string) => value.replace(/\\([\\[\]])/g, "$1");
 
 const markdownToPlainText = (markdown: string) =>
 	markdown

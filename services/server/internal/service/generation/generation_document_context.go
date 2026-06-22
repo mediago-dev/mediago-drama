@@ -43,6 +43,10 @@ func (workflow *GenerationService) applyGenerationDocumentContext(payload *gener
 	if documentID == "" {
 		return fmt.Errorf("documentContext.documentId is required")
 	}
+	if strings.TrimSpace(payload.DocumentID) != "" && strings.TrimSpace(payload.DocumentID) != documentID {
+		return fmt.Errorf("documentContext.documentId does not match documentId")
+	}
+	payload.DocumentID = documentID
 	if workflow.documents == nil {
 		return fmt.Errorf("workspace document resolver is not configured")
 	}
