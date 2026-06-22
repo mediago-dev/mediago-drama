@@ -5,7 +5,7 @@
 	"identifier": "team.torchstellar.mediagodrama",
 	"build": {
 		"frontendDist": "../dist",
-		"devUrl": "http://127.0.0.1:1420",
+		"devUrl": "http://127.0.0.1:31420",
 		"beforeDevCommand": "pnpm dev:tauri",
 		"beforeBuildCommand": "pnpm build"
 	},

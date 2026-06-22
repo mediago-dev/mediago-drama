@@ -55,7 +55,7 @@ pnpm dev
 pnpm tauri:dev
 ```
 
-Tauri 开发模式会固定使用 `http://127.0.0.1:1420` 作为 Vite dev server，避免桌面壳连接到 Vite 自动切换后的端口。
+Tauri 开发模式会固定使用 `http://127.0.0.1:31420` 作为 Vite dev server，避免桌面壳连接到 Vite 自动切换后的端口。Windows 上 `1420` 可能落入系统保留端口段，导致 Node 监听时报 `EACCES`。
 
 ## 常用命令
 

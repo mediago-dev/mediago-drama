@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:tauri": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "dev:tauri": "vite --host 127.0.0.1 --port 31420 --strictPort",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

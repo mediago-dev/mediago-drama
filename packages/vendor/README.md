@@ -44,10 +44,9 @@ dist/tools/<tool-id>/
   <tool binary>
 ```
 
-Tool entries store pinned release URLs and expected sizes instead of committing
-native binaries. `sha256` is supported per platform and verified when present;
-for third-party releases that do not publish checksums, the fixed release URL
-and asset size are still checked before installation.
+Tool entries store pinned release URLs instead of committing native binaries.
+When `sizeBytes` or `sha256` are present for a platform, they are checked before
+installation.
 
 ## Checks
 

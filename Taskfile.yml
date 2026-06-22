@@ -8,8 +8,10 @@ vars:
   SERVER_PORT: '{{.SERVER_PORT | default "48273"}}'
   DEV_SERVER_PORT: '{{.DEV_SERVER_PORT | default "8080"}}'
   DEV_SERVER_URL: "http://127.0.0.1:{{.DEV_SERVER_PORT}}"
-  DEV_SERVER_BIN: '{{.DEV_SERVER_BIN | default "bin/mediago-server"}}'
-  DEV_DOCUMENT_MCP_BIN: '{{.DEV_DOCUMENT_MCP_BIN | default "bin/mediago-document-mcp"}}'
+  GOEXE:
+    sh: go env GOEXE
+  DEV_SERVER_BIN: '{{.DEV_SERVER_BIN | default (printf "bin/mediago-server%s" .GOEXE)}}'
+  DEV_DOCUMENT_MCP_BIN: '{{.DEV_DOCUMENT_MCP_BIN | default (printf "bin/mediago-document-mcp%s" .GOEXE)}}'
   SERVER_CONFIG: services/server/configs/server.yaml
   VENDOR_BIN_DIR: "{{.ROOT_DIR}}/packages/vendor/dist"
   VENDOR_TOOL_DIR: "{{.VENDOR_BIN_DIR}}/tools"
@@ -41,6 +43,8 @@ tasks:
         vars:
           AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
+      - task: workspace:build
+      - task: sync:workspace-dist
       - task: build:server
       - task: stage-tauri
         vars:
@@ -119,12 +123,12 @@ tasks:
     silent: true
     cmds:
       - |
-        if [ ! -x "{{.DEV_SERVER_BIN}}" ]; then
+        if [ ! -s "{{.DEV_SERVER_BIN}}" ]; then
           echo "missing dev server binary: {{.DEV_SERVER_BIN}}"
           echo "run: pnpm build:server"
           exit 1
         fi
-        if [ ! -x "{{.DEV_DOCUMENT_MCP_BIN}}" ]; then
+        if [ ! -s "{{.DEV_DOCUMENT_MCP_BIN}}" ]; then
           echo "missing dev document MCP binary: {{.DEV_DOCUMENT_MCP_BIN}}"
           echo "run: pnpm build:server"
           exit 1

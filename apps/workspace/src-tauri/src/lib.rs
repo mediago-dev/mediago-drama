@@ -91,22 +91,24 @@ pub fn run() {
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {
-        if let RunEvent::Reopen {
-            has_visible_windows,
-            ..
-        } = event
-        {
-            if !has_visible_windows {
-                show_main_window(app_handle);
+        #[cfg(target_os = "macos")]
+        if matches!(
+            &event,
+            RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
             }
+        ) {
+            show_main_window(app_handle);
         }
 
-        if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+        if matches!(&event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
             kill_server_sidecar(app_handle);
         }
     });
 }
 
+#[cfg(target_os = "macos")]
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();

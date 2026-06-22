@@ -21,7 +21,10 @@ import {
 	type ProjectDocumentDeleteHandler,
 } from "@/domains/workspace/components/ProjectDirectory";
 import { ProjectDirectoryTree } from "@/domains/workspace/components/ProjectDirectoryTree";
-import { SettingsButton } from "@/domains/workspace/components/ProjectNavigatorPanels";
+import {
+	GitHubHelpButton,
+	SettingsButton,
+} from "@/domains/workspace/components/ProjectNavigatorPanels";
 import { GenerationNotificationButton } from "@/domains/workspace/components/GenerationNotificationButton";
 import { GlobalToolboxButton } from "@/domains/workspace/components/GlobalToolboxDrawer";
 import { AssetLibraryButton } from "@/domains/workspace/components/AssetLibraryButton";
@@ -302,9 +305,8 @@ const SidebarFooterActions: React.FC<{
 }> = ({ onOpenGenerationNotification, onOpenSettings, settingsActive }) => (
 	<div className="mt-auto pt-2">
 		<div className="flex items-center gap-1">
-			<div className="min-w-0 flex-1">
-				<SettingsButton isActive={settingsActive} onClick={onOpenSettings} />
-			</div>
+			<SettingsButton isActive={settingsActive} onClick={onOpenSettings} />
+			<GitHubHelpButton />
 			<AssetLibraryButton />
 			<GlobalToolboxButton />
 			{onOpenGenerationNotification ? (

@@ -1,6 +1,7 @@
 import {
 	AudioLines,
 	ChevronLeft,
+	CircleQuestionMark,
 	Ellipsis,
 	FileText,
 	Film,
@@ -14,6 +15,7 @@ import {
 	SquarePen,
 	Trash2,
 } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { mutate as mutateSWR } from "swr";
@@ -33,6 +35,12 @@ import {
 import type { GenerationSuccessNotification } from "@/domains/generation/stores/generation-notifications";
 import { Button } from "@/shared/components/ui/button";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/shared/components/ui/tooltip";
 import { useToast } from "@/hooks/useToast";
 import type { SettingsTabValue } from "@/lib/stores/settings";
 import { cn } from "@/shared/lib/utils";
@@ -42,6 +50,8 @@ import { openGenerationConversationCreateDialog } from "./GenerationConversation
 import { GlobalToolboxButton } from "./GlobalToolboxDrawer";
 import { AssetLibraryButton } from "./AssetLibraryButton";
 import type { ActiveStudioTab, StudioTab } from "./ProjectNavigatorTypes";
+
+const githubRepositoryURL = "https://github.com/mediago-dev/mediago-drama";
 
 interface StudioToolItem {
 	category: CapabilityRecord["category"];
@@ -93,20 +103,59 @@ export const SettingsButton: React.FC<{
 	isActive: boolean;
 	onClick: () => void;
 }> = ({ isActive, onClick }) => (
-	<button
-		type="button"
-		onClick={onClick}
-		className={cn(
-			"flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm transition-colors hover:bg-ide-list-hover hover:text-foreground",
-			isActive
-				? "bg-ide-list-active text-ide-list-active-foreground"
-				: "text-ide-sidebar-foreground",
-		)}
-	>
-		<Settings className="size-4 shrink-0" />
-		<span className="min-w-0 flex-1 truncate">设置</span>
-	</button>
+	<TooltipProvider delayDuration={180}>
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<button
+					type="button"
+					aria-label="设置"
+					aria-current={isActive ? "page" : undefined}
+					onClick={onClick}
+					className={cn(
+						"flex size-8 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+						isActive && "bg-ide-list-active text-ide-list-active-foreground",
+					)}
+				>
+					<Settings className="size-4" />
+				</button>
+			</TooltipTrigger>
+			<TooltipContent side="top">设置</TooltipContent>
+		</Tooltip>
+	</TooltipProvider>
 );
+
+export const GitHubHelpButton: React.FC = () => {
+	const openGitHub = async () => {
+		if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+			try {
+				await openUrl(githubRepositoryURL);
+				return;
+			} catch {
+				// Fall back to the browser path below.
+			}
+		}
+
+		window.open(githubRepositoryURL, "_blank", "noopener,noreferrer");
+	};
+
+	return (
+		<TooltipProvider delayDuration={180}>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<button
+						type="button"
+						aria-label="打开 GitHub 页面"
+						className="flex size-8 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+						onClick={() => void openGitHub()}
+					>
+						<CircleQuestionMark className="size-4" />
+					</button>
+				</TooltipTrigger>
+				<TooltipContent side="top">GitHub</TooltipContent>
+			</Tooltip>
+		</TooltipProvider>
+	);
+};
 
 export const StudioConversationsScreen: React.FC<{
 	activeConversationId: string;
@@ -206,9 +255,8 @@ export const StudioSessionsScreen: React.FC<{
 
 				<div className="mt-auto pt-2">
 					<div className="flex items-center gap-1">
-						<div className="min-w-0 flex-1">
-							<SettingsButton isActive={false} onClick={onOpenSettings} />
-						</div>
+						<SettingsButton isActive={false} onClick={onOpenSettings} />
+						<GitHubHelpButton />
 						<AssetLibraryButton />
 						<GlobalToolboxButton />
 						{onOpenGenerationNotification ? (
@@ -282,9 +330,8 @@ export const StudioTypesScreen: React.FC<{
 
 			<div className="mt-auto pt-2">
 				<div className="flex items-center gap-1">
-					<div className="min-w-0 flex-1">
-						<SettingsButton isActive={false} onClick={onOpenSettings} />
-					</div>
+					<SettingsButton isActive={false} onClick={onOpenSettings} />
+					<GitHubHelpButton />
 					<AssetLibraryButton />
 					<GlobalToolboxButton />
 					{onOpenGenerationNotification ? (
