@@ -39,7 +39,7 @@ import {
 import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
 import { useToast } from "@/hooks/useToast";
 import { settingsInsetRowClassName } from "@/lib/settings-layout";
-import { useSettingsNavigationStore } from "@/lib/stores/settings";
+import { projectSettingsGeneralTab, useSettingsNavigationStore } from "@/lib/stores/settings";
 import { useThemeStore, type ThemeMode } from "@/shared/stores/theme";
 import { cn } from "@/shared/lib/utils";
 import { DebugTabPanel, debugTabs, type DebugTabValue } from "@/pages/Debug";
@@ -75,7 +75,7 @@ export const Settings: React.FC = () => {
 	const normalizedTab = normalizeSettingsTab(activeTab);
 	const visibleTab = isSettingsTabValue(normalizedTab) ? normalizedTab : "appearance";
 
-	if (projectId) return <ProjectSettings />;
+	if (projectId && normalizedTab === projectSettingsGeneralTab) return <ProjectSettings />;
 
 	return (
 		<div className="h-full min-h-0 overflow-hidden bg-ide-editor text-ide-editor-foreground">

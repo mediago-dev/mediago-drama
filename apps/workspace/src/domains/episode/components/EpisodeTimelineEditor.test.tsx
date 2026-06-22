@@ -55,6 +55,14 @@ describe("EpisodeTimelineEditor", () => {
 			}),
 		).toBeTruthy();
 		expect(
+			within(screen.getByTestId("clip-strip-card-clip-cold-open")).getByRole("button", {
+				name: "生成 冷开场",
+			}).className,
+		).toContain("text-popover-foreground");
+		expect(screen.getByTestId("clip-strip-card-clip-cold-open").className).not.toContain(
+			"translate-y",
+		);
+		expect(
 			within(screen.getByTestId("clip-strip-card-clip-cold-open")).getByText("待生成"),
 		).toBeTruthy();
 	});

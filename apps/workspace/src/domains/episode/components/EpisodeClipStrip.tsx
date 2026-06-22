@@ -241,7 +241,7 @@ const EpisodeClipCard: React.FC<EpisodeClipCardProps> = ({
 				isSelected
 					? "border-primary shadow-[0_0_0_2px_var(--accent)]"
 					: "border-border hover:border-primary/60 hover:shadow-md",
-				isActive && "translate-y-[-1px]",
+				isActive && !isSelected && "shadow-md",
 			)}
 			data-clip-id={clip.id}
 			data-testid={`clip-strip-card-${clip.id}`}
@@ -281,7 +281,7 @@ const EpisodeClipCard: React.FC<EpisodeClipCardProps> = ({
 				type="button"
 				variant="secondary"
 				size="sm"
-				className="absolute right-2 top-2 z-20 h-6 rounded-full bg-white/95 px-2 text-[11px] font-semibold text-foreground shadow-sm hover:bg-white"
+				className="absolute right-2 top-2 z-20 h-6 rounded-full border-border/80 bg-popover/95 px-2 text-[11px] font-semibold text-popover-foreground shadow-sm hover:bg-popover"
 				aria-label={`生成 ${clip.title}`}
 				onClick={(event) => {
 					event.stopPropagation();

@@ -5,7 +5,7 @@ import type { MarkdownDocument } from "@/domains/documents/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import type { WorkspaceProject } from "@/domains/projects/api/projects";
 import { useDocumentViewStore } from "@/lib/stores/document-view";
-import { ProjectSidebarPanel } from "./ProjectNavigatorProjectPanels";
+import { ProjectSidebarPanel, ProjectsSidebarPanel } from "./ProjectNavigatorProjectPanels";
 
 const project: WorkspaceProject = {
 	id: "project-a",
@@ -145,6 +145,15 @@ describe("ProjectSidebarPanel", () => {
 
 		expect(onOpenNewDocument).toHaveBeenCalledWith("reference");
 	});
+
+	it("right-aligns footer actions on home and project sidebars", () => {
+		const projectSidebar = renderProjectSidebar(true);
+		expect(footerActionRowClassName()).toContain("justify-end");
+		projectSidebar.unmount();
+
+		renderProjectsSidebar();
+		expect(footerActionRowClassName()).toContain("justify-end");
+	});
 });
 
 const renderProjectSidebar = (
@@ -174,5 +183,22 @@ const renderProjectSidebar = (
 		/>,
 	);
 
+const renderProjectsSidebar = () =>
+	render(
+		<ProjectsSidebarPanel
+			isCreating={false}
+			isLoading={false}
+			locationPathname="/"
+			projects={[project]}
+			onCreateProject={vi.fn()}
+			onOpenProject={vi.fn()}
+			onOpenSearch={vi.fn()}
+			onOpenSettings={vi.fn()}
+		/>,
+	);
+
 const documentItemClassName = (name = "第一集") =>
 	(screen.getByRole("button", { name }).parentElement as HTMLElement).className;
+
+const footerActionRowClassName = () =>
+	(screen.getByRole("button", { name: "设置" }).parentElement as HTMLElement).className;

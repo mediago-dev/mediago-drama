@@ -44,11 +44,13 @@ import {
 	findCanvasPort,
 	referenceAssetImageOutputPort,
 	videoImageInputPort,
+	type EpisodeCanvasMediaType,
 	type EpisodeCanvasPort,
 } from "@/domains/episode/lib/canvas-ports";
 import { layoutEpisodeCanvasGraph } from "@/domains/episode/lib/canvas-layout";
 import type { Episode } from "@/domains/episode/lib/sample";
 import { useEpisodeCanvasLayoutStore } from "@/domains/episode/stores/canvas-layout";
+import { resolveThemeMode, useThemeStore, type ThemeMode } from "@/shared/stores/theme";
 import {
 	episodeCanvasNodeTypes,
 	type EpisodeCanvasFlowNodeData,
@@ -80,6 +82,8 @@ interface EpisodeCanvasFlowEdgeData extends Record<string, unknown> {
 
 type EpisodeCanvasFlowNode = FlowNode<EpisodeCanvasFlowNodeData, EpisodeCanvasNodeType>;
 type EpisodeCanvasFlowEdge = FlowEdge<EpisodeCanvasFlowEdgeData>;
+type EpisodeCanvasEdgePalette = Record<EpisodeCanvasMediaType, string>;
+type EpisodeCanvasColorMode = ReturnType<typeof resolveThemeMode>;
 
 interface EpisodeCanvasConnectionContext {
 	inputPort: EpisodeCanvasPort;
@@ -95,6 +99,21 @@ type EpisodeCanvasConnectionLike = Pick<Connection, "source" | "target"> & {
 
 const emptyNodePositionOverrides: EpisodeCanvasNodePositionOverrides = {};
 const canvasLayoutStorageVersion = "layout-v2";
+const episodeCanvasMediaTypes = [
+	"image",
+	"script",
+	"video",
+] as const satisfies readonly EpisodeCanvasMediaType[];
+const fallbackEpisodeCanvasEdgePalette: EpisodeCanvasEdgePalette = {
+	image: episodeCanvasMediaTypeTokens.image.foreground,
+	script: episodeCanvasMediaTypeTokens.script.foreground,
+	video: episodeCanvasMediaTypeTokens.video.foreground,
+};
+const episodeCanvasEdgeColorVariables: Record<EpisodeCanvasMediaType, string> = {
+	image: "--success-foreground",
+	script: "--warning-foreground",
+	video: "--info-foreground",
+};
 
 export const EpisodeCanvasView: React.FC<EpisodeCanvasViewProps> = (props) => (
 	<ReactFlowProvider>
@@ -143,6 +162,8 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 		[episode, fullGraph, selectedClipId],
 	);
 	const layout = useMemo(() => layoutEpisodeCanvasGraph(graph), [graph]);
+	const canvasColorMode = useEpisodeCanvasColorMode();
+	const edgePalette = useEpisodeCanvasEdgePalette();
 	const activeLane = layout.lanes[0] ?? null;
 	const sectionByLaneId = useMemo(
 		() => buildSectionContextByLaneId(activeDocument, layout),
@@ -200,8 +221,8 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 		applyCanvasNodePositionOverrides(baseNodes, persistedNodePositionOverrides),
 	);
 	const edges = useMemo<EpisodeCanvasFlowEdge[]>(
-		() => layout.edges.map(canvasFlowEdge),
-		[layout.edges],
+		() => layout.edges.map((edge) => canvasFlowEdge(edge, edgePalette)),
+		[edgePalette, layout.edges],
 	);
 	const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 	useEffect(() => {
@@ -305,7 +326,8 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 
 			<div className="min-h-0 flex-1 overflow-hidden bg-ide-editor">
 				<ReactFlow
-					colorMode="system"
+					className="episode-canvas-flow"
+					colorMode={canvasColorMode}
 					edges={edges}
 					minZoom={0.28}
 					nodes={nodes}
@@ -320,7 +342,12 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 					onNodeClick={handleNodeClick}
 					onNodesChange={handleNodesChange}
 				>
-					<Background className="bg-ide-editor" gap={28} />
+					<Background
+						bgColor="var(--ide-editor)"
+						className="bg-ide-editor"
+						color="color-mix(in srgb, var(--border) 72%, transparent)"
+						gap={28}
+					/>
 					<Controls className="border border-border bg-ide-panel text-foreground" />
 					<MiniMap
 						className="hidden border border-border bg-ide-panel md:block"
@@ -361,18 +388,98 @@ const canvasFlowNode = (
 	selectable: true,
 });
 
-const canvasFlowEdge = (edge: EpisodeCanvasEdge): EpisodeCanvasFlowEdge => ({
+const canvasFlowEdge = (
+	edge: EpisodeCanvasEdge,
+	edgePalette: EpisodeCanvasEdgePalette,
+): EpisodeCanvasFlowEdge => ({
 	...edge,
 	data: edge.data,
 	deletable: edge.data.relation === "reference",
 	style: {
-		stroke: episodeCanvasMediaTypeTokens[edge.data.mediaType].foreground,
+		stroke: edgePalette[edge.data.mediaType],
 		strokeLinecap: "round",
 		strokeLinejoin: "round",
 		strokeWidth: edge.data.relation === "reference" ? 1.4 : 2,
 	},
 	type: "bezier",
 });
+
+const useEpisodeCanvasColorMode = () => {
+	const themeMode = useThemeStore((state) => state.mode);
+	const [colorMode, setColorMode] = useState<EpisodeCanvasColorMode>(() =>
+		resolveEpisodeCanvasColorMode(themeMode),
+	);
+
+	useEffect(() => {
+		const updateColorMode = () => setColorMode(resolveEpisodeCanvasColorMode(themeMode));
+		updateColorMode();
+
+		if (themeMode !== "system" || typeof window === "undefined") return;
+
+		const query = window.matchMedia?.("(prefers-color-scheme: dark)");
+		query?.addEventListener("change", updateColorMode);
+		return () => query?.removeEventListener("change", updateColorMode);
+	}, [themeMode]);
+
+	return colorMode;
+};
+
+const resolveEpisodeCanvasColorMode = (themeMode: ThemeMode): EpisodeCanvasColorMode => {
+	if (typeof window === "undefined") return "light";
+	return resolveThemeMode(themeMode);
+};
+
+const useEpisodeCanvasEdgePalette = () => {
+	const [palette, setPalette] = useState<EpisodeCanvasEdgePalette>(
+		fallbackEpisodeCanvasEdgePalette,
+	);
+
+	useEffect(() => {
+		const updatePalette = () => setPalette(readEpisodeCanvasEdgePalette());
+		updatePalette();
+
+		if (typeof MutationObserver === "undefined") return;
+
+		const observer = new MutationObserver(updatePalette);
+		observer.observe(document.documentElement, {
+			attributeFilter: ["data-theme", "class"],
+			attributes: true,
+		});
+		return () => observer.disconnect();
+	}, []);
+
+	return palette;
+};
+
+const readEpisodeCanvasEdgePalette = (): EpisodeCanvasEdgePalette => {
+	if (typeof document === "undefined" || typeof window === "undefined") {
+		return fallbackEpisodeCanvasEdgePalette;
+	}
+
+	const palette: EpisodeCanvasEdgePalette = { ...fallbackEpisodeCanvasEdgePalette };
+	for (const mediaType of episodeCanvasMediaTypes) {
+		palette[mediaType] = resolveCssColorVariable(
+			episodeCanvasEdgeColorVariables[mediaType],
+			fallbackEpisodeCanvasEdgePalette[mediaType],
+		);
+	}
+	return palette;
+};
+
+const resolveCssColorVariable = (variableName: string, fallback: string) => {
+	const probe = document.createElement("span");
+	probe.style.color = `var(${variableName})`;
+	probe.style.pointerEvents = "none";
+	probe.style.position = "absolute";
+	probe.style.visibility = "hidden";
+
+	const target = document.body ?? document.documentElement;
+	target.appendChild(probe);
+	const color = window.getComputedStyle(probe).color.trim();
+	probe.remove();
+
+	return color || fallback;
+};
 
 const canvasLayoutScopeIdFromDocument = (
 	activeDocument: MarkdownDocument | null,

@@ -387,6 +387,16 @@
 		--pink-300: rgb(244 114 182);
 		--violet-300: rgb(167 139 250);
 
+		/* 暗色阴影不沿用浅色高光，避免控件底边出现亮线。 */
+		--shadow-scale-sm: 0 1px 0 rgb(0 0 0 / 0.28);
+		--shadow-scale-md: 0 8px 18px rgb(0 0 0 / 0.24);
+		--shadow-scale-lg: 0 18px 42px rgb(0 0 0 / 0.3);
+		--shadow-scale-xl: 0 28px 58px rgb(0 0 0 / 0.34);
+		--shadow-scale-2xl: 0 36px 78px rgb(0 0 0 / 0.38);
+		--shadow-overlay: 0 28px 70px -36px rgb(0 0 0 / 0.72);
+		--shadow-toast: 0 22px 40px -24px rgb(0 0 0 / 0.72);
+		--shadow-agent-panel: 0 1.5rem 5rem rgb(0 0 0 / 0.34);
+
 		/* ===== 语义 Token · 暗色(引用上面的暗色原始值) ===== */
 		--background: var(--ink-900);
 		--foreground: var(--ink-100);

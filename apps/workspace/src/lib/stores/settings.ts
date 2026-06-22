@@ -1,6 +1,14 @@
 import { create } from "zustand";
 
-export type SettingsTabValue = "appearance" | "api-keys" | "shortcuts" | string;
+export const projectSettingsGeneralTab = "project-general";
+
+export type SettingsTabValue =
+	| "appearance"
+	| "api-keys"
+	| "billing"
+	| "shortcuts"
+	| typeof projectSettingsGeneralTab
+	| string;
 
 interface SettingsNavigationState {
 	activeTab: SettingsTabValue;

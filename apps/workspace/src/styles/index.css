@@ -110,6 +110,30 @@
 	.PhotoView-Portal {
 		pointer-events: auto;
 	}
+
+	.episode-canvas-flow {
+		--xy-background-color: var(--ide-editor);
+		--xy-background-pattern-color: color-mix(in srgb, var(--border) 72%, transparent);
+		background-color: var(--ide-editor);
+	}
+
+	.episode-canvas-flow .react-flow__background {
+		background-color: var(--ide-editor);
+	}
+
+	.episode-canvas-flow .react-flow__edges > svg {
+		max-width: none;
+		overflow: visible;
+	}
+
+	.episode-canvas-flow .react-flow__edges > svg:not(.react-flow__marker) {
+		width: 100%;
+		height: 100%;
+	}
+
+	.episode-canvas-flow .react-flow__edge-path {
+		vector-effect: non-scaling-stroke;
+	}
 }
 
 @layer utilities {
@@ -118,6 +142,7 @@
 	.agent-timeline,
 	.agent-history-menu,
 	.agent-composer-form,
+	.agent-config-content,
 	.agent-permission-stack {
 		--agent-page: #f5f7fb;
 		--agent-surface: #ffffff;
@@ -128,17 +153,89 @@
 		--agent-text: #0f172a;
 		--agent-subtle: #697891;
 		--agent-soft-text: #7b89a0;
+		--agent-toolbar: #f8fafd;
+		--agent-control: #f3f6fb;
+		--agent-control-hover: #f7faff;
+		--agent-code: #f4f7fb;
+		--agent-plan-progress-bg: #edf2f8;
 		--agent-blue: #4f86f7;
 		--agent-blue-strong: #3f79f2;
 		--agent-blue-soft: #eaf1ff;
+		--agent-blue-line: #c9d8fb;
+		--agent-blue-line-soft: #dbe6ff;
 		--agent-amber: #d78a2d;
 		--agent-amber-soft: #fff6e8;
+		--agent-amber-strong: #a25f16;
+		--agent-amber-text: #9a5a14;
+		--agent-amber-line: #f1d3af;
+		--agent-amber-line-strong: #f1c99d;
 		--agent-green: #18a77d;
 		--agent-green-soft: #e2f7ef;
+		--agent-green-line: #cce8dd;
+		--agent-green-line-strong: #bfe8d8;
 		--agent-red: #e14d4d;
 		--agent-red-soft: #fff0f0;
+		--agent-red-text: #bc3030;
+		--agent-red-line: #ffc8c8;
+		--agent-json-key: #3867c8;
+		--agent-json-string: #19856a;
+		--agent-json-number: #bd6a12;
+		--agent-on-brand: #fff;
+		--agent-user-meta: rgb(255 255 255 / 0.74);
 		--agent-card-shadow: 0 14px 34px -28px rgb(43 63 91 / 0.42);
 		--agent-soft-shadow: 0 8px 22px -18px rgb(43 63 91 / 0.32);
+		--agent-composer-shadow: 0 8px 24px -24px rgb(39 58 88 / 0.38);
+	}
+
+	:root[data-theme="dark"]
+		:where(
+			.agent-panel-shell,
+			.agent-chat-shell,
+			.agent-timeline,
+			.agent-history-menu,
+			.agent-composer-form,
+			.agent-config-content,
+			.agent-permission-stack
+		) {
+		--agent-page: var(--ide-panel);
+		--agent-surface: var(--ide-editor);
+		--agent-muted: color-mix(in srgb, var(--muted) 86%, var(--ide-editor));
+		--agent-muted-strong: color-mix(in srgb, var(--muted) 78%, var(--ide-editor));
+		--agent-line: var(--border);
+		--agent-line-strong: var(--input);
+		--agent-text: var(--foreground);
+		--agent-subtle: var(--muted-foreground);
+		--agent-soft-text: color-mix(in srgb, var(--muted-foreground) 76%, var(--foreground));
+		--agent-toolbar: var(--ide-toolbar);
+		--agent-control: color-mix(in srgb, var(--ide-toolbar) 86%, var(--ide-editor));
+		--agent-control-hover: var(--accent);
+		--agent-code: color-mix(in srgb, var(--ide-toolbar) 72%, var(--ide-editor));
+		--agent-plan-progress-bg: var(--muted);
+		--agent-blue: var(--primary);
+		--agent-blue-strong: color-mix(in srgb, var(--primary) 86%, var(--foreground));
+		--agent-blue-soft: var(--accent);
+		--agent-blue-line: var(--info-border);
+		--agent-blue-line-soft: color-mix(in srgb, var(--info-border) 72%, var(--border));
+		--agent-amber: var(--warning-foreground);
+		--agent-amber-soft: var(--warning-surface);
+		--agent-amber-strong: var(--warning-foreground);
+		--agent-amber-text: var(--warning-foreground);
+		--agent-amber-line: var(--warning-border);
+		--agent-amber-line-strong: color-mix(in srgb, var(--warning-border) 76%, var(--border));
+		--agent-green: var(--success-foreground);
+		--agent-green-soft: var(--success-surface);
+		--agent-green-line: var(--success-border);
+		--agent-green-line-strong: color-mix(in srgb, var(--success-border) 76%, var(--border));
+		--agent-red: var(--error-foreground);
+		--agent-red-soft: var(--error-surface);
+		--agent-red-text: var(--error-foreground);
+		--agent-red-line: var(--error-border);
+		--agent-json-key: var(--rjv-key-string);
+		--agent-json-string: var(--rjv-string-color);
+		--agent-json-number: var(--rjv-number-color);
+		--agent-card-shadow: none;
+		--agent-soft-shadow: none;
+		--agent-composer-shadow: none;
 	}
 
 	.agent-panel-shell {
@@ -157,12 +254,12 @@
 
 	.agent-panel-header {
 		border-color: var(--agent-line);
-		background: #f8fafd;
+		background: var(--agent-toolbar);
 		box-shadow: none;
 	}
 
 	.agent-brand-mark {
-		border: var(--border-width-scale-sm) solid #dbe6ff;
+		border: var(--border-width-scale-sm) solid var(--agent-blue-line-soft);
 		background: var(--agent-blue-soft);
 		color: var(--agent-blue);
 		box-shadow: none;
@@ -174,7 +271,7 @@
 	.agent-config-placeholder,
 	.agent-composer-icon-button {
 		border-color: var(--agent-line);
-		background: #f3f6fb;
+		background: var(--agent-control);
 		box-shadow: none;
 		color: var(--agent-subtle);
 	}
@@ -182,7 +279,7 @@
 	.agent-header-button:hover,
 	.agent-composer-icon-button:hover,
 	.agent-config-trigger:hover {
-		border-color: #c9d8fb;
+		border-color: var(--agent-blue-line);
 		background: var(--agent-blue-soft);
 		color: var(--agent-blue);
 	}
@@ -199,7 +296,7 @@
 
 	.agent-history-item:hover,
 	.agent-history-item-active {
-		border-color: #c9d8fb;
+		border-color: var(--agent-blue-line);
 		background: var(--agent-blue-soft);
 	}
 
@@ -207,7 +304,7 @@
 	.agent-history-status,
 	.agent-chip {
 		border-color: var(--agent-line);
-		background: #f3f6fb;
+		background: var(--agent-control);
 		color: var(--agent-subtle);
 	}
 
@@ -235,11 +332,11 @@
 		border-radius: 8px;
 		background: var(--agent-blue);
 		box-shadow: none;
-		color: #fff;
+		color: var(--agent-on-brand);
 	}
 
 	.agent-user-bubble [class*="text-caption"] {
-		color: rgb(255 255 255 / 0.74);
+		color: var(--agent-user-meta);
 	}
 
 	.agent-user-attachment {
@@ -405,7 +502,7 @@
 	.agent-tool-body {
 		border: var(--border-width-scale-sm) solid var(--agent-line);
 		border-radius: var(--radius-scale-sm);
-		background: #f8fafd;
+		background: var(--agent-toolbar);
 		box-shadow: none;
 		color: var(--agent-subtle);
 	}
@@ -448,7 +545,7 @@
 		justify-content: center;
 		margin-left: 0.5rem;
 		border-radius: 999px;
-		background: #edf2f8;
+		background: var(--agent-plan-progress-bg);
 		padding: 0.15rem 0.55rem;
 		color: var(--agent-subtle);
 		font-size: 0.68rem;
@@ -514,17 +611,17 @@
 
 	.agent-tool-card > button:hover,
 	.agent-tool-row:hover {
-		background: #f8fafd;
+		background: var(--agent-toolbar);
 	}
 
 	.agent-tool-icon {
-		border-color: #dce7fb;
+		border-color: var(--agent-blue-line-soft);
 		background: var(--agent-blue-soft);
 		color: var(--agent-blue);
 	}
 
 	.agent-chip-info {
-		border-color: #cce8dd;
+		border-color: var(--agent-green-line);
 		background: var(--agent-green-soft);
 		color: var(--agent-green);
 	}
@@ -545,21 +642,21 @@
 	}
 
 	.agent-tool-status.border-success-border {
-		border-color: #bfe8d8;
+		border-color: var(--agent-green-line-strong);
 		background: var(--agent-green-soft);
 		color: var(--agent-green);
 	}
 
 	.agent-tool-status.border-warning-border {
-		border-color: #f2d3a9;
-		background: #fff2dd;
-		color: #b46f1b;
+		border-color: var(--agent-amber-line);
+		background: var(--agent-amber-soft);
+		color: var(--agent-amber);
 	}
 
 	.agent-tool-status.border-error-border {
-		border-color: #ffc8c8;
+		border-color: var(--agent-red-line);
 		background: var(--agent-red-soft);
-		color: #bc3030;
+		color: var(--agent-red-text);
 	}
 
 	.agent-tool-tab {
@@ -582,17 +679,17 @@
 	}
 
 	.agent-code-block {
-		background: #f4f7fb;
+		background: var(--agent-code);
 		color: var(--agent-text);
 	}
 
 	.agent-output-block .bg-ide-toolbar,
 	.agent-output-block .bg-ide-editor {
-		background: #f8fafd;
+		background: var(--agent-toolbar);
 	}
 
 	.agent-output-block .bg-success-surface {
-		background: #e9f8f1;
+		background: var(--agent-green-soft);
 	}
 
 	.agent-output-block .bg-error-surface {
@@ -651,7 +748,7 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		color: #a25f16;
+		color: var(--agent-amber-strong);
 	}
 
 	.agent-permission-stack-icon svg {
@@ -665,10 +762,10 @@
 		height: 1.25rem;
 		align-items: center;
 		justify-content: center;
-		border: var(--border-width-scale-sm) solid #f1c99d;
+		border: var(--border-width-scale-sm) solid var(--agent-amber-line-strong);
 		border-radius: 999px;
 		background: var(--agent-amber-soft);
-		color: #9a5a14;
+		color: var(--agent-amber-text);
 		font-size: 0.72rem;
 	}
 
@@ -690,9 +787,9 @@
 	.agent-permission-icon {
 		width: 2rem;
 		height: 2rem;
-		border-color: #f1d3af;
+		border-color: var(--agent-amber-line);
 		background: var(--agent-amber-soft);
-		color: #a25f16;
+		color: var(--agent-amber-strong);
 	}
 
 	.agent-permission-title {
@@ -701,15 +798,15 @@
 	}
 
 	.agent-permission-kind {
-		border-color: #f1d3af;
+		border-color: var(--agent-amber-line);
 		background: var(--agent-amber-soft);
-		color: #9a5a14;
+		color: var(--agent-amber-text);
 	}
 
 	.agent-permission-command {
-		border-color: #e4ebf5;
+		border-color: var(--agent-line);
 		border-radius: var(--radius-scale-sm);
-		background: #f1f5fa;
+		background: var(--agent-code);
 		color: var(--agent-text);
 	}
 
@@ -725,25 +822,25 @@
 	}
 
 	.agent-permission-action-secondary {
-		border-color: #d6e0ee;
+		border-color: var(--agent-line-strong);
 		background: var(--agent-surface);
 		color: var(--agent-text);
 	}
 
 	.agent-permission-action-secondary:hover {
-		background: #f7faff;
+		background: var(--agent-control-hover);
 		color: var(--agent-blue);
 	}
 
 	.agent-permission-action-primary {
 		border-color: var(--agent-blue);
 		background: var(--agent-blue);
-		color: #fff;
+		color: var(--agent-on-brand);
 	}
 
 	.agent-permission-action-primary:hover {
 		background: var(--agent-blue-strong);
-		color: #fff;
+		color: var(--agent-on-brand);
 	}
 
 	.agent-permission-action:disabled {
@@ -752,14 +849,14 @@
 
 	.agent-permission-action-primary:disabled {
 		background: var(--agent-blue);
-		color: #fff;
+		color: var(--agent-on-brand);
 		opacity: 0.9;
 	}
 
 	.agent-permission-error {
-		border-color: #ffc8c8;
+		border-color: var(--agent-red-line);
 		background: var(--agent-red-soft);
-		color: #bc3030;
+		color: var(--agent-red-text);
 	}
 
 	.agent-composer-form {
@@ -768,7 +865,7 @@
 		border-radius: 8px;
 		background: var(--agent-surface);
 		padding: calc(var(--generation-composer-padding) + var(--space-2xs));
-		box-shadow: 0 8px 24px -24px rgb(39 58 88 / 0.38);
+		box-shadow: var(--agent-composer-shadow);
 		backdrop-filter: none;
 		-webkit-backdrop-filter: none;
 	}
@@ -848,9 +945,9 @@
 		align-items: center;
 		justify-content: flex-start;
 		gap: 0.4rem;
-		border: var(--border-width-scale-sm) solid #e4ebf5;
+		border: var(--border-width-scale-sm) solid var(--agent-line);
 		border-radius: var(--radius-scale-sm);
-		background: #f3f6fb;
+		background: var(--agent-control);
 		padding: 0 var(--generation-control-padding-x);
 		color: var(--agent-subtle);
 		box-shadow: none;
@@ -924,7 +1021,7 @@
 		height: var(--generation-control-height-lg);
 		border: 0;
 		border-radius: var(--radius-scale-sm);
-		background: #f3f6fb;
+		background: var(--agent-control);
 		color: var(--agent-subtle);
 	}
 
@@ -938,19 +1035,19 @@
 	.agent-send-button {
 		border: var(--border-width-scale-sm) solid var(--agent-blue);
 		background: var(--agent-blue);
-		color: #fff;
+		color: var(--agent-on-brand);
 	}
 
 	.agent-send-button:hover {
 		background: var(--agent-blue-strong);
-		color: #fff;
+		color: var(--agent-on-brand);
 		filter: none;
 	}
 
 	.agent-stop-button {
-		border-color: #ffc8c8;
+		border-color: var(--agent-red-line);
 		background: var(--agent-red-soft);
-		color: #bc3030;
+		color: var(--agent-red-text);
 	}
 
 	.agent-context-strip {
@@ -961,7 +1058,7 @@
 
 	.agent-attachment-chip {
 		border-color: var(--agent-line);
-		background: #f3f6fb;
+		background: var(--agent-control);
 		box-shadow: none;
 		color: var(--agent-subtle);
 	}
@@ -971,16 +1068,16 @@
 	}
 
 	.agent-json-key {
-		color: #3867c8;
+		color: var(--agent-json-key);
 	}
 
 	.agent-json-string {
-		color: #19856a;
+		color: var(--agent-json-string);
 	}
 
 	.agent-json-number,
 	.agent-json-boolean {
-		color: #bd6a12;
+		color: var(--agent-json-number);
 	}
 
 	@media (max-width: 640px) {
@@ -1050,11 +1147,11 @@
 	padding-top: 0;
 }
 
-.is-tauri .tauri-sidebar-chrome-offset {
+.is-tauri-macos .tauri-sidebar-chrome-offset {
 	padding-top: var(--tauri-titlebar-offset);
 }
 
-.is-tauri .tauri-window-drag-region {
+.is-tauri-macos .tauri-window-drag-region {
 	display: block;
 	position: fixed;
 	top: 0;
@@ -1065,6 +1162,6 @@
 	cursor: default;
 }
 
-.is-tauri .episode-workbench-header {
+.is-tauri-macos .episode-workbench-header {
 	padding-left: calc(var(--tauri-traffic-light-safe-area) + var(--space-sm));
 }

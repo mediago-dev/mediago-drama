@@ -8,7 +8,12 @@ import { ThemeProvider } from "./providers/ThemeProvider";
 import { DialogCallHost } from "@/shared/components/callable/DialogCallHost";
 import "@/styles/index.css";
 
-document.documentElement.classList.toggle("is-tauri", "__TAURI_INTERNALS__" in window);
+const isTauriRuntime = "__TAURI_INTERNALS__" in window;
+const platformSignal = `${window.navigator.platform} ${window.navigator.userAgent}`;
+const isMacLikePlatform = /\b(Mac|iPhone|iPad|iPod)\b/i.test(platformSignal);
+
+document.documentElement.classList.toggle("is-tauri", isTauriRuntime);
+document.documentElement.classList.toggle("is-tauri-macos", isTauriRuntime && isMacLikePlatform);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 	<React.StrictMode>

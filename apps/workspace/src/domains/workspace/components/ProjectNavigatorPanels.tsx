@@ -42,7 +42,7 @@ import {
 	TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
 import { useToast } from "@/hooks/useToast";
-import type { SettingsTabValue } from "@/lib/stores/settings";
+import { projectSettingsGeneralTab, type SettingsTabValue } from "@/lib/stores/settings";
 import { cn } from "@/shared/lib/utils";
 import { debugTabs, type DebugTabValue } from "@/pages/Debug";
 import { GenerationNotificationButton } from "./GenerationNotificationButton";
@@ -651,15 +651,7 @@ export const SettingsSidebarPanel: React.FC<{
 	onBack: () => void;
 	onOpenGenerationNotification?: (notification: GenerationSuccessNotification) => void;
 	onSelectTab: (tab: SettingsTabValue) => void;
-	projectName: string;
-}> = ({
-	activeTab,
-	isProjectSettings,
-	onBack,
-	onOpenGenerationNotification,
-	onSelectTab,
-	projectName,
-}) => (
+}> = ({ activeTab, isProjectSettings, onBack, onOpenGenerationNotification, onSelectTab }) => (
 	<div className="flex h-full flex-col">
 		<button
 			type="button"
@@ -671,35 +663,36 @@ export const SettingsSidebarPanel: React.FC<{
 		</button>
 
 		{isProjectSettings ? (
-			<>
-				<div className="mt-3 px-2">
-					<p className="truncate text-xs font-medium text-muted-foreground">{projectName}</p>
-				</div>
-				<div className="mt-2">
-					<SettingsPanelButton active icon={<SlidersHorizontal />} label="常规" />
-				</div>
-			</>
-		) : (
-			<div className="mt-2 space-y-4">
-				{settingsNavGroups.map((group) => (
-					<section key={group.label} className="space-y-1">
-						<p className="px-2 text-2xs font-semibold text-muted-foreground">{group.label}</p>
-						{group.items.map((item) => {
-							const Icon = item.icon;
-							return (
-								<SettingsPanelButton
-									key={item.value}
-									active={activeTab === item.value}
-									icon={<Icon />}
-									label={item.label}
-									onClick={() => onSelectTab(item.value)}
-								/>
-							);
-						})}
-					</section>
-				))}
-			</div>
-		)}
+			<section className="mt-3 space-y-1">
+				<p className="px-2 text-2xs font-semibold text-muted-foreground">项目设置</p>
+				<SettingsPanelButton
+					active={activeTab === projectSettingsGeneralTab}
+					icon={<SlidersHorizontal />}
+					label="常规"
+					onClick={() => onSelectTab(projectSettingsGeneralTab)}
+				/>
+			</section>
+		) : null}
+
+		<div className={cn("space-y-4", isProjectSettings ? "mt-4" : "mt-2")}>
+			{settingsNavGroups.map((group) => (
+				<section key={group.label} className="space-y-1">
+					<p className="px-2 text-2xs font-semibold text-muted-foreground">{group.label}</p>
+					{group.items.map((item) => {
+						const Icon = item.icon;
+						return (
+							<SettingsPanelButton
+								key={item.value}
+								active={activeTab === item.value}
+								icon={<Icon />}
+								label={item.label}
+								onClick={() => onSelectTab(item.value)}
+							/>
+						);
+					})}
+				</section>
+			))}
+		</div>
 		<div className="mt-auto flex justify-end gap-1 pt-2">
 			<AssetLibraryButton />
 			<GlobalToolboxButton />

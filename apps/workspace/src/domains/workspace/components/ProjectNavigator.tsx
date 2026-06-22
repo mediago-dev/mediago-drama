@@ -1,5 +1,5 @@
 import type React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import useSWR, { mutate as mutateSWR } from "swr";
 import {
@@ -43,7 +43,7 @@ import {
 	studioTabPath,
 } from "@/domains/workspace/lib/workbench-route";
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
-import { useSettingsNavigationStore } from "@/lib/stores/settings";
+import { projectSettingsGeneralTab, useSettingsNavigationStore } from "@/lib/stores/settings";
 import { useWorkModeStore } from "@/lib/stores/work-mode";
 import { openAgentProjectCreateDialog } from "./AgentProjectCreateDialog";
 import { openNewDocumentDialog, type NewDocumentDialogChoice } from "./NewDocumentDialog";
@@ -88,6 +88,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	const [isSearchOpen, setIsSearchOpen] = useState(false);
 	const [searchScope, setSearchScope] = useState<"global" | "project">("global");
 	const [displayProjectId, setDisplayProjectId] = useState(activeProjectId);
+	const previousProjectSettingsIdRef = useRef<string | null>(null);
 
 	const projects = useMemo(
 		() => [...(data?.projects ?? [])].sort(compareProjectsByCreatedAtDesc),
@@ -288,6 +289,16 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		}
 	}, [activeWorkMode, isProjectSettingsMode, navigate, visibleProjectId]);
 
+	const openGlobalSettings = useCallback(() => {
+		setActiveSettingsTab("appearance");
+		navigate("/settings");
+	}, [navigate, setActiveSettingsTab]);
+
+	const openProjectSettings = useCallback(() => {
+		setActiveSettingsTab(projectSettingsGeneralTab);
+		navigate(projectSettingsPath);
+	}, [navigate, projectSettingsPath, setActiveSettingsTab]);
+
 	const selectStudioConversation = useCallback(
 		(kind: StudioTab, conversationId: string) => {
 			setWorkMode("studio");
@@ -450,6 +461,14 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		return () => window.removeEventListener("keydown", createOnShortcut);
 	}, [isProjectMode, openAgentCreateDialog, openSearch]);
 
+	useEffect(() => {
+		const projectSettingsId = isProjectSettingsMode ? getRouteProjectId(location.search) : null;
+		if (projectSettingsId && previousProjectSettingsIdRef.current !== projectSettingsId) {
+			setActiveSettingsTab(projectSettingsGeneralTab);
+		}
+		previousProjectSettingsIdRef.current = projectSettingsId;
+	}, [isProjectSettingsMode, location.search, setActiveSettingsTab]);
+
 	return (
 		<>
 			<GenerationNotificationSync />
@@ -472,7 +491,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 										onOpenGenerationNotification={openGenerationNotification}
 										onOpenProject={openProject}
 										onOpenSearch={openSearch}
-										onOpenSettings={() => navigate("/settings")}
+										onOpenSettings={openGlobalSettings}
 									/>
 								),
 							},
@@ -501,7 +520,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 										onOpenNewDocument={requestNewDocument}
 										onOpenOverview={openOverview}
 										onOpenSearch={openSearch}
-										onOpenSettings={() => navigate(projectSettingsPath)}
+										onOpenSettings={openProjectSettings}
 									/>
 								),
 							},
@@ -513,7 +532,9 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 										activeConversationId={activeStudioConversationId}
 										activeTab={activeStudioTab}
 										onOpenSettings={() =>
-											navigate(isProjectMode && activeProjectId ? projectSettingsPath : "/settings")
+											isProjectMode && activeProjectId
+												? openProjectSettings()
+												: openGlobalSettings()
 										}
 										onOpenGenerationNotification={openGenerationNotification}
 										onSelectConversation={selectStudioConversation}
@@ -534,7 +555,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 									<SettingsSidebarPanel
 										activeTab={activeSettingsTab}
 										isProjectSettings={settingsScreenIsProjectSettings}
-										projectName={displayProject?.name ?? visibleProjectId ?? "项目设置"}
 										onBack={returnFromSettings}
 										onOpenGenerationNotification={openGenerationNotification}
 										onSelectTab={setActiveSettingsTab}
