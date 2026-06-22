@@ -28,6 +28,7 @@ type workspaceDocumentSectionImageRequest = servicedocument.WorkspaceDocumentSec
 type workspaceDocumentSectionMediaRequest = servicedocument.WorkspaceDocumentSectionMediaRequest
 type workspaceDocumentSectionMentionRequest = servicedocument.WorkspaceDocumentSectionMentionRequest
 type deleteWorkspaceDocumentResponse = servicedocument.DeleteWorkspaceDocumentResponse
+type documentSectionsResponse = servicedocument.DocumentSectionsResponse
 type documentHistoryResponse = servicedocument.DocumentHistoryResponse
 type documentHistoryVersionResponse = servicedocument.DocumentHistoryVersionResponse
 type documentHistoryDiffResponse = servicedocument.DocumentHistoryDiffResponse
@@ -263,6 +264,16 @@ func (store *WorkspaceStateService) listDocuments(projectID string) (workspaceDo
 // SyncLocalMarkdownFiles imports local file and folder changes for a project.
 func (store *WorkspaceStateService) SyncLocalMarkdownFiles(projectID string) (bool, error) {
 	return store.StateService().Documents.SyncLocalMarkdownFiles(projectID)
+}
+
+// ListProjectSections lists persisted section metadata for one project.
+func (store *WorkspaceStateService) ListProjectSections(projectID string) (documentSectionsResponse, error) {
+	return store.StateService().Documents.ListProjectSections(projectID)
+}
+
+// ReconcileProjectSections synchronizes section metadata with current Markdown.
+func (store *WorkspaceStateService) ReconcileProjectSections(projectID string) (documentSectionsResponse, error) {
+	return store.StateService().Documents.ReconcileProjectSections(projectID)
 }
 
 // ListDocumentFolders lists project document folders.

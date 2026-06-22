@@ -102,6 +102,8 @@ func validateWorkspaceStateRepositories(repos WorkspaceStateRepositories) error 
 		return fmt.Errorf("agent session repository is nil")
 	case repos.Approvals == nil:
 		return fmt.Errorf("document tool approval repository is nil")
+	case repos.DocumentSections == nil:
+		return fmt.Errorf("document section repository is nil")
 	default:
 		return nil
 	}
@@ -126,7 +128,7 @@ func (store *WorkspaceStateService) initialize() error {
 
 func (store *WorkspaceStateService) compose(repos WorkspaceStateRepositories) {
 	store.Approvals = approval.NewService(repos.Approvals, store.initErr)
-	store.Documents = document.NewService(store.dir, repos.Workspace, store.Approvals, store.initErr)
+	store.Documents = document.NewService(store.dir, repos.Workspace, store.Approvals, store.initErr, repos.DocumentSections)
 	store.EditStreams = document.NewEditStreamService(repos.EditStreams, store.initErr)
 	store.Documents.SetEditStreamService(store.EditStreams)
 	store.Chat = chat.NewService(store.dir, repos.AgentSessions, store.Documents, store.initErr)

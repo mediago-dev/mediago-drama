@@ -13,7 +13,7 @@ func newWorkspaceStateService(workspaceDir string) *Service {
 	if err != nil {
 		return NewService(workspaceDir, nil, nil, err)
 	}
-	store := NewService(workspaceDir, repository.NewWorkspaceRepository(db), nil, nil)
+	store := NewService(workspaceDir, repository.NewWorkspaceRepository(db), nil, nil, repository.NewDocumentSectionRepositoryFromDB(db))
 	store.SetEditStreamService(NewEditStreamService(repository.NewDocumentEditStreamRepository(db), nil))
 	return store
 }

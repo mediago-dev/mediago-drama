@@ -151,6 +151,9 @@ func (watcher *workspaceFileWatcher) flushProjectSync(projectID string) {
 	delete(watcher.pendingTimers, projectID)
 	watcher.mu.Unlock()
 
+	if _, err := watcher.api.workspaceState.SyncLocalMarkdownFiles(projectID); err != nil {
+		slog.Warn("workspace file watcher document sync failed", "project_id", projectID, "error", err)
+	}
 	watcher.api.publishWorkspaceDocumentsChanged(projectID)
 	if err := watcher.refreshProjectWatch(projectID); err != nil {
 		slog.Warn("workspace file watcher refresh failed", "project_id", projectID, "error", err)
@@ -323,6 +326,9 @@ func (handler *apiHandler) syncWorkspaceLocalFilesOnce(signatures map[string]str
 			continue
 		}
 		if previous, ok := signatures[projectID]; ok && previous != signature {
+			if _, err := handler.workspaceState.SyncLocalMarkdownFiles(projectID); err != nil {
+				slog.Warn("workspace file polling document sync failed", "project_id", projectID, "error", err)
+			}
 			handler.publishWorkspaceDocumentsChanged(projectID)
 		}
 		signatures[projectID] = signature

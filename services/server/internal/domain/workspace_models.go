@@ -104,3 +104,31 @@ type DocumentEditStreamModel struct {
 func (DocumentEditStreamModel) TableName() string {
 	return "document_edit_streams"
 }
+
+// DocumentSectionModel is the GORM model for stable Markdown section metadata.
+type DocumentSectionModel struct {
+	ProjectID     string     `gorm:"column:project_id;primaryKey;default:'';index:document_sections_project_document_idx,priority:1"`
+	SectionID     string     `gorm:"column:section_id;primaryKey"`
+	DocumentID    string     `gorm:"column:document_id;not null;default:'';index:document_sections_project_document_idx,priority:2"`
+	Type          string     `gorm:"column:section_type;not null;default:'unknown';index:document_sections_type_idx"`
+	Subtype       string     `gorm:"column:subtype;not null;default:''"`
+	Title         string     `gorm:"column:title;not null;default:''"`
+	MetadataJSON  string     `gorm:"column:metadata_json;not null;type:text;default:'{}'"`
+	Status        string     `gorm:"column:status;not null;default:'active';index:document_sections_status_idx"`
+	ObservedTitle string     `gorm:"column:observed_title;not null;default:''"`
+	HeadingLevel  int        `gorm:"column:heading_level;not null;default:0"`
+	HeadingPath   string     `gorm:"column:heading_path;not null;type:text;default:''"`
+	LineStart     int        `gorm:"column:line_start;not null;default:0"`
+	LineEnd       int        `gorm:"column:line_end;not null;default:0"`
+	ContentHash   string     `gorm:"column:content_hash;not null;default:'';index:document_sections_content_hash_idx"`
+	CreatedAt     time.Time  `gorm:"column:created_at;not null;autoCreateTime:nano"`
+	UpdatedAt     time.Time  `gorm:"column:updated_at;not null;autoUpdateTime:nano"`
+	LastSeenAt    *time.Time `gorm:"column:last_seen_at;index:document_sections_last_seen_idx"`
+
+	Project WorkspaceProjectModel `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:CASCADE"`
+}
+
+// TableName returns the backing table name.
+func (DocumentSectionModel) TableName() string {
+	return "document_sections"
+}

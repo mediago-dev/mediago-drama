@@ -144,6 +144,7 @@ func EnsureWorkspaceSchema(db *gorm.DB) error {
 		&domain.DocumentOperationLogModel{},
 		&domain.DocumentToolApprovalModel{},
 		&domain.DocumentEditStreamModel{},
+		&domain.DocumentSectionModel{},
 		&domain.AgentSessionModel{},
 		&domain.AssetModel{},
 		&domain.GenerationConversationModel{},

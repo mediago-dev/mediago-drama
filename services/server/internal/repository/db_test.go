@@ -110,6 +110,7 @@ func TestOpenWorkspaceRepositoriesBuildsAllWorkspaceRepositories(t *testing.T) {
 		repos.EditStreams == nil ||
 		repos.AgentSessions == nil ||
 		repos.Approvals == nil ||
+		repos.DocumentSections == nil ||
 		repos.Billing == nil ||
 		repos.GenerationNotifications == nil ||
 		repos.GenerationTasks == nil ||

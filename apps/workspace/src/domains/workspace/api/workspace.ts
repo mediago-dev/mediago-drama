@@ -62,6 +62,33 @@ export type WorkspaceDocumentsPayload = Omit<
 	assets?: ProjectAsset[];
 };
 
+export type WorkspaceSectionStatus = "active" | "missing" | "detached" | "duplicated" | "deleted";
+
+export interface WorkspaceSectionRecord {
+	projectId?: string;
+	sectionId: string;
+	documentId?: string;
+	type: string;
+	subtype?: string;
+	title?: string;
+	metadataJson?: string;
+	status: WorkspaceSectionStatus | (string & {});
+	observedTitle?: string;
+	headingLevel?: number;
+	headingPath?: string;
+	lineStart?: number;
+	lineEnd?: number;
+	contentHash?: string;
+	createdAt?: string;
+	updatedAt?: string;
+	lastSeenAt?: string;
+}
+
+export interface WorkspaceSectionsPayload {
+	projectId?: string;
+	sections: WorkspaceSectionRecord[];
+}
+
 export type WorkspaceEpisodePayload = Omit<EpisodeTimelineStateResponse, "episode"> & {
 	episode: Episode;
 };
@@ -260,6 +287,18 @@ export const getWorkspaceDocuments = async (projectId?: string | null) => {
 	return response.data;
 };
 
+export const getWorkspaceSections = async (projectId?: string | null) => {
+	const response = await httpClient.get<WorkspaceSectionsPayload>(workspaceSectionsKey(projectId));
+	return response.data;
+};
+
+export const reconcileWorkspaceSections = async (projectId?: string | null) => {
+	const response = await httpClient.post<WorkspaceSectionsPayload>(
+		`${workspaceSectionsKey(projectId)}/reconcile`,
+	);
+	return response.data;
+};
+
 export const createWorkspaceDocument = async (
 	payload: CreateWorkspaceDocumentRequest,
 	projectId?: string | null,
@@ -438,6 +477,9 @@ export const updateWorkspaceEpisode = async (
 
 export const workspaceDocumentsKey = (projectId?: string | null) =>
 	projectAPIPath(projectId, "/workspace/documents");
+
+export const workspaceSectionsKey = (projectId?: string | null) =>
+	projectAPIPath(projectId, "/workspace/sections");
 
 export const workspaceFoldersKey = (projectId?: string | null) =>
 	projectAPIPath(projectId, "/workspace/folders");

@@ -158,6 +158,7 @@ type Service struct {
 	mu        sync.RWMutex
 	dir       string
 	workspace *repository.WorkspaceRepository
+	sections  *repository.DocumentSectionRepository
 	approvals ApprovalGate
 	streams   *EditStreamService
 	history   *documenthistory.Service
@@ -165,7 +166,7 @@ type Service struct {
 }
 
 // NewService returns a document service backed by a workspace repository.
-func NewService(workspaceDir string, repo *repository.WorkspaceRepository, approvals ApprovalGate, initErr error) *Service {
+func NewService(workspaceDir string, repo *repository.WorkspaceRepository, approvals ApprovalGate, initErr error, sectionRepos ...*repository.DocumentSectionRepository) *Service {
 	store := &Service{
 		dir:       shared.ResolveWorkspaceDir(workspaceDir),
 		workspace: repo,
@@ -173,10 +174,20 @@ func NewService(workspaceDir string, repo *repository.WorkspaceRepository, appro
 		history:   documenthistory.NewService(),
 		initErr:   initErr,
 	}
+	if len(sectionRepos) > 0 {
+		store.sections = sectionRepos[0]
+	}
 	if store.initErr == nil && store.workspace == nil {
 		store.initErr = fmt.Errorf("workspace repository is nil")
 	}
 	return store
+}
+
+// SetDocumentSectionRepository replaces the section metadata dependency.
+func (store *Service) SetDocumentSectionRepository(repo *repository.DocumentSectionRepository) {
+	if store != nil {
+		store.sections = repo
+	}
 }
 
 // SetDocumentHistoryService replaces the document history dependency.

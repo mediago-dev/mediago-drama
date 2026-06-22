@@ -42,7 +42,17 @@ func (store *Service) SyncLocalMarkdownFiles(projectID string) (bool, error) {
 	if err == nil {
 		store.recordDocumentHistory(projectID)
 	}
-	return false, err
+	if err != nil {
+		return false, err
+	}
+	state, err := store.loadUnlocked(projectID)
+	if err != nil {
+		return false, err
+	}
+	if _, err := store.reconcileProjectSectionsUnlocked(projectID, state); err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 func (store *Service) loadLocalMarkdownWorkspaceUnlocked(projectID string) ([]mediamcp.WorkspaceDocument, []mediamcp.DocumentFolder, error) {
