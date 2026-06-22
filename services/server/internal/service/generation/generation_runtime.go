@@ -156,6 +156,7 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	}
 
 	generationRequest := GenerationRequestFromMessage(payload, route, referenceURLs)
+	generationRequest.Prompt = workflow.providerPromptForGeneration(route, payload)
 	if ShouldSubmitGenerationInBackground(route) {
 		messageResponse := SubmittingGenerationResponse("", coregeneration.Kind(payload.Kind))
 		task := GenerationTaskFromMessage(payload, route, messageResponse)

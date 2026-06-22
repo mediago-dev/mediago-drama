@@ -130,6 +130,7 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 	}
 
 	generationRequest := GenerationRequestFromMessage(payload, route, referenceURLs)
+	generationRequest.Prompt = workflow.providerPromptForGeneration(route, payload)
 	if ShouldSubmitGenerationInBackground(route) {
 		messageResponse := SubmittingGenerationResponse(task.ID, coregeneration.Kind(payload.Kind))
 		nextTask := GenerationTaskWithMessage(task, messageResponse)
@@ -226,7 +227,9 @@ func (workflow *GenerationService) generationRequestForTask(
 	if err != nil {
 		return coregeneration.Request{}, err
 	}
-	return GenerationRequestFromMessage(payload, route, referenceURLs), nil
+	request := GenerationRequestFromMessage(payload, route, referenceURLs)
+	request.Prompt = workflow.providerPromptForGeneration(route, payload)
+	return request, nil
 }
 
 // ListGenerationTasks lists generation tasks for HTTP handlers.
