@@ -112,6 +112,16 @@ func TestWorkspacePathsGlobalProjectAndStudioDirs(t *testing.T) {
 			got:  paths.MediaPosterCacheDir(),
 			want: filepath.Join(root, ".mediago-drama", "cache", "media-posters"),
 		},
+		{
+			name: "workspace database",
+			got:  paths.DatabasePath(),
+			want: filepath.Join(root, ".mediago-drama", "db", "app.db"),
+		},
+		{
+			name: "workspace settings database",
+			got:  paths.SettingsDatabasePath(),
+			want: filepath.Join(root, ".mediago-drama", "db", "settings.db"),
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -142,6 +152,18 @@ func TestEnsureWorkspaceLayoutMigratesVisibleToolboxToMetadata(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "toolbox")); !os.IsNotExist(err) {
 		t.Fatalf("visible toolbox should be removed after migration, err=%v", err)
+	}
+
+	var workspaceConfig WorkspaceConfigFile
+	configData, err := os.ReadFile(filepath.Join(root, ".mediago-drama", "config", "workspace.json"))
+	if err != nil {
+		t.Fatalf("reading workspace config: %v", err)
+	}
+	if err := json.Unmarshal(configData, &workspaceConfig); err != nil {
+		t.Fatalf("decoding workspace config: %v", err)
+	}
+	if got, want := workspaceConfig.SettingsDatabasePath, WorkspacePathsFor(root).SettingsDatabasePath(); got != want {
+		t.Fatalf("settingsDatabasePath = %q, want %q", got, want)
 	}
 }
 

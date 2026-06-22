@@ -32,10 +32,11 @@ type WorkspaceManifestFile struct {
 
 // WorkspaceConfigFile is the local workspace config file shape.
 type WorkspaceConfigFile struct {
-	SchemaVersion int    `json:"schemaVersion"`
-	WorkspaceRoot string `json:"workspaceRoot"`
-	DatabasePath  string `json:"databasePath"`
-	LibraryDir    string `json:"libraryDir"`
+	SchemaVersion        int    `json:"schemaVersion"`
+	WorkspaceRoot        string `json:"workspaceRoot"`
+	DatabasePath         string `json:"databasePath"`
+	SettingsDatabasePath string `json:"settingsDatabasePath"`
+	LibraryDir           string `json:"libraryDir"`
 }
 
 // ProviderConfigFile is the provider registry config file shape.
@@ -206,6 +207,11 @@ func (paths WorkspacePaths) DatabaseDir() string {
 // DatabasePath returns the workspace SQLite database path.
 func (paths WorkspacePaths) DatabasePath() string {
 	return filepath.Join(paths.DatabaseDir(), "app.db")
+}
+
+// SettingsDatabasePath returns the workspace-scoped settings SQLite path.
+func (paths WorkspacePaths) SettingsDatabasePath() string {
+	return filepath.Join(paths.DatabaseDir(), "settings.db")
 }
 
 // MediaPosterCacheDir returns the hidden cache for generated video preview posters.
@@ -457,10 +463,11 @@ func EnsureWorkspaceLayout(root string) error {
 		return err
 	}
 	if err := WriteJSONFileIfMissing(filepath.Join(paths.ConfigDir(), "workspace.json"), WorkspaceConfigFile{
-		SchemaVersion: 1,
-		WorkspaceRoot: paths.Root,
-		DatabasePath:  paths.DatabasePath(),
-		LibraryDir:    "library",
+		SchemaVersion:        1,
+		WorkspaceRoot:        paths.Root,
+		DatabasePath:         paths.DatabasePath(),
+		SettingsDatabasePath: paths.SettingsDatabasePath(),
+		LibraryDir:           "library",
 	}); err != nil {
 		return err
 	}

@@ -34,7 +34,7 @@ func newAPIHandler(config Config) *apiHandler {
 	config.WorkspaceDir = workspaceState.Dir()
 	settingsDBPath := config.SettingsDBPath
 	if settingsDBPath == "" {
-		settingsDBPath = workspaceState.DatabasePath()
+		settingsDBPath = workspaceState.SettingsDatabasePath()
 	}
 	mediaDir := config.MediaDir
 	if mediaDir == "" {
@@ -70,6 +70,9 @@ func newAPIHandler(config Config) *apiHandler {
 	}
 
 	settingsRepos, settingsReposErr := repository.OpenSettingsRepositories(settingsDBPath)
+	if settingsReposErr == nil && config.SettingsDBPath == "" {
+		migrateDefaultSettingsDB(settingsRepos.DB, workspaceState.DatabasePath(), settingsDBPath)
+	}
 	workspaceRepos, workspaceReposErr := repository.OpenWorkspaceRepositories(workspaceState.DatabasePath())
 	settings := servicesettings.NewSettingsWithAgentModelProfiles(settingsRepos.APIKeys, settingsRepos.AgentModelProfiles)
 	settings.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)

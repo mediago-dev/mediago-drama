@@ -133,6 +133,11 @@ func (store *WorkspaceStateService) DatabasePath() string {
 	return serviceshared.WorkspacePathsFor(store.dir).DatabasePath()
 }
 
+// SettingsDatabasePath returns the workspace-scoped settings database path.
+func (store *WorkspaceStateService) SettingsDatabasePath() string {
+	return serviceshared.WorkspacePathsFor(store.dir).SettingsDatabasePath()
+}
+
 // LibraryAssetsDir returns the typed media assets root.
 func (store *WorkspaceStateService) LibraryAssetsDir() string {
 	return serviceshared.WorkspacePathsFor(store.dir).LibraryAssetsDir()
