@@ -68,23 +68,50 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if window.label() == "main"
-                && matches!(
-                    event,
-                    WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed
-                )
-            {
-                kill_server_sidecar(window.app_handle());
+            if window.label() != "main" {
+                return;
+            }
+
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
+                    if cfg!(target_os = "macos") {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    } else {
+                        kill_server_sidecar(window.app_handle());
+                    }
+                }
+                WindowEvent::Destroyed => {
+                    kill_server_sidecar(window.app_handle());
+                }
+                _ => {}
             }
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {
+        if let RunEvent::Reopen {
+            has_visible_windows,
+            ..
+        } = event
+        {
+            if !has_visible_windows {
+                show_main_window(app_handle);
+            }
+        }
+
         if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
             kill_server_sidecar(app_handle);
         }
     });
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
 }
 
 fn kill_server_sidecar(app: &tauri::AppHandle) {
