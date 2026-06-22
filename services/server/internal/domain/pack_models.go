@@ -21,7 +21,7 @@ func (PackModel) TableName() string {
 	return "packs"
 }
 
-// PackEntryModel is the GORM model for instructions, skills, and prompt presets.
+// PackEntryModel is the GORM model for skills and prompt presets.
 type PackEntryModel struct {
 	ID             string    `gorm:"column:id;primaryKey"`
 	PackID         string    `gorm:"column:pack_id;not null;index:pack_entries_pack_idx;uniqueIndex:pack_entries_pack_kind_slug_idx"`

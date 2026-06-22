@@ -4,7 +4,6 @@ import {
 	FolderOpen,
 	Library,
 	Loader2,
-	MessageSquareText,
 	PackageOpen,
 	Power,
 	Save,
@@ -22,7 +21,6 @@ import {
 	setPromptPackEnabled,
 	uninstallPromptPack,
 } from "@/domains/settings/api/packs";
-import { promptTemplatesKey } from "@/domains/settings/api/prompt-templates";
 import { skillsKey } from "@/domains/settings/api/skills";
 import { promptCategoriesKey } from "@/domains/generation/api/prompt-categories";
 import { promptPresetsKey } from "@/domains/generation/api/prompt-presets";
@@ -37,17 +35,15 @@ import { useToast } from "@/hooks/useToast";
 import { cn } from "@/shared/lib/utils";
 import { PromptPackActionsSlotProvider } from "./PromptPackActionsSlot";
 import { PromptLibraryEditorPanel } from "./PromptLibraryEditorPanel";
-import { PromptTemplateEditorPanel } from "./PromptTemplateEditorPanel";
 import { SkillsEditorPanel } from "./SkillsEditorPanel";
 
-type PromptPackSection = "instructions" | "skills" | "library";
+type PromptPackSection = "skills" | "library";
 
 const promptPackSections: Array<{
 	icon: React.ComponentType<{ className?: string }>;
 	label: string;
 	value: PromptPackSection;
 }> = [
-	{ value: "instructions", label: "指令", icon: MessageSquareText },
 	{ value: "skills", label: "技能", icon: BookOpenCheck },
 	{ value: "library", label: "提示词库", icon: Library },
 ];
@@ -60,7 +56,7 @@ export const PromptPacksPanel: React.FC = () => {
 		isLoading,
 		mutate: mutatePacks,
 	} = useSWR(promptPacksKey, listPromptPacks);
-	const [activeSection, setActiveSection] = useState<PromptPackSection>("instructions");
+	const [activeSection, setActiveSection] = useState<PromptPackSection>("skills");
 	const [installPath, setInstallPath] = useState("");
 	const [busyPackId, setBusyPackId] = useState<string>();
 	const [isInstalling, setIsInstalling] = useState(false);
@@ -71,7 +67,6 @@ export const PromptPacksPanel: React.FC = () => {
 	const refreshPromptData = async () => {
 		await Promise.all([
 			mutatePacks(),
-			mutate(promptTemplatesKey),
 			mutate(skillsKey),
 			mutate(
 				(key) =>
@@ -144,7 +139,7 @@ export const PromptPacksPanel: React.FC = () => {
 	const confirmRemovePack = (pack: PromptPack) => {
 		void confirmDialog({
 			title: "卸载提示词包？",
-			description: `确定要卸载“${pack.name}”吗？来自该包的指令、技能和提示词预设将不可用。`,
+			description: `确定要卸载“${pack.name}”吗？来自该包的技能和提示词预设将不可用。`,
 			confirmLabel: "卸载",
 			confirmIcon: <Trash2 className="size-4" />,
 			onConfirm: () => removePack(pack),
@@ -165,7 +160,7 @@ export const PromptPacksPanel: React.FC = () => {
 							<h2 className="truncate text-sm font-semibold text-foreground">提示词包</h2>
 						</div>
 						<p className="mt-1 text-xs text-muted-foreground">
-							安装并管理全局共享的系统指令、技能和提示词预设。
+							安装并管理全局共享的技能和提示词预设。
 						</p>
 					</div>
 					<div className="flex shrink-0 items-center gap-2" data-tauri-no-drag>
@@ -249,7 +244,7 @@ export const PromptPacksPanel: React.FC = () => {
 			>
 				<PromptPackActionsSlotProvider slotEl={actionsSlot}>
 					<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-2">
-						<TabsList className="grid w-full max-w-sm grid-cols-3 sm:w-80">
+						<TabsList className="grid w-full max-w-sm grid-cols-2 sm:w-64">
 							{promptPackSections.map((section) => {
 								const Icon = section.icon;
 								return (
@@ -265,9 +260,6 @@ export const PromptPacksPanel: React.FC = () => {
 							className="flex min-h-8 shrink-0 flex-wrap items-center justify-end gap-2"
 						/>
 					</div>
-					<TabsContent value="instructions" className="mt-0 min-h-0 flex-1 overflow-hidden">
-						<PromptTemplateEditorPanel />
-					</TabsContent>
 					<TabsContent value="skills" className="mt-0 min-h-0 flex-1 overflow-hidden">
 						<SkillsEditorPanel />
 					</TabsContent>

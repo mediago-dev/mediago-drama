@@ -22,6 +22,7 @@ import (
 	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
 	servicepromptlibrary "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptlibrary"
 	servicepromptpack "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
+	serviceprompttemplates "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompttemplates"
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 	serviceworkspaceevent "github.com/mediago-dev/mediago-drama/services/server/internal/service/workspaceevent"
@@ -98,8 +99,9 @@ func newAPIHandler(config Config) *apiHandler {
 	generationService.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
 	generationService.SetGenerationNotifications(generationNotifications)
 	generationService.SetDocumentResolver(workspaceState.StateService().Documents)
+	promptTemplates := serviceprompttemplates.NewServiceFromRepository(settingsRepos.Instructions, settingsReposErr)
+	serviceprompt.SetPromptTemplateStore(promptTemplates)
 	promptPack := servicepromptpack.NewServiceFromRepository(settingsRepos.Packs, settingsRepos.PromptLibrary, settingsReposErr)
-	serviceprompt.SetPromptPackStore(promptPack)
 	serviceskill.SetPromptPackStore(promptPack)
 	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
 	promptLibrary := servicepromptlibrary.NewServiceFromPromptPack(promptPack, settingsReposErr)
@@ -138,6 +140,7 @@ func newAPIHandler(config Config) *apiHandler {
 		previewStreamer:  previewStreamer,
 		projectAssets:    projectAssets,
 		promptPack:       promptPack,
+		promptTemplates:  promptTemplates,
 		promptLibrary:    promptLibrary,
 		skillRegistry:    skillRegistry,
 		shutdownCtx:      shutdownCtx,

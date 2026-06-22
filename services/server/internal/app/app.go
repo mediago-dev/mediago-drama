@@ -19,7 +19,6 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
-	serviceprompttemplates "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompttemplates"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -123,7 +122,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	episodePreviewHandler := httphandlers.NewEpisodePreview(api.workspaceState, api.mediaAssets, api.previewStreamer)
 	workspaceEventHandler := httphandlers.NewWorkspaceEvents(api)
 	promptPackHandler := httphandlers.NewPromptPacks(api.promptPack)
-	promptTemplateHandler := httphandlers.NewPromptTemplates(serviceprompttemplates.NewServiceWithStore(api.promptPack))
+	promptTemplateHandler := httphandlers.NewPromptTemplates(api.promptTemplates)
 	promptLibraryHandler := httphandlers.NewPromptLibrary(api.promptLibrary)
 	skillHandler := httphandlers.NewSkills(api.skillRegistry)
 	approvalHandler := httphandlers.NewDocumentToolApprovals(api.workspaceState, repository.IsRecordNotFound)

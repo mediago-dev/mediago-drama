@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
@@ -131,13 +130,6 @@ func sortEntries(entries []Entry) {
 		if entries[first].Kind != entries[second].Kind {
 			return entries[first].Kind < entries[second].Kind
 		}
-		if entries[first].Kind == instructionpack.KindInstruction {
-			firstOrder := metadataInt(entries[first].Metadata, "order")
-			secondOrder := metadataInt(entries[second].Metadata, "order")
-			if firstOrder != secondOrder {
-				return firstOrder < secondOrder
-			}
-		}
 		return entries[first].Slug < entries[second].Slug
 	})
 }
@@ -174,29 +166,6 @@ func mustJSON(value map[string]any) string {
 		return "{}"
 	}
 	return string(data)
-}
-
-func metadataInt(metadata map[string]any, key string) int {
-	value, ok := metadata[key]
-	if !ok || value == nil {
-		return 0
-	}
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case float64:
-		return int(typed)
-	case json.Number:
-		result, _ := typed.Int64()
-		return int(result)
-	case string:
-		result, _ := strconv.Atoi(typed)
-		return result
-	default:
-		return 0
-	}
 }
 
 func validateEntryForWrite(entry Entry) error {

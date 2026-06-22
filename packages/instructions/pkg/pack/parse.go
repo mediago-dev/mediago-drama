@@ -29,14 +29,6 @@ var (
 	ErrEntryNotFound = errors.New("pack entry not found")
 )
 
-type instructionFrontmatter struct {
-	Slug        string `yaml:"slug"`
-	Title       string `yaml:"title"`
-	Description string `yaml:"description"`
-	Order       int    `yaml:"order"`
-	Editable    bool   `yaml:"editable"`
-}
-
 type skillFrontmatter struct {
 	Name             string         `yaml:"name"`
 	Title            string         `yaml:"title"`
@@ -70,7 +62,7 @@ func ParseFS(ctx context.Context, fsys fs.FS) (Bundle, error) {
 		Manifest:   manifest,
 		Categories: append([]Category(nil), manifest.Categories...),
 	}
-	if err := parseInstructionEntries(ctx, fsys, manifest.ID, &bundle.Entries); err != nil {
+	if err := rejectUnsupportedInstructionsDir(ctx, fsys); err != nil {
 		return Bundle{}, err
 	}
 	if err := parseSkillEntries(ctx, fsys, manifest.ID, &bundle.Entries); err != nil {
@@ -102,46 +94,6 @@ func parseManifest(fsys fs.FS) (Manifest, error) {
 		return Manifest{}, fmt.Errorf("%w: parsing pack.json: %w", ErrInvalidPack, err)
 	}
 	return manifest, nil
-}
-
-func parseInstructionEntries(ctx context.Context, fsys fs.FS, packID string, entries *[]Entry) error {
-	return readMarkdownDir(ctx, fsys, instructionsDir, markdownExt, func(path string, data []byte) error {
-		frontmatter, body, raw, err := splitMarkdownFrontmatter(data)
-		if err != nil {
-			return fmt.Errorf("decoding %s: %w", path, err)
-		}
-		var meta instructionFrontmatter
-		if err := yaml.Unmarshal([]byte(frontmatter), &meta); err != nil {
-			return fmt.Errorf("%w: parsing %s frontmatter: %w", ErrInvalidPack, path, err)
-		}
-		slug := strings.TrimSpace(meta.Slug)
-		if slug == "" {
-			slug = strings.TrimSuffix(filepath.Base(path), markdownExt)
-		}
-		if !isSafeSlug(slug) {
-			return fmt.Errorf("%w: instruction slug %q is invalid", ErrInvalidPack, slug)
-		}
-		title := strings.TrimSpace(meta.Title)
-		if title == "" {
-			title = slug
-		}
-		*entries = append(*entries, Entry{
-			ID:          EntryID(packID, KindInstruction, slug),
-			PackID:      packID,
-			Kind:        KindInstruction,
-			Slug:        slug,
-			Name:        title,
-			Title:       title,
-			Description: strings.TrimSpace(meta.Description),
-			Body:        normalizeBody(body),
-			Raw:         raw,
-			Metadata: map[string]any{
-				"order":    meta.Order,
-				"editable": meta.Editable,
-			},
-		})
-		return nil
-	})
 }
 
 func parseSkillEntries(ctx context.Context, fsys fs.FS, packID string, entries *[]Entry) error {
@@ -178,6 +130,26 @@ func parseSkillEntries(ctx context.Context, fsys fs.FS, packID string, entries *
 		})
 		return nil
 	})
+}
+
+func rejectUnsupportedInstructionsDir(ctx context.Context, fsys fs.FS) error {
+	if err := ctxErr(ctx); err != nil {
+		return err
+	}
+	dirEntries, err := fs.ReadDir(fsys, instructionsDir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("%w: reading %s: %w", ErrInvalidPack, instructionsDir, err)
+	}
+	for _, dirEntry := range dirEntries {
+		if dirEntry.IsDir() || !strings.HasSuffix(dirEntry.Name(), markdownExt) {
+			continue
+		}
+		return fmt.Errorf("%w: prompt packs cannot contain instructions; use instruction settings instead", ErrInvalidPack)
+	}
+	return nil
 }
 
 func parsePromptEntries(ctx context.Context, fsys fs.FS, packID string, entries *[]Entry) error {

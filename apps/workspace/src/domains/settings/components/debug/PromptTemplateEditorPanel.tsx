@@ -311,15 +311,18 @@ const EntrySourceBadge: React.FC<Pick<PromptTemplate, "source" | "overridden">> 
 	overridden,
 	source,
 }) => (
-	<Badge variant={overridden || source === "pack" ? "secondary" : "outline"} className="rounded-md">
+	<Badge
+		variant={overridden || source === "official" ? "secondary" : "outline"}
+		className="rounded-md"
+	>
 		{entrySourceLabel(source, overridden)}
 	</Badge>
 );
 
 const entrySourceLabel = (source: PromptTemplate["source"], overridden?: boolean) => {
 	if (overridden) return "已覆盖";
-	if (source === "pack") return "来自包";
-	return "用户新增";
+	if (source === "official") return "官方默认";
+	return "用户覆盖";
 };
 
 const sanitizeTemplate = (template: PromptTemplate): PromptTemplate => ({
@@ -344,5 +347,5 @@ const errorMessage = (error: unknown) => {
 		const message = (error as { message?: unknown }).message;
 		if (typeof message === "string" && message.trim()) return message;
 	}
-	return "请检查后端服务是否可写提示词模板文件。";
+	return "请检查后端服务是否可写系统指令。";
 };

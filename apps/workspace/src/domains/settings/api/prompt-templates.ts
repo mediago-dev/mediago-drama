@@ -1,6 +1,6 @@
 import httpClient from "@/shared/lib/http";
 
-export type PromptTemplateSource = "pack" | "user";
+export type PromptTemplateSource = "official" | "user";
 
 export interface PromptTemplate {
 	id: string;

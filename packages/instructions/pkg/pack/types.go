@@ -7,8 +7,6 @@ import "fmt"
 type Kind string
 
 const (
-	// KindInstruction stores system instruction Markdown.
-	KindInstruction Kind = "instruction"
 	// KindSkill stores agent skill Markdown.
 	KindSkill Kind = "skill"
 	// KindPrompt stores reusable generation prompt Markdown.
@@ -42,7 +40,7 @@ type Bundle struct {
 	Entries    []Entry
 }
 
-// Entry describes one instruction, skill, or reusable prompt.
+// Entry describes one skill or reusable prompt.
 type Entry struct {
 	ID          string
 	PackID      string
@@ -64,7 +62,7 @@ func EntryID(packID string, kind Kind, slug string) string {
 // Validate reports whether kind is a supported pack entry kind.
 func (kind Kind) Validate() error {
 	switch kind {
-	case KindInstruction, KindSkill, KindPrompt:
+	case KindSkill, KindPrompt:
 		return nil
 	default:
 		return fmt.Errorf("unsupported pack entry kind %q", kind)

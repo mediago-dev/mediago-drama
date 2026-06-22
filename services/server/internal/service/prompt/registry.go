@@ -6,8 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/prompttemplates"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 )
 
@@ -53,12 +52,12 @@ var fallbackSections = []SectionDescriptor{
 
 // SectionDescriptors returns every registered prompt section in injection order.
 func SectionDescriptors() []SectionDescriptor {
-	entries, err := currentPackStore().ListEntries(context.Background(), instructionpack.KindInstruction)
+	templateMap, err := currentPromptTemplateStore().Load(context.Background())
 	if err != nil {
 		slog.Warn("prompt instruction registry unavailable", "error", err)
 		return sortedSectionDescriptors(fallbackSections)
 	}
-	descriptors := descriptorsFromEntries(entries)
+	descriptors := descriptorsFromTemplates(prompttemplates.OrderedTemplates(templateMap))
 	if len(descriptors) == 0 {
 		return sortedSectionDescriptors(fallbackSections)
 	}
@@ -100,15 +99,15 @@ func promptContextData(ctx PromptContext) any {
 	return ctx
 }
 
-func descriptorsFromEntries(entries []promptpack.Entry) []SectionDescriptor {
-	descriptors := make([]SectionDescriptor, 0, len(entries))
-	for _, entry := range entries {
+func descriptorsFromTemplates(templates []prompttemplates.PromptTemplate) []SectionDescriptor {
+	descriptors := make([]SectionDescriptor, 0, len(templates))
+	for _, template := range templates {
 		descriptor := SectionDescriptor{
-			ID:          entry.Slug,
-			Name:        nonEmpty(entry.Title, entry.Name),
-			Description: entry.Description,
-			Order:       metadataInt(entry.Metadata, "order"),
-			Editable:    metadataBool(entry.Metadata, "editable"),
+			ID:          template.ID,
+			Name:        template.Name,
+			Description: template.Description,
+			Order:       template.Order,
+			Editable:    true,
 			DataFn:      promptContextData,
 		}
 		if descriptor.ID == "AGENTS" {
@@ -133,36 +132,4 @@ func sortedSectionDescriptors(input []SectionDescriptor) []SectionDescriptor {
 		return descriptors[first].ID < descriptors[second].ID
 	})
 	return descriptors
-}
-
-func metadataBool(metadata map[string]any, key string) bool {
-	value, ok := metadata[key]
-	if !ok || value == nil {
-		return false
-	}
-	typed, ok := value.(bool)
-	return ok && typed
-}
-
-func metadataInt(metadata map[string]any, key string) int {
-	value, ok := metadata[key]
-	if !ok || value == nil {
-		return 0
-	}
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case float64:
-		return int(typed)
-	default:
-		return 0
-	}
-}
-
-func nonEmpty(value string, fallback string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return strings.TrimSpace(fallback)
-	}
-	return value
 }

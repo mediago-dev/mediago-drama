@@ -9,8 +9,15 @@ import (
 	"sort"
 	"strings"
 
-	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
+	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/official"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+)
+
+const (
+	sourceOfficial = "official"
+	sourceUser     = "user"
 )
 
 // ErrInvalidTemplate reports an invalid prompt template payload.
@@ -27,22 +34,23 @@ type PromptTemplate struct {
 	Order       int    `json:"-"`
 }
 
-// PackStore supplies prompt instruction persistence.
-type PackStore interface {
-	ListEntries(ctx context.Context, kind instructionpack.Kind) ([]promptpack.Entry, error)
-	GetEntry(ctx context.Context, kind instructionpack.Kind, slug string) (promptpack.Entry, error)
-	SaveEntry(ctx context.Context, kind instructionpack.Kind, slug string, entry promptpack.Entry) (promptpack.Entry, error)
-	ResetEntry(ctx context.Context, kind instructionpack.Kind, slug string) (promptpack.Entry, error)
+// Repository supplies user instruction template override persistence.
+type Repository interface {
+	List(ctx context.Context) ([]domain.InstructionTemplateModel, error)
+	Upsert(ctx context.Context, model domain.InstructionTemplateModel) error
+	Delete(ctx context.Context, id string) error
 }
 
-// Service loads and saves editable system prompt instructions.
+// Service loads official system prompt instructions and saves user overrides.
 type Service struct {
-	store PackStore
+	repo    Repository
+	initErr error
 }
 
-// NewService creates a prompt template service backed by the global prompt pack store.
+// NewService creates a prompt template service backed by the settings DB.
 func NewService() *Service {
-	return NewServiceWithStore(promptpack.NewService())
+	repos, err := repository.OpenSettingsRepositories(config.DefaultSettingsDBPath())
+	return NewServiceFromRepository(repos.Instructions, err)
 }
 
 // NewServiceWithSource is retained for compatibility with older tests and callers.
@@ -50,34 +58,61 @@ func NewServiceWithSource(_ fs.FS, _ string) *Service {
 	return NewService()
 }
 
-// NewServiceWithStore creates a prompt template service with an explicit pack store.
-func NewServiceWithStore(store PackStore) *Service {
-	return &Service{store: store}
+// NewServiceWithStore creates a prompt template service with an explicit repository.
+func NewServiceWithStore(repo Repository) *Service {
+	return NewServiceFromRepository(repo, nil)
+}
+
+// NewServiceFromRepository creates a prompt template service from a repository.
+func NewServiceFromRepository(repo Repository, initErr error) *Service {
+	return &Service{repo: repo, initErr: initErr}
 }
 
 // Load returns editable system prompt instructions.
 func (store *Service) Load(ctx context.Context) (map[string]PromptTemplate, error) {
-	if store == nil || store.store == nil {
-		return nil, errors.New("prompt template store is nil")
+	if err := store.ensureReady(); err != nil {
+		return nil, err
 	}
-	entries, err := store.store.ListEntries(ctx, instructionpack.KindInstruction)
+	instructions, err := official.Instructions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	overrides, err := store.overrideMap(ctx)
 	if err != nil {
 		return nil, err
 	}
 	templates := map[string]PromptTemplate{}
-	for _, entry := range entries {
-		if !metadataBool(entry.Metadata, "editable") {
+	for _, instruction := range instructions {
+		if !instruction.Editable {
 			continue
 		}
-		templates[entry.Slug] = templateFromEntry(entry)
+		var override *domain.InstructionTemplateModel
+		if model, ok := overrides[instruction.ID]; ok {
+			override = &model
+		}
+		templates[instruction.ID] = templateFromInstruction(instruction, override)
 	}
 	return templates, nil
 }
 
+// Get returns one resolved system prompt instruction.
+func (store *Service) Get(ctx context.Context, id string) (PromptTemplate, error) {
+	id = strings.TrimSpace(id)
+	templates, err := store.Load(ctx)
+	if err != nil {
+		return PromptTemplate{}, err
+	}
+	template, ok := templates[id]
+	if !ok {
+		return PromptTemplate{}, fmt.Errorf("%w: template %q is not editable", ErrInvalidTemplate, id)
+	}
+	return template, nil
+}
+
 // Save validates and writes one prompt instruction as a user override.
 func (store *Service) Save(ctx context.Context, id string, template PromptTemplate) (PromptTemplate, error) {
-	if store == nil || store.store == nil {
-		return PromptTemplate{}, errors.New("prompt template store is nil")
+	if err := store.ensureReady(); err != nil {
+		return PromptTemplate{}, err
 	}
 	id = strings.TrimSpace(id)
 	if strings.TrimSpace(template.ID) == "" {
@@ -86,43 +121,45 @@ func (store *Service) Save(ctx context.Context, id string, template PromptTempla
 	if err := validateTemplate(id, template); err != nil {
 		return PromptTemplate{}, err
 	}
-	current, err := store.store.GetEntry(ctx, instructionpack.KindInstruction, id)
-	if errors.Is(err, promptpack.ErrEntryNotFound) {
+	instruction, err := official.InstructionByID(ctx, id)
+	if errors.Is(err, official.ErrInstructionNotFound) {
 		return PromptTemplate{}, fmt.Errorf("%w: template %q is not editable", ErrInvalidTemplate, id)
 	}
 	if err != nil {
 		return PromptTemplate{}, err
 	}
-	if !metadataBool(current.Metadata, "editable") {
+	if !instruction.Editable {
 		return PromptTemplate{}, fmt.Errorf("%w: template %q is not editable", ErrInvalidTemplate, id)
 	}
-	current.Body = normalizeContent(template.Content)
-	current.Name = nonEmpty(current.Name, template.Name)
-	current.Title = nonEmpty(current.Title, template.Name)
-	saved, err := store.store.SaveEntry(ctx, instructionpack.KindInstruction, id, current)
-	if err != nil {
+	if err := store.repo.Upsert(ctx, domain.InstructionTemplateModel{
+		ID:      id,
+		Content: normalizeContent(template.Content),
+	}); err != nil {
 		return PromptTemplate{}, err
 	}
-	return templateFromEntry(saved), nil
+	return store.Get(ctx, id)
 }
 
-// Reset restores one prompt instruction from its installed prompt pack.
+// Reset removes one user prompt instruction override and restores the official default.
 func (store *Service) Reset(ctx context.Context, id string) (PromptTemplate, error) {
-	if store == nil || store.store == nil {
-		return PromptTemplate{}, errors.New("prompt template store is nil")
+	if err := store.ensureReady(); err != nil {
+		return PromptTemplate{}, err
 	}
 	id = strings.TrimSpace(id)
-	reset, err := store.store.ResetEntry(ctx, instructionpack.KindInstruction, id)
-	if errors.Is(err, promptpack.ErrEntryNotFound) || errors.Is(err, promptpack.ErrPackReadonly) {
+	instruction, err := official.InstructionByID(ctx, id)
+	if errors.Is(err, official.ErrInstructionNotFound) {
 		return PromptTemplate{}, fmt.Errorf("%w: template %q cannot be reset", ErrInvalidTemplate, id)
 	}
 	if err != nil {
 		return PromptTemplate{}, err
 	}
-	if !metadataBool(reset.Metadata, "editable") {
+	if !instruction.Editable {
 		return PromptTemplate{}, fmt.Errorf("%w: template %q is not editable", ErrInvalidTemplate, id)
 	}
-	return templateFromEntry(reset), nil
+	if err := store.repo.Delete(ctx, id); err != nil {
+		return PromptTemplate{}, err
+	}
+	return templateFromInstruction(instruction, nil), nil
 }
 
 // OrderedTemplates returns prompt templates in system prompt assembly order.
@@ -140,16 +177,51 @@ func OrderedTemplates(templateMap map[string]PromptTemplate) []PromptTemplate {
 	return templates
 }
 
-func templateFromEntry(entry promptpack.Entry) PromptTemplate {
-	name := nonEmpty(entry.Title, entry.Name)
+func (store *Service) ensureReady() error {
+	if store == nil {
+		return errors.New("prompt template service is nil")
+	}
+	if store.initErr != nil {
+		return store.initErr
+	}
+	if store.repo == nil {
+		return errors.New("prompt template repository is nil")
+	}
+	return nil
+}
+
+func (store *Service) overrideMap(ctx context.Context) (map[string]domain.InstructionTemplateModel, error) {
+	models, err := store.repo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	overrides := make(map[string]domain.InstructionTemplateModel, len(models))
+	for _, model := range models {
+		overrides[strings.TrimSpace(model.ID)] = model
+	}
+	return overrides, nil
+}
+
+func templateFromInstruction(
+	instruction official.Instruction,
+	override *domain.InstructionTemplateModel,
+) PromptTemplate {
+	content := instruction.Body
+	source := sourceOfficial
+	overridden := false
+	if override != nil {
+		content = override.Content
+		source = sourceUser
+		overridden = true
+	}
 	return PromptTemplate{
-		ID:          entry.Slug,
-		Name:        name,
-		Description: entry.Description,
-		Content:     normalizeContent(entry.Body),
-		Source:      entry.Source,
-		Overridden:  entry.Source == "user" && entry.OverriddenFrom != "",
-		Order:       metadataInt(entry.Metadata, "order"),
+		ID:          instruction.ID,
+		Name:        instruction.Name,
+		Description: instruction.Description,
+		Content:     normalizeContent(content),
+		Source:      source,
+		Overridden:  overridden,
+		Order:       instruction.Order,
 	}
 }
 
@@ -174,30 +246,6 @@ func normalizeContent(content string) string {
 	return text + "\n"
 }
 
-func metadataBool(metadata map[string]any, key string) bool {
-	value, ok := metadata[key]
-	if !ok || value == nil {
-		return false
-	}
-	typed, ok := value.(bool)
-	return ok && typed
-}
-
-func metadataInt(metadata map[string]any, key string) int {
-	value, ok := metadata[key]
-	if !ok || value == nil {
-		return 0
-	}
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case float64:
-		return int(typed)
-	default:
-		return 0
-	}
-}
-
 func isSafeTemplateID(id string) bool {
 	id = strings.TrimSpace(id)
 	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, `/\`) {
@@ -217,12 +265,4 @@ func isSafeTemplateID(id string) bool {
 		}
 	}
 	return true
-}
-
-func nonEmpty(value string, fallback string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return strings.TrimSpace(fallback)
-	}
-	return value
 }

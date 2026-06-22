@@ -14,6 +14,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/prompttemplates"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 )
 
@@ -27,7 +28,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	store := promptpack.NewServiceFromRepository(repos.Packs, repos.PromptLibrary, nil)
-	serviceprompt.SetPromptPackStore(store)
+	serviceprompt.SetPromptTemplateStore(prompttemplates.NewServiceFromRepository(repos.Instructions, nil))
 	serviceskill.SetPromptPackStore(store)
 	code := m.Run()
 	_ = os.RemoveAll(dir)

@@ -25,8 +25,8 @@ func TestServiceSeedsBuiltinPackIdempotently(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntries() second error = %v", err)
 	}
-	if len(first) != 5 || len(second) != len(first) {
-		t.Fatalf("skill counts first=%d second=%d, want 5 and idempotent", len(first), len(second))
+	if len(first) != 6 || len(second) != len(first) {
+		t.Fatalf("skill counts first=%d second=%d, want 6 and idempotent", len(first), len(second))
 	}
 	packs, err := store.ListPacks(context.Background())
 	if err != nil {
@@ -34,30 +34,6 @@ func TestServiceSeedsBuiltinPackIdempotently(t *testing.T) {
 	}
 	if len(packs) != 1 || packs[0].ID != DefaultPackID || packs[0].Source != packSourceDefault {
 		t.Fatalf("packs = %#v, want default pack", packs)
-	}
-}
-
-func TestServicePreservesUserOverrideWhenSeeding(t *testing.T) {
-	store := newTestService(t)
-	updated, err := store.SaveEntry(context.Background(), instructionpack.KindInstruction, "AGENTS", Entry{
-		Slug: "AGENTS",
-		Name: "AGENTS.md",
-		Body: "User body",
-		Metadata: map[string]any{
-			"order":    0,
-			"editable": true,
-		},
-	})
-	if err != nil {
-		t.Fatalf("SaveEntry() error = %v", err)
-	}
-	store.seeded = false
-	got, err := store.GetEntry(context.Background(), instructionpack.KindInstruction, "AGENTS")
-	if err != nil {
-		t.Fatalf("GetEntry() error = %v", err)
-	}
-	if got.Body != updated.Body || got.Source != entrySourceUser {
-		t.Fatalf("entry = %#v, want preserved user override", got)
 	}
 }
 

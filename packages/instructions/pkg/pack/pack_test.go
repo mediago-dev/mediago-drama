@@ -8,18 +8,17 @@ import (
 	"testing/fstest"
 )
 
-func TestParseFSParsesAllKinds(t *testing.T) {
+func TestParseFSParsesPackAssets(t *testing.T) {
 	bundle, err := ParseFS(context.Background(), fstest.MapFS{
-		"pack.json":              &fstest.MapFile{Data: []byte(`{"id":"sample","name":"Sample","version":"1.0.0","categories":[{"id":"extra","label":"Extra"}]}`)},
-		"instructions/AGENTS.md": &fstest.MapFile{Data: []byte("---\nslug: AGENTS\ntitle: Agents\norder: 0\neditable: true\n---\nInstruction body\n")},
-		"skills/writer.skill.md": &fstest.MapFile{Data: []byte("---\nname: writer\ndescription: Writes\ndocument_category: screenplay\n---\nSkill body\n")},
-		"prompts/image.md":       &fstest.MapFile{Data: []byte("---\nid: image\nname: Image\ntype: image\ncategory: extra\n---\nPrompt body\n")},
+		"pack.json":              {Data: []byte(`{"id":"sample","name":"Sample","version":"1.0.0","categories":[{"id":"extra","label":"Extra"}]}`)},
+		"skills/writer.skill.md": {Data: []byte("---\nname: writer\ndescription: Writes\ndocument_category: screenplay\n---\nSkill body\n")},
+		"prompts/image.md":       {Data: []byte("---\nid: image\nname: Image\ntype: image\ncategory: extra\n---\nPrompt body\n")},
 	})
 	if err != nil {
 		t.Fatalf("ParseFS() error = %v", err)
 	}
-	if len(bundle.Entries) != 3 {
-		t.Fatalf("entries = %d, want 3", len(bundle.Entries))
+	if len(bundle.Entries) != 2 {
+		t.Fatalf("entries = %d, want 2", len(bundle.Entries))
 	}
 	for _, entry := range bundle.Entries {
 		if entry.ID == "" || entry.PackID != "sample" || entry.Body == "" {
@@ -31,6 +30,16 @@ func TestParseFSParsesAllKinds(t *testing.T) {
 				t.Fatalf("skill hint = %#v, want document_category", entry.Metadata["hint"])
 			}
 		}
+	}
+}
+
+func TestParseFSRejectsInstructions(t *testing.T) {
+	_, err := ParseFS(context.Background(), fstest.MapFS{
+		"pack.json":              {Data: []byte(`{"id":"sample","name":"Sample","version":"1.0.0"}`)},
+		"instructions/AGENTS.md": {Data: []byte("---\nslug: AGENTS\n---\nInstruction body\n")},
+	})
+	if err == nil {
+		t.Fatal("ParseFS() error = nil, want invalid pack")
 	}
 }
 
@@ -55,7 +64,7 @@ func TestParseZipParsesPackArchive(t *testing.T) {
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
 	writeZipFile(t, writer, "pack.json", `{"id":"sample","name":"Sample","version":"1.0.0"}`)
-	writeZipFile(t, writer, "instructions/AGENTS.md", "---\nslug: AGENTS\ntitle: Agents\n---\nBody\n")
+	writeZipFile(t, writer, "skills/writer.skill.md", "---\nname: writer\ndescription: Writes\n---\nBody\n")
 	if err := writer.Close(); err != nil {
 		t.Fatalf("closing zip: %v", err)
 	}

@@ -3,7 +3,7 @@
   "name": "MediaGo Drama Built-in Prompts",
   "version": "1.0.0",
   "author": "MediaGo Drama",
-  "description": "Default system instructions, agent skills, reusable prompt presets, and visual styles.",
+  "description": "Default agent skills, reusable prompt presets, and visual styles.",
   "categories": [
     {
       "id": "style",

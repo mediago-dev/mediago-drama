@@ -6,41 +6,40 @@ import (
 	"strings"
 	"testing"
 
-	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 )
 
-func TestStoreLoadReturnsEditableInstructions(t *testing.T) {
-	store := NewServiceWithStore(newFakeTemplatePackStore())
+func TestStoreLoadReturnsOfficialInstructions(t *testing.T) {
+	store := NewServiceWithStore(newFakeTemplateRepo())
 
 	templates, err := store.Load(context.Background())
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if _, ok := templates["RUNTIME"]; ok {
-		t.Fatalf("Load() returned non-editable runtime template")
-	}
-	if templates["TOOLS"].Content != "Tools body\n" {
-		t.Fatalf("TOOLS content = %q, want pack body", templates["TOOLS"].Content)
+	if templates["TOOLS"].Content == "" || templates["TOOLS"].Source != sourceOfficial {
+		t.Fatalf("TOOLS template = %#v, want official content", templates["TOOLS"])
 	}
 }
 
 func TestStoreSaveWritesUserOverride(t *testing.T) {
-	packStore := newFakeTemplatePackStore()
-	store := NewServiceWithStore(packStore)
+	repo := newFakeTemplateRepo()
+	store := NewServiceWithStore(repo)
 
 	saved, err := store.Save(context.Background(), "TOOLS", PromptTemplate{ID: "TOOLS", Content: "Saved"})
 	if err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
-	if saved.Content != "Saved\n" || packStore.entries["TOOLS"].Source != "user" || !saved.Overridden {
-		t.Fatalf("saved = %#v source=%q, want normalized user override", saved, packStore.entries["TOOLS"].Source)
+	if saved.Content != "Saved\n" || saved.Source != sourceUser || !saved.Overridden {
+		t.Fatalf("saved = %#v, want normalized user override", saved)
+	}
+	if repo.models["TOOLS"].Content != "Saved\n" {
+		t.Fatalf("stored content = %q, want Saved", repo.models["TOOLS"].Content)
 	}
 }
 
-func TestStoreResetRestoresPackInstruction(t *testing.T) {
-	packStore := newFakeTemplatePackStore()
-	store := NewServiceWithStore(packStore)
+func TestStoreResetRestoresOfficialInstruction(t *testing.T) {
+	repo := newFakeTemplateRepo()
+	store := NewServiceWithStore(repo)
 
 	if _, err := store.Save(context.Background(), "TOOLS", PromptTemplate{ID: "TOOLS", Content: "Saved"}); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -49,15 +48,27 @@ func TestStoreResetRestoresPackInstruction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reset() error = %v", err)
 	}
-	if reset.Content != "Tools body\n" || reset.Source != "pack" || reset.Overridden {
-		t.Fatalf("reset = %#v, want pack instruction", reset)
+	if reset.Source != sourceOfficial || reset.Overridden || !strings.Contains(reset.Content, "工具使用原则") {
+		t.Fatalf("reset = %#v, want official instruction", reset)
+	}
+	if _, ok := repo.models["TOOLS"]; ok {
+		t.Fatal("override still exists after reset")
 	}
 }
 
 func TestStoreSaveRejectsInvalidTemplate(t *testing.T) {
-	store := NewServiceWithStore(newFakeTemplatePackStore())
+	store := NewServiceWithStore(newFakeTemplateRepo())
 
 	_, err := store.Save(context.Background(), "TOOLS", PromptTemplate{ID: "TOOLS"})
+	if !errors.Is(err, ErrInvalidTemplate) {
+		t.Fatalf("Save() error = %v, want ErrInvalidTemplate", err)
+	}
+}
+
+func TestStoreSaveRejectsUnknownTemplate(t *testing.T) {
+	store := NewServiceWithStore(newFakeTemplateRepo())
+
+	_, err := store.Save(context.Background(), "UNKNOWN", PromptTemplate{ID: "UNKNOWN", Content: "Saved"})
 	if !errors.Is(err, ErrInvalidTemplate) {
 		t.Fatalf("Save() error = %v, want ErrInvalidTemplate", err)
 	}
@@ -78,81 +89,28 @@ func TestOrderedTemplatesUsesPromptAssemblyOrder(t *testing.T) {
 	}
 }
 
-type fakeTemplatePackStore struct {
-	entries map[string]promptpack.Entry
+type fakeTemplateRepo struct {
+	models map[string]domain.InstructionTemplateModel
 }
 
-func newFakeTemplatePackStore() *fakeTemplatePackStore {
-	return &fakeTemplatePackStore{
-		entries: map[string]promptpack.Entry{
-			"AGENTS": {
-				ID: "builtin/instruction/AGENTS", PackID: "builtin", Kind: instructionpack.KindInstruction,
-				Slug: "AGENTS", Name: "AGENTS.md", Title: "AGENTS.md", Body: "Agents body",
-				Metadata: map[string]any{"order": 0, "editable": true}, Source: "pack",
-			},
-			"TOOLS": {
-				ID: "builtin/instruction/TOOLS", PackID: "builtin", Kind: instructionpack.KindInstruction,
-				Slug: "TOOLS", Name: "TOOLS.md", Title: "TOOLS.md", Body: "Tools body",
-				Metadata: map[string]any{"order": 1, "editable": true}, Source: "pack",
-			},
-			"RUNTIME": {
-				ID: "builtin/instruction/RUNTIME", PackID: "builtin", Kind: instructionpack.KindInstruction,
-				Slug: "RUNTIME", Name: "Runtime", Title: "Runtime", Body: "Runtime body",
-				Metadata: map[string]any{"order": 2, "editable": false}, Source: "pack",
-			},
-		},
-	}
+func newFakeTemplateRepo() *fakeTemplateRepo {
+	return &fakeTemplateRepo{models: map[string]domain.InstructionTemplateModel{}}
 }
 
-func (store *fakeTemplatePackStore) ListEntries(_ context.Context, kind instructionpack.Kind) ([]promptpack.Entry, error) {
-	entries := []promptpack.Entry{}
-	for _, entry := range store.entries {
-		if entry.Kind == kind {
-			entries = append(entries, entry)
-		}
+func (repo *fakeTemplateRepo) List(_ context.Context) ([]domain.InstructionTemplateModel, error) {
+	models := make([]domain.InstructionTemplateModel, 0, len(repo.models))
+	for _, model := range repo.models {
+		models = append(models, model)
 	}
-	return entries, nil
+	return models, nil
 }
 
-func (store *fakeTemplatePackStore) GetEntry(_ context.Context, kind instructionpack.Kind, slug string) (promptpack.Entry, error) {
-	entry, ok := store.entries[slug]
-	if !ok || entry.Kind != kind {
-		return promptpack.Entry{}, promptpack.ErrEntryNotFound
-	}
-	return entry, nil
+func (repo *fakeTemplateRepo) Upsert(_ context.Context, model domain.InstructionTemplateModel) error {
+	repo.models[model.ID] = model
+	return nil
 }
 
-func (store *fakeTemplatePackStore) SaveEntry(_ context.Context, _ instructionpack.Kind, slug string, entry promptpack.Entry) (promptpack.Entry, error) {
-	current, ok := store.entries[slug]
-	if !ok {
-		return promptpack.Entry{}, promptpack.ErrEntryNotFound
-	}
-	entry.ID = current.ID
-	entry.PackID = current.PackID
-	entry.Slug = slug
-	entry.Source = "user"
-	entry.OverriddenFrom = current.ID
-	store.entries[slug] = entry
-	return entry, nil
-}
-
-func (store *fakeTemplatePackStore) ResetEntry(_ context.Context, _ instructionpack.Kind, slug string) (promptpack.Entry, error) {
-	entry, ok := store.entries[slug]
-	if !ok {
-		return promptpack.Entry{}, promptpack.ErrEntryNotFound
-	}
-	if entry.Source == "user" && entry.OverriddenFrom == "" {
-		return promptpack.Entry{}, promptpack.ErrPackReadonly
-	}
-	entry.Body = strings.TrimSuffix(entry.Title, ".md") + " body"
-	if slug == "TOOLS" {
-		entry.Body = "Tools body"
-	}
-	if slug == "AGENTS" {
-		entry.Body = "Agents body"
-	}
-	entry.Source = "pack"
-	entry.OverriddenFrom = ""
-	store.entries[slug] = entry
-	return entry, nil
+func (repo *fakeTemplateRepo) Delete(_ context.Context, id string) error {
+	delete(repo.models, id)
+	return nil
 }

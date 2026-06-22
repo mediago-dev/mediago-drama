@@ -129,6 +129,7 @@ func TestOpenSettingsRepositoriesMigratesOnlyGlobalSettingsSchemas(t *testing.T)
 		repos.APIKeys == nil ||
 		repos.AgentModelProfiles == nil ||
 		repos.GenerationPreferences == nil ||
+		repos.Instructions == nil ||
 		repos.PromptLibrary == nil {
 		t.Fatalf("repositories = %#v, want all settings repositories", repos)
 	}
@@ -136,6 +137,7 @@ func TestOpenSettingsRepositoriesMigratesOnlyGlobalSettingsSchemas(t *testing.T)
 	settingsModels := []any{
 		&domain.APIKeyModel{},
 		&domain.AgentModelProfileModel{},
+		&domain.InstructionTemplateModel{},
 		&domain.PromptCategoryModel{},
 		&domain.PromptLibraryEntryModel{},
 		&domain.GenerationPreferenceModel{},

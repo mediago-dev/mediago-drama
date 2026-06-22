@@ -82,7 +82,7 @@ func (handler PromptTemplates) HandlePutPromptTemplate(context *gin.Context) {
 
 // HandleResetPromptTemplate godoc
 // @Summary 恢复系统提示词模板
-// @Description 将一个可编辑系统提示词模板恢复为所属提示词包的默认内容。
+// @Description 将一个可编辑系统提示词模板恢复为官方默认内容。
 // @Tags Prompt Templates
 // @Produce json
 // @Param id path string true "Template ID"

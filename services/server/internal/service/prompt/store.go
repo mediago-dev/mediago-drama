@@ -4,46 +4,45 @@ import (
 	"context"
 	"sync"
 
-	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/prompttemplates"
 )
 
-type promptPackStore interface {
-	ListEntries(ctx context.Context, kind instructionpack.Kind) ([]promptpack.Entry, error)
-	GetEntry(ctx context.Context, kind instructionpack.Kind, slug string) (promptpack.Entry, error)
+type promptTemplateStore interface {
+	Load(ctx context.Context) (map[string]prompttemplates.PromptTemplate, error)
+	Get(ctx context.Context, id string) (prompttemplates.PromptTemplate, error)
 }
 
 var (
-	promptPackStoreMu   sync.RWMutex
-	activePackStore     promptPackStore
-	activePackStoreOnce sync.Once
+	promptTemplateStoreMu    sync.RWMutex
+	activePromptTemplate     promptTemplateStore
+	activePromptTemplateOnce sync.Once
 )
 
-// SetPromptPackStore sets the prompt pack store used by runtime prompt rendering.
-func SetPromptPackStore(store promptPackStore) {
+// SetPromptTemplateStore sets the instruction template store used by runtime prompt rendering.
+func SetPromptTemplateStore(store promptTemplateStore) {
 	if store == nil {
 		return
 	}
-	promptPackStoreMu.Lock()
-	defer promptPackStoreMu.Unlock()
-	activePackStore = store
+	promptTemplateStoreMu.Lock()
+	defer promptTemplateStoreMu.Unlock()
+	activePromptTemplate = store
 }
 
-func currentPackStore() promptPackStore {
-	promptPackStoreMu.RLock()
-	store := activePackStore
-	promptPackStoreMu.RUnlock()
+func currentPromptTemplateStore() promptTemplateStore {
+	promptTemplateStoreMu.RLock()
+	store := activePromptTemplate
+	promptTemplateStoreMu.RUnlock()
 	if store != nil {
 		return store
 	}
-	activePackStoreOnce.Do(func() {
-		promptPackStoreMu.Lock()
-		defer promptPackStoreMu.Unlock()
-		if activePackStore == nil {
-			activePackStore = promptpack.NewService()
+	activePromptTemplateOnce.Do(func() {
+		promptTemplateStoreMu.Lock()
+		defer promptTemplateStoreMu.Unlock()
+		if activePromptTemplate == nil {
+			activePromptTemplate = prompttemplates.NewService()
 		}
 	})
-	promptPackStoreMu.RLock()
-	defer promptPackStoreMu.RUnlock()
-	return activePackStore
+	promptTemplateStoreMu.RLock()
+	defer promptTemplateStoreMu.RUnlock()
+	return activePromptTemplate
 }

@@ -17,7 +17,6 @@ func TestBuiltinPackParses(t *testing.T) {
 		counts[entry.Kind]++
 	}
 	if bundle.Manifest.ID != "builtin" ||
-		counts[pack.KindInstruction] != 2 ||
 		counts[pack.KindSkill] != 6 ||
 		counts[pack.KindPrompt] != 10 {
 		t.Fatalf("builtin manifest=%#v counts=%#v", bundle.Manifest, counts)

@@ -169,6 +169,7 @@ func EnsureSettingsSchema(db *gorm.DB) error {
 		&domain.PackModel{},
 		&domain.PackEntryModel{},
 		&domain.PackCategoryModel{},
+		&domain.InstructionTemplateModel{},
 		&domain.PromptCategoryModel{},
 		&domain.PromptLibraryEntryModel{},
 		&domain.GenerationPreferenceModel{},
