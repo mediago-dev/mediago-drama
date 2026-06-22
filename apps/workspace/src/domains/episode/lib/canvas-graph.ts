@@ -61,6 +61,7 @@ export interface EpisodeCanvasNodeData extends Record<string, unknown> {
 	status?: TimelineClipStatus;
 	subtitle: string;
 	title: string;
+	videoUrl?: string;
 }
 
 export interface EpisodeCanvasNode {
@@ -404,6 +405,7 @@ const createVideoOutputNode = (episode: Episode, lane: EpisodeCanvasLane): Episo
 			status: clip?.status ?? "draft",
 			subtitle: clip?.videoUrl ? "视频已生成" : "开机拍摄",
 			title: clip?.title ?? lane.title,
+			videoUrl: clip?.videoUrl,
 		},
 		id: `node-${lane.id}-video-output`,
 		position: { x: 0, y: 0 },

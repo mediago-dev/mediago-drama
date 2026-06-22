@@ -15,6 +15,7 @@ import {
 	Video,
 } from "lucide-react";
 import type React from "react";
+import { GenerationVideoThumbnail } from "@/domains/generation/components/GenerationVideoThumbnail";
 import type { TimelineCompanionTrackType } from "@/domains/episode/stores";
 import type {
 	EpisodeCanvasNodeData,
@@ -225,9 +226,11 @@ export const VideoOutputNode: React.FC<NodeProps> = (props) => {
 
 	return (
 		<CanvasNodeFrame data={data} icon={<Video className="size-4" />}>
-			<div className="relative h-20 overflow-hidden rounded-sm border border-border bg-muted">
+			<div className="relative aspect-video w-full overflow-hidden rounded-sm border border-border bg-muted">
 				{data.imageUrl ? (
 					<img alt={data.title} className="size-full object-cover" src={data.imageUrl} />
+				) : data.videoUrl ? (
+					<GenerationVideoThumbnail source={data.videoUrl} />
 				) : (
 					<div className="grid size-full place-items-center text-muted-foreground">
 						<Video className="size-5" />

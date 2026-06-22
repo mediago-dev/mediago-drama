@@ -70,10 +70,13 @@ describe("EpisodeVideoGenerationDialog", () => {
 					headingOccurrence: 1,
 					headingText: selectedClip?.title,
 					plainText: selectedClip?.content,
-					prompt: expect.stringContaining(selectedClip?.content ?? ""),
+					prompt: selectedClip?.prompt,
 				},
 			},
 		});
+		expect(workspaceProps?.initialPrompt).toBe(selectedClip?.prompt);
+		expect(workspaceProps?.initialPrompt).not.toContain("画面内容：");
+		expect(workspaceProps?.initialPrompt).not.toContain("要求：");
 	});
 
 	it("uses source markdown and mention references like image generation", () => {
@@ -153,6 +156,12 @@ describe("EpisodeVideoGenerationDialog", () => {
 		expect(workspaceProps?.initialPrompt).toContain("### 标志性细节");
 		expect(workspaceProps?.initialPrompt).not.toContain("mention://");
 		expect(workspaceProps?.initialPrompt).not.toContain("引用资源");
+		expect(workspaceProps?.initialPrompt).not.toContain("分组标题：");
+		expect(workspaceProps?.initialPrompt).not.toContain("画面内容：");
+		expect(workspaceProps?.initialPrompt).not.toContain("时间位置：");
+		expect(workspaceProps?.initialPrompt).not.toContain("目标时长：");
+		expect(workspaceProps?.initialPrompt).not.toContain("画幅比例：");
+		expect(workspaceProps?.initialPrompt).not.toContain("要求：");
 		expect(workspaceProps?.renderPromptEditor).toEqual(expect.any(Function));
 		const promptEditor = workspaceProps?.renderPromptEditor?.({
 			className: "",

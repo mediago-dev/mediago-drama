@@ -249,6 +249,24 @@ describe("buildEpisodeCanvasGraph", () => {
 		);
 	});
 
+	it("passes generated video URLs to output nodes for cover previews", () => {
+		const episode = createEpisodeFromMarkdownDocument(
+			makeDocument("## 第 01 组\n\n### 分镜 01\n\n陈远站在校门口。"),
+		);
+		const videoClip = episode.tracks.find((track) => track.type === "video")?.clips[0];
+		if (!videoClip) throw new Error("expected a video clip");
+		videoClip.status = "ready";
+		videoClip.videoUrl = "/api/v1/media-assets/generated-video/content";
+
+		const graph = buildEpisodeCanvasGraph({ episode });
+		const videoNode = graph.nodes.find((node) => node.type === "video-output");
+
+		expect(videoNode?.data.status).toBe("ready");
+		expect(videoNode?.data.subtitle).toBe("视频已生成");
+		expect(videoNode?.data.videoUrl).toBe("/api/v1/media-assets/generated-video/content");
+		expect(videoNode?.data.imageUrl).toBeUndefined();
+	});
+
 	it("keeps video prompt text complete and spaces expanded nodes", () => {
 		const longAction =
 			"手持跟拍，轻微自然抖动；陈远急切地抓住林书彤的手腕，林书彤一脸嫌弃用力甩开，周围学生围观议论，陈远垂头站在人群中央。";

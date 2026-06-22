@@ -337,20 +337,13 @@ export const buildEpisodeVideoPrompt = (
 		].join("\n");
 	}
 
-	const duration = Math.max(1, Math.round(selectedClip.end - selectedClip.start));
 	const sourcePrompt = stripEpisodeVideoPromptInternalReferences(
-		sourceSection?.bodyMarkdown || selectedClip.prompt || selectedClip.content,
-	);
-	return [
-		sourcePrompt,
-		"",
-		`分组标题：${selectedClip.title}`,
-		`画面内容：${selectedClip.content}`,
-		`时间位置：${formatTimelineTime(selectedClip.start)} - ${formatTimelineTime(selectedClip.end)}`,
-		`目标时长：${duration} 秒`,
-		`画幅比例：${episode.aspectRatio}`,
-		"要求：作为当前组的视频素材，动作连续，构图稳定，避免文字水印。",
-	].join("\n");
+		sourceSection?.bodyMarkdown ||
+			selectedClip.prompt ||
+			selectedClip.content ||
+			selectedClip.title,
+	).trim();
+	return sourcePrompt || selectedClip.title;
 };
 
 const EpisodeVideoPromptMentionEditor: React.FC<
