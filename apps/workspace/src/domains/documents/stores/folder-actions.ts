@@ -12,11 +12,13 @@ import type { DocumentFolder, FolderMovePosition } from "./types";
 import {
 	collectFolderDescendantIds,
 	createUntitledFolder,
+	isCurrentWorkspaceMutationSnapshot,
 	nextFolderSortOrder,
 	normalizeFolders,
 	rollbackSnapshot,
 	validFolderId,
 } from "./helpers";
+import type { WorkspaceMutationSnapshot } from "./helpers";
 
 type FolderActions = Pick<
 	DocumentsActions,
@@ -30,6 +32,7 @@ type FolderActions = Pick<
 
 export const createFolderActions = ({
 	dependencies,
+	get,
 	set,
 }: DocumentActionContext): FolderActions => ({
 	createFolder: (name, parentId = null) => {
@@ -143,6 +146,11 @@ export const createFolderActions = ({
 			if (!result.changed) return state;
 			const capturedProjectId = state.projectId;
 			const rollback = rollbackSnapshot(state);
+			const expectedSnapshot: WorkspaceMutationSnapshot = {
+				assets: state.assets,
+				documents: state.documents,
+				folders: result.folders,
+			};
 			persistMutation = () => {
 				void Promise.all(
 					result.changedFolders.map((changedFolder) =>
@@ -155,9 +163,15 @@ export const createFolderActions = ({
 				)
 					.then(() => getWorkspaceDocuments(capturedProjectId))
 					.then((savedState) => {
+						if (!isCurrentWorkspaceMutationSnapshot(get(), capturedProjectId, expectedSnapshot)) {
+							return;
+						}
 						dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
 					})
 					.catch(() => {
+						if (!isCurrentWorkspaceMutationSnapshot(get(), capturedProjectId, expectedSnapshot)) {
+							return;
+						}
 						dependencies.rollbackWorkspaceStateForProject(
 							capturedProjectId,
 							rollback,
@@ -194,6 +208,11 @@ export const createFolderActions = ({
 							}
 						: item,
 				);
+				const expectedSnapshot: WorkspaceMutationSnapshot = {
+					assets: state.assets,
+					documents,
+					folders: state.folders,
+				};
 				persistMutation = () => {
 					void updateWorkspaceDocumentRecord(
 						id,
@@ -201,9 +220,15 @@ export const createFolderActions = ({
 						capturedProjectId,
 					)
 						.then(({ state: savedState }) => {
+							if (!isCurrentWorkspaceMutationSnapshot(get(), capturedProjectId, expectedSnapshot)) {
+								return;
+							}
 							dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
 						})
 						.catch((err) => {
+							if (!isCurrentWorkspaceMutationSnapshot(get(), capturedProjectId, expectedSnapshot)) {
+								return;
+							}
 							dependencies.rollbackWorkspaceStateForProject(
 								capturedProjectId,
 								rollback,
@@ -229,13 +254,24 @@ export const createFolderActions = ({
 						}
 					: item,
 			);
+			const expectedSnapshot: WorkspaceMutationSnapshot = {
+				assets,
+				documents: state.documents,
+				folders: state.folders,
+			};
 			persistMutation = () => {
 				void updateProjectAsset(capturedProjectId, id, { folderId: safeFolderId ?? "" })
 					.then(() => getWorkspaceDocuments(capturedProjectId))
 					.then((savedState) => {
+						if (!isCurrentWorkspaceMutationSnapshot(get(), capturedProjectId, expectedSnapshot)) {
+							return;
+						}
 						dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
 					})
 					.catch((err) => {
+						if (!isCurrentWorkspaceMutationSnapshot(get(), capturedProjectId, expectedSnapshot)) {
+							return;
+						}
 						dependencies.rollbackWorkspaceStateForProject(
 							capturedProjectId,
 							rollback,
@@ -263,6 +299,11 @@ export const createFolderActions = ({
 			);
 			const assets = state.assets.map((asset) => ({ ...asset, folderId: folder.id }));
 			const rollback = rollbackSnapshot(state);
+			const expectedSnapshot: WorkspaceMutationSnapshot = {
+				assets,
+				documents,
+				folders,
+			};
 			persistMutation = () => {
 				void createWorkspaceFolder(
 					{ id: folder.id, name: folder.name, parentId: null, sortOrder: folder.sortOrder },
@@ -286,9 +327,15 @@ export const createFolderActions = ({
 					)
 					.then(() => getWorkspaceDocuments(capturedProjectId))
 					.then((savedState) => {
+						if (!isCurrentWorkspaceMutationSnapshot(get(), capturedProjectId, expectedSnapshot)) {
+							return;
+						}
 						dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
 					})
 					.catch(() => {
+						if (!isCurrentWorkspaceMutationSnapshot(get(), capturedProjectId, expectedSnapshot)) {
+							return;
+						}
 						dependencies.rollbackWorkspaceStateForProject(
 							capturedProjectId,
 							rollback,

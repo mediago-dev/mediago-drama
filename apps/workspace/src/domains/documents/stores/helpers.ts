@@ -408,6 +408,18 @@ export const rollbackSnapshot = (state: DocumentsState): DocumentRollbackSnapsho
 	syncStatus: state.syncStatus,
 });
 
+export type WorkspaceMutationSnapshot = Pick<DocumentsState, "assets" | "documents" | "folders">;
+
+export const isCurrentWorkspaceMutationSnapshot = (
+	state: Pick<DocumentsState, "assets" | "documents" | "folders" | "projectId">,
+	projectId: string | null,
+	snapshot: WorkspaceMutationSnapshot,
+) =>
+	state.projectId === projectId &&
+	JSON.stringify(state.documents) === JSON.stringify(snapshot.documents) &&
+	JSON.stringify(state.folders) === JSON.stringify(snapshot.folders) &&
+	JSON.stringify(state.assets) === JSON.stringify(snapshot.assets);
+
 export const snapshotDocument = (document: MarkdownDocument): DocumentSnapshot => ({
 	title: document.title,
 	content: document.content,

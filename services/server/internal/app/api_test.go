@@ -226,6 +226,92 @@ func TestAPIHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("workspace document section image endpoint persists markdown", func(t *testing.T) {
+		project, _ := createExternalProjectForTest(t, handler, "Section Image")
+		projectID := project.ID
+		documentsPath := "/api/v1/workspace/documents?projectId=" + url.QueryEscape(projectID)
+		create := requestJSON(t, handler, http.MethodPost, documentsPath, `{"title":"角色册","content":"# 角色册\n\n<!-- section-id: section_lintong -->\n## 林书彤\n\n角色描述。","category":"reference"}`)
+		defer create.Body.Close()
+		if create.StatusCode != http.StatusOK {
+			t.Fatalf("create status code = %d, want %d: %s", create.StatusCode, http.StatusOK, readBody(t, create.Body))
+		}
+		var createEnvelope struct {
+			Data struct {
+				Document mediamcp.WorkspaceDocument `json:"document"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(create.Body).Decode(&createEnvelope); err != nil {
+			t.Fatalf("decoding create response: %v", err)
+		}
+		document := createEnvelope.Data.Document
+
+		update := requestJSON(
+			t,
+			handler,
+			http.MethodPatch,
+			"/api/v1/workspace/documents/"+url.PathEscape(document.ID)+"/section-image?projectId="+url.QueryEscape(projectID),
+			fmt.Sprintf(`{"sectionId":"section_lintong","selected":true,"expectedVersion":%d,"image":{"src":"/api/v1/media-assets/asset-lin/content","title":"林书彤"}}`, document.Version),
+		)
+		defer update.Body.Close()
+		if update.StatusCode != http.StatusOK {
+			t.Fatalf("update status code = %d, want %d: %s", update.StatusCode, http.StatusOK, readBody(t, update.Body))
+		}
+		var updateEnvelope struct {
+			Data struct {
+				Document mediamcp.WorkspaceDocument `json:"document"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(update.Body).Decode(&updateEnvelope); err != nil {
+			t.Fatalf("decoding update response: %v", err)
+		}
+		if !strings.Contains(updateEnvelope.Data.Document.Content, `![林书彤](</api/v1/media-assets/asset-lin/content>)`) {
+			t.Fatalf("content = %q, want inserted section image markdown", updateEnvelope.Data.Document.Content)
+		}
+	})
+
+	t.Run("workspace document section media endpoint persists markdown", func(t *testing.T) {
+		project, _ := createExternalProjectForTest(t, handler, "Section Media")
+		projectID := project.ID
+		documentsPath := "/api/v1/workspace/documents?projectId=" + url.QueryEscape(projectID)
+		create := requestJSON(t, handler, http.MethodPost, documentsPath, `{"title":"分镜脚本","content":"# 分镜脚本\n\n<!-- section-id: section_shot -->\n## 分镜 01\n\n镜头描述。","category":"reference"}`)
+		defer create.Body.Close()
+		if create.StatusCode != http.StatusOK {
+			t.Fatalf("create status code = %d, want %d: %s", create.StatusCode, http.StatusOK, readBody(t, create.Body))
+		}
+		var createEnvelope struct {
+			Data struct {
+				Document mediamcp.WorkspaceDocument `json:"document"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(create.Body).Decode(&createEnvelope); err != nil {
+			t.Fatalf("decoding create response: %v", err)
+		}
+		document := createEnvelope.Data.Document
+
+		update := requestJSON(
+			t,
+			handler,
+			http.MethodPatch,
+			"/api/v1/workspace/documents/"+url.PathEscape(document.ID)+"/section-media?projectId="+url.QueryEscape(projectID),
+			fmt.Sprintf(`{"sectionId":"section_shot","selected":true,"expectedVersion":%d,"media":{"kind":"video","src":"/api/v1/media-assets/video-1/content","title":"分镜 01"}}`, document.Version),
+		)
+		defer update.Body.Close()
+		if update.StatusCode != http.StatusOK {
+			t.Fatalf("update status code = %d, want %d: %s", update.StatusCode, http.StatusOK, readBody(t, update.Body))
+		}
+		var updateEnvelope struct {
+			Data struct {
+				Document mediamcp.WorkspaceDocument `json:"document"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(update.Body).Decode(&updateEnvelope); err != nil {
+			t.Fatalf("decoding update response: %v", err)
+		}
+		if !strings.Contains(updateEnvelope.Data.Document.Content, `[章节视频：分镜 01](</api/v1/media-assets/video-1/content>)`) {
+			t.Fatalf("content = %q, want inserted section media markdown", updateEnvelope.Data.Document.Content)
+		}
+	})
+
 	t.Run("workspace document history exposes diff and restore", func(t *testing.T) {
 		project, _ := createExternalProjectForTest(t, handler, "Document History")
 		projectID := project.ID

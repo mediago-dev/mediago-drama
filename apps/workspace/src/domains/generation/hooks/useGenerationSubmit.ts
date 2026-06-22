@@ -6,6 +6,7 @@ import type { MediaAsset, MediaAssetsResponse } from "@/domains/workspace/api/me
 import type {
 	GenerationFamily,
 	GenerationKind,
+	GenerationMessageRequest,
 	GenerationMessageResponse,
 	GenerationNotificationOpenTarget,
 	GenerationRoute,
@@ -54,12 +55,16 @@ export interface GenerationSubmitFailureEvent {
 }
 
 export interface GenerationSubmitOverrides {
+	documentContext?: GenerationMessageRequest["documentContext"] | null;
 	extraPrompt?: string;
+	notificationTarget?: GenerationNotificationOpenTarget | null;
 	prompt?: string;
 	requestDetails?: ChatMessageDetail[];
 	referenceAssetIds?: string[];
 	referenceUrls?: string[];
 	resetPrompt?: boolean;
+	sectionId?: string | null;
+	taskType?: GenerationTaskType;
 }
 
 export const generationRequestPrompt = ({
@@ -79,6 +84,8 @@ interface UseGenerationSubmitOptions {
 	conversationId?: string | null;
 	effectiveReferenceAssetIds: string[];
 	effectiveReferenceUrls: string[];
+	documentContext?: GenerationMessageRequest["documentContext"] | null;
+	documentContextInitialPrompt?: string;
 	extraPrompt: GenerationExtraValue<string>;
 	mediaAssetProjectId: string;
 	mediaAssets: MediaAsset[];
@@ -113,6 +120,8 @@ interface UseGenerationSubmitOptions {
 export const useGenerationSubmit = ({
 	conversationId,
 	conversationTitle,
+	documentContext,
+	documentContextInitialPrompt,
 	effectiveReferenceAssetIds,
 	effectiveReferenceUrls,
 	extraPrompt,
@@ -153,13 +162,27 @@ export const useGenerationSubmit = ({
 			const nextPrompt = promptInput.trim();
 			const requestReferenceAssetIds = overrides.referenceAssetIds ?? effectiveReferenceAssetIds;
 			const requestReferenceUrls = overrides.referenceUrls ?? effectiveReferenceUrls;
+			const requestNotificationTarget = overrides.notificationTarget ?? notificationTarget;
+			const requestSectionId = overrides.sectionId ?? sectionId;
+			const requestTaskType = overrides.taskType ?? taskType;
+			const requestDocumentContext = overrides.documentContext ?? documentContext;
+			const shouldResolvePromptFromDocumentContext =
+				Boolean(requestDocumentContext) &&
+				useRawPrompt &&
+				overrides.prompt === undefined &&
+				(documentContextInitialPrompt ?? "").trim() !== "" &&
+				nextPrompt === (documentContextInitialPrompt ?? "").trim();
 			if (requireConversation && !conversationId?.trim()) {
 				const message = "请先从左侧新建或选择一个 session。";
 				setError(message);
 				notifySubmitCallback(onSubmitError, message);
 				return;
 			}
-			if (!nextPrompt || selectedRoute.status !== "available" || !selectedRoute.configured) {
+			if (
+				(!nextPrompt && !requestDocumentContext) ||
+				selectedRoute.status !== "available" ||
+				!selectedRoute.configured
+			) {
 				return;
 			}
 
@@ -176,11 +199,12 @@ export const useGenerationSubmit = ({
 			const requestExtraPrompt = useRawPrompt
 				? ""
 				: (overrides.extraPrompt ?? resolveGenerationExtraValue(extraPrompt, nextPrompt));
-			const requestPrompt = generationRequestPrompt({
+			const displayPrompt = generationRequestPrompt({
 				extraPrompt: requestExtraPrompt,
 				prompt: useRawPrompt ? promptInput : nextPrompt,
 				useRawPrompt,
 			});
+			const requestPrompt = shouldResolvePromptFromDocumentContext ? "" : displayPrompt;
 			const localID = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 			const submittedAt = new Date();
 			const submittedAtValue = submittedAt.toISOString();
@@ -199,7 +223,7 @@ export const useGenerationSubmit = ({
 				id: `${localID}:prompt`,
 				role: "user",
 				kind: requestKind,
-				content: requestPrompt,
+				content: displayPrompt,
 				assets: requestReferences,
 				createdAt: submittedAtValue,
 				details: requestDetails,
@@ -226,7 +250,7 @@ export const useGenerationSubmit = ({
 			notifySubmitCallback(onSubmitStart, {
 				kind: requestKind,
 				localMessageId: loadingMessage.id,
-				prompt: requestPrompt,
+				prompt: displayPrompt,
 			});
 			if (overrides.resetPrompt ?? true) setPrompt("");
 			let activeAssistantMessageId = loadingMessage.id;
@@ -245,9 +269,10 @@ export const useGenerationSubmit = ({
 							conversationId: conversationId ?? undefined,
 							scopeId: resolvedConversationScopeId,
 							projectId: mediaAssetProjectId || undefined,
-							sectionId: sectionId || undefined,
-							capabilityId: taskType,
-							notificationTarget: notificationTarget ?? undefined,
+							sectionId: requestSectionId || undefined,
+							documentContext: requestDocumentContext ?? undefined,
+							capabilityId: requestTaskType,
+							notificationTarget: requestNotificationTarget ?? undefined,
 							routeId: selectedRoute.id,
 							familyId: selectedFamily.id,
 							versionId: selectedVersion.id,
@@ -331,9 +356,10 @@ export const useGenerationSubmit = ({
 					conversationId: conversationId ?? undefined,
 					scopeId: resolvedConversationScopeId,
 					projectId: mediaAssetProjectId || undefined,
-					sectionId: sectionId || undefined,
-					capabilityId: taskType,
-					notificationTarget: notificationTarget ?? undefined,
+					sectionId: requestSectionId || undefined,
+					documentContext: requestDocumentContext ?? undefined,
+					capabilityId: requestTaskType,
+					notificationTarget: requestNotificationTarget ?? undefined,
 					routeId: selectedRoute.id,
 					familyId: selectedFamily.id,
 					versionId: selectedVersion.id,
@@ -431,6 +457,8 @@ export const useGenerationSubmit = ({
 		[
 			conversationId,
 			conversationTitle,
+			documentContext,
+			documentContextInitialPrompt,
 			effectiveReferenceAssetIds,
 			effectiveReferenceUrls,
 			extraPrompt,

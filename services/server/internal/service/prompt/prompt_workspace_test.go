@@ -150,7 +150,7 @@ func TestPromptBuilderIndexesResourceMentionsWithoutDocumentBodies(t *testing.T)
 	for _, want := range []string{
 		"# 可用 @ 资源索引",
 		"角色｜沈阎",
-		"@[沈阎](mention://character-doc/section_shenyan?kind=section&category=character)",
+		"@[沈阎](mention://character-doc/section_shenyan)",
 		"不要把 `mention://` 或 `asset://` 内部链接写入",
 	} {
 		if !strings.Contains(prompt, want) {

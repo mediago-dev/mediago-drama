@@ -34,7 +34,7 @@ func renderReferenceIndexPrompt(request AgentRunRequest) string {
 
 	var builder strings.Builder
 	builder.WriteString("# 可用 @ 资源索引\n\n")
-	builder.WriteString("以下是当前工作区可引用的角色、场景、道具和分镜资源。写分镜时，如果镜头主体、场景或关键道具能明确匹配某个资源，请在 `**引用资源**` 字段复制对应的 Markdown @ 链接；不要臆造不存在的链接，不要把 `mention://` 或 `asset://` 内部链接写入 `**主体**`、`**场景**`、`**动作**` 等视频提示词字段。\n")
+	builder.WriteString("以下是当前工作区可引用的角色、场景、道具和分镜资源。写分镜时，如果镜头主体、场景或关键道具能明确匹配某个资源，请在 `**引用资源**` 字段完整复制下方索引里的 Markdown @ 链接；不要自己拼接链接，不要写带省略号的占位链接，不要把 `mention://` 或 `asset://` 内部链接写入 `**主体**`、`**场景**`、`**动作**` 等视频提示词字段。\n")
 	for _, item := range items {
 		builder.WriteString("\n- ")
 		builder.WriteString(item.CategoryLabel)
@@ -151,6 +151,7 @@ func buildReferenceIndexItems(request AgentRunRequest) []referenceIndexItem {
 
 type referenceSection struct {
 	BlockID string
+	Level   int
 	Title   string
 }
 
@@ -187,8 +188,15 @@ func referenceSectionsForDocument(document AgentDocumentContext) []referenceSect
 
 		sections = append(sections, referenceSection{
 			BlockID: blockID,
+			Level:   level,
 			Title:   title,
 		})
+	}
+
+	if len(sections) > 1 &&
+		sections[0].Level == 1 &&
+		sections[0].Title == normalizeReferenceHeadingText(document.Title) {
+		return sections[1:]
 	}
 
 	return sections
@@ -238,9 +246,9 @@ func mentionMarkdownForReference(item referenceIndexItem) string {
 
 func mentionHrefForReference(item referenceIndexItem) string {
 	if item.Kind == "section" && item.BlockID != "" {
-		return "mention://" + encodeURIComponent(item.DocumentID) + "/" + encodeURIComponent(item.BlockID) + "?kind=section&category=" + encodeURIComponent(item.Category)
+		return "mention://" + encodeURIComponent(item.DocumentID) + "/" + encodeURIComponent(item.BlockID)
 	}
-	return "mention://" + encodeURIComponent(item.DocumentID) + "?kind=document&category=" + encodeURIComponent(item.Category)
+	return "mention://" + encodeURIComponent(item.DocumentID)
 }
 
 func escapeMentionLabel(value string) string {

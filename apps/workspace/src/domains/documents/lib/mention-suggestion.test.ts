@@ -77,6 +77,59 @@ describe("mention suggestion items", () => {
 		expect(sectionItem?.previewUrl).toBe("/api/v1/media-assets/voice/content");
 	});
 
+	it("prefers exact section mention items when a document has headings", () => {
+		useDocumentsStore.setState({
+			documents: [
+				makeDocument({
+					content: [
+						"# 角色册 第一章",
+						"",
+						"## 陈远",
+						"",
+						"陈远，21岁男大学生。",
+						"",
+						"## 林书彤",
+						"",
+						"林书彤，21岁女大学生。",
+					].join("\n"),
+					title: "角色册 第一章",
+				}),
+			],
+			assets: [],
+		});
+
+		const items = createMentionItems("角色册");
+
+		expect(items.some((item) => item.kind === "document")).toBe(false);
+		expect(items.map((item) => `${item.kind}:${item.title}`)).toEqual([
+			"section:陈远",
+			"section:林书彤",
+		]);
+		expect(items.every((item) => item.kind !== "section" || item.blockId)).toBe(true);
+	});
+
+	it("keeps a document mention item for documents without headings", () => {
+		useDocumentsStore.setState({
+			documents: [
+				makeDocument({
+					content: "纯文本设定，没有标题层级。",
+					title: "散文设定",
+				}),
+			],
+			assets: [],
+		});
+
+		const items = createMentionItems("散文");
+
+		expect(items).toEqual([
+			expect.objectContaining({
+				documentId: "doc-character",
+				kind: "document",
+				title: "散文设定",
+			}),
+		]);
+	});
+
 	it("adds image asset previews to asset items", () => {
 		useDocumentsStore.setState({
 			documents: [],
@@ -136,7 +189,7 @@ describe("mention suggestion items", () => {
 
 		expect(container.querySelector(".agent-mention-cascader")).toBeTruthy();
 		expect(container.querySelectorAll(".agent-mention-source")).toHaveLength(1);
-		expect(container.querySelectorAll(".agent-mention-option")).toHaveLength(3);
+		expect(container.querySelectorAll(".agent-mention-option")).toHaveLength(1);
 		expect(container.querySelector(".agent-mention-cascader-primary")?.textContent).toContain(
 			"角色",
 		);

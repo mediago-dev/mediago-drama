@@ -88,6 +88,39 @@ export type UpdateWorkspaceDocumentRequest = Omit<
 	workbenchDraft?: MarkdownDocument["workbenchDraft"];
 };
 
+export interface UpdateWorkspaceDocumentSectionImageRequest {
+	sectionId: string;
+	image: {
+		src: string;
+		title?: string;
+	};
+	selected: boolean;
+	expectedVersion?: number;
+}
+
+export interface UpdateWorkspaceDocumentSectionMediaRequest {
+	sectionId: string;
+	media: {
+		kind: "audio" | "video";
+		src: string;
+		title?: string;
+	};
+	selected: boolean;
+	expectedVersion?: number;
+}
+
+export interface UpdateWorkspaceDocumentSectionMentionRequest {
+	sectionId: string;
+	reference: {
+		documentId: string;
+		blockId?: string;
+		title: string;
+		category?: string;
+	};
+	selected: boolean;
+	expectedVersion?: number;
+}
+
 export interface WorkspaceDocumentMutationResponse {
 	document: MarkdownDocument;
 	state: WorkspaceDocumentsPayload;
@@ -245,6 +278,42 @@ export const updateWorkspaceDocumentRecord = async (
 ) => {
 	const response = await httpClient.patch<WorkspaceDocumentMutationResponse>(
 		workspaceDocumentRecordKey(documentId, projectId),
+		payload,
+	);
+	return response.data;
+};
+
+export const updateWorkspaceDocumentSectionImage = async (
+	documentId: string,
+	payload: UpdateWorkspaceDocumentSectionImageRequest,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.patch<WorkspaceDocumentMutationResponse>(
+		`${workspaceDocumentRecordKey(documentId, projectId)}/section-image`,
+		payload,
+	);
+	return response.data;
+};
+
+export const updateWorkspaceDocumentSectionMedia = async (
+	documentId: string,
+	payload: UpdateWorkspaceDocumentSectionMediaRequest,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.patch<WorkspaceDocumentMutationResponse>(
+		`${workspaceDocumentRecordKey(documentId, projectId)}/section-media`,
+		payload,
+	);
+	return response.data;
+};
+
+export const updateWorkspaceDocumentSectionMention = async (
+	documentId: string,
+	payload: UpdateWorkspaceDocumentSectionMentionRequest,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.patch<WorkspaceDocumentMutationResponse>(
+		`${workspaceDocumentRecordKey(documentId, projectId)}/section-mention`,
 		payload,
 	);
 	return response.data;

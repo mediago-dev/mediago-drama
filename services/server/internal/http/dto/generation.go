@@ -27,6 +27,7 @@ type GenerationMessageRequest struct {
 	ScopeID            string                        `json:"-"`
 	ProjectID          string                        `json:"projectId,omitempty"`
 	SectionID          string                        `json:"sectionId,omitempty"`
+	DocumentContext    *GenerationDocumentContext    `json:"documentContext,omitempty"`
 	CapabilityID       string                        `json:"capabilityId,omitempty"`
 	NotificationTarget *GenerationNotificationTarget `json:"notificationTarget,omitempty"`
 	RouteID            string                        `json:"routeId"`
@@ -39,6 +40,13 @@ type GenerationMessageRequest struct {
 	ReferenceURLs      []string                      `json:"referenceUrls"`
 	ReferenceAssetIDs  []string                      `json:"referenceAssetIds"`
 	Params             map[string]any                `json:"params"`
+}
+
+// GenerationDocumentContext identifies the source document section for generation.
+type GenerationDocumentContext struct {
+	ProjectID  string `json:"projectId,omitempty"`
+	DocumentID string `json:"documentId,omitempty"`
+	SectionID  string `json:"sectionId,omitempty"`
 }
 
 // GenerationVoicePreviewRequest creates a short audio sample for a voice.

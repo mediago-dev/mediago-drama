@@ -14,6 +14,7 @@ import {
 	mentionMarkdownFromReference,
 	parseMentionHref,
 } from "@/domains/documents/lib/mention-resolver";
+import { useDocumentsStore } from "@/domains/documents/stores";
 import "@/styles/tiptap-mention.css";
 
 const mentionLinkPattern = /^@\[((?:\\.|[^\]\\])*)\]\((?:<([^>]+)>|([^\s)]+))\)/;
@@ -123,7 +124,10 @@ export const DocumentMention = Mention.extend({
 	},
 	renderHTML: ({ node, options }) => [
 		"span",
-		options.HTMLAttributes,
+		{
+			...options.HTMLAttributes,
+			...mentionDataAttributes(node.attrs),
+		},
 		mentionDisplayText(node.attrs.title ?? node.attrs.label ?? node.attrs.id),
 	],
 	renderText: ({ node }) =>
@@ -151,6 +155,18 @@ const attrsFromReference = (reference: AgentReference) => ({
 	...(reference.url ? { url: reference.url } : {}),
 });
 
+const mentionDataAttributes = (attrs: JSONContent["attrs"]) => ({
+	...renderDataAttribute("data-asset-id", attrs?.assetId),
+	...renderDataAttribute("data-asset-kind", attrs?.assetKind),
+	...renderDataAttribute("data-block-id", attrs?.blockId),
+	...renderDataAttribute("data-category", mentionCategoryAttribute(attrs)),
+	...renderDataAttribute("data-document-id", attrs?.documentId),
+	...renderDataAttribute("data-kind", attrs?.kind),
+	...renderDataAttribute("data-mime-type", attrs?.mimeType),
+	...renderDataAttribute("data-title", attrs?.title ?? attrs?.label),
+	...renderDataAttribute("data-url", attrs?.url),
+});
+
 const referenceFromAttrs = (attrs: JSONContent["attrs"]): AgentReference | null => {
 	const kind =
 		attrs?.kind === "section" ? "section" : attrs?.kind === "asset" ? "asset" : "document";
@@ -173,7 +189,7 @@ const referenceFromAttrs = (attrs: JSONContent["attrs"]): AgentReference | null 
 	}
 
 	const blockId = kind === "section" ? stringAttribute(attrs?.blockId) : undefined;
-	const category = documentCategory(attrs?.category);
+	const category = mentionCategoryAttribute(attrs);
 
 	return {
 		kind,
@@ -182,6 +198,22 @@ const referenceFromAttrs = (attrs: JSONContent["attrs"]): AgentReference | null 
 		title,
 		...(category ? { category } : {}),
 	};
+};
+
+const mentionCategoryAttribute = (attrs: JSONContent["attrs"]) => {
+	const explicitCategory = documentCategory(attrs?.category);
+	if (explicitCategory && explicitCategory !== fallbackMentionCategory) return explicitCategory;
+
+	const kind =
+		attrs?.kind === "section" ? "section" : attrs?.kind === "asset" ? "asset" : "document";
+	if (kind === "asset") return explicitCategory ?? fallbackMentionCategory;
+
+	const documentId = stringAttribute(attrs?.documentId);
+	const document = documentId
+		? useDocumentsStore.getState().documents.find((item) => item.id === documentId)
+		: null;
+
+	return documentCategory(document?.category) ?? explicitCategory ?? fallbackMentionCategory;
 };
 
 const unescapeMentionLabel = (value: string) => value.replace(/\\([\\[\]])/g, "$1");

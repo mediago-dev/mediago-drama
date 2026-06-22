@@ -89,7 +89,7 @@ describe("DocumentSectionGenerator", () => {
 		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
 	});
 
-	it("defaults mention references to image inputs without rendering the reference card", () => {
+	it("previews mention references while sending document context as the request source", () => {
 		render(
 			<DocumentSectionGenerator
 				section={section}
@@ -103,10 +103,18 @@ describe("DocumentSectionGenerator", () => {
 
 		expect(screen.getByTestId("has-prompt-extras").textContent).toBe("false");
 		expect(screen.getByTestId("reference-preview-count").textContent).toBe("1");
-		expect(screen.getByTestId("reference-asset-ids").textContent).toBe("ref-a");
+		expect(screen.getByTestId("reference-asset-ids").textContent).toBe("");
+		expect(capturedWorkspaceProps?.documentContext).toEqual({
+			projectId: "project-a",
+			documentId: "story-doc",
+			sectionId: "section_current",
+		});
 		expect(capturedWorkspaceProps?.extraPrompt).toBeUndefined();
 		expect(capturedWorkspaceProps?.kind).toBe("image");
 		expect(capturedWorkspaceProps?.onToggleAsset).toBeTruthy();
+		expect(capturedWorkspaceProps?.projectId).toBe("project-a");
+		expect(capturedWorkspaceProps?.selectedAssetResourceId).toBe("section_current");
+		expect(capturedWorkspaceProps?.selectedAssetSourceDocumentId).toBe("story-doc");
 		expect(capturedWorkspaceProps?.selectedAssetTitle).toBe("第 01 组");
 	});
 

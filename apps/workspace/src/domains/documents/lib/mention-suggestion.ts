@@ -382,13 +382,13 @@ export const createMentionItems = (query: string): AgentMentionItem[] => {
 
 		const category = normalizeMentionCategory(document.category);
 		const docMatches = matchesMentionQuery(document.title, normalizedQuery);
-		const sections = listDocumentSections(document);
+		const sections = mentionSectionsForDocument(document);
 		const sectionPreviewUrls = sectionPreviewUrlMap(document);
 		const matchingSections = sections.filter(
 			(section) => docMatches || matchesMentionQuery(section.title, normalizedQuery),
 		);
 
-		if (docMatches) {
+		if (docMatches && sections.length === 0) {
 			documentItems.push({
 				category,
 				documentId: document.id,
@@ -439,6 +439,21 @@ export const createMentionItems = (query: string): AgentMentionItem[] => {
 	}
 
 	return [...documentItems, ...assetItems].slice(0, maxMentionItems);
+};
+
+const mentionSectionsForDocument = (document: MarkdownDocument) => {
+	const sections = listDocumentSections(document);
+	if (sections.length <= 1) return sections;
+
+	const [firstSection, ...restSections] = sections;
+	if (
+		firstSection?.level === 1 &&
+		normalizeHeadingText(firstSection.title) === normalizeHeadingText(document.title)
+	) {
+		return restSections;
+	}
+
+	return sections;
 };
 
 export const compareDocuments = (a: MarkdownDocument, b: MarkdownDocument) => {

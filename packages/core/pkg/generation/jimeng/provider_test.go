@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -269,6 +271,54 @@ func TestGenerateVideoWithReferenceWritesTempFile(t *testing.T) {
 	}
 	if response.ID != generation.RouteJimengSeedance20Fast+":video_1" || response.Status != "submitted" {
 		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestGenerateVideoWithHTTPReferenceDownloadsTempFile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "image/png")
+		_, _ = response.Write([]byte("png-bytes"))
+	}))
+	defer server.Close()
+
+	var gotArgs []string
+	var gotReferenceBasename string
+	var gotReferenceContent string
+	provider := testProvider(t, CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		gotArgs = append([]string{}, args...)
+		if len(args) > 1 && args[0] == "image2video" {
+			referencePath := strings.TrimPrefix(args[1], "--image=")
+			gotReferenceBasename = filepath.Base(referencePath)
+			data, err := os.ReadFile(referencePath)
+			if err != nil {
+				return nil, err
+			}
+			gotReferenceContent = string(data)
+		}
+		return []byte(`{"submit_id":"video_1","gen_status":"querying"}`), nil
+	}))
+
+	_, err := provider.Generate(context.Background(), generation.Request{
+		Kind:          generation.KindVideo,
+		RouteID:       generation.RouteJimengSeedance20Fast,
+		Prompt:        "镜头慢慢推近",
+		ReferenceURLs: []string{server.URL + "/reference.png"},
+		Params: map[string]any{
+			"duration":        "5",
+			"videoResolution": "720p",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if gotArgs[0] != "image2video" || !strings.HasPrefix(gotArgs[1], "--image=") {
+		t.Fatalf("args = %#v", gotArgs)
+	}
+	if gotReferenceBasename != "reference-01.png" {
+		t.Fatalf("reference basename = %q, want reference-01.png", gotReferenceBasename)
+	}
+	if gotReferenceContent != "png-bytes" {
+		t.Fatalf("reference content = %q, want downloaded bytes", gotReferenceContent)
 	}
 }
 

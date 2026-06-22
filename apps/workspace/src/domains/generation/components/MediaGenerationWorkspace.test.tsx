@@ -530,6 +530,27 @@ describe("MediaGenerationWorkspace", () => {
 		);
 	});
 
+	it("renders the tabbed history list under StrictMode without recursive ref updates", () => {
+		vi.mocked(useGenerationWorkspace).mockReturnValue(
+			workspaceDefaults as unknown as ReturnType<typeof useGenerationWorkspace>,
+		);
+
+		render(
+			<React.StrictMode>
+				<MediaGenerationWorkspace
+					historyScopeId="history-a"
+					initialPrompt="初始提示词"
+					kind="image"
+					selectedAssetKeys={["image:/api/v1/media-assets/media-a/content"]}
+					viewMode="history"
+					onToggleAsset={vi.fn()}
+				/>
+			</React.StrictMode>,
+		);
+
+		expect(screen.getByRole("checkbox", { name: "取消选入结果" })).toBeTruthy();
+	});
+
 	it("uses a generated image as a reference without changing the prompt", () => {
 		const setPrompt = vi.fn();
 		const selectReferenceAsset = vi.fn();
@@ -710,6 +731,84 @@ describe("MediaGenerationWorkspace", () => {
 		fireEvent.click(within(secondRow).getByRole("checkbox", { name: "选入结果" }));
 
 		expect(onToggleAsset).toHaveBeenCalledWith(secondImageEntry.assets?.[0], true);
+		expect(generationApiMocks.updateSelectedGenerationAsset).not.toHaveBeenCalled();
+	});
+
+	it("uses the external entity selection as the only selected state when toggling assets", () => {
+		const onToggleAsset = vi.fn();
+		const selectedEntry: GenerationEntry = {
+			...imageEntry,
+			assets: [
+				{
+					kind: "image",
+					mimeType: "image/png",
+					selected: true,
+					url: "/api/v1/media-assets/media-a/content",
+				},
+			],
+		};
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			orderedGenerationEntries: [selectedEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				onToggleAsset={onToggleAsset}
+				selectedAssetKeys={[]}
+				viewMode="history"
+			/>,
+		);
+
+		const checkbox = screen.getByRole("checkbox", { name: "选入结果" });
+		expect(checkbox.getAttribute("aria-checked")).toBe("false");
+
+		fireEvent.click(checkbox);
+
+		expect(onToggleAsset).toHaveBeenCalledWith(selectedEntry.assets?.[0], true);
+		expect(checkbox.getAttribute("aria-checked")).toBe("false");
+		expect(generationApiMocks.updateSelectedGenerationAsset).not.toHaveBeenCalled();
+	});
+
+	it("does not mirror externally selected document assets into project selected resources", () => {
+		const onToggleAsset = vi.fn();
+		const selectedEntry: GenerationEntry = {
+			...imageEntry,
+			id: "task-document-selected",
+			assets: [
+				{
+					kind: "image",
+					mimeType: "image/png",
+					taskId: "task-document-selected",
+					url: "/api/v1/media-assets/media-document-selected/content",
+				},
+			],
+		};
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: selectedEntry.id,
+			orderedGenerationEntries: [selectedEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				onToggleAsset={onToggleAsset}
+				projectId="project-a"
+				selectedAssetKeys={["image:/api/v1/media-assets/media-document-selected/content"]}
+				selectedAssetTitle="陈远"
+				taskType="character"
+				viewMode="history"
+			/>,
+		);
+
+		expect(screen.getByRole("checkbox", { name: "取消选入结果" })).toBeTruthy();
+		expect(generationApiMocks.updateSelectedGenerationAsset).not.toHaveBeenCalled();
 	});
 
 	it("persists selected generated image with the document title", async () => {
@@ -737,6 +836,8 @@ describe("MediaGenerationWorkspace", () => {
 				initialPrompt="初始提示词"
 				kind="image"
 				projectId="project-a"
+				selectedAssetResourceId="section-character"
+				selectedAssetSourceDocumentId="character-doc"
 				selectedAssetTitle="主角 底层青年 / 低阶散修"
 				taskType="character"
 				viewMode="history"
@@ -752,10 +853,12 @@ describe("MediaGenerationWorkspace", () => {
 					assetIndex: 2,
 					kind: "image",
 					mimeType: "image/png",
+					resourceId: "section-character",
 					resourceTitle: "主角 底层青年 / 低阶散修",
 					resourceType: "character",
 					selected: true,
 					sourceAssetIndex: 2,
+					sourceDocumentId: "character-doc",
 					sourceTaskId: "task-a",
 					sourceType: "generated",
 					taskId: "task-a",
@@ -764,6 +867,118 @@ describe("MediaGenerationWorkspace", () => {
 				}),
 			);
 		});
+	});
+
+	it("rolls back selected generated image when project resource save fails", async () => {
+		const selectedEntry: GenerationEntry = {
+			...imageEntry,
+			assets: [
+				{
+					kind: "image",
+					mimeType: "image/png",
+					slotIndex: 0,
+					taskId: "task-a",
+					url: "/api/v1/media-assets/media-a/content",
+				},
+			],
+		};
+		generationApiMocks.updateSelectedGenerationAsset.mockRejectedValueOnce(
+			new Error("backend unavailable"),
+		);
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: selectedEntry.id,
+			orderedGenerationEntries: [selectedEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				projectId="project-a"
+				selectedAssetTitle="陈远"
+				taskType="character"
+				viewMode="history"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("checkbox", { name: "选入结果" }));
+
+		await waitFor(() => {
+			expect(generationApiMocks.updateSelectedGenerationAsset).toHaveBeenCalled();
+		});
+		await waitFor(() => {
+			expect(screen.getByRole("checkbox", { name: "选入结果" }).getAttribute("aria-checked")).toBe(
+				"false",
+			);
+		});
+		expect(screen.queryByRole("checkbox", { name: "取消选入结果" })).toBeNull();
+		expect(toastMocks.error).toHaveBeenCalledWith("backend unavailable");
+	});
+
+	it("ignores an older failed selection save after a newer toggle", async () => {
+		const selectedEntry: GenerationEntry = {
+			...imageEntry,
+			assets: [
+				{
+					kind: "image",
+					mimeType: "image/png",
+					slotIndex: 0,
+					taskId: "task-a",
+					url: "/api/v1/media-assets/media-a/content",
+				},
+			],
+		};
+		let rejectFirstSave!: (error: Error) => void;
+		let rejectSecondSave!: (error: Error) => void;
+		generationApiMocks.updateSelectedGenerationAsset
+			.mockReturnValueOnce(
+				new Promise((_, reject) => {
+					rejectFirstSave = reject;
+				}),
+			)
+			.mockReturnValueOnce(
+				new Promise((_, reject) => {
+					rejectSecondSave = reject;
+				}),
+			);
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: selectedEntry.id,
+			orderedGenerationEntries: [selectedEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				projectId="project-a"
+				selectedAssetTitle="陈远"
+				taskType="character"
+				viewMode="history"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("checkbox", { name: "选入结果" }));
+		expect(screen.getByRole("checkbox", { name: "取消选入结果" })).toBeTruthy();
+		fireEvent.click(screen.getByRole("checkbox", { name: "取消选入结果" }));
+		expect(screen.getByRole("checkbox", { name: "选入结果" })).toBeTruthy();
+
+		rejectSecondSave(new Error("second save failed"));
+		await waitFor(() => {
+			expect(screen.getByRole("checkbox", { name: "取消选入结果" })).toBeTruthy();
+		});
+
+		rejectFirstSave(new Error("first save failed"));
+		await waitFor(() => {
+			expect(generationApiMocks.updateSelectedGenerationAsset).toHaveBeenCalledTimes(2);
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(screen.getByRole("checkbox", { name: "取消选入结果" })).toBeTruthy();
 	});
 
 	it("persists the first generated image when the response omits slotIndex zero", async () => {
@@ -862,6 +1077,63 @@ describe("MediaGenerationWorkspace", () => {
 		});
 	});
 
+	it("retries document-selected image sync after project resource save fails", async () => {
+		const selectedEntry: GenerationEntry = {
+			...imageEntry,
+			id: "task-document-selected",
+			assets: [
+				{
+					kind: "image",
+					mimeType: "image/png",
+					taskId: "task-document-selected",
+					url: "/api/v1/media-assets/media-document-selected/content",
+				},
+			],
+		};
+		generationApiMocks.updateSelectedGenerationAsset
+			.mockRejectedValueOnce(new Error("backend unavailable"))
+			.mockResolvedValueOnce(undefined);
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: selectedEntry.id,
+			orderedGenerationEntries: [selectedEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		const view = render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				projectId="project-a"
+				selectedAssetKeys={["image:/api/v1/media-assets/media-document-selected/content"]}
+				selectedAssetTitle="陈远"
+				taskType="character"
+				viewMode="history"
+			/>,
+		);
+
+		await waitFor(() => {
+			expect(toastMocks.error).toHaveBeenCalledWith("backend unavailable");
+		});
+
+		view.rerender(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				projectId="project-a"
+				selectedAssetKeys={["image:/api/v1/media-assets/media-document-selected/content"]}
+				selectedAssetTitle="陈远"
+				taskType="character"
+				viewMode="history"
+			/>,
+		);
+
+		await waitFor(() => {
+			expect(generationApiMocks.updateSelectedGenerationAsset).toHaveBeenCalledTimes(2);
+		});
+	});
+
 	it("uploads edited images, imports them into history, and selects them for project resources", async () => {
 		const editedAsset: GenerationAsset = {
 			kind: "image",
@@ -913,6 +1185,8 @@ describe("MediaGenerationWorkspace", () => {
 				kind="image"
 				onToggleAsset={onToggleAsset}
 				projectId="project-a"
+				selectedAssetResourceId="section-chenyuan"
+				selectedAssetSourceDocumentId="character-doc"
 				selectedAssetTitle="陈远"
 				taskType="character"
 				viewMode="history"
@@ -953,20 +1227,86 @@ describe("MediaGenerationWorkspace", () => {
 		);
 		expect(mutateMediaAssets).toHaveBeenCalled();
 		expect(onToggleAsset).toHaveBeenCalledWith(editedAsset, true);
-		expect(generationApiMocks.updateSelectedGenerationAsset).toHaveBeenCalledWith(
-			"project-a",
-			expect.objectContaining({
-				assetIndex: 0,
-				resourceTitle: "陈远",
-				resourceType: "character",
-				selected: true,
-				sourceAssetIndex: 0,
-				sourceTaskId: "edited-entry",
-				sourceType: "edited",
-				taskId: "edited-entry",
-				title: "原图 编辑版",
-			}),
+		expect(generationApiMocks.updateSelectedGenerationAsset).not.toHaveBeenCalled();
+		expect(setActiveEntryId).toHaveBeenCalledWith("edited-entry");
+	});
+
+	it("persists edited image selection in uncontrolled project mode", async () => {
+		const editedAsset: GenerationAsset = {
+			kind: "image",
+			mimeType: "image/png",
+			slotIndex: 0,
+			taskId: "edited-entry",
+			title: "原图 编辑版",
+			url: "/api/v1/media-assets/edited-media/content",
+		};
+		const importMediaAssetsToHistory = vi.fn().mockResolvedValue([
+			{
+				id: "edited-entry",
+				assets: [editedAsset],
+			},
+		]);
+		const setActiveEntryId = vi.fn();
+		const editableEntry: GenerationEntry = {
+			...imageEntry,
+			assets: [
+				{
+					kind: "image",
+					base64: btoa("source"),
+					mimeType: "image/png",
+					title: "原图",
+				},
+			],
+		};
+		mediaApiMocks.uploadMediaAsset.mockResolvedValue({
+			...mediaAsset,
+			filename: "原图 编辑版.png",
+			id: "edited-media",
+			url: "/api/v1/media-assets/edited-media/content",
+		});
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: editableEntry.id,
+			importMediaAssetsToHistory,
+			orderedGenerationEntries: [editableEntry],
+			setActiveEntryId,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				projectId="project-a"
+				selectedAssetResourceId="section-chenyuan"
+				selectedAssetSourceDocumentId="character-doc"
+				selectedAssetTitle="陈远"
+				taskType="character"
+				viewMode="history"
+			/>,
 		);
+
+		fireEvent.click(screen.getByRole("button", { name: "编辑图片" }));
+		fireEvent.click(await screen.findByRole("button", { name: "保存编辑图" }));
+
+		await waitFor(() => {
+			expect(generationApiMocks.updateSelectedGenerationAsset).toHaveBeenCalledWith(
+				"project-a",
+				expect.objectContaining({
+					assetIndex: 0,
+					resourceId: "section-chenyuan",
+					resourceTitle: "陈远",
+					resourceType: "character",
+					selected: true,
+					sourceAssetIndex: 0,
+					sourceDocumentId: "character-doc",
+					sourceTaskId: "edited-entry",
+					sourceType: "edited",
+					taskId: "edited-entry",
+					title: "原图 编辑版",
+				}),
+			);
+		});
 		expect(setActiveEntryId).toHaveBeenCalledWith("edited-entry");
 	});
 
@@ -1207,6 +1547,35 @@ describe("MediaGenerationWorkspace", () => {
 				: (latestOptions?.extraReferenceUrls ?? []);
 		expect(referenceUrls.some((url) => url.endsWith("/api/v1/media-assets/scene-a/content"))).toBe(
 			true,
+		);
+	});
+
+	it("normalizes extra reference urls before submitting them to generation", () => {
+		const workspaceOptions: Array<Parameters<typeof useGenerationWorkspace>[0]> = [];
+		vi.mocked(useGenerationWorkspace).mockImplementation((options) => {
+			workspaceOptions.push(options);
+			return workspaceDefaults as unknown as ReturnType<typeof useGenerationWorkspace>;
+		});
+
+		render(
+			<MediaGenerationWorkspace
+				extraReferenceUrls={["/api/v1/projects/project-a/media-assets/ref-a/content"]}
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="video"
+			/>,
+		);
+
+		const latestOptions = workspaceOptions.at(-1);
+		const referenceUrls =
+			typeof latestOptions?.extraReferenceUrls === "function"
+				? latestOptions.extraReferenceUrls("初始提示词")
+				: (latestOptions?.extraReferenceUrls ?? []);
+		expect(referenceUrls).toContain(
+			new URL(
+				"/api/v1/projects/project-a/media-assets/ref-a/content",
+				window.location.origin,
+			).toString(),
 		);
 	});
 

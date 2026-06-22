@@ -495,6 +495,13 @@ func (service *GenerationTaskService) upsertSelectedAssetRecord(projectID string
 			asset = task.Assets[assetSliceIndex]
 			model.SourceTaskID = domain.StringPtr(task.ID)
 			model.SourceSlotIndex = assetIndex
+			sourceDocumentID, resourceID := selectedAssetResourceFromTaskSection(task.SectionID)
+			if domain.StringValue(model.SourceDocumentID) == "" && sourceDocumentID != "" {
+				model.SourceDocumentID = domain.StringPtr(sourceDocumentID)
+			}
+			if domain.StringValue(model.ResourceID) == "" && resourceID != "" {
+				model.ResourceID = domain.StringPtr(resourceID)
+			}
 			if domain.StringValue(model.SourceType) == "" {
 				model.SourceType = domain.StringPtr("generated")
 			}
@@ -1399,6 +1406,14 @@ func selectedAssetRequestSourceIndex(request UpdateSelectedGenerationAssetReques
 	return -1
 }
 
+func selectedAssetResourceFromTaskSection(sectionID string) (string, string) {
+	parts := strings.SplitN(strings.TrimSpace(sectionID), ":", 2)
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+}
+
 func normalizeProjectSelectedAssetSourceType(value string) string {
 	switch strings.TrimSpace(value) {
 	case "generated", "edited", "uploaded", "document", "imported":
@@ -1437,14 +1452,20 @@ func libraryAssetIDFromGenerationAssetURL(value string) string {
 	}
 	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
 	for index, segment := range segments {
-		if segment != "media-assets" || index+2 >= len(segments) || segments[index+2] != "content" {
-			continue
+		if segment == "media-assets" && index+2 < len(segments) && segments[index+2] == "content" {
+			id, err := url.PathUnescape(segments[index+1])
+			if err != nil {
+				return strings.TrimSpace(segments[index+1])
+			}
+			return strings.TrimSpace(id)
 		}
-		id, err := url.PathUnescape(segments[index+1])
-		if err != nil {
-			return strings.TrimSpace(segments[index+1])
+		if segment == "media" && index+3 < len(segments) && segments[index+1] == "assets" && segments[index+3] == "content" {
+			id, err := url.PathUnescape(segments[index+2])
+			if err != nil {
+				return strings.TrimSpace(segments[index+2])
+			}
+			return strings.TrimSpace(id)
 		}
-		return strings.TrimSpace(id)
 	}
 	return ""
 }

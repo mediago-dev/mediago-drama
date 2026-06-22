@@ -8,6 +8,7 @@ import {
 	createSectionBlockId,
 	findMarkdownSectionEndLine,
 	findMarkdownSectionHeadingLine,
+	listDocumentSections,
 	normalizeHeadingText,
 	stripSectionIdCommentLines,
 } from "@/domains/documents/lib/sections";
@@ -100,15 +101,16 @@ export const resolveMentionPayload = (
 		};
 	}
 
+	const resolvedReference = normalizeSingleSectionDocumentReference(reference, document);
 	const markdown =
-		reference.kind === "section" && reference.blockId
-			? sectionMarkdownByBlockId(document, reference.blockId)
+		resolvedReference.kind === "section" && resolvedReference.blockId
+			? sectionMarkdownByBlockId(document, resolvedReference.blockId)
 			: document.content;
 
 	if (markdown == null) {
 		return {
 			images: [],
-			reference,
+			reference: resolvedReference,
 			status: "missing",
 			text: "",
 		};
@@ -119,8 +121,8 @@ export const resolveMentionPayload = (
 	return {
 		images,
 		reference: {
-			...reference,
-			category: reference.category ?? document.category,
+			...resolvedReference,
+			category: resolvedReference.category ?? document.category,
 		},
 		status: "ok",
 		text: stripSectionIdCommentLines(stripImageLines(markdown)).trim(),
@@ -181,16 +183,12 @@ export const mentionHrefFromReference = (reference: AgentReference) => {
 		return `asset://${encodeURIComponent(reference.assetId ?? reference.documentId)}${query ? `?${query}` : ""}`;
 	}
 
-	const params = new URLSearchParams();
-	params.set("kind", reference.kind);
-	if (reference.category) params.set("category", reference.category);
-
 	const blockPath =
 		reference.kind === "section" && reference.blockId
 			? `/${encodeURIComponent(reference.blockId)}`
 			: "";
 
-	return `mention://${encodeURIComponent(reference.documentId)}${blockPath}?${params.toString()}`;
+	return `mention://${encodeURIComponent(reference.documentId)}${blockPath}`;
 };
 
 export const mentionReferenceKey = (reference: AgentReference) =>
@@ -199,7 +197,9 @@ export const mentionReferenceKey = (reference: AgentReference) =>
 		: `${reference.documentId}:${reference.kind === "section" ? (reference.blockId ?? "") : ""}`;
 
 export const mediaAssetIdFromGeneratedSource = (source: string) => {
-	const match = source.match(/\/api\/media\/assets\/([^/?#]+)\/content/);
+	const match = source.match(
+		/\/api(?:\/v1)?\/(?:projects\/[^/]+\/)?(?:media\/assets|media-assets)\/([^/?#]+)\/content/i,
+	);
 	if (!match?.[1]) return null;
 
 	return decodeURIComponent(match[1]);
@@ -245,6 +245,27 @@ const findFallbackSectionHeadingLine = (
 	}
 
 	return -1;
+};
+
+const normalizeSingleSectionDocumentReference = (
+	reference: AgentReference,
+	document: MarkdownDocument,
+): AgentReference => {
+	if (reference.kind !== "document") return reference;
+
+	const sections = listDocumentSections(document);
+	if (sections.length !== 1) return reference;
+
+	const [section] = sections;
+	if (!section) return reference;
+
+	return {
+		...reference,
+		blockId: section.blockId,
+		category: reference.category ?? document.category,
+		kind: "section",
+		title: reference.title || section.title,
+	};
 };
 
 const extractMentionImages = (markdown: string): ResolvedMentionImage[] => {

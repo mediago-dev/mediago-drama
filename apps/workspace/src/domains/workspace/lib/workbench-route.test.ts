@@ -23,6 +23,7 @@ describe("workbench route", () => {
 		expect(getRouteAgentSessionId("?agentSession=session-legacy")).toBe("session-legacy");
 		expect(getRouteDocumentId(search)).toBe("doc-1");
 		expect(getRouteDocumentWorkbench(search)).toBe("timeline");
+		expect(getRouteDocumentWorkbench("?workbench=canvas")).toBe("canvas");
 		expect(getRouteProjectId("")).toBeNull();
 		expect(getRouteAssetId("?assetId=asset-1")).toBe("asset-1");
 		expect(getRouteDocumentWorkbench("?workbench=unknown")).toBeNull();
@@ -35,7 +36,7 @@ describe("workbench route", () => {
 		expect(workbenchModeForRoute("/toolbox/image")).toBe("studio");
 	});
 
-	it("forces document content only for timeline workbenches and studio workbenches", () => {
+	it("forces document content only for document workbenches and studio workbenches", () => {
 		expect(shouldForceDocumentWorkbench("/projects", "?projectId=project-1")).toBe(false);
 		expect(shouldForceDocumentWorkbench("/projects", "?projectId=project-1&documentId=doc-1")).toBe(
 			false,
@@ -49,6 +50,9 @@ describe("workbench route", () => {
 		expect(isAgentDocumentRoute("/projects", "?projectId=project-1&documentId=doc-1")).toBe(false);
 		expect(
 			isAgentDocumentRoute("/projects", "?projectId=project-1&documentId=doc-1&workbench=timeline"),
+		).toBe(true);
+		expect(
+			isAgentDocumentRoute("/projects", "?projectId=project-1&documentId=doc-1&workbench=canvas"),
 		).toBe(true);
 		expect(shouldForceDocumentWorkbench("/unknown", "")).toBe(false);
 		expect(shouldForceDocumentWorkbench("/toolbox/image", "")).toBe(true);
@@ -64,6 +68,9 @@ describe("workbench route", () => {
 		);
 		expect(agentProjectPath("project-1", { documentId: "doc-1", workbench: "timeline" })).toBe(
 			"/projects?projectId=project-1&documentId=doc-1&workbench=timeline",
+		);
+		expect(agentProjectPath("project-1", { documentId: "doc-1", workbench: "canvas" })).toBe(
+			"/projects?projectId=project-1&documentId=doc-1&workbench=canvas",
 		);
 		expect(agentProjectPath("project-1", { agentSessionId: "session-1" })).toBe(
 			"/projects?projectId=project-1&agentSessionId=session-1",

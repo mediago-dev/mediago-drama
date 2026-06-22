@@ -8,6 +8,9 @@ type GenerationModelsResponse = dto.GenerationModelsResponse
 // GenerationMessageRequest creates or retries a generation request.
 type GenerationMessageRequest = dto.GenerationMessageRequest
 
+// GenerationDocumentContext identifies the source document section for generation.
+type GenerationDocumentContext = dto.GenerationDocumentContext
+
 // GenerationVoicePreviewRequest creates a short audio sample for a voice.
 type GenerationVoicePreviewRequest = dto.GenerationVoicePreviewRequest
 

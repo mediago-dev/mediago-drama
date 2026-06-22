@@ -117,5 +117,10 @@ describe("media generation helpers", () => {
 	it("extracts media asset ids from current and legacy content URLs", () => {
 		expect(mediaAssetIdFromGeneratedSource("/api/v1/media-assets/image-1/content")).toBe("image-1");
 		expect(mediaAssetIdFromGeneratedSource("/api/media/assets/image-2/content")).toBe("image-2");
+		expect(
+			mediaAssetIdFromGeneratedSource(
+				"/api/v1/projects/project-a/media-assets/image-3/content?download=1",
+			),
+		).toBe("image-3");
 	});
 });

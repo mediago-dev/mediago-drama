@@ -54,6 +54,27 @@ describe("ImageGenerationDialog", () => {
 		expect(capturedGeneratorProps?.kind).toBeUndefined();
 	});
 
+	it("opens from a closed notification request without requiring a prior section", async () => {
+		const props = {
+			onGenerationComplete: vi.fn(),
+			onGenerationError: vi.fn(),
+			onGenerationStart: vi.fn(),
+			onOpenChange: vi.fn(),
+			onToggleImage: vi.fn(),
+		};
+		const { rerender } = render(<ImageGenerationDialog {...props} open={false} section={null} />);
+
+		expect(screen.queryByTestId("section-generator")).toBeNull();
+
+		rerender(<ImageGenerationDialog {...props} open section={section} />);
+
+		await waitFor(() => {
+			expect(screen.getByTestId("section-generator").getAttribute("data-section-id")).toBe(
+				"section_character",
+			);
+		});
+	});
+
 	it("opens reference generation in a child dialog without replacing the current section", async () => {
 		const parentOpenReferenceGeneration = vi.fn();
 		const selectedAssetKeys = vi.fn((targetSection: MarkdownSectionContext) => [
@@ -99,6 +120,44 @@ describe("ImageGenerationDialog", () => {
 		expect(capturedGeneratorPropsList.at(-1)?.selectedAssetKeys).toEqual([
 			"image:section_reference",
 		]);
+	});
+
+	it("does not duplicate a child dialog when the same reference section is opened twice", async () => {
+		const referenceSection: MarkdownSectionContext = {
+			blockId: "section_reference",
+			documentId: "story-doc",
+			headingLevel: 2,
+			headingOccurrence: 1,
+			headingText: "引用角色",
+			markdown: "## 引用角色\n\n角色参考。",
+			plainText: "引用角色\n\n角色参考。",
+			prompt: "角色参考。",
+		};
+
+		render(
+			<ImageGenerationDialog
+				open
+				section={section}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onOpenChange={vi.fn()}
+				onToggleImage={vi.fn()}
+			/>,
+		);
+
+		await act(async () => {
+			capturedGeneratorPropsList[0]?.onOpenReferenceGeneration?.(referenceSection);
+			capturedGeneratorPropsList[0]?.onOpenReferenceGeneration?.(referenceSection);
+		});
+
+		await waitFor(() => {
+			expect(
+				screen
+					.getAllByTestId("section-generator")
+					.map((element) => element.getAttribute("data-section-id")),
+			).toEqual(["section_character", "section_reference"]);
+		});
 	});
 
 	it("keeps nested reference generation in a section dialog stack", async () => {
@@ -161,5 +220,48 @@ describe("ImageGenerationDialog", () => {
 					.map((element) => element.getAttribute("data-section-id")),
 			).toEqual(["section_character", "section_reference", "section_reference_child"]);
 		});
+	});
+
+	it("toggles the generated image on the dialog section that owns the asset", async () => {
+		const onToggleImage = vi.fn();
+		const referenceSection: MarkdownSectionContext = {
+			blockId: "section_reference",
+			documentId: "story-doc",
+			headingLevel: 2,
+			headingOccurrence: 1,
+			headingText: "引用角色",
+			markdown: "## 引用角色\n\n角色参考。",
+			plainText: "引用角色\n\n角色参考。",
+			prompt: "角色参考。",
+		};
+
+		render(
+			<ImageGenerationDialog
+				open
+				section={section}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onOpenChange={vi.fn()}
+				onToggleImage={onToggleImage}
+			/>,
+		);
+
+		await act(async () => {
+			capturedGeneratorPropsList[0]?.onOpenReferenceGeneration?.(referenceSection);
+		});
+
+		const referenceProps = capturedGeneratorPropsList.find(
+			(props) => props.section.blockId === "section_reference",
+		);
+		const asset = {
+			kind: "image" as const,
+			url: "/api/v1/media-assets/generated/content",
+		};
+
+		referenceProps?.onToggleAsset?.(asset, true);
+
+		expect(onToggleImage).toHaveBeenCalledWith(referenceSection, asset, true);
+		expect(onToggleImage).not.toHaveBeenCalledWith(section, asset, true);
 	});
 });

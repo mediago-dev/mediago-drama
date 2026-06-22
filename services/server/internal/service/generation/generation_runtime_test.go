@@ -91,6 +91,29 @@ func TestCacheGenerationResponseAssetsRecordsWarnings(t *testing.T) {
 	}
 }
 
+func TestCacheGenerationResponseAssetsSkipsLocalMediaAssetURLs(t *testing.T) {
+	mediaAssets := media.NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	workflow := NewGenerationService(nil, nil, mediaAssets)
+
+	response := workflow.CacheGenerationResponseAssets(context.Background(), coregeneration.Response{
+		ID:    "resp-test",
+		Model: "doubao-seedream-5.0-lite",
+		Assets: []coregeneration.Asset{
+			{
+				Kind: coregeneration.KindImage,
+				URL:  "http://localhost:5173/api/v1/projects/project-a/media-assets/image-1/content",
+			},
+		},
+	})
+
+	if warnings := StringSliceFromMetadata(response.Metadata, "asset_cache_warnings"); len(warnings) != 0 {
+		t.Fatalf("warnings = %#v, want local media URL skipped without warning", warnings)
+	}
+	if response.Assets[0].URL != "http://localhost:5173/api/v1/projects/project-a/media-assets/image-1/content" {
+		t.Fatalf("asset url = %q, want unchanged local media URL", response.Assets[0].URL)
+	}
+}
+
 func TestResolveGenerationReferencesCompressesImageAssets(t *testing.T) {
 	mediaAssets := media.NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
 	asset := savePNGReferenceAsset(t, mediaAssets, 1800, 900)
@@ -128,6 +151,34 @@ func TestResolveGenerationReferencesCompressesImageAssets(t *testing.T) {
 	bounds := imageValue.Bounds()
 	if max(bounds.Dx(), bounds.Dy()) > 512 {
 		t.Fatalf("reference size = %dx%d, want long side <= 512", bounds.Dx(), bounds.Dy())
+	}
+}
+
+func TestResolveGenerationReferencesReadsLocalMediaReferenceURLs(t *testing.T) {
+	mediaAssets := media.NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	asset := savePNGReferenceAsset(t, mediaAssets, 320, 180)
+	workflow := NewGenerationService(nil, nil, mediaAssets)
+	route, ok := coregeneration.FindRoute(coregeneration.RouteJimengSeedance20Fast)
+	if !ok {
+		t.Fatal("jimeng seedance route is missing")
+	}
+
+	references, err := workflow.resolveGenerationReferences(route, generationMessageRequest{
+		ReferenceURLs: []string{
+			asset.URL,
+			"/api/v1/media-assets/" + asset.ID + "/content",
+			"http://localhost:5173/api/v1/projects/project-alpha/media-assets/" + asset.ID + "/content",
+			"api/v1/media-assets/" + asset.ID + "/content",
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolving references: %v", err)
+	}
+	if len(references) != 1 {
+		t.Fatalf("references = %d, want one deduplicated local media reference", len(references))
+	}
+	if !strings.HasPrefix(references[0], "data:image/png;base64,") {
+		t.Fatalf("reference = %q, want local media data uri", references[0][:min(64, len(references[0]))])
 	}
 }
 

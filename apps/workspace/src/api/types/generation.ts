@@ -160,6 +160,7 @@ export interface GenerationMessageRequest {
 	sessionId?: string;
 	projectId?: string;
 	sectionId?: string;
+	documentContext?: GenerationDocumentContext;
 	capabilityId?: string;
 	notificationTarget?: GenerationNotificationTarget;
 	routeId: string;
@@ -172,6 +173,12 @@ export interface GenerationMessageRequest {
 	referenceUrls: string[];
 	referenceAssetIds: string[];
 	params: Record<string, unknown>;
+}
+
+export interface GenerationDocumentContext {
+	projectId?: string;
+	documentId?: string;
+	sectionId?: string;
 }
 
 export interface GenerationVoicePreviewRequest {

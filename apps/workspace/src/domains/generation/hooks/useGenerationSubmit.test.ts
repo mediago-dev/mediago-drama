@@ -170,6 +170,8 @@ const renderSubmitHook = (
 		onSubmitSuccess?: (kind: GenerationSubmitStartEvent["kind"]) => void;
 		rememberSelectedModel?: () => void;
 		conversationTitle?: string | null;
+		documentContext?: Parameters<typeof useGenerationSubmit>[0]["documentContext"];
+		documentContextInitialPrompt?: string;
 		extraPrompt?: GenerationExtraValue<string>;
 		prompt?: string;
 		promptRef?: React.MutableRefObject<string>;
@@ -201,6 +203,8 @@ const renderSubmitHook = (
 			...useGenerationSubmit({
 				conversationId: "session-1",
 				conversationTitle: options.conversationTitle,
+				documentContext: options.documentContext,
+				documentContextInitialPrompt: options.documentContextInitialPrompt,
 				effectiveReferenceAssetIds: ["asset-1"],
 				effectiveReferenceUrls: ["https://example.test/reference.png"],
 				extraPrompt: options.extraPrompt ?? "",
@@ -388,6 +392,69 @@ describe("useGenerationSubmit", () => {
 				id: "task-1",
 			}),
 		]);
+	});
+
+	it("lets the server resolve an unchanged document-context prompt from the database", async () => {
+		vi.mocked(sendGenerationMessage).mockResolvedValue(generationResponse());
+		const onSubmitStart = vi.fn();
+		const { result } = renderSubmitHook({
+			documentContext: {
+				projectId: "project-1",
+				documentId: "doc-a",
+				sectionId: "section_a",
+			},
+			documentContextInitialPrompt: "数据库 section 文案",
+			onSubmitStart,
+			prompt: "数据库 section 文案",
+			useRawPrompt: true,
+		});
+
+		await act(async () => {
+			await result.current.submitGeneration();
+		});
+
+		expect(sendGenerationMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				documentContext: {
+					projectId: "project-1",
+					documentId: "doc-a",
+					sectionId: "section_a",
+				},
+				prompt: "",
+			}),
+		);
+		expect(result.current.messages[0]).toEqual(
+			expect.objectContaining({
+				content: "数据库 section 文案",
+			}),
+		);
+		expect(onSubmitStart).toHaveBeenCalledWith(
+			expect.objectContaining({ prompt: "数据库 section 文案" }),
+		);
+	});
+
+	it("submits an edited document-context prompt instead of deferring to the database", async () => {
+		vi.mocked(sendGenerationMessage).mockResolvedValue(generationResponse());
+		const { result } = renderSubmitHook({
+			documentContext: {
+				projectId: "project-1",
+				documentId: "doc-a",
+				sectionId: "section_a",
+			},
+			documentContextInitialPrompt: "数据库 section 文案",
+			prompt: "用户改过的提示词",
+			useRawPrompt: true,
+		});
+
+		await act(async () => {
+			await result.current.submitGeneration();
+		});
+
+		expect(sendGenerationMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				prompt: "用户改过的提示词",
+			}),
+		);
 	});
 
 	it("uses the latest prompt ref when the rendered prompt state is stale", async () => {

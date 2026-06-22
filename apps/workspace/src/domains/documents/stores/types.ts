@@ -1,6 +1,12 @@
 import type { WorkspaceDocumentsPayload } from "@/domains/workspace/api/workspace";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import type { TemplateConstraintRejection } from "@/domains/documents/lib/constraints";
+import type {
+	MarkdownSectionIdentity,
+	MarkdownSectionImage,
+	MarkdownSectionMedia,
+	MarkdownSectionMentionReference,
+} from "@/domains/documents/lib/editor-registry";
 import type { DocumentOperation, TextAnchor } from "@/domains/documents/lib/operations";
 import type { DocumentRangeSelection, DocumentTextRange } from "@/api/types/document-tools";
 
@@ -221,6 +227,21 @@ export interface DocumentsState {
 	setShowComments: (showComments: boolean) => void;
 	setSelection: (documentId: string, text: string) => void;
 	toggleComments: () => void;
+	toggleSectionImage: (
+		section: MarkdownSectionIdentity,
+		image: MarkdownSectionImage,
+		selected: boolean,
+	) => boolean;
+	toggleSectionMedia: (
+		section: MarkdownSectionIdentity,
+		media: MarkdownSectionMedia,
+		selected: boolean,
+	) => boolean;
+	toggleSectionMention: (
+		section: MarkdownSectionIdentity,
+		reference: MarkdownSectionMentionReference,
+		selected: boolean,
+	) => boolean;
 	undoLastOperation: (documentId?: string) => boolean;
 	updateComment: (documentId: string, commentId: string, body: string) => void;
 	updateDocumentContent: (id: string, content: string) => void;

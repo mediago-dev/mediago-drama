@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import {
+	createSectionBlockId,
 	findMarkdownSectionHeadingLine,
 	listDocumentSections,
 	sectionIdBeforeHeadingLine,
@@ -53,5 +54,12 @@ describe("document sections", () => {
 			}),
 		).toBe(2);
 		expect(stripSectionIdCommentLines(lines.join("\n"))).toBe("\n## 新标题\n\n正文");
+	});
+
+	it("keeps fallback section block ids stable for backend document context lookup", () => {
+		expect(createSectionBlockId("story-doc", 2, 1, "第 01 组")).toBe("section-fpqbti");
+		expect(createSectionBlockId("角色册 第一章", 1, 2, "林书彤")).toBe("section-mutyck");
+		expect(createSectionBlockId("doc-1", 3, 1, "  视频   提示词  ")).toBe("section-uwtz0i");
+		expect(createSectionBlockId("story-doc", 2, 3, "Chen Yuan Prompt")).toBe("section-s0hgoo");
 	});
 });

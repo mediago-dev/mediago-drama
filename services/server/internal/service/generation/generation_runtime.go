@@ -23,6 +23,7 @@ type GenerationService struct {
 	generationNotifications       *GenerationNotificationService
 	generationTasks               *GenerationTaskService
 	mediaAssets                   *media.MediaAssets
+	documents                     GenerationDocumentResolver
 	generationProviderFactory     func(coregeneration.ModelRoute) (coregeneration.Provider, error)
 	multimodalTextProviderFactory runtime.MultimodalTextProviderFactory
 	voicePreviews                 *VoicePreviewStore
@@ -63,6 +64,11 @@ func (workflow *GenerationService) SetGenerationNotifications(notifications *Gen
 	workflow.generationNotifications = notifications
 }
 
+// SetDocumentResolver sets the workspace document reader used by document-backed generation.
+func (workflow *GenerationService) SetDocumentResolver(documents GenerationDocumentResolver) {
+	workflow.documents = documents
+}
+
 // ListGenerationModels returns the generation model catalog for HTTP handlers.
 func (workflow *GenerationService) ListGenerationModels() generationModelsResponse {
 	catalog := coregeneration.Catalog()
@@ -99,6 +105,11 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	payload.Model = strings.TrimSpace(payload.Model)
 	payload.ReferenceURLs = CompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = CompactStrings(payload.ReferenceAssetIDs)
+	if err := workflow.applyGenerationDocumentContext(&payload); err != nil {
+		return generationMessageResponse{}, http.StatusBadRequest, err
+	}
+	payload.ReferenceURLs = uniqueCompactStrings(payload.ReferenceURLs)
+	payload.ReferenceAssetIDs = uniqueCompactStrings(payload.ReferenceAssetIDs)
 	if payload.Kind == "" && payload.RouteID == "" && payload.ModelID == "" {
 		payload.Kind = string(coregeneration.KindImage)
 	}

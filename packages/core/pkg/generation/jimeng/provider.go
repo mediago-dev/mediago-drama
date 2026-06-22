@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/internal/adapterutil"
 )
 
 const (
@@ -127,7 +128,7 @@ func (provider *Provider) Get(ctx context.Context, id string) (generation.Respon
 }
 
 func (provider *Provider) generateImage(ctx context.Context, request generation.Request) (generation.Response, error) {
-	tempDir, cleanup, err := materializeReferences(request.ReferenceURLs)
+	tempDir, cleanup, err := materializeReferences(ctx, request.ReferenceURLs)
 	if err != nil {
 		return generation.Response{}, err
 	}
@@ -341,7 +342,7 @@ func combineImageResponses(responses []generation.Response) generation.Response 
 }
 
 func (provider *Provider) generateVideo(ctx context.Context, request generation.Request) (generation.Response, error) {
-	tempDir, cleanup, err := materializeReferences(request.ReferenceURLs)
+	tempDir, cleanup, err := materializeReferences(ctx, request.ReferenceURLs)
 	if err != nil {
 		return generation.Response{}, err
 	}
@@ -447,7 +448,7 @@ type referenceFiles struct {
 	paths []string
 }
 
-func materializeReferences(references []string) (referenceFiles, func(), error) {
+func materializeReferences(ctx context.Context, references []string) (referenceFiles, func(), error) {
 	cleanup := func() {}
 	values := compactStrings(references)
 	if len(values) == 0 {
@@ -462,7 +463,7 @@ func materializeReferences(references []string) (referenceFiles, func(), error) 
 
 	files := referenceFiles{dir: dir, paths: make([]string, 0, len(values))}
 	for index, value := range values {
-		path, err := materializeReference(dir, index, value)
+		path, err := materializeReference(ctx, dir, index, value)
 		if err != nil {
 			cleanup()
 			return referenceFiles{}, func() {}, err
@@ -472,8 +473,8 @@ func materializeReferences(references []string) (referenceFiles, func(), error) 
 	return files, cleanup, nil
 }
 
-func materializeReference(dir string, index int, value string) (string, error) {
-	if strings.HasPrefix(value, "data:") {
+func materializeReference(ctx context.Context, dir string, index int, value string) (string, error) {
+	if strings.HasPrefix(strings.ToLower(value), "data:") {
 		mediaType, data, ok := strings.Cut(value, ",")
 		if !ok {
 			return "", fmt.Errorf("invalid data uri reference")
@@ -489,7 +490,19 @@ func materializeReference(dir string, index int, value string) (string, error) {
 		}
 		return path, nil
 	}
-	if strings.HasPrefix(value, "file://") {
+	if strings.HasPrefix(strings.ToLower(value), "http://") ||
+		strings.HasPrefix(strings.ToLower(value), "https://") {
+		mimeType, data, err := adapterutil.ReadImageReference(ctx, nil, value, nil)
+		if err != nil {
+			return "", fmt.Errorf("downloading jimeng reference: %w", err)
+		}
+		path := filepath.Join(dir, fmt.Sprintf("reference-%02d%s", index+1, extensionForDataURI(mimeType)))
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			return "", fmt.Errorf("writing jimeng reference file: %w", err)
+		}
+		return path, nil
+	}
+	if strings.HasPrefix(strings.ToLower(value), "file://") {
 		value = strings.TrimPrefix(value, "file://")
 	}
 	if filepath.IsAbs(value) {

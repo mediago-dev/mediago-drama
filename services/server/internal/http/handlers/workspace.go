@@ -24,6 +24,9 @@ type WorkspaceStore interface {
 	CreateWorkspaceDocument(projectID string, request service.CreateWorkspaceDocumentRequest) (mediamcp.WorkspaceDocument, service.WorkspaceDocumentsResponse, error)
 	GetWorkspaceDocument(projectID string, documentID string) (mediamcp.WorkspaceDocument, bool, error)
 	UpdateWorkspaceDocument(projectID string, documentID string, request service.UpdateWorkspaceDocumentRequest) (mediamcp.WorkspaceDocument, service.WorkspaceDocumentsResponse, error)
+	UpdateWorkspaceDocumentSectionImage(projectID string, documentID string, request service.WorkspaceDocumentSectionImageRequest) (mediamcp.WorkspaceDocument, service.WorkspaceDocumentsResponse, error)
+	UpdateWorkspaceDocumentSectionMedia(projectID string, documentID string, request service.WorkspaceDocumentSectionMediaRequest) (mediamcp.WorkspaceDocument, service.WorkspaceDocumentsResponse, error)
+	UpdateWorkspaceDocumentSectionMention(projectID string, documentID string, request service.WorkspaceDocumentSectionMentionRequest) (mediamcp.WorkspaceDocument, service.WorkspaceDocumentsResponse, error)
 	DeleteWorkspaceDocument(projectID string, documentID string) (service.DeleteWorkspaceDocumentResponse, error)
 	ListDocumentHistory(projectID string, documentID string, limit int) (service.DocumentHistoryResponse, error)
 	GetDocumentHistoryVersion(projectID string, documentID string, commitHash string) (service.DocumentHistoryVersionResponse, error)
@@ -398,6 +401,168 @@ func (handler Workspace) HandleUpdateWorkspaceDocument(context *gin.Context) {
 	document, state, err := handler.store.UpdateWorkspaceDocument(projectID, documentID, payload)
 	if err != nil {
 		handler.writeDocumentMutationError(context, err)
+		return
+	}
+	state, err = handler.withProjectAssetsForDocuments(state)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+	httpresponse.OK(context, workspaceDocumentMutationResponse{
+		Document: document,
+		State:    state,
+	})
+}
+
+// HandleUpdateWorkspaceDocumentSectionImage godoc
+// @Summary 更新文档 section 图片
+// @Description 按 sectionId 在项目工作区文档中选中或取消选中一张图片。
+// @Tags Workspace
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Param payload body SwaggerObject true "Section image payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 409 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/documents/{documentId}/section-image [patch]
+func (handler Workspace) HandleUpdateWorkspaceDocumentSectionImage(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+	documentID, ok := requiredPathParam(context, "documentId", "documentId")
+	if !ok {
+		return
+	}
+	payload, err := decodeJSON[service.WorkspaceDocumentSectionImageRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+
+	document, state, err := handler.store.UpdateWorkspaceDocumentSectionImage(projectID, documentID, payload)
+	if err != nil {
+		if handler.matchesNotFound(err) {
+			httpresponse.Error(context, http.StatusNotFound, "文档不存在")
+			return
+		}
+		if handler.matchesVersionConflict(err) {
+			httpresponse.ErrorFromStatus(context, http.StatusConflict, err)
+			return
+		}
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	state, err = handler.withProjectAssetsForDocuments(state)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+	httpresponse.OK(context, workspaceDocumentMutationResponse{
+		Document: document,
+		State:    state,
+	})
+}
+
+// HandleUpdateWorkspaceDocumentSectionMedia godoc
+// @Summary 更新文档 section 音视频
+// @Description 按 sectionId 在项目工作区文档中选中或取消选中一条音视频。
+// @Tags Workspace
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Param payload body SwaggerObject true "Section media payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 409 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/documents/{documentId}/section-media [patch]
+func (handler Workspace) HandleUpdateWorkspaceDocumentSectionMedia(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+	documentID, ok := requiredPathParam(context, "documentId", "documentId")
+	if !ok {
+		return
+	}
+	payload, err := decodeJSON[service.WorkspaceDocumentSectionMediaRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+
+	document, state, err := handler.store.UpdateWorkspaceDocumentSectionMedia(projectID, documentID, payload)
+	if err != nil {
+		if handler.matchesNotFound(err) {
+			httpresponse.Error(context, http.StatusNotFound, "文档不存在")
+			return
+		}
+		if handler.matchesVersionConflict(err) {
+			httpresponse.ErrorFromStatus(context, http.StatusConflict, err)
+			return
+		}
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	state, err = handler.withProjectAssetsForDocuments(state)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+	httpresponse.OK(context, workspaceDocumentMutationResponse{
+		Document: document,
+		State:    state,
+	})
+}
+
+// HandleUpdateWorkspaceDocumentSectionMention godoc
+// @Summary 更新文档 section 引用
+// @Description 按 sectionId 在项目工作区文档中选中或取消选中一个 @mention 引用。
+// @Tags Workspace
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Param payload body SwaggerObject true "Section mention payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 409 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/documents/{documentId}/section-mention [patch]
+func (handler Workspace) HandleUpdateWorkspaceDocumentSectionMention(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+	documentID, ok := requiredPathParam(context, "documentId", "documentId")
+	if !ok {
+		return
+	}
+	payload, err := decodeJSON[service.WorkspaceDocumentSectionMentionRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+
+	document, state, err := handler.store.UpdateWorkspaceDocumentSectionMention(projectID, documentID, payload)
+	if err != nil {
+		if handler.matchesNotFound(err) {
+			httpresponse.Error(context, http.StatusNotFound, "文档不存在")
+			return
+		}
+		if handler.matchesVersionConflict(err) {
+			httpresponse.ErrorFromStatus(context, http.StatusConflict, err)
+			return
+		}
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 		return
 	}
 	state, err = handler.withProjectAssetsForDocuments(state)

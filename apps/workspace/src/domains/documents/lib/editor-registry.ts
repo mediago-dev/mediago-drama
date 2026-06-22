@@ -18,6 +18,13 @@ export interface MarkdownSectionImage {
 	title?: string;
 }
 
+export interface MarkdownSectionMentionReference {
+	documentId: string;
+	blockId?: string;
+	title: string;
+	category?: string;
+}
+
 export type MarkdownSectionMediaKind = "audio" | "video";
 
 export interface MarkdownSectionMedia {
@@ -40,19 +47,6 @@ export interface MarkdownHybridEditorHandle {
 		options?: MarkdownBlockDeltaOptions,
 	) => boolean;
 	setSelection: (selection: DocumentRangeSelection) => boolean;
-	setSectionImage: (section: MarkdownSectionIdentity, image: MarkdownSectionImage) => boolean;
-	removeSectionImage: (section: MarkdownSectionIdentity, image: MarkdownSectionImage) => boolean;
-	setSectionMedia: (section: MarkdownSectionIdentity, media: MarkdownSectionMedia) => boolean;
-	removeSectionMedia: (section: MarkdownSectionIdentity, media: MarkdownSectionMedia) => boolean;
-	setSectionImagePlaceholder: (
-		section: MarkdownSectionIdentity,
-		placeholder: MarkdownSectionImagePlaceholder,
-	) => boolean;
-	replaceSectionImagePlaceholder: (
-		section: MarkdownSectionIdentity,
-		placeholderId: string,
-		image: MarkdownSectionImage,
-	) => boolean;
 	removeSectionImagePlaceholder: (
 		section: MarkdownSectionIdentity,
 		placeholderId: string,

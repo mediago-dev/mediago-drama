@@ -371,6 +371,7 @@ func TestGenerationServiceUpdateSelectedGenerationAssetFromTask(t *testing.T) {
 	if err := service.Upsert(GenerationTaskRecord{
 		ID:        taskID,
 		ProjectID: projectID,
+		SectionID: "character-doc:section-chenyuan",
 		Kind:      "image",
 		Status:    "completed",
 		Prompt:    "character",
@@ -396,8 +397,10 @@ func TestGenerationServiceUpdateSelectedGenerationAssetFromTask(t *testing.T) {
 	if response.Asset == nil ||
 		response.Asset.TaskID != taskID ||
 		response.Asset.AssetIndex != 0 ||
+		response.Asset.ResourceID != "section-chenyuan" ||
 		response.Asset.ResourceType != "character" ||
 		response.Asset.MediaAssetID != "image-a" ||
+		response.Asset.SourceDocumentID != "character-doc" ||
 		response.Asset.Title != "陈远" {
 		t.Fatalf("response = %+v, want selected task asset", response)
 	}

@@ -6,9 +6,6 @@ import type {
 	MarkdownBlockDeltaOptions,
 	MarkdownHybridEditorHandle,
 	MarkdownSectionIdentity,
-	MarkdownSectionImage,
-	MarkdownSectionImagePlaceholder,
-	MarkdownSectionMedia,
 } from "@/domains/documents/lib/editor-registry";
 import {
 	findTextNodeRange,
@@ -16,14 +13,7 @@ import {
 	resolveReplacementMarkdown,
 	resolveStreamingTarget,
 } from "./ranges";
-import {
-	appendSectionImageMarkdown,
-	appendSectionImagePlaceholderMarkdown,
-	removeSectionImageMarkdown,
-	removeSectionImagePlaceholderMarkdown,
-	replaceSectionImagePlaceholderMarkdown,
-} from "./section-images";
-import { appendSectionMediaMarkdown, removeSectionMediaMarkdown } from "./section-media";
+import { removeSectionImagePlaceholderMarkdown } from "./section-images";
 import type { StreamingBlockTarget } from "./types";
 
 interface MarkdownEditorImperativeHandleOptions {
@@ -108,129 +98,6 @@ export const useMarkdownEditorImperativeHandle = ({
 		[editor],
 	);
 
-	const setSectionImage = useCallback(
-		(section: MarkdownSectionIdentity, image: MarkdownSectionImage) => {
-			if (!editor) return false;
-
-			const currentMarkdown = editor.getMarkdown();
-			const result = appendSectionImageMarkdown(currentMarkdown, section, image);
-			if (!result) return false;
-			if (!result.changed) return true;
-
-			emittedMarkdownRef.current = result.markdown;
-			editor.commands.setContent(result.markdown, {
-				contentType: "markdown",
-				emitUpdate: false,
-			});
-			onChangeRef.current(result.markdown);
-			return true;
-		},
-		[editor, emittedMarkdownRef, onChangeRef],
-	);
-
-	const removeSectionImage = useCallback(
-		(section: MarkdownSectionIdentity, image: MarkdownSectionImage) => {
-			if (!editor) return false;
-
-			const currentMarkdown = editor.getMarkdown();
-			const result = removeSectionImageMarkdown(currentMarkdown, section, image);
-			if (!result?.changed) return false;
-
-			emittedMarkdownRef.current = result.markdown;
-			editor.commands.setContent(result.markdown, {
-				contentType: "markdown",
-				emitUpdate: false,
-			});
-			onChangeRef.current(result.markdown);
-			return true;
-		},
-		[editor, emittedMarkdownRef, onChangeRef],
-	);
-
-	const setSectionMedia = useCallback(
-		(section: MarkdownSectionIdentity, media: MarkdownSectionMedia) => {
-			if (!editor) return false;
-
-			const currentMarkdown = editor.getMarkdown();
-			const result = appendSectionMediaMarkdown(currentMarkdown, section, media);
-			if (!result) return false;
-			if (!result.changed) return true;
-
-			emittedMarkdownRef.current = result.markdown;
-			editor.commands.setContent(result.markdown, {
-				contentType: "markdown",
-				emitUpdate: false,
-			});
-			onChangeRef.current(result.markdown);
-			return true;
-		},
-		[editor, emittedMarkdownRef, onChangeRef],
-	);
-
-	const removeSectionMedia = useCallback(
-		(section: MarkdownSectionIdentity, media: MarkdownSectionMedia) => {
-			if (!editor) return false;
-
-			const currentMarkdown = editor.getMarkdown();
-			const result = removeSectionMediaMarkdown(currentMarkdown, section, media);
-			if (!result?.changed) return false;
-
-			emittedMarkdownRef.current = result.markdown;
-			editor.commands.setContent(result.markdown, {
-				contentType: "markdown",
-				emitUpdate: false,
-			});
-			onChangeRef.current(result.markdown);
-			return true;
-		},
-		[editor, emittedMarkdownRef, onChangeRef],
-	);
-
-	const setSectionImagePlaceholder = useCallback(
-		(section: MarkdownSectionIdentity, placeholder: MarkdownSectionImagePlaceholder) => {
-			if (!editor) return false;
-
-			const currentMarkdown = editor.getMarkdown();
-			const result = appendSectionImagePlaceholderMarkdown(currentMarkdown, section, placeholder);
-			if (!result) return false;
-			if (!result.changed) return true;
-
-			emittedMarkdownRef.current = result.markdown;
-			editor.commands.setContent(result.markdown, {
-				contentType: "markdown",
-				emitUpdate: false,
-			});
-			onChangeRef.current(result.markdown);
-			return true;
-		},
-		[editor, emittedMarkdownRef, onChangeRef],
-	);
-
-	const replaceSectionImagePlaceholder = useCallback(
-		(section: MarkdownSectionIdentity, placeholderId: string, image: MarkdownSectionImage) => {
-			if (!editor) return false;
-
-			const currentMarkdown = editor.getMarkdown();
-			const result = replaceSectionImagePlaceholderMarkdown(
-				currentMarkdown,
-				section,
-				placeholderId,
-				image,
-			);
-			if (!result) return false;
-			if (!result.changed) return true;
-
-			emittedMarkdownRef.current = result.markdown;
-			editor.commands.setContent(result.markdown, {
-				contentType: "markdown",
-				emitUpdate: false,
-			});
-			onChangeRef.current(result.markdown);
-			return true;
-		},
-		[editor, emittedMarkdownRef, onChangeRef],
-	);
-
 	const removeSectionImagePlaceholder = useCallback(
 		(section: MarkdownSectionIdentity, placeholderId: string) => {
 			if (!editor) return false;
@@ -256,12 +123,6 @@ export const useMarkdownEditorImperativeHandle = ({
 			documentId,
 			applyBlockDelta,
 			setSelection: setStructuredSelection,
-			setSectionImage,
-			removeSectionImage,
-			setSectionMedia,
-			removeSectionMedia,
-			setSectionImagePlaceholder,
-			replaceSectionImagePlaceholder,
 			removeSectionImagePlaceholder,
 			commitBlockDelta,
 			hasPendingBlockDelta,
@@ -271,14 +132,8 @@ export const useMarkdownEditorImperativeHandle = ({
 			commitBlockDelta,
 			documentId,
 			hasPendingBlockDelta,
-			removeSectionImage,
 			removeSectionImagePlaceholder,
-			removeSectionMedia,
-			replaceSectionImagePlaceholder,
 			ref,
-			setSectionImage,
-			setSectionImagePlaceholder,
-			setSectionMedia,
 			setStructuredSelection,
 		],
 	);

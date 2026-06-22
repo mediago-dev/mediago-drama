@@ -16,31 +16,21 @@ import { DocumentMention } from "@/domains/documents/components/extensions/docum
 import { DocumentHistoryPanel } from "@/domains/documents/components/DocumentHistoryPanel";
 import { SelectionBubble } from "@/domains/documents/components/SelectionBubble";
 import { createDOMTextAnchorResolver } from "@/domains/documents/components/text-anchor-dom";
-import {
-	appendSectionImageMarkdown,
-	removeSectionImageMarkdown,
-} from "@/domains/documents/components/tiptap/section-images";
-import {
-	appendSectionMediaMarkdown,
-	removeSectionMediaMarkdown,
-	sectionMediaSourceFromLine,
-} from "@/domains/documents/components/tiptap/section-media";
+import { sectionAssetKeysFromDocuments } from "@/domains/documents/components/section-generation-asset-keys";
 import type { InlineDecorationRange } from "@/domains/documents/components/tiptap/storage";
 import { Button } from "@/shared/components/ui/button";
 import { registerEditor } from "@/domains/documents/lib/editor-registry";
-import type {
-	MarkdownSectionImage,
-	MarkdownSectionMedia,
-	MarkdownSectionMediaKind,
-} from "@/domains/documents/lib/editor-registry";
+import type { MarkdownSectionMediaKind } from "@/domains/documents/lib/editor-registry";
 import { selectEditableDocument } from "@/domains/documents/lib/filters";
-import { sectionGenerationIdentityKey } from "@/domains/documents/lib/section-generation";
 import {
 	type DocumentComment,
 	type MarkdownDocument,
 	useDocumentsStore,
 } from "@/domains/documents/stores";
-import { useGenerationNotificationStore } from "@/domains/generation/stores/generation-notifications";
+import {
+	type PendingGenerationNotificationOpenRequest,
+	useGenerationNotificationStore,
+} from "@/domains/generation/stores/generation-notifications";
 import {
 	generationAssetSelectionKey,
 	generationAssetSource,
@@ -79,11 +69,11 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const [commentOffsets, setCommentOffsets] = useState<Record<string, number>>({});
 	const [sectionGeneration, setSectionGeneration] = useState<ActiveSectionGeneration | null>(null);
 	const [historyOpen, setHistoryOpen] = useState(false);
-	const [selectedSectionAssetKeys, setSelectedSectionAssetKeys] = useState<
-		Record<string, string[]>
-	>({});
 	const editorRef = useRef<MarkdownHybridEditorHandle>(null);
 	const mainRef = useRef<HTMLElement>(null);
+	const handledGenerationOpenRequestRef = useRef<PendingGenerationNotificationOpenRequest | null>(
+		null,
+	);
 	const navigate = useNavigate();
 	const location = useLocation();
 	const projectId = getRouteProjectId(location.search);
@@ -109,6 +99,8 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const setSelection = useDocumentsStore((state) => state.setSelection);
 	const setShowComments = useDocumentsStore((state) => state.setShowComments);
 	const showComments = useDocumentsStore((state) => state.showComments);
+	const toggleStoredSectionImage = useDocumentsStore((state) => state.toggleSectionImage);
+	const toggleStoredSectionMedia = useDocumentsStore((state) => state.toggleSectionMedia);
 	const updateDocumentContent = useDocumentsStore((state) => state.updateDocumentContent);
 	const activeDocument = selectEditableDocument(documents, activeDocumentId);
 	const activeSelection =
@@ -141,7 +133,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	useEffect(() => {
 		setSelectionCoords(null);
 		setSelectionRange(null);
-		setSelectedSectionAssetKeys({});
 	}, [activeDocument?.id]);
 
 	useEffect(() => {
@@ -222,23 +213,32 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	);
 
 	const openSectionGeneration = useCallback(
-		(section: MarkdownSectionContext, kind: SectionGenerateKind = "image") => {
-			const sectionKey = sectionGenerationIdentityKey(section);
-			setSelectedSectionAssetKeys((current) => ({
-				...current,
-				[sectionKey]: sectionAssetKeys(section, kind),
-			}));
-			setSectionGeneration({ kind, section });
-		},
+		(section: MarkdownSectionContext, kind: SectionGenerateKind = "image") =>
+			setSectionGeneration((current) =>
+				current && current.kind === kind && sameSectionGenerationTarget(current.section, section)
+					? current
+					: { kind, section },
+			),
 		[],
+	);
+	const closeSectionGeneration = useCallback((open: boolean) => {
+		if (!open) setSectionGeneration(null);
+	}, []);
+	const selectedImageAssetKeys = useCallback(
+		(targetSection: MarkdownSectionContext) =>
+			sectionAssetKeysFromDocuments(documents, targetSection, "image"),
+		[documents],
 	);
 
 	useEffect(() => {
-		if (!activeDocument || !pendingGenerationOpenRequest) return;
-		if (pendingGenerationOpenRequest.target.documentId !== activeDocument.id) return;
+		const request = pendingGenerationOpenRequest;
+		if (!activeDocument || !request) return;
+		if (request.target.documentId !== activeDocument.id) return;
+		if (handledGenerationOpenRequestRef.current === request) return;
 
-		openSectionGeneration(pendingGenerationOpenRequest.target.section, "image");
-		consumeGenerationOpenRequest(pendingGenerationOpenRequest.notificationId);
+		handledGenerationOpenRequestRef.current = request;
+		consumeGenerationOpenRequest(request.notificationId);
+		openSectionGeneration(request.target.section, "image");
 	}, [
 		activeDocument,
 		consumeGenerationOpenRequest,
@@ -249,38 +249,15 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const toggleSectionImage = useCallback(
 		(section: MarkdownSectionContext, asset: GenerationAsset, selected: boolean) => {
 			const source = generationAssetSource(asset);
-			const assetKey = generationAssetSelectionKey(asset);
-			if (!source || !assetKey) return;
+			if (!source || !generationAssetSelectionKey(asset)) return;
 
 			const image = {
 				src: source,
 				title: section.headingText,
 			};
-			const applied =
-				section.documentId === activeDocument?.id
-					? selected
-						? editorRef.current?.setSectionImage(section, image)
-						: editorRef.current?.removeSectionImage(section, image)
-					: applySectionImageToStoredDocument({
-							documents,
-							image,
-							section,
-							selected,
-							updateDocumentContent,
-						});
-			if (!applied) return;
-
-			const sectionKey = sectionGenerationIdentityKey(section);
-			setSelectedSectionAssetKeys((current) => ({
-				...current,
-				[sectionKey]: selected
-					? current[sectionKey]?.includes(assetKey)
-						? current[sectionKey]
-						: [...(current[sectionKey] ?? []), assetKey]
-					: (current[sectionKey] ?? []).filter((key) => key !== assetKey),
-			}));
+			toggleStoredSectionImage(section, image, selected);
 		},
-		[activeDocument?.id, documents, updateDocumentContent],
+		[toggleStoredSectionImage],
 	);
 
 	const toggleSectionMedia = useCallback(
@@ -293,39 +270,16 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 			if (asset.kind !== kind) return;
 
 			const source = generationAssetSource(asset);
-			const assetKey = generationAssetSelectionKey(asset);
-			if (!source || !assetKey) return;
+			if (!source || !generationAssetSelectionKey(asset)) return;
 
 			const media = {
 				kind,
 				src: source,
 				title: section.headingText,
 			};
-			const applied =
-				section.documentId === activeDocument?.id
-					? selected
-						? editorRef.current?.setSectionMedia(section, media)
-						: editorRef.current?.removeSectionMedia(section, media)
-					: applySectionMediaToStoredDocument({
-							documents,
-							media,
-							section,
-							selected,
-							updateDocumentContent,
-						});
-			if (!applied) return;
-
-			const sectionKey = sectionGenerationIdentityKey(section);
-			setSelectedSectionAssetKeys((current) => ({
-				...current,
-				[sectionKey]: selected
-					? current[sectionKey]?.includes(assetKey)
-						? current[sectionKey]
-						: [...(current[sectionKey] ?? []), assetKey]
-					: (current[sectionKey] ?? []).filter((key) => key !== assetKey),
-			}));
+			toggleStoredSectionMedia(section, media, selected);
 		},
-		[activeDocument?.id, documents, updateDocumentContent],
+		[toggleStoredSectionMedia],
 	);
 
 	const ignorePendingSectionImage = useCallback(() => {}, []);
@@ -496,16 +450,11 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 				open={sectionGeneration?.kind === "image"}
 				projectId={projectId ?? undefined}
 				section={sectionGeneration?.kind === "image" ? sectionGeneration.section : null}
-				selectedAssetKeys={(targetSection) =>
-					selectedSectionAssetKeys[sectionGenerationIdentityKey(targetSection)] ??
-					sectionAssetKeys(targetSection, "image")
-				}
+				selectedAssetKeys={selectedImageAssetKeys}
 				onGenerationComplete={completeSectionImageGeneration}
 				onGenerationError={removePendingSectionImage}
 				onGenerationStart={ignorePendingSectionImage}
-				onOpenChange={(open) => {
-					if (!open) setSectionGeneration(null);
-				}}
+				onOpenChange={closeSectionGeneration}
 				onOpenReferenceGeneration={openSectionGeneration}
 				onToggleImage={toggleSectionImage}
 			/>
@@ -515,13 +464,10 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 				section={sectionGeneration?.kind === "video" ? sectionGeneration.section : null}
 				selectedAssetKeys={
 					sectionGeneration?.kind === "video"
-						? (selectedSectionAssetKeys[sectionGenerationIdentityKey(sectionGeneration.section)] ??
-							sectionAssetKeys(sectionGeneration.section, "video"))
+						? sectionAssetKeysFromDocuments(documents, sectionGeneration.section, "video")
 						: []
 				}
-				onOpenChange={(open) => {
-					if (!open) setSectionGeneration(null);
-				}}
+				onOpenChange={closeSectionGeneration}
 				onOpenReferenceGeneration={openSectionGeneration}
 				onToggleAsset={(asset, selected) => {
 					if (sectionGeneration?.kind !== "video") return;
@@ -534,13 +480,10 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 				section={sectionGeneration?.kind === "audio" ? sectionGeneration.section : null}
 				selectedAssetKeys={
 					sectionGeneration?.kind === "audio"
-						? (selectedSectionAssetKeys[sectionGenerationIdentityKey(sectionGeneration.section)] ??
-							sectionAssetKeys(sectionGeneration.section, "audio"))
+						? sectionAssetKeysFromDocuments(documents, sectionGeneration.section, "audio")
 						: []
 				}
-				onOpenChange={(open) => {
-					if (!open) setSectionGeneration(null);
-				}}
+				onOpenChange={closeSectionGeneration}
 				onOpenReferenceGeneration={openSectionGeneration}
 				onToggleAsset={(asset, selected) => {
 					if (sectionGeneration?.kind !== "audio") return;
@@ -563,6 +506,15 @@ interface CommentMarker {
 	key: string;
 	top: number;
 }
+
+const sameSectionGenerationTarget = (
+	current: MarkdownSectionContext,
+	next: MarkdownSectionContext,
+) =>
+	current.documentId === next.documentId &&
+	current.blockId === next.blockId &&
+	current.headingLevel === next.headingLevel &&
+	current.headingOccurrence === next.headingOccurrence;
 
 const buildCommentMarkers = (
 	comments: DocumentComment[],
@@ -587,96 +539,6 @@ const buildCommentMarkers = (
 		});
 	}
 	return markers;
-};
-
-const sectionImageAssetKeys = (section: MarkdownSectionContext) => {
-	const keys = section.markdown.split("\n").flatMap((line) => {
-		const source = sectionImageSourceFromLine(line.trim());
-		return source ? [`image:${source}`] : [];
-	});
-
-	return Array.from(new Set(keys));
-};
-
-const sectionImageSourceFromLine = (line: string) => {
-	const match = /^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$/.exec(line);
-	if (!match) return null;
-	if (
-		["mediago-drama-section-image-pending:", "media-cli-section-image-pending:"].some((prefix) =>
-			match[1].startsWith(prefix),
-		)
-	)
-		return null;
-	const source = match[2] ?? match[3] ?? null;
-	if (match[1] === "正在生成图片" && source?.startsWith("data:image/svg+xml;base64,")) return null;
-
-	return source;
-};
-
-const sectionAssetKeys = (section: MarkdownSectionContext, kind: SectionGenerateKind) => {
-	if (kind === "image") return sectionImageAssetKeys(section);
-	if (kind === "audio" || kind === "video") return sectionMediaAssetKeys(section, kind);
-
-	return [];
-};
-
-const sectionMediaAssetKeys = (section: MarkdownSectionContext, kind: MarkdownSectionMediaKind) => {
-	const keys = section.markdown.split("\n").flatMap((line) => {
-		const source = sectionMediaSourceFromLine(line.trim(), kind);
-		return source ? [`${kind}:${source}`] : [];
-	});
-
-	return Array.from(new Set(keys));
-};
-
-const applySectionImageToStoredDocument = ({
-	documents,
-	image,
-	section,
-	selected,
-	updateDocumentContent,
-}: {
-	documents: MarkdownDocument[];
-	image: MarkdownSectionImage;
-	section: MarkdownSectionContext;
-	selected: boolean;
-	updateDocumentContent: (id: string, content: string) => void;
-}) => {
-	const document = documents.find((item) => item.id === section.documentId);
-	if (!document) return false;
-
-	const result = selected
-		? appendSectionImageMarkdown(document.content, section, image)
-		: removeSectionImageMarkdown(document.content, section, image);
-	if (!result) return false;
-	if (result.changed) updateDocumentContent(document.id, result.markdown);
-
-	return selected || result.changed;
-};
-
-const applySectionMediaToStoredDocument = ({
-	documents,
-	media,
-	section,
-	selected,
-	updateDocumentContent,
-}: {
-	documents: MarkdownDocument[];
-	media: MarkdownSectionMedia;
-	section: MarkdownSectionContext;
-	selected: boolean;
-	updateDocumentContent: (id: string, content: string) => void;
-}) => {
-	const document = documents.find((item) => item.id === section.documentId);
-	if (!document) return false;
-
-	const result = selected
-		? appendSectionMediaMarkdown(document.content, section, media)
-		: removeSectionMediaMarkdown(document.content, section, media);
-	if (!result) return false;
-	if (result.changed) updateDocumentContent(document.id, result.markdown);
-
-	return selected || result.changed;
 };
 
 const sameOffsets = (first: Record<string, number>, second: Record<string, number>) => {

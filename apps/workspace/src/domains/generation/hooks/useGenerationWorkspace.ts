@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { mutate as mutateSWR } from "swr";
 import {
 	type GenerationKind,
+	type GenerationMessageRequest,
 	type GenerationNotificationOpenTarget,
 	generationConversationsQueryKey,
 	generationModelsKey,
@@ -69,6 +70,7 @@ export interface UseGenerationWorkspaceOptions {
 	conversationId?: string | null;
 	conversationScopeId?: string | null;
 	conversationTitle?: string | null;
+	documentContext?: GenerationMessageRequest["documentContext"] | null;
 	historyScopeId?: string;
 	initialKind?: GenerationKind;
 	initialPrompt?: string;
@@ -101,6 +103,7 @@ export const useGenerationWorkspace = ({
 	conversationId,
 	conversationScopeId,
 	conversationTitle,
+	documentContext,
 	extraPrompt = "",
 	extraReferenceAssetIds = [],
 	extraReferenceUrls = [],
@@ -299,6 +302,8 @@ export const useGenerationWorkspace = ({
 	const { isSubmitting, submit, submitGeneration } = useGenerationSubmit({
 		conversationId,
 		conversationTitle,
+		documentContext,
+		documentContextInitialPrompt: initialPrompt,
 		effectiveReferenceAssetIds,
 		effectiveReferenceUrls,
 		extraPrompt,

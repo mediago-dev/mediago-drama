@@ -24,6 +24,10 @@ import {
 } from "@/domains/documents/lib/mention-resolver";
 import { normalizeHeadingText, stripSectionIdCommentLines } from "@/domains/documents/lib/sections";
 import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
+import {
+	readStoryboardLaneSources,
+	type StoryboardLaneSource,
+} from "@/domains/episode/lib/storyboard-shots";
 import { formatTimelineTime, type Episode, type TimelineClip } from "@/domains/episode/lib/sample";
 import type {
 	MediaGenerationWorkspaceProps,
@@ -51,7 +55,7 @@ interface EpisodeVideoGenerationDialogProps {
 	selectedVideoUrl?: string | null;
 }
 
-interface EpisodeVideoGenerationContext {
+export interface EpisodeVideoGenerationContext {
 	blockId: string;
 	headingLevel: number;
 	headingOccurrence: number;
@@ -61,7 +65,8 @@ interface EpisodeVideoGenerationContext {
 	sourceMarkdown: string;
 }
 
-interface EpisodeVideoSourceSection {
+export interface EpisodeVideoSourceSection {
+	blockId?: string;
 	bodyMarkdown: string;
 	headingLevel: number;
 	headingOccurrence: number;
@@ -105,8 +110,13 @@ const useEpisodeVideoGenerationDialogController = ({
 		[allDocuments, documentId],
 	);
 	const sourceSection = useMemo(
-		() => findEpisodeVideoSourceSection(sourceDocument?.content ?? "", selectedClip),
-		[sourceDocument?.content, selectedClip],
+		() =>
+			findEpisodeVideoSourceSection(
+				sourceDocument?.content ?? "",
+				selectedClip,
+				sourceDocument?.id ?? documentId,
+			),
+		[sourceDocument?.content, sourceDocument?.id, documentId, selectedClip],
 	);
 	const generationContext = useMemo(
 		() => buildEpisodeVideoContext(episode, selectedClip, sourceSection),
@@ -141,6 +151,17 @@ const useEpisodeVideoGenerationDialogController = ({
 	// 本地乐观缓存按分镜片段隔离；项目级会话里用 sectionId(=blockId) 过滤出当前片段的服务端任务。
 	const historyScopeId = generationContext.blockId;
 	const sectionId = projectConversation ? generationContext.blockId : undefined;
+	const documentContext = useMemo(() => {
+		const normalizedDocumentId = documentId?.trim();
+		const sourceSectionBlockId = sourceSection?.blockId;
+		if (!normalizedDocumentId || !sourceSectionBlockId) return undefined;
+
+		return {
+			...(normalizedProjectId ? { projectId: normalizedProjectId } : {}),
+			documentId: normalizedDocumentId,
+			sectionId: sourceSectionBlockId,
+		};
+	}, [documentId, normalizedProjectId, sourceSection?.blockId]);
 	const resolveAllMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
 			parseMentionsFromMarkdown(`${generationContext.sourceMarkdown}\n\n${promptMarkdown}`)
@@ -155,16 +176,6 @@ const useEpisodeVideoGenerationDialogController = ({
 			),
 		[removedMentionKeySet, resolveAllMentionsFromPrompt],
 	);
-	const mentionReferenceAssetIds = useCallback(
-		(promptMarkdown: string) =>
-			buildMentionReferenceInputs(resolveActiveMentionsFromPrompt(promptMarkdown)).assetIds,
-		[resolveActiveMentionsFromPrompt],
-	);
-	const mentionReferenceUrls = useCallback(
-		(promptMarkdown: string) =>
-			buildMentionReferenceInputs(resolveActiveMentionsFromPrompt(promptMarkdown)).urls,
-		[resolveActiveMentionsFromPrompt],
-	);
 	const getMentionPreview = useCallback(
 		(promptMarkdown: string) => {
 			const mentions = resolveActiveMentionsFromPrompt(promptMarkdown);
@@ -175,6 +186,11 @@ const useEpisodeVideoGenerationDialogController = ({
 			return { mentions, preview };
 		},
 		[mediaAssets, resolveActiveMentionsFromPrompt],
+	);
+	const getMentionReferenceInputs = useCallback(
+		(promptMarkdown: string) =>
+			buildMentionReferenceInputs(resolveActiveMentionsFromPrompt(promptMarkdown)),
+		[resolveActiveMentionsFromPrompt],
 	);
 	const removePreviewReferenceAsset = useCallback((asset: MediaAsset) => {
 		const mentionKey = latestMentionPreviewRef.current.assetMentionKeys[asset.id];
@@ -238,8 +254,7 @@ const useEpisodeVideoGenerationDialogController = ({
 			conversationId: projectConversation?.conversationId,
 			conversationScopeId,
 			conversationTitle: projectConversation?.conversationTitle,
-			extraReferenceAssetIds: mentionReferenceAssetIds,
-			extraReferenceUrls: mentionReferenceUrls,
+			documentContext,
 			historyScopeId,
 			sectionId,
 			taskType: "storyboard",
@@ -248,6 +263,8 @@ const useEpisodeVideoGenerationDialogController = ({
 			notificationTarget,
 			promptPlaceholder: "描述当前组的视频镜头、运动、机位、时长、画幅和质量",
 			projectId,
+			extraReferenceAssetIds: (prompt) => getMentionReferenceInputs(prompt).assetIds,
+			extraReferenceUrls: (prompt) => getMentionReferenceInputs(prompt).urls,
 			referenceBadges: (prompt) => getMentionPreview(prompt).preview.badges,
 			referencePreviewAssets: (prompt) => getMentionPreview(prompt).preview.references,
 			renderPromptEditor: (props) => (
@@ -284,12 +301,13 @@ const EpisodeVideoGenerationDialogView: React.FC<{
 	/>
 );
 
-const buildEpisodeVideoContext = (
+export const buildEpisodeVideoContext = (
 	episode: Episode,
 	selectedClip: TimelineClip | null,
 	sourceSection: EpisodeVideoSourceSection | null,
 ): EpisodeVideoGenerationContext => {
-	const blockId = `episode-video:${episode.id}:${selectedClip?.id ?? "episode"}`;
+	const blockId =
+		sourceSection?.blockId ?? `episode-video:${episode.id}:${selectedClip?.id ?? "episode"}`;
 	const headingText = sourceSection?.headingText ?? selectedClip?.title.trim() ?? episode.title;
 	const plainText = sourceSection?.plainText ?? selectedClip?.content.trim() ?? episode.title;
 
@@ -305,7 +323,7 @@ const buildEpisodeVideoContext = (
 	};
 };
 
-const buildEpisodeVideoPrompt = (
+export const buildEpisodeVideoPrompt = (
 	episode: Episode,
 	selectedClip: TimelineClip | null,
 	sourceSection: EpisodeVideoSourceSection | null,
@@ -359,74 +377,51 @@ const EpisodeVideoPromptMentionEditor: React.FC<
 	);
 };
 
-const findEpisodeVideoSourceSection = (
+export const findEpisodeVideoSourceSection = (
 	documentMarkdown: string,
 	selectedClip: TimelineClip | null,
+	documentId?: string | null,
 ): EpisodeVideoSourceSection | null => {
 	if (!selectedClip || !documentMarkdown.trim()) return null;
 
-	const sections = collectMarkdownHeadingSections(documentMarkdown);
-	if (sections.length === 0) return null;
+	const laneSources = readStoryboardLaneSources(documentMarkdown, { documentId });
+	if (laneSources.length === 0) return null;
 
 	const normalizedTitle = normalizeHeadingText(selectedClip.title);
-	const titleMatch = sections.find((section) => section.normalizedHeadingText === normalizedTitle);
-	if (titleMatch) return titleMatch;
+	const titleMatch = laneSources.find(
+		(section) => normalizeHeadingText(section.title) === normalizedTitle,
+	);
+	if (titleMatch) return sourceSectionFromLaneSource(titleMatch);
 
 	const sourceIndex = episodeClipSourceIndex(selectedClip.id);
 	if (sourceIndex == null) return null;
 
-	return sections[sourceIndex] ?? null;
+	const indexedSource = laneSources[sourceIndex];
+	return indexedSource ? sourceSectionFromLaneSource(indexedSource) : null;
 };
 
-interface CollectedMarkdownSection extends EpisodeVideoSourceSection {
-	normalizedHeadingText: string;
-}
+const sourceSectionFromLaneSource = (source: StoryboardLaneSource): EpisodeVideoSourceSection => {
+	const markdown = stripSectionIdCommentLines(source.markdown).trim();
+	const bodyMarkdown = stripEpisodeVideoPromptInternalReferences(
+		stripSectionHeadingLine(markdown),
+	).trim();
 
-const collectMarkdownHeadingSections = (documentMarkdown: string): CollectedMarkdownSection[] => {
-	const lines = documentMarkdown.split("\n");
-	const headingOccurrences = new Map<string, number>();
-	const sections: CollectedMarkdownSection[] = [];
-
-	for (let index = 0; index < lines.length; index += 1) {
-		const heading = /^(#{1,6})\s+(.+?)\s*$/.exec(lines[index]);
-		if (!heading?.[1] || !heading[2]) continue;
-
-		const headingLevel = heading[1].length;
-		const headingText = heading[2].trim();
-		const normalizedHeadingText = normalizeHeadingText(headingText);
-		const occurrenceKey = `${headingLevel}:${normalizedHeadingText}`;
-		const headingOccurrence = (headingOccurrences.get(occurrenceKey) ?? 0) + 1;
-		headingOccurrences.set(occurrenceKey, headingOccurrence);
-
-		const endIndex = findSectionEndLine(lines, index, headingLevel);
-		const markdown = stripSectionIdCommentLines(lines.slice(index, endIndex).join("\n")).trim();
-		const bodyMarkdown = stripEpisodeVideoPromptInternalReferences(
-			stripSectionIdCommentLines(lines.slice(index + 1, endIndex).join("\n")),
-		).trim();
-		if (!markdown) continue;
-
-		sections.push({
-			bodyMarkdown,
-			headingLevel,
-			headingOccurrence,
-			headingText,
-			markdown,
-			normalizedHeadingText,
-			plainText: markdownToPlainText(markdown),
-		});
-	}
-
-	return sections;
+	return {
+		blockId: source.blockId,
+		bodyMarkdown,
+		headingLevel: source.headingLevel,
+		headingOccurrence: source.headingOccurrence,
+		headingText: source.title,
+		markdown,
+		plainText: markdownToPlainText(markdown),
+	};
 };
 
-const findSectionEndLine = (lines: string[], headingIndex: number, headingLevel: number) => {
-	for (let index = headingIndex + 1; index < lines.length; index += 1) {
-		const heading = /^(#{1,6})\s+/.exec(lines[index]);
-		if (heading?.[1] && heading[1].length <= headingLevel) return index;
-	}
-
-	return lines.length;
-};
+const stripSectionHeadingLine = (markdown: string) =>
+	markdown
+		.split("\n")
+		.filter((line, index) => index > 0 || !/^#{1,6}\s+/.test(line))
+		.join("\n");
 
 const episodeClipSourceIndex = (clipId: string) => {
 	const match = /^video-(\d+)-/u.exec(clipId);
@@ -461,7 +456,24 @@ const markdownToPlainText = (markdown: string) =>
 		.replace(/[ \t]+\n/g, "\n")
 		.trim();
 
-const firstVideoAssetSource = (assets: GenerationAsset[]) => {
+export const buildEpisodeVideoReferenceInputs = ({
+	allAssets,
+	allDocuments,
+	promptMarkdown,
+	sourceMarkdown,
+}: {
+	allAssets: ProjectAsset[];
+	allDocuments: MarkdownDocument[];
+	promptMarkdown: string;
+	sourceMarkdown: string;
+}) =>
+	buildMentionReferenceInputs(
+		parseMentionsFromMarkdown(`${sourceMarkdown}\n\n${promptMarkdown}`)
+			.map((reference) => resolveMentionPayload(reference, allDocuments, allAssets))
+			.filter(uniqueResolvedMention),
+	);
+
+export const firstVideoAssetSource = (assets: GenerationAsset[]) => {
 	const asset = assets.find((item) => item.kind === "video" && generationAssetSource(item));
 
 	return asset ? generationAssetSource(asset) : "";

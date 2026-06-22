@@ -1,6 +1,9 @@
 import {
 	createWorkspaceDocument,
 	deleteWorkspaceDocumentRecord,
+	updateWorkspaceDocumentSectionImage,
+	updateWorkspaceDocumentSectionMedia,
+	updateWorkspaceDocumentSectionMention,
 	updateWorkspaceDocumentRecord,
 } from "@/domains/workspace/api/workspace";
 import { isOverviewDocumentId } from "@/lib/overview/overview-template";
@@ -10,6 +13,7 @@ import {
 	createUntitledDocument,
 	createWorkbenchDraft,
 	firstEditableDocumentId,
+	isCurrentWorkspaceMutationSnapshot,
 	isDocumentCategory,
 	moveDocumentInTree,
 	nextSortOrder,
@@ -19,6 +23,7 @@ import {
 	validParentId,
 } from "./helpers";
 import type { DocumentWorkbenchDraft, MarkdownDocument } from "./types";
+import type { WorkspaceMutationSnapshot } from "./helpers";
 
 type DocumentMutationActions = Pick<
 	DocumentsActions,
@@ -30,11 +35,15 @@ type DocumentMutationActions = Pick<
 	| "moveDocument"
 	| "renameDocument"
 	| "setDocumentCategory"
+	| "toggleSectionImage"
+	| "toggleSectionMedia"
+	| "toggleSectionMention"
 	| "updateDocumentContent"
 >;
 
 export const createDocumentMutationActions = ({
 	dependencies,
+	get,
 	set,
 }: DocumentActionContext): DocumentMutationActions => ({
 	applyStreamingDocumentEdit: (edit) => {
@@ -253,9 +262,15 @@ export const createDocumentMutationActions = ({
 						capturedProjectId,
 					)
 						.then(({ state: savedState }) => {
+							if (!isCurrentDocumentSaveSnapshot(get(), id, document, capturedProjectId)) {
+								return;
+							}
 							dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
 						})
 						.catch(() => {
+							if (!isCurrentDocumentSaveSnapshot(get(), id, document, capturedProjectId)) {
+								return;
+							}
 							dependencies.rollbackWorkspaceStateForProject(
 								capturedProjectId,
 								rollback,
@@ -289,9 +304,21 @@ export const createDocumentMutationActions = ({
 			});
 			const capturedProjectId = state.projectId;
 			const rollback = rollbackSnapshot(state);
+			const expectedSnapshot: WorkspaceMutationSnapshot = {
+				assets: state.assets,
+				documents,
+				folders: state.folders,
+			};
 			if (changedDocuments.length > 0) {
 				persistMutation = () => {
-					void persistDocumentOrder(changedDocuments, capturedProjectId, rollback, dependencies);
+					void persistDocumentOrder(
+						changedDocuments,
+						expectedSnapshot,
+						capturedProjectId,
+						rollback,
+						dependencies,
+						get,
+					);
 				};
 			}
 
@@ -364,8 +391,157 @@ export const createDocumentMutationActions = ({
 		});
 		runDeferredMutation(persistMutation);
 	},
-	updateDocumentContent: (id, content) => {
+	toggleSectionImage: (section, image, selected) => {
+		if (!isWritableSectionID(section.blockId)) return false;
+
+		let applied = false;
+		let persistMutation: (() => void) | null = null;
 		set((state) => {
+			const existingDocument = state.documents.find(
+				(document) => document.id === section.documentId,
+			);
+			if (!existingDocument) return state;
+
+			applied = true;
+			const documentId = existingDocument.id;
+			const capturedProjectId = state.projectId;
+
+			persistMutation = () => {
+				void updateWorkspaceDocumentSectionImage(
+					documentId,
+					{
+						sectionId: section.blockId,
+						image,
+						selected,
+					},
+					capturedProjectId,
+				)
+					.then(({ state: savedState }) => {
+						const latest = get();
+						if (latest.projectId !== capturedProjectId) return;
+
+						dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
+					})
+					.catch(() => {
+						dependencies.markWorkspaceSyncErrorForProject(
+							capturedProjectId,
+							"后端保存 section 图片失败",
+						);
+					});
+			};
+
+			return {
+				syncStatus: "syncing",
+				syncMessage: "正在保存 section 图片",
+			};
+		});
+		runDeferredMutation(persistMutation);
+		return applied;
+	},
+	toggleSectionMedia: (section, media, selected) => {
+		if (!isWritableSectionID(section.blockId)) return false;
+
+		let applied = false;
+		let persistMutation: (() => void) | null = null;
+		set((state) => {
+			const existingDocument = state.documents.find(
+				(document) => document.id === section.documentId,
+			);
+			if (!existingDocument) return state;
+
+			applied = true;
+			const documentId = existingDocument.id;
+			const capturedProjectId = state.projectId;
+
+			persistMutation = () => {
+				void updateWorkspaceDocumentSectionMedia(
+					documentId,
+					{
+						sectionId: section.blockId,
+						media,
+						selected,
+					},
+					capturedProjectId,
+				)
+					.then(({ state: savedState }) => {
+						const latest = get();
+						if (latest.projectId !== capturedProjectId) return;
+
+						dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
+					})
+					.catch(() => {
+						dependencies.markWorkspaceSyncErrorForProject(
+							capturedProjectId,
+							"后端保存 section media 失败",
+						);
+					});
+			};
+
+			return {
+				syncStatus: "syncing",
+				syncMessage: "正在保存 section media",
+			};
+		});
+		runDeferredMutation(persistMutation);
+		return applied;
+	},
+	toggleSectionMention: (section, reference, selected) => {
+		if (!isWritableSectionID(section.blockId)) return false;
+
+		let applied = false;
+		let persistMutation: (() => void) | null = null;
+		set((state) => {
+			const existingDocument = state.documents.find(
+				(document) => document.id === section.documentId,
+			);
+			if (!existingDocument) return state;
+
+			applied = true;
+			const documentId = existingDocument.id;
+			const capturedProjectId = state.projectId;
+
+			persistMutation = () => {
+				void updateWorkspaceDocumentSectionMention(
+					documentId,
+					{
+						sectionId: section.blockId,
+						reference,
+						selected,
+					},
+					capturedProjectId,
+				)
+					.then(({ state: savedState }) => {
+						const latest = get();
+						if (latest.projectId !== capturedProjectId) return;
+
+						dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
+					})
+					.catch(() => {
+						dependencies.markWorkspaceSyncErrorForProject(
+							capturedProjectId,
+							"后端保存 section 引用失败",
+						);
+					});
+			};
+
+			return {
+				syncStatus: "syncing",
+				syncMessage: "正在保存 section 引用",
+			};
+		});
+		runDeferredMutation(persistMutation);
+		return applied;
+	},
+	updateDocumentContent: (id, content) => {
+		let persistMutation: (() => void) | null = null;
+		set((state) => {
+			const existingDocument = state.documents.find((document) => document.id === id);
+			if (!existingDocument || existingDocument.content === content) return state;
+
+			const capturedProjectId = state.projectId;
+			const rollback = rollbackSnapshot(state);
+			const expectedVersion = existingDocument.version;
+			const updatedAt = new Date().toISOString();
 			let didUpdate = false;
 			const documents = state.documents.map((document) => {
 				if (document.id !== id || document.content === content) return document;
@@ -374,14 +550,78 @@ export const createDocumentMutationActions = ({
 					...document,
 					content,
 					version: document.version + 1,
-					updatedAt: new Date().toISOString(),
+					updatedAt,
 					isDirty: true,
 				};
 			});
-			return didUpdate ? { documents } : state;
+			if (!didUpdate) return state;
+
+			persistMutation = () => {
+				void updateWorkspaceDocumentRecord(id, { content, expectedVersion }, capturedProjectId)
+					.then(({ state: savedState }) => {
+						const latest = get();
+						const latestDocument = latest.documents.find((document) => document.id === id);
+						if (latest.projectId !== capturedProjectId || latestDocument?.content !== content) {
+							return;
+						}
+
+						dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
+					})
+					.catch(() => {
+						const latest = get();
+						const latestDocument = latest.documents.find((document) => document.id === id);
+						if (latest.projectId !== capturedProjectId || latestDocument?.content !== content) {
+							dependencies.markWorkspaceSyncErrorForProject(
+								capturedProjectId,
+								"后端保存文档内容失败",
+							);
+							return;
+						}
+
+						dependencies.rollbackWorkspaceStateForProject(
+							capturedProjectId,
+							rollback,
+							"后端保存文档内容失败",
+						);
+					});
+			};
+
+			return {
+				documents,
+				syncStatus: "syncing",
+				syncMessage: "正在保存文档内容",
+			};
 		});
+		runDeferredMutation(persistMutation);
 	},
 });
+
+const isWritableSectionID = (sectionID: string) =>
+	/^section_[A-Za-z0-9_-]+$/.test(sectionID) || /^section-[A-Za-z0-9]+$/.test(sectionID);
+
+const isCurrentDocumentSaveSnapshot = (
+	state: ReturnType<DocumentActionContext["get"]>,
+	documentId: string,
+	snapshot: MarkdownDocument,
+	projectId: string | null,
+) => {
+	if (state.projectId !== projectId) return false;
+
+	const current = state.documents.find((document) => document.id === documentId);
+	if (!current) return false;
+
+	return (
+		current.version === snapshot.version &&
+		current.title === snapshot.title &&
+		current.content === snapshot.content &&
+		current.parentId === snapshot.parentId &&
+		current.folderId === snapshot.folderId &&
+		current.sortOrder === snapshot.sortOrder &&
+		current.category === snapshot.category &&
+		current.workbenchDraft === snapshot.workbenchDraft &&
+		current.comments === snapshot.comments
+	);
+};
 
 const runDeferredMutation = (mutation: (() => void) | null) => {
 	if (mutation) mutation();
@@ -389,9 +629,11 @@ const runDeferredMutation = (mutation: (() => void) | null) => {
 
 const persistDocumentOrder = async (
 	documents: MarkdownDocument[],
+	expectedSnapshot: WorkspaceMutationSnapshot,
 	projectId: string | null,
 	rollback: ReturnType<typeof rollbackSnapshot>,
 	dependencies: DocumentActionContext["dependencies"],
+	get: DocumentActionContext["get"],
 ) => {
 	try {
 		let savedState: Awaited<ReturnType<typeof updateWorkspaceDocumentRecord>>["state"] | null =
@@ -409,9 +651,11 @@ const persistDocumentOrder = async (
 			savedState = response.state;
 		}
 		if (savedState) {
+			if (!isCurrentWorkspaceMutationSnapshot(get(), projectId, expectedSnapshot)) return;
 			dependencies.hydrateWorkspaceDocumentsForProject(savedState, projectId);
 		}
 	} catch {
+		if (!isCurrentWorkspaceMutationSnapshot(get(), projectId, expectedSnapshot)) return;
 		dependencies.rollbackWorkspaceStateForProject(projectId, rollback, "后端保存文档顺序失败");
 	}
 };

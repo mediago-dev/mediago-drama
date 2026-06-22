@@ -6,6 +6,7 @@ import { mutate as mutateSWR } from "swr";
 import type {
 	GenerationAsset,
 	GenerationKind,
+	GenerationMessageRequest,
 	GenerationMessageResponse,
 	GenerationNotificationOpenTarget,
 } from "@/domains/generation/api/generation";
@@ -152,6 +153,7 @@ export interface MediaGenerationWorkspaceProps {
 	conversationId?: string | null;
 	conversationScopeId?: string | null;
 	conversationTitle?: string | null;
+	documentContext?: GenerationMessageRequest["documentContext"] | null;
 	emptyResultText?: string;
 	extraPrompt?: GenerationExtraValue<string>;
 	extraReferenceAssetIds?: GenerationExtraValue<string[]>;
@@ -186,6 +188,8 @@ export interface MediaGenerationWorkspaceProps {
 	sectionId?: string | null;
 	taskType?: GenerationTaskType;
 	selectedAssetKeys?: string[];
+	selectedAssetResourceId?: string | null;
+	selectedAssetSourceDocumentId?: string | null;
 	selectedAssetTitle?: string | null;
 	submitLabel?: string;
 	uploadIdPrefix?: string;
@@ -198,6 +202,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	conversationId,
 	conversationScopeId,
 	conversationTitle,
+	documentContext,
 	emptyResultText,
 	extraPrompt = "",
 	extraReferenceAssetIds = [],
@@ -229,6 +234,8 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	sectionId,
 	taskType,
 	selectedAssetKeys = [],
+	selectedAssetResourceId,
+	selectedAssetSourceDocumentId,
 	selectedAssetTitle,
 	submitLabel,
 	uploadIdPrefix = "generation-workspace",
@@ -242,6 +249,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		{},
 	);
 	const syncedDocumentSelectionKeysRef = useRef<Set<string>>(new Set());
+	const assetSelectionPersistRequestIdsRef = useRef<Record<string, number>>({});
 	const [editingImageTarget, setEditingImageTarget] = useState<{
 		asset: GenerationAsset;
 		entry: GenerationEntry;
@@ -277,7 +285,9 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const workspaceExtraReferenceUrls = useCallback(
 		(prompt: string) =>
 			uniqueStrings([
-				...resolveStringArrayExtraValue(extraReferenceUrls, prompt),
+				...resolveStringArrayExtraValue(extraReferenceUrls, prompt).map(
+					referenceUrlFromGenerationSource,
+				),
 				...inlineReferenceUrls,
 			]),
 		[extraReferenceUrls, inlineReferenceUrls],
@@ -322,6 +332,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		conversationId,
 		conversationScopeId,
 		conversationTitle,
+		documentContext,
 		historyScopeId,
 		initialKind: kind,
 		initialPrompt,
@@ -422,14 +433,17 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		</div>
 	) : null;
 	const generationEntries = ws.orderedGenerationEntries.filter((entry) => entry.kind === kind);
+	const isAssetSelectionControlled = Boolean(onToggleAsset);
 	const effectiveSelectedAssetKeys = useMemo(
 		() =>
-			effectiveGenerationSelectionKeys(
-				generationEntries,
-				selectedAssetKeys,
-				assetSelectionOverrides,
-			),
-		[generationEntries, selectedAssetKeys, assetSelectionOverrides],
+			isAssetSelectionControlled
+				? Array.from(new Set(selectedAssetKeys))
+				: effectiveGenerationSelectionKeys(
+						generationEntries,
+						selectedAssetKeys,
+						assetSelectionOverrides,
+					),
+		[assetSelectionOverrides, generationEntries, isAssetSelectionControlled, selectedAssetKeys],
 	);
 	const activeGenerationEntry =
 		generationEntries.find((entry) => entry.id === ws.activeEntryId) ??
@@ -798,8 +812,16 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			ws.selectReferenceAsset,
 		],
 	);
+	const setGeneratedAssetSelectionOverride = useCallback(
+		(selectionKey: string, selected: boolean) => {
+			setAssetSelectionOverrides((current) => ({ ...current, [selectionKey]: selected }));
+			if (selected) syncedDocumentSelectionKeysRef.current.add(selectionKey);
+			else syncedDocumentSelectionKeysRef.current.delete(selectionKey);
+		},
+		[],
+	);
 	const persistGeneratedAssetSelection = useCallback(
-		(
+		async (
 			asset: GenerationAsset,
 			selected: boolean,
 			sourceType: "edited" | "generated" = "generated",
@@ -808,50 +830,85 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			const normalizedProjectId = projectId?.trim();
 			const resourceType = selectedGenerationResourceTypeForTaskType(taskType);
 			if (!normalizedProjectId || asset.kind !== "image" || !persistTarget || !resourceType) {
-				return;
+				return true;
 			}
 
 			const persistedTitle = asset.title?.trim() || selectedAssetTitle?.trim() || undefined;
 
-			void updateSelectedGenerationAsset(normalizedProjectId, {
-				assetIndex: persistTarget.slotIndex,
-				base64: asset.base64,
-				kind: asset.kind,
-				mimeType: asset.mimeType,
-				resourceTitle: selectedAssetTitle?.trim() || asset.title?.trim() || undefined,
-				resourceType,
-				selected,
-				sourceAssetIndex: persistTarget.slotIndex,
-				sourceTaskId: persistTarget.taskId,
-				sourceType,
-				taskId: persistTarget.taskId,
-				title: persistedTitle,
-				url: asset.url,
-			})
-				.then(() => {
-					void ws.mutateTasks();
-					void mutateSWR(selectedGenerationAssetsQueryKey(normalizedProjectId));
-				})
-				.catch((err) => {
-					const message = err instanceof Error ? err.message : "已选资源保存失败。";
-					toast.error(message);
+			try {
+				await updateSelectedGenerationAsset(normalizedProjectId, {
+					assetIndex: persistTarget.slotIndex,
+					base64: asset.base64,
+					kind: asset.kind,
+					mimeType: asset.mimeType,
+					resourceId: selectedAssetResourceId?.trim() || undefined,
+					resourceTitle: selectedAssetTitle?.trim() || asset.title?.trim() || undefined,
+					resourceType,
+					selected,
+					sourceAssetIndex: persistTarget.slotIndex,
+					sourceDocumentId: selectedAssetSourceDocumentId?.trim() || undefined,
+					sourceTaskId: persistTarget.taskId,
+					sourceType,
+					taskId: persistTarget.taskId,
+					title: persistedTitle,
+					url: asset.url,
 				});
+				void ws.mutateTasks();
+				void mutateSWR(selectedGenerationAssetsQueryKey(normalizedProjectId));
+				return true;
+			} catch (err) {
+				const message = err instanceof Error ? err.message : "已选资源保存失败。";
+				toast.error(message);
+				return false;
+			}
 		},
-		[generationEntries, projectId, selectedAssetTitle, taskType, toast, ws.mutateTasks],
+		[
+			generationEntries,
+			projectId,
+			selectedAssetResourceId,
+			selectedAssetSourceDocumentId,
+			selectedAssetTitle,
+			taskType,
+			toast,
+			ws.mutateTasks,
+		],
 	);
 	const toggleGeneratedAsset = useCallback(
 		(asset: GenerationAsset, selected: boolean) => {
 			const selectionKey = generationAssetSelectionKey(asset);
-			if (selectionKey) {
-				setAssetSelectionOverrides((current) => ({ ...current, [selectionKey]: selected }));
-				if (selected) syncedDocumentSelectionKeysRef.current.add(selectionKey);
-				else syncedDocumentSelectionKeysRef.current.delete(selectionKey);
+			const previousSelected =
+				selectionKey && !isAssetSelectionControlled
+					? effectiveSelectedAssetKeys.includes(selectionKey)
+					: false;
+			const persistRequestId =
+				selectionKey && !isAssetSelectionControlled
+					? (assetSelectionPersistRequestIdsRef.current[selectionKey] ?? 0) + 1
+					: null;
+			if (!isAssetSelectionControlled) {
+				if (selectionKey) {
+					assetSelectionPersistRequestIdsRef.current[selectionKey] = persistRequestId ?? 0;
+					setGeneratedAssetSelectionOverride(selectionKey, selected);
+				}
 			}
 
 			onToggleAsset?.(asset, selected);
-			persistGeneratedAssetSelection(asset, selected);
+			if (!isAssetSelectionControlled) {
+				void persistGeneratedAssetSelection(asset, selected).then((persisted) => {
+					if (persisted || !selectionKey || persistRequestId === null) return;
+					if (assetSelectionPersistRequestIdsRef.current[selectionKey] !== persistRequestId) return;
+
+					delete assetSelectionPersistRequestIdsRef.current[selectionKey];
+					setGeneratedAssetSelectionOverride(selectionKey, previousSelected);
+				});
+			}
 		},
-		[onToggleAsset, persistGeneratedAssetSelection],
+		[
+			effectiveSelectedAssetKeys,
+			isAssetSelectionControlled,
+			onToggleAsset,
+			persistGeneratedAssetSelection,
+			setGeneratedAssetSelectionOverride,
+		],
 	);
 	const confirmMaterialAssets = useCallback(
 		async (selectedAssets: MediaAsset[]) => {
@@ -915,7 +972,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		onToggleAsset || projectId?.trim() ? toggleGeneratedAsset : undefined;
 
 	useEffect(() => {
-		if (!projectId?.trim() || selectedAssetKeys.length === 0) return;
+		if (isAssetSelectionControlled || !projectId?.trim() || selectedAssetKeys.length === 0) return;
 
 		const selectedKeys = new Set(selectedAssetKeys);
 		for (const entry of generationEntries) {
@@ -926,11 +983,26 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				if (!selectionKey || !selectedKeys.has(selectionKey)) continue;
 				if (syncedDocumentSelectionKeysRef.current.has(selectionKey)) continue;
 
+				const persistRequestId =
+					(assetSelectionPersistRequestIdsRef.current[selectionKey] ?? 0) + 1;
+				assetSelectionPersistRequestIdsRef.current[selectionKey] = persistRequestId;
 				syncedDocumentSelectionKeysRef.current.add(selectionKey);
-				persistGeneratedAssetSelection(asset, true);
+				void persistGeneratedAssetSelection(asset, true).then((persisted) => {
+					if (persisted) return;
+					if (assetSelectionPersistRequestIdsRef.current[selectionKey] !== persistRequestId) return;
+
+					delete assetSelectionPersistRequestIdsRef.current[selectionKey];
+					syncedDocumentSelectionKeysRef.current.delete(selectionKey);
+				});
 			}
 		}
-	}, [generationEntries, persistGeneratedAssetSelection, projectId, selectedAssetKeys]);
+	}, [
+		generationEntries,
+		isAssetSelectionControlled,
+		persistGeneratedAssetSelection,
+		projectId,
+		selectedAssetKeys,
+	]);
 	const releaseEditingImageObjectUrl = useCallback(() => {
 		if (!editingImageObjectUrlRef.current) return;
 		URL.revokeObjectURL(editingImageObjectUrlRef.current);
@@ -997,12 +1069,31 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 					url: mediaAsset.url,
 				};
 				const selectionKey = generationAssetSelectionKey(editedAsset);
-				if (selectionKey) {
-					setAssetSelectionOverrides((current) => ({ ...current, [selectionKey]: true }));
-					syncedDocumentSelectionKeysRef.current.add(selectionKey);
+				const previousSelected =
+					selectionKey && !isAssetSelectionControlled
+						? effectiveSelectedAssetKeys.includes(selectionKey)
+						: false;
+				const persistRequestId =
+					selectionKey && !isAssetSelectionControlled
+						? (assetSelectionPersistRequestIdsRef.current[selectionKey] ?? 0) + 1
+						: null;
+				if (!isAssetSelectionControlled) {
+					if (selectionKey) {
+						assetSelectionPersistRequestIdsRef.current[selectionKey] = persistRequestId ?? 0;
+						setGeneratedAssetSelectionOverride(selectionKey, true);
+					}
 				}
 				onToggleAsset?.(editedAsset, true);
-				persistGeneratedAssetSelection(editedAsset, true, "edited");
+				if (!isAssetSelectionControlled) {
+					void persistGeneratedAssetSelection(editedAsset, true, "edited").then((persisted) => {
+						if (persisted || !selectionKey || persistRequestId === null) return;
+						if (assetSelectionPersistRequestIdsRef.current[selectionKey] !== persistRequestId)
+							return;
+
+						delete assetSelectionPersistRequestIdsRef.current[selectionKey];
+						setGeneratedAssetSelectionOverride(selectionKey, previousSelected);
+					});
+				}
 				if (editedTask?.id) ws.setActiveEntryId(editedTask.id);
 				setEditingImageTarget(null);
 				releaseEditingImageObjectUrl();
@@ -1016,11 +1107,14 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		},
 		[
 			editingImageTarget,
+			effectiveSelectedAssetKeys,
+			isAssetSelectionControlled,
 			onToggleAsset,
 			persistGeneratedAssetSelection,
 			releaseEditingImageObjectUrl,
 			resolvedMediaAssetProjectId,
 			selectedAssetTitle,
+			setGeneratedAssetSelectionOverride,
 			toast,
 			ws,
 		],

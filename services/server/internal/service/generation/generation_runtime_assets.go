@@ -19,8 +19,8 @@ func (workflow *GenerationService) resolveGenerationReferences(
 		return []string{}, nil
 	}
 
-	references := CompactStrings(request.ReferenceURLs)
-	for _, assetID := range CompactStrings(request.ReferenceAssetIDs) {
+	references, referenceAssetIDs := splitReferenceURLs(request.ReferenceURLs)
+	for _, assetID := range uniqueCompactStrings(append(referenceAssetIDs, request.ReferenceAssetIDs...)) {
 		asset, ok, err := workflow.mediaAssets.Get(assetID)
 		if err != nil {
 			return nil, err
@@ -54,6 +54,49 @@ func (workflow *GenerationService) resolveGenerationReferences(
 	}
 
 	return references, nil
+}
+
+func splitReferenceURLs(values []string) ([]string, []string) {
+	referenceURLs := []string{}
+	assetIDs := []string{}
+	seenReferenceURLs := map[string]struct{}{}
+	seenAssetIDs := map[string]struct{}{}
+
+	for _, value := range CompactStrings(values) {
+		if assetID := libraryAssetIDFromGenerationAssetURL(value); assetID != "" {
+			if _, exists := seenAssetIDs[assetID]; exists {
+				continue
+			}
+
+			seenAssetIDs[assetID] = struct{}{}
+			assetIDs = append(assetIDs, assetID)
+			continue
+		}
+
+		if _, exists := seenReferenceURLs[value]; exists {
+			continue
+		}
+
+		seenReferenceURLs[value] = struct{}{}
+		referenceURLs = append(referenceURLs, value)
+	}
+
+	return referenceURLs, assetIDs
+}
+
+func uniqueCompactStrings(values []string) []string {
+	result := []string{}
+	seen := map[string]struct{}{}
+	for _, value := range CompactStrings(values) {
+		if _, exists := seen[value]; exists {
+			continue
+		}
+
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+
+	return result
 }
 
 func (workflow *GenerationService) cacheGenerationResponseAssets(
@@ -174,7 +217,7 @@ func (workflow *GenerationService) cacheGenerationAsset(
 }
 
 func isLocalMediaAssetURL(value string) bool {
-	return strings.HasPrefix(strings.TrimSpace(value), "/api/v1/media-assets/")
+	return libraryAssetIDFromGenerationAssetURL(value) != ""
 }
 
 func generationMediaSaveOptions(projectID string, conversationID string, sectionID string) media.MediaAssetSaveOptions {

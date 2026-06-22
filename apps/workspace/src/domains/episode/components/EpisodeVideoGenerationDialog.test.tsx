@@ -2,6 +2,7 @@ import { cleanup, render } from "@testing-library/react";
 import { isValidElement, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sampleEpisode } from "@/domains/episode/lib/sample";
+import { createSectionBlockId } from "@/domains/documents/lib/sections";
 import { useDocumentsStore, type MarkdownDocument } from "@/domains/documents/stores";
 import type { MediaGenerationWorkspaceProps } from "@/domains/generation/components/MediaGenerationWorkspace";
 import { EpisodeVideoGenerationDialog } from "./EpisodeVideoGenerationDialog";
@@ -145,6 +146,7 @@ describe("EpisodeVideoGenerationDialog", () => {
 		);
 
 		const workspaceProps = lastWorkspaceProps();
+		const storyboardSectionBlockId = createSectionBlockId("story-doc", 2, 1, "第 01 组");
 		expect(workspaceProps?.initialPrompt).toContain("**动作：**");
 		expect(workspaceProps?.initialPrompt).toContain("@沈阔（普通状态）");
 		expect(workspaceProps?.initialPrompt).toContain("- 镜头：低角度跟拍");
@@ -172,8 +174,14 @@ describe("EpisodeVideoGenerationDialog", () => {
 		expect(previewReferences[0]?.url).toBe("/api/media/assets/ref-a/content");
 		expect(referenceAssetIds).toEqual(["ref-a"]);
 		expect(referenceBadges[previewReferences[0]?.id ?? ""]).toBe("来自 @沈阔（普通状态）");
+		expect(workspaceProps?.documentContext).toEqual({
+			projectId: "project-a",
+			documentId: "story-doc",
+			sectionId: storyboardSectionBlockId,
+		});
 		expect(workspaceProps?.notificationTarget).toMatchObject({
 			section: {
+				blockId: storyboardSectionBlockId,
 				headingText: "第 01 组",
 				markdown: expect.stringContaining("**动作：**"),
 				prompt: expect.stringContaining("### 标志性细节"),

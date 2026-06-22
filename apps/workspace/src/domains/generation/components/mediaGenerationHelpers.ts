@@ -170,7 +170,9 @@ export const findMediaAssetForGeneratedSource = (source: string, mediaAssets: Me
 };
 
 export const mediaAssetIdFromGeneratedSource = (source: string) => {
-	const match = source.match(/\/api(?:\/v1)?\/(?:media\/assets|media-assets)\/([^/?#]+)\/content/);
+	const match = source.match(
+		/\/api(?:\/v1)?\/(?:projects\/[^/]+\/)?(?:media\/assets|media-assets)\/([^/?#]+)\/content/i,
+	);
 	if (!match?.[1]) return null;
 
 	return decodeURIComponent(match[1]);

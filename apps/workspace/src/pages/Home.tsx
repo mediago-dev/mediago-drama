@@ -67,7 +67,7 @@ export const Home: React.FC = () => {
 		? documents.find((document) => document.id === documentId)
 		: null;
 	const targetAsset = assetId ? assets.find((asset) => asset.id === assetId) : null;
-	const hasWorkspaceTarget = documentWorkbench !== "timeline" && Boolean(documentId || assetId);
+	const hasWorkspaceTarget = !documentWorkbench && Boolean(documentId || assetId);
 	const workspaceTargetMissing =
 		documentsProjectId === projectId &&
 		hasWorkspaceTarget &&
@@ -85,7 +85,7 @@ export const Home: React.FC = () => {
 	}, [activeProjectId, projectId, setActiveProjectId]);
 
 	useEffect(() => {
-		if (!projectId || documentWorkbench === "timeline") return;
+		if (!projectId || documentWorkbench) return;
 		if (preserveAgentTab) {
 			setAgentLayoutTab("agent");
 			return;
@@ -111,7 +111,7 @@ export const Home: React.FC = () => {
 	}, [projectId]);
 
 	useLayoutEffect(() => {
-		if (!projectId || documentsProjectId !== projectId || documentWorkbench === "timeline") return;
+		if (!projectId || documentsProjectId !== projectId || documentWorkbench) return;
 		if (targetDocument && activeDocumentId !== targetDocument.id) {
 			selectDocument(targetDocument.id);
 			return;
@@ -193,7 +193,7 @@ export const Home: React.FC = () => {
 	if (workspaceTargetMissing) {
 		return <Navigate to={agentProjectPath(projectId)} replace />;
 	}
-	if (documentId && documentWorkbench === "timeline") {
+	if (documentId && documentWorkbench) {
 		return (
 			<Suspense fallback={<WorkspaceContentFallback />}>
 				<EpisodeTimeline />

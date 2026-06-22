@@ -1,8 +1,8 @@
 import type { MediaPlayerInstance } from "@vidstack/react";
-import { ArrowLeft, Download, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, GitBranch, Loader2, Rows3 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import useSWR from "swr";
 import {
 	getWorkspaceEpisode,
@@ -12,6 +12,7 @@ import {
 } from "@/domains/workspace/api/workspace";
 import { getMediaAssets } from "@/domains/workspace/api/media";
 import { EpisodeCompanionGenerationDialog } from "@/domains/episode/components/EpisodeCompanionGenerationDialog";
+import { EpisodeCanvasView } from "@/domains/episode/components/EpisodeCanvasView";
 import { EpisodeTimelineEditor } from "@/domains/episode/components/EpisodeTimelineEditor";
 import { EpisodePreviewPlayer } from "@/domains/episode/components/EpisodePreviewPlayer";
 import { EpisodeVideoGenerationDialog } from "@/domains/episode/components/EpisodeVideoGenerationDialog";
@@ -24,13 +25,8 @@ import type { GenerationAsset } from "@/domains/generation/api/generation";
 import { Button } from "@/shared/components/ui/button";
 import { useToast } from "@/hooks/useToast";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
-import {
-	appendSectionImageMarkdown,
-	removeSectionImageMarkdown,
-} from "@/domains/documents/components/tiptap/section-images";
-import type { MarkdownSectionImage } from "@/domains/documents/lib/editor-registry";
+import { sectionImageAssetKeysFromDocuments } from "@/domains/documents/components/section-generation-asset-keys";
 import { findDocumentById, selectDocumentById } from "@/domains/documents/lib/filters";
-import { sectionGenerationIdentityKey } from "@/domains/documents/lib/section-generation";
 import {
 	findEpisodeClip,
 	findEpisodeTrackForClip,
@@ -46,14 +42,19 @@ import {
 	isEpisodeVideoClipPlayable,
 } from "@/domains/episode/lib/media-assets";
 import type { TimelineClip } from "@/domains/episode/lib/sample";
-import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
+import { useDocumentsStore } from "@/domains/documents/stores";
 import { type TimelineCompanionTrackType, useEpisodeStore } from "@/domains/episode/stores";
 import {
 	generationAssetSelectionKey,
 	generationAssetSource,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useTauriWindowDrag } from "@/domains/workspace/lib/tauri-window-drag";
-import { agentProjectPath, agentProjectRouteState } from "@/domains/workspace/lib/workbench-route";
+import {
+	agentProjectPath,
+	agentProjectRouteState,
+	getRouteDocumentWorkbench,
+	type AgentDocumentWorkbench,
+} from "@/domains/workspace/lib/workbench-route";
 import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
 
 interface EpisodeTimelineViewProps {
@@ -67,6 +68,7 @@ interface CompanionGenerationTarget {
 
 export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ documentId }) => {
 	const navigate = useNavigate();
+	const location = useLocation();
 	const toast = useToast();
 	const episode = useEpisodeStore((state) => state.episode);
 	const currentTime = useEpisodeStore((state) => state.currentTime);
@@ -74,9 +76,10 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const selectedClipId = useEpisodeStore((state) => state.selectedClipId);
 	const zoom = useEpisodeStore((state) => state.zoom);
 	const documents = useDocumentsStore((state) => state.documents);
+	const assets = useDocumentsStore((state) => state.assets);
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
 	const projectId = useDocumentsStore((state) => state.projectId);
-	const updateDocumentContent = useDocumentsStore((state) => state.updateDocumentContent);
+	const toggleStoredSectionImage = useDocumentsStore((state) => state.toggleSectionImage);
 	const addCompanionTextClip = useEpisodeStore((state) => state.addCompanionTextClip);
 	const selectClip = useEpisodeStore((state) => state.selectClip);
 	const setCurrentTime = useEpisodeStore((state) => state.setCurrentTime);
@@ -89,15 +92,14 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		useState<CompanionGenerationTarget | null>(null);
 	const [referenceSectionGeneration, setReferenceSectionGeneration] =
 		useState<MarkdownSectionContext | null>(null);
-	const [selectedSectionAssetKeys, setSelectedSectionAssetKeys] = useState<
-		Record<string, string[]>
-	>({});
 	const [videoGenerationOpen, setVideoGenerationOpen] = useState(false);
 	const [downloadingVideoClipIds, setDownloadingVideoClipIds] = useState<string[]>([]);
 	const [isExportingAllStoryboards, setIsExportingAllStoryboards] = useState(false);
 	const [previewPlaybackActive, setPreviewPlaybackActive] = useState(false);
 	const previewPlayerRef = useRef<MediaPlayerInstance | null>(null);
 	const lastPreviewErrorKey = useRef("");
+	const activeWorkbench = getRouteDocumentWorkbench(location.search) ?? "timeline";
+	const isCanvasWorkbench = activeWorkbench === "canvas";
 	const activeDocument =
 		findDocumentById(documents, documentId) ?? selectDocumentById(documents, activeDocumentId);
 	const markdownEpisode = useMemo(
@@ -120,44 +122,23 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		() => findEpisodeClip(episode, selectedClipId),
 		[episode, selectedClipId],
 	);
-	const openReferenceSectionGeneration = useCallback((section: MarkdownSectionContext) => {
-		const sectionKey = sectionGenerationIdentityKey(section);
-		setSelectedSectionAssetKeys((current) => ({
-			...current,
-			[sectionKey]: sectionImageAssetKeys(section),
-		}));
-		setReferenceSectionGeneration(section);
-	}, []);
+	const openReferenceSectionGeneration = useCallback(
+		(section: MarkdownSectionContext) => setReferenceSectionGeneration(section),
+		[],
+	);
 	const toggleReferenceSectionImage = useCallback(
 		(section: MarkdownSectionContext, asset: GenerationAsset, selected: boolean) => {
 			const source = generationAssetSource(asset);
-			const assetKey = generationAssetSelectionKey(asset);
-			if (!source || !assetKey) return;
+			if (!source || !generationAssetSelectionKey(asset)) return;
 
 			const image = {
 				src: source,
 				title: section.headingText,
 			};
-			const applied = applySectionImageToStoredDocument({
-				documents,
-				image,
-				section,
-				selected,
-				updateDocumentContent,
-			});
+			const applied = toggleStoredSectionImage(section, image, selected);
 			if (!applied) return;
-
-			const sectionKey = sectionGenerationIdentityKey(section);
-			setSelectedSectionAssetKeys((current) => ({
-				...current,
-				[sectionKey]: selected
-					? current[sectionKey]?.includes(assetKey)
-						? current[sectionKey]
-						: [...(current[sectionKey] ?? []), assetKey]
-					: (current[sectionKey] ?? []).filter((key) => key !== assetKey),
-			}));
 		},
-		[documents, updateDocumentContent],
+		[toggleStoredSectionImage],
 	);
 	const clipMedia = useMemo(
 		() => buildEpisodeClipMedia(episode, mediaAssetsData?.assets),
@@ -225,6 +206,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	}, []);
 	const handleGeneratedVideoReady = useCallback(
 		async (clipId: string, videoUrl: string | null) => {
+			const previousEpisode = episode;
 			const nextEpisode = setVideoClipVideoUrl(clipId, videoUrl);
 			if (!nextEpisode || !episodeDocumentId) return;
 
@@ -233,16 +215,19 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 				await mutateEpisodeState(saved, { revalidate: false });
 				await mutateMediaAssets();
 			} catch (error) {
+				setEpisode(previousEpisode);
 				toast.error(videoUrl ? "视频素材保存失败" : "视频素材取消失败", {
 					description: toErrorMessage(error),
 				});
 			}
 		},
 		[
+			episode,
 			episodeDocumentId,
 			mutateEpisodeState,
 			mutateMediaAssets,
 			projectId,
+			setEpisode,
 			setVideoClipVideoUrl,
 			toast,
 		],
@@ -358,6 +343,18 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		storyboardVideoClips.length,
 		toast,
 	]);
+	const handleWorkbenchSwitch = useCallback(
+		(workbench: AgentDocumentWorkbench) => {
+			if (!projectId || !episodeDocumentId) return;
+			navigate(
+				agentProjectPath(projectId, {
+					documentId: episodeDocumentId,
+					workbench,
+				}),
+			);
+		},
+		[episodeDocumentId, navigate, projectId],
+	);
 	const handleTimelineSeek = useCallback(
 		(time: number) => {
 			const range = findEpisodeClipPlaybackRangeAtTime(clipPlaybackRanges, time);
@@ -429,6 +426,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	);
 	const handleCompanionGenerationCommit = useCallback(
 		async (videoClipId: string, trackType: TimelineCompanionTrackType, content: string) => {
+			const previousEpisode = episode;
 			const nextEpisode = addCompanionTextClip(videoClipId, trackType, content);
 			setCompanionGenerationTarget(null);
 			if (!nextEpisode || !episodeDocumentId) return;
@@ -437,12 +435,21 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 				const saved = await updateWorkspaceEpisode(episodeDocumentId, nextEpisode, projectId);
 				await mutateEpisodeState(saved, { revalidate: false });
 			} catch (error) {
+				setEpisode(previousEpisode);
 				toast.error("剪辑台保存失败", {
 					description: toErrorMessage(error),
 				});
 			}
 		},
-		[addCompanionTextClip, episodeDocumentId, mutateEpisodeState, projectId, toast],
+		[
+			addCompanionTextClip,
+			episode,
+			episodeDocumentId,
+			mutateEpisodeState,
+			projectId,
+			setEpisode,
+			toast,
+		],
 	);
 
 	useEffect(() => {
@@ -490,44 +497,83 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 						<h1 className="truncate text-sm font-semibold text-foreground">{episode.title}</h1>
 					</div>
 				</div>
+				<div className="flex shrink-0 items-center overflow-hidden rounded-sm border border-border bg-ide-editor p-0.5">
+					<Button
+						type="button"
+						variant={activeWorkbench === "timeline" ? "secondary" : "ghost"}
+						size="sm"
+						className="h-7 rounded-sm px-2"
+						onClick={() => handleWorkbenchSwitch("timeline")}
+					>
+						<Rows3 className="size-4" />
+						<span>预览</span>
+					</Button>
+					<Button
+						type="button"
+						variant={activeWorkbench === "canvas" ? "secondary" : "ghost"}
+						size="sm"
+						className="h-7 rounded-sm px-2"
+						onClick={() => handleWorkbenchSwitch("canvas")}
+					>
+						<GitBranch className="size-4" />
+						<span>总线</span>
+					</Button>
+				</div>
 			</header>
 
 			<main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-				<section className="grid min-h-0 flex-1 grid-cols-1 border-b border-border">
-					<div className="flex min-h-0 flex-1 flex-col gap-2 bg-ide-preview p-2">
-						<div className="relative grid min-h-0 flex-1 place-items-center overflow-hidden border border-border bg-ide-editor">
-							<Button
-								type="button"
-								variant="secondary"
-								size="sm"
-								className="absolute right-4 top-4 z-20 h-8 px-3 shadow-sm"
-								disabled={isExportingAllStoryboards || exportableStoryboardVideoClips.length === 0}
-								aria-label="导出全部分镜"
-								title={
-									exportableStoryboardVideoClips.length > 0
-										? "导出全部已生成分镜视频"
-										: "暂无可导出的分镜视频"
-								}
-								onClick={handleExportAllStoryboards}
-							>
-								{isExportingAllStoryboards ? <Loader2 className="animate-spin" /> : <Download />}
-								<span>{isExportingAllStoryboards ? "导出中" : "导出全部分镜"}</span>
-							</Button>
-							<EpisodePreviewPlayer
-								videoUrl={playbackVideoUrl}
-								posterUrl={playbackPosterUrl}
-								title={playbackTitle}
-								currentTime={playbackTime}
-								isPlaying={isPlaying && Boolean(playbackVideoUrl)}
-								onEnded={handlePreviewEnded}
-								onPlayingChange={(playing) => (playing ? play() : pause())}
-								onPlaybackError={handlePreviewPlaybackError}
-								onTimeUpdate={handlePreviewTimeUpdate}
-								playerRef={previewPlayerRef}
-							/>
+				{isCanvasWorkbench ? (
+					<EpisodeCanvasView
+						activeDocument={activeDocument ?? null}
+						assets={assets}
+						documents={documents}
+						episode={episode}
+						selectedClipId={selectedClipId}
+						storyboardMarkdown={activeDocument?.content ?? ""}
+						onGenerateClip={handleTimelineClipGenerate}
+						onOpenReferenceGeneration={openReferenceSectionGeneration}
+						onRequestCompanionGeneration={handleCompanionGenerationRequest}
+						onSelectClip={handleTimelineClipSelect}
+					/>
+				) : (
+					<section className="grid min-h-0 flex-1 grid-cols-1 border-b border-border">
+						<div className="flex min-h-0 flex-1 flex-col gap-2 bg-ide-preview p-2">
+							<div className="relative grid min-h-0 flex-1 place-items-center overflow-hidden border border-border bg-ide-editor">
+								<Button
+									type="button"
+									variant="secondary"
+									size="sm"
+									className="absolute right-4 top-4 z-20 h-8 px-3 shadow-sm"
+									disabled={
+										isExportingAllStoryboards || exportableStoryboardVideoClips.length === 0
+									}
+									aria-label="导出全部分镜"
+									title={
+										exportableStoryboardVideoClips.length > 0
+											? "导出全部已生成分镜视频"
+											: "暂无可导出的分镜视频"
+									}
+									onClick={handleExportAllStoryboards}
+								>
+									{isExportingAllStoryboards ? <Loader2 className="animate-spin" /> : <Download />}
+									<span>{isExportingAllStoryboards ? "导出中" : "导出全部分镜"}</span>
+								</Button>
+								<EpisodePreviewPlayer
+									videoUrl={playbackVideoUrl}
+									posterUrl={playbackPosterUrl}
+									title={playbackTitle}
+									currentTime={playbackTime}
+									isPlaying={isPlaying && Boolean(playbackVideoUrl)}
+									onEnded={handlePreviewEnded}
+									onPlayingChange={(playing) => (playing ? play() : pause())}
+									onPlaybackError={handlePreviewPlaybackError}
+									onTimeUpdate={handlePreviewTimeUpdate}
+									playerRef={previewPlayerRef}
+								/>
+							</div>
 						</div>
-					</div>
-				</section>
+					</section>
+				)}
 
 				<EpisodeTimelineEditor
 					episode={episode}
@@ -573,8 +619,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 				projectId={projectId ?? undefined}
 				section={referenceSectionGeneration}
 				selectedAssetKeys={(targetSection) =>
-					selectedSectionAssetKeys[sectionGenerationIdentityKey(targetSection)] ??
-					sectionImageAssetKeys(targetSection)
+					sectionImageAssetKeysFromDocuments(documents, targetSection)
 				}
 				onGenerationComplete={() => undefined}
 				onGenerationError={() => undefined}
@@ -599,55 +644,6 @@ const episodeClipVideoFilename = (clip: TimelineClip, index?: number) => {
 };
 
 const hasClipVideoUrl = (clip: TimelineClip) => Boolean(clip.videoUrl?.trim());
-
-const sectionImageAssetKeys = (section: MarkdownSectionContext) => {
-	const keys = section.markdown.split("\n").flatMap((line) => {
-		const source = sectionImageSourceFromLine(line.trim());
-		return source ? [`image:${source}`] : [];
-	});
-
-	return Array.from(new Set(keys));
-};
-
-const sectionImageSourceFromLine = (line: string) => {
-	const match = /^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$/.exec(line);
-	if (!match) return null;
-	if (
-		["mediago-drama-section-image-pending:", "media-cli-section-image-pending:"].some((prefix) =>
-			match[1].startsWith(prefix),
-		)
-	)
-		return null;
-	const source = match[2] ?? match[3] ?? null;
-	if (match[1] === "正在生成图片" && source?.startsWith("data:image/svg+xml;base64,")) return null;
-
-	return source;
-};
-
-const applySectionImageToStoredDocument = ({
-	documents,
-	image,
-	section,
-	selected,
-	updateDocumentContent,
-}: {
-	documents: MarkdownDocument[];
-	image: MarkdownSectionImage;
-	section: MarkdownSectionContext;
-	selected: boolean;
-	updateDocumentContent: (id: string, content: string) => void;
-}) => {
-	const document = documents.find((item) => item.id === section.documentId);
-	if (!document) return false;
-
-	const result = selected
-		? appendSectionImageMarkdown(document.content, section, image)
-		: removeSectionImageMarkdown(document.content, section, image);
-	if (!result) return false;
-	if (result.changed) updateDocumentContent(document.id, result.markdown);
-
-	return selected || result.changed;
-};
 
 const exportStoryboardsSummary = (
 	savedCount: number,

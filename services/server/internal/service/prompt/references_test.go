@@ -67,7 +67,7 @@ func TestBuildReferenceIndexItemsUsesStableSectionIDs(t *testing.T) {
 	if items[0].Title != "沈阎" || items[0].BlockID != "section_shenyan" {
 		t.Fatalf("first item = %#v, want persisted section id for 沈阎", items[0])
 	}
-	if items[0].MentionMarkdown != "@[沈阎](mention://character-doc/section_shenyan?kind=section&category=character)" {
+	if items[0].MentionMarkdown != "@[沈阎](mention://character-doc/section_shenyan)" {
 		t.Fatalf("mention = %q", items[0].MentionMarkdown)
 	}
 	if strings.Contains(items[0].MentionMarkdown, "男主角设定正文") {
@@ -75,6 +75,43 @@ func TestBuildReferenceIndexItemsUsesStableSectionIDs(t *testing.T) {
 	}
 	if items[1].Title != "林晚" || !strings.HasPrefix(items[1].BlockID, "section-") {
 		t.Fatalf("second item = %#v, want fallback section id for 林晚", items[1])
+	}
+}
+
+func TestBuildReferenceIndexItemsSkipsDocumentRootHeadingWhenChildSectionsExist(t *testing.T) {
+	items := buildReferenceIndexItems(AgentRunRequest{
+		Documents: []AgentDocumentContext{
+			{
+				ID:       "character-book-doc",
+				Title:    "角色册 第一章",
+				Category: "character",
+				Content: strings.Join([]string{
+					"# 角色册 第一章",
+					"",
+					"视觉风格：3DCG动漫",
+					"",
+					"<!-- section-id: section_chenyuan -->",
+					"## 陈远",
+					"",
+					"陈远，21岁男大学生。",
+					"",
+					"<!-- section-id: section_linshutong -->",
+					"## 林书彤",
+					"",
+					"林书彤，21岁女大学生。",
+				}, "\n"),
+			},
+		},
+	})
+
+	if len(items) != 2 {
+		t.Fatalf("items = %d, want 2: %#v", len(items), items)
+	}
+	if items[0].Title != "陈远" || items[0].MentionMarkdown != "@[陈远](mention://character-book-doc/section_chenyuan)" {
+		t.Fatalf("first item = %#v, want 陈远 section mention", items[0])
+	}
+	if items[1].Title != "林书彤" || items[1].MentionMarkdown != "@[林书彤](mention://character-book-doc/section_linshutong)" {
+		t.Fatalf("second item = %#v, want 林书彤 section mention", items[1])
 	}
 }
 

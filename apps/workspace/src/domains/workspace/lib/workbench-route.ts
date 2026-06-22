@@ -1,7 +1,7 @@
 import type { WorkMode } from "@/lib/stores/work-mode";
 
 export type AgentProjectView = "agent" | "document" | "overview";
-export type AgentDocumentWorkbench = "timeline";
+export type AgentDocumentWorkbench = "canvas" | "timeline";
 export type AgentResourceType = "character" | "scene" | "storyboard" | "prop";
 
 export const getRouteProjectId = (search: string) => getSearchParam(search, "projectId");
@@ -22,7 +22,7 @@ export const getRouteAgentSessionId = (search: string) =>
 
 export const getRouteDocumentWorkbench = (search: string): AgentDocumentWorkbench | null => {
 	const value = getSearchParam(search, "workbench");
-	return value === "timeline" ? value : null;
+	return value === "timeline" || value === "canvas" ? value : null;
 };
 
 export const isAgentRoute = (pathname: string) => pathname === "/projects";
@@ -38,7 +38,7 @@ export const isAgentDocumentRoute = (pathname: string, search: string) =>
 	Boolean(
 		getRouteProjectId(search) &&
 		getRouteDocumentId(search) &&
-		getRouteDocumentWorkbench(search) === "timeline",
+		Boolean(getRouteDocumentWorkbench(search)),
 	);
 
 export const workbenchModeForRoute = (

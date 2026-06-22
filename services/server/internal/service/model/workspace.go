@@ -98,6 +98,51 @@ type UpdateWorkspaceDocumentRequest struct {
 	ExpectedVersion *int                             `json:"expectedVersion,omitempty"`
 }
 
+// WorkspaceDocumentSectionImageRequest updates an image attached to a document section.
+type WorkspaceDocumentSectionImageRequest struct {
+	SectionID       string                `json:"sectionId"`
+	Image           WorkspaceSectionImage `json:"image"`
+	Selected        bool                  `json:"selected"`
+	ExpectedVersion *int                  `json:"expectedVersion,omitempty"`
+}
+
+// WorkspaceSectionImage describes a generated image embedded in a document section.
+type WorkspaceSectionImage struct {
+	Src   string `json:"src"`
+	Title string `json:"title,omitempty"`
+}
+
+// WorkspaceDocumentSectionMediaRequest updates media attached to a document section.
+type WorkspaceDocumentSectionMediaRequest struct {
+	SectionID       string                `json:"sectionId"`
+	Media           WorkspaceSectionMedia `json:"media"`
+	Selected        bool                  `json:"selected"`
+	ExpectedVersion *int                  `json:"expectedVersion,omitempty"`
+}
+
+// WorkspaceSectionMedia describes generated media embedded in a document section.
+type WorkspaceSectionMedia struct {
+	Kind  string `json:"kind"`
+	Src   string `json:"src"`
+	Title string `json:"title,omitempty"`
+}
+
+// WorkspaceDocumentSectionMentionRequest updates a mention attached to a document section.
+type WorkspaceDocumentSectionMentionRequest struct {
+	SectionID       string                           `json:"sectionId"`
+	Reference       WorkspaceSectionMentionReference `json:"reference"`
+	Selected        bool                             `json:"selected"`
+	ExpectedVersion *int                             `json:"expectedVersion,omitempty"`
+}
+
+// WorkspaceSectionMentionReference describes a document reference mention.
+type WorkspaceSectionMentionReference struct {
+	DocumentID string `json:"documentId"`
+	BlockID    string `json:"blockId,omitempty"`
+	Title      string `json:"title"`
+	Category   string `json:"category,omitempty"`
+}
+
 // DeleteWorkspaceDocumentResponse contains IDs deleted by a document delete operation.
 type DeleteWorkspaceDocumentResponse struct {
 	DeletedIDs []string                   `json:"deletedIds"`

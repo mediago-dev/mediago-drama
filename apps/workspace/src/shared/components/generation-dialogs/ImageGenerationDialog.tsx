@@ -99,35 +99,40 @@ const useImageGenerationDialogController = ({
 
 	useEffect(() => {
 		if (!open) {
-			setMaterialLibraryOpenByDialog({});
-			setReferenceSections([]);
+			clearDialogStackState(setMaterialLibraryOpenByDialog, setReferenceSections);
 		}
 	}, [open]);
 
 	useEffect(() => {
-		setMaterialLibraryOpenByDialog({});
-		setReferenceSections([]);
+		clearDialogStackState(setMaterialLibraryOpenByDialog, setReferenceSections);
 	}, [dialogSectionKey]);
 
 	const setDialogMaterialLibraryOpen = useCallback((dialogId: string, nextOpen: boolean) => {
 		setMaterialLibraryOpenByDialog((current) => {
 			if (!nextOpen) {
 				const { [dialogId]: _removed, ...rest } = current;
+				if (Object.keys(rest).length === Object.keys(current).length) return current;
 				return rest;
 			}
+			if (current[dialogId]) return current;
 			return { ...current, [dialogId]: true };
 		});
 	}, []);
 
 	const closeReferenceDialog = useCallback((referenceIndex: number) => {
-		setReferenceSections((current) => current.slice(0, referenceIndex));
-		setMaterialLibraryOpenByDialog({});
+		setReferenceSections((current) =>
+			current.length === referenceIndex ? current : current.slice(0, referenceIndex),
+		);
+		clearMaterialLibraryOpenState(setMaterialLibraryOpenByDialog);
 	}, []);
 
 	const openReferenceGenerationDialog = useCallback(
 		(dialogIndex: number, nextSection: MarkdownSectionContext) => {
-			setReferenceSections((current) => [...current.slice(0, dialogIndex), nextSection]);
-			setMaterialLibraryOpenByDialog({});
+			setReferenceSections((current) => {
+				const next = [...current.slice(0, dialogIndex), nextSection];
+				return sameSectionStack(current, next) ? current : next;
+			});
+			clearMaterialLibraryOpenState(setMaterialLibraryOpenByDialog);
 		},
 		[],
 	);
@@ -230,3 +235,25 @@ const resolveSelectedAssetKeys = (
 	section: MarkdownSectionContext,
 ) =>
 	typeof selectedAssetKeys === "function" ? selectedAssetKeys(section) : (selectedAssetKeys ?? []);
+
+const clearDialogStackState = (
+	setMaterialLibraryOpenByDialog: React.Dispatch<React.SetStateAction<Record<string, boolean>>>,
+	setReferenceSections: React.Dispatch<React.SetStateAction<MarkdownSectionContext[]>>,
+) => {
+	clearMaterialLibraryOpenState(setMaterialLibraryOpenByDialog);
+	setReferenceSections((current) => (current.length === 0 ? current : []));
+};
+
+const clearMaterialLibraryOpenState = (
+	setMaterialLibraryOpenByDialog: React.Dispatch<React.SetStateAction<Record<string, boolean>>>,
+) => {
+	setMaterialLibraryOpenByDialog((current) => (Object.keys(current).length === 0 ? current : {}));
+};
+
+const sameSectionStack = (current: MarkdownSectionContext[], next: MarkdownSectionContext[]) => {
+	if (current.length !== next.length) return false;
+	return current.every(
+		(section, index) =>
+			sectionGenerationIdentityKey(section) === sectionGenerationIdentityKey(next[index]),
+	);
+};
