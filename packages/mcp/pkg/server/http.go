@@ -4,9 +4,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/mediago-dev/mediago-drama/packages/mcp/internal/httpx"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (

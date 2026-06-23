@@ -68,7 +68,7 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 		loadedRequestKey.current = null;
 		inactiveNoticeSessionId.current = null;
 		useAgentStore.getState().resetSession();
-		// Refreshing the Tauri webview wipes the in-memory transcript. Restore the
+		// Refreshing the desktop webview wipes the in-memory transcript. Restore the
 		// last cached snapshot for this project so history shows immediately, even
 		// before (or without) the backend chat fetch resolving. The SWR hydration
 		// below overwrites it with authoritative data once it arrives.

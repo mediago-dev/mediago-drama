@@ -30,7 +30,7 @@ const section: MarkdownSectionContext = {
 
 describe("section-generation-asset-keys", () => {
 	afterEach(() => {
-		delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+		delete window.mediagoDesktop;
 		vi.unstubAllEnvs();
 	});
 
@@ -79,10 +79,7 @@ describe("section-generation-asset-keys", () => {
 
 	it("normalizes local API image URLs before comparing selected assets", () => {
 		vi.stubEnv("DEV", false);
-		Object.defineProperty(window, "__TAURI_INTERNALS__", {
-			value: {},
-			configurable: true,
-		});
+		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
 		const documents = [
 			makeDocument(
 				["# 角色", "", "## 林书彤", "", "![林书彤](</api/media/assets/generated/content>)"].join(

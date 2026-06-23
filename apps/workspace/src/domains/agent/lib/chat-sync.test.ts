@@ -78,7 +78,7 @@ describe("refreshAgentChatTranscript", () => {
 				{
 					id: "assistant-1",
 					role: "assistant",
-					content: "Tauri 刷新恢复",
+					content: "Electron 刷新恢复",
 					kind: "message",
 					status: "complete",
 				},
@@ -92,7 +92,7 @@ describe("refreshAgentChatTranscript", () => {
 
 		expect(getAgentChatState).toHaveBeenCalledWith("project-1", "session-1");
 		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
-			expect.objectContaining({ id: "assistant-1", content: "Tauri 刷新恢复" }),
+			expect.objectContaining({ id: "assistant-1", content: "Electron 刷新恢复" }),
 		]);
 	});
 

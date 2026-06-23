@@ -8,9 +8,8 @@ MediaGo Drama — 应用图标套件
 svg/         矢量源（1024 画布，可无限缩放）
 png-dark/    深色版 PNG，16/32/48/64/128/256/512/1024
 png-light/   浅色版 PNG，同尺寸
-tauri/       直接用于 Tauri 的文件（取自深色版）
+electron/    直接用于 Electron 的文件（取自深色版）
 
-Tauri 用法
----------
-推荐：npm run tauri icon png-dark/icon-dark-1024.png
-手动：把 tauri/ 文件放进 src-tauri/icons/，在 tauri.conf.json 的 bundle.icon 引用
+Electron 用法
+------------
+把 icon.icns / icon.ico / PNG 图标放进 apps/workspace/build/icons/，在 package.json 的 build.icon 配置中引用。

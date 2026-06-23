@@ -1,3 +1,5 @@
+import { isDesktopRuntime as detectDesktopRuntime } from "@/shared/desktop/runtime";
+
 const devLocalServerPort = "8080";
 const packagedLocalServerPort = "48273";
 
@@ -8,10 +10,9 @@ const localServerPort = () =>
 const localServerOrigin = () => `http://127.0.0.1:${localServerPort()}`;
 const apiBasePath = "/api/v1";
 
-export const isTauriRuntime = () =>
-	typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+export { detectDesktopRuntime as isDesktopRuntime };
 
-export const apiOrigin = () => (isTauriRuntime() ? localServerOrigin() : "");
+export const apiOrigin = () => (detectDesktopRuntime() ? localServerOrigin() : "");
 
 export const apiBaseURL = () => {
 	const origin = apiOrigin();

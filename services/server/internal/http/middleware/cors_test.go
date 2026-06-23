@@ -8,9 +8,10 @@ func TestIsAllowedLocalOrigin(t *testing.T) {
 		origin string
 		want   bool
 	}{
-		{name: "tauri localhost", origin: "tauri://localhost", want: true},
-		{name: "tauri http localhost", origin: "http://tauri.localhost", want: true},
 		{name: "vite localhost", origin: "http://127.0.0.1:1420", want: true},
+		{name: "electron dev localhost", origin: "http://127.0.0.1:31420", want: true},
+		{name: "electron file origin", origin: "file://", want: true},
+		{name: "electron app protocol", origin: "app://localhost", want: true},
 		{name: "remote site", origin: "https://example.com", want: false},
 		{name: "empty", origin: "", want: false},
 	}

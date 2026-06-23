@@ -1,6 +1,7 @@
 import type { DocumentFolder, MarkdownDocument } from "@/domains/documents/stores";
-import { isTauriRuntime } from "@/domains/projects/lib/project-directory";
+import { isDesktopRuntime } from "@/domains/projects/lib/project-directory";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
+import { openNativePath, revealNativePath } from "@/shared/desktop/actions";
 import type { DirectoryFileEntry } from "./types";
 
 type RevealableDirectoryFileEntry =
@@ -23,13 +24,12 @@ export const canShowInFileManager = (workspaceDir: string) => workspaceDir.trim(
 export const revealPathInFileManager = async (path: string) => {
 	const safePath = path.trim();
 	if (!safePath) throw new Error("本地路径为空。");
-	if (!isTauriRuntime()) throw new Error("当前运行环境不支持打开本地文件管理器。");
+	if (!isDesktopRuntime()) throw new Error("当前运行环境不支持打开本地文件管理器。");
 
-	const { openPath, revealItemInDir } = await import("@tauri-apps/plugin-opener");
 	try {
-		await revealItemInDir(safePath);
+		await revealNativePath(safePath);
 	} catch {
-		await openPath(safePath);
+		await openNativePath(safePath);
 	}
 };
 

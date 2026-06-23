@@ -11,7 +11,7 @@ dist/<agent-id>/
 ```
 
 `agent.json` stores relative launch metadata. The server joins it with the
-runtime agent bin directory so development and Tauri resource paths can differ.
+runtime agent bin directory so development and packaged desktop resource paths can differ.
 
 ## Usage
 

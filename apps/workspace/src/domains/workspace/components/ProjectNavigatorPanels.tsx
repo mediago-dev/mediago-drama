@@ -15,7 +15,6 @@ import {
 	SquarePen,
 	Trash2,
 } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { mutate as mutateSWR } from "swr";
@@ -43,6 +42,7 @@ import {
 } from "@/shared/components/ui/tooltip";
 import { useToast } from "@/hooks/useToast";
 import { projectSettingsGeneralTab, type SettingsTabValue } from "@/lib/stores/settings";
+import { openExternalUrl } from "@/shared/desktop/actions";
 import { cn } from "@/shared/lib/utils";
 import { debugTabs, type DebugTabValue } from "@/pages/Debug";
 import { GenerationNotificationButton } from "./GenerationNotificationButton";
@@ -126,16 +126,7 @@ export const SettingsButton: React.FC<{
 
 export const GitHubHelpButton: React.FC = () => {
 	const openGitHub = async () => {
-		if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-			try {
-				await openUrl(githubRepositoryURL);
-				return;
-			} catch {
-				// Fall back to the browser path below.
-			}
-		}
-
-		window.open(githubRepositoryURL, "_blank", "noopener,noreferrer");
+		await openExternalUrl(githubRepositoryURL);
 	};
 
 	return (

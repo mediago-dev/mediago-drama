@@ -1,14 +1,10 @@
+import { openNativePath, pickDesktopDirectory, revealNativePath } from "@/shared/desktop/actions";
+import { isDesktopRuntime as detectDesktopRuntime } from "@/shared/desktop/runtime";
+
 export const pickProjectDirectory = async (): Promise<string | null> => {
-	if (isTauriRuntime()) {
+	if (detectDesktopRuntime()) {
 		try {
-			const { open } = await import("@tauri-apps/plugin-dialog");
-			const selected = await open({
-				directory: true,
-				multiple: false,
-				title: "选择项目文件夹",
-			});
-			if (Array.isArray(selected)) return selected[0] ?? null;
-			return selected ?? null;
+			return await pickDesktopDirectory("选择项目文件夹");
 		} catch {
 			return promptForProjectDirectory();
 		}
@@ -17,18 +13,17 @@ export const pickProjectDirectory = async (): Promise<string | null> => {
 	return promptForProjectDirectory();
 };
 
-export const isTauriRuntime = () => "__TAURI_INTERNALS__" in window;
+export { detectDesktopRuntime as isDesktopRuntime };
 
 export const openProjectDirectory = async (projectDir: string) => {
 	const safeProjectDir = projectDir.trim();
 	if (!safeProjectDir) throw new Error("项目文件夹路径为空。");
-	if (!isTauriRuntime()) throw new Error("当前运行环境不支持打开本地文件夹。");
+	if (!detectDesktopRuntime()) throw new Error("当前运行环境不支持打开本地文件夹。");
 
-	const { openPath, revealItemInDir } = await import("@tauri-apps/plugin-opener");
 	try {
-		await revealItemInDir(safeProjectDir);
+		await revealNativePath(safeProjectDir);
 	} catch {
-		await openPath(safeProjectDir);
+		await openNativePath(safeProjectDir);
 	}
 };
 

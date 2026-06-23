@@ -46,7 +46,8 @@ import { DebugTabPanel, debugTabs, type DebugTabValue } from "@/pages/Debug";
 import { ProjectSettings } from "@/pages/ProjectSettings";
 import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
-import { isTauriRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
+import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
+import { openExternalUrl } from "@/shared/desktop/actions";
 
 type SettingsTabValue = "appearance" | "api-keys" | "billing" | "shortcuts" | DebugTabValue;
 
@@ -277,12 +278,7 @@ const withoutRecordKey = <TValue,>(values: Record<string, TValue>, key: string) 
 };
 
 const openExternalURL = async (url: string) => {
-	if (isTauriRuntime()) {
-		const { openUrl } = await import("@tauri-apps/plugin-opener");
-		await openUrl(url);
-		return;
-	}
-	window.open(url, "_blank", "noopener,noreferrer");
+	await openExternalUrl(url);
 };
 
 const AppearancePanel: React.FC<{
@@ -295,7 +291,7 @@ const AppearancePanel: React.FC<{
 	const selectedThemeOption =
 		themeModeOptions.find((option) => option.value === mode) ?? themeModeOptions[0];
 	const workspaceDir = projectsPayload?.workspaceDir ?? "";
-	const canOpenWorkspaceDir = Boolean(workspaceDir) && isTauriRuntime();
+	const canOpenWorkspaceDir = Boolean(workspaceDir) && isDesktopRuntime();
 
 	const openWorkspaceDir = async () => {
 		if (!workspaceDir || isOpeningWorkspace) return;

@@ -145,9 +145,9 @@
 		--workspace-sidebar-default-width: var(--size-260);
 		--workspace-sidebar-min-width: var(--size-220);
 		--workspace-sidebar-max-width: var(--size-420);
-		--tauri-titlebar-offset: var(--size-26);
-		--tauri-drag-region-height: var(--size-44);
-		--tauri-traffic-light-safe-area: var(--size-76);
+		--desktop-titlebar-offset: var(--size-26);
+		--desktop-drag-region-height: var(--size-44);
+		--desktop-traffic-light-safe-area: var(--size-76);
 		--settings-label-column-min: var(--size-160);
 		--settings-label-column-max: var(--size-220);
 		--settings-provider-column-min: var(--size-180);

@@ -1,25 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { apiBaseURL, apiOrigin, apiResourceURL, apiURL } from "./api-base";
 
-const clearTauriRuntime = () => {
-	delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+const clearDesktopRuntime = () => {
+	delete window.mediagoDesktop;
 };
 
-const enableTauriRuntime = () => {
-	Object.defineProperty(window, "__TAURI_INTERNALS__", {
-		value: {},
-		configurable: true,
-	});
+const enableDesktopRuntime = () => {
+	window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
 };
 
 describe("api-base", () => {
 	afterEach(() => {
-		clearTauriRuntime();
+		clearDesktopRuntime();
 		vi.unstubAllEnvs();
 	});
 
-	it("keeps relative API URLs outside Tauri", () => {
-		clearTauriRuntime();
+	it("keeps relative API URLs outside desktop runtime", () => {
+		clearDesktopRuntime();
 
 		expect(apiOrigin()).toBe("");
 		expect(apiBaseURL()).toBe("/api/v1");
@@ -42,8 +39,8 @@ describe("api-base", () => {
 		);
 	});
 
-	it("uses the dev server origin inside Tauri dev", () => {
-		enableTauriRuntime();
+	it("uses the dev server origin inside desktop dev", () => {
+		enableDesktopRuntime();
 
 		expect(apiOrigin()).toBe("http://127.0.0.1:8080");
 		expect(apiBaseURL()).toBe("http://127.0.0.1:8080/api/v1");
@@ -51,9 +48,9 @@ describe("api-base", () => {
 		expect(apiURL("/api/v1/agent/events")).toBe("http://127.0.0.1:8080/api/v1/agent/events");
 	});
 
-	it("uses the packaged server origin inside Tauri production", () => {
+	it("uses the packaged server origin inside desktop production", () => {
 		vi.stubEnv("DEV", false);
-		enableTauriRuntime();
+		enableDesktopRuntime();
 
 		expect(apiOrigin()).toBe("http://127.0.0.1:48273");
 		expect(apiBaseURL()).toBe("http://127.0.0.1:48273/api/v1");
@@ -70,9 +67,9 @@ describe("api-base", () => {
 		expect(apiResourceURL("data:image/png;base64,YWJj")).toBe("data:image/png;base64,YWJj");
 	});
 
-	it("uses the configured local server port inside Tauri", () => {
+	it("uses the configured local server port inside desktop runtime", () => {
 		vi.stubEnv("VITE_MEDIAGO_SERVER_PORT", "49152");
-		enableTauriRuntime();
+		enableDesktopRuntime();
 
 		expect(apiOrigin()).toBe("http://127.0.0.1:49152");
 		expect(apiBaseURL()).toBe("http://127.0.0.1:49152/api/v1");

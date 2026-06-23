@@ -1,35 +1,36 @@
 import type React from "react";
 import { useCallback } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isDesktopRuntime } from "@/shared/desktop/runtime";
+import { startDesktopWindowDrag } from "@/shared/desktop/window-drag";
 
-export const useTauriWindowDrag = () =>
+export const useDesktopWindowDrag = () =>
 	useCallback((event: React.PointerEvent<HTMLElement>) => {
-		if (!canStartTauriWindowDrag(event)) return;
-		void getCurrentWindow().startDragging();
+		if (!canStartDesktopWindowDrag(event)) return;
+		void startDesktopWindowDrag();
 	}, []);
 
-export const useTauriWindowTopRegionDrag = (
-	heightVariable = "--tauri-drag-region-height",
+export const useDesktopWindowTopRegionDrag = (
+	heightVariable = "--desktop-drag-region-height",
 	fallbackHeight = 44,
 ) =>
 	useCallback(
 		(event: React.PointerEvent<HTMLElement>) => {
-			if (!canStartTauriWindowDrag(event)) return;
+			if (!canStartDesktopWindowDrag(event)) return;
 			const bounds = event.currentTarget.getBoundingClientRect();
 			const dragHeight = readCssLengthPx(heightVariable, fallbackHeight);
 			if (event.clientY - bounds.top > dragHeight) return;
-			void getCurrentWindow().startDragging();
+			void startDesktopWindowDrag();
 		},
 		[fallbackHeight, heightVariable],
 	);
 
-const canStartTauriWindowDrag = (event: React.PointerEvent<HTMLElement>) => {
-	if (event.button !== 0 || !("__TAURI_INTERNALS__" in window)) return false;
-	return !isTauriNoDragTarget(event.target);
+const canStartDesktopWindowDrag = (event: React.PointerEvent<HTMLElement>) => {
+	if (event.button !== 0 || !isDesktopRuntime()) return false;
+	return !isDesktopNoDragTarget(event.target);
 };
 
-const tauriNoDragSelector = [
-	"[data-tauri-no-drag]",
+const desktopNoDragSelector = [
+	"[data-desktop-no-drag]",
 	"button",
 	"a[href]",
 	"input",
@@ -41,8 +42,8 @@ const tauriNoDragSelector = [
 	"[contenteditable='true']",
 ].join(",");
 
-export const isTauriNoDragTarget = (target: EventTarget | null) =>
-	target instanceof Element && Boolean(target.closest(tauriNoDragSelector));
+export const isDesktopNoDragTarget = (target: EventTarget | null) =>
+	target instanceof Element && Boolean(target.closest(desktopNoDragSelector));
 
 const readCssLengthPx = (variableName: string, fallback: number) => {
 	const value = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();

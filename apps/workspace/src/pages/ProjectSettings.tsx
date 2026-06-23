@@ -16,7 +16,7 @@ import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanel
 import { Button } from "@/shared/components/ui/button";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { useToast } from "@/hooks/useToast";
-import { isTauriRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
+import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
 import { settingsInsetRowClassName } from "@/lib/settings-layout";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { useProjectStore } from "@/domains/projects/stores";
@@ -195,7 +195,7 @@ const ProjectSettingsGeneralPanel: React.FC<{
 
 		{project ? (
 			<div className="space-y-3">
-				{isTauriRuntime() ? (
+				{isDesktopRuntime() ? (
 					<div className={cn(settingsInsetRowClassName, projectSettingsRowClassName)}>
 						<div className="min-w-0">
 							<p className="text-sm font-medium text-foreground">项目文件夹</p>

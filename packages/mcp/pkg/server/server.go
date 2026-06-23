@@ -3,10 +3,10 @@ package server
 import (
 	"log/slog"
 
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	externaltools "github.com/mediago-dev/mediago-drama/packages/mcp/internal/tools/external"
 	v2tools "github.com/mediago-dev/mediago-drama/packages/mcp/internal/tools/v2"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // NewDocumentServer creates the run-scoped document MCP server.

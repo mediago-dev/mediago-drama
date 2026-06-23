@@ -71,8 +71,8 @@ vi.mock("@/domains/workspace/api/workspace", () => ({
 		projectId ? `/workspace/state?projectId=${encodeURIComponent(projectId)}` : "/workspace/state",
 }));
 
-vi.mock("@/domains/workspace/lib/tauri-window-drag", () => ({
-	useTauriWindowDrag: () => vi.fn(),
+vi.mock("@/domains/workspace/lib/desktop-window-drag", () => ({
+	useDesktopWindowDrag: () => vi.fn(),
 }));
 
 vi.mock("@/domains/generation/components/generatedResultActions", () => ({

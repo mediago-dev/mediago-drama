@@ -5,31 +5,20 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const templateDir = path.dirname(fileURLToPath(import.meta.url));
-const tauriDevHost = process.env.TAURI_DEV_HOST;
-const isTauriWindows = process.env.TAURI_ENV_PLATFORM === "windows";
-const isTauriDebug = Boolean(process.env.TAURI_ENV_DEBUG);
+const isElectronBuild = process.env.VITE_ELECTRON_BUILD === "1";
 
 export default defineConfig({
+	base: isElectronBuild ? "./" : "/",
 	clearScreen: false,
-	envPrefix: ["VITE_", "TAURI_ENV_*"],
+	envPrefix: ["VITE_"],
 	plugins: [tailwindcss(), react()],
 	server: {
-		host: tauriDevHost || false,
-		hmr: tauriDevHost
-			? {
-					protocol: "ws",
-					host: tauriDevHost,
-					port: 1421,
-				}
-			: undefined,
+		host: false,
 		proxy: {
 			"/api": {
 				target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8080",
 				changeOrigin: true,
 			},
-		},
-		watch: {
-			ignored: ["**/src-tauri/**"],
 		},
 	},
 	resolve: {
@@ -43,8 +32,8 @@ export default defineConfig({
 		},
 	},
 	build: {
-		target: isTauriWindows ? "chrome105" : "safari13",
-		minify: isTauriDebug ? false : "oxc",
+		target: "chrome120",
+		minify: "oxc",
 		sourcemap: true,
 		rollupOptions: {
 			output: {

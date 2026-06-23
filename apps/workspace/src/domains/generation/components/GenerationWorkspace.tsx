@@ -1,5 +1,4 @@
 import { FileText } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -47,6 +46,7 @@ import { useGeneratedResultActions } from "@/domains/generation/components/gener
 import { resolveParamGroups } from "@/domains/generation/components/mediaGenerationHelpers";
 import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useToast } from "@/hooks/useToast";
+import { openExternalUrl } from "@/shared/desktop/actions";
 
 export {
 	generationAssetSelectionKey,
@@ -79,12 +79,7 @@ export interface GenerationWorkspaceProps {
 export const Generate: React.FC = () => <GenerationWorkspace />;
 
 const openDocumentationUrl = async (url: string) => {
-	try {
-		await openUrl(url);
-		return;
-	} catch {
-		window.open(url, "_blank", "noopener,noreferrer");
-	}
+	await openExternalUrl(url);
 };
 
 const voicePreviewPlaybackBlockedMessage = "浏览器拦截了自动播放，请再点一次播放。";

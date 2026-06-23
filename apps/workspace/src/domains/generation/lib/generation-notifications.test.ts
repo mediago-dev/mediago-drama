@@ -3,14 +3,6 @@ import type { MarkdownSectionContext } from "@/domains/documents/components/tipt
 import type { GenerationSuccessNotification } from "@/domains/generation/stores/generation-notifications";
 import { showGenerationSuccessSystemNotification } from "./generation-notifications";
 
-const tauriNotificationMocks = vi.hoisted(() => ({
-	isPermissionGranted: vi.fn(),
-	requestPermission: vi.fn(),
-	sendNotification: vi.fn(),
-}));
-
-vi.mock("@tauri-apps/plugin-notification", () => tauriNotificationMocks);
-
 const section: MarkdownSectionContext = {
 	blockId: "section_visual",
 	documentId: "doc-a",
@@ -43,35 +35,28 @@ const notification: GenerationSuccessNotification = {
 describe("generation system notifications", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
-		vi.mocked(tauriNotificationMocks.isPermissionGranted).mockReset();
-		vi.mocked(tauriNotificationMocks.requestPermission).mockReset();
-		tauriNotificationMocks.sendNotification.mockReset();
-		delete (window as typeof window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+		delete window.mediagoDesktop;
 	});
 
-	it("uses the Tauri notification plugin in desktop runtime", async () => {
-		Object.defineProperty(window, "__TAURI_INTERNALS__", {
-			configurable: true,
-			value: {},
-		});
-		tauriNotificationMocks.isPermissionGranted.mockResolvedValue(false);
-		tauriNotificationMocks.requestPermission.mockResolvedValue("granted");
+	it("uses the Electron desktop notification bridge in desktop runtime", async () => {
+		const showNotification = vi.fn().mockResolvedValue(true);
+		window.mediagoDesktop = {
+			isElectron: true,
+			showNotification,
+		} as unknown as typeof window.mediagoDesktop;
 
 		const result = await showGenerationSuccessSystemNotification(notification);
 
 		expect(result).toBe("shown");
-		expect(tauriNotificationMocks.sendNotification).toHaveBeenCalledWith({
+		expect(showNotification).toHaveBeenCalledWith({
 			title: "生成完成",
 			body: "第一集 · 画面 已生成图片。",
-			group: "generation-success",
-			autoCancel: true,
 		});
 	});
 
-	it("falls back outside Tauri runtime", async () => {
+	it("falls back outside desktop runtime", async () => {
 		const result = await showGenerationSuccessSystemNotification(notification);
 
 		expect(result).toBe("fallback");
-		expect(tauriNotificationMocks.sendNotification).not.toHaveBeenCalled();
 	});
 });

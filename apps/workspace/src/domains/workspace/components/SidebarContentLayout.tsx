@@ -1,9 +1,9 @@
 import type React from "react";
 import { useCallback } from "react";
 import {
-	useTauriWindowDrag,
-	useTauriWindowTopRegionDrag,
-} from "@/domains/workspace/lib/tauri-window-drag";
+	useDesktopWindowDrag,
+	useDesktopWindowTopRegionDrag,
+} from "@/domains/workspace/lib/desktop-window-drag";
 import { cn } from "@/shared/lib/utils";
 import { useUIPreferencesStore } from "@/shared/stores/ui-preferences";
 
@@ -25,7 +25,7 @@ interface SidebarContentLayoutProps {
 	onSidebarWidthChange?: (width: number) => void;
 	resizeLabel?: string;
 	resizeStep?: number;
-	showTauriDragRegion?: boolean;
+	showDesktopDragRegion?: boolean;
 	sidebar?: React.ReactNode;
 	sidebarClassName?: string;
 	sidebarHidden?: boolean;
@@ -44,7 +44,7 @@ export const SidebarContentLayout: React.FC<SidebarContentLayoutProps> = ({
 	onSidebarWidthChange,
 	resizeLabel = "调整侧边栏宽度",
 	resizeStep = workspaceSidebarWidth.resizeStep,
-	showTauriDragRegion = false,
+	showDesktopDragRegion = false,
 	sidebar,
 	sidebarClassName,
 	sidebarHidden = false,
@@ -52,7 +52,7 @@ export const SidebarContentLayout: React.FC<SidebarContentLayoutProps> = ({
 	style,
 }) => {
 	const resolvedSidebarWidth = resolveSidebarWidth(sidebarWidth);
-	const startSidebarWindowDrag = useTauriWindowTopRegionDrag();
+	const startSidebarWindowDrag = useDesktopWindowTopRegionDrag();
 	const layoutStyle = {
 		...style,
 		"--workspace-sidebar-width": sidebarHidden ? "0px" : resolvedSidebarWidth,
@@ -66,11 +66,11 @@ export const SidebarContentLayout: React.FC<SidebarContentLayoutProps> = ({
 			className={cn("flex h-full w-full overflow-hidden bg-background text-foreground", className)}
 			style={layoutStyle}
 		>
-			{showTauriDragRegion ? <TauriWindowDragRegion /> : null}
+			{showDesktopDragRegion ? <DesktopWindowDragRegion /> : null}
 			{sidebar ? (
 				<aside
 					className={cn(
-						"native-sidebar-panel tauri-sidebar-chrome-offset relative h-full shrink-0 overflow-hidden transition-[width,transform,opacity] duration-200 ease-out",
+						"native-sidebar-panel desktop-sidebar-chrome-offset relative h-full shrink-0 overflow-hidden transition-[width,transform,opacity] duration-200 ease-out",
 						sidebarHidden && "pointer-events-none -translate-x-full opacity-0",
 						sidebarClassName,
 					)}
@@ -104,13 +104,13 @@ export const SidebarContentLayout: React.FC<SidebarContentLayoutProps> = ({
 	);
 };
 
-const TauriWindowDragRegion: React.FC = () => {
-	const startWindowDrag = useTauriWindowDrag();
+const DesktopWindowDragRegion: React.FC = () => {
+	const startWindowDrag = useDesktopWindowDrag();
 
 	return (
 		<div
-			className="tauri-window-drag-region"
-			data-tauri-drag-region
+			className="desktop-window-drag-region"
+			data-desktop-drag-region
 			aria-hidden="true"
 			onPointerDown={startWindowDrag}
 		/>
@@ -211,7 +211,7 @@ const SidebarResizeHandle: React.FC<{
 			aria-valuemax={maxWidth}
 			aria-valuenow={width}
 			tabIndex={0}
-			data-tauri-no-drag
+			data-desktop-no-drag
 			onPointerDown={startResize}
 			onKeyDown={resizeWithKeyboard}
 			className="navigator-resize-handle absolute inset-y-0 right-0 z-40 w-3 cursor-col-resize touch-none outline-none"

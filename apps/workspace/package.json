@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:tauri": "vite --host 127.0.0.1 --port 31420 --strictPort",
+    "dev:electron:web": "vite --host 127.0.0.1 --port 31420 --strictPort",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "electron:compile": "tsc -p electron/tsconfig.json",
+    "electron:stage-app": "node scripts/stage-electron-app.ts",
+    "electron:dev": "concurrently -k \"pnpm dev:electron:web\" \"wait-on http://127.0.0.1:31420 && pnpm electron:compile && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:31420 electron electron/dist/main.js\"",
+    "electron:build": "cross-env VITE_ELECTRON_BUILD=1 pnpm build && pnpm electron:compile && pnpm electron:stage-app && electron-builder --projectDir electron/app",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt --check .",
@@ -36,10 +37,6 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.2.2",
-    "@tauri-apps/api": "^2.11.0",
-    "@tauri-apps/plugin-dialog": "^2.7.1",
-    "@tauri-apps/plugin-notification": "^2.3.3",
-    "@tauri-apps/plugin-opener": "^2.5.4",
     "@tiptap/core": "^3.23.4",
     "@tiptap/extension-heading": "^3.23.4",
     "@tiptap/extension-image": "^3.23.4",
@@ -79,13 +76,16 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.2.2",
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
     "jsdom": "^29.1.1",
     "lint-staged": "^16.2.7",
     "oxfmt": "^0.41.0",
@@ -93,7 +93,8 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.9.3",
     "vite": "^8.0.1",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.7",
+    "wait-on": "^9.0.10"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,mjs,cjs}": [

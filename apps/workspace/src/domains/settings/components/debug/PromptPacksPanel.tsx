@@ -30,8 +30,9 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
-import { useTauriWindowDrag } from "@/domains/workspace/lib/tauri-window-drag";
+import { useDesktopWindowDrag } from "@/domains/workspace/lib/desktop-window-drag";
 import { useToast } from "@/hooks/useToast";
+import { pickDesktopFile } from "@/shared/desktop/actions";
 import { cn } from "@/shared/lib/utils";
 import { PromptPackActionsSlotProvider } from "./PromptPackActionsSlot";
 import { PromptLibraryEditorPanel } from "./PromptLibraryEditorPanel";
@@ -62,7 +63,7 @@ export const PromptPacksPanel: React.FC = () => {
 	const [isInstalling, setIsInstalling] = useState(false);
 	const [manageOpen, setManageOpen] = useState(false);
 	const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
-	const startWindowDrag = useTauriWindowDrag();
+	const startWindowDrag = useDesktopWindowDrag();
 
 	const refreshPromptData = async () => {
 		await Promise.all([
@@ -78,10 +79,7 @@ export const PromptPacksPanel: React.FC = () => {
 
 	const choosePackFile = async () => {
 		try {
-			const { open } = await import("@tauri-apps/plugin-dialog");
-			const selected = await open({
-				multiple: false,
-				directory: false,
+			const selected = await pickDesktopFile({
 				filters: [{ name: "Prompt Pack", extensions: ["mgpack"] }],
 			});
 			if (typeof selected === "string") setInstallPath(selected);
@@ -150,11 +148,11 @@ export const PromptPacksPanel: React.FC = () => {
 		<section className="flex h-full min-h-0 flex-col overflow-hidden bg-ide-editor text-ide-editor-foreground">
 			<header
 				className="shrink-0 border-b border-border bg-ide-editor px-5 py-4"
-				data-tauri-drag-region
+				data-desktop-drag-region
 				onPointerDown={startWindowDrag}
 			>
 				<div className="flex flex-wrap items-start justify-between gap-3">
-					<div className="min-w-0 flex-1" data-tauri-drag-region>
+					<div className="min-w-0 flex-1" data-desktop-drag-region>
 						<div className="flex items-center gap-2">
 							<PackageOpen className="size-4 text-muted-foreground" />
 							<h2 className="truncate text-sm font-semibold text-foreground">提示词包</h2>
@@ -163,7 +161,7 @@ export const PromptPacksPanel: React.FC = () => {
 							安装并管理全局共享的技能和提示词预设。
 						</p>
 					</div>
-					<div className="flex shrink-0 items-center gap-2" data-tauri-no-drag>
+					<div className="flex shrink-0 items-center gap-2" data-desktop-no-drag>
 						<Popover open={manageOpen} onOpenChange={setManageOpen}>
 							<PopoverTrigger asChild>
 								<Button type="button" variant="outline">

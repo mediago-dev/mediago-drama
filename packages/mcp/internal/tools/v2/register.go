@@ -3,8 +3,8 @@ package v2
 import (
 	"context"
 
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Options controls run-scoped document tool availability.

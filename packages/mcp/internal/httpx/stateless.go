@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // NewStatelessHandler wraps the shared stateless streamable HTTP handler.

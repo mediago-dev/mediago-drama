@@ -7,7 +7,7 @@
 **本计划基于 main @ 750332f4（工作区干净）。** 今天早些时候的会话已在同一 commit 上完成过完整分析（产出见 `~/.claude/plans/splendid-orbiting-ladybug.md`，含实际生产构建的 bundle 基线）；本会话对其中全部关键论断做了抽样核实（store.go:454 O(N²) 读取、store.go:211 逐条事件写、db.go 无 WAL、prompt_builder.go:44 与 app.go:68/80 每请求重建 StateService、src/router/routes.tsx 零懒加载、4 个零引用死文件），全部成立，故直接采纳并修订该计划。Zustand 部分已按要求联网核对 v5 最佳实践（pmndrs 官方 discussion #2867 等）。
 
 **技术栈确认**：
-- 前端 [apps/workspace](apps/workspace)：React 19 + Vite 8 (rolldown) + Zustand 5 + SWR 2 + Tailwind 4 + tiptap 3 + Tauri 2 桌面壳（~55,300 行 TS，517 文件）
+- 前端 [apps/workspace](apps/workspace)：React 19 + Vite 8 (rolldown) + Zustand 5 + SWR 2 + Tailwind 4 + tiptap 3 + Electron 桌面壳（~55,300 行 TS，517 文件）
 - 后端 [services/server](services/server)：Go 1.25 + Gin + GORM + SQLite（glebarez 纯 Go 驱动）+ JSONL 文件事件存储（~53,600 行）
 - 另有 packages/core（生成核心 Go 库）、packages/mcp、apps/app（Ionic 移动端壳，疑似残留）、packages/tools（空占位）
 - 后端分层 handlers → service → repository → domain，整体清晰；持久化 = SQLite（任务/会话索引/资产元数据）+ 文件系统（agent 事件 JSONL、markdown 文档）
@@ -43,7 +43,7 @@
 ### 1.1 SQLite 启用 WAL（B4，先做）
 - **证据**：`internal/repository/db.go` OpenGormSQLite 只设 busy_timeout/foreign_keys，无 journal_mode 设置（已 grep 确认）；本服务读写并发高（SSE 回放读 + 事件索引写 + 生成 worker 写并发）
 - **改动**：open 后追加 `PRAGMA journal_mode=WAL` + `PRAGMA synchronous=NORMAL`
-- **收益**：写不再阻塞读，busy 等待显著减少。**风险**：低（本地单机库标准配置；Tauri 打包目录可写 -wal/-shm）
+- **收益**：写不再阻塞读，busy 等待显著减少。**风险**：低（本地单机库标准配置；桌面打包数据目录可写 -wal/-shm）
 - **验证**：`cd services/server && go test ./...`
 
 ### 1.2 AutoMigrate Once 化（B3）
@@ -101,7 +101,7 @@
 ### 2.3 路由懒加载 + chunk 拆分（F2）
 - **证据**（实际构建产物基线）：vendor 1802 kB (gzip 532 kB) + index 607 kB (gzip 167 kB) + ui 157 kB 全部首屏加载；`src/router/routes.tsx` 全静态 import、0 处 lazy（已确认）；tiptap/xterm/vidstack/a2ui/photo-view 全进 vendor
 - **改动**：routes.tsx 全部页面 React.lazy + Suspense（Settings、Studio 六子页、ProjectOverview、EpisodeTimeline、Debug）；vite.config.ts manualChunks 拆 tiptap / media(vidstack+photo-view) / xterm / a2ui；MarkdownHybridEditor/WritingEditor 组件级动态 import
-- **收益**：首屏 JS 预计降到 gzip ~250 KB（-65%），Tauri 启动解析时间同步下降。**风险**：低，lazy 边界放路由层避免常驻组件闪烁
+- **收益**：首屏 JS 预计降到 gzip ~250 KB（-65%），Electron 启动解析时间同步下降。**风险**：低，lazy 边界放路由层避免常驻组件闪烁
 - **验证**：pnpm build 产物对比基线
 
 ### 2.4 删除 agent store 的 messages 镜像（F4 / Zustand 问题①「派生状态入库」）
@@ -188,7 +188,7 @@
 ### 4.1 后端
 
 - **R1 媒体路径包含校验**（media.go:73 已核实）：HandleGetMediaAssetContent 直接 `http.ServeFile(..., asset.FilePath)`，FilePath 来自 DB 无包含性校验；service/media/store.go:439 studioDir 同类。本地单机应用实际风险低，但属防御加固：校验 `filepath.Abs` 后必须落在 workspace/media 根目录内。验证：路径穿越用例测试
-- **R2 后台 worker 优雅关停**（generation_worker.go:23-32 已核实）：`for { <-timer.C; poll(context.Background()) }` 无限循环无退出通道。单独看影响小（进程退出即终止），但**1.5 引入缓冲写后必须有 flush-on-exit**，两者应同一 PR 设计：app 级 ctx + shutdown hook（Tauri 退出时 flush 事件缓冲、停 worker）。验证：退出时无丢事件手测
+- **R2 后台 worker 优雅关停**（generation_worker.go:23-32 已核实）：`for { <-timer.C; poll(context.Background()) }` 无限循环无退出通道。单独看影响小（进程退出即终止），但**1.5 引入缓冲写后必须有 flush-on-exit**，两者应同一 PR 设计：app 级 ctx + shutdown hook（桌面端退出时 flush 事件缓冲、停 worker）。验证：退出时无丢事件手测
 - **R3 内部事件发布器**（http_publisher.go:73,79 已核实）：`http.NewRequest` 不带 context、重试用 `time.Sleep` 阻塞调用方。改 NewRequestWithContext + select{time.After, ctx.Done}。低风险小改
 - **R4 重复 util**：mustRandomID 在 app/api.go:131、app/mcp/helpers.go:13、service/agent/agent_event_projection_tool.go:175 三处重复定义（grep 已核实）——抽到公共包，顺带确认熵源为 crypto/rand
 - **R5 测试盲区**：service/workspaceevent/broker.go（事件 pub/sub 核心）无测试文件；事件满时 default 分支静默丢弃（broker.go:62-66，有日志可接受）——补订阅/退订/慢消费者用例

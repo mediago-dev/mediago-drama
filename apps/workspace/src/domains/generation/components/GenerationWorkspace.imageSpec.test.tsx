@@ -16,10 +16,6 @@ const toastMocks = vi.hoisted(() => ({
 	warning: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/plugin-opener", () => ({
-	openUrl: vi.fn(),
-}));
-
 vi.mock("@/domains/generation/api/generation", () => ({
 	generationModelsKey: "/generation/models",
 	previewGenerationVoice: generationApiMocks.previewGenerationVoice,

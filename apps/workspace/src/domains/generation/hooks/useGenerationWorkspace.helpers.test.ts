@@ -30,7 +30,7 @@ const mediaAsset = (overrides: Partial<MediaAsset>): MediaAsset => ({
 
 describe("generation workspace helpers", () => {
 	afterEach(() => {
-		delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+		delete window.mediagoDesktop;
 		vi.unstubAllEnvs();
 	});
 
@@ -56,12 +56,9 @@ describe("generation workspace helpers", () => {
 		expect(generationAssetSelectionKey(asset)).toBe("video:https://example.test/scene.mp4");
 	});
 
-	it("resolves local API asset URLs for packaged Tauri previews", () => {
+	it("resolves local API asset URLs for packaged desktop previews", () => {
 		vi.stubEnv("DEV", false);
-		Object.defineProperty(window, "__TAURI_INTERNALS__", {
-			value: {},
-			configurable: true,
-		});
+		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
 
 		const asset = {
 			kind: "image" as const,

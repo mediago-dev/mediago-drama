@@ -7,7 +7,7 @@
 - React 19
 - TypeScript 5
 - Vite 8
-- Tauri 2
+- Electron
 - shadcn/ui + Radix UI
 - Tailwind CSS v4
 - SWR
@@ -37,7 +37,12 @@ src/
 ├── types/               # 类型定义
 ├── App.tsx
 └── main.tsx
-src-tauri/                 # Tauri 2 桌面端壳、权限、图标与打包配置
+electron/
+├── src/                  # Electron 主进程、preload、资源路径与 sidecar 生命周期源码
+├── dist/                 # Electron TypeScript 编译输出（生成）
+├── app/                  # electron-builder two-package app 目录（生成）
+└── resources/            # sidecar、agent、media tools 打包资源（生成）
+build/icons/               # Electron 打包图标
 ```
 
 ## 快速开始
@@ -49,30 +54,29 @@ pnpm dev
 
 默认开发地址：`http://localhost:5173`
 
-桌面端开发需要本机安装 Rust 和平台构建工具：
+桌面端开发会固定使用 `http://127.0.0.1:31420` 作为 Vite dev server，避免桌面壳连接到 Vite 自动切换后的端口：
 
 ```bash
-pnpm tauri:dev
+pnpm electron:dev
 ```
-
-Tauri 开发模式会固定使用 `http://127.0.0.1:31420` 作为 Vite dev server，避免桌面壳连接到 Vite 自动切换后的端口。Windows 上 `1420` 可能落入系统保留端口段，导致 Node 监听时报 `EACCES`。
 
 ## 常用命令
 
-| 命令               | 说明                        |
-| ------------------ | --------------------------- |
-| `pnpm dev`         | 启动开发服务器              |
-| `pnpm dev:tauri`   | 启动 Tauri 专用 Vite 服务器 |
-| `pnpm build`       | 构建生产产物                |
-| `pnpm preview`     | 预览构建结果                |
-| `pnpm tauri:dev`   | 启动桌面端开发模式          |
-| `pnpm tauri:build` | 构建桌面端安装包            |
-| `pnpm lint`        | 执行 oxlint                 |
-| `pnpm lint:fix`    | 自动修复 lint 问题          |
-| `pnpm format`      | 检查格式                    |
-| `pnpm format:fix`  | 自动格式化                  |
-| `pnpm check`       | 执行 lint + format          |
-| `pnpm check:fix`   | 执行 lint:fix + format:fix  |
+| 命令                      | 说明                           |
+| ------------------------- | ------------------------------ |
+| `pnpm dev`                | 启动开发服务器                 |
+| `pnpm dev:electron:web`   | 启动 Electron 专用 Vite 服务器 |
+| `pnpm build`              | 构建生产产物                   |
+| `pnpm preview`            | 预览构建结果                   |
+| `pnpm electron:dev`       | 启动桌面端开发模式             |
+| `pnpm electron:stage-app` | 生成 electron-builder app 目录 |
+| `pnpm electron:build`     | 构建桌面端安装包               |
+| `pnpm lint`               | 执行 oxlint                    |
+| `pnpm lint:fix`           | 自动修复 lint 问题             |
+| `pnpm format`             | 检查格式                       |
+| `pnpm format:fix`         | 自动格式化                     |
+| `pnpm check`              | 执行 lint + format             |
+| `pnpm check:fix`          | 执行 lint:fix + format:fix     |
 
 ## 请求层约定
 

@@ -16,6 +16,8 @@ import { uploadProjectAsset } from "@/domains/workspace/api/project-assets";
 import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspace/api/workspace";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { useToast } from "@/hooks/useToast";
+import { isDesktopRuntime } from "@/shared/desktop/runtime";
+import { pickDesktopDirectory } from "@/shared/desktop/actions";
 
 interface UseGeneratedResultActionsOptions {
 	mediaAssetProjectId?: string | null;
@@ -190,13 +192,13 @@ export const saveGeneratedAssetToUserDirectory = async (
 };
 
 export type GeneratedAssetSaveTarget =
-	| { kind: "tauri"; directory: string }
+	| { kind: "desktop"; directory: string }
 	| { kind: "browser"; directory: BrowserDirectoryHandle };
 
 export const pickGeneratedAssetSaveTarget = async (): Promise<GeneratedAssetSaveTarget | null> => {
-	if (isTauriRuntime()) {
+	if (isDesktopRuntime()) {
 		const directory = await pickSaveDirectory();
-		return directory ? { kind: "tauri", directory } : null;
+		return directory ? { kind: "desktop", directory } : null;
 	}
 
 	const directory = await pickBrowserSaveDirectory();
@@ -209,15 +211,20 @@ export const saveGeneratedAssetToTarget = async (
 	fallbackFilename: string,
 	target: GeneratedAssetSaveTarget,
 ) => {
-	if (target.kind === "tauri") {
-		return saveGeneratedAssetWithTauriDirectory(asset, source, fallbackFilename, target.directory);
+	if (target.kind === "desktop") {
+		return saveGeneratedAssetWithDesktopDirectory(
+			asset,
+			source,
+			fallbackFilename,
+			target.directory,
+		);
 	}
 
 	const file = await generationAssetFile(asset, source, fallbackFilename);
 	return saveGeneratedFileToBrowserDirectory(file, target.directory);
 };
 
-const saveGeneratedAssetWithTauriDirectory = async (
+const saveGeneratedAssetWithDesktopDirectory = async (
 	asset: GenerationAsset,
 	source: string,
 	fallbackFilename: string,
@@ -249,13 +256,7 @@ const saveGeneratedAssetWithTauriDirectory = async (
 };
 
 const pickSaveDirectory = async () => {
-	const { open } = await import("@tauri-apps/plugin-dialog");
-	const selected = await open({
-		directory: true,
-		multiple: false,
-		title: "选择保存文件夹",
-	});
-	const directory = Array.isArray(selected) ? (selected[0] ?? null) : selected;
+	const directory = await pickDesktopDirectory("选择保存文件夹");
 	return typeof directory === "string" && directory.trim() ? directory : null;
 };
 
@@ -311,8 +312,6 @@ const browserSafeFilename = (filename: string) => {
 		.trim();
 	return name || "generated-file";
 };
-
-const isTauriRuntime = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 const isAbortError = (error: unknown) =>
 	error instanceof DOMException

@@ -1,5 +1,5 @@
 import type React from "react";
-import { useTauriWindowDrag } from "@/domains/workspace/lib/tauri-window-drag";
+import { useDesktopWindowDrag } from "@/domains/workspace/lib/desktop-window-drag";
 import { cn } from "@/shared/lib/utils";
 
 interface SettingsPanelLayoutProps {
@@ -33,7 +33,7 @@ const SettingsPanelHeader: React.FC<{
 	icon?: React.ReactNode;
 	title: React.ReactNode;
 }> = ({ actions, description, icon, title }) => {
-	const startWindowDrag = useTauriWindowDrag();
+	const startWindowDrag = useDesktopWindowDrag();
 
 	return (
 		<header
@@ -41,7 +41,7 @@ const SettingsPanelHeader: React.FC<{
 			onPointerDown={startWindowDrag}
 		>
 			<div className="flex flex-wrap items-start justify-between gap-3">
-				<div className="min-w-0 flex-1" data-tauri-drag-region>
+				<div className="min-w-0 flex-1" data-desktop-drag-region>
 					<div className="flex items-center gap-2">
 						{icon ? <span className="shrink-0 text-muted-foreground">{icon}</span> : null}
 						<h2 className="truncate text-sm font-semibold text-foreground">{title}</h2>
@@ -49,7 +49,7 @@ const SettingsPanelHeader: React.FC<{
 					{description ? <p className="mt-1 text-xs text-muted-foreground">{description}</p> : null}
 				</div>
 				{actions ? (
-					<div className="flex shrink-0 flex-wrap items-center gap-2" data-tauri-no-drag>
+					<div className="flex shrink-0 flex-wrap items-center gap-2" data-desktop-no-drag>
 						{actions}
 					</div>
 				) : null}

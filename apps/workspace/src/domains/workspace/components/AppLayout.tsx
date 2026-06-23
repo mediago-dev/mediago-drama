@@ -4,7 +4,7 @@ import {
 	useWorkspaceSidebarWidth,
 	workspaceSidebarWidth,
 } from "@/domains/workspace/components/SidebarContentLayout";
-import { useTauriWindowDrag as useTauriWindowDragHandler } from "@/domains/workspace/lib/tauri-window-drag";
+import { useDesktopWindowDrag as useDesktopWindowDragHandler } from "@/domains/workspace/lib/desktop-window-drag";
 
 interface AppLayoutProps {
 	children: React.ReactNode;
@@ -32,7 +32,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
 	return (
 		<SidebarContentLayout
-			className="tauri-window-frame h-screen w-screen"
+			className="desktop-window-frame h-screen w-screen"
 			contentInset={!sidebarHidden}
 			maxSidebarWidth={workspaceSidebarWidth.max}
 			minSidebarWidth={workspaceSidebarWidth.min}
@@ -61,18 +61,18 @@ interface AppHeaderProps {
  * The action slot is intentionally outside the drag handle so buttons remain clickable.
  */
 export const AppHeader: React.FC<AppHeaderProps> = ({ actions, title }) => {
-	const startWindowDrag = useTauriWindowDragHandler();
+	const startWindowDrag = useDesktopWindowDragHandler();
 
 	return (
 		<header
 			className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-ide-toolbar/95 px-3 text-ide-toolbar-foreground"
 			onPointerDown={startWindowDrag}
 		>
-			<div className="flex h-full min-w-0 flex-1 items-center" data-tauri-drag-region>
+			<div className="flex h-full min-w-0 flex-1 items-center" data-desktop-drag-region>
 				<h1 className="min-w-0 truncate text-sm font-medium text-foreground">{title}</h1>
 			</div>
 			{actions ? (
-				<div className="flex shrink-0 items-center gap-2" data-tauri-no-drag>
+				<div className="flex shrink-0 items-center gap-2" data-desktop-no-drag>
 					{actions}
 				</div>
 			) : null}
@@ -80,4 +80,4 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ actions, title }) => {
 	);
 };
 
-export { useTauriWindowDrag } from "@/domains/workspace/lib/tauri-window-drag";
+export { useDesktopWindowDrag } from "@/domains/workspace/lib/desktop-window-drag";

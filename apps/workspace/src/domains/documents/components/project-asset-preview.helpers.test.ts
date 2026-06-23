@@ -1,27 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchTextAsset, projectAssetContentURL } from "./project-asset-preview.helpers";
 
-const clearTauriRuntime = () => {
-	delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+const clearDesktopRuntime = () => {
+	delete window.mediagoDesktop;
 };
 
-const enableTauriRuntime = () => {
-	Object.defineProperty(window, "__TAURI_INTERNALS__", {
-		value: {},
-		configurable: true,
-	});
+const enableDesktopRuntime = () => {
+	window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
 };
 
 describe("project asset preview helpers", () => {
 	afterEach(() => {
-		clearTauriRuntime();
+		clearDesktopRuntime();
 		vi.unstubAllEnvs();
 		vi.unstubAllGlobals();
 	});
 
 	it("resolves missing project asset URLs through the packaged server origin", () => {
 		vi.stubEnv("DEV", false);
-		enableTauriRuntime();
+		enableDesktopRuntime();
 
 		expect(
 			projectAssetContentURL({
@@ -34,7 +31,7 @@ describe("project asset preview helpers", () => {
 
 	it("normalizes project asset API URLs before text fetches in packaged builds", () => {
 		vi.stubEnv("DEV", false);
-		enableTauriRuntime();
+		enableDesktopRuntime();
 
 		expect(
 			projectAssetContentURL({

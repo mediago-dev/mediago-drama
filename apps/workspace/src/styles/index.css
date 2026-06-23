@@ -1134,7 +1134,7 @@
 	}
 }
 
-.tauri-window-drag-region {
+.desktop-window-drag-region {
 	display: none;
 	touch-action: none;
 	user-select: none;
@@ -1143,25 +1143,44 @@
 	app-region: drag;
 }
 
-.is-tauri .tauri-window-frame {
+.is-desktop .desktop-window-frame {
 	padding-top: 0;
 }
 
-.is-tauri-macos .tauri-sidebar-chrome-offset {
-	padding-top: var(--tauri-titlebar-offset);
+.is-electron [data-desktop-drag-region] {
+	-webkit-app-region: drag;
+	app-region: drag;
 }
 
-.is-tauri-macos .tauri-window-drag-region {
+.is-electron [data-desktop-no-drag],
+.is-electron button,
+.is-electron a[href],
+.is-electron input,
+.is-electron select,
+.is-electron textarea,
+.is-electron summary,
+.is-electron [role="button"],
+.is-electron [role="link"],
+.is-electron [contenteditable="true"] {
+	-webkit-app-region: no-drag;
+	app-region: no-drag;
+}
+
+.is-desktop-macos .desktop-sidebar-chrome-offset {
+	padding-top: var(--desktop-titlebar-offset);
+}
+
+.is-desktop-macos .desktop-window-drag-region {
 	display: block;
 	position: fixed;
 	top: 0;
 	left: 0;
 	z-index: 50;
 	width: var(--workspace-sidebar-width, var(--workspace-sidebar-default-width));
-	height: var(--tauri-drag-region-height);
+	height: var(--desktop-drag-region-height);
 	cursor: default;
 }
 
-.is-tauri-macos .episode-workbench-header {
-	padding-left: calc(var(--tauri-traffic-light-safe-area) + var(--space-sm));
+.is-desktop-macos .episode-workbench-header {
+	padding-left: calc(var(--desktop-traffic-light-safe-area) + var(--space-sm));
 }

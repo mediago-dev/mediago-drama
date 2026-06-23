@@ -1,30 +1,36 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, HashRouter } from "react-router-dom";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { SWRProvider } from "./providers/SWRProvider";
 import { ThemeProvider } from "./providers/ThemeProvider";
 import { DialogCallHost } from "@/shared/components/callable/DialogCallHost";
+import { desktopRuntime } from "@/shared/desktop/runtime";
 import "@/styles/index.css";
 
-const isTauriRuntime = "__TAURI_INTERNALS__" in window;
+const runtime = desktopRuntime();
+const isDesktop = runtime !== "browser";
+const AppRouter = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
 const platformSignal = `${window.navigator.platform} ${window.navigator.userAgent}`;
-const isMacLikePlatform = /\b(Mac|iPhone|iPad|iPod)\b/i.test(platformSignal);
+const isMacLikePlatform =
+	window.mediagoDesktop?.platform === "darwin" ||
+	/\b(Mac|iPhone|iPad|iPod)\b/i.test(platformSignal);
 
-document.documentElement.classList.toggle("is-tauri", isTauriRuntime);
-document.documentElement.classList.toggle("is-tauri-macos", isTauriRuntime && isMacLikePlatform);
+document.documentElement.classList.toggle("is-desktop", isDesktop);
+document.documentElement.classList.toggle("is-electron", runtime === "electron");
+document.documentElement.classList.toggle("is-desktop-macos", isDesktop && isMacLikePlatform);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 	<React.StrictMode>
 		<ThemeProvider>
 			<SWRProvider>
-				<BrowserRouter>
+				<AppRouter>
 					<ErrorBoundary>
 						<App />
 						<DialogCallHost />
 					</ErrorBoundary>
-				</BrowserRouter>
+				</AppRouter>
 			</SWRProvider>
 		</ThemeProvider>
 	</React.StrictMode>,

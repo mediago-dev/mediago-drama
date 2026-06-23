@@ -38,10 +38,12 @@ func isAllowedLocalOrigin(origin string) bool {
 		return false
 	}
 	switch parsed.Scheme {
-	case "http", "https", "tauri":
+	case "http", "https", "app":
+	case "file":
+		return true
 	default:
 		return false
 	}
 	host := parsed.Hostname()
-	return host == "tauri.localhost" || host == "localhost" || host == "127.0.0.1" || host == "::1"
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }

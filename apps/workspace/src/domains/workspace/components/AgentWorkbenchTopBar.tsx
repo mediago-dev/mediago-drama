@@ -2,7 +2,7 @@ import { Bot, FileText } from "lucide-react";
 import type React from "react";
 import { useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useTauriWindowDrag } from "@/domains/workspace/lib/tauri-window-drag";
+import { useDesktopWindowDrag } from "@/domains/workspace/lib/desktop-window-drag";
 import {
 	agentProjectPath,
 	agentProjectRouteState,
@@ -33,7 +33,7 @@ interface AgentWorkbenchTopBarProps {
 
 export const AgentWorkbenchTopBar: React.FC<AgentWorkbenchTopBarProps> = ({ mode, showTabs }) => {
 	const storedWorkMode = useWorkModeStore((state) => state.mode);
-	const startWindowDrag = useTauriWindowDrag();
+	const startWindowDrag = useDesktopWindowDrag();
 	const workMode = mode ?? storedWorkMode;
 	const title = workMode === "studio" ? "工具箱" : "智能体工作台";
 
@@ -44,7 +44,7 @@ export const AgentWorkbenchTopBar: React.FC<AgentWorkbenchTopBarProps> = ({ mode
 		>
 			<div
 				className="flex h-full min-w-0 flex-1 items-center text-sm font-medium text-foreground"
-				data-tauri-drag-region
+				data-desktop-drag-region
 			>
 				{title}
 			</div>
@@ -104,7 +104,7 @@ export const AgentWorkbenchHeaderActions: React.FC<AgentWorkbenchTopBarProps> = 
 	return (
 		<div
 			className="flex h-8 items-center rounded-sm border border-border bg-ide-toolbar p-0.5"
-			data-tauri-no-drag
+			data-desktop-no-drag
 			aria-label="工作台内容"
 			role="group"
 		>

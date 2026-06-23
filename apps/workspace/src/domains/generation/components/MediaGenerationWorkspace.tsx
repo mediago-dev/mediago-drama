@@ -1,5 +1,4 @@
 import { FileText } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { mutate as mutateSWR } from "swr";
@@ -78,6 +77,7 @@ import {
 import { useToast } from "@/hooks/useToast";
 import { Button } from "@/shared/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/components/ui/select";
+import { openExternalUrl } from "@/shared/desktop/actions";
 import { cn } from "@/shared/lib/utils";
 
 type GenerationExtraValue<T> = T | ((prompt: string) => T);
@@ -86,12 +86,7 @@ export type MediaGenerationWorkspaceViewMode = "edit" | "history";
 export type { PromptEditorProps } from "@/domains/generation/components/PromptEditor";
 
 const openDocumentationUrl = async (url: string) => {
-	try {
-		await openUrl(url);
-		return;
-	} catch {
-		window.open(url, "_blank", "noopener,noreferrer");
-	}
+	await openExternalUrl(url);
 };
 
 const voicePreviewPlaybackBlockedMessage = "浏览器拦截了自动播放，请再点一次播放。";

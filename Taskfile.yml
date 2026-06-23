@@ -46,15 +46,33 @@ tasks:
       - task: workspace:build
       - task: sync:workspace-dist
       - task: build:server
-      - task: stage-tauri
+      - task: stage-electron
         vars:
           AGENT: "{{.AGENT}}"
-      - pnpm -C apps/workspace tauri:build
+      - pnpm -C apps/workspace electron:build
 
   build:desktop:
-    desc: Build only the Tauri desktop app
+    desc: Build the Electron desktop app
     cmds:
-      - pnpm -C apps/workspace tauri:build
+      - task: build:electron
+
+  build:electron:
+    desc: Build the Electron desktop app
+    env:
+      MEDIAGO_AGENT_ID: "{{.AGENT}}"
+      MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
+      VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
+    cmds:
+      - task: prepare-agent
+        vars:
+          AGENT: "{{.AGENT}}"
+      - task: prepare-media-tools
+      - task: workspace:build
+      - task: build:server
+      - task: stage-electron
+        vars:
+          AGENT: "{{.AGENT}}"
+      - pnpm -C apps/workspace electron:build
 
   prepare-agent:
     cmds:
@@ -93,11 +111,11 @@ tasks:
         pnpm -C apps/workspace dev
 
   dev:desktop:
-    desc: Run only the Tauri desktop app against an external dev server
+    desc: Run the Electron desktop app against an external dev server
     env:
       VITE_MEDIAGO_SERVER_PORT: "{{.DEV_SERVER_PORT}}"
     cmds:
-      - pnpm -C apps/workspace tauri:dev
+      - pnpm -C apps/workspace electron:dev
 
   dev:server:
     desc: Run only the built server binary for desktop development
@@ -141,9 +159,9 @@ tasks:
       - go build -tags workspace_dist -o "{{.DEV_SERVER_BIN}}" ./services/server/cmd/mediago-server
       - go build -o "{{.DEV_DOCUMENT_MCP_BIN}}" ./services/server/cmd/mediago-document-mcp
 
-  stage-tauri:
+  stage-electron:
     cmds:
-      - node apps/workspace/scripts/stage-tauri.ts {{.AGENT}}
+      - node apps/workspace/scripts/stage-electron.ts {{.AGENT}}
 
   go:check:
     cmds:

@@ -1,6 +1,6 @@
 import type { AgentActivityItem, AgentConversationState } from "./types";
 
-// Agent 聊天记录只存在内存里的 useAgentStore，刷新页面（Tauri webview 重载）会清空。
+// Agent 聊天记录只存在内存里的 useAgentStore，刷新页面（桌面 webview 重载）会清空。
 // 这里把当前项目的对话快照缓存到 localStorage，刷新后先从缓存即时恢复，
 // 后端 getAgentChatState 拉到权威数据后再覆盖。只保留“最近一个项目”的快照以控制体积。
 export interface AgentChatCacheSnapshot {

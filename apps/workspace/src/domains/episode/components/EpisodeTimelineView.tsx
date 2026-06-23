@@ -49,7 +49,7 @@ import {
 	generationAssetSelectionKey,
 	generationAssetSource,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
-import { useTauriWindowDrag } from "@/domains/workspace/lib/tauri-window-drag";
+import { useDesktopWindowDrag } from "@/domains/workspace/lib/desktop-window-drag";
 import {
 	agentProjectPath,
 	agentProjectRouteState,
@@ -88,7 +88,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const setVideoClipVideoUrl = useEpisodeStore((state) => state.setVideoClipVideoUrl);
 	const pause = useEpisodeStore((state) => state.pause);
 	const play = useEpisodeStore((state) => state.play);
-	const startWindowDrag = useTauriWindowDrag();
+	const startWindowDrag = useDesktopWindowDrag();
 	const [companionGenerationTarget, setCompanionGenerationTarget] =
 		useState<CompanionGenerationTarget | null>(null);
 	const [referenceSectionGeneration, setReferenceSectionGeneration] =
@@ -480,7 +480,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 				className="episode-workbench-header flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-ide-toolbar px-2 text-ide-toolbar-foreground"
 				onPointerDown={startWindowDrag}
 			>
-				<div className="flex min-w-0 flex-1 items-center gap-2" data-tauri-drag-region>
+				<div className="flex min-w-0 flex-1 items-center gap-2" data-desktop-drag-region>
 					<Button
 						type="button"
 						variant="outline"

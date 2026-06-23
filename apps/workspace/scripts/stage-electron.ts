@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { constants, accessSync, chmodSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +10,7 @@ const hostBinaryExt = process.platform === "win32" ? ".exe" : "";
 const serverBin = join(rootDir, "bin", `mediago-server${hostBinaryExt}`);
 const agentDist = join(rootDir, "packages", "vendor", "dist", agent);
 const toolsDist = join(rootDir, "packages", "vendor", "dist", "tools");
-const tauriDir = join(workspaceDir, "src-tauri");
+const electronResourcesDir = join(workspaceDir, "electron", "resources");
 
 function main(): void {
 	ensureExecutable(serverBin);
@@ -32,25 +31,19 @@ function main(): void {
 		`missing prepared dreamina: ${join(toolsDist, "dreamina", "tool.json")}`,
 	);
 
-	const triple = rustTargetTriple();
-	const binariesDir = join(tauriDir, "binaries");
-	const agentsDir = join(tauriDir, "resources", "agents");
-	const toolsDir = join(tauriDir, "resources", "tools");
-	const binaryExt = triple.includes("windows") ? ".exe" : "";
-	const stagedServer = join(binariesDir, `mediago-server-${triple}${binaryExt}`);
+	const binDir = join(electronResourcesDir, "bin");
+	const agentsDir = join(electronResourcesDir, "agents");
+	const toolsDir = join(electronResourcesDir, "tools");
+	const stagedServer = join(binDir, `mediago-server${hostBinaryExt}`);
 
-	mkdirSync(binariesDir, { recursive: true });
+	rmSync(electronResourcesDir, { recursive: true, force: true });
+	mkdirSync(binDir, { recursive: true });
 	mkdirSync(agentsDir, { recursive: true });
 	mkdirSync(toolsDir, { recursive: true });
+
 	cpSync(serverBin, stagedServer);
 	chmodSync(stagedServer, 0o755);
-
-	rmSync(agentsDir, { recursive: true, force: true });
-	mkdirSync(agentsDir, { recursive: true });
 	cpSync(agentDist, join(agentsDir, agent), { recursive: true });
-
-	rmSync(toolsDir, { recursive: true, force: true });
-	mkdirSync(toolsDir, { recursive: true });
 	cpSync(toolsDist, toolsDir, { recursive: true });
 }
 
@@ -63,30 +56,12 @@ function ensureExecutable(path: string): void {
 }
 
 function ensureFile(path: string, message: string): void {
-	if (!existsSync(path)) {
-		throw new Error(message);
-	}
-}
-
-function rustTargetTriple(): string {
-	const output = execFileSync("rustc", ["-Vv"], { encoding: "utf8" });
-	const triple =
-		output
-			.split("\n")
-			.find((line) => line.startsWith("host: "))
-			?.slice("host: ".length)
-			.trim() || "";
-
-	if (!triple) {
-		throw new Error("failed to detect Rust host target triple");
-	}
-	return triple;
+	if (!existsSync(path)) throw new Error(message);
 }
 
 try {
 	main();
 } catch (error) {
-	const message = error instanceof Error ? error.message : String(error);
-	console.error(message);
+	console.error(error instanceof Error ? error.message : String(error));
 	process.exit(1);
 }

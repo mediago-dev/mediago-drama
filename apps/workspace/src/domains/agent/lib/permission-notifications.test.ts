@@ -2,14 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { showAgentPermissionSystemNotification } from "@/domains/agent/lib/permission-notifications";
 import type { AgentRuntimeACPPermissionRequest } from "@/domains/agent/api/agent";
 
-const tauriNotificationMocks = vi.hoisted(() => ({
-	isPermissionGranted: vi.fn(),
-	requestPermission: vi.fn(),
-	sendNotification: vi.fn(),
-}));
-
-vi.mock("@tauri-apps/plugin-notification", () => tauriNotificationMocks);
-
 const request: AgentRuntimeACPPermissionRequest = {
 	requestId: "permission-1",
 	options: [{ optionId: "approved", kind: "allow_once", name: "允许一次" }],
@@ -19,28 +11,22 @@ const request: AgentRuntimeACPPermissionRequest = {
 describe("permission notifications", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
-		vi.mocked(tauriNotificationMocks.isPermissionGranted).mockReset();
-		vi.mocked(tauriNotificationMocks.requestPermission).mockReset();
-		tauriNotificationMocks.sendNotification.mockReset();
-		delete (window as typeof window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+		delete window.mediagoDesktop;
 	});
 
-	it("uses the Tauri notification plugin in desktop runtime", async () => {
-		Object.defineProperty(window, "__TAURI_INTERNALS__", {
-			configurable: true,
-			value: {},
-		});
-		tauriNotificationMocks.isPermissionGranted.mockResolvedValue(false);
-		tauriNotificationMocks.requestPermission.mockResolvedValue("granted");
+	it("uses the Electron desktop notification bridge in desktop runtime", async () => {
+		const showNotification = vi.fn().mockResolvedValue(true);
+		window.mediagoDesktop = {
+			isElectron: true,
+			showNotification,
+		} as unknown as typeof window.mediagoDesktop;
 
 		const result = await showAgentPermissionSystemNotification(request, vi.fn());
 
 		expect(result).toBe("shown");
-		expect(tauriNotificationMocks.sendNotification).toHaveBeenCalledWith({
+		expect(showNotification).toHaveBeenCalledWith({
 			title: "Agent 等待权限确认",
 			body: "智能体请求执行 Edit 第一章 分镜脚本.md，需要确认后继续。",
-			group: "agent-permissions",
-			autoCancel: true,
 		});
 	});
 
