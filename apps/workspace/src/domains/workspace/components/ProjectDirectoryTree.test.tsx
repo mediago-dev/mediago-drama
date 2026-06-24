@@ -1,11 +1,13 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SWRConfig } from "swr";
 import type { WorkspaceProject } from "@/domains/projects/api/projects";
 import type { DocumentFolder, MarkdownDocument } from "@/domains/documents/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import {
 	createWorkspaceFolder,
+	getWorkspaceDocuments,
 	updateWorkspaceDocumentRecord,
 } from "@/domains/workspace/api/workspace";
 import { useDirectoryTreeStore } from "@/lib/stores/directory-tree";
@@ -35,14 +37,16 @@ const project: WorkspaceProject = {
 
 const renderDirectoryTree = () =>
 	render(
-		<ProjectDirectoryTree
-			project={project}
-			locationPathname="/projects"
-			onOpenAsset={vi.fn()}
-			onOpenDocument={vi.fn()}
-			onDeleteAsset={vi.fn()}
-			onDeleteDocument={vi.fn()}
-		/>,
+		<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+			<ProjectDirectoryTree
+				project={project}
+				locationPathname="/projects"
+				onOpenAsset={vi.fn()}
+				onOpenDocument={vi.fn()}
+				onDeleteAsset={vi.fn()}
+				onDeleteDocument={vi.fn()}
+			/>
+		</SWRConfig>,
 	);
 
 const makeFolder = (id: string, name: string): DocumentFolder => ({
@@ -88,6 +92,7 @@ describe("ProjectDirectoryTree folder creation", () => {
 		localStorage.clear();
 		useDirectoryTreeStore.setState({ collapsedByProject: {} });
 		vi.mocked(createWorkspaceFolder).mockReset();
+		vi.mocked(getWorkspaceDocuments).mockReset();
 		vi.mocked(updateWorkspaceDocumentRecord).mockReset();
 		vi.mocked(createWorkspaceFolder).mockImplementation(async (payload, projectId) => {
 			const folder = {
@@ -205,6 +210,25 @@ describe("ProjectDirectoryTree folder creation", () => {
 		renderDirectoryTree();
 
 		expect(screen.getByTestId("directory-root-drop-tail")).toBeTruthy();
+	});
+
+	it("ignores remote directory payloads that belong to another project", async () => {
+		useDocumentsStore.getState().prepareWorkspaceLoad("loading");
+		vi.mocked(getWorkspaceDocuments).mockResolvedValue({
+			workspaceDir: "/workspace/project-other",
+			projectId: "project-other",
+			documents: [makeDocument("doc-other", "旧项目文档")],
+			folders: [makeFolder("folder-other", "旧项目文件夹")],
+			assets: [makeTextAsset("asset-other", null)],
+		});
+
+		renderDirectoryTree();
+
+		await waitFor(() => expect(getWorkspaceDocuments).toHaveBeenCalledWith(project.id));
+		await waitFor(() => expect(screen.getByText("暂无目录内容")).toBeTruthy());
+		expect(screen.queryByText("旧项目文档")).toBeNull();
+		expect(screen.queryByText("旧项目文件夹")).toBeNull();
+		expect(screen.queryByText("notes.txt")).toBeNull();
 	});
 
 	it("opens the row context menu at the pointer position", () => {

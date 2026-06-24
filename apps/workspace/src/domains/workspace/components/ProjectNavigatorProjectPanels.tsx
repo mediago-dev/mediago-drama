@@ -248,6 +248,7 @@ export const ProjectSidebarPanel: React.FC<{
 							</button>
 							{documentViewMode === "directory" ? (
 								<ProjectDirectoryTree
+									key={displayProject.id}
 									project={displayProject}
 									locationPathname={locationPathname}
 									routeAssetId={routeAssetId}
@@ -262,6 +263,7 @@ export const ProjectSidebarPanel: React.FC<{
 								/>
 							) : (
 								<ProjectDirectory
+									key={displayProject.id}
 									project={displayProject}
 									locationPathname={locationPathname}
 									routeAssetId={routeAssetId}

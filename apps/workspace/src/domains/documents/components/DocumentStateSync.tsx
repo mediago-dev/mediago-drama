@@ -27,8 +27,13 @@ export const DocumentStateSync: React.FC<DocumentStateSyncProps> = ({ projectId 
 			useDocumentsStore.getState().prepareWorkspaceLoad("请选择一个项目");
 			return;
 		}
+		const currentState = useDocumentsStore.getState();
+		if (currentState.projectId !== projectId) {
+			currentState.prepareWorkspaceLoad("正在加载项目工作区");
+			return;
+		}
 		if (isLoading) {
-			useDocumentsStore.getState().markWorkspaceSyncStatus("syncing", "正在加载项目工作区");
+			currentState.markWorkspaceSyncStatus("syncing", "正在加载项目工作区");
 		}
 	}, [isLoading, projectId]);
 

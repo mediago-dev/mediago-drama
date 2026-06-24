@@ -125,10 +125,17 @@ export const ProjectDirectory: React.FC<{
 	} = useSWR(isStoreProject ? null : workspaceDocumentsKey(project.id), () =>
 		getWorkspaceDocuments(project.id),
 	);
-	const sourceDocuments = isStoreProject ? storeDocuments : (remoteDocuments?.documents ?? []);
-	const sourceFolders = isStoreProject ? storeFolders : (remoteDocuments?.folders ?? []);
-	const sourceAssets = isStoreProject ? storeAssets : (remoteDocuments?.assets ?? []);
-	const workspaceDir = isStoreProject ? storeWorkspaceDir : (remoteDocuments?.workspaceDir ?? "");
+	const remoteProjectId = remoteDocuments?.projectId?.trim() || "";
+	const remoteDocumentsForProject =
+		remoteDocuments && remoteProjectId === project.id ? remoteDocuments : null;
+	const sourceDocuments = isStoreProject
+		? storeDocuments
+		: (remoteDocumentsForProject?.documents ?? []);
+	const sourceFolders = isStoreProject ? storeFolders : (remoteDocumentsForProject?.folders ?? []);
+	const sourceAssets = isStoreProject ? storeAssets : (remoteDocumentsForProject?.assets ?? []);
+	const workspaceDir = isStoreProject
+		? storeWorkspaceDir
+		: (remoteDocumentsForProject?.workspaceDir ?? "");
 	const displayedActiveDocumentId = routeDocumentId ?? (routeAssetId ? "" : activeDocumentId);
 	const displayedActiveAssetId = routeAssetId ?? (routeDocumentId ? "" : activeAssetId);
 	const projectDocuments = useMemo(

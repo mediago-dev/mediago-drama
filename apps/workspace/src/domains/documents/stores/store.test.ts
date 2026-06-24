@@ -1498,6 +1498,36 @@ describe("documents store remote sync", () => {
 		expect(state.assets.map((asset) => asset.folderId ?? null)).toEqual(["folder-a", null]);
 	});
 
+	it("clears the previous project directory while a newly selected project is loading", async () => {
+		useDocumentsStore
+			.getState()
+			.hydrateWorkspaceState(
+				[makeDocument("doc-project-a")],
+				[makeLogEntry("doc-project-a")],
+				"/workspace/project-a",
+				"project-a",
+				[makeAsset("asset-project-a")],
+				[makeFolder("folder-project-a")],
+			);
+		vi.mocked(useSWR).mockReturnValue({
+			data: undefined,
+			error: undefined,
+			isLoading: true,
+		} as ReturnType<typeof useSWR>);
+
+		render(React.createElement(DocumentStateSync, { projectId: "project-b" }));
+
+		await waitFor(() => {
+			const state = useDocumentsStore.getState();
+			expect(state.projectId).toBeNull();
+			expect(state.documents).toEqual([]);
+			expect(state.folders).toEqual([]);
+			expect(state.assets).toEqual([]);
+			expect(state.syncStatus).toBe("syncing");
+			expect(state.syncMessage).toBe("正在加载项目工作区");
+		});
+	});
+
 	it("does not hydrate polled workspace state over dirty local documents", () => {
 		useDocumentsStore
 			.getState()
