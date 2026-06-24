@@ -1,4 +1,4 @@
-import { rootConversation } from "./conversation";
+import { resolveActiveConversation } from "./conversation";
 import type { AgentMessage, AgentState } from "./types";
 
 const emptyAgentMessages: AgentMessage[] = [];
@@ -20,7 +20,7 @@ export const selectAgentLastRuntimeStatus = (state: AgentState) => state.lastRun
 export const selectAgentLatestActivity = (state: AgentState) => state.activity[0];
 
 export const selectAgentMessages = (state: AgentState) =>
-	rootConversation(state.conversations, state.rootRunId)?.messages ?? emptyAgentMessages;
+	resolveActiveConversation(state.conversations, state.rootRunId)?.messages ?? emptyAgentMessages;
 
 export const selectAgentPermissionRequests = (state: AgentState) => state.permissionRequests;
 

@@ -77,7 +77,12 @@ export const Projects: React.FC = () => {
 	const [activeTab, setActiveTab] = useState<ProjectManagementTab>("active");
 	const [action, setAction] = useState<{ kind: ProjectAction; projectId: string } | null>(null);
 	const swrKey = projectsKeyForStatus(activeTab);
-	const { data, error, isLoading } = useSWR(swrKey, () => getProjects(activeTab));
+	const {
+		data,
+		error,
+		isLoading,
+		mutate: revalidateProjects,
+	} = useSWR(swrKey, () => getProjects(activeTab));
 	const projects = useMemo(
 		() => [...(data?.projects ?? [])].sort(compareProjectsByUpdatedAtDesc),
 		[data?.projects],
@@ -226,15 +231,21 @@ export const Projects: React.FC = () => {
 			</div>
 
 			<div className="min-h-0 flex-1 overflow-auto px-5 py-4">
-				{isLoading ? (
+				{isLoading && projects.length === 0 ? (
 					<ProjectManagementCenterState icon={Loader2} title="加载项目列表" spin />
 				) : null}
 
-				{!isLoading && error ? (
+				{!isLoading && error && projects.length === 0 ? (
 					<ProjectManagementCenterState
 						icon={FolderOpen}
 						title="项目列表加载失败"
 						description="请确认本地服务已启动。"
+						action={
+							<Button type="button" variant="secondary" onClick={() => void revalidateProjects()}>
+								<RotateCcw />
+								<span>重试</span>
+							</Button>
+						}
 					/>
 				) : null}
 
@@ -246,7 +257,7 @@ export const Projects: React.FC = () => {
 					/>
 				) : null}
 
-				{!isLoading && !error && projects.length > 0 ? (
+				{projects.length > 0 ? (
 					<div className="mx-auto flex w-full max-w-5xl flex-col gap-2">
 						{projects.map((project) => (
 							<ProjectManagementRow
@@ -415,16 +426,18 @@ const ProjectManagementRow: React.FC<{
 };
 
 const ProjectManagementCenterState: React.FC<{
+	action?: React.ReactNode;
 	description?: string;
 	icon: LucideIcon;
 	spin?: boolean;
 	title: string;
-}> = ({ description, icon: Icon, spin = false, title }) => (
+}> = ({ action, description, icon: Icon, spin = false, title }) => (
 	<div className="grid h-full min-h-64 place-items-center p-6 text-center">
 		<div>
 			<Icon className={cn("mx-auto size-8 text-muted-foreground", spin && "animate-spin")} />
 			<p className="mt-3 text-sm font-medium text-foreground">{title}</p>
 			{description ? <p className="mt-1 text-xs text-muted-foreground">{description}</p> : null}
+			{action ? <div className="mt-4 flex justify-center">{action}</div> : null}
 		</div>
 	</div>
 );

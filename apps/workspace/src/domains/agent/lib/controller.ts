@@ -129,7 +129,11 @@ const buildExecutionContext = (
 		activeDocument,
 		comments,
 		documentSnapshots: documentsStore.documents.map(toAgentDocumentSnapshot),
-		projectId: documentsStore.projectId ?? useProjectStore.getState().activeProjectId,
+		// Use the active project as the source of truth so the run and its streamed
+		// events agree with the project filter in handleStreamingAgentEvent. documentsStore.projectId
+		// lags behind navigation (it only updates after workspace state loads); preferring it here
+		// would create the run against the previous project and drop every live event.
+		projectId: useProjectStore.getState().activeProjectId ?? documentsStore.projectId,
 		selection,
 		anchorText,
 		isStructuredScopedEdit: Boolean(

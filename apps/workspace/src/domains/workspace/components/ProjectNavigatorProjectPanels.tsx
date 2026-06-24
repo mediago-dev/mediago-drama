@@ -8,6 +8,7 @@ import {
 	LayoutDashboard,
 	LayoutList,
 	Loader2,
+	RotateCcw,
 	Search,
 	SquarePen,
 	Trash2,
@@ -56,6 +57,7 @@ export const ProjectsSidebarPanel: React.FC<{
 	onOpenGenerationNotification?: (notification: GenerationSuccessNotification) => void;
 	onOpenSearch: (scope: "global" | "project") => void;
 	onOpenSettings: () => void;
+	onRetry?: () => void;
 	projectAction?: { kind: "archive" | "trash"; projectId: string } | null;
 	projects: WorkspaceProject[];
 }> = ({
@@ -70,6 +72,7 @@ export const ProjectsSidebarPanel: React.FC<{
 	onOpenProject,
 	onOpenSearch,
 	onOpenSettings,
+	onRetry,
 	projectAction = null,
 	projects,
 }) => (
@@ -105,16 +108,7 @@ export const ProjectsSidebarPanel: React.FC<{
 		<div className="mt-5 flex min-h-0 flex-1 flex-col">
 			<div className="mb-2 px-2 text-xs font-medium text-muted-foreground">项目</div>
 			<div className="min-h-0 flex-1 overflow-y-auto">
-				{isLoading ? (
-					<div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-						<Loader2 className="size-3.5 animate-spin" />
-						<span>加载项目</span>
-					</div>
-				) : error ? (
-					<p className="px-2 py-1.5 text-xs text-error-foreground">项目加载失败</p>
-				) : projects.length === 0 ? (
-					<p className="px-2 py-1.5 text-xs text-muted-foreground">暂无项目</p>
-				) : (
+				{projects.length > 0 ? (
 					projects.map((project) => (
 						<ProjectsSidebarProjectItem
 							key={project.id}
@@ -125,6 +119,28 @@ export const ProjectsSidebarPanel: React.FC<{
 							onRequestDeleteProject={onRequestDeleteProject}
 						/>
 					))
+				) : isLoading ? (
+					<div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+						<Loader2 className="size-3.5 animate-spin" />
+						<span>加载项目</span>
+					</div>
+				) : error ? (
+					<div className="flex flex-col items-start gap-1 px-2 py-1.5">
+						<p className="text-xs text-error-foreground">项目加载失败</p>
+						{onRetry ? (
+							<Button
+								type="button"
+								variant="ghost"
+								className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+								onClick={onRetry}
+							>
+								<RotateCcw className="size-3.5" />
+								<span>重试</span>
+							</Button>
+						) : null}
+					</div>
+				) : (
+					<p className="px-2 py-1.5 text-xs text-muted-foreground">暂无项目</p>
 				)}
 			</div>
 		</div>

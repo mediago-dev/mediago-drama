@@ -300,6 +300,34 @@ export const rootConversation = (
 	rootRunId: string | null,
 ) => (rootRunId ? conversations[rootRunId] : undefined);
 
+const conversationUpdatedTime = (conversation: AgentConversationState) => {
+	const value = Date.parse(conversation.updatedAt ?? "");
+	return Number.isFinite(value) ? value : 0;
+};
+
+export const latestConversation = (
+	conversations: Record<string, AgentConversationState>,
+): AgentConversationState | undefined => {
+	let latest: AgentConversationState | undefined;
+	for (const conversation of Object.values(conversations)) {
+		if (!latest || conversationUpdatedTime(conversation) >= conversationUpdatedTime(latest)) {
+			latest = conversation;
+		}
+	}
+	return latest;
+};
+
+export const latestConversationRunId = (
+	conversations: Record<string, AgentConversationState>,
+): string | null => latestConversation(conversations)?.runId ?? null;
+
+// Prefer the bound root conversation, but never let a stale/mismatched rootRunId
+// blank the timeline: fall back to the most recently updated conversation.
+export const resolveActiveConversation = (
+	conversations: Record<string, AgentConversationState>,
+	rootRunId: string | null,
+) => rootConversation(conversations, rootRunId) ?? latestConversation(conversations);
+
 export const deriveIsRunning = (conversations: Record<string, AgentConversationState>) =>
 	Object.values(conversations).some(
 		(conversation) => !isTerminalConversationStatus(conversation.status),

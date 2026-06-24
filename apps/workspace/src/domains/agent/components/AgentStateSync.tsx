@@ -11,7 +11,10 @@ import {
 	type AgentSessionStatus,
 	type AgentSessionSummary,
 } from "@/domains/agent/api/agent";
-import { refreshAgentChatTranscript } from "@/domains/agent/lib/chat-sync";
+import {
+	refreshAgentChatTranscript,
+	transcriptDropsLocalContext,
+} from "@/domains/agent/lib/chat-sync";
 import {
 	closeAllResumedAgentEventStreams,
 	resumeAgentSessionEventStream,
@@ -129,8 +132,23 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 	useEffect(() => {
 		loadedRequestKey.current = null;
 		inactiveNoticeSessionId.current = null;
-		useAgentStore.getState().resetSession();
-		useAgentStore.getState().hydrateAgentChatState([], []);
+		const store = useAgentStore.getState();
+		store.resetSession();
+		// Restore this project's cached transcript synchronously instead of blanking the
+		// panel: re-entering a project then shows the last-known messages immediately while
+		// the SWR fetch below revalidates, rather than flashing an empty timeline.
+		const cached = projectId ? readAgentChatCache(projectId) : null;
+		if (cached) {
+			store.hydrateAgentChatState([], cached.activity, {
+				sessionId: cached.sessionId,
+				rootRunId: cached.rootRunId,
+				conversations: cached.conversations,
+				lastEventId: cached.lastEventId,
+				running: false,
+			});
+		} else {
+			store.hydrateAgentChatState([], []);
+		}
 		// Resumed streams belong to the project being left; without this they
 		// keep reconnecting until a terminal event happens to arrive.
 		return () => {
@@ -234,7 +252,11 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 		if (loadedRequestKey.current === requestKey) return;
 
 		const agentStore = useAgentStore.getState();
-		if (shouldPreserveLocalRunningTranscript(data, agentStore, resolvedSessionId)) {
+		const localMessages = selectAgentMessages(agentStore);
+		const preserveLocalTranscript =
+			shouldPreserveLocalRunningTranscript(data, agentStore, resolvedSessionId) ||
+			transcriptDropsLocalContext(localMessages, data.messages);
+		if (preserveLocalTranscript) {
 			if (resolvedSessionId) agentStore.setSessionId(resolvedSessionId);
 		} else {
 			agentStore.hydrateAgentChatState(data.messages, data.activity, {

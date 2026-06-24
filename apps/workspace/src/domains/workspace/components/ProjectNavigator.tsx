@@ -597,6 +597,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 										onOpenProject={openProject}
 										onOpenSearch={openSearch}
 										onOpenSettings={openGlobalSettings}
+										onRetry={() => void mutate()}
 									/>
 								),
 							},

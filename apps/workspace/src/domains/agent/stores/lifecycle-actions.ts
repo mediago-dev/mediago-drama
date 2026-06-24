@@ -11,6 +11,7 @@ import {
 	deriveIsRunning,
 	finishConversation,
 	isTerminalConversationStatus,
+	latestConversationRunId,
 	mapConversations,
 	nonTerminalConversationStatus,
 	normalizeAgentActivity,
@@ -241,8 +242,13 @@ export const createAgentLifecycleActions = ({ set }: AgentActionContext): Lifecy
 	},
 	hydrateAgentChatState: (messages, activity, options) => {
 		let conversations = normalizeAgentConversations(options?.conversations ?? {});
+		// Normalization re-keys conversations by their runId, so a backend rootRunId can fail to
+		// match even when the data is present. Fall back to the latest conversation instead of null,
+		// which would make selectAgentMessages render an empty timeline.
 		let rootRunId =
-			options?.rootRunId && conversations[options.rootRunId] ? options.rootRunId : null;
+			options?.rootRunId && conversations[options.rootRunId]
+				? options.rootRunId
+				: latestConversationRunId(conversations);
 		const normalizedMessages = normalizeAgentMessages(messages);
 		const isRunning = options?.running ?? deriveIsRunning(conversations);
 		if (!rootRunId && normalizedMessages.length > 0) {

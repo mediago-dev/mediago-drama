@@ -371,6 +371,12 @@
 		color: var(--agent-blue);
 	}
 
+	.agent-assistant-inline-icon {
+		/* Match the first line's line-height so the icon centers on it instead of
+		   floating above the text. */
+		height: 1.25rem;
+	}
+
 	.agent-assistant-inline-icon svg {
 		width: 1rem;
 		height: 1rem;
@@ -424,6 +430,13 @@
 
 	.agent-assistant-message-content :where(p, ul, ol) {
 		margin-block: 0.55rem;
+	}
+
+	/* Drop the leading top margin in the inline variant so the first line aligns with
+	   the icon's grid row top. The markdown root is a wrapper div, so target the first
+	   block element itself rather than the content's direct child. */
+	.agent-assistant-message-inline .agent-assistant-message-content :where(p, ul, ol):first-child {
+		margin-top: 0;
 	}
 
 	.agent-assistant-message-content :where(ul, ol) {

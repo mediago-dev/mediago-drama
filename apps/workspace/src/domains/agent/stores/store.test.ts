@@ -126,6 +126,41 @@ describe("agent store runtime recovery", () => {
 		]);
 	});
 
+	it("keeps the timeline visible when the backend rootRunId does not resolve", () => {
+		// A mismatched rootRunId (e.g. re-keyed by normalization) must not blank the timeline.
+		useAgentStore.getState().hydrateAgentChatState([], [], {
+			sessionId: "session-1",
+			rootRunId: "missing-run",
+			running: false,
+			conversations: {
+				"run-1": {
+					runId: "run-1",
+					name: "主智能体",
+					status: "completed",
+					messages: [
+						{
+							id: "user-1",
+							role: "user",
+							content: "你好",
+							kind: "message",
+							createdAt: "2026-06-24T00:00:00.000Z",
+							status: "complete",
+						},
+					],
+					streamingMessageId: null,
+					children: [],
+					createdAt: "2026-06-24T00:00:00.000Z",
+					updatedAt: "2026-06-24T00:00:00.000Z",
+				},
+			},
+		});
+
+		expect(useAgentStore.getState().rootRunId).toBe("run-1");
+		expect(selectAgentMessages(useAgentStore.getState()).map((message) => message.content)).toEqual(
+			["你好"],
+		);
+	});
+
 	it("records runtime alerts for visible chat cards", () => {
 		useAgentStore.getState().addRuntimeAlert({
 			title: "文档 MCP 未挂载",

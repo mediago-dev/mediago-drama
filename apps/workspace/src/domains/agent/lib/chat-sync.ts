@@ -33,9 +33,7 @@ export const refreshAgentChatTranscript = async (
 	const currentSessionId = useAgentStore.getState().sessionId?.trim() || null;
 	if (currentSessionId && resolvedSessionId && currentSessionId !== resolvedSessionId) return;
 
-	const dropsLocalContext =
-		transcriptDropsEarlierLocalContext(localMessages, state.messages) ||
-		transcriptDropsLatestLocalTurn(localMessages, state.messages);
+	const dropsLocalContext = transcriptDropsLocalContext(localMessages, state.messages);
 	if (!dropsLocalContext) {
 		useAgentStore.getState().hydrateAgentChatState(state.messages, state.activity, {
 			sessionId: resolvedSessionId,
@@ -54,6 +52,16 @@ export const refreshAgentChatTranscript = async (
 		await mutateSWR(agentSessionsKey(targetProjectId));
 	}
 };
+
+// A backend transcript "drops local context" when it lacks messages the local store
+// already has — either earlier context turns or the latest in-flight user turn. Callers
+// use this to avoid overwriting an optimistic transcript with a stale snapshot.
+export const transcriptDropsLocalContext = (
+	localMessages: AgentMessage[],
+	transcriptMessages: AgentMessage[],
+) =>
+	transcriptDropsEarlierLocalContext(localMessages, transcriptMessages) ||
+	transcriptDropsLatestLocalTurn(localMessages, transcriptMessages);
 
 const transcriptDropsEarlierLocalContext = (
 	localMessages: AgentMessage[],
