@@ -16,12 +16,21 @@ import { cn } from "@/shared/lib/utils";
 
 export const GenerationModelRoutePicker: React.FC<{
 	className?: string;
+	disabled?: boolean;
 	onSelect: (versionID: string, routeID: string) => void;
 	routes: GenerationRoute[];
 	selectedRoute: GenerationRoute;
 	selectedVersion: GenerationVersion;
 	versions: GenerationVersion[];
-}> = ({ className, onSelect, routes, selectedRoute, selectedVersion, versions }) => {
+}> = ({
+	className,
+	disabled = false,
+	onSelect,
+	routes,
+	selectedRoute,
+	selectedVersion,
+	versions,
+}) => {
 	const [open, setOpen] = useState(false);
 	const [activeVersionId, setActiveVersionId] = useState(selectedVersion.id);
 	const routesByVersion = useMemo(() => {
@@ -67,6 +76,7 @@ export const GenerationModelRoutePicker: React.FC<{
 					variant="outline"
 					size="sm"
 					aria-label="模型版本和供应商"
+					disabled={disabled}
 					className={cn(
 						"h-[var(--generation-control-height)] w-auto max-w-56 justify-start rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs font-semibold text-foreground shadow-none hover:bg-ide-list-hover",
 						open && "bg-ide-list-active text-ide-list-active-foreground",
@@ -135,7 +145,7 @@ export const GenerationModelRoutePicker: React.FC<{
 								<button
 									key={route.id}
 									type="button"
-									disabled={route.status !== "available"}
+									disabled={disabled || route.status !== "available"}
 									className={cn(
 										"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45",
 										selected

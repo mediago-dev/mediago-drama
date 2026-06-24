@@ -57,31 +57,43 @@ func TestCatalogRoutesReferenceKnownFamiliesAndVersions(t *testing.T) {
 func TestTextCatalogIncludesExpandedRoutes(t *testing.T) {
 	cases := []struct {
 		id       string
+		family   string
 		provider string
 		model    string
 	}{
-		{RouteDMXGPT55Text, ProviderDMX, "gpt-5.5"},
-		{RouteDMXGPT54Text, ProviderDMX, "gpt-5.4"},
-		{RouteDMXGPT54MiniText, ProviderDMX, "gpt-5.4-mini"},
-		{RouteDMXGemini35FlashText, ProviderDMX, "gemini-3.5-flash"},
-		{RouteDMXGemini31ProText, ProviderDMX, "gemini-3.1-pro-preview"},
-		{RouteDMXGemini31FlashLiteText, ProviderDMX, "gemini-3.1-flash-lite"},
-		{RouteDMXMiniMaxM3Text, ProviderDMX, "MiniMax-M3"},
-		{RouteDMXMiniMaxM27Text, ProviderDMX, "MiniMax-M2.7"},
-		{RouteDMXMiniMaxM27HighspeedText, ProviderDMX, "MiniMax-M2.7-highspeed"},
-		{RouteDMXDeepSeekV4FlashText, ProviderDMX, "deepseek-v4-flash"},
-		{RouteDMXDeepSeekV4ProText, ProviderDMX, "deepseek-v4-pro"},
-		{RouteOfficialGPT55Text, ProviderOpenAI, "gpt-5.5"},
-		{RouteOfficialGPT54Text, ProviderOpenAI, "gpt-5.4"},
-		{RouteOfficialGPT54MiniText, ProviderOpenAI, "gpt-5.4-mini"},
-		{RouteOfficialGemini35FlashText, ProviderGoogle, "gemini-3.5-flash"},
-		{RouteOfficialGemini31ProText, ProviderGoogle, "gemini-3.1-pro-preview"},
-		{RouteOfficialGemini31FlashLiteText, ProviderGoogle, "gemini-3.1-flash-lite"},
-		{RouteOfficialMiniMaxM3Text, ProviderMiniMax, "MiniMax-M3"},
-		{RouteOfficialMiniMaxM27Text, ProviderMiniMax, "MiniMax-M2.7"},
-		{RouteOfficialMiniMaxM27HighspeedText, ProviderMiniMax, "MiniMax-M2.7-highspeed"},
-		{RouteOfficialDeepSeekV4FlashText, ProviderDeepSeek, "deepseek-v4-flash"},
-		{RouteOfficialDeepSeekV4ProText, ProviderDeepSeek, "deepseek-v4-pro"},
+		{RouteDMXGPT55Text, FamilyGPTText, ProviderDMX, "gpt-5.5"},
+		{RouteDMXGPT54Text, FamilyGPTText, ProviderDMX, "gpt-5.4"},
+		{RouteDMXGPT54MiniText, FamilyGPTText, ProviderDMX, "gpt-5.4-mini"},
+		{RouteOpenRouterGPT55Text, FamilyGPTText, ProviderOpenRouter, "openai/gpt-5.5"},
+		{RouteOpenRouterGPT54Text, FamilyGPTText, ProviderOpenRouter, "openai/gpt-5.4"},
+		{RouteOpenRouterGPT54MiniText, FamilyGPTText, ProviderOpenRouter, "openai/gpt-5.4-mini"},
+		{RouteDMXGemini35FlashText, FamilyGeminiText, ProviderDMX, "gemini-3.5-flash"},
+		{RouteDMXGemini31ProText, FamilyGeminiText, ProviderDMX, "gemini-3.1-pro-preview"},
+		{RouteDMXGemini31FlashLiteText, FamilyGeminiText, ProviderDMX, "gemini-3.1-flash-lite"},
+		{RouteOpenRouterGemini35FlashText, FamilyGeminiText, ProviderOpenRouter, "google/gemini-3.5-flash"},
+		{RouteOpenRouterGemini31ProText, FamilyGeminiText, ProviderOpenRouter, "google/gemini-3.1-pro-preview"},
+		{RouteOpenRouterGemini31FlashLiteText, FamilyGeminiText, ProviderOpenRouter, "google/gemini-3.1-flash-lite"},
+		{RouteDMXMiniMaxM3Text, FamilyMiniMaxText, ProviderDMX, "MiniMax-M3"},
+		{RouteDMXMiniMaxM27Text, FamilyMiniMaxText, ProviderDMX, "MiniMax-M2.7"},
+		{RouteDMXMiniMaxM27HighspeedText, FamilyMiniMaxText, ProviderDMX, "MiniMax-M2.7-highspeed"},
+		{RouteOpenRouterMiniMaxM3Text, FamilyMiniMaxText, ProviderOpenRouter, "minimax/minimax-m3"},
+		{RouteOpenRouterMiniMaxM27Text, FamilyMiniMaxText, ProviderOpenRouter, "minimax/minimax-m2.7"},
+		{RouteOpenRouterMiniMaxM27HighspeedText, FamilyMiniMaxText, ProviderOpenRouter, "minimax/minimax-m2.7-highspeed"},
+		{RouteDMXDeepSeekV4FlashText, FamilyDeepSeekText, ProviderDMX, "deepseek-v4-flash"},
+		{RouteDMXDeepSeekV4ProText, FamilyDeepSeekText, ProviderDMX, "deepseek-v4-pro"},
+		{RouteOpenRouterDeepSeekV4FlashText, FamilyDeepSeekText, ProviderOpenRouter, "deepseek/deepseek-v4-flash"},
+		{RouteOpenRouterDeepSeekV4ProText, FamilyDeepSeekText, ProviderOpenRouter, "deepseek/deepseek-v4-pro"},
+		{RouteOfficialGPT55Text, FamilyGPTText, ProviderOpenAI, "gpt-5.5"},
+		{RouteOfficialGPT54Text, FamilyGPTText, ProviderOpenAI, "gpt-5.4"},
+		{RouteOfficialGPT54MiniText, FamilyGPTText, ProviderOpenAI, "gpt-5.4-mini"},
+		{RouteOfficialGemini35FlashText, FamilyGeminiText, ProviderGoogle, "gemini-3.5-flash"},
+		{RouteOfficialGemini31ProText, FamilyGeminiText, ProviderGoogle, "gemini-3.1-pro-preview"},
+		{RouteOfficialGemini31FlashLiteText, FamilyGeminiText, ProviderGoogle, "gemini-3.1-flash-lite"},
+		{RouteOfficialMiniMaxM3Text, FamilyMiniMaxText, ProviderMiniMax, "MiniMax-M3"},
+		{RouteOfficialMiniMaxM27Text, FamilyMiniMaxText, ProviderMiniMax, "MiniMax-M2.7"},
+		{RouteOfficialMiniMaxM27HighspeedText, FamilyMiniMaxText, ProviderMiniMax, "MiniMax-M2.7-highspeed"},
+		{RouteOfficialDeepSeekV4FlashText, FamilyDeepSeekText, ProviderDeepSeek, "deepseek-v4-flash"},
+		{RouteOfficialDeepSeekV4ProText, FamilyDeepSeekText, ProviderDeepSeek, "deepseek-v4-pro"},
 	}
 
 	for _, tc := range cases {
@@ -89,7 +101,7 @@ func TestTextCatalogIncludesExpandedRoutes(t *testing.T) {
 		if !ok {
 			t.Fatalf("route %q is missing", tc.id)
 		}
-		if route.Kind != KindText || route.FamilyID != FamilyText {
+		if route.Kind != KindText || route.FamilyID != tc.family {
 			t.Fatalf("route %q = %#v, want text family route", tc.id, route)
 		}
 		if route.Provider != tc.provider || route.Model != tc.model {
@@ -342,7 +354,7 @@ func TestResolveRoute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveDefaultRouteForProvider(text) error = %v", err)
 	}
-	if route.ID != RouteOpenRouterGPT41MiniText || route.Kind != KindText {
+	if route.ID != RouteOpenRouterGPT55Text || route.Kind != KindText {
 		t.Fatalf("default openrouter text route = %#v", route)
 	}
 }

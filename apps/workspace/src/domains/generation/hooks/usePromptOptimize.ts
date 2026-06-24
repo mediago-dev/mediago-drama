@@ -1,8 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 import {
 	createGenerationConversation,
+	type GenerationFamily,
 	type GenerationModelsResponse,
 	type GenerationRoute,
+	type GenerationVersion,
 	streamGenerationText,
 } from "@/domains/generation/api/generation";
 import {
@@ -18,9 +20,11 @@ export interface PromptOptimizeInput {
 }
 
 export interface PromptOptimizeModelOption {
+	family: GenerationFamily;
 	id: string;
 	label: string;
 	route: GenerationRoute;
+	version: GenerationVersion;
 }
 
 export interface UsePromptOptimizeOptions {
@@ -177,16 +181,41 @@ export const promptOptimizeModelOptions = (
 	return resolved.routes
 		.filter((route) => route.kind === "text" && isConfiguredRoute(route))
 		.map((route) => {
-			const version = resolved.versions.find((item) => item.id === route.versionId);
+			const family =
+				resolved.families.find((item) => item.id === route.familyId) ??
+				fallbackFamilyForRoute(route);
+			const version =
+				resolved.versions.find((item) => item.id === route.versionId) ??
+				fallbackVersionForRoute(route);
 			const providerLabel = route.label?.trim() || route.provider;
 			const modelLabel = version?.label?.trim() || route.model;
 			return {
+				family,
 				id: route.id,
 				label: `${modelLabel} · ${providerLabel}`,
 				route,
+				version,
 			};
 		});
 };
+
+const fallbackFamilyForRoute = (route: GenerationRoute): GenerationFamily => ({
+	id: route.familyId,
+	label: route.familyId || "Text",
+	kind: route.kind,
+});
+
+const fallbackVersionForRoute = (route: GenerationRoute): GenerationVersion => ({
+	id: route.versionId,
+	familyId: route.familyId,
+	label: route.model || route.versionId,
+	kind: route.kind,
+	canonicalModel: route.model,
+	capabilities: {
+		async: route.async,
+		supportsReferenceUrls: route.supportsReferenceUrls,
+	},
+});
 
 const ensurePromptOptimizeConversation = async ({
 	conversationId,

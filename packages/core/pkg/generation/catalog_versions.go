@@ -3,7 +3,10 @@ package generation
 const (
 	FamilySeedream      = "seedream"
 	FamilyMiniMaxSpeech = "minimax-speech"
-	FamilyText          = "text"
+	FamilyGPTText       = "gpt-text"
+	FamilyGeminiText    = "gemini-text"
+	FamilyMiniMaxText   = "minimax-text"
+	FamilyDeepSeekText  = "deepseek-text"
 	FamilyGPTImage      = "gpt-image"
 	FamilyNanoBanana    = "nano-banana"
 	FamilySeedance      = "seedance"

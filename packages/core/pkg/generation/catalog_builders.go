@@ -253,7 +253,7 @@ func kindForFamily(familyID string) Kind {
 	switch familyID {
 	case FamilyMiniMaxSpeech:
 		return KindAudio
-	case FamilyText:
+	case FamilyGPTText, FamilyGeminiText, FamilyMiniMaxText, FamilyDeepSeekText:
 		return KindText
 	case FamilySeedream, FamilyGPTImage, FamilyNanoBanana:
 		return KindImage

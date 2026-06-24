@@ -22,7 +22,7 @@ import {
 export const fallbackCatalog: GenerationModelsResponse = {
 	families: [
 		{ id: "seedream", label: "Seedream", kind: "image" },
-		{ id: "text", label: "Text", kind: "text" },
+		{ id: "gpt-text", label: "GPT", kind: "text" },
 		{ id: "gpt-image", label: "GPT Image", kind: "image" },
 		{ id: "nano-banana", label: "Nano Banana", kind: "image" },
 		{ id: "seedance", label: "Jimeng / Seedance", kind: "video" },
@@ -39,7 +39,15 @@ export const fallbackCatalog: GenerationModelsResponse = {
 			true,
 		),
 		version("seedream-4.7", "seedream", "Seedream 4.7", "image", "4.7", false, true),
-		version("gpt-4.1-mini-text", "text", "GPT-4.1 Mini Text", "text", "gpt-4.1-mini", false, false),
+		version(
+			"gpt-4.1-mini-text",
+			"gpt-text",
+			"GPT-4.1 Mini Text",
+			"text",
+			"gpt-4.1-mini",
+			false,
+			false,
+		),
 		version("gpt-image-2", "gpt-image", "GPT Image 2", "image", "gpt-image-2", false, true),
 		version(
 			"gemini-3.1-flash-image-preview",
@@ -175,7 +183,7 @@ export const fallbackCatalog: GenerationModelsResponse = {
 		),
 		route(
 			"dmx.gpt-4.1-mini-text",
-			"text",
+			"gpt-text",
 			"gpt-4.1-mini-text",
 			"DMX",
 			"text",
@@ -190,7 +198,7 @@ export const fallbackCatalog: GenerationModelsResponse = {
 		),
 		route(
 			"openrouter.gpt-4.1-mini-text",
-			"text",
+			"gpt-text",
 			"gpt-4.1-mini-text",
 			"OpenRouter",
 			"text",
@@ -204,7 +212,7 @@ export const fallbackCatalog: GenerationModelsResponse = {
 		),
 		route(
 			"official.gpt-4.1-mini-text",
-			"text",
+			"gpt-text",
 			"gpt-4.1-mini-text",
 			"OpenAI 官方",
 			"text",

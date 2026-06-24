@@ -6,6 +6,7 @@ import type {
 	GenerationRoute,
 	GenerationVersion,
 } from "@/domains/generation/api/generation";
+import deepSeekIcon from "@lobehub/icons-static-svg/icons/deepseek-color.svg";
 import doubaoIcon from "@lobehub/icons-static-svg/icons/doubao-color.svg";
 import geminiIcon from "@lobehub/icons-static-svg/icons/gemini-color.svg";
 import jimengIcon from "@lobehub/icons-static-svg/icons/jimeng-color.svg";
@@ -16,6 +17,7 @@ import volcengineIcon from "@lobehub/icons-static-svg/icons/volcengine-color.svg
 import { cn } from "@/shared/lib/utils";
 
 export type GenerationBrandKey =
+	| "deepseek"
 	| "dmx"
 	| "doubao"
 	| "gemini"
@@ -33,6 +35,7 @@ interface BrandSpec {
 }
 
 const brandSpecs: Record<GenerationBrandKey, BrandSpec> = {
+	deepseek: { icon: deepSeekIcon, label: "DeepSeek" },
 	dmx: { icon: dmxIcon, label: "DMXAPI" },
 	doubao: { icon: doubaoIcon, label: "豆包" },
 	gemini: { icon: geminiIcon, label: "Gemini" },
@@ -112,6 +115,8 @@ export const generationProviderBrand = (provider: string): GenerationBrandKey =>
 			return "jimeng";
 		case "minimax":
 			return "minimax";
+		case "deepseek":
+			return "deepseek";
 		default:
 			return generationBrandFromTokens([provider]);
 	}
@@ -159,6 +164,7 @@ const generationBrandFromTokens = (tokens: Array<string | undefined>): Generatio
 	}
 	if (normalized.includes("jimeng") || normalized.includes("即梦")) return "jimeng";
 	if (normalized.includes("minimax") || normalized.includes("speech-2.8")) return "minimax";
+	if (normalized.includes("deepseek")) return "deepseek";
 	if (normalized === "text" || normalized.includes("gpt text")) return "gpt";
 	if (normalized.includes("volc") || normalized.includes("火山")) return "volcengine";
 	if (normalized.includes("dmx")) return "dmx";

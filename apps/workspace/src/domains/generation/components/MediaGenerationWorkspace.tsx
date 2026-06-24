@@ -506,7 +506,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
 			<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
 				<SelectTrigger
-					aria-label="模型类型"
+					aria-label="模型名称"
 					className={generationComposerSelectClassName("min-w-32 max-w-56 shrink-0")}
 				>
 					<GenerationBrandMark brand={selectedFamilyBrand} className="size-4 text-[0.5rem]" />

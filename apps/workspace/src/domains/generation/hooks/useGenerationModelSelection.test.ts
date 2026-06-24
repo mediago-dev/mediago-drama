@@ -129,6 +129,29 @@ const catalog: GenerationModelsResponse = {
 			],
 		},
 		{
+			id: "route-image-openrouter",
+			familyId: "family-image",
+			versionId: "version-image",
+			label: "Image OpenRouter Route",
+			kind: "image",
+			provider: "openrouter",
+			model: "image-model-openrouter",
+			adapter: "test.image",
+			docUrl: "",
+			async: false,
+			supportsReferenceUrls: true,
+			status: "available",
+			configured: false,
+			params: [
+				{
+					name: "size",
+					label: "Size",
+					type: "string",
+					default: "1024x1024",
+				},
+			],
+		},
+		{
 			id: "route-image-alt",
 			familyId: "family-image",
 			versionId: "version-image-alt",
@@ -172,6 +195,7 @@ const catalog: GenerationModelsResponse = {
 	providers: [
 		{ id: "openai", label: "OpenAI", providerType: "official" },
 		{ id: "dmx", label: "DMX", providerType: "aggregator" },
+		{ id: "openrouter", label: "OpenRouter", providerType: "aggregator" },
 	],
 };
 
@@ -224,6 +248,10 @@ describe("useGenerationModelSelection", () => {
 			"route-image",
 			"route-image-dmx",
 			"route-image-alt",
+		]);
+		expect(result.current.visibleRoutes.map((route) => route.id)).toEqual([
+			"route-image",
+			"route-image-dmx",
 		]);
 
 		act(() => {

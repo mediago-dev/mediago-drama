@@ -1643,8 +1643,15 @@ describe("MediaGenerationWorkspace", () => {
 		);
 
 		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
-		const modelSelect = screen.getByRole("combobox", { name: "优化模型" });
-		fireEvent.change(modelSelect, { target: { value: "text-route-dmx" } });
+		const optimizeRouteButton = screen
+			.getAllByRole("button", {
+				name: "模型版本和供应商",
+			})
+			.at(-1);
+		if (!optimizeRouteButton) throw new Error("missing prompt optimize model route button");
+		fireEvent.click(optimizeRouteButton);
+		fireEvent.click(screen.getByRole("button", { name: /DMX Text v1/ }));
+		fireEvent.click(screen.getByRole("button", { name: "DMX" }));
 		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
 
 		await waitFor(() => expect(generationApiMocks.streamGenerationText).toHaveBeenCalled());

@@ -465,7 +465,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 							{lockKind ? null : <ModeToggle compact kind={ws.kind} onChange={ws.setKind} />}
 							<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
 								<SelectTrigger
-									aria-label="模型类型"
+									aria-label="模型名称"
 									className={generationComposerSelectClassName()}
 								>
 									<GenerationBrandMark
