@@ -26,6 +26,7 @@ func Providers() []ProviderInfo {
 		{ID: ProviderOpenAI, Label: labels[ProviderOpenAI], ProviderType: ProviderTypeOfficial},
 		{ID: ProviderGoogle, Label: labels[ProviderGoogle], ProviderType: ProviderTypeOfficial},
 		{ID: ProviderMiniMax, Label: labels[ProviderMiniMax], ProviderType: ProviderTypeOfficial},
+		{ID: ProviderDeepSeek, Label: labels[ProviderDeepSeek], ProviderType: ProviderTypeOfficial},
 		{ID: ProviderVolcengine, Label: labels[ProviderVolcengine], ProviderType: ProviderTypeOfficial},
 		{ID: ProviderDMX, Label: labels[ProviderDMX], ProviderType: ProviderTypeAggregator},
 		{ID: ProviderOpenRouter, Label: labels[ProviderOpenRouter], ProviderType: ProviderTypeAggregator},

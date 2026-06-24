@@ -22,7 +22,7 @@ import {
 	useAgentPersistenceStore,
 } from "@/domains/agent/stores/persistence";
 import { readAgentChatCache, writeAgentChatCache } from "@/domains/agent/stores/chat-cache";
-import { useAgentStore, type AgentState } from "@/domains/agent/stores";
+import { selectAgentMessages, useAgentStore, type AgentState } from "@/domains/agent/stores";
 import {
 	agentProjectPath,
 	agentProjectRouteState,
@@ -233,14 +233,19 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 		);
 		if (loadedRequestKey.current === requestKey) return;
 
-		useAgentStore.getState().hydrateAgentChatState(data.messages, data.activity, {
-			sessionId: resolvedSessionId,
-			rootRunId: data.rootRunId,
-			conversations: data.conversations,
-			lastEventId: data.lastEventId,
-			running: data.running,
-			pendingPermissions: data.pendingPermissions,
-		});
+		const agentStore = useAgentStore.getState();
+		if (shouldPreserveLocalRunningTranscript(data, agentStore, resolvedSessionId)) {
+			if (resolvedSessionId) agentStore.setSessionId(resolvedSessionId);
+		} else {
+			agentStore.hydrateAgentChatState(data.messages, data.activity, {
+				sessionId: resolvedSessionId,
+				rootRunId: data.rootRunId,
+				conversations: data.conversations,
+				lastEventId: data.lastEventId,
+				running: data.running,
+				pendingPermissions: data.pendingPermissions,
+			});
+		}
 		if (requestedProjectId && resolvedSessionId) {
 			setPersistedAgentSessionId(requestedProjectId, resolvedSessionId);
 		}
@@ -335,6 +340,27 @@ const hasCacheableAgentSnapshot = (
 			return Boolean(message.metadata && Object.keys(message.metadata).length > 0);
 		});
 	});
+
+const shouldPreserveLocalRunningTranscript = (
+	data: {
+		running?: boolean;
+		messages: readonly unknown[];
+		conversations?: Record<string, unknown> | null;
+	},
+	state: AgentState,
+	resolvedSessionId?: string | null,
+): boolean => {
+	if (!data.running) return false;
+	if (data.messages.length > 0) return false;
+	if (Object.keys(data.conversations ?? {}).length > 0) return false;
+	if (selectAgentMessages(state).length === 0) return false;
+
+	const localSessionId = state.sessionId?.trim() || null;
+	const targetSessionId = resolvedSessionId?.trim() || null;
+	if (localSessionId && targetSessionId && localSessionId !== targetSessionId) return false;
+	if (!localSessionId && targetSessionId && !state.isRunning) return false;
+	return true;
+};
 
 const applyTerminalSessionStatus = (status: AgentSessionStatus) => {
 	const store = useAgentStore.getState();

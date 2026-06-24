@@ -745,11 +745,7 @@ const handleA2UIAction = async (
 
 const shouldDismissA2UIOnAction = (action: A2uiClientAction) => {
 	const kind = action.context?.kind;
-	return (
-		kind === "attachment_import_decision" ||
-		kind === "agent_permission" ||
-		kind === "document_tool_approval"
-	);
+	return kind === "agent_permission" || kind === "document_tool_approval";
 };
 
 const shouldKeepA2UIResultInTimeline = (action: A2uiClientAction) =>

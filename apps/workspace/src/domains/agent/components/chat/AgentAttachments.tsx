@@ -1,7 +1,6 @@
 import { FileText, ImageIcon, Loader2, X } from "lucide-react";
 import type React from "react";
 import { uploadMediaAsset } from "@/domains/workspace/api/media";
-import type { AgentA2UIPayload } from "@/domains/agent/api/agent";
 
 export type AttachmentStatus = "uploading" | "ready" | "error";
 export type AttachmentKind = "image" | "file";
@@ -48,94 +47,6 @@ export const createPendingAttachment = (file: File): AgentAttachment => ({
 	size: file.size,
 	status: "uploading",
 });
-
-export const createAttachmentDecisionBatchId = () =>
-	`attachment-batch-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-export const createAttachmentDecisionA2UIPayload = (
-	batchId: string,
-	files: Array<Pick<AgentAttachment, "name" | "size">>,
-): AgentA2UIPayload => {
-	const surfaceId = `attachment-import-${safeA2UIID(batchId)}`;
-	const fileSummary = files
-		.map((file, index) => `${index + 1}. ${file.name}（${formatBytes(file.size)}）`)
-		.join("\n");
-	return {
-		version: "v0.9",
-		surfaceId,
-		messages: [
-			{
-				version: "v0.9",
-				createSurface: {
-					surfaceId,
-					catalogId: a2uiBasicCatalogID,
-				},
-			},
-			{
-				version: "v0.9",
-				updateComponents: {
-					surfaceId,
-					components: [
-						{
-							id: "root",
-							component: "Column",
-							children: ["title", "summary", "files", "actions"],
-							align: "stretch",
-						},
-						{
-							id: "title",
-							component: "Text",
-							text: "是否添加到资料？",
-							variant: "h5",
-						},
-						{
-							id: "summary",
-							component: "Text",
-							text: "附件可以作为本次对话上下文，也可以原文件保存到资料。",
-						},
-						{
-							id: "files",
-							component: "Text",
-							text: fileSummary || "未选择文件。",
-							variant: "caption",
-						},
-						{
-							id: "actions",
-							component: "Row",
-							children: ["cancel", "use-once", "add-to-library"],
-							justify: "end",
-							align: "center",
-						},
-						{
-							id: "cancel-label",
-							component: "Text",
-							text: "取消",
-						},
-						{
-							id: "use-once-label",
-							component: "Text",
-							text: "仅本次使用",
-						},
-						{
-							id: "add-to-library-label",
-							component: "Text",
-							text: "添加到资料",
-						},
-						attachmentDecisionButton("cancel", "cancel-label", "borderless", batchId, "cancel"),
-						attachmentDecisionButton("use-once", "use-once-label", "default", batchId, "use_once"),
-						attachmentDecisionButton(
-							"add-to-library",
-							"add-to-library-label",
-							"primary",
-							batchId,
-							"add_to_library",
-						),
-					],
-				},
-			},
-		],
-	};
-};
 
 export const readAgentAttachment = async (
 	file: File,
@@ -233,33 +144,6 @@ const formatBytes = (bytes: number) => {
 	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
 	return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 };
-
-const a2uiBasicCatalogID = "https://a2ui.org/specification/v0_9/basic_catalog.json";
-
-const attachmentDecisionButton = (
-	id: string,
-	child: string,
-	variant: "borderless" | "default" | "primary",
-	batchId: string,
-	decision: "add_to_library" | "use_once" | "cancel",
-) => ({
-	id,
-	component: "Button",
-	child,
-	variant,
-	action: {
-		event: {
-			name: "attachment.import.decide",
-			context: {
-				kind: "attachment_import_decision",
-				batchId,
-				decision,
-			},
-		},
-	},
-});
-
-const safeA2UIID = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "-");
 
 export const AttachmentChip: React.FC<{
 	attachment: AgentAttachment;

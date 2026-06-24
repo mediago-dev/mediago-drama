@@ -1,8 +1,9 @@
 ---
 name: screenplay-writer
 title: 剧本写作
-description: 编辑 screenplay 类型文档时使用，给出剧本字段填写规则与模板格式
+description: 编辑 screenplay 类型文档时使用，给出剧本字段填写规则与写作要求
 document_category: screenplay
+template_id: screenplay.v1
 ---
 # 类型专属写作指导：剧本（screenplay）
 
@@ -38,27 +39,3 @@ document_category: screenplay
 
 - 除非模板或用户明确要求，不写导演化指令、摄影机口令、剪辑命令或演员表演注解。
 - 需要表达视觉重点时，把它转化为画面中可观察的行为和物件。
-
-## 模板格式
-
-新建或填写本类型文档时，使用以下骨架。模板本身即是 few-shot 示例——按此格式产出即可。
-
-```markdown
-# 第一章
-
-## 1-1  白天 室外  地点名称
-
-人物：角色名
-场景与动作描述。
-角色名（情绪）：对白台词
-角色名（OS）：内心独白
-
-## 1-2  夜晚 室内  地点名称
-
-人物：角色名
-
-【闪回】
-【字幕：时间标注】
-闪回内容
-【闪回结束】
-```

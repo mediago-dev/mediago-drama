@@ -23,11 +23,29 @@ const toastMocks = vi.hoisted(() => ({
 	warning: vi.fn(),
 }));
 const generationApiMocks = vi.hoisted(() => ({
+	createGenerationConversation: vi.fn(
+		async (request: {
+			id?: string;
+			sessionId?: string;
+			kind?: string;
+			scopeId?: string;
+			title?: string;
+		}) => ({
+			createdAt: "2026-01-01T00:00:00.000Z",
+			id: request.id ?? request.sessionId ?? "",
+			kind: request.kind,
+			scopeId: request.scopeId,
+			sessionId: request.sessionId ?? request.id ?? "",
+			title: request.title ?? "",
+			updatedAt: "2026-01-01T00:00:00.000Z",
+		}),
+	),
 	previewGenerationVoice: vi.fn(),
 	selectedGenerationAssetsQueryKey: vi.fn((projectId: string) => [
 		"generation-selected-assets",
 		projectId,
 	]),
+	streamGenerationText: vi.fn(),
 	updateSelectedGenerationAsset: vi.fn(async () => undefined),
 }));
 const mediaApiMocks = vi.hoisted(() => ({
@@ -43,8 +61,10 @@ vi.mock("@/domains/generation/api/generation", async (importOriginal) => {
 
 	return {
 		...actual,
+		createGenerationConversation: generationApiMocks.createGenerationConversation,
 		previewGenerationVoice: generationApiMocks.previewGenerationVoice,
 		selectedGenerationAssetsQueryKey: generationApiMocks.selectedGenerationAssetsQueryKey,
+		streamGenerationText: generationApiMocks.streamGenerationText,
 		updateSelectedGenerationAsset: generationApiMocks.updateSelectedGenerationAsset,
 	};
 });
@@ -107,6 +127,7 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 		previewReferenceAssets = [],
 		primaryParamControls,
 		promptEditor,
+		promptOptimizeControl,
 		referenceButtonLabel,
 		secondaryParamControls,
 	}: {
@@ -116,6 +137,7 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 		previewReferenceAssets?: MediaAsset[];
 		primaryParamControls?: React.ReactNode;
 		promptEditor?: React.ReactNode;
+		promptOptimizeControl?: React.ReactNode;
 		referenceButtonLabel?: string;
 		secondaryParamControls?: React.ReactNode;
 	}) => {
@@ -131,6 +153,7 @@ vi.mock("@/domains/generation/components/MediaGenerationInputPanel", () => ({
 				{modelControls}
 				{imageSpecControl}
 				{primaryParamControls}
+				{promptOptimizeControl}
 				{secondaryParamControls}
 				{previewReferenceAssets.map((asset) => (
 					<span key={asset.id}>{asset.filename}</span>
@@ -349,6 +372,72 @@ const workspaceDefaults = {
 	visibleVersions: [{ id: "version-image", label: "v1" }],
 };
 
+const promptInsertItem = {
+	id: "prompt-cinematic",
+	categoryLabel: "风格",
+	name: "电影质感",
+	prompt: "cinematic lighting, detailed composition",
+	sourceLabel: "来自包",
+};
+
+const textGenerationCatalog = {
+	families: [{ id: "text-family", kind: "text", label: "文本模型" }],
+	models: [],
+	providers: [],
+	routes: [
+		{
+			adapter: "test.text",
+			async: false,
+			configured: true,
+			docUrl: "https://example.com/text",
+			familyId: "text-family",
+			id: "text-route",
+			kind: "text",
+			label: "Text Route",
+			model: "text-model",
+			params: [],
+			provider: "openai",
+			status: "available",
+			supportsReferenceUrls: false,
+			versionId: "text-version",
+		},
+		{
+			adapter: "test.text.dmx",
+			async: false,
+			configured: true,
+			docUrl: "https://example.com/text-dmx",
+			familyId: "text-family",
+			id: "text-route-dmx",
+			kind: "text",
+			label: "DMX Text Route",
+			model: "dmx-text-model",
+			params: [],
+			provider: "dmx",
+			status: "available",
+			supportsReferenceUrls: false,
+			versionId: "text-version-dmx",
+		},
+	],
+	versions: [
+		{
+			canonicalModel: "text-model",
+			capabilities: { async: false, supportsReferenceUrls: false },
+			familyId: "text-family",
+			id: "text-version",
+			kind: "text",
+			label: "Text v1",
+		},
+		{
+			canonicalModel: "dmx-text-model",
+			capabilities: { async: false, supportsReferenceUrls: false },
+			familyId: "text-family",
+			id: "text-version-dmx",
+			kind: "text",
+			label: "DMX Text v1",
+		},
+	],
+};
+
 describe("MediaGenerationWorkspace", () => {
 	afterEach(() => {
 		cleanup();
@@ -356,6 +445,7 @@ describe("MediaGenerationWorkspace", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		generationApiMocks.streamGenerationText.mockReset();
 		window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
 			callback(0);
 			return 0;
@@ -1459,6 +1549,144 @@ describe("MediaGenerationWorkspace", () => {
 
 		expect(setPrompt).toHaveBeenCalledWith("旧提示词");
 		expect(onViewModeChange).not.toHaveBeenCalled();
+	});
+
+	it("fills the prompt from a prompt pack when the editor is empty", () => {
+		const setPrompt = vi.fn();
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			prompt: "",
+			promptInsertItems: [promptInsertItem],
+			setPrompt,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(<MediaGenerationWorkspace historyScopeId="history-a" initialPrompt="" kind="image" />);
+
+		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
+		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+
+		expect(setPrompt).toHaveBeenCalledWith("cinematic lighting, detailed composition");
+		expect(generationApiMocks.streamGenerationText).not.toHaveBeenCalled();
+	});
+
+	it("optimizes the current prompt with a selected prompt pack", async () => {
+		const setPrompt = vi.fn();
+		generationApiMocks.streamGenerationText.mockImplementation(async (_request, handlers) => {
+			handlers.onDelta?.("optimized ");
+			handlers.onDelta?.("prompt");
+		});
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			catalog: textGenerationCatalog,
+			prompt: "原始角色提示词",
+			promptInsertItems: [promptInsertItem],
+			setPrompt,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="原始角色提示词"
+				kind="image"
+				projectId="project-a"
+				taskType="character"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
+		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+
+		await waitFor(() => expect(generationApiMocks.streamGenerationText).toHaveBeenCalled());
+		expect(generationApiMocks.createGenerationConversation).toHaveBeenCalledWith({
+			id: "project-a-text",
+			kind: "text",
+			scopeId: "agent",
+			title: "项目 · 文本",
+		});
+		const [request] = generationApiMocks.streamGenerationText.mock.calls[0];
+		expect(request).toMatchObject({
+			capabilityId: "character",
+			conversationId: "project-a-text",
+			kind: "text",
+			projectId: "project-a",
+			routeId: "text-route",
+			scopeId: "agent",
+			provider: "openai",
+			model: "text-model",
+		});
+		expect(request.prompt).toContain("原始角色提示词");
+		expect(request.prompt).toContain("cinematic lighting, detailed composition");
+		expect(setPrompt).toHaveBeenCalledWith("optimized ");
+		expect(setPrompt).toHaveBeenCalledWith("optimized prompt");
+	});
+
+	it("uses the selected text model for prompt optimization", async () => {
+		const setPrompt = vi.fn();
+		generationApiMocks.streamGenerationText.mockImplementation(async (_request, handlers) => {
+			handlers.onDelta?.("optimized prompt");
+		});
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			catalog: textGenerationCatalog,
+			prompt: "原始角色提示词",
+			promptInsertItems: [promptInsertItem],
+			setPrompt,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="原始角色提示词"
+				kind="image"
+				projectId="project-a"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
+		const modelSelect = screen.getByRole("combobox", { name: "优化模型" });
+		fireEvent.change(modelSelect, { target: { value: "text-route-dmx" } });
+		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+
+		await waitFor(() => expect(generationApiMocks.streamGenerationText).toHaveBeenCalled());
+		const [request] = generationApiMocks.streamGenerationText.mock.calls[0];
+		expect(request).toMatchObject({
+			kind: "text",
+			model: "dmx-text-model",
+			provider: "dmx",
+			routeId: "text-route-dmx",
+			versionId: "text-version-dmx",
+		});
+	});
+
+	it("appends a prompt pack when no text model is available for optimization", () => {
+		const setPrompt = vi.fn();
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			prompt: "原始角色提示词",
+			promptInsertItems: [promptInsertItem],
+			setPrompt,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="原始角色提示词"
+				kind="image"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
+		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+
+		const updater = setPrompt.mock.calls.find(([value]) => typeof value === "function")?.[0];
+		expect(typeof updater).toBe("function");
+		expect(updater("原始角色提示词")).toBe(
+			"原始角色提示词\n\ncinematic lighting, detailed composition",
+		);
+		expect(toastMocks.warning).toHaveBeenCalledWith("没有可用文本模型", {
+			description: "已追加提示词包内容。",
+		});
+		expect(generationApiMocks.streamGenerationText).not.toHaveBeenCalled();
 	});
 
 	it("copies the active history request references into the editor with the prompt", () => {

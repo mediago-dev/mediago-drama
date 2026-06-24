@@ -11,7 +11,7 @@ import (
 func TestParseFSParsesPackAssets(t *testing.T) {
 	bundle, err := ParseFS(context.Background(), fstest.MapFS{
 		"pack.json":              {Data: []byte(`{"id":"sample","name":"Sample","version":"1.0.0","categories":[{"id":"extra","label":"Extra"}]}`)},
-		"skills/writer.skill.md": {Data: []byte("---\nname: writer\ndescription: Writes\ndocument_category: screenplay\n---\nSkill body\n")},
+		"skills/writer.skill.md": {Data: []byte("---\nname: writer\ndescription: Writes\ndocument_category: screenplay\ntemplate_id: screenplay.v1\n---\nSkill body\n")},
 		"prompts/image.md":       {Data: []byte("---\nid: image\nname: Image\ntype: image\ncategory: extra\n---\nPrompt body\n")},
 	})
 	if err != nil {
@@ -28,6 +28,9 @@ func TestParseFSParsesPackAssets(t *testing.T) {
 			hint, ok := entry.Metadata["hint"].(map[string]string)
 			if !ok || hint["document_category"] != "screenplay" {
 				t.Fatalf("skill hint = %#v, want document_category", entry.Metadata["hint"])
+			}
+			if entry.Metadata["template_id"] != "screenplay.v1" {
+				t.Fatalf("template_id = %#v, want screenplay.v1", entry.Metadata["template_id"])
 			}
 		}
 	}

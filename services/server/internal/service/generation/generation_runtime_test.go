@@ -1113,7 +1113,7 @@ func TestCompleteTextUsesConfiguredTextRoute(t *testing.T) {
 	workflow := NewGenerationService(settingsSvc, nil, nil)
 	var captured coregeneration.Request
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
-		if route.ID != coregeneration.RouteOfficialGPT5MiniText {
+		if route.ID != coregeneration.RouteOfficialGPT55Text {
 			t.Fatalf("route = %q, want official text route", route.ID)
 		}
 		return fakeTextStreamProvider{
@@ -1136,8 +1136,8 @@ func TestCompleteTextUsesConfiguredTextRoute(t *testing.T) {
 	if text != `{"ok":true}` {
 		t.Fatalf("text = %q, want collected stream", text)
 	}
-	if captured.RouteID != coregeneration.RouteOfficialGPT5MiniText ||
-		captured.Model != "gpt-5-mini" ||
+	if captured.RouteID != coregeneration.RouteOfficialGPT55Text ||
+		captured.Model != "gpt-5.5" ||
 		captured.Params["temperature"] != 0 {
 		t.Fatalf("captured request = %#v", captured)
 	}
@@ -1151,7 +1151,7 @@ func TestCompleteTextFallsBackToNonStreamingProvider(t *testing.T) {
 	})
 	workflow := NewGenerationService(settingsSvc, nil, nil)
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
-		if route.ID != coregeneration.RouteOfficialGPT5MiniText {
+		if route.ID != coregeneration.RouteOfficialGPT55Text {
 			t.Fatalf("route = %q, want official text route", route.ID)
 		}
 		return fakeUnsupportedTextStreamProvider{

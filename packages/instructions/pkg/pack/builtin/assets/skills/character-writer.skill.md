@@ -1,8 +1,9 @@
 ---
 name: character-writer
 title: 角色设定写作
-description: 编辑 character 类型文档时使用：梳理剧情提炼人物外观，按项目所选视觉风格产出可供 GPTImage2 等 AI 图像工具参考的外观描述词与模板格式
+description: 编辑 character 类型文档时使用：梳理剧情提炼人物外观，按项目所选视觉风格产出可供 GPTImage2 等 AI 图像工具参考的外观描述词
 document_category: character
+template_id: character.v1
 ---
 # 类型专属写作指导：AI 图像外观描述词（character）
 
@@ -37,33 +38,3 @@ document_category: character
 - 不写剧情梗概或性格标签，例如“勇敢”“腹黑”“善良”。
 - 不堆空泛形容词，例如“绝美”“高级”“有气场”；要落到可被图像模型识别的视觉细节。
 - 不写死某一种风格，尤其不要默认真人写实；一切以 `config.overview.style` 为准。
-
-## 模板格式
-
-新建或填写本类型文档时，使用以下骨架。模板本身即是 few-shot 示例——按此格式产出即可。
-
-```markdown
-## 人物姓名
-
-**形象定位**：
-
-**面部特征**：
-
-**身材气质**：
-
-**着装造型**：
-
-**标志性细节**：
-
-## 人物姓名 2
-
-**形象定位**：
-
-**面部特征**：
-
-**身材气质**：
-
-**着装造型**：
-
-**标志性细节**：
-```

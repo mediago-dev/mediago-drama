@@ -10,8 +10,11 @@ import type {
 	GenerationNotificationOpenTarget,
 } from "@/domains/generation/api/generation";
 import {
+	generationConversationsQueryKey,
 	generationModelsKey,
+	generationTasksQueryKey,
 	previewGenerationVoice,
+	projectGenerationConversation,
 	selectedGenerationAssetsQueryKey,
 	updateSelectedGenerationAsset,
 } from "@/domains/generation/api/generation";
@@ -39,6 +42,7 @@ import {
 import { GenerationModelRoutePicker } from "@/domains/generation/components/GenerationModelRoutePicker";
 import { MediaGenerationInputPanel } from "@/domains/generation/components/MediaGenerationInputPanel";
 import { MediaGenerationWorkspaceDialogs } from "@/domains/generation/components/MediaGenerationWorkspaceDialogs";
+import { PromptOptimizeControl } from "@/domains/generation/components/PromptOptimizeControl";
 import {
 	MaterialLibraryImportDialog,
 	PrimaryParamControl,
@@ -68,9 +72,14 @@ import {
 import { useGenerationCountControl } from "@/domains/generation/components/useGenerationCountControl";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import {
+	promptOptimizeModelOptions as listPromptOptimizeModelOptions,
+	usePromptOptimize,
+} from "@/domains/generation/hooks/usePromptOptimize";
+import {
 	type GenerationEntry,
 	generationAssetSelectionKey,
 	generationAssetSource,
+	preferredRoute,
 	routeProviderLabel,
 	taskIdFromGenerationEntryId,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
@@ -135,6 +144,14 @@ const errorMessage = (err: unknown) =>
 	err && typeof err === "object" && "message" in err
 		? String((err as { message?: unknown }).message || "")
 		: "";
+
+const appendPromptOptimizeReference = (currentPrompt: string, referencePrompt: string) => {
+	const current = currentPrompt.trim();
+	const reference = referencePrompt.trim();
+	if (!current) return reference;
+	if (!reference || current.includes(reference)) return current;
+	return `${current}\n\n${reference}`;
+};
 
 const isPlaybackBlockedError = (err: unknown) =>
 	err instanceof DOMException
@@ -346,6 +363,109 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	});
 	const resolvedMediaAssetProjectId =
 		mediaAssetProjectId === undefined ? (projectId?.trim() ?? "") : (mediaAssetProjectId ?? "");
+	const [selectedPromptOptimizeRouteId, setSelectedPromptOptimizeRouteId] = useState("");
+	const promptOptimizeProjectConversation = useMemo(
+		() => projectGenerationConversation(resolvedMediaAssetProjectId || projectId, "text"),
+		[projectId, resolvedMediaAssetProjectId],
+	);
+	const promptOptimizeConversationId =
+		promptOptimizeProjectConversation?.conversationId ?? conversationId;
+	const promptOptimizeConversationScopeId =
+		promptOptimizeProjectConversation?.conversationScopeId ?? conversationScopeId;
+	const promptOptimizeConversationTitle =
+		promptOptimizeProjectConversation?.conversationTitle ?? conversationTitle;
+	const promptOptimizeModelOptions = useMemo(
+		() => listPromptOptimizeModelOptions(ws.catalog),
+		[ws.catalog],
+	);
+	const preferredPromptOptimizeModel = useMemo(() => {
+		const route = preferredRoute(promptOptimizeModelOptions.map((option) => option.route));
+		if (!route) return promptOptimizeModelOptions[0] ?? null;
+		return (
+			promptOptimizeModelOptions.find((option) => option.route.id === route.id) ??
+			promptOptimizeModelOptions[0] ??
+			null
+		);
+	}, [promptOptimizeModelOptions]);
+	useEffect(() => {
+		if (promptOptimizeModelOptions.length === 0) {
+			if (selectedPromptOptimizeRouteId) setSelectedPromptOptimizeRouteId("");
+			return;
+		}
+		if (promptOptimizeModelOptions.some((option) => option.id === selectedPromptOptimizeRouteId)) {
+			return;
+		}
+		setSelectedPromptOptimizeRouteId(
+			preferredPromptOptimizeModel?.id ?? promptOptimizeModelOptions[0]?.id ?? "",
+		);
+	}, [preferredPromptOptimizeModel?.id, promptOptimizeModelOptions, selectedPromptOptimizeRouteId]);
+	const selectedPromptOptimizeModel =
+		promptOptimizeModelOptions.find((option) => option.id === selectedPromptOptimizeRouteId) ??
+		preferredPromptOptimizeModel ??
+		promptOptimizeModelOptions[0] ??
+		null;
+	const refreshPromptOptimizeHistory = useCallback(() => {
+		const refreshConversationId = promptOptimizeConversationId?.trim() || undefined;
+		const refreshScopeId = promptOptimizeConversationScopeId?.trim() || undefined;
+		const refreshProjectId = (resolvedMediaAssetProjectId || projectId || "").trim() || undefined;
+		void mutateSWR(
+			generationTasksQueryKey(refreshConversationId, "text", refreshScopeId, refreshProjectId),
+		);
+		void mutateSWR(generationConversationsQueryKey("text", refreshScopeId));
+		void mutateSWR(generationConversationsQueryKey("text", "", { allScopes: true }));
+	}, [
+		projectId,
+		promptOptimizeConversationId,
+		promptOptimizeConversationScopeId,
+		resolvedMediaAssetProjectId,
+	]);
+	const {
+		canOptimize: canOptimizePrompt,
+		error: promptOptimizeError,
+		isOptimizing: isPromptOptimizing,
+		optimize: optimizePrompt,
+	} = usePromptOptimize({
+		capabilityId: taskType ?? "studio",
+		catalog: ws.catalog,
+		conversationId: promptOptimizeConversationId,
+		conversationScopeId: promptOptimizeConversationScopeId,
+		conversationTitle: promptOptimizeConversationTitle,
+		onSuccess: refreshPromptOptimizeHistory,
+		projectId: resolvedMediaAssetProjectId || projectId,
+		route: selectedPromptOptimizeModel?.route,
+		onOptimized: ws.setPrompt,
+	});
+	useEffect(() => {
+		if (!promptOptimizeError) return;
+		toast.error("提示词优化失败", { description: promptOptimizeError });
+	}, [promptOptimizeError, toast]);
+	const handlePromptOptimizeSelect = useCallback(
+		(item: (typeof ws.promptInsertItems)[number]) => {
+			const referencePrompt = item.prompt.trim();
+			if (!referencePrompt) return;
+
+			if (!ws.prompt.trim()) {
+				ws.setPrompt(referencePrompt);
+				toast.success("已填入提示词包", { description: item.name });
+				return;
+			}
+
+			if (!canOptimizePrompt) {
+				ws.setPrompt((currentPrompt) =>
+					appendPromptOptimizeReference(currentPrompt, referencePrompt),
+				);
+				toast.warning("没有可用文本模型", { description: "已追加提示词包内容。" });
+				return;
+			}
+
+			void optimizePrompt({
+				currentPrompt: ws.prompt,
+				referenceName: item.name,
+				referencePrompt,
+			});
+		},
+		[canOptimizePrompt, optimizePrompt, toast, ws],
+	);
 	const resultActions = useGeneratedResultActions({
 		mediaAssetProjectId: resolvedMediaAssetProjectId,
 		mutateMediaAssets: ws.mutateMediaAssets,
@@ -1312,6 +1432,18 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				modelSummary={modelSummary}
 				previewReferenceAssets={previewReferenceAssets}
 				primaryParamControls={primaryParamControls}
+				promptOptimizeControl={
+					<PromptOptimizeControl
+						canOptimize={canOptimizePrompt}
+						disabled={ws.isSubmitting}
+						isOptimizing={isPromptOptimizing}
+						items={ws.promptInsertItems}
+						modelOptions={promptOptimizeModelOptions}
+						onSelect={handlePromptOptimizeSelect}
+						onSelectModel={setSelectedPromptOptimizeRouteId}
+						selectedModelRouteId={selectedPromptOptimizeModel?.id}
+					/>
+				}
 				referenceButtonLabel={referenceButtonLabel}
 				promptEditor={promptEditor}
 				promptExtras={renderedPromptExtras}

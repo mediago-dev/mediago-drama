@@ -466,16 +466,18 @@ func apiKeyProviders() []APIKeyProvider {
 		})
 	}
 
-	providers = append(providers, APIKeyProvider{
-		ID:              agentModelProviderDeepSeek,
-		Label:           "DeepSeek",
-		Description:     "DeepSeek agent routes",
-		CredentialLabel: "DeepSeek API Key",
-		Placeholder:     "输入 DeepSeek API Key",
-		Help:            "用于智能体默认 DeepSeek Chat 模型。",
-		Capabilities:    apiKeyProviderCapabilities(agentModelProviderDeepSeek, false),
-		keyName:         agentModelProviderDeepSeek,
-	})
+	if _, ok := generation.FindCredentialSpec(agentModelProviderDeepSeek); !ok {
+		providers = append(providers, APIKeyProvider{
+			ID:              agentModelProviderDeepSeek,
+			Label:           "DeepSeek",
+			Description:     "DeepSeek agent routes",
+			CredentialLabel: "DeepSeek API Key",
+			Placeholder:     "输入 DeepSeek API Key",
+			Help:            "用于智能体默认 DeepSeek Chat 模型。",
+			Capabilities:    apiKeyProviderCapabilities(agentModelProviderDeepSeek, false),
+			keyName:         agentModelProviderDeepSeek,
+		})
+	}
 
 	return providers
 }

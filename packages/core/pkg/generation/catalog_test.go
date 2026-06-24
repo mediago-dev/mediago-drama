@@ -42,6 +42,7 @@ func TestCatalogRoutesReferenceKnownFamiliesAndVersions(t *testing.T) {
 		ProviderOpenAI,
 		ProviderGoogle,
 		ProviderMiniMax,
+		ProviderDeepSeek,
 		ProviderVolcengine,
 		ProviderDMX,
 		ProviderOpenRouter,
@@ -49,6 +50,42 @@ func TestCatalogRoutesReferenceKnownFamiliesAndVersions(t *testing.T) {
 	} {
 		if !providers[provider] {
 			t.Fatalf("catalog does not expose provider %q", provider)
+		}
+	}
+}
+
+func TestTextCatalogIncludesExpandedOfficialRoutes(t *testing.T) {
+	cases := []struct {
+		id       string
+		provider string
+		model    string
+	}{
+		{RouteOfficialGPT55Text, ProviderOpenAI, "gpt-5.5"},
+		{RouteOfficialGPT54Text, ProviderOpenAI, "gpt-5.4"},
+		{RouteOfficialGPT54MiniText, ProviderOpenAI, "gpt-5.4-mini"},
+		{RouteOfficialGemini35FlashText, ProviderGoogle, "gemini-3.5-flash"},
+		{RouteOfficialGemini31ProText, ProviderGoogle, "gemini-3.1-pro-preview"},
+		{RouteOfficialGemini31FlashLiteText, ProviderGoogle, "gemini-3.1-flash-lite"},
+		{RouteOfficialMiniMaxM3Text, ProviderMiniMax, "MiniMax-M3"},
+		{RouteOfficialMiniMaxM27Text, ProviderMiniMax, "MiniMax-M2.7"},
+		{RouteOfficialMiniMaxM27HighspeedText, ProviderMiniMax, "MiniMax-M2.7-highspeed"},
+		{RouteOfficialDeepSeekV4FlashText, ProviderDeepSeek, "deepseek-v4-flash"},
+		{RouteOfficialDeepSeekV4ProText, ProviderDeepSeek, "deepseek-v4-pro"},
+	}
+
+	for _, tc := range cases {
+		route, ok := FindRoute(tc.id)
+		if !ok {
+			t.Fatalf("route %q is missing", tc.id)
+		}
+		if route.Kind != KindText || route.FamilyID != FamilyText {
+			t.Fatalf("route %q = %#v, want text family route", tc.id, route)
+		}
+		if route.Provider != tc.provider || route.Model != tc.model {
+			t.Fatalf("route %q provider/model = %q/%q, want %q/%q", tc.id, route.Provider, route.Model, tc.provider, tc.model)
+		}
+		if len(route.AuthKeys) != 1 || route.AuthKeys[0] != tc.provider {
+			t.Fatalf("route %q auth keys = %#v, want provider key %q", tc.id, route.AuthKeys, tc.provider)
 		}
 	}
 }

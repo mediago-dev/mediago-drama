@@ -2,6 +2,7 @@ package official
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
 
@@ -24,7 +25,11 @@ func (provider *Provider) GenerateTextStream(ctx context.Context, request genera
 	}
 	request = generation.ApplyRoute(request, route)
 
-	body, err := provider.postStream(ctx, provider.openAIBaseURL+"/v1/chat/completions", provider.bearerAuthorization(), officialChatTextPayload(request))
+	endpoint, err := provider.chatTextEndpoint(route)
+	if err != nil {
+		return nil, err
+	}
+	body, err := provider.postStream(ctx, endpoint, provider.bearerAuthorization(), officialChatTextPayload(request))
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +90,21 @@ func officialChatTextPayload(request generation.Request) officialChatTextRequest
 		StreamOptions: map[string]any{"include_usage": true},
 		Temperature:   paramFloatPointer(request.Params, "temperature"),
 		MaxTokens:     paramIntPointer(request.Params, "maxTokens"),
+	}
+}
+
+func (provider *Provider) chatTextEndpoint(route generation.ModelRoute) (string, error) {
+	switch route.Adapter {
+	case generation.AdapterOfficialOpenAIChatText:
+		return provider.openAIBaseURL + "/v1/chat/completions", nil
+	case generation.AdapterOfficialGoogleChatText:
+		return provider.googleBaseURL + "/v1beta/openai/chat/completions", nil
+	case generation.AdapterOfficialMiniMaxChatText:
+		return provider.miniMaxBaseURL + "/v1/chat/completions", nil
+	case generation.AdapterOfficialDeepSeekChatText:
+		return provider.deepSeekBaseURL + "/chat/completions", nil
+	default:
+		return "", fmt.Errorf("unsupported official text adapter %q", route.Adapter)
 	}
 }
 

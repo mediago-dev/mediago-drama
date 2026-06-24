@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	instructiontemplates "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/templates"
 	httpresponse "github.com/mediago-dev/mediago-drama/services/server/internal/http/response"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 )
@@ -33,8 +35,18 @@ type skillResponse struct {
 	Description string              `json:"description"`
 	Source      serviceskill.Source `json:"source"`
 	Overridden  bool                `json:"overridden,omitempty"`
+	TemplateID  string              `json:"templateId,omitempty"`
+	Template    *skillTemplate      `json:"template,omitempty"`
 	Hint        map[string]string   `json:"hint,omitempty"`
 	Content     string              `json:"content"`
+}
+
+type skillTemplate struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Description      string `json:"description,omitempty"`
+	DocumentCategory string `json:"documentCategory"`
+	Content          string `json:"content"`
 }
 
 type createSkillRequest struct {
@@ -79,7 +91,7 @@ func (handler Skills) HandleGetSkill(context *gin.Context) {
 		writeSkillError(context, err)
 		return
 	}
-	httpresponse.OK(context, skillHTTPResponse(item))
+	httpresponse.OK(context, skillHTTPResponse(context.Request.Context(), item))
 }
 
 // HandlePutSkill godoc
@@ -105,7 +117,7 @@ func (handler Skills) HandlePutSkill(context *gin.Context) {
 		writeSkillError(context, err)
 		return
 	}
-	httpresponse.OK(context, skillHTTPResponse(item))
+	httpresponse.OK(context, skillHTTPResponse(context.Request.Context(), item))
 }
 
 // HandlePostSkill godoc
@@ -130,7 +142,7 @@ func (handler Skills) HandlePostSkill(context *gin.Context) {
 		writeSkillError(context, err)
 		return
 	}
-	httpresponse.OK(context, skillHTTPResponse(item))
+	httpresponse.OK(context, skillHTTPResponse(context.Request.Context(), item))
 }
 
 // HandleDeleteSkill godoc
@@ -168,7 +180,7 @@ func (handler Skills) HandleResetSkill(context *gin.Context) {
 		writeSkillError(context, err)
 		return
 	}
-	httpresponse.OK(context, skillHTTPResponse(item))
+	httpresponse.OK(context, skillHTTPResponse(context.Request.Context(), item))
 }
 
 func decodeRawMarkdown(context *gin.Context) (string, error) {
@@ -189,15 +201,35 @@ func decodeRawMarkdown(context *gin.Context) (string, error) {
 	return string(data), nil
 }
 
-func skillHTTPResponse(item serviceskill.Skill) skillResponse {
+func skillHTTPResponse(ctx context.Context, item serviceskill.Skill) skillResponse {
 	return skillResponse{
 		Name:        item.Name,
 		Title:       item.Title,
 		Description: item.Description,
 		Source:      item.Source,
 		Overridden:  item.Overridden,
+		TemplateID:  item.TemplateID,
+		Template:    resolveSkillTemplate(ctx, item.TemplateID),
 		Hint:        item.Hint,
 		Content:     item.Raw,
+	}
+}
+
+func resolveSkillTemplate(ctx context.Context, templateID string) *skillTemplate {
+	templateID = strings.TrimSpace(templateID)
+	if templateID == "" {
+		return nil
+	}
+	template, err := instructiontemplates.TemplateByID(ctx, templateID)
+	if err != nil {
+		return nil
+	}
+	return &skillTemplate{
+		ID:               template.ID,
+		Name:             template.Name,
+		Description:      template.Description,
+		DocumentCategory: template.DocumentCategory,
+		Content:          template.Body,
 	}
 }
 

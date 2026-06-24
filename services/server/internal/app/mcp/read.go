@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
+	instructiontemplates "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/templates"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 )
@@ -59,7 +61,57 @@ func (adapter *Adapter) LoadSkill(ctx context.Context, projectID string, input m
 		}
 		return output, err
 	}
-	return mediamcp.LoadSkillOutput{Name: item.Name, Content: item.Content}, nil
+	content := item.Content
+	var template *mediamcp.DocumentTemplate
+	if strings.TrimSpace(item.TemplateID) != "" {
+		resolved, err := instructiontemplates.TemplateByID(ctx, item.TemplateID)
+		if err != nil {
+			return mediamcp.LoadSkillOutput{Name: item.Name}, err
+		}
+		template = mcpDocumentTemplate(resolved)
+		content = appendDocumentTemplate(content, resolved)
+	}
+	return mediamcp.LoadSkillOutput{Name: item.Name, Content: content, Template: template}, nil
+}
+
+func appendDocumentTemplate(content string, template instructiontemplates.Template) string {
+	content = strings.TrimSpace(content)
+	body := strings.TrimSpace(template.Body)
+	if body == "" {
+		return normalizeMCPContent(content)
+	}
+	sections := []string{}
+	if content != "" {
+		sections = append(sections, content)
+	}
+	sections = append(sections, strings.Join([]string{
+		"## 系统内置模板格式（只读）",
+		"",
+		"新建或填写本类型文档时，必须使用下面的只读模板骨架。模板格式由 MediaGo Drama 内置管理；编辑 Skill 时不要改写、删除或复述模板字段。",
+		"",
+		"```markdown",
+		body,
+		"```",
+	}, "\n"))
+	return normalizeMCPContent(strings.Join(sections, "\n\n"))
+}
+
+func mcpDocumentTemplate(template instructiontemplates.Template) *mediamcp.DocumentTemplate {
+	return &mediamcp.DocumentTemplate{
+		ID:               template.ID,
+		Name:             template.Name,
+		Description:      template.Description,
+		DocumentCategory: template.DocumentCategory,
+		Content:          template.Body,
+	}
+}
+
+func normalizeMCPContent(content string) string {
+	content = strings.TrimSpace(strings.ReplaceAll(content, "\r\n", "\n"))
+	if content == "" {
+		return ""
+	}
+	return content + "\n"
 }
 
 func mcpSkillMetas(metas []serviceskill.SkillMeta) []mediamcp.SkillMeta {
@@ -69,6 +121,7 @@ func mcpSkillMetas(metas []serviceskill.SkillMeta) []mediamcp.SkillMeta {
 			Name:        meta.Name,
 			Description: meta.Description,
 			Source:      string(meta.Source),
+			TemplateID:  meta.TemplateID,
 			Hint:        meta.Hint,
 		})
 	}

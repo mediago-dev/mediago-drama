@@ -9,11 +9,21 @@ export interface SkillMeta {
 	description: string;
 	source: SkillSource;
 	overridden?: boolean;
+	templateId?: string;
 	hint?: Record<string, string>;
+}
+
+export interface SkillTemplate {
+	id: string;
+	name: string;
+	description?: string;
+	documentCategory: string;
+	content: string;
 }
 
 export interface SkillDocument extends SkillMeta {
 	content: string;
+	template?: SkillTemplate;
 }
 
 export const skillsKey = "/skills";

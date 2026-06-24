@@ -1,10 +1,8 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import useSWR, { mutate as mutateSWR } from "swr";
-import type { A2uiClientAction } from "@a2ui/web_core/v0_9";
 import { agentRuntimeConfigKey, getAgentRuntimeConfig } from "@/domains/agent/api/agent";
 import { agentDisplayPrompt } from "@/domains/agent/lib/display-prompt";
-import { actionContextString } from "@/domains/agent/lib/a2ui-actions";
 import { uploadProjectAsset, type ProjectAsset } from "@/domains/workspace/api/project-assets";
 import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspace/api/workspace";
 import {
@@ -23,8 +21,6 @@ import {
 } from "@/domains/agent/components/chat/AgentRuntimeConfigControls";
 import {
 	appendAttachmentContext,
-	createAttachmentDecisionA2UIPayload,
-	createAttachmentDecisionBatchId,
 	createPendingAttachment,
 	defaultAgentPrompt,
 	getAttachmentError,
@@ -42,7 +38,6 @@ import {
 	selectConsumeAgentComposerSeed,
 	useAgentStore,
 	type AgentDisplayAttachment,
-	type AgentMessage,
 	type AgentMessageMetadata,
 } from "@/domains/agent/stores";
 import {
@@ -64,12 +59,10 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 		referenceCount: 0,
 	});
 	const [isStopping, setIsStopping] = useState(false);
+	const [isSavingAttachments, setIsSavingAttachments] = useState(false);
 	const [selectedModel, setSelectedModel] = useState("");
 	const [selectedReasoning, setSelectedReasoning] = useState("");
 	const [selectedPermission, setSelectedPermission] = useState("");
-	const [pendingAttachmentDecisionId, setPendingAttachmentDecisionId] = useState<string | null>(
-		null,
-	);
 	const messages = useAgentStore(selectAgentMessages);
 	const isRunning = useAgentStore(selectAgentIsRunning);
 	const runtimeAlerts = useAgentStore(selectAgentRuntimeAlerts);
@@ -81,7 +74,6 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	const storedProjectId = useProjectStore((state) => state.activeProjectId);
 	const projectId = routeProjectId ?? storedProjectId;
 	const composerRef = useRef<AgentComposerHandle>(null);
-	const pendingAttachmentSendRef = useRef<PendingAttachmentSend | null>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const hasUploadingAttachment = attachments.some(
 		(attachment) => attachment.status === "uploading",
@@ -106,7 +98,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 			hasOpenComments,
 		) &&
 		!hasUploadingAttachment &&
-		!pendingAttachmentDecisionId;
+		!isSavingAttachments;
 
 	useEffect(() => {
 		setSelectedModel((current) => normalizeRuntimeConfigValue(runtimeConfig?.model, current));
@@ -154,7 +146,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				!hasOpenComments) ||
 			isRunning ||
 			hasUploadingAttachment ||
-			pendingAttachmentDecisionId
+			isSavingAttachments
 		) {
 			return;
 		}
@@ -176,20 +168,28 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 		};
 
 		if (readyAttachments.length > 0) {
-			const batchId = createAttachmentDecisionBatchId();
-			const nextPendingSend = { ...pendingSend, batchId, reuseCurrentRun: true };
-			pendingAttachmentSendRef.current = nextPendingSend;
-			setPendingAttachmentDecisionId(batchId);
-			const agentState = useAgentStore.getState();
-			agentState.addUserMessage(pendingSend.displayPrompt, pendingSend.displayMetadata);
-			agentState.addA2UIMessage(
-				createAttachmentDecisionA2UIPayload(batchId, readyAttachments),
-				"请选择附件处理方式。",
-			);
-			composerRef.current?.clear();
-			setAttachments([]);
-			setComposerContext("default");
-			return;
+			setIsSavingAttachments(true);
+			try {
+				const uploadedAssets = await Promise.all(
+					readyAttachments.map((attachment) => uploadAttachmentAsset(attachment, projectId)),
+				);
+				await refreshProjectAssets(projectId);
+				pendingSend.promptWithAttachments = appendUploadedAssetContext(
+					pendingSend.promptWithAttachments,
+					uploadedAssets,
+				);
+			} catch (err) {
+				useAgentStore
+					.getState()
+					.recordActivity(
+						"runtime",
+						"资料保存失败",
+						err instanceof Error ? err.message : "附件写入资料失败。",
+					);
+				return;
+			} finally {
+				setIsSavingAttachments(false);
+			}
 		}
 
 		await startAgentPrompt(pendingSend);
@@ -202,7 +202,6 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 			model: pendingSend.model,
 			comments: pendingSend.comments,
 			references: pendingSend.references,
-			reuseCurrentRun: pendingSend.reuseCurrentRun,
 			reasoning: pendingSend.reasoning,
 			permission: pendingSend.permission,
 		});
@@ -255,54 +254,6 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 		);
 	};
 
-	const handleA2UIAction = async (_message: AgentMessage, action: A2uiClientAction) => {
-		if (actionContextString(action, "kind") !== "attachment_import_decision") return false;
-
-		const batchId = actionContextString(action, "batchId");
-		const decision = actionContextString(action, "decision");
-		const pendingSend = pendingAttachmentSendRef.current;
-		if (!pendingSend || pendingSend.batchId !== batchId) {
-			useAgentStore
-				.getState()
-				.recordActivity("runtime", "附件处理失败", "附件批次已失效，请重新选择文件。");
-			return true;
-		}
-
-		if (decision === "cancel") {
-			pendingAttachmentSendRef.current = null;
-			setPendingAttachmentDecisionId(null);
-			useAgentStore.getState().recordActivity("runtime", "附件已取消", "已取消本次附件导入。");
-			return true;
-		}
-
-		if (decision === "add_to_library") {
-			try {
-				const uploadedAssets = await Promise.all(
-					pendingSend.attachments.map((attachment) => uploadAttachmentAsset(attachment, projectId)),
-				);
-				await refreshProjectAssets(projectId);
-				pendingSend.promptWithAttachments = appendUploadedAssetContext(
-					pendingSend.promptWithAttachments,
-					uploadedAssets,
-				);
-			} catch (err) {
-				useAgentStore
-					.getState()
-					.recordActivity(
-						"runtime",
-						"资料保存失败",
-						err instanceof Error ? err.message : "附件写入资料失败。",
-					);
-				return true;
-			}
-		}
-
-		pendingAttachmentSendRef.current = null;
-		setPendingAttachmentDecisionId(null);
-		await startAgentPrompt(pendingSend);
-		return true;
-	};
-
 	const removeAttachment = (id: string) => {
 		setAttachments((items) => items.filter((item) => item.id !== id));
 	};
@@ -333,7 +284,6 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 					messages={messages}
 					isRunning={isRunning}
 					runtimeAlerts={runtimeAlerts}
-					onA2UIAction={handleA2UIAction}
 				/>
 			</div>
 			<PendingPermissionRequests />
@@ -342,7 +292,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				canSubmit={canSubmit}
 				composerContext={composerContext}
 				composerRef={composerRef}
-				disabled={isRunning}
+				disabled={isRunning || isSavingAttachments}
 				fileInputRef={fileInputRef}
 				isRuntimeConfigLoading={isRuntimeConfigLoading}
 				isStopping={isStopping}
@@ -372,7 +322,6 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 type RuntimeConfigSelection = ReturnType<typeof buildRuntimeConfigSelection>;
 
 interface PendingAttachmentSend {
-	batchId?: string;
 	attachments: AgentAttachment[];
 	displayMetadata?: AgentMessageMetadata;
 	displayPrompt: string;
@@ -382,7 +331,6 @@ interface PendingAttachmentSend {
 	reasoning: RuntimeConfigSelection;
 	references: AgentComposerValue["references"];
 	comments: DocumentComment[];
-	reuseCurrentRun?: boolean;
 }
 
 const uniqueAgentAttachments = (attachments: AgentAttachment[]) => {

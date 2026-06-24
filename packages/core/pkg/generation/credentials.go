@@ -27,20 +27,28 @@ func CredentialSpecs() []CredentialSpec {
 		{
 			ID:          ProviderOpenAI,
 			Label:       "OpenAI",
-			Description: "OpenAI official image routes",
+			Description: "OpenAI official text and image routes",
 		},
 		{
 			ID:          ProviderGoogle,
 			Label:       "Google Gemini",
-			Description: "Google official image routes",
+			Description: "Google official Gemini text and image routes",
 		},
 		{
 			ID:              ProviderMiniMax,
 			Label:           "MiniMax 国内",
-			Description:     "MiniMax 国内语音生成路由",
+			Description:     "MiniMax 国内文本与语音生成路由",
 			CredentialLabel: "MiniMax 国内 API Key",
 			Placeholder:     "输入 MiniMax 国内 API Key",
-			Help:            "用于 MiniMax 国内 speech-2.8-hd / speech-2.8-turbo 文本转语音生成。",
+			Help:            "用于 MiniMax-M3 / MiniMax-M2.7 文本生成，以及 speech-2.8-hd / speech-2.8-turbo 文本转语音生成。",
+		},
+		{
+			ID:              ProviderDeepSeek,
+			Label:           "DeepSeek",
+			Description:     "DeepSeek official text generation routes",
+			CredentialLabel: "DeepSeek API Key",
+			Placeholder:     "输入 DeepSeek API Key",
+			Help:            "用于 DeepSeek V4 Flash / V4 Pro 文本生成，也可作为智能体模型凭据。",
 		},
 		{
 			ID:          ProviderVolcengine,

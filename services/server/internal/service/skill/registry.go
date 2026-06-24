@@ -45,6 +45,7 @@ type SkillMeta struct {
 	Description string            `json:"description"`
 	Source      Source            `json:"source"`
 	Overridden  bool              `json:"overridden,omitempty"`
+	TemplateID  string            `json:"templateId,omitempty"`
 	Hint        map[string]string `json:"hint,omitempty"`
 }
 
@@ -75,6 +76,7 @@ type skillFrontmatter struct {
 	Title            string            `yaml:"title,omitempty"`
 	Description      string            `yaml:"description"`
 	DocumentCategory string            `yaml:"document_category,omitempty"`
+	TemplateID       string            `yaml:"template_id,omitempty"`
 	Hint             map[string]string `yaml:"hint,omitempty"`
 }
 
@@ -274,6 +276,7 @@ func parseRaw(raw string, source Source) (Skill, error) {
 			Title:       strings.TrimSpace(meta.Title),
 			Description: description,
 			Source:      source,
+			TemplateID:  strings.TrimSpace(meta.TemplateID),
 			Hint:        normalizeSkillHint(meta.Hint, meta.DocumentCategory),
 		},
 		Content: normalizeBody(body),
@@ -306,6 +309,7 @@ func skillFromEntry(entry promptpack.Entry) Skill {
 			Description: entry.Description,
 			Source:      Source(entry.Source),
 			Overridden:  entry.Source == string(SourceUser) && entry.OverriddenFrom != "",
+			TemplateID:  metadataString(entry.Metadata, "template_id"),
 			Hint:        hint,
 		},
 		Content: normalizeBody(entry.Body),
@@ -322,9 +326,7 @@ func entryFromSkill(item Skill) promptpack.Entry {
 		Title:       item.Title,
 		Description: item.Description,
 		Body:        item.Content,
-		Metadata: map[string]any{
-			"hint": item.Hint,
-		},
+		Metadata:    metadataFromSkill(item),
 	}
 }
 
@@ -335,9 +337,29 @@ func rawFromSkill(item Skill) string {
 		Title:            item.Title,
 		Description:      item.Description,
 		DocumentCategory: documentCategory,
+		TemplateID:       item.TemplateID,
 		Hint:             hint,
 	})
 	return "---\n" + strings.TrimSpace(string(frontmatter)) + "\n---\n" + normalizeBody(item.Content)
+}
+
+func metadataFromSkill(item Skill) map[string]any {
+	metadata := map[string]any{}
+	if len(item.Hint) > 0 {
+		metadata["hint"] = item.Hint
+	}
+	if strings.TrimSpace(item.TemplateID) != "" {
+		metadata["template_id"] = strings.TrimSpace(item.TemplateID)
+	}
+	return metadata
+}
+
+func metadataString(metadata map[string]any, key string) string {
+	value, ok := metadata[key]
+	if !ok || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
 func metadataStringMap(metadata map[string]any, key string) map[string]string {

@@ -167,14 +167,25 @@ type SkillMeta struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
 	Source      string            `json:"source,omitempty"`
+	TemplateID  string            `json:"templateId,omitempty"`
 	Hint        map[string]string `json:"hint,omitempty"`
 }
 
 // LoadSkillOutput returns the requested skill body.
 type LoadSkillOutput struct {
-	Name      string      `json:"name"`
-	Content   string      `json:"content"`
-	Available []SkillMeta `json:"available,omitempty"`
+	Name      string            `json:"name"`
+	Content   string            `json:"content"`
+	Template  *DocumentTemplate `json:"template,omitempty"`
+	Available []SkillMeta       `json:"available,omitempty"`
+}
+
+// DocumentTemplate describes a read-only built-in document skeleton for a skill.
+type DocumentTemplate struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Description      string `json:"description,omitempty"`
+	DocumentCategory string `json:"documentCategory"`
+	Content          string `json:"content"`
 }
 
 // ListDocumentsInput is the input for list_documents.

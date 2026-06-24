@@ -34,6 +34,7 @@ type skillFrontmatter struct {
 	Title            string         `yaml:"title"`
 	Description      string         `yaml:"description"`
 	DocumentCategory string         `yaml:"document_category"`
+	TemplateID       string         `yaml:"template_id"`
 	Hint             map[string]any `yaml:"hint"`
 }
 
@@ -125,7 +126,8 @@ func parseSkillEntries(ctx context.Context, fsys fs.FS, packID string, entries *
 			Body:        normalizeBody(body),
 			Raw:         raw,
 			Metadata: map[string]any{
-				"hint": normalizeSkillHint(meta.Hint, meta.DocumentCategory),
+				"hint":        normalizeSkillHint(meta.Hint, meta.DocumentCategory),
+				"template_id": strings.TrimSpace(meta.TemplateID),
 			},
 		})
 		return nil

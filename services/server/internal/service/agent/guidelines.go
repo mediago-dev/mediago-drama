@@ -20,7 +20,7 @@ const (
 
 MCP 工具边界：
 - MCP 初始化 instructions 已包含 MediaGo Drama MCP 使用规范；无需额外调用 guideline 工具。
-- load_skill 用于装载 screenplay、character、scene、prop、storyboard 等写作 skill。
+- load_skill 用于装载 screenplay、character、scene、prop、storyboard 等写作 skill；Skill 正文只承载业务写作提示，若返回系统内置模板格式则必须按只读模板填写文档。
 - get_project_config 用于读取项目配置和视觉风格。
 - list_comments / get_comment / mutate_comment 用于读取和处理评论/批注。
 - MCP 不再提供文档树、文档正文、Project Brief、结构化块编辑、选区或文档生命周期工具；这些能力由本地文件操作承担。

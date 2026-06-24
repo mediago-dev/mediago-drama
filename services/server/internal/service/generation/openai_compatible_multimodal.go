@@ -16,6 +16,9 @@ import (
 
 const (
 	defaultOpenAIChatBaseURL     = "https://api.openai.com/v1"
+	defaultGoogleChatBaseURL     = "https://generativelanguage.googleapis.com/v1beta/openai"
+	defaultMiniMaxChatBaseURL    = "https://api.minimaxi.com/v1"
+	defaultDeepSeekChatBaseURL   = "https://api.deepseek.com/v1"
 	defaultDMXChatBaseURL        = "https://www.dmxapi.cn/v1"
 	defaultOpenRouterChatBaseURL = "https://openrouter.ai/api/v1"
 )
@@ -162,10 +165,18 @@ func defaultMultimodalTextProviderFactory(
 		return nil, coregeneration.ErrMissingAPIKey
 	}
 	if coregeneration.ProviderTypeOf(route.Provider) == coregeneration.ProviderTypeOfficial {
-		if route.Adapter != coregeneration.AdapterOfficialOpenAIChatText {
+		switch route.Adapter {
+		case coregeneration.AdapterOfficialOpenAIChatText:
+			return newOpenAICompatibleMultimodalProvider(route.Provider, defaultOpenAIChatBaseURL, apiKey, nil), nil
+		case coregeneration.AdapterOfficialGoogleChatText:
+			return newOpenAICompatibleMultimodalProvider(route.Provider, defaultGoogleChatBaseURL, apiKey, nil), nil
+		case coregeneration.AdapterOfficialMiniMaxChatText:
+			return newOpenAICompatibleMultimodalProvider(route.Provider, defaultMiniMaxChatBaseURL, apiKey, nil), nil
+		case coregeneration.AdapterOfficialDeepSeekChatText:
+			return newOpenAICompatibleMultimodalProvider(route.Provider, defaultDeepSeekChatBaseURL, apiKey, nil), nil
+		default:
 			return nil, nil
 		}
-		return newOpenAICompatibleMultimodalProvider(route.Provider, defaultOpenAIChatBaseURL, apiKey, nil), nil
 	}
 
 	switch route.Provider {

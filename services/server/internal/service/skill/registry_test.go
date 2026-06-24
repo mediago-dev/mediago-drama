@@ -21,6 +21,9 @@ func TestParseRawSkillFrontmatter(t *testing.T) {
 	if item.Hint["document_category"] != "screenplay" {
 		t.Fatalf("hint = %#v, want document_category", item.Hint)
 	}
+	if item.TemplateID != "screenplay.v1" {
+		t.Fatalf("template id = %q, want screenplay.v1", item.TemplateID)
+	}
 }
 
 func TestParseRawSkillFrontmatterAcceptsLegacyHintDocumentCategory(t *testing.T) {
@@ -61,6 +64,9 @@ func TestRegistryGetRawFlattensDocumentCategory(t *testing.T) {
 	}
 	if !strings.Contains(item.Raw, "\ndocument_category: screenplay\n") {
 		t.Fatalf("raw = %q, want flattened document_category", item.Raw)
+	}
+	if !strings.Contains(item.Raw, "\ntemplate_id: screenplay.v1\n") {
+		t.Fatalf("raw = %q, want template_id", item.Raw)
 	}
 	if strings.Contains(item.Raw, "hint:\n  document_category: screenplay") {
 		t.Fatalf("raw = %q, should not nest document_category under hint", item.Raw)
@@ -124,7 +130,7 @@ func newFakeSkillPackStore() *fakeSkillPackStore {
 		"screenplay-writer": {
 			ID: "builtin/skill/screenplay-writer", PackID: "builtin", Kind: instructionpack.KindSkill,
 			Slug: "screenplay-writer", Name: "screenplay-writer", Title: "剧本", Description: "剧本指导",
-			Body: "正文", Source: "pack", Metadata: map[string]any{"hint": map[string]any{"document_category": "screenplay"}},
+			Body: "正文", Source: "pack", Metadata: map[string]any{"hint": map[string]any{"document_category": "screenplay"}, "template_id": "screenplay.v1"},
 		},
 		"scene-writer": {
 			ID: "builtin/skill/scene-writer", PackID: "builtin", Kind: instructionpack.KindSkill,
@@ -211,6 +217,7 @@ func testSkillRaw(name string, description string, body string) string {
 name: ` + name + `
 description: ` + description + `
 document_category: screenplay
+template_id: screenplay.v1
 ---
 # Heading
 

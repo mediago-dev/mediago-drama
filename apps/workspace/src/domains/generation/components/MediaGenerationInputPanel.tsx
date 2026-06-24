@@ -33,6 +33,7 @@ export const MediaGenerationInputPanel: React.FC<{
 	primaryParamControls?: React.ReactNode;
 	promptEditor: React.ReactNode;
 	promptExtras: React.ReactNode;
+	promptOptimizeControl?: React.ReactNode;
 	referenceBadges?: Record<string, string>;
 	requiresReference: boolean;
 	secondaryParamControls?: React.ReactNode;
@@ -56,6 +57,7 @@ export const MediaGenerationInputPanel: React.FC<{
 	previewReferenceAssets,
 	promptEditor,
 	promptExtras,
+	promptOptimizeControl,
 	referenceButtonLabel,
 	primaryParamControls,
 	referenceBadges,
@@ -97,6 +99,7 @@ export const MediaGenerationInputPanel: React.FC<{
 		referenceButtonLabel={referenceButtonLabel}
 		rightControls={
 			<>
+				{promptOptimizeControl}
 				{imageSpecControl}
 				{primaryParamControls}
 				{generationCountControl ? (

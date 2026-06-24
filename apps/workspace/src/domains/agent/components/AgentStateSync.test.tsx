@@ -207,6 +207,49 @@ describe("AgentStateSync", () => {
 		);
 	});
 
+	it("does not replace an optimistic local turn with an empty running snapshot", () => {
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		swrMock.sessionsData = [agentSessionSummary("session-1")];
+
+		const { rerenderAgentStateSync } = renderAgentStateSync({
+			projectId: "project-1",
+			routeSessionId: "session-1",
+		});
+
+		act(() => {
+			useAgentStore.getState().startRun("可以帮我把这个小说第一集改成角色、场景、道具、分镜文档");
+		});
+		swrMock.chatData = {
+			__requestProjectId: "project-1",
+			__requestSessionId: "session-1",
+			projectId: "project-1",
+			sessionId: "session-1",
+			messages: [],
+			activity: [],
+			running: true,
+			lastEventId: "16",
+		};
+
+		rerenderAgentStateSync({
+			projectId: "project-1",
+			routeSessionId: "session-1",
+		});
+
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({
+				role: "user",
+				content: "可以帮我把这个小说第一集改成角色、场景、道具、分镜文档",
+			}),
+		]);
+		expect(useAgentStore.getState().sessionId).toBe("session-1");
+		expect(useAgentStore.getState().isRunning).toBe(true);
+		expect(controllerMocks.resumeAgentSessionEventStream).toHaveBeenCalledWith(
+			"session-1",
+			"project-1",
+			"16",
+		);
+	});
+
 	it("loads the session from the URL before persisted session state", () => {
 		useProjectStore.setState({ activeProjectId: "project-1" });
 		useAgentPersistenceStore.getState().setSessionId("project-1", "session-persisted");

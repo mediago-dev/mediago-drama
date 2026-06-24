@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import {
 	type SkillMeta,
+	type SkillTemplate,
 	createSkill,
 	deleteSkill,
 	getSkill,
@@ -26,7 +27,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/shared/components/ui/select";
-import { Textarea } from "@/shared/components/ui/textarea";
 import { composeSkillMarkdown, splitSkillMarkdown } from "@/domains/settings/lib/skill-markdown";
 import { useToast } from "@/hooks/useToast";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
@@ -274,9 +274,9 @@ export const SkillsEditorPanel: React.FC = () => {
 				frontmatterDraft={frontmatterDraft}
 				isSaving={isSaving}
 				open={editDialogOpen}
+				template={selectedSkill?.template}
 				onBodyChange={setBodyDraft}
 				onCancel={closeEditDialog}
-				onFrontmatterChange={setFrontmatterDraft}
 				onOpenChange={(open) => {
 					if (open) {
 						openEditDialog();
@@ -335,6 +335,19 @@ export const SkillsEditorPanel: React.FC = () => {
 								/>
 							</div>
 
+							{selectedSkill?.template ? (
+								<div className={settingsFormRowClassName}>
+									<Label id="skill-template-label" className="text-sm font-medium text-foreground">
+										系统内置模板
+									</Label>
+									<SettingsMarkdownPreview
+										ariaLabelledBy="skill-template-label"
+										className="max-h-96 min-h-56"
+										value={templatePreviewMarkdown(selectedSkill.template)}
+									/>
+								</div>
+							) : null}
+
 							<div className={skillBodyRowClassName}>
 								<div className="flex items-center justify-between gap-2">
 									<Label
@@ -345,7 +358,7 @@ export const SkillsEditorPanel: React.FC = () => {
 									</Label>
 									<span className="flex items-center gap-1 text-xs text-muted-foreground">
 										<BookOpenCheck className="size-3.5" />
-										{countLines(draft)} 行
+										{countLines(bodyDraft)} 行
 									</span>
 								</div>
 								{error ? (
@@ -382,15 +395,18 @@ const metadataPreviewMarkdown = (metadata: string) => {
 	return ["```yaml", trimmed, "```"].join("\n");
 };
 
+const templatePreviewMarkdown = (template: SkillTemplate) =>
+	[`# ${template.name}`, "", "```markdown", template.content.trim(), "```"].join("\n");
+
 const SkillEditDialog: React.FC<{
 	bodyDraft: string;
 	error: string;
 	frontmatterDraft: string;
 	isSaving: boolean;
 	open: boolean;
+	template?: SkillTemplate;
 	onBodyChange: (value: string) => void;
 	onCancel: () => void;
-	onFrontmatterChange: (value: string) => void;
 	onOpenChange: (open: boolean) => void;
 	onSave: () => void;
 }> = ({
@@ -399,9 +415,9 @@ const SkillEditDialog: React.FC<{
 	frontmatterDraft,
 	isSaving,
 	open,
+	template,
 	onBodyChange,
 	onCancel,
-	onFrontmatterChange,
 	onOpenChange,
 	onSave,
 }) => (
@@ -424,7 +440,7 @@ const SkillEditDialog: React.FC<{
 							id="skill-edit-description"
 							className="mt-1 text-xs text-muted-foreground"
 						>
-							修改当前 Skill 的元数据和正文。
+							修改当前 Skill 正文；元数据和模板由系统管理。
 						</DialogPrimitive.Description>
 					</div>
 					<DialogPrimitive.Close asChild>
@@ -443,21 +459,33 @@ const SkillEditDialog: React.FC<{
 						) : null}
 						<div className="grid gap-2">
 							<Label
-								htmlFor="skill-edit-frontmatter"
+								id="skill-edit-frontmatter-label"
 								className="text-sm font-medium text-foreground"
 							>
 								元数据
 							</Label>
-							<Textarea
-								id="skill-edit-frontmatter"
-								aria-label="Skill 元数据"
-								value={frontmatterDraft}
-								rows={6}
-								className="min-h-40 resize-y overflow-auto rounded-md bg-ide-panel px-3 py-2 font-mono text-xs leading-5 text-foreground"
-								placeholder="name: custom-writer&#10;description: 自定义写作指导"
-								onChange={(event) => onFrontmatterChange(event.target.value)}
+							<SettingsMarkdownPreview
+								ariaLabelledBy="skill-edit-frontmatter-label"
+								className="max-h-44 min-h-32"
+								placeholder="暂无元数据。"
+								value={metadataPreviewMarkdown(frontmatterDraft)}
 							/>
 						</div>
+						{template ? (
+							<div className="grid gap-2">
+								<Label
+									id="skill-edit-template-label"
+									className="text-sm font-medium text-foreground"
+								>
+									系统内置模板
+								</Label>
+								<SettingsMarkdownPreview
+									ariaLabelledBy="skill-edit-template-label"
+									className="max-h-60 min-h-40"
+									value={templatePreviewMarkdown(template)}
+								/>
+							</div>
+						) : null}
 						<div className="grid gap-2">
 							<div className="flex items-center justify-between gap-2">
 								<Label id="skill-edit-body-label" className="text-sm font-medium text-foreground">

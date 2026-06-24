@@ -130,6 +130,81 @@ func TestGenerateTextStream(t *testing.T) {
 	}
 }
 
+func TestGenerateTextStreamUsesOfficialChatEndpoint(t *testing.T) {
+	cases := []struct {
+		name    string
+		routeID string
+		model   string
+		path    string
+		config  func(string) Config
+	}{
+		{
+			name:    "google",
+			routeID: generation.RouteOfficialGemini35FlashText,
+			model:   "gemini-3.5-flash",
+			path:    "/v1beta/openai/chat/completions",
+			config: func(url string) Config {
+				return Config{GoogleBaseURL: url, APIKey: "sk-test"}
+			},
+		},
+		{
+			name:    "minimax",
+			routeID: generation.RouteOfficialMiniMaxM3Text,
+			model:   "MiniMax-M3",
+			path:    "/v1/chat/completions",
+			config: func(url string) Config {
+				return Config{MiniMaxBaseURL: url, APIKey: "sk-test"}
+			},
+		},
+		{
+			name:    "deepseek",
+			routeID: generation.RouteOfficialDeepSeekV4FlashText,
+			model:   "deepseek-v4-flash",
+			path:    "/chat/completions",
+			config: func(url string) Config {
+				return Config{DeepSeekBaseURL: url, APIKey: "sk-test"}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var payload officialChatTextRequest
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != tc.path {
+					t.Fatalf("path = %q, want %s", request.URL.Path, tc.path)
+				}
+				if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+					t.Fatalf("Decode() error = %v", err)
+				}
+
+				writer.Header().Set("Content-Type", "text/event-stream")
+				_, _ = writer.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"))
+				_, _ = writer.Write([]byte("data: [DONE]\n\n"))
+			}))
+			defer server.Close()
+
+			provider, err := NewProvider(tc.config(server.URL))
+			if err != nil {
+				t.Fatalf("NewProvider() error = %v", err)
+			}
+
+			stream, err := provider.GenerateTextStream(context.Background(), generation.Request{
+				Kind:    generation.KindText,
+				RouteID: tc.routeID,
+				Prompt:  "write",
+			})
+			if err != nil {
+				t.Fatalf("GenerateTextStream() error = %v", err)
+			}
+			defer stream.Close()
+			if payload.Model != tc.model || !payload.Stream {
+				t.Fatalf("payload = %#v, want model %q stream", payload, tc.model)
+			}
+		})
+	}
+}
+
 func TestGenerateGoogleImage(t *testing.T) {
 	var apiKey string
 	var payload googleGenerateContentRequest
