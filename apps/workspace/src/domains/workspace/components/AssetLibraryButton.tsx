@@ -488,7 +488,7 @@ const AssetLibraryCard: React.FC<{
 		<article
 			className={cn(
 				"min-w-0 overflow-hidden rounded-sm border bg-card transition-colors",
-				active ? "border-primary ring-1 ring-primary" : "border-border hover:border-input",
+				active ? "border-primary" : "border-border hover:border-input",
 			)}
 		>
 			<button

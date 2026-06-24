@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -166,7 +165,7 @@ func (handler MediaAssets) HandleMediaAssetContent(context *gin.Context) {
 	}
 
 	context.Header("Content-Type", asset.MIMEType)
-	context.Header("Content-Disposition", fmt.Sprintf("inline; filename=%q", asset.Filename))
+	context.Header("Content-Disposition", contentDispositionWithFilename("inline", asset.Filename))
 	http.ServeFile(context.Writer, context.Request, filePath)
 }
 
@@ -219,7 +218,7 @@ func (handler MediaAssets) HandleMediaAssetPoster(context *gin.Context) {
 	}
 
 	context.Header("Content-Type", "image/jpeg")
-	context.Header("Content-Disposition", fmt.Sprintf("inline; filename=%q", asset.ID+"-poster.jpg"))
+	context.Header("Content-Disposition", contentDispositionWithFilename("inline", asset.ID+"-poster.jpg"))
 	http.ServeFile(context.Writer, context.Request, filePath)
 }
 

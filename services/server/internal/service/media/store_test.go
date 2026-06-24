@@ -154,6 +154,37 @@ func TestSaveWithOptionsStoresToolboxGenerationByConversation(t *testing.T) {
 	}
 }
 
+func TestSaveBase64WithOptionsUsesExplicitFilenameWithoutRenamingStoredFile(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+
+	asset, err := store.SaveBase64WithOptions(
+		MediaKindImage,
+		"image/png",
+		base64.StdEncoding.EncodeToString([]byte("image-bytes")),
+		"",
+		MediaAssetSaveOptions{
+			Source:   MediaSourceToolbox,
+			Filename: "主角登场",
+		},
+	)
+	if err != nil {
+		t.Fatalf("SaveBase64WithOptions() error = %v", err)
+	}
+
+	if asset.Filename != "主角登场.png" {
+		t.Fatalf("Filename = %q, want title with image extension", asset.Filename)
+	}
+	if filepath.Base(asset.FilePath) != asset.ID+".png" {
+		t.Fatalf("stored file = %q, want asset-id filename", filepath.Base(asset.FilePath))
+	}
+}
+
 func TestSaveTextWithOptionsStoresToolboxTextAsset(t *testing.T) {
 	workspaceRoot := t.TempDir()
 	globalDir := filepath.Join(workspaceRoot, "library")

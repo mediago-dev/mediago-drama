@@ -15,6 +15,7 @@ const defaultGenerationConversationScopeID = "studio"
 const agentGenerationConversationScopeID = "agent"
 const generationProjectScopePrefix = "project-"
 const generationInternalParamPrefix = "_mediago_"
+const generationAssetTitleRequestOption = "_mediago_asset_title"
 
 var generationConversationIDPartPattern = regexp.MustCompile(`[^a-z0-9_-]+`)
 
@@ -93,6 +94,19 @@ func GenerationResponseFromCore(response coregeneration.Response, kind string) G
 		ErrorType: StringFromMetadata(response.Metadata, "error_type"),
 		Retryable: BoolFromMetadata(response.Metadata, "retryable"),
 	}
+}
+
+func generationResponseWithAssetTitle(response GenerationMessageResponse, assetTitle string) GenerationMessageResponse {
+	assetTitle = strings.TrimSpace(assetTitle)
+	if assetTitle == "" || len(response.Assets) == 0 {
+		return response
+	}
+	for index := range response.Assets {
+		if strings.TrimSpace(response.Assets[index].Title) == "" {
+			response.Assets[index].Title = assetTitle
+		}
+	}
+	return response
 }
 
 // FailedGenerationResponse returns a failed generation response.
@@ -195,6 +209,7 @@ func GenerationRequestFromMessage(
 			Prompt:        payload.Prompt,
 			ReferenceURLs: referenceURLs,
 			Params:        providerGenerationParams(payload.Params),
+			Options:       generationRequestOptions(payload),
 		}
 	}
 	if route.Kind == coregeneration.KindAudio {
@@ -209,6 +224,7 @@ func GenerationRequestFromMessage(
 			Prompt:        payload.Prompt,
 			ReferenceURLs: referenceURLs,
 			Params:        providerGenerationParams(payload.Params),
+			Options:       generationRequestOptions(payload),
 		}
 	}
 
@@ -226,7 +242,26 @@ func GenerationRequestFromMessage(
 		ResponseFormat: ResponseFormatForRoute(route),
 		Watermark:      BoolPtr(false),
 		Params:         providerGenerationParams(payload.Params),
+		Options:        generationRequestOptions(payload),
 	}
+}
+
+func generationRequestOptions(payload GenerationMessageRequest) map[string]any {
+	assetTitle := strings.TrimSpace(payload.AssetTitle)
+	if assetTitle == "" {
+		return nil
+	}
+	return map[string]any{
+		generationAssetTitleRequestOption: assetTitle,
+	}
+}
+
+func generationAssetTitleFromRequest(request coregeneration.Request) string {
+	if len(request.Options) == 0 {
+		return ""
+	}
+	value, _ := request.Options[generationAssetTitleRequestOption].(string)
+	return strings.TrimSpace(value)
 }
 
 // ShouldRunGenerationInBackground reports whether the route should be executed asynchronously by the server.
@@ -435,6 +470,7 @@ func GenerationTaskFromMessage(
 	if documentID == "" && request.DocumentContext != nil {
 		documentID = strings.TrimSpace(request.DocumentContext.DocumentID)
 	}
+	response = generationResponseWithAssetTitle(response, request.AssetTitle)
 	return GenerationTaskRecord{
 		ID:                response.ID,
 		ProviderTaskID:    generationProviderTaskIDForResponse(route, response),

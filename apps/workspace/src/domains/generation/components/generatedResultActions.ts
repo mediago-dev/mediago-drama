@@ -91,7 +91,7 @@ export const useGeneratedResultActions = ({ projectId }: UseGeneratedResultActio
 				const savedPath = await saveGeneratedAssetToUserDirectory(
 					asset,
 					source,
-					fallbackAssetFilename(entry, asset),
+					asset.title?.trim() || fallbackAssetFilename(entry, asset),
 				);
 				if (!savedPath) {
 					return;

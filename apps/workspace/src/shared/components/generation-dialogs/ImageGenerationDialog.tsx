@@ -203,7 +203,7 @@ const ImageGenerationDialogPanel: React.FC<{
 				type="button"
 				variant="outline"
 				size="sm"
-				className="h-8 shrink-0 rounded-md px-2.5 text-xs"
+				className="h-8 shrink-0 rounded-md px-2.5 text-xs active:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0"
 				onClick={controller.onOpenMaterialLibrary}
 			>
 				<Images className="size-4" />

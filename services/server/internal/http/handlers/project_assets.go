@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -133,7 +132,7 @@ func (handler ProjectAssets) HandleProjectAssetContent(context *gin.Context) {
 	}
 
 	context.Header("Content-Type", asset.MIMEType)
-	context.Header("Content-Disposition", fmt.Sprintf("inline; filename=%q", asset.Filename))
+	context.Header("Content-Disposition", contentDispositionWithFilename("inline", asset.Filename))
 	http.ServeFile(context.Writer, context.Request, asset.FilePath)
 }
 

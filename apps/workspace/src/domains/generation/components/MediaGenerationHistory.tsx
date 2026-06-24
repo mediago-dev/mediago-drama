@@ -501,7 +501,7 @@ const HistoryImageCard: React.FC<{
 							className={cn(
 								"group/history-image relative min-w-0 overflow-hidden rounded-sm border bg-muted-foreground/10",
 								historyAssetCardAspectClassName(mediaKind),
-								selected ? "border-primary ring-1 ring-primary" : "border-border",
+								selected ? "border-primary" : "border-border",
 							)}
 						>
 							{isVideo ? (
@@ -1141,7 +1141,7 @@ const HistoryAssetThumb: React.FC<{
 		title={selectable ? (selected ? "取消选入结果" : "选入结果") : `历史结果 ${index + 1}`}
 		className={cn(
 			"relative h-24 w-32 shrink-0 overflow-hidden rounded-sm border bg-muted-foreground/10 transition-colors",
-			selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-input",
+			selected ? "border-primary" : "border-border hover:border-input",
 			!selectable && "cursor-default",
 		)}
 		onClick={(event) => {

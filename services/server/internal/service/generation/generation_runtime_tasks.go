@@ -540,8 +540,9 @@ func (workflow *GenerationService) submitPendingGeneration(
 	}
 
 	providerTaskID := strings.TrimSpace(response.ID)
-	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptions(projectID, conversationID, task.SectionID))
-	messageResponse := GenerationResponseFromCore(response, task.Kind)
+	assetTitle := generationAssetTitleFromRequest(request)
+	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptionsWithTitle(projectID, conversationID, task.SectionID, assetTitle))
+	messageResponse := generationResponseWithAssetTitle(GenerationResponseFromCore(response, task.Kind), assetTitle)
 	messageResponse.ID = task.ID
 	submittedTask := GenerationTaskWithMessage(submittingTask, messageResponse)
 	if providerTaskID != "" {
@@ -605,8 +606,9 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 	}
 
 	response = workflow.responseWithCachedProgressAssets(task.ID, response)
-	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptions(projectID, conversationID, task.SectionID))
-	messageResponse := GenerationResponseFromCore(response, task.Kind)
+	assetTitle := generationAssetTitleFromRequest(request)
+	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptionsWithTitle(projectID, conversationID, task.SectionID, assetTitle))
+	messageResponse := generationResponseWithAssetTitle(GenerationResponseFromCore(response, task.Kind), assetTitle)
 	messageResponse.ID = task.ID
 	completedTask := GenerationTaskWithMessage(runningTask, messageResponse)
 	if err := workflow.generationTasks.Upsert(completedTask); err != nil {
@@ -634,9 +636,10 @@ func (workflow *GenerationService) requestWithGenerationProgressCallback(
 	for key, value := range request.Options {
 		options[key] = value
 	}
+	assetTitle := generationAssetTitleFromRequest(request)
 	options[coregeneration.ProgressCallbackOption] = coregeneration.ProgressCallback(
 		func(ctx context.Context, event coregeneration.ProgressEvent) {
-			workflow.persistGenerationProgress(ctx, task, event, projectID, conversationID)
+			workflow.persistGenerationProgress(ctx, task, event, projectID, conversationID, assetTitle)
 		},
 	)
 	request.Options = options
@@ -650,6 +653,7 @@ func (workflow *GenerationService) persistGenerationProgress(
 	event coregeneration.ProgressEvent,
 	projectID string,
 	conversationID string,
+	assetTitle string,
 ) {
 	if workflow.generationTasks == nil || len(event.Response.Assets) == 0 {
 		return
@@ -657,9 +661,9 @@ func (workflow *GenerationService) persistGenerationProgress(
 
 	response := event.Response
 	response.Status = "running"
-	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptions(projectID, conversationID, task.SectionID))
+	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptionsWithTitle(projectID, conversationID, task.SectionID, assetTitle))
 
-	messageResponse := GenerationResponseFromCore(response, task.Kind)
+	messageResponse := generationResponseWithAssetTitle(GenerationResponseFromCore(response, task.Kind), assetTitle)
 	messageResponse.ID = task.ID
 	messageResponse.Status = "running"
 	messageResponse.Message = generationProgressMessage(event.Completed, event.Total)

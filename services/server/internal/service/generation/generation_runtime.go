@@ -103,6 +103,7 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	payload.Provider = strings.TrimSpace(payload.Provider)
 	payload.ModelID = strings.TrimSpace(payload.ModelID)
 	payload.Model = strings.TrimSpace(payload.Model)
+	payload.AssetTitle = strings.TrimSpace(payload.AssetTitle)
 	payload.ReferenceURLs = CompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = CompactStrings(payload.ReferenceAssetIDs)
 	if err := workflow.applyGenerationDocumentContext(&payload); err != nil {
@@ -206,9 +207,9 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 		}
 		return messageResponse, http.StatusOK, nil
 	}
-	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptions(projectID, payload.ConversationID, payload.SectionID))
+	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptionsWithTitle(projectID, payload.ConversationID, payload.SectionID, payload.AssetTitle))
 
-	messageResponse := GenerationResponseFromCore(response, payload.Kind)
+	messageResponse := generationResponseWithAssetTitle(GenerationResponseFromCore(response, payload.Kind), payload.AssetTitle)
 	if ShouldPersistGenerationTask(route) {
 		task := GenerationTaskFromMessage(payload, route, messageResponse)
 		if err := workflow.generationTasks.Upsert(task); err != nil {

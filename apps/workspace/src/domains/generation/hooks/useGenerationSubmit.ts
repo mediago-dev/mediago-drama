@@ -55,6 +55,7 @@ export interface GenerationSubmitFailureEvent {
 }
 
 export interface GenerationSubmitOverrides {
+	assetTitle?: string | null;
 	documentContext?: GenerationMessageRequest["documentContext"] | null;
 	extraPrompt?: string;
 	notificationTarget?: GenerationNotificationOpenTarget | null;
@@ -81,6 +82,7 @@ export const generationRequestPrompt = ({
 };
 
 interface UseGenerationSubmitOptions {
+	assetTitle?: string | null;
 	conversationId?: string | null;
 	effectiveReferenceAssetIds: string[];
 	effectiveReferenceUrls: string[];
@@ -152,6 +154,7 @@ export const useGenerationSubmit = ({
 	setMessages,
 	setPrompt,
 	useRawPrompt = false,
+	assetTitle,
 }: UseGenerationSubmitOptions) => {
 	const [activeSubmitCount, setActiveSubmitCount] = useState(0);
 	const isSubmitting = activeSubmitCount > 0;
@@ -166,6 +169,7 @@ export const useGenerationSubmit = ({
 			const requestSectionId = overrides.sectionId ?? sectionId;
 			const requestTaskType = overrides.taskType ?? taskType;
 			const requestDocumentContext = overrides.documentContext ?? documentContext;
+			const requestAssetTitle = (overrides.assetTitle ?? assetTitle)?.trim() ?? "";
 			const requestDocumentId = requestDocumentContext?.documentId?.trim() ?? "";
 			const shouldResolvePromptFromDocumentContext =
 				Boolean(requestDocumentContext) &&
@@ -282,6 +286,7 @@ export const useGenerationSubmit = ({
 							modelId: selectedRoute.legacyModelId ?? "",
 							model: selectedRoute.model,
 							prompt: requestPrompt,
+							assetTitle: requestAssetTitle || undefined,
 							params: requestParams,
 							referenceUrls: [],
 							referenceAssetIds: [],
@@ -370,6 +375,7 @@ export const useGenerationSubmit = ({
 					modelId: selectedRoute.legacyModelId ?? "",
 					model: selectedRoute.model,
 					prompt: requestPrompt,
+					assetTitle: requestAssetTitle || undefined,
 					params: requestParams,
 					referenceUrls: selectedRoute.supportsReferenceUrls ? requestReferenceUrls : [],
 					referenceAssetIds: selectedRoute.supportsReferenceUrls ? requestReferenceAssetIds : [],
@@ -458,6 +464,7 @@ export const useGenerationSubmit = ({
 			}
 		},
 		[
+			assetTitle,
 			conversationId,
 			conversationTitle,
 			documentContext,

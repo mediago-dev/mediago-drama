@@ -161,6 +161,7 @@ const isPlaybackBlockedError = (err: unknown) =>
 			: false;
 
 export interface MediaGenerationWorkspaceProps {
+	assetTitle?: string | null;
 	className?: string;
 	conversationId?: string | null;
 	conversationScopeId?: string | null;
@@ -252,6 +253,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	submitLabel,
 	uploadIdPrefix = "generation-workspace",
 	viewMode,
+	assetTitle,
 }) => {
 	const toast = useToast();
 	const [inlineHistoryReferences, setInlineHistoryReferences] = useState<MediaAsset[]>([]);
@@ -338,6 +340,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		[kind, onViewModeChange, tabbedView, trackGenerationStart],
 	);
 	const ws = useGenerationWorkspace({
+		assetTitle,
 		extraPrompt,
 		extraReferenceAssetIds,
 		extraReferenceUrls: workspaceExtraReferenceUrls,

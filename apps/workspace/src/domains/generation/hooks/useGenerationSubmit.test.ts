@@ -179,6 +179,7 @@ const renderSubmitHook = (
 		selectedRoute?: GenerationRoute;
 		selectedVersion?: GenerationVersion;
 		useRawPrompt?: boolean;
+		assetTitle?: string;
 	} = {},
 ) => {
 	const mutateMediaAssets = vi.fn(async () => ({
@@ -201,6 +202,7 @@ const renderSubmitHook = (
 			messages,
 			prompt,
 			...useGenerationSubmit({
+				assetTitle: options.assetTitle,
 				conversationId: "session-1",
 				conversationTitle: options.conversationTitle,
 				documentContext: options.documentContext,
@@ -362,6 +364,23 @@ describe("useGenerationSubmit", () => {
 		expect(mutateTasks).toHaveBeenCalledTimes(1);
 		expect(mutateProjectGenerationTasks).toHaveBeenCalledWith("image");
 		expect(mutateMediaAssets).toHaveBeenCalledTimes(1);
+	});
+
+	it("passes the asset title through generation requests", async () => {
+		vi.mocked(sendGenerationMessage).mockResolvedValue(generationResponse());
+		const { result } = renderSubmitHook({
+			assetTitle: "主角登场",
+		});
+
+		await act(async () => {
+			await result.current.submitGeneration();
+		});
+
+		expect(sendGenerationMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				assetTitle: "主角登场",
+			}),
+		);
 	});
 
 	it("submits the raw prompt without resolving extra prompt or style layers", async () => {

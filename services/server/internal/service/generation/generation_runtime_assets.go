@@ -233,6 +233,12 @@ func generationMediaSaveOptions(projectID string, conversationID string, section
 	}
 }
 
+func generationMediaSaveOptionsWithTitle(projectID string, conversationID string, sectionID string, assetTitle string) media.MediaAssetSaveOptions {
+	options := generationMediaSaveOptions(projectID, conversationID, sectionID)
+	options.Filename = strings.TrimSpace(assetTitle)
+	return options
+}
+
 func (workflow *GenerationService) saveGenerationBase64Asset(kind string, mimeType string, value string, sourceURL string, projectID string, conversationID string) (media.MediaAsset, error) {
 	return workflow.mediaAssets.SaveBase64WithOptions(kind, mimeType, value, sourceURL, generationMediaSaveOptions(projectID, conversationID, ""))
 }

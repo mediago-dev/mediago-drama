@@ -67,6 +67,7 @@ export interface UseGenerationWorkspaceOptions {
 	extraPrompt?: GenerationExtraValue<string>;
 	extraReferenceAssetIds?: GenerationExtraValue<string[]>;
 	extraReferenceUrls?: GenerationExtraValue<string[]>;
+	assetTitle?: string | null;
 	activeEntryId?: string | null;
 	conversationId?: string | null;
 	conversationScopeId?: string | null;
@@ -101,6 +102,7 @@ interface ImportMediaAssetsToHistoryOptions {
 
 export const useGenerationWorkspace = ({
 	activeEntryId: controlledActiveEntryId,
+	assetTitle,
 	conversationId,
 	conversationScopeId,
 	conversationTitle,
@@ -306,6 +308,7 @@ export const useGenerationWorkspace = ({
 	}, [initialPrompt, setPrompt]);
 
 	const { isSubmitting, submit, submitGeneration } = useGenerationSubmit({
+		assetTitle,
 		conversationId,
 		conversationTitle,
 		documentContext,

@@ -86,7 +86,7 @@ func (workflow *GenerationService) applyGenerationDocumentContext(payload *gener
 	if payload.Prompt != "" {
 		sourceMarkdown += "\n\n" + payload.Prompt
 	}
-	assetIDs, referenceURLs := workflow.generationReferencesFromMarkdown(payload.ProjectID, sourceMarkdown)
+	assetIDs, referenceURLs := workflow.generationMentionReferencesFromMarkdown(payload.ProjectID, sourceMarkdown)
 	payload.ReferenceAssetIDs = uniqueCompactStrings(append(payload.ReferenceAssetIDs, assetIDs...))
 	payload.ReferenceURLs = uniqueCompactStrings(append(payload.ReferenceURLs, referenceURLs...))
 	return nil
@@ -94,7 +94,15 @@ func (workflow *GenerationService) applyGenerationDocumentContext(payload *gener
 
 func (workflow *GenerationService) generationReferencesFromMarkdown(projectID string, markdown string) ([]string, []string) {
 	assetIDs, referenceURLs := generationImageReferencesFromMarkdown(markdown)
+	mentionAssetIDs, mentionReferenceURLs := workflow.generationMentionReferencesFromMarkdown(projectID, markdown)
+	assetIDs = append(assetIDs, mentionAssetIDs...)
+	referenceURLs = append(referenceURLs, mentionReferenceURLs...)
+	return uniqueCompactStrings(assetIDs), uniqueCompactStrings(referenceURLs)
+}
 
+func (workflow *GenerationService) generationMentionReferencesFromMarkdown(projectID string, markdown string) ([]string, []string) {
+	assetIDs := []string{}
+	referenceURLs := []string{}
 	for _, reference := range generationMentionsFromMarkdown(markdown) {
 		switch reference.Kind {
 		case "asset":

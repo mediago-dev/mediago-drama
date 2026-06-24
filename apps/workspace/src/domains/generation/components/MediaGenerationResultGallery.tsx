@@ -231,7 +231,7 @@ const GenerationVideoResultAsset: React.FC<{
 		<div
 			className={cn(
 				"relative aspect-video h-full max-h-full max-w-full overflow-hidden rounded-sm border bg-ide-toolbar",
-				selected ? "border-primary ring-1 ring-primary" : "border-border",
+				selected ? "border-primary" : "border-border",
 			)}
 		>
 			<VideoPlayer
@@ -303,7 +303,7 @@ const GenerationAudioResultAsset: React.FC<{
 		<div
 			className={cn(
 				"relative flex w-[min(34rem,78vw)] max-w-full flex-col gap-3 rounded-sm border bg-ide-panel p-4 shadow-sm",
-				selected ? "border-primary ring-1 ring-primary" : "border-border",
+				selected ? "border-primary" : "border-border",
 			)}
 		>
 			<div className="flex min-w-0 items-center gap-3 pr-10">

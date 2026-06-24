@@ -111,6 +111,7 @@ type MediaAssetSaveOptions struct {
 	Source         string
 	ConversationID string
 	SectionID      string
+	Filename       string
 }
 
 type mediaAssetModel = domain.AssetModel
@@ -467,7 +468,12 @@ func (store *MediaAssets) saveBase64WithOptions(kind string, mimeType string, va
 		kind = shared.KindFromMIMEType(mimeType)
 	}
 
-	return store.saveBytesWithKind(data, kind, defaultAssetFilename(kind, mimeType), mimeType, sourceURL, options)
+	filename := strings.TrimSpace(options.Filename)
+	if filename == "" {
+		filename = defaultAssetFilename(kind, mimeType)
+	}
+
+	return store.saveBytesWithKind(data, kind, filename, mimeType, sourceURL, options)
 }
 
 func (store *MediaAssets) SaveRemoteAsset(ctx context.Context, kind string, remoteURL string, projectID string) (MediaAsset, error) {
@@ -616,6 +622,9 @@ func (store *MediaAssets) saveRemoteAssetWithOptions(ctx context.Context, kind s
 	}
 
 	filename := filenameFromURL(remoteURL)
+	if strings.TrimSpace(options.Filename) != "" {
+		filename = strings.TrimSpace(options.Filename)
+	}
 	if filename == "" {
 		filename = defaultAssetFilename(kind, mimeType)
 	}

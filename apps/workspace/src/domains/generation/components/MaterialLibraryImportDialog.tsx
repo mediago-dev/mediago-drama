@@ -286,7 +286,7 @@ const MaterialLibraryImportCard: React.FC<{
 		aria-checked={selected}
 		className={cn(
 			"min-w-0 overflow-hidden rounded-sm border bg-card text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-			selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-input",
+			selected ? "border-primary" : "border-border hover:border-input",
 		)}
 		onClick={onSelect}
 	>

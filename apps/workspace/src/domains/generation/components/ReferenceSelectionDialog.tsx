@@ -369,7 +369,7 @@ const ReferenceShortcutCard: React.FC<{
 	<div
 		className={cn(
 			"min-w-0 overflow-hidden rounded-sm border bg-card text-left transition-colors",
-			selected ? "border-primary ring-1 ring-primary" : "border-border",
+			selected ? "border-primary" : "border-border",
 			selectable ? "hover:border-input" : "opacity-60",
 		)}
 	>

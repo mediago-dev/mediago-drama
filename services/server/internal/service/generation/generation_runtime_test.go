@@ -21,6 +21,7 @@ import (
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/runtime"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/multimodal"
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
@@ -731,6 +732,81 @@ func TestCreateJimengImageGenerationPersistsOneTaskForRequestedCount(t *testing.
 	if len(task.Assets) != 3 {
 		t.Fatalf("task assets = %#v, want three generated images on one task", task.Assets)
 	}
+}
+
+func TestCreateJimengImageDocumentContextDoesNotUseCurrentSectionImagesAsReferences(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	repo, err := repository.NewGenerationTaskRepository(dbPath)
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{
+			coregeneration.ProviderJimeng: "logged-in",
+		},
+	})
+	provider := &blockingMultiAssetImageGenerateProvider{
+		started: make(chan coregeneration.Request, 1),
+		release: make(chan struct{}),
+	}
+	workflow := NewGenerationService(settingsSvc, store, media.NewMediaAssets(dbPath, t.TempDir()))
+	workflow.SetDocumentResolver(fakeGenerationDocumentResolver{
+		documents: map[string]mediamcp.WorkspaceDocument{
+			"story-doc": {
+				ID: "story-doc",
+				Content: strings.Join([]string{
+					"# 第一集",
+					"",
+					"<!-- section-id: section_chenyuan -->",
+					"## 陈远",
+					"",
+					"![已有插图](/api/v1/media-assets/existing-image/content)",
+					"",
+					"形象定位：21岁男性大三学生。",
+				}, "\n"),
+			},
+		},
+	})
+	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		if route.ID != coregeneration.RouteJimengSeedream50 {
+			t.Fatalf("route = %q, want jimeng seedream route", route.ID)
+		}
+		return provider, nil
+	}
+
+	response, status, err := workflow.CreateGenerationMessage(context.Background(), GenerationMessageRequest{
+		Kind:    string(coregeneration.KindImage),
+		RouteID: coregeneration.RouteJimengSeedream50,
+		ModelID: coregeneration.ModelSeedream50,
+		Model:   "5.0",
+		Prompt:  "重新生成角色视觉素材。",
+		DocumentContext: &GenerationDocumentContext{
+			DocumentID: "story-doc",
+			SectionID:  "section_chenyuan",
+		},
+	})
+	if err != nil || status != 200 {
+		t.Fatalf("CreateGenerationMessage() status = %d error = %v", status, err)
+	}
+	if response.Status != "submitted" {
+		t.Fatalf("response status = %q, want submitted", response.Status)
+	}
+
+	var request coregeneration.Request
+	select {
+	case request = <-provider.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider request did not start")
+	}
+	if len(request.ReferenceURLs) != 0 {
+		t.Fatalf("provider reference urls = %#v, want none", request.ReferenceURLs)
+	}
+
+	close(provider.release)
+	waitForGenerationTask(t, store, response.ID, func(task GenerationTaskRecord) bool {
+		return task.Status == "completed"
+	})
 }
 
 func TestCreateJimengImageGenerationPreservesPartialAssetsOnFailure(t *testing.T) {

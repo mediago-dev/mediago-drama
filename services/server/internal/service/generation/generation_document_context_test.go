@@ -125,6 +125,45 @@ func TestApplyGenerationDocumentContextFillsPromptAndAssetMention(t *testing.T) 
 	}
 }
 
+func TestApplyGenerationDocumentContextIgnoresCurrentSectionImages(t *testing.T) {
+	workflow := NewGenerationService(nil, nil, nil)
+	workflow.SetDocumentResolver(fakeGenerationDocumentResolver{
+		documents: map[string]mediamcp.WorkspaceDocument{
+			"story-doc": {
+				ID: "story-doc",
+				Content: strings.Join([]string{
+					"# 第一集",
+					"",
+					"<!-- section-id: section_story -->",
+					"## 陈远",
+					"",
+					"![已选插图](/api/v1/media-assets/existing-image/content)",
+					"",
+					"形象定位：21岁男性大三学生。",
+				}, "\n"),
+			},
+		},
+	})
+
+	payload := generationMessageRequest{
+		ProjectID: "project-a",
+		Prompt:    "重新生成角色视觉素材。",
+		DocumentContext: &GenerationDocumentContext{
+			DocumentID: "story-doc",
+			SectionID:  "section_story",
+		},
+	}
+	if err := workflow.applyGenerationDocumentContext(&payload); err != nil {
+		t.Fatalf("applyGenerationDocumentContext() error = %v", err)
+	}
+	if len(payload.ReferenceAssetIDs) != 0 {
+		t.Fatalf("reference asset ids = %#v, want none", payload.ReferenceAssetIDs)
+	}
+	if len(payload.ReferenceURLs) != 0 {
+		t.Fatalf("reference urls = %#v, want none", payload.ReferenceURLs)
+	}
+}
+
 func TestGenerationReferencesFromMarkdownResolvesLegacyDocumentMentionToSingleSection(t *testing.T) {
 	workflow := NewGenerationService(nil, nil, nil)
 	workflow.SetDocumentResolver(fakeGenerationDocumentResolver{

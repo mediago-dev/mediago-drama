@@ -245,6 +245,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 					sectionGenerationWorkspaceCopy[generationKind].historySourceLabel
 				}
 				emptyResultText={sectionGenerationWorkspaceCopy[generationKind].emptyResultText}
+				assetTitle={activeSection.headingText}
 				conversationId={projectConversation?.conversationId}
 				conversationScopeId={conversationScopeId}
 				conversationTitle={projectConversation?.conversationTitle}
