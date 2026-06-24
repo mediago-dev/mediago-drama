@@ -1,11 +1,15 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import useSWR, { mutate as mutateSWR } from "swr";
 import {
+	archiveProject,
 	createProject,
+	deleteProject,
 	getProjects,
 	projectsKey,
+	projectsKeyForStatus,
 	type WorkspaceProject,
 } from "@/domains/projects/api/projects";
 import {
@@ -23,6 +27,7 @@ import {
 	useDocumentsStore,
 } from "@/domains/documents/stores";
 import { useProjectStore } from "@/domains/projects/stores";
+import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import {
 	resolveSidebarScreen,
 	studioTabFromPath,
@@ -68,6 +73,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	const deleteDocument = useDocumentsStore((state) => state.deleteDocument);
 	const documents = useDocumentsStore((state) => state.documents);
 	const documentsProjectId = useDocumentsStore((state) => state.projectId);
+	const prepareWorkspaceLoad = useDocumentsStore((state) => state.prepareWorkspaceLoad);
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
 	const activeAssetId = useDocumentsStore((state) => state.activeAssetId);
 	const selectDocument = useDocumentsStore((state) => state.selectDocument);
@@ -85,6 +91,10 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	const workMode = useWorkModeStore((state) => state.mode);
 	const setWorkMode = useWorkModeStore((state) => state.setMode);
 	const [isCreating, setIsCreating] = useState(false);
+	const [projectAction, setProjectAction] = useState<{
+		kind: "archive" | "trash";
+		projectId: string;
+	} | null>(null);
 	const [isSearchOpen, setIsSearchOpen] = useState(false);
 	const [searchScope, setSearchScope] = useState<"global" | "project">("global");
 	const [displayProjectId, setDisplayProjectId] = useState(activeProjectId);
@@ -128,6 +138,38 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		setIsSearchOpen(true);
 	}, []);
 
+	const refreshProjectLists = useCallback(async () => {
+		await Promise.all([
+			mutate(),
+			mutateSWR(projectsKeyForStatus("archived")),
+			mutateSWR(projectsKeyForStatus("trashed")),
+		]);
+	}, [mutate]);
+
+	const leaveProjectIfHidden = useCallback(
+		(projectId: string) => {
+			const routeProjectId = getRouteProjectId(location.search);
+			const shouldLeave =
+				activeProjectId === projectId ||
+				displayProjectId === projectId ||
+				routeProjectId === projectId;
+			if (!shouldLeave) return;
+
+			setActiveProjectId(null);
+			setDisplayProjectId(null);
+			prepareWorkspaceLoad("请选择一个项目");
+			navigate("/", { replace: true });
+		},
+		[
+			activeProjectId,
+			displayProjectId,
+			location.search,
+			navigate,
+			prepareWorkspaceLoad,
+			setActiveProjectId,
+		],
+	);
+
 	const showDocumentPane = useCallback(() => {
 		setAgentLayoutTab("document");
 	}, [setAgentLayoutTab]);
@@ -145,6 +187,66 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 			});
 		},
 		[navigate, setActiveProjectId, showAgentPane],
+	);
+
+	const archiveSidebarProject = useCallback(
+		async (project: WorkspaceProject) => {
+			if (projectAction) return;
+
+			setProjectAction({ kind: "archive", projectId: project.id });
+			try {
+				await archiveProject(project.id);
+				await refreshProjectLists();
+				leaveProjectIfHidden(project.id);
+				toast.success("项目已归档", { description: project.name });
+			} catch (err) {
+				const message = err instanceof Error ? err.message : "归档项目失败。";
+				toast.error("归档项目失败", { description: message });
+			} finally {
+				setProjectAction(null);
+			}
+		},
+		[leaveProjectIfHidden, projectAction, refreshProjectLists, toast],
+	);
+
+	const trashSidebarProject = useCallback(
+		async (project: WorkspaceProject) => {
+			if (projectAction) return false;
+
+			setProjectAction({ kind: "trash", projectId: project.id });
+			try {
+				await deleteProject(project.id);
+				await refreshProjectLists();
+				leaveProjectIfHidden(project.id);
+				toast.success("项目已移到垃圾箱", { description: project.name });
+				return true;
+			} catch (err) {
+				const message = err instanceof Error ? err.message : "移到垃圾箱失败。";
+				toast.error("移到垃圾箱失败", { description: message });
+				return false;
+			} finally {
+				setProjectAction(null);
+			}
+		},
+		[leaveProjectIfHidden, projectAction, refreshProjectLists, toast],
+	);
+
+	const requestTrashSidebarProject = useCallback(
+		(project: WorkspaceProject) => {
+			void confirmDialog({
+				title: "移到垃圾箱？",
+				description: (
+					<>
+						确定要将“{project.name}”移到垃圾箱吗？项目文件夹会移动到
+						.mediago-drama/trash，之后可以在垃圾箱中恢复。
+					</>
+				),
+				confirmLabel: "移到垃圾箱",
+				confirmIcon: <Trash2 />,
+				onConfirm: () => trashSidebarProject(project),
+			});
+		},
+		[trashSidebarProject],
 	);
 
 	const openDocument = useCallback(
@@ -487,7 +589,10 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 										isLoading={isLoading}
 										locationPathname={location.pathname}
 										projects={visibleProjects}
+										projectAction={projectAction}
+										onArchiveProject={(project) => void archiveSidebarProject(project)}
 										onCreateProject={openAgentCreateDialog}
+										onRequestDeleteProject={requestTrashSidebarProject}
 										onOpenGenerationNotification={openGenerationNotification}
 										onOpenProject={openProject}
 										onOpenSearch={openSearch}

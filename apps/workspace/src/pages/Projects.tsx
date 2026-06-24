@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import useSWR, { useSWRConfig } from "swr";
 import {
+	archiveProject,
+	deleteProject,
 	getProjects,
 	permanentlyDeleteProject,
 	type ProjectStatusFilter,
@@ -16,11 +18,17 @@ import { agentProjectPath, agentProjectRouteState } from "@/domains/workspace/li
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuTrigger,
+} from "@/shared/components/ui/context-menu";
 import { useToast } from "@/hooks/useToast";
 import { cn } from "@/shared/lib/utils";
 
 type ProjectManagementTab = Exclude<ProjectStatusFilter, "all">;
-type ProjectAction = "restore" | "permanent";
+type ProjectAction = "archive" | "trash" | "restore" | "permanent";
 
 const projectTabs: Array<{ label: string; status: ProjectManagementTab }> = [
 	{ label: "项目", status: "active" },
@@ -106,6 +114,57 @@ export const Projects: React.FC = () => {
 		} finally {
 			setAction(null);
 		}
+	};
+
+	const archiveCurrentProject = async (project: WorkspaceProject) => {
+		if (action) return;
+
+		setAction({ kind: "archive", projectId: project.id });
+		try {
+			await archiveProject(project.id);
+			await refreshProjectLists();
+			toast.success("项目已归档", { description: project.name });
+		} catch (err) {
+			toast.error("归档项目失败", {
+				description: projectManagementErrorMessage(err, "归档项目失败。"),
+			});
+		} finally {
+			setAction(null);
+		}
+	};
+
+	const deleteCurrentProject = async (project: WorkspaceProject) => {
+		if (action) return false;
+
+		setAction({ kind: "trash", projectId: project.id });
+		try {
+			await deleteProject(project.id);
+			await refreshProjectLists();
+			toast.success("项目已移到垃圾箱", { description: project.name });
+			return true;
+		} catch (err) {
+			toast.error("移到垃圾箱失败", {
+				description: projectManagementErrorMessage(err, "移到垃圾箱失败。"),
+			});
+			return false;
+		} finally {
+			setAction(null);
+		}
+	};
+
+	const confirmDeleteProject = (project: WorkspaceProject) => {
+		void confirmDialog({
+			title: "移到垃圾箱？",
+			description: (
+				<>
+					确定要将“{project.name}”移到垃圾箱吗？项目文件夹会移动到
+					.mediago-drama/trash，之后可以在垃圾箱中恢复。
+				</>
+			),
+			confirmLabel: "移到垃圾箱",
+			confirmIcon: <Trash2 />,
+			onConfirm: () => deleteCurrentProject(project),
+		});
 	};
 
 	const permanentlyDeleteCurrentProject = async (project: WorkspaceProject) => {
@@ -196,6 +255,8 @@ export const Projects: React.FC = () => {
 								activeTab={activeTab}
 								project={project}
 								statusLabel={meta.statusLabel}
+								onArchive={() => void archiveCurrentProject(project)}
+								onRequestDelete={() => confirmDeleteProject(project)}
 								onOpen={openProject}
 								onRestore={() => void restoreCurrentProject(project)}
 								onRequestPermanentDelete={() => confirmPermanentlyDeleteProject(project)}
@@ -211,68 +272,145 @@ export const Projects: React.FC = () => {
 const ProjectManagementRow: React.FC<{
 	action: { kind: ProjectAction; projectId: string } | null;
 	activeTab: ProjectManagementTab;
+	onArchive: () => void;
 	onOpen: (project: WorkspaceProject) => void;
+	onRequestDelete: () => void;
 	onRequestPermanentDelete: () => void;
 	onRestore: () => void;
 	project: WorkspaceProject;
 	statusLabel: string;
-}> = ({ action, activeTab, onOpen, onRequestPermanentDelete, onRestore, project, statusLabel }) => {
+}> = ({
+	action,
+	activeTab,
+	onArchive,
+	onOpen,
+	onRequestDelete,
+	onRequestPermanentDelete,
+	onRestore,
+	project,
+	statusLabel,
+}) => {
+	const isArchiving = action?.kind === "archive" && action.projectId === project.id;
+	const isTrashing = action?.kind === "trash" && action.projectId === project.id;
 	const isRestoring = action?.kind === "restore" && action.projectId === project.id;
 	const isDeleting = action?.kind === "permanent" && action.projectId === project.id;
 	const Icon = tabMeta[activeTab].icon;
 	const path = project.originalProjectDir || project.projectDir || project.relativeDir || "";
 	const timestamp = projectLifecycleTimestamp(project, activeTab);
+	const hasAction = Boolean(action);
 
 	return (
-		<div className="grid gap-3 rounded-sm border border-border/70 bg-ide-panel px-3 py-3 text-ide-panel-foreground md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-			<div className="flex min-w-0 gap-3">
-				<div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
-					<Icon className="size-4" />
-				</div>
-				<div className="min-w-0">
-					<div className="flex min-w-0 flex-wrap items-center gap-2">
-						<p className="truncate text-sm font-medium text-foreground">{project.name}</p>
-						<Badge variant="secondary">{statusLabel}</Badge>
-						{project.documentCount > 0 ? (
-							<span className="text-xs text-muted-foreground">{project.documentCount} 个文档</span>
+		<ContextMenu>
+			<ContextMenuTrigger asChild>
+				<div className="grid gap-3 rounded-sm border border-border/70 bg-ide-panel px-3 py-3 text-ide-panel-foreground md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+					<div className="flex min-w-0 gap-3">
+						<div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
+							<Icon className="size-4" />
+						</div>
+						<div className="min-w-0">
+							<div className="flex min-w-0 flex-wrap items-center gap-2">
+								<p className="truncate text-sm font-medium text-foreground">{project.name}</p>
+								<Badge variant="secondary">{statusLabel}</Badge>
+								{project.documentCount > 0 ? (
+									<span className="text-xs text-muted-foreground">
+										{project.documentCount} 个文档
+									</span>
+								) : null}
+							</div>
+							{path ? <p className="mt-1 truncate text-xs text-muted-foreground">{path}</p> : null}
+							{timestamp ? (
+								<p className="mt-1 text-xs text-muted-foreground">
+									{timestamp.label}：{timestamp.value}
+								</p>
+							) : null}
+						</div>
+					</div>
+					<div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
+						{activeTab === "active" ? (
+							<Button type="button" variant="secondary" onClick={() => onOpen(project)}>
+								<FolderOpen />
+								<span>打开</span>
+							</Button>
+						) : null}
+
+						{activeTab === "archived" || activeTab === "trashed" ? (
+							<Button type="button" variant="secondary" onClick={onRestore} disabled={hasAction}>
+								{isRestoring ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+								<span>恢复</span>
+							</Button>
+						) : null}
+
+						{activeTab === "trashed" ? (
+							<Button
+								type="button"
+								variant="destructive"
+								onClick={onRequestPermanentDelete}
+								disabled={hasAction}
+							>
+								{isDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+								<span>永久删除</span>
+							</Button>
 						) : null}
 					</div>
-					{path ? <p className="mt-1 truncate text-xs text-muted-foreground">{path}</p> : null}
-					{timestamp ? (
-						<p className="mt-1 text-xs text-muted-foreground">
-							{timestamp.label}：{timestamp.value}
-						</p>
-					) : null}
 				</div>
-			</div>
-			<div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
+			</ContextMenuTrigger>
+			<ContextMenuContent>
 				{activeTab === "active" ? (
-					<Button type="button" variant="secondary" onClick={() => onOpen(project)}>
-						<FolderOpen />
-						<span>打开</span>
-					</Button>
+					<>
+						<ContextMenuItem disabled={hasAction} onSelect={() => onOpen(project)}>
+							<FolderOpen className="size-4" />
+							<span>打开</span>
+						</ContextMenuItem>
+						<ContextMenuItem disabled={hasAction} onSelect={onArchive}>
+							{isArchiving ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<Archive className="size-4" />
+							)}
+							<span>{isArchiving ? "正在归档" : "归档"}</span>
+						</ContextMenuItem>
+						<ContextMenuItem
+							className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
+							disabled={hasAction}
+							onSelect={onRequestDelete}
+						>
+							{isTrashing ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<Trash2 className="size-4" />
+							)}
+							<span>{isTrashing ? "正在移入" : "移到垃圾箱"}</span>
+						</ContextMenuItem>
+					</>
 				) : null}
 
 				{activeTab === "archived" || activeTab === "trashed" ? (
-					<Button type="button" variant="secondary" onClick={onRestore} disabled={Boolean(action)}>
-						{isRestoring ? <Loader2 className="animate-spin" /> : <RotateCcw />}
-						<span>恢复</span>
-					</Button>
+					<ContextMenuItem disabled={hasAction} onSelect={onRestore}>
+						{isRestoring ? (
+							<Loader2 className="size-4 animate-spin" />
+						) : (
+							<RotateCcw className="size-4" />
+						)}
+						<span>{isRestoring ? "正在恢复" : "恢复"}</span>
+					</ContextMenuItem>
 				) : null}
 
 				{activeTab === "trashed" ? (
-					<Button
-						type="button"
-						variant="destructive"
-						onClick={onRequestPermanentDelete}
-						disabled={Boolean(action)}
+					<ContextMenuItem
+						className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
+						disabled={hasAction}
+						onSelect={onRequestPermanentDelete}
 					>
-						{isDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
-						<span>永久删除</span>
-					</Button>
+						{isDeleting ? (
+							<Loader2 className="size-4 animate-spin" />
+						) : (
+							<Trash2 className="size-4" />
+						)}
+						<span>{isDeleting ? "正在删除" : "永久删除"}</span>
+					</ContextMenuItem>
 				) : null}
-			</div>
-		</div>
+			</ContextMenuContent>
+		</ContextMenu>
 	);
 };
 

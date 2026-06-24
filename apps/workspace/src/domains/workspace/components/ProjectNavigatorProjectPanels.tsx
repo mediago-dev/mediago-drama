@@ -1,4 +1,5 @@
 import {
+	Archive,
 	ChevronLeft,
 	FilePlus2,
 	Folder,
@@ -9,6 +10,7 @@ import {
 	Loader2,
 	Search,
 	SquarePen,
+	Trash2,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useRef } from "react";
@@ -16,6 +18,12 @@ import type { WorkspaceProject } from "@/domains/projects/api/projects";
 import type { DocumentCategory } from "@/domains/documents/stores";
 import type { GenerationSuccessNotification } from "@/domains/generation/stores/generation-notifications";
 import { Button } from "@/shared/components/ui/button";
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuTrigger,
+} from "@/shared/components/ui/context-menu";
 import {
 	ProjectDirectory,
 	type ProjectDocumentDeleteHandler,
@@ -42,21 +50,27 @@ export const ProjectsSidebarPanel: React.FC<{
 	isLoading: boolean;
 	locationPathname: string;
 	onCreateProject: () => void;
+	onArchiveProject: (project: WorkspaceProject) => void;
+	onRequestDeleteProject: (project: WorkspaceProject) => void;
 	onOpenProject: (project: WorkspaceProject) => void;
 	onOpenGenerationNotification?: (notification: GenerationSuccessNotification) => void;
 	onOpenSearch: (scope: "global" | "project") => void;
 	onOpenSettings: () => void;
+	projectAction?: { kind: "archive" | "trash"; projectId: string } | null;
 	projects: WorkspaceProject[];
 }> = ({
 	error,
 	isCreating,
 	isLoading,
 	locationPathname,
+	onArchiveProject,
 	onCreateProject,
+	onRequestDeleteProject,
 	onOpenGenerationNotification,
 	onOpenProject,
 	onOpenSearch,
 	onOpenSettings,
+	projectAction = null,
 	projects,
 }) => (
 	<div className="flex h-full flex-col">
@@ -102,15 +116,14 @@ export const ProjectsSidebarPanel: React.FC<{
 					<p className="px-2 py-1.5 text-xs text-muted-foreground">暂无项目</p>
 				) : (
 					projects.map((project) => (
-						<button
+						<ProjectsSidebarProjectItem
 							key={project.id}
-							type="button"
-							onClick={() => onOpenProject(project)}
-							className="mb-0.5 flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-ide-sidebar-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground"
-						>
-							<Folder className="size-4 shrink-0 text-muted-foreground" />
-							<span className="min-w-0 flex-1 truncate">{project.name}</span>
-						</button>
+							project={project}
+							projectAction={projectAction}
+							onArchiveProject={onArchiveProject}
+							onOpenProject={onOpenProject}
+							onRequestDeleteProject={onRequestDeleteProject}
+						/>
 					))
 				)}
 			</div>
@@ -123,6 +136,55 @@ export const ProjectsSidebarPanel: React.FC<{
 		/>
 	</div>
 );
+
+const ProjectsSidebarProjectItem: React.FC<{
+	onArchiveProject: (project: WorkspaceProject) => void;
+	onOpenProject: (project: WorkspaceProject) => void;
+	onRequestDeleteProject: (project: WorkspaceProject) => void;
+	project: WorkspaceProject;
+	projectAction: { kind: "archive" | "trash"; projectId: string } | null;
+}> = ({ onArchiveProject, onOpenProject, onRequestDeleteProject, project, projectAction }) => {
+	const isArchiving = projectAction?.kind === "archive" && projectAction.projectId === project.id;
+	const isTrashing = projectAction?.kind === "trash" && projectAction.projectId === project.id;
+	const hasAction = Boolean(projectAction);
+
+	return (
+		<ContextMenu>
+			<ContextMenuTrigger asChild>
+				<button
+					type="button"
+					onClick={() => onOpenProject(project)}
+					className="mb-0.5 flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-ide-sidebar-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground"
+				>
+					<Folder className="size-4 shrink-0 text-muted-foreground" />
+					<span className="min-w-0 flex-1 truncate">{project.name}</span>
+				</button>
+			</ContextMenuTrigger>
+			<ContextMenuContent>
+				<ContextMenuItem disabled={hasAction} onSelect={() => onOpenProject(project)}>
+					<Folder className="size-4" />
+					<span>打开</span>
+				</ContextMenuItem>
+				<ContextMenuItem disabled={hasAction} onSelect={() => onArchiveProject(project)}>
+					{isArchiving ? (
+						<Loader2 className="size-4 animate-spin" />
+					) : (
+						<Archive className="size-4" />
+					)}
+					<span>{isArchiving ? "正在归档" : "归档"}</span>
+				</ContextMenuItem>
+				<ContextMenuItem
+					className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
+					disabled={hasAction}
+					onSelect={() => onRequestDeleteProject(project)}
+				>
+					{isTrashing ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+					<span>{isTrashing ? "正在移入" : "移到垃圾箱"}</span>
+				</ContextMenuItem>
+			</ContextMenuContent>
+		</ContextMenu>
+	);
+};
 
 export const ProjectSidebarPanel: React.FC<{
 	displayProject: WorkspaceProject | null;

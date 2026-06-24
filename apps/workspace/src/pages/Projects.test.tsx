@@ -12,6 +12,7 @@ vi.mock("@/shared/lib/http", () => ({
 	default: {
 		delete: vi.fn(),
 		get: vi.fn(),
+		post: vi.fn(),
 	},
 }));
 
@@ -37,25 +38,102 @@ const trashedProject: WorkspaceProject = {
 	updatedAt: "2026-06-17T16:05:00Z",
 };
 
+const activeProject: WorkspaceProject = {
+	createdAt: "2026-06-18T16:00:00Z",
+	description: "",
+	documentCount: 2,
+	id: "project-111",
+	name: "短剧项目",
+	projectDir: "/Users/example/project-111",
+	relativeDir: "project-111",
+	status: "active",
+	updatedAt: "2026-06-18T16:05:00Z",
+};
+
 describe("Projects", () => {
 	let isProjectDeleted = false;
+	let activeProjectStatus: WorkspaceProject["status"] = "active";
 
 	beforeEach(() => {
 		vi.clearAllMocks();
 		isProjectDeleted = false;
+		activeProjectStatus = "active";
 		vi.mocked(httpClient.get).mockImplementation(async (_url, config) => {
-			const status = config?.params?.status;
-			const projects = status === "trashed" && !isProjectDeleted ? [trashedProject] : [];
+			const status = config?.params?.status ?? "active";
+			const projects = projectsForStatus(status, activeProjectStatus, isProjectDeleted);
 			return apiResponse({ databasePath: "", projects, workspaceDir: "" });
 		});
-		vi.mocked(httpClient.delete).mockImplementation(async () => {
-			isProjectDeleted = true;
-			return apiResponse(trashedProject);
+		vi.mocked(httpClient.post).mockImplementation(async (url) => {
+			if (url === "/projects/project-111/archive") {
+				activeProjectStatus = "archived";
+				return apiResponse(projectWithStatus("archived"));
+			}
+			if (url === "/projects/project-111/restore") {
+				activeProjectStatus = "active";
+				return apiResponse(projectWithStatus("active"));
+			}
+			return apiResponse({});
+		});
+		vi.mocked(httpClient.delete).mockImplementation(async (url) => {
+			if (url === "/projects/project-111") {
+				activeProjectStatus = "trashed";
+				return apiResponse(projectWithStatus("trashed"));
+			}
+			if (url === "/projects/project-333/permanent") {
+				isProjectDeleted = true;
+				return apiResponse(trashedProject);
+			}
+			return apiResponse({});
 		});
 	});
 
 	afterEach(() => {
 		cleanup();
+	});
+
+	it("archives an active project from the row context menu", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter>
+					<Projects />
+					<ConfirmDialog />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		expect(await screen.findByText("短剧项目")).toBeInTheDocument();
+
+		fireEvent.contextMenu(screen.getByText("短剧项目"), { clientX: 48, clientY: 48 });
+		fireEvent.click(await screen.findByRole("menuitem", { name: "归档" }));
+
+		await waitFor(() =>
+			expect(httpClient.post).toHaveBeenCalledWith("/projects/project-111/archive"),
+		);
+		await waitFor(() => expect(screen.queryByText("短剧项目")).not.toBeInTheDocument());
+		expect(screen.getByText("还没有项目")).toBeInTheDocument();
+	});
+
+	it("moves an active project to trash from the row context menu", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter>
+					<Projects />
+					<ConfirmDialog />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		expect(await screen.findByText("短剧项目")).toBeInTheDocument();
+
+		fireEvent.contextMenu(screen.getByText("短剧项目"), { clientX: 48, clientY: 48 });
+		fireEvent.click(await screen.findByRole("menuitem", { name: "移到垃圾箱" }));
+
+		const dialog = await screen.findByRole("alertdialog", { name: "移到垃圾箱？" });
+		fireEvent.click(within(dialog).getByRole("button", { name: "移到垃圾箱" }));
+
+		await waitFor(() => expect(httpClient.delete).toHaveBeenCalledWith("/projects/project-111"));
+		await waitFor(() => expect(screen.queryByText("短剧项目")).not.toBeInTheDocument());
+		expect(screen.getByText("还没有项目")).toBeInTheDocument();
 	});
 
 	it("refreshes the trash list after permanently deleting a project", async () => {
@@ -82,6 +160,32 @@ describe("Projects", () => {
 		await waitFor(() => expect(screen.queryByText("333")).not.toBeInTheDocument());
 		expect(screen.getByText("垃圾箱为空")).toBeInTheDocument();
 	});
+});
+
+const projectsForStatus = (
+	status: string,
+	activeProjectStatus: WorkspaceProject["status"],
+	isProjectDeleted: boolean,
+) => {
+	const projects: WorkspaceProject[] = [];
+	if (activeProjectStatus === status) projects.push(projectWithStatus(activeProjectStatus));
+	if (status === "trashed" && !isProjectDeleted) projects.push(trashedProject);
+	return projects;
+};
+
+const projectWithStatus = (status: WorkspaceProject["status"]): WorkspaceProject => ({
+	...activeProject,
+	status,
+	archivedAt: status === "archived" ? "2026-06-18T16:10:00Z" : undefined,
+	originalProjectDir: status === "trashed" ? activeProject.projectDir : undefined,
+	projectDir:
+		status === "trashed"
+			? "/Users/example/.mediago-drama/trash/projects/project-111"
+			: activeProject.projectDir,
+	trashProjectDir:
+		status === "trashed" ? "/Users/example/.mediago-drama/trash/projects/project-111" : undefined,
+	trashedAt: status === "trashed" ? "2026-06-18T16:10:00Z" : undefined,
+	updatedAt: status === "active" ? activeProject.updatedAt : "2026-06-18T16:10:00Z",
 });
 
 const apiResponse = <T,>(data: T): ApiResponse<T> => ({

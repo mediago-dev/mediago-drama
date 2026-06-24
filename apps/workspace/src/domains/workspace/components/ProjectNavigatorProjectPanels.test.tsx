@@ -154,6 +154,34 @@ describe("ProjectSidebarPanel", () => {
 		renderProjectsSidebar();
 		expect(footerActionRowClassName()).toContain("justify-end");
 	});
+
+	it("opens project list actions from the project context menu", () => {
+		const onArchiveProject = vi.fn();
+		const onOpenProject = vi.fn();
+		const onRequestDeleteProject = vi.fn();
+		renderProjectsSidebar({
+			onArchiveProject,
+			onOpenProject,
+			onRequestDeleteProject,
+		});
+
+		fireEvent.contextMenu(screen.getByRole("button", { name: "测试项目" }), {
+			clientX: 72,
+			clientY: 96,
+		});
+
+		expect(screen.getByRole("menuitem", { name: "打开" })).toBeTruthy();
+		fireEvent.click(screen.getByRole("menuitem", { name: "归档" }));
+		expect(onArchiveProject).toHaveBeenCalledWith(project);
+
+		fireEvent.contextMenu(screen.getByRole("button", { name: "测试项目" }), {
+			clientX: 72,
+			clientY: 96,
+		});
+		fireEvent.click(screen.getByRole("menuitem", { name: "移到垃圾箱" }));
+		expect(onRequestDeleteProject).toHaveBeenCalledWith(project);
+		expect(onOpenProject).not.toHaveBeenCalled();
+	});
 });
 
 const renderProjectSidebar = (
@@ -183,17 +211,22 @@ const renderProjectSidebar = (
 		/>,
 	);
 
-const renderProjectsSidebar = () =>
+const renderProjectsSidebar = (
+	overrides: Partial<React.ComponentProps<typeof ProjectsSidebarPanel>> = {},
+) =>
 	render(
 		<ProjectsSidebarPanel
 			isCreating={false}
 			isLoading={false}
 			locationPathname="/"
 			projects={[project]}
+			onArchiveProject={vi.fn()}
 			onCreateProject={vi.fn()}
+			onRequestDeleteProject={vi.fn()}
 			onOpenProject={vi.fn()}
 			onOpenSearch={vi.fn()}
 			onOpenSettings={vi.fn()}
+			{...overrides}
 		/>,
 	);
 
