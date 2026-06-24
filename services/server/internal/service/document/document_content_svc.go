@@ -47,6 +47,9 @@ func (store *Service) CreateWorkspaceDocumentFromInput(projectID string, input C
 		Category: input.Category,
 		ParentID: parentID,
 		Tags:     input.Tags,
+		// Regenerating a titled document overwrites the existing same-slot record
+		// instead of accumulating duplicates; old content stays in document history.
+		ReplaceSameSlot: true,
 	})
 	if err != nil {
 		return mediamcp.WorkspaceDocument{}, err

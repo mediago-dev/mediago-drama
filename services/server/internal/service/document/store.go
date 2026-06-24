@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
@@ -119,6 +120,46 @@ func findWorkspaceDocumentByTitleAndContent(
 		}
 	}
 	return mediamcp.WorkspaceDocument{}
+}
+
+// normalizeDocumentTitleKey collapses a title into a slot comparison key by dropping
+// whitespace and separator runes, so "第一集-分镜", "第一集 分镜" and "第一集分镜" all
+// map to the same slot.
+func normalizeDocumentTitleKey(title string) string {
+	var builder strings.Builder
+	for _, r := range strings.TrimSpace(title) {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		switch r {
+		case '-', '–', '—', '_', '·', '・':
+			continue
+		}
+		builder.WriteRune(unicode.ToLower(r))
+	}
+	return builder.String()
+}
+
+// findWorkspaceDocumentSlotIndex returns the index of the first document occupying the
+// same slot (matching category and normalized title), or -1 when none match.
+func findWorkspaceDocumentSlotIndex(
+	documents []mediamcp.WorkspaceDocument,
+	category string,
+	title string,
+) int {
+	titleKey := normalizeDocumentTitleKey(title)
+	if titleKey == "" {
+		return -1
+	}
+	for index := range documents {
+		if documents[index].Category != category {
+			continue
+		}
+		if normalizeDocumentTitleKey(documents[index].Title) == titleKey {
+			return index
+		}
+	}
+	return -1
 }
 
 func normalizeWorkspaceDocumentFolderIDs(
@@ -391,10 +432,45 @@ func (store *Service) createDocument(projectID string, request createWorkspaceDo
 
 	now := timestamp.NowRFC3339Nano()
 	title := strings.TrimSpace(request.Title)
+	hasExplicitTitle := title != ""
 	if title == "" {
 		title = "新文档"
 	}
 	category := strings.TrimSpace(request.Category)
+
+	// Overwrite an existing same-slot document instead of accumulating duplicates when an
+	// agent/generation create lands on a slot (category + normalized title) that already
+	// exists. Prior content stays recoverable through document history. Manual creation
+	// never sets ReplaceSameSlot, so it always produces a fresh record.
+	if request.ReplaceSameSlot && hasExplicitTitle {
+		if index := findWorkspaceDocumentSlotIndex(state.Documents, category, title); index >= 0 {
+			existing := state.Documents[index]
+			existing.Title = title
+			existing.Content = request.Content
+			existing.Category = category
+			existing.Tags = NormalizeDocumentTags(request.Tags)
+			existing.Comments = NormalizeCommentRecordsForDocument(existing.ID, request.Content, request.Comments)
+			existing.WorkbenchDraft = NormalizeWorkbenchDraftRecord(request.WorkbenchDraft, existing.ID, title, now)
+			existing.IsDirty = false
+			existing.UpdatedAt = now
+			existing.Version = NormalizedDocumentVersion(existing.Version) + 1
+			state.Documents[index] = existing
+
+			savedState, err := store.saveUnlocked(projectID, workspaceStateRequest{
+				Documents:    state.Documents,
+				OperationLog: state.OperationLog,
+			})
+			if err != nil {
+				return mediamcp.WorkspaceDocument{}, workspaceDocumentsResponse{}, err
+			}
+			document := existing
+			if saved, ok := FindWorkspaceDocumentByID(savedState.Documents, existing.ID); ok {
+				document = saved
+			}
+			return document, WorkspaceDocumentsFromState(savedState), nil
+		}
+	}
+
 	parentID := ValidWorkspaceParentID(state.Documents, request.ParentID, "")
 	folderID := ValidDocumentFolderID(state.Folders, request.FolderID)
 	sortOrder := NextWorkspaceSortOrder(state.Documents, parentID)

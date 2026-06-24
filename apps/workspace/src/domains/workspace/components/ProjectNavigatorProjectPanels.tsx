@@ -258,7 +258,7 @@ export const ProjectSidebarPanel: React.FC<{
 
 	return (
 		<div className="flex h-full flex-col">
-			<div className="mt-5 flex min-h-0 flex-1 flex-col">
+			<div className="flex min-h-0 flex-1 flex-col">
 				<div className="min-h-0 flex-1 overflow-y-auto">
 					{displayProject ? (
 						<div className="space-y-1">

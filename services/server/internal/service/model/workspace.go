@@ -81,6 +81,11 @@ type CreateWorkspaceDocumentRequest struct {
 	Tags           []string                         `json:"tags,omitempty"`
 	Comments       []mediamcp.DocumentComment       `json:"comments,omitempty"`
 	WorkbenchDraft *mediamcp.DocumentWorkbenchDraft `json:"workbenchDraft,omitempty"`
+	// ReplaceSameSlot overwrites an existing document occupying the same slot
+	// (category + normalized title) instead of creating a duplicate. Set by the
+	// agent/generation path only; intentionally not bound from HTTP requests so manual
+	// document creation always produces a fresh record.
+	ReplaceSameSlot bool `json:"-"`
 }
 
 // UpdateWorkspaceDocumentRequest updates a workspace document.

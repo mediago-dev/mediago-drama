@@ -2,6 +2,7 @@ package document
 
 import (
 	"fmt"
+	"strings"
 
 	docs "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/documents"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
@@ -190,6 +191,10 @@ func StreamDocumentCreateRequest(input StreamDocumentEditInput) (CreateWorkspace
 		Content:  "",
 		Category: category,
 		ParentID: input.ParentDocumentID,
+		// When the agent streams a titled document, overwrite the existing same-slot
+		// record instead of piling up duplicates; the placeholder title (no agent title)
+		// must not collide, so only opt in when a real title is provided.
+		ReplaceSameSlot: strings.TrimSpace(input.Title) != "",
 	}, nil
 }
 
