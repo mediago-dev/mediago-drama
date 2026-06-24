@@ -46,7 +46,6 @@ type skillTemplate struct {
 	Name             string `json:"name"`
 	Description      string `json:"description,omitempty"`
 	DocumentCategory string `json:"documentCategory"`
-	Content          string `json:"content"`
 }
 
 type createSkillRequest struct {
@@ -229,7 +228,6 @@ func resolveSkillTemplate(ctx context.Context, templateID string) *skillTemplate
 		Name:             template.Name,
 		Description:      template.Description,
 		DocumentCategory: template.DocumentCategory,
-		Content:          template.Body,
 	}
 }
 

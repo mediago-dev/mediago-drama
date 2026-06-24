@@ -18,7 +18,7 @@ export interface SkillTemplate {
 	name: string;
 	description?: string;
 	documentCategory: string;
-	content: string;
+	content?: string;
 }
 
 export interface SkillDocument extends SkillMeta {

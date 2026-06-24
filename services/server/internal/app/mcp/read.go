@@ -69,12 +69,12 @@ func (adapter *Adapter) LoadSkill(ctx context.Context, projectID string, input m
 			return mediamcp.LoadSkillOutput{Name: item.Name}, err
 		}
 		template = mcpDocumentTemplate(resolved)
-		content = appendDocumentTemplate(content, resolved)
+		content = appendDocumentStructureRules(content, resolved)
 	}
 	return mediamcp.LoadSkillOutput{Name: item.Name, Content: content, Template: template}, nil
 }
 
-func appendDocumentTemplate(content string, template instructiontemplates.Template) string {
+func appendDocumentStructureRules(content string, template instructiontemplates.Template) string {
 	content = strings.TrimSpace(content)
 	body := strings.TrimSpace(template.Body)
 	if body == "" {
@@ -85,9 +85,9 @@ func appendDocumentTemplate(content string, template instructiontemplates.Templa
 		sections = append(sections, content)
 	}
 	sections = append(sections, strings.Join([]string{
-		"## 系统内置模板格式（只读）",
+		"## 系统内置文档结构规则（内部）",
 		"",
-		"新建或填写本类型文档时，必须使用下面的只读模板骨架。模板格式由 MediaGo Drama 内置管理；编辑 Skill 时不要改写、删除或复述模板字段。",
+		"新建或填写本类型文档时，必须遵守下面的内部结构规则。结构规则由 MediaGo Drama 内置管理；编辑 Skill 时不要改写、删除或复述这些规则。",
 		"",
 		"```markdown",
 		body,
@@ -102,7 +102,6 @@ func mcpDocumentTemplate(template instructiontemplates.Template) *mediamcp.Docum
 		Name:             template.Name,
 		Description:      template.Description,
 		DocumentCategory: template.DocumentCategory,
-		Content:          template.Body,
 	}
 }
 

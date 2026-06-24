@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import {
 	type SkillMeta,
-	type SkillTemplate,
 	createSkill,
 	deleteSkill,
 	getSkill,
@@ -274,7 +273,6 @@ export const SkillsEditorPanel: React.FC = () => {
 				frontmatterDraft={frontmatterDraft}
 				isSaving={isSaving}
 				open={editDialogOpen}
-				template={selectedSkill?.template}
 				onBodyChange={setBodyDraft}
 				onCancel={closeEditDialog}
 				onOpenChange={(open) => {
@@ -335,19 +333,6 @@ export const SkillsEditorPanel: React.FC = () => {
 								/>
 							</div>
 
-							{selectedSkill?.template ? (
-								<div className={settingsFormRowClassName}>
-									<Label id="skill-template-label" className="text-sm font-medium text-foreground">
-										系统内置模板
-									</Label>
-									<SettingsMarkdownPreview
-										ariaLabelledBy="skill-template-label"
-										className="max-h-96 min-h-56"
-										value={templatePreviewMarkdown(selectedSkill.template)}
-									/>
-								</div>
-							) : null}
-
 							<div className={skillBodyRowClassName}>
 								<div className="flex items-center justify-between gap-2">
 									<Label
@@ -395,16 +380,12 @@ const metadataPreviewMarkdown = (metadata: string) => {
 	return ["```yaml", trimmed, "```"].join("\n");
 };
 
-const templatePreviewMarkdown = (template: SkillTemplate) =>
-	[`# ${template.name}`, "", "```markdown", template.content.trim(), "```"].join("\n");
-
 const SkillEditDialog: React.FC<{
 	bodyDraft: string;
 	error: string;
 	frontmatterDraft: string;
 	isSaving: boolean;
 	open: boolean;
-	template?: SkillTemplate;
 	onBodyChange: (value: string) => void;
 	onCancel: () => void;
 	onOpenChange: (open: boolean) => void;
@@ -415,7 +396,6 @@ const SkillEditDialog: React.FC<{
 	frontmatterDraft,
 	isSaving,
 	open,
-	template,
 	onBodyChange,
 	onCancel,
 	onOpenChange,
@@ -440,7 +420,7 @@ const SkillEditDialog: React.FC<{
 							id="skill-edit-description"
 							className="mt-1 text-xs text-muted-foreground"
 						>
-							修改当前 Skill 正文；元数据和模板由系统管理。
+							修改当前 Skill 正文；元数据由系统管理。
 						</DialogPrimitive.Description>
 					</div>
 					<DialogPrimitive.Close asChild>
@@ -471,21 +451,6 @@ const SkillEditDialog: React.FC<{
 								value={metadataPreviewMarkdown(frontmatterDraft)}
 							/>
 						</div>
-						{template ? (
-							<div className="grid gap-2">
-								<Label
-									id="skill-edit-template-label"
-									className="text-sm font-medium text-foreground"
-								>
-									系统内置模板
-								</Label>
-								<SettingsMarkdownPreview
-									ariaLabelledBy="skill-edit-template-label"
-									className="max-h-60 min-h-40"
-									value={templatePreviewMarkdown(template)}
-								/>
-							</div>
-						) : null}
 						<div className="grid gap-2">
 							<div className="flex items-center justify-between gap-2">
 								<Label id="skill-edit-body-label" className="text-sm font-medium text-foreground">

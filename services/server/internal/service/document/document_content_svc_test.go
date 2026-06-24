@@ -118,23 +118,38 @@ func TestCreateWorkspaceDocumentFromInputDoesNotInjectTemplateContent(t *testing
 		t.Fatalf("character content = %q, want exact provided full markdown", character.Content)
 	}
 
-	_, err = store.CreateWorkspaceDocumentFromInput(projectID, CreateDocumentInput{
-		Title:    "缺字段角色档案",
+	flexibleCharacter := "## 萧炎\n\n黑发，眉眼清俊，目光坚韧；乌色练功服袖口磨旧，贴身戒指固定出现。\n"
+	flexible, err := store.CreateWorkspaceDocumentFromInput(projectID, CreateDocumentInput{
+		Title:    "自由结构角色档案",
 		Category: "character",
 		InitialBlocks: []mediamcp.DocumentBlockInput{
-			{Markdown: "## 萧炎\n\n**形象定位**：十八岁左右少年，古装玄幻武者。\n\n**面部特征**：黑发，眉眼清俊。\n\n**身材气质**：身形偏瘦但结实。\n\n**着装造型**：乌色练功服。\n"},
+			{Markdown: flexibleCharacter},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkspaceDocumentFromInput with flexible character markdown returned error: %v", err)
+	}
+	if flexible.Content != flexibleCharacter {
+		t.Fatalf("flexible character content = %q, want exact provided markdown", flexible.Content)
+	}
+
+	_, err = store.CreateWorkspaceDocumentFromInput(projectID, CreateDocumentInput{
+		Title:    "跳级角色档案",
+		Category: "character",
+		InitialBlocks: []mediamcp.DocumentBlockInput{
+			{Markdown: "## 萧炎\n\n#### 跳级标题\n\n正文\n"},
 		},
 	})
 	if err == nil {
-		t.Fatal("CreateWorkspaceDocumentFromInput with invalid character markdown returned nil, want error")
+		t.Fatal("CreateWorkspaceDocumentFromInput with malformed character markdown returned nil, want error")
 	}
 	state, err := store.ListWorkspaceDocuments(projectID)
 	if err != nil {
 		t.Fatalf("listing documents after failed create: %v", err)
 	}
 	for _, document := range state.Documents {
-		if document.Title == "缺字段角色档案" {
-			t.Fatalf("invalid character document was saved: %#v", document)
+		if document.Title == "跳级角色档案" {
+			t.Fatalf("malformed character document was saved: %#v", document)
 		}
 	}
 }

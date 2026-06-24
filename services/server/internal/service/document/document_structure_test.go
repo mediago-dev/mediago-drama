@@ -120,107 +120,37 @@ func TestMoveDocumentBlockContentSameAndCrossDocument(t *testing.T) {
 	}
 }
 
-func TestValidateTemplateDocumentContentRejectsMalformedCharacterFields(t *testing.T) {
+func TestValidateTemplateDocumentContentAllowsFlexibleCharacterStructure(t *testing.T) {
 	document := mediamcp.WorkspaceDocument{ID: "doc-character", Category: "character"}
-	characterSection := func(name, positioning, face, body, outfit, detail string) string {
-		return strings.Join([]string{
-			"## " + name,
-			"",
-			"**形象定位**：" + positioning,
-			"",
-			"**面部特征**：" + face,
-			"",
-			"**身材气质**：" + body,
-			"",
-			"**着装造型**：" + outfit,
-			"",
-			"**标志性细节**：" + detail,
-		}, "\n") + "\n"
-	}
-	valid := characterSection(
-		"萧薰儿",
-		"十六七岁少女，古装玄幻形象。",
-		"眉眼清冷，肤色白皙，黑色长发。",
-		"身形纤细，体态端正。",
-		"紫色衣裙，材质轻薄。",
-		"淡金色发饰。",
-	)
-	if err := ValidateTemplateDocumentContent(document, valid); err != nil {
-		t.Fatalf("ValidateTemplateDocumentContent(valid) returned error: %v", err)
+	flexible := strings.Join([]string{
+		"## 萧薰儿",
+		"",
+		"十六七岁少女，黑色长发，眉眼清冷，紫色衣裙。",
+		"",
+		"- 视觉识别：淡金色发饰，袖口绣纹固定。",
+		"- 生成注意：保持清冷神情和纤细体态。",
+		"",
+		"## 萧炎",
+		"",
+		"十八岁左右少年，黑发，身形偏瘦但结实，常穿磨旧乌色练功服。",
+	}, "\n") + "\n"
+	if err := ValidateTemplateDocumentContent(document, flexible); err != nil {
+		t.Fatalf("ValidateTemplateDocumentContent(flexible) returned error: %v", err)
 	}
 
-	missingBold := "## 萧薰儿\n\n**形象定位**：十六七岁少女，古装玄幻形象。\n\n**面部特征**：眉眼清冷，肤色白皙。\n\n**身材气质**：身形纤细，体态端正。\n\n**着装造型**：紫色衣裙。\n\n标志性细节：淡金色发饰。\n\n---\n"
-	if err := ValidateTemplateDocumentContent(document, missingBold); err == nil {
-		t.Fatal("ValidateTemplateDocumentContent(missingBold) returned nil, want error")
+	missingLegacyFields := "## 萧炎\n\n黑发，眉眼清俊，目光坚韧。\n"
+	if err := ValidateTemplateDocumentContent(document, missingLegacyFields); err != nil {
+		t.Fatalf("ValidateTemplateDocumentContent(missingLegacyFields) returned error: %v", err)
 	}
 
-	titleOnly := "## 萧家族长（萧炎之父）\n\n---\n"
-	if err := ValidateTemplateDocumentContent(document, titleOnly); err == nil {
-		t.Fatal("ValidateTemplateDocumentContent(titleOnly) returned nil, want error")
-	}
-
-	repeatedSeparator := characterSection(
-		"萧媚",
-		"十六岁少女，古装玄幻形象。",
-		"圆润脸型，黑色长发。",
-		"身形轻盈，站姿活泼。",
-		"族人常服，浅色布料。",
-		"银色发簪。",
-	) + "\n---\n\n---\n"
+	repeatedSeparator := "## 萧媚\n\n轻盈活泼。\n\n---\n\n---\n"
 	if err := ValidateTemplateDocumentContent(document, repeatedSeparator); err == nil {
 		t.Fatal("ValidateTemplateDocumentContent(repeatedSeparator) returned nil, want error")
 	}
 
-	duplicateHeading := characterSection(
-		"萧炎",
-		"十八岁左右少年，古装玄幻武者。",
-		"黑发，眉眼清俊。",
-		"身形偏瘦但结实。",
-		"族人常服，深色布料。",
-		"贴身戒指。",
-	) + "\n" + characterSection(
-		"萧炎",
-		"十八岁左右少年，古装玄幻武者。",
-		"黑发，眉眼清俊。",
-		"身形偏瘦但结实。",
-		"族人常服，深色布料。",
-		"贴身戒指。",
-	)
-	if err := ValidateTemplateDocumentContent(document, duplicateHeading); err == nil {
-		t.Fatal("ValidateTemplateDocumentContent(duplicateHeading) returned nil, want error")
-	}
-
-	misplacedAppend := characterSection(
-		"萧薰儿",
-		"十六七岁少女，古装玄幻形象。",
-		"眉眼清冷，黑色长发。",
-		"身形纤细，体态端正。",
-		"紫色衣裙。",
-		"淡金色发饰。",
-	) + "\n" + characterSection(
-		"萧炎",
-		"十八岁左右少年，古装玄幻武者。",
-		"黑发，眉眼清俊。",
-		"身形偏瘦但结实。",
-		"族人常服，深色布料。",
-		"贴身戒指。",
-	) + "\n" + characterSection(
-		"萧媚",
-		"十六岁少女，古装玄幻形象。",
-		"圆润脸型，黑色长发。",
-		"身形轻盈，站姿活泼。",
-		"族人常服，浅色布料。",
-		"银色发簪。",
-	) + "\n" + characterSection(
-		"萧炎",
-		"十八岁左右少年，古装玄幻武者。",
-		"黑发，眉眼清俊。",
-		"身形偏瘦但结实。",
-		"族人常服，深色布料。",
-		"贴身戒指。",
-	)
-	if err := ValidateTemplateDocumentContent(document, misplacedAppend); err == nil {
-		t.Fatal("ValidateTemplateDocumentContent(misplacedAppend) returned nil, want duplicate heading error")
+	levelJump := "## 萧炎\n\n#### 跳级\n\n正文\n"
+	if err := ValidateTemplateDocumentContent(document, levelJump); err == nil {
+		t.Fatal("ValidateTemplateDocumentContent(levelJump) returned nil, want error")
 	}
 }
 

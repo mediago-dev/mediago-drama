@@ -179,13 +179,13 @@ type LoadSkillOutput struct {
 	Available []SkillMeta       `json:"available,omitempty"`
 }
 
-// DocumentTemplate describes a read-only built-in document skeleton for a skill.
+// DocumentTemplate describes a built-in document structure rule for a skill.
 type DocumentTemplate struct {
 	ID               string `json:"id"`
 	Name             string `json:"name"`
 	Description      string `json:"description,omitempty"`
 	DocumentCategory string `json:"documentCategory"`
-	Content          string `json:"content"`
+	Content          string `json:"content,omitempty"`
 }
 
 // ListDocumentsInput is the input for list_documents.

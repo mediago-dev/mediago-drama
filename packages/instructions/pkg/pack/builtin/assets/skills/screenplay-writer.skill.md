@@ -1,7 +1,7 @@
 ---
 name: screenplay-writer
 title: 剧本写作
-description: 编辑 screenplay 类型文档时使用，给出剧本字段填写规则与写作要求
+description: 编辑 screenplay 类型文档时使用：把小说、梗概或剧情节拍改写成可拍、可演、节奏清晰的短剧剧本
 document_category: screenplay
 template_id: screenplay.v1
 ---
@@ -37,5 +37,5 @@ template_id: screenplay.v1
 
 ## 避免事项
 
-- 除非模板或用户明确要求，不写导演化指令、摄影机口令、剪辑命令或演员表演注解。
+- 除非内置结构规则或用户明确要求，不写导演化指令、摄影机口令、剪辑命令或演员表演注解。
 - 需要表达视觉重点时，把它转化为画面中可观察的行为和物件。
