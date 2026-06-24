@@ -126,11 +126,6 @@
 		overflow: visible;
 	}
 
-	.episode-canvas-flow .react-flow__edges > svg:not(.react-flow__marker) {
-		width: 100%;
-		height: 100%;
-	}
-
 	.episode-canvas-flow .react-flow__edge-path {
 		vector-effect: non-scaling-stroke;
 	}

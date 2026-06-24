@@ -40,7 +40,6 @@ import {
 } from "@/domains/episode/lib/canvas-node-position";
 import {
 	canConnectPorts,
-	episodeCanvasMediaTypeTokens,
 	findCanvasPort,
 	referenceAssetImageOutputPort,
 	videoImageInputPort,
@@ -105,9 +104,9 @@ const episodeCanvasMediaTypes = [
 	"video",
 ] as const satisfies readonly EpisodeCanvasMediaType[];
 const fallbackEpisodeCanvasEdgePalette: EpisodeCanvasEdgePalette = {
-	image: episodeCanvasMediaTypeTokens.image.foreground,
-	script: episodeCanvasMediaTypeTokens.script.foreground,
-	video: episodeCanvasMediaTypeTokens.video.foreground,
+	image: "#37C28D",
+	script: "#C97C2E",
+	video: "#4D89FF",
 };
 const episodeCanvasEdgeColorVariables: Record<EpisodeCanvasMediaType, string> = {
 	image: "--success-foreground",
@@ -401,7 +400,7 @@ const canvasFlowEdge = (
 		strokeLinejoin: "round",
 		strokeWidth: edge.data.relation === "reference" ? 1.4 : 2,
 	},
-	type: "bezier",
+	type: "default",
 });
 
 const useEpisodeCanvasColorMode = () => {
