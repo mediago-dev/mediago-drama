@@ -43,7 +43,9 @@ vi.mock("@/domains/agent/api/agent", () => ({
 }));
 
 vi.mock("@/domains/agent/components/AgentChat", () => ({
-	AgentChat: () => <div>当前聊天内容</div>,
+	AgentChat: ({ projectId }: { projectId?: string | null }) => (
+		<div data-project-id={projectId ?? ""}>当前聊天内容</div>
+	),
 }));
 
 const LocationProbe = () => {
@@ -155,6 +157,7 @@ describe("AgentPanel", () => {
 		});
 
 		renderAgentPanel("/projects?projectId=project-1");
+		expect(screen.getByText("当前聊天内容").dataset.projectId).toBe("project-1");
 		fireEvent.click(screen.getByRole("button", { name: /历史会话/ }));
 		fireEvent.click(screen.getByRole("menuitem", { name: /整理素材清单/ }));
 

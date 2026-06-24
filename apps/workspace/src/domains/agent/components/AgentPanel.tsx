@@ -90,11 +90,6 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 	}, [composerSeed]);
 
 	useEffect(() => {
-		if (!activeSessionId) return;
-		syncAgentSessionUrl(activeSessionId, { replace: true });
-	}, [activeSessionId, syncAgentSessionUrl]);
-
-	useEffect(() => {
 		if (!isHistoryOpen) return;
 
 		const handlePointerDown = (event: PointerEvent) => {
@@ -216,7 +211,7 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 				</div>
 			</header>
 			<div className="relative min-h-0 flex-1 overflow-hidden">
-				<AgentChat />
+				<AgentChat projectId={projectId} />
 			</div>
 		</aside>
 	);

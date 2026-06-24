@@ -1,11 +1,15 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
+import { type Location, useLocation, useNavigate } from "react-router-dom";
 import useSWR from "swr";
 import {
 	agentChatKey,
+	agentSessionsKey,
 	getAgentChatState,
 	getAgentSessionStatus,
+	listAgentSessions,
 	type AgentSessionStatus,
+	type AgentSessionSummary,
 } from "@/domains/agent/api/agent";
 import { refreshAgentChatTranscript } from "@/domains/agent/lib/chat-sync";
 import {
@@ -18,42 +22,100 @@ import {
 	useAgentPersistenceStore,
 } from "@/domains/agent/stores/persistence";
 import { readAgentChatCache, writeAgentChatCache } from "@/domains/agent/stores/chat-cache";
-import { selectAgentSessionId, useAgentStore } from "@/domains/agent/stores";
+import { useAgentStore, type AgentState } from "@/domains/agent/stores";
+import {
+	agentProjectPath,
+	agentProjectRouteState,
+	isAgentRoute,
+} from "@/domains/workspace/lib/workbench-route";
 
 interface AgentStateSyncProps {
+	agentSurfaceActive?: boolean;
 	projectId?: string | null;
 	routeSessionId?: string | null;
-	workspaceReady?: boolean;
 }
 
 export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
+	agentSurfaceActive = true,
 	projectId,
 	routeSessionId,
-	workspaceReady = true,
 }) => {
-	const activeSessionId = useAgentStore(selectAgentSessionId);
+	const location = useLocation();
+	const navigate = useNavigate();
+	const normalizedProjectId = projectId?.trim() || null;
+	const routeVisitRef = useRef<{ projectId: string | null; key: string }>({
+		projectId: null,
+		key: "",
+	});
+	if (routeVisitRef.current.projectId !== normalizedProjectId) {
+		routeVisitRef.current = {
+			projectId: normalizedProjectId,
+			key: normalizedProjectId ? agentRecoveryRouteVisitKey(location) : "",
+		};
+	}
+	const routeVisitKey = routeVisitRef.current.key;
 	const persistedSessionId = useAgentPersistenceStore((state) =>
 		projectId ? (state.sessionIdsByProject[projectId] ?? null) : null,
 	);
+	const cachedSessionId = projectId
+		? readAgentChatCache(projectId)?.sessionId?.trim() || null
+		: null;
 	const [persistenceHydrated, setPersistenceHydrated] = useState(() =>
 		useAgentPersistenceStore.persist.hasHydrated(),
 	);
-	const sessionIdForLoad =
-		(routeSessionId || activeSessionId || persistedSessionId)?.trim() || null;
-	const canLoadChat = workspaceReady && (persistenceHydrated || Boolean(routeSessionId?.trim()));
-	const swrKey = projectId && canLoadChat ? agentChatKey(projectId, sessionIdForLoad) : null;
-	const { data } = useSWR(swrKey, async () => {
-		const requestedProjectId = projectId?.trim() || null;
-		const requestedSessionId = sessionIdForLoad;
-		const state = await getAgentChatState(requestedProjectId, requestedSessionId);
-		return {
-			...state,
-			__requestProjectId: requestedProjectId,
-			__requestSessionId: requestedSessionId,
-		};
-	});
+	const routeSessionIdForLoad = routeSessionId?.trim() || null;
+	const shouldLoadLatestSession = Boolean(
+		projectId && agentSurfaceActive && !routeSessionIdForLoad,
+	);
+	const {
+		data: latestSessions,
+		error: latestSessionsError,
+		isLoading: latestSessionsLoading,
+	} = useSWR(
+		shouldLoadLatestSession
+			? agentRouteScopedSWRKey(agentSessionsKey(projectId), routeVisitKey)
+			: null,
+		() => listAgentSessions(projectId),
+		agentRecoverySWRConfig,
+	);
+	const latestSessionLookupSettled =
+		!shouldLoadLatestSession ||
+		Boolean(latestSessions) ||
+		Boolean(latestSessionsError) ||
+		latestSessionsLoading === false;
+	const latestSessionId = latestSessionsError ? null : firstAgentSessionId(latestSessions);
+	const fallbackSessionId = persistedSessionId?.trim() || cachedSessionId;
+	const sessionIdForLoad = routeSessionIdForLoad || latestSessionId || fallbackSessionId;
+	const canLoadWithoutPersistence =
+		Boolean(routeSessionIdForLoad) ||
+		(shouldLoadLatestSession && latestSessionLookupSettled && !latestSessionsError);
+	const canLoadChat =
+		(canLoadWithoutPersistence || persistenceHydrated) &&
+		(!shouldLoadLatestSession || latestSessionLookupSettled);
+	const swrKey =
+		projectId && canLoadChat
+			? agentRouteScopedSWRKey(agentChatKey(projectId, sessionIdForLoad), routeVisitKey)
+			: null;
+	const { data } = useSWR(
+		swrKey,
+		async () => {
+			const requestedProjectId = projectId?.trim() || null;
+			const requestedSessionId = sessionIdForLoad;
+			const state = await getAgentChatState(requestedProjectId, requestedSessionId);
+			return {
+				...state,
+				__requestProjectId: requestedProjectId,
+				__requestSessionId: requestedSessionId,
+			};
+		},
+		agentRecoverySWRConfig,
+	);
 	const loadedRequestKey = useRef<string | null>(null);
 	const inactiveNoticeSessionId = useRef<string | null>(null);
+	const latestSessionUrlTarget =
+		agentSurfaceActive && !routeSessionIdForLoad && latestSessionLookupSettled
+			? sessionIdForLoad
+			: null;
 
 	useEffect(() => {
 		if (useAgentPersistenceStore.persist.hasHydrated()) {
@@ -68,28 +130,53 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 		loadedRequestKey.current = null;
 		inactiveNoticeSessionId.current = null;
 		useAgentStore.getState().resetSession();
-		// Refreshing the desktop webview wipes the in-memory transcript. Restore the
-		// last cached snapshot for this project so history shows immediately, even
-		// before (or without) the backend chat fetch resolving. The SWR hydration
-		// below overwrites it with authoritative data once it arrives.
-		const cached = projectId ? readAgentChatCache(projectId) : null;
-		if (cached) {
-			useAgentStore.getState().hydrateAgentChatState([], cached.activity, {
-				sessionId: cached.sessionId,
-				rootRunId: cached.rootRunId,
-				conversations: cached.conversations,
-				lastEventId: cached.lastEventId,
-				running: false,
-			});
-		} else {
-			useAgentStore.getState().hydrateAgentChatState([], []);
-		}
+		useAgentStore.getState().hydrateAgentChatState([], []);
 		// Resumed streams belong to the project being left; without this they
 		// keep reconnecting until a terminal event happens to arrive.
 		return () => {
 			closeAllResumedAgentEventStreams();
 		};
 	}, [projectId]);
+
+	useEffect(() => {
+		if (!projectId || loadedRequestKey.current) return;
+
+		const cached = readAgentChatCache(projectId);
+		if (!cached) return;
+
+		const cachedSessionId = cached.sessionId?.trim() || null;
+		const targetSessionId = sessionIdForLoad;
+		if (targetSessionId && cachedSessionId !== targetSessionId) return;
+
+		// Refreshing the desktop webview wipes the in-memory transcript. Restore a
+		// cached snapshot only when it matches the session selected for this route;
+		// the SWR hydration below overwrites it with authoritative data once it arrives.
+		useAgentStore.getState().hydrateAgentChatState([], cached.activity, {
+			sessionId: cached.sessionId,
+			rootRunId: cached.rootRunId,
+			conversations: cached.conversations,
+			lastEventId: cached.lastEventId,
+			running: false,
+		});
+	}, [latestSessionId, projectId, routeSessionIdForLoad, sessionIdForLoad]);
+
+	useEffect(() => {
+		if (!agentSurfaceActive || !projectId || routeSessionIdForLoad || !latestSessionUrlTarget) {
+			return;
+		}
+		if (!isAgentRoute(location.pathname)) return;
+		const nextUrl = agentProjectPath(projectId, { agentSessionId: latestSessionUrlTarget });
+		if (nextUrl === `${location.pathname}${location.search}`) return;
+		navigate(nextUrl, { replace: true, state: agentProjectRouteState("agent") });
+	}, [
+		agentSurfaceActive,
+		latestSessionUrlTarget,
+		location.pathname,
+		location.search,
+		navigate,
+		projectId,
+		routeSessionIdForLoad,
+	]);
 
 	useEffect(() => {
 		if (!projectId) return;
@@ -101,7 +188,7 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 			timeout = undefined;
 			const state = useAgentStore.getState();
 			if (state.isRunning) return;
-			if (Object.keys(state.conversations).length === 0 && !state.sessionId) return;
+			if (!hasCacheableAgentSnapshot(state)) return;
 			writeAgentChatCache({
 				projectId,
 				sessionId: state.sessionId,
@@ -118,19 +205,32 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 		});
 		return () => {
 			if (timeout !== undefined) clearTimeout(timeout);
+			flush();
 			unsubscribe();
 		};
 	}, [projectId]);
 
 	useEffect(() => {
 		if (!data) return;
-		const requestedProjectId = data.__requestProjectId;
-		if (requestedProjectId && projectId && requestedProjectId !== projectId) return;
-		if (requestedProjectId && data.projectId && data.projectId !== requestedProjectId) return;
+		const currentProjectId = projectId?.trim() || null;
+		if (!currentProjectId) return;
+		const requestedProjectId = data.__requestProjectId?.trim() || null;
+		if (requestedProjectId !== currentProjectId) return;
+		const responseProjectId = data.projectId?.trim() || null;
+		if (responseProjectId && responseProjectId !== currentProjectId) return;
 		const requestedSessionId = data.__requestSessionId;
 		const resolvedSessionId = data.sessionId?.trim() || requestedSessionId;
 		if (requestedSessionId && resolvedSessionId && requestedSessionId !== resolvedSessionId) return;
-		const requestKey = agentStateSyncRequestKey(requestedProjectId, requestedSessionId);
+		const requestKey = agentStateSyncRequestKey(
+			requestedProjectId,
+			requestedSessionId,
+			resolvedSessionId,
+			data.lastEventId,
+			data.updatedAt,
+			data.running ? "running" : "idle",
+			String(data.messages.length),
+			String(Object.keys(data.conversations ?? {}).length),
+		);
 		if (loadedRequestKey.current === requestKey) return;
 
 		useAgentStore.getState().hydrateAgentChatState(data.messages, data.activity, {
@@ -205,8 +305,36 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 	return null;
 };
 
-const agentStateSyncRequestKey = (projectId?: string | null, sessionId?: string | null) =>
-	`${projectId ?? ""}\u0000${sessionId ?? ""}`;
+const agentStateSyncRequestKey = (...parts: Array<string | null | undefined>) =>
+	parts.map((part) => part ?? "").join("\u0000");
+
+const agentRecoveryRouteVisitKey = (location: Location) =>
+	agentStateSyncRequestKey(location.key || "default", location.pathname, location.search);
+
+const agentRouteScopedSWRKey = (resourceKey: string, routeVisitKey: string) =>
+	agentStateSyncRequestKey(resourceKey, routeVisitKey);
+
+const agentRecoverySWRConfig = {
+	dedupingInterval: 0,
+	revalidateIfStale: true,
+	revalidateOnFocus: false,
+	revalidateOnMount: true,
+} as const;
+
+const firstAgentSessionId = (sessions?: AgentSessionSummary[]) =>
+	sessions?.find((session) => session.sessionId.trim())?.sessionId.trim() || null;
+
+const hasCacheableAgentSnapshot = (
+	state: Pick<AgentState, "activity" | "conversations">,
+): boolean =>
+	state.activity.length > 0 ||
+	Object.values(state.conversations).some((conversation) => {
+		if (conversation.prompt?.trim()) return true;
+		return conversation.messages.some((message) => {
+			if (message.content.trim() || message.title?.trim()) return true;
+			return Boolean(message.metadata && Object.keys(message.metadata).length > 0);
+		});
+	});
 
 const applyTerminalSessionStatus = (status: AgentSessionStatus) => {
 	const store = useAgentStore.getState();

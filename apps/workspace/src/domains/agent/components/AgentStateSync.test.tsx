@@ -1,15 +1,27 @@
-import { cleanup, render } from "@testing-library/react";
+import type { ComponentProps } from "react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { selectAgentMessages, useAgentStore } from "@/domains/agent/stores";
-import { writeAgentChatCache } from "@/domains/agent/stores/chat-cache";
+import { readAgentChatCache, writeAgentChatCache } from "@/domains/agent/stores/chat-cache";
 import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
 import { useProjectStore } from "@/domains/projects/stores";
 import { AgentStateSync } from "./AgentStateSync";
 
 const swrMock = vi.hoisted(() => ({
-	data: undefined as AgentStateSyncData | undefined,
-	key: undefined as string | null | undefined,
+	chatData: undefined as AgentStateSyncData | undefined,
+	chatConfig: undefined as AgentRecoverySWRConfig | undefined,
+	chatKey: undefined as string | null | undefined,
+	chatSWRKey: undefined as string | null | undefined,
+	chatSWRKeys: [] as string[],
 	mutate: vi.fn(),
+	sessionsConfig: undefined as AgentRecoverySWRConfig | undefined,
+	sessionsData: [] as AgentSessionSummary[] | undefined,
+	sessionsError: null as Error | null,
+	sessionsIsLoading: false,
+	sessionsKey: undefined as string | null | undefined,
+	sessionsSWRKey: undefined as string | null | undefined,
+	sessionsSWRKeys: [] as string[],
 }));
 
 const controllerMocks = vi.hoisted(() => ({
@@ -23,9 +35,25 @@ const agentApiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("swr", () => ({
-	default: (key: string | null) => {
-		swrMock.key = key;
-		return { data: swrMock.data };
+	default: (key: string | null, _fetcher?: unknown, config?: AgentRecoverySWRConfig) => {
+		if (key === null) return { data: undefined, error: null, isLoading: false };
+		const resourceKey = key.split("\u0000")[0];
+		if (resourceKey?.startsWith("sessions:")) {
+			swrMock.sessionsKey = resourceKey;
+			swrMock.sessionsSWRKey = key;
+			swrMock.sessionsSWRKeys.push(key);
+			swrMock.sessionsConfig = config;
+			return {
+				data: swrMock.sessionsData,
+				error: swrMock.sessionsError,
+				isLoading: swrMock.sessionsIsLoading,
+			};
+		}
+		swrMock.chatKey = resourceKey;
+		swrMock.chatSWRKey = key;
+		swrMock.chatSWRKeys.push(key);
+		swrMock.chatConfig = config;
+		return { data: swrMock.chatData };
 	},
 	mutate: swrMock.mutate,
 }));
@@ -41,7 +69,64 @@ vi.mock("@/domains/agent/api/agent", () => ({
 	agentSessionsKey: (projectId?: string | null) => `sessions:${projectId ?? ""}`,
 	getAgentChatState: agentApiMocks.getAgentChatState,
 	getAgentSessionStatus: agentApiMocks.getAgentSessionStatus,
+	listAgentSessions: vi.fn(),
 }));
+
+const LocationProbe = () => {
+	const location = useLocation();
+	return <div data-testid="location" data-path={`${location.pathname}${location.search}`} />;
+};
+
+const SameProjectReentryHarness = () => {
+	const location = useLocation();
+	const navigate = useNavigate();
+	const params = new URLSearchParams(location.search);
+	const projectId = params.get("projectId");
+	const routeSessionId = params.get("agentSessionId");
+	return (
+		<>
+			<button type="button" onClick={() => navigate("/")}>
+				back
+			</button>
+			<button
+				type="button"
+				onClick={() => navigate("/projects?projectId=project-1&agentSessionId=session-1")}
+			>
+				open
+			</button>
+			<AgentStateSync projectId={projectId} routeSessionId={routeSessionId} />
+		</>
+	);
+};
+
+type AgentStateSyncProps = ComponentProps<typeof AgentStateSync>;
+
+const renderAgentStateSync = (
+	props: AgentStateSyncProps,
+	initialEntry = "/projects?projectId=project-1",
+) => {
+	const renderTree = (nextProps: AgentStateSyncProps) => (
+		<MemoryRouter initialEntries={[initialEntry]}>
+			<Routes>
+				<Route
+					path="/projects"
+					element={
+						<>
+							<AgentStateSync {...nextProps} />
+							<LocationProbe />
+						</>
+					}
+				/>
+			</Routes>
+		</MemoryRouter>
+	);
+	const result = render(renderTree(props));
+	return {
+		...result,
+		rerenderAgentStateSync: (nextProps: AgentStateSyncProps) =>
+			result.rerender(renderTree(nextProps)),
+	};
+};
 
 describe("AgentStateSync", () => {
 	beforeEach(() => {
@@ -54,13 +139,24 @@ describe("AgentStateSync", () => {
 
 	afterEach(() => {
 		cleanup();
-		swrMock.data = undefined;
-		swrMock.key = undefined;
+		swrMock.chatData = undefined;
+		swrMock.chatConfig = undefined;
+		swrMock.chatKey = undefined;
+		swrMock.chatSWRKey = undefined;
+		swrMock.chatSWRKeys = [];
 		swrMock.mutate.mockReset();
+		swrMock.sessionsConfig = undefined;
+		swrMock.sessionsData = [];
+		swrMock.sessionsError = null;
+		swrMock.sessionsIsLoading = false;
+		swrMock.sessionsKey = undefined;
+		swrMock.sessionsSWRKey = undefined;
+		swrMock.sessionsSWRKeys = [];
 		agentApiMocks.getAgentChatState.mockReset();
 		agentApiMocks.getAgentSessionStatus.mockReset();
 		controllerMocks.closeAllResumedAgentEventStreams.mockReset();
 		controllerMocks.resumeAgentSessionEventStream.mockReset();
+		vi.useRealTimers();
 		useAgentStore.getState().resetSession();
 		useProjectStore.setState({ activeProjectId: null });
 		useAgentPersistenceStore.setState({
@@ -73,12 +169,13 @@ describe("AgentStateSync", () => {
 	it("hydrates matching chat data and resumes the running stream", () => {
 		useProjectStore.setState({ activeProjectId: "project-1" });
 		useAgentPersistenceStore.getState().setSessionId("project-1", "session-1");
+		swrMock.sessionsData = [agentSessionSummary("session-1")];
 		agentApiMocks.getAgentSessionStatus.mockResolvedValue({
 			sessionId: "session-1",
 			running: true,
 			lastStatus: "running",
 		});
-		swrMock.data = {
+		swrMock.chatData = {
 			__requestProjectId: "project-1",
 			__requestSessionId: "session-1",
 			projectId: "project-1",
@@ -97,7 +194,7 @@ describe("AgentStateSync", () => {
 			lastEventId: "12",
 		};
 
-		render(<AgentStateSync projectId="project-1" />);
+		renderAgentStateSync({ projectId: "project-1" });
 
 		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
 			expect.objectContaining({ id: "assistant-1", content: "恢复的会话" }),
@@ -114,26 +211,176 @@ describe("AgentStateSync", () => {
 		useProjectStore.setState({ activeProjectId: "project-1" });
 		useAgentPersistenceStore.getState().setSessionId("project-1", "session-persisted");
 
-		render(<AgentStateSync projectId="project-1" routeSessionId="session-url" />);
+		renderAgentStateSync({ projectId: "project-1", routeSessionId: "session-url" });
 
-		expect(swrMock.key).toBe("chat:project-1:session-url");
+		expect(swrMock.chatKey).toBe("chat:project-1:session-url");
 	});
 
-	it("waits for the workspace to be ready before loading a route session", () => {
-		const { rerender } = render(
-			<AgentStateSync projectId="project-1" routeSessionId="session-url" workspaceReady={false} />,
+	it("loads the latest listed session before persisted state and syncs it into the URL", async () => {
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		useAgentPersistenceStore.getState().setSessionId("project-1", "session-persisted");
+		swrMock.sessionsData = [
+			agentSessionSummary("session-latest"),
+			agentSessionSummary("session-persisted"),
+		];
+		swrMock.chatData = {
+			__requestProjectId: "project-1",
+			__requestSessionId: "session-latest",
+			projectId: "project-1",
+			sessionId: "session-latest",
+			messages: [
+				{
+					id: "assistant-latest",
+					role: "assistant",
+					content: "最新会话",
+					kind: "message",
+					status: "complete",
+				},
+			],
+			activity: [],
+			running: false,
+			lastEventId: "15",
+		};
+
+		renderAgentStateSync({ projectId: "project-1" });
+
+		expect(swrMock.sessionsKey).toBe("sessions:project-1");
+		expect(swrMock.sessionsConfig).toMatchObject({
+			dedupingInterval: 0,
+			revalidateOnMount: true,
+		});
+		await vi.waitFor(() => expect(swrMock.chatKey).toBe("chat:project-1:session-latest"));
+		expect(swrMock.chatConfig).toMatchObject({
+			dedupingInterval: 0,
+			revalidateOnMount: true,
+		});
+		await vi.waitFor(() =>
+			expect(document.querySelector("[data-testid='location']")?.getAttribute("data-path")).toBe(
+				"/projects?projectId=project-1&agentSessionId=session-latest",
+			),
+		);
+		expect(useAgentStore.getState().sessionId).toBe("session-latest");
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({ id: "assistant-latest", content: "最新会话" }),
+		]);
+	});
+
+	it("falls back to the persisted session when the latest session list is empty", async () => {
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		useAgentPersistenceStore.getState().setSessionId("project-1", "session-persisted");
+		swrMock.sessionsData = [];
+		swrMock.chatData = {
+			__requestProjectId: "project-1",
+			__requestSessionId: "session-persisted",
+			projectId: "project-1",
+			sessionId: "session-persisted",
+			messages: [
+				{
+					id: "assistant-persisted",
+					role: "assistant",
+					content: "从本地记录恢复的历史消息",
+					kind: "message",
+					status: "complete",
+				},
+			],
+			activity: [],
+			running: false,
+			lastEventId: "21",
+		};
+
+		renderAgentStateSync({ projectId: "project-1" });
+
+		expect(swrMock.sessionsKey).toBe("sessions:project-1");
+		expect(swrMock.chatKey).toBe("chat:project-1:session-persisted");
+		await vi.waitFor(() =>
+			expect(document.querySelector("[data-testid='location']")?.getAttribute("data-path")).toBe(
+				"/projects?projectId=project-1&agentSessionId=session-persisted",
+			),
+		);
+		expect(useAgentStore.getState().sessionId).toBe("session-persisted");
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({
+				id: "assistant-persisted",
+				content: "从本地记录恢复的历史消息",
+			}),
+		]);
+	});
+
+	it("does not rewrite document routes while the agent surface is hidden", () => {
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		swrMock.sessionsData = [agentSessionSummary("session-latest")];
+
+		renderAgentStateSync(
+			{ agentSurfaceActive: false, projectId: "project-1" },
+			"/projects?projectId=project-1&documentId=doc-1",
 		);
 
-		expect(swrMock.key).toBeNull();
+		expect(document.querySelector("[data-testid='location']")?.getAttribute("data-path")).toBe(
+			"/projects?projectId=project-1&documentId=doc-1",
+		);
+		expect(swrMock.sessionsKey).toBeUndefined();
+	});
 
-		rerender(<AgentStateSync projectId="project-1" routeSessionId="session-url" workspaceReady />);
+	it("loads a route session without waiting for the document workspace", () => {
+		renderAgentStateSync({
+			projectId: "project-1",
+			routeSessionId: "session-url",
+		});
 
-		expect(swrMock.key).toBe("chat:project-1:session-url");
+		expect(swrMock.chatKey).toBe("chat:project-1:session-url");
+	});
+
+	it("uses a fresh SWR recovery key after leaving and re-entering the same project session", async () => {
+		swrMock.chatData = {
+			__requestProjectId: "project-1",
+			__requestSessionId: "session-1",
+			projectId: "project-1",
+			sessionId: "session-1",
+			messages: [
+				{
+					id: "assistant-1",
+					role: "assistant",
+					content: "同项目重新进入也要恢复",
+					kind: "message",
+					status: "complete",
+				},
+			],
+			activity: [],
+			running: false,
+			lastEventId: "9",
+		};
+
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-1&agentSessionId=session-1"]}>
+				<SameProjectReentryHarness />
+			</MemoryRouter>,
+		);
+
+		const firstSWRKey = swrMock.chatSWRKey;
+		expect(swrMock.chatKey).toBe("chat:project-1:session-1");
+		expect(firstSWRKey).toBeTruthy();
+
+		fireEvent.click(screen.getByRole("button", { name: "back" }));
+		fireEvent.click(screen.getByRole("button", { name: "open" }));
+
+		expect(swrMock.chatKey).toBe("chat:project-1:session-1");
+		await vi.waitFor(() => expect(swrMock.chatSWRKey).not.toBe(firstSWRKey));
+		expect(new Set(swrMock.chatSWRKeys).size).toBeGreaterThan(1);
+	});
+
+	it("does not reuse a session id left in the global agent store for another project", () => {
+		useAgentStore.setState({ sessionId: "session-project-a" });
+		swrMock.sessionsData = [];
+
+		renderAgentStateSync({ projectId: "project-b" }, "/projects?projectId=project-b");
+
+		expect(swrMock.sessionsKey).toBe("sessions:project-b");
+		expect(swrMock.chatKey).toBe("chat:project-b:");
 	});
 
 	it("hydrates the URL session even when the persisted project store is stale", () => {
 		useProjectStore.setState({ activeProjectId: "project-2" });
-		swrMock.data = {
+		swrMock.chatData = {
 			__requestProjectId: "project-1",
 			__requestSessionId: "session-url",
 			projectId: "project-1",
@@ -152,7 +399,7 @@ describe("AgentStateSync", () => {
 			lastEventId: "9",
 		};
 
-		render(<AgentStateSync projectId="project-1" routeSessionId="session-url" />);
+		renderAgentStateSync({ projectId: "project-1", routeSessionId: "session-url" });
 
 		expect(useAgentStore.getState().sessionId).toBe("session-url");
 		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
@@ -162,7 +409,7 @@ describe("AgentStateSync", () => {
 
 	it("hydrates a later requested session after an initial fallback chat response", () => {
 		useProjectStore.setState({ activeProjectId: "project-1" });
-		swrMock.data = {
+		swrMock.chatData = {
 			__requestProjectId: "project-1",
 			__requestSessionId: null,
 			projectId: "project-1",
@@ -173,12 +420,13 @@ describe("AgentStateSync", () => {
 			lastEventId: "1",
 		};
 
-		const { rerender } = render(<AgentStateSync projectId="project-1" />);
+		const { rerenderAgentStateSync } = renderAgentStateSync({ projectId: "project-1" });
 
 		expect(useAgentStore.getState().sessionId).toBe("session-empty");
 		expect(selectAgentMessages(useAgentStore.getState())).toEqual([]);
 
-		swrMock.data = {
+		swrMock.sessionsData = [agentSessionSummary("session-1")];
+		swrMock.chatData = {
 			__requestProjectId: "project-1",
 			__requestSessionId: "session-1",
 			projectId: "project-1",
@@ -197,7 +445,7 @@ describe("AgentStateSync", () => {
 			lastEventId: "12",
 		};
 
-		rerender(<AgentStateSync projectId="project-1" />);
+		rerenderAgentStateSync({ projectId: "project-1" });
 
 		expect(useAgentStore.getState().sessionId).toBe("session-1");
 		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
@@ -205,10 +453,56 @@ describe("AgentStateSync", () => {
 		]);
 	});
 
+	it("hydrates fresh fallback chat after an empty cached fallback response", () => {
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		swrMock.chatData = {
+			__requestProjectId: "project-1",
+			__requestSessionId: null,
+			projectId: "project-1",
+			sessionId: null,
+			messages: [],
+			activity: [],
+			running: false,
+			lastEventId: null,
+		};
+
+		const { rerenderAgentStateSync } = renderAgentStateSync({ projectId: "project-1" });
+
+		expect(useAgentStore.getState().sessionId).toBeNull();
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([]);
+
+		swrMock.chatData = {
+			__requestProjectId: "project-1",
+			__requestSessionId: null,
+			projectId: "project-1",
+			sessionId: "session-latest",
+			messages: [
+				{
+					id: "assistant-latest",
+					role: "assistant",
+					content: "后端返回的最新会话",
+					kind: "message",
+					status: "complete",
+				},
+			],
+			activity: [],
+			running: false,
+			lastEventId: "15",
+		};
+
+		rerenderAgentStateSync({ projectId: "project-1" });
+
+		expect(useAgentStore.getState().sessionId).toBe("session-latest");
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({ id: "assistant-latest", content: "后端返回的最新会话" }),
+		]);
+	});
+
 	it("hydrates restored conversation payloads even when the flat transcript is empty", () => {
 		useProjectStore.setState({ activeProjectId: "project-1" });
 		useAgentPersistenceStore.getState().setSessionId("project-1", "session-1");
-		swrMock.data = {
+		swrMock.sessionsData = [agentSessionSummary("session-1")];
+		swrMock.chatData = {
 			__requestProjectId: "project-1",
 			__requestSessionId: "session-1",
 			projectId: "project-1",
@@ -240,7 +534,7 @@ describe("AgentStateSync", () => {
 			},
 		};
 
-		render(<AgentStateSync projectId="project-1" />);
+		renderAgentStateSync({ projectId: "project-1" });
 
 		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
 			expect.objectContaining({ id: "assistant-1", content: "从 conversation 恢复" }),
@@ -249,6 +543,7 @@ describe("AgentStateSync", () => {
 
 	it("restores the cached transcript instantly when the backend has not responded", () => {
 		useProjectStore.setState({ activeProjectId: "project-1" });
+		swrMock.sessionsData = [agentSessionSummary("session-cached")];
 		writeAgentChatCache({
 			projectId: "project-1",
 			sessionId: "session-cached",
@@ -279,13 +574,137 @@ describe("AgentStateSync", () => {
 		});
 
 		// swrMock.data stays undefined → the backend chat fetch has not resolved yet.
-		render(<AgentStateSync projectId="project-1" />);
+		renderAgentStateSync({ projectId: "project-1" });
 
 		expect(useAgentStore.getState().sessionId).toBe("session-cached");
 		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
 			expect.objectContaining({ id: "assistant-cached", content: "缓存里的历史消息" }),
 		]);
 		expect(useAgentStore.getState().isRunning).toBe(false);
+	});
+
+	it("restores the cached transcript while the latest session list is still loading", () => {
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		swrMock.sessionsData = undefined;
+		swrMock.sessionsIsLoading = true;
+		writeAgentChatCache({
+			projectId: "project-1",
+			sessionId: "session-cached",
+			rootRunId: "run-1",
+			lastEventId: "7",
+			conversations: {
+				"run-1": {
+					runId: "run-1",
+					name: "主智能体",
+					status: "completed",
+					messages: [
+						{
+							id: "assistant-cached",
+							role: "assistant",
+							content: "列表加载前先展示缓存",
+							kind: "message",
+							status: "complete",
+						},
+					],
+					streamingMessageId: null,
+					children: [],
+					createdAt: "2026-06-09T00:00:00.000Z",
+					updatedAt: "2026-06-09T00:00:00.000Z",
+				},
+			},
+			activity: [],
+			updatedAt: "2026-06-09T00:00:00.000Z",
+		});
+
+		renderAgentStateSync({ projectId: "project-1" });
+
+		expect(swrMock.sessionsKey).toBe("sessions:project-1");
+		expect(swrMock.chatKey).toBeUndefined();
+		expect(useAgentStore.getState().sessionId).toBe("session-cached");
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({ id: "assistant-cached", content: "列表加载前先展示缓存" }),
+		]);
+	});
+
+	it("does not overwrite a cached transcript with an empty session snapshot", () => {
+		vi.useFakeTimers();
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		swrMock.sessionsData = [agentSessionSummary("session-cached")];
+		writeAgentChatCache({
+			projectId: "project-1",
+			sessionId: "session-cached",
+			rootRunId: "run-1",
+			lastEventId: "7",
+			conversations: {
+				"run-1": {
+					runId: "run-1",
+					name: "主智能体",
+					status: "completed",
+					messages: [
+						{
+							id: "assistant-cached",
+							role: "assistant",
+							content: "不能被空状态覆盖的历史消息",
+							kind: "message",
+							status: "complete",
+						},
+					],
+					streamingMessageId: null,
+					children: [],
+					createdAt: "2026-06-09T00:00:00.000Z",
+					updatedAt: "2026-06-09T00:00:00.000Z",
+				},
+			},
+			activity: [],
+			updatedAt: "2026-06-09T00:00:00.000Z",
+		});
+
+		renderAgentStateSync({ projectId: "project-1" });
+
+		act(() => {
+			useAgentStore.getState().hydrateAgentChatState([], [], { sessionId: "session-cached" });
+			vi.advanceTimersByTime(600);
+		});
+
+		expect(
+			readAgentChatCache("project-1")?.conversations["run-1"]?.messages.map(
+				(message) => message.content,
+			),
+		).toEqual(["不能被空状态覆盖的历史消息"]);
+	});
+
+	it("flushes the current transcript to cache when leaving a project before debounce fires", () => {
+		vi.useFakeTimers();
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		swrMock.sessionsData = [agentSessionSummary("session-1")];
+		swrMock.chatData = {
+			__requestProjectId: "project-1",
+			__requestSessionId: "session-1",
+			projectId: "project-1",
+			sessionId: "session-1",
+			messages: [
+				{
+					id: "assistant-1",
+					role: "assistant",
+					content: "离开项目前立即缓存",
+					kind: "message",
+					status: "complete",
+				},
+			],
+			activity: [],
+			running: false,
+			lastEventId: "8",
+		};
+
+		const { rerenderAgentStateSync } = renderAgentStateSync({ projectId: "project-1" });
+
+		expect(readAgentChatCache("project-1")).toBeNull();
+
+		rerenderAgentStateSync({ projectId: null });
+
+		expect(readAgentChatCache("project-1")?.conversations["pending-root"]?.messages).toEqual([
+			expect.objectContaining({ content: "离开项目前立即缓存" }),
+		]);
 	});
 
 	it("ignores a cached transcript that belongs to a different project", () => {
@@ -318,7 +737,7 @@ describe("AgentStateSync", () => {
 			updatedAt: "2026-06-09T00:00:00.000Z",
 		});
 
-		render(<AgentStateSync projectId="project-1" />);
+		renderAgentStateSync({ projectId: "project-1" });
 
 		expect(selectAgentMessages(useAgentStore.getState())).toEqual([]);
 		expect(useAgentStore.getState().sessionId).toBeNull();
@@ -327,7 +746,7 @@ describe("AgentStateSync", () => {
 	it("does not hydrate stale data for a different requested session", () => {
 		useProjectStore.setState({ activeProjectId: "project-1" });
 		useAgentStore.setState({ sessionId: "session-current" });
-		swrMock.data = {
+		swrMock.chatData = {
 			__requestProjectId: "project-1",
 			__requestSessionId: "session-current",
 			projectId: "project-1",
@@ -346,7 +765,7 @@ describe("AgentStateSync", () => {
 			lastEventId: "4",
 		};
 
-		render(<AgentStateSync projectId="project-1" />);
+		renderAgentStateSync({ projectId: "project-1" });
 
 		expect(selectAgentMessages(useAgentStore.getState())).toEqual([]);
 		expect(useAgentStore.getState().sessionId).toBeNull();
@@ -356,6 +775,7 @@ describe("AgentStateSync", () => {
 	it("releases a restored running chat when the backend session is already completed", async () => {
 		useProjectStore.setState({ activeProjectId: "project-1" });
 		useAgentPersistenceStore.getState().setSessionId("project-1", "session-1");
+		swrMock.sessionsData = [agentSessionSummary("session-1")];
 		agentApiMocks.getAgentSessionStatus.mockResolvedValue({
 			sessionId: "session-1",
 			running: false,
@@ -385,7 +805,7 @@ describe("AgentStateSync", () => {
 			running: false,
 			lastEventId: "13",
 		});
-		swrMock.data = {
+		swrMock.chatData = {
 			__requestProjectId: "project-1",
 			__requestSessionId: "session-1",
 			projectId: "project-1",
@@ -404,7 +824,7 @@ describe("AgentStateSync", () => {
 			lastEventId: "12",
 		};
 
-		render(<AgentStateSync projectId="project-1" />);
+		renderAgentStateSync({ projectId: "project-1" });
 
 		await vi.waitFor(() => {
 			expect(useAgentStore.getState().isRunning).toBe(false);
@@ -454,3 +874,27 @@ type AgentStateSyncData = {
 		}
 	>;
 };
+
+type AgentSessionSummary = {
+	sessionId: string;
+	projectId?: string;
+	title?: string;
+	lastStatus?: string;
+	lastMessage?: string;
+	updatedAt?: string;
+	running: boolean;
+};
+
+type AgentRecoverySWRConfig = {
+	dedupingInterval?: number;
+	revalidateIfStale?: boolean;
+	revalidateOnFocus?: boolean;
+	revalidateOnMount?: boolean;
+};
+
+const agentSessionSummary = (sessionId: string): AgentSessionSummary => ({
+	sessionId,
+	projectId: "project-1",
+	updatedAt: "2026-06-09T00:00:00.000Z",
+	running: false,
+});

@@ -4,7 +4,6 @@ import { AgentStateSync } from "@/domains/agent/components/AgentStateSync";
 import { AgentPanel } from "@/domains/agent/components/AgentPanel";
 import { AgentPermissionNotificationSync } from "@/domains/agent/components/AgentPermissionNotificationSync";
 import { DocumentStateSync } from "@/domains/documents/components/DocumentStateSync";
-import { useDocumentsStore } from "@/domains/documents/stores";
 import { AgentWorkbenchHeaderActions } from "@/domains/workspace/components/AgentWorkbenchTopBar";
 import { AppLayout } from "@/domains/workspace/components/AppLayout";
 import { ProjectNavigator } from "@/domains/workspace/components/ProjectNavigator";
@@ -33,8 +32,6 @@ export const App: React.FC = () => {
 	const routeAgentSessionId = getRouteAgentSessionId(location.search);
 	const routeDocumentId = getRouteDocumentId(location.search);
 	const routeAssetId = getRouteAssetId(location.search);
-	const documentsProjectId = useDocumentsStore((state) => state.projectId);
-	const documentSyncStatus = useDocumentsStore((state) => state.syncStatus);
 	const preserveAgentTab = isAgentProjectViewState(location.state, "agent");
 	const preserveDocumentTab =
 		isAgentProjectViewState(location.state, "document") ||
@@ -64,8 +61,6 @@ export const App: React.FC = () => {
 		showProjectWorkspaceFrame && routeWorkbenchMode === "agent" && !forceDocumentWorkbench;
 	const isAgentSurfaceActive =
 		showProjectWorkspaceFrame && routeWorkbenchMode === "agent" && activeWorkbenchTab === "agent";
-	const workspaceReadyForAgent =
-		!routeProjectId || documentsProjectId === routeProjectId || documentSyncStatus === "error";
 	const headerActions = showWorkbenchTabs ? (
 		<AgentWorkbenchHeaderActions mode={routeWorkbenchMode} showTabs={!forceDocumentWorkbench} />
 	) : null;
@@ -73,9 +68,9 @@ export const App: React.FC = () => {
 	return (
 		<>
 			<AgentStateSync
+				agentSurfaceActive={isAgentSurfaceActive}
 				projectId={routeProjectId}
 				routeSessionId={routeAgentSessionId}
-				workspaceReady={workspaceReadyForAgent}
 			/>
 			<AgentPermissionNotificationSync
 				isAgentSurfaceActive={isAgentSurfaceActive}

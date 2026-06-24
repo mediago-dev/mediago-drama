@@ -144,6 +144,7 @@ export const AgentComposer = forwardRef<AgentComposerHandle, AgentComposerProps>
 		const onChangeRef = useRef(onChange);
 		const onSubmitRef = useRef(onSubmit);
 		const surfaceRef = useRef<HTMLDivElement>(null);
+		const lastComposerStateRef = useRef<AgentComposerState | null>(null);
 		const [isReferenceOnly, setIsReferenceOnly] = useState(false);
 
 		useEffect(() => {
@@ -156,11 +157,25 @@ export const AgentComposer = forwardRef<AgentComposerHandle, AgentComposerProps>
 
 		const emitChange = useCallback((nextEditor: Editor) => {
 			const value = readComposerValue(nextEditor);
-			setIsReferenceOnly(value.references.length > 0 && value.text.trim().length === 0);
-			onChangeRef.current?.({
+			const nextIsReferenceOnly = value.references.length > 0 && value.text.trim().length === 0;
+			const nextState = {
 				hasText: value.text.trim().length > 0,
 				referenceCount: value.references.length,
-			});
+			};
+			setIsReferenceOnly((current) =>
+				current === nextIsReferenceOnly ? current : nextIsReferenceOnly,
+			);
+
+			const previousState = lastComposerStateRef.current;
+			if (
+				previousState &&
+				previousState.hasText === nextState.hasText &&
+				previousState.referenceCount === nextState.referenceCount
+			) {
+				return;
+			}
+			lastComposerStateRef.current = nextState;
+			onChangeRef.current?.(nextState);
 		}, []);
 
 		const extensions = useMemo(
@@ -204,9 +219,6 @@ export const AgentComposer = forwardRef<AgentComposerHandle, AgentComposerProps>
 				},
 				extensions,
 				immediatelyRender: true,
-				onCreate: ({ editor: nextEditor }) => {
-					emitChange(nextEditor);
-				},
 				onUpdate: ({ editor: nextEditor }) => {
 					emitChange(nextEditor);
 				},
@@ -217,6 +229,11 @@ export const AgentComposer = forwardRef<AgentComposerHandle, AgentComposerProps>
 		useEffect(() => {
 			editor?.setEditable(!disabled);
 		}, [disabled, editor]);
+
+		useEffect(() => {
+			if (!editor) return;
+			emitChange(editor);
+		}, [editor, emitChange]);
 
 		useEffect(() => {
 			const element = surfaceRef.current?.querySelector<HTMLElement>(".ProseMirror");

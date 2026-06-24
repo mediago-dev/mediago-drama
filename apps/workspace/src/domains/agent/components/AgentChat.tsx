@@ -52,7 +52,11 @@ import {
 } from "@/domains/documents/stores";
 import { useProjectStore } from "@/domains/projects/stores";
 
-export const AgentChat: React.FC = () => {
+interface AgentChatProps {
+	projectId?: string | null;
+}
+
+export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId }) => {
 	const [attachments, setAttachments] = useState<AgentAttachment[]>([]);
 	const [composerContext, setComposerContext] = useState<ComposerContext>("default");
 	const [composerState, setComposerState] = useState<AgentComposerState>({
@@ -74,7 +78,8 @@ export const AgentChat: React.FC = () => {
 	const openComments = useDocumentsStore(selectActiveDocumentOpenComments);
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
 	const deleteComment = useDocumentsStore((state) => state.deleteComment);
-	const projectId = useProjectStore((state) => state.activeProjectId);
+	const storedProjectId = useProjectStore((state) => state.activeProjectId);
+	const projectId = routeProjectId ?? storedProjectId;
 	const composerRef = useRef<AgentComposerHandle>(null);
 	const pendingAttachmentSendRef = useRef<PendingAttachmentSend | null>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
@@ -85,7 +90,7 @@ export const AgentChat: React.FC = () => {
 		attachments.filter((attachment) => attachment.status === "ready"),
 	);
 	const hasOpenComments = openComments.length > 0;
-	const runtimeConfigKey = agentRuntimeConfigKey(projectId);
+	const runtimeConfigKey = projectId ? agentRuntimeConfigKey(projectId) : null;
 	const {
 		data: runtimeConfig,
 		error: runtimeConfigError,
