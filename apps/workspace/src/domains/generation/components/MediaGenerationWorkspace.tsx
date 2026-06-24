@@ -153,6 +153,19 @@ const appendPromptOptimizeReference = (currentPrompt: string, referencePrompt: s
 	return `${current}\n\n${reference}`;
 };
 
+const promptOptimizeConversationKindLabel = "提示词优化";
+const conversationTitleSeparator = " · ";
+
+const projectNameFromConversationTitle = (title?: string | null) => {
+	const trimmed = title?.trim();
+	if (!trimmed) return "";
+
+	const separatorIndex = trimmed.lastIndexOf(conversationTitleSeparator);
+	if (separatorIndex < 0) return trimmed;
+
+	return trimmed.slice(0, separatorIndex).trim();
+};
+
 const isPlaybackBlockedError = (err: unknown) =>
 	err instanceof DOMException
 		? err.name === "NotAllowedError"
@@ -367,9 +380,19 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const resolvedMediaAssetProjectId =
 		mediaAssetProjectId === undefined ? (projectId?.trim() ?? "") : (mediaAssetProjectId ?? "");
 	const [selectedPromptOptimizeRouteId, setSelectedPromptOptimizeRouteId] = useState("");
+	const promptOptimizeProjectName = useMemo(
+		() => projectNameFromConversationTitle(conversationTitle),
+		[conversationTitle],
+	);
 	const promptOptimizeProjectConversation = useMemo(
-		() => projectGenerationConversation(resolvedMediaAssetProjectId || projectId, "text"),
-		[projectId, resolvedMediaAssetProjectId],
+		() =>
+			projectGenerationConversation(
+				resolvedMediaAssetProjectId || projectId,
+				"text",
+				promptOptimizeProjectName,
+				{ kindLabel: promptOptimizeConversationKindLabel },
+			),
+		[projectId, promptOptimizeProjectName, resolvedMediaAssetProjectId],
 	);
 	const promptOptimizeConversationId =
 		promptOptimizeProjectConversation?.conversationId ?? conversationId;

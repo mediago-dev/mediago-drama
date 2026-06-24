@@ -46,4 +46,17 @@ describe("projectGenerationConversation", () => {
 			historyScopeId: "proj-2-video",
 		});
 	});
+
+	it("allows a project conversation title label override", () => {
+		expect(
+			projectGenerationConversation("proj-3", "text", "剧集 B", {
+				kindLabel: "提示词优化",
+			}),
+		).toEqual({
+			conversationId: "proj-3-text",
+			conversationScopeId: agentGenerationConversationScopeId,
+			conversationTitle: "剧集 B · 提示词优化",
+			historyScopeId: "proj-3-text",
+		});
+	});
 });

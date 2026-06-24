@@ -168,21 +168,27 @@ export interface ProjectGenerationConversation {
 	historyScopeId: string;
 }
 
+interface ProjectGenerationConversationOptions {
+	kindLabel?: string | null;
+}
+
 // 在项目内生成时使用：返回项目级命名会话的四要素（id / scope / 标题 / 本地缓存 scope）。
 // 没有 projectId（非项目场景）时返回 undefined，调用方据此回退到自己的 scope。
 export const projectGenerationConversation = (
 	projectId: string | null | undefined,
 	kind: GenerationKind,
 	projectName?: string | null,
+	options: ProjectGenerationConversationOptions = {},
 ): ProjectGenerationConversation | undefined => {
 	const cleanProjectId = projectId?.trim();
 	if (!cleanProjectId) return undefined;
 
 	const conversationId = projectGenerationConversationId(cleanProjectId, kind);
+	const kindLabel = options.kindLabel?.trim() || projectGenerationKindLabel[kind];
 	return {
 		conversationId,
 		conversationScopeId: agentGenerationConversationScopeId,
-		conversationTitle: `${projectName?.trim() || "项目"} · ${projectGenerationKindLabel[kind]}`,
+		conversationTitle: `${projectName?.trim() || "项目"} · ${kindLabel}`,
 		historyScopeId: conversationId,
 	};
 };

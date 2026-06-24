@@ -1585,6 +1585,7 @@ describe("MediaGenerationWorkspace", () => {
 
 		render(
 			<MediaGenerationWorkspace
+				conversationTitle="舔狗金 · 图片"
 				historyScopeId="history-a"
 				initialPrompt="原始角色提示词"
 				kind="image"
@@ -1601,7 +1602,7 @@ describe("MediaGenerationWorkspace", () => {
 			id: "project-a-text",
 			kind: "text",
 			scopeId: "agent",
-			title: "项目 · 文本",
+			title: "舔狗金 · 提示词优化",
 		});
 		const [request] = generationApiMocks.streamGenerationText.mock.calls[0];
 		expect(request).toMatchObject({
