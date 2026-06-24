@@ -22,6 +22,7 @@ import type {
 	DocumentOperationLogEntry,
 } from "@/domains/documents/stores";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
+import type { AgentResourceType } from "@/domains/workspace/lib/workbench-route";
 import { ErrorCode, type ApiError } from "@/types/api";
 
 const projectAPIPath = (projectId: string | null | undefined, path: string) => {
@@ -87,6 +88,35 @@ export interface WorkspaceSectionRecord {
 export interface WorkspaceSectionsPayload {
 	projectId?: string;
 	sections: WorkspaceSectionRecord[];
+}
+
+export interface WorkspaceDocumentResourceImage {
+	src: string;
+	title?: string;
+}
+
+export interface WorkspaceDocumentResource {
+	blockId: string;
+	canGenerate: boolean;
+	documentId: string;
+	documentTitle: string;
+	headingLevel: number;
+	headingOccurrence: number;
+	id: string;
+	markdown: string;
+	plainText?: string;
+	prompt?: string;
+	sectionId: string;
+	selectedImages?: WorkspaceDocumentResourceImage[];
+	sourceCategory: MarkdownDocument["category"];
+	summary?: string;
+	title: string;
+	type: AgentResourceType;
+}
+
+export interface WorkspaceDocumentResourcesPayload {
+	projectId?: string;
+	resources: WorkspaceDocumentResource[];
 }
 
 export type WorkspaceEpisodePayload = Omit<EpisodeTimelineStateResponse, "episode"> & {
@@ -287,6 +317,13 @@ export const getWorkspaceDocuments = async (projectId?: string | null) => {
 	return response.data;
 };
 
+export const getWorkspaceDocumentResources = async (projectId?: string | null) => {
+	const response = await httpClient.get<WorkspaceDocumentResourcesPayload>(
+		workspaceDocumentResourcesKey(projectId),
+	);
+	return response.data;
+};
+
 export const getWorkspaceSections = async (projectId?: string | null) => {
 	const response = await httpClient.get<WorkspaceSectionsPayload>(workspaceSectionsKey(projectId));
 	return response.data;
@@ -477,6 +514,9 @@ export const updateWorkspaceEpisode = async (
 
 export const workspaceDocumentsKey = (projectId?: string | null) =>
 	projectAPIPath(projectId, "/workspace/documents");
+
+export const workspaceDocumentResourcesKey = (projectId?: string | null) =>
+	projectAPIPath(projectId, "/workspace/resources");
 
 export const workspaceSectionsKey = (projectId?: string | null) =>
 	projectAPIPath(projectId, "/workspace/sections");

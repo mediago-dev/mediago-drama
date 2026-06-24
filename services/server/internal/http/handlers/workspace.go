@@ -17,6 +17,7 @@ type WorkspaceStore interface {
 	LoadWorkspaceState(projectID string) (service.WorkspaceStateResponse, error)
 	SaveWorkspaceState(projectID string, request service.WorkspaceStateRequest) (service.WorkspaceStateResponse, error)
 	ListWorkspaceDocuments(projectID string) (service.WorkspaceDocumentsResponse, error)
+	ListWorkspaceDocumentResources(projectID string) (service.WorkspaceDocumentResourcesResponse, error)
 	ListProjectSections(projectID string) (service.DocumentSectionsResponse, error)
 	ReconcileProjectSections(projectID string) (service.DocumentSectionsResponse, error)
 	ListDocumentFolders(projectID string) (service.DocumentFoldersResponse, error)
@@ -292,6 +293,29 @@ func (handler Workspace) HandleListWorkspaceDocuments(context *gin.Context) {
 		return
 	}
 	httpresponse.OK(context, state)
+}
+
+// HandleListWorkspaceDocumentResources godoc
+// @Summary 获取文档资源
+// @Description 返回从角色、场景、道具和分镜文档结构中解析出的可生成资源。
+// @Tags Workspace
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/resources [get]
+func (handler Workspace) HandleListWorkspaceDocumentResources(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+	response, err := handler.store.ListWorkspaceDocumentResources(projectID)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+	httpresponse.OK(context, response)
 }
 
 // HandleListProjectSections godoc

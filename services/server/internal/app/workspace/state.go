@@ -15,6 +15,7 @@ import (
 type workspaceStateResponse = servicedocument.WorkspaceStateResponse
 type workspaceStateRequest = servicedocument.WorkspaceStateRequest
 type workspaceDocumentsResponse = servicedocument.WorkspaceDocumentsResponse
+type workspaceDocumentResourcesResponse = servicedocument.WorkspaceDocumentResourcesResponse
 type documentFoldersResponse = servicedocument.DocumentFoldersResponse
 type episodeTimelineStateResponse = servicedocument.EpisodeTimelineStateResponse
 type saveEpisodeTimelineStateRequest = servicedocument.SaveEpisodeTimelineStateRequest
@@ -264,6 +265,11 @@ func (store *WorkspaceStateService) ListWorkspaceDocuments(projectID string) (wo
 
 func (store *WorkspaceStateService) listDocuments(projectID string) (workspaceDocumentsResponse, error) {
 	return store.StateService().Documents.ListWorkspaceDocuments(projectID)
+}
+
+// ListWorkspaceDocumentResources lists parsed resources from project documents.
+func (store *WorkspaceStateService) ListWorkspaceDocumentResources(projectID string) (workspaceDocumentResourcesResponse, error) {
+	return store.StateService().Documents.ListWorkspaceDocumentResources(projectID)
 }
 
 // SyncLocalMarkdownFiles imports local file and folder changes for a project.

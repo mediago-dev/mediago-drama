@@ -54,6 +54,38 @@ type WorkspaceDocumentsResponse struct {
 	Assets       []ProjectAssetRecord         `json:"assets,omitempty"`
 }
 
+// WorkspaceDocumentResourcesResponse is the parsed document resource payload.
+type WorkspaceDocumentResourcesResponse struct {
+	ProjectID string                            `json:"projectId,omitempty"`
+	Resources []WorkspaceDocumentResourceRecord `json:"resources"`
+}
+
+// WorkspaceDocumentResourceRecord describes one resource parsed from a document section.
+type WorkspaceDocumentResourceRecord struct {
+	ID                string                           `json:"id"`
+	Type              string                           `json:"type"`
+	Title             string                           `json:"title"`
+	Summary           string                           `json:"summary,omitempty"`
+	Prompt            string                           `json:"prompt,omitempty"`
+	DocumentID        string                           `json:"documentId"`
+	DocumentTitle     string                           `json:"documentTitle"`
+	SectionID         string                           `json:"sectionId"`
+	BlockID           string                           `json:"blockId"`
+	HeadingLevel      int                              `json:"headingLevel"`
+	HeadingOccurrence int                              `json:"headingOccurrence"`
+	Markdown          string                           `json:"markdown"`
+	PlainText         string                           `json:"plainText,omitempty"`
+	CanGenerate       bool                             `json:"canGenerate"`
+	SourceCategory    string                           `json:"sourceCategory"`
+	SelectedImages    []WorkspaceDocumentResourceImage `json:"selectedImages,omitempty"`
+}
+
+// WorkspaceDocumentResourceImage describes an image embedded in a resource section.
+type WorkspaceDocumentResourceImage struct {
+	Src   string `json:"src"`
+	Title string `json:"title,omitempty"`
+}
+
 // EpisodeTimelineStateResponse is the persisted editing timeline for a document.
 type EpisodeTimelineStateResponse struct {
 	WorkspaceDir string          `json:"workspaceDir"`

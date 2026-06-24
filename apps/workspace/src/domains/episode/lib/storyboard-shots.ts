@@ -33,7 +33,7 @@ interface MarkdownHeading {
 
 const headingPattern = /^(#{1,6})\s+(.+?)\s*$/u;
 const storyboardGroupTitlePattern = /^第\s*\S+\s*组/u;
-const storyboardShotTitlePattern = /^(分镜|镜头)\s*\S*/u;
+const storyboardShotTitlePattern = /^(分镜|镜头)(?:\s+|[0-9０-９一二三四五六七八九十百]+|$)/u;
 
 export const readStoryboardLaneSources = (
 	markdown: string,
