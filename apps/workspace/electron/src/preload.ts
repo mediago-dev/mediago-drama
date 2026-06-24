@@ -15,6 +15,8 @@ const api = {
 	showNotification: (options: { title: string; body?: string }) =>
 		ipcRenderer.invoke("desktop:show-notification", options),
 	startWindowDrag: () => ipcRenderer.invoke("desktop:start-window-drag"),
+	setNativeThemeSource: (source: "light" | "dark" | "system") =>
+		ipcRenderer.invoke("desktop:set-native-theme-source", source),
 };
 
 contextBridge.exposeInMainWorld("mediagoDesktop", api);

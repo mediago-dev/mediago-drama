@@ -3,6 +3,8 @@ export interface DesktopFileFilter {
 	extensions: string[];
 }
 
+export type NativeThemeSource = "light" | "dark" | "system";
+
 export interface MediagoDesktopAPI {
 	platform: NodeJS.Platform;
 	isElectron: true;
@@ -13,4 +15,5 @@ export interface MediagoDesktopAPI {
 	pickFile(options?: { title?: string; filters?: DesktopFileFilter[] }): Promise<string | null>;
 	showNotification(options: { title: string; body?: string }): Promise<boolean>;
 	startWindowDrag(): Promise<void>;
+	setNativeThemeSource(source: NativeThemeSource): Promise<void>;
 }

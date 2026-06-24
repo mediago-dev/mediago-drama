@@ -4,6 +4,7 @@ import {
 	app,
 	dialog,
 	ipcMain,
+	nativeTheme,
 	shell,
 	type OpenDialogOptions,
 } from "electron";
@@ -15,6 +16,11 @@ let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 
 const rendererUrl = process.env.ELECTRON_RENDERER_URL?.trim();
+
+type NativeThemeSource = "light" | "dark" | "system";
+
+const isNativeThemeSource = (value: unknown): value is NativeThemeSource =>
+	value === "light" || value === "dark" || value === "system";
 
 const showMainWindow = () => {
 	const window = mainWindow;
@@ -145,6 +151,11 @@ ipcMain.handle("desktop:show-notification", (_event, options: { title: string; b
 
 ipcMain.handle("desktop:start-window-drag", () => {
 	// Electron uses CSS app-region for dragging; imperative renderer calls are no-ops.
+});
+
+ipcMain.handle("desktop:set-native-theme-source", (_event, source: unknown) => {
+	if (!isNativeThemeSource(source)) throw new Error("invalid native theme source");
+	nativeTheme.themeSource = source;
 });
 
 const startApp = async () => {

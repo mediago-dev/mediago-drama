@@ -15,6 +15,7 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
 			root.classList.toggle("dark", resolvedMode === "dark");
 			root.classList.toggle("light", resolvedMode === "light");
 			root.style.colorScheme = resolvedMode;
+			void window.mediagoDesktop?.setNativeThemeSource(mode);
 		};
 
 		applyTheme();
