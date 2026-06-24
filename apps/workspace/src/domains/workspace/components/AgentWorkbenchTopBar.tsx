@@ -13,6 +13,7 @@ import {
 	isAgentRoute,
 } from "@/domains/workspace/lib/workbench-route";
 import { useAgentLayoutStore, type AgentLayoutTab } from "@/lib/stores/agent-layout";
+import { OVERVIEW_SENTINEL, useLastDocumentStore } from "@/lib/stores/last-document";
 import { useWorkModeStore, type WorkMode } from "@/lib/stores/work-mode";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/lib/utils";
@@ -62,6 +63,7 @@ export const AgentWorkbenchHeaderActions: React.FC<AgentWorkbenchTopBarProps> = 
 	const tab = useAgentLayoutStore((state) => state.tab);
 	const setTab = useAgentLayoutStore((state) => state.setTab);
 	const storedWorkMode = useWorkModeStore((state) => state.mode);
+	const getLastDocumentId = useLastDocumentStore((state) => state.getLastDocumentId);
 	const workMode = mode ?? storedWorkMode;
 	const shouldShowTabs = showTabs ?? workMode === "agent";
 	const projectId = getRouteProjectId(location.search);
@@ -81,6 +83,13 @@ export const AgentWorkbenchHeaderActions: React.FC<AgentWorkbenchTopBarProps> = 
 				return;
 			}
 			if (!routeDocumentId && !routeAssetId) {
+				const lastDocumentId = getLastDocumentId(projectId);
+				if (lastDocumentId && lastDocumentId !== OVERVIEW_SENTINEL) {
+					navigate(agentProjectPath(projectId, { documentId: lastDocumentId }), {
+						state: agentProjectRouteState("document"),
+					});
+					return;
+				}
 				navigate(agentProjectPath(projectId), {
 					replace: true,
 					state: agentProjectRouteState("overview"),
@@ -88,6 +97,7 @@ export const AgentWorkbenchHeaderActions: React.FC<AgentWorkbenchTopBarProps> = 
 			}
 		},
 		[
+			getLastDocumentId,
 			location.pathname,
 			navigate,
 			projectId,

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
+import { useLastDocumentStore } from "@/lib/stores/last-document";
 import { AgentWorkbenchHeaderActions } from "./AgentWorkbenchTopBar";
 
 const LocationProbe = () => {
@@ -37,6 +38,7 @@ describe("AgentWorkbenchHeaderActions", () => {
 	afterEach(() => {
 		cleanup();
 		useAgentLayoutStore.getState().setTab("agent");
+		useLastDocumentStore.setState({ lastDocumentIdByProject: {} });
 		localStorage.clear();
 	});
 
@@ -68,6 +70,34 @@ describe("AgentWorkbenchHeaderActions", () => {
 
 	it("marks the clean project route as overview when switching to document", async () => {
 		useAgentLayoutStore.getState().setTab("agent");
+
+		renderHeaderActions("/projects?projectId=project-1");
+		fireEvent.click(screen.getByRole("button", { name: "文档" }));
+
+		await waitFor(() =>
+			expect(screen.getByTestId("location").dataset.projectView).toBe("overview"),
+		);
+		expect(screen.getByTestId("location").dataset.path).toBe("/projects?projectId=project-1");
+	});
+
+	it("navigates to the last opened document when switching to document tab", async () => {
+		useAgentLayoutStore.getState().setTab("agent");
+		useLastDocumentStore.getState().setLastDocumentId("project-1", "doc-1");
+
+		renderHeaderActions("/projects?projectId=project-1");
+		fireEvent.click(screen.getByRole("button", { name: "文档" }));
+
+		await waitFor(() =>
+			expect(screen.getByTestId("location").dataset.path).toBe(
+				"/projects?projectId=project-1&documentId=doc-1",
+			),
+		);
+		expect(screen.getByTestId("location").dataset.projectView).toBe("document");
+	});
+
+	it("returns to overview when overview was the last document view", async () => {
+		useAgentLayoutStore.getState().setTab("agent");
+		useLastDocumentStore.getState().setLastDocumentId("project-1", null);
 
 		renderHeaderActions("/projects?projectId=project-1");
 		fireEvent.click(screen.getByRole("button", { name: "文档" }));

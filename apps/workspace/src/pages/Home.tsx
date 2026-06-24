@@ -15,6 +15,7 @@ import {
 	isAgentProjectViewState,
 } from "@/domains/workspace/lib/workbench-route";
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
+import { useLastDocumentStore } from "@/lib/stores/last-document";
 
 type BrowserIdleWindow = Window & {
 	cancelIdleCallback?: (handle: number) => void;
@@ -63,6 +64,7 @@ export const Home: React.FC = () => {
 	const activeProjectId = useProjectStore((state) => state.activeProjectId);
 	const setActiveProjectId = useProjectStore((state) => state.setActiveProjectId);
 	const setAgentLayoutTab = useAgentLayoutStore((state) => state.setTab);
+	const setLastDocumentId = useLastDocumentStore((state) => state.setLastDocumentId);
 	const targetDocument = documentId
 		? documents.find((document) => document.id === documentId)
 		: null;
@@ -127,6 +129,25 @@ export const Home: React.FC = () => {
 		selectDocument,
 		targetAsset,
 		targetDocument,
+	]);
+
+	useEffect(() => {
+		if (!projectId || preserveAgentTab) return;
+		if (documentId) {
+			setLastDocumentId(projectId, documentId);
+			return;
+		}
+		if (!assetId && !documentWorkbench && !resourceType) {
+			setLastDocumentId(projectId, null);
+		}
+	}, [
+		assetId,
+		documentId,
+		documentWorkbench,
+		preserveAgentTab,
+		projectId,
+		resourceType,
+		setLastDocumentId,
 	]);
 
 	useEffect(() => {
