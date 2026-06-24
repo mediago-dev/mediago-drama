@@ -106,6 +106,10 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	payload.AssetTitle = strings.TrimSpace(payload.AssetTitle)
 	payload.ReferenceURLs = CompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = CompactStrings(payload.ReferenceAssetIDs)
+	payload.PromptOptimization = NormalizeGenerationPromptOptimizationRequest(payload.PromptOptimization)
+	if err := ValidateGenerationPromptOptimizationRequest(payload.PromptOptimization); err != nil {
+		return generationMessageResponse{}, http.StatusBadRequest, err
+	}
 	if err := workflow.applyGenerationDocumentContext(&payload); err != nil {
 		return generationMessageResponse{}, http.StatusBadRequest, err
 	}
@@ -136,6 +140,11 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	if err := workflow.requireGenerationRouteConfigured(route); err != nil {
 		return generationMessageResponse{}, http.StatusServiceUnavailable, err
 	}
+	if payload.PromptOptimization != nil {
+		if _, err := workflow.resolveConfiguredTextRoute(payload.PromptOptimization.RouteID); err != nil {
+			return generationMessageResponse{}, http.StatusServiceUnavailable, err
+		}
+	}
 	conversation, status, err := workflow.resolveGenerationConversationWithScopeFilter(payload.ConversationID, payload.ScopeID, payload.Kind, hasScopeFilter)
 	if err != nil {
 		return generationMessageResponse{}, status, err
@@ -154,6 +163,20 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	referenceURLs, err := workflow.resolveGenerationReferences(route, payload)
 	if err != nil {
 		return generationMessageResponse{}, http.StatusBadRequest, err
+	}
+
+	if payload.PromptOptimization != nil {
+		messageResponse := SubmittedGenerationResponse("", coregeneration.Kind(payload.Kind))
+		messageResponse.Message = "提示词优化和生成请求正在服务器上运行，可以安全刷新页面。"
+		task := GenerationTaskFromMessage(payload, route, messageResponse)
+		if err := workflow.generationTasks.Upsert(task); err != nil {
+			return generationMessageResponse{}, http.StatusInternalServerError, err
+		}
+		workflow.trackGenerationNotificationTarget(task, payload.NotificationTarget)
+		workflow.syncGenerationNotificationTask(task)
+		_ = workflow.generationTasks.RecordAttempt(task.ID, "create", messageResponse.Status, messageResponse.Message, nil)
+		go workflow.completePromptOptimizedGeneration(context.Background(), task, route, provider, payload, referenceURLs, "create", projectID, payload.ConversationID)
+		return messageResponse, http.StatusOK, nil
 	}
 
 	generationRequest := GenerationRequestFromMessage(payload, route, referenceURLs)

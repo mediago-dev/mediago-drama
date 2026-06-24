@@ -60,6 +60,7 @@ export interface GenerationSubmitOverrides {
 	extraPrompt?: string;
 	notificationTarget?: GenerationNotificationOpenTarget | null;
 	prompt?: string;
+	promptOptimization?: GenerationMessageRequest["promptOptimization"];
 	requestDetails?: ChatMessageDetail[];
 	referenceAssetIds?: string[];
 	referenceUrls?: string[];
@@ -288,6 +289,7 @@ export const useGenerationSubmit = ({
 							prompt: requestPrompt,
 							assetTitle: requestAssetTitle || undefined,
 							params: requestParams,
+							promptOptimization: overrides.promptOptimization,
 							referenceUrls: [],
 							referenceAssetIds: [],
 						},
@@ -377,6 +379,7 @@ export const useGenerationSubmit = ({
 					prompt: requestPrompt,
 					assetTitle: requestAssetTitle || undefined,
 					params: requestParams,
+					promptOptimization: overrides.promptOptimization,
 					referenceUrls: selectedRoute.supportsReferenceUrls ? requestReferenceUrls : [],
 					referenceAssetIds: selectedRoute.supportsReferenceUrls ? requestReferenceAssetIds : [],
 				});

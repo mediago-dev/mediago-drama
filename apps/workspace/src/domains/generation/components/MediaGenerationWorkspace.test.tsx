@@ -9,7 +9,11 @@ import {
 import React from "react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GenerationAsset, GenerationParam } from "@/domains/generation/api/generation";
+import type {
+	GenerationAsset,
+	GenerationMessageResponse,
+	GenerationParam,
+} from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { GenerationEntry } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
@@ -231,6 +235,21 @@ const secondImageEntry: GenerationEntry = {
 	assets: [{ kind: "image", url: "/api/v1/media-assets/media-b/content", mimeType: "image/png" }],
 };
 
+const generationResponseFromEntry = (entry: GenerationEntry): GenerationMessageResponse => ({
+	id: entry.id,
+	role: "assistant",
+	status: entry.status ?? "completed",
+	message: entry.content,
+	assets: entry.assets ?? [],
+	usage: {
+		cachedTokens: 0,
+		inputTokens: 0,
+		outputTokens: 0,
+		reasoningTokens: 0,
+		totalTokens: 0,
+	},
+});
+
 const pendingImageEntry: GenerationEntry = {
 	id: "entry-pending-image",
 	kind: "image",
@@ -345,6 +364,7 @@ const workspaceDefaults = {
 	setKind: vi.fn(),
 	setPrompt: vi.fn(),
 	submit: vi.fn((event: React.FormEvent<HTMLFormElement>) => event.preventDefault()),
+	submitGeneration: vi.fn(),
 	toggleReferenceAsset: vi.fn(),
 	updateFamily: vi.fn(),
 	updateModelRoute: vi.fn(),
@@ -824,6 +844,126 @@ describe("MediaGenerationWorkspace", () => {
 		expect(generationApiMocks.updateSelectedGenerationAsset).not.toHaveBeenCalled();
 	});
 
+	it("selects the first generated image by default when the target has no selection", async () => {
+		const onToggleAsset = vi.fn();
+		const firstAsset: GenerationAsset = {
+			kind: "image",
+			mimeType: "image/png",
+			url: "/api/v1/media-assets/generated-first/content",
+		};
+		const secondAsset: GenerationAsset = {
+			kind: "image",
+			mimeType: "image/png",
+			url: "/api/v1/media-assets/generated-second/content",
+		};
+		const completedEntry: GenerationEntry = {
+			id: "task-generated",
+			kind: "image",
+			status: "completed",
+			content: "",
+			prompt: "生成角色图",
+			assets: [firstAsset, secondAsset],
+		};
+		let workspaceOptions: Parameters<typeof useGenerationWorkspace>[0] | undefined;
+		let orderedGenerationEntries: GenerationEntry[] = [];
+		vi.mocked(useGenerationWorkspace).mockImplementation((options) => {
+			workspaceOptions = options;
+			return {
+				...workspaceDefaults,
+				activeEntryId: completedEntry.id,
+				orderedGenerationEntries,
+			} as unknown as ReturnType<typeof useGenerationWorkspace>;
+		});
+
+		const renderWorkspace = () => (
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				onToggleAsset={onToggleAsset}
+				selectedAssetKeys={[]}
+				viewMode="history"
+			/>
+		);
+		const { rerender } = render(renderWorkspace());
+
+		workspaceOptions?.onSubmitStart?.({
+			kind: "image",
+			localMessageId: "local-generated",
+			prompt: "生成角色图",
+		});
+		workspaceOptions?.onSubmitResponse?.({
+			kind: "image",
+			localMessageId: "local-generated",
+			response: generationResponseFromEntry(completedEntry),
+		});
+		orderedGenerationEntries = [completedEntry];
+		rerender(renderWorkspace());
+
+		await waitFor(() => {
+			expect(onToggleAsset).toHaveBeenCalledWith(firstAsset, true);
+		});
+		expect(onToggleAsset).not.toHaveBeenCalledWith(secondAsset, true);
+	});
+
+	it("does not default-select a generated image when the target already has a selection", async () => {
+		const onToggleAsset = vi.fn();
+		const completedEntry: GenerationEntry = {
+			id: "task-generated",
+			kind: "image",
+			status: "completed",
+			content: "",
+			prompt: "生成角色图",
+			assets: [
+				{
+					kind: "image",
+					mimeType: "image/png",
+					url: "/api/v1/media-assets/generated-first/content",
+				},
+			],
+		};
+		let workspaceOptions: Parameters<typeof useGenerationWorkspace>[0] | undefined;
+		let orderedGenerationEntries: GenerationEntry[] = [];
+		vi.mocked(useGenerationWorkspace).mockImplementation((options) => {
+			workspaceOptions = options;
+			return {
+				...workspaceDefaults,
+				activeEntryId: completedEntry.id,
+				orderedGenerationEntries,
+			} as unknown as ReturnType<typeof useGenerationWorkspace>;
+		});
+
+		const renderWorkspace = () => (
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				onToggleAsset={onToggleAsset}
+				selectedAssetKeys={["image:/api/v1/media-assets/existing/content"]}
+				viewMode="history"
+			/>
+		);
+		const { rerender } = render(renderWorkspace());
+
+		workspaceOptions?.onSubmitStart?.({
+			kind: "image",
+			localMessageId: "local-generated",
+			prompt: "生成角色图",
+		});
+		workspaceOptions?.onSubmitResponse?.({
+			kind: "image",
+			localMessageId: "local-generated",
+			response: generationResponseFromEntry(completedEntry),
+		});
+		orderedGenerationEntries = [completedEntry];
+		rerender(renderWorkspace());
+
+		await waitFor(() => {
+			expect(screen.getAllByRole("article").length).toBeGreaterThan(0);
+		});
+		expect(onToggleAsset).not.toHaveBeenCalled();
+	});
+
 	it("uses the external entity selection as the only selected state when toggling assets", () => {
 		const onToggleAsset = vi.fn();
 		const selectedEntry: GenerationEntry = {
@@ -1224,7 +1364,7 @@ describe("MediaGenerationWorkspace", () => {
 		});
 	});
 
-	it("uploads edited images, imports them into history, and selects them for project resources", async () => {
+	it("uploads edited images and imports them into history without selecting them", async () => {
 		const editedAsset: GenerationAsset = {
 			kind: "image",
 			mimeType: "image/png",
@@ -1305,23 +1445,14 @@ describe("MediaGenerationWorkspace", () => {
 		const uploadedFile = mediaApiMocks.uploadMediaAsset.mock.calls[0]?.[0] as File;
 		expect(uploadedFile.name).toBe("原图 编辑版.png");
 		expect(uploadedFile.type).toBe("image/png");
-		expect(editedAsset).toEqual(
-			expect.objectContaining({
-				kind: "image",
-				mimeType: "image/png",
-				slotIndex: 0,
-				taskId: "edited-entry",
-				title: "原图 编辑版",
-				url: "/api/v1/media-assets/edited-media/content",
-			}),
-		);
+		expect(editedAsset.title).toBe("原图 编辑版");
 		expect(mutateMediaAssets).toHaveBeenCalled();
-		expect(onToggleAsset).toHaveBeenCalledWith(editedAsset, true);
+		expect(onToggleAsset).not.toHaveBeenCalled();
 		expect(generationApiMocks.updateSelectedGenerationAsset).not.toHaveBeenCalled();
 		expect(setActiveEntryId).toHaveBeenCalledWith("edited-entry");
 	});
 
-	it("persists edited image selection in uncontrolled project mode", async () => {
+	it("does not persist edited image selection in uncontrolled project mode", async () => {
 		const editedAsset: GenerationAsset = {
 			kind: "image",
 			mimeType: "image/png",
@@ -1380,24 +1511,9 @@ describe("MediaGenerationWorkspace", () => {
 		fireEvent.click(await screen.findByRole("button", { name: "保存编辑图" }));
 
 		await waitFor(() => {
-			expect(generationApiMocks.updateSelectedGenerationAsset).toHaveBeenCalledWith(
-				"project-a",
-				expect.objectContaining({
-					assetIndex: 0,
-					resourceId: "section-chenyuan",
-					resourceTitle: "陈远",
-					resourceType: "character",
-					selected: true,
-					sourceAssetIndex: 0,
-					sourceDocumentId: "character-doc",
-					sourceTaskId: "edited-entry",
-					sourceType: "edited",
-					taskId: "edited-entry",
-					title: "原图 编辑版",
-				}),
-			);
+			expect(setActiveEntryId).toHaveBeenCalledWith("edited-entry");
 		});
-		expect(setActiveEntryId).toHaveBeenCalledWith("edited-entry");
+		expect(generationApiMocks.updateSelectedGenerationAsset).not.toHaveBeenCalled();
 	});
 
 	it("imports selected material library images only after confirmation", async () => {
@@ -1564,6 +1680,7 @@ describe("MediaGenerationWorkspace", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
 		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+		fireEvent.click(screen.getByRole("button", { name: "优化" }));
 
 		expect(setPrompt).toHaveBeenCalledWith("cinematic lighting, detailed composition");
 		expect(generationApiMocks.streamGenerationText).not.toHaveBeenCalled();
@@ -1596,6 +1713,7 @@ describe("MediaGenerationWorkspace", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
 		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+		fireEvent.click(screen.getByRole("button", { name: "优化" }));
 
 		await waitFor(() => expect(generationApiMocks.streamGenerationText).toHaveBeenCalled());
 		expect(generationApiMocks.createGenerationConversation).toHaveBeenCalledWith({
@@ -1619,6 +1737,47 @@ describe("MediaGenerationWorkspace", () => {
 		expect(request.prompt).toContain("cinematic lighting, detailed composition");
 		expect(setPrompt).toHaveBeenCalledWith("optimized ");
 		expect(setPrompt).toHaveBeenCalledWith("optimized prompt");
+	});
+
+	it("submits prompt optimization settings when optimizing and generating", async () => {
+		const setPrompt = vi.fn();
+		const submitGeneration = vi.fn(async () => undefined);
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			catalog: textGenerationCatalog,
+			prompt: "原始角色提示词",
+			promptInsertItems: [promptInsertItem],
+			setPrompt,
+			submitGeneration,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="原始角色提示词"
+				kind="image"
+				projectId="project-a"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
+		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+		fireEvent.click(screen.getByRole("button", { name: "优化并生成" }));
+
+		await waitFor(() =>
+			expect(submitGeneration).toHaveBeenCalledWith({
+				prompt: "原始角色提示词",
+				promptOptimization: {
+					model: "text-model",
+					referenceName: "电影质感",
+					referencePrompt: "cinematic lighting, detailed composition",
+					routeId: "text-route",
+				},
+			}),
+		);
+		expect(generationApiMocks.streamGenerationText).not.toHaveBeenCalled();
+		expect(setPrompt).not.toHaveBeenCalledWith("optimized ");
+		expect(setPrompt).not.toHaveBeenCalledWith("optimized prompt");
 	});
 
 	it("uses the selected text model for prompt optimization", async () => {
@@ -1654,6 +1813,7 @@ describe("MediaGenerationWorkspace", () => {
 		fireEvent.click(screen.getByRole("button", { name: /DMX Text v1/ }));
 		fireEvent.click(screen.getByRole("button", { name: "DMX" }));
 		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+		fireEvent.click(screen.getByRole("button", { name: "优化" }));
 
 		await waitFor(() => expect(generationApiMocks.streamGenerationText).toHaveBeenCalled());
 		const [request] = generationApiMocks.streamGenerationText.mock.calls[0];
@@ -1685,6 +1845,7 @@ describe("MediaGenerationWorkspace", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
 		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+		fireEvent.click(screen.getByRole("button", { name: "优化" }));
 
 		const updater = setPrompt.mock.calls.find(([value]) => typeof value === "function")?.[0];
 		expect(typeof updater).toBe("function");

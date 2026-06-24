@@ -1,6 +1,6 @@
-import { ChevronDown, Loader2, Wand2 } from "lucide-react";
+import { ChevronDown, Loader2, Sparkles, Wand2 } from "lucide-react";
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	generationComposerSelectClassName,
 	generationComposerToolbarButtonClassName,
@@ -22,27 +22,36 @@ import { cn } from "@/shared/lib/utils";
 
 export interface PromptOptimizeControlProps {
 	canOptimize: boolean;
+	canGenerate?: boolean;
 	disabled?: boolean;
 	isOptimizing: boolean;
 	items: PromptInsertItem[];
 	modelOptions: PromptOptimizeModelOption[];
-	onSelect: (item: PromptInsertItem) => void;
+	onOptimize: (item: PromptInsertItem) => void;
+	onOptimizeAndSubmit: (item: PromptInsertItem) => void;
 	onSelectModel: (routeId: string) => void;
 	selectedModelRouteId?: string | null;
 }
 
 export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 	canOptimize,
+	canGenerate = false,
 	disabled = false,
 	isOptimizing,
 	items,
 	modelOptions,
-	onSelect,
+	onOptimize,
+	onOptimizeAndSubmit,
 	onSelectModel,
 	selectedModelRouteId,
 }) => {
 	const [open, setOpen] = useState(false);
+	const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 	const unavailable = disabled || isOptimizing;
+	const selectedItem = useMemo(
+		() => items.find((item) => item.id === selectedItemId) ?? null,
+		[items, selectedItemId],
+	);
 	const selectedModelOption =
 		modelOptions.find((option) => option.id === selectedModelRouteId) ?? modelOptions[0] ?? null;
 	const modelFamilies = useMemo(() => uniquePromptOptimizeFamilies(modelOptions), [modelOptions]);
@@ -81,6 +90,23 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 		const route = preferredRoute(routes) ?? routes[0];
 		if (route) onSelectModel(route.id);
 	};
+	useEffect(() => {
+		if (selectedItemId && !items.some((item) => item.id === selectedItemId)) {
+			setSelectedItemId(null);
+		}
+	}, [items, selectedItemId]);
+
+	const runOptimize = () => {
+		if (!selectedItem) return;
+		onOptimize(selectedItem);
+		setOpen(false);
+	};
+
+	const runOptimizeAndSubmit = () => {
+		if (!selectedItem) return;
+		onOptimizeAndSubmit(selectedItem);
+		setOpen(false);
+	};
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -110,7 +136,7 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 				side="top"
 				align="end"
 				aria-label="提示词包"
-				className="w-[min(26rem,var(--generation-popover-max-inline))] overflow-hidden rounded-[var(--generation-popover-radius)] border-border bg-popover p-[var(--generation-popover-padding)] text-popover-foreground shadow-xl"
+				className="flex w-[min(26rem,var(--generation-popover-max-inline))] flex-col overflow-hidden rounded-[var(--generation-popover-radius)] border-border bg-popover p-[var(--generation-popover-padding)] text-popover-foreground shadow-xl"
 				style={{
 					maxHeight:
 						"min(30rem, calc(var(--radix-popover-content-available-height, 30rem) - 0.5rem))",
@@ -178,10 +204,41 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 				<PromptOptimizePicker
 					items={items}
 					onSelect={(item) => {
-						onSelect(item);
-						setOpen(false);
+						setSelectedItemId(item.id);
 					}}
+					selectedItemId={selectedItemId}
 				/>
+				{selectedItem ? (
+					<div className="mt-[var(--generation-popover-gap)] flex shrink-0 flex-col gap-2 border-t border-border pt-[var(--generation-popover-gap)]">
+						<p className="min-w-0 truncate text-2xs text-muted-foreground">
+							已选择：<span className="font-semibold text-foreground">{selectedItem.name}</span>
+						</p>
+						<div className="flex min-w-0 items-center justify-end gap-2">
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								disabled={unavailable}
+								className="h-[var(--generation-control-height)] rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs font-semibold text-foreground shadow-none hover:bg-ide-list-hover"
+								onClick={runOptimize}
+							>
+								<Wand2 className="size-4 text-primary" />
+								<span>优化</span>
+							</Button>
+							<Button
+								type="button"
+								size="sm"
+								disabled={unavailable || !canGenerate}
+								title={canGenerate ? "优化并生成" : "当前生成模型不可用"}
+								className="h-[var(--generation-control-height)] rounded-[var(--generation-control-radius)] bg-primary px-[var(--generation-control-padding-x)] text-2xs font-semibold text-primary-foreground shadow-none hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground"
+								onClick={runOptimizeAndSubmit}
+							>
+								<Sparkles className="size-4" />
+								<span>优化并生成</span>
+							</Button>
+						</div>
+					</div>
+				) : null}
 			</PopoverContent>
 		</Popover>
 	);

@@ -68,7 +68,7 @@ export const usePromptOptimize = ({
 		async (input: PromptOptimizeInput) => {
 			if (!textRoute) {
 				setError("没有可用的文本生成模型，请先配置 API Key。");
-				return;
+				return null;
 			}
 
 			abortRef.current?.abort();
@@ -87,6 +87,8 @@ export const usePromptOptimize = ({
 			].join("\n");
 
 			let accumulated = "";
+			let finalOptimizedPrompt = "";
+			let failedMessage = "";
 			const normalizedProjectId = projectId?.trim() || undefined;
 
 			try {
@@ -123,17 +125,26 @@ export const usePromptOptimize = ({
 						},
 						onDone: (message) => {
 							const finalPrompt = message.text?.trim() || message.message?.trim();
-							if (finalPrompt) onOptimized(finalPrompt);
+							if (finalPrompt) {
+								finalOptimizedPrompt = finalPrompt;
+								onOptimized(finalPrompt);
+							}
 						},
 						onError: (message) => {
-							setError(message || "提示词优化失败。");
+							failedMessage = message || "提示词优化失败。";
+							setError(failedMessage);
 						},
 					},
 				);
+				if (failedMessage) return null;
+				const optimizedPrompt = finalOptimizedPrompt || accumulated.trim();
+				if (!optimizedPrompt) return null;
 				onSuccess?.();
+				return optimizedPrompt;
 			} catch (caught) {
-				if (controller.signal.aborted) return;
+				if (controller.signal.aborted) return null;
 				setError(caught instanceof Error ? caught.message : "提示词优化失败，请稍后重试。");
+				return null;
 			} finally {
 				if (abortRef.current === controller) {
 					abortRef.current = null;

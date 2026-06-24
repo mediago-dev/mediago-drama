@@ -10,6 +10,7 @@ import type {
 	GenerationMessageRequest as GeneratedGenerationMessageRequest,
 	GenerationMessageResponse as GeneratedGenerationMessageResponse,
 	GenerationModelsResponse as GeneratedGenerationModelsResponse,
+	GenerationPromptOptimizationRequest as GeneratedGenerationPromptOptimizationRequest,
 	GenerationVoicePreviewRequest as GeneratedGenerationVoicePreviewRequest,
 	GenerationVoicePreviewResponse as GeneratedGenerationVoicePreviewResponse,
 	ImportGenerationMediaAssetsRequest as GeneratedImportGenerationMediaAssetsRequest,
@@ -64,6 +65,7 @@ export type GenerationMessageRequest = Omit<GeneratedGenerationMessageRequest, "
 	conversationId?: string;
 	scopeId?: string;
 };
+export type GenerationPromptOptimizationRequest = GeneratedGenerationPromptOptimizationRequest;
 export type ImportGenerationMediaAssetsRequest = Omit<
 	GeneratedImportGenerationMediaAssetsRequest,
 	"sessionId"

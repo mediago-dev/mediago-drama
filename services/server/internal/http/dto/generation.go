@@ -22,26 +22,36 @@ type GenerationVoicePreviewAsset struct {
 
 // GenerationMessageRequest creates or retries a generation request.
 type GenerationMessageRequest struct {
-	Kind               string                        `json:"kind" ts:"Kind"`
-	ConversationID     string                        `json:"sessionId,omitempty"`
-	ScopeID            string                        `json:"-"`
-	ProjectID          string                        `json:"projectId,omitempty"`
-	DocumentID         string                        `json:"documentId,omitempty"`
-	SectionID          string                        `json:"sectionId,omitempty"`
-	DocumentContext    *GenerationDocumentContext    `json:"documentContext,omitempty"`
-	CapabilityID       string                        `json:"capabilityId,omitempty"`
-	NotificationTarget *GenerationNotificationTarget `json:"notificationTarget,omitempty"`
-	RouteID            string                        `json:"routeId"`
-	FamilyID           string                        `json:"familyId,omitempty"`
-	VersionID          string                        `json:"versionId,omitempty"`
-	Provider           string                        `json:"provider,omitempty"`
-	ModelID            string                        `json:"modelId"`
-	Model              string                        `json:"model"`
-	Prompt             string                        `json:"prompt"`
-	AssetTitle         string                        `json:"assetTitle,omitempty"`
-	ReferenceURLs      []string                      `json:"referenceUrls"`
-	ReferenceAssetIDs  []string                      `json:"referenceAssetIds"`
-	Params             map[string]any                `json:"params"`
+	Kind               string                               `json:"kind" ts:"Kind"`
+	ConversationID     string                               `json:"sessionId,omitempty"`
+	ScopeID            string                               `json:"-"`
+	ProjectID          string                               `json:"projectId,omitempty"`
+	DocumentID         string                               `json:"documentId,omitempty"`
+	SectionID          string                               `json:"sectionId,omitempty"`
+	DocumentContext    *GenerationDocumentContext           `json:"documentContext,omitempty"`
+	CapabilityID       string                               `json:"capabilityId,omitempty"`
+	NotificationTarget *GenerationNotificationTarget        `json:"notificationTarget,omitempty"`
+	RouteID            string                               `json:"routeId"`
+	FamilyID           string                               `json:"familyId,omitempty"`
+	VersionID          string                               `json:"versionId,omitempty"`
+	Provider           string                               `json:"provider,omitempty"`
+	ModelID            string                               `json:"modelId"`
+	Model              string                               `json:"model"`
+	Prompt             string                               `json:"prompt"`
+	AssetTitle         string                               `json:"assetTitle,omitempty"`
+	ReferenceURLs      []string                             `json:"referenceUrls"`
+	ReferenceAssetIDs  []string                             `json:"referenceAssetIds"`
+	Params             map[string]any                       `json:"params"`
+	PromptOptimization *GenerationPromptOptimizationRequest `json:"promptOptimization,omitempty"`
+}
+
+// GenerationPromptOptimizationRequest configures server-side prompt optimization before generation.
+type GenerationPromptOptimizationRequest struct {
+	RouteID         string         `json:"routeId"`
+	Model           string         `json:"model,omitempty"`
+	ReferenceName   string         `json:"referenceName,omitempty"`
+	ReferencePrompt string         `json:"referencePrompt"`
+	Params          map[string]any `json:"params,omitempty"`
 }
 
 // GenerationDocumentContext identifies the source document section for generation.

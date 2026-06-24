@@ -1,4 +1,4 @@
-import { Search, Sparkles, type LucideIcon } from "lucide-react";
+import { Check, Search, Sparkles, type LucideIcon } from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 import type { PromptInsertItem } from "@/domains/generation/components/PromptSlashCommand";
@@ -7,6 +7,7 @@ import { cn } from "@/shared/lib/utils";
 export interface PromptOptimizePickerProps {
 	items: PromptInsertItem[];
 	onSelect: (item: PromptInsertItem) => void;
+	selectedItemId?: string | null;
 }
 
 interface PromptOptimizeGroup {
@@ -18,7 +19,11 @@ interface PromptOptimizeGroup {
 
 const groupIcon: LucideIcon = Sparkles;
 
-export const PromptOptimizePicker: React.FC<PromptOptimizePickerProps> = ({ items, onSelect }) => {
+export const PromptOptimizePicker: React.FC<PromptOptimizePickerProps> = ({
+	items,
+	onSelect,
+	selectedItemId,
+}) => {
 	const [query, setQuery] = useState("");
 
 	const filtered = useMemo(() => {
@@ -74,31 +79,38 @@ export const PromptOptimizePicker: React.FC<PromptOptimizePickerProps> = ({ item
 									<span className="text-muted-foreground/60">({group.items.length})</span>
 								</div>
 								<div className="grid gap-1">
-									{group.items.map((item) => (
-										<button
-											key={item.id}
-											type="button"
-											className={cn(
-												"grid w-full min-w-0 gap-1 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-												"hover:bg-ide-list-hover",
-											)}
-											onClick={() => onSelect(item)}
-										>
-											<span className="flex min-w-0 items-center gap-2">
-												<span className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">
-													{item.name}
-												</span>
-												{item.sourceLabel ? (
-													<span className="shrink-0 text-2xs text-muted-foreground">
-														{item.sourceLabel}
+									{group.items.map((item) => {
+										const selected = item.id === selectedItemId;
+										return (
+											<button
+												key={item.id}
+												type="button"
+												aria-pressed={selected}
+												className={cn(
+													"grid w-full min-w-0 gap-1 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+													selected
+														? "bg-ide-list-active text-ide-list-active-foreground"
+														: "hover:bg-ide-list-hover",
+												)}
+												onClick={() => onSelect(item)}
+											>
+												<span className="flex min-w-0 items-center gap-2">
+													<span className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">
+														{item.name}
 													</span>
-												) : null}
-											</span>
-											<span className="line-clamp-2 text-2xs leading-4 text-muted-foreground">
-												{promptPreview(item.prompt)}
-											</span>
-										</button>
-									))}
+													{item.sourceLabel ? (
+														<span className="shrink-0 text-2xs text-muted-foreground">
+															{item.sourceLabel}
+														</span>
+													) : null}
+													{selected ? <Check className="size-3.5 shrink-0 text-primary" /> : null}
+												</span>
+												<span className="line-clamp-2 text-2xs leading-4 text-muted-foreground">
+													{promptPreview(item.prompt)}
+												</span>
+											</button>
+										);
+									})}
 								</div>
 							</section>
 						);

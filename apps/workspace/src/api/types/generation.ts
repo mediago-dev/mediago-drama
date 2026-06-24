@@ -175,6 +175,15 @@ export interface GenerationMessageRequest {
 	referenceUrls: string[];
 	referenceAssetIds: string[];
 	params: Record<string, unknown>;
+	promptOptimization?: GenerationPromptOptimizationRequest;
+}
+
+export interface GenerationPromptOptimizationRequest {
+	routeId: string;
+	model?: string;
+	referenceName?: string;
+	referencePrompt: string;
+	params?: Record<string, unknown>;
 }
 
 export interface GenerationDocumentContext {

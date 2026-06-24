@@ -328,6 +328,19 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const resolvedEmptyResultText = emptyResultText ?? generationKindCopy[kind].emptyResultText;
 	const mediaKindLabel = generationKindCopy[kind].mediaLabel;
 	const referenceButtonLabel = kind === "image" ? "参考图" : "参考素材";
+	const pendingDefaultSelectedAssetRef = useRef<GenerationAsset | null>(null);
+	const handleGenerationComplete = useCallback(
+		(pendingId: string, assets: GenerationAsset[], sourceTaskId: string) => {
+			onGenerationComplete?.(pendingId, assets, sourceTaskId);
+			if (kind !== "image" || pendingDefaultSelectedAssetRef.current) return;
+
+			const firstSelectableImage = assets.find(
+				(asset) => asset.kind === "image" && generationAssetSelectionKey(asset),
+			);
+			if (firstSelectableImage) pendingDefaultSelectedAssetRef.current = firstSelectableImage;
+		},
+		[kind, onGenerationComplete],
+	);
 	const {
 		clearDeletedEntry,
 		syncGenerationEntries,
@@ -336,7 +349,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		trackGenerationStart,
 	} = useMediaGenerationLifecycle({
 		kind,
-		onGenerationComplete,
+		onGenerationComplete: handleGenerationComplete,
 		onGenerationError,
 		onGenerationResponse,
 		onGenerationStart,
@@ -465,6 +478,11 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		if (!promptOptimizeError) return;
 		toast.error("提示词优化失败", { description: promptOptimizeError });
 	}, [promptOptimizeError, toast]);
+	const canSubmitPromptOverride =
+		ws.hasConfiguredRoutesForKind &&
+		!ws.needsConversation &&
+		ws.selectedRoute.status === "available" &&
+		ws.selectedRoute.configured;
 	const handlePromptOptimizeSelect = useCallback(
 		(item: (typeof ws.promptInsertItems)[number]) => {
 			const referencePrompt = item.prompt.trim();
@@ -491,6 +509,42 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			});
 		},
 		[canOptimizePrompt, optimizePrompt, toast, ws],
+	);
+	const handlePromptOptimizeAndSubmitSelect = useCallback(
+		async (item: (typeof ws.promptInsertItems)[number]) => {
+			if (!canSubmitPromptOverride) return;
+			const referencePrompt = item.prompt.trim();
+			if (!referencePrompt) return;
+
+			if (!ws.prompt.trim()) {
+				ws.setPrompt(referencePrompt);
+				await ws.submitGeneration({ prompt: referencePrompt });
+				return;
+			}
+
+			if (!canOptimizePrompt) {
+				const fallbackPrompt = appendPromptOptimizeReference(ws.prompt, referencePrompt);
+				ws.setPrompt(fallbackPrompt);
+				toast.warning("没有可用文本模型", {
+					description: "已使用追加后的提示词生成。",
+				});
+				await ws.submitGeneration({ prompt: fallbackPrompt });
+				return;
+			}
+
+			const textRoute = selectedPromptOptimizeModel?.route;
+			if (!textRoute) return;
+			await ws.submitGeneration({
+				prompt: ws.prompt,
+				promptOptimization: {
+					routeId: textRoute.id,
+					model: textRoute.model,
+					referenceName: item.name,
+					referencePrompt,
+				},
+			});
+		},
+		[canOptimizePrompt, canSubmitPromptOverride, selectedPromptOptimizeModel?.route, toast, ws],
 	);
 	const resultActions = useGeneratedResultActions({
 		mediaAssetProjectId: resolvedMediaAssetProjectId,
@@ -1203,38 +1257,6 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 					prompt: editingImageTarget.entry.prompt,
 				});
 				const editedTask = importedTasks.at(-1);
-				const editedAsset: GenerationAsset = editedTask?.assets?.[0] ?? {
-					kind: "image",
-					mimeType: mediaAsset.mimeType || result.mimeType,
-					title: editedTitle,
-					url: mediaAsset.url,
-				};
-				const selectionKey = generationAssetSelectionKey(editedAsset);
-				const previousSelected =
-					selectionKey && !isAssetSelectionControlled
-						? effectiveSelectedAssetKeys.includes(selectionKey)
-						: false;
-				const persistRequestId =
-					selectionKey && !isAssetSelectionControlled
-						? (assetSelectionPersistRequestIdsRef.current[selectionKey] ?? 0) + 1
-						: null;
-				if (!isAssetSelectionControlled) {
-					if (selectionKey) {
-						assetSelectionPersistRequestIdsRef.current[selectionKey] = persistRequestId ?? 0;
-						setGeneratedAssetSelectionOverride(selectionKey, true);
-					}
-				}
-				onToggleAsset?.(editedAsset, true);
-				if (!isAssetSelectionControlled) {
-					void persistGeneratedAssetSelection(editedAsset, true, "edited").then((persisted) => {
-						if (persisted || !selectionKey || persistRequestId === null) return;
-						if (assetSelectionPersistRequestIdsRef.current[selectionKey] !== persistRequestId)
-							return;
-
-						delete assetSelectionPersistRequestIdsRef.current[selectionKey];
-						setGeneratedAssetSelectionOverride(selectionKey, previousSelected);
-					});
-				}
 				if (editedTask?.id) ws.setActiveEntryId(editedTask.id);
 				setEditingImageTarget(null);
 				releaseEditingImageObjectUrl();
@@ -1248,14 +1270,9 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		},
 		[
 			editingImageTarget,
-			effectiveSelectedAssetKeys,
-			isAssetSelectionControlled,
-			onToggleAsset,
-			persistGeneratedAssetSelection,
 			releaseEditingImageObjectUrl,
 			resolvedMediaAssetProjectId,
 			selectedAssetTitle,
-			setGeneratedAssetSelectionOverride,
 			toast,
 			ws,
 		],
@@ -1308,6 +1325,16 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	useEffect(() => {
 		syncGenerationEntries(generationEntries);
 	}, [generationEntries, syncGenerationEntries]);
+
+	useEffect(() => {
+		const asset = pendingDefaultSelectedAssetRef.current;
+		if (!asset) return;
+
+		pendingDefaultSelectedAssetRef.current = null;
+		if (!generatedAssetToggleHandler || effectiveSelectedAssetKeys.length > 0) return;
+
+		generatedAssetToggleHandler(asset, true);
+	}, [effectiveSelectedAssetKeys.length, generatedAssetToggleHandler]);
 
 	const deleteEntry = useCallback(
 		async (entry: GenerationEntry) => {
@@ -1461,11 +1488,13 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				promptOptimizeControl={
 					<PromptOptimizeControl
 						canOptimize={canOptimizePrompt}
+						canGenerate={canSubmitPromptOverride}
 						disabled={ws.isSubmitting}
 						isOptimizing={isPromptOptimizing}
 						items={ws.promptInsertItems}
 						modelOptions={promptOptimizeModelOptions}
-						onSelect={handlePromptOptimizeSelect}
+						onOptimize={handlePromptOptimizeSelect}
+						onOptimizeAndSubmit={handlePromptOptimizeAndSubmitSelect}
 						onSelectModel={setSelectedPromptOptimizeRouteId}
 						selectedModelRouteId={selectedPromptOptimizeModel?.id}
 					/>

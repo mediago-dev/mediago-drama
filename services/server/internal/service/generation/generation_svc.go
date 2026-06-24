@@ -8,6 +8,9 @@ type GenerationModelsResponse = dto.GenerationModelsResponse
 // GenerationMessageRequest creates or retries a generation request.
 type GenerationMessageRequest = dto.GenerationMessageRequest
 
+// GenerationPromptOptimizationRequest configures server-side prompt optimization before generation.
+type GenerationPromptOptimizationRequest = dto.GenerationPromptOptimizationRequest
+
 // GenerationDocumentContext identifies the source document section for generation.
 type GenerationDocumentContext = dto.GenerationDocumentContext
 
