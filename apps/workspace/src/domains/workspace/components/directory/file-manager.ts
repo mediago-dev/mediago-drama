@@ -148,6 +148,27 @@ export const buildDocumentFilenameById = (documents: MarkdownDocument[]) => {
 	return filenames;
 };
 
+// Sidebar label for a document: its real on-disk filename stem as reported by the
+// backend, so duplicate suffixes like "-2" remain visible without showing ".md".
+// Falls back to the title only when the backend did not provide a filename.
+export const documentSidebarLabel = (document: MarkdownDocument) => {
+	const filename = document.filename?.trim();
+	if (!filename) return document.title;
+	const basename = filename.split("/").pop()?.trim();
+	if (!basename) return document.title;
+	const stem = basename.replace(/\.[^.]*$/, "").trim();
+	return stem || basename;
+};
+
+export const compareDirectoryLabels = (first: string, second: string) =>
+	first.localeCompare(second, "zh-CN", { numeric: true }) || compareRawStrings(first, second);
+
+const compareRawStrings = (first: string, second: string) => {
+	if (first < second) return -1;
+	if (first > second) return 1;
+	return 0;
+};
+
 const normalizeFolders = (folders: DocumentFolder[]) => {
 	const seen = new Set<string>();
 	const normalized: DocumentFolder[] = [];

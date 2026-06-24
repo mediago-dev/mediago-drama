@@ -41,7 +41,9 @@ import {
 } from "./directory/DirectoryItemMenu";
 import {
 	canShowInFileManager,
+	compareDirectoryLabels,
 	describeFileManagerError,
+	documentSidebarLabel,
 	revealDirectoryFileInFileManager,
 } from "./directory/file-manager";
 
@@ -142,11 +144,7 @@ export const ProjectDirectory: React.FC<{
 		() =>
 			sourceDocuments
 				.filter((document) => !isOverviewDocumentId(document.id))
-				.sort(
-					(first, second) =>
-						first.title.localeCompare(second.title, "zh-CN") ||
-						first.id.localeCompare(second.id, "zh-CN"),
-				),
+				.sort(compareDocumentsBySidebarLabel),
 		[sourceDocuments],
 	);
 	const projectAssets = useMemo(
@@ -340,6 +338,9 @@ const ProjectDocumentItem: React.FC<{
 	const isAssetActive = entry.kind === "asset" && isAgentProjectRoute && entry.id === activeAssetId;
 	const isActive = showActiveSelection && (isDocumentActive || isAssetActive);
 	const itemTitle = entry.title || (isAsset ? "未命名文件" : "未命名文档");
+	// Documents show their real on-disk filename so the sidebar matches the folder; assets
+	// already carry their real filename.
+	const displayLabel = entry.kind === "document" ? documentSidebarLabel(entry.document) : itemTitle;
 	const deletedIds = useMemo(() => collectDocumentTreeNodeIds(node), [node]);
 	const childDocumentCount = deletedIds.length - 1;
 	const entryDescriptor =
@@ -364,7 +365,7 @@ const ProjectDocumentItem: React.FC<{
 			title: isAsset ? "删除素材？" : "删除文档？",
 			description: (
 				<>
-					确定要删除“{itemTitle}”吗？
+					确定要删除“{displayLabel}”吗？
 					{!isAsset && childDocumentCount > 0
 						? ` 该文档包含 ${childDocumentCount} 篇子文档，会一并删除，此操作无法撤销。`
 						: " 此操作无法撤销。"}
@@ -450,7 +451,7 @@ const ProjectDocumentItem: React.FC<{
 						className="size-3.5 shrink-0"
 						style={entryDescriptor ? { color: `var(${entryDescriptor.colorVar})` } : undefined}
 					/>
-					<span className="min-w-0 flex-1 truncate">{itemTitle}</span>
+					<span className="min-w-0 flex-1 truncate">{displayLabel}</span>
 				</button>
 				{entry.kind === "document" && entry.document.isDirty ? (
 					<span className="size-1.5 shrink-0 rounded-full bg-primary" aria-label="未保存更改" />
@@ -458,7 +459,7 @@ const ProjectDocumentItem: React.FC<{
 			</div>
 			{menuPosition ? (
 				<DirectoryItemMenu
-					ariaLabel={`${itemTitle} 操作`}
+					ariaLabel={`${displayLabel} 操作`}
 					items={menuItems}
 					onClose={closeMenu}
 					position={menuPosition}
@@ -507,7 +508,7 @@ const buildEntryTree = (entries: DirectoryEntry[]) => {
 	const sortNodes = (items: DirectoryTreeNode[]) => {
 		items.sort(
 			(first, second) =>
-				first.entry.title.localeCompare(second.entry.title, "zh-CN") ||
+				compareDirectoryLabels(first.entry.title, second.entry.title) ||
 				first.entry.kind.localeCompare(second.entry.kind, "zh-CN") ||
 				first.entry.id.localeCompare(second.entry.id, "zh-CN"),
 		);
@@ -521,7 +522,7 @@ const buildEntryTree = (entries: DirectoryEntry[]) => {
 const documentEntry = (document: MarkdownDocument): DirectoryEntry => ({
 	kind: "document",
 	id: document.id,
-	title: document.title,
+	title: documentSidebarLabel(document),
 	parentId: document.parentId,
 	sortOrder: document.sortOrder,
 	updatedAt: document.updatedAt,
@@ -537,6 +538,10 @@ const assetEntry = (asset: ProjectAsset): DirectoryEntry => ({
 	updatedAt: asset.updatedAt,
 	asset,
 });
+
+const compareDocumentsBySidebarLabel = (first: MarkdownDocument, second: MarkdownDocument) =>
+	compareDirectoryLabels(documentSidebarLabel(first), documentSidebarLabel(second)) ||
+	first.id.localeCompare(second.id, "zh-CN");
 
 const collectDocumentTreeNodeIds = (node: DirectoryTreeNode): string[] => [
 	...(node.entry.kind === "document" ? [node.entry.document.id] : []),

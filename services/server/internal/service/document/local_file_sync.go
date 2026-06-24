@@ -77,20 +77,19 @@ func (store *Service) loadLocalMarkdownWorkspaceUnlocked(projectID string) ([]me
 	folderIDByDir, folders := localMarkdownFolderRecords(projectID, tree.FolderPaths, nil)
 	documents := make([]mediamcp.WorkspaceDocument, 0, len(tree.Files))
 	sortOrderByFolder := map[string]int{}
+	usedDocumentIDs := map[string]bool{}
 	for _, file := range tree.Files {
 		folderID := folderIDByDir[strings.ToLower(filepath.ToSlash(file.Dir))]
 		sortOrder := sortOrderByFolder[folderID]
 		sortOrderByFolder[folderID] = sortOrder + 1
 		content := stripLocalMarkdownFrontmatter(file.Content)
 		metadata := localMarkdownMetadata(file.Content)
-		documentID := metadata.ID
-		if documentID == "" {
-			documentID = deterministicLocalFileID("doc-file-", projectID, file.RelativePath)
-		}
+		documentID := localMarkdownDocumentID(projectID, file.RelativePath, metadata.ID, usedDocumentIDs)
 		version := NormalizedDocumentVersion(metadata.Version)
 		documents = append(documents, mediamcp.WorkspaceDocument{
 			ID:             documentID,
 			Title:          localMarkdownDocumentTitle(metadata, file.Title),
+			Filename:       file.RelativePath,
 			Content:        content,
 			Category:       localMarkdownDocumentCategory(file.Content),
 			ParentID:       metadata.ParentID,
@@ -242,6 +241,20 @@ func localMarkdownDocumentTitle(metadata documentMarkdownFrontmatter, fallback s
 		return title
 	}
 	return fallback
+}
+
+func localMarkdownDocumentID(
+	projectID string,
+	relativePath string,
+	metadataID string,
+	used map[string]bool,
+) string {
+	id := strings.TrimSpace(metadataID)
+	if id != "" && !used[id] {
+		used[id] = true
+		return id
+	}
+	return uniqueLocalFileID("doc-file-", projectID, relativePath, used)
 }
 
 func localMarkdownProjectionContent(document mediamcp.WorkspaceDocument) string {

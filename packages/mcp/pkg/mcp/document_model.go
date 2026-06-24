@@ -81,8 +81,12 @@ type DocumentWorkbenchDraft struct {
 
 // WorkspaceDocument is the full document payload shared over MCP and HTTP.
 type WorkspaceDocument struct {
-	ID             string                  `json:"id"`
-	Title          string                  `json:"title"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	// Filename is the document's actual on-disk markdown filename (relative to the work
+	// directory), populated when loading from the local workspace. It lets the UI show the
+	// exact file name instead of re-deriving one from the title.
+	Filename       string                  `json:"filename,omitempty"`
 	Content        string                  `json:"content"`
 	Category       string                  `json:"category,omitempty"`
 	ParentID       string                  `json:"parentId,omitempty"`

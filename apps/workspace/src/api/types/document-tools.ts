@@ -176,6 +176,7 @@ export interface DocumentWorkbenchDraft {
 export interface WorkspaceDocument {
 	id: string;
 	title: string;
+	filename?: string;
 	content: string;
 	category?: string;
 	parentId?: string;

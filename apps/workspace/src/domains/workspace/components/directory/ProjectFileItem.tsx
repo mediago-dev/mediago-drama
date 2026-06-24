@@ -24,6 +24,7 @@ import {
 import {
 	canShowInFileManager,
 	describeFileManagerError,
+	documentSidebarLabel,
 	revealDirectoryFileInFileManager,
 } from "./file-manager";
 import { assetIcon } from "./helpers";
@@ -73,6 +74,9 @@ export const ProjectFileItem: React.FC<{
 	const isAssetActive = entry.kind === "asset" && isAgentProjectRoute && entry.id === activeAssetId;
 	const isActive = showActiveSelection && (isDocumentActive || isAssetActive);
 	const itemTitle = entry.title || (isAsset ? "未命名文件" : "未命名文档");
+	// Documents show their real on-disk filename so the sidebar matches the folder; assets
+	// already carry their real filename.
+	const displayLabel = entry.kind === "document" ? documentSidebarLabel(entry.document) : itemTitle;
 	const descriptor =
 		documentCategoryDescriptorMap[entry.category] ?? documentCategoryDescriptorMap["reference"];
 	const EntryIcon = entry.kind === "asset" ? assetIcon(entry.asset.kind) : descriptor.icon;
@@ -158,7 +162,7 @@ export const ProjectFileItem: React.FC<{
 						onSelect: () =>
 							void confirmDialog({
 								title: isAsset ? "删除素材？" : "删除文档？",
-								description: `确定要删除“${itemTitle}”吗？此操作无法撤销。`,
+								description: `确定要删除“${displayLabel}”吗？此操作无法撤销。`,
 								confirmLabel: "删除",
 								onConfirm: () => {
 									if (entry.kind === "asset") {
@@ -208,7 +212,7 @@ export const ProjectFileItem: React.FC<{
 						className="size-3.5 shrink-0"
 						style={{ color: `var(${descriptor.colorVar})` }}
 					/>
-					<span className="min-w-0 flex-1 truncate">{itemTitle}</span>
+					<span className="min-w-0 flex-1 truncate">{displayLabel}</span>
 				</button>
 				{entry.kind === "document" && entry.document.isDirty ? (
 					<span className="size-1.5 shrink-0 rounded-full bg-primary" aria-label="未保存更改" />
@@ -216,7 +220,7 @@ export const ProjectFileItem: React.FC<{
 			</div>
 			{menuPosition ? (
 				<DirectoryItemMenu
-					ariaLabel={`${itemTitle} 操作`}
+					ariaLabel={`${displayLabel} 操作`}
 					items={menuItems}
 					onClose={closeMenu}
 					position={menuPosition}

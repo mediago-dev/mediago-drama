@@ -16,6 +16,7 @@ import type {
 	DirectoryTree,
 	DragPayload,
 } from "./types";
+import { compareDirectoryLabels, documentSidebarLabel } from "./file-manager";
 import { rootDropId } from "./types";
 
 export const buildDirectoryTree = (
@@ -65,7 +66,7 @@ export const buildDirectoryTree = (
 const documentEntry = (document: MarkdownDocument): DirectoryFileEntry => ({
 	kind: "document",
 	id: document.id,
-	title: document.title,
+	title: documentSidebarLabel(document),
 	folderId: document.folderId ?? null,
 	sortOrder: document.sortOrder,
 	updatedAt: document.updatedAt,
@@ -89,7 +90,7 @@ const compareDirectoryFolders = (first: DirectoryFolderNode, second: DirectoryFo
 	first.folder.name.localeCompare(second.folder.name, "zh-CN");
 
 const compareDirectoryFiles = (first: DirectoryFileEntry, second: DirectoryFileEntry) =>
-	first.title.localeCompare(second.title, "zh-CN") ||
+	compareDirectoryLabels(first.title, second.title) ||
 	first.kind.localeCompare(second.kind, "zh-CN") ||
 	first.id.localeCompare(second.id, "zh-CN");
 
@@ -187,7 +188,7 @@ export const previewForPayload = (
 		colorVar: descriptor.colorVar,
 		icon: descriptor.icon,
 		kind: payload.kind,
-		title: document.title || "未命名文档",
+		title: documentSidebarLabel(document) || "未命名文档",
 	};
 };
 

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { DocumentFolder, MarkdownDocument } from "@/domains/documents/stores";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
-import { resolveDirectoryFilePath, resolveDirectoryFolderPath } from "./file-manager";
+import {
+	compareDirectoryLabels,
+	documentSidebarLabel,
+	resolveDirectoryFilePath,
+	resolveDirectoryFolderPath,
+} from "./file-manager";
 
 const makeFolder = (
 	id: string,
@@ -48,6 +53,28 @@ const makeAsset = (id: string, filename: string, folderId: string | null = null)
 	sortOrder: 0,
 	createdAt: "2026-06-04T00:00:00.000Z",
 	updatedAt: "2026-06-04T00:00:00.000Z",
+});
+
+describe("document sidebar labels", () => {
+	it("shows the real on-disk filename stem so duplicate suffixes stay visible", () => {
+		const document = { ...makeDocument("doc-1", "第一集道具"), filename: "第一集道具-2.md" };
+		expect(documentSidebarLabel(document)).toBe("第一集道具-2");
+	});
+
+	it("uses the basename when the filename includes a folder path", () => {
+		const document = { ...makeDocument("doc-2", "角色"), filename: "角色/第一集角色.md" };
+		expect(documentSidebarLabel(document)).toBe("第一集角色");
+	});
+
+	it("falls back to the title when the backend did not provide a filename", () => {
+		expect(documentSidebarLabel(makeDocument("doc-3", "回退标题"))).toBe("回退标题");
+	});
+});
+
+describe("directory label sorting", () => {
+	it("keeps the plain filename before duplicate suffixes", () => {
+		expect(compareDirectoryLabels("第一集道具", "第一集道具-2")).toBeLessThan(0);
+	});
 });
 
 describe("directory file manager paths", () => {

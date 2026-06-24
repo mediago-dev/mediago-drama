@@ -52,6 +52,8 @@ export type DocumentCategory =
 export interface MarkdownDocument {
 	id: string;
 	title: string;
+	/** Actual on-disk markdown filename (relative to the work dir), provided by the backend. */
+	filename?: string;
 	content: string;
 	category?: DocumentCategory;
 	parentId: string | null;
