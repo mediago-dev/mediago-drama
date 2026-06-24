@@ -38,6 +38,94 @@
       "outputTokenPrice": 8
     },
     {
+      "routeId": "dmx.gpt-5.5-text",
+      "currency": "CNY",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 20,
+      "outputTokenPrice": 120,
+      "cachedTokenPrice": 2
+    },
+    {
+      "routeId": "dmx.gpt-5.4-text",
+      "currency": "CNY",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 10,
+      "outputTokenPrice": 60,
+      "cachedTokenPrice": 1
+    },
+    {
+      "routeId": "dmx.gpt-5.4-mini-text",
+      "currency": "CNY",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 3,
+      "outputTokenPrice": 18,
+      "cachedTokenPrice": 0.3
+    },
+    {
+      "routeId": "dmx.gemini-3.5-flash-text",
+      "currency": "CNY",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 12,
+      "outputTokenPrice": 72,
+      "cachedTokenPrice": 1.2
+    },
+    {
+      "routeId": "dmx.gemini-3.1-pro-preview-text",
+      "currency": "CNY",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 15,
+      "outputTokenPrice": 90,
+      "cachedTokenPrice": 1.5
+    },
+    {
+      "routeId": "dmx.gemini-3.1-flash-lite-text",
+      "currency": "CNY",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 2,
+      "outputTokenPrice": 12,
+      "cachedTokenPrice": 0.2
+    },
+    {
+      "routeId": "dmx.minimax-m3-text",
+      "currency": "CNY",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 2,
+      "outputTokenPrice": 8,
+      "cachedTokenPrice": 0.4
+    },
+    {
+      "routeId": "dmx.minimax-m2.7-text",
+      "currency": "CNY",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 2,
+      "outputTokenPrice": 8,
+      "cachedTokenPrice": 0.4
+    },
+    {
+      "routeId": "dmx.minimax-m2.7-highspeed-text",
+      "currency": "CNY",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 4,
+      "outputTokenPrice": 16,
+      "cachedTokenPrice": 0.4
+    },
+    {
+      "routeId": "dmx.deepseek-v4-flash-text",
+      "currency": "CNY",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 1,
+      "outputTokenPrice": 2,
+      "cachedTokenPrice": 0.02
+    },
+    {
+      "routeId": "dmx.deepseek-v4-pro-text",
+      "currency": "CNY",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 3,
+      "outputTokenPrice": 6,
+      "cachedTokenPrice": 0.03
+    },
+    {
       "routeId": "openrouter.gpt-4.1-mini-text",
       "currency": "USD",
       "unit": "per_million_tokens",

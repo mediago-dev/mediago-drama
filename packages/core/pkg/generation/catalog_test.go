@@ -54,12 +54,23 @@ func TestCatalogRoutesReferenceKnownFamiliesAndVersions(t *testing.T) {
 	}
 }
 
-func TestTextCatalogIncludesExpandedOfficialRoutes(t *testing.T) {
+func TestTextCatalogIncludesExpandedRoutes(t *testing.T) {
 	cases := []struct {
 		id       string
 		provider string
 		model    string
 	}{
+		{RouteDMXGPT55Text, ProviderDMX, "gpt-5.5"},
+		{RouteDMXGPT54Text, ProviderDMX, "gpt-5.4"},
+		{RouteDMXGPT54MiniText, ProviderDMX, "gpt-5.4-mini"},
+		{RouteDMXGemini35FlashText, ProviderDMX, "gemini-3.5-flash"},
+		{RouteDMXGemini31ProText, ProviderDMX, "gemini-3.1-pro-preview"},
+		{RouteDMXGemini31FlashLiteText, ProviderDMX, "gemini-3.1-flash-lite"},
+		{RouteDMXMiniMaxM3Text, ProviderDMX, "MiniMax-M3"},
+		{RouteDMXMiniMaxM27Text, ProviderDMX, "MiniMax-M2.7"},
+		{RouteDMXMiniMaxM27HighspeedText, ProviderDMX, "MiniMax-M2.7-highspeed"},
+		{RouteDMXDeepSeekV4FlashText, ProviderDMX, "deepseek-v4-flash"},
+		{RouteDMXDeepSeekV4ProText, ProviderDMX, "deepseek-v4-pro"},
 		{RouteOfficialGPT55Text, ProviderOpenAI, "gpt-5.5"},
 		{RouteOfficialGPT54Text, ProviderOpenAI, "gpt-5.4"},
 		{RouteOfficialGPT54MiniText, ProviderOpenAI, "gpt-5.4-mini"},

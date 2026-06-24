@@ -116,6 +116,17 @@ func (workflow *GenerationService) resolveConfiguredTextRoute(routeID string) (c
 		coregeneration.RouteOfficialDeepSeekV4ProText,
 		coregeneration.RouteOpenRouterGPT5MiniText,
 		coregeneration.RouteOpenRouterGPT41MiniText,
+		coregeneration.RouteDMXGPT55Text,
+		coregeneration.RouteDMXGPT54Text,
+		coregeneration.RouteDMXGPT54MiniText,
+		coregeneration.RouteDMXGemini35FlashText,
+		coregeneration.RouteDMXGemini31ProText,
+		coregeneration.RouteDMXGemini31FlashLiteText,
+		coregeneration.RouteDMXMiniMaxM3Text,
+		coregeneration.RouteDMXMiniMaxM27Text,
+		coregeneration.RouteDMXMiniMaxM27HighspeedText,
+		coregeneration.RouteDMXDeepSeekV4FlashText,
+		coregeneration.RouteDMXDeepSeekV4ProText,
 		coregeneration.RouteDMXGPT41MiniText,
 	}
 	for _, candidateID := range preferredRouteIDs {
