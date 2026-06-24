@@ -5,6 +5,7 @@ func seedreamParams() RouteParamConfig {
 		selectRouteParam(ParamAspectRatio, "adaptive", []ParamOption{
 			{Label: "Adaptive", Value: "adaptive"},
 			{Label: "1:1", Value: "1:1"},
+			{Label: "3:4", Value: "3:4"},
 			{Label: "16:9", Value: "16:9"},
 			{Label: "9:16", Value: "9:16"},
 		}),
@@ -34,6 +35,8 @@ func seedreamParams() RouteParamConfig {
 					"adaptive|3K": "3K",
 					"1:1|2K":      "2048x2048",
 					"1:1|3K":      "3072x3072",
+					"3:4|2K":      "1728x2304",
+					"3:4|3K":      "2592x3456",
 					"16:9|2K":     "2848x1600",
 					"16:9|3K":     "3072x1728",
 					"9:16|2K":     "1600x2848",

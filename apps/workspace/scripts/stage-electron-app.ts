@@ -57,6 +57,10 @@ function main(): void {
 				target: ["nsis", "zip"],
 				icon: "../../build/icons/icon.ico",
 			},
+			nsis: {
+				oneClick: false,
+				allowToChangeInstallationDirectory: true,
+			},
 			linux: {
 				target: ["AppImage", "deb"],
 				icon: "../../build/icons",

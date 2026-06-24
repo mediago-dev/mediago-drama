@@ -476,6 +476,9 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 		t.Fatal("dmx gpt image route should support reference images")
 	}
 
+	dmxSeedream := mustRoute(t, RouteDMXSeedream5Lite)
+	assertHasOptions(t, mustParam(t, dmxSeedream, "aspectRatio"), "3:4")
+
 	nanoBanana := mustRoute(t, RouteDMXNanoBanana31)
 	if !nanoBanana.SupportsReferenceURLs {
 		t.Fatal("dmx nano banana route should support reference images")

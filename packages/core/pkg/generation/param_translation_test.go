@@ -86,6 +86,22 @@ func TestTranslateRouteParamsJoinsSeedreamAdaptiveSize(t *testing.T) {
 	}
 }
 
+func TestTranslateRouteParamsJoinsSeedreamPortraitThreeFourSize(t *testing.T) {
+	route := mustRoute(t, RouteDMXSeedream5Lite)
+	resolved := ApplyRoute(Request{
+		Kind:    KindImage,
+		RouteID: route.ID,
+		Params: map[string]any{
+			"aspectRatio": "3:4",
+			"resolution":  "2K",
+		},
+	}, route)
+
+	if got, want := resolved.Params["size"], "1728x2304"; got != want {
+		t.Fatalf("size = %#v, want %#v", got, want)
+	}
+}
+
 func TestTranslateRouteParamsJoinsGPTImageSize(t *testing.T) {
 	route := mustRoute(t, RouteDMXGPTImage2)
 
@@ -239,6 +255,17 @@ func TestUpgradeLegacyRouteParams(t *testing.T) {
 			},
 			want: map[string]any{
 				"aspectRatio": "1:1",
+				"resolution":  "2K",
+			},
+		},
+		{
+			name:  "seedream exact portrait 3:4 size",
+			route: RouteDMXSeedream5Lite,
+			params: map[string]any{
+				"size": "1728x2304",
+			},
+			want: map[string]any{
+				"aspectRatio": "3:4",
 				"resolution":  "2K",
 			},
 		},

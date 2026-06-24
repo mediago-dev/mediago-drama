@@ -249,6 +249,7 @@ export function seedreamParams(): GenerationParam[] {
 		selectParam("aspectRatio", "画幅比例", "adaptive", [
 			{ label: "自适应", value: "adaptive" },
 			{ label: "1:1", value: "1:1" },
+			{ label: "3:4", value: "3:4" },
 			{ label: "16:9", value: "16:9" },
 			{ label: "9:16", value: "9:16" },
 		]),
@@ -274,6 +275,8 @@ export function seedreamParamCombos(): GenerationParamCombo[] {
 				["adaptive", "3K"],
 				["1:1", "2K"],
 				["1:1", "3K"],
+				["3:4", "2K"],
+				["3:4", "3K"],
 				["16:9", "2K"],
 				["16:9", "3K"],
 				["9:16", "2K"],
