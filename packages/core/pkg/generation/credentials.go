@@ -15,9 +15,12 @@ type CredentialSpec struct {
 func CredentialSpecs() []CredentialSpec {
 	specs := []CredentialSpec{
 		{
-			ID:          ProviderDMX,
-			Label:       "DMX",
-			Description: "DMX aggregation platform",
+			ID:              ProviderDMX,
+			Label:           "DMX",
+			Description:     "DMX aggregation platform",
+			CredentialLabel: "DMX API Key",
+			Placeholder:     "输入 DMX API Key",
+			Help:            "用于 DMX 聚合平台生成路由，也可作为智能体 Gemini 文本模型凭据。",
 		},
 		{
 			ID:          ProviderOpenRouter,

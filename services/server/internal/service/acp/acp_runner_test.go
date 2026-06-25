@@ -297,41 +297,48 @@ func TestAgentRuntimeConfigFromACPSession(t *testing.T) {
 }
 
 func TestApplyACPSessionSelectionsSkipsReasoningForExternalProviderModel(t *testing.T) {
-	configurator := &recordingACPSessionConfigurator{}
+	for _, model := range []string{
+		"deepseek/deepseek-chat",
+		"dmx/gemini-3.1-pro-preview",
+	} {
+		t.Run(model, func(t *testing.T) {
+			configurator := &recordingACPSessionConfigurator{}
 
-	err := applyACPSessionSelections(
-		context.Background(),
-		configurator,
-		acp.SessionId("session-1"),
-		agentRunRequest{
-			Model: agentACPConfigSelection{
-				ConfigID: "model",
-				Source:   AgentRuntimeConfigSourceOption,
-				Value:    "deepseek/deepseek-chat",
-			},
-			Reasoning: agentACPConfigSelection{
-				ConfigID: "effort",
-				Source:   AgentRuntimeConfigSourceOption,
-				Value:    "thinking",
-			},
-			Permission: agentACPConfigSelection{
-				Source: AgentRuntimeConfigSourceMode,
-				Value:  "ask",
-			},
-		},
-		nil,
-	)
-	if err != nil {
-		t.Fatalf("applyACPSessionSelections returned error: %v", err)
-	}
-	if len(configurator.configRequests) != 1 {
-		t.Fatalf("config requests = %#v, want only model attempt", configurator.configRequests)
-	}
-	if got := string(configurator.configRequests[0].ValueId.Value); got != "deepseek/deepseek-chat" {
-		t.Fatalf("model value = %q, want deepseek/deepseek-chat", got)
-	}
-	if len(configurator.modeRequests) != 1 || configurator.modeRequests[0].ModeId != acp.SessionModeId("ask") {
-		t.Fatalf("mode requests = %#v, want ask applied after skipped reasoning", configurator.modeRequests)
+			err := applyACPSessionSelections(
+				context.Background(),
+				configurator,
+				acp.SessionId("session-1"),
+				agentRunRequest{
+					Model: agentACPConfigSelection{
+						ConfigID: "model",
+						Source:   AgentRuntimeConfigSourceOption,
+						Value:    model,
+					},
+					Reasoning: agentACPConfigSelection{
+						ConfigID: "effort",
+						Source:   AgentRuntimeConfigSourceOption,
+						Value:    "thinking",
+					},
+					Permission: agentACPConfigSelection{
+						Source: AgentRuntimeConfigSourceMode,
+						Value:  "ask",
+					},
+				},
+				nil,
+			)
+			if err != nil {
+				t.Fatalf("applyACPSessionSelections returned error: %v", err)
+			}
+			if len(configurator.configRequests) != 1 {
+				t.Fatalf("config requests = %#v, want only model attempt", configurator.configRequests)
+			}
+			if got := string(configurator.configRequests[0].ValueId.Value); got != model {
+				t.Fatalf("model value = %q, want %q", got, model)
+			}
+			if len(configurator.modeRequests) != 1 || configurator.modeRequests[0].ModeId != acp.SessionModeId("ask") {
+				t.Fatalf("mode requests = %#v, want ask applied after skipped reasoning", configurator.modeRequests)
+			}
+		})
 	}
 }
 

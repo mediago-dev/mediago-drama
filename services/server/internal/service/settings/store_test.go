@@ -65,7 +65,7 @@ func TestSettingsSetListAndClearAPIKey(t *testing.T) {
 	}
 }
 
-func TestSettingsListAPIKeysIncludesGenerationAndAgentDeepSeek(t *testing.T) {
+func TestSettingsListAPIKeysIncludesGenerationAndAgentProviders(t *testing.T) {
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
 
 	list, err := settings.ListAPIKeys(context.Background())
@@ -81,6 +81,16 @@ func TestSettingsListAPIKeysIncludesGenerationAndAgentDeepSeek(t *testing.T) {
 		!stringSliceContains(provider.Capabilities, "agent") ||
 		!stringSliceContains(provider.Capabilities, "generation") {
 		t.Fatalf("deepseek provider = %#v, want generation and agent DeepSeek provider", provider)
+	}
+
+	provider = providerByID(t, list, "dmx")
+	if provider.Configured || provider.Source != "none" {
+		t.Fatalf("dmx provider = %#v, want unconfigured provider", provider)
+	}
+	if provider.Label != "DMX" ||
+		!stringSliceContains(provider.Capabilities, "agent") ||
+		!stringSliceContains(provider.Capabilities, "generation") {
+		t.Fatalf("dmx provider = %#v, want generation and agent DMX provider", provider)
 	}
 }
 

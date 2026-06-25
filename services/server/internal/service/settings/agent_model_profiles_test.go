@@ -202,6 +202,56 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	}
 }
 
+func TestPrepareOpenCodeRuntimeConfigIncludesDMXGeminiFromDMXKey(t *testing.T) {
+	settings := NewSettingsWithAgentModelProfiles(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
+	)
+	ctx := context.Background()
+
+	if _, err := settings.SetAPIKey(ctx, "dmx", "sk-dmx-secret"); err != nil {
+		t.Fatalf("SetAPIKey returned error: %v", err)
+	}
+
+	workspaceDir := t.TempDir()
+	config, err := settings.PrepareOpenCodeRuntimeConfig(ctx, workspaceDir)
+	if err != nil {
+		t.Fatalf("PrepareOpenCodeRuntimeConfig returned error: %v", err)
+	}
+	if config.ProfileCount != 1 || config.DefaultProfileID != "dmx" {
+		t.Fatalf("runtime config = %#v, want one dmx default", config)
+	}
+	envName := AgentModelProfileEnvName("dmx")
+	if config.Env[envName] != "sk-dmx-secret" {
+		t.Fatalf("runtime env %q = %q, want secret in process env only", envName, config.Env[envName])
+	}
+
+	data, err := os.ReadFile(filepath.Join(config.ConfigDir, "opencode.json"))
+	if err != nil {
+		t.Fatalf("reading opencode.json: %v", err)
+	}
+	text := string(data)
+	if strings.Contains(text, "sk-dmx-secret") {
+		t.Fatalf("opencode.json should not contain real API key: %s", text)
+	}
+	for _, want := range []string{
+		`"model": "dmx/gemini-3.1-pro-preview"`,
+		`"dmx": {`,
+		`"name": "DMX"`,
+		`"baseURL": "https://www.dmxapi.cn/v1"`,
+		`"apiKey": "{env:MEDIAGO_AGENT_MODEL_DMX_API_KEY}"`,
+		`"gemini-3.1-pro-preview": {`,
+		`"name": "Gemini 3.1 Pro Preview"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("opencode.json missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, `"tool_call"`) {
+		t.Fatalf("opencode.json should not enable tool calls for DMX Gemini until the provider path is verified:\n%s", text)
+	}
+}
+
 func TestPrepareOpenCodeRuntimeConfigUsesLegacyOfficialProfileKey(t *testing.T) {
 	settings := NewSettingsWithAgentModelProfiles(
 		&memoryAPIKeyStore{values: map[string]string{

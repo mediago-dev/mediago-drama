@@ -387,7 +387,7 @@ func shouldApplyACPReasoningSelection(request agentRunRequest) bool {
 		return true
 	}
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "deepseek", "minimax-cn", "openrouter":
+	case "deepseek", "dmx", "minimax-cn", "openrouter":
 		return false
 	default:
 		return true

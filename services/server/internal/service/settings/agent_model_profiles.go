@@ -25,6 +25,7 @@ const (
 	opencodeConfigSchema       = "https://opencode.ai/config.json"
 	agentModelKeyPrefix        = "agent-model:"
 	agentModelKeySuffix        = ":api-key"
+	agentModelProviderDMX      = "dmx"
 	agentModelProviderDeepSeek = "deepseek"
 )
 
@@ -520,6 +521,16 @@ func AgentModelProfileTemplates() []AgentModelProfileTemplate {
 			SupportsTools:    true,
 			Temperature:      &zero,
 		},
+		{
+			ID:               "dmx-gemini",
+			Name:             "DMX Gemini",
+			ProviderID:       agentModelProviderDMX,
+			ProviderLabel:    "DMX",
+			BaseURL:          "https://www.dmxapi.cn/v1",
+			Model:            "gemini-3.1-pro-preview",
+			ModelDisplayName: "Gemini 3.1 Pro Preview",
+			Temperature:      &zero,
+		},
 	}
 	result := make([]AgentModelProfileTemplate, len(templates))
 	copy(result, templates)
@@ -549,6 +560,7 @@ type officialAgentModelProfileSpec struct {
 func officialAgentModelProfileSpecs() []officialAgentModelProfileSpec {
 	return []officialAgentModelProfileSpec{
 		{TemplateID: "openrouter", CredentialKeyName: "openrouter"},
+		{TemplateID: "dmx-gemini", CredentialKeyName: agentModelProviderDMX},
 		{TemplateID: "minimax", CredentialKeyName: "minimax"},
 		{TemplateID: "deepseek", CredentialKeyName: agentModelProviderDeepSeek},
 	}
