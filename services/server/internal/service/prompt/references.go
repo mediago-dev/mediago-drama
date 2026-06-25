@@ -26,47 +26,6 @@ type referenceIndexItem struct {
 	Title           string
 }
 
-func renderReferenceIndexPrompt(request AgentRunRequest) string {
-	items := buildReferenceIndexItems(request)
-	if len(items) == 0 {
-		return ""
-	}
-
-	var builder strings.Builder
-	if title, ok := InstructionTemplateSection("TOOLS", "内部模板（代码读取）", "可用资源索引标题"); ok {
-		builder.WriteString("# ")
-		builder.WriteString(strings.TrimSpace(title))
-		builder.WriteString("\n\n")
-	}
-	if intro, ok := InstructionTemplateSection("TOOLS", "内部模板（代码读取）", "可用资源索引说明"); ok {
-		builder.WriteString(strings.TrimSpace(intro))
-		builder.WriteString("\n")
-	}
-	for _, item := range items {
-		builder.WriteString("\n- ")
-		builder.WriteString(item.CategoryLabel)
-		builder.WriteString("｜")
-		builder.WriteString(item.Title)
-		if item.DocumentTitle != "" {
-			builder.WriteString("（来自《")
-			builder.WriteString(item.DocumentTitle)
-			builder.WriteString("》")
-			if item.BlockID != "" {
-				builder.WriteString(" · blockId: ")
-				builder.WriteString(item.BlockID)
-			}
-			builder.WriteString("）")
-		} else if item.BlockID != "" {
-			builder.WriteString("（blockId: ")
-			builder.WriteString(item.BlockID)
-			builder.WriteString("）")
-		}
-		builder.WriteString("：")
-		builder.WriteString(item.MentionMarkdown)
-	}
-	return builder.String()
-}
-
 func buildReferenceIndexItems(request AgentRunRequest) []referenceIndexItem {
 	items := make([]referenceIndexItem, 0)
 	seen := map[string]bool{}

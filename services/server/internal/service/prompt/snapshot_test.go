@@ -4,22 +4,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/service/model"
 )
 
 func TestBuildACPPromptSnapshots(t *testing.T) {
-	overview := model.DefaultProjectOverviewMarkdown("示例项目", "", ProjectBrief{
-		Medium: "2D 数码插画",
-		Genre:  "沙雕喜剧",
-		Pacing: "每集 60 秒",
-	})
-
 	tests := []struct {
 		name    string
 		request AgentRunRequest
-		options PromptBuildOptions
 	}{
 		{
 			name: "no_project",
@@ -31,12 +21,6 @@ func TestBuildACPPromptSnapshots(t *testing.T) {
 			name: "project_no_document",
 			request: AgentRunRequest{
 				ProjectID: "project-1",
-				Documents: []AgentDocumentContext{
-					{ID: model.OverviewDocumentID, Title: "项目概览", Content: overview},
-				},
-			},
-			options: PromptBuildOptions{
-				OverviewMarkdown: overview,
 			},
 		},
 		{
@@ -46,14 +30,10 @@ func TestBuildACPPromptSnapshots(t *testing.T) {
 				Prompt:    "扩写开场",
 				Document: &AgentDocumentContext{
 					ID:       "doc-1",
-					ParentID: model.OverviewDocumentID,
 					Title:    "第一集",
 					Category: "screenplay",
 					Content:  "# 第一集\n\n开场。",
 				},
-			},
-			options: PromptBuildOptions{
-				OverviewMarkdown: overview,
 			},
 		},
 		{
@@ -67,24 +47,12 @@ func TestBuildACPPromptSnapshots(t *testing.T) {
 					Content: "## 场景\n\n旧台词\n",
 				},
 			},
-			options: PromptBuildOptions{
-				ScopedEdit: AgentScopedEditContext{
-					Active:        true,
-					AnchorText:    "旧台词",
-					BlockMarkdown: "## 场景\n\n旧台词\n",
-					Instruction:   "根据用户请求优化选中文本所在的 Markdown 块，只改这一块。",
-					SelectionText: "旧台词",
-					Comments: []mediamcp.DocumentComment{
-						{ID: "comment-1", AnchorText: "旧台词", Body: "让冲突更明确。"},
-					},
-				},
-			},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assertPromptSnapshot(t, test.name, BuildACPPrompt(test.request, test.options))
+			assertPromptSnapshot(t, test.name, BuildACPPrompt(test.request, PromptBuildOptions{}))
 		})
 	}
 }

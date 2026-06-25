@@ -1,16 +1,11 @@
 package model
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"strings"
-	"text/template"
 
-	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/official"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/service/textutil"
 )
 
 // UnsetProjectBriefValue is rendered for empty project brief fields.
@@ -39,19 +34,6 @@ type ProjectBriefUpdateMask struct {
 	Notes      bool
 }
 
-// ProjectBriefPromptInputs carries project brief values into prompt templates.
-type ProjectBriefPromptInputs struct {
-	UseOverview      bool
-	OverviewMarkdown string
-	Medium           string
-	Genre            string
-	Pacing           string
-	Audience         string
-	Tone             string
-	References       string
-	Notes            string
-}
-
 // ProjectBriefPatch is the sparse HTTP/MCP payload for updating a project brief.
 type ProjectBriefPatch struct {
 	Medium     *string `json:"medium,omitempty" jsonschema:"项目媒介，自由文本；只在用户已明确回答后传入。"`
@@ -69,19 +51,9 @@ type ProjectBriefMutationResult struct {
 	Changed bool
 }
 
-// Render formats the project brief as prompt instructions.
+// Render formats the project brief as Markdown fields.
 func (brief ProjectBrief) Render() string {
-	data := ProjectBriefPromptInputs{
-		UseOverview: false,
-		Medium:      renderProjectBriefValue(brief.Medium),
-		Genre:       renderProjectBriefValue(brief.Genre),
-		Pacing:      renderProjectBriefValue(brief.Pacing),
-		Audience:    renderProjectBriefValue(brief.Audience),
-		Tone:        renderProjectBriefValue(brief.Tone),
-		References:  renderProjectBriefValue(brief.References),
-		Notes:       renderProjectBriefValue(brief.Notes),
-	}
-	return projectBriefPromptTemplate(data)
+	return projectBriefFieldsMarkdown(brief)
 }
 
 // Apply returns a copy of the brief with masked fields applied.
@@ -189,29 +161,25 @@ func renderProjectBriefValue(value string) string {
 	return value
 }
 
-func projectBriefPromptTemplate(data ProjectBriefPromptInputs) string {
-	source := official.MustInstructionSection("AGENTS", "内部模板（代码读取）", "Project Brief 提示")
-	tmpl, err := template.New("project_brief").Funcs(projectBriefTemplateFuncs()).Parse(source)
-	if err != nil {
-		slog.Error("parse project_brief.md failed", "err", err)
-		return ""
+func projectBriefFieldsMarkdown(brief ProjectBrief) string {
+	fields := []struct {
+		label string
+		value string
+	}{
+		{label: "媒介", value: renderProjectBriefValue(brief.Medium)},
+		{label: "类型", value: renderProjectBriefValue(brief.Genre)},
+		{label: "节奏", value: renderProjectBriefValue(brief.Pacing)},
+		{label: "受众", value: renderProjectBriefValue(brief.Audience)},
+		{label: "基调", value: renderProjectBriefValue(brief.Tone)},
+		{label: "参考", value: renderProjectBriefValue(brief.References)},
+		{label: "其他约束", value: renderProjectBriefValue(brief.Notes)},
 	}
-	var buffer bytes.Buffer
-	if err := tmpl.Execute(&buffer, data); err != nil {
-		slog.Error("execute project_brief.md failed", "err", err)
-		return ""
+	lines := []string{
+		"| 字段 | 当前值 |",
+		"| --- | --- |",
 	}
-	return strings.TrimSpace(buffer.String())
-}
-
-func projectBriefTemplateFuncs() template.FuncMap {
-	return template.FuncMap{
-		"overviewProjectBrief": RenderOverviewProjectBriefPrompt,
-		"truncate":             projectBriefTemplateTruncate,
+	for _, field := range fields {
+		lines = append(lines, "| "+field.label+" | "+field.value+" |")
 	}
-}
-
-func projectBriefTemplateTruncate(content string, maxBytes int) string {
-	truncated, _ := textutil.TruncateUTF8(content, maxBytes)
-	return truncated
+	return strings.Join(lines, "\n")
 }

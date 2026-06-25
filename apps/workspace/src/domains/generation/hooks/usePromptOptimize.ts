@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import useSWR from "swr";
 import {
 	createGenerationConversation,
 	type GenerationFamily,
@@ -12,7 +13,7 @@ import {
 	isConfiguredRoute,
 	preferredRoute,
 } from "@/domains/generation/hooks/generationCatalog";
-import { listPromptTemplates } from "@/domains/settings/api/prompt-templates";
+import { listPromptTemplates, promptTemplatesKey } from "@/domains/settings/api/prompt-templates";
 import { markdownSection } from "@/domains/settings/lib/prompt-template-sections";
 
 export interface PromptOptimizeInput {
@@ -41,10 +42,7 @@ export interface UsePromptOptimizeOptions {
 	route?: GenerationRoute | null;
 }
 
-const promptOptimizeInstructionTemplateId = "TOOLS";
-const promptOptimizeInternalHeading = "内部模板（代码读取）";
-const promptOptimizeSystemHeading = "提示词优化系统提示";
-const promptOptimizeUserHeading = "提示词优化用户提示";
+const promptOptimizeInstructionPath = ["内部模板（代码读取）", "提示词优化系统指令"];
 
 export const usePromptOptimize = ({
 	capabilityId,
@@ -62,11 +60,22 @@ export const usePromptOptimize = ({
 	const abortRef = useRef<AbortController | null>(null);
 
 	const textRoute = route ?? resolveTextRoute(catalog);
+	const {
+		error: promptOptimizeInstructionError,
+		instruction: promptOptimizeInstruction,
+		isLoading: isPromptOptimizeInstructionLoading,
+	} = usePromptOptimizeInstruction();
 
 	const optimize = useCallback(
 		async (input: PromptOptimizeInput) => {
 			if (!textRoute) {
 				setError("没有可用的文本生成模型，请先配置 API Key。");
+				return null;
+			}
+			if (!promptOptimizeInstruction) {
+				setError(
+					promptOptimizeInstructionError ? "提示词优化指令加载失败。" : "提示词优化指令缺失。",
+				);
 				return null;
 			}
 
@@ -83,11 +92,10 @@ export const usePromptOptimize = ({
 			const normalizedProjectId = projectId?.trim() || undefined;
 
 			try {
-				const templates = await loadPromptOptimizeInstructionTemplates();
-				const userPrompt = renderPromptTemplate(templates.user, {
-					CurrentPrompt: input.currentPrompt || "（空）",
-					ReferenceName: input.referenceName,
-					ReferencePrompt: input.referencePrompt,
+				const userPrompt = buildPromptOptimizeUserPrompt({
+					currentPrompt: input.currentPrompt,
+					referenceName: input.referenceName,
+					referencePrompt: input.referencePrompt,
 				});
 				await ensurePromptOptimizeConversation({
 					conversationId,
@@ -109,7 +117,7 @@ export const usePromptOptimize = ({
 						model: textRoute.model,
 						prompt: userPrompt,
 						params: {
-							system_instruction: templates.system,
+							system_instruction: promptOptimizeInstruction,
 						},
 						referenceUrls: [],
 						referenceAssetIds: [],
@@ -157,6 +165,8 @@ export const usePromptOptimize = ({
 			onOptimized,
 			onSuccess,
 			projectId,
+			promptOptimizeInstruction,
+			promptOptimizeInstructionError,
 			textRoute,
 		],
 	);
@@ -168,7 +178,9 @@ export const usePromptOptimize = ({
 	}, []);
 
 	return {
-		canOptimize: Boolean(textRoute),
+		canOptimize: Boolean(
+			textRoute && promptOptimizeInstruction && !isPromptOptimizeInstructionLoading,
+		),
 		error,
 		isOptimizing,
 		optimize,
@@ -182,37 +194,31 @@ const resolveTextRoute = (catalog?: GenerationModelsResponse): GenerationRoute |
 	return null;
 };
 
-interface PromptOptimizeInstructionTemplates {
-	system: string;
-	user: string;
-}
+const buildPromptOptimizeUserPrompt = (input: PromptOptimizeInput) => {
+	return JSON.stringify(
+		{
+			currentPrompt: input.currentPrompt.trim(),
+			referenceName: input.referenceName.trim(),
+			referencePrompt: input.referencePrompt.trim(),
+		},
+		null,
+		2,
+	);
+};
 
-const loadPromptOptimizeInstructionTemplates =
-	async (): Promise<PromptOptimizeInstructionTemplates> => {
-		const templates = await listPromptTemplates();
-		const toolsTemplate = templates.find(
-			(template) => template.id === promptOptimizeInstructionTemplateId,
-		);
-		const system = markdownSection(toolsTemplate?.content ?? "", [
-			promptOptimizeInternalHeading,
-			promptOptimizeSystemHeading,
-		]);
-		const user = markdownSection(toolsTemplate?.content ?? "", [
-			promptOptimizeInternalHeading,
-			promptOptimizeUserHeading,
-		]);
-		if (!system || !user) {
-			throw new Error("提示词优化模板不可用。");
-		}
-		return { system, user };
+const usePromptOptimizeInstruction = () => {
+	const { data, error, isLoading } = useSWR(promptTemplatesKey, listPromptTemplates, {
+		revalidateOnFocus: false,
+	});
+	const tools = data?.find((template) => template.id === "TOOLS");
+	const instruction = tools
+		? markdownSection(tools.content, promptOptimizeInstructionPath).trim()
+		: "";
+	return {
+		error,
+		instruction,
+		isLoading,
 	};
-
-const renderPromptTemplate = (template: string, values: Record<string, string>) => {
-	let rendered = template;
-	for (const [key, value] of Object.entries(values)) {
-		rendered = rendered.replaceAll(`{{.${key}}}`, value);
-	}
-	return rendered.trim();
 };
 
 export const promptOptimizeModelOptions = (

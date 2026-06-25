@@ -2,6 +2,7 @@ package generation
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -9,8 +10,6 @@ import (
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
 )
-
-const promptOptimizationInstructionID = "TOOLS"
 
 // NormalizeGenerationPromptOptimizationRequest trims prompt optimization settings.
 func NormalizeGenerationPromptOptimizationRequest(request *GenerationPromptOptimizationRequest) *GenerationPromptOptimizationRequest {
@@ -114,27 +113,22 @@ func (workflow *GenerationService) completePromptOptimizedGeneration(
 }
 
 func promptOptimizationUserPrompt(request *GenerationPromptOptimizationRequest, currentPrompt string) string {
-	referenceName := "参考提示词"
-	if request != nil && request.ReferenceName != "" {
-		referenceName = request.ReferenceName
+	payload := struct {
+		CurrentPrompt   string `json:"currentPrompt"`
+		ReferenceName   string `json:"referenceName"`
+		ReferencePrompt string `json:"referencePrompt"`
+	}{
+		CurrentPrompt: strings.TrimSpace(currentPrompt),
 	}
-	referencePrompt := ""
 	if request != nil {
-		referencePrompt = request.ReferencePrompt
+		payload.ReferenceName = strings.TrimSpace(request.ReferenceName)
+		payload.ReferencePrompt = strings.TrimSpace(request.ReferencePrompt)
 	}
-	currentPrompt = strings.TrimSpace(currentPrompt)
-	if currentPrompt == "" {
-		currentPrompt = "（空）"
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return "{}"
 	}
-	template, ok := serviceprompt.InstructionTemplateSection(promptOptimizationInstructionID, "内部模板（代码读取）", "提示词优化用户提示")
-	if !ok {
-		return currentPrompt
-	}
-	return renderGenerationPromptVariables(template, map[string]string{
-		"ReferenceName":   referenceName,
-		"ReferencePrompt": referencePrompt,
-		"CurrentPrompt":   currentPrompt,
-	})
+	return string(data)
 }
 
 func promptOptimizationParams(params map[string]any) map[string]any {
@@ -142,24 +136,22 @@ func promptOptimizationParams(params map[string]any) map[string]any {
 	for key, value := range params {
 		next[key] = value
 	}
-	next["system_instruction"] = promptOptimizationSystemInstruction()
+	if instruction := promptOptimizationSystemInstruction(); instruction != "" {
+		next["system_instruction"] = instruction
+	}
 	return next
 }
 
 func promptOptimizationSystemInstruction() string {
-	template, ok := serviceprompt.InstructionTemplateSection(promptOptimizationInstructionID, "内部模板（代码读取）", "提示词优化系统提示")
+	instruction, ok := serviceprompt.InstructionTemplateSection(
+		"TOOLS",
+		"内部模板（代码读取）",
+		"提示词优化系统指令",
+	)
 	if !ok {
 		return ""
 	}
-	return template
-}
-
-func renderGenerationPromptVariables(template string, variables map[string]string) string {
-	replacements := make([]string, 0, len(variables)*2)
-	for key, value := range variables {
-		replacements = append(replacements, "{{."+key+"}}", value)
-	}
-	return strings.TrimSpace(strings.NewReplacer(replacements...).Replace(template))
+	return strings.TrimSpace(instruction)
 }
 
 func (workflow *GenerationService) completePromptOptimizedGenerationSync(

@@ -55,6 +55,20 @@ const generationApiMocks = vi.hoisted(() => ({
 const mediaApiMocks = vi.hoisted(() => ({
 	uploadMediaAsset: vi.fn(),
 }));
+const promptTemplateApiMocks = vi.hoisted(() => ({
+	listPromptTemplates: vi.fn(async () => [
+		{
+			id: "TOOLS",
+			content: `# 工具使用原则
+
+## 内部模板（代码读取）
+
+### 提示词优化系统指令
+
+你是一位专业的 AI 绘画提示词优化专家。`,
+		},
+	]),
+}));
 
 vi.mock("@/domains/generation/hooks/useGenerationWorkspace", () => ({
 	useGenerationWorkspace: vi.fn(),
@@ -85,6 +99,11 @@ vi.mock("@/domains/workspace/api/media", async (importOriginal) => {
 		uploadMediaAsset: mediaApiMocks.uploadMediaAsset,
 	};
 });
+
+vi.mock("@/domains/settings/api/prompt-templates", () => ({
+	listPromptTemplates: promptTemplateApiMocks.listPromptTemplates,
+	promptTemplatesKey: "/prompt-templates",
+}));
 
 vi.mock("@/domains/generation/components/ImageStickerEditorDialog", () => ({
 	ImageStickerEditorDialog: ({
@@ -1713,6 +1732,7 @@ describe("MediaGenerationWorkspace", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
 		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+		await waitFor(() => expect(screen.getByRole("button", { name: "优化" })).toBeEnabled());
 		fireEvent.click(screen.getByRole("button", { name: "优化" }));
 
 		await waitFor(() => expect(generationApiMocks.streamGenerationText).toHaveBeenCalled());
@@ -1723,6 +1743,11 @@ describe("MediaGenerationWorkspace", () => {
 			title: "舔狗金 · 提示词优化",
 		});
 		const [request] = generationApiMocks.streamGenerationText.mock.calls[0];
+		expect(JSON.parse(request.prompt)).toEqual({
+			currentPrompt: "原始角色提示词",
+			referenceName: "电影质感",
+			referencePrompt: "cinematic lighting, detailed composition",
+		});
 		expect(request).toMatchObject({
 			capabilityId: "character",
 			conversationId: "project-a-text",
@@ -1732,9 +1757,10 @@ describe("MediaGenerationWorkspace", () => {
 			scopeId: "agent",
 			provider: "openai",
 			model: "text-model",
+			params: {
+				system_instruction: expect.stringContaining("AI 绘画提示词优化专家"),
+			},
 		});
-		expect(request.prompt).toContain("原始角色提示词");
-		expect(request.prompt).toContain("cinematic lighting, detailed composition");
 		expect(setPrompt).toHaveBeenCalledWith("optimized ");
 		expect(setPrompt).toHaveBeenCalledWith("optimized prompt");
 	});
@@ -1762,6 +1788,7 @@ describe("MediaGenerationWorkspace", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
 		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+		await waitFor(() => expect(screen.getByRole("button", { name: "优化并生成" })).toBeEnabled());
 		fireEvent.click(screen.getByRole("button", { name: "优化并生成" }));
 
 		await waitFor(() =>
@@ -1813,6 +1840,7 @@ describe("MediaGenerationWorkspace", () => {
 		fireEvent.click(screen.getByRole("button", { name: /DMX Text v1/ }));
 		fireEvent.click(screen.getByRole("button", { name: "DMX" }));
 		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+		await waitFor(() => expect(screen.getByRole("button", { name: "优化" })).toBeEnabled());
 		fireEvent.click(screen.getByRole("button", { name: "优化" }));
 
 		await waitFor(() => expect(generationApiMocks.streamGenerationText).toHaveBeenCalled());

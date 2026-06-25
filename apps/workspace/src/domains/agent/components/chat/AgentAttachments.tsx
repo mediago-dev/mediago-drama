@@ -99,50 +99,6 @@ const isReadableTextFile = (file: File) => {
 	return [...readableTextExtensions].some((extension) => name.endsWith(extension));
 };
 
-export const appendAttachmentContext = (
-	prompt: string,
-	attachments: AgentAttachment[],
-	contextTitle: string,
-) => {
-	if (attachments.length === 0) return prompt;
-
-	const attachmentContext = attachments
-		.map((attachment, index) => {
-			const heading = `${index + 1}. ${attachment.kind === "image" ? "图片" : "文件"}：${attachment.name}`;
-			const meta = [`MIME：${attachment.mimeType}`, `大小：${formatBytes(attachment.size)}`];
-			if (attachment.kind === "image") {
-				return [heading, ...meta, `URL：${attachment.url}`].join("\n");
-			}
-
-			if (attachment.text === undefined) {
-				return [heading, ...meta, "说明：该文件已作为原始附件保留，无法作为文本内联读取。"].join(
-					"\n",
-				);
-			}
-
-			return [
-				heading,
-				...meta,
-				attachment.truncated ? "说明：内容过长，已截取前半部分。" : undefined,
-				"内容：",
-				"```",
-				attachment.text ?? "",
-				"```",
-			]
-				.filter(Boolean)
-				.join("\n");
-		})
-		.join("\n\n");
-
-	const title = contextTitle.trim();
-	return [prompt, title ? `${title}\n${attachmentContext}` : attachmentContext]
-		.filter(Boolean)
-		.join("\n\n");
-};
-
-export const defaultAgentPrompt = (attachments: AgentAttachment[], template: string) =>
-	attachments.length > 0 ? template.trim() : "";
-
 export const getAttachmentError = (err: unknown) =>
 	err instanceof Error ? err.message : "附件读取失败。";
 

@@ -1,7 +1,11 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import useSWR, { mutate as mutateSWR } from "swr";
-import { agentRuntimeConfigKey, getAgentRuntimeConfig } from "@/domains/agent/api/agent";
+import {
+	agentRuntimeConfigKey,
+	getAgentRuntimeConfig,
+	type AgentReference,
+} from "@/domains/agent/api/agent";
 import { agentDisplayPrompt } from "@/domains/agent/lib/display-prompt";
 import { uploadProjectAsset, type ProjectAsset } from "@/domains/workspace/api/project-assets";
 import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspace/api/workspace";
@@ -19,12 +23,8 @@ import {
 	getRuntimeConfigError,
 	normalizeRuntimeConfigValue,
 } from "@/domains/agent/components/chat/AgentRuntimeConfigControls";
-import { listPromptTemplates, promptTemplatesKey } from "@/domains/settings/api/prompt-templates";
-import { markdownSection } from "@/domains/settings/lib/prompt-template-sections";
 import {
-	appendAttachmentContext,
 	createPendingAttachment,
-	defaultAgentPrompt,
 	getAttachmentError,
 	readAgentAttachment,
 	type AgentAttachment,
@@ -92,16 +92,6 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	} = useSWR(runtimeConfigKey, () => getAgentRuntimeConfig(projectId), {
 		revalidateOnFocus: false,
 	});
-	const { data: promptTemplates = [] } = useSWR(promptTemplatesKey, listPromptTemplates);
-	const toolsTemplate = promptTemplates.find((template) => template.id === "TOOLS")?.content ?? "";
-	const attachmentDefaultPrompt = markdownSection(toolsTemplate, [
-		"内部模板（代码读取）",
-		"附件默认用户请求",
-	]);
-	const attachmentContextTitle = markdownSection(toolsTemplate, [
-		"内部模板（代码读取）",
-		"附件上下文标题",
-	]);
 	const canSubmit =
 		Boolean(
 			composerState.hasText ||
@@ -163,9 +153,8 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 			return;
 		}
 
-		const effectivePrompt = prompt || defaultAgentPrompt(readyAttachments, attachmentDefaultPrompt);
+		const effectivePrompt = prompt;
 		const pendingSend: PendingAttachmentSend = {
-			attachments: readyAttachments,
 			displayPrompt: agentDisplayPrompt({
 				prompt: displayText || effectivePrompt || (hasOpenComments ? "处理未解决批注" : ""),
 				references: composerValue.references,
@@ -173,11 +162,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 			displayMetadata: attachmentDisplayMetadata(readyAttachments),
 			model: buildRuntimeConfigSelection(runtimeConfig?.model, selectedModel),
 			permission: buildRuntimeConfigSelection(runtimeConfig?.permission, selectedPermission),
-			promptWithAttachments: appendAttachmentContext(
-				effectivePrompt,
-				readyAttachments,
-				attachmentContextTitle,
-			),
+			prompt: effectivePrompt,
 			references: composerValue.references,
 			reasoning: buildRuntimeConfigSelection(runtimeConfig?.reasoning, selectedReasoning),
 			comments: openComments,
@@ -190,10 +175,14 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 					readyAttachments.map((attachment) => uploadAttachmentAsset(attachment, projectId)),
 				);
 				await refreshProjectAssets(projectId);
-				pendingSend.promptWithAttachments = appendUploadedAssetContext(
-					pendingSend.promptWithAttachments,
-					uploadedAssets,
-				);
+				pendingSend.references = uniqueAgentReferences([
+					...pendingSend.references,
+					...uploadedAssets.map(projectAssetReference),
+				]);
+				pendingSend.displayPrompt = agentDisplayPrompt({
+					prompt: displayText || effectivePrompt || (hasOpenComments ? "处理未解决批注" : ""),
+					references: pendingSend.references,
+				});
 			} catch (err) {
 				useAgentStore
 					.getState()
@@ -212,7 +201,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	};
 
 	const startAgentPrompt = async (pendingSend: PendingAttachmentSend) => {
-		const run = runAgentPrompt(pendingSend.promptWithAttachments, {
+		const run = runAgentPrompt(pendingSend.prompt, {
 			displayMetadata: pendingSend.displayMetadata,
 			displayPrompt: pendingSend.displayPrompt,
 			model: pendingSend.model,
@@ -338,12 +327,11 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 type RuntimeConfigSelection = ReturnType<typeof buildRuntimeConfigSelection>;
 
 interface PendingAttachmentSend {
-	attachments: AgentAttachment[];
 	displayMetadata?: AgentMessageMetadata;
 	displayPrompt: string;
 	model: RuntimeConfigSelection;
 	permission: RuntimeConfigSelection;
-	promptWithAttachments: string;
+	prompt: string;
 	reasoning: RuntimeConfigSelection;
 	references: AgentComposerValue["references"];
 	comments: DocumentComment[];
@@ -397,18 +385,26 @@ const refreshProjectAssets = async (projectId: string | null) => {
 	await mutateSWR(workspaceDocumentsKey(projectId));
 };
 
-const appendUploadedAssetContext = (prompt: string, assets: ProjectAsset[]) => {
-	if (assets.length === 0) return prompt;
-	const assetContext = assets
-		.map((asset, index) =>
-			[
-				`${index + 1}. ${asset.filename}`,
-				`类型：${asset.kind}`,
-				`MIME：${asset.mimeType}`,
-				`大小：${asset.sizeBytes} bytes`,
-				`URL：${new URL(asset.url, window.location.origin).toString()}`,
-			].join("\n"),
-		)
-		.join("\n\n");
-	return `${prompt}\n\n已保存到资料的原始文件：\n${assetContext}`;
+const projectAssetReference = (asset: ProjectAsset): AgentReference => ({
+	kind: "asset",
+	documentId: asset.id,
+	assetId: asset.id,
+	assetKind: asset.kind,
+	category: "reference",
+	mimeType: asset.mimeType,
+	title: asset.filename,
+	url: new URL(asset.url, window.location.origin).toString(),
+});
+
+const uniqueAgentReferences = (references: AgentReference[]) => {
+	const seen = new Set<string>();
+	return references.filter((reference) => {
+		const key =
+			reference.kind === "asset"
+				? `asset:${reference.assetId ?? reference.documentId}`
+				: `${reference.documentId}:${reference.kind === "section" ? (reference.blockId ?? "") : ""}`;
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
 };

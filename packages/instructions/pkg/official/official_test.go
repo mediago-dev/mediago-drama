@@ -32,6 +32,22 @@ func TestInstructionByIDReportsMissingInstruction(t *testing.T) {
 	}
 }
 
+func TestOfficialInternalTemplatesDoNotContainTemplateVariables(t *testing.T) {
+	for _, id := range []string{"AGENTS", "TOOLS"} {
+		instruction, err := InstructionByID(context.Background(), id)
+		if err != nil {
+			t.Fatalf("InstructionByID(%q) error = %v", id, err)
+		}
+		internal, ok := ExtractMarkdownSection(instruction.Body, "内部模板（代码读取）")
+		if !ok {
+			t.Fatalf("%s internal template section missing", id)
+		}
+		if strings.Contains(internal, "{{") || strings.Contains(internal, "}}") {
+			t.Fatalf("%s internal templates contain template variables:\n%s", id, internal)
+		}
+	}
+}
+
 func TestExtractMarkdownSectionFindsNestedHeading(t *testing.T) {
 	markdown := `# Root
 

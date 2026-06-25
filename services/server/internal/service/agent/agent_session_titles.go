@@ -16,9 +16,10 @@ const (
 func AgentSessionTitlePrompt(userPrompt string) string {
 	prompt := truncateRunes(strings.TrimSpace(userPrompt), agentSessionTitleMaxInputRunes)
 	template := official.MustInstructionSection("AGENTS", "内部模板（代码读取）", "历史会话标题")
-	return renderAgentPromptVariables(template, map[string]string{
-		"UserPrompt": prompt,
-	})
+	if prompt == "" {
+		return strings.TrimSpace(template)
+	}
+	return strings.TrimSpace(template) + "\n" + prompt
 }
 
 func normalizeAgentSessionTitle(value string) string {
@@ -58,12 +59,4 @@ func truncateRunes(value string, limit int) string {
 		return value
 	}
 	return string(runes[:limit])
-}
-
-func renderAgentPromptVariables(template string, variables map[string]string) string {
-	replacements := make([]string, 0, len(variables)*2)
-	for key, value := range variables {
-		replacements = append(replacements, "{{."+key+"}}", value)
-	}
-	return strings.TrimSpace(strings.NewReplacer(replacements...).Replace(template))
 }

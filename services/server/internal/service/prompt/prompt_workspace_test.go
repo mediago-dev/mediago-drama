@@ -85,8 +85,8 @@ func TestPromptBuilderDoesNotInlineScopedEditContext(t *testing.T) {
 			t.Fatalf("prompt = %q, should not inline scoped edit value %q", prompt, value)
 		}
 	}
-	if !strings.Contains(prompt, "用户请求：\n优化这段台词") {
-		t.Fatalf("prompt = %q, want explicit user prompt kept", prompt)
+	if strings.Contains(prompt, "用户请求：") || strings.Contains(prompt, "优化这段台词") {
+		t.Fatalf("prompt = %q, should not inline user prompt", prompt)
 	}
 }
 
@@ -121,7 +121,7 @@ func TestPromptBuilderDoesNotInlineAssetReferences(t *testing.T) {
 	}
 }
 
-func TestPromptBuilderIndexesResourceMentionsWithoutDocumentBodies(t *testing.T) {
+func TestPromptBuilderDoesNotInlineResourceMentionIndex(t *testing.T) {
 	prompt := BuildWorkspaceACPPrompt(AgentRunRequest{
 		ProjectID: "project-1",
 		Document: &AgentDocumentContext{
@@ -145,14 +145,14 @@ func TestPromptBuilderIndexesResourceMentionsWithoutDocumentBodies(t *testing.T)
 		},
 	})
 
-	for _, want := range []string{
+	for _, value := range []string{
 		"# 可用 @ 资源索引",
 		"角色｜沈阎",
 		"@[沈阎](mention://character-doc/section_shenyan)",
 		"不要把 `mention://` 或 `asset://` 内部链接写入",
 	} {
-		if !strings.Contains(prompt, want) {
-			t.Fatalf("prompt = %q, want reference index segment %q", prompt, want)
+		if strings.Contains(prompt, value) {
+			t.Fatalf("prompt = %q, should not inline reference index segment %q", prompt, value)
 		}
 	}
 	if strings.Contains(prompt, "玄色长袍") || strings.Contains(prompt, "这段正文不能进入资源索引") {
@@ -160,36 +160,30 @@ func TestPromptBuilderIndexesResourceMentionsWithoutDocumentBodies(t *testing.T)
 	}
 }
 
-func TestPromptBuilderAdvertisesSkillForBusinessDocuments(t *testing.T) {
+func TestPromptBuilderKeepsSkillLoadingAsFixedRule(t *testing.T) {
 	tests := []struct {
-		name      string
-		category  string
-		skillName string
+		name     string
+		category string
 	}{
 		{
-			name:      "screenplay",
-			category:  "screenplay",
-			skillName: "screenplay-writer",
+			name:     "screenplay",
+			category: "screenplay",
 		},
 		{
-			name:      "character",
-			category:  "character",
-			skillName: "character-writer",
+			name:     "character",
+			category: "character",
 		},
 		{
-			name:      "scene",
-			category:  "scene",
-			skillName: "scene-writer",
+			name:     "scene",
+			category: "scene",
 		},
 		{
-			name:      "prop",
-			category:  "prop",
-			skillName: "prop-writer",
+			name:     "prop",
+			category: "prop",
 		},
 		{
-			name:      "storyboard",
-			category:  "storyboard",
-			skillName: "storyboard-writer",
+			name:     "storyboard",
+			category: "storyboard",
 		},
 	}
 
@@ -205,8 +199,19 @@ func TestPromptBuilderAdvertisesSkillForBusinessDocuments(t *testing.T) {
 				},
 			}, PromptBuildOptions{})
 
-			if !strings.Contains(prompt, test.skillName+":") {
-				t.Fatalf("prompt = %q, want skill index entry %s", prompt, test.skillName)
+			if !strings.Contains(prompt, "编辑剧本、角色、场景、道具、分镜或小说资料等类型文档前，先调用 MCP `load_skill`") {
+				t.Fatalf("prompt = %q, want fixed load_skill rule", prompt)
+			}
+			for _, skillName := range []string{
+				"screenplay-writer:",
+				"character-writer:",
+				"scene-writer:",
+				"prop-writer:",
+				"storyboard-writer:",
+			} {
+				if strings.Contains(prompt, skillName) {
+					t.Fatalf("prompt = %q, should not inline dynamic skill index %s", prompt, skillName)
+				}
 			}
 			assertNoInlineToolUsageCatalog(t, prompt)
 			assertNoInlineCategoryGuidance(t, prompt)

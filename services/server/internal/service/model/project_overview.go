@@ -2,8 +2,6 @@ package model
 
 import (
 	"strings"
-
-	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/official"
 )
 
 // OverviewDocumentID is the stable document ID for a project's overview document.
@@ -77,19 +75,13 @@ func ProjectBriefOverviewMarkdown(brief ProjectBrief) string {
 	return strings.Join(lines, "\n")
 }
 
-// RenderOverviewProjectBriefPrompt renders the legacy Overview brief section for ACP prompts.
+// RenderOverviewProjectBriefPrompt returns the legacy Overview brief body.
 func RenderOverviewProjectBriefPrompt(markdown string) string {
 	brief := ExtractOverviewProjectBriefSection(markdown)
 	if brief == "" {
-		brief = "[未设定]"
+		return ""
 	}
-
-	template := official.MustInstructionSection("AGENTS", "内部模板（代码读取）", "旧 Overview Project Brief 提示")
-	return renderModelPromptVariables(template, map[string]string{
-		"Brief":              brief,
-		"HeadingPrefix":      "##",
-		"OverviewDocumentID": OverviewDocumentID,
-	}) + "\n"
+	return strings.TrimRight(brief, "\n") + "\n"
 }
 
 // ExtractOverviewProjectBriefSection extracts the Project Brief section from Overview markdown.
@@ -161,14 +153,6 @@ func ReplaceOverviewProjectBriefSection(markdown string, replacement string) str
 	}
 	nextLines = append(nextLines, lines[end:]...)
 	return strings.TrimRight(strings.Join(nextLines, "\n"), "\n") + "\n"
-}
-
-func renderModelPromptVariables(template string, variables map[string]string) string {
-	replacements := make([]string, 0, len(variables)*2)
-	for key, value := range variables {
-		replacements = append(replacements, "{{."+key+"}}", value)
-	}
-	return strings.TrimSpace(strings.NewReplacer(replacements...).Replace(template))
 }
 
 func markdownSingleLine(value string) string {

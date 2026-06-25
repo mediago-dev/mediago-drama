@@ -1,6 +1,8 @@
 package prompt
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,7 +54,7 @@ func TestEditableSectionDescriptorsAreOrdered(t *testing.T) {
 }
 
 func TestRenderSectionReturnsInstructionText(t *testing.T) {
-	rendered, err := renderSection("AGENTS", agentsMdData{})
+	rendered, err := renderSection("AGENTS")
 	if err != nil {
 		t.Fatalf("renderSection() error = %v", err)
 	}
@@ -60,4 +62,57 @@ func TestRenderSectionReturnsInstructionText(t *testing.T) {
 		t.Fatalf("rendered = %q, want instruction body", rendered)
 	}
 	InvalidateTemplateCache("AGENTS")
+}
+
+func TestInstructionTemplateSectionFallsBackWhenOverrideContainsTemplateAction(t *testing.T) {
+	restore := replacePromptTemplateStoreForTest(&fakePromptTemplateStore{
+		templates: map[string]prompttemplates.PromptTemplate{
+			"TOOLS": {
+				ID: "TOOLS",
+				Content: `## 内部模板（代码读取）
+
+### 提示词优化系统指令
+
+{{.Instruction}}
+`,
+			},
+		},
+	})
+	defer restore()
+
+	section, ok := InstructionTemplateSection("TOOLS", "内部模板（代码读取）", "提示词优化系统指令")
+	if !ok {
+		t.Fatal("InstructionTemplateSection() ok = false")
+	}
+	if strings.Contains(section, "{{") || !strings.Contains(section, "AI 绘画提示词优化专家") {
+		t.Fatalf("section = %q, want fixed official template without variables", section)
+	}
+}
+
+type fakePromptTemplateStore struct {
+	templates map[string]prompttemplates.PromptTemplate
+}
+
+func (store *fakePromptTemplateStore) Load(_ context.Context) (map[string]prompttemplates.PromptTemplate, error) {
+	return store.templates, nil
+}
+
+func (store *fakePromptTemplateStore) Get(_ context.Context, id string) (prompttemplates.PromptTemplate, error) {
+	template, ok := store.templates[id]
+	if !ok {
+		return prompttemplates.PromptTemplate{}, fmt.Errorf("missing template %s", id)
+	}
+	return template, nil
+}
+
+func replacePromptTemplateStoreForTest(store promptTemplateStore) func() {
+	promptTemplateStoreMu.Lock()
+	previous := activePromptTemplate
+	activePromptTemplate = store
+	promptTemplateStoreMu.Unlock()
+	return func() {
+		promptTemplateStoreMu.Lock()
+		activePromptTemplate = previous
+		promptTemplateStoreMu.Unlock()
+	}
 }

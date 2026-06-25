@@ -277,13 +277,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		return agentRunResult{}, err
 	}
 
-	prompt := ""
-	if runner.buildPrompt != nil {
-		prompt = runner.buildPrompt(request)
-	}
-	if strings.TrimSpace(prompt) == "" {
-		prompt = BuildACPPrompt(request, PromptBuildOptions{})
-	}
+	prompt := strings.TrimSpace(request.Prompt)
 	acpLog().Debug("acp.prompt.assembled", append(logArgs, "acp_session_id", sessionID, "bytes", len(prompt))...)
 	acpLog().Info(
 		"acp prompt starting",

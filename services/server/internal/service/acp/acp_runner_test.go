@@ -1196,27 +1196,26 @@ func TestBuildACPPromptDoesNotInlineToolUsageCatalog(t *testing.T) {
 	}
 }
 
-func TestBuildACPPromptUsesInjectedSystemPrompt(t *testing.T) {
+func TestBuildACPPromptDoesNotInlineInjectedSystemOrUserPrompt(t *testing.T) {
 	prompt := buildACPPrompt(agentRunRequest{
 		Prompt:       "生成两个镜头",
 		SystemPrompt: "你当前绑定的角色是「分镜师」。\n请按镜头输出。",
 		Document:     &agentDocumentContext{ID: "doc-1", Title: "第一集", Content: "# 第一集"},
 	})
 
-	if !strings.Contains(prompt, "你当前绑定的角色是「分镜师」。") {
-		t.Fatalf("prompt = %q, want injected system prompt", prompt)
+	if strings.Contains(prompt, "你当前绑定的角色是「分镜师」。") ||
+		strings.Contains(prompt, "生成两个镜头") ||
+		strings.Contains(prompt, "用户请求：") {
+		t.Fatalf("prompt = %q, should not inline injected system prompt or user prompt", prompt)
 	}
-	if strings.Contains(prompt, "你是 MediaGo Drama 内的本地工作区 Agent。") {
-		t.Fatalf("prompt = %q, should not include default identity when system prompt is provided", prompt)
+	if !strings.Contains(prompt, "你是 MediaGo Drama 的项目 Agent。") {
+		t.Fatalf("prompt = %q, want fixed agent instruction", prompt)
 	}
 	if !strings.Contains(prompt, "# 工具使用原则") || !strings.Contains(prompt, "- 使用中文回复用户。") {
 		t.Fatalf("prompt = %q, want general tool principles preserved", prompt)
 	}
 	if strings.Contains(prompt, "get_document") || strings.Contains(prompt, "replace_section") {
 		t.Fatalf("prompt = %q, should not inline concrete document tool usage", prompt)
-	}
-	if !strings.Contains(prompt, "用户请求：\n生成两个镜头") {
-		t.Fatalf("prompt = %q, want plain user prompt kept in user request section", prompt)
 	}
 }
 

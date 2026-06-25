@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/prompttemplates"
-	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 )
 
 // SectionDescriptor describes one system prompt section and its UI metadata.
@@ -17,13 +16,6 @@ type SectionDescriptor struct {
 	Description string
 	Order       int
 	Editable    bool
-	DataFn      func(PromptContext) any
-	Condition   func(PromptContext) bool
-}
-
-type agentsMdData struct {
-	SystemPrompt string
-	SkillIndex   []serviceskill.SkillMeta
 }
 
 var fallbackSections = []SectionDescriptor{
@@ -33,12 +25,6 @@ var fallbackSections = []SectionDescriptor{
 		Description: "Agent 操作指令：默认身份边界、写作策略、工具调用策略和 Skills 装载策略。",
 		Order:       0,
 		Editable:    true,
-		DataFn: func(ctx PromptContext) any {
-			return agentsMdData{
-				SystemPrompt: strings.TrimSpace(ctx.Request.SystemPrompt),
-				SkillIndex:   loadSkillIndex(ctx),
-			}
-		},
 	},
 	{
 		ID:          "TOOLS",
@@ -46,7 +32,6 @@ var fallbackSections = []SectionDescriptor{
 		Description: "跨工具编排策略：项目级审查、局部编辑触发和连续编辑复用。",
 		Order:       1,
 		Editable:    true,
-		DataFn:      promptContextData,
 	},
 }
 
@@ -86,19 +71,6 @@ func SectionDescriptorByID(id string) (SectionDescriptor, bool) {
 	return SectionDescriptor{}, false
 }
 
-func loadSkillIndex(ctx PromptContext) []serviceskill.SkillMeta {
-	metas, err := serviceskill.NewRegistry().List(context.Background())
-	if err != nil {
-		slog.Warn("skill index unavailable for prompt", "error", err)
-		return nil
-	}
-	return metas
-}
-
-func promptContextData(ctx PromptContext) any {
-	return ctx
-}
-
 func descriptorsFromTemplates(templates []prompttemplates.PromptTemplate) []SectionDescriptor {
 	descriptors := make([]SectionDescriptor, 0, len(templates))
 	for _, template := range templates {
@@ -108,15 +80,6 @@ func descriptorsFromTemplates(templates []prompttemplates.PromptTemplate) []Sect
 			Description: template.Description,
 			Order:       template.Order,
 			Editable:    true,
-			DataFn:      promptContextData,
-		}
-		if descriptor.ID == "AGENTS" {
-			descriptor.DataFn = func(ctx PromptContext) any {
-				return agentsMdData{
-					SystemPrompt: strings.TrimSpace(ctx.Request.SystemPrompt),
-					SkillIndex:   loadSkillIndex(ctx),
-				}
-			}
 		}
 		descriptors = append(descriptors, descriptor)
 	}
