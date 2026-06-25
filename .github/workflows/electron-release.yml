@@ -33,7 +33,7 @@ concurrency:
 env:
   CSC_IDENTITY_AUTO_DISCOVERY: "false"
   HUSKY: "0"
-  NODE_VERSION: "20"
+  NODE_VERSION: "24"
   PNPM_VERSION: "10.14.0"
 
 jobs:
@@ -89,19 +89,19 @@ jobs:
     needs: release-version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.work
           cache-dependency-path: |
@@ -162,7 +162,7 @@ jobs:
         run: task publish:electron:target PLATFORM=windows-x64
 
       - name: Upload installers
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mediago-drama-installers
           path: |

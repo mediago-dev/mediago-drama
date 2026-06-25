@@ -70,6 +70,7 @@ tasks:
           AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
       - task: workspace:build
+      - task: sync:workspace-dist
       - task: build:server
       - task: stage-electron
         vars:
@@ -97,6 +98,7 @@ tasks:
         vars:
           PLATFORM: "{{.PLATFORM}}"
       - task: workspace:build
+      - task: sync:workspace-dist
       - task: build:server:target
         vars:
           PLATFORM: "{{.PLATFORM}}"
