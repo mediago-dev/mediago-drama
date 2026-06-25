@@ -241,7 +241,7 @@ func referenceItemKey(item referenceIndexItem) string {
 
 func isReferenceResourceCategory(category string) bool {
 	switch category {
-	case "character", "scene", "prop", "storyboard":
+	case "character", "scene", "prop", "storyboard", "reference":
 		return true
 	default:
 		return false
@@ -258,6 +258,8 @@ func referenceCategoryLabel(category string) string {
 		return "道具"
 	case "storyboard":
 		return "分镜"
+	case "reference":
+		return "资料"
 	default:
 		return category
 	}

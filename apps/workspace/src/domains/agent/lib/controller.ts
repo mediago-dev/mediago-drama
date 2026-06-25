@@ -5,6 +5,7 @@ import {
 	type RemoteAgentRuntimeEventMeta,
 	runtimeEventTypes,
 } from "@/domains/agent/lib/remote-runtime";
+import { agentPromptWithReferences } from "@/domains/agent/lib/display-prompt";
 import {
 	acpRuntimeLogText,
 	containsRuntimeLogMarkers,
@@ -65,19 +66,19 @@ export const runAgentPrompt = async (prompt: string, options: RunAgentPromptOpti
 	const context = buildExecutionContext(trimmed, options);
 	if (!context) return;
 	const optionTaskPrompt = options.taskPrompt?.trim() ?? "";
+	const referencedPrompt = agentPromptWithReferences({
+		prompt: trimmed,
+		references: options.references,
+	});
 	const taskPrompt =
-		trimmed ||
-		defaultReferenceDisplayPrompt(options.references) ||
-		optionTaskPrompt ||
-		defaultStructuredAgentDisplayPrompt(context);
+		referencedPrompt || optionTaskPrompt || defaultStructuredAgentDisplayPrompt(context);
 
 	if (options.reuseCurrentRun) {
 		agentStore.beginPendingRun();
 	} else {
 		agentStore.startRun(
 			options.displayPrompt?.trim() ||
-				trimmed ||
-				defaultReferenceDisplayPrompt(options.references) ||
+				referencedPrompt ||
 				optionTaskPrompt ||
 				defaultStructuredAgentDisplayPrompt(context),
 			options.displayMetadata,
@@ -388,11 +389,6 @@ const defaultStructuredAgentDisplayPrompt = (context: AgentExecutionContext) => 
 	if (context.commentId) return "根据选中的批注修改文档";
 	if (context.selection) return "优化选中文本";
 	return "处理当前未解决批注";
-};
-
-const defaultReferenceDisplayPrompt = (references?: AgentReference[]) => {
-	if (!references || references.length === 0) return "";
-	return references.map((reference) => `@${reference.title}`).join(" ");
 };
 
 type StreamingDocumentEditRuntimeEvent = Extract<

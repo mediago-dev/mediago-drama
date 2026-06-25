@@ -6,7 +6,7 @@ export const referenceDisplayPrompt = (references?: Pick<AgentReference, "title"
 	return titles.map((title) => `@${title}`).join(" ");
 };
 
-export const agentDisplayPrompt = ({
+export const agentPromptWithReferences = ({
 	prompt,
 	references,
 }: {
@@ -19,6 +19,8 @@ export const agentDisplayPrompt = ({
 	);
 	return [referenceDisplayPrompt(missingReferences), trimmedPrompt].filter(Boolean).join(" ");
 };
+
+export const agentDisplayPrompt = agentPromptWithReferences;
 
 const promptIncludesReference = (prompt: string, title: string) => {
 	const trimmedTitle = title.trim();

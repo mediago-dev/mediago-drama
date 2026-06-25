@@ -202,7 +202,7 @@ export const AgentMentionList = forwardRef<MentionListHandle, MentionListProps>(
 			createElement(
 				"div",
 				{ className: "agent-mention-menu agent-mention-cascader-secondary", role: "listbox" },
-				createElement("div", { className: "agent-mention-pane-label" }, "节点"),
+				createElement("div", { className: "agent-mention-pane-label" }, "文档与节点"),
 				activeItems.map((item, index) =>
 					renderMentionOption(item, index, selectedItemIndex, {
 						command,
@@ -388,16 +388,8 @@ export const createMentionItems = (query: string): AgentMentionItem[] => {
 			(section) => docMatches || matchesMentionQuery(section.title, normalizedQuery),
 		);
 
-		if (docMatches && sections.length === 0) {
-			documentItems.push({
-				category,
-				documentId: document.id,
-				documentTitle: document.title,
-				id: document.id,
-				kind: "document",
-				label: document.title,
-				title: document.title,
-			});
+		if (docMatches || matchingSections.length > 0) {
+			documentItems.push(documentMentionItem(document, category));
 		}
 
 		for (const section of matchingSections) {
@@ -440,6 +432,19 @@ export const createMentionItems = (query: string): AgentMentionItem[] => {
 
 	return [...documentItems, ...assetItems].slice(0, maxMentionItems);
 };
+
+const documentMentionItem = (
+	document: MarkdownDocument,
+	category: DocumentCategory,
+): AgentMentionItem => ({
+	category,
+	documentId: document.id,
+	documentTitle: document.title,
+	id: document.id,
+	kind: "document",
+	label: document.title,
+	title: document.title,
+});
 
 const mentionSectionsForDocument = (document: MarkdownDocument) => {
 	const sections = listDocumentSections(document);

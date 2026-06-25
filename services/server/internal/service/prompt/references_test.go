@@ -115,6 +115,29 @@ func TestBuildReferenceIndexItemsSkipsDocumentRootHeadingWhenChildSectionsExist(
 	}
 }
 
+func TestBuildReferenceIndexItemsIncludesReferenceDocuments(t *testing.T) {
+	items := buildReferenceIndexItems(AgentRunRequest{
+		Documents: []AgentDocumentContext{
+			{
+				ID:       "reference-doc",
+				Title:    "原始素材",
+				Category: "reference",
+				Content:  "没有标题的原始素材正文。",
+			},
+		},
+	})
+
+	if len(items) != 1 {
+		t.Fatalf("items = %d, want 1: %#v", len(items), items)
+	}
+	if items[0].Title != "原始素材" || items[0].CategoryLabel != "资料" {
+		t.Fatalf("item = %#v, want reference document labeled as 资料", items[0])
+	}
+	if items[0].MentionMarkdown != "@[原始素材](mention://reference-doc)" {
+		t.Fatalf("mention = %q", items[0].MentionMarkdown)
+	}
+}
+
 func TestBuildReferenceIndexItemsIgnoresAssetReferences(t *testing.T) {
 	items := buildReferenceIndexItems(AgentRunRequest{
 		References: []AgentReference{

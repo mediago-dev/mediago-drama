@@ -73,11 +73,17 @@ describe("mention suggestion items", () => {
 		const items = createMentionItems("系统女声");
 		const sectionItem = items.find((item) => item.kind === "section");
 
+		expect(items[0]).toEqual(
+			expect.objectContaining({
+				kind: "document",
+				title: "太虚角色设定",
+			}),
+		);
 		expect(sectionItem?.title).toBe("系统女声 / 太虚古老意识");
 		expect(sectionItem?.previewUrl).toBe("/api/v1/media-assets/voice/content");
 	});
 
-	it("prefers exact section mention items when a document has headings", () => {
+	it("keeps the document itself before section mention items", () => {
 		useDocumentsStore.setState({
 			documents: [
 				makeDocument({
@@ -100,12 +106,49 @@ describe("mention suggestion items", () => {
 
 		const items = createMentionItems("角色册");
 
-		expect(items.some((item) => item.kind === "document")).toBe(false);
 		expect(items.map((item) => `${item.kind}:${item.title}`)).toEqual([
+			"document:角色册 第一章",
 			"section:陈远",
 			"section:林书彤",
 		]);
 		expect(items.every((item) => item.kind !== "section" || item.blockId)).toBe(true);
+	});
+
+	it("keeps reference documents selectable as whole documents even when they have headings", () => {
+		useDocumentsStore.setState({
+			documents: [
+				makeDocument({
+					category: "reference",
+					content: [
+						"# 原始素材",
+						"",
+						"未加工素材正文。",
+						"",
+						"## 第一幕",
+						"",
+						"第一幕素材正文。",
+					].join("\n"),
+					id: "doc-reference",
+					title: "原始素材",
+				}),
+			],
+			assets: [],
+		});
+
+		const items = createMentionItems("原始素材");
+
+		expect(items.map((item) => `${item.kind}:${item.title}`)).toEqual([
+			"document:原始素材",
+			"section:第一幕",
+		]);
+		expect(items[0]).toEqual(
+			expect.objectContaining({
+				category: "reference",
+				documentId: "doc-reference",
+				kind: "document",
+				title: "原始素材",
+			}),
+		);
 	});
 
 	it("keeps a document mention item for documents without headings", () => {
@@ -189,13 +232,19 @@ describe("mention suggestion items", () => {
 
 		expect(container.querySelector(".agent-mention-cascader")).toBeTruthy();
 		expect(container.querySelectorAll(".agent-mention-source")).toHaveLength(1);
-		expect(container.querySelectorAll(".agent-mention-option")).toHaveLength(1);
+		expect(container.querySelectorAll(".agent-mention-option")).toHaveLength(2);
 		expect(container.querySelector(".agent-mention-cascader-primary")?.textContent).toContain(
 			"角色",
 		);
 		expect(container.querySelector(".agent-mention-cascader-secondary")?.textContent).toContain(
+			"太虚角色设定",
+		);
+		expect(container.querySelector(".agent-mention-cascader-secondary")?.textContent).toContain(
 			"系统女声 / 太虚古老意识",
 		);
+		expect(
+			container.querySelector('.agent-mention-option:first-of-type[data-kind="document"]'),
+		).toBeTruthy();
 		expect(
 			container.querySelector('.agent-mention-option[data-has-preview="true"] img'),
 		).toBeTruthy();

@@ -4,8 +4,10 @@ import {
 	getAgentSessionStatus,
 	type AgentRuntimeEvent,
 } from "@/domains/agent/api/agent";
+import { connectRemoteAgentRuntime } from "@/domains/agent/lib/remote-runtime";
 import { selectAgentMessages, useAgentStore } from "@/domains/agent/stores";
 import { useProjectStore } from "@/domains/projects/stores";
+import { useDocumentsStore } from "@/domains/documents/stores";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import {
 	agentSessionStorageKey,
@@ -13,6 +15,7 @@ import {
 	closeResumedAgentEventStream,
 	handleStreamingAgentEvent,
 	resumeAgentSessionEventStream,
+	runAgentPrompt,
 } from "@/domains/agent/lib/controller";
 
 vi.mock("@/domains/agent/api/agent", async (importOriginal) => {
@@ -21,6 +24,14 @@ vi.mock("@/domains/agent/api/agent", async (importOriginal) => {
 		...actual,
 		createAgentEventSource: vi.fn(),
 		getAgentSessionStatus: vi.fn(),
+	};
+});
+
+vi.mock("@/domains/agent/lib/remote-runtime", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/domains/agent/lib/remote-runtime")>();
+	return {
+		...actual,
+		connectRemoteAgentRuntime: vi.fn(),
 	};
 });
 
@@ -70,6 +81,12 @@ describe("agent controller", () => {
 		vi.mocked(getAgentSessionStatus).mockReset();
 		useAgentStore.getState().resetSession();
 		useProjectStore.setState({ activeProjectId: null });
+		useDocumentsStore.setState({
+			activeDocumentId: "",
+			documents: [],
+			projectId: null,
+			selection: null,
+		});
 	});
 
 	it("scopes persisted session ids by project", () => {
@@ -240,6 +257,46 @@ describe("agent controller", () => {
 					status: "complete",
 				}),
 			]),
+		);
+	});
+
+	it("keeps mentioned reference titles in the runtime prompt", async () => {
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		useDocumentsStore.setState({
+			activeDocumentId: testDocument.id,
+			documents: [testDocument],
+			projectId: "project-1",
+		});
+		const send = vi.fn(async () => {
+			useAgentStore.getState().finishRun();
+			return { accepted: true };
+		});
+		vi.mocked(connectRemoteAgentRuntime).mockResolvedValue({
+			sessionId: "session-1",
+			send,
+			isClosed: () => false,
+			close: vi.fn(),
+		});
+
+		await runAgentPrompt("这个文档讲了什么", {
+			references: [
+				{
+					kind: "asset",
+					documentId: "asset-1",
+					assetId: "asset-1",
+					assetKind: "text",
+					mimeType: "text/plain",
+					title: "完美世界.txt",
+					category: "reference",
+					url: "/api/v1/projects/project-1/assets/asset-1/content",
+				},
+			],
+		});
+
+		expect(send).toHaveBeenCalledWith(
+			expect.objectContaining({
+				prompt: "@完美世界.txt 这个文档讲了什么",
+			}),
 		);
 	});
 });
