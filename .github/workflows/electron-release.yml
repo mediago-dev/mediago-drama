@@ -85,9 +85,23 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build unsigned macOS ARM64 zip and Windows x64
+    name: Build ${{ matrix.label }}
     needs: release-version
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS ARM64 zip
+            runner: ubuntu-latest
+            platform: darwin-arm64
+            electron_script: electron:release:darwin-arm64
+            artifact_name: mediago-drama-macos-arm64
+          - label: Windows x64 installer
+            runner: windows-latest
+            platform: windows-x64
+            electron_script: electron:release:windows-x64
+            artifact_name: mediago-drama-windows-x64
     steps:
       - uses: actions/checkout@v6
 
@@ -109,15 +123,6 @@ jobs:
             **/go.sum
 
       - uses: go-task/setup-task@v2
-
-      - name: Install Wine for Windows packaging
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wine64
-          if ! command -v wine >/dev/null 2>&1 && command -v wine64 >/dev/null 2>&1; then
-            sudo ln -s "$(command -v wine64)" /usr/local/bin/wine
-          fi
-          wine --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -149,24 +154,64 @@ jobs:
           }
           NODE
 
-      - name: Build and publish macOS ARM64 app
+      - name: Build ${{ matrix.label }}
         env:
-          GH_TOKEN: ${{ github.token }}
           MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.github_release_type }}
-        run: task publish:electron:target PLATFORM=darwin-arm64
+        run: task build:electron:target PLATFORM=${{ matrix.platform }} ELECTRON_SCRIPT=${{ matrix.electron_script }}
 
-      - name: Build and publish Windows x64 app
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.github_release_type }}
-        run: task publish:electron:target PLATFORM=windows-x64
-
-      - name: Upload installers
-        uses: actions/upload-artifact@v6
+      - name: Upload ${{ matrix.label }} artifact
+        uses: actions/upload-artifact@v7
         with:
-          name: mediago-drama-installers
+          name: ${{ matrix.artifact_name }}
           path: |
             apps/workspace/release/*
             !apps/workspace/release/builder-debug.yml
             !apps/workspace/release/builder-effective-config.yaml
           if-no-files-found: error
+
+  publish-release:
+    name: Publish draft release
+    needs:
+      - release-version
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: release-artifacts
+
+      - name: Publish GitHub draft release
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.release-version.outputs.app_version }}
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.release-version.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          tag="v${APP_VERSION}"
+          gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate \
+            --jq ".[] | select(.draft and (.tag_name == \"${tag}\" or .name == \"${APP_VERSION}\")) | .id" |
+            while read -r release_id; do
+              if [[ -n "$release_id" ]]; then
+                gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${release_id}"
+              fi
+            done
+
+          mapfile -t files < <(
+            find release-artifacts -type f \
+              ! -name builder-debug.yml \
+              ! -name builder-effective-config.yaml |
+              sort
+          )
+          if [[ "${#files[@]}" -eq 0 ]]; then
+            echo "no release artifacts found" >&2
+            exit 1
+          fi
+
+          release_flags=(--draft --target "$GITHUB_SHA" --title "$APP_VERSION" --notes "MediaGo Drama $APP_VERSION")
+          if [[ "$PRERELEASE" == "true" ]]; then
+            release_flags+=(--prerelease)
+          fi
+
+          gh release create "$tag" "${files[@]}" "${release_flags[@]}"

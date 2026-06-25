@@ -225,19 +225,7 @@ tasks:
       - sh: 'case "{{.PLATFORM}}" in darwin-arm64|windows-x64) ;; *) exit 1 ;; esac'
         msg: "PLATFORM must be one of: darwin-arm64, windows-x64"
     cmds:
-      - |
-        case "{{.PLATFORM}}" in
-          darwin-arm64)
-            export GOOS=darwin GOARCH=arm64 EXE=""
-            ;;
-          windows-x64)
-            export GOOS=windows GOARCH=amd64 EXE=".exe"
-            ;;
-        esac
-        out_dir="bin/{{.PLATFORM}}"
-        mkdir -p "$out_dir"
-        go build -tags workspace_dist -o "$out_dir/mediago-server$EXE" ./services/server/cmd/mediago-server
-        go build -o "$out_dir/mediago-document-mcp$EXE" ./services/server/cmd/mediago-document-mcp
+      - node scripts/build-server-target.mjs "{{.PLATFORM}}"
 
   stage-electron:
     vars:
@@ -296,6 +284,4 @@ tasks:
 
   sync:workspace-dist:
     cmds:
-      - rm -rf services/server/internal/workspace/dist
-      - mkdir -p services/server/internal/workspace/dist
-      - cp -R apps/workspace/dist/. services/server/internal/workspace/dist
+      - node scripts/sync-workspace-dist.mjs
