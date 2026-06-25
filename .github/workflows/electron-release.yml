@@ -43,7 +43,7 @@ jobs:
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
-      release_type: ${{ steps.version.outputs.release_type }}
+      github_release_type: ${{ steps.version.outputs.github_release_type }}
     steps:
       - name: Resolve channel version
         id: version
@@ -67,12 +67,10 @@ jobs:
               fi
               app_version="${VERSION}-${CHANNEL}.${PRERELEASE_NUMBER}"
               prerelease="true"
-              release_type="prerelease"
               ;;
             latest)
               app_version="$VERSION"
               prerelease="false"
-              release_type="release"
               ;;
             *)
               echo "unsupported channel: $CHANNEL" >&2
@@ -83,7 +81,7 @@ jobs:
           {
             echo "app_version=$app_version"
             echo "prerelease=$prerelease"
-            echo "release_type=$release_type"
+            echo "github_release_type=draft"
           } >> "$GITHUB_OUTPUT"
 
   build:
@@ -154,13 +152,13 @@ jobs:
       - name: Build and publish macOS ARM64 app
         env:
           GH_TOKEN: ${{ github.token }}
-          MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.release_type }}
+          MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.github_release_type }}
         run: task publish:electron:target PLATFORM=darwin-arm64
 
       - name: Build and publish Windows x64 app
         env:
           GH_TOKEN: ${{ github.token }}
-          MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.release_type }}
+          MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.github_release_type }}
         run: task publish:electron:target PLATFORM=windows-x64
 
       - name: Upload installers
