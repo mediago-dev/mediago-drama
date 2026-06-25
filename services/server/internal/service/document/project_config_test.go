@@ -25,20 +25,22 @@ func TestWorkspaceStateServiceProjectConfig(t *testing.T) {
 		config.ProjectID != projectID ||
 		config.Name != projectID ||
 		config.Description != "" ||
-		config.Overview.Style != "" ||
+		len(config.Overview.CategoryDefaults) != 0 ||
 		config.CreatedAt == "" {
 		t.Fatalf("config = %#v, want minimal project config", config)
 	}
 
-	style := "低饱和冷调写实，浅景深。"
+	categoryDefaults := map[string]string{"extra": "video-cinematic-shot", "style": "realistic"}
 	result, err := store.SaveProjectConfigPatchInput(projectID, mediamcp.ProjectConfigPatchInput{
-		Overview: &mediamcp.ProjectOverviewConfigPatch{Style: &style},
+		Overview: &mediamcp.ProjectOverviewConfigPatch{CategoryDefaults: categoryDefaults},
 	})
 	if err != nil {
 		t.Fatalf("SaveProjectConfigPatchInput returned error: %v", err)
 	}
-	if !result.Changed || result.Config.Overview.Style != style {
-		t.Fatalf("result = %#v, want changed style", result)
+	if !result.Changed ||
+		result.Config.Overview.CategoryDefaults["extra"] != "video-cinematic-shot" ||
+		result.Config.Overview.CategoryDefaults["style"] != "" {
+		t.Fatalf("result = %#v, want changed category defaults", result)
 	}
 
 	data, err := os.ReadFile(filepath.Join(projectDir, "project.media.json"))
@@ -56,15 +58,16 @@ func TestWorkspaceStateServiceProjectConfig(t *testing.T) {
 		t.Fatalf("manifest should not include updatedAt: %s", string(data))
 	}
 	overview, ok := rawManifest["overview"].(map[string]any)
-	if !ok || overview["style"] != style {
-		t.Fatalf("overview = %#v, want style persisted", rawManifest["overview"])
+	defaults, ok := overview["categoryDefaults"].(map[string]any)
+	if !ok || defaults["extra"] != "video-cinematic-shot" || defaults["style"] != nil {
+		t.Fatalf("overview = %#v, want category defaults persisted", rawManifest["overview"])
 	}
 
 	empty, err := store.SaveProjectConfigPatchInput(projectID, mediamcp.ProjectConfigPatchInput{})
 	if err != nil {
 		t.Fatalf("empty SaveProjectConfigPatchInput returned error: %v", err)
 	}
-	if empty.Changed || empty.Config.Overview.Style != style {
-		t.Fatalf("empty result = %#v, want unchanged style", empty)
+	if empty.Changed || empty.Config.Overview.CategoryDefaults["extra"] != "video-cinematic-shot" {
+		t.Fatalf("empty result = %#v, want unchanged category defaults", empty)
 	}
 }

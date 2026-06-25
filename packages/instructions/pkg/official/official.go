@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -92,6 +93,52 @@ func InstructionByID(ctx context.Context, id string) (Instruction, error) {
 	return Instruction{}, fmt.Errorf("%w: %s", ErrInstructionNotFound, id)
 }
 
+// InstructionSection returns a Markdown section from an official instruction.
+func InstructionSection(ctx context.Context, id string, headings ...string) (string, error) {
+	instruction, err := InstructionByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	section, ok := ExtractMarkdownSection(instruction.Body, headings...)
+	if !ok {
+		return "", fmt.Errorf("%w: %s section %q", ErrInstructionNotFound, id, strings.Join(headings, " > "))
+	}
+	return section, nil
+}
+
+// MustInstructionSection returns an official Markdown section or panics when
+// the repository-shipped instruction is invalid.
+func MustInstructionSection(id string, headings ...string) string {
+	section, err := InstructionSection(context.Background(), id, headings...)
+	if err != nil {
+		panic(err)
+	}
+	return section
+}
+
+// ExtractMarkdownSection returns the body of a heading path from Markdown.
+func ExtractMarkdownSection(markdown string, headings ...string) (string, bool) {
+	lines, bodyStart, _, end, _, ok := markdownSectionRange(markdown, headings...)
+	if !ok {
+		return "", false
+	}
+	return strings.TrimSpace(strings.Join(lines[bodyStart:end], "\n")), true
+}
+
+// RemoveMarkdownSection removes one heading path and its body from Markdown.
+func RemoveMarkdownSection(markdown string, headings ...string) string {
+	lines, _, headingStart, end, _, ok := markdownSectionRange(markdown, headings...)
+	if !ok {
+		return markdown
+	}
+	if len(headings) == 1 {
+		end = len(lines)
+	}
+	next := append([]string{}, lines[:headingStart]...)
+	next = append(next, lines[end:]...)
+	return strings.TrimSpace(strings.Join(next, "\n"))
+}
+
 func parseInstruction(filePath string, data []byte) (Instruction, error) {
 	frontmatter, body, err := splitMarkdownFrontmatter(data)
 	if err != nil {
@@ -148,6 +195,76 @@ func normalizeBody(body string) string {
 
 func normalizeNewlines(value string) string {
 	return strings.ReplaceAll(value, "\r\n", "\n")
+}
+
+var markdownHeadingPattern = regexp.MustCompile(`^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$`)
+
+func markdownSectionRange(markdown string, headings ...string) (
+	lines []string,
+	bodyStart int,
+	headingStart int,
+	end int,
+	level int,
+	ok bool,
+) {
+	text := strings.TrimSpace(normalizeNewlines(markdown))
+	lines = strings.Split(text, "\n")
+	if len(headings) == 0 {
+		return lines, 0, 0, len(lines), 0, true
+	}
+
+	start := 0
+	sectionEnd := len(lines)
+	parentLevel := 0
+	foundHeading := -1
+	foundLevel := 0
+	for _, heading := range headings {
+		normalizedHeading := normalizeHeadingTitle(heading)
+		foundHeading = -1
+		foundLevel = 0
+		for index := start; index < sectionEnd; index++ {
+			currentLevel, title, isHeading := markdownHeading(lines[index])
+			if !isHeading || currentLevel <= parentLevel {
+				continue
+			}
+			if normalizeHeadingTitle(title) != normalizedHeading {
+				continue
+			}
+			foundHeading = index
+			foundLevel = currentLevel
+			break
+		}
+		if foundHeading < 0 {
+			return lines, 0, 0, 0, 0, false
+		}
+		nextEnd := sectionEnd
+		for index := foundHeading + 1; index < sectionEnd; index++ {
+			currentLevel, _, isHeading := markdownHeading(lines[index])
+			if !isHeading {
+				continue
+			}
+			if currentLevel == foundLevel {
+				nextEnd = index
+				break
+			}
+		}
+		start = foundHeading + 1
+		sectionEnd = nextEnd
+		parentLevel = foundLevel
+	}
+	return lines, start, foundHeading, sectionEnd, foundLevel, true
+}
+
+func markdownHeading(line string) (int, string, bool) {
+	matches := markdownHeadingPattern.FindStringSubmatch(strings.TrimSpace(line))
+	if len(matches) != 3 {
+		return 0, "", false
+	}
+	return len(matches[1]), strings.TrimSpace(matches[2]), true
+}
+
+func normalizeHeadingTitle(value string) string {
+	return strings.TrimSpace(value)
 }
 
 func isSafeID(value string) bool {

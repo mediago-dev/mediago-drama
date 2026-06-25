@@ -3,6 +3,8 @@ package agent
 import (
 	"strings"
 	"unicode"
+
+	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/official"
 )
 
 const (
@@ -13,18 +15,10 @@ const (
 // AgentSessionTitlePrompt builds the text model prompt for session title generation.
 func AgentSessionTitlePrompt(userPrompt string) string {
 	prompt := truncateRunes(strings.TrimSpace(userPrompt), agentSessionTitleMaxInputRunes)
-	return strings.TrimSpace(`请根据下面的用户任务，生成一个中文历史会话标题。
-
-要求：
-- 6 到 12 个中文字符优先
-- 不要解释
-- 不要引号
-- 不要编号
-- 不要句号、冒号等标点
-- 只输出标题本身
-
-用户任务：
-` + prompt)
+	template := official.MustInstructionSection("AGENTS", "内部模板（代码读取）", "历史会话标题")
+	return renderAgentPromptVariables(template, map[string]string{
+		"UserPrompt": prompt,
+	})
 }
 
 func normalizeAgentSessionTitle(value string) string {
@@ -64,4 +58,12 @@ func truncateRunes(value string, limit int) string {
 		return value
 	}
 	return string(runes[:limit])
+}
+
+func renderAgentPromptVariables(template string, variables map[string]string) string {
+	replacements := make([]string, 0, len(variables)*2)
+	for key, value := range variables {
+		replacements = append(replacements, "{{."+key+"}}", value)
+	}
+	return strings.TrimSpace(strings.NewReplacer(replacements...).Replace(template))
 }

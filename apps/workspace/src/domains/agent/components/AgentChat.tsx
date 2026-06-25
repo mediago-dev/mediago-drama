@@ -19,6 +19,8 @@ import {
 	getRuntimeConfigError,
 	normalizeRuntimeConfigValue,
 } from "@/domains/agent/components/chat/AgentRuntimeConfigControls";
+import { listPromptTemplates, promptTemplatesKey } from "@/domains/settings/api/prompt-templates";
+import { markdownSection } from "@/domains/settings/lib/prompt-template-sections";
 import {
 	appendAttachmentContext,
 	createPendingAttachment,
@@ -90,6 +92,16 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	} = useSWR(runtimeConfigKey, () => getAgentRuntimeConfig(projectId), {
 		revalidateOnFocus: false,
 	});
+	const { data: promptTemplates = [] } = useSWR(promptTemplatesKey, listPromptTemplates);
+	const toolsTemplate = promptTemplates.find((template) => template.id === "TOOLS")?.content ?? "";
+	const attachmentDefaultPrompt = markdownSection(toolsTemplate, [
+		"内部模板（代码读取）",
+		"附件默认用户请求",
+	]);
+	const attachmentContextTitle = markdownSection(toolsTemplate, [
+		"内部模板（代码读取）",
+		"附件上下文标题",
+	]);
 	const canSubmit =
 		Boolean(
 			composerState.hasText ||
@@ -151,7 +163,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 			return;
 		}
 
-		const effectivePrompt = prompt || defaultAgentPrompt(readyAttachments);
+		const effectivePrompt = prompt || defaultAgentPrompt(readyAttachments, attachmentDefaultPrompt);
 		const pendingSend: PendingAttachmentSend = {
 			attachments: readyAttachments,
 			displayPrompt: agentDisplayPrompt({
@@ -161,7 +173,11 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 			displayMetadata: attachmentDisplayMetadata(readyAttachments),
 			model: buildRuntimeConfigSelection(runtimeConfig?.model, selectedModel),
 			permission: buildRuntimeConfigSelection(runtimeConfig?.permission, selectedPermission),
-			promptWithAttachments: appendAttachmentContext(effectivePrompt, readyAttachments),
+			promptWithAttachments: appendAttachmentContext(
+				effectivePrompt,
+				readyAttachments,
+				attachmentContextTitle,
+			),
 			references: composerValue.references,
 			reasoning: buildRuntimeConfigSelection(runtimeConfig?.reasoning, selectedReasoning),
 			comments: openComments,

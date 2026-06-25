@@ -16,13 +16,15 @@ func TestProjectBriefRenderUsesUnsetValues(t *testing.T) {
 		"| 节奏 | [未设定] |",
 		"| 受众 | [未设定] |",
 		"| 基调 | [未设定] |",
-		"| 风格 | [未设定] |",
 		"| 参考 | [未设定] |",
 		"| 其他约束 | [未设定] |",
 	} {
 		if !strings.Contains(rendered, line) {
 			t.Fatalf("rendered = %q, want line %q", rendered, line)
 		}
+	}
+	if strings.Contains(rendered, "| 风格 |") {
+		t.Fatalf("rendered = %q, should not include project style", rendered)
 	}
 }
 
@@ -31,14 +33,12 @@ func TestProjectBriefRenderPreservesSetFields(t *testing.T) {
 		Medium:   "2D 数码插画",
 		Genre:    "沙雕喜剧",
 		Audience: "Z 世代女性",
-		Style:    "高饱和赛博霓虹",
 	}).Render()
 
 	for _, line := range []string{
 		"| 媒介 | 2D 数码插画 |",
 		"| 类型 | 沙雕喜剧 |",
 		"| 受众 | Z 世代女性 |",
-		"| 风格 | 高饱和赛博霓虹 |",
 		"| 节奏 | [未设定] |",
 		"| 基调 | [未设定] |",
 		"| 参考 | [未设定] |",
@@ -51,17 +51,15 @@ func TestProjectBriefRenderPreservesSetFields(t *testing.T) {
 }
 
 func TestProjectBriefApplyUsesMask(t *testing.T) {
-	current := ProjectBrief{Medium: "短剧", Genre: "悬疑", Tone: "冷峻", Style: "暗调写实"}
-	next := current.Apply(ProjectBrief{Genre: "喜剧", Style: "明亮漫画", Notes: "低成本"}, ProjectBriefUpdateMask{
+	current := ProjectBrief{Medium: "短剧", Genre: "悬疑", Tone: "冷峻"}
+	next := current.Apply(ProjectBrief{Genre: "喜剧", Notes: "低成本"}, ProjectBriefUpdateMask{
 		Genre: true,
-		Style: true,
 		Notes: true,
 	})
 
 	if next.Medium != "短剧" ||
 		next.Genre != "喜剧" ||
 		next.Tone != "冷峻" ||
-		next.Style != "明亮漫画" ||
 		next.Notes != "低成本" {
 		t.Fatalf("next = %#v, want masked update", next)
 	}

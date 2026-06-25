@@ -14,7 +14,7 @@ describe("AgentAttachments", () => {
 		expect(attachment.text).toBeUndefined();
 		expect(attachment.name).toBe("reference.bin");
 
-		const prompt = appendAttachmentContext("整理素材", [attachment]);
+		const prompt = appendAttachmentContext("整理素材", [attachment], "附件上下文：");
 		expect(prompt).toContain("reference.bin");
 		expect(prompt).toContain("无法作为文本内联读取");
 		expect(prompt).not.toContain("```");
@@ -27,6 +27,6 @@ describe("AgentAttachments", () => {
 
 		expect(attachment.file).toBe(file);
 		expect(attachment.text).toBe("hello");
-		expect(appendAttachmentContext("整理素材", [attachment])).toContain("```");
+		expect(appendAttachmentContext("整理素材", [attachment], "附件上下文：")).toContain("```");
 	});
 });

@@ -405,7 +405,6 @@ func (store *Service) SaveProjectBriefPatchInput(projectID string, input mediamc
 		Pacing:     input.Pacing,
 		Audience:   input.Audience,
 		Tone:       input.Tone,
-		Style:      input.Style,
 		References: input.References,
 		Notes:      input.Notes,
 	})

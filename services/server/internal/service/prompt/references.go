@@ -33,8 +33,15 @@ func renderReferenceIndexPrompt(request AgentRunRequest) string {
 	}
 
 	var builder strings.Builder
-	builder.WriteString("# 可用 @ 资源索引\n\n")
-	builder.WriteString("以下是当前工作区可引用的角色、场景、道具和分镜资源。写分镜时，如果镜头主体、场景或关键道具能明确匹配某个资源，请在 `**引用资源**` 字段完整复制下方索引里的 Markdown @ 链接；不要自己拼接链接，不要写带省略号的占位链接，不要把 `mention://` 或 `asset://` 内部链接写入 `**主体**`、`**场景**`、`**动作**` 等视频提示词字段。\n")
+	if title, ok := InstructionTemplateSection("TOOLS", "内部模板（代码读取）", "可用资源索引标题"); ok {
+		builder.WriteString("# ")
+		builder.WriteString(strings.TrimSpace(title))
+		builder.WriteString("\n\n")
+	}
+	if intro, ok := InstructionTemplateSection("TOOLS", "内部模板（代码读取）", "可用资源索引说明"); ok {
+		builder.WriteString(strings.TrimSpace(intro))
+		builder.WriteString("\n")
+	}
 	for _, item := range items {
 		builder.WriteString("\n- ")
 		builder.WriteString(item.CategoryLabel)

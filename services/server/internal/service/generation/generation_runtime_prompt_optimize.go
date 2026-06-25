@@ -7,15 +7,10 @@ import (
 	"strings"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
 )
 
-const promptOptimizationSystemInstruction = `你是一位专业的 AI 绘画提示词优化专家。
-用户会给你一段原始提示词和一段参考风格提示词，请基于参考风格的表述方式和细节维度，重写并优化原始提示词。
-要求：
-1. 保留原始提示词的核心意图和主体内容。
-2. 融入参考风格提示词的表述技巧（如构图、光影、材质、氛围等维度的描写）。
-3. 输出优化后的提示词，使用英文，不要输出任何解释或额外说明。
-4. 只输出最终提示词本身。`
+const promptOptimizationInstructionID = "TOOLS"
 
 // NormalizeGenerationPromptOptimizationRequest trims prompt optimization settings.
 func NormalizeGenerationPromptOptimizationRequest(request *GenerationPromptOptimizationRequest) *GenerationPromptOptimizationRequest {
@@ -131,13 +126,15 @@ func promptOptimizationUserPrompt(request *GenerationPromptOptimizationRequest, 
 	if currentPrompt == "" {
 		currentPrompt = "（空）"
 	}
-	return strings.Join([]string{
-		fmt.Sprintf("参考风格提示词（来自「%s」）：", referenceName),
-		referencePrompt,
-		"",
-		"需要优化的原始提示词：",
-		currentPrompt,
-	}, "\n")
+	template, ok := serviceprompt.InstructionTemplateSection(promptOptimizationInstructionID, "内部模板（代码读取）", "提示词优化用户提示")
+	if !ok {
+		return currentPrompt
+	}
+	return renderGenerationPromptVariables(template, map[string]string{
+		"ReferenceName":   referenceName,
+		"ReferencePrompt": referencePrompt,
+		"CurrentPrompt":   currentPrompt,
+	})
 }
 
 func promptOptimizationParams(params map[string]any) map[string]any {
@@ -145,8 +142,24 @@ func promptOptimizationParams(params map[string]any) map[string]any {
 	for key, value := range params {
 		next[key] = value
 	}
-	next["system_instruction"] = promptOptimizationSystemInstruction
+	next["system_instruction"] = promptOptimizationSystemInstruction()
 	return next
+}
+
+func promptOptimizationSystemInstruction() string {
+	template, ok := serviceprompt.InstructionTemplateSection(promptOptimizationInstructionID, "内部模板（代码读取）", "提示词优化系统提示")
+	if !ok {
+		return ""
+	}
+	return template
+}
+
+func renderGenerationPromptVariables(template string, variables map[string]string) string {
+	replacements := make([]string, 0, len(variables)*2)
+	for key, value := range variables {
+		replacements = append(replacements, "{{."+key+"}}", value)
+	}
+	return strings.TrimSpace(strings.NewReplacer(replacements...).Replace(template))
 }
 
 func (workflow *GenerationService) completePromptOptimizedGenerationSync(

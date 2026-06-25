@@ -615,25 +615,27 @@ func TestAPIHandler(t *testing.T) {
 			configEnvelope.Data.ProjectID != createEnvelope.Data.ID ||
 			configEnvelope.Data.Name != createEnvelope.Data.Name ||
 			configEnvelope.Data.Description != createEnvelope.Data.Description ||
-			configEnvelope.Data.Overview.Style != "" {
+			len(configEnvelope.Data.Overview.CategoryDefaults) != 0 {
 			t.Fatalf("project config = %+v, want minimal project.media.json config", configEnvelope.Data)
 		}
-		stylePatch := requestJSON(t, projectHandler, http.MethodPatch, "/api/v1/projects/"+url.PathEscape(createEnvelope.Data.ID)+"/config", `{"overview":{"style":"冷调写实"}}`)
-		defer stylePatch.Body.Close()
-		if stylePatch.StatusCode != http.StatusOK {
-			t.Fatalf("config patch status code = %d, want %d: %s", stylePatch.StatusCode, http.StatusOK, readBody(t, stylePatch.Body))
+		configPatch := requestJSON(t, projectHandler, http.MethodPatch, "/api/v1/projects/"+url.PathEscape(createEnvelope.Data.ID)+"/config", `{"overview":{"categoryDefaults":{"extra":"video-cinematic-shot","style":"realistic"}}}`)
+		defer configPatch.Body.Close()
+		if configPatch.StatusCode != http.StatusOK {
+			t.Fatalf("config patch status code = %d, want %d: %s", configPatch.StatusCode, http.StatusOK, readBody(t, configPatch.Body))
 		}
-		var stylePatchEnvelope struct {
+		var configPatchEnvelope struct {
 			Data struct {
 				Config  mediamcp.ProjectConfig `json:"config"`
 				Changed bool                   `json:"changed"`
 			} `json:"data"`
 		}
-		if err := json.NewDecoder(stylePatch.Body).Decode(&stylePatchEnvelope); err != nil {
+		if err := json.NewDecoder(configPatch.Body).Decode(&configPatchEnvelope); err != nil {
 			t.Fatalf("decoding project config patch response: %v", err)
 		}
-		if !stylePatchEnvelope.Data.Changed || stylePatchEnvelope.Data.Config.Overview.Style != "冷调写实" {
-			t.Fatalf("project config patch = %+v, want changed style", stylePatchEnvelope.Data)
+		if !configPatchEnvelope.Data.Changed ||
+			configPatchEnvelope.Data.Config.Overview.CategoryDefaults["extra"] != "video-cinematic-shot" ||
+			configPatchEnvelope.Data.Config.Overview.CategoryDefaults["style"] != "" {
+			t.Fatalf("project config patch = %+v, want changed category defaults", configPatchEnvelope.Data)
 		}
 		if _, err := os.Stat(filepath.Join(workspaceDir, "local-projects")); !os.IsNotExist(err) {
 			t.Fatalf("deprecated workspace projects dir exists, err=%v", err)

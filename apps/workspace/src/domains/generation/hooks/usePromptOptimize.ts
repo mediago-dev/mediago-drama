@@ -12,6 +12,8 @@ import {
 	isConfiguredRoute,
 	preferredRoute,
 } from "@/domains/generation/hooks/generationCatalog";
+import { listPromptTemplates } from "@/domains/settings/api/prompt-templates";
+import { markdownSection } from "@/domains/settings/lib/prompt-template-sections";
 
 export interface PromptOptimizeInput {
 	currentPrompt: string;
@@ -39,13 +41,10 @@ export interface UsePromptOptimizeOptions {
 	route?: GenerationRoute | null;
 }
 
-const optimizeSystemInstruction = `你是一位专业的 AI 绘画提示词优化专家。
-用户会给你一段原始提示词和一段参考风格提示词，请基于参考风格的表述方式和细节维度，重写并优化原始提示词。
-要求：
-1. 保留原始提示词的核心意图和主体内容。
-2. 融入参考风格提示词的表述技巧（如构图、光影、材质、氛围等维度的描写）。
-3. 输出优化后的提示词，使用英文，不要输出任何解释或额外说明。
-4. 只输出最终提示词本身。`;
+const promptOptimizeInstructionTemplateId = "TOOLS";
+const promptOptimizeInternalHeading = "内部模板（代码读取）";
+const promptOptimizeSystemHeading = "提示词优化系统提示";
+const promptOptimizeUserHeading = "提示词优化用户提示";
 
 export const usePromptOptimize = ({
 	capabilityId,
@@ -78,20 +77,18 @@ export const usePromptOptimize = ({
 			setIsOptimizing(true);
 			setError(null);
 
-			const userPrompt = [
-				`参考风格提示词（来自「${input.referenceName}」）：`,
-				input.referencePrompt,
-				"",
-				`需要优化的原始提示词：`,
-				input.currentPrompt || "（空）",
-			].join("\n");
-
 			let accumulated = "";
 			let finalOptimizedPrompt = "";
 			let failedMessage = "";
 			const normalizedProjectId = projectId?.trim() || undefined;
 
 			try {
+				const templates = await loadPromptOptimizeInstructionTemplates();
+				const userPrompt = renderPromptTemplate(templates.user, {
+					CurrentPrompt: input.currentPrompt || "（空）",
+					ReferenceName: input.referenceName,
+					ReferencePrompt: input.referencePrompt,
+				});
 				await ensurePromptOptimizeConversation({
 					conversationId,
 					conversationScopeId,
@@ -112,7 +109,7 @@ export const usePromptOptimize = ({
 						model: textRoute.model,
 						prompt: userPrompt,
 						params: {
-							system_instruction: optimizeSystemInstruction,
+							system_instruction: templates.system,
 						},
 						referenceUrls: [],
 						referenceAssetIds: [],
@@ -183,6 +180,39 @@ const resolveTextRoute = (catalog?: GenerationModelsResponse): GenerationRoute |
 	const textRoutes = promptOptimizeModelOptions(catalog).map((option) => option.route);
 	if (textRoutes.length > 0) return preferredRoute(textRoutes) ?? textRoutes[0] ?? null;
 	return null;
+};
+
+interface PromptOptimizeInstructionTemplates {
+	system: string;
+	user: string;
+}
+
+const loadPromptOptimizeInstructionTemplates =
+	async (): Promise<PromptOptimizeInstructionTemplates> => {
+		const templates = await listPromptTemplates();
+		const toolsTemplate = templates.find(
+			(template) => template.id === promptOptimizeInstructionTemplateId,
+		);
+		const system = markdownSection(toolsTemplate?.content ?? "", [
+			promptOptimizeInternalHeading,
+			promptOptimizeSystemHeading,
+		]);
+		const user = markdownSection(toolsTemplate?.content ?? "", [
+			promptOptimizeInternalHeading,
+			promptOptimizeUserHeading,
+		]);
+		if (!system || !user) {
+			throw new Error("提示词优化模板不可用。");
+		}
+		return { system, user };
+	};
+
+const renderPromptTemplate = (template: string, values: Record<string, string>) => {
+	let rendered = template;
+	for (const [key, value] of Object.entries(values)) {
+		rendered = rendered.replaceAll(`{{.${key}}}`, value);
+	}
+	return rendered.trim();
 };
 
 export const promptOptimizeModelOptions = (

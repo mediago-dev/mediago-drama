@@ -99,7 +99,11 @@ const isReadableTextFile = (file: File) => {
 	return [...readableTextExtensions].some((extension) => name.endsWith(extension));
 };
 
-export const appendAttachmentContext = (prompt: string, attachments: AgentAttachment[]) => {
+export const appendAttachmentContext = (
+	prompt: string,
+	attachments: AgentAttachment[],
+	contextTitle: string,
+) => {
 	if (attachments.length === 0) return prompt;
 
 	const attachmentContext = attachments
@@ -130,11 +134,14 @@ export const appendAttachmentContext = (prompt: string, attachments: AgentAttach
 		})
 		.join("\n\n");
 
-	return `${prompt}\n\n附件上下文：\n${attachmentContext}`;
+	const title = contextTitle.trim();
+	return [prompt, title ? `${title}\n${attachmentContext}` : attachmentContext]
+		.filter(Boolean)
+		.join("\n\n");
 };
 
-export const defaultAgentPrompt = (attachments: AgentAttachment[]) =>
-	attachments.length > 0 ? "请根据附件内容处理当前文档。" : "";
+export const defaultAgentPrompt = (attachments: AgentAttachment[], template: string) =>
+	attachments.length > 0 ? template.trim() : "";
 
 export const getAttachmentError = (err: unknown) =>
 	err instanceof Error ? err.message : "附件读取失败。";

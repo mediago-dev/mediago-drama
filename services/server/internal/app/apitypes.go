@@ -160,7 +160,6 @@ func mcpProjectBriefFromApp(brief ProjectBrief) mediamcp.ProjectBrief {
 		Pacing:     brief.Pacing,
 		Audience:   brief.Audience,
 		Tone:       brief.Tone,
-		Style:      brief.Style,
 		References: brief.References,
 		Notes:      brief.Notes,
 		UpdatedAt:  brief.UpdatedAt,

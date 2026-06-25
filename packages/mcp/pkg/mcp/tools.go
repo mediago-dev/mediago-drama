@@ -18,18 +18,17 @@ type ToolDefinition struct {
 const mcpWorkflowInstructions = `MediaGo Drama MCP 使用说明：
 - Agent 进程启动时当前工作目录已经是当前项目的文档根目录（项目的 work 文件夹）；当前目录树就是文档树，Markdown 文件就是文档。不要再访问或创建名为 work/ 的子目录。
 - 读取、创建、修改、移动和删除文档时，直接操作当前工作目录 . 下的本地文件；不要通过 MCP 读取或编辑文档正文。
-- 需要读取项目配置或视觉风格时调用 get_project_config；不要在当前工作目录或父目录中搜索 project.media.json。
+- 需要读取项目配置时调用 get_project_config；不要在当前工作目录或父目录中搜索 project.media.json。项目配置不再承载视觉风格，风格提示应来自用户本轮需求或提示词包。
 - load_skill 用于装载 screenplay、character、scene、prop、storyboard 等写作 skill；Skill 正文只承载业务写作提示，若返回系统内置文档结构规则则必须按该规则生成文档。
-- get_project_config 用于读取当前项目配置，尤其是 config.overview.style。
+- get_project_config 用于读取当前项目配置，例如提示词分类默认预设。
 - list_comments / get_comment / mutate_comment 用于读取和处理评论/批注；mutate_comment.op 支持 add、update、reply、resolve、unresolve、delete。
 - 用户划词后的局部任务应转成评论/批注处理，不依赖瞬时编辑器选区。`
 
 // AgentMCPInstructions describes the run-scoped MCP server contract returned
 // during MCP initialize.
 const AgentMCPInstructions = mcpWorkflowInstructions + `
-- 需要修改 Overview 风格时调用 update_project_config。
 - 本 MCP 只提供 load_skill、get_project_config、update_project_config、list_comments、get_comment、mutate_comment。
-- update_project_config 当前仅用于更新 overview.style。`
+- update_project_config 当前仅用于更新 overview.categoryDefaults；style 风格分类会被忽略。`
 
 // ExternalMCPInstructions describes the cross-project MCP server contract.
 const ExternalMCPInstructions = mcpWorkflowInstructions + `
@@ -48,8 +47,8 @@ var DocumentTools = struct {
 	MutateComment       ToolDefinition
 }{
 	LoadSkill:           ToolDefinition{Name: "load_skill", Title: "装载 Agent Skill", Description: "按 name 装载一个可用 skill，返回 frontmatter 之外的业务写作提示；当 skill 绑定 template_id 时，会追加系统内置文档结构规则。编辑 screenplay/character/scene/prop/storyboard 类型文档前必须先装载对应写作 skill，并按返回的结构规则生成文档。", ReadOnly: true},
-	GetProjectConfig:    ToolDefinition{Name: "get_project_config", Title: "读取项目配置", Description: "读取当前项目配置；需要视觉风格时读取 config.overview.style，不要通过文件系统查找 project.media.json。", ReadOnly: true},
-	UpdateProjectConfig: ToolDefinition{Name: "update_project_config", Title: "更新项目配置", Description: "按字段更新当前项目的 project.media.json；当前仅支持 overview.style。"},
+	GetProjectConfig:    ToolDefinition{Name: "get_project_config", Title: "读取项目配置", Description: "读取当前项目配置，例如提示词分类默认预设；项目配置不再承载视觉风格，不要通过文件系统查找 project.media.json。", ReadOnly: true},
+	UpdateProjectConfig: ToolDefinition{Name: "update_project_config", Title: "更新项目配置", Description: "按字段更新当前项目的 project.media.json；当前仅支持 overview.categoryDefaults，style 风格分类会被忽略。"},
 	ListComments:        ToolDefinition{Name: "list_comments", Title: "列出评论线程", Description: "按文档、块和解决状态列出评论线程。", ReadOnly: true},
 	GetComment:          ToolDefinition{Name: "get_comment", Title: "读取评论线程", Description: "按 commentId 读取单个评论线程。", ReadOnly: true},
 	MutateComment:       ToolDefinition{Name: "mutate_comment", Title: "修改评论线程", Description: "统一评论 mutation 入口；op 支持 add、update、reply、resolve、unresolve、delete。用于处理划词评论、回复或解决评论线程。"},
@@ -64,7 +63,7 @@ var ExternalTools = struct {
 	MutateComment    ToolDefinition
 }{
 	ListProjects:     ToolDefinition{Name: "list_projects", Title: "列出项目（外部）", Description: "列出当前 MediaGo Drama workspace 中的所有项目。", ReadOnly: true},
-	GetProjectConfig: ToolDefinition{Name: "get_project_config", Title: "读取项目配置（外部）", Description: "按 projectId 读取项目配置；需要视觉风格时读取 config.overview.style。", ReadOnly: true},
+	GetProjectConfig: ToolDefinition{Name: "get_project_config", Title: "读取项目配置（外部）", Description: "按 projectId 读取项目配置，例如提示词分类默认预设；项目配置不再承载视觉风格。", ReadOnly: true},
 	ListComments:     ToolDefinition{Name: "list_comments", Title: "列出评论（外部）", Description: "按文档、块和解决状态列出评论线程。", ReadOnly: true},
 	GetComment:       ToolDefinition{Name: "get_comment", Title: "读取评论（外部）", Description: "按 commentId 读取单个评论线程。", ReadOnly: true},
 	MutateComment:    ToolDefinition{Name: "mutate_comment", Title: "修改评论（外部）", Description: "统一评论 mutation 入口；op 支持 add、update、reply、resolve、unresolve、delete。"},

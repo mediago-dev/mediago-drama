@@ -15,7 +15,6 @@ export interface ProjectBrief {
 	pacing: string;
 	audience: string;
 	tone: string;
-	style: string;
 	references: string;
 	notes: string;
 	updatedAt: string;
@@ -27,7 +26,6 @@ export interface ProjectBriefPatch {
 	pacing?: string;
 	audience?: string;
 	tone?: string;
-	style?: string;
 	references?: string;
 	notes?: string;
 }

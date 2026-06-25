@@ -150,7 +150,6 @@ type ProjectList struct {
 
 // ProjectOverviewConfig is the structured Overview page config.
 type ProjectOverviewConfig struct {
-	Style string `json:"style"`
 	// CategoryDefaults maps a prompt category to a default preset id.
 	CategoryDefaults map[string]string `json:"categoryDefaults,omitempty"`
 }
@@ -192,9 +191,8 @@ type ExternalGetProjectConfigInput struct {
 
 // ProjectOverviewConfigPatch is a sparse Overview config update.
 type ProjectOverviewConfigPatch struct {
-	Style *string `json:"style,omitempty" jsonschema:"项目 Overview 的风格描述。"`
 	// CategoryDefaults, when provided, replaces the per-category default preset map.
-	CategoryDefaults map[string]string `json:"categoryDefaults,omitempty" jsonschema:"每分类默认预设：分类到预设 id。"`
+	CategoryDefaults map[string]string `json:"categoryDefaults,omitempty" jsonschema:"每分类默认预设：分类到预设 id；style 风格分类会被忽略。"`
 }
 
 // UnmarshalJSON accepts the legacy layerDefaults key while normalizing to CategoryDefaults.
@@ -216,7 +214,7 @@ func (patch *ProjectOverviewConfigPatch) UnmarshalJSON(data []byte) error {
 
 // ProjectConfigPatchInput is a sparse project.media.json update.
 type ProjectConfigPatchInput struct {
-	Overview *ProjectOverviewConfigPatch `json:"overview,omitempty" jsonschema:"项目 Overview 配置。支持 style 和 categoryDefaults。"`
+	Overview *ProjectOverviewConfigPatch `json:"overview,omitempty" jsonschema:"项目 Overview 配置。支持 categoryDefaults。"`
 }
 
 // ProjectConfigToolOutput is returned by project config tools.
@@ -233,7 +231,6 @@ type ProjectBrief struct {
 	Pacing     string `json:"pacing"`
 	Audience   string `json:"audience"`
 	Tone       string `json:"tone"`
-	Style      string `json:"style"`
 	References string `json:"references"`
 	Notes      string `json:"notes"`
 	UpdatedAt  string `json:"updatedAt"`
@@ -246,7 +243,6 @@ type ProjectBriefPatchInput struct {
 	Pacing     *string `json:"pacing,omitempty" jsonschema:"项目节奏，自由文本；只在用户已明确回答后传入。"`
 	Audience   *string `json:"audience,omitempty" jsonschema:"目标受众，自由文本；只在用户已明确回答后传入。"`
 	Tone       *string `json:"tone,omitempty" jsonschema:"项目基调，自由文本；只在用户已明确回答后传入。"`
-	Style      *string `json:"style,omitempty" jsonschema:"视觉风格，自由文本；图片和视频生成时必须遵循。"`
 	References *string `json:"references,omitempty" jsonschema:"参考作品或灵感，自由文本；只在用户已明确回答后传入。"`
 	Notes      *string `json:"notes,omitempty" jsonschema:"其他约束，自由文本；只在用户已明确回答后传入。"`
 }

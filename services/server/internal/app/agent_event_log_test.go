@@ -152,7 +152,7 @@ func TestAgentMessageUsesFixedPromptWithoutSpawnRules(t *testing.T) {
 		}
 		if !strings.Contains(prompt, "当前工作目录已经是当前项目的文档根目录") ||
 			!strings.Contains(prompt, "需要文档正文状态时，直接读取当前工作目录 `.` 下的本地 Markdown 文件") ||
-			!strings.Contains(prompt, "需要项目配置或视觉风格时，优先使用 MCP `get_project_config`") {
+			!strings.Contains(prompt, "需要项目配置时，优先使用 MCP `get_project_config`") {
 			t.Fatalf("prompt = %q, want file-native agent prompt", prompt)
 		}
 		if strings.Contains(prompt, "读取 `work/` 下") {

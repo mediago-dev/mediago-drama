@@ -1,6 +1,10 @@
 package model
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/official"
+)
 
 // OverviewDocumentID is the stable document ID for a project's overview document.
 const OverviewDocumentID = "overview"
@@ -56,7 +60,6 @@ func ProjectBriefOverviewMarkdown(brief ProjectBrief) string {
 		{label: "节奏", value: brief.Pacing},
 		{label: "受众", value: brief.Audience},
 		{label: "基调", value: brief.Tone},
-		{label: "风格", value: brief.Style},
 		{label: "参考", value: brief.References},
 		{label: "其他约束", value: brief.Notes},
 	}
@@ -69,7 +72,7 @@ func ProjectBriefOverviewMarkdown(brief ProjectBrief) string {
 		lines = append(lines, "- **"+field.label+"**："+value)
 	}
 	if len(lines) == 0 {
-		return "> 在这里写下项目的定位、媒介、节奏、受众、基调、风格、参考和约束。可以让 Agent 帮忙草拟。"
+		return "> 在这里写下项目的定位、媒介、节奏、受众、基调、参考和约束。可以让 Agent 帮忙草拟。"
 	}
 	return strings.Join(lines, "\n")
 }
@@ -81,14 +84,12 @@ func RenderOverviewProjectBriefPrompt(markdown string) string {
 		brief = "[未设定]"
 	}
 
-	var builder strings.Builder
-	builder.WriteString("## 当前项目设定（Project Brief）\n\n")
-	builder.WriteString("这是旧 Overview 文档（documentId: ")
-	builder.WriteString(OverviewDocumentID)
-	builder.WriteString("）中的 Project Brief 章节，仅用于兼容旧项目。新项目不要创建或编辑 Overview Markdown 文档。\n\n")
-	builder.WriteString(brief)
-	builder.WriteString("\n")
-	return builder.String()
+	template := official.MustInstructionSection("AGENTS", "内部模板（代码读取）", "旧 Overview Project Brief 提示")
+	return renderModelPromptVariables(template, map[string]string{
+		"Brief":              brief,
+		"HeadingPrefix":      "##",
+		"OverviewDocumentID": OverviewDocumentID,
+	}) + "\n"
 }
 
 // ExtractOverviewProjectBriefSection extracts the Project Brief section from Overview markdown.
@@ -160,6 +161,14 @@ func ReplaceOverviewProjectBriefSection(markdown string, replacement string) str
 	}
 	nextLines = append(nextLines, lines[end:]...)
 	return strings.TrimRight(strings.Join(nextLines, "\n"), "\n") + "\n"
+}
+
+func renderModelPromptVariables(template string, variables map[string]string) string {
+	replacements := make([]string, 0, len(variables)*2)
+	for key, value := range variables {
+		replacements = append(replacements, "{{."+key+"}}", value)
+	}
+	return strings.TrimSpace(strings.NewReplacer(replacements...).Replace(template))
 }
 
 func markdownSingleLine(value string) string {

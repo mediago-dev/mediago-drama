@@ -8,6 +8,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/official"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/textutil"
 )
@@ -22,7 +23,6 @@ type ProjectBrief struct {
 	Pacing     string `json:"pacing"`
 	Audience   string `json:"audience"`
 	Tone       string `json:"tone"`
-	Style      string `json:"style"`
 	References string `json:"references"`
 	Notes      string `json:"notes"`
 	UpdatedAt  string `json:"updatedAt"`
@@ -35,7 +35,6 @@ type ProjectBriefUpdateMask struct {
 	Pacing     bool
 	Audience   bool
 	Tone       bool
-	Style      bool
 	References bool
 	Notes      bool
 }
@@ -49,7 +48,6 @@ type ProjectBriefPromptInputs struct {
 	Pacing           string
 	Audience         string
 	Tone             string
-	Style            string
 	References       string
 	Notes            string
 }
@@ -61,7 +59,6 @@ type ProjectBriefPatch struct {
 	Pacing     *string `json:"pacing,omitempty" jsonschema:"项目节奏，自由文本；只在用户已明确回答后传入。"`
 	Audience   *string `json:"audience,omitempty" jsonschema:"目标受众，自由文本；只在用户已明确回答后传入。"`
 	Tone       *string `json:"tone,omitempty" jsonschema:"项目基调，自由文本；只在用户已明确回答后传入。"`
-	Style      *string `json:"style,omitempty" jsonschema:"视觉风格，自由文本；图片和视频生成时必须遵循。"`
 	References *string `json:"references,omitempty" jsonschema:"参考作品或灵感，自由文本；只在用户已明确回答后传入。"`
 	Notes      *string `json:"notes,omitempty" jsonschema:"其他约束，自由文本；只在用户已明确回答后传入。"`
 }
@@ -81,7 +78,6 @@ func (brief ProjectBrief) Render() string {
 		Pacing:      renderProjectBriefValue(brief.Pacing),
 		Audience:    renderProjectBriefValue(brief.Audience),
 		Tone:        renderProjectBriefValue(brief.Tone),
-		Style:       renderProjectBriefValue(brief.Style),
 		References:  renderProjectBriefValue(brief.References),
 		Notes:       renderProjectBriefValue(brief.Notes),
 	}
@@ -105,9 +101,6 @@ func (brief ProjectBrief) Apply(update ProjectBrief, mask ProjectBriefUpdateMask
 	if mask.Tone {
 		brief.Tone = update.Tone
 	}
-	if mask.Style {
-		brief.Style = update.Style
-	}
 	if mask.References {
 		brief.References = update.References
 	}
@@ -124,7 +117,6 @@ func (mask ProjectBriefUpdateMask) Empty() bool {
 		!mask.Pacing &&
 		!mask.Audience &&
 		!mask.Tone &&
-		!mask.Style &&
 		!mask.References &&
 		!mask.Notes
 }
@@ -152,10 +144,6 @@ func ProjectBriefPatchToUpdate(patch ProjectBriefPatch) (ProjectBrief, ProjectBr
 	if patch.Tone != nil {
 		brief.Tone = *patch.Tone
 		mask.Tone = true
-	}
-	if patch.Style != nil {
-		brief.Style = *patch.Style
-		mask.Style = true
 	}
 	if patch.References != nil {
 		brief.References = *patch.References
@@ -202,7 +190,8 @@ func renderProjectBriefValue(value string) string {
 }
 
 func projectBriefPromptTemplate(data ProjectBriefPromptInputs) string {
-	tmpl, err := template.New("project_brief").Funcs(projectBriefTemplateFuncs()).Parse(projectBriefPromptFallback)
+	source := official.MustInstructionSection("AGENTS", "内部模板（代码读取）", "Project Brief 提示")
+	tmpl, err := template.New("project_brief").Funcs(projectBriefTemplateFuncs()).Parse(source)
 	if err != nil {
 		slog.Error("parse project_brief.md failed", "err", err)
 		return ""
@@ -214,31 +203,6 @@ func projectBriefPromptTemplate(data ProjectBriefPromptInputs) string {
 	}
 	return strings.TrimSpace(buffer.String())
 }
-
-const projectBriefPromptFallback = `{{if .UseOverview}}{{overviewProjectBrief (truncate .OverviewMarkdown 16384)}}{{else}}# 当前项目设定（Project Brief）
-
-这是本项目所有 agent 共享的创作变量。若与你的任务相关的字段为 [未设定]，请先用一句话向用户确认，
-拿到回答后通过项目设定更新能力保存，再开始正式产出文档。
-
-## 使用规则
-
-- 若当前任务依赖某个缺失字段，先向用户确认该字段。
-- 得到回答后，更新项目设定，不要创建或编辑 Overview Markdown 文档。
-- 完成 Project Brief 更新后，再开始正式产出业务文档。
-
-## 字段
-
-| 字段 | 当前值 |
-| --- | --- |
-| 媒介 | {{.Medium}} |
-| 类型 | {{.Genre}} |
-| 节奏 | {{.Pacing}} |
-| 受众 | {{.Audience}} |
-| 基调 | {{.Tone}} |
-| 风格 | {{.Style}} |
-| 参考 | {{.References}} |
-| 其他约束 | {{.Notes}} |
-{{end}}`
 
 func projectBriefTemplateFuncs() template.FuncMap {
 	return template.FuncMap{

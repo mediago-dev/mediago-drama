@@ -12,13 +12,12 @@ func TestMCPAdapterGetProjectConfigReadsCurrentProject(t *testing.T) {
 	if store.InitErr() != nil {
 		t.Fatalf("workspace init error: %v", store.InitErr())
 	}
-	const projectID = "project-style"
+	const projectID = "project-config"
 	requireMCPTestProject(t, store, projectID)
 
-	style := "2D动漫"
 	if _, err := store.SaveProjectConfigPatchInput(projectID, mediamcp.ProjectConfigPatchInput{
 		Overview: &mediamcp.ProjectOverviewConfigPatch{
-			Style: &style,
+			CategoryDefaults: map[string]string{"extra": "video-cinematic-shot", "style": "realistic"},
 		},
 	}); err != nil {
 		t.Fatalf("saving project config: %v", err)
@@ -33,7 +32,8 @@ func TestMCPAdapterGetProjectConfigReadsCurrentProject(t *testing.T) {
 	}
 	if output.Status != "ok" ||
 		output.Config.ProjectID != projectID ||
-		output.Config.Overview.Style != style {
-		t.Fatalf("project config output = %+v, want style %q", output, style)
+		output.Config.Overview.CategoryDefaults["extra"] != "video-cinematic-shot" ||
+		output.Config.Overview.CategoryDefaults["style"] != "" {
+		t.Fatalf("project config output = %+v, want category defaults without style", output)
 	}
 }

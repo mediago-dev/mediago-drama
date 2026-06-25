@@ -45,9 +45,6 @@ func (store *Service) SaveProjectConfigPatchInput(projectID string, input mediam
 
 	next := config
 	if input.Overview != nil {
-		if input.Overview.Style != nil {
-			next.Overview.Style = strings.TrimSpace(*input.Overview.Style)
-		}
 		if input.Overview.CategoryDefaults != nil {
 			next.Overview.CategoryDefaults = normalizeCategoryDefaults(input.Overview.CategoryDefaults)
 		}
@@ -102,7 +99,6 @@ func mcpProjectConfigFromManifest(manifest shared.ProjectManifestFile) mediamcp.
 		Name:          manifest.Name,
 		Description:   manifest.Description,
 		Overview: mediamcp.ProjectOverviewConfig{
-			Style:            manifest.Overview.Style,
 			CategoryDefaults: normalizeCategoryDefaults(manifest.Overview.CategoryDefaults),
 		},
 		CreatedAt: manifest.CreatedAt,
@@ -118,7 +114,7 @@ func normalizeCategoryDefaults(defaults map[string]string) map[string]string {
 	for category, presetID := range defaults {
 		category = strings.TrimSpace(category)
 		presetID = strings.TrimSpace(presetID)
-		if category == "" || presetID == "" {
+		if category == "" || category == "style" || presetID == "" {
 			continue
 		}
 		normalized[category] = presetID
@@ -136,7 +132,6 @@ func projectManifestFromMCPConfig(config mediamcp.ProjectConfig) shared.ProjectM
 		Name:          strings.TrimSpace(config.Name),
 		Description:   strings.TrimSpace(config.Description),
 		Overview: shared.ProjectManifestOverviewFile{
-			Style:            strings.TrimSpace(config.Overview.Style),
 			CategoryDefaults: normalizeCategoryDefaults(config.Overview.CategoryDefaults),
 		},
 		CreatedAt: strings.TrimSpace(config.CreatedAt),

@@ -169,12 +169,14 @@ func renderUserRequestPrompt(ctx PromptContext) string {
 	if prompt == "" {
 		return ""
 	}
-	return "用户请求：\n" + prompt
+	template, ok := InstructionTemplateSection("TOOLS", "内部模板（代码读取）", "用户请求包裹模板")
+	if !ok || strings.TrimSpace(template) == "" {
+		return prompt
+	}
+	return renderPromptVariables(template, map[string]string{
+		"UserPrompt": prompt,
+	})
 }
-
-const defaultAgentIdentityBlock = `你是 MediaGo Drama 内的本地工作区 Agent。
-帮助用户处理项目内的 Markdown 文档树。除非客户端文件系统请求明确且安全，否则不要直接编辑文件。
-普通问候、闲聊或简单能力说明直接简短回复，不要做文档读写。`
 
 func applyAgentsRuntimeData(text string, data agentsMdData) string {
 	text = replaceDefaultSystemPrompt(text, data.SystemPrompt)
@@ -186,18 +188,22 @@ func replaceDefaultSystemPrompt(text string, systemPrompt string) string {
 	if systemPrompt == "" {
 		return text
 	}
-	if strings.Contains(text, defaultAgentIdentityBlock) {
-		return strings.Replace(text, defaultAgentIdentityBlock, systemPrompt, 1)
-	}
 	return systemPrompt + "\n\n" + strings.TrimSpace(text)
 }
 
 func appendSkillIndex(text string, skills []serviceskill.SkillMeta) string {
 	var builder strings.Builder
 	builder.WriteString(strings.TrimRight(text, "\n"))
-	builder.WriteString("\n\n当前可用 Skill：\n")
+	if heading, ok := InstructionTemplateSection("AGENTS", "内部模板（代码读取）", "Skill 索引标题"); ok {
+		builder.WriteString("\n\n")
+		builder.WriteString(strings.TrimSpace(heading))
+		builder.WriteString("\n")
+	}
 	if len(skills) == 0 {
-		builder.WriteString("- 暂无可用 Skill\n")
+		if empty, ok := InstructionTemplateSection("AGENTS", "内部模板（代码读取）", "空 Skill 提示"); ok {
+			builder.WriteString(strings.TrimSpace(empty))
+			builder.WriteString("\n")
+		}
 		return builder.String()
 	}
 	for _, skill := range skills {
@@ -208,4 +214,12 @@ func appendSkillIndex(text string, skills []serviceskill.SkillMeta) string {
 		builder.WriteString("\n")
 	}
 	return builder.String()
+}
+
+func renderPromptVariables(template string, variables map[string]string) string {
+	replacements := make([]string, 0, len(variables)*2)
+	for key, value := range variables {
+		replacements = append(replacements, "{{."+key+"}}", value)
+	}
+	return strings.TrimSpace(strings.NewReplacer(replacements...).Replace(template))
 }

@@ -64,7 +64,6 @@ type ProjectManifestFile struct {
 
 // ProjectManifestOverviewFile is the overview config stored in project.media.json.
 type ProjectManifestOverviewFile struct {
-	Style            string            `json:"style"`
 	CategoryDefaults map[string]string `json:"categoryDefaults,omitempty"`
 }
 
@@ -136,11 +135,29 @@ func NormalizeProjectManifestFile(project mediamcp.Project, current ProjectManif
 		Name:          name,
 		Description:   description,
 		Overview: ProjectManifestOverviewFile{
-			Style:            strings.TrimSpace(current.Overview.Style),
-			CategoryDefaults: current.Overview.CategoryDefaults,
+			CategoryDefaults: normalizeProjectManifestCategoryDefaults(current.Overview.CategoryDefaults),
 		},
 		CreatedAt: createdAt,
 	}
+}
+
+func normalizeProjectManifestCategoryDefaults(defaults map[string]string) map[string]string {
+	if len(defaults) == 0 {
+		return nil
+	}
+	normalized := map[string]string{}
+	for category, presetID := range defaults {
+		category = strings.TrimSpace(category)
+		presetID = strings.TrimSpace(presetID)
+		if category == "" || category == "style" || presetID == "" {
+			continue
+		}
+		normalized[category] = presetID
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 // WorkspacePaths contains canonical paths for a local MediaGo Drama workspace.

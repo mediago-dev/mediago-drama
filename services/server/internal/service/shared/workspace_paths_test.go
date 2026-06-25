@@ -263,8 +263,7 @@ func TestEnsureProjectLayoutCreatesMinimalVisibleProjectTree(t *testing.T) {
 		manifest.ProjectID != project.ID ||
 		manifest.Name != project.Name ||
 		manifest.Description != project.Description ||
-		manifest.CreatedAt != project.CreatedAt ||
-		manifest.Overview.Style != "" {
+		manifest.CreatedAt != project.CreatedAt {
 		t.Fatalf("manifest = %#v, want minimal v1 project config", manifest)
 	}
 }
@@ -308,6 +307,11 @@ func TestEnsureProjectLayoutNormalizesExistingProjectManifest(t *testing.T) {
 	if _, ok := rawManifest["updatedAt"]; ok {
 		t.Fatalf("manifest should not include updatedAt: %s", string(data))
 	}
+	if overview, ok := rawManifest["overview"].(map[string]any); ok {
+		if _, hasStyle := overview["style"]; hasStyle {
+			t.Fatalf("manifest should not include overview style: %s", string(data))
+		}
+	}
 
 	var manifest ProjectManifestFile
 	if err := json.Unmarshal(data, &manifest); err != nil {
@@ -316,8 +320,7 @@ func TestEnsureProjectLayoutNormalizesExistingProjectManifest(t *testing.T) {
 	if manifest.ProjectID != project.ID ||
 		manifest.Name != project.Name ||
 		manifest.Description != project.Description ||
-		manifest.Overview.Style != "冷调写实" ||
 		manifest.CreatedAt != "2026-01-01T00:00:00Z" {
-		t.Fatalf("manifest = %#v, want normalized manifest preserving overview style and createdAt", manifest)
+		t.Fatalf("manifest = %#v, want normalized manifest preserving createdAt", manifest)
 	}
 }

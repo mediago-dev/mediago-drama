@@ -37,7 +37,6 @@ export interface WorkspaceProjectsPayload {
 }
 
 export interface ProjectOverviewConfig {
-	style: string;
 	categoryDefaults?: ProjectCategoryDefaults;
 }
 
@@ -51,7 +50,6 @@ export interface ProjectConfig {
 }
 
 export interface ProjectOverviewConfigPatch {
-	style?: string | null;
 	categoryDefaults?: ProjectCategoryDefaults | null;
 }
 
@@ -150,7 +148,6 @@ const normalizeProjectBrief = (brief: Partial<ProjectBrief> | undefined): Projec
 	pacing: brief?.pacing ?? "",
 	audience: brief?.audience ?? "",
 	tone: brief?.tone ?? "",
-	style: brief?.style ?? "",
 	references: brief?.references ?? "",
 	notes: brief?.notes ?? "",
 	updatedAt: brief?.updatedAt ?? "",
@@ -162,7 +159,6 @@ const normalizeProjectConfig = (config: Partial<ProjectConfig> | undefined): Pro
 	name: config?.name ?? "",
 	description: config?.description ?? "",
 	overview: {
-		style: config?.overview?.style ?? "",
 		categoryDefaults: config?.overview?.categoryDefaults ?? {},
 	},
 	createdAt: config?.createdAt ?? "",

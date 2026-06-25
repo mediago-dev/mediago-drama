@@ -37,7 +37,6 @@ func TestPromptBuilderDoesNotInlineProjectBrief(t *testing.T) {
 		Medium: "2D 数码插画",
 		Genre:  "沙雕喜剧",
 		Pacing: "短剧，每集 60 秒",
-		Style:  "明亮糖果色，厚涂质感",
 	}
 
 	prompt := BuildWorkspaceACPPrompt(AgentRunRequest{
@@ -57,7 +56,6 @@ func TestPromptBuilderDoesNotInlineProjectBrief(t *testing.T) {
 		"2D 数码插画",
 		"沙雕喜剧",
 		"短剧，每集 60 秒",
-		"明亮糖果色，厚涂质感",
 	} {
 		if strings.Contains(prompt, value) {
 			t.Fatalf("prompt = %q, should not inline project brief value %q", prompt, value)

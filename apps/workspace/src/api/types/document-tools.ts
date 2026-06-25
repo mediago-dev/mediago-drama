@@ -230,7 +230,7 @@ export interface ProjectList {
 }
 
 export interface ProjectOverviewConfig {
-	style: string;
+	categoryDefaults?: Record<string, string>;
 }
 
 export interface ProjectConfig {
@@ -243,7 +243,7 @@ export interface ProjectConfig {
 }
 
 export interface ProjectOverviewConfigPatch {
-	style?: string | null;
+	categoryDefaults?: Record<string, string> | null;
 }
 
 export interface ProjectConfigPatchInput {
@@ -262,7 +262,6 @@ export interface ProjectBrief {
 	pacing: string;
 	audience: string;
 	tone: string;
-	style: string;
 	references: string;
 	notes: string;
 	updatedAt: string;
@@ -274,7 +273,6 @@ export interface ProjectBriefPatchInput {
 	pacing?: string | null;
 	audience?: string | null;
 	tone?: string | null;
-	style?: string | null;
 	references?: string | null;
 	notes?: string | null;
 }

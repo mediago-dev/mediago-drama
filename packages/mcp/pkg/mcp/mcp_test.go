@@ -109,6 +109,7 @@ func TestDocumentToolDefinitions(t *testing.T) {
 		!strings.Contains(AgentMCPInstructions, "不要再访问或创建名为 work/ 的子目录") ||
 		!strings.Contains(AgentMCPInstructions, "load_skill") ||
 		!strings.Contains(AgentMCPInstructions, "get_project_config") ||
+		!strings.Contains(AgentMCPInstructions, "项目配置不再承载视觉风格") ||
 		!strings.Contains(AgentMCPInstructions, "update_project_config") ||
 		!strings.Contains(AgentMCPInstructions, "mutate_comment") {
 		t.Fatalf("AgentMCPInstructions should explain file-native MCP boundary: %q", AgentMCPInstructions)
@@ -125,12 +126,14 @@ func TestDocumentToolDefinitions(t *testing.T) {
 	}
 	if AgentDocumentTools.GetProjectConfig.Name != "get_project_config" ||
 		!AgentDocumentTools.GetProjectConfig.ReadOnly ||
-		!strings.Contains(AgentDocumentTools.GetProjectConfig.Description, "overview.style") ||
+		!strings.Contains(AgentDocumentTools.GetProjectConfig.Description, "提示词分类默认预设") ||
+		!strings.Contains(AgentDocumentTools.GetProjectConfig.Description, "不再承载视觉风格") ||
 		!strings.Contains(AgentDocumentTools.GetProjectConfig.Description, "不要搜索") {
 		t.Fatalf("GetProjectConfig definition = %#v", AgentDocumentTools.GetProjectConfig)
 	}
 	if AgentDocumentTools.UpdateProjectConfig.Name != "update_project_config" ||
-		!strings.Contains(AgentDocumentTools.UpdateProjectConfig.Description, "overview.style") {
+		!strings.Contains(AgentDocumentTools.UpdateProjectConfig.Description, "overview.categoryDefaults") ||
+		!strings.Contains(AgentDocumentTools.UpdateProjectConfig.Description, "style 风格分类会被忽略") {
 		t.Fatalf("UpdateProjectConfig definition = %#v", AgentDocumentTools.UpdateProjectConfig)
 	}
 	if AgentDocumentTools.ListComments.Name != "list_comments" || !AgentDocumentTools.ListComments.ReadOnly {

@@ -809,7 +809,7 @@ func TestCreatePromptOptimizedImageGenerationRunsOptimizationInBackground(t *tes
 		!strings.Contains(textRequest.Prompt, "cinematic lighting, detailed composition") {
 		t.Fatalf("text prompt = %q, want original and reference prompts", textRequest.Prompt)
 	}
-	if textRequest.Params["system_instruction"] != promptOptimizationSystemInstruction {
+	if textRequest.Params["system_instruction"] != promptOptimizationSystemInstruction() {
 		t.Fatalf("text params = %#v, want prompt optimization system instruction", textRequest.Params)
 	}
 
