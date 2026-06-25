@@ -32,6 +32,7 @@ concurrency:
 
 env:
   CSC_IDENTITY_AUTO_DISCOVERY: "false"
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
   HUSKY: "0"
   NODE_VERSION: "24"
   PNPM_VERSION: "10.14.0"
@@ -121,6 +122,22 @@ jobs:
           cache-dependency-path: |
             go.work.sum
             **/go.sum
+
+      - name: Restore vendored binary cache
+        uses: actions/cache@v4
+        with:
+          path: packages/vendor/dist/${{ matrix.platform }}
+          key: vendor-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('packages/vendor/agents.json', 'packages/vendor/tools.json') }}
+          restore-keys: |
+            vendor-${{ runner.os }}-${{ matrix.platform }}-
+
+      - name: Restore electron-builder cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: electron-builder-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('pnpm-lock.yaml', 'apps/workspace/package.json') }}
+          restore-keys: |
+            electron-builder-${{ runner.os }}-${{ matrix.platform }}-
 
       - uses: go-task/setup-task@v2
 
