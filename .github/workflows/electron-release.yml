@@ -209,7 +209,7 @@ jobs:
             exit 1
           fi
 
-          release_flags=(--draft --target "$GITHUB_SHA" --title "$APP_VERSION" --notes "MediaGo Drama $APP_VERSION")
+          release_flags=(--repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title "$APP_VERSION" --notes "MediaGo Drama $APP_VERSION")
           if [[ "$PRERELEASE" == "true" ]]; then
             release_flags+=(--prerelease)
           fi
