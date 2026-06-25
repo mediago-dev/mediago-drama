@@ -58,6 +58,8 @@ tasks:
 
   build:electron:
     desc: Build the Electron desktop app
+    vars:
+      ELECTRON_SCRIPT: '{{.ELECTRON_SCRIPT | default "electron:build"}}'
     env:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
@@ -72,19 +74,73 @@ tasks:
       - task: stage-electron
         vars:
           AGENT: "{{.AGENT}}"
-      - pnpm -C apps/workspace electron:build
+      - pnpm -C apps/workspace {{.ELECTRON_SCRIPT}}
+
+  build:electron:target:
+    desc: Build the Electron desktop app for one target platform
+    vars:
+      PLATFORM: '{{.PLATFORM | default ""}}'
+      ELECTRON_SCRIPT: '{{.ELECTRON_SCRIPT | default (printf "electron:build:%s" .PLATFORM)}}'
+    preconditions:
+      - sh: 'case "{{.PLATFORM}}" in darwin-arm64|windows-x64) ;; *) exit 1 ;; esac'
+        msg: "PLATFORM must be one of: darwin-arm64, windows-x64"
+    env:
+      MEDIAGO_AGENT_ID: "{{.AGENT}}"
+      MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
+      VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
+    cmds:
+      - task: prepare-agent
+        vars:
+          AGENT: "{{.AGENT}}"
+          PLATFORM: "{{.PLATFORM}}"
+      - task: prepare-media-tools
+        vars:
+          PLATFORM: "{{.PLATFORM}}"
+      - task: workspace:build
+      - task: build:server:target
+        vars:
+          PLATFORM: "{{.PLATFORM}}"
+      - task: stage-electron
+        vars:
+          AGENT: "{{.AGENT}}"
+          PLATFORM: "{{.PLATFORM}}"
+      - pnpm -C apps/workspace {{.ELECTRON_SCRIPT}}
+
+  publish:electron:
+    desc: Build and publish the Electron desktop app with electron-builder
+    cmds:
+      - task: build:electron
+        vars:
+          ELECTRON_SCRIPT: electron:publish
+
+  publish:electron:target:
+    desc: Build and publish the Electron desktop app for one target platform
+    vars:
+      PLATFORM: '{{.PLATFORM | default ""}}'
+      ELECTRON_SCRIPT: '{{.ELECTRON_SCRIPT | default (printf "electron:publish:%s" .PLATFORM)}}'
+    cmds:
+      - task: build:electron:target
+        vars:
+          PLATFORM: "{{.PLATFORM}}"
+          ELECTRON_SCRIPT: "{{.ELECTRON_SCRIPT}}"
 
   prepare-agent:
+    vars:
+      PLATFORM: '{{.PLATFORM | default ""}}'
     cmds:
-      - task -d packages/vendor prepare AGENT={{.AGENT}}
+      - task -d packages/vendor prepare AGENT={{.AGENT}} PLATFORM={{.PLATFORM}}
 
   prepare-tool:
+    vars:
+      PLATFORM: '{{.PLATFORM | default ""}}'
     cmds:
-      - task -d packages/vendor prepare:tool TOOL={{.TOOL}}
+      - task -d packages/vendor prepare:tool TOOL={{.TOOL}} PLATFORM={{.PLATFORM}}
 
   prepare-media-tools:
+    vars:
+      PLATFORM: '{{.PLATFORM | default ""}}'
     cmds:
-      - task -d packages/vendor prepare:media-tools
+      - task -d packages/vendor prepare:media-tools PLATFORM={{.PLATFORM}}
 
   dev:
     desc: Run the built server binary and web workspace for browser development
@@ -159,9 +215,33 @@ tasks:
       - go build -tags workspace_dist -o "{{.DEV_SERVER_BIN}}" ./services/server/cmd/mediago-server
       - go build -o "{{.DEV_DOCUMENT_MCP_BIN}}" ./services/server/cmd/mediago-document-mcp
 
-  stage-electron:
+  build:server:target:
+    desc: Cross-build the server-side binaries for one target platform
+    vars:
+      PLATFORM: '{{.PLATFORM | default ""}}'
+    preconditions:
+      - sh: 'case "{{.PLATFORM}}" in darwin-arm64|windows-x64) ;; *) exit 1 ;; esac'
+        msg: "PLATFORM must be one of: darwin-arm64, windows-x64"
     cmds:
-      - node apps/workspace/scripts/stage-electron.ts {{.AGENT}}
+      - |
+        case "{{.PLATFORM}}" in
+          darwin-arm64)
+            export GOOS=darwin GOARCH=arm64 EXE=""
+            ;;
+          windows-x64)
+            export GOOS=windows GOARCH=amd64 EXE=".exe"
+            ;;
+        esac
+        out_dir="bin/{{.PLATFORM}}"
+        mkdir -p "$out_dir"
+        go build -tags workspace_dist -o "$out_dir/mediago-server$EXE" ./services/server/cmd/mediago-server
+        go build -o "$out_dir/mediago-document-mcp$EXE" ./services/server/cmd/mediago-document-mcp
+
+  stage-electron:
+    vars:
+      PLATFORM: '{{.PLATFORM | default ""}}'
+    cmds:
+      - node apps/workspace/scripts/stage-electron.ts {{.AGENT}} {{.PLATFORM}}
 
   go:check:
     cmds:

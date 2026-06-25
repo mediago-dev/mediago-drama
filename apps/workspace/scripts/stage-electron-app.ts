@@ -16,6 +16,7 @@ const workspacePackagePath = join(workspaceDir, "package.json");
 const rendererDistDir = join(workspaceDir, "dist");
 const electronDistDir = join(workspaceDir, "electron", "dist");
 const electronAppDir = join(workspaceDir, "electron", "app");
+const electronTargetPlatform = process.env.MEDIAGO_ELECTRON_TARGET_PLATFORM?.trim();
 
 function main(): void {
 	ensureDirectory(rendererDistDir, "missing renderer build output");
@@ -23,6 +24,7 @@ function main(): void {
 
 	const workspacePackage = readWorkspacePackage();
 	const electronVersion = normalizeVersion(workspacePackage.devDependencies?.electron);
+	const githubPublisher = githubPublisherOptions();
 	const appPackage = {
 		name: "mediago-drama",
 		productName: "MediaGo Drama",
@@ -41,6 +43,7 @@ function main(): void {
 			directories: {
 				output: "../../release",
 			},
+			...(githubPublisher ? { publish: [githubPublisher] } : {}),
 			files: ["package.json", "*.js", "renderer/**/*"],
 			extraResources: [
 				{
@@ -50,8 +53,11 @@ function main(): void {
 			],
 			mac: {
 				category: "public.app-category.productivity",
-				target: ["dmg", "zip"],
+				target: electronTargetPlatform === "darwin-arm64" ? ["zip"] : ["dmg", "zip"],
 				icon: "../../build/icons/icon.icns",
+				...(electronTargetPlatform === "darwin-arm64"
+					? { identity: null, hardenedRuntime: false }
+					: {}),
 			},
 			win: {
 				target: ["nsis", "zip"],
@@ -88,6 +94,28 @@ function ensureDirectory(path: string, message: string): void {
 
 function normalizeVersion(version: string | undefined): string {
 	return version?.replace(/^[^\d]*/, "") || "42.4.1";
+}
+
+type GitHubReleaseType = "draft" | "prerelease" | "release";
+
+const githubOwner = "mediago-dev";
+const githubRepo = "mediago-drama";
+
+function githubPublisherOptions():
+	| { provider: "github"; releaseType: GitHubReleaseType; owner: string; repo: string }
+	| undefined {
+	const value = process.env.MEDIAGO_ELECTRON_RELEASE_TYPE?.trim();
+	if (!value) return undefined;
+	if (value !== "draft" && value !== "prerelease" && value !== "release") {
+		throw new Error(`invalid MEDIAGO_ELECTRON_RELEASE_TYPE: ${value}`);
+	}
+
+	return {
+		provider: "github",
+		releaseType: value,
+		owner: githubOwner,
+		repo: githubRepo,
+	};
 }
 
 try {

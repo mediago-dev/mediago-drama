@@ -57,6 +57,7 @@ func run(args []string) error {
 	flags := flag.NewFlagSet("prepare-tool", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	toolID := flags.String("tool", defaultToolID, "Tool id to prepare: ffmpeg or ffprobe")
+	targetPlatform := flags.String("platform", "", "Target platform to prepare, e.g. darwin-arm64 or windows-x64")
 	root := flags.String("root", "", "Vendor directory containing tools.json")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -85,7 +86,7 @@ func run(args []string) error {
 	if strings.TrimSpace(spec.Version) == "" {
 		return fmt.Errorf("tool %q has no pinned version in tools.json", toolIDValue)
 	}
-	currentPlatform, err := detectPlatform()
+	currentPlatform, distPlatformKey, err := resolvePlatform(*targetPlatform)
 	if err != nil {
 		return err
 	}
@@ -96,6 +97,9 @@ func run(args []string) error {
 	}
 
 	distDir := filepath.Join(vendorDir, "dist", "tools", toolIDValue)
+	if strings.TrimSpace(*targetPlatform) != "" {
+		distDir = filepath.Join(vendorDir, "dist", distPlatformKey, "tools", toolIDValue)
+	}
 	return prepareTool(toolIDValue, spec, platformKey, asset, distDir)
 }
 
@@ -157,8 +161,54 @@ func detectPlatform() (platform, error) {
 	return detected, nil
 }
 
+func resolvePlatform(value string) (platform, string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		detected, err := detectPlatform()
+		if err != nil {
+			return platform{}, "", err
+		}
+		return detected, detected.DistKey(), nil
+	}
+	parts := strings.Split(value, "-")
+	if len(parts) != 2 {
+		return platform{}, "", fmt.Errorf("platform must look like os-arch, got %q", value)
+	}
+
+	var detected platform
+	distOS := parts[0]
+	switch parts[0] {
+	case "darwin", "linux":
+		detected.OS = parts[0]
+	case "windows":
+		detected.OS = "win32"
+	case "win32":
+		detected.OS = "win32"
+		distOS = "windows"
+	default:
+		return platform{}, "", fmt.Errorf("unsupported platform OS: %s", parts[0])
+	}
+
+	switch parts[1] {
+	case "arm64":
+		detected.Arch = "arm64"
+	case "x64", "amd64":
+		detected.Arch = "x64"
+	default:
+		return platform{}, "", fmt.Errorf("unsupported platform architecture: %s", parts[1])
+	}
+	return detected, distOS + "-" + detected.Arch, nil
+}
+
 func (value platform) String() string {
 	return value.OS + "-" + value.Arch
+}
+
+func (value platform) DistKey() string {
+	if value.OS == "win32" {
+		return "windows-" + value.Arch
+	}
+	return value.String()
 }
 
 func prepareTool(id string, spec toolSpec, platformKey string, asset toolPlatformSpec, distDir string) error {

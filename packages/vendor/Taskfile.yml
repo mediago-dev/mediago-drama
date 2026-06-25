@@ -2,36 +2,43 @@ version: "3"
 
 tasks:
   prepare:
-    desc: Prepare one ACP agent (AGENT=codex|opencode)
+    desc: Prepare one ACP agent (AGENT=codex|opencode, PLATFORM=darwin-arm64|windows-x64)
     vars:
       AGENT: '{{.AGENT | default "codex"}}'
+      PLATFORM: '{{.PLATFORM | default ""}}'
     preconditions:
       - sh: 'case "{{.AGENT}}" in codex|opencode) ;; *) exit 1 ;; esac'
         msg: "AGENT must be one of: codex, opencode"
     cmds:
-      - go run ./cmd/prepare-agent --agent {{.AGENT}}
+      - go run ./cmd/prepare-agent --agent {{.AGENT}} {{if .PLATFORM}}--platform {{.PLATFORM}}{{end}}
 
   prepare:tool:
-    desc: Prepare one vendored tool (TOOL=ffmpeg|ffprobe|dreamina)
+    desc: Prepare one vendored tool (TOOL=ffmpeg|ffprobe|dreamina, PLATFORM=darwin-arm64|windows-x64)
     vars:
       TOOL: '{{.TOOL | default "ffmpeg"}}'
+      PLATFORM: '{{.PLATFORM | default ""}}'
     preconditions:
       - sh: 'case "{{.TOOL}}" in ffmpeg|ffprobe|dreamina) ;; *) exit 1 ;; esac'
         msg: "TOOL must be one of: ffmpeg, ffprobe, dreamina"
     cmds:
-      - go run ./cmd/prepare-tool --tool {{.TOOL}}
+      - go run ./cmd/prepare-tool --tool {{.TOOL}} {{if .PLATFORM}}--platform {{.PLATFORM}}{{end}}
 
   prepare:media-tools:
+    vars:
+      PLATFORM: '{{.PLATFORM | default ""}}'
     cmds:
       - task: prepare:tool
         vars:
           TOOL: ffmpeg
+          PLATFORM: "{{.PLATFORM}}"
       - task: prepare:tool
         vars:
           TOOL: ffprobe
+          PLATFORM: "{{.PLATFORM}}"
       - task: prepare:tool
         vars:
           TOOL: dreamina
+          PLATFORM: "{{.PLATFORM}}"
 
   prepare:all:
     cmds:

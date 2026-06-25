@@ -14,6 +14,23 @@ func TestPlatformString(t *testing.T) {
 	}
 }
 
+func TestResolvePlatformMapsWindowsToWin32Assets(t *testing.T) {
+	got, distKey, err := resolvePlatform("windows-x64")
+	if err != nil {
+		t.Fatalf("resolvePlatform() error = %v", err)
+	}
+	want := platform{OS: "win32", Arch: "x64"}
+	if got != want {
+		t.Fatalf("resolvePlatform() = %#v, want %#v", got, want)
+	}
+	if got.String() != "win32-x64" {
+		t.Fatalf("platform.String() = %q, want win32-x64", got.String())
+	}
+	if distKey != "windows-x64" {
+		t.Fatalf("distKey = %q, want windows-x64", distKey)
+	}
+}
+
 func TestToolBinaryNameUsesExeOnWindows(t *testing.T) {
 	got := toolBinaryName("ffmpeg", "win32-x64")
 	if got != "ffmpeg.exe" {

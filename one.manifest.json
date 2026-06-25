@@ -23,7 +23,7 @@
       "relativeDir": "apps/workspace",
       "templateId": "react-spa",
       "toolchain": "node",
-      "buildVersion": "0.0.1",
+      "buildVersion": "0.1.0-beta.0",
       "packageManager": "pnpm",
       "domains": {
         "deploy": {

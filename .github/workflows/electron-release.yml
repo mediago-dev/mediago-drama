@@ -1,0 +1,174 @@
+name: Electron Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Base SemVer version for the release
+        required: true
+        default: 0.1.0
+        type: string
+      channel:
+        description: Release channel
+        required: true
+        default: beta
+        type: choice
+        options:
+          - alpha
+          - beta
+          - latest
+      prerelease_number:
+        description: Numeric suffix for alpha/beta releases
+        required: true
+        default: "0"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: electron-release-${{ inputs.version }}-${{ inputs.channel }}-${{ inputs.prerelease_number }}
+  cancel-in-progress: false
+
+env:
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+  HUSKY: "0"
+  NODE_VERSION: "20"
+  PNPM_VERSION: "10.14.0"
+
+jobs:
+  release-version:
+    name: Resolve release version
+    runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      release_type: ${{ steps.version.outputs.release_type }}
+    steps:
+      - name: Resolve channel version
+        id: version
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "version must be a base SemVer value like 0.1.0" >&2
+            exit 1
+          fi
+
+          case "$CHANNEL" in
+            alpha|beta)
+              if [[ ! "$PRERELEASE_NUMBER" =~ ^[0-9]+$ ]]; then
+                echo "prerelease_number must be numeric for alpha/beta releases" >&2
+                exit 1
+              fi
+              app_version="${VERSION}-${CHANNEL}.${PRERELEASE_NUMBER}"
+              prerelease="true"
+              release_type="prerelease"
+              ;;
+            latest)
+              app_version="$VERSION"
+              prerelease="false"
+              release_type="release"
+              ;;
+            *)
+              echo "unsupported channel: $CHANNEL" >&2
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "app_version=$app_version"
+            echo "prerelease=$prerelease"
+            echo "release_type=$release_type"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build unsigned macOS ARM64 zip and Windows x64
+    needs: release-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
+
+      - uses: go-task/setup-task@v2
+
+      - name: Install Wine for Windows packaging
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wine64
+          if ! command -v wine >/dev/null 2>&1 && command -v wine64 >/dev/null 2>&1; then
+            sudo ln -s "$(command -v wine64)" /usr/local/bin/wine
+          fi
+          wine --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply release version
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.release-version.outputs.app_version }}
+        run: |
+          node <<'NODE'
+          const { readFileSync, writeFileSync } = require("node:fs");
+
+          function writeJSON(path, value) {
+            writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+          }
+
+          const version = process.env.APP_VERSION;
+          const workspacePackagePath = "apps/workspace/package.json";
+          const workspacePackage = JSON.parse(readFileSync(workspacePackagePath, "utf8"));
+          workspacePackage.version = version;
+          writeJSON(workspacePackagePath, workspacePackage);
+
+          const manifestPath = "one.manifest.json";
+          const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+          const workspaceProject = manifest.projects?.find((project) => project.name === "workspace");
+          if (workspaceProject) {
+            workspaceProject.buildVersion = version;
+            writeJSON(manifestPath, manifest);
+          }
+          NODE
+
+      - name: Build and publish macOS ARM64 app
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.release_type }}
+        run: task publish:electron:target PLATFORM=darwin-arm64
+
+      - name: Build and publish Windows x64 app
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.release_type }}
+        run: task publish:electron:target PLATFORM=windows-x64
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: mediago-drama-installers
+          path: |
+            apps/workspace/release/*
+            !apps/workspace/release/builder-debug.yml
+            !apps/workspace/release/builder-effective-config.yaml
+          if-no-files-found: error

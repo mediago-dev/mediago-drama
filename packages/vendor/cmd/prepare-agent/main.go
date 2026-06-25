@@ -50,6 +50,7 @@ func run(args []string) error {
 	flags := flag.NewFlagSet("prepare-agent", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	agentID := flags.String("agent", defaultAgentID, "Agent id to prepare: codex or opencode")
+	targetPlatform := flags.String("platform", "", "Target platform to prepare, e.g. darwin-arm64 or windows-x64")
 	root := flags.String("root", "", "Vendor directory containing agents.json")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -76,7 +77,7 @@ func run(args []string) error {
 		return fmt.Errorf("unsupported agent %q; must be one of: %s", agentIDValue, strings.Join(agentIDs(specs), ", "))
 	}
 
-	currentPlatform, err := detectPlatform()
+	currentPlatform, err := resolvePlatform(*targetPlatform)
 	if err != nil {
 		return err
 	}
@@ -91,6 +92,9 @@ func run(args []string) error {
 	spec.Bin = agentBinaryName(spec.Bin, currentPlatform)
 
 	distDir := filepath.Join(vendorDir, "dist", agentIDValue)
+	if strings.TrimSpace(*targetPlatform) != "" {
+		distDir = filepath.Join(vendorDir, "dist", currentPlatform.String(), agentIDValue)
+	}
 	if err := prepareAgent(agentIDValue, spec, tag, asset, distDir); err != nil {
 		return err
 	}
@@ -153,6 +157,41 @@ func detectPlatform() (platform, error) {
 		return platform{}, fmt.Errorf("unsupported architecture: %s", runtime.GOARCH)
 	}
 	return detected, nil
+}
+
+func resolvePlatform(value string) (platform, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return detectPlatform()
+	}
+	parts := strings.Split(value, "-")
+	if len(parts) != 2 {
+		return platform{}, fmt.Errorf("platform must look like os-arch, got %q", value)
+	}
+
+	var detected platform
+	switch parts[0] {
+	case "darwin", "linux", "windows":
+		detected.OS = parts[0]
+	case "win32":
+		detected.OS = "windows"
+	default:
+		return platform{}, fmt.Errorf("unsupported platform OS: %s", parts[0])
+	}
+
+	switch parts[1] {
+	case "arm64":
+		detected.Arch = "arm64"
+	case "x64", "amd64":
+		detected.Arch = "x64"
+	default:
+		return platform{}, fmt.Errorf("unsupported platform architecture: %s", parts[1])
+	}
+	return detected, nil
+}
+
+func (value platform) String() string {
+	return value.OS + "-" + value.Arch
 }
 
 func releaseAssetName(agentID string, tag string, detected platform) (string, error) {

@@ -78,6 +78,20 @@ func TestAgentBinaryNameUsesExeOnWindows(t *testing.T) {
 	}
 }
 
+func TestResolvePlatformNormalizesWindows(t *testing.T) {
+	got, err := resolvePlatform("windows-x64")
+	if err != nil {
+		t.Fatalf("resolvePlatform() error = %v", err)
+	}
+	want := platform{OS: "windows", Arch: "x64"}
+	if got != want {
+		t.Fatalf("resolvePlatform() = %#v, want %#v", got, want)
+	}
+	if got.String() != "windows-x64" {
+		t.Fatalf("platform.String() = %q, want windows-x64", got.String())
+	}
+}
+
 func TestSafeExtractPathRejectsTraversal(t *testing.T) {
 	if _, err := safeExtractPath(t.TempDir(), "../escape"); err == nil {
 		t.Fatalf("safeExtractPath() error = nil, want traversal error")
