@@ -193,6 +193,8 @@ jobs:
       - build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+
       - uses: actions/download-artifact@v7
         with:
           path: release-artifacts
@@ -207,6 +209,17 @@ jobs:
           set -euo pipefail
 
           tag="v${APP_VERSION}"
+          existing_tag_sha="$(git ls-remote --tags origin "refs/tags/${tag}" | awk '{print $1}')"
+          if [[ -n "$existing_tag_sha" ]]; then
+            if [[ "$existing_tag_sha" != "$GITHUB_SHA" ]]; then
+              echo "tag ${tag} already exists at ${existing_tag_sha}, expected ${GITHUB_SHA}" >&2
+              exit 1
+            fi
+          else
+            git tag "$tag" "$GITHUB_SHA"
+            git push origin "refs/tags/${tag}"
+          fi
+
           gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate \
             --jq ".[] | select(.draft and (.tag_name == \"${tag}\" or .name == \"${APP_VERSION}\")) | .id" |
             while read -r release_id; do
@@ -226,7 +239,7 @@ jobs:
             exit 1
           fi
 
-          release_flags=(--repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title "$APP_VERSION" --notes "MediaGo Drama $APP_VERSION")
+          release_flags=(--repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$APP_VERSION" --notes "MediaGo Drama $APP_VERSION")
           if [[ "$PRERELEASE" == "true" ]]; then
             release_flags+=(--prerelease)
           fi
