@@ -43,6 +43,9 @@ const lanePaddingY = 22;
 const minimumLaneHeight = 236;
 const referenceGap = 18;
 const graphWidth = columnX["video-output"] + canvasNodeWidth + 140;
+const maxReferencePromptPreviewLines = 8;
+const maxVideoPromptBodyPreviewLines = 6;
+const maxVideoPromptShotPreviewLines = 2;
 
 export const layoutEpisodeCanvasGraph = (graph: EpisodeCanvasGraph): EpisodeCanvasLayoutResult => {
 	const nodesByLane = new Map<string, EpisodeCanvasNode[]>();
@@ -160,14 +163,20 @@ const estimateCanvasNodeHeight = (node: EpisodeCanvasNode) => {
 };
 
 const estimateReferencePromptNodeHeight = (node: EpisodeCanvasNode) => {
-	const textLineCount = estimateWrappedTextLineCount(node.data.body);
+	const textLineCount = Math.min(
+		estimateWrappedTextLineCount(node.data.body),
+		maxReferencePromptPreviewLines,
+	);
 	return Math.max(nodeHeight[node.type], 86 + textLineCount * 20);
 };
 
 const estimateVideoPromptNodeHeight = (node: EpisodeCanvasNode) => {
 	const shots = node.data.shots ?? [];
 	if (shots.length === 0) {
-		const textLineCount = estimateWrappedTextLineCount(node.data.body);
+		const textLineCount = Math.min(
+			estimateWrappedTextLineCount(node.data.body),
+			maxVideoPromptBodyPreviewLines,
+		);
 		return Math.max(nodeHeight[node.type], 86 + textLineCount * 20);
 	}
 
@@ -179,7 +188,10 @@ const estimateVideoPromptNodeHeight = (node: EpisodeCanvasNode) => {
 };
 
 const estimateVideoPromptShotHeight = (shot: StoryboardShotSummary) => {
-	const textLineCount = estimateWrappedTextLineCount(videoPromptShotText(shot), 24);
+	const textLineCount = Math.min(
+		estimateWrappedTextLineCount(videoPromptShotText(shot), 24),
+		maxVideoPromptShotPreviewLines,
+	);
 	return 34 + textLineCount * 16;
 };
 

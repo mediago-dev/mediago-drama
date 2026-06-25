@@ -267,6 +267,33 @@ describe("buildEpisodeCanvasGraph", () => {
 		expect(videoNode?.data.imageUrl).toBeUndefined();
 	});
 
+	it("does not create placeholder reference nodes when no material mentions are parsed", () => {
+		const episode = createEpisodeFromMarkdownDocument(
+			makeDocument("## 第 01 组\n\n### 分镜 01\n\n陈远站在校门口。"),
+		);
+		const graph = buildEpisodeCanvasGraph({ episode });
+		const promptNode = graph.nodes.find((node) => node.type === "video-prompt");
+		const videoNode = graph.nodes.find((node) => node.type === "video-output");
+
+		expect(graph.lanes[0]?.references).toEqual([]);
+		expect(graph.nodes.filter((node) => node.type === "reference-prompt")).toHaveLength(0);
+		expect(graph.nodes.filter((node) => node.type === "reference-image")).toHaveLength(0);
+		expect(graph.nodes).toHaveLength(2);
+		expect(graph.edges).toEqual([
+			expect.objectContaining({
+				data: expect.objectContaining({
+					laneId: graph.lanes[0]?.id,
+					mediaType: "script",
+					relation: "flow",
+				}),
+				source: promptNode?.id,
+				sourceHandle: videoPromptOutputPort,
+				target: videoNode?.id,
+				targetHandle: videoScriptInputPort,
+			}),
+		]);
+	});
+
 	it("keeps video prompt text complete and spaces expanded nodes", () => {
 		const longAction =
 			"手持跟拍，轻微自然抖动；陈远急切地抓住林书彤的手腕，林书彤一脸嫌弃用力甩开，周围学生围观议论，陈远垂头站在人群中央。";
@@ -307,7 +334,7 @@ describe("buildEpisodeCanvasGraph", () => {
 		expect(firstVideoPrompt?.data.shots?.[1]?.prompt).toContain("机位：侧面肩扛跟拍");
 		expect(
 			(secondVideoPrompt?.position.y ?? 0) - (firstVideoPrompt?.position.y ?? 0),
-		).toBeGreaterThan(560);
+		).toBeGreaterThan(280);
 	});
 
 	it("lays out each lane deterministically from left to right", () => {
@@ -318,26 +345,18 @@ describe("buildEpisodeCanvasGraph", () => {
 		const layout = layoutEpisodeCanvasGraph(graph);
 		const firstLane = layout.lanes[0];
 		const secondLane = layout.lanes[1];
-		const firstReference = layout.nodes.find(
-			(node) => node.data.laneId === firstLane?.id && node.type === "reference-prompt",
-		);
 		const firstVideo = layout.nodes.find(
 			(node) => node.data.laneId === firstLane?.id && node.type === "video-output",
-		);
-		const firstReferenceImage = layout.nodes.find(
-			(node) => node.data.laneId === firstLane?.id && node.type === "reference-image",
 		);
 		const firstVideoPrompt = layout.nodes.find(
 			(node) => node.data.laneId === firstLane?.id && node.type === "video-prompt",
 		);
-		const secondReference = layout.nodes.find(
-			(node) => node.data.laneId === secondLane?.id && node.type === "reference-prompt",
+		const secondVideoPrompt = layout.nodes.find(
+			(node) => node.data.laneId === secondLane?.id && node.type === "video-prompt",
 		);
 
-		expect(firstReference?.position.x).toBeLessThan(firstReferenceImage?.position.x ?? 0);
-		expect(firstReferenceImage?.position.x).toBeLessThan(firstVideoPrompt?.position.x ?? 0);
 		expect(firstVideoPrompt?.position.x).toBeLessThan(firstVideo?.position.x ?? 0);
-		expect(secondReference?.position.y).toBeGreaterThan(firstReference?.position.y ?? 0);
+		expect(secondVideoPrompt?.position.y).toBeGreaterThan(firstVideoPrompt?.position.y ?? 0);
 		expect(layout.metrics.width).toBeGreaterThan(firstVideo?.position.x ?? 0);
 	});
 

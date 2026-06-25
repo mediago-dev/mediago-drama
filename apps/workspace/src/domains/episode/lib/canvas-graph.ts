@@ -240,7 +240,7 @@ const createLane = ({
 		headingOccurrence: source?.headingOccurrence,
 		id: `lane-${clip.id}`,
 		index,
-		references: references.length > 0 ? references : [placeholderReference()],
+		references,
 		shots: source?.shots.length ? source.shots : [],
 		sourceMarkdown,
 		start: clip.start,
@@ -305,19 +305,6 @@ const referenceSummary = (mention: ResolvedMention): EpisodeCanvasReference => {
 		title: mention.reference.title || referenceCategoryLabel(category),
 	};
 };
-
-const placeholderReference = (): EpisodeCanvasReference => ({
-	agentReference: {
-		documentId: "placeholder",
-		kind: "document",
-		title: "待关联素材",
-	},
-	category: "unknown",
-	key: "placeholder",
-	status: "placeholder",
-	summary: "在 storyboard 中使用 @mention 引用场景、人物或道具后会自动连线。",
-	title: "待关联素材",
-});
 
 const referenceCategory = (reference: AgentReference): EpisodeCanvasReference["category"] => {
 	if (reference.kind === "asset") return "asset";

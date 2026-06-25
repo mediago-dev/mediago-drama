@@ -50,7 +50,7 @@ export const ReferencePromptNode: React.FC<NodeProps> = (props) => {
 	return (
 		<CanvasNodeFrame data={data} icon={<FileText className="size-4" />}>
 			<div className="rounded-sm border border-border bg-muted p-3">
-				<p className="whitespace-pre-line text-xs leading-5 text-foreground">
+				<p className="line-clamp-8 text-xs leading-5 text-foreground">
 					{data.body || "暂无提示词"}
 				</p>
 			</div>
@@ -174,7 +174,7 @@ export const VideoPromptNode: React.FC<NodeProps> = (props) => {
 									</span>
 								) : null}
 							</div>
-							<p className="mt-1 whitespace-pre-line text-[0.68rem] leading-4 text-muted-foreground">
+							<p className="mt-1 line-clamp-2 text-[0.68rem] leading-4 text-muted-foreground">
 								{shot.prompt ||
 									[shot.shotSize, shot.perspective, shot.cameraMove, shot.text]
 										.filter(Boolean)
@@ -183,7 +183,7 @@ export const VideoPromptNode: React.FC<NodeProps> = (props) => {
 						</div>
 					))
 				) : (
-					<p className="whitespace-pre-line text-xs leading-5 text-foreground">{data.body}</p>
+					<p className="line-clamp-6 text-xs leading-5 text-foreground">{data.body}</p>
 				)}
 			</div>
 		</CanvasNodeFrame>
