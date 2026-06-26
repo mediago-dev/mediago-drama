@@ -94,7 +94,7 @@ export const SidebarContentLayout: React.FC<SidebarContentLayoutProps> = ({
 			<section
 				className={cn(
 					"flex min-w-0 flex-1 flex-col overflow-hidden bg-ide-editor text-ide-editor-foreground",
-					contentInset && "rounded-l-2xl border-l border-border",
+					contentInset && "border-l border-border",
 					contentClassName,
 				)}
 			>

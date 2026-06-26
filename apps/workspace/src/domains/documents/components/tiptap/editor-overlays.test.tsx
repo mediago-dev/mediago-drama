@@ -41,6 +41,14 @@ describe("SectionGenerateButton", () => {
 		expect(screen.getByText("生成图片")).toBeTruthy();
 		expect(screen.getByText("生成语音")).toBeTruthy();
 		expect(screen.getByText("生成视频")).toBeTruthy();
+		expect(
+			screen
+				.getByRole("button", { name: "根据当前标题区域生成图片" })
+				.closest(".tiptap-section-generate-action-group"),
+		).toBeTruthy();
+		expect(
+			screen.getByRole("button", { name: "根据当前标题区域生成图片" }).parentElement?.style.top,
+		).toBe("12px");
 		expect(generatedKinds).toEqual(["image", "audio", "video"]);
 	});
 });

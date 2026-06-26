@@ -245,10 +245,10 @@ const EpisodeClipCard: React.FC<EpisodeClipCardProps> = ({
 	return (
 		<div
 			className={cn(
-				"group relative flex h-[6.25rem] shrink-0 overflow-hidden rounded-lg border bg-muted text-left shadow-sm transition-[border-color,box-shadow,transform] focus-within:border-primary focus-within:shadow-md",
+				"group relative flex h-[6.25rem] shrink-0 overflow-hidden rounded-lg border bg-muted text-left shadow-sm transition-[border-color,box-shadow,transform] focus-within:shadow-md",
 				isSelected
-					? "border-primary shadow-md"
-					: "border-border hover:border-primary/60 hover:shadow-md",
+					? "border-border shadow-md focus-within:border-border"
+					: "border-border hover:border-primary/60 hover:shadow-md focus-within:border-primary",
 				isActive && !isSelected && "shadow-md",
 			)}
 			data-clip-id={clip.id}
@@ -313,11 +313,12 @@ const EpisodeClipCard: React.FC<EpisodeClipCardProps> = ({
 				</span>
 			) : null}
 			{isSelected ? (
-				<div
-					aria-hidden="true"
-					className="pointer-events-none absolute inset-0 z-30 rounded-lg border-2 border-primary"
+				<span
+					className="pointer-events-none absolute bottom-2 left-2 z-30 rounded-sm bg-primary px-1.5 py-0.5 text-[11px] font-semibold leading-none text-primary-foreground shadow-sm"
 					data-testid={`clip-strip-card-selection-${clip.id}`}
-				/>
+				>
+					选中
+				</span>
 			) : null}
 		</div>
 	);

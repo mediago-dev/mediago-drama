@@ -40,7 +40,7 @@ export const SectionGenerateButton: React.FC<{
 	rect: HoveredBlockRect;
 }> = ({ onGenerate, onMouseLeave, rect }) => (
 	<div
-		className="tiptap-section-generate-action"
+		className="tiptap-section-generate-action tiptap-section-generate-action-group"
 		style={{ top: Math.max(rect.top - 28, 0) }}
 		onMouseDown={(event) => event.preventDefault()}
 		onMouseLeave={onMouseLeave}

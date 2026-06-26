@@ -22,7 +22,6 @@ interface LockedHeadingSignature {
 const lockedHeadingPluginKey = new PluginKey<{ imprint?: boolean }>("locked-headings");
 
 export const LockedHeading = Heading.extend({
-	isolating: true,
 	addAttributes() {
 		return {
 			...this.parent?.(),

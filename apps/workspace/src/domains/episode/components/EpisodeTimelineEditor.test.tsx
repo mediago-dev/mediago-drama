@@ -68,9 +68,17 @@ describe("EpisodeTimelineEditor", () => {
 		expect(screen.getByTestId("clip-strip-card-clip-cold-open").className).not.toContain(
 			"border-2",
 		);
-		const selectionHighlight = screen.getByTestId("clip-strip-card-selection-clip-cold-open");
-		expect(selectionHighlight.className).toContain("border-2");
-		expect(selectionHighlight.className).toContain("border-primary");
+		expect(screen.getByTestId("clip-strip-card-clip-cold-open").className).not.toContain(
+			"focus-within:border-primary",
+		);
+		expect(screen.getByTestId("clip-strip-card-clip-cold-open").className).toContain(
+			"focus-within:border-border",
+		);
+		const selectionTag = screen.getByTestId("clip-strip-card-selection-clip-cold-open");
+		expect(selectionTag.textContent).toBe("选中");
+		expect(selectionTag.className).toContain("bottom-2");
+		expect(selectionTag.className).toContain("left-2");
+		expect(selectionTag.className).toContain("bg-primary");
 		expect(screen.queryByTestId("clip-strip-card-selection-clip-problem")).toBeNull();
 		expect(screen.getByTestId("clip-strip-card-clip-cold-open").className).not.toContain(
 			"translate-y",
