@@ -1,15 +1,10 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import useSWR from "swr";
 import type {
 	GenerationAsset,
 	GenerationKind,
-	GenerationMessageRequest,
 	GenerationMessageResponse,
-	GenerationNotificationOpenTarget,
 } from "@/domains/generation/api/generation";
-import { projectGenerationConversation } from "@/domains/generation/api/generation";
-import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import { DocumentMentionHoverPopover } from "@/domains/documents/components/DocumentMentionHoverPopover";
@@ -28,18 +23,12 @@ import {
 	type MediaGenerationWorkspaceViewMode,
 } from "@/domains/generation/components/MediaGenerationWorkspace";
 import { PromptEditor, type PromptEditorProps } from "@/domains/generation/components/PromptEditor";
-import { taskTypeForCategory } from "@/domains/generation/lib/prompt-categories";
 import {
 	mentionReferenceKey,
 	parseMentionsFromMarkdown,
 	resolveMentionPayload,
 } from "@/domains/documents/lib/mention-resolver";
-import {
-	sectionGenerationConversationScopeId,
-	sectionGenerationHistoryScopeId,
-	sectionGenerationPreferenceScopeId,
-} from "@/domains/documents/lib/section-generation";
-import { latestMarkdownSectionContextFromDocuments } from "@/domains/documents/lib/markdown-section-context";
+import { useDocumentSectionGenerationContext } from "@/domains/documents/components/useDocumentSectionGenerationContext";
 import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
 
 export interface DocumentSectionGeneratorProps {
@@ -84,26 +73,27 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	viewMode,
 }) => {
 	const generationKind = kind;
-	const allDocuments = useDocumentsStore((state) => state.documents);
-	const allAssets = useDocumentsStore((state) => state.assets);
-	const workspaceProjectId = useDocumentsStore((state) => state.projectId);
-	const activeSection = useMemo(
-		() =>
-			resolveLatestSection
-				? latestMarkdownSectionContextFromDocuments(allDocuments, section)
-				: section,
-		[allDocuments, resolveLatestSection, section],
-	);
+	const {
+		activeSection,
+		allAssets,
+		allDocuments,
+		conversationScopeId,
+		documentContext,
+		historyScopeId,
+		modelPreferenceScopeId,
+		normalizedProjectId,
+		notificationTarget,
+		projectConversation,
+		sectionId,
+		taskType,
+	} = useDocumentSectionGenerationContext({
+		kind: generationKind,
+		projectId,
+		resolveLatestSection,
+		section,
+	});
 	const [removedMentionKeys, setRemovedMentionKeys] = useState<string[]>([]);
 	const removedMentionKeySet = useMemo(() => new Set(removedMentionKeys), [removedMentionKeys]);
-	const normalizedProjectId = useMemo(
-		() => projectId?.trim() || workspaceProjectId?.trim() || "",
-		[projectId, workspaceProjectId],
-	);
-	const documentCategory = useMemo(
-		() => allDocuments.find((document) => document.id === activeSection.documentId)?.category,
-		[activeSection.documentId, allDocuments],
-	);
 	const selectedNodeReferenceGroups = useMemo<ReferenceSelectionShortcutGroup[]>(() => {
 		const document = allDocuments.find((item) => item.id === activeSection.documentId);
 		if (!document) return [];
@@ -125,80 +115,6 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 		];
 	}, [activeSection.documentId, allDocuments]);
 	const mediaAssets = useDocumentsMediaAssets();
-	// 在智能体项目里把生成统一归到「项目级命名会话」，让创作台可见；非项目场景回退到章节 scope。
-	const { data: projectsData } = useSWR(normalizedProjectId ? projectsKey : null, getProjects);
-	const projectName = useMemo(
-		() => projectsData?.projects.find((project) => project.id === normalizedProjectId)?.name ?? "",
-		[normalizedProjectId, projectsData],
-	);
-	const projectConversation = useMemo(
-		() => projectGenerationConversation(normalizedProjectId, generationKind, projectName),
-		[generationKind, normalizedProjectId, projectName],
-	);
-	const conversationScopeId = useMemo(
-		() =>
-			projectConversation?.conversationScopeId ??
-			sectionGenerationKindScopeId(
-				sectionGenerationConversationScopeId(activeSection, normalizedProjectId),
-				generationKind,
-			),
-		[activeSection, generationKind, normalizedProjectId, projectConversation],
-	);
-	// 本地乐观缓存始终按章节隔离；项目级会话里用 project/document/section 字段过滤服务端任务。
-	const historyScopeId = useMemo(
-		() =>
-			sectionGenerationKindScopeId(
-				sectionGenerationHistoryScopeId(activeSection, normalizedProjectId),
-				generationKind,
-			),
-		[activeSection, generationKind, normalizedProjectId],
-	);
-	const sectionId = useMemo(
-		() => (projectConversation ? activeSection.blockId.trim() : undefined),
-		[activeSection.blockId, projectConversation],
-	);
-	const modelPreferenceScopeId = useMemo(
-		() =>
-			sectionGenerationKindScopeId(
-				sectionGenerationPreferenceScopeId(activeSection, normalizedProjectId),
-				generationKind,
-			),
-		[activeSection, generationKind, normalizedProjectId],
-	);
-	const documentContext = useMemo<GenerationMessageRequest["documentContext"] | undefined>(() => {
-		const documentId = activeSection.documentId.trim();
-		const sectionId = activeSection.blockId.trim();
-		if (!documentId || !sectionId) return undefined;
-
-		return {
-			...(normalizedProjectId ? { projectId: normalizedProjectId } : {}),
-			documentId,
-			sectionId,
-		};
-	}, [activeSection.blockId, activeSection.documentId, normalizedProjectId]);
-	const notificationTarget = useMemo<GenerationNotificationOpenTarget | undefined>(() => {
-		if (!normalizedProjectId) return undefined;
-
-		const documentTitle =
-			allDocuments.find((document) => document.id === activeSection.documentId)?.title ||
-			activeSection.headingText;
-		return {
-			kind: "document-section",
-			projectId: normalizedProjectId,
-			documentId: activeSection.documentId,
-			documentTitle,
-			section: {
-				blockId: activeSection.blockId,
-				documentId: activeSection.documentId,
-				headingLevel: activeSection.headingLevel,
-				headingOccurrence: activeSection.headingOccurrence,
-				headingText: activeSection.headingText,
-				markdown: activeSection.markdown,
-				plainText: activeSection.plainText,
-				prompt: activeSection.prompt,
-			},
-		};
-	}, [activeSection, allDocuments, normalizedProjectId]);
 	const latestMentionPreviewRef = useRef<MentionPreviewReferences>({
 		assetMentionKeys: {},
 		badges: {},
@@ -257,7 +173,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				documentContext={documentContext}
 				historyScopeId={historyScopeId}
 				sectionId={sectionId}
-				taskType={taskTypeForCategory(documentCategory)}
+				taskType={taskType}
 				initialPrompt={activeSection.prompt}
 				modelPreferenceScopeId={modelPreferenceScopeId}
 				materialLibraryImportOpen={materialLibraryImportOpen}
@@ -330,9 +246,6 @@ const sectionGenerationWorkspaceCopy: Record<
 		submitLabel: "生成视频",
 	},
 };
-
-const sectionGenerationKindScopeId = (scopeId: string, kind: GenerationKind) =>
-	kind === "image" ? scopeId : `${scopeId}:${kind}`;
 
 const useDocumentsMediaAssets = () => {
 	const allDocuments = useDocumentsStore((state) => state.documents);

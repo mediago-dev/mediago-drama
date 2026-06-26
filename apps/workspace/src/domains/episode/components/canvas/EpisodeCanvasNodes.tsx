@@ -2,15 +2,14 @@ import type { NodeProps } from "@xyflow/react";
 import { Handle, Position } from "@xyflow/react";
 import {
 	AlertTriangle,
+	ArrowUpRight,
 	CheckCircle2,
 	Circle,
 	FileText,
 	Film,
 	Image,
 	Loader2,
-	Play,
 	Quote,
-	Sparkles,
 	Users,
 	Video,
 } from "lucide-react";
@@ -83,7 +82,7 @@ export const ReferenceImageNode: React.FC<NodeProps> = (props) => {
 						label="生成"
 						onClick={() => data.onGenerateReferenceImage?.()}
 					>
-						<Sparkles className="size-3.5" />
+						<ArrowUpRight className="size-3.5" />
 					</NodeActionButton>
 				</div>
 			</div>
@@ -213,7 +212,7 @@ export const StoryboardImageNode: React.FC<NodeProps> = (props) => {
 					label="生成"
 					onClick={() => data.onGenerateStoryboardImage?.(data.laneId)}
 				>
-					<Sparkles className="size-3.5" />
+					<ArrowUpRight className="size-3.5" />
 				</NodeActionButton>
 			</div>
 		</CanvasNodeFrame>
@@ -242,7 +241,7 @@ export const VideoOutputNode: React.FC<NodeProps> = (props) => {
 				{clipId ? (
 					<div className="flex shrink-0 gap-1.5">
 						<NodeActionButton label="生成" onClick={() => data.onGenerateClip?.(clipId)}>
-							<Play className="size-3.5" />
+							<ArrowUpRight className="size-3.5" />
 						</NodeActionButton>
 					</div>
 				) : null}

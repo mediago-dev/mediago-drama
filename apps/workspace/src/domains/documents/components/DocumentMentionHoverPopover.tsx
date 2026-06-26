@@ -1,4 +1,4 @@
-import { ImageIcon, Sparkles } from "lucide-react";
+import { ArrowUpRight, ImageIcon } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentReference } from "@/domains/agent/api/agent";
@@ -235,7 +235,7 @@ const MentionReferencePopover: React.FC<{
 						className="h-8 justify-center rounded-sm border-input text-xs font-semibold"
 						onClick={onGenerate}
 					>
-						<Sparkles className="size-3.5 text-primary" />
+						<ArrowUpRight className="size-3.5 text-primary" />
 						<span>生成引用图片</span>
 					</Button>
 				) : (

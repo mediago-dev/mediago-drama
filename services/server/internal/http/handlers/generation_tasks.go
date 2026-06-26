@@ -379,6 +379,7 @@ func (handler GenerationTasks) HandleRetryGenerationTask(context *gin.Context) {
 // @Param sessionId query string false "Session ID"
 // @Param status query string false "Task status"
 // @Param kind query string false "Generation kind"
+// @Param projectId query string false "Project ID"
 // @Success 200 {object} SwaggerEnvelope
 // @Failure 500 {object} SwaggerEnvelope
 // @Router /api/v1/generation/tasks [get]
@@ -398,6 +399,7 @@ func (handler GenerationTasks) HandleGenerationTasks(context *gin.Context) {
 	tasks, err := handler.service.ListGenerationTasks(service.GenerationTaskListQuery{
 		ConversationID: sessionID,
 		Kind:           strings.TrimSpace(context.Query("kind")),
+		ProjectID:      strings.TrimSpace(context.Query("projectId")),
 		Limit:          limit,
 		Offset:         offset,
 	})

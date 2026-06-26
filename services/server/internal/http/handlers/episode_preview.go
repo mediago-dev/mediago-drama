@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"sort"
 	"strings"
 
@@ -32,11 +31,6 @@ type EpisodePreviewMediaStore interface {
 // EpisodePreviewStreamer supplies fragmented MP4 preview streaming.
 type EpisodePreviewStreamer interface {
 	StreamFragmentedMP4(ctx context.Context, writer io.Writer, files []string) error
-}
-
-// EpisodePreviewFileRenderer supplies seekable MP4 preview rendering.
-type EpisodePreviewFileRenderer interface {
-	RenderMP4(ctx context.Context, outputPath string, files []string) error
 }
 
 // EpisodePreview handles episode preview stream routes.
@@ -108,51 +102,7 @@ func (handler EpisodePreview) HandleEpisodePreviewStream(context *gin.Context) {
 			return
 		}
 	}
-	if renderer, ok := handler.streamer.(EpisodePreviewFileRenderer); ok {
-		handler.serveRenderedPreview(context, renderer, files)
-		return
-	}
-
 	handler.streamFragmentedPreview(context, files)
-}
-
-func (handler EpisodePreview) serveRenderedPreview(context *gin.Context, renderer EpisodePreviewFileRenderer, files []string) {
-	tempFile, err := os.CreateTemp("", "mediago-episode-preview-*.mp4")
-	if err != nil {
-		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
-		return
-	}
-	tempPath := tempFile.Name()
-	if err := tempFile.Close(); err != nil {
-		_ = os.Remove(tempPath)
-		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
-		return
-	}
-	defer os.Remove(tempPath)
-
-	if err := renderer.RenderMP4(context.Request.Context(), tempPath, files); err != nil {
-		httpresponse.Fail(context, http.StatusInternalServerError, "预览视频渲染失败", err)
-		return
-	}
-
-	file, err := os.Open(tempPath)
-	if err != nil {
-		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
-		return
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
-		return
-	}
-	if info.Size() == 0 {
-		httpresponse.Error(context, http.StatusInternalServerError, "预览视频渲染失败")
-		return
-	}
-
-	writePreviewHeaders(context)
-	http.ServeContent(context.Writer, context.Request, "episode-preview.mp4", info.ModTime(), file)
 }
 
 func (handler EpisodePreview) streamFragmentedPreview(context *gin.Context, files []string) {

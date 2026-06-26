@@ -10,8 +10,13 @@ import type { ApiResponse } from "@/types/api";
 import { ProjectOverview } from "./ProjectOverview";
 
 const dialogMocks = vi.hoisted(() => ({
+	DocumentSectionBatchGenerationRunner: vi.fn((_props: Record<string, unknown>) => null),
 	ImageGenerationDialog: vi.fn((_props: Record<string, unknown>) => null),
 	VideoGenerationDialog: vi.fn((_props: Record<string, unknown>) => null),
+}));
+
+vi.mock("@/domains/documents/components/DocumentSectionBatchGenerationRunner", () => ({
+	DocumentSectionBatchGenerationRunner: dialogMocks.DocumentSectionBatchGenerationRunner,
 }));
 
 vi.mock("@/shared/components/generation-dialogs/VideoGenerationDialog", () => ({
@@ -32,6 +37,7 @@ vi.mock("@/shared/lib/http", () => ({
 vi.mock("@/hooks/useToast", () => ({
 	useToast: () => ({
 		error: vi.fn(),
+		info: vi.fn(),
 		success: vi.fn(),
 	}),
 }));
@@ -64,8 +70,56 @@ const billingSummary: BillingSummaryResponse = {
 describe("ProjectOverview", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		vi.mocked(httpClient.get).mockImplementation(async (url) => {
-			switch (url) {
+		vi.mocked(httpClient.get).mockImplementation(async (url, config) => {
+			const requestUrl = String(url);
+			if (requestUrl === "/generation/tasks") {
+				const params =
+					(config as { params?: { kind?: string; projectId?: string } } | undefined)?.params ?? {};
+				return apiResponse({
+					tasks:
+						params.projectId === "project-a" && params.kind === "image"
+							? [
+									generationTask({
+										documentId: "characters",
+										id: "task-image-lintong",
+										kind: "image",
+										message: "图片生成已完成。",
+										sectionId: "section_lintong",
+										status: "completed",
+									}),
+									generationTask({
+										documentId: "characters",
+										id: "task-image-xulele",
+										kind: "image",
+										message: "正在生成图片。",
+										sectionId: "section_xulele",
+										status: "running",
+									}),
+								]
+							: params.projectId === "project-a" && params.kind === "video"
+								? [
+										generationTask({
+											documentId: "storyboard-a",
+											id: "task-video-reel-01",
+											kind: "video",
+											message: "视频生成已完成。",
+											sectionId: "section_reel_01",
+											status: "completed",
+										}),
+										generationTask({
+											documentId: "storyboard-a",
+											id: "task-video-reel-02",
+											kind: "video",
+											message: "视频生成任务已提交。",
+											sectionId: "section_reel_02",
+											status: "submitted",
+										}),
+									]
+								: [],
+				});
+			}
+
+			switch (requestUrl) {
 				case "/projects/project-a/config":
 					return apiResponse(projectConfig);
 				case "/prompt-presets":
@@ -460,7 +514,42 @@ describe("ProjectOverview", () => {
 		}
 	});
 
-	it("selects document-derived resources for batch image generation", async () => {
+	it("shows in-progress generation status in resource dialogs", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+					<ProjectOverview />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		await screen.findByText("文档 2 项 · 图片 1 张");
+		fireEvent.click(screen.getByRole("button", { name: "角色 文档资源" }));
+
+		const documentDialog = await screen.findByRole("dialog");
+		expect(within(documentDialog).getByText("徐乐乐")).toBeInTheDocument();
+		const documentStatus = within(documentDialog).getByText("生成中");
+		expect(documentStatus).toBeInTheDocument();
+		expect(documentStatus.parentElement?.className).toContain("absolute");
+		expect(documentStatus.parentElement?.className).toContain("right-2");
+		expect(documentStatus.parentElement?.className).toContain("top-2");
+		expect(within(documentDialog).queryByText("已完成")).not.toBeInTheDocument();
+
+		fireEvent.keyDown(document, { key: "Escape" });
+		await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 成片资源" }));
+		const videoDialog = await screen.findByRole("dialog");
+		expect(within(videoDialog).getByText("第 02 组 总时长：00:06")).toBeInTheDocument();
+		const videoStatus = within(videoDialog).getByText("生成中");
+		expect(videoStatus).toBeInTheDocument();
+		expect(videoStatus.parentElement?.className).toContain("absolute");
+		expect(videoStatus.parentElement?.className).toContain("right-2");
+		expect(videoStatus.parentElement?.className).toContain("top-2");
+		expect(within(videoDialog).queryByText("已完成")).not.toBeInTheDocument();
+	});
+
+	it("submits document-derived resources for background batch image generation", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
 				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
@@ -493,34 +582,45 @@ describe("ProjectOverview", () => {
 
 		fireEvent.click(within(dialog).getByRole("button", { name: "批量生成图片（2）" }));
 
+		expect(within(dialog).queryByText("已完成")).not.toBeInTheDocument();
+		expect(within(dialog).getAllByText("生成中")).toHaveLength(2);
+
 		await waitFor(() => {
-			const props = dialogMocks.ImageGenerationDialog.mock.calls.at(-1)?.[0];
-			expect(props).toMatchObject({
-				open: true,
+			const props = dialogMocks.DocumentSectionBatchGenerationRunner.mock.calls.at(-1)?.[0] as
+				| { jobs?: unknown[] }
+				| undefined;
+			expect(props?.jobs).toHaveLength(2);
+		});
+
+		const props = dialogMocks.DocumentSectionBatchGenerationRunner.mock.calls.at(-1)?.[0] as {
+			jobs: Array<Record<string, unknown>>;
+		};
+		expect(props.jobs).toEqual([
+			expect.objectContaining({
+				kind: "image",
 				projectId: "project-a",
 				section: expect.objectContaining({
 					blockId: "section_lintong",
 					documentId: "characters",
 					headingText: "林书彤",
 				}),
-			});
-		});
-
-		const firstProps = dialogMocks.ImageGenerationDialog.mock.calls.at(-1)?.[0] as {
-			onOpenChange: (open: boolean) => void;
-		};
-		firstProps.onOpenChange(false);
-
-		await waitFor(() => {
-			const props = dialogMocks.ImageGenerationDialog.mock.calls.at(-1)?.[0];
-			expect(props).toMatchObject({
-				open: true,
+			}),
+			expect.objectContaining({
+				kind: "image",
+				projectId: "project-a",
 				section: expect.objectContaining({
 					blockId: "section_xulele",
 					documentId: "characters",
 					headingText: "徐乐乐",
 				}),
-			});
+			}),
+		]);
+		expect(
+			dialogMocks.ImageGenerationDialog.mock.calls.some(([props]) => props.open === true),
+		).toBe(false);
+
+		await waitFor(() => {
+			expect(within(dialog).getByRole("button", { name: "批量生成图片（0）" })).toBeDisabled();
 		});
 	});
 
@@ -594,7 +694,7 @@ describe("ProjectOverview", () => {
 		expect(within(secondDialog).queryByTestId("overview-video-player")).not.toBeInTheDocument();
 	});
 
-	it("selects storyboard video reels for batch video generation", async () => {
+	it("submits storyboard video reels for background batch video generation", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
 				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
@@ -623,34 +723,47 @@ describe("ProjectOverview", () => {
 
 		fireEvent.click(within(dialog).getByRole("button", { name: "批量生成视频（2）" }));
 
+		expect(within(dialog).queryByText("已完成")).not.toBeInTheDocument();
+		expect(within(dialog).getAllByText("生成中")).toHaveLength(2);
+
 		await waitFor(() => {
-			const props = dialogMocks.VideoGenerationDialog.mock.calls.at(-1)?.[0];
-			expect(props).toMatchObject({
-				open: true,
+			const props = dialogMocks.DocumentSectionBatchGenerationRunner.mock.calls.at(-1)?.[0] as
+				| { jobs?: unknown[] }
+				| undefined;
+			expect(props?.jobs).toHaveLength(2);
+		});
+
+		const props = dialogMocks.DocumentSectionBatchGenerationRunner.mock.calls.at(-1)?.[0] as {
+			jobs: Array<Record<string, unknown>>;
+		};
+		expect(props.jobs).toEqual([
+			expect.objectContaining({
+				kind: "video",
 				projectId: "project-a",
+				resolveLatestSection: false,
 				section: expect.objectContaining({
 					blockId: "section_reel_01",
 					documentId: "storyboard-a",
 					headingText: "第 01 组 总时长：00:08",
 				}),
-			});
-		});
-
-		const firstProps = dialogMocks.VideoGenerationDialog.mock.calls.at(-1)?.[0] as {
-			onOpenChange: (open: boolean) => void;
-		};
-		firstProps.onOpenChange(false);
-
-		await waitFor(() => {
-			const props = dialogMocks.VideoGenerationDialog.mock.calls.at(-1)?.[0];
-			expect(props).toMatchObject({
-				open: true,
+			}),
+			expect.objectContaining({
+				kind: "video",
+				projectId: "project-a",
+				resolveLatestSection: false,
 				section: expect.objectContaining({
 					blockId: "section_reel_02",
 					documentId: "storyboard-a",
 					headingText: "第 02 组 总时长：00:06",
 				}),
-			});
+			}),
+		]);
+		expect(
+			dialogMocks.VideoGenerationDialog.mock.calls.some(([props]) => props.open === true),
+		).toBe(false);
+
+		await waitFor(() => {
+			expect(within(dialog).getByRole("button", { name: "批量生成视频（0）" })).toBeDisabled();
 		});
 	});
 });
@@ -660,4 +773,42 @@ const apiResponse = <T,>(data: T): ApiResponse<T> => ({
 	data,
 	message: "ok",
 	success: true,
+});
+
+const generationTask = (overrides: {
+	documentId: string;
+	id: string;
+	kind: "image" | "video";
+	message: string;
+	sectionId: string;
+	status: string;
+}) => ({
+	assets: [],
+	createdAt: "2026-06-19T02:12:00.000Z",
+	documentId: overrides.documentId,
+	durationMs: 0,
+	familyId: "family",
+	id: overrides.id,
+	kind: overrides.kind,
+	message: overrides.message,
+	model: "model",
+	modelId: "model",
+	params: {},
+	projectId: "project-a",
+	provider: "provider",
+	referenceAssetIds: [],
+	referenceUrls: [],
+	retryCount: 0,
+	routeId: "route",
+	sectionId: overrides.sectionId,
+	status: overrides.status,
+	updatedAt: "2026-06-19T02:13:00.000Z",
+	usage: {
+		cachedTokens: 0,
+		inputTokens: 0,
+		outputTokens: 0,
+		reasoningTokens: 0,
+		totalTokens: 0,
+	},
+	versionId: "version",
 });

@@ -841,7 +841,6 @@ func (handler Workspace) HandleRestoreDocumentHistoryVersion(context *gin.Contex
 // @Param documentId path string true "Document ID"
 // @Success 200 {object} SwaggerEnvelope
 // @Failure 400 {object} SwaggerEnvelope
-// @Failure 404 {object} SwaggerEnvelope
 // @Failure 500 {object} SwaggerEnvelope
 // @Router /api/v1/projects/{projectId}/workspace/episodes/{documentId} [get]
 func (handler Workspace) HandleGetEpisodeTimelineState(context *gin.Context) {
@@ -859,7 +858,7 @@ func (handler Workspace) HandleGetEpisodeTimelineState(context *gin.Context) {
 		return
 	}
 	if !ok {
-		httpresponse.Error(context, http.StatusNotFound, "剪辑台状态不存在")
+		httpresponse.OK[any](context, nil)
 		return
 	}
 	httpresponse.OK(context, state)

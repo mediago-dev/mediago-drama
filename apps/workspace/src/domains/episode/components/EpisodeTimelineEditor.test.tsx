@@ -58,13 +58,20 @@ describe("EpisodeTimelineEditor", () => {
 		expect(generateButton).toBeTruthy();
 		expect(generateButton.className).toContain("rounded-md");
 		expect(generateButton.className).toContain("cursor-pointer");
-		expect(generateButton.className).toContain("bg-primary");
-		expect(generateButton.className).toContain("text-primary-foreground");
+		expect(generateButton.className).toContain("bg-card");
+		expect(generateButton.className).toContain("dark:bg-background");
+		expect(generateButton.className).toContain("text-foreground");
 		expect(generateButton.className).not.toContain("rounded-full");
 		expect(
 			within(screen.getByTestId("clip-strip-card-clip-cold-open")).queryByText("冷开场"),
 		).toBeNull();
-		expect(screen.getByTestId("clip-strip-card-clip-cold-open").className).toContain("border-2");
+		expect(screen.getByTestId("clip-strip-card-clip-cold-open").className).not.toContain(
+			"border-2",
+		);
+		const selectionHighlight = screen.getByTestId("clip-strip-card-selection-clip-cold-open");
+		expect(selectionHighlight.className).toContain("border-2");
+		expect(selectionHighlight.className).toContain("border-primary");
+		expect(screen.queryByTestId("clip-strip-card-selection-clip-problem")).toBeNull();
 		expect(screen.getByTestId("clip-strip-card-clip-cold-open").className).not.toContain(
 			"translate-y",
 		);

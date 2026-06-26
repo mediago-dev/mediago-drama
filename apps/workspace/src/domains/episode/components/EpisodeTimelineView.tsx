@@ -108,6 +108,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const [downloadingVideoClipIds, setDownloadingVideoClipIds] = useState<string[]>([]);
 	const [isExportingAllStoryboards, setIsExportingAllStoryboards] = useState(false);
 	const [previewPlaybackActive, setPreviewPlaybackActive] = useState(false);
+	const [isSavingTaskSyncedEpisode, setIsSavingTaskSyncedEpisode] = useState(false);
 	const previewPlayerRef = useRef<MediaPlayerInstance | null>(null);
 	const lastPreviewErrorKey = useRef("");
 	const activeWorkbench = getRouteDocumentWorkbench(location.search) ?? "timeline";
@@ -198,13 +199,26 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		[playablePreviewRanges],
 	);
 	const previewStreamUrl = useMemo(() => {
-		if (!episodeDocumentId || !projectId?.trim() || playablePreviewRanges.length < 1) return "";
+		if (
+			!episodeDocumentId ||
+			!projectId?.trim() ||
+			isSavingTaskSyncedEpisode ||
+			playablePreviewRanges.length < 1
+		) {
+			return "";
+		}
 		return workspaceEpisodePreviewStreamURL(
 			episodeDocumentId,
 			projectId,
 			previewStreamVersion || undefined,
 		);
-	}, [episodeDocumentId, playablePreviewRanges.length, previewStreamVersion, projectId]);
+	}, [
+		episodeDocumentId,
+		isSavingTaskSyncedEpisode,
+		playablePreviewRanges.length,
+		previewStreamVersion,
+		projectId,
+	]);
 	const playbackVideoUrl = previewStreamUrl || undefined;
 	const playbackPosterUrl = useMemo(() => {
 		const posterClip = previewStreamUrl ? playablePreviewRanges[0]?.clip : selectedClip;
@@ -436,38 +450,35 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		},
 		[pause, previewStreamUrl, toast],
 	);
-	const handleTimelinePlaybackToggle = useCallback(() => {
-		if (isPlaying) {
-			pause();
-			return;
-		}
-
-		if (previewStreamUrl) {
-			const shouldRestart =
-				typeof actualTimelineDuration === "number" &&
-				actualTimelineDuration > 0 &&
-				currentTime >= actualTimelineDuration - 0.05;
-			const playbackStartTime = shouldRestart ? 0 : currentTime;
-			const player = previewPlayerRef.current;
-			setPreviewPlaybackActive(true);
-			setCurrentTime(playbackStartTime);
-			if (player && Math.abs(player.currentTime - playbackStartTime) > 0.3) {
-				player.currentTime = playbackStartTime;
+	const handleTimelinePlaybackToggle = useCallback(
+		(event?: React.MouseEvent<HTMLButtonElement>) => {
+			if (isPlaying) {
+				previewPlayerRef.current?.remoteControl.pause(event?.nativeEvent);
+				pause();
+				return;
 			}
-			play();
-			return;
-		}
 
-		pause();
-	}, [
-		actualTimelineDuration,
-		currentTime,
-		isPlaying,
-		pause,
-		play,
-		previewStreamUrl,
-		setCurrentTime,
-	]);
+			if (previewStreamUrl) {
+				const shouldRestart =
+					typeof actualTimelineDuration === "number" &&
+					actualTimelineDuration > 0 &&
+					currentTime >= actualTimelineDuration - 0.05;
+				const playbackStartTime = shouldRestart ? 0 : currentTime;
+				const player = previewPlayerRef.current;
+				setPreviewPlaybackActive(true);
+				setCurrentTime(playbackStartTime);
+				if (player && Math.abs(player.currentTime - playbackStartTime) > 0.3) {
+					player.currentTime = playbackStartTime;
+				}
+				player?.remoteControl.play(event?.nativeEvent);
+				play();
+				return;
+			}
+
+			pause();
+		},
+		[actualTimelineDuration, currentTime, isPlaying, pause, play, previewStreamUrl, setCurrentTime],
+	);
 	const handlePreviewTimeUpdate = useCallback(
 		(localTime: number) => {
 			setCurrentTime(localTime);
@@ -529,8 +540,31 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		if (!syncedEpisode.changed) return;
 
 		setEpisode(syncedEpisode.episode);
-		if (syncedEpisode.hasReadyVideo) void mutateMediaAssets();
-	}, [latestStoryboardVideoTaskByClipId, mutateMediaAssets, setEpisode]);
+		if (!episodeDocumentId || !syncedEpisode.hasReadyVideo) return;
+
+		setIsSavingTaskSyncedEpisode(true);
+		void updateWorkspaceEpisode(episodeDocumentId, syncedEpisode.episode, projectId)
+			.then(async (saved) => {
+				await mutateEpisodeState(saved, { revalidate: false });
+				await mutateMediaAssets();
+			})
+			.catch((error) => {
+				toast.error("剪辑台状态同步失败", {
+					description: toErrorMessage(error),
+				});
+			})
+			.finally(() => {
+				setIsSavingTaskSyncedEpisode(false);
+			});
+	}, [
+		episodeDocumentId,
+		latestStoryboardVideoTaskByClipId,
+		mutateEpisodeState,
+		mutateMediaAssets,
+		projectId,
+		setEpisode,
+		toast,
+	]);
 
 	useEffect(() => {
 		if (previewStreamUrl) return;

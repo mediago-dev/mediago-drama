@@ -532,7 +532,7 @@ export const deleteWorkspaceFolder = async (folderId: string, projectId?: string
 
 export const getWorkspaceEpisode = async (documentId: string, projectId?: string | null) => {
 	try {
-		const response = await httpClient.get<WorkspaceEpisodePayload>(
+		const response = await httpClient.get<WorkspaceEpisodePayload | null>(
 			workspaceEpisodeKey(documentId, projectId),
 		);
 		return response.data;

@@ -21,7 +21,7 @@ interface EpisodeTimelineEditorProps {
 	onGenerateClip: (clipId: string) => void;
 	onSeek: (time: number) => void;
 	onSelectClip: (clipId: string) => void;
-	onTogglePlayback: () => void;
+	onTogglePlayback: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
 export const EpisodeTimelineEditor: React.FC<EpisodeTimelineEditorProps> = (props) => (

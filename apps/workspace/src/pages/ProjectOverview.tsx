@@ -1,15 +1,22 @@
-import { Check, FileText, Film, Loader2, Palette, ReceiptText, Wand2 } from "lucide-react";
+import { ArrowUpRight, Check, FileText, Film, Loader2, Palette, ReceiptText } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import useSWR from "swr";
-import type { GenerationAsset } from "@/domains/generation/api/generation";
+import type { GenerationAsset, GenerationTask } from "@/domains/generation/api/generation";
 import {
+	generationProjectConversationScopeId,
+	generationTasksQueryKey,
 	type SelectedGenerationAsset,
+	getGenerationTasks,
 	getSelectedGenerationAssets,
 	selectedGenerationAssetsQueryKey,
 } from "@/domains/generation/api/generation";
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
+import {
+	DocumentSectionBatchGenerationRunner,
+	type DocumentSectionBatchGenerationJob,
+} from "@/domains/documents/components/DocumentSectionBatchGenerationRunner";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { sectionAssetKeysFromDocuments } from "@/domains/documents/components/section-generation-asset-keys";
 import { useDocumentsStore } from "@/domains/documents/stores";
@@ -17,6 +24,7 @@ import {
 	generationAssetSelectionKey,
 	generationAssetSource,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import { generationStatusLabel } from "@/domains/generation/hooks/generationFormatters";
 import {
 	selectedGenerationResourceDescriptorMap,
 	selectedGenerationResourceDescriptors,
@@ -45,6 +53,7 @@ import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
 import { VideoGenerationDialog } from "@/shared/components/generation-dialogs/VideoGenerationDialog";
+import { useToast } from "@/hooks/useToast";
 import { apiResourceURL } from "@/shared/lib/api-base";
 import { cn } from "@/shared/lib/utils";
 
@@ -56,6 +65,7 @@ const moneyFormatter = new Intl.NumberFormat("zh-CN", {
 
 export const ProjectOverview: React.FC = () => {
 	const location = useLocation();
+	const toast = useToast();
 	const projectId = getRouteProjectId(location.search);
 	const activeProjectId = useProjectStore((state) => state.activeProjectId);
 	const setActiveProjectId = useProjectStore((state) => state.setActiveProjectId);
@@ -65,8 +75,12 @@ export const ProjectOverview: React.FC = () => {
 		useState<MarkdownSectionContext | null>(null);
 	const [videoGenerationSection, setVideoGenerationSection] =
 		useState<MarkdownSectionContext | null>(null);
-	const [imageGenerationQueue, setImageGenerationQueue] = useState<MarkdownSectionContext[]>([]);
-	const [videoGenerationQueue, setVideoGenerationQueue] = useState<MarkdownSectionContext[]>([]);
+	const [batchGenerationJobs, setBatchGenerationJobs] = useState<
+		DocumentSectionBatchGenerationJob[]
+	>([]);
+	const [optimisticGenerationStatuses, setOptimisticGenerationStatuses] = useState<
+		Record<string, ResourceGenerationStatus>
+	>({});
 	const [storyboardVideoDocumentId, setStoryboardVideoDocumentId] = useState<string | null>(null);
 	const storeDocuments = useDocumentsStore((state) => state.documents);
 	const documentsProjectId = useDocumentsStore((state) => state.projectId);
@@ -76,6 +90,17 @@ export const ProjectOverview: React.FC = () => {
 	const usageParams = useMemo(
 		() => (projectId ? { groupBy: "capability", projectId } : null),
 		[projectId],
+	);
+	const projectGenerationScopeId = useMemo(
+		() => (projectId ? generationProjectConversationScopeId(projectId) : ""),
+		[projectId],
+	);
+	const hasPendingOptimisticGenerationStatuses = useMemo(
+		() =>
+			Object.values(optimisticGenerationStatuses).some((status) =>
+				isPendingGenerationStatus(status.status),
+			),
+		[optimisticGenerationStatuses],
 	);
 	const {
 		data: config,
@@ -94,6 +119,26 @@ export const ProjectOverview: React.FC = () => {
 	const { data: selectedResources } = useSWR(
 		projectId ? selectedGenerationAssetsQueryKey(projectId) : null,
 		() => getSelectedGenerationAssets(projectId ?? ""),
+	);
+	const { data: imageTaskData } = useSWR(
+		projectId ? generationTasksQueryKey(null, "image", projectGenerationScopeId, projectId) : null,
+		() => getGenerationTasks(null, "image", projectGenerationScopeId, projectId),
+		{
+			refreshInterval: (data) =>
+				hasPendingGenerationTasks(data?.tasks ?? []) || hasPendingOptimisticGenerationStatuses
+					? 5000
+					: 0,
+		},
+	);
+	const { data: videoTaskData } = useSWR(
+		projectId ? generationTasksQueryKey(null, "video", projectGenerationScopeId, projectId) : null,
+		() => getGenerationTasks(null, "video", projectGenerationScopeId, projectId),
+		{
+			refreshInterval: (data) =>
+				hasPendingGenerationTasks(data?.tasks ?? []) || hasPendingOptimisticGenerationStatuses
+					? 5000
+					: 0,
+		},
 	);
 	const {
 		data: storyboardVideoResources,
@@ -126,8 +171,8 @@ export const ProjectOverview: React.FC = () => {
 		setDocumentResourceDialogType(null);
 		setImageGenerationSection(null);
 		setVideoGenerationSection(null);
-		setImageGenerationQueue([]);
-		setVideoGenerationQueue([]);
+		setBatchGenerationJobs([]);
+		setOptimisticGenerationStatuses({});
 		setStoryboardVideoDocumentId(null);
 	}, [projectId]);
 
@@ -138,11 +183,60 @@ export const ProjectOverview: React.FC = () => {
 	);
 	const documentResources = workspaceDocumentResources?.resources ?? [];
 	const storyboardVideoGroups = storyboardVideoResources?.groups ?? [];
+	const optimisticGenerationStatusMap = useMemo(
+		() => new Map(Object.entries(optimisticGenerationStatuses)),
+		[optimisticGenerationStatuses],
+	);
+	const documentResourceTaskStatuses = useMemo(
+		() => documentResourceGenerationStatusMap(documentResources, imageTaskData?.tasks ?? []),
+		[documentResources, imageTaskData?.tasks],
+	);
+	const storyboardReelTaskStatuses = useMemo(
+		() => storyboardReelGenerationStatusMap(storyboardVideoGroups, videoTaskData?.tasks ?? []),
+		[storyboardVideoGroups, videoTaskData?.tasks],
+	);
+	const documentResourceGenerationStatuses = useMemo(
+		() =>
+			mergeResourceGenerationStatusMaps(
+				documentResourceTaskStatuses,
+				optimisticGenerationStatusMap,
+			),
+		[documentResourceTaskStatuses, optimisticGenerationStatusMap],
+	);
+	const storyboardReelGenerationStatuses = useMemo(
+		() =>
+			mergeResourceGenerationStatusMaps(storyboardReelTaskStatuses, optimisticGenerationStatusMap),
+		[storyboardReelTaskStatuses, optimisticGenerationStatusMap],
+	);
 	const activeStoryboardVideoGroup = useMemo(
 		() =>
 			storyboardVideoGroups.find((group) => group.documentId === storyboardVideoDocumentId) ?? null,
 		[storyboardVideoDocumentId, storyboardVideoGroups],
 	);
+
+	useEffect(() => {
+		const realStatuses = new Map([
+			...documentResourceTaskStatuses.entries(),
+			...storyboardReelTaskStatuses.entries(),
+		]);
+		if (realStatuses.size === 0) return;
+
+		setOptimisticGenerationStatuses((current) => {
+			let changed = false;
+			const next = { ...current };
+			for (const [resourceId, status] of Object.entries(current)) {
+				const realStatus = realStatuses.get(resourceId);
+				if (
+					realStatus &&
+					resourceGenerationStatusTime(realStatus) >= resourceGenerationStatusTime(status)
+				) {
+					delete next[resourceId];
+					changed = true;
+				}
+			}
+			return changed ? next : current;
+		});
+	}, [documentResourceTaskStatuses, storyboardReelTaskStatuses]);
 
 	const createdAtLabel = useMemo(() => {
 		if (!config?.createdAt) return "";
@@ -155,54 +249,71 @@ export const ProjectOverview: React.FC = () => {
 		setDocumentResourceDialogType(resourceType);
 	}, []);
 	const openImageGeneration = useCallback((resource: WorkspaceDocumentResource) => {
-		setImageGenerationQueue([]);
 		setImageGenerationSection(documentResourceToSectionContext(resource));
 	}, []);
-	const openImageGenerationBatch = useCallback((resources: WorkspaceDocumentResource[]) => {
-		const sections = resources.map(documentResourceToSectionContext);
-		const [firstSection, ...remainingSections] = sections;
-		if (!firstSection) return;
+	const openImageGenerationBatch = useCallback(
+		(resources: WorkspaceDocumentResource[]) => {
+			const jobs = resources.map((resource) =>
+				documentResourceToBatchGenerationJob(resource, projectId ?? ""),
+			);
+			if (jobs.length === 0) return;
 
-		setImageGenerationQueue(remainingSections);
-		setImageGenerationSection(firstSection);
-	}, []);
-	const closeImageGeneration = useCallback(
-		(open: boolean) => {
-			if (open) return;
-
-			const [nextSection, ...remainingSections] = imageGenerationQueue;
-			setImageGenerationQueue(remainingSections);
-			setImageGenerationSection(nextSection ?? null);
+			setBatchGenerationJobs((current) => [...current, ...jobs]);
+			setOptimisticGenerationStatuses((current) =>
+				optimisticGenerationStatusesWithJobs(current, jobs),
+			);
+			toast.info("正在后台批量生成", {
+				description: `已加入 ${jobs.length} 个图片任务，将使用默认提示词和引用资源。`,
+			});
 		},
-		[imageGenerationQueue],
+		[projectId, toast],
 	);
+	const closeImageGeneration = useCallback((open: boolean) => {
+		if (!open) setImageGenerationSection(null);
+	}, []);
 	const openStoryboardVideoGeneration = useCallback(
 		(group: WorkspaceStoryboardVideoDocumentGroup, reel: WorkspaceStoryboardVideoReel) => {
-			setVideoGenerationQueue([]);
 			setVideoGenerationSection(storyboardReelToSectionContext(group, reel));
 		},
 		[],
 	);
 	const openStoryboardVideoGenerationBatch = useCallback(
 		(group: WorkspaceStoryboardVideoDocumentGroup, reels: WorkspaceStoryboardVideoReel[]) => {
-			const sections = reels.map((reel) => storyboardReelToSectionContext(group, reel));
-			const [firstSection, ...remainingSections] = sections;
-			if (!firstSection) return;
+			const jobs = reels.map((reel) =>
+				storyboardReelToBatchGenerationJob(group, reel, projectId ?? ""),
+			);
+			if (jobs.length === 0) return;
 
-			setVideoGenerationQueue(remainingSections);
-			setVideoGenerationSection(firstSection);
+			setBatchGenerationJobs((current) => [...current, ...jobs]);
+			setOptimisticGenerationStatuses((current) =>
+				optimisticGenerationStatusesWithJobs(current, jobs),
+			);
+			toast.info("正在后台批量生成", {
+				description: `已加入 ${jobs.length} 个视频任务，将使用默认提示词和引用资源。`,
+			});
 		},
-		[],
+		[projectId, toast],
 	);
-	const closeVideoGeneration = useCallback(
-		(open: boolean) => {
-			if (open) return;
-
-			const [nextSection, ...remainingSections] = videoGenerationQueue;
-			setVideoGenerationQueue(remainingSections);
-			setVideoGenerationSection(nextSection ?? null);
+	const closeVideoGeneration = useCallback((open: boolean) => {
+		if (!open) setVideoGenerationSection(null);
+	}, []);
+	const removeBatchGenerationJob = useCallback((jobId: string) => {
+		setBatchGenerationJobs((current) => current.filter((job) => job.id !== jobId));
+	}, []);
+	const reportBatchGenerationError = useCallback(
+		(job: DocumentSectionBatchGenerationJob, message: string) => {
+			const resourceId = job.statusResourceId?.trim();
+			if (resourceId) {
+				setOptimisticGenerationStatuses((current) => ({
+					...current,
+					[resourceId]: failedOptimisticGenerationStatus(job, message),
+				}));
+			}
+			toast.error("后台生成提交失败", {
+				description: `${job.section.headingText}：${message}`,
+			});
 		},
-		[videoGenerationQueue],
+		[toast],
 	);
 	const selectedImageAssetKeys = useCallback(
 		(section: MarkdownSectionContext) => sectionAssetKeysFromDocuments(documents, section, "image"),
@@ -309,6 +420,7 @@ export const ProjectOverview: React.FC = () => {
 								/>
 								<StoryboardVideoResourcesDialog
 									error={storyboardVideoResourcesError}
+									generationStatuses={storyboardReelGenerationStatuses}
 									group={activeStoryboardVideoGroup}
 									isLoading={isStoryboardVideoResourcesLoading}
 									open={Boolean(activeStoryboardVideoGroup)}
@@ -321,6 +433,7 @@ export const ProjectOverview: React.FC = () => {
 								<DocumentResourcesDialog
 									assets={selectedResources?.assets ?? []}
 									error={documentResourcesError}
+									generationStatuses={documentResourceGenerationStatuses}
 									isLoading={isDocumentResourcesLoading}
 									open={Boolean(documentResourceDialogType)}
 									resourceType={documentResourceDialogType}
@@ -355,6 +468,11 @@ export const ProjectOverview: React.FC = () => {
 									onOpenReferenceGeneration={setImageGenerationSection}
 									onToggleAsset={toggleSectionVideo}
 								/>
+								<DocumentSectionBatchGenerationRunner
+									jobs={batchGenerationJobs}
+									onJobError={reportBatchGenerationError}
+									onJobSettled={removeBatchGenerationJob}
+								/>
 							</section>
 						) : null}
 					</main>
@@ -367,6 +485,7 @@ export const ProjectOverview: React.FC = () => {
 const DocumentResourcesDialog: React.FC<{
 	assets: SelectedGenerationAsset[];
 	error?: unknown;
+	generationStatuses: Map<string, ResourceGenerationStatus>;
 	isLoading: boolean;
 	open: boolean;
 	resourceType: AgentResourceType | null;
@@ -377,6 +496,7 @@ const DocumentResourcesDialog: React.FC<{
 }> = ({
 	assets,
 	error,
+	generationStatuses,
 	isLoading,
 	open,
 	resourceType,
@@ -426,6 +546,12 @@ const DocumentResourcesDialog: React.FC<{
 	const clearSelectedResources = useCallback(() => {
 		setSelectedResourceIds([]);
 	}, []);
+	const generateSelectedResources = useCallback(() => {
+		if (selectedResources.length === 0) return;
+
+		onBatchGenerate(selectedResources);
+		setSelectedResourceIds([]);
+	}, [onBatchGenerate, selectedResources]);
 
 	const toggleSelectedResource = useCallback((resource: WorkspaceDocumentResource) => {
 		if (!resource.canGenerate) return;
@@ -490,7 +616,7 @@ const DocumentResourcesDialog: React.FC<{
 							selectedCount={selectedResources.length}
 							totalCount={selectableResources.length}
 							onClear={clearSelectedResources}
-							onGenerate={() => onBatchGenerate(selectedResources)}
+							onGenerate={generateSelectedResources}
 							onSelectAll={selectAllResources}
 						/>
 						<div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -498,6 +624,7 @@ const DocumentResourcesDialog: React.FC<{
 								{filteredResources.map((resource) => (
 									<DocumentResourceCard
 										key={resource.id}
+										generationStatus={generationStatuses.get(resource.id)}
 										selectedImages={resourceSelectedImages(resource, assets)}
 										resource={resource}
 										selected={selectedResourceIdSet.has(resource.id)}
@@ -515,14 +642,16 @@ const DocumentResourcesDialog: React.FC<{
 };
 
 const DocumentResourceCard: React.FC<{
+	generationStatus?: ResourceGenerationStatus;
 	resource: WorkspaceDocumentResource;
 	selectedImages: DocumentResourceSelectedImage[];
 	selected: boolean;
 	onGenerate: (resource: WorkspaceDocumentResource) => void;
 	onToggleSelected: () => void;
-}> = ({ resource, selectedImages, selected, onGenerate, onToggleSelected }) => {
+}> = ({ generationStatus, resource, selectedImages, selected, onGenerate, onToggleSelected }) => {
 	const preview = selectedImages[0];
 	const assetCount = selectedImages.length;
+	const visibleGenerationStatus = visibleResourceGenerationStatus(generationStatus);
 
 	return (
 		<article
@@ -549,8 +678,14 @@ const DocumentResourceCard: React.FC<{
 					selected={selected}
 					onToggle={onToggleSelected}
 				/>
+				<ResourceGenerationStatusBadge status={visibleGenerationStatus} />
 				{assetCount > 0 ? (
-					<div className="absolute right-2 top-2 rounded-sm border border-border bg-card/95 px-2 py-1 text-xs font-medium text-foreground shadow-sm">
+					<div
+						className={cn(
+							"absolute right-2 rounded-sm border border-border bg-card/95 px-2 py-1 text-xs font-medium text-foreground shadow-sm",
+							visibleGenerationStatus ? "top-11" : "top-2",
+						)}
+					>
 						已选择 {assetCount} 张
 					</div>
 				) : null}
@@ -585,7 +720,7 @@ const DocumentResourceCard: React.FC<{
 						disabled={!resource.canGenerate}
 						onClick={() => onGenerate(resource)}
 					>
-						<Wand2 className="size-4" />
+						<ArrowUpRight className="size-4" />
 						<span>生成图片</span>
 					</Button>
 				</div>
@@ -644,7 +779,7 @@ const BatchSelectionToolbar: React.FC<{
 				disabled={selectedCount === 0}
 				onClick={onGenerate}
 			>
-				<Wand2 className="size-4" />
+				<ArrowUpRight className="size-4" />
 				<span>
 					{generateLabel}（{selectedCount}）
 				</span>
@@ -682,6 +817,33 @@ const ResourceCardSelectionButton: React.FC<{
 		<Check className={cn("size-4", selected ? "opacity-100" : "opacity-0")} />
 	</button>
 );
+
+const ResourceGenerationStatusBadge: React.FC<{ status?: ResourceGenerationStatus }> = ({
+	status,
+}) => {
+	if (!status) return null;
+
+	const icon =
+		status.kind === "pending" ? (
+			<Loader2 className="size-3 animate-spin" />
+		) : status.kind === "completed" ? (
+			<Check className="size-3" />
+		) : null;
+
+	return (
+		<Badge
+			variant="outline"
+			className={cn(
+				"absolute right-2 top-2 z-10 shrink-0 shadow-sm backdrop-blur-sm",
+				resourceGenerationStatusBadgeClassName(status.kind),
+			)}
+			title={resourceGenerationStatusTitle(status)}
+		>
+			{icon}
+			<span>{status.label}</span>
+		</Badge>
+	);
+};
 
 const DocumentResourcesSummary: React.FC<{
 	assets: SelectedGenerationAsset[];
@@ -830,6 +992,7 @@ const StoryboardVideoResourcesSummary: React.FC<{
 
 const StoryboardVideoResourcesDialog: React.FC<{
 	error?: unknown;
+	generationStatuses: Map<string, ResourceGenerationStatus>;
 	group: WorkspaceStoryboardVideoDocumentGroup | null;
 	isLoading: boolean;
 	open: boolean;
@@ -842,7 +1005,16 @@ const StoryboardVideoResourcesDialog: React.FC<{
 		reels: WorkspaceStoryboardVideoReel[],
 	) => void;
 	onOpenChange: (open: boolean) => void;
-}> = ({ error, group, isLoading, open, onBatchGenerate, onGenerate, onOpenChange }) => {
+}> = ({
+	error,
+	generationStatuses,
+	group,
+	isLoading,
+	open,
+	onBatchGenerate,
+	onGenerate,
+	onOpenChange,
+}) => {
 	const videoCount = group ? storyboardDocumentGroupVideoCount(group) : 0;
 	const selectableReels = useMemo(
 		() => (group?.reels ?? []).filter((reel) => reel.canGenerate),
@@ -877,6 +1049,12 @@ const StoryboardVideoResourcesDialog: React.FC<{
 	const clearSelectedReels = useCallback(() => {
 		setSelectedReelIds([]);
 	}, []);
+	const generateSelectedReels = useCallback(() => {
+		if (!group || selectedReels.length === 0) return;
+
+		onBatchGenerate(group, selectedReels);
+		setSelectedReelIds([]);
+	}, [group, onBatchGenerate, selectedReels]);
 
 	const toggleSelectedReel = useCallback((reel: WorkspaceStoryboardVideoReel) => {
 		if (!reel.canGenerate) return;
@@ -933,7 +1111,7 @@ const StoryboardVideoResourcesDialog: React.FC<{
 							selectedCount={selectedReels.length}
 							totalCount={selectableReels.length}
 							onClear={clearSelectedReels}
-							onGenerate={() => onBatchGenerate(group, selectedReels)}
+							onGenerate={generateSelectedReels}
 							onSelectAll={selectAllReels}
 						/>
 						<div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -941,6 +1119,7 @@ const StoryboardVideoResourcesDialog: React.FC<{
 								{group.reels.map((reel) => (
 									<StoryboardReelVideoCard
 										key={reel.id}
+										generationStatus={generationStatuses.get(reel.id)}
 										reel={reel}
 										selected={selectedReelIdSet.has(reel.id)}
 										onGenerate={() => onGenerate(group, reel)}
@@ -957,14 +1136,16 @@ const StoryboardVideoResourcesDialog: React.FC<{
 };
 
 const StoryboardReelVideoCard: React.FC<{
+	generationStatus?: ResourceGenerationStatus;
 	reel: WorkspaceStoryboardVideoReel;
 	selected: boolean;
 	onGenerate: () => void;
 	onToggleSelected: () => void;
-}> = ({ reel, selected, onGenerate, onToggleSelected }) => {
+}> = ({ generationStatus, reel, selected, onGenerate, onToggleSelected }) => {
 	const preview = reel.videos[0];
 	const videoCount = reel.videos.length;
 	const coverSource = preview?.posterUrl ? apiResourceURL(preview.posterUrl) : "";
+	const visibleGenerationStatus = visibleResourceGenerationStatus(generationStatus);
 
 	return (
 		<article
@@ -995,8 +1176,14 @@ const StoryboardReelVideoCard: React.FC<{
 					selected={selected}
 					onToggle={onToggleSelected}
 				/>
+				<ResourceGenerationStatusBadge status={visibleGenerationStatus} />
 				{videoCount > 0 ? (
-					<div className="absolute right-2 top-2 rounded-sm border border-border bg-card/95 px-2 py-1 text-xs font-medium text-foreground shadow-sm">
+					<div
+						className={cn(
+							"absolute right-2 rounded-sm border border-border bg-card/95 px-2 py-1 text-xs font-medium text-foreground shadow-sm",
+							visibleGenerationStatus ? "top-11" : "top-2",
+						)}
+					>
 						成片 {videoCount} 个
 					</div>
 				) : null}
@@ -1024,7 +1211,7 @@ const StoryboardReelVideoCard: React.FC<{
 						disabled={!reel.canGenerate}
 						onClick={onGenerate}
 					>
-						<Wand2 className="size-4" />
+						<ArrowUpRight className="size-4" />
 						<span>生成视频</span>
 					</Button>
 				</div>
@@ -1105,8 +1292,191 @@ interface DocumentResourceSelectedImage {
 	title?: string;
 }
 
+type ResourceGenerationStatusKind = "pending" | "failed" | "completed";
+
+interface ResourceGenerationStatus {
+	kind: ResourceGenerationStatusKind;
+	label: string;
+	message?: string;
+	status: string;
+	taskId: string;
+	updatedAt?: string;
+}
+
 const storyboardDocumentGroupVideoCount = (group: WorkspaceStoryboardVideoDocumentGroup) =>
 	group.reels.reduce((total, reel) => total + reel.videos.length, 0);
+
+const documentResourceGenerationStatusMap = (
+	resources: WorkspaceDocumentResource[],
+	tasks: GenerationTask[],
+) => {
+	const next = new Map<string, ResourceGenerationStatus>();
+	for (const resource of resources) {
+		const status = generationStatusForSection(tasks, resource.documentId, resource.sectionId);
+		if (status) next.set(resource.id, status);
+	}
+	return next;
+};
+
+const storyboardReelGenerationStatusMap = (
+	groups: WorkspaceStoryboardVideoDocumentGroup[],
+	tasks: GenerationTask[],
+) => {
+	const next = new Map<string, ResourceGenerationStatus>();
+	for (const group of groups) {
+		for (const reel of group.reels) {
+			const status = generationStatusForSection(tasks, group.documentId, reel.sectionId);
+			if (status) next.set(reel.id, status);
+		}
+	}
+	return next;
+};
+
+const mergeResourceGenerationStatusMaps = (
+	taskStatuses: Map<string, ResourceGenerationStatus>,
+	optimisticStatuses: Map<string, ResourceGenerationStatus>,
+) => {
+	const next = new Map(taskStatuses);
+	for (const [resourceId, optimisticStatus] of optimisticStatuses) {
+		const taskStatus = next.get(resourceId);
+		if (
+			!taskStatus ||
+			resourceGenerationStatusTime(optimisticStatus) > resourceGenerationStatusTime(taskStatus)
+		) {
+			next.set(resourceId, optimisticStatus);
+		}
+	}
+	return next;
+};
+
+const generationStatusForSection = (
+	tasks: GenerationTask[],
+	documentId: string,
+	sectionId: string,
+) => {
+	const matchingTasks = tasks.filter(
+		(task) =>
+			task.documentId?.trim() === documentId.trim() && task.sectionId?.trim() === sectionId.trim(),
+	);
+	const task = latestActiveOrRecentGenerationTask(matchingTasks);
+	return task ? resourceGenerationStatusFromTask(task) : undefined;
+};
+
+const latestActiveOrRecentGenerationTask = (tasks: GenerationTask[]) =>
+	latestGenerationTask(tasks.filter((task) => isPendingGenerationStatus(task.status))) ??
+	latestGenerationTask(tasks);
+
+const latestGenerationTask = (tasks: GenerationTask[]) => {
+	let latest: GenerationTask | undefined;
+	let latestTime = Number.NEGATIVE_INFINITY;
+	for (const task of tasks) {
+		const time = generationTaskTime(task);
+		if (!latest || time >= latestTime) {
+			latest = task;
+			latestTime = time;
+		}
+	}
+	return latest;
+};
+
+const generationTaskTime = (task: GenerationTask) => {
+	const time = Date.parse(task.updatedAt || task.createdAt || "");
+	return Number.isFinite(time) ? time : 0;
+};
+
+const resourceGenerationStatusTime = (status: ResourceGenerationStatus) => {
+	const time = Date.parse(status.updatedAt ?? "");
+	return Number.isFinite(time) ? time : 0;
+};
+
+const optimisticGenerationStatusesWithJobs = (
+	current: Record<string, ResourceGenerationStatus>,
+	jobs: DocumentSectionBatchGenerationJob[],
+) => {
+	const updatedAt = new Date().toISOString();
+	const next = { ...current };
+	for (const job of jobs) {
+		const resourceId = job.statusResourceId?.trim();
+		if (!resourceId) continue;
+		next[resourceId] = pendingOptimisticGenerationStatus(job, updatedAt);
+	}
+	return next;
+};
+
+const pendingOptimisticGenerationStatus = (
+	job: DocumentSectionBatchGenerationJob,
+	updatedAt: string,
+): ResourceGenerationStatus => ({
+	kind: "pending",
+	label: resourceGenerationStatusDisplayLabel("pending"),
+	message: "已加入后台批量生成。",
+	status: "submitted",
+	taskId: `local:${job.id}`,
+	updatedAt,
+});
+
+const failedOptimisticGenerationStatus = (
+	job: DocumentSectionBatchGenerationJob,
+	message: string,
+): ResourceGenerationStatus => ({
+	kind: "failed",
+	label: resourceGenerationStatusDisplayLabel("failed"),
+	message,
+	status: "failed",
+	taskId: `local:${job.id}`,
+	updatedAt: new Date().toISOString(),
+});
+
+const hasPendingGenerationTasks = (tasks: GenerationTask[]) =>
+	tasks.some((task) => isPendingGenerationStatus(task.status));
+
+const resourceGenerationStatusFromTask = (task: GenerationTask): ResourceGenerationStatus => {
+	const kind = resourceGenerationStatusKind(task.status);
+	return {
+		kind,
+		label: resourceGenerationStatusDisplayLabel(kind),
+		message: task.error || task.message,
+		status: task.status,
+		taskId: task.id,
+		updatedAt: task.updatedAt,
+	};
+};
+
+const resourceGenerationStatusKind = (status: string): ResourceGenerationStatusKind => {
+	const normalized = status.toLowerCase().trim();
+	if (failedGenerationStatuses.has(normalized)) return "failed";
+	if (completedGenerationStatuses.has(normalized)) return "completed";
+	return "pending";
+};
+
+const visibleResourceGenerationStatus = (status?: ResourceGenerationStatus) =>
+	status && status.kind !== "completed" ? status : undefined;
+
+const isPendingGenerationStatus = (status: string) =>
+	resourceGenerationStatusKind(status) === "pending";
+
+const resourceGenerationStatusDisplayLabel = (kind: ResourceGenerationStatusKind) => {
+	if (kind === "failed") return "生成失败";
+	if (kind === "completed") return "已完成";
+	return "生成中";
+};
+
+const resourceGenerationStatusTitle = (status: ResourceGenerationStatus) => {
+	const details = [generationStatusLabel(status.status)];
+	if (status.message?.trim()) details.push(status.message.trim());
+	return details.join(" · ");
+};
+
+const resourceGenerationStatusBadgeClassName = (kind: ResourceGenerationStatusKind) => {
+	if (kind === "failed") return "border-error-border bg-error-surface text-error-foreground";
+	if (kind === "completed") {
+		return "border-success-border bg-success-surface text-success-foreground";
+	}
+	return "border-info-border bg-info-surface text-info-foreground";
+};
+
+const failedGenerationStatuses = new Set(["failed", "error", "cancelled", "canceled"]);
+const completedGenerationStatuses = new Set(["completed", "succeeded", "success"]);
 
 const resourceAssetCount = (
 	resource: WorkspaceDocumentResource,
@@ -1207,6 +1577,33 @@ const storyboardReelToSectionContext = (
 	plainText: reel.plainText ?? "",
 	prompt: reel.prompt ?? reel.markdown,
 });
+
+const documentResourceToBatchGenerationJob = (
+	resource: WorkspaceDocumentResource,
+	projectId: string,
+): DocumentSectionBatchGenerationJob => ({
+	id: createBatchGenerationJobId("image", resource.id),
+	kind: "image",
+	projectId,
+	section: documentResourceToSectionContext(resource),
+	statusResourceId: resource.id,
+});
+
+const storyboardReelToBatchGenerationJob = (
+	group: WorkspaceStoryboardVideoDocumentGroup,
+	reel: WorkspaceStoryboardVideoReel,
+	projectId: string,
+): DocumentSectionBatchGenerationJob => ({
+	id: createBatchGenerationJobId("video", reel.id),
+	kind: "video",
+	projectId,
+	resolveLatestSection: false,
+	section: storyboardReelToSectionContext(group, reel),
+	statusResourceId: reel.id,
+});
+
+const createBatchGenerationJobId = (kind: "image" | "video", sourceId: string) =>
+	`${kind}:${sourceId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
 
 const selectedAssetCountForResourceType = (
 	assets: SelectedGenerationAsset[],

@@ -1,4 +1,4 @@
-import { Download, Loader2, Pause, Play, Sparkles } from "lucide-react";
+import { ArrowUpRight, Download, Loader2, Pause, Play } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -34,7 +34,7 @@ interface EpisodeClipStripProps {
 	onGenerateClip: (clipId: string) => void;
 	onSeek: (time: number) => void;
 	onSelectClip: (clipId: string) => void;
-	onTogglePlayback: () => void;
+	onTogglePlayback: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
 interface EpisodeClipCardProps {
@@ -247,7 +247,7 @@ const EpisodeClipCard: React.FC<EpisodeClipCardProps> = ({
 			className={cn(
 				"group relative flex h-[6.25rem] shrink-0 overflow-hidden rounded-lg border bg-muted text-left shadow-sm transition-[border-color,box-shadow,transform] focus-within:border-primary focus-within:shadow-md",
 				isSelected
-					? "border-2 border-primary shadow-md"
+					? "border-primary shadow-md"
 					: "border-border hover:border-primary/60 hover:shadow-md",
 				isActive && !isSelected && "shadow-md",
 			)}
@@ -293,7 +293,7 @@ const EpisodeClipCard: React.FC<EpisodeClipCardProps> = ({
 				type="button"
 				variant="ghost"
 				size="sm"
-				className="absolute right-2 top-2 z-20 h-7 cursor-pointer rounded-md border border-primary/40 bg-primary px-2 text-[11px] font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/80 focus-visible:ring-primary/40"
+				className="absolute right-2 top-2 z-20 h-7 cursor-pointer rounded-md border border-border bg-card px-2 text-[11px] font-semibold text-foreground shadow-sm hover:bg-card/90 hover:text-foreground active:bg-muted focus-visible:ring-ring/40 dark:border-input dark:bg-background dark:hover:bg-background/90"
 				aria-label={`生成 ${clip.title}`}
 				onClick={(event) => {
 					event.stopPropagation();
@@ -303,7 +303,7 @@ const EpisodeClipCard: React.FC<EpisodeClipCardProps> = ({
 				{isGenerating ? (
 					<Loader2 className="size-3 animate-spin" />
 				) : (
-					<Sparkles className="size-3" />
+					<ArrowUpRight className="size-3" />
 				)}
 				<span>生成</span>
 			</Button>
@@ -311,6 +311,13 @@ const EpisodeClipCard: React.FC<EpisodeClipCardProps> = ({
 				<span className="pointer-events-none absolute bottom-2 right-2 rounded-sm bg-black/70 px-1.5 py-0.5 text-xs font-medium tabular-nums text-white">
 					{durationLabel}
 				</span>
+			) : null}
+			{isSelected ? (
+				<div
+					aria-hidden="true"
+					className="pointer-events-none absolute inset-0 z-30 rounded-lg border-2 border-primary"
+					data-testid={`clip-strip-card-selection-${clip.id}`}
+				/>
 			) : null}
 		</div>
 	);

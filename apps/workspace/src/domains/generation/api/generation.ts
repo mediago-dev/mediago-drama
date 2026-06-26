@@ -235,12 +235,16 @@ export const getGenerationTasks = async (
 	// 非默认 scope（如文档章节）作为 sessionId 兜底，保证按 scope 隔离任务历史。
 	const scopeSessionId =
 		scopeId.trim() === defaultGenerationConversationScopeId ? "" : scopeId.trim();
-	const sessionId = conversationId?.trim() || projectId?.trim() || scopeSessionId;
+	const normalizedProjectId = projectId?.trim() || "";
+	const sessionId = normalizedProjectId ? "" : conversationId?.trim() || scopeSessionId;
 	const path = sessionId
 		? `${generationConversationsKey}/${encodeURIComponent(sessionId)}/tasks`
 		: generationTasksKey;
 	const response = await httpClient.get<GenerationTasksResponse>(path, {
-		params: kind ? { kind } : {},
+		params: {
+			...(kind ? { kind } : {}),
+			...(normalizedProjectId ? { projectId: normalizedProjectId } : {}),
+		},
 	});
 	return {
 		...response.data,

@@ -1,5 +1,5 @@
 import type React from "react";
-import { AudioLines, Image as ImageIcon, Plus } from "lucide-react";
+import { ArrowUpRight, Plus } from "lucide-react";
 import type { HoveredBlockRect } from "./types";
 
 export type SectionGenerateKind = "image" | "audio" | "video";
@@ -13,17 +13,24 @@ const sectionGenerateActions: Array<{
 }> = [
 	{
 		ariaLabel: "根据当前标题区域生成图片",
-		icon: <ImageIcon className="size-3.5" />,
+		icon: <ArrowUpRight className="size-3.5" />,
 		kind: "image",
 		label: "生成图片",
 		title: "根据当前标题区域生成图片",
 	},
 	{
 		ariaLabel: "根据当前标题区域生成语音",
-		icon: <AudioLines className="size-3.5" />,
+		icon: <ArrowUpRight className="size-3.5" />,
 		kind: "audio",
 		label: "生成语音",
 		title: "根据当前标题区域生成语音",
+	},
+	{
+		ariaLabel: "根据当前标题区域生成视频",
+		icon: <ArrowUpRight className="size-3.5" />,
+		kind: "video",
+		label: "生成视频",
+		title: "根据当前标题区域生成视频",
 	},
 ];
 

@@ -1,15 +1,19 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type React from "react";
 import { MemoryRouter } from "react-router-dom";
+import useSWR from "swr";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { findEpisodeVideoClip } from "@/domains/episode/lib/filters";
 import { type Episode, sampleEpisode } from "@/domains/episode/lib/sample";
 import { useEpisodeStore } from "@/domains/episode/stores";
+import { getMediaAssets } from "@/domains/workspace/api/media";
 import {
 	updateWorkspaceDocumentSectionImage,
 	updateWorkspaceEpisode,
+	workspaceEpisodePreviewStreamURL,
 } from "@/domains/workspace/api/workspace";
 import { EpisodeTimelineView } from "./EpisodeTimelineView";
 
@@ -30,6 +34,10 @@ const fixtures = vi.hoisted(() => ({
 		url: "/api/v1/media-assets/generated-lin/content",
 	},
 	imageDialogSection: null as MarkdownSectionContext | null,
+	previewRemoteControl: {
+		pause: vi.fn(),
+		play: vi.fn(),
+	},
 }));
 
 vi.mock("swr", () => ({
@@ -99,28 +107,45 @@ vi.mock("@/domains/episode/components/EpisodeTimelineEditor", () => ({
 	EpisodeTimelineEditor: ({
 		episode,
 		onGenerateClip,
+		onTogglePlayback,
 	}: {
 		episode: Episode;
 		onGenerateClip: (clipId: string) => void;
+		onTogglePlayback: (event: React.MouseEvent<HTMLButtonElement>) => void;
 	}) => {
 		const videoClipId = episode.tracks.find((track) => track.type === "video")?.clips[0]?.id;
 		return (
-			<button
-				type="button"
-				data-testid="timeline-editor"
-				disabled={!videoClipId}
-				onClick={() => {
-					if (videoClipId) onGenerateClip(videoClipId);
-				}}
-			>
-				模拟请求视频生成
-			</button>
+			<div data-testid="timeline-editor">
+				<button
+					type="button"
+					disabled={!videoClipId}
+					onClick={() => {
+						if (videoClipId) onGenerateClip(videoClipId);
+					}}
+				>
+					模拟请求视频生成
+				</button>
+				<button type="button" onClick={onTogglePlayback}>
+					模拟播放片段条
+				</button>
+			</div>
 		);
 	},
 }));
 
 vi.mock("@/domains/episode/components/EpisodePreviewPlayer", () => ({
-	EpisodePreviewPlayer: () => <div data-testid="preview-player" />,
+	EpisodePreviewPlayer: ({ playerRef }: { playerRef?: React.Ref<unknown> }) => {
+		const player = {
+			currentTime: 0,
+			remoteControl: fixtures.previewRemoteControl,
+		};
+		if (typeof playerRef === "function") {
+			playerRef(player);
+		} else if (playerRef) {
+			playerRef.current = player;
+		}
+		return <div data-testid="preview-player" />;
+	},
 }));
 
 vi.mock("@/domains/episode/components/EpisodeCompanionGenerationDialog", () => ({
@@ -211,6 +236,14 @@ describe("EpisodeTimelineView canvas generation", () => {
 
 	beforeEach(() => {
 		fixtures.imageDialogSection = null;
+		fixtures.previewRemoteControl.pause.mockReset();
+		fixtures.previewRemoteControl.play.mockReset();
+		vi.mocked(useSWR).mockReset();
+		vi.mocked(useSWR).mockReturnValue({ data: undefined, mutate: vi.fn() } as never);
+		vi.mocked(getMediaAssets).mockReset();
+		vi.mocked(getMediaAssets).mockResolvedValue({ assets: [] });
+		vi.mocked(workspaceEpisodePreviewStreamURL).mockReset();
+		vi.mocked(workspaceEpisodePreviewStreamURL).mockReturnValue("");
 		vi.mocked(updateWorkspaceEpisode).mockReset();
 		vi.mocked(updateWorkspaceEpisode).mockImplementation(
 			async (documentId, episode, projectId) => ({
@@ -282,6 +315,136 @@ describe("EpisodeTimelineView canvas generation", () => {
 		useEpisodeStore.getState().setEpisode(sampleEpisode);
 	});
 
+	it("starts preview playback from the timeline button using the click event trigger", async () => {
+		const episodeWithVideo = sampleEpisodeWithReadyVideo();
+		vi.mocked(workspaceEpisodePreviewStreamURL).mockReturnValue(
+			"/api/v1/projects/project-a/workspace/episodes/story-doc/preview.mp4",
+		);
+		vi.mocked(useSWR).mockImplementation((key: unknown) => {
+			if (Array.isArray(key) && key[0] === "workspace-episode") {
+				return {
+					data: {
+						createdAt: "2026-06-22T00:00:00.000Z",
+						documentId: "story-doc",
+						episode: episodeWithVideo,
+						projectId: "project-a",
+						updatedAt: "2026-06-22T00:00:00.000Z",
+						workspaceDir: "/workspace/project-a",
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			if (Array.isArray(key) && key[0] === "episode-media-assets") {
+				return {
+					data: {
+						assets: [
+							{
+								createdAt: "2026-06-22T00:00:00.000Z",
+								durationSeconds: 5,
+								filename: "clip.mp4",
+								id: "asset-a",
+								kind: "video",
+								mimeType: "video/mp4",
+								posterUrl: "/api/v1/media-assets/asset-a/poster",
+								size: 1024,
+								source: "generation",
+								updatedAt: "2026-06-22T00:00:00.000Z",
+								url: "/api/v1/media-assets/asset-a/content",
+							},
+						],
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			return { data: undefined, mutate: vi.fn() } as never;
+		});
+
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-a&workbench=timeline"]}>
+				<EpisodeTimelineView documentId="story-doc" />
+			</MemoryRouter>,
+		);
+
+		await waitFor(() => {
+			expect(workspaceEpisodePreviewStreamURL).toHaveBeenCalled();
+		});
+
+		screen.getByRole("button", { name: "模拟播放片段条" }).click();
+
+		expect(fixtures.previewRemoteControl.play).toHaveBeenCalledWith(expect.any(MouseEvent));
+		expect(useEpisodeStore.getState().isPlaying).toBe(true);
+	});
+
+	it("persists videos synced from completed generation tasks before preview playback", async () => {
+		vi.mocked(useSWR).mockImplementation((key: unknown) => {
+			if (Array.isArray(key) && key[0] === "workspace-episode") {
+				return {
+					data: {
+						createdAt: "2026-06-22T00:00:00.000Z",
+						documentId: "story-doc",
+						episode: sampleEpisode,
+						projectId: "project-a",
+						updatedAt: "2026-06-22T00:00:00.000Z",
+						workspaceDir: "/workspace/project-a",
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			if (Array.isArray(key) && key[0] === "/generation/tasks") {
+				return {
+					data: {
+						tasks: [
+							{
+								assets: [
+									{
+										kind: "video",
+										posterUrl: "/api/v1/media-assets/generated-video/poster",
+										url: "/api/v1/media-assets/generated-video/content",
+									},
+								],
+								createdAt: "2026-06-22T00:00:00.000Z",
+								documentId: "story-doc",
+								kind: "video",
+								sectionId: "clip-cold-open",
+								status: "completed",
+								updatedAt: "2026-06-22T00:00:01.000Z",
+							},
+						],
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			return { data: undefined, mutate: vi.fn() } as never;
+		});
+
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-a&workbench=timeline"]}>
+				<EpisodeTimelineView documentId="story-doc" />
+			</MemoryRouter>,
+		);
+
+		await waitFor(() => {
+			expect(updateWorkspaceEpisode).toHaveBeenCalledWith(
+				"story-doc",
+				expect.objectContaining({
+					tracks: expect.arrayContaining([
+						expect.objectContaining({
+							type: "video",
+							clips: expect.arrayContaining([
+								expect.objectContaining({
+									id: "clip-cold-open",
+									status: "ready",
+									videoUrl: "/api/v1/media-assets/generated-video/content",
+								}),
+							]),
+						}),
+					]),
+				}),
+				"project-a",
+			);
+		});
+	});
+
 	it("saves a selected canvas-generated reference image through the document section backend API", async () => {
 		render(
 			<MemoryRouter initialEntries={["/projects?projectId=project-a&workbench=canvas"]}>
@@ -343,4 +506,24 @@ describe("EpisodeTimelineView canvas generation", () => {
 			expect(clip?.videoUrl).toBeUndefined();
 		});
 	});
+});
+
+const sampleEpisodeWithReadyVideo = (): Episode => ({
+	...sampleEpisode,
+	tracks: sampleEpisode.tracks.map((track) =>
+		track.type === "video"
+			? {
+					...track,
+					clips: track.clips.map((clip, index) =>
+						index === 0
+							? {
+									...clip,
+									status: "ready" as const,
+									videoUrl: "/api/v1/media-assets/asset-a/content",
+								}
+							: clip,
+					),
+				}
+			: track,
+	),
 });

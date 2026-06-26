@@ -427,8 +427,12 @@ func TestAPIHandler(t *testing.T) {
 
 		missing := requestJSON(t, handler, http.MethodGet, episodePath, "")
 		defer missing.Body.Close()
-		if missing.StatusCode != http.StatusNotFound {
-			t.Fatalf("missing status code = %d, want %d: %s", missing.StatusCode, http.StatusNotFound, readBody(t, missing.Body))
+		missingBody := readBody(t, missing.Body)
+		if missing.StatusCode != http.StatusOK {
+			t.Fatalf("missing status code = %d, want %d: %s", missing.StatusCode, http.StatusOK, missingBody)
+		}
+		if !strings.Contains(missingBody, `"data":null`) || !strings.Contains(missingBody, `"success":true`) {
+			t.Fatalf("missing body = %s, want successful empty episode timeline state", missingBody)
 		}
 
 		payload := `{"episode":{"id":"episode-doc","title":"第一集","duration":12,"aspectRatio":"16:9","sections":[],"tracks":[{"id":"track-voiceover","type":"voiceover","label":"旁白","clips":[{"id":"voiceover-1","title":"旁白 01","start":0,"end":12,"content":"醒来的城市没有声音。","status":"draft"}]}]}}`
@@ -503,8 +507,8 @@ func TestAPIHandler(t *testing.T) {
 		if contentType := stream.Header.Get("Content-Type"); contentType != "video/mp4" {
 			t.Fatalf("Content-Type = %q, want video/mp4", contentType)
 		}
-		if body := readBody(t, stream.Body); body != "rendered-mp4" {
-			t.Fatalf("body = %q, want fake rendered preview", body)
+		if body := readBody(t, stream.Body); body != "fragmented-mp4" {
+			t.Fatalf("body = %q, want fake fragmented preview stream", body)
 		}
 	})
 
