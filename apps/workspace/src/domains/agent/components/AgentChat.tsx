@@ -23,6 +23,7 @@ import {
 	getRuntimeConfigError,
 	normalizeRuntimeConfigValue,
 } from "@/domains/agent/components/chat/AgentRuntimeConfigControls";
+import { buildAgentDisplayMetadata } from "@/domains/agent/lib/display-attachments";
 import {
 	createPendingAttachment,
 	getAttachmentError,
@@ -39,7 +40,6 @@ import {
 	selectAgentRuntimeAlerts,
 	selectConsumeAgentComposerSeed,
 	useAgentStore,
-	type AgentDisplayAttachment,
 	type AgentMessageMetadata,
 } from "@/domains/agent/stores";
 import {
@@ -159,7 +159,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				prompt: displayText || effectivePrompt || (hasOpenComments ? "处理未解决批注" : ""),
 				references: composerValue.references,
 			}),
-			displayMetadata: attachmentDisplayMetadata(readyAttachments),
+			displayMetadata: buildAgentDisplayMetadata(readyAttachments, composerValue.references),
 			model: buildRuntimeConfigSelection(runtimeConfig?.model, selectedModel),
 			permission: buildRuntimeConfigSelection(runtimeConfig?.permission, selectedPermission),
 			prompt: effectivePrompt,
@@ -354,22 +354,6 @@ const agentAttachmentFingerprint = (attachment: AgentAttachment) =>
 		attachment.mimeType.trim().toLowerCase(),
 		attachment.kind,
 	].join("\u0000");
-
-const attachmentDisplayMetadata = (
-	attachments: AgentAttachment[],
-): AgentMessageMetadata | undefined => {
-	const displayAttachments = attachments.map(
-		(attachment): AgentDisplayAttachment => ({
-			id: attachment.id,
-			kind: attachment.kind,
-			mimeType: attachment.mimeType,
-			name: attachment.name,
-			size: attachment.size,
-			url: attachment.url,
-		}),
-	);
-	return displayAttachments.length > 0 ? { displayAttachments } : undefined;
-};
 
 const uploadAttachmentAsset = async (attachment: AgentAttachment, projectId: string | null) => {
 	if (!projectId) throw new Error("请先进入项目后再添加资料。");
