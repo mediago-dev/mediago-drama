@@ -665,6 +665,9 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 	if err := service.ensureTaskConversationLocked(task); err != nil {
 		return err
 	}
+	if err := service.applyDefaultSelectedAssetLocked(&task); err != nil {
+		return err
+	}
 	if err := service.repo.UpsertGenerationTask(generationTaskModel{
 		ID:              task.ID,
 		ProviderTaskID:  task.ProviderTaskID,
@@ -706,6 +709,79 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 		return err
 	}
 	return service.upsertProjectSelectedAssetRowsLocked(projectSelectedAssetModelsFromRecord(task))
+}
+
+func (service *GenerationTaskService) applyDefaultSelectedAssetLocked(task *GenerationTaskRecord) error {
+	if service.repo == nil || task == nil || !shouldDefaultSelectGenerationAsset(*task) {
+		return nil
+	}
+
+	projectID := GenerationProjectIDForRequest(task.ProjectID, "")
+	resourceType := selectedGenerationResourceType(task.CapabilityID)
+	resourceID := strings.TrimSpace(task.SectionID)
+	sourceDocumentID := strings.TrimSpace(task.DocumentID)
+	exists, err := service.repo.HasProjectSelectedAssetForResource(projectID, resourceType, resourceID, sourceDocumentID)
+	if err != nil || exists {
+		return err
+	}
+
+	assetIndex := firstDefaultSelectableGenerationAssetIndex(*task)
+	if assetIndex < 0 {
+		return nil
+	}
+	task.Assets[assetIndex].Selected = true
+	return nil
+}
+
+func shouldDefaultSelectGenerationAsset(task GenerationTaskRecord) bool {
+	if !isCompletedGenerationTaskStatus(task.Status) ||
+		strings.TrimSpace(task.Kind) != "image" ||
+		strings.TrimSpace(task.RouteID) == importedMediaGenerationRouteID ||
+		GenerationProjectIDForRequest(task.ProjectID, "") == "" ||
+		selectedGenerationResourceType(task.CapabilityID) == "" ||
+		strings.TrimSpace(task.DocumentID) == "" ||
+		strings.TrimSpace(task.SectionID) == "" ||
+		taskHasSelectedGenerationImageAsset(task) {
+		return false
+	}
+	return true
+}
+
+func isCompletedGenerationTaskStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "completed", "succeeded", "success":
+		return true
+	default:
+		return false
+	}
+}
+
+func taskHasSelectedGenerationImageAsset(task GenerationTaskRecord) bool {
+	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
+	for index, asset := range task.Assets {
+		slotIndex := assetSlotIndex(index, asset)
+		if deletedSlots[slotIndex] || strings.TrimSpace(asset.Kind) != "image" {
+			continue
+		}
+		if asset.Selected {
+			return true
+		}
+	}
+	return false
+}
+
+func firstDefaultSelectableGenerationAssetIndex(task GenerationTaskRecord) int {
+	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
+	for index, asset := range task.Assets {
+		slotIndex := assetSlotIndex(index, asset)
+		if deletedSlots[slotIndex] ||
+			strings.TrimSpace(asset.Kind) != "image" ||
+			firstNonEmpty(asset.AssetID, libraryAssetIDFromGenerationAssetURL(asset.URL)) == "" {
+			continue
+		}
+		return index
+	}
+	return -1
 }
 
 func (service *GenerationTaskService) ensureTaskConversationLocked(task GenerationTaskRecord) error {

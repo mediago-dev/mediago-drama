@@ -5,6 +5,7 @@ import { DocumentSectionGenerator } from "@/domains/documents/components/Documen
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import type { MarkdownDocument } from "@/domains/documents/stores";
+import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
 
 let capturedWorkspaceProps: MediaGenerationWorkspaceProps | null = null;
 
@@ -188,16 +189,77 @@ describe("DocumentSectionGenerator", () => {
 		);
 		expect(screen.getByTestId("reference-preview-count").textContent).toBe("1");
 	});
+
+	it("uses selected generation assets as mention reference images", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [
+				baseDocument({
+					id: "story-doc",
+					title: "故事",
+					content: section.markdown,
+				}),
+				baseDocument({
+					category: "character",
+					id: "character-doc",
+					title: "沈阔",
+					content: "<!-- section-id: section_character -->\n# 沈阔（普通状态）\n\n23 岁男性。",
+				}),
+			],
+		});
+
+		render(
+			<DocumentSectionGenerator
+				kind="video"
+				section={section}
+				selectedAssetKeys={[]}
+				selectedGenerationAssets={[
+					selectedGenerationAsset({
+						mediaAssetId: "selected-ref",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔选中图",
+						url: "/api/v1/media-assets/selected-ref/content",
+					}),
+				]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		const previewReferences = resolveReferencePreviewAssets(capturedWorkspaceProps);
+		const referenceAssetIds = resolveReferenceAssetIds(capturedWorkspaceProps);
+
+		expect(screen.getByTestId("reference-preview-count").textContent).toBe("1");
+		expect(previewReferences[0]?.url).toBe("/api/v1/media-assets/selected-ref/content");
+		expect(referenceAssetIds).toEqual([]);
+	});
 });
 
-const resolveReferencePreviewAssets = (props: MediaGenerationWorkspaceProps) => {
+const selectedGenerationAsset = (
+	overrides: Partial<SelectedGenerationAsset> = {},
+): SelectedGenerationAsset => ({
+	assetIndex: 0,
+	id: "selected-asset",
+	kind: "image",
+	resourceType: "character",
+	...overrides,
+});
+
+const resolveReferencePreviewAssets = (props: MediaGenerationWorkspaceProps | null) => {
+	if (!props) return [];
 	const value = props.referencePreviewAssets;
 	if (!value) return [];
 
 	return typeof value === "function" ? value(props.initialPrompt) : value;
 };
 
-const resolveReferenceAssetIds = (props: MediaGenerationWorkspaceProps) => {
+const resolveReferenceAssetIds = (props: MediaGenerationWorkspaceProps | null) => {
+	if (!props) return [];
 	const value = props.extraReferenceAssetIds;
 	if (!value) return [];
 

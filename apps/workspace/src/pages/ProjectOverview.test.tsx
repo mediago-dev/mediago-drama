@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type React from "react";
 import { MemoryRouter } from "react-router-dom";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,9 +11,14 @@ import type { ApiResponse } from "@/types/api";
 import { ProjectOverview } from "./ProjectOverview";
 
 const dialogMocks = vi.hoisted(() => ({
+	BatchGenerationSettingsDialog: vi.fn((_props: Record<string, unknown>): React.ReactNode => null),
 	DocumentSectionBatchGenerationRunner: vi.fn((_props: Record<string, unknown>) => null),
 	ImageGenerationDialog: vi.fn((_props: Record<string, unknown>) => null),
 	VideoGenerationDialog: vi.fn((_props: Record<string, unknown>) => null),
+}));
+
+vi.mock("@/domains/generation/components/BatchGenerationSettingsDialog", () => ({
+	BatchGenerationSettingsDialog: dialogMocks.BatchGenerationSettingsDialog,
 }));
 
 vi.mock("@/domains/documents/components/DocumentSectionBatchGenerationRunner", () => ({
@@ -54,7 +60,20 @@ const projectConfig: ProjectConfig = {
 const billingSummary: BillingSummaryResponse = {
 	currencies: ["CNY", "USD"],
 	range: { end: "2026-06-19T00:00:00.000Z", start: "2026-06-18T00:00:00.000Z" },
-	rows: [],
+	rows: [
+		{
+			cachedTokens: 0,
+			calls: 3,
+			costs: { CNY: 0.42 },
+			inputTokens: 120,
+			key: "usage-row-only",
+			label: "仅用于测试的能力明细",
+			outputTokens: 80,
+			priced: true,
+			reasoningTokens: 0,
+			totalTokens: 200,
+		},
+	],
 	series: [],
 	totals: {
 		cachedTokens: 0,
@@ -67,9 +86,100 @@ const billingSummary: BillingSummaryResponse = {
 	},
 };
 
+let imageGenerationTasksFixture: unknown[] = [];
+let selectedGenerationAssetsFixture: unknown[] = [];
+let selectedGenerationAssetsRefreshFixture: unknown[] | null = null;
+let selectedGenerationAssetsRequestCount = 0;
+let videoGenerationTasksFixture: unknown[] = [];
+
 describe("ProjectOverview", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		selectedGenerationAssetsRequestCount = 0;
+		selectedGenerationAssetsRefreshFixture = null;
+		selectedGenerationAssetsFixture = [
+			{
+				assetIndex: 0,
+				createdAt: "2026-06-19T02:10:00.000Z",
+				id: "selected-character-a",
+				kind: "image",
+				mimeType: "image/png",
+				resourceId: "section_lintong",
+				resourceType: "character",
+				sourceDocumentId: "characters",
+				taskId: "task-a",
+				title: "主角 底层青年 / 低阶散修",
+				url: "/api/v1/media-assets/character-a/content",
+			},
+		];
+		imageGenerationTasksFixture = [
+			generationTask({
+				documentId: "characters",
+				id: "task-image-lintong",
+				kind: "image",
+				message: "图片生成已完成。",
+				sectionId: "section_lintong",
+				status: "completed",
+			}),
+			generationTask({
+				documentId: "characters",
+				id: "task-image-xulele",
+				kind: "image",
+				message: "正在生成图片。",
+				sectionId: "section_xulele",
+				status: "running",
+			}),
+		];
+		videoGenerationTasksFixture = [
+			generationTask({
+				documentId: "storyboard-a",
+				id: "task-video-reel-01",
+				kind: "video",
+				message: "视频生成已完成。",
+				sectionId: "section_reel_01",
+				status: "completed",
+			}),
+			generationTask({
+				documentId: "storyboard-a",
+				id: "task-video-reel-02",
+				kind: "video",
+				message: "视频生成任务已提交。",
+				sectionId: "section_reel_02",
+				status: "submitted",
+			}),
+		];
+		dialogMocks.BatchGenerationSettingsDialog.mockImplementation(
+			({ kind, onConfirm, open }: Record<string, unknown>) =>
+				open ? (
+					<button
+						type="button"
+						onClick={() =>
+							(onConfirm as (settings: Record<string, unknown>) => void)({
+								family: { id: `${kind}-family`, kind, label: `${kind} family` },
+								params: { n: 2, ratio: "16:9" },
+								route: {
+									configured: true,
+									familyId: `${kind}-family`,
+									id: `${kind}-route`,
+									kind,
+									model: `${kind}-model`,
+									provider: "provider",
+									status: "available",
+									supportsReferenceUrls: true,
+									versionId: `${kind}-version`,
+								},
+								version: {
+									familyId: `${kind}-family`,
+									id: `${kind}-version`,
+									label: `${kind} version`,
+								},
+							})
+						}
+					>
+						确认批量设置
+					</button>
+				) : null,
+		);
 		vi.mocked(httpClient.get).mockImplementation(async (url, config) => {
 			const requestUrl = String(url);
 			if (requestUrl === "/generation/tasks") {
@@ -78,43 +188,9 @@ describe("ProjectOverview", () => {
 				return apiResponse({
 					tasks:
 						params.projectId === "project-a" && params.kind === "image"
-							? [
-									generationTask({
-										documentId: "characters",
-										id: "task-image-lintong",
-										kind: "image",
-										message: "图片生成已完成。",
-										sectionId: "section_lintong",
-										status: "completed",
-									}),
-									generationTask({
-										documentId: "characters",
-										id: "task-image-xulele",
-										kind: "image",
-										message: "正在生成图片。",
-										sectionId: "section_xulele",
-										status: "running",
-									}),
-								]
+							? imageGenerationTasksFixture
 							: params.projectId === "project-a" && params.kind === "video"
-								? [
-										generationTask({
-											documentId: "storyboard-a",
-											id: "task-video-reel-01",
-											kind: "video",
-											message: "视频生成已完成。",
-											sectionId: "section_reel_01",
-											status: "completed",
-										}),
-										generationTask({
-											documentId: "storyboard-a",
-											id: "task-video-reel-02",
-											kind: "video",
-											message: "视频生成任务已提交。",
-											sectionId: "section_reel_02",
-											status: "submitted",
-										}),
-									]
+								? videoGenerationTasksFixture
 								: [],
 				});
 			}
@@ -320,22 +396,12 @@ describe("ProjectOverview", () => {
 						],
 					});
 				case "/projects/project-a/generation/selected-assets":
+					selectedGenerationAssetsRequestCount += 1;
 					return apiResponse({
-						assets: [
-							{
-								assetIndex: 0,
-								createdAt: "2026-06-19T02:10:00.000Z",
-								id: "selected-character-a",
-								kind: "image",
-								mimeType: "image/png",
-								resourceId: "section_lintong",
-								resourceType: "character",
-								sourceDocumentId: "characters",
-								taskId: "task-a",
-								title: "主角 底层青年 / 低阶散修",
-								url: "/api/v1/media-assets/character-a/content",
-							},
-						],
+						assets:
+							selectedGenerationAssetsRequestCount > 1 && selectedGenerationAssetsRefreshFixture
+								? selectedGenerationAssetsRefreshFixture
+								: selectedGenerationAssetsFixture,
 					});
 				case "/projects/project-a/workspace/storyboard-video-resources":
 					return apiResponse({
@@ -471,6 +537,78 @@ describe("ProjectOverview", () => {
 		expect(screen.queryByRole("button", { name: "角色 已选生成资源" })).not.toBeInTheDocument();
 	});
 
+	it("refreshes selected resource covers after an image generation task completes", async () => {
+		selectedGenerationAssetsFixture = [];
+		selectedGenerationAssetsRefreshFixture = [
+			{
+				assetIndex: 0,
+				createdAt: "2026-06-19T02:14:00.000Z",
+				id: "selected-generated-lintong",
+				kind: "image",
+				mimeType: "image/png",
+				resourceId: "section_lintong",
+				resourceType: "character",
+				sourceDocumentId: "characters",
+				taskId: "task-image-lintong-new",
+				title: "林书彤生成图 1",
+				url: "/api/v1/media-assets/generated-lintong-1/content",
+			},
+		];
+		imageGenerationTasksFixture = [
+			generationTask({
+				assets: [
+					{
+						kind: "image",
+						mimeType: "image/png",
+						slotIndex: 0,
+						taskId: "task-image-lintong-new",
+						title: "林书彤生成图 1",
+						url: "/api/v1/media-assets/generated-lintong-1/content",
+					},
+				],
+				documentId: "characters",
+				id: "task-image-lintong-new",
+				kind: "image",
+				message: "图片生成已完成。",
+				sectionId: "section_lintong",
+				status: "completed",
+			}),
+		];
+
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+					<ProjectOverview />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		await waitFor(() => expect(selectedGenerationAssetsRequestCount).toBeGreaterThanOrEqual(2));
+		await screen.findByText("文档 2 项 · 图片 1 张");
+
+		fireEvent.click(screen.getByRole("button", { name: "角色 文档资源" }));
+		const dialog = await screen.findByRole("dialog");
+		expect(within(dialog).getByRole("img", { name: "林书彤生成图 1" })).toHaveAttribute(
+			"src",
+			"/api/v1/media-assets/generated-lintong-1/content",
+		);
+	});
+
+	it("does not render capability usage detail rows in the overview", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+					<ProjectOverview />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		await screen.findByText("项目消耗");
+		expect(screen.getByText("累计花费")).toBeInTheDocument();
+		expect(screen.queryByText("仅用于测试的能力明细")).not.toBeInTheDocument();
+		expect(screen.queryByText("usage-row-only")).not.toBeInTheDocument();
+	});
+
 	it("opens document-derived resources with section ids from the overview cards", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
@@ -571,6 +709,7 @@ describe("ProjectOverview", () => {
 		).toBe("true");
 
 		fireEvent.click(within(dialog).getByRole("button", { name: "批量生成图片（2）" }));
+		fireEvent.click(screen.getByText("确认批量设置"));
 
 		expect(within(dialog).queryByText("已完成")).not.toBeInTheDocument();
 		expect(within(dialog).getAllByText("生成中")).toHaveLength(2);
@@ -587,6 +726,7 @@ describe("ProjectOverview", () => {
 		};
 		expect(props.jobs).toEqual([
 			expect.objectContaining({
+				batchId: expect.stringMatching(/^batch:/),
 				kind: "image",
 				projectId: "project-a",
 				section: expect.objectContaining({
@@ -594,14 +734,23 @@ describe("ProjectOverview", () => {
 					documentId: "characters",
 					headingText: "林书彤",
 				}),
+				generationSettings: expect.objectContaining({
+					params: { n: 2, ratio: "16:9" },
+					route: expect.objectContaining({ id: "image-route" }),
+				}),
 			}),
 			expect.objectContaining({
+				batchId: expect.stringMatching(/^batch:/),
 				kind: "image",
 				projectId: "project-a",
 				section: expect.objectContaining({
 					blockId: "section_xulele",
 					documentId: "characters",
 					headingText: "徐乐乐",
+				}),
+				generationSettings: expect.objectContaining({
+					params: { n: 2, ratio: "16:9" },
+					route: expect.objectContaining({ id: "image-route" }),
 				}),
 			}),
 		]);
@@ -712,6 +861,7 @@ describe("ProjectOverview", () => {
 		).toBe("true");
 
 		fireEvent.click(within(dialog).getByRole("button", { name: "批量生成视频（2）" }));
+		fireEvent.click(screen.getByText("确认批量设置"));
 
 		expect(within(dialog).queryByText("已完成")).not.toBeInTheDocument();
 		expect(within(dialog).getAllByText("生成中")).toHaveLength(2);
@@ -728,6 +878,7 @@ describe("ProjectOverview", () => {
 		};
 		expect(props.jobs).toEqual([
 			expect.objectContaining({
+				batchId: expect.stringMatching(/^batch:/),
 				kind: "video",
 				projectId: "project-a",
 				resolveLatestSection: false,
@@ -736,8 +887,13 @@ describe("ProjectOverview", () => {
 					documentId: "storyboard-a",
 					headingText: "第 01 组 总时长：00:08",
 				}),
+				generationSettings: expect.objectContaining({
+					params: { n: 2, ratio: "16:9" },
+					route: expect.objectContaining({ id: "video-route" }),
+				}),
 			}),
 			expect.objectContaining({
+				batchId: expect.stringMatching(/^batch:/),
 				kind: "video",
 				projectId: "project-a",
 				resolveLatestSection: false,
@@ -745,6 +901,10 @@ describe("ProjectOverview", () => {
 					blockId: "section_reel_02",
 					documentId: "storyboard-a",
 					headingText: "第 02 组 总时长：00:06",
+				}),
+				generationSettings: expect.objectContaining({
+					params: { n: 2, ratio: "16:9" },
+					route: expect.objectContaining({ id: "video-route" }),
 				}),
 			}),
 		]);
@@ -766,6 +926,7 @@ const apiResponse = <T,>(data: T): ApiResponse<T> => ({
 });
 
 const generationTask = (overrides: {
+	assets?: Array<Record<string, unknown>>;
 	documentId: string;
 	id: string;
 	kind: "image" | "video";
@@ -773,7 +934,7 @@ const generationTask = (overrides: {
 	sectionId: string;
 	status: string;
 }) => ({
-	assets: [],
+	assets: overrides.assets ?? [],
 	createdAt: "2026-06-19T02:12:00.000Z",
 	documentId: overrides.documentId,
 	durationMs: 0,

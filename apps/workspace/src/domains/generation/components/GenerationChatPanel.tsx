@@ -759,11 +759,14 @@ const requestInlineSummary = (details: ChatMessageDetail[]) =>
 	details.map((detail) => `${detail.label}: ${detail.value}`).join(" | ");
 
 const requestGenerationCount = (details: ChatMessageDetail[]) => {
-	const countDetail = details.find((detail) => isGenerationCountLabel(detail.label));
-	const match = countDetail?.value.match(/\d+(?:\.\d+)?/u);
-	const count = Number(match?.[0]);
+	for (const detail of details) {
+		if (!isGenerationCountLabel(detail.label)) continue;
 
-	return Number.isFinite(count) ? Math.max(1, Math.min(4, Math.round(count))) : 1;
+		const count = countFromDetailValue(detail.value);
+		if (count !== null) return count;
+	}
+
+	return 1;
 };
 
 const isGenerationCountLabel = (label: string) => {
@@ -777,4 +780,14 @@ const isGenerationCountLabel = (label: string) => {
 		normalizedLabel === "生成数量" ||
 		normalizedLabel === "数量"
 	);
+};
+
+const countFromDetailValue = (value: string) => {
+	const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(?:张|个|幅|images?|pics?|pictures?)?$/iu);
+	if (!match?.[1]) return null;
+
+	const count = Number(match[1]);
+	if (!Number.isFinite(count)) return null;
+
+	return Math.max(1, Math.min(4, Math.round(count)));
 };

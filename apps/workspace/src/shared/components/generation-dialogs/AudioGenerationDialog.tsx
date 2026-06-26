@@ -13,6 +13,7 @@ interface AudioGenerationDialogProps {
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	open: boolean;
 	projectId?: string;
+	resolveLatestSection?: boolean;
 	selectedAssetKeys?: string[];
 	section: MarkdownSectionContext | null;
 	title?: string;
@@ -27,6 +28,7 @@ export const AudioGenerationDialog: React.FC<AudioGenerationDialogProps> = ({
 	onToggleAsset,
 	open,
 	projectId,
+	resolveLatestSection,
 	selectedAssetKeys = [],
 	section,
 	title,
@@ -69,6 +71,7 @@ export const AudioGenerationDialog: React.FC<AudioGenerationDialogProps> = ({
 				kind="audio"
 				materialLibraryImportOpen={materialLibraryOpen}
 				projectId={projectId}
+				resolveLatestSection={resolveLatestSection}
 				section={activeSection}
 				selectedAssetKeys={selectedAssetKeys}
 				viewMode="history"

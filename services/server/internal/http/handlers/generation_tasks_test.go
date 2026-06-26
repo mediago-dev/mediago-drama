@@ -116,3 +116,67 @@ func TestHandleGenerationTasksPassesProjectIDFilter(t *testing.T) {
 		t.Fatalf("body = %s, want task-project", bodyBytes)
 	}
 }
+
+type fakeSelectedGenerationAssetsService struct {
+	GenerationTaskService
+	projectID string
+	query     generationservice.SelectedGenerationAssetQuery
+}
+
+func (service *fakeSelectedGenerationAssetsService) ListSelectedGenerationAssets(projectID string, query generationservice.SelectedGenerationAssetQuery) (dto.SelectedGenerationAssetsResponse, error) {
+	service.projectID = projectID
+	service.query = query
+	return dto.SelectedGenerationAssetsResponse{
+		Assets: []dto.SelectedGenerationAssetRecord{
+			{
+				ID:               "selected-1",
+				Kind:             "image",
+				ResourceID:       query.ResourceID,
+				ResourceType:     query.ResourceType,
+				SourceDocumentID: query.SourceDocumentID,
+				URL:              "/api/v1/media-assets/selected-1/content",
+			},
+		},
+	}, nil
+}
+
+func TestHandleSelectedGenerationAssetsPassesNodeFilters(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	service := &fakeSelectedGenerationAssetsService{}
+	handler := NewGenerationTasks(service)
+	router := gin.New()
+	router.GET(
+		"/projects/:projectId/generation/selected-assets",
+		handler.HandleSelectedGenerationAssets,
+	)
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/projects/project-a/generation/selected-assets?documentId=character-doc&sectionId=section_character&resourceType=character&kind=image",
+		nil,
+	)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", response.Code, http.StatusOK)
+	}
+	if service.projectID != "project-a" {
+		t.Fatalf("projectID = %q, want project-a", service.projectID)
+	}
+	if service.query.Kind != "image" ||
+		service.query.ResourceType != "character" ||
+		service.query.ResourceID != "section_character" ||
+		service.query.SourceDocumentID != "character-doc" {
+		t.Fatalf("query = %+v, want image character section_character character-doc", service.query)
+	}
+	bodyBytes, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("reading response body: %v", err)
+	}
+	if !strings.Contains(string(bodyBytes), "selected-1") {
+		t.Fatalf("body = %s, want selected asset", bodyBytes)
+	}
+}

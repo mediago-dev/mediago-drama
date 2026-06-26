@@ -1,5 +1,14 @@
+import type { AgentReference } from "@/domains/agent/api/agent";
+import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
+import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
+import type { MarkdownDocument } from "@/domains/documents/stores";
 import type { ResolvedMention } from "@/domains/documents/lib/mention-resolver";
-import { mentionReferenceKey } from "@/domains/documents/lib/mention-resolver";
+import {
+	mediaAssetIdFromGeneratedSource,
+	mentionReferenceKey,
+	resolveMentionPayload,
+} from "@/domains/documents/lib/mention-resolver";
 import { mentionDisplayText } from "@/domains/documents/lib/mention-suggestion";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 
@@ -10,6 +19,36 @@ export interface MentionPreviewReferences {
 }
 
 const mentionPreviewTimestamp = "1970-01-01T00:00:00.000Z";
+const selectedGenerationResourceTypes = new Set<SelectedGenerationAsset["resourceType"]>([
+	"character",
+	"scene",
+	"storyboard",
+	"prop",
+]);
+
+export const resolveMentionPayloadWithSelectedAssets = (
+	reference: AgentReference,
+	allDocuments: MarkdownDocument[],
+	allAssets: ProjectAsset[] = [],
+	selectedAssets: SelectedGenerationAsset[] = [],
+): ResolvedMention => {
+	const mention = resolveMentionPayload(reference, allDocuments, allAssets);
+	if (
+		mention.status !== "ok" ||
+		mention.reference.kind === "asset" ||
+		selectedAssets.length === 0
+	) {
+		return mention;
+	}
+
+	const selectedImages = selectedImagesForMention(mention.reference, selectedAssets);
+	if (selectedImages.length === 0) return mention;
+
+	return {
+		...mention,
+		images: uniqueMentionImages([...mention.images, ...selectedImages]),
+	};
+};
 
 export const buildMentionReferenceInputs = (mentions: ResolvedMention[]) => {
 	const assetIds: string[] = [];
@@ -132,3 +171,81 @@ const createMentionPreviewAsset = (
 		url: image.url,
 	};
 };
+
+const selectedImagesForMention = (
+	reference: AgentReference,
+	selectedAssets: SelectedGenerationAsset[],
+): ResolvedMention["images"] => {
+	const resourceType = selectedResourceTypeForMention(reference);
+	if (!resourceType) return [];
+
+	return selectedAssets.flatMap((asset) => {
+		if (asset.kind !== "image" || asset.resourceType !== resourceType) return [];
+		if (!selectedAssetMatchesMention(asset, reference)) return [];
+
+		const url = generationAssetSource({
+			base64: asset.base64,
+			kind: asset.kind,
+			mimeType: asset.mimeType,
+			url: asset.url,
+		});
+		if (!url) return [];
+
+		const mediaAssetId = asset.mediaAssetId ?? mediaAssetIdFromGeneratedSource(url) ?? undefined;
+		return [
+			{
+				...(mediaAssetId ? { mediaAssetId } : {}),
+				url,
+			},
+		];
+	});
+};
+
+const selectedResourceTypeForMention = (
+	reference: AgentReference,
+): SelectedGenerationAsset["resourceType"] | null => {
+	const category = reference.category;
+	return category &&
+		selectedGenerationResourceTypes.has(category as SelectedGenerationAsset["resourceType"])
+		? (category as SelectedGenerationAsset["resourceType"])
+		: null;
+};
+
+const selectedAssetMatchesMention = (asset: SelectedGenerationAsset, reference: AgentReference) => {
+	const documentId = reference.documentId.trim();
+	const sourceDocumentId = asset.sourceDocumentId?.trim() ?? "";
+	if (documentId && sourceDocumentId && sourceDocumentId !== documentId) return false;
+
+	const mentionBlockId = reference.kind === "section" ? (reference.blockId?.trim() ?? "") : "";
+	const resourceId = asset.resourceId?.trim() ?? "";
+	if (mentionBlockId) {
+		if (resourceId) return resourceId === mentionBlockId;
+		return sourceDocumentId === documentId;
+	}
+
+	return sourceDocumentId === documentId || (!sourceDocumentId && !resourceId);
+};
+
+const uniqueMentionImages = (images: ResolvedMention["images"]) => {
+	const seen = new Set<string>();
+	const uniqueImages: ResolvedMention["images"] = [];
+
+	for (const image of images) {
+		const keys = mentionImageKeys(image);
+		if (keys.some((key) => seen.has(key))) continue;
+
+		for (const key of keys) seen.add(key);
+		uniqueImages.push(image);
+	}
+
+	return uniqueImages;
+};
+
+const mentionImageKeys = (image: ResolvedMention["images"][number]) =>
+	[
+		image.mediaAssetId ? `media:${image.mediaAssetId}` : "",
+		mediaAssetIdFromGeneratedSource(image.url)
+			? `media:${mediaAssetIdFromGeneratedSource(image.url)}`
+			: "",
+		image.url ? `url:${image.url}` : "",
+	].filter(Boolean);

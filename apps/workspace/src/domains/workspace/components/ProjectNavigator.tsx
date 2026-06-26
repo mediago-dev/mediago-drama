@@ -16,6 +16,7 @@ import {
 	type GenerationSuccessNotification,
 	useGenerationNotificationStore,
 } from "@/domains/generation/stores/generation-notifications";
+import { GenerationNotificationDialogHost } from "@/domains/generation/components/GenerationNotificationDialogHost";
 import { GenerationNotificationSync } from "@/domains/generation/components/GenerationNotificationSync";
 import { markGenerationNotificationRead } from "@/domains/generation/api/generation";
 import { deleteProjectAsset, uploadProjectAsset } from "@/domains/workspace/api/project-assets";
@@ -71,7 +72,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	const { data, error, isLoading, mutate } = useSWR(projectsKey, getProjects);
 	const createDocument = useDocumentsStore((state) => state.createDocument);
 	const deleteDocument = useDocumentsStore((state) => state.deleteDocument);
-	const documents = useDocumentsStore((state) => state.documents);
 	const documentsProjectId = useDocumentsStore((state) => state.projectId);
 	const prepareWorkspaceLoad = useDocumentsStore((state) => state.prepareWorkspaceLoad);
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
@@ -82,9 +82,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	const setActiveSettingsTab = useSettingsNavigationStore((state) => state.setActiveTab);
 	const requestOpenGenerationNotification = useGenerationNotificationStore(
 		(state) => state.requestOpenNotification,
-	);
-	const pendingGenerationOpenRequest = useGenerationNotificationStore(
-		(state) => state.pendingOpenRequest,
 	);
 	const agentLayoutTab = useAgentLayoutStore((state) => state.tab);
 	const setAgentLayoutTab = useAgentLayoutStore((state) => state.setTab);
@@ -275,24 +272,10 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 
 	const openGenerationNotification = useCallback(
 		(notification: GenerationSuccessNotification) => {
-			const openedNotification = requestOpenGenerationNotification(notification.id);
-			const target = openedNotification?.target ?? notification.target;
+			requestOpenGenerationNotification(notification.id);
 			void markGenerationNotificationRead(notification.id);
-
-			showDocumentPane();
-			setActiveProjectId(target.projectId);
-			selectDocument(target.documentId);
-			navigate(agentProjectPath(target.projectId, { documentId: target.documentId }), {
-				state: agentProjectRouteState("document"),
-			});
 		},
-		[
-			navigate,
-			requestOpenGenerationNotification,
-			selectDocument,
-			setActiveProjectId,
-			showDocumentPane,
-		],
+		[requestOpenGenerationNotification],
 	);
 
 	const openOverview = useCallback(
@@ -526,22 +509,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	}, [activeProjectId]);
 
 	useEffect(() => {
-		const target = pendingGenerationOpenRequest?.target;
-		if (!target) return;
-		if (documentsProjectId !== target.projectId) return;
-		if (activeDocumentId === target.documentId) return;
-		if (!documents.some((document) => document.id === target.documentId)) return;
-
-		selectDocument(target.documentId);
-	}, [
-		activeDocumentId,
-		documents,
-		documentsProjectId,
-		pendingGenerationOpenRequest,
-		selectDocument,
-	]);
-
-	useEffect(() => {
 		if (!routeWorkMode || routeWorkMode === workMode) return;
 		setWorkMode(routeWorkMode);
 	}, [routeWorkMode, setWorkMode, workMode]);
@@ -574,6 +541,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	return (
 		<>
 			<GenerationNotificationSync />
+			<GenerationNotificationDialogHost />
 			<div className="flex h-full min-h-0 flex-col overflow-hidden text-ide-sidebar-foreground">
 				<div className="relative min-h-0 flex-1 overflow-hidden">
 					<SidebarScreenStack

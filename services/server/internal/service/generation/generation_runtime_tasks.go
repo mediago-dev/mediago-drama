@@ -276,8 +276,16 @@ func (workflow *GenerationService) ListGenerationTasks(query GenerationTaskListQ
 	return generationTasksResponse{Tasks: GenerationTasksForClient(tasks)}, nil
 }
 
+// SelectedGenerationAssetQuery filters project-selected creative resources.
+type SelectedGenerationAssetQuery struct {
+	Kind             string
+	ResourceID       string
+	ResourceType     string
+	SourceDocumentID string
+}
+
 // ListSelectedGenerationAssets lists project-selected assets grouped by creative resource type.
-func (workflow *GenerationService) ListSelectedGenerationAssets(projectID string) (SelectedGenerationAssetsResponse, error) {
+func (workflow *GenerationService) ListSelectedGenerationAssets(projectID string, query SelectedGenerationAssetQuery) (SelectedGenerationAssetsResponse, error) {
 	projectID = GenerationProjectIDForRequest(projectID, "")
 	if projectID == "" {
 		return SelectedGenerationAssetsResponse{Assets: []SelectedGenerationAssetRecord{}}, nil
@@ -287,7 +295,7 @@ func (workflow *GenerationService) ListSelectedGenerationAssets(projectID string
 	if err != nil {
 		return SelectedGenerationAssetsResponse{}, err
 	}
-	return SelectedGenerationAssetsResponse{Assets: assets}, nil
+	return SelectedGenerationAssetsResponse{Assets: filterSelectedGenerationAssets(assets, query)}, nil
 }
 
 // UpdateSelectedGenerationAsset selects or unselects one project asset.
@@ -407,6 +415,38 @@ func selectedGenerationResourceType(capabilityID string) string {
 	default:
 		return ""
 	}
+}
+
+func filterSelectedGenerationAssets(assets []SelectedGenerationAssetRecord, query SelectedGenerationAssetQuery) []SelectedGenerationAssetRecord {
+	rawResourceType := strings.TrimSpace(query.ResourceType)
+	resourceType := selectedGenerationResourceType(rawResourceType)
+	resourceID := strings.TrimSpace(query.ResourceID)
+	sourceDocumentID := strings.TrimSpace(query.SourceDocumentID)
+	kind := strings.TrimSpace(query.Kind)
+	if rawResourceType != "" && resourceType == "" {
+		return []SelectedGenerationAssetRecord{}
+	}
+	if resourceType == "" && resourceID == "" && sourceDocumentID == "" && kind == "" {
+		return assets
+	}
+
+	filtered := make([]SelectedGenerationAssetRecord, 0, len(assets))
+	for _, asset := range assets {
+		if kind != "" && asset.Kind != kind {
+			continue
+		}
+		if resourceType != "" && asset.ResourceType != resourceType {
+			continue
+		}
+		if resourceID != "" && asset.ResourceID != resourceID {
+			continue
+		}
+		if sourceDocumentID != "" && asset.SourceDocumentID != sourceDocumentID {
+			continue
+		}
+		filtered = append(filtered, asset)
+	}
+	return filtered
 }
 
 // PollPendingGenerationTasks polls pending generation tasks in the background.

@@ -4,8 +4,13 @@ import useSWR from "swr";
 import type {
 	GenerationAsset,
 	GenerationNotificationOpenTarget,
+	SelectedGenerationAsset,
 } from "@/domains/generation/api/generation";
-import { projectGenerationConversation } from "@/domains/generation/api/generation";
+import {
+	getSelectedGenerationAssets,
+	projectGenerationConversation,
+	selectedGenerationAssetsQueryKey,
+} from "@/domains/generation/api/generation";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { DocumentMentionHoverPopover } from "@/domains/documents/components/DocumentMentionHoverPopover";
 import { DocumentMention } from "@/domains/documents/components/extensions/document-mention";
@@ -15,6 +20,7 @@ import {
 	buildMentionPreviewReferences,
 	buildMentionReferenceInputs,
 	extractDocumentImageAssets,
+	resolveMentionPayloadWithSelectedAssets,
 	type MentionPreviewReferences,
 	uniqueResolvedMention,
 } from "@/domains/documents/lib/mention-generation-references";
@@ -53,6 +59,7 @@ interface EpisodeVideoGenerationDialogProps {
 	open: boolean;
 	projectId?: string;
 	selectedClip: TimelineClip | null;
+	selectedGenerationAssets?: SelectedGenerationAsset[];
 	selectedVideoUrl?: string | null;
 }
 
@@ -102,6 +109,7 @@ const useEpisodeVideoGenerationDialogController = ({
 	open,
 	projectId,
 	selectedClip,
+	selectedGenerationAssets,
 	selectedVideoUrl,
 }: EpisodeVideoGenerationDialogProps): EpisodeVideoGenerationDialogController => {
 	const allDocuments = useDocumentsStore((state) => state.documents);
@@ -140,6 +148,16 @@ const useEpisodeVideoGenerationDialogController = ({
 	// 项目内的视频生成统一归到「项目级命名会话」，让创作台可见；非项目场景回退到按分镜片段的 scope。
 	const normalizedProjectId = projectId?.trim() ?? "";
 	const { data: projectsData } = useSWR(normalizedProjectId ? projectsKey : null, getProjects);
+	const shouldLoadSelectedGenerationAssets =
+		selectedGenerationAssets === undefined && Boolean(normalizedProjectId);
+	const { data: selectedGenerationAssetsData } = useSWR(
+		shouldLoadSelectedGenerationAssets
+			? selectedGenerationAssetsQueryKey(normalizedProjectId)
+			: null,
+		() => getSelectedGenerationAssets(normalizedProjectId),
+	);
+	const mentionSelectedGenerationAssets =
+		selectedGenerationAssets ?? selectedGenerationAssetsData?.assets ?? [];
 	const projectName = useMemo(
 		() => projectsData?.projects.find((project) => project.id === normalizedProjectId)?.name ?? "",
 		[projectsData, normalizedProjectId],
@@ -166,9 +184,16 @@ const useEpisodeVideoGenerationDialogController = ({
 	const resolveAllMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
 			parseMentionsFromMarkdown(`${generationContext.sourceMarkdown}\n\n${promptMarkdown}`)
-				.map((reference) => resolveMentionPayload(reference, allDocuments, allAssets))
+				.map((reference) =>
+					resolveMentionPayloadWithSelectedAssets(
+						reference,
+						allDocuments,
+						allAssets,
+						mentionSelectedGenerationAssets,
+					),
+				)
 				.filter(uniqueResolvedMention),
-		[allAssets, allDocuments, generationContext.sourceMarkdown],
+		[allAssets, allDocuments, generationContext.sourceMarkdown, mentionSelectedGenerationAssets],
 	);
 	const resolveActiveMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
@@ -274,6 +299,8 @@ const useEpisodeVideoGenerationDialogController = ({
 					allAssets={allAssets}
 					allDocuments={allDocuments}
 					onGenerateReference={onOpenReferenceGeneration}
+					projectId={normalizedProjectId || undefined}
+					selectedGenerationAssets={mentionSelectedGenerationAssets}
 				/>
 			),
 			submitLabel: "生成视频",
@@ -355,8 +382,17 @@ const EpisodeVideoPromptMentionEditor: React.FC<
 		allAssets: ProjectAsset[];
 		allDocuments: MarkdownDocument[];
 		onGenerateReference?: (section: MarkdownSectionContext) => void;
+		projectId?: string;
+		selectedGenerationAssets?: SelectedGenerationAsset[];
 	}
-> = ({ allAssets, allDocuments, onGenerateReference, ...props }) => {
+> = ({
+	allAssets,
+	allDocuments,
+	onGenerateReference,
+	projectId,
+	selectedGenerationAssets,
+	...props
+}) => {
 	const extensions = useMemo(() => [DocumentMention], []);
 
 	return (
@@ -364,6 +400,8 @@ const EpisodeVideoPromptMentionEditor: React.FC<
 			allAssets={allAssets}
 			allDocuments={allDocuments}
 			onGenerateReference={onGenerateReference}
+			projectId={projectId}
+			selectedGenerationAssets={selectedGenerationAssets}
 		>
 			<PromptEditor
 				{...props}

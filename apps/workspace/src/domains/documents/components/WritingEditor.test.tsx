@@ -1,11 +1,10 @@
 import type React from "react";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
-import { useGenerationNotificationStore } from "@/domains/generation/stores/generation-notifications";
 import { WritingEditor } from "./WritingEditor";
 
 const testState = vi.hoisted(() => ({
@@ -26,6 +25,7 @@ const testState = vi.hoisted(() => ({
 		open: boolean;
 		section: MarkdownSectionContext | null;
 	},
+	mentionPopoverProps: null as null | { projectId?: string },
 	videoDialogProps: null as null | {
 		open: boolean;
 		section: MarkdownSectionContext | null;
@@ -61,7 +61,10 @@ vi.mock("@/domains/workspace/api/workspace", () => ({
 }));
 
 vi.mock("@/domains/documents/components/DocumentMentionHoverPopover", () => ({
-	DocumentMentionHoverPopover: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+	DocumentMentionHoverPopover: (props: { children: React.ReactNode; projectId?: string }) => {
+		testState.mentionPopoverProps = props;
+		return <>{props.children}</>;
+	},
 }));
 
 vi.mock("@/domains/documents/components/DocumentHistoryPanel", () => ({
@@ -102,17 +105,6 @@ vi.mock("@/shared/components/generation-dialogs/AudioGenerationDialog", () => ({
 	AudioGenerationDialog: () => null,
 }));
 
-const section: MarkdownSectionContext = {
-	blockId: "section_visual",
-	documentId: "story-doc",
-	headingLevel: 2,
-	headingOccurrence: 1,
-	headingText: "画面",
-	markdown: "## 画面\n\n画面提示词。",
-	plainText: "画面\n\n画面提示词。",
-	prompt: "画面提示词。",
-};
-
 const makeDocument = (overrides: Partial<MarkdownDocument> = {}): MarkdownDocument => ({
 	category: "storyboard",
 	comments: [],
@@ -141,32 +133,20 @@ describe("WritingEditor", () => {
 	afterEach(() => {
 		cleanup();
 		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
-		useGenerationNotificationStore.getState().clearNotifications();
 		testState.imageDialogProps = null;
+		testState.mentionPopoverProps = null;
 		testState.videoDialogProps = null;
 		Object.values(testState.editorHandle).forEach((value) => {
 			if (typeof value === "function" && "mockClear" in value) value.mockClear();
 		});
 	});
 
-	it("opens a completed image generation notification without wiring document insertion", async () => {
+	it("passes the project id to mention hover previews", () => {
 		useDocumentsStore.getState().hydrateWorkspaceDocuments({
 			documents: [makeDocument()],
 			projectId: "project-a",
 			workspaceDir: "/workspace/project-a",
 		});
-		const notification = useGenerationNotificationStore.getState().addNotification({
-			assetCount: 1,
-			sourceTaskId: "task-1",
-			target: {
-				kind: "document-section",
-				documentId: "story-doc",
-				documentTitle: "第一集",
-				projectId: "project-a",
-				section,
-			},
-		});
-		useGenerationNotificationStore.getState().requestOpenNotification(notification.id);
 
 		render(
 			<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
@@ -174,55 +154,6 @@ describe("WritingEditor", () => {
 			</MemoryRouter>,
 		);
 
-		await waitFor(() => {
-			expect(testState.imageDialogProps?.open).toBe(true);
-		});
-		expect(testState.imageDialogProps?.section).toMatchObject({
-			blockId: "section_visual",
-			documentId: "story-doc",
-		});
-		expect(useGenerationNotificationStore.getState().pendingOpenRequest).toBeNull();
-		expect("setSectionImage" in testState.editorHandle).toBe(false);
-		expect(testState.imageDialogProps?.onToggleImage).toBeUndefined();
-		expect(useDocumentsStore.getState().documents[0]?.content).not.toContain(
-			"/api/v1/media-assets/generated/content",
-		);
-	});
-
-	it("opens the video generation dialog for completed video notifications", async () => {
-		useDocumentsStore.getState().hydrateWorkspaceDocuments({
-			documents: [makeDocument()],
-			projectId: "project-a",
-			workspaceDir: "/workspace/project-a",
-		});
-		const notification = useGenerationNotificationStore.getState().addNotification({
-			assetCount: 1,
-			kind: "video",
-			sourceTaskId: "task-1",
-			target: {
-				kind: "document-section",
-				documentId: "story-doc",
-				documentTitle: "第一集",
-				projectId: "project-a",
-				section,
-			},
-		});
-		useGenerationNotificationStore.getState().requestOpenNotification(notification.id);
-
-		render(
-			<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
-				<WritingEditor />
-			</MemoryRouter>,
-		);
-
-		await waitFor(() => {
-			expect(testState.videoDialogProps?.open).toBe(true);
-		});
-		expect(testState.videoDialogProps?.section).toMatchObject({
-			blockId: "section_visual",
-			documentId: "story-doc",
-		});
-		expect(testState.imageDialogProps?.open).toBe(false);
-		expect(useGenerationNotificationStore.getState().pendingOpenRequest).toBeNull();
+		expect(testState.mentionPopoverProps?.projectId).toBe("project-a");
 	});
 });

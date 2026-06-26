@@ -30,7 +30,7 @@ type GenerationTaskService interface {
 	RetryGenerationTask(ctx context.Context, id string) (dto.GenerationMessageResponse, int, error)
 	ListGenerationConversations(scopeID string, kind string) (dto.GenerationConversationsResponse, error)
 	ListGenerationTasks(query service.GenerationTaskListQuery) (dto.GenerationTasksResponse, error)
-	ListSelectedGenerationAssets(projectID string) (dto.SelectedGenerationAssetsResponse, error)
+	ListSelectedGenerationAssets(projectID string, query service.SelectedGenerationAssetQuery) (dto.SelectedGenerationAssetsResponse, error)
 	ListStoryboardVideoResources(projectID string) (dto.StoryboardVideoResourcesResponse, error)
 	UpdateSelectedGenerationAsset(projectID string, payload dto.UpdateSelectedGenerationAssetRequest) (dto.UpdateSelectedGenerationAssetResponse, int, error)
 	DeleteSelectedGenerationAsset(projectID string, id string) (bool, error)
@@ -432,6 +432,12 @@ func (handler GenerationTasks) HandleGenerationSessionTasks(context *gin.Context
 // @Tags Generation
 // @Produce json
 // @Param projectId path string true "Project ID"
+// @Param resourceType query string false "Resource type"
+// @Param resourceId query string false "Resource section/resource ID"
+// @Param sourceDocumentId query string false "Source document ID"
+// @Param documentId query string false "Alias of sourceDocumentId"
+// @Param sectionId query string false "Alias of resourceId"
+// @Param kind query string false "Asset kind"
 // @Success 200 {object} SwaggerEnvelope
 // @Failure 400 {object} SwaggerEnvelope
 // @Failure 500 {object} SwaggerEnvelope
@@ -442,7 +448,15 @@ func (handler GenerationTasks) HandleSelectedGenerationAssets(context *gin.Conte
 		return
 	}
 
-	assets, err := handler.service.ListSelectedGenerationAssets(projectID)
+	assets, err := handler.service.ListSelectedGenerationAssets(
+		projectID,
+		service.SelectedGenerationAssetQuery{
+			Kind:             strings.TrimSpace(context.Query("kind")),
+			ResourceID:       firstNonEmptyParam(context.Query("resourceId"), context.Query("sectionId")),
+			ResourceType:     strings.TrimSpace(context.Query("resourceType")),
+			SourceDocumentID: firstNonEmptyParam(context.Query("sourceDocumentId"), context.Query("documentId")),
+		},
+	)
 	if err != nil {
 		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
 		return

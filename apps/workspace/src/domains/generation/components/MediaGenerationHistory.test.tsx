@@ -494,6 +494,28 @@ describe("HistoryGenerationList", () => {
 		expect(screen.queryByRole("button", { name: "删除图片" })).toBeNull();
 	});
 
+	it("does not treat an image ratio detail as the pending image count", () => {
+		const entry: GenerationEntry = {
+			...pendingImageEntry(),
+			requestDetails: [{ label: "数量", value: "3:4" }],
+		};
+
+		render(
+			<HistoryGenerationList
+				activeEntryId={entry.id}
+				deletingEntryIds={[]}
+				entries={[entry]}
+				kind="image"
+				selectedAssetKeys={[]}
+				variant="list"
+				onDeleteEntry={vi.fn()}
+				onSelectEntry={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getAllByRole("img", { name: /生成中/ })).toHaveLength(1);
+	});
+
 	it("shows right-click actions for pending image placeholders", async () => {
 		const entry = pendingImageEntry();
 		const onDeleteEntry = vi.fn();

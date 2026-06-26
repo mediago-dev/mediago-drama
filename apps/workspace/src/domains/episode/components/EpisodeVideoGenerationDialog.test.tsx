@@ -5,6 +5,7 @@ import { sampleEpisode } from "@/domains/episode/lib/sample";
 import { createSectionBlockId } from "@/domains/documents/lib/sections";
 import { useDocumentsStore, type MarkdownDocument } from "@/domains/documents/stores";
 import type { MediaGenerationWorkspaceProps } from "@/domains/generation/components/MediaGenerationWorkspace";
+import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
 import { EpisodeVideoGenerationDialog } from "./EpisodeVideoGenerationDialog";
 
 const mocks = vi.hoisted(() => ({
@@ -202,6 +203,82 @@ describe("EpisodeVideoGenerationDialog", () => {
 			},
 		});
 	});
+
+	it("uses selected generation assets for mentioned resources without markdown images", () => {
+		mocks.getProjects.mockResolvedValue({ projects: [] });
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [
+				baseDocument({
+					id: "story-doc",
+					category: "storyboard",
+					title: "第一集分镜",
+					content: [
+						"# 第一集",
+						"",
+						"## 第 01 组",
+						"",
+						"动作：顾南衣 @[顾南衣·状态A](mention://character-doc/section_character?kind=section&category=character) 捡垃圾桶。",
+					].join("\n"),
+				}),
+				baseDocument({
+					id: "character-doc",
+					category: "character",
+					title: "顾南衣",
+					content:
+						"<!-- section-id: section_character -->\n# 顾南衣·状态A\n\n18 岁女性，饥饿疲惫。",
+				}),
+			],
+		});
+		const selectedClip = {
+			id: "video-0-section",
+			title: "第 01 组",
+			start: 0,
+			end: 3,
+			content: "动作：顾南衣 捡垃圾桶。",
+			status: "draft" as const,
+			prompt: "动作：顾南衣 捡垃圾桶。",
+		};
+
+		render(
+			<EpisodeVideoGenerationDialog
+				documentId="story-doc"
+				documentTitle="第一集分镜"
+				episode={{
+					...sampleEpisode,
+					id: "episode-story-doc",
+					title: "第一集",
+				}}
+				open
+				projectId="project-a"
+				selectedClip={selectedClip}
+				selectedGenerationAssets={[
+					selectedGenerationAsset({
+						mediaAssetId: "gny-selected",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "顾南衣参考图",
+						url: "/api/v1/media-assets/gny-selected/content",
+					}),
+				]}
+				selectedVideoUrl={null}
+				onGeneratedVideoReady={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		const workspaceProps = lastWorkspaceProps();
+		const previewReferences = resolveReferencePreviewAssets(workspaceProps);
+		const referenceAssetIds = resolveReferenceAssetIds(workspaceProps);
+		const referenceBadges = resolveReferenceBadges(workspaceProps);
+
+		expect(previewReferences).toHaveLength(1);
+		expect(previewReferences[0]?.url).toBe("/api/v1/media-assets/gny-selected/content");
+		expect(referenceAssetIds).toEqual(["gny-selected"]);
+		expect(referenceBadges[previewReferences[0]?.id ?? ""]).toBe("来自 @顾南衣·状态A");
+	});
 });
 
 const baseDocument = (document: Partial<MarkdownDocument> & Pick<MarkdownDocument, "id">) => ({
@@ -219,6 +296,16 @@ const baseDocument = (document: Partial<MarkdownDocument> & Pick<MarkdownDocumen
 	workbenchDraft: null,
 	...document,
 	id: document.id,
+});
+
+const selectedGenerationAsset = (
+	overrides: Partial<SelectedGenerationAsset> = {},
+): SelectedGenerationAsset => ({
+	assetIndex: 0,
+	id: "selected-asset",
+	kind: "image",
+	resourceType: "character",
+	...overrides,
 });
 
 const lastWorkspaceProps = () => {

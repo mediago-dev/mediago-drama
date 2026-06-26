@@ -1,6 +1,6 @@
 import { ArrowUpRight, Check, FileText, Film, Loader2, Palette, ReceiptText } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import useSWR from "swr";
 import type { GenerationTask } from "@/domains/generation/api/generation";
@@ -16,11 +16,16 @@ import { GenerationModalShell } from "@/domains/documents/components/GenerationM
 import {
 	DocumentSectionBatchGenerationRunner,
 	type DocumentSectionBatchGenerationJob,
+	type DocumentSectionBatchGenerationSettings,
 } from "@/domains/documents/components/DocumentSectionBatchGenerationRunner";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { generationStatusLabel } from "@/domains/generation/hooks/generationFormatters";
+import {
+	BatchGenerationSettingsDialog,
+	type BatchGenerationSettings,
+} from "@/domains/generation/components/BatchGenerationSettingsDialog";
 import {
 	selectedGenerationResourceDescriptorMap,
 	selectedGenerationResourceDescriptors,
@@ -59,6 +64,17 @@ const moneyFormatter = new Intl.NumberFormat("zh-CN", {
 	minimumFractionDigits: 0,
 });
 
+type OverviewBatchGenerationDialogState =
+	| {
+			kind: "image";
+			resources: WorkspaceDocumentResource[];
+	  }
+	| {
+			group: WorkspaceStoryboardVideoDocumentGroup;
+			kind: "video";
+			reels: WorkspaceStoryboardVideoReel[];
+	  };
+
 export const ProjectOverview: React.FC = () => {
 	const location = useLocation();
 	const toast = useToast();
@@ -74,10 +90,13 @@ export const ProjectOverview: React.FC = () => {
 	const [batchGenerationJobs, setBatchGenerationJobs] = useState<
 		DocumentSectionBatchGenerationJob[]
 	>([]);
+	const [batchGenerationDialog, setBatchGenerationDialog] =
+		useState<OverviewBatchGenerationDialogState | null>(null);
 	const [optimisticGenerationStatuses, setOptimisticGenerationStatuses] = useState<
 		Record<string, ResourceGenerationStatus>
 	>({});
 	const [storyboardVideoDocumentId, setStoryboardVideoDocumentId] = useState<string | null>(null);
+	const refreshedSelectedAssetTaskKeysRef = useRef<Set<string>>(new Set());
 	const hydrateWorkspaceDocuments = useDocumentsStore((state) => state.hydrateWorkspaceDocuments);
 	const usageParams = useMemo(
 		() => (projectId ? { groupBy: "capability", projectId } : null),
@@ -108,7 +127,7 @@ export const ProjectOverview: React.FC = () => {
 	} = useSWR(usageParams ? billingSummaryKey(usageParams) : null, () =>
 		getBillingSummary(usageParams ?? { groupBy: "capability" }),
 	);
-	const { data: selectedResources } = useSWR(
+	const { data: selectedResources, mutate: mutateSelectedResources } = useSWR(
 		projectId ? selectedGenerationAssetsQueryKey(projectId) : null,
 		() => getSelectedGenerationAssets(projectId ?? ""),
 	);
@@ -164,11 +183,14 @@ export const ProjectOverview: React.FC = () => {
 		setImageGenerationSection(null);
 		setVideoGenerationSection(null);
 		setBatchGenerationJobs([]);
+		setBatchGenerationDialog(null);
 		setOptimisticGenerationStatuses({});
 		setStoryboardVideoDocumentId(null);
+		refreshedSelectedAssetTaskKeysRef.current.clear();
 	}, [projectId]);
 
 	const documentResources = workspaceDocumentResources?.resources ?? [];
+	const selectedGenerationAssets = selectedResources?.assets ?? [];
 	const storyboardVideoGroups = storyboardVideoResources?.groups ?? [];
 	const optimisticGenerationStatusMap = useMemo(
 		() => new Map(Object.entries(optimisticGenerationStatuses)),
@@ -200,6 +222,10 @@ export const ProjectOverview: React.FC = () => {
 			storyboardVideoGroups.find((group) => group.documentId === storyboardVideoDocumentId) ?? null,
 		[storyboardVideoDocumentId, storyboardVideoGroups],
 	);
+	const batchGenerationDialogSelectedCount =
+		batchGenerationDialog?.kind === "image"
+			? batchGenerationDialog.resources.length
+			: (batchGenerationDialog?.reels.length ?? 0);
 
 	useEffect(() => {
 		const realStatuses = new Map([
@@ -225,6 +251,21 @@ export const ProjectOverview: React.FC = () => {
 		});
 	}, [documentResourceTaskStatuses, storyboardReelTaskStatuses]);
 
+	useEffect(() => {
+		if (!projectId) return;
+
+		const refreshKeys = completedImageTaskSelectedAssetsRefreshKeys(imageTaskData?.tasks ?? []);
+		const pendingKeys = refreshKeys.filter(
+			(key) => !refreshedSelectedAssetTaskKeysRef.current.has(key),
+		);
+		if (pendingKeys.length === 0) return;
+
+		for (const key of pendingKeys) {
+			refreshedSelectedAssetTaskKeysRef.current.add(key);
+		}
+		void mutateSelectedResources();
+	}, [imageTaskData?.tasks, mutateSelectedResources, projectId]);
+
 	const createdAtLabel = useMemo(() => {
 		if (!config?.createdAt) return "";
 		const date = new Date(config.createdAt);
@@ -238,23 +279,10 @@ export const ProjectOverview: React.FC = () => {
 	const openImageGeneration = useCallback((resource: WorkspaceDocumentResource) => {
 		setImageGenerationSection(documentResourceToSectionContext(resource));
 	}, []);
-	const openImageGenerationBatch = useCallback(
-		(resources: WorkspaceDocumentResource[]) => {
-			const jobs = resources.map((resource) =>
-				documentResourceToBatchGenerationJob(resource, projectId ?? ""),
-			);
-			if (jobs.length === 0) return;
-
-			setBatchGenerationJobs((current) => [...current, ...jobs]);
-			setOptimisticGenerationStatuses((current) =>
-				optimisticGenerationStatusesWithJobs(current, jobs),
-			);
-			toast.info("正在后台批量生成", {
-				description: `已加入 ${jobs.length} 个图片任务，将使用默认提示词和引用资源。`,
-			});
-		},
-		[projectId, toast],
-	);
+	const openImageGenerationBatch = useCallback((resources: WorkspaceDocumentResource[]) => {
+		if (resources.length === 0) return;
+		setBatchGenerationDialog({ kind: "image", resources });
+	}, []);
 	const closeImageGeneration = useCallback((open: boolean) => {
 		if (!open) setImageGenerationSection(null);
 	}, []);
@@ -266,21 +294,52 @@ export const ProjectOverview: React.FC = () => {
 	);
 	const openStoryboardVideoGenerationBatch = useCallback(
 		(group: WorkspaceStoryboardVideoDocumentGroup, reels: WorkspaceStoryboardVideoReel[]) => {
-			const jobs = reels.map((reel) =>
-				storyboardReelToBatchGenerationJob(group, reel, projectId ?? ""),
-			);
+			if (reels.length === 0) return;
+			setBatchGenerationDialog({ group, kind: "video", reels });
+		},
+		[],
+	);
+	const confirmBatchGeneration = useCallback(
+		(settings: BatchGenerationSettings) => {
+			if (!batchGenerationDialog) return;
+
+			const batchId = createBatchGenerationBatchId();
+			const generationSettings = batchGenerationSettingsForJob(settings);
+			const jobs =
+				batchGenerationDialog.kind === "image"
+					? batchGenerationDialog.resources.map((resource) =>
+							documentResourceToBatchGenerationJob(
+								resource,
+								projectId ?? "",
+								generationSettings,
+								batchId,
+							),
+						)
+					: batchGenerationDialog.reels.map((reel) =>
+							storyboardReelToBatchGenerationJob(
+								batchGenerationDialog.group,
+								reel,
+								projectId ?? "",
+								generationSettings,
+								batchId,
+							),
+						);
 			if (jobs.length === 0) return;
 
+			setBatchGenerationDialog(null);
 			setBatchGenerationJobs((current) => [...current, ...jobs]);
 			setOptimisticGenerationStatuses((current) =>
 				optimisticGenerationStatusesWithJobs(current, jobs),
 			);
 			toast.info("正在后台批量生成", {
-				description: `已加入 ${jobs.length} 个视频任务，将使用默认提示词和引用资源。`,
+				description: `已加入 ${jobs.length} 项队列，将按顺序使用本次批量设置。`,
 			});
 		},
-		[projectId, toast],
+		[batchGenerationDialog, projectId, toast],
 	);
+	const closeBatchGenerationDialog = useCallback((open: boolean) => {
+		if (!open) setBatchGenerationDialog(null);
+	}, []);
 	const closeVideoGeneration = useCallback((open: boolean) => {
 		if (!open) setVideoGenerationSection(null);
 	}, []);
@@ -350,7 +409,7 @@ export const ProjectOverview: React.FC = () => {
 									isLoading={isUsageLoading}
 								/>
 								<DocumentResourcesSummary
-									assets={selectedResources?.assets ?? []}
+									assets={selectedGenerationAssets}
 									error={documentResourcesError}
 									isLoading={isDocumentResourcesLoading}
 									resources={documentResources}
@@ -375,7 +434,7 @@ export const ProjectOverview: React.FC = () => {
 									}}
 								/>
 								<DocumentResourcesDialog
-									assets={selectedResources?.assets ?? []}
+									assets={selectedGenerationAssets}
 									error={documentResourcesError}
 									generationStatuses={documentResourceGenerationStatuses}
 									isLoading={isDocumentResourcesLoading}
@@ -392,6 +451,7 @@ export const ProjectOverview: React.FC = () => {
 									open={Boolean(imageGenerationSection)}
 									projectId={projectId}
 									section={imageGenerationSection}
+									selectedGenerationAssets={selectedGenerationAssets}
 									onGenerationComplete={ignoreSectionGeneration}
 									onGenerationError={ignoreSectionGeneration}
 									onGenerationStart={ignoreSectionGeneration}
@@ -403,9 +463,20 @@ export const ProjectOverview: React.FC = () => {
 									projectId={projectId}
 									resolveLatestSection={false}
 									section={videoGenerationSection}
+									selectedGenerationAssets={selectedGenerationAssets}
 									onOpenChange={closeVideoGeneration}
 									onOpenReferenceGeneration={setImageGenerationSection}
 								/>
+								{batchGenerationDialog ? (
+									<BatchGenerationSettingsDialog
+										kind={batchGenerationDialog.kind}
+										open
+										projectId={projectId}
+										selectedCount={batchGenerationDialogSelectedCount}
+										onConfirm={confirmBatchGeneration}
+										onOpenChange={closeBatchGenerationDialog}
+									/>
+								) : null}
 								<DocumentSectionBatchGenerationRunner
 									jobs={batchGenerationJobs}
 									onJobError={reportBatchGenerationError}
@@ -1164,7 +1235,6 @@ const ProjectUsageSummary: React.FC<{
 	isLoading: boolean;
 }> = ({ data, error, isLoading }) => {
 	const currencies = data?.currencies ?? [];
-	const rows = data?.rows.slice(0, 4) ?? [];
 
 	return (
 		<section className="bg-card">
@@ -1197,23 +1267,6 @@ const ProjectUsageSummary: React.FC<{
 					value={`${formatNumber(data?.totals.inputTokens ?? 0)} / ${formatNumber(data?.totals.outputTokens ?? 0)}`}
 				/>
 			</div>
-			{rows.length > 0 ? (
-				<div className="mt-3 overflow-hidden rounded-sm border border-border">
-					{rows.map((row) => (
-						<div
-							key={row.key}
-							className="grid gap-2 border-t border-border bg-ide-editor px-3 py-2 text-xs first:border-t-0 md:grid-cols-[minmax(0,1fr)_auto_auto]"
-						>
-							<div className="min-w-0">
-								<p className="truncate font-medium text-foreground">{row.label || row.key}</p>
-								<p className="truncate text-muted-foreground">{row.key}</p>
-							</div>
-							<span className="text-muted-foreground">{formatNumber(row.totalTokens)} Token</span>
-							<span className="text-foreground">{formatCosts(row.costs, currencies)}</span>
-						</div>
-					))}
-				</div>
-			) : null}
 		</section>
 	);
 };
@@ -1416,6 +1469,21 @@ const resourceGenerationStatusBadgeClassName = (kind: ResourceGenerationStatusKi
 const failedGenerationStatuses = new Set(["failed", "error", "cancelled", "canceled"]);
 const completedGenerationStatuses = new Set(["completed", "succeeded", "success"]);
 
+const completedImageTaskSelectedAssetsRefreshKeys = (tasks: GenerationTask[]) =>
+	tasks.flatMap((task) => {
+		if (
+			task.kind !== "image" ||
+			resourceGenerationStatusKind(task.status) !== "completed" ||
+			!task.documentId?.trim() ||
+			!task.sectionId?.trim() ||
+			!task.assets.some((asset) => asset.kind === "image" && Boolean(generationAssetSource(asset)))
+		) {
+			return [];
+		}
+
+		return [`${task.id}:${generationTaskTime(task)}:${task.assets.length}`];
+	});
+
 const resourceAssetCount = (
 	resource: WorkspaceDocumentResource,
 	assets: SelectedGenerationAsset[],
@@ -1500,7 +1568,11 @@ const storyboardReelToSectionContext = (
 const documentResourceToBatchGenerationJob = (
 	resource: WorkspaceDocumentResource,
 	projectId: string,
+	generationSettings?: DocumentSectionBatchGenerationSettings,
+	batchId?: string,
 ): DocumentSectionBatchGenerationJob => ({
+	batchId,
+	generationSettings,
 	id: createBatchGenerationJobId("image", resource.id),
 	kind: "image",
 	projectId,
@@ -1512,7 +1584,11 @@ const storyboardReelToBatchGenerationJob = (
 	group: WorkspaceStoryboardVideoDocumentGroup,
 	reel: WorkspaceStoryboardVideoReel,
 	projectId: string,
+	generationSettings?: DocumentSectionBatchGenerationSettings,
+	batchId?: string,
 ): DocumentSectionBatchGenerationJob => ({
+	batchId,
+	generationSettings,
 	id: createBatchGenerationJobId("video", reel.id),
 	kind: "video",
 	projectId,
@@ -1523,6 +1599,19 @@ const storyboardReelToBatchGenerationJob = (
 
 const createBatchGenerationJobId = (kind: "image" | "video", sourceId: string) =>
 	`${kind}:${sourceId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+
+const createBatchGenerationBatchId = () =>
+	`batch:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+
+const batchGenerationSettingsForJob = (
+	settings: BatchGenerationSettings,
+): DocumentSectionBatchGenerationSettings => ({
+	family: settings.family,
+	params: settings.params,
+	promptOptimization: settings.promptOptimization,
+	route: settings.route,
+	version: settings.version,
+});
 
 const selectedAssetCountForResourceType = (
 	assets: SelectedGenerationAsset[],

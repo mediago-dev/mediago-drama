@@ -34,6 +34,7 @@ interface UseGenerationModelSelectionOptions {
 	initialKind?: GenerationKind;
 	modelCatalog?: GenerationModelsResponse;
 	mutatePreferences: KeyedMutator<GenerationPreference>;
+	persistSelection?: boolean;
 	preferenceScopeId: string;
 	stylePresets: StylePreset[];
 }
@@ -43,6 +44,7 @@ export const useGenerationModelSelection = ({
 	initialKind,
 	modelCatalog,
 	mutatePreferences,
+	persistSelection = true,
 	preferenceScopeId,
 	stylePresets,
 }: UseGenerationModelSelectionOptions) => {
@@ -197,6 +199,7 @@ export const useGenerationModelSelection = ({
 		const localSelection = readGenerationModelSelection();
 		const localStylePresetId = readGenerationStylePresetId();
 		const shouldMigrate =
+			persistSelection &&
 			isEmptyGenerationPreference(generationPreferences) &&
 			hasStoredGenerationPreference(localSelection, localStylePresetId);
 		const preference = shouldMigrate
@@ -226,9 +229,11 @@ export const useGenerationModelSelection = ({
 				() => undefined,
 			);
 		}
-	}, [generationPreferences, mutatePreferences, preferenceScopeId]);
+	}, [generationPreferences, mutatePreferences, persistSelection, preferenceScopeId]);
 
 	useEffect(() => {
+		if (!persistSelection) return;
+
 		writeGenerationModelSelection({
 			familyIds: selectedFamilyIds,
 			routeIds: selectedRouteIds,
@@ -291,6 +296,7 @@ export const useGenerationModelSelection = ({
 	}, [
 		generationPreferences,
 		mutatePreferences,
+		persistSelection,
 		preferenceScopeId,
 		routeParams,
 		selectedFamilyIds,
@@ -393,6 +399,8 @@ export const useGenerationModelSelection = ({
 
 	const rememberSelectedModel = useCallback(() => {
 		const selection = currentModelSelection();
+		if (!persistSelection) return;
+
 		writeGenerationModelSelection(selection);
 		writeGenerationStylePresetId(stylePresetId);
 
@@ -427,7 +435,13 @@ export const useGenerationModelSelection = ({
 				pendingPreferenceSignatureRef.current = "";
 			},
 		);
-	}, [currentModelSelection, mutatePreferences, preferenceScopeId, stylePresetId]);
+	}, [
+		currentModelSelection,
+		mutatePreferences,
+		persistSelection,
+		preferenceScopeId,
+		stylePresetId,
+	]);
 
 	return {
 		catalog,

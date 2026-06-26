@@ -66,6 +66,10 @@ export interface GenerationSubmitOverrides {
 	referenceUrls?: string[];
 	resetPrompt?: boolean;
 	sectionId?: string | null;
+	selectedFamily?: GenerationFamily;
+	selectedParams?: Record<string, unknown>;
+	selectedRoute?: GenerationRoute;
+	selectedVersion?: GenerationVersion;
 	taskType?: GenerationTaskType;
 }
 
@@ -172,6 +176,10 @@ export const useGenerationSubmit = ({
 			const requestDocumentContext = overrides.documentContext ?? documentContext;
 			const requestAssetTitle = (overrides.assetTitle ?? assetTitle)?.trim() ?? "";
 			const requestDocumentId = requestDocumentContext?.documentId?.trim() ?? "";
+			const requestRoute = overrides.selectedRoute ?? selectedRoute;
+			const requestFamilyId = overrides.selectedFamily?.id ?? selectedFamily.id;
+			const requestVersionId = overrides.selectedVersion?.id ?? selectedVersion.id;
+			const requestSelectedParams = overrides.selectedParams ?? selectedParams;
 			const shouldResolvePromptFromDocumentContext =
 				Boolean(requestDocumentContext) &&
 				useRawPrompt &&
@@ -186,18 +194,18 @@ export const useGenerationSubmit = ({
 			}
 			if (
 				(!nextPrompt && !requestDocumentContext) ||
-				selectedRoute.status !== "available" ||
-				!selectedRoute.configured
+				requestRoute.status !== "available" ||
+				!requestRoute.configured
 			) {
 				return;
 			}
 
 			setError(null);
 			setActiveSubmitCount((count) => count + 1);
-			const requestKind = selectedRoute.kind;
+			const requestKind = requestRoute.kind;
 			if (requestKind === "image" || requestKind === "video" || requestKind === "audio") {
 				try {
-					rememberSelectedModel?.();
+					if (!overrides.selectedRoute) rememberSelectedModel?.();
 				} catch {
 					// Remembering a preference must not block the generation request.
 				}
@@ -214,15 +222,15 @@ export const useGenerationSubmit = ({
 			const localID = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 			const submittedAt = new Date();
 			const submittedAtValue = submittedAt.toISOString();
-			const requestReferences = selectedRoute.supportsReferenceUrls
+			const requestReferences = requestRoute.supportsReferenceUrls
 				? referenceAssetsFromInputs(requestReferenceUrls, requestReferenceAssetIds, mediaAssets)
 				: [];
 			const requestDetails = [
 				...(overrides.requestDetails ?? []),
-				...userRequestDetails(selectedRoute, selectedParams),
+				...userRequestDetails(requestRoute, requestSelectedParams),
 			];
 			const requestParams = generationParamsWithRequestDetails(
-				selectedParams,
+				requestSelectedParams,
 				overrides.requestDetails,
 			);
 			const userMessage: ChatMessage = {
@@ -280,12 +288,12 @@ export const useGenerationSubmit = ({
 							documentContext: requestDocumentContext ?? undefined,
 							capabilityId: requestTaskType,
 							notificationTarget: requestNotificationTarget ?? undefined,
-							routeId: selectedRoute.id,
-							familyId: selectedFamily.id,
-							versionId: selectedVersion.id,
-							provider: selectedRoute.provider,
-							modelId: selectedRoute.legacyModelId ?? "",
-							model: selectedRoute.model,
+							routeId: requestRoute.id,
+							familyId: requestFamilyId,
+							versionId: requestVersionId,
+							provider: requestRoute.provider,
+							modelId: requestRoute.legacyModelId ?? "",
+							model: requestRoute.model,
 							prompt: requestPrompt,
 							assetTitle: requestAssetTitle || undefined,
 							params: requestParams,
@@ -370,18 +378,18 @@ export const useGenerationSubmit = ({
 					documentContext: requestDocumentContext ?? undefined,
 					capabilityId: requestTaskType,
 					notificationTarget: requestNotificationTarget ?? undefined,
-					routeId: selectedRoute.id,
-					familyId: selectedFamily.id,
-					versionId: selectedVersion.id,
-					provider: selectedRoute.provider,
-					modelId: selectedRoute.legacyModelId ?? "",
-					model: selectedRoute.model,
+					routeId: requestRoute.id,
+					familyId: requestFamilyId,
+					versionId: requestVersionId,
+					provider: requestRoute.provider,
+					modelId: requestRoute.legacyModelId ?? "",
+					model: requestRoute.model,
 					prompt: requestPrompt,
 					assetTitle: requestAssetTitle || undefined,
 					params: requestParams,
 					promptOptimization: overrides.promptOptimization,
-					referenceUrls: selectedRoute.supportsReferenceUrls ? requestReferenceUrls : [],
-					referenceAssetIds: selectedRoute.supportsReferenceUrls ? requestReferenceAssetIds : [],
+					referenceUrls: requestRoute.supportsReferenceUrls ? requestReferenceUrls : [],
+					referenceAssetIds: requestRoute.supportsReferenceUrls ? requestReferenceAssetIds : [],
 				});
 				const persistedUserMessage: ChatMessage = {
 					...userMessage,

@@ -1,12 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type React from "react";
-import type { GenerationKind } from "@/domains/generation/api/generation";
+import type {
+	GenerationFamily,
+	GenerationKind,
+	GenerationPromptOptimizationRequest,
+	GenerationRoute,
+	GenerationVersion,
+} from "@/domains/generation/api/generation";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { useDocumentSectionGenerationContext } from "@/domains/documents/components/useDocumentSectionGenerationContext";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import { kindLabel } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 
+export interface DocumentSectionBatchGenerationSettings {
+	family: GenerationFamily;
+	params: Record<string, unknown>;
+	promptOptimization?: GenerationPromptOptimizationRequest;
+	route: GenerationRoute;
+	version: GenerationVersion;
+}
+
 export interface DocumentSectionBatchGenerationJob {
+	batchId?: string;
+	generationSettings?: DocumentSectionBatchGenerationSettings;
 	id: string;
 	kind: GenerationKind;
 	projectId?: string;
@@ -22,10 +38,23 @@ export interface DocumentSectionBatchGenerationRunnerProps {
 	onJobSettled: (jobId: string) => void;
 }
 
+const submittedBatchGenerationJobKeys = new Set<string>();
+
+export const clearSubmittedBatchGenerationJobIdsForTest = () => {
+	submittedBatchGenerationJobKeys.clear();
+};
+
 export const DocumentSectionBatchGenerationRunner: React.FC<
 	DocumentSectionBatchGenerationRunnerProps
-> = ({ concurrency = 3, jobs, onJobError, onJobSettled }) => {
+> = ({ concurrency = 1, jobs, onJobError, onJobSettled }) => {
 	const activeJobs = useMemo(() => jobs.slice(0, Math.max(1, concurrency)), [concurrency, jobs]);
+
+	useEffect(() => {
+		const queuedJobKeys = new Set(jobs.map(batchGenerationJobSubmissionKey).filter(Boolean));
+		for (const jobKey of submittedBatchGenerationJobKeys) {
+			if (!queuedJobKeys.has(jobKey)) submittedBatchGenerationJobKeys.delete(jobKey);
+		}
+	}, [jobs]);
 
 	return (
 		<>
@@ -46,7 +75,6 @@ const DocumentSectionBatchGenerationWorker: React.FC<{
 	onJobError?: (job: DocumentSectionBatchGenerationJob, message: string) => void;
 	onJobSettled: (jobId: string) => void;
 }> = ({ job, onJobError, onJobSettled }) => {
-	const submittedRef = useRef(false);
 	const generationContext = useDocumentSectionGenerationContext({
 		kind: job.kind,
 		projectId: job.projectId,
@@ -79,13 +107,12 @@ const DocumentSectionBatchGenerationWorker: React.FC<{
 		uploadIdPrefix: "section-batch-generation",
 		useRawPrompt: true,
 	});
+	const selectedRoute = job.generationSettings?.route ?? workspace.selectedRoute;
 
 	useEffect(() => {
-		submittedRef.current = false;
-	}, [job.id]);
-
-	useEffect(() => {
-		if (submittedRef.current) return;
+		const submissionKey = batchGenerationJobSubmissionKey(job);
+		if (!submissionKey) return;
+		if (submittedBatchGenerationJobKeys.has(submissionKey)) return;
 		if (!workspace.hasLiveCatalog) return;
 
 		const hasDefaultPrompt = generationContext.activeSection.prompt.trim() !== "";
@@ -93,10 +120,10 @@ const DocumentSectionBatchGenerationWorker: React.FC<{
 		const routeReady =
 			workspace.hasConfiguredRoutesForKind &&
 			!workspace.needsConversation &&
-			workspace.selectedRoute.status === "available" &&
-			workspace.selectedRoute.configured;
+			selectedRoute.status === "available" &&
+			selectedRoute.configured;
 		if (!routeReady || (!hasDefaultPrompt && !hasDocumentContext)) {
-			submittedRef.current = true;
+			submittedBatchGenerationJobKeys.add(submissionKey);
 			reportError(
 				!hasDefaultPrompt && !hasDocumentContext
 					? "没有可用的默认提示词。"
@@ -106,22 +133,48 @@ const DocumentSectionBatchGenerationWorker: React.FC<{
 			return;
 		}
 
-		submittedRef.current = true;
-		void workspace.submitGeneration({ resetPrompt: false }).finally(() => onJobSettled(job.id));
+		submittedBatchGenerationJobKeys.add(submissionKey);
+		const generationOverrides = job.generationSettings
+			? {
+					selectedFamily: job.generationSettings.family,
+					selectedParams: job.generationSettings.params,
+					promptOptimization: job.generationSettings.promptOptimization,
+					selectedRoute: job.generationSettings.route,
+					selectedVersion: job.generationSettings.version,
+				}
+			: {};
+		void workspace
+			.submitGeneration({
+				resetPrompt: false,
+				...generationOverrides,
+			})
+			.finally(() => onJobSettled(job.id));
 	}, [
 		generationContext.activeSection.prompt,
 		generationContext.documentContext,
+		job.generationSettings?.family,
+		job.generationSettings?.params,
+		job.generationSettings?.promptOptimization,
+		job.generationSettings?.route,
+		job.generationSettings?.version,
 		job.id,
 		job.kind,
 		onJobSettled,
 		reportError,
+		selectedRoute.configured,
+		selectedRoute.status,
 		workspace.hasConfiguredRoutesForKind,
 		workspace.hasLiveCatalog,
 		workspace.needsConversation,
-		workspace.selectedRoute.configured,
-		workspace.selectedRoute.status,
 		workspace.submitGeneration,
 	]);
 
 	return null;
+};
+
+const batchGenerationJobSubmissionKey = (job: DocumentSectionBatchGenerationJob) => {
+	const batchId = job.batchId?.trim();
+	if (!batchId) return "";
+
+	return `${batchId}:${job.id}`;
 };

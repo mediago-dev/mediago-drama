@@ -25,10 +25,6 @@ import {
 	type MarkdownDocument,
 	useDocumentsStore,
 } from "@/domains/documents/stores";
-import {
-	type PendingGenerationNotificationOpenRequest,
-	useGenerationNotificationStore,
-} from "@/domains/generation/stores/generation-notifications";
 import { agentProjectPath, getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { AudioGenerationDialog } from "@/shared/components/generation-dialogs/AudioGenerationDialog";
 import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
@@ -65,9 +61,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const [historyOpen, setHistoryOpen] = useState(false);
 	const editorRef = useRef<MarkdownHybridEditorHandle>(null);
 	const mainRef = useRef<HTMLElement>(null);
-	const handledGenerationOpenRequestRef = useRef<PendingGenerationNotificationOpenRequest | null>(
-		null,
-	);
 	const navigate = useNavigate();
 	const location = useLocation();
 	const projectId = getRouteProjectId(location.search);
@@ -83,12 +76,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const openPendingComment = useDocumentsStore((state) => state.openPendingComment);
 	const pendingComment = useDocumentsStore((state) => state.pendingComment);
 	const renameDocument = useDocumentsStore((state) => state.renameDocument);
-	const pendingGenerationOpenRequest = useGenerationNotificationStore(
-		(state) => state.pendingOpenRequest,
-	);
-	const consumeGenerationOpenRequest = useGenerationNotificationStore(
-		(state) => state.consumeOpenRequest,
-	);
 	const selection = useDocumentsStore((state) => state.selection);
 	const setSelection = useDocumentsStore((state) => state.setSelection);
 	const setShowComments = useDocumentsStore((state) => state.setShowComments);
@@ -216,22 +203,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const closeSectionGeneration = useCallback((open: boolean) => {
 		if (!open) setSectionGeneration(null);
 	}, []);
-	useEffect(() => {
-		const request = pendingGenerationOpenRequest;
-		if (!activeDocument || !request) return;
-		if (request.target.documentId !== activeDocument.id) return;
-		if (handledGenerationOpenRequestRef.current === request) return;
-
-		handledGenerationOpenRequestRef.current = request;
-		consumeGenerationOpenRequest(request.notificationId);
-		openSectionGeneration(request.target.section, request.kind);
-	}, [
-		activeDocument,
-		consumeGenerationOpenRequest,
-		openSectionGeneration,
-		pendingGenerationOpenRequest,
-	]);
-
 	const ignorePendingSectionImage = useCallback(() => {}, []);
 
 	const completeSectionImageGeneration = useCallback(
@@ -345,6 +316,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 							allAssets={assets}
 							allDocuments={documents}
 							onGenerateReference={openSectionGeneration}
+							projectId={projectId ?? undefined}
 						>
 							<MarkdownHybridEditor
 								key={activeDocument.id}

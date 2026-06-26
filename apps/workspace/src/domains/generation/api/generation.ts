@@ -88,6 +88,15 @@ export type SelectedGenerationAssetsResponse = GeneratedSelectedGenerationAssets
 export type UpdateGenerationTaskAssetRequest = GeneratedUpdateGenerationTaskAssetRequest;
 export type UpdateSelectedGenerationAssetRequest = GeneratedUpdateSelectedGenerationAssetRequest;
 export type UpdateSelectedGenerationAssetResponse = GeneratedUpdateSelectedGenerationAssetResponse;
+
+export interface SelectedGenerationAssetsFilters {
+	documentId?: string | null;
+	kind?: GenerationKind | string | null;
+	resourceId?: string | null;
+	resourceType?: SelectedGenerationAsset["resourceType"] | string | null;
+	sectionId?: string | null;
+	sourceDocumentId?: string | null;
+}
 export type GenerationTask = GenerationTaskRecord & {
 	conversationId?: string;
 	sessionId?: string;
@@ -292,14 +301,46 @@ export const getGenerationConversations = async (
 export const generationNotificationsQueryKey = (projectId?: string | null) =>
 	[generationNotificationsKey, projectId?.trim() || ""] as const;
 
-export const selectedGenerationAssetsQueryKey = (projectId?: string | null) =>
-	[selectedGenerationAssetsKey, projectId?.trim() || ""] as const;
+export const selectedGenerationAssetsQueryKey = (
+	projectId?: string | null,
+	filters: SelectedGenerationAssetsFilters = {},
+) => {
+	const normalizedFilters = selectedGenerationAssetsParams(filters);
+	const baseKey = [selectedGenerationAssetsKey, projectId?.trim() || ""] as const;
+	if (Object.keys(normalizedFilters).length === 0) return baseKey;
 
-export const getSelectedGenerationAssets = async (projectId: string) => {
+	return [
+		...baseKey,
+		normalizedFilters.kind ?? "",
+		normalizedFilters.resourceType ?? "",
+		normalizedFilters.resourceId ?? "",
+		normalizedFilters.sourceDocumentId ?? "",
+	] as const;
+};
+
+export const getSelectedGenerationAssets = async (
+	projectId: string,
+	filters: SelectedGenerationAssetsFilters = {},
+) => {
 	const response = await httpClient.get<SelectedGenerationAssetsResponse>(
 		`/projects/${encodeURIComponent(projectId)}/generation/selected-assets`,
+		{ params: selectedGenerationAssetsParams(filters) },
 	);
 	return response.data;
+};
+
+const selectedGenerationAssetsParams = (filters: SelectedGenerationAssetsFilters) => {
+	const params: Record<string, string> = {};
+	const kind = filters.kind?.trim();
+	const resourceType = filters.resourceType?.trim();
+	const resourceId = filters.resourceId?.trim() || filters.sectionId?.trim();
+	const sourceDocumentId = filters.sourceDocumentId?.trim() || filters.documentId?.trim();
+
+	if (kind) params.kind = kind;
+	if (resourceType) params.resourceType = resourceType;
+	if (resourceId) params.resourceId = resourceId;
+	if (sourceDocumentId) params.sourceDocumentId = sourceDocumentId;
+	return params;
 };
 
 export const getGenerationNotifications = async (projectId?: string | null) => {

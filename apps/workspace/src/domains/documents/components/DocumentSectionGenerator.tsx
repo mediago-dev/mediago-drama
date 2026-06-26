@@ -1,9 +1,15 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import useSWR from "swr";
 import type {
 	GenerationAsset,
 	GenerationKind,
 	GenerationMessageResponse,
+	SelectedGenerationAsset,
+} from "@/domains/generation/api/generation";
+import {
+	getSelectedGenerationAssets,
+	selectedGenerationAssetsQueryKey,
 } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
@@ -13,6 +19,7 @@ import type { MarkdownSectionContext } from "@/domains/documents/components/Mark
 import {
 	buildMentionPreviewReferences,
 	extractDocumentImageAssets,
+	resolveMentionPayloadWithSelectedAssets,
 	type MentionPreviewReferences,
 	uniqueResolvedMention,
 } from "@/domains/documents/lib/mention-generation-references";
@@ -24,7 +31,6 @@ import { PromptEditor, type PromptEditorProps } from "@/domains/generation/compo
 import {
 	mentionReferenceKey,
 	parseMentionsFromMarkdown,
-	resolveMentionPayload,
 } from "@/domains/documents/lib/mention-resolver";
 import { useDocumentSectionGenerationContext } from "@/domains/documents/components/useDocumentSectionGenerationContext";
 import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
@@ -49,6 +55,7 @@ export interface DocumentSectionGeneratorProps {
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	onViewModeChange?: (viewMode: MediaGenerationWorkspaceViewMode) => void;
+	selectedGenerationAssets?: SelectedGenerationAsset[];
 	viewMode?: MediaGenerationWorkspaceViewMode;
 }
 
@@ -68,6 +75,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	resolveLatestSection = true,
 	section,
 	selectedAssetKeys,
+	selectedGenerationAssets,
 	viewMode,
 }) => {
 	const generationKind = kind;
@@ -98,13 +106,30 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 		badges: {},
 		references: [],
 	});
+	const shouldLoadSelectedGenerationAssets =
+		selectedGenerationAssets === undefined && Boolean(normalizedProjectId);
+	const { data: selectedGenerationAssetsData } = useSWR(
+		shouldLoadSelectedGenerationAssets
+			? selectedGenerationAssetsQueryKey(normalizedProjectId)
+			: null,
+		() => getSelectedGenerationAssets(normalizedProjectId),
+	);
+	const mentionSelectedGenerationAssets =
+		selectedGenerationAssets ?? selectedGenerationAssetsData?.assets ?? [];
 
 	const resolveAllMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
 			parseMentionsFromMarkdown(`${activeSection.markdown}\n\n${promptMarkdown}`)
-				.map((reference) => resolveMentionPayload(reference, allDocuments, allAssets))
+				.map((reference) =>
+					resolveMentionPayloadWithSelectedAssets(
+						reference,
+						allDocuments,
+						allAssets,
+						mentionSelectedGenerationAssets,
+					),
+				)
 				.filter(uniqueResolvedMention),
-		[activeSection.markdown, allAssets, allDocuments],
+		[activeSection.markdown, allAssets, allDocuments, mentionSelectedGenerationAssets],
 	);
 	const resolveActiveMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
@@ -166,6 +191,8 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 						allAssets={allAssets}
 						allDocuments={allDocuments}
 						onGenerateReference={onOpenReferenceGeneration}
+						projectId={normalizedProjectId || undefined}
+						selectedGenerationAssets={mentionSelectedGenerationAssets}
 					/>
 				)}
 				selectedAssetKeys={selectedAssetKeys}
@@ -240,8 +267,17 @@ const PromptMentionEditor: React.FC<
 		allAssets: ProjectAsset[];
 		allDocuments: MarkdownDocument[];
 		onGenerateReference?: (section: MarkdownSectionContext) => void;
+		projectId?: string;
+		selectedGenerationAssets?: SelectedGenerationAsset[];
 	}
-> = ({ allAssets, allDocuments, onGenerateReference, ...props }) => {
+> = ({
+	allAssets,
+	allDocuments,
+	onGenerateReference,
+	projectId,
+	selectedGenerationAssets,
+	...props
+}) => {
 	const extensions = useMemo(() => [DocumentMention], []);
 
 	return (
@@ -249,6 +285,8 @@ const PromptMentionEditor: React.FC<
 			allAssets={allAssets}
 			allDocuments={allDocuments}
 			onGenerateReference={onGenerateReference}
+			projectId={projectId}
+			selectedGenerationAssets={selectedGenerationAssets}
 		>
 			<PromptEditor
 				{...props}

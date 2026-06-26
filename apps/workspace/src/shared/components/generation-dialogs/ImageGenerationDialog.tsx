@@ -4,6 +4,7 @@ import { Images } from "lucide-react";
 import type {
 	GenerationAsset,
 	GenerationMessageResponse,
+	SelectedGenerationAsset,
 } from "@/domains/generation/api/generation";
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
 import { DocumentSectionGenerator } from "@/domains/documents/components/DocumentSectionGenerator";
@@ -34,7 +35,9 @@ interface ImageGenerationDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	projectId?: string;
+	resolveLatestSection?: boolean;
 	selectedAssetKeys?: string[] | ((section: MarkdownSectionContext) => string[]);
+	selectedGenerationAssets?: SelectedGenerationAsset[];
 	section: MarkdownSectionContext | null;
 }
 
@@ -61,8 +64,10 @@ interface ImageGenerationDialogPanelController {
 	onToggleImage?: (asset: GenerationAsset, selected: boolean) => void;
 	open: boolean;
 	projectId?: string;
+	resolveLatestSection?: boolean;
 	section: MarkdownSectionContext;
 	selectedAssetKeys: string[];
+	selectedGenerationAssets?: SelectedGenerationAsset[];
 	title: string;
 	titleId: string;
 }
@@ -81,7 +86,9 @@ const useImageGenerationDialogController = ({
 	open,
 	onOpenChange,
 	projectId,
+	resolveLatestSection,
 	selectedAssetKeys,
+	selectedGenerationAssets,
 	section,
 }: ImageGenerationDialogProps): ImageGenerationDialogController => {
 	const [lastSection, setLastSection] = useState<MarkdownSectionContext | null>(section);
@@ -174,8 +181,10 @@ const useImageGenerationDialogController = ({
 					: undefined,
 				open: dialogIndex === 0 ? open : true,
 				projectId,
+				resolveLatestSection,
 				section: currentSection,
 				selectedAssetKeys: resolveSelectedAssetKeys(selectedAssetKeys, currentSection),
+				selectedGenerationAssets,
 				title: `生成视觉素材 · ${currentSection.headingText}`,
 				titleId: `section-generation-title-${dialogIndex}`,
 			};
@@ -218,8 +227,10 @@ const ImageGenerationDialogPanel: React.FC<{
 			key={controller.generatorKey}
 			materialLibraryImportOpen={controller.materialLibraryOpen}
 			projectId={controller.projectId}
+			resolveLatestSection={controller.resolveLatestSection}
 			section={controller.section}
 			selectedAssetKeys={controller.selectedAssetKeys}
+			selectedGenerationAssets={controller.selectedGenerationAssets}
 			viewMode="history"
 			onGenerationComplete={controller.onGenerationComplete}
 			onGenerationError={controller.onGenerationError}

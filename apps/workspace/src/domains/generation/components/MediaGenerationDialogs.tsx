@@ -701,7 +701,7 @@ export const SecondaryParamsDropdown: React.FC<{
 	);
 };
 
-const SecondaryParamSettings: React.FC<{
+export const SecondaryParamSettings: React.FC<{
 	onChange: (name: string, value: unknown) => void;
 	params: GenerationParam[];
 	values: Record<string, unknown>;

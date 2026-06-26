@@ -317,6 +317,112 @@ func TestGenerationTaskServiceUpdateAssetSelectionPersists(t *testing.T) {
 	}
 }
 
+func TestGenerationTaskServiceAutoSelectsFirstCompletedProjectResourceImage(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	projectID := "project-auto-select-first"
+	taskID := "task-auto-select-first"
+	seedGenerationTaskProject(t, dbPath, projectID)
+	seedGenerationTaskAsset(t, dbPath, "image-a", "image", projectID)
+	seedGenerationTaskAsset(t, dbPath, "image-b", "image", projectID)
+
+	service := NewGenerationTaskService(dbPath, nil)
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:           taskID,
+		ProjectID:    projectID,
+		DocumentID:   "characters",
+		SectionID:    "section-lintong",
+		CapabilityID: "character",
+		Kind:         "image",
+		Status:       "completed",
+		Prompt:       "portrait set",
+		Assets: []GenerationAsset{
+			{Kind: "image", URL: "/api/v1/media-assets/image-a/content", Title: "林书彤生成图 1"},
+			{Kind: "image", URL: "/api/v1/media-assets/image-b/content", Title: "林书彤生成图 2"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting task: %v", err)
+	}
+
+	reloaded, ok, err := service.Get(taskID)
+	if err != nil || !ok {
+		t.Fatalf("getting task ok=%v error=%v", ok, err)
+	}
+	if len(reloaded.Assets) != 2 || !reloaded.Assets[0].Selected || reloaded.Assets[1].Selected {
+		t.Fatalf("task assets = %+v, want first generated image selected only", reloaded.Assets)
+	}
+
+	selected, err := service.ListProjectSelectedAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing selected assets: %v", err)
+	}
+	if len(selected) != 1 ||
+		selected[0].TaskID != taskID ||
+		selected[0].AssetIndex != 0 ||
+		selected[0].MediaAssetID != "image-a" ||
+		selected[0].ResourceType != "character" ||
+		selected[0].ResourceID != "section-lintong" ||
+		selected[0].SourceDocumentID != "characters" {
+		t.Fatalf("selected assets = %+v, want first task image selected for resource", selected)
+	}
+}
+
+func TestGenerationTaskServiceDoesNotAutoSelectWhenResourceAlreadyHasSelection(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	projectID := "project-auto-select-existing"
+	taskID := "task-auto-select-existing"
+	seedGenerationTaskProject(t, dbPath, projectID)
+	seedGenerationTaskAsset(t, dbPath, "existing-selected", "image", projectID)
+	seedGenerationTaskAsset(t, dbPath, "image-a", "image", projectID)
+	seedGenerationTaskAsset(t, dbPath, "image-b", "image", projectID)
+
+	service := NewGenerationTaskService(dbPath, nil)
+	if _, ok, err := service.UpsertSelectedAsset(projectID, UpdateSelectedGenerationAssetRequest{
+		ResourceType:     "character",
+		ResourceID:       "section-lintong",
+		ResourceTitle:    "林书彤",
+		MediaAssetID:     "existing-selected",
+		SourceDocumentID: "characters",
+		SourceType:       "uploaded",
+	}); err != nil || !ok {
+		t.Fatalf("upserting existing selected asset ok=%v error=%v", ok, err)
+	}
+
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:           taskID,
+		ProjectID:    projectID,
+		DocumentID:   "characters",
+		SectionID:    "section-lintong",
+		CapabilityID: "character",
+		Kind:         "image",
+		Status:       "completed",
+		Prompt:       "portrait set",
+		Assets: []GenerationAsset{
+			{Kind: "image", URL: "/api/v1/media-assets/image-a/content", Title: "林书彤生成图 1"},
+			{Kind: "image", URL: "/api/v1/media-assets/image-b/content", Title: "林书彤生成图 2"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting task: %v", err)
+	}
+
+	reloaded, ok, err := service.Get(taskID)
+	if err != nil || !ok {
+		t.Fatalf("getting task ok=%v error=%v", ok, err)
+	}
+	if len(reloaded.Assets) != 2 || reloaded.Assets[0].Selected || reloaded.Assets[1].Selected {
+		t.Fatalf("task assets = %+v, want no generated image auto-selected", reloaded.Assets)
+	}
+
+	selected, err := service.ListProjectSelectedAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing selected assets: %v", err)
+	}
+	if len(selected) != 1 ||
+		selected[0].MediaAssetID != "existing-selected" ||
+		selected[0].TaskID != "" {
+		t.Fatalf("selected assets = %+v, want existing resource selection preserved", selected)
+	}
+}
+
 func TestGenerationServiceListSelectedGenerationAssets(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	projectID := "project-selected-assets"
@@ -386,7 +492,7 @@ func TestGenerationServiceListSelectedGenerationAssets(t *testing.T) {
 		t.Fatalf("upserting generic task: %v", err)
 	}
 
-	response, err := workflow.ListSelectedGenerationAssets(projectID)
+	response, err := workflow.ListSelectedGenerationAssets(projectID, SelectedGenerationAssetQuery{})
 	if err != nil {
 		t.Fatalf("listing selected assets: %v", err)
 	}
@@ -402,6 +508,19 @@ func TestGenerationServiceListSelectedGenerationAssets(t *testing.T) {
 		asset.Title != "角色图" ||
 		asset.URL != "/api/v1/media-assets/character/content" {
 		t.Fatalf("asset = %+v, want selected character image summary", asset)
+	}
+
+	filtered, err := workflow.ListSelectedGenerationAssets(projectID, SelectedGenerationAssetQuery{
+		Kind:             "image",
+		ResourceType:     "character",
+		SourceDocumentID: asset.SourceDocumentID,
+		ResourceID:       asset.ResourceID,
+	})
+	if err != nil {
+		t.Fatalf("listing filtered selected assets: %v", err)
+	}
+	if len(filtered.Assets) != 1 || filtered.Assets[0].ID != asset.ID {
+		t.Fatalf("filtered assets = %+v, want selected character asset", filtered.Assets)
 	}
 }
 
@@ -459,7 +578,7 @@ func TestGenerationServiceUpdateSelectedGenerationAssetFromTask(t *testing.T) {
 		t.Fatalf("task = %+v, want mirrored selected asset state", reloaded)
 	}
 
-	listed, err := workflow.ListSelectedGenerationAssets(projectID)
+	listed, err := workflow.ListSelectedGenerationAssets(projectID, SelectedGenerationAssetQuery{})
 	if err != nil {
 		t.Fatalf("listing selected assets: %v", err)
 	}
@@ -477,7 +596,7 @@ func TestGenerationServiceUpdateSelectedGenerationAssetFromTask(t *testing.T) {
 	if err != nil || status != 200 || !deleteResponse.Deleted {
 		t.Fatalf("unselecting generated asset status=%d response=%+v error=%v", status, deleteResponse, err)
 	}
-	listed, err = workflow.ListSelectedGenerationAssets(projectID)
+	listed, err = workflow.ListSelectedGenerationAssets(projectID, SelectedGenerationAssetQuery{})
 	if err != nil {
 		t.Fatalf("listing after unselect: %v", err)
 	}
@@ -527,7 +646,7 @@ func TestGenerationServiceUpdateSelectedGenerationAssetWithMissingTaskSource(t *
 		t.Fatalf("response = %+v, want selected direct asset with task source metadata", response)
 	}
 
-	listed, err := workflow.ListSelectedGenerationAssets(projectID)
+	listed, err := workflow.ListSelectedGenerationAssets(projectID, SelectedGenerationAssetQuery{})
 	if err != nil {
 		t.Fatalf("listing selected assets: %v", err)
 	}

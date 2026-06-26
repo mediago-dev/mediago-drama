@@ -2,6 +2,11 @@ import { ArrowUpRight, ImageIcon } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentReference } from "@/domains/agent/api/agent";
+import {
+	getSelectedGenerationAssets,
+	type SelectedGenerationAsset,
+	type SelectedGenerationAssetsFilters,
+} from "@/domains/generation/api/generation";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { Button } from "@/shared/components/ui/button";
@@ -12,9 +17,10 @@ import {
 	stringAttribute,
 } from "@/domains/documents/lib/mention-suggestion";
 import {
-	resolveMentionPayload,
+	mentionReferenceKey,
 	type ResolvedMention,
 } from "@/domains/documents/lib/mention-resolver";
+import { resolveMentionPayloadWithSelectedAssets } from "@/domains/documents/lib/mention-generation-references";
 import {
 	findMarkdownSectionEndLine,
 	findMarkdownSectionHeadingLine,
@@ -31,6 +37,8 @@ export interface DocumentMentionHoverPopoverProps {
 	allDocuments: MarkdownDocument[];
 	children: React.ReactNode;
 	onGenerateReference?: (section: MarkdownSectionContext) => void;
+	projectId?: string;
+	selectedGenerationAssets?: SelectedGenerationAsset[];
 }
 
 export const DocumentMentionHoverPopover: React.FC<DocumentMentionHoverPopoverProps> = ({
@@ -38,9 +46,12 @@ export const DocumentMentionHoverPopover: React.FC<DocumentMentionHoverPopoverPr
 	allDocuments,
 	children,
 	onGenerateReference,
+	projectId,
+	selectedGenerationAssets = [],
 }) => {
 	const rootRef = useRef<HTMLDivElement | null>(null);
 	const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const selectedAssetRequestIdRef = useRef(0);
 	const [hoveredMention, setHoveredMention] = useState<HoveredMentionState | null>(null);
 
 	const clearCloseTimer = useCallback(() => {
@@ -49,6 +60,7 @@ export const DocumentMentionHoverPopover: React.FC<DocumentMentionHoverPopoverPr
 		closeTimerRef.current = null;
 	}, []);
 	const closeMentionPopover = useCallback(() => {
+		selectedAssetRequestIdRef.current += 1;
 		clearCloseTimer();
 		setHoveredMention(null);
 	}, [clearCloseTimer]);
@@ -60,8 +72,45 @@ export const DocumentMentionHoverPopover: React.FC<DocumentMentionHoverPopoverPr
 		}, mentionHoverCloseDelayMs);
 	}, [clearCloseTimer]);
 	const mentionExtensions = useMemo(
-		() => ({ allAssets, allDocuments, onGenerateReference }),
-		[allAssets, allDocuments, onGenerateReference],
+		() => ({ allAssets, allDocuments, onGenerateReference, selectedGenerationAssets }),
+		[allAssets, allDocuments, onGenerateReference, selectedGenerationAssets],
+	);
+
+	const fetchMentionSelectedAssets = useCallback(
+		async (reference: AgentReference) => {
+			const normalizedProjectId = projectId?.trim();
+			const filters = selectedGenerationAssetFiltersFromMention(reference);
+			if (!normalizedProjectId || !filters) return;
+
+			const requestId = selectedAssetRequestIdRef.current + 1;
+			selectedAssetRequestIdRef.current = requestId;
+			try {
+				const response = await getSelectedGenerationAssets(normalizedProjectId, filters);
+				if (selectedAssetRequestIdRef.current !== requestId) return;
+
+				setHoveredMention((current) => {
+					if (
+						!current ||
+						mentionReferenceKey(current.mention.reference) !== mentionReferenceKey(reference)
+					) {
+						return current;
+					}
+
+					return {
+						...current,
+						mention: resolveMentionPayloadWithSelectedAssets(
+							reference,
+							mentionExtensions.allDocuments,
+							mentionExtensions.allAssets,
+							[...mentionExtensions.selectedGenerationAssets, ...response.assets],
+						),
+					};
+				});
+			} catch {
+				// Mention previews are opportunistic; existing document images and actions remain usable.
+			}
+		},
+		[mentionExtensions, projectId],
 	);
 
 	const showMentionPopover = useCallback(
@@ -72,10 +121,11 @@ export const DocumentMentionHoverPopover: React.FC<DocumentMentionHoverPopoverPr
 			const reference = referenceFromMentionElement(element);
 			if (!reference) return;
 
-			const mention = resolveMentionPayload(
+			const mention = resolveMentionPayloadWithSelectedAssets(
 				reference,
 				mentionExtensions.allDocuments,
 				mentionExtensions.allAssets,
+				mentionExtensions.selectedGenerationAssets,
 			);
 			const targetSection = mentionExtensions.onGenerateReference
 				? mentionSectionContext(mention.reference, mentionExtensions.allDocuments)
@@ -94,8 +144,9 @@ export const DocumentMentionHoverPopover: React.FC<DocumentMentionHoverPopoverPr
 				mention,
 				targetSection,
 			});
+			void fetchMentionSelectedAssets(mention.reference);
 		},
-		[clearCloseTimer, mentionExtensions],
+		[clearCloseTimer, fetchMentionSelectedAssets, mentionExtensions],
 	);
 
 	const handlePointerOver = useCallback(
@@ -122,6 +173,7 @@ export const DocumentMentionHoverPopover: React.FC<DocumentMentionHoverPopoverPr
 
 	useEffect(
 		() => () => {
+			selectedAssetRequestIdRef.current += 1;
 			clearCloseTimer();
 		},
 		[clearCloseTimer],
@@ -147,6 +199,7 @@ export const DocumentMentionHoverPopover: React.FC<DocumentMentionHoverPopoverPr
 };
 
 const mentionHoverCloseDelayMs = 320;
+const selectedGenerationAssetResourceTypes = new Set(["character", "scene", "storyboard", "prop"]);
 
 interface HoveredMentionState {
 	anchor: {
@@ -287,6 +340,20 @@ const referenceFromMentionElement = (element: HTMLElement): AgentReference | nul
 		kind,
 		title,
 		...(category ? { category } : {}),
+	};
+};
+
+const selectedGenerationAssetFiltersFromMention = (
+	reference: AgentReference,
+): SelectedGenerationAssetsFilters | null => {
+	const resourceType = reference.category?.trim() ?? "";
+	if (!selectedGenerationAssetResourceTypes.has(resourceType)) return null;
+
+	return {
+		kind: "image",
+		resourceType,
+		sourceDocumentId: reference.documentId,
+		...(reference.kind === "section" && reference.blockId ? { resourceId: reference.blockId } : {}),
 	};
 };
 

@@ -303,6 +303,29 @@ func (repo *GenerationTaskRepository) ListProjectSelectedAssets(projectID string
 	return models, nil
 }
 
+// HasProjectSelectedAssetForResource reports whether a creative resource already has a selected asset.
+func (repo *GenerationTaskRepository) HasProjectSelectedAssetForResource(projectID string, resourceType string, resourceID string, sourceDocumentID string) (bool, error) {
+	projectID = domain.CleanProjectID(projectID)
+	resourceType = strings.TrimSpace(resourceType)
+	resourceID = strings.TrimSpace(resourceID)
+	sourceDocumentID = strings.TrimSpace(sourceDocumentID)
+	if projectID == "" || resourceType == "" || resourceID == "" {
+		return false, nil
+	}
+
+	query := repo.db.Model(&domain.ProjectSelectedAssetModel{}).
+		Where("project_id = ? AND resource_type = ? AND resource_id = ?", projectID, resourceType, resourceID)
+	if sourceDocumentID != "" {
+		query = query.Where("(source_document_id IS NULL OR source_document_id = '' OR source_document_id = ?)", sourceDocumentID)
+	}
+
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return false, fmt.Errorf("checking project selected asset for resource: %w", err)
+	}
+	return count > 0, nil
+}
+
 // GetProjectSelectedAsset returns one selected project asset by ID.
 func (repo *GenerationTaskRepository) GetProjectSelectedAsset(id string) (domain.ProjectSelectedAssetModel, error) {
 	var model domain.ProjectSelectedAssetModel

@@ -1,7 +1,7 @@
 import type React from "react";
 import { useEffect, useState } from "react";
 import { Images } from "lucide-react";
-import type { GenerationAsset } from "@/domains/generation/api/generation";
+import type { GenerationAsset, SelectedGenerationAsset } from "@/domains/generation/api/generation";
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
 import { DocumentSectionGenerator } from "@/domains/documents/components/DocumentSectionGenerator";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
@@ -21,6 +21,7 @@ interface VideoGenerationDialogProps {
 	projectId?: string;
 	resolveLatestSection?: boolean;
 	selectedAssetKeys?: string[];
+	selectedGenerationAssets?: SelectedGenerationAsset[];
 	section?: MarkdownSectionContext | null;
 	title?: string;
 	titleId?: string;
@@ -37,6 +38,7 @@ export const VideoGenerationDialog: React.FC<VideoGenerationDialogProps> = ({
 	projectId,
 	resolveLatestSection,
 	selectedAssetKeys = [],
+	selectedGenerationAssets,
 	section,
 	title,
 	titleId = defaultVideoTitleId,
@@ -95,6 +97,7 @@ export const VideoGenerationDialog: React.FC<VideoGenerationDialogProps> = ({
 				resolveLatestSection={resolveLatestSection}
 				section={activeSection}
 				selectedAssetKeys={selectedAssetKeys}
+				selectedGenerationAssets={selectedGenerationAssets}
 				viewMode="history"
 				onGenerationComplete={() => undefined}
 				onGenerationError={() => undefined}

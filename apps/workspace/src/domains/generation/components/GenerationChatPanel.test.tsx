@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { GenerationChatPanel } from "./GenerationChatPanel";
 import type { GenerationEntry } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
@@ -190,5 +190,26 @@ describe("GenerationChatPanel", () => {
 
 		expect(container.querySelectorAll("img")).toHaveLength(2);
 		expect(screen.getAllByText("生成中")).toHaveLength(2);
+	});
+
+	it("does not treat an image ratio detail as the pending image count", () => {
+		HTMLElement.prototype.scrollTo = vi.fn();
+		const entries: GenerationEntry[] = [
+			{
+				id: "task-image",
+				kind: "image",
+				status: "submitted",
+				content: "",
+				prompt: "生成一张图",
+				requestDetails: [{ label: "数量", value: "3:4" }],
+				assets: [],
+			},
+		];
+
+		const { container } = render(
+			<GenerationChatPanel entries={entries} onRefreshVideo={vi.fn()} onSelectEntry={vi.fn()} />,
+		);
+
+		expect(within(container).getByText("图像")).toBeTruthy();
 	});
 });

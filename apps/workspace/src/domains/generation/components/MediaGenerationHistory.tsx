@@ -1260,10 +1260,14 @@ const historyAssetUnit = (kind: GenerationKind) =>
 	kind === "image" ? "张" : kind === "audio" ? "段" : "个";
 
 const requestGenerationCount = (details: Array<{ label: string; value: string }>) => {
-	const countDetail = details.find((detail) => isCountDetailLabel(detail.label));
-	const count = countFromDetailValue(countDetail?.value);
+	for (const detail of details) {
+		if (!isCountDetailLabel(detail.label)) continue;
 
-	return count ?? 1;
+		const count = countFromDetailValue(detail.value);
+		if (count !== null) return count;
+	}
+
+	return 1;
 };
 
 const isCountDetailLabel = (label: string) => {
@@ -1280,10 +1284,10 @@ const isCountDetailLabel = (label: string) => {
 };
 
 const countFromDetailValue = (value?: string) => {
-	const match = value?.match(/\d+(?:\.\d+)?/u);
-	if (!match?.[0]) return null;
+	const match = value?.trim().match(/^(\d+(?:\.\d+)?)\s*(?:张|个|幅|images?|pics?|pictures?)?$/iu);
+	if (!match?.[1]) return null;
 
-	const count = Number(match[0]);
+	const count = Number(match[1]);
 	if (!Number.isFinite(count)) return null;
 
 	return Math.max(1, Math.min(pendingAssetCountMax, Math.round(count)));

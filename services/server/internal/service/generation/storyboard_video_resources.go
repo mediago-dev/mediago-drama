@@ -56,7 +56,7 @@ func (workflow *GenerationService) ListStoryboardVideoResources(projectID string
 	if err != nil {
 		return StoryboardVideoResourcesResponse{}, err
 	}
-	selectedAssets, err := workflow.ListSelectedGenerationAssets(projectID)
+	selectedAssets, err := workflow.ListSelectedGenerationAssets(projectID, SelectedGenerationAssetQuery{})
 	if err != nil {
 		return StoryboardVideoResourcesResponse{}, err
 	}

@@ -79,6 +79,7 @@ export interface UseGenerationWorkspaceOptions {
 	mediaAssetProjectId?: string | null;
 	modelPreferenceScopeId?: string | null;
 	notificationTarget?: GenerationNotificationOpenTarget | null;
+	persistModelSelection?: boolean;
 	projectId?: string;
 	projectHistory?: boolean;
 	projectStyleOnly?: boolean;
@@ -122,6 +123,7 @@ export const useGenerationWorkspace = ({
 	onSubmitResponse,
 	onSubmitStart,
 	onSubmitSuccess,
+	persistModelSelection = true,
 	projectId,
 	projectHistory = false,
 	projectStyleOnly = false,
@@ -209,6 +211,7 @@ export const useGenerationWorkspace = ({
 		initialKind,
 		modelCatalog,
 		mutatePreferences,
+		persistSelection: persistModelSelection,
 		preferenceScopeId: resolvedPreferenceScopeId,
 		stylePresets,
 	});
