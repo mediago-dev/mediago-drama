@@ -49,22 +49,37 @@ describe("EpisodeTimelineEditor", () => {
 		expect(screen.getByTestId("episode-timeline-editor").getAttribute("style")).toContain(
 			"height: 184px",
 		);
-		expect(
-			within(screen.getByTestId("clip-strip-card-clip-cold-open")).getByRole("button", {
+		const generateButton = within(screen.getByTestId("clip-strip-card-clip-cold-open")).getByRole(
+			"button",
+			{
 				name: "生成 冷开场",
-			}),
-		).toBeTruthy();
+			},
+		);
+		expect(generateButton).toBeTruthy();
+		expect(generateButton.className).toContain("rounded-md");
+		expect(generateButton.className).toContain("cursor-pointer");
+		expect(generateButton.className).toContain("bg-primary");
+		expect(generateButton.className).toContain("text-primary-foreground");
+		expect(generateButton.className).not.toContain("rounded-full");
 		expect(
-			within(screen.getByTestId("clip-strip-card-clip-cold-open")).getByRole("button", {
-				name: "生成 冷开场",
-			}).className,
-		).toContain("text-popover-foreground");
+			within(screen.getByTestId("clip-strip-card-clip-cold-open")).queryByText("冷开场"),
+		).toBeNull();
+		expect(screen.getByTestId("clip-strip-card-clip-cold-open").className).toContain("border-2");
 		expect(screen.getByTestId("clip-strip-card-clip-cold-open").className).not.toContain(
 			"translate-y",
 		);
+		expect(screen.getByTestId("clip-strip-card-status-rail-clip-cold-open").className).toContain(
+			"bg-warning-foreground",
+		);
 		expect(
-			within(screen.getByTestId("clip-strip-card-clip-cold-open")).getByText("待生成"),
-		).toBeTruthy();
+			within(screen.getByTestId("clip-strip-card-clip-cold-open")).queryByText("待生成"),
+		).toBeNull();
+		expect(
+			within(screen.getByTestId("clip-strip-card-clip-agent-pass")).queryByText("生成中"),
+		).toBeNull();
+		expect(screen.getByTestId("clip-strip-card-status-rail-clip-agent-pass").className).toContain(
+			"bg-info-foreground",
+		);
 	});
 
 	it("shows a pause control while the timeline is playing", () => {
@@ -347,8 +362,11 @@ describe("EpisodeTimelineEditor", () => {
 
 		const firstCard = screen.getByTestId("clip-strip-card-clip-cold-open");
 		const secondCard = screen.getByTestId("clip-strip-card-clip-problem");
+		const firstCardDuration = within(firstCard).getByText("00:05");
 
-		expect(within(firstCard).getByText("00:05")).toBeTruthy();
+		expect(firstCardDuration.className).toContain("bottom-2");
+		expect(firstCardDuration.className).toContain("right-2");
+		expect(within(firstCard).queryByText("冷开场")).toBeNull();
 		expect(firstCard.querySelector("img")?.getAttribute("src")).toBe(
 			"/api/v1/media-assets/asset-a/poster",
 		);

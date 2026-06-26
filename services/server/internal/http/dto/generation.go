@@ -174,6 +174,7 @@ type GenerationAsset struct {
 	TaskID    string `json:"taskId,omitempty"`
 	Title     string `json:"title,omitempty"`
 	URL       string `json:"url,omitempty"`
+	PosterURL string `json:"posterUrl,omitempty"`
 	Base64    string `json:"base64,omitempty"`
 	MIMEType  string `json:"mimeType,omitempty"`
 	SlotIndex int    `json:"slotIndex"`
@@ -260,6 +261,7 @@ type UpdateSelectedGenerationAssetRequest struct {
 	Kind             string `json:"kind,omitempty" ts:"Kind"`
 	Title            string `json:"title,omitempty"`
 	URL              string `json:"url,omitempty"`
+	PosterURL        string `json:"posterUrl,omitempty"`
 	Base64           string `json:"base64,omitempty"`
 	MIMEType         string `json:"mimeType,omitempty"`
 	SourceType       string `json:"sourceType,omitempty"`
@@ -290,6 +292,7 @@ type SelectedGenerationAssetRecord struct {
 	Kind             string `json:"kind" ts:"Kind"`
 	Title            string `json:"title,omitempty"`
 	URL              string `json:"url,omitempty"`
+	PosterURL        string `json:"posterUrl,omitempty"`
 	Base64           string `json:"base64,omitempty"`
 	MIMEType         string `json:"mimeType,omitempty"`
 	SourceType       string `json:"sourceType,omitempty"`
@@ -305,6 +308,45 @@ type SelectedGenerationAssetRecord struct {
 // SelectedGenerationAssetsResponse lists project-selected creative resources.
 type SelectedGenerationAssetsResponse struct {
 	Assets []SelectedGenerationAssetRecord `json:"assets"`
+}
+
+// StoryboardVideoResourcesResponse groups project video assets by storyboard document and reel.
+type StoryboardVideoResourcesResponse struct {
+	ProjectID string                         `json:"projectId,omitempty"`
+	Groups    []StoryboardVideoDocumentGroup `json:"groups"`
+}
+
+// StoryboardVideoDocumentGroup contains all storyboard reels for one storyboard document.
+type StoryboardVideoDocumentGroup struct {
+	DocumentID    string                `json:"documentId"`
+	DocumentTitle string                `json:"documentTitle"`
+	Reels         []StoryboardVideoReel `json:"reels"`
+}
+
+// StoryboardVideoReel is one storyboard group section with generated video assets.
+type StoryboardVideoReel struct {
+	ID                string                 `json:"id"`
+	BlockID           string                 `json:"blockId"`
+	SectionID         string                 `json:"sectionId"`
+	Title             string                 `json:"title"`
+	HeadingLevel      int                    `json:"headingLevel"`
+	HeadingOccurrence int                    `json:"headingOccurrence"`
+	Markdown          string                 `json:"markdown"`
+	PlainText         string                 `json:"plainText,omitempty"`
+	Prompt            string                 `json:"prompt,omitempty"`
+	CanGenerate       bool                   `json:"canGenerate"`
+	Videos            []StoryboardVideoAsset `json:"videos"`
+}
+
+// StoryboardVideoAsset is one playable video associated with a storyboard reel.
+type StoryboardVideoAsset struct {
+	ID           string `json:"id"`
+	MIMEType     string `json:"mimeType,omitempty"`
+	SectionTitle string `json:"sectionTitle"`
+	SourceLabel  string `json:"sourceLabel"`
+	Src          string `json:"src"`
+	PosterURL    string `json:"posterUrl,omitempty"`
+	Title        string `json:"title"`
 }
 
 // GenerationPreferenceRecord is a persisted generation preference set.

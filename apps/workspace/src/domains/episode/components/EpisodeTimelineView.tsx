@@ -15,13 +15,24 @@ import { EpisodeCompanionGenerationDialog } from "@/domains/episode/components/E
 import { EpisodeCanvasView } from "@/domains/episode/components/EpisodeCanvasView";
 import { EpisodeTimelineEditor } from "@/domains/episode/components/EpisodeTimelineEditor";
 import { EpisodePreviewPlayer } from "@/domains/episode/components/EpisodePreviewPlayer";
-import { EpisodeVideoGenerationDialog } from "@/domains/episode/components/EpisodeVideoGenerationDialog";
+import {
+	buildEpisodeVideoContext,
+	EpisodeVideoGenerationDialog,
+	findEpisodeVideoSourceSection,
+	firstVideoAssetSource,
+} from "@/domains/episode/components/EpisodeVideoGenerationDialog";
 import {
 	pickGeneratedAssetSaveTarget,
 	saveGeneratedAssetToTarget,
 	saveGeneratedAssetToUserDirectory,
 } from "@/domains/generation/components/generatedResultActions";
-import type { GenerationAsset } from "@/domains/generation/api/generation";
+import {
+	generationTasksQueryKey,
+	getGenerationTasks,
+	projectGenerationConversation,
+	type GenerationAsset,
+	type GenerationTask,
+} from "@/domains/generation/api/generation";
 import { Button } from "@/shared/components/ui/button";
 import { useToast } from "@/hooks/useToast";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
@@ -42,7 +53,7 @@ import {
 	findEpisodeClipPlaybackRangeAtTime,
 	isEpisodeVideoClipPlayable,
 } from "@/domains/episode/lib/media-assets";
-import type { TimelineClip } from "@/domains/episode/lib/sample";
+import type { Episode, TimelineClip, TimelineClipStatus } from "@/domains/episode/lib/sample";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { type TimelineCompanionTrackType, useEpisodeStore } from "@/domains/episode/stores";
 import {
@@ -116,6 +127,27 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const { data: mediaAssetsData, mutate: mutateMediaAssets } = useSWR(
 		["episode-media-assets", mediaAssetProjectId],
 		() => getMediaAssets({ projectId: mediaAssetProjectId || undefined }),
+	);
+	const storyboardVideoConversation = useMemo(
+		() => projectGenerationConversation(projectId, "video"),
+		[projectId],
+	);
+	const { data: storyboardVideoTasksData } = useSWR(
+		storyboardVideoConversation && mediaAssetProjectId
+			? generationTasksQueryKey(
+					storyboardVideoConversation.conversationId,
+					"video",
+					storyboardVideoConversation.conversationScopeId,
+					mediaAssetProjectId,
+				)
+			: null,
+		() =>
+			getGenerationTasks(
+				storyboardVideoConversation?.conversationId,
+				"video",
+				storyboardVideoConversation?.conversationScopeId,
+				mediaAssetProjectId,
+			),
 	);
 	const persistedEpisode = persistedEpisodeState?.episode ?? null;
 
@@ -200,6 +232,34 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		() => storyboardVideoClips.filter(hasClipVideoUrl),
 		[storyboardVideoClips],
 	);
+	const clipIdByGenerationSectionId = useMemo(() => {
+		const sections = new Map<string, string>();
+		for (const clip of storyboardVideoClips) {
+			const sourceSection = findEpisodeVideoSourceSection(
+				activeDocument?.content ?? "",
+				clip,
+				activeDocument?.id ?? episodeDocumentId,
+			);
+			const context = buildEpisodeVideoContext(episode, clip, sourceSection);
+			if (context.blockId.trim()) sections.set(context.blockId.trim(), clip.id);
+		}
+		return sections;
+	}, [
+		activeDocument?.content,
+		activeDocument?.id,
+		episode,
+		episodeDocumentId,
+		storyboardVideoClips,
+	]);
+	const latestStoryboardVideoTaskByClipId = useMemo(
+		() =>
+			latestStoryboardVideoTasksByClip(
+				storyboardVideoTasksData?.tasks ?? [],
+				clipIdByGenerationSectionId,
+				episodeDocumentId,
+			),
+		[clipIdByGenerationSectionId, episodeDocumentId, storyboardVideoTasksData?.tasks],
+	);
 	const markVideoClipDownloading = useCallback((clipId: string, downloading: boolean) => {
 		setDownloadingVideoClipIds((current) => {
 			if (downloading) return current.includes(clipId) ? current : [...current, clipId];
@@ -208,7 +268,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	}, []);
 	const handleGeneratedVideoReady = useCallback(
 		async (clipId: string, videoUrl: string | null) => {
-			const previousEpisode = episode;
+			const previousEpisode = useEpisodeStore.getState().episode;
 			const nextEpisode = setVideoClipVideoUrl(clipId, videoUrl);
 			if (!nextEpisode || !episodeDocumentId) return;
 
@@ -224,7 +284,6 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 			}
 		},
 		[
-			episode,
 			episodeDocumentId,
 			mutateEpisodeState,
 			mutateMediaAssets,
@@ -460,6 +519,20 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	}, [markdownEpisode, persistedEpisode, setEpisode]);
 
 	useEffect(() => {
+		if (latestStoryboardVideoTaskByClipId.size === 0) return;
+
+		const currentEpisode = useEpisodeStore.getState().episode;
+		const syncedEpisode = episodeWithStoryboardVideoTaskStatuses(
+			currentEpisode,
+			latestStoryboardVideoTaskByClipId,
+		);
+		if (!syncedEpisode.changed) return;
+
+		setEpisode(syncedEpisode.episode);
+		if (syncedEpisode.hasReadyVideo) void mutateMediaAssets();
+	}, [latestStoryboardVideoTaskByClipId, mutateMediaAssets, setEpisode]);
+
+	useEffect(() => {
 		if (previewStreamUrl) return;
 		setPreviewPlaybackActive(false);
 	}, [previewStreamUrl]);
@@ -646,6 +719,111 @@ const episodeClipVideoFilename = (clip: TimelineClip, index?: number) => {
 };
 
 const hasClipVideoUrl = (clip: TimelineClip) => Boolean(clip.videoUrl?.trim());
+
+const latestStoryboardVideoTasksByClip = (
+	tasks: GenerationTask[],
+	clipIdBySectionId: Map<string, string>,
+	documentId: string,
+) => {
+	const latestByClipId = new Map<string, GenerationTask>();
+	const normalizedDocumentId = documentId.trim();
+
+	for (const task of tasks) {
+		if (task.kind !== "video") continue;
+		if (normalizedDocumentId && task.documentId?.trim() !== normalizedDocumentId) continue;
+
+		const sectionId = task.sectionId?.trim() ?? "";
+		const clipId = sectionId ? clipIdBySectionId.get(sectionId) : undefined;
+		if (!clipId) continue;
+
+		const current = latestByClipId.get(clipId);
+		if (!current || generationTaskTime(task) >= generationTaskTime(current)) {
+			latestByClipId.set(clipId, task);
+		}
+	}
+
+	return latestByClipId;
+};
+
+const episodeWithStoryboardVideoTaskStatuses = (
+	episode: Episode,
+	taskByClipId: Map<string, GenerationTask>,
+) => {
+	let changed = false;
+	let hasReadyVideo = false;
+	const tracks = episode.tracks.map((track) => {
+		if (track.type !== "video") return track;
+
+		let trackChanged = false;
+		const clips = track.clips.map((clip) => {
+			const task = taskByClipId.get(clip.id);
+			if (!task) return clip;
+
+			const nextClip = clipWithStoryboardVideoTask(clip, task);
+			if (nextClip === clip) return clip;
+
+			trackChanged = true;
+			changed = true;
+			if (nextClip.status === "ready" && nextClip.videoUrl?.trim()) hasReadyVideo = true;
+			return nextClip;
+		});
+
+		return trackChanged ? { ...track, clips } : track;
+	});
+
+	return {
+		changed,
+		episode: changed ? { ...episode, tracks } : episode,
+		hasReadyVideo,
+	};
+};
+
+const clipWithStoryboardVideoTask = (clip: TimelineClip, task: GenerationTask) => {
+	const videoAsset = task.assets.find(
+		(asset) => asset.kind === "video" && firstVideoAssetSource([asset]),
+	);
+	const videoUrl = videoAsset ? firstVideoAssetSource([videoAsset]) : "";
+	const nextStatus = storyboardTaskClipStatus(task, videoUrl);
+	const nextClip: TimelineClip = {
+		...clip,
+		status: nextStatus,
+		...(videoUrl
+			? {
+					videoUrl,
+					...(videoAsset?.posterUrl ? { posterUrl: videoAsset.posterUrl } : {}),
+				}
+			: {}),
+	};
+
+	return sameTimelineClipGenerationState(clip, nextClip) ? clip : nextClip;
+};
+
+const storyboardTaskClipStatus = (task: GenerationTask, videoUrl: string): TimelineClipStatus => {
+	if (videoUrl) return "ready";
+	if (isFailedGenerationTaskStatus(task.status)) return "error";
+	if (isPendingGenerationTaskStatus(task.status)) return "generating";
+	if (["completed", "succeeded", "success"].includes(task.status.toLowerCase())) return "error";
+	return "draft";
+};
+
+const isPendingGenerationTaskStatus = (status: string) =>
+	["loading", "submitting", "submitted", "running", "pending", "processing", "queued"].includes(
+		status.toLowerCase(),
+	);
+
+const isFailedGenerationTaskStatus = (status: string) =>
+	["failed", "error", "cancelled", "canceled"].includes(status.toLowerCase());
+
+const generationTaskTime = (task: Pick<GenerationTask, "createdAt" | "updatedAt">) => {
+	const time = Date.parse(task.updatedAt || task.createdAt || "");
+	return Number.isNaN(time) ? 0 : time;
+};
+
+const sameTimelineClipGenerationState = (left: TimelineClip, right: TimelineClip) =>
+	left.status === right.status &&
+	(left.videoUrl ?? "") === (right.videoUrl ?? "") &&
+	(left.posterUrl ?? "") === (right.posterUrl ?? "") &&
+	(left.thumbnailUrl ?? "") === (right.thumbnailUrl ?? "");
 
 const exportStoryboardsSummary = (
 	savedCount: number,

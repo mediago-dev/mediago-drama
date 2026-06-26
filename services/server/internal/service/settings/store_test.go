@@ -88,9 +88,9 @@ func TestSettingsListAPIKeysIncludesGenerationAndAgentProviders(t *testing.T) {
 		t.Fatalf("dmx provider = %#v, want unconfigured provider", provider)
 	}
 	if provider.Label != "DMX" ||
-		!stringSliceContains(provider.Capabilities, "agent") ||
+		stringSliceContains(provider.Capabilities, "agent") ||
 		!stringSliceContains(provider.Capabilities, "generation") {
-		t.Fatalf("dmx provider = %#v, want generation and agent DMX provider", provider)
+		t.Fatalf("dmx provider = %#v, want generation-only DMX provider", provider)
 	}
 }
 

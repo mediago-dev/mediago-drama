@@ -21,6 +21,7 @@ import type { GenerationAsset } from "@/domains/generation/api/generation";
 import { MarkdownContent } from "@/domains/agent/components/timeline/MarkdownContent";
 import { Button } from "@/shared/components/ui/button";
 import {
+	generationAssetPosterSource,
 	generationAssetSelectionKey,
 	generationAssetSource,
 	generationCreatedAtDetail,
@@ -440,7 +441,13 @@ const GenerationChatAssetStrip: React.FC<{
 						)}
 					>
 						{asset.kind === "video" ? (
-							<video src={source} muted preload="metadata" className="size-full object-cover" />
+							<video
+								src={source}
+								poster={generationAssetPosterSource(asset) || undefined}
+								muted
+								preload="metadata"
+								className="size-full object-cover"
+							/>
 						) : asset.kind === "audio" ? (
 							<AudioLines className="size-5 text-muted-foreground" />
 						) : (
@@ -634,6 +641,7 @@ const GenerationAssetGallery: React.FC<{
 							<VideoPlayer
 								src={source}
 								mimeType={asset.mimeType || "video/mp4"}
+								poster={generationAssetPosterSource(asset)}
 								showTitleInControls={false}
 								className="h-full w-full"
 							/>

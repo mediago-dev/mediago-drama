@@ -10,6 +10,7 @@ import {
 } from "@/domains/generation/components/GenerationImagePreviewSlider";
 import { entryGeneratedAssets } from "@/domains/generation/components/mediaGenerationHelpers";
 import {
+	generationAssetPosterSource,
 	generationAssetSelectionKey,
 	generationAssetSource,
 	type GenerationEntry,
@@ -237,6 +238,7 @@ const GenerationVideoResultAsset: React.FC<{
 			<VideoPlayer
 				src={source}
 				mimeType={asset.mimeType || "video/mp4"}
+				poster={generationAssetPosterSource(asset)}
 				showTitleInControls={false}
 				className="h-full w-full"
 			/>

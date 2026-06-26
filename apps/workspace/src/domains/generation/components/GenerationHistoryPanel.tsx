@@ -1,6 +1,7 @@
 import { AudioLines, FileText, Film, Image as ImageIcon, Loader2 } from "lucide-react";
 import type React from "react";
 import {
+	generationAssetPosterSource,
 	generationAssetSource,
 	generationStatusLabel,
 	kindLabel,
@@ -67,7 +68,10 @@ const GenerationHistoryItem: React.FC<{
 				) : source && thumbnail?.kind === "image" ? (
 					<img src={source} alt="" className="size-full object-contain" />
 				) : source && thumbnail?.kind === "video" ? (
-					<GenerationVideoThumbnail source={source} />
+					<GenerationVideoThumbnail
+						posterSource={generationAssetPosterSource(thumbnail)}
+						source={source}
+					/>
 				) : entry.kind === "image" ? (
 					<ImageIcon className="size-4 text-muted-foreground" />
 				) : entry.kind === "text" ? (

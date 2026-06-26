@@ -77,6 +77,18 @@ type SelectedGenerationAssetRecord = dto.SelectedGenerationAssetRecord
 // SelectedGenerationAssetsResponse lists project-selected creative resources.
 type SelectedGenerationAssetsResponse = dto.SelectedGenerationAssetsResponse
 
+// StoryboardVideoResourcesResponse groups project video assets by storyboard document and reel.
+type StoryboardVideoResourcesResponse = dto.StoryboardVideoResourcesResponse
+
+// StoryboardVideoDocumentGroup contains all storyboard reels for one storyboard document.
+type StoryboardVideoDocumentGroup = dto.StoryboardVideoDocumentGroup
+
+// StoryboardVideoReel is one storyboard group section with generated video assets.
+type StoryboardVideoReel = dto.StoryboardVideoReel
+
+// StoryboardVideoAsset is one playable video associated with a storyboard reel.
+type StoryboardVideoAsset = dto.StoryboardVideoAsset
+
 // GenerationPreferenceRecord is a persisted generation preference set.
 type GenerationPreferenceRecord = dto.GenerationPreferenceRecord
 

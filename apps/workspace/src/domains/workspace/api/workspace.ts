@@ -119,6 +119,41 @@ export interface WorkspaceDocumentResourcesPayload {
 	resources: WorkspaceDocumentResource[];
 }
 
+export interface WorkspaceStoryboardVideoAsset {
+	id: string;
+	mimeType?: string;
+	posterUrl?: string;
+	sectionTitle: string;
+	sourceLabel: string;
+	src: string;
+	title: string;
+}
+
+export interface WorkspaceStoryboardVideoReel {
+	id: string;
+	blockId: string;
+	sectionId: string;
+	title: string;
+	headingLevel: number;
+	headingOccurrence: number;
+	markdown: string;
+	plainText?: string;
+	prompt?: string;
+	canGenerate: boolean;
+	videos: WorkspaceStoryboardVideoAsset[];
+}
+
+export interface WorkspaceStoryboardVideoDocumentGroup {
+	documentId: string;
+	documentTitle: string;
+	reels: WorkspaceStoryboardVideoReel[];
+}
+
+export interface WorkspaceStoryboardVideoResourcesPayload {
+	projectId?: string;
+	groups: WorkspaceStoryboardVideoDocumentGroup[];
+}
+
 export type WorkspaceEpisodePayload = Omit<EpisodeTimelineStateResponse, "episode"> & {
 	episode: Episode;
 };
@@ -324,6 +359,13 @@ export const getWorkspaceDocumentResources = async (projectId?: string | null) =
 	return response.data;
 };
 
+export const getWorkspaceStoryboardVideoResources = async (projectId?: string | null) => {
+	const response = await httpClient.get<WorkspaceStoryboardVideoResourcesPayload>(
+		workspaceStoryboardVideoResourcesKey(projectId),
+	);
+	return response.data;
+};
+
 export const getWorkspaceSections = async (projectId?: string | null) => {
 	const response = await httpClient.get<WorkspaceSectionsPayload>(workspaceSectionsKey(projectId));
 	return response.data;
@@ -517,6 +559,9 @@ export const workspaceDocumentsKey = (projectId?: string | null) =>
 
 export const workspaceDocumentResourcesKey = (projectId?: string | null) =>
 	projectAPIPath(projectId, "/workspace/resources");
+
+export const workspaceStoryboardVideoResourcesKey = (projectId?: string | null) =>
+	projectAPIPath(projectId, "/workspace/storyboard-video-resources");
 
 export const workspaceSectionsKey = (projectId?: string | null) =>
 	projectAPIPath(projectId, "/workspace/sections");

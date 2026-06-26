@@ -299,6 +299,7 @@ export interface GenerationAsset {
 	taskId?: string;
 	title?: string;
 	url?: string;
+	posterUrl?: string;
 	base64?: string;
 	mimeType?: string;
 	slotIndex?: number;
@@ -376,6 +377,7 @@ export interface UpdateSelectedGenerationAssetRequest {
 	kind?: Kind;
 	mediaAssetId?: string;
 	mimeType?: string;
+	posterUrl?: string;
 	resourceId?: string;
 	resourceTitle?: string;
 	resourceType?: SelectedGenerationResourceType;

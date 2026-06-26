@@ -253,6 +253,10 @@ func registerWorkspaceRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) 
 	projectRoutes.GET("/workspace/documents", handlers.Workspace.HandleListWorkspaceDocuments)
 	projectRoutes.POST("/workspace/documents", handlers.Workspace.HandleCreateWorkspaceDocument)
 	projectRoutes.GET("/workspace/resources", handlers.Workspace.HandleListWorkspaceDocumentResources)
+	projectRoutes.GET(
+		"/workspace/storyboard-video-resources",
+		handlers.GenerationTasks.HandleStoryboardVideoResources,
+	)
 	projectRoutes.GET("/workspace/sections", handlers.Workspace.HandleListProjectSections)
 	projectRoutes.POST("/workspace/sections/reconcile", handlers.Workspace.HandleReconcileProjectSections)
 	projectRoutes.GET(

@@ -1,18 +1,22 @@
 import { Film } from "lucide-react";
 import type React from "react";
 
-export const GenerationVideoThumbnail: React.FC<{ source: string }> = ({ source }) => (
+export const GenerationVideoThumbnail: React.FC<{ posterSource?: string; source: string }> = ({
+	posterSource,
+	source,
+}) => (
 	<div className="relative size-full">
 		<Film className="absolute left-1/2 top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 text-muted-foreground" />
 		<video
 			src={source}
+			poster={posterSource || undefined}
 			muted
 			playsInline
-			preload="auto"
+			preload={posterSource ? "metadata" : "auto"}
 			aria-hidden="true"
 			className="relative size-full object-cover"
-			onLoadedMetadata={seekVideoPreviewFrame}
-			onCanPlay={seekVideoPreviewFrame}
+			onLoadedMetadata={posterSource ? undefined : seekVideoPreviewFrame}
+			onCanPlay={posterSource ? undefined : seekVideoPreviewFrame}
 		/>
 	</div>
 );

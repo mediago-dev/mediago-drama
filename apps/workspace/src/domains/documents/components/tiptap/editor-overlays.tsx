@@ -1,5 +1,5 @@
 import type React from "react";
-import { AudioLines, Film, Image as ImageIcon, Plus } from "lucide-react";
+import { AudioLines, Image as ImageIcon, Plus } from "lucide-react";
 import type { HoveredBlockRect } from "./types";
 
 export type SectionGenerateKind = "image" | "audio" | "video";
@@ -24,13 +24,6 @@ const sectionGenerateActions: Array<{
 		kind: "audio",
 		label: "生成语音",
 		title: "根据当前标题区域生成语音",
-	},
-	{
-		ariaLabel: "根据当前标题区域生成视频",
-		icon: <Film className="size-3.5" />,
-		kind: "video",
-		label: "生成视频",
-		title: "根据当前标题区域生成视频",
 	},
 ];
 

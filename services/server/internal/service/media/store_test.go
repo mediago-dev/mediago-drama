@@ -559,6 +559,53 @@ func TestSaveBase64VideoStoresDerivedMetadataAndPoster(t *testing.T) {
 	}
 }
 
+func TestSaveBase64VideoMarksMetadataFailedWhenPosterExtractionFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake media tool scripts are POSIX shell scripts")
+	}
+
+	workspaceRoot := t.TempDir()
+	globalDir := filepath.Join(workspaceRoot, "library")
+	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
+	store.SetMediaToolPaths("", fakeFailingPosterToolsDir(t))
+
+	asset, err := store.SaveBase64(
+		MediaKindVideo,
+		"video/mp4",
+		base64.StdEncoding.EncodeToString([]byte("video-bytes")),
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("SaveBase64(video) error = %v", err)
+	}
+
+	if asset.DurationSeconds != 6.25 || asset.Width != 1920 || asset.Height != 1080 {
+		t.Fatalf("metadata = duration %v dimensions %dx%d, want probed values", asset.DurationSeconds, asset.Width, asset.Height)
+	}
+	if asset.MetadataStatus != MetadataStatusFailed {
+		t.Fatalf("MetadataStatus = %q, want %q", asset.MetadataStatus, MetadataStatusFailed)
+	}
+	if asset.PosterURL != "" || asset.PosterPath != "" {
+		t.Fatalf("poster metadata = url %q path %q, want empty after extraction failure", asset.PosterURL, asset.PosterPath)
+	}
+
+	got, ok, err := store.Get(asset.ID)
+	if err != nil {
+		t.Fatalf("Get(video asset) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("Get(video asset) ok = false, want true")
+	}
+	if got.MetadataStatus != MetadataStatusFailed || got.PosterURL != "" {
+		t.Fatalf("persisted status/poster = %q/%q, want failed and no poster", got.MetadataStatus, got.PosterURL)
+	}
+}
+
 func TestListBackfillsHistoricalVideoMetadata(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake media tool scripts are POSIX shell scripts")
@@ -934,6 +981,20 @@ JSON
 	writeExecutableFile(t, filepath.Join(dir, "ffmpeg", "ffmpeg"), `#!/bin/sh
 for last do :; done
 printf poster > "$last"
+`)
+	return dir
+}
+
+func fakeFailingPosterToolsDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeExecutableFile(t, filepath.Join(dir, "ffprobe", "ffprobe"), `#!/bin/sh
+cat <<'JSON'
+{"format":{"duration":"6.250000"},"streams":[{"codec_type":"video","width":1920,"height":1080}]}
+JSON
+`)
+	writeExecutableFile(t, filepath.Join(dir, "ffmpeg", "ffmpeg"), `#!/bin/sh
+exit 1
 `)
 	return dir
 }

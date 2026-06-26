@@ -47,6 +47,7 @@ import {
 	TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
 import {
+	generationAssetPosterSource,
 	generationAssetSelectionKey,
 	generationAssetSource,
 	generationStatusLabel,
@@ -505,7 +506,10 @@ const HistoryImageCard: React.FC<{
 							)}
 						>
 							{isVideo ? (
-								<GenerationVideoThumbnail source={source} />
+								<GenerationVideoThumbnail
+									posterSource={generationAssetPosterSource(record.asset)}
+									source={source}
+								/>
 							) : isAudio ? (
 								<HistoryAudioCardBody asset={record.asset} source={source} />
 							) : (
@@ -987,7 +991,10 @@ const HistoryGenerationItem: React.FC<{
 			>
 				<div className="flex h-16 w-20 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted-foreground/10">
 					{source && thumbnail?.kind === "video" ? (
-						<GenerationVideoThumbnail source={source} />
+						<GenerationVideoThumbnail
+							posterSource={generationAssetPosterSource(thumbnail)}
+							source={source}
+						/>
 					) : source && thumbnail?.kind === "audio" ? (
 						<AudioLines className="size-5 text-muted-foreground" />
 					) : source ? (
@@ -1151,7 +1158,7 @@ const HistoryAssetThumb: React.FC<{
 		}}
 	>
 		{asset.kind === "video" ? (
-			<GenerationVideoThumbnail source={source} />
+			<GenerationVideoThumbnail posterSource={generationAssetPosterSource(asset)} source={source} />
 		) : asset.kind === "audio" ? (
 			<div className="flex size-full flex-col items-center justify-center gap-2 bg-ide-toolbar text-2xs text-muted-foreground">
 				<AudioLines className="size-5" />

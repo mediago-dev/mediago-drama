@@ -1,4 +1,4 @@
-import type { Episode, TimelineTrackType } from "@/domains/episode/lib/sample";
+import type { Episode, TimelineClipStatus, TimelineTrackType } from "@/domains/episode/lib/sample";
 
 export type TimelineZoom = "fit" | "50" | "100" | "150";
 export type TimelineCompanionTrackType = Extract<TimelineTrackType, "voiceover" | "caption">;
@@ -19,6 +19,7 @@ export interface EpisodeState {
 	selectClip: (clipId: string) => void;
 	setCurrentTime: (time: number) => void;
 	setEpisode: (episode: Episode) => void;
+	setVideoClipStatus: (clipId: string, status: TimelineClipStatus) => Episode | null;
 	setVideoClipVideoUrl: (clipId: string, videoUrl: string | null) => Episode | null;
 	setZoom: (zoom: TimelineZoom) => void;
 	togglePlayback: () => void;

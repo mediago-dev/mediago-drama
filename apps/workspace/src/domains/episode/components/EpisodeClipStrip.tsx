@@ -1,4 +1,4 @@
-import { Download, Film, Loader2, Pause, Play, Sparkles } from "lucide-react";
+import { Download, Loader2, Pause, Play, Sparkles } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -11,7 +11,12 @@ import {
 	isEpisodeVideoClipPlayable,
 	type EpisodeClipMediaMetadata,
 } from "@/domains/episode/lib/media-assets";
-import { formatTimelineTime, type Episode, type TimelineClip } from "@/domains/episode/lib/sample";
+import {
+	formatTimelineTime,
+	type Episode,
+	type TimelineClip,
+	type TimelineClipStatus,
+} from "@/domains/episode/lib/sample";
 import type { TimelineZoom } from "@/domains/episode/stores";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/lib/utils";
@@ -231,15 +236,18 @@ const EpisodeClipCard: React.FC<EpisodeClipCardProps> = ({
 	onGenerate,
 }) => {
 	const previewMedia = getClipPreviewMedia(clip, posterUrl);
-	const isGenerating = clip.status === "generating";
-	const durationLabel = duration !== null ? formatTimelineTime(duration) : "待生成";
+	const hasVideo = Boolean(previewMedia.videoUrl);
+	const effectiveStatus = effectiveClipStatus(clip, hasVideo);
+	const statusMeta = clipStatusMeta[effectiveStatus];
+	const isGenerating = effectiveStatus === "generating";
+	const durationLabel = duration !== null ? formatTimelineTime(duration) : "";
 
 	return (
 		<div
 			className={cn(
 				"group relative flex h-[6.25rem] shrink-0 overflow-hidden rounded-lg border bg-muted text-left shadow-sm transition-[border-color,box-shadow,transform] focus-within:border-primary focus-within:shadow-md",
 				isSelected
-					? "border-primary shadow-[0_0_0_2px_var(--accent)]"
+					? "border-2 border-primary shadow-md"
 					: "border-border hover:border-primary/60 hover:shadow-md",
 				isActive && !isSelected && "shadow-md",
 			)}
@@ -274,14 +282,18 @@ const EpisodeClipCard: React.FC<EpisodeClipCardProps> = ({
 				)}
 				<div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/18 to-black/8" />
 			</div>
+			<div
+				className={cn("pointer-events-none absolute inset-x-0 top-0 h-1", statusMeta.railClassName)}
+				data-testid={`clip-strip-card-status-rail-${clip.id}`}
+			/>
 			<span className="pointer-events-none absolute left-2 top-2 grid size-5 place-items-center rounded-full bg-black/75 text-[11px] font-semibold text-white">
 				{index + 1}
 			</span>
 			<Button
 				type="button"
-				variant="secondary"
+				variant="ghost"
 				size="sm"
-				className="absolute right-2 top-2 z-20 h-6 rounded-full border-border/80 bg-popover/95 px-2 text-[11px] font-semibold text-popover-foreground shadow-sm hover:bg-popover"
+				className="absolute right-2 top-2 z-20 h-7 cursor-pointer rounded-md border border-primary/40 bg-primary px-2 text-[11px] font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/80 focus-visible:ring-primary/40"
 				aria-label={`生成 ${clip.title}`}
 				onClick={(event) => {
 					event.stopPropagation();
@@ -295,17 +307,11 @@ const EpisodeClipCard: React.FC<EpisodeClipCardProps> = ({
 				)}
 				<span>生成</span>
 			</Button>
-			<div className="pointer-events-none absolute inset-x-2 bottom-2 min-w-0">
-				<div className="mb-1 flex items-center gap-1">
-					<span className="rounded-sm bg-black/70 px-1.5 py-0.5 text-xs font-medium tabular-nums text-white">
-						{isGenerating ? "生成中" : durationLabel}
-					</span>
-				</div>
-				<div className="flex min-w-0 items-center gap-1.5 text-white">
-					<Film className="size-3.5 shrink-0 opacity-90" />
-					<span className="truncate text-xs font-semibold leading-4 drop-shadow">{clip.title}</span>
-				</div>
-			</div>
+			{durationLabel ? (
+				<span className="pointer-events-none absolute bottom-2 right-2 rounded-sm bg-black/70 px-1.5 py-0.5 text-xs font-medium tabular-nums text-white">
+					{durationLabel}
+				</span>
+			) : null}
 		</div>
 	);
 };
@@ -405,3 +411,29 @@ const getClipPreviewMedia = (clip: TimelineClip, posterUrl?: string) => ({
 });
 
 const stringValue = (value: unknown) => (typeof value === "string" && value.trim() ? value : null);
+
+const effectiveClipStatus = (clip: TimelineClip, hasVideo: boolean): TimelineClipStatus => {
+	if (clip.status === "ready" && !hasVideo) return "draft";
+	if (hasVideo && clip.status !== "generating" && clip.status !== "error") return "ready";
+	return clip.status;
+};
+
+const clipStatusMeta: Record<
+	TimelineClipStatus,
+	{
+		railClassName: string;
+	}
+> = {
+	draft: {
+		railClassName: "bg-warning-foreground",
+	},
+	generating: {
+		railClassName: "bg-info-foreground",
+	},
+	ready: {
+		railClassName: "bg-success-foreground",
+	},
+	error: {
+		railClassName: "bg-error-foreground",
+	},
+};

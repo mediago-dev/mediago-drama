@@ -36,17 +36,18 @@ func (store *MediaAssets) enrichVideoMetadata(asset MediaAsset, updatedAt string
 	asset.DurationSeconds = metadata.DurationSeconds
 	asset.Width = metadata.Width
 	asset.Height = metadata.Height
-	asset.MetadataStatus = MetadataStatusReady
 	asset.MetadataError = ""
 
 	previousPosterPath := strings.TrimSpace(asset.PosterPath)
 	posterPath, err := store.extractVideoPoster(asset, metadata.DurationSeconds)
 	if err != nil {
+		asset.MetadataStatus = MetadataStatusFailed
 		asset.MetadataError = err.Error()
 		return asset
 	}
 	asset.PosterPath = posterPath
 	asset.PosterURL = "/api/v1/media-assets/" + url.PathEscape(asset.ID) + "/poster"
+	asset.MetadataStatus = MetadataStatusReady
 	if previousPosterPath != "" &&
 		!sameMediaAssetPath(previousPosterPath, posterPath) &&
 		!sameMediaAssetPath(previousPosterPath, asset.FilePath) {

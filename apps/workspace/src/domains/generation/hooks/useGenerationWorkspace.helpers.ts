@@ -5,6 +5,7 @@ export {
 	defaultParamValues,
 	fallbackCatalog,
 	generatedAssetsIncludeMediaAssets,
+	generationAssetPosterSource,
 	generationAssetSelectionKey,
 	generationAssetSource,
 	isConfiguredRoute,

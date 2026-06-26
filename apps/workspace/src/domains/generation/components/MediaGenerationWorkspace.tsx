@@ -1743,6 +1743,7 @@ const historyReferencePreviewAssetsFromEntry = (entry: GenerationEntry): MediaAs
 				id: `history-reference:${entry.id}:${generationAssetSelectionKey(asset) ?? source}:${index}`,
 				kind: asset.kind,
 				mimeType: asset.mimeType ?? (asset.kind === "image" ? "image/*" : "video/*"),
+				posterUrl: asset.posterUrl,
 				sizeBytes: 0,
 				sourceUrl: source,
 				updatedAt: entry.updatedAt ?? entry.createdAt ?? inlineReferenceTimestamp,
@@ -1794,6 +1795,7 @@ const mediaAssetSelectionKey = (asset: MediaAsset) =>
 const mediaAssetGenerationAsset = (asset: MediaAsset): GenerationAsset => ({
 	kind: asset.kind,
 	mimeType: asset.mimeType,
+	posterUrl: asset.posterUrl,
 	url: asset.url,
 });
 

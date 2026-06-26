@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,19 @@ import type { ProjectConfig } from "@/domains/projects/api/projects";
 import httpClient from "@/shared/lib/http";
 import type { ApiResponse } from "@/types/api";
 import { ProjectOverview } from "./ProjectOverview";
+
+const dialogMocks = vi.hoisted(() => ({
+	ImageGenerationDialog: vi.fn((_props: Record<string, unknown>) => null),
+	VideoGenerationDialog: vi.fn((_props: Record<string, unknown>) => null),
+}));
+
+vi.mock("@/shared/components/generation-dialogs/VideoGenerationDialog", () => ({
+	VideoGenerationDialog: dialogMocks.VideoGenerationDialog,
+}));
+
+vi.mock("@/shared/components/generation-dialogs/ImageGenerationDialog", () => ({
+	ImageGenerationDialog: dialogMocks.ImageGenerationDialog,
+}));
 
 vi.mock("@/shared/lib/http", () => ({
 	default: {
@@ -83,6 +96,61 @@ describe("ProjectOverview", () => {
 								version: 1,
 								workbenchDraft: null,
 							},
+							{
+								category: "storyboard",
+								comments: [],
+								content: [
+									"# 第一章分镜脚本",
+									"",
+									"<!-- section-id: section_reel_01 -->",
+									"## 第 01 组 总时长：00:08",
+									"",
+									"### 分镜 01",
+									"",
+									"沈阁从黑暗水面坠入湖中。",
+									"",
+									"[章节视频：落水镜头](</api/v1/media-assets/video-1/content>)",
+									"",
+									"<!-- section-id: section_reel_02 -->",
+									"## 第 02 组 总时长：00:06",
+									"",
+									"### 分镜 02",
+									"",
+									"他猛然睁眼。",
+									"",
+									"[章节视频：苏醒镜头](</api/v1/media-assets/video-2/content>)",
+								].join("\n"),
+								id: "storyboard-a",
+								isDirty: false,
+								parentId: null,
+								sortOrder: 1,
+								title: "第一章分镜脚本",
+								updatedAt: "2026-06-19T02:08:41.000Z",
+								version: 1,
+								workbenchDraft: null,
+							},
+							{
+								category: "storyboard",
+								comments: [],
+								content: [
+									"# 第二章分镜脚本",
+									"",
+									"<!-- section-id: section_reel_b_01 -->",
+									"## 第 01 组 总时长：00:05",
+									"",
+									"### 分镜 01",
+									"",
+									"门外传来脚步声。",
+								].join("\n"),
+								id: "storyboard-b",
+								isDirty: false,
+								parentId: null,
+								sortOrder: 2,
+								title: "第二章分镜脚本",
+								updatedAt: "2026-06-19T02:08:41.000Z",
+								version: 1,
+								workbenchDraft: null,
+							},
 						],
 						folders: [],
 						projectId: "project-a",
@@ -121,6 +189,90 @@ describe("ProjectOverview", () => {
 								title: "林书彤",
 								type: "character",
 							},
+							{
+								blockId: "section_xulele",
+								canGenerate: true,
+								documentId: "characters",
+								documentTitle: "角色设定",
+								headingLevel: 2,
+								headingOccurrence: 2,
+								id: "character:characters:section_xulele",
+								markdown: "## 徐乐乐\n\n温和的同学。",
+								plainText: "徐乐乐\n\n温和的同学。",
+								prompt: "## 徐乐乐\n\n温和的同学。",
+								sectionId: "section_xulele",
+								selectedImages: [],
+								sourceCategory: "character",
+								summary: "温和的同学。",
+								title: "徐乐乐",
+								type: "character",
+							},
+							{
+								blockId: "shot_01",
+								canGenerate: true,
+								documentId: "storyboard-a",
+								documentTitle: "第一章分镜脚本",
+								headingLevel: 3,
+								headingOccurrence: 1,
+								id: "storyboard:storyboard-a:shot_01",
+								markdown: [
+									"### 分镜 01",
+									"",
+									"沈阁从黑暗水面坠入湖中。",
+									"",
+									"[章节视频：落水镜头](</api/v1/media-assets/video-1/content>)",
+								].join("\n"),
+								plainText: "分镜 01\n\n沈阁从黑暗水面坠入湖中。",
+								prompt: "## 分镜 01\n\n沈阁从黑暗水面坠入湖中。",
+								sectionId: "shot_01",
+								selectedImages: [],
+								sourceCategory: "storyboard",
+								summary: "沈阁从黑暗水面坠入湖中。",
+								title: "分镜 01",
+								type: "storyboard",
+							},
+							{
+								blockId: "shot_02",
+								canGenerate: true,
+								documentId: "storyboard-a",
+								documentTitle: "第一章分镜脚本",
+								headingLevel: 3,
+								headingOccurrence: 2,
+								id: "storyboard:storyboard-a:shot_02",
+								markdown: [
+									"### 分镜 02",
+									"",
+									"他猛然睁眼。",
+									"",
+									"[章节视频：苏醒镜头](</api/v1/media-assets/video-2/content>)",
+								].join("\n"),
+								plainText: "分镜 02\n\n他猛然睁眼。",
+								prompt: "## 分镜 02\n\n他猛然睁眼。",
+								sectionId: "shot_02",
+								selectedImages: [],
+								sourceCategory: "storyboard",
+								summary: "他猛然睁眼。",
+								title: "分镜 02",
+								type: "storyboard",
+							},
+							{
+								blockId: "shot_01",
+								canGenerate: true,
+								documentId: "storyboard-b",
+								documentTitle: "第二章分镜脚本",
+								headingLevel: 3,
+								headingOccurrence: 1,
+								id: "storyboard:storyboard-b:shot_01",
+								markdown: "### 分镜 01\n\n门外传来脚步声。",
+								plainText: "分镜 01\n\n门外传来脚步声。",
+								prompt: "### 分镜 01\n\n门外传来脚步声。",
+								sectionId: "shot_01",
+								selectedImages: [],
+								sourceCategory: "storyboard",
+								summary: "门外传来脚步声。",
+								title: "分镜 01",
+								type: "storyboard",
+							},
 						],
 					});
 				case "/projects/project-a/generation/selected-assets":
@@ -140,6 +292,115 @@ describe("ProjectOverview", () => {
 								url: "/api/v1/media-assets/character-a/content",
 							},
 						],
+					});
+				case "/projects/project-a/workspace/storyboard-video-resources":
+					return apiResponse({
+						groups: [
+							{
+								documentId: "storyboard-a",
+								documentTitle: "第一章分镜脚本",
+								reels: [
+									{
+										blockId: "section_reel_01",
+										canGenerate: true,
+										headingLevel: 2,
+										headingOccurrence: 1,
+										id: "storyboard-a:section_reel_01",
+										markdown: [
+											"## 第 01 组 总时长：00:08",
+											"",
+											"### 分镜 01",
+											"",
+											"沈阁从黑暗水面坠入湖中。",
+											"",
+											"[章节视频：落水镜头](</api/v1/media-assets/video-1/content>)",
+										].join("\n"),
+										plainText: "第 01 组 总时长：00:08\n\n分镜 01\n\n沈阁从黑暗水面坠入湖中。",
+										prompt: "## 第 01 组 总时长：00:08\n\n### 分镜 01\n\n沈阁从黑暗水面坠入湖中。",
+										sectionId: "section_reel_01",
+										title: "第 01 组 总时长：00:08",
+										videos: [
+											{
+												id: "markdown:section_reel_01:/api/v1/media-assets/video-1/content",
+												mimeType: "video/mp4",
+												posterUrl: "/api/v1/media-assets/video-1/poster",
+												sectionTitle: "第 01 组 总时长：00:08",
+												sourceLabel: "文档成片",
+												src: "/api/v1/media-assets/video-1/content",
+												title: "落水镜头",
+											},
+										],
+									},
+									{
+										blockId: "section_reel_02",
+										canGenerate: true,
+										headingLevel: 2,
+										headingOccurrence: 1,
+										id: "storyboard-a:section_reel_02",
+										markdown: [
+											"## 第 02 组 总时长：00:06",
+											"",
+											"### 分镜 02",
+											"",
+											"他猛然睁眼。",
+											"",
+											"[章节视频：苏醒镜头](</api/v1/media-assets/video-2/content>)",
+										].join("\n"),
+										plainText: "第 02 组 总时长：00:06\n\n分镜 02\n\n他猛然睁眼。",
+										prompt: "## 第 02 组 总时长：00:06\n\n### 分镜 02\n\n他猛然睁眼。",
+										sectionId: "section_reel_02",
+										title: "第 02 组 总时长：00:06",
+										videos: [
+											{
+												id: "markdown:section_reel_02:/api/v1/media-assets/video-2/content",
+												mimeType: "video/mp4",
+												posterUrl: "/api/v1/media-assets/video-2/poster",
+												sectionTitle: "第 02 组 总时长：00:06",
+												sourceLabel: "文档成片",
+												src: "/api/v1/media-assets/video-2/content",
+												title: "苏醒镜头",
+											},
+										],
+									},
+								],
+							},
+							{
+								documentId: "storyboard-b",
+								documentTitle: "第二章分镜脚本",
+								reels: [
+									{
+										blockId: "section_reel_b_01",
+										canGenerate: true,
+										headingLevel: 2,
+										headingOccurrence: 1,
+										id: "storyboard-b:section_reel_b_01",
+										markdown: [
+											"## 第 01 组 总时长：00:05",
+											"",
+											"### 分镜 01",
+											"",
+											"门外传来脚步声。",
+										].join("\n"),
+										plainText: "第 01 组 总时长：00:05\n\n分镜 01\n\n门外传来脚步声。",
+										prompt: "## 第 01 组 总时长：00:05\n\n### 分镜 01\n\n门外传来脚步声。",
+										sectionId: "section_reel_b_01",
+										title: "第 01 组 总时长：00:05",
+										videos: [
+											{
+												id: "task:task-video-b:0",
+												mimeType: "video/mp4",
+												posterUrl: "/api/v1/media-assets/video-3/poster",
+												sectionTitle: "第 01 组 总时长：00:05",
+												sourceLabel: "生成历史",
+												src: "/api/v1/media-assets/video-3/content",
+												title: "门外脚步成片",
+											},
+										],
+									},
+								],
+							},
+						],
+						projectId: "project-a",
 					});
 				default:
 					throw new Error(`Unexpected GET ${url}`);
@@ -161,7 +422,7 @@ describe("ProjectOverview", () => {
 			</SWRConfig>,
 		);
 
-		await screen.findByText("文档 1 项 · 图片 1 张");
+		await screen.findByText("文档 2 项 · 图片 1 张");
 		expect(screen.queryByText("已选生成资源")).not.toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "角色 已选生成资源" })).not.toBeInTheDocument();
 	});
@@ -175,19 +436,222 @@ describe("ProjectOverview", () => {
 			</SWRConfig>,
 		);
 
-		await screen.findByText("文档 1 项 · 图片 1 张");
+		await screen.findByText("文档 2 项 · 图片 1 张");
 		fireEvent.click(screen.getByRole("button", { name: "角色 文档资源" }));
 
 		const dialog = await screen.findByRole("dialog");
 		expect(within(dialog).getByText("角色 · 文档资源")).toBeInTheDocument();
 		expect(within(dialog).getByText("林书彤")).toBeInTheDocument();
-		expect(within(dialog).getByText("section_lintong")).toBeInTheDocument();
+		expect(within(dialog).getByText("徐乐乐")).toBeInTheDocument();
+		expect(within(dialog).queryByText("section_lintong")).not.toBeInTheDocument();
+		expect(within(dialog).queryByText("section_xulele")).not.toBeInTheDocument();
 		expect(within(dialog).getByRole("img", { name: "主角 底层青年 / 低阶散修" })).toHaveAttribute(
 			"src",
 			"/api/v1/media-assets/character-a/content",
 		);
 		expect(within(dialog).getAllByText("已选择 1 张")).toHaveLength(2);
-		expect(within(dialog).getByRole("button", { name: /生成图片/ })).toBeEnabled();
+		expect(within(dialog).getByText("已选择 0 张")).toBeInTheDocument();
+		expect(within(dialog).getByText("暂无已选图片")).toBeInTheDocument();
+		expect(within(dialog).queryByText("来源：角色设定")).not.toBeInTheDocument();
+		expect(within(dialog).queryByText("冷静的调查记者。")).not.toBeInTheDocument();
+		expect(within(dialog).queryByText("H2")).not.toBeInTheDocument();
+		for (const button of within(dialog).getAllByRole("button", { name: "生成图片" })) {
+			expect(button).toBeEnabled();
+		}
+	});
+
+	it("selects document-derived resources for batch image generation", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+					<ProjectOverview />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		await screen.findByText("文档 2 项 · 图片 1 张");
+		fireEvent.click(screen.getByRole("button", { name: "角色 文档资源" }));
+
+		const dialog = await screen.findByRole("dialog");
+		expect(within(dialog).getByRole("button", { name: "批量生成图片（0）" })).toBeDisabled();
+		expect(
+			within(dialog).getByRole("checkbox", { name: "选择 林书彤" }).getAttribute("aria-checked"),
+		).toBe("false");
+
+		fireEvent.click(within(dialog).getByRole("button", { name: "全选" }));
+
+		expect(
+			within(dialog)
+				.getByRole("checkbox", { name: "取消选择 林书彤" })
+				.getAttribute("aria-checked"),
+		).toBe("true");
+		expect(
+			within(dialog)
+				.getByRole("checkbox", { name: "取消选择 徐乐乐" })
+				.getAttribute("aria-checked"),
+		).toBe("true");
+
+		fireEvent.click(within(dialog).getByRole("button", { name: "批量生成图片（2）" }));
+
+		await waitFor(() => {
+			const props = dialogMocks.ImageGenerationDialog.mock.calls.at(-1)?.[0];
+			expect(props).toMatchObject({
+				open: true,
+				projectId: "project-a",
+				section: expect.objectContaining({
+					blockId: "section_lintong",
+					documentId: "characters",
+					headingText: "林书彤",
+				}),
+			});
+		});
+
+		const firstProps = dialogMocks.ImageGenerationDialog.mock.calls.at(-1)?.[0] as {
+			onOpenChange: (open: boolean) => void;
+		};
+		firstProps.onOpenChange(false);
+
+		await waitFor(() => {
+			const props = dialogMocks.ImageGenerationDialog.mock.calls.at(-1)?.[0];
+			expect(props).toMatchObject({
+				open: true,
+				section: expect.objectContaining({
+					blockId: "section_xulele",
+					documentId: "characters",
+					headingText: "徐乐乐",
+				}),
+			});
+		});
+	});
+
+	it("opens storyboard video resources for the selected storyboard document", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+					<ProjectOverview />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		await screen.findByRole("button", { name: "第一章分镜脚本 成片资源" });
+		expect(screen.getByText("分镜组 2 项 · 成片 2 个")).toBeInTheDocument();
+		expect(await screen.findByText("分镜组 1 项 · 成片 1 个")).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 成片资源" }));
+
+		const dialog = await screen.findByRole("dialog");
+		expect(within(dialog).getByText("成片资源 · 第一章分镜脚本")).toBeInTheDocument();
+		expect(within(dialog).getByText("第 01 组 总时长：00:08")).toBeInTheDocument();
+		expect(within(dialog).getByText("第 02 组 总时长：00:06")).toBeInTheDocument();
+		expect(within(dialog).queryByText("分镜 01")).not.toBeInTheDocument();
+		expect(within(dialog).getByText("落水镜头")).toBeInTheDocument();
+		expect(within(dialog).getByText("苏醒镜头")).toBeInTheDocument();
+		expect(within(dialog).queryByText("门外脚步成片")).not.toBeInTheDocument();
+		expect(within(dialog).getAllByRole("button", { name: "生成视频" })).toHaveLength(2);
+
+		expect(within(dialog).getByRole("img", { name: "落水镜头" })).toHaveAttribute(
+			"src",
+			"/api/v1/media-assets/video-1/poster",
+		);
+		expect(within(dialog).getByRole("img", { name: "苏醒镜头" })).toHaveAttribute(
+			"src",
+			"/api/v1/media-assets/video-2/poster",
+		);
+		expect(within(dialog).queryByText("已有成片")).not.toBeInTheDocument();
+		expect(within(dialog).queryByTestId("overview-video-player")).not.toBeInTheDocument();
+
+		fireEvent.click(within(dialog).getAllByRole("button", { name: "生成视频" })[0]);
+		await waitFor(() => {
+			const props = dialogMocks.VideoGenerationDialog.mock.calls.at(-1)?.[0];
+			expect(props).toMatchObject({
+				open: true,
+				projectId: "project-a",
+				section: expect.objectContaining({
+					blockId: "section_reel_01",
+					documentId: "storyboard-a",
+					headingLevel: 2,
+					headingOccurrence: 1,
+					headingText: "第 01 组 总时长：00:08",
+					markdown: expect.stringContaining("### 分镜 01"),
+				}),
+				selectedAssetKeys: ["video:/api/v1/media-assets/video-1/content"],
+			});
+		});
+
+		fireEvent.keyDown(document, { key: "Escape" });
+		await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+		fireEvent.click(screen.getByRole("button", { name: "第二章分镜脚本 成片资源" }));
+
+		const secondDialog = await screen.findByRole("dialog");
+		expect(within(secondDialog).getByText("成片资源 · 第二章分镜脚本")).toBeInTheDocument();
+		expect(within(secondDialog).getByText("第 01 组 总时长：00:05")).toBeInTheDocument();
+		expect(within(secondDialog).getByText("门外脚步成片")).toBeInTheDocument();
+
+		expect(within(secondDialog).getByRole("img", { name: "门外脚步成片" })).toHaveAttribute(
+			"src",
+			"/api/v1/media-assets/video-3/poster",
+		);
+		expect(within(secondDialog).queryByText("已有成片")).not.toBeInTheDocument();
+		expect(within(secondDialog).queryByTestId("overview-video-player")).not.toBeInTheDocument();
+	});
+
+	it("selects storyboard video reels for batch video generation", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+					<ProjectOverview />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		await screen.findByRole("button", { name: "第一章分镜脚本 成片资源" });
+		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 成片资源" }));
+
+		const dialog = await screen.findByRole("dialog");
+		expect(within(dialog).getByRole("button", { name: "批量生成视频（0）" })).toBeDisabled();
+
+		fireEvent.click(within(dialog).getByRole("button", { name: "全选" }));
+		expect(
+			within(dialog)
+				.getByRole("checkbox", { name: "取消选择 第 01 组 总时长：00:08" })
+				.getAttribute("aria-checked"),
+		).toBe("true");
+		expect(
+			within(dialog)
+				.getByRole("checkbox", { name: "取消选择 第 02 组 总时长：00:06" })
+				.getAttribute("aria-checked"),
+		).toBe("true");
+
+		fireEvent.click(within(dialog).getByRole("button", { name: "批量生成视频（2）" }));
+
+		await waitFor(() => {
+			const props = dialogMocks.VideoGenerationDialog.mock.calls.at(-1)?.[0];
+			expect(props).toMatchObject({
+				open: true,
+				projectId: "project-a",
+				section: expect.objectContaining({
+					blockId: "section_reel_01",
+					documentId: "storyboard-a",
+					headingText: "第 01 组 总时长：00:08",
+				}),
+			});
+		});
+
+		const firstProps = dialogMocks.VideoGenerationDialog.mock.calls.at(-1)?.[0] as {
+			onOpenChange: (open: boolean) => void;
+		};
+		firstProps.onOpenChange(false);
+
+		await waitFor(() => {
+			const props = dialogMocks.VideoGenerationDialog.mock.calls.at(-1)?.[0];
+			expect(props).toMatchObject({
+				open: true,
+				section: expect.objectContaining({
+					blockId: "section_reel_02",
+					documentId: "storyboard-a",
+					headingText: "第 02 组 总时长：00:06",
+				}),
+			});
+		});
 	});
 });
 

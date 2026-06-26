@@ -155,6 +155,51 @@ func TestGenerationTaskServiceDefaultDBPathUsesWorkspaceAppDB(t *testing.T) {
 	}
 }
 
+func TestGenerationTaskServiceHydratesVideoPosterURL(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	taskID := "task-video-poster"
+	assetID := "video-with-poster"
+	posterURL := "/api/v1/media-assets/video-with-poster/poster"
+	seedGenerationTaskAsset(t, dbPath, assetID, "video", "")
+
+	db, err := repository.OpenWorkspaceDB(dbPath)
+	if err != nil {
+		t.Fatalf("OpenWorkspaceDB() error = %v", err)
+	}
+	if err := db.Model(&domain.AssetModel{}).
+		Where("id = ?", assetID).
+		Updates(map[string]any{
+			"poster_rel_path": "library/2026-06-01/video-with-poster.poster.jpg",
+			"poster_url":      posterURL,
+		}).Error; err != nil {
+		t.Fatalf("updating asset poster fixture: %v", err)
+	}
+
+	service := NewGenerationTaskService(dbPath, nil)
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:     taskID,
+		Kind:   "video",
+		Status: "completed",
+		Prompt: "cinematic city shot",
+		Assets: []GenerationAsset{
+			{Kind: "video", URL: "/api/v1/media-assets/video-with-poster/content"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting task: %v", err)
+	}
+
+	task, ok, err := service.Get(taskID)
+	if err != nil {
+		t.Fatalf("getting task: %v", err)
+	}
+	if !ok {
+		t.Fatal("task was not persisted")
+	}
+	if len(task.Assets) != 1 || task.Assets[0].PosterURL != posterURL {
+		t.Fatalf("task assets = %#v, want hydrated poster URL %q", task.Assets, posterURL)
+	}
+}
+
 func TestGenerationTaskServiceDeleteAssetIncludesAttemptsWithoutDeadlock(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	taskID := "task-delete-asset"

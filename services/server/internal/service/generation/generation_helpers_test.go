@@ -1,6 +1,10 @@
 package generation
 
-import "testing"
+import (
+	"testing"
+
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+)
 
 func TestGenerationProjectIDFromScopeID(t *testing.T) {
 	tests := []struct {
@@ -30,5 +34,25 @@ func TestGenerationProjectIDForRequestPrefersExplicitProjectID(t *testing.T) {
 	}
 	if got := GenerationProjectIDForRequest("", "project-beta"); got != "beta" {
 		t.Fatalf("GenerationProjectIDForRequest() fallback = %q, want beta", got)
+	}
+}
+
+func TestGenerationResponseFromCoreIncludesVideoPosterURL(t *testing.T) {
+	response := GenerationResponseFromCore(coregeneration.Response{
+		ID:     "generation-video-poster",
+		Status: "completed",
+		Assets: []coregeneration.Asset{
+			{
+				Kind: coregeneration.KindVideo,
+				URL:  "/api/v1/media-assets/video-with-poster/content",
+				Metadata: map[string]any{
+					"poster_url": "/api/v1/media-assets/video-with-poster/poster",
+				},
+			},
+		},
+	}, string(coregeneration.KindVideo))
+
+	if len(response.Assets) != 1 || response.Assets[0].PosterURL != "/api/v1/media-assets/video-with-poster/poster" {
+		t.Fatalf("assets = %#v, want poster URL from metadata", response.Assets)
 	}
 }

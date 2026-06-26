@@ -31,6 +31,7 @@ type GenerationTaskService interface {
 	ListGenerationConversations(scopeID string, kind string) (dto.GenerationConversationsResponse, error)
 	ListGenerationTasks(query service.GenerationTaskListQuery) (dto.GenerationTasksResponse, error)
 	ListSelectedGenerationAssets(projectID string) (dto.SelectedGenerationAssetsResponse, error)
+	ListStoryboardVideoResources(projectID string) (dto.StoryboardVideoResourcesResponse, error)
 	UpdateSelectedGenerationAsset(projectID string, payload dto.UpdateSelectedGenerationAssetRequest) (dto.UpdateSelectedGenerationAssetResponse, int, error)
 	DeleteSelectedGenerationAsset(projectID string, id string) (bool, error)
 	GetGenerationTask(id string) (dto.GenerationTaskRecord, bool, error)
@@ -446,6 +447,31 @@ func (handler GenerationTasks) HandleSelectedGenerationAssets(context *gin.Conte
 	}
 
 	httpresponse.OK(context, assets)
+}
+
+// HandleStoryboardVideoResources godoc
+// @Summary 获取项目分镜组成片资源
+// @Description 按分镜文档和分镜组汇总当前项目中的视频成片资源。
+// @Tags Workspace
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/storyboard-video-resources [get]
+func (handler GenerationTasks) HandleStoryboardVideoResources(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+
+	resources, err := handler.service.ListStoryboardVideoResources(projectID)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+
+	httpresponse.OK(context, resources)
 }
 
 // HandleUpdateSelectedGenerationAsset godoc

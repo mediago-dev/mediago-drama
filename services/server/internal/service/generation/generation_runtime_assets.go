@@ -159,6 +159,12 @@ func (workflow *GenerationService) cacheGenerationResponseAssetsWithOptions(
 		response.Assets[index].URL = cached.URL
 		response.Assets[index].Base64 = ""
 		response.Assets[index].MIMEType = cached.MIMEType
+		if cached.PosterURL != "" {
+			if response.Assets[index].Metadata == nil {
+				response.Assets[index].Metadata = map[string]any{}
+			}
+			response.Assets[index].Metadata["poster_url"] = cached.PosterURL
+		}
 	}
 	if len(warnings) > 0 {
 		if response.Metadata == nil {

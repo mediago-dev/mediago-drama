@@ -30,5 +30,16 @@ describe("episode store actions", () => {
 		expect(clip?.videoUrl).toBeUndefined();
 		expect(clip?.posterUrl).toBeUndefined();
 		expect(clip?.thumbnailUrl).toBeUndefined();
+		expect(clip?.status).toBe("draft");
+	});
+
+	it("updates video clip generation status without touching media", () => {
+		const nextEpisode = useEpisodeStore
+			.getState()
+			.setVideoClipStatus("clip-cold-open", "generating");
+
+		const clip = nextEpisode ? findEpisodeVideoClip(nextEpisode, "clip-cold-open") : null;
+
+		expect(clip?.status).toBe("generating");
 	});
 });

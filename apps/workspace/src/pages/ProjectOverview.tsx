@@ -1,4 +1,4 @@
-import { FileText, Loader2, Palette, ReceiptText, Wand2 } from "lucide-react";
+import { Check, FileText, Film, Loader2, Palette, ReceiptText, Wand2 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
@@ -30,9 +30,13 @@ import { getProjectConfig, projectConfigKey } from "@/domains/projects/api/proje
 import {
 	getWorkspaceDocumentResources,
 	getWorkspaceDocuments,
+	getWorkspaceStoryboardVideoResources,
 	workspaceDocumentResourcesKey,
 	workspaceDocumentsKey,
+	workspaceStoryboardVideoResourcesKey,
 	type WorkspaceDocumentResource,
+	type WorkspaceStoryboardVideoDocumentGroup,
+	type WorkspaceStoryboardVideoReel,
 } from "@/domains/workspace/api/workspace";
 import { ProjectWorkspaceShell } from "@/domains/workspace/components/ProjectWorkspaceShell";
 import { getRouteProjectId, type AgentResourceType } from "@/domains/workspace/lib/workbench-route";
@@ -40,7 +44,9 @@ import { useProjectStore } from "@/domains/projects/stores";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
+import { VideoGenerationDialog } from "@/shared/components/generation-dialogs/VideoGenerationDialog";
 import { apiResourceURL } from "@/shared/lib/api-base";
+import { cn } from "@/shared/lib/utils";
 
 const numberFormatter = new Intl.NumberFormat("zh-CN");
 const moneyFormatter = new Intl.NumberFormat("zh-CN", {
@@ -57,10 +63,16 @@ export const ProjectOverview: React.FC = () => {
 		useState<AgentResourceType | null>(null);
 	const [imageGenerationSection, setImageGenerationSection] =
 		useState<MarkdownSectionContext | null>(null);
+	const [videoGenerationSection, setVideoGenerationSection] =
+		useState<MarkdownSectionContext | null>(null);
+	const [imageGenerationQueue, setImageGenerationQueue] = useState<MarkdownSectionContext[]>([]);
+	const [videoGenerationQueue, setVideoGenerationQueue] = useState<MarkdownSectionContext[]>([]);
+	const [storyboardVideoDocumentId, setStoryboardVideoDocumentId] = useState<string | null>(null);
 	const storeDocuments = useDocumentsStore((state) => state.documents);
 	const documentsProjectId = useDocumentsStore((state) => state.projectId);
 	const hydrateWorkspaceDocuments = useDocumentsStore((state) => state.hydrateWorkspaceDocuments);
 	const toggleStoredSectionImage = useDocumentsStore((state) => state.toggleSectionImage);
+	const toggleStoredSectionMedia = useDocumentsStore((state) => state.toggleSectionMedia);
 	const usageParams = useMemo(
 		() => (projectId ? { groupBy: "capability", projectId } : null),
 		[projectId],
@@ -82,6 +94,13 @@ export const ProjectOverview: React.FC = () => {
 	const { data: selectedResources } = useSWR(
 		projectId ? selectedGenerationAssetsQueryKey(projectId) : null,
 		() => getSelectedGenerationAssets(projectId ?? ""),
+	);
+	const {
+		data: storyboardVideoResources,
+		error: storyboardVideoResourcesError,
+		isLoading: isStoryboardVideoResourcesLoading,
+	} = useSWR(projectId ? workspaceStoryboardVideoResourcesKey(projectId) : null, () =>
+		getWorkspaceStoryboardVideoResources(projectId ?? ""),
 	);
 	const { data: workspaceDocuments } = useSWR(
 		projectId ? workspaceDocumentsKey(projectId) : null,
@@ -106,6 +125,10 @@ export const ProjectOverview: React.FC = () => {
 	useEffect(() => {
 		setDocumentResourceDialogType(null);
 		setImageGenerationSection(null);
+		setVideoGenerationSection(null);
+		setImageGenerationQueue([]);
+		setVideoGenerationQueue([]);
+		setStoryboardVideoDocumentId(null);
 	}, [projectId]);
 
 	const documents = useMemo(
@@ -114,6 +137,12 @@ export const ProjectOverview: React.FC = () => {
 		[documentsProjectId, projectId, storeDocuments, workspaceDocuments?.documents],
 	);
 	const documentResources = workspaceDocumentResources?.resources ?? [];
+	const storyboardVideoGroups = storyboardVideoResources?.groups ?? [];
+	const activeStoryboardVideoGroup = useMemo(
+		() =>
+			storyboardVideoGroups.find((group) => group.documentId === storyboardVideoDocumentId) ?? null,
+		[storyboardVideoDocumentId, storyboardVideoGroups],
+	);
 
 	const createdAtLabel = useMemo(() => {
 		if (!config?.createdAt) return "";
@@ -126,13 +155,61 @@ export const ProjectOverview: React.FC = () => {
 		setDocumentResourceDialogType(resourceType);
 	}, []);
 	const openImageGeneration = useCallback((resource: WorkspaceDocumentResource) => {
+		setImageGenerationQueue([]);
 		setImageGenerationSection(documentResourceToSectionContext(resource));
 	}, []);
-	const closeImageGeneration = useCallback((open: boolean) => {
-		if (!open) setImageGenerationSection(null);
+	const openImageGenerationBatch = useCallback((resources: WorkspaceDocumentResource[]) => {
+		const sections = resources.map(documentResourceToSectionContext);
+		const [firstSection, ...remainingSections] = sections;
+		if (!firstSection) return;
+
+		setImageGenerationQueue(remainingSections);
+		setImageGenerationSection(firstSection);
 	}, []);
+	const closeImageGeneration = useCallback(
+		(open: boolean) => {
+			if (open) return;
+
+			const [nextSection, ...remainingSections] = imageGenerationQueue;
+			setImageGenerationQueue(remainingSections);
+			setImageGenerationSection(nextSection ?? null);
+		},
+		[imageGenerationQueue],
+	);
+	const openStoryboardVideoGeneration = useCallback(
+		(group: WorkspaceStoryboardVideoDocumentGroup, reel: WorkspaceStoryboardVideoReel) => {
+			setVideoGenerationQueue([]);
+			setVideoGenerationSection(storyboardReelToSectionContext(group, reel));
+		},
+		[],
+	);
+	const openStoryboardVideoGenerationBatch = useCallback(
+		(group: WorkspaceStoryboardVideoDocumentGroup, reels: WorkspaceStoryboardVideoReel[]) => {
+			const sections = reels.map((reel) => storyboardReelToSectionContext(group, reel));
+			const [firstSection, ...remainingSections] = sections;
+			if (!firstSection) return;
+
+			setVideoGenerationQueue(remainingSections);
+			setVideoGenerationSection(firstSection);
+		},
+		[],
+	);
+	const closeVideoGeneration = useCallback(
+		(open: boolean) => {
+			if (open) return;
+
+			const [nextSection, ...remainingSections] = videoGenerationQueue;
+			setVideoGenerationQueue(remainingSections);
+			setVideoGenerationSection(nextSection ?? null);
+		},
+		[videoGenerationQueue],
+	);
 	const selectedImageAssetKeys = useCallback(
 		(section: MarkdownSectionContext) => sectionAssetKeysFromDocuments(documents, section, "image"),
+		[documents],
+	);
+	const selectedVideoAssetKeys = useCallback(
+		(section: MarkdownSectionContext) => sectionAssetKeysFromDocuments(documents, section, "video"),
 		[documents],
 	);
 	const toggleSectionImage = useCallback(
@@ -150,6 +227,25 @@ export const ProjectOverview: React.FC = () => {
 			);
 		},
 		[toggleStoredSectionImage],
+	);
+	const toggleSectionVideo = useCallback(
+		(asset: GenerationAsset, selected: boolean) => {
+			if (!videoGenerationSection || asset.kind !== "video") return;
+
+			const source = generationAssetSource(asset);
+			if (!source || !generationAssetSelectionKey(asset)) return;
+
+			toggleStoredSectionMedia(
+				videoGenerationSection,
+				{
+					kind: "video",
+					src: source,
+					title: videoGenerationSection.headingText,
+				},
+				selected,
+			);
+		},
+		[toggleStoredSectionMedia, videoGenerationSection],
 	);
 	const ignoreSectionGeneration = useCallback(() => undefined, []);
 
@@ -205,6 +301,23 @@ export const ProjectOverview: React.FC = () => {
 									resources={documentResources}
 									onOpen={openDocumentResourceType}
 								/>
+								<StoryboardVideoResourcesSummary
+									error={storyboardVideoResourcesError}
+									groups={storyboardVideoGroups}
+									isLoading={isStoryboardVideoResourcesLoading}
+									onOpen={setStoryboardVideoDocumentId}
+								/>
+								<StoryboardVideoResourcesDialog
+									error={storyboardVideoResourcesError}
+									group={activeStoryboardVideoGroup}
+									isLoading={isStoryboardVideoResourcesLoading}
+									open={Boolean(activeStoryboardVideoGroup)}
+									onBatchGenerate={openStoryboardVideoGenerationBatch}
+									onGenerate={openStoryboardVideoGeneration}
+									onOpenChange={(open) => {
+										if (!open) setStoryboardVideoDocumentId(null);
+									}}
+								/>
 								<DocumentResourcesDialog
 									assets={selectedResources?.assets ?? []}
 									error={documentResourcesError}
@@ -212,6 +325,7 @@ export const ProjectOverview: React.FC = () => {
 									open={Boolean(documentResourceDialogType)}
 									resourceType={documentResourceDialogType}
 									resources={documentResources}
+									onBatchGenerate={openImageGenerationBatch}
 									onGenerate={openImageGeneration}
 									onOpenChange={(open) => {
 										if (!open) setDocumentResourceDialogType(null);
@@ -229,6 +343,18 @@ export const ProjectOverview: React.FC = () => {
 									onOpenReferenceGeneration={setImageGenerationSection}
 									onToggleImage={toggleSectionImage}
 								/>
+								<VideoGenerationDialog
+									open={Boolean(videoGenerationSection)}
+									projectId={projectId}
+									resolveLatestSection={false}
+									section={videoGenerationSection}
+									selectedAssetKeys={
+										videoGenerationSection ? selectedVideoAssetKeys(videoGenerationSection) : []
+									}
+									onOpenChange={closeVideoGeneration}
+									onOpenReferenceGeneration={setImageGenerationSection}
+									onToggleAsset={toggleSectionVideo}
+								/>
 							</section>
 						) : null}
 					</main>
@@ -245,14 +371,70 @@ const DocumentResourcesDialog: React.FC<{
 	open: boolean;
 	resourceType: AgentResourceType | null;
 	resources: WorkspaceDocumentResource[];
+	onBatchGenerate: (resources: WorkspaceDocumentResource[]) => void;
 	onGenerate: (resource: WorkspaceDocumentResource) => void;
 	onOpenChange: (open: boolean) => void;
-}> = ({ assets, error, isLoading, open, resourceType, resources, onGenerate, onOpenChange }) => {
+}> = ({
+	assets,
+	error,
+	isLoading,
+	open,
+	resourceType,
+	resources,
+	onBatchGenerate,
+	onGenerate,
+	onOpenChange,
+}) => {
 	const descriptor = resourceType ? selectedGenerationResourceDescriptorMap[resourceType] : null;
 	const filteredResources = useMemo(
 		() => (resourceType ? resources.filter((resource) => resource.type === resourceType) : []),
 		[resources, resourceType],
 	);
+	const selectableResources = useMemo(
+		() => filteredResources.filter((resource) => resource.canGenerate),
+		[filteredResources],
+	);
+	const selectableResourceIds = useMemo(
+		() => selectableResources.map((resource) => resource.id),
+		[selectableResources],
+	);
+	const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([]);
+	const selectedResourceIdSet = useMemo(() => new Set(selectedResourceIds), [selectedResourceIds]);
+	const selectedResources = useMemo(
+		() =>
+			filteredResources.filter(
+				(resource) => resource.canGenerate && selectedResourceIdSet.has(resource.id),
+			),
+		[filteredResources, selectedResourceIdSet],
+	);
+	const allSelectableResourcesSelected =
+		selectableResources.length > 0 && selectedResources.length === selectableResources.length;
+
+	useEffect(() => {
+		setSelectedResourceIds([]);
+	}, [open, resourceType]);
+
+	useEffect(() => {
+		const selectableIdSet = new Set(selectableResourceIds);
+		setSelectedResourceIds((current) => current.filter((id) => selectableIdSet.has(id)));
+	}, [selectableResourceIds]);
+
+	const selectAllResources = useCallback(() => {
+		setSelectedResourceIds(selectableResourceIds);
+	}, [selectableResourceIds]);
+
+	const clearSelectedResources = useCallback(() => {
+		setSelectedResourceIds([]);
+	}, []);
+
+	const toggleSelectedResource = useCallback((resource: WorkspaceDocumentResource) => {
+		if (!resource.canGenerate) return;
+		setSelectedResourceIds((current) =>
+			current.includes(resource.id)
+				? current.filter((id) => id !== resource.id)
+				: [...current, resource.id],
+		);
+	}, []);
 
 	if (!descriptor) return null;
 
@@ -301,18 +483,31 @@ const DocumentResourcesDialog: React.FC<{
 				) : null}
 
 				{!isLoading && !error && filteredResources.length > 0 ? (
-					<div className="min-h-0 flex-1 overflow-y-auto p-4">
-						<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-							{filteredResources.map((resource) => (
-								<DocumentResourceCard
-									key={resource.id}
-									selectedImages={resourceSelectedImages(resource, assets)}
-									resource={resource}
-									onGenerate={onGenerate}
-								/>
-							))}
+					<>
+						<BatchSelectionToolbar
+							allSelected={allSelectableResourcesSelected}
+							generateLabel="批量生成图片"
+							selectedCount={selectedResources.length}
+							totalCount={selectableResources.length}
+							onClear={clearSelectedResources}
+							onGenerate={() => onBatchGenerate(selectedResources)}
+							onSelectAll={selectAllResources}
+						/>
+						<div className="min-h-0 flex-1 overflow-y-auto p-4">
+							<div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+								{filteredResources.map((resource) => (
+									<DocumentResourceCard
+										key={resource.id}
+										selectedImages={resourceSelectedImages(resource, assets)}
+										resource={resource}
+										selected={selectedResourceIdSet.has(resource.id)}
+										onGenerate={onGenerate}
+										onToggleSelected={() => toggleSelectedResource(resource)}
+									/>
+								))}
+							</div>
 						</div>
-					</div>
+					</>
 				) : null}
 			</div>
 		</GenerationModalShell>
@@ -322,14 +517,21 @@ const DocumentResourcesDialog: React.FC<{
 const DocumentResourceCard: React.FC<{
 	resource: WorkspaceDocumentResource;
 	selectedImages: DocumentResourceSelectedImage[];
+	selected: boolean;
 	onGenerate: (resource: WorkspaceDocumentResource) => void;
-}> = ({ resource, selectedImages, onGenerate }) => {
+	onToggleSelected: () => void;
+}> = ({ resource, selectedImages, selected, onGenerate, onToggleSelected }) => {
 	const preview = selectedImages[0];
 	const assetCount = selectedImages.length;
 
 	return (
-		<article className="flex min-w-0 flex-col overflow-hidden rounded-sm border border-border bg-card">
-			<div className="relative aspect-[4/3] bg-ide-toolbar">
+		<article
+			className={cn(
+				"flex h-full min-w-0 flex-col overflow-hidden rounded-sm border bg-card transition-colors",
+				selected ? "border-primary" : "border-border",
+			)}
+		>
+			<div className="relative aspect-square bg-ide-toolbar">
 				{preview ? (
 					<img
 						src={preview.src}
@@ -341,8 +543,14 @@ const DocumentResourceCard: React.FC<{
 						暂无已选图片
 					</div>
 				)}
+				<ResourceCardSelectionButton
+					disabled={!resource.canGenerate}
+					label={resource.title}
+					selected={selected}
+					onToggle={onToggleSelected}
+				/>
 				{assetCount > 0 ? (
-					<div className="absolute left-2 top-2 rounded-sm border border-border bg-card/95 px-2 py-1 text-xs font-medium text-foreground shadow-sm">
+					<div className="absolute right-2 top-2 rounded-sm border border-border bg-card/95 px-2 py-1 text-xs font-medium text-foreground shadow-sm">
 						已选择 {assetCount} 张
 					</div>
 				) : null}
@@ -361,22 +569,12 @@ const DocumentResourceCard: React.FC<{
 			</div>
 			<div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
 				<div className="flex min-w-0 flex-wrap items-center gap-2">
-					<h3 className="truncate text-sm font-semibold text-foreground">{resource.title}</h3>
-					<Badge variant="outline" className="max-w-full truncate font-mono text-[11px]">
-						{resource.sectionId}
+					<h3 className="min-w-0 max-w-full truncate text-sm font-semibold text-foreground">
+						{resource.title}
+					</h3>
+					<Badge variant="secondary" className="shrink-0">
+						已选择 {assetCount} 张
 					</Badge>
-				</div>
-				<p className="mt-1 truncate text-xs text-muted-foreground">
-					来源：{resource.documentTitle || resource.documentId}
-				</p>
-				{resource.summary ? (
-					<p className="mt-2 max-h-10 overflow-hidden text-xs leading-5 text-muted-foreground">
-						{resource.summary}
-					</p>
-				) : null}
-				<div className="mt-2 flex flex-wrap items-center gap-1.5">
-					<Badge variant="secondary">已选择 {assetCount} 张</Badge>
-					<Badge variant="secondary">H{resource.headingLevel}</Badge>
 				</div>
 				<div className="mt-auto pt-1">
 					<Button
@@ -395,6 +593,95 @@ const DocumentResourceCard: React.FC<{
 		</article>
 	);
 };
+
+const BatchSelectionToolbar: React.FC<{
+	allSelected: boolean;
+	generateLabel: string;
+	selectedCount: number;
+	totalCount: number;
+	onClear: () => void;
+	onGenerate: () => void;
+	onSelectAll: () => void;
+}> = ({
+	allSelected,
+	generateLabel,
+	selectedCount,
+	totalCount,
+	onClear,
+	onGenerate,
+	onSelectAll,
+}) => (
+	<div className="flex shrink-0 flex-col gap-2 border-b border-border bg-card px-4 py-3 md:flex-row md:items-center md:justify-between">
+		<p className="text-xs text-muted-foreground">
+			已选择 {selectedCount} / {totalCount} 项
+		</p>
+		<div className="flex flex-wrap items-center gap-2">
+			<Button
+				type="button"
+				variant="outline"
+				size="sm"
+				className="h-8 rounded-sm"
+				disabled={totalCount === 0 || allSelected}
+				onClick={onSelectAll}
+			>
+				<Check className="size-4" />
+				<span>全选</span>
+			</Button>
+			<Button
+				type="button"
+				variant="ghost"
+				size="sm"
+				className="h-8 rounded-sm"
+				disabled={selectedCount === 0}
+				onClick={onClear}
+			>
+				<span>清空</span>
+			</Button>
+			<Button
+				type="button"
+				size="sm"
+				className="h-8 rounded-sm"
+				disabled={selectedCount === 0}
+				onClick={onGenerate}
+			>
+				<Wand2 className="size-4" />
+				<span>
+					{generateLabel}（{selectedCount}）
+				</span>
+			</Button>
+		</div>
+	</div>
+);
+
+const ResourceCardSelectionButton: React.FC<{
+	disabled?: boolean;
+	label: string;
+	selected: boolean;
+	onToggle: () => void;
+}> = ({ disabled = false, label, selected, onToggle }) => (
+	<button
+		type="button"
+		role="checkbox"
+		aria-checked={selected}
+		aria-label={disabled ? `${label} 暂不可生成` : selected ? `取消选择 ${label}` : `选择 ${label}`}
+		title={disabled ? "暂不可生成" : selected ? "取消选择" : "选择"}
+		className={cn(
+			"absolute left-2 top-2 z-10 flex size-7 items-center justify-center rounded-sm border shadow-sm ring-1 ring-black/10 transition-colors",
+			selected
+				? "border-primary bg-primary text-primary-foreground"
+				: "border-white/80 bg-background/90 text-transparent hover:bg-background",
+			disabled ? "cursor-not-allowed opacity-50 hover:bg-background/90" : "",
+		)}
+		disabled={disabled}
+		onClick={(event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			onToggle();
+		}}
+	>
+		<Check className={cn("size-4", selected ? "opacity-100" : "opacity-0")} />
+	</button>
+);
 
 const DocumentResourcesSummary: React.FC<{
 	assets: SelectedGenerationAsset[];
@@ -472,6 +759,280 @@ const DocumentResourcesSummary: React.FC<{
 	);
 };
 
+const StoryboardVideoResourcesSummary: React.FC<{
+	error?: unknown;
+	groups: WorkspaceStoryboardVideoDocumentGroup[];
+	isLoading: boolean;
+	onOpen: (documentId: string) => void;
+}> = ({ error, groups, isLoading, onOpen }) => {
+	return (
+		<section className="bg-card">
+			<div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+				<div className="flex min-w-0 items-center gap-2">
+					<Film className="size-4 shrink-0 text-muted-foreground" />
+					<div className="min-w-0">
+						<h2 className="text-sm font-semibold text-foreground">成片资源</h2>
+						<p className="text-xs text-muted-foreground">
+							按分镜文档汇总当前项目中已生成的视频片段。
+						</p>
+					</div>
+				</div>
+				{isLoading ? (
+					<span className="flex items-center gap-1 text-xs text-muted-foreground">
+						<Loader2 className="size-3 animate-spin" />
+						加载中
+					</span>
+				) : null}
+			</div>
+			{error ? (
+				<div className="mt-3 border border-error-border bg-error-surface px-3 py-2 text-xs text-error-foreground">
+					成片资源加载失败。
+				</div>
+			) : null}
+			{groups.length > 0 ? (
+				<div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+					{groups.map((group) => (
+						<button
+							key={group.documentId}
+							type="button"
+							aria-label={`${group.documentTitle} 成片资源`}
+							className="group flex min-h-24 min-w-0 flex-col items-start justify-between rounded-sm border border-border bg-ide-editor px-3 py-3 text-left transition-colors hover:border-input hover:bg-ide-list-hover"
+							onClick={() => onOpen(group.documentId)}
+						>
+							<span className="flex w-full min-w-0 items-center justify-between gap-2">
+								<span className="flex min-w-0 items-center gap-2">
+									<Film className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
+									<span className="truncate text-sm font-medium text-foreground">
+										{group.documentTitle}
+									</span>
+								</span>
+							</span>
+							<span className="text-xs text-muted-foreground">
+								分镜组 {group.reels.length} 项 · 成片 {storyboardDocumentGroupVideoCount(group)} 个
+							</span>
+						</button>
+					))}
+				</div>
+			) : (
+				<div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+					<div className="flex min-h-24 min-w-0 flex-col items-start justify-between rounded-sm border border-border bg-ide-editor px-3 py-3 text-left">
+						<span className="flex min-w-0 items-center gap-2">
+							<Film className="size-4 shrink-0 text-muted-foreground" />
+							<span className="truncate text-sm font-medium text-foreground">成片</span>
+						</span>
+						<span className="text-xs text-muted-foreground">暂无分镜文档</span>
+					</div>
+				</div>
+			)}
+		</section>
+	);
+};
+
+const StoryboardVideoResourcesDialog: React.FC<{
+	error?: unknown;
+	group: WorkspaceStoryboardVideoDocumentGroup | null;
+	isLoading: boolean;
+	open: boolean;
+	onGenerate: (
+		group: WorkspaceStoryboardVideoDocumentGroup,
+		reel: WorkspaceStoryboardVideoReel,
+	) => void;
+	onBatchGenerate: (
+		group: WorkspaceStoryboardVideoDocumentGroup,
+		reels: WorkspaceStoryboardVideoReel[],
+	) => void;
+	onOpenChange: (open: boolean) => void;
+}> = ({ error, group, isLoading, open, onBatchGenerate, onGenerate, onOpenChange }) => {
+	const videoCount = group ? storyboardDocumentGroupVideoCount(group) : 0;
+	const selectableReels = useMemo(
+		() => (group?.reels ?? []).filter((reel) => reel.canGenerate),
+		[group?.reels],
+	);
+	const selectableReelIds = useMemo(
+		() => selectableReels.map((reel) => reel.id),
+		[selectableReels],
+	);
+	const [selectedReelIds, setSelectedReelIds] = useState<string[]>([]);
+	const selectedReelIdSet = useMemo(() => new Set(selectedReelIds), [selectedReelIds]);
+	const selectedReels = useMemo(
+		() => (group?.reels ?? []).filter((reel) => reel.canGenerate && selectedReelIdSet.has(reel.id)),
+		[group?.reels, selectedReelIdSet],
+	);
+	const allSelectableReelsSelected =
+		selectableReels.length > 0 && selectedReels.length === selectableReels.length;
+
+	useEffect(() => {
+		setSelectedReelIds([]);
+	}, [open, group?.documentId]);
+
+	useEffect(() => {
+		const selectableIdSet = new Set(selectableReelIds);
+		setSelectedReelIds((current) => current.filter((id) => selectableIdSet.has(id)));
+	}, [selectableReelIds]);
+
+	const selectAllReels = useCallback(() => {
+		setSelectedReelIds(selectableReelIds);
+	}, [selectableReelIds]);
+
+	const clearSelectedReels = useCallback(() => {
+		setSelectedReelIds([]);
+	}, []);
+
+	const toggleSelectedReel = useCallback((reel: WorkspaceStoryboardVideoReel) => {
+		if (!reel.canGenerate) return;
+		setSelectedReelIds((current) =>
+			current.includes(reel.id) ? current.filter((id) => id !== reel.id) : [...current, reel.id],
+		);
+	}, []);
+
+	if (!group) return null;
+
+	return (
+		<GenerationModalShell
+			open={open}
+			title={
+				<span className="flex min-w-0 items-center gap-2">
+					<Film className="size-4 shrink-0 text-muted-foreground" />
+					<span className="truncate">成片资源 · {group.documentTitle}</span>
+				</span>
+			}
+			titleAside={
+				<Badge variant="secondary" className="shrink-0">
+					分镜组 {group.reels.length} 项 · 成片 {videoCount} 个
+				</Badge>
+			}
+			titleId="storyboard-video-resources-title"
+			contentClassName="h-[min(86vh,780px)]"
+			onOpenChange={onOpenChange}
+		>
+			<div className="flex h-full min-h-0 flex-col bg-ide-editor">
+				{isLoading ? (
+					<div className="grid min-h-56 flex-1 place-items-center">
+						<div className="flex items-center gap-2 text-sm text-muted-foreground">
+							<Loader2 className="size-4 animate-spin" />
+							<span>正在加载成片资源</span>
+						</div>
+					</div>
+				) : null}
+
+				{!isLoading && error ? (
+					<div className="m-4 border border-error-border bg-error-surface p-4 text-sm text-error-foreground">
+						成片资源加载失败。
+					</div>
+				) : null}
+
+				{!isLoading && !error && group.reels.length === 0 ? (
+					<div className="p-4 text-sm text-muted-foreground">当前分镜文档还没有解析出分镜组。</div>
+				) : null}
+
+				{!isLoading && !error && group.reels.length > 0 ? (
+					<>
+						<BatchSelectionToolbar
+							allSelected={allSelectableReelsSelected}
+							generateLabel="批量生成视频"
+							selectedCount={selectedReels.length}
+							totalCount={selectableReels.length}
+							onClear={clearSelectedReels}
+							onGenerate={() => onBatchGenerate(group, selectedReels)}
+							onSelectAll={selectAllReels}
+						/>
+						<div className="min-h-0 flex-1 overflow-y-auto p-4">
+							<div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+								{group.reels.map((reel) => (
+									<StoryboardReelVideoCard
+										key={reel.id}
+										reel={reel}
+										selected={selectedReelIdSet.has(reel.id)}
+										onGenerate={() => onGenerate(group, reel)}
+										onToggleSelected={() => toggleSelectedReel(reel)}
+									/>
+								))}
+							</div>
+						</div>
+					</>
+				) : null}
+			</div>
+		</GenerationModalShell>
+	);
+};
+
+const StoryboardReelVideoCard: React.FC<{
+	reel: WorkspaceStoryboardVideoReel;
+	selected: boolean;
+	onGenerate: () => void;
+	onToggleSelected: () => void;
+}> = ({ reel, selected, onGenerate, onToggleSelected }) => {
+	const preview = reel.videos[0];
+	const videoCount = reel.videos.length;
+	const coverSource = preview?.posterUrl ? apiResourceURL(preview.posterUrl) : "";
+
+	return (
+		<article
+			className={cn(
+				"flex h-full min-w-0 flex-col overflow-hidden rounded-sm border bg-card transition-colors",
+				selected ? "border-primary" : "border-border",
+			)}
+		>
+			<div className="relative aspect-video bg-ide-toolbar">
+				{coverSource ? (
+					<img
+						src={coverSource}
+						alt={preview?.title || reel.title}
+						className="size-full object-cover"
+						draggable={false}
+					/>
+				) : (
+					<div className="grid size-full place-items-center px-3 text-center text-xs text-muted-foreground">
+						<div className="grid gap-2 justify-items-center">
+							<Film className="size-5" />
+							<span>{preview ? "已有成片" : "暂无成片"}</span>
+						</div>
+					</div>
+				)}
+				<ResourceCardSelectionButton
+					disabled={!reel.canGenerate}
+					label={reel.title}
+					selected={selected}
+					onToggle={onToggleSelected}
+				/>
+				{videoCount > 0 ? (
+					<div className="absolute right-2 top-2 rounded-sm border border-border bg-card/95 px-2 py-1 text-xs font-medium text-foreground shadow-sm">
+						成片 {videoCount} 个
+					</div>
+				) : null}
+			</div>
+			<div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
+				<div className="flex min-w-0 flex-wrap items-center gap-2">
+					<h3 className="min-w-0 max-w-full truncate text-sm font-semibold text-foreground">
+						{reel.title}
+					</h3>
+					<Badge variant="secondary" className="shrink-0">
+						成片 {videoCount} 个
+					</Badge>
+				</div>
+				{preview ? (
+					<p className="truncate text-xs text-muted-foreground" title={preview.title}>
+						{preview.title}
+					</p>
+				) : null}
+				<div className="mt-auto pt-1">
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						className="h-8 w-full rounded-sm"
+						disabled={!reel.canGenerate}
+						onClick={onGenerate}
+					>
+						<Wand2 className="size-4" />
+						<span>生成视频</span>
+					</Button>
+				</div>
+			</div>
+		</article>
+	);
+};
+
 const ProjectUsageSummary: React.FC<{
 	data?: BillingSummaryResponse;
 	error?: unknown;
@@ -543,6 +1104,9 @@ interface DocumentResourceSelectedImage {
 	src: string;
 	title?: string;
 }
+
+const storyboardDocumentGroupVideoCount = (group: WorkspaceStoryboardVideoDocumentGroup) =>
+	group.reels.reduce((total, reel) => total + reel.videos.length, 0);
 
 const resourceAssetCount = (
 	resource: WorkspaceDocumentResource,
@@ -628,6 +1192,20 @@ const documentResourceToSectionContext = (
 	markdown: resource.markdown,
 	plainText: resource.plainText ?? "",
 	prompt: resource.prompt ?? resource.title,
+});
+
+const storyboardReelToSectionContext = (
+	group: WorkspaceStoryboardVideoDocumentGroup,
+	reel: WorkspaceStoryboardVideoReel,
+): MarkdownSectionContext => ({
+	blockId: reel.blockId || reel.sectionId,
+	documentId: group.documentId,
+	headingLevel: reel.headingLevel,
+	headingOccurrence: reel.headingOccurrence,
+	headingText: reel.title,
+	markdown: reel.markdown,
+	plainText: reel.plainText ?? "",
+	prompt: reel.prompt ?? reel.markdown,
 });
 
 const selectedAssetCountForResourceType = (

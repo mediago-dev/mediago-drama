@@ -19,6 +19,7 @@ interface VideoGenerationDialogProps {
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	open: boolean;
 	projectId?: string;
+	resolveLatestSection?: boolean;
 	selectedAssetKeys?: string[];
 	section?: MarkdownSectionContext | null;
 	title?: string;
@@ -34,6 +35,7 @@ export const VideoGenerationDialog: React.FC<VideoGenerationDialogProps> = ({
 	onToggleAsset,
 	open,
 	projectId,
+	resolveLatestSection,
 	selectedAssetKeys = [],
 	section,
 	title,
@@ -90,6 +92,7 @@ export const VideoGenerationDialog: React.FC<VideoGenerationDialogProps> = ({
 				kind="video"
 				materialLibraryImportOpen={materialLibraryOpen}
 				projectId={projectId}
+				resolveLatestSection={resolveLatestSection}
 				section={activeSection}
 				selectedAssetKeys={selectedAssetKeys}
 				viewMode="history"

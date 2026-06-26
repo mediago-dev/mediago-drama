@@ -192,6 +192,9 @@ export const generationAssetSource = (asset: GenerationAsset) => {
 	return `data:${asset.mimeType || "image/png"};base64,${asset.base64}`;
 };
 
+export const generationAssetPosterSource = (asset: GenerationAsset) =>
+	asset.kind === "video" && asset.posterUrl ? apiResourceURL(asset.posterUrl) : "";
+
 export const generationAssetSelectionKey = (asset: GenerationAsset) => {
 	const source = generationAssetSource(asset);
 	if (!source || (asset.kind !== "image" && asset.kind !== "video" && asset.kind !== "audio")) {

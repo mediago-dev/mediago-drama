@@ -23,7 +23,7 @@ const hoveredHeadingRect: HoveredBlockRect = {
 describe("SectionGenerateButton", () => {
 	afterEach(() => cleanup());
 
-	it("renders image, audio, and video generation actions", () => {
+	it("renders image and audio generation actions", () => {
 		const generatedKinds: SectionGenerateKind[] = [];
 
 		render(
@@ -36,11 +36,10 @@ describe("SectionGenerateButton", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "根据当前标题区域生成图片" }));
 		fireEvent.click(screen.getByRole("button", { name: "根据当前标题区域生成语音" }));
-		fireEvent.click(screen.getByRole("button", { name: "根据当前标题区域生成视频" }));
 
 		expect(screen.getByText("生成图片")).toBeTruthy();
 		expect(screen.getByText("生成语音")).toBeTruthy();
-		expect(screen.getByText("生成视频")).toBeTruthy();
-		expect(generatedKinds).toEqual(["image", "audio", "video"]);
+		expect(screen.queryByRole("button", { name: "根据当前标题区域生成视频" })).toBeNull();
+		expect(generatedKinds).toEqual(["image", "audio"]);
 	});
 });

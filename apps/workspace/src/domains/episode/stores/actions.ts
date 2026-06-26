@@ -81,6 +81,38 @@ export const createEpisodeActions = (set: EpisodeSet, get: EpisodeGet): EpisodeA
 			isPlaying: currentTime >= episode.duration ? false : state.isPlaying,
 		});
 	},
+	setVideoClipStatus: (clipId, status) => {
+		let nextEpisode: Episode | null = null;
+
+		set((state) => {
+			let changed = false;
+			const tracks = state.episode.tracks.map((track) => {
+				if (track.type !== "video") return track;
+
+				let trackChanged = false;
+				const clips = track.clips.map((clip) => {
+					if (clip.id !== clipId || clip.status === status) return clip;
+
+					changed = true;
+					trackChanged = true;
+					return {
+						...clip,
+						status,
+					};
+				});
+
+				return trackChanged ? { ...track, clips } : track;
+			});
+
+			if (!changed) return {};
+
+			const episode = { ...state.episode, tracks };
+			nextEpisode = episode;
+			return { episode };
+		});
+
+		return nextEpisode;
+	},
 	setVideoClipVideoUrl: (clipId, videoUrl) => {
 		let nextEpisode: Episode | null = null;
 		const cleanVideoUrl = videoUrl?.trim() ?? "";
@@ -106,7 +138,9 @@ export const createEpisodeActions = (set: EpisodeSet, get: EpisodeGet): EpisodeA
 						};
 					}
 
-					if (!clip.videoUrl && !clip.posterUrl && !clip.thumbnailUrl) return clip;
+					if (!clip.videoUrl && !clip.posterUrl && !clip.thumbnailUrl && clip.status === "draft") {
+						return clip;
+					}
 
 					const {
 						posterUrl: _posterUrl,
@@ -116,7 +150,10 @@ export const createEpisodeActions = (set: EpisodeSet, get: EpisodeGet): EpisodeA
 					} = clip;
 					changed = true;
 					trackChanged = true;
-					return clipWithoutMedia;
+					return {
+						...clipWithoutMedia,
+						status: "draft" as const,
+					};
 				});
 
 				return trackChanged ? { ...track, clips } : track;

@@ -27,11 +27,12 @@ func GenerationResponseFromCore(response coregeneration.Response, kind string) G
 			continue
 		}
 		assets = append(assets, GenerationAsset{
-			AssetID:  libraryAssetIDFromGenerationAssetURL(asset.URL),
-			Kind:     string(asset.Kind),
-			URL:      asset.URL,
-			Base64:   asset.Base64,
-			MIMEType: asset.MIMEType,
+			AssetID:   libraryAssetIDFromGenerationAssetURL(asset.URL),
+			Kind:      string(asset.Kind),
+			URL:       asset.URL,
+			PosterURL: firstNonEmptyMetadataString(asset.Metadata, "poster_url", "posterUrl"),
+			Base64:    asset.Base64,
+			MIMEType:  asset.MIMEType,
 		})
 	}
 
@@ -390,6 +391,15 @@ func StringFromMetadata(metadata map[string]any, key string) string {
 	default:
 		return ""
 	}
+}
+
+func firstNonEmptyMetadataString(metadata map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value := StringFromMetadata(metadata, key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // BoolFromMetadata reads a boolean value from generation metadata.

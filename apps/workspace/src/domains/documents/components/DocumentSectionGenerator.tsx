@@ -48,6 +48,7 @@ export interface DocumentSectionGeneratorProps {
 	selectedAssetKeys: string[];
 	materialLibraryImportOpen?: boolean;
 	projectId?: string;
+	resolveLatestSection?: boolean;
 	onGenerationComplete: (
 		pendingId: string,
 		assets: GenerationAsset[],
@@ -77,6 +78,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	onToggleAsset,
 	onViewModeChange,
 	projectId,
+	resolveLatestSection = true,
 	section,
 	selectedAssetKeys,
 	viewMode,
@@ -86,8 +88,11 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	const allAssets = useDocumentsStore((state) => state.assets);
 	const workspaceProjectId = useDocumentsStore((state) => state.projectId);
 	const activeSection = useMemo(
-		() => latestMarkdownSectionContextFromDocuments(allDocuments, section),
-		[allDocuments, section],
+		() =>
+			resolveLatestSection
+				? latestMarkdownSectionContextFromDocuments(allDocuments, section)
+				: section,
+		[allDocuments, resolveLatestSection, section],
 	);
 	const [removedMentionKeys, setRemovedMentionKeys] = useState<string[]>([]);
 	const removedMentionKeySet = useMemo(() => new Set(removedMentionKeys), [removedMentionKeys]);
