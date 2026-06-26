@@ -6,7 +6,6 @@ import type { MarkdownSectionContext } from "@/domains/documents/components/Mark
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { useGenerationNotificationStore } from "@/domains/generation/stores/generation-notifications";
-import { updateWorkspaceDocumentSectionImage } from "@/domains/workspace/api/workspace";
 import { WritingEditor } from "./WritingEditor";
 
 const testState = vi.hoisted(() => ({
@@ -19,7 +18,7 @@ const testState = vi.hoisted(() => ({
 		setSelection: vi.fn(() => true),
 	},
 	imageDialogProps: null as null | {
-		onToggleImage: (
+		onToggleImage?: (
 			section: MarkdownSectionContext,
 			asset: { kind: "image"; url: string },
 			selected: boolean,
@@ -52,8 +51,6 @@ vi.mock("@/domains/workspace/api/workspace", () => ({
 	deleteWorkspaceFolder: vi.fn(),
 	getWorkspaceDocuments: vi.fn(),
 	updateWorkspaceDocumentRecord: vi.fn(),
-	updateWorkspaceDocumentSectionImage: vi.fn(),
-	updateWorkspaceDocumentSectionMedia: vi.fn(),
 	updateWorkspaceFolder: vi.fn(),
 	updateWorkspaceState: vi.fn(),
 	workspaceDocumentsChangedEventType: "workspace.documents.changed",
@@ -145,7 +142,6 @@ describe("WritingEditor", () => {
 		cleanup();
 		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
 		useGenerationNotificationStore.getState().clearNotifications();
-		vi.mocked(updateWorkspaceDocumentSectionImage).mockReset();
 		testState.imageDialogProps = null;
 		testState.videoDialogProps = null;
 		Object.values(testState.editorHandle).forEach((value) => {
@@ -153,37 +149,7 @@ describe("WritingEditor", () => {
 		});
 	});
 
-	it("opens a completed generation notification once and writes the selected image to the active section", async () => {
-		vi.mocked(updateWorkspaceDocumentSectionImage).mockImplementation(async (documentId) => {
-			const current = useDocumentsStore.getState();
-			const document = current.documents.find((item) => item.id === documentId);
-			if (!document) throw new Error("missing test document");
-			const savedDocument = {
-				...document,
-				content: [
-					"# 第一集",
-					"",
-					"<!-- section-id: section_visual -->",
-					"## 画面",
-					"",
-					"画面提示词。",
-					"",
-					"![画面](</api/v1/media-assets/generated/content>)",
-				].join("\n"),
-				isDirty: false,
-				version: document.version + 1,
-			};
-			return {
-				document: savedDocument,
-				state: {
-					documents: current.documents.map((item) =>
-						item.id === documentId ? savedDocument : item,
-					),
-					projectId: current.projectId ?? undefined,
-					workspaceDir: current.workspaceDir,
-				},
-			};
-		});
+	it("opens a completed image generation notification without wiring document insertion", async () => {
 		useDocumentsStore.getState().hydrateWorkspaceDocuments({
 			documents: [makeDocument()],
 			projectId: "project-a",
@@ -216,31 +182,11 @@ describe("WritingEditor", () => {
 			documentId: "story-doc",
 		});
 		expect(useGenerationNotificationStore.getState().pendingOpenRequest).toBeNull();
-
-		const asset = {
-			kind: "image" as const,
-			url: "/api/v1/media-assets/generated/content",
-		};
-		testState.imageDialogProps?.onToggleImage(section, asset, true);
-
 		expect("setSectionImage" in testState.editorHandle).toBe(false);
-		await waitFor(() => {
-			expect(updateWorkspaceDocumentSectionImage).toHaveBeenCalledWith(
-				"story-doc",
-				{
-					sectionId: "section_visual",
-					image: {
-						src: "/api/v1/media-assets/generated/content",
-						title: "画面",
-					},
-					selected: true,
-				},
-				"project-a",
-			);
-			expect(useDocumentsStore.getState().documents[0]?.content).toContain(
-				"![画面](</api/v1/media-assets/generated/content>)",
-			);
-		});
+		expect(testState.imageDialogProps?.onToggleImage).toBeUndefined();
+		expect(useDocumentsStore.getState().documents[0]?.content).not.toContain(
+			"/api/v1/media-assets/generated/content",
+		);
 	});
 
 	it("opens the video generation dialog for completed video notifications", async () => {

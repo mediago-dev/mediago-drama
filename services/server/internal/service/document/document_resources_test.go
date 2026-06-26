@@ -66,11 +66,6 @@ func TestListWorkspaceDocumentResourcesParsesCharacterSections(t *testing.T) {
 	if !strings.Contains(first.Prompt, "## 林书彤") || strings.Contains(first.Prompt, "media-assets") {
 		t.Fatalf("prompt = %q, want section text without selected image", first.Prompt)
 	}
-	if len(first.SelectedImages) != 1 ||
-		first.SelectedImages[0].Src != "/api/v1/media-assets/character-a/content" ||
-		first.SelectedImages[0].Title != "主角 底层青年 / 低阶散修" {
-		t.Fatalf("selectedImages = %#v", first.SelectedImages)
-	}
 	if !first.CanGenerate {
 		t.Fatal("canGenerate = false, want true")
 	}

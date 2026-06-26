@@ -62,28 +62,21 @@ type WorkspaceDocumentResourcesResponse struct {
 
 // WorkspaceDocumentResourceRecord describes one resource parsed from a document section.
 type WorkspaceDocumentResourceRecord struct {
-	ID                string                           `json:"id"`
-	Type              string                           `json:"type"`
-	Title             string                           `json:"title"`
-	Summary           string                           `json:"summary,omitempty"`
-	Prompt            string                           `json:"prompt,omitempty"`
-	DocumentID        string                           `json:"documentId"`
-	DocumentTitle     string                           `json:"documentTitle"`
-	SectionID         string                           `json:"sectionId"`
-	BlockID           string                           `json:"blockId"`
-	HeadingLevel      int                              `json:"headingLevel"`
-	HeadingOccurrence int                              `json:"headingOccurrence"`
-	Markdown          string                           `json:"markdown"`
-	PlainText         string                           `json:"plainText,omitempty"`
-	CanGenerate       bool                             `json:"canGenerate"`
-	SourceCategory    string                           `json:"sourceCategory"`
-	SelectedImages    []WorkspaceDocumentResourceImage `json:"selectedImages,omitempty"`
-}
-
-// WorkspaceDocumentResourceImage describes an image embedded in a resource section.
-type WorkspaceDocumentResourceImage struct {
-	Src   string `json:"src"`
-	Title string `json:"title,omitempty"`
+	ID                string `json:"id"`
+	Type              string `json:"type"`
+	Title             string `json:"title"`
+	Summary           string `json:"summary,omitempty"`
+	Prompt            string `json:"prompt,omitempty"`
+	DocumentID        string `json:"documentId"`
+	DocumentTitle     string `json:"documentTitle"`
+	SectionID         string `json:"sectionId"`
+	BlockID           string `json:"blockId"`
+	HeadingLevel      int    `json:"headingLevel"`
+	HeadingOccurrence int    `json:"headingOccurrence"`
+	Markdown          string `json:"markdown"`
+	PlainText         string `json:"plainText,omitempty"`
+	CanGenerate       bool   `json:"canGenerate"`
+	SourceCategory    string `json:"sourceCategory"`
 }
 
 // EpisodeTimelineStateResponse is the persisted editing timeline for a document.
@@ -135,29 +128,7 @@ type UpdateWorkspaceDocumentRequest struct {
 	ExpectedVersion *int                             `json:"expectedVersion,omitempty"`
 }
 
-// WorkspaceDocumentSectionImageRequest updates an image attached to a document section.
-type WorkspaceDocumentSectionImageRequest struct {
-	SectionID       string                `json:"sectionId"`
-	Image           WorkspaceSectionImage `json:"image"`
-	Selected        bool                  `json:"selected"`
-	ExpectedVersion *int                  `json:"expectedVersion,omitempty"`
-}
-
-// WorkspaceSectionImage describes a generated image embedded in a document section.
-type WorkspaceSectionImage struct {
-	Src   string `json:"src"`
-	Title string `json:"title,omitempty"`
-}
-
-// WorkspaceDocumentSectionMediaRequest updates media attached to a document section.
-type WorkspaceDocumentSectionMediaRequest struct {
-	SectionID       string                `json:"sectionId"`
-	Media           WorkspaceSectionMedia `json:"media"`
-	Selected        bool                  `json:"selected"`
-	ExpectedVersion *int                  `json:"expectedVersion,omitempty"`
-}
-
-// WorkspaceSectionMedia describes generated media embedded in a document section.
+// WorkspaceSectionMedia describes generated media parsed from a document section.
 type WorkspaceSectionMedia struct {
 	Kind  string `json:"kind"`
 	Src   string `json:"src"`

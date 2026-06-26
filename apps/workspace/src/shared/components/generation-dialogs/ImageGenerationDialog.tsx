@@ -26,7 +26,7 @@ interface ImageGenerationDialogProps {
 	) => void;
 	onGenerationStart: (section: MarkdownSectionContext, pendingId: string, prompt: string) => void;
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
-	onToggleImage: (
+	onToggleImage?: (
 		section: MarkdownSectionContext,
 		asset: GenerationAsset,
 		selected: boolean,
@@ -58,7 +58,7 @@ interface ImageGenerationDialogPanelController {
 	onOpenChange: (open: boolean) => void;
 	onOpenMaterialLibrary: () => void;
 	onOpenReferenceGeneration: (section: MarkdownSectionContext) => void;
-	onToggleImage: (asset: GenerationAsset, selected: boolean) => void;
+	onToggleImage?: (asset: GenerationAsset, selected: boolean) => void;
 	open: boolean;
 	projectId?: string;
 	section: MarkdownSectionContext;
@@ -169,7 +169,9 @@ const useImageGenerationDialogController = ({
 				onOpenMaterialLibrary: () => setDialogMaterialLibraryOpen(dialogId, true),
 				onOpenReferenceGeneration: (nextSection) =>
 					openReferenceGenerationDialog(dialogIndex, nextSection),
-				onToggleImage: (asset, selected) => onToggleImage(currentSection, asset, selected),
+				onToggleImage: onToggleImage
+					? (asset, selected) => onToggleImage(currentSection, asset, selected)
+					: undefined,
 				open: dialogIndex === 0 ? open : true,
 				projectId,
 				section: currentSection,

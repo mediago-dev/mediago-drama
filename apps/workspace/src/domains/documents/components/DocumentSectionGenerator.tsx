@@ -12,12 +12,10 @@ import { DocumentMention } from "@/domains/documents/components/extensions/docum
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import {
 	buildMentionPreviewReferences,
-	extractDocumentSectionImageReferences,
 	extractDocumentImageAssets,
 	type MentionPreviewReferences,
 	uniqueResolvedMention,
 } from "@/domains/documents/lib/mention-generation-references";
-import type { ReferenceSelectionShortcutGroup } from "@/domains/generation/components/MediaGenerationDialogs";
 import {
 	MediaGenerationWorkspace,
 	type MediaGenerationWorkspaceViewMode,
@@ -94,26 +92,6 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	});
 	const [removedMentionKeys, setRemovedMentionKeys] = useState<string[]>([]);
 	const removedMentionKeySet = useMemo(() => new Set(removedMentionKeys), [removedMentionKeys]);
-	const selectedNodeReferenceGroups = useMemo<ReferenceSelectionShortcutGroup[]>(() => {
-		const document = allDocuments.find((item) => item.id === activeSection.documentId);
-		if (!document) return [];
-
-		const references = extractDocumentSectionImageReferences(document.id, document.content);
-		if (references.length === 0) return [];
-
-		return [
-			{
-				description: `来自《${document.title || "当前文档"}》中已选用插图的节点`,
-				id: "selected-document-section-images",
-				title: "已选节点图片",
-				items: references.map((reference) => ({
-					asset: reference.asset,
-					subtitle: reference.imageLabel,
-					title: reference.sectionTitle,
-				})),
-			},
-		];
-	}, [activeSection.documentId, allDocuments]);
 	const mediaAssets = useDocumentsMediaAssets();
 	const latestMentionPreviewRef = useRef<MentionPreviewReferences>({
 		assetMentionKeys: {},
@@ -182,7 +160,6 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				promptPlaceholder={sectionGenerationWorkspaceCopy[generationKind].promptPlaceholder}
 				referenceBadges={(prompt) => getMentionPreview(prompt).preview.badges}
 				referencePreviewAssets={(prompt) => getMentionPreview(prompt).preview.references}
-				referenceShortcutGroups={selectedNodeReferenceGroups}
 				renderPromptEditor={(props) => (
 					<PromptMentionEditor
 						{...props}

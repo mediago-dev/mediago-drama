@@ -3,8 +3,6 @@ import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import type { TemplateConstraintRejection } from "@/domains/documents/lib/constraints";
 import type {
 	MarkdownSectionIdentity,
-	MarkdownSectionImage,
-	MarkdownSectionMedia,
 	MarkdownSectionMentionReference,
 } from "@/domains/documents/lib/editor-registry";
 import type { DocumentOperation, TextAnchor } from "@/domains/documents/lib/operations";
@@ -229,16 +227,6 @@ export interface DocumentsState {
 	setShowComments: (showComments: boolean) => void;
 	setSelection: (documentId: string, text: string) => void;
 	toggleComments: () => void;
-	toggleSectionImage: (
-		section: MarkdownSectionIdentity,
-		image: MarkdownSectionImage,
-		selected: boolean,
-	) => boolean;
-	toggleSectionMedia: (
-		section: MarkdownSectionIdentity,
-		media: MarkdownSectionMedia,
-		selected: boolean,
-	) => boolean;
 	toggleSectionMention: (
 		section: MarkdownSectionIdentity,
 		reference: MarkdownSectionMentionReference,

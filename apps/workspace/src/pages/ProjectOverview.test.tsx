@@ -232,12 +232,6 @@ describe("ProjectOverview", () => {
 								plainText: "林书彤\n\n冷静的调查记者。",
 								prompt: "## 林书彤\n\n冷静的调查记者。",
 								sectionId: "section_lintong",
-								selectedImages: [
-									{
-										src: "/api/v1/media-assets/character-a/content",
-										title: "主角 底层青年 / 低阶散修",
-									},
-								],
 								sourceCategory: "character",
 								summary: "冷静的调查记者。",
 								title: "林书彤",
@@ -255,7 +249,6 @@ describe("ProjectOverview", () => {
 								plainText: "徐乐乐\n\n温和的同学。",
 								prompt: "## 徐乐乐\n\n温和的同学。",
 								sectionId: "section_xulele",
-								selectedImages: [],
 								sourceCategory: "character",
 								summary: "温和的同学。",
 								title: "徐乐乐",
@@ -279,7 +272,6 @@ describe("ProjectOverview", () => {
 								plainText: "分镜 01\n\n沈阁从黑暗水面坠入湖中。",
 								prompt: "## 分镜 01\n\n沈阁从黑暗水面坠入湖中。",
 								sectionId: "shot_01",
-								selectedImages: [],
 								sourceCategory: "storyboard",
 								summary: "沈阁从黑暗水面坠入湖中。",
 								title: "分镜 01",
@@ -303,7 +295,6 @@ describe("ProjectOverview", () => {
 								plainText: "分镜 02\n\n他猛然睁眼。",
 								prompt: "## 分镜 02\n\n他猛然睁眼。",
 								sectionId: "shot_02",
-								selectedImages: [],
 								sourceCategory: "storyboard",
 								summary: "他猛然睁眼。",
 								title: "分镜 02",
@@ -321,7 +312,6 @@ describe("ProjectOverview", () => {
 								plainText: "分镜 01\n\n门外传来脚步声。",
 								prompt: "### 分镜 01\n\n门外传来脚步声。",
 								sectionId: "shot_01",
-								selectedImages: [],
 								sourceCategory: "storyboard",
 								summary: "门外传来脚步声。",
 								title: "分镜 01",
@@ -673,8 +663,8 @@ describe("ProjectOverview", () => {
 					headingText: "第 01 组 总时长：00:08",
 					markdown: expect.stringContaining("### 分镜 01"),
 				}),
-				selectedAssetKeys: ["video:/api/v1/media-assets/video-1/content"],
 			});
+			expect(props?.selectedAssetKeys).toBeUndefined();
 		});
 
 		fireEvent.keyDown(document, { key: "Escape" });

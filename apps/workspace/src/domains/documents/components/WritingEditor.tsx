@@ -16,11 +16,9 @@ import { DocumentMention } from "@/domains/documents/components/extensions/docum
 import { DocumentHistoryPanel } from "@/domains/documents/components/DocumentHistoryPanel";
 import { SelectionBubble } from "@/domains/documents/components/SelectionBubble";
 import { createDOMTextAnchorResolver } from "@/domains/documents/components/text-anchor-dom";
-import { sectionAssetKeysFromDocuments } from "@/domains/documents/components/section-generation-asset-keys";
 import type { InlineDecorationRange } from "@/domains/documents/components/tiptap/storage";
 import { Button } from "@/shared/components/ui/button";
 import { registerEditor } from "@/domains/documents/lib/editor-registry";
-import type { MarkdownSectionMediaKind } from "@/domains/documents/lib/editor-registry";
 import { selectEditableDocument } from "@/domains/documents/lib/filters";
 import {
 	type DocumentComment,
@@ -31,10 +29,6 @@ import {
 	type PendingGenerationNotificationOpenRequest,
 	useGenerationNotificationStore,
 } from "@/domains/generation/stores/generation-notifications";
-import {
-	generationAssetSelectionKey,
-	generationAssetSource,
-} from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { agentProjectPath, getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { AudioGenerationDialog } from "@/shared/components/generation-dialogs/AudioGenerationDialog";
 import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
@@ -99,8 +93,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const setSelection = useDocumentsStore((state) => state.setSelection);
 	const setShowComments = useDocumentsStore((state) => state.setShowComments);
 	const showComments = useDocumentsStore((state) => state.showComments);
-	const toggleStoredSectionImage = useDocumentsStore((state) => state.toggleSectionImage);
-	const toggleStoredSectionMedia = useDocumentsStore((state) => state.toggleSectionMedia);
 	const updateDocumentContent = useDocumentsStore((state) => state.updateDocumentContent);
 	const activeDocument = selectEditableDocument(documents, activeDocumentId);
 	const activeSelection =
@@ -224,12 +216,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const closeSectionGeneration = useCallback((open: boolean) => {
 		if (!open) setSectionGeneration(null);
 	}, []);
-	const selectedImageAssetKeys = useCallback(
-		(targetSection: MarkdownSectionContext) =>
-			sectionAssetKeysFromDocuments(documents, targetSection, "image"),
-		[documents],
-	);
-
 	useEffect(() => {
 		const request = pendingGenerationOpenRequest;
 		if (!activeDocument || !request) return;
@@ -245,42 +231,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 		openSectionGeneration,
 		pendingGenerationOpenRequest,
 	]);
-
-	const toggleSectionImage = useCallback(
-		(section: MarkdownSectionContext, asset: GenerationAsset, selected: boolean) => {
-			const source = generationAssetSource(asset);
-			if (!source || !generationAssetSelectionKey(asset)) return;
-
-			const image = {
-				src: source,
-				title: section.headingText,
-			};
-			toggleStoredSectionImage(section, image, selected);
-		},
-		[toggleStoredSectionImage],
-	);
-
-	const toggleSectionMedia = useCallback(
-		(
-			kind: MarkdownSectionMediaKind,
-			section: MarkdownSectionContext,
-			asset: GenerationAsset,
-			selected: boolean,
-		) => {
-			if (asset.kind !== kind) return;
-
-			const source = generationAssetSource(asset);
-			if (!source || !generationAssetSelectionKey(asset)) return;
-
-			const media = {
-				kind,
-				src: source,
-				title: section.headingText,
-			};
-			toggleStoredSectionMedia(section, media, selected);
-		},
-		[toggleStoredSectionMedia],
-	);
 
 	const ignorePendingSectionImage = useCallback(() => {}, []);
 
@@ -450,45 +400,25 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 				open={sectionGeneration?.kind === "image"}
 				projectId={projectId ?? undefined}
 				section={sectionGeneration?.kind === "image" ? sectionGeneration.section : null}
-				selectedAssetKeys={selectedImageAssetKeys}
 				onGenerationComplete={completeSectionImageGeneration}
 				onGenerationError={removePendingSectionImage}
 				onGenerationStart={ignorePendingSectionImage}
 				onOpenChange={closeSectionGeneration}
 				onOpenReferenceGeneration={openSectionGeneration}
-				onToggleImage={toggleSectionImage}
 			/>
 			<VideoGenerationDialog
 				open={sectionGeneration?.kind === "video"}
 				projectId={projectId ?? undefined}
 				section={sectionGeneration?.kind === "video" ? sectionGeneration.section : null}
-				selectedAssetKeys={
-					sectionGeneration?.kind === "video"
-						? sectionAssetKeysFromDocuments(documents, sectionGeneration.section, "video")
-						: []
-				}
 				onOpenChange={closeSectionGeneration}
 				onOpenReferenceGeneration={openSectionGeneration}
-				onToggleAsset={(asset, selected) => {
-					if (sectionGeneration?.kind !== "video") return;
-					toggleSectionMedia("video", sectionGeneration.section, asset, selected);
-				}}
 			/>
 			<AudioGenerationDialog
 				open={sectionGeneration?.kind === "audio"}
 				projectId={projectId ?? undefined}
 				section={sectionGeneration?.kind === "audio" ? sectionGeneration.section : null}
-				selectedAssetKeys={
-					sectionGeneration?.kind === "audio"
-						? sectionAssetKeysFromDocuments(documents, sectionGeneration.section, "audio")
-						: []
-				}
 				onOpenChange={closeSectionGeneration}
 				onOpenReferenceGeneration={openSectionGeneration}
-				onToggleAsset={(asset, selected) => {
-					if (sectionGeneration?.kind !== "audio") return;
-					toggleSectionMedia("audio", sectionGeneration.section, asset, selected);
-				}}
 			/>
 			<DocumentHistoryPanel
 				open={historyOpen}

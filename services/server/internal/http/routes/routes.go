@@ -280,14 +280,6 @@ func registerWorkspaceRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) 
 		handlers.Workspace.HandleGetWorkspaceDocument,
 	)
 	projectRoutes.PATCH(
-		"/workspace/documents/:documentId/section-image",
-		handlers.Workspace.HandleUpdateWorkspaceDocumentSectionImage,
-	)
-	projectRoutes.PATCH(
-		"/workspace/documents/:documentId/section-media",
-		handlers.Workspace.HandleUpdateWorkspaceDocumentSectionMedia,
-	)
-	projectRoutes.PATCH(
 		"/workspace/documents/:documentId/section-mention",
 		handlers.Workspace.HandleUpdateWorkspaceDocumentSectionMention,
 	)

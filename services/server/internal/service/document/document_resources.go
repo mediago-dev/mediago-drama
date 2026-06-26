@@ -16,6 +16,8 @@ var (
 	documentResourceStoryboardShotTitlePattern  = regexp.MustCompile(`^(分镜|镜头)(?:\s+|[0-9０-９一二三四五六七八九十百]+|$)`)
 	documentResourceStoryboardGroupTitlePattern = regexp.MustCompile(`^第\s*\S+\s*组`)
 	documentResourceMentionPattern              = regexp.MustCompile(`@\[([^\]]*)\]\((?:<[^>]+>|[^\s)]+)\)`)
+	workspaceMarkdownImagePattern               = regexp.MustCompile(`^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$`)
+	workspacePlaceholderAltPattern              = regexp.MustCompile(`^(?:mediago-drama-section-image-pending|media-cli-section-image-pending):`)
 )
 
 type documentResourceHeadingSection struct {
@@ -81,7 +83,6 @@ func workspaceDocumentResourceRecordsFromDocuments(documents []mediamcp.Workspac
 				PlainText:         plainText,
 				CanGenerate:       strings.TrimSpace(prompt) != "",
 				SourceCategory:    category,
-				SelectedImages:    workspaceDocumentResourceImagesFromMarkdown(section.markdown, section.title),
 			})
 		}
 	}
@@ -245,28 +246,6 @@ func workspaceDocumentResourcePlainText(markdown string) string {
 	return strings.TrimSpace(strings.Join(lines, "\n\n"))
 }
 
-func workspaceDocumentResourceImagesFromMarkdown(markdown string, fallbackTitle string) []workspaceDocumentResourceImage {
-	images := []workspaceDocumentResourceImage{}
-	for _, line := range strings.Split(markdown, "\n") {
-		alt, source, ok := workspaceMarkdownImageFromLine(strings.TrimSpace(line))
-		if !ok || source == "" {
-			continue
-		}
-		if alt == "正在生成图片" && strings.HasPrefix(source, "data:image/svg+xml;base64,") {
-			continue
-		}
-		title := strings.TrimSpace(alt)
-		if title == "" {
-			title = strings.TrimSpace(fallbackTitle)
-		}
-		images = append(images, workspaceDocumentResourceImage{
-			Src:   source,
-			Title: title,
-		})
-	}
-	return images
-}
-
 func stripWorkspaceDocumentResourceSectionIDCommentLines(markdown string) string {
 	lines := strings.Split(markdown, "\n")
 	filtered := make([]string, 0, len(lines))
@@ -277,6 +256,21 @@ func stripWorkspaceDocumentResourceSectionIDCommentLines(markdown string) string
 		filtered = append(filtered, line)
 	}
 	return strings.Join(filtered, "\n")
+}
+
+func workspaceMarkdownImageFromLine(line string) (string, string, bool) {
+	match := workspaceMarkdownImagePattern.FindStringSubmatch(line)
+	if len(match) == 0 {
+		return "", "", false
+	}
+	source := strings.TrimSpace(match[2])
+	if source == "" {
+		source = strings.TrimSpace(match[3])
+	}
+	if source == "" || workspacePlaceholderAltPattern.MatchString(match[1]) {
+		return "", "", false
+	}
+	return match[1], source, true
 }
 
 func compactWorkspaceDocumentResourceBlankLines(value string) string {

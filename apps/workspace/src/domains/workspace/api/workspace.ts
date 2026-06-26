@@ -90,11 +90,6 @@ export interface WorkspaceSectionsPayload {
 	sections: WorkspaceSectionRecord[];
 }
 
-export interface WorkspaceDocumentResourceImage {
-	src: string;
-	title?: string;
-}
-
 export interface WorkspaceDocumentResource {
 	blockId: string;
 	canGenerate: boolean;
@@ -107,7 +102,6 @@ export interface WorkspaceDocumentResource {
 	plainText?: string;
 	prompt?: string;
 	sectionId: string;
-	selectedImages?: WorkspaceDocumentResourceImage[];
 	sourceCategory: MarkdownDocument["category"];
 	summary?: string;
 	title: string;
@@ -179,27 +173,6 @@ export type UpdateWorkspaceDocumentRequest = Omit<
 	comments?: MarkdownDocument["comments"];
 	workbenchDraft?: MarkdownDocument["workbenchDraft"];
 };
-
-export interface UpdateWorkspaceDocumentSectionImageRequest {
-	sectionId: string;
-	image: {
-		src: string;
-		title?: string;
-	};
-	selected: boolean;
-	expectedVersion?: number;
-}
-
-export interface UpdateWorkspaceDocumentSectionMediaRequest {
-	sectionId: string;
-	media: {
-		kind: "audio" | "video";
-		src: string;
-		title?: string;
-	};
-	selected: boolean;
-	expectedVersion?: number;
-}
 
 export interface UpdateWorkspaceDocumentSectionMentionRequest {
 	sectionId: string;
@@ -396,30 +369,6 @@ export const updateWorkspaceDocumentRecord = async (
 ) => {
 	const response = await httpClient.patch<WorkspaceDocumentMutationResponse>(
 		workspaceDocumentRecordKey(documentId, projectId),
-		payload,
-	);
-	return response.data;
-};
-
-export const updateWorkspaceDocumentSectionImage = async (
-	documentId: string,
-	payload: UpdateWorkspaceDocumentSectionImageRequest,
-	projectId?: string | null,
-) => {
-	const response = await httpClient.patch<WorkspaceDocumentMutationResponse>(
-		`${workspaceDocumentRecordKey(documentId, projectId)}/section-image`,
-		payload,
-	);
-	return response.data;
-};
-
-export const updateWorkspaceDocumentSectionMedia = async (
-	documentId: string,
-	payload: UpdateWorkspaceDocumentSectionMediaRequest,
-	projectId?: string | null,
-) => {
-	const response = await httpClient.patch<WorkspaceDocumentMutationResponse>(
-		`${workspaceDocumentRecordKey(documentId, projectId)}/section-media`,
 		payload,
 	);
 	return response.data;

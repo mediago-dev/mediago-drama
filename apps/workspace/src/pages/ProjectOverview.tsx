@@ -3,7 +3,7 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import useSWR from "swr";
-import type { GenerationAsset, GenerationTask } from "@/domains/generation/api/generation";
+import type { GenerationTask } from "@/domains/generation/api/generation";
 import {
 	generationProjectConversationScopeId,
 	generationTasksQueryKey,
@@ -18,12 +18,8 @@ import {
 	type DocumentSectionBatchGenerationJob,
 } from "@/domains/documents/components/DocumentSectionBatchGenerationRunner";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
-import { sectionAssetKeysFromDocuments } from "@/domains/documents/components/section-generation-asset-keys";
 import { useDocumentsStore } from "@/domains/documents/stores";
-import {
-	generationAssetSelectionKey,
-	generationAssetSource,
-} from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { generationStatusLabel } from "@/domains/generation/hooks/generationFormatters";
 import {
 	selectedGenerationResourceDescriptorMap,
@@ -82,11 +78,7 @@ export const ProjectOverview: React.FC = () => {
 		Record<string, ResourceGenerationStatus>
 	>({});
 	const [storyboardVideoDocumentId, setStoryboardVideoDocumentId] = useState<string | null>(null);
-	const storeDocuments = useDocumentsStore((state) => state.documents);
-	const documentsProjectId = useDocumentsStore((state) => state.projectId);
 	const hydrateWorkspaceDocuments = useDocumentsStore((state) => state.hydrateWorkspaceDocuments);
-	const toggleStoredSectionImage = useDocumentsStore((state) => state.toggleSectionImage);
-	const toggleStoredSectionMedia = useDocumentsStore((state) => state.toggleSectionMedia);
 	const usageParams = useMemo(
 		() => (projectId ? { groupBy: "capability", projectId } : null),
 		[projectId],
@@ -176,11 +168,6 @@ export const ProjectOverview: React.FC = () => {
 		setStoryboardVideoDocumentId(null);
 	}, [projectId]);
 
-	const documents = useMemo(
-		() =>
-			documentsProjectId === projectId ? storeDocuments : (workspaceDocuments?.documents ?? []),
-		[documentsProjectId, projectId, storeDocuments, workspaceDocuments?.documents],
-	);
 	const documentResources = workspaceDocumentResources?.resources ?? [];
 	const storyboardVideoGroups = storyboardVideoResources?.groups ?? [];
 	const optimisticGenerationStatusMap = useMemo(
@@ -315,49 +302,6 @@ export const ProjectOverview: React.FC = () => {
 		},
 		[toast],
 	);
-	const selectedImageAssetKeys = useCallback(
-		(section: MarkdownSectionContext) => sectionAssetKeysFromDocuments(documents, section, "image"),
-		[documents],
-	);
-	const selectedVideoAssetKeys = useCallback(
-		(section: MarkdownSectionContext) => sectionAssetKeysFromDocuments(documents, section, "video"),
-		[documents],
-	);
-	const toggleSectionImage = useCallback(
-		(section: MarkdownSectionContext, asset: GenerationAsset, selected: boolean) => {
-			const source = generationAssetSource(asset);
-			if (!source || !generationAssetSelectionKey(asset)) return;
-
-			toggleStoredSectionImage(
-				section,
-				{
-					src: source,
-					title: section.headingText,
-				},
-				selected,
-			);
-		},
-		[toggleStoredSectionImage],
-	);
-	const toggleSectionVideo = useCallback(
-		(asset: GenerationAsset, selected: boolean) => {
-			if (!videoGenerationSection || asset.kind !== "video") return;
-
-			const source = generationAssetSource(asset);
-			if (!source || !generationAssetSelectionKey(asset)) return;
-
-			toggleStoredSectionMedia(
-				videoGenerationSection,
-				{
-					kind: "video",
-					src: source,
-					title: videoGenerationSection.headingText,
-				},
-				selected,
-			);
-		},
-		[toggleStoredSectionMedia, videoGenerationSection],
-	);
 	const ignoreSectionGeneration = useCallback(() => undefined, []);
 
 	if (!projectId) return <Navigate to="/" replace />;
@@ -448,25 +392,19 @@ export const ProjectOverview: React.FC = () => {
 									open={Boolean(imageGenerationSection)}
 									projectId={projectId}
 									section={imageGenerationSection}
-									selectedAssetKeys={selectedImageAssetKeys}
 									onGenerationComplete={ignoreSectionGeneration}
 									onGenerationError={ignoreSectionGeneration}
 									onGenerationStart={ignoreSectionGeneration}
 									onOpenChange={closeImageGeneration}
 									onOpenReferenceGeneration={setImageGenerationSection}
-									onToggleImage={toggleSectionImage}
 								/>
 								<VideoGenerationDialog
 									open={Boolean(videoGenerationSection)}
 									projectId={projectId}
 									resolveLatestSection={false}
 									section={videoGenerationSection}
-									selectedAssetKeys={
-										videoGenerationSection ? selectedVideoAssetKeys(videoGenerationSection) : []
-									}
 									onOpenChange={closeVideoGeneration}
 									onOpenReferenceGeneration={setImageGenerationSection}
-									onToggleAsset={toggleSectionVideo}
 								/>
 								<DocumentSectionBatchGenerationRunner
 									jobs={batchGenerationJobs}
@@ -1486,26 +1424,7 @@ const resourceAssetCount = (
 const resourceSelectedImages = (
 	resource: WorkspaceDocumentResource,
 	assets: SelectedGenerationAsset[],
-) =>
-	uniqueSelectedImages([
-		...selectedImagesFromResource(resource),
-		...selectedImagesFromAssets(resource, assets),
-	]);
-
-const selectedImagesFromResource = (
-	resource: WorkspaceDocumentResource,
-): DocumentResourceSelectedImage[] =>
-	(resource.selectedImages ?? []).flatMap((image) => {
-		const src = apiResourceURL(image.src);
-		return src
-			? [
-					{
-						src,
-						title: image.title?.trim() || resource.title,
-					},
-				]
-			: [];
-	});
+) => uniqueSelectedImages(selectedImagesFromAssets(resource, assets));
 
 const selectedImagesFromAssets = (
 	resource: WorkspaceDocumentResource,

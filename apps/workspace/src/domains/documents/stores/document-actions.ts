@@ -1,8 +1,6 @@
 import {
 	createWorkspaceDocument,
 	deleteWorkspaceDocumentRecord,
-	updateWorkspaceDocumentSectionImage,
-	updateWorkspaceDocumentSectionMedia,
 	updateWorkspaceDocumentSectionMention,
 	updateWorkspaceDocumentRecord,
 } from "@/domains/workspace/api/workspace";
@@ -35,8 +33,6 @@ type DocumentMutationActions = Pick<
 	| "moveDocument"
 	| "renameDocument"
 	| "setDocumentCategory"
-	| "toggleSectionImage"
-	| "toggleSectionMedia"
 	| "toggleSectionMention"
 	| "updateDocumentContent"
 >;
@@ -390,100 +386,6 @@ export const createDocumentMutationActions = ({
 			};
 		});
 		runDeferredMutation(persistMutation);
-	},
-	toggleSectionImage: (section, image, selected) => {
-		if (!isWritableSectionID(section.blockId)) return false;
-
-		let applied = false;
-		let persistMutation: (() => void) | null = null;
-		set((state) => {
-			const existingDocument = state.documents.find(
-				(document) => document.id === section.documentId,
-			);
-			if (!existingDocument) return state;
-
-			applied = true;
-			const documentId = existingDocument.id;
-			const capturedProjectId = state.projectId;
-
-			persistMutation = () => {
-				void updateWorkspaceDocumentSectionImage(
-					documentId,
-					{
-						sectionId: section.blockId,
-						image,
-						selected,
-					},
-					capturedProjectId,
-				)
-					.then(({ state: savedState }) => {
-						const latest = get();
-						if (latest.projectId !== capturedProjectId) return;
-
-						dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
-					})
-					.catch(() => {
-						dependencies.markWorkspaceSyncErrorForProject(
-							capturedProjectId,
-							"后端保存 section 图片失败",
-						);
-					});
-			};
-
-			return {
-				syncStatus: "syncing",
-				syncMessage: "正在保存 section 图片",
-			};
-		});
-		runDeferredMutation(persistMutation);
-		return applied;
-	},
-	toggleSectionMedia: (section, media, selected) => {
-		if (!isWritableSectionID(section.blockId)) return false;
-
-		let applied = false;
-		let persistMutation: (() => void) | null = null;
-		set((state) => {
-			const existingDocument = state.documents.find(
-				(document) => document.id === section.documentId,
-			);
-			if (!existingDocument) return state;
-
-			applied = true;
-			const documentId = existingDocument.id;
-			const capturedProjectId = state.projectId;
-
-			persistMutation = () => {
-				void updateWorkspaceDocumentSectionMedia(
-					documentId,
-					{
-						sectionId: section.blockId,
-						media,
-						selected,
-					},
-					capturedProjectId,
-				)
-					.then(({ state: savedState }) => {
-						const latest = get();
-						if (latest.projectId !== capturedProjectId) return;
-
-						dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
-					})
-					.catch(() => {
-						dependencies.markWorkspaceSyncErrorForProject(
-							capturedProjectId,
-							"后端保存 section media 失败",
-						);
-					});
-			};
-
-			return {
-				syncStatus: "syncing",
-				syncMessage: "正在保存 section media",
-			};
-		});
-		runDeferredMutation(persistMutation);
-		return applied;
 	},
 	toggleSectionMention: (section, reference, selected) => {
 		if (!isWritableSectionID(section.blockId)) return false;

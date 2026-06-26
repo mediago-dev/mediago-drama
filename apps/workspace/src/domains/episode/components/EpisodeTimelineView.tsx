@@ -30,13 +30,11 @@ import {
 	generationTasksQueryKey,
 	getGenerationTasks,
 	projectGenerationConversation,
-	type GenerationAsset,
 	type GenerationTask,
 } from "@/domains/generation/api/generation";
 import { Button } from "@/shared/components/ui/button";
 import { useToast } from "@/hooks/useToast";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
-import { sectionImageAssetKeysFromDocuments } from "@/domains/documents/components/section-generation-asset-keys";
 import { findDocumentById, selectDocumentById } from "@/domains/documents/lib/filters";
 import { latestMarkdownSectionContextFromDocuments } from "@/domains/documents/lib/markdown-section-context";
 import {
@@ -56,10 +54,6 @@ import {
 import type { Episode, TimelineClip, TimelineClipStatus } from "@/domains/episode/lib/sample";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { type TimelineCompanionTrackType, useEpisodeStore } from "@/domains/episode/stores";
-import {
-	generationAssetSelectionKey,
-	generationAssetSource,
-} from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useDesktopWindowDrag } from "@/domains/workspace/lib/desktop-window-drag";
 import {
 	agentProjectPath,
@@ -91,7 +85,6 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const assets = useDocumentsStore((state) => state.assets);
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
 	const projectId = useDocumentsStore((state) => state.projectId);
-	const toggleStoredSectionImage = useDocumentsStore((state) => state.toggleSectionImage);
 	const addCompanionTextClip = useEpisodeStore((state) => state.addCompanionTextClip);
 	const selectClip = useEpisodeStore((state) => state.selectClip);
 	const setCurrentTime = useEpisodeStore((state) => state.setCurrentTime);
@@ -160,20 +153,6 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		(section: MarkdownSectionContext) =>
 			setReferenceSectionGeneration(latestMarkdownSectionContextFromDocuments(documents, section)),
 		[documents],
-	);
-	const toggleReferenceSectionImage = useCallback(
-		(section: MarkdownSectionContext, asset: GenerationAsset, selected: boolean) => {
-			const source = generationAssetSource(asset);
-			if (!source || !generationAssetSelectionKey(asset)) return;
-
-			const image = {
-				src: source,
-				title: section.headingText,
-			};
-			const applied = toggleStoredSectionImage(section, image, selected);
-			if (!applied) return;
-		},
-		[toggleStoredSectionImage],
 	);
 	const clipMedia = useMemo(
 		() => buildEpisodeClipMedia(episode, mediaAssetsData?.assets),
@@ -727,9 +706,6 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 				open={Boolean(referenceSectionGeneration)}
 				projectId={projectId ?? undefined}
 				section={referenceSectionGeneration}
-				selectedAssetKeys={(targetSection) =>
-					sectionImageAssetKeysFromDocuments(documents, targetSection)
-				}
 				onGenerationComplete={() => undefined}
 				onGenerationError={() => undefined}
 				onGenerationStart={() => undefined}
@@ -737,7 +713,6 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 					if (!open) setReferenceSectionGeneration(null);
 				}}
 				onOpenReferenceGeneration={openReferenceSectionGeneration}
-				onToggleImage={toggleReferenceSectionImage}
 			/>
 		</div>
 	);

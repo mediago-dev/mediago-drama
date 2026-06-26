@@ -11,7 +11,6 @@ import { type Episode, sampleEpisode } from "@/domains/episode/lib/sample";
 import { useEpisodeStore } from "@/domains/episode/stores";
 import { getMediaAssets } from "@/domains/workspace/api/media";
 import {
-	updateWorkspaceDocumentSectionImage,
 	updateWorkspaceEpisode,
 	workspaceEpisodePreviewStreamURL,
 } from "@/domains/workspace/api/workspace";
@@ -58,8 +57,6 @@ vi.mock("@/domains/workspace/api/workspace", () => ({
 	getWorkspaceEpisode: vi.fn(async () => ({ episode: null })),
 	getWorkspaceState: vi.fn(),
 	updateWorkspaceDocumentRecord: vi.fn(),
-	updateWorkspaceDocumentSectionImage: vi.fn(),
-	updateWorkspaceDocumentSectionMedia: vi.fn(),
 	updateWorkspaceDocumentSectionMention: vi.fn(),
 	updateWorkspaceEpisode: vi.fn(async (documentId, episode, projectId) => ({
 		createdAt: "2026-06-22T00:00:00.000Z",
@@ -198,7 +195,7 @@ vi.mock("@/shared/components/generation-dialogs/ImageGenerationDialog", () => ({
 	}: {
 		open: boolean;
 		section: MarkdownSectionContext | null;
-		onToggleImage: (
+		onToggleImage?: (
 			section: MarkdownSectionContext,
 			asset: typeof fixtures.generatedAsset,
 			selected: boolean,
@@ -207,7 +204,10 @@ vi.mock("@/shared/components/generation-dialogs/ImageGenerationDialog", () => ({
 		(() => {
 			fixtures.imageDialogSection = open ? section : null;
 			return open && section ? (
-				<button type="button" onClick={() => onToggleImage(section, fixtures.generatedAsset, true)}>
+				<button
+					type="button"
+					onClick={() => onToggleImage?.(section, fixtures.generatedAsset, true)}
+				>
 					选择画布生成图片
 				</button>
 			) : null;
@@ -254,42 +254,6 @@ describe("EpisodeTimelineView canvas generation", () => {
 				updatedAt: "2026-06-22T00:00:00.000Z",
 				workspaceDir: "/workspace/project-a",
 			}),
-		);
-		vi.mocked(updateWorkspaceDocumentSectionImage).mockReset();
-		vi.mocked(updateWorkspaceDocumentSectionImage).mockImplementation(
-			async (documentId, payload, projectId) => {
-				const current = useDocumentsStore.getState();
-				const nextDocuments = current.documents.map((document) =>
-					document.id === documentId
-						? {
-								...document,
-								content: [
-									"# 角色册 第一章",
-									"",
-									"<!-- section-id: section_character_lin -->",
-									"## 林书彤",
-									"",
-									"形象定位：21岁女大学生，身高163cm，48kg。",
-									"",
-									`![林书彤](<${payload.image.src}>)`,
-								].join("\n"),
-								isDirty: false,
-								version: document.version + 1,
-							}
-						: document,
-				);
-				const savedDocument = nextDocuments.find((document) => document.id === documentId);
-				if (!savedDocument) throw new Error("missing saved document");
-
-				return {
-					document: savedDocument,
-					state: {
-						workspaceDir: current.workspaceDir,
-						projectId: projectId ?? current.projectId ?? undefined,
-						documents: nextDocuments,
-					},
-				};
-			},
 		);
 		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
 		useDocumentsStore.getState().hydrateWorkspaceDocuments({
@@ -445,7 +409,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 		});
 	});
 
-	it("saves a selected canvas-generated reference image through the document section backend API", async () => {
+	it("opens canvas reference generation without wiring document insertion", async () => {
 		render(
 			<MemoryRouter initialEntries={["/projects?projectId=project-a&workbench=canvas"]}>
 				<EpisodeTimelineView documentId="story-doc" />
@@ -463,24 +427,10 @@ describe("EpisodeTimelineView canvas generation", () => {
 
 		screen.getByRole("button", { name: "选择画布生成图片" }).click();
 
-		await waitFor(() => {
-			expect(updateWorkspaceDocumentSectionImage).toHaveBeenCalledWith(
-				"character-doc",
-				{
-					sectionId: "section_character_lin",
-					image: {
-						src: "/api/v1/media-assets/generated-lin/content",
-						title: "林书彤",
-					},
-					selected: true,
-				},
-				"project-a",
-			);
-		});
 		expect(
 			useDocumentsStore.getState().documents.find((document) => document.id === "character-doc")
 				?.content,
-		).toContain("![林书彤](</api/v1/media-assets/generated-lin/content>)");
+		).not.toContain("/api/v1/media-assets/generated-lin/content");
 	});
 
 	it("rolls back a generated video clip when saving the episode fails", async () => {

@@ -25,8 +25,6 @@ type workspaceProjectRecord = mediamcp.Project
 type createWorkspaceProjectRequest = servicedocument.CreateWorkspaceProjectRequest
 type createWorkspaceDocumentRequest = servicedocument.CreateWorkspaceDocumentRequest
 type updateWorkspaceDocumentRequest = servicedocument.UpdateWorkspaceDocumentRequest
-type workspaceDocumentSectionImageRequest = servicedocument.WorkspaceDocumentSectionImageRequest
-type workspaceDocumentSectionMediaRequest = servicedocument.WorkspaceDocumentSectionMediaRequest
 type workspaceDocumentSectionMentionRequest = servicedocument.WorkspaceDocumentSectionMentionRequest
 type deleteWorkspaceDocumentResponse = servicedocument.DeleteWorkspaceDocumentResponse
 type documentSectionsResponse = servicedocument.DocumentSectionsResponse
@@ -366,16 +364,6 @@ func (store *WorkspaceStateService) UpdateWorkspaceDocument(projectID string, do
 
 func (store *WorkspaceStateService) updateDocument(projectID string, documentID string, request updateWorkspaceDocumentRequest) (mediamcp.WorkspaceDocument, workspaceDocumentsResponse, error) {
 	return store.StateService().Documents.UpdateWorkspaceDocument(projectID, documentID, request)
-}
-
-// UpdateWorkspaceDocumentSectionImage selects or deselects a document section image.
-func (store *WorkspaceStateService) UpdateWorkspaceDocumentSectionImage(projectID string, documentID string, request workspaceDocumentSectionImageRequest) (mediamcp.WorkspaceDocument, workspaceDocumentsResponse, error) {
-	return store.StateService().Documents.UpdateWorkspaceDocumentSectionImage(projectID, documentID, request)
-}
-
-// UpdateWorkspaceDocumentSectionMedia selects or deselects document section media.
-func (store *WorkspaceStateService) UpdateWorkspaceDocumentSectionMedia(projectID string, documentID string, request workspaceDocumentSectionMediaRequest) (mediamcp.WorkspaceDocument, workspaceDocumentsResponse, error) {
-	return store.StateService().Documents.UpdateWorkspaceDocumentSectionMedia(projectID, documentID, request)
 }
 
 // UpdateWorkspaceDocumentSectionMention selects or deselects a document section mention.

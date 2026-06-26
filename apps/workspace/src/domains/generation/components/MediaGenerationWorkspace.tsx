@@ -1164,7 +1164,9 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		],
 	);
 	const generatedAssetToggleHandler =
-		onToggleAsset || projectId?.trim() ? toggleGeneratedAsset : undefined;
+		onToggleAsset || (kind === "image" && Boolean(projectId?.trim()))
+			? toggleGeneratedAsset
+			: undefined;
 
 	useEffect(() => {
 		if (isAssetSelectionControlled || !projectId?.trim() || selectedAssetKeys.length === 0) return;

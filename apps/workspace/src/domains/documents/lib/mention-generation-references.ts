@@ -9,12 +9,6 @@ export interface MentionPreviewReferences {
 	references: MediaAsset[];
 }
 
-export interface DocumentSectionImageReference {
-	asset: MediaAsset;
-	imageLabel: string;
-	sectionTitle: string;
-}
-
 const mentionPreviewTimestamp = "1970-01-01T00:00:00.000Z";
 
 export const buildMentionReferenceInputs = (mentions: ResolvedMention[]) => {
@@ -108,59 +102,6 @@ export const extractDocumentImageAssets = (documentId: string, markdown: string)
 		},
 	);
 
-export const extractDocumentSectionImageReferences = (
-	documentId: string,
-	markdown: string,
-): DocumentSectionImageReference[] => {
-	const references: DocumentSectionImageReference[] = [];
-	const lines = markdown.split("\n");
-	let currentSectionTitle = "";
-	let currentSectionIndex = 0;
-	let currentSectionSources = new Set<string>();
-	let imageIndex = 0;
-
-	for (const line of lines) {
-		const heading = markdownHeadingFromLine(line);
-		if (heading) {
-			currentSectionTitle = heading;
-			currentSectionIndex += 1;
-			currentSectionSources = new Set<string>();
-			continue;
-		}
-
-		if (!currentSectionTitle) continue;
-
-		const image = markdownImageFromLine(line.trim());
-		if (
-			!image ||
-			isPendingSectionImage(image.alt, image.source) ||
-			currentSectionSources.has(image.source)
-		) {
-			continue;
-		}
-
-		currentSectionSources.add(image.source);
-		imageIndex += 1;
-		references.push({
-			asset: {
-				createdAt: mentionPreviewTimestamp,
-				filename: `${currentSectionTitle} · 图片 ${imageIndex}`,
-				id: `document-section-image:${documentId}:${currentSectionIndex}:${imageIndex}:${image.source}`,
-				kind: "image",
-				mimeType: "image/*",
-				sizeBytes: 0,
-				sourceUrl: image.source,
-				updatedAt: mentionPreviewTimestamp,
-				url: image.source,
-			},
-			imageLabel: image.alt.trim() || `图片 ${imageIndex}`,
-			sectionTitle: currentSectionTitle,
-		});
-	}
-
-	return references;
-};
-
 const findMediaAssetForMentionImage = (
 	image: ResolvedMention["images"][number],
 	mediaAssets: MediaAsset[],
@@ -191,28 +132,3 @@ const createMentionPreviewAsset = (
 		url: image.url,
 	};
 };
-
-const markdownHeadingFromLine = (line: string) => {
-	const match = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line.trim());
-	if (!match?.[2]) return "";
-
-	return match[2].trim() || "未命名节点";
-};
-
-const markdownImageFromLine = (line: string) => {
-	const match = /^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$/.exec(line);
-	if (!match) return null;
-
-	return {
-		alt: match[1] ?? "",
-		source: match[2] ?? match[3] ?? "",
-	};
-};
-
-const isPendingSectionImage = (alt: string, source: string) =>
-	["mediago-drama-section-image-pending:", "media-cli-section-image-pending:"].some((prefix) =>
-		alt.startsWith(prefix),
-	) ||
-	Boolean(source.startsWith("mediago-drama-section-image-pending:")) ||
-	Boolean(source.startsWith("media-cli-section-image-pending:")) ||
-	(alt === "正在生成图片" && source.startsWith("data:image/svg+xml;base64,"));
