@@ -21,6 +21,7 @@ import { ProjectFolderItem } from "./directory/ProjectFolderItem";
 import {
 	buildDirectoryTree,
 	directoryCollisionDetection,
+	isSidebarVisibleProjectAsset,
 	previewForPayload,
 } from "./directory/helpers";
 import { useDirectoryDragDrop } from "./directory/useDirectoryDragDrop";
@@ -118,16 +119,20 @@ export const ProjectDirectoryTree: React.FC<{
 		() => sourceDocuments.filter((document) => !isOverviewDocumentId(document.id)),
 		[sourceDocuments],
 	);
+	const projectAssets = useMemo(
+		() => sourceAssets.filter(isSidebarVisibleProjectAsset),
+		[sourceAssets],
+	);
 	const directoryTree = useMemo(
-		() => buildDirectoryTree(sourceFolders, projectDocuments, sourceAssets),
-		[projectDocuments, sourceAssets, sourceFolders],
+		() => buildDirectoryTree(sourceFolders, projectDocuments, projectAssets),
+		[projectAssets, projectDocuments, sourceFolders],
 	);
 	const activePreview = useMemo(
 		() =>
 			activePayload
-				? previewForPayload(activePayload, sourceFolders, projectDocuments, sourceAssets)
+				? previewForPayload(activePayload, sourceFolders, projectDocuments, projectAssets)
 				: null,
-		[activePayload, projectDocuments, sourceAssets, sourceFolders],
+		[activePayload, projectAssets, projectDocuments, sourceFolders],
 	);
 	const isCreatingFolder = creatingFolderParentId !== undefined;
 	const hasDirectoryItems =

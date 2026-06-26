@@ -198,6 +198,27 @@ describe("ProjectDirectoryTree folder creation", () => {
 		expect((assetRow as HTMLElement).style.paddingLeft).toBe("26px");
 	});
 
+	it("hides markdown project assets from the directory tree", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: project.id,
+			documents: [],
+			folders: [makeFolder("folder-a", "素材")],
+			assets: [
+				{
+					...makeTextAsset("asset-a", "folder-a"),
+					filename: "notes.md",
+					mimeType: "text/markdown",
+				},
+			],
+		});
+
+		renderDirectoryTree();
+
+		expect(screen.getByText("素材")).toBeTruthy();
+		expect(screen.queryByText("notes.md")).toBeNull();
+	});
+
 	it("renders a root drop tail for moving items back to the project root", () => {
 		useDocumentsStore.getState().hydrateWorkspaceDocuments({
 			workspaceDir: "/workspace/project-a",

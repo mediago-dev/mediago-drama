@@ -19,6 +19,19 @@ import type {
 import { compareDirectoryLabels, documentSidebarLabel } from "./file-manager";
 import { rootDropId } from "./types";
 
+export const isSidebarVisibleProjectAsset = (asset: ProjectAsset) => !isMarkdownProjectAsset(asset);
+
+const isMarkdownProjectAsset = (asset: ProjectAsset) => {
+	const filename = asset.filename.trim().toLowerCase();
+	const mimeType = asset.mimeType.trim().toLowerCase();
+	return (
+		filename.endsWith(".md") ||
+		filename.endsWith(".markdown") ||
+		mimeType === "text/markdown" ||
+		mimeType === "text/x-markdown"
+	);
+};
+
 export const buildDirectoryTree = (
 	folders: DocumentFolder[],
 	documents: MarkdownDocument[],

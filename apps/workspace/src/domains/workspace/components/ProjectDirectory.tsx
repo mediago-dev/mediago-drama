@@ -46,6 +46,7 @@ import {
 	documentSidebarLabel,
 	revealDirectoryFileInFileManager,
 } from "./directory/file-manager";
+import { isSidebarVisibleProjectAsset } from "./directory/helpers";
 
 export type ProjectDocumentDeleteHandler = (
 	project: WorkspaceProject,
@@ -149,11 +150,13 @@ export const ProjectDirectory: React.FC<{
 	);
 	const projectAssets = useMemo(
 		() =>
-			[...sourceAssets].sort(
-				(first, second) =>
-					first.sortOrder - second.sortOrder ||
-					first.filename.localeCompare(second.filename, "zh-CN"),
-			),
+			sourceAssets
+				.filter(isSidebarVisibleProjectAsset)
+				.sort(
+					(first, second) =>
+						first.sortOrder - second.sortOrder ||
+						first.filename.localeCompare(second.filename, "zh-CN"),
+				),
 		[sourceAssets],
 	);
 	const directoryGroups = useMemo(

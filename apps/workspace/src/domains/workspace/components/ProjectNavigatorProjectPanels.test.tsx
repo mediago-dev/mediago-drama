@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import type { WorkspaceProject } from "@/domains/projects/api/projects";
+import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import { useDocumentViewStore } from "@/lib/stores/document-view";
 import { ProjectSidebarPanel, ProjectsSidebarPanel } from "./ProjectNavigatorProjectPanels";
 
@@ -36,6 +37,20 @@ const secondDocument: MarkdownDocument = {
 	id: "doc-b",
 	title: "第二集",
 };
+
+const makeProjectAsset = (filename: string, mimeType: string): ProjectAsset => ({
+	id: `asset-${filename}`,
+	projectId: project.id,
+	kind: "text",
+	filename,
+	mimeType,
+	sizeBytes: 16,
+	url: `/api/v1/projects/${project.id}/assets/${filename}/content`,
+	folderId: null,
+	sortOrder: 0,
+	createdAt: "2026-06-04T00:00:00.000Z",
+	updatedAt: "2026-06-04T00:00:00.000Z",
+});
 
 describe("ProjectSidebarPanel", () => {
 	beforeEach(() => {
@@ -118,6 +133,28 @@ describe("ProjectSidebarPanel", () => {
 		expect(screen.getByRole("menuitem", { name: "在文件管理器中展示" })).toBeTruthy();
 		expect(screen.getByRole("menuitem", { name: "变更类型" })).toBeTruthy();
 		expect(screen.getByRole("menuitem", { name: "删除" })).toBeTruthy();
+	});
+
+	it("hides markdown project assets while keeping the parsed reference document", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: project.id,
+			documents: [
+				{
+					...document,
+					id: "doc-reference",
+					title: "解析后的资料",
+					category: "reference",
+				},
+			],
+			folders: [],
+			assets: [makeProjectAsset("原始资料.md", "text/markdown")],
+		});
+
+		renderProjectSidebar(true, { isOverviewActive: false });
+
+		expect(screen.getByRole("button", { name: "解析后的资料" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "原始资料.md" })).toBeNull();
 	});
 
 	it("creates a document from the category header context menu", () => {
