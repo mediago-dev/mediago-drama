@@ -61,6 +61,8 @@ interface ClipContextMenuState extends ClipContextMenuPosition {
 
 const stripHeight = 184;
 const menuViewportGap = 8;
+const wheelDeltaLineMode = 1;
+const wheelDeltaPageMode = 2;
 
 const clipCardWidth: Record<TimelineZoom, number> = {
 	fit: 176,
@@ -132,6 +134,25 @@ export const EpisodeClipStrip: React.FC<EpisodeClipStripProps> = ({
 		onSeek(seekTime);
 		onSelectClip(clip.id);
 	};
+	const handleStripWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+		const element = event.currentTarget;
+		const maxScrollLeft = element.scrollWidth - element.clientWidth;
+		if (maxScrollLeft <= 0 || event.shiftKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) {
+			return;
+		}
+
+		const deltaY =
+			event.deltaMode === wheelDeltaLineMode
+				? event.deltaY * 16
+				: event.deltaMode === wheelDeltaPageMode
+					? event.deltaY * element.clientWidth
+					: event.deltaY;
+		const nextScrollLeft = Math.min(Math.max(element.scrollLeft + deltaY, 0), maxScrollLeft);
+		if (nextScrollLeft === element.scrollLeft) return;
+
+		event.preventDefault();
+		element.scrollLeft = nextScrollLeft;
+	}, []);
 	const closeContextMenu = useCallback(() => setContextMenu(null), []);
 	const handleOpenContextMenu = useCallback(
 		(clip: TimelineClip, position: ClipContextMenuPosition) => {
@@ -185,7 +206,12 @@ export const EpisodeClipStrip: React.FC<EpisodeClipStripProps> = ({
 					</div>
 				</div>
 
-				<div ref={scrollRef} className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden px-4 pb-4">
+				<div
+					ref={scrollRef}
+					className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden px-4 pb-4"
+					data-testid="episode-clip-strip-scroll"
+					onWheel={handleStripWheel}
+				>
 					<div className="flex h-full min-w-max items-start gap-3">
 						{videoClips.map((clip, index) => (
 							<EpisodeClipCard

@@ -117,6 +117,57 @@ describe("EpisodeTimelineEditor", () => {
 		expect(screen.queryByRole("button", { name: "播放片段条" })).toBeNull();
 	});
 
+	it("scrolls the clip strip horizontally with a vertical mouse wheel", () => {
+		render(
+			<EpisodeTimelineEditor
+				episode={sampleEpisode}
+				currentTime={0}
+				isPlaying={false}
+				selectedClipId="clip-cold-open"
+				zoom="fit"
+				onRequestCompanionGeneration={vi.fn()}
+				onGenerateClip={vi.fn()}
+				onSeek={vi.fn()}
+				onSelectClip={vi.fn()}
+				onTogglePlayback={vi.fn()}
+			/>,
+		);
+
+		const scroll = screen.getByTestId("episode-clip-strip-scroll");
+		Object.defineProperty(scroll, "clientWidth", { value: 320, configurable: true });
+		Object.defineProperty(scroll, "scrollWidth", { value: 960, configurable: true });
+
+		fireEvent.wheel(scroll, { deltaX: 0, deltaY: 120 });
+
+		expect(scroll.scrollLeft).toBe(120);
+	});
+
+	it("keeps native horizontal wheel movement available", () => {
+		render(
+			<EpisodeTimelineEditor
+				episode={sampleEpisode}
+				currentTime={0}
+				isPlaying={false}
+				selectedClipId="clip-cold-open"
+				zoom="fit"
+				onRequestCompanionGeneration={vi.fn()}
+				onGenerateClip={vi.fn()}
+				onSeek={vi.fn()}
+				onSelectClip={vi.fn()}
+				onTogglePlayback={vi.fn()}
+			/>,
+		);
+
+		const scroll = screen.getByTestId("episode-clip-strip-scroll");
+		Object.defineProperty(scroll, "clientWidth", { value: 320, configurable: true });
+		Object.defineProperty(scroll, "scrollWidth", { value: 960, configurable: true });
+		scroll.scrollLeft = 48;
+
+		fireEvent.wheel(scroll, { deltaX: 120, deltaY: 4 });
+
+		expect(scroll.scrollLeft).toBe(48);
+	});
+
 	it("seeks to a clip when clicking the card body", () => {
 		const onGenerateClip = vi.fn();
 		const onSeek = vi.fn();
