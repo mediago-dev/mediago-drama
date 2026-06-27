@@ -152,6 +152,15 @@ export type WorkspaceEpisodePayload = Omit<EpisodeTimelineStateResponse, "episod
 	episode: Episode;
 };
 
+export interface WorkspaceResolvedEpisodePayload {
+	workspaceDir: string;
+	projectId?: string;
+	documentId: string;
+	episode: Episode;
+	documentUpdatedAt?: string;
+	persistedUpdatedAt?: string;
+}
+
 export type CreateWorkspaceDocumentRequest = Omit<
 	GeneratedCreateWorkspaceDocumentRequest,
 	"category" | "comments" | "folderId" | "parentId" | "workbenchDraft"
@@ -491,6 +500,16 @@ export const getWorkspaceEpisode = async (documentId: string, projectId?: string
 	}
 };
 
+export const getWorkspaceResolvedEpisode = async (
+	documentId: string,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.get<WorkspaceResolvedEpisodePayload>(
+		workspaceResolvedEpisodeKey(documentId, projectId),
+	);
+	return response.data;
+};
+
 export const updateWorkspaceEpisode = async (
 	documentId: string,
 	episode: Episode,
@@ -549,6 +568,10 @@ const workspaceFolderRecordKey = (folderId: string, projectId?: string | null) =
 
 export const workspaceEpisodeKey = (documentId: string, projectId?: string | null) => {
 	return projectAPIPath(projectId, `/workspace/episodes/${encodeURIComponent(documentId)}`);
+};
+
+export const workspaceResolvedEpisodeKey = (documentId: string, projectId?: string | null) => {
+	return `${workspaceEpisodeKey(documentId, projectId)}/resolved`;
 };
 
 export const workspaceEpisodePreviewStreamURL = (

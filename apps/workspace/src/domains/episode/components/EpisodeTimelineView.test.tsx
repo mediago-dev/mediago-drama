@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type React from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -61,6 +61,7 @@ vi.mock("@/domains/workspace/api/workspace", () => ({
 	deleteWorkspaceDocumentRecord: vi.fn(),
 	getWorkspaceDocuments: vi.fn(),
 	getWorkspaceEpisode: vi.fn(async () => ({ episode: null })),
+	getWorkspaceResolvedEpisode: vi.fn(async () => ({ episode: null })),
 	getWorkspaceState: vi.fn(),
 	updateWorkspaceDocumentRecord: vi.fn(),
 	updateWorkspaceDocumentSectionMention: vi.fn(),
@@ -76,6 +77,11 @@ vi.mock("@/domains/workspace/api/workspace", () => ({
 	workspaceDocumentsChangedEventType: "workspace.documents.changed",
 	workspaceEpisodeKey: (documentId: string, projectId?: string | null) => [
 		"workspace-episode",
+		projectId ?? "",
+		documentId,
+	],
+	workspaceResolvedEpisodeKey: (documentId: string, projectId?: string | null) => [
+		"workspace-resolved-episode",
 		projectId ?? "",
 		documentId,
 	],
@@ -348,7 +354,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 			"/api/v1/projects/project-a/workspace/episodes/story-doc/preview.mp4",
 		);
 		vi.mocked(useSWR).mockImplementation((key: unknown) => {
-			if (Array.isArray(key) && key[0] === "workspace-episode") {
+			if (Array.isArray(key) && key[0] === "workspace-resolved-episode") {
 				return {
 					data: {
 						createdAt: "2026-06-22T00:00:00.000Z",
@@ -410,7 +416,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 			"/api/v1/projects/project-a/workspace/episodes/story-doc/preview.mp4",
 		);
 		vi.mocked(useSWR).mockImplementation((key: unknown) => {
-			if (Array.isArray(key) && key[0] === "workspace-episode") {
+			if (Array.isArray(key) && key[0] === "workspace-resolved-episode") {
 				return {
 					data: {
 						createdAt: "2026-06-22T00:00:00.000Z",
@@ -465,10 +471,10 @@ describe("EpisodeTimelineView canvas generation", () => {
 		expect(useEpisodeStore.getState().selectedClipId).toBe(storyboardVideoClipId);
 	});
 
-	it("rebuilds the timeline from updated storyboard markdown when saved episode state exists", async () => {
-		const persistedEpisode: Episode = {
+	it("loads the document-derived timeline returned by the resolved episode endpoint", async () => {
+		const resolvedEpisode: Episode = {
 			aspectRatio: "16:9",
-			duration: 15,
+			duration: 30,
 			id: "episode-story-doc",
 			sections: [
 				{
@@ -477,6 +483,13 @@ describe("EpisodeTimelineView canvas generation", () => {
 					start: 0,
 					summary: "旧分镜内容",
 					title: "第 01 组 总时长：00:07",
+				},
+				{
+					end: 30,
+					id: "section-1-02-00-05",
+					start: 15,
+					summary: "新增分镜内容",
+					title: "第 02 组 总时长：00:05",
 				},
 			],
 			title: "分镜脚本 第一章",
@@ -492,6 +505,14 @@ describe("EpisodeTimelineView canvas generation", () => {
 							title: "第 01 组 总时长：00:07",
 							videoUrl: "/api/v1/media-assets/persisted-video/content",
 						},
+						{
+							content: "新增分镜内容",
+							end: 30,
+							id: "video-1-02-00-05",
+							start: 15,
+							status: "draft",
+							title: "第 02 组 总时长：00:05",
+						},
 					],
 					id: "track-video",
 					label: "视频",
@@ -500,14 +521,14 @@ describe("EpisodeTimelineView canvas generation", () => {
 			],
 		};
 		vi.mocked(useSWR).mockImplementation((key: unknown) => {
-			if (Array.isArray(key) && key[0] === "workspace-episode") {
+			if (Array.isArray(key) && key[0] === "workspace-resolved-episode") {
 				return {
 					data: {
-						createdAt: "2026-06-22T00:00:00.000Z",
 						documentId: "story-doc",
-						episode: persistedEpisode,
+						documentUpdatedAt: "2026-06-22T00:00:00.000Z",
+						episode: resolvedEpisode,
+						persistedUpdatedAt: "2026-06-22T00:00:00.000Z",
 						projectId: "project-a",
-						updatedAt: "2026-06-22T00:00:00.000Z",
 						workspaceDir: "/workspace/project-a",
 					},
 					mutate: vi.fn(),
@@ -521,36 +542,6 @@ describe("EpisodeTimelineView canvas generation", () => {
 				<EpisodeTimelineView documentId="story-doc" />
 			</MemoryRouter>,
 		);
-
-		await waitFor(() => {
-			const videoClips =
-				useEpisodeStore.getState().episode.tracks.find((track) => track.type === "video")?.clips ??
-				[];
-			expect(videoClips).toHaveLength(1);
-			expect(videoClips[0]?.videoUrl).toBe("/api/v1/media-assets/persisted-video/content");
-		});
-
-		act(() => {
-			useDocumentsStore.getState().hydrateWorkspaceDocuments({
-				documents: [
-					makeDocument({
-						content: [
-							"# 分镜脚本 第一章",
-							"",
-							"## 第 01 组 总时长：00:07",
-							"",
-							"分镜内容。",
-							"",
-							"## 第 02 组 总时长：00:05",
-							"",
-							"新增分镜内容。",
-						].join("\n"),
-					}),
-				],
-				projectId: "project-a",
-				workspaceDir: "/workspace/project-a",
-			});
-		});
 
 		await waitFor(() => {
 			const videoClips =
@@ -571,7 +562,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 			"/api/v1/projects/project-a/workspace/episodes/story-doc/preview.mp4",
 		);
 		vi.mocked(useSWR).mockImplementation((key: unknown) => {
-			if (Array.isArray(key) && key[0] === "workspace-episode") {
+			if (Array.isArray(key) && key[0] === "workspace-resolved-episode") {
 				return {
 					data: {
 						createdAt: "2026-06-22T00:00:00.000Z",
@@ -637,7 +628,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 			"/api/v1/projects/project-a/workspace/episodes/story-doc/preview.mp4",
 		);
 		vi.mocked(useSWR).mockImplementation((key: unknown) => {
-			if (Array.isArray(key) && key[0] === "workspace-episode") {
+			if (Array.isArray(key) && key[0] === "workspace-resolved-episode") {
 				return {
 					data: {
 						createdAt: "2026-06-22T00:00:00.000Z",
@@ -698,7 +689,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 	it("persists videos synced from completed generation tasks before preview playback", async () => {
 		const persistedEpisode = makeStoryboardEpisode();
 		vi.mocked(useSWR).mockImplementation((key: unknown) => {
-			if (Array.isArray(key) && key[0] === "workspace-episode") {
+			if (Array.isArray(key) && key[0] === "workspace-resolved-episode") {
 				return {
 					data: {
 						createdAt: "2026-06-22T00:00:00.000Z",

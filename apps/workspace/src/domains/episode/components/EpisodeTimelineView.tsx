@@ -5,10 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import useSWR from "swr";
 import {
-	getWorkspaceEpisode,
+	getWorkspaceResolvedEpisode,
 	updateWorkspaceEpisode,
-	workspaceEpisodeKey,
 	workspaceEpisodePreviewStreamURL,
+	workspaceResolvedEpisodeKey,
 } from "@/domains/workspace/api/workspace";
 import { getMediaAssets } from "@/domains/workspace/api/media";
 import { EpisodeCompanionGenerationDialog } from "@/domains/episode/components/EpisodeCompanionGenerationDialog";
@@ -42,7 +42,6 @@ import {
 	findEpisodeTrackForClip,
 	findEpisodeVideoClip,
 } from "@/domains/episode/lib/filters";
-import { createEpisodeFromMarkdownDocument } from "@/domains/episode/lib/from-markdown";
 import {
 	buildEpisodeClipMedia,
 	buildEpisodeVideoClipPlaybackRanges,
@@ -51,7 +50,6 @@ import {
 	findEpisodeClipPlaybackRangeAtTime,
 	isEpisodeVideoClipPlayable,
 } from "@/domains/episode/lib/media-assets";
-import { mergeEpisodeGeneratedMedia } from "@/domains/episode/lib/storyboard-reels";
 import type { Episode, TimelineClip, TimelineClipStatus } from "@/domains/episode/lib/sample";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { type TimelineCompanionTrackType, useEpisodeStore } from "@/domains/episode/stores";
@@ -109,15 +107,11 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const isCanvasWorkbench = activeWorkbench === "canvas";
 	const activeDocument =
 		findDocumentById(documents, documentId) ?? selectDocumentById(documents, activeDocumentId);
-	const markdownEpisode = useMemo(
-		() => createEpisodeFromMarkdownDocument(activeDocument),
-		[activeDocument],
-	);
 	const episodeDocumentId = activeDocument?.id ?? "";
 	const mediaAssetProjectId = projectId?.trim() ?? "";
-	const { data: persistedEpisodeState, mutate: mutateEpisodeState } = useSWR(
-		episodeDocumentId ? workspaceEpisodeKey(episodeDocumentId, projectId) : null,
-		() => getWorkspaceEpisode(episodeDocumentId, projectId),
+	const { data: resolvedEpisodeState, mutate: mutateEpisodeState } = useSWR(
+		episodeDocumentId ? workspaceResolvedEpisodeKey(episodeDocumentId, projectId) : null,
+		() => getWorkspaceResolvedEpisode(episodeDocumentId, projectId),
 	);
 	const { data: mediaAssetsData, mutate: mutateMediaAssets } = useSWR(
 		["episode-media-assets", mediaAssetProjectId],
@@ -144,14 +138,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 				mediaAssetProjectId,
 			),
 	);
-	const persistedEpisode = persistedEpisodeState?.episode ?? null;
-	const documentSyncedEpisode = useMemo(
-		() =>
-			persistedEpisode
-				? mergeEpisodeGeneratedMedia(markdownEpisode, persistedEpisode)
-				: markdownEpisode,
-		[markdownEpisode, persistedEpisode],
-	);
+	const resolvedEpisode = resolvedEpisodeState?.episode ?? null;
 
 	const selectedClip = useMemo(
 		() => findEpisodeClip(episode, selectedClipId),
@@ -274,8 +261,8 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 			if (!nextEpisode || !episodeDocumentId) return;
 
 			try {
-				const saved = await updateWorkspaceEpisode(episodeDocumentId, nextEpisode, projectId);
-				await mutateEpisodeState(saved, { revalidate: false });
+				await updateWorkspaceEpisode(episodeDocumentId, nextEpisode, projectId);
+				await mutateEpisodeState();
 				await mutateMediaAssets();
 			} catch (error) {
 				setEpisode(previousEpisode);
@@ -551,8 +538,8 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 			if (!nextEpisode || !episodeDocumentId) return;
 
 			try {
-				const saved = await updateWorkspaceEpisode(episodeDocumentId, nextEpisode, projectId);
-				await mutateEpisodeState(saved, { revalidate: false });
+				await updateWorkspaceEpisode(episodeDocumentId, nextEpisode, projectId);
+				await mutateEpisodeState();
 			} catch (error) {
 				setEpisode(previousEpisode);
 				toast.error("剪辑台保存失败", {
@@ -572,9 +559,10 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	);
 
 	useEffect(() => {
-		setEpisode(documentSyncedEpisode);
+		if (!resolvedEpisode) return;
+		setEpisode(resolvedEpisode);
 		setPreviewPlaybackActive(false);
-	}, [documentSyncedEpisode, setEpisode]);
+	}, [resolvedEpisode, setEpisode]);
 
 	useEffect(() => {
 		if (latestStoryboardVideoTaskByClipId.size === 0) return;
@@ -591,8 +579,8 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 
 		setIsSavingTaskSyncedEpisode(true);
 		void updateWorkspaceEpisode(episodeDocumentId, syncedEpisode.episode, projectId)
-			.then(async (saved) => {
-				await mutateEpisodeState(saved, { revalidate: false });
+			.then(async () => {
+				await mutateEpisodeState();
 				await mutateMediaAssets();
 			})
 			.catch((error) => {

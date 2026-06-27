@@ -89,6 +89,58 @@ type EpisodeTimelineStateResponse struct {
 	UpdatedAt    string          `json:"updatedAt"`
 }
 
+// EpisodeTimelineResolvedResponse is the document-derived editing timeline for display.
+type EpisodeTimelineResolvedResponse struct {
+	WorkspaceDir       string        `json:"workspaceDir"`
+	ProjectID          string        `json:"projectId,omitempty"`
+	DocumentID         string        `json:"documentId"`
+	Episode            EpisodeRecord `json:"episode"`
+	DocumentUpdatedAt  string        `json:"documentUpdatedAt,omitempty"`
+	PersistedUpdatedAt string        `json:"persistedUpdatedAt,omitempty"`
+}
+
+// EpisodeRecord is the timeline view model consumed by the frontend workbench.
+type EpisodeRecord struct {
+	ID          string                 `json:"id"`
+	Title       string                 `json:"title"`
+	Duration    float64                `json:"duration"`
+	AspectRatio string                 `json:"aspectRatio"`
+	Sections    []EpisodeSectionRecord `json:"sections"`
+	Tracks      []TimelineTrackRecord  `json:"tracks"`
+}
+
+// EpisodeSectionRecord describes a high-level timeline section.
+type EpisodeSectionRecord struct {
+	ID      string  `json:"id"`
+	Title   string  `json:"title"`
+	Start   float64 `json:"start"`
+	End     float64 `json:"end"`
+	Summary string  `json:"summary"`
+}
+
+// TimelineTrackRecord describes one workbench timeline track.
+type TimelineTrackRecord struct {
+	ID    string               `json:"id"`
+	Type  string               `json:"type"`
+	Label string               `json:"label"`
+	Clips []TimelineClipRecord `json:"clips"`
+}
+
+// TimelineClipRecord describes one clip on a timeline track.
+type TimelineClipRecord struct {
+	ID           string  `json:"id"`
+	Title        string  `json:"title"`
+	Start        float64 `json:"start"`
+	End          float64 `json:"end"`
+	Content      string  `json:"content"`
+	Status       string  `json:"status"`
+	Prompt       string  `json:"prompt,omitempty"`
+	Source       string  `json:"source,omitempty"`
+	VideoURL     string  `json:"videoUrl,omitempty"`
+	PosterURL    string  `json:"posterUrl,omitempty"`
+	ThumbnailURL string  `json:"thumbnailUrl,omitempty"`
+}
+
 // SaveEpisodeTimelineStateRequest saves an editing timeline for a document.
 type SaveEpisodeTimelineStateRequest struct {
 	Episode json.RawMessage `json:"episode"`

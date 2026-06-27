@@ -34,6 +34,7 @@ type WorkspaceStore interface {
 	GetDocumentHistoryDiff(projectID string, documentID string, commitHash string, fromHash string) (service.DocumentHistoryDiffResponse, error)
 	RestoreDocumentHistoryVersion(projectID string, documentID string, commitHash string) (service.DocumentHistoryRestoreResponse, error)
 	GetEpisodeTimelineState(projectID string, documentID string) (service.EpisodeTimelineStateResponse, bool, error)
+	GetResolvedEpisodeTimelineState(projectID string, documentID string) (service.EpisodeTimelineResolvedResponse, error)
 	SaveEpisodeTimelineState(projectID string, documentID string, request service.SaveEpisodeTimelineStateRequest) (service.EpisodeTimelineStateResponse, error)
 }
 
@@ -749,6 +750,39 @@ func (handler Workspace) HandleGetEpisodeTimelineState(context *gin.Context) {
 	}
 	if !ok {
 		httpresponse.OK[any](context, nil)
+		return
+	}
+	httpresponse.OK(context, state)
+}
+
+// HandleGetResolvedEpisodeTimelineState godoc
+// @Summary 获取解析后的剧集时间线
+// @Description 从最新分镜文档解析剧集时间线，并合并已保存的视频生成状态。
+// @Tags Episodes
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param documentId path string true "Document ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/workspace/episodes/{documentId}/resolved [get]
+func (handler Workspace) HandleGetResolvedEpisodeTimelineState(context *gin.Context) {
+	projectID, ok := requiredProjectID(context)
+	if !ok {
+		return
+	}
+	documentID, ok := requiredPathParam(context, "documentId", "documentId")
+	if !ok {
+		return
+	}
+	state, err := handler.store.GetResolvedEpisodeTimelineState(projectID, documentID)
+	if err != nil {
+		if handler.matchesNotFound(err) {
+			httpresponse.Error(context, http.StatusNotFound, "文档不存在")
+			return
+		}
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
 		return
 	}
 	httpresponse.OK(context, state)

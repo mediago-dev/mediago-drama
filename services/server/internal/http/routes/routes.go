@@ -296,6 +296,10 @@ func registerWorkspaceRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) 
 		handlers.Workspace.HandleGetEpisodeTimelineState,
 	)
 	projectRoutes.GET(
+		"/workspace/episodes/:documentId/resolved",
+		handlers.Workspace.HandleGetResolvedEpisodeTimelineState,
+	)
+	projectRoutes.GET(
 		"/workspace/episodes/:documentId/preview.mp4",
 		handlers.EpisodePreview.HandleEpisodePreviewStream,
 	)

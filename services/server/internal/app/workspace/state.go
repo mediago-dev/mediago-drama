@@ -18,6 +18,7 @@ type workspaceDocumentsResponse = servicedocument.WorkspaceDocumentsResponse
 type workspaceDocumentResourcesResponse = servicedocument.WorkspaceDocumentResourcesResponse
 type documentFoldersResponse = servicedocument.DocumentFoldersResponse
 type episodeTimelineStateResponse = servicedocument.EpisodeTimelineStateResponse
+type episodeTimelineResolvedResponse = servicedocument.EpisodeTimelineResolvedResponse
 type saveEpisodeTimelineStateRequest = servicedocument.SaveEpisodeTimelineStateRequest
 type workspaceDocumentMetadataResponse = mediamcp.ListDocumentsOutput
 type workspaceProjectsResponse = mediamcp.ProjectList
@@ -326,6 +327,11 @@ func (store *WorkspaceStateService) getDocument(projectID string, documentID str
 // GetEpisodeTimelineState returns persisted episode timeline state.
 func (store *WorkspaceStateService) GetEpisodeTimelineState(projectID string, documentID string) (episodeTimelineStateResponse, bool, error) {
 	return store.StateService().Documents.GetEpisodeTimelineState(projectID, documentID)
+}
+
+// GetResolvedEpisodeTimelineState returns a document-derived episode timeline state.
+func (store *WorkspaceStateService) GetResolvedEpisodeTimelineState(projectID string, documentID string) (episodeTimelineResolvedResponse, error) {
+	return store.StateService().Documents.GetResolvedEpisodeTimelineState(projectID, documentID)
 }
 
 // SaveEpisodeTimelineState persists episode timeline state.
