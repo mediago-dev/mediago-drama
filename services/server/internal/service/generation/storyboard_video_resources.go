@@ -13,9 +13,7 @@ import (
 
 var (
 	storyboardVideoHeadingPattern     = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
-	storyboardVideoGroupTitlePattern  = regexp.MustCompile(`^第\s*\S+\s*组`)
 	storyboardVideoGroupNumberPattern = regexp.MustCompile(`^第\s*([0-9０-９一二三四五六七八九十百]+)\s*组`)
-	storyboardVideoShotTitlePattern   = regexp.MustCompile(`^(分镜|镜头)(?:\s+|[0-9０-９一二三四五六七八九十百]+|$)`)
 	storyboardVideoSectionIDPattern   = regexp.MustCompile(`^section_[A-Za-z0-9_-]+$`)
 	storyboardVideoSectionIDComment   = regexp.MustCompile(`^\s*<!--\s*section-id:\s*([A-Za-z0-9_-]+)\s*-->\s*$`)
 	storyboardVideoPlaceholderComment = regexp.MustCompile(`^\s*<!--\s*PLACEHOLDER\s*-->\s*$`)
@@ -122,22 +120,8 @@ func storyboardVideoReelsFromDocument(document mediamcp.WorkspaceDocument) []Sto
 func storyboardVideoLaneSections(document mediamcp.WorkspaceDocument) []storyboardVideoSection {
 	lines := strings.Split(stripStoryboardVideoFrontmatter(document.Content), "\n")
 	headings := storyboardVideoHeadings(lines)
-	groups := collectStoryboardVideoSections(lines, headings, document.ID, func(heading storyboardVideoHeading) bool {
-		return storyboardVideoGroupTitlePattern.MatchString(heading.text)
-	})
-	if len(groups) > 0 {
-		return groups
-	}
-
-	shots := collectStoryboardVideoSections(lines, headings, document.ID, func(heading storyboardVideoHeading) bool {
-		return storyboardVideoShotTitlePattern.MatchString(heading.text)
-	})
-	if len(shots) > 0 {
-		return shots
-	}
-
 	return collectStoryboardVideoSections(lines, headings, document.ID, func(heading storyboardVideoHeading) bool {
-		return heading.level <= 3
+		return heading.level == 2
 	})
 }
 

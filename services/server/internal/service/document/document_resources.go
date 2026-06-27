@@ -13,11 +13,9 @@ import (
 const documentResourceDefaultHeadingLevel = 2
 
 var (
-	documentResourceStoryboardShotTitlePattern  = regexp.MustCompile(`^(分镜|镜头)(?:\s+|[0-9０-９一二三四五六七八九十百]+|$)`)
-	documentResourceStoryboardGroupTitlePattern = regexp.MustCompile(`^第\s*\S+\s*组`)
-	documentResourceMentionPattern              = regexp.MustCompile(`@\[([^\]]*)\]\((?:<[^>]+>|[^\s)]+)\)`)
-	workspaceMarkdownImagePattern               = regexp.MustCompile(`^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$`)
-	workspacePlaceholderAltPattern              = regexp.MustCompile(`^(?:mediago-drama-section-image-pending|media-cli-section-image-pending):`)
+	documentResourceMentionPattern = regexp.MustCompile(`@\[([^\]]*)\]\((?:<[^>]+>|[^\s)]+)\)`)
+	workspaceMarkdownImagePattern  = regexp.MustCompile(`^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$`)
+	workspacePlaceholderAltPattern = regexp.MustCompile(`^(?:mediago-drama-section-image-pending|media-cli-section-image-pending):`)
 )
 
 type documentResourceHeadingSection struct {
@@ -177,24 +175,7 @@ func workspaceDocumentResourceCanonicalIDBeforeHeadingLine(lines []string, headi
 }
 
 func storyboardDocumentResourceSections(sections []documentResourceHeadingSection) []documentResourceHeadingSection {
-	shots := []documentResourceHeadingSection{}
-	for _, section := range sections {
-		if documentResourceStoryboardShotTitlePattern.MatchString(section.title) {
-			shots = append(shots, section)
-		}
-	}
-	if len(shots) > 0 {
-		return shots
-	}
-
-	groups := []documentResourceHeadingSection{}
-	for _, section := range sections {
-		if section.headingLevel == documentResourceDefaultHeadingLevel &&
-			documentResourceStoryboardGroupTitlePattern.MatchString(section.title) {
-			groups = append(groups, section)
-		}
-	}
-	return groups
+	return levelDocumentResourceSections(sections, documentResourceDefaultHeadingLevel)
 }
 
 func levelDocumentResourceSections(sections []documentResourceHeadingSection, level int) []documentResourceHeadingSection {

@@ -1,25 +1,75 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import useSWR from "swr";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useDocumentsStore } from "@/domains/documents/stores";
 import { StoryboardTimelinePanel } from "./StoryboardTimelinePanel";
-import { createEpisodeFromMarkdownDocument } from "@/domains/episode/lib/from-markdown";
 
-vi.mock("@/domains/episode/lib/from-markdown", () => ({
-	createEpisodeFromMarkdownDocument: vi.fn(() => ({
-		duration: 5,
-		sections: [{ id: "section-1", title: "分镜 01", start: 0, end: 5, summary: "画面" }],
-		tracks: [
-			{
-				type: "video",
-				clips: [{ id: "video-1", title: "画面", start: 0, end: 5, content: "推镜" }],
-			},
-			{ type: "voiceover", clips: [] },
-			{ type: "caption", clips: [] },
-		],
-	})),
+vi.mock("swr", () => ({
+	default: vi.fn(() => ({ data: undefined, isLoading: false })),
+}));
+
+vi.mock("@/domains/workspace/api/workspace", () => ({
+	getWorkspaceResolvedEpisode: vi.fn(),
+	workspaceResolvedEpisodeKey: (documentId: string, projectId?: string | null) => [
+		"workspace-resolved-episode",
+		projectId ?? "",
+		documentId,
+	],
 }));
 
 describe("StoryboardTimelinePanel", () => {
-	it("defers storyboard timeline parsing until the panel is expanded", () => {
+	beforeEach(() => {
+		vi.mocked(useSWR).mockReset();
+		vi.mocked(useSWR).mockReturnValue({ data: undefined, isLoading: false } as never);
+		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			documents: [],
+			projectId: "project-a",
+			workspaceDir: "/workspace/project-a",
+		});
+	});
+
+	it("defers resolved storyboard timeline loading until the panel is expanded", () => {
+		vi.mocked(useSWR).mockImplementation((key: unknown) => {
+			if (Array.isArray(key) && key[0] === "workspace-resolved-episode") {
+				return {
+					data: {
+						documentId: "doc-a",
+						episode: {
+							aspectRatio: "16:9",
+							duration: 5,
+							id: "episode-doc-a",
+							sections: [{ id: "section-1", title: "开场落水", start: 0, end: 5, summary: "画面" }],
+							title: "第一章 分镜脚本",
+							tracks: [
+								{
+									id: "track-video",
+									type: "video",
+									label: "视频",
+									clips: [
+										{
+											id: "video-1",
+											title: "画面",
+											start: 0,
+											end: 5,
+											content: "推镜",
+											status: "draft",
+										},
+									],
+								},
+								{ id: "track-voiceover", type: "voiceover", label: "旁白", clips: [] },
+								{ id: "track-caption", type: "caption", label: "字幕", clips: [] },
+							],
+						},
+						projectId: "project-a",
+						workspaceDir: "/workspace/project-a",
+					},
+					isLoading: false,
+				} as never;
+			}
+			return { data: undefined, isLoading: false } as never;
+		});
+
 		render(
 			<StoryboardTimelinePanel
 				documentId="doc-a"
@@ -28,11 +78,14 @@ describe("StoryboardTimelinePanel", () => {
 			/>,
 		);
 
-		expect(createEpisodeFromMarkdownDocument).not.toHaveBeenCalled();
+		expect(useSWR).toHaveBeenCalledWith(null, expect.any(Function));
 
 		fireEvent.click(screen.getByRole("button", { name: "展开分镜同步面板" }));
 
-		expect(createEpisodeFromMarkdownDocument).toHaveBeenCalledTimes(1);
-		expect(screen.getByText("分镜 01")).toBeTruthy();
+		expect(useSWR).toHaveBeenLastCalledWith(
+			["workspace-resolved-episode", "project-a", "doc-a"],
+			expect.any(Function),
+		);
+		expect(screen.getByText("开场落水")).toBeTruthy();
 	});
 });

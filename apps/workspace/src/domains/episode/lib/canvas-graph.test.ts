@@ -12,9 +12,12 @@ import {
 	videoScriptInputPort,
 } from "@/domains/episode/lib/canvas-ports";
 import { layoutEpisodeCanvasGraph } from "@/domains/episode/lib/canvas-layout";
-import { createEpisodeFromMarkdownDocument } from "@/domains/episode/lib/from-markdown";
-import { parseStoryboardShots } from "@/domains/episode/lib/storyboard-shots";
+import {
+	parseStoryboardShots,
+	readStoryboardLaneSources,
+} from "@/domains/episode/lib/storyboard-shots";
 import type { MarkdownDocument } from "@/domains/documents/stores";
+import type { Episode } from "@/domains/episode/lib/sample";
 
 const makeDocument = (
 	content: string,
@@ -33,6 +36,42 @@ const makeDocument = (
 	workbenchDraft: null,
 	...overrides,
 });
+
+const makeEpisodeFromStoryboard = (storyboard: string): Episode => {
+	const lanes = readStoryboardLaneSources(storyboard, { documentId: "storyboard-1" });
+	const videoClips = lanes.map((lane, index) => ({
+		id: `video-${index + 1}`,
+		title: lane.title,
+		start: index * 15,
+		end: (index + 1) * 15,
+		content: lane.markdown,
+		status: "draft" as const,
+		prompt: lane.markdown,
+		source: "test storyboard",
+	}));
+
+	return {
+		aspectRatio: "16:9",
+		duration: Math.max(videoClips.at(-1)?.end ?? 0, 1),
+		id: "episode-storyboard-1",
+		sections: videoClips.map((clip) => ({
+			id: `section-${clip.id}`,
+			title: clip.title,
+			start: clip.start,
+			end: clip.end,
+			summary: clip.content,
+		})),
+		title: "测试分镜",
+		tracks: [
+			{
+				id: "track-video",
+				type: "video",
+				label: "视频",
+				clips: videoClips,
+			},
+		],
+	};
+};
 
 describe("parseStoryboardShots", () => {
 	it("extracts shot metadata used by text storyboard nodes", () => {
@@ -83,7 +122,7 @@ describe("buildEpisodeCanvasGraph", () => {
 			"**动作**：@[审讯室](mention://scene-1?kind=document&category=scene) 中，@[林致尧](mention://char-1?kind=document&category=character) 看向窗外。",
 			"**台词**：林致尧：“我知道是谁。”",
 		].join("\n");
-		const episode = createEpisodeFromMarkdownDocument(makeDocument(storyboard));
+		const episode = makeEpisodeFromStoryboard(storyboard);
 		const graph = buildEpisodeCanvasGraph({
 			documents: [
 				makeDocument("![审讯室](/media/scene.png)\n冷色调审讯室。", {
@@ -208,7 +247,7 @@ describe("buildEpisodeCanvasGraph", () => {
 			"",
 			"**动作**：@[陈远](mention://char-1?kind=document&category=character) 遇见 @[林书彤](mention://char-2?kind=document&category=character)。",
 		].join("\n");
-		const episode = createEpisodeFromMarkdownDocument(makeDocument(storyboard));
+		const episode = makeEpisodeFromStoryboard(storyboard);
 		const graph = buildEpisodeCanvasGraph({
 			documents: [
 				makeDocument(
@@ -250,9 +289,7 @@ describe("buildEpisodeCanvasGraph", () => {
 	});
 
 	it("passes generated video URLs to output nodes for cover previews", () => {
-		const episode = createEpisodeFromMarkdownDocument(
-			makeDocument("## 第 01 组\n\n### 分镜 01\n\n陈远站在校门口。"),
-		);
+		const episode = makeEpisodeFromStoryboard("## 第 01 组\n\n### 分镜 01\n\n陈远站在校门口。");
 		const videoClip = episode.tracks.find((track) => track.type === "video")?.clips[0];
 		if (!videoClip) throw new Error("expected a video clip");
 		videoClip.status = "ready";
@@ -268,9 +305,7 @@ describe("buildEpisodeCanvasGraph", () => {
 	});
 
 	it("does not create placeholder reference nodes when no material mentions are parsed", () => {
-		const episode = createEpisodeFromMarkdownDocument(
-			makeDocument("## 第 01 组\n\n### 分镜 01\n\n陈远站在校门口。"),
-		);
+		const episode = makeEpisodeFromStoryboard("## 第 01 组\n\n### 分镜 01\n\n陈远站在校门口。");
 		const graph = buildEpisodeCanvasGraph({ episode });
 		const promptNode = graph.nodes.find((node) => node.type === "video-prompt");
 		const videoNode = graph.nodes.find((node) => node.type === "video-output");
@@ -320,7 +355,7 @@ describe("buildEpisodeCanvasGraph", () => {
 			"",
 			"**动作**：林书彤转身离开。",
 		].join("\n");
-		const episode = createEpisodeFromMarkdownDocument(makeDocument(storyboard));
+		const episode = makeEpisodeFromStoryboard(storyboard);
 		const graph = buildEpisodeCanvasGraph({ episode, storyboardMarkdown: storyboard });
 		const layout = layoutEpisodeCanvasGraph(graph);
 		const firstVideoPrompt = layout.nodes.find(
@@ -338,8 +373,8 @@ describe("buildEpisodeCanvasGraph", () => {
 	});
 
 	it("lays out each lane deterministically from left to right", () => {
-		const episode = createEpisodeFromMarkdownDocument(
-			makeDocument("## 第 01 组\n\n### 分镜 01\n\n动作一\n\n## 第 02 组\n\n### 分镜 01\n\n动作二"),
+		const episode = makeEpisodeFromStoryboard(
+			"## 第 01 组\n\n### 分镜 01\n\n动作一\n\n## 第 02 组\n\n### 分镜 01\n\n动作二",
 		);
 		const graph = buildEpisodeCanvasGraph({ episode });
 		const layout = layoutEpisodeCanvasGraph(graph);
@@ -361,8 +396,8 @@ describe("buildEpisodeCanvasGraph", () => {
 	});
 
 	it("focuses the canvas on the selected timeline group", () => {
-		const episode = createEpisodeFromMarkdownDocument(
-			makeDocument("## 第 01 组\n\n### 分镜 01\n\n动作一\n\n## 第 02 组\n\n### 分镜 01\n\n动作二"),
+		const episode = makeEpisodeFromStoryboard(
+			"## 第 01 组\n\n### 分镜 01\n\n动作一\n\n## 第 02 组\n\n### 分镜 01\n\n动作二",
 		);
 		const graph = buildEpisodeCanvasGraph({ episode });
 		const selectedLane = graph.lanes[1];

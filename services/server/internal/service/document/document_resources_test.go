@@ -77,7 +77,7 @@ func TestListWorkspaceDocumentResourcesParsesCharacterSections(t *testing.T) {
 	}
 }
 
-func TestListWorkspaceDocumentResourcesParsesStoryboardShots(t *testing.T) {
+func TestListWorkspaceDocumentResourcesParsesStoryboardGroupsFromH2(t *testing.T) {
 	store := requireDocumentStore(t)
 	projectID := "project-document-resources-storyboard"
 	requireTestProject(t, store, projectID)
@@ -88,9 +88,9 @@ func TestListWorkspaceDocumentResourcesParsesStoryboardShots(t *testing.T) {
 		Content: strings.Join([]string{
 			"# 分镜脚本",
 			"",
-			"## 第 01 组 总时长：00:07",
+			"<!-- section-id: section_opening -->",
+			"## 开场落水",
 			"",
-			"<!-- section-id: section_shot_01 -->",
 			"### 分镜 01",
 			"",
 			"动作：林书彤推开门。",
@@ -102,6 +102,12 @@ func TestListWorkspaceDocumentResourcesParsesStoryboardShots(t *testing.T) {
 			"```",
 			"### 分镜 99",
 			"```",
+			"",
+			"## 情绪反应",
+			"",
+			"### 分镜 01",
+			"",
+			"动作：镜头推近。",
 		}, "\n"),
 		Category: "storyboard",
 	})
@@ -114,16 +120,20 @@ func TestListWorkspaceDocumentResourcesParsesStoryboardShots(t *testing.T) {
 		t.Fatalf("ListWorkspaceDocumentResources returned error: %v", err)
 	}
 	if len(response.Resources) != 2 {
-		t.Fatalf("resources = %#v, want only two shot records", response.Resources)
+		t.Fatalf("resources = %#v, want only two h2 group records", response.Resources)
 	}
-	if response.Resources[0].Title != "分镜 01" || response.Resources[0].SectionID != "section_shot_01" {
+	if response.Resources[0].Title != "开场落水" || response.Resources[0].SectionID != "section_opening" {
 		t.Fatalf("first storyboard resource = %#v", response.Resources[0])
 	}
-	if response.Resources[1].Title != "分镜 02" {
-		t.Fatalf("second storyboard title = %q, want 分镜 02", response.Resources[1].Title)
+	if !strings.Contains(response.Resources[0].Prompt, "### 分镜 02") ||
+		!strings.Contains(response.Resources[0].Prompt, "动作：镜头切到走廊。") {
+		t.Fatalf("first storyboard prompt = %q, want h3 shot content inside h2 group", response.Resources[0].Prompt)
+	}
+	if response.Resources[1].Title != "情绪反应" {
+		t.Fatalf("second storyboard title = %q, want 情绪反应", response.Resources[1].Title)
 	}
 	for _, resource := range response.Resources {
-		if resource.Title == "分镜脚本" || strings.HasPrefix(resource.Title, "第 01 组") || resource.Title == "分镜 99" {
+		if resource.Title == "分镜脚本" || strings.HasPrefix(resource.Title, "分镜") {
 			t.Fatalf("unexpected storyboard resource parsed: %#v", resource)
 		}
 	}

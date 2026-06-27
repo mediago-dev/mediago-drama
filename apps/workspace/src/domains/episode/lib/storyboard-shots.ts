@@ -32,8 +32,6 @@ interface MarkdownHeading {
 }
 
 const headingPattern = /^(#{1,6})\s+(.+?)\s*$/u;
-const storyboardGroupTitlePattern = /^第\s*\S+\s*组/u;
-const storyboardShotTitlePattern = /^(分镜|镜头)(?:\s+|[0-9０-９一二三四五六七八九十百]+|$)/u;
 
 export const readStoryboardLaneSources = (
 	markdown: string,
@@ -41,26 +39,14 @@ export const readStoryboardLaneSources = (
 ): StoryboardLaneSource[] => {
 	const lines = stripFrontmatter(markdown).split("\n");
 	const headings = readHeadings(lines);
-	const groups = collectHeadingSections(lines, headings, (heading) =>
-		storyboardGroupTitlePattern.test(heading.text),
-	);
-	if (groups.length > 0) return groups.map((section) => sectionToLaneSource(section, options));
-
-	const shots = collectHeadingSections(lines, headings, (heading) =>
-		storyboardShotTitlePattern.test(heading.text),
-	);
-	if (shots.length > 0) return shots.map((section) => sectionToLaneSource(section, options));
-
-	const sections = collectHeadingSections(lines, headings, (heading) => heading.level <= 3);
+	const sections = collectHeadingSections(lines, headings, (heading) => heading.level === 2);
 	return sections.map((section) => sectionToLaneSource(section, options));
 };
 
 export const parseStoryboardShots = (markdown: string): StoryboardShotSummary[] => {
 	const lines = stripFrontmatter(markdown).split("\n");
 	const headings = readHeadings(lines);
-	const sections = collectHeadingSections(lines, headings, (heading) =>
-		storyboardShotTitlePattern.test(heading.text),
-	);
+	const sections = collectHeadingSections(lines, headings, (heading) => heading.level === 3);
 
 	if (sections.length === 0 && markdown.trim()) {
 		const prompt = normalizeShotText(markdown);
@@ -161,8 +147,9 @@ const parseShotSection = (title: string, markdown: string): StoryboardShotSummar
 	const promptLines: string[] = [];
 
 	for (const rawLine of markdown.split("\n")) {
+		if (/^###\s+/.test(rawLine.trim())) continue;
 		const line = cleanStoryboardLine(rawLine);
-		if (!line || storyboardShotTitlePattern.test(line)) continue;
+		if (!line) continue;
 
 		promptLines.push(line);
 		const field = parseStoryboardField(line);

@@ -1,16 +1,21 @@
 import { Captions, ChevronLeft, ChevronRight, Film, Image, Mic2, Music2 } from "lucide-react";
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
-import { createEpisodeFromMarkdownDocument } from "@/domains/episode/lib/from-markdown";
 import {
 	formatTimelineTime,
+	type Episode,
 	type EpisodeSection,
 	type TimelineClip,
 	type TimelineTrackType,
 } from "@/domains/episode/lib/sample";
-import type { MarkdownDocument } from "@/domains/documents/stores";
+import { useDocumentsStore } from "@/domains/documents/stores";
+import {
+	getWorkspaceResolvedEpisode,
+	workspaceResolvedEpisodeKey,
+} from "@/domains/workspace/api/workspace";
 import { cn } from "@/shared/lib/utils";
 
 interface StoryboardTimelinePanelProps {
@@ -57,21 +62,16 @@ const trackMeta: Record<
 	},
 };
 
-export const StoryboardTimelinePanel: React.FC<StoryboardTimelinePanelProps> = ({
-	documentContent,
-	documentId = "storyboard-panel",
-	documentTitle = "分镜脚本",
-}) => {
+export const StoryboardTimelinePanel: React.FC<StoryboardTimelinePanelProps> = ({ documentId }) => {
 	const [isExpanded, setIsExpanded] = useState(false);
-	const episode = useMemo(
-		() =>
-			isExpanded
-				? createEpisodeFromMarkdownDocument(
-						createStoryboardDocument(documentId, documentTitle, documentContent),
-					)
-				: null,
-		[documentContent, documentId, documentTitle, isExpanded],
+	const projectId = useDocumentsStore((state) => state.projectId);
+	const resolvedDocumentId = documentId?.trim() ?? "";
+	const canLoadEpisode = Boolean(isExpanded && resolvedDocumentId && projectId?.trim());
+	const { data: resolvedEpisodeState, isLoading } = useSWR(
+		canLoadEpisode ? workspaceResolvedEpisodeKey(resolvedDocumentId, projectId) : null,
+		() => getWorkspaceResolvedEpisode(resolvedDocumentId, projectId),
 	);
+	const episode = resolvedEpisodeState?.episode ?? null;
 
 	return (
 		<aside
@@ -127,7 +127,9 @@ export const StoryboardTimelinePanel: React.FC<StoryboardTimelinePanelProps> = (
 							);
 						})}
 					</div>
-					{episode && episode.sections.length > 0 ? (
+					{isLoading ? (
+						<p className="py-3 text-xs text-muted-foreground">正在读取分镜组...</p>
+					) : episode && episode.sections.length > 0 ? (
 						<div className="space-y-2">
 							{episode.sections.map((section, index) => (
 								<StoryboardSectionSummary
@@ -139,7 +141,7 @@ export const StoryboardTimelinePanel: React.FC<StoryboardTimelinePanelProps> = (
 							))}
 						</div>
 					) : (
-						<p className="py-3 text-xs text-muted-foreground">还没有识别到 `## 第 0N 组`。</p>
+						<p className="py-3 text-xs text-muted-foreground">还没有识别到二级标题分镜组。</p>
 					)}
 				</div>
 			) : null}
@@ -207,10 +209,7 @@ const TrackSummary: React.FC<TrackSummaryProps> = ({ clip, type }) => {
 	);
 };
 
-const clipsForSection = (
-	episode: ReturnType<typeof createEpisodeFromMarkdownDocument>,
-	section: EpisodeSection,
-) =>
+const clipsForSection = (episode: Episode, section: EpisodeSection) =>
 	Object.fromEntries(
 		previewTrackTypes.map((type) => [
 			type,
@@ -219,22 +218,3 @@ const clipsForSection = (
 				?.clips.find((clip) => clip.start === section.start && clip.end === section.end),
 		]),
 	) as Partial<Record<(typeof previewTrackTypes)[number], TimelineClip>>;
-
-const createStoryboardDocument = (
-	id: string,
-	title: string,
-	content: string,
-): MarkdownDocument => ({
-	id,
-	title,
-	content,
-	category: "storyboard",
-	parentId: null,
-	sortOrder: 0,
-	tags: [],
-	version: 1,
-	updatedAt: "",
-	isDirty: false,
-	comments: [],
-	workbenchDraft: null,
-});

@@ -47,7 +47,7 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 					"# 第一章分镜脚本",
 					"",
 					"<!-- section-id: section_reel_01 -->",
-					"## 第 01 组 总时长：00:08",
+					"## 开场落水",
 					"",
 					"### 分镜 01",
 					"",
@@ -56,7 +56,7 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 					"[章节视频：落水镜头](</api/v1/media-assets/video-1/content>)",
 					"",
 					"<!-- section-id: section_reel_02 -->",
-					"## 第 02 组 总时长：00:06",
+					"## 苏醒反应",
 					"",
 					"### 分镜 02",
 					"",
@@ -73,7 +73,7 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 					"# 第二章分镜脚本",
 					"",
 					"<!-- section-id: section_reel_b_01 -->",
-					"## 第 01 组 总时长：00:05",
+					"## 门外异动",
 					"",
 					"### 分镜 01",
 					"",
@@ -116,10 +116,10 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 	if first.DocumentID != "storyboard-a" || len(first.Reels) != 2 {
 		t.Fatalf("first group = %+v, want two storyboard group reels", first)
 	}
-	if first.Reels[0].Title != "第 01 组 总时长：00:08" || first.Reels[0].SectionID != "section_reel_01" {
+	if first.Reels[0].Title != "开场落水" || first.Reels[0].SectionID != "section_reel_01" {
 		t.Fatalf("first reel = %+v, want first storyboard group section", first.Reels[0])
 	}
-	if first.Reels[1].Title != "第 02 组 总时长：00:06" || first.Reels[1].SectionID != "section_reel_02" {
+	if first.Reels[1].Title != "苏醒反应" || first.Reels[1].SectionID != "section_reel_02" {
 		t.Fatalf("second reel = %+v, want second storyboard group section", first.Reels[1])
 	}
 	if first.Reels[0].Videos[0].Title != "落水镜头" ||
@@ -138,7 +138,7 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 		t.Fatalf("second group = %+v, want one storyboard group reel", second)
 	}
 	reel := second.Reels[0]
-	if reel.Title != "第 01 组 总时长：00:05" || reel.SectionID != "section_reel_b_01" {
+	if reel.Title != "门外异动" || reel.SectionID != "section_reel_b_01" {
 		t.Fatalf("task reel = %+v, want storyboard group section", reel)
 	}
 	if len(reel.Videos) != 1 ||
