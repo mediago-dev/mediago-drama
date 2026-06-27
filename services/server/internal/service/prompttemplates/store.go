@@ -32,6 +32,7 @@ type PromptTemplate struct {
 	Source      string `json:"source"`
 	Overridden  bool   `json:"overridden,omitempty"`
 	Order       int    `json:"-"`
+	Injectable  bool   `json:"-"`
 }
 
 // Repository supplies user instruction template override persistence.
@@ -222,6 +223,7 @@ func templateFromInstruction(
 		Source:      source,
 		Overridden:  overridden,
 		Order:       instruction.Order,
+		Injectable:  instruction.Injectable,
 	}
 }
 
