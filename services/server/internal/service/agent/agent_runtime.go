@@ -414,7 +414,7 @@ func (runtime *AgentRuntime) runAgent(
 			A2UI:    result.A2UI,
 		})
 	}
-	if result.Message != "" && !result.StreamedMessage {
+	if result.Message != "" {
 		publish(AgentEvent{
 			Type:    "agent.message.completed",
 			Message: result.Message,
