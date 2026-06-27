@@ -62,6 +62,18 @@
       }
     },
     {
+      "name": "jianyingdraft",
+      "relativeDir": "packages/jianyingdraft",
+      "templateId": "go-lib",
+      "toolchain": "go",
+      "buildVersion": "0.1.0",
+      "domains": {
+        "dev": {
+          "command": "go run ./cmd/server"
+        }
+      }
+    },
+    {
       "name": "mcp",
       "relativeDir": "packages/mcp",
       "templateId": "go-lib",

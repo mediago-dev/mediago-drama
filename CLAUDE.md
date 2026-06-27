@@ -14,6 +14,7 @@
 适用项目：
 - `packages/core`
 - `packages/instructions`
+- `packages/jianyingdraft`
 - `packages/mcp`
 - `packages/tools`
 

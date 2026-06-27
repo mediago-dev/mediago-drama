@@ -3,6 +3,7 @@ go 1.25.0
 use (
 	./packages/core
 	./packages/instructions
+	./packages/jianyingdraft
 	./packages/mcp
 	./packages/tools
 	./packages/vendor
