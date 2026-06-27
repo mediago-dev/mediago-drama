@@ -5,6 +5,7 @@ type AgentStateKey =
 	| "isCollapsed"
 	| "isConnected"
 	| "isRunning"
+	| "isChatHydrating"
 	| "sessionId"
 	| "lastEventId"
 	| "rootRunId"
@@ -19,7 +20,9 @@ type AgentStateKey =
 
 export type AgentActions = Omit<AgentState, AgentStateKey>;
 export type AgentSet = Parameters<StateCreator<AgentState>>[0];
+export type AgentGet = Parameters<StateCreator<AgentState>>[1];
 
 export interface AgentActionContext {
 	set: AgentSet;
+	get: AgentGet;
 }

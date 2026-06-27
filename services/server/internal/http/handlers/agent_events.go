@@ -17,6 +17,10 @@ import (
 	serviceevents "github.com/mediago-dev/mediago-drama/services/server/internal/service/events"
 )
 
+// agentEventReplayPageSize bounds how many history events are read per replay
+// page; the handler loops pages until the session history is exhausted.
+const agentEventReplayPageSize = 1000
+
 // AgentEventService supplies live and replayed agent events.
 type AgentEventService interface {
 	LoadAgentEvents(projectID string, sessionID string, afterSequence int64, limit int) ([]service.AgentEvent, error)
@@ -88,19 +92,39 @@ func (handler AgentEvents) HandleAgentEvents(context *gin.Context) {
 	})
 	flusher.Flush()
 
-	replayed, err := handler.service.LoadAgentEvents(projectID, sessionID, afterSequence, 1000)
-	if err != nil {
-		slog.Warn(
-			"agent event replay failed",
-			"session_id", sessionID,
-			"project_id", projectID,
-			"after_sequence", afterSequence,
-			"error", err,
-		)
-	} else {
-		for _, event := range replayed {
+	// Replay the full history in pages instead of a single capped batch, so a long
+	// session is never silently truncated (which previously left the resumed live
+	// state stranded behind the most recent events).
+	replayCursor := afterSequence
+	for {
+		page, err := handler.service.LoadAgentEvents(projectID, sessionID, replayCursor, agentEventReplayPageSize)
+		if err != nil {
+			slog.Warn(
+				"agent event replay failed",
+				"session_id", sessionID,
+				"project_id", projectID,
+				"after_sequence", replayCursor,
+				"error", err,
+			)
+			break
+		}
+		pageStartCursor := replayCursor
+		for _, event := range page {
 			writeSSE(context.Writer, event)
 			flusher.Flush()
+			if event.Sequence > replayCursor {
+				replayCursor = event.Sequence
+			}
+		}
+		// A short page means the history is exhausted; a page that fails to advance
+		// the cursor guards against an unexpected non-progressing read.
+		if len(page) < agentEventReplayPageSize || replayCursor == pageStartCursor {
+			break
+		}
+		select {
+		case <-context.Request.Context().Done():
+			return
+		default:
 		}
 	}
 	writeSSE(context.Writer, service.AgentEvent{
@@ -190,17 +214,13 @@ func writeSSE(writer http.ResponseWriter, event service.AgentEvent) {
 		return
 	}
 
-	if !isAgentEventStreamControlEvent(event.Type) {
-		eventID := event.ID
-		if event.Sequence > 0 {
-			eventID = fmt.Sprintf("%d", event.Sequence)
-		}
-		fmt.Fprintf(writer, "id: %s\n", eventID)
+	// Only sequenced (persisted) events carry an SSE id; the client uses it as the
+	// resume cursor (?after=). Control frames and non-persisted streaming deltas
+	// have Sequence 0 and must not emit an id, or a reconnect would rewind to a
+	// non-numeric cursor and replay the entire history.
+	if event.Sequence > 0 {
+		fmt.Fprintf(writer, "id: %d\n", event.Sequence)
 	}
 	fmt.Fprintf(writer, "event: %s\n", event.Type)
 	fmt.Fprintf(writer, "data: %s\n\n", body)
-}
-
-func isAgentEventStreamControlEvent(eventType string) bool {
-	return eventType == "agent.session.connected" || eventType == "agent.session.replay.completed"
 }

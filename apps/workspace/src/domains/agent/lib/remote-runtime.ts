@@ -84,9 +84,16 @@ export const connectRemoteAgentRuntime = async (
 	};
 };
 
+// Resolves once the stream is established (the server's `agent.session.connected`
+// is written before history replay), so callers can send immediately. Replay
+// keeps streaming in the background and the `replaying` flag (tracked in
+// connectRemoteAgentRuntime) still gates replayed lifecycle events. The 5s
+// timeout now only guards a connection that never establishes — it no longer
+// trips on a slow/large history replay, which previously tore the stream down
+// and surfaced as an interrupted run.
 const waitForAgentEventStream = (
 	eventSource: ManagedEventSource,
-	sessionId: string,
+	_sessionId: string,
 	onEvent: (event: AgentRuntimeEvent, meta: RemoteAgentRuntimeEventMeta) => void,
 	parseEvent: (event: MessageEvent) => AgentRuntimeEvent,
 ) =>
@@ -96,30 +103,19 @@ const waitForAgentEventStream = (
 			if (settled) return;
 			settled = true;
 			eventSource.removeEventListener("agent.session.connected", handleConnected);
-			eventSource.removeEventListener("agent.session.replay.completed", handleReplayCompleted);
 			eventSource.close();
 			reject(new Error("连接本地智能体事件流超时。"));
 		}, 5000);
 
-		const finish = () => {
+		function handleConnected(event: MessageEvent) {
+			const parsed = parseEvent(event);
+			onEvent(parsed, { replay: false });
 			if (settled) return;
 			settled = true;
 			window.clearTimeout(timeout);
 			eventSource.removeEventListener("agent.session.connected", handleConnected);
-			eventSource.removeEventListener("agent.session.replay.completed", handleReplayCompleted);
 			resolve();
-		};
-
-		function handleConnected(event: MessageEvent) {
-			const parsed = parseEvent(event);
-			onEvent(parsed, { replay: false });
 		}
 
 		eventSource.addEventListener("agent.session.connected", handleConnected);
-		eventSource.addEventListener("agent.session.replay.completed", handleReplayCompleted);
-
-		function handleReplayCompleted(event: MessageEvent) {
-			const parsed = parseEvent(event);
-			if (parsed.sessionId === sessionId) finish();
-		}
 	});

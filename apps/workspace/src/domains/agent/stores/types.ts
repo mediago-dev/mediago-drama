@@ -145,6 +145,9 @@ export interface AgentState {
 	isCollapsed: boolean;
 	isConnected: boolean;
 	isRunning: boolean;
+	// True while the chat transcript is being fetched from the server and the
+	// store has nothing to show yet. Drives a loading state instead of a cache.
+	isChatHydrating: boolean;
 	sessionId: string | null;
 	lastEventId: string | null;
 	rootRunId: string | null;
@@ -175,7 +178,13 @@ export interface AgentState {
 		options?: AgentChatHydrationOptions,
 	) => void;
 	markConnected: () => void;
-	recordEventSequence: (sequence?: number | null) => void;
+	/**
+	 * Records a server event sequence as the resume cursor and classifies it
+	 * against what has already been applied. `duplicate` events (sequence at or
+	 * below the cursor) should be skipped; a `gap` (sequence beyond cursor+1)
+	 * means an event was missed and the transcript should be re-synced.
+	 */
+	applyEventSequence: (sequence?: number | null) => { duplicate: boolean; gap: boolean };
 	removeMessage: (messageId: string) => void;
 	replaceMessage: (messageId: string, patch: Partial<AgentMessage>) => void;
 	removePermissionRequest: (requestId: string) => void;

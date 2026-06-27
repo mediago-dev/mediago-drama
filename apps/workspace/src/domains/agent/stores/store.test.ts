@@ -425,3 +425,40 @@ describe("agent store pending user turns", () => {
 		).toBe(false);
 	});
 });
+
+describe("agent store applyEventSequence", () => {
+	afterEach(() => {
+		useAgentStore.getState().resetSession();
+	});
+
+	it("advances the cursor for the first and contiguous sequenced events", () => {
+		const store = useAgentStore.getState();
+		expect(store.applyEventSequence(5)).toEqual({ duplicate: false, gap: false });
+		expect(useAgentStore.getState().lastEventId).toBe("5");
+		expect(store.applyEventSequence(6)).toEqual({ duplicate: false, gap: false });
+		expect(useAgentStore.getState().lastEventId).toBe("6");
+	});
+
+	it("flags duplicates without rewinding the cursor", () => {
+		const store = useAgentStore.getState();
+		store.applyEventSequence(6);
+		expect(store.applyEventSequence(6)).toEqual({ duplicate: true, gap: false });
+		expect(store.applyEventSequence(3)).toEqual({ duplicate: true, gap: false });
+		expect(useAgentStore.getState().lastEventId).toBe("6");
+	});
+
+	it("flags a gap and still advances when a sequence is skipped", () => {
+		const store = useAgentStore.getState();
+		store.applyEventSequence(6);
+		expect(store.applyEventSequence(9)).toEqual({ duplicate: false, gap: true });
+		expect(useAgentStore.getState().lastEventId).toBe("9");
+	});
+
+	it("always applies unsequenced events without dedup or gap", () => {
+		const store = useAgentStore.getState();
+		store.applyEventSequence(6);
+		expect(store.applyEventSequence(0)).toEqual({ duplicate: false, gap: false });
+		expect(store.applyEventSequence(undefined)).toEqual({ duplicate: false, gap: false });
+		expect(useAgentStore.getState().lastEventId).toBe("6");
+	});
+});

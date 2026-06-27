@@ -266,6 +266,56 @@ export const closeAllResumedAgentEventStreams = () => {
 	flushAllAssistantDeltas();
 };
 
+const transcriptResyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const transcriptResyncDelayMs = 300;
+
+// Debounced authoritative re-sync triggered when a live event sequence gap reveals
+// a missed event (e.g. one dropped from a full subscriber buffer). Coalesces bursts
+// per session so a run of gaps issues a single transcript fetch.
+const scheduleTranscriptResync = (
+	sessionId: string | null | undefined,
+	projectId: string | null,
+) => {
+	const trimmedSessionId = sessionId?.trim();
+	if (!trimmedSessionId || !projectId) return;
+	const key = resumedEventStreamKey(projectId, trimmedSessionId);
+	const existing = transcriptResyncTimers.get(key);
+	if (existing) clearTimeout(existing);
+	transcriptResyncTimers.set(
+		key,
+		setTimeout(() => {
+			transcriptResyncTimers.delete(key);
+			void refreshAgentChatTranscript(trimmedSessionId, projectId).catch((error) =>
+				debugAgentError("failed to resync transcript after sequence gap", error),
+			);
+		}, transcriptResyncDelayMs),
+	);
+};
+
+type StreamingEventContext = Parameters<typeof handleStreamingAgentEvent>[1];
+
+// Builds the per-stream context handed to handleStreamingAgentEvent, owning the
+// rolling `latestDelta` tail. Shared by the live run connection and the resume
+// stream so both feed events through one consistent shape.
+const createStreamingEventContext = (input: {
+	activeDocument: MarkdownDocument;
+	anchorText: string;
+	isSelectionScoped: boolean;
+	projectId: string | null;
+}): StreamingEventContext => {
+	let latestDelta = "";
+	return {
+		anchorText: input.anchorText,
+		activeDocument: input.activeDocument,
+		getLatestDelta: () => latestDelta,
+		isSelectionScoped: input.isSelectionScoped,
+		projectId: input.projectId,
+		setLatestDelta: (delta: string) => {
+			latestDelta = delta;
+		},
+	};
+};
+
 export const resumeAgentSessionEventStream = (
 	sessionId: string,
 	projectId: string | null,
@@ -277,8 +327,6 @@ export const resumeAgentSessionEventStream = (
 	if (resumedEventStreams.has(key)) return;
 
 	const eventSource = createAgentEventSource(trimmedSessionId, projectId, afterEventId);
-	const seenSequences = new Set<number>();
-	let latestDelta = "";
 	const close = () => {
 		for (const eventType of runtimeEventTypes) {
 			eventSource.removeEventListener(eventType, listener);
@@ -288,20 +336,16 @@ export const resumeAgentSessionEventStream = (
 	};
 	resumedEventStreams.set(key, close);
 	const activeDocument = selectActiveDocument() ?? fallbackAgentDocument();
-	const context = {
-		anchorText: activeDocument.title || activeDocument.id,
+	const context = createStreamingEventContext({
 		activeDocument,
-		getLatestDelta: () => latestDelta,
+		anchorText: activeDocument.title || activeDocument.id,
 		isSelectionScoped: false,
 		projectId,
-		setLatestDelta: (delta: string) => {
-			latestDelta = delta;
-		},
-	};
+	});
 	function listener(event: MessageEvent) {
 		const parsed = JSON.parse(event.data) as AgentRuntimeEvent;
-		if (parsed.sequence && seenSequences.has(parsed.sequence)) return;
-		if (parsed.sequence) seenSequences.add(parsed.sequence);
+		// Dedup is centralized in handleStreamingAgentEvent via applyEventSequence,
+		// so the resume stream no longer keeps its own seen-sequence set.
 		handleStreamingAgentEvent(parsed, context);
 		if (
 			parsed.type === "agent.run.completed" ||
@@ -328,7 +372,12 @@ const runStreamingACPAgent = async (
 	const agentAnchorText =
 		context.anchorText || chooseAgentAnchor(activeDocument, "main", selection || undefined);
 	const requestAnchorText = context.anchorText;
-	let latestDelta = "";
+	const streamingContext = createStreamingEventContext({
+		activeDocument,
+		anchorText: agentAnchorText,
+		isSelectionScoped: context.isStructuredScopedEdit || Boolean(selection),
+		projectId,
+	});
 
 	// The resumed stream and the runtime connection would otherwise hold two
 	// SSE connections delivering the same session's events.
@@ -338,17 +387,7 @@ const runStreamingACPAgent = async (
 
 	const connection = await connectRemoteAgentRuntime(
 		(event, meta) => {
-			handleStreamingAgentEvent(event, {
-				anchorText: agentAnchorText,
-				activeDocument,
-				getLatestDelta: () => latestDelta,
-				isSelectionScoped: context.isStructuredScopedEdit || Boolean(selection),
-				meta,
-				projectId,
-				setLatestDelta: (delta) => {
-					latestDelta = delta;
-				},
-			});
+			handleStreamingAgentEvent(event, { ...streamingContext, meta });
 		},
 		agentStore.sessionId,
 		projectId,
@@ -529,7 +568,12 @@ export const handleStreamingAgentEvent = (
 	if (event.projectId && event.projectId !== context.projectId) return;
 
 	const agentStore = useAgentStore.getState();
-	agentStore.recordEventSequence(event.sequence);
+	// Central sequence reconciliation for both the live run stream and the resume
+	// stream: skip events already applied, and re-sync the authoritative transcript
+	// when a sequence gap reveals a missed (e.g. buffer-dropped) event.
+	const { duplicate, gap } = agentStore.applyEventSequence(event.sequence);
+	if (duplicate) return;
+	if (gap) scheduleTranscriptResync(event.sessionId || agentStore.sessionId, context.projectId);
 	const runId = eventRunId(event);
 	// A transcript hydrate during a live run collapses the store onto the
 	// `pending-root` placeholder (the backend chat state carries no runId), which

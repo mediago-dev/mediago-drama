@@ -13,7 +13,7 @@ import {
 } from "@/domains/agent/api/agent";
 import {
 	refreshAgentChatTranscript,
-	transcriptDropsLocalContext,
+	shouldPreserveLocalTranscript,
 } from "@/domains/agent/lib/chat-sync";
 import {
 	closeAllResumedAgentEventStreams,
@@ -24,8 +24,7 @@ import {
 	setPersistedAgentSessionId,
 	useAgentPersistenceStore,
 } from "@/domains/agent/stores/persistence";
-import { readAgentChatCache, writeAgentChatCache } from "@/domains/agent/stores/chat-cache";
-import { selectAgentMessages, useAgentStore, type AgentState } from "@/domains/agent/stores";
+import { selectAgentMessages, useAgentStore } from "@/domains/agent/stores";
 import {
 	agentProjectPath,
 	agentProjectRouteState,
@@ -60,9 +59,6 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 	const persistedSessionId = useAgentPersistenceStore((state) =>
 		projectId ? (state.sessionIdsByProject[projectId] ?? null) : null,
 	);
-	const cachedSessionId = projectId
-		? readAgentChatCache(projectId)?.sessionId?.trim() || null
-		: null;
 	const [persistenceHydrated, setPersistenceHydrated] = useState(() =>
 		useAgentPersistenceStore.persist.hasHydrated(),
 	);
@@ -87,11 +83,14 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 		Boolean(latestSessionsError) ||
 		latestSessionsLoading === false;
 	const latestSessionId = latestSessionsError ? null : firstAgentSessionId(latestSessions);
-	const fallbackSessionId = persistedSessionId?.trim() || cachedSessionId;
+	const fallbackSessionId = persistedSessionId?.trim() || null;
 	const sessionIdForLoad = routeSessionIdForLoad || latestSessionId || fallbackSessionId;
+	// A failed session list must not strand the panel waiting on persistence
+	// hydration: once the lookup settles (success OR error) we can still load the
+	// latest chat via the fallback session id — or a null id, which the backend
+	// resolves to the latest session — so a transient list outage self-heals.
 	const canLoadWithoutPersistence =
-		Boolean(routeSessionIdForLoad) ||
-		(shouldLoadLatestSession && latestSessionLookupSettled && !latestSessionsError);
+		Boolean(routeSessionIdForLoad) || (shouldLoadLatestSession && latestSessionLookupSettled);
 	const canLoadChat =
 		(canLoadWithoutPersistence || persistenceHydrated) &&
 		(!shouldLoadLatestSession || latestSessionLookupSettled);
@@ -132,23 +131,10 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 	useEffect(() => {
 		loadedRequestKey.current = null;
 		inactiveNoticeSessionId.current = null;
-		const store = useAgentStore.getState();
-		store.resetSession();
-		// Restore this project's cached transcript synchronously instead of blanking the
-		// panel: re-entering a project then shows the last-known messages immediately while
-		// the SWR fetch below revalidates, rather than flashing an empty timeline.
-		const cached = projectId ? readAgentChatCache(projectId) : null;
-		if (cached) {
-			store.hydrateAgentChatState([], cached.activity, {
-				sessionId: cached.sessionId,
-				rootRunId: cached.rootRunId,
-				conversations: cached.conversations,
-				lastEventId: cached.lastEventId,
-				running: false,
-			});
-		} else {
-			store.hydrateAgentChatState([], []);
-		}
+		// The server transcript is the single source of truth: reset to an empty
+		// timeline and let the SWR fetch below hydrate it. `isChatHydrating` drives a
+		// loading state for the brief fetch instead of restoring a stale local cache.
+		useAgentStore.getState().resetSession();
 		// Resumed streams belong to the project being left; without this they
 		// keep reconnecting until a terminal event happens to arrive.
 		return () => {
@@ -156,27 +142,10 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 		};
 	}, [projectId]);
 
+	const isChatHydrating = Boolean(swrKey) && !data;
 	useEffect(() => {
-		if (!projectId || loadedRequestKey.current) return;
-
-		const cached = readAgentChatCache(projectId);
-		if (!cached) return;
-
-		const cachedSessionId = cached.sessionId?.trim() || null;
-		const targetSessionId = sessionIdForLoad;
-		if (targetSessionId && cachedSessionId !== targetSessionId) return;
-
-		// Refreshing the desktop webview wipes the in-memory transcript. Restore a
-		// cached snapshot only when it matches the session selected for this route;
-		// the SWR hydration below overwrites it with authoritative data once it arrives.
-		useAgentStore.getState().hydrateAgentChatState([], cached.activity, {
-			sessionId: cached.sessionId,
-			rootRunId: cached.rootRunId,
-			conversations: cached.conversations,
-			lastEventId: cached.lastEventId,
-			running: false,
-		});
-	}, [latestSessionId, projectId, routeSessionIdForLoad, sessionIdForLoad]);
+		useAgentStore.setState({ isChatHydrating });
+	}, [isChatHydrating]);
 
 	useEffect(() => {
 		if (!agentSurfaceActive || !projectId || routeSessionIdForLoad || !latestSessionUrlTarget) {
@@ -195,38 +164,6 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 		projectId,
 		routeSessionIdForLoad,
 	]);
-
-	useEffect(() => {
-		if (!projectId) return;
-		// Persist a debounced snapshot of the transcript so it survives a refresh.
-		// Skip while a run is streaming (volatile state, high write frequency) and
-		// skip empty states so an uninitialized store never clobbers a good cache.
-		let timeout: ReturnType<typeof setTimeout> | undefined;
-		const flush = () => {
-			timeout = undefined;
-			const state = useAgentStore.getState();
-			if (state.isRunning) return;
-			if (!hasCacheableAgentSnapshot(state)) return;
-			writeAgentChatCache({
-				projectId,
-				sessionId: state.sessionId,
-				rootRunId: state.rootRunId,
-				lastEventId: state.lastEventId,
-				conversations: state.conversations,
-				activity: state.activity,
-				updatedAt: new Date().toISOString(),
-			});
-		};
-		const unsubscribe = useAgentStore.subscribe(() => {
-			if (timeout !== undefined) clearTimeout(timeout);
-			timeout = setTimeout(flush, 500);
-		});
-		return () => {
-			if (timeout !== undefined) clearTimeout(timeout);
-			flush();
-			unsubscribe();
-		};
-	}, [projectId]);
 
 	useEffect(() => {
 		if (!data) return;
@@ -252,10 +189,14 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 		if (loadedRequestKey.current === requestKey) return;
 
 		const agentStore = useAgentStore.getState();
-		const localMessages = selectAgentMessages(agentStore);
-		const preserveLocalTranscript =
-			shouldPreserveLocalRunningTranscript(data, agentStore, resolvedSessionId) ||
-			transcriptDropsLocalContext(localMessages, data.messages);
+		const preserveLocalTranscript = shouldPreserveLocalTranscript({
+			isRunning: agentStore.isRunning,
+			appliedLastEventId: agentStore.lastEventId,
+			localMessageCount: selectAgentMessages(agentStore).length,
+			snapshotLastEventId: data.lastEventId,
+			snapshotIsEmpty:
+				data.messages.length === 0 && Object.keys(data.conversations ?? {}).length === 0,
+		});
 		if (preserveLocalTranscript) {
 			if (resolvedSessionId) agentStore.setSessionId(resolvedSessionId);
 		} else {
@@ -271,7 +212,13 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 		if (requestedProjectId && resolvedSessionId) {
 			setPersistedAgentSessionId(requestedProjectId, resolvedSessionId);
 		}
-		if (requestedProjectId && resolvedSessionId && data.running) {
+		// Resume the live stream when the run is in flight. A run blocked on a
+		// pending permission can momentarily report running:false while still
+		// needing live events for the decision and its aftermath — both states
+		// guarantee a future terminal event, so the stream self-closes and never
+		// leaks on a genuinely idle session.
+		const shouldResumeStream = data.running || (data.pendingPermissions?.length ?? 0) > 0;
+		if (requestedProjectId && resolvedSessionId && shouldResumeStream) {
 			resumeAgentSessionEventStream(resolvedSessionId, requestedProjectId, data.lastEventId);
 		}
 		loadedRequestKey.current = requestKey;
@@ -346,43 +293,15 @@ const agentRecoverySWRConfig = {
 	revalidateIfStale: true,
 	revalidateOnFocus: false,
 	revalidateOnMount: true,
+	// A transient session-list / chat fetch failure should self-heal rather than
+	// leave the panel empty; retry a bounded number of times with a short backoff.
+	shouldRetryOnError: true,
+	errorRetryCount: 5,
+	errorRetryInterval: 3000,
 } as const;
 
 const firstAgentSessionId = (sessions?: AgentSessionSummary[]) =>
 	sessions?.find((session) => session.sessionId.trim())?.sessionId.trim() || null;
-
-const hasCacheableAgentSnapshot = (
-	state: Pick<AgentState, "activity" | "conversations">,
-): boolean =>
-	state.activity.length > 0 ||
-	Object.values(state.conversations).some((conversation) => {
-		if (conversation.prompt?.trim()) return true;
-		return conversation.messages.some((message) => {
-			if (message.content.trim() || message.title?.trim()) return true;
-			return Boolean(message.metadata && Object.keys(message.metadata).length > 0);
-		});
-	});
-
-const shouldPreserveLocalRunningTranscript = (
-	data: {
-		running?: boolean;
-		messages: readonly unknown[];
-		conversations?: Record<string, unknown> | null;
-	},
-	state: AgentState,
-	resolvedSessionId?: string | null,
-): boolean => {
-	if (!data.running) return false;
-	if (data.messages.length > 0) return false;
-	if (Object.keys(data.conversations ?? {}).length > 0) return false;
-	if (selectAgentMessages(state).length === 0) return false;
-
-	const localSessionId = state.sessionId?.trim() || null;
-	const targetSessionId = resolvedSessionId?.trim() || null;
-	if (localSessionId && targetSessionId && localSessionId !== targetSessionId) return false;
-	if (!localSessionId && targetSessionId && !state.isRunning) return false;
-	return true;
-};
 
 const applyTerminalSessionStatus = (status: AgentSessionStatus) => {
 	const store = useAgentStore.getState();

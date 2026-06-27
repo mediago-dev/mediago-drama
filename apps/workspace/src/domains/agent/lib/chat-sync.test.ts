@@ -3,7 +3,7 @@ import { mutate as mutateSWR } from "swr";
 import { getAgentChatState } from "@/domains/agent/api/agent";
 import { selectAgentMessages, useAgentStore } from "@/domains/agent/stores";
 import { useProjectStore } from "@/domains/projects/stores";
-import { refreshAgentChatTranscript } from "./chat-sync";
+import { refreshAgentChatTranscript, shouldPreserveLocalTranscript } from "./chat-sync";
 
 vi.mock("swr", () => ({
 	mutate: vi.fn(),
@@ -217,6 +217,8 @@ describe("refreshAgentChatTranscript", () => {
 		useProjectStore.setState({ activeProjectId: "project-1" });
 		useAgentStore.setState({
 			sessionId: "session-1",
+			isRunning: true,
+			lastEventId: "15",
 			rootRunId: "run-current",
 			conversations: {
 				"run-current": {
@@ -290,6 +292,8 @@ describe("refreshAgentChatTranscript", () => {
 		useProjectStore.setState({ activeProjectId: "project-1" });
 		useAgentStore.setState({
 			sessionId: "session-1",
+			isRunning: true,
+			lastEventId: "16",
 			rootRunId: "run-current",
 			conversations: {
 				"run-current": {
@@ -368,6 +372,8 @@ describe("refreshAgentChatTranscript", () => {
 		useProjectStore.setState({ activeProjectId: "project-1" });
 		useAgentStore.setState({
 			sessionId: "session-1",
+			isRunning: true,
+			lastEventId: "20",
 			rootRunId: "run-current",
 			conversations: {
 				"run-current": {
@@ -448,5 +454,76 @@ describe("refreshAgentChatTranscript", () => {
 			expect.anything(),
 		);
 		expect(mutateSWR).toHaveBeenCalledWith("sessions:project-1");
+	});
+});
+
+describe("shouldPreserveLocalTranscript", () => {
+	const base = {
+		isRunning: false,
+		appliedLastEventId: "10",
+		localMessageCount: 3,
+		snapshotLastEventId: "10",
+		snapshotIsEmpty: false,
+	};
+
+	it("never preserves when there is no local transcript to protect", () => {
+		expect(
+			shouldPreserveLocalTranscript({
+				...base,
+				localMessageCount: 0,
+				appliedLastEventId: "20",
+				snapshotLastEventId: "5",
+			}),
+		).toBe(false);
+	});
+
+	it("hydrates the authoritative snapshot when idle even if the local cursor looks newer", () => {
+		// A restored cache can carry a higher lastEventId than the fetched snapshot;
+		// when idle the snapshot must still win so the panel is never blanked.
+		expect(
+			shouldPreserveLocalTranscript({
+				...base,
+				snapshotLastEventId: "5",
+				appliedLastEventId: "10",
+			}),
+		).toBe(false);
+	});
+
+	it("preserves a strictly newer local transcript during a run (never rewinds)", () => {
+		expect(
+			shouldPreserveLocalTranscript({
+				...base,
+				isRunning: true,
+				snapshotLastEventId: "5",
+				appliedLastEventId: "10",
+			}),
+		).toBe(true);
+	});
+
+	it("hydrates when the snapshot is ahead of what has been applied", () => {
+		expect(
+			shouldPreserveLocalTranscript({
+				...base,
+				isRunning: true,
+				appliedLastEventId: "10",
+				snapshotLastEventId: "12",
+			}),
+		).toBe(false);
+	});
+
+	it("protects a just-sent optimistic turn at the live edge during a run", () => {
+		expect(shouldPreserveLocalTranscript({ ...base, isRunning: true })).toBe(true);
+		expect(shouldPreserveLocalTranscript({ ...base, isRunning: false })).toBe(false);
+	});
+
+	it("never replaces a live transcript with an empty snapshot", () => {
+		expect(
+			shouldPreserveLocalTranscript({
+				...base,
+				isRunning: true,
+				snapshotLastEventId: "99",
+				snapshotIsEmpty: true,
+			}),
+		).toBe(true);
 	});
 });

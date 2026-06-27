@@ -67,6 +67,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	const [selectedPermission, setSelectedPermission] = useState("");
 	const messages = useAgentStore(selectAgentMessages);
 	const isRunning = useAgentStore(selectAgentIsRunning);
+	const isChatHydrating = useAgentStore((state) => state.isChatHydrating);
 	const runtimeAlerts = useAgentStore(selectAgentRuntimeAlerts);
 	const composerSeed = useAgentStore(selectAgentComposerSeed);
 	const consumeComposerSeed = useAgentStore(selectConsumeAgentComposerSeed);
@@ -288,6 +289,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 					className="h-full"
 					messages={messages}
 					isRunning={isRunning}
+					isHydrating={isChatHydrating}
 					runtimeAlerts={runtimeAlerts}
 				/>
 			</div>

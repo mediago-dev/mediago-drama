@@ -56,7 +56,7 @@ func (broker *AgentEventBroker) Publish(event AgentEvent) {
 	if broker.normalize != nil {
 		event = broker.normalize(event)
 	}
-	if broker.persist != nil && event.Type != "agent.session.connected" {
+	if broker.persist != nil && shouldPersistAgentEvent(event.Type) {
 		persisted, err := broker.persist(event)
 		if err != nil {
 			slog.Warn(
@@ -85,6 +85,20 @@ func (broker *AgentEventBroker) Publish(event AgentEvent) {
 		default:
 			slog.Warn("agent event dropped", "type", event.Type, "session_id", event.SessionID, "run_id", event.RunID)
 		}
+	}
+}
+
+// shouldPersistAgentEvent reports whether an event type is written to the
+// session history log. The `agent.session.connected` frame is a per-connection
+// control event, and `agent.message.delta` is high-volume streaming text fully
+// superseded by the terminal `agent.message.completed` payload; persisting
+// deltas would bloat the log and slow replay without adding recoverable state.
+func shouldPersistAgentEvent(eventType string) bool {
+	switch eventType {
+	case "agent.session.connected", "agent.message.delta":
+		return false
+	default:
+		return true
 	}
 }
 

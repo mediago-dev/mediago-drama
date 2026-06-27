@@ -3,7 +3,6 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { selectAgentMessages, useAgentStore } from "@/domains/agent/stores";
-import { readAgentChatCache, writeAgentChatCache } from "@/domains/agent/stores/chat-cache";
 import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
 import { useProjectStore } from "@/domains/projects/stores";
 import { AgentStateSync } from "./AgentStateSync";
@@ -158,6 +157,7 @@ describe("AgentStateSync", () => {
 		controllerMocks.resumeAgentSessionEventStream.mockReset();
 		vi.useRealTimers();
 		useAgentStore.getState().resetSession();
+		useAgentStore.setState({ isChatHydrating: false });
 		useProjectStore.setState({ activeProjectId: null });
 		useAgentPersistenceStore.setState({
 			documentRuntimeMode: "remote",
@@ -205,6 +205,42 @@ describe("AgentStateSync", () => {
 			"project-1",
 			"12",
 		);
+	});
+
+	it("flags chat hydration while the transcript fetch is pending and clears it once data arrives", () => {
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		swrMock.chatData = undefined;
+
+		const { rerenderAgentStateSync } = renderAgentStateSync({
+			projectId: "project-1",
+			routeSessionId: "session-1",
+		});
+		expect(useAgentStore.getState().isChatHydrating).toBe(true);
+
+		swrMock.chatData = {
+			__requestProjectId: "project-1",
+			__requestSessionId: "session-1",
+			projectId: "project-1",
+			sessionId: "session-1",
+			messages: [
+				{
+					id: "assistant-1",
+					role: "assistant",
+					content: "服务端历史",
+					kind: "message",
+					status: "complete",
+				},
+			],
+			activity: [],
+			running: false,
+			lastEventId: "5",
+		};
+		rerenderAgentStateSync({ projectId: "project-1", routeSessionId: "session-1" });
+
+		expect(useAgentStore.getState().isChatHydrating).toBe(false);
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({ id: "assistant-1", content: "服务端历史" }),
+		]);
 	});
 
 	it("does not replace an optimistic local turn with an empty running snapshot", () => {
@@ -582,208 +618,6 @@ describe("AgentStateSync", () => {
 		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
 			expect.objectContaining({ id: "assistant-1", content: "从 conversation 恢复" }),
 		]);
-	});
-
-	it("restores the cached transcript instantly when the backend has not responded", () => {
-		useProjectStore.setState({ activeProjectId: "project-1" });
-		swrMock.sessionsData = [agentSessionSummary("session-cached")];
-		writeAgentChatCache({
-			projectId: "project-1",
-			sessionId: "session-cached",
-			rootRunId: "run-1",
-			lastEventId: "7",
-			conversations: {
-				"run-1": {
-					runId: "run-1",
-					name: "主智能体",
-					status: "completed",
-					messages: [
-						{
-							id: "assistant-cached",
-							role: "assistant",
-							content: "缓存里的历史消息",
-							kind: "message",
-							status: "complete",
-						},
-					],
-					streamingMessageId: null,
-					children: [],
-					createdAt: "2026-06-09T00:00:00.000Z",
-					updatedAt: "2026-06-09T00:00:00.000Z",
-				},
-			},
-			activity: [],
-			updatedAt: "2026-06-09T00:00:00.000Z",
-		});
-
-		// swrMock.data stays undefined → the backend chat fetch has not resolved yet.
-		renderAgentStateSync({ projectId: "project-1" });
-
-		expect(useAgentStore.getState().sessionId).toBe("session-cached");
-		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
-			expect.objectContaining({ id: "assistant-cached", content: "缓存里的历史消息" }),
-		]);
-		expect(useAgentStore.getState().isRunning).toBe(false);
-	});
-
-	it("restores the cached transcript while the latest session list is still loading", () => {
-		useProjectStore.setState({ activeProjectId: "project-1" });
-		swrMock.sessionsData = undefined;
-		swrMock.sessionsIsLoading = true;
-		writeAgentChatCache({
-			projectId: "project-1",
-			sessionId: "session-cached",
-			rootRunId: "run-1",
-			lastEventId: "7",
-			conversations: {
-				"run-1": {
-					runId: "run-1",
-					name: "主智能体",
-					status: "completed",
-					messages: [
-						{
-							id: "assistant-cached",
-							role: "assistant",
-							content: "列表加载前先展示缓存",
-							kind: "message",
-							status: "complete",
-						},
-					],
-					streamingMessageId: null,
-					children: [],
-					createdAt: "2026-06-09T00:00:00.000Z",
-					updatedAt: "2026-06-09T00:00:00.000Z",
-				},
-			},
-			activity: [],
-			updatedAt: "2026-06-09T00:00:00.000Z",
-		});
-
-		renderAgentStateSync({ projectId: "project-1" });
-
-		expect(swrMock.sessionsKey).toBe("sessions:project-1");
-		expect(swrMock.chatKey).toBeUndefined();
-		expect(useAgentStore.getState().sessionId).toBe("session-cached");
-		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
-			expect.objectContaining({ id: "assistant-cached", content: "列表加载前先展示缓存" }),
-		]);
-	});
-
-	it("does not overwrite a cached transcript with an empty session snapshot", () => {
-		vi.useFakeTimers();
-		useProjectStore.setState({ activeProjectId: "project-1" });
-		swrMock.sessionsData = [agentSessionSummary("session-cached")];
-		writeAgentChatCache({
-			projectId: "project-1",
-			sessionId: "session-cached",
-			rootRunId: "run-1",
-			lastEventId: "7",
-			conversations: {
-				"run-1": {
-					runId: "run-1",
-					name: "主智能体",
-					status: "completed",
-					messages: [
-						{
-							id: "assistant-cached",
-							role: "assistant",
-							content: "不能被空状态覆盖的历史消息",
-							kind: "message",
-							status: "complete",
-						},
-					],
-					streamingMessageId: null,
-					children: [],
-					createdAt: "2026-06-09T00:00:00.000Z",
-					updatedAt: "2026-06-09T00:00:00.000Z",
-				},
-			},
-			activity: [],
-			updatedAt: "2026-06-09T00:00:00.000Z",
-		});
-
-		renderAgentStateSync({ projectId: "project-1" });
-
-		act(() => {
-			useAgentStore.getState().hydrateAgentChatState([], [], { sessionId: "session-cached" });
-			vi.advanceTimersByTime(600);
-		});
-
-		expect(
-			readAgentChatCache("project-1")?.conversations["run-1"]?.messages.map(
-				(message) => message.content,
-			),
-		).toEqual(["不能被空状态覆盖的历史消息"]);
-	});
-
-	it("flushes the current transcript to cache when leaving a project before debounce fires", () => {
-		vi.useFakeTimers();
-		useProjectStore.setState({ activeProjectId: "project-1" });
-		swrMock.sessionsData = [agentSessionSummary("session-1")];
-		swrMock.chatData = {
-			__requestProjectId: "project-1",
-			__requestSessionId: "session-1",
-			projectId: "project-1",
-			sessionId: "session-1",
-			messages: [
-				{
-					id: "assistant-1",
-					role: "assistant",
-					content: "离开项目前立即缓存",
-					kind: "message",
-					status: "complete",
-				},
-			],
-			activity: [],
-			running: false,
-			lastEventId: "8",
-		};
-
-		const { rerenderAgentStateSync } = renderAgentStateSync({ projectId: "project-1" });
-
-		expect(readAgentChatCache("project-1")).toBeNull();
-
-		rerenderAgentStateSync({ projectId: null });
-
-		expect(readAgentChatCache("project-1")?.conversations["pending-root"]?.messages).toEqual([
-			expect.objectContaining({ content: "离开项目前立即缓存" }),
-		]);
-	});
-
-	it("ignores a cached transcript that belongs to a different project", () => {
-		writeAgentChatCache({
-			projectId: "project-other",
-			sessionId: "session-other",
-			rootRunId: "run-1",
-			lastEventId: "1",
-			conversations: {
-				"run-1": {
-					runId: "run-1",
-					name: "主智能体",
-					status: "completed",
-					messages: [
-						{
-							id: "assistant-other",
-							role: "assistant",
-							content: "别的项目的消息",
-							kind: "message",
-							status: "complete",
-						},
-					],
-					streamingMessageId: null,
-					children: [],
-					createdAt: "2026-06-09T00:00:00.000Z",
-					updatedAt: "2026-06-09T00:00:00.000Z",
-				},
-			},
-			activity: [],
-			updatedAt: "2026-06-09T00:00:00.000Z",
-		});
-
-		renderAgentStateSync({ projectId: "project-1" });
-
-		expect(selectAgentMessages(useAgentStore.getState())).toEqual([]);
-		expect(useAgentStore.getState().sessionId).toBeNull();
 	});
 
 	it("does not hydrate stale data for a different requested session", () => {

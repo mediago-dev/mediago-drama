@@ -45,7 +45,7 @@ type LifecycleActions = Pick<
 	| "finishRun"
 	| "hydrateAgentChatState"
 	| "markConnected"
-	| "recordEventSequence"
+	| "applyEventSequence"
 	| "removeMessage"
 	| "replaceMessage"
 	| "removePermissionRequest"
@@ -57,7 +57,10 @@ type LifecycleActions = Pick<
 	| "syncPermissionRequests"
 >;
 
-export const createAgentLifecycleActions = ({ set }: AgentActionContext): LifecycleActions => ({
+export const createAgentLifecycleActions = ({
+	set,
+	get,
+}: AgentActionContext): LifecycleActions => ({
 	addPermissionRequest: (request) => {
 		const requestId = request.requestId.trim();
 		if (!requestId) return;
@@ -294,15 +297,24 @@ export const createAgentLifecycleActions = ({ set }: AgentActionContext): Lifecy
 			};
 		});
 	},
-	recordEventSequence: (sequence) => {
-		const nextSequence = normalizeEventSequence(sequence);
-		if (!nextSequence) return;
+	applyEventSequence: (sequence) => {
+		const next = normalizeEventSequence(sequence);
+		// Unsequenced events (streaming deltas, control frames) carry no cursor and
+		// are always applied without dedup or gap detection.
+		if (!next) return { duplicate: false, gap: false };
 
-		set((state) => {
-			const current = normalizeEventSequence(state.lastEventId);
-			if (current && Number(current) >= Number(nextSequence)) return state;
-			return { lastEventId: nextSequence };
-		});
+		const current = normalizeEventSequence(get().lastEventId);
+		if (!current) {
+			set({ lastEventId: next });
+			return { duplicate: false, gap: false };
+		}
+
+		const currentNumber = Number(current);
+		const nextNumber = Number(next);
+		if (nextNumber <= currentNumber) return { duplicate: true, gap: false };
+
+		set({ lastEventId: next });
+		return { duplicate: false, gap: nextNumber > currentNumber + 1 };
 	},
 	removeMessage: (messageId) => {
 		const trimmed = messageId.trim();

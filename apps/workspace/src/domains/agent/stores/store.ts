@@ -3,10 +3,11 @@ import { createAgentActions } from "./actions";
 import type { AgentState } from "./types";
 
 export const useAgentStore = createStore<AgentState>(
-	(set) => ({
+	(set, get) => ({
 		isCollapsed: true,
 		isConnected: false,
 		isRunning: false,
+		isChatHydrating: false,
 		sessionId: null,
 		lastEventId: null,
 		rootRunId: null,
@@ -22,7 +23,7 @@ export const useAgentStore = createStore<AgentState>(
 			fallback: false,
 			validated: false,
 		},
-		...createAgentActions({ set }),
+		...createAgentActions({ set, get }),
 	}),
 	"agentStore",
 );

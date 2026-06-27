@@ -45,6 +45,7 @@ interface AgentTimelineProps {
 	className?: string;
 	messages: AgentMessage[];
 	isRunning: boolean;
+	isHydrating?: boolean;
 	runtimeAlerts?: AgentRuntimeAlert[];
 	onA2UIAction?: AgentA2UIActionHandler;
 }
@@ -53,6 +54,7 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 	className,
 	messages,
 	isRunning,
+	isHydrating = false,
 	runtimeAlerts = [],
 	onA2UIAction,
 }) => {
@@ -67,6 +69,20 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 
 		return [...timelineItems, ...alertItems, { type: "running", id: "agent-running" }];
 	}, [entries, hasStreamingMessage, isRunning, runtimeAlerts]);
+
+	if (isHydrating && entries.length === 0) {
+		return (
+			<div
+				className={cn(
+					"agent-timeline flex h-full items-center justify-center gap-2 text-xs text-muted-foreground",
+					className,
+				)}
+			>
+				<LoaderCircle className="size-3.5 animate-spin text-primary" />
+				<span>正在加载会话…</span>
+			</div>
+		);
+	}
 
 	return (
 		<Virtuoso
