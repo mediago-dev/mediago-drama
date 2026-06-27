@@ -1,8 +1,8 @@
+import type { FetchEventSourceInit } from "@microsoft/fetch-event-source";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	ManagedEventSource,
-	type ManagedEventSourceConnection,
-	type ManagedEventSourceListener,
+	type ManagedFetchEventSource,
 } from "@/shared/lib/sse/managed-event-source";
 import * as agentApi from "@/domains/agent/api/agent";
 import { connectRemoteAgentRuntime } from "@/domains/agent/lib/remote-runtime";
@@ -17,48 +17,66 @@ vi.mock("@/domains/agent/api/agent", async (importOriginal) => {
 	};
 });
 
-class FakeEventSource implements ManagedEventSourceConnection {
-	readonly url: string;
-	readyState = 1;
-	onopen: ((event: Event) => void) | null = null;
-	onerror: ((event: Event) => void) | null = null;
-	private readonly listeners = new Map<string, Set<ManagedEventSourceListener>>();
-
-	constructor(url: string) {
-		this.url = url;
-	}
-
-	addEventListener(type: string, listener: ManagedEventSourceListener) {
-		const listeners = this.listeners.get(type) ?? new Set();
-		listeners.add(listener);
-		this.listeners.set(type, listeners);
-	}
-
-	removeEventListener(type: string, listener: ManagedEventSourceListener) {
-		this.listeners.get(type)?.delete(listener);
-	}
-
-	close() {
-		this.readyState = 2;
-	}
-
-	emit(type: string, payload: Record<string, unknown>) {
-		const lastEventId = typeof payload.sequence === "number" ? String(payload.sequence) : undefined;
-		const event = new MessageEvent(type, { data: JSON.stringify(payload), lastEventId });
-		for (const listener of this.listeners.get(type) ?? []) listener(event);
-	}
+interface FetchEventSourceCall {
+	readonly input: RequestInfo;
+	readonly init: FetchEventSourceInit;
+	aborted: boolean;
+	reject: (error: unknown) => void;
+	resolve: () => void;
 }
 
-const buildManagedSource = (capture: (source: FakeEventSource) => void) =>
-	new ManagedEventSource({
+const buildManagedSource = (capture: (source: FetchEventSourceCall) => void) => {
+	const fetchEventSource = vi.fn<ManagedFetchEventSource>(
+		(input: RequestInfo, init: FetchEventSourceInit) =>
+			new Promise<void>((resolve, reject) => {
+				const call: FetchEventSourceCall = {
+					input,
+					init,
+					aborted: false,
+					reject,
+					resolve,
+				};
+				init.signal?.addEventListener(
+					"abort",
+					() => {
+						call.aborted = true;
+						resolve();
+					},
+					{ once: true },
+				);
+				capture(call);
+			}),
+	);
+
+	return new ManagedEventSource({
 		url: "/api/v1/projects/p1/agent/sessions/s1/events",
 		heartbeatTimeoutMs: 0,
-		eventSourceFactory: (url) => {
-			const source = new FakeEventSource(url);
-			capture(source);
-			return source;
-		},
+		fetchEventSource,
 	});
+};
+
+const openSse = async (call: FetchEventSourceCall) => {
+	await call.init.onopen?.(
+		new Response(null, {
+			headers: { "content-type": "text/event-stream" },
+			status: 200,
+		}),
+	);
+};
+
+const emitMessage = (
+	call: FetchEventSourceCall,
+	type: string,
+	payload: Record<string, unknown>,
+) => {
+	const lastEventId = typeof payload.sequence === "number" ? String(payload.sequence) : "";
+	call.init.onmessage?.({
+		data: JSON.stringify(payload),
+		event: type,
+		id: lastEventId,
+		retry: undefined,
+	});
+};
 
 describe("connectRemoteAgentRuntime handshake", () => {
 	afterEach(() => {
@@ -67,7 +85,7 @@ describe("connectRemoteAgentRuntime handshake", () => {
 	});
 
 	it("resolves once connected and keeps the stream open through a long replay", async () => {
-		let source: FakeEventSource | undefined;
+		let source: FetchEventSourceCall | undefined;
 		const managed = buildManagedSource((created) => {
 			source = created;
 		});
@@ -82,20 +100,28 @@ describe("connectRemoteAgentRuntime handshake", () => {
 		);
 
 		// connect resolves on `agent.session.connected`, before any replay.completed.
-		source?.emit("agent.session.connected", { type: "agent.session.connected", sessionId: "s1" });
+		await openSse(source!);
+		emitMessage(source!, "agent.session.connected", {
+			type: "agent.session.connected",
+			sessionId: "s1",
+		});
 		const connection = await connectPromise;
 		expect(connection.sessionId).toBe("s1");
 		expect(managed.isClosed()).toBe(false);
-		expect(source?.readyState).toBe(1);
+		expect(managed.readyState).toBe(1);
 
 		// Historical replay streams in afterwards, flagged replay:true until completion;
 		// the new run's live events that follow are flagged replay:false.
-		source?.emit("agent.activity", { type: "agent.activity", sessionId: "s1", sequence: 1 });
-		source?.emit("agent.session.replay.completed", {
+		emitMessage(source!, "agent.activity", {
+			type: "agent.activity",
+			sessionId: "s1",
+			sequence: 1,
+		});
+		emitMessage(source!, "agent.session.replay.completed", {
 			type: "agent.session.replay.completed",
 			sessionId: "s1",
 		});
-		source?.emit("agent.run.completed", {
+		emitMessage(source!, "agent.run.completed", {
 			type: "agent.run.completed",
 			sessionId: "s1",
 			sequence: 2,
@@ -105,6 +131,7 @@ describe("connectRemoteAgentRuntime handshake", () => {
 		expect(seen.find((entry) => entry.type === "agent.run.completed")?.replay).toBe(false);
 
 		connection.close();
+		expect(source?.aborted).toBe(true);
 	});
 
 	it("rejects only when the connection never establishes", async () => {

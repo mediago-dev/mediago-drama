@@ -1,13 +1,13 @@
-export type ManagedEventSourceListener = (event: MessageEvent) => void;
+import {
+	EventStreamContentType,
+	fetchEventSource,
+	type FetchEventSourceInit,
+} from "@microsoft/fetch-event-source";
 
-export interface ManagedEventSourceConnection {
-	readonly readyState: number;
-	onopen: ((event: Event) => void) | null;
-	onerror: ((event: Event) => void) | null;
-	addEventListener: (type: string, listener: ManagedEventSourceListener) => void;
-	removeEventListener: (type: string, listener: ManagedEventSourceListener) => void;
-	close: () => void;
-}
+export type ManagedEventSourceListener = (event: MessageEvent) => void;
+export type ManagedFetchEventSource = typeof fetchEventSource;
+
+type FetchEventSourceMessage = Parameters<NonNullable<FetchEventSourceInit["onmessage"]>>[0];
 
 export interface ManagedEventSourceOptions {
 	url: string | ((lastEventId: string | null) => string);
@@ -16,47 +16,54 @@ export interface ManagedEventSourceOptions {
 	maxReconnectDelayMs?: number;
 	/** Reconnect after this long without any event; 0 disables the check. */
 	heartbeatTimeoutMs?: number;
-	eventSourceFactory?: (url: string) => ManagedEventSourceConnection;
+	fetchEventSource?: ManagedFetchEventSource;
+	fetch?: typeof fetch;
+	headers?: Record<string, string>;
+	openWhenHidden?: boolean;
 }
+
+type ResolvedManagedEventSourceOptions = Omit<
+	ManagedEventSourceOptions,
+	| "fetchEventSource"
+	| "heartbeatTimeoutMs"
+	| "maxReconnectDelayMs"
+	| "reconnectDelayMs"
+	| "openWhenHidden"
+> & {
+	fetchEventSource: ManagedFetchEventSource;
+	heartbeatTimeoutMs: number;
+	maxReconnectDelayMs: number;
+	reconnectDelayMs: number;
+	openWhenHidden: boolean;
+};
 
 const defaultReconnectDelayMs = 500;
 const defaultMaxReconnectDelayMs = 5000;
 const defaultHeartbeatTimeoutMs = 45_000;
-// Server-side SSE handlers emit this keepalive event every 15s of idleness.
-const heartbeatEventType = "stream.ping";
+const connectingReadyState = 0;
+const openReadyState = 1;
 const closedReadyState = 2;
 
 export class ManagedEventSource {
-	private readonly options: Required<
-		Pick<
-			ManagedEventSourceOptions,
-			"heartbeatTimeoutMs" | "maxReconnectDelayMs" | "reconnectDelayMs"
-		>
-	> &
-		Omit<
-			ManagedEventSourceOptions,
-			"heartbeatTimeoutMs" | "maxReconnectDelayMs" | "reconnectDelayMs"
-		>;
-	private readonly listeners = new Map<
-		string,
-		Map<ManagedEventSourceListener, ManagedEventSourceListener>
-	>();
-	private source: ManagedEventSourceConnection | null = null;
+	private readonly options: ResolvedManagedEventSourceOptions;
+	private readonly listeners = new Map<string, Set<ManagedEventSourceListener>>();
+	private abortController: AbortController | null = null;
 	private reconnectTimer: number | null = null;
 	private heartbeatTimer: number | null = null;
 	private reconnectAttempts = 0;
+	private connectionId = 0;
 	private lastEventId: string | null;
 	private lastActivityAt = Date.now();
 	private closed = false;
-	private readonly recordActivity: ManagedEventSourceListener = () => {
-		this.lastActivityAt = Date.now();
-	};
+	private readyStateValue = closedReadyState;
 
 	constructor(options: ManagedEventSourceOptions) {
 		this.options = {
 			...options,
+			fetchEventSource: options.fetchEventSource ?? fetchEventSource,
 			heartbeatTimeoutMs: options.heartbeatTimeoutMs ?? defaultHeartbeatTimeoutMs,
 			maxReconnectDelayMs: options.maxReconnectDelayMs ?? defaultMaxReconnectDelayMs,
+			openWhenHidden: options.openWhenHidden ?? true,
 			reconnectDelayMs: options.reconnectDelayMs ?? defaultReconnectDelayMs,
 		};
 		this.lastEventId = options.initialLastEventId?.trim() || null;
@@ -65,33 +72,21 @@ export class ManagedEventSource {
 	}
 
 	get readyState() {
-		return this.source?.readyState ?? closedReadyState;
+		return this.readyStateValue;
 	}
 
 	addEventListener(type: string, listener: ManagedEventSourceListener) {
-		const wrappers = this.listeners.get(type) ?? new Map();
-		if (wrappers.has(listener)) return;
-
-		const wrappedListener: ManagedEventSourceListener = (event) => {
-			this.lastActivityAt = Date.now();
-			if (event.lastEventId) {
-				this.lastEventId = event.lastEventId;
-			}
-			listener(event);
-		};
-		wrappers.set(listener, wrappedListener);
-		this.listeners.set(type, wrappers);
-		this.source?.addEventListener(type, wrappedListener);
+		const listeners = this.listeners.get(type) ?? new Set<ManagedEventSourceListener>();
+		listeners.add(listener);
+		this.listeners.set(type, listeners);
 	}
 
 	removeEventListener(type: string, listener: ManagedEventSourceListener) {
-		const wrappers = this.listeners.get(type);
-		const wrappedListener = wrappers?.get(listener);
-		if (!wrappers || !wrappedListener) return;
+		const listeners = this.listeners.get(type);
+		if (!listeners) return;
 
-		this.source?.removeEventListener(type, wrappedListener);
-		wrappers.delete(listener);
-		if (wrappers.size === 0) {
+		listeners.delete(listener);
+		if (listeners.size === 0) {
 			this.listeners.delete(type);
 		}
 	}
@@ -100,7 +95,7 @@ export class ManagedEventSource {
 		this.closed = true;
 		this.clearReconnectTimer();
 		this.clearHeartbeatTimer();
-		this.detachSource();
+		this.abortActiveConnection();
 	}
 
 	isClosed() {
@@ -111,41 +106,86 @@ export class ManagedEventSource {
 		if (this.closed) return;
 
 		this.lastActivityAt = Date.now();
-		const source = this.createSource();
-		this.source = source;
-		source.addEventListener(heartbeatEventType, this.recordActivity);
-		for (const [type, wrappers] of this.listeners) {
-			for (const wrappedListener of wrappers.values()) {
-				source.addEventListener(type, wrappedListener);
-			}
+		const connectionId = ++this.connectionId;
+		const abortController = new AbortController();
+		this.abortController = abortController;
+		this.readyStateValue = connectingReadyState;
+
+		const requestOptions: FetchEventSourceInit = {
+			openWhenHidden: this.options.openWhenHidden,
+			signal: abortController.signal,
+			onclose: () => {
+				if (!this.isActiveConnection(connectionId, abortController)) return;
+				this.readyStateValue = closedReadyState;
+			},
+			onerror: (error) => {
+				throw error;
+			},
+			onmessage: (message) => {
+				if (!this.isActiveConnection(connectionId, abortController)) return;
+				this.handleMessage(message);
+			},
+			onopen: async (response) => {
+				if (!this.isActiveConnection(connectionId, abortController)) return;
+				this.handleOpenResponse(response);
+			},
+		};
+
+		if (this.options.fetch) {
+			requestOptions.fetch = this.options.fetch;
 		}
-		source.onopen = () => {
-			this.reconnectAttempts = 0;
-			this.lastActivityAt = Date.now();
-		};
-		source.onerror = () => {
-			if (this.closed || source.readyState !== closedReadyState) return;
-			this.scheduleReconnect(source);
-		};
+		if (this.options.headers) {
+			requestOptions.headers = this.options.headers;
+		}
+
+		void this.options.fetchEventSource(this.createUrl(), requestOptions).then(
+			() => this.scheduleReconnect(connectionId, abortController),
+			() => this.scheduleReconnect(connectionId, abortController),
+		);
 	}
 
-	private createSource() {
-		const url =
-			typeof this.options.url === "function"
-				? this.options.url(this.lastEventId)
-				: this.options.url;
-		if (this.options.eventSourceFactory) {
-			return this.options.eventSourceFactory(url);
-		}
-		if (typeof EventSource === "undefined") {
-			throw new Error("EventSource is not available in this environment.");
-		}
-		return new EventSource(url);
+	private createUrl() {
+		return typeof this.options.url === "function"
+			? this.options.url(this.lastEventId)
+			: this.options.url;
 	}
 
-	private scheduleReconnect(source: ManagedEventSourceConnection) {
-		if (source !== this.source || this.reconnectTimer) return;
+	private handleOpenResponse(response: Response) {
+		if (!response.ok) {
+			throw new Error(`SSE connection failed with status ${response.status}.`);
+		}
 
+		const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+		if (!contentType.startsWith(EventStreamContentType)) {
+			throw new Error(`Expected SSE content type, received "${contentType || "unknown"}".`);
+		}
+
+		this.readyStateValue = openReadyState;
+		this.reconnectAttempts = 0;
+		this.lastActivityAt = Date.now();
+	}
+
+	private handleMessage(message: FetchEventSourceMessage) {
+		this.lastActivityAt = Date.now();
+		if (message.id) {
+			this.lastEventId = message.id;
+		}
+
+		const type = message.event || "message";
+		const event = new MessageEvent(type, {
+			data: message.data,
+			lastEventId: message.id,
+		});
+		for (const listener of this.listeners.get(type) ?? []) {
+			listener(event);
+		}
+	}
+
+	private scheduleReconnect(connectionId: number, abortController: AbortController) {
+		if (!this.isActiveConnection(connectionId, abortController) || this.reconnectTimer) return;
+
+		this.abortController = null;
+		this.readyStateValue = closedReadyState;
 		const delay = Math.min(
 			this.options.reconnectDelayMs * 2 ** this.reconnectAttempts,
 			this.options.maxReconnectDelayMs,
@@ -153,8 +193,7 @@ export class ManagedEventSource {
 		this.reconnectAttempts += 1;
 		this.reconnectTimer = window.setTimeout(() => {
 			this.reconnectTimer = null;
-			if (this.closed || source !== this.source) return;
-			this.detachSource();
+			if (this.closed || connectionId !== this.connectionId) return;
 			this.connect();
 		}, delay);
 	}
@@ -164,13 +203,22 @@ export class ManagedEventSource {
 
 		const checkIntervalMs = Math.max(250, Math.min(this.options.heartbeatTimeoutMs / 2, 5000));
 		this.heartbeatTimer = window.setInterval(() => {
-			if (this.closed || !this.source || this.reconnectTimer) return;
+			if (this.closed || !this.abortController || this.reconnectTimer) return;
 			if (Date.now() - this.lastActivityAt <= this.options.heartbeatTimeoutMs) return;
 			// A half-dead connection (proxy timeout, network switch) never
-			// fires onerror, so cycle it once the heartbeat goes silent.
-			this.detachSource();
+			// reaches onerror, so cycle it once the heartbeat goes silent.
+			this.abortActiveConnection();
 			this.connect();
 		}, checkIntervalMs);
+	}
+
+	private isActiveConnection(connectionId: number, abortController: AbortController) {
+		return (
+			!this.closed &&
+			this.connectionId === connectionId &&
+			this.abortController === abortController &&
+			!abortController.signal.aborted
+		);
 	}
 
 	private clearReconnectTimer() {
@@ -185,17 +233,11 @@ export class ManagedEventSource {
 		this.heartbeatTimer = null;
 	}
 
-	private detachSource() {
-		if (!this.source) return;
-		this.source.onopen = null;
-		this.source.onerror = null;
-		this.source.removeEventListener(heartbeatEventType, this.recordActivity);
-		for (const [type, wrappers] of this.listeners) {
-			for (const wrappedListener of wrappers.values()) {
-				this.source.removeEventListener(type, wrappedListener);
-			}
-		}
-		this.source.close();
-		this.source = null;
+	private abortActiveConnection() {
+		this.connectionId += 1;
+		const abortController = this.abortController;
+		this.abortController = null;
+		this.readyStateValue = closedReadyState;
+		abortController?.abort();
 	}
 }
