@@ -3,14 +3,16 @@ import {
 	Check,
 	FileText,
 	Film,
+	GitBranch,
+	List,
 	Loader2,
 	Palette,
 	ReceiptText,
-	ScissorsLineDashed,
+	Rows3,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import useSWR from "swr";
 import type { GenerationTask } from "@/domains/generation/api/generation";
 import {
@@ -22,6 +24,7 @@ import {
 	selectedGenerationAssetsQueryKey,
 } from "@/domains/generation/api/generation";
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
+import { EpisodeTimelineView } from "@/domains/episode/components/EpisodeTimelineView";
 import {
 	DocumentSectionBatchGenerationRunner,
 	type DocumentSectionBatchGenerationJob,
@@ -57,15 +60,11 @@ import {
 	type WorkspaceStoryboardVideoReel,
 } from "@/domains/workspace/api/workspace";
 import { ProjectWorkspaceShell } from "@/domains/workspace/components/ProjectWorkspaceShell";
-import {
-	agentProjectPath,
-	agentProjectRouteState,
-	getRouteProjectId,
-	type AgentResourceType,
-} from "@/domains/workspace/lib/workbench-route";
+import { getRouteProjectId, type AgentResourceType } from "@/domains/workspace/lib/workbench-route";
 import { useProjectStore } from "@/domains/projects/stores";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
 import { VideoGenerationDialog } from "@/shared/components/generation-dialogs/VideoGenerationDialog";
 import { useToast } from "@/hooks/useToast";
@@ -89,9 +88,10 @@ type OverviewBatchGenerationDialogState =
 			reels: WorkspaceStoryboardVideoReel[];
 	  };
 
+type StoryboardVideoResourcesDialogTab = "list" | "canvas" | "preview";
+
 export const ProjectOverview: React.FC = () => {
 	const location = useLocation();
-	const navigate = useNavigate();
 	const toast = useToast();
 	const projectId = getRouteProjectId(location.search);
 	const activeProjectId = useProjectStore((state) => state.activeProjectId);
@@ -330,22 +330,11 @@ export const ProjectOverview: React.FC = () => {
 		},
 		[],
 	);
-	const openStoryboardWorkbench = useCallback(
+	const prepareStoryboardWorkbench = useCallback(
 		(group: WorkspaceStoryboardVideoDocumentGroup) => {
-			if (!projectId) return;
-
-			const draft = convertDocumentToWorkbenchDraft(group.documentId);
-			if (!draft) return;
-
-			navigate(
-				agentProjectPath(projectId, {
-					documentId: group.documentId,
-					workbench: "timeline",
-				}),
-				{ state: agentProjectRouteState("overview") },
-			);
+			convertDocumentToWorkbenchDraft(group.documentId);
 		},
-		[convertDocumentToWorkbenchDraft, navigate, projectId],
+		[convertDocumentToWorkbenchDraft],
 	);
 	const confirmBatchGeneration = useCallback(
 		(settings: BatchGenerationSettings) => {
@@ -483,7 +472,7 @@ export const ProjectOverview: React.FC = () => {
 									open={Boolean(activeStoryboardVideoGroup)}
 									onBatchGenerate={openStoryboardVideoGenerationBatch}
 									onGenerate={openStoryboardVideoGeneration}
-									onOpenWorkbench={openStoryboardWorkbench}
+									onPrepareWorkbench={prepareStoryboardWorkbench}
 									onOpenChange={(open) => {
 										if (!open) setStoryboardVideoDocumentId(null);
 									}}
@@ -1071,7 +1060,7 @@ const StoryboardVideoResourcesDialog: React.FC<{
 		reels: WorkspaceStoryboardVideoReel[],
 	) => void;
 	onOpenChange: (open: boolean) => void;
-	onOpenWorkbench: (group: WorkspaceStoryboardVideoDocumentGroup) => void;
+	onPrepareWorkbench: (group: WorkspaceStoryboardVideoDocumentGroup) => void;
 }> = ({
 	error,
 	generationStatuses,
@@ -1081,9 +1070,10 @@ const StoryboardVideoResourcesDialog: React.FC<{
 	onBatchGenerate,
 	onGenerate,
 	onOpenChange,
-	onOpenWorkbench,
+	onPrepareWorkbench,
 }) => {
 	const videoCount = group ? storyboardDocumentGroupVideoCount(group) : 0;
+	const [activeTab, setActiveTab] = useState<StoryboardVideoResourcesDialogTab>("list");
 	const selectableReels = useMemo(
 		() => (group?.reels ?? []).filter((reel) => reel.canGenerate),
 		[group?.reels],
@@ -1103,6 +1093,7 @@ const StoryboardVideoResourcesDialog: React.FC<{
 
 	useEffect(() => {
 		setSelectedReelIds([]);
+		setActiveTab("list");
 	}, [open, group?.documentId]);
 
 	useEffect(() => {
@@ -1130,91 +1121,124 @@ const StoryboardVideoResourcesDialog: React.FC<{
 			current.includes(reel.id) ? current.filter((id) => id !== reel.id) : [...current, reel.id],
 		);
 	}, []);
+	const switchTab = useCallback(
+		(tab: string) => {
+			if (!isStoryboardVideoResourcesDialogTab(tab)) return;
+			if ((tab === "canvas" || tab === "preview") && group) onPrepareWorkbench(group);
+			setActiveTab(tab);
+		},
+		[group, onPrepareWorkbench],
+	);
+
+	useEffect(() => {
+		if (!group || activeTab === "list") return;
+		onPrepareWorkbench(group);
+	}, [activeTab, group, onPrepareWorkbench]);
 
 	if (!group) return null;
 
 	return (
-		<GenerationModalShell
-			open={open}
-			title={
-				<span className="flex min-w-0 items-center gap-2">
-					<Film className="size-4 shrink-0 text-muted-foreground" />
-					<span className="truncate">成片资源 · {group.documentTitle}</span>
-				</span>
-			}
-			titleAside={
-				<div className="flex items-center gap-2">
-					<Badge variant="secondary" className="shrink-0">
-						分镜组 {group.reels.length} 项 · 成片 {videoCount} 个
-					</Badge>
-					<Button
-						type="button"
-						size="sm"
-						variant="outline"
-						className="h-8 shrink-0 rounded-sm"
-						aria-label={`打开${group.documentTitle}剪辑工作台`}
-						onClick={() => onOpenWorkbench(group)}
-					>
-						<ScissorsLineDashed className="size-4" />
-						<span>打开剪辑工作台</span>
-					</Button>
-				</div>
-			}
-			titleId="storyboard-video-resources-title"
-			contentClassName="h-[min(86vh,780px)]"
-			onOpenChange={onOpenChange}
-		>
-			<div className="flex h-full min-h-0 flex-col bg-ide-editor">
-				{isLoading ? (
-					<div className="grid min-h-56 flex-1 place-items-center">
-						<div className="flex items-center gap-2 text-sm text-muted-foreground">
-							<Loader2 className="size-4 animate-spin" />
-							<span>正在加载成片资源</span>
-						</div>
+		<Tabs value={activeTab} onValueChange={switchTab}>
+			<GenerationModalShell
+				open={open}
+				title={
+					<span className="flex min-w-0 items-center gap-2">
+						<Film className="size-4 shrink-0 text-muted-foreground" />
+						<span className="truncate">成片资源 · {group.documentTitle}</span>
+					</span>
+				}
+				titleAside={
+					<div className="flex items-center gap-3">
+						<Badge variant="secondary" className="shrink-0">
+							分镜组 {group.reels.length} 项 · 成片 {videoCount} 个
+						</Badge>
+						<TabsList className="shrink-0">
+							<TabsTrigger value="list">
+								<List className="size-3.5" />
+								<span>列表</span>
+							</TabsTrigger>
+							<TabsTrigger value="canvas">
+								<GitBranch className="size-3.5" />
+								<span>画布</span>
+							</TabsTrigger>
+							<TabsTrigger value="preview">
+								<Rows3 className="size-3.5" />
+								<span>预览</span>
+							</TabsTrigger>
+						</TabsList>
 					</div>
-				) : null}
-
-				{!isLoading && error ? (
-					<div className="m-4 border border-error-border bg-error-surface p-4 text-sm text-error-foreground">
-						成片资源加载失败。
-					</div>
-				) : null}
-
-				{!isLoading && !error && group.reels.length === 0 ? (
-					<div className="p-4 text-sm text-muted-foreground">当前分镜文档还没有解析出分镜组。</div>
-				) : null}
-
-				{!isLoading && !error && group.reels.length > 0 ? (
-					<>
-						<BatchSelectionToolbar
-							allSelected={allSelectableReelsSelected}
-							generateLabel="批量生成视频"
-							selectedCount={selectedReels.length}
-							totalCount={selectableReels.length}
-							onClear={clearSelectedReels}
-							onGenerate={generateSelectedReels}
-							onSelectAll={selectAllReels}
-						/>
-						<div className="min-h-0 flex-1 overflow-y-auto p-4">
-							<div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-								{group.reels.map((reel) => (
-									<StoryboardReelVideoCard
-										key={reel.id}
-										generationStatus={generationStatuses.get(reel.id)}
-										reel={reel}
-										selected={selectedReelIdSet.has(reel.id)}
-										onGenerate={() => onGenerate(group, reel)}
-										onToggleSelected={() => toggleSelectedReel(reel)}
-									/>
-								))}
+				}
+				titleId="storyboard-video-resources-title"
+				contentClassName="h-[min(90vh,860px)]"
+				onOpenChange={onOpenChange}
+			>
+				<div className="flex h-full min-h-0 flex-col bg-ide-editor">
+					<TabsContent value="list" className="m-0 flex h-full min-h-0 flex-col">
+						{isLoading ? (
+							<div className="grid min-h-56 flex-1 place-items-center">
+								<div className="flex items-center gap-2 text-sm text-muted-foreground">
+									<Loader2 className="size-4 animate-spin" />
+									<span>正在加载成片资源</span>
+								</div>
 							</div>
-						</div>
-					</>
-				) : null}
-			</div>
-		</GenerationModalShell>
+						) : null}
+
+						{!isLoading && error ? (
+							<div className="m-4 border border-error-border bg-error-surface p-4 text-sm text-error-foreground">
+								成片资源加载失败。
+							</div>
+						) : null}
+
+						{!isLoading && !error && group.reels.length === 0 ? (
+							<div className="p-4 text-sm text-muted-foreground">
+								当前分镜文档还没有解析出分镜组。
+							</div>
+						) : null}
+
+						{!isLoading && !error && group.reels.length > 0 ? (
+							<>
+								<BatchSelectionToolbar
+									allSelected={allSelectableReelsSelected}
+									generateLabel="批量生成视频"
+									selectedCount={selectedReels.length}
+									totalCount={selectableReels.length}
+									onClear={clearSelectedReels}
+									onGenerate={generateSelectedReels}
+									onSelectAll={selectAllReels}
+								/>
+								<div className="min-h-0 flex-1 overflow-y-auto p-4">
+									<div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+										{group.reels.map((reel) => (
+											<StoryboardReelVideoCard
+												key={reel.id}
+												generationStatus={generationStatuses.get(reel.id)}
+												reel={reel}
+												selected={selectedReelIdSet.has(reel.id)}
+												onGenerate={() => onGenerate(group, reel)}
+												onToggleSelected={() => toggleSelectedReel(reel)}
+											/>
+										))}
+									</div>
+								</div>
+							</>
+						) : null}
+					</TabsContent>
+					<TabsContent value="canvas" className="m-0 h-full min-h-0 overflow-hidden">
+						<EpisodeTimelineView documentId={group.documentId} workbench="canvas" />
+					</TabsContent>
+					<TabsContent value="preview" className="m-0 h-full min-h-0 overflow-hidden">
+						<EpisodeTimelineView documentId={group.documentId} workbench="timeline" />
+					</TabsContent>
+				</div>
+			</GenerationModalShell>
+		</Tabs>
 	);
 };
+
+const isStoryboardVideoResourcesDialogTab = (
+	value: string,
+): value is StoryboardVideoResourcesDialogTab =>
+	value === "list" || value === "canvas" || value === "preview";
 
 const StoryboardReelVideoCard: React.FC<{
 	generationStatus?: ResourceGenerationStatus;

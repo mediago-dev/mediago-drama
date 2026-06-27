@@ -30,9 +30,6 @@ const loadWritingWorkspace = () =>
 	}));
 
 const WritingWorkspace = lazy(() => loadWritingWorkspace());
-const EpisodeTimeline = lazy(() =>
-	import("@/pages/EpisodeTimeline").then((module) => ({ default: module.EpisodeTimeline })),
-);
 const ProjectOverview = lazy(() =>
 	import("@/pages/ProjectOverview").then((module) => ({ default: module.ProjectOverview })),
 );
@@ -69,7 +66,7 @@ export const Home: React.FC = () => {
 		? documents.find((document) => document.id === documentId)
 		: null;
 	const targetAsset = assetId ? assets.find((asset) => asset.id === assetId) : null;
-	const hasWorkspaceTarget = !documentWorkbench && Boolean(documentId || assetId);
+	const hasWorkspaceTarget = Boolean(documentId || assetId);
 	const workspaceTargetMissing =
 		documentsProjectId === projectId &&
 		hasWorkspaceTarget &&
@@ -87,7 +84,7 @@ export const Home: React.FC = () => {
 	}, [activeProjectId, projectId, setActiveProjectId]);
 
 	useEffect(() => {
-		if (!projectId || documentWorkbench) return;
+		if (!projectId) return;
 		if (preserveAgentTab) {
 			setAgentLayoutTab("agent");
 			return;
@@ -97,15 +94,7 @@ export const Home: React.FC = () => {
 			return;
 		}
 		setAgentLayoutTab("agent");
-	}, [
-		assetId,
-		documentId,
-		documentWorkbench,
-		preserveAgentTab,
-		preserveDocumentTab,
-		projectId,
-		setAgentLayoutTab,
-	]);
+	}, [assetId, documentId, preserveAgentTab, preserveDocumentTab, projectId, setAgentLayoutTab]);
 
 	useEffect(() => {
 		if (!projectId) return;
@@ -113,7 +102,7 @@ export const Home: React.FC = () => {
 	}, [projectId]);
 
 	useLayoutEffect(() => {
-		if (!projectId || documentsProjectId !== projectId || documentWorkbench) return;
+		if (!projectId || documentsProjectId !== projectId) return;
 		if (targetDocument && activeDocumentId !== targetDocument.id) {
 			selectDocument(targetDocument.id);
 			return;
@@ -122,7 +111,6 @@ export const Home: React.FC = () => {
 	}, [
 		activeAssetId,
 		activeDocumentId,
-		documentWorkbench,
 		documentsProjectId,
 		projectId,
 		selectAsset,
@@ -137,18 +125,10 @@ export const Home: React.FC = () => {
 			setLastDocumentId(projectId, documentId);
 			return;
 		}
-		if (!assetId && !documentWorkbench && !resourceType) {
+		if (!assetId && !resourceType) {
 			setLastDocumentId(projectId, null);
 		}
-	}, [
-		assetId,
-		documentId,
-		documentWorkbench,
-		preserveAgentTab,
-		projectId,
-		resourceType,
-		setLastDocumentId,
-	]);
+	}, [assetId, documentId, preserveAgentTab, projectId, resourceType, setLastDocumentId]);
 
 	useEffect(() => {
 		if (!projectId || documentsProjectId !== projectId || documentId || assetId) {
@@ -211,15 +191,11 @@ export const Home: React.FC = () => {
 	}, [activeDocumentId, assetId, documentId, documents, documentsProjectId, projectId]);
 
 	if (!projectId) return <Navigate to="/" replace />;
+	if (documentId && documentWorkbench) {
+		return <Navigate to={agentProjectPath(projectId, { documentId })} replace />;
+	}
 	if (workspaceTargetMissing) {
 		return <Navigate to={agentProjectPath(projectId)} replace />;
-	}
-	if (documentId && documentWorkbench) {
-		return (
-			<Suspense fallback={<WorkspaceContentFallback />}>
-				<EpisodeTimeline />
-			</Suspense>
-		);
 	}
 	if (documentId || assetId) {
 		if (workspaceTargetPending) return <WorkspaceContentFallback />;

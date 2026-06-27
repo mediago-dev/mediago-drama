@@ -36,7 +36,7 @@ describe("workbench route", () => {
 		expect(workbenchModeForRoute("/toolbox/image")).toBe("studio");
 	});
 
-	it("forces document content only for document workbenches and studio workbenches", () => {
+	it("forces document content only for studio workbenches", () => {
 		expect(shouldForceDocumentWorkbench("/projects", "?projectId=project-1")).toBe(false);
 		expect(shouldForceDocumentWorkbench("/projects", "?projectId=project-1&documentId=doc-1")).toBe(
 			false,
@@ -46,14 +46,14 @@ describe("workbench route", () => {
 				"/projects",
 				"?projectId=project-1&documentId=doc-1&workbench=timeline",
 			),
-		).toBe(true);
+		).toBe(false);
 		expect(isAgentDocumentRoute("/projects", "?projectId=project-1&documentId=doc-1")).toBe(false);
 		expect(
 			isAgentDocumentRoute("/projects", "?projectId=project-1&documentId=doc-1&workbench=timeline"),
-		).toBe(true);
+		).toBe(false);
 		expect(
 			isAgentDocumentRoute("/projects", "?projectId=project-1&documentId=doc-1&workbench=canvas"),
-		).toBe(true);
+		).toBe(false);
 		expect(shouldForceDocumentWorkbench("/unknown", "")).toBe(false);
 		expect(shouldForceDocumentWorkbench("/toolbox/image", "")).toBe(true);
 	});
@@ -67,10 +67,10 @@ describe("workbench route", () => {
 			"/projects?projectId=project-1&assetId=asset-1",
 		);
 		expect(agentProjectPath("project-1", { documentId: "doc-1", workbench: "timeline" })).toBe(
-			"/projects?projectId=project-1&documentId=doc-1&workbench=timeline",
+			"/projects?projectId=project-1&documentId=doc-1",
 		);
 		expect(agentProjectPath("project-1", { documentId: "doc-1", workbench: "canvas" })).toBe(
-			"/projects?projectId=project-1&documentId=doc-1&workbench=canvas",
+			"/projects?projectId=project-1&documentId=doc-1",
 		);
 		expect(agentProjectPath("project-1", { agentSessionId: "session-1" })).toBe(
 			"/projects?projectId=project-1&agentSessionId=session-1",

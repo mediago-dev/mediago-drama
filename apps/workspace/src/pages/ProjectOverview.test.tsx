@@ -13,6 +13,7 @@ import { ProjectOverview } from "./ProjectOverview";
 const dialogMocks = vi.hoisted(() => ({
 	BatchGenerationSettingsDialog: vi.fn((_props: Record<string, unknown>): React.ReactNode => null),
 	DocumentSectionBatchGenerationRunner: vi.fn((_props: Record<string, unknown>) => null),
+	EpisodeTimelineView: vi.fn((_props: Record<string, unknown>): React.ReactNode => null),
 	ImageGenerationDialog: vi.fn((_props: Record<string, unknown>) => null),
 	VideoGenerationDialog: vi.fn((_props: Record<string, unknown>) => null),
 }));
@@ -23,6 +24,10 @@ vi.mock("@/domains/generation/components/BatchGenerationSettingsDialog", () => (
 
 vi.mock("@/domains/documents/components/DocumentSectionBatchGenerationRunner", () => ({
 	DocumentSectionBatchGenerationRunner: dialogMocks.DocumentSectionBatchGenerationRunner,
+}));
+
+vi.mock("@/domains/episode/components/EpisodeTimelineView", () => ({
+	EpisodeTimelineView: dialogMocks.EpisodeTimelineView,
 }));
 
 vi.mock("@/shared/components/generation-dialogs/VideoGenerationDialog", () => ({
@@ -189,6 +194,17 @@ describe("ProjectOverview", () => {
 						确认批量设置
 					</button>
 				) : null,
+		);
+		dialogMocks.EpisodeTimelineView.mockImplementation(
+			({ documentId, workbench }: Record<string, unknown>) => (
+				<div
+					data-document-id={String(documentId ?? "")}
+					data-testid="episode-timeline-view"
+					data-workbench={String(workbench ?? "")}
+				>
+					{workbench === "canvas" ? "嵌入画布" : "嵌入预览"}
+				</div>
+			),
 		);
 		vi.mocked(httpClient.patch).mockImplementation(async (url, payload) => {
 			const documentId = String(url).split("/").pop() ?? "";
@@ -854,7 +870,7 @@ describe("ProjectOverview", () => {
 		expect(within(secondDialog).queryByTestId("overview-video-player")).not.toBeInTheDocument();
 	});
 
-	it("opens the matching storyboard clipping workbench from video resources", async () => {
+	it("shows storyboard clipping workbench tabs inside video resources", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
 				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
@@ -877,18 +893,37 @@ describe("ProjectOverview", () => {
 		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 成片资源" }));
 
 		const dialog = await screen.findByRole("dialog");
-		fireEvent.click(within(dialog).getByRole("button", { name: "打开第一章分镜脚本剪辑工作台" }));
-
-		expect(
-			useDocumentsStore.getState().documents.find((document) => document.id === "storyboard-a")
-				?.workbenchDraft?.documentId,
-		).toBe("storyboard-a");
+		await waitFor(() => {
+			expect(
+				useDocumentsStore.getState().documents.some((document) => document.id === "storyboard-a"),
+			).toBe(true);
+		});
+		const canvasTab = within(dialog).getByRole("tab", { name: "画布" });
+		fireEvent.mouseDown(canvasTab, { button: 0 });
+		fireEvent.click(canvasTab);
 
 		await waitFor(() => {
-			expect(screen.getByTestId("location")).toHaveTextContent(
-				"/projects?projectId=project-a&documentId=storyboard-a&workbench=timeline",
+			expect(within(dialog).getByTestId("episode-timeline-view")).toHaveAttribute(
+				"data-workbench",
+				"canvas",
 			);
-			expect(screen.getByTestId("location")).toHaveAttribute("data-project-view", "overview");
+		});
+		expect(within(dialog).getByTestId("episode-timeline-view")).toHaveAttribute(
+			"data-document-id",
+			"storyboard-a",
+		);
+		expect(screen.getByTestId("location")).toHaveTextContent("/projects?projectId=project-a");
+		expect(screen.getByTestId("location")).toHaveAttribute("data-project-view", "");
+
+		const previewTab = within(dialog).getByRole("tab", { name: "预览" });
+		fireEvent.mouseDown(previewTab, { button: 0 });
+		fireEvent.click(previewTab);
+
+		await waitFor(() => {
+			expect(within(dialog).getByTestId("episode-timeline-view")).toHaveAttribute(
+				"data-workbench",
+				"timeline",
+			);
 		});
 	});
 

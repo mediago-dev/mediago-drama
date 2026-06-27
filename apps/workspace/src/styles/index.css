@@ -1188,7 +1188,3 @@
 	height: var(--desktop-drag-region-height);
 	cursor: default;
 }
-
-.is-desktop-macos .episode-workbench-header {
-	padding-left: calc(var(--desktop-traffic-light-safe-area) + var(--space-sm));
-}

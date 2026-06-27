@@ -1,7 +1,7 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { History, Menu, MessageSquare, MessageSquareOff, ScissorsLineDashed } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { History, Menu, MessageSquare, MessageSquareOff } from "lucide-react";
+import { useLocation } from "react-router-dom";
 import useSWR from "swr";
 import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
 import {
@@ -35,7 +35,7 @@ import {
 	type MarkdownDocument,
 	useDocumentsStore,
 } from "@/domains/documents/stores";
-import { agentProjectPath, getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
+import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { AudioGenerationDialog } from "@/shared/components/generation-dialogs/AudioGenerationDialog";
 import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
 import { VideoGenerationDialog } from "@/shared/components/generation-dialogs/VideoGenerationDialog";
@@ -72,16 +72,12 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const [historyOpen, setHistoryOpen] = useState(false);
 	const editorRef = useRef<MarkdownHybridEditorHandle>(null);
 	const mainRef = useRef<HTMLElement>(null);
-	const navigate = useNavigate();
 	const location = useLocation();
 	const projectId = getRouteProjectId(location.search);
 	const documents = useDocumentsStore((state) => state.documents);
 	const assets = useDocumentsStore((state) => state.assets);
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
 	const activeCommentId = useDocumentsStore((state) => state.activeCommentId);
-	const convertDocumentToWorkbenchDraft = useDocumentsStore(
-		(state) => state.convertDocumentToWorkbenchDraft,
-	);
 	const focusComment = useDocumentsStore((state) => state.focusComment);
 	const markDocumentSaved = useDocumentsStore((state) => state.markDocumentSaved);
 	const openPendingComment = useDocumentsStore((state) => state.openPendingComment);
@@ -208,21 +204,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 		setSelectionCoords(null);
 	};
 
-	const openStoryboardWorkbench = () => {
-		if (!activeDocument || !projectId || activeDocument.category !== "storyboard") return;
-
-		const draft =
-			activeDocument.workbenchDraft ?? convertDocumentToWorkbenchDraft(activeDocument.id);
-		if (!draft) return;
-
-		navigate(
-			agentProjectPath(projectId, {
-				documentId: activeDocument.id,
-				workbench: "timeline",
-			}),
-		);
-	};
-
 	const focusCommentAnchor = useCallback(
 		(commentId: string) => {
 			focusComment(commentId);
@@ -252,8 +233,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 			</main>
 		);
 	}
-
-	const canOpenWorkbench = activeDocument.category === "storyboard";
 
 	return (
 		<>
@@ -311,18 +290,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 								>
 									<History />
 								</Button>
-								{canOpenWorkbench ? (
-									<Button
-										type="button"
-										size="sm"
-										variant="outline"
-										className="h-8 rounded-sm"
-										onClick={openStoryboardWorkbench}
-									>
-										<ScissorsLineDashed />
-										<span>跳转到剪辑工作台</span>
-									</Button>
-								) : null}
 							</div>
 						</div>
 

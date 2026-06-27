@@ -33,13 +33,7 @@ export const isProjectSettingsRoute = (pathname: string, search: string) =>
 export const isSettingsRoute = (pathname: string) =>
 	pathname === "/settings" || pathname.startsWith("/settings/");
 
-export const isAgentDocumentRoute = (pathname: string, search: string) =>
-	isAgentRoute(pathname) &&
-	Boolean(
-		getRouteProjectId(search) &&
-		getRouteDocumentId(search) &&
-		Boolean(getRouteDocumentWorkbench(search)),
-	);
+export const isAgentDocumentRoute = (_pathname: string, _search: string) => false;
 
 export const workbenchModeForRoute = (
 	pathname: string,
@@ -51,12 +45,12 @@ export const workbenchModeForRoute = (
 	return null;
 };
 
-export const shouldForceDocumentWorkbench = (pathname: string, search: string) => {
+export const shouldForceDocumentWorkbench = (pathname: string, _search: string) => {
 	if (!isAgentRoute(pathname)) {
 		const mode = workbenchModeForRoute(pathname);
 		return mode === "studio";
 	}
-	return isAgentDocumentRoute(pathname, search);
+	return false;
 };
 
 export const agentProjectPath = (
@@ -77,7 +71,6 @@ export const agentProjectPath = (
 		params.set("resourceType", options.resourceType);
 	}
 	if (options.agentSessionId) params.set("agentSessionId", options.agentSessionId);
-	if (options.documentId && options.workbench) params.set("workbench", options.workbench);
 	return `/projects?${params.toString()}`;
 };
 

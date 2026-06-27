@@ -50,7 +50,7 @@ describe("app route descriptor", () => {
 			),
 		).toMatchObject({
 			level: 2,
-			sidebarHidden: true,
+			sidebarHidden: false,
 			sidebarScreen: "project",
 		});
 		expect(resolveAppRouteDescriptor("/toolbox/video", "", { workMode: "studio" })).toMatchObject({

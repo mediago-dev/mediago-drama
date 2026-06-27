@@ -1,8 +1,7 @@
 import type { MediaPlayerInstance } from "@vidstack/react";
-import { ArrowLeft, Clapperboard, Download, GitBranch, Loader2, Rows3 } from "lucide-react";
+import { Clapperboard, Download, Loader2 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import useSWR from "swr";
 import {
 	getWorkspaceResolvedEpisode,
@@ -58,18 +57,12 @@ import {
 import type { Episode, TimelineClip } from "@/domains/episode/lib/sample";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { type TimelineCompanionTrackType, useEpisodeStore } from "@/domains/episode/stores";
-import { useDesktopWindowDrag } from "@/domains/workspace/lib/desktop-window-drag";
-import {
-	agentProjectPath,
-	agentProjectRouteState,
-	getRouteDocumentWorkbench,
-	isAgentProjectViewState,
-	type AgentDocumentWorkbench,
-} from "@/domains/workspace/lib/workbench-route";
+import type { AgentDocumentWorkbench } from "@/domains/workspace/lib/workbench-route";
 import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
 
 interface EpisodeTimelineViewProps {
 	documentId?: string;
+	workbench?: AgentDocumentWorkbench;
 }
 
 interface CompanionGenerationTarget {
@@ -80,9 +73,10 @@ interface CompanionGenerationTarget {
 const isJianyingDraftExportButtonVisible =
 	import.meta.env.VITE_ENABLE_JIANYING_DRAFT_EXPORT === "true";
 
-export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ documentId }) => {
-	const navigate = useNavigate();
-	const location = useLocation();
+export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
+	documentId,
+	workbench,
+}) => {
 	const toast = useToast();
 	const episode = useEpisodeStore((state) => state.episode);
 	const currentTime = useEpisodeStore((state) => state.currentTime);
@@ -93,6 +87,9 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const assets = useDocumentsStore((state) => state.assets);
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
 	const projectId = useDocumentsStore((state) => state.projectId);
+	const convertDocumentToWorkbenchDraft = useDocumentsStore(
+		(state) => state.convertDocumentToWorkbenchDraft,
+	);
 	const addCompanionTextClip = useEpisodeStore((state) => state.addCompanionTextClip);
 	const selectClip = useEpisodeStore((state) => state.selectClip);
 	const setCurrentTime = useEpisodeStore((state) => state.setCurrentTime);
@@ -100,7 +97,6 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const setVideoClipVideoUrl = useEpisodeStore((state) => state.setVideoClipVideoUrl);
 	const pause = useEpisodeStore((state) => state.pause);
 	const play = useEpisodeStore((state) => state.play);
-	const startWindowDrag = useDesktopWindowDrag();
 	const [companionGenerationTarget, setCompanionGenerationTarget] =
 		useState<CompanionGenerationTarget | null>(null);
 	const [referenceSectionGeneration, setReferenceSectionGeneration] =
@@ -113,16 +109,11 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const [isSavingTaskSyncedEpisode, setIsSavingTaskSyncedEpisode] = useState(false);
 	const previewPlayerRef = useRef<MediaPlayerInstance | null>(null);
 	const lastPreviewErrorKey = useRef("");
-	const activeWorkbench = getRouteDocumentWorkbench(location.search) ?? "timeline";
+	const activeWorkbench = workbench ?? "timeline";
 	const isCanvasWorkbench = activeWorkbench === "canvas";
 	const activeDocument =
 		findDocumentById(documents, documentId) ?? selectDocumentById(documents, activeDocumentId);
 	const episodeDocumentId = activeDocument?.id ?? "";
-	const shouldReturnToOverview = isAgentProjectViewState(location.state, "overview");
-	const returnProjectView = shouldReturnToOverview ? "overview" : "document";
-	const returnPath = projectId
-		? agentProjectPath(projectId, shouldReturnToOverview ? {} : { documentId })
-		: "/";
 	const mediaAssetProjectId = projectId?.trim() ?? "";
 	const { data: resolvedEpisodeState, mutate: mutateEpisodeState } = useSWR(
 		episodeDocumentId ? workspaceResolvedEpisodeKey(episodeDocumentId, projectId) : null,
@@ -485,19 +476,6 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		projectId,
 		toast,
 	]);
-	const handleWorkbenchSwitch = useCallback(
-		(workbench: AgentDocumentWorkbench) => {
-			if (!projectId || !episodeDocumentId) return;
-			navigate(
-				agentProjectPath(projectId, {
-					documentId: episodeDocumentId,
-					workbench,
-				}),
-				{ state: location.state },
-			);
-		},
-		[episodeDocumentId, location.state, navigate, projectId],
-	);
 	const handleTimelineSeek = useCallback(
 		(time: number) => {
 			const range = findEpisodeClipPlaybackRangeAtTime(clipPlaybackRanges, time);
@@ -659,6 +637,11 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	}, [resolvedEpisode, setEpisode]);
 
 	useEffect(() => {
+		if (!episodeDocumentId) return;
+		convertDocumentToWorkbenchDraft(episodeDocumentId);
+	}, [convertDocumentToWorkbenchDraft, episodeDocumentId]);
+
+	useEffect(() => {
 		if (selectedStoryboardVideoByClipId.size === 0) return;
 
 		const currentEpisode = useEpisodeStore.getState().episode;
@@ -749,53 +732,6 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 
 	return (
 		<div className="flex h-full min-h-0 flex-col bg-ide-editor text-ide-editor-foreground">
-			<header
-				className="episode-workbench-header flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-ide-toolbar px-2 text-ide-toolbar-foreground"
-				onPointerDown={startWindowDrag}
-			>
-				<div className="flex min-w-0 flex-1 items-center gap-2" data-desktop-drag-region>
-					<Button
-						type="button"
-						variant="outline"
-						size="icon"
-						className="size-7 rounded-sm"
-						aria-label={shouldReturnToOverview ? "返回概览" : "返回文档"}
-						onClick={() =>
-							navigate(returnPath, {
-								state: agentProjectRouteState(returnProjectView),
-							})
-						}
-					>
-						<ArrowLeft />
-					</Button>
-					<div className="min-w-0">
-						<h1 className="truncate text-sm font-semibold text-foreground">{episode.title}</h1>
-					</div>
-				</div>
-				<div className="flex shrink-0 items-center overflow-hidden rounded-sm border border-border bg-ide-editor p-0.5">
-					<Button
-						type="button"
-						variant={activeWorkbench === "timeline" ? "secondary" : "ghost"}
-						size="sm"
-						className="h-7 rounded-sm px-2"
-						onClick={() => handleWorkbenchSwitch("timeline")}
-					>
-						<Rows3 className="size-4" />
-						<span>预览</span>
-					</Button>
-					<Button
-						type="button"
-						variant={activeWorkbench === "canvas" ? "secondary" : "ghost"}
-						size="sm"
-						className="h-7 rounded-sm px-2"
-						onClick={() => handleWorkbenchSwitch("canvas")}
-					>
-						<GitBranch className="size-4" />
-						<span>总线</span>
-					</Button>
-				</div>
-			</header>
-
 			<main className="flex min-h-0 flex-1 flex-col overflow-hidden">
 				{isCanvasWorkbench ? (
 					<EpisodeCanvasView

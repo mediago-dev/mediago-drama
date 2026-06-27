@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type React from "react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import useSWR from "swr";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import type { MarkdownDocument } from "@/domains/documents/stores";
@@ -11,6 +11,7 @@ import { type Episode, sampleEpisode } from "@/domains/episode/lib/sample";
 import { useEpisodeStore } from "@/domains/episode/stores";
 import { getMediaAssets } from "@/domains/workspace/api/media";
 import {
+	updateWorkspaceDocumentRecord,
 	updateWorkspaceEpisode,
 	workspaceEpisodePreviewStreamURL,
 } from "@/domains/workspace/api/workspace";
@@ -277,11 +278,6 @@ vi.mock("@/shared/components/generation-dialogs/ImageGenerationDialog", () => ({
 		})(),
 }));
 
-const LocationProbe = () => {
-	const location = useLocation();
-	return <div data-testid="location">{`${location.pathname}${location.search}`}</div>;
-};
-
 const makeDocument = (overrides: Partial<MarkdownDocument> = {}): MarkdownDocument => ({
 	category: "storyboard",
 	comments: [],
@@ -316,6 +312,26 @@ describe("EpisodeTimelineView canvas generation", () => {
 		vi.mocked(getMediaAssets).mockResolvedValue({ assets: [] });
 		vi.mocked(workspaceEpisodePreviewStreamURL).mockReset();
 		vi.mocked(workspaceEpisodePreviewStreamURL).mockReturnValue("");
+		vi.mocked(updateWorkspaceDocumentRecord).mockReset();
+		vi.mocked(updateWorkspaceDocumentRecord).mockImplementation(async (documentId, payload) => {
+			const current = useDocumentsStore.getState();
+			const document = current.documents.find((item) => item.id === documentId);
+			if (!document) throw new Error(`missing document ${documentId}`);
+			const nextDocument = { ...document, ...payload, isDirty: false };
+			const documents = current.documents.map((item) =>
+				item.id === documentId ? nextDocument : item,
+			);
+			return {
+				document: nextDocument,
+				state: {
+					assets: current.assets,
+					documents,
+					folders: current.folders,
+					projectId: current.projectId ?? undefined,
+					workspaceDir: current.workspaceDir,
+				},
+			};
+		});
 		vi.mocked(updateWorkspaceEpisode).mockReset();
 		vi.mocked(updateWorkspaceEpisode).mockImplementation(
 			async (documentId, episode, projectId) => ({
@@ -349,38 +365,6 @@ describe("EpisodeTimelineView canvas generation", () => {
 			workspaceDir: "/workspace/project-a",
 		});
 		useEpisodeStore.getState().setEpisode(sampleEpisode);
-	});
-
-	it("returns to the project overview when opened from overview resources", async () => {
-		render(
-			<MemoryRouter
-				initialEntries={[
-					{
-						pathname: "/projects",
-						search: "?projectId=project-a&documentId=story-doc&workbench=timeline",
-						state: { projectView: "overview" },
-					},
-				]}
-			>
-				<Routes>
-					<Route
-						path="/projects"
-						element={
-							<>
-								<EpisodeTimelineView documentId="story-doc" />
-								<LocationProbe />
-							</>
-						}
-					/>
-				</Routes>
-			</MemoryRouter>,
-		);
-
-		screen.getByRole("button", { name: "返回概览" }).click();
-
-		await waitFor(() => {
-			expect(screen.getByTestId("location")).toHaveTextContent("/projects?projectId=project-a");
-		});
 	});
 
 	it("starts preview playback from the timeline button using the native video element", async () => {
@@ -815,7 +799,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 	it("opens canvas reference generation without wiring document insertion", async () => {
 		render(
 			<MemoryRouter initialEntries={["/projects?projectId=project-a&workbench=canvas"]}>
-				<EpisodeTimelineView documentId="story-doc" />
+				<EpisodeTimelineView documentId="story-doc" workbench="canvas" />
 			</MemoryRouter>,
 		);
 
@@ -840,7 +824,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 		vi.mocked(updateWorkspaceEpisode).mockRejectedValueOnce(new Error("backend unavailable"));
 		render(
 			<MemoryRouter initialEntries={["/projects?projectId=project-a&workbench=canvas"]}>
-				<EpisodeTimelineView documentId="story-doc" />
+				<EpisodeTimelineView documentId="story-doc" workbench="canvas" />
 			</MemoryRouter>,
 		);
 
