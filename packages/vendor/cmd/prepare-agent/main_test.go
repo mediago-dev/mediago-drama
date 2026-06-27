@@ -31,28 +31,28 @@ func TestReleaseAssetName(t *testing.T) {
 		{
 			name:     "opencode darwin arm64",
 			agentID:  "opencode",
-			tag:      "v1.17.0",
+			tag:      "v1.17.11",
 			platform: platform{OS: "darwin", Arch: "arm64"},
 			want:     "opencode-darwin-arm64.zip",
 		},
 		{
 			name:     "opencode linux x64",
 			agentID:  "opencode",
-			tag:      "v1.17.0",
+			tag:      "v1.17.11",
 			platform: platform{OS: "linux", Arch: "x64"},
 			want:     "opencode-linux-x64.tar.gz",
 		},
 		{
 			name:     "opencode windows x64",
 			agentID:  "opencode",
-			tag:      "v1.17.0",
+			tag:      "v1.17.11",
 			platform: platform{OS: "windows", Arch: "x64"},
 			want:     "opencode-windows-x64.zip",
 		},
 		{
 			name:     "opencode windows arm64",
 			agentID:  "opencode",
-			tag:      "v1.17.0",
+			tag:      "v1.17.11",
 			platform: platform{OS: "windows", Arch: "arm64"},
 			want:     "opencode-windows-arm64.zip",
 		},
@@ -100,8 +100,8 @@ func TestSafeExtractPathRejectsTraversal(t *testing.T) {
 
 func TestHasPreparedAgent(t *testing.T) {
 	distDir := t.TempDir()
-	expected := agentManifest{ID: "opencode", Bin: "opencode", Args: []string{"acp"}, Version: "v1.17.0"}
-	if err := os.WriteFile(filepath.Join(distDir, "agent.json"), []byte(`{"id":"opencode","bin":"opencode","args":["acp"],"version":"v1.17.0"}`), 0o644); err != nil {
+	expected := agentManifest{ID: "opencode", Bin: "opencode", Args: []string{"acp"}, Version: "v1.17.11"}
+	if err := os.WriteFile(filepath.Join(distDir, "agent.json"), []byte(`{"id":"opencode","bin":"opencode","args":["acp"],"version":"v1.17.11"}`), 0o644); err != nil {
 		t.Fatalf("WriteFile(agent.json) error = %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(distDir, "opencode"), []byte("binary"), 0o755); err != nil {
