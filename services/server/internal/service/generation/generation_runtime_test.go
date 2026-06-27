@@ -806,9 +806,14 @@ func TestCreatePromptOptimizedImageGenerationRunsOptimizationInBackground(t *tes
 	if imageRequest.Prompt != "optimized prompt" {
 		t.Fatalf("image prompt = %q, want optimized prompt", imageRequest.Prompt)
 	}
-	if !strings.Contains(textRequest.Prompt, "原始角色提示词") ||
-		!strings.Contains(textRequest.Prompt, "cinematic lighting, detailed composition") {
-		t.Fatalf("text prompt = %q, want original and reference prompts", textRequest.Prompt)
+	if !strings.Contains(textRequest.Prompt, "## 原始提示词\n原始角色提示词") ||
+		!strings.Contains(textRequest.Prompt, "## 参考风格\n电影质感") ||
+		!strings.Contains(textRequest.Prompt, "## 参考风格提示词\ncinematic lighting, detailed composition") ||
+		!strings.Contains(textRequest.Prompt, "中文提示词") ||
+		!strings.Contains(textRequest.Prompt, "画面为单人") ||
+		!strings.Contains(textRequest.Prompt, "不要生成第二个人") ||
+		!strings.Contains(textRequest.Prompt, "不要输出 JSON") {
+		t.Fatalf("text prompt = %q, want structured natural-language optimization prompt", textRequest.Prompt)
 	}
 	if textRequest.Params["system_instruction"] != promptOptimizationSystemInstruction() {
 		t.Fatalf("text params = %#v, want prompt optimization system instruction", textRequest.Params)
@@ -914,9 +919,14 @@ func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(
 	if imageRequest.Prompt != "optimized prompt" {
 		t.Fatalf("image prompt = %q, want optimized prompt", imageRequest.Prompt)
 	}
-	if !strings.Contains(textRequest.Prompt, "原始角色提示词") ||
-		!strings.Contains(textRequest.Prompt, "cinematic lighting, detailed composition") {
-		t.Fatalf("text prompt = %q, want original and reference prompts", textRequest.Prompt)
+	if !strings.Contains(textRequest.Prompt, "## 原始提示词\n原始角色提示词") ||
+		!strings.Contains(textRequest.Prompt, "## 参考风格\n电影质感") ||
+		!strings.Contains(textRequest.Prompt, "## 参考风格提示词\ncinematic lighting, detailed composition") ||
+		!strings.Contains(textRequest.Prompt, "中文提示词") ||
+		!strings.Contains(textRequest.Prompt, "画面为单人") ||
+		!strings.Contains(textRequest.Prompt, "不要生成第二个人") ||
+		!strings.Contains(textRequest.Prompt, "不要输出 JSON") {
+		t.Fatalf("text prompt = %q, want structured natural-language optimization prompt", textRequest.Prompt)
 	}
 
 	optimizationTask, ok, err := store.Get(response.Optimization.ID)

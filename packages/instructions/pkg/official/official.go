@@ -15,10 +15,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed assets/instructions/*.md
+//go:embed assets/instructions/*.md assets/prompt-templates/*.md
 var assets embed.FS
 
-const instructionsDir = "assets/instructions"
+var instructionDirs = []string{
+	"assets/instructions",
+	"assets/prompt-templates",
+}
 
 // ErrInstructionNotFound reports a missing official instruction template.
 var ErrInstructionNotFound = errors.New("official instruction not found")
@@ -31,6 +34,7 @@ type Instruction struct {
 	Body        string
 	Order       int
 	Editable    bool
+	Injectable  bool
 }
 
 type instructionFrontmatter struct {
@@ -39,6 +43,7 @@ type instructionFrontmatter struct {
 	Description string `yaml:"description"`
 	Order       int    `yaml:"order"`
 	Editable    bool   `yaml:"editable"`
+	Injectable  *bool  `yaml:"injectable"`
 }
 
 // Instructions parses and returns every official instruction template.
@@ -46,28 +51,30 @@ func Instructions(ctx context.Context) ([]Instruction, error) {
 	if err := ctxErr(ctx); err != nil {
 		return nil, err
 	}
-	dirEntries, err := fs.ReadDir(assets, instructionsDir)
-	if err != nil {
-		return nil, fmt.Errorf("reading official instructions: %w", err)
-	}
-	instructions := make([]Instruction, 0, len(dirEntries))
-	for _, dirEntry := range dirEntries {
-		if err := ctxErr(ctx); err != nil {
-			return nil, err
-		}
-		if dirEntry.IsDir() || !strings.HasSuffix(dirEntry.Name(), ".md") {
-			continue
-		}
-		filePath := path.Join(instructionsDir, dirEntry.Name())
-		data, err := fs.ReadFile(assets, filePath)
+	instructions := []Instruction{}
+	for _, dir := range instructionDirs {
+		dirEntries, err := fs.ReadDir(assets, dir)
 		if err != nil {
-			return nil, fmt.Errorf("reading official instruction %s: %w", dirEntry.Name(), err)
+			return nil, fmt.Errorf("reading official instructions in %s: %w", dir, err)
 		}
-		instruction, err := parseInstruction(filePath, data)
-		if err != nil {
-			return nil, err
+		for _, dirEntry := range dirEntries {
+			if err := ctxErr(ctx); err != nil {
+				return nil, err
+			}
+			if dirEntry.IsDir() || !strings.HasSuffix(dirEntry.Name(), ".md") {
+				continue
+			}
+			filePath := path.Join(dir, dirEntry.Name())
+			data, err := fs.ReadFile(assets, filePath)
+			if err != nil {
+				return nil, fmt.Errorf("reading official instruction %s: %w", dirEntry.Name(), err)
+			}
+			instruction, err := parseInstruction(filePath, data)
+			if err != nil {
+				return nil, err
+			}
+			instructions = append(instructions, instruction)
 		}
-		instructions = append(instructions, instruction)
 	}
 	sort.SliceStable(instructions, func(first, second int) bool {
 		if instructions[first].Order != instructions[second].Order {
@@ -159,6 +166,10 @@ func parseInstruction(filePath string, data []byte) (Instruction, error) {
 	if name == "" {
 		name = id
 	}
+	injectable := true
+	if meta.Injectable != nil {
+		injectable = *meta.Injectable
+	}
 	return Instruction{
 		ID:          id,
 		Name:        name,
@@ -166,6 +177,7 @@ func parseInstruction(filePath string, data []byte) (Instruction, error) {
 		Body:        normalizeBody(body),
 		Order:       meta.Order,
 		Editable:    meta.Editable,
+		Injectable:  injectable,
 	}, nil
 }
 

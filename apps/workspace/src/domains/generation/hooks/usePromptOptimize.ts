@@ -42,7 +42,7 @@ export interface UsePromptOptimizeOptions {
 	route?: GenerationRoute | null;
 }
 
-const promptOptimizeInstructionPath = ["内部模板（代码读取）", "提示词优化系统指令"];
+const promptOptimizeInstructionPath = ["提示词优化系统指令"];
 
 export const usePromptOptimize = ({
 	capabilityId,
@@ -195,24 +195,38 @@ const resolveTextRoute = (catalog?: GenerationModelsResponse): GenerationRoute |
 };
 
 const buildPromptOptimizeUserPrompt = (input: PromptOptimizeInput) => {
-	return JSON.stringify(
-		{
-			currentPrompt: input.currentPrompt.trim(),
-			referenceName: input.referenceName.trim(),
-			referencePrompt: input.referencePrompt.trim(),
-		},
-		null,
-		2,
-	);
+	const currentPrompt = input.currentPrompt.trim();
+	const referenceName = input.referenceName.trim() || "参考风格";
+	const referencePrompt = input.referencePrompt.trim();
+	return `请根据下面信息优化图片生成提示词。
+
+## 原始提示词
+${currentPrompt}
+
+## 参考风格
+${referenceName}
+
+## 参考风格提示词
+${referencePrompt}
+
+## 输出要求
+- 保留原始提示词中的主体、身份、关系、外貌、性格和剧情功能。
+- 融入参考风格提示词中的画风、构图、光影、材质、色彩和氛围描写。
+- 输出一段适合图片生成模型的中文提示词。
+- 如果原始提示词是人物设定，请明确画面为单人，最终提示词需要包含当前人物的外貌、服饰、气质、表情、动作和构图。
+- 其他人名、关系人物和剧情事件只作为背景理解，不要生成第二个人；除非原始提示词明确要求多人同框。
+- 不要输出 JSON、Markdown 标题、解释或额外说明，只输出最终提示词。`;
 };
 
 const usePromptOptimizeInstruction = () => {
 	const { data, error, isLoading } = useSWR(promptTemplatesKey, listPromptTemplates, {
 		revalidateOnFocus: false,
 	});
-	const tools = data?.find((template) => template.id === "TOOLS");
-	const instruction = tools
-		? markdownSection(tools.content, promptOptimizeInstructionPath).trim()
+	const promptOptimizationTemplate = data?.find(
+		(template) => template.id === "PROMPT_OPTIMIZATION",
+	);
+	const instruction = promptOptimizationTemplate
+		? markdownSection(promptOptimizationTemplate.content, promptOptimizeInstructionPath).trim()
 		: "";
 	return {
 		error,

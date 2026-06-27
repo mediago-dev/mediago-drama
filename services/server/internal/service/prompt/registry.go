@@ -16,6 +16,7 @@ type SectionDescriptor struct {
 	Description string
 	Order       int
 	Editable    bool
+	Injectable  bool
 }
 
 var fallbackSections = []SectionDescriptor{
@@ -25,6 +26,7 @@ var fallbackSections = []SectionDescriptor{
 		Description: "Agent 操作指令：默认身份边界、写作策略、工具调用策略和 Skills 装载策略。",
 		Order:       0,
 		Editable:    true,
+		Injectable:  true,
 	},
 	{
 		ID:          "TOOLS",
@@ -32,6 +34,7 @@ var fallbackSections = []SectionDescriptor{
 		Description: "跨工具编排策略：项目级审查、局部编辑触发和连续编辑复用。",
 		Order:       1,
 		Editable:    true,
+		Injectable:  true,
 	},
 }
 
@@ -42,7 +45,7 @@ func SectionDescriptors() []SectionDescriptor {
 		slog.Warn("prompt instruction registry unavailable", "error", err)
 		return sortedSectionDescriptors(fallbackSections)
 	}
-	descriptors := descriptorsFromTemplates(prompttemplates.OrderedTemplates(templateMap))
+	descriptors := injectableDescriptors(descriptorsFromTemplates(prompttemplates.OrderedTemplates(templateMap)))
 	if len(descriptors) == 0 {
 		return sortedSectionDescriptors(fallbackSections)
 	}
@@ -51,8 +54,14 @@ func SectionDescriptors() []SectionDescriptor {
 
 // EditableSectionDescriptors returns registered sections that Settings may expose.
 func EditableSectionDescriptors() []SectionDescriptor {
-	descriptors := make([]SectionDescriptor, 0, len(fallbackSections))
-	for _, descriptor := range SectionDescriptors() {
+	templateMap, err := currentPromptTemplateStore().Load(context.Background())
+	if err != nil {
+		slog.Warn("prompt instruction registry unavailable", "error", err)
+		return sortedSectionDescriptors(fallbackSections)
+	}
+	allDescriptors := descriptorsFromTemplates(prompttemplates.OrderedTemplates(templateMap))
+	descriptors := make([]SectionDescriptor, 0, len(allDescriptors))
+	for _, descriptor := range allDescriptors {
 		if descriptor.Editable {
 			descriptors = append(descriptors, descriptor)
 		}
@@ -80,8 +89,19 @@ func descriptorsFromTemplates(templates []prompttemplates.PromptTemplate) []Sect
 			Description: template.Description,
 			Order:       template.Order,
 			Editable:    true,
+			Injectable:  template.Injectable,
 		}
 		descriptors = append(descriptors, descriptor)
+	}
+	return descriptors
+}
+
+func injectableDescriptors(input []SectionDescriptor) []SectionDescriptor {
+	descriptors := make([]SectionDescriptor, 0, len(input))
+	for _, descriptor := range input {
+		if descriptor.Injectable {
+			descriptors = append(descriptors, descriptor)
+		}
 	}
 	return descriptors
 }

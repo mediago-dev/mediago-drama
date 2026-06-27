@@ -64,12 +64,10 @@ const desktopActionMocks = vi.hoisted(() => ({
 const promptTemplateApiMocks = vi.hoisted(() => ({
 	listPromptTemplates: vi.fn(async () => [
 		{
-			id: "TOOLS",
-			content: `# 工具使用原则
+			id: "PROMPT_OPTIMIZATION",
+			content: `# 提示词优化
 
-## 内部模板（代码读取）
-
-### 提示词优化系统指令
+## 提示词优化系统指令
 
 你是一位专业的 AI 绘画提示词优化专家。`,
 		},
@@ -1809,11 +1807,13 @@ describe("MediaGenerationWorkspace", () => {
 			title: "舔狗金 · 提示词优化",
 		});
 		const [request] = generationApiMocks.streamGenerationText.mock.calls[0];
-		expect(JSON.parse(request.prompt)).toEqual({
-			currentPrompt: "原始角色提示词",
-			referenceName: "电影质感",
-			referencePrompt: "cinematic lighting, detailed composition",
-		});
+		expect(request.prompt).toContain("## 原始提示词\n原始角色提示词");
+		expect(request.prompt).toContain("## 参考风格\n电影质感");
+		expect(request.prompt).toContain("## 参考风格提示词\ncinematic lighting, detailed composition");
+		expect(request.prompt).toContain("中文提示词");
+		expect(request.prompt).toContain("画面为单人");
+		expect(request.prompt).toContain("不要生成第二个人");
+		expect(request.prompt).toContain("不要输出 JSON");
 		expect(request).toMatchObject({
 			capabilityId: "character",
 			conversationId: "project-a-text",
@@ -1884,7 +1884,7 @@ describe("MediaGenerationWorkspace", () => {
 		promptTemplateApiMocks.listPromptTemplates.mockResolvedValueOnce([
 			{
 				id: "TOOLS",
-				content: "# 工具使用原则\n\n没有提示词优化系统指令",
+				content: "# 工具使用原则\n\n## 提示词优化系统指令\n旧位置不应再被读取",
 			},
 		]);
 		vi.mocked(useGenerationWorkspace).mockReturnValue({

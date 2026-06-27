@@ -46,6 +46,9 @@ func TestEditableSectionDescriptorsAreOrdered(t *testing.T) {
 	if len(descriptors) == 0 {
 		t.Fatal("EditableSectionDescriptors() returned no descriptors")
 	}
+	if !descriptorIDsContain(descriptors, "PROMPT_OPTIMIZATION") {
+		t.Fatalf("EditableSectionDescriptors() = %#v, want PROMPT_OPTIMIZATION", descriptors)
+	}
 	for index := 1; index < len(descriptors); index++ {
 		if descriptors[index-1].Order > descriptors[index].Order {
 			t.Fatalf("descriptors out of order at %d: %q before %q", index, descriptors[index-1].ID, descriptors[index].ID)
@@ -67,11 +70,11 @@ func TestRenderSectionReturnsInstructionText(t *testing.T) {
 func TestInstructionTemplateSectionFallsBackWhenOverrideContainsTemplateAction(t *testing.T) {
 	restore := replacePromptTemplateStoreForTest(&fakePromptTemplateStore{
 		templates: map[string]prompttemplates.PromptTemplate{
-			"TOOLS": {
-				ID: "TOOLS",
-				Content: `## 内部模板（代码读取）
+			"PROMPT_OPTIMIZATION": {
+				ID: "PROMPT_OPTIMIZATION",
+				Content: `# 提示词优化
 
-### 提示词优化系统指令
+## 提示词优化系统指令
 
 {{.Instruction}}
 `,
@@ -80,13 +83,22 @@ func TestInstructionTemplateSectionFallsBackWhenOverrideContainsTemplateAction(t
 	})
 	defer restore()
 
-	section, ok := InstructionTemplateSection("TOOLS", "内部模板（代码读取）", "提示词优化系统指令")
+	section, ok := InstructionTemplateSection("PROMPT_OPTIMIZATION", "提示词优化系统指令")
 	if !ok {
 		t.Fatal("InstructionTemplateSection() ok = false")
 	}
 	if strings.Contains(section, "{{") || !strings.Contains(section, "AI 绘画提示词优化专家") {
 		t.Fatalf("section = %q, want fixed official template without variables", section)
 	}
+}
+
+func descriptorIDsContain(descriptors []SectionDescriptor, id string) bool {
+	for _, descriptor := range descriptors {
+		if descriptor.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 type fakePromptTemplateStore struct {

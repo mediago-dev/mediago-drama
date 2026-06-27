@@ -19,6 +19,11 @@ func TestStoreLoadReturnsOfficialInstructions(t *testing.T) {
 	if templates["TOOLS"].Content == "" || templates["TOOLS"].Source != sourceOfficial {
 		t.Fatalf("TOOLS template = %#v, want official content", templates["TOOLS"])
 	}
+	if templates["PROMPT_OPTIMIZATION"].Content == "" ||
+		templates["PROMPT_OPTIMIZATION"].Source != sourceOfficial ||
+		templates["PROMPT_OPTIMIZATION"].Injectable {
+		t.Fatalf("PROMPT_OPTIMIZATION template = %#v, want official non-injectable content", templates["PROMPT_OPTIMIZATION"])
+	}
 }
 
 func TestStoreSaveWritesUserOverride(t *testing.T) {
