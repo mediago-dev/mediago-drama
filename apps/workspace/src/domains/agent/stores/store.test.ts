@@ -161,6 +161,49 @@ describe("agent store runtime recovery", () => {
 		);
 	});
 
+	it("falls back to a non-empty conversation when the root conversation is empty", () => {
+		// A bind/hydrate can leave rootRunId pointing at an empty conversation while
+		// the real messages live elsewhere; the timeline must show those, not blank.
+		useAgentStore.setState({
+			rootRunId: "run-empty",
+			conversations: {
+				"run-empty": {
+					runId: "run-empty",
+					name: "主智能体",
+					status: "running",
+					messages: [],
+					streamingMessageId: null,
+					children: [],
+					createdAt: "2026-06-27T00:00:00.000Z",
+					updatedAt: "2026-06-27T00:00:02.000Z",
+				},
+				"run-1": {
+					runId: "run-1",
+					name: "主智能体",
+					status: "completed",
+					messages: [
+						{
+							id: "user-1",
+							role: "user",
+							content: "你好",
+							kind: "message",
+							createdAt: "2026-06-27T00:00:00.000Z",
+							status: "complete",
+						},
+					],
+					streamingMessageId: null,
+					children: [],
+					createdAt: "2026-06-27T00:00:00.000Z",
+					updatedAt: "2026-06-27T00:00:01.000Z",
+				},
+			},
+		});
+
+		expect(selectAgentMessages(useAgentStore.getState()).map((message) => message.content)).toEqual(
+			["你好"],
+		);
+	});
+
 	it("records runtime alerts for visible chat cards", () => {
 		useAgentStore.getState().addRuntimeAlert({
 			title: "文档 MCP 未挂载",

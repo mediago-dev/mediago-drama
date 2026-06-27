@@ -6,6 +6,7 @@ import {
 } from "@/domains/agent/api/agent";
 import { connectRemoteAgentRuntime } from "@/domains/agent/lib/remote-runtime";
 import { selectAgentMessages, useAgentStore } from "@/domains/agent/stores";
+import { pendingRootRunId } from "@/domains/agent/stores/constants";
 import { useProjectStore } from "@/domains/projects/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import type { MarkdownDocument } from "@/domains/documents/stores";
@@ -258,6 +259,65 @@ describe("agent controller", () => {
 				}),
 			]),
 		);
+	});
+
+	it("re-binds a hydrated pending-root run so resumed live events are not stranded", () => {
+		vi.useFakeTimers();
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		// A transcript hydrate during a live run (e.g. resume/reconnect): the backend
+		// chat state carries no runId, so the store collapses onto the placeholder.
+		useAgentStore.getState().hydrateAgentChatState(
+			[
+				{
+					id: "user-1",
+					role: "user",
+					content: "重构这个函数",
+					kind: "message",
+					createdAt: "2026-06-27T00:00:00.000Z",
+					status: "complete",
+				},
+			],
+			[],
+			{ sessionId: "session-1", running: true },
+		);
+		expect(useAgentStore.getState().rootRunId).toBe(pendingRootRunId);
+
+		const context = eventContext();
+		handleStreamingAgentEvent(
+			{
+				id: "event-delta",
+				sessionId: "session-1",
+				type: "agent.message.delta",
+				runId: "run-real",
+				delta: "好的",
+				message: "",
+				createdAt: new Date().toISOString(),
+			},
+			context,
+		);
+
+		// The placeholder is re-bound synchronously, so the live run id owns the
+		// active conversation rather than stranding updates under a second run.
+		expect(useAgentStore.getState().rootRunId).toBe("run-real");
+
+		handleStreamingAgentEvent(
+			{
+				id: "event-completed",
+				sessionId: "session-1",
+				type: "agent.message.completed",
+				runId: "run-real",
+				content: "好的，我来重构。",
+				message: "",
+				createdAt: new Date().toISOString(),
+			},
+			context,
+		);
+
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({ role: "user", content: "重构这个函数" }),
+			expect.objectContaining({ role: "assistant", content: "好的，我来重构。" }),
+		]);
+		expect(Object.keys(useAgentStore.getState().conversations)).toEqual(["run-real"]);
 	});
 
 	it("keeps mentioned reference titles in the runtime prompt", async () => {

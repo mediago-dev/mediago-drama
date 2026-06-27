@@ -24,6 +24,7 @@ import {
 	useAgentStore,
 } from "@/domains/agent/stores";
 import { setPersistedAgentSessionId } from "@/domains/agent/stores/persistence";
+import { pendingRootRunId } from "@/domains/agent/stores/constants";
 import { getWorkspaceState } from "@/domains/workspace/api/workspace";
 import {
 	type DocumentComment,
@@ -530,6 +531,15 @@ export const handleStreamingAgentEvent = (
 	const agentStore = useAgentStore.getState();
 	agentStore.recordEventSequence(event.sequence);
 	const runId = eventRunId(event);
+	// A transcript hydrate during a live run collapses the store onto the
+	// `pending-root` placeholder (the backend chat state carries no runId), which
+	// would otherwise strand every later live event in a separate conversation and
+	// make lifecycle events fail isLifecycleEventForCurrentRun — leaving the
+	// timeline frozen until a manual page refresh. Re-bind the placeholder to the
+	// live run id so updates land in the active conversation and the run can finish.
+	if (runId && agentStore.isRunning && agentStore.rootRunId === pendingRootRunId) {
+		agentStore.bindRootRun(runId);
+	}
 	if (event.type !== "agent.message.delta") {
 		flushAssistantDelta(runId);
 	}
@@ -769,7 +779,10 @@ const isLifecycleEventForCurrentRun = (event: AgentRuntimeEvent) => {
 	const runId = eventRunId(event);
 	if (!runId) return true;
 	const currentRunId = useAgentStore.getState().rootRunId?.trim();
-	return !currentRunId || currentRunId === runId;
+	// `pending-root` is a placeholder, not a real run id; a terminal event must
+	// still be accepted so the run can settle and the transcript can refresh.
+	if (!currentRunId || currentRunId === pendingRootRunId) return true;
+	return currentRunId === runId;
 };
 
 const refreshWorkspaceStateFromBackend = async (projectId?: string) => {

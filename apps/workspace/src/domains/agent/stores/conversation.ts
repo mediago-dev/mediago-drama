@@ -321,12 +321,30 @@ export const latestConversationRunId = (
 	conversations: Record<string, AgentConversationState>,
 ): string | null => latestConversation(conversations)?.runId ?? null;
 
-// Prefer the bound root conversation, but never let a stale/mismatched rootRunId
-// blank the timeline: fall back to the most recently updated conversation.
+const latestConversationWithMessages = (
+	conversations: Record<string, AgentConversationState>,
+): AgentConversationState | undefined => {
+	let latest: AgentConversationState | undefined;
+	for (const conversation of Object.values(conversations)) {
+		if (conversation.messages.length === 0) continue;
+		if (!latest || conversationUpdatedTime(conversation) >= conversationUpdatedTime(latest)) {
+			latest = conversation;
+		}
+	}
+	return latest;
+};
+
+// Prefer the bound root conversation, but never let a stale/mismatched rootRunId —
+// or an empty conversation a hydrate/bind left pointed at — blank the timeline:
+// fall back to the most recently updated conversation that actually has messages.
 export const resolveActiveConversation = (
 	conversations: Record<string, AgentConversationState>,
 	rootRunId: string | null,
-) => rootConversation(conversations, rootRunId) ?? latestConversation(conversations);
+) => {
+	const root = rootConversation(conversations, rootRunId);
+	if (root && root.messages.length > 0) return root;
+	return latestConversationWithMessages(conversations) ?? root ?? latestConversation(conversations);
+};
 
 export const deriveIsRunning = (conversations: Record<string, AgentConversationState>) =>
 	Object.values(conversations).some(
