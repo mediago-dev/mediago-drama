@@ -1,12 +1,51 @@
+import type { Key, ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AgentMessage, useAgentStore } from "@/domains/agent/stores";
 import { AgentTimeline } from "./AgentTimeline";
+
+vi.mock("react-virtuoso", () => ({
+	Virtuoso: ({ className, data = [], computeItemKey, itemContent }: MockVirtuosoProps) => (
+		<div className={className} data-testid="virtuoso">
+			{[{ index: -1, item: undefined }, ...data.map((item, index) => ({ index, item }))].map(
+				({ index, item }) => (
+					<div key={computeItemKey?.(index, item, undefined) ?? index}>
+						{itemContent(index, item, undefined)}
+					</div>
+				),
+			)}
+		</div>
+	),
+}));
+
+interface MockVirtuosoProps {
+	className?: string;
+	data?: unknown[];
+	computeItemKey?: (index: number, item: unknown, context: unknown) => Key;
+	itemContent: (index: number, item: unknown, context: unknown) => ReactNode;
+}
 
 describe("AgentTimeline", () => {
 	afterEach(() => {
 		cleanup();
 		useAgentStore.setState({ isRunning: false, permissionRequests: [], rootRunId: null });
+	});
+
+	it("ignores transient empty rows emitted by the virtual list", () => {
+		expect(() =>
+			render(
+				<AgentTimeline
+					isRunning={false}
+					messages={[
+						userMessage({
+							content: "恢复历史会话",
+						}),
+					]}
+				/>,
+			),
+		).not.toThrow();
+
+		expect(screen.getByText("恢复历史会话")).toBeTruthy();
 	});
 
 	it("renders uploaded attachments as cards above the user bubble", () => {

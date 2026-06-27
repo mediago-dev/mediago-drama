@@ -89,9 +89,8 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 			className={cn("agent-timeline h-full", className)}
 			data={items}
 			alignToBottom
-			computeItemKey={(_, item) => timelineRenderItemKey(item)}
+			computeItemKey={(index, item) => timelineRenderItemKey(item, index)}
 			followOutput={(atBottom) => (atBottom ? "smooth" : false)}
-			initialItemCount={Math.min(items.length, 20)}
 			increaseViewportBy={{ top: 800, bottom: 800 }}
 			itemContent={(index, item) => (
 				<div className={cn("agent-timeline-row px-4 pb-3", index === 0 && "pt-4")}>
@@ -109,7 +108,8 @@ type TimelineRenderItem =
 	| { type: "runtime-alert"; alert: AgentRuntimeAlert }
 	| { type: "running"; id: string };
 
-const timelineRenderItemKey = (item: TimelineRenderItem) => {
+const timelineRenderItemKey = (item: TimelineRenderItem | undefined, index: number) => {
+	if (!item) return `agent-timeline-placeholder:${index}`;
 	if (item.type === "entry") {
 		return item.entry.type === "user" ? item.entry.message.id : item.entry.id;
 	}
@@ -117,7 +117,11 @@ const timelineRenderItemKey = (item: TimelineRenderItem) => {
 	return item.id;
 };
 
-const renderTimelineItem = (item: TimelineRenderItem, onA2UIAction?: AgentA2UIActionHandler) => {
+const renderTimelineItem = (
+	item: TimelineRenderItem | undefined,
+	onA2UIAction?: AgentA2UIActionHandler,
+) => {
+	if (!item) return null;
 	if (item.type === "runtime-alert") return <RuntimeAlertCard alert={item.alert} />;
 	if (item.type === "running") return <TimelineRunning />;
 
