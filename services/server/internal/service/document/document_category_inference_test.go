@@ -19,13 +19,28 @@ func TestInferBusinessDocumentCategoryFromHints(t *testing.T) {
 			want:  "character",
 		},
 		{
+			name:  "character document title without separators",
+			hints: []string{"第一集角色文档"},
+			want:  "character",
+		},
+		{
 			name:  "scene title",
 			hints: []string{"第一集-场景设定"},
 			want:  "scene",
 		},
 		{
+			name:  "scene document title without separators",
+			hints: []string{"第一集场景文档"},
+			want:  "scene",
+		},
+		{
 			name:  "prop title",
 			hints: []string{"第一集/道具清单.md"},
+			want:  "prop",
+		},
+		{
+			name:  "prop document title without separators",
+			hints: []string{"第一集道具文档"},
 			want:  "prop",
 		},
 		{

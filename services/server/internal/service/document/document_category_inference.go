@@ -33,10 +33,12 @@ var documentCategoryInferenceRules = []documentCategoryInferenceRule{
 		keywords: []string{
 			"角色设定",
 			"角色档案",
+			"角色文档",
 			"角色清单",
 			"角色表",
 			"人物设定",
 			"人物档案",
+			"人物文档",
 			"人物清单",
 			"人物表",
 			"character bible",
@@ -50,6 +52,7 @@ var documentCategoryInferenceRules = []documentCategoryInferenceRule{
 		keywords: []string{
 			"场景设定",
 			"场景档案",
+			"场景文档",
 			"场景清单",
 			"场景提取",
 			"场景表",
@@ -66,6 +69,7 @@ var documentCategoryInferenceRules = []documentCategoryInferenceRule{
 		keywords: []string{
 			"道具设定",
 			"道具档案",
+			"道具文档",
 			"道具清单",
 			"道具提取",
 			"道具表",

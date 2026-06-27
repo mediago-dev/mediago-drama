@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
@@ -49,5 +50,48 @@ func TestBuiltinPackParses(t *testing.T) {
 	}
 	if !foundNovelWriter {
 		t.Fatal("builtin skills missing novel-writer")
+	}
+}
+
+func TestBuiltinCreativeSkillsDoNotBlockOnMissingVisualStyle(t *testing.T) {
+	bundle, err := Builtin(context.Background())
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+
+	creativeSkillSlugs := map[string]bool{
+		"character-writer": true,
+		"scene-writer":     true,
+		"prop-writer":      true,
+	}
+	blockingFragments := []string{
+		"先定风格",
+		"config.overview.style",
+		"项目所选视觉风格",
+		"项目视觉风格未设定",
+		"先询问用户确认风格",
+		"必须先在 Agent 面板直接询问用户",
+		"不要在用户确认风格前继续",
+	}
+	found := map[string]bool{}
+	for _, entry := range bundle.Entries {
+		if entry.Kind != pack.KindSkill || !creativeSkillSlugs[entry.Slug] {
+			continue
+		}
+		found[entry.Slug] = true
+		body := entry.Description + "\n" + entry.Body
+		if !strings.Contains(body, "风格中性") {
+			t.Fatalf("%s body should instruct neutral style fallback:\n%s", entry.Slug, body)
+		}
+		for _, fragment := range blockingFragments {
+			if strings.Contains(body, fragment) {
+				t.Fatalf("%s body contains blocking style fragment %q:\n%s", entry.Slug, fragment, body)
+			}
+		}
+	}
+	for slug := range creativeSkillSlugs {
+		if !found[slug] {
+			t.Fatalf("builtin skills missing %s", slug)
+		}
 	}
 }

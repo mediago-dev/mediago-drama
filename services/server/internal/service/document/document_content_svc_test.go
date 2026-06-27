@@ -212,8 +212,11 @@ func TestCreateWorkspaceDocumentFromInputInfersBusinessCategory(t *testing.T) {
 	}{
 		{title: "第一集 剧本", category: "screenplay"},
 		{title: "第一集 角色设定", category: "character"},
+		{title: "第一集角色文档", category: "character"},
 		{title: "第一集 场景设定", category: "scene"},
+		{title: "第一集场景文档", category: "scene"},
 		{title: "第一集 道具设定", category: "prop"},
+		{title: "第一集道具文档", category: "prop"},
 		{title: "第一集 分镜脚本", category: "storyboard"},
 		{title: "角色设定参考资料", category: referenceDocumentCategory},
 	}

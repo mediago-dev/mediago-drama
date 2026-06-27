@@ -48,6 +48,21 @@ func TestOfficialInternalTemplatesDoNotContainTemplateVariables(t *testing.T) {
 	}
 }
 
+func TestToolsInstructionDoesNotBlockBusinessDocumentsOnMissingStyle(t *testing.T) {
+	instruction, err := InstructionByID(context.Background(), "TOOLS")
+	if err != nil {
+		t.Fatalf("InstructionByID(%q) error = %v", "TOOLS", err)
+	}
+	for _, want := range []string{
+		"缺少视觉风格不得中断任务或先询问用户",
+		"先生成风格中性的基础设定",
+	} {
+		if !strings.Contains(instruction.Body, want) {
+			t.Fatalf("TOOLS instruction = %q, want fragment %q", instruction.Body, want)
+		}
+	}
+}
+
 func TestExtractMarkdownSectionFindsNestedHeading(t *testing.T) {
 	markdown := `# Root
 
