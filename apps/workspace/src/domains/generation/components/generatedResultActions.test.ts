@@ -89,4 +89,42 @@ describe("useGeneratedResultActions", () => {
 			description: "/tmp/export/角色图.png",
 		});
 	});
+
+	it("uses the default download title instead of a generated asset placeholder title", async () => {
+		const asset = {
+			downloadPath: "/tmp/source.mp4",
+			kind: "video",
+			mimeType: "video/mp4",
+			title: "a",
+			url: "/api/v1/media-assets/video-a/content",
+		} satisfies GenerationAsset;
+		const entry = {
+			assets: [asset],
+			content: "",
+			id: "entry-video",
+			kind: "video",
+			prompt: "生成视频",
+		} satisfies GenerationEntry;
+		downloadMocks.downloadLocalFileWithDirectoryPicker.mockResolvedValue({
+			filename: "第 01 组 总时长：00 08.mp4",
+			path: "/tmp/export/第 01 组 总时长：00 08.mp4",
+		});
+
+		const { result } = renderHook(() =>
+			useGeneratedResultActions({ defaultDownloadTitle: "第 01 组 总时长：00:08" }),
+		);
+
+		await act(async () => {
+			await result.current.saveAsset(entry, asset);
+		});
+
+		expect(downloadMocks.downloadLocalFileWithDirectoryPicker).toHaveBeenCalledWith(
+			expect.objectContaining({
+				kind: "video",
+				mimeType: "video/mp4",
+				sourcePath: "/tmp/source.mp4",
+				title: "第 01 组 总时长：00:08",
+			}),
+		);
+	});
 });

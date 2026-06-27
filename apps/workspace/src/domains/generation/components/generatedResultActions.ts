@@ -20,6 +20,7 @@ import {
 import { useToast } from "@/hooks/useToast";
 
 interface UseGeneratedResultActionsOptions {
+	defaultDownloadTitle?: string | null;
 	mediaAssetProjectId?: string | null;
 	mutateMediaAssets?: KeyedMutator<MediaAssetsResponse>;
 	projectId?: string | null;
@@ -30,9 +31,13 @@ export const generatedAssetSaveKey = (entry: GenerationEntry, asset: GenerationA
 
 export const generatedTextSaveKey = (entry: GenerationEntry) => `text:${entry.id}`;
 
-export const useGeneratedResultActions = ({ projectId }: UseGeneratedResultActionsOptions = {}) => {
+export const useGeneratedResultActions = ({
+	defaultDownloadTitle,
+	projectId,
+}: UseGeneratedResultActionsOptions = {}) => {
 	const toast = useToast();
 	const normalizedProjectId = projectId?.trim() ?? "";
+	const normalizedDefaultDownloadTitle = defaultDownloadTitle?.trim() ?? "";
 	const [savingKeys, setSavingKeys] = useState<string[]>([]);
 	const [savedKeys, setSavedKeys] = useState<string[]>([]);
 	const savingKeySet = useMemo(() => new Set(savingKeys), [savingKeys]);
@@ -88,11 +93,10 @@ export const useGeneratedResultActions = ({ projectId }: UseGeneratedResultActio
 
 			markSaving(key, true);
 			try {
-				const savedPath = await downloadGeneratedAssetToDirectory(
-					asset,
-					source,
-					asset.title?.trim() || fallbackAssetFilename(entry, asset),
-				);
+				const fallbackFilename = fallbackAssetFilename(entry, asset);
+				const savedPath = await downloadGeneratedAssetToDirectory(asset, source, fallbackFilename, {
+					title: normalizedDefaultDownloadTitle || undefined,
+				});
 				if (!savedPath) return;
 
 				toast.success("文件已保存", { description: savedPath });
@@ -102,7 +106,7 @@ export const useGeneratedResultActions = ({ projectId }: UseGeneratedResultActio
 				markSaving(key, false);
 			}
 		},
-		[markSaving, savingKeySet, toast],
+		[markSaving, normalizedDefaultDownloadTitle, savingKeySet, toast],
 	);
 
 	const saveText = useCallback(
@@ -187,10 +191,10 @@ export const downloadGeneratedAssetToDirectory = async (
 	asset: GenerationAsset,
 	_source: string,
 	fallbackFilename: string,
-	options: { directory?: string | null } = {},
+	options: { directory?: string | null; title?: string | null } = {},
 ): Promise<string | null> => {
 	const type = asset.mimeType || defaultMimeType(asset.kind);
-	const title = asset.title?.trim() || fallbackFilename;
+	const title = options.title?.trim() || asset.title?.trim() || fallbackFilename;
 	if (asset.downloadPath?.trim()) {
 		const payload = {
 			fallback: fallbackFilename,

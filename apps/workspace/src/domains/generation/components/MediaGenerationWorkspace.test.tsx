@@ -55,6 +55,11 @@ const generationApiMocks = vi.hoisted(() => ({
 const mediaApiMocks = vi.hoisted(() => ({
 	uploadMediaAsset: vi.fn(),
 }));
+const desktopActionMocks = vi.hoisted(() => ({
+	copyDesktopFileToDirectory: vi.fn(),
+	openExternalUrl: vi.fn(),
+	pickDesktopDirectory: vi.fn(),
+}));
 const promptTemplateApiMocks = vi.hoisted(() => ({
 	listPromptTemplates: vi.fn(async () => [
 		{
@@ -97,6 +102,17 @@ vi.mock("@/domains/workspace/api/media", async (importOriginal) => {
 	return {
 		...actual,
 		uploadMediaAsset: mediaApiMocks.uploadMediaAsset,
+	};
+});
+
+vi.mock("@/shared/desktop/actions", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/shared/desktop/actions")>();
+
+	return {
+		...actual,
+		copyDesktopFileToDirectory: desktopActionMocks.copyDesktopFileToDirectory,
+		openExternalUrl: desktopActionMocks.openExternalUrl,
+		pickDesktopDirectory: desktopActionMocks.pickDesktopDirectory,
 	};
 });
 
@@ -2139,6 +2155,56 @@ describe("MediaGenerationWorkspace", () => {
 			expect(deleteGenerationEntryAsset).toHaveBeenCalledWith("entry-video", 0);
 			expect(toastMocks.error).toHaveBeenCalledWith("删除失败", {
 				description: "找不到可删除的生成视频。",
+			});
+		});
+	});
+
+	it("downloads generated videos with the selected section title", async () => {
+		const videoWithPlaceholderTitle: GenerationEntry = {
+			...videoEntry,
+			assets: [
+				{
+					downloadPath: "/tmp/a.mp4",
+					kind: "video",
+					mimeType: "video/mp4",
+					title: "a",
+					url: "/api/v1/media-assets/video-a/content",
+				},
+			],
+		};
+		desktopActionMocks.pickDesktopDirectory.mockResolvedValue("/Users/me/Exports");
+		desktopActionMocks.copyDesktopFileToDirectory.mockResolvedValue({
+			filename: "第 01 组 总时长：00 08.mp4",
+			path: "/Users/me/Exports/第 01 组 总时长：00 08.mp4",
+		});
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: "entry-video",
+			kind: "video",
+			orderedGenerationEntries: [videoWithPlaceholderTitle],
+			selectedRoute: {
+				...workspaceDefaults.selectedRoute,
+				kind: "video",
+			},
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="video"
+				selectedAssetTitle="第 01 组 总时长：00:08"
+				viewMode="history"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "下载视频" }));
+
+		await waitFor(() => {
+			expect(desktopActionMocks.copyDesktopFileToDirectory).toHaveBeenCalledWith({
+				directory: "/Users/me/Exports",
+				filename: "第 01 组 总时长：00 08.mp4",
+				sourcePath: "/tmp/a.mp4",
 			});
 		});
 	});

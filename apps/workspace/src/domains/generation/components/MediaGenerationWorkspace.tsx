@@ -400,6 +400,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	});
 	const resolvedMediaAssetProjectId =
 		mediaAssetProjectId === undefined ? (projectId?.trim() ?? "") : (mediaAssetProjectId ?? "");
+	const defaultDownloadTitle = selectedAssetTitle?.trim() || assetTitle?.trim() || undefined;
 	const [selectedPromptOptimizeRouteId, setSelectedPromptOptimizeRouteId] = useState("");
 	const promptOptimizeProjectName = useMemo(
 		() => projectNameFromConversationTitle(conversationTitle),
@@ -555,6 +556,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		[canOptimizePrompt, canSubmitPromptOverride, selectedPromptOptimizeModel?.route, toast, ws],
 	);
 	const resultActions = useGeneratedResultActions({
+		defaultDownloadTitle,
 		mediaAssetProjectId: resolvedMediaAssetProjectId,
 		mutateMediaAssets: ws.mutateMediaAssets,
 		projectId,
