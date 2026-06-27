@@ -38,8 +38,6 @@ type acpAgentRunner struct {
 	documentMCPConfigPath string
 	buildPrompt           func(AgentRunRequest) string
 	processConfigProvider ProcessConfigProvider
-	promptIdleTimeout     time.Duration
-	promptIdleRetryLimit  int
 	activeClients         sync.Map
 }
 
@@ -49,32 +47,29 @@ type permissionDecision struct {
 }
 
 type acpClient struct {
-	publish             func(agentEvent)
-	workspaceDir        string
-	sessionID           string
-	runID               string
-	acpSessionID        string
-	rawLog              *acpRawLogger
-	mu                  sync.Mutex
-	acceptUpdate        bool
-	message             strings.Builder
-	streamedMessage     bool
-	promptStartedAt     time.Time
-	firstUpdateLogged   bool
-	updateCount         int
-	messageChunkCount   int
-	thoughtChunkCount   int
-	toolCallCount       int
-	toolCallStarts      map[string]time.Time
-	mutatingToolCallIDs map[string]struct{}
-	pendingPermissions  sync.Map
-	pendingRequests     sync.Map
-	permissionTimeout   time.Duration
-	thoughtMu           sync.Mutex
-	thoughtBuf          strings.Builder
-	thoughtTimer        *time.Timer
-	promptLastUpdateAt  time.Time
-	promptStallAlerted  bool
+	publish            func(agentEvent)
+	workspaceDir       string
+	sessionID          string
+	runID              string
+	acpSessionID       string
+	rawLog             *acpRawLogger
+	mu                 sync.Mutex
+	acceptUpdate       bool
+	message            strings.Builder
+	streamedMessage    bool
+	promptStartedAt    time.Time
+	firstUpdateLogged  bool
+	updateCount        int
+	messageChunkCount  int
+	thoughtChunkCount  int
+	toolCallCount      int
+	toolCallStarts     map[string]time.Time
+	pendingPermissions sync.Map
+	pendingRequests    sync.Map
+	permissionTimeout  time.Duration
+	thoughtMu          sync.Mutex
+	thoughtBuf         strings.Builder
+	thoughtTimer       *time.Timer
 }
 
 // NewACPAgentRunner creates an ACP-backed agent runner.

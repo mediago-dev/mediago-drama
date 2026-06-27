@@ -52,15 +52,12 @@ func (client *acpClient) beginPromptMetrics() {
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	client.promptStartedAt = time.Now()
-	client.promptLastUpdateAt = client.promptStartedAt
-	client.promptStallAlerted = false
 	client.firstUpdateLogged = false
 	client.updateCount = 0
 	client.messageChunkCount = 0
 	client.thoughtChunkCount = 0
 	client.toolCallCount = 0
 	client.toolCallStarts = map[string]time.Time{}
-	client.mutatingToolCallIDs = map[string]struct{}{}
 }
 
 // recordUpdateMetrics counts one session update; the returned delay is only
@@ -69,7 +66,6 @@ func (client *acpClient) recordUpdateMetrics(kind string) (firstUpdateDelay time
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	now := time.Now()
-	client.promptLastUpdateAt = now
 	client.updateCount++
 	switch kind {
 	case "agent_message_chunk":
@@ -86,55 +82,6 @@ func (client *acpClient) recordUpdateMetrics(kind string) (firstUpdateDelay time
 	return now.Sub(client.promptStartedAt), true
 }
 
-func (client *acpClient) markPromptStalled(threshold time.Duration) (time.Duration, bool) {
-	if threshold <= 0 {
-		return 0, false
-	}
-	client.mu.Lock()
-	defer client.mu.Unlock()
-	if !client.acceptUpdate || client.promptStartedAt.IsZero() || client.promptStallAlerted {
-		return 0, false
-	}
-	lastUpdate := client.promptLastUpdateAt
-	if lastUpdate.IsZero() {
-		lastUpdate = client.promptStartedAt
-	}
-	elapsed := time.Since(lastUpdate)
-	if elapsed < threshold {
-		return elapsed, false
-	}
-	client.promptStallAlerted = true
-	return elapsed, true
-}
-
-func (client *acpClient) promptIdleSnapshot(timeout time.Duration) (acpPromptIdleSnapshot, bool) {
-	if timeout <= 0 {
-		return acpPromptIdleSnapshot{}, false
-	}
-	client.mu.Lock()
-	defer client.mu.Unlock()
-	if !client.acceptUpdate || client.promptStartedAt.IsZero() {
-		return acpPromptIdleSnapshot{}, false
-	}
-	lastUpdate := client.promptLastUpdateAt
-	if lastUpdate.IsZero() {
-		lastUpdate = client.promptStartedAt
-	}
-	elapsed := time.Since(lastUpdate)
-	if elapsed < timeout {
-		return acpPromptIdleSnapshot{}, false
-	}
-	mutatingToolCalls := len(client.mutatingToolCallIDs)
-	return acpPromptIdleSnapshot{
-		Elapsed:           elapsed,
-		Timeout:           timeout,
-		UpdateCount:       client.updateCount,
-		ToolCallCount:     client.toolCallCount,
-		MutatingToolCalls: mutatingToolCalls,
-		Retryable:         mutatingToolCalls == 0,
-	}, true
-}
-
 func (client *acpClient) markToolCallStarted(toolCallID string) {
 	if toolCallID == "" {
 		return
@@ -145,22 +92,6 @@ func (client *acpClient) markToolCallStarted(toolCallID string) {
 		client.toolCallStarts = map[string]time.Time{}
 	}
 	client.toolCallStarts[toolCallID] = time.Now()
-}
-
-func (client *acpClient) markToolCallMutation(toolCallID string, toolKind string, title string, rawInput []byte) {
-	if !isMutatingACPToolCall(toolKind, title, rawInput) {
-		return
-	}
-	client.mu.Lock()
-	defer client.mu.Unlock()
-	if client.mutatingToolCallIDs == nil {
-		client.mutatingToolCallIDs = map[string]struct{}{}
-	}
-	key := toolCallID
-	if key == "" {
-		key = fmt.Sprintf("_unknown_%d", len(client.mutatingToolCallIDs)+1)
-	}
-	client.mutatingToolCallIDs[key] = struct{}{}
 }
 
 // takeToolCallDuration returns the elapsed time since the tool call started
@@ -188,7 +119,6 @@ func (client *acpClient) promptMetrics() []any {
 		"message_chunks", client.messageChunkCount,
 		"thought_chunks", client.thoughtChunkCount,
 		"tool_calls", client.toolCallCount,
-		"mutating_tool_calls", len(client.mutatingToolCallIDs),
 	}
 }
 

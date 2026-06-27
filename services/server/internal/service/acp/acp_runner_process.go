@@ -67,9 +67,6 @@ func (writer acpStderrWriter) Write(data []byte) (int, error) {
 		}
 		writer.rawLog.logStderr(message, event)
 		writer.publish(event)
-		if alert := runtimeAlertForACPStderr(message); alert != nil {
-			writer.publish(acpRuntimeAlertEvent(alert))
-		}
 	}
 	return len(data), nil
 }

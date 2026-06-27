@@ -86,7 +86,6 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 		}
 		normalized = &event
 		client.markToolCallStarted(string(update.ToolCall.ToolCallId))
-		client.markToolCallMutation(string(update.ToolCall.ToolCallId), toolKind, update.ToolCall.Title, rawInput)
 		client.flushThoughts()
 		client.publish(event)
 	case update.ToolCallUpdate != nil:
@@ -134,7 +133,6 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 			RawOutput:  rawOutput,
 			Content:    MapACPToolCallContent(update.ToolCallUpdate.Content),
 		}
-		client.markToolCallMutation(string(update.ToolCallUpdate.ToolCallId), toolKind, title, rawInput)
 		message := FormatACPToolCall(FirstNonEmpty(title, string(update.ToolCallUpdate.ToolCallId)), status)
 		if IsACPToolRuntimeLog(*acpPayload) {
 			acpPayload.Kind = ACPRuntimeLogKind

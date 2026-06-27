@@ -2,7 +2,6 @@ package acp
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,50 +13,7 @@ import (
 
 // Run executes one ACP agent prompt.
 func (runner *acpAgentRunner) Run(ctx context.Context, request agentRunRequest, publish func(agentEvent)) (agentRunResult, error) {
-	maxRetries := runner.promptIdleRetries()
-	for attempt := 0; ; attempt++ {
-		attemptRequest := request
-		if attempt > 0 {
-			attemptRequest.ACPSessionID = ""
-		}
-		result, err := runner.runOnce(ctx, attemptRequest, publish)
-		if err == nil {
-			if attempt > 0 {
-				publish(agentEvent{
-					Type:    "agent.activity",
-					Message: "ACP 自动重试已恢复。",
-				})
-			}
-			return result, nil
-		}
-
-		var idleErr *acpPromptIdleError
-		if errors.As(err, &idleErr) && idleErr.Retryable && attempt < maxRetries && ctx.Err() == nil {
-			retryAttempt := attempt + 1
-			acpLog().Warn(
-				"acp prompt idle; retrying",
-				"session_id", request.SessionID,
-				"run_id", request.RunID,
-				"retry_attempt", retryAttempt,
-				"retry_limit", maxRetries,
-				"idle_ms", idleErr.Elapsed.Milliseconds(),
-				"update_count", idleErr.UpdateCount,
-				"tool_calls", idleErr.ToolCallCount,
-			)
-			publish(acpRuntimeAlertEvent(acpPromptIdleRetryAlert(idleErr, retryAttempt, maxRetries)))
-			publish(agentEvent{
-				Type:    "agent.activity",
-				Message: fmt.Sprintf("ACP 模型流中断，正在自动重试（%d/%d）。", retryAttempt, maxRetries),
-			})
-			continue
-		}
-		if idleErr != nil {
-			if alert := runtimeAlertForACPPromptError(idleErr, ctx.Err()); alert != nil {
-				publish(acpRuntimeAlertEvent(alert))
-			}
-		}
-		return result, err
-	}
+	return runner.runOnce(ctx, request, publish)
 }
 
 func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunRequest, publish func(agentEvent)) (agentRunResult, error) {
@@ -294,7 +250,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		Prompt:    []acp.ContentBlock{acp.TextBlock(prompt)},
 	}
 	promptStartedAt := time.Now()
-	promptResponse, err := promptACPSession(ctx, conn, client, promptRequest, runner.promptMonitorOptions())
+	promptResponse, err := promptACPSession(ctx, conn, client, promptRequest)
 	if err != nil && reusedACPSession && isACPResourceNotFoundError(err) {
 		acpLog().Warn("acp prompt failed for resumed session; retrying new session", append(logArgs, "acp_session_id", sessionID, "error", err)...)
 		publish(agentEvent{
@@ -320,15 +276,12 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		}
 		acpLog().Info("acp retry prompt starting", append(logArgs, "acp_session_id", sessionID)...)
 		promptStartedAt = time.Now()
-		promptResponse, err = promptACPSession(ctx, conn, client, promptRequest, runner.promptMonitorOptions())
+		promptResponse, err = promptACPSession(ctx, conn, client, promptRequest)
 	}
 	if err != nil {
 		acpLog().Error("acp prompt failed", append(logArgs, "acp_session_id", sessionID, "duration_ms", time.Since(promptStartedAt).Milliseconds(), "error", err)...)
-		var idleErr *acpPromptIdleError
-		if !errors.As(err, &idleErr) {
-			if alert := runtimeAlertForACPPromptError(err, ctx.Err()); alert != nil {
-				publish(acpRuntimeAlertEvent(alert))
-			}
+		if alert := runtimeAlertForACPPromptError(err, ctx.Err()); alert != nil {
+			publish(acpRuntimeAlertEvent(alert))
 		}
 		return agentRunResult{}, fmt.Errorf("running ACP prompt: %w", err)
 	}
@@ -380,71 +333,13 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	}, nil
 }
 
-func (runner *acpAgentRunner) promptMonitorOptions() acpPromptProgressMonitorOptions {
-	return acpPromptProgressMonitorOptions{
-		StallWarningDelay: acpPromptStallWarningDelay,
-		IdleTimeout:       runner.promptIdleTimeoutOrDefault(),
-	}
-}
-
-func (runner *acpAgentRunner) promptIdleTimeoutOrDefault() time.Duration {
-	if runner == nil {
-		return acpPromptIdleTimeout
-	}
-	if runner.promptIdleTimeout < 0 {
-		return 0
-	}
-	if runner.promptIdleTimeout == 0 {
-		return acpPromptIdleTimeout
-	}
-	return runner.promptIdleTimeout
-}
-
-func (runner *acpAgentRunner) promptIdleRetries() int {
-	if runner == nil {
-		return acpPromptIdleRetryLimit
-	}
-	if runner.promptIdleRetryLimit < 0 {
-		return 0
-	}
-	if runner.promptIdleRetryLimit == 0 {
-		return acpPromptIdleRetryLimit
-	}
-	return runner.promptIdleRetryLimit
-}
-
-func promptACPSession(ctx context.Context, conn *acp.ClientSideConnection, client *acpClient, request acp.PromptRequest, options acpPromptProgressMonitorOptions) (acp.PromptResponse, error) {
+func promptACPSession(ctx context.Context, conn *acp.ClientSideConnection, client *acpClient, request acp.PromptRequest) (acp.PromptResponse, error) {
 	client.resetMessage()
 	client.beginPromptMetrics()
 	client.setAcceptingSessionUpdates(true)
-	promptCtx := ctx
-	cancelPrompt := func() {}
-	idleSnapshots := make(chan acpPromptIdleSnapshot, 1)
-	if options.IdleTimeout > 0 {
-		var cancel context.CancelFunc
-		promptCtx, cancel = context.WithCancel(ctx)
-		cancelPrompt = cancel
-		options.OnIdle = func(snapshot acpPromptIdleSnapshot) {
-			select {
-			case idleSnapshots <- snapshot:
-			default:
-			}
-			cancel()
-		}
-	}
-	stopMonitor := client.startPromptProgressMonitorWithOptions(promptCtx, options)
-	defer stopMonitor()
-	defer cancelPrompt()
-	response, err := conn.Prompt(promptCtx, request)
+	response, err := conn.Prompt(ctx, request)
 	client.setAcceptingSessionUpdates(false)
 	client.flushThoughts()
-	if err != nil {
-		select {
-		case snapshot := <-idleSnapshots:
-			return response, &acpPromptIdleError{acpPromptIdleSnapshot: snapshot}
-		default:
-		}
-	}
 	return response, err
 }
 
