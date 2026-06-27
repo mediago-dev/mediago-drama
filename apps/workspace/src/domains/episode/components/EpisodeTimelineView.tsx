@@ -51,6 +51,7 @@ import {
 	findEpisodeClipPlaybackRangeAtTime,
 	isEpisodeVideoClipPlayable,
 } from "@/domains/episode/lib/media-assets";
+import { mergeEpisodeGeneratedMedia } from "@/domains/episode/lib/storyboard-reels";
 import type { Episode, TimelineClip, TimelineClipStatus } from "@/domains/episode/lib/sample";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { type TimelineCompanionTrackType, useEpisodeStore } from "@/domains/episode/stores";
@@ -144,6 +145,13 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 			),
 	);
 	const persistedEpisode = persistedEpisodeState?.episode ?? null;
+	const documentSyncedEpisode = useMemo(
+		() =>
+			persistedEpisode
+				? mergeEpisodeGeneratedMedia(markdownEpisode, persistedEpisode)
+				: markdownEpisode,
+		[markdownEpisode, persistedEpisode],
+	);
 
 	const selectedClip = useMemo(
 		() => findEpisodeClip(episode, selectedClipId),
@@ -429,10 +437,35 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		},
 		[pause, previewStreamUrl, toast],
 	);
+	const startPreviewPlaybackAt = useCallback(
+		(startTime: number, event?: React.MouseEvent<HTMLButtonElement>) => {
+			const player = previewPlayerRef.current;
+			setPreviewPlaybackActive(true);
+			setCurrentTime(startTime);
+			if (!player) {
+				handlePreviewPlaybackError("预览播放器尚未准备好");
+				return;
+			}
+			if (Math.abs(player.currentTime - startTime) > 0.3) {
+				player.currentTime = startTime;
+			}
+			const nativeVideo = mediaPlayerVideoElement(player);
+			const playbackRequest =
+				nativeVideo?.play() ?? player.provider?.play() ?? player.play(event?.nativeEvent);
+			void playbackRequest.catch((error: unknown) => {
+				handlePreviewPlaybackError(toErrorMessage(error));
+			});
+			play();
+		},
+		[handlePreviewPlaybackError, play, setCurrentTime],
+	);
 	const handleTimelinePlaybackToggle = useCallback(
 		(event?: React.MouseEvent<HTMLButtonElement>) => {
 			if (isPlaying) {
-				previewPlayerRef.current?.remoteControl.pause(event?.nativeEvent);
+				const player = previewPlayerRef.current;
+				const nativeVideo = player ? mediaPlayerVideoElement(player) : null;
+				nativeVideo?.pause();
+				if (!nativeVideo) void player?.pause(event?.nativeEvent);
 				pause();
 				return;
 			}
@@ -442,21 +475,56 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 					typeof actualTimelineDuration === "number" &&
 					actualTimelineDuration > 0 &&
 					currentTime >= actualTimelineDuration - 0.05;
-				const playbackStartTime = shouldRestart ? 0 : currentTime;
-				const player = previewPlayerRef.current;
-				setPreviewPlaybackActive(true);
-				setCurrentTime(playbackStartTime);
-				if (player && Math.abs(player.currentTime - playbackStartTime) > 0.3) {
-					player.currentTime = playbackStartTime;
-				}
-				player?.remoteControl.play(event?.nativeEvent);
-				play();
+				const playbackStartTime = shouldRestart || !previewPlaybackActive ? 0 : currentTime;
+				startPreviewPlaybackAt(playbackStartTime, event);
 				return;
 			}
 
 			pause();
 		},
-		[actualTimelineDuration, currentTime, isPlaying, pause, play, previewStreamUrl, setCurrentTime],
+		[
+			actualTimelineDuration,
+			currentTime,
+			isPlaying,
+			pause,
+			previewPlaybackActive,
+			previewStreamUrl,
+			startPreviewPlaybackAt,
+		],
+	);
+	const handleTimelineClipPlay = useCallback(
+		(clipId: string) => {
+			selectClip(clipId);
+			const range = findEpisodeClipPlaybackRange(clipPlaybackRanges, clipId);
+			const startTime = range?.start ?? 0;
+			if (range && previewStreamUrl && isEpisodeVideoClipPlayable(range.clip)) {
+				startPreviewPlaybackAt(startTime);
+				return;
+			}
+			setPreviewPlaybackActive(false);
+			pause();
+			setCurrentTime(startTime);
+		},
+		[
+			clipPlaybackRanges,
+			pause,
+			previewStreamUrl,
+			selectClip,
+			setCurrentTime,
+			startPreviewPlaybackAt,
+		],
+	);
+	const handlePreviewPlayingChange = useCallback(
+		(playing: boolean) => {
+			if (playing) {
+				if (!previewPlaybackActive && currentTime > 0.05) setCurrentTime(0);
+				setPreviewPlaybackActive(true);
+				play();
+				return;
+			}
+			pause();
+		},
+		[currentTime, pause, play, previewPlaybackActive, setCurrentTime],
 	);
 	const handlePreviewTimeUpdate = useCallback(
 		(localTime: number) => {
@@ -504,9 +572,9 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	);
 
 	useEffect(() => {
-		setEpisode(persistedEpisode ?? markdownEpisode);
+		setEpisode(documentSyncedEpisode);
 		setPreviewPlaybackActive(false);
-	}, [markdownEpisode, persistedEpisode, setEpisode]);
+	}, [documentSyncedEpisode, setEpisode]);
 
 	useEffect(() => {
 		if (latestStoryboardVideoTaskByClipId.size === 0) return;
@@ -653,7 +721,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 									currentTime={playbackTime}
 									isPlaying={isPlaying && Boolean(playbackVideoUrl)}
 									onEnded={handlePreviewEnded}
-									onPlayingChange={(playing) => (playing ? play() : pause())}
+									onPlayingChange={handlePreviewPlayingChange}
 									onPlaybackError={handlePreviewPlaybackError}
 									onTimeUpdate={handlePreviewTimeUpdate}
 									playerRef={previewPlayerRef}
@@ -675,6 +743,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 					onRequestCompanionGeneration={handleCompanionGenerationRequest}
 					onDownloadClip={handleTimelineClipDownload}
 					onGenerateClip={handleTimelineClipGenerate}
+					onPlayClip={handleTimelineClipPlay}
 					onSeek={handleTimelineSeek}
 					onSelectClip={handleTimelineClipSelect}
 					onTogglePlayback={handleTimelinePlaybackToggle}
@@ -848,6 +917,14 @@ const exportStoryboardsSummary = (
 		);
 	}
 	return `${parts.join("，")}。`;
+};
+
+const mediaPlayerVideoElement = (player: MediaPlayerInstance) => {
+	const querySelector = (
+		player as unknown as { querySelector?: (selector: string) => Element | null }
+	).querySelector;
+	const element = querySelector?.call(player, "video");
+	return element instanceof HTMLVideoElement ? element : null;
 };
 
 const toErrorMessage = (error: unknown) => {

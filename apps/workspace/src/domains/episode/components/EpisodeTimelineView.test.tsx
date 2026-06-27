@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type React from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -36,6 +36,12 @@ const fixtures = vi.hoisted(() => ({
 	previewRemoteControl: {
 		pause: vi.fn(),
 		play: vi.fn(),
+	},
+	previewNativeVideoPause: vi.fn(),
+	previewNativeVideoPlay: vi.fn(() => Promise.resolve()),
+	previewPlayerPause: vi.fn(() => Promise.resolve()),
+	previewProvider: {
+		play: vi.fn(() => Promise.resolve()),
 	},
 }));
 
@@ -104,10 +110,14 @@ vi.mock("@/domains/episode/components/EpisodeTimelineEditor", () => ({
 	EpisodeTimelineEditor: ({
 		episode,
 		onGenerateClip,
+		onPlayClip,
+		onSeek,
 		onTogglePlayback,
 	}: {
 		episode: Episode;
 		onGenerateClip: (clipId: string) => void;
+		onPlayClip: (clipId: string) => void;
+		onSeek: (time: number) => void;
 		onTogglePlayback: (event: React.MouseEvent<HTMLButtonElement>) => void;
 	}) => {
 		const videoClipId = episode.tracks.find((track) => track.type === "video")?.clips[0]?.id;
@@ -125,15 +135,51 @@ vi.mock("@/domains/episode/components/EpisodeTimelineEditor", () => ({
 				<button type="button" onClick={onTogglePlayback}>
 					模拟播放片段条
 				</button>
+				<button
+					type="button"
+					disabled={!videoClipId}
+					onClick={() => {
+						if (videoClipId) onPlayClip(videoClipId);
+					}}
+				>
+					模拟点击分镜播放
+				</button>
+				<button type="button" onClick={() => onSeek(1.25)}>
+					模拟跳到后续进度
+				</button>
 			</div>
 		);
 	},
 }));
 
 vi.mock("@/domains/episode/components/EpisodePreviewPlayer", () => ({
-	EpisodePreviewPlayer: ({ playerRef }: { playerRef?: React.Ref<unknown> }) => {
+	EpisodePreviewPlayer: ({
+		currentTime,
+		isPlaying,
+		onPlayingChange,
+		onTimeUpdate,
+		playerRef,
+	}: {
+		currentTime?: number;
+		isPlaying?: boolean;
+		onPlayingChange?: (playing: boolean) => void;
+		onTimeUpdate?: (currentTime: number) => void;
+		playerRef?: React.Ref<unknown>;
+	}) => {
+		const video = document.createElement("video");
+		Object.defineProperty(video, "pause", {
+			configurable: true,
+			value: fixtures.previewNativeVideoPause,
+		});
+		Object.defineProperty(video, "play", {
+			configurable: true,
+			value: fixtures.previewNativeVideoPlay,
+		});
 		const player = {
 			currentTime: 0,
+			pause: fixtures.previewPlayerPause,
+			provider: fixtures.previewProvider,
+			querySelector: (selector: string) => (selector === "video" ? video : null),
 			remoteControl: fixtures.previewRemoteControl,
 		};
 		if (typeof playerRef === "function") {
@@ -141,7 +187,20 @@ vi.mock("@/domains/episode/components/EpisodePreviewPlayer", () => ({
 		} else if (playerRef) {
 			playerRef.current = player;
 		}
-		return <div data-testid="preview-player" />;
+		return (
+			<div
+				data-testid="preview-player"
+				data-current-time={currentTime}
+				data-playing={isPlaying ? "true" : "false"}
+			>
+				<button type="button" onClick={() => onPlayingChange?.(true)}>
+					模拟预览播放器播放
+				</button>
+				<button type="button" onClick={() => onTimeUpdate?.(1.25)}>
+					模拟预览播放器时间更新
+				</button>
+			</div>
+		);
 	},
 }));
 
@@ -236,8 +295,12 @@ describe("EpisodeTimelineView canvas generation", () => {
 
 	beforeEach(() => {
 		fixtures.imageDialogSection = null;
+		fixtures.previewNativeVideoPause.mockReset();
+		fixtures.previewNativeVideoPlay.mockReset();
 		fixtures.previewRemoteControl.pause.mockReset();
 		fixtures.previewRemoteControl.play.mockReset();
+		fixtures.previewPlayerPause.mockReset();
+		fixtures.previewProvider.play.mockReset();
 		vi.mocked(useSWR).mockReset();
 		vi.mocked(useSWR).mockReturnValue({ data: undefined, mutate: vi.fn() } as never);
 		vi.mocked(getMediaAssets).mockReset();
@@ -279,7 +342,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 		useEpisodeStore.getState().setEpisode(sampleEpisode);
 	});
 
-	it("starts preview playback from the timeline button using the click event trigger", async () => {
+	it("starts preview playback from the timeline button using the native video element", async () => {
 		const episodeWithVideo = sampleEpisodeWithReadyVideo();
 		vi.mocked(workspaceEpisodePreviewStreamURL).mockReturnValue(
 			"/api/v1/projects/project-a/workspace/episodes/story-doc/preview.mp4",
@@ -335,18 +398,312 @@ describe("EpisodeTimelineView canvas generation", () => {
 
 		screen.getByRole("button", { name: "模拟播放片段条" }).click();
 
-		expect(fixtures.previewRemoteControl.play).toHaveBeenCalledWith(expect.any(MouseEvent));
+		expect(fixtures.previewNativeVideoPlay).toHaveBeenCalledTimes(1);
+		expect(fixtures.previewProvider.play).not.toHaveBeenCalled();
+		expect(fixtures.previewRemoteControl.play).not.toHaveBeenCalled();
 		expect(useEpisodeStore.getState().isPlaying).toBe(true);
 	});
 
-	it("persists videos synced from completed generation tasks before preview playback", async () => {
+	it("jumps to a storyboard clip and starts playback when the clip is clicked", async () => {
+		const episodeWithVideo = sampleEpisodeWithReadyVideo();
+		vi.mocked(workspaceEpisodePreviewStreamURL).mockReturnValue(
+			"/api/v1/projects/project-a/workspace/episodes/story-doc/preview.mp4",
+		);
 		vi.mocked(useSWR).mockImplementation((key: unknown) => {
 			if (Array.isArray(key) && key[0] === "workspace-episode") {
 				return {
 					data: {
 						createdAt: "2026-06-22T00:00:00.000Z",
 						documentId: "story-doc",
-						episode: sampleEpisode,
+						episode: episodeWithVideo,
+						projectId: "project-a",
+						updatedAt: "2026-06-22T00:00:00.000Z",
+						workspaceDir: "/workspace/project-a",
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			if (Array.isArray(key) && key[0] === "episode-media-assets") {
+				return {
+					data: {
+						assets: [
+							{
+								createdAt: "2026-06-22T00:00:00.000Z",
+								durationSeconds: 5,
+								filename: "clip.mp4",
+								id: "asset-a",
+								kind: "video",
+								mimeType: "video/mp4",
+								posterUrl: "/api/v1/media-assets/asset-a/poster",
+								size: 1024,
+								source: "generation",
+								updatedAt: "2026-06-22T00:00:00.000Z",
+								url: "/api/v1/media-assets/asset-a/content",
+							},
+						],
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			return { data: undefined, mutate: vi.fn() } as never;
+		});
+
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-a&workbench=timeline"]}>
+				<EpisodeTimelineView documentId="story-doc" />
+			</MemoryRouter>,
+		);
+
+		await waitFor(() => {
+			expect(workspaceEpisodePreviewStreamURL).toHaveBeenCalled();
+		});
+
+		screen.getByRole("button", { name: "模拟点击分镜播放" }).click();
+
+		expect(fixtures.previewNativeVideoPlay).toHaveBeenCalledTimes(1);
+		expect(useEpisodeStore.getState().isPlaying).toBe(true);
+		expect(useEpisodeStore.getState().selectedClipId).toBe(storyboardVideoClipId);
+	});
+
+	it("rebuilds the timeline from updated storyboard markdown when saved episode state exists", async () => {
+		const persistedEpisode: Episode = {
+			aspectRatio: "16:9",
+			duration: 15,
+			id: "episode-story-doc",
+			sections: [
+				{
+					end: 15,
+					id: "section-0-01-00-07",
+					start: 0,
+					summary: "旧分镜内容",
+					title: "第 01 组 总时长：00:07",
+				},
+			],
+			title: "分镜脚本 第一章",
+			tracks: [
+				{
+					clips: [
+						{
+							content: "旧分镜内容",
+							end: 15,
+							id: "video-0-01-00-07",
+							start: 0,
+							status: "ready",
+							title: "第 01 组 总时长：00:07",
+							videoUrl: "/api/v1/media-assets/persisted-video/content",
+						},
+					],
+					id: "track-video",
+					label: "视频",
+					type: "video",
+				},
+			],
+		};
+		vi.mocked(useSWR).mockImplementation((key: unknown) => {
+			if (Array.isArray(key) && key[0] === "workspace-episode") {
+				return {
+					data: {
+						createdAt: "2026-06-22T00:00:00.000Z",
+						documentId: "story-doc",
+						episode: persistedEpisode,
+						projectId: "project-a",
+						updatedAt: "2026-06-22T00:00:00.000Z",
+						workspaceDir: "/workspace/project-a",
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			return { data: undefined, mutate: vi.fn() } as never;
+		});
+
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-a&workbench=timeline"]}>
+				<EpisodeTimelineView documentId="story-doc" />
+			</MemoryRouter>,
+		);
+
+		await waitFor(() => {
+			const videoClips =
+				useEpisodeStore.getState().episode.tracks.find((track) => track.type === "video")?.clips ??
+				[];
+			expect(videoClips).toHaveLength(1);
+			expect(videoClips[0]?.videoUrl).toBe("/api/v1/media-assets/persisted-video/content");
+		});
+
+		act(() => {
+			useDocumentsStore.getState().hydrateWorkspaceDocuments({
+				documents: [
+					makeDocument({
+						content: [
+							"# 分镜脚本 第一章",
+							"",
+							"## 第 01 组 总时长：00:07",
+							"",
+							"分镜内容。",
+							"",
+							"## 第 02 组 总时长：00:05",
+							"",
+							"新增分镜内容。",
+						].join("\n"),
+					}),
+				],
+				projectId: "project-a",
+				workspaceDir: "/workspace/project-a",
+			});
+		});
+
+		await waitFor(() => {
+			const videoClips =
+				useEpisodeStore.getState().episode.tracks.find((track) => track.type === "video")?.clips ??
+				[];
+			expect(videoClips.map((clip) => clip.title)).toEqual([
+				"第 01 组 总时长：00:07",
+				"第 02 组 总时长：00:05",
+			]);
+			expect(videoClips[0]?.videoUrl).toBe("/api/v1/media-assets/persisted-video/content");
+			expect(videoClips[1]?.videoUrl).toBeUndefined();
+		});
+	});
+
+	it("starts a fresh preview stream from zero instead of seeking before playback", async () => {
+		const episodeWithVideo = sampleEpisodeWithReadyVideo();
+		vi.mocked(workspaceEpisodePreviewStreamURL).mockReturnValue(
+			"/api/v1/projects/project-a/workspace/episodes/story-doc/preview.mp4",
+		);
+		vi.mocked(useSWR).mockImplementation((key: unknown) => {
+			if (Array.isArray(key) && key[0] === "workspace-episode") {
+				return {
+					data: {
+						createdAt: "2026-06-22T00:00:00.000Z",
+						documentId: "story-doc",
+						episode: episodeWithVideo,
+						projectId: "project-a",
+						updatedAt: "2026-06-22T00:00:00.000Z",
+						workspaceDir: "/workspace/project-a",
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			if (Array.isArray(key) && key[0] === "episode-media-assets") {
+				return {
+					data: {
+						assets: [
+							{
+								createdAt: "2026-06-22T00:00:00.000Z",
+								durationSeconds: 5,
+								filename: "clip.mp4",
+								id: "asset-a",
+								kind: "video",
+								mimeType: "video/mp4",
+								posterUrl: "/api/v1/media-assets/asset-a/poster",
+								size: 1024,
+								source: "generation",
+								updatedAt: "2026-06-22T00:00:00.000Z",
+								url: "/api/v1/media-assets/asset-a/content",
+							},
+						],
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			return { data: undefined, mutate: vi.fn() } as never;
+		});
+
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-a&workbench=timeline"]}>
+				<EpisodeTimelineView documentId="story-doc" />
+			</MemoryRouter>,
+		);
+
+		await waitFor(() => {
+			expect(workspaceEpisodePreviewStreamURL).toHaveBeenCalled();
+		});
+
+		screen.getByRole("button", { name: "模拟跳到后续进度" }).click();
+		await waitFor(() => {
+			expect(useEpisodeStore.getState().currentTime).toBe(1.25);
+		});
+
+		screen.getByRole("button", { name: "模拟播放片段条" }).click();
+
+		await waitFor(() => {
+			expect(screen.getByTestId("preview-player")).toHaveAttribute("data-current-time", "0");
+		});
+	});
+
+	it("keeps preview-player playback time active when playback starts from player controls", async () => {
+		const episodeWithVideo = sampleEpisodeWithReadyVideo();
+		vi.mocked(workspaceEpisodePreviewStreamURL).mockReturnValue(
+			"/api/v1/projects/project-a/workspace/episodes/story-doc/preview.mp4",
+		);
+		vi.mocked(useSWR).mockImplementation((key: unknown) => {
+			if (Array.isArray(key) && key[0] === "workspace-episode") {
+				return {
+					data: {
+						createdAt: "2026-06-22T00:00:00.000Z",
+						documentId: "story-doc",
+						episode: episodeWithVideo,
+						projectId: "project-a",
+						updatedAt: "2026-06-22T00:00:00.000Z",
+						workspaceDir: "/workspace/project-a",
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			if (Array.isArray(key) && key[0] === "episode-media-assets") {
+				return {
+					data: {
+						assets: [
+							{
+								createdAt: "2026-06-22T00:00:00.000Z",
+								durationSeconds: 5,
+								filename: "clip.mp4",
+								id: "asset-a",
+								kind: "video",
+								mimeType: "video/mp4",
+								posterUrl: "/api/v1/media-assets/asset-a/poster",
+								size: 1024,
+								source: "generation",
+								updatedAt: "2026-06-22T00:00:00.000Z",
+								url: "/api/v1/media-assets/asset-a/content",
+							},
+						],
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			return { data: undefined, mutate: vi.fn() } as never;
+		});
+
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-a&workbench=timeline"]}>
+				<EpisodeTimelineView documentId="story-doc" />
+			</MemoryRouter>,
+		);
+
+		await waitFor(() => {
+			expect(workspaceEpisodePreviewStreamURL).toHaveBeenCalled();
+		});
+
+		screen.getByRole("button", { name: "模拟预览播放器播放" }).click();
+		expect(useEpisodeStore.getState().isPlaying).toBe(true);
+
+		screen.getByRole("button", { name: "模拟预览播放器时间更新" }).click();
+
+		await waitFor(() => {
+			expect(screen.getByTestId("preview-player")).toHaveAttribute("data-current-time", "1.25");
+		});
+	});
+
+	it("persists videos synced from completed generation tasks before preview playback", async () => {
+		const persistedEpisode = makeStoryboardEpisode();
+		vi.mocked(useSWR).mockImplementation((key: unknown) => {
+			if (Array.isArray(key) && key[0] === "workspace-episode") {
+				return {
+					data: {
+						createdAt: "2026-06-22T00:00:00.000Z",
+						documentId: "story-doc",
+						episode: persistedEpisode,
 						projectId: "project-a",
 						updatedAt: "2026-06-22T00:00:00.000Z",
 						workspaceDir: "/workspace/project-a",
@@ -369,7 +726,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 								createdAt: "2026-06-22T00:00:00.000Z",
 								documentId: "story-doc",
 								kind: "video",
-								sectionId: "clip-cold-open",
+								sectionId: storyboardVideoClipId,
 								status: "completed",
 								updatedAt: "2026-06-22T00:00:01.000Z",
 							},
@@ -396,7 +753,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 							type: "video",
 							clips: expect.arrayContaining([
 								expect.objectContaining({
-									id: "clip-cold-open",
+									id: storyboardVideoClipId,
 									status: "ready",
 									videoUrl: "/api/v1/media-assets/generated-video/content",
 								}),
@@ -459,21 +816,52 @@ describe("EpisodeTimelineView canvas generation", () => {
 });
 
 const sampleEpisodeWithReadyVideo = (): Episode => ({
-	...sampleEpisode,
-	tracks: sampleEpisode.tracks.map((track) =>
+	...makeStoryboardEpisode(),
+	tracks: makeStoryboardEpisode().tracks.map((track) =>
 		track.type === "video"
 			? {
 					...track,
-					clips: track.clips.map((clip, index) =>
-						index === 0
-							? {
-									...clip,
-									status: "ready" as const,
-									videoUrl: "/api/v1/media-assets/asset-a/content",
-								}
-							: clip,
-					),
+					clips: track.clips.map((clip) => ({
+						...clip,
+						status: "ready" as const,
+						videoUrl: "/api/v1/media-assets/asset-a/content",
+					})),
 				}
 			: track,
 	),
+});
+
+const storyboardVideoClipId = "video-0-01-00-07";
+
+const makeStoryboardEpisode = (): Episode => ({
+	aspectRatio: "16:9",
+	duration: 15,
+	id: "episode-story-doc",
+	sections: [
+		{
+			end: 15,
+			id: "section-0-01-00-07",
+			start: 0,
+			summary: "分镜内容。",
+			title: "第 01 组 总时长：00:07",
+		},
+	],
+	title: "分镜脚本 第一章",
+	tracks: [
+		{
+			clips: [
+				{
+					content: "分镜内容。",
+					end: 15,
+					id: storyboardVideoClipId,
+					start: 0,
+					status: "draft",
+					title: "第 01 组 总时长：00:07",
+				},
+			],
+			id: "track-video",
+			label: "视频",
+			type: "video",
+		},
+	],
 });

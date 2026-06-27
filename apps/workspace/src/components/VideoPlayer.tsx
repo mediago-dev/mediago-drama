@@ -1,7 +1,6 @@
 import {
 	MediaPlayer,
 	MediaProvider,
-	MediaRemoteControl,
 	type MediaPlayerInstance,
 	type PlayerSrc,
 	type VideoMimeType,
@@ -47,7 +46,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 	title,
 }) => {
 	const internalRef = useRef<MediaPlayerInstance | null>(null);
-	const remote = useMemo(() => new MediaRemoteControl(), []);
 	const playerSrc = useMemo<PlayerSrc>(
 		() => ({ src, type: normalizeVideoMimeType(mimeType) }),
 		[mimeType, src],
@@ -55,7 +53,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 	const setPlayerRef = useCallback(
 		(player: MediaPlayerInstance | null) => {
 			internalRef.current = player;
-			remote.setPlayer(player);
 			if (!playerRef) return;
 			if (typeof playerRef === "function") {
 				playerRef(player);
@@ -63,19 +60,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 			}
 			playerRef.current = player;
 		},
-		[playerRef, remote],
+		[playerRef],
 	);
 
 	useEffect(() => {
-		if (typeof isPlaying !== "boolean") return;
+		if (isPlaying !== false) return;
 
-		if (isPlaying) {
-			remote.play();
-			return;
-		}
-
-		remote.pause();
-	}, [isPlaying, remote, src]);
+		internalRef.current?.remoteControl.pause();
+	}, [isPlaying, src]);
 
 	useEffect(() => {
 		const player = internalRef.current;
@@ -102,7 +94,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 			onEnded={onEnded}
 			onError={(detail) => onPlaybackError?.(mediaPlaybackErrorMessage(detail))}
 			onPause={() => onPlayingChange?.(false)}
-			onPlay={() => onPlayingChange?.(true)}
+			onPlaying={() => onPlayingChange?.(true)}
 			onPlayFail={(error) => onPlaybackError?.(mediaPlaybackErrorMessage(error))}
 			onTimeUpdate={(detail) => onTimeUpdate?.(detail.currentTime)}
 		>

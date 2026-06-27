@@ -57,6 +57,8 @@ func TestMediaAssetIDFromURL(t *testing.T) {
 	}{
 		{value: "/api/v1/media-assets/asset-1/content", want: "asset-1", ok: true},
 		{value: "/api/v1/projects/proj/media-assets/asset%202/content", want: "asset 2", ok: true},
+		{value: "/api/media/assets/asset-legacy/content", want: "asset-legacy", ok: true},
+		{value: "/api/v1/projects/proj/media/assets/asset%205/content", want: "asset 5", ok: true},
 		{value: "https://example.test/api/v1/media-assets/asset-3/content", want: "asset-3", ok: true},
 		{value: "/api/v1/media-assets/asset-4", ok: false},
 	}

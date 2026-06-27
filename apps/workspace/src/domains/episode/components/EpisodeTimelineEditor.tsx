@@ -19,6 +19,7 @@ interface EpisodeTimelineEditorProps {
 	) => void;
 	onDownloadClip?: (clip: TimelineClip) => void;
 	onGenerateClip: (clipId: string) => void;
+	onPlayClip: (clipId: string) => void;
 	onSeek: (time: number) => void;
 	onSelectClip: (clipId: string) => void;
 	onTogglePlayback: (event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -36,6 +37,7 @@ export const EpisodeTimelineEditor: React.FC<EpisodeTimelineEditorProps> = (prop
 		zoom={props.zoom}
 		onDownloadClip={props.onDownloadClip}
 		onGenerateClip={props.onGenerateClip}
+		onPlayClip={props.onPlayClip}
 		onSeek={props.onSeek}
 		onSelectClip={props.onSelectClip}
 		onTogglePlayback={props.onTogglePlayback}

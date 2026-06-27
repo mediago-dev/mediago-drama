@@ -385,6 +385,7 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: fakeDocumentOperationRunner{},
 			},
 		)
+		closeTestHandler(t, previewHandler)
 		project, _ := createExternalProjectForTest(t, previewHandler, "Episode Preview")
 		projectID := project.ID
 		create := requestJSON(t, previewHandler, http.MethodPost, "/api/v1/workspace/documents?projectId="+url.QueryEscape(projectID), `{"title":"第一集","content":"# 第一集","category":"storyboard"}`)
@@ -421,8 +422,21 @@ func TestAPIHandler(t *testing.T) {
 		if contentType := stream.Header.Get("Content-Type"); contentType != "video/mp4" {
 			t.Fatalf("Content-Type = %q, want video/mp4", contentType)
 		}
-		if body := readBody(t, stream.Body); body != "fragmented-mp4" {
-			t.Fatalf("body = %q, want fake fragmented preview stream", body)
+		if body := readBody(t, stream.Body); body != "rendered-mp4" {
+			t.Fatalf("body = %q, want fake rendered preview file", body)
+		}
+
+		rangeRequest := httptest.NewRequest(http.MethodGet, "/api/v1/projects/"+url.PathEscape(projectID)+"/workspace/episodes/"+url.PathEscape(documentID)+"/preview.mp4", nil)
+		rangeRequest.Header.Set("Range", "bytes=0-7")
+		rangeRecorder := httptest.NewRecorder()
+		previewHandler.ServeHTTP(rangeRecorder, rangeRequest)
+		rangeResponse := rangeRecorder.Result()
+		defer rangeResponse.Body.Close()
+		if rangeResponse.StatusCode != http.StatusPartialContent {
+			t.Fatalf("range status code = %d, want %d: %s", rangeResponse.StatusCode, http.StatusPartialContent, readBody(t, rangeResponse.Body))
+		}
+		if body := readBody(t, rangeResponse.Body); body != "rendered" {
+			t.Fatalf("range body = %q, want rendered preview prefix", body)
 		}
 	})
 
@@ -808,6 +822,7 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: recordingDocumentOperationRunner{requests: requests},
 			},
 		)
+		closeTestHandler(t, projectHandler)
 		response := requestJSON(t, projectHandler, http.MethodPost, "/api/v1/agent/document-operations", `{"projectId":"project-doc-ops","prompt":"帮我生成角色","document":{"id":"doc-test","title":"Episode Test","content":"# Episode Test"}}`)
 		defer response.Body.Close()
 		if response.StatusCode != http.StatusOK {
@@ -834,6 +849,7 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: invalidDocumentOperationRunner{},
 			},
 		)
+		closeTestHandler(t, fallbackHandler)
 
 		response := requestJSON(t, fallbackHandler, http.MethodPost, "/api/v1/agent/document-operations", `{"prompt":"帮我生成角色","document":{"id":"doc-test","title":"Episode Test","content":"# Episode Test"}}`)
 		defer response.Body.Close()
@@ -917,6 +933,7 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: fakeDocumentOperationRunner{},
 			},
 		)
+		closeTestHandler(t, agentHandler)
 		sessionID := createAgentSessionForProject(t, agentHandler, "")
 		payload := `{"sessionId":"` + sessionID + `","prompt":"hello","model":{"source":"model","value":"gpt-5"},"reasoning":{"source":"configOption","configId":"reasoning_effort","value":"high"},"permission":{"source":"mode","value":"ask"}}`
 		response := requestJSON(t, agentHandler, http.MethodPost, "/api/v1/agent/message", payload)
@@ -947,6 +964,7 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: fakeDocumentOperationRunner{},
 			},
 		)
+		closeTestHandler(t, agentHandler)
 		sessionID := createAgentSessionForProject(t, agentHandler, "")
 		payload := `{"sessionId":"` + sessionID + `","prompt":"hello","document":{"id":"doc-1","title":"剧本","content":"# 剧本","category":"screenplay"},"documents":[{"id":"doc-1","title":"剧本","content":"# 剧本","category":"screenplay","version":1}]}`
 		response := requestJSON(t, agentHandler, http.MethodPost, "/api/v1/agent/message", payload)
@@ -981,6 +999,7 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: fakeDocumentOperationRunner{},
 			},
 		)
+		closeTestHandler(t, agentHandler)
 		sessionID := createAgentSessionForProject(t, agentHandler, "")
 		response := requestJSON(t, agentHandler, http.MethodPost, "/api/v1/agent/message", `{"sessionId":"`+sessionID+`","prompt":"hello"}`)
 		defer response.Body.Close()
@@ -1017,6 +1036,7 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: fakeDocumentOperationRunner{},
 			},
 		)
+		closeTestHandler(t, agentHandler)
 		project, projectDir := createExternalProjectForTest(t, agentHandler, "Agent Cwd")
 		sessionID := createAgentSessionForProject(t, agentHandler, project.ID)
 		payload, err := json.Marshal(map[string]string{
@@ -1750,7 +1770,7 @@ func TestAPIKeySettingsPersistToSQLite(t *testing.T) {
 func newTestHandler(t *testing.T, dbPath string) http.Handler {
 	t.Helper()
 
-	return NewHandlerWithConfig(
+	handler := NewHandlerWithConfig(
 		fstest.MapFS{
 			"index.html": {
 				Data: []byte("<html>workspace</html>"),
@@ -1765,6 +1785,22 @@ func newTestHandler(t *testing.T, dbPath string) http.Handler {
 			documentOperationRunner: fakeDocumentOperationRunner{},
 		},
 	)
+	closeTestHandler(t, handler)
+	return handler
+}
+
+func closeTestHandler(t *testing.T, handler http.Handler) {
+	t.Helper()
+
+	closer, ok := handler.(interface{ Close() error })
+	if !ok {
+		return
+	}
+	t.Cleanup(func() {
+		if err := closer.Close(); err != nil {
+			t.Errorf("closing test handler: %v", err)
+		}
+	})
 }
 
 func testWorkspaceDBPathForSettings(dbPath string) string {

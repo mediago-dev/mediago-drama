@@ -32,6 +32,7 @@ describe("EpisodeTimelineEditor", () => {
 				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
+				onPlayClip={vi.fn()}
 				onSelectClip={vi.fn()}
 				onTogglePlayback={vi.fn()}
 			/>,
@@ -108,6 +109,7 @@ describe("EpisodeTimelineEditor", () => {
 				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
+				onPlayClip={vi.fn()}
 				onSelectClip={vi.fn()}
 				onTogglePlayback={vi.fn()}
 			/>,
@@ -128,6 +130,7 @@ describe("EpisodeTimelineEditor", () => {
 				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
+				onPlayClip={vi.fn()}
 				onSelectClip={vi.fn()}
 				onTogglePlayback={vi.fn()}
 			/>,
@@ -153,6 +156,7 @@ describe("EpisodeTimelineEditor", () => {
 				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
+				onPlayClip={vi.fn()}
 				onSelectClip={vi.fn()}
 				onTogglePlayback={vi.fn()}
 			/>,
@@ -168,10 +172,9 @@ describe("EpisodeTimelineEditor", () => {
 		expect(scroll.scrollLeft).toBe(48);
 	});
 
-	it("seeks to a clip when clicking the card body", () => {
+	it("plays a clip when clicking the card body", () => {
 		const onGenerateClip = vi.fn();
-		const onSeek = vi.fn();
-		const onSelectClip = vi.fn();
+		const onPlayClip = vi.fn();
 
 		render(
 			<EpisodeTimelineEditor
@@ -182,8 +185,9 @@ describe("EpisodeTimelineEditor", () => {
 				zoom="fit"
 				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={onGenerateClip}
-				onSeek={onSeek}
-				onSelectClip={onSelectClip}
+				onSeek={vi.fn()}
+				onPlayClip={onPlayClip}
+				onSelectClip={vi.fn()}
 				onTogglePlayback={vi.fn()}
 			/>,
 		);
@@ -191,8 +195,7 @@ describe("EpisodeTimelineEditor", () => {
 		const card = screen.getByTestId("clip-strip-card-clip-problem");
 		fireEvent.click(within(card).getByRole("button", { name: "定位到 问题铺垫" }));
 
-		expect(onSeek).toHaveBeenCalledWith(8);
-		expect(onSelectClip).toHaveBeenCalledWith("clip-problem");
+		expect(onPlayClip).toHaveBeenCalledWith("clip-problem");
 		expect(onGenerateClip).not.toHaveBeenCalled();
 	});
 
@@ -211,6 +214,7 @@ describe("EpisodeTimelineEditor", () => {
 				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={onGenerateClip}
 				onSeek={onSeek}
+				onPlayClip={vi.fn()}
 				onSelectClip={onSelectClip}
 				onTogglePlayback={vi.fn()}
 			/>,
@@ -238,6 +242,7 @@ describe("EpisodeTimelineEditor", () => {
 				onDownloadClip={onDownloadClip}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
+				onPlayClip={vi.fn()}
 				onSelectClip={vi.fn()}
 				onTogglePlayback={vi.fn()}
 			/>,
@@ -286,6 +291,7 @@ describe("EpisodeTimelineEditor", () => {
 				onDownloadClip={onDownloadClip}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
+				onPlayClip={vi.fn()}
 				onSelectClip={onSelectClip}
 				onTogglePlayback={vi.fn()}
 			/>,
@@ -334,6 +340,7 @@ describe("EpisodeTimelineEditor", () => {
 				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
+				onPlayClip={vi.fn()}
 				onSelectClip={vi.fn()}
 				onTogglePlayback={vi.fn()}
 			/>,
@@ -359,6 +366,7 @@ describe("EpisodeTimelineEditor", () => {
 				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={onSeek}
+				onPlayClip={vi.fn()}
 				onSelectClip={vi.fn()}
 				onTogglePlayback={vi.fn()}
 			/>,
@@ -378,9 +386,8 @@ describe("EpisodeTimelineEditor", () => {
 		expect(onSeek).toHaveBeenCalledWith(22.5);
 	});
 
-	it("seeks with cumulative real media durations and uses metadata posters", () => {
-		const onSeek = vi.fn();
-		const onSelectClip = vi.fn();
+	it("plays from a clip and uses metadata posters with cumulative durations", () => {
+		const onPlayClip = vi.fn();
 		const episode = {
 			...sampleEpisode,
 			tracks: sampleEpisode.tracks.map((track) =>
@@ -420,8 +427,9 @@ describe("EpisodeTimelineEditor", () => {
 				zoom="fit"
 				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
-				onSeek={onSeek}
-				onSelectClip={onSelectClip}
+				onSeek={vi.fn()}
+				onPlayClip={onPlayClip}
+				onSelectClip={vi.fn()}
 				onTogglePlayback={vi.fn()}
 			/>,
 		);
@@ -439,7 +447,6 @@ describe("EpisodeTimelineEditor", () => {
 
 		fireEvent.click(within(secondCard).getByRole("button", { name: "定位到 问题铺垫" }));
 
-		expect(onSeek).toHaveBeenCalledWith(5);
-		expect(onSelectClip).toHaveBeenCalledWith("clip-problem");
+		expect(onPlayClip).toHaveBeenCalledWith("clip-problem");
 	});
 });

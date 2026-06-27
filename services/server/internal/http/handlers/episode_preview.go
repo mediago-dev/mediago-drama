@@ -2,14 +2,18 @@ package handlers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	httpresponse "github.com/mediago-dev/mediago-drama/services/server/internal/http/response"
@@ -28,9 +32,9 @@ type EpisodePreviewMediaStore interface {
 	ServeFilePath(asset servicemedia.MediaAsset) (string, error)
 }
 
-// EpisodePreviewStreamer supplies fragmented MP4 preview streaming.
+// EpisodePreviewStreamer renders episode previews into seekable MP4 files.
 type EpisodePreviewStreamer interface {
-	StreamFragmentedMP4(ctx context.Context, writer io.Writer, files []string) error
+	RenderMP4(ctx context.Context, outputPath string, files []string) error
 }
 
 // EpisodePreview handles episode preview stream routes.
@@ -38,6 +42,7 @@ type EpisodePreview struct {
 	timelines EpisodePreviewTimelineStore
 	media     EpisodePreviewMediaStore
 	streamer  EpisodePreviewStreamer
+	cacheDir  string
 }
 
 // NewEpisodePreview returns an episode preview route handler.
@@ -47,7 +52,7 @@ func NewEpisodePreview(timelines EpisodePreviewTimelineStore, media EpisodePrevi
 
 // HandleEpisodePreviewStream godoc
 // @Summary 获取剧集预览视频
-// @Description 将剧集时间线中的视频片段组合为预览 MP4 流。
+// @Description 将剧集时间线中的视频片段组合为可拖动进度的预览 MP4（支持 Range 请求）。
 // @Tags Episodes
 // @Produce video/mp4
 // @Param projectId path string true "Project ID"
@@ -102,37 +107,97 @@ func (handler EpisodePreview) HandleEpisodePreviewStream(context *gin.Context) {
 			return
 		}
 	}
-	handler.streamFragmentedPreview(context, files)
+	handler.serveRenderedPreview(context, files)
 }
 
-func (handler EpisodePreview) streamFragmentedPreview(context *gin.Context, files []string) {
-	writePreviewHeaders(context)
-	context.Status(http.StatusOK)
-	writer := io.Writer(context.Writer)
-	if flusher, ok := context.Writer.(http.Flusher); ok {
-		writer = flushWriter{writer: context.Writer, flusher: flusher}
+// serveRenderedPreview renders the concatenated clips into a seekable MP4 and
+// serves it with HTTP range support so the browser can play and scrub it.
+func (handler EpisodePreview) serveRenderedPreview(context *gin.Context, files []string) {
+	cachePath, err := handler.renderPreviewFile(context.Request.Context(), files)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "预览生成失败", err)
+		return
 	}
-	if err := handler.streamer.StreamFragmentedMP4(context.Request.Context(), writer, files); err != nil {
-		_ = context.Error(err)
-	}
-}
 
-func writePreviewHeaders(context *gin.Context) {
+	file, err := os.Open(cachePath)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "预览读取失败", err)
+		return
+	}
+	defer func() { _ = file.Close() }()
+	info, err := file.Stat()
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "预览读取失败", err)
+		return
+	}
+
 	context.Header("Content-Type", "video/mp4")
 	context.Header("Content-Disposition", `inline; filename="episode-preview.mp4"`)
 	context.Header("Cache-Control", "no-store")
 	context.Header("X-Content-Type-Options", "nosniff")
+	http.ServeContent(context.Writer, context.Request, "episode-preview.mp4", info.ModTime(), file)
 }
 
-type flushWriter struct {
-	writer  io.Writer
-	flusher http.Flusher
+// renderPreviewFile renders the preview into a cache file keyed by its source
+// clips, rebuilding only when the underlying media changes. Concurrent requests
+// for the same preview share a single render.
+func (handler EpisodePreview) renderPreviewFile(ctx context.Context, files []string) (string, error) {
+	cacheDir := handler.previewCacheDir()
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return "", fmt.Errorf("creating preview cache dir: %w", err)
+	}
+	key, err := previewCacheKey(files)
+	if err != nil {
+		return "", err
+	}
+	cachePath := filepath.Join(cacheDir, key+".mp4")
+
+	unlock := lockPreviewKey(cachePath)
+	defer unlock()
+
+	if info, statErr := os.Stat(cachePath); statErr == nil && info.Size() > 0 {
+		return cachePath, nil
+	}
+
+	tmpPath := cachePath + ".tmp"
+	_ = os.Remove(tmpPath)
+	if err := handler.streamer.RenderMP4(ctx, tmpPath, files); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", err
+	}
+	if err := os.Rename(tmpPath, cachePath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("finalizing preview cache: %w", err)
+	}
+	return cachePath, nil
 }
 
-func (writer flushWriter) Write(data []byte) (int, error) {
-	n, err := writer.writer.Write(data)
-	writer.flusher.Flush()
-	return n, err
+func (handler EpisodePreview) previewCacheDir() string {
+	if dir := strings.TrimSpace(handler.cacheDir); dir != "" {
+		return dir
+	}
+	return filepath.Join(os.TempDir(), "mediago-episode-preview")
+}
+
+var previewKeyLocks sync.Map // map[string]*sync.Mutex
+
+func lockPreviewKey(key string) func() {
+	value, _ := previewKeyLocks.LoadOrStore(key, &sync.Mutex{})
+	mutex := value.(*sync.Mutex)
+	mutex.Lock()
+	return mutex.Unlock
+}
+
+func previewCacheKey(files []string) (string, error) {
+	hasher := sha256.New()
+	for _, file := range files {
+		info, err := os.Stat(file)
+		if err != nil {
+			return "", fmt.Errorf("stat preview source %q: %w", file, err)
+		}
+		fmt.Fprintf(hasher, "%s|%d|%d\n", file, info.Size(), info.ModTime().UnixNano())
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 func (handler EpisodePreview) previewFiles(projectID string, videoURLs []string) ([]string, int, error) {
@@ -221,15 +286,24 @@ func mediaAssetIDFromURL(value string) (string, bool) {
 	}
 	segments := strings.Split(parsed.Path, "/")
 	for index, segment := range segments {
-		if segment != "media-assets" || index+2 >= len(segments) || segments[index+2] != "content" {
-			continue
+		switch {
+		case segment == "media-assets" && index+2 < len(segments) && segments[index+2] == "content":
+			return cleanMediaAssetIDSegment(segments[index+1])
+		case segment == "media" &&
+			index+3 < len(segments) &&
+			segments[index+1] == "assets" &&
+			segments[index+3] == "content":
+			return cleanMediaAssetIDSegment(segments[index+2])
 		}
-		id, err := url.PathUnescape(segments[index+1])
-		if err != nil {
-			return "", false
-		}
-		id = strings.TrimSpace(id)
-		return id, id != ""
 	}
 	return "", false
+}
+
+func cleanMediaAssetIDSegment(segment string) (string, bool) {
+	id, err := url.PathUnescape(segment)
+	if err != nil {
+		return "", false
+	}
+	id = strings.TrimSpace(id)
+	return id, id != ""
 }

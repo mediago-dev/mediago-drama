@@ -32,6 +32,7 @@ interface EpisodeClipStripProps {
 	zoom: TimelineZoom;
 	onDownloadClip?: (clip: TimelineClip) => void;
 	onGenerateClip: (clipId: string) => void;
+	onPlayClip: (clipId: string) => void;
 	onSeek: (time: number) => void;
 	onSelectClip: (clipId: string) => void;
 	onTogglePlayback: (event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -82,6 +83,7 @@ export const EpisodeClipStrip: React.FC<EpisodeClipStripProps> = ({
 	zoom,
 	onDownloadClip,
 	onGenerateClip,
+	onPlayClip,
 	onSeek,
 	onSelectClip,
 	onTogglePlayback,
@@ -129,10 +131,7 @@ export const EpisodeClipStrip: React.FC<EpisodeClipStripProps> = ({
 	};
 
 	const handleActivateClip = (clip: TimelineClip) => {
-		const range = clipPlaybackRangeById.get(clip.id);
-		const seekTime = range && (range.duration > 0 || range.start > 0) ? range.start : clip.start;
-		onSeek(seekTime);
-		onSelectClip(clip.id);
+		onPlayClip(clip.id);
 	};
 	const handleStripWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
 		const element = event.currentTarget;
