@@ -284,19 +284,20 @@ func (store *ProjectAssets) saveReaderToDir(
 		}
 	}
 	asset := ProjectAsset{
-		ID:        id,
-		ProjectID: projectID,
-		Kind:      kind,
-		Filename:  filename,
-		MIMEType:  mimeType,
-		SizeBytes: int64(len(data)),
-		URL:       projectAssetContentURL(projectID, id),
-		ParentID:  strings.TrimSpace(parentID),
-		FolderID:  folderID,
-		SortOrder: sortOrder,
-		CreatedAt: now,
-		UpdatedAt: now,
-		FilePath:  filePath,
+		ID:           id,
+		ProjectID:    projectID,
+		Kind:         kind,
+		Filename:     filename,
+		MIMEType:     mimeType,
+		SizeBytes:    int64(len(data)),
+		URL:          projectAssetContentURL(projectID, id),
+		ParentID:     strings.TrimSpace(parentID),
+		FolderID:     folderID,
+		SortOrder:    sortOrder,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		DownloadPath: filePath,
+		FilePath:     filePath,
 	}
 	relPath := store.projectAssetRelPath(projectID, filePath)
 
@@ -603,19 +604,20 @@ func projectAssetFileMissing(path string) bool {
 
 func (store *ProjectAssets) recordFromModel(model projectReferenceAssetModel) ProjectAsset {
 	return ProjectAsset{
-		ID:        model.ID,
-		ProjectID: model.ProjectID,
-		Kind:      model.Asset.Kind,
-		Filename:  model.Asset.Filename,
-		MIMEType:  model.Asset.MIMEType,
-		SizeBytes: model.Asset.SizeBytes,
-		URL:       projectAssetContentURL(model.ProjectID, model.ID),
-		ParentID:  domain.StringValue(model.ParentID),
-		FolderID:  domain.StringValue(model.FolderID),
-		SortOrder: model.SortOrder,
-		CreatedAt: domain.StringFromTime(model.CreatedAt),
-		UpdatedAt: domain.StringFromTime(model.UpdatedAt),
-		FilePath:  store.projectReferenceAssetModelFilePath(model),
+		ID:           model.ID,
+		ProjectID:    model.ProjectID,
+		Kind:         model.Asset.Kind,
+		Filename:     model.Asset.Filename,
+		MIMEType:     model.Asset.MIMEType,
+		SizeBytes:    model.Asset.SizeBytes,
+		URL:          projectAssetContentURL(model.ProjectID, model.ID),
+		ParentID:     domain.StringValue(model.ParentID),
+		FolderID:     domain.StringValue(model.FolderID),
+		SortOrder:    model.SortOrder,
+		CreatedAt:    domain.StringFromTime(model.CreatedAt),
+		UpdatedAt:    domain.StringFromTime(model.UpdatedAt),
+		DownloadPath: store.projectReferenceAssetModelFilePath(model),
+		FilePath:     store.projectReferenceAssetModelFilePath(model),
 	}
 }
 

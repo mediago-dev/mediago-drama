@@ -49,6 +49,7 @@ export interface ProjectAssetRecord {
 	sortOrder: number;
 	createdAt: string;
 	updatedAt: string;
+	downloadPath?: string;
 }
 
 export interface ProjectConfigMutationResult {

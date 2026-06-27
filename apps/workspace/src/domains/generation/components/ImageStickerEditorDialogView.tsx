@@ -7,6 +7,7 @@ import {
 	Loader2,
 	MousePointer2,
 	Palette,
+	Paintbrush,
 	PanelRight,
 	RotateCcw,
 	Save,
@@ -35,10 +36,15 @@ export const ImageStickerEditorDialogView: React.FC<{
 		addMosaic,
 		addRectangle,
 		addTextSticker,
+		activeTool,
+		brushColor,
+		brushWidth,
 		busyTool,
 		canRedo,
 		canUndo,
 		canvasSizeLabel,
+		changeBrushColor,
+		changeBrushWidth,
 		changeSelectionOpacity,
 		changeShapeAngle,
 		changeShapeColor,
@@ -68,6 +74,8 @@ export const ImageStickerEditorDialogView: React.FC<{
 		titleText,
 		undo,
 		uploadInputRef,
+		switchToBrushTool,
+		switchToSelectTool,
 	} = controller;
 
 	return (
@@ -90,6 +98,7 @@ export const ImageStickerEditorDialogView: React.FC<{
 					/>
 					<div className="flex min-h-0 flex-1 max-lg:flex-col">
 						<ImageStickerToolRail
+							activeTool={activeTool}
 							busyTool={busyTool}
 							hasSelection={hasSelection}
 							ready={ready}
@@ -99,6 +108,8 @@ export const ImageStickerEditorDialogView: React.FC<{
 							onAddText={addTextSticker}
 							onDeleteSelection={deleteSelection}
 							onResetCanvas={resetCanvas}
+							onSelectBrush={switchToBrushTool}
+							onSelectPointer={switchToSelectTool}
 							onUploadChange={handleUploadChange}
 							onUploadClick={handleUploadClick}
 						/>
@@ -128,6 +139,9 @@ export const ImageStickerEditorDialogView: React.FC<{
 						</div>
 
 						<ImageStickerInspector
+							activeTool={activeTool}
+							brushColor={brushColor}
+							brushWidth={brushWidth}
 							busyTool={busyTool}
 							editableLayerCount={editableLayerCount}
 							hasSelection={hasSelection}
@@ -139,6 +153,8 @@ export const ImageStickerEditorDialogView: React.FC<{
 							selectedShapeAngle={selectedShapeAngle}
 							selectedShapeColor={selectedShapeColor}
 							onAddImageSticker={addImageSticker}
+							onChangeBrushColor={changeBrushColor}
+							onChangeBrushWidth={changeBrushWidth}
 							onChangeSelectionOpacity={changeSelectionOpacity}
 							onChangeShapeAngle={changeShapeAngle}
 							onChangeShapeColor={changeShapeColor}
@@ -199,6 +215,7 @@ const ImageStickerEditorHeader: React.FC<{
 );
 
 const ImageStickerToolRail: React.FC<{
+	activeTool: ImageStickerEditorDialogController["activeTool"];
 	busyTool: string | null;
 	hasSelection: boolean;
 	onAddMosaic: () => void;
@@ -206,11 +223,14 @@ const ImageStickerToolRail: React.FC<{
 	onAddText: () => void;
 	onDeleteSelection: () => void;
 	onResetCanvas: () => void;
+	onSelectBrush: () => void;
+	onSelectPointer: () => void;
 	onUploadChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
 	onUploadClick: () => void;
 	ready: boolean;
 	uploadInputRef: React.RefObject<HTMLInputElement | null>;
 }> = ({
+	activeTool,
 	busyTool,
 	hasSelection,
 	onAddMosaic,
@@ -218,6 +238,8 @@ const ImageStickerToolRail: React.FC<{
 	onAddText,
 	onDeleteSelection,
 	onResetCanvas,
+	onSelectBrush,
+	onSelectPointer,
 	onUploadChange,
 	onUploadClick,
 	ready,
@@ -227,7 +249,16 @@ const ImageStickerToolRail: React.FC<{
 		<WorkbenchIconButton
 			label="选择"
 			icon={<MousePointer2 className="size-4" />}
+			active={activeTool === "select"}
 			disabled={!ready}
+			onClick={onSelectPointer}
+		/>
+		<WorkbenchIconButton
+			label="画笔"
+			icon={<Paintbrush className="size-4" />}
+			active={activeTool === "brush"}
+			disabled={!ready}
+			onClick={onSelectBrush}
 		/>
 		<WorkbenchIconButton
 			label="上传贴纸"
@@ -410,12 +441,17 @@ const ImageStickerStatusBar: React.FC<{
 );
 
 const ImageStickerInspector: React.FC<{
+	activeTool: ImageStickerEditorDialogController["activeTool"];
+	brushColor: string;
+	brushWidth: number;
 	busyTool: string | null;
 	editableLayerCount: number;
 	hasSelection: boolean;
 	hasShapeSelection: boolean;
 	layerSummary: ImageStickerEditorDialogController["layerSummary"];
 	onAddImageSticker: (dataUrl: string, label: string) => Promise<void>;
+	onChangeBrushColor: (color: string) => void;
+	onChangeBrushWidth: (event: React.ChangeEvent<HTMLInputElement>) => void;
 	onChangeSelectionOpacity: (event: React.ChangeEvent<HTMLInputElement>) => void;
 	onChangeShapeAngle: (event: React.ChangeEvent<HTMLInputElement>) => void;
 	onChangeShapeColor: (color: string) => void;
@@ -428,12 +464,17 @@ const ImageStickerInspector: React.FC<{
 	selectedShapeAngle: number;
 	selectedShapeColor: string;
 }> = ({
+	activeTool,
+	brushColor,
+	brushWidth,
 	busyTool,
 	editableLayerCount,
 	hasSelection,
 	hasShapeSelection,
 	layerSummary,
 	onAddImageSticker,
+	onChangeBrushColor,
+	onChangeBrushWidth,
 	onChangeSelectionOpacity,
 	onChangeShapeAngle,
 	onChangeShapeColor,
@@ -469,7 +510,9 @@ const ImageStickerInspector: React.FC<{
 		<PanelSection
 			title="属性"
 			icon={<SlidersHorizontal className="size-4" />}
-			aside={hasSelection ? `${selectedOpacity}%` : "--"}
+			aside={
+				activeTool === "brush" ? `${brushWidth}px` : hasSelection ? `${selectedOpacity}%` : "--"
+			}
 		>
 			<div className="grid gap-2 text-xs text-[#b9bec8]">
 				<span className="flex items-center gap-2 font-medium text-[#d7dbe3]">
@@ -481,27 +524,52 @@ const ImageStickerInspector: React.FC<{
 						<button
 							key={color}
 							type="button"
-							aria-label={`矩形颜色 ${color}`}
-							disabled={!ready || !hasShapeSelection}
+							aria-label={activeTool === "brush" ? `画笔颜色 ${color}` : `矩形颜色 ${color}`}
+							disabled={!ready || (activeTool !== "brush" && !hasShapeSelection)}
 							className={cn(
 								"size-6 rounded-sm border border-white/20 shadow-sm transition disabled:cursor-not-allowed disabled:opacity-35",
-								selectedShapeColor === color &&
+								(activeTool === "brush" ? brushColor : selectedShapeColor) === color &&
 									"ring-2 ring-[#7fb1ff] ring-offset-1 ring-offset-[#25272c]",
 							)}
 							style={{ backgroundColor: color }}
-							onClick={() => onChangeShapeColor(color)}
+							onClick={() =>
+								activeTool === "brush" ? onChangeBrushColor(color) : onChangeShapeColor(color)
+							}
 						/>
 					))}
 					<input
 						type="color"
-						aria-label="自定义矩形颜色"
-						value={selectedShapeColor}
-						disabled={!ready || !hasShapeSelection}
+						aria-label={activeTool === "brush" ? "自定义画笔颜色" : "自定义矩形颜色"}
+						value={activeTool === "brush" ? brushColor : selectedShapeColor}
+						disabled={!ready || (activeTool !== "brush" && !hasShapeSelection)}
 						className="size-7 rounded-sm border border-white/20 bg-transparent p-0.5 disabled:cursor-not-allowed disabled:opacity-35"
-						onChange={(event) => onChangeShapeColor(event.currentTarget.value)}
+						onChange={(event) =>
+							activeTool === "brush"
+								? onChangeBrushColor(event.currentTarget.value)
+								: onChangeShapeColor(event.currentTarget.value)
+						}
 					/>
 				</div>
 			</div>
+			<label className="grid gap-1.5 text-xs text-[#b9bec8]">
+				<span className="flex items-center justify-between gap-2">
+					<span>画笔粗细</span>
+					<span className="tabular-nums text-[#e8eaed]">
+						{activeTool === "brush" ? `${brushWidth}px` : "--"}
+					</span>
+				</span>
+				<input
+					type="range"
+					aria-label="画笔粗细"
+					min={1}
+					max={32}
+					step={1}
+					value={brushWidth}
+					disabled={!ready || activeTool !== "brush"}
+					className="h-2 w-full accent-[#4d8bff] disabled:opacity-35"
+					onChange={onChangeBrushWidth}
+				/>
+			</label>
 			<label className="grid gap-1.5 text-xs text-[#b9bec8]">
 				<span className="flex items-center justify-between gap-2">
 					<span>旋转</span>
@@ -546,6 +614,7 @@ const ImageStickerInspector: React.FC<{
 				<LayerRow label="原图" count={1} active={!hasSelection} />
 				<LayerRow label="贴纸" count={layerSummary.sticker} />
 				<LayerRow label="文字" count={layerSummary.text} />
+				<LayerRow label="画笔" count={layerSummary.drawing} />
 				<LayerRow label="标注" count={layerSummary.shape} />
 				<LayerRow label="马赛克" count={layerSummary.mosaic} />
 			</div>
@@ -592,17 +661,22 @@ const ImageStickerInspector: React.FC<{
 );
 
 const WorkbenchIconButton: React.FC<{
+	active?: boolean;
 	disabled?: boolean;
 	icon: React.ReactNode;
 	label: string;
 	onClick?: () => void;
-}> = ({ disabled, icon, label, onClick }) => (
+}> = ({ active = false, disabled, icon, label, onClick }) => (
 	<button
 		type="button"
 		aria-label={label}
+		aria-pressed={active}
 		title={label}
 		disabled={disabled}
-		className="flex size-9 shrink-0 items-center justify-center rounded-sm border border-transparent text-[#c9ced8] transition hover:border-white/10 hover:bg-[#343943] hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+		className={cn(
+			"flex size-9 shrink-0 items-center justify-center rounded-sm border text-[#c9ced8] transition hover:border-white/10 hover:bg-[#343943] hover:text-white disabled:cursor-not-allowed disabled:opacity-35",
+			active ? "border-[#4d8bff]/70 bg-[#213452] text-white" : "border-transparent",
+		)}
 		onClick={onClick}
 	>
 		{icon}

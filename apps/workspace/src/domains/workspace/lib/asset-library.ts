@@ -25,6 +25,7 @@ export interface AssetLibraryItem {
 	title: string;
 	updatedAt: string;
 	url: string;
+	downloadPath?: string;
 }
 
 export interface BuildAssetLibraryItemsInput {
@@ -74,6 +75,7 @@ export const buildAssetLibraryItems = ({
 			title: asset.filename || "untitled",
 			updatedAt: asset.updatedAt,
 			url: asset.url,
+			downloadPath: asset.downloadPath,
 		};
 		items.push(item);
 		for (const key of mediaMatchKeys(asset)) mediaItemByMatchKey.set(key, item);
@@ -108,6 +110,7 @@ export const buildAssetLibraryItems = ({
 			title: asset.title?.trim() || "untitled",
 			updatedAt: asset.updatedAt ?? asset.createdAt ?? "",
 			url: asset.url ?? "",
+			downloadPath: asset.downloadPath,
 		});
 	}
 

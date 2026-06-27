@@ -453,51 +453,6 @@ func TestSaveWithOptionsStoresProjectNonSectionMediaByConversation(t *testing.T)
 	}
 }
 
-func TestSaveGeneratedAssetFileCopiesLocalAssetByID(t *testing.T) {
-	workspaceRoot := t.TempDir()
-	globalDir := filepath.Join(workspaceRoot, "library")
-	repo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
-	if err != nil {
-		t.Fatalf("NewMediaAssetRepository() error = %v", err)
-	}
-	store := NewMediaAssetsFromRepository(repo, globalDir, workspaceRoot, nil, nil)
-	asset, err := store.SaveBase64(
-		MediaKindImage,
-		"image/png",
-		base64.StdEncoding.EncodeToString([]byte("image-bytes")),
-		"",
-		"",
-	)
-	if err != nil {
-		t.Fatalf("SaveBase64() error = %v", err)
-	}
-
-	exportDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(exportDir, "scene.png"), []byte("existing"), 0o600); err != nil {
-		t.Fatalf("writing existing export: %v", err)
-	}
-	saved, err := store.SaveGeneratedAssetFile(context.Background(), GeneratedAssetFileSaveRequest{
-		Directory: exportDir,
-		Filename:  "scene.png",
-		AssetID:   asset.ID,
-		Kind:      MediaKindImage,
-	})
-	if err != nil {
-		t.Fatalf("SaveGeneratedAssetFile() error = %v", err)
-	}
-
-	if saved.Filename != "scene-2.png" {
-		t.Fatalf("saved filename = %q, want scene-2.png", saved.Filename)
-	}
-	data, err := os.ReadFile(saved.Path)
-	if err != nil {
-		t.Fatalf("reading saved file: %v", err)
-	}
-	if string(data) != "image-bytes" {
-		t.Fatalf("saved data = %q, want image-bytes", data)
-	}
-}
-
 func TestSaveBase64VideoStoresDerivedMetadataAndPoster(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake media tool scripts are POSIX shell scripts")

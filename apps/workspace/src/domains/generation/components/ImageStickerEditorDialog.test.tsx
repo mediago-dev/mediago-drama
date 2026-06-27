@@ -3,10 +3,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ImageStickerEditorDialog } from "./ImageStickerEditorDialog";
 
 vi.mock("fabric", () => {
+	let lastActiveObject: MockFabricObject | null = null;
+	let lastCanvasState: MockCanvasState | null = null;
+	let lastCanvasOptions: Record<string, unknown> | null = null;
+
+	interface MockCanvasState {
+		brushColor: string | null;
+		brushWidth: number | null;
+		defaultCursor: string;
+		hoverCursor: string;
+		isDrawingMode: boolean;
+		selection: boolean;
+	}
+
 	class MockFabricObject {
 		static customProperties: string[] = [];
 
 		angle = 0;
+		controls = { mtr: { cursorStyle: "crosshair" } };
 		editorRole?: string;
 		height = 0;
 		left = 0;
@@ -67,13 +81,74 @@ vi.mock("fabric", () => {
 
 	class MockTextbox extends MockRect {}
 
+	class MockPencilBrush {
+		color = "";
+		width = 1;
+
+		constructor(_canvas: MockCanvas) {}
+	}
+
 	class MockCanvas {
 		private activeObject: MockFabricObject | null = null;
+		private canvasState: MockCanvasState = {
+			brushColor: null,
+			brushWidth: null,
+			defaultCursor: "default",
+			hoverCursor: "move",
+			isDrawingMode: false,
+			selection: true,
+		};
+		private drawingBrush: MockPencilBrush | null = null;
 		private objects: MockFabricObject[] = [];
 		private width = 1;
 		private height = 1;
 
-		constructor(_element: HTMLCanvasElement) {}
+		constructor(_element: HTMLCanvasElement, options?: Record<string, unknown>) {
+			lastCanvasOptions = options ?? null;
+			lastCanvasState = this.canvasState;
+		}
+
+		get defaultCursor() {
+			return this.canvasState.defaultCursor;
+		}
+
+		set defaultCursor(value: string) {
+			this.canvasState.defaultCursor = value;
+		}
+
+		get freeDrawingBrush() {
+			return this.drawingBrush;
+		}
+
+		set freeDrawingBrush(value: MockPencilBrush | null) {
+			this.drawingBrush = value;
+			this.canvasState.brushColor = value?.color ?? null;
+			this.canvasState.brushWidth = value?.width ?? null;
+		}
+
+		get hoverCursor() {
+			return this.canvasState.hoverCursor;
+		}
+
+		set hoverCursor(value: string) {
+			this.canvasState.hoverCursor = value;
+		}
+
+		get isDrawingMode() {
+			return this.canvasState.isDrawingMode;
+		}
+
+		set isDrawingMode(value: boolean) {
+			this.canvasState.isDrawingMode = value;
+		}
+
+		get selection() {
+			return this.canvasState.selection;
+		}
+
+		set selection(value: boolean) {
+			this.canvasState.selection = value;
+		}
 
 		add(...objects: MockFabricObject[]) {
 			this.objects.push(...objects);
@@ -85,6 +160,7 @@ vi.mock("fabric", () => {
 
 		discardActiveObject() {
 			this.activeObject = null;
+			lastActiveObject = null;
 		}
 
 		dispose() {
@@ -135,6 +211,7 @@ vi.mock("fabric", () => {
 
 		setActiveObject(object: MockFabricObject) {
 			this.activeObject = object;
+			lastActiveObject = object;
 		}
 
 		setDimensions(size: { height: number; width: number }) {
@@ -155,8 +232,12 @@ vi.mock("fabric", () => {
 		Canvas: MockCanvas,
 		FabricImage: MockFabricImage,
 		FabricObject: MockFabricObject,
+		PencilBrush: MockPencilBrush,
 		Rect: MockRect,
 		Textbox: MockTextbox,
+		__getLastActiveObject: () => lastActiveObject,
+		__getLastCanvasState: () => lastCanvasState,
+		__getLastCanvasOptions: () => lastCanvasOptions,
 	};
 });
 
@@ -198,6 +279,77 @@ describe("ImageStickerEditorDialog", () => {
 
 		await waitFor(() => {
 			expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+		});
+	});
+
+	it("allows corner handles to resize without preserving aspect ratio by default", async () => {
+		render(
+			<ImageStickerEditorDialog
+				open
+				source="data:image/png;base64,source"
+				onOpenChange={vi.fn()}
+				onSave={vi.fn()}
+			/>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+		});
+
+		const fabricModule = (await import("fabric")) as unknown as {
+			__getLastCanvasOptions: () => Record<string, unknown> | null;
+		};
+
+		expect(fabricModule.__getLastCanvasOptions()).toMatchObject({ uniformScaling: false });
+	});
+
+	it("switches into brush mode and applies brush controls", async () => {
+		render(
+			<ImageStickerEditorDialog
+				open
+				source="data:image/png;base64,source"
+				onOpenChange={vi.fn()}
+				onSave={vi.fn()}
+			/>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "画笔" }));
+
+		const fabricModule = (await import("fabric")) as unknown as {
+			__getLastCanvasState: () => {
+				brushColor: string | null;
+				brushWidth: number | null;
+				isDrawingMode: boolean;
+				selection: boolean;
+			} | null;
+		};
+
+		expect(fabricModule.__getLastCanvasState()).toMatchObject({
+			brushColor: "#ef4444",
+			brushWidth: 6,
+			isDrawingMode: true,
+			selection: false,
+		});
+
+		fireEvent.change(screen.getByLabelText("画笔粗细"), { target: { value: "14" } });
+		fireEvent.click(screen.getByRole("button", { name: "画笔颜色 #22c55e" }));
+
+		expect(fabricModule.__getLastCanvasState()).toMatchObject({
+			brushColor: "#22c55e",
+			brushWidth: 14,
+			isDrawingMode: true,
+			selection: false,
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "选择" }));
+
+		expect(fabricModule.__getLastCanvasState()).toMatchObject({
+			isDrawingMode: false,
+			selection: true,
 		});
 	});
 
@@ -247,5 +399,29 @@ describe("ImageStickerEditorDialog", () => {
 
 		expect(screen.getByLabelText("矩形旋转角度")).toHaveValue("45");
 		expect(screen.getByText("45°")).toBeInTheDocument();
+	});
+
+	it("uses a rotation cursor for the rotate handle", async () => {
+		render(
+			<ImageStickerEditorDialog
+				open
+				source="data:image/png;base64,source"
+				onOpenChange={vi.fn()}
+				onSave={vi.fn()}
+			/>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "矩形" }));
+
+		const fabricModule = (await import("fabric")) as unknown as {
+			__getLastActiveObject: () => { controls: { mtr: { cursorStyle: string } } } | null;
+		};
+		const cursorStyle = fabricModule.__getLastActiveObject()?.controls.mtr.cursorStyle;
+
+		expect(cursorStyle).toBe("grab");
 	});
 });

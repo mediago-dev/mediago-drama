@@ -1,6 +1,22 @@
 import type { DesktopFileFilter } from "@/shared/desktop/types";
 import { desktopRuntime } from "@/shared/desktop/runtime";
 
+export const copyDesktopFileToDirectory = async ({
+	directory,
+	filename,
+	sourcePath,
+}: {
+	directory: string;
+	filename?: string;
+	sourcePath: string;
+}) => {
+	const runtime = desktopRuntime();
+	if (runtime === "electron") {
+		return window.mediagoDesktop?.copyFileToDirectory({ directory, filename, sourcePath });
+	}
+	throw new Error("当前运行环境不支持复制文件。");
+};
+
 export const pickDesktopDirectory = async (title: string) => {
 	const runtime = desktopRuntime();
 	if (runtime === "electron") return window.mediagoDesktop?.pickDirectory({ title }) ?? null;

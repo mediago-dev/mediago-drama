@@ -68,6 +68,7 @@ type MediaAsset struct {
 	ConversationID    string  `json:"conversationId,omitempty"`
 	SectionID         string  `json:"sectionId,omitempty"`
 	RelativePath      string  `json:"relativePath,omitempty"`
+	DownloadPath      string  `json:"downloadPath,omitempty"`
 	DurationSeconds   float64 `json:"durationSeconds,omitempty"`
 	Width             int     `json:"width,omitempty"`
 	Height            int     `json:"height,omitempty"`
@@ -88,20 +89,6 @@ type MediaAssetsResponse struct {
 }
 
 type MediaAssetUpdateRequest struct {
-	Filename string `json:"filename"`
-}
-
-type GeneratedAssetFileSaveRequest struct {
-	Directory string `json:"directory"`
-	Filename  string `json:"filename"`
-	AssetID   string `json:"assetId,omitempty"`
-	Kind      string `json:"kind"`
-	MIMEType  string `json:"mimeType,omitempty"`
-	SourceURL string `json:"sourceUrl,omitempty"`
-}
-
-type GeneratedAssetFileSaveResponse struct {
-	Path     string `json:"path"`
 	Filename string `json:"filename"`
 }
 
@@ -488,78 +475,6 @@ func (store *MediaAssets) SaveRemoteAssetWithOptions(ctx context.Context, kind s
 	return store.saveRemoteAssetWithOptions(ctx, kind, remoteURL, options)
 }
 
-// SaveGeneratedAssetFile exports a generated media asset to a user-selected local directory.
-func (store *MediaAssets) SaveGeneratedAssetFile(ctx context.Context, request GeneratedAssetFileSaveRequest) (GeneratedAssetFileSaveResponse, error) {
-	if store.initErr != nil {
-		return GeneratedAssetFileSaveResponse{}, store.initErr
-	}
-
-	directory := strings.TrimSpace(request.Directory)
-	if directory == "" {
-		return GeneratedAssetFileSaveResponse{}, fmt.Errorf("保存文件夹不能为空")
-	}
-	info, err := os.Stat(directory)
-	if err != nil {
-		return GeneratedAssetFileSaveResponse{}, fmt.Errorf("读取保存文件夹失败: %w", err)
-	}
-	if !info.IsDir() {
-		return GeneratedAssetFileSaveResponse{}, fmt.Errorf("选择的保存位置不是有效文件夹")
-	}
-
-	kind := strings.ToLower(strings.TrimSpace(request.Kind))
-	mimeType := shared.NormalizeMIMEType(request.MIMEType)
-	sourceURL := strings.TrimSpace(request.SourceURL)
-	sourcePath := ""
-	assetID := strings.TrimSpace(request.AssetID)
-	if assetID != "" {
-		asset, ok, err := store.Get(assetID)
-		if err != nil {
-			return GeneratedAssetFileSaveResponse{}, err
-		}
-		if !ok {
-			return GeneratedAssetFileSaveResponse{}, fmt.Errorf("media asset %q was not found", assetID)
-		}
-
-		sourcePath, err = store.ServeFilePath(asset)
-		if err != nil {
-			return GeneratedAssetFileSaveResponse{}, err
-		}
-		if kind == "" {
-			kind = asset.Kind
-		} else if kind != asset.Kind {
-			return GeneratedAssetFileSaveResponse{}, fmt.Errorf("media asset %q is not a %s asset", assetID, kind)
-		}
-		if mimeType == "" || mimeType == "application/octet-stream" {
-			mimeType = shared.NormalizeMIMEType(asset.MIMEType)
-		}
-		if strings.TrimSpace(request.Filename) == "" {
-			request.Filename = asset.Filename
-		}
-	} else if sourceURL == "" {
-		return GeneratedAssetFileSaveResponse{}, fmt.Errorf("生成结果没有可保存的素材 ID")
-	}
-	if !isSupportedMediaAssetKind(kind) {
-		return GeneratedAssetFileSaveResponse{}, unsupportedMediaAssetKindError()
-	}
-	if mimeType == "" {
-		mimeType = defaultAssetMIMEType(kind)
-	}
-
-	filename := generatedAssetExportFilename(request.Filename, sourceURL, mimeType, kind)
-	path, finalFilename := uniqueGeneratedAssetExportPath(directory, filename)
-	if sourcePath != "" {
-		if err := copyGeneratedAssetFile(sourcePath, path); err != nil {
-			_ = os.Remove(path)
-			return GeneratedAssetFileSaveResponse{}, err
-		}
-	} else if err := downloadGeneratedAssetFile(ctx, sourceURL, path); err != nil {
-		_ = os.Remove(path)
-		return GeneratedAssetFileSaveResponse{}, err
-	}
-
-	return GeneratedAssetFileSaveResponse{Path: path, Filename: finalFilename}, nil
-}
-
 // SaveRemoteAssetForStudioSession is a legacy wrapper for toolbox conversation assets.
 func (store *MediaAssets) SaveRemoteAssetForStudioSession(ctx context.Context, kind string, remoteURL string, sessionID string) (MediaAsset, error) {
 	return store.SaveRemoteAssetWithOptions(ctx, kind, remoteURL, MediaAssetSaveOptions{
@@ -632,93 +547,6 @@ func (store *MediaAssets) saveRemoteAssetWithOptions(ctx context.Context, kind s
 	return store.saveBytesWithKind(data, kind, filename, mimeType, remoteURL, options)
 }
 
-func copyGeneratedAssetFile(sourcePath string, destinationPath string) error {
-	info, err := os.Stat(sourcePath)
-	if err != nil {
-		return fmt.Errorf("读取生成结果文件失败: %w", err)
-	}
-	if info.IsDir() {
-		return fmt.Errorf("生成结果文件不是有效文件")
-	}
-	if info.Size() > MaxMediaAssetUploadSize {
-		return fmt.Errorf("asset is larger than %d bytes", MaxMediaAssetUploadSize)
-	}
-
-	input, err := os.Open(sourcePath)
-	if err != nil {
-		return fmt.Errorf("打开生成结果文件失败: %w", err)
-	}
-	defer input.Close()
-
-	output, err := os.OpenFile(destinationPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("创建保存文件失败: %w", err)
-	}
-	defer output.Close()
-
-	if _, err := io.Copy(output, input); err != nil {
-		return fmt.Errorf("写入文件失败: %w", err)
-	}
-	return nil
-}
-
-func downloadGeneratedAssetFile(ctx context.Context, sourceURL string, destinationPath string) error {
-	sourceURL = strings.TrimSpace(sourceURL)
-	parsed, err := url.Parse(sourceURL)
-	if err != nil {
-		return fmt.Errorf("解析生成结果地址失败: %w", err)
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("unsupported generated asset url %q", sourceURL)
-	}
-
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
-	if err != nil {
-		return err
-	}
-	response, err := mediaAssetHTTPClient.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("downloading asset failed with status %d", response.StatusCode)
-	}
-	if response.ContentLength > MaxMediaAssetUploadSize {
-		return fmt.Errorf("asset is larger than %d bytes", MaxMediaAssetUploadSize)
-	}
-
-	output, err := os.OpenFile(destinationPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("创建保存文件失败: %w", err)
-	}
-	defer output.Close()
-
-	written, err := io.Copy(output, io.LimitReader(response.Body, MaxMediaAssetUploadSize+1))
-	if err != nil {
-		return fmt.Errorf("写入文件失败: %w", err)
-	}
-	if written > MaxMediaAssetUploadSize {
-		return fmt.Errorf("asset is larger than %d bytes", MaxMediaAssetUploadSize)
-	}
-	return nil
-}
-
-func generatedAssetExportFilename(filename string, sourceURL string, mimeType string, kind string) string {
-	filename = strings.Trim(strings.TrimSpace(shared.SafeFilename(filename)), ".")
-	if filename == "" {
-		filename = filenameFromURL(sourceURL)
-	}
-	if filename == "" {
-		filename = defaultAssetFilename(kind, mimeType)
-	}
-	if filepath.Ext(filename) == "" {
-		filename += generatedAssetExportExtension(mimeType, kind)
-	}
-	return filename
-}
-
 func defaultAssetMIMEType(kind string) string {
 	if kind == MediaKindVideo {
 		return "video/mp4"
@@ -730,46 +558,6 @@ func defaultAssetMIMEType(kind string) string {
 		return "text/plain"
 	}
 	return "image/png"
-}
-
-func generatedAssetExportExtension(mimeType string, kind string) string {
-	extension := shared.ExtensionForMIMEType(mimeType)
-	if extension != ".bin" {
-		return extension
-	}
-	if kind == MediaKindVideo {
-		return ".mp4"
-	}
-	if kind == MediaKindAudio {
-		return ".mp3"
-	}
-	if kind == MediaKindText {
-		return ".txt"
-	}
-	return ".png"
-}
-
-func uniqueGeneratedAssetExportPath(directory string, filename string) (string, string) {
-	path := filepath.Join(directory, filename)
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return path, filename
-	}
-
-	extension := filepath.Ext(filename)
-	stem := strings.TrimSuffix(filename, extension)
-	if stem == "" {
-		stem = "generated-file"
-	}
-	for index := 2; index < 10_000; index++ {
-		candidate := fmt.Sprintf("%s-%d%s", stem, index, extension)
-		path = filepath.Join(directory, candidate)
-		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-			return path, candidate
-		}
-	}
-
-	candidate := fmt.Sprintf("%s-%d%s", stem, time.Now().UnixMilli(), extension)
-	return filepath.Join(directory, candidate), candidate
 }
 
 func (store *MediaAssets) Base64Value(asset MediaAsset) (string, error) {
@@ -889,6 +677,7 @@ func (store *MediaAssets) saveBytesWithKind(data []byte, kind string, filename s
 		ConversationID: options.ConversationID,
 		SectionID:      options.SectionID,
 		RelativePath:   relativePath,
+		DownloadPath:   filePath,
 		MetadataStatus: "",
 		StorageStatus:  StorageStatusReady,
 		CreatedAt:      now,
@@ -1135,6 +924,7 @@ func (store *MediaAssets) mediaAssetRecordFromModel(model mediaAssetModel) Media
 		ProjectID:       domain.StringValue(model.ProjectID),
 		Source:          model.Source,
 		RelativePath:    model.RelPath,
+		DownloadPath:    store.assetFilePath(domain.StringValue(model.ProjectID), model.RelPath),
 		DurationSeconds: model.DurationSeconds,
 		Width:           model.Width,
 		Height:          model.Height,

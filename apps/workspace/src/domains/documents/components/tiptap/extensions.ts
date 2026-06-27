@@ -1,10 +1,16 @@
 import { Extension } from "@tiptap/core";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Editor } from "@tiptap/react";
 import type { DocumentComment } from "@/domains/documents/stores";
 import { cn } from "@/shared/lib/utils";
-import { createTextNodeRangeResolver, findTopLevelBlockRange, sameBlockRange } from "./ranges";
+import {
+	createTextNodeRangeResolver,
+	findTopLevelBlockRange,
+	findTopLevelBlockRangeByIndex,
+	sameBlockRange,
+} from "./ranges";
 import {
 	blockHandlePluginKey,
 	blockHandleStorage,
@@ -26,24 +32,39 @@ export const createBlockHandleExtension = (
 		addProseMirrorPlugins() {
 			const editor = this.editor;
 
-			const clearHoveredBlock = (view: Editor["view"]) => {
+			const clearHoveredBlockStorage = () => {
 				const storage = blockHandleStorage(editor);
-				if (!storage.hoveredRange) {
+				if (!storage.hoveredRange) return false;
+
+				storage.hoveredRange = null;
+				onHoverChange(null);
+				return true;
+			};
+
+			const clearHoveredBlock = (view: Editor["view"]) => {
+				if (!clearHoveredBlockStorage()) {
 					onHoverChange(null);
 					return;
 				}
 
-				storage.hoveredRange = null;
-				onHoverChange(null);
 				view.dispatch(view.state.tr.setMeta(blockHandlePluginKey, Date.now()));
 			};
 
 			return [
 				new Plugin({
 					key: blockHandlePluginKey,
+					appendTransaction(transactions) {
+						if (!transactions.some((transaction) => transaction.docChanged)) return null;
+
+						clearHoveredBlockStorage();
+						return null;
+					},
 					props: {
 						decorations(state) {
-							const range = blockHandleStorage(editor).hoveredRange;
+							const range = findDecoratableBlockRange(
+								state.doc,
+								blockHandleStorage(editor).hoveredRange,
+							);
 							if (!range) return DecorationSet.empty;
 
 							return DecorationSet.create(state.doc, [
@@ -99,6 +120,14 @@ export const createBlockHandleExtension = (
 			];
 		},
 	});
+
+const findDecoratableBlockRange = (doc: ProseMirrorNode, range: BlockRange | null) => {
+	if (!range) return null;
+
+	const currentRange = findTopLevelBlockRangeByIndex(doc, range.index);
+	if (!currentRange || currentRange.nodeType !== range.nodeType) return null;
+	return sameBlockRange(currentRange, range) ? currentRange : null;
+};
 
 const isBlockHandleTarget = (target: EventTarget | null) =>
 	target instanceof HTMLElement &&

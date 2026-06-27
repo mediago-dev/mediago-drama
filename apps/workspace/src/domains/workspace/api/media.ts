@@ -15,6 +15,7 @@ export interface MediaAsset {
 	conversationId?: string;
 	sectionId?: string;
 	relativePath?: string;
+	downloadPath?: string;
 	durationSeconds?: number;
 	width?: number;
 	height?: number;
@@ -30,20 +31,6 @@ export interface MediaAsset {
 
 export interface MediaAssetsResponse {
 	assets: MediaAsset[];
-}
-
-export interface GeneratedMediaFileSaveRequest {
-	directory: string;
-	filename: string;
-	assetId?: string;
-	kind: MediaAssetKind;
-	mimeType?: string;
-	sourceUrl?: string;
-}
-
-export interface GeneratedMediaFileSaveResponse {
-	path: string;
-	filename: string;
 }
 
 const mediaAssetsPath = (projectId?: string | null) => {
@@ -78,15 +65,6 @@ export const uploadMediaAsset = async (file: File, projectId?: string | null) =>
 			"Content-Type": "multipart/form-data",
 		},
 	});
-	return response.data;
-};
-
-export const saveGeneratedMediaFile = async (payload: GeneratedMediaFileSaveRequest) => {
-	const response = await httpClient.post<GeneratedMediaFileSaveResponse>(
-		"/media-assets/save-generated-file",
-		payload,
-		{ timeout: 1_000_000 },
-	);
 	return response.data;
 };
 

@@ -11,6 +11,7 @@ import (
 	"image/png"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -1027,6 +1028,116 @@ func TestGetGenerationVideoPollsProviderTaskID(t *testing.T) {
 	}
 	if !ok || task.Status != "completed" || task.ProviderTaskID != "dmx.seedance-2.0-fast:cgt-provider" {
 		t.Fatalf("task = %+v, want completed local task with provider id", task)
+	}
+}
+
+func TestGetGenerationVideoCachesRemoteAssetWithTaskAssetTitle(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	seedGenerationTaskProject(t, dbPath, "project-alpha")
+	repo, err := repository.NewGenerationTaskRepository(dbPath)
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	mediaRepo, err := repository.NewMediaAssetRepository(dbPath)
+	if err != nil {
+		t.Fatalf("NewMediaAssetRepository() error = %v", err)
+	}
+	workspaceRoot := t.TempDir()
+	mediaAssets := media.NewMediaAssetsFromRepository(mediaRepo, filepath.Join(workspaceRoot, "library"), workspaceRoot, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{
+			coregeneration.ProviderDMX: "sk-video",
+		},
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "video/mp4")
+		_, _ = response.Write([]byte("video-bytes"))
+	}))
+	defer server.Close()
+	remoteURL := server.URL + "/oYHvcbgRRZZwJQjqSegmI9QeVXH5ABACQx.mp4"
+	legacyAsset, err := mediaAssets.SaveRemoteAssetWithOptions(
+		context.Background(),
+		media.MediaKindVideo,
+		remoteURL,
+		media.MediaAssetSaveOptions{
+			ProjectID:      "project-alpha",
+			Source:         media.MediaSourceGeneration,
+			ConversationID: "project-alpha-video",
+			SectionID:      "section_reel_01",
+		},
+	)
+	if err != nil {
+		t.Fatalf("SaveRemoteAssetWithOptions(legacy) error = %v", err)
+	}
+	if legacyAsset.Filename != "oYHvcbgRRZZwJQjqSegmI9QeVXH5ABACQx.mp4" {
+		t.Fatalf("legacy filename = %q, want remote basename before title is known", legacyAsset.Filename)
+	}
+	provider := &recordingVideoProvider{
+		response: coregeneration.Response{
+			ID:     "dmx.seedance-2.0-fast:cgt-provider",
+			Status: "completed",
+			Assets: []coregeneration.Asset{{
+				Kind: coregeneration.KindVideo,
+				URL:  remoteURL,
+			}},
+		},
+	}
+	workflow := NewGenerationService(settingsSvc, store, mediaAssets)
+	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		return provider, nil
+	}
+
+	const blockTitle = "顾南衣·状态A 落魄寻食少女（十年前·第一幕）"
+	if err := store.Upsert(GenerationTaskRecord{
+		ID:             "generation-local",
+		ProviderTaskID: "dmx.seedance-2.0-fast:cgt-provider",
+		ConversationID: "project-alpha-video",
+		ProjectID:      "project-alpha",
+		DocumentID:     "story-doc",
+		SectionID:      "section_reel_01",
+		Kind:           string(coregeneration.KindVideo),
+		RouteID:        coregeneration.RouteDMXSeedance20Fast,
+		FamilyID:       coregeneration.FamilySeedance,
+		VersionID:      coregeneration.VersionSeedance20Fast,
+		Provider:       coregeneration.ProviderDMX,
+		ModelID:        coregeneration.ModelJimengSeedance2Fast,
+		Model:          "doubao-seedance-2-0-fast-260128",
+		Prompt:         "make a video",
+		Params: map[string]any{
+			generationAssetTitleRequestOption: blockTitle,
+		},
+		Status:  "submitted",
+		Message: "视频生成任务已提交，完成后请再次检查状态。",
+	}); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	response, status, err := workflow.GetGenerationVideo(context.Background(), "generation-local")
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("GetGenerationVideo() status = %d error = %v", status, err)
+	}
+	if len(response.Assets) != 1 || response.Assets[0].AssetID == "" {
+		t.Fatalf("response assets = %+v, want cached media asset", response.Assets)
+	}
+
+	task, ok, err := store.Get("generation-local")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !ok || len(task.Assets) != 1 {
+		t.Fatalf("task = %+v, want one cached video asset", task)
+	}
+	expectedFilename := blockTitle + ".mp4"
+	if task.Assets[0].Title != expectedFilename {
+		t.Fatalf("asset title = %q, want %q", task.Assets[0].Title, expectedFilename)
+	}
+	asset, ok, err := mediaAssets.Get(task.Assets[0].AssetID)
+	if err != nil {
+		t.Fatalf("Get(media asset) error = %v", err)
+	}
+	if !ok || asset.ID != legacyAsset.ID || asset.Filename != expectedFilename {
+		t.Fatalf("media asset = %+v, want reused asset renamed to block title", asset)
 	}
 }
 

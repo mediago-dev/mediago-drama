@@ -2,22 +2,22 @@ import { useCallback, useMemo, useState } from "react";
 import { mutate as mutateSWR } from "swr";
 import type { KeyedMutator } from "swr";
 import type { GenerationAsset } from "@/domains/generation/api/generation";
-import {
-	entryPromptText,
-	mediaAssetIdFromGeneratedSource,
-} from "@/domains/generation/components/mediaGenerationHelpers";
+import { entryPromptText } from "@/domains/generation/components/mediaGenerationHelpers";
 import {
 	generationAssetSelectionKey,
 	generationAssetSource,
 	type GenerationEntry,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
-import { saveGeneratedMediaFile, type MediaAssetsResponse } from "@/domains/workspace/api/media";
+import type { MediaAssetsResponse } from "@/domains/workspace/api/media";
 import { uploadProjectAsset } from "@/domains/workspace/api/project-assets";
 import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspace/api/workspace";
 import { useDocumentsStore } from "@/domains/documents/stores";
+import {
+	copyLocalFileToDirectory,
+	downloadFilename,
+	downloadLocalFileWithDirectoryPicker,
+} from "@/domains/workspace/lib/downloads";
 import { useToast } from "@/hooks/useToast";
-import { isDesktopRuntime } from "@/shared/desktop/runtime";
-import { pickDesktopDirectory } from "@/shared/desktop/actions";
 
 interface UseGeneratedResultActionsOptions {
 	mediaAssetProjectId?: string | null;
@@ -78,7 +78,7 @@ export const useGeneratedResultActions = ({ projectId }: UseGeneratedResultActio
 	const saveAsset = useCallback(
 		async (entry: GenerationEntry, asset: GenerationAsset) => {
 			const key = generatedAssetSaveKey(entry, asset);
-			if (savingKeySet.has(key) || savedKeySet.has(key)) return;
+			if (savingKeySet.has(key)) return;
 
 			const source = generationAssetSource(asset);
 			if (!source) {
@@ -88,16 +88,13 @@ export const useGeneratedResultActions = ({ projectId }: UseGeneratedResultActio
 
 			markSaving(key, true);
 			try {
-				const savedPath = await saveGeneratedAssetToUserDirectory(
+				const savedPath = await downloadGeneratedAssetToDirectory(
 					asset,
 					source,
 					asset.title?.trim() || fallbackAssetFilename(entry, asset),
 				);
-				if (!savedPath) {
-					return;
-				}
+				if (!savedPath) return;
 
-				markSaved(key);
 				toast.success("文件已保存", { description: savedPath });
 			} catch (error) {
 				toast.error("保存失败", { description: toErrorMessage(error) });
@@ -105,7 +102,7 @@ export const useGeneratedResultActions = ({ projectId }: UseGeneratedResultActio
 				markSaving(key, false);
 			}
 		},
-		[markSaved, markSaving, savedKeySet, savingKeySet, toast],
+		[markSaving, savingKeySet, toast],
 	);
 
 	const saveText = useCallback(
@@ -177,180 +174,39 @@ export const generationAssetFile = async (
 ) => {
 	const blob = await generationAssetBlob(asset, source);
 	const type = asset.mimeType || blob.type || defaultMimeType(asset.kind);
-	const filename = ensureFilenameExtension(fallbackFilename, type, asset.kind);
+	const filename = downloadFilename({
+		fallback: fallbackFilename,
+		kind: asset.kind,
+		mimeType: type,
+		title: fallbackFilename,
+	});
 	return new File([blob], filename, { type });
 };
 
-export const saveGeneratedAssetToUserDirectory = async (
+export const downloadGeneratedAssetToDirectory = async (
 	asset: GenerationAsset,
-	source: string,
+	_source: string,
 	fallbackFilename: string,
-) => {
-	const target = await pickGeneratedAssetSaveTarget();
-	if (!target) return null;
-	return saveGeneratedAssetToTarget(asset, source, fallbackFilename, target);
-};
-
-export type GeneratedAssetSaveTarget =
-	| { kind: "desktop"; directory: string }
-	| { kind: "browser"; directory: BrowserDirectoryHandle };
-
-export const pickGeneratedAssetSaveTarget = async (): Promise<GeneratedAssetSaveTarget | null> => {
-	if (isDesktopRuntime()) {
-		const directory = await pickSaveDirectory();
-		return directory ? { kind: "desktop", directory } : null;
+	options: { directory?: string | null } = {},
+): Promise<string | null> => {
+	const type = asset.mimeType || defaultMimeType(asset.kind);
+	const title = asset.title?.trim() || fallbackFilename;
+	if (asset.downloadPath?.trim()) {
+		const payload = {
+			fallback: fallbackFilename,
+			kind: asset.kind,
+			mimeType: type,
+			sourcePath: asset.downloadPath,
+			title,
+		};
+		const saved = options.directory
+			? await copyLocalFileToDirectory({ ...payload, directory: options.directory })
+			: await downloadLocalFileWithDirectoryPicker(payload);
+		return saved?.path ?? null;
 	}
 
-	const directory = await pickBrowserSaveDirectory();
-	return directory ? { kind: "browser", directory } : null;
+	throw new Error(`生成结果“${title}”缺少本地文件路径，无法复制到下载位置。`);
 };
-
-export const saveGeneratedAssetToTarget = async (
-	asset: GenerationAsset,
-	source: string,
-	fallbackFilename: string,
-	target: GeneratedAssetSaveTarget,
-) => {
-	if (target.kind === "desktop") {
-		return saveGeneratedAssetWithDesktopDirectory(
-			asset,
-			source,
-			fallbackFilename,
-			target.directory,
-		);
-	}
-
-	const file = await generationAssetFile(asset, source, fallbackFilename);
-	return saveGeneratedFileToBrowserDirectory(file, target.directory);
-};
-
-const saveGeneratedAssetWithDesktopDirectory = async (
-	asset: GenerationAsset,
-	source: string,
-	fallbackFilename: string,
-	directory: string,
-) => {
-	if (asset.kind !== "image" && asset.kind !== "video" && asset.kind !== "audio") {
-		throw new Error("只支持保存图片、视频和音频生成结果。");
-	}
-
-	const assetId = mediaAssetIdFromGeneratedSource(source) ?? undefined;
-	const sourceUrl = assetId ? undefined : absoluteHttpSourceUrl(source);
-	if (!assetId && !sourceUrl) {
-		throw new Error("生成结果尚未缓存为本地素材，无法直接保存。");
-	}
-
-	const saved = await saveGeneratedMediaFile({
-		assetId,
-		directory,
-		filename: ensureFilenameExtension(
-			fallbackFilename,
-			asset.mimeType || defaultMimeType(asset.kind),
-			asset.kind,
-		),
-		kind: asset.kind,
-		mimeType: asset.mimeType,
-		sourceUrl,
-	});
-	return saved.path;
-};
-
-const pickSaveDirectory = async () => {
-	const directory = await pickDesktopDirectory("选择保存文件夹");
-	return typeof directory === "string" && directory.trim() ? directory : null;
-};
-
-const pickBrowserSaveDirectory = async () => {
-	const picker = (window as BrowserDirectoryPickerWindow).showDirectoryPicker;
-	if (!picker) {
-		throw new Error("当前运行环境不支持原生文件夹选择。请在桌面端使用保存功能。");
-	}
-
-	try {
-		return await picker.call(window);
-	} catch (error) {
-		if (isAbortError(error)) return null;
-		throw error;
-	}
-};
-
-const saveGeneratedFileToBrowserDirectory = async (
-	file: File,
-	directory: BrowserDirectoryHandle,
-) => {
-	const filename = await availableBrowserFilename(directory, file.name);
-	const fileHandle = await directory.getFileHandle(filename, { create: true });
-	const writable = await fileHandle.createWritable();
-	await writable.write(file);
-	await writable.close();
-	return filename;
-};
-
-const availableBrowserFilename = async (directory: BrowserDirectoryHandle, filename: string) => {
-	const sanitized = browserSafeFilename(filename);
-	const dotIndex = sanitized.lastIndexOf(".");
-	const stem = dotIndex > 0 ? sanitized.slice(0, dotIndex) : sanitized;
-	const extension = dotIndex > 0 ? sanitized.slice(dotIndex) : "";
-
-	for (let index = 1; index < 10_000; index += 1) {
-		const candidate = index === 1 ? sanitized : `${stem}-${index}${extension}`;
-		try {
-			await directory.getFileHandle(candidate);
-		} catch (error) {
-			if (isNotFoundError(error)) return candidate;
-			throw error;
-		}
-	}
-
-	return `${stem}-${Date.now()}${extension}`;
-};
-
-const browserSafeFilename = (filename: string) => {
-	const name = filename
-		.replace(/[\\/:*?"<>|]+/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
-	return name || "generated-file";
-};
-
-const isAbortError = (error: unknown) =>
-	error instanceof DOMException
-		? error.name === "AbortError"
-		: error instanceof Error && error.name === "AbortError";
-
-const isNotFoundError = (error: unknown) =>
-	error instanceof DOMException
-		? error.name === "NotFoundError"
-		: error instanceof Error && error.name === "NotFoundError";
-
-const absoluteSourceUrl = (source: string) => {
-	const trimmed = source.trim();
-	if (/^[a-z][a-z0-9+.-]*:/iu.test(trimmed)) return trimmed;
-	if (trimmed.startsWith("//")) return `${window.location.protocol}${trimmed}`;
-	return new URL(trimmed, window.location.href).toString();
-};
-
-const absoluteHttpSourceUrl = (source: string) => {
-	const url = absoluteSourceUrl(source);
-	return /^https?:\/\//iu.test(url) ? url : undefined;
-};
-
-interface BrowserDirectoryPickerWindow extends Window {
-	showDirectoryPicker?: () => Promise<BrowserDirectoryHandle>;
-}
-
-interface BrowserDirectoryHandle {
-	getFileHandle: (name: string, options?: { create?: boolean }) => Promise<BrowserFileHandle>;
-}
-
-interface BrowserFileHandle {
-	createWritable: () => Promise<BrowserWritableFileStream>;
-}
-
-interface BrowserWritableFileStream {
-	close: () => Promise<void>;
-	write: (data: Blob) => Promise<void>;
-}
 
 const generationAssetBlob = async (asset: GenerationAsset, source: string) => {
 	if (asset.base64) return base64Blob(asset.base64, asset.mimeType || defaultMimeType(asset.kind));
@@ -392,31 +248,6 @@ const sanitizeFilename = (value: string) => {
 		.replace(/\s+/g, " ")
 		.trim();
 	return (normalized || "生成结果").slice(0, 40);
-};
-
-const ensureFilenameExtension = (
-	filename: string,
-	mimeType: string,
-	kind: GenerationAsset["kind"],
-) => {
-	const extension = extensionForMimeType(mimeType, kind);
-	return /\.[a-z0-9]{2,5}$/iu.test(filename) ? filename : `${filename}${extension}`;
-};
-
-const extensionForMimeType = (mimeType: string, kind: GenerationAsset["kind"]) => {
-	const normalized = mimeType.toLowerCase();
-	if (normalized.includes("png")) return ".png";
-	if (normalized.includes("webp")) return ".webp";
-	if (normalized.includes("gif")) return ".gif";
-	if (normalized.includes("jpeg") || normalized.includes("jpg")) return ".jpg";
-	if (normalized.includes("quicktime")) return ".mov";
-	if (normalized.includes("webm")) return ".webm";
-	if (normalized.includes("mp4")) return ".mp4";
-	if (normalized.includes("mpeg") || normalized.includes("mp3")) return ".mp3";
-	if (normalized.includes("wav")) return ".wav";
-	if (normalized.includes("flac")) return ".flac";
-	if (normalized.includes("plain")) return ".txt";
-	return kind === "video" ? ".mp4" : kind === "audio" ? ".mp3" : kind === "text" ? ".txt" : ".png";
 };
 
 const defaultMimeType = (kind: GenerationAsset["kind"]) => {

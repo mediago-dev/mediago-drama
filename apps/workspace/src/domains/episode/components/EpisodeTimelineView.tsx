@@ -21,11 +21,8 @@ import {
 	findEpisodeVideoSourceSection,
 	firstVideoAssetSource,
 } from "@/domains/episode/components/EpisodeVideoGenerationDialog";
-import {
-	pickGeneratedAssetSaveTarget,
-	saveGeneratedAssetToTarget,
-	saveGeneratedAssetToUserDirectory,
-} from "@/domains/generation/components/generatedResultActions";
+import { downloadGeneratedAssetToDirectory } from "@/domains/generation/components/generatedResultActions";
+import { pickDownloadDirectory } from "@/domains/workspace/lib/downloads";
 import {
 	generationTasksQueryKey,
 	getGenerationTasks,
@@ -313,8 +310,13 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 
 			markVideoClipDownloading(clip.id, true);
 			try {
-				const savedPath = await saveGeneratedAssetToUserDirectory(
-					{ kind: "video", url: videoUrl, mimeType: "video/mp4" },
+				const savedPath = await downloadGeneratedAssetToDirectory(
+					{
+						kind: "video",
+						url: videoUrl,
+						mimeType: "video/mp4",
+						downloadPath: clipMedia?.[clip.id]?.downloadPath,
+					},
 					videoUrl,
 					episodeClipVideoFilename(clip),
 				);
@@ -327,7 +329,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 				markVideoClipDownloading(clip.id, false);
 			}
 		},
-		[downloadingVideoClipIdSet, markVideoClipDownloading, toast],
+		[clipMedia, downloadingVideoClipIdSet, markVideoClipDownloading, toast],
 	);
 	const handleExportAllStoryboards = useCallback(async () => {
 		if (isExportingAllStoryboards) return;
@@ -341,11 +343,11 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 			return;
 		}
 
+		const directory = await pickDownloadDirectory();
+		if (!directory) return;
+
 		setIsExportingAllStoryboards(true);
 		try {
-			const target = await pickGeneratedAssetSaveTarget();
-			if (!target) return;
-
 			let savedCount = 0;
 			const failedTitles: string[] = [];
 			for (const [index, clip] of clips.entries()) {
@@ -353,12 +355,18 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 				if (!videoUrl) continue;
 
 				try {
-					await saveGeneratedAssetToTarget(
-						{ kind: "video", url: videoUrl, mimeType: "video/mp4" },
+					const savedPath = await downloadGeneratedAssetToDirectory(
+						{
+							kind: "video",
+							url: videoUrl,
+							mimeType: "video/mp4",
+							downloadPath: clipMedia?.[clip.id]?.downloadPath,
+						},
 						videoUrl,
 						episodeClipVideoFilename(clip, index),
-						target,
+						{ directory },
 					);
+					if (!savedPath) continue;
 					savedCount += 1;
 				} catch {
 					failedTitles.push(clip.title || `第 ${index + 1} 个分镜`);
@@ -387,6 +395,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 			setIsExportingAllStoryboards(false);
 		}
 	}, [
+		clipMedia,
 		exportableStoryboardVideoClips,
 		isExportingAllStoryboards,
 		storyboardVideoClips.length,

@@ -104,34 +104,6 @@ func (handler MediaAssets) HandleUploadProjectMediaAsset(context *gin.Context) {
 	handler.HandleUploadMediaAsset(context)
 }
 
-// HandleSaveGeneratedAssetFile godoc
-// @Summary 保存生成资产文件
-// @Description 将生成结果保存到用户选择的本地文件夹。
-// @Tags Media Assets
-// @Accept json
-// @Produce json
-// @Param payload body SwaggerObject true "Generated asset save request"
-// @Success 200 {object} SwaggerEnvelope
-// @Failure 400 {object} SwaggerEnvelope
-// @Failure 500 {object} SwaggerEnvelope
-// @Router /api/v1/media-assets/save-generated-file [post]
-func (handler MediaAssets) HandleSaveGeneratedAssetFile(context *gin.Context) {
-	context.Request.Body = http.MaxBytesReader(context.Writer, context.Request.Body, 1<<20)
-	payload, err := decodeJSON[service.GeneratedAssetFileSaveRequest](context)
-	if err != nil {
-		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
-		return
-	}
-
-	saved, err := handler.service.SaveGeneratedAssetFile(context.Request.Context(), payload)
-	if err != nil {
-		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
-		return
-	}
-
-	httpresponse.OK(context, saved)
-}
-
 // HandleMediaAssetContent godoc
 // @Summary 下载媒体资产内容
 // @Description 返回媒体资产原始文件内容。

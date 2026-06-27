@@ -81,7 +81,6 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.GET("/agent/backends", handlers.AgentBackends.HandleListBackends)
 	apiRoutes.GET("/media-assets", handlers.MediaAssets.HandleMediaAssets)
 	apiRoutes.POST("/media-assets", handlers.MediaAssets.HandleUploadMediaAsset)
-	apiRoutes.POST("/media-assets/save-generated-file", handlers.MediaAssets.HandleSaveGeneratedAssetFile)
 	apiRoutes.GET("/media-assets/:assetId/content", handlers.MediaAssets.HandleMediaAssetContent)
 	apiRoutes.GET("/media-assets/:assetId/poster", handlers.MediaAssets.HandleMediaAssetPoster)
 	apiRoutes.PUT("/media-assets/:assetId", handlers.MediaAssets.HandleUpdateMediaAsset)

@@ -49,6 +49,7 @@ import {
 	buildAssetLibraryItems,
 	filterAssetLibraryItems,
 } from "@/domains/workspace/lib/asset-library";
+import { downloadLocalFileWithDirectoryPicker } from "@/domains/workspace/lib/downloads";
 import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspace/api/workspace";
 import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { useToast } from "@/hooks/useToast";
@@ -294,6 +295,28 @@ const AssetLibraryDialog: React.FC<{
 		}
 	};
 
+	const downloadItem = async (item: AssetLibraryItem) => {
+		if (busyKey) return;
+		setBusyKey(item.key);
+		try {
+			const saved = await downloadLocalFileWithDirectoryPicker({
+				fallback: item.title,
+				kind: item.kind,
+				mimeType: item.mimeType,
+				sourcePath: item.downloadPath,
+				title: item.title,
+			});
+			if (!saved) return;
+			toast.success("文件已下载", { description: saved.path });
+		} catch (err) {
+			toast.error("下载失败", {
+				description: errorMessage(err, "文件复制到下载位置失败。"),
+			});
+		} finally {
+			setBusyKey("");
+		}
+	};
+
 	const unselectGenerationAssets = async (assets: SelectedGenerationAsset[]) => {
 		if (!selectedProjectId) return;
 		await Promise.all(
@@ -456,6 +479,7 @@ const AssetLibraryDialog: React.FC<{
 												busy={busyKey === item.key}
 												item={item}
 												onDelete={() => void deleteItem(item)}
+												onDownload={() => void downloadItem(item)}
 												onPreview={() => setActiveKey(item.key)}
 											/>
 										))}
@@ -476,9 +500,9 @@ const AssetLibraryCard: React.FC<{
 	busy: boolean;
 	item: AssetLibraryItem;
 	onDelete: () => void;
+	onDownload: () => void;
 	onPreview: () => void;
-}> = ({ active, busy, item, onDelete, onPreview }) => {
-	const source = assetLibraryItemSource(item);
+}> = ({ active, busy, item, onDelete, onDownload, onPreview }) => {
 	const thumbnailSource = assetLibraryItemThumbnailSource(item);
 	const kindTag = assetLibraryKindTag(item);
 	const resourceTags = assetLibraryResourceTags(item);
@@ -519,10 +543,16 @@ const AssetLibraryCard: React.FC<{
 				</div>
 			</button>
 			<div className="flex items-center justify-between gap-1 border-t border-border px-2 py-1.5">
-				<Button asChild type="button" size="sm" variant="ghost" className="h-7 px-2">
-					<a href={source || item.url} download={item.title} aria-label={`下载 ${item.title}`}>
-						<Download className="size-3.5" />
-					</a>
+				<Button
+					type="button"
+					size="sm"
+					variant="ghost"
+					className="h-7 px-2"
+					disabled={busy}
+					onClick={onDownload}
+					aria-label={`下载 ${item.title}`}
+				>
+					<Download className="size-3.5" />
 				</Button>
 				<div className="flex items-center gap-1">
 					<Button

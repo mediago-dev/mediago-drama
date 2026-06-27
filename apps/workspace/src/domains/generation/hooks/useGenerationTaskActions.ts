@@ -10,6 +10,7 @@ import {
 	type GenerationTasksResponse,
 	generationConversationsQueryKey,
 	getGenerationVideo,
+	selectedGenerationAssetsQueryKey,
 } from "@/domains/generation/api/generation";
 import {
 	generatedAssetsIncludeMediaAssets,
@@ -29,6 +30,7 @@ interface UseGenerationTaskActionsOptions {
 	mutateMediaAssets: KeyedMutator<MediaAssetsResponse>;
 	mutateProjectGenerationTasks: (kind: GenerationKind) => void;
 	mutateTasks: KeyedMutator<GenerationTasksResponse>;
+	projectId?: string | null;
 	resolvedConversationScopeId?: string;
 	setActiveEntryId: (next: React.SetStateAction<string | null>) => void;
 	setError: (message: string | null) => void;
@@ -45,6 +47,7 @@ export const useGenerationTaskActions = ({
 	mutateMediaAssets,
 	mutateProjectGenerationTasks,
 	mutateTasks,
+	projectId,
 	resolvedConversationScopeId,
 	setActiveEntryId,
 	setError,
@@ -186,6 +189,10 @@ export const useGenerationTaskActions = ({
 				await deleteGenerationTaskAsset(taskId, assetIndex);
 				await mutateTasks();
 				mutateProjectGenerationTasks(kind);
+				const normalizedProjectId = projectId?.trim();
+				if (normalizedProjectId) {
+					void mutateSWR(selectedGenerationAssetsQueryKey(normalizedProjectId));
+				}
 				void mutateSWR(generationConversationsQueryKey(kind, resolvedConversationScopeId));
 				void mutateSWR(generationConversationsQueryKey(kind, "", { allScopes: true }));
 				return true;
@@ -200,6 +207,7 @@ export const useGenerationTaskActions = ({
 			kind,
 			mutateProjectGenerationTasks,
 			mutateTasks,
+			projectId,
 			resolvedConversationScopeId,
 			setError,
 			setMessages,

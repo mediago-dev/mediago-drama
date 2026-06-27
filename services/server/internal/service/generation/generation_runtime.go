@@ -113,6 +113,9 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	if err := workflow.applyGenerationDocumentContext(&payload); err != nil {
 		return generationMessageResponse{}, http.StatusBadRequest, err
 	}
+	if payload.AssetTitle == "" {
+		payload.AssetTitle = generationAssetTitleFromNotificationTarget(payload.NotificationTarget)
+	}
 	payload.ReferenceURLs = uniqueCompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = uniqueCompactStrings(payload.ReferenceAssetIDs)
 	if payload.Kind == "" && payload.RouteID == "" && payload.ModelID == "" {

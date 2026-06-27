@@ -6,6 +6,8 @@ const api = {
 	openExternal: (url: string) => ipcRenderer.invoke("desktop:open-external", url),
 	openPath: (path: string) => ipcRenderer.invoke("desktop:open-path", path),
 	revealPath: (path: string) => ipcRenderer.invoke("desktop:reveal-path", path),
+	copyFileToDirectory: (options: { directory: string; filename?: string; sourcePath: string }) =>
+		ipcRenderer.invoke("desktop:copy-file-to-directory", options),
 	pickDirectory: (options?: { title?: string }) =>
 		ipcRenderer.invoke("desktop:pick-directory", options),
 	pickFile: (options?: {

@@ -42,7 +42,7 @@ func NewGenerationTaskRepositoryFromDB(db *gorm.DB) *GenerationTaskRepository {
 }
 
 func (repo *GenerationTaskRepository) generationTaskQuery() *gorm.DB {
-	return repo.db.Preload("References").Preload("Assets.Asset")
+	return repo.db.Preload("References").Preload("Assets.Asset.Project")
 }
 
 // ListGenerationTasks returns generation tasks ordered by last update.
@@ -294,7 +294,7 @@ func (repo *GenerationTaskRepository) ListProjectSelectedAssets(projectID string
 		return models, nil
 	}
 	if err := repo.db.
-		Preload("Asset").
+		Preload("Asset.Project").
 		Where("project_id = ?", projectID).
 		Order("updated_at DESC").
 		Find(&models).Error; err != nil {
@@ -329,7 +329,7 @@ func (repo *GenerationTaskRepository) HasProjectSelectedAssetForResource(project
 // GetProjectSelectedAsset returns one selected project asset by ID.
 func (repo *GenerationTaskRepository) GetProjectSelectedAsset(id string) (domain.ProjectSelectedAssetModel, error) {
 	var model domain.ProjectSelectedAssetModel
-	err := repo.db.Preload("Asset").First(&model, "id = ?", strings.TrimSpace(id)).Error
+	err := repo.db.Preload("Asset.Project").First(&model, "id = ?", strings.TrimSpace(id)).Error
 	if IsRecordNotFound(err) {
 		return domain.ProjectSelectedAssetModel{}, ErrRecordNotFound
 	}

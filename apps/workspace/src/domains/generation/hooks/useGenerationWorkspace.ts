@@ -154,6 +154,7 @@ export const useGenerationWorkspace = ({
 		mediaAssetProjectIdOverride === undefined
 			? (projectId?.trim() ?? "")
 			: (mediaAssetProjectIdOverride?.trim() ?? "");
+	const selectedAssetsProjectId = projectId?.trim() || mediaAssetProjectId;
 	const taskProjectId = projectHistory ? mediaAssetProjectId : "";
 	const taskScopeId =
 		projectHistory && mediaAssetProjectId
@@ -363,6 +364,7 @@ export const useGenerationWorkspace = ({
 		mutateMediaAssets,
 		mutateProjectGenerationTasks,
 		mutateTasks,
+		projectId: selectedAssetsProjectId,
 		resolvedConversationScopeId,
 		setActiveEntryId,
 		setError,

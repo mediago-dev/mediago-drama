@@ -2,7 +2,12 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { History, Menu, MessageSquare, MessageSquareOff, ScissorsLineDashed } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { GenerationAsset } from "@/domains/generation/api/generation";
+import useSWR from "swr";
+import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
+import {
+	getSelectedGenerationAssets,
+	selectedGenerationAssetsQueryKey,
+} from "@/domains/generation/api/generation";
 import {
 	MarkdownHybridEditor,
 	prewarmMarkdownHybridEditorContent,
@@ -21,6 +26,11 @@ import { Button } from "@/shared/components/ui/button";
 import { registerEditor } from "@/domains/documents/lib/editor-registry";
 import { selectEditableDocument } from "@/domains/documents/lib/filters";
 import {
+	selectedSectionImageAssetKey,
+	selectedSectionImageAssetsForDocument,
+	selectedSectionImageAssetsForSection,
+} from "@/domains/documents/lib/selected-section-images";
+import {
 	type DocumentComment,
 	type MarkdownDocument,
 	useDocumentsStore,
@@ -32,6 +42,7 @@ import { VideoGenerationDialog } from "@/shared/components/generation-dialogs/Vi
 
 const autosaveDelayMs = 500;
 const markerClusterDistance = 28;
+const defaultSelectedGenerationAssets: SelectedGenerationAsset[] = [];
 export const writingEditorExtraExtensions = [DocumentMention];
 
 export const prewarmWritingEditorDocument = (
@@ -82,6 +93,30 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const showComments = useDocumentsStore((state) => state.showComments);
 	const updateDocumentContent = useDocumentsStore((state) => state.updateDocumentContent);
 	const activeDocument = selectEditableDocument(documents, activeDocumentId);
+	const { data: selectedGenerationAssetsData } = useSWR(
+		projectId ? selectedGenerationAssetsQueryKey(projectId) : null,
+		() => getSelectedGenerationAssets(projectId ?? ""),
+	);
+	const projectSelectedGenerationAssets =
+		selectedGenerationAssetsData?.assets ?? defaultSelectedGenerationAssets;
+	const selectedSectionImageAssets = useMemo(
+		() =>
+			activeDocument
+				? selectedSectionImageAssetsForDocument(projectSelectedGenerationAssets, activeDocument.id)
+				: defaultSelectedGenerationAssets,
+		[activeDocument, projectSelectedGenerationAssets],
+	);
+	const selectedAssetKeysForSection = useCallback(
+		(section: MarkdownSectionContext) =>
+			selectedSectionImageAssetsForSection(
+				projectSelectedGenerationAssets,
+				section.documentId,
+				section.blockId,
+			)
+				.map(selectedSectionImageAssetKey)
+				.filter(Boolean),
+		[projectSelectedGenerationAssets],
+	);
 	const activeSelection =
 		selection && activeDocument && selection.documentId === activeDocument.id ? selection : null;
 	const activePendingComment =
@@ -138,7 +173,12 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 
 	useEffect(() => {
 		measureCommentMarkers();
-	}, [activeDocument?.content, activeDocument?.comments, measureCommentMarkers]);
+	}, [
+		activeDocument?.content,
+		activeDocument?.comments,
+		measureCommentMarkers,
+		selectedSectionImageAssets,
+	]);
 
 	useEffect(() => {
 		let frame = 0;
@@ -203,26 +243,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const closeSectionGeneration = useCallback((open: boolean) => {
 		if (!open) setSectionGeneration(null);
 	}, []);
-	const ignorePendingSectionImage = useCallback(() => {}, []);
-
-	const completeSectionImageGeneration = useCallback(
-		(
-			section: MarkdownSectionContext,
-			pendingId: string,
-			_assets: GenerationAsset[],
-			_sourceTaskId: string,
-		) => {
-			editorRef.current?.removeSectionImagePlaceholder(section, pendingId);
-		},
-		[],
-	);
-
-	const removePendingSectionImage = useCallback(
-		(section: MarkdownSectionContext, pendingId: string) => {
-			editorRef.current?.removeSectionImagePlaceholder(section, pendingId);
-		},
-		[],
-	);
+	const ignoreSectionImageGenerationEvent = useCallback(() => {}, []);
 
 	if (!activeDocument) {
 		return (
@@ -331,6 +352,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 								pendingSelectionRange={
 									activePendingComment && activeSelection ? selectionRange : null
 								}
+								selectedSectionImageAssets={selectedSectionImageAssets}
 								value={activeDocument.content}
 								onChange={(content) => updateDocumentContent(activeDocument.id, content)}
 								onCommentAnchorClick={focusCommentAnchor}
@@ -372,9 +394,11 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 				open={sectionGeneration?.kind === "image"}
 				projectId={projectId ?? undefined}
 				section={sectionGeneration?.kind === "image" ? sectionGeneration.section : null}
-				onGenerationComplete={completeSectionImageGeneration}
-				onGenerationError={removePendingSectionImage}
-				onGenerationStart={ignorePendingSectionImage}
+				selectedAssetKeys={selectedAssetKeysForSection}
+				selectedGenerationAssets={projectSelectedGenerationAssets}
+				onGenerationComplete={ignoreSectionImageGenerationEvent}
+				onGenerationError={ignoreSectionImageGenerationEvent}
+				onGenerationStart={ignoreSectionImageGenerationEvent}
 				onOpenChange={closeSectionGeneration}
 				onOpenReferenceGeneration={openSectionGeneration}
 			/>

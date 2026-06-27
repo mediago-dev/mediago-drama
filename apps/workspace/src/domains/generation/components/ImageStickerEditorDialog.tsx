@@ -2,6 +2,7 @@ import {
 	Canvas,
 	FabricImage,
 	FabricObject,
+	PencilBrush,
 	Rect,
 	Textbox,
 	type FabricObject as FabricObjectInstance,
@@ -23,10 +24,11 @@ export interface ImageStickerEditorDialogProps {
 	title?: string;
 }
 
-type EditorRole = "base" | "mosaic" | "shape" | "sticker" | "text";
+type EditorRole = "base" | "drawing" | "mosaic" | "shape" | "sticker" | "text";
 type EditorObject = FabricObjectInstance & { editorRole?: EditorRole; isEditing?: boolean };
 type EditorImageObject = FabricImage & EditorObject;
 type LayerSummary = Record<Exclude<EditorRole, "base">, number>;
+type EditorTool = "brush" | "select";
 type EditorPhase = "closed" | "loading" | "ready" | "loadError";
 
 interface EditorSelectionState {
@@ -39,6 +41,9 @@ interface EditorSelectionState {
 }
 
 interface EditorDialogState extends EditorSelectionState {
+	activeTool: EditorTool;
+	brushColor: string;
+	brushWidth: number;
 	busyTool: string | null;
 	canRedo: boolean;
 	canUndo: boolean;
@@ -53,6 +58,9 @@ interface EditorDialogState extends EditorSelectionState {
 type EditorDialogAction =
 	| { canvasElement: HTMLCanvasElement | null; type: "canvasElementChanged" }
 	| { canRedo: boolean; canUndo: boolean; type: "historyChanged" }
+	| { activeTool: EditorTool; type: "activeToolChanged" }
+	| { brushColor: string; type: "brushColorChanged" }
+	| { brushWidth: number; type: "brushWidthChanged" }
 	| { busyTool: string | null; type: "busyToolChanged" }
 	| { loadError: string; type: "loadFailed" }
 	| { canvasSize: { height: number; width: number }; type: "loadSucceeded" }
@@ -74,7 +82,16 @@ const mosaicBlockSize = 12;
 const defaultRectangleFill = "#0ea5e9";
 const defaultRectangleStroke = "#0369a1";
 const defaultShapeAngle = 0;
-const emptyLayerSummary: LayerSummary = { mosaic: 0, shape: 0, sticker: 0, text: 0 };
+const defaultBrushColor = "#ef4444";
+const defaultBrushWidth = 6;
+const rotateControlCursor = "grab";
+const emptyLayerSummary: LayerSummary = {
+	drawing: 0,
+	mosaic: 0,
+	shape: 0,
+	sticker: 0,
+	text: 0,
+};
 const initialSelectionState: EditorSelectionState = {
 	hasShapeSelection: false,
 	layerSummary: emptyLayerSummary,
@@ -85,6 +102,9 @@ const initialSelectionState: EditorSelectionState = {
 };
 const initialEditorDialogState: EditorDialogState = {
 	...initialSelectionState,
+	activeTool: "select",
+	brushColor: defaultBrushColor,
+	brushWidth: defaultBrushWidth,
 	busyTool: null,
 	canRedo: false,
 	canUndo: false,
@@ -101,6 +121,12 @@ const editorDialogReducer = (
 	action: EditorDialogAction,
 ): EditorDialogState => {
 	switch (action.type) {
+		case "activeToolChanged":
+			return { ...state, activeTool: action.activeTool };
+		case "brushColorChanged":
+			return { ...state, brushColor: action.brushColor };
+		case "brushWidthChanged":
+			return { ...state, brushWidth: action.brushWidth };
 		case "busyToolChanged":
 			return { ...state, busyTool: action.busyTool };
 		case "canvasElementChanged":
@@ -173,6 +199,9 @@ const useImageStickerEditorDialogController = ({
 	const [, setRedoSnapshots] = useState<string[]>([]);
 	const [, setUndoSnapshots] = useState<string[]>([]);
 	const {
+		activeTool,
+		brushColor,
+		brushWidth,
 		busyTool,
 		canRedo,
 		canUndo,
@@ -264,13 +293,25 @@ const useImageStickerEditorDialogController = ({
 				await canvas.loadFromJSON(snapshot);
 				normalizeCanvasObjects(canvas);
 				canvas.discardActiveObject();
+				setCanvasTool(canvas, activeTool, brushColor, brushWidth);
 				canvas.requestRenderAll();
 				updateSelectionCount(canvas);
 			} finally {
 				restoringRef.current = false;
 			}
 		},
-		[clearPendingHistoryCapture, updateSelectionCount],
+		[activeTool, brushColor, brushWidth, clearPendingHistoryCapture, updateSelectionCount],
+	);
+
+	const changeEditorTool = useCallback(
+		(nextTool: EditorTool) => {
+			const canvas = canvasRef.current;
+			dispatchEditor({ activeTool: nextTool, type: "activeToolChanged" });
+			if (!canvas || !ready) return;
+			setCanvasTool(canvas, nextTool, brushColor, brushWidth);
+			updateSelectionCount(canvas);
+		},
+		[brushColor, brushWidth, ready, updateSelectionCount],
 	);
 
 	const undo = useCallback(() => {
@@ -310,6 +351,8 @@ const useImageStickerEditorDialogController = ({
 		async (dataUrl: string, label: string) => {
 			const canvas = canvasRef.current;
 			if (!canvas || !ready) return;
+			dispatchEditor({ activeTool: "select", type: "activeToolChanged" });
+			setCanvasTool(canvas, "select", brushColor, brushWidth);
 			dispatchEditor({ busyTool: label, type: "busyToolChanged" });
 			dispatchEditor({ saveError: null, type: "saveErrorChanged" });
 			try {
@@ -330,12 +373,14 @@ const useImageStickerEditorDialogController = ({
 				dispatchEditor({ busyTool: null, type: "busyToolChanged" });
 			}
 		},
-		[ready, updateSelectionCount],
+		[brushColor, brushWidth, ready, updateSelectionCount],
 	);
 
 	const addTextSticker = useCallback(() => {
 		const canvas = canvasRef.current;
 		if (!canvas || !ready) return;
+		dispatchEditor({ activeTool: "select", type: "activeToolChanged" });
+		setCanvasTool(canvas, "select", brushColor, brushWidth);
 		dispatchEditor({ saveError: null, type: "saveErrorChanged" });
 		const minDimension = Math.max(1, Math.min(canvas.getWidth(), canvas.getHeight()));
 		const textbox = new Textbox("贴纸文字", {
@@ -354,11 +399,13 @@ const useImageStickerEditorDialogController = ({
 		canvas.setActiveObject(textbox);
 		canvas.requestRenderAll();
 		updateSelectionCount(canvas);
-	}, [ready, updateSelectionCount]);
+	}, [brushColor, brushWidth, ready, updateSelectionCount]);
 
 	const addRectangle = useCallback(() => {
 		const canvas = canvasRef.current;
 		if (!canvas || !ready) return;
+		dispatchEditor({ activeTool: "select", type: "activeToolChanged" });
+		setCanvasTool(canvas, "select", brushColor, brushWidth);
 		dispatchEditor({ saveError: null, type: "saveErrorChanged" });
 		const rectWidth = Math.max(120, Math.min(320, canvas.getWidth() * 0.36));
 		const rectHeight = Math.max(72, Math.min(220, canvas.getHeight() * 0.26));
@@ -378,12 +425,14 @@ const useImageStickerEditorDialogController = ({
 		canvas.setActiveObject(rectangle);
 		canvas.requestRenderAll();
 		updateSelectionCount(canvas);
-	}, [ready, updateSelectionCount]);
+	}, [brushColor, brushWidth, ready, updateSelectionCount]);
 
 	const addMosaic = useCallback(() => {
 		const canvas = canvasRef.current;
 		const baseImageElement = baseImageElementRef.current;
 		if (!canvas || !ready) return;
+		dispatchEditor({ activeTool: "select", type: "activeToolChanged" });
+		setCanvasTool(canvas, "select", brushColor, brushWidth);
 		if (!baseImageElement) {
 			dispatchEditor({
 				saveError: "马赛克添加失败，请重新打开编辑器后再试。",
@@ -416,7 +465,30 @@ const useImageStickerEditorDialogController = ({
 				type: "saveErrorChanged",
 			});
 		}
-	}, [ready, updateSelectionCount]);
+	}, [brushColor, brushWidth, ready, updateSelectionCount]);
+
+	const changeBrushColor = useCallback(
+		(color: string) => {
+			const normalizedColor = normalizeHexColor(color);
+			if (!normalizedColor) return;
+			const canvas = canvasRef.current;
+			dispatchEditor({ brushColor: normalizedColor, type: "brushColorChanged" });
+			if (!canvas || !ready) return;
+			configureCanvasBrush(canvas, normalizedColor, brushWidth);
+		},
+		[brushWidth, ready],
+	);
+
+	const changeBrushWidth = useCallback(
+		(event: React.ChangeEvent<HTMLInputElement>) => {
+			const nextWidth = clamp(Math.round(Number(event.currentTarget.value)), 1, 32);
+			const canvas = canvasRef.current;
+			dispatchEditor({ brushWidth: nextWidth, type: "brushWidthChanged" });
+			if (!canvas || !ready) return;
+			configureCanvasBrush(canvas, brushColor, nextWidth);
+		},
+		[brushColor, ready],
+	);
 
 	const changeSelectionOpacity = useCallback(
 		(event: React.ChangeEvent<HTMLInputElement>) => {
@@ -566,6 +638,8 @@ const useImageStickerEditorDialogController = ({
 				return;
 			}
 			dispatchEditor({ busyTool: "upload", type: "busyToolChanged" });
+			dispatchEditor({ activeTool: "select", type: "activeToolChanged" });
+			if (canvasRef.current) setCanvasTool(canvasRef.current, "select", brushColor, brushWidth);
 			void readFileAsDataURL(file)
 				.then((dataUrl) => addImageSticker(dataUrl, "upload"))
 				.catch(() =>
@@ -576,7 +650,7 @@ const useImageStickerEditorDialogController = ({
 				)
 				.finally(() => dispatchEditor({ busyTool: null, type: "busyToolChanged" }));
 		},
-		[addImageSticker],
+		[addImageSticker, brushColor, brushWidth],
 	);
 
 	const handleKeyDown = useCallback(
@@ -643,6 +717,7 @@ const useImageStickerEditorDialogController = ({
 				backgroundColor: "#111827",
 				preserveObjectStacking: true,
 				selection: true,
+				uniformScaling: false,
 			});
 		} catch {
 			dispatchEditor({
@@ -722,10 +797,19 @@ const useImageStickerEditorDialogController = ({
 			captureHistory();
 		};
 
+		const handlePathCreated = ({ path }: { path?: FabricObjectInstance }) => {
+			if (!path) return;
+			configureDrawingObject(path as EditorObject);
+			keepBaseImageAtBack(canvas);
+			updateSelectionCount(canvas);
+			captureHistory();
+		};
+
 		const disposers = [
 			canvas.on("object:added", captureHistory),
 			canvas.on("object:modified", handleObjectModified),
 			canvas.on("object:removed", captureHistory),
+			canvas.on("path:created", handlePathCreated),
 			canvas.on("selection:created", () => updateSelectionCount(canvas)),
 			canvas.on("selection:updated", () => updateSelectionCount(canvas)),
 			canvas.on("selection:cleared", () => updateSelectionCount(canvas)),
@@ -756,7 +840,11 @@ const useImageStickerEditorDialogController = ({
 	const titleText = title?.trim() || "图片编辑工作台";
 	const hasSelection = selectionCount > 0;
 	const editableLayerCount =
-		layerSummary.mosaic + layerSummary.shape + layerSummary.sticker + layerSummary.text;
+		layerSummary.drawing +
+		layerSummary.mosaic +
+		layerSummary.shape +
+		layerSummary.sticker +
+		layerSummary.text;
 	const canvasSizeLabel =
 		canvasSize.width > 0 && canvasSize.height > 0
 			? `${canvasSize.width} x ${canvasSize.height}px`
@@ -767,10 +855,15 @@ const useImageStickerEditorDialogController = ({
 		addMosaic,
 		addRectangle,
 		addTextSticker,
+		activeTool,
+		brushColor,
+		brushWidth,
 		busyTool,
 		canRedo,
 		canUndo,
 		canvasSizeLabel,
+		changeBrushColor,
+		changeBrushWidth,
 		changeSelectionOpacity,
 		changeShapeAngle,
 		changeShapeColor,
@@ -797,6 +890,8 @@ const useImageStickerEditorDialogController = ({
 		selectedShapeColor,
 		selectionCount,
 		setEditorCanvasElement,
+		switchToBrushTool: () => changeEditorTool("brush"),
+		switchToSelectTool: () => changeEditorTool("select"),
 		titleText,
 		undo,
 		uploadInputRef,
@@ -1032,24 +1127,65 @@ const sanitizeExportFilename = (value: string) => {
 	return sanitized || "图片编辑";
 };
 
-const configureEditableObject = (object: EditorObject, canvas: Canvas, role: EditorRole) => {
-	object.editorRole = role;
+const setCanvasTool = (
+	canvas: Canvas,
+	tool: EditorTool,
+	brushColor: string,
+	brushWidth: number,
+) => {
+	canvas.isDrawingMode = tool === "brush";
+	canvas.selection = tool === "select";
+	canvas.defaultCursor = tool === "brush" ? "crosshair" : "default";
+	canvas.hoverCursor = tool === "brush" ? "crosshair" : "move";
+	if (tool === "brush") {
+		canvas.discardActiveObject();
+		configureCanvasBrush(canvas, brushColor, brushWidth);
+	}
+	canvas.requestRenderAll();
+};
+
+const configureCanvasBrush = (canvas: Canvas, color: string, width: number) => {
+	const brush = canvas.freeDrawingBrush ?? new PencilBrush(canvas);
+	brush.color = color;
+	brush.width = clamp(width, 1, 32);
+	canvas.freeDrawingBrush = brush;
+};
+
+const configureObjectControls = (object: FabricObjectInstance) => {
+	configureRotateCursor(object);
 	object.set({
 		borderColor: "#0ea5e9",
 		cornerColor: "#f8fafc",
 		cornerSize: 10,
 		cornerStrokeColor: "#0f172a",
 		cornerStyle: "circle",
+		padding: 4,
+		transparentCorners: false,
+	});
+};
+
+const configureEditableObject = (object: EditorObject, canvas: Canvas, role: EditorRole) => {
+	object.editorRole = role;
+	configureObjectControls(object);
+	object.set({
 		left: canvas.getWidth() / 2,
 		originX: "center",
 		originY: "center",
-		padding: 4,
 		top: canvas.getHeight() / 2,
-		transparentCorners: false,
 	});
 	if (role === "mosaic") {
 		object.set({ lockRotation: true });
 	}
+};
+
+const configureDrawingObject = (object: EditorObject) => {
+	object.editorRole = "drawing";
+	configureObjectControls(object);
+	object.set({
+		evented: true,
+		selectable: true,
+	});
+	object.setCoords();
 };
 
 const normalizeCanvasObjects = (canvas: Canvas) => {
@@ -1072,6 +1208,7 @@ const normalizeCanvasObjects = (canvas: Canvas) => {
 			continue;
 		}
 		if (!editorObject.editorRole) editorObject.editorRole = "sticker";
+		configureObjectControls(editorObject);
 		editorObject.set({
 			evented: true,
 			lockRotation: editorObject.editorRole === "mosaic",
@@ -1090,6 +1227,11 @@ const keepBaseImageAtBack = (canvas: Canvas) => {
 
 const isEditableObject = (object: FabricObjectInstance): boolean =>
 	(object as EditorObject).editorRole !== "base";
+
+const configureRotateCursor = (object: FabricObjectInstance) => {
+	const rotateControl = (object as { controls?: { mtr?: { cursorStyle: string } } }).controls?.mtr;
+	if (rotateControl) rotateControl.cursorStyle = rotateControlCursor;
+};
 
 const readFileAsDataURL = (file: File) =>
 	new Promise<string>((resolve, reject) => {

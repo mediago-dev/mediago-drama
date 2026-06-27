@@ -130,6 +130,23 @@ func TestGenerationTaskServicePersistToSQLite(t *testing.T) {
 	}
 }
 
+func TestGenerationTaskForClientOmitsInternalParams(t *testing.T) {
+	task := GenerationTaskForClient(GenerationTaskRecord{
+		ID: "task-internal-params",
+		Params: map[string]any{
+			"duration":                        "5",
+			generationAssetTitleRequestOption: "第 01 组",
+		},
+	})
+
+	if _, ok := task.Params[generationAssetTitleRequestOption]; ok {
+		t.Fatalf("client params = %#v, want internal asset title omitted", task.Params)
+	}
+	if task.Params["duration"] != "5" {
+		t.Fatalf("client params = %#v, want public params preserved", task.Params)
+	}
+}
+
 func TestGenerationTaskServiceDefaultDBPathUsesWorkspaceAppDB(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
@@ -755,6 +772,63 @@ func TestGenerationTaskServiceDeleteAssetSlotPersistsAsMissingRow(t *testing.T) 
 		visibleTask.Assets[1].SlotIndex != 1 ||
 		visibleTask.Assets[2].SlotIndex != 3 {
 		t.Fatalf("visible asset slots = %#v, want original slots 0, 1, 3", visibleTask.Assets)
+	}
+}
+
+func TestGenerationTaskServiceDeleteAssetSlotRemovesSelectedAssetBySourceSlot(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	projectID := "project-delete-selected-slot"
+	taskID := "task-delete-selected-slot"
+	seedGenerationTaskProject(t, dbPath, projectID)
+	seedGenerationTaskAsset(t, dbPath, "image-a", "image", projectID)
+
+	service := NewGenerationTaskService(dbPath, nil)
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:           taskID,
+		ProjectID:    projectID,
+		CapabilityID: "character",
+		Kind:         "image",
+		Status:       "completed",
+		Prompt:       "portrait set",
+		Assets: []GenerationAsset{
+			{Kind: "image", URL: "/api/v1/media-assets/image-a/content", Title: "生成图 1"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting task: %v", err)
+	}
+
+	selectedFlag := true
+	assetIndex := 0
+	if _, ok, err := service.UpsertSelectedAsset(projectID, UpdateSelectedGenerationAssetRequest{
+		Selected:         &selectedFlag,
+		ResourceType:     "character",
+		ResourceID:       "section-chenyuan",
+		ResourceTitle:    "陈远",
+		SourceDocumentID: "character-doc",
+		TaskID:           taskID,
+		AssetIndex:       &assetIndex,
+	}); err != nil || !ok {
+		t.Fatalf("selecting generated asset ok=%v error=%v", ok, err)
+	}
+
+	selected, err := service.ListProjectSelectedAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing selected assets: %v", err)
+	}
+	if len(selected) != 1 {
+		t.Fatalf("selected assets = %+v, want one asset before delete", selected)
+	}
+
+	if _, deleted, err := service.DeleteAsset(taskID, 0); err != nil || !deleted {
+		t.Fatalf("deleting slot deleted=%v error=%v", deleted, err)
+	}
+
+	selected, err = service.ListProjectSelectedAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing selected assets after delete: %v", err)
+	}
+	if len(selected) != 0 {
+		t.Fatalf("selected assets after delete = %+v, want none", selected)
 	}
 }
 

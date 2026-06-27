@@ -95,9 +95,7 @@ vi.mock("@/domains/workspace/lib/desktop-window-drag", () => ({
 }));
 
 vi.mock("@/domains/generation/components/generatedResultActions", () => ({
-	pickGeneratedAssetSaveTarget: vi.fn(),
-	saveGeneratedAssetToTarget: vi.fn(),
-	saveGeneratedAssetToUserDirectory: vi.fn(),
+	downloadGeneratedAssetToDirectory: vi.fn(),
 }));
 
 vi.mock("@/domains/episode/components/EpisodeCanvasView", () => ({

@@ -18,6 +18,11 @@ import {
 	LockedHeading,
 } from "@/domains/documents/components/extensions/locked-heading";
 import { SectionIdAnchor } from "@/domains/documents/components/extensions/section-id-anchor";
+import {
+	SelectedSectionImagePreview,
+	updateSelectedSectionImagePreviewAssets,
+	type SelectedSectionImagePreviewAsset,
+} from "@/domains/documents/components/extensions/selected-section-image-preview";
 import { SectionMediaPreview } from "@/domains/documents/components/extensions/section-media-preview";
 import {
 	commentAnchorExtension,
@@ -73,6 +78,7 @@ export interface MarkdownHybridEditorProps {
 	lockedHeadingPlan?: LockedHeadingPlan | null;
 	pendingSelectionAnchor?: TextAnchor | null;
 	pendingSelectionRange?: InlineDecorationRange | null;
+	selectedSectionImageAssets?: SelectedSectionImagePreviewAsset[];
 	value: string;
 	onChange: (value: string) => void;
 	onCommentAnchorClick?: (commentId: string) => void;
@@ -94,6 +100,7 @@ export interface SelectionCoords {
 
 const defaultComments: DocumentComment[] = [];
 const defaultExtraExtensions: Extensions = [];
+const defaultSelectedSectionImageAssets: SelectedSectionImagePreviewAsset[] = [];
 const markdownChangeFlushDelayMs = 160;
 const parsedMarkdownCacheLimit = 8;
 
@@ -147,6 +154,7 @@ const createMarkdownSchemaExtensions = (
 	LockedHeading.configure({ levels: [1, 2, 3, 4] }),
 	SectionIdAnchor,
 	SectionMediaPreview,
+	SelectedSectionImagePreview,
 	Image.configure({
 		allowBase64: true,
 	}),
@@ -235,6 +243,7 @@ export const MarkdownHybridEditor = forwardRef<
 		lockedHeadingPlan = null,
 		pendingSelectionAnchor = null,
 		pendingSelectionRange = null,
+		selectedSectionImageAssets = defaultSelectedSectionImageAssets,
 		value,
 		onChange,
 		onCommentAnchorClick,
@@ -470,6 +479,12 @@ export const MarkdownHybridEditor = forwardRef<
 			// Selection positions can become invalid after a full document replacement.
 		}
 	}, [editor, flushPendingMarkdownChange, value]);
+
+	useEffect(() => {
+		if (!editor) return;
+
+		updateSelectedSectionImagePreviewAssets(editor, documentId, selectedSectionImageAssets);
+	}, [documentId, editor, selectedSectionImageAssets]);
 
 	useEffect(() => {
 		if (!editor) return;

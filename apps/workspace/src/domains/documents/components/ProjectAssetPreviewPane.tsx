@@ -6,6 +6,7 @@ import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import { updateProjectAsset } from "@/domains/workspace/api/project-assets";
 import { getWorkspaceDocuments } from "@/domains/workspace/api/workspace";
 import { useDocumentsStore } from "@/domains/documents/stores";
+import { downloadLocalFileWithDirectoryPicker } from "@/domains/workspace/lib/downloads";
 import { useToast } from "@/hooks/useToast";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -29,6 +30,7 @@ export const ProjectAssetPreviewPane: React.FC<ProjectAssetPreviewPaneProps> = (
 }) => {
 	const toast = useToast();
 	const [draftFilename, setDraftFilename] = useState(asset.filename);
+	const [isDownloading, setIsDownloading] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 	const source = useMemo(() => projectAssetContentURL(asset, projectId), [asset, projectId]);
 	const textKey = asset.kind === "text" && source ? source : null;
@@ -71,6 +73,27 @@ export const ProjectAssetPreviewPane: React.FC<ProjectAssetPreviewPaneProps> = (
 		}
 	};
 
+	const downloadAsset = async () => {
+		if (isDownloading) return;
+		setIsDownloading(true);
+		try {
+			const saved = await downloadLocalFileWithDirectoryPicker({
+				fallback: asset.filename,
+				kind: asset.kind,
+				mimeType: asset.mimeType,
+				sourcePath: asset.downloadPath,
+				title: asset.filename,
+			});
+			if (!saved) return;
+			toast.success("文件已下载", { description: saved.path });
+		} catch (err) {
+			const message = errorMessage(err, "文件复制到下载位置失败。");
+			toast.error("下载失败", { description: message });
+		} finally {
+			setIsDownloading(false);
+		}
+	};
+
 	return (
 		<main className="h-full min-h-0 flex-1 overflow-y-auto bg-ide-editor">
 			<div className="mx-auto flex min-h-full w-full max-w-6xl flex-col gap-4 px-4 py-4">
@@ -109,11 +132,15 @@ export const ProjectAssetPreviewPane: React.FC<ProjectAssetPreviewPaneProps> = (
 										{isSaving ? <Loader2 className="animate-spin" /> : <Save />}
 										<span>保存</span>
 									</Button>
-									<Button asChild type="button" size="sm" variant="secondary">
-										<a href={source || asset.url} download={asset.filename}>
-											<Download />
-											<span>下载</span>
-										</a>
+									<Button
+										type="button"
+										size="sm"
+										variant="secondary"
+										disabled={isDownloading}
+										onClick={() => void downloadAsset()}
+									>
+										{isDownloading ? <Loader2 className="animate-spin" /> : <Download />}
+										<span>{isDownloading ? "下载中" : "下载"}</span>
 									</Button>
 								</div>
 							</div>

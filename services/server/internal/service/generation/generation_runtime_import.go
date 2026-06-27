@@ -119,11 +119,12 @@ func (workflow *GenerationService) ImportGenerationMediaAssets(payload ImportGen
 			Message: "已从素材库导入。",
 			Assets: []GenerationAsset{
 				{
-					Kind:     asset.Kind,
-					Title:    title,
-					URL:      asset.URL,
-					MIMEType: asset.MIMEType,
-					Selected: false,
+					Kind:         asset.Kind,
+					Title:        title,
+					URL:          asset.URL,
+					MIMEType:     asset.MIMEType,
+					DownloadPath: asset.DownloadPath,
+					Selected:     false,
 				},
 			},
 			Usage: GenerationUsage{},

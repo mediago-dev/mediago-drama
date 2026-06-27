@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -1248,15 +1249,16 @@ func generationAssetsFromTaskAssetModels(taskID string, rows []domain.Generation
 		}
 		asset := row.Asset
 		assets = append(assets, GenerationAsset{
-			AssetID:   row.AssetID,
-			Kind:      asset.Kind,
-			TaskID:    taskID,
-			Title:     asset.Filename,
-			URL:       asset.URL,
-			PosterURL: asset.PosterURL,
-			MIMEType:  asset.MIMEType,
-			SlotIndex: row.SlotIndex,
-			Selected:  row.Selected,
+			AssetID:      row.AssetID,
+			Kind:         asset.Kind,
+			TaskID:       taskID,
+			Title:        asset.Filename,
+			URL:          asset.URL,
+			PosterURL:    asset.PosterURL,
+			MIMEType:     asset.MIMEType,
+			DownloadPath: generationAssetDownloadPath(asset),
+			SlotIndex:    row.SlotIndex,
+			Selected:     row.Selected,
 		})
 		nextSlot = row.SlotIndex + 1
 	}
@@ -1352,7 +1354,15 @@ func (service *GenerationTaskService) deleteProjectSelectedAssetRowForTaskAssetL
 	if !ok {
 		return nil
 	}
-	_, err := service.repo.DeleteProjectSelectedAsset(row.ID)
+	if _, err := service.repo.DeleteProjectSelectedAsset(row.ID); err != nil {
+		return err
+	}
+	_, err := service.repo.DeleteProjectSelectedAssetByTaskSlot(
+		row.ProjectID,
+		row.ResourceType,
+		task.ID,
+		assetIndex,
+	)
 	return err
 }
 
@@ -1470,6 +1480,7 @@ func selectedGenerationAssetRecordFromModel(model domain.ProjectSelectedAssetMod
 		URL:              asset.URL,
 		PosterURL:        asset.PosterURL,
 		MIMEType:         asset.MIMEType,
+		DownloadPath:     generationAssetDownloadPath(asset),
 		SourceType:       domain.StringValue(model.SourceType),
 		SourceTaskID:     domain.StringValue(model.SourceTaskID),
 		SourceAssetIndex: model.SourceSlotIndex,
@@ -1478,6 +1489,39 @@ func selectedGenerationAssetRecordFromModel(model domain.ProjectSelectedAssetMod
 		CreatedAt:        domain.StringFromTime(model.CreatedAt),
 		UpdatedAt:        domain.StringFromTime(model.UpdatedAt),
 	}
+}
+
+func generationAssetDownloadPath(asset domain.AssetModel) string {
+	relPath := strings.TrimSpace(asset.RelPath)
+	if relPath == "" {
+		return ""
+	}
+	if filepath.IsAbs(relPath) {
+		return filepath.Clean(relPath)
+	}
+
+	relPath = filepath.ToSlash(relPath)
+	projectID := domain.CleanProjectID(domain.StringValue(asset.ProjectID))
+	if projectID != "" {
+		projectDir := strings.TrimSpace(asset.Project.ProjectDir)
+		if projectDir == "" && strings.TrimSpace(asset.Project.RelativeDir) != "" {
+			projectDir = filepath.Join(
+				serviceshared.WorkspacePathsFor("").Root,
+				filepath.FromSlash(asset.Project.RelativeDir),
+			)
+		}
+		if projectDir == "" {
+			return ""
+		}
+		return filepath.Join(serviceshared.ResolveWorkspaceDir(projectDir), filepath.FromSlash(relPath))
+	}
+
+	paths := serviceshared.WorkspacePathsFor("")
+	if strings.HasPrefix(relPath, ".mediago-drama/") {
+		return filepath.Join(paths.Root, filepath.FromSlash(relPath))
+	}
+	relPath = strings.TrimPrefix(relPath, "library/")
+	return filepath.Join(paths.LibraryAssetsDir(), filepath.FromSlash(relPath))
 }
 
 func selectedAssetRequestSourceIndex(request UpdateSelectedGenerationAssetRequest) int {
@@ -1574,6 +1618,7 @@ func normalizeGenerationDeletedAssetSlots(slots []int) []int {
 }
 
 func GenerationTaskForClient(task GenerationTaskRecord) GenerationTaskRecord {
+	task.Params = generationParamsForClient(task.Params)
 	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
 	if len(deletedSlots) == 0 {
 		task.Assets = generationAssetsWithTaskSlots(task.ID, task.Assets)

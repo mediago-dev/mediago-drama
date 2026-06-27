@@ -27,12 +27,13 @@ func GenerationResponseFromCore(response coregeneration.Response, kind string) G
 			continue
 		}
 		assets = append(assets, GenerationAsset{
-			AssetID:   libraryAssetIDFromGenerationAssetURL(asset.URL),
-			Kind:      string(asset.Kind),
-			URL:       asset.URL,
-			PosterURL: firstNonEmptyMetadataString(asset.Metadata, "poster_url", "posterUrl"),
-			Base64:    asset.Base64,
-			MIMEType:  asset.MIMEType,
+			AssetID:      libraryAssetIDFromGenerationAssetURL(asset.URL),
+			Kind:         string(asset.Kind),
+			URL:          asset.URL,
+			PosterURL:    firstNonEmptyMetadataString(asset.Metadata, "poster_url", "posterUrl"),
+			Base64:       asset.Base64,
+			MIMEType:     asset.MIMEType,
+			DownloadPath: firstNonEmptyMetadataString(asset.Metadata, "download_path", "downloadPath"),
 		})
 	}
 
@@ -108,6 +109,64 @@ func generationResponseWithAssetTitle(response GenerationMessageResponse, assetT
 		}
 	}
 	return response
+}
+
+func generationAssetTitleFromNotificationTarget(target *GenerationNotificationTarget) string {
+	if target == nil {
+		return ""
+	}
+	return strings.TrimSpace(target.Section.HeadingText)
+}
+
+func generationAssetTitleFromTask(task GenerationTaskRecord) string {
+	if title := stringFromGenerationParam(task.Params, generationAssetTitleRequestOption); title != "" {
+		return title
+	}
+	return generationFirstAssetTitle(task.Assets)
+}
+
+func generationFirstAssetTitle(assets []GenerationAsset) string {
+	for _, asset := range assets {
+		if title := strings.TrimSpace(asset.Title); title != "" {
+			return title
+		}
+	}
+	return ""
+}
+
+func stringFromGenerationParam(params map[string]any, key string) string {
+	if len(params) == 0 {
+		return ""
+	}
+	value, _ := params[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func generationParamsWithAssetTitle(params map[string]any, assetTitle string) map[string]any {
+	assetTitle = strings.TrimSpace(assetTitle)
+	if assetTitle == "" {
+		return params
+	}
+	next := make(map[string]any, len(params)+1)
+	for key, value := range params {
+		next[key] = value
+	}
+	next[generationAssetTitleRequestOption] = assetTitle
+	return next
+}
+
+func generationParamsForClient(params map[string]any) map[string]any {
+	if len(params) == 0 {
+		return params
+	}
+	next := make(map[string]any, len(params))
+	for key, value := range params {
+		if strings.HasPrefix(key, generationInternalParamPrefix) {
+			continue
+		}
+		next[key] = value
+	}
+	return next
 }
 
 // FailedGenerationResponse returns a failed generation response.
@@ -480,7 +539,8 @@ func GenerationTaskFromMessage(
 	if documentID == "" && request.DocumentContext != nil {
 		documentID = strings.TrimSpace(request.DocumentContext.DocumentID)
 	}
-	response = generationResponseWithAssetTitle(response, request.AssetTitle)
+	assetTitle := firstNonEmpty(request.AssetTitle, generationFirstAssetTitle(response.Assets))
+	response = generationResponseWithAssetTitle(response, assetTitle)
 	return GenerationTaskRecord{
 		ID:                response.ID,
 		ProviderTaskID:    generationProviderTaskIDForResponse(route, response),
@@ -499,7 +559,7 @@ func GenerationTaskFromMessage(
 		Prompt:            request.Prompt,
 		ReferenceURLs:     CompactStrings(request.ReferenceURLs),
 		ReferenceAssetIDs: CompactStrings(request.ReferenceAssetIDs),
-		Params:            request.Params,
+		Params:            generationParamsWithAssetTitle(request.Params, assetTitle),
 		Status:            response.Status,
 		Message:           response.Message,
 		Text:              response.Text,

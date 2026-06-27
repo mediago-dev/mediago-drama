@@ -283,6 +283,7 @@ const useEpisodeVideoGenerationDialogController = ({
 			documentContext,
 			historyScopeId,
 			sectionId,
+			assetTitle: generationContext.headingText,
 			taskType: "storyboard",
 			initialPrompt: generationContext.prompt,
 			modelPreferenceScopeId: conversationScopeId,

@@ -169,16 +169,17 @@ type GenerationNotificationEvent struct {
 
 // GenerationAsset is a generated asset reference or inline payload.
 type GenerationAsset struct {
-	AssetID   string `json:"assetId,omitempty"`
-	Kind      string `json:"kind" ts:"Kind"`
-	TaskID    string `json:"taskId,omitempty"`
-	Title     string `json:"title,omitempty"`
-	URL       string `json:"url,omitempty"`
-	PosterURL string `json:"posterUrl,omitempty"`
-	Base64    string `json:"base64,omitempty"`
-	MIMEType  string `json:"mimeType,omitempty"`
-	SlotIndex int    `json:"slotIndex"`
-	Selected  bool   `json:"selected,omitempty"`
+	AssetID      string `json:"assetId,omitempty"`
+	Kind         string `json:"kind" ts:"Kind"`
+	TaskID       string `json:"taskId,omitempty"`
+	Title        string `json:"title,omitempty"`
+	URL          string `json:"url,omitempty"`
+	PosterURL    string `json:"posterUrl,omitempty"`
+	Base64       string `json:"base64,omitempty"`
+	MIMEType     string `json:"mimeType,omitempty"`
+	DownloadPath string `json:"downloadPath,omitempty"`
+	SlotIndex    int    `json:"slotIndex"`
+	Selected     bool   `json:"selected,omitempty"`
 }
 
 // GenerationUsage contains token usage for generation providers.
@@ -264,6 +265,7 @@ type UpdateSelectedGenerationAssetRequest struct {
 	PosterURL        string `json:"posterUrl,omitempty"`
 	Base64           string `json:"base64,omitempty"`
 	MIMEType         string `json:"mimeType,omitempty"`
+	DownloadPath     string `json:"downloadPath,omitempty"`
 	SourceType       string `json:"sourceType,omitempty"`
 	TaskID           string `json:"taskId,omitempty"`
 	AssetIndex       *int   `json:"assetIndex,omitempty"`
@@ -295,6 +297,7 @@ type SelectedGenerationAssetRecord struct {
 	PosterURL        string `json:"posterUrl,omitempty"`
 	Base64           string `json:"base64,omitempty"`
 	MIMEType         string `json:"mimeType,omitempty"`
+	DownloadPath     string `json:"downloadPath,omitempty"`
 	SourceType       string `json:"sourceType,omitempty"`
 	SourceTaskID     string `json:"sourceTaskId,omitempty"`
 	SourceAssetIndex int    `json:"sourceAssetIndex,omitempty"`

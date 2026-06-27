@@ -194,6 +194,7 @@ describe("EpisodeVideoGenerationDialog", () => {
 			documentId: "story-doc",
 			sectionId: storyboardSectionBlockId,
 		});
+		expect(workspaceProps?.assetTitle).toBe("第 01 组");
 		expect(workspaceProps?.notificationTarget).toMatchObject({
 			section: {
 				blockId: storyboardSectionBlockId,

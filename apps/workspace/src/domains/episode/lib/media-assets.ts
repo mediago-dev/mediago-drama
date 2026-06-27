@@ -2,6 +2,7 @@ import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { Episode, TimelineClip } from "@/domains/episode/lib/sample";
 
 export interface EpisodeClipMediaMetadata {
+	downloadPath?: string;
 	duration: number;
 	posterUrl?: string;
 }
@@ -24,13 +25,15 @@ export const buildEpisodeClipMedia = (
 	const media: Record<string, EpisodeClipMediaMetadata> = {};
 	for (const clip of episode.tracks.find((track) => track.type === "video")?.clips ?? []) {
 		const asset = findMediaAssetForClipVideo(clip.videoUrl, videoAssets);
-		media[clip.id] = {
+		const metadata: EpisodeClipMediaMetadata = {
 			duration:
 				asset && Number.isFinite(asset.durationSeconds) && (asset.durationSeconds ?? 0) > 0
 					? (asset.durationSeconds ?? 0)
 					: 0,
 			posterUrl: asset?.posterUrl,
 		};
+		if (asset?.downloadPath) metadata.downloadPath = asset.downloadPath;
+		media[clip.id] = metadata;
 	}
 	return media;
 };

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
@@ -121,10 +122,11 @@ func (workflow *GenerationService) cacheGenerationResponseAssetsForTask(
 	response coregeneration.Response,
 	task generationTaskRecord,
 ) coregeneration.Response {
-	return workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptions(
+	return workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptionsWithTitle(
 		workflow.projectIDForTask(task),
 		task.ConversationID,
 		task.SectionID,
+		generationAssetTitleFromTask(task),
 	))
 }
 
@@ -159,10 +161,14 @@ func (workflow *GenerationService) cacheGenerationResponseAssetsWithOptions(
 		response.Assets[index].URL = cached.URL
 		response.Assets[index].Base64 = ""
 		response.Assets[index].MIMEType = cached.MIMEType
+		if response.Assets[index].Metadata == nil {
+			response.Assets[index].Metadata = map[string]any{}
+		}
+		response.Assets[index].Metadata["asset_id"] = cached.ID
+		if cached.DownloadPath != "" {
+			response.Assets[index].Metadata["download_path"] = cached.DownloadPath
+		}
 		if cached.PosterURL != "" {
-			if response.Assets[index].Metadata == nil {
-				response.Assets[index].Metadata = map[string]any{}
-			}
 			response.Assets[index].Metadata["poster_url"] = cached.PosterURL
 		}
 	}
@@ -219,7 +225,34 @@ func (workflow *GenerationService) cacheGenerationAsset(
 		return media.MediaAsset{}, fmt.Errorf("caching remote asset: %w", err)
 	}
 
+	cached = workflow.renameCachedGenerationAsset(cached, options, asset.URL)
 	return cached, nil
+}
+
+func (workflow *GenerationService) renameCachedGenerationAsset(
+	cached media.MediaAsset,
+	options media.MediaAssetSaveOptions,
+	sourceURL string,
+) media.MediaAsset {
+	filename := strings.TrimSpace(options.Filename)
+	if workflow == nil ||
+		workflow.mediaAssets == nil ||
+		filename == "" ||
+		cached.ID == "" ||
+		strings.TrimSpace(cached.SourceURL) != strings.TrimSpace(sourceURL) {
+		return cached
+	}
+	if filepath.Ext(filename) == "" {
+		filename += filepath.Ext(cached.Filename)
+	}
+	if cached.Filename == filename {
+		return cached
+	}
+	updated, ok, err := workflow.mediaAssets.UpdateFilename(cached.ID, filename)
+	if err != nil || !ok {
+		return cached
+	}
+	return updated
 }
 
 func isLocalMediaAssetURL(value string) bool {

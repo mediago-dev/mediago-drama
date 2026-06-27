@@ -1,6 +1,6 @@
 import type React from "react";
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import type { MarkdownDocument } from "@/domains/documents/stores";
@@ -17,6 +17,12 @@ const testState = vi.hoisted(() => ({
 		setSelection: vi.fn(() => true),
 	},
 	imageDialogProps: null as null | {
+		onGenerationComplete?: (
+			section: MarkdownSectionContext,
+			pendingId: string,
+			assets: [],
+			sourceTaskId: string,
+		) => void;
 		onToggleImage?: (
 			section: MarkdownSectionContext,
 			asset: { kind: "image"; url: string },
@@ -25,6 +31,11 @@ const testState = vi.hoisted(() => ({
 		open: boolean;
 		section: MarkdownSectionContext | null;
 	},
+	markdownEditorProps: null as null | {
+		onSectionGenerate?: (section: MarkdownSectionContext, kind?: "image") => void;
+		selectedSectionImageAssets?: Array<{ id: string; resourceId?: string; url?: string }>;
+		value?: string;
+	},
 	mentionPopoverProps: null as null | { projectId?: string },
 	videoDialogProps: null as null | {
 		open: boolean;
@@ -32,16 +43,29 @@ const testState = vi.hoisted(() => ({
 	},
 }));
 
+const generationApiMocks = vi.hoisted(() => ({
+	getSelectedGenerationAssets: vi.fn(),
+}));
+
 vi.mock("@/domains/documents/components/MarkdownHybridEditor", async () => {
 	const React = await import("react");
 	return {
-		MarkdownHybridEditor: React.forwardRef((_props, ref) => {
+		MarkdownHybridEditor: React.forwardRef((props, ref) => {
+			testState.markdownEditorProps = props;
 			React.useImperativeHandle(ref, () => testState.editorHandle);
 			return <div className="tiptap-content" data-testid="markdown-editor" />;
 		}),
 		prewarmMarkdownHybridEditorContent: vi.fn(),
 	};
 });
+
+vi.mock("@/domains/generation/api/generation", () => ({
+	getSelectedGenerationAssets: generationApiMocks.getSelectedGenerationAssets,
+	selectedGenerationAssetsQueryKey: (projectId?: string | null) => [
+		"/generation/selected-assets",
+		projectId?.trim() || "",
+	],
+}));
 
 vi.mock("@/domains/workspace/api/workspace", () => ({
 	createWorkspaceDocument: vi.fn(),
@@ -130,12 +154,18 @@ const makeDocument = (overrides: Partial<MarkdownDocument> = {}): MarkdownDocume
 });
 
 describe("WritingEditor", () => {
+	beforeEach(() => {
+		generationApiMocks.getSelectedGenerationAssets.mockResolvedValue({ assets: [] });
+	});
+
 	afterEach(() => {
 		cleanup();
 		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
 		testState.imageDialogProps = null;
+		testState.markdownEditorProps = null;
 		testState.mentionPopoverProps = null;
 		testState.videoDialogProps = null;
+		generationApiMocks.getSelectedGenerationAssets.mockReset();
 		Object.values(testState.editorHandle).forEach((value) => {
 			if (typeof value === "function" && "mockClear" in value) value.mockClear();
 		});
@@ -155,5 +185,103 @@ describe("WritingEditor", () => {
 		);
 
 		expect(testState.mentionPopoverProps?.projectId).toBe("project-a");
+	});
+
+	it("passes selected section images as editor display data without changing markdown value", async () => {
+		const document = makeDocument();
+		generationApiMocks.getSelectedGenerationAssets.mockResolvedValue({
+			assets: [
+				{
+					assetIndex: 0,
+					id: "selected-image",
+					kind: "image",
+					resourceId: "section_visual",
+					resourceType: "storyboard",
+					sourceDocumentId: "story-doc",
+					title: "画面图",
+					url: "/api/v1/media-assets/selected-image/content",
+				},
+				{
+					assetIndex: 0,
+					id: "other-doc-image",
+					kind: "image",
+					resourceId: "section_visual",
+					resourceType: "storyboard",
+					sourceDocumentId: "other-doc",
+					title: "其他文档图",
+					url: "/api/v1/media-assets/other-doc-image/content",
+				},
+			],
+		});
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			documents: [document],
+			projectId: "project-selected-images",
+			workspaceDir: "/workspace/project-selected-images",
+		});
+
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-selected-images"]}>
+				<WritingEditor />
+			</MemoryRouter>,
+		);
+
+		await waitFor(() =>
+			expect(testState.markdownEditorProps?.selectedSectionImageAssets).toEqual([
+				expect.objectContaining({
+					id: "selected-image",
+					resourceId: "section_visual",
+					url: "/api/v1/media-assets/selected-image/content",
+				}),
+			]),
+		);
+		expect(testState.markdownEditorProps?.value).toBe(document.content);
+	});
+
+	it("does not edit markdown when section image generation completes", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			documents: [makeDocument()],
+			projectId: "project-a",
+			workspaceDir: "/workspace/project-a",
+		});
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<WritingEditor />
+			</MemoryRouter>,
+		);
+
+		act(() => {
+			testState.markdownEditorProps?.onSectionGenerate?.(
+				{
+					blockId: "section_visual",
+					documentId: "story-doc",
+					headingLevel: 2,
+					headingOccurrence: 1,
+					headingText: "画面",
+					markdown: "## 画面\n\n画面提示词。",
+					plainText: "画面\n\n画面提示词。",
+					prompt: "画面提示词。",
+				},
+				"image",
+			);
+		});
+		act(() => {
+			testState.imageDialogProps?.onGenerationComplete?.(
+				{
+					blockId: "section_visual",
+					documentId: "story-doc",
+					headingLevel: 2,
+					headingOccurrence: 1,
+					headingText: "画面",
+					markdown: "## 画面\n\n画面提示词。",
+					plainText: "画面\n\n画面提示词。",
+					prompt: "画面提示词。",
+				},
+				"pending-image",
+				[],
+				"task-a",
+			);
+		});
+
+		expect(testState.editorHandle.removeSectionImagePlaceholder).not.toHaveBeenCalled();
 	});
 });

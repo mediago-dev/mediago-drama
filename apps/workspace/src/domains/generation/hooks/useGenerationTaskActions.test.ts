@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { useState } from "react";
 import type { KeyedMutator } from "swr";
+import { mutate as mutateSWR } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MediaAssetsResponse } from "@/domains/workspace/api/media";
 import {
@@ -24,6 +25,14 @@ vi.mock("@/domains/generation/api/generation", () => ({
 		kind ?? "",
 	],
 	getGenerationVideo: vi.fn(),
+	selectedGenerationAssetsQueryKey: (projectId: string): readonly [string, string] => [
+		"generation-selected-assets",
+		projectId,
+	],
+}));
+
+vi.mock("swr", () => ({
+	mutate: vi.fn(),
 }));
 
 const submittedVideoMessage = (overrides: Partial<ChatMessage> = {}): ChatMessage => ({
@@ -48,7 +57,10 @@ const submittedImageMessage = (overrides: Partial<ChatMessage> = {}): ChatMessag
 	...overrides,
 });
 
-const renderTaskActionsHook = (initialMessages: ChatMessage[] = [submittedVideoMessage()]) => {
+const renderTaskActionsHook = (
+	initialMessages: ChatMessage[] = [submittedVideoMessage()],
+	options: { projectId?: string | null } = {},
+) => {
 	const mutateMediaAssets = vi.fn(async () => ({
 		assets: [],
 	})) as unknown as KeyedMutator<MediaAssetsResponse>;
@@ -72,6 +84,7 @@ const renderTaskActionsHook = (initialMessages: ChatMessage[] = [submittedVideoM
 				mutateMediaAssets,
 				mutateProjectGenerationTasks,
 				mutateTasks,
+				projectId: options.projectId,
 				setActiveEntryId,
 				setError,
 				setMessages,
@@ -202,6 +215,27 @@ describe("useGenerationTaskActions", () => {
 		expect(deleteGenerationTaskAsset).toHaveBeenCalledWith("task-1", 0);
 		expect(result.current.deletedAssetPlaceholderCounts["task-1"]).toBeUndefined();
 		expect(result.current.messages[0]?.assets).toEqual([]);
+	});
+
+	it("refreshes selected project assets after deleting a generated image slot", async () => {
+		vi.mocked(deleteGenerationTaskAsset).mockResolvedValue(
+			{} as Awaited<ReturnType<typeof deleteGenerationTaskAsset>>,
+		);
+		const { result } = renderTaskActionsHook(
+			[
+				submittedImageMessage({
+					id: "task-1",
+					assets: [{ kind: "image", url: "/api/v1/media-assets/image-a/content" }],
+				}),
+			],
+			{ projectId: "project-a" },
+		);
+
+		await act(async () => {
+			await result.current.deleteGenerationEntryAsset("task-1", 0);
+		});
+
+		expect(mutateSWR).toHaveBeenCalledWith(["generation-selected-assets", "project-a"]);
 	});
 
 	it("persists hidden placeholder image slots without deleting the whole task", async () => {

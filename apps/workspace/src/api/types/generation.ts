@@ -302,6 +302,7 @@ export interface GenerationAsset {
 	posterUrl?: string;
 	base64?: string;
 	mimeType?: string;
+	downloadPath?: string;
 	slotIndex?: number;
 	selected?: boolean;
 }
@@ -377,6 +378,7 @@ export interface UpdateSelectedGenerationAssetRequest {
 	kind?: Kind;
 	mediaAssetId?: string;
 	mimeType?: string;
+	downloadPath?: string;
 	posterUrl?: string;
 	resourceId?: string;
 	resourceTitle?: string;
@@ -408,6 +410,7 @@ export interface SelectedGenerationAssetRecord {
 	kind: Kind;
 	mediaAssetId?: string;
 	mimeType?: string;
+	downloadPath?: string;
 	resourceId?: string;
 	resourceTitle?: string;
 	resourceType: SelectedGenerationResourceType;

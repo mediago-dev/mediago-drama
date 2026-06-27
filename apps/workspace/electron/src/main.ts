@@ -8,7 +8,8 @@ import {
 	shell,
 	type OpenDialogOptions,
 } from "electron";
-import { join } from "node:path";
+import { copyFile, mkdir, stat } from "node:fs/promises";
+import { basename, extname, join } from "node:path";
 import { preloadPath, rendererDistDir } from "./paths.js";
 import { startServerSidecar, stopServerSidecar } from "./sidecar.js";
 
@@ -114,6 +115,32 @@ ipcMain.handle("desktop:reveal-path", (_event, path: string) => {
 	shell.showItemInFolder(path);
 });
 
+ipcMain.handle(
+	"desktop:copy-file-to-directory",
+	async (_event, options: { directory?: string; filename?: string; sourcePath?: string }) => {
+		const sourcePath = String(options?.sourcePath ?? "").trim();
+		if (!sourcePath) throw new Error("sourcePath is required");
+
+		const sourceInfo = await stat(sourcePath);
+		if (!sourceInfo.isFile()) throw new Error("sourcePath is not a file");
+
+		const directory = String(options?.directory ?? "").trim();
+		if (!directory) throw new Error("directory is required");
+		const directoryInfo = await stat(directory);
+		if (!directoryInfo.isDirectory()) throw new Error("directory is not a folder");
+
+		await mkdir(directory, { recursive: true });
+		const filename = safeDownloadFilename(options?.filename || basename(sourcePath));
+		const targetPath = await availableDownloadPath(directory, filename);
+		await copyFile(sourcePath, targetPath);
+
+		return {
+			filename: basename(targetPath),
+			path: targetPath,
+		};
+	},
+);
+
 ipcMain.handle("desktop:pick-directory", async (_event, options?: { title?: string }) => {
 	const dialogOptions: OpenDialogOptions = {
 		title: options?.title,
@@ -157,6 +184,36 @@ ipcMain.handle("desktop:set-native-theme-source", (_event, source: unknown) => {
 	if (!isNativeThemeSource(source)) throw new Error("invalid native theme source");
 	nativeTheme.themeSource = source;
 });
+
+const safeDownloadFilename = (value: string) => {
+	const cleaned = basename(String(value || "download"))
+		.replace(/[\\/:*?"<>|#%{}^~[\]`]+/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	return cleaned || "download";
+};
+
+const availableDownloadPath = async (directory: string, filename: string) => {
+	const extension = extname(filename);
+	const stem = filename.slice(0, filename.length - extension.length) || "download";
+
+	for (let index = 1; index < 10_000; index += 1) {
+		const candidate = index === 1 ? filename : `${stem}-${index}${extension}`;
+		const candidatePath = join(directory, candidate);
+		if (await pathIsAvailable(candidatePath)) return candidatePath;
+	}
+
+	return join(directory, `${stem}-${Date.now()}${extension}`);
+};
+
+const pathIsAvailable = async (path: string) => {
+	try {
+		await stat(path);
+		return false;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === "ENOENT";
+	}
+};
 
 const startApp = async () => {
 	startServerSidecar();

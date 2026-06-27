@@ -92,6 +92,7 @@
 .tiptap-content > table,
 .tiptap-content > img,
 .tiptap-content > [data-section-media],
+.tiptap-content > [data-selected-section-images],
 .tiptap-content > h1,
 .tiptap-content > h2,
 .tiptap-content > h3,
@@ -389,6 +390,28 @@
 	background: var(--muted);
 	cursor: zoom-in;
 	object-fit: contain;
+}
+
+.tiptap-selected-section-images {
+	display: grid;
+	width: min(100%, 42rem);
+	grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+	gap: 0.5rem;
+	margin: 0.625rem 0 1rem;
+}
+
+.tiptap-selected-section-image {
+	min-width: 0;
+	margin: 0;
+}
+
+.tiptap-selected-section-image img {
+	width: 100%;
+	max-width: 100%;
+	aspect-ratio: 4 / 3;
+	border: var(--border-width-scale-sm) solid var(--border);
+	box-shadow: var(--shadow-sm);
+	object-fit: cover;
 }
 
 .tiptap-section-media {
