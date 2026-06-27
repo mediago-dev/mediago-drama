@@ -42,6 +42,11 @@ func TestTemplatesUseStructureOnlyRules(t *testing.T) {
 			t.Fatalf("character template contains legacy field %q", legacyField)
 		}
 	}
+	for _, requiredFragment := range []string{"每个可生成的人物形象使用二级标题", "aaa（十年前）", "aaa（变身后）"} {
+		if !strings.Contains(character.Body, requiredFragment) {
+			t.Fatalf("character template missing visual variant rule %q:\n%s", requiredFragment, character.Body)
+		}
+	}
 
 	scene, err := TemplateByID(context.Background(), "scene.v1")
 	if err != nil {

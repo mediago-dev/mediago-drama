@@ -53,6 +53,29 @@ func TestBuiltinPackParses(t *testing.T) {
 	}
 }
 
+func TestCharacterWriterSplitsVisualVariants(t *testing.T) {
+	bundle, err := Builtin(context.Background())
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+
+	for _, entry := range bundle.Entries {
+		if entry.Kind != pack.KindSkill || entry.Slug != "character-writer" {
+			continue
+		}
+
+		body := entry.Description + "\n" + entry.Body
+		for _, fragment := range []string{"时期/形态拆分", "aaa（十年前）", "aaa（十年后）", "aaa（变身前）", "aaa（变身后）"} {
+			if !strings.Contains(body, fragment) {
+				t.Fatalf("character-writer missing visual variant rule %q:\n%s", fragment, body)
+			}
+		}
+		return
+	}
+
+	t.Fatal("builtin skills missing character-writer")
+}
+
 func TestBuiltinCreativeSkillsDoNotBlockOnMissingVisualStyle(t *testing.T) {
 	bundle, err := Builtin(context.Background())
 	if err != nil {
