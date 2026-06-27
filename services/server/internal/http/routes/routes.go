@@ -172,6 +172,10 @@ func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 		handlers.GenerationTasks.HandleGenerationMessage,
 	)
 	apiRoutes.POST(
+		"/generation/sessions/:sessionId/messages/optimize-and-generate",
+		handlers.GenerationTasks.HandlePromptOptimizedGenerationMessage,
+	)
+	apiRoutes.POST(
 		"/generation/sessions/:sessionId/messages/stream",
 		handlers.GenerationTasks.HandleGenerationTextStream,
 	)

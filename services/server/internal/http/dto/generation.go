@@ -47,11 +47,23 @@ type GenerationMessageRequest struct {
 
 // GenerationPromptOptimizationRequest configures server-side prompt optimization before generation.
 type GenerationPromptOptimizationRequest struct {
-	RouteID         string         `json:"routeId"`
-	Model           string         `json:"model,omitempty"`
-	ReferenceName   string         `json:"referenceName,omitempty"`
-	ReferencePrompt string         `json:"referencePrompt"`
-	Params          map[string]any `json:"params,omitempty"`
+	ConversationID    string         `json:"sessionId,omitempty"`
+	ScopeID           string         `json:"scopeId,omitempty"`
+	ConversationTitle string         `json:"conversationTitle,omitempty"`
+	ProjectID         string         `json:"projectId,omitempty"`
+	CapabilityID      string         `json:"capabilityId,omitempty"`
+	RouteID           string         `json:"routeId"`
+	Model             string         `json:"model,omitempty"`
+	ReferenceName     string         `json:"referenceName,omitempty"`
+	ReferencePrompt   string         `json:"referencePrompt"`
+	Params            map[string]any `json:"params,omitempty"`
+}
+
+// GenerationOptimizeAndGenerateResponse returns both persisted steps of an optimized generation.
+type GenerationOptimizeAndGenerateResponse struct {
+	Optimization    GenerationMessageResponse `json:"optimization"`
+	Generation      GenerationMessageResponse `json:"generation"`
+	OptimizedPrompt string                    `json:"optimizedPrompt,omitempty"`
 }
 
 // GenerationDocumentContext identifies the source document section for generation.

@@ -20,6 +20,7 @@ import (
 type GenerationTaskService interface {
 	ListGenerationModels() dto.GenerationModelsResponse
 	CreateGenerationMessage(ctx context.Context, payload dto.GenerationMessageRequest) (dto.GenerationMessageResponse, int, error)
+	CreatePromptOptimizedGenerationMessage(ctx context.Context, payload dto.GenerationMessageRequest) (dto.GenerationOptimizeAndGenerateResponse, int, error)
 	PreviewGenerationVoice(ctx context.Context, payload dto.GenerationVoicePreviewRequest) (dto.GenerationVoicePreviewResponse, int, error)
 	GenerationVoicePreviewContent(routeID string, voiceID string) (dto.GenerationVoicePreviewAsset, []byte, bool, error)
 	ImportGenerationMediaAssets(payload dto.ImportGenerationMediaAssetsRequest) (dto.GenerationTasksResponse, int, error)
@@ -90,6 +91,36 @@ func (handler GenerationTasks) HandleGenerationMessage(context *gin.Context) {
 	}
 
 	response, status, err := handler.service.CreateGenerationMessage(context.Request.Context(), payload)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, status, err)
+		return
+	}
+	httpresponse.OK(context, response)
+}
+
+// HandlePromptOptimizedGenerationMessage godoc
+// @Summary 优化提示词并提交生成
+// @Description 先通过文本路由优化当前 prompt，再用优化后的 prompt 提交媒体生成，并记录两段工具箱历史。
+// @Tags Generation
+// @Accept json
+// @Produce json
+// @Param sessionId path string true "Session ID"
+// @Param payload body SwaggerObject true "Prompt optimized generation payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 503 {object} SwaggerEnvelope
+// @Router /api/v1/generation/sessions/{sessionId}/messages/optimize-and-generate [post]
+func (handler GenerationTasks) HandlePromptOptimizedGenerationMessage(context *gin.Context) {
+	payload, err := decodeJSON[dto.GenerationMessageRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	if sessionID := pathParam(context, "sessionId"); sessionID != "" {
+		payload.ConversationID = sessionID
+	}
+
+	response, status, err := handler.service.CreatePromptOptimizedGenerationMessage(context.Request.Context(), payload)
 	if err != nil {
 		httpresponse.ErrorFromStatus(context, status, err)
 		return

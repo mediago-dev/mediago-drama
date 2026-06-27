@@ -838,6 +838,125 @@ func TestCreatePromptOptimizedImageGenerationRunsOptimizationInBackground(t *tes
 	}
 }
 
+func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	repo, err := repository.NewGenerationTaskRepository(dbPath)
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{
+			coregeneration.ProviderDMX: "sk-test",
+		},
+	})
+	imageProvider := &blockingMultiAssetImageGenerateProvider{
+		started: make(chan coregeneration.Request, 1),
+		release: make(chan struct{}),
+	}
+	workflow := NewGenerationService(settingsSvc, store, media.NewMediaAssets(dbPath, t.TempDir()))
+	var textRequest coregeneration.Request
+	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		switch route.ID {
+		case coregeneration.RouteDMXGPT41MiniText:
+			return fakeTextStreamProvider{
+				request: &textRequest,
+				events: []coregeneration.TextStreamEvent{
+					{Delta: "optimized "},
+					{Delta: "prompt"},
+					{Done: true},
+				},
+			}, nil
+		case coregeneration.RouteDMXGPTImage2:
+			return imageProvider, nil
+		default:
+			t.Fatalf("route = %q, want prompt optimization text or image route", route.ID)
+			return nil, fmt.Errorf("unexpected route")
+		}
+	}
+
+	imageRoute, ok := coregeneration.FindRoute(coregeneration.RouteDMXGPTImage2)
+	if !ok {
+		t.Fatal("dmx gpt image route is missing")
+	}
+	response, status, err := workflow.CreatePromptOptimizedGenerationMessage(context.Background(), GenerationMessageRequest{
+		Kind:    string(coregeneration.KindImage),
+		RouteID: imageRoute.ID,
+		ModelID: imageRoute.LegacyModelID,
+		Model:   imageRoute.Model,
+		Prompt:  "原始角色提示词",
+		PromptOptimization: &GenerationPromptOptimizationRequest{
+			ConversationID:    "prompt-optimize-session",
+			ConversationTitle: "提示词优化",
+			RouteID:           coregeneration.RouteDMXGPT41MiniText,
+			Model:             "text-model",
+			ReferenceName:     "电影质感",
+			ReferencePrompt:   "cinematic lighting, detailed composition",
+		},
+		Params: map[string]any{"n": 1},
+	})
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("CreatePromptOptimizedGenerationMessage() status = %d error = %v", status, err)
+	}
+	if response.Optimization.Status != "completed" || response.OptimizedPrompt != "optimized prompt" {
+		t.Fatalf("optimization response = %+v, optimizedPrompt = %q; want completed optimized prompt", response.Optimization, response.OptimizedPrompt)
+	}
+	if response.Generation.Status != "submitted" {
+		t.Fatalf("generation response = %+v, want submitted image generation", response.Generation)
+	}
+
+	var imageRequest coregeneration.Request
+	select {
+	case imageRequest = <-imageProvider.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("image provider request did not start")
+	}
+	if imageRequest.Prompt != "optimized prompt" {
+		t.Fatalf("image prompt = %q, want optimized prompt", imageRequest.Prompt)
+	}
+	if !strings.Contains(textRequest.Prompt, "原始角色提示词") ||
+		!strings.Contains(textRequest.Prompt, "cinematic lighting, detailed composition") {
+		t.Fatalf("text prompt = %q, want original and reference prompts", textRequest.Prompt)
+	}
+
+	optimizationTask, ok, err := store.Get(response.Optimization.ID)
+	if err != nil {
+		t.Fatalf("Get(optimization) error = %v", err)
+	}
+	if !ok ||
+		optimizationTask.Kind != string(coregeneration.KindText) ||
+		optimizationTask.Text != "optimized prompt" ||
+		optimizationTask.ConversationID != "prompt-optimize-session" {
+		t.Fatalf("optimization task = %+v, want persisted text task", optimizationTask)
+	}
+	imageTask, ok, err := store.Get(response.Generation.ID)
+	if err != nil {
+		t.Fatalf("Get(generation) error = %v", err)
+	}
+	if !ok || imageTask.Kind != string(coregeneration.KindImage) || imageTask.Prompt != "optimized prompt" {
+		t.Fatalf("image task = %+v, want persisted image task using optimized prompt", imageTask)
+	}
+
+	close(imageProvider.release)
+	waitForGenerationTask(t, store, response.Generation.ID, func(task GenerationTaskRecord) bool {
+		return task.Status == "completed" && len(task.Assets) == 3
+	})
+	tasks, err := store.List()
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("task count = %d, want optimization and image generation tasks", len(tasks))
+	}
+	kinds := map[string]bool{}
+	for _, task := range tasks {
+		kinds[task.Kind] = true
+	}
+	if !kinds[string(coregeneration.KindText)] || !kinds[string(coregeneration.KindImage)] {
+		t.Fatalf("task kinds = %#v, want text and image records", kinds)
+	}
+}
+
 func TestCreateJimengImageDocumentContextDoesNotUseCurrentSectionImagesAsReferences(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	repo, err := repository.NewGenerationTaskRepository(dbPath)

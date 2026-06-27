@@ -492,6 +492,8 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		!ws.needsConversation &&
 		ws.selectedRoute.status === "available" &&
 		ws.selectedRoute.configured;
+	const canSubmitWithPromptOptimization =
+		canSubmitPromptOverride && Boolean(selectedPromptOptimizeModel?.route);
 	const handlePromptOptimizeSelect = useCallback(
 		(item: (typeof ws.promptInsertItems)[number]) => {
 			const referencePrompt = item.prompt.trim();
@@ -531,29 +533,40 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				return;
 			}
 
-			if (!canOptimizePrompt) {
-				const fallbackPrompt = appendPromptOptimizeReference(ws.prompt, referencePrompt);
-				ws.setPrompt(fallbackPrompt);
+			const textRoute = selectedPromptOptimizeModel?.route;
+			if (!textRoute) {
 				toast.warning("没有可用文本模型", {
-					description: "已使用追加后的提示词生成。",
+					description: "请选择可用文本模型后再优化并生成。",
 				});
-				await ws.submitGeneration({ prompt: fallbackPrompt });
 				return;
 			}
-
-			const textRoute = selectedPromptOptimizeModel?.route;
-			if (!textRoute) return;
 			await ws.submitGeneration({
 				prompt: ws.prompt,
 				promptOptimization: {
+					capabilityId: taskType ?? "studio",
+					conversationTitle: promptOptimizeConversationTitle ?? undefined,
+					projectId: (resolvedMediaAssetProjectId || projectId || "").trim() || undefined,
 					routeId: textRoute.id,
+					scopeId: promptOptimizeConversationScopeId ?? undefined,
+					sessionId: promptOptimizeConversationId ?? undefined,
 					model: textRoute.model,
 					referenceName: item.name,
 					referencePrompt,
 				},
 			});
 		},
-		[canOptimizePrompt, canSubmitPromptOverride, selectedPromptOptimizeModel?.route, toast, ws],
+		[
+			canSubmitPromptOverride,
+			projectId,
+			promptOptimizeConversationId,
+			promptOptimizeConversationScopeId,
+			promptOptimizeConversationTitle,
+			resolvedMediaAssetProjectId,
+			selectedPromptOptimizeModel?.route,
+			taskType,
+			toast,
+			ws,
+		],
 	);
 	const resultActions = useGeneratedResultActions({
 		defaultDownloadTitle,
@@ -1521,7 +1534,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				promptOptimizeControl={
 					<PromptOptimizeControl
 						canOptimize={canOptimizePrompt}
-						canGenerate={canSubmitPromptOverride}
+						canGenerate={canSubmitWithPromptOptimization}
 						disabled={ws.isSubmitting}
 						isOptimizing={isPromptOptimizing}
 						items={ws.promptInsertItems}
