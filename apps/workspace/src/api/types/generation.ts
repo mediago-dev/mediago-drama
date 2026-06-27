@@ -179,11 +179,22 @@ export interface GenerationMessageRequest {
 }
 
 export interface GenerationPromptOptimizationRequest {
+	sessionId?: string;
+	scopeId?: string;
+	conversationTitle?: string;
+	projectId?: string;
+	capabilityId?: string;
 	routeId: string;
 	model?: string;
 	referenceName?: string;
 	referencePrompt: string;
 	params?: Record<string, unknown>;
+}
+
+export interface GenerationOptimizeAndGenerateResponse {
+	optimization: GenerationMessageResponse;
+	generation: GenerationMessageResponse;
+	optimizedPrompt?: string;
 }
 
 export interface GenerationDocumentContext {

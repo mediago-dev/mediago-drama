@@ -10,6 +10,7 @@ import type {
 	GenerationMessageRequest as GeneratedGenerationMessageRequest,
 	GenerationMessageResponse as GeneratedGenerationMessageResponse,
 	GenerationModelsResponse as GeneratedGenerationModelsResponse,
+	GenerationOptimizeAndGenerateResponse as GeneratedGenerationOptimizeAndGenerateResponse,
 	GenerationPromptOptimizationRequest as GeneratedGenerationPromptOptimizationRequest,
 	GenerationVoicePreviewRequest as GeneratedGenerationVoicePreviewRequest,
 	GenerationVoicePreviewResponse as GeneratedGenerationVoicePreviewResponse,
@@ -77,6 +78,7 @@ export type ImportGenerationMediaAssetsRequest = Omit<
 export type GenerationAsset = GeneratedGenerationAsset;
 export type GenerationUsage = GeneratedGenerationUsage;
 export type GenerationMessageResponse = GeneratedGenerationMessageResponse;
+export type GenerationOptimizeAndGenerateResponse = GeneratedGenerationOptimizeAndGenerateResponse;
 export type GenerationVoicePreviewRequest = GeneratedGenerationVoicePreviewRequest;
 export type GenerationVoicePreviewResponse = GeneratedGenerationVoicePreviewResponse;
 export type GenerationNotification = GenerationNotificationRecord;
@@ -497,6 +499,18 @@ export const sendGenerationMessage = async (request: GenerationMessageRequest) =
 	const payload = generationMessagePayload(request);
 	const response = await httpClient.post<GenerationMessageResponse>(
 		`${generationConversationsKey}/${encodeURIComponent(payload.sessionId)}/messages`,
+		payload,
+		{
+			timeout: generationRequestTimeoutMs,
+		},
+	);
+	return response.data;
+};
+
+export const sendPromptOptimizedGenerationMessage = async (request: GenerationMessageRequest) => {
+	const payload = generationMessagePayload(request);
+	const response = await httpClient.post<GenerationOptimizeAndGenerateResponse>(
+		`${generationConversationsKey}/${encodeURIComponent(payload.sessionId)}/messages/optimize-and-generate`,
 		payload,
 		{
 			timeout: generationRequestTimeoutMs,

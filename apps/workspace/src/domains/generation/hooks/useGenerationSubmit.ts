@@ -16,6 +16,8 @@ import type {
 import {
 	createGenerationConversation,
 	generationConversationsQueryKey,
+	generationTasksQueryKey,
+	sendPromptOptimizedGenerationMessage,
 	sendGenerationMessage,
 	streamGenerationText,
 } from "@/domains/generation/api/generation";
@@ -84,6 +86,47 @@ export const generationRequestPrompt = ({
 }) => {
 	if (useRawPrompt) return prompt;
 	return promptWithExtraContext(prompt, extraPrompt);
+};
+
+const promptOptimizedGenerationRefreshDelaysMs = [1_000, 3_000, 8_000];
+
+const schedulePromptOptimizedGenerationRefresh = (refresh: () => void) => {
+	for (const delayMs of promptOptimizedGenerationRefreshDelaysMs) {
+		window.setTimeout(refresh, delayMs);
+	}
+};
+
+const refreshPromptOptimizationTasks = ({
+	mediaAssetProjectId,
+	mutateProjectGenerationTasks,
+	optimization,
+	scopeId,
+}: {
+	mediaAssetProjectId: string;
+	mutateProjectGenerationTasks: (kind: GenerationKind) => void;
+	optimization: GenerationMessageRequest["promptOptimization"];
+	scopeId?: string;
+}) => {
+	if (!optimization) return;
+	const optimizationRequest = optimization as GenerationMessageRequest["promptOptimization"] & {
+		sessionId?: string;
+		scopeId?: string;
+		projectId?: string;
+	};
+	const optimizationConversationId = optimizationRequest.sessionId?.trim() || null;
+	const optimizationScopeId = optimizationRequest.scopeId?.trim() || scopeId;
+	const optimizationProjectId = optimizationRequest.projectId?.trim() || mediaAssetProjectId;
+	void mutateSWR(
+		generationTasksQueryKey(
+			optimizationConversationId,
+			"text",
+			optimizationScopeId,
+			optimizationProjectId,
+		),
+	);
+	void mutateSWR(generationConversationsQueryKey("text", optimizationScopeId));
+	void mutateSWR(generationConversationsQueryKey("text", "", { allScopes: true }));
+	mutateProjectGenerationTasks("text");
 };
 
 interface UseGenerationSubmitOptions {
@@ -368,7 +411,7 @@ export const useGenerationSubmit = ({
 					return;
 				}
 
-				const response = await sendGenerationMessage({
+				const generationPayload: GenerationMessageRequest = {
 					kind: requestKind,
 					conversationId: conversationId ?? undefined,
 					scopeId: resolvedConversationScopeId,
@@ -390,7 +433,12 @@ export const useGenerationSubmit = ({
 					promptOptimization: overrides.promptOptimization,
 					referenceUrls: requestRoute.supportsReferenceUrls ? requestReferenceUrls : [],
 					referenceAssetIds: requestRoute.supportsReferenceUrls ? requestReferenceAssetIds : [],
-				});
+				};
+				const promptOptimizedResponse = overrides.promptOptimization
+					? await sendPromptOptimizedGenerationMessage(generationPayload)
+					: null;
+				const response =
+					promptOptimizedResponse?.generation ?? (await sendGenerationMessage(generationPayload));
 				const persistedUserMessage: ChatMessage = {
 					...userMessage,
 					id: userMessageID(response.id),
@@ -423,6 +471,18 @@ export const useGenerationSubmit = ({
 				);
 				void mutateTasks();
 				mutateProjectGenerationTasks(requestKind);
+				if (overrides.promptOptimization) {
+					refreshPromptOptimizationTasks({
+						mediaAssetProjectId,
+						mutateProjectGenerationTasks,
+						optimization: overrides.promptOptimization,
+						scopeId: resolvedConversationScopeId,
+					});
+					schedulePromptOptimizedGenerationRefresh(() => {
+						void mutateTasks();
+						mutateProjectGenerationTasks(requestKind);
+					});
+				}
 				void mutateSWR(generationConversationsQueryKey(requestKind, resolvedConversationScopeId));
 				void mutateSWR(generationConversationsQueryKey(requestKind, "", { allScopes: true }));
 				if (generatedAssetsIncludeMediaAssets(response.assets)) {

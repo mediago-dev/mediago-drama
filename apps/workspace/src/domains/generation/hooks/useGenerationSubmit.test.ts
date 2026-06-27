@@ -13,6 +13,7 @@ import type {
 } from "@/domains/generation/api/generation";
 import {
 	createGenerationConversation,
+	sendPromptOptimizedGenerationMessage,
 	sendGenerationMessage,
 	streamGenerationText,
 } from "@/domains/generation/api/generation";
@@ -36,6 +37,19 @@ vi.mock("@/domains/generation/api/generation", () => ({
 		options.allScopes ? "*" : scopeId,
 		kind ?? "",
 	],
+	generationTasksQueryKey: (
+		sessionId?: string | null,
+		kind?: string,
+		scopeId = "studio",
+		projectId?: string | null,
+	): readonly [string, string, string, string, string] => [
+		"/generation/tasks",
+		scopeId,
+		sessionId?.trim() || "",
+		kind ?? "",
+		projectId?.trim() || "",
+	],
+	sendPromptOptimizedGenerationMessage: vi.fn(),
 	sendGenerationMessage: vi.fn(),
 	streamGenerationText: vi.fn(),
 }));
@@ -364,6 +378,68 @@ describe("useGenerationSubmit", () => {
 		expect(mutateTasks).toHaveBeenCalledTimes(1);
 		expect(mutateProjectGenerationTasks).toHaveBeenCalledWith("image");
 		expect(mutateMediaAssets).toHaveBeenCalledTimes(1);
+	});
+
+	it("schedules follow-up task refreshes for server-side prompt optimization", async () => {
+		vi.useFakeTimers();
+		try {
+			vi.mocked(sendPromptOptimizedGenerationMessage).mockResolvedValue({
+				generation: generationResponse({ status: "submitted" }),
+				optimization: generationResponse({
+					id: "task-text",
+					status: "completed",
+					text: "optimized prompt",
+				}),
+				optimizedPrompt: "optimized prompt",
+			});
+			const { mutateProjectGenerationTasks, mutateTasks, result } = renderSubmitHook();
+
+			await act(async () => {
+				await result.current.submitGeneration({
+					promptOptimization: {
+						model: "text-model",
+						referenceName: "电影质感",
+						referencePrompt: "cinematic lighting, detailed composition",
+						routeId: "text-route",
+					},
+				});
+			});
+
+			expect(sendPromptOptimizedGenerationMessage).toHaveBeenCalledWith(
+				expect.objectContaining({
+					kind: "image",
+					promptOptimization: expect.objectContaining({
+						routeId: "text-route",
+					}),
+				}),
+			);
+			expect(sendGenerationMessage).not.toHaveBeenCalled();
+			expect(mutateTasks).toHaveBeenCalledTimes(1);
+			expect(mutateProjectGenerationTasks).toHaveBeenCalledTimes(2);
+			expect(mutateProjectGenerationTasks).toHaveBeenNthCalledWith(1, "image");
+			expect(mutateProjectGenerationTasks).toHaveBeenNthCalledWith(2, "text");
+
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(1_000);
+			});
+			expect(mutateTasks).toHaveBeenCalledTimes(2);
+			expect(mutateProjectGenerationTasks).toHaveBeenCalledTimes(3);
+			expect(mutateProjectGenerationTasks).toHaveBeenLastCalledWith("image");
+
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(2_000);
+			});
+			expect(mutateTasks).toHaveBeenCalledTimes(3);
+			expect(mutateProjectGenerationTasks).toHaveBeenCalledTimes(4);
+
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(5_000);
+			});
+			expect(mutateTasks).toHaveBeenCalledTimes(4);
+			expect(mutateProjectGenerationTasks).toHaveBeenCalledTimes(5);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("passes the asset title through generation requests", async () => {

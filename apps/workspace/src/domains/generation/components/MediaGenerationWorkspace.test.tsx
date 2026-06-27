@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { useState } from "react";
+import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	GenerationAsset,
@@ -247,6 +248,14 @@ const render = (ui: React.ReactElement) =>
 			{ui}
 			<ConfirmDialog />
 		</>,
+	);
+
+const renderWithIsolatedSWR = (ui: React.ReactElement) =>
+	testingRender(
+		<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+			{ui}
+			<ConfirmDialog />
+		</SWRConfig>,
 	);
 
 const imageEntry: GenerationEntry = {
@@ -1834,7 +1843,7 @@ describe("MediaGenerationWorkspace", () => {
 			submitGeneration,
 		} as unknown as ReturnType<typeof useGenerationWorkspace>);
 
-		render(
+		renderWithIsolatedSWR(
 			<MediaGenerationWorkspace
 				historyScopeId="history-a"
 				initialPrompt="原始角色提示词"
@@ -1851,17 +1860,117 @@ describe("MediaGenerationWorkspace", () => {
 		await waitFor(() =>
 			expect(submitGeneration).toHaveBeenCalledWith({
 				prompt: "原始角色提示词",
-				promptOptimization: {
+				promptOptimization: expect.objectContaining({
+					capabilityId: "studio",
+					conversationTitle: "项目 · 提示词优化",
 					model: "text-model",
+					projectId: "project-a",
 					referenceName: "电影质感",
 					referencePrompt: "cinematic lighting, detailed composition",
 					routeId: "text-route",
-				},
+					scopeId: "agent",
+					sessionId: "project-a-text",
+				}),
 			}),
 		);
 		expect(generationApiMocks.streamGenerationText).not.toHaveBeenCalled();
 		expect(setPrompt).not.toHaveBeenCalledWith("optimized ");
 		expect(setPrompt).not.toHaveBeenCalledWith("optimized prompt");
+	});
+
+	it("submits server-side prompt optimization even when frontend optimize instructions are unavailable", async () => {
+		const setPrompt = vi.fn();
+		const submitGeneration = vi.fn(async () => undefined);
+		promptTemplateApiMocks.listPromptTemplates.mockResolvedValueOnce([
+			{
+				id: "TOOLS",
+				content: "# 工具使用原则\n\n没有提示词优化系统指令",
+			},
+		]);
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			catalog: textGenerationCatalog,
+			prompt: "原始角色提示词",
+			promptInsertItems: [promptInsertItem],
+			setPrompt,
+			submitGeneration,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		renderWithIsolatedSWR(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="原始角色提示词"
+				kind="image"
+				projectId="project-a"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
+		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+		await waitFor(() => expect(promptTemplateApiMocks.listPromptTemplates).toHaveBeenCalled());
+		await waitFor(() => expect(screen.getByRole("button", { name: "优化并生成" })).toBeEnabled());
+		fireEvent.click(screen.getByRole("button", { name: "优化并生成" }));
+
+		await waitFor(() =>
+			expect(submitGeneration).toHaveBeenCalledWith({
+				prompt: "原始角色提示词",
+				promptOptimization: expect.objectContaining({
+					capabilityId: "studio",
+					conversationTitle: "项目 · 提示词优化",
+					model: "text-model",
+					projectId: "project-a",
+					referenceName: "电影质感",
+					referencePrompt: "cinematic lighting, detailed composition",
+					routeId: "text-route",
+					scopeId: "agent",
+					sessionId: "project-a-text",
+				}),
+			}),
+		);
+		expect(setPrompt).not.toHaveBeenCalledWith(
+			"原始角色提示词\n\ncinematic lighting, detailed composition",
+		);
+		expect(generationApiMocks.streamGenerationText).not.toHaveBeenCalled();
+	});
+
+	it("does not directly generate from optimize-and-generate when no text route is available", () => {
+		const setPrompt = vi.fn();
+		const submitGeneration = vi.fn(async () => undefined);
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			catalog: {
+				families: [{ id: "image-family", kind: "image", label: "图像模型" }],
+				models: [],
+				providers: [],
+				routes: [workspaceDefaults.selectedRoute],
+				versions: [{ id: "version-image", kind: "image", label: "v1" }],
+			},
+			prompt: "原始角色提示词",
+			promptInsertItems: [promptInsertItem],
+			setPrompt,
+			submitGeneration,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		renderWithIsolatedSWR(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="原始角色提示词"
+				kind="image"
+				projectId="project-a"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
+		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
+
+		const optimizeAndGenerate = screen.getByRole("button", { name: "优化并生成" });
+		expect(optimizeAndGenerate).toBeDisabled();
+		fireEvent.click(optimizeAndGenerate);
+
+		expect(submitGeneration).not.toHaveBeenCalled();
+		expect(setPrompt).not.toHaveBeenCalledWith(
+			"原始角色提示词\n\ncinematic lighting, detailed composition",
+		);
 	});
 
 	it("uses the selected text model for prompt optimization", async () => {
@@ -1877,7 +1986,7 @@ describe("MediaGenerationWorkspace", () => {
 			setPrompt,
 		} as unknown as ReturnType<typeof useGenerationWorkspace>);
 
-		render(
+		renderWithIsolatedSWR(
 			<MediaGenerationWorkspace
 				historyScopeId="history-a"
 				initialPrompt="原始角色提示词"
@@ -1886,6 +1995,12 @@ describe("MediaGenerationWorkspace", () => {
 			/>,
 		);
 
+		await waitFor(() =>
+			expect(screen.getByRole("button", { name: "优化提示词" })).toHaveAttribute(
+				"title",
+				"优化提示词",
+			),
+		);
 		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
 		const optimizeRouteButton = screen
 			.getAllByRole("button", {

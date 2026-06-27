@@ -29,6 +29,9 @@ type ImportGenerationMediaAssetsRequest = dto.ImportGenerationMediaAssetsRequest
 // GenerationMessageResponse is returned by generation create/poll/retry calls.
 type GenerationMessageResponse = dto.GenerationMessageResponse
 
+// GenerationOptimizeAndGenerateResponse returns both steps of an optimized generation.
+type GenerationOptimizeAndGenerateResponse = dto.GenerationOptimizeAndGenerateResponse
+
 // GenerationTextStreamEvent is one server-sent event for text generation.
 type GenerationTextStreamEvent = dto.GenerationTextStreamEvent
 
