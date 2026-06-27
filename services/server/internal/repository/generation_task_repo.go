@@ -303,20 +303,31 @@ func (repo *GenerationTaskRepository) ListProjectSelectedAssets(projectID string
 	return models, nil
 }
 
-// HasProjectSelectedAssetForResource reports whether a creative resource already has a selected asset.
-func (repo *GenerationTaskRepository) HasProjectSelectedAssetForResource(projectID string, resourceType string, resourceID string, sourceDocumentID string) (bool, error) {
+// HasProjectSelectedAssetForResource reports whether a creative resource already has a selected asset of the requested kind.
+func (repo *GenerationTaskRepository) HasProjectSelectedAssetForResource(projectID string, resourceType string, resourceID string, sourceDocumentID string, kind string) (bool, error) {
 	projectID = domain.CleanProjectID(projectID)
 	resourceType = strings.TrimSpace(resourceType)
 	resourceID = strings.TrimSpace(resourceID)
 	sourceDocumentID = strings.TrimSpace(sourceDocumentID)
-	if projectID == "" || resourceType == "" || resourceID == "" {
+	kind = strings.TrimSpace(kind)
+	if projectID == "" || resourceType == "" || resourceID == "" || kind == "" {
 		return false, nil
 	}
 
 	query := repo.db.Model(&domain.ProjectSelectedAssetModel{}).
-		Where("project_id = ? AND resource_type = ? AND resource_id = ?", projectID, resourceType, resourceID)
+		Joins("JOIN assets ON assets.id = project_selected_assets.asset_id").
+		Where(
+			"project_selected_assets.project_id = ? AND project_selected_assets.resource_type = ? AND project_selected_assets.resource_id = ?",
+			projectID,
+			resourceType,
+			resourceID,
+		)
+	query = query.Where("assets.kind = ?", kind)
 	if sourceDocumentID != "" {
-		query = query.Where("(source_document_id IS NULL OR source_document_id = '' OR source_document_id = ?)", sourceDocumentID)
+		query = query.Where(
+			"(project_selected_assets.source_document_id IS NULL OR project_selected_assets.source_document_id = '' OR project_selected_assets.source_document_id = ?)",
+			sourceDocumentID,
+		)
 	}
 
 	var count int64

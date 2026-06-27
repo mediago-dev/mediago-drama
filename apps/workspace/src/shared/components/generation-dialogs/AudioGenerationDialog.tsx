@@ -1,13 +1,14 @@
 import type React from "react";
 import { useEffect, useState } from "react";
 import { Images } from "lucide-react";
-import type { GenerationAsset } from "@/domains/generation/api/generation";
+import type { GenerationAsset, SelectedGenerationAsset } from "@/domains/generation/api/generation";
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
 import { DocumentSectionGenerator } from "@/domains/documents/components/DocumentSectionGenerator";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { Button } from "@/shared/components/ui/button";
 
 interface AudioGenerationDialogProps {
+	onAssetSelectionPersisted?: () => void;
 	onOpenChange: (open: boolean) => void;
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
@@ -15,6 +16,7 @@ interface AudioGenerationDialogProps {
 	projectId?: string;
 	resolveLatestSection?: boolean;
 	selectedAssetKeys?: string[];
+	selectedGenerationAssets?: SelectedGenerationAsset[];
 	section: MarkdownSectionContext | null;
 	title?: string;
 	titleId?: string;
@@ -23,13 +25,15 @@ interface AudioGenerationDialogProps {
 const defaultAudioTitleId = "audio-generation-title";
 
 export const AudioGenerationDialog: React.FC<AudioGenerationDialogProps> = ({
+	onAssetSelectionPersisted,
 	onOpenChange,
 	onOpenReferenceGeneration,
 	onToggleAsset,
 	open,
 	projectId,
 	resolveLatestSection,
-	selectedAssetKeys = [],
+	selectedAssetKeys,
+	selectedGenerationAssets,
 	section,
 	title,
 	titleId = defaultAudioTitleId,
@@ -74,7 +78,9 @@ export const AudioGenerationDialog: React.FC<AudioGenerationDialogProps> = ({
 				resolveLatestSection={resolveLatestSection}
 				section={activeSection}
 				selectedAssetKeys={selectedAssetKeys}
+				selectedGenerationAssets={selectedGenerationAssets}
 				viewMode="history"
+				onAssetSelectionPersisted={onAssetSelectionPersisted}
 				onGenerationComplete={() => undefined}
 				onGenerationError={() => undefined}
 				onGenerationStart={() => undefined}

@@ -450,6 +450,7 @@ func (service *GenerationTaskService) upsertSelectedAssetRecord(projectID string
 	}
 	model.ProjectID = domain.CleanProjectID(model.ProjectID)
 	model.ResourceType = resourceType
+	assetKind := strings.TrimSpace(request.Kind)
 	taskID := strings.TrimSpace(request.SourceTaskID)
 	if taskID == "" {
 		taskID = strings.TrimSpace(request.TaskID)
@@ -475,6 +476,7 @@ func (service *GenerationTaskService) upsertSelectedAssetRecord(projectID string
 				return projectSelectedAssetModel{}, false, nil
 			}
 			asset := task.Assets[assetSliceIndex]
+			assetKind = strings.TrimSpace(asset.Kind)
 			title := domain.StringValue(model.ResourceTitle)
 			if title == "" {
 				title = strings.TrimSpace(asset.Title)
@@ -535,13 +537,16 @@ func (service *GenerationTaskService) upsertSelectedAssetRecord(projectID string
 	if strings.TrimSpace(model.AssetID) == "" {
 		return projectSelectedAssetModel{}, false, nil
 	}
+	model.ID = projectSelectedAssetID(model)
+	if err := service.clearProjectSelectedAssetRowsForResourceKindLocked(model, assetKind); err != nil {
+		return projectSelectedAssetModel{}, false, err
+	}
 
 	now := timestamp.NowRFC3339Nano()
 	if model.CreatedAt.IsZero() {
 		model.CreatedAt = domain.TimeFromString(now)
 	}
 	model.UpdatedAt = domain.TimeFromString(now)
-	model.ID = projectSelectedAssetID(model)
 	if err := service.repo.UpsertProjectSelectedAsset(model); err != nil {
 		return projectSelectedAssetModel{}, false, err
 	}
@@ -550,6 +555,57 @@ func (service *GenerationTaskService) upsertSelectedAssetRecord(projectID string
 		return projectSelectedAssetModel{}, false, err
 	}
 	return persisted, true, nil
+}
+
+func (service *GenerationTaskService) clearProjectSelectedAssetRowsForResourceKindLocked(model domain.ProjectSelectedAssetModel, kind string) error {
+	kind = strings.TrimSpace(kind)
+	resourceID := domain.StringValue(model.ResourceID)
+	if service.repo == nil ||
+		domain.CleanProjectID(model.ProjectID) == "" ||
+		strings.TrimSpace(model.ResourceType) == "" ||
+		strings.TrimSpace(resourceID) == "" ||
+		!isSelectableGenerationAssetKind(kind) {
+		return nil
+	}
+
+	existingRows, err := service.repo.ListProjectSelectedAssets(model.ProjectID)
+	if err != nil {
+		return err
+	}
+	for _, existing := range existingRows {
+		if strings.TrimSpace(existing.ID) == strings.TrimSpace(model.ID) {
+			continue
+		}
+		if !sameProjectSelectedResourceKind(existing, model, kind) {
+			continue
+		}
+		if _, err := service.repo.DeleteProjectSelectedAsset(existing.ID); err != nil {
+			return err
+		}
+		sourceTaskID := domain.StringValue(existing.SourceTaskID)
+		if sourceTaskID != "" && existing.SourceSlotIndex >= 0 {
+			if err := service.setTaskAssetSelectedLocked(sourceTaskID, existing.SourceSlotIndex, false, "", ""); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func sameProjectSelectedResourceKind(existing domain.ProjectSelectedAssetModel, next domain.ProjectSelectedAssetModel, kind string) bool {
+	if domain.CleanProjectID(existing.ProjectID) != domain.CleanProjectID(next.ProjectID) ||
+		strings.TrimSpace(existing.ResourceType) != strings.TrimSpace(next.ResourceType) ||
+		domain.StringValue(existing.ResourceID) != domain.StringValue(next.ResourceID) ||
+		strings.TrimSpace(existing.Asset.Kind) != strings.TrimSpace(kind) {
+		return false
+	}
+
+	nextDocumentID := domain.StringValue(next.SourceDocumentID)
+	if nextDocumentID == "" {
+		return true
+	}
+	existingDocumentID := domain.StringValue(existing.SourceDocumentID)
+	return existingDocumentID == "" || existingDocumentID == nextDocumentID
 }
 
 func (service *GenerationTaskService) setTaskAssetSelectedLocked(taskID string, assetIndex int, selected bool, title string, resourceType string) error {
@@ -721,7 +777,7 @@ func (service *GenerationTaskService) applyDefaultSelectedAssetLocked(task *Gene
 	resourceType := selectedGenerationResourceType(task.CapabilityID)
 	resourceID := strings.TrimSpace(task.SectionID)
 	sourceDocumentID := strings.TrimSpace(task.DocumentID)
-	exists, err := service.repo.HasProjectSelectedAssetForResource(projectID, resourceType, resourceID, sourceDocumentID)
+	exists, err := service.repo.HasProjectSelectedAssetForResource(projectID, resourceType, resourceID, sourceDocumentID, task.Kind)
 	if err != nil || exists {
 		return err
 	}
@@ -736,13 +792,13 @@ func (service *GenerationTaskService) applyDefaultSelectedAssetLocked(task *Gene
 
 func shouldDefaultSelectGenerationAsset(task GenerationTaskRecord) bool {
 	if !isCompletedGenerationTaskStatus(task.Status) ||
-		strings.TrimSpace(task.Kind) != "image" ||
+		!isSelectableGenerationAssetKind(task.Kind) ||
 		strings.TrimSpace(task.RouteID) == importedMediaGenerationRouteID ||
 		GenerationProjectIDForRequest(task.ProjectID, "") == "" ||
 		selectedGenerationResourceType(task.CapabilityID) == "" ||
 		strings.TrimSpace(task.DocumentID) == "" ||
 		strings.TrimSpace(task.SectionID) == "" ||
-		taskHasSelectedGenerationImageAsset(task) {
+		taskHasSelectedGenerationAsset(task, task.Kind) {
 		return false
 	}
 	return true
@@ -757,11 +813,12 @@ func isCompletedGenerationTaskStatus(status string) bool {
 	}
 }
 
-func taskHasSelectedGenerationImageAsset(task GenerationTaskRecord) bool {
+func taskHasSelectedGenerationAsset(task GenerationTaskRecord, kind string) bool {
+	kind = strings.TrimSpace(kind)
 	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
 	for index, asset := range task.Assets {
 		slotIndex := assetSlotIndex(index, asset)
-		if deletedSlots[slotIndex] || strings.TrimSpace(asset.Kind) != "image" {
+		if deletedSlots[slotIndex] || strings.TrimSpace(asset.Kind) != kind {
 			continue
 		}
 		if asset.Selected {
@@ -772,17 +829,27 @@ func taskHasSelectedGenerationImageAsset(task GenerationTaskRecord) bool {
 }
 
 func firstDefaultSelectableGenerationAssetIndex(task GenerationTaskRecord) int {
+	kind := strings.TrimSpace(task.Kind)
 	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
 	for index, asset := range task.Assets {
 		slotIndex := assetSlotIndex(index, asset)
 		if deletedSlots[slotIndex] ||
-			strings.TrimSpace(asset.Kind) != "image" ||
+			strings.TrimSpace(asset.Kind) != kind ||
 			firstNonEmpty(asset.AssetID, libraryAssetIDFromGenerationAssetURL(asset.URL)) == "" {
 			continue
 		}
 		return index
 	}
 	return -1
+}
+
+func isSelectableGenerationAssetKind(kind string) bool {
+	switch strings.TrimSpace(kind) {
+	case "audio", "image", "video":
+		return true
+	default:
+		return false
+	}
 }
 
 func (service *GenerationTaskService) ensureTaskConversationLocked(task GenerationTaskRecord) error {
@@ -1311,7 +1378,7 @@ func projectSelectedAssetModelsFromRecord(task GenerationTaskRecord) []domain.Pr
 	rows := []domain.ProjectSelectedAssetModel{}
 	for index, asset := range task.Assets {
 		slotIndex := assetSlotIndex(index, asset)
-		if deletedSlots[slotIndex] || !asset.Selected || strings.TrimSpace(asset.Kind) != "image" {
+		if deletedSlots[slotIndex] || !asset.Selected || !isSelectableGenerationAssetKind(asset.Kind) {
 			continue
 		}
 		row := domain.ProjectSelectedAssetModel{
@@ -1379,7 +1446,7 @@ func projectSelectedAssetModelFromTaskAsset(task GenerationTaskRecord, assetInde
 	if !ok {
 		return domain.ProjectSelectedAssetModel{}, false
 	}
-	if strings.TrimSpace(asset.Kind) != "image" {
+	if !isSelectableGenerationAssetKind(asset.Kind) {
 		return domain.ProjectSelectedAssetModel{}, false
 	}
 	row := domain.ProjectSelectedAssetModel{

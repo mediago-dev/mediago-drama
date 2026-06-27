@@ -470,13 +470,13 @@ describe("ProjectOverview", () => {
 										title: "第 01 组 总时长：00:08",
 										videos: [
 											{
-												id: "markdown:section_reel_01:/api/v1/media-assets/video-1/content",
+												id: "selected:selected-storyboard-video-1",
 												mimeType: "video/mp4",
-												posterUrl: "/api/v1/media-assets/video-1/poster",
+												posterUrl: "/api/v1/media-assets/selected-video-1/poster",
 												sectionTitle: "第 01 组 总时长：00:08",
-												sourceLabel: "文档成片",
-												src: "/api/v1/media-assets/video-1/content",
-												title: "落水镜头",
+												sourceLabel: "已选成片",
+												src: "/api/v1/media-assets/selected-video-1/content",
+												title: "已选落水镜头",
 											},
 										],
 									},
@@ -499,17 +499,7 @@ describe("ProjectOverview", () => {
 										prompt: "## 第 02 组 总时长：00:06\n\n### 分镜 02\n\n他猛然睁眼。",
 										sectionId: "section_reel_02",
 										title: "第 02 组 总时长：00:06",
-										videos: [
-											{
-												id: "markdown:section_reel_02:/api/v1/media-assets/video-2/content",
-												mimeType: "video/mp4",
-												posterUrl: "/api/v1/media-assets/video-2/poster",
-												sectionTitle: "第 02 组 总时长：00:06",
-												sourceLabel: "文档成片",
-												src: "/api/v1/media-assets/video-2/content",
-												title: "苏醒镜头",
-											},
-										],
+										videos: [],
 									},
 								],
 							},
@@ -534,17 +524,7 @@ describe("ProjectOverview", () => {
 										prompt: "## 第 01 组 总时长：00:05\n\n### 分镜 01\n\n门外传来脚步声。",
 										sectionId: "section_reel_b_01",
 										title: "第 01 组 总时长：00:05",
-										videos: [
-											{
-												id: "task:task-video-b:0",
-												mimeType: "video/mp4",
-												posterUrl: "/api/v1/media-assets/video-3/poster",
-												sectionTitle: "第 01 组 总时长：00:05",
-												sourceLabel: "生成历史",
-												src: "/api/v1/media-assets/video-3/content",
-												title: "门外脚步成片",
-											},
-										],
+										videos: [],
 									},
 								],
 							},
@@ -812,8 +792,8 @@ describe("ProjectOverview", () => {
 		);
 
 		await screen.findByRole("button", { name: "第一章分镜脚本 成片资源" });
-		expect(screen.getByText("分镜组 2 项 · 成片 2 个")).toBeInTheDocument();
-		expect(await screen.findByText("分镜组 1 项 · 成片 1 个")).toBeInTheDocument();
+		expect(screen.getByText("分镜组 2 项 · 成片 1 个")).toBeInTheDocument();
+		expect(await screen.findByText("分镜组 1 项 · 成片 0 个")).toBeInTheDocument();
 		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 成片资源" }));
 
 		const dialog = await screen.findByRole("dialog");
@@ -821,18 +801,14 @@ describe("ProjectOverview", () => {
 		expect(within(dialog).getByText("第 01 组 总时长：00:08")).toBeInTheDocument();
 		expect(within(dialog).getByText("第 02 组 总时长：00:06")).toBeInTheDocument();
 		expect(within(dialog).queryByText("分镜 01")).not.toBeInTheDocument();
-		expect(within(dialog).getByText("落水镜头")).toBeInTheDocument();
-		expect(within(dialog).getByText("苏醒镜头")).toBeInTheDocument();
+		expect(within(dialog).getByText("已选落水镜头")).toBeInTheDocument();
+		expect(within(dialog).queryByText("苏醒镜头")).not.toBeInTheDocument();
 		expect(within(dialog).queryByText("门外脚步成片")).not.toBeInTheDocument();
 		expect(within(dialog).getAllByRole("button", { name: "生成视频" })).toHaveLength(2);
 
-		expect(within(dialog).getByRole("img", { name: "落水镜头" })).toHaveAttribute(
+		expect(within(dialog).getByRole("img", { name: "已选落水镜头" })).toHaveAttribute(
 			"src",
-			"/api/v1/media-assets/video-1/poster",
-		);
-		expect(within(dialog).getByRole("img", { name: "苏醒镜头" })).toHaveAttribute(
-			"src",
-			"/api/v1/media-assets/video-2/poster",
+			"/api/v1/media-assets/selected-video-1/poster",
 		);
 		expect(within(dialog).queryByText("已有成片")).not.toBeInTheDocument();
 		expect(within(dialog).queryByTestId("overview-video-player")).not.toBeInTheDocument();
@@ -853,7 +829,14 @@ describe("ProjectOverview", () => {
 				}),
 			});
 			expect(props?.selectedAssetKeys).toBeUndefined();
+			expect(props?.onAssetSelectionPersisted).toEqual(expect.any(Function));
 		});
+		const generationDialogProps = dialogMocks.VideoGenerationDialog.mock.calls.at(-1)?.[0];
+		const onAssetSelectionPersisted = generationDialogProps?.onAssetSelectionPersisted as
+			| (() => void)
+			| undefined;
+		onAssetSelectionPersisted?.();
+		await waitFor(() => expect(selectedGenerationAssetsRequestCount).toBeGreaterThanOrEqual(2));
 
 		fireEvent.keyDown(document, { key: "Escape" });
 		await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -862,12 +845,11 @@ describe("ProjectOverview", () => {
 		const secondDialog = await screen.findByRole("dialog");
 		expect(within(secondDialog).getByText("成片资源 · 第二章分镜脚本")).toBeInTheDocument();
 		expect(within(secondDialog).getByText("第 01 组 总时长：00:05")).toBeInTheDocument();
-		expect(within(secondDialog).getByText("门外脚步成片")).toBeInTheDocument();
-
-		expect(within(secondDialog).getByRole("img", { name: "门外脚步成片" })).toHaveAttribute(
-			"src",
-			"/api/v1/media-assets/video-3/poster",
-		);
+		expect(within(secondDialog).queryByText("门外脚步成片")).not.toBeInTheDocument();
+		expect(
+			within(secondDialog).queryByRole("img", { name: "门外脚步成片" }),
+		).not.toBeInTheDocument();
+		expect(within(secondDialog).getByText("暂无成片")).toBeInTheDocument();
 		expect(within(secondDialog).queryByText("已有成片")).not.toBeInTheDocument();
 		expect(within(secondDialog).queryByTestId("overview-video-player")).not.toBeInTheDocument();
 	});

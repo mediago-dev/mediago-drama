@@ -27,6 +27,7 @@ import {
 	MediaGenerationWorkspace,
 	type MediaGenerationWorkspaceViewMode,
 } from "@/domains/generation/components/MediaGenerationWorkspace";
+import { selectedGenerationAssetKeysForSection } from "@/domains/generation/lib/selected-asset-keys";
 import { PromptEditor, type PromptEditorProps } from "@/domains/generation/components/PromptEditor";
 import {
 	mentionReferenceKey,
@@ -38,7 +39,7 @@ import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/st
 export interface DocumentSectionGeneratorProps {
 	kind?: GenerationKind;
 	section: MarkdownSectionContext;
-	selectedAssetKeys: string[];
+	selectedAssetKeys?: string[];
 	materialLibraryImportOpen?: boolean;
 	projectId?: string;
 	resolveLatestSection?: boolean;
@@ -52,6 +53,7 @@ export interface DocumentSectionGeneratorProps {
 	onGenerationStart: (pendingId: string, prompt: string) => void;
 	onHistoryCountChange?: (count: number) => void;
 	onMaterialLibraryImportOpenChange?: (open: boolean) => void;
+	onAssetSelectionPersisted?: () => void;
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	onViewModeChange?: (viewMode: MediaGenerationWorkspaceViewMode) => void;
@@ -68,6 +70,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	onGenerationStart,
 	onHistoryCountChange,
 	onMaterialLibraryImportOpenChange,
+	onAssetSelectionPersisted,
 	onOpenReferenceGeneration,
 	onToggleAsset,
 	onViewModeChange,
@@ -116,6 +119,16 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	);
 	const mentionSelectedGenerationAssets =
 		selectedGenerationAssets ?? selectedGenerationAssetsData?.assets ?? [];
+	const resolvedSelectedAssetKeys = useMemo(
+		() =>
+			selectedAssetKeys ??
+			selectedGenerationAssetKeysForSection(
+				mentionSelectedGenerationAssets,
+				activeSection,
+				generationKind,
+			),
+		[activeSection, generationKind, mentionSelectedGenerationAssets, selectedAssetKeys],
+	);
 
 	const resolveAllMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
@@ -195,12 +208,13 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 						selectedGenerationAssets={mentionSelectedGenerationAssets}
 					/>
 				)}
-				selectedAssetKeys={selectedAssetKeys}
+				selectedAssetKeys={resolvedSelectedAssetKeys}
 				selectedAssetResourceId={activeSection.blockId}
 				selectedAssetSourceDocumentId={activeSection.documentId}
 				selectedAssetTitle={activeSection.headingText}
 				submitLabel={sectionGenerationWorkspaceCopy[generationKind].submitLabel}
 				uploadIdPrefix="section-generation"
+				onAssetSelectionPersisted={onAssetSelectionPersisted}
 				onGenerationComplete={onGenerationComplete}
 				onGenerationError={onGenerationError}
 				onGenerationResponse={onGenerationResponse}

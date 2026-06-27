@@ -411,6 +411,7 @@ export interface SelectedGenerationAssetRecord {
 	mediaAssetId?: string;
 	mimeType?: string;
 	downloadPath?: string;
+	posterUrl?: string;
 	resourceId?: string;
 	resourceTitle?: string;
 	resourceType: SelectedGenerationResourceType;

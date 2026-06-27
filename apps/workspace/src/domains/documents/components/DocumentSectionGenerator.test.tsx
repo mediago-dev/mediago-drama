@@ -162,6 +162,41 @@ describe("DocumentSectionGenerator", () => {
 		expect(capturedWorkspaceProps?.historyScopeId).toContain(":video");
 	});
 
+	it("derives video selection from project selected assets for the current section", () => {
+		render(
+			<DocumentSectionGenerator
+				kind="video"
+				section={section}
+				selectedGenerationAssets={[
+					selectedGenerationAsset({
+						id: "selected-video-current",
+						kind: "video",
+						resourceId: "section_current",
+						resourceType: "storyboard",
+						sourceDocumentId: "story-doc",
+						url: "/api/v1/media-assets/selected-video/content",
+					}),
+					selectedGenerationAsset({
+						id: "selected-video-other",
+						kind: "video",
+						resourceId: "section_other",
+						resourceType: "storyboard",
+						sourceDocumentId: "story-doc",
+						url: "/api/v1/media-assets/other-video/content",
+					}),
+				]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		expect(capturedWorkspaceProps?.selectedAssetKeys).toEqual([
+			"video:/api/v1/media-assets/selected-video/content",
+		]);
+	});
+
 	it("opens video generation with the latest section title and mention references", () => {
 		const staleSection: MarkdownSectionContext = {
 			...section,

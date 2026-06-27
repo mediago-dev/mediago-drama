@@ -983,7 +983,7 @@ describe("MediaGenerationWorkspace", () => {
 		expect(onToggleAsset).not.toHaveBeenCalled();
 	});
 
-	it("uses the external entity selection as the only selected state when toggling assets", () => {
+	it("optimistically updates controlled selection when toggling assets", () => {
 		const onToggleAsset = vi.fn();
 		const selectedEntry: GenerationEntry = {
 			...imageEntry,
@@ -1018,7 +1018,7 @@ describe("MediaGenerationWorkspace", () => {
 		fireEvent.click(checkbox);
 
 		expect(onToggleAsset).toHaveBeenCalledWith(selectedEntry.assets?.[0], true);
-		expect(checkbox.getAttribute("aria-checked")).toBe("false");
+		expect(checkbox.getAttribute("aria-checked")).toBe("true");
 		expect(generationApiMocks.updateSelectedGenerationAsset).not.toHaveBeenCalled();
 	});
 
@@ -1118,6 +1118,41 @@ describe("MediaGenerationWorkspace", () => {
 		});
 	});
 
+	it("does not expose project resource selection without a resource id", () => {
+		const selectedEntry: GenerationEntry = {
+			...imageEntry,
+			assets: [
+				{
+					kind: "image",
+					mimeType: "image/png",
+					slotIndex: 0,
+					taskId: "task-a",
+					url: "/api/v1/media-assets/media-a/content",
+				},
+			],
+		};
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: selectedEntry.id,
+			orderedGenerationEntries: [selectedEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				projectId="project-a"
+				selectedAssetTitle="陈远"
+				taskType="character"
+				viewMode="history"
+			/>,
+		);
+
+		expect(screen.queryByRole("checkbox", { name: "选入结果" })).toBeNull();
+		expect(generationApiMocks.updateSelectedGenerationAsset).not.toHaveBeenCalled();
+	});
+
 	it("rolls back selected generated image when project resource save fails", async () => {
 		const selectedEntry: GenerationEntry = {
 			...imageEntry,
@@ -1146,6 +1181,7 @@ describe("MediaGenerationWorkspace", () => {
 				initialPrompt="初始提示词"
 				kind="image"
 				projectId="project-a"
+				selectedAssetResourceId="section-chenyuan"
 				selectedAssetTitle="陈远"
 				taskType="character"
 				viewMode="history"
@@ -1204,6 +1240,7 @@ describe("MediaGenerationWorkspace", () => {
 				initialPrompt="初始提示词"
 				kind="image"
 				projectId="project-a"
+				selectedAssetResourceId="section-chenyuan"
 				selectedAssetTitle="陈远"
 				taskType="character"
 				viewMode="history"
@@ -1255,6 +1292,7 @@ describe("MediaGenerationWorkspace", () => {
 				initialPrompt="初始提示词"
 				kind="image"
 				projectId="project-a"
+				selectedAssetResourceId="section-chenyuan"
 				selectedAssetTitle="陈远"
 				taskType="character"
 				viewMode="history"
@@ -1305,6 +1343,7 @@ describe("MediaGenerationWorkspace", () => {
 				kind="image"
 				projectId="project-a"
 				selectedAssetKeys={["image:/api/v1/media-assets/media-document-selected/content"]}
+				selectedAssetResourceId="section-chenyuan"
 				selectedAssetTitle="陈远"
 				taskType="character"
 				viewMode="history"
@@ -1355,6 +1394,7 @@ describe("MediaGenerationWorkspace", () => {
 				kind="image"
 				projectId="project-a"
 				selectedAssetKeys={["image:/api/v1/media-assets/media-document-selected/content"]}
+				selectedAssetResourceId="section-chenyuan"
 				selectedAssetTitle="陈远"
 				taskType="character"
 				viewMode="history"
@@ -1372,6 +1412,7 @@ describe("MediaGenerationWorkspace", () => {
 				kind="image"
 				projectId="project-a"
 				selectedAssetKeys={["image:/api/v1/media-assets/media-document-selected/content"]}
+				selectedAssetResourceId="section-chenyuan"
 				selectedAssetTitle="陈远"
 				taskType="character"
 				viewMode="history"

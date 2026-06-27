@@ -14,6 +14,7 @@ import { Button } from "@/shared/components/ui/button";
 type VideoWorkspaceProps = Omit<MediaGenerationWorkspaceProps, "kind">;
 
 interface VideoGenerationDialogProps {
+	onAssetSelectionPersisted?: () => void;
 	onOpenChange: (open: boolean) => void;
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
@@ -31,13 +32,14 @@ interface VideoGenerationDialogProps {
 const defaultVideoTitleId = "video-generation-title";
 
 export const VideoGenerationDialog: React.FC<VideoGenerationDialogProps> = ({
+	onAssetSelectionPersisted,
 	onOpenChange,
 	onOpenReferenceGeneration,
 	onToggleAsset,
 	open,
 	projectId,
 	resolveLatestSection,
-	selectedAssetKeys = [],
+	selectedAssetKeys,
 	selectedGenerationAssets,
 	section,
 	title,
@@ -99,6 +101,7 @@ export const VideoGenerationDialog: React.FC<VideoGenerationDialogProps> = ({
 				selectedAssetKeys={selectedAssetKeys}
 				selectedGenerationAssets={selectedGenerationAssets}
 				viewMode="history"
+				onAssetSelectionPersisted={onAssetSelectionPersisted}
 				onGenerationComplete={() => undefined}
 				onGenerationError={() => undefined}
 				onGenerationStart={() => undefined}

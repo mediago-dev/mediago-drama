@@ -13,6 +13,7 @@ import { sectionGenerationIdentityKey } from "@/domains/documents/lib/section-ge
 import { Button } from "@/shared/components/ui/button";
 
 interface ImageGenerationDialogProps {
+	onAssetSelectionPersisted?: () => void;
 	onGenerationComplete: (
 		section: MarkdownSectionContext,
 		pendingId: string,
@@ -49,6 +50,7 @@ interface ImageGenerationDialogPanelController {
 	dialogId: string;
 	generatorKey: string;
 	materialLibraryOpen: boolean;
+	onAssetSelectionPersisted?: () => void;
 	onGenerationComplete: (
 		pendingId: string,
 		assets: GenerationAsset[],
@@ -78,6 +80,7 @@ export const ImageGenerationDialog: React.FC<ImageGenerationDialogProps> = (prop
 };
 
 const useImageGenerationDialogController = ({
+	onAssetSelectionPersisted,
 	onGenerationComplete,
 	onGenerationError,
 	onGenerationResponse,
@@ -164,6 +167,7 @@ const useImageGenerationDialogController = ({
 					onGenerationResponse?.(currentSection, pendingId, response),
 				onGenerationStart: (pendingId, prompt) =>
 					onGenerationStart(currentSection, pendingId, prompt),
+				onAssetSelectionPersisted,
 				onMaterialLibraryImportOpenChange: (nextOpen) =>
 					setDialogMaterialLibraryOpen(dialogId, nextOpen),
 				onOpenChange: (nextOpen) => {
@@ -232,6 +236,7 @@ const ImageGenerationDialogPanel: React.FC<{
 			selectedAssetKeys={controller.selectedAssetKeys}
 			selectedGenerationAssets={controller.selectedGenerationAssets}
 			viewMode="history"
+			onAssetSelectionPersisted={controller.onAssetSelectionPersisted}
 			onGenerationComplete={controller.onGenerationComplete}
 			onGenerationError={controller.onGenerationError}
 			onGenerationResponse={controller.onGenerationResponse}

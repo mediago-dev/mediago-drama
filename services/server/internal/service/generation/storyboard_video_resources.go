@@ -58,17 +58,9 @@ func (workflow *GenerationService) ListStoryboardVideoResources(projectID string
 	if err != nil {
 		return StoryboardVideoResourcesResponse{}, err
 	}
-	tasks, err := workflow.ListGenerationTasks(GenerationTaskListQuery{
-		Kind:      "video",
-		ProjectID: projectID,
-	})
-	if err != nil {
-		return StoryboardVideoResourcesResponse{}, err
-	}
 
 	groups := storyboardVideoDocumentGroupsFromDocuments(documents.Documents)
 	storyboardVideoApplySelectedAssets(groups, selectedAssets.Assets)
-	storyboardVideoApplyGenerationTasks(groups, tasks.Tasks)
 	storyboardVideoUniqueReels(groups)
 	storyboardVideoUniqueVideos(groups)
 
@@ -111,7 +103,7 @@ func storyboardVideoReelsFromDocument(document mediamcp.WorkspaceDocument) []Sto
 			PlainText:         plainText,
 			Prompt:            prompt,
 			CanGenerate:       strings.TrimSpace(prompt) != "",
-			Videos:            storyboardVideoAssetsFromMarkdown(section),
+			Videos:            []StoryboardVideoAsset{},
 		})
 	}
 	return reels
@@ -191,30 +183,6 @@ func storyboardVideoHeadings(lines []string) []storyboardVideoHeading {
 	return headings
 }
 
-func storyboardVideoAssetsFromMarkdown(section storyboardVideoSection) []StoryboardVideoAsset {
-	videos := []StoryboardVideoAsset{}
-	for _, line := range strings.Split(section.markdown, "\n") {
-		media, ok := storyboardVideoMediaFromLine(strings.TrimSpace(line))
-		if !ok || media.Kind != "video" || strings.TrimSpace(media.Src) == "" {
-			continue
-		}
-		title := strings.TrimSpace(media.Title)
-		if title == "" {
-			title = section.title
-		}
-		videos = append(videos, StoryboardVideoAsset{
-			ID:           fmt.Sprintf("markdown:%s:%s", section.blockID, media.Src),
-			MIMEType:     "video/mp4",
-			SectionTitle: section.title,
-			SourceLabel:  "文档成片",
-			Src:          media.Src,
-			PosterURL:    storyboardVideoPosterURLFromSource(media.Src),
-			Title:        title,
-		})
-	}
-	return videos
-}
-
 func storyboardVideoApplySelectedAssets(groups []StoryboardVideoDocumentGroup, assets []SelectedGenerationAssetRecord) {
 	reelByDocumentSection, reelsBySection := storyboardVideoReelIndexes(groups)
 	for _, asset := range assets {
@@ -239,39 +207,6 @@ func storyboardVideoApplySelectedAssets(groups []StoryboardVideoDocumentGroup, a
 			PosterURL:    firstNonEmpty(asset.PosterURL, storyboardVideoPosterURLFromSource(source)),
 			Title:        firstNonEmpty(asset.Title, sectionTitle, "成片"),
 		})
-	}
-}
-
-func storyboardVideoApplyGenerationTasks(groups []StoryboardVideoDocumentGroup, tasks []GenerationTaskRecord) {
-	reelByDocumentSection, reelsBySection := storyboardVideoReelIndexes(groups)
-	for _, task := range tasks {
-		if task.Kind != "video" {
-			continue
-		}
-		reel := storyboardVideoReelForSection(task.DocumentID, task.SectionID, reelByDocumentSection, reelsBySection)
-		if reel == nil {
-			continue
-		}
-		for index, asset := range task.Assets {
-			if asset.Kind != "video" {
-				continue
-			}
-			source := storyboardVideoGenerationAssetSource(asset)
-			if source == "" {
-				continue
-			}
-			slotIndex := assetSlotIndex(index, asset)
-			title := firstNonEmpty(asset.Title, reel.Title, fmt.Sprintf("成片 %d", index+1))
-			reel.Videos = append(reel.Videos, StoryboardVideoAsset{
-				ID:           fmt.Sprintf("task:%s:%d", task.ID, slotIndex),
-				MIMEType:     asset.MIMEType,
-				SectionTitle: reel.Title,
-				SourceLabel:  "生成历史",
-				Src:          source,
-				PosterURL:    firstNonEmpty(asset.PosterURL, storyboardVideoPosterURLFromSource(source)),
-				Title:        title,
-			})
-		}
 	}
 }
 
@@ -445,17 +380,6 @@ func storyboardVideoMediaFromLine(line string) (model.WorkspaceSectionMedia, boo
 }
 
 func storyboardVideoSelectedAssetSource(asset SelectedGenerationAssetRecord) string {
-	if strings.TrimSpace(asset.URL) != "" {
-		return strings.TrimSpace(asset.URL)
-	}
-	if strings.TrimSpace(asset.Base64) == "" {
-		return ""
-	}
-	mimeType := firstNonEmpty(asset.MIMEType, "video/mp4")
-	return "data:" + mimeType + ";base64," + strings.TrimSpace(asset.Base64)
-}
-
-func storyboardVideoGenerationAssetSource(asset GenerationAsset) string {
 	if strings.TrimSpace(asset.URL) != "" {
 		return strings.TrimSpace(asset.URL)
 	}

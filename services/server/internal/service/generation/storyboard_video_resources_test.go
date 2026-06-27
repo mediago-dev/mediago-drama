@@ -35,6 +35,7 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 	projectID := "project-storyboard-video-resources"
 	seedGenerationTaskProject(t, dbPath, projectID)
 	seedGenerationTaskAsset(t, dbPath, "video-task", "video", projectID)
+	seedGenerationTaskAsset(t, dbPath, "video-selected", "video", projectID)
 	taskStore := NewGenerationTaskService(dbPath, nil)
 	workflow := NewGenerationService(nil, taskStore, nil)
 	workflow.SetDocumentResolver(fakeStoryboardVideoDocumentResolver{
@@ -88,7 +89,7 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 		DocumentID: "storyboard-b",
 		SectionID:  "section_reel_b_01",
 		Kind:       "video",
-		Status:     "succeeded",
+		Status:     "running",
 		Prompt:     "门外传来脚步声。",
 		Assets: []GenerationAsset{
 			{
@@ -102,6 +103,21 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 		},
 	}); err != nil {
 		t.Fatalf("upserting video task: %v", err)
+	}
+	if _, ok, err := taskStore.UpsertSelectedAsset(projectID, UpdateSelectedGenerationAssetRequest{
+		ResourceType:     "storyboard",
+		ResourceID:       "section_reel_01",
+		ResourceTitle:    "开场落水",
+		MediaAssetID:     "video-selected",
+		Kind:             "video",
+		Title:            "已选落水镜头",
+		URL:              "/api/v1/media-assets/video-selected/content",
+		PosterURL:        "/api/v1/media-assets/video-selected/poster",
+		MIMEType:         "video/mp4",
+		SourceType:       "generated",
+		SourceDocumentID: "storyboard-a",
+	}); err != nil || !ok {
+		t.Fatalf("upserting selected video ok=%v error=%v", ok, err)
 	}
 
 	response, err := workflow.ListStoryboardVideoResources(projectID)
@@ -122,15 +138,15 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 	if first.Reels[1].Title != "苏醒反应" || first.Reels[1].SectionID != "section_reel_02" {
 		t.Fatalf("second reel = %+v, want second storyboard group section", first.Reels[1])
 	}
-	if first.Reels[0].Videos[0].Title != "落水镜头" ||
-		first.Reels[0].Videos[0].Src != "/api/v1/media-assets/video-1/content" ||
-		first.Reels[0].Videos[0].PosterURL != "/api/v1/media-assets/video-1/poster" {
-		t.Fatalf("first reel videos = %+v, want markdown video", first.Reels[0].Videos)
+	if len(first.Reels[0].Videos) != 1 ||
+		first.Reels[0].Videos[0].Title != "开场落水" ||
+		first.Reels[0].Videos[0].Src != "/api/v1/media-assets/video-selected/content" ||
+		first.Reels[0].Videos[0].PosterURL != "/api/v1/media-assets/video-selected/poster" ||
+		first.Reels[0].Videos[0].SourceLabel != "已选成片" {
+		t.Fatalf("first reel videos = %+v, want selected video only", first.Reels[0].Videos)
 	}
-	if first.Reels[1].Videos[0].Title != "苏醒镜头" ||
-		first.Reels[1].Videos[0].Src != "/api/v1/media-assets/video-2/content" ||
-		first.Reels[1].Videos[0].PosterURL != "/api/v1/media-assets/video-2/poster" {
-		t.Fatalf("second reel videos = %+v, want markdown video", first.Reels[1].Videos)
+	if len(first.Reels[1].Videos) != 0 {
+		t.Fatalf("second reel videos = %+v, want markdown video ignored until selected", first.Reels[1].Videos)
 	}
 
 	second := response.Groups[1]
@@ -141,12 +157,8 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 	if reel.Title != "门外异动" || reel.SectionID != "section_reel_b_01" {
 		t.Fatalf("task reel = %+v, want storyboard group section", reel)
 	}
-	if len(reel.Videos) != 1 ||
-		reel.Videos[0].Title != "video-task.mp4" ||
-		reel.Videos[0].Src != "/api/v1/media-assets/video-task/content" ||
-		reel.Videos[0].PosterURL != "/api/v1/media-assets/video-task/poster" ||
-		reel.Videos[0].SourceLabel != "生成历史" {
-		t.Fatalf("task reel videos = %+v, want generation task video", reel.Videos)
+	if len(reel.Videos) != 0 {
+		t.Fatalf("task reel videos = %+v, want generation history ignored until selected", reel.Videos)
 	}
 }
 
@@ -216,11 +228,8 @@ func TestGenerationServiceListStoryboardVideoResourcesDeduplicatesGroupNumbers(t
 		strings.Contains(reels[0].Markdown, "PLACEHOLDER") {
 		t.Fatalf("deduped first reel markdown = %q, want full previous markdown without placeholder", reels[0].Markdown)
 	}
-	if len(reels[0].Videos) != 1 ||
-		reels[0].Videos[0].Title != "旧版成片" ||
-		reels[0].Videos[0].Src != "/api/v1/media-assets/old-video/content" ||
-		reels[0].Videos[0].PosterURL != "/api/v1/media-assets/old-video/poster" {
-		t.Fatalf("deduped first reel videos = %+v, want videos preserved from repeated group", reels[0].Videos)
+	if len(reels[0].Videos) != 0 {
+		t.Fatalf("deduped first reel videos = %+v, want markdown videos ignored until selected", reels[0].Videos)
 	}
 	if reels[1].Title != "第 02 组 总时长：00:06" || reels[2].Title != "第 03 组 总时长：00:07" {
 		t.Fatalf("reels = %+v, want group order 01/02/03", reels)

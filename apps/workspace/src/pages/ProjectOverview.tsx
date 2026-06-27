@@ -173,6 +173,7 @@ export const ProjectOverview: React.FC = () => {
 		data: storyboardVideoResources,
 		error: storyboardVideoResourcesError,
 		isLoading: isStoryboardVideoResourcesLoading,
+		mutate: mutateStoryboardVideoResources,
 	} = useSWR(projectId ? workspaceStoryboardVideoResourcesKey(projectId) : null, () =>
 		getWorkspaceStoryboardVideoResources(projectId ?? ""),
 	);
@@ -184,6 +185,7 @@ export const ProjectOverview: React.FC = () => {
 		data: workspaceDocumentResources,
 		error: documentResourcesError,
 		isLoading: isDocumentResourcesLoading,
+		mutate: mutateDocumentResources,
 	} = useSWR(projectId ? workspaceDocumentResourcesKey(projectId) : null, () =>
 		getWorkspaceDocumentResources(projectId ?? ""),
 	);
@@ -301,9 +303,20 @@ export const ProjectOverview: React.FC = () => {
 		if (resources.length === 0) return;
 		setBatchGenerationDialog({ kind: "image", resources });
 	}, []);
-	const closeImageGeneration = useCallback((open: boolean) => {
-		if (!open) setImageGenerationSection(null);
-	}, []);
+	const refreshOverviewSelectedResources = useCallback(() => {
+		void mutateSelectedResources();
+		void mutateDocumentResources();
+		void mutateStoryboardVideoResources();
+	}, [mutateDocumentResources, mutateSelectedResources, mutateStoryboardVideoResources]);
+	const closeImageGeneration = useCallback(
+		(open: boolean) => {
+			if (!open) {
+				setImageGenerationSection(null);
+				refreshOverviewSelectedResources();
+			}
+		},
+		[refreshOverviewSelectedResources],
+	);
 	const openStoryboardVideoGeneration = useCallback(
 		(group: WorkspaceStoryboardVideoDocumentGroup, reel: WorkspaceStoryboardVideoReel) => {
 			setVideoGenerationSection(storyboardReelToSectionContext(group, reel));
@@ -375,9 +388,15 @@ export const ProjectOverview: React.FC = () => {
 	const closeBatchGenerationDialog = useCallback((open: boolean) => {
 		if (!open) setBatchGenerationDialog(null);
 	}, []);
-	const closeVideoGeneration = useCallback((open: boolean) => {
-		if (!open) setVideoGenerationSection(null);
-	}, []);
+	const closeVideoGeneration = useCallback(
+		(open: boolean) => {
+			if (!open) {
+				setVideoGenerationSection(null);
+				refreshOverviewSelectedResources();
+			}
+		},
+		[refreshOverviewSelectedResources],
+	);
 	const removeBatchGenerationJob = useCallback((jobId: string) => {
 		setBatchGenerationJobs((current) => current.filter((job) => job.id !== jobId));
 	}, []);
@@ -488,6 +507,7 @@ export const ProjectOverview: React.FC = () => {
 									projectId={projectId}
 									section={imageGenerationSection}
 									selectedGenerationAssets={selectedGenerationAssets}
+									onAssetSelectionPersisted={refreshOverviewSelectedResources}
 									onGenerationComplete={ignoreSectionGeneration}
 									onGenerationError={ignoreSectionGeneration}
 									onGenerationStart={ignoreSectionGeneration}
@@ -500,6 +520,7 @@ export const ProjectOverview: React.FC = () => {
 									resolveLatestSection={false}
 									section={videoGenerationSection}
 									selectedGenerationAssets={selectedGenerationAssets}
+									onAssetSelectionPersisted={refreshOverviewSelectedResources}
 									onOpenChange={closeVideoGeneration}
 									onOpenReferenceGeneration={setImageGenerationSection}
 								/>
@@ -980,7 +1001,7 @@ const StoryboardVideoResourcesSummary: React.FC<{
 					<div className="min-w-0">
 						<h2 className="text-sm font-semibold text-foreground">成片资源</h2>
 						<p className="text-xs text-muted-foreground">
-							按分镜文档汇总当前项目中已生成的视频片段。
+							按分镜文档汇总当前项目中已选入的视频片段。
 						</p>
 					</div>
 				</div>

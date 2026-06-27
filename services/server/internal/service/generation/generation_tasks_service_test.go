@@ -513,10 +513,16 @@ func TestGenerationServiceListSelectedGenerationAssets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listing selected assets: %v", err)
 	}
-	if len(response.Assets) != 1 {
-		t.Fatalf("assets = %+v, want only one selected creative image", response.Assets)
+	if len(response.Assets) != 2 {
+		t.Fatalf("assets = %+v, want selected creative image and video", response.Assets)
 	}
-	asset := response.Assets[0]
+	var asset SelectedGenerationAssetRecord
+	for _, candidate := range response.Assets {
+		if candidate.Kind == "image" {
+			asset = candidate
+			break
+		}
+	}
 	if asset.TaskID != "task-character" ||
 		asset.AssetIndex != 0 ||
 		asset.ResourceType != "character" ||
@@ -538,6 +544,100 @@ func TestGenerationServiceListSelectedGenerationAssets(t *testing.T) {
 	}
 	if len(filtered.Assets) != 1 || filtered.Assets[0].ID != asset.ID {
 		t.Fatalf("filtered assets = %+v, want selected character asset", filtered.Assets)
+	}
+}
+
+func TestGenerationServiceSelectedGenerationAssetReplacesSameResourceKind(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	projectID := "project-selected-single-video"
+	firstTaskID := "task-select-video-a"
+	secondTaskID := "task-select-video-b"
+	seedGenerationTaskProject(t, dbPath, projectID)
+	seedGenerationTaskAsset(t, dbPath, "video-a", "video", projectID)
+	seedGenerationTaskAsset(t, dbPath, "video-b", "video", projectID)
+	service := NewGenerationTaskService(dbPath, nil)
+	workflow := &GenerationService{generationTasks: service}
+	for _, task := range []GenerationTaskRecord{
+		{
+			ID:           firstTaskID,
+			ProjectID:    projectID,
+			DocumentID:   "story-doc",
+			SectionID:    "section-shot-01",
+			CapabilityID: "storyboard",
+			Kind:         "video",
+			Status:       "completed",
+			Prompt:       "shot one",
+			Assets: []GenerationAsset{
+				{Kind: "video", URL: "/api/v1/media-assets/video-a/content"},
+			},
+		},
+		{
+			ID:           secondTaskID,
+			ProjectID:    projectID,
+			DocumentID:   "story-doc",
+			SectionID:    "section-shot-01",
+			CapabilityID: "storyboard",
+			Kind:         "video",
+			Status:       "completed",
+			Prompt:       "shot one replacement",
+			Assets: []GenerationAsset{
+				{Kind: "video", URL: "/api/v1/media-assets/video-b/content"},
+			},
+		},
+	} {
+		if err := service.Upsert(task); err != nil {
+			t.Fatalf("upserting task %s: %v", task.ID, err)
+		}
+	}
+
+	selected := true
+	assetIndex := 0
+	if _, status, err := workflow.UpdateSelectedGenerationAsset(projectID, UpdateSelectedGenerationAssetRequest{
+		Selected:     &selected,
+		ResourceType: "storyboard",
+		TaskID:       firstTaskID,
+		AssetIndex:   &assetIndex,
+	}); err != nil || status != 200 {
+		t.Fatalf("selecting first video status=%d error=%v", status, err)
+	}
+	response, status, err := workflow.UpdateSelectedGenerationAsset(projectID, UpdateSelectedGenerationAssetRequest{
+		Selected:     &selected,
+		ResourceType: "storyboard",
+		TaskID:       secondTaskID,
+		AssetIndex:   &assetIndex,
+	})
+	if err != nil || status != 200 {
+		t.Fatalf("selecting replacement video status=%d error=%v", status, err)
+	}
+	if response.Asset == nil || response.Asset.TaskID != secondTaskID || response.Asset.MediaAssetID != "video-b" {
+		t.Fatalf("response = %+v, want second video selected", response)
+	}
+
+	listed, err := workflow.ListSelectedGenerationAssets(projectID, SelectedGenerationAssetQuery{
+		Kind:             "video",
+		ResourceType:     "storyboard",
+		ResourceID:       "section-shot-01",
+		SourceDocumentID: "story-doc",
+	})
+	if err != nil {
+		t.Fatalf("listing selected videos: %v", err)
+	}
+	if len(listed.Assets) != 1 || listed.Assets[0].TaskID != secondTaskID {
+		t.Fatalf("listed assets = %+v, want only replacement video", listed.Assets)
+	}
+	firstTask, ok, err := service.Get(firstTaskID)
+	if err != nil || !ok {
+		t.Fatalf("getting first task ok=%v error=%v", ok, err)
+	}
+	secondTask, ok, err := service.Get(secondTaskID)
+	if err != nil || !ok {
+		t.Fatalf("getting second task ok=%v error=%v", ok, err)
+	}
+	if firstTask.Assets[0].Selected {
+		t.Fatalf("first task = %+v, want old video unselected", firstTask)
+	}
+	if !secondTask.Assets[0].Selected {
+		t.Fatalf("second task = %+v, want replacement video selected", secondTask)
 	}
 }
 

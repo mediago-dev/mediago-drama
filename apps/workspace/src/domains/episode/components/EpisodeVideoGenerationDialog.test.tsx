@@ -44,7 +44,6 @@ describe("EpisodeVideoGenerationDialog", () => {
 				open
 				projectId="project-a"
 				selectedClip={selectedClip}
-				selectedVideoUrl={null}
 				onGeneratedVideoReady={vi.fn()}
 				onOpenChange={vi.fn()}
 			/>,
@@ -79,6 +78,9 @@ describe("EpisodeVideoGenerationDialog", () => {
 		expect(workspaceProps?.initialPrompt).toContain(selectedClip?.prompt ?? "");
 		expect(workspaceProps?.initialPrompt).not.toContain("画面内容：");
 		expect(workspaceProps?.initialPrompt).not.toContain("要求：");
+		expect(workspaceProps?.selectedAssetKeys).toEqual([]);
+		expect(workspaceProps?.selectedAssetResourceId).toBeUndefined();
+		expect(workspaceProps?.onToggleAsset).toBeUndefined();
 	});
 
 	it("uses source markdown and mention references like image generation", () => {
@@ -143,7 +145,6 @@ describe("EpisodeVideoGenerationDialog", () => {
 				open
 				projectId="project-a"
 				selectedClip={selectedClip}
-				selectedVideoUrl={null}
 				onGeneratedVideoReady={vi.fn()}
 				onOpenChange={vi.fn()}
 				onOpenReferenceGeneration={onOpenReferenceGeneration}
@@ -195,6 +196,9 @@ describe("EpisodeVideoGenerationDialog", () => {
 			sectionId: storyboardSectionBlockId,
 		});
 		expect(workspaceProps?.assetTitle).toBe("第 01 组");
+		expect(workspaceProps?.selectedAssetResourceId).toBe(storyboardSectionBlockId);
+		expect(workspaceProps?.selectedAssetSourceDocumentId).toBe("story-doc");
+		expect(workspaceProps?.onToggleAsset).toEqual(expect.any(Function));
 		expect(workspaceProps?.notificationTarget).toMatchObject({
 			section: {
 				blockId: storyboardSectionBlockId,
@@ -264,7 +268,6 @@ describe("EpisodeVideoGenerationDialog", () => {
 						url: "/api/v1/media-assets/gny-selected/content",
 					}),
 				]}
-				selectedVideoUrl={null}
 				onGeneratedVideoReady={vi.fn()}
 				onOpenChange={vi.fn()}
 			/>,

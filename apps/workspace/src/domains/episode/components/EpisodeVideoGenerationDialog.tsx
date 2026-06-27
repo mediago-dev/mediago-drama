@@ -41,10 +41,8 @@ import type {
 	PromptEditorProps,
 } from "@/domains/generation/components/MediaGenerationWorkspace";
 import { PromptEditor } from "@/domains/generation/components/PromptEditor";
-import {
-	generationAssetSelectionKey,
-	generationAssetSource,
-} from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import { selectedGenerationAssetKeysForSection } from "@/domains/generation/lib/selected-asset-keys";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import { VideoGenerationDialog } from "@/shared/components/generation-dialogs/VideoGenerationDialog";
@@ -60,7 +58,6 @@ interface EpisodeVideoGenerationDialogProps {
 	projectId?: string;
 	selectedClip: TimelineClip | null;
 	selectedGenerationAssets?: SelectedGenerationAsset[];
-	selectedVideoUrl?: string | null;
 }
 
 export interface EpisodeVideoGenerationContext {
@@ -110,7 +107,6 @@ const useEpisodeVideoGenerationDialogController = ({
 	projectId,
 	selectedClip,
 	selectedGenerationAssets,
-	selectedVideoUrl,
 }: EpisodeVideoGenerationDialogProps): EpisodeVideoGenerationDialogController => {
 	const allDocuments = useDocumentsStore((state) => state.documents);
 	const allAssets = useDocumentsStore((state) => state.assets);
@@ -162,6 +158,9 @@ const useEpisodeVideoGenerationDialogController = ({
 		() => projectsData?.projects.find((project) => project.id === normalizedProjectId)?.name ?? "",
 		[projectsData, normalizedProjectId],
 	);
+	const normalizedDocumentId = documentId?.trim() ?? "";
+	const selectableSourceBlockId = sourceSection?.blockId?.trim() ?? "";
+	const canSelectProjectResource = Boolean(selectableSourceBlockId && normalizedDocumentId);
 	const projectConversation = useMemo(
 		() => projectGenerationConversation(projectId, "video", projectName),
 		[projectId, projectName],
@@ -171,7 +170,6 @@ const useEpisodeVideoGenerationDialogController = ({
 	const historyScopeId = generationContext.blockId;
 	const sectionId = projectConversation ? generationContext.blockId : undefined;
 	const documentContext = useMemo(() => {
-		const normalizedDocumentId = documentId?.trim();
 		const sourceSectionBlockId = sourceSection?.blockId;
 		if (!normalizedDocumentId || !sourceSectionBlockId) return undefined;
 
@@ -180,7 +178,7 @@ const useEpisodeVideoGenerationDialogController = ({
 			documentId: normalizedDocumentId,
 			sectionId: sourceSectionBlockId,
 		};
-	}, [documentId, normalizedProjectId, sourceSection?.blockId]);
+	}, [normalizedDocumentId, normalizedProjectId, sourceSection?.blockId]);
 	const resolveAllMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
 			parseMentionsFromMarkdown(`${generationContext.sourceMarkdown}\n\n${promptMarkdown}`)
@@ -249,21 +247,30 @@ const useEpisodeVideoGenerationDialogController = ({
 		};
 	}, [documentId, documentTitle, episode.title, generationContext, projectId]);
 	const selectedAssetKeys = useMemo(() => {
-		if (!selectedVideoUrl) return [];
+		if (!canSelectProjectResource) return [];
 
-		const assetKey = generationAssetSelectionKey({ kind: "video", url: selectedVideoUrl });
-		return assetKey ? [assetKey] : [];
-	}, [selectedVideoUrl]);
+		const selectedKeys = selectedGenerationAssetKeysForSection(
+			mentionSelectedGenerationAssets,
+			{ blockId: selectableSourceBlockId, documentId: normalizedDocumentId },
+			"video",
+		);
+		return selectedKeys;
+	}, [
+		canSelectProjectResource,
+		mentionSelectedGenerationAssets,
+		normalizedDocumentId,
+		selectableSourceBlockId,
+	]);
 	const toggleGeneratedVideo = useCallback(
 		(asset: GenerationAsset, selected: boolean) => {
-			if (!selectedClip) return;
+			if (!canSelectProjectResource || !selectedClip) return;
 
 			const videoUrl = firstVideoAssetSource([asset]);
 			if (!videoUrl) return;
 
 			onGeneratedVideoReady?.(selectedClip.id, selected ? videoUrl : null);
 		},
-		[onGeneratedVideoReady, selectedClip],
+		[canSelectProjectResource, onGeneratedVideoReady, selectedClip],
 	);
 
 	useEffect(() => {
@@ -288,6 +295,7 @@ const useEpisodeVideoGenerationDialogController = ({
 			initialPrompt: generationContext.prompt,
 			modelPreferenceScopeId: conversationScopeId,
 			notificationTarget,
+			persistAssetSelection: true,
 			promptPlaceholder: "描述当前组的视频镜头、运动、机位、时长、画幅和质量",
 			projectId,
 			extraReferenceAssetIds: (prompt) => getMentionReferenceInputs(prompt).assetIds,
@@ -307,13 +315,12 @@ const useEpisodeVideoGenerationDialogController = ({
 			submitLabel: "生成视频",
 			uploadIdPrefix: "episode-video-generation",
 			selectedAssetKeys,
+			selectedAssetResourceId: canSelectProjectResource ? selectableSourceBlockId : undefined,
+			selectedAssetSourceDocumentId: canSelectProjectResource ? normalizedDocumentId : undefined,
+			selectedAssetTitle: generationContext.headingText,
 			viewMode: "history",
-			onToggleAsset: toggleGeneratedVideo,
+			onToggleAsset: canSelectProjectResource ? toggleGeneratedVideo : undefined,
 			onRemoveReferencePreview: removePreviewReferenceAsset,
-			onGenerationComplete: (_, assets) => {
-				const videoUrl = firstVideoAssetSource(assets);
-				if (selectedClip && videoUrl) onGeneratedVideoReady?.(selectedClip.id, videoUrl);
-			},
 		},
 	};
 };
