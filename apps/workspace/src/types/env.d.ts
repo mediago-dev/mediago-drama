@@ -6,6 +6,7 @@ interface ImportMetaEnv {
 	readonly VITE_APP_VERSION: string;
 	readonly VITE_ENVIRONMENT: "development" | "staging" | "production";
 	readonly VITE_MEDIAGO_SERVER_PORT?: string;
+	readonly VITE_ENABLE_JIANYING_DRAFT_EXPORT?: string;
 }
 
 interface ImportMeta {

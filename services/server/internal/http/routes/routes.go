@@ -21,6 +21,7 @@ type Handlers struct {
 	ProjectBriefs         httphandlers.ProjectBriefs
 	Workspace             httphandlers.Workspace
 	EpisodePreview        httphandlers.EpisodePreview
+	JianyingDraft         httphandlers.JianyingDraft
 	WorkspaceEvents       httphandlers.WorkspaceEvents
 	PromptPacks           httphandlers.PromptPacks
 	PromptTemplates       httphandlers.PromptTemplates
@@ -97,6 +98,8 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 }
 
 func registerSettingsRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
+	apiRoutes.GET("/settings/jianying-draft", handlers.Settings.HandleJianyingDraftSettings)
+	apiRoutes.PUT("/settings/jianying-draft", handlers.Settings.HandlePutJianyingDraftSettings)
 	apiRoutes.GET("/settings/api-keys", handlers.Settings.HandleAPIKeys)
 	apiRoutes.PUT("/settings/api-keys/:provider", handlers.Settings.HandlePutAPIKey)
 	apiRoutes.DELETE("/settings/api-keys/:provider", handlers.Settings.HandleDeleteAPIKey)
@@ -198,6 +201,7 @@ func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 }
 
 func registerProjectRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
+	projectRoutes.PATCH("", handlers.Projects.HandleUpdateProject)
 	projectRoutes.DELETE("", handlers.Projects.HandleDeleteProject)
 	projectRoutes.POST("/archive", handlers.Projects.HandleArchiveProject)
 	projectRoutes.POST("/restore", handlers.Projects.HandleRestoreProject)
@@ -301,6 +305,10 @@ func registerWorkspaceRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) 
 	projectRoutes.GET(
 		"/workspace/episodes/:documentId/preview.mp4",
 		handlers.EpisodePreview.HandleEpisodePreviewStream,
+	)
+	projectRoutes.POST(
+		"/workspace/episodes/:documentId/jianying-draft",
+		handlers.JianyingDraft.HandleExportEpisodeJianyingDraft,
 	)
 	projectRoutes.PUT(
 		"/workspace/episodes/:documentId",

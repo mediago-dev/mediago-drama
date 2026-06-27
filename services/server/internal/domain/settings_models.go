@@ -39,3 +39,15 @@ type AgentModelProfileModel struct {
 func (AgentModelProfileModel) TableName() string {
 	return "agent_model_profiles"
 }
+
+// AppSettingModel is a generic key-value model for non-secret app settings.
+type AppSettingModel struct {
+	Key       string    `gorm:"column:setting_key;primaryKey"`
+	Value     string    `gorm:"column:setting_value;not null;default:''"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null;autoUpdateTime:nano"`
+}
+
+// TableName returns the backing table name.
+func (AppSettingModel) TableName() string {
+	return "app_settings"
+}

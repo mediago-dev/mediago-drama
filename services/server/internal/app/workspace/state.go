@@ -24,6 +24,7 @@ type workspaceDocumentMetadataResponse = mediamcp.ListDocumentsOutput
 type workspaceProjectsResponse = mediamcp.ProjectList
 type workspaceProjectRecord = mediamcp.Project
 type createWorkspaceProjectRequest = servicedocument.CreateWorkspaceProjectRequest
+type updateWorkspaceProjectRequest = servicedocument.UpdateWorkspaceProjectRequest
 type createWorkspaceDocumentRequest = servicedocument.CreateWorkspaceDocumentRequest
 type updateWorkspaceDocumentRequest = servicedocument.UpdateWorkspaceDocumentRequest
 type workspaceDocumentSectionMentionRequest = servicedocument.WorkspaceDocumentSectionMentionRequest
@@ -231,6 +232,11 @@ func (store *WorkspaceStateService) CreateProject(id string, request createWorks
 
 func (store *WorkspaceStateService) createProject(id string, request createWorkspaceProjectRequest) (workspaceProjectRecord, error) {
 	return store.StateService().Documents.CreateProject(id, request)
+}
+
+// UpdateProject updates mutable workspace project metadata.
+func (store *WorkspaceStateService) UpdateProject(projectID string, request updateWorkspaceProjectRequest) (workspaceProjectRecord, bool, error) {
+	return store.StateService().Documents.UpdateProject(projectID, request)
 }
 
 // DeleteProject deletes a workspace project.

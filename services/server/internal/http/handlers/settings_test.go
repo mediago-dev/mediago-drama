@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -36,6 +37,25 @@ func (store *fakeAPIKeyStore) Clear(keyName string) error {
 
 type fakeAgentModelProfileStore struct {
 	values map[string]domain.AgentModelProfileModel
+}
+
+type fakeAppSettingStore struct {
+	values map[string]string
+}
+
+func (store *fakeAppSettingStore) GetAppSetting(key string) (string, bool, error) {
+	value, ok := store.values[key]
+	return value, ok, nil
+}
+
+func (store *fakeAppSettingStore) SetAppSetting(key string, value string) error {
+	store.values[key] = strings.TrimSpace(value)
+	return nil
+}
+
+func (store *fakeAppSettingStore) ClearAppSetting(key string) error {
+	delete(store.values, key)
+	return nil
 }
 
 func (store *fakeAgentModelProfileStore) ListAgentModelProfiles() ([]domain.AgentModelProfileModel, error) {
@@ -176,6 +196,40 @@ func TestSettingsHandlerAgentModelProfilesLifecycle(t *testing.T) {
 	}
 }
 
+func TestSettingsHandlerJianyingDraftSettings(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+	settings := service.NewSettingsWithStores(
+		&fakeAPIKeyStore{values: map[string]string{}},
+		nil,
+		&fakeAppSettingStore{values: map[string]string{}},
+	)
+	handler := NewSettings(settings)
+	router.GET("/settings/jianying-draft", handler.HandleJianyingDraftSettings)
+	router.PUT("/settings/jianying-draft", handler.HandlePutJianyingDraftSettings)
+
+	dir := t.TempDir()
+	request := httptest.NewRequest(http.MethodPut, "/settings/jianying-draft", strings.NewReader(`{"draftsRoot":`+quoteJSON(dir)+`}`))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("PUT status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"draftsRoot":`+quoteJSON(dir)) {
+		t.Fatalf("PUT body = %s, want saved drafts root", response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/settings/jianying-draft", nil)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"draftsRoot":`+quoteJSON(dir)) {
+		t.Fatalf("GET body = %s, want saved drafts root", response.Body.String())
+	}
+}
+
 func TestSettingsHandlerAgentModelProfileValidation(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
@@ -220,6 +274,10 @@ func TestSettingsHandlerAgentModelProfileValidation(t *testing.T) {
 	if response.Code != http.StatusConflict {
 		t.Fatalf("duplicate status = %d, want 409; body = %s", response.Code, response.Body.String())
 	}
+}
+
+func quoteJSON(value string) string {
+	return strconv.Quote(value)
 }
 
 func TestSettingsHandlerValidation(t *testing.T) {

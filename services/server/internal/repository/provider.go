@@ -48,6 +48,7 @@ type SettingsRepositories struct {
 	DB                    *gorm.DB
 	APIKeys               *APIKeyStore
 	AgentModelProfiles    *AgentModelProfileRepository
+	AppSettings           *AppSettingRepository
 	GenerationPreferences *GenerationPreferenceRepository
 	Instructions          *InstructionTemplateRepository
 	Packs                 *PackRepository
@@ -79,6 +80,7 @@ func OpenSettingsRepositories(dbPath string) (SettingsRepositories, error) {
 		DB:                    db,
 		APIKeys:               NewAPIKeyStoreFromDB(db, nil),
 		AgentModelProfiles:    NewAgentModelProfileRepositoryFromDB(db),
+		AppSettings:           NewAppSettingRepositoryFromDB(db),
 		GenerationPreferences: NewGenerationPreferenceRepositoryFromDB(db),
 		Instructions:          NewInstructionTemplateRepositoryFromDB(db),
 		Packs:                 NewPackRepositoryFromDB(db),

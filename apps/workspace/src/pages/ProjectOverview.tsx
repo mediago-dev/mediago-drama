@@ -1,7 +1,16 @@
-import { ArrowUpRight, Check, FileText, Film, Loader2, Palette, ReceiptText } from "lucide-react";
+import {
+	ArrowUpRight,
+	Check,
+	FileText,
+	Film,
+	Loader2,
+	Palette,
+	ReceiptText,
+	ScissorsLineDashed,
+} from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import useSWR from "swr";
 import type { GenerationTask } from "@/domains/generation/api/generation";
 import {
@@ -48,7 +57,12 @@ import {
 	type WorkspaceStoryboardVideoReel,
 } from "@/domains/workspace/api/workspace";
 import { ProjectWorkspaceShell } from "@/domains/workspace/components/ProjectWorkspaceShell";
-import { getRouteProjectId, type AgentResourceType } from "@/domains/workspace/lib/workbench-route";
+import {
+	agentProjectPath,
+	agentProjectRouteState,
+	getRouteProjectId,
+	type AgentResourceType,
+} from "@/domains/workspace/lib/workbench-route";
 import { useProjectStore } from "@/domains/projects/stores";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -77,6 +91,7 @@ type OverviewBatchGenerationDialogState =
 
 export const ProjectOverview: React.FC = () => {
 	const location = useLocation();
+	const navigate = useNavigate();
 	const toast = useToast();
 	const projectId = getRouteProjectId(location.search);
 	const activeProjectId = useProjectStore((state) => state.activeProjectId);
@@ -98,6 +113,9 @@ export const ProjectOverview: React.FC = () => {
 	const [storyboardVideoDocumentId, setStoryboardVideoDocumentId] = useState<string | null>(null);
 	const refreshedSelectedAssetTaskKeysRef = useRef<Set<string>>(new Set());
 	const hydrateWorkspaceDocuments = useDocumentsStore((state) => state.hydrateWorkspaceDocuments);
+	const convertDocumentToWorkbenchDraft = useDocumentsStore(
+		(state) => state.convertDocumentToWorkbenchDraft,
+	);
 	const usageParams = useMemo(
 		() => (projectId ? { groupBy: "capability", projectId } : null),
 		[projectId],
@@ -299,6 +317,23 @@ export const ProjectOverview: React.FC = () => {
 		},
 		[],
 	);
+	const openStoryboardWorkbench = useCallback(
+		(group: WorkspaceStoryboardVideoDocumentGroup) => {
+			if (!projectId) return;
+
+			const draft = convertDocumentToWorkbenchDraft(group.documentId);
+			if (!draft) return;
+
+			navigate(
+				agentProjectPath(projectId, {
+					documentId: group.documentId,
+					workbench: "timeline",
+				}),
+				{ state: agentProjectRouteState("overview") },
+			);
+		},
+		[convertDocumentToWorkbenchDraft, navigate, projectId],
+	);
 	const confirmBatchGeneration = useCallback(
 		(settings: BatchGenerationSettings) => {
 			if (!batchGenerationDialog) return;
@@ -429,6 +464,7 @@ export const ProjectOverview: React.FC = () => {
 									open={Boolean(activeStoryboardVideoGroup)}
 									onBatchGenerate={openStoryboardVideoGenerationBatch}
 									onGenerate={openStoryboardVideoGeneration}
+									onOpenWorkbench={openStoryboardWorkbench}
 									onOpenChange={(open) => {
 										if (!open) setStoryboardVideoDocumentId(null);
 									}}
@@ -1014,6 +1050,7 @@ const StoryboardVideoResourcesDialog: React.FC<{
 		reels: WorkspaceStoryboardVideoReel[],
 	) => void;
 	onOpenChange: (open: boolean) => void;
+	onOpenWorkbench: (group: WorkspaceStoryboardVideoDocumentGroup) => void;
 }> = ({
 	error,
 	generationStatuses,
@@ -1023,6 +1060,7 @@ const StoryboardVideoResourcesDialog: React.FC<{
 	onBatchGenerate,
 	onGenerate,
 	onOpenChange,
+	onOpenWorkbench,
 }) => {
 	const videoCount = group ? storyboardDocumentGroupVideoCount(group) : 0;
 	const selectableReels = useMemo(
@@ -1084,9 +1122,22 @@ const StoryboardVideoResourcesDialog: React.FC<{
 				</span>
 			}
 			titleAside={
-				<Badge variant="secondary" className="shrink-0">
-					分镜组 {group.reels.length} 项 · 成片 {videoCount} 个
-				</Badge>
+				<div className="flex items-center gap-2">
+					<Badge variant="secondary" className="shrink-0">
+						分镜组 {group.reels.length} 项 · 成片 {videoCount} 个
+					</Badge>
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						className="h-8 shrink-0 rounded-sm"
+						aria-label={`打开${group.documentTitle}剪辑工作台`}
+						onClick={() => onOpenWorkbench(group)}
+					>
+						<ScissorsLineDashed className="size-4" />
+						<span>打开剪辑工作台</span>
+					</Button>
+				</div>
 			}
 			titleId="storyboard-video-resources-title"
 			contentClassName="h-[min(86vh,780px)]"

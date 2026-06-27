@@ -6,3 +6,8 @@ type CreateWorkspaceProjectRequest struct {
 	Description string `json:"description"`
 	ProjectDir  string `json:"projectDir"`
 }
+
+// UpdateWorkspaceProjectRequest is the payload for updating workspace project metadata.
+type UpdateWorkspaceProjectRequest struct {
+	Name string `json:"name"`
+}

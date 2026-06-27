@@ -2,6 +2,7 @@ import {
 	AudioLines,
 	ChevronLeft,
 	CircleQuestionMark,
+	Clapperboard,
 	Ellipsis,
 	FileText,
 	Film,
@@ -622,6 +623,7 @@ const settingsNavGroups: SettingsNavGroup[] = [
 		label: "工作区",
 		items: [
 			{ value: "appearance", label: "基础设置", icon: SlidersHorizontal },
+			{ value: "jianying-draft", label: "剪映草稿", icon: Clapperboard },
 			{ value: "shortcuts", label: "快捷键", icon: Keyboard },
 			{ value: "billing", label: "用量与账单", icon: ReceiptText },
 		],

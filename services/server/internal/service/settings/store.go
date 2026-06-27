@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -24,6 +26,8 @@ var (
 	ErrAgentModelNotFound     = errors.New("agent model profile not found")
 	ErrAgentModelInvalid      = errors.New("agent model profile is invalid")
 	ErrAgentModelConflict     = errors.New("agent model provider id already exists")
+	ErrAppSettingStoreMissing = errors.New("app setting store is unavailable")
+	ErrJianyingDraftInvalid   = errors.New("jianying draft settings are invalid")
 )
 
 const (
@@ -50,6 +54,13 @@ type AgentModelProfileStore interface {
 	DeleteAgentModelProfile(id string) (bool, error)
 	ClearAgentModelProfileDefaults() error
 	SetAgentModelProfileDefault(id string) error
+}
+
+// AppSettingStore persists non-secret app settings.
+type AppSettingStore interface {
+	GetAppSetting(key string) (string, bool, error)
+	SetAppSetting(key string, value string) error
+	ClearAppSetting(key string) error
 }
 
 // APIKeyProvider describes one configurable API key provider.
@@ -88,10 +99,16 @@ type APIKeyLoginResult struct {
 	Login     ProviderLoginChallenge `json:"login"`
 }
 
+// JianyingDraftSettings describes the local Jianying draft folder settings.
+type JianyingDraftSettings struct {
+	DraftsRoot string `json:"draftsRoot"`
+}
+
 // Settings provides settings workflows.
 type Settings struct {
 	apiKeys       APIKeyStore
 	agentProfiles AgentModelProfileStore
+	appSettings   AppSettingStore
 	jimengBinPath string
 	jimengBinDir  string
 }
@@ -103,13 +120,74 @@ func NewSettings(apiKeys APIKeyStore) *Settings {
 
 // NewSettingsWithAgentModelProfiles creates a settings service with agent model profile storage.
 func NewSettingsWithAgentModelProfiles(apiKeys APIKeyStore, agentProfiles AgentModelProfileStore) *Settings {
-	return &Settings{apiKeys: apiKeys, agentProfiles: agentProfiles}
+	return NewSettingsWithStores(apiKeys, agentProfiles, nil)
+}
+
+// NewSettingsWithStores creates a settings service with all settings-backed stores.
+func NewSettingsWithStores(apiKeys APIKeyStore, agentProfiles AgentModelProfileStore, appSettings AppSettingStore) *Settings {
+	return &Settings{apiKeys: apiKeys, agentProfiles: agentProfiles, appSettings: appSettings}
 }
 
 // SetJimengCLIPaths configures the local Jimeng CLI lookup paths.
 func (service *Settings) SetJimengCLIPaths(binPath string, binDir string) {
 	service.jimengBinPath = strings.TrimSpace(binPath)
 	service.jimengBinDir = strings.TrimSpace(binDir)
+}
+
+const jianyingDraftRootSettingKey = "jianyingdraft.drafts_root"
+
+// GetJianyingDraftSettings returns the saved Jianying draft folder settings.
+func (service *Settings) GetJianyingDraftSettings(ctx context.Context) (JianyingDraftSettings, error) {
+	_ = ctx
+	if service.appSettings == nil {
+		return JianyingDraftSettings{}, ErrAppSettingStoreMissing
+	}
+	value, _, err := service.appSettings.GetAppSetting(jianyingDraftRootSettingKey)
+	if err != nil {
+		return JianyingDraftSettings{}, err
+	}
+	return JianyingDraftSettings{DraftsRoot: strings.TrimSpace(value)}, nil
+}
+
+// SetJianyingDraftSettings stores the Jianying draft folder settings.
+func (service *Settings) SetJianyingDraftSettings(ctx context.Context, input JianyingDraftSettings) (JianyingDraftSettings, error) {
+	_ = ctx
+	if service.appSettings == nil {
+		return JianyingDraftSettings{}, ErrAppSettingStoreMissing
+	}
+	draftsRoot, err := normalizeJianyingDraftRoot(input.DraftsRoot)
+	if err != nil {
+		return JianyingDraftSettings{}, fmt.Errorf("%w: %v", ErrJianyingDraftInvalid, err)
+	}
+	if draftsRoot == "" {
+		if err := service.appSettings.ClearAppSetting(jianyingDraftRootSettingKey); err != nil {
+			return JianyingDraftSettings{}, err
+		}
+		return JianyingDraftSettings{}, nil
+	}
+	if err := service.appSettings.SetAppSetting(jianyingDraftRootSettingKey, draftsRoot); err != nil {
+		return JianyingDraftSettings{}, err
+	}
+	return JianyingDraftSettings{DraftsRoot: draftsRoot}, nil
+}
+
+func normalizeJianyingDraftRoot(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	absolute, err := filepath.Abs(value)
+	if err != nil {
+		return "", fmt.Errorf("resolving drafts root: %w", err)
+	}
+	if info, err := os.Stat(absolute); err == nil {
+		if !info.IsDir() {
+			return "", fmt.Errorf("drafts root is not a directory: %s", absolute)
+		}
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("checking drafts root: %w", err)
+	}
+	return absolute, nil
 }
 
 // ListAPIKeys lists all providers with their configured state.

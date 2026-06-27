@@ -8,6 +8,7 @@ import {
 	LayoutDashboard,
 	LayoutList,
 	Loader2,
+	Pencil,
 	RotateCcw,
 	Search,
 	SquarePen,
@@ -53,12 +54,13 @@ export const ProjectsSidebarPanel: React.FC<{
 	onCreateProject: () => void;
 	onArchiveProject: (project: WorkspaceProject) => void;
 	onRequestDeleteProject: (project: WorkspaceProject) => void;
+	onRenameProject: (project: WorkspaceProject) => void;
 	onOpenProject: (project: WorkspaceProject) => void;
 	onOpenGenerationNotification?: (notification: GenerationSuccessNotification) => void;
 	onOpenSearch: (scope: "global" | "project") => void;
 	onOpenSettings: () => void;
 	onRetry?: () => void;
-	projectAction?: { kind: "archive" | "trash"; projectId: string } | null;
+	projectAction?: { kind: "archive" | "trash" | "rename"; projectId: string } | null;
 	projects: WorkspaceProject[];
 }> = ({
 	error,
@@ -68,6 +70,7 @@ export const ProjectsSidebarPanel: React.FC<{
 	onArchiveProject,
 	onCreateProject,
 	onRequestDeleteProject,
+	onRenameProject,
 	onOpenGenerationNotification,
 	onOpenProject,
 	onOpenSearch,
@@ -117,6 +120,7 @@ export const ProjectsSidebarPanel: React.FC<{
 							onArchiveProject={onArchiveProject}
 							onOpenProject={onOpenProject}
 							onRequestDeleteProject={onRequestDeleteProject}
+							onRenameProject={onRenameProject}
 						/>
 					))
 				) : isLoading ? (
@@ -157,11 +161,20 @@ const ProjectsSidebarProjectItem: React.FC<{
 	onArchiveProject: (project: WorkspaceProject) => void;
 	onOpenProject: (project: WorkspaceProject) => void;
 	onRequestDeleteProject: (project: WorkspaceProject) => void;
+	onRenameProject: (project: WorkspaceProject) => void;
 	project: WorkspaceProject;
-	projectAction: { kind: "archive" | "trash"; projectId: string } | null;
-}> = ({ onArchiveProject, onOpenProject, onRequestDeleteProject, project, projectAction }) => {
+	projectAction: { kind: "archive" | "trash" | "rename"; projectId: string } | null;
+}> = ({
+	onArchiveProject,
+	onOpenProject,
+	onRenameProject,
+	onRequestDeleteProject,
+	project,
+	projectAction,
+}) => {
 	const isArchiving = projectAction?.kind === "archive" && projectAction.projectId === project.id;
 	const isTrashing = projectAction?.kind === "trash" && projectAction.projectId === project.id;
+	const isRenaming = projectAction?.kind === "rename" && projectAction.projectId === project.id;
 	const hasAction = Boolean(projectAction);
 
 	return (
@@ -180,6 +193,10 @@ const ProjectsSidebarProjectItem: React.FC<{
 				<ContextMenuItem disabled={hasAction} onSelect={() => onOpenProject(project)}>
 					<Folder className="size-4" />
 					<span>打开</span>
+				</ContextMenuItem>
+				<ContextMenuItem disabled={hasAction} onSelect={() => onRenameProject(project)}>
+					{isRenaming ? <Loader2 className="size-4 animate-spin" /> : <Pencil className="size-4" />}
+					<span>{isRenaming ? "正在重命名" : "重命名"}</span>
 				</ContextMenuItem>
 				<ContextMenuItem disabled={hasAction} onSelect={() => onArchiveProject(project)}>
 					{isArchiving ? (

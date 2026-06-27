@@ -1,4 +1,12 @@
-import { Archive, FolderOpen, Loader2, RotateCcw, Trash2, type LucideIcon } from "lucide-react";
+import {
+	Archive,
+	FolderOpen,
+	Loader2,
+	Pencil,
+	RotateCcw,
+	Trash2,
+	type LucideIcon,
+} from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -11,8 +19,10 @@ import {
 	type ProjectStatusFilter,
 	projectsKeyForStatus,
 	restoreProject,
+	updateProject,
 	type WorkspaceProject,
 } from "@/domains/projects/api/projects";
+import { openProjectRenameDialog } from "@/domains/projects/components/ProjectRenameDialog";
 import { useProjectStore } from "@/domains/projects/stores";
 import { agentProjectPath, agentProjectRouteState } from "@/domains/workspace/lib/workbench-route";
 import { Badge } from "@/shared/components/ui/badge";
@@ -28,7 +38,7 @@ import { useToast } from "@/hooks/useToast";
 import { cn } from "@/shared/lib/utils";
 
 type ProjectManagementTab = Exclude<ProjectStatusFilter, "all">;
-type ProjectAction = "archive" | "trash" | "restore" | "permanent";
+type ProjectAction = "archive" | "trash" | "restore" | "permanent" | "rename";
 
 const projectTabs: Array<{ label: string; status: ProjectManagementTab }> = [
 	{ label: "项目", status: "active" },
@@ -136,6 +146,27 @@ export const Projects: React.FC = () => {
 		} finally {
 			setAction(null);
 		}
+	};
+
+	const renameCurrentProject = (project: WorkspaceProject) => {
+		if (action) return;
+		void (async () => {
+			const nextName = await openProjectRenameDialog({ projectName: project.name });
+			if (!nextName || nextName === project.name.trim()) return;
+
+			setAction({ kind: "rename", projectId: project.id });
+			try {
+				const renamed = await updateProject(project.id, { name: nextName });
+				await refreshProjectLists();
+				toast.success("项目已重命名", { description: renamed.name });
+			} catch (err) {
+				toast.error("重命名项目失败", {
+					description: projectManagementErrorMessage(err, "重命名项目失败。"),
+				});
+			} finally {
+				setAction(null);
+			}
+		})();
 	};
 
 	const deleteCurrentProject = async (project: WorkspaceProject) => {
@@ -269,6 +300,7 @@ export const Projects: React.FC = () => {
 								onArchive={() => void archiveCurrentProject(project)}
 								onRequestDelete={() => confirmDeleteProject(project)}
 								onOpen={openProject}
+								onRename={() => renameCurrentProject(project)}
 								onRestore={() => void restoreCurrentProject(project)}
 								onRequestPermanentDelete={() => confirmPermanentlyDeleteProject(project)}
 							/>
@@ -285,6 +317,7 @@ const ProjectManagementRow: React.FC<{
 	activeTab: ProjectManagementTab;
 	onArchive: () => void;
 	onOpen: (project: WorkspaceProject) => void;
+	onRename: () => void;
 	onRequestDelete: () => void;
 	onRequestPermanentDelete: () => void;
 	onRestore: () => void;
@@ -295,6 +328,7 @@ const ProjectManagementRow: React.FC<{
 	activeTab,
 	onArchive,
 	onOpen,
+	onRename,
 	onRequestDelete,
 	onRequestPermanentDelete,
 	onRestore,
@@ -305,6 +339,7 @@ const ProjectManagementRow: React.FC<{
 	const isTrashing = action?.kind === "trash" && action.projectId === project.id;
 	const isRestoring = action?.kind === "restore" && action.projectId === project.id;
 	const isDeleting = action?.kind === "permanent" && action.projectId === project.id;
+	const isRenaming = action?.kind === "rename" && action.projectId === project.id;
 	const Icon = tabMeta[activeTab].icon;
 	const path = project.originalProjectDir || project.projectDir || project.relativeDir || "";
 	const timestamp = projectLifecycleTimestamp(project, activeTab);
@@ -371,6 +406,14 @@ const ProjectManagementRow: React.FC<{
 						<ContextMenuItem disabled={hasAction} onSelect={() => onOpen(project)}>
 							<FolderOpen className="size-4" />
 							<span>打开</span>
+						</ContextMenuItem>
+						<ContextMenuItem disabled={hasAction} onSelect={onRename}>
+							{isRenaming ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<Pencil className="size-4" />
+							)}
+							<span>{isRenaming ? "正在重命名" : "重命名"}</span>
 						</ContextMenuItem>
 						<ContextMenuItem disabled={hasAction} onSelect={onArchive}>
 							{isArchiving ? (

@@ -10,8 +10,10 @@ import {
 	getProjects,
 	projectsKey,
 	projectsKeyForStatus,
+	updateProject,
 	type WorkspaceProject,
 } from "@/domains/projects/api/projects";
+import { openProjectRenameDialog } from "@/domains/projects/components/ProjectRenameDialog";
 import {
 	type GenerationSuccessNotification,
 	useGenerationNotificationStore,
@@ -89,7 +91,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	const setWorkMode = useWorkModeStore((state) => state.setMode);
 	const [isCreating, setIsCreating] = useState(false);
 	const [projectAction, setProjectAction] = useState<{
-		kind: "archive" | "trash";
+		kind: "archive" | "trash" | "rename";
 		projectId: string;
 	} | null>(null);
 	const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -204,6 +206,29 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 			}
 		},
 		[leaveProjectIfHidden, projectAction, refreshProjectLists, toast],
+	);
+
+	const renameSidebarProject = useCallback(
+		(project: WorkspaceProject) => {
+			if (projectAction) return;
+			void (async () => {
+				const nextName = await openProjectRenameDialog({ projectName: project.name });
+				if (!nextName || nextName === project.name.trim()) return;
+
+				setProjectAction({ kind: "rename", projectId: project.id });
+				try {
+					const renamed = await updateProject(project.id, { name: nextName });
+					await refreshProjectLists();
+					toast.success("项目已重命名", { description: renamed.name });
+				} catch (err) {
+					const message = err instanceof Error ? err.message : "重命名项目失败。";
+					toast.error("重命名项目失败", { description: message });
+				} finally {
+					setProjectAction(null);
+				}
+			})();
+		},
+		[projectAction, refreshProjectLists, toast],
 	);
 
 	const trashSidebarProject = useCallback(
@@ -561,6 +586,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 										onArchiveProject={(project) => void archiveSidebarProject(project)}
 										onCreateProject={openAgentCreateDialog}
 										onRequestDeleteProject={requestTrashSidebarProject}
+										onRenameProject={renameSidebarProject}
 										onOpenGenerationNotification={openGenerationNotification}
 										onOpenProject={openProject}
 										onOpenSearch={openSearch}

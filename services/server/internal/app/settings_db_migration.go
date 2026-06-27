@@ -63,6 +63,9 @@ func migrateLegacySettingsRows(source *gorm.DB, target *gorm.DB) error {
 	if err := migrateLegacySettingsModel[domain.GenerationPreferenceModel](source, target); err != nil {
 		return err
 	}
+	if err := migrateLegacySettingsModel[domain.AppSettingModel](source, target); err != nil {
+		return err
+	}
 	return nil
 }
 

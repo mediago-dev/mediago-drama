@@ -75,6 +75,10 @@ export interface AgentModelProfilesResponse {
 	templates: AgentModelProfileTemplate[];
 }
 
+export interface JianyingDraftSettings {
+	draftsRoot: string;
+}
+
 export interface AgentModelProfileMutation {
 	templateId?: string;
 	name?: string;
@@ -94,9 +98,22 @@ export interface AgentModelProfileMutation {
 
 export const apiKeysKey = "/settings/api-keys";
 export const agentModelProfilesKey = "/settings/agent-model-profiles";
+export const jianyingDraftSettingsKey = "/settings/jianying-draft";
 
 export const getAPIKeys = async () => {
 	const response = await httpClient.get<APIKeyListResponse>(apiKeysKey);
+	return response.data;
+};
+
+export const getJianyingDraftSettings = async () => {
+	const response = await httpClient.get<JianyingDraftSettings>(jianyingDraftSettingsKey);
+	return response.data;
+};
+
+export const saveJianyingDraftSettings = async (draftsRoot: string) => {
+	const response = await httpClient.put<JianyingDraftSettings>(jianyingDraftSettingsKey, {
+		draftsRoot,
+	});
 	return response.data;
 };
 

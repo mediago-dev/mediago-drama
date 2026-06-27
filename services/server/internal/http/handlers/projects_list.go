@@ -16,6 +16,7 @@ type ProjectStore interface {
 	ListProjects() (mediamcp.ProjectList, error)
 	ListProjectsByStatus(status string) (mediamcp.ProjectList, error)
 	CreateProject(id string, request service.CreateWorkspaceProjectRequest) (mediamcp.Project, error)
+	UpdateProject(id string, request service.UpdateWorkspaceProjectRequest) (mediamcp.Project, bool, error)
 	DeleteProject(id string) (mediamcp.Project, bool, error)
 	ArchiveProject(id string) (mediamcp.Project, bool, error)
 	RestoreProject(id string) (mediamcp.Project, bool, error)
@@ -91,6 +92,44 @@ func (handler Projects) HandleCreateProject(context *gin.Context) {
 			return
 		}
 		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+
+	httpresponse.OK(context, project)
+}
+
+// HandleUpdateProject godoc
+// @Summary 更新项目
+// @Description 更新工作区项目元数据，例如项目名称。
+// @Tags Projects
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param payload body SwaggerObject true "Project update payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 409 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId} [patch]
+func (handler Projects) HandleUpdateProject(context *gin.Context) {
+	projectID, ok := requiredPathParam(context, "projectId", "projectId")
+	if !ok {
+		return
+	}
+	payload, err := decodeJSON[service.UpdateWorkspaceProjectRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+
+	project, updated, err := handler.store.UpdateProject(projectID, payload)
+	if err != nil {
+		handler.writeProjectMutationError(context, err)
+		return
+	}
+	if !updated {
+		httpresponse.Error(context, http.StatusNotFound, "项目不存在")
 		return
 	}
 
@@ -216,6 +255,17 @@ func (handler Projects) writeProjectLifecycleError(context *gin.Context, err err
 		httpresponse.Error(context, http.StatusConflict, "项目已在垃圾箱中")
 	case errors.Is(err, service.ErrProjectNotInTrash):
 		httpresponse.Error(context, http.StatusConflict, "项目未在垃圾箱中")
+	default:
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+	}
+}
+
+func (handler Projects) writeProjectMutationError(context *gin.Context, err error) {
+	switch {
+	case errors.Is(err, service.ErrProjectNameRequired):
+		httpresponse.Error(context, http.StatusBadRequest, "项目名称不能为空")
+	case errors.Is(err, service.ErrProjectTrashOperationConflict):
+		httpresponse.Error(context, http.StatusConflict, "项目已在垃圾箱中")
 	default:
 		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
 	}

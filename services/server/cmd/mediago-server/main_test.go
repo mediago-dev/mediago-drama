@@ -62,6 +62,66 @@ func TestApplyEnvOverridesRejectsInvalidServerPort(t *testing.T) {
 	}
 }
 
+func TestApplyPackagedToolDefaultsUsesSiblingToolsDir(t *testing.T) {
+	resourcesDir := t.TempDir()
+	binDir := filepath.Join(resourcesDir, "bin")
+	toolsDir := filepath.Join(resourcesDir, "tools")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(bin) error = %v", err)
+	}
+	if err := os.MkdirAll(toolsDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(tools) error = %v", err)
+	}
+	originalExecutablePath := executablePath
+	executablePath = func() (string, error) {
+		return filepath.Join(binDir, "mediago-server"), nil
+	}
+	t.Cleanup(func() {
+		executablePath = originalExecutablePath
+	})
+
+	config := serverconfig.ServerConfig{}
+	applyPackagedToolDefaults(&config)
+
+	if config.FFmpeg.BinDir != toolsDir {
+		t.Fatalf("FFmpeg.BinDir = %q, want packaged tools dir %q", config.FFmpeg.BinDir, toolsDir)
+	}
+	if config.Jimeng.BinDir != toolsDir {
+		t.Fatalf("Jimeng.BinDir = %q, want packaged tools dir %q", config.Jimeng.BinDir, toolsDir)
+	}
+}
+
+func TestApplyPackagedToolDefaultsKeepsExplicitToolDirs(t *testing.T) {
+	resourcesDir := t.TempDir()
+	binDir := filepath.Join(resourcesDir, "bin")
+	toolsDir := filepath.Join(resourcesDir, "tools")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(bin) error = %v", err)
+	}
+	if err := os.MkdirAll(toolsDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(tools) error = %v", err)
+	}
+	originalExecutablePath := executablePath
+	executablePath = func() (string, error) {
+		return filepath.Join(binDir, "mediago-server"), nil
+	}
+	t.Cleanup(func() {
+		executablePath = originalExecutablePath
+	})
+
+	config := serverconfig.ServerConfig{}
+	config.FFmpeg.BinDir = "/custom/ffmpeg-tools"
+	config.Jimeng.BinDir = "/custom/jimeng-tools"
+	applyPackagedToolDefaults(&config)
+
+	if config.FFmpeg.BinDir != "/custom/ffmpeg-tools" {
+		t.Fatalf("FFmpeg.BinDir = %q, want explicit value", config.FFmpeg.BinDir)
+	}
+	if config.Jimeng.BinDir != "/custom/jimeng-tools" {
+		t.Fatalf("Jimeng.BinDir = %q, want explicit value", config.Jimeng.BinDir)
+	}
+}
+
 func TestParseServerPort(t *testing.T) {
 	tests := []struct {
 		name    string

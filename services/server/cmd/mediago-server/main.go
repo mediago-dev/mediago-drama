@@ -95,6 +95,7 @@ func run(args []string) error {
 	if err := applyEnvOverrides(&config); err != nil {
 		return err
 	}
+	applyPackagedToolDefaults(&config)
 
 	staticFS, err := workspace.StaticFS()
 	if err != nil {
@@ -262,6 +263,37 @@ func applyEnvOverrides(config *serverconfig.ServerConfig) error {
 		config.LogLevel = value
 	}
 	return nil
+}
+
+var executablePath = os.Executable
+
+func applyPackagedToolDefaults(config *serverconfig.ServerConfig) {
+	if config == nil {
+		return
+	}
+	toolsDir, ok := packagedToolsDir()
+	if !ok {
+		return
+	}
+	if strings.TrimSpace(config.FFmpeg.BinDir) == "" {
+		config.FFmpeg.BinDir = toolsDir
+	}
+	if strings.TrimSpace(config.Jimeng.BinDir) == "" {
+		config.Jimeng.BinDir = toolsDir
+	}
+}
+
+func packagedToolsDir() (string, bool) {
+	executable, err := executablePath()
+	if err != nil {
+		return "", false
+	}
+	candidate := filepath.Clean(filepath.Join(filepath.Dir(executable), "..", "tools"))
+	info, err := os.Stat(candidate)
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	return candidate, true
 }
 
 func exitOnStdinCloseEnabled() bool {

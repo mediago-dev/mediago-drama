@@ -103,6 +103,30 @@ func (repo *WorkspaceRepository) UpsertProject(model domain.WorkspaceProjectMode
 	return nil
 }
 
+// UpdateProjectName updates a project's display name.
+func (repo *WorkspaceRepository) UpdateProjectName(projectID string, name string, updatedAt string) (bool, error) {
+	projectID = strings.TrimSpace(projectID)
+	name = strings.TrimSpace(name)
+	updatedAt = strings.TrimSpace(updatedAt)
+	if projectID == "" {
+		return false, fmt.Errorf("project id is required")
+	}
+	if name == "" {
+		return false, fmt.Errorf("project name is required")
+	}
+	updates := map[string]any{"name": name}
+	if updatedAt != "" {
+		updates["updated_at"] = domain.TimeFromString(updatedAt)
+	}
+	result := repo.db.Model(&domain.WorkspaceProjectModel{}).
+		Where("id = ?", projectID).
+		Updates(updates)
+	if result.Error != nil {
+		return false, fmt.Errorf("updating project %s name: %w", projectID, result.Error)
+	}
+	return result.RowsAffected > 0, nil
+}
+
 // ArchiveProject marks a project archived without moving its files.
 func (repo *WorkspaceRepository) ArchiveProject(projectID string, archivedAt string) (bool, error) {
 	projectID = strings.TrimSpace(projectID)

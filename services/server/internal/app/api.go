@@ -12,6 +12,7 @@ import (
 	servicebilling "github.com/mediago-dev/mediago-drama/services/server/internal/service/billing"
 	servicecapability "github.com/mediago-dev/mediago-drama/services/server/internal/service/capability"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
+	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	serviceprojectasset "github.com/mediago-dev/mediago-drama/services/server/internal/service/projectasset"
 	servicepromptlibrary "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptlibrary"
@@ -39,6 +40,7 @@ type apiHandler struct {
 	capability       *servicecapability.Service
 	billing          *servicebilling.Service
 	generation       *servicegeneration.GenerationService
+	jianyingDraft    *servicejianyingdraft.Service
 	mediaAssets      *servicemedia.MediaAssets
 	previewStreamer  *servicemedia.FFmpegPreviewStreamer
 	projectAssets    *serviceprojectasset.ProjectAssets

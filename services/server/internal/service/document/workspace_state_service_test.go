@@ -1,6 +1,7 @@
 package document
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -219,6 +220,44 @@ func TestWorkspaceStateServiceCreateProjectStartsWithoutOverviewDocument(t *test
 	assertDocumentMarkdownMissing(t, store.documentsDir(projectID), "项目概览.md")
 	if _, err := os.Stat(filepath.Join(projectDir, "project.media.json")); err != nil {
 		t.Fatalf("project.media.json should exist: %v", err)
+	}
+}
+
+func TestWorkspaceStateServiceRenamesProject(t *testing.T) {
+	workspaceDir := t.TempDir()
+	store := newWorkspaceStateService(workspaceDir)
+	if store.initErr != nil {
+		t.Fatalf("initializing workspace store: %v", store.initErr)
+	}
+	projectID := "project-rename"
+	projectDir := requireTestProject(t, store, projectID)
+
+	renamed, ok, err := store.UpdateProject(projectID, UpdateWorkspaceProjectRequest{Name: "  新项目名  "})
+	if err != nil || !ok {
+		t.Fatalf("UpdateProject() project=%#v ok=%v err=%v, want ok", renamed, ok, err)
+	}
+	if renamed.Name != "新项目名" {
+		t.Fatalf("renamed.Name = %q, want 新项目名", renamed.Name)
+	}
+
+	config, err := store.LoadProjectConfig(projectID)
+	if err != nil {
+		t.Fatalf("LoadProjectConfig() error = %v", err)
+	}
+	if config.Name != "新项目名" {
+		t.Fatalf("config.Name = %q, want 新项目名", config.Name)
+	}
+
+	data, err := os.ReadFile(filepath.Join(projectDir, "project.media.json"))
+	if err != nil {
+		t.Fatalf("reading project manifest: %v", err)
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatalf("decoding project manifest: %v", err)
+	}
+	if manifest["name"] != "新项目名" {
+		t.Fatalf("manifest name = %#v, want 新项目名", manifest["name"])
 	}
 }
 

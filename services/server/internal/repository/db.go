@@ -173,6 +173,7 @@ func EnsureSettingsSchema(db *gorm.DB) error {
 		&domain.PromptCategoryModel{},
 		&domain.PromptLibraryEntryModel{},
 		&domain.GenerationPreferenceModel{},
+		&domain.AppSettingModel{},
 	); err != nil {
 		return fmt.Errorf("initializing settings database: %w", err)
 	}

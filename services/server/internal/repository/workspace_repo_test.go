@@ -45,6 +45,22 @@ func TestWorkspaceRepositoryProjectAndOperationLogLifecycle(t *testing.T) {
 		t.Fatal("BriefJSON is empty, want persisted brief")
 	}
 
+	renamedAt := "2026-05-22T00:03:00Z"
+	renamed, err := repo.UpdateProjectName(project.ID, "Project Renamed", renamedAt)
+	if err != nil {
+		t.Fatalf("UpdateProjectName() error = %v", err)
+	}
+	if !renamed {
+		t.Fatal("UpdateProjectName() renamed = false, want true")
+	}
+	gotProject, err = repo.GetProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetProject() after rename error = %v", err)
+	}
+	if gotProject.Name != "Project Renamed" || domain.StringFromTime(gotProject.UpdatedAt) != renamedAt {
+		t.Fatalf("renamed project = %+v, want updated name and timestamp", gotProject)
+	}
+
 	operations := []domain.DocumentOperationLogModel{
 		{
 			ProjectID:  project.ID,

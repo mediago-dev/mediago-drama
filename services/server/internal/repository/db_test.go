@@ -128,6 +128,7 @@ func TestOpenSettingsRepositoriesMigratesOnlyGlobalSettingsSchemas(t *testing.T)
 	if repos.DB == nil ||
 		repos.APIKeys == nil ||
 		repos.AgentModelProfiles == nil ||
+		repos.AppSettings == nil ||
 		repos.GenerationPreferences == nil ||
 		repos.Instructions == nil ||
 		repos.PromptLibrary == nil {
@@ -141,6 +142,7 @@ func TestOpenSettingsRepositoriesMigratesOnlyGlobalSettingsSchemas(t *testing.T)
 		&domain.PromptCategoryModel{},
 		&domain.PromptLibraryEntryModel{},
 		&domain.GenerationPreferenceModel{},
+		&domain.AppSettingModel{},
 	}
 	for _, model := range settingsModels {
 		if !repos.DB.Migrator().HasTable(model) {

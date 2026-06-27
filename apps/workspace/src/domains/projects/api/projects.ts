@@ -66,6 +66,10 @@ export type { ProjectBrief, ProjectBriefPatch } from "@/api/types/documents";
 
 export type CreateWorkspaceProjectRequest = Partial<GeneratedCreateWorkspaceProjectRequest>;
 
+export interface UpdateWorkspaceProjectRequest {
+	name: string;
+}
+
 export const projectsKeyForStatus = (status: ProjectStatusFilter = "active") =>
 	status === "active" ? projectsKey : `${projectsKey}?status=${encodeURIComponent(status)}`;
 
@@ -79,6 +83,14 @@ export const getProjects = async (status: ProjectStatusFilter = "active") => {
 
 export const createProject = async (payload: CreateWorkspaceProjectRequest) => {
 	const response = await httpClient.post<WorkspaceProject>(projectsKey, payload);
+	return response.data;
+};
+
+export const updateProject = async (projectId: string, payload: UpdateWorkspaceProjectRequest) => {
+	const response = await httpClient.patch<WorkspaceProject>(
+		`${projectsKey}/${encodeURIComponent(projectId)}`,
+		payload,
+	);
 	return response.data;
 };
 

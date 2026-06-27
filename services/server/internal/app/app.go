@@ -120,6 +120,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	projectBriefHandler := httphandlers.NewProjectBriefs(api.workspaceState, api.publishProjectBriefUpdated)
 	workspaceHandler := httphandlers.NewWorkspace(api.workspaceState, repository.IsRecordNotFound, servicedocument.IsWorkspaceVersionConflict, api.projectAssets)
 	episodePreviewHandler := httphandlers.NewEpisodePreview(api.workspaceState, api.mediaAssets, api.previewStreamer)
+	jianyingDraftHandler := httphandlers.NewJianyingDraft(api.jianyingDraft)
 	workspaceEventHandler := httphandlers.NewWorkspaceEvents(api)
 	promptPackHandler := httphandlers.NewPromptPacks(api.promptPack)
 	promptTemplateHandler := httphandlers.NewPromptTemplates(api.promptTemplates)
@@ -168,6 +169,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		ProjectBriefs:         projectBriefHandler,
 		Workspace:             workspaceHandler,
 		EpisodePreview:        episodePreviewHandler,
+		JianyingDraft:         jianyingDraftHandler,
 		WorkspaceEvents:       workspaceEventHandler,
 		PromptPacks:           promptPackHandler,
 		PromptTemplates:       promptTemplateHandler,

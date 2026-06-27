@@ -1,5 +1,6 @@
 import {
 	Check,
+	Clapperboard,
 	ExternalLink,
 	FolderOpen,
 	KeyRound,
@@ -21,7 +22,10 @@ import {
 	clearAPIKey,
 	completeProviderLogin,
 	getAPIKeys,
+	getJianyingDraftSettings,
+	jianyingDraftSettingsKey,
 	saveAPIKey,
+	saveJianyingDraftSettings,
 } from "@/domains/settings/api/settings";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
 import { BillingPanel } from "@/domains/billing/components/BillingPanel";
@@ -47,14 +51,21 @@ import { ProjectSettings } from "@/pages/ProjectSettings";
 import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
-import { openExternalUrl } from "@/shared/desktop/actions";
+import { openExternalUrl, pickDesktopDirectory } from "@/shared/desktop/actions";
 
-type SettingsTabValue = "appearance" | "api-keys" | "billing" | "shortcuts" | DebugTabValue;
+type SettingsTabValue =
+	| "appearance"
+	| "api-keys"
+	| "billing"
+	| "jianying-draft"
+	| "shortcuts"
+	| DebugTabValue;
 
 const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	value === "appearance" ||
 	value === "api-keys" ||
 	value === "billing" ||
+	value === "jianying-draft" ||
 	value === "shortcuts" ||
 	debugTabs.some((tab) => tab.value === value);
 
@@ -84,6 +95,7 @@ export const Settings: React.FC = () => {
 				<AppearancePanel mode={themeMode} onSelectMode={setThemeMode} />
 			) : null}
 
+			{visibleTab === "jianying-draft" ? <JianyingDraftPanel /> : null}
 			{visibleTab === "api-keys" ? <APIKeysPanel /> : null}
 			{visibleTab === "billing" ? <BillingPanel /> : null}
 			{visibleTab === "shortcuts" ? <ShortcutKeysPanel /> : null}
@@ -279,6 +291,148 @@ const withoutRecordKey = <TValue,>(values: Record<string, TValue>, key: string) 
 
 const openExternalURL = async (url: string) => {
 	await openExternalUrl(url);
+};
+
+const JianyingDraftPanel: React.FC = () => {
+	const toast = useToast();
+	const { data, mutate, isLoading } = useSWR(jianyingDraftSettingsKey, getJianyingDraftSettings);
+	const [draftsRoot, setDraftsRoot] = useState("");
+	const [isPicking, setIsPicking] = useState(false);
+	const [isSaving, setIsSaving] = useState(false);
+	const [isOpening, setIsOpening] = useState(false);
+
+	useEffect(() => {
+		setDraftsRoot(data?.draftsRoot ?? "");
+	}, [data?.draftsRoot]);
+
+	const pickDirectory = async () => {
+		if (isPicking) return;
+
+		setIsPicking(true);
+		try {
+			const directory = isDesktopRuntime()
+				? await pickDesktopDirectory("选择剪映草稿文件夹")
+				: window.prompt("剪映草稿文件夹绝对路径", draftsRoot)?.trim();
+			if (!directory) return;
+			setDraftsRoot(directory);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "选择文件夹失败。";
+			toast.error("选择失败", { description: message });
+		} finally {
+			setIsPicking(false);
+		}
+	};
+
+	const save = async () => {
+		if (isSaving) return;
+
+		setIsSaving(true);
+		try {
+			const next = await saveJianyingDraftSettings(draftsRoot.trim());
+			await mutate(next, false);
+			toast.success(next.draftsRoot ? "剪映草稿目录已保存" : "剪映草稿目录已清除", {
+				description: next.draftsRoot || undefined,
+			});
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "保存剪映草稿目录失败。";
+			toast.error("保存失败", { description: message });
+		} finally {
+			setIsSaving(false);
+		}
+	};
+
+	const openDirectory = async () => {
+		const directory = draftsRoot.trim();
+		if (!directory || isOpening) return;
+
+		setIsOpening(true);
+		try {
+			await openProjectDirectory(directory);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "打开剪映草稿目录失败。";
+			toast.error("打开失败", { description: message });
+		} finally {
+			setIsOpening(false);
+		}
+	};
+
+	return (
+		<SettingsPanelLayout
+			title="剪映草稿"
+			description="配置剪辑工作台导出剪映草稿时使用的本机目录。"
+			icon={<Clapperboard className="size-4" />}
+		>
+			<div className="space-y-3">
+				{isLoading && !data ? (
+					<div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+						<Loader2 className="size-4 animate-spin" />
+						<span>加载中</span>
+					</div>
+				) : null}
+				<div
+					className={cn(
+						settingsInsetRowClassName,
+						"grid gap-3 md:grid-cols-[minmax(var(--settings-label-column-min),var(--settings-label-column-max))_minmax(0,1fr)] md:items-start",
+					)}
+				>
+					<div className="min-w-0">
+						<Label htmlFor="jianying-drafts-root" className="text-sm font-medium text-foreground">
+							草稿文件夹
+						</Label>
+						<p className="mt-1 text-xs leading-5 text-muted-foreground">
+							{draftsRoot.trim() ? "剪映桌面端会在这里读取新草稿。" : "尚未设置草稿文件夹。"}
+						</p>
+					</div>
+					<div className="min-w-0">
+						<Input
+							id="jianying-drafts-root"
+							value={draftsRoot}
+							onChange={(event) => setDraftsRoot(event.target.value)}
+							placeholder="选择或输入剪映草稿文件夹"
+							className="h-8 rounded-md font-mono text-xs text-foreground"
+						/>
+						<div className="mt-2 flex flex-wrap items-center gap-2">
+							<Button
+								type="button"
+								variant="secondary"
+								size="sm"
+								onClick={() => void pickDirectory()}
+								disabled={isPicking}
+								className="rounded-md"
+							>
+								{isPicking ? <Loader2 className="animate-spin" /> : <FolderOpen />}
+								<span>选择</span>
+							</Button>
+							<Button
+								type="button"
+								size="sm"
+								onClick={() => void save()}
+								disabled={isSaving || draftsRoot.trim() === (data?.draftsRoot ?? "")}
+								className="rounded-md"
+							>
+								{isSaving ? <Loader2 className="animate-spin" /> : <Save />}
+								<span>保存</span>
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={() => void openDirectory()}
+								disabled={!draftsRoot.trim() || isOpening || !isDesktopRuntime()}
+								className="rounded-md"
+								title={
+									isDesktopRuntime() ? "打开剪映草稿文件夹" : "当前运行环境不支持打开本地文件夹"
+								}
+							>
+								{isOpening ? <Loader2 className="animate-spin" /> : <FolderOpen />}
+								<span>打开</span>
+							</Button>
+						</div>
+					</div>
+				</div>
+			</div>
+		</SettingsPanelLayout>
+	);
 };
 
 const AppearancePanel: React.FC<{

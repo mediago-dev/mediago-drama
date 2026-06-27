@@ -161,6 +161,21 @@ export interface WorkspaceResolvedEpisodePayload {
 	persistedUpdatedAt?: string;
 }
 
+export interface ExportWorkspaceEpisodeJianyingDraftRequest {
+	copyMedia?: boolean;
+	draftName?: string;
+	draftsRoot?: string;
+	replaceExisting?: boolean;
+}
+
+export interface ExportWorkspaceEpisodeJianyingDraftResponse {
+	draftName: string;
+	draftPath: string;
+	durationMicros: number;
+	shotCount: number;
+	skippedCount: number;
+}
+
 export type CreateWorkspaceDocumentRequest = Omit<
 	GeneratedCreateWorkspaceDocumentRequest,
 	"category" | "comments" | "folderId" | "parentId" | "workbenchDraft"
@@ -522,6 +537,18 @@ export const updateWorkspaceEpisode = async (
 	return response.data;
 };
 
+export const exportWorkspaceEpisodeJianyingDraft = async (
+	documentId: string,
+	payload: ExportWorkspaceEpisodeJianyingDraftRequest = {},
+	projectId?: string | null,
+) => {
+	const response = await httpClient.post<ExportWorkspaceEpisodeJianyingDraftResponse>(
+		workspaceEpisodeJianyingDraftKey(documentId, projectId),
+		payload,
+	);
+	return response.data;
+};
+
 export const workspaceDocumentsKey = (projectId?: string | null) =>
 	projectAPIPath(projectId, "/workspace/documents");
 
@@ -585,6 +612,10 @@ export const workspaceEpisodePreviewStreamURL = (
 	);
 	const query = version ? `?v=${encodeURIComponent(version)}` : "";
 	return apiURL(path + query);
+};
+
+const workspaceEpisodeJianyingDraftKey = (documentId: string, projectId?: string | null) => {
+	return `${workspaceEpisodeKey(documentId, projectId)}/jianying-draft`;
 };
 
 const workspaceEventSourceURL = (projectId?: string | null) => {

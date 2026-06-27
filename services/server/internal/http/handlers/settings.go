@@ -37,6 +37,11 @@ type ProviderLoginCheckRequest struct {
 	DeviceCode string `json:"deviceCode"`
 }
 
+// JianyingDraftSettingsRequest updates local Jianying draft export settings.
+type JianyingDraftSettingsRequest struct {
+	DraftsRoot string `json:"draftsRoot"`
+}
+
 // HandleAPIKeys godoc
 // @Summary 获取 API Key 配置
 // @Description 返回模型供应商 API Key 的配置和脱敏状态。
@@ -53,6 +58,54 @@ func (handler Settings) HandleAPIKeys(context *gin.Context) {
 	}
 
 	httpresponse.OK(context, list)
+}
+
+// HandleJianyingDraftSettings godoc
+// @Summary 获取剪映草稿设置
+// @Description 返回本机剪映草稿文件夹位置。
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/jianying-draft [get]
+func (handler Settings) HandleJianyingDraftSettings(context *gin.Context) {
+	settings, err := handler.service.GetJianyingDraftSettings(context.Request.Context())
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+
+	httpresponse.OK(context, settings)
+}
+
+// HandlePutJianyingDraftSettings godoc
+// @Summary 保存剪映草稿设置
+// @Description 保存本机剪映草稿文件夹位置。
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param payload body JianyingDraftSettingsRequest true "Jianying draft settings"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/jianying-draft [put]
+func (handler Settings) HandlePutJianyingDraftSettings(context *gin.Context) {
+	payload, err := decodeJSON[JianyingDraftSettingsRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+
+	settings, err := handler.service.SetJianyingDraftSettings(
+		context.Request.Context(),
+		service.JianyingDraftSettings{DraftsRoot: payload.DraftsRoot},
+	)
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+
+	httpresponse.OK(context, settings)
 }
 
 // HandlePutAPIKey godoc
@@ -349,6 +402,10 @@ func writeSettingsError(context *gin.Context, err error) {
 		httpresponse.ErrorFromStatus(context, http.StatusConflict, err)
 	case errors.Is(err, service.ErrAgentModelStoreMissing):
 		httpresponse.ErrorFromStatus(context, http.StatusServiceUnavailable, err)
+	case errors.Is(err, service.ErrAppSettingStoreMissing):
+		httpresponse.ErrorFromStatus(context, http.StatusServiceUnavailable, err)
+	case errors.Is(err, service.ErrJianyingDraftInvalid):
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 	default:
 		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
 	}

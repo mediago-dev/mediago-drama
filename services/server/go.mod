@@ -11,6 +11,7 @@ require (
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/mediago-dev/mediago-drama/packages/core v0.0.0
 	github.com/mediago-dev/mediago-drama/packages/instructions v0.0.0
+	github.com/mediago-dev/mediago-drama/packages/jianyingdraft v0.0.0
 	github.com/mediago-dev/mediago-drama/packages/mcp v0.0.0
 	github.com/modelcontextprotocol/go-sdk v1.6.0
 	github.com/swaggo/files v1.0.1
@@ -94,6 +95,8 @@ require (
 replace github.com/mediago-dev/mediago-drama/packages/core => ../../packages/core
 
 replace github.com/mediago-dev/mediago-drama/packages/instructions => ../../packages/instructions
+
+replace github.com/mediago-dev/mediago-drama/packages/jianyingdraft => ../../packages/jianyingdraft
 
 replace github.com/mediago-dev/mediago-drama/packages/mcp => ../../packages/mcp
 

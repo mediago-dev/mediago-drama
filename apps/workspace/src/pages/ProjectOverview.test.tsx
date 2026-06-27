@@ -1,10 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type React from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BillingSummaryResponse } from "@/domains/billing/api/billing";
-import { useDocumentsStore } from "@/domains/documents/stores";
+import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
 import type { ProjectConfig } from "@/domains/projects/api/projects";
 import httpClient from "@/shared/lib/http";
 import type { ApiResponse } from "@/types/api";
@@ -47,6 +47,16 @@ vi.mock("@/hooks/useToast", () => ({
 		success: vi.fn(),
 	}),
 }));
+
+const LocationProbe = () => {
+	const location = useLocation();
+	const state = location.state as { projectView?: string } | null;
+	return (
+		<div data-project-view={state?.projectView ?? ""} data-testid="location">
+			{`${location.pathname}${location.search}`}
+		</div>
+	);
+};
 
 const projectConfig: ProjectConfig = {
 	createdAt: "2026-06-19T02:08:41.000Z",
@@ -180,6 +190,35 @@ describe("ProjectOverview", () => {
 					</button>
 				) : null,
 		);
+		vi.mocked(httpClient.patch).mockImplementation(async (url, payload) => {
+			const documentId = String(url).split("/").pop() ?? "";
+			const current = useDocumentsStore.getState();
+			const document = current.documents.find((item) => item.id === documentId);
+			if (!document) throw new Error(`missing document ${documentId}`);
+
+			const patchPayload = payload as Partial<Pick<MarkdownDocument, "workbenchDraft">>;
+			const nextDocument: MarkdownDocument = {
+				...document,
+				...(patchPayload.workbenchDraft !== undefined
+					? { workbenchDraft: patchPayload.workbenchDraft }
+					: {}),
+				isDirty: false,
+			};
+			const nextDocuments = current.documents.map((item) =>
+				item.id === documentId ? nextDocument : item,
+			);
+
+			return apiResponse({
+				document: nextDocument,
+				state: {
+					assets: current.assets,
+					documents: nextDocuments,
+					folders: current.folders,
+					projectId: current.projectId ?? undefined,
+					workspaceDir: current.workspaceDir,
+				},
+			});
+		});
 		vi.mocked(httpClient.get).mockImplementation(async (url, config) => {
 			const requestUrl = String(url);
 			if (requestUrl === "/generation/tasks") {
@@ -831,6 +870,44 @@ describe("ProjectOverview", () => {
 		);
 		expect(within(secondDialog).queryByText("已有成片")).not.toBeInTheDocument();
 		expect(within(secondDialog).queryByTestId("overview-video-player")).not.toBeInTheDocument();
+	});
+
+	it("opens the matching storyboard clipping workbench from video resources", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+					<Routes>
+						<Route
+							path="/projects"
+							element={
+								<>
+									<ProjectOverview />
+									<LocationProbe />
+								</>
+							}
+						/>
+					</Routes>
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		await screen.findByRole("button", { name: "第一章分镜脚本 成片资源" });
+		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 成片资源" }));
+
+		const dialog = await screen.findByRole("dialog");
+		fireEvent.click(within(dialog).getByRole("button", { name: "打开第一章分镜脚本剪辑工作台" }));
+
+		expect(
+			useDocumentsStore.getState().documents.find((document) => document.id === "storyboard-a")
+				?.workbenchDraft?.documentId,
+		).toBe("storyboard-a");
+
+		await waitFor(() => {
+			expect(screen.getByTestId("location")).toHaveTextContent(
+				"/projects?projectId=project-a&documentId=storyboard-a&workbench=timeline",
+			);
+			expect(screen.getByTestId("location")).toHaveAttribute("data-project-view", "overview");
+		});
 	});
 
 	it("submits storyboard video reels for background batch video generation", async () => {

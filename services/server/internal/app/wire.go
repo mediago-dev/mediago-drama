@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
+	draftlib "github.com/mediago-dev/mediago-drama/packages/jianyingdraft/pkg/jianyingdraft"
 	appagent "github.com/mediago-dev/mediago-drama/services/server/internal/app/agent"
 	appevents "github.com/mediago-dev/mediago-drama/services/server/internal/app/events"
 	appworkspace "github.com/mediago-dev/mediago-drama/services/server/internal/app/workspace"
@@ -17,6 +18,7 @@ import (
 	servicebilling "github.com/mediago-dev/mediago-drama/services/server/internal/service/billing"
 	servicecapability "github.com/mediago-dev/mediago-drama/services/server/internal/service/capability"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
+	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	serviceprojectasset "github.com/mediago-dev/mediago-drama/services/server/internal/service/projectasset"
 	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
@@ -74,7 +76,11 @@ func newAPIHandler(config Config) *apiHandler {
 		migrateDefaultSettingsDB(settingsRepos.DB, workspaceState.DatabasePath(), settingsDBPath)
 	}
 	workspaceRepos, workspaceReposErr := repository.OpenWorkspaceRepositories(workspaceState.DatabasePath())
-	settings := servicesettings.NewSettingsWithAgentModelProfiles(settingsRepos.APIKeys, settingsRepos.AgentModelProfiles)
+	settings := servicesettings.NewSettingsWithStores(
+		settingsRepos.APIKeys,
+		settingsRepos.AgentModelProfiles,
+		settingsRepos.AppSettings,
+	)
 	settings.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
 	if configurableRunner, ok := runner.(interface {
 		SetProcessConfigProvider(serviceacp.ProcessConfigProvider)
@@ -98,6 +104,12 @@ func newAPIHandler(config Config) *apiHandler {
 	mediaAssets := servicemedia.NewMediaAssetsFromRepository(workspaceRepos.MediaAssets, mediaDir, workspaceState.Dir(), workspaceRepos.Workspace, workspaceReposErr)
 	mediaAssets.SetMediaToolPaths(config.FFmpegPath, config.FFmpegBinDir)
 	previewStreamer := servicemedia.NewFFmpegPreviewStreamer(config.FFmpegPath, config.FFmpegBinDir)
+	jianyingDraft := servicejianyingdraft.NewService(
+		workspaceState,
+		mediaAssets,
+		settings,
+		draftlib.FFProbeReader{BinDir: config.FFmpegBinDir},
+	)
 	generationService := servicegeneration.NewGenerationService(settings, generationTasks, mediaAssets, generationPreferences)
 	generationService.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
 	generationService.SetGenerationNotifications(generationNotifications)
@@ -139,6 +151,7 @@ func newAPIHandler(config Config) *apiHandler {
 		billing:          billingService,
 		backendService:   backendService,
 		generation:       generationService,
+		jianyingDraft:    jianyingDraft,
 		mediaAssets:      mediaAssets,
 		previewStreamer:  previewStreamer,
 		projectAssets:    projectAssets,

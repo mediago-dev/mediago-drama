@@ -569,6 +569,34 @@ func TestAPIHandler(t *testing.T) {
 			configPatchEnvelope.Data.Config.Overview.CategoryDefaults["style"] != "" {
 			t.Fatalf("project config patch = %+v, want changed category defaults", configPatchEnvelope.Data)
 		}
+		renameProject := requestJSON(t, projectHandler, http.MethodPatch, "/api/v1/projects/"+url.PathEscape(createEnvelope.Data.ID), `{"name":"第二集：改名后"}`)
+		defer renameProject.Body.Close()
+		if renameProject.StatusCode != http.StatusOK {
+			t.Fatalf("rename project status code = %d, want %d: %s", renameProject.StatusCode, http.StatusOK, readBody(t, renameProject.Body))
+		}
+		var renameEnvelope struct {
+			Data workspaceProjectRecord `json:"data"`
+		}
+		if err := json.NewDecoder(renameProject.Body).Decode(&renameEnvelope); err != nil {
+			t.Fatalf("decoding rename project response: %v", err)
+		}
+		if renameEnvelope.Data.Name != "第二集：改名后" {
+			t.Fatalf("renamed project = %+v, want new name", renameEnvelope.Data)
+		}
+		configAfterRename := requestJSON(t, projectHandler, http.MethodGet, "/api/v1/projects/"+url.PathEscape(createEnvelope.Data.ID)+"/config", "")
+		defer configAfterRename.Body.Close()
+		if configAfterRename.StatusCode != http.StatusOK {
+			t.Fatalf("config after rename status code = %d, want %d: %s", configAfterRename.StatusCode, http.StatusOK, readBody(t, configAfterRename.Body))
+		}
+		var renamedConfigEnvelope struct {
+			Data mediamcp.ProjectConfig `json:"data"`
+		}
+		if err := json.NewDecoder(configAfterRename.Body).Decode(&renamedConfigEnvelope); err != nil {
+			t.Fatalf("decoding renamed project config response: %v", err)
+		}
+		if renamedConfigEnvelope.Data.Name != "第二集：改名后" {
+			t.Fatalf("renamed project config = %+v, want new name", renamedConfigEnvelope.Data)
+		}
 		if _, err := os.Stat(filepath.Join(workspaceDir, "local-projects")); !os.IsNotExist(err) {
 			t.Fatalf("deprecated workspace projects dir exists, err=%v", err)
 		}

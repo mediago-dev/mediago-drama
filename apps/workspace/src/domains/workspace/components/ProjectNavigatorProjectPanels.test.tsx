@@ -195,10 +195,12 @@ describe("ProjectSidebarPanel", () => {
 	it("opens project list actions from the project context menu", () => {
 		const onArchiveProject = vi.fn();
 		const onOpenProject = vi.fn();
+		const onRenameProject = vi.fn();
 		const onRequestDeleteProject = vi.fn();
 		renderProjectsSidebar({
 			onArchiveProject,
 			onOpenProject,
+			onRenameProject,
 			onRequestDeleteProject,
 		});
 
@@ -208,6 +210,13 @@ describe("ProjectSidebarPanel", () => {
 		});
 
 		expect(screen.getByRole("menuitem", { name: "打开" })).toBeTruthy();
+		fireEvent.click(screen.getByRole("menuitem", { name: "重命名" }));
+		expect(onRenameProject).toHaveBeenCalledWith(project);
+
+		fireEvent.contextMenu(screen.getByRole("button", { name: "测试项目" }), {
+			clientX: 72,
+			clientY: 96,
+		});
 		fireEvent.click(screen.getByRole("menuitem", { name: "归档" }));
 		expect(onArchiveProject).toHaveBeenCalledWith(project);
 
@@ -260,6 +269,7 @@ const renderProjectsSidebar = (
 			onArchiveProject={vi.fn()}
 			onCreateProject={vi.fn()}
 			onRequestDeleteProject={vi.fn()}
+			onRenameProject={vi.fn()}
 			onOpenProject={vi.fn()}
 			onOpenSearch={vi.fn()}
 			onOpenSettings={vi.fn()}

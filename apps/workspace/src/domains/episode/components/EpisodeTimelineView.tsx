@@ -1,5 +1,5 @@
 import type { MediaPlayerInstance } from "@vidstack/react";
-import { ArrowLeft, Download, GitBranch, Loader2, Rows3 } from "lucide-react";
+import { ArrowLeft, Clapperboard, Download, GitBranch, Loader2, Rows3 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -7,9 +7,14 @@ import useSWR from "swr";
 import {
 	getWorkspaceResolvedEpisode,
 	updateWorkspaceEpisode,
+	exportWorkspaceEpisodeJianyingDraft,
 	workspaceEpisodePreviewStreamURL,
 	workspaceResolvedEpisodeKey,
 } from "@/domains/workspace/api/workspace";
+import {
+	getJianyingDraftSettings,
+	jianyingDraftSettingsKey,
+} from "@/domains/settings/api/settings";
 import { getMediaAssets } from "@/domains/workspace/api/media";
 import { EpisodeCompanionGenerationDialog } from "@/domains/episode/components/EpisodeCompanionGenerationDialog";
 import { EpisodeCanvasView } from "@/domains/episode/components/EpisodeCanvasView";
@@ -55,6 +60,7 @@ import {
 	agentProjectPath,
 	agentProjectRouteState,
 	getRouteDocumentWorkbench,
+	isAgentProjectViewState,
 	type AgentDocumentWorkbench,
 } from "@/domains/workspace/lib/workbench-route";
 import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
@@ -67,6 +73,9 @@ interface CompanionGenerationTarget {
 	trackType: TimelineCompanionTrackType;
 	videoClipId: string;
 }
+
+const isJianyingDraftExportButtonVisible =
+	import.meta.env.VITE_ENABLE_JIANYING_DRAFT_EXPORT === "true";
 
 export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ documentId }) => {
 	const navigate = useNavigate();
@@ -96,6 +105,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const [videoGenerationOpen, setVideoGenerationOpen] = useState(false);
 	const [downloadingVideoClipIds, setDownloadingVideoClipIds] = useState<string[]>([]);
 	const [isExportingAllStoryboards, setIsExportingAllStoryboards] = useState(false);
+	const [isExportingJianyingDraft, setIsExportingJianyingDraft] = useState(false);
 	const [previewPlaybackActive, setPreviewPlaybackActive] = useState(false);
 	const [isSavingTaskSyncedEpisode, setIsSavingTaskSyncedEpisode] = useState(false);
 	const previewPlayerRef = useRef<MediaPlayerInstance | null>(null);
@@ -105,6 +115,11 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const activeDocument =
 		findDocumentById(documents, documentId) ?? selectDocumentById(documents, activeDocumentId);
 	const episodeDocumentId = activeDocument?.id ?? "";
+	const shouldReturnToOverview = isAgentProjectViewState(location.state, "overview");
+	const returnProjectView = shouldReturnToOverview ? "overview" : "document";
+	const returnPath = projectId
+		? agentProjectPath(projectId, shouldReturnToOverview ? {} : { documentId })
+		: "/";
 	const mediaAssetProjectId = projectId?.trim() ?? "";
 	const { data: resolvedEpisodeState, mutate: mutateEpisodeState } = useSWR(
 		episodeDocumentId ? workspaceResolvedEpisodeKey(episodeDocumentId, projectId) : null,
@@ -113,6 +128,10 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 	const { data: mediaAssetsData, mutate: mutateMediaAssets } = useSWR(
 		["episode-media-assets", mediaAssetProjectId],
 		() => getMediaAssets({ projectId: mediaAssetProjectId || undefined }),
+	);
+	const { data: jianyingDraftSettings } = useSWR(
+		jianyingDraftSettingsKey,
+		getJianyingDraftSettings,
 	);
 	const storyboardVideoConversation = useMemo(
 		() => projectGenerationConversation(projectId, "video"),
@@ -401,6 +420,44 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 		storyboardVideoClips.length,
 		toast,
 	]);
+	const handleExportJianyingDraft = useCallback(async () => {
+		if (isExportingJianyingDraft) return;
+		if (!projectId || !episodeDocumentId) return;
+
+		const clips = exportableStoryboardVideoClips;
+		if (clips.length === 0) {
+			toast.warning("暂无可导出分镜", {
+				description: "生成视频后再导出剪映草稿。",
+			});
+			return;
+		}
+		if (!jianyingDraftSettings?.draftsRoot?.trim()) {
+			toast.warning("未设置剪映草稿文件夹", {
+				description: "在设置里的“剪映草稿”选择文件夹后再导出。",
+			});
+			return;
+		}
+
+		setIsExportingJianyingDraft(true);
+		try {
+			const result = await exportWorkspaceEpisodeJianyingDraft(episodeDocumentId, {}, projectId);
+			const skipped = result.skippedCount > 0 ? `，跳过 ${result.skippedCount} 个未生成分镜` : "";
+			toast.success("剪映草稿已导出", {
+				description: `${result.draftName} · ${result.shotCount} 个分镜${skipped}`,
+			});
+		} catch (error) {
+			toast.error("导出剪映草稿失败", { description: toJianyingDraftErrorMessage(error) });
+		} finally {
+			setIsExportingJianyingDraft(false);
+		}
+	}, [
+		episodeDocumentId,
+		exportableStoryboardVideoClips,
+		isExportingJianyingDraft,
+		jianyingDraftSettings?.draftsRoot,
+		projectId,
+		toast,
+	]);
 	const handleWorkbenchSwitch = useCallback(
 		(workbench: AgentDocumentWorkbench) => {
 			if (!projectId || !episodeDocumentId) return;
@@ -409,9 +466,10 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 					documentId: episodeDocumentId,
 					workbench,
 				}),
+				{ state: location.state },
 			);
 		},
-		[episodeDocumentId, navigate, projectId],
+		[episodeDocumentId, location.state, navigate, projectId],
 	);
 	const handleTimelineSeek = useCallback(
 		(time: number) => {
@@ -637,10 +695,10 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 						variant="outline"
 						size="icon"
 						className="size-7 rounded-sm"
-						aria-label="返回文档"
+						aria-label={shouldReturnToOverview ? "返回概览" : "返回文档"}
 						onClick={() =>
-							navigate(projectId ? agentProjectPath(projectId, { documentId }) : "/", {
-								state: agentProjectRouteState("document"),
+							navigate(returnPath, {
+								state: agentProjectRouteState(returnProjectView),
 							})
 						}
 					>
@@ -692,25 +750,60 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({ docume
 					<section className="grid min-h-0 flex-1 grid-cols-1 border-b border-border">
 						<div className="flex min-h-0 flex-1 flex-col gap-2 bg-ide-preview p-2">
 							<div className="relative grid min-h-0 flex-1 place-items-center overflow-hidden border border-border bg-ide-editor">
-								<Button
-									type="button"
-									variant="secondary"
-									size="sm"
-									className="absolute right-4 top-4 z-20 h-8 px-3 shadow-sm"
-									disabled={
-										isExportingAllStoryboards || exportableStoryboardVideoClips.length === 0
-									}
-									aria-label="导出全部分镜"
-									title={
-										exportableStoryboardVideoClips.length > 0
-											? "导出全部已生成分镜视频"
-											: "暂无可导出的分镜视频"
-									}
-									onClick={handleExportAllStoryboards}
-								>
-									{isExportingAllStoryboards ? <Loader2 className="animate-spin" /> : <Download />}
-									<span>{isExportingAllStoryboards ? "导出中" : "导出全部分镜"}</span>
-								</Button>
+								<div className="absolute right-4 top-4 z-20 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
+									{isJianyingDraftExportButtonVisible ? (
+										<Button
+											type="button"
+											variant="secondary"
+											size="sm"
+											className="h-8 px-3 shadow-sm max-sm:px-2"
+											disabled={
+												isExportingJianyingDraft || exportableStoryboardVideoClips.length === 0
+											}
+											aria-label="导出剪映草稿"
+											title={
+												exportableStoryboardVideoClips.length > 0
+													? "导出剪映草稿"
+													: "暂无可导出的分镜视频"
+											}
+											onClick={handleExportJianyingDraft}
+										>
+											{isExportingJianyingDraft ? (
+												<Loader2 className="animate-spin" />
+											) : (
+												<Clapperboard />
+											)}
+											<span className="hidden sm:inline">
+												{isExportingJianyingDraft ? "导出中" : "导出剪映草稿"}
+											</span>
+										</Button>
+									) : null}
+									<Button
+										type="button"
+										variant="secondary"
+										size="sm"
+										className="h-8 px-3 shadow-sm max-sm:px-2"
+										disabled={
+											isExportingAllStoryboards || exportableStoryboardVideoClips.length === 0
+										}
+										aria-label="导出全部分镜"
+										title={
+											exportableStoryboardVideoClips.length > 0
+												? "导出全部已生成分镜视频"
+												: "暂无可导出的分镜视频"
+										}
+										onClick={handleExportAllStoryboards}
+									>
+										{isExportingAllStoryboards ? (
+											<Loader2 className="animate-spin" />
+										) : (
+											<Download />
+										)}
+										<span className="hidden sm:inline">
+											{isExportingAllStoryboards ? "导出中" : "导出全部分镜"}
+										</span>
+									</Button>
+								</div>
 								<EpisodePreviewPlayer
 									videoUrl={playbackVideoUrl}
 									posterUrl={playbackPosterUrl}
@@ -935,4 +1028,21 @@ const toErrorMessage = (error: unknown) => {
 		return error.message;
 	}
 	return "请稍后重试，或返回文档后重新进入剪辑工作台。";
+};
+
+const toJianyingDraftErrorMessage = (error: unknown) => {
+	const message = toErrorMessage(error);
+	if (message.includes("draft root is not configured")) {
+		return "先在设置里的“剪映草稿”选择草稿文件夹。";
+	}
+	if (message.includes("draft already exists")) {
+		return "同名剪映草稿已存在，请稍后重试或清理目标文件夹。";
+	}
+	if (message.includes("no exportable storyboard videos")) {
+		return "当前没有已生成的视频分镜。";
+	}
+	if (message.includes("unsupported media asset url")) {
+		return "分镜视频不是本地媒体库素材，无法写入剪映草稿。";
+	}
+	return message;
 };

@@ -21,6 +21,7 @@ var (
 	ErrProjectArchivedOperationConflict = errors.New("project is archived")
 	ErrProjectTrashOperationConflict    = errors.New("project is in trash")
 	ErrProjectNotInTrash                = errors.New("project is not in trash")
+	ErrProjectNameRequired              = errors.New("project name is required")
 )
 
 func (store *Service) listProjects() (workspaceProjectsResponse, error) {
@@ -117,6 +118,69 @@ func (store *Service) createProject(id string, request createWorkspaceProjectReq
 // CreateProject creates a workspace project for HTTP handlers.
 func (store *Service) CreateProject(id string, request createWorkspaceProjectRequest) (workspaceProjectRecord, error) {
 	return store.createProject(id, request)
+}
+
+func (store *Service) updateProject(projectID string, request updateWorkspaceProjectRequest) (workspaceProjectRecord, bool, error) {
+	if store.initErr != nil {
+		return workspaceProjectRecord{}, false, store.initErr
+	}
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	projectID = domain.CleanProjectID(projectID)
+	if projectID == "" {
+		return workspaceProjectRecord{}, false, fmt.Errorf("projectId is required")
+	}
+	name := strings.TrimSpace(request.Name)
+	if name == "" {
+		return workspaceProjectRecord{}, false, ErrProjectNameRequired
+	}
+
+	model, err := store.workspace.GetProject(projectID)
+	if err != nil {
+		if repository.IsRecordNotFound(err) {
+			return workspaceProjectRecord{}, false, nil
+		}
+		return workspaceProjectRecord{}, false, fmt.Errorf("reading project %s: %w", projectID, err)
+	}
+	projects := WorkspaceProjectRecordsFromModels([]workspaceProjectModel{model})
+	if len(projects) == 0 {
+		return workspaceProjectRecord{}, false, nil
+	}
+	project := projects[0]
+	if project.Status == repository.ProjectStatusTrashed {
+		return workspaceProjectRecord{}, false, ErrProjectTrashOperationConflict
+	}
+
+	if project.Name != name {
+		updated, err := store.workspace.UpdateProjectName(projectID, name, timestamp.NowRFC3339Nano())
+		if err != nil {
+			return workspaceProjectRecord{}, false, fmt.Errorf("renaming project %s: %w", projectID, err)
+		}
+		if !updated {
+			return workspaceProjectRecord{}, false, nil
+		}
+		model, err = store.workspace.GetProject(projectID)
+		if err != nil {
+			return workspaceProjectRecord{}, false, fmt.Errorf("reading renamed project %s: %w", projectID, err)
+		}
+		projects = WorkspaceProjectRecordsFromModels([]workspaceProjectModel{model})
+		if len(projects) == 0 {
+			return workspaceProjectRecord{}, false, nil
+		}
+		project = projects[0]
+	}
+
+	if err := store.ensureProjectLayout(project); err != nil {
+		return workspaceProjectRecord{}, false, err
+	}
+	return project, true, nil
+}
+
+// UpdateProject updates mutable workspace project metadata.
+func (store *Service) UpdateProject(projectID string, request updateWorkspaceProjectRequest) (workspaceProjectRecord, bool, error) {
+	return store.updateProject(projectID, request)
 }
 
 func (store *Service) trashProject(projectID string) (workspaceProjectRecord, bool, error) {
