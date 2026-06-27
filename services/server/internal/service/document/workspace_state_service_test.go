@@ -836,31 +836,86 @@ func TestWorkspaceStateServiceImportsLocalMarkdownCategoryMetadata(t *testing.T)
 	}
 }
 
-func TestWorkspaceStateServiceDoesNotInferLocalMarkdownCategoryWithoutFrontmatter(t *testing.T) {
+func TestWorkspaceStateServiceInfersLocalMarkdownBusinessCategories(t *testing.T) {
 	workspaceDir := t.TempDir()
 	store := newWorkspaceStateService(workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
-	projectID := "project-import-local-category-no-inference"
+	projectID := "project-import-local-category-inference"
 	requireTestProject(t, store, projectID)
 
 	workDir := store.documentsDir(projectID)
-	content := "# 第一章 抽到天级反派模板！（动漫剧本）\n\n## 1-1  未知 水下  绝望地狱·湖底\n\n人物：沈阎、系统\n\n沈阎缓缓沉到湖底。\n"
-	if err := os.WriteFile(filepath.Join(workDir, "第一章 抽到天级反派模板！-动漫剧本.md"), []byte(content), 0o644); err != nil {
-		t.Fatalf("writing local screenplay-like markdown: %v", err)
+	tests := []struct {
+		path     string
+		title    string
+		content  string
+		category string
+	}{
+		{
+			path:     "第一集 角色设定.md",
+			title:    "第一集 角色设定",
+			content:  "# 第一集 角色设定\n\n## 陈远\n",
+			category: "character",
+		},
+		{
+			path:     "第一集 场景设定.md",
+			title:    "第一集 场景设定",
+			content:  "# 第一集 场景设定\n\n## 校门口\n",
+			category: "scene",
+		},
+		{
+			path:     "第一集 道具设定.md",
+			title:    "第一集 道具设定",
+			content:  "# 第一集 道具设定\n\n## 手机\n",
+			category: "prop",
+		},
+		{
+			path:     "第一集 分镜脚本.md",
+			title:    "第一集 分镜脚本",
+			content:  "# 第一集 分镜脚本\n\n## 第 01 组\n",
+			category: "storyboard",
+		},
+		{
+			path:     "第一章 抽到天级反派模板！-动漫剧本.md",
+			title:    "第一章 抽到天级反派模板！-动漫剧本",
+			content:  "# 第一章 抽到天级反派模板！（动漫剧本）\n\n## 1-1 未知 水下\n",
+			category: "screenplay",
+		},
+		{
+			path:     "角色设定参考资料.md",
+			title:    "角色设定参考资料",
+			content:  "# 角色设定参考资料\n\n原始资料。\n",
+			category: referenceDocumentCategory,
+		},
+		{
+			path:     "旧误分类角色.md",
+			title:    "旧误分类角色设定",
+			content:  "---\ntitle: 旧误分类角色设定\ncategory: reference\n---\n# 旧误分类角色设定\n\n## 陈远\n",
+			category: "character",
+		},
+	}
+	for _, test := range tests {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(workDir, test.path)), 0o755); err != nil {
+			t.Fatalf("creating local markdown dir for %s: %v", test.path, err)
+		}
+		if err := os.WriteFile(filepath.Join(workDir, test.path), []byte(test.content), 0o644); err != nil {
+			t.Fatalf("writing local markdown %s: %v", test.path, err)
+		}
 	}
 
 	state, err := store.listDocuments(projectID)
 	if err != nil {
 		t.Fatalf("listing documents: %v", err)
 	}
-	imported := findTestWorkspaceDocumentByTitle(state.Documents, "第一章 抽到天级反派模板！-动漫剧本")
-	if imported.ID == "" {
-		t.Fatalf("documents = %+v, want imported screenplay-like markdown", state.Documents)
-	}
-	if imported.Category != referenceDocumentCategory {
-		t.Fatalf("category = %q, want reference without frontmatter", imported.Category)
+	for _, test := range tests {
+		imported := findTestWorkspaceDocumentByTitle(state.Documents, test.title)
+		if imported.ID == "" {
+			t.Fatalf("documents = %+v, want imported %q", state.Documents, test.title)
+		}
+		if imported.Category != test.category {
+			t.Fatalf("%s category = %q, want %q", test.title, imported.Category, test.category)
+		}
 	}
 }
 

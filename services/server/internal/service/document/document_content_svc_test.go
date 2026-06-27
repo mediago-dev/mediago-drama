@@ -198,6 +198,39 @@ func TestCreateWorkspaceDocumentFromInputWithoutTemplateFallsBackToReference(t *
 	}
 }
 
+func TestCreateWorkspaceDocumentFromInputInfersBusinessCategory(t *testing.T) {
+	store := newWorkspaceStateService(t.TempDir())
+	if store.initErr != nil {
+		t.Fatalf("initializing workspace store: %v", store.initErr)
+	}
+	projectID := "template-create-category-inference"
+	requireTestProject(t, store, projectID)
+
+	tests := []struct {
+		title    string
+		category string
+	}{
+		{title: "第一集 剧本", category: "screenplay"},
+		{title: "第一集 角色设定", category: "character"},
+		{title: "第一集 场景设定", category: "scene"},
+		{title: "第一集 道具设定", category: "prop"},
+		{title: "第一集 分镜脚本", category: "storyboard"},
+		{title: "角色设定参考资料", category: referenceDocumentCategory},
+	}
+
+	for _, test := range tests {
+		document, err := store.CreateWorkspaceDocumentFromInput(projectID, CreateDocumentInput{
+			Title: test.title,
+		})
+		if err != nil {
+			t.Fatalf("CreateWorkspaceDocumentFromInput(%q) returned error: %v", test.title, err)
+		}
+		if document.Category != test.category {
+			t.Fatalf("%s category = %q, want %q", test.title, document.Category, test.category)
+		}
+	}
+}
+
 func TestBatchWorkspaceDocumentEditAppliesOperationsAsSingleVersion(t *testing.T) {
 	store := newWorkspaceStateService(t.TempDir())
 	if store.initErr != nil {

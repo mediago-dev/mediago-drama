@@ -20,6 +20,10 @@ func normalizeCreateDocumentRequest(request createWorkspaceDocumentRequest) (cre
 		return request, err
 	}
 	if request.Category == "" {
+		if inferred := inferBusinessDocumentCategoryFromHints(request.Title); inferred != "" && !hasReferenceDocumentHint(request.Title) {
+			request.Category = inferred
+			return request, nil
+		}
 		request.Category = referenceDocumentCategory
 		return request, nil
 	}

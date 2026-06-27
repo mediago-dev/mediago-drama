@@ -183,7 +183,10 @@ func StreamDocumentCreateRequest(input StreamDocumentEditInput) (CreateWorkspace
 	}
 	category := NormalizeDocumentCategoryValue(input.Category)
 	if category == "" {
-		category = referenceDocumentCategory
+		category = inferBusinessDocumentCategoryFromHints(input.Title)
+		if category == "" || hasReferenceDocumentHint(input.Title) {
+			category = referenceDocumentCategory
+		}
 	}
 	return CreateWorkspaceDocumentRequest{
 		ID:       input.DocumentID,

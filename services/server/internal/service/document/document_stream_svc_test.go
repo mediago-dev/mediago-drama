@@ -83,6 +83,33 @@ func TestStreamDocumentCreateRequest(t *testing.T) {
 	}
 }
 
+func TestStreamDocumentCreateRequestInfersBusinessCategory(t *testing.T) {
+	tests := []struct {
+		title    string
+		category string
+	}{
+		{title: "第一集 剧本", category: "screenplay"},
+		{title: "第一集 角色设定", category: "character"},
+		{title: "第一集 场景设定", category: "scene"},
+		{title: "第一集 道具设定", category: "prop"},
+		{title: "第一集 分镜脚本", category: "storyboard"},
+		{title: "角色设定参考资料", category: referenceDocumentCategory},
+	}
+
+	for _, test := range tests {
+		request, err := StreamDocumentCreateRequest(StreamDocumentEditInput{
+			Mode:  "create",
+			Title: test.title,
+		})
+		if err != nil {
+			t.Fatalf("StreamDocumentCreateRequest(%q) returned error: %v", test.title, err)
+		}
+		if request.Category != test.category {
+			t.Fatalf("%s category = %q, want %q", test.title, request.Category, test.category)
+		}
+	}
+}
+
 func TestValidateStreamDocumentVersion(t *testing.T) {
 	expected := 2
 	document := mediamcp.WorkspaceDocument{ID: "doc-1", Version: 3}

@@ -22,6 +22,9 @@ editable: true
 - 新建业务文档时必须自行判断文档标题和类型，并在 Markdown 顶部写 YAML frontmatter，
   例如 `---\ntitle: 第一集\ncategory: screenplay\n---`；
   可用类型为 `screenplay`、`character`、`scene`、`prop`、`storyboard`、`reference`。
+- 业务文档分类必须与内容类型一致：剧本/动漫剧本用 `screenplay`，角色/人物设定用 `character`，
+  场景/地点设定用 `scene`，道具设定用 `prop`，分镜/镜头脚本用 `storyboard`；
+  不要把这些业务文档标记为 `reference`。
 - 例如用户要求“写剧本/转成剧本/动漫剧本”时，
   新文件必须在 frontmatter 标记 `title` 和 `category: screenplay`，不要只在文件名里写标题或“剧本”；
   原始资料、参考材料和未加工文本可标记 `reference` 或省略 category。

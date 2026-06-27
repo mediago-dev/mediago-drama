@@ -84,14 +84,15 @@ func (store *Service) loadLocalMarkdownWorkspaceUnlocked(projectID string) ([]me
 		sortOrderByFolder[folderID] = sortOrder + 1
 		content := stripLocalMarkdownFrontmatter(file.Content)
 		metadata := localMarkdownMetadata(file.Content)
+		title := localMarkdownDocumentTitle(metadata, file.Title)
 		documentID := localMarkdownDocumentID(projectID, file.RelativePath, metadata.ID, usedDocumentIDs)
 		version := NormalizedDocumentVersion(metadata.Version)
 		documents = append(documents, mediamcp.WorkspaceDocument{
 			ID:             documentID,
-			Title:          localMarkdownDocumentTitle(metadata, file.Title),
+			Title:          title,
 			Filename:       file.RelativePath,
 			Content:        content,
-			Category:       localMarkdownDocumentCategory(file.Content),
+			Category:       localMarkdownDocumentCategory(metadata.Category, title, file.RelativePath),
 			ParentID:       metadata.ParentID,
 			FolderID:       folderID,
 			SortOrder:      sortOrder,
@@ -217,10 +218,6 @@ func localMarkdownMetadata(content string) documentMarkdownFrontmatter {
 	return metadata
 }
 
-func localMarkdownCategoryMarker(content string) string {
-	return localMarkdownMetadata(content).Category
-}
-
 func stripLocalMarkdownFrontmatter(content string) string {
 	_, body, ok := splitLocalMarkdownFrontmatter(content)
 	if !ok {
@@ -229,8 +226,15 @@ func stripLocalMarkdownFrontmatter(content string) string {
 	return body
 }
 
-func localMarkdownDocumentCategory(content string) string {
-	if category := localMarkdownCategoryMarker(content); category != "" {
+func localMarkdownDocumentCategory(category string, title string, relativePath string) string {
+	category = NormalizeDocumentCategoryValue(category)
+	inferred := inferBusinessDocumentCategoryFromHints(title, relativePath)
+	if inferred != "" && !hasReferenceDocumentHint(title, relativePath) {
+		if category == "" || category == referenceDocumentCategory {
+			return inferred
+		}
+	}
+	if category != "" {
 		return category
 	}
 	return referenceDocumentCategory
