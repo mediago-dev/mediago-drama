@@ -15,8 +15,6 @@ export const appendStoryboardReelMarkdown = (markdown: string, reelIndex: number
 	const block = [
 		`## 第 ${reelNumber} 组 总时长：00:10`,
 		"",
-		"### 分镜 01",
-		"",
 		"**景别**：中景",
 		"",
 		"**视角**：平视",

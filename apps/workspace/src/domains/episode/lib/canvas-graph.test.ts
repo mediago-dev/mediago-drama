@@ -77,7 +77,7 @@ describe("parseStoryboardShots", () => {
 	it("extracts shot metadata used by text storyboard nodes", () => {
 		const shots = parseStoryboardShots(
 			[
-				"### 分镜 01",
+				"## 第 01 组 总时长：00:04",
 				"",
 				"**景别**：中景",
 				"**视角**：低机位",
@@ -102,7 +102,7 @@ describe("parseStoryboardShots", () => {
 				].join("\n"),
 				shotSize: "中景",
 				text: "林致尧转身看向门口。",
-				title: "分镜 01",
+				title: "第 01 组 总时长：00:04",
 			}),
 		]);
 	});
@@ -114,8 +114,6 @@ describe("buildEpisodeCanvasGraph", () => {
 			"# 第一集分镜",
 			"",
 			"## 第 01 组 总时长：00:07",
-			"",
-			"### 分镜 01",
 			"",
 			"**景别**：中景",
 			"**运镜**：推近",
@@ -167,7 +165,7 @@ describe("buildEpisodeCanvasGraph", () => {
 			expect.objectContaining({
 				cameraMove: "推近",
 				shotSize: "中景",
-				title: "分镜 01",
+				title: "第 01 组 总时长：00:07",
 			}),
 		]);
 		const promptNode = graph.nodes.find((node) => node.type === "video-prompt");
@@ -243,8 +241,6 @@ describe("buildEpisodeCanvasGraph", () => {
 			"",
 			"## 第 01 组 总时长：00:07",
 			"",
-			"### 分镜 01",
-			"",
 			"**动作**：@[陈远](mention://char-1?kind=document&category=character) 遇见 @[林书彤](mention://char-2?kind=document&category=character)。",
 		].join("\n");
 		const episode = makeEpisodeFromStoryboard(storyboard);
@@ -289,7 +285,7 @@ describe("buildEpisodeCanvasGraph", () => {
 	});
 
 	it("passes generated video URLs to output nodes for cover previews", () => {
-		const episode = makeEpisodeFromStoryboard("## 第 01 组\n\n### 分镜 01\n\n陈远站在校门口。");
+		const episode = makeEpisodeFromStoryboard("## 第 01 组\n\n陈远站在校门口。");
 		const videoClip = episode.tracks.find((track) => track.type === "video")?.clips[0];
 		if (!videoClip) throw new Error("expected a video clip");
 		videoClip.status = "ready";
@@ -305,7 +301,7 @@ describe("buildEpisodeCanvasGraph", () => {
 	});
 
 	it("does not create placeholder reference nodes when no material mentions are parsed", () => {
-		const episode = makeEpisodeFromStoryboard("## 第 01 组\n\n### 分镜 01\n\n陈远站在校门口。");
+		const episode = makeEpisodeFromStoryboard("## 第 01 组\n\n陈远站在校门口。");
 		const graph = buildEpisodeCanvasGraph({ episode });
 		const promptNode = graph.nodes.find((node) => node.type === "video-prompt");
 		const videoNode = graph.nodes.find((node) => node.type === "video-output");
@@ -337,21 +333,15 @@ describe("buildEpisodeCanvasGraph", () => {
 			"",
 			"## 第 01 组 总时长：00:07",
 			"",
-			"### 分镜 01",
-			"",
 			"**时间**：0.00-4.00秒",
 			`**动作**：${longAction}`,
 			"**光影**：伦勃朗光浅侧光，人物轮廓清晰。",
-			"",
-			"### 分镜 02",
 			"",
 			"**时间**：4.00-7.00秒",
 			`**动作**：${longAction}`,
 			"**机位**：侧面肩扛跟拍，从两人侧面45度取景。",
 			"",
 			"## 第 02 组 总时长：00:03",
-			"",
-			"### 分镜 03",
 			"",
 			"**动作**：林书彤转身离开。",
 		].join("\n");
@@ -366,16 +356,14 @@ describe("buildEpisodeCanvasGraph", () => {
 		);
 
 		expect(firstVideoPrompt?.data.shots?.[0]?.prompt).toContain("光影：伦勃朗光浅侧光");
-		expect(firstVideoPrompt?.data.shots?.[1]?.prompt).toContain("机位：侧面肩扛跟拍");
+		expect(firstVideoPrompt?.data.shots?.[0]?.prompt).toContain("机位：侧面肩扛跟拍");
 		expect(
 			(secondVideoPrompt?.position.y ?? 0) - (firstVideoPrompt?.position.y ?? 0),
 		).toBeGreaterThan(280);
 	});
 
 	it("lays out each lane deterministically from left to right", () => {
-		const episode = makeEpisodeFromStoryboard(
-			"## 第 01 组\n\n### 分镜 01\n\n动作一\n\n## 第 02 组\n\n### 分镜 01\n\n动作二",
-		);
+		const episode = makeEpisodeFromStoryboard("## 第 01 组\n\n动作一\n\n## 第 02 组\n\n动作二");
 		const graph = buildEpisodeCanvasGraph({ episode });
 		const layout = layoutEpisodeCanvasGraph(graph);
 		const firstLane = layout.lanes[0];
@@ -396,9 +384,7 @@ describe("buildEpisodeCanvasGraph", () => {
 	});
 
 	it("focuses the canvas on the selected timeline group", () => {
-		const episode = makeEpisodeFromStoryboard(
-			"## 第 01 组\n\n### 分镜 01\n\n动作一\n\n## 第 02 组\n\n### 分镜 01\n\n动作二",
-		);
+		const episode = makeEpisodeFromStoryboard("## 第 01 组\n\n动作一\n\n## 第 02 组\n\n动作二");
 		const graph = buildEpisodeCanvasGraph({ episode });
 		const selectedLane = graph.lanes[1];
 		const focused = focusEpisodeCanvasGraph(graph, episode, selectedLane?.clipId);

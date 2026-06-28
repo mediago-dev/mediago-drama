@@ -46,7 +46,6 @@ type episodeStoryboardSegment struct {
 
 type episodeStoryboardGroup struct {
 	notes string
-	shots []episodeMarkdownSection
 	title string
 }
 
@@ -340,23 +339,11 @@ func createEpisodeFromStoryboardSegments(
 func readEpisodeStoryboardGroups(markdown string) []episodeStoryboardSegment {
 	rawGroups := []episodeStoryboardGroup{}
 	var currentGroup *episodeStoryboardGroup
-	var currentShot *episodeMarkdownSection
 
-	flushShot := func() {
-		if currentGroup == nil || currentShot == nil {
-			return
-		}
-		currentGroup.shots = append(currentGroup.shots, episodeMarkdownSection{
-			title:   currentShot.title,
-			content: strings.TrimSpace(currentShot.content),
-		})
-		currentShot = nil
-	}
 	flushGroup := func() {
 		if currentGroup == nil {
 			return
 		}
-		flushShot()
 		currentGroup.notes = strings.TrimSpace(currentGroup.notes)
 		rawGroups = append(rawGroups, *currentGroup)
 		currentGroup = nil
@@ -375,18 +362,10 @@ func readEpisodeStoryboardGroups(markdown string) []episodeStoryboardSegment {
 				flushGroup()
 				currentGroup = &episodeStoryboardGroup{title: title}
 				continue
-			case level == 3 && currentGroup != nil:
-				flushShot()
-				currentShot = &episodeMarkdownSection{title: title}
-				continue
 			}
 		}
 		if currentGroup != nil {
-			if currentShot != nil {
-				currentShot.content += line + "\n"
-			} else {
-				currentGroup.notes += line + "\n"
-			}
+			currentGroup.notes += line + "\n"
 		}
 	}
 	flushGroup()
@@ -409,27 +388,7 @@ func readEpisodeStoryboardGroups(markdown string) []episodeStoryboardSegment {
 }
 
 func renderEpisodeStoryboardGroupContent(group episodeStoryboardGroup) string {
-	parts := []string{}
-	if strings.TrimSpace(group.notes) != "" {
-		parts = append(parts, strings.TrimSpace(group.notes))
-	}
-	for _, shot := range group.shots {
-		title := strings.TrimSpace(shot.title)
-		content := strings.TrimSpace(shot.content)
-		if title == "" && content == "" {
-			continue
-		}
-		if title == "" {
-			parts = append(parts, content)
-			continue
-		}
-		if content == "" {
-			parts = append(parts, "### "+title)
-			continue
-		}
-		parts = append(parts, "### "+title+"\n"+content)
-	}
-	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+	return strings.TrimSpace(group.notes)
 }
 
 func parseEpisodeStoryboardGroupContent(content string) (string, string, string) {

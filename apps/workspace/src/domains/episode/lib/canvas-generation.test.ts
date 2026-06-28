@@ -106,7 +106,7 @@ const lane: EpisodeCanvasLane = {
 	index: 0,
 	references: [],
 	shots: [],
-	sourceMarkdown: "## 第 01 组\n\n### 分镜 01\n\n当前分镜 prompt 不应该进入引用生成。",
+	sourceMarkdown: "## 第 01 组\n\n当前分镜 prompt 不应该进入引用生成。",
 	start: 0,
 	title: "第 01 组",
 };

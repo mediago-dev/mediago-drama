@@ -44,22 +44,12 @@ export const readStoryboardLaneSources = (
 };
 
 export const parseStoryboardShots = (markdown: string): StoryboardShotSummary[] => {
-	const lines = stripFrontmatter(markdown).split("\n");
-	const headings = readHeadings(lines);
-	const sections = collectHeadingSections(lines, headings, (heading) => heading.level === 3);
-
-	if (sections.length === 0 && markdown.trim()) {
-		const prompt = normalizeShotText(markdown);
-		return [
-			{
-				prompt,
-				text: prompt,
-				title: "文字分镜",
-			},
-		];
-	}
-
-	return sections.map((section) => parseShotSection(section.title, section.markdown));
+	const trimmed = markdown.trim();
+	if (!trimmed) return [];
+	const heading = readHeadings(stripFrontmatter(markdown).split("\n")).find(
+		(candidate) => candidate.level === 2,
+	);
+	return [parseShotSection(heading?.text ?? "文字分镜", markdown)];
 };
 
 const sectionToLaneSource = (
@@ -71,7 +61,7 @@ const sectionToLaneSource = (
 	headingOccurrence: section.headingOccurrence,
 	id: `${section.index}-${slugify(section.title)}`,
 	markdown: section.markdown,
-	shots: parseStoryboardShots(section.markdown),
+	shots: [parseShotSection(section.title, section.markdown)],
 	title: section.title,
 });
 
@@ -147,7 +137,7 @@ const parseShotSection = (title: string, markdown: string): StoryboardShotSummar
 	const promptLines: string[] = [];
 
 	for (const rawLine of markdown.split("\n")) {
-		if (/^###\s+/.test(rawLine.trim())) continue;
+		if (isSectionHeadingLine(rawLine, title)) continue;
 		const line = cleanStoryboardLine(rawLine);
 		if (!line) continue;
 
@@ -180,6 +170,11 @@ const parseShotSection = (title: string, markdown: string): StoryboardShotSummar
 	};
 };
 
+const isSectionHeadingLine = (line: string, title: string) => {
+	const match = headingPattern.exec(line.trim());
+	return Boolean(match?.[2] && cleanInlineMarkdown(match[2]).trim() === title);
+};
+
 const parseStoryboardField = (line: string) => {
 	const match = /^([^:：]{1,12})[:：]\s*(.+)$/u.exec(line);
 	if (!match?.[1]) return null;
@@ -205,9 +200,6 @@ const parseDurationSeconds = (value: string) => {
 	const parsed = Number(seconds);
 	return Number.isFinite(parsed) ? parsed : undefined;
 };
-
-const normalizeShotText = (markdown: string) =>
-	markdown.split("\n").map(cleanStoryboardLine).filter(Boolean).join("\n").trim();
 
 const cleanStoryboardLine = (line: string) =>
 	cleanInlineMarkdown(

@@ -909,7 +909,7 @@ func TestBuildACPPromptUsesFileNativeProjectGuidance(t *testing.T) {
 		!strings.Contains(prompt, "长文档生成要分批落盘") ||
 		!strings.Contains(prompt, "不要一次性把整篇内容塞进单个 `write` / `edit` 工具参数") ||
 		!strings.Contains(prompt, "每次写入参数要小") ||
-		!strings.Contains(prompt, "最多 2 个分镜为一批") ||
+		!strings.Contains(prompt, "二级标题分镜组为一批") ||
 		!strings.Contains(prompt, "这是一个创作工作区，不是软件开发工作区") ||
 		!strings.Contains(prompt, "不要编写、修改或生成程序代码、脚本、依赖配置或工程文件") ||
 		!strings.Contains(prompt, "优先使用运行时自带的文件/命令能力或 MediaGo Drama MCP 工具完成") {

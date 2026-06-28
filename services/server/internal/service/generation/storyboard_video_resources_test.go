@@ -50,16 +50,12 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 					"<!-- section-id: section_reel_01 -->",
 					"## 开场落水",
 					"",
-					"### 分镜 01",
-					"",
 					"沈阁从黑暗水面坠入湖中。",
 					"",
 					"[章节视频：落水镜头](</api/v1/media-assets/video-1/content>)",
 					"",
 					"<!-- section-id: section_reel_02 -->",
 					"## 苏醒反应",
-					"",
-					"### 分镜 02",
 					"",
 					"他猛然睁眼。",
 					"",
@@ -75,8 +71,6 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 					"",
 					"<!-- section-id: section_reel_b_01 -->",
 					"## 门外异动",
-					"",
-					"### 分镜 01",
 					"",
 					"门外传来脚步声。",
 				),
@@ -180,16 +174,12 @@ func TestGenerationServiceListStoryboardVideoResourcesDeduplicatesGroupNumbers(t
 					"<!-- section-id: section_old_01 -->",
 					"## 第 01 组 总时长：00:08",
 					"",
-					"### 分镜 01",
-					"",
 					"旧版第 01 组。",
 					"",
 					"[章节视频：旧版成片](</api/v1/media-assets/old-video/content>)",
 					"",
 					"<!-- section-id: section_group_02 -->",
 					"## 第 02 组 总时长：00:06",
-					"",
-					"### 分镜 02",
 					"",
 					"第 02 组。",
 					"",
@@ -200,8 +190,6 @@ func TestGenerationServiceListStoryboardVideoResourcesDeduplicatesGroupNumbers(t
 					"",
 					"<!-- section-id: section_group_03 -->",
 					"## 第 03 组 总时长：00:07",
-					"",
-					"### 分镜 03",
 					"",
 					"第 03 组。",
 				),
@@ -224,9 +212,9 @@ func TestGenerationServiceListStoryboardVideoResourcesDeduplicatesGroupNumbers(t
 		strings.Contains(reels[0].Prompt, "PLACEHOLDER") {
 		t.Fatalf("deduped first reel prompt = %q, want full previous prompt without placeholder", reels[0].Prompt)
 	}
-	if !strings.Contains(reels[0].Markdown, "### 分镜 01") ||
+	if !strings.Contains(reels[0].Markdown, "旧版第 01 组。") ||
 		strings.Contains(reels[0].Markdown, "PLACEHOLDER") {
-		t.Fatalf("deduped first reel markdown = %q, want full previous markdown without placeholder", reels[0].Markdown)
+		t.Fatalf("deduped first reel markdown = %q, want h2 markdown without placeholder", reels[0].Markdown)
 	}
 	if len(reels[0].Videos) != 0 {
 		t.Fatalf("deduped first reel videos = %+v, want markdown videos ignored until selected", reels[0].Videos)

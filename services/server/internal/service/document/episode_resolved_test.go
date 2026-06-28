@@ -19,15 +19,11 @@ func TestGetResolvedEpisodeTimelineStateParsesLatestStoryboardAndMergesSavedMedi
 			"",
 			"## 第 01 组 总时长：00:07",
 			"",
-			"### 分镜 01",
-			"",
 			"**动作**：沈阁从黑暗水面坠入湖中。",
 			"",
 			"**台词**：无",
 			"",
 			"## 第 02 组 总时长：00:05",
-			"",
-			"### 分镜 01",
 			"",
 			"**动作**：他猛然睁眼。",
 			"",
@@ -94,7 +90,7 @@ func TestGetResolvedEpisodeTimelineStateParsesLatestStoryboardAndMergesSavedMedi
 	}
 }
 
-func TestGetResolvedEpisodeTimelineStateTreatsH2AsStoryboardGroupAndH3AsShot(t *testing.T) {
+func TestGetResolvedEpisodeTimelineStateUsesH2StoryboardGroups(t *testing.T) {
 	store := requireDocumentStore(t)
 	projectID := "project-episode-heading-levels"
 	requireTestProject(t, store, projectID)
@@ -109,21 +105,14 @@ func TestGetResolvedEpisodeTimelineStateTreatsH2AsStoryboardGroupAndH3AsShot(t *
 			"",
 			"组备注：水面要冷，节奏慢。",
 			"",
-			"### 分镜 01",
-			"",
 			"动作：沈阁从黑暗水面坠入湖中。",
 			"台词：无",
 			"",
-			"### 分镜 02",
-			"",
-			"#### 镜头备注",
-			"",
+			"镜头备注：他在水面短暂停顿后睁眼。",
 			"动作：他猛然睁眼。",
 			"台词：沈阁：“我还活着。”",
 			"",
 			"## 情绪反应",
-			"",
-			"### 分镜 01",
 			"",
 			"动作：镜头推近他的眼睛。",
 		}, "\n"),
@@ -145,7 +134,7 @@ func TestGetResolvedEpisodeTimelineStateTreatsH2AsStoryboardGroupAndH3AsShot(t *
 		t.Fatalf("clip titles = %#v, want h2 group titles", videoTrack.Clips)
 	}
 	firstPrompt := videoTrack.Clips[0].Prompt
-	for _, want := range []string{"组备注：水面要冷，节奏慢。", "分镜 01", "分镜 02", "镜头备注", "动作：他猛然睁眼。"} {
+	for _, want := range []string{"组备注：水面要冷，节奏慢。", "镜头备注", "动作：他猛然睁眼。"} {
 		if !strings.Contains(firstPrompt, want) {
 			t.Fatalf("first prompt missing %q: %s", want, firstPrompt)
 		}
@@ -153,7 +142,7 @@ func TestGetResolvedEpisodeTimelineStateTreatsH2AsStoryboardGroupAndH3AsShot(t *
 	voiceoverTrack := response.Episode.Tracks[1]
 	if voiceoverTrack.Type != "voiceover" || len(voiceoverTrack.Clips) != 1 ||
 		voiceoverTrack.Clips[0].Content != "沈阁：“我还活着。”" {
-		t.Fatalf("voiceover track = %#v, want 台词 extracted from h3 shot content", voiceoverTrack)
+		t.Fatalf("voiceover track = %#v, want 台词 extracted from h2 group content", voiceoverTrack)
 	}
 }
 

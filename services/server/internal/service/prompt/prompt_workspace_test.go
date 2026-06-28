@@ -20,7 +20,7 @@ func TestPromptBuilderUsesFixedAgentPrompt(t *testing.T) {
 		!strings.Contains(prompt, "不要把整篇内容一次性放进单个 `write` / `edit` 工具调用") ||
 		!strings.Contains(prompt, "长文档生成要分批落盘") ||
 		!strings.Contains(prompt, "每次写入参数要小") ||
-		!strings.Contains(prompt, "最多 2 个分镜为一批") {
+		!strings.Contains(prompt, "二级标题分镜组为一批") {
 		t.Fatalf("prompt = %q, want fixed agent persona", prompt)
 	}
 	if strings.Contains(prompt, "当前绑定角色：") ||

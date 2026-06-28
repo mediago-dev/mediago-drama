@@ -91,21 +91,11 @@ func TestListWorkspaceDocumentResourcesParsesStoryboardGroupsFromH2(t *testing.T
 			"<!-- section-id: section_opening -->",
 			"## 开场落水",
 			"",
-			"### 分镜 01",
-			"",
 			"动作：林书彤推开门。",
-			"",
-			"### 分镜 02",
 			"",
 			"动作：镜头切到走廊。",
 			"",
-			"```",
-			"### 分镜 99",
-			"```",
-			"",
 			"## 情绪反应",
-			"",
-			"### 分镜 01",
 			"",
 			"动作：镜头推近。",
 		}, "\n"),
@@ -125,9 +115,9 @@ func TestListWorkspaceDocumentResourcesParsesStoryboardGroupsFromH2(t *testing.T
 	if response.Resources[0].Title != "开场落水" || response.Resources[0].SectionID != "section_opening" {
 		t.Fatalf("first storyboard resource = %#v", response.Resources[0])
 	}
-	if !strings.Contains(response.Resources[0].Prompt, "### 分镜 02") ||
+	if strings.Contains(response.Resources[0].Prompt, "### 分镜") ||
 		!strings.Contains(response.Resources[0].Prompt, "动作：镜头切到走廊。") {
-		t.Fatalf("first storyboard prompt = %q, want h3 shot content inside h2 group", response.Resources[0].Prompt)
+		t.Fatalf("first storyboard prompt = %q, want h2 group content without h3 shot headings", response.Resources[0].Prompt)
 	}
 	if response.Resources[1].Title != "情绪反应" {
 		t.Fatalf("second storyboard title = %q, want 情绪反应", response.Resources[1].Title)

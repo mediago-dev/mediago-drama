@@ -37,7 +37,7 @@ describe("appendStoryboardReelMarkdown", () => {
 		const next = appendStoryboardReelMarkdown("# 分镜脚本\n\n## 第 01 组\n\n已有内容\n", 2);
 
 		expect(next).toContain("已有内容\n\n## 第 02 组 总时长：00:10");
-		expect(next).toContain("### 分镜 01");
+		expect(next).not.toContain("### 分镜");
 		expect(next).toContain("**动作**：待填写新的分镜动作。");
 		expect(next.endsWith("\n")).toBe(true);
 	});
@@ -163,13 +163,9 @@ describe("removeStoryboardReelMarkdown", () => {
 			"",
 			"## 第 01 组 总时长：00:07",
 			"",
-			"### 分镜 01",
-			"",
 			"动作一",
 			"",
 			"## 第 02 组 总时长：00:05",
-			"",
-			"### 分镜 01",
 			"",
 			"动作二",
 		].join("\n");
