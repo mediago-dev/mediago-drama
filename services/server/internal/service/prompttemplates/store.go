@@ -32,7 +32,7 @@ type PromptTemplate struct {
 	Source      string `json:"source"`
 	Overridden  bool   `json:"overridden,omitempty"`
 	Order       int    `json:"-"`
-	Injectable  bool   `json:"-"`
+	Injectable  bool   `json:"injectable"`
 }
 
 // Repository supplies user instruction template override persistence.
@@ -175,6 +175,18 @@ func OrderedTemplates(templateMap map[string]PromptTemplate) []PromptTemplate {
 		}
 		return templates[first].ID < templates[second].ID
 	})
+	return templates
+}
+
+// InjectableTemplates returns templates that belong in the agent instruction UI.
+func InjectableTemplates(templateMap map[string]PromptTemplate) []PromptTemplate {
+	ordered := OrderedTemplates(templateMap)
+	templates := make([]PromptTemplate, 0, len(ordered))
+	for _, template := range ordered {
+		if template.Injectable {
+			templates = append(templates, template)
+		}
+	}
 	return templates
 }
 

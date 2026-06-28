@@ -8,8 +8,9 @@ import (
 	"strings"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
-	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
 )
+
+const promptOptimizationSystemInstructionText = "根据优化 prompt 优化用户的输入，只输出优化后的内容。"
 
 // NormalizeGenerationPromptOptimizationRequest trims prompt optimization settings.
 func NormalizeGenerationPromptOptimizationRequest(request *GenerationPromptOptimizationRequest) *GenerationPromptOptimizationRequest {
@@ -314,33 +315,17 @@ func (workflow *GenerationService) completePromptOptimizedGeneration(
 
 func promptOptimizationUserPrompt(request *GenerationPromptOptimizationRequest, currentPrompt string) string {
 	current := strings.TrimSpace(currentPrompt)
-	referenceName := ""
 	referencePrompt := ""
 	if request != nil {
-		referenceName = strings.TrimSpace(request.ReferenceName)
 		referencePrompt = strings.TrimSpace(request.ReferencePrompt)
 	}
-	if referenceName == "" {
-		referenceName = "参考风格"
-	}
-	return strings.TrimSpace(fmt.Sprintf(`请根据下面信息优化图片生成提示词。
+	return strings.TrimSpace(fmt.Sprintf(`根据优化 prompt 优化用户的输入。
 
-## 原始提示词
+优化 prompt：
 %s
 
-## 参考风格
-%s
-
-## 参考风格提示词
-%s
-
-## 输出要求
-- 保留原始提示词中的主体、身份、关系、外貌、性格和剧情功能。
-- 融入参考风格提示词中的画风、构图、光影、材质、色彩和氛围描写。
-- 输出一段适合图片生成模型的中文提示词。
-- 如果原始提示词是人物设定，请明确画面为单人，最终提示词需要包含当前人物的外貌、服饰、气质、表情、动作和构图。
-- 其他人名、关系人物和剧情事件只作为背景理解，不要生成第二个人；除非原始提示词明确要求多人同框。
-- 不要输出 JSON、Markdown 标题、解释或额外说明，只输出最终提示词。`, current, referenceName, referencePrompt))
+用户的输入：
+%s`, referencePrompt, current))
 }
 
 func promptOptimizationParams(params map[string]any) map[string]any {
@@ -355,14 +340,7 @@ func promptOptimizationParams(params map[string]any) map[string]any {
 }
 
 func promptOptimizationSystemInstruction() string {
-	instruction, ok := serviceprompt.InstructionTemplateSection(
-		"PROMPT_OPTIMIZATION",
-		"提示词优化系统指令",
-	)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(instruction)
+	return promptOptimizationSystemInstructionText
 }
 
 func (workflow *GenerationService) completePromptOptimizedGenerationSync(

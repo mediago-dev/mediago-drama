@@ -1,9 +1,8 @@
 import { Check, Loader2, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
 	GenerationFamily,
-	GenerationKind,
 	GenerationPromptOptimizationRequest,
 	GenerationRoute,
 	GenerationVersion,
@@ -24,10 +23,17 @@ import { useGenerationCountControl } from "./useGenerationCountControl";
 import { promptOptimizeModelOptions as listPromptOptimizeModelOptions } from "@/domains/generation/hooks/usePromptOptimize";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import {
+	type BatchGenerationDialogKind,
+	type BatchGenerationStoredSettings,
+	batchGenerationPromptOptimizationEnabled,
+	useBatchGenerationSettingsPreferenceStore,
+} from "@/domains/generation/stores/batch-generation-settings";
+import {
 	kindLabel,
 	paramLabel,
 	preferredRoute,
 	routeProviderLabel,
+	type StoredGenerationModelSelection,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -78,20 +84,47 @@ export const batchGenerationPromptOptimizationForConfirm = (
 	};
 };
 
+export const batchGenerationConfirmButtonLabel = (optimizePrompt: boolean) =>
+	optimizePrompt ? "优化并生成" : "生成";
+
 export const BatchGenerationSettingsDialog: React.FC<{
-	kind: Extract<GenerationKind, "image" | "video">;
+	kind: BatchGenerationDialogKind;
 	onConfirm: (settings: BatchGenerationSettings) => void;
 	onOpenChange: (open: boolean) => void;
 	open: boolean;
 	projectId?: string;
 	selectedCount: number;
 }> = ({ kind, onConfirm, onOpenChange, open, projectId, selectedCount }) => {
-	const [selectedPromptOptimizeItemId, setSelectedPromptOptimizeItemId] = useState<string | null>(
-		null,
+	const setStoredSettings = useBatchGenerationSettingsPreferenceStore((state) => state.setSettings);
+	const [settingsToRestore, setSettingsToRestore] = useState<BatchGenerationStoredSettings | null>(
+		() => useBatchGenerationSettingsPreferenceStore.getState().settingsByKind[kind] ?? null,
 	);
-	const [selectedPromptOptimizeRouteId, setSelectedPromptOptimizeRouteId] = useState("");
+	const restoredStoredSettingsRef = useRef(false);
+	const previousOpenRef = useRef(false);
+	const [selectedPromptOptimizeItemId, setSelectedPromptOptimizeItemId] = useState<string | null>(
+		settingsToRestore?.promptOptimizeItemId ?? null,
+	);
+	const [selectedPromptOptimizeRouteId, setSelectedPromptOptimizeRouteId] = useState(
+		settingsToRestore?.promptOptimizeRouteId ?? "",
+	);
+	const [usePromptOptimization, setUsePromptOptimization] = useState(() =>
+		batchGenerationPromptOptimizationEnabled(settingsToRestore),
+	);
+	const settingsForInitialModelSelection = open
+		? (useBatchGenerationSettingsPreferenceStore.getState().settingsByKind[kind] ?? null)
+		: settingsToRestore;
+	const initialModelSelection = useMemo(
+		() => batchGenerationModelSelectionFromSettings(kind, settingsForInitialModelSelection),
+		[kind, settingsForInitialModelSelection],
+	);
+	const initialModelSelectionKey = useMemo(
+		() => batchGenerationStoredSettingsKey(kind, settingsForInitialModelSelection),
+		[kind, settingsForInitialModelSelection],
+	);
 	const ws = useGenerationWorkspace({
 		initialKind: kind,
+		initialModelSelection,
+		initialModelSelectionKey,
 		initialPrompt: "",
 		modelPreferenceScopeId: projectId,
 		persistModelSelection: false,
@@ -100,6 +133,77 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		uploadIdPrefix: "batch-generation-settings",
 		useRawPrompt: true,
 	});
+
+	useEffect(() => {
+		if (!open) {
+			previousOpenRef.current = false;
+			return;
+		}
+		if (previousOpenRef.current) return;
+		previousOpenRef.current = true;
+
+		const latestSettings =
+			useBatchGenerationSettingsPreferenceStore.getState().settingsByKind[kind] ?? null;
+		setSettingsToRestore(latestSettings);
+		setSelectedPromptOptimizeItemId(latestSettings?.promptOptimizeItemId ?? null);
+		setSelectedPromptOptimizeRouteId(latestSettings?.promptOptimizeRouteId ?? "");
+		setUsePromptOptimization(batchGenerationPromptOptimizationEnabled(latestSettings));
+		restoredStoredSettingsRef.current = false;
+	}, [kind, open]);
+
+	useEffect(() => {
+		if (restoredStoredSettingsRef.current || !ws.hasLiveCatalog) return;
+		if (!settingsToRestore) {
+			restoredStoredSettingsRef.current = true;
+			return;
+		}
+
+		const storedRouteId = settingsToRestore.routeId?.trim();
+		if (!storedRouteId || !ws.hasConfiguredRoutesForKind) {
+			restoredStoredSettingsRef.current = true;
+			return;
+		}
+
+		const storedRoute = ws.catalog.routes.find(
+			(route) =>
+				route.id === storedRouteId &&
+				route.kind === kind &&
+				route.configured &&
+				route.status === "available",
+		);
+		if (!storedRoute) {
+			restoredStoredSettingsRef.current = true;
+			return;
+		}
+
+		if (ws.selectedFamily.id !== storedRoute.familyId) {
+			ws.updateFamily(storedRoute.familyId);
+			return;
+		}
+
+		if (ws.selectedVersion.id !== storedRoute.versionId || ws.selectedRoute.id !== storedRoute.id) {
+			ws.updateModelRoute(storedRoute.versionId, storedRoute.id);
+			return;
+		}
+
+		const routeParamNames = new Set(storedRoute.params.map((param) => param.name));
+		for (const [name, value] of Object.entries(settingsToRestore.params ?? {})) {
+			if (routeParamNames.has(name)) ws.updateParam(name, value);
+		}
+		restoredStoredSettingsRef.current = true;
+	}, [
+		kind,
+		settingsToRestore,
+		ws.catalog.routes,
+		ws.hasConfiguredRoutesForKind,
+		ws.hasLiveCatalog,
+		ws.selectedFamily.id,
+		ws.selectedRoute.id,
+		ws.selectedVersion.id,
+		ws.updateFamily,
+		ws.updateModelRoute,
+		ws.updateParam,
+	]);
 
 	const routeParamGroups = useMemo(() => resolveParamGroups(ws.selectedRoute), [ws.selectedRoute]);
 	const sizeGroupParams = useMemo(
@@ -202,7 +306,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 	}, [promptOptimizeModelOptions]);
 	useEffect(() => {
 		if (promptOptimizeModelOptions.length === 0) {
-			if (selectedPromptOptimizeRouteId) setSelectedPromptOptimizeRouteId("");
+			if (ws.hasLiveCatalog && selectedPromptOptimizeRouteId) setSelectedPromptOptimizeRouteId("");
 			return;
 		}
 		if (promptOptimizeModelOptions.some((option) => option.id === selectedPromptOptimizeRouteId)) {
@@ -211,7 +315,12 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		setSelectedPromptOptimizeRouteId(
 			preferredPromptOptimizeModel?.id ?? promptOptimizeModelOptions[0]?.id ?? "",
 		);
-	}, [preferredPromptOptimizeModel?.id, promptOptimizeModelOptions, selectedPromptOptimizeRouteId]);
+	}, [
+		preferredPromptOptimizeModel?.id,
+		promptOptimizeModelOptions,
+		selectedPromptOptimizeRouteId,
+		ws.hasLiveCatalog,
+	]);
 	const selectedPromptOptimizeModel =
 		promptOptimizeModelOptions.find((option) => option.id === selectedPromptOptimizeRouteId) ??
 		preferredPromptOptimizeModel ??
@@ -220,10 +329,9 @@ export const BatchGenerationSettingsDialog: React.FC<{
 	const selectedPromptOptimizeItem =
 		ws.promptInsertItems.find((item) => item.id === selectedPromptOptimizeItemId) ?? null;
 	useEffect(() => {
-		if (selectedPromptOptimizeItemId) {
-			if (ws.promptInsertItems.some((item) => item.id === selectedPromptOptimizeItemId)) return;
-			setSelectedPromptOptimizeItemId(null);
-		}
+		if (!selectedPromptOptimizeItemId || ws.promptInsertItems.length === 0) return;
+		if (ws.promptInsertItems.some((item) => item.id === selectedPromptOptimizeItemId)) return;
+		setSelectedPromptOptimizeItemId(null);
 	}, [selectedPromptOptimizeItemId, ws.promptInsertItems]);
 	useEffect(() => {
 		if (selectedPromptOptimizeItemId || !ws.promptInsertItems[0]) return;
@@ -240,6 +348,39 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		ws.selectedRoute.configured;
 	const confirmDisabled = selectedCount === 0 || !hasAvailableRoute;
 	const optimizeConfirmDisabled = confirmDisabled || !promptOptimizationReady;
+	const primaryConfirmDisabled = usePromptOptimization ? optimizeConfirmDisabled : confirmDisabled;
+	const primaryConfirmLabel = batchGenerationConfirmButtonLabel(usePromptOptimization);
+	const selectedSettingsDraft = useMemo<BatchGenerationStoredSettings>(
+		() => ({
+			familyId: ws.selectedFamily.id,
+			params: batchGenerationParamsForConfirm(
+				ws.selectedRoute,
+				ws.selectedParams,
+				generationCountParamName,
+				generationCountControl?.value ?? 1,
+			),
+			promptOptimizeItemId: selectedPromptOptimizeItem?.id,
+			promptOptimizeRouteId: selectedPromptOptimizeModel?.id,
+			routeId: ws.selectedRoute.id,
+			usePromptOptimization,
+			versionId: ws.selectedVersion.id,
+		}),
+		[
+			generationCountControl?.value,
+			generationCountParamName,
+			selectedPromptOptimizeItem?.id,
+			selectedPromptOptimizeModel?.id,
+			usePromptOptimization,
+			ws.selectedFamily.id,
+			ws.selectedParams,
+			ws.selectedRoute,
+			ws.selectedVersion.id,
+		],
+	);
+	useEffect(() => {
+		if (!open || !restoredStoredSettingsRef.current || !hasAvailableRoute) return;
+		setStoredSettings(kind, selectedSettingsDraft);
+	}, [hasAvailableRoute, kind, open, selectedSettingsDraft, setStoredSettings]);
 	const modelSummary = hasAvailableRoute
 		? `${ws.selectedFamily.label} / ${ws.selectedVersion.label} / ${routeProviderLabel(ws.selectedRoute)}`
 		: `暂无可用${kindLabel(kind)}生成供应商`;
@@ -254,14 +395,20 @@ export const BatchGenerationSettingsDialog: React.FC<{
 					selectedPromptOptimizeModel,
 				)
 			: undefined;
+		const params = batchGenerationParamsForConfirm(
+			ws.selectedRoute,
+			ws.selectedParams,
+			generationCountParamName,
+			generationCountControl?.value ?? 1,
+		);
+		setStoredSettings(kind, {
+			...selectedSettingsDraft,
+			params,
+			usePromptOptimization: optimizePrompt,
+		});
 		onConfirm({
 			family: ws.selectedFamily,
-			params: batchGenerationParamsForConfirm(
-				ws.selectedRoute,
-				ws.selectedParams,
-				generationCountParamName,
-				generationCountControl?.value ?? 1,
-			),
+			params,
 			promptOptimization,
 			route: ws.selectedRoute,
 			version: ws.selectedVersion,
@@ -393,16 +540,22 @@ export const BatchGenerationSettingsDialog: React.FC<{
 									<Wand2 className="size-4 shrink-0 text-primary" />
 									<h3 className="text-sm font-semibold text-foreground">优化提示词</h3>
 								</div>
-								<span className="shrink-0 text-xs font-semibold text-muted-foreground">
-									优化并生成时使用
-								</span>
+								<label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-sm border border-border bg-card px-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-ide-list-hover">
+									<input
+										type="checkbox"
+										checked={usePromptOptimization}
+										className="size-4 rounded-sm border-border accent-primary"
+										onChange={(event) => setUsePromptOptimization(event.target.checked)}
+									/>
+									<span>优化并生成时使用</span>
+								</label>
 							</div>
 
 							<div className="flex flex-wrap items-center gap-2">
 								<LabeledInlineControl label="提示词包">
 									<Select
 										value={selectedPromptOptimizeItem?.id}
-										disabled={ws.promptInsertItems.length === 0}
+										disabled={!usePromptOptimization || ws.promptInsertItems.length === 0}
 										onValueChange={setSelectedPromptOptimizeItemId}
 									>
 										<SelectTrigger
@@ -432,7 +585,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 								<LabeledInlineControl label="优化模型">
 									<Select
 										value={selectedPromptOptimizeModel?.id}
-										disabled={promptOptimizeModelOptions.length === 0}
+										disabled={!usePromptOptimization || promptOptimizeModelOptions.length === 0}
 										onValueChange={setSelectedPromptOptimizeRouteId}
 									>
 										<SelectTrigger
@@ -469,7 +622,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 									</Select>
 								</LabeledInlineControl>
 							</div>
-							{!promptOptimizationReady ? (
+							{usePromptOptimization && !promptOptimizationReady ? (
 								<p className="text-xs text-muted-foreground">
 									需要可用的提示词包和文本模型后才能优化并生成。
 								</p>
@@ -496,22 +649,15 @@ export const BatchGenerationSettingsDialog: React.FC<{
 							type="button"
 							size="sm"
 							className="h-8 rounded-sm"
-							disabled={confirmDisabled}
-							variant="outline"
-							onClick={() => confirm(false)}
+							disabled={primaryConfirmDisabled}
+							onClick={() => confirm(usePromptOptimization)}
 						>
-							<Check className="size-4" />
-							开始批量生成
-						</Button>
-						<Button
-							type="button"
-							size="sm"
-							className="h-8 rounded-sm"
-							disabled={optimizeConfirmDisabled}
-							onClick={() => confirm(true)}
-						>
-							<Sparkles className="size-4" />
-							优化并生成
+							{usePromptOptimization ? (
+								<Sparkles className="size-4" />
+							) : (
+								<Check className="size-4" />
+							)}
+							{primaryConfirmLabel}
 						</Button>
 					</div>
 				</footer>
@@ -534,3 +680,34 @@ const LabeledInlineControl: React.FC<{
 
 const promptOptimizeItemMeta = (item: PromptInsertItem) =>
 	[item.categoryLabel, item.sourceLabel].filter(Boolean).join(" / ");
+
+const batchGenerationModelSelectionFromSettings = (
+	kind: BatchGenerationDialogKind,
+	settings: BatchGenerationStoredSettings | null,
+): StoredGenerationModelSelection | undefined => {
+	if (!settings) return undefined;
+
+	const familyId = settings.familyId?.trim();
+	const versionId = settings.versionId?.trim();
+	const routeId = settings.routeId?.trim();
+	if (!familyId && !versionId && !routeId) return undefined;
+
+	return {
+		familyIds: familyId ? { [kind]: familyId } : {},
+		routeIds: versionId && routeId ? { [versionId]: routeId } : {},
+		routeParams: routeId ? { [routeId]: { ...settings.params } } : {},
+		versionIds: familyId && versionId ? { [familyId]: versionId } : {},
+	};
+};
+
+const batchGenerationStoredSettingsKey = (
+	kind: BatchGenerationDialogKind,
+	settings: BatchGenerationStoredSettings | null,
+) =>
+	JSON.stringify({
+		familyId: settings?.familyId ?? "",
+		kind,
+		params: settings?.params ?? {},
+		routeId: settings?.routeId ?? "",
+		versionId: settings?.versionId ?? "",
+	});

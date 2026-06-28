@@ -61,18 +61,6 @@ const desktopActionMocks = vi.hoisted(() => ({
 	openExternalUrl: vi.fn(),
 	pickDesktopDirectory: vi.fn(),
 }));
-const promptTemplateApiMocks = vi.hoisted(() => ({
-	listPromptTemplates: vi.fn(async () => [
-		{
-			id: "PROMPT_OPTIMIZATION",
-			content: `# 提示词优化
-
-## 提示词优化系统指令
-
-你是一位专业的 AI 绘画提示词优化专家。`,
-		},
-	]),
-}));
 
 vi.mock("@/domains/generation/hooks/useGenerationWorkspace", () => ({
 	useGenerationWorkspace: vi.fn(),
@@ -114,11 +102,6 @@ vi.mock("@/shared/desktop/actions", async (importOriginal) => {
 		pickDesktopDirectory: desktopActionMocks.pickDesktopDirectory,
 	};
 });
-
-vi.mock("@/domains/settings/api/prompt-templates", () => ({
-	listPromptTemplates: promptTemplateApiMocks.listPromptTemplates,
-	promptTemplatesKey: "/prompt-templates",
-}));
 
 vi.mock("@/domains/generation/components/ImageStickerEditorDialog", () => ({
 	ImageStickerEditorDialog: ({
@@ -1807,13 +1790,11 @@ describe("MediaGenerationWorkspace", () => {
 			title: "舔狗金 · 提示词优化",
 		});
 		const [request] = generationApiMocks.streamGenerationText.mock.calls[0];
-		expect(request.prompt).toContain("## 原始提示词\n原始角色提示词");
-		expect(request.prompt).toContain("## 参考风格\n电影质感");
-		expect(request.prompt).toContain("## 参考风格提示词\ncinematic lighting, detailed composition");
-		expect(request.prompt).toContain("中文提示词");
-		expect(request.prompt).toContain("画面为单人");
-		expect(request.prompt).toContain("不要生成第二个人");
-		expect(request.prompt).toContain("不要输出 JSON");
+		expect(request.prompt).toContain("根据优化 prompt 优化用户的输入。");
+		expect(request.prompt).toContain("优化 prompt：\ncinematic lighting, detailed composition");
+		expect(request.prompt).toContain("用户的输入：\n原始角色提示词");
+		expect(request.prompt).not.toContain("## 输出要求");
+		expect(request.prompt).not.toContain("不要输出 JSON");
 		expect(request).toMatchObject({
 			capabilityId: "character",
 			conversationId: "project-a-text",
@@ -1824,7 +1805,7 @@ describe("MediaGenerationWorkspace", () => {
 			provider: "openai",
 			model: "text-model",
 			params: {
-				system_instruction: expect.stringContaining("AI 绘画提示词优化专家"),
+				system_instruction: "根据优化 prompt 优化用户的输入，只输出优化后的内容。",
 			},
 		});
 		expect(setPrompt).toHaveBeenCalledWith("optimized ");
@@ -1878,15 +1859,9 @@ describe("MediaGenerationWorkspace", () => {
 		expect(setPrompt).not.toHaveBeenCalledWith("optimized prompt");
 	});
 
-	it("submits server-side prompt optimization even when frontend optimize instructions are unavailable", async () => {
+	it("submits server-side prompt optimization without loading prompt template instructions", async () => {
 		const setPrompt = vi.fn();
 		const submitGeneration = vi.fn(async () => undefined);
-		promptTemplateApiMocks.listPromptTemplates.mockResolvedValueOnce([
-			{
-				id: "TOOLS",
-				content: "# 工具使用原则\n\n## 提示词优化系统指令\n旧位置不应再被读取",
-			},
-		]);
 		vi.mocked(useGenerationWorkspace).mockReturnValue({
 			...workspaceDefaults,
 			catalog: textGenerationCatalog,
@@ -1907,7 +1882,6 @@ describe("MediaGenerationWorkspace", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
 		fireEvent.click(screen.getByRole("button", { name: /电影质感/ }));
-		await waitFor(() => expect(promptTemplateApiMocks.listPromptTemplates).toHaveBeenCalled());
 		await waitFor(() => expect(screen.getByRole("button", { name: "优化并生成" })).toBeEnabled());
 		fireEvent.click(screen.getByRole("button", { name: "优化并生成" }));
 

@@ -11,6 +11,7 @@ import {
 	emptyGenerationModelSelection,
 	readGenerationModelSelection,
 	readGenerationStylePresetId,
+	type StoredGenerationModelSelection,
 	useGenerationWorkspacePreferenceStore,
 	writeGenerationModelSelection,
 	writeGenerationStylePresetId,
@@ -281,6 +282,124 @@ describe("useGenerationModelSelection", () => {
 		expect(result.current.selectedRoute.id).toBe("route-image-alt");
 		expect(readGenerationModelSelection().versionIds["family-image"]).toBe("version-image-alt");
 		expect(readGenerationModelSelection().routeIds["version-image-alt"]).toBe("route-image-alt");
+	});
+
+	it("uses dialog initial model selection when persistence is disabled", async () => {
+		const jimengCatalog: GenerationModelsResponse = {
+			...catalog,
+			families: [
+				...catalog.families,
+				{
+					id: "family-jimeng-local",
+					label: "即梦本地",
+					kind: "image",
+				},
+			],
+			versions: [
+				...catalog.versions,
+				{
+					id: "version-jimeng-local",
+					familyId: "family-jimeng-local",
+					label: "即梦本地",
+					kind: "image",
+					canonicalModel: "jimeng-local",
+					capabilities: {
+						async: false,
+						supportsReferenceUrls: true,
+					},
+				},
+			],
+			routes: [
+				...catalog.routes,
+				{
+					id: "route-jimeng-local",
+					familyId: "family-jimeng-local",
+					versionId: "version-jimeng-local",
+					label: "即梦本地",
+					kind: "image",
+					provider: "dmx",
+					model: "jimeng-local",
+					adapter: "test.image",
+					docUrl: "",
+					async: false,
+					supportsReferenceUrls: true,
+					status: "available",
+					configured: true,
+					params: [
+						{
+							name: "size",
+							label: "Size",
+							type: "string",
+							default: "1024x1024",
+						},
+					],
+				},
+			],
+		};
+		const projectPreference: GenerationPreference = {
+			scopeId: "project-1",
+			familyIds: { image: "family-image" },
+			versionIds: { "family-image": "version-image" },
+			routeIds: { "version-image": "route-image" },
+			routeParams: { "route-image": { size: "1024x1024" } },
+			stylePresetId: "",
+		};
+		const jimengSelection: StoredGenerationModelSelection = {
+			familyIds: { image: "family-jimeng-local" },
+			versionIds: { "family-jimeng-local": "version-jimeng-local" },
+			routeIds: { "version-jimeng-local": "route-jimeng-local" },
+			routeParams: { "route-jimeng-local": { size: "768x768" } },
+		};
+		const gptSelection: StoredGenerationModelSelection = {
+			familyIds: { image: "family-image" },
+			versionIds: { "family-image": "version-image" },
+			routeIds: { "version-image": "route-image-dmx" },
+			routeParams: { "route-image-dmx": { size: "512x512" } },
+		};
+
+		const { result, rerender } = renderHook(
+			({
+				initialModelSelection,
+				initialModelSelectionKey,
+			}: {
+				initialModelSelection: StoredGenerationModelSelection;
+				initialModelSelectionKey: string;
+			}) =>
+				useGenerationModelSelection({
+					generationPreferences: projectPreference,
+					initialKind: "image",
+					initialModelSelection,
+					initialModelSelectionKey,
+					modelCatalog: jimengCatalog,
+					mutatePreferences,
+					persistSelection: false,
+					preferenceScopeId: "project-1",
+					stylePresets: [],
+				}),
+			{
+				initialProps: {
+					initialModelSelection: jimengSelection,
+					initialModelSelectionKey: "jimeng-local",
+				},
+			},
+		);
+
+		expect(result.current.selectedFamily.id).toBe("family-jimeng-local");
+		expect(result.current.selectedRoute.id).toBe("route-jimeng-local");
+		expect(result.current.selectedParams).toEqual({ size: "768x768" });
+		expect(readGenerationModelSelection()).toEqual(emptyGenerationModelSelection());
+
+		rerender({
+			initialModelSelection: gptSelection,
+			initialModelSelectionKey: "gpt-dmx",
+		});
+
+		await waitFor(() => {
+			expect(result.current.selectedRoute.id).toBe("route-image-dmx");
+		});
+		expect(result.current.selectedParams).toEqual({ size: "512x512" });
+		expect(readGenerationModelSelection()).toEqual(emptyGenerationModelSelection());
+		expect(updateGenerationPreferences).not.toHaveBeenCalled();
 	});
 
 	it("syncs scoped preferences and clears stale style preset IDs", async () => {

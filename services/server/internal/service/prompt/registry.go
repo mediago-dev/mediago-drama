@@ -45,7 +45,7 @@ func SectionDescriptors() []SectionDescriptor {
 		slog.Warn("prompt instruction registry unavailable", "error", err)
 		return sortedSectionDescriptors(fallbackSections)
 	}
-	descriptors := injectableDescriptors(descriptorsFromTemplates(prompttemplates.OrderedTemplates(templateMap)))
+	descriptors := descriptorsFromTemplates(prompttemplates.InjectableTemplates(templateMap))
 	if len(descriptors) == 0 {
 		return sortedSectionDescriptors(fallbackSections)
 	}
@@ -59,7 +59,7 @@ func EditableSectionDescriptors() []SectionDescriptor {
 		slog.Warn("prompt instruction registry unavailable", "error", err)
 		return sortedSectionDescriptors(fallbackSections)
 	}
-	allDescriptors := descriptorsFromTemplates(prompttemplates.OrderedTemplates(templateMap))
+	allDescriptors := descriptorsFromTemplates(prompttemplates.InjectableTemplates(templateMap))
 	descriptors := make([]SectionDescriptor, 0, len(allDescriptors))
 	for _, descriptor := range allDescriptors {
 		if descriptor.Editable {
@@ -92,16 +92,6 @@ func descriptorsFromTemplates(templates []prompttemplates.PromptTemplate) []Sect
 			Injectable:  template.Injectable,
 		}
 		descriptors = append(descriptors, descriptor)
-	}
-	return descriptors
-}
-
-func injectableDescriptors(input []SectionDescriptor) []SectionDescriptor {
-	descriptors := make([]SectionDescriptor, 0, len(input))
-	for _, descriptor := range input {
-		if descriptor.Injectable {
-			descriptors = append(descriptors, descriptor)
-		}
 	}
 	return descriptors
 }

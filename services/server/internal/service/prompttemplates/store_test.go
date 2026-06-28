@@ -19,10 +19,8 @@ func TestStoreLoadReturnsOfficialInstructions(t *testing.T) {
 	if templates["TOOLS"].Content == "" || templates["TOOLS"].Source != sourceOfficial {
 		t.Fatalf("TOOLS template = %#v, want official content", templates["TOOLS"])
 	}
-	if templates["PROMPT_OPTIMIZATION"].Content == "" ||
-		templates["PROMPT_OPTIMIZATION"].Source != sourceOfficial ||
-		templates["PROMPT_OPTIMIZATION"].Injectable {
-		t.Fatalf("PROMPT_OPTIMIZATION template = %#v, want official non-injectable content", templates["PROMPT_OPTIMIZATION"])
+	if _, ok := templates["PROMPT_OPTIMIZATION"]; ok {
+		t.Fatalf("templates = %#v, should not include internal prompt optimization instruction", templates)
 	}
 }
 
@@ -91,6 +89,27 @@ func TestOrderedTemplatesUsesPromptAssemblyOrder(t *testing.T) {
 	}
 	if strings.Join(ids, ",") != "AGENTS,TOOLS" {
 		t.Fatalf("ordered ids = %v", ids)
+	}
+}
+
+func TestInjectableTemplatesReturnsAgentInstructionTemplates(t *testing.T) {
+	store := NewServiceWithStore(newFakeTemplateRepo())
+
+	templates, err := store.Load(context.Background())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	ordered := InjectableTemplates(templates)
+	ids := make([]string, 0, len(ordered))
+	for _, template := range ordered {
+		ids = append(ids, template.ID)
+		if !template.Injectable {
+			t.Fatalf("InjectableTemplates() included non-injectable template %#v", template)
+		}
+	}
+	if strings.Join(ids, ",") != "AGENTS,TOOLS" {
+		t.Fatalf("injectable ids = %v, want AGENTS,TOOLS", ids)
 	}
 }
 

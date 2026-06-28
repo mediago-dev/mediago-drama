@@ -15,12 +15,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed assets/instructions/*.md assets/prompt-templates/*.md
+//go:embed assets/instructions/*.md
 var assets embed.FS
 
 var instructionDirs = []string{
 	"assets/instructions",
-	"assets/prompt-templates",
 }
 
 // ErrInstructionNotFound reports a missing official instruction template.

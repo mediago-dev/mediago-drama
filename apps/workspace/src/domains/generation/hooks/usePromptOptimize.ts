@@ -1,5 +1,4 @@
 import { useCallback, useRef, useState } from "react";
-import useSWR from "swr";
 import {
 	createGenerationConversation,
 	type GenerationFamily,
@@ -13,8 +12,6 @@ import {
 	isConfiguredRoute,
 	preferredRoute,
 } from "@/domains/generation/hooks/generationCatalog";
-import { listPromptTemplates, promptTemplatesKey } from "@/domains/settings/api/prompt-templates";
-import { markdownSection } from "@/domains/settings/lib/prompt-template-sections";
 
 export interface PromptOptimizeInput {
 	currentPrompt: string;
@@ -42,7 +39,7 @@ export interface UsePromptOptimizeOptions {
 	route?: GenerationRoute | null;
 }
 
-const promptOptimizeInstructionPath = ["提示词优化系统指令"];
+const promptOptimizeSystemInstruction = "根据优化 prompt 优化用户的输入，只输出优化后的内容。";
 
 export const usePromptOptimize = ({
 	capabilityId,
@@ -60,22 +57,10 @@ export const usePromptOptimize = ({
 	const abortRef = useRef<AbortController | null>(null);
 
 	const textRoute = route ?? resolveTextRoute(catalog);
-	const {
-		error: promptOptimizeInstructionError,
-		instruction: promptOptimizeInstruction,
-		isLoading: isPromptOptimizeInstructionLoading,
-	} = usePromptOptimizeInstruction();
-
 	const optimize = useCallback(
 		async (input: PromptOptimizeInput) => {
 			if (!textRoute) {
 				setError("没有可用的文本生成模型，请先配置 API Key。");
-				return null;
-			}
-			if (!promptOptimizeInstruction) {
-				setError(
-					promptOptimizeInstructionError ? "提示词优化指令加载失败。" : "提示词优化指令缺失。",
-				);
 				return null;
 			}
 
@@ -117,7 +102,7 @@ export const usePromptOptimize = ({
 						model: textRoute.model,
 						prompt: userPrompt,
 						params: {
-							system_instruction: promptOptimizeInstruction,
+							system_instruction: promptOptimizeSystemInstruction,
 						},
 						referenceUrls: [],
 						referenceAssetIds: [],
@@ -165,8 +150,6 @@ export const usePromptOptimize = ({
 			onOptimized,
 			onSuccess,
 			projectId,
-			promptOptimizeInstruction,
-			promptOptimizeInstructionError,
 			textRoute,
 		],
 	);
@@ -178,9 +161,7 @@ export const usePromptOptimize = ({
 	}, []);
 
 	return {
-		canOptimize: Boolean(
-			textRoute && promptOptimizeInstruction && !isPromptOptimizeInstructionLoading,
-		),
+		canOptimize: Boolean(textRoute),
 		error,
 		isOptimizing,
 		optimize,
@@ -196,43 +177,14 @@ const resolveTextRoute = (catalog?: GenerationModelsResponse): GenerationRoute |
 
 const buildPromptOptimizeUserPrompt = (input: PromptOptimizeInput) => {
 	const currentPrompt = input.currentPrompt.trim();
-	const referenceName = input.referenceName.trim() || "参考风格";
 	const referencePrompt = input.referencePrompt.trim();
-	return `请根据下面信息优化图片生成提示词。
+	return `根据优化 prompt 优化用户的输入。
 
-## 原始提示词
-${currentPrompt}
-
-## 参考风格
-${referenceName}
-
-## 参考风格提示词
+优化 prompt：
 ${referencePrompt}
 
-## 输出要求
-- 保留原始提示词中的主体、身份、关系、外貌、性格和剧情功能。
-- 融入参考风格提示词中的画风、构图、光影、材质、色彩和氛围描写。
-- 输出一段适合图片生成模型的中文提示词。
-- 如果原始提示词是人物设定，请明确画面为单人，最终提示词需要包含当前人物的外貌、服饰、气质、表情、动作和构图。
-- 其他人名、关系人物和剧情事件只作为背景理解，不要生成第二个人；除非原始提示词明确要求多人同框。
-- 不要输出 JSON、Markdown 标题、解释或额外说明，只输出最终提示词。`;
-};
-
-const usePromptOptimizeInstruction = () => {
-	const { data, error, isLoading } = useSWR(promptTemplatesKey, listPromptTemplates, {
-		revalidateOnFocus: false,
-	});
-	const promptOptimizationTemplate = data?.find(
-		(template) => template.id === "PROMPT_OPTIMIZATION",
-	);
-	const instruction = promptOptimizationTemplate
-		? markdownSection(promptOptimizationTemplate.content, promptOptimizeInstructionPath).trim()
-		: "";
-	return {
-		error,
-		instruction,
-		isLoading,
-	};
+用户的输入：
+${currentPrompt}`;
 };
 
 export const promptOptimizeModelOptions = (

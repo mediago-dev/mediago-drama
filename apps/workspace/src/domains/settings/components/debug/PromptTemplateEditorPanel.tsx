@@ -33,7 +33,7 @@ export const PromptTemplateEditorPanel: React.FC = () => {
 		isLoading,
 		mutate,
 	} = useSWR(promptTemplatesKey, listPromptTemplates);
-	const templateList = useMemo(() => templates, [templates]);
+	const templateList = useMemo(() => visibleInstructionTemplates(templates), [templates]);
 	const [selectedId, setSelectedId] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -63,9 +63,7 @@ export const PromptTemplateEditorPanel: React.FC = () => {
 		try {
 			const savedTemplate = await updatePromptTemplate(nextTemplate.id, nextTemplate);
 			await mutate(
-				templateList.map((template) =>
-					template.id === savedTemplate.id ? savedTemplate : template,
-				),
+				templates.map((template) => (template.id === savedTemplate.id ? savedTemplate : template)),
 				false,
 			);
 			setDraft(cloneTemplate(savedTemplate));
@@ -94,9 +92,7 @@ export const PromptTemplateEditorPanel: React.FC = () => {
 		try {
 			const resetTemplate = await resetPromptTemplate(selectedTemplate.id);
 			await mutate(
-				templateList.map((template) =>
-					template.id === resetTemplate.id ? resetTemplate : template,
-				),
+				templates.map((template) => (template.id === resetTemplate.id ? resetTemplate : template)),
 				false,
 			);
 			setDraft(cloneTemplate(resetTemplate));
@@ -306,6 +302,9 @@ const settingsFormRowClassName = cn(
 const promptBodyRowClassName = "grid gap-2 py-2";
 
 const templateMessageClassName = "py-2 text-sm text-muted-foreground";
+
+export const visibleInstructionTemplates = (templates: PromptTemplate[]) =>
+	templates.filter((template) => template.injectable !== false);
 
 const EntrySourceBadge: React.FC<Pick<PromptTemplate, "source" | "overridden">> = ({
 	overridden,

@@ -38,6 +38,7 @@ import {
 	isConfiguredRoute,
 	resolveGenerationExtraValue,
 	type GenerationExtraValue,
+	type StoredGenerationModelSelection,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useGenerationMediaLibrary } from "./useGenerationMediaLibrary";
 import { useGenerationMessages } from "./useGenerationMessages";
@@ -75,6 +76,8 @@ export interface UseGenerationWorkspaceOptions {
 	documentContext?: GenerationMessageRequest["documentContext"] | null;
 	historyScopeId?: string;
 	initialKind?: GenerationKind;
+	initialModelSelection?: StoredGenerationModelSelection;
+	initialModelSelectionKey?: string;
 	initialPrompt?: string;
 	mediaAssetProjectId?: string | null;
 	modelPreferenceScopeId?: string | null;
@@ -113,6 +116,8 @@ export const useGenerationWorkspace = ({
 	extraReferenceUrls = [],
 	historyScopeId,
 	initialKind,
+	initialModelSelection,
+	initialModelSelectionKey,
 	initialPrompt = "",
 	mediaAssetProjectId: mediaAssetProjectIdOverride,
 	modelPreferenceScopeId,
@@ -210,6 +215,8 @@ export const useGenerationWorkspace = ({
 	} = useGenerationModelSelection({
 		generationPreferences,
 		initialKind,
+		initialModelSelection,
+		initialModelSelectionKey,
 		modelCatalog,
 		mutatePreferences,
 		persistSelection: persistModelSelection,

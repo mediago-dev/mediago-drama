@@ -1,8 +1,6 @@
 package prompt
 
 import (
-	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,13 +39,13 @@ func TestSectionRegistryLoadsInstructionEntries(t *testing.T) {
 	}
 }
 
-func TestEditableSectionDescriptorsAreOrdered(t *testing.T) {
+func TestEditableSectionDescriptorsReturnsAgentInstructions(t *testing.T) {
 	descriptors := EditableSectionDescriptors()
-	if len(descriptors) == 0 {
-		t.Fatal("EditableSectionDescriptors() returned no descriptors")
+	if len(descriptors) != 2 {
+		t.Fatalf("EditableSectionDescriptors() = %#v, want two descriptors", descriptors)
 	}
-	if !descriptorIDsContain(descriptors, "PROMPT_OPTIMIZATION") {
-		t.Fatalf("EditableSectionDescriptors() = %#v, want PROMPT_OPTIMIZATION", descriptors)
+	if descriptorIDsContain(descriptors, "PROMPT_OPTIMIZATION") {
+		t.Fatalf("EditableSectionDescriptors() = %#v, should not include PROMPT_OPTIMIZATION", descriptors)
 	}
 	for index := 1; index < len(descriptors); index++ {
 		if descriptors[index-1].Order > descriptors[index].Order {
@@ -67,29 +65,12 @@ func TestRenderSectionReturnsInstructionText(t *testing.T) {
 	InvalidateTemplateCache("AGENTS")
 }
 
-func TestInstructionTemplateSectionFallsBackWhenOverrideContainsTemplateAction(t *testing.T) {
-	restore := replacePromptTemplateStoreForTest(&fakePromptTemplateStore{
-		templates: map[string]prompttemplates.PromptTemplate{
-			"PROMPT_OPTIMIZATION": {
-				ID: "PROMPT_OPTIMIZATION",
-				Content: `# 提示词优化
-
-## 提示词优化系统指令
-
-{{.Instruction}}
-`,
-			},
-		},
-	})
-	defer restore()
-
-	section, ok := InstructionTemplateSection("PROMPT_OPTIMIZATION", "提示词优化系统指令")
+func TestPromptOptimizationIsNotInstructionTemplateSection(t *testing.T) {
+	_, ok := InstructionTemplateSection("PROMPT_OPTIMIZATION", "提示词优化系统指令")
 	if !ok {
-		t.Fatal("InstructionTemplateSection() ok = false")
+		return
 	}
-	if strings.Contains(section, "{{") || !strings.Contains(section, "AI 绘画提示词优化专家") {
-		t.Fatalf("section = %q, want fixed official template without variables", section)
-	}
+	t.Fatal("InstructionTemplateSection(PROMPT_OPTIMIZATION) ok = true, want false")
 }
 
 func descriptorIDsContain(descriptors []SectionDescriptor, id string) bool {
@@ -99,32 +80,4 @@ func descriptorIDsContain(descriptors []SectionDescriptor, id string) bool {
 		}
 	}
 	return false
-}
-
-type fakePromptTemplateStore struct {
-	templates map[string]prompttemplates.PromptTemplate
-}
-
-func (store *fakePromptTemplateStore) Load(_ context.Context) (map[string]prompttemplates.PromptTemplate, error) {
-	return store.templates, nil
-}
-
-func (store *fakePromptTemplateStore) Get(_ context.Context, id string) (prompttemplates.PromptTemplate, error) {
-	template, ok := store.templates[id]
-	if !ok {
-		return prompttemplates.PromptTemplate{}, fmt.Errorf("missing template %s", id)
-	}
-	return template, nil
-}
-
-func replacePromptTemplateStoreForTest(store promptTemplateStore) func() {
-	promptTemplateStoreMu.Lock()
-	previous := activePromptTemplate
-	activePromptTemplate = store
-	promptTemplateStoreMu.Unlock()
-	return func() {
-		promptTemplateStoreMu.Lock()
-		activePromptTemplate = previous
-		promptTemplateStoreMu.Unlock()
-	}
 }

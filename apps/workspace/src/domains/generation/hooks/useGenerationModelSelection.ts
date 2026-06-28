@@ -11,6 +11,7 @@ import type { StylePreset } from "@/domains/generation/api/prompt-presets";
 import {
 	catalogOrFallback,
 	defaultFamilyIds,
+	emptyGenerationModelSelection,
 	fallbackCatalog,
 	generationPreferenceDebounceMs,
 	generationPreferenceFromStoredValues,
@@ -32,6 +33,8 @@ import {
 interface UseGenerationModelSelectionOptions {
 	generationPreferences?: GenerationPreference;
 	initialKind?: GenerationKind;
+	initialModelSelection?: StoredGenerationModelSelection;
+	initialModelSelectionKey?: string;
 	modelCatalog?: GenerationModelsResponse;
 	mutatePreferences: KeyedMutator<GenerationPreference>;
 	persistSelection?: boolean;
@@ -39,9 +42,42 @@ interface UseGenerationModelSelectionOptions {
 	stylePresets: StylePreset[];
 }
 
+const modelSelectionFromSources = (
+	persistSelection: boolean,
+	initialModelSelection?: StoredGenerationModelSelection,
+): StoredGenerationModelSelection => {
+	const storedSelection = persistSelection
+		? readGenerationModelSelection()
+		: emptyGenerationModelSelection();
+
+	return {
+		familyIds: {
+			...storedSelection.familyIds,
+			...initialModelSelection?.familyIds,
+		},
+		routeIds: {
+			...storedSelection.routeIds,
+			...initialModelSelection?.routeIds,
+		},
+		routeParams: {
+			...storedSelection.routeParams,
+			...initialModelSelection?.routeParams,
+		},
+		versionIds: {
+			...storedSelection.versionIds,
+			...initialModelSelection?.versionIds,
+		},
+	};
+};
+
+const modelSelectionSignature = (selection?: StoredGenerationModelSelection) =>
+	JSON.stringify(selection ?? emptyGenerationModelSelection());
+
 export const useGenerationModelSelection = ({
 	generationPreferences,
 	initialKind,
+	initialModelSelection,
+	initialModelSelectionKey,
 	modelCatalog,
 	mutatePreferences,
 	persistSelection = true,
@@ -52,19 +88,20 @@ export const useGenerationModelSelection = ({
 	const [selectedFamilyIds, setSelectedFamilyIds] = useState<Record<GenerationKind, string>>(
 		() => ({
 			...defaultFamilyIds,
-			...readGenerationModelSelection().familyIds,
+			...modelSelectionFromSources(persistSelection, initialModelSelection).familyIds,
 		}),
 	);
 	const [selectedVersionIds, setSelectedVersionIds] = useState<Record<string, string>>(
-		() => readGenerationModelSelection().versionIds,
+		() => modelSelectionFromSources(persistSelection, initialModelSelection).versionIds,
 	);
 	const [selectedRouteIds, setSelectedRouteIds] = useState<Record<string, string>>(
-		() => readGenerationModelSelection().routeIds,
+		() => modelSelectionFromSources(persistSelection, initialModelSelection).routeIds,
 	);
 	const [routeParams, setRouteParams] = useState<Record<string, Record<string, unknown>>>(
-		() => readGenerationModelSelection().routeParams,
+		() => modelSelectionFromSources(persistSelection, initialModelSelection).routeParams,
 	);
 	const [stylePresetId, setStylePresetId] = useState(readGenerationStylePresetId);
+	const initialModelSelectionSyncRef = useRef("");
 	const preferenceSyncRef = useRef({ initialized: false, scopeId: "" });
 	const pendingPreferenceSignatureRef = useRef("");
 	const persistedPreferenceSignatureRef = useRef("");
@@ -181,6 +218,29 @@ export const useGenerationModelSelection = ({
 	}, [initialKind]);
 
 	useEffect(() => {
+		if (initialModelSelection === undefined && initialModelSelectionKey === undefined) return;
+
+		const signature = initialModelSelectionKey ?? modelSelectionSignature(initialModelSelection);
+		if (initialModelSelectionSyncRef.current === signature) return;
+
+		const selection = modelSelectionFromSources(persistSelection, initialModelSelection);
+		setSelectedFamilyIds({
+			...defaultFamilyIds,
+			...selection.familyIds,
+		});
+		setSelectedVersionIds(selection.versionIds);
+		setSelectedRouteIds(selection.routeIds);
+		setRouteParams(selection.routeParams);
+		initialModelSelectionSyncRef.current = signature;
+	}, [initialModelSelection, initialModelSelectionKey, persistSelection]);
+
+	useEffect(() => {
+		if (!persistSelection) {
+			preferenceSyncRef.current = { initialized: false, scopeId: "" };
+			pendingPreferenceSignatureRef.current = "";
+			persistedPreferenceSignatureRef.current = "";
+			return;
+		}
 		if (!preferenceScopeId) {
 			preferenceSyncRef.current = { initialized: false, scopeId: "" };
 			pendingPreferenceSignatureRef.current = "";
