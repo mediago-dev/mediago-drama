@@ -20,13 +20,21 @@ func TestBuiltinPackParses(t *testing.T) {
 		counts[entry.Kind]++
 	}
 	if bundle.Manifest.ID != "builtin" ||
-		counts[pack.KindSkill] != 6 ||
+		counts[pack.KindSkill] != 7 ||
 		counts[pack.KindPrompt] != 10 {
 		t.Fatalf("builtin manifest=%#v counts=%#v", bundle.Manifest, counts)
 	}
 	foundNovelWriter := false
+	foundAutoMentionResolver := false
 	for _, entry := range bundle.Entries {
 		if entry.Kind != pack.KindSkill {
+			continue
+		}
+		if entry.Slug == "auto-mention-resolver" {
+			foundAutoMentionResolver = true
+			if entry.Metadata["template_id"] != "" {
+				t.Fatalf("auto-mention-resolver template_id = %#v, want empty", entry.Metadata["template_id"])
+			}
 			continue
 		}
 		hint, ok := entry.Metadata["hint"].(map[string]string)
@@ -50,6 +58,9 @@ func TestBuiltinPackParses(t *testing.T) {
 	}
 	if !foundNovelWriter {
 		t.Fatal("builtin skills missing novel-writer")
+	}
+	if !foundAutoMentionResolver {
+		t.Fatal("builtin skills missing auto-mention-resolver")
 	}
 }
 
@@ -115,6 +126,53 @@ func TestBuiltinCreativeSkillsDoNotBlockOnMissingVisualStyle(t *testing.T) {
 	for slug := range creativeSkillSlugs {
 		if !found[slug] {
 			t.Fatalf("builtin skills missing %s", slug)
+		}
+	}
+}
+
+func TestAutoMentionResolverOwnsAutomaticMentionRules(t *testing.T) {
+	bundle, err := Builtin(context.Background())
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+
+	var autoMentionBody string
+	var storyboardBody string
+	for _, entry := range bundle.Entries {
+		if entry.Kind != pack.KindSkill {
+			continue
+		}
+		switch entry.Slug {
+		case "auto-mention-resolver":
+			autoMentionBody = entry.Description + "\n" + entry.Body
+		case "storyboard-writer":
+			storyboardBody = entry.Description + "\n" + entry.Body
+		}
+	}
+
+	for _, fragment := range []string{
+		"不要求字面精确匹配",
+		"原文实体名 + 紧跟 @ 链接",
+		"资源类别｜资源标题｜完整 Markdown @ 链接",
+		"mention://<document-id>/<block-id>",
+		"稳定章节 ID 可能来自文档里的 `<!-- section-id: ... -->`",
+		"你不需要、也不应该计算这些 ID",
+		"不要自己拼接或编造 `mention://`、`asset://`",
+	} {
+		if !strings.Contains(autoMentionBody, fragment) {
+			t.Fatalf("auto-mention-resolver missing rule %q:\n%s", fragment, autoMentionBody)
+		}
+		if strings.Contains(storyboardBody, fragment) {
+			t.Fatalf("storyboard-writer should not contain automatic mention rule %q:\n%s", fragment, storyboardBody)
+		}
+	}
+	for _, fragment := range []string{
+		"自动 @ 引用",
+		"# 可用 @ 资源索引",
+		"auto-mention-resolver",
+	} {
+		if strings.Contains(storyboardBody, fragment) {
+			t.Fatalf("storyboard-writer should not contain automatic mention parsing fragment %q:\n%s", fragment, storyboardBody)
 		}
 	}
 }

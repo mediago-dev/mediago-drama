@@ -156,11 +156,7 @@ func renderReferenceIndexPrompt(items []referenceIndexItem) string {
 	var builder strings.Builder
 	builder.WriteString(referenceIndexPromptHeading)
 	builder.WriteString("\n\n")
-	builder.WriteString("以下资源来自当前工作区，只供写分镜时自动 @ 使用。使用规则：\n")
-	builder.WriteString("- 不要求字面精确匹配；根据人物身份、别名、剧情关系、场景功能和道具用途判断。\n")
-	builder.WriteString("- 命中时写成 `原文实体名 + @ 链接`，例如 `沈阎@[沈阎](mention://...)`，可视效果类似 `沈阎@沈阎`。\n")
-	builder.WriteString("- 只能复制下方已有完整 Markdown @ 链接，不要自己拼接或编造 `mention://`、`asset://`。\n")
-	builder.WriteString("- 同一镜头同一资源首次出现时 @ 一次；无把握或无可用完整链接时不要硬 @。\n\n")
+	builder.WriteString("以下资源来自当前工作区，可供生成内容时引用。\n\n")
 	builder.WriteString("## 资源\n")
 	for _, item := range items {
 		builder.WriteString("- ")

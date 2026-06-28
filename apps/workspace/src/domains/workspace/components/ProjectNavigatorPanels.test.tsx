@@ -43,6 +43,19 @@ describe("SettingsSidebarPanel", () => {
 		expect(onSelectTab).toHaveBeenCalledWith("api-keys");
 	});
 
+	it("hides the Jianying draft settings entry while it is disabled", () => {
+		render(
+			<SettingsSidebarPanel
+				activeTab="appearance"
+				isProjectSettings={false}
+				onBack={vi.fn()}
+				onSelectTab={vi.fn()}
+			/>,
+		);
+
+		expect(screen.queryByRole("button", { name: "剪映草稿" })).toBeNull();
+	});
+
 	it("adds project settings above global settings in project mode", () => {
 		const onSelectTab = vi.fn();
 

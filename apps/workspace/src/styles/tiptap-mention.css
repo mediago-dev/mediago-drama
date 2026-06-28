@@ -93,6 +93,68 @@
 	color: var(--muted-foreground);
 }
 
+.agent-skill-chip {
+	display: inline-flex;
+	box-sizing: border-box;
+	max-width: min(22rem, 100%);
+	align-items: center;
+	gap: 0.35rem;
+	overflow: hidden;
+	border: var(--border-width-scale-sm) solid color-mix(in srgb, var(--primary) 28%, transparent);
+	border-radius: var(--radius-scale-sm);
+	background: color-mix(in srgb, var(--primary) 8%, transparent);
+	padding: 0.05em 0.38rem 0.05em 0.28rem;
+	color: var(--primary);
+	font-weight: var(--font-weight-scale-medium);
+	line-height: 1.25;
+	text-overflow: ellipsis;
+	vertical-align: baseline;
+	white-space: nowrap;
+	word-break: normal;
+	overflow-wrap: normal;
+}
+
+.agent-skill-chip-icon {
+	position: relative;
+	display: inline-flex;
+	width: 0.88em;
+	height: 0.88em;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	border: 1.5px solid currentColor;
+	border-radius: 0.18em;
+}
+
+.agent-skill-chip-icon::before,
+.agent-skill-chip-icon::after {
+	position: absolute;
+	content: "";
+}
+
+.agent-skill-chip-icon::before {
+	inset: 0.18em;
+	border: 1.2px solid currentColor;
+	border-radius: 0.1em;
+}
+
+.agent-skill-chip-icon::after {
+	top: -0.12em;
+	right: -0.12em;
+	width: 0.42em;
+	height: 0.42em;
+	border-top: 1.2px solid currentColor;
+	border-right: 1.2px solid currentColor;
+	border-radius: 0.08em;
+}
+
+.agent-skill-chip-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .agent-mention-menu,
 .agent-mention-menu-empty {
 	background: var(--popover);

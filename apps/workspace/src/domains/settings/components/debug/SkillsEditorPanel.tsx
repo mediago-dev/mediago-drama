@@ -270,7 +270,6 @@ export const SkillsEditorPanel: React.FC = () => {
 			<SkillEditDialog
 				bodyDraft={bodyDraft}
 				error={error}
-				frontmatterDraft={frontmatterDraft}
 				isSaving={isSaving}
 				open={editDialogOpen}
 				onBodyChange={setBodyDraft}
@@ -321,18 +320,6 @@ export const SkillsEditorPanel: React.FC = () => {
 								</Select>
 							</div>
 
-							<div className={settingsFormRowClassName}>
-								<Label id="skill-frontmatter-label" className="text-sm font-medium text-foreground">
-									元数据
-								</Label>
-								<SettingsMarkdownPreview
-									ariaLabelledBy="skill-frontmatter-label"
-									className="min-h-40"
-									placeholder="暂无元数据。"
-									value={metadataPreviewMarkdown(frontmatterDraft)}
-								/>
-							</div>
-
 							<div className={skillBodyRowClassName}>
 								<div className="flex items-center justify-between gap-2">
 									<Label
@@ -374,33 +361,16 @@ const settingsFormRowClassName = cn(
 const skillBodyRowClassName = "grid gap-2 py-2";
 const skillMessageClassName = "py-2 text-sm text-muted-foreground";
 
-const metadataPreviewMarkdown = (metadata: string) => {
-	const trimmed = metadata.trim();
-	if (!trimmed) return "";
-	return ["```yaml", trimmed, "```"].join("\n");
-};
-
 const SkillEditDialog: React.FC<{
 	bodyDraft: string;
 	error: string;
-	frontmatterDraft: string;
 	isSaving: boolean;
 	open: boolean;
 	onBodyChange: (value: string) => void;
 	onCancel: () => void;
 	onOpenChange: (open: boolean) => void;
 	onSave: () => void;
-}> = ({
-	bodyDraft,
-	error,
-	frontmatterDraft,
-	isSaving,
-	open,
-	onBodyChange,
-	onCancel,
-	onOpenChange,
-	onSave,
-}) => (
+}> = ({ bodyDraft, error, isSaving, open, onBodyChange, onCancel, onOpenChange, onSave }) => (
 	<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
 		<DialogPrimitive.Portal>
 			<DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
@@ -420,7 +390,7 @@ const SkillEditDialog: React.FC<{
 							id="skill-edit-description"
 							className="mt-1 text-xs text-muted-foreground"
 						>
-							修改当前 Skill 正文；元数据由系统管理。
+							修改当前 Skill 正文内容。
 						</DialogPrimitive.Description>
 					</div>
 					<DialogPrimitive.Close asChild>
@@ -437,20 +407,6 @@ const SkillEditDialog: React.FC<{
 								<AlertDescription>{error}</AlertDescription>
 							</Alert>
 						) : null}
-						<div className="grid gap-2">
-							<Label
-								id="skill-edit-frontmatter-label"
-								className="text-sm font-medium text-foreground"
-							>
-								元数据
-							</Label>
-							<SettingsMarkdownPreview
-								ariaLabelledBy="skill-edit-frontmatter-label"
-								className="max-h-44 min-h-32"
-								placeholder="暂无元数据。"
-								value={metadataPreviewMarkdown(frontmatterDraft)}
-							/>
-						</div>
 						<div className="grid gap-2">
 							<div className="flex items-center justify-between gap-2">
 								<Label id="skill-edit-body-label" className="text-sm font-medium text-foreground">

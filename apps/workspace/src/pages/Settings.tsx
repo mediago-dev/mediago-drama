@@ -53,6 +53,8 @@ import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
 import { openExternalUrl, pickDesktopDirectory } from "@/shared/desktop/actions";
 
+const jianyingDraftSettingsEnabled: boolean = false;
+
 type SettingsTabValue =
 	| "appearance"
 	| "api-keys"
@@ -65,7 +67,7 @@ const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	value === "appearance" ||
 	value === "api-keys" ||
 	value === "billing" ||
-	value === "jianying-draft" ||
+	(jianyingDraftSettingsEnabled && value === "jianying-draft") ||
 	value === "shortcuts" ||
 	debugTabs.some((tab) => tab.value === value);
 
@@ -95,7 +97,9 @@ export const Settings: React.FC = () => {
 				<AppearancePanel mode={themeMode} onSelectMode={setThemeMode} />
 			) : null}
 
-			{visibleTab === "jianying-draft" ? <JianyingDraftPanel /> : null}
+			{jianyingDraftSettingsEnabled && visibleTab === "jianying-draft" ? (
+				<JianyingDraftPanel />
+			) : null}
 			{visibleTab === "api-keys" ? <APIKeysPanel /> : null}
 			{visibleTab === "billing" ? <BillingPanel /> : null}
 			{visibleTab === "shortcuts" ? <ShortcutKeysPanel /> : null}

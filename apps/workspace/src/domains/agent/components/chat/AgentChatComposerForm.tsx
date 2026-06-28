@@ -6,6 +6,7 @@ import {
 	type AgentComposerHandle,
 	type AgentComposerState,
 } from "@/domains/agent/components/AgentComposer";
+import type { AgentSkillSlashItem } from "@/domains/agent/components/AgentSkillSlashMenu";
 import { AgentCommentContextStrip } from "@/domains/agent/components/chat/AgentCommentContext";
 import { Button } from "@/shared/components/ui/button";
 import { AgentRuntimeConfigControls } from "@/domains/agent/components/chat/AgentRuntimeConfigControls";
@@ -30,6 +31,7 @@ export const AgentChatComposerForm: React.FC<{
 	disabled: boolean;
 	fileInputRef: React.RefObject<HTMLInputElement | null>;
 	isRuntimeConfigLoading: boolean;
+	isSkillsLoading: boolean;
 	isStopping: boolean;
 	openComments: DocumentComment[];
 	onAttachFiles: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -47,6 +49,8 @@ export const AgentChatComposerForm: React.FC<{
 	runtimeConfig?: AgentRuntimeConfigPayload;
 	runtimeConfigErrorMessage: string;
 	selectedModel: string;
+	skillItems: AgentSkillSlashItem[];
+	skillsErrorMessage: string;
 }> = ({
 	attachments,
 	canSubmit,
@@ -55,6 +59,7 @@ export const AgentChatComposerForm: React.FC<{
 	disabled,
 	fileInputRef,
 	isRuntimeConfigLoading,
+	isSkillsLoading,
 	isStopping,
 	openComments,
 	onAttachFiles,
@@ -72,6 +77,8 @@ export const AgentChatComposerForm: React.FC<{
 	runtimeConfig,
 	runtimeConfigErrorMessage,
 	selectedModel,
+	skillItems,
+	skillsErrorMessage,
 }) => (
 	<form onSubmit={onSubmit} className="agent-composer-form">
 		{attachments.length > 0 || openComments.length > 0 ? (
@@ -116,6 +123,9 @@ export const AgentChatComposerForm: React.FC<{
 					if (!canSubmit || disabled) return;
 					onRunPrompt();
 				}}
+				skillItems={skillItems}
+				skillsErrorMessage={skillsErrorMessage}
+				skillsLoading={isSkillsLoading}
 			/>
 		</div>
 		<div className="agent-composer-footer">

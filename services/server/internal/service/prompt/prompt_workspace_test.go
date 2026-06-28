@@ -198,14 +198,23 @@ func TestBuildACPUserPromptInjectsReferenceIndexForStoryboardRequest(t *testing.
 	for _, want := range []string{
 		"请把第一集改成分镜脚本",
 		"# 可用 @ 资源索引",
-		"不要求字面精确匹配",
-		"沈阎@[沈阎](mention://...)",
+		"以下资源来自当前工作区，可供生成内容时引用。",
 		"角色｜沈阎｜@[沈阎](mention://character-doc/section_shenyan)",
 		"场景｜审讯室｜@[审讯室](mention://scene-doc/section-",
-		"不要自己拼接或编造 `mention://`、`asset://`",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt = %q, want segment %q", prompt, want)
+		}
+	}
+	for _, forbidden := range []string{
+		"不要求字面精确匹配",
+		"沈阎@[沈阎](mention://...)",
+		"不要自己拼接或编造 `mention://`、`asset://`",
+		"storyboard-writer",
+		"auto-mention-resolver",
+	} {
+		if strings.Contains(prompt, forbidden) {
+			t.Fatalf("prompt = %q, should keep automatic @ rules in auto-mention-resolver skill, not segment %q", prompt, forbidden)
 		}
 	}
 	if strings.Contains(prompt, "玄色长袍") || strings.Contains(prompt, "冷白顶灯") {

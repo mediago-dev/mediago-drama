@@ -23,6 +23,7 @@ import {
 	getRuntimeConfigError,
 	normalizeRuntimeConfigValue,
 } from "@/domains/agent/components/chat/AgentRuntimeConfigControls";
+import { listSkills, skillsKey } from "@/domains/settings/api/skills";
 import { buildAgentDisplayMetadata } from "@/domains/agent/lib/display-attachments";
 import {
 	createPendingAttachment,
@@ -43,6 +44,10 @@ import {
 	type AgentMessageMetadata,
 } from "@/domains/agent/stores";
 import {
+	type AgentRuntimeConfigField,
+	useAgentPersistenceStore,
+} from "@/domains/agent/stores/persistence";
+import {
 	selectActiveDocumentOpenComments,
 	type DocumentComment,
 	useDocumentsStore,
@@ -62,9 +67,6 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	});
 	const [isStopping, setIsStopping] = useState(false);
 	const [isSavingAttachments, setIsSavingAttachments] = useState(false);
-	const [selectedModel, setSelectedModel] = useState("");
-	const [selectedReasoning, setSelectedReasoning] = useState("");
-	const [selectedPermission, setSelectedPermission] = useState("");
 	const messages = useAgentStore(selectAgentMessages);
 	const isRunning = useAgentStore(selectAgentIsRunning);
 	const isChatHydrating = useAgentStore((state) => state.isChatHydrating);
@@ -76,6 +78,13 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	const deleteComment = useDocumentsStore((state) => state.deleteComment);
 	const storedProjectId = useProjectStore((state) => state.activeProjectId);
 	const projectId = routeProjectId ?? storedProjectId;
+	const persistedRuntimeConfig = useAgentPersistenceStore((state) =>
+		projectId ? state.runtimeConfigByProject[projectId] : undefined,
+	);
+	const persistedRuntimeConfigDefaults = useAgentPersistenceStore(
+		(state) => state.runtimeConfigDefaults,
+	);
+	const setRuntimeConfigValue = useAgentPersistenceStore((state) => state.setRuntimeConfigValue);
 	const composerRef = useRef<AgentComposerHandle>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const hasUploadingAttachment = attachments.some(
@@ -93,6 +102,27 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	} = useSWR(runtimeConfigKey, () => getAgentRuntimeConfig(projectId), {
 		revalidateOnFocus: false,
 	});
+	const isAgentPersistenceHydrated = useAgentPersistenceHydrated();
+	const resolvedRuntimeConfig = isAgentPersistenceHydrated ? runtimeConfig : undefined;
+	const {
+		data: skillItems = [],
+		error: skillsError,
+		isLoading: isSkillsLoading,
+	} = useSWR(skillsKey, listSkills, {
+		revalidateOnFocus: false,
+	});
+	const selectedModel = normalizeRuntimeConfigValue(
+		resolvedRuntimeConfig?.model,
+		persistedRuntimeConfig?.model ?? persistedRuntimeConfigDefaults.model ?? "",
+	);
+	const selectedReasoning = normalizeRuntimeConfigValue(
+		resolvedRuntimeConfig?.reasoning,
+		persistedRuntimeConfig?.reasoning ?? persistedRuntimeConfigDefaults.reasoning ?? "",
+	);
+	const selectedPermission = normalizeRuntimeConfigValue(
+		resolvedRuntimeConfig?.permission,
+		persistedRuntimeConfig?.permission ?? persistedRuntimeConfigDefaults.permission ?? "",
+	);
 	const canSubmit =
 		Boolean(
 			composerState.hasText ||
@@ -102,16 +132,6 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 		) &&
 		!hasUploadingAttachment &&
 		!isSavingAttachments;
-
-	useEffect(() => {
-		setSelectedModel((current) => normalizeRuntimeConfigValue(runtimeConfig?.model, current));
-		setSelectedReasoning((current) =>
-			normalizeRuntimeConfigValue(runtimeConfig?.reasoning, current),
-		);
-		setSelectedPermission((current) =>
-			normalizeRuntimeConfigValue(runtimeConfig?.permission, current),
-		);
-	}, [runtimeConfig]);
 
 	useEffect(() => {
 		if (!composerSeed) return;
@@ -161,11 +181,14 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				references: composerValue.references,
 			}),
 			displayMetadata: buildAgentDisplayMetadata(readyAttachments, composerValue.references),
-			model: buildRuntimeConfigSelection(runtimeConfig?.model, selectedModel),
-			permission: buildRuntimeConfigSelection(runtimeConfig?.permission, selectedPermission),
+			model: buildRuntimeConfigSelection(resolvedRuntimeConfig?.model, selectedModel),
+			permission: buildRuntimeConfigSelection(
+				resolvedRuntimeConfig?.permission,
+				selectedPermission,
+			),
 			prompt: effectivePrompt,
 			references: composerValue.references,
-			reasoning: buildRuntimeConfigSelection(runtimeConfig?.reasoning, selectedReasoning),
+			reasoning: buildRuntimeConfigSelection(resolvedRuntimeConfig?.reasoning, selectedReasoning),
 			comments: openComments,
 		};
 
@@ -260,6 +283,11 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 		);
 	};
 
+	const updateRuntimeConfigValue = (field: AgentRuntimeConfigField, value: string) => {
+		if (!projectId) return;
+		setRuntimeConfigValue(projectId, field, value);
+	};
+
 	const removeAttachment = (id: string) => {
 		setAttachments((items) => items.filter((item) => item.id !== id));
 	};
@@ -301,21 +329,24 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				composerRef={composerRef}
 				disabled={isRunning || isSavingAttachments}
 				fileInputRef={fileInputRef}
-				isRuntimeConfigLoading={isRuntimeConfigLoading}
+				isRuntimeConfigLoading={isRuntimeConfigLoading || !isAgentPersistenceHydrated}
+				isSkillsLoading={isSkillsLoading}
 				isStopping={isStopping}
 				openComments={openComments}
 				permissionValue={selectedPermission}
 				reasoningValue={selectedReasoning}
-				runtimeConfig={runtimeConfig}
+				runtimeConfig={resolvedRuntimeConfig}
 				runtimeConfigErrorMessage={
 					runtimeConfigError ? getRuntimeConfigError(runtimeConfigError) : ""
 				}
 				selectedModel={selectedModel}
+				skillItems={skillItems}
+				skillsErrorMessage={skillsError ? "Skill 列表加载失败" : ""}
 				onAttachFiles={(event) => void attachFiles(event)}
 				onComposerChange={handleComposerChange}
-				onModelChange={setSelectedModel}
-				onPermissionChange={setSelectedPermission}
-				onReasoningChange={setSelectedReasoning}
+				onModelChange={(value) => updateRuntimeConfigValue("model", value)}
+				onPermissionChange={(value) => updateRuntimeConfigValue("permission", value)}
+				onReasoningChange={(value) => updateRuntimeConfigValue("reasoning", value)}
 				onRemoveAttachment={removeAttachment}
 				onRemoveComment={removeComment}
 				onRunPrompt={() => void runPrompt()}
@@ -327,6 +358,26 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 };
 
 type RuntimeConfigSelection = ReturnType<typeof buildRuntimeConfigSelection>;
+
+const useAgentPersistenceHydrated = () => {
+	const [isHydrated, setIsHydrated] = useState(() =>
+		useAgentPersistenceStore.persist.hasHydrated(),
+	);
+
+	useEffect(() => {
+		if (useAgentPersistenceStore.persist.hasHydrated()) {
+			setIsHydrated(true);
+			return;
+		}
+		const unsubscribe = useAgentPersistenceStore.persist.onFinishHydration(() =>
+			setIsHydrated(true),
+		);
+		void useAgentPersistenceStore.persist.rehydrate();
+		return unsubscribe;
+	}, []);
+
+	return isHydrated;
+};
 
 interface PendingAttachmentSend {
 	displayMetadata?: AgentMessageMetadata;
