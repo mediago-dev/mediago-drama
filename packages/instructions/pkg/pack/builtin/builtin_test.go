@@ -152,6 +152,10 @@ func TestAutoMentionResolverOwnsAutomaticMentionRules(t *testing.T) {
 
 	for _, fragment := range []string{
 		"不要求字面精确匹配",
+		"场景资源和角色资源同等优先",
+		"地点名、空间名、室内外环境、场次标题、镜头发生地、动作发生地",
+		"场景标题、动作描写、镜头环境描述是场景自动 @ 的高优先级位置",
+		"保留正文原词并复制索引里的完整链接",
 		"原文实体名 + 紧跟 @ 链接",
 		"资源类别｜资源标题｜完整 Markdown @ 链接",
 		"mention://<document-id>/<block-id>",
