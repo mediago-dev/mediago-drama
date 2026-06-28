@@ -299,6 +299,7 @@ const useEpisodeVideoGenerationDialogController = ({
 			promptPlaceholder: "描述当前组的视频镜头、运动、机位、时长、画幅和质量",
 			projectId,
 			extraReferenceAssetIds: (prompt) => getMentionReferenceInputs(prompt).assetIds,
+			extraReferenceBindings: (prompt) => getMentionReferenceInputs(prompt).bindings,
 			extraReferenceUrls: (prompt) => getMentionReferenceInputs(prompt).urls,
 			referenceBadges: (prompt) => getMentionPreview(prompt).preview.badges,
 			referencePreviewAssets: (prompt) => getMentionPreview(prompt).preview.references,

@@ -76,6 +76,7 @@ func (workflow *GenerationService) CreatePromptOptimizedGenerationMessage(
 	payload.AssetTitle = strings.TrimSpace(payload.AssetTitle)
 	payload.ReferenceURLs = CompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = CompactStrings(payload.ReferenceAssetIDs)
+	payload.ReferenceBindings = normalizeGenerationReferenceBindings(payload.ReferenceBindings)
 	payload.PromptOptimization = NormalizeGenerationPromptOptimizationRequest(payload.PromptOptimization)
 	if payload.PromptOptimization == nil {
 		return GenerationOptimizeAndGenerateResponse{}, http.StatusBadRequest, fmt.Errorf("缺少 promptOptimization")

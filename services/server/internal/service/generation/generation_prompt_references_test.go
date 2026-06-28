@@ -71,6 +71,34 @@ func TestProviderPromptForGenerationRewritesDocumentMentions(t *testing.T) {
 	}
 }
 
+func TestProviderPromptForGenerationRewritesBoundSelectedAssetMentions(t *testing.T) {
+	mediaAssets := media.NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	asset := saveNamedPNGReferenceAsset(t, mediaAssets, "顾依依定稿.png")
+	workflow := NewGenerationService(nil, nil, mediaAssets)
+	route, ok := coregeneration.FindRoute(coregeneration.RouteJimengSeedance20Fast)
+	if !ok {
+		t.Fatal("jimeng seedance route is missing")
+	}
+
+	prompt := workflow.providerPromptForGeneration(route, generationMessageRequest{
+		ProjectID:         "project-a",
+		Prompt:            "角色 @[顾依依（十年前——落魄少女）](mention://char-set-hxm/section_ea8a9c5dbd431400?kind=section&category=character) 冲出雨巷。",
+		ReferenceAssetIDs: []string{asset.ID},
+		ReferenceBindings: []GenerationReferenceBinding{
+			{
+				Kind:       "section",
+				DocumentID: "char-set-hxm",
+				BlockID:    "section_ea8a9c5dbd431400",
+				AssetID:    asset.ID,
+			},
+		},
+	})
+
+	if prompt != "角色 @图片1 冲出雨巷。" {
+		t.Fatalf("provider prompt = %q", prompt)
+	}
+}
+
 func TestProviderPromptForGenerationNumbersSlotsByReferenceKind(t *testing.T) {
 	workflow := NewGenerationService(nil, nil, nil)
 	route, ok := coregeneration.FindRoute(coregeneration.RouteJimengSeedance20Fast)

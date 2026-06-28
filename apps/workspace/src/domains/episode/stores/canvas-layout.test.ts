@@ -100,4 +100,22 @@ describe("episode canvas layout store", () => {
 
 		expect(useEpisodeCanvasLayoutStore.getState().nodePositionsByScope).toEqual({});
 	});
+
+	it("does not publish a new state when saved positions are unchanged", async () => {
+		const { useEpisodeCanvasLayoutStore } = await loadStore();
+
+		useEpisodeCanvasLayoutStore.getState().setNodePositions("document:storyboard-1", {
+			"node-a": { x: 120, y: 48 },
+		});
+		const stateBefore = useEpisodeCanvasLayoutStore.getState();
+		const scopeBefore = stateBefore.nodePositionsByScope["document:storyboard-1"];
+
+		useEpisodeCanvasLayoutStore.getState().setNodePositions("document:storyboard-1", {
+			"node-a": { x: 120, y: 48 },
+		});
+
+		const stateAfter = useEpisodeCanvasLayoutStore.getState();
+		expect(stateAfter).toBe(stateBefore);
+		expect(stateAfter.nodePositionsByScope["document:storyboard-1"]).toBe(scopeBefore);
+	});
 });

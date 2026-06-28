@@ -14,6 +14,9 @@ type GenerationPromptOptimizationRequest = dto.GenerationPromptOptimizationReque
 // GenerationDocumentContext identifies the source document section for generation.
 type GenerationDocumentContext = dto.GenerationDocumentContext
 
+// GenerationReferenceBinding maps a document mention to a concrete reference.
+type GenerationReferenceBinding = dto.GenerationReferenceBinding
+
 // GenerationVoicePreviewRequest creates a short audio sample for a voice.
 type GenerationVoicePreviewRequest = dto.GenerationVoicePreviewRequest
 

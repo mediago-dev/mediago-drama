@@ -38,11 +38,22 @@ export const applyCanvasNodePositionOverrides = <
 >(
 	nodes: Node[],
 	overrides: EpisodeCanvasNodePositionOverrides,
-): Node[] =>
-	nodes.map((node) => {
+): Node[] => {
+	let nextNodes: Node[] | null = null;
+
+	for (const [index, node] of nodes.entries()) {
 		const override = overrides[node.id];
-		return override ? { ...node, position: { ...override } } : node;
-	});
+		if (!override || (override.x === node.position.x && override.y === node.position.y)) {
+			if (nextNodes) nextNodes.push(node);
+			continue;
+		}
+
+		if (!nextNodes) nextNodes = nodes.slice(0, index);
+		nextNodes.push({ ...node, position: { ...override } });
+	}
+
+	return nextNodes ?? nodes;
+};
 
 const sanitizeCanvasNodePosition = (
 	position?: EpisodeCanvasNodePosition | null,

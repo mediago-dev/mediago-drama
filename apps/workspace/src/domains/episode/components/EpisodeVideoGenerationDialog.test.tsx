@@ -184,11 +184,20 @@ describe("EpisodeVideoGenerationDialog", () => {
 
 		const previewReferences = resolveReferencePreviewAssets(workspaceProps);
 		const referenceAssetIds = resolveReferenceAssetIds(workspaceProps);
+		const referenceBindings = resolveReferenceBindings(workspaceProps);
 		const referenceBadges = resolveReferenceBadges(workspaceProps);
 
 		expect(previewReferences).toHaveLength(1);
 		expect(previewReferences[0]?.url).toBe("/api/media/assets/ref-a/content");
 		expect(referenceAssetIds).toEqual(["ref-a"]);
+		expect(referenceBindings).toEqual([
+			{
+				assetId: "ref-a",
+				blockId: "section_character",
+				documentId: "character-doc",
+				kind: "section",
+			},
+		]);
 		expect(referenceBadges[previewReferences[0]?.id ?? ""]).toBe("来自 @沈阔（普通状态）");
 		expect(workspaceProps?.documentContext).toEqual({
 			projectId: "project-a",
@@ -276,11 +285,20 @@ describe("EpisodeVideoGenerationDialog", () => {
 		const workspaceProps = lastWorkspaceProps();
 		const previewReferences = resolveReferencePreviewAssets(workspaceProps);
 		const referenceAssetIds = resolveReferenceAssetIds(workspaceProps);
+		const referenceBindings = resolveReferenceBindings(workspaceProps);
 		const referenceBadges = resolveReferenceBadges(workspaceProps);
 
 		expect(previewReferences).toHaveLength(1);
 		expect(previewReferences[0]?.url).toBe("/api/v1/media-assets/gny-selected/content");
 		expect(referenceAssetIds).toEqual(["gny-selected"]);
+		expect(referenceBindings).toEqual([
+			{
+				assetId: "gny-selected",
+				blockId: "section_character",
+				documentId: "character-doc",
+				kind: "section",
+			},
+		]);
 		expect(referenceBadges[previewReferences[0]?.id ?? ""]).toBe("来自 @顾南衣·状态A");
 	});
 });
@@ -328,6 +346,13 @@ const resolveReferencePreviewAssets = (props: MediaGenerationWorkspaceProps | nu
 
 const resolveReferenceAssetIds = (props: MediaGenerationWorkspaceProps | null) => {
 	const value = props?.extraReferenceAssetIds;
+	if (!value) return [];
+
+	return typeof value === "function" ? value(props.initialPrompt) : value;
+};
+
+const resolveReferenceBindings = (props: MediaGenerationWorkspaceProps | null) => {
+	const value = props?.extraReferenceBindings;
 	if (!value) return [];
 
 	return typeof value === "function" ? value(props.initialPrompt) : value;

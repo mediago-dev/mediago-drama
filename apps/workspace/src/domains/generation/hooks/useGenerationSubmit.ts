@@ -9,6 +9,7 @@ import type {
 	GenerationMessageRequest,
 	GenerationMessageResponse,
 	GenerationNotificationOpenTarget,
+	GenerationReferenceBinding,
 	GenerationRoute,
 	GenerationTasksResponse,
 	GenerationVersion,
@@ -65,6 +66,7 @@ export interface GenerationSubmitOverrides {
 	promptOptimization?: GenerationMessageRequest["promptOptimization"];
 	requestDetails?: ChatMessageDetail[];
 	referenceAssetIds?: string[];
+	referenceBindings?: GenerationReferenceBinding[];
 	referenceUrls?: string[];
 	resetPrompt?: boolean;
 	sectionId?: string | null;
@@ -133,6 +135,7 @@ interface UseGenerationSubmitOptions {
 	assetTitle?: string | null;
 	conversationId?: string | null;
 	effectiveReferenceAssetIds: string[];
+	effectiveReferenceBindings: GenerationReferenceBinding[];
 	effectiveReferenceUrls: string[];
 	documentContext?: GenerationMessageRequest["documentContext"] | null;
 	documentContextInitialPrompt?: string;
@@ -173,6 +176,7 @@ export const useGenerationSubmit = ({
 	documentContext,
 	documentContextInitialPrompt,
 	effectiveReferenceAssetIds,
+	effectiveReferenceBindings,
 	effectiveReferenceUrls,
 	extraPrompt,
 	mediaAssetProjectId,
@@ -212,6 +216,7 @@ export const useGenerationSubmit = ({
 			const promptInput = overrides.prompt ?? promptRef?.current ?? prompt;
 			const nextPrompt = promptInput.trim();
 			const requestReferenceAssetIds = overrides.referenceAssetIds ?? effectiveReferenceAssetIds;
+			const requestReferenceBindings = overrides.referenceBindings ?? effectiveReferenceBindings;
 			const requestReferenceUrls = overrides.referenceUrls ?? effectiveReferenceUrls;
 			const requestNotificationTarget = overrides.notificationTarget ?? notificationTarget;
 			const requestSectionId = overrides.sectionId ?? sectionId;
@@ -343,6 +348,7 @@ export const useGenerationSubmit = ({
 							promptOptimization: overrides.promptOptimization,
 							referenceUrls: [],
 							referenceAssetIds: [],
+							referenceBindings: [],
 						},
 						{
 							onStart: (event) => {
@@ -433,6 +439,7 @@ export const useGenerationSubmit = ({
 					promptOptimization: overrides.promptOptimization,
 					referenceUrls: requestRoute.supportsReferenceUrls ? requestReferenceUrls : [],
 					referenceAssetIds: requestRoute.supportsReferenceUrls ? requestReferenceAssetIds : [],
+					referenceBindings: requestRoute.supportsReferenceUrls ? requestReferenceBindings : [],
 				};
 				const promptOptimizedResponse = overrides.promptOptimization
 					? await sendPromptOptimizedGenerationMessage(generationPayload)
@@ -541,6 +548,7 @@ export const useGenerationSubmit = ({
 			documentContext,
 			documentContextInitialPrompt,
 			effectiveReferenceAssetIds,
+			effectiveReferenceBindings,
 			effectiveReferenceUrls,
 			extraPrompt,
 			mediaAssetProjectId,

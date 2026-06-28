@@ -106,6 +106,7 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	payload.AssetTitle = strings.TrimSpace(payload.AssetTitle)
 	payload.ReferenceURLs = CompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = CompactStrings(payload.ReferenceAssetIDs)
+	payload.ReferenceBindings = normalizeGenerationReferenceBindings(payload.ReferenceBindings)
 	payload.PromptOptimization = NormalizeGenerationPromptOptimizationRequest(payload.PromptOptimization)
 	if err := ValidateGenerationPromptOptimizationRequest(payload.PromptOptimization); err != nil {
 		return generationMessageResponse{}, http.StatusBadRequest, err

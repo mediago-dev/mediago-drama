@@ -14,6 +14,7 @@ vi.mock("@/domains/generation/components/MediaGenerationWorkspace", () => ({
 		capturedWorkspaceProps = props;
 		const previewReferences = resolveReferencePreviewAssets(props);
 		const referenceAssetIds = resolveReferenceAssetIds(props);
+		const referenceBindings = resolveReferenceBindings(props);
 
 		return (
 			<div>
@@ -22,6 +23,7 @@ vi.mock("@/domains/generation/components/MediaGenerationWorkspace", () => ({
 				</div>
 				<div data-testid="reference-preview-count">{previewReferences.length}</div>
 				<div data-testid="reference-asset-ids">{referenceAssetIds.join(",")}</div>
+				<div data-testid="reference-bindings">{JSON.stringify(referenceBindings)}</div>
 			</div>
 		);
 	},
@@ -90,7 +92,7 @@ describe("DocumentSectionGenerator", () => {
 		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
 	});
 
-	it("previews mention references while sending document context as the request source", () => {
+	it("sends mention references while sending document context as the request source", () => {
 		render(
 			<DocumentSectionGenerator
 				section={section}
@@ -104,7 +106,15 @@ describe("DocumentSectionGenerator", () => {
 
 		expect(screen.getByTestId("has-prompt-extras").textContent).toBe("false");
 		expect(screen.getByTestId("reference-preview-count").textContent).toBe("1");
-		expect(screen.getByTestId("reference-asset-ids").textContent).toBe("");
+		expect(screen.getByTestId("reference-asset-ids").textContent).toBe("ref-a");
+		expect(JSON.parse(screen.getByTestId("reference-bindings").textContent ?? "[]")).toEqual([
+			{
+				assetId: "ref-a",
+				blockId: "section_character",
+				documentId: "character-doc",
+				kind: "section",
+			},
+		]);
 		expect(capturedWorkspaceProps?.documentContext).toEqual({
 			projectId: "project-a",
 			documentId: "story-doc",
@@ -268,10 +278,19 @@ describe("DocumentSectionGenerator", () => {
 
 		const previewReferences = resolveReferencePreviewAssets(capturedWorkspaceProps);
 		const referenceAssetIds = resolveReferenceAssetIds(capturedWorkspaceProps);
+		const referenceBindings = resolveReferenceBindings(capturedWorkspaceProps);
 
 		expect(screen.getByTestId("reference-preview-count").textContent).toBe("1");
 		expect(previewReferences[0]?.url).toBe("/api/v1/media-assets/selected-ref/content");
-		expect(referenceAssetIds).toEqual([]);
+		expect(referenceAssetIds).toEqual(["selected-ref"]);
+		expect(referenceBindings).toEqual([
+			{
+				assetId: "selected-ref",
+				blockId: "section_character",
+				documentId: "character-doc",
+				kind: "section",
+			},
+		]);
 	});
 });
 
@@ -296,6 +315,14 @@ const resolveReferencePreviewAssets = (props: MediaGenerationWorkspaceProps | nu
 const resolveReferenceAssetIds = (props: MediaGenerationWorkspaceProps | null) => {
 	if (!props) return [];
 	const value = props.extraReferenceAssetIds;
+	if (!value) return [];
+
+	return typeof value === "function" ? value(props.initialPrompt) : value;
+};
+
+const resolveReferenceBindings = (props: MediaGenerationWorkspaceProps | null) => {
+	if (!props) return [];
+	const value = props.extraReferenceBindings;
 	if (!value) return [];
 
 	return typeof value === "function" ? value(props.initialPrompt) : value;

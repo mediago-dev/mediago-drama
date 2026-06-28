@@ -41,8 +41,18 @@ type GenerationMessageRequest struct {
 	AssetTitle         string                               `json:"assetTitle,omitempty"`
 	ReferenceURLs      []string                             `json:"referenceUrls"`
 	ReferenceAssetIDs  []string                             `json:"referenceAssetIds"`
+	ReferenceBindings  []GenerationReferenceBinding         `json:"referenceBindings,omitempty"`
 	Params             map[string]any                       `json:"params"`
 	PromptOptimization *GenerationPromptOptimizationRequest `json:"promptOptimization,omitempty"`
+}
+
+// GenerationReferenceBinding maps a document mention to a concrete reference.
+type GenerationReferenceBinding struct {
+	Kind       string `json:"kind,omitempty"`
+	DocumentID string `json:"documentId,omitempty"`
+	BlockID    string `json:"blockId,omitempty"`
+	AssetID    string `json:"assetId,omitempty"`
+	URL        string `json:"url,omitempty"`
 }
 
 // GenerationPromptOptimizationRequest configures server-side prompt optimization before generation.

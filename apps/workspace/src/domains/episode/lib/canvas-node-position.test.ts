@@ -44,4 +44,11 @@ describe("canvas-node-position", () => {
 		expect(result).toEqual([{ id: "node-1", position: { x: 8, y: 16 }, title: "Node" }]);
 		expect(nodes).toEqual([{ id: "node-1", position: { x: 0, y: 0 }, title: "Node" }]);
 	});
+
+	it("returns the same node array when overrides do not change positions", () => {
+		const nodes = [{ id: "node-1", position: { x: 8, y: 16 }, title: "Node" }];
+
+		expect(applyCanvasNodePositionOverrides(nodes, {})).toBe(nodes);
+		expect(applyCanvasNodePositionOverrides(nodes, { "node-1": { x: 8, y: 16 } })).toBe(nodes);
+	});
 });

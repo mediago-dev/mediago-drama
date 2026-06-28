@@ -222,6 +222,14 @@ const renderSubmitHook = (
 				documentContext: options.documentContext,
 				documentContextInitialPrompt: options.documentContextInitialPrompt,
 				effectiveReferenceAssetIds: ["asset-1"],
+				effectiveReferenceBindings: [
+					{
+						assetId: "asset-1",
+						blockId: "section_ref",
+						documentId: "doc-ref",
+						kind: "section",
+					},
+				],
 				effectiveReferenceUrls: ["https://example.test/reference.png"],
 				extraPrompt: options.extraPrompt ?? "",
 				mediaAssetProjectId: "project-1",

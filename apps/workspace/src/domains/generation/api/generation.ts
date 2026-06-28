@@ -12,6 +12,7 @@ import type {
 	GenerationModelsResponse as GeneratedGenerationModelsResponse,
 	GenerationOptimizeAndGenerateResponse as GeneratedGenerationOptimizeAndGenerateResponse,
 	GenerationPromptOptimizationRequest as GeneratedGenerationPromptOptimizationRequest,
+	GenerationReferenceBinding as GeneratedGenerationReferenceBinding,
 	GenerationVoicePreviewRequest as GeneratedGenerationVoicePreviewRequest,
 	GenerationVoicePreviewResponse as GeneratedGenerationVoicePreviewResponse,
 	ImportGenerationMediaAssetsRequest as GeneratedImportGenerationMediaAssetsRequest,
@@ -85,6 +86,7 @@ export type GenerationNotification = GenerationNotificationRecord;
 export type GenerationNotificationEvent = GeneratedGenerationNotificationEvent;
 export type GenerationNotificationsResponse = GeneratedGenerationNotificationsResponse;
 export type GenerationNotificationOpenTarget = GenerationNotificationTarget;
+export type GenerationReferenceBinding = GeneratedGenerationReferenceBinding;
 export type SelectedGenerationAsset = GeneratedSelectedGenerationAssetRecord;
 export type SelectedGenerationAssetsResponse = GeneratedSelectedGenerationAssetsResponse;
 export type UpdateGenerationTaskAssetRequest = GeneratedUpdateGenerationTaskAssetRequest;

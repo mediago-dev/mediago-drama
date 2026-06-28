@@ -18,6 +18,7 @@ import { DocumentMention } from "@/domains/documents/components/extensions/docum
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import {
 	buildMentionPreviewReferences,
+	buildMentionReferenceInputs,
 	extractDocumentImageAssets,
 	resolveMentionPayloadWithSelectedAssets,
 	type MentionPreviewReferences,
@@ -162,6 +163,11 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 		},
 		[mediaAssets, resolveActiveMentionsFromPrompt],
 	);
+	const getMentionReferenceInputs = useCallback(
+		(promptMarkdown: string) =>
+			buildMentionReferenceInputs(resolveActiveMentionsFromPrompt(promptMarkdown)),
+		[resolveActiveMentionsFromPrompt],
+	);
 	const removePreviewReferenceAsset = useCallback((asset: MediaAsset) => {
 		const mentionKey = latestMentionPreviewRef.current.assetMentionKeys[asset.id];
 		if (!mentionKey) return;
@@ -196,6 +202,9 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				notificationTarget={notificationTarget}
 				projectId={normalizedProjectId || undefined}
 				promptPlaceholder={sectionGenerationWorkspaceCopy[generationKind].promptPlaceholder}
+				extraReferenceAssetIds={(prompt) => getMentionReferenceInputs(prompt).assetIds}
+				extraReferenceBindings={(prompt) => getMentionReferenceInputs(prompt).bindings}
+				extraReferenceUrls={(prompt) => getMentionReferenceInputs(prompt).urls}
 				referenceBadges={(prompt) => getMentionPreview(prompt).preview.badges}
 				referencePreviewAssets={(prompt) => getMentionPreview(prompt).preview.references}
 				renderPromptEditor={(props) => (

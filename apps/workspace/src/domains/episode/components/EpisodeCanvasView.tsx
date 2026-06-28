@@ -145,6 +145,7 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 	const nodePositionOverridesRef = useRef<EpisodeCanvasNodePositionOverrides>(
 		persistedNodePositionOverrides,
 	);
+	const hasPendingNodePositionChangesRef = useRef(false);
 	const fullGraph = useMemo<EpisodeCanvasGraph>(
 		() =>
 			buildEpisodeCanvasGraph({
@@ -226,7 +227,13 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 	const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 	useEffect(() => {
 		nodePositionOverridesRef.current = persistedNodePositionOverrides;
-		setNodes(applyCanvasNodePositionOverrides(baseNodes, persistedNodePositionOverrides));
+		hasPendingNodePositionChangesRef.current = false;
+		setNodes((current) =>
+			reconcileEpisodeCanvasFlowNodes(
+				current,
+				applyCanvasNodePositionOverrides(baseNodes, persistedNodePositionOverrides),
+			),
+		);
 	}, [baseNodes, persistedNodePositionOverrides]);
 	const handleNodeClick = useCallback<NodeMouseHandler<EpisodeCanvasFlowNode>>(
 		(_event, node) => {
@@ -236,15 +243,22 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 	);
 	const handleNodesChange = useCallback(
 		(changes: NodeChange<EpisodeCanvasFlowNode>[]) => {
-			setNodes((current) => applyNodeChanges(changes, current));
-			const nextOverrides = applyCanvasNodePositionChanges(
-				nodePositionOverridesRef.current,
-				changes,
-			);
-			if (nextOverrides !== nodePositionOverridesRef.current) {
+			setNodes((current) => {
+				const nextNodes = applyNodeChanges(changes, current);
+				return areEpisodeCanvasFlowNodeListsEqual(current, nextNodes) ? current : nextNodes;
+			});
+			const currentOverrides = nodePositionOverridesRef.current;
+			const nextOverrides = applyCanvasNodePositionChanges(currentOverrides, changes);
+			const hasOverrideChanges = nextOverrides !== currentOverrides;
+			if (hasOverrideChanges) {
 				nodePositionOverridesRef.current = nextOverrides;
+				hasPendingNodePositionChangesRef.current = true;
 			}
-			if (shouldPersistNodePositionChanges(changes)) {
+			if (
+				shouldPersistNodePositionChanges(changes) &&
+				(hasOverrideChanges || hasPendingNodePositionChangesRef.current)
+			) {
+				hasPendingNodePositionChangesRef.current = false;
 				setPersistedNodePositions(canvasLayoutScopeId, nodePositionOverridesRef.current);
 			}
 		},
@@ -402,6 +416,88 @@ const canvasFlowEdge = (
 	},
 	type: "default",
 });
+
+const reconcileEpisodeCanvasFlowNodes = (
+	currentNodes: EpisodeCanvasFlowNode[],
+	nextNodes: EpisodeCanvasFlowNode[],
+) => {
+	if (currentNodes.length === 0) return nextNodes;
+
+	const currentNodeById = new Map(currentNodes.map((node) => [node.id, node]));
+	const reconciledNodes = nextNodes.map((node) => {
+		const currentNode = currentNodeById.get(node.id);
+		if (!currentNode) return node;
+
+		return {
+			...currentNode,
+			...node,
+			data: node.data,
+			position: node.position,
+		};
+	});
+
+	return areEpisodeCanvasFlowNodeListsEqual(currentNodes, reconciledNodes)
+		? currentNodes
+		: reconciledNodes;
+};
+
+const areEpisodeCanvasFlowNodeListsEqual = (
+	leftNodes: EpisodeCanvasFlowNode[],
+	rightNodes: EpisodeCanvasFlowNode[],
+) => {
+	if (leftNodes.length !== rightNodes.length) return false;
+
+	return leftNodes.every((leftNode, index) =>
+		areEpisodeCanvasFlowNodesEqual(leftNode, rightNodes[index]),
+	);
+};
+
+const areEpisodeCanvasFlowNodesEqual = (
+	leftNode: EpisodeCanvasFlowNode,
+	rightNode?: EpisodeCanvasFlowNode,
+) => {
+	if (!rightNode) return false;
+	if (Object.is(leftNode, rightNode)) return true;
+	if (
+		leftNode.position.x !== rightNode.position.x ||
+		leftNode.position.y !== rightNode.position.y
+	) {
+		return false;
+	}
+
+	const leftRecord = leftNode as unknown as Record<string, unknown>;
+	const rightRecord = rightNode as unknown as Record<string, unknown>;
+	const keys = new Set([...Object.keys(leftRecord), ...Object.keys(rightRecord)]);
+	for (const key of keys) {
+		if (key === "position") continue;
+		if (!areEpisodeCanvasFlowNodeValuesEqual(key, leftRecord[key], rightRecord[key])) {
+			return false;
+		}
+	}
+
+	return true;
+};
+
+const areEpisodeCanvasFlowNodeValuesEqual = (
+	key: string,
+	leftValue: unknown,
+	rightValue: unknown,
+) => {
+	if (Object.is(leftValue, rightValue)) return true;
+	if (key === "measured") {
+		return areEpisodeCanvasFlowNodeMeasurementsEqual(leftValue, rightValue);
+	}
+
+	return false;
+};
+
+const areEpisodeCanvasFlowNodeMeasurementsEqual = (leftValue: unknown, rightValue: unknown) => {
+	if (!isEpisodeCanvasRecord(leftValue) || !isEpisodeCanvasRecord(rightValue)) return false;
+	return leftValue.width === rightValue.width && leftValue.height === rightValue.height;
+};
+
+const isEpisodeCanvasRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
 
 const useEpisodeCanvasColorMode = () => {
 	const themeMode = useThemeStore((state) => state.mode);

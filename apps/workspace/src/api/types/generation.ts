@@ -174,8 +174,17 @@ export interface GenerationMessageRequest {
 	assetTitle?: string;
 	referenceUrls: string[];
 	referenceAssetIds: string[];
+	referenceBindings?: GenerationReferenceBinding[];
 	params: Record<string, unknown>;
 	promptOptimization?: GenerationPromptOptimizationRequest;
+}
+
+export interface GenerationReferenceBinding {
+	kind?: string;
+	documentId?: string;
+	blockId?: string;
+	assetId?: string;
+	url?: string;
 }
 
 export interface GenerationPromptOptimizationRequest {

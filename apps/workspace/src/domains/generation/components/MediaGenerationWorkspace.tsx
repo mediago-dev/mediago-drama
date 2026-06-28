@@ -8,6 +8,7 @@ import type {
 	GenerationMessageRequest,
 	GenerationMessageResponse,
 	GenerationNotificationOpenTarget,
+	GenerationReferenceBinding,
 } from "@/domains/generation/api/generation";
 import {
 	generationConversationsQueryKey,
@@ -187,6 +188,7 @@ export interface MediaGenerationWorkspaceProps {
 	emptyResultText?: string;
 	extraPrompt?: GenerationExtraValue<string>;
 	extraReferenceAssetIds?: GenerationExtraValue<string[]>;
+	extraReferenceBindings?: GenerationExtraValue<GenerationReferenceBinding[]>;
 	extraReferenceUrls?: GenerationExtraValue<string[]>;
 	defaultHistorySourceLabel?: string;
 	historyScopeId: string;
@@ -238,6 +240,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	emptyResultText,
 	extraPrompt = "",
 	extraReferenceAssetIds = [],
+	extraReferenceBindings = [],
 	extraReferenceUrls = [],
 	defaultHistorySourceLabel,
 	historyScopeId,
@@ -327,6 +330,14 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			]),
 		[extraReferenceUrls, inlineReferenceUrls],
 	);
+	const workspaceExtraReferenceBindings = useCallback(
+		(prompt: string) =>
+			resolveArrayExtraValue(extraReferenceBindings, prompt).map((binding) => ({
+				...binding,
+				...(binding.url ? { url: referenceUrlFromGenerationSource(binding.url) } : {}),
+			})),
+		[extraReferenceBindings],
+	);
 	const { historyWidth, nudgeHistoryWidth, startHistoryResize } = useMediaGenerationWorkspaceLayout(
 		{ rightPaneRef, workspaceRef },
 	);
@@ -377,6 +388,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		assetTitle,
 		extraPrompt,
 		extraReferenceAssetIds,
+		extraReferenceBindings: workspaceExtraReferenceBindings,
 		extraReferenceUrls: workspaceExtraReferenceUrls,
 		conversationId,
 		conversationScopeId,
@@ -1910,6 +1922,9 @@ const resolveStringArrayExtraValue = (
 	value: GenerationExtraValue<string[]>,
 	prompt: string,
 ): string[] => (typeof value === "function" ? value(prompt) : value);
+
+const resolveArrayExtraValue = <T,>(value: GenerationExtraValue<T[]>, prompt: string): T[] =>
+	typeof value === "function" ? value(prompt) : value;
 
 const apiErrorMessage = (error: unknown, fallback: string) => {
 	if (error instanceof Error && error.message.trim()) return error.message;

@@ -5,6 +5,7 @@ import {
 	type GenerationKind,
 	type GenerationMessageRequest,
 	type GenerationNotificationOpenTarget,
+	type GenerationReferenceBinding,
 	generationConversationsQueryKey,
 	generationModelsKey,
 	generationPreferencesQueryKey,
@@ -67,6 +68,7 @@ const emptyPromptCategories: PromptCategory[] = defaultPromptCategories;
 export interface UseGenerationWorkspaceOptions {
 	extraPrompt?: GenerationExtraValue<string>;
 	extraReferenceAssetIds?: GenerationExtraValue<string[]>;
+	extraReferenceBindings?: GenerationExtraValue<GenerationReferenceBinding[]>;
 	extraReferenceUrls?: GenerationExtraValue<string[]>;
 	assetTitle?: string | null;
 	activeEntryId?: string | null;
@@ -113,6 +115,7 @@ export const useGenerationWorkspace = ({
 	documentContext,
 	extraPrompt = "",
 	extraReferenceAssetIds = [],
+	extraReferenceBindings = [],
 	extraReferenceUrls = [],
 	historyScopeId,
 	initialKind,
@@ -290,6 +293,10 @@ export const useGenerationWorkspace = ({
 		selectedRoute,
 		setError,
 	});
+	const effectiveReferenceBindings = useMemo(
+		() => resolveGenerationExtraValue(extraReferenceBindings, prompt),
+		[extraReferenceBindings, prompt],
+	);
 	const removeMediaAsset = useCallback(
 		async (asset: MediaAsset) => {
 			const didRemove = await removeMediaAssetFromLibrary(asset);
@@ -325,6 +332,7 @@ export const useGenerationWorkspace = ({
 		documentContext,
 		documentContextInitialPrompt: initialPrompt,
 		effectiveReferenceAssetIds,
+		effectiveReferenceBindings,
 		effectiveReferenceUrls,
 		extraPrompt,
 		mediaAssetProjectId,

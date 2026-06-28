@@ -40,7 +40,12 @@ func (workflow *GenerationService) providerPromptForGeneration(
 		))
 	}
 
-	prompt := workflow.replaceGenerationPromptMentionReferences(payload.ProjectID, payload.Prompt, slots)
+	prompt := workflow.replaceGenerationPromptMentionReferences(
+		payload.ProjectID,
+		payload.Prompt,
+		slots,
+		generationReferenceBindingsForPayload(payload),
+	)
 	return replaceGenerationPromptReferenceNames(prompt, slots)
 }
 
@@ -171,6 +176,7 @@ func (workflow *GenerationService) replaceGenerationPromptMentionReferences(
 	projectID string,
 	prompt string,
 	slots []generationReferenceSlot,
+	bindings []GenerationReferenceBinding,
 ) string {
 	if len(slots) == 0 || strings.TrimSpace(prompt) == "" {
 		return prompt
@@ -180,6 +186,21 @@ func (workflow *GenerationService) replaceGenerationPromptMentionReferences(
 	for _, slot := range slots {
 		if slot.SourceKey != "" {
 			bySource[slot.SourceKey] = slot
+		}
+	}
+	byMention := map[string]generationReferenceSlot{}
+	for _, binding := range bindings {
+		sourceKey := generationReferenceBindingSourceKey(binding)
+		slot, ok := bySource[sourceKey]
+		if !ok {
+			continue
+		}
+		mentionKey := generationReferenceBindingMentionKey(binding)
+		if mentionKey == "" {
+			continue
+		}
+		if _, exists := byMention[mentionKey]; !exists {
+			byMention[mentionKey] = slot
 		}
 	}
 
@@ -210,7 +231,13 @@ func (workflow *GenerationService) replaceGenerationPromptMentionReferences(
 		}
 
 		token := ""
+		if slot, ok := byMention[generationMentionReferenceKey(reference)]; ok {
+			token = slot.Token
+		}
 		for _, sourceKey := range workflow.generationMentionSourceKeys(projectID, reference) {
+			if token != "" {
+				break
+			}
 			if slot, ok := bySource[sourceKey]; ok {
 				token = slot.Token
 				break

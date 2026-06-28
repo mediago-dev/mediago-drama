@@ -18,6 +18,14 @@ export interface MentionPreviewReferences {
 	references: MediaAsset[];
 }
 
+export interface MentionReferenceBinding {
+	assetId?: string;
+	blockId?: string;
+	documentId?: string;
+	kind?: string;
+	url?: string;
+}
+
 const mentionPreviewTimestamp = "1970-01-01T00:00:00.000Z";
 const selectedGenerationResourceTypes = new Set<SelectedGenerationAsset["resourceType"]>([
 	"character",
@@ -52,14 +60,23 @@ export const resolveMentionPayloadWithSelectedAssets = (
 
 export const buildMentionReferenceInputs = (mentions: ResolvedMention[]) => {
 	const assetIds: string[] = [];
+	const bindings: MentionReferenceBinding[] = [];
 	const urls: string[] = [];
 	const seenAssetIds = new Set<string>();
+	const seenBindings = new Set<string>();
 	const seenUrls = new Set<string>();
 
 	for (const mention of mentions) {
 		if (mention.status !== "ok") continue;
 
 		for (const image of mention.images) {
+			const binding = mentionReferenceBinding(mention, image);
+			const bindingKey = binding ? mentionReferenceBindingKey(binding) : "";
+			if (binding && bindingKey && !seenBindings.has(bindingKey)) {
+				seenBindings.add(bindingKey);
+				bindings.push(binding);
+			}
+
 			if (image.mediaAssetId) {
 				if (seenAssetIds.has(image.mediaAssetId)) continue;
 
@@ -75,7 +92,7 @@ export const buildMentionReferenceInputs = (mentions: ResolvedMention[]) => {
 		}
 	}
 
-	return { assetIds, urls };
+	return { assetIds, bindings, urls };
 };
 
 export const buildMentionPreviewReferences = (
@@ -249,3 +266,31 @@ const mentionImageKeys = (image: ResolvedMention["images"][number]) =>
 			: "",
 		image.url ? `url:${image.url}` : "",
 	].filter(Boolean);
+
+const mentionReferenceBinding = (
+	mention: ResolvedMention,
+	image: ResolvedMention["images"][number],
+): MentionReferenceBinding | null => {
+	const assetId = image.mediaAssetId ?? mediaAssetIdFromGeneratedSource(image.url) ?? "";
+	const url = assetId ? "" : image.url;
+	if (!assetId && !url) return null;
+
+	return {
+		...(assetId ? { assetId } : {}),
+		...(mention.reference.kind === "section" && mention.reference.blockId
+			? { blockId: mention.reference.blockId }
+			: {}),
+		documentId: mention.reference.documentId,
+		kind: mention.reference.kind,
+		...(url ? { url } : {}),
+	};
+};
+
+const mentionReferenceBindingKey = (binding: MentionReferenceBinding) =>
+	[
+		binding.kind ?? "",
+		binding.documentId ?? "",
+		binding.blockId ?? "",
+		binding.assetId ? `asset:${binding.assetId}` : "",
+		binding.url ? `url:${binding.url}` : "",
+	].join("\x00");

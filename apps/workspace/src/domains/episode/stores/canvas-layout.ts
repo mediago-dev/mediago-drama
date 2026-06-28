@@ -23,11 +23,15 @@ export const useEpisodeCanvasLayoutStore = create<EpisodeCanvasLayoutState>()(
 				set((state) => {
 					const normalizedScopeId = normalizeScopeId(scopeId);
 					const sanitizedPositions = sanitizeNodePositions(positions);
+					const currentPositions = state.nodePositionsByScope[normalizedScopeId];
 
 					if (Object.keys(sanitizedPositions).length === 0) {
+						if (!currentPositions) return;
 						delete state.nodePositionsByScope[normalizedScopeId];
 						return;
 					}
+
+					if (areNodePositionOverridesEqual(currentPositions, sanitizedPositions)) return;
 
 					state.nodePositionsByScope[normalizedScopeId] = sanitizedPositions;
 				}),
@@ -85,6 +89,31 @@ function sanitizeNodePositions(value: unknown): EpisodeCanvasNodePositionOverrid
 	}
 
 	return result;
+}
+
+function areNodePositionOverridesEqual(
+	left: EpisodeCanvasNodePositionOverrides | undefined,
+	right: EpisodeCanvasNodePositionOverrides,
+) {
+	if (!left) return Object.keys(right).length === 0;
+
+	const leftKeys = Object.keys(left);
+	const rightKeys = Object.keys(right);
+	if (leftKeys.length !== rightKeys.length) return false;
+
+	for (const nodeId of leftKeys) {
+		const leftPosition = left[nodeId];
+		const rightPosition = right[nodeId];
+		if (
+			!rightPosition ||
+			leftPosition.x !== rightPosition.x ||
+			leftPosition.y !== rightPosition.y
+		) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
