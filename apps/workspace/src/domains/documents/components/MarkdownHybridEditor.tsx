@@ -3,7 +3,13 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "r
 import { Settings2 } from "lucide-react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { PhotoSlider } from "react-photo-view";
-import { Editor as CoreEditor, type Editor, type Extensions, type JSONContent } from "@tiptap/core";
+import {
+	Editor as CoreEditor,
+	mergeAttributes,
+	type Editor,
+	type Extensions,
+	type JSONContent,
+} from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import Image from "@tiptap/extension-image";
@@ -62,6 +68,7 @@ import type {
 import type { LockedHeadingPlan } from "@/domains/documents/lib/locked-headings";
 import type { TextAnchor } from "@/domains/documents/lib/operations";
 import type { DocumentComment } from "@/domains/documents/stores";
+import { apiResourceURL } from "@/shared/lib/api-base";
 import "@/styles/tiptap.css";
 import "react-photo-view/dist/react-photo-view.css";
 
@@ -155,7 +162,7 @@ const createMarkdownSchemaExtensions = (
 	SectionIdAnchor,
 	SectionMediaPreview,
 	SelectedSectionImagePreview,
-	Image.configure({
+	MarkdownImage.configure({
 		allowBase64: true,
 	}),
 	Table.configure({
@@ -167,6 +174,16 @@ const createMarkdownSchemaExtensions = (
 	...extraExtensions,
 	...(lockedHeadingPlan ? [createLockedHeadingsExtension(lockedHeadingPlan)] : []),
 ];
+
+const MarkdownImage = Image.extend({
+	renderHTML({ HTMLAttributes }) {
+		const source = typeof HTMLAttributes.src === "string" ? apiResourceURL(HTMLAttributes.src) : "";
+		return [
+			"img",
+			mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, source ? { src: source } : {}),
+		];
+	},
+});
 
 const markdownExtension = () =>
 	Markdown.configure({

@@ -72,6 +72,7 @@ interface CompanionGenerationTarget {
 
 const isJianyingDraftExportButtonVisible =
 	import.meta.env.VITE_ENABLE_JIANYING_DRAFT_EXPORT === "true";
+const emptySelectedGenerationAssets: SelectedGenerationAsset[] = [];
 
 export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 	documentId,
@@ -123,6 +124,10 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 		["episode-media-assets", mediaAssetProjectId],
 		() => getMediaAssets({ projectId: mediaAssetProjectId || undefined }),
 	);
+	const { data: selectedGenerationAssetsData } = useSWR(
+		mediaAssetProjectId ? selectedGenerationAssetsQueryKey(mediaAssetProjectId) : null,
+		() => getSelectedGenerationAssets(mediaAssetProjectId),
+	);
 	const { data: jianyingDraftSettings } = useSWR(
 		jianyingDraftSettingsKey,
 		getJianyingDraftSettings,
@@ -163,6 +168,8 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 		() => getSelectedGenerationAssets(mediaAssetProjectId, selectedStoryboardVideoFilters),
 	);
 	const resolvedEpisode = resolvedEpisodeState?.episode ?? null;
+	const selectedGenerationAssets =
+		selectedGenerationAssetsData?.assets ?? emptySelectedGenerationAssets;
 
 	const selectedClip = useMemo(
 		() => findEpisodeClip(episode, selectedClipId),
@@ -739,6 +746,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 						assets={assets}
 						documents={documents}
 						episode={episode}
+						selectedGenerationAssets={selectedGenerationAssets}
 						selectedClipId={selectedClipId}
 						storyboardMarkdown={activeDocument?.content ?? ""}
 						onGenerateClip={handleTimelineClipGenerate}

@@ -93,7 +93,6 @@ const DocumentSectionBatchGenerationWorker: React.FC<{
 		conversationScopeId: generationContext.conversationScopeId,
 		conversationTitle: generationContext.projectConversation?.conversationTitle,
 		documentContext: generationContext.documentContext,
-		historyScopeId: generationContext.historyScopeId,
 		initialKind: job.kind,
 		initialPrompt: generationContext.activeSection.prompt,
 		mediaAssetProjectId: generationContext.normalizedProjectId || undefined,

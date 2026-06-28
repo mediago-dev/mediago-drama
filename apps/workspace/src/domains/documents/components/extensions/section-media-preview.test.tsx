@@ -59,6 +59,8 @@ vi.mock("@/components/VideoPlayer", () => ({
 describe("SectionMediaPreview", () => {
 	afterEach(() => {
 		cleanup();
+		delete window.mediagoDesktop;
+		vi.unstubAllEnvs();
 	});
 
 	it("renders section audio markdown with the shared audio player and preserves markdown", () => {
@@ -96,6 +98,28 @@ describe("SectionMediaPreview", () => {
 		expect(player.getAttribute("data-load")).toBe("visible");
 		expect(player.getAttribute("data-show-title")).toBe("false");
 		expect(player.getAttribute("data-title")).toBe("陈远");
+		expect(editor.getMarkdown()).toContain(
+			"[章节视频：陈远](</api/v1/media-assets/video-1/content>)",
+		);
+
+		editor.destroy();
+	});
+
+	it("renders section media URLs against the packaged desktop server", () => {
+		vi.stubEnv("DEV", false);
+		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+		const editor = new Editor({
+			extensions: [StarterKit, SectionMediaPreview, Markdown],
+			content: "[章节视频：陈远](</api/v1/media-assets/video-1/content>)",
+			contentType: "markdown",
+		});
+
+		render(<EditorContent editor={editor} />);
+
+		expect(screen.getByTestId("video-player")).toHaveAttribute(
+			"data-src",
+			"http://127.0.0.1:48273/api/v1/media-assets/video-1/content",
+		);
 		expect(editor.getMarkdown()).toContain(
 			"[章节视频：陈远](</api/v1/media-assets/video-1/content>)",
 		);

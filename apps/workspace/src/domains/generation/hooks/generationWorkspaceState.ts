@@ -289,9 +289,13 @@ export const sameChatMessageList = (left: ChatMessage[], right: ChatMessage[]) =
 	left.every((message, index) => JSON.stringify(message) === JSON.stringify(right[index]));
 
 interface GenerationTaskSnapshot {
+	createdAt?: string;
 	error?: string;
 	id: string;
+	kind?: string;
+	prompt?: string;
 	status?: string;
+	updatedAt?: string;
 }
 
 const pendingGenerationStatuses = new Set([
@@ -321,6 +325,41 @@ export const removeMessagesBackedByTasks = (
 	});
 };
 
+export const removeStaleLocalPendingMessages = (
+	messages: ChatMessage[],
+	tasks: GenerationTaskSnapshot[],
+) => {
+	if (messages.length === 0 || tasks.length === 0) return messages;
+
+	const promptsByLocalID = new Map<string, ChatMessage>();
+	for (const message of messages) {
+		if (message.role !== "user") continue;
+
+		const localID = localGenerationIDFromMessageID(message.id);
+		if (localID) promptsByLocalID.set(localID, message);
+	}
+
+	const staleLocalIDs = new Set<string>();
+	for (const message of messages) {
+		if (!isStalePendingLocalAssistantMessage(message)) continue;
+
+		const localID = localGenerationIDFromMessageID(message.id);
+		if (!localID) continue;
+
+		const promptMessage = promptsByLocalID.get(localID);
+		if (tasks.some((task) => isMatchingMaterializedTask(message, promptMessage, task))) {
+			staleLocalIDs.add(localID);
+		}
+	}
+
+	if (staleLocalIDs.size === 0) return messages;
+
+	return messages.filter((message) => {
+		const localID = localGenerationIDFromMessageID(message.id);
+		return !localID || !staleLocalIDs.has(localID);
+	});
+};
+
 const taskIDFromChatMessage = (message: ChatMessage) => {
 	const promptSuffix = ":prompt";
 	if (message.role === "user" && message.id.endsWith(promptSuffix)) {
@@ -347,6 +386,42 @@ const isTerminalLocalGenerationMessage = (message: ChatMessage) => {
 		!isPending &&
 		(Boolean(message.status) || Boolean(message.error?.trim()) || Boolean(message.assets?.length))
 	);
+};
+
+const isStalePendingLocalAssistantMessage = (message: ChatMessage) =>
+	message.role === "assistant" &&
+	Boolean(localGenerationIDFromMessageID(message.id)) &&
+	pendingGenerationStatuses.has(String(message.status ?? "").toLowerCase());
+
+const localGenerationIDFromMessageID = (id: string) => {
+	const match = /^(local-[^:]+)(?::(?:assistant|prompt))?$/.exec(id);
+	return match?.[1] ?? "";
+};
+
+const isMatchingMaterializedTask = (
+	pendingMessage: ChatMessage,
+	promptMessage: ChatMessage | undefined,
+	task: GenerationTaskSnapshot,
+) => {
+	if (task.kind && task.kind !== pendingMessage.kind) return false;
+
+	const localPrompt = normalizedPromptForMatch(promptMessage?.content);
+	const taskPrompt = normalizedPromptForMatch(task.prompt);
+	if (!localPrompt || !taskPrompt || localPrompt !== taskPrompt) return false;
+
+	const pendingTime = timestampForMatch(pendingMessage.createdAt || promptMessage?.createdAt);
+	const taskTime = Math.max(timestampForMatch(task.updatedAt), timestampForMatch(task.createdAt));
+	if (pendingTime > 0 && taskTime > 0 && taskTime + 5_000 < pendingTime) return false;
+
+	return true;
+};
+
+const normalizedPromptForMatch = (value: string | undefined) =>
+	value?.trim().replace(/\s+/g, " ") ?? "";
+
+const timestampForMatch = (value: string | undefined) => {
+	const time = Date.parse(value ?? "");
+	return Number.isNaN(time) ? 0 : time;
 };
 
 export const notifySubmitCallback = <T>(callback: ((event: T) => void) | undefined, event: T) => {

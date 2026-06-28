@@ -3,14 +3,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { EpisodePreviewPlayer } from "./EpisodePreviewPlayer";
 
 vi.mock("@/components/VideoPlayer", () => ({
-	VideoPlayer: ({ load, src }: { load?: string; src: string }) => (
-		<div data-testid="video-player" data-load={load ?? ""} data-src={src} />
+	VideoPlayer: ({ load, poster, src }: { load?: string; poster?: string; src: string }) => (
+		<div data-testid="video-player" data-load={load ?? ""} data-poster={poster} data-src={src} />
 	),
 }));
 
 describe("EpisodePreviewPlayer", () => {
 	afterEach(() => {
 		cleanup();
+		delete window.mediagoDesktop;
+		vi.unstubAllEnvs();
 	});
 
 	it("shows a generation prompt when the selected clip has no video", () => {
@@ -27,6 +29,35 @@ describe("EpisodePreviewPlayer", () => {
 		const player = screen.getByTestId("video-player");
 		expect(player.getAttribute("data-src")).toBe("https://example.test/preview.mp4");
 		expect(player.getAttribute("data-load")).toBe("eager");
+	});
+
+	it("renders preview media URLs against the packaged desktop server", () => {
+		vi.stubEnv("DEV", false);
+		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+
+		render(
+			<EpisodePreviewPlayer
+				title="第一章"
+				videoUrl="/api/v1/media-assets/asset-1/content"
+				posterUrl="/api/v1/media-assets/asset-1/poster"
+				currentTime={0}
+				isPlaying={false}
+			/>,
+		);
+
+		const player = screen.getByTestId("video-player");
+		expect(player).toHaveAttribute(
+			"data-src",
+			"http://127.0.0.1:48273/api/v1/media-assets/asset-1/content",
+		);
+		expect(player).toHaveAttribute(
+			"data-poster",
+			"http://127.0.0.1:48273/api/v1/media-assets/asset-1/poster",
+		);
+		expect(screen.getByTestId("episode-preview-poster").querySelector("img")).toHaveAttribute(
+			"src",
+			"http://127.0.0.1:48273/api/v1/media-assets/asset-1/poster",
+		);
 	});
 
 	it("shows the first clip poster before preview playback starts", () => {

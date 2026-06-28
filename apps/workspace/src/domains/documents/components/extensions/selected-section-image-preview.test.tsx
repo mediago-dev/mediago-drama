@@ -3,7 +3,7 @@ import { Editor } from "@tiptap/core";
 import { Markdown } from "@tiptap/markdown";
 import { EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SectionIdAnchor } from "./section-id-anchor";
 import {
 	SelectedSectionImagePreview,
@@ -13,6 +13,8 @@ import {
 describe("SelectedSectionImagePreview", () => {
 	afterEach(() => {
 		cleanup();
+		delete window.mediagoDesktop;
+		vi.unstubAllEnvs();
 	});
 
 	it("renders selected section images without serializing them into markdown", () => {
@@ -51,6 +53,36 @@ describe("SelectedSectionImagePreview", () => {
 		expect(image.getAttribute("src")).toBe("/api/v1/media-assets/character/content");
 		expect(editor.getMarkdown()).toBe(markdownBeforePreview);
 		expect(editor.getMarkdown()).not.toContain("character/content");
+
+		editor.destroy();
+	});
+
+	it("renders selected section image URLs against the packaged desktop server", () => {
+		vi.stubEnv("DEV", false);
+		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+		const editor = new Editor({
+			extensions: [StarterKit, SectionIdAnchor, SelectedSectionImagePreview, Markdown],
+			content: "<!-- section-id: section_character -->\n## 角色\n\n角色设定正文。",
+			contentType: "markdown",
+		});
+
+		updateSelectedSectionImagePreviewAssets(editor, "doc-character", [
+			{
+				assetIndex: 0,
+				id: "selected-character",
+				kind: "image",
+				resourceId: "section_character",
+				sourceDocumentId: "doc-character",
+				title: "角色定稿",
+				url: "/api/v1/media-assets/character/content",
+			},
+		]);
+		render(<EditorContent editor={editor} />);
+
+		expect(screen.getByRole("img", { name: "角色定稿" })).toHaveAttribute(
+			"src",
+			"http://127.0.0.1:48273/api/v1/media-assets/character/content",
+		);
 
 		editor.destroy();
 	});

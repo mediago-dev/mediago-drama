@@ -28,6 +28,7 @@ import {
 	type EpisodeCanvasPortSide,
 } from "@/domains/episode/lib/canvas-ports";
 import { Button } from "@/shared/components/ui/button";
+import { apiResourceURL } from "@/shared/lib/api-base";
 import { cn } from "@/shared/lib/utils";
 
 export interface EpisodeCanvasFlowNodeData extends EpisodeCanvasNodeData {
@@ -59,13 +60,14 @@ export const ReferencePromptNode: React.FC<NodeProps> = (props) => {
 
 export const ReferenceImageNode: React.FC<NodeProps> = (props) => {
 	const data = canvasNodeData(props);
+	const imageSource = data.imageUrl ? apiResourceURL(data.imageUrl) : "";
 	return (
 		<CanvasNodeFrame data={data} icon={<Image className="size-4" />}>
-			{data.imageUrl ? (
+			{imageSource ? (
 				<img
 					alt={data.title}
 					className="mx-auto mb-2 max-h-56 max-w-full rounded-sm border border-border object-contain"
-					src={data.imageUrl}
+					src={imageSource}
 				/>
 			) : (
 				<div className="mb-2 grid h-28 w-full place-items-center rounded-sm border border-dashed border-border bg-muted text-muted-foreground">
@@ -191,14 +193,15 @@ export const VideoPromptNode: React.FC<NodeProps> = (props) => {
 
 export const StoryboardImageNode: React.FC<NodeProps> = (props) => {
 	const data = canvasNodeData(props);
+	const imageSource = data.imageUrl ? apiResourceURL(data.imageUrl) : "";
 
 	return (
 		<CanvasNodeFrame data={data} icon={<Film className="size-4" />}>
-			{data.imageUrl ? (
+			{imageSource ? (
 				<img
 					alt={data.title}
 					className="h-20 w-full rounded-sm border border-border object-cover"
-					src={data.imageUrl}
+					src={imageSource}
 				/>
 			) : (
 				<div className="grid h-20 w-full place-items-center rounded-sm border border-dashed border-border bg-muted text-muted-foreground">
@@ -222,14 +225,16 @@ export const StoryboardImageNode: React.FC<NodeProps> = (props) => {
 export const VideoOutputNode: React.FC<NodeProps> = (props) => {
 	const data = canvasNodeData(props);
 	const clipId = data.clipId;
+	const imageSource = data.imageUrl ? apiResourceURL(data.imageUrl) : "";
+	const videoSource = data.videoUrl ? apiResourceURL(data.videoUrl) : "";
 
 	return (
 		<CanvasNodeFrame data={data} icon={<Video className="size-4" />}>
 			<div className="relative aspect-video w-full overflow-hidden rounded-sm border border-border bg-muted">
-				{data.imageUrl ? (
-					<img alt={data.title} className="size-full object-cover" src={data.imageUrl} />
-				) : data.videoUrl ? (
-					<GenerationVideoThumbnail source={data.videoUrl} />
+				{imageSource ? (
+					<img alt={data.title} className="size-full object-cover" src={imageSource} />
+				) : videoSource ? (
+					<GenerationVideoThumbnail source={videoSource} />
 				) : (
 					<div className="grid size-full place-items-center text-muted-foreground">
 						<Video className="size-5" />

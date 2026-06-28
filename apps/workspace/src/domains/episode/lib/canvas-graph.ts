@@ -2,9 +2,10 @@ import type { AgentReference } from "@/domains/agent/api/agent";
 import {
 	mentionReferenceKey,
 	parseMentionsFromMarkdown,
-	resolveMentionPayload,
 	type ResolvedMention,
 } from "@/domains/documents/lib/mention-resolver";
+import { resolveMentionPayloadWithSelectedAssets } from "@/domains/documents/lib/mention-generation-references";
+import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
 import type { DocumentCategory, MarkdownDocument } from "@/domains/documents/stores";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import type { Episode, TimelineClip, TimelineClipStatus } from "@/domains/episode/lib/sample";
@@ -113,6 +114,7 @@ export interface BuildEpisodeCanvasGraphInput {
 	documentId?: string | null;
 	documents?: MarkdownDocument[];
 	episode: Episode;
+	selectedGenerationAssets?: SelectedGenerationAsset[];
 	storyboardMarkdown?: string;
 }
 
@@ -131,12 +133,13 @@ export const buildEpisodeCanvasGraph = ({
 	documentId,
 	documents = [],
 	episode,
+	selectedGenerationAssets = [],
 	storyboardMarkdown = "",
 }: BuildEpisodeCanvasGraphInput): EpisodeCanvasGraph => {
 	const laneSources = readStoryboardLaneSources(storyboardMarkdown, { documentId });
 	const videoClips = episode.tracks.find((track) => track.type === "video")?.clips ?? [];
 	const lanes = videoClips.map((clip, index) =>
-		createLane({ assets, clip, documents, index, laneSources }),
+		createLane({ assets, clip, documents, index, laneSources, selectedGenerationAssets }),
 	);
 	const nodes: EpisodeCanvasNode[] = [];
 	const edges: EpisodeCanvasEdge[] = [];
@@ -221,16 +224,23 @@ const createLane = ({
 	documents,
 	index,
 	laneSources,
+	selectedGenerationAssets,
 }: {
 	assets: ProjectAsset[];
 	clip: TimelineClip;
 	documents: MarkdownDocument[];
 	index: number;
 	laneSources: StoryboardLaneSource[];
+	selectedGenerationAssets: SelectedGenerationAsset[];
 }): EpisodeCanvasLane => {
 	const source = findLaneSource(clip, index, laneSources);
 	const sourceMarkdown = source?.markdown ?? fallbackClipMarkdown(clip);
-	const references = referenceSummariesFromMarkdown(sourceMarkdown, documents, assets);
+	const references = referenceSummariesFromMarkdown(
+		sourceMarkdown,
+		documents,
+		assets,
+		selectedGenerationAssets,
+	);
 
 	return {
 		blockId: source?.blockId,
@@ -286,9 +296,19 @@ const referenceSummariesFromMarkdown = (
 	markdown: string,
 	documents: MarkdownDocument[],
 	assets: ProjectAsset[],
+	selectedGenerationAssets: SelectedGenerationAsset[],
 ): EpisodeCanvasReference[] =>
 	parseMentionsFromMarkdown(markdown)
-		.map((reference) => referenceSummary(resolveMentionPayload(reference, documents, assets)))
+		.map((reference) =>
+			referenceSummary(
+				resolveMentionPayloadWithSelectedAssets(
+					reference,
+					documents,
+					assets,
+					selectedGenerationAssets,
+				),
+			),
+		)
 		.filter((reference) => referenceKinds.has(reference.category));
 
 const referenceSummary = (mention: ResolvedMention): EpisodeCanvasReference => {

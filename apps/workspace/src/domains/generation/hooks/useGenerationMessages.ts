@@ -9,6 +9,7 @@ import {
 	readScopedGenerationMessages,
 	rehydrateScopedGenerationMessages,
 	removeMessagesBackedByTasks,
+	removeStaleLocalPendingMessages,
 	sameChatMessageList,
 	scopedGenerationHistoryPersistStorageKey,
 	scopedGenerationHistoryStorageKey,
@@ -142,7 +143,10 @@ export const useGenerationMessages = ({
 				mediaAssets,
 				catalog,
 			);
-			const optimisticMessages = removeMessagesBackedByTasks(syncedMessages, recentTasks);
+			const optimisticMessages = removeStaleLocalPendingMessages(
+				removeMessagesBackedByTasks(syncedMessages, recentTasks),
+				recentTasks,
+			);
 			return sameChatMessageList(current, optimisticMessages) ? current : optimisticMessages;
 		});
 	}, [catalog, historyScopeId, mediaAssets, recentTasks]);

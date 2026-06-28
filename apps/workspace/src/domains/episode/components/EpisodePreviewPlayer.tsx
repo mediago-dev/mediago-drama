@@ -3,6 +3,7 @@ import { Film, Play, Sparkles } from "lucide-react";
 import type React from "react";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { useEpisodeStore } from "@/domains/episode/stores";
+import { apiResourceURL } from "@/shared/lib/api-base";
 
 interface EpisodePreviewPlayerProps {
 	currentTime?: number;
@@ -39,18 +40,20 @@ export const EpisodePreviewPlayer: React.FC<EpisodePreviewPlayerProps> = ({
 	const handleTimeUpdate = onTimeUpdate ?? setCurrentTime;
 	const handlePlayingChange =
 		onPlayingChange ?? ((playing: boolean) => (playing ? play() : pause()));
+	const playerVideoUrl = videoUrl ? apiResourceURL(videoUrl) : "";
+	const playerPosterUrl = posterUrl ? apiResourceURL(posterUrl) : "";
 	const showPosterOverlay = Boolean(
-		videoUrl && posterUrl && !playbackPlaying && playbackTime <= 0.05,
+		playerVideoUrl && playerPosterUrl && !playbackPlaying && playbackTime <= 0.05,
 	);
 
 	return (
 		<div className="relative aspect-video w-full max-w-4xl overflow-hidden border border-border bg-ide-panel text-ide-panel-foreground">
-			{videoUrl ? (
+			{playerVideoUrl ? (
 				<>
 					<VideoPlayer
 						className="h-full w-full bg-ide-editor object-contain"
-						src={videoUrl}
-						poster={posterUrl}
+						src={playerVideoUrl}
+						poster={playerPosterUrl}
 						title={title}
 						currentTime={playbackTime}
 						isPlaying={playbackPlaying}
@@ -66,7 +69,12 @@ export const EpisodePreviewPlayer: React.FC<EpisodePreviewPlayerProps> = ({
 							className="pointer-events-none absolute inset-0 z-10 bg-black"
 							data-testid="episode-preview-poster"
 						>
-							<img src={posterUrl} alt="" className="size-full object-cover" draggable={false} />
+							<img
+								src={playerPosterUrl}
+								alt=""
+								className="size-full object-cover"
+								draggable={false}
+							/>
 							<div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/5 to-black/10" />
 							<div className="absolute inset-0 grid place-items-center">
 								<span className="grid size-14 place-items-center rounded-full bg-white/95 text-foreground shadow-sm ring-1 ring-black/10">

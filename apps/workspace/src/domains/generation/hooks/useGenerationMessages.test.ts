@@ -171,4 +171,48 @@ describe("useGenerationMessages", () => {
 			]),
 		);
 	});
+
+	it("removes stale local pending messages once the matching task materializes", async () => {
+		const scopeId = "generation-scope";
+		writeScopedGenerationMessages(scopeId, [
+			message({
+				id: "local-123abc:prompt",
+				role: "user",
+				content: "draw a cat",
+				createdAt: "2026-06-04T00:00:00.000Z",
+			}),
+			message({
+				id: "local-123abc:assistant",
+				role: "assistant",
+				status: "loading",
+				content: "正在生成图像...",
+				createdAt: "2026-06-04T00:00:00.000Z",
+			}),
+		]);
+
+		const { result } = renderHook(() =>
+			useGenerationMessages({
+				catalog: fallbackCatalog,
+				historyScopeId: scopeId,
+				mediaAssets: [],
+				recentTasks: [
+					generationTask({
+						id: "task-materialized",
+						status: "completed",
+						message: "done",
+						assets: [{ kind: "image", url: "/api/v1/media-assets/generated/content" }],
+						updatedAt: "2026-06-04T00:00:05.000Z",
+					}),
+				],
+			}),
+		);
+
+		await waitFor(() => {
+			expect(result.current.conversationMessages.map((item) => item.id)).toEqual([
+				"task-materialized:prompt",
+				"task-materialized",
+			]);
+		});
+		expect(readScopedGenerationMessages(scopeId)).toEqual([]);
+	});
 });

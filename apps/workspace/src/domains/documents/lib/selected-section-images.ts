@@ -1,3 +1,5 @@
+import { apiResourceURL } from "@/shared/lib/api-base";
+
 export interface SelectedSectionImageAssetLike {
 	assetIndex?: number;
 	base64?: string;
@@ -15,7 +17,7 @@ export interface SelectedSectionImageAssetLike {
 
 export const selectedSectionImageAssetSource = (asset: SelectedSectionImageAssetLike) => {
 	const url = asset.url?.trim();
-	if (url) return url;
+	if (url) return apiResourceURL(url);
 
 	const base64 = asset.base64?.trim();
 	if (!base64) return "";

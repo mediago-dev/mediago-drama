@@ -105,6 +105,7 @@ describe("DocumentSectionBatchGenerationRunner", () => {
 			sectionId: "section_lintong",
 			useRawPrompt: true,
 		});
+		expect(workspaceOptions?.historyScopeId).toBeUndefined();
 		expect(workspaceOptions?.notificationTarget).toMatchObject({
 			documentId: "characters",
 			documentTitle: "角色设定",

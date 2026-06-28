@@ -20,6 +20,7 @@ import type { MarkdownSectionContext } from "@/domains/documents/components/Mark
 import type { MarkdownSectionMentionReference } from "@/domains/documents/lib/editor-registry";
 import { createSectionGenerationPrompt } from "@/domains/documents/lib/section-generation-prompt";
 import { useDocumentsStore, type MarkdownDocument } from "@/domains/documents/stores";
+import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
 import type {
 	EpisodeCanvasEdge,
 	EpisodeCanvasEdge as ProjectedCanvasEdge,
@@ -62,6 +63,7 @@ interface EpisodeCanvasViewProps {
 	assets: ProjectAsset[];
 	documents: MarkdownDocument[];
 	episode: Episode;
+	selectedGenerationAssets?: SelectedGenerationAsset[];
 	selectedClipId: string;
 	storyboardMarkdown: string;
 	onGenerateClip: (clipId: string) => void;
@@ -125,6 +127,7 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 	assets,
 	documents,
 	episode,
+	selectedGenerationAssets = [],
 	selectedClipId,
 	storyboardMarkdown,
 	onGenerateClip,
@@ -153,9 +156,10 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 				documentId: activeDocument?.id,
 				documents,
 				episode,
+				selectedGenerationAssets,
 				storyboardMarkdown,
 			}),
-		[activeDocument?.id, assets, documents, episode, storyboardMarkdown],
+		[activeDocument?.id, assets, documents, episode, selectedGenerationAssets, storyboardMarkdown],
 	);
 	const graph = useMemo(
 		() => focusEpisodeCanvasGraph(fullGraph, episode, selectedClipId),

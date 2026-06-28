@@ -20,6 +20,7 @@ import {
 import type { TimelineZoom } from "@/domains/episode/stores";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/lib/utils";
+import { apiResourceURL } from "@/shared/lib/api-base";
 
 interface EpisodeClipStripProps {
 	clipMedia?: Record<string, EpisodeClipMediaMetadata>;
@@ -438,10 +439,14 @@ const EpisodeClipContextMenu: React.FC<{
 	return createPortal(menu, document.body);
 };
 
-const getClipPreviewMedia = (clip: TimelineClip, posterUrl?: string) => ({
-	posterUrl: stringValue(posterUrl) ?? episodeClipPosterUrl(clip),
-	videoUrl: stringValue(clip.videoUrl),
-});
+const getClipPreviewMedia = (clip: TimelineClip, posterUrl?: string) => {
+	const posterSource = stringValue(posterUrl) ?? episodeClipPosterUrl(clip);
+	const videoSource = stringValue(clip.videoUrl);
+	return {
+		posterUrl: posterSource ? apiResourceURL(posterSource) : null,
+		videoUrl: videoSource ? apiResourceURL(videoSource) : null,
+	};
+};
 
 const stringValue = (value: unknown) => (typeof value === "string" && value.trim() ? value : null);
 

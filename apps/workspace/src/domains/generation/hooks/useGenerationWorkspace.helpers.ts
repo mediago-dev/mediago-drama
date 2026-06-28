@@ -71,6 +71,7 @@ export {
 	readGenerationStylePresetId,
 	removeGenerationEntryMessages,
 	removeMessagesBackedByTasks,
+	removeStaleLocalPendingMessages,
 	resolveGenerationExtraValue,
 	sameChatMessageList,
 	taskIdFromGenerationEntryId,

@@ -19,6 +19,8 @@ describe("EpisodeTimelineEditor", () => {
 
 	afterEach(() => {
 		cleanup();
+		delete window.mediagoDesktop;
+		vi.unstubAllEnvs();
 	});
 
 	it("renders the expanded clip strip with only visible video clips", () => {
@@ -448,5 +450,39 @@ describe("EpisodeTimelineEditor", () => {
 		fireEvent.click(within(secondCard).getByRole("button", { name: "定位到 问题铺垫" }));
 
 		expect(onPlayClip).toHaveBeenCalledWith("clip-problem");
+	});
+
+	it("renders clip strip poster URLs against the packaged desktop server", () => {
+		vi.stubEnv("DEV", false);
+		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+
+		render(
+			<EpisodeTimelineEditor
+				episode={sampleEpisode}
+				clipMedia={{
+					"clip-cold-open": {
+						duration: 5,
+						posterUrl: "/api/v1/media-assets/asset-a/poster",
+					},
+				}}
+				currentTime={0}
+				isPlaying={false}
+				selectedClipId="clip-cold-open"
+				timelineDuration={12}
+				zoom="fit"
+				onRequestCompanionGeneration={vi.fn()}
+				onGenerateClip={vi.fn()}
+				onSeek={vi.fn()}
+				onPlayClip={vi.fn()}
+				onSelectClip={vi.fn()}
+				onTogglePlayback={vi.fn()}
+			/>,
+		);
+
+		const firstCard = screen.getByTestId("clip-strip-card-clip-cold-open");
+		expect(firstCard.querySelector("img")).toHaveAttribute(
+			"src",
+			"http://127.0.0.1:48273/api/v1/media-assets/asset-a/poster",
+		);
 	});
 });

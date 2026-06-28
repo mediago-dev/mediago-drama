@@ -16,6 +16,7 @@ import {
 	parseStoryboardShots,
 	readStoryboardLaneSources,
 } from "@/domains/episode/lib/storyboard-shots";
+import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import type { Episode } from "@/domains/episode/lib/sample";
 
@@ -72,6 +73,16 @@ const makeEpisodeFromStoryboard = (storyboard: string): Episode => {
 		],
 	};
 };
+
+const selectedGenerationAsset = (
+	overrides: Partial<SelectedGenerationAsset> = {},
+): SelectedGenerationAsset => ({
+	assetIndex: 0,
+	id: "selected-asset-1",
+	kind: "image",
+	resourceType: "character",
+	...overrides,
+});
 
 describe("parseStoryboardShots", () => {
 	it("extracts shot metadata used by text storyboard nodes", () => {
@@ -298,6 +309,43 @@ describe("buildEpisodeCanvasGraph", () => {
 		expect(videoNode?.data.subtitle).toBe("视频已生成");
 		expect(videoNode?.data.videoUrl).toBe("/api/v1/media-assets/generated-video/content");
 		expect(videoNode?.data.imageUrl).toBeUndefined();
+	});
+
+	it("uses selected generated images for reference image nodes", () => {
+		const storyboard = [
+			"# 第一集分镜",
+			"",
+			"## 第 01 组 总时长：00:04",
+			"",
+			"**动作**：@[顾依依](mention://char-1/section_character?kind=section&category=character) 站在雨夜巷口。",
+		].join("\n");
+		const episode = makeEpisodeFromStoryboard(storyboard);
+		const graph = buildEpisodeCanvasGraph({
+			documents: [
+				makeDocument("<!-- section-id: section_character -->\n# 顾依依\n\n18 岁少女。", {
+					category: "character",
+					id: "char-1",
+					title: "顾依依",
+				}),
+			],
+			episode,
+			selectedGenerationAssets: [
+				selectedGenerationAsset({
+					id: "selected-character-image",
+					resourceId: "section_character",
+					sourceDocumentId: "char-1",
+					url: "/api/v1/media-assets/selected-character-image/content",
+				}),
+			],
+			storyboardMarkdown: storyboard,
+		});
+		const referenceImageNode = graph.nodes.find((node) => node.type === "reference-image");
+
+		expect(referenceImageNode?.data.imageUrl).toBe(
+			"/api/v1/media-assets/selected-character-image/content",
+		);
+		expect(referenceImageNode?.data.status).toBe("ready");
+		expect(referenceImageNode?.data.body).toContain("已生成素材图");
 	});
 
 	it("does not create placeholder reference nodes when no material mentions are parsed", () => {

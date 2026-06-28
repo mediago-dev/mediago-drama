@@ -15,6 +15,7 @@ import {
 	sectionMediaFromMarkdownLine,
 	sectionMediaMarkdown,
 } from "@/domains/documents/components/tiptap/section-media";
+import { apiResourceURL } from "@/shared/lib/api-base";
 
 const sectionMediaNodeName = "sectionMediaPreview";
 const sectionMediaStartPattern = /\[章节(?:音频|视频)(?::|：)/;
@@ -129,6 +130,7 @@ const sectionMediaPreviewDOMSpec = (attrs: SectionMediaPreviewAttrs): DOMOutputS
 
 const SectionMediaPreviewView: React.FC<NodeViewProps> = ({ node }) => {
 	const attrs = sectionMediaPreviewAttrs(node.attrs);
+	const playerSource = apiResourceURL(attrs.src);
 	if (!isRenderableSectionMedia(attrs)) {
 		return (
 			<NodeViewWrapper
@@ -153,7 +155,7 @@ const SectionMediaPreviewView: React.FC<NodeViewProps> = ({ node }) => {
 				<AudioPlayer
 					className="tiptap-section-media-player"
 					mimeType="audio/mpeg"
-					src={attrs.src}
+					src={playerSource}
 					title={attrs.title || "章节音频"}
 				/>
 			) : (
@@ -162,7 +164,7 @@ const SectionMediaPreviewView: React.FC<NodeViewProps> = ({ node }) => {
 					load="visible"
 					mimeType="video/mp4"
 					showTitleInControls={false}
-					src={attrs.src}
+					src={playerSource}
 					title={attrs.title || "章节视频"}
 				/>
 			)}
