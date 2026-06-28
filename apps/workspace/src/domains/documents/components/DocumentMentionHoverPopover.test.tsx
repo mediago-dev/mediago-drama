@@ -154,6 +154,41 @@ describe("DocumentMentionHoverPopover", () => {
 			expect(referenceImage("/api/v1/media-assets/selected-ref/content")).toBeTruthy(),
 		);
 	});
+
+	it("shows the generate reference image action for a resolvable section without images", async () => {
+		const onGenerateReference = vi.fn();
+
+		render(
+			<DocumentMentionHoverPopover
+				allAssets={[]}
+				allDocuments={[
+					makeDocument({
+						category: "character",
+						id: "character-doc",
+						title: "顾依依",
+						content: "<!-- section-id: section_testc -->\n## 测试C",
+					}),
+				]}
+				onGenerateReference={onGenerateReference}
+			>
+				<span
+					className="agent-reference-mention"
+					data-block-id="section_testc"
+					data-category="character"
+					data-document-id="character-doc"
+					data-kind="section"
+					data-title="测试C"
+				>
+					@测试C
+				</span>
+			</DocumentMentionHoverPopover>,
+		);
+
+		fireEvent.pointerOver(screen.getByText("@测试C"));
+
+		await waitFor(() => expect(screen.getByRole("button", { name: "生成引用图片" })).toBeTruthy());
+		expect(screen.queryByText("暂无生成图片")).toBeNull();
+	});
 });
 
 const referenceImage = (src = "/api/v1/media-assets/ref-a/content") =>

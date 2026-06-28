@@ -10,6 +10,8 @@ import (
 
 const maxReferenceIndexItems = 120
 
+const referenceIndexPromptHeading = "# 可用 @ 资源索引"
+
 var (
 	referenceHeadingPattern          = regexp.MustCompile(`^(#{1,3})\s+(.+?)\s*$`)
 	referenceSectionIDCommentPattern = regexp.MustCompile(`^\s*<!--\s*section-id:\s*([A-Za-z0-9_-]+)\s*-->\s*$`)
@@ -24,6 +26,24 @@ type referenceIndexItem struct {
 	Kind            string
 	MentionMarkdown string
 	Title           string
+}
+
+// BuildACPUserPrompt appends a compact workspace @ resource index to storyboard-related user prompts.
+func BuildACPUserPrompt(request AgentRunRequest) string {
+	userPrompt := strings.TrimSpace(request.Prompt)
+	if userPrompt == "" || strings.Contains(userPrompt, referenceIndexPromptHeading) {
+		return userPrompt
+	}
+	if !shouldAttachReferenceIndex(request) {
+		return userPrompt
+	}
+
+	items := buildReferenceIndexItems(request)
+	if len(items) == 0 {
+		return userPrompt
+	}
+
+	return strings.TrimSpace(userPrompt + "\n\n" + renderReferenceIndexPrompt(items))
 }
 
 func buildReferenceIndexItems(request AgentRunRequest) []referenceIndexItem {
@@ -113,6 +133,45 @@ func buildReferenceIndexItems(request AgentRunRequest) []referenceIndexItem {
 	}
 
 	return items
+}
+
+func shouldAttachReferenceIndex(request AgentRunRequest) bool {
+	if request.Document != nil && strings.TrimSpace(request.Document.Category) == "storyboard" {
+		return true
+	}
+
+	prompt := strings.ToLower(strings.TrimSpace(request.Prompt))
+	if prompt == "" {
+		return false
+	}
+	for _, keyword := range []string{"分镜", "镜头脚本", "镜头提示词", "视频脚本", "storyboard"} {
+		if strings.Contains(prompt, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func renderReferenceIndexPrompt(items []referenceIndexItem) string {
+	var builder strings.Builder
+	builder.WriteString(referenceIndexPromptHeading)
+	builder.WriteString("\n\n")
+	builder.WriteString("以下资源来自当前工作区，只供写分镜时自动 @ 使用。使用规则：\n")
+	builder.WriteString("- 不要求字面精确匹配；根据人物身份、别名、剧情关系、场景功能和道具用途判断。\n")
+	builder.WriteString("- 命中时写成 `原文实体名 + @ 链接`，例如 `沈阎@[沈阎](mention://...)`，可视效果类似 `沈阎@沈阎`。\n")
+	builder.WriteString("- 只能复制下方已有完整 Markdown @ 链接，不要自己拼接或编造 `mention://`、`asset://`。\n")
+	builder.WriteString("- 同一镜头同一资源首次出现时 @ 一次；无把握或无可用完整链接时不要硬 @。\n\n")
+	builder.WriteString("## 资源\n")
+	for _, item := range items {
+		builder.WriteString("- ")
+		builder.WriteString(item.CategoryLabel)
+		builder.WriteString("｜")
+		builder.WriteString(item.Title)
+		builder.WriteString("｜")
+		builder.WriteString(item.MentionMarkdown)
+		builder.WriteString("\n")
+	}
+	return strings.TrimRight(builder.String(), "\n")
 }
 
 type referenceSection struct {

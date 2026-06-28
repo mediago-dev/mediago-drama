@@ -702,8 +702,7 @@ const HistoryImagePlaceholder: React.FC<{ record: HistoryImagePlaceholderRecord 
 	const label = `第 ${record.displayIndex + 1} ${unit}${failed ? "生成失败" : "生成中"}`;
 	const errorMessage = failed ? entryErrorText(record.entry) : "";
 	const Icon = record.entry.kind === "audio" ? AudioLines : ImageIcon;
-
-	return (
+	const content = (
 		<div
 			role="img"
 			aria-label={label}
@@ -718,6 +717,19 @@ const HistoryImagePlaceholder: React.FC<{ record: HistoryImagePlaceholderRecord 
 			{failed ? <Icon className="size-5" /> : <Loader2 className="size-5 animate-spin" />}
 			<span>{failed ? "生成失败" : "生成中"}</span>
 		</div>
+	);
+
+	if (!errorMessage) return content;
+
+	return (
+		<TooltipProvider delayDuration={180}>
+			<Tooltip>
+				<TooltipTrigger asChild>{content}</TooltipTrigger>
+				<TooltipContent side="top" className="max-w-80 whitespace-pre-wrap text-left leading-5">
+					{errorMessage}
+				</TooltipContent>
+			</Tooltip>
+		</TooltipProvider>
 	);
 };
 

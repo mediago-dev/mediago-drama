@@ -71,7 +71,7 @@ export const createUntitledDocument = (
 ): MarkdownDocument => ({
 	id: `doc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 	title: options.title?.trim() || defaultTitleForCategory(options.category),
-	content: "",
+	content: options.content ?? "",
 	category: options.category,
 	parentId: options.parentId ?? null,
 	folderId: options.folderId ?? null,

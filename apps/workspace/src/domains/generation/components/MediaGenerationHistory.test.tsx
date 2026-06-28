@@ -661,6 +661,33 @@ describe("HistoryGenerationList", () => {
 		expect(onDeleteEntry).not.toHaveBeenCalled();
 	});
 
+	it("shows failed image placeholder error details on hover", async () => {
+		const entry = {
+			...failedImageEntry(),
+			error: "供应商返回：提示词包含不支持的内容。",
+		};
+		render(
+			<HistoryGenerationList
+				activeEntryId="entry-failed-image"
+				deletingEntryIds={[]}
+				entries={[entry]}
+				kind="image"
+				selectedAssetKeys={[]}
+				variant="list"
+				onDeleteEntry={vi.fn()}
+				onSelectEntry={vi.fn()}
+			/>,
+		);
+
+		fireEvent.pointerMove(screen.getAllByRole("img", { name: /生成失败/ })[0], {
+			pointerType: "mouse",
+		});
+
+		expect(await screen.findByRole("tooltip")).toHaveTextContent(
+			"供应商返回：提示词包含不支持的内容。",
+		);
+	});
+
 	it("shows right-click actions for failed image placeholders", async () => {
 		const entry = failedImageEntry();
 		const onDeleteEntry = vi.fn();

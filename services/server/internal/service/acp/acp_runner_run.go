@@ -233,7 +233,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		return agentRunResult{}, err
 	}
 
-	prompt := strings.TrimSpace(request.Prompt)
+	prompt := BuildACPUserPrompt(request)
 	acpLog().Debug("acp.prompt.assembled", append(logArgs, "acp_session_id", sessionID, "bytes", len(prompt))...)
 	acpLog().Info(
 		"acp prompt starting",

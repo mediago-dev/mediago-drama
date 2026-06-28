@@ -148,6 +148,7 @@ export type WorkspaceDocumentSyncStatus = "idle" | "syncing" | "synced" | "error
 
 export interface CreateDocumentOptions {
 	category: DocumentCategory;
+	content?: string;
 	parentId?: string | null;
 	folderId?: string | null;
 	title?: string;

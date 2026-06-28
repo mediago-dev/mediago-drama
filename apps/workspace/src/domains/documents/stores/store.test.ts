@@ -717,6 +717,54 @@ describe("documents store remote sync", () => {
 		}
 	});
 
+	it("creates a typed document with initial content", async () => {
+		vi.mocked(createWorkspaceDocument).mockImplementation(async (payload, projectId) => {
+			const document: MarkdownDocument = {
+				...makeDocument(payload.id ?? "doc-created"),
+				title: payload.title ?? "新文档",
+				content: payload.content ?? "",
+				category: payload.category ?? "screenplay",
+				parentId: payload.parentId ?? null,
+				folderId: payload.folderId ?? null,
+				sortOrder: payload.sortOrder ?? 0,
+				comments: payload.comments ?? [],
+			};
+			return {
+				document,
+				state: {
+					workspaceDir: "/workspace/project-a",
+					projectId: projectId ?? undefined,
+					documents: [document],
+					folders: [],
+					assets: [],
+				},
+			};
+		});
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [],
+			folders: [],
+			assets: [],
+		});
+
+		const document = useDocumentsStore.getState().createDocument({
+			category: "character",
+			content: "<!-- section-id: section_test -->\n## 测试角色\n",
+		});
+
+		expect(document?.content).toBe("<!-- section-id: section_test -->\n## 测试角色\n");
+		await waitFor(() =>
+			expect(createWorkspaceDocument).toHaveBeenCalledWith(
+				expect.objectContaining({
+					category: "character",
+					content: "<!-- section-id: section_test -->\n## 测试角色\n",
+				}),
+				"project-a",
+			),
+		);
+	});
+
 	it("hydrates folders from DocumentStateSync workspace state payload", () => {
 		vi.mocked(useSWR).mockReturnValue({
 			data: {

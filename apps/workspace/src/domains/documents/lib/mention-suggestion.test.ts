@@ -1,6 +1,6 @@
-import { cleanup, render } from "@testing-library/react";
-import { createElement } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render } from "@testing-library/react";
+import { createElement, createRef } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	AgentMentionList,
 	createMentionItems,
@@ -248,6 +248,137 @@ describe("mention suggestion items", () => {
 		expect(
 			container.querySelector('.agent-mention-option[data-has-preview="true"] img'),
 		).toBeTruthy();
+	});
+
+	it("renders a document-scoped create action in the active child pane", () => {
+		useDocumentsStore.setState({
+			documents: [
+				makeDocument({
+					content: "# 太虚角色设定\n\n## 系统女声",
+					title: "太虚角色设定",
+				}),
+			],
+			assets: [],
+		});
+
+		const onCreateSection = vi.fn();
+		const { container } = render(
+			createElement(AgentMentionList, {
+				command: () => {},
+				items: createMentionItems(""),
+				onCreateSection,
+			}),
+		);
+
+		const createButton = container.querySelector(".agent-mention-create");
+		expect(createButton?.textContent).toContain("新增角色");
+
+		fireEvent.mouseDown(createButton as Element);
+
+		expect(onCreateSection).toHaveBeenCalledWith(
+			expect.objectContaining({
+				category: "character",
+				documentId: "doc-character",
+				label: "太虚角色设定",
+			}),
+		);
+	});
+
+	it("creates from the typed query when Enter is pressed without matches", () => {
+		const onCreateSectionFromQuery = vi.fn();
+		const ref = createRef<{
+			onKeyDown: (props: { event: KeyboardEvent }) => boolean;
+		}>();
+		const { container } = render(
+			createElement(AgentMentionList, {
+				command: () => {},
+				items: [],
+				onCreateSectionFromQuery,
+				query: " 你是 ",
+				ref,
+			}),
+		);
+
+		expect(container.textContent).toContain("无匹配引用，按 Enter 新增「你是」");
+
+		const handled = ref.current?.onKeyDown({
+			event: new KeyboardEvent("keydown", { key: "Enter" }),
+		});
+
+		expect(handled).toBe(true);
+		expect(onCreateSectionFromQuery).toHaveBeenCalledWith("你是");
+	});
+
+	it("keeps unmatched Enter unhandled when the query is blank", () => {
+		const onCreateSectionFromQuery = vi.fn();
+		const ref = createRef<{
+			onKeyDown: (props: { event: KeyboardEvent }) => boolean;
+		}>();
+		render(
+			createElement(AgentMentionList, {
+				command: () => {},
+				items: [],
+				onCreateSectionFromQuery,
+				query: " ",
+				ref,
+			}),
+		);
+
+		const handled = ref.current?.onKeyDown({
+			event: new KeyboardEvent("keydown", { key: "Enter" }),
+		});
+
+		expect(handled).toBe(false);
+		expect(onCreateSectionFromQuery).not.toHaveBeenCalled();
+	});
+
+	it("updates the create action label when a different document group is active", () => {
+		useDocumentsStore.setState({
+			documents: [
+				makeDocument({
+					content: "# 太虚角色设定\n\n## 系统女声",
+					title: "太虚角色设定",
+				}),
+				makeDocument({
+					category: "scene",
+					content: "# 场景设定\n\n## 雨夜小巷",
+					id: "doc-scene",
+					title: "场景设定",
+				}),
+			],
+			assets: [],
+		});
+
+		const { container } = render(
+			createElement(AgentMentionList, {
+				command: () => {},
+				items: createMentionItems(""),
+				onCreateSection: vi.fn(),
+			}),
+		);
+		const sceneSource = Array.from(container.querySelectorAll(".agent-mention-source")).find(
+			(element) => element.textContent?.includes("场景设定"),
+		);
+
+		fireEvent.mouseEnter(sceneSource as Element);
+
+		expect(container.querySelector(".agent-mention-create")?.textContent).toContain("新增场景");
+	});
+
+	it("does not render a create action for project assets", () => {
+		useDocumentsStore.setState({
+			documents: [],
+			assets: [makeAsset()],
+		});
+
+		const { container } = render(
+			createElement(AgentMentionList, {
+				command: () => {},
+				items: createMentionItems(""),
+			}),
+		);
+
+		expect(container.querySelector(".agent-mention-create")).toBeNull();
 	});
 
 	it("appends the popup inside a generation dialog root when available", () => {

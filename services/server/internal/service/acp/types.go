@@ -35,6 +35,7 @@ const (
 
 var (
 	BuildACPPrompt           = prompt.BuildACPPrompt
+	BuildACPUserPrompt       = prompt.BuildACPUserPrompt
 	TruncateAgentMessage     = prompt.TruncateAgentMessage
 	FirstNonEmpty            = shared.FirstNonEmpty
 	MustRandomID             = shared.MustRandomID

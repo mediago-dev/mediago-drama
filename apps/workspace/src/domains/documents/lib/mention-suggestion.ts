@@ -13,6 +13,7 @@ import {
 	FileImage,
 	FileVideo,
 	Hash,
+	Plus,
 	type LucideIcon,
 } from "lucide-react";
 import { ReactRenderer } from "@tiptap/react";
@@ -24,6 +25,11 @@ import type {
 import tippy, { type Instance, type Props as TippyProps } from "tippy.js";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import type { AgentReference } from "@/domains/agent/api/agent";
+import { openMentionSectionCreateDialog } from "@/domains/documents/components/MentionSectionCreateDialog";
+import {
+	openMentionSectionTargetDialog,
+	type MentionSectionTargetCategory,
+} from "@/domains/documents/components/MentionSectionTargetDialog";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import {
 	documentCategoryDescriptorMap,
@@ -36,6 +42,11 @@ import {
 	normalizeHeadingText,
 	sectionIdBeforeHeadingLine,
 } from "@/domains/documents/lib/sections";
+import {
+	appendSecondLevelHeading,
+	mentionCreateLabelForCategory,
+	normalizeMentionSectionTitle,
+} from "@/domains/documents/lib/mention-section-create";
 import {
 	type DocumentCategory,
 	legacySourceMaterialDocumentCategory,
@@ -69,12 +80,17 @@ interface MentionListHandle {
 interface MentionListProps {
 	command: (item: AgentMentionItem) => void;
 	items: AgentMentionItem[];
+	onCreateSection?: (group: AgentMentionGroup) => Promise<void> | void;
+	onCreateSectionFromQuery?: (query: string) => Promise<void> | void;
+	query?: string;
 }
 
 interface AgentMentionGroup {
 	category: DocumentCategory;
+	documentId?: string;
 	icon: LucideIcon;
 	id: string;
+	isAssetGroup?: boolean;
 	items: AgentMentionItem[];
 	label: string;
 	meta: string;
@@ -91,12 +107,20 @@ const categoryOrder = new Map<DocumentCategory, number>(
 const fallbackMentionDescriptor = documentCategoryDescriptorMap[fallbackMentionCategory];
 
 export const AgentMentionList = forwardRef<MentionListHandle, MentionListProps>(
-	function AgentMentionList({ command, items }, ref) {
+	function AgentMentionList(
+		{ command, items, onCreateSection, onCreateSectionFromQuery, query = "" },
+		ref,
+	) {
 		const groups = useMemo(() => createMentionGroups(items), [items]);
 		const [selectedGroupIndex, setSelectedGroupIndex] = useState(0);
 		const [selectedItemIndex, setSelectedItemIndex] = useState(0);
+		const normalizedQuery = useMemo(() => normalizeMentionSectionTitle(query), [query]);
 		const activeGroup = groups[selectedGroupIndex] ?? groups[0];
 		const activeItems = activeGroup?.items ?? [];
+		const canCreateSection = Boolean(
+			activeGroup?.documentId && !activeGroup.isAssetGroup && onCreateSection,
+		);
+		const activeOptionCount = activeItems.length + (canCreateSection ? 1 : 0);
 
 		useEffect(() => {
 			setSelectedGroupIndex(0);
@@ -107,15 +131,22 @@ export const AgentMentionList = forwardRef<MentionListHandle, MentionListProps>(
 			ref,
 			() => ({
 				onKeyDown: ({ event }) => {
-					if (groups.length === 0 || activeItems.length === 0) return false;
+					if (items.length === 0) {
+						if (event.key !== "Enter" || !normalizedQuery || !onCreateSectionFromQuery) {
+							return false;
+						}
+						void onCreateSectionFromQuery(normalizedQuery);
+						return true;
+					}
+					if (groups.length === 0 || activeOptionCount === 0) return false;
 
 					if (event.key === "ArrowUp") {
-						setSelectedItemIndex((index) => (index + activeItems.length - 1) % activeItems.length);
+						setSelectedItemIndex((index) => (index + activeOptionCount - 1) % activeOptionCount);
 						return true;
 					}
 
 					if (event.key === "ArrowDown") {
-						setSelectedItemIndex((index) => (index + 1) % activeItems.length);
+						setSelectedItemIndex((index) => (index + 1) % activeOptionCount);
 						return true;
 					}
 
@@ -135,18 +166,39 @@ export const AgentMentionList = forwardRef<MentionListHandle, MentionListProps>(
 					}
 
 					if (event.key === "Enter") {
-						command(activeItems[selectedItemIndex] ?? activeItems[0]);
+						if (canCreateSection && selectedItemIndex === activeItems.length && activeGroup) {
+							void onCreateSection?.(activeGroup);
+							return true;
+						}
+						const selectedItem = activeItems[selectedItemIndex] ?? activeItems[0];
+						if (selectedItem) command(selectedItem);
 						return true;
 					}
 
 					return false;
 				},
 			}),
-			[activeItems, command, groups.length, selectedItemIndex],
+			[
+				activeGroup,
+				activeItems,
+				activeOptionCount,
+				canCreateSection,
+				command,
+				groups.length,
+				items.length,
+				normalizedQuery,
+				onCreateSectionFromQuery,
+				onCreateSection,
+				selectedItemIndex,
+			],
 		);
 
 		if (items.length === 0) {
-			return createElement("div", { className: "agent-mention-menu-empty" }, "无匹配引用");
+			return createElement(
+				"div",
+				{ className: "agent-mention-menu-empty" },
+				normalizedQuery ? `无匹配引用，按 Enter 新增「${normalizedQuery}」` : "无匹配引用",
+			);
 		}
 
 		let previousSourceCategory: DocumentCategory | null = null;
@@ -209,10 +261,48 @@ export const AgentMentionList = forwardRef<MentionListHandle, MentionListProps>(
 						setSelectedItemIndex,
 					}),
 				),
+				canCreateSection && activeGroup
+					? renderCreateSectionOption(activeGroup, selectedItemIndex === activeItems.length, {
+							onCreateSection,
+							setSelectedItemIndex,
+							targetIndex: activeItems.length,
+						})
+					: null,
 			),
 		);
 	},
 );
+
+const renderCreateSectionOption = (
+	group: AgentMentionGroup,
+	selected: boolean,
+	actions: {
+		onCreateSection?: (group: AgentMentionGroup) => Promise<void> | void;
+		setSelectedItemIndex: (index: number) => void;
+		targetIndex: number;
+	},
+) =>
+	createElement(
+		"button",
+		{
+			key: `${group.id}:create`,
+			type: "button",
+			className: "agent-mention-create",
+			"data-category": group.category,
+			"data-selected": selected ? "true" : "false",
+			onMouseEnter: () => actions.setSelectedItemIndex(actions.targetIndex),
+			onMouseDown: (event) => {
+				event.preventDefault();
+				void actions.onCreateSection?.(group);
+			},
+		},
+		createElement(Plus, { className: "agent-mention-create-icon" }),
+		createElement(
+			"span",
+			{ className: "agent-mention-create-title" },
+			mentionCreateLabelForCategory(group.category),
+		),
+	);
 
 const renderMentionOption = (
 	item: AgentMentionItem,
@@ -282,8 +372,10 @@ const createMentionGroups = (items: AgentMentionItem[]): AgentMentionGroup[] => 
 			const descriptor = mentionCategoryDescriptor(item.category);
 			group = {
 				category: item.category,
+				documentId: item.kind === "asset" ? undefined : item.documentId,
 				icon: item.kind === "asset" ? FileImage : descriptor.icon,
 				id,
+				isAssetGroup: item.kind === "asset",
 				items: [],
 				label: item.kind === "asset" ? "项目素材" : item.documentTitle,
 				meta: item.kind === "asset" ? "素材" : descriptor.label,
@@ -308,6 +400,15 @@ export function createMentionSuggestion(): Omit<
 	const listProps = (props: SuggestionProps<AgentMentionItem, AgentMentionItem>) => ({
 		command: props.command,
 		items: props.items,
+		onCreateSection: (group: AgentMentionGroup) => {
+			popup?.hide();
+			return createSectionFromGroup(group, props.command);
+		},
+		onCreateSectionFromQuery: (query: string) => {
+			popup?.hide();
+			return createSectionFromQuery(query, props.command);
+		},
+		query: props.query,
 	});
 
 	return {
@@ -368,6 +469,111 @@ export const mentionPopupAppendTarget = (editorElement: Element | null): HTMLEle
 	);
 
 	return popupRoot ?? ownerDocument.body;
+};
+
+const createSectionFromGroup = async (
+	group: AgentMentionGroup,
+	command: (item: AgentMentionItem) => void,
+) => {
+	if (!group.documentId || group.isAssetGroup) return;
+
+	const document = useDocumentsStore
+		.getState()
+		.documents.find((item) => item.id === group.documentId);
+	if (!document) return;
+
+	const result = await openMentionSectionCreateDialog({
+		createLabel: mentionCreateLabelForCategory(group.category),
+		documentTitle: document.title,
+	});
+	const title = normalizeMentionSectionTitle(result?.title ?? "");
+	if (!title) return;
+
+	createSectionInDocument(document, normalizeMentionCategory(document.category), title, command);
+};
+
+const createSectionFromQuery = async (
+	rawTitle: string,
+	command: (item: AgentMentionItem) => void,
+) => {
+	const title = normalizeMentionSectionTitle(rawTitle);
+	if (!title) return;
+
+	const result = await openMentionSectionTargetDialog({ title });
+	if (!result) return;
+
+	const targetDocument = mentionTargetDocumentForCategory(result.category);
+	if (targetDocument) {
+		createSectionInDocument(targetDocument, result.category, title, command);
+		return;
+	}
+
+	const content = appendSecondLevelHeading("", title);
+	const previousActiveDocumentId = useDocumentsStore.getState().activeDocumentId;
+	const createdDocument = useDocumentsStore.getState().createDocument({
+		category: result.category,
+		content,
+	});
+	if (!createdDocument) return;
+
+	if (previousActiveDocumentId && previousActiveDocumentId !== createdDocument.id) {
+		useDocumentsStore.getState().selectDocument(previousActiveDocumentId);
+	}
+
+	const createdItem = createdSectionMentionItem(
+		{ ...createdDocument, content },
+		result.category,
+		title,
+	);
+	if (createdItem) command(createdItem);
+};
+
+const mentionTargetDocumentForCategory = (category: MentionSectionTargetCategory) =>
+	[...useDocumentsStore.getState().documents]
+		.filter((document) => normalizeMentionCategory(document.category) === category)
+		.sort(compareDocuments)[0] ?? null;
+
+const createSectionInDocument = (
+	document: MarkdownDocument,
+	category: DocumentCategory,
+	title: string,
+	command: (item: AgentMentionItem) => void,
+) => {
+	const nextContent = appendSecondLevelHeading(document.content, title);
+	if (nextContent === document.content) return;
+
+	useDocumentsStore.getState().updateDocumentContent(document.id, nextContent);
+
+	const createdItem = createdSectionMentionItem(
+		{ ...document, content: nextContent },
+		category,
+		title,
+	);
+	if (createdItem) command(createdItem);
+};
+
+const createdSectionMentionItem = (
+	document: MarkdownDocument,
+	category: DocumentCategory,
+	title: string,
+): AgentMentionItem | null => {
+	const normalizedTitle = normalizeHeadingText(title);
+	const section = [...mentionSectionsForDocument(document)]
+		.reverse()
+		.find((item) => normalizeHeadingText(item.title) === normalizedTitle);
+	if (!section) return null;
+
+	return {
+		blockId: section.blockId,
+		category,
+		documentId: document.id,
+		documentTitle: document.title,
+		id: `${document.id}:${section.blockId}`,
+		kind: "section",
+		label: section.title,
+		level: section.level,
+		title: section.title,
+	};
 };
 
 export const createMentionItems = (query: string): AgentMentionItem[] => {

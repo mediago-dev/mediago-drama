@@ -160,6 +160,117 @@ func TestPromptBuilderDoesNotInlineResourceMentionIndex(t *testing.T) {
 	}
 }
 
+func TestBuildACPUserPromptInjectsReferenceIndexForStoryboardRequest(t *testing.T) {
+	prompt := BuildACPUserPrompt(AgentRunRequest{
+		ProjectID: "project-1",
+		Prompt:    "请把第一集改成分镜脚本",
+		Document: &AgentDocumentContext{
+			ID:       "storyboard-doc",
+			Title:    "第一集分镜",
+			Category: "storyboard",
+			Content:  "# 第一集分镜",
+		},
+		Documents: []AgentDocumentContext{
+			{
+				ID:       "character-doc",
+				Title:    "角色设定",
+				Category: "character",
+				Content: strings.Join([]string{
+					"<!-- section-id: section_shenyan -->",
+					"# 沈阎",
+					"",
+					"玄色长袍，银白发丝，眼尾冷峻。这段正文不能进入资源索引。",
+				}, "\n"),
+			},
+			{
+				ID:       "scene-doc",
+				Title:    "场景设定",
+				Category: "scene",
+				Content: strings.Join([]string{
+					"# 审讯室",
+					"",
+					"冷白顶灯下的封闭空间。",
+				}, "\n"),
+			},
+		},
+	})
+
+	for _, want := range []string{
+		"请把第一集改成分镜脚本",
+		"# 可用 @ 资源索引",
+		"不要求字面精确匹配",
+		"沈阎@[沈阎](mention://...)",
+		"角色｜沈阎｜@[沈阎](mention://character-doc/section_shenyan)",
+		"场景｜审讯室｜@[审讯室](mention://scene-doc/section-",
+		"不要自己拼接或编造 `mention://`、`asset://`",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt = %q, want segment %q", prompt, want)
+		}
+	}
+	if strings.Contains(prompt, "玄色长袍") || strings.Contains(prompt, "冷白顶灯") {
+		t.Fatalf("prompt = %q, should not inline resource document body", prompt)
+	}
+}
+
+func TestBuildACPUserPromptInjectsReferenceIndexForActiveStoryboardDocument(t *testing.T) {
+	prompt := BuildACPUserPrompt(AgentRunRequest{
+		ProjectID: "project-1",
+		Prompt:    "优化这组内容",
+		Document: &AgentDocumentContext{
+			ID:       "storyboard-doc",
+			Title:    "第一集分镜",
+			Category: "storyboard",
+			Content:  "# 第一集分镜",
+		},
+		Documents: []AgentDocumentContext{
+			{
+				ID:       "prop-doc",
+				Title:    "道具设定",
+				Category: "prop",
+				Content: strings.Join([]string{
+					"# 血玉戒指",
+					"",
+					"暗红玉石，银色戒托。",
+				}, "\n"),
+			},
+		},
+	})
+
+	if !strings.Contains(prompt, "# 可用 @ 资源索引") ||
+		!strings.Contains(prompt, "道具｜血玉戒指｜@[血玉戒指](mention://prop-doc/section-") {
+		t.Fatalf("prompt = %q, want resource index for active storyboard document", prompt)
+	}
+}
+
+func TestBuildACPUserPromptSkipsReferenceIndexForUnrelatedRequest(t *testing.T) {
+	prompt := BuildACPUserPrompt(AgentRunRequest{
+		ProjectID: "project-1",
+		Prompt:    "润色角色设定",
+		Document: &AgentDocumentContext{
+			ID:       "character-doc",
+			Title:    "角色设定",
+			Category: "character",
+			Content:  "# 沈阎",
+		},
+		Documents: []AgentDocumentContext{
+			{
+				ID:       "scene-doc",
+				Title:    "场景设定",
+				Category: "scene",
+				Content:  "# 审讯室",
+			},
+		},
+	})
+
+	if prompt != "润色角色设定" {
+		t.Fatalf("prompt = %q, want unchanged user prompt", prompt)
+	}
+	if strings.Contains(prompt, "# 可用 @ 资源索引") {
+		t.Fatalf("prompt = %q, should not inject resource index", prompt)
+	}
+}
+
 func TestPromptBuilderKeepsSkillLoadingAsFixedRule(t *testing.T) {
 	tests := []struct {
 		name     string

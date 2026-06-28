@@ -147,7 +147,7 @@ export const createDocumentMutationActions = ({
 		runDeferredMutation(persistMutation);
 		return draft;
 	},
-	createDocument: ({ category, parentId = null, folderId = null, title }) => {
+	createDocument: ({ category, content, parentId = null, folderId = null, title }) => {
 		let createdDocument: MarkdownDocument | null = null;
 		let persistMutation: (() => void) | null = null;
 		set((state) => {
@@ -155,7 +155,7 @@ export const createDocumentMutationActions = ({
 			const safeParentId = validParentId(state.documents, parentId);
 			const safeFolderId = state.folders.some((folder) => folder.id === folderId) ? folderId : null;
 			const document = createUntitledDocument(
-				{ category, parentId: safeParentId, folderId: safeFolderId, title },
+				{ category, content, parentId: safeParentId, folderId: safeFolderId, title },
 				nextSortOrder(state.documents, safeParentId),
 			);
 			createdDocument = document;
