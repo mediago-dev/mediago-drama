@@ -11,6 +11,7 @@ import (
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
 	servicebilling "github.com/mediago-dev/mediago-drama/services/server/internal/service/billing"
 	servicecapability "github.com/mediago-dev/mediago-drama/services/server/internal/service/capability"
+	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
@@ -110,13 +111,17 @@ func (handler *apiHandler) NewWorkspaceEventID() string {
 	return mustRandomID("workspace-event")
 }
 
-func (handler *apiHandler) publishWorkspaceDocumentsChanged(projectID string) {
+func (handler *apiHandler) publishWorkspaceDocumentsChanged(projectID string, delta servicedocument.WorkspaceSyncDelta) {
 	handler.workspaceEvents.Publish(serviceworkspaceevent.Event{
-		ID:        handler.NewWorkspaceEventID(),
-		Type:      serviceworkspaceevent.DocumentsChangedEventType,
-		ProjectID: projectID,
-		Message:   "工作区文件已更新。",
-		CreatedAt: timestamp.NowRFC3339Nano(),
+		ID:                 handler.NewWorkspaceEventID(),
+		Type:               serviceworkspaceevent.DocumentsChangedEventType,
+		ProjectID:          projectID,
+		Message:            "工作区文件已更新。",
+		CreatedAt:          timestamp.NowRFC3339Nano(),
+		FullReload:         delta.FullReload,
+		ChangedDocumentIDs: delta.ChangedDocumentIDs,
+		RemovedDocumentIDs: delta.RemovedDocumentIDs,
+		StructureChanged:   delta.StructureChanged,
 	})
 }
 

@@ -40,6 +40,21 @@ func optionalProjectID(context *gin.Context) string {
 	return domain.CleanProjectID(firstNonEmptyParam(pathParam(context, "projectId"), context.Query("projectId")))
 }
 
+// parseDocumentIDsQuery parses a comma-separated document ids query value. The
+// boolean reports whether the request is scoped to specific documents; it is only
+// true when at least one non-empty id is present, so a missing or blank "ids"
+// param falls back to returning the full document list.
+func parseDocumentIDsQuery(raw string) ([]string, bool) {
+	parts := strings.Split(raw, ",")
+	ids := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			ids = append(ids, trimmed)
+		}
+	}
+	return ids, len(ids) > 0
+}
+
 func firstNonEmptyParam(values ...string) string {
 	for _, value := range values {
 		value = strings.TrimSpace(value)

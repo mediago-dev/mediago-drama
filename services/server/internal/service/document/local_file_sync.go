@@ -29,30 +29,140 @@ type localMarkdownTree struct {
 	FolderPaths []string
 }
 
-// SyncLocalMarkdownFiles imports local work directory changes into the store.
-func (store *Service) SyncLocalMarkdownFiles(projectID string) (bool, error) {
+// WorkspaceSyncDelta reports which documents a local file sync changed so that
+// subscribers can refresh incrementally instead of reloading the whole project.
+//
+// FullReload signals that an incremental delta could not be determined (for
+// example the first sync after startup) and consumers should reload everything.
+type WorkspaceSyncDelta struct {
+	FullReload         bool
+	ChangedDocumentIDs []string
+	RemovedDocumentIDs []string
+	StructureChanged   bool
+}
+
+// SyncLocalMarkdownFiles imports local work directory changes into the store and
+// returns the set of documents that changed relative to the previous sync.
+func (store *Service) SyncLocalMarkdownFiles(projectID string) (WorkspaceSyncDelta, error) {
 	if store.initErr != nil {
-		return false, store.initErr
+		return WorkspaceSyncDelta{}, store.initErr
 	}
 
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	_, _, err := store.loadLocalMarkdownWorkspaceUnlocked(projectID)
-	if err == nil {
-		store.recordDocumentHistory(projectID)
+	if _, _, err := store.loadLocalMarkdownWorkspaceUnlocked(projectID); err != nil {
+		return WorkspaceSyncDelta{}, err
 	}
-	if err != nil {
-		return false, err
-	}
+	store.recordDocumentHistory(projectID)
+
 	state, err := store.loadUnlocked(projectID)
 	if err != nil {
-		return false, err
+		return WorkspaceSyncDelta{}, err
 	}
 	if _, err := store.reconcileProjectSectionsUnlocked(projectID, state); err != nil {
-		return false, err
+		return WorkspaceSyncDelta{}, err
 	}
-	return false, nil
+
+	// Reconciliation may rewrite files (for example injecting section ids), so the
+	// delta must be computed from the post-reconcile content that consumers will
+	// actually load — otherwise the next sync would falsely report those files as
+	// changed. Cached reads keep this final scan cheap.
+	documents, folders, err := store.loadLocalMarkdownWorkspaceUnlocked(projectID)
+	if err != nil {
+		return WorkspaceSyncDelta{}, err
+	}
+	delta := store.computeSyncDeltaUnlocked(projectID, documents, folders)
+	return delta, nil
+}
+
+// computeSyncDeltaUnlocked diffs the freshly scanned documents and folders
+// against the previously observed snapshot for the project. The store mutex must
+// be held by the caller; the snapshot maps are only ever touched here.
+func (store *Service) computeSyncDeltaUnlocked(
+	projectID string,
+	documents []mediamcp.WorkspaceDocument,
+	folders []mediamcp.DocumentFolder,
+) WorkspaceSyncDelta {
+	projectID = domain.CleanProjectID(projectID)
+	newHashes := make(map[string]string, len(documents))
+	for _, document := range documents {
+		newHashes[document.ID] = documentSyncFingerprint(document)
+	}
+	folderSignature := folderStructureSignature(folders)
+
+	previousHashes, hasPrevious := store.docHashes[projectID]
+	previousFolderSignature := store.folderSignatures[projectID]
+
+	delta := WorkspaceSyncDelta{}
+	if !hasPrevious {
+		// First observation for this project: we cannot tell what changed, so ask
+		// consumers to reload fully once and rely on incremental deltas afterwards.
+		delta.FullReload = true
+	} else {
+		for id, hash := range newHashes {
+			if previousHashes[id] != hash {
+				delta.ChangedDocumentIDs = append(delta.ChangedDocumentIDs, id)
+			}
+		}
+		for id := range previousHashes {
+			if _, ok := newHashes[id]; !ok {
+				delta.RemovedDocumentIDs = append(delta.RemovedDocumentIDs, id)
+			}
+		}
+		// StructureChanged tracks the folder tree only. Document additions and
+		// removals are reported via Changed/RemovedDocumentIDs, so consumers do not
+		// need to refetch folders just because a document came or went.
+		delta.StructureChanged = folderSignature != previousFolderSignature
+		sort.Strings(delta.ChangedDocumentIDs)
+		sort.Strings(delta.RemovedDocumentIDs)
+	}
+
+	store.docHashes[projectID] = newHashes
+	store.folderSignatures[projectID] = folderSignature
+	return delta
+}
+
+// documentSyncFingerprint hashes the fields that affect how a document renders so
+// that any meaningful change (body or metadata) produces a different value.
+func documentSyncFingerprint(document mediamcp.WorkspaceDocument) string {
+	hasher := sha1.New()
+	_, _ = fmt.Fprintf(
+		hasher,
+		"%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%s\x00%s",
+		document.ID,
+		document.Title,
+		document.Category,
+		document.ParentID,
+		document.FolderID,
+		document.SortOrder,
+		strings.Join(document.Tags, ","),
+		document.Content,
+	)
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+// folderStructureSignature hashes the folder tree so folder additions, renames
+// and moves can be detected without comparing documents.
+func folderStructureSignature(folders []mediamcp.DocumentFolder) string {
+	if len(folders) == 0 {
+		return ""
+	}
+	ordered := make([]mediamcp.DocumentFolder, len(folders))
+	copy(ordered, folders)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].ID < ordered[j].ID })
+	hasher := sha1.New()
+	for _, folder := range ordered {
+		_, _ = fmt.Fprintf(
+			hasher,
+			"%s\x00%s\x00%s\x00%d\n",
+			folder.ID,
+			folder.Name,
+			folder.ParentID,
+			folder.SortOrder,
+		)
+	}
+	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 func (store *Service) loadLocalMarkdownWorkspaceUnlocked(projectID string) ([]mediamcp.WorkspaceDocument, []mediamcp.DocumentFolder, error) {
@@ -70,7 +180,7 @@ func (store *Service) loadLocalMarkdownWorkspaceUnlocked(projectID string) ([]me
 	if err := os.MkdirAll(docsDir, 0o755); err != nil {
 		return nil, nil, fmt.Errorf("creating work directory: %w", err)
 	}
-	tree, err := scanLocalMarkdownTree(docsDir)
+	tree, err := scanLocalMarkdownTree(docsDir, store.fileCache)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -107,11 +217,12 @@ func (store *Service) loadLocalMarkdownWorkspaceUnlocked(projectID string) ([]me
 	return NormalizeWorkspaceDocuments(documents), folders, nil
 }
 
-func scanLocalMarkdownTree(root string) (localMarkdownTree, error) {
+func scanLocalMarkdownTree(root string, cache *markdownFileCache) (localMarkdownTree, error) {
 	files := []localMarkdownFile{}
 	folderPaths := []string{}
 	seenFiles := map[string]bool{}
 	seenFolders := map[string]bool{}
+	cacheEntries := map[string]cachedMarkdownFile{}
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("walking work directory: %w", err)
@@ -155,14 +266,21 @@ func scanLocalMarkdownTree(root string) (localMarkdownTree, error) {
 		}
 		seenFiles[relativeKey] = true
 
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("reading markdown file %s: %w", relative, err)
-		}
 		info, err := entry.Info()
 		if err != nil {
 			return fmt.Errorf("reading markdown file info %s: %w", relative, err)
 		}
+		size := info.Size()
+		modTime := info.ModTime().UnixNano()
+		content, cached := cache.get(root, relative, size, modTime)
+		if !cached {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("reading markdown file %s: %w", relative, err)
+			}
+			content = string(data)
+		}
+		cacheEntries[relative] = cachedMarkdownFile{size: size, modTime: modTime, content: content}
 		updatedAt := fileModTimeRFC3339(info.ModTime())
 		dir := filepath.ToSlash(filepath.Dir(relative))
 		if dir == "." {
@@ -172,7 +290,7 @@ func scanLocalMarkdownTree(root string) (localMarkdownTree, error) {
 			RelativePath: relative,
 			Dir:          dir,
 			Title:        localMarkdownTitle(relative),
-			Content:      string(content),
+			Content:      content,
 			UpdatedAt:    updatedAt,
 		})
 		return nil
@@ -180,6 +298,7 @@ func scanLocalMarkdownTree(root string) (localMarkdownTree, error) {
 	if err != nil {
 		return localMarkdownTree{}, err
 	}
+	cache.replace(root, cacheEntries)
 	sort.SliceStable(files, func(i, j int) bool {
 		return strings.Compare(files[i].RelativePath, files[j].RelativePath) < 0
 	})

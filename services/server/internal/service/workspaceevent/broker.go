@@ -22,6 +22,14 @@ type Event struct {
 	ProjectID string `json:"projectId,omitempty"`
 	Message   string `json:"message,omitempty"`
 	CreatedAt string `json:"createdAt,omitempty"`
+	// FullReload asks subscribers to reload the whole workspace because an
+	// incremental delta could not be determined.
+	FullReload bool `json:"fullReload,omitempty"`
+	// ChangedDocumentIDs / RemovedDocumentIDs scope an incremental refresh.
+	ChangedDocumentIDs []string `json:"changedDocumentIds,omitempty"`
+	RemovedDocumentIDs []string `json:"removedDocumentIds,omitempty"`
+	// StructureChanged signals folder additions, renames, moves or deletions.
+	StructureChanged bool `json:"structureChanged,omitempty"`
 }
 
 // Broker fans out live workspace events to subscribers.
