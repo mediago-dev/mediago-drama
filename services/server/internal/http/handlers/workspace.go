@@ -17,6 +17,7 @@ type WorkspaceStore interface {
 	LoadWorkspaceState(projectID string) (service.WorkspaceStateResponse, error)
 	SaveWorkspaceState(projectID string, request service.WorkspaceStateRequest) (service.WorkspaceStateResponse, error)
 	ListWorkspaceDocuments(projectID string) (service.WorkspaceDocumentsResponse, error)
+	ListWorkspaceDocumentsByIDs(projectID string, ids []string) (service.WorkspaceDocumentsResponse, error)
 	ListWorkspaceDocumentResources(projectID string) (service.WorkspaceDocumentResourcesResponse, error)
 	ListProjectSections(projectID string) (service.DocumentSectionsResponse, error)
 	ReconcileProjectSections(projectID string) (service.DocumentSectionsResponse, error)
@@ -272,6 +273,7 @@ func (handler Workspace) HandlePutWorkspaceState(context *gin.Context) {
 // @Produce json
 // @Param projectId path string true "Project ID"
 // @Param category query string false "Document category"
+// @Param ids query string false "Comma-separated document IDs to scope the response"
 // @Success 200 {object} SwaggerEnvelope
 // @Failure 400 {object} SwaggerEnvelope
 // @Failure 500 {object} SwaggerEnvelope
@@ -281,7 +283,15 @@ func (handler Workspace) HandleListWorkspaceDocuments(context *gin.Context) {
 	if !ok {
 		return
 	}
-	state, err := handler.store.ListWorkspaceDocuments(projectID)
+	var (
+		state service.WorkspaceDocumentsResponse
+		err   error
+	)
+	if ids, scoped := parseDocumentIDsQuery(context.Query("ids")); scoped {
+		state, err = handler.store.ListWorkspaceDocumentsByIDs(projectID, ids)
+	} else {
+		state, err = handler.store.ListWorkspaceDocuments(projectID)
+	}
 	if err != nil {
 		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
 		return

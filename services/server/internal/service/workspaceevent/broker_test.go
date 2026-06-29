@@ -1,6 +1,7 @@
 package workspaceevent
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -15,7 +16,7 @@ func TestBrokerPublishesEventsToSubscribers(t *testing.T) {
 
 	select {
 	case got := <-events:
-		if got != want {
+		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("event = %#v, want %#v", got, want)
 		}
 	case <-time.After(time.Second):

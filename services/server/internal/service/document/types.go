@@ -165,16 +165,26 @@ type Service struct {
 	streams   *EditStreamService
 	history   *documenthistory.Service
 	initErr   error
+
+	// fileCache memoizes markdown file contents across scans (guards itself).
+	fileCache *markdownFileCache
+	// docHashes / folderSignatures hold the last observed sync snapshot per
+	// project. They are only accessed under mu by computeSyncDeltaUnlocked.
+	docHashes        map[string]map[string]string
+	folderSignatures map[string]string
 }
 
 // NewService returns a document service backed by a workspace repository.
 func NewService(workspaceDir string, repo *repository.WorkspaceRepository, approvals ApprovalGate, initErr error, sectionRepos ...*repository.DocumentSectionRepository) *Service {
 	store := &Service{
-		dir:       shared.ResolveWorkspaceDir(workspaceDir),
-		workspace: repo,
-		approvals: approvals,
-		history:   documenthistory.NewService(),
-		initErr:   initErr,
+		dir:              shared.ResolveWorkspaceDir(workspaceDir),
+		workspace:        repo,
+		approvals:        approvals,
+		history:          documenthistory.NewService(),
+		initErr:          initErr,
+		fileCache:        newMarkdownFileCache(),
+		docHashes:        map[string]map[string]string{},
+		folderSignatures: map[string]string{},
 	}
 	if len(sectionRepos) > 0 {
 		store.sections = sectionRepos[0]

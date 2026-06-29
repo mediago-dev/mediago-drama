@@ -327,6 +327,34 @@ func (store *Service) ListWorkspaceDocuments(projectID string) (workspaceDocumen
 	return store.listDocuments(projectID)
 }
 
+// ListWorkspaceDocumentsByIDs returns only the requested documents while keeping
+// the same folders/assets envelope. The workspace is loaded once, so it stays a
+// single disk scan regardless of how many ids are requested.
+func (store *Service) ListWorkspaceDocumentsByIDs(projectID string, ids []string) (workspaceDocumentsResponse, error) {
+	response, err := store.listDocuments(projectID)
+	if err != nil {
+		return workspaceDocumentsResponse{}, err
+	}
+	if len(ids) == 0 {
+		response.Documents = nil
+		return response, nil
+	}
+	wanted := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if trimmed := strings.TrimSpace(id); trimmed != "" {
+			wanted[trimmed] = true
+		}
+	}
+	filtered := make([]mediamcp.WorkspaceDocument, 0, len(wanted))
+	for _, document := range response.Documents {
+		if wanted[document.ID] {
+			filtered = append(filtered, document)
+		}
+	}
+	response.Documents = filtered
+	return response, nil
+}
+
 func (store *Service) ListDocumentMetadata(projectID string) (workspaceDocumentMetadataResponse, error) {
 	return store.listDocumentMetadata(projectID)
 }
