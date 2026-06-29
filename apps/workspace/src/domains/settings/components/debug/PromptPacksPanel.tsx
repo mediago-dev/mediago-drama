@@ -1,6 +1,7 @@
 import {
 	BookOpenCheck,
 	ChevronDown,
+	Download,
 	FolderOpen,
 	Library,
 	Loader2,
@@ -9,12 +10,15 @@ import {
 	Save,
 	Settings2,
 	Trash2,
+	Upload,
 } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import {
 	type PromptPack,
+	exportPromptPack,
+	importPromptPackFile,
 	installPromptPack,
 	listPromptPacks,
 	promptPacksKey,
@@ -61,8 +65,11 @@ export const PromptPacksPanel: React.FC = () => {
 	const [installPath, setInstallPath] = useState("");
 	const [busyPackId, setBusyPackId] = useState<string>();
 	const [isInstalling, setIsInstalling] = useState(false);
+	const [exportingPackId, setExportingPackId] = useState<string>();
+	const [isImporting, setIsImporting] = useState(false);
 	const [manageOpen, setManageOpen] = useState(false);
 	const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
+	const importInputRef = useRef<HTMLInputElement | null>(null);
 	const startWindowDrag = useDesktopWindowDrag();
 
 	const refreshPromptData = async () => {
@@ -75,6 +82,39 @@ export const PromptPacksPanel: React.FC = () => {
 					(key.startsWith(promptPresetsKey) || key === promptCategoriesKey),
 			),
 		]);
+	};
+
+	const exportPack = async (pack: PromptPack) => {
+		setExportingPackId(pack.id);
+		try {
+			const exported = await exportPromptPack(pack.id);
+			downloadBlob(exported.blob, exported.fileName || `${pack.id}.mgpack`);
+			toast.success("提示词包已导出", { description: pack.name });
+		} catch (error) {
+			toast.error("导出失败", { description: errorMessage(error) });
+		} finally {
+			setExportingPackId(undefined);
+		}
+	};
+
+	const chooseImportFile = () => {
+		importInputRef.current?.click();
+	};
+
+	const importPackFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+		const file = event.currentTarget.files?.[0];
+		event.currentTarget.value = "";
+		if (!file) return;
+		setIsImporting(true);
+		try {
+			const pack = await importPromptPackFile(file);
+			await refreshPromptData();
+			toast.success("提示词包已导入", { description: pack.name });
+		} catch (error) {
+			toast.error("导入失败", { description: errorMessage(error) });
+		} finally {
+			setIsImporting(false);
+		}
 	};
 
 	const choosePackFile = async () => {
@@ -162,6 +202,27 @@ export const PromptPacksPanel: React.FC = () => {
 						</p>
 					</div>
 					<div className="flex shrink-0 items-center gap-2" data-desktop-no-drag>
+						<input
+							ref={importInputRef}
+							type="file"
+							accept=".mgpack"
+							className="sr-only"
+							aria-label="导入提示词包文件"
+							onChange={(event) => void importPackFile(event)}
+						/>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={chooseImportFile}
+							disabled={isImporting}
+						>
+							{isImporting ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<Upload className="size-4" />
+							)}
+							<span>{isImporting ? "导入中" : "导入"}</span>
+						</Button>
 						<Popover open={manageOpen} onOpenChange={setManageOpen}>
 							<PopoverTrigger asChild>
 								<Button type="button" variant="outline">
@@ -221,7 +282,9 @@ export const PromptPacksPanel: React.FC = () => {
 												<PromptPackPill
 													key={pack.id}
 													busy={busyPackId === pack.id}
+													exporting={exportingPackId === pack.id}
 													pack={pack}
+													onExport={() => void exportPack(pack)}
 													onRemove={() => confirmRemovePack(pack)}
 													onToggle={() => void togglePack(pack)}
 												/>
@@ -272,10 +335,12 @@ export const PromptPacksPanel: React.FC = () => {
 
 const PromptPackPill: React.FC<{
 	busy: boolean;
+	exporting: boolean;
+	onExport: () => void;
 	onRemove: () => void;
 	onToggle: () => void;
 	pack: PromptPack;
-}> = ({ busy, onRemove, onToggle, pack }) => (
+}> = ({ busy, exporting, onExport, onRemove, onToggle, pack }) => (
 	<div
 		className={cn(
 			"flex w-full min-w-0 items-center justify-between gap-2 rounded-md border border-border bg-ide-toolbar px-2 py-1.5",
@@ -306,6 +371,16 @@ const PromptPackPill: React.FC<{
 		>
 			{busy ? <Loader2 className="size-4 animate-spin" /> : <Power className="size-4" />}
 		</Button>
+		<Button
+			type="button"
+			size="icon"
+			variant="ghost"
+			onClick={onExport}
+			disabled={exporting}
+			aria-label="导出提示词包"
+		>
+			{exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+		</Button>
 		{pack.source === "imported" ? (
 			<Button
 				type="button"
@@ -328,6 +403,17 @@ const sourceLabel = (source: PromptPack["source"]) => {
 		case "imported":
 			return "已安装";
 	}
+};
+
+const downloadBlob = (blob: Blob, fileName: string) => {
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = fileName;
+	document.body.append(link);
+	link.click();
+	link.remove();
+	URL.revokeObjectURL(url);
 };
 
 const errorMessage = (error: unknown) => {

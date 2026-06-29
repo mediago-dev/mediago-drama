@@ -10,8 +10,10 @@ export interface BatchGenerationStoredSettings {
 	params?: Record<string, unknown>;
 	promptOptimizeItemId?: string;
 	promptOptimizeRouteId?: string;
+	promptSupplementItemId?: string;
 	routeId?: string;
 	usePromptOptimization?: boolean;
+	usePromptSupplement?: boolean;
 	versionId?: string;
 }
 
@@ -27,6 +29,7 @@ interface BatchGenerationSettingsPreferenceState {
 export const batchGenerationSettingsStorageKey = "generation.batch-settings.v1";
 
 export const batchGenerationPromptOptimizationDefaultEnabled = false;
+export const batchGenerationPromptSupplementDefaultEnabled = false;
 
 export const batchGenerationPromptOptimizationEnabled = (
 	settings: BatchGenerationStoredSettings | null | undefined,
@@ -34,6 +37,13 @@ export const batchGenerationPromptOptimizationEnabled = (
 	typeof settings?.usePromptOptimization === "boolean"
 		? settings.usePromptOptimization
 		: batchGenerationPromptOptimizationDefaultEnabled;
+
+export const batchGenerationPromptSupplementEnabled = (
+	settings: BatchGenerationStoredSettings | null | undefined,
+) =>
+	typeof settings?.usePromptSupplement === "boolean"
+		? settings.usePromptSupplement
+		: batchGenerationPromptSupplementDefaultEnabled;
 
 export const useBatchGenerationSettingsPreferenceStore =
 	create<BatchGenerationSettingsPreferenceState>()(
@@ -104,9 +114,12 @@ function normalizeBatchGenerationStoredSettings(
 		params: isRecord(value.params) ? { ...value.params } : undefined,
 		promptOptimizeItemId: stringValue(value.promptOptimizeItemId),
 		promptOptimizeRouteId: stringValue(value.promptOptimizeRouteId),
+		promptSupplementItemId: stringValue(value.promptSupplementItemId),
 		routeId: stringValue(value.routeId),
 		usePromptOptimization:
 			typeof value.usePromptOptimization === "boolean" ? value.usePromptOptimization : undefined,
+		usePromptSupplement:
+			typeof value.usePromptSupplement === "boolean" ? value.usePromptSupplement : undefined,
 		versionId: stringValue(value.versionId),
 	});
 }
@@ -120,9 +133,14 @@ function compactBatchGenerationStoredSettings(
 		next.params = { ...settings.params };
 	if (settings.promptOptimizeItemId) next.promptOptimizeItemId = settings.promptOptimizeItemId;
 	if (settings.promptOptimizeRouteId) next.promptOptimizeRouteId = settings.promptOptimizeRouteId;
+	if (settings.promptSupplementItemId)
+		next.promptSupplementItemId = settings.promptSupplementItemId;
 	if (settings.routeId) next.routeId = settings.routeId;
 	if (typeof settings.usePromptOptimization === "boolean") {
 		next.usePromptOptimization = settings.usePromptOptimization;
+	}
+	if (typeof settings.usePromptSupplement === "boolean") {
+		next.usePromptSupplement = settings.usePromptSupplement;
 	}
 	if (settings.versionId) next.versionId = settings.versionId;
 	return next;

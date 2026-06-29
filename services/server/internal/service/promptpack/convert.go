@@ -105,7 +105,11 @@ func resolveEntryModels(models []domain.PackEntryModel) []Entry {
 	}
 	entries := make([]Entry, 0, len(resolved))
 	for _, model := range resolved {
-		entries = append(entries, entryFromModel(model))
+		entry := entryFromModel(model)
+		if entryIsHidden(entry) {
+			continue
+		}
+		entries = append(entries, entry)
 	}
 	return entries
 }
@@ -166,6 +170,11 @@ func mustJSON(value map[string]any) string {
 		return "{}"
 	}
 	return string(data)
+}
+
+func entryIsHidden(entry Entry) bool {
+	hidden, ok := entry.Metadata[entryMetadataHidden].(bool)
+	return ok && hidden
 }
 
 func validateEntryForWrite(entry Entry) error {

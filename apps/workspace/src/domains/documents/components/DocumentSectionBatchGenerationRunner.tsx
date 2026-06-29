@@ -16,8 +16,14 @@ export interface DocumentSectionBatchGenerationSettings {
 	family: GenerationFamily;
 	params: Record<string, unknown>;
 	promptOptimization?: GenerationPromptOptimizationRequest;
+	promptSupplement?: DocumentSectionPromptSupplement;
 	route: GenerationRoute;
 	version: GenerationVersion;
+}
+
+export interface DocumentSectionPromptSupplement {
+	referenceName: string;
+	referencePrompt: string;
 }
 
 export interface DocumentSectionBatchGenerationJob {
@@ -42,6 +48,17 @@ const submittedBatchGenerationJobKeys = new Set<string>();
 
 export const clearSubmittedBatchGenerationJobIdsForTest = () => {
 	submittedBatchGenerationJobKeys.clear();
+};
+
+export const appendDocumentSectionPromptSupplement = (
+	currentPrompt: string,
+	supplement: DocumentSectionPromptSupplement | null | undefined,
+) => {
+	const current = currentPrompt.trim();
+	const reference = supplement?.referencePrompt.trim() ?? "";
+	if (!current) return reference;
+	if (!reference || current.includes(reference)) return current;
+	return `${current}\n\n${reference}`;
 };
 
 export const DocumentSectionBatchGenerationRunner: React.FC<
@@ -114,7 +131,14 @@ const DocumentSectionBatchGenerationWorker: React.FC<{
 		if (submittedBatchGenerationJobKeys.has(submissionKey)) return;
 		if (!workspace.hasLiveCatalog) return;
 
-		const hasDefaultPrompt = generationContext.activeSection.prompt.trim() !== "";
+		const supplementalPrompt = job.generationSettings?.promptSupplement
+			? appendDocumentSectionPromptSupplement(
+					generationContext.activeSection.prompt,
+					job.generationSettings.promptSupplement,
+				)
+			: undefined;
+		const hasDefaultPrompt =
+			(supplementalPrompt ?? generationContext.activeSection.prompt).trim() !== "";
 		const hasDocumentContext = Boolean(generationContext.documentContext);
 		const routeReady =
 			workspace.hasConfiguredRoutesForKind &&
@@ -137,6 +161,7 @@ const DocumentSectionBatchGenerationWorker: React.FC<{
 			? {
 					selectedFamily: job.generationSettings.family,
 					selectedParams: job.generationSettings.params,
+					...(supplementalPrompt !== undefined ? { prompt: supplementalPrompt } : {}),
 					promptOptimization: job.generationSettings.promptOptimization,
 					selectedRoute: job.generationSettings.route,
 					selectedVersion: job.generationSettings.version,
@@ -154,6 +179,7 @@ const DocumentSectionBatchGenerationWorker: React.FC<{
 		job.generationSettings?.family,
 		job.generationSettings?.params,
 		job.generationSettings?.promptOptimization,
+		job.generationSettings?.promptSupplement,
 		job.generationSettings?.route,
 		job.generationSettings?.version,
 		job.id,

@@ -27,6 +27,7 @@ import {
 	SelectValue,
 } from "@/shared/components/ui/select";
 import { composeSkillMarkdown, splitSkillMarkdown } from "@/domains/settings/lib/skill-markdown";
+import { orderSkillsForPrimaryFlows } from "@/domains/settings/lib/skill-order";
 import { useToast } from "@/hooks/useToast";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
@@ -36,12 +37,13 @@ import { SettingsMarkdownEditor, SettingsMarkdownPreview } from "./SettingsMarkd
 export const SkillsEditorPanel: React.FC = () => {
 	const toast = useToast();
 	const { data: skills = [], isLoading, mutate: mutateSkills } = useSWR(skillsKey, listSkills);
+	const orderedSkills = useMemo(() => orderSkillsForPrimaryFlows(skills), [skills]);
 	const [selectedName, setSelectedName] = useState("");
 	const [frontmatterDraft, setFrontmatterDraft] = useState("");
 	const [bodyDraft, setBodyDraft] = useState("");
 	const selectedMeta = useMemo(
-		() => skills.find((skill) => skill.name === selectedName) ?? skills[0],
-		[selectedName, skills],
+		() => orderedSkills.find((skill) => skill.name === selectedName) ?? orderedSkills[0],
+		[selectedName, orderedSkills],
 	);
 	const skillDetailKey = selectedMeta ? `${skillsKey}/${selectedMeta.name}` : null;
 	const {
@@ -63,11 +65,11 @@ export const SkillsEditorPanel: React.FC = () => {
 	);
 
 	useEffect(() => {
-		if (!skills.length) return;
-		if (!selectedName || !skills.some((skill) => skill.name === selectedName)) {
-			setSelectedName(skills[0].name);
+		if (!orderedSkills.length) return;
+		if (!selectedName || !orderedSkills.some((skill) => skill.name === selectedName)) {
+			setSelectedName(orderedSkills[0].name);
 		}
-	}, [selectedName, skills]);
+	}, [selectedName, orderedSkills]);
 
 	useEffect(() => {
 		const parts = splitSkillMarkdown(selectedSkill?.content ?? "");
@@ -306,7 +308,7 @@ export const SkillsEditorPanel: React.FC = () => {
 										<SelectValue placeholder="选择 Skill" />
 									</SelectTrigger>
 									<SelectContent align="start">
-										{skills.map((skill) => (
+										{orderedSkills.map((skill) => (
 											<SelectItem key={skill.name} value={skill.name}>
 												<span className="flex min-w-0 w-full items-center gap-2">
 													<span className="min-w-0 flex-1 truncate">

@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GenerationRoute } from "@/domains/generation/api/generation";
 import { BatchGenerationSettingsDialog } from "./BatchGenerationSettingsDialog";
 import {
@@ -105,6 +105,10 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 		workspaceMocks.updateParam.mockClear();
 	});
 
+	afterEach(() => {
+		cleanup();
+	});
+
 	it("shows the last saved prompt optimization choice when opened", async () => {
 		useBatchGenerationSettingsPreferenceStore.getState().setSettings("image", {
 			promptOptimizeItemId: "prompt-pack-1",
@@ -124,8 +128,32 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 			/>,
 		);
 
-		await waitFor(() => expect(screen.getByRole("checkbox")).toBeChecked());
+		await waitFor(() =>
+			expect(screen.getByRole("checkbox", { name: "优化并生成时使用" })).toBeChecked(),
+		);
 		expect(screen.getByRole("button", { name: /优化并生成/ })).toBeEnabled();
+	});
+
+	it("shows the last saved prompt supplement choice when opened", async () => {
+		useBatchGenerationSettingsPreferenceStore.getState().setSettings("image", {
+			promptSupplementItemId: "prompt-pack-1",
+			routeId: "image-route-1",
+			usePromptSupplement: true,
+			versionId: "gpt-image-2",
+		});
+
+		render(
+			<BatchGenerationSettingsDialog
+				kind="image"
+				open
+				selectedCount={1}
+				onConfirm={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		await waitFor(() => expect(screen.getByRole("checkbox", { name: "生成时追加" })).toBeChecked());
+		expect(screen.getByRole("combobox", { name: "补充提示词包" })).toBeEnabled();
 	});
 
 	it("passes the last saved model selection into workspace initialization", () => {

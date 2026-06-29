@@ -4,6 +4,7 @@ import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import {
+	appendDocumentSectionPromptSupplement,
 	clearSubmittedBatchGenerationJobIdsForTest,
 	DocumentSectionBatchGenerationRunner,
 	type DocumentSectionBatchGenerationJob,
@@ -238,6 +239,64 @@ describe("DocumentSectionBatchGenerationRunner", () => {
 		await waitFor(() => expect(onJobSettled).toHaveBeenCalledWith("job-1"));
 	});
 
+	it("appends a batch prompt supplement before submitting generation", async () => {
+		const onJobSettled = vi.fn();
+		const generationSettings = {
+			family: { id: "image-family", kind: "image", label: "Image family" },
+			params: { n: 1, ratio: "16:9" },
+			promptSupplement: {
+				referenceName: "电影感提示词",
+				referencePrompt: "强化镜头语言、光影与构图。",
+			},
+			route: {
+				adapter: "test.adapter",
+				async: false,
+				configured: true,
+				docUrl: "https://example.test/docs",
+				familyId: "image-family",
+				id: "image-route",
+				kind: "image",
+				label: "Image route",
+				model: "image-model",
+				params: [],
+				provider: "provider",
+				status: "available",
+				supportsReferenceUrls: true,
+				versionId: "image-version",
+			},
+			version: {
+				canonicalModel: "image-model",
+				capabilities: { async: false, supportsReferenceUrls: true },
+				familyId: "image-family",
+				id: "image-version",
+				kind: "image",
+				label: "Image version",
+			},
+		} satisfies NonNullable<DocumentSectionBatchGenerationJob["generationSettings"]>;
+
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<DocumentSectionBatchGenerationRunner
+					jobs={[{ ...job, generationSettings }]}
+					onJobSettled={onJobSettled}
+				/>
+			</SWRConfig>,
+		);
+
+		await waitFor(() => {
+			expect(submitGeneration).toHaveBeenCalledWith({
+				resetPrompt: false,
+				prompt: "## 林书彤\n\n冷静的调查记者。\n\n强化镜头语言、光影与构图。",
+				selectedFamily: generationSettings?.family,
+				selectedParams: generationSettings?.params,
+				promptOptimization: undefined,
+				selectedRoute: generationSettings?.route,
+				selectedVersion: generationSettings?.version,
+			});
+		});
+		await waitFor(() => expect(onJobSettled).toHaveBeenCalledWith("job-1"));
+	});
+
 	it("settles with an error when no configured route is available", async () => {
 		const onJobError = vi.fn();
 		const onJobSettled = vi.fn();
@@ -267,6 +326,35 @@ describe("DocumentSectionBatchGenerationRunner", () => {
 		});
 		expect(submitGeneration).not.toHaveBeenCalled();
 		expect(onJobSettled).toHaveBeenCalledWith("job-1");
+	});
+});
+
+describe("appendDocumentSectionPromptSupplement", () => {
+	it("appends the supplement under the current prompt", () => {
+		expect(
+			appendDocumentSectionPromptSupplement("原提示词", {
+				referenceName: "补充",
+				referencePrompt: "补充提示词",
+			}),
+		).toBe("原提示词\n\n补充提示词");
+	});
+
+	it("uses the supplement as the prompt when the current prompt is empty", () => {
+		expect(
+			appendDocumentSectionPromptSupplement(" ", {
+				referenceName: "补充",
+				referencePrompt: "补充提示词",
+			}),
+		).toBe("补充提示词");
+	});
+
+	it("does not append duplicate supplement content", () => {
+		expect(
+			appendDocumentSectionPromptSupplement("原提示词\n\n补充提示词", {
+				referenceName: "补充",
+				referencePrompt: "补充提示词",
+			}),
+		).toBe("原提示词\n\n补充提示词");
 	});
 });
 

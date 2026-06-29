@@ -2,7 +2,10 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { mutate as mutateSWR } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GenerationNotification } from "@/domains/generation/api/generation";
-import { getGenerationNotifications } from "@/domains/generation/api/generation";
+import {
+	createGenerationNotificationEventSource,
+	getGenerationNotifications,
+} from "@/domains/generation/api/generation";
 import { showGenerationSuccessSystemNotification } from "@/domains/generation/lib/generation-notifications";
 import { useGenerationNotificationStore } from "@/domains/generation/stores/generation-notifications";
 import { GenerationNotificationSync } from "./GenerationNotificationSync";
@@ -11,6 +14,7 @@ vi.mock("@/domains/generation/api/generation", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@/domains/generation/api/generation")>();
 	return {
 		...actual,
+		createGenerationNotificationEventSource: vi.fn(),
 		getGenerationNotifications: vi.fn(),
 	};
 });
@@ -30,7 +34,12 @@ vi.mock("swr", async (importOriginal) => {
 describe("GenerationNotificationSync", () => {
 	beforeEach(() => {
 		FakeEventSource.instances = [];
-		vi.stubGlobal("EventSource", FakeEventSource);
+		vi.mocked(createGenerationNotificationEventSource).mockImplementation(
+			() =>
+				new FakeEventSource() as unknown as ReturnType<
+					typeof createGenerationNotificationEventSource
+				>,
+		);
 		vi.mocked(getGenerationNotifications).mockResolvedValue({ notifications: [] });
 	});
 
@@ -56,7 +65,7 @@ describe("GenerationNotificationSync", () => {
 			sourceTaskId: "task-1",
 			readAt: null,
 		});
-		expect(FakeEventSource.instances[0]?.url).toBe("/api/v1/generation/notifications/events");
+		expect(createGenerationNotificationEventSource).toHaveBeenCalledWith();
 		expect(showGenerationSuccessSystemNotification).not.toHaveBeenCalled();
 	});
 
@@ -98,13 +107,11 @@ class FakeEventSource {
 	static readonly closed = 2;
 
 	readonly listeners = new Map<string, Set<(event: MessageEvent<string>) => void>>();
-	readonly url: string;
 	readyState = 1;
 	onopen: ((event: Event) => void) | null = null;
 	onerror: ((event: Event) => void) | null = null;
 
-	constructor(url: string) {
-		this.url = url;
+	constructor() {
 		FakeEventSource.instances.push(this);
 	}
 

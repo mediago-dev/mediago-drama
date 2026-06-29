@@ -120,12 +120,21 @@ func TestStoreCreateUpdateAndDeleteUserPromptEntry(t *testing.T) {
 	}
 }
 
-func TestStoreDeleteBuiltinDefaultIsReadonly(t *testing.T) {
+func TestStoreDeletePackagePromptEntryHidesIt(t *testing.T) {
 	store := newTestStore(t)
 
-	err := store.Delete(context.Background(), "image-character-concept")
-	if !errors.Is(err, ErrBuiltinPromptEntryReadonly) {
-		t.Fatalf("Delete() error = %v, want ErrBuiltinPromptEntryReadonly", err)
+	if err := store.Delete(context.Background(), "image-character-concept"); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+	if _, err := store.Get(context.Background(), "image-character-concept"); !errors.Is(err, ErrPromptEntryNotFound) {
+		t.Fatalf("Get() error = %v, want ErrPromptEntryNotFound", err)
+	}
+	entries, err := store.List(context.Background(), Filter{Category: categoryExtra})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if hasPromptEntry(entries, "image-character-concept") {
+		t.Fatalf("entries = %#v, want package prompt hidden", entries)
 	}
 }
 

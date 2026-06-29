@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	httpresponse "github.com/mediago-dev/mediago-drama/services/server/internal/http/response"
@@ -33,6 +36,67 @@ type updatePromptPackRequest struct {
 
 type deletePromptPackResponse struct {
 	Deleted bool `json:"deleted"`
+}
+
+// HandleExportPack godoc
+// @Summary 导出提示词包
+// @Description 按 MediaGo .mgpack 格式导出一个完整提示词包。
+// @Tags Prompt Packs
+// @Produce octet-stream
+// @Param id path string true "Pack ID"
+// @Success 200 {file} file
+// @Failure 403 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/packs/{id}/export [get]
+func (handler PromptPacks) HandleExportPack(context *gin.Context) {
+	exported, err := handler.store.ExportPack(context.Request.Context(), context.Param("id"))
+	if err != nil {
+		writePromptPackError(context, err)
+		return
+	}
+	context.Header("Content-Type", "application/octet-stream")
+	context.Header(
+		"Content-Disposition",
+		fmt.Sprintf(`attachment; filename="%s"`, strings.ReplaceAll(exported.FileName, `"`, "")),
+	)
+	context.Data(http.StatusOK, "application/octet-stream", exported.Data)
+}
+
+// HandleImportPack godoc
+// @Summary 导入用户提示词包
+// @Description 上传并安装一个 MediaGo .mgpack 提示词包。
+// @Tags Prompt Packs
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "Prompt pack .mgpack file"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/packs/import [post]
+func (handler PromptPacks) HandleImportPack(context *gin.Context) {
+	file, err := context.FormFile("file")
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, errors.New("file is required"))
+		return
+	}
+	source, err := file.Open()
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	defer source.Close()
+	data, err := io.ReadAll(io.LimitReader(source, promptpack.MaxUploadBytes()+1))
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	pack, err := handler.store.InstallData(context.Request.Context(), file.Filename, data)
+	if err != nil {
+		writePromptPackError(context, err)
+		return
+	}
+	httpresponse.OK(context, pack)
 }
 
 // HandleListPacks godoc

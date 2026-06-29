@@ -43,7 +43,7 @@ var (
 	ErrPromptEntryNotFound = errors.New("prompt entry not found")
 	// ErrPromptEntryExists reports a duplicate user prompt entry creation request.
 	ErrPromptEntryExists = errors.New("prompt entry already exists")
-	// ErrBuiltinPromptEntryReadonly reports attempts to delete a package-backed prompt entry.
+	// ErrBuiltinPromptEntryReadonly reports attempts to mutate a protected package-backed prompt entry.
 	ErrBuiltinPromptEntryReadonly = errors.New("package prompt entry cannot be deleted")
 	// ErrInvalidPromptCategory reports an invalid prompt category payload.
 	ErrInvalidPromptCategory = errors.New("invalid prompt category")
@@ -262,12 +262,12 @@ func (store *Service) Reset(ctx context.Context, id string) (PromptEntry, error)
 	return promptEntryFromPackEntry(reset), nil
 }
 
-// Delete removes a user-created prompt entry. Built-in prompt entries can be reset, not deleted.
+// Delete removes a user-created prompt entry or hides a package-backed prompt entry.
 func (store *Service) Delete(ctx context.Context, id string) error {
 	if err := store.ensureReady(); err != nil {
 		return err
 	}
-	err := store.store.DeleteEntry(ctx, instructionpack.KindPrompt, strings.TrimSpace(id))
+	err := store.store.HideEntry(ctx, instructionpack.KindPrompt, strings.TrimSpace(id))
 	if errors.Is(err, promptpack.ErrEntryNotFound) {
 		return fmt.Errorf("%w: %s", ErrPromptEntryNotFound, strings.TrimSpace(id))
 	}

@@ -1,4 +1,11 @@
-import { Check, Loader2, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
+import {
+	Check,
+	Loader2,
+	MessageSquarePlus,
+	SlidersHorizontal,
+	Sparkles,
+	Wand2,
+} from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -26,6 +33,7 @@ import {
 	type BatchGenerationDialogKind,
 	type BatchGenerationStoredSettings,
 	batchGenerationPromptOptimizationEnabled,
+	batchGenerationPromptSupplementEnabled,
 	useBatchGenerationSettingsPreferenceStore,
 } from "@/domains/generation/stores/batch-generation-settings";
 import {
@@ -43,8 +51,14 @@ export interface BatchGenerationSettings {
 	family: GenerationFamily;
 	params: Record<string, unknown>;
 	promptOptimization?: GenerationPromptOptimizationRequest;
+	promptSupplement?: BatchGenerationPromptSupplement;
 	route: GenerationRoute;
 	version: GenerationVersion;
+}
+
+export interface BatchGenerationPromptSupplement {
+	referenceName: string;
+	referencePrompt: string;
 }
 
 export const batchGenerationParamsForConfirm = (
@@ -84,6 +98,19 @@ export const batchGenerationPromptOptimizationForConfirm = (
 	};
 };
 
+export const batchGenerationPromptSupplementForConfirm = (
+	item: Pick<PromptInsertItem, "name" | "prompt"> | null | undefined,
+): BatchGenerationPromptSupplement | undefined => {
+	if (!item) return undefined;
+	const referencePrompt = item.prompt.trim();
+	if (!referencePrompt) return undefined;
+
+	return {
+		referenceName: item.name,
+		referencePrompt,
+	};
+};
+
 export const batchGenerationConfirmButtonLabel = (optimizePrompt: boolean) =>
 	optimizePrompt ? "优化并生成" : "生成";
 
@@ -107,8 +134,14 @@ export const BatchGenerationSettingsDialog: React.FC<{
 	const [selectedPromptOptimizeRouteId, setSelectedPromptOptimizeRouteId] = useState(
 		settingsToRestore?.promptOptimizeRouteId ?? "",
 	);
+	const [selectedPromptSupplementItemId, setSelectedPromptSupplementItemId] = useState<
+		string | null
+	>(settingsToRestore?.promptSupplementItemId ?? null);
 	const [usePromptOptimization, setUsePromptOptimization] = useState(() =>
 		batchGenerationPromptOptimizationEnabled(settingsToRestore),
+	);
+	const [usePromptSupplement, setUsePromptSupplement] = useState(() =>
+		batchGenerationPromptSupplementEnabled(settingsToRestore),
 	);
 	const settingsForInitialModelSelection = open
 		? (useBatchGenerationSettingsPreferenceStore.getState().settingsByKind[kind] ?? null)
@@ -147,7 +180,9 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		setSettingsToRestore(latestSettings);
 		setSelectedPromptOptimizeItemId(latestSettings?.promptOptimizeItemId ?? null);
 		setSelectedPromptOptimizeRouteId(latestSettings?.promptOptimizeRouteId ?? "");
+		setSelectedPromptSupplementItemId(latestSettings?.promptSupplementItemId ?? null);
 		setUsePromptOptimization(batchGenerationPromptOptimizationEnabled(latestSettings));
+		setUsePromptSupplement(batchGenerationPromptSupplementEnabled(latestSettings));
 		restoredStoredSettingsRef.current = false;
 	}, [kind, open]);
 
@@ -328,6 +363,8 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		null;
 	const selectedPromptOptimizeItem =
 		ws.promptInsertItems.find((item) => item.id === selectedPromptOptimizeItemId) ?? null;
+	const selectedPromptSupplementItem =
+		ws.promptInsertItems.find((item) => item.id === selectedPromptSupplementItemId) ?? null;
 	useEffect(() => {
 		if (!selectedPromptOptimizeItemId || ws.promptInsertItems.length === 0) return;
 		if (ws.promptInsertItems.some((item) => item.id === selectedPromptOptimizeItemId)) return;
@@ -337,9 +374,23 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		if (selectedPromptOptimizeItemId || !ws.promptInsertItems[0]) return;
 		setSelectedPromptOptimizeItemId(ws.promptInsertItems[0].id);
 	}, [selectedPromptOptimizeItemId, ws.promptInsertItems]);
+	useEffect(() => {
+		if (!selectedPromptSupplementItemId || ws.promptInsertItems.length === 0) return;
+		if (ws.promptInsertItems.some((item) => item.id === selectedPromptSupplementItemId)) return;
+		setSelectedPromptSupplementItemId(null);
+	}, [selectedPromptSupplementItemId, ws.promptInsertItems]);
+	useEffect(() => {
+		if (selectedPromptSupplementItemId || !ws.promptInsertItems[0]) return;
+		setSelectedPromptSupplementItemId(ws.promptInsertItems[0].id);
+	}, [selectedPromptSupplementItemId, ws.promptInsertItems]);
+	const promptSupplement = useMemo(
+		() => batchGenerationPromptSupplementForConfirm(selectedPromptSupplementItem),
+		[selectedPromptSupplementItem],
+	);
 	const promptOptimizationReady = Boolean(
 		selectedPromptOptimizeItem && selectedPromptOptimizeModel?.route,
 	);
+	const promptSupplementReady = Boolean(promptSupplement);
 	const hasAvailableRoute =
 		ws.hasLiveCatalog &&
 		ws.hasConfiguredRoutesForKind &&
@@ -347,8 +398,10 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		ws.selectedRoute.status === "available" &&
 		ws.selectedRoute.configured;
 	const confirmDisabled = selectedCount === 0 || !hasAvailableRoute;
-	const optimizeConfirmDisabled = confirmDisabled || !promptOptimizationReady;
-	const primaryConfirmDisabled = usePromptOptimization ? optimizeConfirmDisabled : confirmDisabled;
+	const primaryConfirmDisabled =
+		confirmDisabled ||
+		(usePromptOptimization && !promptOptimizationReady) ||
+		(usePromptSupplement && !promptSupplementReady);
 	const primaryConfirmLabel = batchGenerationConfirmButtonLabel(usePromptOptimization);
 	const selectedSettingsDraft = useMemo<BatchGenerationStoredSettings>(
 		() => ({
@@ -361,8 +414,10 @@ export const BatchGenerationSettingsDialog: React.FC<{
 			),
 			promptOptimizeItemId: selectedPromptOptimizeItem?.id,
 			promptOptimizeRouteId: selectedPromptOptimizeModel?.id,
+			promptSupplementItemId: selectedPromptSupplementItem?.id,
 			routeId: ws.selectedRoute.id,
 			usePromptOptimization,
+			usePromptSupplement,
 			versionId: ws.selectedVersion.id,
 		}),
 		[
@@ -370,7 +425,9 @@ export const BatchGenerationSettingsDialog: React.FC<{
 			generationCountParamName,
 			selectedPromptOptimizeItem?.id,
 			selectedPromptOptimizeModel?.id,
+			selectedPromptSupplementItem?.id,
 			usePromptOptimization,
+			usePromptSupplement,
 			ws.selectedFamily.id,
 			ws.selectedParams,
 			ws.selectedRoute,
@@ -388,13 +445,20 @@ export const BatchGenerationSettingsDialog: React.FC<{
 	const title = `批量生成${kind === "image" ? "图片" : "视频"}设置`;
 
 	const confirm = (optimizePrompt = false) => {
-		if (confirmDisabled || (optimizePrompt && !promptOptimizationReady)) return;
+		if (
+			confirmDisabled ||
+			(optimizePrompt && !promptOptimizationReady) ||
+			(usePromptSupplement && !promptSupplement)
+		) {
+			return;
+		}
 		const promptOptimization = optimizePrompt
 			? batchGenerationPromptOptimizationForConfirm(
 					selectedPromptOptimizeItem,
 					selectedPromptOptimizeModel,
 				)
 			: undefined;
+		const selectedPromptSupplement = usePromptSupplement ? promptSupplement : undefined;
 		const params = batchGenerationParamsForConfirm(
 			ws.selectedRoute,
 			ws.selectedParams,
@@ -405,11 +469,13 @@ export const BatchGenerationSettingsDialog: React.FC<{
 			...selectedSettingsDraft,
 			params,
 			usePromptOptimization: optimizePrompt,
+			usePromptSupplement,
 		});
 		onConfirm({
 			family: ws.selectedFamily,
 			params,
 			promptOptimization,
+			promptSupplement: selectedPromptSupplement,
 			route: ws.selectedRoute,
 			version: ws.selectedVersion,
 		});
@@ -537,6 +603,41 @@ export const BatchGenerationSettingsDialog: React.FC<{
 						<section className="grid gap-3 rounded-sm border border-border bg-ide-editor p-3">
 							<div className="flex min-w-0 items-center justify-between gap-3">
 								<div className="flex min-w-0 items-center gap-2">
+									<MessageSquarePlus className="size-4 shrink-0 text-primary" />
+									<h3 className="text-sm font-semibold text-foreground">补充提示词</h3>
+								</div>
+								<label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-sm border border-border bg-card px-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-ide-list-hover">
+									<input
+										type="checkbox"
+										checked={usePromptSupplement}
+										className="size-4 rounded-sm border-border accent-primary"
+										onChange={(event) => setUsePromptSupplement(event.target.checked)}
+									/>
+									<span>生成时追加</span>
+								</label>
+							</div>
+
+							<div className="flex flex-wrap items-center gap-2">
+								<LabeledInlineControl label="提示词包">
+									<PromptPackSelect
+										ariaLabel="补充提示词包"
+										disabled={!usePromptSupplement || ws.promptInsertItems.length === 0}
+										items={ws.promptInsertItems}
+										selectedItem={selectedPromptSupplementItem}
+										onValueChange={setSelectedPromptSupplementItemId}
+									/>
+								</LabeledInlineControl>
+							</div>
+							{usePromptSupplement && !promptSupplementReady ? (
+								<p className="text-xs text-muted-foreground">
+									需要可用的提示词包后才能追加并生成。
+								</p>
+							) : null}
+						</section>
+
+						<section className="grid gap-3 rounded-sm border border-border bg-ide-editor p-3">
+							<div className="flex min-w-0 items-center justify-between gap-3">
+								<div className="flex min-w-0 items-center gap-2">
 									<Wand2 className="size-4 shrink-0 text-primary" />
 									<h3 className="text-sm font-semibold text-foreground">优化提示词</h3>
 								</div>
@@ -553,34 +654,13 @@ export const BatchGenerationSettingsDialog: React.FC<{
 
 							<div className="flex flex-wrap items-center gap-2">
 								<LabeledInlineControl label="提示词包">
-									<Select
-										value={selectedPromptOptimizeItem?.id}
+									<PromptPackSelect
+										ariaLabel="优化提示词包"
 										disabled={!usePromptOptimization || ws.promptInsertItems.length === 0}
+										items={ws.promptInsertItems}
+										selectedItem={selectedPromptOptimizeItem}
 										onValueChange={setSelectedPromptOptimizeItemId}
-									>
-										<SelectTrigger
-											aria-label="提示词包"
-											className="h-8 min-w-52 max-w-80 rounded-sm border-input bg-muted px-2 text-xs font-semibold shadow-none"
-										>
-											<span className="min-w-0 truncate">
-												{selectedPromptOptimizeItem?.name ?? "无可用提示词包"}
-											</span>
-										</SelectTrigger>
-										<SelectContent align="start" className="max-h-80">
-											{ws.promptInsertItems.map((item) => (
-												<SelectItem key={item.id} value={item.id} textValue={item.name}>
-													<span className="flex min-w-0 flex-col">
-														<span className="min-w-0 truncate text-xs font-semibold">
-															{item.name}
-														</span>
-														<span className="min-w-0 truncate text-2xs text-muted-foreground">
-															{promptOptimizeItemMeta(item)}
-														</span>
-													</span>
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									/>
 								</LabeledInlineControl>
 								<LabeledInlineControl label="优化模型">
 									<Select
@@ -665,6 +745,35 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		</GenerationModalShell>
 	);
 };
+
+const PromptPackSelect: React.FC<{
+	ariaLabel: string;
+	disabled: boolean;
+	items: PromptInsertItem[];
+	onValueChange: (value: string) => void;
+	selectedItem: PromptInsertItem | null;
+}> = ({ ariaLabel, disabled, items, onValueChange, selectedItem }) => (
+	<Select value={selectedItem?.id ?? ""} disabled={disabled} onValueChange={onValueChange}>
+		<SelectTrigger
+			aria-label={ariaLabel}
+			className="h-8 min-w-52 max-w-80 rounded-sm border-input bg-muted px-2 text-xs font-semibold shadow-none"
+		>
+			<span className="min-w-0 truncate">{selectedItem?.name ?? "无可用提示词包"}</span>
+		</SelectTrigger>
+		<SelectContent align="start" className="max-h-80">
+			{items.map((item) => (
+				<SelectItem key={item.id} value={item.id} textValue={item.name}>
+					<span className="flex min-w-0 flex-col">
+						<span className="min-w-0 truncate text-xs font-semibold">{item.name}</span>
+						<span className="min-w-0 truncate text-2xs text-muted-foreground">
+							{promptOptimizeItemMeta(item)}
+						</span>
+					</span>
+				</SelectItem>
+			))}
+		</SelectContent>
+	</Select>
+);
 
 const LabeledInlineControl: React.FC<{
 	children: React.ReactNode;
