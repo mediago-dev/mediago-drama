@@ -81,6 +81,18 @@ export interface DocumentProposal {
 	summary?: string;
 }
 
+/**
+ * An incremental workspace update applied on top of the current store state.
+ * `changedDocuments` are upserted (dirty local copies are preserved),
+ * `removedDocumentIds` are dropped, and `folders` replaces the tree only when the
+ * folder structure changed.
+ */
+export interface WorkspaceDocumentsDelta {
+	changedDocuments: MarkdownDocument[];
+	removedDocumentIds: string[];
+	folders?: DocumentFolder[];
+}
+
 export interface DocumentSelection {
 	documentId: string;
 	text: string;
@@ -172,6 +184,7 @@ export interface DocumentsState {
 	syncMessage: string;
 	addComment: (documentId: string, anchorText: string, body: string) => void;
 	applyDocumentUpdate: (proposal: DocumentProposal) => void;
+	applyWorkspaceDelta: (delta: WorkspaceDocumentsDelta) => void;
 	applyOperations: (
 		documentId: string,
 		operations: DocumentOperation[],

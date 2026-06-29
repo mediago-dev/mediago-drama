@@ -42,6 +42,14 @@ export interface WorkspaceEventPayload {
 	projectId?: string;
 	message?: string;
 	createdAt?: string;
+	/** When true the client should reload the whole workspace (no usable delta). */
+	fullReload?: boolean;
+	/** Documents whose content or metadata changed; fetch these incrementally. */
+	changedDocumentIds?: string[];
+	/** Documents that were removed on disk. */
+	removedDocumentIds?: string[];
+	/** The folder tree changed (folder add/rename/move/delete). */
+	structureChanged?: boolean;
 }
 
 export type WorkspaceStatePayload = Omit<
@@ -342,9 +350,11 @@ export const updateWorkspaceState = async (
 	return response.data;
 };
 
-export const getWorkspaceDocuments = async (projectId?: string | null) => {
+export const getWorkspaceDocuments = async (projectId?: string | null, ids?: string[]) => {
+	const scopedIds = ids?.filter((id) => id.trim() !== "");
 	const response = await httpClient.get<WorkspaceDocumentsPayload>(
 		workspaceDocumentsKey(projectId),
+		scopedIds && scopedIds.length > 0 ? { params: { ids: scopedIds.join(",") } } : undefined,
 	);
 	return response.data;
 };

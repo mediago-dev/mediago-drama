@@ -7,6 +7,7 @@ import {
 	createWorkspaceEventSource,
 	createWorkspaceFolder,
 	getWorkspaceDocuments,
+	getWorkspaceFolders,
 	getWorkspaceState,
 	updateWorkspaceDocumentSectionMention,
 	updateWorkspaceDocumentRecord,
@@ -36,6 +37,7 @@ vi.mock("@/domains/workspace/api/workspace", () => ({
 	deleteWorkspaceFolder: vi.fn(),
 	deleteWorkspaceDocumentRecord: vi.fn(),
 	getWorkspaceDocuments: vi.fn(),
+	getWorkspaceFolders: vi.fn(),
 	getWorkspaceState: vi.fn(),
 	updateWorkspaceFolder: vi.fn(),
 	updateWorkspaceDocumentSectionMention: vi.fn(),
@@ -100,7 +102,7 @@ const makeLogEntry = (documentId: string): DocumentOperationLogEntry => ({
 });
 
 type FakeWorkspaceEventSource = ReturnType<typeof createWorkspaceEventSource> & {
-	emit: (type: string) => void;
+	emit: (type: string, data?: string) => void;
 };
 
 const createFakeWorkspaceEventSource = (): FakeWorkspaceEventSource => {
@@ -112,9 +114,9 @@ const createFakeWorkspaceEventSource = (): FakeWorkspaceEventSource => {
 			listeners.set(type, eventListeners);
 		}),
 		close: vi.fn(),
-		emit: (type: string) => {
+		emit: (type: string, data = "") => {
 			for (const listener of listeners.get(type) ?? []) {
-				listener({ data: "", lastEventId: "" } as MessageEvent);
+				listener({ data, lastEventId: "" } as MessageEvent);
 			}
 		},
 		removeEventListener: vi.fn((type: string, listener: (event: MessageEvent) => void) => {
@@ -134,6 +136,7 @@ describe("documents store remote sync", () => {
 		vi.mocked(createWorkspaceEventSource).mockReset();
 		vi.mocked(createWorkspaceFolder).mockReset();
 		vi.mocked(getWorkspaceDocuments).mockReset();
+		vi.mocked(getWorkspaceFolders).mockReset();
 		vi.mocked(getWorkspaceState).mockReset();
 		vi.mocked(updateProjectAsset).mockReset();
 		vi.mocked(updateWorkspaceDocumentSectionMention).mockReset();
@@ -885,6 +888,172 @@ describe("documents store remote sync", () => {
 		const state = useDocumentsStore.getState();
 		expect(state.documents.map((document) => document.id)).toEqual(["doc-event"]);
 		expect(state.folders.map((folder) => folder.id)).toEqual(["folder-event"]);
+	});
+
+	it("applies an incremental delta from a documents.changed event without a full reload", async () => {
+		vi.stubGlobal("EventSource", class {});
+		const source = createFakeWorkspaceEventSource();
+		vi.mocked(createWorkspaceEventSource).mockReturnValue(source);
+		vi.mocked(useSWR).mockReturnValue({
+			data: undefined,
+			error: undefined,
+			isLoading: false,
+		} as ReturnType<typeof useSWR>);
+		vi.mocked(getWorkspaceDocuments).mockResolvedValue({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [{ ...makeDocument("doc-a"), content: "# updated a\n", version: 3 }],
+			folders: [],
+			assets: [],
+		});
+
+		useDocumentsStore
+			.getState()
+			.hydrateWorkspaceState(
+				[makeDocument("doc-a"), makeDocument("doc-b")],
+				[],
+				"/workspace/project-a",
+				"project-a",
+				[],
+				[],
+			);
+
+		render(React.createElement(DocumentStateSync, { projectId: "project-a" }));
+		source.emit(
+			"workspace.documents.changed",
+			JSON.stringify({
+				type: "workspace.documents.changed",
+				projectId: "project-a",
+				changedDocumentIds: ["doc-a"],
+			}),
+		);
+
+		await waitFor(() => {
+			expect(
+				useDocumentsStore.getState().documents.find((document) => document.id === "doc-a")?.content,
+			).toBe("# updated a\n");
+		});
+		expect(getWorkspaceDocuments).toHaveBeenCalledWith("project-a", ["doc-a"]);
+		expect(getWorkspaceState).not.toHaveBeenCalled();
+		// Untouched document stays intact.
+		expect(
+			useDocumentsStore
+				.getState()
+				.documents.map((document) => document.id)
+				.sort(),
+		).toEqual(["doc-a", "doc-b"]);
+	});
+
+	it("does a full reload when a documents.changed event requests it", async () => {
+		vi.stubGlobal("EventSource", class {});
+		const source = createFakeWorkspaceEventSource();
+		vi.mocked(createWorkspaceEventSource).mockReturnValue(source);
+		vi.mocked(useSWR).mockReturnValue({
+			data: undefined,
+			error: undefined,
+			isLoading: false,
+		} as ReturnType<typeof useSWR>);
+		vi.mocked(getWorkspaceState).mockResolvedValue({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [makeDocument("doc-reloaded")],
+			folders: [],
+			assets: [],
+			operationLog: [],
+		});
+
+		render(React.createElement(DocumentStateSync, { projectId: "project-a" }));
+		source.emit(
+			"workspace.documents.changed",
+			JSON.stringify({
+				type: "workspace.documents.changed",
+				projectId: "project-a",
+				fullReload: true,
+			}),
+		);
+
+		await waitFor(() => {
+			expect(getWorkspaceState).toHaveBeenCalledWith("project-a");
+		});
+		expect(getWorkspaceDocuments).not.toHaveBeenCalled();
+		await waitFor(() => {
+			expect(useDocumentsStore.getState().documents.map((document) => document.id)).toEqual([
+				"doc-reloaded",
+			]);
+		});
+	});
+
+	it("applyWorkspaceDelta upserts and removes documents while preserving dirty edits", () => {
+		useDocumentsStore
+			.getState()
+			.hydrateWorkspaceState(
+				[makeDocument("doc-a"), makeDocument("doc-b"), makeDocument("doc-c")],
+				[makeLogEntry("doc-c")],
+				"/workspace/project-a",
+				"project-a",
+				[],
+				[],
+			);
+		// doc-b has unsaved local edits; doc-c is the active document.
+		useDocumentsStore.setState((current) => ({
+			documents: current.documents.map((document) =>
+				document.id === "doc-b"
+					? { ...document, content: "# local edit\n", isDirty: true }
+					: document,
+			),
+		}));
+		useDocumentsStore.getState().selectDocument("doc-c");
+
+		useDocumentsStore.getState().applyWorkspaceDelta({
+			changedDocuments: [
+				{ ...makeDocument("doc-a"), content: "# server a\n", version: 4 },
+				{ ...makeDocument("doc-b"), content: "# server b\n", version: 9 },
+				makeDocument("doc-d"),
+			],
+			removedDocumentIds: ["doc-c"],
+		});
+
+		const state = useDocumentsStore.getState();
+		const byId = new Map(state.documents.map((document) => [document.id, document]));
+		expect([...byId.keys()].sort()).toEqual(["doc-a", "doc-b", "doc-d"]);
+		expect(byId.get("doc-a")?.content).toBe("# server a\n");
+		// Dirty local edit is preserved, server copy ignored until saved.
+		expect(byId.get("doc-b")?.content).toBe("# local edit\n");
+		expect(byId.get("doc-b")?.isDirty).toBe(true);
+		expect(byId.has("doc-d")).toBe(true);
+		// Active document was removed, so it falls back to a remaining document.
+		expect(state.activeDocumentId).not.toBe("doc-c");
+		expect(byId.has(state.activeDocumentId)).toBe(true);
+		// Operation log entries for removed documents are dropped.
+		expect(state.operationLog.some((entry) => entry.documentId === "doc-c")).toBe(false);
+	});
+
+	it("applyWorkspaceDelta refreshes the folder tree only when folders are provided", () => {
+		useDocumentsStore
+			.getState()
+			.hydrateWorkspaceState(
+				[makeDocument("doc-a")],
+				[],
+				"/workspace/project-a",
+				"project-a",
+				[],
+				[makeFolder("folder-old")],
+			);
+
+		// No folders in the delta → tree unchanged.
+		useDocumentsStore.getState().applyWorkspaceDelta({
+			changedDocuments: [{ ...makeDocument("doc-a"), content: "# changed\n" }],
+			removedDocumentIds: [],
+		});
+		expect(useDocumentsStore.getState().folders.map((folder) => folder.id)).toEqual(["folder-old"]);
+
+		// Folders provided → tree replaced.
+		useDocumentsStore.getState().applyWorkspaceDelta({
+			changedDocuments: [],
+			removedDocumentIds: [],
+			folders: [makeFolder("folder-new")],
+		});
+		expect(useDocumentsStore.getState().folders.map((folder) => folder.id)).toEqual(["folder-new"]);
 	});
 
 	it("moves folders before siblings and persists changed sort orders", () => {
