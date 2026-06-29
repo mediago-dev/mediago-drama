@@ -1705,6 +1705,7 @@ const batchGenerationSettingsForJob = (
 	family: settings.family,
 	params: settings.params,
 	promptOptimization: settings.promptOptimization,
+	promptSupplement: settings.promptSupplement,
 	route: settings.route,
 	version: settings.version,
 });

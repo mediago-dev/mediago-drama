@@ -29,6 +29,8 @@ const (
 	packSourceImported = "imported"
 	entrySourcePack    = "pack"
 	entrySourceUser    = "user"
+
+	entryMetadataHidden = "hidden"
 )
 
 var (
@@ -85,17 +87,24 @@ type Category struct {
 
 // Service coordinates prompt pack persistence and built-in seeding.
 type Service struct {
-	mu         sync.Mutex
-	repo       *repository.PackRepository
-	legacyRepo *repository.PromptLibraryRepository
-	initErr    error
-	seeded     bool
+	mu           sync.Mutex
+	repo         *repository.PackRepository
+	legacyRepo   *repository.PromptLibraryRepository
+	initErr      error
+	seeded       bool
+	packFilesDir string
 }
 
 // NewService creates a prompt pack service backed by the default settings DB.
 func NewService() *Service {
-	repos, err := repository.OpenSettingsRepositories(config.DefaultSettingsDBPath())
-	return NewServiceFromRepository(repos.Packs, repos.PromptLibrary, err)
+	settingsDBPath := config.DefaultSettingsDBPath()
+	repos, err := repository.OpenSettingsRepositories(settingsDBPath)
+	return NewServiceFromRepositoryWithPackFilesDir(
+		repos.Packs,
+		repos.PromptLibrary,
+		err,
+		defaultPackFilesDir(settingsDBPath),
+	)
 }
 
 // NewServiceFromRepository creates a prompt pack service from settings repositories.
@@ -104,7 +113,22 @@ func NewServiceFromRepository(
 	legacyRepo *repository.PromptLibraryRepository,
 	initErr error,
 ) *Service {
-	return &Service{repo: repo, legacyRepo: legacyRepo, initErr: initErr}
+	return NewServiceFromRepositoryWithPackFilesDir(repo, legacyRepo, initErr, "")
+}
+
+// NewServiceFromRepositoryWithPackFilesDir creates a prompt pack service with uploaded pack storage.
+func NewServiceFromRepositoryWithPackFilesDir(
+	repo *repository.PackRepository,
+	legacyRepo *repository.PromptLibraryRepository,
+	initErr error,
+	packFilesDir string,
+) *Service {
+	return &Service{
+		repo:         repo,
+		legacyRepo:   legacyRepo,
+		initErr:      initErr,
+		packFilesDir: strings.TrimSpace(packFilesDir),
+	}
 }
 
 // ListPacks returns every installed prompt pack.
@@ -342,6 +366,35 @@ func (store *Service) DeleteEntry(ctx context.Context, kind instructionpack.Kind
 		return fmt.Errorf("%w: %s/%s", ErrPackReadonly, kind, slug)
 	}
 	return store.repo.DeleteEntry(current.ID)
+}
+
+// HideEntry removes a user-created entry or hides a package-backed entry.
+func (store *Service) HideEntry(ctx context.Context, kind instructionpack.Kind, slug string) error {
+	if err := kind.Validate(); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidPack, err)
+	}
+	if err := store.ensureSeeded(ctx); err != nil {
+		return err
+	}
+	current, err := store.GetEntry(ctx, kind, slug)
+	if err != nil {
+		return err
+	}
+	if current.Source == entrySourceUser && current.OverriddenFrom == "" {
+		return store.repo.DeleteEntry(current.ID)
+	}
+	hidden := current
+	hidden.Source = entrySourceUser
+	hidden.OverriddenFrom = nonEmpty(current.OverriddenFrom, current.ID)
+	hidden.Metadata = cloneMetadata(current.Metadata)
+	if hidden.Metadata == nil {
+		hidden.Metadata = map[string]any{}
+	}
+	hidden.Metadata[entryMetadataHidden] = true
+	if err := store.repo.UpsertEntry(entryModelFromEntry(hidden)); err != nil {
+		return err
+	}
+	return nil
 }
 
 // ListCategories returns resolved prompt categories from enabled packs.
@@ -622,4 +675,12 @@ func parsePackFile(ctx context.Context, path string) (instructionpack.Bundle, er
 		return instructionpack.Bundle{}, err
 	}
 	return bundle, nil
+}
+
+func defaultPackFilesDir(settingsDBPath string) string {
+	settingsDBPath = strings.TrimSpace(settingsDBPath)
+	if settingsDBPath == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(settingsDBPath), "packs")
 }

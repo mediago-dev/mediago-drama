@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"net"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -116,7 +117,12 @@ func newAPIHandler(config Config) *apiHandler {
 	generationService.SetDocumentResolver(workspaceState.StateService().Documents)
 	promptTemplates := serviceprompttemplates.NewServiceFromRepository(settingsRepos.Instructions, settingsReposErr)
 	serviceprompt.SetPromptTemplateStore(promptTemplates)
-	promptPack := servicepromptpack.NewServiceFromRepository(settingsRepos.Packs, settingsRepos.PromptLibrary, settingsReposErr)
+	promptPack := servicepromptpack.NewServiceFromRepositoryWithPackFilesDir(
+		settingsRepos.Packs,
+		settingsRepos.PromptLibrary,
+		settingsReposErr,
+		filepath.Join(filepath.Dir(settingsDBPath), "packs"),
+	)
 	serviceskill.SetPromptPackStore(promptPack)
 	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
 	promptLibrary := servicepromptlibrary.NewServiceFromPromptPack(promptPack, settingsReposErr)

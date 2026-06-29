@@ -123,9 +123,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 	}, [selectedPreset]);
 
 	const canResetPreset = Boolean(selectedPreset?.overridden);
-	const canDeletePreset = Boolean(
-		selectedPreset && selectedPreset.source === "user" && !selectedPreset.overridden,
-	);
+	const canDeletePreset = Boolean(selectedPreset && !selectedPreset.overridden);
 	const draftValid = Boolean(draft.category.trim() && draft.name.trim() && draft.prompt.trim());
 	const createDraftValid = Boolean(
 		createDraft.category.trim() && createDraft.name.trim() && createDraft.prompt.trim(),
@@ -267,14 +265,12 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 				setSelectedId(reset.id);
 				toast.success("已恢复默认");
 				return true;
-			} else if (selectedPreset.source === "user") {
+			} else {
 				await deletePromptPreset(selectedPreset.id);
 				await mutate();
 				setSelectedId("");
 				toast.success("已删除");
 				return true;
-			} else {
-				return false;
 			}
 		} catch (err) {
 			const message = errorMessage(err);

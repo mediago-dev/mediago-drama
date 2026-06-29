@@ -2,6 +2,7 @@ import { BookOpenCheck } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { orderSkillsForPrimaryFlows } from "@/domains/settings/lib/skill-order";
 import "@/styles/tiptap-agent-skill-slash.css";
 
 export interface AgentSkillSlashItem {
@@ -115,9 +116,10 @@ export const AgentSkillSlashMenu: React.FC<AgentSkillSlashMenuProps> = ({
 
 export const filterAgentSkillSlashItems = (items: AgentSkillSlashItem[], query: string) => {
 	const normalizedQuery = normalizeAgentSkillSearchText(query);
-	if (!normalizedQuery) return items.slice(0, maxAgentSkillSlashItems);
+	const orderedItems = orderSkillsForPrimaryFlows(items);
+	if (!normalizedQuery) return orderedItems.slice(0, maxAgentSkillSlashItems);
 
-	return items
+	return orderedItems
 		.filter((item) =>
 			[
 				item.name,
