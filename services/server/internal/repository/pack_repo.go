@@ -85,6 +85,18 @@ func (repo *PackRepository) SetPackEnabled(id string, enabled bool) error {
 	return nil
 }
 
+// DisableOtherPacks disables every pack except the specified one.
+func (repo *PackRepository) DisableOtherPacks(id string) error {
+	err := repo.db.Model(&domain.PackModel{}).
+		Where("id <> ?", strings.TrimSpace(id)).
+		Update("enabled", false).
+		Error
+	if err != nil {
+		return fmt.Errorf("disabling other packs: %w", err)
+	}
+	return nil
+}
+
 // DeletePack removes an installed prompt pack and its entries.
 func (repo *PackRepository) DeletePack(id string) error {
 	err := repo.db.Delete(&domain.PackModel{}, "id = ?", strings.TrimSpace(id)).Error
@@ -214,6 +226,20 @@ func (repo *PackRepository) DeleteEntriesByPack(packID string) error {
 	return nil
 }
 
+// DeleteResettableEntriesByPack removes package-owned entries and package overrides for a pack.
+func (repo *PackRepository) DeleteResettableEntriesByPack(packID string) error {
+	err := repo.db.Delete(
+		&domain.PackEntryModel{},
+		"pack_id = ? AND NOT (source = ? AND overridden_from = '')",
+		strings.TrimSpace(packID),
+		"user",
+	).Error
+	if err != nil {
+		return fmt.Errorf("deleting resettable pack entries: %w", err)
+	}
+	return nil
+}
+
 // ListCategories returns every prompt pack category.
 func (repo *PackRepository) ListCategories() ([]domain.PackCategoryModel, error) {
 	models := []domain.PackCategoryModel{}
@@ -273,6 +299,20 @@ func (repo *PackRepository) DeleteCategoriesByPack(packID string) error {
 	err := repo.db.Delete(&domain.PackCategoryModel{}, "pack_id = ?", strings.TrimSpace(packID)).Error
 	if err != nil {
 		return fmt.Errorf("deleting pack categories: %w", err)
+	}
+	return nil
+}
+
+// DeletePackOwnedCategoriesByPack removes package-owned categories while preserving user categories.
+func (repo *PackRepository) DeletePackOwnedCategoriesByPack(packID string) error {
+	err := repo.db.Delete(
+		&domain.PackCategoryModel{},
+		"pack_id = ? AND source <> ?",
+		strings.TrimSpace(packID),
+		"user",
+	).Error
+	if err != nil {
+		return fmt.Errorf("deleting pack-owned categories: %w", err)
 	}
 	return nil
 }

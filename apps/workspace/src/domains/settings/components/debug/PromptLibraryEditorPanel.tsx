@@ -1,4 +1,4 @@
-import { Loader2, Pencil, Plus, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
+import { Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -10,7 +10,6 @@ import {
 	deletePromptPreset,
 	listPromptPresets,
 	promptPresetsKey,
-	resetPromptPreset,
 	updatePromptPreset,
 } from "@/domains/generation/api/prompt-presets";
 import {
@@ -27,7 +26,6 @@ import {
 } from "@/domains/generation/lib/prompt-categories";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
-import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -73,7 +71,6 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		listPromptCategories,
 	);
 	const [categoryFilter, setCategoryFilter] = useState<PromptPresetCategory | "all">("all");
-	const [query, setQuery] = useState("");
 	const [selectedId, setSelectedId] = useState("");
 	const [draft, setDraft] = useState<Draft>(emptyDraft("style"));
 	const [createDraft, setCreateDraft] = useState<Draft>(emptyDraft("style"));
@@ -89,20 +86,26 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [error, setError] = useState("");
 
-	const visiblePresets = useMemo(() => {
-		const keyword = query.trim().toLowerCase();
-		return presets.filter((preset) => {
-			if (categoryFilter !== "all" && preset.category !== categoryFilter) return false;
-			if (!keyword) return true;
-			return (
-				preset.name.toLowerCase().includes(keyword) || preset.id.toLowerCase().includes(keyword)
-			);
-		});
-	}, [presets, categoryFilter, query]);
+	const visiblePresets = useMemo(
+		() =>
+			presets.filter((preset) => categoryFilter === "all" || preset.category === categoryFilter),
+		[presets, categoryFilter],
+	);
+
+	const presetCategories = useMemo(
+		() => Array.from(new Set(presets.map((preset) => preset.category).filter(Boolean))),
+		[presets],
+	);
+
+	const filterCategoryOptions = useMemo(
+		() => promptCategoryOptions(categories, ...presetCategories),
+		[categories, presetCategories],
+	);
 
 	const categoryOptions = useMemo(
-		() => promptCategoryOptions(categories, draft.category, createDraft.category),
-		[categories, draft.category, createDraft.category],
+		() =>
+			promptCategoryOptions(categories, ...presetCategories, draft.category, createDraft.category),
+		[categories, presetCategories, draft.category, createDraft.category],
 	);
 
 	const selectedPreset = useMemo(
@@ -122,8 +125,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		setError("");
 	}, [selectedPreset]);
 
-	const canResetPreset = Boolean(selectedPreset?.overridden);
-	const canDeletePreset = Boolean(selectedPreset && !selectedPreset.overridden);
+	const canDeletePreset = Boolean(selectedPreset);
 	const draftValid = Boolean(draft.category.trim() && draft.name.trim() && draft.prompt.trim());
 	const createDraftValid = Boolean(
 		createDraft.category.trim() && createDraft.name.trim() && createDraft.prompt.trim(),
@@ -172,7 +174,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 			};
 			const saved = await updatePromptPreset(input.id, input);
 			await mutate();
-			setCategoryFilter(saved.category);
+			setCategoryFilter((current) => categoryFilterAfterSave(current, saved.category));
 			setSelectedId(saved.id);
 			setEditDialogOpen(false);
 			toast.success("已保存", { description: saved.name });
@@ -199,7 +201,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 			const saved = await createPromptPreset(input);
 			await mutate();
 			setCreateDialogOpen(false);
-			setCategoryFilter(saved.category);
+			setCategoryFilter((current) => categoryFilterAfterSave(current, saved.category));
 			setSelectedId(saved.id);
 			toast.success("已创建", { description: saved.name });
 		} catch (err) {
@@ -254,47 +256,38 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		setCategoryError("");
 	};
 
-	const removeOrReset = async () => {
+	const deletePreset = async () => {
 		if (!selectedPreset) return false;
 		setIsDeleting(true);
 		setError("");
 		try {
-			if (selectedPreset.overridden) {
-				const reset = await resetPromptPreset(selectedPreset.id);
-				await mutate();
-				setSelectedId(reset.id);
-				toast.success("已恢复默认");
-				return true;
-			} else {
-				await deletePromptPreset(selectedPreset.id);
-				await mutate();
-				setSelectedId("");
-				toast.success("已删除");
-				return true;
-			}
+			await deletePromptPreset(selectedPreset.id);
+			await mutate();
+			setSelectedId("");
+			toast.success("已删除");
+			return true;
 		} catch (err) {
 			const message = errorMessage(err);
 			setError(message);
-			toast.error("操作失败", { description: message });
+			toast.error("删除失败", { description: message });
 			return false;
 		} finally {
 			setIsDeleting(false);
 		}
 	};
 
-	const confirmRemoveOrReset = () => {
+	const confirmDeletePreset = () => {
 		if (!selectedPreset) return;
-		if (canDeletePreset) {
-			void confirmDialog({
-				title: "删除提示词预设？",
-				description: `确定要删除“${selectedPreset.name}”吗？此操作无法撤销。`,
-				confirmLabel: "删除",
-				confirmIcon: <Trash2 className="size-4" />,
-				onConfirm: removeOrReset,
-			});
-			return;
-		}
-		void removeOrReset();
+		const isUserCreated = selectedPreset.source === "user" && !selectedPreset.overridden;
+		void confirmDialog({
+			title: "删除提示词预设？",
+			description: isUserCreated
+				? `确定要删除“${selectedPreset.name}”吗？此操作无法撤销。`
+				: `确定要删除“${selectedPreset.name}”吗？来自包的预设会从列表中隐藏。`,
+			confirmLabel: "删除",
+			confirmIcon: <Trash2 className="size-4" />,
+			onConfirm: deletePreset,
+		});
 	};
 
 	return (
@@ -304,21 +297,19 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 					<Plus className="size-4" />
 					<span>新建</span>
 				</Button>
-				{canResetPreset || canDeletePreset ? (
+				{canDeletePreset ? (
 					<Button
 						type="button"
-						variant={canResetPreset ? "outline" : "destructive"}
-						onClick={confirmRemoveOrReset}
+						variant="destructive"
+						onClick={confirmDeletePreset}
 						disabled={isDeleting}
 					>
 						{isDeleting ? (
 							<Loader2 className="size-4 animate-spin" />
-						) : canResetPreset ? (
-							<RotateCcw className="size-4" />
 						) : (
 							<Trash2 className="size-4" />
 						)}
-						<span>{isDeleting ? "处理中" : canResetPreset ? "恢复默认" : "删除"}</span>
+						<span>{isDeleting ? "处理中" : "删除"}</span>
 					</Button>
 				) : null}
 				<Button type="button" onClick={openEditDialog} disabled={!selectedPreset}>
@@ -334,7 +325,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 						onClick={() => setCategoryFilter("all")}
 						label="全部"
 					/>
-					{categoryOptions.map((category) => (
+					{filterCategoryOptions.map((category) => (
 						<CategoryChip
 							key={category.value}
 							active={categoryFilter === category.value}
@@ -342,15 +333,6 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 							label={category.label}
 						/>
 					))}
-					<div className="ml-auto flex items-center gap-1.5 rounded-md border border-border px-2 py-1.5">
-						<Search className="size-3.5 text-muted-foreground" />
-						<input
-							value={query}
-							onChange={(event) => setQuery(event.target.value)}
-							placeholder="搜索"
-							className="w-32 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-						/>
-					</div>
 				</div>
 
 				<div className="grid min-h-0 flex-1 grid-rows-[minmax(10rem,16rem)_minmax(0,1fr)] gap-3 md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-1">
@@ -381,9 +363,6 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 									<span className="shrink-0 text-2xs text-muted-foreground">
 										{promptCategoryOptionLabel(preset.category, categoryOptions)}
 									</span>
-									<span className="shrink-0 text-2xs text-muted-foreground">
-										{entrySourceLabel(preset.source, preset.overridden)}
-									</span>
 								</button>
 							))
 						)}
@@ -396,18 +375,6 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 							</p>
 						) : (
 							<div className="space-y-3">
-								<div className="flex flex-wrap items-center justify-between gap-2">
-									<div className="flex items-center gap-2">
-										<Badge variant="secondary" className="rounded-md">
-											{promptCategoryOptionLabel(draft.category, categoryOptions)}
-										</Badge>
-										<EntrySourceBadge
-											source={selectedPreset.source}
-											overridden={selectedPreset.overridden}
-										/>
-									</div>
-								</div>
-
 								{error ? (
 									<Alert variant="destructive" className="rounded-md">
 										<AlertDescription>{error}</AlertDescription>
@@ -520,6 +487,7 @@ const CategoryChip: React.FC<{ active: boolean; label: string; onClick: () => vo
 }) => (
 	<button
 		type="button"
+		aria-pressed={active}
 		onClick={onClick}
 		className={cn(
 			"rounded-full border px-3 py-1 text-xs",
@@ -531,21 +499,6 @@ const CategoryChip: React.FC<{ active: boolean; label: string; onClick: () => vo
 		{label}
 	</button>
 );
-
-const EntrySourceBadge: React.FC<Pick<PromptPreset, "source" | "overridden">> = ({
-	overridden,
-	source,
-}) => (
-	<Badge variant={overridden || source === "pack" ? "secondary" : "outline"} className="rounded-md">
-		{entrySourceLabel(source, overridden)}
-	</Badge>
-);
-
-const entrySourceLabel = (source: PromptPreset["source"], overridden?: boolean) => {
-	if (overridden) return "已覆盖";
-	if (source === "pack") return "来自包";
-	return "用户新增";
-};
 
 const FieldRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
 	<div className="grid items-center gap-2 md:grid-cols-[5rem_minmax(0,1fr)]">
@@ -722,15 +675,6 @@ const PromptPresetEditDialog: React.FC<{
 
 				<div className="min-h-0 overflow-y-auto p-4">
 					<div className="space-y-3">
-						<div className="flex items-center gap-2">
-							<Badge variant="secondary" className="rounded-md">
-								{promptCategoryOptionLabel(draft.category, categoryOptions)}
-							</Badge>
-							<Badge variant="outline" className="rounded-md">
-								编辑
-							</Badge>
-						</div>
-
 						{error ? (
 							<Alert variant="destructive" className="rounded-md">
 								<AlertDescription>{error}</AlertDescription>
@@ -840,15 +784,6 @@ const PromptPresetCreateDialog: React.FC<{
 
 					<div className="min-h-0 overflow-y-auto p-4">
 						<div className="space-y-3">
-							<div className="flex items-center gap-2">
-								<Badge variant="secondary" className="rounded-md">
-									{promptCategoryOptionLabel(draft.category, categoryOptions)}
-								</Badge>
-								<Badge variant="outline" className="rounded-md">
-									新建
-								</Badge>
-							</div>
-
 							{error ? (
 								<Alert variant="destructive" className="rounded-md">
 									<AlertDescription>{error}</AlertDescription>
@@ -941,6 +876,14 @@ const promptCategoryOptions = (
 			}
 			return left.label.localeCompare(right.label, "zh-Hans-CN");
 		});
+};
+
+const categoryFilterAfterSave = (
+	current: PromptPresetCategory | "all",
+	savedCategory: PromptPresetCategory,
+) => {
+	if (current === "all" || current === savedCategory) return current;
+	return savedCategory;
 };
 
 const promptCategoryOptionLabel = (

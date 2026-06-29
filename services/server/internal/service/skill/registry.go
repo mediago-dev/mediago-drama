@@ -64,6 +64,7 @@ type PackStore interface {
 	CreateEntry(ctx context.Context, kind instructionpack.Kind, entry promptpack.Entry) (promptpack.Entry, error)
 	ResetEntry(ctx context.Context, kind instructionpack.Kind, slug string) (promptpack.Entry, error)
 	DeleteEntry(ctx context.Context, kind instructionpack.Kind, slug string) error
+	HideEntry(ctx context.Context, kind instructionpack.Kind, slug string) error
 }
 
 // Registry loads skills from the prompt pack store.
@@ -205,9 +206,9 @@ func (registry *Registry) Create(ctx context.Context, name string, raw string) (
 	return skillFromEntry(created), nil
 }
 
-// Delete removes an existing user-created skill.
+// Delete removes a user-created skill or hides a package-backed skill.
 func (registry *Registry) Delete(ctx context.Context, name string) error {
-	err := registry.store.DeleteEntry(ctx, instructionpack.KindSkill, strings.TrimSpace(name))
+	err := registry.store.HideEntry(ctx, instructionpack.KindSkill, strings.TrimSpace(name))
 	if err != nil {
 		if errors.Is(err, promptpack.ErrEntryNotFound) {
 			metas, _ := registry.List(ctx)

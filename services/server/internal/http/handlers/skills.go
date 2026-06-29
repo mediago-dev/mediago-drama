@@ -146,7 +146,7 @@ func (handler Skills) HandlePostSkill(context *gin.Context) {
 
 // HandleDeleteSkill godoc
 // @Summary 删除 Skill
-// @Description 删除一个用户自定义 Skill。
+// @Description 删除一个用户自定义 Skill，或隐藏一个包内 Skill。
 // @Tags Skills
 // @Produce json
 // @Param name path string true "Skill name"

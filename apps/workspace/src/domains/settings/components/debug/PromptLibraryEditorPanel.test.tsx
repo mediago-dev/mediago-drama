@@ -6,7 +6,11 @@ import {
 	createPromptCategory,
 	listPromptCategories,
 } from "@/domains/generation/api/prompt-categories";
-import { deletePromptPreset, listPromptPresets } from "@/domains/generation/api/prompt-presets";
+import {
+	createPromptPreset,
+	deletePromptPreset,
+	listPromptPresets,
+} from "@/domains/generation/api/prompt-presets";
 import { ConfirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { PromptPackActionsSlotProvider } from "./PromptPackActionsSlot";
 import { PromptLibraryEditorPanel } from "./PromptLibraryEditorPanel";
@@ -105,6 +109,33 @@ describe("PromptLibraryEditorPanel", () => {
 		await waitFor(() => {
 			expect(within(promptDialog).getAllByText("镜头").length).toBeGreaterThan(0);
 		});
+	});
+
+	it("keeps the current category filter after creating from all prompts", async () => {
+		vi.mocked(createPromptPreset).mockResolvedValue({
+			id: "new-style",
+			name: "新风格",
+			category: "style",
+			prompt: "new style prompt",
+			source: "user",
+		});
+
+		renderPanel();
+
+		await screen.findByText("2D动漫");
+		const allFilter = screen.getByRole("button", { name: "全部" });
+		expect(allFilter.getAttribute("aria-pressed")).toBe("true");
+
+		fireEvent.click(screen.getByRole("button", { name: "新建" }));
+
+		const dialog = await screen.findByRole("dialog", { name: "新建提示词" });
+		const fields = within(dialog).getAllByRole("textbox");
+		fireEvent.change(fields[0], { target: { value: "新风格" } });
+		fireEvent.change(fields[1], { target: { value: "new style prompt" } });
+		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+
+		await waitFor(() => expect(createPromptPreset).toHaveBeenCalled());
+		expect(allFilter.getAttribute("aria-pressed")).toBe("true");
 	});
 
 	it("confirms before deleting a user prompt preset", async () => {

@@ -21,22 +21,11 @@ interface PromptPacksResponse {
 	packs: PromptPack[];
 }
 
-interface InstallPromptPackInput {
-	path: string;
-}
-
 export const promptPacksKey = "/packs";
 
 export const listPromptPacks = async (): Promise<PromptPack[]> => {
 	const response = await httpClient.get<PromptPacksResponse>(promptPacksKey);
 	return response.data.packs;
-};
-
-export const installPromptPack = async (path: string): Promise<PromptPack> => {
-	const response = await httpClient.post<PromptPack>("/packs/install", {
-		path,
-	} satisfies InstallPromptPackInput);
-	return response.data;
 };
 
 export interface ExportPromptPackResult {
@@ -74,6 +63,11 @@ export const setPromptPackEnabled = async (id: string, enabled: boolean): Promis
 	const response = await httpClient.patch<PromptPack>(`/packs/${encodeURIComponent(id)}`, {
 		enabled,
 	});
+	return response.data;
+};
+
+export const resetPromptPack = async (id: string): Promise<PromptPack> => {
+	const response = await httpClient.post<PromptPack>(`/packs/${encodeURIComponent(id)}/reset`);
 	return response.data;
 };
 

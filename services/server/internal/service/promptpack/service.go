@@ -136,6 +136,9 @@ func (store *Service) ListPacks(ctx context.Context) ([]Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return nil, err
 	}
+	if err := store.ensureSingleEnabledPack(ctx); err != nil {
+		return nil, err
+	}
 	models, err := store.repo.ListPacks()
 	if err != nil {
 		return nil, err
@@ -158,8 +161,19 @@ func (store *Service) SetEnabled(ctx context.Context, packID string, enabled boo
 	} else if err != nil {
 		return Pack{}, err
 	}
-	if err := store.repo.SetPackEnabled(packID, enabled); err != nil {
-		return Pack{}, err
+	if enabled {
+		if err := store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
+			if err := tx.SetPackEnabled(packID, true); err != nil {
+				return err
+			}
+			return tx.DisableOtherPacks(packID)
+		}); err != nil {
+			return Pack{}, err
+		}
+	} else {
+		if err := store.repo.SetPackEnabled(packID, false); err != nil {
+			return Pack{}, err
+		}
 	}
 	model, err := store.repo.GetPack(packID)
 	if err != nil {
@@ -184,6 +198,77 @@ func (store *Service) Uninstall(ctx context.Context, packID string) error {
 		return fmt.Errorf("%w: %s", ErrPackReadonly, packID)
 	}
 	return store.repo.DeletePack(packID)
+}
+
+// ResetPack restores package-owned entries and categories to the installed pack defaults.
+func (store *Service) ResetPack(ctx context.Context, packID string) (Pack, error) {
+	if err := store.ensureSeeded(ctx); err != nil {
+		return Pack{}, err
+	}
+	packID = strings.TrimSpace(packID)
+	pack, err := store.repo.GetPack(packID)
+	if repository.IsRecordNotFound(err) {
+		return Pack{}, fmt.Errorf("%w: %s", ErrPackNotFound, packID)
+	}
+	if err != nil {
+		return Pack{}, err
+	}
+	defaults, err := store.bundleForInstalledPack(ctx, pack)
+	if err != nil {
+		return Pack{}, err
+	}
+	if strings.TrimSpace(defaults.Manifest.ID) != packID {
+		return Pack{}, fmt.Errorf("%w: pack id mismatch", ErrInvalidPack)
+	}
+	if err := store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
+		existing, err := tx.ListEntries()
+		if err != nil {
+			return err
+		}
+		userOwnedEntryIDs := map[string]bool{}
+		for _, entry := range existing {
+			if entry.PackID != packID {
+				continue
+			}
+			if normalizeLegacyEntrySource(entry.Source) == entrySourceUser && strings.TrimSpace(entry.OverriddenFrom) == "" {
+				userOwnedEntryIDs[entry.ID] = true
+			}
+		}
+		if err := tx.DeleteResettableEntriesByPack(packID); err != nil {
+			return err
+		}
+		if err := tx.DeletePackOwnedCategoriesByPack(packID); err != nil {
+			return err
+		}
+		for _, category := range defaults.Categories {
+			if err := tx.UpsertCategory(domain.PackCategoryModel{
+				PackID:  packID,
+				ID:      category.ID,
+				Label:   category.Label,
+				Order:   category.Order,
+				Source:  entrySourcePack,
+				Builtin: normalizePackSource(pack.Source, pack.ID) == packSourceDefault,
+			}); err != nil {
+				return err
+			}
+		}
+		for _, entry := range defaults.Entries {
+			if userOwnedEntryIDs[entry.ID] {
+				continue
+			}
+			if err := tx.UpsertEntry(entryModelFromPackEntry(entry, entrySourcePack)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return Pack{}, err
+	}
+	model, err := store.repo.GetPack(packID)
+	if err != nil {
+		return Pack{}, err
+	}
+	return packFromModel(model), nil
 }
 
 // InstallPath installs a local pack directory or .mgpack file.
@@ -227,6 +312,9 @@ func (store *Service) ListEntries(ctx context.Context, kind instructionpack.Kind
 		return nil, fmt.Errorf("%w: %w", ErrInvalidPack, err)
 	}
 	if err := store.ensureSeeded(ctx); err != nil {
+		return nil, err
+	}
+	if err := store.ensureSingleEnabledPack(ctx); err != nil {
 		return nil, err
 	}
 	models, err := store.repo.ListEnabledEntries(string(kind))
@@ -402,6 +490,9 @@ func (store *Service) ListCategories(ctx context.Context) ([]Category, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return nil, err
 	}
+	if err := store.ensureSingleEnabledPack(ctx); err != nil {
+		return nil, err
+	}
 	models, err := store.repo.ListEnabledCategories()
 	if err != nil {
 		return nil, err
@@ -479,6 +570,54 @@ func (store *Service) ensureReady(ctx context.Context) error {
 	return nil
 }
 
+func (store *Service) ensureSingleEnabledPack(ctx context.Context) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	models, err := store.repo.ListPacks()
+	if err != nil {
+		return err
+	}
+	enabled := make([]domain.PackModel, 0, len(models))
+	for _, model := range models {
+		if model.Enabled {
+			enabled = append(enabled, model)
+		}
+	}
+	if len(enabled) <= 1 {
+		return nil
+	}
+	keep := preferredEnabledPack(enabled)
+	return store.repo.DisableOtherPacks(keep.ID)
+}
+
+func preferredEnabledPack(models []domain.PackModel) domain.PackModel {
+	preferred := models[0]
+	for _, model := range models[1:] {
+		if packModelPreferredOver(model, preferred) {
+			preferred = model
+		}
+	}
+	return preferred
+}
+
+func packModelPreferredOver(left domain.PackModel, right domain.PackModel) bool {
+	leftDefault := normalizePackSource(left.Source, left.ID) == packSourceDefault
+	rightDefault := normalizePackSource(right.Source, right.ID) == packSourceDefault
+	if leftDefault != rightDefault {
+		return !leftDefault
+	}
+	if !left.UpdatedAt.Equal(right.UpdatedAt) {
+		return left.UpdatedAt.After(right.UpdatedAt)
+	}
+	if !left.CreatedAt.Equal(right.CreatedAt) {
+		return left.CreatedAt.After(right.CreatedAt)
+	}
+	return left.ID > right.ID
+}
+
 func (store *Service) migrateLegacyPromptLibrary(ctx context.Context) error {
 	if store.legacyRepo == nil {
 		return nil
@@ -503,7 +642,7 @@ func (store *Service) migrateLegacyPromptLibrary(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := store.upsertPackFromBundle(bundle, packSourceDefault, ""); err != nil {
+		if _, err := store.upsertPackFromBundle(bundle, packSourceDefault, ""); err != nil {
 			return err
 		}
 	}
@@ -553,7 +692,7 @@ func (store *Service) seedBuiltinPack(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := store.upsertPackFromBundle(bundle, packSourceDefault, ""); err != nil {
+	if _, err := store.upsertPackFromBundle(bundle, packSourceDefault, ""); err != nil {
 		return err
 	}
 	for _, category := range bundle.Categories {
@@ -587,8 +726,14 @@ func (store *Service) seedBuiltinPack(ctx context.Context) error {
 func (store *Service) installBundle(ctx context.Context, bundle instructionpack.Bundle, source string, origin string) error {
 	return store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
 		transactional := &Service{repo: tx, legacyRepo: store.legacyRepo, initErr: store.initErr}
-		if err := transactional.upsertPackFromBundle(bundle, source, origin); err != nil {
+		enabled, err := transactional.upsertPackFromBundle(bundle, source, origin)
+		if err != nil {
 			return err
+		}
+		if enabled {
+			if err := tx.DisableOtherPacks(bundle.Manifest.ID); err != nil {
+				return err
+			}
 		}
 		if err := tx.DeleteEntriesByPack(bundle.Manifest.ID); err != nil {
 			return err
@@ -617,14 +762,14 @@ func (store *Service) installBundle(ctx context.Context, bundle instructionpack.
 	})
 }
 
-func (store *Service) upsertPackFromBundle(bundle instructionpack.Bundle, source string, origin string) error {
+func (store *Service) upsertPackFromBundle(bundle instructionpack.Bundle, source string, origin string) (bool, error) {
 	enabled := true
 	if existing, err := store.repo.GetPack(bundle.Manifest.ID); err == nil {
 		enabled = existing.Enabled
 	} else if err != nil && !repository.IsRecordNotFound(err) {
-		return err
+		return false, err
 	}
-	return store.repo.UpsertPack(domain.PackModel{
+	if err := store.repo.UpsertPack(domain.PackModel{
 		ID:          bundle.Manifest.ID,
 		Name:        bundle.Manifest.Name,
 		Version:     bundle.Manifest.Version,
@@ -633,7 +778,10 @@ func (store *Service) upsertPackFromBundle(bundle instructionpack.Bundle, source
 		Source:      source,
 		Origin:      origin,
 		Enabled:     enabled,
-	})
+	}); err != nil {
+		return false, err
+	}
+	return enabled, nil
 }
 
 func (store *Service) bundleForInstalledPack(ctx context.Context, pack domain.PackModel) (instructionpack.Bundle, error) {
