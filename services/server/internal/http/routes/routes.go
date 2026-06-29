@@ -62,6 +62,7 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.POST("/packs/import", handlers.PromptPacks.HandleImportPack)
 	apiRoutes.POST("/packs/install", handlers.PromptPacks.HandleInstallPack)
 	apiRoutes.GET("/packs/:id/export", handlers.PromptPacks.HandleExportPack)
+	apiRoutes.POST("/packs/:id/reset", handlers.PromptPacks.HandleResetPack)
 	apiRoutes.PATCH("/packs/:id", handlers.PromptPacks.HandlePatchPack)
 	apiRoutes.DELETE("/packs/:id", handlers.PromptPacks.HandleDeletePack)
 	apiRoutes.GET("/prompt-templates", handlers.PromptTemplates.HandleListPromptTemplates)

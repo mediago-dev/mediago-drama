@@ -212,6 +212,15 @@ func (store *fakeSkillPackStore) DeleteEntry(_ context.Context, _ instructionpac
 	return nil
 }
 
+func (store *fakeSkillPackStore) HideEntry(_ context.Context, _ instructionpack.Kind, slug string) error {
+	_, ok := store.entries[slug]
+	if !ok {
+		return promptpack.ErrEntryNotFound
+	}
+	delete(store.entries, slug)
+	return nil
+}
+
 func testSkillRaw(name string, description string, body string) string {
 	return `---
 name: ` + name + `

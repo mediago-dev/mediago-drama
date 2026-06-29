@@ -191,6 +191,26 @@ func (handler PromptPacks) HandleDeletePack(context *gin.Context) {
 	httpresponse.OK(context, deletePromptPackResponse{Deleted: true})
 }
 
+// HandleResetPack godoc
+// @Summary 恢复提示词包默认内容
+// @Description 将提示词包内的默认技能和提示词预设恢复为安装包内容；用户新增内容会保留。
+// @Tags Prompt Packs
+// @Produce json
+// @Param id path string true "Pack ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/packs/{id}/reset [post]
+func (handler PromptPacks) HandleResetPack(context *gin.Context) {
+	pack, err := handler.store.ResetPack(context.Request.Context(), context.Param("id"))
+	if err != nil {
+		writePromptPackError(context, err)
+		return
+	}
+	httpresponse.OK(context, pack)
+}
+
 func writePromptPackError(context *gin.Context, err error) {
 	switch {
 	case errors.Is(err, promptpack.ErrInvalidPack):

@@ -11,9 +11,9 @@ import { PromptPacksPanel } from "./PromptPacksPanel";
 vi.mock("@/domains/settings/api/packs", () => ({
 	exportPromptPack: vi.fn(),
 	importPromptPackFile: vi.fn(),
-	installPromptPack: vi.fn(),
 	listPromptPacks: vi.fn(),
 	promptPacksKey: "/packs",
+	resetPromptPack: vi.fn(),
 	setPromptPackEnabled: vi.fn(),
 	uninstallPromptPack: vi.fn(),
 }));
@@ -43,10 +43,6 @@ vi.mock("@/hooks/useToast", () => ({
 
 vi.mock("@/shared/components/callable/ConfirmDialog", () => ({
 	confirmDialog: vi.fn(),
-}));
-
-vi.mock("@/shared/desktop/actions", () => ({
-	pickDesktopFile: vi.fn(),
 }));
 
 vi.mock("./SkillsEditorPanel", () => ({

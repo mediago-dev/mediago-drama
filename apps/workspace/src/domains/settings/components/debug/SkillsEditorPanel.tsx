@@ -1,4 +1,4 @@
-import { BookOpenCheck, Loader2, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
+import { BookOpenCheck, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -9,13 +9,11 @@ import {
 	deleteSkill,
 	getSkill,
 	listSkills,
-	resetSkill,
 	skillsKey,
 	updateSkill,
 } from "@/domains/settings/api/skills";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
-import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -54,7 +52,6 @@ export const SkillsEditorPanel: React.FC = () => {
 	const [error, setError] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
-	const [isResetting, setIsResetting] = useState(false);
 	const [isCreating, setIsCreating] = useState(false);
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
 	const [newSkillName, setNewSkillName] = useState("");
@@ -79,10 +76,7 @@ export const SkillsEditorPanel: React.FC = () => {
 	}, [selectedSkill]);
 
 	const selectedEntry = selectedSkill ?? selectedMeta;
-	const canDelete = Boolean(
-		selectedEntry && selectedEntry.source === "user" && !selectedEntry.overridden,
-	);
-	const canReset = Boolean(selectedEntry?.overridden);
+	const canDelete = Boolean(selectedEntry);
 	const cancelCreateSkill = () => {
 		setIsCreating(false);
 		setNewSkillName("");
@@ -176,34 +170,16 @@ export const SkillsEditorPanel: React.FC = () => {
 
 	const confirmRemove = () => {
 		if (!selectedSkill || !canDelete) return;
+		const isUserCreated = selectedEntry?.source === "user" && !selectedEntry.overridden;
 		void confirmDialog({
 			title: "删除 Skill？",
-			description: `确定要删除“${selectedSkill.title || selectedSkill.name}”吗？此操作无法撤销。`,
+			description: isUserCreated
+				? `确定要删除“${selectedSkill.title || selectedSkill.name}”吗？此操作无法撤销。`
+				: `确定要删除“${selectedSkill.title || selectedSkill.name}”吗？来自包的 Skill 会从列表中隐藏。`,
 			confirmLabel: "删除",
 			confirmIcon: <Trash2 className="size-4" />,
 			onConfirm: remove,
 		});
-	};
-
-	const reset = async () => {
-		if (!selectedEntry?.overridden) return;
-		setIsResetting(true);
-		setError("");
-		try {
-			const resetDocument = await resetSkill(selectedEntry.name);
-			await mutateSkill(resetDocument, false);
-			await mutateSkills();
-			const parts = splitSkillMarkdown(resetDocument.content);
-			setFrontmatterDraft(parts.frontmatter);
-			setBodyDraft(parts.body);
-			toast.success("Skill 已恢复默认", { description: resetDocument.name });
-		} catch (err) {
-			const message = errorMessage(err);
-			setError(message);
-			toast.error("恢复默认失败", { description: message });
-		} finally {
-			setIsResetting(false);
-		}
 	};
 
 	return (
@@ -225,17 +201,6 @@ export const SkillsEditorPanel: React.FC = () => {
 						<Pencil className="size-4" />
 						<span>编辑</span>
 					</Button>
-					{canReset ? (
-						<Button
-							type="button"
-							variant="outline"
-							onClick={() => void reset()}
-							disabled={isResetting}
-						>
-							<RotateCcw className="size-4" />
-							<span>{isResetting ? "恢复中" : "恢复默认"}</span>
-						</Button>
-					) : null}
 					<Button
 						type="button"
 						variant="destructive"
@@ -310,12 +275,7 @@ export const SkillsEditorPanel: React.FC = () => {
 									<SelectContent align="start">
 										{orderedSkills.map((skill) => (
 											<SelectItem key={skill.name} value={skill.name}>
-												<span className="flex min-w-0 w-full items-center gap-2">
-													<span className="min-w-0 flex-1 truncate">
-														{skill.title || skill.name}
-													</span>
-													<SkillSourceBadge source={skill.source} overridden={skill.overridden} />
-												</span>
+												<span className="truncate">{skill.title || skill.name}</span>
 											</SelectItem>
 										))}
 									</SelectContent>
@@ -528,24 +488,6 @@ const SkillCreateDialog: React.FC<{
 			</DialogPrimitive.Portal>
 		</DialogPrimitive.Root>
 	);
-};
-
-const SkillSourceBadge: React.FC<Pick<SkillMeta, "source" | "overridden">> = ({
-	overridden,
-	source,
-}) => (
-	<Badge
-		variant={overridden || source === "pack" ? "secondary" : "outline"}
-		className="shrink-0 rounded-md"
-	>
-		{entrySourceLabel(source, overridden)}
-	</Badge>
-);
-
-const entrySourceLabel = (source: SkillMeta["source"], overridden?: boolean) => {
-	if (overridden) return "已覆盖";
-	if (source === "pack") return "来自包";
-	return "用户新增";
 };
 
 const sanitizeSkillName = (value: string) =>
