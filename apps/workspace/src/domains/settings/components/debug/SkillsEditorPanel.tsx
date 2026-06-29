@@ -4,7 +4,6 @@ import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import {
-	type SkillMeta,
 	createSkill,
 	deleteSkill,
 	getSkill,
