@@ -16,6 +16,7 @@ import type {
 
 type SyncActions = Pick<
 	DocumentsActions,
+	| "applyWorkspaceDelta"
 	| "clearPendingComment"
 	| "focusComment"
 	| "hydrateWorkspaceDocuments"
@@ -32,6 +33,56 @@ type SyncActions = Pick<
 >;
 
 export const createDocumentSyncActions = ({ get, set }: DocumentActionContext): SyncActions => ({
+	applyWorkspaceDelta: ({ changedDocuments, removedDocumentIds, folders }) => {
+		const removed = new Set(removedDocumentIds);
+		const changedById = new Map(changedDocuments.map((document) => [document.id, document]));
+		if (removed.size === 0 && changedById.size === 0 && !folders) return;
+		set((state) => {
+			const merged: MarkdownDocument[] = [];
+			const seen = new Set<string>();
+			for (const document of state.documents) {
+				if (removed.has(document.id)) continue;
+				seen.add(document.id);
+				const incoming = changedById.get(document.id);
+				// Never overwrite unsaved local edits; keep the dirty copy until it is saved.
+				merged.push(incoming && !document.isDirty ? incoming : document);
+			}
+			for (const document of changedDocuments) {
+				if (!seen.has(document.id) && !removed.has(document.id)) {
+					merged.push(document);
+				}
+			}
+
+			const nextFolders = folders ? normalizeFolders(folders) : state.folders;
+			const documents = normalizeDocumentsForFolders(normalizeDocuments(merged), nextFolders);
+			const documentIds = new Set(documents.map((document) => document.id));
+			const operationLog = state.operationLog.filter((entry) => documentIds.has(entry.documentId));
+
+			const activeAssetId = nextActiveAssetId(state.assets, state.activeAssetId);
+			const activeDocumentId = nextActiveDocumentId(
+				documents,
+				state.activeDocumentId,
+				activeAssetId,
+			);
+			const transientState = preserveTransientDocumentState({
+				activeAssetId,
+				activeDocumentId,
+				documents,
+				projectId: state.projectId,
+				state,
+			});
+			return {
+				documents,
+				folders: nextFolders,
+				operationLog,
+				activeDocumentId,
+				activeAssetId,
+				...transientState,
+				syncStatus: "synced",
+				syncMessage: "已与后端文档库同步",
+			};
+		});
+	},
 	focusComment: (activeCommentId) =>
 		set({
 			activeCommentId,
