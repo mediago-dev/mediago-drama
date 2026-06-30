@@ -9,13 +9,11 @@ import {
 	Film,
 	Image,
 	Loader2,
-	Quote,
 	Users,
 	Video,
 } from "lucide-react";
 import type React from "react";
 import { GenerationVideoThumbnail } from "@/domains/generation/components/GenerationVideoThumbnail";
-import type { TimelineCompanionTrackType } from "@/domains/episode/stores";
 import type {
 	EpisodeCanvasNodeData,
 	EpisodeCanvasNodeType,
@@ -40,7 +38,6 @@ export interface EpisodeCanvasFlowNodeData extends EpisodeCanvasNodeData {
 	onGenerateReferenceImage?: () => void;
 	onGenerateScene?: (laneId: string) => void;
 	onGenerateStoryboardImage?: (laneId: string) => void;
-	onRequestCompanionGeneration?: (clipId: string, trackType: TimelineCompanionTrackType) => void;
 }
 
 const nodeWidth = "w-72";
@@ -94,7 +91,6 @@ export const ReferenceImageNode: React.FC<NodeProps> = (props) => {
 
 export const PerformanceNode: React.FC<NodeProps> = (props) => {
 	const data = canvasNodeData(props);
-	const clipId = data.clipId;
 
 	return (
 		<CanvasNodeFrame data={data} icon={<Users className="size-4" />}>
@@ -102,22 +98,6 @@ export const PerformanceNode: React.FC<NodeProps> = (props) => {
 			<p className="mt-2 max-h-16 overflow-hidden whitespace-pre-line text-xs leading-5 text-foreground">
 				{data.body}
 			</p>
-			{clipId ? (
-				<div className="mt-3 flex gap-1.5">
-					<NodeActionButton
-						label="旁白"
-						onClick={() => data.onRequestCompanionGeneration?.(clipId, "voiceover")}
-					>
-						<Quote className="size-3.5" />
-					</NodeActionButton>
-					<NodeActionButton
-						label="字幕"
-						onClick={() => data.onRequestCompanionGeneration?.(clipId, "caption")}
-					>
-						<FileText className="size-3.5" />
-					</NodeActionButton>
-				</div>
-			) : null}
 		</CanvasNodeFrame>
 	);
 };

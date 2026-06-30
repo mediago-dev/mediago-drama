@@ -6,11 +6,8 @@ import type {
 	GenerationNotificationOpenTarget,
 	SelectedGenerationAsset,
 } from "@/domains/generation/api/generation";
-import {
-	getSelectedGenerationAssets,
-	projectGenerationConversation,
-	selectedGenerationAssetsQueryKey,
-} from "@/domains/generation/api/generation";
+import { projectGenerationConversation } from "@/domains/generation/api/generation";
+import { useSelectedGenerationAssets } from "@/domains/generation/hooks/useSelectedGenerationAssets";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { DocumentMentionHoverPopover } from "@/domains/documents/components/DocumentMentionHoverPopover";
 import { DocumentMention } from "@/domains/documents/components/extensions/document-mention";
@@ -45,7 +42,6 @@ import { generationAssetSource } from "@/domains/generation/hooks/useGenerationW
 import { selectedGenerationAssetKeysForSection } from "@/domains/generation/lib/selected-asset-keys";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
-import { VideoGenerationDialog } from "@/shared/components/generation-dialogs/VideoGenerationDialog";
 
 interface EpisodeVideoGenerationDialogProps {
 	documentId?: string;
@@ -80,23 +76,19 @@ export interface EpisodeVideoSourceSection {
 	plainText: string;
 }
 
-const titleId = "episode-video-generation-title";
+export const episodeVideoGenerationTitleId = "episode-video-generation-title";
 
-interface EpisodeVideoGenerationDialogController {
+// 剪辑时间线的视频生成「请求」：把片段 → 分镜 section → prompt → 会话/历史 scope
+// 全部推导出来，喂给唯一的 VideoGenerationDialog 的 workspaceProps 直通模式。
+// 它不再是一个独立弹窗组件，只是一个领域请求构造 hook。
+export interface EpisodeVideoGenerationRequest {
 	onOpenChange: (open: boolean) => void;
 	open: boolean;
 	title: string;
 	workspaceProps: Omit<MediaGenerationWorkspaceProps, "kind">;
 }
 
-export const EpisodeVideoGenerationDialog: React.FC<EpisodeVideoGenerationDialogProps> = (
-	props,
-) => {
-	const controller = useEpisodeVideoGenerationDialogController(props);
-	return <EpisodeVideoGenerationDialogView controller={controller} />;
-};
-
-const useEpisodeVideoGenerationDialogController = ({
+export const useEpisodeVideoGenerationRequest = ({
 	documentId,
 	documentTitle,
 	episode,
@@ -107,7 +99,7 @@ const useEpisodeVideoGenerationDialogController = ({
 	projectId,
 	selectedClip,
 	selectedGenerationAssets,
-}: EpisodeVideoGenerationDialogProps): EpisodeVideoGenerationDialogController => {
+}: EpisodeVideoGenerationDialogProps): EpisodeVideoGenerationRequest => {
 	const allDocuments = useDocumentsStore((state) => state.documents);
 	const allAssets = useDocumentsStore((state) => state.assets);
 	const sourceDocument = useMemo(
@@ -146,12 +138,9 @@ const useEpisodeVideoGenerationDialogController = ({
 	const { data: projectsData } = useSWR(normalizedProjectId ? projectsKey : null, getProjects);
 	const shouldLoadSelectedGenerationAssets =
 		selectedGenerationAssets === undefined && Boolean(normalizedProjectId);
-	const { data: selectedGenerationAssetsData } = useSWR(
-		shouldLoadSelectedGenerationAssets
-			? selectedGenerationAssetsQueryKey(normalizedProjectId)
-			: null,
-		() => getSelectedGenerationAssets(normalizedProjectId),
-	);
+	const { data: selectedGenerationAssetsData } = useSelectedGenerationAssets(normalizedProjectId, {
+		enabled: shouldLoadSelectedGenerationAssets,
+	});
 	const mentionSelectedGenerationAssets =
 		selectedGenerationAssets ?? selectedGenerationAssetsData?.assets ?? [];
 	const projectName = useMemo(
@@ -325,18 +314,6 @@ const useEpisodeVideoGenerationDialogController = ({
 		},
 	};
 };
-
-const EpisodeVideoGenerationDialogView: React.FC<{
-	controller: EpisodeVideoGenerationDialogController;
-}> = ({ controller }) => (
-	<VideoGenerationDialog
-		open={controller.open}
-		title={controller.title}
-		titleId={titleId}
-		workspaceProps={controller.workspaceProps}
-		onOpenChange={controller.onOpenChange}
-	/>
-);
 
 export const buildEpisodeVideoContext = (
 	episode: Episode,

@@ -7,8 +7,17 @@ import { DocumentSectionGenerator } from "@/domains/documents/components/Documen
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { Button } from "@/shared/components/ui/button";
 
+const noop = () => undefined;
+
 interface AudioGenerationDialogProps {
 	onAssetSelectionPersisted?: () => void;
+	onGenerationComplete?: (
+		pendingId: string,
+		assets: GenerationAsset[],
+		sourceTaskId: string,
+	) => void;
+	onGenerationError?: (pendingId: string) => void;
+	onGenerationStart?: (pendingId: string, prompt: string) => void;
 	onOpenChange: (open: boolean) => void;
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
@@ -26,6 +35,9 @@ const defaultAudioTitleId = "audio-generation-title";
 
 export const AudioGenerationDialog: React.FC<AudioGenerationDialogProps> = ({
 	onAssetSelectionPersisted,
+	onGenerationComplete,
+	onGenerationError,
+	onGenerationStart,
 	onOpenChange,
 	onOpenReferenceGeneration,
 	onToggleAsset,
@@ -81,9 +93,9 @@ export const AudioGenerationDialog: React.FC<AudioGenerationDialogProps> = ({
 				selectedGenerationAssets={selectedGenerationAssets}
 				viewMode="history"
 				onAssetSelectionPersisted={onAssetSelectionPersisted}
-				onGenerationComplete={() => undefined}
-				onGenerationError={() => undefined}
-				onGenerationStart={() => undefined}
+				onGenerationComplete={onGenerationComplete ?? noop}
+				onGenerationError={onGenerationError ?? noop}
+				onGenerationStart={onGenerationStart ?? noop}
 				onMaterialLibraryImportOpenChange={setMaterialLibraryOpen}
 				onOpenReferenceGeneration={onOpenReferenceGeneration}
 				onToggleAsset={onToggleAsset}

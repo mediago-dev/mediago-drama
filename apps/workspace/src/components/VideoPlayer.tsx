@@ -12,6 +12,23 @@ import { cn } from "@/shared/lib/utils";
 
 type VideoPlayerLoadStrategy = "eager" | "idle" | "visible" | "custom" | "play";
 
+const seekSyncTolerance = 0.3;
+
+// 是否应把外部 currentTime 写回播放器。关键在于跳过「播放器自己 emit 出去、又经 store 绕回来」的回声值：
+// 否则 timeupdate → setCurrentTime → currentTime effect → player.currentTime= → timeupdate … 形成回写死循环，
+// 在弹窗里被滚动锁(react-remove-scroll)的 ref 反复 re-attach 放大成 "Maximum update depth exceeded"。
+export const shouldSyncPlayerTime = (
+	playerTime: number,
+	targetTime: number,
+	lastEmittedTime: number | null,
+	tolerance = seekSyncTolerance,
+) => {
+	if (lastEmittedTime !== null && Math.abs(lastEmittedTime - targetTime) <= tolerance) {
+		return false;
+	}
+	return Math.abs(playerTime - targetTime) > tolerance;
+};
+
 export interface VideoPlayerProps {
 	className?: string;
 	currentTime?: number;
@@ -46,6 +63,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 	title,
 }) => {
 	const internalRef = useRef<MediaPlayerInstance | null>(null);
+	const lastEmittedTimeRef = useRef<number | null>(null);
 	const playerSrc = useMemo<PlayerSrc>(
 		() => ({ src, type: normalizeVideoMimeType(mimeType) }),
 		[mimeType, src],
@@ -64,6 +82,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 	);
 
 	useEffect(() => {
+		// 换源后清掉上一段视频的回声记录，保证新视频的首个 currentTime 能正常 seek。
+		lastEmittedTimeRef.current = null;
+	}, [src]);
+
+	useEffect(() => {
 		if (isPlaying !== false) return;
 
 		internalRef.current?.remoteControl.pause();
@@ -73,7 +96,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 		const player = internalRef.current;
 		if (!player || typeof currentTime !== "number") return;
 
-		if (Math.abs(player.currentTime - currentTime) > 0.3) {
+		if (shouldSyncPlayerTime(player.currentTime, currentTime, lastEmittedTimeRef.current)) {
 			player.currentTime = currentTime;
 		}
 	}, [currentTime, src]);
@@ -96,7 +119,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 			onPause={() => onPlayingChange?.(false)}
 			onPlaying={() => onPlayingChange?.(true)}
 			onPlayFail={(error) => onPlaybackError?.(mediaPlaybackErrorMessage(error))}
-			onTimeUpdate={(detail) => onTimeUpdate?.(detail.currentTime)}
+			onTimeUpdate={(detail) => {
+				lastEmittedTimeRef.current = detail.currentTime;
+				onTimeUpdate?.(detail.currentTime);
+			}}
 		>
 			<MediaProvider />
 			<DefaultVideoLayout

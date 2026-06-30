@@ -2,7 +2,7 @@ import type React from "react";
 import { EpisodeClipStrip } from "@/domains/episode/components/EpisodeClipStrip";
 import type { EpisodeClipMediaMetadata } from "@/domains/episode/lib/media-assets";
 import type { Episode, TimelineClip } from "@/domains/episode/lib/sample";
-import type { TimelineCompanionTrackType, TimelineZoom } from "@/domains/episode/stores";
+import type { TimelineZoom } from "@/domains/episode/stores";
 
 interface EpisodeTimelineEditorProps {
 	downloadingClipIds?: string[];
@@ -13,10 +13,6 @@ interface EpisodeTimelineEditorProps {
 	selectedClipId: string;
 	timelineDuration?: number;
 	zoom: TimelineZoom;
-	onRequestCompanionGeneration: (
-		videoClipId: string,
-		trackType: TimelineCompanionTrackType,
-	) => void;
 	onDownloadClip?: (clip: TimelineClip) => void;
 	onGenerateClip: (clipId: string) => void;
 	onPlayClip: (clipId: string) => void;

@@ -9,6 +9,7 @@ import { useDocumentsStore } from "@/domains/documents/stores";
 import { findEpisodeVideoClip } from "@/domains/episode/lib/filters";
 import { type Episode, sampleEpisode } from "@/domains/episode/lib/sample";
 import { useEpisodeStore } from "@/domains/episode/stores";
+import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
 import { getMediaAssets } from "@/domains/workspace/api/media";
 import {
 	updateWorkspaceDocumentRecord,
@@ -209,10 +210,6 @@ vi.mock("@/domains/episode/components/EpisodePreviewPlayer", () => ({
 	},
 }));
 
-vi.mock("@/domains/episode/components/EpisodeCompanionGenerationDialog", () => ({
-	EpisodeCompanionGenerationDialog: () => null,
-}));
-
 vi.mock("@/domains/episode/components/EpisodeVideoGenerationDialog", () => ({
 	buildEpisodeVideoContext: (
 		_episode: Episode,
@@ -227,55 +224,44 @@ vi.mock("@/domains/episode/components/EpisodeVideoGenerationDialog", () => ({
 		sourceMarkdown: `## ${selectedClip?.title ?? "分镜"}`,
 	}),
 	buildEpisodeVideoReferenceInputs: () => ({ assetIds: [], urls: [] }),
-	EpisodeVideoGenerationDialog: ({
-		onGeneratedVideoReady,
-		selectedClip,
-	}: {
-		onGeneratedVideoReady?: (clipId: string, videoUrl: string | null) => void;
-		selectedClip?: { id: string } | null;
-	}) => (
-		<button
-			type="button"
-			onClick={() =>
-				onGeneratedVideoReady?.(
-					selectedClip?.id ?? "missing-video-clip",
-					"/api/v1/media-assets/generated-video/content",
-				)
-			}
-		>
-			模拟视频生成完成
-		</button>
-	),
+	episodeVideoGenerationTitleId: "episode-video-generation-title",
 	findEpisodeVideoSourceSection: () => null,
 	firstVideoAssetSource: (assets: Array<{ kind: string; url?: string }>) =>
 		assets.find((asset) => asset.kind === "video" && asset.url)?.url ?? "",
+	useEpisodeVideoGenerationRequest: ({
+		onGeneratedVideoReady,
+		onOpenChange,
+		open,
+		selectedClip,
+	}: {
+		onGeneratedVideoReady?: (clipId: string, videoUrl: string | null) => void;
+		onOpenChange: (open: boolean) => void;
+		open: boolean;
+		selectedClip?: { id: string } | null;
+	}) => ({
+		onOpenChange,
+		open,
+		title: "生成视频素材",
+		workspaceProps: {
+			onToggleAsset: () =>
+				onGeneratedVideoReady?.(
+					selectedClip?.id ?? "missing-video-clip",
+					"/api/v1/media-assets/generated-video/content",
+				),
+		},
+	}),
 }));
 
-vi.mock("@/shared/components/generation-dialogs/ImageGenerationDialog", () => ({
-	ImageGenerationDialog: ({
-		open,
-		section,
-		onToggleImage,
+vi.mock("@/shared/components/generation-dialogs/VideoGenerationDialog", () => ({
+	VideoGenerationDialog: ({
+		workspaceProps,
 	}: {
-		open: boolean;
-		section: MarkdownSectionContext | null;
-		onToggleImage?: (
-			section: MarkdownSectionContext,
-			asset: typeof fixtures.generatedAsset,
-			selected: boolean,
-		) => void;
-	}) =>
-		(() => {
-			fixtures.imageDialogSection = open ? section : null;
-			return open && section ? (
-				<button
-					type="button"
-					onClick={() => onToggleImage?.(section, fixtures.generatedAsset, true)}
-				>
-					选择画布生成图片
-				</button>
-			) : null;
-		})(),
+		workspaceProps?: { onToggleAsset?: () => void };
+	}) => (
+		<button type="button" onClick={() => workspaceProps?.onToggleAsset?.()}>
+			模拟视频生成完成
+		</button>
+	),
 }));
 
 const makeDocument = (overrides: Partial<MarkdownDocument> = {}): MarkdownDocument => ({
@@ -299,7 +285,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 	});
 
 	beforeEach(() => {
-		fixtures.imageDialogSection = null;
+		useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
 		fixtures.previewNativeVideoPause.mockReset();
 		fixtures.previewNativeVideoPlay.mockReset();
 		fixtures.previewRemoteControl.pause.mockReset();
@@ -796,7 +782,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 		});
 	});
 
-	it("opens canvas reference generation without wiring document insertion", async () => {
+	it("opens canvas reference generation through the global dialog store", async () => {
 		render(
 			<MemoryRouter initialEntries={["/projects?projectId=project-a&workbench=canvas"]}>
 				<EpisodeTimelineView documentId="story-doc" workbench="canvas" />
@@ -805,19 +791,13 @@ describe("EpisodeTimelineView canvas generation", () => {
 
 		screen.getByRole("button", { name: "打开画布引用生成" }).click();
 		await waitFor(() => {
-			expect(screen.getByRole("button", { name: "选择画布生成图片" })).toBeInTheDocument();
+			expect(useMediaGenerationStore.getState().activeRequest?.kind).toBe("image");
 		});
-		expect(fixtures.imageDialogSection?.headingText).toBe("林书彤");
-		expect(fixtures.imageDialogSection?.prompt).toContain("## 林书彤");
-		expect(fixtures.imageDialogSection?.prompt).toContain("形象定位：21岁女大学生");
-		expect(fixtures.imageDialogSection?.prompt).not.toContain("旧形象定位");
-
-		screen.getByRole("button", { name: "选择画布生成图片" }).click();
-
-		expect(
-			useDocumentsStore.getState().documents.find((document) => document.id === "character-doc")
-				?.content,
-		).not.toContain("/api/v1/media-assets/generated-lin/content");
+		const section = useMediaGenerationStore.getState().activeRequest?.section;
+		expect(section?.headingText).toBe("林书彤");
+		expect(section?.prompt).toContain("## 林书彤");
+		expect(section?.prompt).toContain("形象定位：21岁女大学生");
+		expect(section?.prompt).not.toContain("旧形象定位");
 	});
 
 	it("rolls back a generated video clip when saving the episode fails", async () => {

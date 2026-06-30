@@ -20,9 +20,9 @@ import {
 	generationTasksQueryKey,
 	type SelectedGenerationAsset,
 	getGenerationTasks,
-	getSelectedGenerationAssets,
-	selectedGenerationAssetsQueryKey,
 } from "@/domains/generation/api/generation";
+import { useSelectedGenerationAssets } from "@/domains/generation/hooks/useSelectedGenerationAssets";
+import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
 import { EpisodeTimelineView } from "@/domains/episode/components/EpisodeTimelineView";
 import {
@@ -33,7 +33,6 @@ import {
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
-import { generationStatusLabel } from "@/domains/generation/hooks/generationFormatters";
 import {
 	BatchGenerationSettingsDialog,
 	type BatchGenerationSettings,
@@ -42,6 +41,19 @@ import {
 	selectedGenerationResourceDescriptorMap,
 	selectedGenerationResourceDescriptors,
 } from "@/domains/generation/lib/selected-resources";
+import {
+	generationStatusForSection,
+	generationTaskTime,
+	hasPendingGenerationTasks,
+	isPendingGenerationStatus,
+	mergeResourceGenerationStatusMaps,
+	type ResourceGenerationStatus,
+	resourceGenerationStatusBadgeClassName,
+	resourceGenerationStatusKind,
+	resourceGenerationStatusTime,
+	resourceGenerationStatusTitle,
+	visibleResourceGenerationStatus,
+} from "@/domains/generation/lib/resource-generation-status";
 import {
 	billingSummaryKey,
 	getBillingSummary,
@@ -65,8 +77,6 @@ import { useProjectStore } from "@/domains/projects/stores";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
-import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
-import { VideoGenerationDialog } from "@/shared/components/generation-dialogs/VideoGenerationDialog";
 import { useToast } from "@/hooks/useToast";
 import { apiResourceURL } from "@/shared/lib/api-base";
 import { cn } from "@/shared/lib/utils";
@@ -98,18 +108,17 @@ export const ProjectOverview: React.FC = () => {
 	const setActiveProjectId = useProjectStore((state) => state.setActiveProjectId);
 	const [documentResourceDialogType, setDocumentResourceDialogType] =
 		useState<AgentResourceType | null>(null);
-	const [imageGenerationSection, setImageGenerationSection] =
-		useState<MarkdownSectionContext | null>(null);
-	const [videoGenerationSection, setVideoGenerationSection] =
-		useState<MarkdownSectionContext | null>(null);
 	const [batchGenerationJobs, setBatchGenerationJobs] = useState<
 		DocumentSectionBatchGenerationJob[]
 	>([]);
 	const [batchGenerationDialog, setBatchGenerationDialog] =
 		useState<OverviewBatchGenerationDialogState | null>(null);
-	const [optimisticGenerationStatuses, setOptimisticGenerationStatuses] = useState<
-		Record<string, ResourceGenerationStatus>
-	>({});
+	const optimisticGenerationStatuses = useMediaGenerationStore((state) => state.optimisticStatuses);
+	const openGenerationDialog = useMediaGenerationStore((state) => state.open);
+	const markGenerating = useMediaGenerationStore((state) => state.markGenerating);
+	const markFailed = useMediaGenerationStore((state) => state.markFailed);
+	const clearStatus = useMediaGenerationStore((state) => state.clearStatus);
+	const clearStatuses = useMediaGenerationStore((state) => state.clearStatuses);
 	const [storyboardVideoDocumentId, setStoryboardVideoDocumentId] = useState<string | null>(null);
 	const refreshedSelectedAssetTaskKeysRef = useRef<Set<string>>(new Set());
 	const hydrateWorkspaceDocuments = useDocumentsStore((state) => state.hydrateWorkspaceDocuments);
@@ -145,10 +154,8 @@ export const ProjectOverview: React.FC = () => {
 	} = useSWR(usageParams ? billingSummaryKey(usageParams) : null, () =>
 		getBillingSummary(usageParams ?? { groupBy: "capability" }),
 	);
-	const { data: selectedResources, mutate: mutateSelectedResources } = useSWR(
-		projectId ? selectedGenerationAssetsQueryKey(projectId) : null,
-		() => getSelectedGenerationAssets(projectId ?? ""),
-	);
+	const { assets: selectedGenerationAssets, mutate: mutateSelectedResources } =
+		useSelectedGenerationAssets(projectId);
 	const { data: imageTaskData } = useSWR(
 		projectId ? generationTasksQueryKey(null, "image", projectGenerationScopeId, projectId) : null,
 		() => getGenerationTasks(null, "image", projectGenerationScopeId, projectId),
@@ -173,7 +180,6 @@ export const ProjectOverview: React.FC = () => {
 		data: storyboardVideoResources,
 		error: storyboardVideoResourcesError,
 		isLoading: isStoryboardVideoResourcesLoading,
-		mutate: mutateStoryboardVideoResources,
 	} = useSWR(projectId ? workspaceStoryboardVideoResourcesKey(projectId) : null, () =>
 		getWorkspaceStoryboardVideoResources(projectId ?? ""),
 	);
@@ -185,7 +191,6 @@ export const ProjectOverview: React.FC = () => {
 		data: workspaceDocumentResources,
 		error: documentResourcesError,
 		isLoading: isDocumentResourcesLoading,
-		mutate: mutateDocumentResources,
 	} = useSWR(projectId ? workspaceDocumentResourcesKey(projectId) : null, () =>
 		getWorkspaceDocumentResources(projectId ?? ""),
 	);
@@ -200,17 +205,14 @@ export const ProjectOverview: React.FC = () => {
 
 	useEffect(() => {
 		setDocumentResourceDialogType(null);
-		setImageGenerationSection(null);
-		setVideoGenerationSection(null);
 		setBatchGenerationJobs([]);
 		setBatchGenerationDialog(null);
-		setOptimisticGenerationStatuses({});
+		clearStatuses();
 		setStoryboardVideoDocumentId(null);
 		refreshedSelectedAssetTaskKeysRef.current.clear();
 	}, [projectId]);
 
 	const documentResources = workspaceDocumentResources?.resources ?? [];
-	const selectedGenerationAssets = selectedResources?.assets ?? [];
 	const storyboardVideoGroups = storyboardVideoResources?.groups ?? [];
 	const optimisticGenerationStatusMap = useMemo(
 		() => new Map(Object.entries(optimisticGenerationStatuses)),
@@ -254,22 +256,18 @@ export const ProjectOverview: React.FC = () => {
 		]);
 		if (realStatuses.size === 0) return;
 
-		setOptimisticGenerationStatuses((current) => {
-			let changed = false;
-			const next = { ...current };
-			for (const [resourceId, status] of Object.entries(current)) {
-				const realStatus = realStatuses.get(resourceId);
-				if (
-					realStatus &&
-					resourceGenerationStatusTime(realStatus) >= resourceGenerationStatusTime(status)
-				) {
-					delete next[resourceId];
-					changed = true;
-				}
+		for (const [resourceId, status] of Object.entries(
+			useMediaGenerationStore.getState().optimisticStatuses,
+		)) {
+			const realStatus = realStatuses.get(resourceId);
+			if (
+				realStatus &&
+				resourceGenerationStatusTime(realStatus) >= resourceGenerationStatusTime(status)
+			) {
+				clearStatus(resourceId);
 			}
-			return changed ? next : current;
-		});
-	}, [documentResourceTaskStatuses, storyboardReelTaskStatuses]);
+		}
+	}, [clearStatus, documentResourceTaskStatuses, storyboardReelTaskStatuses]);
 
 	useEffect(() => {
 		if (!projectId) return;
@@ -296,32 +294,32 @@ export const ProjectOverview: React.FC = () => {
 	const openDocumentResourceType = useCallback((resourceType: AgentResourceType) => {
 		setDocumentResourceDialogType(resourceType);
 	}, []);
-	const openImageGeneration = useCallback((resource: WorkspaceDocumentResource) => {
-		setImageGenerationSection(documentResourceToSectionContext(resource));
-	}, []);
+	const openImageGeneration = useCallback(
+		(resource: WorkspaceDocumentResource) => {
+			openGenerationDialog({
+				kind: "image",
+				projectId: projectId ?? undefined,
+				section: documentResourceToSectionContext(resource),
+				statusResourceKey: resource.id,
+			});
+		},
+		[openGenerationDialog, projectId],
+	);
 	const openImageGenerationBatch = useCallback((resources: WorkspaceDocumentResource[]) => {
 		if (resources.length === 0) return;
 		setBatchGenerationDialog({ kind: "image", resources });
 	}, []);
-	const refreshOverviewSelectedResources = useCallback(() => {
-		void mutateSelectedResources();
-		void mutateDocumentResources();
-		void mutateStoryboardVideoResources();
-	}, [mutateDocumentResources, mutateSelectedResources, mutateStoryboardVideoResources]);
-	const closeImageGeneration = useCallback(
-		(open: boolean) => {
-			if (!open) {
-				setImageGenerationSection(null);
-				refreshOverviewSelectedResources();
-			}
-		},
-		[refreshOverviewSelectedResources],
-	);
 	const openStoryboardVideoGeneration = useCallback(
 		(group: WorkspaceStoryboardVideoDocumentGroup, reel: WorkspaceStoryboardVideoReel) => {
-			setVideoGenerationSection(storyboardReelToSectionContext(group, reel));
+			openGenerationDialog({
+				kind: "video",
+				projectId: projectId ?? undefined,
+				section: storyboardReelToSectionContext(group, reel),
+				resolveLatestSection: false,
+				statusResourceKey: reel.id,
+			});
 		},
-		[],
+		[openGenerationDialog, projectId],
 	);
 	const openStoryboardVideoGenerationBatch = useCallback(
 		(group: WorkspaceStoryboardVideoDocumentGroup, reels: WorkspaceStoryboardVideoReel[]) => {
@@ -365,27 +363,24 @@ export const ProjectOverview: React.FC = () => {
 
 			setBatchGenerationDialog(null);
 			setBatchGenerationJobs((current) => [...current, ...jobs]);
-			setOptimisticGenerationStatuses((current) =>
-				optimisticGenerationStatusesWithJobs(current, jobs),
-			);
+			for (const job of jobs) {
+				const resourceId = job.statusResourceId?.trim();
+				if (resourceId) {
+					markGenerating(resourceId, {
+						message: "已加入后台批量生成。",
+						taskId: `local:${job.id}`,
+					});
+				}
+			}
 			toast.info("正在后台批量生成", {
 				description: `已加入 ${jobs.length} 项队列，将按顺序使用本次批量设置。`,
 			});
 		},
-		[batchGenerationDialog, projectId, toast],
+		[batchGenerationDialog, markGenerating, projectId, toast],
 	);
 	const closeBatchGenerationDialog = useCallback((open: boolean) => {
 		if (!open) setBatchGenerationDialog(null);
 	}, []);
-	const closeVideoGeneration = useCallback(
-		(open: boolean) => {
-			if (!open) {
-				setVideoGenerationSection(null);
-				refreshOverviewSelectedResources();
-			}
-		},
-		[refreshOverviewSelectedResources],
-	);
 	const removeBatchGenerationJob = useCallback((jobId: string) => {
 		setBatchGenerationJobs((current) => current.filter((job) => job.id !== jobId));
 	}, []);
@@ -393,18 +388,14 @@ export const ProjectOverview: React.FC = () => {
 		(job: DocumentSectionBatchGenerationJob, message: string) => {
 			const resourceId = job.statusResourceId?.trim();
 			if (resourceId) {
-				setOptimisticGenerationStatuses((current) => ({
-					...current,
-					[resourceId]: failedOptimisticGenerationStatus(job, message),
-				}));
+				markFailed(resourceId, { message, taskId: `local:${job.id}` });
 			}
 			toast.error("后台生成提交失败", {
 				description: `${job.section.headingText}：${message}`,
 			});
 		},
-		[toast],
+		[markFailed, toast],
 	);
-	const ignoreSectionGeneration = useCallback(() => undefined, []);
 
 	if (!projectId) return <Navigate to="/" replace />;
 
@@ -490,28 +481,6 @@ export const ProjectOverview: React.FC = () => {
 									onOpenChange={(open) => {
 										if (!open) setDocumentResourceDialogType(null);
 									}}
-								/>
-								<ImageGenerationDialog
-									open={Boolean(imageGenerationSection)}
-									projectId={projectId}
-									section={imageGenerationSection}
-									selectedGenerationAssets={selectedGenerationAssets}
-									onAssetSelectionPersisted={refreshOverviewSelectedResources}
-									onGenerationComplete={ignoreSectionGeneration}
-									onGenerationError={ignoreSectionGeneration}
-									onGenerationStart={ignoreSectionGeneration}
-									onOpenChange={closeImageGeneration}
-									onOpenReferenceGeneration={setImageGenerationSection}
-								/>
-								<VideoGenerationDialog
-									open={Boolean(videoGenerationSection)}
-									projectId={projectId}
-									resolveLatestSection={false}
-									section={videoGenerationSection}
-									selectedGenerationAssets={selectedGenerationAssets}
-									onAssetSelectionPersisted={refreshOverviewSelectedResources}
-									onOpenChange={closeVideoGeneration}
-									onOpenReferenceGeneration={setImageGenerationSection}
 								/>
 								{batchGenerationDialog ? (
 									<BatchGenerationSettingsDialog
@@ -1379,17 +1348,6 @@ interface DocumentResourceSelectedImage {
 	title?: string;
 }
 
-type ResourceGenerationStatusKind = "pending" | "failed" | "completed";
-
-interface ResourceGenerationStatus {
-	kind: ResourceGenerationStatusKind;
-	label: string;
-	message?: string;
-	status: string;
-	taskId: string;
-	updatedAt?: string;
-}
-
 const storyboardDocumentGroupVideoCount = (group: WorkspaceStoryboardVideoDocumentGroup) =>
 	group.reels.reduce((total, reel) => total + reel.videos.length, 0);
 
@@ -1418,152 +1376,6 @@ const storyboardReelGenerationStatusMap = (
 	}
 	return next;
 };
-
-const mergeResourceGenerationStatusMaps = (
-	taskStatuses: Map<string, ResourceGenerationStatus>,
-	optimisticStatuses: Map<string, ResourceGenerationStatus>,
-) => {
-	const next = new Map(taskStatuses);
-	for (const [resourceId, optimisticStatus] of optimisticStatuses) {
-		const taskStatus = next.get(resourceId);
-		if (
-			!taskStatus ||
-			resourceGenerationStatusTime(optimisticStatus) > resourceGenerationStatusTime(taskStatus)
-		) {
-			next.set(resourceId, optimisticStatus);
-		}
-	}
-	return next;
-};
-
-const generationStatusForSection = (
-	tasks: GenerationTask[],
-	documentId: string,
-	sectionId: string,
-) => {
-	const matchingTasks = tasks.filter(
-		(task) =>
-			task.documentId?.trim() === documentId.trim() && task.sectionId?.trim() === sectionId.trim(),
-	);
-	const task = latestActiveOrRecentGenerationTask(matchingTasks);
-	return task ? resourceGenerationStatusFromTask(task) : undefined;
-};
-
-const latestActiveOrRecentGenerationTask = (tasks: GenerationTask[]) =>
-	latestGenerationTask(tasks.filter((task) => isPendingGenerationStatus(task.status))) ??
-	latestGenerationTask(tasks);
-
-const latestGenerationTask = (tasks: GenerationTask[]) => {
-	let latest: GenerationTask | undefined;
-	let latestTime = Number.NEGATIVE_INFINITY;
-	for (const task of tasks) {
-		const time = generationTaskTime(task);
-		if (!latest || time >= latestTime) {
-			latest = task;
-			latestTime = time;
-		}
-	}
-	return latest;
-};
-
-const generationTaskTime = (task: GenerationTask) => {
-	const time = Date.parse(task.updatedAt || task.createdAt || "");
-	return Number.isFinite(time) ? time : 0;
-};
-
-const resourceGenerationStatusTime = (status: ResourceGenerationStatus) => {
-	const time = Date.parse(status.updatedAt ?? "");
-	return Number.isFinite(time) ? time : 0;
-};
-
-const optimisticGenerationStatusesWithJobs = (
-	current: Record<string, ResourceGenerationStatus>,
-	jobs: DocumentSectionBatchGenerationJob[],
-) => {
-	const updatedAt = new Date().toISOString();
-	const next = { ...current };
-	for (const job of jobs) {
-		const resourceId = job.statusResourceId?.trim();
-		if (!resourceId) continue;
-		next[resourceId] = pendingOptimisticGenerationStatus(job, updatedAt);
-	}
-	return next;
-};
-
-const pendingOptimisticGenerationStatus = (
-	job: DocumentSectionBatchGenerationJob,
-	updatedAt: string,
-): ResourceGenerationStatus => ({
-	kind: "pending",
-	label: resourceGenerationStatusDisplayLabel("pending"),
-	message: "已加入后台批量生成。",
-	status: "submitted",
-	taskId: `local:${job.id}`,
-	updatedAt,
-});
-
-const failedOptimisticGenerationStatus = (
-	job: DocumentSectionBatchGenerationJob,
-	message: string,
-): ResourceGenerationStatus => ({
-	kind: "failed",
-	label: resourceGenerationStatusDisplayLabel("failed"),
-	message,
-	status: "failed",
-	taskId: `local:${job.id}`,
-	updatedAt: new Date().toISOString(),
-});
-
-const hasPendingGenerationTasks = (tasks: GenerationTask[]) =>
-	tasks.some((task) => isPendingGenerationStatus(task.status));
-
-const resourceGenerationStatusFromTask = (task: GenerationTask): ResourceGenerationStatus => {
-	const kind = resourceGenerationStatusKind(task.status);
-	return {
-		kind,
-		label: resourceGenerationStatusDisplayLabel(kind),
-		message: task.error || task.message,
-		status: task.status,
-		taskId: task.id,
-		updatedAt: task.updatedAt,
-	};
-};
-
-const resourceGenerationStatusKind = (status: string): ResourceGenerationStatusKind => {
-	const normalized = status.toLowerCase().trim();
-	if (failedGenerationStatuses.has(normalized)) return "failed";
-	if (completedGenerationStatuses.has(normalized)) return "completed";
-	return "pending";
-};
-
-const visibleResourceGenerationStatus = (status?: ResourceGenerationStatus) =>
-	status && status.kind !== "completed" ? status : undefined;
-
-const isPendingGenerationStatus = (status: string) =>
-	resourceGenerationStatusKind(status) === "pending";
-
-const resourceGenerationStatusDisplayLabel = (kind: ResourceGenerationStatusKind) => {
-	if (kind === "failed") return "生成失败";
-	if (kind === "completed") return "已完成";
-	return "生成中";
-};
-
-const resourceGenerationStatusTitle = (status: ResourceGenerationStatus) => {
-	const details = [generationStatusLabel(status.status)];
-	if (status.message?.trim()) details.push(status.message.trim());
-	return details.join(" · ");
-};
-
-const resourceGenerationStatusBadgeClassName = (kind: ResourceGenerationStatusKind) => {
-	if (kind === "failed") return "border-error-border bg-error-surface text-error-foreground";
-	if (kind === "completed") {
-		return "border-success-border bg-success-surface text-success-foreground";
-	}
-	return "border-info-border bg-info-surface text-info-foreground";
-};
-
-const failedGenerationStatuses = new Set(["failed", "error", "cancelled", "canceled"]);
-const completedGenerationStatuses = new Set(["completed", "succeeded", "success"]);
 
 const completedImageTaskSelectedAssetsRefreshKeys = (tasks: GenerationTask[]) =>
 	tasks.flatMap((task) => {

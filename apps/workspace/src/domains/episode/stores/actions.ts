@@ -1,7 +1,7 @@
 import { findEpisodeClip } from "@/domains/episode/lib/filters";
-import type { Episode, TimelineClip } from "@/domains/episode/lib/sample";
+import type { Episode } from "@/domains/episode/lib/sample";
 import type { StateCreator } from "zustand";
-import type { EpisodeState, TimelineCompanionTrackType } from "./types";
+import type { EpisodeState } from "./types";
 
 type EpisodeStateKey = "episode" | "currentTime" | "isPlaying" | "selectedClipId" | "zoom";
 
@@ -10,46 +10,6 @@ type EpisodeSet = Parameters<StateCreator<EpisodeState>>[0];
 type EpisodeGet = Parameters<StateCreator<EpisodeState>>[1];
 
 export const createEpisodeActions = (set: EpisodeSet, get: EpisodeGet): EpisodeActions => ({
-	addCompanionTextClip: (videoClipId, trackType, content) => {
-		let nextEpisode: Episode | null = null;
-		set((state) => {
-			const videoClip = state.episode.tracks
-				.find((track) => track.type === "video")
-				?.clips.find((clip) => clip.id === videoClipId);
-			if (!videoClip) return {};
-
-			const existingIds = new Set(
-				state.episode.tracks.flatMap((track) => track.clips.map((clip) => clip.id)),
-			);
-			let createdClipId: string | null = null;
-			const tracks = state.episode.tracks.map((track) => {
-				if (track.type !== trackType) return track;
-				if (track.clips.some((clip) => timelineClipsOverlap(clip, videoClip))) return track;
-
-				const companionClip = createCompanionTextClip(track.type, videoClip, content, existingIds);
-				existingIds.add(companionClip.id);
-				createdClipId = companionClip.id;
-
-				return {
-					...track,
-					clips: [...track.clips, companionClip].sort(compareTimelineClips),
-				};
-			});
-
-			if (!createdClipId) return {};
-
-			const episode = { ...state.episode, tracks };
-			nextEpisode = episode;
-
-			return {
-				episode,
-				currentTime: videoClip.start,
-				isPlaying: false,
-				selectedClipId: createdClipId,
-			};
-		});
-		return nextEpisode;
-	},
 	pause: () => set({ isPlaying: false }),
 	play: () => set({ isPlaying: true }),
 	selectClip: (selectedClipId) => {
@@ -171,36 +131,3 @@ export const createEpisodeActions = (set: EpisodeSet, get: EpisodeGet): EpisodeA
 	setZoom: (zoom) => set({ zoom }),
 	togglePlayback: () => set((state) => ({ isPlaying: !state.isPlaying })),
 });
-
-const timelineClipsOverlap = (clip: TimelineClip, targetClip: TimelineClip) =>
-	Math.min(clip.end, targetClip.end) - Math.max(clip.start, targetClip.start) > 0.25;
-
-const compareTimelineClips = (first: TimelineClip, second: TimelineClip) =>
-	first.start - second.start || first.end - second.end || first.id.localeCompare(second.id);
-
-const createCompanionTextClip = (
-	trackType: TimelineCompanionTrackType,
-	videoClip: TimelineClip,
-	content: string,
-	existingIds: Set<string>,
-): TimelineClip => {
-	const suffix = trackType === "voiceover" ? "旁白" : "字幕";
-	const baseId = `${trackType}-${videoClip.id}`;
-	let id = baseId;
-	let index = 2;
-
-	while (existingIds.has(id)) {
-		id = `${baseId}-${index}`;
-		index += 1;
-	}
-
-	return {
-		id,
-		title: `${videoClip.title} ${suffix}`,
-		start: videoClip.start,
-		end: videoClip.end,
-		content,
-		status: "draft",
-		source: "AI 文案生成",
-	};
-};
