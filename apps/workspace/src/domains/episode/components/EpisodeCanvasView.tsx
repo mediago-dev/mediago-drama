@@ -58,6 +58,8 @@ import {
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 
 interface EpisodeCanvasViewProps {
+	// 所在 tab 是否可见。隐藏时跳过 fitView（容器 0 尺寸），可见时重新适配视图。
+	active?: boolean;
 	activeDocument: MarkdownDocument | null;
 	assets: ProjectAsset[];
 	documents: MarkdownDocument[];
@@ -118,6 +120,7 @@ export const EpisodeCanvasView: React.FC<EpisodeCanvasViewProps> = (props) => (
 );
 
 const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
+	active = true,
 	activeDocument,
 	assets,
 	documents,
@@ -311,13 +314,13 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 		[activeDocument?.id, laneById, nodeById, toggleSectionMention],
 	);
 	useEffect(() => {
-		if (nodes.length === 0) return;
+		if (!active || nodes.length === 0) return;
 
 		const frame = window.requestAnimationFrame(() => {
 			void fitView({ duration: 220, padding: 0.16 });
 		});
 		return () => window.cancelAnimationFrame(frame);
-	}, [activeLane?.id, fitView, nodes.length]);
+	}, [active, activeLane?.id, fitView, nodes.length]);
 
 	return (
 		<section

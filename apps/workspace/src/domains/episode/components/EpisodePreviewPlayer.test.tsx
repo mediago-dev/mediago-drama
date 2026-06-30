@@ -23,12 +23,12 @@ describe("EpisodePreviewPlayer", () => {
 		expect(screen.getByText("点击下方卡片右上角的「生成」开始制作")).toBeTruthy();
 	});
 
-	it("eagerly loads the preview media", () => {
+	it("loads the preview media only when the player becomes visible", () => {
 		render(<EpisodePreviewPlayer title="第一章" videoUrl="https://example.test/preview.mp4" />);
 
 		const player = screen.getByTestId("video-player");
 		expect(player.getAttribute("data-src")).toBe("https://example.test/preview.mp4");
-		expect(player.getAttribute("data-load")).toBe("eager");
+		expect(player.getAttribute("data-load")).toBe("visible");
 	});
 
 	it("renders preview media URLs against the packaged desktop server", () => {

@@ -1043,6 +1043,10 @@ const StoryboardVideoResourcesDialog: React.FC<{
 }) => {
 	const videoCount = group ? storyboardDocumentGroupVideoCount(group) : 0;
 	const [activeTab, setActiveTab] = useState<StoryboardVideoResourcesDialogTab>("list");
+	// 已访问过的重型 tab(画布/预览)首次进入后常驻挂载,之后切换瞬时完成,无需重建画布/播放器。
+	const [visitedTabs, setVisitedTabs] = useState<Set<StoryboardVideoResourcesDialogTab>>(
+		() => new Set<StoryboardVideoResourcesDialogTab>(["list"]),
+	);
 	const selectableReels = useMemo(
 		() => (group?.reels ?? []).filter((reel) => reel.canGenerate),
 		[group?.reels],
@@ -1063,6 +1067,7 @@ const StoryboardVideoResourcesDialog: React.FC<{
 	useEffect(() => {
 		setSelectedReelIds([]);
 		setActiveTab("list");
+		setVisitedTabs(new Set<StoryboardVideoResourcesDialogTab>(["list"]));
 	}, [open, group?.documentId]);
 
 	useEffect(() => {
@@ -1095,6 +1100,7 @@ const StoryboardVideoResourcesDialog: React.FC<{
 			if (!isStoryboardVideoResourcesDialogTab(tab)) return;
 			if ((tab === "canvas" || tab === "preview") && group) onPrepareWorkbench(group);
 			setActiveTab(tab);
+			setVisitedTabs((current) => (current.has(tab) ? current : new Set(current).add(tab)));
 		},
 		[group, onPrepareWorkbench],
 	);
@@ -1192,12 +1198,32 @@ const StoryboardVideoResourcesDialog: React.FC<{
 							</>
 						) : null}
 					</TabsContent>
-					<TabsContent value="canvas" className="m-0 h-full min-h-0 overflow-hidden">
-						<EpisodeTimelineView documentId={group.documentId} workbench="canvas" />
-					</TabsContent>
-					<TabsContent value="preview" className="m-0 h-full min-h-0 overflow-hidden">
-						<EpisodeTimelineView documentId={group.documentId} workbench="timeline" />
-					</TabsContent>
+					{visitedTabs.has("canvas") ? (
+						<TabsContent
+							value="canvas"
+							forceMount
+							className="m-0 h-full min-h-0 overflow-hidden data-[state=inactive]:hidden"
+						>
+							<EpisodeTimelineView
+								active={activeTab === "canvas"}
+								documentId={group.documentId}
+								workbench="canvas"
+							/>
+						</TabsContent>
+					) : null}
+					{visitedTabs.has("preview") ? (
+						<TabsContent
+							value="preview"
+							forceMount
+							className="m-0 h-full min-h-0 overflow-hidden data-[state=inactive]:hidden"
+						>
+							<EpisodeTimelineView
+								active={activeTab === "preview"}
+								documentId={group.documentId}
+								workbench="timeline"
+							/>
+						</TabsContent>
+					) : null}
 				</div>
 			</GenerationModalShell>
 		</Tabs>

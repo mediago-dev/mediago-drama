@@ -57,6 +57,8 @@ import { VideoGenerationDialog } from "@/shared/components/generation-dialogs/Vi
 import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
 
 interface EpisodeTimelineViewProps {
+	// 所在 tab 是否可见。隐藏时暂停预览播放器、画布跳过 fitView；用于 tab 常驻挂载（forceMount）时。
+	active?: boolean;
 	documentId?: string;
 	workbench?: AgentDocumentWorkbench;
 }
@@ -66,6 +68,7 @@ const isJianyingDraftExportButtonVisible =
 const emptySelectedGenerationAssets: SelectedGenerationAsset[] = [];
 
 export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
+	active = true,
 	documentId,
 	workbench,
 }) => {
@@ -700,6 +703,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 			<main className="flex min-h-0 flex-1 flex-col overflow-hidden">
 				{isCanvasWorkbench ? (
 					<EpisodeCanvasView
+						active={active}
 						activeDocument={activeDocument ?? null}
 						assets={assets}
 						documents={documents}
@@ -774,7 +778,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 									posterUrl={playbackPosterUrl}
 									title={playbackTitle}
 									currentTime={playbackTime}
-									isPlaying={isPlaying && Boolean(playbackVideoUrl)}
+									isPlaying={active && isPlaying && Boolean(playbackVideoUrl)}
 									onEnded={handlePreviewEnded}
 									onPlayingChange={handlePreviewPlayingChange}
 									onPlaybackError={handlePreviewPlaybackError}
