@@ -865,20 +865,21 @@ describe("ProjectOverview", () => {
 				useDocumentsStore.getState().documents.some((document) => document.id === "storyboard-a"),
 			).toBe(true);
 		});
+		// tab 常驻挂载(forceMount)后,画布/预览两个面板都在 DOM 里,只有激活的 data-state="active"。
+		const activePanelView = () => {
+			const panel = dialog.querySelector<HTMLElement>('[role="tabpanel"][data-state="active"]');
+			if (!panel) throw new Error("no active tabpanel");
+			return within(panel).getByTestId("episode-timeline-view");
+		};
+
 		const canvasTab = within(dialog).getByRole("tab", { name: "画布" });
 		fireEvent.mouseDown(canvasTab, { button: 0 });
 		fireEvent.click(canvasTab);
 
 		await waitFor(() => {
-			expect(within(dialog).getByTestId("episode-timeline-view")).toHaveAttribute(
-				"data-workbench",
-				"canvas",
-			);
+			expect(activePanelView()).toHaveAttribute("data-workbench", "canvas");
 		});
-		expect(within(dialog).getByTestId("episode-timeline-view")).toHaveAttribute(
-			"data-document-id",
-			"storyboard-a",
-		);
+		expect(activePanelView()).toHaveAttribute("data-document-id", "storyboard-a");
 		expect(screen.getByTestId("location")).toHaveTextContent("/projects?projectId=project-a");
 		expect(screen.getByTestId("location")).toHaveAttribute("data-project-view", "");
 
@@ -887,10 +888,7 @@ describe("ProjectOverview", () => {
 		fireEvent.click(previewTab);
 
 		await waitFor(() => {
-			expect(within(dialog).getByTestId("episode-timeline-view")).toHaveAttribute(
-				"data-workbench",
-				"timeline",
-			);
+			expect(activePanelView()).toHaveAttribute("data-workbench", "timeline");
 		});
 	});
 
