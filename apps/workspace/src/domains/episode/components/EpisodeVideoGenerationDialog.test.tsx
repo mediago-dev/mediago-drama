@@ -1,4 +1,4 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, renderHook } from "@testing-library/react";
 import { isValidElement, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sampleEpisode } from "@/domains/episode/lib/sample";
@@ -6,11 +6,10 @@ import { createSectionBlockId } from "@/domains/documents/lib/sections";
 import { useDocumentsStore, type MarkdownDocument } from "@/domains/documents/stores";
 import type { MediaGenerationWorkspaceProps } from "@/domains/generation/components/MediaGenerationWorkspace";
 import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
-import { EpisodeVideoGenerationDialog } from "./EpisodeVideoGenerationDialog";
+import { useEpisodeVideoGenerationRequest } from "./EpisodeVideoGenerationDialog";
 
 const mocks = vi.hoisted(() => ({
 	getProjects: vi.fn(),
-	MediaGenerationWorkspace: vi.fn(() => null),
 }));
 
 vi.mock("@/domains/projects/api/projects", () => ({
@@ -18,11 +17,16 @@ vi.mock("@/domains/projects/api/projects", () => ({
 	projectsKey: "/projects",
 }));
 
-vi.mock("@/domains/generation/components/MediaGenerationWorkspace", () => ({
-	MediaGenerationWorkspace: mocks.MediaGenerationWorkspace,
-}));
+// 视频弹窗收口后，episode 的视频生成请求由 hook 构造（喂给唯一的 VideoGenerationDialog）。
+// 这里直接对 hook 输出的 workspaceProps 做断言，等价于原先读 MediaGenerationWorkspace 收到的 props。
+const renderWorkspaceProps = (
+	props: Parameters<typeof useEpisodeVideoGenerationRequest>[0],
+): MediaGenerationWorkspaceProps => {
+	const { result } = renderHook(() => useEpisodeVideoGenerationRequest(props));
+	return { ...result.current.workspaceProps, kind: "video" };
+};
 
-describe("EpisodeVideoGenerationDialog", () => {
+describe("useEpisodeVideoGenerationRequest", () => {
 	afterEach(() => {
 		cleanup();
 		vi.clearAllMocks();
@@ -36,23 +40,16 @@ describe("EpisodeVideoGenerationDialog", () => {
 		const videoTrack = sampleEpisode.tracks.find((track) => track.type === "video");
 		const selectedClip = videoTrack?.clips[1] ?? null;
 
-		render(
-			<EpisodeVideoGenerationDialog
-				documentId="doc-a"
-				documentTitle="第一集分镜"
-				episode={sampleEpisode}
-				open
-				projectId="project-a"
-				selectedClip={selectedClip}
-				onGeneratedVideoReady={vi.fn()}
-				onOpenChange={vi.fn()}
-			/>,
-		);
-
-		const workspaceCalls = mocks.MediaGenerationWorkspace.mock.calls as unknown as Array<
-			[Record<string, unknown>]
-		>;
-		const workspaceProps = workspaceCalls.at(-1)?.[0];
+		const workspaceProps = renderWorkspaceProps({
+			documentId: "doc-a",
+			documentTitle: "第一集分镜",
+			episode: sampleEpisode,
+			open: true,
+			projectId: "project-a",
+			selectedClip,
+			onGeneratedVideoReady: vi.fn(),
+			onOpenChange: vi.fn(),
+		});
 
 		expect(workspaceProps).toMatchObject({
 			kind: "video",
@@ -133,25 +130,21 @@ describe("EpisodeVideoGenerationDialog", () => {
 			prompt: "动作：沈阔 从水中下沉。",
 		};
 
-		render(
-			<EpisodeVideoGenerationDialog
-				documentId="story-doc"
-				documentTitle="第一集分镜"
-				episode={{
-					...sampleEpisode,
-					id: "episode-story-doc",
-					title: "第一集",
-				}}
-				open
-				projectId="project-a"
-				selectedClip={selectedClip}
-				onGeneratedVideoReady={vi.fn()}
-				onOpenChange={vi.fn()}
-				onOpenReferenceGeneration={onOpenReferenceGeneration}
-			/>,
-		);
-
-		const workspaceProps = lastWorkspaceProps();
+		const workspaceProps = renderWorkspaceProps({
+			documentId: "story-doc",
+			documentTitle: "第一集分镜",
+			episode: {
+				...sampleEpisode,
+				id: "episode-story-doc",
+				title: "第一集",
+			},
+			open: true,
+			projectId: "project-a",
+			selectedClip,
+			onGeneratedVideoReady: vi.fn(),
+			onOpenChange: vi.fn(),
+			onOpenReferenceGeneration,
+		});
 		const storyboardSectionBlockId = createSectionBlockId("story-doc", 2, 1, "第 01 组");
 		expect(workspaceProps?.initialPrompt).toContain("## 第 01 组");
 		expect(workspaceProps?.initialPrompt).toContain("**动作：**");
@@ -255,34 +248,30 @@ describe("EpisodeVideoGenerationDialog", () => {
 			prompt: "动作：顾南衣 捡垃圾桶。",
 		};
 
-		render(
-			<EpisodeVideoGenerationDialog
-				documentId="story-doc"
-				documentTitle="第一集分镜"
-				episode={{
-					...sampleEpisode,
-					id: "episode-story-doc",
-					title: "第一集",
-				}}
-				open
-				projectId="project-a"
-				selectedClip={selectedClip}
-				selectedGenerationAssets={[
-					selectedGenerationAsset({
-						mediaAssetId: "gny-selected",
-						resourceId: "section_character",
-						resourceType: "character",
-						sourceDocumentId: "character-doc",
-						title: "顾南衣参考图",
-						url: "/api/v1/media-assets/gny-selected/content",
-					}),
-				]}
-				onGeneratedVideoReady={vi.fn()}
-				onOpenChange={vi.fn()}
-			/>,
-		);
-
-		const workspaceProps = lastWorkspaceProps();
+		const workspaceProps = renderWorkspaceProps({
+			documentId: "story-doc",
+			documentTitle: "第一集分镜",
+			episode: {
+				...sampleEpisode,
+				id: "episode-story-doc",
+				title: "第一集",
+			},
+			open: true,
+			projectId: "project-a",
+			selectedClip,
+			selectedGenerationAssets: [
+				selectedGenerationAsset({
+					mediaAssetId: "gny-selected",
+					resourceId: "section_character",
+					resourceType: "character",
+					sourceDocumentId: "character-doc",
+					title: "顾南衣参考图",
+					url: "/api/v1/media-assets/gny-selected/content",
+				}),
+			],
+			onGeneratedVideoReady: vi.fn(),
+			onOpenChange: vi.fn(),
+		});
 		const previewReferences = resolveReferencePreviewAssets(workspaceProps);
 		const referenceAssetIds = resolveReferenceAssetIds(workspaceProps);
 		const referenceBindings = resolveReferenceBindings(workspaceProps);
@@ -329,13 +318,6 @@ const selectedGenerationAsset = (
 	resourceType: "character",
 	...overrides,
 });
-
-const lastWorkspaceProps = () => {
-	const workspaceCalls = mocks.MediaGenerationWorkspace.mock.calls as unknown as Array<
-		[MediaGenerationWorkspaceProps]
-	>;
-	return workspaceCalls.at(-1)?.[0] ?? null;
-};
 
 const resolveReferencePreviewAssets = (props: MediaGenerationWorkspaceProps | null) => {
 	const value = props?.referencePreviewAssets;

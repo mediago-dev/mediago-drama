@@ -2,12 +2,8 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { History, Menu, MessageSquare, MessageSquareOff } from "lucide-react";
 import { useLocation } from "react-router-dom";
-import useSWR from "swr";
 import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
-import {
-	getSelectedGenerationAssets,
-	selectedGenerationAssetsQueryKey,
-} from "@/domains/generation/api/generation";
+import { useSelectedGenerationAssets } from "@/domains/generation/hooks/useSelectedGenerationAssets";
 import {
 	MarkdownHybridEditor,
 	prewarmMarkdownHybridEditorContent,
@@ -25,20 +21,14 @@ import type { InlineDecorationRange } from "@/domains/documents/components/tipta
 import { Button } from "@/shared/components/ui/button";
 import { registerEditor } from "@/domains/documents/lib/editor-registry";
 import { selectEditableDocument } from "@/domains/documents/lib/filters";
-import {
-	selectedSectionImageAssetKey,
-	selectedSectionImageAssetsForDocument,
-	selectedSectionImageAssetsForSection,
-} from "@/domains/documents/lib/selected-section-images";
+import { selectedSectionImageAssetsForDocument } from "@/domains/documents/lib/selected-section-images";
 import {
 	type DocumentComment,
 	type MarkdownDocument,
 	useDocumentsStore,
 } from "@/domains/documents/stores";
 import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
-import { AudioGenerationDialog } from "@/shared/components/generation-dialogs/AudioGenerationDialog";
-import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
-import { VideoGenerationDialog } from "@/shared/components/generation-dialogs/VideoGenerationDialog";
+import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
 
 const autosaveDelayMs = 500;
 const markerClusterDistance = 28;
@@ -59,21 +49,16 @@ interface WritingEditorProps {
 	onOpenDocumentList?: () => void;
 }
 
-interface ActiveSectionGeneration {
-	kind: SectionGenerateKind;
-	section: MarkdownSectionContext;
-}
-
 export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList }) => {
 	const [selectionCoords, setSelectionCoords] = useState<SelectionCoords | null>(null);
 	const [selectionRange, setSelectionRange] = useState<InlineDecorationRange | null>(null);
 	const [commentOffsets, setCommentOffsets] = useState<Record<string, number>>({});
-	const [sectionGeneration, setSectionGeneration] = useState<ActiveSectionGeneration | null>(null);
 	const [historyOpen, setHistoryOpen] = useState(false);
 	const editorRef = useRef<MarkdownHybridEditorHandle>(null);
 	const mainRef = useRef<HTMLElement>(null);
 	const location = useLocation();
 	const projectId = getRouteProjectId(location.search);
+	const openGenerationDialog = useMediaGenerationStore((state) => state.open);
 	const documents = useDocumentsStore((state) => state.documents);
 	const assets = useDocumentsStore((state) => state.assets);
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
@@ -89,10 +74,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const showComments = useDocumentsStore((state) => state.showComments);
 	const updateDocumentContent = useDocumentsStore((state) => state.updateDocumentContent);
 	const activeDocument = selectEditableDocument(documents, activeDocumentId);
-	const { data: selectedGenerationAssetsData } = useSWR(
-		projectId ? selectedGenerationAssetsQueryKey(projectId) : null,
-		() => getSelectedGenerationAssets(projectId ?? ""),
-	);
+	const { data: selectedGenerationAssetsData } = useSelectedGenerationAssets(projectId);
 	const projectSelectedGenerationAssets =
 		selectedGenerationAssetsData?.assets ?? defaultSelectedGenerationAssets;
 	const selectedSectionImageAssets = useMemo(
@@ -101,17 +83,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 				? selectedSectionImageAssetsForDocument(projectSelectedGenerationAssets, activeDocument.id)
 				: defaultSelectedGenerationAssets,
 		[activeDocument, projectSelectedGenerationAssets],
-	);
-	const selectedAssetKeysForSection = useCallback(
-		(section: MarkdownSectionContext) =>
-			selectedSectionImageAssetsForSection(
-				projectSelectedGenerationAssets,
-				section.documentId,
-				section.blockId,
-			)
-				.map(selectedSectionImageAssetKey)
-				.filter(Boolean),
-		[projectSelectedGenerationAssets],
 	);
 	const activeSelection =
 		selection && activeDocument && selection.documentId === activeDocument.id ? selection : null;
@@ -214,17 +185,9 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 
 	const openSectionGeneration = useCallback(
 		(section: MarkdownSectionContext, kind: SectionGenerateKind = "image") =>
-			setSectionGeneration((current) =>
-				current && current.kind === kind && sameSectionGenerationTarget(current.section, section)
-					? current
-					: { kind, section },
-			),
-		[],
+			openGenerationDialog({ kind, projectId: projectId || undefined, section }),
+		[openGenerationDialog, projectId],
 	);
-	const closeSectionGeneration = useCallback((open: boolean) => {
-		if (!open) setSectionGeneration(null);
-	}, []);
-	const ignoreSectionImageGenerationEvent = useCallback(() => {}, []);
 
 	if (!activeDocument) {
 		return (
@@ -357,32 +320,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 					onComment={openCommentComposer}
 				/>
 			) : null}
-			<ImageGenerationDialog
-				open={sectionGeneration?.kind === "image"}
-				projectId={projectId ?? undefined}
-				section={sectionGeneration?.kind === "image" ? sectionGeneration.section : null}
-				selectedAssetKeys={selectedAssetKeysForSection}
-				selectedGenerationAssets={projectSelectedGenerationAssets}
-				onGenerationComplete={ignoreSectionImageGenerationEvent}
-				onGenerationError={ignoreSectionImageGenerationEvent}
-				onGenerationStart={ignoreSectionImageGenerationEvent}
-				onOpenChange={closeSectionGeneration}
-				onOpenReferenceGeneration={openSectionGeneration}
-			/>
-			<VideoGenerationDialog
-				open={sectionGeneration?.kind === "video"}
-				projectId={projectId ?? undefined}
-				section={sectionGeneration?.kind === "video" ? sectionGeneration.section : null}
-				onOpenChange={closeSectionGeneration}
-				onOpenReferenceGeneration={openSectionGeneration}
-			/>
-			<AudioGenerationDialog
-				open={sectionGeneration?.kind === "audio"}
-				projectId={projectId ?? undefined}
-				section={sectionGeneration?.kind === "audio" ? sectionGeneration.section : null}
-				onOpenChange={closeSectionGeneration}
-				onOpenReferenceGeneration={openSectionGeneration}
-			/>
 			<DocumentHistoryPanel
 				open={historyOpen}
 				onOpenChange={setHistoryOpen}
@@ -399,15 +336,6 @@ interface CommentMarker {
 	key: string;
 	top: number;
 }
-
-const sameSectionGenerationTarget = (
-	current: MarkdownSectionContext,
-	next: MarkdownSectionContext,
-) =>
-	current.documentId === next.documentId &&
-	current.blockId === next.blockId &&
-	current.headingLevel === next.headingLevel &&
-	current.headingOccurrence === next.headingOccurrence;
 
 const buildCommentMarkers = (
 	comments: DocumentComment[],

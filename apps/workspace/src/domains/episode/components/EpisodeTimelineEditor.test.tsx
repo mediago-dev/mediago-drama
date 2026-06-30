@@ -31,7 +31,6 @@ describe("EpisodeTimelineEditor", () => {
 				isPlaying={false}
 				selectedClipId="clip-cold-open"
 				zoom="fit"
-				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
 				onPlayClip={vi.fn()}
@@ -93,8 +92,8 @@ describe("EpisodeTimelineEditor", () => {
 			within(screen.getByTestId("clip-strip-card-clip-cold-open")).queryByText("待生成"),
 		).toBeNull();
 		expect(
-			within(screen.getByTestId("clip-strip-card-clip-agent-pass")).queryByText("生成中"),
-		).toBeNull();
+			within(screen.getByTestId("clip-strip-card-clip-agent-pass")).getByText("生成中"),
+		).toBeTruthy();
 		expect(screen.getByTestId("clip-strip-card-status-rail-clip-agent-pass").className).toContain(
 			"bg-info-foreground",
 		);
@@ -108,7 +107,6 @@ describe("EpisodeTimelineEditor", () => {
 				isPlaying={true}
 				selectedClipId="clip-cold-open"
 				zoom="fit"
-				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
 				onPlayClip={vi.fn()}
@@ -129,7 +127,6 @@ describe("EpisodeTimelineEditor", () => {
 				isPlaying={false}
 				selectedClipId="clip-cold-open"
 				zoom="fit"
-				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
 				onPlayClip={vi.fn()}
@@ -155,7 +152,6 @@ describe("EpisodeTimelineEditor", () => {
 				isPlaying={false}
 				selectedClipId="clip-cold-open"
 				zoom="fit"
-				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
 				onPlayClip={vi.fn()}
@@ -185,7 +181,6 @@ describe("EpisodeTimelineEditor", () => {
 				isPlaying={false}
 				selectedClipId="clip-cold-open"
 				zoom="fit"
-				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={onGenerateClip}
 				onSeek={vi.fn()}
 				onPlayClip={onPlayClip}
@@ -213,7 +208,6 @@ describe("EpisodeTimelineEditor", () => {
 				isPlaying={false}
 				selectedClipId="clip-cold-open"
 				zoom="fit"
-				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={onGenerateClip}
 				onSeek={onSeek}
 				onPlayClip={vi.fn()}
@@ -240,7 +234,6 @@ describe("EpisodeTimelineEditor", () => {
 				isPlaying={false}
 				selectedClipId="clip-cold-open"
 				zoom="fit"
-				onRequestCompanionGeneration={vi.fn()}
 				onDownloadClip={onDownloadClip}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
@@ -289,7 +282,6 @@ describe("EpisodeTimelineEditor", () => {
 				isPlaying={false}
 				selectedClipId="clip-cold-open"
 				zoom="fit"
-				onRequestCompanionGeneration={vi.fn()}
 				onDownloadClip={onDownloadClip}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
@@ -339,7 +331,6 @@ describe("EpisodeTimelineEditor", () => {
 				isPlaying={false}
 				selectedClipId="clip-cold-open"
 				zoom="fit"
-				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
 				onPlayClip={vi.fn()}
@@ -365,7 +356,6 @@ describe("EpisodeTimelineEditor", () => {
 				selectedClipId="clip-cold-open"
 				timelineDuration={45}
 				zoom="fit"
-				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={onSeek}
 				onPlayClip={vi.fn()}
@@ -427,7 +417,6 @@ describe("EpisodeTimelineEditor", () => {
 				selectedClipId="clip-cold-open"
 				timelineDuration={12}
 				zoom="fit"
-				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
 				onPlayClip={onPlayClip}
@@ -470,7 +459,6 @@ describe("EpisodeTimelineEditor", () => {
 				selectedClipId="clip-cold-open"
 				timelineDuration={12}
 				zoom="fit"
-				onRequestCompanionGeneration={vi.fn()}
 				onGenerateClip={vi.fn()}
 				onSeek={vi.fn()}
 				onPlayClip={vi.fn()}

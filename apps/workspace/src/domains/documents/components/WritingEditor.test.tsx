@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
+import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
 import { WritingEditor } from "./WritingEditor";
 
 const testState = vi.hoisted(() => ({
@@ -16,31 +17,12 @@ const testState = vi.hoisted(() => ({
 		removeSectionImagePlaceholder: vi.fn(() => true),
 		setSelection: vi.fn(() => true),
 	},
-	imageDialogProps: null as null | {
-		onGenerationComplete?: (
-			section: MarkdownSectionContext,
-			pendingId: string,
-			assets: [],
-			sourceTaskId: string,
-		) => void;
-		onToggleImage?: (
-			section: MarkdownSectionContext,
-			asset: { kind: "image"; url: string },
-			selected: boolean,
-		) => void;
-		open: boolean;
-		section: MarkdownSectionContext | null;
-	},
 	markdownEditorProps: null as null | {
 		onSectionGenerate?: (section: MarkdownSectionContext, kind?: "image") => void;
 		selectedSectionImageAssets?: Array<{ id: string; resourceId?: string; url?: string }>;
 		value?: string;
 	},
 	mentionPopoverProps: null as null | { projectId?: string },
-	videoDialogProps: null as null | {
-		open: boolean;
-		section: MarkdownSectionContext | null;
-	},
 }));
 
 const generationApiMocks = vi.hoisted(() => ({
@@ -99,36 +81,6 @@ vi.mock("@/domains/documents/components/SelectionBubble", () => ({
 	SelectionBubble: () => null,
 }));
 
-vi.mock("@/shared/components/generation-dialogs/ImageGenerationDialog", () => ({
-	ImageGenerationDialog: (props: typeof testState.imageDialogProps) => {
-		testState.imageDialogProps = props;
-		return (
-			<div
-				data-open={props?.open ? "true" : "false"}
-				data-section-id={props?.section?.blockId ?? ""}
-				data-testid="image-generation-dialog"
-			/>
-		);
-	},
-}));
-
-vi.mock("@/shared/components/generation-dialogs/VideoGenerationDialog", () => ({
-	VideoGenerationDialog: (props: typeof testState.videoDialogProps) => {
-		testState.videoDialogProps = props;
-		return (
-			<div
-				data-open={props?.open ? "true" : "false"}
-				data-section-id={props?.section?.blockId ?? ""}
-				data-testid="video-generation-dialog"
-			/>
-		);
-	},
-}));
-
-vi.mock("@/shared/components/generation-dialogs/AudioGenerationDialog", () => ({
-	AudioGenerationDialog: () => null,
-}));
-
 const makeDocument = (overrides: Partial<MarkdownDocument> = {}): MarkdownDocument => ({
 	category: "storyboard",
 	comments: [],
@@ -161,10 +113,9 @@ describe("WritingEditor", () => {
 	afterEach(() => {
 		cleanup();
 		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
-		testState.imageDialogProps = null;
+		useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
 		testState.markdownEditorProps = null;
 		testState.mentionPopoverProps = null;
-		testState.videoDialogProps = null;
 		generationApiMocks.getSelectedGenerationAssets.mockReset();
 		Object.values(testState.editorHandle).forEach((value) => {
 			if (typeof value === "function" && "mockClear" in value) value.mockClear();
@@ -237,7 +188,7 @@ describe("WritingEditor", () => {
 		expect(testState.markdownEditorProps?.value).toBe(document.content);
 	});
 
-	it("does not edit markdown when section image generation completes", () => {
+	it("opens the global generation dialog for the requested section and kind", () => {
 		useDocumentsStore.getState().hydrateWorkspaceDocuments({
 			documents: [makeDocument()],
 			projectId: "project-a",
@@ -264,24 +215,11 @@ describe("WritingEditor", () => {
 				"image",
 			);
 		});
-		act(() => {
-			testState.imageDialogProps?.onGenerationComplete?.(
-				{
-					blockId: "section_visual",
-					documentId: "story-doc",
-					headingLevel: 2,
-					headingOccurrence: 1,
-					headingText: "画面",
-					markdown: "## 画面\n\n画面提示词。",
-					plainText: "画面\n\n画面提示词。",
-					prompt: "画面提示词。",
-				},
-				"pending-image",
-				[],
-				"task-a",
-			);
-		});
 
-		expect(testState.editorHandle.removeSectionImagePlaceholder).not.toHaveBeenCalled();
+		expect(useMediaGenerationStore.getState().activeRequest).toMatchObject({
+			kind: "image",
+			projectId: "project-a",
+			section: { blockId: "section_visual", documentId: "story-doc", headingText: "画面" },
+		});
 	});
 });

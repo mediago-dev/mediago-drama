@@ -326,14 +326,18 @@ const EpisodeClipCard: React.FC<EpisodeClipCardProps> = ({
 					onGenerate(clip.id);
 				}}
 			>
-				{isGenerating ? (
-					<Loader2 className="size-3 animate-spin" />
-				) : (
-					<ArrowUpRight className="size-3" />
-				)}
+				<ArrowUpRight className="size-3" />
 				<span>生成</span>
 			</Button>
-			{durationLabel ? (
+			{isGenerating ? (
+				<span
+					className="pointer-events-none absolute bottom-2 right-2 z-30 flex items-center gap-1 rounded-sm bg-black/70 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white shadow-sm"
+					data-testid={`clip-strip-card-generating-${clip.id}`}
+				>
+					<Loader2 className="size-3 animate-spin" />
+					生成中
+				</span>
+			) : durationLabel ? (
 				<span className="pointer-events-none absolute bottom-2 right-2 rounded-sm bg-black/70 px-1.5 py-0.5 text-xs font-medium tabular-nums text-white">
 					{durationLabel}
 				</span>

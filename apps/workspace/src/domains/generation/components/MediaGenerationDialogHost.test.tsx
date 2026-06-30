@@ -1,10 +1,11 @@
 import type React from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { useGenerationNotificationStore } from "@/domains/generation/stores/generation-notifications";
-import { GenerationNotificationDialogHost } from "./GenerationNotificationDialogHost";
+import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
+import { MediaGenerationDialogHost } from "./MediaGenerationDialogHost";
 
 const testState = vi.hoisted(() => ({
 	audioDialogProps: null as null | DialogProps,
@@ -13,6 +14,9 @@ const testState = vi.hoisted(() => ({
 }));
 
 interface DialogProps {
+	onGenerationComplete?: (pendingId: string, assets: unknown[], sourceTaskId: string) => void;
+	onGenerationError?: (pendingId: string) => void;
+	onGenerationStart?: (pendingId: string, prompt: string) => void;
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
 	open: boolean;
 	projectId?: string;
@@ -52,10 +56,11 @@ const section: MarkdownSectionContext = {
 	prompt: "画面提示词。",
 };
 
-describe("GenerationNotificationDialogHost", () => {
+describe("MediaGenerationDialogHost", () => {
 	afterEach(() => {
 		cleanup();
 		useGenerationNotificationStore.getState().clearNotifications();
+		useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
 		testState.audioDialogProps = null;
 		testState.imageDialogProps = null;
 		testState.videoDialogProps = null;
@@ -107,13 +112,38 @@ describe("GenerationNotificationDialogHost", () => {
 			section: { blockId: "section_visual", documentId: "story-doc" },
 		});
 	});
+
+	it("marks the status resource generating on start and clears it on complete", () => {
+		useMediaGenerationStore
+			.getState()
+			.open({ kind: "image", projectId: "project-a", section, statusResourceKey: "res-x" });
+
+		renderHost("/projects?projectId=project-a");
+
+		act(() => testState.imageDialogProps?.onGenerationStart?.("pending-1", "prompt"));
+		expect(useMediaGenerationStore.getState().optimisticStatuses["res-x"]?.kind).toBe("pending");
+
+		act(() => testState.imageDialogProps?.onGenerationComplete?.("pending-1", [], "task-1"));
+		expect(useMediaGenerationStore.getState().optimisticStatuses["res-x"]).toBeUndefined();
+	});
+
+	it("marks the status resource failed on generation error", () => {
+		useMediaGenerationStore
+			.getState()
+			.open({ kind: "video", projectId: "project-a", section, statusResourceKey: "res-y" });
+
+		renderHost("/projects?projectId=project-a");
+
+		act(() => testState.videoDialogProps?.onGenerationError?.("pending-1"));
+		expect(useMediaGenerationStore.getState().optimisticStatuses["res-y"]?.kind).toBe("failed");
+	});
 });
 
 const renderHost = (initialRoute: string) =>
 	render(
 		<MemoryRouter initialEntries={[initialRoute]}>
 			<LocationProbe />
-			<GenerationNotificationDialogHost />
+			<MediaGenerationDialogHost />
 		</MemoryRouter>,
 	);
 

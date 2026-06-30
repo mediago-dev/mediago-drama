@@ -55,7 +55,6 @@ import {
 	episodeCanvasNodeTypes,
 	type EpisodeCanvasFlowNodeData,
 } from "./canvas/EpisodeCanvasNodes";
-import type { TimelineCompanionTrackType } from "@/domains/episode/stores";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 
 interface EpisodeCanvasViewProps {
@@ -68,10 +67,6 @@ interface EpisodeCanvasViewProps {
 	storyboardMarkdown: string;
 	onGenerateClip: (clipId: string) => void;
 	onOpenReferenceGeneration: (section: MarkdownSectionContext) => void;
-	onRequestCompanionGeneration: (
-		videoClipId: string,
-		trackType: TimelineCompanionTrackType,
-	) => void;
 	onSelectClip: (clipId: string) => void;
 }
 
@@ -132,7 +127,6 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 	storyboardMarkdown,
 	onGenerateClip,
 	onOpenReferenceGeneration,
-	onRequestCompanionGeneration,
 	onSelectClip,
 }) => {
 	const { fitView } = useReactFlow<EpisodeCanvasFlowNode, EpisodeCanvasFlowEdge>();
@@ -207,7 +201,6 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 					const section = sectionByLaneId.get(laneId);
 					if (section) onOpenReferenceGeneration(section);
 				},
-				onRequestCompanionGeneration,
 			});
 		});
 
@@ -217,7 +210,6 @@ const EpisodeCanvasViewInner: React.FC<EpisodeCanvasViewProps> = ({
 		layout.nodes,
 		onGenerateClip,
 		onOpenReferenceGeneration,
-		onRequestCompanionGeneration,
 		sectionByLaneId,
 		selectedClipId,
 	]);
@@ -393,7 +385,6 @@ const canvasFlowNode = (
 		| "onGenerateReferenceImage"
 		| "onGenerateScene"
 		| "onGenerateStoryboardImage"
-		| "onRequestCompanionGeneration"
 	>,
 ): EpisodeCanvasFlowNode => ({
 	...node,
@@ -421,7 +412,7 @@ const canvasFlowEdge = (
 	type: "default",
 });
 
-const reconcileEpisodeCanvasFlowNodes = (
+export const reconcileEpisodeCanvasFlowNodes = (
 	currentNodes: EpisodeCanvasFlowNode[],
 	nextNodes: EpisodeCanvasFlowNode[],
 ) => {
@@ -491,8 +482,30 @@ const areEpisodeCanvasFlowNodeValuesEqual = (
 	if (key === "measured") {
 		return areEpisodeCanvasFlowNodeMeasurementsEqual(leftValue, rightValue);
 	}
+	// 节点 data 每次重建都会新建事件回调（函数），其引用变化不代表可见内容变化。
+	// 若据此判定「不等」，受控 nodes 会被持续重同步，React Flow 陷入 setNodes 死循环。
+	// 这里只比可见字段，忽略函数引用。
+	if (key === "data") {
+		return areEpisodeCanvasFlowNodeDataEqual(leftValue, rightValue);
+	}
 
 	return false;
+};
+
+const areEpisodeCanvasFlowNodeDataEqual = (leftValue: unknown, rightValue: unknown) => {
+	if (!isEpisodeCanvasRecord(leftValue) || !isEpisodeCanvasRecord(rightValue)) {
+		return Object.is(leftValue, rightValue);
+	}
+
+	const keys = new Set([...Object.keys(leftValue), ...Object.keys(rightValue)]);
+	for (const key of keys) {
+		const left = leftValue[key];
+		const right = rightValue[key];
+		if (typeof left === "function" && typeof right === "function") continue;
+		if (!Object.is(left, right)) return false;
+	}
+
+	return true;
 };
 
 const areEpisodeCanvasFlowNodeMeasurementsEqual = (leftValue: unknown, rightValue: unknown) => {

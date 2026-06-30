@@ -5,6 +5,7 @@ import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BillingSummaryResponse } from "@/domains/billing/api/billing";
 import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
+import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
 import type { ProjectConfig } from "@/domains/projects/api/projects";
 import httpClient from "@/shared/lib/http";
 import type { ApiResponse } from "@/types/api";
@@ -14,8 +15,6 @@ const dialogMocks = vi.hoisted(() => ({
 	BatchGenerationSettingsDialog: vi.fn((_props: Record<string, unknown>): React.ReactNode => null),
 	DocumentSectionBatchGenerationRunner: vi.fn((_props: Record<string, unknown>) => null),
 	EpisodeTimelineView: vi.fn((_props: Record<string, unknown>): React.ReactNode => null),
-	ImageGenerationDialog: vi.fn((_props: Record<string, unknown>) => null),
-	VideoGenerationDialog: vi.fn((_props: Record<string, unknown>) => null),
 }));
 
 vi.mock("@/domains/generation/components/BatchGenerationSettingsDialog", () => ({
@@ -28,14 +27,6 @@ vi.mock("@/domains/documents/components/DocumentSectionBatchGenerationRunner", (
 
 vi.mock("@/domains/episode/components/EpisodeTimelineView", () => ({
 	EpisodeTimelineView: dialogMocks.EpisodeTimelineView,
-}));
-
-vi.mock("@/shared/components/generation-dialogs/VideoGenerationDialog", () => ({
-	VideoGenerationDialog: dialogMocks.VideoGenerationDialog,
-}));
-
-vi.mock("@/shared/components/generation-dialogs/ImageGenerationDialog", () => ({
-	ImageGenerationDialog: dialogMocks.ImageGenerationDialog,
 }));
 
 vi.mock("@/shared/lib/http", () => ({
@@ -540,6 +531,7 @@ describe("ProjectOverview", () => {
 	afterEach(() => {
 		cleanup();
 		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
+		useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
 	});
 
 	it("does not render the selected generation resources overview section", async () => {
@@ -773,9 +765,7 @@ describe("ProjectOverview", () => {
 				}),
 			}),
 		]);
-		expect(
-			dialogMocks.ImageGenerationDialog.mock.calls.some(([props]) => props.open === true),
-		).toBe(false);
+		expect(useMediaGenerationStore.getState().activeRequest).toBeNull();
 
 		await waitFor(() => {
 			expect(within(dialog).getByRole("button", { name: "批量生成图片（0）" })).toBeDisabled();
@@ -815,10 +805,11 @@ describe("ProjectOverview", () => {
 
 		fireEvent.click(within(dialog).getAllByRole("button", { name: "生成视频" })[0]);
 		await waitFor(() => {
-			const props = dialogMocks.VideoGenerationDialog.mock.calls.at(-1)?.[0];
-			expect(props).toMatchObject({
-				open: true,
+			expect(useMediaGenerationStore.getState().activeRequest).toMatchObject({
+				kind: "video",
 				projectId: "project-a",
+				resolveLatestSection: false,
+				statusResourceKey: "storyboard-a:section_reel_01",
 				section: expect.objectContaining({
 					blockId: "section_reel_01",
 					documentId: "storyboard-a",
@@ -828,15 +819,7 @@ describe("ProjectOverview", () => {
 					markdown: expect.stringContaining("沈阁从黑暗水面坠入湖中。"),
 				}),
 			});
-			expect(props?.selectedAssetKeys).toBeUndefined();
-			expect(props?.onAssetSelectionPersisted).toEqual(expect.any(Function));
 		});
-		const generationDialogProps = dialogMocks.VideoGenerationDialog.mock.calls.at(-1)?.[0];
-		const onAssetSelectionPersisted = generationDialogProps?.onAssetSelectionPersisted as
-			| (() => void)
-			| undefined;
-		onAssetSelectionPersisted?.();
-		await waitFor(() => expect(selectedGenerationAssetsRequestCount).toBeGreaterThanOrEqual(2));
 
 		fireEvent.keyDown(document, { key: "Escape" });
 		await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -986,9 +969,7 @@ describe("ProjectOverview", () => {
 				}),
 			}),
 		]);
-		expect(
-			dialogMocks.VideoGenerationDialog.mock.calls.some(([props]) => props.open === true),
-		).toBe(false);
+		expect(useMediaGenerationStore.getState().activeRequest).toBeNull();
 
 		await waitFor(() => {
 			expect(within(dialog).getByRole("button", { name: "批量生成视频（0）" })).toBeDisabled();

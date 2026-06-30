@@ -18,7 +18,7 @@ import {
 	type GenerationSuccessNotification,
 	useGenerationNotificationStore,
 } from "@/domains/generation/stores/generation-notifications";
-import { GenerationNotificationDialogHost } from "@/domains/generation/components/GenerationNotificationDialogHost";
+import { MediaGenerationDialogHost } from "@/domains/generation/components/MediaGenerationDialogHost";
 import { GenerationNotificationSync } from "@/domains/generation/components/GenerationNotificationSync";
 import { markGenerationNotificationRead } from "@/domains/generation/api/generation";
 import { deleteProjectAsset, uploadProjectAsset } from "@/domains/workspace/api/project-assets";
@@ -566,7 +566,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	return (
 		<>
 			<GenerationNotificationSync />
-			<GenerationNotificationDialogHost />
+			<MediaGenerationDialogHost />
 			<div className="flex h-full min-h-0 flex-col overflow-hidden text-ide-sidebar-foreground">
 				<div className="relative min-h-0 flex-1 overflow-hidden">
 					<SidebarScreenStack

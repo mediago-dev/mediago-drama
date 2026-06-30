@@ -13,8 +13,17 @@ import { Button } from "@/shared/components/ui/button";
 
 type VideoWorkspaceProps = Omit<MediaGenerationWorkspaceProps, "kind">;
 
+const noop = () => undefined;
+
 interface VideoGenerationDialogProps {
 	onAssetSelectionPersisted?: () => void;
+	onGenerationComplete?: (
+		pendingId: string,
+		assets: GenerationAsset[],
+		sourceTaskId: string,
+	) => void;
+	onGenerationError?: (pendingId: string) => void;
+	onGenerationStart?: (pendingId: string, prompt: string) => void;
 	onOpenChange: (open: boolean) => void;
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
@@ -33,6 +42,9 @@ const defaultVideoTitleId = "video-generation-title";
 
 export const VideoGenerationDialog: React.FC<VideoGenerationDialogProps> = ({
 	onAssetSelectionPersisted,
+	onGenerationComplete,
+	onGenerationError,
+	onGenerationStart,
 	onOpenChange,
 	onOpenReferenceGeneration,
 	onToggleAsset,
@@ -102,9 +114,9 @@ export const VideoGenerationDialog: React.FC<VideoGenerationDialogProps> = ({
 				selectedGenerationAssets={selectedGenerationAssets}
 				viewMode="history"
 				onAssetSelectionPersisted={onAssetSelectionPersisted}
-				onGenerationComplete={() => undefined}
-				onGenerationError={() => undefined}
-				onGenerationStart={() => undefined}
+				onGenerationComplete={onGenerationComplete ?? noop}
+				onGenerationError={onGenerationError ?? noop}
+				onGenerationStart={onGenerationStart ?? noop}
 				onMaterialLibraryImportOpenChange={setMaterialLibraryOpen}
 				onOpenReferenceGeneration={onOpenReferenceGeneration}
 				onToggleAsset={onToggleAsset}

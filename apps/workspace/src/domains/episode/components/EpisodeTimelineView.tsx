@@ -15,37 +15,32 @@ import {
 	jianyingDraftSettingsKey,
 } from "@/domains/settings/api/settings";
 import { getMediaAssets } from "@/domains/workspace/api/media";
-import { EpisodeCompanionGenerationDialog } from "@/domains/episode/components/EpisodeCompanionGenerationDialog";
 import { EpisodeCanvasView } from "@/domains/episode/components/EpisodeCanvasView";
 import { EpisodeTimelineEditor } from "@/domains/episode/components/EpisodeTimelineEditor";
 import { EpisodePreviewPlayer } from "@/domains/episode/components/EpisodePreviewPlayer";
 import {
 	buildEpisodeVideoContext,
-	EpisodeVideoGenerationDialog,
+	episodeVideoGenerationTitleId,
 	findEpisodeVideoSourceSection,
 	firstVideoAssetSource,
+	useEpisodeVideoGenerationRequest,
 } from "@/domains/episode/components/EpisodeVideoGenerationDialog";
 import { downloadGeneratedAssetToDirectory } from "@/domains/generation/components/generatedResultActions";
 import { pickDownloadDirectory } from "@/domains/workspace/lib/downloads";
 import {
 	generationTasksQueryKey,
 	getGenerationTasks,
-	getSelectedGenerationAssets,
 	projectGenerationConversation,
-	selectedGenerationAssetsQueryKey,
 	type GenerationTask,
 	type SelectedGenerationAsset,
 } from "@/domains/generation/api/generation";
+import { useSelectedGenerationAssets } from "@/domains/generation/hooks/useSelectedGenerationAssets";
 import { Button } from "@/shared/components/ui/button";
 import { useToast } from "@/hooks/useToast";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { findDocumentById, selectDocumentById } from "@/domains/documents/lib/filters";
 import { latestMarkdownSectionContextFromDocuments } from "@/domains/documents/lib/markdown-section-context";
-import {
-	findEpisodeClip,
-	findEpisodeTrackForClip,
-	findEpisodeVideoClip,
-} from "@/domains/episode/lib/filters";
+import { findEpisodeClip, findEpisodeTrackForClip } from "@/domains/episode/lib/filters";
 import {
 	buildEpisodeClipMedia,
 	buildEpisodeVideoClipPlaybackRanges,
@@ -56,18 +51,14 @@ import {
 } from "@/domains/episode/lib/media-assets";
 import type { Episode, TimelineClip } from "@/domains/episode/lib/sample";
 import { useDocumentsStore } from "@/domains/documents/stores";
-import { type TimelineCompanionTrackType, useEpisodeStore } from "@/domains/episode/stores";
+import { useEpisodeStore } from "@/domains/episode/stores";
 import type { AgentDocumentWorkbench } from "@/domains/workspace/lib/workbench-route";
-import { ImageGenerationDialog } from "@/shared/components/generation-dialogs/ImageGenerationDialog";
+import { VideoGenerationDialog } from "@/shared/components/generation-dialogs/VideoGenerationDialog";
+import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
 
 interface EpisodeTimelineViewProps {
 	documentId?: string;
 	workbench?: AgentDocumentWorkbench;
-}
-
-interface CompanionGenerationTarget {
-	trackType: TimelineCompanionTrackType;
-	videoClipId: string;
 }
 
 const isJianyingDraftExportButtonVisible =
@@ -91,17 +82,13 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 	const convertDocumentToWorkbenchDraft = useDocumentsStore(
 		(state) => state.convertDocumentToWorkbenchDraft,
 	);
-	const addCompanionTextClip = useEpisodeStore((state) => state.addCompanionTextClip);
 	const selectClip = useEpisodeStore((state) => state.selectClip);
 	const setCurrentTime = useEpisodeStore((state) => state.setCurrentTime);
 	const setEpisode = useEpisodeStore((state) => state.setEpisode);
 	const setVideoClipVideoUrl = useEpisodeStore((state) => state.setVideoClipVideoUrl);
 	const pause = useEpisodeStore((state) => state.pause);
 	const play = useEpisodeStore((state) => state.play);
-	const [companionGenerationTarget, setCompanionGenerationTarget] =
-		useState<CompanionGenerationTarget | null>(null);
-	const [referenceSectionGeneration, setReferenceSectionGeneration] =
-		useState<MarkdownSectionContext | null>(null);
+	const openGenerationDialog = useMediaGenerationStore((state) => state.open);
 	const [videoGenerationOpen, setVideoGenerationOpen] = useState(false);
 	const [downloadingVideoClipIds, setDownloadingVideoClipIds] = useState<string[]>([]);
 	const [isExportingAllStoryboards, setIsExportingAllStoryboards] = useState(false);
@@ -124,10 +111,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 		["episode-media-assets", mediaAssetProjectId],
 		() => getMediaAssets({ projectId: mediaAssetProjectId || undefined }),
 	);
-	const { data: selectedGenerationAssetsData } = useSWR(
-		mediaAssetProjectId ? selectedGenerationAssetsQueryKey(mediaAssetProjectId) : null,
-		() => getSelectedGenerationAssets(mediaAssetProjectId),
-	);
+	const { data: selectedGenerationAssetsData } = useSelectedGenerationAssets(mediaAssetProjectId);
 	const { data: jianyingDraftSettings } = useSWR(
 		jianyingDraftSettingsKey,
 		getJianyingDraftSettings,
@@ -161,12 +145,11 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 		}),
 		[episodeDocumentId],
 	);
-	const { data: selectedStoryboardVideosData, mutate: mutateSelectedStoryboardVideos } = useSWR(
-		mediaAssetProjectId && episodeDocumentId
-			? selectedGenerationAssetsQueryKey(mediaAssetProjectId, selectedStoryboardVideoFilters)
-			: null,
-		() => getSelectedGenerationAssets(mediaAssetProjectId, selectedStoryboardVideoFilters),
-	);
+	const { data: selectedStoryboardVideosData, mutate: mutateSelectedStoryboardVideos } =
+		useSelectedGenerationAssets(mediaAssetProjectId, {
+			enabled: Boolean(episodeDocumentId),
+			filters: selectedStoryboardVideoFilters,
+		});
 	const resolvedEpisode = resolvedEpisodeState?.episode ?? null;
 	const selectedGenerationAssets =
 		selectedGenerationAssetsData?.assets ?? emptySelectedGenerationAssets;
@@ -177,8 +160,12 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 	);
 	const openReferenceSectionGeneration = useCallback(
 		(section: MarkdownSectionContext) =>
-			setReferenceSectionGeneration(latestMarkdownSectionContextFromDocuments(documents, section)),
-		[documents],
+			openGenerationDialog({
+				kind: "image",
+				projectId: projectId ?? undefined,
+				section: latestMarkdownSectionContextFromDocuments(documents, section),
+			}),
+		[documents, openGenerationDialog, projectId],
 	);
 	const clipMedia = useMemo(
 		() => buildEpisodeClipMedia(episode, mediaAssetsData?.assets),
@@ -232,13 +219,6 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 	}, [clipMedia, playablePreviewRanges, previewStreamUrl, selectedClip]);
 	const playbackTitle = episode.title;
 	const playbackTime = previewPlaybackActive ? currentTime : 0;
-	const companionGenerationClip = useMemo(
-		() =>
-			companionGenerationTarget
-				? findEpisodeVideoClip(episode, companionGenerationTarget.videoClipId)
-				: null,
-		[companionGenerationTarget, episode],
-	);
 	const downloadingVideoClipIdSet = useMemo(
 		() => new Set(downloadingVideoClipIds),
 		[downloadingVideoClipIds],
@@ -603,40 +583,6 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 		setPreviewPlaybackActive(false);
 		pause();
 	}, [actualTimelineDuration, pause, setCurrentTime]);
-	const handleCompanionGenerationRequest = useCallback(
-		(videoClipId: string, trackType: TimelineCompanionTrackType) => {
-			setCompanionGenerationTarget({ trackType, videoClipId });
-		},
-		[],
-	);
-	const handleCompanionGenerationCommit = useCallback(
-		async (videoClipId: string, trackType: TimelineCompanionTrackType, content: string) => {
-			const previousEpisode = episode;
-			const nextEpisode = addCompanionTextClip(videoClipId, trackType, content);
-			setCompanionGenerationTarget(null);
-			if (!nextEpisode || !episodeDocumentId) return;
-
-			try {
-				await updateWorkspaceEpisode(episodeDocumentId, nextEpisode, projectId);
-				await mutateEpisodeState();
-			} catch (error) {
-				setEpisode(previousEpisode);
-				toast.error("剪辑台保存失败", {
-					description: toErrorMessage(error),
-				});
-			}
-		},
-		[
-			addCompanionTextClip,
-			episode,
-			episodeDocumentId,
-			mutateEpisodeState,
-			projectId,
-			setEpisode,
-			toast,
-		],
-	);
-
 	useEffect(() => {
 		if (!resolvedEpisode) return;
 		setEpisode(resolvedEpisode);
@@ -737,6 +683,18 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 		setCurrentTime(actualTimelineDuration);
 	}, [actualTimelineDuration, currentTime, setCurrentTime]);
 
+	const episodeVideoRequest = useEpisodeVideoGenerationRequest({
+		documentId: episodeDocumentId,
+		documentTitle: activeDocument?.title ?? episode.title,
+		episode,
+		open: videoGenerationOpen,
+		projectId: projectId ?? undefined,
+		selectedClip,
+		onGeneratedVideoReady: handleGeneratedVideoReady,
+		onOpenChange: setVideoGenerationOpen,
+		onOpenReferenceGeneration: openReferenceSectionGeneration,
+	});
+
 	return (
 		<div className="flex h-full min-h-0 flex-col bg-ide-editor text-ide-editor-foreground">
 			<main className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -751,7 +709,6 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 						storyboardMarkdown={activeDocument?.content ?? ""}
 						onGenerateClip={handleTimelineClipGenerate}
 						onOpenReferenceGeneration={openReferenceSectionGeneration}
-						onRequestCompanionGeneration={handleCompanionGenerationRequest}
 						onSelectClip={handleTimelineClipSelect}
 					/>
 				) : (
@@ -838,7 +795,6 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 					timelineDuration={actualTimelineDuration}
 					downloadingClipIds={downloadingVideoClipIds}
 					zoom={zoom}
-					onRequestCompanionGeneration={handleCompanionGenerationRequest}
 					onDownloadClip={handleTimelineClipDownload}
 					onGenerateClip={handleTimelineClipGenerate}
 					onPlayClip={handleTimelineClipPlay}
@@ -847,38 +803,12 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 					onTogglePlayback={handleTimelinePlaybackToggle}
 				/>
 			</main>
-			<EpisodeCompanionGenerationDialog
-				episode={episode}
-				open={Boolean(companionGenerationTarget && companionGenerationClip)}
-				trackType={companionGenerationTarget?.trackType ?? null}
-				videoClip={companionGenerationClip}
-				onOpenChange={(open) => {
-					if (!open) setCompanionGenerationTarget(null);
-				}}
-				onCommit={handleCompanionGenerationCommit}
-			/>
-			<EpisodeVideoGenerationDialog
-				documentId={episodeDocumentId}
-				documentTitle={activeDocument?.title ?? episode.title}
-				episode={episode}
-				open={videoGenerationOpen}
-				projectId={projectId ?? undefined}
-				selectedClip={selectedClip}
-				onOpenChange={setVideoGenerationOpen}
-				onOpenReferenceGeneration={openReferenceSectionGeneration}
-				onGeneratedVideoReady={handleGeneratedVideoReady}
-			/>
-			<ImageGenerationDialog
-				open={Boolean(referenceSectionGeneration)}
-				projectId={projectId ?? undefined}
-				section={referenceSectionGeneration}
-				onGenerationComplete={() => undefined}
-				onGenerationError={() => undefined}
-				onGenerationStart={() => undefined}
-				onOpenChange={(open) => {
-					if (!open) setReferenceSectionGeneration(null);
-				}}
-				onOpenReferenceGeneration={openReferenceSectionGeneration}
+			<VideoGenerationDialog
+				open={episodeVideoRequest.open}
+				title={episodeVideoRequest.title}
+				titleId={episodeVideoGenerationTitleId}
+				workspaceProps={episodeVideoRequest.workspaceProps}
+				onOpenChange={episodeVideoRequest.onOpenChange}
 			/>
 		</div>
 	);
