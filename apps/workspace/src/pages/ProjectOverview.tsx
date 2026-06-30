@@ -684,12 +684,12 @@ const DocumentResourceCard: React.FC<{
 				selected ? "border-primary" : "border-border",
 			)}
 		>
-			<div className="relative aspect-square bg-ide-toolbar">
+			<div className="relative flex aspect-video items-center justify-center overflow-hidden bg-ide-toolbar">
 				{preview ? (
 					<img
 						src={preview.src}
 						alt={preview.title || resource.title}
-						className="size-full object-contain"
+						className="max-h-full max-w-full"
 					/>
 				) : (
 					<div className="grid size-full place-items-center px-3 text-center text-xs text-muted-foreground">
@@ -1254,12 +1254,12 @@ const StoryboardReelVideoCard: React.FC<{
 				selected ? "border-primary" : "border-border",
 			)}
 		>
-			<div className="relative aspect-video bg-ide-toolbar">
+			<div className="relative flex aspect-video items-center justify-center overflow-hidden bg-ide-toolbar">
 				{coverSource ? (
 					<img
 						src={coverSource}
 						alt={preview?.title || reel.title}
-						className="size-full object-cover"
+						className="max-h-full max-w-full"
 						draggable={false}
 					/>
 				) : (
