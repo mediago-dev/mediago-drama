@@ -6,7 +6,9 @@ import {
 	GitBranch,
 	List,
 	Loader2,
+	Pause,
 	Palette,
+	Play,
 	ReceiptText,
 	Rows3,
 	X,
@@ -83,6 +85,12 @@ import { useProjectStore } from "@/domains/projects/stores";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/shared/components/ui/tooltip";
 import { useToast } from "@/hooks/useToast";
 import { apiResourceURL } from "@/shared/lib/api-base";
 import { cn } from "@/shared/lib/utils";
@@ -281,7 +289,7 @@ export const ProjectOverview: React.FC = () => {
 		if (!projectId) return;
 
 		// 生成完成后服务端会把选中切到最新结果；这里检测到新完成的图片/视频任务就重拉
-		// 选中资源 + 成片/文档资源列表，让外部列表反映新的选中与「已生成」计数。
+		// 选中资源 + 视频生成/图片和音频列表，让外部列表反映新的选中与「已生成」计数。
 		const refreshKeys = [
 			...completedResourceTaskSelectedAssetsRefreshKeys(imageTaskData?.tasks ?? []),
 			...completedResourceTaskSelectedAssetsRefreshKeys(videoTaskData?.tasks ?? []),
@@ -322,6 +330,18 @@ export const ProjectOverview: React.FC = () => {
 				kind: "image",
 				projectId: projectId ?? undefined,
 				section: documentResourceToSectionContext(resource),
+				statusResourceKey: resource.id,
+			});
+		},
+		[openGenerationDialog, projectId],
+	);
+	const openAudioSelection = useCallback(
+		(resource: WorkspaceDocumentResource) => {
+			openGenerationDialog({
+				kind: "audio",
+				projectId: projectId ?? undefined,
+				section: documentResourceToSectionContext(resource),
+				selectedAssetResourceType: resource.type,
 				statusResourceKey: resource.id,
 			});
 		},
@@ -452,7 +472,7 @@ export const ProjectOverview: React.FC = () => {
 						) : null}
 
 						{error ? (
-							<div className="border border-error-border bg-error-surface p-4 text-sm text-error-foreground">
+							<div className="rounded-sm border border-error-border bg-error-surface p-4 text-sm text-error-foreground">
 								项目概览加载失败。
 							</div>
 						) : null}
@@ -500,6 +520,7 @@ export const ProjectOverview: React.FC = () => {
 									resources={documentResources}
 									onBatchGenerate={openImageGenerationBatch}
 									onGenerate={openImageGeneration}
+									onSelectAudio={openAudioSelection}
 									onOpenChange={(open) => {
 										if (!open) setDocumentResourceDialogType(null);
 									}}
@@ -539,6 +560,7 @@ const DocumentResourcesDialog: React.FC<{
 	onBatchGenerate: (resources: WorkspaceDocumentResource[]) => void;
 	onGenerate: (resource: WorkspaceDocumentResource) => void;
 	onOpenChange: (open: boolean) => void;
+	onSelectAudio: (resource: WorkspaceDocumentResource) => void;
 }> = ({
 	assets,
 	error,
@@ -550,6 +572,7 @@ const DocumentResourcesDialog: React.FC<{
 	onBatchGenerate,
 	onGenerate,
 	onOpenChange,
+	onSelectAudio,
 }) => {
 	const descriptor = resourceType ? selectedGenerationResourceDescriptorMap[resourceType] : null;
 	const filteredResources = useMemo(
@@ -575,6 +598,7 @@ const DocumentResourcesDialog: React.FC<{
 	);
 	const allSelectableResourcesSelected =
 		selectableResources.length > 0 && selectedResources.length === selectableResources.length;
+	const audioPreview = useDocumentResourceAudioPreview(open);
 
 	useEffect(() => {
 		setSelectedResourceIds([]);
@@ -619,7 +643,7 @@ const DocumentResourcesDialog: React.FC<{
 			title={
 				<span className="flex min-w-0 items-center gap-2">
 					<Icon className="size-4 shrink-0 text-muted-foreground" />
-					<span className="truncate">{descriptor.label} · 文档资源</span>
+					<span className="truncate">{descriptor.label} · 图片和音频</span>
 				</span>
 			}
 			titleId={titleId}
@@ -631,14 +655,14 @@ const DocumentResourcesDialog: React.FC<{
 					<div className="grid min-h-56 flex-1 place-items-center">
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
 							<Loader2 className="size-4 animate-spin" />
-							<span>正在解析文档资源</span>
+							<span>正在解析图片和音频</span>
 						</div>
 					</div>
 				) : null}
 
 				{!isLoading && error ? (
-					<div className="m-4 border border-error-border bg-error-surface p-4 text-sm text-error-foreground">
-						文档资源加载失败。
+					<div className="m-4 rounded-sm border border-error-border bg-error-surface p-4 text-sm text-error-foreground">
+						图片和音频加载失败。
 					</div>
 				) : null}
 
@@ -660,22 +684,28 @@ const DocumentResourcesDialog: React.FC<{
 							onSelectAll={selectAllResources}
 						/>
 						<div className="min-h-0 flex-1 overflow-y-auto p-4">
-							<PhotoProvider maskOpacity={0.84}>
-								<div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-									{filteredResources.map((resource) => (
-										<DocumentResourceCard
-											key={resource.id}
-											generationStatus={generationStatuses.get(resource.id)}
-											generatedImageCount={resource.generatedImageCount}
-											selectedImages={resourceSelectedImages(resource, assets)}
-											resource={resource}
-											selected={selectedResourceIdSet.has(resource.id)}
-											onGenerate={onGenerate}
-											onToggleSelected={() => toggleSelectedResource(resource)}
-										/>
-									))}
-								</div>
-							</PhotoProvider>
+							<TooltipProvider delayDuration={180}>
+								<PhotoProvider maskOpacity={0.84}>
+									<div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+										{filteredResources.map((resource) => (
+											<DocumentResourceCard
+												key={resource.id}
+												generationStatus={generationStatuses.get(resource.id)}
+												generatedImageCount={resource.generatedImageCount}
+												selectedAudio={resourceSelectedAudio(resource, assets)}
+												selectedImages={resourceSelectedImages(resource, assets)}
+												resource={resource}
+												selected={selectedResourceIdSet.has(resource.id)}
+												playingAudioKey={audioPreview.playingAudioKey}
+												onGenerate={onGenerate}
+												onSelectAudio={onSelectAudio}
+												onToggleAudioPreview={audioPreview.toggleAudioPreview}
+												onToggleSelected={() => toggleSelectedResource(resource)}
+											/>
+										))}
+									</div>
+								</PhotoProvider>
+							</TooltipProvider>
 						</div>
 					</>
 				) : null}
@@ -687,23 +717,32 @@ const DocumentResourcesDialog: React.FC<{
 const DocumentResourceCard: React.FC<{
 	generationStatus?: ResourceGenerationStatus;
 	generatedImageCount: number;
+	playingAudioKey: string;
 	resource: WorkspaceDocumentResource;
+	selectedAudio: DocumentResourceSelectedAudio | null;
 	selectedImages: DocumentResourceSelectedImage[];
 	selected: boolean;
 	onGenerate: (resource: WorkspaceDocumentResource) => void;
+	onSelectAudio: (resource: WorkspaceDocumentResource) => void;
+	onToggleAudioPreview: (audio: DocumentResourceSelectedAudio) => void;
 	onToggleSelected: () => void;
 }> = ({
 	generationStatus,
 	generatedImageCount,
+	playingAudioKey,
 	resource,
+	selectedAudio,
 	selectedImages,
 	selected,
 	onGenerate,
+	onSelectAudio,
+	onToggleAudioPreview,
 	onToggleSelected,
 }) => {
 	const preview = selectedImages[0];
 	const assetCount = selectedImages.length;
 	const visibleGenerationStatus = visibleResourceGenerationStatus(generationStatus);
+	const audioPlaying = Boolean(selectedAudio && playingAudioKey === selectedAudio.key);
 
 	return (
 		<article
@@ -732,6 +771,13 @@ const DocumentResourceCard: React.FC<{
 					selected={selected}
 					onToggle={onToggleSelected}
 				/>
+				{selectedAudio ? (
+					<ResourceAudioPreviewButton
+						audio={selectedAudio}
+						playing={audioPlaying}
+						onToggle={() => onToggleAudioPreview(selectedAudio)}
+					/>
+				) : null}
 				<ResourceGenerationStatusBadge status={visibleGenerationStatus} />
 				{assetCount > 1 ? (
 					<div className="absolute bottom-2 right-2 flex max-w-[70%] gap-1">
@@ -756,7 +802,7 @@ const DocumentResourceCard: React.FC<{
 						已生成 {generatedImageCount} 张
 					</Badge>
 				</div>
-				<div className="mt-auto pt-1">
+				<div className="mt-auto grid grid-cols-2 gap-2 pt-1">
 					<Button
 						type="button"
 						size="sm"
@@ -767,6 +813,17 @@ const DocumentResourceCard: React.FC<{
 					>
 						<ArrowUpRight className="size-4" />
 						<span>生成图片</span>
+					</Button>
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						className="h-8 w-full rounded-sm"
+						disabled={!resource.canGenerate}
+						onClick={() => onSelectAudio(resource)}
+					>
+						<ArrowUpRight className="size-4" />
+						<span>选择音频</span>
 					</Button>
 				</div>
 			</div>
@@ -863,6 +920,38 @@ const ResourceCardSelectionButton: React.FC<{
 	</button>
 );
 
+const ResourceAudioPreviewButton: React.FC<{
+	audio: DocumentResourceSelectedAudio;
+	playing: boolean;
+	onToggle: () => void;
+}> = ({ audio, playing, onToggle }) => {
+	const label = playing ? `停止播放 ${audio.title} 音频` : `播放 ${audio.title} 音频`;
+	const Icon = playing ? Pause : Play;
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					type="button"
+					size="icon"
+					variant="outline"
+					aria-label={label}
+					title={label}
+					className="absolute bottom-2 left-2 z-10 size-8 rounded-sm border-white/80 bg-background/90 text-foreground shadow-sm ring-1 ring-black/10 hover:bg-background"
+					onClick={(event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						onToggle();
+					}}
+				>
+					<Icon className={cn("size-4", playing ? "" : "translate-x-px")} />
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent side="top">{label}</TooltipContent>
+		</Tooltip>
+	);
+};
+
 const ResourceGenerationStatusBadge: React.FC<{ status?: ResourceGenerationStatus }> = ({
 	status,
 }) => {
@@ -923,10 +1012,7 @@ const DocumentResourcesSummary: React.FC<{
 				<div className="flex min-w-0 items-center gap-2">
 					<FileText className="size-4 shrink-0 text-muted-foreground" />
 					<div className="min-w-0">
-						<h2 className="text-sm font-semibold text-foreground">文档资源</h2>
-						<p className="text-xs text-muted-foreground">
-							从角色、场景、道具和分镜文档结构中解析出的可生成资源。
-						</p>
+						<h2 className="text-sm font-semibold text-foreground">图片和音频</h2>
 					</div>
 				</div>
 				{isLoading ? (
@@ -937,8 +1023,8 @@ const DocumentResourcesSummary: React.FC<{
 				) : null}
 			</div>
 			{error ? (
-				<div className="mt-3 border border-error-border bg-error-surface px-3 py-2 text-xs text-error-foreground">
-					文档资源加载失败。
+				<div className="mt-3 rounded-sm border border-error-border bg-error-surface px-3 py-2 text-xs text-error-foreground">
+					图片和音频加载失败。
 				</div>
 			) : null}
 			<div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -946,7 +1032,7 @@ const DocumentResourcesSummary: React.FC<{
 					<button
 						key={key}
 						type="button"
-						aria-label={`${label} 文档资源`}
+						aria-label={`${label} 图片和音频`}
 						className="group flex min-h-24 min-w-0 flex-col items-start justify-between rounded-sm border border-border bg-ide-editor px-3 py-3 text-left transition-colors hover:border-input hover:bg-ide-list-hover"
 						onClick={() => onOpen(key)}
 					>
@@ -978,10 +1064,7 @@ const StoryboardVideoResourcesSummary: React.FC<{
 				<div className="flex min-w-0 items-center gap-2">
 					<Film className="size-4 shrink-0 text-muted-foreground" />
 					<div className="min-w-0">
-						<h2 className="text-sm font-semibold text-foreground">成片资源</h2>
-						<p className="text-xs text-muted-foreground">
-							按分镜文档汇总当前项目中已选入的视频片段。
-						</p>
+						<h2 className="text-sm font-semibold text-foreground">视频生成</h2>
 					</div>
 				</div>
 				{isLoading ? (
@@ -992,8 +1075,8 @@ const StoryboardVideoResourcesSummary: React.FC<{
 				) : null}
 			</div>
 			{error ? (
-				<div className="mt-3 border border-error-border bg-error-surface px-3 py-2 text-xs text-error-foreground">
-					成片资源加载失败。
+				<div className="mt-3 rounded-sm border border-error-border bg-error-surface px-3 py-2 text-xs text-error-foreground">
+					视频生成加载失败。
 				</div>
 			) : null}
 			{groups.length > 0 ? (
@@ -1002,7 +1085,7 @@ const StoryboardVideoResourcesSummary: React.FC<{
 						<button
 							key={group.documentId}
 							type="button"
-							aria-label={`${group.documentTitle} 成片资源`}
+							aria-label={`${group.documentTitle} 视频生成`}
 							className="group flex min-h-24 min-w-0 flex-col items-start justify-between rounded-sm border border-border bg-ide-editor px-3 py-3 text-left transition-colors hover:border-input hover:bg-ide-list-hover"
 							onClick={() => onOpen(group.documentId)}
 						>
@@ -1139,7 +1222,7 @@ const StoryboardVideoResourcesDialog: React.FC<{
 				title={
 					<span className="flex min-w-0 items-center gap-2">
 						<Film className="size-4 shrink-0 text-muted-foreground" />
-						<span className="truncate">成片资源 · {group.documentTitle}</span>
+						<span className="truncate">视频生成 · {group.documentTitle}</span>
 					</span>
 				}
 				titleAside={
@@ -1170,14 +1253,14 @@ const StoryboardVideoResourcesDialog: React.FC<{
 							<div className="grid min-h-56 flex-1 place-items-center">
 								<div className="flex items-center gap-2 text-sm text-muted-foreground">
 									<Loader2 className="size-4 animate-spin" />
-									<span>正在加载成片资源</span>
+									<span>正在加载视频生成</span>
 								</div>
 							</div>
 						) : null}
 
 						{!isLoading && error ? (
-							<div className="m-4 border border-error-border bg-error-surface p-4 text-sm text-error-foreground">
-								成片资源加载失败。
+							<div className="m-4 rounded-sm border border-error-border bg-error-surface p-4 text-sm text-error-foreground">
+								视频生成加载失败。
 							</div>
 						) : null}
 
@@ -1399,7 +1482,6 @@ const ProjectUsageSummary: React.FC<{
 					<ReceiptText className="size-4 shrink-0 text-muted-foreground" />
 					<div className="min-w-0">
 						<h2 className="text-sm font-semibold text-foreground">项目消耗</h2>
-						<p className="text-xs text-muted-foreground">当前项目累计用量与估算花费。</p>
 					</div>
 				</div>
 				{isLoading ? (
@@ -1410,7 +1492,7 @@ const ProjectUsageSummary: React.FC<{
 				) : null}
 			</div>
 			{error ? (
-				<div className="mt-3 border border-error-border bg-error-surface px-3 py-2 text-xs text-error-foreground">
+				<div className="mt-3 rounded-sm border border-error-border bg-error-surface px-3 py-2 text-xs text-error-foreground">
 					项目消耗加载失败。
 				</div>
 			) : null}
@@ -1428,7 +1510,7 @@ const ProjectUsageSummary: React.FC<{
 };
 
 const UsageMetric: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-	<div className="border border-border bg-ide-editor px-3 py-2">
+	<div className="rounded-sm border border-border bg-ide-editor px-3 py-2">
 		<p className="text-xs text-muted-foreground">{label}</p>
 		<p className="mt-1 truncate text-base font-semibold text-foreground">{value}</p>
 	</div>
@@ -1438,6 +1520,67 @@ interface DocumentResourceSelectedImage {
 	src: string;
 	title?: string;
 }
+
+interface DocumentResourceSelectedAudio {
+	key: string;
+	mimeType?: string;
+	src: string;
+	title: string;
+}
+
+const useDocumentResourceAudioPreview = (open: boolean) => {
+	const audioRef = useRef<HTMLAudioElement | null>(null);
+	const [playingAudioKey, setPlayingAudioKey] = useState("");
+
+	const stopAudioPreview = useCallback((targetKey?: string) => {
+		audioRef.current?.pause();
+		if (audioRef.current) audioRef.current.onended = null;
+		audioRef.current = null;
+		setPlayingAudioKey((current) => (!targetKey || current === targetKey ? "" : current));
+	}, []);
+
+	const toggleAudioPreview = useCallback(
+		(audio: DocumentResourceSelectedAudio) => {
+			if (!audio.src) return;
+			if (playingAudioKey === audio.key) {
+				stopAudioPreview(audio.key);
+				return;
+			}
+
+			stopAudioPreview();
+			const player = new Audio(audio.src);
+			player.onended = () => {
+				if (audioRef.current !== player) return;
+				audioRef.current = null;
+				setPlayingAudioKey((current) => (current === audio.key ? "" : current));
+			};
+			audioRef.current = player;
+			void player
+				.play()
+				.then(() => setPlayingAudioKey(audio.key))
+				.catch(() => {
+					if (audioRef.current === player) audioRef.current = null;
+					setPlayingAudioKey((current) => (current === audio.key ? "" : current));
+				});
+		},
+		[playingAudioKey, stopAudioPreview],
+	);
+
+	useEffect(() => {
+		if (!open) stopAudioPreview();
+	}, [open, stopAudioPreview]);
+
+	useEffect(
+		() => () => {
+			audioRef.current?.pause();
+			if (audioRef.current) audioRef.current.onended = null;
+			audioRef.current = null;
+		},
+		[],
+	);
+
+	return { playingAudioKey, toggleAudioPreview };
+};
 
 const storyboardDocumentGroupVideoCount = (group: WorkspaceStoryboardVideoDocumentGroup) =>
 	group.reels.reduce((total, reel) => total + reel.videos.length, 0);
@@ -1495,16 +1638,17 @@ const resourceSelectedImages = (
 	assets: SelectedGenerationAsset[],
 ) => uniqueSelectedImages(selectedImagesFromAssets(resource, assets));
 
+const resourceSelectedAudio = (
+	resource: WorkspaceDocumentResource,
+	assets: SelectedGenerationAsset[],
+) => uniqueSelectedAudio(selectedAudioFromAssets(resource, assets))[0] ?? null;
+
 const selectedImagesFromAssets = (
 	resource: WorkspaceDocumentResource,
 	assets: SelectedGenerationAsset[],
 ): DocumentResourceSelectedImage[] =>
 	assets.flatMap((asset) => {
-		if (
-			asset.resourceType !== resource.type ||
-			asset.resourceId !== resource.sectionId ||
-			(asset.sourceDocumentId && asset.sourceDocumentId !== resource.documentId)
-		) {
+		if (asset.kind !== "image" || !selectedAssetMatchesDocumentResource(asset, resource)) {
 			return [];
 		}
 
@@ -1518,6 +1662,36 @@ const selectedImagesFromAssets = (
 				]
 			: [];
 	});
+
+const selectedAudioFromAssets = (
+	resource: WorkspaceDocumentResource,
+	assets: SelectedGenerationAsset[],
+): DocumentResourceSelectedAudio[] =>
+	assets.flatMap((asset) => {
+		if (asset.kind !== "audio" || !selectedAssetMatchesDocumentResource(asset, resource)) {
+			return [];
+		}
+
+		const src = selectedAssetSource(asset);
+		return src
+			? [
+					{
+						key: `${asset.id}:${src}`,
+						mimeType: asset.mimeType,
+						src,
+						title: asset.title?.trim() || asset.resourceTitle?.trim() || resource.title,
+					},
+				]
+			: [];
+	});
+
+const selectedAssetMatchesDocumentResource = (
+	asset: SelectedGenerationAsset,
+	resource: WorkspaceDocumentResource,
+) =>
+	asset.resourceType === resource.type &&
+	asset.resourceId === resource.sectionId &&
+	(!asset.sourceDocumentId || asset.sourceDocumentId === resource.documentId);
 
 const selectedAssetSource = (asset: SelectedGenerationAsset) =>
 	generationAssetSource({
@@ -1535,6 +1709,18 @@ const uniqueSelectedImages = (images: DocumentResourceSelectedImage[]) => {
 		if (!key || seen.has(key)) continue;
 		seen.add(key);
 		next.push(image);
+	}
+	return next;
+};
+
+const uniqueSelectedAudio = (items: DocumentResourceSelectedAudio[]) => {
+	const seen = new Set<string>();
+	const next: DocumentResourceSelectedAudio[] = [];
+	for (const item of items) {
+		const key = item.src.trim();
+		if (!key || seen.has(key)) continue;
+		seen.add(key);
+		next.push(item);
 	}
 	return next;
 };
@@ -1618,7 +1804,7 @@ const batchGenerationSettingsForJob = (
 const selectedAssetCountForResourceType = (
 	assets: SelectedGenerationAsset[],
 	resourceType: AgentResourceType,
-) => assets.filter((asset) => asset.resourceType === resourceType).length;
+) => assets.filter((asset) => asset.kind === "image" && asset.resourceType === resourceType).length;
 
 const formatNumber = (value: number | undefined) => numberFormatter.format(value ?? 0);
 

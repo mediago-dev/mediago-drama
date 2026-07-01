@@ -373,25 +373,18 @@ func normalizeProjectModel(model domain.WorkspaceProjectModel) domain.WorkspaceP
 
 const deprecatedStudioCapabilitySessionDescriptionPrefix = "__studio_capability_session__:"
 
-// DeleteProjectsWithoutProjectDir removes deprecated internal projects and their derived records.
-func (repo *WorkspaceRepository) DeleteProjectsWithoutProjectDir() (int, error) {
-	projectIDs := []string{}
+// ListProjectsWithoutProjectDir returns projects that need a storage path backfill.
+func (repo *WorkspaceRepository) ListProjectsWithoutProjectDir() ([]domain.WorkspaceProjectModel, error) {
+	models := []domain.WorkspaceProjectModel{}
 	if err := repo.db.Model(&domain.WorkspaceProjectModel{}).
 		Where("project_dir IS NULL OR TRIM(project_dir) = ''").
-		Pluck("id", &projectIDs).Error; err != nil {
-		return 0, fmt.Errorf("listing internal projects: %w", err)
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing projects without storage location: %w", err)
 	}
-	deleted := 0
-	for _, projectID := range projectIDs {
-		ok, err := repo.DeleteProject(projectID)
-		if err != nil {
-			return deleted, err
-		}
-		if ok {
-			deleted++
-		}
+	for index := range models {
+		models[index] = normalizeProjectModel(models[index])
 	}
-	return deleted, nil
+	return models, nil
 }
 
 // DeleteDeprecatedStudioCapabilityProjects removes legacy studio project records.

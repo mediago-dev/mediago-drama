@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 )
 
 // GetGenerationVideo polls one generation video task for HTTP handlers.
@@ -321,6 +323,9 @@ func (workflow *GenerationService) UpdateSelectedGenerationAsset(projectID strin
 		return UpdateSelectedGenerationAssetResponse{}, http.StatusBadRequest, fmt.Errorf("resourceType is required")
 	}
 	workflow.hydrateSelectedAssetRequestFromMedia(&request, projectID)
+	if err := workflow.hydrateSelectedAssetRequestFromVoicePreview(&request, projectID); err != nil {
+		return UpdateSelectedGenerationAssetResponse{}, http.StatusInternalServerError, err
+	}
 	asset, ok, err := workflow.generationTasks.UpsertSelectedAsset(projectID, request)
 	if err != nil {
 		return UpdateSelectedGenerationAssetResponse{}, http.StatusInternalServerError, err
@@ -371,6 +376,100 @@ func (workflow *GenerationService) hydrateSelectedAssetRequestFromMedia(request 
 	if strings.TrimSpace(request.SourceType) == "" {
 		request.SourceType = "uploaded"
 	}
+}
+
+func (workflow *GenerationService) hydrateSelectedAssetRequestFromVoicePreview(request *UpdateSelectedGenerationAssetRequest, projectID string) error {
+	if workflow == nil || workflow.mediaAssets == nil || request == nil {
+		return nil
+	}
+	if strings.TrimSpace(request.MediaAssetID) != "" {
+		return nil
+	}
+	previewURL := strings.TrimSpace(request.URL)
+	if !isGenerationVoicePreviewURL(previewURL) {
+		return nil
+	}
+
+	filename := strings.TrimSpace(request.Title)
+	if filename == "" {
+		filename = strings.TrimSpace(request.ResourceTitle)
+	}
+	if filename == "" {
+		filename = generationVoicePreviewIDFromURL(previewURL)
+	}
+	if filename == "" {
+		filename = "内置音色预览"
+	}
+	asset, err := workflow.mediaAssets.SaveLinkedAssetWithOptions(
+		media.MediaKindAudio,
+		previewURL,
+		filename,
+		request.MIMEType,
+		media.MediaAssetSaveOptions{
+			ProjectID: projectID,
+			Source:    media.MediaSourcePreview,
+			Filename:  filename,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	request.MediaAssetID = asset.ID
+	if strings.TrimSpace(request.Kind) == "" {
+		request.Kind = asset.Kind
+	}
+	if strings.TrimSpace(request.Title) == "" {
+		request.Title = strings.TrimSpace(asset.Filename)
+	}
+	if strings.TrimSpace(request.URL) == "" {
+		request.URL = asset.URL
+	}
+	if strings.TrimSpace(request.MIMEType) == "" {
+		request.MIMEType = asset.MIMEType
+	}
+	if strings.TrimSpace(request.SourceType) == "" {
+		request.SourceType = "imported"
+	}
+	return nil
+}
+
+func isGenerationVoicePreviewURL(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return false
+	}
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	for index, segment := range segments {
+		if segment != "generation" || index+3 >= len(segments) {
+			continue
+		}
+		if segments[index+1] != "voice-previews" {
+			continue
+		}
+		return strings.TrimSpace(segments[index+2]) != "" &&
+			strings.TrimSpace(segments[index+3]) != ""
+	}
+	return false
+}
+
+func generationVoicePreviewIDFromURL(value string) string {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return ""
+	}
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	for index, segment := range segments {
+		if segment != "generation" || index+3 >= len(segments) || segments[index+1] != "voice-previews" {
+			continue
+		}
+		voiceID, err := url.PathUnescape(segments[index+3])
+		if err != nil {
+			return strings.TrimSpace(segments[index+3])
+		}
+		return strings.TrimSpace(voiceID)
+	}
+	return ""
 }
 
 // GetGenerationTask returns a generation task for HTTP handlers.

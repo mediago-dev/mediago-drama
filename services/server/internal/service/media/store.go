@@ -547,6 +547,83 @@ func (store *MediaAssets) saveRemoteAssetWithOptions(ctx context.Context, kind s
 	return store.saveBytesWithKind(data, kind, filename, mimeType, remoteURL, options)
 }
 
+// SaveLinkedAssetWithOptions stores metadata for an already-served asset URL.
+// The file is not copied locally; callers must pass a URL that remains playable
+// by clients, such as an application-owned preview endpoint.
+func (store *MediaAssets) SaveLinkedAssetWithOptions(kind string, assetURL string, filename string, mimeType string, options MediaAssetSaveOptions) (MediaAsset, error) {
+	if store.initErr != nil {
+		return MediaAsset{}, store.initErr
+	}
+	assetURL = strings.TrimSpace(assetURL)
+	if assetURL == "" {
+		return MediaAsset{}, fmt.Errorf("linked asset url is empty")
+	}
+	options = normalizeMediaAssetSaveOptions(options)
+	if existing, ok, err := store.FindBySourceURLAndScope(assetURL, options); err != nil {
+		return MediaAsset{}, err
+	} else if ok {
+		return existing, nil
+	}
+
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	mimeType = shared.NormalizeMIMEType(mimeType)
+	if mimeType == "" {
+		mimeType = defaultAssetMIMEType(kind)
+	}
+	if !isSupportedMediaAssetKind(kind) {
+		return MediaAsset{}, unsupportedMediaAssetKindError()
+	}
+
+	id, err := shared.RandomID("asset")
+	if err != nil {
+		return MediaAsset{}, err
+	}
+	extension := shared.ExtensionForMIMEType(mimeType)
+	filename = shared.SafeFilename(strings.TrimSpace(filename))
+	if filename == "" {
+		filename = id + extension
+	}
+	if filepath.Ext(filename) == "" {
+		filename += extension
+	}
+	now := timestamp.NowRFC3339Nano()
+	asset := MediaAsset{
+		ID:             id,
+		Kind:           kind,
+		Filename:       filename,
+		MIMEType:       mimeType,
+		URL:            assetURL,
+		SourceURL:      assetURL,
+		ProjectID:      options.ProjectID,
+		Source:         options.Source,
+		ConversationID: options.ConversationID,
+		SectionID:      options.SectionID,
+		StorageStatus:  StorageStatusReady,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if err := store.repo.CreateMediaAsset(mediaAssetModel{
+		ID:            asset.ID,
+		Kind:          asset.Kind,
+		Filename:      asset.Filename,
+		MIMEType:      asset.MIMEType,
+		URL:           asset.URL,
+		SourceURL:     asset.SourceURL,
+		ProjectID:     domain.StringPtr(asset.ProjectID),
+		Source:        asset.Source,
+		StorageStatus: asset.StorageStatus,
+		CreatedAt:     domain.TimeFromString(asset.CreatedAt),
+		UpdatedAt:     domain.TimeFromString(asset.UpdatedAt),
+	}); err != nil {
+		return MediaAsset{}, err
+	}
+
+	return asset, nil
+}
+
 func defaultAssetMIMEType(kind string) string {
 	if kind == MediaKindVideo {
 		return "video/mp4"

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -146,12 +147,19 @@ func cleanupDeprecatedWorkspaceProjects(workspaceDir string, repos WorkspaceStat
 	if repos.Workspace == nil {
 		return nil
 	}
-	deleted, err := repos.Workspace.DeleteProjectsWithoutProjectDir()
+	recovered, err := recoverFilesystemProjectManifests(workspaceDir, repos)
 	if err != nil {
-		return fmt.Errorf("cleaning deprecated internal projects: %w", err)
+		return fmt.Errorf("recovering filesystem projects: %w", err)
 	}
-	if deleted > 0 {
-		slog.Info("deprecated internal workspace projects removed", "count", deleted)
+	if recovered > 0 {
+		slog.Info("filesystem workspace projects recovered", "count", recovered)
+	}
+	backfilled, err := backfillProjectsWithoutProjectDir(workspaceDir, repos)
+	if err != nil {
+		return fmt.Errorf("backfilling workspace project storage: %w", err)
+	}
+	if backfilled > 0 {
+		slog.Info("workspace project storage locations backfilled", "count", backfilled)
 	}
 	studioProjects, err := repos.Workspace.DeleteDeprecatedStudioCapabilityProjects()
 	if err != nil {
@@ -173,6 +181,160 @@ func cleanupDeprecatedWorkspaceProjects(workspaceDir string, repos WorkspaceStat
 		slog.Info("deprecated local workspace projects migrated", "count", migrated)
 	}
 	return nil
+}
+
+func recoverFilesystemProjectManifests(workspaceDir string, repos WorkspaceStateRepositories) (int, error) {
+	if repos.Workspace == nil {
+		return 0, nil
+	}
+	projectsDir := shared.WorkspacePathsFor(workspaceDir).AgentDir("")
+	entries, err := os.ReadDir(projectsDir)
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("reading projects directory %s: %w", projectsDir, err)
+	}
+
+	recovered := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		projectDir := filepath.Join(projectsDir, entry.Name())
+		manifest, err := shared.ReadProjectManifestFile(filepath.Join(projectDir, "project.media.json"))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			slog.Warn("workspace project manifest could not be recovered", "path", projectDir, "error", err)
+			continue
+		}
+
+		projectID := domain.CleanProjectID(manifest.ProjectID)
+		if projectID == "" {
+			projectID = domain.CleanProjectID(entry.Name())
+		}
+		if projectID == "" {
+			continue
+		}
+		exists, err := repos.Workspace.ProjectExists(projectID)
+		if err != nil {
+			return recovered, err
+		}
+		if exists {
+			continue
+		}
+
+		createdAt := strings.TrimSpace(manifest.CreatedAt)
+		if createdAt == "" {
+			createdAt = timestamp.NowRFC3339Nano()
+		}
+		name := strings.TrimSpace(manifest.Name)
+		if name == "" {
+			name = projectID
+		}
+		if err := repos.Workspace.UpsertProject(domain.WorkspaceProjectModel{
+			ID:          projectID,
+			Name:        name,
+			Category:    "agent",
+			Status:      repository.ProjectStatusActive,
+			Description: strings.TrimSpace(manifest.Description),
+			ProjectDir:  projectDir,
+			RelativeDir: shared.DisplayProjectDir(workspaceDir, projectDir),
+			CreatedAt:   domain.TimeFromString(createdAt),
+			UpdatedAt:   domain.TimeFromString(createdAt),
+		}); err != nil {
+			return recovered, err
+		}
+		recovered++
+	}
+	return recovered, nil
+}
+
+func backfillProjectsWithoutProjectDir(workspaceDir string, repos WorkspaceStateRepositories) (int, error) {
+	if repos.Workspace == nil {
+		return 0, nil
+	}
+	projects, err := repos.Workspace.ListProjectsWithoutProjectDir()
+	if err != nil {
+		return 0, err
+	}
+
+	backfilled := 0
+	for _, project := range projects {
+		projectDir := existingProjectStorageDir(workspaceDir, project)
+		if projectDir == "" {
+			slog.Warn("workspace project has no storage location and was retained", "projectID", project.ID)
+			continue
+		}
+		updated, err := repos.Workspace.UpdateProjectStorageLocation(
+			project.ID,
+			projectDir,
+			shared.DisplayProjectDir(workspaceDir, projectDir),
+			"",
+			projectDir,
+			timestamp.NowRFC3339Nano(),
+		)
+		if err != nil {
+			return backfilled, err
+		}
+		if updated {
+			backfilled++
+		}
+	}
+	return backfilled, nil
+}
+
+func existingProjectStorageDir(workspaceDir string, project domain.WorkspaceProjectModel) string {
+	candidates := []string{}
+	if candidate := projectDirFromRelativeDir(workspaceDir, project.RelativeDir); candidate != "" {
+		candidates = append(candidates, candidate)
+	}
+	if candidate := canonicalProjectDir(workspaceDir, project); candidate != "" {
+		candidates = append(candidates, candidate)
+	}
+
+	seen := map[string]struct{}{}
+	for _, candidate := range candidates {
+		candidate = shared.ResolveWorkspaceDir(candidate)
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		if existingProjectDirMatches(candidate, project.ID) {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func projectDirFromRelativeDir(workspaceDir string, relativeDir string) string {
+	relativeDir = strings.TrimSpace(relativeDir)
+	if relativeDir == "" {
+		return ""
+	}
+	if filepath.IsAbs(relativeDir) {
+		return relativeDir
+	}
+	cleanRelative := filepath.Clean(filepath.FromSlash(relativeDir))
+	if cleanRelative == "." || cleanRelative == ".." || strings.HasPrefix(cleanRelative, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return filepath.Join(shared.WorkspacePathsFor(workspaceDir).Root, cleanRelative)
+}
+
+func existingProjectDirMatches(projectDir string, projectID string) bool {
+	info, err := os.Stat(projectDir)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	manifest, err := shared.ReadProjectManifestFile(filepath.Join(projectDir, "project.media.json"))
+	if err != nil {
+		return true
+	}
+	manifestProjectID := domain.CleanProjectID(manifest.ProjectID)
+	return manifestProjectID == "" || manifestProjectID == domain.CleanProjectID(projectID)
 }
 
 func removeDeprecatedStudioProjectDir(workspaceDir string, project domain.WorkspaceProjectModel) error {

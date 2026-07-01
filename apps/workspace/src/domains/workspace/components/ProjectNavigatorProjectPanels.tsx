@@ -381,7 +381,17 @@ export const ProjectSidebarPanel: React.FC<{
 					) : error ? (
 						<p className="px-2 py-1.5 text-xs text-error-foreground">项目加载失败</p>
 					) : (
-						<p className="px-2 py-1.5 text-xs text-muted-foreground">项目不存在</p>
+						<div className="px-2 py-1">
+							<button
+								type="button"
+								className="flex h-7 w-full items-center gap-1.5 rounded-sm px-2 text-left text-xs text-ide-sidebar-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								onClick={onBack}
+							>
+								<ChevronLeft className="size-3.5 shrink-0 text-muted-foreground" />
+								<span className="min-w-0 flex-1 truncate">返回项目列表</span>
+							</button>
+							<p className="mt-1 px-2 py-1 text-xs text-muted-foreground">项目不存在</p>
+						</div>
 					)}
 				</div>
 			</div>

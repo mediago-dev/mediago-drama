@@ -123,6 +123,19 @@ describe("ProjectOverview", () => {
 				title: "主角 底层青年 / 低阶散修",
 				url: "/api/v1/media-assets/character-a/content",
 			},
+			{
+				assetIndex: 0,
+				createdAt: "2026-06-19T02:11:00.000Z",
+				id: "selected-character-audio",
+				kind: "audio",
+				mimeType: "audio/mpeg",
+				resourceId: "section_lintong",
+				resourceTitle: "林书彤",
+				resourceType: "character",
+				sourceDocumentId: "characters",
+				title: "林书彤音色",
+				url: "/api/v1/media-assets/character-audio/content",
+			},
 		];
 		imageGenerationTasksFixture = [
 			generationTask({
@@ -541,6 +554,7 @@ describe("ProjectOverview", () => {
 
 	afterEach(() => {
 		cleanup();
+		vi.unstubAllGlobals();
 		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
 		useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
 	});
@@ -608,7 +622,7 @@ describe("ProjectOverview", () => {
 		await waitFor(() => expect(selectedGenerationAssetsRequestCount).toBeGreaterThanOrEqual(2));
 		await screen.findByText("文档 2 项 · 图片 1 张");
 
-		fireEvent.click(screen.getByRole("button", { name: "角色 文档资源" }));
+		fireEvent.click(screen.getByRole("button", { name: "角色 图片和音频" }));
 		const dialog = await screen.findByRole("dialog");
 		expect(within(dialog).getByRole("img", { name: "林书彤生成图 1" })).toHaveAttribute(
 			"src",
@@ -641,10 +655,10 @@ describe("ProjectOverview", () => {
 		);
 
 		await screen.findByText("文档 2 项 · 图片 1 张");
-		fireEvent.click(screen.getByRole("button", { name: "角色 文档资源" }));
+		fireEvent.click(screen.getByRole("button", { name: "角色 图片和音频" }));
 
 		const dialog = await screen.findByRole("dialog");
-		expect(within(dialog).getByText("角色 · 文档资源")).toBeInTheDocument();
+		expect(within(dialog).getByText("角色 · 图片和音频")).toBeInTheDocument();
 		expect(within(dialog).getByText("林书彤")).toBeInTheDocument();
 		expect(within(dialog).getByText("徐乐乐")).toBeInTheDocument();
 		expect(within(dialog).queryByText("section_lintong")).not.toBeInTheDocument();
@@ -653,6 +667,13 @@ describe("ProjectOverview", () => {
 			"src",
 			"/api/v1/media-assets/character-a/content",
 		);
+		expect(within(dialog).queryByRole("img", { name: "林书彤音色" })).not.toBeInTheDocument();
+		expect(
+			within(dialog).getByRole("button", { name: "播放 林书彤音色 音频" }),
+		).toBeInTheDocument();
+		expect(
+			within(dialog).queryByRole("button", { name: "播放 徐乐乐 音频" }),
+		).not.toBeInTheDocument();
 		// 卡片标题旁的 Badge 展示历史成功生成数（替换了原「已选择 N 张」，封面浮层已移除）。
 		expect(within(dialog).getByText("已生成 2 张")).toBeInTheDocument();
 		expect(within(dialog).getByText("已生成 0 张")).toBeInTheDocument();
@@ -661,9 +682,90 @@ describe("ProjectOverview", () => {
 		expect(within(dialog).queryByText("来源：角色设定")).not.toBeInTheDocument();
 		expect(within(dialog).queryByText("冷静的调查记者。")).not.toBeInTheDocument();
 		expect(within(dialog).queryByText("H2")).not.toBeInTheDocument();
-		for (const button of within(dialog).getAllByRole("button", { name: "生成图片" })) {
+		const generateImageButtons = within(dialog).getAllByRole("button", { name: "生成图片" });
+		const selectAudioButtons = within(dialog).getAllByRole("button", { name: "选择音频" });
+		expect(generateImageButtons).toHaveLength(2);
+		expect(selectAudioButtons).toHaveLength(2);
+		expect(generateImageButtons[0].parentElement).toHaveClass("grid-cols-2");
+		expect(generateImageButtons[0].querySelector(".lucide-arrow-up-right")).toBeTruthy();
+		expect(selectAudioButtons[0].querySelector(".lucide-arrow-up-right")).toBeTruthy();
+		for (const button of [...generateImageButtons, ...selectAudioButtons]) {
 			expect(button).toBeEnabled();
 		}
+	});
+
+	it("previews selected audio from the document resource card", async () => {
+		const play = vi.fn().mockResolvedValue(undefined);
+		const pause = vi.fn();
+		const audioSources: string[] = [];
+		const AudioMock = vi.fn(function MockAudio(src?: string) {
+			audioSources.push(src ?? "");
+			return { onended: null, pause, play };
+		});
+		vi.stubGlobal("Audio", AudioMock);
+		Object.defineProperty(window, "Audio", {
+			configurable: true,
+			value: AudioMock,
+		});
+
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+					<ProjectOverview />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		await screen.findByText("文档 2 项 · 图片 1 张");
+		fireEvent.click(screen.getByRole("button", { name: "角色 图片和音频" }));
+
+		const dialog = await screen.findByRole("dialog");
+		const previewButton = within(dialog).getByRole("button", { name: "播放 林书彤音色 音频" });
+		fireEvent.click(previewButton);
+
+		await waitFor(() => {
+			expect(play).toHaveBeenCalled();
+		});
+		expect(audioSources).toEqual(["/api/v1/media-assets/character-audio/content"]);
+		expect(
+			within(dialog).getByRole("button", { name: "停止播放 林书彤音色 音频" }),
+		).toBeInTheDocument();
+
+		fireEvent.click(within(dialog).getByRole("button", { name: "停止播放 林书彤音色 音频" }));
+		expect(pause).toHaveBeenCalled();
+	});
+
+	it("opens audio selection from document-derived resource cards", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+					<ProjectOverview />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		await screen.findByText("文档 2 项 · 图片 1 张");
+		fireEvent.click(screen.getByRole("button", { name: "角色 图片和音频" }));
+
+		const dialog = await screen.findByRole("dialog");
+		fireEvent.click(within(dialog).getAllByRole("button", { name: "选择音频" })[0]);
+
+		await waitFor(() => {
+			expect(useMediaGenerationStore.getState().activeRequest).toMatchObject({
+				kind: "audio",
+				projectId: "project-a",
+				selectedAssetResourceType: "character",
+				statusResourceKey: "character:characters:section_lintong",
+				section: expect.objectContaining({
+					blockId: "section_lintong",
+					documentId: "characters",
+					headingLevel: 2,
+					headingOccurrence: 1,
+					headingText: "林书彤",
+					markdown: expect.stringContaining("冷静的调查记者。"),
+				}),
+			});
+		});
 	});
 
 	it("shows in-progress generation status in resource dialogs", async () => {
@@ -676,7 +778,7 @@ describe("ProjectOverview", () => {
 		);
 
 		await screen.findByText("文档 2 项 · 图片 1 张");
-		fireEvent.click(screen.getByRole("button", { name: "角色 文档资源" }));
+		fireEvent.click(screen.getByRole("button", { name: "角色 图片和音频" }));
 
 		const documentDialog = await screen.findByRole("dialog");
 		expect(within(documentDialog).getByText("徐乐乐")).toBeInTheDocument();
@@ -690,7 +792,7 @@ describe("ProjectOverview", () => {
 		fireEvent.keyDown(document, { key: "Escape" });
 		await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
-		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 成片资源" }));
+		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 视频生成" }));
 		const videoDialog = await screen.findByRole("dialog");
 		expect(within(videoDialog).getByText("第 02 组 总时长：00:06")).toBeInTheDocument();
 		const videoStatus = within(videoDialog).getByText("生成中");
@@ -711,7 +813,7 @@ describe("ProjectOverview", () => {
 		);
 
 		await screen.findByText("文档 2 项 · 图片 1 张");
-		fireEvent.click(screen.getByRole("button", { name: "角色 文档资源" }));
+		fireEvent.click(screen.getByRole("button", { name: "角色 图片和音频" }));
 
 		const dialog = await screen.findByRole("dialog");
 		expect(within(dialog).getByRole("button", { name: "批量生成图片（0）" })).toBeDisabled();
@@ -794,13 +896,13 @@ describe("ProjectOverview", () => {
 			</SWRConfig>,
 		);
 
-		await screen.findByRole("button", { name: "第一章分镜脚本 成片资源" });
+		await screen.findByRole("button", { name: "第一章分镜脚本 视频生成" });
 		expect(screen.getByText("分镜组 2 项 · 成片 1 个")).toBeInTheDocument();
 		expect(await screen.findByText("分镜组 1 项 · 成片 0 个")).toBeInTheDocument();
-		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 成片资源" }));
+		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 视频生成" }));
 
 		const dialog = await screen.findByRole("dialog");
-		expect(within(dialog).getByText("成片资源 · 第一章分镜脚本")).toBeInTheDocument();
+		expect(within(dialog).getByText("视频生成 · 第一章分镜脚本")).toBeInTheDocument();
 		expect(within(dialog).getByText("第 01 组 总时长：00:08")).toBeInTheDocument();
 		expect(within(dialog).getByText("第 02 组 总时长：00:06")).toBeInTheDocument();
 		expect(within(dialog).queryByText("分镜 01")).not.toBeInTheDocument();
@@ -849,10 +951,10 @@ describe("ProjectOverview", () => {
 
 		fireEvent.keyDown(document, { key: "Escape" });
 		await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-		fireEvent.click(screen.getByRole("button", { name: "第二章分镜脚本 成片资源" }));
+		fireEvent.click(screen.getByRole("button", { name: "第二章分镜脚本 视频生成" }));
 
 		const secondDialog = await screen.findByRole("dialog");
-		expect(within(secondDialog).getByText("成片资源 · 第二章分镜脚本")).toBeInTheDocument();
+		expect(within(secondDialog).getByText("视频生成 · 第二章分镜脚本")).toBeInTheDocument();
 		expect(within(secondDialog).getByText("第 01 组 总时长：00:05")).toBeInTheDocument();
 		expect(within(secondDialog).queryByText("门外脚步成片")).not.toBeInTheDocument();
 		expect(
@@ -882,8 +984,8 @@ describe("ProjectOverview", () => {
 			</SWRConfig>,
 		);
 
-		await screen.findByRole("button", { name: "第一章分镜脚本 成片资源" });
-		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 成片资源" }));
+		await screen.findByRole("button", { name: "第一章分镜脚本 视频生成" });
+		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 视频生成" }));
 
 		const dialog = await screen.findByRole("dialog");
 		await waitFor(() => {
@@ -927,8 +1029,8 @@ describe("ProjectOverview", () => {
 			</SWRConfig>,
 		);
 
-		await screen.findByRole("button", { name: "第一章分镜脚本 成片资源" });
-		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 成片资源" }));
+		await screen.findByRole("button", { name: "第一章分镜脚本 视频生成" });
+		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 视频生成" }));
 
 		const dialog = await screen.findByRole("dialog");
 		expect(within(dialog).getByRole("button", { name: "批量生成视频（0）" })).toBeDisabled();

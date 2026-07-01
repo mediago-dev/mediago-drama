@@ -2,15 +2,17 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { Images } from "lucide-react";
 import type { GenerationAsset, SelectedGenerationAsset } from "@/domains/generation/api/generation";
+import {
+	AudioReferenceSelectionPanel,
+	type AudioReferenceSelectionTab,
+} from "@/shared/components/generation-dialogs/AudioReferenceSelectionPanel";
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
-import { DocumentSectionGenerator } from "@/domains/documents/components/DocumentSectionGenerator";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { Button } from "@/shared/components/ui/button";
 
-const noop = () => undefined;
-
 interface AudioGenerationDialogProps {
 	onAssetSelectionPersisted?: () => void;
+	onCommitAssetSelection?: (asset: GenerationAsset | null) => Promise<void> | void;
 	onGenerationComplete?: (
 		pendingId: string,
 		assets: GenerationAsset[],
@@ -34,23 +36,18 @@ interface AudioGenerationDialogProps {
 const defaultAudioTitleId = "audio-generation-title";
 
 export const AudioGenerationDialog: React.FC<AudioGenerationDialogProps> = ({
-	onAssetSelectionPersisted,
-	onGenerationComplete,
-	onGenerationError,
-	onGenerationStart,
+	onCommitAssetSelection,
 	onOpenChange,
-	onOpenReferenceGeneration,
 	onToggleAsset,
 	open,
 	projectId,
-	resolveLatestSection,
 	selectedAssetKeys,
-	selectedGenerationAssets,
 	section,
 	title,
 	titleId = defaultAudioTitleId,
 }) => {
 	const [lastSection, setLastSection] = useState<MarkdownSectionContext | null>(section);
+	const [activeTab, setActiveTab] = useState<AudioReferenceSelectionTab>("all");
 	const [materialLibraryOpen, setMaterialLibraryOpen] = useState(false);
 
 	useEffect(() => {
@@ -58,7 +55,10 @@ export const AudioGenerationDialog: React.FC<AudioGenerationDialogProps> = ({
 	}, [section]);
 
 	useEffect(() => {
-		if (!open) setMaterialLibraryOpen(false);
+		if (!open) {
+			setActiveTab("all");
+			setMaterialLibraryOpen(false);
+		}
 	}, [open]);
 
 	const activeSection = section ?? lastSection;
@@ -67,7 +67,7 @@ export const AudioGenerationDialog: React.FC<AudioGenerationDialogProps> = ({
 	return (
 		<GenerationModalShell
 			open={open}
-			title={title ?? `生成音频素材 · ${activeSection.headingText}`}
+			title={title ?? `选择音频素材 · ${activeSection.headingText}`}
 			titleId={titleId}
 			titleAside={
 				<Button
@@ -83,22 +83,22 @@ export const AudioGenerationDialog: React.FC<AudioGenerationDialogProps> = ({
 			}
 			onOpenChange={onOpenChange}
 		>
-			<DocumentSectionGenerator
-				kind="audio"
-				materialLibraryImportOpen={materialLibraryOpen}
+			<AudioReferenceSelectionPanel
+				activeTab={activeTab}
+				open={open}
+				materialLibraryOpen={materialLibraryOpen}
 				projectId={projectId}
-				resolveLatestSection={resolveLatestSection}
-				section={activeSection}
 				selectedAssetKeys={selectedAssetKeys}
-				selectedGenerationAssets={selectedGenerationAssets}
-				viewMode="history"
-				onAssetSelectionPersisted={onAssetSelectionPersisted}
-				onGenerationComplete={onGenerationComplete ?? noop}
-				onGenerationError={onGenerationError ?? noop}
-				onGenerationStart={onGenerationStart ?? noop}
-				onMaterialLibraryImportOpenChange={setMaterialLibraryOpen}
-				onOpenReferenceGeneration={onOpenReferenceGeneration}
-				onToggleAsset={onToggleAsset}
+				onActiveTabChange={setActiveTab}
+				onCancelSelection={() => onOpenChange(false)}
+				onConfirmSelection={async (asset) => {
+					if (onCommitAssetSelection) {
+						await onCommitAssetSelection(asset);
+						return;
+					}
+					if (asset) onToggleAsset?.(asset, true);
+				}}
+				onMaterialLibraryOpenChange={setMaterialLibraryOpen}
 			/>
 		</GenerationModalShell>
 	);

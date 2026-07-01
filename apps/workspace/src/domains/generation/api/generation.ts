@@ -77,7 +77,7 @@ export type ImportGenerationMediaAssetsRequest = Omit<
 	conversationId?: string;
 	scopeId?: string;
 };
-export type GenerationAsset = GeneratedGenerationAsset;
+export type GenerationAsset = GeneratedGenerationAsset & { sourceType?: string };
 export type GenerationUsage = GeneratedGenerationUsage;
 export type GenerationMessageResponse = GeneratedGenerationMessageResponse;
 export type GenerationOptimizeAndGenerateResponse = GeneratedGenerationOptimizeAndGenerateResponse;

@@ -10,19 +10,46 @@ import { MediaGenerationDialogHost } from "./MediaGenerationDialogHost";
 const testState = vi.hoisted(() => ({
 	audioDialogProps: null as null | DialogProps,
 	imageDialogProps: null as null | DialogProps,
+	mutateSelectedGenerationAssets: vi.fn(async () => undefined),
+	selectedGenerationAssets: [] as Array<Record<string, unknown>>,
+	updateSelectedGenerationAsset: vi.fn(async () => ({ success: true })),
 	videoDialogProps: null as null | DialogProps,
 }));
 
 interface DialogProps {
+	onCommitAssetSelection?: (asset: Record<string, unknown> | null) => void | Promise<void>;
 	onGenerationComplete?: (pendingId: string, assets: unknown[], sourceTaskId: string) => void;
 	onGenerationError?: (pendingId: string) => void;
 	onGenerationStart?: (pendingId: string, prompt: string) => void;
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
+	onToggleAsset?: (asset: Record<string, unknown>, selected: boolean) => void | Promise<void>;
 	open: boolean;
 	projectId?: string;
 	resolveLatestSection?: boolean;
+	selectedAssetKeys?: string[];
 	section: MarkdownSectionContext | null;
 }
+
+vi.mock("@/domains/generation/api/generation", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/domains/generation/api/generation")>();
+	return {
+		...actual,
+		updateSelectedGenerationAsset: testState.updateSelectedGenerationAsset,
+	};
+});
+
+vi.mock("@/domains/generation/hooks/useSelectedGenerationAssets", () => ({
+	useSelectedGenerationAssets: () => ({
+		assets: testState.selectedGenerationAssets,
+		mutate: testState.mutateSelectedGenerationAssets,
+	}),
+}));
+
+vi.mock("@/hooks/useToast", () => ({
+	useToast: () => ({
+		error: vi.fn(),
+	}),
+}));
 
 vi.mock("@/shared/components/generation-dialogs/ImageGenerationDialog", () => ({
 	ImageGenerationDialog: (props: DialogProps) => {
@@ -63,6 +90,9 @@ describe("MediaGenerationDialogHost", () => {
 		useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
 		testState.audioDialogProps = null;
 		testState.imageDialogProps = null;
+		testState.mutateSelectedGenerationAssets.mockClear();
+		testState.selectedGenerationAssets = [];
+		testState.updateSelectedGenerationAsset.mockClear();
 		testState.videoDialogProps = null;
 	});
 
@@ -111,6 +141,153 @@ describe("MediaGenerationDialogHost", () => {
 			resolveLatestSection: false,
 			section: { blockId: "section_visual", documentId: "story-doc" },
 		});
+	});
+
+	it("persists audio asset selections for the active document resource", async () => {
+		testState.selectedGenerationAssets = [
+			{
+				assetIndex: 0,
+				id: "selected-audio",
+				kind: "audio",
+				mimeType: "audio/mpeg",
+				resourceId: "section_visual",
+				resourceType: "character",
+				sourceDocumentId: "story-doc",
+				title: "画面音色",
+				url: "/api/v1/media-assets/audio-1/content",
+			},
+		];
+		useMediaGenerationStore.getState().open({
+			kind: "audio",
+			projectId: "project-a",
+			section,
+			selectedAssetResourceType: "character",
+		});
+
+		renderHost("/projects?projectId=project-a");
+
+		await waitFor(() => expect(testState.audioDialogProps?.open).toBe(true));
+		expect(testState.audioDialogProps?.selectedAssetKeys).toEqual([
+			"audio:/api/v1/media-assets/audio-1/content",
+		]);
+
+		await act(async () => {
+			await testState.audioDialogProps?.onCommitAssetSelection?.({
+				kind: "audio",
+				mimeType: "audio/mpeg",
+				title: "新音色",
+				url: "/api/v1/media-assets/audio-2/content",
+			});
+		});
+
+		expect(testState.updateSelectedGenerationAsset).toHaveBeenCalledWith("project-a", {
+			assetIndex: 0,
+			base64: undefined,
+			kind: "audio",
+			mimeType: "audio/mpeg",
+			resourceId: "section_visual",
+			resourceTitle: "画面",
+			resourceType: "character",
+			selected: true,
+			sourceAssetIndex: 0,
+			sourceDocumentId: "story-doc",
+			sourceKey: "/api/v1/media-assets/audio-2/content",
+			title: "新音色",
+			url: "/api/v1/media-assets/audio-2/content",
+		});
+		expect(testState.mutateSelectedGenerationAssets).toHaveBeenCalled();
+	});
+
+	it("marks built-in voice preview selections as imported audio assets", async () => {
+		useMediaGenerationStore.getState().open({
+			kind: "audio",
+			projectId: "project-a",
+			section,
+			selectedAssetResourceType: "character",
+		});
+
+		renderHost("/projects?projectId=project-a");
+
+		await waitFor(() => expect(testState.audioDialogProps?.open).toBe(true));
+		await act(async () => {
+			await testState.audioDialogProps?.onCommitAssetSelection?.({
+				kind: "audio",
+				mimeType: "audio/mpeg",
+				sourceType: "imported",
+				title: "中文 (普通话) · 温暖闺蜜",
+				url: "/api/v1/generation/voice-previews/official.minimax-speech/warm-bestie",
+			});
+		});
+
+		expect(testState.updateSelectedGenerationAsset).toHaveBeenCalledWith("project-a", {
+			assetIndex: 0,
+			base64: undefined,
+			kind: "audio",
+			mimeType: "audio/mpeg",
+			resourceId: "section_visual",
+			resourceTitle: "画面",
+			resourceType: "character",
+			selected: true,
+			sourceAssetIndex: 0,
+			sourceDocumentId: "story-doc",
+			sourceKey: "/api/v1/generation/voice-previews/official.minimax-speech/warm-bestie",
+			sourceType: "imported",
+			title: "中文 (普通话) · 温暖闺蜜",
+			url: "/api/v1/generation/voice-previews/official.minimax-speech/warm-bestie",
+		});
+		expect(testState.mutateSelectedGenerationAssets).toHaveBeenCalled();
+	});
+
+	it("clears the current audio selection when confirming an empty draft", async () => {
+		testState.selectedGenerationAssets = [
+			{
+				assetIndex: 0,
+				id: "selected-audio",
+				kind: "audio",
+				mediaAssetId: "media-preview-voice",
+				mimeType: "audio/mpeg",
+				resourceId: "section_visual",
+				resourceType: "character",
+				sourceDocumentId: "story-doc",
+				sourceKey: "/api/v1/generation/voice-previews/official.minimax-speech/warm-bestie",
+				sourceType: "imported",
+				title: "中文 (普通话) · 温暖闺蜜",
+				url: "/api/v1/generation/voice-previews/official.minimax-speech/warm-bestie",
+			},
+		];
+		useMediaGenerationStore.getState().open({
+			kind: "audio",
+			projectId: "project-a",
+			section,
+			selectedAssetResourceType: "character",
+		});
+
+		renderHost("/projects?projectId=project-a");
+
+		await waitFor(() => expect(testState.audioDialogProps?.open).toBe(true));
+		await act(async () => {
+			await testState.audioDialogProps?.onCommitAssetSelection?.(null);
+		});
+
+		expect(testState.updateSelectedGenerationAsset).toHaveBeenCalledWith("project-a", {
+			assetIndex: 0,
+			base64: undefined,
+			kind: "audio",
+			mediaAssetId: "media-preview-voice",
+			mimeType: "audio/mpeg",
+			resourceId: "section_visual",
+			resourceTitle: "画面",
+			resourceType: "character",
+			selected: false,
+			sourceAssetIndex: 0,
+			sourceDocumentId: "story-doc",
+			sourceKey: "/api/v1/generation/voice-previews/official.minimax-speech/warm-bestie",
+			sourceTaskId: undefined,
+			sourceType: "imported",
+			title: "中文 (普通话) · 温暖闺蜜",
+			url: "/api/v1/generation/voice-previews/official.minimax-speech/warm-bestie",
+		});
+		expect(testState.mutateSelectedGenerationAssets).toHaveBeenCalled();
 	});
 
 	it("marks the status resource generating on start and clears it on complete", () => {

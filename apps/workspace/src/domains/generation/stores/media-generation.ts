@@ -1,4 +1,5 @@
 import type { MarkdownSectionContext } from "@/domains/documents/components/tiptap/section-context";
+import type { SelectedGenerationResourceType } from "@/domains/generation/api/generation";
 import {
 	failedResourceGenerationStatus,
 	pendingResourceGenerationStatus,
@@ -20,6 +21,8 @@ export interface MediaGenerationDialogRequest {
 	// 列表行的资源 key（= resource.id）。传了之后，host 会在生成开始/完成/失败时
 	// 即时更新该资源的乐观状态，让列表无需等 SWR 轮询就显示「生成中」。
 	statusResourceKey?: string;
+	// 选中音频等参考素材时用于把 asset 持久化回项目资源概览。
+	selectedAssetResourceType?: SelectedGenerationResourceType;
 }
 
 interface MediaGenerationState {

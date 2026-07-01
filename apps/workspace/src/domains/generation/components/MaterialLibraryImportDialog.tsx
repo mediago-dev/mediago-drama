@@ -1,4 +1,4 @@
-import { Check, Loader2, UploadCloud } from "lucide-react";
+import { AudioLines, Check, Loader2, UploadCloud } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useReducer, useRef } from "react";
 import { GenerationDialogShell } from "@/domains/generation/components/GenerationDialogShell";
@@ -10,6 +10,7 @@ import { formatBytes } from "@/domains/generation/hooks/useGenerationWorkspace.h
 import { cn } from "@/shared/lib/utils";
 
 export interface MaterialLibraryImportDialogProps {
+	assetKind?: MaterialImportAssetKind;
 	confirming?: boolean;
 	mediaAssets: MediaAsset[];
 	onConfirmSelection: (assets: MediaAsset[]) => Promise<void> | void;
@@ -17,8 +18,11 @@ export interface MaterialLibraryImportDialogProps {
 	onRefreshAssets?: () => void;
 	onUploadAsset?: (file: File) => Promise<MediaAsset>;
 	open: boolean;
+	selectionMode?: "multiple" | "single";
 	selectedAssetIds?: string[];
 }
+
+type MaterialImportAssetKind = Extract<MediaAsset["kind"], "audio" | "image">;
 
 type MaterialImportState =
 	| {
@@ -38,9 +42,9 @@ type MaterialImportState =
 type MaterialImportAction =
 	| { selectedAssetIds: string[]; type: "opened" }
 	| { query: string; type: "queryChanged" }
-	| { assetId: string; type: "selectionToggled" }
+	| { assetId: string; selectionMode: "multiple" | "single"; type: "selectionToggled" }
 	| { type: "uploadStarted" }
-	| { assets: MediaAsset[]; type: "uploadSucceeded" }
+	| { assets: MediaAsset[]; selectionMode: "multiple" | "single"; type: "uploadSucceeded" }
 	| { message: string; type: "uploadFailed" };
 
 const emptyMaterialImportSelectionIds: string[] = [];
@@ -53,6 +57,7 @@ const initialMaterialImportState: MaterialImportState = {
 };
 
 export const MaterialLibraryImportDialog: React.FC<MaterialLibraryImportDialogProps> = ({
+	assetKind = "image",
 	mediaAssets,
 	confirming = false,
 	onConfirmSelection,
@@ -60,8 +65,10 @@ export const MaterialLibraryImportDialog: React.FC<MaterialLibraryImportDialogPr
 	onRefreshAssets,
 	onUploadAsset,
 	open,
+	selectionMode = "multiple",
 	selectedAssetIds = emptyMaterialImportSelectionIds,
 }) => {
+	const kindCopy = materialImportKindCopy[assetKind];
 	const uploadInputRef = useRef<HTMLInputElement | null>(null);
 	const [state, dispatch] = useReducer(materialImportReducer, initialMaterialImportState);
 	const isUploading = state.phase === "uploading";
@@ -70,19 +77,19 @@ export const MaterialLibraryImportDialog: React.FC<MaterialLibraryImportDialogPr
 		() => mergeMaterialImportAssets(mediaAssets, state.uploadedAssets),
 		[mediaAssets, state.uploadedAssets],
 	);
-	const imageAssets = useMemo(
+	const filteredAssets = useMemo(
 		() =>
 			availableMediaAssets.filter((asset) => {
-				if (asset.kind !== "image") return false;
+				if (asset.kind !== assetKind) return false;
 				const normalizedQuery = state.query.trim().toLowerCase();
 				if (!normalizedQuery) return true;
 				return asset.filename.toLowerCase().includes(normalizedQuery);
 			}),
-		[availableMediaAssets, state.query],
+		[assetKind, availableMediaAssets, state.query],
 	);
-	const imageAssetCount = useMemo(
-		() => availableMediaAssets.filter((asset) => asset.kind === "image").length,
-		[availableMediaAssets],
+	const filteredAssetCount = useMemo(
+		() => availableMediaAssets.filter((asset) => asset.kind === assetKind).length,
+		[assetKind, availableMediaAssets],
 	);
 	const draftSelectedAssetIdSet = useMemo(
 		() => new Set(state.selectedAssetIds),
@@ -91,9 +98,9 @@ export const MaterialLibraryImportDialog: React.FC<MaterialLibraryImportDialogPr
 	const selectedAssets = useMemo(
 		() =>
 			availableMediaAssets.filter(
-				(asset) => asset.kind === "image" && draftSelectedAssetIdSet.has(asset.id),
+				(asset) => asset.kind === assetKind && draftSelectedAssetIdSet.has(asset.id),
 			),
-		[availableMediaAssets, draftSelectedAssetIdSet],
+		[assetKind, availableMediaAssets, draftSelectedAssetIdSet],
 	);
 
 	useEffect(() => {
@@ -109,28 +116,30 @@ export const MaterialLibraryImportDialog: React.FC<MaterialLibraryImportDialogPr
 
 	const uploadSelectedFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
 		const input = event.currentTarget;
-		const files = Array.from(input.files ?? []).filter(isImageUploadFile);
+		const files = Array.from(input.files ?? []).filter((file) =>
+			isMaterialUploadFile(file, assetKind),
+		);
 		input.value = "";
 		if (!onUploadAsset) return;
 		if (files.length === 0) {
-			dispatch({ type: "uploadFailed", message: "请选择图片文件。" });
+			dispatch({ type: "uploadFailed", message: kindCopy.invalidUploadMessage });
 			return;
 		}
 
 		dispatch({ type: "uploadStarted" });
 		try {
 			const uploaded = (await Promise.all(files.map((file) => onUploadAsset(file)))).filter(
-				(asset) => asset.kind === "image",
+				(asset) => asset.kind === assetKind,
 			);
 			if (uploaded.length === 0) {
-				dispatch({ type: "uploadFailed", message: "上传完成，但没有可选择的图片素材。" });
+				dispatch({ type: "uploadFailed", message: kindCopy.noUploadedSelectableMessage });
 				return;
 			}
-			dispatch({ type: "uploadSucceeded", assets: uploaded });
+			dispatch({ type: "uploadSucceeded", assets: uploaded, selectionMode });
 		} catch (error) {
 			dispatch({
 				type: "uploadFailed",
-				message: materialImportErrorMessage(error, "图片上传失败。"),
+				message: materialImportErrorMessage(error, kindCopy.uploadFailureMessage),
 			});
 		}
 	};
@@ -147,7 +156,7 @@ export const MaterialLibraryImportDialog: React.FC<MaterialLibraryImportDialogPr
 			open={open}
 			title="从素材库中选择"
 			titleId="generation-material-import-title"
-			description="确认后加入当前生成记录，再从生成记录中选择是否放入文档。"
+			description={kindCopy.description}
 			className="max-h-[min(42rem,calc(100vh-2rem))]"
 			closeDisabled={confirming || isUploading}
 			onOpenChange={onOpenChange}
@@ -155,15 +164,15 @@ export const MaterialLibraryImportDialog: React.FC<MaterialLibraryImportDialogPr
 				<>
 					<Input
 						value={state.query}
-						placeholder="搜索图片素材"
+						placeholder={kindCopy.searchPlaceholder}
 						className="h-8 min-w-0 max-w-sm flex-1 rounded-md text-xs text-foreground"
 						onChange={(event) => dispatch({ type: "queryChanged", query: event.target.value })}
 					/>
 					<input
 						ref={uploadInputRef}
-						aria-label="上传图片素材"
+						aria-label={kindCopy.uploadInputLabel}
 						type="file"
-						accept="image/*"
+						accept={kindCopy.accept}
 						multiple
 						className="sr-only"
 						disabled={confirming || isUploading || !onUploadAsset}
@@ -182,15 +191,19 @@ export const MaterialLibraryImportDialog: React.FC<MaterialLibraryImportDialogPr
 						) : (
 							<UploadCloud className="size-4" />
 						)}
-						<span>上传图片</span>
+						<span>{kindCopy.uploadButtonLabel}</span>
 					</Button>
-					<p className="shrink-0 text-xs text-muted-foreground">图片 {imageAssetCount} 个</p>
+					<p className="shrink-0 text-xs text-muted-foreground">
+						{kindCopy.label} {filteredAssetCount} 个
+					</p>
 				</>
 			}
 			error={uploadError ? <p className="text-xs text-destructive">{uploadError}</p> : undefined}
 			footer={
 				<>
-					<p className="text-xs text-muted-foreground">已选 {selectedAssets.length} 张</p>
+					<p className="text-xs text-muted-foreground">
+						已选 {selectedAssets.length} {kindCopy.unit}
+					</p>
 					<div className="flex items-center gap-2">
 						<Button
 							type="button"
@@ -207,28 +220,31 @@ export const MaterialLibraryImportDialog: React.FC<MaterialLibraryImportDialogPr
 							disabled={confirming || isUploading}
 							onClick={confirmSelection}
 						>
-							{confirming ? "加入中..." : "加入生成记录"}
+							{confirming ? kindCopy.confirmingLabel : kindCopy.confirmLabel}
 						</Button>
 					</div>
 				</>
 			}
 		>
-			{imageAssetCount === 0 ? (
+			{filteredAssetCount === 0 ? (
 				<div className="flex min-h-56 items-center justify-center rounded-sm border border-dashed border-border bg-muted px-4 text-center text-xs text-muted-foreground">
-					当前素材库暂无图片素材。
+					{kindCopy.emptyMessage}
 				</div>
-			) : imageAssets.length === 0 ? (
+			) : filteredAssets.length === 0 ? (
 				<div className="flex min-h-56 items-center justify-center rounded-sm border border-dashed border-border bg-muted px-4 text-center text-xs text-muted-foreground">
-					没有匹配的图片素材。
+					{kindCopy.noMatchMessage}
 				</div>
 			) : (
 				<div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3">
-					{imageAssets.map((asset) => (
+					{filteredAssets.map((asset) => (
 						<MaterialLibraryImportCard
 							key={asset.id}
 							asset={asset}
+							assetKind={assetKind}
 							selected={draftSelectedAssetIdSet.has(asset.id)}
-							onSelect={() => dispatch({ type: "selectionToggled", assetId: asset.id })}
+							onSelect={() =>
+								dispatch({ type: "selectionToggled", assetId: asset.id, selectionMode })
+							}
 						/>
 					))}
 				</div>
@@ -252,6 +268,13 @@ const materialImportReducer = (
 		case "queryChanged":
 			return { ...state, query: action.query };
 		case "selectionToggled":
+			if (action.selectionMode === "single") {
+				return {
+					...state,
+					selectedAssetIds: state.selectedAssetIds.includes(action.assetId) ? [] : [action.assetId],
+				};
+			}
+
 			return {
 				...state,
 				selectedAssetIds: state.selectedAssetIds.includes(action.assetId)
@@ -261,13 +284,19 @@ const materialImportReducer = (
 		case "uploadStarted":
 			return { ...state, phase: "uploading" };
 		case "uploadSucceeded":
+			const lastUploadedAssetId = action.assets.at(-1)?.id;
 			return {
 				phase: "editing",
 				query: state.query,
-				selectedAssetIds: uniqueMaterialAssetIds([
-					...state.selectedAssetIds,
-					...action.assets.map((asset) => asset.id),
-				]),
+				selectedAssetIds:
+					action.selectionMode === "single"
+						? lastUploadedAssetId
+							? [lastUploadedAssetId]
+							: []
+						: uniqueMaterialAssetIds([
+								...state.selectedAssetIds,
+								...action.assets.map((asset) => asset.id),
+							]),
 				uploadedAssets: mergeMaterialImportAssets(state.uploadedAssets, action.assets),
 			};
 		case "uploadFailed":
@@ -277,9 +306,10 @@ const materialImportReducer = (
 
 const MaterialLibraryImportCard: React.FC<{
 	asset: MediaAsset;
+	assetKind: MaterialImportAssetKind;
 	onSelect: () => void;
 	selected: boolean;
-}> = ({ asset, onSelect, selected }) => (
+}> = ({ asset, assetKind, onSelect, selected }) => (
 	<button
 		type="button"
 		role="checkbox"
@@ -291,7 +321,13 @@ const MaterialLibraryImportCard: React.FC<{
 		onClick={onSelect}
 	>
 		<div className="relative aspect-[4/3] bg-muted-foreground/10">
-			<img src={apiResourceURL(asset.url)} alt="" className="size-full object-contain" />
+			{assetKind === "image" ? (
+				<img src={apiResourceURL(asset.url)} alt="" className="size-full object-contain" />
+			) : (
+				<div className="flex size-full items-center justify-center text-muted-foreground">
+					<AudioLines className="size-8" />
+				</div>
+			)}
 			{selected ? (
 				<span className="absolute right-1.5 top-1.5 flex items-center gap-1 rounded-sm bg-primary px-1.5 py-1 text-xs font-medium text-primary-foreground shadow-sm">
 					<Check className="size-3" />
@@ -302,11 +338,64 @@ const MaterialLibraryImportCard: React.FC<{
 		<div className="grid gap-1 p-2">
 			<p className="truncate text-xs font-medium text-foreground">{asset.filename}</p>
 			<p className="truncate text-2xs text-muted-foreground">
-				图片 · {formatBytes(asset.sizeBytes)}
+				{materialImportKindCopy[assetKind].label} · {formatBytes(asset.sizeBytes)}
 			</p>
 		</div>
 	</button>
 );
+
+const materialImportKindCopy: Record<
+	MaterialImportAssetKind,
+	{
+		accept: string;
+		confirmingLabel: string;
+		confirmLabel: string;
+		description: string;
+		emptyMessage: string;
+		invalidUploadMessage: string;
+		label: string;
+		noMatchMessage: string;
+		noUploadedSelectableMessage: string;
+		searchPlaceholder: string;
+		unit: string;
+		uploadButtonLabel: string;
+		uploadFailureMessage: string;
+		uploadInputLabel: string;
+	}
+> = {
+	audio: {
+		accept: "audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,.webm",
+		confirmingLabel: "选择中...",
+		confirmLabel: "选择音频",
+		description: "上传音频，或从当前项目素材中选择。",
+		emptyMessage: "当前素材库暂无音频素材。",
+		invalidUploadMessage: "请选择音频文件。",
+		label: "音频",
+		noMatchMessage: "没有匹配的音频素材。",
+		noUploadedSelectableMessage: "上传完成，但没有可选择的音频素材。",
+		searchPlaceholder: "搜索音频素材",
+		unit: "个",
+		uploadButtonLabel: "上传音频",
+		uploadFailureMessage: "音频上传失败。",
+		uploadInputLabel: "上传音频素材",
+	},
+	image: {
+		accept: "image/*",
+		confirmingLabel: "加入中...",
+		confirmLabel: "加入生成记录",
+		description: "确认后加入当前生成记录，再从生成记录中选择是否放入文档。",
+		emptyMessage: "当前素材库暂无图片素材。",
+		invalidUploadMessage: "请选择图片文件。",
+		label: "图片",
+		noMatchMessage: "没有匹配的图片素材。",
+		noUploadedSelectableMessage: "上传完成，但没有可选择的图片素材。",
+		searchPlaceholder: "搜索图片素材",
+		unit: "张",
+		uploadButtonLabel: "上传图片",
+		uploadFailureMessage: "图片上传失败。",
+		uploadInputLabel: "上传图片素材",
+	},
+};
 
 const mergeMaterialImportAssets = (baseAssets: MediaAsset[], nextAssets: MediaAsset[]) => {
 	const seen = new Set<string>();
@@ -331,8 +420,13 @@ const uniqueMaterialAssetIds = (ids: string[]) => {
 	return unique;
 };
 
-const isImageUploadFile = (file: File) =>
-	file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|avif)$/iu.test(file.name);
+const isMaterialUploadFile = (file: File, kind: MaterialImportAssetKind) => {
+	if (kind === "audio") {
+		return file.type.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg|flac|webm)$/iu.test(file.name);
+	}
+
+	return file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|avif)$/iu.test(file.name);
+};
 
 const materialImportErrorMessage = (error: unknown, fallback: string) => {
 	if (error instanceof Error && error.message.trim()) return error.message;

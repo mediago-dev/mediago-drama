@@ -296,6 +296,62 @@ describe("MaterialLibraryImportDialog", () => {
 		expect(onConfirmSelection).toHaveBeenCalledWith([uploadedAsset]);
 	});
 
+	it("filters to audio assets and uploads audio in single-selection mode", async () => {
+		const audioAsset = mediaAsset({
+			id: "audio-1",
+			filename: "voice.mp3",
+			kind: "audio",
+			mimeType: "audio/mpeg",
+			sizeBytes: 2048,
+			url: "/api/v1/media-assets/audio-1/content",
+		});
+		const uploadedAsset = mediaAsset({
+			id: "uploaded-audio",
+			filename: "uploaded-voice.mp3",
+			kind: "audio",
+			mimeType: "audio/mpeg",
+			sizeBytes: 4096,
+			url: "/api/v1/media-assets/uploaded-audio/content",
+		});
+		const onConfirmSelection = vi.fn();
+		const onUploadAsset = vi.fn().mockResolvedValue(uploadedAsset);
+		render(
+			<MaterialLibraryImportDialog
+				assetKind="audio"
+				mediaAssets={[mediaAsset(), audioAsset]}
+				open
+				selectionMode="single"
+				onConfirmSelection={onConfirmSelection}
+				onOpenChange={vi.fn()}
+				onUploadAsset={onUploadAsset}
+			/>,
+		);
+
+		expect(screen.getByPlaceholderText("搜索音频素材")).toBeTruthy();
+		expect(screen.getByText("voice.mp3")).toBeTruthy();
+		expect(screen.queryByText("still.png")).toBeNull();
+
+		const file = new File(["audio"], "uploaded-voice.mp3", { type: "audio/mpeg" });
+		fireEvent.change(screen.getByLabelText("上传音频素材"), {
+			target: { files: [file] },
+		});
+
+		await waitFor(() => {
+			expect(onUploadAsset).toHaveBeenCalledWith(file);
+		});
+		expect(await screen.findByText("uploaded-voice.mp3")).toBeTruthy();
+		expect(
+			screen.getByRole("checkbox", { name: /uploaded-voice\.mp3/u }).getAttribute("aria-checked"),
+		).toBe("true");
+		expect(
+			screen.getByRole("checkbox", { name: /^voice\.mp3/u }).getAttribute("aria-checked"),
+		).toBe("false");
+
+		fireEvent.click(screen.getByRole("button", { name: "选择音频" }));
+
+		expect(onConfirmSelection).toHaveBeenCalledWith([uploadedAsset]);
+	});
+
 	it("shows an upload error for non-image files", async () => {
 		const onUploadAsset = vi.fn();
 		render(

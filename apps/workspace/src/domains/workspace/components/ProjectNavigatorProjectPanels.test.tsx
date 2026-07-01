@@ -193,6 +193,20 @@ describe("ProjectSidebarPanel", () => {
 		expect(footerActionRowClassName()).toContain("justify-end");
 	});
 
+	it("shows a return action when the selected project does not exist", () => {
+		const onBack = vi.fn();
+		renderProjectSidebar(true, {
+			displayProject: null,
+			documentsProjectId: null,
+			onBack,
+		});
+
+		expect(screen.getByText("项目不存在")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "返回项目列表" }));
+
+		expect(onBack).toHaveBeenCalledTimes(1);
+	});
+
 	it("opens project list actions from the project context menu", () => {
 		const onArchiveProject = vi.fn();
 		const onOpenProject = vi.fn();

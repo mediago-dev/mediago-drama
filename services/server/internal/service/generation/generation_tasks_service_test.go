@@ -10,6 +10,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	serviceshared "github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 	"gorm.io/gorm/clause"
 )
@@ -816,6 +817,72 @@ func TestGenerationServiceUpdateSelectedGenerationAssetWithMissingTaskSource(t *
 	}
 	if len(listed.Assets) != 1 || listed.Assets[0].ID != response.Asset.ID {
 		t.Fatalf("listed assets = %+v, want saved selected asset", listed.Assets)
+	}
+}
+
+func TestGenerationServiceUpdateSelectedGenerationAssetFromVoicePreview(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	projectID := "project-selected-voice-preview"
+	previewURL := "/api/v1/generation/voice-previews/official.minimax-speech/warm-bestie"
+	seedGenerationTaskProject(t, dbPath, projectID)
+	service := NewGenerationTaskService(dbPath, nil)
+	mediaAssets := media.NewMediaAssets(dbPath, t.TempDir())
+	workflow := &GenerationService{generationTasks: service, mediaAssets: mediaAssets}
+
+	selected := true
+	response, status, err := workflow.UpdateSelectedGenerationAsset(projectID, UpdateSelectedGenerationAssetRequest{
+		Selected:         &selected,
+		ResourceType:     "character",
+		ResourceID:       "section-linshutong",
+		ResourceTitle:    "林书彤",
+		Kind:             "audio",
+		Title:            "中文 (普通话) · 温暖闺蜜",
+		URL:              previewURL,
+		MIMEType:         "audio/mpeg",
+		SourceType:       "imported",
+		SourceDocumentID: "story-doc",
+	})
+	if err != nil || status != 200 {
+		t.Fatalf("selecting voice preview status=%d error=%v", status, err)
+	}
+	if response.Asset == nil ||
+		response.Asset.TaskID != "" ||
+		response.Asset.AssetIndex != -1 ||
+		response.Asset.MediaAssetID == "" ||
+		response.Asset.Kind != "audio" ||
+		response.Asset.URL != previewURL ||
+		response.Asset.SourceType != "imported" ||
+		response.Asset.SourceDocumentID != "story-doc" ||
+		response.Asset.ResourceID != "section-linshutong" {
+		t.Fatalf("response = %+v, want selected imported voice preview", response)
+	}
+
+	linkedAsset, ok, err := mediaAssets.Get(response.Asset.MediaAssetID)
+	if err != nil || !ok {
+		t.Fatalf("getting linked media asset ok=%v error=%v", ok, err)
+	}
+	if linkedAsset.URL != previewURL ||
+		linkedAsset.SourceURL != previewURL ||
+		linkedAsset.Kind != "audio" ||
+		linkedAsset.Source != media.MediaSourcePreview {
+		t.Fatalf("linked asset = %+v, want preview audio asset", linkedAsset)
+	}
+
+	reselected, status, err := workflow.UpdateSelectedGenerationAsset(projectID, UpdateSelectedGenerationAssetRequest{
+		Selected:     &selected,
+		ResourceType: "character",
+		ResourceID:   "section-linshutong",
+		Kind:         "audio",
+		Title:        "中文 (普通话) · 温暖闺蜜",
+		URL:          previewURL,
+		MIMEType:     "audio/mpeg",
+		SourceType:   "imported",
+	})
+	if err != nil || status != 200 {
+		t.Fatalf("reselecting voice preview status=%d error=%v", status, err)
+	}
+	if reselected.Asset == nil || reselected.Asset.MediaAssetID != response.Asset.MediaAssetID {
+		t.Fatalf("reselected asset = %+v, want reused linked media asset", reselected.Asset)
 	}
 }
 

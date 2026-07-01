@@ -10,6 +10,104 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 )
 
+func TestWorkspaceStateServiceRecoversFilesystemProjectManifest(t *testing.T) {
+	workspaceDir := t.TempDir()
+	projectID := "project-orphan-recovery"
+	projectDir := filepath.Join(workspaceDir, "projects", projectID)
+	writeWorkspaceProjectManifest(t, projectDir, projectID, "Recovered Project")
+
+	repos, err := repository.OpenWorkspaceRepositories(shared.WorkspacePathsFor(workspaceDir).DatabasePath())
+	if err != nil {
+		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
+	}
+
+	store := NewWorkspaceStateServiceFromRepositories(workspaceDir, repos, nil)
+	if err := store.InitErr(); err != nil {
+		t.Fatalf("InitErr() = %v", err)
+	}
+	project, err := repos.Workspace.GetProject(projectID)
+	if err != nil {
+		t.Fatalf("GetProject(recovered) error = %v", err)
+	}
+	if project.Name != "Recovered Project" {
+		t.Fatalf("project name = %q, want Recovered Project", project.Name)
+	}
+	if project.ProjectDir != projectDir || project.RelativeDir != "projects/"+projectID {
+		t.Fatalf("project location = (%q, %q), want filesystem project dir", project.ProjectDir, project.RelativeDir)
+	}
+}
+
+func TestWorkspaceStateServiceBackfillsBlankProjectDirFromCanonicalManifest(t *testing.T) {
+	workspaceDir := t.TempDir()
+	projectID := "project-blank-dir-backfill"
+	projectDir := filepath.Join(workspaceDir, "projects", projectID)
+	writeWorkspaceProjectManifest(t, projectDir, projectID, "Blank Dir Backfill")
+
+	repos, err := repository.OpenWorkspaceRepositories(shared.WorkspacePathsFor(workspaceDir).DatabasePath())
+	if err != nil {
+		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
+	}
+	now := domain.TimeFromString("2026-06-06T00:00:00Z")
+	if err := repos.Workspace.UpsertProject(domain.WorkspaceProjectModel{
+		ID:          projectID,
+		Name:        "Blank Dir Backfill",
+		Category:    "agent",
+		Status:      repository.ProjectStatusActive,
+		ProjectDir:  "",
+		RelativeDir: "projects/" + projectID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("UpsertProject() error = %v", err)
+	}
+
+	store := NewWorkspaceStateServiceFromRepositories(workspaceDir, repos, nil)
+	if err := store.InitErr(); err != nil {
+		t.Fatalf("InitErr() = %v", err)
+	}
+	project, err := repos.Workspace.GetProject(projectID)
+	if err != nil {
+		t.Fatalf("GetProject(backfilled) error = %v", err)
+	}
+	if project.ProjectDir != projectDir || project.RelativeDir != "projects/"+projectID {
+		t.Fatalf("project location = (%q, %q), want canonical projects dir", project.ProjectDir, project.RelativeDir)
+	}
+}
+
+func TestWorkspaceStateServiceKeepsBlankProjectDirWhenDirectoryMissing(t *testing.T) {
+	workspaceDir := t.TempDir()
+	projectID := "project-missing-dir-retained"
+	repos, err := repository.OpenWorkspaceRepositories(shared.WorkspacePathsFor(workspaceDir).DatabasePath())
+	if err != nil {
+		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
+	}
+	now := domain.TimeFromString("2026-06-06T00:00:00Z")
+	if err := repos.Workspace.UpsertProject(domain.WorkspaceProjectModel{
+		ID:          projectID,
+		Name:        "Missing Dir Retained",
+		Category:    "agent",
+		Status:      repository.ProjectStatusActive,
+		ProjectDir:  "",
+		RelativeDir: "projects/" + projectID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("UpsertProject() error = %v", err)
+	}
+
+	store := NewWorkspaceStateServiceFromRepositories(workspaceDir, repos, nil)
+	if err := store.InitErr(); err != nil {
+		t.Fatalf("InitErr() = %v", err)
+	}
+	project, err := repos.Workspace.GetProject(projectID)
+	if err != nil {
+		t.Fatalf("GetProject(retained) error = %v", err)
+	}
+	if project.ProjectDir != "" {
+		t.Fatalf("project dir = %q, want retained blank location until files are found", project.ProjectDir)
+	}
+}
+
 func TestWorkspaceStateServiceCleansDeprecatedStudioProjectDirs(t *testing.T) {
 	workspaceDir := t.TempDir()
 	legacyProjectID := "project-legacy-studio"
@@ -194,5 +292,16 @@ func TestWorkspaceStateServiceMigratesDeprecatedLocalProjectDirs(t *testing.T) {
 	}
 	if retainedProject.ProjectDir != retainedDir {
 		t.Fatalf("retained project dir = %q, want %q", retainedProject.ProjectDir, retainedDir)
+	}
+}
+
+func writeWorkspaceProjectManifest(t *testing.T, projectDir string, projectID string, name string) {
+	t.Helper()
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("creating project dir: %v", err)
+	}
+	manifest := []byte(`{"schemaVersion":1,"projectId":"` + projectID + `","name":"` + name + `","description":"Recovered from disk","overview":{},"createdAt":"2026-07-01T15:03:29.896121Z"}`)
+	if err := os.WriteFile(filepath.Join(projectDir, "project.media.json"), manifest, 0o644); err != nil {
+		t.Fatalf("writing project manifest: %v", err)
 	}
 }
