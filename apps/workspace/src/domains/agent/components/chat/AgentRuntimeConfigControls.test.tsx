@@ -164,6 +164,36 @@ describe("AgentRuntimeConfigControls", () => {
 		);
 	});
 
+	it("caps the model menu height and keeps long model lists scrollable", () => {
+		renderControls({
+			model: {
+				configId: "model",
+				currentValue: "mediago/glm-4.7",
+				options: [
+					"glm-4.7",
+					"glm-5.2",
+					"gpt-4.1",
+					"gpt-4.1-mini",
+					"minimax-m2.7",
+					"minimax-m2.7-highspeed",
+					"minimax-m3",
+					"qwen3.5-27b",
+				].map((model) => ({
+					name: `MediaGo/${model}`,
+					value: `mediago/${model}`,
+				})),
+			},
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "模型" }));
+		const menu = screen.getByLabelText("分类和模型");
+
+		expect(menu.getAttribute("style")).toContain(
+			"3 * var(--generation-model-popover-option-height)",
+		);
+		expect(screen.getByText("qwen3.5-27b")).toBeTruthy();
+	});
+
 	it("renders agent model trigger icons as provider then model and deduplicates matching icons", () => {
 		const view = renderControls(
 			{
@@ -305,6 +335,7 @@ describe("AgentRuntimeConfigControls", () => {
 
 		expect(screen.getByText("GLM-4 Flash")).toBeTruthy();
 		expect(screen.queryByText("MiniMax-M3")).toBeNull();
+		expect(miniMaxCategory).not.toHaveClass("hover:bg-muted");
 	});
 
 	it("switches model category immediately when the pointer is not moving toward the model panel", () => {

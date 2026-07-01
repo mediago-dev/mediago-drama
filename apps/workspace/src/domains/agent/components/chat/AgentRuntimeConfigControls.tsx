@@ -8,7 +8,7 @@ import {
 	Sparkles,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
 	AgentRuntimeConfigPayload,
 	AgentRuntimeSelectConfig,
@@ -201,12 +201,17 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	const [activeCategoryKey, setActiveCategoryKey] = useState(
 		selectedOption?.categoryKey ?? categories[0]?.key ?? "",
 	);
+	const [suppressedCategoryHoverKey, setSuppressedCategoryHoverKey] = useState<string | null>(null);
 	const categoryButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+	const categoryListRef = useRef<HTMLDivElement | null>(null);
 	const modelPanelRef = useRef<HTMLElement | null>(null);
+	const modelListRef = useRef<HTMLDivElement | null>(null);
 	const safeTriangleOriginRef = useRef<{
 		categoryKey: string;
 		point: AgentRuntimePoint;
 	} | null>(null);
+	const [categoryListCanScrollDown, setCategoryListCanScrollDown] = useState(false);
+	const [modelListCanScrollDown, setModelListCanScrollDown] = useState(false);
 	const activeCategory =
 		categories.find((category) => category.key === activeCategoryKey) ??
 		categories.find((category) => category.key === selectedOption?.categoryKey) ??
@@ -226,14 +231,68 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 		});
 	}, [categories, open, selectedOption?.categoryKey]);
 
+	const updateCategoryListScrollHint = useCallback(() => {
+		const node = categoryListRef.current;
+		if (!node) {
+			setCategoryListCanScrollDown(false);
+			return;
+		}
+		const remainingScroll = node.scrollHeight - node.clientHeight - node.scrollTop;
+		setCategoryListCanScrollDown(remainingScroll > 1);
+	}, []);
+
+	const updateModelListScrollHint = useCallback(() => {
+		const node = modelListRef.current;
+		if (!node) {
+			setModelListCanScrollDown(false);
+			return;
+		}
+		const remainingScroll = node.scrollHeight - node.clientHeight - node.scrollTop;
+		setModelListCanScrollDown(remainingScroll > 1);
+	}, []);
+
+	useEffect(() => {
+		if (!open) {
+			setCategoryListCanScrollDown(false);
+			setModelListCanScrollDown(false);
+			return;
+		}
+		const frame = window.requestAnimationFrame(() => {
+			if (categoryListRef.current) {
+				categoryListRef.current.scrollTop = 0;
+			}
+			if (modelListRef.current) {
+				modelListRef.current.scrollTop = 0;
+			}
+			updateCategoryListScrollHint();
+			updateModelListScrollHint();
+		});
+		return () => window.cancelAnimationFrame(frame);
+	}, [
+		activeCategory?.key,
+		activeCategory?.options.length,
+		categories.length,
+		open,
+		updateCategoryListScrollHint,
+		updateModelListScrollHint,
+	]);
+
 	if (options.length === 0 || !selectedOption) return null;
 
 	const clearSafeTriangle = () => {
 		safeTriangleOriginRef.current = null;
+		setSuppressedCategoryHoverKey(null);
 	};
 
 	const rememberActiveCategoryPointer = (categoryKey: string, point: AgentRuntimePoint) => {
 		safeTriangleOriginRef.current = { categoryKey, point };
+		setSuppressedCategoryHoverKey(null);
+	};
+
+	const suppressCategoryHover = (categoryKey: string) => {
+		setSuppressedCategoryHoverKey((currentKey) =>
+			currentKey === categoryKey ? currentKey : categoryKey,
+		);
 	};
 
 	const activateCategory = (categoryKey: string) => {
@@ -276,6 +335,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 		}
 
 		if (shouldPreserveActiveCategory(point)) {
+			suppressCategoryHover(categoryKey);
 			return;
 		}
 
@@ -293,6 +353,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 		}
 
 		if (shouldPreserveActiveCategory(point)) {
+			suppressCategoryHover(categoryKey);
 			return;
 		}
 
@@ -343,47 +404,63 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 			>
 				<section className="flex min-h-0 min-w-0 flex-col p-[var(--generation-popover-padding)]">
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">分类</p>
-					<div className="grid min-h-0 flex-1 auto-rows-min gap-1 overflow-y-auto pr-1">
-						{categories.map((category) => {
-							const active = category.key === activeCategory?.key;
-							const categoryBrand = generationProviderBrand(category.label);
+					<div className="relative min-h-0 flex-1">
+						<div
+							ref={categoryListRef}
+							className="grid h-full min-h-0 auto-rows-min gap-1 overflow-y-auto pr-1"
+							onScroll={updateCategoryListScrollHint}
+						>
+							{categories.map((category) => {
+								const active = category.key === activeCategory?.key;
+								const categoryBrand = generationProviderBrand(category.label);
+								const suppressHover = category.key === suppressedCategoryHoverKey;
 
-							return (
-								<button
-									key={category.key}
-									type="button"
-									ref={(node) => {
-										if (node) {
-											categoryButtonRefs.current.set(category.key, node);
-										} else {
-											categoryButtonRefs.current.delete(category.key);
-										}
-									}}
-									className={cn(
-										"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-										active
-											? "bg-ide-list-active text-ide-list-active-foreground"
-											: "text-foreground hover:bg-muted",
-									)}
-									onPointerEnter={(event) => handleCategoryPointerEnter(category.key, event)}
-									onPointerMove={(event) => handleCategoryPointerMove(category.key, event)}
-									onFocus={() => activateCategory(category.key)}
-									onClick={() => activateCategory(category.key)}
-								>
-									<GenerationBrandMark
-										brand={categoryBrand}
-										className="size-3.5 border-0 bg-transparent p-0 text-[0.45rem] shadow-none"
-									/>
-									<span className="min-w-0 flex-1 truncate">{category.label}</span>
-									<ChevronRight
+								return (
+									<button
+										key={category.key}
+										type="button"
+										ref={(node) => {
+											if (node) {
+												categoryButtonRefs.current.set(category.key, node);
+											} else {
+												categoryButtonRefs.current.delete(category.key);
+											}
+										}}
 										className={cn(
-											"size-4 shrink-0",
-											active ? "text-primary" : "text-muted-foreground",
+											"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+											active
+												? "bg-ide-list-active text-ide-list-active-foreground"
+												: suppressHover
+													? "text-foreground"
+													: "text-foreground hover:bg-muted",
 										)}
-									/>
-								</button>
-							);
-						})}
+										onPointerEnter={(event) => handleCategoryPointerEnter(category.key, event)}
+										onPointerMove={(event) => handleCategoryPointerMove(category.key, event)}
+										onFocus={() => activateCategory(category.key)}
+										onClick={() => activateCategory(category.key)}
+									>
+										<GenerationBrandMark
+											brand={categoryBrand}
+											className="size-3.5 border-0 bg-transparent p-0 text-[0.45rem] shadow-none"
+										/>
+										<span className="min-w-0 flex-1 truncate">{category.label}</span>
+										<ChevronRight
+											className={cn(
+												"size-4 shrink-0",
+												active ? "text-primary" : "text-muted-foreground",
+											)}
+										/>
+									</button>
+								);
+							})}
+						</div>
+						{categoryListCanScrollDown ? (
+							<div
+								aria-hidden="true"
+								className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-popover/95 via-popover/60 to-popover/0"
+								data-agent-category-scroll-hint
+							/>
+						) : null}
 					</div>
 				</section>
 				<section
@@ -392,42 +469,55 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 					onPointerEnter={clearSafeTriangle}
 				>
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">模型</p>
-					<div className="grid min-h-0 flex-1 auto-rows-min gap-1 overflow-y-auto pr-1">
-						{(activeCategory?.options ?? []).map((option) => {
-							const selected = option.option.value === resolvedValue;
-							const modelBrand = generationModelBrand({
-								version: {
-									id: option.modelKey,
-									label: option.modelLabel,
-								},
-							});
+					<div className="relative min-h-0 flex-1">
+						<div
+							ref={modelListRef}
+							className="grid h-full min-h-0 auto-rows-min gap-1 overflow-y-auto pr-1"
+							onScroll={updateModelListScrollHint}
+						>
+							{(activeCategory?.options ?? []).map((option) => {
+								const selected = option.option.value === resolvedValue;
+								const modelBrand = generationModelBrand({
+									version: {
+										id: option.modelKey,
+										label: option.modelLabel,
+									},
+								});
 
-							return (
-								<button
-									key={option.option.value}
-									type="button"
-									disabled={disabled}
-									title={option.option.description}
-									className={cn(
-										"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45",
-										selected
-											? "bg-ide-list-active text-ide-list-active-foreground"
-											: "text-foreground hover:bg-card",
-									)}
-									onClick={() => {
-										onChange(option.option.value);
-										setOpen(false);
-									}}
-								>
-									<GenerationBrandMark
-										brand={modelBrand}
-										className="size-3.5 border-0 bg-transparent p-0 text-[0.45rem] shadow-none"
-									/>
-									<span className="min-w-0 flex-1 truncate">{option.modelLabel}</span>
-									{selected ? <Check className="size-4 shrink-0 text-primary" /> : null}
-								</button>
-							);
-						})}
+								return (
+									<button
+										key={option.option.value}
+										type="button"
+										disabled={disabled}
+										title={option.option.description}
+										className={cn(
+											"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45",
+											selected
+												? "bg-ide-list-active text-ide-list-active-foreground"
+												: "text-foreground hover:bg-card",
+										)}
+										onClick={() => {
+											onChange(option.option.value);
+											setOpen(false);
+										}}
+									>
+										<GenerationBrandMark
+											brand={modelBrand}
+											className="size-3.5 border-0 bg-transparent p-0 text-[0.45rem] shadow-none"
+										/>
+										<span className="min-w-0 flex-1 truncate">{option.modelLabel}</span>
+										{selected ? <Check className="size-4 shrink-0 text-primary" /> : null}
+									</button>
+								);
+							})}
+						</div>
+						{modelListCanScrollDown ? (
+							<div
+								aria-hidden="true"
+								className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-muted/95 via-muted/60 to-muted/0"
+								data-agent-model-scroll-hint
+							/>
+						) : null}
 					</div>
 				</section>
 			</PopoverContent>
@@ -516,8 +606,9 @@ const agentRuntimeModelMenuHeight = (categories: AgentRuntimeModelCategory[]) =>
 		0,
 	);
 	const rowCount = Math.max(categories.length, maxModelOptionCount, 1);
-	const gapCount = Math.max(rowCount - 1, 0);
-	return `min(22rem, calc(var(--generation-popover-padding) * 2 + 1.25rem + ${rowCount} * var(--generation-model-popover-option-height) + ${gapCount} * 0.25rem))`;
+	const visibleRowCount = Math.min(rowCount, 3);
+	const gapCount = Math.max(visibleRowCount - 1, 0);
+	return `calc(var(--generation-popover-padding) * 2 + 1.25rem + ${visibleRowCount} * var(--generation-model-popover-option-height) + ${gapCount} * 0.25rem)`;
 };
 
 const splitAgentProviderModel = (value: string) => {
