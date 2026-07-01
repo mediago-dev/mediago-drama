@@ -126,7 +126,7 @@ describe("ProjectSidebarPanel", () => {
 
 		const documentRow = screen.getByRole("button", { name: "第一集" }).parentElement;
 		expect(documentRow).toBeTruthy();
-		expect((documentRow as HTMLElement).style.paddingLeft).toBe("40px");
+		expect((documentRow as HTMLElement).style.paddingLeft).toBe("26px");
 
 		fireEvent.contextMenu(documentRow as HTMLElement, { clientX: 72, clientY: 96 });
 

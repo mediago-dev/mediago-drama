@@ -111,6 +111,18 @@ describe("DocumentMentionHoverPopover", () => {
 					title: "顾南衣参考图",
 					url: "/api/v1/media-assets/selected-ref/content",
 				},
+				{
+					assetIndex: 0,
+					id: "selected-gny-voice",
+					kind: "audio",
+					mediaAssetId: "selected-voice",
+					mimeType: "audio/mpeg",
+					resourceId: "section_character",
+					resourceType: "character",
+					sourceDocumentId: "character-doc",
+					title: "顾南衣音色",
+					url: "/api/v1/media-assets/selected-voice/content",
+				},
 			],
 		});
 
@@ -144,7 +156,6 @@ describe("DocumentMentionHoverPopover", () => {
 
 		await waitFor(() =>
 			expect(generationApiMocks.getSelectedGenerationAssets).toHaveBeenCalledWith("project-a", {
-				kind: "image",
 				resourceId: "section_character",
 				resourceType: "character",
 				sourceDocumentId: "character-doc",
@@ -153,6 +164,52 @@ describe("DocumentMentionHoverPopover", () => {
 		await waitFor(() =>
 			expect(referenceImage("/api/v1/media-assets/selected-ref/content")).toBeTruthy(),
 		);
+		await waitFor(() => expect(screen.getByText("音频")).toBeTruthy());
+	});
+
+	it("shows selected audio passed from the generation dialog context", async () => {
+		render(
+			<DocumentMentionHoverPopover
+				allAssets={[]}
+				allDocuments={[
+					makeDocument({
+						category: "character",
+						id: "character-doc",
+						title: "陈远",
+						content: "<!-- section-id: section_character -->\n# 陈远\n\n21 岁男性。",
+					}),
+				]}
+				selectedGenerationAssets={[
+					{
+						assetIndex: 0,
+						id: "selected-voice",
+						kind: "audio",
+						mediaAssetId: "selected-voice",
+						mimeType: "audio/mpeg",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "陈远音色",
+					},
+				]}
+			>
+				<span
+					className="agent-reference-mention"
+					data-block-id="section_character"
+					data-category="character"
+					data-document-id="character-doc"
+					data-kind="section"
+					data-title="陈远"
+				>
+					@陈远
+				</span>
+			</DocumentMentionHoverPopover>,
+		);
+
+		fireEvent.pointerOver(screen.getByText("@陈远"));
+
+		await waitFor(() => expect(screen.getByText("音频")).toBeTruthy());
+		expect(generationApiMocks.getSelectedGenerationAssets).not.toHaveBeenCalled();
 	});
 
 	it("shows the generate reference image action for a resolvable section without images", async () => {
@@ -187,7 +244,7 @@ describe("DocumentMentionHoverPopover", () => {
 		fireEvent.pointerOver(screen.getByText("@测试C"));
 
 		await waitFor(() => expect(screen.getByRole("button", { name: "生成引用图片" })).toBeTruthy());
-		expect(screen.queryByText("暂无生成图片")).toBeNull();
+		expect(screen.queryByText("暂无生成图片或音频")).toBeNull();
 	});
 });
 

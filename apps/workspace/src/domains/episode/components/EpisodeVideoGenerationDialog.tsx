@@ -10,7 +10,7 @@ import { projectGenerationConversation } from "@/domains/generation/api/generati
 import { useStoryboardReelSelection } from "@/domains/generation/hooks/useStoryboardReelSelection";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { DocumentMentionHoverPopover } from "@/domains/documents/components/DocumentMentionHoverPopover";
-import { DocumentMention } from "@/domains/documents/components/extensions/document-mention";
+import { createDocumentMentionExtension } from "@/domains/documents/components/extensions/document-mention";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { sectionGenerationKindScopeId } from "@/domains/documents/components/useDocumentSectionGenerationContext";
 import { createSectionGenerationPrompt } from "@/domains/documents/lib/section-generation-prompt";
@@ -205,7 +205,9 @@ export const useEpisodeVideoGenerationRequest = ({
 	);
 	const getMentionReferenceInputs = useCallback(
 		(promptMarkdown: string) =>
-			buildMentionReferenceInputs(resolveActiveMentionsFromPrompt(promptMarkdown)),
+			buildMentionReferenceInputs(resolveActiveMentionsFromPrompt(promptMarkdown), {
+				includeSelectedAudios: true,
+			}),
 		[resolveActiveMentionsFromPrompt],
 	);
 	const removePreviewReferenceAsset = useCallback((asset: MediaAsset) => {
@@ -368,7 +370,10 @@ const EpisodeVideoPromptMentionEditor: React.FC<
 	selectedGenerationAssets,
 	...props
 }) => {
-	const extensions = useMemo(() => [DocumentMention], []);
+	const extensions = useMemo(
+		() => [createDocumentMentionExtension({ selectedGenerationAssets })],
+		[selectedGenerationAssets],
+	);
 
 	return (
 		<DocumentMentionHoverPopover

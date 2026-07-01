@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +19,6 @@ import (
 	"time"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
-	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/internal/adapterutil"
 )
 
 const (
@@ -368,16 +370,17 @@ func (provider *Provider) generateVideo(ctx context.Context, request generation.
 	modelVersion := firstNonEmpty(paramString(request.Params, "modelVersion"), request.Model)
 	command := "text2video"
 	args := []string{command}
-	switch len(tempDir.paths) {
-	case 0:
+	media := tempDir.media()
+	switch {
+	case len(media) == 0:
 		args = append(args, "--prompt="+request.Prompt)
 		appendStringFlag(&args, "duration", paramString(request.Params, "duration"))
 		appendStringFlag(&args, "ratio", paramString(request.Params, "ratio"))
 		appendStringFlag(&args, "video_resolution", paramString(request.Params, "videoResolution"))
 		appendStringFlag(&args, "model_version", modelVersion)
-	case 1:
+	case len(media) == 1 && media[0].kind == generation.KindImage:
 		command = "image2video"
-		args = []string{command, "--image=" + tempDir.paths[0]}
+		args = []string{command, "--image=" + media[0].path}
 		args = append(args, "--prompt="+request.Prompt)
 		appendStringFlag(&args, "duration", paramString(request.Params, "duration"))
 		appendStringFlag(&args, "video_resolution", paramString(request.Params, "videoResolution"))
@@ -385,8 +388,15 @@ func (provider *Provider) generateVideo(ctx context.Context, request generation.
 	default:
 		command = "multimodal2video"
 		args = []string{command}
-		for _, path := range tempDir.paths {
-			args = append(args, "--image="+path)
+		for _, item := range media {
+			switch item.kind {
+			case generation.KindAudio:
+				args = append(args, "--audio="+item.path)
+			case generation.KindVideo:
+				args = append(args, "--video="+item.path)
+			default:
+				args = append(args, "--image="+item.path)
+			}
 		}
 		args = append(args, "--prompt="+request.Prompt)
 		appendStringFlag(&args, "duration", paramString(request.Params, "duration"))
@@ -463,6 +473,23 @@ func (execCommandRunner) Run(ctx context.Context, path string, args ...string) (
 type referenceFiles struct {
 	dir   string
 	paths []string
+	files []referenceFile
+}
+
+type referenceFile struct {
+	path string
+	kind generation.Kind
+}
+
+func (files referenceFiles) media() []referenceFile {
+	if len(files.files) > 0 {
+		return files.files
+	}
+	media := make([]referenceFile, 0, len(files.paths))
+	for _, path := range files.paths {
+		media = append(media, referenceFile{path: path, kind: generation.KindImage})
+	}
+	return media
 }
 
 func materializeReferences(ctx context.Context, references []string) (referenceFiles, func(), error) {
@@ -478,54 +505,98 @@ func materializeReferences(ctx context.Context, references []string) (referenceF
 	}
 	cleanup = func() { _ = os.RemoveAll(dir) }
 
-	files := referenceFiles{dir: dir, paths: make([]string, 0, len(values))}
+	files := referenceFiles{
+		dir:   dir,
+		paths: make([]string, 0, len(values)),
+		files: make([]referenceFile, 0, len(values)),
+	}
 	for index, value := range values {
-		path, err := materializeReference(ctx, dir, index, value)
+		file, err := materializeReference(ctx, dir, index, value)
 		if err != nil {
 			cleanup()
 			return referenceFiles{}, func() {}, err
 		}
-		files.paths = append(files.paths, path)
+		files.paths = append(files.paths, file.path)
+		files.files = append(files.files, file)
 	}
 	return files, cleanup, nil
 }
 
-func materializeReference(ctx context.Context, dir string, index int, value string) (string, error) {
+func materializeReference(ctx context.Context, dir string, index int, value string) (referenceFile, error) {
 	if strings.HasPrefix(strings.ToLower(value), "data:") {
 		mediaType, data, ok := strings.Cut(value, ",")
 		if !ok {
-			return "", fmt.Errorf("invalid data uri reference")
+			return referenceFile{}, fmt.Errorf("invalid data uri reference")
 		}
 		decoded, err := base64.StdEncoding.DecodeString(data)
 		if err != nil {
-			return "", fmt.Errorf("decoding data uri reference: %w", err)
+			return referenceFile{}, fmt.Errorf("decoding data uri reference: %w", err)
 		}
 		extension := extensionForDataURI(mediaType)
 		path := filepath.Join(dir, fmt.Sprintf("reference-%02d%s", index+1, extension))
 		if err := os.WriteFile(path, decoded, 0o600); err != nil {
-			return "", fmt.Errorf("writing jimeng reference file: %w", err)
+			return referenceFile{}, fmt.Errorf("writing jimeng reference file: %w", err)
 		}
-		return path, nil
+		return referenceFile{path: path, kind: referenceKindForMediaType(mediaType)}, nil
 	}
 	if strings.HasPrefix(strings.ToLower(value), "http://") ||
 		strings.HasPrefix(strings.ToLower(value), "https://") {
-		mimeType, data, err := adapterutil.ReadImageReference(ctx, nil, value, nil)
+		mimeType, data, err := readHTTPReference(ctx, value)
 		if err != nil {
-			return "", fmt.Errorf("downloading jimeng reference: %w", err)
+			return referenceFile{}, fmt.Errorf("downloading jimeng reference: %w", err)
 		}
 		path := filepath.Join(dir, fmt.Sprintf("reference-%02d%s", index+1, extensionForDataURI(mimeType)))
 		if err := os.WriteFile(path, data, 0o600); err != nil {
-			return "", fmt.Errorf("writing jimeng reference file: %w", err)
+			return referenceFile{}, fmt.Errorf("writing jimeng reference file: %w", err)
 		}
-		return path, nil
+		return referenceFile{path: path, kind: referenceKindForMediaType(firstNonEmpty(mimeType, value))}, nil
 	}
 	if strings.HasPrefix(strings.ToLower(value), "file://") {
 		value = strings.TrimPrefix(value, "file://")
 	}
 	if filepath.IsAbs(value) {
-		return executableOrReadableFile(value)
+		path, err := executableOrReadableFile(value)
+		if err != nil {
+			return referenceFile{}, err
+		}
+		return referenceFile{path: path, kind: referenceKindForPath(path)}, nil
 	}
-	return "", fmt.Errorf("jimeng CLI references must be local files or data URIs")
+	return referenceFile{}, fmt.Errorf("jimeng CLI references must be local files or data URIs")
+}
+
+const jimengReferenceByteLimit int64 = 200 << 20
+
+func readHTTPReference(ctx context.Context, reference string) (string, []byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, reference, nil)
+	if err != nil {
+		return "", nil, err
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return "", nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return "", nil, fmt.Errorf("reference request failed with status %d", response.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, jimengReferenceByteLimit+1))
+	if err != nil {
+		return "", nil, err
+	}
+	if int64(len(data)) > jimengReferenceByteLimit {
+		return "", nil, fmt.Errorf("reference exceeds %d bytes", jimengReferenceByteLimit)
+	}
+	if len(data) == 0 {
+		return "", nil, fmt.Errorf("reference is empty")
+	}
+	mimeType := strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])
+	if mimeType == "" {
+		mimeType = referenceMIMETypeFromURL(reference)
+	}
+	if mimeType == "" {
+		mimeType = http.DetectContentType(data)
+	}
+	return mimeType, data, nil
 }
 
 func executableOrReadableFile(path string) (string, error) {
@@ -543,11 +614,64 @@ func executableOrReadableFile(path string) (string, error) {
 	return resolved, nil
 }
 
+func referenceKindForMediaType(mediaType string) generation.Kind {
+	mediaType = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(mediaType)), "data:")
+	mediaType, _, _ = strings.Cut(mediaType, ";")
+	if strings.HasPrefix(mediaType, "audio/") {
+		return generation.KindAudio
+	}
+	if strings.HasPrefix(mediaType, "video/") {
+		return generation.KindVideo
+	}
+	if strings.HasPrefix(mediaType, "image/") {
+		return generation.KindImage
+	}
+	return referenceKindForPath(mediaType)
+}
+
+func referenceKindForPath(value string) generation.Kind {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	pathValue := value
+	if err == nil {
+		pathValue = parsed.Path
+	}
+	switch strings.ToLower(filepath.Ext(pathValue)) {
+	case ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus":
+		return generation.KindAudio
+	case ".mp4", ".mov", ".avi", ".mkv", ".m4v", ".webm":
+		return generation.KindVideo
+	default:
+		return generation.KindImage
+	}
+}
+
+func referenceMIMETypeFromURL(value string) string {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	pathValue := value
+	if err == nil {
+		pathValue = parsed.Path
+	}
+	if mimeType := mime.TypeByExtension(filepath.Ext(pathValue)); mimeType != "" {
+		return strings.TrimSpace(strings.Split(mimeType, ";")[0])
+	}
+	return ""
+}
+
 func extensionForDataURI(mediaType string) string {
 	mediaType = strings.TrimPrefix(mediaType, "data:")
 	mediaType, _, _ = strings.Cut(mediaType, ";")
 	if mediaType == "" {
 		return ".png"
+	}
+	switch strings.ToLower(strings.TrimSpace(mediaType)) {
+	case "audio/mpeg", "audio/mp3":
+		return ".mp3"
+	case "audio/mp4", "audio/x-m4a":
+		return ".m4a"
+	case "audio/wav", "audio/wave", "audio/x-wav":
+		return ".wav"
+	case "audio/webm":
+		return ".webm"
 	}
 	if extensions, err := mime.ExtensionsByType(mediaType); err == nil && len(extensions) > 0 {
 		return extensions[0]

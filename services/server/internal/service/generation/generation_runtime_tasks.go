@@ -435,9 +435,14 @@ func (workflow *GenerationService) hydrateSelectedAssetRequestFromVoicePreview(r
 }
 
 func isGenerationVoicePreviewURL(value string) bool {
+	_, _, ok := generationVoicePreviewRouteAndVoiceFromURL(value)
+	return ok
+}
+
+func generationVoicePreviewRouteAndVoiceFromURL(value string) (string, string, bool) {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil {
-		return false
+		return "", "", false
 	}
 	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
 	for index, segment := range segments {
@@ -447,29 +452,24 @@ func isGenerationVoicePreviewURL(value string) bool {
 		if segments[index+1] != "voice-previews" {
 			continue
 		}
-		return strings.TrimSpace(segments[index+2]) != "" &&
-			strings.TrimSpace(segments[index+3]) != ""
+		routeID, routeErr := url.PathUnescape(segments[index+2])
+		if routeErr != nil {
+			routeID = segments[index+2]
+		}
+		voiceID, voiceErr := url.PathUnescape(segments[index+3])
+		if voiceErr != nil {
+			voiceID = segments[index+3]
+		}
+		routeID = strings.TrimSpace(routeID)
+		voiceID = strings.TrimSpace(voiceID)
+		return routeID, voiceID, routeID != "" && voiceID != ""
 	}
-	return false
+	return "", "", false
 }
 
 func generationVoicePreviewIDFromURL(value string) string {
-	parsed, err := url.Parse(strings.TrimSpace(value))
-	if err != nil {
-		return ""
-	}
-	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	for index, segment := range segments {
-		if segment != "generation" || index+3 >= len(segments) || segments[index+1] != "voice-previews" {
-			continue
-		}
-		voiceID, err := url.PathUnescape(segments[index+3])
-		if err != nil {
-			return strings.TrimSpace(segments[index+3])
-		}
-		return strings.TrimSpace(voiceID)
-	}
-	return ""
+	_, voiceID, _ := generationVoicePreviewRouteAndVoiceFromURL(value)
+	return voiceID
 }
 
 // GetGenerationTask returns a generation task for HTTP handlers.

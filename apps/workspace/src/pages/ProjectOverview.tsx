@@ -636,6 +636,8 @@ const DocumentResourcesDialog: React.FC<{
 
 	const Icon = descriptor.icon;
 	const titleId = `document-derived-resources-${descriptor.key}-title`;
+	const supportsAudioSelection = descriptor.key === "character";
+	const mediaLabel = supportsAudioSelection ? "图片和音频" : "图片";
 
 	return (
 		<GenerationModalShell
@@ -643,7 +645,9 @@ const DocumentResourcesDialog: React.FC<{
 			title={
 				<span className="flex min-w-0 items-center gap-2">
 					<Icon className="size-4 shrink-0 text-muted-foreground" />
-					<span className="truncate">{descriptor.label} · 图片和音频</span>
+					<span className="truncate">
+						{descriptor.label} · {mediaLabel}
+					</span>
 				</span>
 			}
 			titleId={titleId}
@@ -655,14 +659,14 @@ const DocumentResourcesDialog: React.FC<{
 					<div className="grid min-h-56 flex-1 place-items-center">
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
 							<Loader2 className="size-4 animate-spin" />
-							<span>正在解析图片和音频</span>
+							<span>正在解析{mediaLabel}</span>
 						</div>
 					</div>
 				) : null}
 
 				{!isLoading && error ? (
 					<div className="m-4 rounded-sm border border-error-border bg-error-surface p-4 text-sm text-error-foreground">
-						图片和音频加载失败。
+						{mediaLabel}加载失败。
 					</div>
 				) : null}
 
@@ -690,9 +694,12 @@ const DocumentResourcesDialog: React.FC<{
 										{filteredResources.map((resource) => (
 											<DocumentResourceCard
 												key={resource.id}
+												canSelectAudio={supportsAudioSelection}
 												generationStatus={generationStatuses.get(resource.id)}
 												generatedImageCount={resource.generatedImageCount}
-												selectedAudio={resourceSelectedAudio(resource, assets)}
+												selectedAudio={
+													supportsAudioSelection ? resourceSelectedAudio(resource, assets) : null
+												}
 												selectedImages={resourceSelectedImages(resource, assets)}
 												resource={resource}
 												selected={selectedResourceIdSet.has(resource.id)}
@@ -715,6 +722,7 @@ const DocumentResourcesDialog: React.FC<{
 };
 
 const DocumentResourceCard: React.FC<{
+	canSelectAudio: boolean;
 	generationStatus?: ResourceGenerationStatus;
 	generatedImageCount: number;
 	playingAudioKey: string;
@@ -727,6 +735,7 @@ const DocumentResourceCard: React.FC<{
 	onToggleAudioPreview: (audio: DocumentResourceSelectedAudio) => void;
 	onToggleSelected: () => void;
 }> = ({
+	canSelectAudio,
 	generationStatus,
 	generatedImageCount,
 	playingAudioKey,
@@ -771,7 +780,7 @@ const DocumentResourceCard: React.FC<{
 					selected={selected}
 					onToggle={onToggleSelected}
 				/>
-				{selectedAudio ? (
+				{canSelectAudio && selectedAudio ? (
 					<ResourceAudioPreviewButton
 						audio={selectedAudio}
 						playing={audioPlaying}
@@ -802,7 +811,9 @@ const DocumentResourceCard: React.FC<{
 						已生成 {generatedImageCount} 张
 					</Badge>
 				</div>
-				<div className="mt-auto grid grid-cols-2 gap-2 pt-1">
+				<div
+					className={cn("mt-auto grid gap-2 pt-1", canSelectAudio ? "grid-cols-2" : "grid-cols-1")}
+				>
 					<Button
 						type="button"
 						size="sm"
@@ -814,17 +825,19 @@ const DocumentResourceCard: React.FC<{
 						<ArrowUpRight className="size-4" />
 						<span>生成图片</span>
 					</Button>
-					<Button
-						type="button"
-						size="sm"
-						variant="outline"
-						className="h-8 w-full rounded-sm"
-						disabled={!resource.canGenerate}
-						onClick={() => onSelectAudio(resource)}
-					>
-						<ArrowUpRight className="size-4" />
-						<span>选择音频</span>
-					</Button>
+					{canSelectAudio ? (
+						<Button
+							type="button"
+							size="sm"
+							variant="outline"
+							className="h-8 w-full rounded-sm"
+							disabled={!resource.canGenerate}
+							onClick={() => onSelectAudio(resource)}
+						>
+							<ArrowUpRight className="size-4" />
+							<span>选择音频</span>
+						</Button>
+					) : null}
 				</div>
 			</div>
 		</article>
@@ -1028,25 +1041,29 @@ const DocumentResourcesSummary: React.FC<{
 				</div>
 			) : null}
 			<div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-				{selectedGenerationResourceDescriptors.map(({ key, label, icon: Icon }) => (
-					<button
-						key={key}
-						type="button"
-						aria-label={`${label} 图片和音频`}
-						className="group flex min-h-24 min-w-0 flex-col items-start justify-between rounded-sm border border-border bg-ide-editor px-3 py-3 text-left transition-colors hover:border-input hover:bg-ide-list-hover"
-						onClick={() => onOpen(key)}
-					>
-						<span className="flex w-full min-w-0 items-center justify-between gap-2">
-							<span className="flex min-w-0 items-center gap-2">
-								<Icon className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
-								<span className="truncate text-sm font-medium text-foreground">{label}</span>
+				{selectedGenerationResourceDescriptors.map(({ key, label, icon: Icon }) => {
+					const mediaLabel = key === "character" ? "图片和音频" : "图片";
+
+					return (
+						<button
+							key={key}
+							type="button"
+							aria-label={`${label} ${mediaLabel}`}
+							className="group flex min-h-24 min-w-0 flex-col items-start justify-between rounded-sm border border-border bg-ide-editor px-3 py-3 text-left transition-colors hover:border-input hover:bg-ide-list-hover"
+							onClick={() => onOpen(key)}
+						>
+							<span className="flex w-full min-w-0 items-center justify-between gap-2">
+								<span className="flex min-w-0 items-center gap-2">
+									<Icon className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
+									<span className="truncate text-sm font-medium text-foreground">{label}</span>
+								</span>
 							</span>
-						</span>
-						<span className="text-xs text-muted-foreground">
-							文档 {counts[key].resources} 项 · 图片 {counts[key].assets} 张
-						</span>
-					</button>
-				))}
+							<span className="text-xs text-muted-foreground">
+								文档 {counts[key].resources} 项 · 图片 {counts[key].assets} 张
+							</span>
+						</button>
+					);
+				})}
 			</div>
 		</section>
 	);

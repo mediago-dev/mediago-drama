@@ -1,10 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Projects } from "./Projects";
 import httpClient from "@/shared/lib/http";
 import type { WorkspaceProject } from "@/domains/projects/api/projects";
+import { useProjectStore } from "@/domains/projects/stores";
 import { ConfirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { ProjectRenameDialog } from "@/domains/projects/components/ProjectRenameDialog";
 import type { ApiResponse } from "@/types/api";
@@ -58,7 +59,9 @@ describe("Projects", () => {
 	let activeProjectName = activeProject.name;
 
 	beforeEach(() => {
+		localStorage.clear();
 		vi.clearAllMocks();
+		useProjectStore.getState().setActiveProjectId(null);
 		isProjectDeleted = false;
 		activeProjectStatus = "active";
 		activeProjectName = activeProject.name;
@@ -105,6 +108,27 @@ describe("Projects", () => {
 
 	afterEach(() => {
 		cleanup();
+		localStorage.clear();
+		useProjectStore.getState().setActiveProjectId(null);
+	});
+
+	it("opens an active project when clicking the row body", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter>
+					<Projects />
+					<LocationProbe />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		const row = await screen.findByRole("button", { name: /短剧项目/ });
+		fireEvent.click(row);
+
+		await waitFor(() => {
+			expect(screen.getByTestId("location").textContent).toBe("/projects?projectId=project-111");
+		});
+		expect(useProjectStore.getState().activeProjectId).toBe("project-111");
 	});
 
 	it("archives an active project from the row context menu", async () => {
@@ -246,3 +270,8 @@ const apiResponse = <T,>(data: T): ApiResponse<T> => ({
 	message: "ok",
 	success: true,
 });
+
+const LocationProbe = () => {
+	const location = useLocation();
+	return <span data-testid="location">{`${location.pathname}${location.search}`}</span>;
+};

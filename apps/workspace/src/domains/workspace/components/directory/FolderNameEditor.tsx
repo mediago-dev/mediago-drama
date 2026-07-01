@@ -2,6 +2,7 @@ import { ChevronRight, Folder } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/shared/components/ui/input";
+import { directoryTreeRowIndent } from "./layout";
 
 export const FolderNameEditor: React.FC<{
 	defaultValue: string;
@@ -40,10 +41,10 @@ export const FolderNameEditor: React.FC<{
 	return (
 		<div
 			className="flex h-7 w-full items-center gap-1.5 rounded-sm pr-1 text-xs text-muted-foreground"
-			style={{ paddingLeft: `${depth * 12 + 8}px` }}
+			style={{ paddingLeft: directoryTreeRowIndent(depth) }}
 		>
 			{showDisclosureSpacer ? (
-				<span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+				<span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
 					<ChevronRight className="size-3" />
 				</span>
 			) : null}

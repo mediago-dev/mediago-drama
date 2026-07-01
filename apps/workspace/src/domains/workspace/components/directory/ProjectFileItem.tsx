@@ -28,6 +28,7 @@ import {
 	revealDirectoryFileInFileManager,
 } from "./file-manager";
 import { assetIcon } from "./helpers";
+import { directoryTreeRowIndent } from "./layout";
 import type { DirectoryDropData, DirectoryFileEntry, DragPayload } from "./types";
 import { fileDropId, itemDragId } from "./types";
 
@@ -46,6 +47,7 @@ export const ProjectFileItem: React.FC<{
 	onOpenDocument: (project: WorkspaceProject, documentId: string) => void;
 	project: WorkspaceProject;
 	showActiveSelection: boolean;
+	showDisclosureSpacer?: boolean;
 	workspaceDir: string;
 }> = ({
 	activeAssetId,
@@ -62,6 +64,7 @@ export const ProjectFileItem: React.FC<{
 	onOpenDocument,
 	project,
 	showActiveSelection,
+	showDisclosureSpacer = true,
 	workspaceDir,
 }) => {
 	const [menuPosition, setMenuPosition] = useState<DirectoryItemMenuPosition | null>(null);
@@ -188,7 +191,7 @@ export const ProjectFileItem: React.FC<{
 						? "bg-ide-list-active text-ide-list-active-foreground"
 						: "text-muted-foreground hover:bg-ide-list-hover hover:text-foreground focus-within:bg-ide-list-hover focus-within:text-foreground",
 				)}
-				style={{ paddingLeft: `${depth * 12 + 14}px` }}
+				style={{ paddingLeft: directoryTreeRowIndent(depth) }}
 				onContextMenu={openMenuFromContext}
 			>
 				<button
@@ -208,6 +211,7 @@ export const ProjectFileItem: React.FC<{
 					{...dragListeners}
 					{...dragAttributes}
 				>
+					{showDisclosureSpacer ? <span className="size-3 shrink-0" aria-hidden="true" /> : null}
 					<EntryIcon
 						className="size-3.5 shrink-0"
 						style={{ color: `var(${descriptor.colorVar})` }}

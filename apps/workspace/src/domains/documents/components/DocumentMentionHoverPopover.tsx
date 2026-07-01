@@ -1,4 +1,4 @@
-import { ArrowUpRight, ImageIcon } from "lucide-react";
+import { ArrowUpRight, ImageIcon, Music2 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentReference } from "@/domains/agent/api/agent";
@@ -16,11 +16,12 @@ import {
 	fallbackMentionCategory,
 	stringAttribute,
 } from "@/domains/documents/lib/mention-suggestion";
+import { mentionReferenceKey } from "@/domains/documents/lib/mention-resolver";
 import {
-	mentionReferenceKey,
-	type ResolvedMention,
-} from "@/domains/documents/lib/mention-resolver";
-import { resolveMentionPayloadWithSelectedAssets } from "@/domains/documents/lib/mention-generation-references";
+	resolveMentionPayloadWithSelectedAssets,
+	type MentionReferenceAudio,
+	type ResolvedMentionWithSelectedAssets,
+} from "@/domains/documents/lib/mention-generation-references";
 import {
 	findMarkdownSectionEndLine,
 	findMarkdownSectionHeadingLine,
@@ -208,7 +209,7 @@ interface HoveredMentionState {
 		top: number;
 		width: number;
 	};
-	mention: ResolvedMention;
+	mention: ResolvedMentionWithSelectedAssets;
 	targetSection: MarkdownSectionContext | null;
 }
 
@@ -222,6 +223,8 @@ const MentionReferencePopover: React.FC<{
 	if (!state) return null;
 
 	const images = state.mention.status === "ok" ? state.mention.images : [];
+	const audios = state.mention.status === "ok" ? (state.mention.selectedAudios ?? []) : [];
+	const mediaCount = images.length + audios.length;
 	const canGenerate = Boolean(state.targetSection);
 
 	return (
@@ -256,13 +259,13 @@ const MentionReferencePopover: React.FC<{
 				onPointerEnter={onKeepOpen}
 				onPointerLeave={onRequestClose}
 			>
-				{images.length > 0 ? (
-					<div className={images.length === 1 ? "grid gap-1.5" : "grid grid-cols-2 gap-1.5"}>
+				{mediaCount > 0 ? (
+					<div className={mediaCount === 1 ? "grid gap-1.5" : "grid grid-cols-2 gap-1.5"}>
 						{images.slice(0, 6).map((image, index) => (
 							<div
 								key={`${image.mediaAssetId ?? image.url}:${index}`}
 								className={
-									images.length === 1
+									mediaCount === 1
 										? "max-h-80 overflow-hidden rounded-sm border border-border bg-muted-foreground/10"
 										: "aspect-square overflow-hidden rounded-sm border border-border bg-muted-foreground/10"
 								}
@@ -271,13 +274,18 @@ const MentionReferencePopover: React.FC<{
 									src={apiResourceURL(image.url)}
 									alt=""
 									className={
-										images.length === 1
-											? "max-h-80 w-full object-contain"
-											: "size-full object-contain"
+										mediaCount === 1 ? "max-h-80 w-full object-contain" : "size-full object-contain"
 									}
 									loading="lazy"
 								/>
 							</div>
+						))}
+						{audios.slice(0, Math.max(0, 6 - images.length)).map((audio, index) => (
+							<MentionAudioTile
+								key={`${audio.mediaAssetId ?? audio.url}:${index}`}
+								audio={audio}
+								large={mediaCount === 1}
+							/>
 						))}
 					</div>
 				) : canGenerate ? (
@@ -294,13 +302,32 @@ const MentionReferencePopover: React.FC<{
 				) : (
 					<div className="flex items-center gap-2 rounded-sm border border-dashed border-border bg-muted px-2 py-2 text-xs text-muted-foreground">
 						<ImageIcon className="size-3.5" />
-						<span>暂无生成图片</span>
+						<span>暂无生成图片或音频</span>
 					</div>
 				)}
 			</PopoverContent>
 		</Popover>
 	);
 };
+
+const MentionAudioTile: React.FC<{ audio: MentionReferenceAudio; large: boolean }> = ({
+	audio,
+	large,
+}) => (
+	<div
+		className={
+			large
+				? "flex min-h-24 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted text-muted-foreground"
+				: "flex aspect-square items-center justify-center overflow-hidden rounded-sm border border-border bg-muted text-muted-foreground"
+		}
+		title={apiResourceURL(audio.url)}
+	>
+		<div className="grid justify-items-center gap-1">
+			<Music2 className={large ? "size-6" : "size-5"} />
+			<span className="text-xs font-medium text-foreground">音频</span>
+		</div>
+	</div>
+);
 
 const referenceFromMentionElement = (element: HTMLElement): AgentReference | null => {
 	const kind =
@@ -350,7 +377,6 @@ const selectedGenerationAssetFiltersFromMention = (
 	if (!selectedGenerationAssetResourceTypes.has(resourceType)) return null;
 
 	return {
-		kind: "image",
 		resourceType,
 		sourceDocumentId: reference.documentId,
 		...(reference.kind === "section" && reference.blockId ? { resourceId: reference.blockId } : {}),

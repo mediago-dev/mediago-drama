@@ -2,6 +2,7 @@ package generation
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -29,6 +30,19 @@ func (workflow *GenerationService) resolveGenerationReferences(
 		if !ok {
 			return nil, fmt.Errorf("media asset %q was not found", assetID)
 		}
+		if asset.Kind == string(coregeneration.KindAudio) {
+			if routeSupportsAudioReference(route) {
+				reference, err := workflow.audioReferenceValue(asset)
+				if err != nil {
+					return nil, fmt.Errorf("reading media asset %q: %w", assetID, err)
+				}
+				references = append(references, reference)
+			}
+			if route.Kind == coregeneration.KindVideo {
+				continue
+			}
+			return nil, fmt.Errorf("media asset %q is not a supported reference", assetID)
+		}
 		if asset.Kind != string(coregeneration.KindImage) && asset.Kind != string(coregeneration.KindVideo) {
 			return nil, fmt.Errorf("media asset %q is not a supported reference", assetID)
 		}
@@ -55,6 +69,59 @@ func (workflow *GenerationService) resolveGenerationReferences(
 	}
 
 	return references, nil
+}
+
+func routeSupportsAudioReference(route coregeneration.ModelRoute) bool {
+	return route.Kind == coregeneration.KindVideo && route.Adapter == coregeneration.AdapterJimengCLIVideo
+}
+
+func (workflow *GenerationService) audioReferenceValue(asset media.MediaAsset) (string, error) {
+	if strings.TrimSpace(asset.FilePath) != "" {
+		return workflow.mediaAssets.DataURIValue(asset)
+	}
+
+	if reference, ok, err := workflow.voicePreviewReferenceValue(asset); err != nil {
+		return "", err
+	} else if ok {
+		return reference, nil
+	}
+
+	for _, value := range []string{asset.SourceURL, asset.URL} {
+		value = strings.TrimSpace(value)
+		if isProviderReadableReferenceValue(value) {
+			return value, nil
+		}
+	}
+
+	return "", fmt.Errorf("audio asset has no readable file or reference URL")
+}
+
+func (workflow *GenerationService) voicePreviewReferenceValue(asset media.MediaAsset) (string, bool, error) {
+	for _, value := range []string{asset.URL, asset.SourceURL} {
+		routeID, voiceID, ok := generationVoicePreviewRouteAndVoiceFromURL(value)
+		if !ok {
+			continue
+		}
+
+		preview, data, found, err := workflow.GenerationVoicePreviewContent(routeID, voiceID)
+		if err != nil || !found {
+			return "", found, err
+		}
+
+		mimeType := strings.TrimSpace(firstNonEmpty(preview.MIMEType, asset.MIMEType, "audio/mpeg"))
+		return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), true, nil
+	}
+	return "", false, nil
+}
+
+func isProviderReadableReferenceValue(value string) bool {
+	value = strings.TrimSpace(value)
+	lower := strings.ToLower(value)
+	return strings.HasPrefix(lower, "data:") ||
+		strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "file://") ||
+		filepath.IsAbs(value)
 }
 
 func splitReferenceURLs(values []string) ([]string, []string) {

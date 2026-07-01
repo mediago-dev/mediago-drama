@@ -26,6 +26,15 @@ export interface MentionReferenceBinding {
 	url?: string;
 }
 
+export interface MentionReferenceAudio {
+	mediaAssetId?: string;
+	url: string;
+}
+
+export type ResolvedMentionWithSelectedAssets = ResolvedMention & {
+	selectedAudios?: MentionReferenceAudio[];
+};
+
 const mentionPreviewTimestamp = "1970-01-01T00:00:00.000Z";
 const selectedGenerationResourceTypes = new Set<SelectedGenerationAsset["resourceType"]>([
 	"character",
@@ -39,7 +48,7 @@ export const resolveMentionPayloadWithSelectedAssets = (
 	allDocuments: MarkdownDocument[],
 	allAssets: ProjectAsset[] = [],
 	selectedAssets: SelectedGenerationAsset[] = [],
-): ResolvedMention => {
+): ResolvedMentionWithSelectedAssets => {
 	const mention = resolveMentionPayload(reference, allDocuments, allAssets);
 	if (
 		mention.status !== "ok" ||
@@ -50,15 +59,22 @@ export const resolveMentionPayloadWithSelectedAssets = (
 	}
 
 	const selectedImages = selectedImagesForMention(mention.reference, selectedAssets);
-	if (selectedImages.length === 0) return mention;
+	const selectedAudios = selectedAudiosForMention(mention.reference, selectedAssets);
+	if (selectedImages.length === 0 && selectedAudios.length === 0) return mention;
 
 	return {
 		...mention,
-		images: uniqueMentionImages([...mention.images, ...selectedImages]),
+		...(selectedImages.length > 0
+			? { images: uniqueMentionImages([...mention.images, ...selectedImages]) }
+			: {}),
+		...(selectedAudios.length > 0 ? { selectedAudios: uniqueMentionAudios(selectedAudios) } : {}),
 	};
 };
 
-export const buildMentionReferenceInputs = (mentions: ResolvedMention[]) => {
+export const buildMentionReferenceInputs = (
+	mentions: readonly ResolvedMentionWithSelectedAssets[],
+	options: { includeSelectedAudios?: boolean } = {},
+) => {
 	const assetIds: string[] = [];
 	const bindings: MentionReferenceBinding[] = [];
 	const urls: string[] = [];
@@ -90,13 +106,37 @@ export const buildMentionReferenceInputs = (mentions: ResolvedMention[]) => {
 			seenUrls.add(image.url);
 			urls.push(image.url);
 		}
+
+		if (!options.includeSelectedAudios) continue;
+
+		for (const audio of mention.selectedAudios ?? []) {
+			const binding = mentionReferenceBinding(mention, audio);
+			const bindingKey = binding ? mentionReferenceBindingKey(binding) : "";
+			if (binding && bindingKey && !seenBindings.has(bindingKey)) {
+				seenBindings.add(bindingKey);
+				bindings.push(binding);
+			}
+
+			if (audio.mediaAssetId) {
+				if (seenAssetIds.has(audio.mediaAssetId)) continue;
+
+				seenAssetIds.add(audio.mediaAssetId);
+				assetIds.push(audio.mediaAssetId);
+				continue;
+			}
+
+			if (!audio.url || seenUrls.has(audio.url)) continue;
+
+			seenUrls.add(audio.url);
+			urls.push(audio.url);
+		}
 	}
 
 	return { assetIds, bindings, urls };
 };
 
 export const buildMentionPreviewReferences = (
-	mentions: ResolvedMention[],
+	mentions: readonly ResolvedMentionWithSelectedAssets[],
 	mediaAssets: MediaAsset[],
 ): MentionPreviewReferences => {
 	const seenReferenceIds = new Set<string>();
@@ -111,16 +151,29 @@ export const buildMentionPreviewReferences = (
 		const badge = `来自 ${mentionDisplayText(mention.reference.title)}`;
 
 		for (const image of mention.images) {
-			const matchedAsset = findMediaAssetForMentionImage(image, mediaAssets);
-			const reference = matchedAsset ?? createMentionPreviewAsset(mention, image);
-			if (!reference) continue;
+			const matchedAsset = findMediaAssetForMentionMedia(image, mediaAssets, "image");
+			const reference = matchedAsset ?? createMentionPreviewAsset(mention, image, "image");
+			addMentionPreviewReference(reference, {
+				assetMentionKeys,
+				badge,
+				badges,
+				mentionKey,
+				references,
+				seenReferenceIds,
+			});
+		}
 
-			badges[reference.id] ??= badge;
-			assetMentionKeys[reference.id] ??= mentionKey;
-			if (seenReferenceIds.has(reference.id)) continue;
-
-			seenReferenceIds.add(reference.id);
-			references.push(reference);
+		for (const audio of mention.selectedAudios ?? []) {
+			const matchedAsset = findMediaAssetForMentionMedia(audio, mediaAssets, "audio");
+			const reference = matchedAsset ?? createMentionPreviewAsset(mention, audio, "audio");
+			addMentionPreviewReference(reference, {
+				assetMentionKeys,
+				badge,
+				badges,
+				mentionKey,
+				references,
+				seenReferenceIds,
+			});
 		}
 	}
 
@@ -158,35 +211,58 @@ export const extractDocumentImageAssets = (documentId: string, markdown: string)
 		},
 	);
 
-const findMediaAssetForMentionImage = (
-	image: ResolvedMention["images"][number],
+const findMediaAssetForMentionMedia = (
+	media: ResolvedMention["images"][number] | MentionReferenceAudio,
 	mediaAssets: MediaAsset[],
+	kind: MediaAsset["kind"],
 ) =>
 	mediaAssets.find(
 		(asset) =>
-			asset.kind === "image" &&
-			((image.mediaAssetId && asset.id === image.mediaAssetId) ||
-				asset.url === image.url ||
-				asset.sourceUrl === image.url),
+			asset.kind === kind &&
+			((media.mediaAssetId && asset.id === media.mediaAssetId) ||
+				asset.url === media.url ||
+				asset.sourceUrl === media.url),
 	) ?? null;
 
 const createMentionPreviewAsset = (
 	mention: ResolvedMention,
-	image: ResolvedMention["images"][number],
+	media: ResolvedMention["images"][number] | MentionReferenceAudio,
+	kind: MediaAsset["kind"],
 ): MediaAsset | null => {
-	if (!image.url) return null;
+	if (!media.url) return null;
 
 	return {
 		createdAt: mentionPreviewTimestamp,
 		filename: `来自 ${mentionDisplayText(mention.reference.title)}`,
-		id: `mention-reference:${mentionReferenceKey(mention.reference)}:${image.mediaAssetId ?? image.url}`,
-		kind: "image",
-		mimeType: "image/*",
+		id: `mention-reference:${mentionReferenceKey(mention.reference)}:${kind}:${media.mediaAssetId ?? media.url}`,
+		kind,
+		mimeType: kind === "audio" ? "audio/*" : "image/*",
 		sizeBytes: 0,
-		sourceUrl: image.url,
+		sourceUrl: media.url,
 		updatedAt: mentionPreviewTimestamp,
-		url: image.url,
+		url: media.url,
 	};
+};
+
+const addMentionPreviewReference = (
+	reference: MediaAsset | null,
+	context: {
+		assetMentionKeys: Record<string, string>;
+		badge: string;
+		badges: Record<string, string>;
+		mentionKey: string;
+		references: MediaAsset[];
+		seenReferenceIds: Set<string>;
+	},
+) => {
+	if (!reference) return;
+
+	context.badges[reference.id] ??= context.badge;
+	context.assetMentionKeys[reference.id] ??= context.mentionKey;
+	if (context.seenReferenceIds.has(reference.id)) return;
+
+	context.seenReferenceIds.add(reference.id);
+	context.references.push(reference);
 };
 
 const selectedImagesForMention = (
@@ -200,18 +276,39 @@ const selectedImagesForMention = (
 		if (asset.kind !== "image" || asset.resourceType !== resourceType) return [];
 		if (!selectedAssetMatchesMention(asset, reference)) return [];
 
-		const url = generationAssetSource({
-			base64: asset.base64,
-			kind: asset.kind,
-			mimeType: asset.mimeType,
-			url: asset.url,
-		});
+		const url = selectedGenerationAssetSource(asset);
 		if (!url) return [];
 
 		const mediaAssetId = asset.mediaAssetId ?? mediaAssetIdFromGeneratedSource(url) ?? undefined;
 		return [
 			{
 				...(mediaAssetId ? { mediaAssetId } : {}),
+				url,
+			},
+		];
+	});
+};
+
+const selectedAudiosForMention = (
+	reference: AgentReference,
+	selectedAssets: SelectedGenerationAsset[],
+): MentionReferenceAudio[] => {
+	const resourceType = selectedResourceTypeForMention(reference);
+	if (!resourceType) return [];
+
+	return selectedAssets.flatMap((asset) => {
+		if (asset.kind !== "audio" || asset.resourceType !== resourceType) return [];
+		if (!selectedAssetMatchesMention(asset, reference)) return [];
+
+		const url = selectedGenerationAssetSource(asset);
+		if (!url) return [];
+
+		const mediaAssetId = asset.mediaAssetId ?? mediaAssetIdFromGeneratedSource(url) ?? undefined;
+		if (!mediaAssetId) return [];
+
+		return [
+			{
+				mediaAssetId,
 				url,
 			},
 		];
@@ -243,6 +340,19 @@ const selectedAssetMatchesMention = (asset: SelectedGenerationAsset, reference: 
 	return sourceDocumentId === documentId || (!sourceDocumentId && !resourceId);
 };
 
+const selectedGenerationAssetSource = (asset: SelectedGenerationAsset) =>
+	generationAssetSource({
+		base64: asset.base64,
+		kind: asset.kind,
+		mimeType: asset.mimeType,
+		url: asset.url,
+	}) || selectedGenerationAssetMediaURL(asset);
+
+const selectedGenerationAssetMediaURL = (asset: SelectedGenerationAsset) =>
+	asset.mediaAssetId
+		? `/api/v1/media-assets/${encodeURIComponent(asset.mediaAssetId)}/content`
+		: "";
+
 const uniqueMentionImages = (images: ResolvedMention["images"]) => {
 	const seen = new Set<string>();
 	const uniqueImages: ResolvedMention["images"] = [];
@@ -267,12 +377,36 @@ const mentionImageKeys = (image: ResolvedMention["images"][number]) =>
 		image.url ? `url:${image.url}` : "",
 	].filter(Boolean);
 
+const uniqueMentionAudios = (audios: MentionReferenceAudio[]) => {
+	const seen = new Set<string>();
+	const uniqueAudios: MentionReferenceAudio[] = [];
+
+	for (const audio of audios) {
+		const keys = mentionAudioKeys(audio);
+		if (keys.some((key) => seen.has(key))) continue;
+
+		for (const key of keys) seen.add(key);
+		uniqueAudios.push(audio);
+	}
+
+	return uniqueAudios;
+};
+
+const mentionAudioKeys = (audio: MentionReferenceAudio) =>
+	[
+		audio.mediaAssetId ? `media:${audio.mediaAssetId}` : "",
+		mediaAssetIdFromGeneratedSource(audio.url)
+			? `media:${mediaAssetIdFromGeneratedSource(audio.url)}`
+			: "",
+		audio.url ? `url:${audio.url}` : "",
+	].filter(Boolean);
+
 const mentionReferenceBinding = (
 	mention: ResolvedMention,
-	image: ResolvedMention["images"][number],
+	asset: ResolvedMention["images"][number] | MentionReferenceAudio,
 ): MentionReferenceBinding | null => {
-	const assetId = image.mediaAssetId ?? mediaAssetIdFromGeneratedSource(image.url) ?? "";
-	const url = assetId ? "" : image.url;
+	const assetId = asset.mediaAssetId ?? mediaAssetIdFromGeneratedSource(asset.url) ?? "";
+	const url = assetId ? "" : asset.url;
 	if (!assetId && !url) return null;
 
 	return {

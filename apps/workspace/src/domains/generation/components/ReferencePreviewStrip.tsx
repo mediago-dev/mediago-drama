@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Music2, X } from "lucide-react";
 import type React from "react";
 import { PhotoProvider, PhotoView } from "react-photo-view";
 import type { MediaAsset } from "@/domains/workspace/api/media";
@@ -160,6 +160,15 @@ const ReferencePreviewMedia: React.FC<{
 
 	if (asset.kind === "video") {
 		return <video src={source} muted preload="metadata" className="size-full object-cover" />;
+	}
+
+	if (asset.kind === "audio") {
+		return (
+			<div className="flex size-full flex-col items-center justify-center gap-1 bg-muted text-muted-foreground">
+				<Music2 className="size-5" />
+				<span className="text-2xs font-medium">音频</span>
+			</div>
+		);
 	}
 
 	const image = <img src={source} alt="" className="size-full object-contain" />;

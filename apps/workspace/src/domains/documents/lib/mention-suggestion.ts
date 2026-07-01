@@ -27,6 +27,8 @@ import type {
 import tippy, { type Instance, type Props as TippyProps } from "tippy.js";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import type { AgentReference } from "@/domains/agent/api/agent";
+import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
+import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { openMentionSectionCreateDialog } from "@/domains/documents/components/MentionSectionCreateDialog";
 import {
 	openMentionSectionTargetDialog,
@@ -115,6 +117,11 @@ interface AgentMentionSafeTriangleInput {
 	origin?: AgentMentionPoint | null;
 	point: AgentMentionPoint;
 	submenuRect?: AgentMentionRect | null;
+}
+
+export interface MentionSuggestionOptions {
+	getSelectedGenerationAssets?: () => readonly SelectedGenerationAsset[];
+	selectedGenerationAssets?: readonly SelectedGenerationAsset[];
 }
 
 export const fallbackMentionCategory: DocumentCategory = "reference";
@@ -684,10 +691,9 @@ const createMentionGroups = (items: AgentMentionItem[]): AgentMentionGroup[] => 
 	return groups;
 };
 
-export function createMentionSuggestion(): Omit<
-	SuggestionOptions<AgentMentionItem, AgentMentionItem>,
-	"editor"
-> {
+export function createMentionSuggestion(
+	options: MentionSuggestionOptions = {},
+): Omit<SuggestionOptions<AgentMentionItem, AgentMentionItem>, "editor"> {
 	let component: ReactRenderer<MentionListHandle, MentionListProps> | null = null;
 	let popup: Instance<TippyProps> | null = null;
 
@@ -709,7 +715,7 @@ export function createMentionSuggestion(): Omit<
 		allowSpaces: true,
 		allowedPrefixes: null,
 		char: "@",
-		items: ({ query }) => createMentionItems(query),
+		items: ({ query }) => createMentionItems(query, options),
 		render: () => ({
 			onStart: (props) => {
 				component = new ReactRenderer(AgentMentionList, {
@@ -870,10 +876,14 @@ const createdSectionMentionItem = (
 	};
 };
 
-export const createMentionItems = (query: string): AgentMentionItem[] => {
+export const createMentionItems = (
+	query: string,
+	options: MentionSuggestionOptions = {},
+): AgentMentionItem[] => {
 	const normalizedQuery = query.trim().toLowerCase();
 	const documents = [...useDocumentsStore.getState().documents].sort(compareDocuments);
 	const assets = [...useDocumentsStore.getState().assets].sort(compareAssets);
+	const selectedGenerationAssets = mentionSuggestionSelectedGenerationAssets(options);
 	const documentItems: AgentMentionItem[] = [];
 	const assetItems: AgentMentionItem[] = [];
 
@@ -904,7 +914,14 @@ export const createMentionItems = (query: string): AgentMentionItem[] => {
 				kind: "section",
 				label: section.title,
 				level: section.level,
-				previewUrl: sectionPreviewUrls.get(section.blockId),
+				previewUrl:
+					sectionPreviewUrls.get(section.blockId) ??
+					selectedGenerationPreviewUrlForSection(
+						selectedGenerationAssets,
+						document,
+						category,
+						section.blockId,
+					),
 				title: section.title,
 			});
 		}
@@ -1026,6 +1043,70 @@ export const renderDataAttribute = (name: string, value: unknown) => {
 };
 
 export const stringAttribute = (value: unknown) => (typeof value === "string" ? value : "");
+
+const mentionSuggestionSelectedGenerationAssets = (options: MentionSuggestionOptions) =>
+	options.getSelectedGenerationAssets?.() ?? options.selectedGenerationAssets ?? [];
+
+const selectedGenerationPreviewCategories = new Set<SelectedGenerationAsset["resourceType"]>([
+	"character",
+	"scene",
+	"storyboard",
+	"prop",
+]);
+
+const selectedGenerationPreviewUrlForSection = (
+	assets: readonly SelectedGenerationAsset[],
+	document: MarkdownDocument,
+	category: DocumentCategory,
+	blockId: string,
+) => {
+	if (
+		assets.length === 0 ||
+		!selectedGenerationPreviewCategories.has(category as SelectedGenerationAsset["resourceType"])
+	) {
+		return undefined;
+	}
+
+	const documentId = document.id.trim();
+	const sectionBlockId = blockId.trim();
+	const resourceType = category as SelectedGenerationAsset["resourceType"];
+
+	for (const asset of assets) {
+		if (asset.kind !== "image" || asset.resourceType !== resourceType) continue;
+		if (!selectedGenerationAssetMatchesSection(asset, documentId, sectionBlockId)) continue;
+
+		const source =
+			generationAssetSource({
+				base64: asset.base64,
+				kind: asset.kind,
+				mimeType: asset.mimeType,
+				url: asset.url,
+			}) || selectedGenerationAssetMediaURL(asset);
+		if (source) return source;
+	}
+
+	return undefined;
+};
+
+const selectedGenerationAssetMatchesSection = (
+	asset: SelectedGenerationAsset,
+	documentId: string,
+	blockId: string,
+) => {
+	const sourceDocumentId = asset.sourceDocumentId?.trim() ?? "";
+	if (documentId && sourceDocumentId && sourceDocumentId !== documentId) return false;
+
+	const resourceId = asset.resourceId?.trim() ?? "";
+	if (blockId && resourceId) return resourceId === blockId;
+	if (blockId) return sourceDocumentId === documentId;
+
+	return sourceDocumentId === documentId || (!sourceDocumentId && !resourceId);
+};
+
+const selectedGenerationAssetMediaURL = (asset: SelectedGenerationAsset) =>
+	asset.mediaAssetId
+		? `/api/v1/media-assets/${encodeURIComponent(asset.mediaAssetId)}/content`
+		: "";
 
 const sectionPreviewUrlMap = (document: MarkdownDocument) => {
 	const previews = new Map<string, string>();

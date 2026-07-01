@@ -31,6 +31,7 @@ import {
 	revealDirectoryFolderInFileManager,
 } from "./file-manager";
 import { FolderNameEditor } from "./FolderNameEditor";
+import { directoryTreeRowIndent } from "./layout";
 import { ProjectFileItem } from "./ProjectFileItem";
 import type {
 	DirectoryDropData,
@@ -211,19 +212,19 @@ export const ProjectFolderItem: React.FC<{
 						"group/folder relative flex h-7 w-full items-center gap-1.5 rounded-sm border border-transparent pr-1 text-left text-xs text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground focus-within:bg-ide-list-hover focus-within:text-foreground",
 						activeDropPosition === "inside" && "border-primary bg-ide-list-hover",
 					)}
-					style={{ paddingLeft: `${depth * 12 + 8}px` }}
+					style={{ paddingLeft: directoryTreeRowIndent(depth) }}
 					onContextMenu={openMenuFromContext}
 				>
 					{activeDropPosition === "before" ? (
 						<span
 							className="pointer-events-none absolute top-0 h-px bg-primary"
-							style={{ left: `${depth * 12 + 8}px`, right: 0 }}
+							style={{ left: directoryTreeRowIndent(depth), right: 0 }}
 						/>
 					) : null}
 					{activeDropPosition === "after" ? (
 						<span
 							className="pointer-events-none absolute bottom-0 h-px bg-primary"
-							style={{ left: `${depth * 12 + 8}px`, right: 0 }}
+							style={{ left: directoryTreeRowIndent(depth), right: 0 }}
 						/>
 					) : null}
 					{canMutate ? <FolderDropZones folderId={folder.id} /> : null}
@@ -241,7 +242,7 @@ export const ProjectFolderItem: React.FC<{
 						{...dragListeners}
 						{...dragAttributes}
 					>
-						<span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+						<span className="flex size-3 shrink-0 items-center justify-center text-muted-foreground">
 							<ToggleIcon className="size-3" />
 						</span>
 						<FolderIcon className="size-3.5 shrink-0" />

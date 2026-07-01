@@ -7,6 +7,7 @@ import {
 	mentionPopupAppendTarget,
 	shouldKeepAgentMentionGroupActive,
 } from "@/domains/documents/lib/mention-suggestion";
+import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
@@ -39,6 +40,17 @@ const makeAsset = (overrides: Partial<ProjectAsset> = {}): ProjectAsset => ({
 	sortOrder: 0,
 	createdAt: timestamp,
 	updatedAt: timestamp,
+	...overrides,
+});
+
+const makeSelectedGenerationAsset = (
+	overrides: Partial<SelectedGenerationAsset> = {},
+): SelectedGenerationAsset => ({
+	assetIndex: 0,
+	id: "selected-character-image",
+	kind: "image",
+	resourceType: "character",
+	url: "/api/v1/media-assets/selected-character/content",
 	...overrides,
 });
 
@@ -83,6 +95,39 @@ describe("mention suggestion items", () => {
 		);
 		expect(sectionItem?.title).toBe("系统女声 / 太虚古老意识");
 		expect(sectionItem?.previewUrl).toBe("/api/v1/media-assets/voice/content");
+	});
+
+	it("uses selected generation images as section previews when markdown has no image", () => {
+		useDocumentsStore.setState({
+			documents: [
+				makeDocument({
+					content: [
+						"# 角色",
+						"",
+						"<!-- section-id: section_chenyuan -->",
+						"## 陈远",
+						"",
+						"陈远，21岁男大学生。",
+					].join("\n"),
+					title: "角色",
+				}),
+			],
+			assets: [],
+		});
+
+		const items = createMentionItems("陈远", {
+			selectedGenerationAssets: [
+				makeSelectedGenerationAsset({
+					resourceId: "section_chenyuan",
+					resourceTitle: "陈远",
+					sourceDocumentId: "doc-character",
+				}),
+			],
+		});
+		const sectionItem = items.find((item) => item.kind === "section");
+
+		expect(sectionItem?.title).toBe("陈远");
+		expect(sectionItem?.previewUrl).toBe("/api/v1/media-assets/selected-character/content");
 	});
 
 	it("keeps the document itself before section mention items", () => {

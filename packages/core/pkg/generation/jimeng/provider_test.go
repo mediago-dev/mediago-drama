@@ -324,12 +324,22 @@ func TestGenerateVideoWithHTTPReferenceDownloadsTempFile(t *testing.T) {
 
 func TestGenerateVideoWithMultipleReferencesUsesMultimodalCLI(t *testing.T) {
 	var gotArgs []string
+	gotImageBasenames := []string{}
+	gotAudioBasenames := []string{}
 	provider := testProvider(t, CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
 		gotArgs = append([]string{}, args...)
+		for _, arg := range args {
+			if path, ok := strings.CutPrefix(arg, "--image="); ok {
+				gotImageBasenames = append(gotImageBasenames, filepath.Base(path))
+			}
+			if path, ok := strings.CutPrefix(arg, "--audio="); ok {
+				gotAudioBasenames = append(gotAudioBasenames, filepath.Base(path))
+			}
+		}
 		return []byte(`{"submit_id":"video_2","gen_status":"querying"}`), nil
 	}))
 	referenceA := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("a"))
-	referenceB := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("b"))
+	referenceB := "data:audio/mpeg;base64," + base64.StdEncoding.EncodeToString([]byte("voice"))
 
 	_, err := provider.Generate(context.Background(), generation.Request{
 		Kind:          generation.KindVideo,
@@ -349,8 +359,17 @@ func TestGenerateVideoWithMultipleReferencesUsesMultimodalCLI(t *testing.T) {
 	if gotArgs[0] != "multimodal2video" {
 		t.Fatalf("args = %#v, want multimodal2video", gotArgs)
 	}
-	if countStringPrefix(gotArgs, "--image=") != 2 {
-		t.Fatalf("args = %#v, want two repeated image flags", gotArgs)
+	if countStringPrefix(gotArgs, "--image=") != 1 {
+		t.Fatalf("args = %#v, want one image flag", gotArgs)
+	}
+	if countStringPrefix(gotArgs, "--audio=") != 1 {
+		t.Fatalf("args = %#v, want one audio flag", gotArgs)
+	}
+	if len(gotImageBasenames) != 1 || gotImageBasenames[0] != "reference-01.png" {
+		t.Fatalf("image files = %#v, want image temp file", gotImageBasenames)
+	}
+	if len(gotAudioBasenames) != 1 || gotAudioBasenames[0] != "reference-02.mp3" {
+		t.Fatalf("audio files = %#v, want audio temp file", gotAudioBasenames)
 	}
 	assertContainsArg(t, gotArgs, "--ratio=16:9")
 	assertContainsArg(t, gotArgs, "--video_resolution=720p")

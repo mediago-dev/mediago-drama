@@ -2,6 +2,7 @@ import Mention from "@tiptap/extension-mention";
 import type { JSONContent, MarkdownToken } from "@tiptap/core";
 import type { SuggestionOptions } from "@tiptap/suggestion";
 import type { AgentReference } from "@/domains/agent/api/agent";
+import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
 import {
 	createMentionSuggestion,
 	documentCategory,
@@ -134,6 +135,19 @@ export const DocumentMention = Mention.extend({
 		mentionDisplayText(node.attrs.title ?? node.attrs.label ?? node.attrs.id),
 	suggestion: createMentionSuggestion() as Omit<SuggestionOptions, "editor">,
 });
+
+export interface DocumentMentionExtensionOptions {
+	getSelectedGenerationAssets?: () => readonly SelectedGenerationAsset[];
+	selectedGenerationAssets?: readonly SelectedGenerationAsset[];
+}
+
+export const createDocumentMentionExtension = (options: DocumentMentionExtensionOptions = {}) =>
+	DocumentMention.configure({
+		suggestion: createMentionSuggestion({
+			getSelectedGenerationAssets: options.getSelectedGenerationAssets,
+			selectedGenerationAssets: options.selectedGenerationAssets,
+		}) as Omit<SuggestionOptions, "editor">,
+	});
 
 const attrsFromReference = (reference: AgentReference) => ({
 	...(reference.assetId ? { assetId: reference.assetId } : {}),

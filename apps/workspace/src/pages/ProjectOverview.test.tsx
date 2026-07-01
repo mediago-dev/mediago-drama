@@ -392,6 +392,24 @@ describe("ProjectOverview", () => {
 								type: "character",
 							},
 							{
+								blockId: "section_gate",
+								canGenerate: true,
+								documentId: "scenes",
+								documentTitle: "场景设定",
+								generatedImageCount: 1,
+								headingLevel: 2,
+								headingOccurrence: 1,
+								id: "scene:scenes:section_gate",
+								markdown: "## 湖大校门口\n\n大学正门外的街景。",
+								plainText: "湖大校门口\n\n大学正门外的街景。",
+								prompt: "## 湖大校门口\n\n大学正门外的街景。",
+								sectionId: "section_gate",
+								sourceCategory: "scene",
+								summary: "大学正门外的街景。",
+								title: "湖大校门口",
+								type: "scene",
+							},
+							{
 								blockId: "section_reel_01",
 								canGenerate: true,
 								documentId: "storyboard-a",
@@ -692,6 +710,30 @@ describe("ProjectOverview", () => {
 		for (const button of [...generateImageButtons, ...selectAudioButtons]) {
 			expect(button).toBeEnabled();
 		}
+	});
+
+	it("hides audio actions for non-character document resources", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+					<ProjectOverview />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		await screen.findByText("文档 1 项 · 图片 0 张");
+		fireEvent.click(screen.getByRole("button", { name: "场景 图片" }));
+
+		const dialog = await screen.findByRole("dialog");
+		expect(within(dialog).getByText("场景 · 图片")).toBeInTheDocument();
+		expect(within(dialog).getByText("湖大校门口")).toBeInTheDocument();
+		expect(within(dialog).queryByRole("button", { name: "选择音频" })).not.toBeInTheDocument();
+		expect(within(dialog).queryByRole("button", { name: /播放 .* 音频/ })).not.toBeInTheDocument();
+
+		const generateImageButtons = within(dialog).getAllByRole("button", { name: "生成图片" });
+		expect(generateImageButtons).toHaveLength(1);
+		expect(generateImageButtons[0].parentElement).toHaveClass("grid-cols-1");
+		expect(generateImageButtons[0]).toBeEnabled();
 	});
 
 	it("previews selected audio from the document resource card", async () => {

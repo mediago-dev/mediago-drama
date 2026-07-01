@@ -3,6 +3,7 @@ package generation
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"image"
 	"image/color"
 	"image/png"
@@ -74,6 +75,16 @@ func TestProviderPromptForGenerationRewritesDocumentMentions(t *testing.T) {
 func TestProviderPromptForGenerationRewritesBoundSelectedAssetMentions(t *testing.T) {
 	mediaAssets := media.NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
 	asset := saveNamedPNGReferenceAsset(t, mediaAssets, "顾依依定稿.png")
+	audioAsset, err := mediaAssets.SaveBase64(
+		media.MediaKindAudio,
+		"audio/mpeg",
+		base64.StdEncoding.EncodeToString([]byte("voice-bytes")),
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("saving audio asset: %v", err)
+	}
 	workflow := NewGenerationService(nil, nil, mediaAssets)
 	route, ok := coregeneration.FindRoute(coregeneration.RouteJimengSeedance20Fast)
 	if !ok {
@@ -83,7 +94,7 @@ func TestProviderPromptForGenerationRewritesBoundSelectedAssetMentions(t *testin
 	prompt := workflow.providerPromptForGeneration(route, generationMessageRequest{
 		ProjectID:         "project-a",
 		Prompt:            "角色 @[顾依依（十年前——落魄少女）](mention://char-set-hxm/section_ea8a9c5dbd431400?kind=section&category=character) 冲出雨巷。",
-		ReferenceAssetIDs: []string{asset.ID},
+		ReferenceAssetIDs: []string{asset.ID, audioAsset.ID},
 		ReferenceBindings: []GenerationReferenceBinding{
 			{
 				Kind:       "section",
@@ -91,10 +102,16 @@ func TestProviderPromptForGenerationRewritesBoundSelectedAssetMentions(t *testin
 				BlockID:    "section_ea8a9c5dbd431400",
 				AssetID:    asset.ID,
 			},
+			{
+				Kind:       "section",
+				DocumentID: "char-set-hxm",
+				BlockID:    "section_ea8a9c5dbd431400",
+				AssetID:    audioAsset.ID,
+			},
 		},
 	})
 
-	if prompt != "角色 @图片1 冲出雨巷。" {
+	if prompt != "角色 @图片1 @音频1 冲出雨巷。" {
 		t.Fatalf("provider prompt = %q", prompt)
 	}
 }

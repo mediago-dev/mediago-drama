@@ -292,6 +292,171 @@ describe("DocumentSectionGenerator", () => {
 			},
 		]);
 	});
+
+	it("passes selected character audio as video mention reference material", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [
+				baseDocument({
+					id: "story-doc",
+					title: "故事",
+					content: section.markdown,
+				}),
+				baseDocument({
+					category: "character",
+					id: "character-doc",
+					title: "沈阔",
+					content: "<!-- section-id: section_character -->\n# 沈阔（普通状态）\n\n23 岁男性。",
+				}),
+			],
+		});
+
+		render(
+			<DocumentSectionGenerator
+				kind="video"
+				section={section}
+				selectedGenerationAssets={[
+					selectedGenerationAsset({
+						id: "selected-voice",
+						kind: "audio",
+						mediaAssetId: "selected-voice",
+						mimeType: "audio/mpeg",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔音色",
+						url: "/api/v1/media-assets/selected-voice/content",
+					}),
+				]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		const previewReferences = resolveReferencePreviewAssets(capturedWorkspaceProps);
+		const referenceAssetIds = resolveReferenceAssetIds(capturedWorkspaceProps);
+		const referenceBindings = resolveReferenceBindings(capturedWorkspaceProps);
+
+		expect(previewReferences).toEqual([
+			expect.objectContaining({
+				kind: "audio",
+				url: "/api/v1/media-assets/selected-voice/content",
+			}),
+		]);
+		expect(referenceAssetIds).toEqual(["selected-voice"]);
+		expect(referenceBindings).toEqual([
+			{
+				assetId: "selected-voice",
+				blockId: "section_character",
+				documentId: "character-doc",
+				kind: "section",
+			},
+		]);
+	});
+
+	it("uses the media asset URL when a selected character audio has only an id", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [
+				baseDocument({
+					id: "story-doc",
+					title: "故事",
+					content: section.markdown,
+				}),
+				baseDocument({
+					category: "character",
+					id: "character-doc",
+					title: "沈阔",
+					content: "<!-- section-id: section_character -->\n# 沈阔（普通状态）\n\n23 岁男性。",
+				}),
+			],
+		});
+
+		render(
+			<DocumentSectionGenerator
+				kind="video"
+				section={section}
+				selectedGenerationAssets={[
+					selectedGenerationAsset({
+						id: "selected-voice",
+						kind: "audio",
+						mediaAssetId: "selected-voice",
+						mimeType: "audio/mpeg",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔音色",
+					}),
+				]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		const previewReferences = resolveReferencePreviewAssets(capturedWorkspaceProps);
+		const referenceAssetIds = resolveReferenceAssetIds(capturedWorkspaceProps);
+
+		expect(previewReferences[0]).toEqual(
+			expect.objectContaining({
+				kind: "audio",
+				url: "/api/v1/media-assets/selected-voice/content",
+			}),
+		);
+		expect(referenceAssetIds).toEqual(["selected-voice"]);
+	});
+
+	it("does not pass url-only selected audio as video reference URLs", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [
+				baseDocument({
+					id: "story-doc",
+					title: "故事",
+					content: section.markdown,
+				}),
+				baseDocument({
+					category: "character",
+					id: "character-doc",
+					title: "沈阔",
+					content: "<!-- section-id: section_character -->\n# 沈阔（普通状态）\n\n23 岁男性。",
+				}),
+			],
+		});
+
+		render(
+			<DocumentSectionGenerator
+				kind="video"
+				section={section}
+				selectedGenerationAssets={[
+					selectedGenerationAsset({
+						id: "selected-preview-voice",
+						kind: "audio",
+						mimeType: "audio/mpeg",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔试听音色",
+						url: "/api/v1/generation/voice-previews/official.minimax-speech/warm-bestie",
+					}),
+				]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		expect(resolveReferencePreviewAssets(capturedWorkspaceProps)).toEqual([]);
+		expect(resolveReferenceAssetIds(capturedWorkspaceProps)).toEqual([]);
+		expect(resolveReferenceBindings(capturedWorkspaceProps)).toEqual([]);
+	});
 });
 
 const selectedGenerationAsset = (

@@ -14,7 +14,7 @@ import {
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import { DocumentMentionHoverPopover } from "@/domains/documents/components/DocumentMentionHoverPopover";
-import { DocumentMention } from "@/domains/documents/components/extensions/document-mention";
+import { createDocumentMentionExtension } from "@/domains/documents/components/extensions/document-mention";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import {
 	buildMentionPreviewReferences,
@@ -61,6 +61,8 @@ export interface DocumentSectionGeneratorProps {
 	selectedGenerationAssets?: SelectedGenerationAsset[];
 	viewMode?: MediaGenerationWorkspaceViewMode;
 }
+
+const emptySelectedGenerationAssets: SelectedGenerationAsset[] = [];
 
 export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> = ({
 	kind = "image",
@@ -119,7 +121,9 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 		() => getSelectedGenerationAssets(normalizedProjectId),
 	);
 	const mentionSelectedGenerationAssets =
-		selectedGenerationAssets ?? selectedGenerationAssetsData?.assets ?? [];
+		selectedGenerationAssets ??
+		selectedGenerationAssetsData?.assets ??
+		emptySelectedGenerationAssets;
 	const resolvedSelectedAssetKeys = useMemo(
 		() =>
 			selectedAssetKeys ??
@@ -165,8 +169,10 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	);
 	const getMentionReferenceInputs = useCallback(
 		(promptMarkdown: string) =>
-			buildMentionReferenceInputs(resolveActiveMentionsFromPrompt(promptMarkdown)),
-		[resolveActiveMentionsFromPrompt],
+			buildMentionReferenceInputs(resolveActiveMentionsFromPrompt(promptMarkdown), {
+				includeSelectedAudios: generationKind === "video",
+			}),
+		[generationKind, resolveActiveMentionsFromPrompt],
 	);
 	const removePreviewReferenceAsset = useCallback((asset: MediaAsset) => {
 		const mentionKey = latestMentionPreviewRef.current.assetMentionKeys[asset.id];
@@ -301,7 +307,10 @@ const PromptMentionEditor: React.FC<
 	selectedGenerationAssets,
 	...props
 }) => {
-	const extensions = useMemo(() => [DocumentMention], []);
+	const extensions = useMemo(
+		() => [createDocumentMentionExtension({ selectedGenerationAssets })],
+		[selectedGenerationAssets],
+	);
 
 	return (
 		<DocumentMentionHoverPopover

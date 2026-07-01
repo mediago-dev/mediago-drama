@@ -140,6 +140,8 @@ export const ProjectDirectoryTree: React.FC<{
 		directoryTree.files.length > 0 ||
 		sourceFolders.length > 0 ||
 		isCreatingFolder;
+	const rootFilesShouldAlignWithFolders =
+		sourceFolders.length > 0 || creatingFolderParentId === null;
 	const dragOverlay = (
 		<DragOverlay dropAnimation={null}>
 			{activePreview ? <DirectoryDragPreview preview={activePreview} /> : null}
@@ -288,6 +290,7 @@ export const ProjectDirectoryTree: React.FC<{
 								onOpenAsset={onOpenAsset}
 								onOpenDocument={onOpenDocument}
 								showActiveSelection={showActiveSelection}
+								showDisclosureSpacer={rootFilesShouldAlignWithFolders}
 								workspaceDir={workspaceDir}
 							/>
 						))}

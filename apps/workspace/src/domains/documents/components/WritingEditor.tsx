@@ -11,7 +11,10 @@ import {
 	type SelectionCoords,
 } from "@/domains/documents/components/MarkdownHybridEditor";
 import { DocumentMentionHoverPopover } from "@/domains/documents/components/DocumentMentionHoverPopover";
-import { DocumentMention } from "@/domains/documents/components/extensions/document-mention";
+import {
+	createDocumentMentionExtension,
+	DocumentMention,
+} from "@/domains/documents/components/extensions/document-mention";
 import { DocumentHistoryPanel } from "@/domains/documents/components/DocumentHistoryPanel";
 import { SelectionBubble } from "@/domains/documents/components/SelectionBubble";
 import { createDOMTextAnchorResolver } from "@/domains/documents/components/text-anchor-dom";
@@ -25,6 +28,7 @@ import {
 	useDocumentsStore,
 } from "@/domains/documents/stores";
 import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
+import { useSelectedGenerationAssets } from "@/domains/generation/hooks/useSelectedGenerationAssets";
 import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
 
 const autosaveDelayMs = 500;
@@ -59,6 +63,11 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const location = useLocation();
 	const projectId = getRouteProjectId(location.search);
 	const openGenerationDialog = useMediaGenerationStore((state) => state.open);
+	const { assets: selectedGenerationAssets } = useSelectedGenerationAssets(projectId, {
+		enabled: Boolean(projectId),
+	});
+	const selectedGenerationAssetsRef = useRef(selectedGenerationAssets);
+	selectedGenerationAssetsRef.current = selectedGenerationAssets;
 	const documents = useDocumentsStore((state) => state.documents);
 	const assets = useDocumentsStore((state) => state.assets);
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
@@ -87,6 +96,14 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const commentMarkers = useMemo(
 		() => buildCommentMarkers(activeDocument?.comments ?? [], commentOffsets),
 		[activeDocument?.comments, commentOffsets],
+	);
+	const activeWritingEditorExtraExtensions = useMemo(
+		() => [
+			createDocumentMentionExtension({
+				getSelectedGenerationAssets: () => selectedGenerationAssetsRef.current,
+			}),
+		],
+		[],
 	);
 	useEffect(() => {
 		if (!activeDocument?.isDirty) return;
@@ -256,6 +273,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 							allDocuments={documents}
 							onGenerateReference={openSectionGeneration}
 							projectId={projectId ?? undefined}
+							selectedGenerationAssets={selectedGenerationAssets}
 						>
 							<MarkdownHybridEditor
 								key={activeDocument.id}
@@ -263,7 +281,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 								activeCommentId={activeCommentId}
 								comments={activeDocument.comments}
 								documentId={activeDocument.id}
-								extraExtensions={writingEditorExtraExtensions}
+								extraExtensions={activeWritingEditorExtraExtensions}
 								pendingSelectionAnchor={
 									activePendingComment ? (activeSelection?.anchor ?? null) : null
 								}

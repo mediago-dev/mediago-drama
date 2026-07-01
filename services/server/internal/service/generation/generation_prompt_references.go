@@ -188,7 +188,7 @@ func (workflow *GenerationService) replaceGenerationPromptMentionReferences(
 			bySource[slot.SourceKey] = slot
 		}
 	}
-	byMention := map[string]generationReferenceSlot{}
+	byMention := map[string][]generationReferenceSlot{}
 	for _, binding := range bindings {
 		sourceKey := generationReferenceBindingSourceKey(binding)
 		slot, ok := bySource[sourceKey]
@@ -199,9 +199,7 @@ func (workflow *GenerationService) replaceGenerationPromptMentionReferences(
 		if mentionKey == "" {
 			continue
 		}
-		if _, exists := byMention[mentionKey]; !exists {
-			byMention[mentionKey] = slot
-		}
+		byMention[mentionKey] = appendUniqueGenerationReferenceSlot(byMention[mentionKey], slot)
 	}
 
 	matches := generationDocumentMentionPattern.FindAllStringSubmatchIndex(prompt, -1)
@@ -230,28 +228,55 @@ func (workflow *GenerationService) replaceGenerationPromptMentionReferences(
 			continue
 		}
 
-		token := ""
-		if slot, ok := byMention[generationMentionReferenceKey(reference)]; ok {
-			token = slot.Token
+		tokens := ""
+		if slots, ok := byMention[generationMentionReferenceKey(reference)]; ok {
+			tokens = generationReferenceSlotTokens(slots)
 		}
 		for _, sourceKey := range workflow.generationMentionSourceKeys(projectID, reference) {
-			if token != "" {
+			if tokens != "" {
 				break
 			}
 			if slot, ok := bySource[sourceKey]; ok {
-				token = slot.Token
+				tokens = slot.Token
 				break
 			}
 		}
-		if token == "" {
+		if tokens == "" {
 			builder.WriteString(original)
 		} else {
-			builder.WriteString(token)
+			builder.WriteString(tokens)
 		}
 		last = match[1]
 	}
 	builder.WriteString(prompt[last:])
 	return builder.String()
+}
+
+func appendUniqueGenerationReferenceSlot(slots []generationReferenceSlot, slot generationReferenceSlot) []generationReferenceSlot {
+	key := firstNonEmpty(slot.SourceKey, slot.Token)
+	for _, existing := range slots {
+		if firstNonEmpty(existing.SourceKey, existing.Token) == key {
+			return slots
+		}
+	}
+	return append(slots, slot)
+}
+
+func generationReferenceSlotTokens(slots []generationReferenceSlot) string {
+	tokens := make([]string, 0, len(slots))
+	seen := map[string]struct{}{}
+	for _, slot := range slots {
+		token := strings.TrimSpace(slot.Token)
+		if token == "" {
+			continue
+		}
+		if _, ok := seen[token]; ok {
+			continue
+		}
+		seen[token] = struct{}{}
+		tokens = append(tokens, token)
+	}
+	return strings.Join(tokens, " ")
 }
 
 func replaceGenerationPromptReferenceNames(prompt string, slots []generationReferenceSlot) string {

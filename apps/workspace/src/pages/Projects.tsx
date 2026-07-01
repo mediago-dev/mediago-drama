@@ -344,11 +344,35 @@ const ProjectManagementRow: React.FC<{
 	const path = project.originalProjectDir || project.projectDir || project.relativeDir || "";
 	const timestamp = projectLifecycleTimestamp(project, activeTab);
 	const hasAction = Boolean(action);
+	const canOpenProject = activeTab === "active";
+	const openFromRow = () => {
+		if (!canOpenProject) return;
+		onOpen(project);
+	};
+	const openFromKeyboard = (event: React.KeyboardEvent<HTMLDivElement>) => {
+		if (!canOpenProject || (event.key !== "Enter" && event.key !== " ")) return;
+		event.preventDefault();
+		onOpen(project);
+	};
+	const openFromButton = (event: React.MouseEvent<HTMLButtonElement>) => {
+		event.stopPropagation();
+		onOpen(project);
+	};
 
 	return (
 		<ContextMenu>
 			<ContextMenuTrigger asChild>
-				<div className="grid gap-3 rounded-sm border border-border/70 bg-ide-panel px-3 py-3 text-ide-panel-foreground md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+				<div
+					role={canOpenProject ? "button" : undefined}
+					tabIndex={canOpenProject ? 0 : undefined}
+					className={cn(
+						"grid gap-3 rounded-sm border border-border/70 bg-ide-panel px-3 py-3 text-ide-panel-foreground md:grid-cols-[minmax(0,1fr)_auto] md:items-center",
+						canOpenProject &&
+							"cursor-pointer transition-colors hover:bg-ide-list-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+					)}
+					onClick={openFromRow}
+					onKeyDown={openFromKeyboard}
+				>
 					<div className="flex min-w-0 gap-3">
 						<div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
 							<Icon className="size-4" />
@@ -373,7 +397,7 @@ const ProjectManagementRow: React.FC<{
 					</div>
 					<div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
 						{activeTab === "active" ? (
-							<Button type="button" variant="secondary" onClick={() => onOpen(project)}>
+							<Button type="button" variant="secondary" onClick={openFromButton}>
 								<FolderOpen />
 								<span>打开</span>
 							</Button>

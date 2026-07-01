@@ -21,13 +21,19 @@ const testState = vi.hoisted(() => ({
 		setSelection: vi.fn(() => true),
 	},
 	markdownEditorProps: null as null | {
+		extraExtensions?: Array<{
+			options?: { suggestion?: { items?: (props: { query: string }) => unknown[] } };
+		}>;
 		onSectionGenerate?: (section: MarkdownSectionContext, kind?: "image") => void;
 		onSelectionChange?: (value: string) => void;
 		onSelectionCoordChange?: (coords: SelectionCoords | null) => void;
 		selectedSectionImageAssets?: Array<{ id: string; resourceId?: string; url?: string }>;
 		value?: string;
 	},
-	mentionPopoverProps: null as null | { projectId?: string },
+	mentionPopoverProps: null as null | {
+		projectId?: string;
+		selectedGenerationAssets?: Array<Record<string, unknown>>;
+	},
 	selectionBubbleProps: null as null | {
 		onComment: () => void;
 		selectedText: string;
@@ -83,7 +89,11 @@ vi.mock("@/domains/workspace/api/workspace", () => ({
 }));
 
 vi.mock("@/domains/documents/components/DocumentMentionHoverPopover", () => ({
-	DocumentMentionHoverPopover: (props: { children: React.ReactNode; projectId?: string }) => {
+	DocumentMentionHoverPopover: (props: {
+		children: React.ReactNode;
+		projectId?: string;
+		selectedGenerationAssets?: Array<Record<string, unknown>>;
+	}) => {
 		testState.mentionPopoverProps = props;
 		return <>{props.children}</>;
 	},
@@ -266,6 +276,57 @@ describe("WritingEditor", () => {
 		const bubble = container.querySelector("[data-testid='selection-bubble']");
 		expect(bubble).toBeTruthy();
 		expect(main.contains(bubble)).toBe(true);
+	});
+
+	it("uses project selected assets for mention suggestion previews in the document editor", async () => {
+		generationApiMocks.getSelectedGenerationAssets.mockResolvedValue({
+			assets: [
+				{
+					assetIndex: 0,
+					id: "selected-character-image",
+					kind: "image",
+					mediaAssetId: "selected-character-image",
+					resourceId: "section_character",
+					resourceType: "character",
+					sourceDocumentId: "character-doc",
+					title: "陈远参考图",
+					url: "/api/v1/media-assets/selected-character-image/content",
+				},
+			],
+		});
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			documents: [
+				makeDocument(),
+				makeDocument({
+					category: "character",
+					content: "<!-- section-id: section_character -->\n# 陈远\n\n21 岁男大学生。",
+					id: "character-doc",
+					title: "角色",
+				}),
+			],
+			projectId: "project-mention-preview",
+			workspaceDir: "/workspace/project-mention-preview",
+		});
+
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-mention-preview"]}>
+				<WritingEditor />
+			</MemoryRouter>,
+		);
+
+		await waitFor(() =>
+			expect(testState.mentionPopoverProps?.selectedGenerationAssets).toHaveLength(1),
+		);
+		const mentionExtension = testState.markdownEditorProps?.extraExtensions?.[0];
+		const mentionItems = mentionExtension?.options?.suggestion?.items?.({ query: "陈远" }) ?? [];
+
+		expect(mentionItems).toContainEqual(
+			expect.objectContaining({
+				kind: "section",
+				previewUrl: "/api/v1/media-assets/selected-character-image/content",
+				title: "陈远",
+			}),
+		);
 	});
 
 	it("opens the global generation dialog for the requested section and kind", () => {

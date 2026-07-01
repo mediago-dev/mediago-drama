@@ -184,6 +184,112 @@ func TestResolveGenerationReferencesReadsLocalMediaReferenceURLs(t *testing.T) {
 	}
 }
 
+func TestResolveGenerationReferencesIncludesAudioAssetsForJimengVideoRoutes(t *testing.T) {
+	mediaAssets := media.NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	imageAsset := savePNGReferenceAsset(t, mediaAssets, 320, 180)
+	audioAsset, err := mediaAssets.SaveBase64(
+		media.MediaKindAudio,
+		"audio/mpeg",
+		base64.StdEncoding.EncodeToString([]byte("audio-bytes")),
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("saving audio reference: %v", err)
+	}
+	workflow := NewGenerationService(nil, nil, mediaAssets)
+	route, ok := coregeneration.FindRoute(coregeneration.RouteJimengSeedance20Fast)
+	if !ok {
+		t.Fatal("jimeng seedance route is missing")
+	}
+
+	references, err := workflow.resolveGenerationReferences(route, generationMessageRequest{
+		ReferenceAssetIDs: []string{imageAsset.ID, audioAsset.ID},
+	})
+	if err != nil {
+		t.Fatalf("resolving references: %v", err)
+	}
+	if len(references) != 2 {
+		t.Fatalf("references = %d, want image and audio provider references", len(references))
+	}
+	if !strings.HasPrefix(references[0], "data:image/png;base64,") {
+		t.Fatalf("reference = %q, want local image data uri", references[0][:min(64, len(references[0]))])
+	}
+	if !strings.HasPrefix(references[1], "data:audio/mpeg;base64,") {
+		t.Fatalf("reference = %q, want local audio data uri", references[1][:min(64, len(references[1]))])
+	}
+}
+
+func TestResolveGenerationReferencesReadsLinkedVoicePreviewAudioForJimengVideoRoutes(t *testing.T) {
+	mediaAssets := media.NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	previewURL := "/api/v1/generation/voice-previews/official.minimax-speech-2.8-turbo/English_Aussie_Bloke"
+	audioAsset, err := mediaAssets.SaveLinkedAssetWithOptions(
+		media.MediaKindAudio,
+		previewURL,
+		"English_Aussie_Bloke",
+		"audio/mpeg",
+		media.MediaAssetSaveOptions{Source: media.MediaSourcePreview},
+	)
+	if err != nil {
+		t.Fatalf("saving linked audio reference: %v", err)
+	}
+	if audioAsset.FilePath != "" {
+		t.Fatalf("linked audio file path = %q, want empty", audioAsset.FilePath)
+	}
+	workflow := NewGenerationService(nil, nil, mediaAssets)
+	workflow.voicePreviews = testVoicePreviewStore(t)
+	route, ok := coregeneration.FindRoute(coregeneration.RouteJimengSeedance20Fast)
+	if !ok {
+		t.Fatal("jimeng seedance route is missing")
+	}
+
+	references, err := workflow.resolveGenerationReferences(route, generationMessageRequest{
+		ReferenceAssetIDs: []string{audioAsset.ID},
+	})
+	if err != nil {
+		t.Fatalf("resolving references: %v", err)
+	}
+	if len(references) != 1 {
+		t.Fatalf("references = %d, want linked audio provider reference", len(references))
+	}
+	if references[0] != "data:audio/mpeg;base64,bXAz" {
+		t.Fatalf("reference = %q, want bundled voice preview audio data uri", references[0])
+	}
+}
+
+func TestResolveGenerationReferencesSkipsAudioAssetsForUnsupportedVideoRoutes(t *testing.T) {
+	mediaAssets := media.NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	imageAsset := savePNGReferenceAsset(t, mediaAssets, 320, 180)
+	audioAsset, err := mediaAssets.SaveBase64(
+		media.MediaKindAudio,
+		"audio/mpeg",
+		base64.StdEncoding.EncodeToString([]byte("audio-bytes")),
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("saving audio reference: %v", err)
+	}
+	workflow := NewGenerationService(nil, nil, mediaAssets)
+	route, ok := coregeneration.FindRoute(coregeneration.RouteOfficialSeedance20Fast)
+	if !ok {
+		t.Fatal("official seedance route is missing")
+	}
+
+	references, err := workflow.resolveGenerationReferences(route, generationMessageRequest{
+		ReferenceAssetIDs: []string{imageAsset.ID, audioAsset.ID},
+	})
+	if err != nil {
+		t.Fatalf("resolving references: %v", err)
+	}
+	if len(references) != 1 {
+		t.Fatalf("references = %d, want only the image provider reference", len(references))
+	}
+	if !strings.HasPrefix(references[0], "data:image/png;base64,") {
+		t.Fatalf("reference = %q, want local image data uri", references[0][:min(64, len(references[0]))])
+	}
+}
+
 func TestImportGenerationMediaAssetsCreatesReferenceHistoryTasks(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	seedGenerationTaskProject(t, dbPath, "project-alpha")

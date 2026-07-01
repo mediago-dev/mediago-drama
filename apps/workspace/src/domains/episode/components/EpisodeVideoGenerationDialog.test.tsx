@@ -270,6 +270,17 @@ describe("useEpisodeVideoGenerationRequest", () => {
 					title: "顾南衣参考图",
 					url: "/api/v1/media-assets/gny-selected/content",
 				}),
+				selectedGenerationAsset({
+					id: "gny-selected-voice",
+					kind: "audio",
+					mediaAssetId: "gny-selected-voice",
+					mimeType: "audio/mpeg",
+					resourceId: "section_character",
+					resourceType: "character",
+					sourceDocumentId: "character-doc",
+					title: "顾南衣音色",
+					url: "/api/v1/media-assets/gny-selected-voice/content",
+				}),
 			],
 			onGeneratedVideoReady: vi.fn(),
 			onOpenChange: vi.fn(),
@@ -279,9 +290,15 @@ describe("useEpisodeVideoGenerationRequest", () => {
 		const referenceBindings = resolveReferenceBindings(workspaceProps);
 		const referenceBadges = resolveReferenceBadges(workspaceProps);
 
-		expect(previewReferences).toHaveLength(1);
+		expect(previewReferences).toHaveLength(2);
 		expect(previewReferences[0]?.url).toBe("/api/v1/media-assets/gny-selected/content");
-		expect(referenceAssetIds).toEqual(["gny-selected"]);
+		expect(previewReferences[1]).toEqual(
+			expect.objectContaining({
+				kind: "audio",
+				url: "/api/v1/media-assets/gny-selected-voice/content",
+			}),
+		);
+		expect(referenceAssetIds).toEqual(["gny-selected", "gny-selected-voice"]);
 		expect(referenceBindings).toEqual([
 			{
 				assetId: "gny-selected",
@@ -289,8 +306,15 @@ describe("useEpisodeVideoGenerationRequest", () => {
 				documentId: "character-doc",
 				kind: "section",
 			},
+			{
+				assetId: "gny-selected-voice",
+				blockId: "section_character",
+				documentId: "character-doc",
+				kind: "section",
+			},
 		]);
 		expect(referenceBadges[previewReferences[0]?.id ?? ""]).toBe("来自 @顾南衣·状态A");
+		expect(referenceBadges[previewReferences[1]?.id ?? ""]).toBe("来自 @顾南衣·状态A");
 	});
 });
 

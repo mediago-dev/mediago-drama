@@ -190,12 +190,63 @@ describe("ProjectDirectoryTree folder creation", () => {
 		renderDirectoryTree();
 
 		expect(screen.getByText("素材")).toBeTruthy();
+		const folderRow = screen.getByText("素材").closest("button")?.parentElement;
 		const assetText = screen.getByText("notes.txt");
+		const assetButton = assetText.closest("button");
 		const assetRow = assetText.closest("button")?.parentElement;
 
 		expect(assetText).toBeTruthy();
+		expect(folderRow).toBeTruthy();
+		expect(assetButton).toBeTruthy();
 		expect(assetRow).toBeTruthy();
-		expect((assetRow as HTMLElement).style.paddingLeft).toBe("26px");
+		expect((folderRow as HTMLElement).style.paddingLeft).toBe("8px");
+		expect((assetRow as HTMLElement).style.paddingLeft).toBe("20px");
+		expect((assetButton as HTMLElement).firstElementChild?.tagName.toLowerCase()).toBe("span");
+		expect((assetButton as HTMLElement).firstElementChild?.getAttribute("aria-hidden")).toBe(
+			"true",
+		);
+	});
+
+	it("keeps root folders and files on the same icon column", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: project.id,
+			documents: [makeDocument("doc-a", "第一集")],
+			folders: [makeFolder("folder-a", "素材")],
+			assets: [],
+		});
+
+		renderDirectoryTree();
+
+		const folderRow = screen.getByText("素材").closest("button")?.parentElement;
+		const documentButton = screen.getByRole("button", { name: "第一集" });
+		const documentRow = documentButton.parentElement;
+
+		expect(folderRow).toBeTruthy();
+		expect(documentRow).toBeTruthy();
+		expect((folderRow as HTMLElement).style.paddingLeft).toBe("8px");
+		expect((documentRow as HTMLElement).style.paddingLeft).toBe("8px");
+		expect(documentButton.firstElementChild?.tagName.toLowerCase()).toBe("span");
+		expect(documentButton.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
+	});
+
+	it("moves root files forward when there are no folders", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: project.id,
+			documents: [makeDocument("doc-a", "第一集")],
+			folders: [],
+			assets: [],
+		});
+
+		renderDirectoryTree();
+
+		const documentButton = screen.getByRole("button", { name: "第一集" });
+		const documentRow = documentButton.parentElement;
+
+		expect(documentRow).toBeTruthy();
+		expect((documentRow as HTMLElement).style.paddingLeft).toBe("8px");
+		expect(documentButton.firstElementChild?.tagName.toLowerCase()).toBe("svg");
 	});
 
 	it("hides markdown project assets from the directory tree", () => {
