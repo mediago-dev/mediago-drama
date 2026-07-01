@@ -29,6 +29,10 @@ import { useMediaGenerationStore } from "@/domains/generation/stores/media-gener
 
 const autosaveDelayMs = 500;
 const markerClusterDistance = 28;
+const selectionBubbleContainerPaddingY = 8;
+const selectionBubbleEdgePaddingX = 80;
+const selectionBubbleGapY = 8;
+const selectionBubbleHeight = 40;
 export const writingEditorExtraExtensions = [DocumentMention];
 
 export const prewarmWritingEditorDocument = (
@@ -77,6 +81,9 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 			? pendingComment
 			: null;
 	const selectedText = activeSelection?.text ?? "";
+	const selectionBubblePosition = selectionCoords
+		? selectionBubblePositionForScrollContainer(mainRef.current, selectionCoords)
+		: null;
 	const commentMarkers = useMemo(
 		() => buildCommentMarkers(activeDocument?.comments ?? [], commentOffsets),
 		[activeDocument?.comments, commentOffsets],
@@ -291,15 +298,15 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 						))}
 					</div>
 				) : null}
+				{selectionBubblePosition ? (
+					<SelectionBubble
+						top={selectionBubblePosition.top}
+						x={selectionBubblePosition.x}
+						selectedText={selectedText}
+						onComment={openCommentComposer}
+					/>
+				) : null}
 			</main>
-			{selectionCoords ? (
-				<SelectionBubble
-					x={selectionCoords.x}
-					y={selectionCoords.y}
-					selectedText={selectedText}
-					onComment={openCommentComposer}
-				/>
-			) : null}
 			<DocumentHistoryPanel
 				open={historyOpen}
 				onOpenChange={setHistoryOpen}
@@ -340,6 +347,60 @@ const buildCommentMarkers = (
 		});
 	}
 	return markers;
+};
+
+interface SelectionBubblePosition {
+	top: number;
+	x: number;
+}
+
+const selectionBubblePositionForScrollContainer = (
+	container: HTMLElement | null,
+	coords: SelectionCoords,
+): SelectionBubblePosition => {
+	if (!container) {
+		return {
+			top: Math.max(
+				coords.y - selectionBubbleHeight - selectionBubbleGapY,
+				selectionBubbleContainerPaddingY,
+			),
+			x: coords.x,
+		};
+	}
+
+	const rect = container.getBoundingClientRect();
+	const width = container.clientWidth || rect.width;
+	const minX = container.scrollLeft + selectionBubbleEdgePaddingX;
+	const maxX = Math.max(minX, container.scrollLeft + width - selectionBubbleEdgePaddingX);
+	const x = coords.x - rect.left + container.scrollLeft;
+	const selectionTop = coords.y - rect.top + container.scrollTop;
+	const selectionBottom = (coords.bottom ?? coords.y) - rect.top + container.scrollTop;
+	const safeTop = selectionBubbleSafeTop(container, rect);
+	const maxTop = Math.max(
+		safeTop,
+		container.scrollTop +
+			(container.clientHeight || rect.height) -
+			selectionBubbleHeight -
+			selectionBubbleContainerPaddingY,
+	);
+	const aboveTop = selectionTop - selectionBubbleHeight - selectionBubbleGapY;
+	const belowTop = selectionBottom + selectionBubbleGapY;
+	const preferredTop = aboveTop >= safeTop ? aboveTop : belowTop;
+
+	return {
+		top: Math.min(Math.max(preferredTop, safeTop), maxTop),
+		x: Math.min(Math.max(x, minX), maxX),
+	};
+};
+
+const selectionBubbleSafeTop = (container: HTMLElement, containerRect: DOMRect) => {
+	const toolbar = container.querySelector<HTMLElement>(".tiptap-toolbar");
+	const containerTop = container.scrollTop + selectionBubbleContainerPaddingY;
+	if (!toolbar) return containerTop;
+
+	const toolbarRect = toolbar.getBoundingClientRect();
+	const toolbarBottom = toolbarRect.bottom - containerRect.top + container.scrollTop;
+	return Math.max(containerTop, toolbarBottom + selectionBubbleGapY);
 };
 
 const sameOffsets = (first: Record<string, number>, second: Record<string, number>) => {

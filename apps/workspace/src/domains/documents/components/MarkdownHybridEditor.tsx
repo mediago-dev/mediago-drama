@@ -95,6 +95,7 @@ export type { MarkdownHybridEditorHandle };
 export type { MarkdownHeadingContext, MarkdownSectionContext, SectionGenerateKind };
 
 export interface SelectionCoords {
+	bottom?: number;
 	x: number;
 	y: number;
 }
@@ -401,9 +402,9 @@ export const MarkdownHybridEditor = forwardRef<
 				});
 				const selectionHead = selectionHeadPosition(nextEditor.state.selection);
 				const coords = nextEditor.view.coordsAtPos(selectionHead);
-				const maxX = Math.max(80, window.innerWidth - 80);
 				onSelectionCoordChangeRef.current?.({
-					x: Math.min(Math.max(coords.left, 80), maxX),
+					bottom: coords.bottom,
+					x: coords.left,
 					y: coords.top,
 				});
 			},

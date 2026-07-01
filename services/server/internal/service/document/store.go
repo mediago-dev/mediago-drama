@@ -44,7 +44,7 @@ func (store *Service) saveUnlocked(projectID string, request workspaceStateReque
 			usedFilenames = map[string]bool{}
 			usedFilenamesByDir[strings.ToLower(folderPath)] = usedFilenames
 		}
-		filename := uniqueDocumentMarkdownFilename(documentMarkdownFilename(filenameDocument), usedFilenames)
+		filename := documentProjectionFilename(document, filenameDocument, usedFilenames)
 		if folderPath != "" {
 			filename = filepath.ToSlash(filepath.Join(folderPath, filename))
 		}
@@ -104,6 +104,45 @@ func uniqueDocumentMarkdownFilename(filename string, used map[string]bool) strin
 	candidate := stem + ".md"
 	for suffix := 2; used[strings.ToLower(candidate)]; suffix++ {
 		candidate = fmt.Sprintf("%s-%d.md", stem, suffix)
+	}
+	used[strings.ToLower(candidate)] = true
+	return candidate
+}
+
+func documentProjectionFilename(
+	document mediamcp.WorkspaceDocument,
+	filenameDocument mediamcp.WorkspaceDocument,
+	used map[string]bool,
+) string {
+	if filename := reusableNonMarkdownDocumentFilename(document.Filename, used); filename != "" {
+		return filename
+	}
+	return uniqueDocumentMarkdownFilename(documentMarkdownFilename(filenameDocument), used)
+}
+
+func reusableNonMarkdownDocumentFilename(filename string, used map[string]bool) string {
+	filename = CleanRelativeFilename(filename)
+	if filename == "" {
+		return ""
+	}
+	ext := strings.ToLower(filepath.Ext(filename))
+	if ext == "" || ext == ".md" || !isLocalDocumentFile(filename) {
+		return ""
+	}
+	return uniqueDocumentFilenameWithExtension(filepath.Base(filename), used)
+}
+
+func uniqueDocumentFilenameWithExtension(filename string, used map[string]bool) string {
+	ext := filepath.Ext(filename)
+	stem := strings.TrimSuffix(filename, ext)
+	stem = cleanDocumentEditLogFilenameStem(stem)
+	if stem == "" {
+		stem = "untitled"
+	}
+	ext = strings.ToLower(ext)
+	candidate := stem + ext
+	for suffix := 2; used[strings.ToLower(candidate)]; suffix++ {
+		candidate = fmt.Sprintf("%s-%d%s", stem, suffix, ext)
 	}
 	used[strings.ToLower(candidate)] = true
 	return candidate

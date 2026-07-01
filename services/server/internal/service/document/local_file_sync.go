@@ -252,7 +252,7 @@ func scanLocalMarkdownTree(root string, cache *markdownFileCache) (localMarkdown
 			}
 			return nil
 		}
-		if strings.ToLower(filepath.Ext(entry.Name())) != ".md" {
+		if !isLocalDocumentFile(entry.Name()) {
 			return nil
 		}
 		relative, err := filepath.Rel(root, path)
@@ -575,6 +575,15 @@ func shouldIgnoreWorkEntry(name string) bool {
 		return true
 	}
 	return false
+}
+
+func isLocalDocumentFile(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".md", ".txt":
+		return true
+	default:
+		return false
+	}
 }
 
 func fileModTimeRFC3339(value time.Time) string {

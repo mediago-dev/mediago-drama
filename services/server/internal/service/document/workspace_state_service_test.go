@@ -807,6 +807,66 @@ func TestWorkspaceStateServiceImportsLocalMarkdownFilesFromWorkDir(t *testing.T)
 	}
 }
 
+func TestWorkspaceStateServiceImportsLocalTextFilesFromWorkDir(t *testing.T) {
+	workspaceDir := t.TempDir()
+	store := newWorkspaceStateService(workspaceDir)
+	if store.initErr != nil {
+		t.Fatalf("initializing workspace store: %v", store.initErr)
+	}
+	projectID := "project-import-local-text"
+	requireTestProject(t, store, projectID)
+
+	workDir := store.documentsDir(projectID)
+	if err := os.WriteFile(filepath.Join(workDir, "第一集 剧本.txt"), []byte("本地 txt 剧本。"), 0o644); err != nil {
+		t.Fatalf("writing local text document: %v", err)
+	}
+
+	state, err := store.listDocuments(projectID)
+	if err != nil {
+		t.Fatalf("listing documents: %v", err)
+	}
+	imported := findTestWorkspaceDocumentByTitle(state.Documents, "第一集 剧本")
+	if imported.ID == "" {
+		t.Fatalf("documents = %+v, want imported local text document", state.Documents)
+	}
+	if imported.Filename != "第一集 剧本.txt" {
+		t.Fatalf("filename = %q, want original text filename", imported.Filename)
+	}
+	if imported.Category != "screenplay" || imported.Content != "本地 txt 剧本。" {
+		t.Fatalf("imported document = %+v, want screenplay text content", imported)
+	}
+
+	nextContent := "更新后的剧本。"
+	updated, _, err := store.updateDocument(projectID, imported.ID, updateWorkspaceDocumentRequest{
+		Content: &nextContent,
+	})
+	if err != nil {
+		t.Fatalf("updating imported text document: %v", err)
+	}
+	if updated.Filename != "第一集 剧本.txt" {
+		t.Fatalf("updated filename = %q, want original text filename", updated.Filename)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "第一集 剧本.md")); !os.IsNotExist(err) {
+		t.Fatalf("markdown duplicate path err = %v, want missing", err)
+	}
+	projected, err := os.ReadFile(filepath.Join(workDir, "第一集 剧本.txt"))
+	if err != nil {
+		t.Fatalf("reading updated text projection: %v", err)
+	}
+	if !strings.Contains(string(projected), "category: screenplay") ||
+		!strings.Contains(string(projected), nextContent) {
+		t.Fatalf("updated text projection = %q, want frontmatter and content", string(projected))
+	}
+
+	state, err = store.listDocuments(projectID)
+	if err != nil {
+		t.Fatalf("listing documents after text update: %v", err)
+	}
+	if len(state.Documents) != 1 {
+		t.Fatalf("documents = %+v, want no duplicate after saving imported text", state.Documents)
+	}
+}
+
 func TestWorkspaceStateServiceSyncsLocalMarkdownFoldersFromWorkDir(t *testing.T) {
 	workspaceDir := t.TempDir()
 	store := newWorkspaceStateService(workspaceDir)

@@ -3,17 +3,15 @@ import type React from "react";
 import { Button } from "@/shared/components/ui/button";
 
 interface SelectionBubbleProps {
+	top: number;
 	x: number;
-	y: number;
 	selectedText: string;
 	onComment: () => void;
 }
 
-const bubbleOffsetY = 42;
-
 export const SelectionBubble: React.FC<SelectionBubbleProps> = ({
+	top,
 	x,
-	y,
 	selectedText,
 	onComment,
 }) => {
@@ -21,8 +19,8 @@ export const SelectionBubble: React.FC<SelectionBubbleProps> = ({
 
 	return (
 		<div
-			className="fixed z-50 -translate-x-1/2 rounded-sm border border-border bg-ide-panel p-1 text-ide-panel-foreground shadow-lg"
-			style={{ left: x, top: Math.max(y - bubbleOffsetY, 8) }}
+			className="absolute z-50 -translate-x-1/2 rounded-sm border border-border bg-ide-panel p-1 text-ide-panel-foreground shadow-lg"
+			style={{ left: x, top }}
 			onMouseDown={(event) => event.preventDefault()}
 		>
 			<div className="flex items-center gap-1">

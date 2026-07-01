@@ -2,7 +2,10 @@ import type React from "react";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
+import type {
+	MarkdownSectionContext,
+	SelectionCoords,
+} from "@/domains/documents/components/MarkdownHybridEditor";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
@@ -19,10 +22,18 @@ const testState = vi.hoisted(() => ({
 	},
 	markdownEditorProps: null as null | {
 		onSectionGenerate?: (section: MarkdownSectionContext, kind?: "image") => void;
+		onSelectionChange?: (value: string) => void;
+		onSelectionCoordChange?: (coords: SelectionCoords | null) => void;
 		selectedSectionImageAssets?: Array<{ id: string; resourceId?: string; url?: string }>;
 		value?: string;
 	},
 	mentionPopoverProps: null as null | { projectId?: string },
+	selectionBubbleProps: null as null | {
+		onComment: () => void;
+		selectedText: string;
+		top: number;
+		x: number;
+	},
 }));
 
 const generationApiMocks = vi.hoisted(() => ({
@@ -35,7 +46,12 @@ vi.mock("@/domains/documents/components/MarkdownHybridEditor", async () => {
 		MarkdownHybridEditor: React.forwardRef((props, ref) => {
 			testState.markdownEditorProps = props;
 			React.useImperativeHandle(ref, () => testState.editorHandle);
-			return <div className="tiptap-content" data-testid="markdown-editor" />;
+			return (
+				<>
+					<div className="tiptap-toolbar" data-testid="tiptap-toolbar" />
+					<div className="tiptap-content" data-testid="markdown-editor" />
+				</>
+			);
 		}),
 		prewarmMarkdownHybridEditorContent: vi.fn(),
 	};
@@ -78,7 +94,19 @@ vi.mock("@/domains/documents/components/DocumentHistoryPanel", () => ({
 }));
 
 vi.mock("@/domains/documents/components/SelectionBubble", () => ({
-	SelectionBubble: () => null,
+	SelectionBubble: (props: {
+		onComment: () => void;
+		selectedText: string;
+		top: number;
+		x: number;
+	}) => {
+		testState.selectionBubbleProps = props;
+		return (
+			<button type="button" data-testid="selection-bubble" onClick={props.onComment}>
+				{props.selectedText}
+			</button>
+		);
+	},
 }));
 
 const makeDocument = (overrides: Partial<MarkdownDocument> = {}): MarkdownDocument => ({
@@ -116,6 +144,7 @@ describe("WritingEditor", () => {
 		useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
 		testState.markdownEditorProps = null;
 		testState.mentionPopoverProps = null;
+		testState.selectionBubbleProps = null;
 		generationApiMocks.getSelectedGenerationAssets.mockReset();
 		Object.values(testState.editorHandle).forEach((value) => {
 			if (typeof value === "function" && "mockClear" in value) value.mockClear();
@@ -170,6 +199,73 @@ describe("WritingEditor", () => {
 
 		await waitFor(() => expect(testState.markdownEditorProps?.value).toBe(document.content));
 		expect(testState.markdownEditorProps?.selectedSectionImageAssets).toBeUndefined();
+	});
+
+	it("positions the selection bubble in the editor scroll container", async () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			documents: [makeDocument()],
+			projectId: "project-a",
+			workspaceDir: "/workspace/project-a",
+		});
+
+		const { container } = render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<WritingEditor />
+			</MemoryRouter>,
+		);
+		const main = container.querySelector("main");
+		if (!main) throw new Error("missing editor scroll container");
+		const toolbar = container.querySelector<HTMLElement>(".tiptap-toolbar");
+		if (!toolbar) throw new Error("missing editor toolbar");
+
+		Object.defineProperty(main, "clientHeight", { configurable: true, value: 480 });
+		Object.defineProperty(main, "clientWidth", { configurable: true, value: 640 });
+		Object.defineProperty(main, "scrollLeft", { configurable: true, value: 0 });
+		Object.defineProperty(main, "scrollTop", { configurable: true, value: 320 });
+		main.getBoundingClientRect = vi.fn(
+			() =>
+				({
+					bottom: 580,
+					height: 480,
+					left: 20,
+					right: 660,
+					top: 100,
+					width: 640,
+					x: 20,
+					y: 100,
+					toJSON: () => ({}),
+				}) as DOMRect,
+		);
+		toolbar.getBoundingClientRect = vi.fn(
+			() =>
+				({
+					bottom: 132,
+					height: 32,
+					left: 20,
+					right: 660,
+					top: 100,
+					width: 640,
+					x: 20,
+					y: 100,
+					toJSON: () => ({}),
+				}) as DOMRect,
+		);
+
+		act(() => {
+			testState.markdownEditorProps?.onSelectionChange?.("画面提示词。");
+			testState.markdownEditorProps?.onSelectionCoordChange?.({ bottom: 206, x: 260, y: 180 });
+		});
+
+		await waitFor(() => {
+			expect(testState.selectionBubbleProps).toMatchObject({
+				selectedText: "画面提示词。",
+				top: 434,
+				x: 240,
+			});
+		});
+		const bubble = container.querySelector("[data-testid='selection-bubble']");
+		expect(bubble).toBeTruthy();
+		expect(main.contains(bubble)).toBe(true);
 	});
 
 	it("opens the global generation dialog for the requested section and kind", () => {
