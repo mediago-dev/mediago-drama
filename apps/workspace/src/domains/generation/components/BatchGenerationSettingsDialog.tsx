@@ -143,9 +143,12 @@ export const BatchGenerationSettingsDialog: React.FC<{
 	const [usePromptSupplement, setUsePromptSupplement] = useState(() =>
 		batchGenerationPromptSupplementEnabled(settingsToRestore),
 	);
-	const settingsForInitialModelSelection = open
-		? (useBatchGenerationSettingsPreferenceStore.getState().settingsByKind[kind] ?? null)
-		: settingsToRestore;
+	// Seed the workspace from the snapshot captured when the dialog opened, not the
+	// live store. Reading the live store here would feed back into itself: the effect
+	// below persists edits via setStoredSettings, which would change this value, re-seed
+	// the model selection, rewrite the params, and loop forever (crashes on ratio changes
+	// like 9:16 → 3:4 that also auto-correct the resolution).
+	const settingsForInitialModelSelection = settingsToRestore;
 	const initialModelSelection = useMemo(
 		() => batchGenerationModelSelectionFromSettings(kind, settingsForInitialModelSelection),
 		[kind, settingsForInitialModelSelection],
