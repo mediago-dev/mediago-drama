@@ -1,6 +1,6 @@
 import { ChevronDown, Link2, Sparkles } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
 	imageGenerationSpecUpdate,
 	type ImageGenerationSizePreview,
@@ -19,6 +19,11 @@ export const ImageGenerationSpecControl: React.FC<{
 	spec: ImageGenerationSpec;
 }> = ({ className, label = "图像规格", onChange, showSizePreview = true, spec }) => {
 	const [open, setOpen] = useState(false);
+	const triggerRef = useRef<HTMLButtonElement>(null);
+	// Keep the wide spec popover inside the generation modal when it is opened there.
+	const popoverBoundary = open
+		? (triggerRef.current?.closest<HTMLElement>("[data-agent-mention-popup-root]") ?? undefined)
+		: undefined;
 
 	const applyOption = (axis: SpecAxis, option: SpecOption) => {
 		const update = imageGenerationSpecUpdate(spec, axis, option);
@@ -38,6 +43,7 @@ export const ImageGenerationSpecControl: React.FC<{
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<button
+					ref={triggerRef}
 					type="button"
 					aria-label={`${label}：${triggerRatioLabel}，${triggerResolutionLabel}`}
 					className={cn(
@@ -57,6 +63,8 @@ export const ImageGenerationSpecControl: React.FC<{
 			<PopoverContent
 				side="top"
 				align="start"
+				collisionBoundary={popoverBoundary}
+				collisionPadding={16}
 				aria-label={label}
 				className="grid w-[min(var(--generation-size-popover-width),var(--generation-popover-max-inline))] gap-[var(--generation-popover-gap)] rounded-[var(--generation-popover-radius)] border-border bg-popover p-[var(--generation-popover-padding)] text-popover-foreground shadow-xl"
 			>
