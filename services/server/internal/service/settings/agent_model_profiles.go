@@ -736,6 +736,10 @@ type mediagoGatewayModel struct {
 	ID                  string                     `json:"id"`
 	Name                string                     `json:"name"`
 	CanonicalSlug       string                     `json:"canonical_slug"`
+	Kind                string                     `json:"kind"`
+	Tags                []string                   `json:"tags"`
+	Categories          []string                   `json:"categories"`
+	Capabilities        []string                   `json:"capabilities"`
 	Architecture        mediagoGatewayArchitecture `json:"architecture"`
 	TopProvider         mediagoGatewayTopProvider  `json:"top_provider"`
 	ContextLength       int                        `json:"context_length"`
@@ -767,7 +771,7 @@ func (service *Settings) mediagoAgentRuntimeProfiles(ctx context.Context, spec o
 	seenModels := map[string]bool{}
 	for _, model := range models {
 		modelID := strings.TrimSpace(firstNonEmpty(model.ID, model.CanonicalSlug))
-		if modelID == "" || seenModels[modelID] || !mediagoGatewayModelSupportsText(model) {
+		if modelID == "" || seenModels[modelID] || !mediagoGatewayModelSupportsAgentConversation(model) {
 			continue
 		}
 		seenModels[modelID] = true
@@ -827,14 +831,116 @@ func fetchMediagoGatewayModels(ctx context.Context, baseURL string, apiKey strin
 	return payload.Items, nil
 }
 
-func mediagoGatewayModelSupportsText(model mediagoGatewayModel) bool {
+func mediagoGatewayModelSupportsAgentConversation(model mediagoGatewayModel) bool {
+	input := model.Architecture.InputModalities
 	output := model.Architecture.OutputModalities
-	return len(output) == 0 || stringSliceContainsFold(output, "text")
+	if strings.TrimSpace(model.Kind) != "" && !strings.EqualFold(strings.TrimSpace(model.Kind), "text") {
+		return false
+	}
+	if len(input) > 0 && !stringSliceContainsFold(input, "text") {
+		return false
+	}
+	if len(output) > 0 && !stringSliceContainsFold(output, "text") {
+		return false
+	}
+	if stringSliceContainsAnyFold(input, "audio", "speech", "voice", "video") {
+		return false
+	}
+	if stringSliceContainsAnyFold(output, "audio", "speech", "voice", "image", "video", "embedding", "embeddings", "rerank", "transcription") {
+		return false
+	}
+	if mediagoGatewayModelLooksTaskOnly(model) {
+		return false
+	}
+	return mediagoGatewayModelLooksAgentTextCapable(model)
+}
+
+func mediagoGatewayModelLooksTaskOnly(model mediagoGatewayModel) bool {
+	text := mediagoGatewayModelSignalText(model)
+	for _, token := range []string{
+		"audio",
+		"speech",
+		"voice",
+		"tts",
+		"stt",
+		"asr",
+		"transcribe",
+		"transcription",
+		"image",
+		"video",
+		"embedding",
+		"embeddings",
+		"rerank",
+		"retrieval",
+		"moderation",
+		"translate",
+		"translation",
+		"machine translation",
+		"subtitle",
+		"qwen mt",
+		"mt plus",
+	} {
+		if strings.Contains(text, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func mediagoGatewayModelLooksAgentTextCapable(model mediagoGatewayModel) bool {
+	text := mediagoGatewayModelSignalText(model)
+	for _, token := range []string{
+		"chat",
+		"agent",
+		"planner",
+		"reasoning",
+		"coding",
+		"writing",
+		"long context",
+		"documents",
+		"fast",
+		"chinese",
+		"gpt",
+		"glm",
+		"gemini",
+		"deepseek",
+		"kimi",
+		"moonshot",
+		"minimax",
+		"qwen3",
+		"claude",
+	} {
+		if strings.Contains(text, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func mediagoGatewayModelSignalText(model mediagoGatewayModel) string {
+	return normalizedModelSearchText(
+		model.ID,
+		model.Name,
+		model.CanonicalSlug,
+		model.Kind,
+		strings.Join(model.Tags, " "),
+		strings.Join(model.Categories, " "),
+		strings.Join(model.Capabilities, " "),
+	)
 }
 
 func mediagoGatewayModelSupportsTools(model mediagoGatewayModel) bool {
 	for _, parameter := range []string{"tools", "tool_choice", "tool_calls", "function_call", "functions"} {
 		if stringSliceContainsFold(model.SupportedParameters, parameter) {
+			return true
+		}
+	}
+	return false
+}
+
+func stringSliceContainsAnyFold(values []string, targets ...string) bool {
+	for _, target := range targets {
+		if stringSliceContainsFold(values, target) {
 			return true
 		}
 	}
@@ -849,6 +955,24 @@ func stringSliceContainsFold(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func normalizedModelSearchText(values ...string) string {
+	replacer := strings.NewReplacer(
+		"/", " ",
+		"-", " ",
+		"_", " ",
+		".", " ",
+		":", " ",
+	)
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(strings.ToLower(replacer.Replace(value)))
+		if value != "" {
+			parts = append(parts, strings.Join(strings.Fields(value), " "))
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 func firstPositiveInt(values ...int) int {

@@ -200,6 +200,8 @@ export const providerLabel = (provider: string) => {
 			return "MiniMax 国内";
 		case "volcengine":
 			return "火山引擎";
+		case "mediago":
+			return "MediaGo";
 		case "dmx":
 			return "DMX";
 		case "openrouter":

@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -18,11 +19,18 @@ const (
 
 // ModelPlatform describes one aggregation platform exposed by this build.
 type ModelPlatform struct {
-	ID               string `json:"id"`
-	Label            string `json:"label"`
-	Kind             string `json:"kind"`
-	Description      string `json:"description"`
-	APIKeyProviderID string `json:"apiKeyProviderId"`
+	ID               string                    `json:"id"`
+	Label            string                    `json:"label"`
+	Kind             string                    `json:"kind"`
+	Description      string                    `json:"description"`
+	APIKeyProviderID string                    `json:"apiKeyProviderId"`
+	ModelGroups      []ModelPlatformModelGroup `json:"modelGroups,omitempty"`
+}
+
+// ModelPlatformModelGroup describes models under one upstream vendor.
+type ModelPlatformModelGroup struct {
+	Label  string   `json:"label"`
+	Models []string `json:"models"`
 }
 
 // ModelPlatformList is the API payload for enabled aggregation platforms.
@@ -141,7 +149,10 @@ func (service *Settings) ModelPlatformIDs() []string {
 }
 
 // ListModelPlatforms returns enabled aggregation platforms for this build.
-func (service *Settings) ListModelPlatforms() ModelPlatformList {
+func (service *Settings) ListModelPlatforms(ctx context.Context) ModelPlatformList {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	ids := service.ModelPlatformIDs()
 	platforms := make([]ModelPlatform, 0, len(ids))
 	for _, id := range ids {
@@ -155,9 +166,176 @@ func (service *Settings) ListModelPlatforms() ModelPlatformList {
 			Kind:             spec.Kind,
 			Description:      spec.Description,
 			APIKeyProviderID: spec.APIKeyProviderID,
+			ModelGroups:      service.modelPlatformModelGroups(ctx, spec.ID),
 		})
 	}
 	return ModelPlatformList{Platforms: platforms}
+}
+
+func (service *Settings) modelPlatformModelGroups(ctx context.Context, platformID string) []ModelPlatformModelGroup {
+	if platformID != ModelPlatformMediago {
+		return nil
+	}
+	if service != nil && service.apiKeys != nil {
+		apiKey, _, err := service.apiKeys.Get(generation.ProviderMediago)
+		if err == nil {
+			apiKey = strings.TrimSpace(apiKey)
+		}
+		if apiKey != "" && service.MediagoBaseURL() != "" {
+			models, err := fetchMediagoGatewayModels(ctx, service.MediagoBaseURL(), apiKey)
+			if err == nil {
+				if groups := modelPlatformGroupsFromGatewayModels(models); len(groups) > 0 {
+					return groups
+				}
+			}
+		}
+	}
+	return catalogModelPlatformGroups(generation.ProviderMediago)
+}
+
+func catalogModelPlatformGroups(provider string) []ModelPlatformModelGroup {
+	catalog := generation.Catalog()
+	versionLabels := map[string]string{}
+	for _, version := range catalog.Versions {
+		versionLabels[version.ID] = modelPlatformCleanModelLabel(version.Label)
+	}
+
+	builder := newModelPlatformGroupBuilder()
+	for _, route := range catalog.Routes {
+		if route.Provider != provider || route.Status != generation.RouteStatusAvailable {
+			continue
+		}
+		model := firstNonEmpty(versionLabels[route.VersionID], route.Model)
+		builder.add(modelPlatformVendorLabel(route.FamilyID, route.Model, route.Label), model)
+	}
+	return builder.groups()
+}
+
+func modelPlatformGroupsFromGatewayModels(models []mediagoGatewayModel) []ModelPlatformModelGroup {
+	builder := newModelPlatformGroupBuilder()
+	for _, model := range models {
+		displayName := strings.TrimSpace(firstNonEmpty(model.Name, model.ID, model.CanonicalSlug))
+		if displayName == "" {
+			continue
+		}
+		builder.add(modelPlatformGatewayVendorLabel(model), displayName)
+	}
+	return builder.groups()
+}
+
+type modelPlatformGroupBuilder struct {
+	groupOrder    []string
+	groupsByLabel map[string][]string
+	seen          map[string]map[string]bool
+}
+
+func newModelPlatformGroupBuilder() *modelPlatformGroupBuilder {
+	return &modelPlatformGroupBuilder{
+		groupOrder:    []string{},
+		groupsByLabel: map[string][]string{},
+		seen:          map[string]map[string]bool{},
+	}
+}
+
+func (builder *modelPlatformGroupBuilder) add(label string, model string) {
+	label = strings.TrimSpace(label)
+	model = strings.TrimSpace(model)
+	if label == "" {
+		label = "其他"
+	}
+	if model == "" {
+		return
+	}
+	if _, ok := builder.groupsByLabel[label]; !ok {
+		builder.groupOrder = append(builder.groupOrder, label)
+		builder.groupsByLabel[label] = []string{}
+		builder.seen[label] = map[string]bool{}
+	}
+	seenKey := strings.ToLower(model)
+	if builder.seen[label][seenKey] {
+		return
+	}
+	builder.seen[label][seenKey] = true
+	builder.groupsByLabel[label] = append(builder.groupsByLabel[label], model)
+}
+
+func (builder *modelPlatformGroupBuilder) groups() []ModelPlatformModelGroup {
+	result := make([]ModelPlatformModelGroup, 0, len(builder.groupOrder))
+	for _, label := range builder.groupOrder {
+		models := builder.groupsByLabel[label]
+		if len(models) == 0 {
+			continue
+		}
+		result = append(result, ModelPlatformModelGroup{
+			Label:  label,
+			Models: models,
+		})
+	}
+	return result
+}
+
+func modelPlatformVendorLabel(familyID string, model string, routeLabel string) string {
+	switch strings.ToLower(strings.TrimSpace(familyID)) {
+	case "gpt-text", "gpt-image":
+		return "OpenAI"
+	case "gemini-text", "nano-banana":
+		return "Google Gemini"
+	case "minimax-text", "minimax-speech":
+		return "MiniMax"
+	case "deepseek-text":
+		return "DeepSeek"
+	case "seedream", "seedance":
+		return "字节"
+	}
+	return modelPlatformVendorLabelFromText(model + " " + routeLabel)
+}
+
+func modelPlatformGatewayVendorLabel(model mediagoGatewayModel) string {
+	return modelPlatformVendorLabelFromText(
+		model.ID + " " +
+			model.Name + " " +
+			model.CanonicalSlug + " " +
+			model.Kind + " " +
+			strings.Join(model.Tags, " ") + " " +
+			strings.Join(model.Categories, " "),
+	)
+}
+
+func modelPlatformVendorLabelFromText(value string) string {
+	text := normalizedModelSearchText(value)
+	for _, item := range []struct {
+		token string
+		label string
+	}{
+		{token: "minimax", label: "MiniMax"},
+		{token: "deepseek", label: "DeepSeek"},
+		{token: "gemini", label: "Google Gemini"},
+		{token: "google", label: "Google Gemini"},
+		{token: "seedream", label: "字节"},
+		{token: "seedance", label: "字节"},
+		{token: "doubao", label: "字节"},
+		{token: "bytedance", label: "字节"},
+		{token: "gpt", label: "OpenAI"},
+		{token: "openai", label: "OpenAI"},
+		{token: "glm", label: "智谱 GLM"},
+		{token: "zhipu", label: "智谱 GLM"},
+		{token: "qwen", label: "通义千问"},
+		{token: "claude", label: "Anthropic"},
+		{token: "anthropic", label: "Anthropic"},
+		{token: "kimi", label: "Moonshot"},
+		{token: "moonshot", label: "Moonshot"},
+	} {
+		if strings.Contains(text, item.token) {
+			return item.label
+		}
+	}
+	return "其他"
+}
+
+func modelPlatformCleanModelLabel(label string) string {
+	label = strings.TrimSpace(label)
+	label = strings.TrimSuffix(label, " Text")
+	return strings.TrimSpace(label)
 }
 
 func (service *Settings) modelPlatformEnabled(id string) bool {

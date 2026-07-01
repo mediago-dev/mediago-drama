@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeConfigPayload } from "@/domains/agent/api/agent";
 import { AgentRuntimeConfigControls } from "./AgentRuntimeConfigControls";
@@ -18,22 +18,36 @@ const baseConfig: AgentRuntimeConfigPayload = {
 
 const renderControls = (
 	config?: AgentRuntimeConfigPayload,
-	options: { isLoading?: boolean; errorMessage?: string } = {},
-) =>
-	render(
-		<AgentRuntimeConfigControls
-			config={config}
-			disabled={false}
-			errorMessage={options.errorMessage ?? ""}
-			isLoading={options.isLoading ?? false}
-			modelValue=""
-			permissionValue=""
-			reasoningValue=""
-			onModelChange={vi.fn()}
-			onPermissionChange={vi.fn()}
-			onReasoningChange={vi.fn()}
-		/>,
-	);
+	options: {
+		errorMessage?: string;
+		isLoading?: boolean;
+		modelValue?: string;
+		onModelChange?: (value: string) => void;
+	} = {},
+) => render(runtimeControlsElement(config, options));
+
+const runtimeControlsElement = (
+	config?: AgentRuntimeConfigPayload,
+	options: {
+		errorMessage?: string;
+		isLoading?: boolean;
+		modelValue?: string;
+		onModelChange?: (value: string) => void;
+	} = {},
+) => (
+	<AgentRuntimeConfigControls
+		config={config}
+		disabled={false}
+		errorMessage={options.errorMessage ?? ""}
+		isLoading={options.isLoading ?? false}
+		modelValue={options.modelValue ?? ""}
+		permissionValue=""
+		reasoningValue=""
+		onModelChange={options.onModelChange ?? vi.fn()}
+		onPermissionChange={vi.fn()}
+		onReasoningChange={vi.fn()}
+	/>
+);
 
 describe("AgentRuntimeConfigControls", () => {
 	afterEach(() => {
@@ -71,5 +85,120 @@ describe("AgentRuntimeConfigControls", () => {
 
 		expect(screen.getByText("推理强度")).toBeTruthy();
 		expect(screen.getByText("中等")).toBeTruthy();
+	});
+
+	it("shows category and model columns for model options", () => {
+		const onModelChange = vi.fn();
+		renderControls(
+			{
+				model: {
+					configId: "model",
+					currentValue: "mediago/minimax-m3",
+					options: [
+						{
+							name: "MediaGo/MiniMax M3",
+							value: "mediago/minimax-m3",
+						},
+						{
+							name: "MiniMax 国内/MiniMax-M3",
+							value: "minimax/minimax-m3",
+						},
+						{
+							name: "MediaGo/GLM-4 Flash",
+							value: "mediago/glm-4-flash",
+						},
+					],
+				},
+			},
+			{ onModelChange },
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "模型" }));
+
+		expect(screen.getByText("分类")).toBeTruthy();
+		expect(screen.getByText("GLM-4 Flash")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "MediaGo" })).toBeTruthy();
+
+		fireEvent.click(screen.getByRole("button", { name: "MiniMax 国内" }));
+		fireEvent.click(screen.getByRole("button", { name: "MiniMax-M3" }));
+
+		expect(onModelChange).toHaveBeenCalledWith("minimax/minimax-m3");
+	});
+
+	it("renders agent model trigger icons as provider then model and deduplicates matching icons", () => {
+		const view = renderControls(
+			{
+				model: {
+					configId: "model",
+					currentValue: "mediago/glm-4-flash",
+					options: [
+						{
+							name: "MediaGo/GLM-4 Flash",
+							value: "mediago/glm-4-flash",
+						},
+					],
+				},
+			},
+			{ modelValue: "mediago/glm-4-flash" },
+		);
+		expect(agentModelTriggerBrands(view.container)).toEqual(["mediago", "glm"]);
+
+		view.rerender(
+			runtimeControlsElement(
+				{
+					model: {
+						configId: "model",
+						currentValue: "minimax/minimax-m3",
+						options: [
+							{
+								name: "MiniMax 国内/MiniMax-M3",
+								value: "minimax/minimax-m3",
+							},
+						],
+					},
+				},
+				{ modelValue: "minimax/minimax-m3" },
+			),
+		);
+
+		expect(agentModelTriggerBrands(view.container)).toEqual(["minimax"]);
+	});
+
+	const agentModelTriggerBrands = (container: HTMLElement) =>
+		Array.from(container.querySelectorAll('button[aria-label="模型"] [data-generation-brand]')).map(
+			(node) => node.getAttribute("data-generation-brand"),
+		);
+
+	it("keeps the open model menu stable when config refreshes", () => {
+		const modelConfig = (): AgentRuntimeConfigPayload => ({
+			model: {
+				configId: "model",
+				currentValue: "mediago/glm-4-flash",
+				options: [
+					{
+						name: "MediaGo/GLM-4 Flash",
+						value: "mediago/glm-4-flash",
+					},
+					{
+						name: "MiniMax 国内/MiniMax-M3",
+						value: "minimax/minimax-m3",
+					},
+				],
+			},
+		});
+		const view = renderControls(modelConfig(), { modelValue: "mediago/glm-4-flash" });
+
+		fireEvent.click(screen.getByRole("button", { name: "模型" }));
+		const menu = screen.getByLabelText("分类和模型");
+		expect(menu).toHaveClass("h-[22rem]");
+
+		fireEvent.mouseEnter(screen.getByRole("button", { name: "MiniMax 国内" }));
+		expect(screen.getByText("MiniMax-M3")).toBeTruthy();
+		expect(screen.queryByText("GLM-4 Flash")).toBeNull();
+
+		view.rerender(runtimeControlsElement(modelConfig(), { modelValue: "mediago/glm-4-flash" }));
+
+		expect(screen.getByText("MiniMax-M3")).toBeTruthy();
+		expect(screen.queryByText("GLM-4 Flash")).toBeNull();
 	});
 });

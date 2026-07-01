@@ -44,6 +44,7 @@ func TestCatalogRoutesReferenceKnownFamiliesAndVersions(t *testing.T) {
 		ProviderMiniMax,
 		ProviderDeepSeek,
 		ProviderVolcengine,
+		ProviderMediago,
 		ProviderDMX,
 		ProviderOpenRouter,
 		ProviderJimeng,
@@ -64,23 +65,34 @@ func TestTextCatalogIncludesExpandedRoutes(t *testing.T) {
 		{RouteDMXGPT55Text, FamilyGPTText, ProviderDMX, "gpt-5.5"},
 		{RouteDMXGPT54Text, FamilyGPTText, ProviderDMX, "gpt-5.4"},
 		{RouteDMXGPT54MiniText, FamilyGPTText, ProviderDMX, "gpt-5.4-mini"},
+		{RouteMediagoGPT55Text, FamilyGPTText, ProviderMediago, "gpt-5.5"},
+		{RouteMediagoGPT54Text, FamilyGPTText, ProviderMediago, "gpt-5.4"},
+		{RouteMediagoGPT54MiniText, FamilyGPTText, ProviderMediago, "gpt-5.4-mini"},
 		{RouteOpenRouterGPT55Text, FamilyGPTText, ProviderOpenRouter, "openai/gpt-5.5"},
 		{RouteOpenRouterGPT54Text, FamilyGPTText, ProviderOpenRouter, "openai/gpt-5.4"},
 		{RouteOpenRouterGPT54MiniText, FamilyGPTText, ProviderOpenRouter, "openai/gpt-5.4-mini"},
 		{RouteDMXGemini35FlashText, FamilyGeminiText, ProviderDMX, "gemini-3.5-flash"},
 		{RouteDMXGemini31ProText, FamilyGeminiText, ProviderDMX, "gemini-3.1-pro-preview"},
 		{RouteDMXGemini31FlashLiteText, FamilyGeminiText, ProviderDMX, "gemini-3.1-flash-lite"},
+		{RouteMediagoGemini35FlashText, FamilyGeminiText, ProviderMediago, "gemini-3.5-flash"},
+		{RouteMediagoGemini31ProText, FamilyGeminiText, ProviderMediago, "gemini-3.1-pro-preview"},
+		{RouteMediagoGemini31FlashLiteText, FamilyGeminiText, ProviderMediago, "gemini-3.1-flash-lite"},
 		{RouteOpenRouterGemini35FlashText, FamilyGeminiText, ProviderOpenRouter, "google/gemini-3.5-flash"},
 		{RouteOpenRouterGemini31ProText, FamilyGeminiText, ProviderOpenRouter, "google/gemini-3.1-pro-preview"},
 		{RouteOpenRouterGemini31FlashLiteText, FamilyGeminiText, ProviderOpenRouter, "google/gemini-3.1-flash-lite"},
 		{RouteDMXMiniMaxM3Text, FamilyMiniMaxText, ProviderDMX, "MiniMax-M3"},
 		{RouteDMXMiniMaxM27Text, FamilyMiniMaxText, ProviderDMX, "MiniMax-M2.7"},
 		{RouteDMXMiniMaxM27HighspeedText, FamilyMiniMaxText, ProviderDMX, "MiniMax-M2.7-highspeed"},
+		{RouteMediagoMiniMaxM3Text, FamilyMiniMaxText, ProviderMediago, "MiniMax-M3"},
+		{RouteMediagoMiniMaxM27Text, FamilyMiniMaxText, ProviderMediago, "MiniMax-M2.7"},
+		{RouteMediagoMiniMaxM27HighspeedText, FamilyMiniMaxText, ProviderMediago, "MiniMax-M2.7-highspeed"},
 		{RouteOpenRouterMiniMaxM3Text, FamilyMiniMaxText, ProviderOpenRouter, "minimax/minimax-m3"},
 		{RouteOpenRouterMiniMaxM27Text, FamilyMiniMaxText, ProviderOpenRouter, "minimax/minimax-m2.7"},
 		{RouteOpenRouterMiniMaxM27HighspeedText, FamilyMiniMaxText, ProviderOpenRouter, "minimax/minimax-m2.7-highspeed"},
 		{RouteDMXDeepSeekV4FlashText, FamilyDeepSeekText, ProviderDMX, "deepseek-v4-flash"},
 		{RouteDMXDeepSeekV4ProText, FamilyDeepSeekText, ProviderDMX, "deepseek-v4-pro"},
+		{RouteMediagoDeepSeekV4FlashText, FamilyDeepSeekText, ProviderMediago, "deepseek-v4-flash"},
+		{RouteMediagoDeepSeekV4ProText, FamilyDeepSeekText, ProviderMediago, "deepseek-v4-pro"},
 		{RouteOpenRouterDeepSeekV4FlashText, FamilyDeepSeekText, ProviderOpenRouter, "deepseek/deepseek-v4-flash"},
 		{RouteOpenRouterDeepSeekV4ProText, FamilyDeepSeekText, ProviderOpenRouter, "deepseek/deepseek-v4-pro"},
 		{RouteOfficialGPT55Text, FamilyGPTText, ProviderOpenAI, "gpt-5.5"},
@@ -109,6 +121,43 @@ func TestTextCatalogIncludesExpandedRoutes(t *testing.T) {
 		}
 		if len(route.AuthKeys) != 1 || route.AuthKeys[0] != tc.provider {
 			t.Fatalf("route %q auth keys = %#v, want provider key %q", tc.id, route.AuthKeys, tc.provider)
+		}
+	}
+}
+
+func TestImageCatalogIncludesMediagoRoutes(t *testing.T) {
+	cases := []struct {
+		id      string
+		family  string
+		version string
+		model   string
+		refs    bool
+	}{
+		{RouteMediagoSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "doubao-seedream-5-0-lite", false},
+		{RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, "gpt-image-2", true},
+		{RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "gemini-3.1-flash-image", true},
+		{RouteMediagoNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, "gemini-2.5-flash-image", true},
+	}
+
+	for _, tc := range cases {
+		route, ok := FindRoute(tc.id)
+		if !ok {
+			t.Fatalf("route %q is missing", tc.id)
+		}
+		if route.Kind != KindImage || route.FamilyID != tc.family || route.VersionID != tc.version {
+			t.Fatalf("route %q = %#v, want image family/version route", tc.id, route)
+		}
+		if route.Provider != ProviderMediago || route.Model != tc.model {
+			t.Fatalf("route %q provider/model = %q/%q, want %q/%q", tc.id, route.Provider, route.Model, ProviderMediago, tc.model)
+		}
+		if len(route.AuthKeys) != 1 || route.AuthKeys[0] != ProviderMediago {
+			t.Fatalf("route %q auth keys = %#v, want MediaGo key", tc.id, route.AuthKeys)
+		}
+		if route.Adapter != AdapterOpenRouterChatImage {
+			t.Fatalf("route %q adapter = %q, want %q", tc.id, route.Adapter, AdapterOpenRouterChatImage)
+		}
+		if route.SupportsReferenceURLs != tc.refs {
+			t.Fatalf("route %q refs = %v, want %v", tc.id, route.SupportsReferenceURLs, tc.refs)
 		}
 	}
 }

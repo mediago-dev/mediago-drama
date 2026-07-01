@@ -4,7 +4,7 @@ vars:
   ROOT_DIR:
     sh: pwd
   AGENT: '{{.AGENT | default "opencode"}}'
-  MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago"}}'
+  MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago,openrouter,dmxapi"}}'
   MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default "http://127.0.0.1:3001/api/v1"}}'
   TOOL: '{{.TOOL | default "ffmpeg"}}'
   SERVER_PORT: '{{.SERVER_PORT | default "48273"}}'

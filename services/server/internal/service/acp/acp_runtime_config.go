@@ -24,14 +24,18 @@ func AgentRuntimeConfigFromACPSession(session acp.NewSessionResponse) AgentRunti
 		if option.Select == nil {
 			continue
 		}
-		selectConfig := AgentRuntimeSelectConfigFromACP(*option.Select)
-		if selectConfig == nil {
-			continue
-		}
 		if IsACPModelConfig(*option.Select) {
+			selectConfig := AgentRuntimeModelSelectConfigFromACP(*option.Select)
+			if selectConfig == nil {
+				continue
+			}
 			if config.Model == nil {
 				config.Model = selectConfig
 			}
+			continue
+		}
+		selectConfig := AgentRuntimeSelectConfigFromACP(*option.Select)
+		if selectConfig == nil {
 			continue
 		}
 		if IsACPReasoningConfig(*option.Select) {
@@ -94,6 +98,22 @@ func AgentRuntimeSelectConfigFromACP(option acp.SessionConfigOptionSelect) *Agen
 	}
 }
 
+// AgentRuntimeModelSelectConfigFromACP maps one ACP model select and removes non-chat models.
+func AgentRuntimeModelSelectConfigFromACP(option acp.SessionConfigOptionSelect) *AgentRuntimeSelectConfig {
+	config := AgentRuntimeSelectConfigFromACP(option)
+	if config == nil {
+		return nil
+	}
+	config.Options = AgentRuntimeModelOptions(config.Options)
+	if len(config.Options) == 0 {
+		return nil
+	}
+	if !agentRuntimeOptionValueExists(config.Options, config.CurrentValue) {
+		config.CurrentValue = config.Options[0].Value
+	}
+	return config
+}
+
 // AgentRuntimeSelectOptionsFromACP maps ACP select choices.
 func AgentRuntimeSelectOptionsFromACP(options acp.SessionConfigSelectOptions) []AgentRuntimeSelectOption {
 	values := map[string]struct{}{}
@@ -132,6 +152,113 @@ func AgentRuntimeSelectOptionsFromACP(options acp.SessionConfigSelectOptions) []
 	}
 
 	return result
+}
+
+// AgentRuntimeModelOptions filters ACP model choices down to chat-capable model options.
+func AgentRuntimeModelOptions(options []AgentRuntimeSelectOption) []AgentRuntimeSelectOption {
+	result := make([]AgentRuntimeSelectOption, 0, len(options))
+	for _, option := range options {
+		if agentRuntimeModelOptionLooksTaskOnly(option) {
+			continue
+		}
+		if agentRuntimeModelOptionLooksMediago(option) && !agentRuntimeModelOptionLooksAgentTextCapable(option) {
+			continue
+		}
+		result = append(result, option)
+	}
+	return result
+}
+
+func agentRuntimeModelOptionLooksTaskOnly(option AgentRuntimeSelectOption) bool {
+	text := normalizedACPModelOptionText(option.Value, option.Name, option.Description)
+	for _, token := range []string{
+		"audio",
+		"speech",
+		"voice",
+		"tts",
+		"stt",
+		"asr",
+		"transcribe",
+		"transcription",
+		"image",
+		"video",
+		"embedding",
+		"rerank",
+		"moderation",
+		"translate",
+		"translation",
+		"machine translation",
+		"qwen mt",
+		"mt plus",
+	} {
+		if strings.Contains(text, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func agentRuntimeModelOptionLooksMediago(option AgentRuntimeSelectOption) bool {
+	text := normalizedACPModelOptionText(option.Value, option.Name, option.Description)
+	return strings.Contains(text, "mediago")
+}
+
+func agentRuntimeModelOptionLooksAgentTextCapable(option AgentRuntimeSelectOption) bool {
+	text := normalizedACPModelOptionText(option.Value, option.Name, option.Description)
+	for _, token := range []string{
+		"chat",
+		"agent",
+		"planner",
+		"reasoning",
+		"coding",
+		"writing",
+		"long context",
+		"documents",
+		"fast",
+		"chinese",
+		"gpt",
+		"glm",
+		"gemini",
+		"deepseek",
+		"kimi",
+		"moonshot",
+		"minimax",
+		"qwen3",
+		"claude",
+	} {
+		if strings.Contains(text, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizedACPModelOptionText(values ...string) string {
+	replacer := strings.NewReplacer(
+		"/", " ",
+		"-", " ",
+		"_", " ",
+		".", " ",
+		":", " ",
+	)
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(strings.ToLower(replacer.Replace(value)))
+		if value != "" {
+			parts = append(parts, strings.Join(strings.Fields(value), " "))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func agentRuntimeOptionValueExists(options []AgentRuntimeSelectOption, value string) bool {
+	value = strings.TrimSpace(value)
+	for _, option := range options {
+		if strings.TrimSpace(option.Value) == value {
+			return true
+		}
+	}
+	return false
 }
 
 // IsACPModelConfig reports whether an ACP option selects a model.

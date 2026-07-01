@@ -68,7 +68,7 @@ func (handler Settings) HandleAPIKeys(context *gin.Context) {
 // @Success 200 {object} SwaggerEnvelope
 // @Router /api/v1/settings/model-platforms [get]
 func (handler Settings) HandleModelPlatforms(context *gin.Context) {
-	httpresponse.OK(context, handler.service.ListModelPlatforms())
+	httpresponse.OK(context, handler.service.ListModelPlatforms(context.Request.Context()))
 }
 
 // HandleJianyingDraftSettings godoc

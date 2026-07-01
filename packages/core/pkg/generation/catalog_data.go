@@ -22,6 +22,7 @@ var familySpecs = []familySpec{
 		Routes: []ModelRoute{
 			dmxRoute(RouteDMXSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "DMX", "doubao-seedream-5.0-lite", AdapterDMXResponsesImage, "https://doc.dmxapi.cn/doubao-seedream-5.0-lite-Multi-image-fusion.html", seedreamParams(), false, true, ModelSeedream5Lite),
 			officialRoute(RouteOfficialSeedream5Lite, FamilySeedream, VersionSeedream5Lite, KindImage, "Volcengine official", "doubao-seedream-5-0-260128", AdapterOfficialVolcengineImage, "https://www.volcengine.com/docs/82379/1541523", []string{"volcengine"}, seedreamParams(), false, true),
+			mediagoRoute(RouteMediagoSeedream5Lite, FamilySeedream, VersionSeedream5Lite, KindImage, "MediaGo", "doubao-seedream-5-0-lite", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, false),
 			jimengRoute(RouteJimengSeedream50, FamilySeedream, VersionSeedream5Lite, "即梦", "5.0", AdapterJimengCLIImage, "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg", jimengSeedreamParams(), false, true, ModelSeedream50),
 			jimengRoute(RouteJimengSeedream47, FamilySeedream, VersionSeedream47, "即梦", "4.7", AdapterJimengCLIImage, "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg", jimengSeedreamParams(), false, true, ModelSeedream47),
 			openRouterRoute(RouteOpenRouterSeedream45, FamilySeedream, VersionSeedream45, KindImage, "OpenRouter", "bytedance-seed/seedream-4.5", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, true),
@@ -153,6 +154,7 @@ var familySpecs = []familySpec{
 		Routes: []ModelRoute{
 			officialRoute(RouteOfficialGPTImage2, FamilyGPTImage, VersionGPTImage2, KindImage, "OpenAI official", "gpt-image-2", AdapterOfficialOpenAIImage, "https://platform.openai.com/docs/guides/image-generation", []string{"openai"}, officialGPTImageParams(), false, false),
 			dmxRoute(RouteDMXGPTImage2, FamilyGPTImage, VersionGPTImage2, "DMX", "gpt-image-2-ssvip", AdapterDMXImagesGenerations, "https://doc.dmxapi.cn/gpt-image-2-image-edit.html", dmxGPTImageParams(), false, true, ModelGPTImage2),
+			mediagoRoute(RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, KindImage, "MediaGo", "gpt-image-2", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, true),
 			openRouterRoute(RouteOpenRouterGPT54Image2, FamilyGPTImage, VersionGPT54Image2, KindImage, "OpenRouter", "openai/gpt-5.4-image-2", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, false),
 		},
 	},
@@ -171,6 +173,8 @@ var familySpecs = []familySpec{
 		Routes: []ModelRoute{
 			officialRoute(RouteOfficialNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, KindImage, "Google official", "gemini-3.1-flash-image-preview", AdapterOfficialGoogleImage, "https://ai.google.dev/gemini-api/docs/image-generation", []string{"google"}, nanoBananaParams(), false, true),
 			dmxRoute(RouteDMXNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "DMX", "gemini-3.1-flash-image-preview", AdapterDMXGeminiGenerate, "https://doc.dmxapi.cn/gemini-3.1-flash-image-preview-edit.html", nanoBananaParams(), false, true, ModelNanoBanana),
+			mediagoRoute(RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, KindImage, "MediaGo", "gemini-3.1-flash-image", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, true),
+			mediagoRoute(RouteMediagoNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, KindImage, "MediaGo", "gemini-2.5-flash-image", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, true),
 			openRouterRoute(RouteOpenRouterNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, KindImage, "OpenRouter", "google/gemini-3.1-flash-image-preview", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, false),
 			openRouterRoute(RouteOpenRouterNanoBananaPro, FamilyNanoBanana, VersionNanoBananaPro, KindImage, "OpenRouter", "google/gemini-3-pro-image-preview", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, false),
 			openRouterRoute(RouteOpenRouterNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, KindImage, "OpenRouter", "google/gemini-2.5-flash-image", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, false),

@@ -24,6 +24,12 @@ export interface ModelPlatform {
 	kind: "unified" | "custom" | string;
 	description: string;
 	apiKeyProviderId: string;
+	modelGroups?: ModelPlatformModelGroup[];
+}
+
+export interface ModelPlatformModelGroup {
+	label: string;
+	models: string[];
 }
 
 export interface ModelPlatformsResponse {

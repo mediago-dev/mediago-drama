@@ -67,6 +67,71 @@ func TestProviderDispatchesByRouteProvider(t *testing.T) {
 	}
 }
 
+func TestProviderDispatchesMediagoImageRoute(t *testing.T) {
+	var credentialKey string
+	var authHeader string
+	var payload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authHeader = request.Header.Get("Authorization")
+		if request.URL.Path != "/chat/completions" {
+			t.Fatalf("path = %q, want /chat/completions", request.URL.Path)
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"id":"chat_1",
+			"model":"gemini-3.1-flash-image",
+			"choices":[{"message":{"images":[{"type":"image_url","image_url":{"url":"https://example.test/mediago.png"}}]}}],
+			"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}
+		}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{
+		MediagoBaseURL: server.URL,
+		Credentials: CredentialResolverFunc(func(_ context.Context, key string) (string, error) {
+			credentialKey = key
+			return "sk-mediago", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		RouteID: generation.RouteMediagoNanoBanana31,
+		Prompt:  "make an image",
+		Params: map[string]any{
+			"aspectRatio": "16:9",
+			"imageSize":   "2K",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if credentialKey != generation.ProviderMediago {
+		t.Fatalf("credential key = %q, want %q", credentialKey, generation.ProviderMediago)
+	}
+	if authHeader != "Bearer sk-mediago" {
+		t.Fatalf("Authorization = %q, want Bearer sk-mediago", authHeader)
+	}
+	if payload["model"] != "gemini-3.1-flash-image" {
+		t.Fatalf("model = %v", payload["model"])
+	}
+	if imageConfig, ok := payload["image_config"].(map[string]any); !ok ||
+		imageConfig["aspect_ratio"] != "16:9" ||
+		imageConfig["image_size"] != "2K" {
+		t.Fatalf("image_config = %#v", payload["image_config"])
+	}
+	if response.Status != "completed" || len(response.Assets) != 1 || response.Assets[0].URL != "https://example.test/mediago.png" {
+		t.Fatalf("response = %#v, want completed MediaGo image asset", response)
+	}
+}
+
 func TestProviderCachesRouteProviderButResolvesCredentialsEachRequest(t *testing.T) {
 	var credentialCalls int
 	var requests int

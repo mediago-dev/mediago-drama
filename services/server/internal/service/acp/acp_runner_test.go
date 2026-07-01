@@ -222,6 +222,10 @@ func TestAgentRuntimeConfigFromACPSession(t *testing.T) {
 	reasoningCategory := acp.SessionConfigOptionCategoryThoughtLevel
 	modelOptions := acp.SessionConfigSelectOptionsUngrouped{
 		{Name: "GPT-5.5", Value: acp.SessionConfigValueId("gpt-5.5"), Description: &modelDescription},
+		{Name: "MediaGo/MiniMax M3", Value: acp.SessionConfigValueId("mediago/minimax-m3")},
+		{Name: "MediaGo/Qwen MT Plus", Value: acp.SessionConfigValueId("mediago/qwen-mt-plus")},
+		{Name: "MediaGo/Speech Preview", Value: acp.SessionConfigValueId("mediago/speech-preview")},
+		{Name: "MediaGo/Foo Task", Value: acp.SessionConfigValueId("mediago/foo-task")},
 	}
 	reasoningOptions := acp.SessionConfigSelectOptionsUngrouped{
 		{Name: "Low", Value: acp.SessionConfigValueId("low")},
@@ -271,8 +275,11 @@ func TestAgentRuntimeConfigFromACPSession(t *testing.T) {
 	if config.Model.ConfigID != "model" || config.Model.Source != AgentRuntimeConfigSourceOption || config.Model.CurrentValue != "gpt-5.5" {
 		t.Fatalf("model config = %#v, want ACP config option and current value", config.Model)
 	}
-	if len(config.Model.Options) != 1 || config.Model.Options[0].Value != "gpt-5.5" || config.Model.Options[0].Description != modelDescription {
-		t.Fatalf("model options = %#v, want gpt-5.5", config.Model.Options)
+	if len(config.Model.Options) != 2 ||
+		config.Model.Options[0].Value != "gpt-5.5" ||
+		config.Model.Options[0].Description != modelDescription ||
+		config.Model.Options[1].Value != "mediago/minimax-m3" {
+		t.Fatalf("model options = %#v, want only chat-capable model choices", config.Model.Options)
 	}
 
 	if config.Reasoning == nil {

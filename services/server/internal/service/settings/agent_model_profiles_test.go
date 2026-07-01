@@ -276,9 +276,9 @@ func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testi
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{
 			"data": [
-					{
-						"id": "local/gpt-test",
-						"name": "GPT Test",
+				{
+					"id": "local/gpt-test",
+					"name": "GPT Test",
 					"architecture": {
 						"input_modalities": ["text", "image"],
 						"output_modalities": ["text"]
@@ -286,23 +286,72 @@ func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testi
 					"supported_parameters": ["stream", "tools"],
 					"top_provider": {
 						"context_length": 123456,
-							"max_completion_tokens": 4096
-						}
+						"max_completion_tokens": 4096
+					}
+				},
+				{
+					"id": "local/text-test",
+					"name": "Text Test",
+					"kind": "text",
+					"tags": ["text", "chat"],
+					"categories": ["text", "chat"],
+					"architecture": {
+						"input_modalities": ["text"],
+						"output_modalities": ["text"]
 					},
-					{
-						"id": "local/text-test",
-						"name": "Text Test",
-						"architecture": {
-							"input_modalities": ["text"],
-							"output_modalities": ["text"]
-						},
-						"supported_parameters": ["stream", "temperature"]
-					},
-					{
-						"id": "local/image-test",
-						"architecture": {
+					"supported_parameters": ["stream", "temperature"]
+				},
+				{
+					"id": "local/image-test",
+					"architecture": {
 						"input_modalities": ["text"],
 						"output_modalities": ["image"]
+					}
+				},
+				{
+					"id": "local/foo-task",
+					"name": "Foo Task",
+					"kind": "text",
+					"tags": ["text"],
+					"categories": ["text"],
+					"architecture": {
+						"input_modalities": ["text"],
+						"output_modalities": ["text"]
+					}
+				},
+				{
+					"id": "local/image-output-test",
+					"name": "Image Output Test",
+					"architecture": {
+						"input_modalities": ["text"],
+						"output_modalities": ["text", "image"]
+					}
+				},
+				{
+					"id": "local/audio-output-test",
+					"name": "Audio Output Test",
+					"architecture": {
+						"input_modalities": ["text"],
+						"output_modalities": ["audio"]
+					}
+				},
+				{
+					"id": "local/speech-input-test",
+					"name": "Speech Input Test",
+					"architecture": {
+						"input_modalities": ["audio"],
+						"output_modalities": ["text"]
+					}
+				},
+				{
+					"id": "qwen/qwen-mt-plus",
+					"name": "Qwen MT Plus",
+					"kind": "text",
+					"tags": ["text", "translation", "subtitle"],
+					"categories": ["text", "translation", "subtitle"],
+					"architecture": {
+						"input_modalities": ["text"],
+						"output_modalities": ["text"]
 					}
 				}
 			]
@@ -352,8 +401,18 @@ func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testi
 			t.Fatalf("opencode.json missing %q:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, "local/image-test") {
-		t.Fatalf("opencode.json should not include non-text MediaGo model:\n%s", text)
+	for _, unwanted := range []string{
+		"local/image-test",
+		"local/foo-task",
+		"local/image-output-test",
+		"local/audio-output-test",
+		"local/speech-input-test",
+		"qwen/qwen-mt-plus",
+		"Qwen MT Plus",
+	} {
+		if strings.Contains(text, unwanted) {
+			t.Fatalf("opencode.json should not include non-conversation MediaGo model %q:\n%s", unwanted, text)
+		}
 	}
 
 	var rendered openCodeConfigFile

@@ -232,11 +232,12 @@ func (provider *Provider) mediagoProvider(ctx context.Context) (generation.Provi
 	)
 	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
 		return openrouter.NewProvider(openrouter.Config{
-			BaseURL:    baseURL,
-			APIKey:     apiKey,
-			AppURL:     provider.config.OpenRouterAppURL,
-			AppTitle:   provider.config.OpenRouterAppName,
-			HTTPClient: provider.config.HTTPClient,
+			BaseURL:      baseURL,
+			APIKey:       apiKey,
+			AppURL:       provider.config.OpenRouterAppURL,
+			AppTitle:     provider.config.OpenRouterAppName,
+			ProviderName: generation.ProviderMediago,
+			HTTPClient:   provider.config.HTTPClient,
 		})
 	})
 }

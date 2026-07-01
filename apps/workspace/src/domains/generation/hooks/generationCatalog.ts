@@ -72,6 +72,7 @@ const fallbackProviderTypes: Record<string, GenerationProviderType> = {
 	openai: "official",
 	google: "official",
 	volcengine: "official",
+	mediago: "aggregator",
 	minimax: "official",
 	dmx: "aggregator",
 	openrouter: "aggregator",

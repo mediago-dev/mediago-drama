@@ -22,20 +22,22 @@ const (
 
 // Config controls the OpenRouter provider.
 type Config struct {
-	BaseURL    string
-	APIKey     string
-	AppURL     string
-	AppTitle   string
-	HTTPClient *http.Client
+	BaseURL      string
+	APIKey       string
+	AppURL       string
+	AppTitle     string
+	ProviderName string
+	HTTPClient   *http.Client
 }
 
 // Provider calls OpenRouter image and video generation endpoints.
 type Provider struct {
-	baseURL  string
-	apiKey   string
-	appURL   string
-	appTitle string
-	client   *http.Client
+	baseURL      string
+	apiKey       string
+	appURL       string
+	appTitle     string
+	providerName string
+	client       *http.Client
 }
 
 // NewProvider creates an OpenRouter generation provider.
@@ -48,6 +50,10 @@ func NewProvider(config Config) (*Provider, error) {
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
+	providerName := strings.TrimSpace(config.ProviderName)
+	if providerName == "" {
+		providerName = generation.ProviderOpenRouter
+	}
 
 	client := config.HTTPClient
 	if client == nil {
@@ -55,17 +61,18 @@ func NewProvider(config Config) (*Provider, error) {
 	}
 
 	return &Provider{
-		baseURL:  baseURL,
-		apiKey:   config.APIKey,
-		appURL:   config.AppURL,
-		appTitle: config.AppTitle,
-		client:   client,
+		baseURL:      baseURL,
+		apiKey:       config.APIKey,
+		appURL:       config.AppURL,
+		appTitle:     config.AppTitle,
+		providerName: providerName,
+		client:       client,
 	}, nil
 }
 
 // Name returns the provider name.
 func (provider *Provider) Name() string {
-	return generation.ProviderOpenRouter
+	return provider.providerName
 }
 
 // Generate dispatches OpenRouter image or video generation.
@@ -102,7 +109,7 @@ func (provider *Provider) resolveRequest(request *generation.Request) error {
 		Kind:     request.Kind,
 		RouteID:  request.RouteID,
 		ModelID:  request.ModelID,
-		Provider: generation.ProviderOpenRouter,
+		Provider: provider.providerName,
 	})
 	if err != nil {
 		return err
@@ -149,7 +156,7 @@ func (provider *Provider) postStream(ctx context.Context, endpoint string, paylo
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		defer response.Body.Close()
-		return nil, readHTTPError(response)
+		return nil, provider.readHTTPError(response)
 	}
 
 	return response.Body, nil
@@ -183,7 +190,7 @@ func (provider *Provider) doJSON(request *http.Request, result any) error {
 	defer response.Body.Close()
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return readHTTPError(response)
+		return provider.readHTTPError(response)
 	}
 
 	return json.NewDecoder(response.Body).Decode(result)
@@ -233,6 +240,6 @@ func normalizeVideoStatus(status string) string {
 	return adapterutil.NormalizeVideoStatus(status)
 }
 
-func readHTTPError(response *http.Response) error {
-	return generation.HTTPErrorFromResponse(generation.ProviderOpenRouter, response)
+func (provider *Provider) readHTTPError(response *http.Response) error {
+	return generation.HTTPErrorFromResponse(provider.providerName, response)
 }

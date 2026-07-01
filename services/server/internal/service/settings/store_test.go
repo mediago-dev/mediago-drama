@@ -3,6 +3,8 @@ package settings
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,17 +106,59 @@ func TestSettingsListAPIKeysIncludesGenerationAndAgentProviders(t *testing.T) {
 func TestSettingsListModelPlatformsDefaultsAndOverrides(t *testing.T) {
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
 
-	list := settings.ListModelPlatforms()
+	list := settings.ListModelPlatforms(context.Background())
 	if len(list.Platforms) != 1 || list.Platforms[0].ID != ModelPlatformMediago {
 		t.Fatalf("default platforms = %#v, want mediago only", list.Platforms)
 	}
+	if len(list.Platforms[0].ModelGroups) == 0 {
+		t.Fatalf("default mediago platform groups = %#v, want catalog fallback groups", list.Platforms[0].ModelGroups)
+	}
 
 	settings.SetModelPlatforms([]string{ModelPlatformOpenRouter, ModelPlatformDMXAPI})
-	list = settings.ListModelPlatforms()
+	list = settings.ListModelPlatforms(context.Background())
 	if len(list.Platforms) != 2 ||
 		list.Platforms[0].ID != ModelPlatformOpenRouter ||
 		list.Platforms[1].APIKeyProviderID != "dmx" {
 		t.Fatalf("override platforms = %#v, want openrouter then dmxapi", list.Platforms)
+	}
+}
+
+func TestSettingsListModelPlatformsUsesMediagoGatewayModels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/v1/models/user" {
+			t.Fatalf("request path = %q, want /api/v1/models/user", request.URL.Path)
+		}
+		if got := request.Header.Get("Authorization"); got != "Bearer mgak-test" {
+			t.Fatalf("authorization = %q, want bearer key", got)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{
+			"data": [
+				{"id":"glm-5.2","name":"GLM-5.2","kind":"text"},
+				{"id":"qwen-mt-plus","name":"Qwen MT Plus","kind":"text"},
+				{"id":"doubao-seedream-5-0-lite","name":"Seedream 5.0 Lite","kind":"image"}
+			]
+		}`)
+	}))
+	defer server.Close()
+
+	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{
+		ModelPlatformMediago: "mgak-test",
+	}})
+	settings.SetMediagoBaseURL(server.URL + "/api/v1")
+
+	list := settings.ListModelPlatforms(context.Background())
+	if len(list.Platforms) != 1 {
+		t.Fatalf("platforms = %#v, want one mediago platform", list.Platforms)
+	}
+	groups := map[string][]string{}
+	for _, group := range list.Platforms[0].ModelGroups {
+		groups[group.Label] = group.Models
+	}
+	if !stringSliceContainsFold(groups["智谱 GLM"], "GLM-5.2") ||
+		!stringSliceContainsFold(groups["通义千问"], "Qwen MT Plus") ||
+		!stringSliceContainsFold(groups["字节"], "Seedream 5.0 Lite") {
+		t.Fatalf("model groups = %#v, want gateway vendor groups", list.Platforms[0].ModelGroups)
 	}
 }
 
