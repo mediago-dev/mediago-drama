@@ -440,7 +440,7 @@ const ProjectDocumentItem: React.FC<{
 						? "bg-ide-list-active text-ide-list-active-foreground"
 						: "text-muted-foreground hover:bg-ide-list-hover hover:text-foreground focus-within:bg-ide-list-hover focus-within:text-foreground",
 				)}
-				style={{ paddingLeft: `${depth * 12 + 24}px` }}
+				style={{ paddingLeft: `${depth * 12 + 40}px` }}
 				onContextMenu={openMenuFromContext}
 			>
 				<button
