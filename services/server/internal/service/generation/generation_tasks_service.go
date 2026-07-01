@@ -732,8 +732,20 @@ func (service *GenerationTaskService) updateAssetRecord(id string, assetIndex in
 
 // Upsert creates or updates a generation task.
 func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
+	_, err := service.upsertTask(task, false)
+	return err
+}
+
+// UpsertExisting writes a task only when it still exists, reporting whether it did. Background
+// workers (submit/poll/progress/handoff) use this so a task the user deleted mid-generation is
+// not resurrected by a late write from the in-flight goroutine.
+func (service *GenerationTaskService) UpsertExisting(task GenerationTaskRecord) (bool, error) {
+	return service.upsertTask(task, true)
+}
+
+func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requireExisting bool) (bool, error) {
 	if service.initErr != nil {
-		return service.initErr
+		return false, service.initErr
 	}
 
 	now := timestamp.NowRFC3339Nano()
@@ -756,17 +768,27 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 
 	paramsJSON, err := json.Marshal(task.Params)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	service.mu.Lock()
 	defer service.mu.Unlock()
 
+	if requireExisting {
+		exists, err := service.repo.GenerationTaskExists(task.ID)
+		if err != nil {
+			return false, err
+		}
+		if !exists {
+			return false, nil
+		}
+	}
+
 	if err := service.ensureTaskConversationLocked(task); err != nil {
-		return err
+		return false, err
 	}
 	if err := service.applyDefaultSelectedAssetLocked(&task); err != nil {
-		return err
+		return false, err
 	}
 	if err := service.repo.UpsertGenerationTask(generationTaskModel{
 		ID:              task.ID,
@@ -800,15 +822,18 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 		CreatedAt:       domain.TimeFromString(task.CreatedAt),
 		UpdatedAt:       domain.TimeFromString(task.UpdatedAt),
 	}); err != nil {
-		return err
+		return false, err
 	}
 	if err := service.syncNormalizedTaskReferenceRowsLocked(task); err != nil {
-		return err
+		return false, err
 	}
 	if err := service.syncNormalizedTaskAssetRowsLocked(task); err != nil {
-		return err
+		return false, err
 	}
-	return service.upsertProjectSelectedAssetRowsLocked(projectSelectedAssetModelsFromRecord(task))
+	if err := service.upsertProjectSelectedAssetRowsLocked(projectSelectedAssetModelsFromRecord(task)); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (service *GenerationTaskService) applyDefaultSelectedAssetLocked(task *GenerationTaskRecord) error {

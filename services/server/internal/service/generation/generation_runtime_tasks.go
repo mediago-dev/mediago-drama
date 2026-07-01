@@ -536,8 +536,13 @@ func (workflow *GenerationService) PollGenerationTask(ctx context.Context, task 
 		messageResponse = FailedGenerationResponse(task.ID, backgroundImageGenerationTimeoutError())
 	}
 	task = GenerationTaskWithMessage(task, messageResponse)
-	if err := workflow.generationTasks.Upsert(task); err != nil {
+	existed, err := workflow.generationTasks.UpsertExisting(task)
+	if err != nil {
 		_ = workflow.generationTasks.RecordAttempt(task.ID, "poll", messageResponse.Status, "后台状态检查结果保存失败。", err)
+		return
+	}
+	if !existed {
+		// The task was deleted while it was still being polled; do not recreate it.
 		return
 	}
 	workflow.syncGenerationNotificationTask(task)
@@ -558,8 +563,13 @@ func (workflow *GenerationService) submitPendingGeneration(
 	submittingTask.Status = "submitting"
 	submittingTask.Message = "视频生成任务正在提交到模型服务，完成提交后会自动检查状态。"
 	submittingTask.Error = ""
-	if err := workflow.generationTasks.Upsert(submittingTask); err != nil {
+	submitExisted, err := workflow.generationTasks.UpsertExisting(submittingTask)
+	if err != nil {
 		slog.Error("generation task submit state could not be saved", "task_id", task.ID, "error", err)
+		return
+	}
+	if !submitExisted {
+		// The task was deleted before submission finished; do not recreate it.
 		return
 	}
 	workflow.syncGenerationNotificationTask(submittingTask)
@@ -577,8 +587,12 @@ func (workflow *GenerationService) submitPendingGeneration(
 	if err != nil {
 		messageResponse := FailedGenerationResponse(task.ID, err)
 		failedTask := GenerationTaskWithMessage(submittingTask, messageResponse)
-		if saveErr := workflow.generationTasks.Upsert(failedTask); saveErr != nil {
+		failedExisted, saveErr := workflow.generationTasks.UpsertExisting(failedTask)
+		if saveErr != nil {
 			slog.Error("generation task submission failure could not be saved", "task_id", task.ID, "error", saveErr)
+			return
+		}
+		if !failedExisted {
 			return
 		}
 		workflow.syncGenerationNotificationTask(failedTask)
@@ -598,8 +612,12 @@ func (workflow *GenerationService) submitPendingGeneration(
 	if providerTaskID != "" {
 		submittedTask.ProviderTaskID = providerTaskID
 	}
-	if err := workflow.generationTasks.Upsert(submittedTask); err != nil {
+	submittedExisted, err := workflow.generationTasks.UpsertExisting(submittedTask)
+	if err != nil {
 		slog.Error("generation task submission could not be saved", "task_id", task.ID, "error", err)
+		return
+	}
+	if !submittedExisted {
 		return
 	}
 	workflow.syncGenerationNotificationTask(submittedTask)
@@ -622,8 +640,13 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 	runningTask.Status = "running"
 	runningTask.Message = "生成请求正在服务器上运行，可以安全刷新页面。"
 	runningTask.Error = ""
-	if err := workflow.generationTasks.Upsert(runningTask); err != nil {
+	runExisted, err := workflow.generationTasks.UpsertExisting(runningTask)
+	if err != nil {
 		slog.Error("generation task running state could not be saved", "task_id", task.ID, "error", err)
+		return
+	}
+	if !runExisted {
+		// The task was deleted before it started running; do not recreate it.
 		return
 	}
 	workflow.syncGenerationNotificationTask(runningTask)
@@ -643,8 +666,12 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 		messageResponse := FailedGenerationResponse(task.ID, err)
 		failedTask := GenerationTaskWithMessage(runningTask, messageResponse)
 		failedTask = workflow.taskWithCurrentProgressAssets(task.ID, failedTask)
-		if saveErr := workflow.generationTasks.Upsert(failedTask); saveErr != nil {
+		failedExisted, saveErr := workflow.generationTasks.UpsertExisting(failedTask)
+		if saveErr != nil {
 			slog.Error("generation task failure could not be saved", "task_id", task.ID, "error", saveErr)
+			return
+		}
+		if !failedExisted {
 			return
 		}
 		workflow.syncGenerationNotificationTask(failedTask)
@@ -668,8 +695,13 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 	messageResponse := generationResponseWithAssetTitle(GenerationResponseFromCore(response, task.Kind), assetTitle)
 	messageResponse.ID = task.ID
 	completedTask := GenerationTaskWithMessage(runningTask, messageResponse)
-	if err := workflow.generationTasks.Upsert(completedTask); err != nil {
+	completedExisted, err := workflow.generationTasks.UpsertExisting(completedTask)
+	if err != nil {
 		slog.Error("generation task completion could not be saved", "task_id", task.ID, "error", err)
+		return
+	}
+	if !completedExisted {
+		// The task was deleted before it completed; drop the result instead of recreating it.
 		return
 	}
 	workflow.syncGenerationNotificationTask(completedTask)
@@ -699,8 +731,13 @@ func (workflow *GenerationService) handOffPendingGeneration(
 	pendingTask := GenerationTaskWithMessage(runningTask, messageResponse)
 	pendingTask.ProviderTaskID = providerTaskID
 	pendingTask = workflow.taskWithCurrentProgressAssets(task.ID, pendingTask)
-	if err := workflow.generationTasks.Upsert(pendingTask); err != nil {
+	existed, err := workflow.generationTasks.UpsertExisting(pendingTask)
+	if err != nil {
 		slog.Error("pending generation handoff could not be saved", "task_id", task.ID, "error", err)
+		return false
+	}
+	if !existed {
+		// The task was deleted while generating; let the caller stop without recreating it.
 		return false
 	}
 	workflow.syncGenerationNotificationTask(pendingTask)
@@ -763,8 +800,13 @@ func (workflow *GenerationService) persistGenerationProgress(
 
 	progressTask := GenerationTaskWithMessage(task, messageResponse)
 	progressTask.Status = "running"
-	if err := workflow.generationTasks.Upsert(progressTask); err != nil {
+	existed, err := workflow.generationTasks.UpsertExisting(progressTask)
+	if err != nil {
 		slog.Warn("generation task progress could not be saved", "task_id", task.ID, "error", err)
+		return
+	}
+	if !existed {
+		// The task was deleted mid-generation; stop persisting progress for it.
 		return
 	}
 	workflow.syncGenerationNotificationTask(progressTask)

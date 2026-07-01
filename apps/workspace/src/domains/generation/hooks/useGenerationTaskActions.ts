@@ -7,6 +7,7 @@ import {
 	deleteGenerationTaskAsset,
 	deleteGenerationTask,
 	type GenerationKind,
+	type GenerationTask,
 	type GenerationTasksResponse,
 	generationConversationsQueryKey,
 	getGenerationVideo,
@@ -132,7 +133,19 @@ export const useGenerationTaskActions = ({
 						await mutateTasks(nextTasks, false);
 					}
 				} else {
-					void mutateTasks();
+					// Local/optimistic entry: revalidate, then delete any orphan backend task the
+					// submit created so the record does not come back on the next refresh.
+					const latest = await mutateTasks();
+					const orphanTaskId = orphanTaskIdForLocalEntry(
+						latest?.tasks ?? [],
+						entryId,
+						conversationMessages,
+						kind,
+					);
+					if (orphanTaskId) {
+						await deleteGenerationTask(orphanTaskId);
+						await mutateTasks();
+					}
 				}
 				mutateProjectGenerationTasks(kind);
 				void mutateSWR(generationConversationsQueryKey(kind, resolvedConversationScopeId));
@@ -149,6 +162,7 @@ export const useGenerationTaskActions = ({
 		},
 		[
 			conversationId,
+			conversationMessages,
 			initialKind,
 			kind,
 			mutateProjectGenerationTasks,
@@ -286,6 +300,35 @@ const taskIdForDeletion = (entryId: string) => {
 	return baseId && !baseId.startsWith("local-") && !baseId.startsWith("media-library:")
 		? baseId
 		: null;
+};
+
+// A client-local (optimistic or client-side-errored) entry has no task id, yet the submit may
+// have created a backend task (e.g. the request timed out client-side while the server kept
+// going). Find that orphan task so deleting the local entry also removes it and it does not
+// reappear on the next refresh. Matching is intentionally strict — same kind, exact prompt, and
+// no existing entry already renders it — so a real, visible task is never deleted by mistake.
+export const orphanTaskIdForLocalEntry = (
+	tasks: GenerationTask[],
+	entryId: string,
+	messages: ChatMessage[],
+	kind: GenerationKind,
+): string | null => {
+	const localBase = /^(local-[^:]+)(?::(?:assistant|prompt|error))?$/.exec(entryId)?.[1];
+	if (!localBase) return null;
+
+	const prompt = messages
+		.find((message) => message.role === "user" && message.id === `${localBase}:prompt`)
+		?.content?.trim();
+	if (!prompt) return null;
+
+	const shownTaskIds = new Set(
+		messages.filter((message) => message.role === "assistant").map((message) => message.id),
+	);
+	const matches = tasks.filter(
+		(task) =>
+			task.kind === kind && (task.prompt ?? "").trim() === prompt && !shownTaskIds.has(task.id),
+	);
+	return matches.length === 1 ? matches[0].id : null;
 };
 
 const generationAssetSlotIndex = (asset: { slotIndex?: number }, fallback: number) => {

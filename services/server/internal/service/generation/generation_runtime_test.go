@@ -1743,6 +1743,11 @@ func TestCompleteSubmittedGenerationHandsOffPendingImage(t *testing.T) {
 		},
 	}
 	task := jimengImageTaskRecord("generation-img-1")
+	// The task is created before the background worker runs, matching production where the
+	// handler persists it prior to launching completeSubmittedGeneration.
+	if err := store.Upsert(task); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
 	workflow.completeSubmittedGeneration(
 		context.Background(),
 		task,

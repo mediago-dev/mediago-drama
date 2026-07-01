@@ -5,12 +5,14 @@ import { mutate as mutateSWR } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MediaAssetsResponse } from "@/domains/workspace/api/media";
 import {
+	deleteGenerationTask,
 	deleteGenerationTaskAsset,
+	type GenerationTask,
 	getGenerationVideo,
 	type GenerationTasksResponse,
 } from "@/domains/generation/api/generation";
 import type { ChatMessage } from "./useGenerationWorkspace.helpers";
-import { useGenerationTaskActions } from "./useGenerationTaskActions";
+import { orphanTaskIdForLocalEntry, useGenerationTaskActions } from "./useGenerationTaskActions";
 
 vi.mock("@/domains/generation/api/generation", () => ({
 	deleteGenerationTaskAsset: vi.fn(),
@@ -59,14 +61,14 @@ const submittedImageMessage = (overrides: Partial<ChatMessage> = {}): ChatMessag
 
 const renderTaskActionsHook = (
 	initialMessages: ChatMessage[] = [submittedVideoMessage()],
-	options: { projectId?: string | null } = {},
+	options: { projectId?: string | null; tasks?: GenerationTask[] } = {},
 ) => {
 	const mutateMediaAssets = vi.fn(async () => ({
 		assets: [],
 	})) as unknown as KeyedMutator<MediaAssetsResponse>;
 	const mutateProjectGenerationTasks = vi.fn();
 	const mutateTasks = vi.fn(async () => ({
-		tasks: [],
+		tasks: options.tasks ?? [],
 	})) as unknown as KeyedMutator<GenerationTasksResponse>;
 
 	const result = renderHook(() => {
@@ -253,5 +255,131 @@ describe("useGenerationTaskActions", () => {
 		expect(deleteGenerationTaskAsset).toHaveBeenCalledWith("task-1", 2);
 		expect(result.current.messages[0]?.assets).toBeUndefined();
 		expect(mutateTasks).toHaveBeenCalled();
+	});
+
+	it("deletes the orphan backend task when removing a client-local errored entry", async () => {
+		vi.mocked(deleteGenerationTask).mockResolvedValue({
+			tasks: [],
+		} as unknown as Awaited<ReturnType<typeof deleteGenerationTask>>);
+		const { result } = renderTaskActionsHook(
+			[
+				{
+					id: "local-123:prompt",
+					role: "user",
+					kind: "video",
+					content: "make a cat video",
+					createdAt: "2026-06-06T07:00:00.000Z",
+					updatedAt: "2026-06-06T07:00:00.000Z",
+				},
+				{
+					id: "local-123:error",
+					role: "assistant",
+					kind: "video",
+					status: "error",
+					content: "生成请求失败。",
+					createdAt: "2026-06-06T07:00:00.000Z",
+					updatedAt: "2026-06-06T07:00:00.000Z",
+				},
+			],
+			{
+				tasks: [
+					{ id: "generation-real", kind: "video", prompt: "make a cat video", status: "failed" },
+				] as GenerationTask[],
+			},
+		);
+
+		await act(async () => {
+			await result.current.deleteGenerationEntry("local-123:error");
+		});
+
+		expect(deleteGenerationTask).toHaveBeenCalledWith("generation-real");
+	});
+
+	it("does not delete any backend task when a client-local entry has no matching orphan", async () => {
+		const { result } = renderTaskActionsHook(
+			[
+				{
+					id: "local-999:prompt",
+					role: "user",
+					kind: "video",
+					content: "unrelated prompt",
+					createdAt: "2026-06-06T07:00:00.000Z",
+					updatedAt: "2026-06-06T07:00:00.000Z",
+				},
+				{
+					id: "local-999:error",
+					role: "assistant",
+					kind: "video",
+					status: "error",
+					content: "生成请求失败。",
+					createdAt: "2026-06-06T07:00:00.000Z",
+					updatedAt: "2026-06-06T07:00:00.000Z",
+				},
+			],
+			{
+				tasks: [
+					{ id: "generation-other", kind: "video", prompt: "a different prompt", status: "failed" },
+				] as GenerationTask[],
+			},
+		);
+
+		await act(async () => {
+			await result.current.deleteGenerationEntry("local-999:error");
+		});
+
+		expect(deleteGenerationTask).not.toHaveBeenCalled();
+	});
+});
+
+describe("orphanTaskIdForLocalEntry", () => {
+	const promptMessage = (localId: string, content: string): ChatMessage => ({
+		id: `${localId}:prompt`,
+		role: "user",
+		kind: "video",
+		content,
+		createdAt: "2026-06-06T07:00:00.000Z",
+		updatedAt: "2026-06-06T07:00:00.000Z",
+	});
+
+	it("matches a single orphan task by kind and exact prompt", () => {
+		const messages = [promptMessage("local-1", "a shot of the sea")];
+		const tasks = [
+			{ id: "task-a", kind: "video", prompt: "a shot of the sea", status: "failed" },
+			{ id: "task-b", kind: "image", prompt: "a shot of the sea", status: "failed" },
+		] as GenerationTask[];
+
+		expect(orphanTaskIdForLocalEntry(tasks, "local-1:error", messages, "video")).toBe("task-a");
+	});
+
+	it("returns null when the entry id is not client-local", () => {
+		expect(orphanTaskIdForLocalEntry([], "generation-real:error", [], "video")).toBeNull();
+	});
+
+	it("returns null when the matching task is already shown as its own entry", () => {
+		const messages = [
+			promptMessage("local-1", "a shot of the sea"),
+			{
+				id: "task-a",
+				role: "assistant",
+				kind: "video",
+				status: "failed",
+				content: "生成请求失败。",
+			} as ChatMessage,
+		];
+		const tasks = [
+			{ id: "task-a", kind: "video", prompt: "a shot of the sea", status: "failed" },
+		] as GenerationTask[];
+
+		expect(orphanTaskIdForLocalEntry(tasks, "local-1:error", messages, "video")).toBeNull();
+	});
+
+	it("returns null when more than one task matches (ambiguous)", () => {
+		const messages = [promptMessage("local-1", "a shot of the sea")];
+		const tasks = [
+			{ id: "task-a", kind: "video", prompt: "a shot of the sea", status: "failed" },
+			{ id: "task-b", kind: "video", prompt: "a shot of the sea", status: "failed" },
+		] as GenerationTask[];
+
+		expect(orphanTaskIdForLocalEntry(tasks, "local-1:error", messages, "video")).toBeNull();
 	});
 });

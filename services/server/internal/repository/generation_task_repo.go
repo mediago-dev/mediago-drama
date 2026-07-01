@@ -174,6 +174,23 @@ func (repo *GenerationTaskRepository) GetGenerationTask(id string) (domain.Gener
 }
 
 // UpsertGenerationTask inserts or updates a generation task.
+// GenerationTaskExists reports whether a generation task row currently exists. Background
+// workers use it to avoid recreating a task that was deleted while it was still generating.
+func (repo *GenerationTaskRepository) GenerationTaskExists(id string) (bool, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false, nil
+	}
+	var count int64
+	if err := repo.db.Model(&domain.GenerationTaskModel{}).
+		Where("id = ?", id).
+		Limit(1).
+		Count(&count).Error; err != nil {
+		return false, fmt.Errorf("checking generation task existence: %w", err)
+	}
+	return count > 0, nil
+}
+
 func (repo *GenerationTaskRepository) UpsertGenerationTask(model domain.GenerationTaskModel) error {
 	model.ProjectID = domain.StringPtr(domain.CleanProjectID(domain.StringValue(model.ProjectID)))
 	model.Status = normalizeGenerationTaskStatus(model.Status)

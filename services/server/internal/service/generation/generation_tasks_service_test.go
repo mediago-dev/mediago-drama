@@ -1079,3 +1079,63 @@ func generationTaskAssetMIMEType(kind string) string {
 		return "image/png"
 	}
 }
+
+func TestGenerationTaskServiceUpsertExistingDoesNotResurrectDeletedTask(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	service := NewGenerationTaskService(dbPath, nil)
+
+	taskID := "task-generating"
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:      taskID,
+		Kind:    "video",
+		RouteID: "official.seedance-2.0-fast",
+		Prompt:  "a running task",
+		Status:  "submitting",
+	}); err != nil {
+		t.Fatalf("creating task: %v", err)
+	}
+
+	// A late write while the task still exists updates it and reports it as existing.
+	existed, err := service.UpsertExisting(GenerationTaskRecord{
+		ID:      taskID,
+		Kind:    "video",
+		RouteID: "official.seedance-2.0-fast",
+		Prompt:  "a running task",
+		Status:  "running",
+	})
+	if err != nil {
+		t.Fatalf("UpsertExisting(existing) error = %v", err)
+	}
+	if !existed {
+		t.Fatal("UpsertExisting(existing) existed = false, want true")
+	}
+	if task, ok, err := service.Get(taskID); err != nil || !ok || task.Status != "running" {
+		t.Fatalf("task after update = %+v ok=%v err=%v, want running", task, ok, err)
+	}
+
+	// The user deletes the task mid-generation.
+	deleted, err := service.Delete(taskID)
+	if err != nil || !deleted {
+		t.Fatalf("Delete() deleted=%v err=%v, want deleted", deleted, err)
+	}
+
+	// A late write from the in-flight goroutine must not recreate the task.
+	existed, err = service.UpsertExisting(GenerationTaskRecord{
+		ID:      taskID,
+		Kind:    "video",
+		RouteID: "official.seedance-2.0-fast",
+		Prompt:  "a running task",
+		Status:  "completed",
+	})
+	if err != nil {
+		t.Fatalf("UpsertExisting(deleted) error = %v", err)
+	}
+	if existed {
+		t.Fatal("UpsertExisting(deleted) existed = true, want false")
+	}
+	if _, ok, err := service.Get(taskID); err != nil {
+		t.Fatalf("Get(deleted) error = %v", err)
+	} else if ok {
+		t.Fatal("deleted task was resurrected by a late background write")
+	}
+}
