@@ -18,6 +18,18 @@ export interface APIKeyListResponse {
 	providers: APIKeyProvider[];
 }
 
+export interface ModelPlatform {
+	id: string;
+	label: string;
+	kind: "unified" | "custom" | string;
+	description: string;
+	apiKeyProviderId: string;
+}
+
+export interface ModelPlatformsResponse {
+	platforms: ModelPlatform[];
+}
+
 export interface APIKeyLoginChallenge {
 	status: "pending" | "completed" | string;
 	verificationUri?: string;
@@ -97,11 +109,17 @@ export interface AgentModelProfileMutation {
 }
 
 export const apiKeysKey = "/settings/api-keys";
+export const modelPlatformsKey = "/settings/model-platforms";
 export const agentModelProfilesKey = "/settings/agent-model-profiles";
 export const jianyingDraftSettingsKey = "/settings/jianying-draft";
 
 export const getAPIKeys = async () => {
 	const response = await httpClient.get<APIKeyListResponse>(apiKeysKey);
+	return response.data;
+};
+
+export const getModelPlatforms = async () => {
+	const response = await httpClient.get<ModelPlatformsResponse>(modelPlatformsKey);
 	return response.data;
 };
 

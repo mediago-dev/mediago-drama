@@ -4,6 +4,8 @@ vars:
   ROOT_DIR:
     sh: pwd
   AGENT: '{{.AGENT | default "opencode"}}'
+  MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago"}}'
+  MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default "http://127.0.0.1:3001/api/v1"}}'
   TOOL: '{{.TOOL | default "ffmpeg"}}'
   SERVER_PORT: '{{.SERVER_PORT | default "48273"}}'
   DEV_SERVER_PORT: '{{.DEV_SERVER_PORT | default "8080"}}'
@@ -36,6 +38,8 @@ tasks:
   build:
     env:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
+      MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
+      MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
     cmds:
@@ -49,6 +53,8 @@ tasks:
       - task: stage-electron
         vars:
           AGENT: "{{.AGENT}}"
+          MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
+          MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
       - pnpm -C apps/workspace electron:build
 
   build:desktop:
@@ -62,6 +68,8 @@ tasks:
       ELECTRON_SCRIPT: '{{.ELECTRON_SCRIPT | default "electron:build"}}'
     env:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
+      MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
+      MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
     cmds:
@@ -75,6 +83,8 @@ tasks:
       - task: stage-electron
         vars:
           AGENT: "{{.AGENT}}"
+          MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
+          MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
       - pnpm -C apps/workspace {{.ELECTRON_SCRIPT}}
 
   build:electron:target:
@@ -87,6 +97,8 @@ tasks:
         msg: "PLATFORM must be one of: darwin-arm64, windows-x64"
     env:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
+      MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
+      MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
     cmds:
@@ -106,6 +118,8 @@ tasks:
         vars:
           AGENT: "{{.AGENT}}"
           PLATFORM: "{{.PLATFORM}}"
+          MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
+          MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
       - pnpm -C apps/workspace {{.ELECTRON_SCRIPT}}
 
   publish:electron:
@@ -154,6 +168,8 @@ tasks:
       - task: prepare-media-tools
     env:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
+      MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
+      MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default "http://127.0.0.1:3001/api/v1"}}'
       MEDIAGO_SERVER_PORT: "{{.DEV_SERVER_PORT}}"
       MEDIAGO_AGENT_BIN_DIR: "{{.VENDOR_BIN_DIR}}"
       MEDIAGO_FFMPEG_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
@@ -185,6 +201,8 @@ tasks:
       - task: prepare-media-tools
     env:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
+      MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
+      MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default "http://127.0.0.1:3001/api/v1"}}'
       MEDIAGO_SERVER_PORT: "{{.DEV_SERVER_PORT}}"
       MEDIAGO_AGENT_BIN_DIR: "{{.VENDOR_BIN_DIR}}"
       MEDIAGO_FFMPEG_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
@@ -230,8 +248,10 @@ tasks:
   stage-electron:
     vars:
       PLATFORM: '{{.PLATFORM | default ""}}'
+      MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago"}}'
+      MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default ""}}'
     cmds:
-      - node apps/workspace/scripts/stage-electron.ts {{.AGENT}} {{.PLATFORM}}
+      - node apps/workspace/scripts/stage-electron.ts "{{.AGENT}}" "{{.PLATFORM}}" "{{.MODEL_PLATFORM}}" "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
 
   go:check:
     cmds:

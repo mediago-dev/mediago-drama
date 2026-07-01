@@ -21,6 +21,8 @@ func TestApplyEnvOverrides(t *testing.T) {
 	t.Setenv("MEDIAGO_JIMENG_BIN_DIR", "/tmp/tools")
 	t.Setenv("MEDIAGO_SERVER_PORT", "48273")
 	t.Setenv("MEDIAGO_LOG_LEVEL", "debug")
+	t.Setenv("MEDIAGO_MODEL_PLATFORM", "mediago,openrouter")
+	t.Setenv("MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL", "https://models.example.test/v1/")
 
 	config := serverconfig.ServerConfig{Port: 8080}
 	if err := applyEnvOverrides(&config); err != nil {
@@ -51,6 +53,12 @@ func TestApplyEnvOverrides(t *testing.T) {
 	if config.LogLevel != "debug" {
 		t.Fatalf("LogLevel = %q, want debug", config.LogLevel)
 	}
+	if got := strings.Join(config.ModelPlatforms, ","); got != "mediago,openrouter" {
+		t.Fatalf("ModelPlatforms = %q, want mediago,openrouter", got)
+	}
+	if config.MediagoBaseURL != "https://models.example.test/v1" {
+		t.Fatalf("MediagoBaseURL = %q, want trimmed base URL", config.MediagoBaseURL)
+	}
 }
 
 func TestApplyEnvOverridesRejectsInvalidServerPort(t *testing.T) {
@@ -59,6 +67,15 @@ func TestApplyEnvOverridesRejectsInvalidServerPort(t *testing.T) {
 	config := serverconfig.ServerConfig{Port: 8080}
 	if err := applyEnvOverrides(&config); err == nil {
 		t.Fatal("applyEnvOverrides returned nil error, want invalid port error")
+	}
+}
+
+func TestApplyEnvOverridesRejectsInvalidModelPlatform(t *testing.T) {
+	t.Setenv("MEDIAGO_MODEL_PLATFORM", "auto")
+
+	config := serverconfig.ServerConfig{}
+	if err := applyEnvOverrides(&config); err == nil {
+		t.Fatal("applyEnvOverrides returned nil error, want invalid model platform error")
 	}
 }
 

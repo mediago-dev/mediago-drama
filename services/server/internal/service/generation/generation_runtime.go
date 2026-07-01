@@ -27,6 +27,7 @@ type GenerationService struct {
 	generationProviderFactory     func(coregeneration.ModelRoute) (coregeneration.Provider, error)
 	multimodalTextProviderFactory runtime.MultimodalTextProviderFactory
 	voicePreviews                 *VoicePreviewStore
+	mediagoBaseURL                string
 	jimengBinPath                 string
 	jimengBinDir                  string
 }
@@ -57,6 +58,11 @@ func NewGenerationService(settings *settings.Settings, generationTasks *Generati
 func (workflow *GenerationService) SetJimengCLIPaths(binPath string, binDir string) {
 	workflow.jimengBinPath = strings.TrimSpace(binPath)
 	workflow.jimengBinDir = strings.TrimSpace(binDir)
+}
+
+// SetMediagoBaseURL configures the MediaGo OpenAI-compatible generation endpoint.
+func (workflow *GenerationService) SetMediagoBaseURL(baseURL string) {
+	workflow.mediagoBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 }
 
 // SetGenerationNotifications sets the notification service used by generation workflows.

@@ -60,6 +60,17 @@ func (handler Settings) HandleAPIKeys(context *gin.Context) {
 	httpresponse.OK(context, list)
 }
 
+// HandleModelPlatforms godoc
+// @Summary 获取聚合平台配置
+// @Description 返回当前打包版本开放展示的聚合平台。
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Router /api/v1/settings/model-platforms [get]
+func (handler Settings) HandleModelPlatforms(context *gin.Context) {
+	httpresponse.OK(context, handler.service.ListModelPlatforms())
+}
+
 // HandleJianyingDraftSettings godoc
 // @Summary 获取剪映草稿设置
 // @Description 返回本机剪映草稿文件夹位置。

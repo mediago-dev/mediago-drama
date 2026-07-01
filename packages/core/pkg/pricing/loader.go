@@ -81,7 +81,7 @@ func validateRoutePrice(price RoutePrice) error {
 		return fmt.Errorf("pricing overlay %q currency is required", price.RouteID)
 	}
 	switch price.Unit {
-	case UnitPerMillionTokens, UnitPerMillionCharacters, UnitPerCall:
+	case UnitPerMillionTokens, UnitPerMillionCharacters, UnitPerCall, UnitExternal:
 		return nil
 	default:
 		return fmt.Errorf("pricing overlay %q has unsupported unit %q", price.RouteID, price.Unit)

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -14,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 	"gorm.io/gorm"
@@ -25,8 +28,10 @@ const (
 	opencodeConfigSchema       = "https://opencode.ai/config.json"
 	agentModelKeyPrefix        = "agent-model:"
 	agentModelKeySuffix        = ":api-key"
-	agentModelProviderDMX      = "dmx"
+	agentModelProviderMediago  = coregeneration.ProviderMediago
+	agentModelProviderDMXAPI   = ModelPlatformDMXAPI
 	agentModelProviderDeepSeek = "deepseek"
+	mediagoModelListTimeout    = 5 * time.Second
 )
 
 var (
@@ -326,35 +331,51 @@ func (service *Settings) PrepareOpenCodeRuntimeConfig(ctx context.Context, works
 }
 
 func (service *Settings) officialAgentRuntimeProfiles(ctx context.Context) ([]domainAgentModelProfile, map[string]string, error) {
-	_ = ctx
 	env := map[string]string{}
 	if service == nil || service.apiKeys == nil {
 		return nil, env, nil
 	}
 
 	profiles := []domainAgentModelProfile{}
-	for _, spec := range officialAgentModelProfileSpecs() {
-		template := agentModelProfileTemplateByID(spec.TemplateID)
-		if template.ID == "" {
+	for _, spec := range service.officialAgentRuntimeProfileSpecs() {
+		if spec.PlatformID != "" && !service.modelPlatformEnabled(spec.PlatformID) {
 			continue
 		}
-		profile := profileModelFromTemplate(template)
-		value, err := service.agentRuntimeAPIKey(spec.CredentialKeyName, profile.ID)
+		if strings.TrimSpace(spec.BaseURL) == "" {
+			continue
+		}
+		routeProfiles, err := service.agentRuntimeProfilesForSpec(ctx, spec, "")
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(routeProfiles) == 0 {
+			continue
+		}
+		value, err := service.agentRuntimeAPIKey(spec.CredentialKeyName, spec.LegacyProfileID, routeProfiles[0].ID)
 		if err != nil {
 			return nil, nil, err
 		}
 		if value == "" {
 			continue
 		}
-		profile.IsDefault = len(profiles) == 0
-		profiles = append(profiles, profile)
-		env[AgentModelProfileEnvName(profile.ID)] = value
+		routeProfiles, err = service.agentRuntimeProfilesForSpec(ctx, spec, value)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(routeProfiles) == 0 {
+			continue
+		}
+		for _, profile := range routeProfiles {
+			profile.IsDefault = len(profiles) == 0
+			profiles = append(profiles, profile)
+			env[AgentModelProfileEnvName(profile.ID)] = value
+		}
 	}
 
 	return profiles, env, nil
 }
 
-func (service *Settings) agentRuntimeAPIKey(providerKeyName string, profileID string) (string, error) {
+func (service *Settings) agentRuntimeAPIKey(providerKeyName string, legacyProfileID string, profileID string) (string, error) {
 	value, _, err := service.apiKeys.Get(providerKeyName)
 	if err != nil {
 		return "", err
@@ -364,11 +385,27 @@ func (service *Settings) agentRuntimeAPIKey(providerKeyName string, profileID st
 		return value, nil
 	}
 
-	legacyValue, _, err := service.apiKeys.Get(AgentModelProfileAPIKeyName(profileID))
-	if err != nil {
-		return "", err
+	legacyIDs := []string{
+		strings.TrimSpace(profileID),
+		strings.TrimSpace(legacyProfileID),
+		profileIDFromProviderID(providerKeyName),
 	}
-	return strings.TrimSpace(legacyValue), nil
+	seen := map[string]bool{}
+	for _, id := range legacyIDs {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		legacyValue, _, err := service.apiKeys.Get(AgentModelProfileAPIKeyName(id))
+		if err != nil {
+			return "", err
+		}
+		legacyValue = strings.TrimSpace(legacyValue)
+		if legacyValue != "" {
+			return legacyValue, nil
+		}
+	}
+	return "", nil
 }
 
 // AgentModelProfileAPIKeyName returns the stable credential key for one profile.
@@ -543,26 +580,295 @@ func agentModelProfileTemplateByID(id string) AgentModelProfileTemplate {
 }
 
 type officialAgentModelProfileSpec struct {
-	TemplateID        string
+	ProviderID        string
+	ProviderLabel     string
+	BaseURL           string
 	CredentialKeyName string
+	RouteProvider     string
+	PlatformID        string
+	LegacyProfileID   string
+	SupportsImages    bool
+	SupportsTools     bool
+	Temperature       *float64
 }
 
-func officialAgentModelProfileSpecs() []officialAgentModelProfileSpec {
+func (service *Settings) officialAgentRuntimeProfileSpecs() []officialAgentModelProfileSpec {
+	zero := 0.0
 	return []officialAgentModelProfileSpec{
-		{TemplateID: "openrouter", CredentialKeyName: "openrouter"},
-		{TemplateID: "minimax", CredentialKeyName: "minimax"},
-		{TemplateID: "deepseek", CredentialKeyName: agentModelProviderDeepSeek},
+		{
+			ProviderID:        agentModelProviderMediago,
+			ProviderLabel:     "MediaGo",
+			BaseURL:           service.MediagoBaseURL(),
+			CredentialKeyName: coregeneration.ProviderMediago,
+			RouteProvider:     coregeneration.ProviderMediago,
+			PlatformID:        ModelPlatformMediago,
+			LegacyProfileID:   "mediago",
+			Temperature:       &zero,
+		},
+		{
+			ProviderID:        agentModelProviderDMXAPI,
+			ProviderLabel:     "DMXAPI",
+			BaseURL:           "https://www.dmxapi.cn/v1",
+			CredentialKeyName: coregeneration.ProviderDMX,
+			RouteProvider:     coregeneration.ProviderDMX,
+			PlatformID:        ModelPlatformDMXAPI,
+			LegacyProfileID:   "dmxapi",
+			SupportsTools:     true,
+			Temperature:       &zero,
+		},
+		{
+			ProviderID:        coregeneration.ProviderOpenRouter,
+			ProviderLabel:     "OpenRouter",
+			BaseURL:           "https://openrouter.ai/api/v1",
+			CredentialKeyName: coregeneration.ProviderOpenRouter,
+			RouteProvider:     coregeneration.ProviderOpenRouter,
+			PlatformID:        ModelPlatformOpenRouter,
+			LegacyProfileID:   "openrouter",
+			SupportsImages:    true,
+			SupportsTools:     true,
+			Temperature:       &zero,
+		},
+		{
+			ProviderID:        coregeneration.ProviderOpenAI,
+			ProviderLabel:     "OpenAI",
+			BaseURL:           "https://api.openai.com/v1",
+			CredentialKeyName: coregeneration.ProviderOpenAI,
+			RouteProvider:     coregeneration.ProviderOpenAI,
+			LegacyProfileID:   "openai",
+			SupportsTools:     true,
+			Temperature:       &zero,
+		},
+		{
+			ProviderID:        "minimax-cn",
+			ProviderLabel:     "MiniMax 国内",
+			BaseURL:           "https://api.minimaxi.com/v1",
+			CredentialKeyName: coregeneration.ProviderMiniMax,
+			RouteProvider:     coregeneration.ProviderMiniMax,
+			LegacyProfileID:   "minimax-cn",
+			SupportsTools:     true,
+			Temperature:       &zero,
+		},
+		{
+			ProviderID:        agentModelProviderDeepSeek,
+			ProviderLabel:     "DeepSeek",
+			BaseURL:           "https://api.deepseek.com/v1",
+			CredentialKeyName: coregeneration.ProviderDeepSeek,
+			RouteProvider:     coregeneration.ProviderDeepSeek,
+			LegacyProfileID:   "deepseek",
+			SupportsTools:     true,
+			Temperature:       &zero,
+		},
 	}
 }
 
 func supportsOfficialAgentModel(providerID string) bool {
 	providerID = strings.TrimSpace(providerID)
-	for _, spec := range officialAgentModelProfileSpecs() {
+	for _, spec := range allAgentRuntimeCapabilitySpecs() {
 		if spec.CredentialKeyName == providerID {
 			return true
 		}
 	}
 	return false
+}
+
+func allAgentRuntimeCapabilitySpecs() []officialAgentModelProfileSpec {
+	zero := 0.0
+	return []officialAgentModelProfileSpec{
+		{CredentialKeyName: coregeneration.ProviderMediago, Temperature: &zero},
+		{CredentialKeyName: coregeneration.ProviderDMX, Temperature: &zero},
+		{CredentialKeyName: coregeneration.ProviderOpenRouter, Temperature: &zero},
+		{CredentialKeyName: coregeneration.ProviderOpenAI, Temperature: &zero},
+		{CredentialKeyName: coregeneration.ProviderMiniMax, Temperature: &zero},
+		{CredentialKeyName: coregeneration.ProviderDeepSeek, Temperature: &zero},
+	}
+}
+
+func (service *Settings) agentRuntimeProfilesForSpec(ctx context.Context, spec officialAgentModelProfileSpec, apiKey string) ([]domainAgentModelProfile, error) {
+	if spec.ProviderID == agentModelProviderMediago && strings.TrimSpace(apiKey) != "" {
+		profiles, err := service.mediagoAgentRuntimeProfiles(ctx, spec, apiKey)
+		if err != nil {
+			return nil, nil
+		}
+		return profiles, nil
+	}
+	return catalogAgentRuntimeProfilesForSpec(spec), nil
+}
+
+func catalogAgentRuntimeProfilesForSpec(spec officialAgentModelProfileSpec) []domainAgentModelProfile {
+	routes := coregeneration.Catalog().Routes
+	profiles := make([]domainAgentModelProfile, 0)
+	seenModels := map[string]bool{}
+	for _, route := range routes {
+		if route.Kind != coregeneration.KindText ||
+			route.Status != coregeneration.RouteStatusAvailable ||
+			route.Provider != spec.RouteProvider ||
+			strings.TrimSpace(route.Model) == "" {
+			continue
+		}
+		if seenModels[route.Model] {
+			continue
+		}
+		seenModels[route.Model] = true
+		displayName := agentRuntimeModelDisplayName(route.Model)
+		profiles = append(profiles, domainAgentModelProfile{
+			ID:               profileIDFromProviderID(spec.ProviderID + "-" + displayName),
+			Name:             strings.TrimSpace(spec.ProviderLabel + " " + displayName),
+			ProviderID:       strings.TrimSpace(spec.ProviderID),
+			ProviderLabel:    strings.TrimSpace(spec.ProviderLabel),
+			BaseURL:          strings.TrimRight(strings.TrimSpace(spec.BaseURL), "/"),
+			Model:            strings.TrimSpace(route.Model),
+			ModelDisplayName: strings.TrimSpace(displayName),
+			Enabled:          true,
+			SupportsImages:   spec.SupportsImages,
+			SupportsTools:    spec.SupportsTools,
+			Temperature:      cloneFloat(spec.Temperature),
+		})
+	}
+	return profiles
+}
+
+type mediagoModelListResponse struct {
+	Data  []mediagoGatewayModel `json:"data"`
+	Items []mediagoGatewayModel `json:"items"`
+}
+
+type mediagoGatewayModel struct {
+	ID                  string                     `json:"id"`
+	Name                string                     `json:"name"`
+	CanonicalSlug       string                     `json:"canonical_slug"`
+	Architecture        mediagoGatewayArchitecture `json:"architecture"`
+	TopProvider         mediagoGatewayTopProvider  `json:"top_provider"`
+	ContextLength       int                        `json:"context_length"`
+	MaxOutputTokens     int                        `json:"max_output_tokens"`
+	SupportedParameters []string                   `json:"supported_parameters"`
+}
+
+type mediagoGatewayArchitecture struct {
+	InputModalities  []string `json:"input_modalities"`
+	OutputModalities []string `json:"output_modalities"`
+}
+
+type mediagoGatewayTopProvider struct {
+	ContextLength       int `json:"context_length"`
+	MaxCompletionTokens int `json:"max_completion_tokens"`
+}
+
+func (service *Settings) mediagoAgentRuntimeProfiles(ctx context.Context, spec officialAgentModelProfileSpec, apiKey string) ([]domainAgentModelProfile, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(spec.BaseURL), "/")
+	if baseURL == "" {
+		return nil, nil
+	}
+	models, err := fetchMediagoGatewayModels(ctx, baseURL, apiKey)
+	if err != nil {
+		return nil, err
+	}
+
+	profiles := make([]domainAgentModelProfile, 0, len(models))
+	seenModels := map[string]bool{}
+	for _, model := range models {
+		modelID := strings.TrimSpace(firstNonEmpty(model.ID, model.CanonicalSlug))
+		if modelID == "" || seenModels[modelID] || !mediagoGatewayModelSupportsText(model) {
+			continue
+		}
+		seenModels[modelID] = true
+		displayName := agentRuntimeModelDisplayName(modelID)
+		profile := domainAgentModelProfile{
+			ID:               profileIDFromProviderID(spec.ProviderID + "-" + modelID),
+			Name:             strings.TrimSpace(spec.ProviderLabel + " " + displayName),
+			ProviderID:       strings.TrimSpace(spec.ProviderID),
+			ProviderLabel:    strings.TrimSpace(spec.ProviderLabel),
+			BaseURL:          baseURL,
+			Model:            modelID,
+			ModelDisplayName: strings.TrimSpace(displayName),
+			Enabled:          true,
+			SupportsImages:   spec.SupportsImages || stringSliceContainsFold(model.Architecture.InputModalities, "image"),
+			SupportsTools:    mediagoGatewayModelSupportsTools(model),
+			ContextWindow:    firstPositiveInt(model.TopProvider.ContextLength, model.ContextLength),
+			MaxOutputTokens:  firstPositiveInt(model.TopProvider.MaxCompletionTokens, model.MaxOutputTokens),
+			Temperature:      cloneFloat(spec.Temperature),
+		}
+		if strings.TrimSpace(model.Name) != "" && strings.TrimSpace(model.Name) != modelID {
+			profile.ModelDisplayName = strings.TrimSpace(model.Name)
+			profile.Name = strings.TrimSpace(spec.ProviderLabel + " " + model.Name)
+		}
+		profiles = append(profiles, profile)
+	}
+	return profiles, nil
+}
+
+func fetchMediagoGatewayModels(ctx context.Context, baseURL string, apiKey string) ([]mediagoGatewayModel, error) {
+	ctx, cancel := context.WithTimeout(ctx, mediagoModelListTimeout)
+	defer cancel()
+
+	endpoint := strings.TrimRight(strings.TrimSpace(baseURL), "/") + "/models/user"
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(apiKey))
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("mediago model list returned HTTP %d", response.StatusCode)
+	}
+
+	var payload mediagoModelListResponse
+	if err := json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(&payload); err != nil {
+		return nil, err
+	}
+	if len(payload.Data) > 0 {
+		return payload.Data, nil
+	}
+	return payload.Items, nil
+}
+
+func mediagoGatewayModelSupportsText(model mediagoGatewayModel) bool {
+	output := model.Architecture.OutputModalities
+	return len(output) == 0 || stringSliceContainsFold(output, "text")
+}
+
+func mediagoGatewayModelSupportsTools(model mediagoGatewayModel) bool {
+	for _, parameter := range []string{"tools", "tool_choice", "tool_calls", "function_call", "functions"} {
+		if stringSliceContainsFold(model.SupportedParameters, parameter) {
+			return true
+		}
+	}
+	return false
+}
+
+func stringSliceContainsFold(values []string, target string) bool {
+	target = strings.ToLower(strings.TrimSpace(target))
+	for _, value := range values {
+		if strings.ToLower(strings.TrimSpace(value)) == target {
+			return true
+		}
+	}
+	return false
+}
+
+func firstPositiveInt(values ...int) int {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func agentRuntimeModelDisplayName(model string) string {
+	model = strings.TrimSpace(model)
+	if strings.Contains(model, "/") {
+		_, suffix, ok := strings.Cut(model, "/")
+		if ok && strings.TrimSpace(suffix) != "" {
+			return strings.TrimSpace(suffix)
+		}
+	}
+	return model
 }
 
 func profileModelFromTemplate(template AgentModelProfileTemplate) domainAgentModelProfile {
@@ -757,17 +1063,20 @@ func renderOpenCodeConfig(profiles []domainAgentModelProfile) openCodeConfigFile
 		if profile.ContextWindow > 0 && profile.MaxOutputTokens > 0 {
 			model.Limit = &openCodeModelLimit{Context: profile.ContextWindow, Output: profile.MaxOutputTokens}
 		}
-		config.Provider[profile.ProviderID] = openCodeProviderConfig{
-			NPM:  "@ai-sdk/openai-compatible",
-			Name: firstNonEmpty(strings.TrimSpace(profile.ProviderLabel), strings.TrimSpace(profile.ProviderID)),
-			Options: openCodeProviderOptions{
-				BaseURL: strings.TrimRight(strings.TrimSpace(profile.BaseURL), "/"),
-				APIKey:  "{env:" + AgentModelProfileEnvName(profile.ID) + "}",
-			},
-			Models: map[string]openCodeModelConfig{
-				profile.Model: model,
-			},
+		providerConfig, ok := config.Provider[profile.ProviderID]
+		if !ok {
+			providerConfig = openCodeProviderConfig{
+				NPM:  "@ai-sdk/openai-compatible",
+				Name: firstNonEmpty(strings.TrimSpace(profile.ProviderLabel), strings.TrimSpace(profile.ProviderID)),
+				Options: openCodeProviderOptions{
+					BaseURL: strings.TrimRight(strings.TrimSpace(profile.BaseURL), "/"),
+					APIKey:  "{env:" + AgentModelProfileEnvName(profile.ID) + "}",
+				},
+				Models: map[string]openCodeModelConfig{},
+			}
 		}
+		providerConfig.Models[profile.Model] = model
+		config.Provider[profile.ProviderID] = providerConfig
 	}
 	if defaultProfile.ID != "" {
 		config.Model = defaultProfile.ProviderID + "/" + defaultProfile.Model

@@ -22,6 +22,7 @@ import (
 	appagent "github.com/mediago-dev/mediago-drama/services/server/internal/app/agent"
 	serverconfig "github.com/mediago-dev/mediago-drama/services/server/internal/config"
 	platformlogger "github.com/mediago-dev/mediago-drama/services/server/internal/platform/logger"
+	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/workspace"
 )
 
@@ -151,6 +152,8 @@ func run(args []string) error {
 		ACPCommand:            config.ACPCommand,
 		AgentID:               config.Agent.ID,
 		AgentBinDir:           config.Agent.BinDir,
+		ModelPlatforms:        config.ModelPlatforms,
+		MediagoBaseURL:        config.MediagoBaseURL,
 		FFmpegPath:            config.FFmpeg.Path,
 		FFmpegBinDir:          config.FFmpeg.BinDir,
 		JimengBinPath:         config.Jimeng.Path,
@@ -239,6 +242,16 @@ func applyEnvOverrides(config *serverconfig.ServerConfig) error {
 	}
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_AGENT_BIN_DIR")); value != "" {
 		config.Agent.BinDir = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MEDIAGO_MODEL_PLATFORM")); value != "" {
+		ids, err := servicesettings.ParseModelPlatformIDs(value)
+		if err != nil {
+			return fmt.Errorf("invalid MEDIAGO_MODEL_PLATFORM: %w", err)
+		}
+		config.ModelPlatforms = ids
+	}
+	if value := strings.TrimSpace(os.Getenv("MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL")); value != "" {
+		config.MediagoBaseURL = strings.TrimRight(value, "/")
 	}
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_FFMPEG_PATH")); value != "" {
 		config.FFmpeg.Path = value

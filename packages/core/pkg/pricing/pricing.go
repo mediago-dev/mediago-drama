@@ -47,6 +47,8 @@ func EstimateCost(table Table, routeID string, usage Usage) (Cost, bool) {
 		amount += float64(characters) * price.CharacterPrice / 1_000_000
 	case UnitPerCall:
 		amount += float64(usage.Calls) * price.PerCallPrice
+	case UnitExternal:
+		return Cost{}, false
 	}
 
 	return Cost{RouteID: routeID, Currency: price.Currency, Amount: amount}, true

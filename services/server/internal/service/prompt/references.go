@@ -11,6 +11,7 @@ import (
 const maxReferenceIndexItems = 120
 
 const referenceIndexPromptHeading = "# 可用 @ 资源索引"
+const referenceHandlingPromptHeading = "# @ 引用处理要求"
 
 var (
 	referenceHeadingPattern          = regexp.MustCompile(`^(#{1,3})\s+(.+?)\s*$`)
@@ -28,22 +29,27 @@ type referenceIndexItem struct {
 	Title           string
 }
 
-// BuildACPUserPrompt appends a compact workspace @ resource index to storyboard-related user prompts.
+// BuildACPUserPrompt appends compact reference guidance to user prompts that need workspace resources.
 func BuildACPUserPrompt(request AgentRunRequest) string {
 	userPrompt := strings.TrimSpace(request.Prompt)
-	if userPrompt == "" || strings.Contains(userPrompt, referenceIndexPromptHeading) {
-		return userPrompt
-	}
-	if !shouldAttachReferenceIndex(request) {
-		return userPrompt
-	}
-
-	items := buildReferenceIndexItems(request)
-	if len(items) == 0 {
+	if userPrompt == "" ||
+		strings.Contains(userPrompt, referenceIndexPromptHeading) ||
+		strings.Contains(userPrompt, referenceHandlingPromptHeading) {
 		return userPrompt
 	}
 
-	return strings.TrimSpace(userPrompt + "\n\n" + renderReferenceIndexPrompt(items))
+	sections := []string{userPrompt}
+	if shouldAttachReferenceIndex(request) {
+		items := buildReferenceIndexItems(request)
+		if len(items) > 0 {
+			sections = append(sections, renderReferenceIndexPrompt(items))
+		}
+	}
+	if shouldAttachReferenceHandlingPrompt(request) {
+		sections = append(sections, renderReferenceHandlingPrompt())
+	}
+
+	return strings.TrimSpace(strings.Join(sections, "\n\n"))
 }
 
 func buildReferenceIndexItems(request AgentRunRequest) []referenceIndexItem {
@@ -150,6 +156,33 @@ func shouldAttachReferenceIndex(request AgentRunRequest) bool {
 		}
 	}
 	return false
+}
+
+func shouldAttachReferenceHandlingPrompt(request AgentRunRequest) bool {
+	if len(request.References) > 0 {
+		return true
+	}
+	prompt := strings.ToLower(strings.TrimSpace(request.Prompt))
+	if !strings.Contains(prompt, "@") {
+		return false
+	}
+	for _, suffix := range []string{".txt", ".md", ".markdown", ".docx", ".pdf"} {
+		if strings.Contains(prompt, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func renderReferenceHandlingPrompt() string {
+	return strings.Join([]string{
+		referenceHandlingPromptHeading,
+		"",
+		"- 用户消息中的 `@文件名` 是工作区引用；当前工作目录已经是项目文档根目录，先在 `.` 下定位同名或同基名文件。",
+		"- 如果存在同基名副本（例如 `素材.txt`、`素材-2.txt`、`素材-3.txt`），优先使用修改时间最新的文件。",
+		"- 处理超过 200 行或 8KB 的文本资料时，不要用 `read` 从头到尾反复分页；先定位章节/标题边界，再只读取用户要求的章节或片段。",
+		"- 用户要求生成、改写或写入业务文档时，读到足够上下文后必须完成文档写入或输出可应用的最终内容；不要把“下一步继续读取”或 Next Steps 当作最终回答。",
+	}, "\n")
 }
 
 func renderReferenceIndexPrompt(items []referenceIndexItem) string {

@@ -24,6 +24,7 @@ func (workflow *GenerationService) newGenerationProvider(route coregeneration.Mo
 		Credentials:                   workflow.generationCredentialResolver(),
 		MultimodalTextProviderFactory: workflow.multimodalTextProviderFactory,
 		OpenRouterAppName:             "mediago-drama",
+		MediagoBaseURL:                workflow.mediagoBaseURL,
 		JimengBinPath:                 workflow.jimengBinPath,
 		JimengBinDir:                  workflow.jimengBinDir,
 	})
@@ -66,6 +67,9 @@ func (workflow *GenerationService) requireGenerationRouteConfigured(route corege
 
 func (workflow *GenerationService) generationRouteConfigured(route coregeneration.ModelRoute) bool {
 	if workflow == nil || workflow.settings == nil {
+		return false
+	}
+	if route.Provider == coregeneration.ProviderMediago && strings.TrimSpace(workflow.mediagoBaseURL) == "" {
 		return false
 	}
 	return GenerationRouteConfigured(route, func(authKey string) bool {

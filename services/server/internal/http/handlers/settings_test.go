@@ -138,6 +138,27 @@ func TestSettingsHandlerPutAndListAPIKeys(t *testing.T) {
 	}
 }
 
+func TestSettingsHandlerModelPlatforms(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+	settings := service.NewSettings(&fakeAPIKeyStore{values: map[string]string{}})
+	settings.SetModelPlatforms([]string{service.ModelPlatformOpenRouter, service.ModelPlatformDMXAPI})
+	handler := NewSettings(settings)
+	router.GET("/settings/model-platforms", handler.HandleModelPlatforms)
+
+	request := httptest.NewRequest(http.MethodGet, "/settings/model-platforms", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"id":"openrouter"`) ||
+		!strings.Contains(response.Body.String(), `"id":"dmxapi"`) ||
+		!strings.Contains(response.Body.String(), `"apiKeyProviderId":"dmx"`) {
+		t.Fatalf("GET body = %s, want enabled model platforms", response.Body.String())
+	}
+}
+
 func TestSettingsHandlerAgentModelProfilesLifecycle(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()

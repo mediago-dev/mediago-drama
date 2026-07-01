@@ -6,6 +6,7 @@ const (
 	ProviderMiniMax    = "minimax"
 	ProviderDeepSeek   = "deepseek"
 	ProviderVolcengine = "volcengine"
+	ProviderMediago    = "mediago"
 	ProviderDMX        = "dmx"
 	ProviderOpenRouter = "openrouter"
 	ProviderJimeng     = "jimeng"

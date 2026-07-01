@@ -1,9 +1,21 @@
-import { constants, accessSync, chmodSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import {
+	constants,
+	accessSync,
+	chmodSync,
+	cpSync,
+	existsSync,
+	mkdirSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const agent = process.argv[2]?.trim() || "codex";
 const platformArg = process.argv[3]?.trim() || "";
+const modelPlatform = process.argv[4]?.trim() || "mediago";
+const mediagoBaseURL =
+	process.argv[5]?.trim() || process.env.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL?.trim() || "";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const workspaceDir = resolve(scriptDir, "..");
 const rootDir = resolve(workspaceDir, "../..");
@@ -51,6 +63,10 @@ function main(): void {
 	chmodSync(stagedServer, 0o755);
 	cpSync(agentDist, join(agentsDir, agent), { recursive: true });
 	cpSync(toolsDist, toolsDir, { recursive: true });
+	writeFileSync(
+		join(electronResourcesDir, "model-platform.json"),
+		JSON.stringify({ mediagoBaseURL, modelPlatform }, null, 2) + "\n",
+	);
 }
 
 function ensureExecutable(path: string): void {

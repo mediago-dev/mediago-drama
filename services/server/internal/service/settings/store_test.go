@@ -88,9 +88,33 @@ func TestSettingsListAPIKeysIncludesGenerationAndAgentProviders(t *testing.T) {
 		t.Fatalf("dmx provider = %#v, want unconfigured provider", provider)
 	}
 	if provider.Label != "DMX" ||
-		stringSliceContains(provider.Capabilities, "agent") ||
+		!stringSliceContains(provider.Capabilities, "agent") ||
 		!stringSliceContains(provider.Capabilities, "generation") {
-		t.Fatalf("dmx provider = %#v, want generation-only DMX provider", provider)
+		t.Fatalf("dmx provider = %#v, want generation and agent DMX provider", provider)
+	}
+
+	provider = providerByID(t, list, "mediago")
+	if provider.Label != "MediaGo" ||
+		!stringSliceContains(provider.Capabilities, "agent") ||
+		!stringSliceContains(provider.Capabilities, "generation") {
+		t.Fatalf("mediago provider = %#v, want generation and agent MediaGo provider", provider)
+	}
+}
+
+func TestSettingsListModelPlatformsDefaultsAndOverrides(t *testing.T) {
+	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
+
+	list := settings.ListModelPlatforms()
+	if len(list.Platforms) != 1 || list.Platforms[0].ID != ModelPlatformMediago {
+		t.Fatalf("default platforms = %#v, want mediago only", list.Platforms)
+	}
+
+	settings.SetModelPlatforms([]string{ModelPlatformOpenRouter, ModelPlatformDMXAPI})
+	list = settings.ListModelPlatforms()
+	if len(list.Platforms) != 2 ||
+		list.Platforms[0].ID != ModelPlatformOpenRouter ||
+		list.Platforms[1].APIKeyProviderID != "dmx" {
+		t.Fatalf("override platforms = %#v, want openrouter then dmxapi", list.Platforms)
 	}
 }
 

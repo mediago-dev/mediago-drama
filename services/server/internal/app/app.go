@@ -32,6 +32,8 @@ type Config struct {
 	ACPCommand               string
 	AgentID                  string
 	AgentBinDir              string
+	ModelPlatforms           []string
+	MediagoBaseURL           string
 	FFmpegPath               string
 	FFmpegBinDir             string
 	JimengBinPath            string

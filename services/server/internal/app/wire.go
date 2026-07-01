@@ -83,6 +83,8 @@ func newAPIHandler(config Config) *apiHandler {
 		settingsRepos.AppSettings,
 	)
 	settings.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
+	settings.SetModelPlatforms(config.ModelPlatforms)
+	settings.SetMediagoBaseURL(config.MediagoBaseURL)
 	if configurableRunner, ok := runner.(interface {
 		SetProcessConfigProvider(serviceacp.ProcessConfigProvider)
 	}); ok {
@@ -113,6 +115,7 @@ func newAPIHandler(config Config) *apiHandler {
 	)
 	generationService := servicegeneration.NewGenerationService(settings, generationTasks, mediaAssets, generationPreferences)
 	generationService.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
+	generationService.SetMediagoBaseURL(config.MediagoBaseURL)
 	generationService.SetGenerationNotifications(generationNotifications)
 	generationService.SetDocumentResolver(workspaceState.StateService().Documents)
 	workspaceState.StateService().Documents.SetGeneratedAssetCounter(generationTasks)

@@ -13,17 +13,20 @@ import {
 import type React from "react";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import {
 	type APIKeyLoginChallenge,
 	type APIKeyProvider,
+	type ModelPlatform,
 	apiKeysKey,
 	beginProviderLogin,
 	clearAPIKey,
 	completeProviderLogin,
 	getAPIKeys,
 	getJianyingDraftSettings,
+	getModelPlatforms,
 	jianyingDraftSettingsKey,
+	modelPlatformsKey,
 	saveAPIKey,
 	saveJianyingDraftSettings,
 } from "@/domains/settings/api/settings";
@@ -113,8 +116,18 @@ export const Settings: React.FC = () => {
 
 const APIKeysPanel: React.FC = () => {
 	const toast = useToast();
+	const { mutate: mutateGlobal } = useSWRConfig();
 	const { data, mutate, isLoading } = useSWR(apiKeysKey, getAPIKeys);
+	const { data: modelPlatformsData, isLoading: isModelPlatformsLoading } = useSWR(
+		modelPlatformsKey,
+		getModelPlatforms,
+	);
 	const providers = data?.providers ?? [];
+	const modelPlatforms = modelPlatformsData?.platforms ?? [];
+	const providersByID = new Map(providers.map((provider) => [provider.id, provider]));
+	const unifiedProviders = platformProviders(modelPlatforms, providersByID, "unified");
+	const customProviders = platformProviders(modelPlatforms, providersByID, "custom");
+	const officialProviders = officialAPIKeyProviders(providers, modelPlatforms);
 	const [apiKeys, setAPIKeys] = useState<Record<string, string>>({});
 	const [savingID, setSavingID] = useState<string>();
 	const [clearingID, setClearingID] = useState<string>();
@@ -152,6 +165,10 @@ const APIKeysPanel: React.FC = () => {
 		setAPIKeys((current) => ({ ...current, [providerID]: value }));
 	};
 
+	const revalidateAgentRuntimeConfig = () => {
+		void mutateGlobal(isAgentRuntimeConfigKey, undefined, { revalidate: true });
+	};
+
 	const save = async (provider: APIKeyProvider) => {
 		const apiKey = apiKeys[provider.id]?.trim() ?? "";
 		if (!apiKey) return;
@@ -160,6 +177,7 @@ const APIKeysPanel: React.FC = () => {
 		try {
 			const nextData = await saveAPIKey(provider.id, apiKey);
 			await mutate(nextData, false);
+			revalidateAgentRuntimeConfig();
 			setAPIKeys((current) => ({ ...current, [provider.id]: "" }));
 			toast.success("API Key 已保存", { description: provider.label });
 		} catch (err) {
@@ -175,6 +193,7 @@ const APIKeysPanel: React.FC = () => {
 		try {
 			const nextData = await clearAPIKey(provider.id);
 			await mutate(nextData, false);
+			revalidateAgentRuntimeConfig();
 			setAPIKeys((current) => ({ ...current, [provider.id]: "" }));
 			toast.success("API Key 已清除", { description: provider.label });
 		} catch (err) {
@@ -241,14 +260,40 @@ const APIKeysPanel: React.FC = () => {
 		}
 	};
 
+	const renderProvider = (provider: APIKeyProvider) => {
+		const apiKey = apiKeys[provider.id] ?? "";
+		const isSaving = savingID === provider.id;
+		const isClearing = clearingID === provider.id;
+		const isLoggingIn = loggingInID === provider.id;
+		const isCheckingLogin = checkingLoginID === provider.id;
+		return (
+			<APIKeyProviderRow
+				key={provider.id}
+				provider={provider}
+				apiKey={apiKey}
+				isSaving={isSaving}
+				isClearing={isClearing}
+				isLoggingIn={isLoggingIn}
+				isCheckingLogin={isCheckingLogin}
+				loginChallenge={loginChallenges[provider.id]}
+				onAPIKeyChange={(value) => updateAPIKey(provider.id, value)}
+				onClear={() => void clear(provider)}
+				onConfirmLogin={() => void completeLogin(provider)}
+				onLogin={() => void login(provider)}
+				onOpenLogin={() => void openLoginChallenge(provider)}
+				onSave={() => void save(provider)}
+			/>
+		);
+	};
+
 	return (
 		<SettingsPanelLayout
 			title="API 密钥"
-			description="管理生成和智能体使用的官方供应商凭据。"
+			description="管理生成和智能体使用的聚合平台与官方供应商凭据。"
 			icon={<KeyRound className="size-4" />}
 		>
 			<div className="space-y-3">
-				{isLoading && providers.length === 0 ? (
+				{(isLoading || isModelPlatformsLoading) && providers.length === 0 ? (
 					<div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
 						<Loader2 className="size-4 animate-spin" />
 						<span>加载中</span>
@@ -257,41 +302,75 @@ const APIKeysPanel: React.FC = () => {
 				{!isLoading && providers.length === 0 ? (
 					<p className="py-2 text-sm text-muted-foreground">暂无可配置供应商。</p>
 				) : null}
-				{providers.map((provider) => {
-					const apiKey = apiKeys[provider.id] ?? "";
-					const isSaving = savingID === provider.id;
-					const isClearing = clearingID === provider.id;
-					const isLoggingIn = loggingInID === provider.id;
-					const isCheckingLogin = checkingLoginID === provider.id;
-					return (
-						<APIKeyProviderRow
-							key={provider.id}
-							provider={provider}
-							apiKey={apiKey}
-							isSaving={isSaving}
-							isClearing={isClearing}
-							isLoggingIn={isLoggingIn}
-							isCheckingLogin={isCheckingLogin}
-							loginChallenge={loginChallenges[provider.id]}
-							onAPIKeyChange={(value) => updateAPIKey(provider.id, value)}
-							onClear={() => void clear(provider)}
-							onConfirmLogin={() => void completeLogin(provider)}
-							onLogin={() => void login(provider)}
-							onOpenLogin={() => void openLoginChallenge(provider)}
-							onSave={() => void save(provider)}
-						/>
-					);
-				})}
+				{unifiedProviders.length > 0 ? (
+					<APIKeyProviderGroup title="统一接口">
+						{unifiedProviders.map(renderProvider)}
+					</APIKeyProviderGroup>
+				) : null}
+				{customProviders.length > 0 ? (
+					<APIKeyProviderGroup title="自定义接口">
+						{customProviders.map(renderProvider)}
+					</APIKeyProviderGroup>
+				) : null}
+				{officialProviders.length > 0 ? (
+					<APIKeyProviderGroup title={modelPlatforms.length > 0 ? "官方供应商" : "供应商"}>
+						{officialProviders.map(renderProvider)}
+					</APIKeyProviderGroup>
+				) : null}
 			</div>
 		</SettingsPanelLayout>
 	);
 };
+
+const platformProviderIDs = new Set(["mediago", "openrouter", "dmx"]);
+
+const platformProviders = (
+	platforms: ModelPlatform[],
+	providersByID: Map<string, APIKeyProvider>,
+	kind: string,
+) =>
+	platforms
+		.filter((platform) => platform.kind === kind)
+		.flatMap((platform) => {
+			const provider = providersByID.get(platform.apiKeyProviderId);
+			if (!provider) return [];
+			return [
+				{
+					...provider,
+					label: platform.label || provider.label,
+					description: platform.description || provider.description,
+					credentialLabel: undefined,
+					help: undefined,
+					placeholder: undefined,
+				},
+			];
+		});
+
+const officialAPIKeyProviders = (providers: APIKeyProvider[], platforms: ModelPlatform[]) => {
+	if (platforms.length === 0) {
+		return providers.filter((provider) => provider.id !== "mediago");
+	}
+	return providers.filter((provider) => !platformProviderIDs.has(provider.id));
+};
+
+const APIKeyProviderGroup: React.FC<{
+	children: React.ReactNode;
+	title: string;
+}> = ({ children, title }) => (
+	<section className="space-y-2">
+		<h2 className="px-1 text-xs font-semibold text-muted-foreground">{title}</h2>
+		<div className="space-y-3">{children}</div>
+	</section>
+);
 
 const withoutRecordKey = <TValue,>(values: Record<string, TValue>, key: string) => {
 	const next = { ...values };
 	delete next[key];
 	return next;
 };
+
+const isAgentRuntimeConfigKey = (key: unknown) =>
+	typeof key === "string" && key.endsWith("/agent/runtime-config");
 
 const openExternalURL = async (url: string) => {
 	await openExternalUrl(url);
@@ -759,12 +838,19 @@ const ProviderBadge: React.FC<{
 
 const providerDescription = (description: string) => {
 	const descriptions: Record<string, string> = {
+		"MediaGo unified aggregation platform": "MediaGo 统一接口",
+		"MediaGo 统一接口": "MediaGo 统一接口",
 		"DMX aggregation platform": "DMX 聚合平台",
+		"DMXAPI 自定义聚合接口": "DMXAPI 自定义聚合接口",
+		"OpenRouter 自定义聚合接口": "OpenRouter 自定义聚合接口",
 		"OpenRouter multimodal routes": "OpenRouter 多模态供应商",
 		"OpenAI official image routes": "OpenAI 官方图像供应商",
+		"OpenAI official text and image routes": "OpenAI 官方文本和图像供应商",
 		"Google official image routes": "Google 官方图像供应商",
+		"Google official Gemini text and image routes": "Google Gemini 官方文本和图像供应商",
 		"Seedream and Seedance official routes": "Seedream 和 Seedance 官方供应商",
 		"Jimeng CLI local OAuth session": "即梦 CLI 本地登录",
+		"DeepSeek official text generation routes": "DeepSeek 官方文本供应商",
 		"DeepSeek agent routes": "DeepSeek 智能体供应商",
 	};
 	return descriptions[description] ?? description;

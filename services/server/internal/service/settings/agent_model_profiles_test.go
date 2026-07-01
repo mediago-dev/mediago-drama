@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,6 +73,7 @@ func TestAgentModelProfilesCRUDDefaultAndKeyRedaction(t *testing.T) {
 		&memoryAPIKeyStore{values: map[string]string{}},
 		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
 	)
+	settings.SetModelPlatforms([]string{ModelPlatformOpenRouter})
 	ctx := context.Background()
 
 	templateID := "minimax"
@@ -151,6 +154,7 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 		&memoryAPIKeyStore{values: map[string]string{}},
 		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
 	)
+	settings.SetModelPlatforms([]string{ModelPlatformOpenRouter})
 	ctx := context.Background()
 
 	if _, err := settings.SetAPIKey(ctx, "openrouter", "sk-openrouter-secret"); err != nil {
@@ -165,10 +169,10 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	if config.ConfigDir != filepath.Join(workspaceDir, ".mediago-drama", "runtime", "agents", "opencode", "config") {
 		t.Fatalf("ConfigDir = %q, want workspace metadata config dir", config.ConfigDir)
 	}
-	if config.ProfileCount != 1 || config.DefaultProfileID != "openrouter" {
-		t.Fatalf("runtime config = %#v, want one openrouter default", config)
+	if config.ProfileCount <= 1 || config.DefaultProfileID != "openrouter-gpt-5-5" {
+		t.Fatalf("runtime config = %#v, want openrouter catalog profiles", config)
 	}
-	envName := AgentModelProfileEnvName("openrouter")
+	envName := AgentModelProfileEnvName("openrouter-gpt-5-5")
 	if config.Env[envName] != "sk-openrouter-secret" {
 		t.Fatalf("runtime env %q = %q, want secret in process env only", envName, config.Env[envName])
 	}
@@ -183,8 +187,8 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	}
 	for _, want := range []string{
 		`"$schema": "https://opencode.ai/config.json"`,
-		`"model": "openrouter/openai/gpt-4.1-mini"`,
-		`"apiKey": "{env:MEDIAGO_AGENT_MODEL_OPENROUTER_API_KEY}"`,
+		`"model": "openrouter/openai/gpt-5.5"`,
+		`"apiKey": "{env:MEDIAGO_AGENT_MODEL_OPENROUTER_GPT_5_5_API_KEY}"`,
 		`"tool_call": true`,
 		`"attachment": true`,
 		`"input": [`,
@@ -202,7 +206,7 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	}
 }
 
-func TestPrepareOpenCodeRuntimeConfigExcludesDMXGeminiFromDMXKey(t *testing.T) {
+func TestPrepareOpenCodeRuntimeConfigExcludesDMXWhenPlatformDisabled(t *testing.T) {
 	settings := NewSettingsWithAgentModelProfiles(
 		&memoryAPIKeyStore{values: map[string]string{}},
 		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
@@ -223,6 +227,174 @@ func TestPrepareOpenCodeRuntimeConfigExcludesDMXGeminiFromDMXKey(t *testing.T) {
 	}
 }
 
+func TestPrepareOpenCodeRuntimeConfigIncludesDMXAPIWhenPlatformEnabled(t *testing.T) {
+	settings := NewSettingsWithAgentModelProfiles(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
+	)
+	settings.SetModelPlatforms([]string{ModelPlatformDMXAPI})
+	ctx := context.Background()
+
+	if _, err := settings.SetAPIKey(ctx, "dmx", "sk-dmx-secret"); err != nil {
+		t.Fatalf("SetAPIKey returned error: %v", err)
+	}
+
+	config, err := settings.PrepareOpenCodeRuntimeConfig(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("PrepareOpenCodeRuntimeConfig returned error: %v", err)
+	}
+	if config.ProfileCount == 0 || config.DefaultProfileID != "dmxapi-gpt-4-1-mini" {
+		t.Fatalf("runtime config = %#v, want dmxapi catalog profiles", config)
+	}
+	if config.Env[AgentModelProfileEnvName("dmxapi-gpt-4-1-mini")] != "sk-dmx-secret" {
+		t.Fatalf("runtime env = %#v, want DMX key injected for dmxapi", config.Env)
+	}
+
+	data, err := os.ReadFile(filepath.Join(config.ConfigDir, "opencode.json"))
+	if err != nil {
+		t.Fatalf("reading opencode.json: %v", err)
+	}
+	text := string(data)
+	for _, want := range []string{
+		`"model": "dmxapi/gpt-4.1-mini"`,
+		`"baseURL": "https://www.dmxapi.cn/v1"`,
+		`"name": "gpt-4.1-mini"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("opencode.json missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testing.T) {
+	var sawAuthorization string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/v1/models/user" {
+			t.Fatalf("request path = %q, want /api/v1/models/user", request.URL.Path)
+		}
+		sawAuthorization = request.Header.Get("Authorization")
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"data": [
+					{
+						"id": "local/gpt-test",
+						"name": "GPT Test",
+					"architecture": {
+						"input_modalities": ["text", "image"],
+						"output_modalities": ["text"]
+					},
+					"supported_parameters": ["stream", "tools"],
+					"top_provider": {
+						"context_length": 123456,
+							"max_completion_tokens": 4096
+						}
+					},
+					{
+						"id": "local/text-test",
+						"name": "Text Test",
+						"architecture": {
+							"input_modalities": ["text"],
+							"output_modalities": ["text"]
+						},
+						"supported_parameters": ["stream", "temperature"]
+					},
+					{
+						"id": "local/image-test",
+						"architecture": {
+						"input_modalities": ["text"],
+						"output_modalities": ["image"]
+					}
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	settings := NewSettingsWithAgentModelProfiles(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
+	)
+	settings.SetModelPlatforms([]string{ModelPlatformMediago})
+	settings.SetMediagoBaseURL(server.URL + "/api/v1")
+	ctx := context.Background()
+	if _, err := settings.SetAPIKey(ctx, "mediago", "mgak-secret"); err != nil {
+		t.Fatalf("SetAPIKey returned error: %v", err)
+	}
+
+	config, err := settings.PrepareOpenCodeRuntimeConfig(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("PrepareOpenCodeRuntimeConfig returned error: %v", err)
+	}
+	if sawAuthorization != "Bearer mgak-secret" {
+		t.Fatalf("Authorization = %q, want bearer key", sawAuthorization)
+	}
+	if config.ProfileCount != 2 || config.DefaultProfileID != "mediago-local-gpt-test" {
+		t.Fatalf("runtime config = %#v, want dynamic MediaGo text profiles", config)
+	}
+	if config.Env[AgentModelProfileEnvName("mediago-local-gpt-test")] != "mgak-secret" {
+		t.Fatalf("runtime env = %#v, want MediaGo key injected for dynamic profile", config.Env)
+	}
+
+	data, err := os.ReadFile(filepath.Join(config.ConfigDir, "opencode.json"))
+	if err != nil {
+		t.Fatalf("reading opencode.json: %v", err)
+	}
+	text := string(data)
+	for _, want := range []string{
+		`"model": "mediago/local/gpt-test"`,
+		`"baseURL": "` + server.URL + `/api/v1"`,
+		`"name": "GPT Test"`,
+		`"image"`,
+		`"context": 123456`,
+		`"output": 4096`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("opencode.json missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "local/image-test") {
+		t.Fatalf("opencode.json should not include non-text MediaGo model:\n%s", text)
+	}
+
+	var rendered openCodeConfigFile
+	if err := json.Unmarshal(data, &rendered); err != nil {
+		t.Fatalf("unmarshalling opencode.json: %v", err)
+	}
+	mediagoProvider := rendered.Provider[agentModelProviderMediago]
+	if !mediagoProvider.Models["local/gpt-test"].ToolCall {
+		t.Fatalf("MediaGo model with tools support should enable tool_call:\n%s", text)
+	}
+	if mediagoProvider.Models["local/text-test"].ToolCall {
+		t.Fatalf("MediaGo model without tools support should not enable tool_call:\n%s", text)
+	}
+}
+
+func TestPrepareOpenCodeRuntimeConfigDoesNotFallbackToStaticMediagoModelsWhenUserModelsFail(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	settings := NewSettingsWithAgentModelProfiles(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
+	)
+	settings.SetModelPlatforms([]string{ModelPlatformMediago})
+	settings.SetMediagoBaseURL(server.URL + "/api/v1")
+	ctx := context.Background()
+	if _, err := settings.SetAPIKey(ctx, "mediago", "invalid-key"); err != nil {
+		t.Fatalf("SetAPIKey returned error: %v", err)
+	}
+
+	config, err := settings.PrepareOpenCodeRuntimeConfig(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("PrepareOpenCodeRuntimeConfig returned error: %v", err)
+	}
+	if config.ProfileCount != 0 || config.DefaultProfileID != "" || config.ConfigDir != "" || len(config.Env) != 0 {
+		t.Fatalf("runtime config = %#v, want no MediaGo profiles when user model list fails", config)
+	}
+}
+
 func TestPrepareOpenCodeRuntimeConfigUsesLegacyOfficialProfileKey(t *testing.T) {
 	settings := NewSettingsWithAgentModelProfiles(
 		&memoryAPIKeyStore{values: map[string]string{
@@ -230,14 +402,15 @@ func TestPrepareOpenCodeRuntimeConfigUsesLegacyOfficialProfileKey(t *testing.T) 
 		}},
 		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
 	)
+	settings.SetModelPlatforms([]string{ModelPlatformOpenRouter})
 
 	config, err := settings.PrepareOpenCodeRuntimeConfig(context.Background(), t.TempDir())
 	if err != nil {
 		t.Fatalf("PrepareOpenCodeRuntimeConfig returned error: %v", err)
 	}
 
-	envName := AgentModelProfileEnvName("openrouter")
-	if config.ProfileCount != 1 || config.Env[envName] != "sk-legacy-openrouter-secret" {
+	envName := AgentModelProfileEnvName("openrouter-gpt-5-5")
+	if config.ProfileCount <= 1 || config.Env[envName] != "sk-legacy-openrouter-secret" {
 		t.Fatalf("runtime config = %#v, want legacy official key fallback", config)
 	}
 }

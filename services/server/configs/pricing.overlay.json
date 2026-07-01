@@ -62,6 +62,31 @@
       "cachedTokenPrice": 0.3
     },
     {
+      "routeId": "mediago.gpt-4.1-mini-text",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "mediago.gpt-5-mini-text",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "mediago.gpt-5.5-text",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "mediago.gpt-5.4-text",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "mediago.gpt-5.4-mini-text",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
       "routeId": "dmx.gemini-3.5-flash-text",
       "currency": "CNY",
       "unit": "per_million_tokens",
@@ -84,6 +109,21 @@
       "inputTokenPrice": 2,
       "outputTokenPrice": 12,
       "cachedTokenPrice": 0.2
+    },
+    {
+      "routeId": "mediago.gemini-3.5-flash-text",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "mediago.gemini-3.1-pro-preview-text",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "mediago.gemini-3.1-flash-lite-text",
+      "currency": "CNY",
+      "unit": "external"
     },
     {
       "routeId": "dmx.minimax-m3-text",
@@ -110,6 +150,21 @@
       "cachedTokenPrice": 0.4
     },
     {
+      "routeId": "mediago.minimax-m3-text",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "mediago.minimax-m2.7-text",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "mediago.minimax-m2.7-highspeed-text",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
       "routeId": "dmx.deepseek-v4-flash-text",
       "currency": "CNY",
       "unit": "per_million_tokens",
@@ -124,6 +179,16 @@
       "inputTokenPrice": 3,
       "outputTokenPrice": 6,
       "cachedTokenPrice": 0.03
+    },
+    {
+      "routeId": "mediago.deepseek-v4-flash-text",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "mediago.deepseek-v4-pro-text",
+      "currency": "CNY",
+      "unit": "external"
     },
     {
       "routeId": "openrouter.gpt-4.1-mini-text",

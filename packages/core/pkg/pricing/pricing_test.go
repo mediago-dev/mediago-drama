@@ -90,6 +90,11 @@ func TestEstimateCost(t *testing.T) {
 			Unit:           UnitPerMillionCharacters,
 			CharacterPrice: 60,
 		},
+		"external.cny": {
+			RouteID:  "external.cny",
+			Currency: "CNY",
+			Unit:     UnitExternal,
+		},
 	}
 
 	tests := []struct {
@@ -128,6 +133,12 @@ func TestEstimateCost(t *testing.T) {
 			name:    "missing route",
 			routeID: "missing",
 			usage:   Usage{Calls: 1},
+			wantOK:  false,
+		},
+		{
+			name:    "external route",
+			routeID: "external.cny",
+			usage:   Usage{InputTokens: 1_000_000, OutputTokens: 500_000, Calls: 1},
 			wantOK:  false,
 		},
 	}

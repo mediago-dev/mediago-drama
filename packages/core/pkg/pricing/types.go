@@ -10,6 +10,8 @@ const (
 	UnitPerMillionCharacters Unit = "per_million_characters"
 	// UnitPerCall prices each generation call.
 	UnitPerCall Unit = "per_call"
+	// UnitExternal marks routes whose pricing is settled by an upstream platform.
+	UnitExternal Unit = "external"
 )
 
 // RoutePrice is the price record for one generation route.

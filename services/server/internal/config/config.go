@@ -10,19 +10,21 @@ import (
 
 // ServerConfig contains local HTTP server configuration loaded from YAML.
 type ServerConfig struct {
-	Host         string            `yaml:"host"`
-	Port         int               `yaml:"port"`
-	LogPath      string            `yaml:"log_path"`
-	LogLevel     string            `yaml:"log_level"`
-	WorkspaceDir string            `yaml:"workspace_dir"`
-	ACPCommand   string            `yaml:"acp_command"`
-	Agent        AgentConfig       `yaml:"agent"`
-	FFmpeg       FFmpegConfig      `yaml:"ffmpeg"`
-	Jimeng       JimengConfig      `yaml:"jimeng"`
-	Billing      BillingConfig     `yaml:"billing"`
-	Prompt       PromptConfig      `yaml:"prompt"`
-	InternalAPI  InternalAPIConfig `yaml:"internal_api"`
-	DocumentMCP  DocumentMCPConfig `yaml:"document_mcp"`
+	Host           string            `yaml:"host"`
+	Port           int               `yaml:"port"`
+	LogPath        string            `yaml:"log_path"`
+	LogLevel       string            `yaml:"log_level"`
+	WorkspaceDir   string            `yaml:"workspace_dir"`
+	ACPCommand     string            `yaml:"acp_command"`
+	ModelPlatforms []string          `yaml:"model_platforms"`
+	MediagoBaseURL string            `yaml:"mediago_base_url"`
+	Agent          AgentConfig       `yaml:"agent"`
+	FFmpeg         FFmpegConfig      `yaml:"ffmpeg"`
+	Jimeng         JimengConfig      `yaml:"jimeng"`
+	Billing        BillingConfig     `yaml:"billing"`
+	Prompt         PromptConfig      `yaml:"prompt"`
+	InternalAPI    InternalAPIConfig `yaml:"internal_api"`
+	DocumentMCP    DocumentMCPConfig `yaml:"document_mcp"`
 }
 
 // AgentConfig contains ACP agent binary selection and vendored bin settings.
@@ -97,6 +99,8 @@ func normalize(config ServerConfig) ServerConfig {
 	config.LogLevel = strings.TrimSpace(config.LogLevel)
 	config.WorkspaceDir = strings.TrimSpace(config.WorkspaceDir)
 	config.ACPCommand = strings.TrimSpace(config.ACPCommand)
+	config.ModelPlatforms = normalizeStringList(config.ModelPlatforms)
+	config.MediagoBaseURL = strings.TrimRight(strings.TrimSpace(config.MediagoBaseURL), "/")
 	config.Agent = normalizeAgentConfig(config.Agent)
 	config.FFmpeg = normalizeFFmpegConfig(config.FFmpeg)
 	config.Jimeng = normalizeJimengConfig(config.Jimeng)
@@ -148,4 +152,18 @@ func normalizeDocumentMCPConfig(config DocumentMCPConfig) DocumentMCPConfig {
 	config.ActiveDocumentID = strings.TrimSpace(config.ActiveDocumentID)
 	config.SelectionText = strings.TrimSpace(config.SelectionText)
 	return config
+}
+
+func normalizeStringList(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
 }

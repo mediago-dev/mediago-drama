@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync } from "node:fs";
-import { agentsDir, serverBinaryPath, toolsDir } from "./paths.js";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { agentsDir, resourceRoot, serverBinaryPath, toolsDir } from "./paths.js";
 
 let child: ChildProcessWithoutNullStreams | null = null;
 
@@ -12,11 +13,16 @@ export const startServerSidecar = () => {
 	if (!existsSync(serverPath)) {
 		throw new Error(`missing server sidecar: ${serverPath}`);
 	}
+	const platformConfig = packagedModelPlatformConfig();
 
 	child = spawn(serverPath, [], {
 		env: {
 			...process.env,
 			MEDIAGO_AGENT_ID: process.env.MEDIAGO_AGENT_ID || "opencode",
+			MEDIAGO_MODEL_PLATFORM:
+				process.env.MEDIAGO_MODEL_PLATFORM || platformConfig.modelPlatform || "mediago",
+			MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL:
+				process.env.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL || platformConfig.mediagoBaseURL || "",
 			MEDIAGO_SERVER_PORT: process.env.MEDIAGO_SERVER_PORT || "48273",
 			MEDIAGO_EXIT_ON_STDIN_CLOSE: "1",
 			MEDIAGO_AGENT_BIN_DIR: agentsDir(),
@@ -35,6 +41,19 @@ export const startServerSidecar = () => {
 	child.on("exit", () => {
 		child = null;
 	});
+};
+
+const packagedModelPlatformConfig = () => {
+	try {
+		const raw = readFileSync(join(resourceRoot(), "model-platform.json"), "utf8");
+		const parsed = JSON.parse(raw) as { mediagoBaseURL?: unknown; modelPlatform?: unknown };
+		return {
+			mediagoBaseURL: typeof parsed.mediagoBaseURL === "string" ? parsed.mediagoBaseURL.trim() : "",
+			modelPlatform: typeof parsed.modelPlatform === "string" ? parsed.modelPlatform.trim() : "",
+		};
+	} catch {
+		return { mediagoBaseURL: "", modelPlatform: "" };
+	}
 };
 
 export const stopServerSidecar = () => {

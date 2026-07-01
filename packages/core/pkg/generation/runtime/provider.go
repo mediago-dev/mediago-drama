@@ -40,6 +40,7 @@ type Config struct {
 
 	MultimodalTextProviderFactory MultimodalTextProviderFactory
 
+	MediagoBaseURL    string
 	DMXBaseURL        string
 	OpenRouterBaseURL string
 	OpenRouterAppURL  string
@@ -174,6 +175,8 @@ func (provider *Provider) providerForRoute(ctx context.Context, route generation
 		return provider.officialProvider(ctx, route)
 	case generation.ProviderTypeAggregator:
 		switch route.Provider {
+		case generation.ProviderMediago:
+			return provider.mediagoProvider(ctx)
 		case generation.ProviderDMX:
 			return provider.dmxProvider(ctx)
 		case generation.ProviderOpenRouter:
@@ -205,6 +208,35 @@ func (provider *Provider) jimengProvider() (generation.Provider, error) {
 		return jimeng.NewProvider(jimeng.Config{
 			BinPath: provider.config.JimengBinPath,
 			BinDir:  provider.config.JimengBinDir,
+		})
+	})
+}
+
+func (provider *Provider) mediagoProvider(ctx context.Context) (generation.Provider, error) {
+	apiKey, err := provider.credential(ctx, generation.ProviderMediago)
+	if err != nil {
+		return nil, err
+	}
+	baseURL := strings.TrimSpace(provider.config.MediagoBaseURL)
+	if baseURL == "" {
+		return nil, fmt.Errorf("mediago generation base URL is not configured")
+	}
+
+	cacheKey := provider.cacheKey(
+		generation.ProviderMediago,
+		generation.ProviderMediago,
+		apiKey,
+		baseURL,
+		provider.config.OpenRouterAppURL,
+		provider.config.OpenRouterAppName,
+	)
+	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
+		return openrouter.NewProvider(openrouter.Config{
+			BaseURL:    baseURL,
+			APIKey:     apiKey,
+			AppURL:     provider.config.OpenRouterAppURL,
+			AppTitle:   provider.config.OpenRouterAppName,
+			HTTPClient: provider.config.HTTPClient,
 		})
 	})
 }

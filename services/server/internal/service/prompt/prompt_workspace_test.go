@@ -252,6 +252,46 @@ func TestBuildACPUserPromptInjectsReferenceIndexForActiveStoryboardDocument(t *t
 	}
 }
 
+func TestBuildACPUserPromptInjectsAttachmentHandlingForReferencedText(t *testing.T) {
+	prompt := BuildACPUserPrompt(AgentRunRequest{
+		ProjectID: "project-1",
+		Prompt:    "@我有九千万亿舔狗金.txt 请把第一章改写成剧本",
+	})
+
+	for _, want := range []string{
+		"@我有九千万亿舔狗金.txt 请把第一章改写成剧本",
+		"# @ 引用处理要求",
+		"优先使用修改时间最新的文件",
+		"先定位章节/标题边界",
+		"不要把“下一步继续读取”或 Next Steps 当作最终回答",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt = %q, want segment %q", prompt, want)
+		}
+	}
+}
+
+func TestBuildACPUserPromptInjectsAttachmentHandlingForStructuredReference(t *testing.T) {
+	prompt := BuildACPUserPrompt(AgentRunRequest{
+		ProjectID: "project-1",
+		Prompt:    "@原始素材 请改写第一章",
+		References: []AgentReference{
+			{
+				Kind:       "asset",
+				DocumentID: "asset-1",
+				AssetID:    "asset-1",
+				Title:      "原始素材",
+				Category:   "reference",
+			},
+		},
+	})
+
+	if !strings.Contains(prompt, "# @ 引用处理要求") ||
+		!strings.Contains(prompt, "工作区引用") {
+		t.Fatalf("prompt = %q, want attachment handling prompt", prompt)
+	}
+}
+
 func TestBuildACPUserPromptSkipsReferenceIndexForUnrelatedRequest(t *testing.T) {
 	prompt := BuildACPUserPrompt(AgentRunRequest{
 		ProjectID: "project-1",

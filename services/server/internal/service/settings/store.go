@@ -106,11 +106,13 @@ type JianyingDraftSettings struct {
 
 // Settings provides settings workflows.
 type Settings struct {
-	apiKeys       APIKeyStore
-	agentProfiles AgentModelProfileStore
-	appSettings   AppSettingStore
-	jimengBinPath string
-	jimengBinDir  string
+	apiKeys          APIKeyStore
+	agentProfiles    AgentModelProfileStore
+	appSettings      AppSettingStore
+	modelPlatformIDs []string
+	mediagoBaseURL   string
+	jimengBinPath    string
+	jimengBinDir     string
 }
 
 // NewSettings creates a settings service.
