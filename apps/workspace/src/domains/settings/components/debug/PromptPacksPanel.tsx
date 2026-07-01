@@ -79,7 +79,9 @@ export const PromptPacksPanel: React.FC = () => {
 	const refreshPromptData = async () => {
 		await Promise.all([
 			mutatePacks(),
-			mutate(skillsKey),
+			mutate(
+				(key) => typeof key === "string" && (key === skillsKey || key.startsWith(`${skillsKey}/`)),
+			),
 			mutate(
 				(key) =>
 					typeof key === "string" &&
