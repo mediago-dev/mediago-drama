@@ -382,8 +382,12 @@ func shouldApplyACPReasoningSelection(request agentRunRequest) bool {
 	if !ok {
 		return true
 	}
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "deepseek", "dmx", "dmxapi", "mediago", "minimax-cn", "openrouter":
+	normalizedProvider := strings.ToLower(strings.TrimSpace(provider))
+	if normalizedProvider == "mediago" || normalizedProvider == "minimax-cn" {
+		return agentRuntimeModelSupportsOpenCodeThinking(request.Model.Value)
+	}
+	switch normalizedProvider {
+	case "deepseek", "dmx", "dmxapi", "openrouter":
 		return false
 	default:
 		return true

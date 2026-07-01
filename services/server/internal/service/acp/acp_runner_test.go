@@ -303,10 +303,74 @@ func TestAgentRuntimeConfigFromACPSession(t *testing.T) {
 	}
 }
 
+func TestAgentRuntimeConfigFromACPSessionAddsOpenCodeThinkingWhenOfficialMiniMaxExists(t *testing.T) {
+	modelCategory := acp.SessionConfigOptionCategoryModel
+	modelOptions := acp.SessionConfigSelectOptionsUngrouped{
+		{Name: "MediaGo/Qwen3.5 27B", Value: acp.SessionConfigValueId("mediago/qwen3.5-27b")},
+		{Name: "MiniMax 国内/MiniMax-M3", Value: acp.SessionConfigValueId("minimax-cn/MiniMax-M3")},
+	}
+	config := AgentRuntimeConfigFromACPSession(acp.NewSessionResponse{
+		SessionId: acp.SessionId("session-1"),
+		ConfigOptions: []acp.SessionConfigOption{
+			{
+				Select: &acp.SessionConfigOptionSelect{
+					Id:           acp.SessionConfigId("model"),
+					Name:         "Model",
+					Category:     &modelCategory,
+					CurrentValue: acp.SessionConfigValueId("mediago/qwen3.5-27b"),
+					Options:      acp.SessionConfigSelectOptions{Ungrouped: &modelOptions},
+				},
+			},
+		},
+	})
+
+	if config.Reasoning == nil {
+		t.Fatal("reasoning config is nil")
+	}
+	if config.Reasoning.ConfigID != "effort" || config.Reasoning.CurrentValue != "none" {
+		t.Fatalf("reasoning config = %#v, want OpenCode effort fallback", config.Reasoning)
+	}
+	if len(config.Reasoning.Options) != 2 || config.Reasoning.Options[1].Value != "thinking" {
+		t.Fatalf("reasoning options = %#v, want none/thinking", config.Reasoning.Options)
+	}
+}
+
+func TestAgentRuntimeConfigFromACPSessionAddsOpenCodeThinkingWhenMediagoMiniMaxM3Exists(t *testing.T) {
+	modelCategory := acp.SessionConfigOptionCategoryModel
+	modelOptions := acp.SessionConfigSelectOptionsUngrouped{
+		{Name: "MediaGo/Qwen3.5 27B", Value: acp.SessionConfigValueId("mediago/qwen3.5-27b")},
+		{Name: "MediaGo/MiniMax M3", Value: acp.SessionConfigValueId("mediago/MiniMax-M3")},
+	}
+	config := AgentRuntimeConfigFromACPSession(acp.NewSessionResponse{
+		SessionId: acp.SessionId("session-1"),
+		ConfigOptions: []acp.SessionConfigOption{
+			{
+				Select: &acp.SessionConfigOptionSelect{
+					Id:           acp.SessionConfigId("model"),
+					Name:         "Model",
+					Category:     &modelCategory,
+					CurrentValue: acp.SessionConfigValueId("mediago/qwen3.5-27b"),
+					Options:      acp.SessionConfigSelectOptions{Ungrouped: &modelOptions},
+				},
+			},
+		},
+	})
+
+	if config.Reasoning == nil {
+		t.Fatal("reasoning config is nil")
+	}
+	if config.Reasoning.ConfigID != "effort" || config.Reasoning.CurrentValue != "none" {
+		t.Fatalf("reasoning config = %#v, want OpenCode effort fallback", config.Reasoning)
+	}
+}
+
 func TestApplyACPSessionSelectionsSkipsReasoningForExternalProviderModel(t *testing.T) {
 	for _, model := range []string{
 		"deepseek/deepseek-chat",
 		"dmx/gemini-3.1-pro-preview",
+		"mediago/MiniMax-M2.7",
+		"minimax-cn/MiniMax-M2.7",
+		"openrouter/openai/gpt-4.1-mini",
 	} {
 		t.Run(model, func(t *testing.T) {
 			configurator := &recordingACPSessionConfigurator{}
@@ -344,6 +408,49 @@ func TestApplyACPSessionSelectionsSkipsReasoningForExternalProviderModel(t *test
 			}
 			if len(configurator.modeRequests) != 1 || configurator.modeRequests[0].ModeId != acp.SessionModeId("ask") {
 				t.Fatalf("mode requests = %#v, want ask applied after skipped reasoning", configurator.modeRequests)
+			}
+		})
+	}
+}
+
+func TestApplyACPSessionSelectionsAppliesReasoningForMiniMaxM3(t *testing.T) {
+	for _, model := range []string{
+		"minimax-cn/MiniMax-M3",
+		"mediago/MiniMax-M3",
+	} {
+		t.Run(model, func(t *testing.T) {
+			configurator := &recordingACPSessionConfigurator{}
+
+			err := applyACPSessionSelections(
+				context.Background(),
+				configurator,
+				acp.SessionId("session-1"),
+				agentRunRequest{
+					Model: agentACPConfigSelection{
+						ConfigID: "model",
+						Source:   AgentRuntimeConfigSourceOption,
+						Value:    model,
+					},
+					Reasoning: agentACPConfigSelection{
+						ConfigID: "effort",
+						Source:   AgentRuntimeConfigSourceOption,
+						Value:    "thinking",
+					},
+					Permission: agentACPConfigSelection{
+						Source: AgentRuntimeConfigSourceMode,
+						Value:  "build",
+					},
+				},
+				nil,
+			)
+			if err != nil {
+				t.Fatalf("applyACPSessionSelections returned error: %v", err)
+			}
+			if len(configurator.configRequests) != 2 {
+				t.Fatalf("config requests = %#v, want model and reasoning attempts", configurator.configRequests)
+			}
+			if got := string(configurator.configRequests[1].ValueId.Value); got != "thinking" {
+				t.Fatalf("reasoning value = %q, want thinking", got)
 			}
 		})
 	}
@@ -549,6 +656,78 @@ func TestACPClientSessionUpdateIgnoresReplayOutsidePrompt(t *testing.T) {
 	}
 	if len(events) != 0 {
 		t.Fatalf("events = %#v, want replay updates ignored", events)
+	}
+}
+
+func TestShouldRetryEmptyACPResumedPrompt(t *testing.T) {
+	emptyEndTurn := acp.PromptResponse{
+		StopReason: acp.StopReasonEndTurn,
+		Usage:      &acp.Usage{},
+	}
+
+	tests := []struct {
+		name          string
+		reusedSession bool
+		response      acp.PromptResponse
+		message       string
+		runtimeError  string
+		hadActivity   bool
+		want          bool
+	}{
+		{
+			name:          "retries empty zero-token response from resumed session",
+			reusedSession: true,
+			response:      emptyEndTurn,
+			want:          true,
+		},
+		{
+			name:          "does not retry new session",
+			reusedSession: false,
+			response:      emptyEndTurn,
+		},
+		{
+			name:          "does not retry when message streamed",
+			reusedSession: true,
+			response:      emptyEndTurn,
+			message:       "已完成。",
+		},
+		{
+			name:          "does not retry provider runtime error",
+			reusedSession: true,
+			response:      emptyEndTurn,
+			runtimeError:  "对应 API Key 的余额不足。",
+		},
+		{
+			name:          "does not retry after prompt activity",
+			reusedSession: true,
+			response:      emptyEndTurn,
+			hadActivity:   true,
+		},
+		{
+			name:          "does not retry nonzero usage",
+			reusedSession: true,
+			response: acp.PromptResponse{
+				StopReason: acp.StopReasonEndTurn,
+				Usage:      &acp.Usage{InputTokens: 12, OutputTokens: 0, TotalTokens: 12},
+			},
+		},
+		{
+			name:          "does not retry unsupported stop reason",
+			reusedSession: true,
+			response: acp.PromptResponse{
+				StopReason: acp.StopReasonCancelled,
+				Usage:      &acp.Usage{},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldRetryEmptyACPResumedPrompt(tt.reusedSession, tt.response, tt.message, tt.runtimeError, tt.hadActivity)
+			if got != tt.want {
+				t.Fatalf("shouldRetryEmptyACPResumedPrompt() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

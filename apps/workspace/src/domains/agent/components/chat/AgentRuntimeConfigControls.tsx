@@ -1,5 +1,4 @@
 import {
-	Bot,
 	Check,
 	ChevronDown,
 	ChevronRight,
@@ -73,7 +72,6 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 		<div className="agent-runtime-config">
 			<AgentRuntimeModelSelect
 				label="模型"
-				icon={Bot}
 				config={config?.model}
 				value={modelValue}
 				disabled={disabled}
@@ -144,7 +142,6 @@ const AgentRuntimeConfigSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 						<Icon />
 					</span>
 				) : null}
-				<span className="agent-config-title">{label}</span>
 				<span className="agent-config-value">
 					<SelectValue placeholder={config?.name || label} />
 				</span>
@@ -226,7 +223,6 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 							<Icon />
 						</span>
 					) : null}
-					<span className="agent-config-title">{label}</span>
 					<AgentRuntimeModelBrandStack
 						modelBrand={selectedModelBrand}
 						providerBrand={selectedProviderBrand}
@@ -242,7 +238,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 				aria-label="分类和模型"
 				className="agent-config-content grid h-[22rem] max-h-[calc(100vh_-_2rem)] w-[min(42rem,calc(100vw_-_2rem))] grid-cols-[minmax(13rem,1fr)_minmax(12rem,0.85fr)] overflow-hidden rounded-[var(--radius-scale-sm)] border-border bg-popover p-0 text-popover-foreground shadow-xl"
 			>
-				<section className="flex min-h-0 min-w-0 flex-col p-2">
+				<section className="flex min-h-0 min-w-0 flex-col p-[var(--generation-popover-padding)]">
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">分类</p>
 					<div className="grid min-h-0 flex-1 auto-rows-min gap-1 overflow-y-auto pr-1">
 						{categories.map((category) => {
@@ -254,7 +250,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 									key={category.key}
 									type="button"
 									className={cn(
-										"flex h-8 min-w-0 items-center gap-1.5 rounded-[var(--radius-scale-sm)] px-2 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+										"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 										active
 											? "bg-ide-list-active text-ide-list-active-foreground"
 											: "text-foreground hover:bg-muted",
@@ -265,7 +261,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 								>
 									<GenerationBrandMark
 										brand={categoryBrand}
-										className="size-4 border-0 bg-transparent p-0 text-[0.5rem] shadow-none"
+										className="size-3.5 border-0 bg-transparent p-0 text-[0.45rem] shadow-none"
 									/>
 									<span className="min-w-0 flex-1 truncate">{category.label}</span>
 									<ChevronRight
@@ -279,7 +275,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 						})}
 					</div>
 				</section>
-				<section className="flex min-h-0 min-w-0 flex-col border-l border-border bg-muted/40 p-2">
+				<section className="flex min-h-0 min-w-0 flex-col border-l border-border bg-muted/40 p-[var(--generation-popover-padding)]">
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">模型</p>
 					<div className="grid min-h-0 flex-1 auto-rows-min gap-1 overflow-y-auto pr-1">
 						{(activeCategory?.options ?? []).map((option) => {
@@ -298,7 +294,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 									disabled={disabled}
 									title={option.option.description}
 									className={cn(
-										"flex h-8 min-w-0 items-center gap-1.5 rounded-[var(--radius-scale-sm)] px-2 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45",
+										"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45",
 										selected
 											? "bg-ide-list-active text-ide-list-active-foreground"
 											: "text-foreground hover:bg-card",
@@ -310,7 +306,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 								>
 									<GenerationBrandMark
 										brand={modelBrand}
-										className="size-4 border-0 bg-transparent p-0 text-[0.5rem] shadow-none"
+										className="size-3.5 border-0 bg-transparent p-0 text-[0.45rem] shadow-none"
 									/>
 									<span className="min-w-0 flex-1 truncate">{option.modelLabel}</span>
 									{selected ? <Check className="size-4 shrink-0 text-primary" /> : null}
@@ -341,7 +337,7 @@ const AgentRuntimeModelBrandStack: React.FC<{
 					brand={brand}
 					className={
 						brands.length > 1
-							? cn("relative ring-1 ring-background", index === 0 ? "z-10" : "z-0")
+							? cn("relative ring-1 ring-background", index === 0 ? "z-0" : "z-10")
 							: undefined
 					}
 				/>

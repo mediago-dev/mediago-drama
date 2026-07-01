@@ -5,6 +5,7 @@ import {
 	agentRuntimeConfigKey,
 	getAgentRuntimeConfig,
 	type AgentReference,
+	type AgentRuntimeConfigPayload,
 } from "@/domains/agent/api/agent";
 import { agentDisplayPrompt } from "@/domains/agent/lib/display-prompt";
 import { uploadProjectAsset, type ProjectAsset } from "@/domains/workspace/api/project-assets";
@@ -115,12 +116,16 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 		resolvedRuntimeConfig?.model,
 		persistedRuntimeConfig?.model ?? persistedRuntimeConfigDefaults.model ?? "",
 	);
+	const runtimeConfigForSelectedModel = runtimeConfigFilteredForSelectedModel(
+		resolvedRuntimeConfig,
+		selectedModel,
+	);
 	const selectedReasoning = normalizeRuntimeConfigValue(
-		resolvedRuntimeConfig?.reasoning,
+		runtimeConfigForSelectedModel?.reasoning,
 		persistedRuntimeConfig?.reasoning ?? persistedRuntimeConfigDefaults.reasoning ?? "",
 	);
 	const selectedPermission = normalizeRuntimeConfigValue(
-		resolvedRuntimeConfig?.permission,
+		runtimeConfigForSelectedModel?.permission,
 		persistedRuntimeConfig?.permission ?? persistedRuntimeConfigDefaults.permission ?? "",
 	);
 	const canSubmit =
@@ -181,14 +186,17 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				references: composerValue.references,
 			}),
 			displayMetadata: buildAgentDisplayMetadata(readyAttachments, composerValue.references),
-			model: buildRuntimeConfigSelection(resolvedRuntimeConfig?.model, selectedModel),
+			model: buildRuntimeConfigSelection(runtimeConfigForSelectedModel?.model, selectedModel),
 			permission: buildRuntimeConfigSelection(
-				resolvedRuntimeConfig?.permission,
+				runtimeConfigForSelectedModel?.permission,
 				selectedPermission,
 			),
 			prompt: effectivePrompt,
 			references: composerValue.references,
-			reasoning: buildRuntimeConfigSelection(resolvedRuntimeConfig?.reasoning, selectedReasoning),
+			reasoning: buildRuntimeConfigSelection(
+				runtimeConfigForSelectedModel?.reasoning,
+				selectedReasoning,
+			),
 			comments: openComments,
 		};
 
@@ -335,7 +343,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				openComments={openComments}
 				permissionValue={selectedPermission}
 				reasoningValue={selectedReasoning}
-				runtimeConfig={resolvedRuntimeConfig}
+				runtimeConfig={runtimeConfigForSelectedModel}
 				runtimeConfigErrorMessage={
 					runtimeConfigError ? getRuntimeConfigError(runtimeConfigError) : ""
 				}
@@ -358,6 +366,41 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 };
 
 type RuntimeConfigSelection = ReturnType<typeof buildRuntimeConfigSelection>;
+
+const OPENCODE_THINKING_FALLBACK_SOURCE = "opencodeThinkingFallback";
+
+const runtimeConfigFilteredForSelectedModel = (
+	config: AgentRuntimeConfigPayload | undefined,
+	modelValue: string,
+): AgentRuntimeConfigPayload | undefined => {
+	if (!config?.reasoning || config.reasoning.source !== OPENCODE_THINKING_FALLBACK_SOURCE) {
+		return config;
+	}
+	if (agentRuntimeModelSupportsOpenCodeThinking(modelValue)) return config;
+	return {
+		...config,
+		reasoning: undefined,
+	};
+};
+
+const agentRuntimeModelSupportsOpenCodeThinking = (value: string) => {
+	const trimmed = value.trim();
+	const separator = trimmed.indexOf("/");
+	if (separator <= 0 || separator >= trimmed.length - 1) return false;
+	const provider = trimmed.slice(0, separator).trim().toLowerCase();
+	const model = trimmed
+		.slice(separator + 1)
+		.trim()
+		.toLowerCase();
+	switch (provider) {
+		case "minimax-cn":
+			return model.includes("minimax-m3");
+		case "mediago":
+			return model.includes("minimax-m3") || model.includes("minimax m3");
+		default:
+			return false;
+	}
+};
 
 const useAgentPersistenceHydrated = () => {
 	const [isHydrated, setIsHydrated] = useState(() =>

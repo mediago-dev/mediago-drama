@@ -283,6 +283,42 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		promptStartedAt = time.Now()
 		promptResponse, err = promptACPSession(ctx, conn, client, promptRequest)
 	}
+	if err == nil && shouldRetryEmptyACPResumedPrompt(reusedACPSession, promptResponse, client.messageText(), client.runtimeErrorText(), client.hasPromptActivity()) {
+		acpLog().Warn(
+			"acp resumed prompt returned empty response; retrying new session",
+			append(logArgs,
+				"acp_session_id", sessionID,
+				"stop_reason", promptResponse.StopReason,
+				"usage_input_tokens", promptResponse.Usage.InputTokens,
+				"usage_output_tokens", promptResponse.Usage.OutputTokens,
+				"usage_total_tokens", promptResponse.Usage.TotalTokens,
+			)...,
+		)
+		publish(agentEvent{
+			Type:    "agent.activity",
+			Message: "ACP 旧会话没有返回内容，正在创建新会话重试。",
+		})
+		client.resetMessage()
+		session, createErr := conn.NewSession(ctx, acp.NewSessionRequest{
+			Cwd:        runDir,
+			McpServers: mcpServers,
+		})
+		if createErr != nil {
+			acpLog().Error("acp empty-response retry session create failed", append(logArgs, "error", createErr)...)
+			return agentRunResult{}, fmt.Errorf("creating ACP empty-response retry session: %w", createErr)
+		}
+		sessionID = session.SessionId
+		client.acpSessionID = string(sessionID)
+		client.rawLog.setACPSessionID(string(sessionID))
+		promptRequest.SessionId = sessionID
+		if err := applyACPSessionSelections(ctx, conn, sessionID, request, logArgs); err != nil {
+			acpLog().Error("acp empty-response retry session config selection failed", append(logArgs, "acp_session_id", sessionID, "error", err)...)
+			return agentRunResult{}, err
+		}
+		acpLog().Info("acp empty-response retry prompt starting", append(logArgs, "acp_session_id", sessionID)...)
+		promptStartedAt = time.Now()
+		promptResponse, err = promptACPSession(ctx, conn, client, promptRequest)
+	}
 	if err != nil {
 		acpLog().Error("acp prompt failed", append(logArgs, "acp_session_id", sessionID, "duration_ms", time.Since(promptStartedAt).Milliseconds(), "error", err)...)
 		if alert := runtimeAlertForACPPromptError(err, ctx.Err()); alert != nil {
@@ -352,6 +388,27 @@ func promptACPSession(ctx context.Context, conn *acp.ClientSideConnection, clien
 	client.setAcceptingSessionUpdates(false)
 	client.flushThoughts()
 	return response, err
+}
+
+func shouldRetryEmptyACPResumedPrompt(reusedACPSession bool, response acp.PromptResponse, rawFinalMessage string, runtimeErrorMessage string, promptHadActivity bool) bool {
+	if !reusedACPSession {
+		return false
+	}
+	if promptHadActivity {
+		return false
+	}
+	if strings.TrimSpace(rawFinalMessage) != "" || strings.TrimSpace(runtimeErrorMessage) != "" {
+		return false
+	}
+	if response.Usage == nil {
+		return false
+	}
+	if response.StopReason != "" && response.StopReason != acp.StopReasonEndTurn {
+		return false
+	}
+	return response.Usage.InputTokens == 0 &&
+		response.Usage.OutputTokens == 0 &&
+		response.Usage.TotalTokens == 0
 }
 
 func isACPResourceNotFoundError(err error) bool {

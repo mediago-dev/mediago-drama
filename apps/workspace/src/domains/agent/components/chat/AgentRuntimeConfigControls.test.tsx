@@ -66,8 +66,10 @@ describe("AgentRuntimeConfigControls", () => {
 	it("shows only returned runtime config controls", () => {
 		renderControls(baseConfig);
 
-		expect(screen.getByText("模型")).toBeTruthy();
-		expect(screen.getByText("模式")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "模型" })).toBeTruthy();
+		expect(screen.getByLabelText("模式")).toBeTruthy();
+		expect(screen.queryByText("模型")).toBeNull();
+		expect(screen.queryByText("模式")).toBeNull();
 		expect(screen.queryByText("推理强度")).toBeNull();
 		expect(screen.queryByText("未返回选项")).toBeNull();
 		expect(screen.queryByText("读取中")).toBeNull();
@@ -83,7 +85,8 @@ describe("AgentRuntimeConfigControls", () => {
 			},
 		});
 
-		expect(screen.getByText("推理强度")).toBeTruthy();
+		expect(screen.getByLabelText("推理强度")).toBeTruthy();
+		expect(screen.queryByText("推理强度")).toBeNull();
 		expect(screen.getByText("中等")).toBeTruthy();
 	});
 
@@ -162,6 +165,31 @@ describe("AgentRuntimeConfigControls", () => {
 		);
 
 		expect(agentModelTriggerBrands(view.container)).toEqual(["minimax"]);
+	});
+
+	it("stacks the model icon above the provider icon in the trigger", () => {
+		const view = renderControls(
+			{
+				model: {
+					configId: "model",
+					currentValue: "mediago/minimax-m3",
+					options: [
+						{
+							name: "MediaGo/MiniMax M3",
+							value: "mediago/minimax-m3",
+						},
+					],
+				},
+			},
+			{ modelValue: "mediago/minimax-m3" },
+		);
+
+		const icons = Array.from(
+			view.container.querySelectorAll('button[aria-label="模型"] [data-generation-brand]'),
+		);
+
+		expect(icons[0]).toHaveClass("z-0");
+		expect(icons[1]).toHaveClass("z-10");
 	});
 
 	const agentModelTriggerBrands = (container: HTMLElement) =>

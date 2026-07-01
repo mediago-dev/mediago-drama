@@ -147,6 +147,15 @@ func (client *acpClient) promptMetrics() []any {
 	}
 }
 
+func (client *acpClient) hasPromptActivity() bool {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.updateCount > 0 ||
+		client.messageChunkCount > 0 ||
+		client.thoughtChunkCount > 0 ||
+		client.toolCallCount > 0
+}
+
 func (client *acpClient) logAttrs(extra ...any) []any {
 	attrs := []any{"session_id", client.sessionID, "run_id", client.runID}
 	if client.acpSessionID != "" {

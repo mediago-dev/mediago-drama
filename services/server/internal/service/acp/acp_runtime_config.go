@@ -11,6 +11,8 @@ const (
 	AgentRuntimeConfigSourceMode = "mode"
 	// AgentRuntimeConfigSourceOption identifies ACP's config option source.
 	AgentRuntimeConfigSourceOption = "configOption"
+	// AgentRuntimeConfigSourceOpenCodeThinkingFallback identifies the OpenCode MiniMax effort fallback.
+	AgentRuntimeConfigSourceOpenCodeThinkingFallback = "opencodeThinkingFallback"
 )
 
 // AgentRuntimeConfigFromACPSession maps ACP session metadata to UI runtime config.
@@ -49,6 +51,9 @@ func AgentRuntimeConfigFromACPSession(session acp.NewSessionResponse) AgentRunti
 				config.Permission = selectConfig
 			}
 		}
+	}
+	if config.Reasoning == nil && config.Model != nil && agentRuntimeModelOptionsIncludeOpenCodeThinking(config.Model.Options) {
+		config.Reasoning = openCodeThinkingRuntimeConfig()
 	}
 
 	return config
@@ -167,6 +172,45 @@ func AgentRuntimeModelOptions(options []AgentRuntimeSelectOption) []AgentRuntime
 		result = append(result, option)
 	}
 	return result
+}
+
+func agentRuntimeModelOptionsIncludeOpenCodeThinking(options []AgentRuntimeSelectOption) bool {
+	for _, option := range options {
+		if agentRuntimeModelSupportsOpenCodeThinking(option.Value) {
+			return true
+		}
+	}
+	return false
+}
+
+func agentRuntimeModelSupportsOpenCodeThinking(value string) bool {
+	provider, model, ok := strings.Cut(strings.TrimSpace(value), "/")
+	if !ok {
+		return false
+	}
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	model = strings.ToLower(strings.TrimSpace(model))
+	switch provider {
+	case "minimax-cn":
+		return strings.Contains(model, "minimax-m3")
+	case "mediago":
+		return strings.Contains(model, "minimax-m3") || strings.Contains(model, "minimax m3")
+	default:
+		return false
+	}
+}
+
+func openCodeThinkingRuntimeConfig() *AgentRuntimeSelectConfig {
+	return &AgentRuntimeSelectConfig{
+		ConfigID:     "effort",
+		Name:         "Effort",
+		Source:       AgentRuntimeConfigSourceOpenCodeThinkingFallback,
+		CurrentValue: "none",
+		Options: []AgentRuntimeSelectOption{
+			{Value: "none", Name: "None"},
+			{Value: "thinking", Name: "Thinking"},
+		},
+	}
 }
 
 func agentRuntimeModelOptionLooksTaskOnly(option AgentRuntimeSelectOption) bool {

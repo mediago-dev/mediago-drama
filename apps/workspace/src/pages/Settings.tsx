@@ -474,7 +474,7 @@ const MediaGoQuickSetupCard: React.FC<{
 		<section
 			className={cn(
 				settingsInsetRowClassName,
-				"grid gap-4 border-primary/30 bg-ide-toolbar p-5 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center",
+				"grid gap-4 border-primary/30 bg-ide-toolbar p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center",
 			)}
 		>
 			<div className="min-w-0">
@@ -489,16 +489,12 @@ const MediaGoQuickSetupCard: React.FC<{
 						{provider.configured ? "已配置" : "未填写"}
 					</span>
 				</div>
-				<h3 className="text-lg font-semibold text-foreground">MediaGo 一键配置</h3>
-				<p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+				<h3 className="text-base font-semibold text-foreground">MediaGo 一键配置</h3>
+				<p className="mt-1.5 max-w-3xl text-xs leading-5 text-muted-foreground">
 					使用一个 MediaGo API Key 接入文本、图片、视频、音频生成和 Agent 默认模型。
 				</p>
 			</div>
-			<Button
-				type="button"
-				onClick={onConfigure}
-				className="h-10 rounded-md px-5 text-sm shadow-sm"
-			>
+			<Button type="button" onClick={onConfigure} className="h-9 rounded-md px-4 text-xs shadow-sm">
 				<Sparkles />
 				<span>MediaGo 一键配置</span>
 			</Button>
@@ -844,9 +840,6 @@ const ManualProviderConfigDialog: React.FC<{
 							provider={provider}
 							value={apiKey}
 						/>
-						{provider.help ? (
-							<p className="text-xs leading-5 text-muted-foreground">{provider.help}</p>
-						) : null}
 					</div>
 				</div>
 
