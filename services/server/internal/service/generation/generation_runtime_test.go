@@ -735,112 +735,6 @@ func TestCreateJimengImageGenerationPersistsOneTaskForRequestedCount(t *testing.
 	}
 }
 
-func TestCreatePromptOptimizedImageGenerationRunsOptimizationInBackground(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
-	repo, err := repository.NewGenerationTaskRepository(dbPath)
-	if err != nil {
-		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
-	}
-	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
-	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
-		values: map[string]string{
-			coregeneration.ProviderDMX: "sk-test",
-		},
-	})
-	imageProvider := &blockingMultiAssetImageGenerateProvider{
-		started: make(chan coregeneration.Request, 1),
-		release: make(chan struct{}),
-	}
-	workflow := NewGenerationService(settingsSvc, store, media.NewMediaAssets(dbPath, t.TempDir()))
-	var textRequest coregeneration.Request
-	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
-		switch route.ID {
-		case coregeneration.RouteDMXGPT41MiniText:
-			return fakeTextStreamProvider{
-				request: &textRequest,
-				events: []coregeneration.TextStreamEvent{
-					{Delta: "optimized "},
-					{Delta: "prompt"},
-					{Done: true},
-				},
-			}, nil
-		case coregeneration.RouteDMXGPTImage2:
-			return imageProvider, nil
-		default:
-			t.Fatalf("route = %q, want prompt optimization text or image route", route.ID)
-			return nil, fmt.Errorf("unexpected route")
-		}
-	}
-
-	imageRoute, ok := coregeneration.FindRoute(coregeneration.RouteDMXGPTImage2)
-	if !ok {
-		t.Fatal("dmx gpt image route is missing")
-	}
-	response, status, err := workflow.CreateGenerationMessage(context.Background(), GenerationMessageRequest{
-		Kind:    string(coregeneration.KindImage),
-		RouteID: imageRoute.ID,
-		ModelID: imageRoute.LegacyModelID,
-		Model:   imageRoute.Model,
-		Prompt:  "原始角色提示词",
-		PromptOptimization: &GenerationPromptOptimizationRequest{
-			RouteID:         coregeneration.RouteDMXGPT41MiniText,
-			Model:           "text-model",
-			ReferenceName:   "电影质感",
-			ReferencePrompt: "cinematic lighting, detailed composition",
-		},
-		Params: map[string]any{"n": 1},
-	})
-	if err != nil || status != 200 {
-		t.Fatalf("CreateGenerationMessage() status = %d error = %v", status, err)
-	}
-	if response.Status != "submitted" || !strings.Contains(response.Message, "提示词优化") {
-		t.Fatalf("response = %+v, want submitted prompt optimization task", response)
-	}
-
-	var imageRequest coregeneration.Request
-	select {
-	case imageRequest = <-imageProvider.started:
-	case <-time.After(2 * time.Second):
-		t.Fatal("image provider request did not start")
-	}
-	if imageRequest.Prompt != "optimized prompt" {
-		t.Fatalf("image prompt = %q, want optimized prompt", imageRequest.Prompt)
-	}
-	if !strings.Contains(textRequest.Prompt, "根据优化 prompt 优化用户的输入。") ||
-		!strings.Contains(textRequest.Prompt, "优化 prompt：\ncinematic lighting, detailed composition") ||
-		!strings.Contains(textRequest.Prompt, "用户的输入：\n原始角色提示词") ||
-		strings.Contains(textRequest.Prompt, "## 输出要求") ||
-		strings.Contains(textRequest.Prompt, "不要输出 JSON") {
-		t.Fatalf("text prompt = %q, want concise optimization prompt", textRequest.Prompt)
-	}
-	if textRequest.Params["system_instruction"] != promptOptimizationSystemInstruction() {
-		t.Fatalf("text params = %#v, want prompt optimization system instruction", textRequest.Params)
-	}
-
-	task, ok, err := store.Get(response.ID)
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if !ok || task.Prompt != "optimized prompt" {
-		t.Fatalf("task = %+v, want optimized prompt persisted before image completion", task)
-	}
-
-	close(imageProvider.release)
-	task = waitForGenerationTask(t, store, response.ID, func(task GenerationTaskRecord) bool {
-		return task.Status == "completed" && len(task.Assets) == 3
-	})
-	if task.Prompt != "optimized prompt" {
-		t.Fatalf("completed task prompt = %q, want optimized prompt", task.Prompt)
-	}
-	tasks, err := store.List()
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	if len(tasks) != 1 {
-		t.Fatalf("task count = %d, want one persisted image task", len(tasks))
-	}
-}
-
 func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	repo, err := repository.NewGenerationTaskRepository(dbPath)
@@ -1795,4 +1689,186 @@ func (provider fakeUnsupportedTextStreamProvider) Get(context.Context, string) (
 
 func (provider fakeUnsupportedTextStreamProvider) GenerateTextStream(context.Context, coregeneration.Request) (coregeneration.TextStream, error) {
 	return nil, fmt.Errorf("fake stream unsupported: %w", coregeneration.ErrTextStreamingUnsupported)
+}
+
+type stubImageProvider struct {
+	generateResponse coregeneration.Response
+	generateErr      error
+	getResponse      coregeneration.Response
+	getErr           error
+	getID            string
+}
+
+func (provider *stubImageProvider) Name() string { return "stub-image" }
+
+func (provider *stubImageProvider) Generate(context.Context, coregeneration.Request) (coregeneration.Response, error) {
+	return provider.generateResponse, provider.generateErr
+}
+
+func (provider *stubImageProvider) Get(_ context.Context, id string) (coregeneration.Response, error) {
+	provider.getID = id
+	return provider.getResponse, provider.getErr
+}
+
+func jimengImageTaskRecord(id string) GenerationTaskRecord {
+	return GenerationTaskRecord{
+		ID:        id,
+		Kind:      string(coregeneration.KindImage),
+		RouteID:   coregeneration.RouteJimengSeedream50,
+		FamilyID:  coregeneration.FamilySeedream,
+		VersionID: coregeneration.VersionSeedream5Lite,
+		Provider:  coregeneration.ProviderJimeng,
+		Model:     coregeneration.ModelSeedream50,
+		Prompt:    "a cat",
+		Status:    "submitted",
+	}
+}
+
+func TestCompleteSubmittedGenerationHandsOffPendingImage(t *testing.T) {
+	repo, err := repository.NewGenerationTaskRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{coregeneration.ProviderJimeng: "configured"},
+	})
+	workflow := NewGenerationService(settingsSvc, store, nil)
+
+	// The provider ran out of its inline poll budget while jimeng was still "querying".
+	provider := &stubImageProvider{
+		generateResponse: coregeneration.Response{
+			ID:     "jimeng.seedream-5.0:submit-1",
+			Status: "submitted",
+		},
+	}
+	task := jimengImageTaskRecord("generation-img-1")
+	workflow.completeSubmittedGeneration(
+		context.Background(),
+		task,
+		provider,
+		coregeneration.Request{Kind: coregeneration.KindImage, Prompt: "a cat"},
+		"create",
+		"",
+		"",
+	)
+
+	stored, ok, err := store.Get("generation-img-1")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !ok || stored.Status != "submitted" ||
+		stored.ProviderTaskID != "jimeng.seedream-5.0:submit-1" {
+		t.Fatalf("task = %+v, want submitted handoff carrying the provider task id", stored)
+	}
+
+	pending, err := store.ListPending(10)
+	if err != nil {
+		t.Fatalf("ListPending() error = %v", err)
+	}
+	if !slicesContainsTaskID(pending, "generation-img-1") {
+		t.Fatalf("ListPending = %+v, want the handed-off image task", pending)
+	}
+}
+
+func TestPollGenerationTaskCompletesHandedOffImage(t *testing.T) {
+	repo, err := repository.NewGenerationTaskRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{coregeneration.ProviderJimeng: "configured"},
+	})
+	provider := &stubImageProvider{
+		getResponse: coregeneration.Response{
+			ID:     "jimeng.seedream-5.0:submit-1",
+			Status: "completed",
+		},
+	}
+	workflow := NewGenerationService(settingsSvc, store, nil)
+	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		if route.ID != coregeneration.RouteJimengSeedream50 {
+			t.Fatalf("route = %q, want jimeng seedream image route", route.ID)
+		}
+		return provider, nil
+	}
+
+	handedOff := jimengImageTaskRecord("generation-img-2")
+	handedOff.ProviderTaskID = "jimeng.seedream-5.0:submit-1"
+	if err := store.Upsert(handedOff); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	task, ok, err := store.Get("generation-img-2")
+	if err != nil || !ok {
+		t.Fatalf("Get() ok = %v error = %v", ok, err)
+	}
+	workflow.PollGenerationTask(context.Background(), task)
+
+	if provider.getID != "jimeng.seedream-5.0:submit-1" {
+		t.Fatalf("provider get id = %q, want the handed-off provider task id", provider.getID)
+	}
+	completed, ok, err := store.Get("generation-img-2")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !ok || completed.Status != "completed" {
+		t.Fatalf("task = %+v, want completed image task", completed)
+	}
+}
+
+func TestPollGenerationTaskTimesOutExpiredHandedOffImage(t *testing.T) {
+	repo, err := repository.NewGenerationTaskRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{coregeneration.ProviderJimeng: "configured"},
+	})
+	// The provider is still "querying" — jimeng never returned a result.
+	provider := &stubImageProvider{
+		getResponse: coregeneration.Response{
+			ID:     "jimeng.seedream-5.0:submit-1",
+			Status: "submitted",
+		},
+	}
+	workflow := NewGenerationService(settingsSvc, store, nil)
+	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		return provider, nil
+	}
+
+	handedOff := jimengImageTaskRecord("generation-img-3")
+	handedOff.ProviderTaskID = "jimeng.seedream-5.0:submit-1"
+	handedOff.CreatedAt = time.Now().UTC().Add(-20 * time.Minute).Format(time.RFC3339Nano)
+	if err := store.Upsert(handedOff); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	task, ok, err := store.Get("generation-img-3")
+	if err != nil || !ok {
+		t.Fatalf("Get() ok = %v error = %v", ok, err)
+	}
+	workflow.PollGenerationTask(context.Background(), task)
+
+	failed, ok, err := store.Get("generation-img-3")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !ok || failed.Status != "failed" {
+		t.Fatalf("task = %+v, want failed after exceeding the background poll cap", failed)
+	}
+	if !strings.Contains(failed.Error, "超时") {
+		t.Fatalf("error = %q, want a timeout message", failed.Error)
+	}
+}
+
+func slicesContainsTaskID(tasks []GenerationTaskRecord, id string) bool {
+	for _, task := range tasks {
+		if task.ID == id {
+			return true
+		}
+	}
+	return false
 }

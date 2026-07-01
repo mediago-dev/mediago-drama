@@ -22,7 +22,7 @@ import (
 const (
 	defaultBinaryName       = "dreamina"
 	defaultImagePoll        = 30
-	defaultImageResultPoll  = 180
+	defaultImageResultPoll  = 300
 	jimengImageCountParam   = "_mediago_task_count"
 	jimengMaxCLIImageCount  = 4
 	jimengDefaultImageCount = 1
@@ -117,7 +117,7 @@ func (provider *Provider) Get(ctx context.Context, id string) (generation.Respon
 		return generation.Response{}, fmt.Errorf("generation id is required")
 	}
 
-	response, err := provider.queryResult(ctx, taskID, generation.KindVideo, prefix, "")
+	response, err := provider.queryResult(ctx, taskID, kindForTaskPrefix(prefix), prefix, "")
 	if err != nil {
 		return generation.Response{}, err
 	}
@@ -125,6 +125,15 @@ func (provider *Provider) Get(ctx context.Context, id string) (generation.Respon
 		response.ID = joinTaskID(prefix, taskID)
 	}
 	return response, nil
+}
+
+// kindForTaskPrefix resolves the media kind of an async task from its route prefix,
+// so background polling tags recovered assets correctly (image vs video).
+func kindForTaskPrefix(prefix string) generation.Kind {
+	if route, ok := generation.FindRouteByTaskPrefix(strings.TrimSpace(prefix)); ok && route.Kind != "" {
+		return route.Kind
+	}
+	return generation.KindVideo
 }
 
 func (provider *Provider) generateImage(ctx context.Context, request generation.Request) (generation.Response, error) {
@@ -247,6 +256,14 @@ func (provider *Provider) pollImageResult(
 			queried, err := provider.queryResult(pollCtx, taskID, generation.KindImage, prefix, model)
 			if err != nil {
 				if len(last.Assets) > 0 {
+					return last, nil
+				}
+				// The result poll budget was exhausted while a query_result subprocess
+				// was mid-flight, so our own deadline killed it (surfaces as
+				// "signal: killed"). This is a timeout, not a real failure — return the
+				// last known "still querying" response so the caller can hand the task
+				// off to background polling instead of failing it.
+				if pollCtx.Err() != nil {
 					return last, nil
 				}
 				return last, err
