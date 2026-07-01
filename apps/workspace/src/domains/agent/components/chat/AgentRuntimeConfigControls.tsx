@@ -8,7 +8,7 @@ import {
 	Sparkles,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
 	AgentRuntimeConfigPayload,
 	AgentRuntimeSelectConfig,
@@ -112,6 +112,25 @@ interface AgentRuntimeModelCategory {
 	options: AgentRuntimeModelOption[];
 }
 
+interface AgentRuntimePoint {
+	x: number;
+	y: number;
+}
+
+interface AgentRuntimeRect {
+	bottom: number;
+	left: number;
+	right: number;
+	top: number;
+}
+
+interface AgentRuntimeSafeTriangleInput {
+	activeRect?: AgentRuntimeRect | null;
+	origin?: AgentRuntimePoint | null;
+	point: AgentRuntimePoint;
+	submenuRect?: AgentRuntimeRect | null;
+}
+
 interface AgentRuntimeConfigSelectProps {
 	label: string;
 	icon?: LucideIcon;
@@ -182,6 +201,12 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	const [activeCategoryKey, setActiveCategoryKey] = useState(
 		selectedOption?.categoryKey ?? categories[0]?.key ?? "",
 	);
+	const categoryButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+	const modelPanelRef = useRef<HTMLElement | null>(null);
+	const safeTriangleOriginRef = useRef<{
+		categoryKey: string;
+		point: AgentRuntimePoint;
+	} | null>(null);
 	const activeCategory =
 		categories.find((category) => category.key === activeCategoryKey) ??
 		categories.find((category) => category.key === selectedOption?.categoryKey) ??
@@ -199,6 +224,77 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	}, [categories, open, selectedOption?.categoryKey]);
 
 	if (options.length === 0 || !selectedOption) return null;
+
+	const clearSafeTriangle = () => {
+		safeTriangleOriginRef.current = null;
+	};
+
+	const rememberActiveCategoryPointer = (categoryKey: string, point: AgentRuntimePoint) => {
+		safeTriangleOriginRef.current = { categoryKey, point };
+	};
+
+	const activateCategory = (categoryKey: string) => {
+		setActiveCategoryKey(categoryKey);
+		clearSafeTriangle();
+	};
+
+	const activateCategoryFromPointer = (categoryKey: string, point: AgentRuntimePoint) => {
+		setActiveCategoryKey(categoryKey);
+		rememberActiveCategoryPointer(categoryKey, point);
+	};
+
+	const shouldPreserveActiveCategory = (point: AgentRuntimePoint) => {
+		const currentActiveCategoryKey = activeCategory?.key ?? "";
+		const activeButton = currentActiveCategoryKey
+			? categoryButtonRefs.current.get(currentActiveCategoryKey)
+			: null;
+		const origin =
+			safeTriangleOriginRef.current?.categoryKey === currentActiveCategoryKey
+				? safeTriangleOriginRef.current.point
+				: null;
+
+		return shouldKeepAgentRuntimeCategoryActive({
+			activeRect: activeButton?.getBoundingClientRect(),
+			origin,
+			point,
+			submenuRect: modelPanelRef.current?.getBoundingClientRect(),
+		});
+	};
+
+	const handleCategoryPointerEnter = (
+		categoryKey: string,
+		event: React.PointerEvent<HTMLButtonElement>,
+	) => {
+		const point = pointerEventPoint(event);
+		const currentActiveCategoryKey = activeCategory?.key ?? "";
+		if (categoryKey === currentActiveCategoryKey) {
+			rememberActiveCategoryPointer(categoryKey, point);
+			return;
+		}
+
+		if (shouldPreserveActiveCategory(point)) {
+			return;
+		}
+
+		activateCategoryFromPointer(categoryKey, point);
+	};
+
+	const handleCategoryPointerMove = (
+		categoryKey: string,
+		event: React.PointerEvent<HTMLButtonElement>,
+	) => {
+		const point = pointerEventPoint(event);
+		if (categoryKey === activeCategory?.key) {
+			safeTriangleOriginRef.current = { categoryKey, point };
+			return;
+		}
+
+		if (shouldPreserveActiveCategory(point)) {
+			return;
+		}
+
+		activateCategoryFromPointer(categoryKey, point);
+	};
 
 	const selectedModelBrand = generationModelBrand({
 		version: {
@@ -237,6 +333,9 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 				align="start"
 				aria-label="分类和模型"
 				className="agent-config-content grid h-[22rem] max-h-[calc(100vh_-_2rem)] w-[min(42rem,calc(100vw_-_2rem))] grid-cols-[minmax(13rem,1fr)_minmax(12rem,0.85fr)] overflow-hidden rounded-[var(--radius-scale-sm)] border-border bg-popover p-0 text-popover-foreground shadow-xl"
+				onPointerLeave={() => {
+					clearSafeTriangle();
+				}}
 			>
 				<section className="flex min-h-0 min-w-0 flex-col p-[var(--generation-popover-padding)]">
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">分类</p>
@@ -249,15 +348,23 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 								<button
 									key={category.key}
 									type="button"
+									ref={(node) => {
+										if (node) {
+											categoryButtonRefs.current.set(category.key, node);
+										} else {
+											categoryButtonRefs.current.delete(category.key);
+										}
+									}}
 									className={cn(
 										"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 										active
 											? "bg-ide-list-active text-ide-list-active-foreground"
 											: "text-foreground hover:bg-muted",
 									)}
-									onMouseEnter={() => setActiveCategoryKey(category.key)}
-									onFocus={() => setActiveCategoryKey(category.key)}
-									onClick={() => setActiveCategoryKey(category.key)}
+									onPointerEnter={(event) => handleCategoryPointerEnter(category.key, event)}
+									onPointerMove={(event) => handleCategoryPointerMove(category.key, event)}
+									onFocus={() => activateCategory(category.key)}
+									onClick={() => activateCategory(category.key)}
 								>
 									<GenerationBrandMark
 										brand={categoryBrand}
@@ -275,7 +382,11 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 						})}
 					</div>
 				</section>
-				<section className="flex min-h-0 min-w-0 flex-col border-l border-border bg-muted/40 p-[var(--generation-popover-padding)]">
+				<section
+					ref={modelPanelRef}
+					className="flex min-h-0 min-w-0 flex-col border-l border-border bg-muted/40 p-[var(--generation-popover-padding)]"
+					onPointerEnter={clearSafeTriangle}
+				>
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">模型</p>
 					<div className="grid min-h-0 flex-1 auto-rows-min gap-1 overflow-y-auto pr-1">
 						{(activeCategory?.options ?? []).map((option) => {
@@ -436,6 +547,59 @@ const normalizeAgentOptionKey = (value: string) =>
 		.trim()
 		.toLowerCase()
 		.replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "");
+
+const AGENT_RUNTIME_SAFE_TRIANGLE_EDGE_PADDING = 8;
+
+const pointerEventPoint = (event: React.PointerEvent): AgentRuntimePoint => ({
+	x: event.clientX,
+	y: event.clientY,
+});
+
+export const shouldKeepAgentRuntimeCategoryActive = ({
+	activeRect,
+	origin,
+	point,
+	submenuRect,
+}: AgentRuntimeSafeTriangleInput) => {
+	if (!activeRect || !origin || !submenuRect) return false;
+	if (origin.y < activeRect.top - AGENT_RUNTIME_SAFE_TRIANGLE_EDGE_PADDING) return false;
+	if (origin.y > activeRect.bottom + AGENT_RUNTIME_SAFE_TRIANGLE_EDGE_PADDING) return false;
+	if (point.x <= origin.x) return false;
+	if (point.x >= submenuRect.left) return false;
+
+	return pointInTriangle(
+		point,
+		origin,
+		{
+			x: submenuRect.left,
+			y: submenuRect.top - AGENT_RUNTIME_SAFE_TRIANGLE_EDGE_PADDING,
+		},
+		{
+			x: submenuRect.left,
+			y: submenuRect.bottom + AGENT_RUNTIME_SAFE_TRIANGLE_EDGE_PADDING,
+		},
+	);
+};
+
+const pointInTriangle = (
+	point: AgentRuntimePoint,
+	first: AgentRuntimePoint,
+	second: AgentRuntimePoint,
+	third: AgentRuntimePoint,
+) => {
+	const firstSign = triangleSign(point, first, second);
+	const secondSign = triangleSign(point, second, third);
+	const thirdSign = triangleSign(point, third, first);
+	const hasNegative = firstSign < 0 || secondSign < 0 || thirdSign < 0;
+	const hasPositive = firstSign > 0 || secondSign > 0 || thirdSign > 0;
+	return !(hasNegative && hasPositive);
+};
+
+const triangleSign = (
+	first: AgentRuntimePoint,
+	second: AgentRuntimePoint,
+	third: AgentRuntimePoint,
+) => (first.x - third.x) * (second.y - third.y) - (second.x - third.x) * (first.y - third.y);
 
 export const normalizeRuntimeConfigValue = (
 	config: AgentRuntimeSelectConfig | undefined,

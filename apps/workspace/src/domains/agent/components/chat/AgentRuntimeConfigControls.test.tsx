@@ -1,7 +1,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeConfigPayload } from "@/domains/agent/api/agent";
-import { AgentRuntimeConfigControls } from "./AgentRuntimeConfigControls";
+import {
+	AgentRuntimeConfigControls,
+	shouldKeepAgentRuntimeCategoryActive,
+} from "./AgentRuntimeConfigControls";
 
 const baseConfig: AgentRuntimeConfigPayload = {
 	model: {
@@ -52,6 +55,7 @@ const runtimeControlsElement = (
 describe("AgentRuntimeConfigControls", () => {
 	afterEach(() => {
 		cleanup();
+		vi.restoreAllMocks();
 	});
 
 	it("shows a loading hint before runtime config options are loaded", () => {
@@ -220,7 +224,7 @@ describe("AgentRuntimeConfigControls", () => {
 		const menu = screen.getByLabelText("分类和模型");
 		expect(menu).toHaveClass("h-[22rem]");
 
-		fireEvent.mouseEnter(screen.getByRole("button", { name: "MiniMax 国内" }));
+		fireEvent.pointerEnter(screen.getByRole("button", { name: "MiniMax 国内" }));
 		expect(screen.getByText("MiniMax-M3")).toBeTruthy();
 		expect(screen.queryByText("GLM-4 Flash")).toBeNull();
 
@@ -229,4 +233,205 @@ describe("AgentRuntimeConfigControls", () => {
 		expect(screen.getByText("MiniMax-M3")).toBeTruthy();
 		expect(screen.queryByText("GLM-4 Flash")).toBeNull();
 	});
+
+	it("keeps the active model category while the pointer crosses the safe triangle", () => {
+		renderControls({
+			model: {
+				configId: "model",
+				currentValue: "mediago/glm-4-flash",
+				options: [
+					{
+						name: "MediaGo/GLM-4 Flash",
+						value: "mediago/glm-4-flash",
+					},
+					{
+						name: "MiniMax 国内/MiniMax-M3",
+						value: "minimax/minimax-m3",
+					},
+				],
+			},
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "模型" }));
+		const mediaGoCategory = screen.getByRole("button", { name: "MediaGo" });
+		const miniMaxCategory = screen.getByRole("button", { name: "MiniMax 国内" });
+		const modelPanel = screen.getByText("模型").closest("section");
+		expect(modelPanel).toBeTruthy();
+		vi.spyOn(mediaGoCategory, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
+		);
+		vi.spyOn(modelPanel as HTMLElement, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 360, left: 240, right: 520, top: 40 }),
+		);
+
+		fireEvent.pointerEnter(mediaGoCategory, { clientX: 150, clientY: 96 });
+		fireEvent.pointerMove(mediaGoCategory, { clientX: 160, clientY: 112 });
+		fireEvent.pointerEnter(miniMaxCategory, { clientX: 172, clientY: 136 });
+
+		expect(screen.getByText("GLM-4 Flash")).toBeTruthy();
+		expect(screen.queryByText("MiniMax-M3")).toBeNull();
+	});
+
+	it("switches model category immediately when the pointer is not moving toward the model panel", () => {
+		renderControls({
+			model: {
+				configId: "model",
+				currentValue: "mediago/glm-4-flash",
+				options: [
+					{
+						name: "MediaGo/GLM-4 Flash",
+						value: "mediago/glm-4-flash",
+					},
+					{
+						name: "MiniMax 国内/MiniMax-M3",
+						value: "minimax/minimax-m3",
+					},
+				],
+			},
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "模型" }));
+		const mediaGoCategory = screen.getByRole("button", { name: "MediaGo" });
+		const miniMaxCategory = screen.getByRole("button", { name: "MiniMax 国内" });
+		const modelPanel = screen.getByText("模型").closest("section");
+		expect(modelPanel).toBeTruthy();
+		vi.spyOn(mediaGoCategory, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
+		);
+		vi.spyOn(modelPanel as HTMLElement, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 360, left: 240, right: 520, top: 40 }),
+		);
+
+		fireEvent.pointerEnter(mediaGoCategory, { clientX: 188, clientY: 96 });
+		fireEvent.pointerMove(mediaGoCategory, { clientX: 200, clientY: 112 });
+		fireEvent.pointerEnter(miniMaxCategory, { clientX: 200, clientY: 136 });
+
+		expect(screen.getByText("MiniMax-M3")).toBeTruthy();
+		expect(screen.queryByText("GLM-4 Flash")).toBeNull();
+	});
+
+	it("keeps the active model category while the pointer keeps moving inside the safe triangle", () => {
+		renderControls({
+			model: {
+				configId: "model",
+				currentValue: "mediago/glm-4-flash",
+				options: [
+					{
+						name: "MediaGo/GLM-4 Flash",
+						value: "mediago/glm-4-flash",
+					},
+					{
+						name: "MiniMax 国内/MiniMax-M3",
+						value: "minimax/minimax-m3",
+					},
+				],
+			},
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "模型" }));
+		const mediaGoCategory = screen.getByRole("button", { name: "MediaGo" });
+		const miniMaxCategory = screen.getByRole("button", { name: "MiniMax 国内" });
+		const modelPanel = screen.getByText("模型").closest("section");
+		expect(modelPanel).toBeTruthy();
+		vi.spyOn(mediaGoCategory, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
+		);
+		vi.spyOn(modelPanel as HTMLElement, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 360, left: 240, right: 520, top: 40 }),
+		);
+
+		fireEvent.pointerEnter(mediaGoCategory, { clientX: 150, clientY: 96 });
+		fireEvent.pointerMove(mediaGoCategory, { clientX: 160, clientY: 112 });
+		fireEvent.pointerEnter(miniMaxCategory, { clientX: 172, clientY: 136 });
+		fireEvent.pointerMove(miniMaxCategory, { clientX: 180, clientY: 150 });
+
+		expect(screen.getByText("GLM-4 Flash")).toBeTruthy();
+		expect(screen.queryByText("MiniMax-M3")).toBeNull();
+	});
+
+	it("keeps the category when the pointer reaches the model panel", () => {
+		renderControls({
+			model: {
+				configId: "model",
+				currentValue: "mediago/glm-4-flash",
+				options: [
+					{
+						name: "MediaGo/GLM-4 Flash",
+						value: "mediago/glm-4-flash",
+					},
+					{
+						name: "MiniMax 国内/MiniMax-M3",
+						value: "minimax/minimax-m3",
+					},
+				],
+			},
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "模型" }));
+		const mediaGoCategory = screen.getByRole("button", { name: "MediaGo" });
+		const miniMaxCategory = screen.getByRole("button", { name: "MiniMax 国内" });
+		const modelPanel = screen.getByText("模型").closest("section");
+		expect(modelPanel).toBeTruthy();
+		vi.spyOn(mediaGoCategory, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
+		);
+		vi.spyOn(modelPanel as HTMLElement, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 360, left: 240, right: 520, top: 40 }),
+		);
+
+		fireEvent.pointerEnter(mediaGoCategory, { clientX: 150, clientY: 96 });
+		fireEvent.pointerMove(mediaGoCategory, { clientX: 160, clientY: 112 });
+		fireEvent.pointerEnter(miniMaxCategory, { clientX: 172, clientY: 136 });
+		fireEvent.pointerEnter(modelPanel as HTMLElement, { clientX: 246, clientY: 136 });
+
+		expect(screen.getByText("GLM-4 Flash")).toBeTruthy();
+		expect(screen.queryByText("MiniMax-M3")).toBeNull();
+	});
 });
+
+describe("shouldKeepAgentRuntimeCategoryActive", () => {
+	it("keeps the category active for diagonal movement through the safe triangle", () => {
+		expect(
+			shouldKeepAgentRuntimeCategoryActive({
+				activeRect: { bottom: 124, left: 20, right: 220, top: 80 },
+				origin: { x: 160, y: 112 },
+				point: { x: 172, y: 136 },
+				submenuRect: { bottom: 360, left: 240, right: 520, top: 40 },
+			}),
+		).toBe(true);
+	});
+
+	it("does not keep the category active for vertical movement inside the category column", () => {
+		expect(
+			shouldKeepAgentRuntimeCategoryActive({
+				activeRect: { bottom: 124, left: 20, right: 220, top: 80 },
+				origin: { x: 188, y: 112 },
+				point: { x: 188, y: 136 },
+				submenuRect: { bottom: 360, left: 240, right: 520, top: 40 },
+			}),
+		).toBe(false);
+	});
+});
+
+const testRect = ({
+	bottom,
+	left,
+	right,
+	top,
+}: {
+	bottom: number;
+	left: number;
+	right: number;
+	top: number;
+}) =>
+	({
+		bottom,
+		height: bottom - top,
+		left,
+		right,
+		toJSON: () => ({}),
+		top,
+		width: right - left,
+		x: left,
+		y: top,
+	}) as DOMRect;
