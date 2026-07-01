@@ -91,7 +91,14 @@ export const useMediaGenerationLifecycle = ({
 					continue;
 				}
 
-				if (isFailedGenerationStatus(entry.status) && !failedPendingIdsRef.current.has(pendingId)) {
+				if (isFailedGenerationStatus(entry.status)) {
+					// Mirror the completed branch: only react to failures for generations that
+					// were started in this session. A pre-existing historical failure in the
+					// section must not re-mark the resource as failed just because the dialog
+					// (re)loaded its entries.
+					if (!pendingEntryIdsRef.current[entry.id]) continue;
+					if (failedPendingIdsRef.current.has(pendingId)) continue;
+
 					failedPendingIdsRef.current.add(pendingId);
 					materializedPendingIdsRef.current.delete(pendingId);
 					delete pendingEntryIdsRef.current[entry.id];

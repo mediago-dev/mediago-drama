@@ -105,6 +105,52 @@ describe("generationStatusForSection", () => {
 		expect(generationStatusForSection(tasks, "doc-1", "sec-1")?.taskId).toBe("newer-pending");
 	});
 
+	it("prefers an in-progress task over a later failed one (生成中 wins over 失败)", () => {
+		const withLaterFailure = [
+			makeTask({
+				id: "earlier-pending",
+				documentId: "doc-1",
+				sectionId: "sec-1",
+				status: "running",
+				updatedAt: "2026-01-01T00:00:00.000Z",
+			}),
+			makeTask({
+				id: "latest-failed",
+				documentId: "doc-1",
+				sectionId: "sec-1",
+				status: "failed",
+				error: "boom",
+				updatedAt: "2026-01-02T00:00:00.000Z",
+			}),
+		];
+		const status = generationStatusForSection(withLaterFailure, "doc-1", "sec-1");
+		expect(status?.taskId).toBe("earlier-pending");
+		expect(status?.kind).toBe("pending");
+	});
+
+	it("falls back to the latest terminal record when nothing is in progress", () => {
+		const terminalOnly = [
+			makeTask({
+				id: "old-failed",
+				documentId: "doc-1",
+				sectionId: "sec-1",
+				status: "failed",
+				error: "boom",
+				updatedAt: "2026-01-01T00:00:00.000Z",
+			}),
+			makeTask({
+				id: "newer-complete",
+				documentId: "doc-1",
+				sectionId: "sec-1",
+				status: "completed",
+				updatedAt: "2026-01-02T00:00:00.000Z",
+			}),
+		];
+		expect(generationStatusForSection(terminalOnly, "doc-1", "sec-1")?.taskId).toBe(
+			"newer-complete",
+		);
+	});
+
 	it("returns undefined when no task matches the section", () => {
 		expect(generationStatusForSection(tasks, "doc-1", "missing")).toBeUndefined();
 	});
