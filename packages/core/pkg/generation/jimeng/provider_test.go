@@ -451,6 +451,23 @@ func TestGetQueriesResult(t *testing.T) {
 	}
 }
 
+func TestGetTagsImageAssetsForImageRoute(t *testing.T) {
+	provider := testProvider(t, CommandRunnerFunc(func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+		return []byte(`{"submit_id":"img_1","gen_status":"success","image_url":"https://example.test/out.png"}`), nil
+	}))
+
+	response, err := provider.Get(context.Background(), generation.RouteJimengSeedream50+":img_1")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if response.Status != "completed" || len(response.Assets) != 1 {
+		t.Fatalf("response = %#v", response)
+	}
+	if response.Assets[0].Kind != generation.KindImage {
+		t.Fatalf("asset kind = %q, want image kind derived from the route prefix", response.Assets[0].Kind)
+	}
+}
+
 func assertContainsArg(t *testing.T, args []string, want string) {
 	t.Helper()
 	for _, arg := range args {

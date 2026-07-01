@@ -527,6 +527,14 @@ func (workflow *GenerationService) PollGenerationTask(ctx context.Context, task 
 	response = workflow.cacheGenerationResponseAssetsForTask(ctx, response, task)
 	messageResponse := GenerationResponseFromCore(response, task.Kind)
 	messageResponse.ID = task.ID
+	// An image task recovered by background polling must not spin forever if the provider
+	// never returns a result. Once the total wait since submission exceeds the cap, stop
+	// polling and mark it as timed out instead.
+	if route.Kind == coregeneration.KindImage &&
+		IsActiveGenerationStatus(messageResponse.Status) &&
+		isExpiredBackgroundImageGeneration(task, time.Now().UTC()) {
+		messageResponse = FailedGenerationResponse(task.ID, backgroundImageGenerationTimeoutError())
+	}
 	task = GenerationTaskWithMessage(task, messageResponse)
 	if err := workflow.generationTasks.Upsert(task); err != nil {
 		_ = workflow.generationTasks.RecordAttempt(task.ID, "poll", messageResponse.Status, "后台状态检查结果保存失败。", err)
@@ -648,6 +656,13 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 	}
 
 	response = workflow.responseWithCachedProgressAssets(task.ID, response)
+	// The provider ran out of its inline poll budget while still generating (e.g. jimeng
+	// image still "querying"). Don't fail the task — hand it off to the background poller,
+	// carrying the provider task id so it can finish once the provider returns the result.
+	if len(response.Assets) == 0 && IsActiveGenerationStatus(response.Status) &&
+		workflow.handOffPendingGeneration(task, runningTask, response, action) {
+		return
+	}
 	assetTitle := generationAssetTitleFromRequest(request)
 	response = workflow.cacheGenerationResponseAssetsWithOptions(ctx, response, generationMediaSaveOptionsWithTitle(projectID, conversationID, task.SectionID, assetTitle))
 	messageResponse := generationResponseWithAssetTitle(GenerationResponseFromCore(response, task.Kind), assetTitle)
@@ -662,6 +677,42 @@ func (workflow *GenerationService) completeSubmittedGeneration(
 	if conversation, ok, err := workflow.generationTasks.GetConversation(task.ConversationID); err == nil && ok {
 		workflow.appendStudioAssistantTranscript(conversation, messageResponse)
 	}
+}
+
+// handOffPendingGeneration persists a still-generating background task as pending, carrying
+// the provider task id so PollPendingGenerationTasks can finish it later. It reports whether
+// the task was pollable (has a provider task id); if not, the caller completes it normally.
+func (workflow *GenerationService) handOffPendingGeneration(
+	task generationTaskRecord,
+	runningTask generationTaskRecord,
+	response coregeneration.Response,
+	action string,
+) bool {
+	providerTaskID := strings.TrimSpace(response.ID)
+	if providerTaskID == "" || providerTaskID == strings.TrimSpace(task.ID) ||
+		!strings.Contains(providerTaskID, ":") {
+		return false
+	}
+
+	messageResponse := SubmittedGenerationResponse(task.ID, coregeneration.Kind(task.Kind))
+	messageResponse.ID = task.ID
+	pendingTask := GenerationTaskWithMessage(runningTask, messageResponse)
+	pendingTask.ProviderTaskID = providerTaskID
+	pendingTask = workflow.taskWithCurrentProgressAssets(task.ID, pendingTask)
+	if err := workflow.generationTasks.Upsert(pendingTask); err != nil {
+		slog.Error("pending generation handoff could not be saved", "task_id", task.ID, "error", err)
+		return false
+	}
+	workflow.syncGenerationNotificationTask(pendingTask)
+	_ = workflow.generationTasks.RecordAttempt(task.ID, action, pendingTask.Status, pendingTask.Message, nil)
+	return true
+}
+
+func backgroundImageGenerationTimeoutError() error {
+	return fmt.Errorf(
+		"即梦生成超时：超过 %d 分钟仍未返回结果，请重试。",
+		int(maxBackgroundImageGenerationAge/time.Minute),
+	)
 }
 
 func (workflow *GenerationService) requestWithGenerationProgressCallback(

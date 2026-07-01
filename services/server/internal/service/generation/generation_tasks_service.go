@@ -23,6 +23,12 @@ import (
 const generationTaskAttemptListLimit = 8
 const submittingGenerationRetryDelay = 2 * time.Minute
 
+// maxBackgroundImageGenerationAge caps how long an image task handed off to background
+// polling may stay pending before it is treated as timed out. It covers the whole wait
+// since submission (inline poll budget included), so the provider gets ample time to
+// return a slow result without letting a lost task spin forever.
+const maxBackgroundImageGenerationAge = 15 * time.Minute
+
 // GenerationTaskService persists generation task state and attempts.
 type GenerationTaskService struct {
 	mu          sync.RWMutex
@@ -202,26 +208,46 @@ func (service *GenerationTaskService) ListPending(limit int) ([]GenerationTaskRe
 	service.mu.RLock()
 	defer service.mu.RUnlock()
 
-	models, err := service.repo.ListPendingGenerationTasks("video", []string{"submitting", "submitted", "running", "pending", "processing", "queued"}, limit*2)
+	videoModels, err := service.repo.ListPendingGenerationTasks("video", []string{"submitting", "submitted", "running", "pending", "processing", "queued"}, limit*2)
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := generationTaskRecordsFromModels(models)
+	videoTasks, err := generationTaskRecordsFromModels(videoModels)
 	if err != nil {
 		return nil, err
 	}
 
-	filtered := make([]GenerationTaskRecord, 0, min(limit, len(tasks)))
+	// Image tasks are only polled once the inline generation handed them off — status
+	// "submitted" with a provider task id — never while they are still running inline.
+	imageModels, err := service.repo.ListPendingGenerationTasks("image", []string{"submitted"}, limit*2)
+	if err != nil {
+		return nil, err
+	}
+	imageTasks, err := generationTaskRecordsFromModels(imageModels)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]GenerationTaskRecord, 0, min(limit, len(videoTasks)+len(imageTasks)))
 	now := time.Now().UTC()
-	for _, task := range tasks {
+	for _, task := range videoTasks {
+		if len(filtered) >= limit {
+			return filtered, nil
+		}
 		if strings.EqualFold(strings.TrimSpace(task.Status), "submitting") &&
 			!isStaleSubmittingGenerationTask(task, now) {
 			continue
 		}
 		filtered = append(filtered, task)
+	}
+	for _, task := range imageTasks {
 		if len(filtered) >= limit {
 			break
 		}
+		if GenerationTaskProviderPollID(task) == "" {
+			continue
+		}
+		filtered = append(filtered, task)
 	}
 	return filtered, nil
 }
@@ -1753,6 +1779,16 @@ func isStaleSubmittingGenerationTask(task GenerationTaskRecord, now time.Time) b
 		return true
 	}
 	return now.Sub(updatedAt) >= submittingGenerationRetryDelay
+}
+
+// isExpiredBackgroundImageGeneration reports whether a background-recovered image task has
+// been pending past maxBackgroundImageGenerationAge (measured from submission).
+func isExpiredBackgroundImageGeneration(task GenerationTaskRecord, now time.Time) bool {
+	createdAt, err := timestamp.ParseRFC3339Nano(task.CreatedAt)
+	if err != nil {
+		return false
+	}
+	return now.Sub(createdAt) >= maxBackgroundImageGenerationAge
 }
 
 func generationConversationRecordFromModel(model generationConversationModel) GenerationConversationRecord {
