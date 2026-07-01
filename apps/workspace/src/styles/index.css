@@ -101,10 +101,8 @@
 		background: color-mix(in srgb, var(--ide-sidebar) 72%, transparent);
 		backdrop-filter: blur(var(--blur-scale-lg)) saturate(1.35);
 		-webkit-backdrop-filter: blur(var(--blur-scale-lg)) saturate(1.35);
-		box-shadow:
-			inset calc(var(--border-width-scale-sm) * -1) 0
-				color-mix(in srgb, var(--border) 70%, transparent),
-			inset var(--border-width-scale-sm) 0 color-mix(in srgb, var(--popover) 42%, transparent);
+		box-shadow: inset var(--border-width-scale-sm) 0
+			color-mix(in srgb, var(--popover) 42%, transparent);
 	}
 
 	.PhotoView-Portal {
