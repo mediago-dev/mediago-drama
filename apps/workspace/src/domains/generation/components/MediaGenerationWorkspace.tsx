@@ -9,6 +9,7 @@ import type {
 	GenerationMessageResponse,
 	GenerationNotificationOpenTarget,
 	GenerationReferenceBinding,
+	SelectedGenerationResourceType,
 } from "@/domains/generation/api/generation";
 import {
 	generationConversationsQueryKey,
@@ -223,6 +224,7 @@ export interface MediaGenerationWorkspaceProps {
 	taskType?: GenerationTaskType;
 	selectedAssetKeys?: string[];
 	selectedAssetResourceId?: string | null;
+	selectedAssetResourceType?: SelectedGenerationResourceType | null;
 	selectedAssetSourceDocumentId?: string | null;
 	selectedAssetTitle?: string | null;
 	submitLabel?: string;
@@ -272,6 +274,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	taskType,
 	selectedAssetKeys = [],
 	selectedAssetResourceId,
+	selectedAssetResourceType,
 	selectedAssetSourceDocumentId,
 	selectedAssetTitle,
 	submitLabel,
@@ -664,10 +667,11 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	) : null;
 	const generationEntries = ws.orderedGenerationEntries.filter((entry) => entry.kind === kind);
 	const isAssetSelectionControlled = Boolean(onToggleAsset);
+	// 归属类型：调用方显式优先，否则回退到由 taskType 推导（保持历史行为）。
+	const resolvedSelectedAssetResourceType =
+		selectedAssetResourceType ?? selectedGenerationResourceTypeForTaskType(taskType);
 	const canPersistGeneratedAssetSelection = Boolean(
-		projectId?.trim() &&
-		selectedAssetResourceId?.trim() &&
-		selectedGenerationResourceTypeForTaskType(taskType),
+		projectId?.trim() && selectedAssetResourceId?.trim() && resolvedSelectedAssetResourceType,
 	);
 	const shouldPersistGeneratedAssetSelection =
 		canPersistGeneratedAssetSelection && (!isAssetSelectionControlled || persistAssetSelection);
@@ -1073,14 +1077,20 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			const persistTarget = resolveGeneratedAssetTaskSlot(asset, generationEntries);
 			const normalizedProjectId = projectId?.trim();
 			const resourceId = selectedAssetResourceId?.trim();
-			const resourceType = selectedGenerationResourceTypeForTaskType(taskType);
+			const resourceType = resolvedSelectedAssetResourceType;
+			const selectableKind = isSelectableGenerationAssetKind(asset.kind);
 			if (
 				!normalizedProjectId ||
 				!resourceId ||
-				!isSelectableGenerationAssetKind(asset.kind) ||
+				!selectableKind ||
 				!persistTarget ||
 				!resourceType
 			) {
+				// 已配置好持久化（项目 / 资源 / 归属 / 类型都在）却解析不到任务槽位时，
+				// 选中会被静默丢弃——这是「选了不回流列表」最常见的根因，开发期显式告警。
+				if (normalizedProjectId && resourceId && resourceType && selectableKind && !persistTarget) {
+					warnSkippedAssetSelectionPersistence(asset, { resourceId, resourceType });
+				}
 				return true;
 			}
 
@@ -1120,7 +1130,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			selectedAssetResourceId,
 			selectedAssetSourceDocumentId,
 			selectedAssetTitle,
-			taskType,
+			resolvedSelectedAssetResourceType,
 			onAssetSelectionPersisted,
 			toast,
 			ws.mutateTasks,
@@ -1751,7 +1761,9 @@ const sanitizeEditedImageFilename = (value: string) => {
 	return `${sanitized || "编辑图片"}.png`;
 };
 
-const selectedGenerationResourceTypeForTaskType = (taskType?: GenerationTaskType) => {
+const selectedGenerationResourceTypeForTaskType = (
+	taskType?: GenerationTaskType,
+): SelectedGenerationResourceType | undefined => {
 	switch (taskType) {
 		case "character":
 		case "scene":
@@ -1765,6 +1777,23 @@ const selectedGenerationResourceTypeForTaskType = (taskType?: GenerationTaskType
 
 const isSelectableGenerationAssetKind = (kind?: string) =>
 	kind === "audio" || kind === "image" || kind === "video";
+
+const warnSkippedAssetSelectionPersistence = (
+	asset: GenerationAsset,
+	context: { resourceId: string; resourceType: SelectedGenerationResourceType },
+) => {
+	if (!import.meta.env.DEV) return;
+	console.warn(
+		"[generation] 选中未持久化：解析不到该资源的任务槽位（taskId/slotIndex），成片不会回流到列表。",
+		{
+			resourceId: context.resourceId,
+			resourceType: context.resourceType,
+			kind: asset.kind,
+			taskId: asset.taskId,
+			slotIndex: asset.slotIndex,
+		},
+	);
+};
 
 const resolveGeneratedAssetTaskSlot = (
 	asset: GenerationAsset,

@@ -29,6 +29,12 @@ vi.mock("@/domains/episode/components/EpisodeTimelineView", () => ({
 	EpisodeTimelineView: dialogMocks.EpisodeTimelineView,
 }));
 
+vi.mock("@/components/VideoPlayer", () => ({
+	VideoPlayer: ({ mimeType, src }: { mimeType?: string; src: string }) => (
+		<video data-testid="video-preview" data-mime-type={mimeType} src={src} />
+	),
+}));
+
 vi.mock("@/shared/lib/http", () => ({
 	default: {
 		get: vi.fn(),
@@ -335,6 +341,7 @@ describe("ProjectOverview", () => {
 								canGenerate: true,
 								documentId: "characters",
 								documentTitle: "角色设定",
+								generatedImageCount: 2,
 								headingLevel: 2,
 								headingOccurrence: 1,
 								id: "character:characters:section_lintong",
@@ -358,6 +365,7 @@ describe("ProjectOverview", () => {
 								canGenerate: true,
 								documentId: "characters",
 								documentTitle: "角色设定",
+								generatedImageCount: 0,
 								headingLevel: 2,
 								headingOccurrence: 2,
 								id: "character:characters:section_xulele",
@@ -453,6 +461,7 @@ describe("ProjectOverview", () => {
 									{
 										blockId: "section_reel_01",
 										canGenerate: true,
+										generatedVideoCount: 2,
 										headingLevel: 2,
 										headingOccurrence: 1,
 										id: "storyboard-a:section_reel_01",
@@ -482,6 +491,7 @@ describe("ProjectOverview", () => {
 									{
 										blockId: "section_reel_02",
 										canGenerate: true,
+										generatedVideoCount: 0,
 										headingLevel: 2,
 										headingOccurrence: 1,
 										id: "storyboard-a:section_reel_02",
@@ -507,6 +517,7 @@ describe("ProjectOverview", () => {
 									{
 										blockId: "section_reel_b_01",
 										canGenerate: true,
+										generatedVideoCount: 0,
 										headingLevel: 2,
 										headingOccurrence: 1,
 										id: "storyboard-b:section_reel_b_01",
@@ -642,8 +653,10 @@ describe("ProjectOverview", () => {
 			"src",
 			"/api/v1/media-assets/character-a/content",
 		);
-		expect(within(dialog).getAllByText("已选择 1 张")).toHaveLength(2);
-		expect(within(dialog).getByText("已选择 0 张")).toBeInTheDocument();
+		// 卡片标题旁的 Badge 展示历史成功生成数（替换了原「已选择 N 张」，封面浮层已移除）。
+		expect(within(dialog).getByText("已生成 2 张")).toBeInTheDocument();
+		expect(within(dialog).getByText("已生成 0 张")).toBeInTheDocument();
+		expect(within(dialog).queryByText("已选择 1 张")).not.toBeInTheDocument();
 		expect(within(dialog).getByText("暂无已选图片")).toBeInTheDocument();
 		expect(within(dialog).queryByText("来源：角色设定")).not.toBeInTheDocument();
 		expect(within(dialog).queryByText("冷静的调查记者。")).not.toBeInTheDocument();
@@ -791,10 +804,23 @@ describe("ProjectOverview", () => {
 		expect(within(dialog).getByText("第 01 组 总时长：00:08")).toBeInTheDocument();
 		expect(within(dialog).getByText("第 02 组 总时长：00:06")).toBeInTheDocument();
 		expect(within(dialog).queryByText("分镜 01")).not.toBeInTheDocument();
-		expect(within(dialog).getByText("已选落水镜头")).toBeInTheDocument();
+		// 卡片标题旁的 Badge 展示历史成功生成数（替换了原「成片 N 个」）。
+		expect(within(dialog).getByText("已生成 2 个")).toBeInTheDocument();
+		expect(within(dialog).getByText("已生成 0 个")).toBeInTheDocument();
 		expect(within(dialog).queryByText("苏醒镜头")).not.toBeInTheDocument();
 		expect(within(dialog).queryByText("门外脚步成片")).not.toBeInTheDocument();
 		expect(within(dialog).getAllByRole("button", { name: "生成视频" })).toHaveLength(2);
+
+		// 点击成片封面用共享 VideoPlayer 打开视频预览，关闭后不影响后续断言。
+		fireEvent.click(
+			within(dialog).getByRole("button", { name: "预览 第 01 组 总时长：00:08 视频" }),
+		);
+		const videoPreview = await screen.findByTestId("video-preview");
+		expect(videoPreview.getAttribute("src")).toContain(
+			"/api/v1/media-assets/selected-video-1/content",
+		);
+		fireEvent.click(screen.getByLabelText("关闭预览"));
+		await waitFor(() => expect(screen.queryByTestId("video-preview")).not.toBeInTheDocument());
 
 		expect(within(dialog).getByRole("img", { name: "已选落水镜头" })).toHaveAttribute(
 			"src",

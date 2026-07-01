@@ -41,10 +41,43 @@ func (store *Service) ListWorkspaceDocumentResources(projectID string) (workspac
 		return workspaceDocumentResourcesResponse{}, err
 	}
 
+	records := workspaceDocumentResourceRecordsFromDocuments(RegularWorkspaceDocuments(state.Documents))
+	if err := store.applyGeneratedImageCounts(projectID, records); err != nil {
+		return workspaceDocumentResourcesResponse{}, err
+	}
+
 	return workspaceDocumentResourcesResponse{
 		ProjectID: projectID,
-		Resources: workspaceDocumentResourceRecordsFromDocuments(RegularWorkspaceDocuments(state.Documents)),
+		Resources: records,
 	}, nil
+}
+
+// applyGeneratedImageCounts fills each resource's GeneratedImageCount from successful image tasks,
+// matched by (documentId, sectionId). No-op when the counter dependency is not wired.
+func (store *Service) applyGeneratedImageCounts(projectID string, records []workspaceDocumentResourceRecord) error {
+	if store.generatedAssetCounter == nil || len(records) == 0 {
+		return nil
+	}
+	counts, err := store.generatedAssetCounter.CountGeneratedAssetsBySection(projectID, "image")
+	if err != nil {
+		return fmt.Errorf("counting generated images for %s: %w", projectID, err)
+	}
+	countByKey := make(map[string]int, len(counts))
+	for _, count := range counts {
+		documentID := strings.TrimSpace(count.DocumentID)
+		sectionID := strings.TrimSpace(count.SectionID)
+		if documentID == "" || sectionID == "" {
+			continue
+		}
+		countByKey[documentID+"\x00"+sectionID] = count.Count
+	}
+	for index := range records {
+		key := strings.TrimSpace(records[index].DocumentID) + "\x00" + strings.TrimSpace(records[index].SectionID)
+		if value, ok := countByKey[key]; ok {
+			records[index].GeneratedImageCount = value
+		}
+	}
+	return nil
 }
 
 func workspaceDocumentResourceRecordsFromDocuments(documents []mediamcp.WorkspaceDocument) []workspaceDocumentResourceRecord {

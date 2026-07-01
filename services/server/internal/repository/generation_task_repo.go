@@ -107,6 +107,40 @@ func (repo *GenerationTaskRepository) ListGenerationTasksByProject(kind string, 
 	return models, nil
 }
 
+// GenerationSectionAssetCount is the number of stored generated assets for one document section.
+type GenerationSectionAssetCount struct {
+	DocumentID string `gorm:"column:document_id"`
+	SectionID  string `gorm:"column:section_id"`
+	Count      int    `gorm:"column:count"`
+}
+
+// CountGeneratedAssetsByProjectSection returns, per document section, the number of stored assets
+// produced by successful generation tasks of the given kind in the project. Counting the asset rows
+// (deleted slots are hard-deleted) yields the number of currently existing generated files.
+func (repo *GenerationTaskRepository) CountGeneratedAssetsByProjectSection(projectID string, kind string) ([]GenerationSectionAssetCount, error) {
+	projectID = domain.CleanProjectID(projectID)
+	kind = strings.TrimSpace(kind)
+	rows := []GenerationSectionAssetCount{}
+	if projectID == "" || kind == "" {
+		return rows, nil
+	}
+	if err := repo.db.
+		Table("generation_task_assets").
+		Select("generation_tasks.document_id AS document_id, generation_tasks.section_id AS section_id, COUNT(*) AS count").
+		Joins("JOIN generation_tasks ON generation_tasks.id = generation_task_assets.task_id").
+		Where("generation_tasks.project_id = ?", projectID).
+		Where("generation_tasks.kind = ?", kind).
+		// Keep in sync with isCompletedGenerationTaskStatus in the generation service.
+		Where("LOWER(TRIM(generation_tasks.status)) IN ?", []string{"completed", "succeeded", "success"}).
+		Where("generation_tasks.document_id IS NOT NULL AND TRIM(generation_tasks.document_id) <> ''").
+		Where("generation_tasks.section_id IS NOT NULL AND TRIM(generation_tasks.section_id) <> ''").
+		Group("generation_tasks.document_id, generation_tasks.section_id").
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("counting generated %s assets by project section: %w", kind, err)
+	}
+	return rows, nil
+}
+
 // ListPendingGenerationTasks returns pending generation tasks for background polling.
 func (repo *GenerationTaskRepository) ListPendingGenerationTasks(kind string, statuses []string, limit int) ([]domain.GenerationTaskModel, error) {
 	models := []domain.GenerationTaskModel{}

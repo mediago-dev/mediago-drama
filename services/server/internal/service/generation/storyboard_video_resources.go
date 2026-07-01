@@ -8,6 +8,7 @@ import (
 	"unicode/utf16"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/model"
 )
 
@@ -58,10 +59,16 @@ func (workflow *GenerationService) ListStoryboardVideoResources(projectID string
 	if err != nil {
 		return StoryboardVideoResourcesResponse{}, err
 	}
+	generatedCounts, err := workflow.generationTasks.CountGeneratedAssetsBySection(projectID, "video")
+	if err != nil {
+		return StoryboardVideoResourcesResponse{}, err
+	}
 
 	groups := storyboardVideoDocumentGroupsFromDocuments(documents.Documents)
 	storyboardVideoApplySelectedAssets(groups, selectedAssets.Assets)
 	storyboardVideoUniqueReels(groups)
+	// After reel dedup so counts land on the surviving reel (rebuilds its own index).
+	storyboardVideoApplyGeneratedCounts(groups, generatedCounts)
 	storyboardVideoUniqueVideos(groups)
 
 	return StoryboardVideoResourcesResponse{
@@ -207,6 +214,23 @@ func storyboardVideoApplySelectedAssets(groups []StoryboardVideoDocumentGroup, a
 			PosterURL:    firstNonEmpty(asset.PosterURL, storyboardVideoPosterURLFromSource(source)),
 			Title:        firstNonEmpty(asset.Title, sectionTitle, "成片"),
 		})
+	}
+}
+
+func storyboardVideoApplyGeneratedCounts(groups []StoryboardVideoDocumentGroup, counts []repository.GenerationSectionAssetCount) {
+	if len(counts) == 0 {
+		return
+	}
+	reelByDocumentSection, _ := storyboardVideoReelIndexes(groups)
+	for _, count := range counts {
+		documentID := strings.TrimSpace(count.DocumentID)
+		sectionID := strings.TrimSpace(count.SectionID)
+		if documentID == "" || sectionID == "" {
+			continue
+		}
+		if reel, ok := reelByDocumentSection[storyboardVideoDocumentSectionKey(documentID, sectionID)]; ok {
+			reel.GeneratedVideoCount = count.Count
+		}
 	}
 }
 

@@ -3,7 +3,22 @@ package document
 import (
 	"strings"
 	"testing"
+
+	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 )
+
+type fakeGeneratedAssetCounter struct {
+	counts        []repository.GenerationSectionAssetCount
+	requestedKind string
+}
+
+func (fake *fakeGeneratedAssetCounter) CountGeneratedAssetsBySection(
+	_ string,
+	kind string,
+) ([]repository.GenerationSectionAssetCount, error) {
+	fake.requestedKind = kind
+	return fake.counts, nil
+}
 
 func TestListWorkspaceDocumentResourcesParsesCharacterSections(t *testing.T) {
 	store := requireDocumentStore(t)
@@ -126,5 +141,58 @@ func TestListWorkspaceDocumentResourcesParsesStoryboardGroupsFromH2(t *testing.T
 		if resource.Title == "分镜脚本" || strings.HasPrefix(resource.Title, "分镜") {
 			t.Fatalf("unexpected storyboard resource parsed: %#v", resource)
 		}
+	}
+}
+
+func TestListWorkspaceDocumentResourcesAppliesGeneratedImageCounts(t *testing.T) {
+	store := requireDocumentStore(t)
+	projectID := "project-document-resources-generated-count"
+	requireTestProject(t, store, projectID)
+
+	if _, _, err := store.CreateWorkspaceDocument(projectID, CreateWorkspaceDocumentRequest{
+		ID:    "characters",
+		Title: "角色设定",
+		Content: strings.Join([]string{
+			"# 角色设定",
+			"",
+			"<!-- section-id: section_lintong -->",
+			"## 林书彤",
+			"",
+			"冷静的调查记者。",
+			"",
+			"<!-- section-id: section_chenyuan -->",
+			"## 陈远",
+			"",
+			"从旧城区来的青年。",
+		}, "\n"),
+		Category: "character",
+	}); err != nil {
+		t.Fatalf("CreateWorkspaceDocument returned error: %v", err)
+	}
+
+	counter := &fakeGeneratedAssetCounter{
+		counts: []repository.GenerationSectionAssetCount{
+			{DocumentID: "characters", SectionID: "section_lintong", Count: 3},
+			{DocumentID: "characters", SectionID: "section_missing", Count: 9},
+		},
+	}
+	store.SetGeneratedAssetCounter(counter)
+
+	response, err := store.ListWorkspaceDocumentResources(projectID)
+	if err != nil {
+		t.Fatalf("ListWorkspaceDocumentResources returned error: %v", err)
+	}
+	if counter.requestedKind != "image" {
+		t.Fatalf("counter requested kind = %q, want image", counter.requestedKind)
+	}
+	if len(response.Resources) != 2 {
+		t.Fatalf("resources = %#v, want 2 records", response.Resources)
+	}
+	if response.Resources[0].SectionID != "section_lintong" ||
+		response.Resources[0].GeneratedImageCount != 3 {
+		t.Fatalf("first resource = %#v, want section_lintong with GeneratedImageCount 3", response.Resources[0])
+	}
+	if response.Resources[1].GeneratedImageCount != 0 {
+		t.Fatalf("second resource = %#v, want GeneratedImageCount 0", response.Resources[1])
 	}
 }

@@ -155,6 +155,13 @@ type ApprovalGate interface {
 	WaitForDocumentToolApproval(ctx context.Context, projectID string, approvalID string, interval time.Duration) (model.DocumentToolApprovalRecord, error)
 }
 
+// GeneratedAssetCounter reports, per document section, how many assets of a generation kind were
+// produced by successful tasks. Injected from the generation service so document resources can
+// surface a historical "generated" count without owning generation state.
+type GeneratedAssetCounter interface {
+	CountGeneratedAssetsBySection(projectID string, kind string) ([]repository.GenerationSectionAssetCount, error)
+}
+
 // Service owns project and document state.
 type Service struct {
 	mu        sync.RWMutex
@@ -165,6 +172,9 @@ type Service struct {
 	streams   *EditStreamService
 	history   *documenthistory.Service
 	initErr   error
+
+	// generatedAssetCounter is optional; nil disables the generated-asset count on resources.
+	generatedAssetCounter GeneratedAssetCounter
 
 	// fileCache memoizes markdown file contents across scans (guards itself).
 	fileCache *markdownFileCache
@@ -199,6 +209,13 @@ func NewService(workspaceDir string, repo *repository.WorkspaceRepository, appro
 func (store *Service) SetDocumentSectionRepository(repo *repository.DocumentSectionRepository) {
 	if store != nil {
 		store.sections = repo
+	}
+}
+
+// SetGeneratedAssetCounter injects the generated-asset counter used by document resource listings.
+func (store *Service) SetGeneratedAssetCounter(counter GeneratedAssetCounter) {
+	if store != nil {
+		store.generatedAssetCounter = counter
 	}
 }
 

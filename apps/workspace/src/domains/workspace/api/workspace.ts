@@ -103,6 +103,8 @@ export interface WorkspaceDocumentResource {
 	canGenerate: boolean;
 	documentId: string;
 	documentTitle: string;
+	// 历史上成功生成的图片文件数（与客户端已选图片数无关，来自服务端聚合）。
+	generatedImageCount: number;
 	headingLevel: number;
 	headingOccurrence: number;
 	id: string;
@@ -142,6 +144,8 @@ export interface WorkspaceStoryboardVideoReel {
 	plainText?: string;
 	prompt?: string;
 	canGenerate: boolean;
+	// 历史上成功生成的视频文件数（与已选成片数 videos.length 无关）。
+	generatedVideoCount: number;
 	videos: WorkspaceStoryboardVideoAsset[];
 }
 

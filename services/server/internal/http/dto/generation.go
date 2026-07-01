@@ -350,17 +350,20 @@ type StoryboardVideoDocumentGroup struct {
 
 // StoryboardVideoReel is one storyboard group section with generated video assets.
 type StoryboardVideoReel struct {
-	ID                string                 `json:"id"`
-	BlockID           string                 `json:"blockId"`
-	SectionID         string                 `json:"sectionId"`
-	Title             string                 `json:"title"`
-	HeadingLevel      int                    `json:"headingLevel"`
-	HeadingOccurrence int                    `json:"headingOccurrence"`
-	Markdown          string                 `json:"markdown"`
-	PlainText         string                 `json:"plainText,omitempty"`
-	Prompt            string                 `json:"prompt,omitempty"`
-	CanGenerate       bool                   `json:"canGenerate"`
-	Videos            []StoryboardVideoAsset `json:"videos"`
+	ID                string `json:"id"`
+	BlockID           string `json:"blockId"`
+	SectionID         string `json:"sectionId"`
+	Title             string `json:"title"`
+	HeadingLevel      int    `json:"headingLevel"`
+	HeadingOccurrence int    `json:"headingOccurrence"`
+	Markdown          string `json:"markdown"`
+	PlainText         string `json:"plainText,omitempty"`
+	Prompt            string `json:"prompt,omitempty"`
+	CanGenerate       bool   `json:"canGenerate"`
+	// GeneratedVideoCount is the number of video files produced by successful generation tasks for
+	// this section (historical count, independent of which video is the selected 成片).
+	GeneratedVideoCount int                    `json:"generatedVideoCount"`
+	Videos              []StoryboardVideoAsset `json:"videos"`
 }
 
 // StoryboardVideoAsset is one playable video associated with a storyboard reel.

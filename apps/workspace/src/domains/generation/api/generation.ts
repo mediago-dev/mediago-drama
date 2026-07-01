@@ -22,6 +22,7 @@ import type {
 	GenerationNotificationTarget,
 	SelectedGenerationAssetsResponse as GeneratedSelectedGenerationAssetsResponse,
 	SelectedGenerationAssetRecord as GeneratedSelectedGenerationAssetRecord,
+	SelectedGenerationResourceType as GeneratedSelectedGenerationResourceType,
 	GenerationPreferenceRecord,
 	GenerationTaskAttemptRecord,
 	GenerationTaskRecord,
@@ -88,6 +89,7 @@ export type GenerationNotificationsResponse = GeneratedGenerationNotificationsRe
 export type GenerationNotificationOpenTarget = GenerationNotificationTarget;
 export type GenerationReferenceBinding = GeneratedGenerationReferenceBinding;
 export type SelectedGenerationAsset = GeneratedSelectedGenerationAssetRecord;
+export type SelectedGenerationResourceType = GeneratedSelectedGenerationResourceType;
 export type SelectedGenerationAssetsResponse = GeneratedSelectedGenerationAssetsResponse;
 export type UpdateGenerationTaskAssetRequest = GeneratedUpdateGenerationTaskAssetRequest;
 export type UpdateSelectedGenerationAssetRequest = GeneratedUpdateSelectedGenerationAssetRequest;

@@ -115,6 +115,7 @@ func newAPIHandler(config Config) *apiHandler {
 	generationService.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
 	generationService.SetGenerationNotifications(generationNotifications)
 	generationService.SetDocumentResolver(workspaceState.StateService().Documents)
+	workspaceState.StateService().Documents.SetGeneratedAssetCounter(generationTasks)
 	promptTemplates := serviceprompttemplates.NewServiceFromRepository(settingsRepos.Instructions, settingsReposErr)
 	serviceprompt.SetPromptTemplateStore(promptTemplates)
 	promptPack := servicepromptpack.NewServiceFromRepositoryWithPackFilesDir(

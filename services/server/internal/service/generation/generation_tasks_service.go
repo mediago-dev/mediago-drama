@@ -153,6 +153,23 @@ func (service *GenerationTaskService) ListProjectResourceAssets(projectID string
 	return service.ListProjectSelectedAssets(projectID)
 }
 
+// CountGeneratedAssetsBySection returns stored asset counts per document section for a project,
+// filtered to the given generation kind (e.g. "video" or "image").
+func (service *GenerationTaskService) CountGeneratedAssetsBySection(projectID string, kind string) ([]repository.GenerationSectionAssetCount, error) {
+	if service.initErr != nil {
+		return nil, service.initErr
+	}
+
+	service.mu.RLock()
+	counts, err := service.repo.CountGeneratedAssetsByProjectSection(projectID, kind)
+	service.mu.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+
+	return counts, nil
+}
+
 // ListProjectSelectedAssets returns project-selected assets from the dedicated selection table.
 func (service *GenerationTaskService) ListProjectSelectedAssets(projectID string) ([]SelectedGenerationAssetRecord, error) {
 	if service.initErr != nil {

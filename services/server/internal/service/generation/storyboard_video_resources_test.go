@@ -224,6 +224,87 @@ func TestGenerationServiceListStoryboardVideoResourcesDeduplicatesGroupNumbers(t
 	}
 }
 
+func TestGenerationServiceListStoryboardVideoResourcesGeneratedVideoCount(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	projectID := "project-storyboard-generated-count"
+	seedGenerationTaskProject(t, dbPath, projectID)
+	for _, id := range []string{"gen-v1", "gen-v2"} {
+		seedGenerationTaskAsset(t, dbPath, id, "video", projectID)
+	}
+	seedGenerationTaskAsset(t, dbPath, "gen-running", "video", projectID)
+	seedGenerationTaskAsset(t, dbPath, "gen-image", "image", projectID)
+	taskStore := NewGenerationTaskService(dbPath, nil)
+	workflow := NewGenerationService(nil, taskStore, nil)
+	workflow.SetDocumentResolver(fakeStoryboardVideoDocumentResolver{
+		documents: []mediamcp.WorkspaceDocument{
+			{
+				ID:       "storyboard-a",
+				Title:    "第一章分镜脚本",
+				Category: "storyboard",
+				Content: joinStoryboardVideoTestLines(
+					"# 第一章分镜脚本",
+					"",
+					"<!-- section-id: section_reel_01 -->",
+					"## 开场落水",
+					"",
+					"沈阁从黑暗水面坠入湖中。",
+					"",
+					"<!-- section-id: section_reel_02 -->",
+					"## 苏醒反应",
+					"",
+					"他猛然睁眼。",
+				),
+			},
+		},
+	})
+	// section_reel_01: 一次成功生成产出 2 个视频文件 → 计数 2。
+	if err := taskStore.Upsert(GenerationTaskRecord{
+		ID: "task-success", ProjectID: projectID, DocumentID: "storyboard-a", SectionID: "section_reel_01",
+		Kind: "video", Status: "completed", Prompt: "落水镜头",
+		Assets: []GenerationAsset{
+			{AssetID: "gen-v1", Kind: "video", MIMEType: "video/mp4", URL: "/api/v1/media-assets/gen-v1/content"},
+			{AssetID: "gen-v2", Kind: "video", MIMEType: "video/mp4", URL: "/api/v1/media-assets/gen-v2/content"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting completed video task: %v", err)
+	}
+	// 非成功状态不计入。
+	if err := taskStore.Upsert(GenerationTaskRecord{
+		ID: "task-running", ProjectID: projectID, DocumentID: "storyboard-a", SectionID: "section_reel_02",
+		Kind: "video", Status: "running", Prompt: "苏醒镜头",
+		Assets: []GenerationAsset{
+			{AssetID: "gen-running", Kind: "video", MIMEType: "video/mp4", URL: "/api/v1/media-assets/gen-running/content"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting running video task: %v", err)
+	}
+	// 非 video 任务不计入（即使产出资源、状态成功）。
+	if err := taskStore.Upsert(GenerationTaskRecord{
+		ID: "task-image", ProjectID: projectID, DocumentID: "storyboard-a", SectionID: "section_reel_01",
+		Kind: "image", Status: "completed", Prompt: "分镜配图",
+		Assets: []GenerationAsset{
+			{AssetID: "gen-image", Kind: "image", MIMEType: "image/png", URL: "/api/v1/media-assets/gen-image/content"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting completed image task: %v", err)
+	}
+
+	response, err := workflow.ListStoryboardVideoResources(projectID)
+	if err != nil {
+		t.Fatalf("ListStoryboardVideoResources returned error: %v", err)
+	}
+	if len(response.Groups) != 1 || len(response.Groups[0].Reels) != 2 {
+		t.Fatalf("groups = %+v, want one document with two reels", response.Groups)
+	}
+	reels := response.Groups[0].Reels
+	if reels[0].SectionID != "section_reel_01" || reels[0].GeneratedVideoCount != 2 {
+		t.Fatalf("first reel = %+v, want section_reel_01 with GeneratedVideoCount 2", reels[0])
+	}
+	if reels[1].SectionID != "section_reel_02" || reels[1].GeneratedVideoCount != 0 {
+		t.Fatalf("second reel = %+v, want section_reel_02 with GeneratedVideoCount 0", reels[1])
+	}
+}
+
 func joinStoryboardVideoTestLines(lines ...string) string {
 	return strings.Join(lines, "\n")
 }

@@ -77,6 +77,9 @@ type WorkspaceDocumentResourceRecord struct {
 	PlainText         string `json:"plainText,omitempty"`
 	CanGenerate       bool   `json:"canGenerate"`
 	SourceCategory    string `json:"sourceCategory"`
+	// GeneratedImageCount is the number of image files produced by successful generation tasks for
+	// this section (historical count, independent of the client-side selected image count).
+	GeneratedImageCount int `json:"generatedImageCount"`
 }
 
 // EpisodeTimelineStateResponse is the persisted editing timeline for a document.

@@ -9,9 +9,15 @@ import {
 	Palette,
 	ReceiptText,
 	Rows3,
+	X,
 } from "lucide-react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { PhotoProvider, PhotoView } from "react-photo-view";
+import "react-photo-view/dist/react-photo-view.css";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { VideoPlayer } from "@/components/VideoPlayer";
+import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { Navigate, useLocation } from "react-router-dom";
 import useSWR from "swr";
 import type { GenerationTask } from "@/domains/generation/api/generation";
@@ -644,19 +650,22 @@ const DocumentResourcesDialog: React.FC<{
 							onSelectAll={selectAllResources}
 						/>
 						<div className="min-h-0 flex-1 overflow-y-auto p-4">
-							<div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-								{filteredResources.map((resource) => (
-									<DocumentResourceCard
-										key={resource.id}
-										generationStatus={generationStatuses.get(resource.id)}
-										selectedImages={resourceSelectedImages(resource, assets)}
-										resource={resource}
-										selected={selectedResourceIdSet.has(resource.id)}
-										onGenerate={onGenerate}
-										onToggleSelected={() => toggleSelectedResource(resource)}
-									/>
-								))}
-							</div>
+							<PhotoProvider maskOpacity={0.84}>
+								<div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+									{filteredResources.map((resource) => (
+										<DocumentResourceCard
+											key={resource.id}
+											generationStatus={generationStatuses.get(resource.id)}
+											generatedImageCount={resource.generatedImageCount}
+											selectedImages={resourceSelectedImages(resource, assets)}
+											resource={resource}
+											selected={selectedResourceIdSet.has(resource.id)}
+											onGenerate={onGenerate}
+											onToggleSelected={() => toggleSelectedResource(resource)}
+										/>
+									))}
+								</div>
+							</PhotoProvider>
 						</div>
 					</>
 				) : null}
@@ -667,12 +676,21 @@ const DocumentResourcesDialog: React.FC<{
 
 const DocumentResourceCard: React.FC<{
 	generationStatus?: ResourceGenerationStatus;
+	generatedImageCount: number;
 	resource: WorkspaceDocumentResource;
 	selectedImages: DocumentResourceSelectedImage[];
 	selected: boolean;
 	onGenerate: (resource: WorkspaceDocumentResource) => void;
 	onToggleSelected: () => void;
-}> = ({ generationStatus, resource, selectedImages, selected, onGenerate, onToggleSelected }) => {
+}> = ({
+	generationStatus,
+	generatedImageCount,
+	resource,
+	selectedImages,
+	selected,
+	onGenerate,
+	onToggleSelected,
+}) => {
 	const preview = selectedImages[0];
 	const assetCount = selectedImages.length;
 	const visibleGenerationStatus = visibleResourceGenerationStatus(generationStatus);
@@ -686,11 +704,13 @@ const DocumentResourceCard: React.FC<{
 		>
 			<div className="relative flex aspect-video items-center justify-center overflow-hidden bg-ide-toolbar">
 				{preview ? (
-					<img
-						src={preview.src}
-						alt={preview.title || resource.title}
-						className="max-h-full max-w-full"
-					/>
+					<PhotoView src={preview.src}>
+						<img
+							src={preview.src}
+							alt={preview.title || resource.title}
+							className="max-h-full max-w-full cursor-zoom-in"
+						/>
+					</PhotoView>
 				) : (
 					<div className="grid size-full place-items-center px-3 text-center text-xs text-muted-foreground">
 						暂无已选图片
@@ -703,25 +723,16 @@ const DocumentResourceCard: React.FC<{
 					onToggle={onToggleSelected}
 				/>
 				<ResourceGenerationStatusBadge status={visibleGenerationStatus} />
-				{assetCount > 0 ? (
-					<div
-						className={cn(
-							"absolute right-2 rounded-sm border border-border bg-card/95 px-2 py-1 text-xs font-medium text-foreground shadow-sm",
-							visibleGenerationStatus ? "top-11" : "top-2",
-						)}
-					>
-						已选择 {assetCount} 张
-					</div>
-				) : null}
 				{assetCount > 1 ? (
 					<div className="absolute bottom-2 right-2 flex max-w-[70%] gap-1">
 						{selectedImages.slice(1, 4).map((image) => (
-							<img
-								key={image.src}
-								src={image.src}
-								alt=""
-								className="size-10 rounded-sm border border-border bg-card object-cover shadow-sm"
-							/>
+							<PhotoView key={image.src} src={image.src}>
+								<img
+									src={image.src}
+									alt=""
+									className="size-10 cursor-zoom-in rounded-sm border border-border bg-card object-cover shadow-sm"
+								/>
+							</PhotoView>
 						))}
 					</div>
 				) : null}
@@ -732,7 +743,7 @@ const DocumentResourceCard: React.FC<{
 						{resource.title}
 					</h3>
 					<Badge variant="secondary" className="shrink-0">
-						已选择 {assetCount} 张
+						已生成 {generatedImageCount} 张
 					</Badge>
 				</div>
 				<div className="mt-auto pt-1">
@@ -1235,6 +1246,51 @@ const isStoryboardVideoResourcesDialogTab = (
 ): value is StoryboardVideoResourcesDialogTab =>
 	value === "list" || value === "canvas" || value === "preview";
 
+// 成片封面点击后的视频预览弹窗，复用共享的 VideoPlayer。作为 Radix 弹窗嵌在资源弹窗之上，
+// 由 dismissable-layer 层级栈处理，不会误关外层 GenerationModalShell。
+const VideoResourcePreviewDialog: React.FC<{
+	mimeType?: string;
+	onOpenChange: (open: boolean) => void;
+	open: boolean;
+	poster?: string;
+	source: string;
+	title?: string;
+}> = ({ mimeType, onOpenChange, open, poster, source, title }) => (
+	<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+		<DialogPrimitive.Portal>
+			<DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-foreground/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
+			<DialogPrimitive.Content
+				aria-describedby={undefined}
+				className={cn(
+					"fixed left-1/2 top-1/2 z-[61] w-[min(80rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-sm border border-border bg-card shadow-2xl outline-none",
+					dialogContentMotion,
+				)}
+			>
+				<div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
+					<DialogPrimitive.Title className="truncate text-sm font-semibold text-foreground">
+						{title?.trim() || "预览视频"}
+					</DialogPrimitive.Title>
+					<DialogPrimitive.Close asChild>
+						<Button type="button" variant="ghost" size="icon" aria-label="关闭预览">
+							<X className="size-4" />
+						</Button>
+					</DialogPrimitive.Close>
+				</div>
+				<div className="bg-black">
+					<VideoPlayer
+						src={source}
+						poster={poster}
+						mimeType={mimeType || "video/mp4"}
+						load="eager"
+						showTitleInControls={false}
+						className="aspect-video h-auto max-h-[calc(100vh-10rem)] w-full"
+					/>
+				</div>
+			</DialogPrimitive.Content>
+		</DialogPrimitive.Portal>
+	</DialogPrimitive.Root>
+);
+
 const StoryboardReelVideoCard: React.FC<{
 	generationStatus?: ResourceGenerationStatus;
 	reel: WorkspaceStoryboardVideoReel;
@@ -1243,9 +1299,10 @@ const StoryboardReelVideoCard: React.FC<{
 	onToggleSelected: () => void;
 }> = ({ generationStatus, reel, selected, onGenerate, onToggleSelected }) => {
 	const preview = reel.videos[0];
-	const videoCount = reel.videos.length;
 	const coverSource = preview?.posterUrl ? apiResourceURL(preview.posterUrl) : "";
+	const videoSource = preview?.src ? apiResourceURL(preview.src) : "";
 	const visibleGenerationStatus = visibleResourceGenerationStatus(generationStatus);
+	const [previewOpen, setPreviewOpen] = useState(false);
 
 	return (
 		<article
@@ -1256,12 +1313,19 @@ const StoryboardReelVideoCard: React.FC<{
 		>
 			<div className="relative flex aspect-video items-center justify-center overflow-hidden bg-ide-toolbar">
 				{coverSource ? (
-					<img
-						src={coverSource}
-						alt={preview?.title || reel.title}
-						className="max-h-full max-w-full"
-						draggable={false}
-					/>
+					<button
+						type="button"
+						className="flex size-full items-center justify-center outline-none"
+						onClick={() => videoSource && setPreviewOpen(true)}
+						aria-label={`预览 ${reel.title} 视频`}
+					>
+						<img
+							src={coverSource}
+							alt={preview?.title || reel.title}
+							className="max-h-full max-w-full"
+							draggable={false}
+						/>
+					</button>
 				) : (
 					<div className="grid size-full place-items-center px-3 text-center text-xs text-muted-foreground">
 						<div className="grid gap-2 justify-items-center">
@@ -1270,6 +1334,16 @@ const StoryboardReelVideoCard: React.FC<{
 						</div>
 					</div>
 				)}
+				{videoSource ? (
+					<VideoResourcePreviewDialog
+						open={previewOpen}
+						onOpenChange={setPreviewOpen}
+						source={videoSource}
+						poster={coverSource}
+						mimeType={preview?.mimeType}
+						title={preview?.title || reel.title}
+					/>
+				) : null}
 				<ResourceCardSelectionButton
 					disabled={!reel.canGenerate}
 					label={reel.title}
@@ -1277,16 +1351,6 @@ const StoryboardReelVideoCard: React.FC<{
 					onToggle={onToggleSelected}
 				/>
 				<ResourceGenerationStatusBadge status={visibleGenerationStatus} />
-				{videoCount > 0 ? (
-					<div
-						className={cn(
-							"absolute right-2 rounded-sm border border-border bg-card/95 px-2 py-1 text-xs font-medium text-foreground shadow-sm",
-							visibleGenerationStatus ? "top-11" : "top-2",
-						)}
-					>
-						成片 {videoCount} 个
-					</div>
-				) : null}
 			</div>
 			<div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
 				<div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -1294,14 +1358,9 @@ const StoryboardReelVideoCard: React.FC<{
 						{reel.title}
 					</h3>
 					<Badge variant="secondary" className="shrink-0">
-						成片 {videoCount} 个
+						已生成 {reel.generatedVideoCount} 个
 					</Badge>
 				</div>
-				{preview ? (
-					<p className="truncate text-xs text-muted-foreground" title={preview.title}>
-						{preview.title}
-					</p>
-				) : null}
 				<div className="mt-auto pt-1">
 					<Button
 						type="button"

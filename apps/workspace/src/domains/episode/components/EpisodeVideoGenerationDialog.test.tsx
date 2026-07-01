@@ -53,7 +53,7 @@ describe("useEpisodeVideoGenerationRequest", () => {
 
 		expect(workspaceProps).toMatchObject({
 			kind: "video",
-			modelPreferenceScopeId: "agent",
+			modelPreferenceScopeId: "agent:video",
 			viewMode: "history",
 			notificationTarget: {
 				kind: "document-section",
@@ -77,6 +77,7 @@ describe("useEpisodeVideoGenerationRequest", () => {
 		expect(workspaceProps?.initialPrompt).not.toContain("要求：");
 		expect(workspaceProps?.selectedAssetKeys).toEqual([]);
 		expect(workspaceProps?.selectedAssetResourceId).toBeUndefined();
+		expect(workspaceProps?.selectedAssetResourceType).toBeUndefined();
 		expect(workspaceProps?.onToggleAsset).toBeUndefined();
 	});
 
@@ -199,6 +200,7 @@ describe("useEpisodeVideoGenerationRequest", () => {
 		});
 		expect(workspaceProps?.assetTitle).toBe("第 01 组");
 		expect(workspaceProps?.selectedAssetResourceId).toBe(storyboardSectionBlockId);
+		expect(workspaceProps?.selectedAssetResourceType).toBe("storyboard");
 		expect(workspaceProps?.selectedAssetSourceDocumentId).toBe("story-doc");
 		expect(workspaceProps?.onToggleAsset).toEqual(expect.any(Function));
 		expect(workspaceProps?.notificationTarget).toMatchObject({

@@ -7,11 +7,12 @@ import type {
 	SelectedGenerationAsset,
 } from "@/domains/generation/api/generation";
 import { projectGenerationConversation } from "@/domains/generation/api/generation";
-import { useSelectedGenerationAssets } from "@/domains/generation/hooks/useSelectedGenerationAssets";
+import { useStoryboardReelSelection } from "@/domains/generation/hooks/useStoryboardReelSelection";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { DocumentMentionHoverPopover } from "@/domains/documents/components/DocumentMentionHoverPopover";
 import { DocumentMention } from "@/domains/documents/components/extensions/document-mention";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
+import { sectionGenerationKindScopeId } from "@/domains/documents/components/useDocumentSectionGenerationContext";
 import { createSectionGenerationPrompt } from "@/domains/documents/lib/section-generation-prompt";
 import {
 	buildMentionPreviewReferences,
@@ -39,7 +40,6 @@ import type {
 } from "@/domains/generation/components/MediaGenerationWorkspace";
 import { PromptEditor } from "@/domains/generation/components/PromptEditor";
 import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
-import { selectedGenerationAssetKeysForSection } from "@/domains/generation/lib/selected-asset-keys";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 
@@ -136,20 +136,23 @@ export const useEpisodeVideoGenerationRequest = ({
 	// 项目内的视频生成统一归到「项目级命名会话」，让创作台可见；非项目场景回退到按分镜片段的 scope。
 	const normalizedProjectId = projectId?.trim() ?? "";
 	const { data: projectsData } = useSWR(normalizedProjectId ? projectsKey : null, getProjects);
-	const shouldLoadSelectedGenerationAssets =
-		selectedGenerationAssets === undefined && Boolean(normalizedProjectId);
-	const { data: selectedGenerationAssetsData } = useSelectedGenerationAssets(normalizedProjectId, {
-		enabled: shouldLoadSelectedGenerationAssets,
-	});
-	const mentionSelectedGenerationAssets =
-		selectedGenerationAssets ?? selectedGenerationAssetsData?.assets ?? [];
+	const normalizedDocumentId = documentId?.trim() ?? "";
+	// 成片选中契约（列表 / 画布 / 预览共用）：reel 的视频成片 = 该 section 下已选的 video 资源。
+	const reelSelection = useStoryboardReelSelection(
+		normalizedProjectId,
+		{
+			documentId: normalizedDocumentId,
+			sectionId: sourceSection?.blockId ?? "",
+			title: generationContext.headingText,
+		},
+		{ selectedGenerationAssets },
+	);
+	const mentionSelectedGenerationAssets = reelSelection.selectedGenerationAssets;
+	const canSelectProjectResource = reelSelection.canSelect;
 	const projectName = useMemo(
 		() => projectsData?.projects.find((project) => project.id === normalizedProjectId)?.name ?? "",
 		[projectsData, normalizedProjectId],
 	);
-	const normalizedDocumentId = documentId?.trim() ?? "";
-	const selectableSourceBlockId = sourceSection?.blockId?.trim() ?? "";
-	const canSelectProjectResource = Boolean(selectableSourceBlockId && normalizedDocumentId);
 	const projectConversation = useMemo(
 		() => projectGenerationConversation(projectId, "video", projectName),
 		[projectId, projectName],
@@ -235,21 +238,6 @@ export const useEpisodeVideoGenerationRequest = ({
 			},
 		};
 	}, [documentId, documentTitle, episode.title, generationContext, projectId]);
-	const selectedAssetKeys = useMemo(() => {
-		if (!canSelectProjectResource) return [];
-
-		const selectedKeys = selectedGenerationAssetKeysForSection(
-			mentionSelectedGenerationAssets,
-			{ blockId: selectableSourceBlockId, documentId: normalizedDocumentId },
-			"video",
-		);
-		return selectedKeys;
-	}, [
-		canSelectProjectResource,
-		mentionSelectedGenerationAssets,
-		normalizedDocumentId,
-		selectableSourceBlockId,
-	]);
 	const toggleGeneratedVideo = useCallback(
 		(asset: GenerationAsset, selected: boolean) => {
 			if (!canSelectProjectResource || !selectedClip) return;
@@ -282,7 +270,7 @@ export const useEpisodeVideoGenerationRequest = ({
 			assetTitle: generationContext.headingText,
 			taskType: "storyboard",
 			initialPrompt: generationContext.prompt,
-			modelPreferenceScopeId: conversationScopeId,
+			modelPreferenceScopeId: sectionGenerationKindScopeId(conversationScopeId, "video"),
 			notificationTarget,
 			persistAssetSelection: true,
 			promptPlaceholder: "描述当前组的视频镜头、运动、机位、时长、画幅和质量",
@@ -304,9 +292,10 @@ export const useEpisodeVideoGenerationRequest = ({
 			),
 			submitLabel: "生成视频",
 			uploadIdPrefix: "episode-video-generation",
-			selectedAssetKeys,
-			selectedAssetResourceId: canSelectProjectResource ? selectableSourceBlockId : undefined,
-			selectedAssetSourceDocumentId: canSelectProjectResource ? normalizedDocumentId : undefined,
+			selectedAssetKeys: reelSelection.selectedAssetKeys,
+			selectedAssetResourceId: reelSelection.selectedAssetResourceId,
+			selectedAssetResourceType: reelSelection.selectedAssetResourceType,
+			selectedAssetSourceDocumentId: reelSelection.selectedAssetSourceDocumentId,
 			selectedAssetTitle: generationContext.headingText,
 			viewMode: "history",
 			onToggleAsset: canSelectProjectResource ? toggleGeneratedVideo : undefined,
