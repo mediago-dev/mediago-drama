@@ -10,6 +10,7 @@ import (
 )
 
 const promptOptimizationSystemInstructionText = "根据优化 prompt 优化用户的输入，只输出优化后的内容。"
+const promptOptimizationConversationKindLabel = "提示词生成"
 
 // NormalizeGenerationPromptOptimizationRequest trims prompt optimization settings.
 func NormalizeGenerationPromptOptimizationRequest(request *GenerationPromptOptimizationRequest) *GenerationPromptOptimizationRequest {
@@ -187,7 +188,7 @@ func (workflow *GenerationService) createPromptOptimizationHistoryTask(
 		}
 	}
 	if conversationID != "" && conversationTitle == "" {
-		conversationTitle = "提示词优化"
+		conversationTitle = promptOptimizationConversationTitle(projectID)
 	}
 	if conversationID != "" {
 		if _, status, err := workflow.CreateGenerationConversation(CreateGenerationConversationRequest{
@@ -245,6 +246,14 @@ func (workflow *GenerationService) createPromptOptimizationHistoryTask(
 		return *finalMessage, "", http.StatusBadGateway, fmt.Errorf("提示词优化未返回内容")
 	}
 	return *finalMessage, optimizedPrompt, http.StatusOK, nil
+}
+
+func promptOptimizationConversationTitle(projectID string) string {
+	projectName := strings.TrimSpace(projectID)
+	if projectName == "" {
+		projectName = "项目"
+	}
+	return projectName + " · " + promptOptimizationConversationKindLabel
 }
 
 func promptOptimizationUserPrompt(request *GenerationPromptOptimizationRequest, currentPrompt string) string {

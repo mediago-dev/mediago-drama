@@ -159,7 +159,7 @@ const appendPromptOptimizeReference = (currentPrompt: string, referencePrompt: s
 	return `${current}\n\n${reference}`;
 };
 
-const promptOptimizeConversationKindLabel = "提示词优化";
+const promptOptimizeConversationKindLabel = "提示词生成";
 const conversationTitleSeparator = " · ";
 
 const projectNameFromConversationTitle = (title?: string | null) => {

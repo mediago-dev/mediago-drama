@@ -889,12 +889,11 @@ func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(
 		Model:   imageRoute.Model,
 		Prompt:  "原始角色提示词",
 		PromptOptimization: &GenerationPromptOptimizationRequest{
-			ConversationID:    "prompt-optimize-session",
-			ConversationTitle: "提示词优化",
-			RouteID:           coregeneration.RouteDMXGPT41MiniText,
-			Model:             "text-model",
-			ReferenceName:     "电影质感",
-			ReferencePrompt:   "cinematic lighting, detailed composition",
+			ConversationID:  "prompt-optimize-session",
+			RouteID:         coregeneration.RouteDMXGPT41MiniText,
+			Model:           "text-model",
+			ReferenceName:   "电影质感",
+			ReferencePrompt: "cinematic lighting, detailed composition",
 		},
 		Params: map[string]any{"n": 1},
 	})
@@ -935,6 +934,13 @@ func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(
 		optimizationTask.ConversationID != "prompt-optimize-session" {
 		t.Fatalf("optimization task = %+v, want persisted text task", optimizationTask)
 	}
+	optimizationConversation, ok, err := store.GetConversation("prompt-optimize-session")
+	if err != nil {
+		t.Fatalf("GetConversation(optimization) error = %v", err)
+	}
+	if !ok || optimizationConversation.Title != "项目 · 提示词生成" {
+		t.Fatalf("optimization conversation = %+v, want project prompt generation title", optimizationConversation)
+	}
 	imageTask, ok, err := store.Get(response.Generation.ID)
 	if err != nil {
 		t.Fatalf("Get(generation) error = %v", err)
@@ -960,6 +966,32 @@ func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(
 	}
 	if !kinds[string(coregeneration.KindText)] || !kinds[string(coregeneration.KindImage)] {
 		t.Fatalf("task kinds = %#v, want text and image records", kinds)
+	}
+}
+
+func TestPromptOptimizationConversationTitle(t *testing.T) {
+	tests := []struct {
+		name      string
+		projectID string
+		want      string
+	}{
+		{
+			name:      "project scoped",
+			projectID: "舔狗金",
+			want:      "舔狗金 · 提示词生成",
+		},
+		{
+			name: "fallback",
+			want: "项目 · 提示词生成",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := promptOptimizationConversationTitle(test.projectID); got != test.want {
+				t.Fatalf("promptOptimizationConversationTitle(%q) = %q, want %q", test.projectID, got, test.want)
+			}
+		})
 	}
 }
 

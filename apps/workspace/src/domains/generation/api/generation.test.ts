@@ -50,12 +50,12 @@ describe("projectGenerationConversation", () => {
 	it("allows a project conversation title label override", () => {
 		expect(
 			projectGenerationConversation("proj-3", "text", "剧集 B", {
-				kindLabel: "提示词优化",
+				kindLabel: "提示词生成",
 			}),
 		).toEqual({
 			conversationId: "proj-3-text",
 			conversationScopeId: agentGenerationConversationScopeId,
-			conversationTitle: "剧集 B · 提示词优化",
+			conversationTitle: "剧集 B · 提示词生成",
 			historyScopeId: "proj-3-text",
 		});
 	});

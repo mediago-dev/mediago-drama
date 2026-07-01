@@ -1787,7 +1787,7 @@ describe("MediaGenerationWorkspace", () => {
 			id: "project-a-text",
 			kind: "text",
 			scopeId: "agent",
-			title: "舔狗金 · 提示词优化",
+			title: "舔狗金 · 提示词生成",
 		});
 		const [request] = generationApiMocks.streamGenerationText.mock.calls[0];
 		expect(request.prompt).toContain("根据优化 prompt 优化用户的输入。");
@@ -1843,7 +1843,7 @@ describe("MediaGenerationWorkspace", () => {
 				prompt: "原始角色提示词",
 				promptOptimization: expect.objectContaining({
 					capabilityId: "studio",
-					conversationTitle: "项目 · 提示词优化",
+					conversationTitle: "项目 · 提示词生成",
 					model: "text-model",
 					projectId: "project-a",
 					referenceName: "电影质感",
@@ -1890,7 +1890,7 @@ describe("MediaGenerationWorkspace", () => {
 				prompt: "原始角色提示词",
 				promptOptimization: expect.objectContaining({
 					capabilityId: "studio",
-					conversationTitle: "项目 · 提示词优化",
+					conversationTitle: "项目 · 提示词生成",
 					model: "text-model",
 					projectId: "project-a",
 					referenceName: "电影质感",
