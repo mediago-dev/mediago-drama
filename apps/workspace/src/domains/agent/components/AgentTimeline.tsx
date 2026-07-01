@@ -672,7 +672,6 @@ const TimelineRunning: React.FC = () => (
 	<div className="agent-running-indicator flex items-center gap-2 px-2.5 py-2 text-xs text-muted-foreground">
 		<LoaderCircle className="size-3.5 animate-spin text-primary" />
 		<span>智能体正在处理</span>
-		<StreamingCursor />
 	</div>
 );
 
