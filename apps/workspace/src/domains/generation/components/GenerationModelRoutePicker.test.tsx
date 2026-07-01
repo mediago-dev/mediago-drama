@@ -1,0 +1,387 @@
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { GenerationRoute, GenerationVersion } from "@/domains/generation/api/generation";
+import {
+	GenerationModelRoutePicker,
+	shouldKeepGenerationRoutePickerVersionActive,
+} from "./GenerationModelRoutePicker";
+
+const versions: GenerationVersion[] = [
+	{
+		canonicalModel: "nano-banana-2",
+		capabilities: { async: false, supportsReferenceUrls: true },
+		familyId: "image-family",
+		id: "version-nano-2",
+		kind: "image",
+		label: "Nano Banana 2",
+	},
+	{
+		canonicalModel: "nano-banana-gemini",
+		capabilities: { async: false, supportsReferenceUrls: true },
+		familyId: "image-family",
+		id: "version-nano-gemini",
+		kind: "image",
+		label: "Nano Banana / Gemini",
+	},
+];
+
+const routes: GenerationRoute[] = [
+	{
+		adapter: "test.image.mediago",
+		async: false,
+		docUrl: "https://example.com/mediago",
+		familyId: "image-family",
+		id: "route-mediago",
+		kind: "image",
+		label: "MediaGo image",
+		model: "nano-banana-2",
+		params: [],
+		provider: "mediago",
+		status: "available",
+		supportsReferenceUrls: true,
+		versionId: "version-nano-2",
+	},
+	{
+		adapter: "test.image.openai",
+		async: false,
+		docUrl: "https://example.com/openai",
+		familyId: "image-family",
+		id: "route-openai",
+		kind: "image",
+		label: "OpenAI image",
+		model: "nano-banana-gemini",
+		params: [],
+		provider: "openai",
+		status: "available",
+		supportsReferenceUrls: true,
+		versionId: "version-nano-gemini",
+	},
+];
+
+const seedreamVersions: GenerationVersion[] = [
+	{
+		canonicalModel: "doubao-seedream-5.0-lite",
+		capabilities: { async: false, supportsReferenceUrls: true },
+		familyId: "seedream",
+		id: "seedream-5-lite",
+		kind: "image",
+		label: "Seedream 5.0 Lite",
+	},
+	{
+		canonicalModel: "seedream-4.7",
+		capabilities: { async: false, supportsReferenceUrls: true },
+		familyId: "seedream",
+		id: "seedream-4.7",
+		kind: "image",
+		label: "Seedream 4.7",
+	},
+];
+
+const seedreamRoutes: GenerationRoute[] = [
+	{
+		adapter: "test.image.mediago",
+		async: false,
+		docUrl: "https://example.com/mediago",
+		familyId: "seedream",
+		id: "mediago.seedream-5-lite",
+		kind: "image",
+		label: "MediaGo Seedream 5",
+		model: "doubao-seedream-5.0-lite",
+		params: [],
+		provider: "mediago",
+		status: "available",
+		supportsReferenceUrls: true,
+		versionId: "seedream-5-lite",
+	},
+	{
+		adapter: "test.image.dmx",
+		async: false,
+		docUrl: "https://example.com/dmx",
+		familyId: "seedream",
+		id: "dmx.seedream-5-lite",
+		kind: "image",
+		label: "DMX Seedream 5",
+		model: "doubao-seedream-5.0-lite",
+		params: [],
+		provider: "dmx",
+		status: "available",
+		supportsReferenceUrls: true,
+		versionId: "seedream-5-lite",
+	},
+	{
+		adapter: "test.image.jimeng",
+		async: false,
+		docUrl: "https://example.com/jimeng",
+		familyId: "seedream",
+		id: "jimeng.seedream-5.0",
+		kind: "image",
+		label: "即梦 Seedream 5",
+		model: "seedream-5.0",
+		params: [],
+		provider: "jimeng",
+		status: "available",
+		supportsReferenceUrls: true,
+		versionId: "seedream-5-lite",
+	},
+	{
+		adapter: "test.image.jimeng",
+		async: false,
+		docUrl: "https://example.com/jimeng",
+		familyId: "seedream",
+		id: "jimeng.seedream-4.7",
+		kind: "image",
+		label: "即梦 Seedream 4.7",
+		model: "seedream-4.7",
+		params: [],
+		provider: "jimeng",
+		status: "available",
+		supportsReferenceUrls: true,
+		versionId: "seedream-4.7",
+	},
+];
+
+const openRouterSeedreamRoute: GenerationRoute = {
+	adapter: "test.image.openrouter",
+	async: false,
+	docUrl: "https://example.com/openrouter",
+	familyId: "seedream",
+	id: "openrouter.seedream-5-lite",
+	kind: "image",
+	label: "OpenRouter Seedream 5",
+	model: "doubao-seedream-5.0-lite",
+	params: [],
+	provider: "openrouter",
+	status: "available",
+	supportsReferenceUrls: true,
+	versionId: "seedream-5-lite",
+};
+
+describe("GenerationModelRoutePicker", () => {
+	afterEach(() => {
+		cleanup();
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	it("uses a fixed three-row menu height across provider counts", () => {
+		render(
+			<GenerationModelRoutePicker
+				onSelect={vi.fn()}
+				routes={seedreamRoutes}
+				selectedRoute={seedreamRoutes[0]}
+				selectedVersion={seedreamVersions[0]}
+				versions={seedreamVersions}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+		const menu = screen
+			.getByText("提供方")
+			.closest('[aria-label="模型版本和供应商"]') as HTMLElement;
+		expect(menu).toBeTruthy();
+		expect(menu).toHaveClass("h-[var(--generation-route-picker-menu-height)]");
+		expect(menu.getAttribute("style")).toContain(
+			"3 * var(--generation-model-popover-option-height)",
+		);
+		expect(screen.getByRole("button", { name: "MediaGo" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "DMX" })).toBeTruthy();
+
+		fireEvent.pointerEnter(screen.getByRole("button", { name: "Seedream 4.7" }), {
+			clientX: 160,
+			clientY: 130,
+		});
+
+		expect(screen.getByRole("button", { name: "即梦" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "MediaGo" })).toBeNull();
+		expect(menu.getAttribute("style")).toContain(
+			"3 * var(--generation-model-popover-option-height)",
+		);
+	});
+
+	it("shows a fade hint when the provider list overflows three rows", () => {
+		render(
+			<GenerationModelRoutePicker
+				onSelect={vi.fn()}
+				routes={[...seedreamRoutes, openRouterSeedreamRoute]}
+				selectedRoute={seedreamRoutes[0]}
+				selectedVersion={seedreamVersions[0]}
+				versions={seedreamVersions}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+		const routeList = document.querySelector("[data-generation-route-list]");
+		expect(routeList).toBeTruthy();
+		setScrollableList(routeList as HTMLElement, {
+			clientHeight: 96,
+			scrollHeight: 144,
+			scrollTop: 0,
+		});
+
+		fireEvent.scroll(routeList as HTMLElement);
+
+		expect(document.querySelector("[data-generation-route-scroll-hint]")).toBeTruthy();
+	});
+
+	it("keeps the active version while the pointer crosses the safe triangle", () => {
+		renderRoutePicker();
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+		const activeVersionButton = screen.getByRole("button", { name: "Nano Banana 2" });
+		const nextVersionButton = screen.getByRole("button", { name: "Nano Banana / Gemini" });
+		const routePanel = screen.getByText("提供方").closest("section");
+		expect(routePanel).toBeTruthy();
+		vi.spyOn(activeVersionButton, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
+		);
+		vi.spyOn(routePanel as HTMLElement, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 240, left: 240, right: 420, top: 40 }),
+		);
+
+		fireEvent.pointerEnter(activeVersionButton, { clientX: 150, clientY: 96 });
+		fireEvent.pointerMove(activeVersionButton, { clientX: 160, clientY: 112 });
+		fireEvent.pointerEnter(nextVersionButton, { clientX: 172, clientY: 136 });
+
+		expect(screen.getByRole("button", { name: "MediaGo" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "OpenAI" })).toBeNull();
+		expect(nextVersionButton).not.toHaveClass("hover:bg-muted");
+	});
+
+	it("switches version when the pointer dwells on a crossed version", () => {
+		vi.useFakeTimers();
+		renderRoutePicker();
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+		const activeVersionButton = screen.getByRole("button", { name: "Nano Banana 2" });
+		const nextVersionButton = screen.getByRole("button", { name: "Nano Banana / Gemini" });
+		const routePanel = screen.getByText("提供方").closest("section");
+		expect(routePanel).toBeTruthy();
+		vi.spyOn(activeVersionButton, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
+		);
+		vi.spyOn(routePanel as HTMLElement, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 240, left: 240, right: 420, top: 40 }),
+		);
+
+		fireEvent.pointerEnter(activeVersionButton, { clientX: 150, clientY: 96 });
+		fireEvent.pointerMove(activeVersionButton, { clientX: 160, clientY: 112 });
+		fireEvent.pointerEnter(nextVersionButton, { clientX: 172, clientY: 136 });
+
+		expect(screen.getByRole("button", { name: "MediaGo" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "OpenAI" })).toBeNull();
+
+		act(() => {
+			vi.advanceTimersByTime(200);
+		});
+
+		expect(screen.getByRole("button", { name: "OpenAI" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "MediaGo" })).toBeNull();
+	});
+
+	it("switches version immediately when the pointer is not moving toward the provider panel", () => {
+		renderRoutePicker();
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+		const activeVersionButton = screen.getByRole("button", { name: "Nano Banana 2" });
+		const nextVersionButton = screen.getByRole("button", { name: "Nano Banana / Gemini" });
+		const routePanel = screen.getByText("提供方").closest("section");
+		expect(routePanel).toBeTruthy();
+		vi.spyOn(activeVersionButton, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
+		);
+		vi.spyOn(routePanel as HTMLElement, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 240, left: 240, right: 420, top: 40 }),
+		);
+
+		fireEvent.pointerEnter(activeVersionButton, { clientX: 188, clientY: 96 });
+		fireEvent.pointerMove(activeVersionButton, { clientX: 200, clientY: 112 });
+		fireEvent.pointerEnter(nextVersionButton, { clientX: 200, clientY: 136 });
+
+		expect(screen.getByRole("button", { name: "OpenAI" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "MediaGo" })).toBeNull();
+	});
+});
+
+describe("shouldKeepGenerationRoutePickerVersionActive", () => {
+	it("keeps the version active for diagonal movement through the safe triangle", () => {
+		expect(
+			shouldKeepGenerationRoutePickerVersionActive({
+				activeRect: { bottom: 124, left: 20, right: 220, top: 80 },
+				origin: { x: 160, y: 112 },
+				point: { x: 172, y: 136 },
+				submenuRect: { bottom: 240, left: 240, right: 420, top: 40 },
+			}),
+		).toBe(true);
+	});
+
+	it("does not keep the version active for vertical movement inside the version column", () => {
+		expect(
+			shouldKeepGenerationRoutePickerVersionActive({
+				activeRect: { bottom: 124, left: 20, right: 220, top: 80 },
+				origin: { x: 188, y: 112 },
+				point: { x: 188, y: 136 },
+				submenuRect: { bottom: 240, left: 240, right: 420, top: 40 },
+			}),
+		).toBe(false);
+	});
+});
+
+const renderRoutePicker = () =>
+	render(
+		<GenerationModelRoutePicker
+			onSelect={vi.fn()}
+			routes={routes}
+			selectedRoute={routes[0]}
+			selectedVersion={versions[0]}
+			versions={versions}
+		/>,
+	);
+
+const setScrollableList = (
+	element: HTMLElement,
+	{
+		clientHeight,
+		scrollHeight,
+		scrollTop,
+	}: {
+		clientHeight: number;
+		scrollHeight: number;
+		scrollTop: number;
+	},
+) => {
+	Object.defineProperty(element, "clientHeight", {
+		configurable: true,
+		value: clientHeight,
+	});
+	Object.defineProperty(element, "scrollHeight", {
+		configurable: true,
+		value: scrollHeight,
+	});
+	Object.defineProperty(element, "scrollTop", {
+		configurable: true,
+		value: scrollTop,
+	});
+};
+
+const testRect = ({
+	bottom,
+	left,
+	right,
+	top,
+}: {
+	bottom: number;
+	left: number;
+	right: number;
+	top: number;
+}) =>
+	({
+		bottom,
+		height: bottom - top,
+		left,
+		right,
+		toJSON: () => ({}),
+		top,
+		width: right - left,
+		x: left,
+		y: top,
+	}) as DOMRect;
