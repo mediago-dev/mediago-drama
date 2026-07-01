@@ -214,26 +214,43 @@ func (store *Service) trashProject(projectID string) (workspaceProjectRecord, bo
 
 	now := timestamp.NowRFC3339Nano()
 	originalDir := shared.ResolveWorkspaceDir(project.ProjectDir)
-	trashDir, err := moveProjectDirToTrash(store.dir, originalDir, project.ID, project.Name, now)
-	if err != nil {
-		return workspaceProjectRecord{}, false, fmt.Errorf("moving project %s to trash: %w", projectID, err)
+
+	// The project directory may have been moved or deleted outside the app. In that case
+	// there are no files to relocate, so trash the record directly instead of failing.
+	trashDir := ""
+	if projectDirExists(originalDir) {
+		movedDir, err := moveProjectDirToTrash(store.dir, originalDir, project.ID, project.Name, now)
+		if err != nil {
+			return workspaceProjectRecord{}, false, fmt.Errorf("moving project %s to trash: %w", projectID, err)
+		}
+		trashDir = movedDir
 	}
-	trashed, err := store.workspace.TrashProject(
-		projectID,
-		originalDir,
-		trashDir,
-		shared.DisplayProjectDir(store.dir, trashDir),
-		now,
-	)
+
+	var trashed bool
+	if trashDir == "" {
+		trashed, err = store.workspace.TrashMissingProject(projectID, originalDir, now)
+	} else {
+		trashed, err = store.workspace.TrashProject(
+			projectID,
+			originalDir,
+			trashDir,
+			shared.DisplayProjectDir(store.dir, trashDir),
+			now,
+		)
+	}
 	if err != nil {
-		if rollbackErr := moveDirectory(trashDir, originalDir); rollbackErr != nil {
-			return workspaceProjectRecord{}, false, fmt.Errorf("trashing project %s failed after moving files: %w; rollback failed: %v", projectID, err, rollbackErr)
+		if trashDir != "" {
+			if rollbackErr := moveDirectory(trashDir, originalDir); rollbackErr != nil {
+				return workspaceProjectRecord{}, false, fmt.Errorf("trashing project %s failed after moving files: %w; rollback failed: %v", projectID, err, rollbackErr)
+			}
 		}
 		return workspaceProjectRecord{}, false, fmt.Errorf("trashing project %s: %w", projectID, err)
 	}
 	if !trashed {
-		if rollbackErr := moveDirectory(trashDir, originalDir); rollbackErr != nil {
-			return workspaceProjectRecord{}, false, fmt.Errorf("project %s was not trashed; rollback failed: %w", projectID, rollbackErr)
+		if trashDir != "" {
+			if rollbackErr := moveDirectory(trashDir, originalDir); rollbackErr != nil {
+				return workspaceProjectRecord{}, false, fmt.Errorf("project %s was not trashed; rollback failed: %w", projectID, rollbackErr)
+			}
 		}
 		return workspaceProjectRecord{}, false, nil
 	}
@@ -314,16 +331,24 @@ func (store *Service) restoreProject(projectID string) (workspaceProjectRecord, 
 
 	now := timestamp.NowRFC3339Nano()
 	projectDir := project.ProjectDir
+	restoredFromTrash := false
 	if project.Status == repository.ProjectStatusTrashed {
 		originalDir := strings.TrimSpace(project.OriginalProjectDir)
 		if originalDir == "" {
 			originalDir = defaultProjectDir(store.dir, project.ID)
 		}
-		restoredDir, err := restoreProjectDirFromTrash(project.TrashProjectDir, originalDir, now)
-		if err != nil {
-			return workspaceProjectRecord{}, false, fmt.Errorf("restoring project %s from trash: %w", projectID, err)
+		if projectDirExists(project.TrashProjectDir) {
+			restoredDir, err := restoreProjectDirFromTrash(project.TrashProjectDir, originalDir, now)
+			if err != nil {
+				return workspaceProjectRecord{}, false, fmt.Errorf("restoring project %s from trash: %w", projectID, err)
+			}
+			projectDir = restoredDir
+			restoredFromTrash = true
+		} else {
+			// The project was trashed without files (its directory was already gone), so
+			// there is nothing to move back — restore the record pointing at its original dir.
+			projectDir = originalDir
 		}
-		projectDir = restoredDir
 	}
 	restored, err := store.workspace.RestoreProject(
 		projectID,
@@ -332,7 +357,7 @@ func (store *Service) restoreProject(projectID string) (workspaceProjectRecord, 
 		now,
 	)
 	if err != nil {
-		if project.Status == repository.ProjectStatusTrashed {
+		if restoredFromTrash {
 			_ = moveDirectory(projectDir, project.TrashProjectDir)
 		}
 		return workspaceProjectRecord{}, false, fmt.Errorf("restoring project %s: %w", projectID, err)

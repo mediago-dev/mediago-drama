@@ -179,6 +179,32 @@ func (repo *WorkspaceRepository) TrashProject(projectID string, originalProjectD
 	return result.RowsAffected > 0, nil
 }
 
+// TrashMissingProject marks a project trashed when its directory is already gone from disk.
+// No files are relocated, so the trash directory is left empty; the original directory is
+// still recorded so a later restore can recreate the record.
+func (repo *WorkspaceRepository) TrashMissingProject(projectID string, originalProjectDir string, trashedAt string) (bool, error) {
+	projectID = strings.TrimSpace(projectID)
+	originalProjectDir = strings.TrimSpace(originalProjectDir)
+	trashedAt = strings.TrimSpace(trashedAt)
+	if projectID == "" {
+		return false, fmt.Errorf("project id is required")
+	}
+	result := repo.db.Model(&domain.WorkspaceProjectModel{}).
+		Where("id = ? AND status <> ?", projectID, ProjectStatusTrashed).
+		Updates(map[string]any{
+			"status":               ProjectStatusTrashed,
+			"original_project_dir": originalProjectDir,
+			"trash_project_dir":    "",
+			"archived_at":          nil,
+			"trashed_at":           domain.TimeFromString(trashedAt),
+			"updated_at":           domain.TimeFromString(trashedAt),
+		})
+	if result.Error != nil {
+		return false, fmt.Errorf("trashing project %s without files: %w", projectID, result.Error)
+	}
+	return result.RowsAffected > 0, nil
+}
+
 // RestoreProject marks a project active and points it at a restored project directory.
 func (repo *WorkspaceRepository) RestoreProject(projectID string, projectDir string, relativeDir string, updatedAt string) (bool, error) {
 	projectID = strings.TrimSpace(projectID)

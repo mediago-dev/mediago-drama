@@ -365,6 +365,66 @@ func TestWorkspaceStateServiceArchivesTrashesRestoresAndPermanentlyDeletesProjec
 	}
 }
 
+func TestWorkspaceStateServiceTrashesProjectWithMissingDirectory(t *testing.T) {
+	workspaceDir := t.TempDir()
+	store := newWorkspaceStateService(workspaceDir)
+	if store.initErr != nil {
+		t.Fatalf("initializing workspace store: %v", store.initErr)
+	}
+	projectID := "project-missing-dir"
+	projectDir := requireTestProject(t, store, projectID)
+
+	// Simulate the project directory being moved or deleted outside the app.
+	if err := os.RemoveAll(projectDir); err != nil {
+		t.Fatalf("removing project dir: %v", err)
+	}
+
+	trashed, ok, err := store.DeleteProject(projectID)
+	if err != nil || !ok {
+		t.Fatalf("DeleteProject(missing dir) ok=%v err=%v, want ok", ok, err)
+	}
+	if trashed.Status != "trashed" {
+		t.Fatalf("trashed project = %#v, want trashed status", trashed)
+	}
+	if trashed.TrashProjectDir != "" {
+		t.Fatalf("trashed project TrashProjectDir = %q, want empty", trashed.TrashProjectDir)
+	}
+	if trashed.OriginalProjectDir == "" {
+		t.Fatalf("trashed project OriginalProjectDir is empty, want original dir")
+	}
+	trashList, err := store.ListProjectsByStatus("trashed")
+	if err != nil {
+		t.Fatalf("ListProjectsByStatus(trashed) error = %v", err)
+	}
+	if !workspaceProjectIDs(trashList.Projects)[projectID] {
+		t.Fatalf("trashed project missing from trash list: %#v", trashList.Projects)
+	}
+
+	// Restoring succeeds without any files to move back and clears trash metadata.
+	restored, ok, err := store.RestoreProject(projectID)
+	if err != nil || !ok {
+		t.Fatalf("RestoreProject(missing dir) ok=%v err=%v, want ok", ok, err)
+	}
+	if restored.Status != "active" || restored.TrashProjectDir != "" {
+		t.Fatalf("restored project = %#v, want active with cleared trash metadata", restored)
+	}
+
+	// Trash again then permanently delete: the whole lifecycle works without files on disk.
+	if _, ok, err := store.DeleteProject(projectID); err != nil || !ok {
+		t.Fatalf("DeleteProject(second, missing dir) ok=%v err=%v, want ok", ok, err)
+	}
+	permanent, ok, err := store.PermanentlyDeleteProject(projectID)
+	if err != nil || !ok {
+		t.Fatalf("PermanentlyDeleteProject(missing dir) ok=%v err=%v, want ok", ok, err)
+	}
+	if permanent.ID != projectID {
+		t.Fatalf("permanent project ID = %q, want %q", permanent.ID, projectID)
+	}
+	if _, err := store.workspace.GetProject(projectID); err == nil {
+		t.Fatal("project still exists after permanent delete")
+	}
+}
+
 func TestWorkspaceStateServiceWritesReadableFilenamesAndReconcilesMarkdownFiles(t *testing.T) {
 	workspaceDir := t.TempDir()
 	store := newWorkspaceStateService(workspaceDir)

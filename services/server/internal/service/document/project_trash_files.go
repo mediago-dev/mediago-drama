@@ -15,6 +15,21 @@ import (
 
 var renameDirectory = os.Rename
 
+// projectDirExists reports whether the given project directory currently exists on disk.
+// A project whose directory was moved or deleted externally must still be deletable, so
+// callers use this to decide whether there are any files to relocate.
+func projectDirExists(dir string) bool {
+	dir = shared.ResolveWorkspaceDir(dir)
+	if dir == "" {
+		return false
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
 func moveProjectDirToTrash(workspaceDir string, projectDir string, projectID string, projectName string, now string) (string, error) {
 	workspaceDir = shared.ResolveWorkspaceDir(workspaceDir)
 	projectDir = shared.ResolveWorkspaceDir(projectDir)
