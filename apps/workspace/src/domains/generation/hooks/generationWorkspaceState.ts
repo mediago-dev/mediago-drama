@@ -325,9 +325,16 @@ export const removeMessagesBackedByTasks = (
 	});
 };
 
+// A purely-local pending/errored message older than this almost certainly lost its
+// response (dialog closed, request dropped, or the prompt was rewritten server-side by
+// 优化并生成) — well beyond a normal submit round-trip. Kept high enough that an
+// in-flight submit is never touched before its response can rewrite the local id.
+const staleLocalPendingGraceMs = 60_000;
+
 export const removeStaleLocalPendingMessages = (
 	messages: ChatMessage[],
 	tasks: GenerationTaskSnapshot[],
+	now: number = Date.now(),
 ) => {
 	if (messages.length === 0 || tasks.length === 0) return messages;
 
@@ -341,13 +348,31 @@ export const removeStaleLocalPendingMessages = (
 
 	const staleLocalIDs = new Set<string>();
 	for (const message of messages) {
-		if (!isStalePendingLocalAssistantMessage(message)) continue;
-
 		const localID = localGenerationIDFromMessageID(message.id);
 		if (!localID) continue;
 
 		const promptMessage = promptsByLocalID.get(localID);
-		if (tasks.some((task) => isMatchingMaterializedTask(message, promptMessage, task))) {
+
+		// Fast path: a same-kind + same-prompt task already materialized this pending
+		// submit, so the local optimistic copy is redundant.
+		if (
+			isStalePendingLocalAssistantMessage(message) &&
+			tasks.some((task) => isMatchingMaterializedTask(message, promptMessage, task))
+		) {
+			staleLocalIDs.add(localID);
+			continue;
+		}
+
+		// Orphan path: the submit's response never rewrote this local id. Once it is
+		// clearly older than a normal round-trip AND a sibling task of the same kind
+		// exists (proof the submit did reach the server), drop the stale duplicate so it
+		// stops spinning forever. The prompt is intentionally NOT compared here because
+		// 优化并生成 stores the optimized prompt on the task, not the user's original.
+		if (
+			isOrphanCandidateLocalAssistantMessage(message) &&
+			localMessageAgeMs(message, promptMessage, now) > staleLocalPendingGraceMs &&
+			tasks.some((task) => hasSiblingTaskKindAndTime(message, promptMessage, task))
+		) {
 			staleLocalIDs.add(localID);
 		}
 	}
@@ -393,9 +418,49 @@ const isStalePendingLocalAssistantMessage = (message: ChatMessage) =>
 	Boolean(localGenerationIDFromMessageID(message.id)) &&
 	pendingGenerationStatuses.has(String(message.status ?? "").toLowerCase());
 
+// A local-only assistant message the orphan sweep may reclaim: still pending (spinning)
+// or already flipped to an error by the submit's catch block. Both are duplicates once a
+// sibling task proves the submit reached the server.
+const isOrphanCandidateLocalAssistantMessage = (message: ChatMessage) => {
+	if (message.role !== "assistant") return false;
+	if (!localGenerationIDFromMessageID(message.id)) return false;
+
+	const status = String(message.status ?? "").toLowerCase();
+	return (
+		pendingGenerationStatuses.has(status) || status === "error" || Boolean(message.error?.trim())
+	);
+};
+
 const localGenerationIDFromMessageID = (id: string) => {
-	const match = /^(local-[^:]+)(?::(?:assistant|prompt))?$/.exec(id);
+	const match = /^(local-[^:]+)(?::(?:assistant|prompt|error))?$/.exec(id);
 	return match?.[1] ?? "";
+};
+
+const localMessageAgeMs = (
+	pendingMessage: ChatMessage,
+	promptMessage: ChatMessage | undefined,
+	now: number,
+) => {
+	const created = timestampForMatch(pendingMessage.createdAt || promptMessage?.createdAt);
+	if (created <= 0) return 0;
+
+	return now - created;
+};
+
+// Same kind, and the task was not created well before this submit (which would make it
+// an unrelated earlier request). Shared by the exact-prompt fast path and the orphan sweep.
+const hasSiblingTaskKindAndTime = (
+	pendingMessage: ChatMessage,
+	promptMessage: ChatMessage | undefined,
+	task: GenerationTaskSnapshot,
+) => {
+	if (task.kind && task.kind !== pendingMessage.kind) return false;
+
+	const pendingTime = timestampForMatch(pendingMessage.createdAt || promptMessage?.createdAt);
+	const taskTime = Math.max(timestampForMatch(task.updatedAt), timestampForMatch(task.createdAt));
+	if (pendingTime > 0 && taskTime > 0 && taskTime + 5_000 < pendingTime) return false;
+
+	return true;
 };
 
 const isMatchingMaterializedTask = (
@@ -403,17 +468,11 @@ const isMatchingMaterializedTask = (
 	promptMessage: ChatMessage | undefined,
 	task: GenerationTaskSnapshot,
 ) => {
-	if (task.kind && task.kind !== pendingMessage.kind) return false;
+	if (!hasSiblingTaskKindAndTime(pendingMessage, promptMessage, task)) return false;
 
 	const localPrompt = normalizedPromptForMatch(promptMessage?.content);
 	const taskPrompt = normalizedPromptForMatch(task.prompt);
-	if (!localPrompt || !taskPrompt || localPrompt !== taskPrompt) return false;
-
-	const pendingTime = timestampForMatch(pendingMessage.createdAt || promptMessage?.createdAt);
-	const taskTime = Math.max(timestampForMatch(task.updatedAt), timestampForMatch(task.createdAt));
-	if (pendingTime > 0 && taskTime > 0 && taskTime + 5_000 < pendingTime) return false;
-
-	return true;
+	return Boolean(localPrompt) && Boolean(taskPrompt) && localPrompt === taskPrompt;
 };
 
 const normalizedPromptForMatch = (value: string | undefined) =>
