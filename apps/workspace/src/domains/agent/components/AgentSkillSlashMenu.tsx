@@ -1,6 +1,6 @@
 import { BookOpenCheck } from "lucide-react";
 import type React from "react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { orderSkillsForPrimaryFlows } from "@/domains/settings/lib/skill-order";
 import "@/styles/tiptap-agent-skill-slash.css";
@@ -41,13 +41,27 @@ export const AgentSkillSlashMenu: React.FC<AgentSkillSlashMenuProps> = ({
 	selectedIndex,
 }) => {
 	const menuRef = useRef<HTMLDivElement | null>(null);
+	const scrollRef = useRef<HTMLDivElement | null>(null);
+	const [canScrollDown, setCanScrollDown] = useState(false);
+
+	const updateScrollHint = useCallback(() => {
+		const node = scrollRef.current;
+		if (!node) {
+			setCanScrollDown(false);
+			return;
+		}
+		const remainingScroll = node.scrollHeight - node.clientHeight - node.scrollTop;
+		setCanScrollDown(remainingScroll > 1);
+	}, []);
 
 	useEffect(() => {
 		const selectedElement = menuRef.current?.querySelector<HTMLElement>(
 			".agent-skill-slash-option[data-selected='true']",
 		);
 		selectedElement?.scrollIntoView?.({ block: "nearest" });
-	}, [selectedIndex, items]);
+		const frame = window.requestAnimationFrame(updateScrollHint);
+		return () => window.cancelAnimationFrame(frame);
+	}, [errorMessage, isLoading, items, selectedIndex, updateScrollHint]);
 
 	if (typeof document === "undefined") return null;
 
@@ -67,47 +81,56 @@ export const AgentSkillSlashMenu: React.FC<AgentSkillSlashMenuProps> = ({
 			onWheel={stopAgentSkillSlashEvent}
 		>
 			<div className="agent-skill-slash-menu" role="listbox" aria-label="Skill 列表">
-				<div className="agent-skill-slash-heading">Skills</div>
-				{isLoading ? (
-					<div className="agent-skill-slash-empty">正在加载 Skill...</div>
-				) : errorMessage ? (
-					<div className="agent-skill-slash-empty">{errorMessage}</div>
-				) : items.length === 0 ? (
-					<div className="agent-skill-slash-empty">无匹配 Skill</div>
-				) : (
-					items.map((item, index) => {
-						const selected = index === selectedIndex;
+				<div ref={scrollRef} className="agent-skill-slash-scroll" onScroll={updateScrollHint}>
+					<div className="agent-skill-slash-heading">Skills</div>
+					{isLoading ? (
+						<div className="agent-skill-slash-empty">正在加载 Skill...</div>
+					) : errorMessage ? (
+						<div className="agent-skill-slash-empty">{errorMessage}</div>
+					) : items.length === 0 ? (
+						<div className="agent-skill-slash-empty">无匹配 Skill</div>
+					) : (
+						items.map((item, index) => {
+							const selected = index === selectedIndex;
 
-						return (
-							<button
-								key={item.name}
-								type="button"
-								className="agent-skill-slash-option"
-								data-selected={selected ? "true" : "false"}
-								role="option"
-								aria-selected={selected}
-								onMouseDown={(event) => {
-									event.preventDefault();
-									event.stopPropagation();
-									onSelect(item);
-								}}
-								onClick={stopAgentSkillSlashEvent}
-							>
-								<BookOpenCheck className="agent-skill-slash-icon" />
-								<span className="agent-skill-slash-body">
-									<span className="agent-skill-slash-title">{skillDisplayTitle(item)}</span>
-									<span className="agent-skill-slash-meta">
-										<span className="agent-skill-slash-command">/{item.name}</span>
-										<span>{skillMetaLabel(item)}</span>
+							return (
+								<button
+									key={item.name}
+									type="button"
+									className="agent-skill-slash-option"
+									data-selected={selected ? "true" : "false"}
+									role="option"
+									aria-selected={selected}
+									onMouseDown={(event) => {
+										event.preventDefault();
+										event.stopPropagation();
+										onSelect(item);
+									}}
+									onClick={stopAgentSkillSlashEvent}
+								>
+									<BookOpenCheck className="agent-skill-slash-icon" />
+									<span className="agent-skill-slash-body">
+										<span className="agent-skill-slash-title">{skillDisplayTitle(item)}</span>
+										<span className="agent-skill-slash-meta">
+											<span className="agent-skill-slash-command">/{item.name}</span>
+											<span>{skillMetaLabel(item)}</span>
+										</span>
+										<span className="agent-skill-slash-description">
+											{item.description || "暂无描述"}
+										</span>
 									</span>
-									<span className="agent-skill-slash-description">
-										{item.description || "暂无描述"}
-									</span>
-								</span>
-							</button>
-						);
-					})
-				)}
+								</button>
+							);
+						})
+					)}
+				</div>
+				{canScrollDown ? (
+					<div
+						aria-hidden="true"
+						className="agent-skill-slash-scroll-hint"
+						data-agent-skill-scroll-hint
+					/>
+				) : null}
 			</div>
 		</div>,
 		document.body,

@@ -1,9 +1,11 @@
 import {
 	createElement,
 	forwardRef,
+	useCallback,
 	useEffect,
 	useImperativeHandle,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import {
@@ -96,11 +98,32 @@ interface AgentMentionGroup {
 	meta: string;
 }
 
+interface AgentMentionPoint {
+	x: number;
+	y: number;
+}
+
+interface AgentMentionRect {
+	bottom: number;
+	left: number;
+	right: number;
+	top: number;
+}
+
+interface AgentMentionSafeTriangleInput {
+	activeRect?: AgentMentionRect | null;
+	origin?: AgentMentionPoint | null;
+	point: AgentMentionPoint;
+	submenuRect?: AgentMentionRect | null;
+}
+
 export const fallbackMentionCategory: DocumentCategory = "reference";
 
 const maxMentionItems = 100;
 const maxDocumentMentionItems = 72;
 const maxAssetMentionItems = 28;
+const mentionSafeTriangleEdgePadding = 8;
+const mentionSafeTriangleHoverIntentMs = 180;
 const categoryOrder = new Map<DocumentCategory, number>(
 	documentCategoryDescriptors.map((descriptor, index) => [descriptor.key, index]),
 );
@@ -114,6 +137,17 @@ export const AgentMentionList = forwardRef<MentionListHandle, MentionListProps>(
 		const groups = useMemo(() => createMentionGroups(items), [items]);
 		const [selectedGroupIndex, setSelectedGroupIndex] = useState(0);
 		const [selectedItemIndex, setSelectedItemIndex] = useState(0);
+		const primaryMenuRef = useRef<HTMLDivElement | null>(null);
+		const secondaryMenuRef = useRef<HTMLDivElement | null>(null);
+		const groupButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+		const secondaryPaneRef = useRef<HTMLDivElement | null>(null);
+		const safeTriangleOriginRef = useRef<{
+			groupId: string;
+			point: AgentMentionPoint;
+		} | null>(null);
+		const groupActivationIntentTimerRef = useRef<number | null>(null);
+		const [primaryMenuCanScrollDown, setPrimaryMenuCanScrollDown] = useState(false);
+		const [secondaryMenuCanScrollDown, setSecondaryMenuCanScrollDown] = useState(false);
 		const normalizedQuery = useMemo(() => normalizeMentionSectionTitle(query), [query]);
 		const activeGroup = groups[selectedGroupIndex] ?? groups[0];
 		const activeItems = activeGroup?.items ?? [];
@@ -125,7 +159,162 @@ export const AgentMentionList = forwardRef<MentionListHandle, MentionListProps>(
 		useEffect(() => {
 			setSelectedGroupIndex(0);
 			setSelectedItemIndex(0);
+			safeTriangleOriginRef.current = null;
+			const timer = groupActivationIntentTimerRef.current;
+			if (timer !== null) {
+				window.clearTimeout(timer);
+				groupActivationIntentTimerRef.current = null;
+			}
 		}, [items]);
+
+		const updatePrimaryMenuScrollHint = useCallback(() => {
+			const node = primaryMenuRef.current;
+			if (!node) {
+				setPrimaryMenuCanScrollDown(false);
+				return;
+			}
+			const remainingScroll = node.scrollHeight - node.clientHeight - node.scrollTop;
+			setPrimaryMenuCanScrollDown(remainingScroll > 1);
+		}, []);
+
+		const updateSecondaryMenuScrollHint = useCallback(() => {
+			const node = secondaryMenuRef.current;
+			if (!node) {
+				setSecondaryMenuCanScrollDown(false);
+				return;
+			}
+			const remainingScroll = node.scrollHeight - node.clientHeight - node.scrollTop;
+			setSecondaryMenuCanScrollDown(remainingScroll > 1);
+		}, []);
+
+		useEffect(() => {
+			const frame = window.requestAnimationFrame(() => {
+				updatePrimaryMenuScrollHint();
+				updateSecondaryMenuScrollHint();
+			});
+			return () => window.cancelAnimationFrame(frame);
+		}, [
+			activeGroup?.id,
+			activeItems.length,
+			canCreateSection,
+			groups.length,
+			updatePrimaryMenuScrollHint,
+			updateSecondaryMenuScrollHint,
+		]);
+
+		useEffect(() => {
+			const frame = window.requestAnimationFrame(() => {
+				if (secondaryMenuRef.current) {
+					secondaryMenuRef.current.scrollTop = 0;
+				}
+				updateSecondaryMenuScrollHint();
+			});
+			return () => window.cancelAnimationFrame(frame);
+		}, [activeGroup?.id, updateSecondaryMenuScrollHint]);
+
+		useEffect(() => {
+			return () => {
+				const timer = groupActivationIntentTimerRef.current;
+				if (timer !== null) {
+					window.clearTimeout(timer);
+					groupActivationIntentTimerRef.current = null;
+				}
+			};
+		}, []);
+
+		const clearGroupActivationIntent = () => {
+			const timer = groupActivationIntentTimerRef.current;
+			if (timer !== null) {
+				window.clearTimeout(timer);
+				groupActivationIntentTimerRef.current = null;
+			}
+		};
+
+		const clearSafeTriangle = () => {
+			clearGroupActivationIntent();
+			safeTriangleOriginRef.current = null;
+		};
+
+		const rememberActiveGroupPointer = (groupId: string, point: AgentMentionPoint) => {
+			clearGroupActivationIntent();
+			safeTriangleOriginRef.current = { groupId, point };
+		};
+
+		const activateGroup = (index: number) => {
+			setSelectedGroupIndex(index);
+			setSelectedItemIndex(0);
+			clearSafeTriangle();
+		};
+
+		const activateGroupFromPointer = (index: number, point: AgentMentionPoint) => {
+			const group = groups[index];
+			if (!group) return;
+			setSelectedGroupIndex(index);
+			setSelectedItemIndex(0);
+			rememberActiveGroupPointer(group.id, point);
+		};
+
+		const shouldPreserveActiveGroup = (point: AgentMentionPoint) => {
+			const activeGroupId = activeGroup?.id ?? "";
+			const activeButton = activeGroupId ? groupButtonRefs.current.get(activeGroupId) : null;
+			const origin =
+				safeTriangleOriginRef.current?.groupId === activeGroupId
+					? safeTriangleOriginRef.current.point
+					: null;
+
+			return shouldKeepAgentMentionGroupActive({
+				activeRect: activeButton?.getBoundingClientRect(),
+				origin,
+				point,
+				submenuRect: secondaryPaneRef.current?.getBoundingClientRect(),
+			});
+		};
+
+		const scheduleGroupActivationIntent = (index: number, point: AgentMentionPoint) => {
+			clearGroupActivationIntent();
+			groupActivationIntentTimerRef.current = window.setTimeout(() => {
+				groupActivationIntentTimerRef.current = null;
+				activateGroupFromPointer(index, point);
+			}, mentionSafeTriangleHoverIntentMs);
+		};
+
+		const handleGroupPointerEnter = (
+			group: AgentMentionGroup,
+			index: number,
+			event: { clientX: number; clientY: number },
+		) => {
+			const point = mentionPointerEventPoint(event);
+			if (group.id === activeGroup?.id) {
+				rememberActiveGroupPointer(group.id, point);
+				return;
+			}
+
+			if (shouldPreserveActiveGroup(point)) {
+				scheduleGroupActivationIntent(index, point);
+				return;
+			}
+
+			activateGroupFromPointer(index, point);
+		};
+
+		const handleGroupPointerMove = (
+			group: AgentMentionGroup,
+			index: number,
+			event: { clientX: number; clientY: number },
+		) => {
+			const point = mentionPointerEventPoint(event);
+			if (group.id === activeGroup?.id) {
+				rememberActiveGroupPointer(group.id, point);
+				return;
+			}
+
+			if (shouldPreserveActiveGroup(point)) {
+				scheduleGroupActivationIntent(index, point);
+				return;
+			}
+
+			activateGroupFromPointer(index, point);
+		};
 
 		useImperativeHandle(
 			ref,
@@ -151,6 +340,7 @@ export const AgentMentionList = forwardRef<MentionListHandle, MentionListProps>(
 					}
 
 					if (event.key === "ArrowLeft") {
+						clearSafeTriangle();
 						setSelectedGroupIndex((index) => {
 							const nextIndex = (index + groups.length - 1) % groups.length;
 							return nextIndex;
@@ -160,6 +350,7 @@ export const AgentMentionList = forwardRef<MentionListHandle, MentionListProps>(
 					}
 
 					if (event.key === "ArrowRight") {
+						clearSafeTriangle();
 						setSelectedGroupIndex((index) => (index + 1) % groups.length);
 						setSelectedItemIndex(0);
 						return true;
@@ -190,6 +381,7 @@ export const AgentMentionList = forwardRef<MentionListHandle, MentionListProps>(
 				onCreateSectionFromQuery,
 				onCreateSection,
 				selectedItemIndex,
+				clearSafeTriangle,
 			],
 		);
 
@@ -205,73 +397,175 @@ export const AgentMentionList = forwardRef<MentionListHandle, MentionListProps>(
 
 		return createElement(
 			"div",
-			{ className: "agent-mention-cascader" },
+			{
+				className: "agent-mention-cascader",
+				onMouseLeave: clearSafeTriangle,
+				onPointerLeave: clearSafeTriangle,
+			},
 			createElement(
 				"div",
-				{ className: "agent-mention-menu agent-mention-cascader-primary" },
-				createElement("div", { className: "agent-mention-pane-label" }, "文档"),
-				groups.map((group, index) => {
-					const showCategory = group.category !== previousSourceCategory;
-					previousSourceCategory = group.category;
+				{ className: "agent-mention-cascader-pane agent-mention-cascader-primary-pane" },
+				createElement(
+					"div",
+					{
+						ref: primaryMenuRef,
+						className: "agent-mention-menu agent-mention-cascader-primary",
+						onScroll: updatePrimaryMenuScrollHint,
+					},
+					createElement("div", { className: "agent-mention-pane-label" }, "文档"),
+					groups.map((group, index) => {
+						const showCategory = group.category !== previousSourceCategory;
+						previousSourceCategory = group.category;
 
-					return createElement(
-						"div",
-						{ key: group.id },
-						showCategory
-							? createElement(
-									"div",
-									{ className: "agent-mention-source-group" },
-									mentionCategoryDescriptor(group.category).label,
-								)
-							: null,
-						createElement(
-							"button",
-							{
-								type: "button",
-								className: "agent-mention-source",
-								"data-category": group.category,
-								"data-selected": index === selectedGroupIndex ? "true" : "false",
-								onMouseEnter: () => {
-									setSelectedGroupIndex(index);
-									setSelectedItemIndex(0);
-								},
-								onMouseDown: (event) => {
-									event.preventDefault();
-								},
-							},
-							createElement(group.icon, { className: "agent-mention-source-icon" }),
+						return createElement(
+							"div",
+							{ key: group.id },
+							showCategory
+								? createElement(
+										"div",
+										{ className: "agent-mention-source-group" },
+										mentionCategoryDescriptor(group.category).label,
+									)
+								: null,
 							createElement(
-								"span",
-								{ className: "agent-mention-source-body" },
-								createElement("span", { className: "agent-mention-source-title" }, group.label),
-								createElement("span", { className: "agent-mention-source-meta" }, group.meta),
+								"button",
+								{
+									type: "button",
+									ref: (node: HTMLButtonElement | null) => {
+										if (node) {
+											groupButtonRefs.current.set(group.id, node);
+										} else {
+											groupButtonRefs.current.delete(group.id);
+										}
+									},
+									className: "agent-mention-source",
+									"data-category": group.category,
+									"data-selected": index === selectedGroupIndex ? "true" : "false",
+									onFocus: () => activateGroup(index),
+									onMouseDown: (event) => {
+										event.preventDefault();
+									},
+									onMouseEnter: (event) => handleGroupPointerEnter(group, index, event),
+									onMouseMove: (event) => handleGroupPointerMove(group, index, event),
+									onPointerEnter: (event) => handleGroupPointerEnter(group, index, event),
+									onPointerMove: (event) => handleGroupPointerMove(group, index, event),
+								},
+								createElement(group.icon, { className: "agent-mention-source-icon" }),
+								createElement(
+									"span",
+									{ className: "agent-mention-source-body" },
+									createElement("span", { className: "agent-mention-source-title" }, group.label),
+									createElement("span", { className: "agent-mention-source-meta" }, group.meta),
+								),
+								createElement(ChevronRight, { className: "agent-mention-source-chevron" }),
 							),
-							createElement(ChevronRight, { className: "agent-mention-source-chevron" }),
-						),
-					);
-				}),
+						);
+					}),
+				),
+				primaryMenuCanScrollDown
+					? createElement("div", {
+							"aria-hidden": "true",
+							className: "agent-mention-scroll-hint agent-mention-scroll-hint-primary",
+							"data-agent-mention-primary-scroll-hint": "",
+						})
+					: null,
 			),
 			createElement(
 				"div",
-				{ className: "agent-mention-menu agent-mention-cascader-secondary", role: "listbox" },
-				createElement("div", { className: "agent-mention-pane-label" }, "文档与节点"),
-				activeItems.map((item, index) =>
-					renderMentionOption(item, index, selectedItemIndex, {
-						command,
-						setSelectedItemIndex,
-					}),
-				),
-				canCreateSection && activeGroup
-					? renderCreateSectionOption(activeGroup, selectedItemIndex === activeItems.length, {
-							onCreateSection,
+				{
+					ref: secondaryPaneRef,
+					className: "agent-mention-cascader-pane agent-mention-cascader-secondary-pane",
+					onMouseEnter: clearSafeTriangle,
+					onPointerEnter: clearSafeTriangle,
+				},
+				createElement(
+					"div",
+					{
+						ref: secondaryMenuRef,
+						className: "agent-mention-menu agent-mention-cascader-secondary",
+						onScroll: updateSecondaryMenuScrollHint,
+						role: "listbox",
+					},
+					createElement("div", { className: "agent-mention-pane-label" }, "文档与节点"),
+					activeItems.map((item, index) =>
+						renderMentionOption(item, index, selectedItemIndex, {
+							command,
 							setSelectedItemIndex,
-							targetIndex: activeItems.length,
+						}),
+					),
+					canCreateSection && activeGroup
+						? renderCreateSectionOption(activeGroup, selectedItemIndex === activeItems.length, {
+								onCreateSection,
+								setSelectedItemIndex,
+								targetIndex: activeItems.length,
+							})
+						: null,
+				),
+				secondaryMenuCanScrollDown
+					? createElement("div", {
+							"aria-hidden": "true",
+							className: "agent-mention-scroll-hint agent-mention-scroll-hint-secondary",
+							"data-agent-mention-secondary-scroll-hint": "",
 						})
 					: null,
 			),
 		);
 	},
 );
+
+const mentionPointerEventPoint = (event: {
+	clientX: number;
+	clientY: number;
+}): AgentMentionPoint => ({
+	x: event.clientX,
+	y: event.clientY,
+});
+
+export const shouldKeepAgentMentionGroupActive = ({
+	activeRect,
+	origin,
+	point,
+	submenuRect,
+}: AgentMentionSafeTriangleInput) => {
+	if (!activeRect || !origin || !submenuRect) return false;
+	if (origin.y < activeRect.top - mentionSafeTriangleEdgePadding) return false;
+	if (origin.y > activeRect.bottom + mentionSafeTriangleEdgePadding) return false;
+	if (point.x <= origin.x) return false;
+	if (point.x >= submenuRect.left) return false;
+
+	return pointInAgentMentionTriangle(
+		point,
+		origin,
+		{
+			x: submenuRect.left,
+			y: submenuRect.top - mentionSafeTriangleEdgePadding,
+		},
+		{
+			x: submenuRect.left,
+			y: submenuRect.bottom + mentionSafeTriangleEdgePadding,
+		},
+	);
+};
+
+const pointInAgentMentionTriangle = (
+	point: AgentMentionPoint,
+	first: AgentMentionPoint,
+	second: AgentMentionPoint,
+	third: AgentMentionPoint,
+) => {
+	const firstSign = agentMentionTriangleSign(point, first, second);
+	const secondSign = agentMentionTriangleSign(point, second, third);
+	const thirdSign = agentMentionTriangleSign(point, third, first);
+	const hasNegative = firstSign < 0 || secondSign < 0 || thirdSign < 0;
+	const hasPositive = firstSign > 0 || secondSign > 0 || thirdSign > 0;
+	return !(hasNegative && hasPositive);
+};
+
+const agentMentionTriangleSign = (
+	first: AgentMentionPoint,
+	second: AgentMentionPoint,
+	third: AgentMentionPoint,
+) => (first.x - third.x) * (second.y - third.y) - (second.x - third.x) * (first.y - third.y);
 
 const renderCreateSectionOption = (
 	group: AgentMentionGroup,

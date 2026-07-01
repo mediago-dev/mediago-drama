@@ -10,9 +10,10 @@
 }
 
 .agent-skill-slash-menu {
+	position: relative;
 	width: min(24rem, calc(100vw - 1.5rem));
 	max-height: min(18rem, calc(100vh - 4rem));
-	overflow-y: auto;
+	overflow: hidden;
 	overscroll-behavior: contain;
 	border: var(--border-width-scale-sm) solid var(--border);
 	border-radius: 10px;
@@ -20,9 +21,31 @@
 	color: var(--popover-foreground);
 	box-shadow: var(--shadow-scale-lg);
 	font-size: var(--font-size-xs);
+}
+
+.agent-skill-slash-scroll {
+	max-height: inherit;
+	overflow-y: auto;
+	overscroll-behavior: contain;
 	padding: 0.375rem;
 	scrollbar-gutter: stable;
 	-webkit-overflow-scrolling: touch;
+}
+
+.agent-skill-slash-scroll-hint {
+	pointer-events: none;
+	position: absolute;
+	z-index: 1;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	height: 2rem;
+	background: linear-gradient(
+		to top,
+		var(--popover) 0%,
+		color-mix(in srgb, var(--popover) 66%, transparent) 58%,
+		transparent 100%
+	);
 }
 
 .agent-skill-slash-heading {

@@ -1,10 +1,11 @@
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { createElement, createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	AgentMentionList,
 	createMentionItems,
 	mentionPopupAppendTarget,
+	shouldKeepAgentMentionGroupActive,
 } from "@/domains/documents/lib/mention-suggestion";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import type { MarkdownDocument } from "@/domains/documents/stores";
@@ -44,6 +45,7 @@ const makeAsset = (overrides: Partial<ProjectAsset> = {}): ProjectAsset => ({
 describe("mention suggestion items", () => {
 	afterEach(() => {
 		cleanup();
+		vi.useRealTimers();
 		useDocumentsStore.setState({
 			documents: [],
 			assets: [],
@@ -250,6 +252,103 @@ describe("mention suggestion items", () => {
 		).toBeTruthy();
 	});
 
+	it("keeps the active source while the pointer crosses the safe triangle", () => {
+		useDocumentsStore.setState({
+			documents: [
+				makeDocument({
+					content: "# 角色设定\n\n## 陈远",
+					title: "角色设定",
+				}),
+				makeDocument({
+					category: "scene",
+					content: "# 场景设定\n\n## 教室",
+					id: "doc-scene",
+					title: "场景设定",
+				}),
+			],
+			assets: [],
+		});
+
+		const { container } = render(
+			createElement(AgentMentionList, {
+				command: () => {},
+				items: createMentionItems(""),
+			}),
+		);
+		const characterSource = sourceByText(container, "角色设定");
+		const sceneSource = sourceByText(container, "场景设定");
+		const secondaryPane = container.querySelector(".agent-mention-cascader-secondary-pane");
+		expect(characterSource).toBeTruthy();
+		expect(sceneSource).toBeTruthy();
+		expect(secondaryPane).toBeTruthy();
+		vi.spyOn(characterSource as Element, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
+		);
+		vi.spyOn(secondaryPane as Element, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 360, left: 240, right: 520, top: 40 }),
+		);
+
+		fireEvent.pointerOver(characterSource as Element, { clientX: 150, clientY: 96 });
+		fireEvent.pointerMove(characterSource as Element, { clientX: 160, clientY: 112 });
+		fireEvent.pointerOver(sceneSource as Element, { clientX: 172, clientY: 136 });
+
+		expect(sceneSource?.getAttribute("data-selected")).toBe("false");
+		expect(secondaryPane?.textContent).toContain("陈远");
+		expect(secondaryPane?.textContent).not.toContain("教室");
+	});
+
+	it("switches source when the pointer dwells on a crossed source", () => {
+		vi.useFakeTimers();
+		useDocumentsStore.setState({
+			documents: [
+				makeDocument({
+					content: "# 角色设定\n\n## 陈远",
+					title: "角色设定",
+				}),
+				makeDocument({
+					category: "scene",
+					content: "# 场景设定\n\n## 教室",
+					id: "doc-scene",
+					title: "场景设定",
+				}),
+			],
+			assets: [],
+		});
+
+		const { container } = render(
+			createElement(AgentMentionList, {
+				command: () => {},
+				items: createMentionItems(""),
+			}),
+		);
+		const characterSource = sourceByText(container, "角色设定");
+		const sceneSource = sourceByText(container, "场景设定");
+		const secondaryPane = container.querySelector(".agent-mention-cascader-secondary-pane");
+		expect(characterSource).toBeTruthy();
+		expect(sceneSource).toBeTruthy();
+		expect(secondaryPane).toBeTruthy();
+		vi.spyOn(characterSource as Element, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
+		);
+		vi.spyOn(secondaryPane as Element, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 360, left: 240, right: 520, top: 40 }),
+		);
+
+		fireEvent.pointerOver(characterSource as Element, { clientX: 150, clientY: 96 });
+		fireEvent.pointerMove(characterSource as Element, { clientX: 160, clientY: 112 });
+		fireEvent.pointerOver(sceneSource as Element, { clientX: 172, clientY: 136 });
+
+		expect(sceneSource?.getAttribute("data-selected")).toBe("false");
+
+		act(() => {
+			vi.advanceTimersByTime(200);
+		});
+
+		expect(sceneSource?.getAttribute("data-selected")).toBe("true");
+		expect(secondaryPane?.textContent).toContain("教室");
+		expect(secondaryPane?.textContent).not.toContain("陈远");
+	});
+
 	it("renders a document-scoped create action in the active child pane", () => {
 		useDocumentsStore.setState({
 			documents: [
@@ -393,4 +492,55 @@ describe("mention suggestion items", () => {
 		dialogRoot.remove();
 		expect(mentionPopupAppendTarget(document.createElement("div"))).toBe(document.body);
 	});
+});
+
+describe("shouldKeepAgentMentionGroupActive", () => {
+	it("keeps the group active for diagonal movement through the safe triangle", () => {
+		expect(
+			shouldKeepAgentMentionGroupActive({
+				activeRect: { bottom: 124, left: 20, right: 220, top: 80 },
+				origin: { x: 160, y: 112 },
+				point: { x: 172, y: 136 },
+				submenuRect: { bottom: 360, left: 240, right: 520, top: 40 },
+			}),
+		).toBe(true);
+	});
+
+	it("does not keep the group active for vertical movement inside the source column", () => {
+		expect(
+			shouldKeepAgentMentionGroupActive({
+				activeRect: { bottom: 124, left: 20, right: 220, top: 80 },
+				origin: { x: 188, y: 112 },
+				point: { x: 188, y: 136 },
+				submenuRect: { bottom: 360, left: 240, right: 520, top: 40 },
+			}),
+		).toBe(false);
+	});
+});
+
+const sourceByText = (container: HTMLElement, text: string) =>
+	Array.from(container.querySelectorAll(".agent-mention-source")).find((element) =>
+		element.textContent?.includes(text),
+	);
+
+const testRect = ({
+	bottom,
+	left,
+	right,
+	top,
+}: {
+	bottom: number;
+	left: number;
+	right: number;
+	top: number;
+}): DOMRect => ({
+	bottom,
+	height: bottom - top,
+	left,
+	right,
+	toJSON: () => ({}),
+	top,
+	width: right - left,
+	x: left,
+	y: top,
 });

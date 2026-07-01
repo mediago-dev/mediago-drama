@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeConfigPayload } from "@/domains/agent/api/agent";
 import {
@@ -55,6 +55,7 @@ const runtimeControlsElement = (
 describe("AgentRuntimeConfigControls", () => {
 	afterEach(() => {
 		cleanup();
+		vi.useRealTimers();
 		vi.restoreAllMocks();
 	});
 
@@ -122,7 +123,7 @@ describe("AgentRuntimeConfigControls", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "模型" }));
 
-		expect(screen.getByText("分类")).toBeTruthy();
+		expect(screen.getByText("提供商")).toBeTruthy();
 		expect(screen.getByText("GLM-4 Flash")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "MediaGo" })).toBeTruthy();
 
@@ -155,7 +156,7 @@ describe("AgentRuntimeConfigControls", () => {
 		});
 
 		fireEvent.click(screen.getByRole("button", { name: "模型" }));
-		const menu = screen.getByLabelText("分类和模型");
+		const menu = screen.getByLabelText("提供商和模型");
 
 		expect(menu).toHaveClass("h-[var(--agent-runtime-model-menu-height)]");
 		expect(menu).not.toHaveClass("h-[22rem]");
@@ -186,10 +187,10 @@ describe("AgentRuntimeConfigControls", () => {
 		});
 
 		fireEvent.click(screen.getByRole("button", { name: "模型" }));
-		const menu = screen.getByLabelText("分类和模型");
+		const menu = screen.getByLabelText("提供商和模型");
 
 		expect(menu.getAttribute("style")).toContain(
-			"3 * var(--generation-model-popover-option-height)",
+			"5 * var(--generation-model-popover-option-height)",
 		);
 		expect(screen.getByText("qwen3.5-27b")).toBeTruthy();
 	});
@@ -283,7 +284,7 @@ describe("AgentRuntimeConfigControls", () => {
 		const view = renderControls(modelConfig(), { modelValue: "mediago/glm-4-flash" });
 
 		fireEvent.click(screen.getByRole("button", { name: "模型" }));
-		const menu = screen.getByLabelText("分类和模型");
+		const menu = screen.getByLabelText("提供商和模型");
 		expect(menu).toHaveClass("h-[var(--agent-runtime-model-menu-height)]");
 		expect(menu.getAttribute("style")).toContain(
 			"2 * var(--generation-model-popover-option-height)",
@@ -336,6 +337,52 @@ describe("AgentRuntimeConfigControls", () => {
 		expect(screen.getByText("GLM-4 Flash")).toBeTruthy();
 		expect(screen.queryByText("MiniMax-M3")).toBeNull();
 		expect(miniMaxCategory).not.toHaveClass("hover:bg-muted");
+	});
+
+	it("switches model category when the pointer dwells on a crossed category", () => {
+		vi.useFakeTimers();
+		renderControls({
+			model: {
+				configId: "model",
+				currentValue: "mediago/glm-4-flash",
+				options: [
+					{
+						name: "MediaGo/GLM-4 Flash",
+						value: "mediago/glm-4-flash",
+					},
+					{
+						name: "MiniMax 国内/MiniMax-M3",
+						value: "minimax/minimax-m3",
+					},
+				],
+			},
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "模型" }));
+		const mediaGoCategory = screen.getByRole("button", { name: "MediaGo" });
+		const miniMaxCategory = screen.getByRole("button", { name: "MiniMax 国内" });
+		const modelPanel = screen.getByText("模型").closest("section");
+		expect(modelPanel).toBeTruthy();
+		vi.spyOn(mediaGoCategory, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
+		);
+		vi.spyOn(modelPanel as HTMLElement, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 360, left: 240, right: 520, top: 40 }),
+		);
+
+		fireEvent.pointerEnter(mediaGoCategory, { clientX: 150, clientY: 96 });
+		fireEvent.pointerMove(mediaGoCategory, { clientX: 160, clientY: 112 });
+		fireEvent.pointerEnter(miniMaxCategory, { clientX: 172, clientY: 136 });
+
+		expect(screen.getByText("GLM-4 Flash")).toBeTruthy();
+		expect(screen.queryByText("MiniMax-M3")).toBeNull();
+
+		act(() => {
+			vi.advanceTimersByTime(200);
+		});
+
+		expect(screen.getByText("MiniMax-M3")).toBeTruthy();
+		expect(screen.queryByText("GLM-4 Flash")).toBeNull();
 	});
 
 	it("switches model category immediately when the pointer is not moving toward the model panel", () => {

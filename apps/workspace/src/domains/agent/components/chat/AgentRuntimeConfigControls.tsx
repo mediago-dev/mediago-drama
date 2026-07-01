@@ -210,6 +210,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 		categoryKey: string;
 		point: AgentRuntimePoint;
 	} | null>(null);
+	const categoryActivationIntentTimerRef = useRef<number | null>(null);
 	const [categoryListCanScrollDown, setCategoryListCanScrollDown] = useState(false);
 	const [modelListCanScrollDown, setModelListCanScrollDown] = useState(false);
 	const activeCategory =
@@ -277,14 +278,34 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 		updateModelListScrollHint,
 	]);
 
+	useEffect(() => {
+		return () => {
+			const timer = categoryActivationIntentTimerRef.current;
+			if (timer !== null) {
+				window.clearTimeout(timer);
+				categoryActivationIntentTimerRef.current = null;
+			}
+		};
+	}, []);
+
 	if (options.length === 0 || !selectedOption) return null;
 
+	const clearCategoryActivationIntent = () => {
+		const timer = categoryActivationIntentTimerRef.current;
+		if (timer !== null) {
+			window.clearTimeout(timer);
+			categoryActivationIntentTimerRef.current = null;
+		}
+	};
+
 	const clearSafeTriangle = () => {
+		clearCategoryActivationIntent();
 		safeTriangleOriginRef.current = null;
 		setSuppressedCategoryHoverKey(null);
 	};
 
 	const rememberActiveCategoryPointer = (categoryKey: string, point: AgentRuntimePoint) => {
+		clearCategoryActivationIntent();
 		safeTriangleOriginRef.current = { categoryKey, point };
 		setSuppressedCategoryHoverKey(null);
 	};
@@ -303,6 +324,15 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	const activateCategoryFromPointer = (categoryKey: string, point: AgentRuntimePoint) => {
 		setActiveCategoryKey(categoryKey);
 		rememberActiveCategoryPointer(categoryKey, point);
+	};
+
+	const scheduleCategoryActivationIntent = (categoryKey: string, point: AgentRuntimePoint) => {
+		suppressCategoryHover(categoryKey);
+		clearCategoryActivationIntent();
+		categoryActivationIntentTimerRef.current = window.setTimeout(() => {
+			categoryActivationIntentTimerRef.current = null;
+			activateCategoryFromPointer(categoryKey, point);
+		}, AGENT_RUNTIME_SAFE_TRIANGLE_HOVER_INTENT_MS);
 	};
 
 	const shouldPreserveActiveCategory = (point: AgentRuntimePoint) => {
@@ -335,7 +365,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 		}
 
 		if (shouldPreserveActiveCategory(point)) {
-			suppressCategoryHover(categoryKey);
+			scheduleCategoryActivationIntent(categoryKey, point);
 			return;
 		}
 
@@ -348,12 +378,12 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	) => {
 		const point = pointerEventPoint(event);
 		if (categoryKey === activeCategory?.key) {
-			safeTriangleOriginRef.current = { categoryKey, point };
+			rememberActiveCategoryPointer(categoryKey, point);
 			return;
 		}
 
 		if (shouldPreserveActiveCategory(point)) {
-			suppressCategoryHover(categoryKey);
+			scheduleCategoryActivationIntent(categoryKey, point);
 			return;
 		}
 
@@ -395,7 +425,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 			<PopoverContent
 				side="top"
 				align="start"
-				aria-label="分类和模型"
+				aria-label="提供商和模型"
 				className="agent-config-content grid h-[var(--agent-runtime-model-menu-height)] max-h-[calc(100vh_-_2rem)] w-[min(42rem,calc(100vw_-_2rem))] grid-cols-[minmax(13rem,1fr)_minmax(12rem,0.85fr)] overflow-hidden rounded-[var(--radius-scale-sm)] border-border bg-popover p-0 text-popover-foreground shadow-xl"
 				style={modelMenuStyle}
 				onPointerLeave={() => {
@@ -403,7 +433,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 				}}
 			>
 				<section className="flex min-h-0 min-w-0 flex-col p-[var(--generation-popover-padding)]">
-					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">分类</p>
+					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">提供商</p>
 					<div className="relative min-h-0 flex-1">
 						<div
 							ref={categoryListRef}
@@ -606,10 +636,12 @@ const agentRuntimeModelMenuHeight = (categories: AgentRuntimeModelCategory[]) =>
 		0,
 	);
 	const rowCount = Math.max(categories.length, maxModelOptionCount, 1);
-	const visibleRowCount = Math.min(rowCount, 3);
+	const visibleRowCount = Math.min(rowCount, agentRuntimeModelMenuMaxVisibleRows);
 	const gapCount = Math.max(visibleRowCount - 1, 0);
 	return `calc(var(--generation-popover-padding) * 2 + 1.25rem + ${visibleRowCount} * var(--generation-model-popover-option-height) + ${gapCount} * 0.25rem)`;
 };
+
+const agentRuntimeModelMenuMaxVisibleRows = 5;
 
 const splitAgentProviderModel = (value: string) => {
 	const trimmed = value.trim();
@@ -654,6 +686,7 @@ const normalizeAgentOptionKey = (value: string) =>
 		.replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "");
 
 const AGENT_RUNTIME_SAFE_TRIANGLE_EDGE_PADDING = 8;
+const AGENT_RUNTIME_SAFE_TRIANGLE_HOVER_INTENT_MS = 180;
 
 const pointerEventPoint = (event: React.PointerEvent): AgentRuntimePoint => ({
 	x: event.clientX,
