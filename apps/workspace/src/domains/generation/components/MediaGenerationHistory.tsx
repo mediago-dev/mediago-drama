@@ -235,8 +235,11 @@ const HistoryImageGrid: React.FC<{
 
 	return (
 		<>
-			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
-				<div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+			<div
+				className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4"
+				style={historyImageGridContainerStyle}
+			>
+				<div className="grid justify-start gap-3" style={historyImageGridStyle}>
 					{records.map((record) => (
 						<HistoryImageCard
 							key={record.key}
@@ -269,6 +272,15 @@ const HistoryImageGrid: React.FC<{
 		</>
 	);
 };
+
+const historyImageGridContainerStyle = {
+	containerType: "inline-size",
+} satisfies React.CSSProperties;
+
+const historyImageGridStyle = {
+	gridTemplateColumns:
+		"repeat(auto-fit, minmax(min(clamp(10rem, 11cqw, 12rem), 100%), clamp(14rem, 20cqw, 22rem)))",
+} satisfies React.CSSProperties;
 
 const HistoryImageCard: React.FC<{
 	deleting: boolean;

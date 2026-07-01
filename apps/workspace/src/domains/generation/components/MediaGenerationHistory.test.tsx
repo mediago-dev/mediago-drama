@@ -589,6 +589,29 @@ describe("HistoryGenerationList", () => {
 		expect(screen.getAllByRole("img", { name: /生成中/ })).toHaveLength(2);
 	});
 
+	it("uses container-driven adaptive bounds for image history cards across dialog sizes", () => {
+		const { container } = render(
+			<HistoryGenerationList
+				activeEntryId="entry-partial-pending-image"
+				deletingEntryIds={[]}
+				entries={[partialPendingImageEntry()]}
+				kind="image"
+				selectedAssetKeys={[]}
+				variant="list"
+				onDeleteEntry={vi.fn()}
+				onSelectEntry={vi.fn()}
+			/>,
+		);
+
+		const gridContainer = container.querySelector('[style*="container-type"]');
+		const grid = container.querySelector('[style*="grid-template-columns"]');
+		expect(gridContainer?.getAttribute("style")).toContain("container-type: inline-size");
+		expect(grid?.className).toContain("justify-start");
+		expect(grid?.getAttribute("style")).toContain(
+			"repeat(auto-fit, minmax(min(clamp(10rem, 11cqw, 12rem), 100%), clamp(14rem, 20cqw, 22rem)))",
+		);
+	});
+
 	it("does not turn deleted pending-task image slots back into loading placeholders", () => {
 		render(
 			<HistoryGenerationList
