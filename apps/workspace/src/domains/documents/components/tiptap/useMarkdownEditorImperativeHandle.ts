@@ -5,7 +5,6 @@ import type { DocumentRangeSelection } from "@/domains/agent/api/agent";
 import type {
 	MarkdownBlockDeltaOptions,
 	MarkdownHybridEditorHandle,
-	MarkdownSectionIdentity,
 } from "@/domains/documents/lib/editor-registry";
 import {
 	findTextNodeRange,
@@ -13,7 +12,6 @@ import {
 	resolveReplacementMarkdown,
 	resolveStreamingTarget,
 } from "./ranges";
-import { removeSectionImagePlaceholderMarkdown } from "./section-images";
 import type { StreamingBlockTarget } from "./types";
 
 interface MarkdownEditorImperativeHandleOptions {
@@ -98,32 +96,12 @@ export const useMarkdownEditorImperativeHandle = ({
 		[editor],
 	);
 
-	const removeSectionImagePlaceholder = useCallback(
-		(section: MarkdownSectionIdentity, placeholderId: string) => {
-			if (!editor) return false;
-
-			const currentMarkdown = editor.getMarkdown();
-			const result = removeSectionImagePlaceholderMarkdown(currentMarkdown, section, placeholderId);
-			if (!result?.changed) return false;
-
-			emittedMarkdownRef.current = result.markdown;
-			editor.commands.setContent(result.markdown, {
-				contentType: "markdown",
-				emitUpdate: false,
-			});
-			onChangeRef.current(result.markdown);
-			return true;
-		},
-		[editor, emittedMarkdownRef, onChangeRef],
-	);
-
 	useImperativeHandle(
 		ref,
 		() => ({
 			documentId,
 			applyBlockDelta,
 			setSelection: setStructuredSelection,
-			removeSectionImagePlaceholder,
 			commitBlockDelta,
 			hasPendingBlockDelta,
 		}),
@@ -132,7 +110,6 @@ export const useMarkdownEditorImperativeHandle = ({
 			commitBlockDelta,
 			documentId,
 			hasPendingBlockDelta,
-			removeSectionImagePlaceholder,
 			ref,
 			setStructuredSelection,
 		],

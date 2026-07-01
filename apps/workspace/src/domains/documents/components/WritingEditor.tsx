@@ -2,8 +2,6 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { History, Menu, MessageSquare, MessageSquareOff } from "lucide-react";
 import { useLocation } from "react-router-dom";
-import type { SelectedGenerationAsset } from "@/domains/generation/api/generation";
-import { useSelectedGenerationAssets } from "@/domains/generation/hooks/useSelectedGenerationAssets";
 import {
 	MarkdownHybridEditor,
 	prewarmMarkdownHybridEditorContent,
@@ -21,7 +19,6 @@ import type { InlineDecorationRange } from "@/domains/documents/components/tipta
 import { Button } from "@/shared/components/ui/button";
 import { registerEditor } from "@/domains/documents/lib/editor-registry";
 import { selectEditableDocument } from "@/domains/documents/lib/filters";
-import { selectedSectionImageAssetsForDocument } from "@/domains/documents/lib/selected-section-images";
 import {
 	type DocumentComment,
 	type MarkdownDocument,
@@ -32,7 +29,6 @@ import { useMediaGenerationStore } from "@/domains/generation/stores/media-gener
 
 const autosaveDelayMs = 500;
 const markerClusterDistance = 28;
-const defaultSelectedGenerationAssets: SelectedGenerationAsset[] = [];
 export const writingEditorExtraExtensions = [DocumentMention];
 
 export const prewarmWritingEditorDocument = (
@@ -74,16 +70,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const showComments = useDocumentsStore((state) => state.showComments);
 	const updateDocumentContent = useDocumentsStore((state) => state.updateDocumentContent);
 	const activeDocument = selectEditableDocument(documents, activeDocumentId);
-	const { data: selectedGenerationAssetsData } = useSelectedGenerationAssets(projectId);
-	const projectSelectedGenerationAssets =
-		selectedGenerationAssetsData?.assets ?? defaultSelectedGenerationAssets;
-	const selectedSectionImageAssets = useMemo(
-		() =>
-			activeDocument
-				? selectedSectionImageAssetsForDocument(projectSelectedGenerationAssets, activeDocument.id)
-				: defaultSelectedGenerationAssets,
-		[activeDocument, projectSelectedGenerationAssets],
-	);
 	const activeSelection =
 		selection && activeDocument && selection.documentId === activeDocument.id ? selection : null;
 	const activePendingComment =
@@ -140,12 +126,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 
 	useEffect(() => {
 		measureCommentMarkers();
-	}, [
-		activeDocument?.content,
-		activeDocument?.comments,
-		measureCommentMarkers,
-		selectedSectionImageAssets,
-	]);
+	}, [activeDocument?.content, activeDocument?.comments, measureCommentMarkers]);
 
 	useEffect(() => {
 		let frame = 0;
@@ -282,7 +263,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 								pendingSelectionRange={
 									activePendingComment && activeSelection ? selectionRange : null
 								}
-								selectedSectionImageAssets={selectedSectionImageAssets}
 								value={activeDocument.content}
 								onChange={(content) => updateDocumentContent(activeDocument.id, content)}
 								onCommentAnchorClick={focusCommentAnchor}
