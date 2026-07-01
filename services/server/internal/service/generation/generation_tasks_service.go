@@ -790,32 +790,35 @@ func (service *GenerationTaskService) applyDefaultSelectedAssetLocked(task *Gene
 		return nil
 	}
 
-	projectID := GenerationProjectIDForRequest(task.ProjectID, "")
-	resourceType := selectedGenerationResourceType(task.CapabilityID)
-	resourceID := strings.TrimSpace(task.SectionID)
-	sourceDocumentID := strings.TrimSpace(task.DocumentID)
-	exists, err := service.repo.HasProjectSelectedAssetForResource(projectID, resourceType, resourceID, sourceDocumentID, task.Kind)
-	if err != nil || exists {
-		return err
-	}
-
 	assetIndex := firstDefaultSelectableGenerationAssetIndex(*task)
 	if assetIndex < 0 {
 		return nil
+	}
+
+	// 统一「最新一次生成的第一张即已选」：每次生成完成先清掉该 section+kind 的旧选中
+	// （复用手动选中路径的替换逻辑，含把旧任务的 asset.Selected 回置），再选本次第一张。
+	clearModel := domain.ProjectSelectedAssetModel{
+		ProjectID:        GenerationProjectIDForRequest(task.ProjectID, ""),
+		ResourceType:     selectedGenerationResourceType(task.CapabilityID),
+		ResourceID:       domain.StringPtr(strings.TrimSpace(task.SectionID)),
+		SourceDocumentID: domain.StringPtr(strings.TrimSpace(task.DocumentID)),
+	}
+	if err := service.clearProjectSelectedAssetRowsForResourceKindLocked(clearModel, task.Kind); err != nil {
+		return err
 	}
 	task.Assets[assetIndex].Selected = true
 	return nil
 }
 
 func shouldDefaultSelectGenerationAsset(task GenerationTaskRecord) bool {
+	// 每次成功生成都要把选中切到本次结果，故不再因「该资源已有选中」而跳过。
 	if !isCompletedGenerationTaskStatus(task.Status) ||
 		!isSelectableGenerationAssetKind(task.Kind) ||
 		strings.TrimSpace(task.RouteID) == importedMediaGenerationRouteID ||
 		GenerationProjectIDForRequest(task.ProjectID, "") == "" ||
 		selectedGenerationResourceType(task.CapabilityID) == "" ||
 		strings.TrimSpace(task.DocumentID) == "" ||
-		strings.TrimSpace(task.SectionID) == "" ||
-		taskHasSelectedGenerationAsset(task, task.Kind) {
+		strings.TrimSpace(task.SectionID) == "" {
 		return false
 	}
 	return true
@@ -828,21 +831,6 @@ func isCompletedGenerationTaskStatus(status string) bool {
 	default:
 		return false
 	}
-}
-
-func taskHasSelectedGenerationAsset(task GenerationTaskRecord, kind string) bool {
-	kind = strings.TrimSpace(kind)
-	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
-	for index, asset := range task.Assets {
-		slotIndex := assetSlotIndex(index, asset)
-		if deletedSlots[slotIndex] || strings.TrimSpace(asset.Kind) != kind {
-			continue
-		}
-		if asset.Selected {
-			return true
-		}
-	}
-	return false
 }
 
 func firstDefaultSelectableGenerationAssetIndex(task GenerationTaskRecord) int {

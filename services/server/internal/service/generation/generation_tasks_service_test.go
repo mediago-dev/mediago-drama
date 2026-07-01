@@ -383,7 +383,7 @@ func TestGenerationTaskServiceAutoSelectsFirstCompletedProjectResourceImage(t *t
 	}
 }
 
-func TestGenerationTaskServiceDoesNotAutoSelectWhenResourceAlreadyHasSelection(t *testing.T) {
+func TestGenerationTaskServiceSwitchesSelectionToNewGenerationOverExistingSelection(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	projectID := "project-auto-select-existing"
 	taskID := "task-auto-select-existing"
@@ -425,18 +425,65 @@ func TestGenerationTaskServiceDoesNotAutoSelectWhenResourceAlreadyHasSelection(t
 	if err != nil || !ok {
 		t.Fatalf("getting task ok=%v error=%v", ok, err)
 	}
-	if len(reloaded.Assets) != 2 || reloaded.Assets[0].Selected || reloaded.Assets[1].Selected {
-		t.Fatalf("task assets = %+v, want no generated image auto-selected", reloaded.Assets)
+	if len(reloaded.Assets) != 2 || !reloaded.Assets[0].Selected || reloaded.Assets[1].Selected {
+		t.Fatalf("task assets = %+v, want the new generation's first image selected", reloaded.Assets)
 	}
 
 	selected, err := service.ListProjectSelectedAssets(projectID)
 	if err != nil {
 		t.Fatalf("listing selected assets: %v", err)
 	}
+	// 旧的手动选中被替换为本次生成的第一张。
 	if len(selected) != 1 ||
-		selected[0].MediaAssetID != "existing-selected" ||
-		selected[0].TaskID != "" {
-		t.Fatalf("selected assets = %+v, want existing resource selection preserved", selected)
+		selected[0].MediaAssetID != "image-a" ||
+		selected[0].TaskID != taskID ||
+		selected[0].AssetIndex != 0 ||
+		selected[0].ResourceID != "section-lintong" {
+		t.Fatalf("selected assets = %+v, want selection switched to the new generation's first image", selected)
+	}
+}
+
+func TestGenerationTaskServiceSwitchesSelectionToLatestGeneration(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	projectID := "project-auto-select-latest"
+	seedGenerationTaskProject(t, dbPath, projectID)
+	for _, id := range []string{"gen1-a", "gen1-b", "gen2-a", "gen2-b"} {
+		seedGenerationTaskAsset(t, dbPath, id, "image", projectID)
+	}
+
+	service := NewGenerationTaskService(dbPath, nil)
+	completeImageTask := func(taskID, first, second string) {
+		if err := service.Upsert(GenerationTaskRecord{
+			ID:           taskID,
+			ProjectID:    projectID,
+			DocumentID:   "characters",
+			SectionID:    "section-lintong",
+			CapabilityID: "character",
+			Kind:         "image",
+			Status:       "completed",
+			Prompt:       "portrait set",
+			Assets: []GenerationAsset{
+				{Kind: "image", URL: "/api/v1/media-assets/" + first + "/content"},
+				{Kind: "image", URL: "/api/v1/media-assets/" + second + "/content"},
+			},
+		}); err != nil {
+			t.Fatalf("upserting task %s: %v", taskID, err)
+		}
+	}
+
+	completeImageTask("task-gen1", "gen1-a", "gen1-b")
+	completeImageTask("task-gen2", "gen2-a", "gen2-b")
+
+	selected, err := service.ListProjectSelectedAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing selected assets: %v", err)
+	}
+	// 重新生成后只保留最新一次生成的第一张。
+	if len(selected) != 1 ||
+		selected[0].MediaAssetID != "gen2-a" ||
+		selected[0].TaskID != "task-gen2" ||
+		selected[0].AssetIndex != 0 {
+		t.Fatalf("selected assets = %+v, want only the latest generation's first image", selected)
 	}
 }
 

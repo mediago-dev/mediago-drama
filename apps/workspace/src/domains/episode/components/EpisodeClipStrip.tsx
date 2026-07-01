@@ -65,6 +65,9 @@ const stripHeight = 184;
 const menuViewportGap = 8;
 const wheelDeltaLineMode = 1;
 const wheelDeltaPageMode = 2;
+// 胶片条卡片间距（对应下方 gap-3 = 0.75rem）与横向虚拟滚动的额外预渲染卡片数。
+const clipStripGap = 12;
+const clipStripOverscan = 3;
 
 const clipCardWidth: Record<TimelineZoom, number> = {
 	fit: 176,
@@ -91,6 +94,9 @@ export const EpisodeClipStrip: React.FC<EpisodeClipStripProps> = ({
 }) => {
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 	const [contextMenu, setContextMenu] = useState<ClipContextMenuState | null>(null);
+	// 横向虚拟滚动的视口尺寸/滚动位置；无法测量时（如 jsdom 布局缺失）回退为渲染全部。
+	const [viewportWidth, setViewportWidth] = useState(0);
+	const [scrollLeft, setScrollLeft] = useState(0);
 	const clipPlaybackRanges = useMemo(
 		() => buildEpisodeVideoClipPlaybackRanges(episode, clipMedia),
 		[clipMedia, episode],
@@ -116,13 +122,58 @@ export const EpisodeClipStrip: React.FC<EpisodeClipStripProps> = ({
 	const progress =
 		displayDuration > 0 ? Math.min(Math.max(currentTime / displayDuration, 0), 1) : 0;
 
+	const clipCount = videoClips.length;
+	const cardStride = cardWidth + clipStripGap;
+	const contentWidth = clipCount > 0 ? clipCount * cardStride - clipStripGap : 0;
+	// 视口可测量时按滚动位置只渲染可见 ± overscan 张卡片；否则回退渲染全部。
+	const virtualize = viewportWidth > 0 && clipCount > 0;
+	const firstVisibleIndex = virtualize
+		? Math.max(0, Math.floor(scrollLeft / cardStride) - clipStripOverscan)
+		: 0;
+	const lastVisibleIndex = virtualize
+		? Math.min(
+				clipCount - 1,
+				Math.ceil((scrollLeft + viewportWidth) / cardStride) + clipStripOverscan,
+			)
+		: clipCount - 1;
+	const visibleClips = virtualize
+		? videoClips.slice(firstVisibleIndex, lastVisibleIndex + 1)
+		: videoClips;
+
+	useLayoutEffect(() => {
+		const element = scrollRef.current;
+		if (!element) return;
+		setViewportWidth(element.clientWidth);
+		setScrollLeft(element.scrollLeft);
+		const handleScroll = () => setScrollLeft(element.scrollLeft);
+		element.addEventListener("scroll", handleScroll, { passive: true });
+		const observer =
+			typeof ResizeObserver !== "undefined"
+				? new ResizeObserver(() => setViewportWidth(element.clientWidth))
+				: null;
+		observer?.observe(element);
+		return () => {
+			element.removeEventListener("scroll", handleScroll);
+			observer?.disconnect();
+		};
+	}, []);
+
 	useEffect(() => {
-		if (!isPlaying || !activeClip || !scrollRef.current) return;
-		const element = scrollRef.current.querySelector<HTMLElement>(
-			`[data-clip-id="${CSS.escape(activeClip.id)}"]`,
+		const element = scrollRef.current;
+		if (!isPlaying || !activeClip || !element) return;
+		const index = videoClips.findIndex((clip) => clip.id === activeClip.id);
+		if (index < 0) return;
+		const target = index * cardStride - Math.max(element.clientWidth - cardWidth, 0) / 2;
+		const clamped = Math.min(
+			Math.max(target, 0),
+			Math.max(element.scrollWidth - element.clientWidth, 0),
 		);
-		element?.scrollIntoView?.({ block: "nearest", inline: "center", behavior: "smooth" });
-	}, [activeClip, isPlaying]);
+		if (typeof element.scrollTo === "function") {
+			element.scrollTo({ left: clamped, behavior: "smooth" });
+		} else {
+			element.scrollLeft = clamped;
+		}
+	}, [activeClip, cardStride, cardWidth, isPlaying, videoClips]);
 
 	const handleProgressPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
 		if (event.button !== 0) return;
@@ -212,27 +263,31 @@ export const EpisodeClipStrip: React.FC<EpisodeClipStripProps> = ({
 					data-testid="episode-clip-strip-scroll"
 					onWheel={handleStripWheel}
 				>
-					<div className="flex h-full min-w-max items-start gap-3">
-						{videoClips.map((clip, index) => (
-							<EpisodeClipCard
-								key={clip.id}
-								clip={clip}
-								duration={
-									isEpisodeVideoClipPlayable(clip)
-										? (clipPlaybackRangeById.get(clip.id)?.duration ??
-											episodeClipPlaybackDuration(clip, clipMedia))
-										: null
-								}
-								index={index}
-								isActive={clip.id === activeClip?.id}
-								isSelected={clip.id === selectedClipId}
-								posterUrl={clipMedia?.[clip.id]?.posterUrl}
-								width={cardWidth}
-								onActivate={handleActivateClip}
-								onOpenContextMenu={handleOpenContextMenu}
-								onGenerate={onGenerateClip}
-							/>
-						))}
+					<div className="relative h-full" style={{ width: contentWidth }}>
+						{visibleClips.map((clip, offset) => {
+							const index = firstVisibleIndex + offset;
+							return (
+								<div key={clip.id} className="absolute top-0" style={{ left: index * cardStride }}>
+									<EpisodeClipCard
+										clip={clip}
+										duration={
+											isEpisodeVideoClipPlayable(clip)
+												? (clipPlaybackRangeById.get(clip.id)?.duration ??
+													episodeClipPlaybackDuration(clip, clipMedia))
+												: null
+										}
+										index={index}
+										isActive={clip.id === activeClip?.id}
+										isSelected={clip.id === selectedClipId}
+										posterUrl={clipMedia?.[clip.id]?.posterUrl}
+										width={cardWidth}
+										onActivate={handleActivateClip}
+										onOpenContextMenu={handleOpenContextMenu}
+										onGenerate={onGenerateClip}
+									/>
+								</div>
+							);
+						})}
 					</div>
 				</div>
 				{contextMenu ? (

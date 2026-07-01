@@ -186,6 +186,7 @@ export const ProjectOverview: React.FC = () => {
 		data: storyboardVideoResources,
 		error: storyboardVideoResourcesError,
 		isLoading: isStoryboardVideoResourcesLoading,
+		mutate: mutateStoryboardVideoResources,
 	} = useSWR(projectId ? workspaceStoryboardVideoResourcesKey(projectId) : null, () =>
 		getWorkspaceStoryboardVideoResources(projectId ?? ""),
 	);
@@ -197,6 +198,7 @@ export const ProjectOverview: React.FC = () => {
 		data: workspaceDocumentResources,
 		error: documentResourcesError,
 		isLoading: isDocumentResourcesLoading,
+		mutate: mutateDocumentResources,
 	} = useSWR(projectId ? workspaceDocumentResourcesKey(projectId) : null, () =>
 		getWorkspaceDocumentResources(projectId ?? ""),
 	);
@@ -278,7 +280,12 @@ export const ProjectOverview: React.FC = () => {
 	useEffect(() => {
 		if (!projectId) return;
 
-		const refreshKeys = completedImageTaskSelectedAssetsRefreshKeys(imageTaskData?.tasks ?? []);
+		// 生成完成后服务端会把选中切到最新结果；这里检测到新完成的图片/视频任务就重拉
+		// 选中资源 + 成片/文档资源列表，让外部列表反映新的选中与「已生成」计数。
+		const refreshKeys = [
+			...completedResourceTaskSelectedAssetsRefreshKeys(imageTaskData?.tasks ?? []),
+			...completedResourceTaskSelectedAssetsRefreshKeys(videoTaskData?.tasks ?? []),
+		];
 		const pendingKeys = refreshKeys.filter(
 			(key) => !refreshedSelectedAssetTaskKeysRef.current.has(key),
 		);
@@ -288,7 +295,16 @@ export const ProjectOverview: React.FC = () => {
 			refreshedSelectedAssetTaskKeysRef.current.add(key);
 		}
 		void mutateSelectedResources();
-	}, [imageTaskData?.tasks, mutateSelectedResources, projectId]);
+		void mutateStoryboardVideoResources();
+		void mutateDocumentResources();
+	}, [
+		imageTaskData?.tasks,
+		videoTaskData?.tasks,
+		mutateSelectedResources,
+		mutateStoryboardVideoResources,
+		mutateDocumentResources,
+		projectId,
+	]);
 
 	const createdAtLabel = useMemo(() => {
 		if (!config?.createdAt) return "";
@@ -596,7 +612,6 @@ const DocumentResourcesDialog: React.FC<{
 
 	const Icon = descriptor.icon;
 	const titleId = `document-derived-resources-${descriptor.key}-title`;
-	const selectedCount = selectedAssetCountForResourceType(assets, descriptor.key);
 
 	return (
 		<GenerationModalShell
@@ -606,11 +621,6 @@ const DocumentResourcesDialog: React.FC<{
 					<Icon className="size-4 shrink-0 text-muted-foreground" />
 					<span className="truncate">{descriptor.label} · 文档资源</span>
 				</span>
-			}
-			titleAside={
-				<Badge variant="secondary" className="shrink-0">
-					文档 {filteredResources.length} 项 · 已选 {selectedCount} 张
-				</Badge>
 			}
 			titleId={titleId}
 			contentClassName="h-[min(86vh,760px)]"
@@ -1052,7 +1062,6 @@ const StoryboardVideoResourcesDialog: React.FC<{
 	onOpenChange,
 	onPrepareWorkbench,
 }) => {
-	const videoCount = group ? storyboardDocumentGroupVideoCount(group) : 0;
 	const [activeTab, setActiveTab] = useState<StoryboardVideoResourcesDialogTab>("list");
 	// 已访问过的重型 tab(画布/预览)首次进入后常驻挂载,之后切换瞬时完成,无需重建画布/播放器。
 	const [visitedTabs, setVisitedTabs] = useState<Set<StoryboardVideoResourcesDialogTab>>(
@@ -1135,9 +1144,6 @@ const StoryboardVideoResourcesDialog: React.FC<{
 				}
 				titleAside={
 					<div className="flex items-center gap-3">
-						<Badge variant="secondary" className="shrink-0">
-							分镜组 {group.reels.length} 项 · 成片 {videoCount} 个
-						</Badge>
 						<TabsList className="shrink-0">
 							<TabsTrigger value="list">
 								<List className="size-3.5" />
@@ -1462,14 +1468,16 @@ const storyboardReelGenerationStatusMap = (
 	return next;
 };
 
-const completedImageTaskSelectedAssetsRefreshKeys = (tasks: GenerationTask[]) =>
+const completedResourceTaskSelectedAssetsRefreshKeys = (tasks: GenerationTask[]) =>
 	tasks.flatMap((task) => {
 		if (
-			task.kind !== "image" ||
+			(task.kind !== "image" && task.kind !== "video") ||
 			resourceGenerationStatusKind(task.status) !== "completed" ||
 			!task.documentId?.trim() ||
 			!task.sectionId?.trim() ||
-			!task.assets.some((asset) => asset.kind === "image" && Boolean(generationAssetSource(asset)))
+			!task.assets.some(
+				(asset) => asset.kind === task.kind && Boolean(generationAssetSource(asset)),
+			)
 		) {
 			return [];
 		}
