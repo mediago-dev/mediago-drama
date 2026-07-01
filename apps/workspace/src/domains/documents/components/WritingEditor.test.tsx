@@ -138,8 +138,10 @@ describe("WritingEditor", () => {
 		expect(testState.mentionPopoverProps?.projectId).toBe("project-a");
 	});
 
-	it("passes selected section images as editor display data without changing markdown value", async () => {
+	it("does not feed selected section images into the document editor", async () => {
 		const document = makeDocument();
+		// Even when the project has selected image assets, the document editor no longer
+		// renders per-section image previews — documents stay text-only.
 		generationApiMocks.getSelectedGenerationAssets.mockResolvedValue({
 			assets: [
 				{
@@ -151,16 +153,6 @@ describe("WritingEditor", () => {
 					sourceDocumentId: "story-doc",
 					title: "画面图",
 					url: "/api/v1/media-assets/selected-image/content",
-				},
-				{
-					assetIndex: 0,
-					id: "other-doc-image",
-					kind: "image",
-					resourceId: "section_visual",
-					resourceType: "storyboard",
-					sourceDocumentId: "other-doc",
-					title: "其他文档图",
-					url: "/api/v1/media-assets/other-doc-image/content",
 				},
 			],
 		});
@@ -176,16 +168,8 @@ describe("WritingEditor", () => {
 			</MemoryRouter>,
 		);
 
-		await waitFor(() =>
-			expect(testState.markdownEditorProps?.selectedSectionImageAssets).toEqual([
-				expect.objectContaining({
-					id: "selected-image",
-					resourceId: "section_visual",
-					url: "/api/v1/media-assets/selected-image/content",
-				}),
-			]),
-		);
-		expect(testState.markdownEditorProps?.value).toBe(document.content);
+		await waitFor(() => expect(testState.markdownEditorProps?.value).toBe(document.content));
+		expect(testState.markdownEditorProps?.selectedSectionImageAssets).toBeUndefined();
 	});
 
 	it("opens the global generation dialog for the requested section and kind", () => {

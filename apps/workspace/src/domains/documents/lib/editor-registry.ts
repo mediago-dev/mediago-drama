@@ -13,11 +13,6 @@ export interface MarkdownSectionIdentity {
 	headingText: string;
 }
 
-export interface MarkdownSectionImage {
-	src: string;
-	title?: string;
-}
-
 export interface MarkdownSectionMentionReference {
 	documentId: string;
 	blockId?: string;
@@ -33,12 +28,6 @@ export interface MarkdownSectionMedia {
 	title?: string;
 }
 
-export interface MarkdownSectionImagePlaceholder {
-	id: string;
-	prompt?: string;
-	title?: string;
-}
-
 export interface MarkdownHybridEditorHandle {
 	documentId: string;
 	applyBlockDelta: (
@@ -47,10 +36,6 @@ export interface MarkdownHybridEditorHandle {
 		options?: MarkdownBlockDeltaOptions,
 	) => boolean;
 	setSelection: (selection: DocumentRangeSelection) => boolean;
-	removeSectionImagePlaceholder: (
-		section: MarkdownSectionIdentity,
-		placeholderId: string,
-	) => boolean;
 	commitBlockDelta: () => boolean;
 	hasPendingBlockDelta: () => boolean;
 }
