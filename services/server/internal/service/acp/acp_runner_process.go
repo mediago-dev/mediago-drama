@@ -41,19 +41,27 @@ func processLogAttrs(logArgs []any, pid int, startedAt time.Time) []any {
 }
 
 type acpStderrWriter struct {
-	publish   func(agentEvent)
-	sessionID string
-	runID     string
-	rawLog    *acpRawLogger
+	publish            func(agentEvent)
+	recordRuntimeError func(string)
+	sessionID          string
+	runID              string
+	rawLog             *acpRawLogger
 }
 
 func (writer acpStderrWriter) Write(data []byte) (int, error) {
 	message := strings.TrimSpace(string(data))
 	if message != "" {
+		displayMessage := TruncateAgentMessage(message)
+		if friendly := friendlyACPProviderErrorMessage(message); friendly != "" {
+			displayMessage = friendly
+			if writer.recordRuntimeError != nil {
+				writer.recordRuntimeError(friendly)
+			}
+		}
 		logACPStderr(writer.sessionID, writer.runID, message)
 		event := agentEvent{
 			Type:    "agent.acp",
-			Message: TruncateAgentMessage(message),
+			Message: displayMessage,
 			ACP: &agentACPEvent{
 				Kind:   ACPRuntimeLogKind,
 				Status: "failed",

@@ -11,6 +11,9 @@ func ParseACPFinalResponse(raw string, request AgentRunRequest) AgentFinalRespon
 	if text == "" {
 		return AgentFinalResponse{Message: "ACP Agent 已完成，但没有最终消息。"}
 	}
+	if friendly := friendlyACPProviderErrorMessage(text); friendly != "" {
+		return AgentFinalResponse{Message: friendly}
+	}
 
 	prefix, object := SplitACPResponseObject(text)
 	if object == "" {

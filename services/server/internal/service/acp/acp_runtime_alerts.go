@@ -32,6 +32,15 @@ func runtimeAlertForACPPromptError(err error, contextErr error) *AgentACPRuntime
 		contextText = contextErr.Error()
 	}
 	normalized := strings.ToLower(strings.TrimSpace(errText + " " + contextText))
+	if friendly := friendlyACPProviderErrorMessage(normalized); friendly != "" {
+		return &AgentACPRuntimeAlert{
+			Severity: "error",
+			Title:    "模型调用失败",
+			Message:  friendly,
+			Reason:   "api_key_balance_insufficient",
+			Detail:   compactRuntimeAlertDetail(firstNonEmptyRuntimeAlertDetail(errText, contextText)),
+		}
+	}
 	switch {
 	case contextErr == context.DeadlineExceeded || strings.Contains(normalized, "context deadline exceeded"):
 		return &AgentACPRuntimeAlert{

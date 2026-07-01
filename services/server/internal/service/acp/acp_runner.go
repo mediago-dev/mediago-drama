@@ -47,29 +47,30 @@ type permissionDecision struct {
 }
 
 type acpClient struct {
-	publish            func(agentEvent)
-	workspaceDir       string
-	sessionID          string
-	runID              string
-	acpSessionID       string
-	rawLog             *acpRawLogger
-	mu                 sync.Mutex
-	acceptUpdate       bool
-	message            strings.Builder
-	streamedMessage    bool
-	promptStartedAt    time.Time
-	firstUpdateLogged  bool
-	updateCount        int
-	messageChunkCount  int
-	thoughtChunkCount  int
-	toolCallCount      int
-	toolCallStarts     map[string]time.Time
-	pendingPermissions sync.Map
-	pendingRequests    sync.Map
-	permissionTimeout  time.Duration
-	thoughtMu          sync.Mutex
-	thoughtBuf         strings.Builder
-	thoughtTimer       *time.Timer
+	publish             func(agentEvent)
+	workspaceDir        string
+	sessionID           string
+	runID               string
+	acpSessionID        string
+	rawLog              *acpRawLogger
+	mu                  sync.Mutex
+	acceptUpdate        bool
+	message             strings.Builder
+	streamedMessage     bool
+	runtimeErrorMessage string
+	promptStartedAt     time.Time
+	firstUpdateLogged   bool
+	updateCount         int
+	messageChunkCount   int
+	thoughtChunkCount   int
+	toolCallCount       int
+	toolCallStarts      map[string]time.Time
+	pendingPermissions  sync.Map
+	pendingRequests     sync.Map
+	permissionTimeout   time.Duration
+	thoughtMu           sync.Mutex
+	thoughtBuf          strings.Builder
+	thoughtTimer        *time.Timer
 }
 
 // NewACPAgentRunner creates an ACP-backed agent runner.

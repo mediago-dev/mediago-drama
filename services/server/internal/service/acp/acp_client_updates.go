@@ -134,9 +134,15 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 			Content:    MapACPToolCallContent(update.ToolCallUpdate.Content),
 		}
 		message := FormatACPToolCall(FirstNonEmpty(title, string(update.ToolCallUpdate.ToolCallId)), status)
+		runtimeText := ACPRuntimeLogText(*acpPayload)
+		friendlyError := friendlyACPProviderErrorMessage(runtimeText)
+		if friendlyError != "" {
+			client.setRuntimeErrorMessage(friendlyError)
+			message = friendlyError
+		}
 		if IsACPToolRuntimeLog(*acpPayload) {
 			acpPayload.Kind = ACPRuntimeLogKind
-			message = FirstNonEmpty(TruncateAgentMessage(ACPRuntimeLogText(*acpPayload)), "运行日志")
+			message = FirstNonEmpty(friendlyError, TruncateAgentMessage(runtimeText), "运行日志")
 		}
 		event := agentEvent{
 			Type:    "agent.acp",

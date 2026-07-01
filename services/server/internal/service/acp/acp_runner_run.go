@@ -48,6 +48,13 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	}
 	acpLog().Info("acp process starting", logArgs...)
 	rawLog := newACPRawLogger(workspaceDir, request.ProjectDir, request.ProjectID, request.SessionID, request.RunID)
+	client := &acpClient{
+		publish:      publish,
+		workspaceDir: workspaceDir,
+		sessionID:    request.SessionID,
+		runID:        request.RunID,
+		rawLog:       rawLog,
+	}
 
 	processConfig, err := runner.prepareProcessConfig(ctx, command, args, request)
 	if err != nil {
@@ -58,8 +65,13 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		cmd.Dir = runDir
 	}
 	cmd.Env = mergedProcessEnv(processConfig)
-	cmd.Stderr = acpStderrWriter{publish: publish, sessionID: request.SessionID, runID: request.RunID, rawLog: rawLog}
-
+	cmd.Stderr = acpStderrWriter{
+		publish:            publish,
+		recordRuntimeError: client.setRuntimeErrorMessage,
+		sessionID:          request.SessionID,
+		runID:              request.RunID,
+		rawLog:             rawLog,
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return agentRunResult{}, fmt.Errorf("opening ACP stdin: %w", err)
@@ -83,13 +95,6 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		cleanupACPProcess(cmd, stdin, stdout, logArgs, pid, startedAt)
 	}()
 
-	client := &acpClient{
-		publish:      publish,
-		workspaceDir: workspaceDir,
-		sessionID:    request.SessionID,
-		runID:        request.RunID,
-		rawLog:       rawLog,
-	}
 	runner.activeClients.Store(request.SessionID, client)
 	defer func() {
 		client.cancelPendingPermissions()
@@ -300,7 +305,13 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		})
 	}
 
-	final := ParseACPFinalResponse(client.messageText(), request)
+	rawFinalMessage := client.messageText()
+	final := ParseACPFinalResponse(rawFinalMessage, request)
+	if strings.TrimSpace(rawFinalMessage) == "" {
+		if runtimeError := client.runtimeErrorText(); runtimeError != "" {
+			final.Message = runtimeError
+		}
+	}
 	if final.Message == "" {
 		final.Message = "ACP Agent 已完成。"
 	}

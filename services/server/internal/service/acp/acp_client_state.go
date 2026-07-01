@@ -3,6 +3,7 @@ package acp
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -13,6 +14,29 @@ func (client *acpClient) appendMessage(text string) {
 	defer client.mu.Unlock()
 	client.message.WriteString(text)
 	client.streamedMessage = true
+}
+
+func (client *acpClient) setRuntimeErrorMessage(message string) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return
+	}
+	shouldLog := false
+	client.mu.Lock()
+	if client.runtimeErrorMessage != message {
+		shouldLog = true
+	}
+	client.runtimeErrorMessage = message
+	client.mu.Unlock()
+	if shouldLog {
+		acpLog().Warn("acp runtime error captured", client.logAttrs("runtime_error", message)...)
+	}
+}
+
+func (client *acpClient) runtimeErrorText() string {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.runtimeErrorMessage
 }
 
 func (client *acpClient) acceptingSessionUpdates() bool {
@@ -44,6 +68,7 @@ func (client *acpClient) resetMessage() {
 	defer client.mu.Unlock()
 	client.message.Reset()
 	client.streamedMessage = false
+	client.runtimeErrorMessage = ""
 }
 
 // beginPromptMetrics resets the per-prompt counters and timing baselines
