@@ -19,7 +19,7 @@ export const SelectionBubble: React.FC<SelectionBubbleProps> = ({
 
 	return (
 		<div
-			className="absolute z-50 -translate-x-1/2 rounded-sm border border-border bg-ide-panel p-1 text-ide-panel-foreground shadow-lg"
+			className="absolute z-[5] -translate-x-1/2 rounded-sm border border-border bg-ide-panel p-1 text-ide-panel-foreground shadow-lg"
 			style={{ left: x, top }}
 			onMouseDown={(event) => event.preventDefault()}
 		>
