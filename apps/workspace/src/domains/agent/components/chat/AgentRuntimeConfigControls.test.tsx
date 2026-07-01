@@ -132,6 +132,38 @@ describe("AgentRuntimeConfigControls", () => {
 		expect(onModelChange).toHaveBeenCalledWith("minimax/minimax-m3");
 	});
 
+	it("sizes the model menu to the returned category and model rows", () => {
+		renderControls({
+			model: {
+				configId: "model",
+				currentValue: "minimax/minimax-m2.7-highspeed",
+				options: [
+					{
+						name: "MiniMax 国内/MiniMax-M2.7",
+						value: "minimax/minimax-m2.7",
+					},
+					{
+						name: "MiniMax 国内/MiniMax-M2.7-highspeed",
+						value: "minimax/minimax-m2.7-highspeed",
+					},
+					{
+						name: "MiniMax 国内/MiniMax-M3",
+						value: "minimax/minimax-m3",
+					},
+				],
+			},
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "模型" }));
+		const menu = screen.getByLabelText("分类和模型");
+
+		expect(menu).toHaveClass("h-[var(--agent-runtime-model-menu-height)]");
+		expect(menu).not.toHaveClass("h-[22rem]");
+		expect(menu.getAttribute("style")).toContain(
+			"3 * var(--generation-model-popover-option-height)",
+		);
+	});
+
 	it("renders agent model trigger icons as provider then model and deduplicates matching icons", () => {
 		const view = renderControls(
 			{
@@ -222,7 +254,10 @@ describe("AgentRuntimeConfigControls", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "模型" }));
 		const menu = screen.getByLabelText("分类和模型");
-		expect(menu).toHaveClass("h-[22rem]");
+		expect(menu).toHaveClass("h-[var(--agent-runtime-model-menu-height)]");
+		expect(menu.getAttribute("style")).toContain(
+			"2 * var(--generation-model-popover-option-height)",
+		);
 
 		fireEvent.pointerEnter(screen.getByRole("button", { name: "MiniMax 国内" }));
 		expect(screen.getByText("MiniMax-M3")).toBeTruthy();

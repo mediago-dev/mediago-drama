@@ -109,10 +109,13 @@ type AgentModelProfileMutation struct {
 
 // OpenCodeRuntimeConfig is the generated process config for opencode ACP.
 type OpenCodeRuntimeConfig struct {
-	ConfigDir        string
-	Env              map[string]string
-	ProfileCount     int
-	DefaultProfileID string
+	ConfigDir             string
+	Env                   map[string]string
+	ProfileCount          int
+	DefaultProfileID      string
+	RestrictModelValues   bool
+	AllowedModelValues    []string
+	AllowedModelProviders []string
 }
 
 // ListAgentModelProfiles returns global ACP model profiles with redacted credential state.
@@ -312,7 +315,7 @@ func (service *Settings) PrepareOpenCodeRuntimeConfig(ctx context.Context, works
 		return OpenCodeRuntimeConfig{}, err
 	}
 	if len(enabled) == 0 {
-		return OpenCodeRuntimeConfig{}, nil
+		return OpenCodeRuntimeConfig{RestrictModelValues: true}, nil
 	}
 	configDir := filepath.Join(shared.WorkspacePathsFor(workspaceDir).GlobalMetadataDir(), "runtime", "agents", "opencode", "config")
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
@@ -323,10 +326,13 @@ func (service *Settings) PrepareOpenCodeRuntimeConfig(ctx context.Context, works
 		return OpenCodeRuntimeConfig{}, err
 	}
 	return OpenCodeRuntimeConfig{
-		ConfigDir:        configDir,
-		Env:              env,
-		ProfileCount:     len(enabled),
-		DefaultProfileID: defaultProfileID(enabled),
+		ConfigDir:             configDir,
+		Env:                   env,
+		ProfileCount:          len(enabled),
+		DefaultProfileID:      defaultProfileID(enabled),
+		RestrictModelValues:   true,
+		AllowedModelValues:    agentRuntimeModelValues(enabled),
+		AllowedModelProviders: agentRuntimeModelProviders(enabled),
 	}, nil
 }
 
@@ -1212,6 +1218,51 @@ func renderOpenCodeConfig(profiles []domainAgentModelProfile) openCodeConfigFile
 		}
 	}
 	return config
+}
+
+func agentRuntimeModelValues(profiles []domainAgentModelProfile) []string {
+	values := make([]string, 0, len(profiles))
+	seen := map[string]struct{}{}
+	for _, profile := range profiles {
+		value := agentRuntimeModelValue(profile)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		values = append(values, value)
+	}
+	return values
+}
+
+func agentRuntimeModelProviders(profiles []domainAgentModelProfile) []string {
+	values := make([]string, 0, len(profiles))
+	seen := map[string]struct{}{}
+	for _, profile := range profiles {
+		value := strings.TrimSpace(profile.ProviderID)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		values = append(values, value)
+	}
+	return values
+}
+
+func agentRuntimeModelValue(profile domainAgentModelProfile) string {
+	providerID := strings.TrimSpace(profile.ProviderID)
+	model := strings.TrimSpace(profile.Model)
+	if providerID == "" || model == "" {
+		return ""
+	}
+	return providerID + "/" + model
 }
 
 func writeOpenCodeConfig(path string, config openCodeConfigFile) error {

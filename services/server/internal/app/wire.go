@@ -94,10 +94,13 @@ func newAPIHandler(config Config) *apiHandler {
 				return serviceacp.ProcessConfig{}, err
 			}
 			return serviceacp.ProcessConfig{
-				ConfigDir:        config.ConfigDir,
-				Env:              config.Env,
-				ProfileCount:     config.ProfileCount,
-				DefaultProfileID: config.DefaultProfileID,
+				ConfigDir:             config.ConfigDir,
+				Env:                   config.Env,
+				ProfileCount:          config.ProfileCount,
+				DefaultProfileID:      config.DefaultProfileID,
+				RestrictModelValues:   config.RestrictModelValues,
+				AllowedModelValues:    config.AllowedModelValues,
+				AllowedModelProviders: config.AllowedModelProviders,
 			}, nil
 		}))
 	}

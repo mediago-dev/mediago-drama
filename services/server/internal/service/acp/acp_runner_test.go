@@ -303,6 +303,121 @@ func TestAgentRuntimeConfigFromACPSession(t *testing.T) {
 	}
 }
 
+func TestAgentRuntimeConfigFromACPSessionRestrictsModelsToRuntimeProfiles(t *testing.T) {
+	modelCategory := acp.SessionConfigOptionCategoryModel
+	modelOptions := acp.SessionConfigSelectOptionsUngrouped{
+		{Name: "OpenCode Zen/Big Pickle", Value: acp.SessionConfigValueId("opencode/big-pickle")},
+		{Name: "GitHub Copilot/GPT-5 Mini", Value: acp.SessionConfigValueId("github-copilot/gpt-5-mini")},
+		{Name: "DMXAPI/GPT-4.1 Mini", Value: acp.SessionConfigValueId("dmxapi/gpt-4.1-mini")},
+		{Name: "MediaGo/MiniMax M3", Value: acp.SessionConfigValueId("mediago/MiniMax-M3")},
+		{Name: "MiniMax 国内/MiniMax-M3", Value: acp.SessionConfigValueId("minimax-cn/MiniMax-M3")},
+	}
+	config := agentRuntimeConfigFromACPSession(acp.NewSessionResponse{
+		SessionId: acp.SessionId("session-1"),
+		ConfigOptions: []acp.SessionConfigOption{
+			{
+				Select: &acp.SessionConfigOptionSelect{
+					Id:           acp.SessionConfigId("model"),
+					Name:         "Model",
+					Category:     &modelCategory,
+					CurrentValue: acp.SessionConfigValueId("opencode/big-pickle"),
+					Options:      acp.SessionConfigSelectOptions{Ungrouped: &modelOptions},
+				},
+			},
+		},
+	}, agentRuntimeModelFilter{
+		Restrict: true,
+		AllowedValues: []string{
+			"dmxapi/gpt-4.1-mini",
+			"mediago/MiniMax-M3",
+		},
+	})
+
+	if config.Model == nil {
+		t.Fatal("model config is nil")
+	}
+	if config.Model.CurrentValue != "dmxapi/gpt-4.1-mini" {
+		t.Fatalf("current model = %q, want first allowed model", config.Model.CurrentValue)
+	}
+	if len(config.Model.Options) != 2 ||
+		config.Model.Options[0].Value != "dmxapi/gpt-4.1-mini" ||
+		config.Model.Options[1].Value != "mediago/MiniMax-M3" {
+		t.Fatalf("model options = %#v, want only configured runtime profile models", config.Model.Options)
+	}
+	if config.Reasoning == nil {
+		t.Fatal("reasoning config is nil")
+	}
+}
+
+func TestAgentRuntimeConfigFromACPSessionFallsBackToConfiguredProviders(t *testing.T) {
+	modelCategory := acp.SessionConfigOptionCategoryModel
+	modelOptions := acp.SessionConfigSelectOptionsUngrouped{
+		{Name: "OpenCode Zen/Big Pickle", Value: acp.SessionConfigValueId("opencode/big-pickle")},
+		{Name: "GitHub Copilot/GPT-5 Mini", Value: acp.SessionConfigValueId("github-copilot/gpt-5-mini")},
+		{Name: "MiniMax/MiniMax-M2.7", Value: acp.SessionConfigValueId("minimax/MiniMax-M2.7")},
+		{Name: "MiniMax/MiniMax-M3", Value: acp.SessionConfigValueId("minimax/MiniMax-M3")},
+	}
+	config := agentRuntimeConfigFromACPSession(acp.NewSessionResponse{
+		SessionId: acp.SessionId("session-1"),
+		ConfigOptions: []acp.SessionConfigOption{
+			{
+				Select: &acp.SessionConfigOptionSelect{
+					Id:           acp.SessionConfigId("model"),
+					Name:         "Model",
+					Category:     &modelCategory,
+					CurrentValue: acp.SessionConfigValueId("opencode/big-pickle"),
+					Options:      acp.SessionConfigSelectOptions{Ungrouped: &modelOptions},
+				},
+			},
+		},
+	}, agentRuntimeModelFilter{
+		Restrict:         true,
+		AllowedValues:    []string{"minimax-cn/MiniMax-M3"},
+		AllowedProviders: []string{"minimax-cn"},
+	})
+
+	if config.Model == nil {
+		t.Fatal("model config is nil")
+	}
+	if config.Model.CurrentValue != "minimax/MiniMax-M2.7" {
+		t.Fatalf("current model = %q, want first configured provider model", config.Model.CurrentValue)
+	}
+	if len(config.Model.Options) != 2 ||
+		config.Model.Options[0].Value != "minimax/MiniMax-M2.7" ||
+		config.Model.Options[1].Value != "minimax/MiniMax-M3" {
+		t.Fatalf("model options = %#v, want only configured MiniMax provider models", config.Model.Options)
+	}
+}
+
+func TestAgentRuntimeConfigFromACPSessionHidesModelsWhenRestrictedWithoutProfiles(t *testing.T) {
+	modelCategory := acp.SessionConfigOptionCategoryModel
+	modelOptions := acp.SessionConfigSelectOptionsUngrouped{
+		{Name: "OpenCode Zen/Big Pickle", Value: acp.SessionConfigValueId("opencode/big-pickle")},
+		{Name: "GitHub Copilot/GPT-5 Mini", Value: acp.SessionConfigValueId("github-copilot/gpt-5-mini")},
+	}
+	config := agentRuntimeConfigFromACPSession(acp.NewSessionResponse{
+		SessionId: acp.SessionId("session-1"),
+		ConfigOptions: []acp.SessionConfigOption{
+			{
+				Select: &acp.SessionConfigOptionSelect{
+					Id:           acp.SessionConfigId("model"),
+					Name:         "Model",
+					Category:     &modelCategory,
+					CurrentValue: acp.SessionConfigValueId("opencode/big-pickle"),
+					Options:      acp.SessionConfigSelectOptions{Ungrouped: &modelOptions},
+				},
+			},
+		},
+	}, agentRuntimeModelFilter{Restrict: true})
+
+	if config.Model != nil {
+		t.Fatalf("model config = %#v, want no model options when no runtime profiles are configured", config.Model)
+	}
+	if config.Reasoning != nil {
+		t.Fatalf("reasoning config = %#v, want no fallback when no configured model remains", config.Reasoning)
+	}
+}
+
 func TestAgentRuntimeConfigFromACPSessionAddsOpenCodeThinkingWhenOfficialMiniMaxExists(t *testing.T) {
 	modelCategory := acp.SessionConfigOptionCategoryModel
 	modelOptions := acp.SessionConfigSelectOptionsUngrouped{
@@ -416,6 +531,7 @@ func TestApplyACPSessionSelectionsSkipsReasoningForExternalProviderModel(t *test
 func TestApplyACPSessionSelectionsAppliesReasoningForMiniMaxM3(t *testing.T) {
 	for _, model := range []string{
 		"minimax-cn/MiniMax-M3",
+		"minimax/MiniMax-M3",
 		"mediago/MiniMax-M3",
 	} {
 		t.Run(model, func(t *testing.T) {

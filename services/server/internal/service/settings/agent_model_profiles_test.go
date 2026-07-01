@@ -172,6 +172,12 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	if config.ProfileCount <= 1 || config.DefaultProfileID != "openrouter-gpt-5-5" {
 		t.Fatalf("runtime config = %#v, want openrouter catalog profiles", config)
 	}
+	if !config.RestrictModelValues || !stringSliceContains(config.AllowedModelValues, "openrouter/openai/gpt-5.5") {
+		t.Fatalf("allowed model values = %#v, want openrouter runtime profile whitelist", config.AllowedModelValues)
+	}
+	if !stringSliceContains(config.AllowedModelProviders, "openrouter") {
+		t.Fatalf("allowed model providers = %#v, want openrouter provider whitelist", config.AllowedModelProviders)
+	}
 	envName := AgentModelProfileEnvName("openrouter-gpt-5-5")
 	if config.Env[envName] != "sk-openrouter-secret" {
 		t.Fatalf("runtime env %q = %q, want secret in process env only", envName, config.Env[envName])
@@ -222,8 +228,11 @@ func TestPrepareOpenCodeRuntimeConfigExcludesDMXWhenPlatformDisabled(t *testing.
 	if err != nil {
 		t.Fatalf("PrepareOpenCodeRuntimeConfig returned error: %v", err)
 	}
-	if config.ProfileCount != 0 || config.DefaultProfileID != "" || config.ConfigDir != "" || len(config.Env) != 0 {
+	if config.ProfileCount != 0 || config.DefaultProfileID != "" || config.ConfigDir != "" || len(config.Env) != 0 || len(config.AllowedModelValues) != 0 || len(config.AllowedModelProviders) != 0 {
 		t.Fatalf("runtime config = %#v, want no dmx agent runtime profile", config)
+	}
+	if !config.RestrictModelValues {
+		t.Fatalf("RestrictModelValues = false, want true when no runtime profiles are configured")
 	}
 }
 
@@ -245,6 +254,12 @@ func TestPrepareOpenCodeRuntimeConfigIncludesDMXAPIWhenPlatformEnabled(t *testin
 	}
 	if config.ProfileCount == 0 || config.DefaultProfileID != "dmxapi-gpt-4-1-mini" {
 		t.Fatalf("runtime config = %#v, want dmxapi catalog profiles", config)
+	}
+	if !config.RestrictModelValues || !stringSliceContains(config.AllowedModelValues, "dmxapi/gpt-4.1-mini") {
+		t.Fatalf("allowed model values = %#v, want dmxapi runtime profile whitelist", config.AllowedModelValues)
+	}
+	if !stringSliceContains(config.AllowedModelProviders, "dmxapi") {
+		t.Fatalf("allowed model providers = %#v, want dmxapi provider whitelist", config.AllowedModelProviders)
 	}
 	if config.Env[AgentModelProfileEnvName("dmxapi-gpt-4-1-mini")] != "sk-dmx-secret" {
 		t.Fatalf("runtime env = %#v, want DMX key injected for dmxapi", config.Env)
@@ -379,6 +394,12 @@ func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testi
 	}
 	if config.ProfileCount != 2 || config.DefaultProfileID != "mediago-local-gpt-test" {
 		t.Fatalf("runtime config = %#v, want dynamic MediaGo text profiles", config)
+	}
+	if !config.RestrictModelValues || !stringSliceContains(config.AllowedModelValues, "mediago/local/gpt-test") {
+		t.Fatalf("allowed model values = %#v, want MediaGo dynamic runtime profile whitelist", config.AllowedModelValues)
+	}
+	if !stringSliceContains(config.AllowedModelProviders, "mediago") {
+		t.Fatalf("allowed model providers = %#v, want MediaGo provider whitelist", config.AllowedModelProviders)
 	}
 	if config.Env[AgentModelProfileEnvName("mediago-local-gpt-test")] != "mgak-secret" {
 		t.Fatalf("runtime env = %#v, want MediaGo key injected for dynamic profile", config.Env)

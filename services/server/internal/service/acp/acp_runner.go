@@ -138,10 +138,13 @@ type ProcessConfigRequest struct {
 
 // ProcessConfig contains extra environment for one ACP child process.
 type ProcessConfig struct {
-	ConfigDir        string
-	Env              map[string]string
-	ProfileCount     int
-	DefaultProfileID string
+	ConfigDir             string
+	Env                   map[string]string
+	ProfileCount          int
+	DefaultProfileID      string
+	RestrictModelValues   bool
+	AllowedModelValues    []string
+	AllowedModelProviders []string
 }
 
 // ProcessConfigProvider prepares extra config for one ACP child process.
@@ -257,7 +260,11 @@ func (runner *acpAgentRunner) InspectSessionConfig(ctx context.Context, projectI
 	if err != nil {
 		return agentRuntimeConfigResponse{}, fmt.Errorf("creating ACP config probe session: %w", err)
 	}
-	config := AgentRuntimeConfigFromACPSession(session)
+	config := agentRuntimeConfigFromACPSession(session, agentRuntimeModelFilter{
+		Restrict:         processConfig.RestrictModelValues,
+		AllowedValues:    processConfig.AllowedModelValues,
+		AllowedProviders: processConfig.AllowedModelProviders,
+	})
 	acpLog().Debug(
 		"acp config probe completed",
 		append(logArgs,

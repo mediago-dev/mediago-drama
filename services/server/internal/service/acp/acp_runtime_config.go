@@ -15,8 +15,18 @@ const (
 	AgentRuntimeConfigSourceOpenCodeThinkingFallback = "opencodeThinkingFallback"
 )
 
+type agentRuntimeModelFilter struct {
+	Restrict         bool
+	AllowedValues    []string
+	AllowedProviders []string
+}
+
 // AgentRuntimeConfigFromACPSession maps ACP session metadata to UI runtime config.
 func AgentRuntimeConfigFromACPSession(session acp.NewSessionResponse) AgentRuntimeConfigResponse {
+	return agentRuntimeConfigFromACPSession(session, agentRuntimeModelFilter{})
+}
+
+func agentRuntimeConfigFromACPSession(session acp.NewSessionResponse, filter agentRuntimeModelFilter) AgentRuntimeConfigResponse {
 	config := AgentRuntimeConfigResponse{}
 	if session.Modes != nil {
 		config.Permission = AgentRuntimeModeConfig(*session.Modes)
@@ -27,7 +37,7 @@ func AgentRuntimeConfigFromACPSession(session acp.NewSessionResponse) AgentRunti
 			continue
 		}
 		if IsACPModelConfig(*option.Select) {
-			selectConfig := AgentRuntimeModelSelectConfigFromACP(*option.Select)
+			selectConfig := agentRuntimeModelSelectConfigFromACP(*option.Select, filter)
 			if selectConfig == nil {
 				continue
 			}
@@ -105,11 +115,18 @@ func AgentRuntimeSelectConfigFromACP(option acp.SessionConfigOptionSelect) *Agen
 
 // AgentRuntimeModelSelectConfigFromACP maps one ACP model select and removes non-chat models.
 func AgentRuntimeModelSelectConfigFromACP(option acp.SessionConfigOptionSelect) *AgentRuntimeSelectConfig {
+	return agentRuntimeModelSelectConfigFromACP(option, agentRuntimeModelFilter{})
+}
+
+func agentRuntimeModelSelectConfigFromACP(option acp.SessionConfigOptionSelect, filter agentRuntimeModelFilter) *AgentRuntimeSelectConfig {
 	config := AgentRuntimeSelectConfigFromACP(option)
 	if config == nil {
 		return nil
 	}
 	config.Options = AgentRuntimeModelOptions(config.Options)
+	if filter.Restrict {
+		config.Options = agentRuntimeModelOptionsMatching(config.Options, filter.AllowedValues, filter.AllowedProviders)
+	}
 	if len(config.Options) == 0 {
 		return nil
 	}
@@ -174,6 +191,120 @@ func AgentRuntimeModelOptions(options []AgentRuntimeSelectOption) []AgentRuntime
 	return result
 }
 
+func agentRuntimeModelOptionsMatching(options []AgentRuntimeSelectOption, allowedValues []string, allowedProviders []string) []AgentRuntimeSelectOption {
+	allowedModels := map[string]struct{}{}
+	for _, value := range allowedValues {
+		key := normalizedAgentRuntimeModelValue(value)
+		if key != "" {
+			allowedModels[key] = struct{}{}
+		}
+	}
+
+	if len(allowedModels) > 0 {
+		result := make([]AgentRuntimeSelectOption, 0, len(options))
+		for _, option := range options {
+			if _, ok := allowedModels[normalizedAgentRuntimeModelValue(option.Value)]; ok {
+				result = append(result, option)
+			}
+		}
+		if len(result) > 0 {
+			return result
+		}
+	}
+
+	allowedProviderKeys := allowedAgentRuntimeProviderKeys(allowedProviders, allowedValues)
+	if len(allowedProviderKeys) == 0 {
+		return nil
+	}
+
+	result := make([]AgentRuntimeSelectOption, 0, len(options))
+	for _, option := range options {
+		if agentRuntimeProviderAllowed(agentRuntimeModelProvider(option.Value), allowedProviderKeys) {
+			result = append(result, option)
+		}
+	}
+	return result
+}
+
+func normalizedAgentRuntimeModelValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	provider, model, ok := strings.Cut(value, "/")
+	if !ok {
+		return strings.ToLower(value)
+	}
+	provider = strings.TrimSpace(provider)
+	model = strings.TrimSpace(model)
+	if provider == "" || model == "" {
+		return ""
+	}
+	return strings.ToLower(provider) + "/" + strings.ToLower(model)
+}
+
+func allowedAgentRuntimeProviderKeys(allowedProviders []string, allowedValues []string) map[string]struct{} {
+	allowed := map[string]struct{}{}
+	for _, provider := range allowedProviders {
+		addAgentRuntimeProviderAliases(allowed, provider)
+	}
+	for _, value := range allowedValues {
+		provider := agentRuntimeModelProvider(value)
+		addAgentRuntimeProviderAliases(allowed, provider)
+	}
+	return allowed
+}
+
+func agentRuntimeProviderAllowed(provider string, allowed map[string]struct{}) bool {
+	for _, alias := range agentRuntimeProviderAliases(provider) {
+		if _, ok := allowed[normalizedAgentRuntimeProviderKey(alias)]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func addAgentRuntimeProviderAliases(allowed map[string]struct{}, provider string) {
+	for _, alias := range agentRuntimeProviderAliases(provider) {
+		key := normalizedAgentRuntimeProviderKey(alias)
+		if key != "" {
+			allowed[key] = struct{}{}
+		}
+	}
+}
+
+func agentRuntimeProviderAliases(provider string) []string {
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		return nil
+	}
+	switch normalizedAgentRuntimeProviderKey(provider) {
+	case "minimax", "minimaxcn":
+		return []string{provider, "minimax", "minimax-cn"}
+	case "dmx", "dmxapi":
+		return []string{provider, "dmx", "dmxapi"}
+	default:
+		return []string{provider}
+	}
+}
+
+func agentRuntimeModelProvider(value string) string {
+	provider, _, ok := strings.Cut(strings.TrimSpace(value), "/")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(provider)
+}
+
+func normalizedAgentRuntimeProviderKey(provider string) string {
+	provider = strings.TrimSpace(strings.ToLower(provider))
+	if provider == "" {
+		return ""
+	}
+	replacer := strings.NewReplacer("-", "", "_", "", ".", "", " ", "")
+	return replacer.Replace(provider)
+}
+
 func agentRuntimeModelOptionsIncludeOpenCodeThinking(options []AgentRuntimeSelectOption) bool {
 	for _, option := range options {
 		if agentRuntimeModelSupportsOpenCodeThinking(option.Value) {
@@ -191,7 +322,7 @@ func agentRuntimeModelSupportsOpenCodeThinking(value string) bool {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	model = strings.ToLower(strings.TrimSpace(model))
 	switch provider {
-	case "minimax-cn":
+	case "minimax", "minimax-cn":
 		return strings.Contains(model, "minimax-m3")
 	case "mediago":
 		return strings.Contains(model, "minimax-m3") || strings.Contains(model, "minimax m3")

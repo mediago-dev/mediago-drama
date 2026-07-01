@@ -212,6 +212,9 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 		categories.find((category) => category.key === selectedOption?.categoryKey) ??
 		categories[0] ??
 		null;
+	const modelMenuStyle = {
+		"--agent-runtime-model-menu-height": agentRuntimeModelMenuHeight(categories),
+	} as React.CSSProperties;
 
 	useEffect(() => {
 		const fallbackCategoryKey = selectedOption?.categoryKey ?? categories[0]?.key ?? "";
@@ -332,7 +335,8 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 				side="top"
 				align="start"
 				aria-label="分类和模型"
-				className="agent-config-content grid h-[22rem] max-h-[calc(100vh_-_2rem)] w-[min(42rem,calc(100vw_-_2rem))] grid-cols-[minmax(13rem,1fr)_minmax(12rem,0.85fr)] overflow-hidden rounded-[var(--radius-scale-sm)] border-border bg-popover p-0 text-popover-foreground shadow-xl"
+				className="agent-config-content grid h-[var(--agent-runtime-model-menu-height)] max-h-[calc(100vh_-_2rem)] w-[min(42rem,calc(100vw_-_2rem))] grid-cols-[minmax(13rem,1fr)_minmax(12rem,0.85fr)] overflow-hidden rounded-[var(--radius-scale-sm)] border-border bg-popover p-0 text-popover-foreground shadow-xl"
+				style={modelMenuStyle}
 				onPointerLeave={() => {
 					clearSafeTriangle();
 				}}
@@ -504,6 +508,16 @@ const agentRuntimeModelCategories = (
 		categories.push(category);
 	}
 	return categories;
+};
+
+const agentRuntimeModelMenuHeight = (categories: AgentRuntimeModelCategory[]) => {
+	const maxModelOptionCount = categories.reduce(
+		(max, category) => Math.max(max, category.options.length),
+		0,
+	);
+	const rowCount = Math.max(categories.length, maxModelOptionCount, 1);
+	const gapCount = Math.max(rowCount - 1, 0);
+	return `min(22rem, calc(var(--generation-popover-padding) * 2 + 1.25rem + ${rowCount} * var(--generation-model-popover-option-height) + ${gapCount} * 0.25rem))`;
 };
 
 const splitAgentProviderModel = (value: string) => {
