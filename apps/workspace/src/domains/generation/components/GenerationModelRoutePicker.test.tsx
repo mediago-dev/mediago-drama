@@ -196,6 +196,17 @@ describe("GenerationModelRoutePicker", () => {
 		expect(menu.getAttribute("style")).toContain(
 			"3 * var(--generation-model-popover-option-height)",
 		);
+
+		const routeList = document.querySelector("[data-generation-route-list]");
+		expect(routeList).toBeTruthy();
+		setScrollableList(routeList as HTMLElement, {
+			clientHeight: 96,
+			scrollHeight: 100,
+			scrollTop: 0,
+		});
+		fireEvent.scroll(routeList as HTMLElement);
+
+		expect(document.querySelector("[data-generation-route-scroll-hint]")).toBeNull();
 	});
 
 	it("shows a fade hint when the provider list overflows three rows", () => {

@@ -104,23 +104,23 @@ export const GenerationModelRoutePicker: React.FC<{
 
 	const updateVersionListScrollHint = useCallback(() => {
 		const node = versionListRef.current;
-		if (!node) {
+		if (!node || visibleVersions.length <= GENERATION_ROUTE_PICKER_VISIBLE_ROWS) {
 			setVersionListCanScrollDown(false);
 			return;
 		}
 		const remainingScroll = node.scrollHeight - node.clientHeight - node.scrollTop;
 		setVersionListCanScrollDown(remainingScroll > 1);
-	}, []);
+	}, [visibleVersions.length]);
 
 	const updateRouteListScrollHint = useCallback(() => {
 		const node = routeListRef.current;
-		if (!node) {
+		if (!node || activeRoutes.length <= GENERATION_ROUTE_PICKER_VISIBLE_ROWS) {
 			setRouteListCanScrollDown(false);
 			return;
 		}
 		const remainingScroll = node.scrollHeight - node.clientHeight - node.scrollTop;
 		setRouteListCanScrollDown(remainingScroll > 1);
-	}, []);
+	}, [activeRoutes.length]);
 
 	useEffect(() => {
 		if (!open) {
