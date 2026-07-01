@@ -77,7 +77,9 @@ const latestActiveOrRecentGenerationTask = (tasks: GenerationTask[]) =>
 	latestGenerationTask(tasks.filter((task) => isPendingGenerationStatus(task.status))) ??
 	latestGenerationTask(tasks);
 
-// 在任务列表里找出匹配 (documentId, sectionId) 的最新一条，优先 pending。
+// 在任务列表里找出匹配 (documentId, sectionId) 的一条状态：优先展示「进行中」的生成，
+// 只有当该资源没有任何进行中的任务时，才回退到最新一条（完成/失败）。这样一条历史失败
+// 不会盖过正在进行的生成——「有在生成就显示生成中」。
 export const generationStatusForSection = (
 	tasks: GenerationTask[],
 	documentId: string,
