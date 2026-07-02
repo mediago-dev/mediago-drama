@@ -84,7 +84,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		api.startWorkspaceFileWatcher(config)
 	}
 	mcpHandler := httphandlers.NewMCP(api.agentBridgeToken, func(_ *http.Request) *mcp.Server {
-		server, _, err := appmcp.NewExternalServer(api.workspaceState.Dir(), "http", api.events)
+		server, _, err := appmcp.NewExternalServerWithSkillRegistry(api.workspaceState.Dir(), "http", api.events, api.skillRegistry)
 		if err != nil {
 			slog.Error(
 				"external mcp http server unavailable",
@@ -96,7 +96,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		return server
 	}, func(request *http.Request, projectID string) *mcp.Server {
 		config := appmcp.DocumentMCPConfigFromHTTPRequest(request, api)
-		server, _, err := appmcp.NewDocumentServer(api.workspaceState.Dir(), projectID, config, "http")
+		server, _, err := appmcp.NewDocumentServerWithSkillRegistry(api.workspaceState.Dir(), projectID, config, "http", api.skillRegistry)
 		if err != nil {
 			slog.Error(
 				"document mcp http server unavailable",

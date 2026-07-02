@@ -10,6 +10,7 @@ import (
 	appworkspace "github.com/mediago-dev/mediago-drama/services/server/internal/app/workspace"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
+	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -33,14 +34,30 @@ func RunDocumentMCP(ctx context.Context, workspaceDir string, projectID string, 
 
 // NewDocumentServer creates a document-scoped MCP server.
 func NewDocumentServer(workspaceDir string, projectID string, config DocumentConfig, transport string) (*mcp.Server, *DocumentServer, error) {
+	return NewDocumentServerWithSkillRegistry(workspaceDir, projectID, config, transport, nil)
+}
+
+// NewDocumentServerWithSkillRegistry creates a document-scoped MCP server with
+// an explicit skill registry.
+func NewDocumentServerWithSkillRegistry(
+	workspaceDir string,
+	projectID string,
+	config DocumentConfig,
+	transport string,
+	skillRegistry *serviceskill.Registry,
+) (*mcp.Server, *DocumentServer, error) {
 	store := appworkspace.NewStateService(workspaceDir)
 	if store.InitErr() != nil {
 		return nil, nil, store.InitErr()
 	}
+	if skillRegistry == nil {
+		skillRegistry = newSkillRegistryForWorkspace(store)
+	}
 	toolServer := &DocumentServer{
-		store:     store,
-		config:    config,
-		projectID: domain.CleanProjectID(projectID),
+		store:         store,
+		config:        config,
+		projectID:     domain.CleanProjectID(projectID),
+		skillRegistry: skillRegistry,
 	}
 	toolServer.config.RolePersona = serviceagent.DefaultAgentPersona
 	toolServer.config.AgentTag = firstNonEmpty(toolServer.config.AgentTag, serviceagent.DefaultAgentName)
@@ -52,7 +69,7 @@ func NewDocumentServer(workspaceDir string, projectID string, config DocumentCon
 		"has_bridge", toolServer.config.BridgeURL != "" && toolServer.config.BridgeToken != "",
 	)
 
-	adapter := NewAdapter(store, toolServer.config.Events)
+	adapter := NewAdapterWithSkillRegistry(store, toolServer.config.Events, skillRegistry)
 	adapter.document = toolServer
 	server, err := mcpserver.NewDocumentServer(mcpserver.Config{
 		WorkspaceDir: store.Dir(),
@@ -73,9 +90,10 @@ func NewDocumentServer(workspaceDir string, projectID string, config DocumentCon
 
 // DocumentServer owns document MCP runtime state.
 type DocumentServer struct {
-	store     *appworkspace.WorkspaceStateService
-	config    DocumentConfig
-	projectID string
+	store         *appworkspace.WorkspaceStateService
+	config        DocumentConfig
+	projectID     string
+	skillRegistry *serviceskill.Registry
 }
 
 func (server DocumentServer) logToolInvocation(toolName string, attrs ...any) {

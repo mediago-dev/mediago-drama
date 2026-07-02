@@ -50,7 +50,10 @@ func (adapter *Adapter) getWorkspaceDocumentBlock(
 
 func (adapter *Adapter) LoadSkill(ctx context.Context, projectID string, input mediamcp.LoadSkillInput) (mediamcp.LoadSkillOutput, error) {
 	_ = projectID
-	registry := serviceskill.NewRegistry()
+	registry := adapter.skillRegistry
+	if registry == nil {
+		registry = serviceskill.NewRegistry()
+	}
 	item, err := registry.Get(ctx, input.Name)
 	if err != nil {
 		output := mediamcp.LoadSkillOutput{Name: input.Name}

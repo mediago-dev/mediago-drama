@@ -9,6 +9,7 @@ import (
 	mcpserver "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/server"
 	appworkspace "github.com/mediago-dev/mediago-drama/services/server/internal/app/workspace"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -32,11 +33,25 @@ func RunExternalMCP(ctx context.Context, workspaceDir string, events EventPublis
 
 // NewExternalServer creates an external project-scoped MCP server.
 func NewExternalServer(workspaceDir string, transport string, events EventPublisher) (*mcp.Server, *ExternalServer, error) {
+	return NewExternalServerWithSkillRegistry(workspaceDir, transport, events, nil)
+}
+
+// NewExternalServerWithSkillRegistry creates an external project-scoped MCP
+// server with an explicit skill registry.
+func NewExternalServerWithSkillRegistry(
+	workspaceDir string,
+	transport string,
+	events EventPublisher,
+	skillRegistry *serviceskill.Registry,
+) (*mcp.Server, *ExternalServer, error) {
 	store := appworkspace.NewStateService(workspaceDir)
 	if store.InitErr() != nil {
 		return nil, nil, store.InitErr()
 	}
-	toolServer := &ExternalServer{store: store, events: events}
+	if skillRegistry == nil {
+		skillRegistry = newSkillRegistryForWorkspace(store)
+	}
+	toolServer := &ExternalServer{store: store, events: events, skillRegistry: skillRegistry}
 	slog.Debug(
 		"external mcp server starting",
 		"workspace_dir", store.Dir(),
@@ -44,7 +59,7 @@ func NewExternalServer(workspaceDir string, transport string, events EventPublis
 		"has_events", events != nil,
 	)
 
-	adapter := NewAdapter(store, events)
+	adapter := NewAdapterWithSkillRegistry(store, events, skillRegistry)
 	adapter.external = toolServer
 	server, err := mcpserver.NewExternalServer(mcpserver.Config{
 		WorkspaceDir: store.Dir(),
@@ -63,8 +78,9 @@ func NewExternalServer(workspaceDir string, transport string, events EventPublis
 
 // ExternalServer owns external MCP runtime state.
 type ExternalServer struct {
-	store  *appworkspace.WorkspaceStateService
-	events EventPublisher
+	store         *appworkspace.WorkspaceStateService
+	events        EventPublisher
+	skillRegistry *serviceskill.Registry
 }
 
 func (server ExternalServer) logToolInvocation(toolName string, attrs ...any) {
@@ -83,8 +99,9 @@ func (server ExternalServer) documentServer(projectID string) (DocumentServer, e
 		return DocumentServer{}, err
 	}
 	return DocumentServer{
-		store:     server.store,
-		projectID: projectID,
+		store:         server.store,
+		projectID:     projectID,
+		skillRegistry: server.skillRegistry,
 		config: DocumentConfig{
 			AgentTag: "external",
 			Events:   server.events,
