@@ -21,7 +21,6 @@ import {
 	type APIKeyLoginChallenge,
 	type APIKeyProvider,
 	type ModelPlatform,
-	type ModelPlatformModelGroup,
 	apiKeysKey,
 	beginProviderLogin,
 	clearAPIKey,
@@ -135,9 +134,8 @@ const APIKeysPanel: React.FC = () => {
 	const modelPlatforms = modelPlatformsData?.platforms ?? [];
 	const providersByID = new Map(providers.map((provider) => [provider.id, provider]));
 	const unifiedProviders = platformProviders(modelPlatforms, providersByID, "unified");
-	const mediagoPlatform = modelPlatforms.find((platform) => platform.id === mediagoProviderID);
 	const mediagoProvider =
-		unifiedProviders.find((provider) => provider.id === mediagoProviderID) ??
+		platformProvider(modelPlatforms, providersByID, mediagoProviderID) ??
 		providersByID.get(mediagoProviderID);
 	const visibleUnifiedProviders = unifiedProviders.filter(
 		(provider) => provider.id !== mediagoProviderID,
@@ -149,7 +147,6 @@ const APIKeysPanel: React.FC = () => {
 	const [clearingID, setClearingID] = useState<string>();
 	const [loggingInID, setLoggingInID] = useState<string>();
 	const [checkingLoginID, setCheckingLoginID] = useState<string>();
-	const [isMediagoSetupOpen, setIsMediagoSetupOpen] = useState(false);
 	const [manualProviderID, setManualProviderID] = useState<string>();
 	const [loginChallenges, setLoginChallenges] = useState<Record<string, APIKeyLoginChallenge>>({});
 	const hasPendingBrowserLogin = Object.values(loginChallenges).some(
@@ -224,6 +221,11 @@ const APIKeysPanel: React.FC = () => {
 		}
 	};
 
+	const saveMediagoQuickSetup = async () => {
+		if (!mediagoProvider) return;
+		await save(mediagoProvider);
+	};
+
 	const login = async (provider: APIKeyProvider) => {
 		setLoggingInID(provider.id);
 		try {
@@ -278,12 +280,6 @@ const APIKeysPanel: React.FC = () => {
 		} finally {
 			setCheckingLoginID(undefined);
 		}
-	};
-
-	const saveMediagoQuickSetup = async () => {
-		if (!mediagoProvider) return;
-		const saved = await save(mediagoProvider);
-		if (saved) setIsMediagoSetupOpen(false);
 	};
 
 	const saveManualConfig = async (provider: APIKeyProvider) => {
@@ -348,56 +344,87 @@ const APIKeysPanel: React.FC = () => {
 	return (
 		<SettingsPanelLayout
 			title="API 密钥"
-			description="管理生成和智能体使用的聚合平台与官方供应商凭据。"
+			description="优先使用 MediaGo 聚合平台，也可配置自定义接口和官方供应商凭据。"
 			icon={<KeyRound className="size-4" />}
 		>
-			<div className="space-y-3">
+			<div className="mx-auto grid w-full max-w-5xl gap-5">
 				{(isLoading || isModelPlatformsLoading) && providers.length === 0 ? (
 					<div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
 						<Loader2 className="size-4 animate-spin" />
 						<span>加载中</span>
 					</div>
 				) : null}
-				{!isLoading && providers.length === 0 ? (
-					<p className="py-2 text-sm text-muted-foreground">暂无可配置供应商。</p>
+				{!isLoading && !mediagoProvider ? (
+					<section className="rounded-md border border-border bg-background px-5 py-6">
+						<h3 className="text-sm font-semibold text-foreground">当前版本未启用 MediaGo</h3>
+						<p className="mt-2 text-sm leading-6 text-muted-foreground">
+							没有找到 MediaGo 凭据槽。请确认后端已返回 MediaGo API Key provider。
+						</p>
+					</section>
 				) : null}
-				{mediagoProvider ? (
-					<APIKeyProviderGroup title="统一接口">
-						<MediaGoQuickSetupCard
-							apiKey={apiKeys[mediagoProvider.id] ?? ""}
-							isClearing={clearingID === mediagoProvider.id}
-							isSaving={savingID === mediagoProvider.id}
-							isLoadingModelGroups={isModelPlatformsLoading}
-							modelGroups={mediagoPlatform?.modelGroups ?? []}
-							onAPIKeyChange={(value) => updateAPIKey(mediagoProvider.id, value)}
-							onClear={() => void clear(mediagoProvider)}
-							onConfigure={() => setIsMediagoSetupOpen(true)}
-							onRegister={() => void openMediagoAPIKeyPage()}
-							onSave={() => void saveMediagoQuickSetup()}
-							onOpenChange={setIsMediagoSetupOpen}
-							open={isMediagoSetupOpen}
-							provider={mediagoProvider}
-						/>
-					</APIKeyProviderGroup>
-				) : null}
-				{visibleUnifiedProviders.length > 0 ? (
-					<APIKeyProviderGroup title={mediagoProvider ? "其他统一接口" : "统一接口"}>
-						{visibleUnifiedProviders.map(renderProvider)}
-					</APIKeyProviderGroup>
+				{mediagoProvider || visibleUnifiedProviders.length > 0 ? (
+					<CredentialCategorySection
+						title="统一接口"
+						description="推荐从这里开始。MediaGo 聚合平台接入内置前缀和多类模型。"
+						variant="primary"
+					>
+						{mediagoProvider ? (
+							<MediagoCredentialPanel
+								apiKey={apiKeys[mediagoProvider.id] ?? ""}
+								isClearing={clearingID === mediagoProvider.id}
+								isSaving={savingID === mediagoProvider.id}
+								onAPIKeyChange={(value) => updateAPIKey(mediagoProvider.id, value)}
+								onClear={() => void clear(mediagoProvider)}
+								onRegister={() => void openMediagoAPIKeyPage()}
+								onSave={() => void saveMediagoQuickSetup()}
+								provider={mediagoProvider}
+							/>
+						) : null}
+						{visibleUnifiedProviders.length > 0 ? (
+							<div className="space-y-3">{visibleUnifiedProviders.map(renderProvider)}</div>
+						) : null}
+					</CredentialCategorySection>
 				) : null}
 				{customProviders.length > 0 ? (
-					<APIKeyProviderGroup title="自定义接口">
+					<CredentialCategorySection
+						title="自定义接口"
+						description="用于兼容聚合接口或团队自维护路由。需要逐项确认 Key 与路由策略。"
+						variant="secondary"
+					>
 						{customProviders.map(renderCustomProvider)}
-					</APIKeyProviderGroup>
+					</CredentialCategorySection>
 				) : null}
 				{officialProviders.length > 0 ? (
-					<APIKeyProviderGroup title={modelPlatforms.length > 0 ? "官方供应商" : "供应商"}>
+					<CredentialCategorySection
+						title={modelPlatforms.length > 0 ? "官方供应商" : "供应商"}
+						description="用于单独连接官方账号。适合已有官方额度、账号授权或特定模型需求的场景。"
+						variant="secondary"
+					>
 						{officialProviders.map(renderOfficialProvider)}
-					</APIKeyProviderGroup>
+					</CredentialCategorySection>
 				) : null}
 			</div>
 		</SettingsPanelLayout>
 	);
+};
+
+const platformProvider = (
+	platforms: ModelPlatform[],
+	providersByID: Map<string, APIKeyProvider>,
+	platformID: string,
+) => {
+	const platform = platforms.find((item) => item.id === platformID);
+	if (!platform) return undefined;
+	const provider = providersByID.get(platform.apiKeyProviderId);
+	if (!provider) return undefined;
+	return {
+		...provider,
+		label: platform.label || provider.label,
+		description: platform.description || provider.description,
+		credentialLabel: undefined,
+		help: undefined,
+		placeholder: undefined,
+	};
 };
 
 const platformProviderIDs = new Set(["mediago", "openrouter", "dmx"]);
@@ -431,240 +458,134 @@ const officialAPIKeyProviders = (providers: APIKeyProvider[], platforms: ModelPl
 	return providers.filter((provider) => !platformProviderIDs.has(provider.id));
 };
 
-const APIKeyProviderGroup: React.FC<{
+const CredentialCategorySection: React.FC<{
 	children: React.ReactNode;
+	description: string;
 	title: string;
-}> = ({ children, title }) => (
-	<section className="space-y-2">
-		<h2 className="px-1 text-xs font-semibold text-muted-foreground">{title}</h2>
-		<div className="space-y-3">{children}</div>
+	variant: "primary" | "secondary";
+}> = ({ children, description, title, variant }) => (
+	<section
+		className={cn(
+			"rounded-md border bg-background shadow-sm",
+			variant === "primary" ? "border-primary/25" : "border-border",
+		)}
+	>
+		<div
+			className={cn(
+				"border-b px-4 py-3.5",
+				variant === "primary" ? "border-primary/20 bg-primary/5" : "border-border",
+			)}
+		>
+			<div className="flex flex-wrap items-center gap-2">
+				<h3 className="text-sm font-semibold text-foreground">{title}</h3>
+				{variant === "primary" ? (
+					<span className="rounded-sm bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
+						推荐
+					</span>
+				) : null}
+			</div>
+			<p className="mt-1.5 text-xs leading-5 text-muted-foreground">{description}</p>
+		</div>
+		<div className="space-y-3 px-4 py-3.5">{children}</div>
 	</section>
 );
 
-const MediaGoQuickSetupCard: React.FC<{
-	apiKey: string;
-	isClearing: boolean;
-	isLoadingModelGroups: boolean;
-	isSaving: boolean;
-	modelGroups: ModelPlatformModelGroup[];
-	onAPIKeyChange: (value: string) => void;
-	onClear: () => void;
-	onConfigure: () => void;
-	onOpenChange: (open: boolean) => void;
-	onRegister: () => void;
-	onSave: () => void;
-	open: boolean;
-	provider: APIKeyProvider;
-}> = ({
-	apiKey,
-	isClearing,
-	isLoadingModelGroups,
-	isSaving,
-	modelGroups,
-	onAPIKeyChange,
-	onClear,
-	onConfigure,
-	onOpenChange,
-	onRegister,
-	onSave,
-	open,
-	provider,
-}) => (
-	<>
-		<section
-			className={cn(
-				settingsInsetRowClassName,
-				"grid gap-4 border-primary/30 bg-ide-toolbar p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center",
-			)}
-		>
-			<div className="min-w-0">
-				<div className="mb-2 flex flex-wrap items-center gap-2">
-					<span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-						MediaGo
-					</span>
-					<span className="rounded-full bg-success-surface px-2 py-0.5 text-xs font-medium text-success-foreground">
-						推荐
-					</span>
-					<span className="rounded-full bg-ide-list-hover px-2 py-0.5 text-xs font-medium text-muted-foreground">
-						{provider.configured ? "已配置" : "未填写"}
-					</span>
-				</div>
-				<h3 className="text-base font-semibold text-foreground">MediaGo 一键配置</h3>
-				<p className="mt-1.5 max-w-3xl text-xs leading-5 text-muted-foreground">
-					使用一个 MediaGo API Key 接入文本、图片、视频、音频生成和 Agent 默认模型。
-				</p>
-			</div>
-			<Button type="button" onClick={onConfigure} className="h-9 rounded-md px-4 text-xs shadow-sm">
-				<Sparkles />
-				<span>MediaGo 一键配置</span>
-			</Button>
-			<div className="overflow-hidden rounded-md border border-border bg-background/80 lg:col-span-2">
-				{modelGroups.length > 0 ? (
-					modelGroups.map((group, index) => (
-						<div
-							key={group.label}
-							className={cn(
-								"grid gap-2 px-4 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-center",
-								index > 0 ? "border-t border-border" : null,
-							)}
-						>
-							<div className="text-sm font-semibold text-foreground">{group.label}</div>
-							<div className="flex min-w-0 flex-wrap gap-1.5">
-								{group.models.map((model) => (
-									<span
-										key={model}
-										className="rounded-sm bg-ide-toolbar px-2 py-0.5 text-xs font-medium text-muted-foreground"
-									>
-										{model}
-									</span>
-								))}
-							</div>
-						</div>
-					))
-				) : (
-					<div className="flex min-h-16 items-center px-4 py-3 text-sm text-muted-foreground">
-						{isLoadingModelGroups ? (
-							<>
-								<Loader2 className="mr-2 size-4 animate-spin" />
-								<span>正在读取 MediaGo 模型清单</span>
-							</>
-						) : (
-							<span>暂无可展示的 MediaGo 模型清单。</span>
-						)}
-					</div>
-				)}
-			</div>
-		</section>
-		<MediaGoQuickSetupDialog
-			apiKey={apiKey}
-			isClearing={isClearing}
-			isSaving={isSaving}
-			onAPIKeyChange={onAPIKeyChange}
-			onClear={onClear}
-			onOpenChange={onOpenChange}
-			onRegister={onRegister}
-			onSave={onSave}
-			open={open}
-			provider={provider}
-		/>
-	</>
-);
-
-const MediaGoQuickSetupDialog: React.FC<{
+const MediagoCredentialPanel: React.FC<{
 	apiKey: string;
 	isClearing: boolean;
 	isSaving: boolean;
 	onAPIKeyChange: (value: string) => void;
 	onClear: () => void;
-	onOpenChange: (open: boolean) => void;
 	onRegister: () => void;
 	onSave: () => void;
-	open: boolean;
 	provider: APIKeyProvider;
-}> = ({
-	apiKey,
-	isClearing,
-	isSaving,
-	onAPIKeyChange,
-	onClear,
-	onOpenChange,
-	onRegister,
-	onSave,
-	open,
-	provider,
-}) => {
-	if (!open) return null;
+}> = ({ apiKey, isClearing, isSaving, onAPIKeyChange, onClear, onRegister, onSave, provider }) => {
+	const helperText = mediaGoKeyHelperText(provider, apiKey, isSaving);
+	const canClear = provider.configured || Boolean(apiKey.trim());
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6">
-			<div
-				aria-labelledby="mediago-quick-setup-title"
-				aria-modal="true"
-				className="w-full max-w-xl rounded-md border border-border bg-background p-6 shadow-xl"
-				role="dialog"
-			>
-				<div className="flex items-start justify-between gap-4">
-					<div>
-						<div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-							MediaGo Preset
-						</div>
-						<h3
-							id="mediago-quick-setup-title"
-							className="mt-2 text-lg font-semibold text-foreground"
-						>
-							MediaGo 一键配置
-						</h3>
-						<p className="mt-2 text-sm leading-6 text-muted-foreground">
-							保存统一 API Key 后，生成与 Agent 会优先使用 MediaGo 聚合平台。
-						</p>
+		<section className="rounded-md border border-border bg-background shadow-sm">
+			<div className="border-b border-border px-4 py-3.5">
+				<div className="flex flex-wrap items-center gap-2">
+					<span className="text-xs font-medium text-muted-foreground">MediaGo 聚合平台</span>
+				</div>
+				<div className="mt-3 max-w-2xl">
+					<h3 className="text-lg font-semibold leading-tight text-foreground">
+						配置 MediaGo API Key
+					</h3>
+				</div>
+			</div>
+
+			<div className="grid gap-4 px-4 py-4">
+				<div className="grid gap-2">
+					<div className="flex flex-wrap items-center justify-between gap-2">
+						<Label htmlFor="mediago-api-key" className="text-sm font-medium text-foreground">
+							API Key
+						</Label>
 					</div>
-					<span className="rounded-full bg-success-surface px-2 py-1 text-xs font-medium text-success-foreground">
-						推荐
-					</span>
-				</div>
-
-				<div className="mt-5">
-					<Label htmlFor="mediago-quick-api-key" className="text-sm font-medium text-foreground">
-						MediaGo API Key
-					</Label>
-					<MaskedAPIKeyInput
-						id="mediago-quick-api-key"
-						aria-label="MediaGo API Key"
-						className="mt-2 h-10 rounded-md font-mono text-sm text-foreground"
-						onChange={onAPIKeyChange}
-						placeholder="输入API Key"
-						provider={provider}
-						value={apiKey}
-					/>
-					{provider.configured ? null : (
-						<div className="mt-2 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-							<span>还没有账号？</span>
-							<button
-								type="button"
-								onClick={onRegister}
-								className="inline-flex items-center gap-1 font-medium text-primary transition-colors hover:text-primary/80"
-							>
-								<span>立即注册</span>
-								<ArrowRight className="size-3.5" />
-							</button>
-						</div>
-					)}
-				</div>
-
-				<div className="mt-6 flex flex-wrap justify-between gap-2">
-					<Button
-						type="button"
-						variant="outline"
-						disabled={!provider.configured || isClearing}
-						onClick={onClear}
-						className="w-24 rounded-md"
-					>
-						{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
-						<span>清除</span>
-					</Button>
-					<div className="flex justify-end gap-2">
-						<Button
-							type="button"
-							variant="outline"
-							onClick={() => onOpenChange(false)}
-							className="w-24 rounded-md"
-						>
-							取消
-						</Button>
+					<div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+						<MaskedAPIKeyInput
+							id="mediago-api-key"
+							aria-label="MediaGo API Key"
+							className="h-10 rounded-md bg-ide-editor font-mono text-sm text-foreground"
+							onChange={onAPIKeyChange}
+							placeholder="粘贴 MediaGo API Key"
+							provider={provider}
+							value={apiKey}
+						/>
 						<Button
 							type="button"
 							disabled={!apiKey.trim() || isSaving}
 							onClick={onSave}
-							className="w-32 rounded-md"
+							className="h-10 rounded-md px-4 text-sm"
 						>
 							{isSaving ? <Loader2 className="animate-spin" /> : <Sparkles />}
-							<span>保存并启用</span>
+							<span>一键配置</span>
 						</Button>
 					</div>
+					<p className="text-xs leading-5 text-muted-foreground">{helperText}</p>
+				</div>
+
+				<div className="flex flex-wrap items-center justify-between gap-2">
+					<button
+						type="button"
+						onClick={onRegister}
+						className="inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+					>
+						<span>获取 MediaGo API Key</span>
+						<ArrowRight className="size-3.5" />
+					</button>
+					<Button
+						type="button"
+						variant="ghost"
+						disabled={!canClear || isClearing}
+						onClick={onClear}
+						className="h-8 rounded-md px-2.5 text-xs text-muted-foreground"
+					>
+						{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
+						<span>清除当前 Key</span>
+					</Button>
 				</div>
 			</div>
-		</div>
+		</section>
 	);
+};
+
+const mediaGoKeyHelperText = (provider: APIKeyProvider, apiKey: string, isSaving: boolean) => {
+	const trimmedKey = apiKey.trim();
+	if (isSaving) {
+		return "正在保存并刷新本地运行时配置。";
+	}
+	if (trimmedKey.length >= 12) {
+		return "API Key 已输入，可以点击一键配置完成保存。";
+	}
+	if (trimmedKey.length > 0) {
+		return "当前 API Key 长度偏短，请确认完整复制后再保存。";
+	}
+	if (provider.configured) {
+		return `当前已保存 ${providerSavedCredentialLabel(provider)}，输入新的 Key 可替换。`;
+	}
+	return "输入后可一键配置并刷新生成与 Agent 配置。";
 };
 
 type ManualProviderVariant = "custom" | "official";
@@ -704,12 +625,7 @@ const ManualAPIKeyProviderRow: React.FC<{
 				)}
 			>
 				<div className="min-w-0">
-					<div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-						<span className="font-mono text-sm font-semibold lowercase text-foreground">
-							{provider.id}
-						</span>
-						<span className="min-w-0 truncate text-sm text-muted-foreground">{provider.label}</span>
-					</div>
+					<h3 className="truncate text-sm font-semibold text-foreground">{provider.label}</h3>
 				</div>
 
 				<div className="min-w-0">
@@ -806,9 +722,7 @@ const ManualProviderConfigDialog: React.FC<{
 			>
 				<div className="flex items-start justify-between gap-4">
 					<div>
-						<div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-							{variant === "custom" ? "Custom Config" : "Manual Config"}
-						</div>
+						<div className="text-xs font-semibold text-muted-foreground">高级配置</div>
 						<h3
 							id={`manual-provider-config-title-${provider.id}`}
 							className="mt-2 text-lg font-semibold text-foreground"
@@ -817,8 +731,8 @@ const ManualProviderConfigDialog: React.FC<{
 						</h3>
 						<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
 							{variant === "custom"
-								? "只需要填写聚合平台 API Key。模型和端点按自定义聚合路由自动使用。"
-								: "只需要填写官方 API Key。模型和端点按系统内置路由自动使用。"}
+								? "这里仅保存该接口的 API Key。供应商标识、端点和模型路由由系统预设，不需要在这里填写。"
+								: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
 						</p>
 					</div>
 					<span className="rounded-full bg-ide-list-hover px-2 py-1 text-xs font-medium text-muted-foreground">
@@ -826,7 +740,7 @@ const ManualProviderConfigDialog: React.FC<{
 					</span>
 				</div>
 
-				<div className="mt-6 grid gap-4">
+				<div className="mt-6">
 					<div className="grid gap-2">
 						<Label htmlFor={inputID} className="text-sm font-medium text-foreground">
 							{provider.credentialLabel || "API Key"}
