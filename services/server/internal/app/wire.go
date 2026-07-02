@@ -83,7 +83,10 @@ func newAPIHandler(config Config) *apiHandler {
 		settingsRepos.AppSettings,
 	)
 	settings.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
+	settings.SetLibTVCLIPaths(config.LibTVBinPath, config.LibTVBinDir)
+	settings.SetPippitCLIPaths(config.PippitBinPath, config.PippitBinDir)
 	settings.SetModelPlatforms(config.ModelPlatforms)
+	settings.SetGenerationCLIs(config.GenerationCLIs)
 	settings.SetMediagoBaseURL(config.MediagoBaseURL)
 	if configurableRunner, ok := runner.(interface {
 		SetProcessConfigProvider(serviceacp.ProcessConfigProvider)
@@ -118,6 +121,8 @@ func newAPIHandler(config Config) *apiHandler {
 	)
 	generationService := servicegeneration.NewGenerationService(settings, generationTasks, mediaAssets, generationPreferences)
 	generationService.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
+	generationService.SetLibTVCLIConfig(config.LibTVBinPath, config.LibTVBinDir, config.LibTVProjectID)
+	generationService.SetPippitCLIPaths(config.PippitBinPath, config.PippitBinDir)
 	generationService.SetMediagoBaseURL(config.MediagoBaseURL)
 	generationService.SetGenerationNotifications(generationNotifications)
 	generationService.SetDocumentResolver(workspaceState.StateService().Documents)

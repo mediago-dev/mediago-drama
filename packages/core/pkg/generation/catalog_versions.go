@@ -39,6 +39,7 @@ const (
 	VersionSeedance20              = "seedance-2.0"
 	VersionSeedance20FastVIP       = "seedance-2.0-fast-vip"
 	VersionSeedance20VIP           = "seedance-2.0-vip"
+	VersionSeedance20MiniLite      = "seedance-2.0-mini-lite"
 	VersionSeedance15Pro           = "seedance-1.5-pro"
 
 	ModelSeedream5Lite           = "seedream-5-lite"
@@ -62,4 +63,5 @@ const (
 	ModelGPTImage2               = "gpt-image-2"
 	ModelNanoBanana              = "nano-banana"
 	ModelJimengSeedance2Fast     = "jimeng-seedance-2-fast"
+	ModelXiaoyunqueSeedance2Mini = "xiaoyunque-seedance-2-mini-lite"
 )

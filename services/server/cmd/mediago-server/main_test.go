@@ -19,9 +19,15 @@ func TestApplyEnvOverrides(t *testing.T) {
 	t.Setenv("MEDIAGO_FFMPEG_BIN_DIR", "/tmp/tools/ffmpeg")
 	t.Setenv("MEDIAGO_JIMENG_PATH", "/tmp/dreamina")
 	t.Setenv("MEDIAGO_JIMENG_BIN_DIR", "/tmp/tools")
+	t.Setenv("MEDIAGO_LIBTV_PATH", "/tmp/libtv")
+	t.Setenv("MEDIAGO_LIBTV_BIN_DIR", "/tmp/tools/libtv")
+	t.Setenv("MEDIAGO_LIBTV_PROJECT_ID", "project-env-123")
+	t.Setenv("MEDIAGO_PIPPIT_PATH", "/tmp/pippit-tool-cli")
+	t.Setenv("MEDIAGO_PIPPIT_BIN_DIR", "/tmp/tools/pippit")
 	t.Setenv("MEDIAGO_SERVER_PORT", "48273")
 	t.Setenv("MEDIAGO_LOG_LEVEL", "debug")
 	t.Setenv("MEDIAGO_MODEL_PLATFORM", "mediago,openrouter")
+	t.Setenv("MEDIAGO_GENERATION_CLIS", "xiaoyunque,libtv")
 	t.Setenv("MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL", "https://models.example.test/v1/")
 
 	config := serverconfig.ServerConfig{Port: 8080}
@@ -47,6 +53,21 @@ func TestApplyEnvOverrides(t *testing.T) {
 	if config.Jimeng.BinDir != "/tmp/tools" {
 		t.Fatalf("Jimeng.BinDir = %q, want %q", config.Jimeng.BinDir, "/tmp/tools")
 	}
+	if config.LibTV.Path != "/tmp/libtv" {
+		t.Fatalf("LibTV.Path = %q, want %q", config.LibTV.Path, "/tmp/libtv")
+	}
+	if config.LibTV.BinDir != "/tmp/tools/libtv" {
+		t.Fatalf("LibTV.BinDir = %q, want %q", config.LibTV.BinDir, "/tmp/tools/libtv")
+	}
+	if config.LibTV.ProjectID != "project-env-123" {
+		t.Fatalf("LibTV.ProjectID = %q, want %q", config.LibTV.ProjectID, "project-env-123")
+	}
+	if config.Pippit.Path != "/tmp/pippit-tool-cli" {
+		t.Fatalf("Pippit.Path = %q, want %q", config.Pippit.Path, "/tmp/pippit-tool-cli")
+	}
+	if config.Pippit.BinDir != "/tmp/tools/pippit" {
+		t.Fatalf("Pippit.BinDir = %q, want %q", config.Pippit.BinDir, "/tmp/tools/pippit")
+	}
 	if config.Port != 48273 {
 		t.Fatalf("Port = %d, want %d", config.Port, 48273)
 	}
@@ -55,6 +76,9 @@ func TestApplyEnvOverrides(t *testing.T) {
 	}
 	if got := strings.Join(config.ModelPlatforms, ","); got != "mediago,openrouter" {
 		t.Fatalf("ModelPlatforms = %q, want mediago,openrouter", got)
+	}
+	if got := strings.Join(config.GenerationCLIs, ","); got != "xiaoyunque,libtv" {
+		t.Fatalf("GenerationCLIs = %q, want xiaoyunque,libtv", got)
 	}
 	if config.MediagoBaseURL != "https://models.example.test/v1" {
 		t.Fatalf("MediagoBaseURL = %q, want trimmed base URL", config.MediagoBaseURL)
@@ -76,6 +100,15 @@ func TestApplyEnvOverridesRejectsInvalidModelPlatform(t *testing.T) {
 	config := serverconfig.ServerConfig{}
 	if err := applyEnvOverrides(&config); err == nil {
 		t.Fatal("applyEnvOverrides returned nil error, want invalid model platform error")
+	}
+}
+
+func TestApplyEnvOverridesRejectsInvalidGenerationCLI(t *testing.T) {
+	t.Setenv("MEDIAGO_GENERATION_CLIS", "auto")
+
+	config := serverconfig.ServerConfig{}
+	if err := applyEnvOverrides(&config); err == nil {
+		t.Fatal("applyEnvOverrides returned nil error, want invalid generation CLI error")
 	}
 }
 
@@ -106,6 +139,12 @@ func TestApplyPackagedToolDefaultsUsesSiblingToolsDir(t *testing.T) {
 	if config.Jimeng.BinDir != toolsDir {
 		t.Fatalf("Jimeng.BinDir = %q, want packaged tools dir %q", config.Jimeng.BinDir, toolsDir)
 	}
+	if config.LibTV.BinDir != toolsDir {
+		t.Fatalf("LibTV.BinDir = %q, want packaged tools dir %q", config.LibTV.BinDir, toolsDir)
+	}
+	if config.Pippit.BinDir != toolsDir {
+		t.Fatalf("Pippit.BinDir = %q, want packaged tools dir %q", config.Pippit.BinDir, toolsDir)
+	}
 }
 
 func TestApplyPackagedToolDefaultsKeepsExplicitToolDirs(t *testing.T) {
@@ -129,6 +168,8 @@ func TestApplyPackagedToolDefaultsKeepsExplicitToolDirs(t *testing.T) {
 	config := serverconfig.ServerConfig{}
 	config.FFmpeg.BinDir = "/custom/ffmpeg-tools"
 	config.Jimeng.BinDir = "/custom/jimeng-tools"
+	config.LibTV.BinDir = "/custom/libtv-tools"
+	config.Pippit.BinDir = "/custom/pippit-tools"
 	applyPackagedToolDefaults(&config)
 
 	if config.FFmpeg.BinDir != "/custom/ffmpeg-tools" {
@@ -136,6 +177,12 @@ func TestApplyPackagedToolDefaultsKeepsExplicitToolDirs(t *testing.T) {
 	}
 	if config.Jimeng.BinDir != "/custom/jimeng-tools" {
 		t.Fatalf("Jimeng.BinDir = %q, want explicit value", config.Jimeng.BinDir)
+	}
+	if config.LibTV.BinDir != "/custom/libtv-tools" {
+		t.Fatalf("LibTV.BinDir = %q, want explicit value", config.LibTV.BinDir)
+	}
+	if config.Pippit.BinDir != "/custom/pippit-tools" {
+		t.Fatalf("Pippit.BinDir = %q, want explicit value", config.Pippit.BinDir)
 	}
 }
 

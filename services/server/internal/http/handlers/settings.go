@@ -196,6 +196,13 @@ func (handler Settings) HandlePostProviderLogin(context *gin.Context) {
 			return
 		}
 		httpresponse.OK(context, result)
+	case "libtv":
+		result, err := handler.service.BeginLibTVLogin(context.Request.Context(), payload.Force)
+		if err != nil {
+			writeSettingsError(context, err)
+			return
+		}
+		httpresponse.OK(context, result)
 	default:
 		httpresponse.ErrorFromStatus(context, http.StatusNotFound, service.ErrAPIKeyProviderNotFound)
 	}

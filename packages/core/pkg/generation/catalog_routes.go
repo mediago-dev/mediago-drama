@@ -43,6 +43,8 @@ const (
 	RouteJimengSeedance20                  = "jimeng.seedance-2.0"
 	RouteJimengSeedance20FastVIP           = "jimeng.seedance-2.0-fast-vip"
 	RouteJimengSeedance20VIP               = "jimeng.seedance-2.0-vip"
+	RouteLibTVSeedance20Mini               = "libtv.seedance-2.0-mini"
+	RouteXiaoyunqueSeedance20MiniLite      = "xiaoyunque.seedance-2.0-mini-lite"
 	RouteOpenRouterSeedream45              = "openrouter.seedream-4.5"
 	RouteOpenRouterGPT41MiniText           = "openrouter.gpt-4.1-mini-text"
 	RouteOpenRouterGPT5MiniText            = "openrouter.gpt-5-mini-text"

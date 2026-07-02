@@ -13,13 +13,10 @@ tasks:
       - go run ./cmd/prepare-agent --agent {{.AGENT}} {{if .PLATFORM}}--platform {{.PLATFORM}}{{end}}
 
   prepare:tool:
-    desc: Prepare one vendored tool (TOOL=ffmpeg|ffprobe|dreamina, PLATFORM=darwin-arm64|windows-x64)
+    desc: Prepare one vendored tool from tools.json (TOOL=ffmpeg|ffprobe|dreamina|libtv|pippit, PLATFORM=darwin-arm64|windows-x64)
     vars:
       TOOL: '{{.TOOL | default "ffmpeg"}}'
       PLATFORM: '{{.PLATFORM | default ""}}'
-    preconditions:
-      - sh: 'case "{{.TOOL}}" in ffmpeg|ffprobe|dreamina) ;; *) exit 1 ;; esac'
-        msg: "TOOL must be one of: ffmpeg, ffprobe, dreamina"
     cmds:
       - go run ./cmd/prepare-tool --tool {{.TOOL}} {{if .PLATFORM}}--platform {{.PLATFORM}}{{end}}
 
@@ -35,10 +32,31 @@ tasks:
         vars:
           TOOL: ffprobe
           PLATFORM: "{{.PLATFORM}}"
-      - task: prepare:tool
-        vars:
-          TOOL: dreamina
-          PLATFORM: "{{.PLATFORM}}"
+
+  prepare:generation-clis:
+    desc: Prepare selected generation CLIs (GENERATION_CLIS=dreamina,libtv,pippit|none)
+    silent: true
+    vars:
+      GENERATION_CLIS: '{{.GENERATION_CLIS | default "dreamina"}}'
+      PLATFORM: '{{.PLATFORM | default ""}}'
+    cmds:
+      - |
+        value="{{.GENERATION_CLIS}}"
+        normalized="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        if [ -z "$normalized" ] || [ "$normalized" = "none" ]; then
+          echo "No generation CLIs selected"
+          exit 0
+        fi
+        printf '%s\n' "$value" | tr ',' '\n' | while IFS= read -r tool; do
+          tool="$(printf '%s' "$tool" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          if [ -z "$tool" ]; then
+            continue
+          fi
+          if [ "$tool" = "none" ]; then
+            continue
+          fi
+          go run ./cmd/prepare-tool --tool "$tool" {{if .PLATFORM}}--platform "{{.PLATFORM}}"{{end}} </dev/null
+        done
 
   prepare:all:
     cmds:
@@ -49,6 +67,7 @@ tasks:
         vars:
           AGENT: opencode
       - task: prepare:media-tools
+      - task: prepare:generation-clis
 
   prepare:clean:
     cmds:

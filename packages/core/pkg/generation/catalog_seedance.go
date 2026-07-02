@@ -20,6 +20,57 @@ func jimengSeedanceVIPParams() RouteParamConfig {
 	return jimengSeedanceRouteParams(true)
 }
 
+func pippitSeedanceParams() RouteParamConfig {
+	params := []RouteParam{
+		selectRouteParam(ParamAspectRatio, "16:9", []ParamOption{
+			{Label: "16:9", Value: "16:9"},
+			{Label: "4:3", Value: "4:3"},
+			{Label: "1:1", Value: "1:1"},
+			{Label: "3:4", Value: "3:4"},
+			{Label: "9:16", Value: "9:16"},
+		}),
+		selectRouteParam(ParamResolution, "720p", []ParamOption{
+			{Label: "720p", Value: "720p"},
+		}),
+		withRouteHelp(selectRouteParam(ParamDuration, "5", jimengSeedanceDurationOptions()), "小云雀支持 4-15 秒视频。"),
+	}
+	return routeParamConfig(params, ParamTranslation{
+		Moves: []ParamMove{
+			{From: ParamAspectRatio, To: "ratio"},
+			{From: ParamResolution},
+			{From: ParamDuration},
+		},
+	})
+}
+
+func libTVSeedanceParams() RouteParamConfig {
+	params := []RouteParam{
+		selectRouteParam(ParamAspectRatio, "16:9", []ParamOption{
+			{Label: "Auto", Value: "adaptive"},
+			{Label: "16:9", Value: "16:9"},
+			{Label: "4:3", Value: "4:3"},
+			{Label: "1:1", Value: "1:1"},
+			{Label: "3:4", Value: "3:4"},
+			{Label: "9:16", Value: "9:16"},
+			{Label: "21:9", Value: "21:9"},
+		}),
+		selectRouteParam(ParamResolution, "720p", []ParamOption{
+			{Label: "480p", Value: "480p"},
+			{Label: "720p", Value: "720p"},
+		}),
+		withRouteHelp(selectRouteParam(ParamDuration, "5", jimengSeedanceDurationOptions()), "LibTV Seedance 2.0 Mini 支持 4-15 秒视频。"),
+		boolRouteParam(ParamGenerateAudio, true),
+	}
+	return routeParamConfig(params, ParamTranslation{
+		Moves: []ParamMove{
+			{From: ParamAspectRatio, To: "ratio"},
+			{From: ParamResolution},
+			{From: ParamDuration},
+			{From: ParamGenerateAudio, To: "enableSound"},
+		},
+	})
+}
+
 func jimengSeedanceRouteParams(allow1080p bool) RouteParamConfig {
 	resolutionOptions := []ParamOption{{Label: "720p", Value: "720p"}}
 	if allow1080p {

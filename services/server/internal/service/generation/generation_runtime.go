@@ -32,6 +32,11 @@ type GenerationService struct {
 	mediagoModelCatalog           mediagoModelCatalogCache
 	jimengBinPath                 string
 	jimengBinDir                  string
+	libTVBinPath                  string
+	libTVBinDir                   string
+	libTVProjectID                string
+	pippitBinPath                 string
+	pippitBinDir                  string
 	jimengSeedanceQueueMu         sync.Mutex
 }
 
@@ -61,6 +66,19 @@ func NewGenerationService(settings *settings.Settings, generationTasks *Generati
 func (workflow *GenerationService) SetJimengCLIPaths(binPath string, binDir string) {
 	workflow.jimengBinPath = strings.TrimSpace(binPath)
 	workflow.jimengBinDir = strings.TrimSpace(binDir)
+}
+
+// SetLibTVCLIConfig configures the local LibTV CLI lookup paths and optional project.
+func (workflow *GenerationService) SetLibTVCLIConfig(binPath string, binDir string, projectID string) {
+	workflow.libTVBinPath = strings.TrimSpace(binPath)
+	workflow.libTVBinDir = strings.TrimSpace(binDir)
+	workflow.libTVProjectID = strings.TrimSpace(projectID)
+}
+
+// SetPippitCLIPaths configures the local Pippit / Xiaoyunque CLI lookup paths.
+func (workflow *GenerationService) SetPippitCLIPaths(binPath string, binDir string) {
+	workflow.pippitBinPath = strings.TrimSpace(binPath)
+	workflow.pippitBinDir = strings.TrimSpace(binDir)
 }
 
 // SetMediagoBaseURL configures the MediaGo OpenAI-compatible generation endpoint.

@@ -70,6 +70,21 @@ func CredentialSpecs() []CredentialSpec {
 			CredentialKind: "oauth",
 			Help:           "使用本地打包的即梦 CLI 登录，生成会消耗当前即梦账号额度。",
 		},
+		{
+			ID:             ProviderLibTV,
+			Label:          "LibTV",
+			Description:    "LibTV CLI local login session",
+			CredentialKind: "oauth",
+			Help:           "使用本地打包的 LibTV CLI 登录，生成会消耗当前 LibTV 账号额度。",
+		},
+		{
+			ID:              ProviderXiaoyunque,
+			Label:           "小云雀",
+			Description:     "Pippit / 小云雀 CLI Access Key",
+			CredentialLabel: "小云雀 Access Key",
+			Placeholder:     "输入 XYQ_ACCESS_KEY",
+			Help:            "使用本地打包的小云雀 / Pippit CLI，保存后将作为 XYQ_ACCESS_KEY 使用。",
+		},
 	}
 
 	result := make([]CredentialSpec, len(specs))

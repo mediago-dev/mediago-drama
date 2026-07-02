@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
 type memoryAPIKeyStore struct {
@@ -107,19 +109,73 @@ func TestSettingsListModelPlatformsDefaultsAndOverrides(t *testing.T) {
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
 
 	list := settings.ListModelPlatforms(context.Background())
-	if len(list.Platforms) != 1 || list.Platforms[0].ID != ModelPlatformMediago {
-		t.Fatalf("default platforms = %#v, want mediago only", list.Platforms)
+	if len(list.Platforms) != 2 ||
+		list.Platforms[0].ID != ModelPlatformMediago ||
+		list.Platforms[1].ID != generation.ProviderJimeng ||
+		list.Platforms[1].Kind != "cli" {
+		t.Fatalf("default platforms = %#v, want mediago and default jimeng CLI", list.Platforms)
 	}
 	if len(list.Platforms[0].ModelGroups) == 0 {
 		t.Fatalf("default mediago platform groups = %#v, want catalog fallback groups", list.Platforms[0].ModelGroups)
 	}
 
+	settings.SetGenerationCLIs([]string{})
 	settings.SetModelPlatforms([]string{ModelPlatformOpenRouter, ModelPlatformDMXAPI})
 	list = settings.ListModelPlatforms(context.Background())
 	if len(list.Platforms) != 2 ||
 		list.Platforms[0].ID != ModelPlatformOpenRouter ||
 		list.Platforms[1].APIKeyProviderID != "dmx" {
 		t.Fatalf("override platforms = %#v, want openrouter then dmxapi", list.Platforms)
+	}
+}
+
+func TestSettingsGenerationCLIProvidersFollowConfiguration(t *testing.T) {
+	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
+	settings.SetGenerationCLIs([]string{"libtv", "pippit"})
+
+	list := settings.ListModelPlatforms(context.Background())
+	if !modelPlatformExists(list, generation.ProviderLibTV) ||
+		!modelPlatformExists(list, generation.ProviderXiaoyunque) ||
+		modelPlatformExists(list, generation.ProviderJimeng) {
+		t.Fatalf("platforms = %#v, want libtv and xiaoyunque CLI platforms only", list.Platforms)
+	}
+
+	keys, err := settings.ListAPIKeys(context.Background())
+	if err != nil {
+		t.Fatalf("ListAPIKeys returned error: %v", err)
+	}
+	if !apiKeyProviderExists(keys, generation.ProviderLibTV) ||
+		!apiKeyProviderExists(keys, generation.ProviderXiaoyunque) ||
+		apiKeyProviderExists(keys, generation.ProviderJimeng) {
+		t.Fatalf("providers = %#v, want enabled CLI providers only", keys.Providers)
+	}
+
+	if _, err := settings.SetAPIKey(context.Background(), generation.ProviderXiaoyunque, "xyq-key"); err != nil {
+		t.Fatalf("SetAPIKey xiaoyunque returned error: %v", err)
+	}
+	if _, err := settings.SetAPIKey(context.Background(), generation.ProviderJimeng, "oauth:old"); err != ErrAPIKeyProviderNotFound {
+		t.Fatalf("SetAPIKey jimeng error = %v, want ErrAPIKeyProviderNotFound", err)
+	}
+}
+
+func TestParseGenerationCLIProviderIDs(t *testing.T) {
+	got, err := ParseGenerationCLIProviderIDs("dreamina,libtv,pippit,xiaoyunque,pippit-tool-cli")
+	if err != nil {
+		t.Fatalf("ParseGenerationCLIProviderIDs returned error: %v", err)
+	}
+	if strings.Join(got, ",") != "jimeng,libtv,xiaoyunque" {
+		t.Fatalf("ids = %#v, want deduped provider ids", got)
+	}
+
+	got, err = ParseGenerationCLIProviderIDs("none")
+	if err != nil {
+		t.Fatalf("ParseGenerationCLIProviderIDs(none) returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("ids = %#v, want empty list for none", got)
+	}
+	if _, err := ParseGenerationCLIProviderIDs("auto"); err == nil {
+		t.Fatal("ParseGenerationCLIProviderIDs(auto) returned nil error, want unsupported CLI error")
 	}
 }
 
@@ -145,6 +201,7 @@ func TestSettingsListModelPlatformsUsesMediagoGatewayModels(t *testing.T) {
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{
 		ModelPlatformMediago: "mgak-test",
 	}})
+	settings.SetGenerationCLIs([]string{})
 	settings.SetMediagoBaseURL(server.URL + "/api/v1")
 
 	list := settings.ListModelPlatforms(context.Background())
@@ -199,6 +256,36 @@ func TestSettingsClearJimengAPIKeyRunsLogout(t *testing.T) {
 	}
 	if strings.TrimSpace(string(output)) != "logout" {
 		t.Fatalf("jimeng args = %q, want logout", string(output))
+	}
+}
+
+func TestSettingsClearLibTVAPIKeyRunsLogout(t *testing.T) {
+	store := &memoryAPIKeyStore{values: map[string]string{"libtv": "oauth:old"}}
+	settings := NewSettings(store)
+	settings.SetGenerationCLIs([]string{"libtv"})
+	tempDir := t.TempDir()
+	argsPath := filepath.Join(tempDir, "args.log")
+	binPath := filepath.Join(tempDir, "libtv")
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$*\" >> %q\nexit 0\n", argsPath)
+	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("writing fake libtv CLI: %v", err)
+	}
+	settings.SetLibTVCLIPaths(binPath, "")
+
+	list, err := settings.ClearAPIKey(context.Background(), "libtv")
+	if err != nil {
+		t.Fatalf("ClearAPIKey returned error: %v", err)
+	}
+	provider := providerByID(t, list, "libtv")
+	if provider.Configured || provider.Source != "none" {
+		t.Fatalf("provider after clear = %#v, want unconfigured provider", provider)
+	}
+	output, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("reading fake libtv args: %v", err)
+	}
+	if strings.TrimSpace(string(output)) != "logout" {
+		t.Fatalf("libtv args = %q, want logout", string(output))
 	}
 }
 
@@ -283,6 +370,54 @@ exit 1
 	t.Fatal("jimeng oauth marker was not persisted after login command completed")
 }
 
+func TestSettingsBeginLibTVLoginReturnsChallengeAndPersistsAfterCLICompletes(t *testing.T) {
+	store := &memoryAPIKeyStore{values: map[string]string{}}
+	settings := NewSettings(store)
+	settings.SetGenerationCLIs([]string{"libtv"})
+	binPath := filepath.Join(t.TempDir(), "libtv")
+	script := `#!/bin/sh
+if [ "$1" = "login" ] && [ "$2" = "web" ] && [ "$#" -eq 2 ]; then
+  echo "Open https://libtv.example.test/login in your browser"
+  sleep 0.2
+  exit 0
+fi
+exit 1
+`
+	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("writing fake libtv CLI: %v", err)
+	}
+	settings.SetLibTVCLIPaths(binPath, "")
+
+	result, err := settings.BeginLibTVLogin(context.Background(), false)
+	if err != nil {
+		t.Fatalf("BeginLibTVLogin returned error: %v", err)
+	}
+	if result.Login.Status != "pending" ||
+		result.Login.VerificationURI != "https://libtv.example.test/login" {
+		t.Fatalf("login = %#v, want parsed LibTV browser challenge", result.Login)
+	}
+	if result.Login.DeviceCode != "" {
+		t.Fatalf("login device code = %q, want empty device code", result.Login.DeviceCode)
+	}
+	provider := providerByID(t, APIKeyList{Providers: result.Providers}, "libtv")
+	if provider.Configured {
+		t.Fatalf("provider = %#v, want unconfigured while challenge is pending", provider)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		value, _, err := store.Get("libtv")
+		if err != nil {
+			t.Fatalf("Get returned error: %v", err)
+		}
+		if strings.HasPrefix(value, "oauth:") {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("libtv oauth marker was not persisted after login command completed")
+}
+
 func providerByID(t *testing.T, list APIKeyList, id string) APIKeyProvider {
 	t.Helper()
 	for _, provider := range list.Providers {
@@ -292,6 +427,24 @@ func providerByID(t *testing.T, list APIKeyList, id string) APIKeyProvider {
 	}
 	t.Fatalf("provider %q not found", id)
 	return APIKeyProvider{}
+}
+
+func modelPlatformExists(list ModelPlatformList, id string) bool {
+	for _, platform := range list.Platforms {
+		if platform.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func apiKeyProviderExists(list APIKeyList, id string) bool {
+	for _, provider := range list.Providers {
+		if provider.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func stringSliceContains(values []string, want string) bool {

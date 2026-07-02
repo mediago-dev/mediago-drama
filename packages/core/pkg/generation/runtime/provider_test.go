@@ -6,6 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -129,6 +132,145 @@ func TestProviderDispatchesMediagoImageRoute(t *testing.T) {
 	}
 	if response.Status != "completed" || len(response.Assets) != 1 || response.Assets[0].URL != "https://example.test/mediago.png" {
 		t.Fatalf("response = %#v, want completed MediaGo image asset", response)
+	}
+}
+
+func TestProviderDispatchesXiaoyunqueRouteThroughPippitCLI(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("shell-script fake CLI is only used on Unix-like test hosts")
+	}
+
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "args.txt")
+	envPath := filepath.Join(dir, "env.txt")
+	binPath := filepath.Join(dir, "pippit-tool-cli")
+	script := "#!/bin/sh\n" +
+		"printf '%s\n' \"$@\" > \"" + argsPath + "\"\n" +
+		"printf '%s\n' \"$XYQ_ACCESS_KEY\" > \"" + envPath + "\"\n" +
+		"printf '%s\n' '{\"thread_id\":\"thread_123\",\"run_id\":\"run_456\"}'\n"
+	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("writing fake pippit binary: %v", err)
+	}
+
+	var credentialKey string
+	provider, err := NewProvider(Config{
+		PippitBinPath: binPath,
+		Credentials: CredentialResolverFunc(func(_ context.Context, key string) (string, error) {
+			credentialKey = key
+			return "xyq-key", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		RouteID: generation.RouteXiaoyunqueSeedance20MiniLite,
+		Prompt:  "make a video",
+		Params: map[string]any{
+			"aspectRatio": "9:16",
+			"resolution":  "720p",
+			"duration":    "5",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	argsData, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("reading fake pippit args: %v", err)
+	}
+	args := strings.Split(strings.TrimSpace(string(argsData)), "\n")
+	wantArgs := []string{
+		"generate-video",
+		"--prompt=make a video",
+		"--duration=5",
+		"--ratio=9:16",
+		"--resolution=720p",
+		"--model=Seedance_2.0_mini_lite",
+	}
+	if strings.Join(args, "\n") != strings.Join(wantArgs, "\n") {
+		t.Fatalf("args = %#v, want %#v", args, wantArgs)
+	}
+	envData, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatalf("reading fake pippit env: %v", err)
+	}
+	if credentialKey != generation.ProviderXiaoyunque || strings.TrimSpace(string(envData)) != "xyq-key" {
+		t.Fatalf("credential key/env = %q/%q, want Xiaoyunque xyq-key", credentialKey, strings.TrimSpace(string(envData)))
+	}
+	if response.ID != generation.RouteXiaoyunqueSeedance20MiniLite+":thread_123:run_456" ||
+		response.Status != "submitted" {
+		t.Fatalf("response = %#v, want submitted Xiaoyunque task", response)
+	}
+}
+
+func TestProviderDispatchesLibTVRouteThroughCLI(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("shell-script fake CLI is only used on Unix-like test hosts")
+	}
+
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "args.txt")
+	binPath := filepath.Join(dir, "libtv")
+	script := "#!/bin/sh\n" +
+		"printf '%s\n' \"$@\" > \"" + argsPath + "\"\n" +
+		"printf '%s\n' '{\"id\":\"node_123\"}'\n"
+	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("writing fake libtv binary: %v", err)
+	}
+
+	provider, err := NewProvider(Config{
+		LibTVBinPath:   binPath,
+		LibTVProjectID: "project-123",
+		Credentials: CredentialResolverFunc(func(context.Context, string) (string, error) {
+			return "oauth:ready", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		RouteID: generation.RouteLibTVSeedance20Mini,
+		Prompt:  "make a video",
+		Params: map[string]any{
+			"aspectRatio":   "9:16",
+			"resolution":    "720p",
+			"duration":      "5",
+			"generateAudio": false,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	argsData, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("reading fake libtv args: %v", err)
+	}
+	args := strings.Split(strings.TrimSpace(string(argsData)), "\n")
+	for _, want := range []string{
+		"node",
+		"--project=project-123",
+		"create",
+		"--type=video",
+		"--prompt=make a video",
+		"--set=model=Seedance 2.0 Mini",
+		"--set=ratio=9:16",
+		"--set=resolution=720p",
+		"--set=duration=5",
+		"--set=enableSound=off",
+		"--run",
+	} {
+		if !containsString(args, want) {
+			t.Fatalf("args = %#v, missing %q", args, want)
+		}
+	}
+	if response.ID != generation.RouteLibTVSeedance20Mini+":project-123:node_123" ||
+		response.Status != "submitted" {
+		t.Fatalf("response = %#v, want submitted LibTV task", response)
 	}
 }
 
@@ -562,6 +704,15 @@ func assertIntPointer(t *testing.T, name string, got *int, want *int) {
 	if *got != *want {
 		t.Fatalf("%s = %v, want %v", name, *got, *want)
 	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 type fakeMultimodalTextProvider struct {

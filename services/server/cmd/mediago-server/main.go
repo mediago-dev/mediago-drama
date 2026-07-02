@@ -153,11 +153,17 @@ func run(args []string) error {
 		AgentID:               config.Agent.ID,
 		AgentBinDir:           config.Agent.BinDir,
 		ModelPlatforms:        config.ModelPlatforms,
+		GenerationCLIs:        config.GenerationCLIs,
 		MediagoBaseURL:        config.MediagoBaseURL,
 		FFmpegPath:            config.FFmpeg.Path,
 		FFmpegBinDir:          config.FFmpeg.BinDir,
 		JimengBinPath:         config.Jimeng.Path,
 		JimengBinDir:          config.Jimeng.BinDir,
+		LibTVBinPath:          config.LibTV.Path,
+		LibTVBinDir:           config.LibTV.BinDir,
+		LibTVProjectID:        config.LibTV.ProjectID,
+		PippitBinPath:         config.Pippit.Path,
+		PippitBinDir:          config.Pippit.BinDir,
 		DocumentMCPConfigPath: configPath,
 		AgentBridgeURL:        internalAPIURL + "/api/v1/internal/agent/spawn",
 		AgentBridgeToken:      bridgeToken,
@@ -250,6 +256,13 @@ func applyEnvOverrides(config *serverconfig.ServerConfig) error {
 		}
 		config.ModelPlatforms = ids
 	}
+	if value := strings.TrimSpace(os.Getenv("MEDIAGO_GENERATION_CLIS")); value != "" {
+		ids, err := servicesettings.ParseGenerationCLIProviderIDs(value)
+		if err != nil {
+			return fmt.Errorf("invalid MEDIAGO_GENERATION_CLIS: %w", err)
+		}
+		config.GenerationCLIs = ids
+	}
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL")); value != "" {
 		config.MediagoBaseURL = strings.TrimRight(value, "/")
 	}
@@ -264,6 +277,21 @@ func applyEnvOverrides(config *serverconfig.ServerConfig) error {
 	}
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_JIMENG_BIN_DIR")); value != "" {
 		config.Jimeng.BinDir = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MEDIAGO_LIBTV_PATH")); value != "" {
+		config.LibTV.Path = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MEDIAGO_LIBTV_BIN_DIR")); value != "" {
+		config.LibTV.BinDir = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MEDIAGO_LIBTV_PROJECT_ID")); value != "" {
+		config.LibTV.ProjectID = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MEDIAGO_PIPPIT_PATH")); value != "" {
+		config.Pippit.Path = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MEDIAGO_PIPPIT_BIN_DIR")); value != "" {
+		config.Pippit.BinDir = value
 	}
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_SERVER_PORT")); value != "" {
 		port, err := parseServerPort(value)
@@ -293,6 +321,12 @@ func applyPackagedToolDefaults(config *serverconfig.ServerConfig) {
 	}
 	if strings.TrimSpace(config.Jimeng.BinDir) == "" {
 		config.Jimeng.BinDir = toolsDir
+	}
+	if strings.TrimSpace(config.LibTV.BinDir) == "" {
+		config.LibTV.BinDir = toolsDir
+	}
+	if strings.TrimSpace(config.Pippit.BinDir) == "" {
+		config.Pippit.BinDir = toolsDir
 	}
 }
 

@@ -33,11 +33,17 @@ type Config struct {
 	AgentID                  string
 	AgentBinDir              string
 	ModelPlatforms           []string
+	GenerationCLIs           []string
 	MediagoBaseURL           string
 	FFmpegPath               string
 	FFmpegBinDir             string
 	JimengBinPath            string
 	JimengBinDir             string
+	LibTVBinPath             string
+	LibTVBinDir              string
+	LibTVProjectID           string
+	PippitBinPath            string
+	PippitBinDir             string
 	DocumentMCPConfigPath    string
 	AgentBridgeURL           string
 	AgentBridgeToken         string

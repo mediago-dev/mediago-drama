@@ -186,10 +186,28 @@ describe("fallback generation catalog params", () => {
 		expect(param("jimeng.seedance-2.0-mini", "resolution").options).toEqual([
 			{ label: "720p", value: "720p" },
 		]);
+		expect(param("libtv.seedance-2.0-mini", "resolution").options).toEqual([
+			{ label: "480p", value: "480p" },
+			{ label: "720p", value: "720p" },
+		]);
+		expect(routeParams("libtv.seedance-2.0-mini").map((item) => item.name)).toEqual([
+			"aspectRatio",
+			"resolution",
+			"duration",
+			"generateAudio",
+		]);
 		expect(param("jimeng.seedance-2.0-vip", "duration").default).toBe("5");
 		expect(param("jimeng.seedance-2.0-vip", "resolution").options).toEqual([
 			{ label: "720p", value: "720p" },
 			{ label: "1080p", value: "1080p" },
+		]);
+		expect(param("xiaoyunque.seedance-2.0-mini-lite", "resolution").options).toEqual([
+			{ label: "720p", value: "720p" },
+		]);
+		expect(routeParams("xiaoyunque.seedance-2.0-mini-lite").map((item) => item.name)).toEqual([
+			"aspectRatio",
+			"resolution",
+			"duration",
 		]);
 		expect(
 			fallbackCatalog.routes
@@ -202,6 +220,21 @@ describe("fallback generation catalog params", () => {
 			"jimeng.seedance-2.0-fast-vip",
 			"jimeng.seedance-2.0-vip",
 		]);
+		expect(
+			fallbackCatalog.routes.find((route) => route.id === "libtv.seedance-2.0-mini"),
+		).toMatchObject({
+			adapter: "libtv.cli.video",
+			model: "Seedance 2.0 Mini",
+			provider: "libtv",
+			supportsReferenceUrls: false,
+		});
+		expect(
+			fallbackCatalog.routes.find((route) => route.id === "xiaoyunque.seedance-2.0-mini-lite"),
+		).toMatchObject({
+			adapter: "pippit.cli.video",
+			model: "Seedance_2.0_mini_lite",
+			provider: "xiaoyunque",
+		});
 		expect(param("openrouter.seedance-2.0-fast", "duration")).toMatchObject({
 			default: "3",
 			type: "select",

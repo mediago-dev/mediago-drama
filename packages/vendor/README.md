@@ -21,7 +21,10 @@ task prepare AGENT=opencode
 task prepare:tool TOOL=ffmpeg
 task prepare:tool TOOL=ffprobe
 task prepare:tool TOOL=dreamina
+task prepare:tool TOOL=libtv
+task prepare:tool TOOL=pippit
 task prepare:media-tools
+task prepare:generation-clis GENERATION_CLIS=dreamina,libtv,pippit
 task prepare:all
 task prepare:clean
 ```
@@ -35,8 +38,8 @@ If `dist/<agent-id>/agent.json` already matches the pinned version, binary name,
 args, and executable file, prepare reuses the cached artifact and skips the
 download.
 
-Vendored tools such as `ffmpeg` and `ffprobe` are defined in `tools.json` and
-prepared under:
+Vendored tools such as `ffmpeg`, `ffprobe`, and generation CLIs are defined in
+`tools.json` and prepared under:
 
 ```text
 dist/tools/<tool-id>/
@@ -46,7 +49,22 @@ dist/tools/<tool-id>/
 
 Tool entries store pinned release URLs instead of committing native binaries.
 When `sizeBytes` or `sha256` are present for a platform, they are checked before
-installation.
+installation. Tools can be distributed as raw executables or archives; archived
+tools declare `archivePath` for the binary to extract.
+
+`prepare:media-tools` always prepares the baseline media tools (`ffmpeg` and
+`ffprobe`). `prepare:generation-clis` prepares the optional generation CLIs
+selected for a build:
+
+```bash
+task prepare:generation-clis GENERATION_CLIS=dreamina
+task prepare:generation-clis GENERATION_CLIS=dreamina,libtv,pippit
+task prepare:generation-clis GENERATION_CLIS=dreamina,libtv,xiaoyunque
+task prepare:generation-clis GENERATION_CLIS=none
+```
+
+`xiaoyunque` and `pippit-tool-cli` are accepted as aliases for the packaged
+`pippit` tool.
 
 ## Checks
 

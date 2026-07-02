@@ -48,6 +48,8 @@ func TestCatalogRoutesReferenceKnownFamiliesAndVersions(t *testing.T) {
 		ProviderDMX,
 		ProviderOpenRouter,
 		ProviderJimeng,
+		ProviderLibTV,
+		ProviderXiaoyunque,
 	} {
 		if !providers[provider] {
 			t.Fatalf("catalog does not expose provider %q", provider)
@@ -160,6 +162,88 @@ func TestImageCatalogIncludesMediagoRoutes(t *testing.T) {
 		if route.SupportsReferenceURLs != tc.refs {
 			t.Fatalf("route %q refs = %v, want %v", tc.id, route.SupportsReferenceURLs, tc.refs)
 		}
+	}
+}
+
+func TestLibTVCatalogIncludesSeedanceRoute(t *testing.T) {
+	route, ok := FindRoute(RouteLibTVSeedance20Mini)
+	if !ok {
+		t.Fatalf("route %q is missing", RouteLibTVSeedance20Mini)
+	}
+	if route.Kind != KindVideo ||
+		route.FamilyID != FamilySeedance ||
+		route.VersionID != VersionSeedance20Mini ||
+		route.Provider != ProviderLibTV ||
+		route.Adapter != AdapterLibTVCLIVideo {
+		t.Fatalf("route = %#v, want LibTV video route", route)
+	}
+	if route.Model != "Seedance 2.0 Mini" || !route.Async || route.SupportsReferenceURLs {
+		t.Fatalf("route execution metadata = %#v", route)
+	}
+	if len(route.AuthKeys) != 1 || route.AuthKeys[0] != ProviderLibTV {
+		t.Fatalf("auth keys = %#v, want LibTV key", route.AuthKeys)
+	}
+
+	params, err := NormalizeRouteParams(route, map[string]any{
+		"aspectRatio":   "9:16",
+		"resolution":    "720p",
+		"duration":      "5",
+		"generateAudio": false,
+	})
+	if err != nil {
+		t.Fatalf("NormalizeRouteParams() error = %v", err)
+	}
+	translated, err := TranslateRouteParams(route, params)
+	if err != nil {
+		t.Fatalf("TranslateRouteParams() error = %v", err)
+	}
+	if !reflect.DeepEqual(translated, map[string]any{
+		"ratio":       "9:16",
+		"resolution":  "720p",
+		"duration":    "5",
+		"enableSound": false,
+	}) {
+		t.Fatalf("translated params = %#v", translated)
+	}
+}
+
+func TestXiaoyunqueCatalogIncludesPippitSeedanceRoute(t *testing.T) {
+	route, ok := FindRoute(RouteXiaoyunqueSeedance20MiniLite)
+	if !ok {
+		t.Fatalf("route %q is missing", RouteXiaoyunqueSeedance20MiniLite)
+	}
+	if route.Kind != KindVideo ||
+		route.FamilyID != FamilySeedance ||
+		route.VersionID != VersionSeedance20MiniLite ||
+		route.Provider != ProviderXiaoyunque ||
+		route.Adapter != AdapterPippitCLIVideo {
+		t.Fatalf("route = %#v, want Xiaoyunque Pippit video route", route)
+	}
+	if route.Model != "Seedance_2.0_mini_lite" || !route.Async || !route.SupportsReferenceURLs {
+		t.Fatalf("route execution metadata = %#v", route)
+	}
+	if len(route.AuthKeys) != 1 || route.AuthKeys[0] != ProviderXiaoyunque {
+		t.Fatalf("auth keys = %#v, want Xiaoyunque key", route.AuthKeys)
+	}
+
+	params, err := NormalizeRouteParams(route, map[string]any{
+		"aspectRatio": "9:16",
+		"resolution":  "720p",
+		"duration":    "5",
+	})
+	if err != nil {
+		t.Fatalf("NormalizeRouteParams() error = %v", err)
+	}
+	translated, err := TranslateRouteParams(route, params)
+	if err != nil {
+		t.Fatalf("TranslateRouteParams() error = %v", err)
+	}
+	if !reflect.DeepEqual(translated, map[string]any{
+		"ratio":      "9:16",
+		"resolution": "720p",
+		"duration":   "5",
+	}) {
+		t.Fatalf("translated params = %#v", translated)
 	}
 }
 

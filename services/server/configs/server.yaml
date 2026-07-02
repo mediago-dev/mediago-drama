@@ -5,6 +5,7 @@ port: 8080
 workspace_dir: "~/mediago-drama-dev/workspace" # Dev workspace, isolated from the packaged app's data. Leave empty to use the app data workspace.
 # acp_command: codex-acp
 # model_platforms: ["mediago"] # MEDIAGO_MODEL_PLATFORM=mediago,openrouter,dmxapi overrides this.
+# generation_clis: ["dreamina"] # MEDIAGO_GENERATION_CLIS=dreamina,libtv,pippit or none overrides this.
 # mediago_base_url: ""         # MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL overrides this.
 # agent:
 #   id: codex      # Optional active backend override: codex or opencode.
@@ -15,6 +16,13 @@ workspace_dir: "~/mediago-drama-dev/workspace" # Dev workspace, isolated from th
 # jimeng:
 #   path: ""       # Optional explicit dreamina binary; MEDIAGO_JIMENG_PATH overrides this.
 #   bin_dir: ""    # Directory containing dreamina; MEDIAGO_JIMENG_BIN_DIR overrides this.
+# libtv:
+#   path: ""       # Optional explicit libtv binary; MEDIAGO_LIBTV_PATH overrides this.
+#   bin_dir: ""    # Directory containing libtv; MEDIAGO_LIBTV_BIN_DIR overrides this.
+#   project_id: "" # Optional LibTV canvas project UUID; MEDIAGO_LIBTV_PROJECT_ID overrides this. Empty uses `libtv project use`.
+# pippit:
+#   path: ""       # Optional explicit pippit-tool-cli binary; MEDIAGO_PIPPIT_PATH overrides this.
+#   bin_dir: ""    # Directory containing pippit-tool-cli; MEDIAGO_PIPPIT_BIN_DIR overrides this.
 # internal_api:
 #   url: ""    # ONE_INTERNAL_API_URL overrides this when set.
 #   token: ""  # ONE_INTERNAL_API_TOKEN overrides this when set.

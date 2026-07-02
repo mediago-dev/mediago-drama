@@ -15,12 +15,22 @@ log_path: " /tmp/mediago-server.log "
 log_level: " debug "
 workspace_dir: " /tmp/media-workspace "
 acp_command: " codex-acp --model test "
+generation_clis:
+  - " libtv "
+  - " pippit "
 ffmpeg:
   path: " /opt/ffmpeg "
   bin_dir: " /opt/vendor/ffmpeg "
 jimeng:
   path: " /opt/dreamina "
   bin_dir: " /opt/vendor/tools "
+libtv:
+  path: " /opt/libtv "
+  bin_dir: " /opt/vendor/libtv "
+  project_id: " libtv-project-123 "
+pippit:
+  path: " /opt/pippit-tool-cli "
+  bin_dir: " /opt/vendor/pippit "
 billing:
   price_overlay_path: " ./pricing.json "
 prompt:
@@ -51,10 +61,18 @@ document_mcp:
 		config.LogLevel != "debug" ||
 		config.WorkspaceDir != "/tmp/media-workspace" ||
 		config.ACPCommand != "codex-acp --model test" ||
+		len(config.GenerationCLIs) != 2 ||
+		config.GenerationCLIs[0] != "libtv" ||
+		config.GenerationCLIs[1] != "pippit" ||
 		config.FFmpeg.Path != "/opt/ffmpeg" ||
 		config.FFmpeg.BinDir != "/opt/vendor/ffmpeg" ||
 		config.Jimeng.Path != "/opt/dreamina" ||
 		config.Jimeng.BinDir != "/opt/vendor/tools" ||
+		config.LibTV.Path != "/opt/libtv" ||
+		config.LibTV.BinDir != "/opt/vendor/libtv" ||
+		config.LibTV.ProjectID != "libtv-project-123" ||
+		config.Pippit.Path != "/opt/pippit-tool-cli" ||
+		config.Pippit.BinDir != "/opt/vendor/pippit" ||
 		config.Billing.PriceOverlayPath != "./pricing.json" ||
 		config.Prompt.MaxSectionChars != 9000 ||
 		config.InternalAPI.URL != "http://internal.test" ||
@@ -76,7 +94,11 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if config.Host != "127.0.0.1" || config.Port != 8080 || config.Prompt.MaxSectionChars != 12000 {
+	if config.Host != "127.0.0.1" ||
+		config.Port != 8080 ||
+		config.Prompt.MaxSectionChars != 12000 ||
+		len(config.GenerationCLIs) != 1 ||
+		config.GenerationCLIs[0] != "dreamina" {
 		t.Fatalf("config = %#v, want default host and port", config)
 	}
 }

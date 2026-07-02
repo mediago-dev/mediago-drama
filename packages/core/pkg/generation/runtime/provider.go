@@ -12,8 +12,10 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/dmx"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/jimeng"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/libtv"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/official"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/openrouter"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/pippit"
 )
 
 // CredentialResolver loads credentials by catalog credential key.
@@ -53,6 +55,12 @@ type Config struct {
 	VolcengineBaseURL string
 	JimengBinPath     string
 	JimengBinDir      string
+	LibTVBinPath      string
+	LibTVBinDir       string
+	LibTVProjectID    string
+	PippitBinPath     string
+	PippitBinDir      string
+	XiaoyunqueBaseURL string
 }
 
 // Provider routes generation requests to the route's configured provider.
@@ -188,6 +196,10 @@ func (provider *Provider) providerForRoute(ctx context.Context, route generation
 		switch route.Provider {
 		case generation.ProviderJimeng:
 			return provider.jimengProvider()
+		case generation.ProviderLibTV:
+			return provider.libTVProvider()
+		case generation.ProviderXiaoyunque:
+			return provider.pippitProvider(ctx)
 		default:
 			return nil, fmt.Errorf("generation provider %q is not implemented", route.Provider)
 		}
@@ -208,6 +220,45 @@ func (provider *Provider) jimengProvider() (generation.Provider, error) {
 		return jimeng.NewProvider(jimeng.Config{
 			BinPath: provider.config.JimengBinPath,
 			BinDir:  provider.config.JimengBinDir,
+		})
+	})
+}
+
+func (provider *Provider) libTVProvider() (generation.Provider, error) {
+	cacheKey := provider.cacheKey(
+		generation.ProviderLibTV,
+		provider.config.LibTVBinPath,
+		provider.config.LibTVBinDir,
+		provider.config.LibTVProjectID,
+	)
+	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
+		return libtv.NewProvider(libtv.Config{
+			BinPath:   provider.config.LibTVBinPath,
+			BinDir:    provider.config.LibTVBinDir,
+			ProjectID: provider.config.LibTVProjectID,
+		})
+	})
+}
+
+func (provider *Provider) pippitProvider(ctx context.Context) (generation.Provider, error) {
+	apiKey, err := provider.credential(ctx, generation.ProviderXiaoyunque)
+	if err != nil {
+		return nil, err
+	}
+
+	cacheKey := provider.cacheKey(
+		generation.ProviderXiaoyunque,
+		apiKey,
+		provider.config.XiaoyunqueBaseURL,
+		provider.config.PippitBinPath,
+		provider.config.PippitBinDir,
+	)
+	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
+		return pippit.NewProvider(pippit.Config{
+			APIKey:  apiKey,
+			BaseURL: provider.config.XiaoyunqueBaseURL,
+			BinPath: provider.config.PippitBinPath,
+			BinDir:  provider.config.PippitBinDir,
 		})
 	})
 }

@@ -10,6 +10,8 @@ const (
 	ProviderDMX        = "dmx"
 	ProviderOpenRouter = "openrouter"
 	ProviderJimeng     = "jimeng"
+	ProviderLibTV      = "libtv"
+	ProviderXiaoyunque = "xiaoyunque"
 
 	AdapterOfficialPlanned          = "official.planned"
 	AdapterOfficialOpenAIImage      = "official.openai.image"
@@ -32,4 +34,6 @@ const (
 	AdapterDMXResponsesVideo        = "dmx.responses.video"
 	AdapterJimengCLIImage           = "jimeng.cli.image"
 	AdapterJimengCLIVideo           = "jimeng.cli.video"
+	AdapterLibTVCLIVideo            = "libtv.cli.video"
+	AdapterPippitCLIVideo           = "pippit.cli.video"
 )

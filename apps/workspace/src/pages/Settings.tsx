@@ -65,9 +65,12 @@ const customProvidersEnabled = import.meta.env.VITE_ENABLE_CUSTOM_PROVIDERS !== 
 const mediagoProviderID = "mediago";
 const mediagoAPIKeyURL =
 	import.meta.env.VITE_MEDIAGO_APIKEY_URL || "http://localhost:4321/account#apiKeys";
-const cliProviderIDs = new Set(["jimeng"]);
+const fallbackCLIProviderIDs = new Set(["jimeng", "libtv", "xiaoyunque"]);
+const knownPlatformProviderIDs = new Set(["mediago", "openrouter", "dmx"]);
 const cliProviderHints: Record<string, string> = {
 	jimeng: "已开通即梦高级会员？可直接登录即梦账号接入，无需 API Key。",
+	libtv: "已开通 LibTV 会员？可直接登录 LibTV 账号接入本地 CLI。",
+	xiaoyunque: "已有小云雀 Access Key？可通过本地 Pippit CLI 接入。",
 };
 const providerRowClassName = settingsInsetRowClassName;
 
@@ -147,7 +150,10 @@ const APIKeysPanel: React.FC = () => {
 	const visibleUnifiedProviders = unifiedProviders.filter(
 		(provider) => provider.id !== mediagoProviderID,
 	);
-	const cliProviders = providers.filter((provider) => cliProviderIDs.has(provider.id));
+	const cliProviders =
+		modelPlatforms.length > 0
+			? platformProviders(modelPlatforms, providersByID, "cli")
+			: providers.filter((provider) => fallbackCLIProviderIDs.has(provider.id));
 	const customProviders = customProvidersEnabled
 		? platformProviders(modelPlatforms, providersByID, "custom")
 		: [];
@@ -249,7 +255,7 @@ const APIKeysPanel: React.FC = () => {
 				if (nextData.login.verificationUri) {
 					await openExternalURL(nextData.login.verificationUri);
 				}
-				toast.info("即梦登录页已打开", {
+				toast.info(`${provider.label}登录页已打开`, {
 					description: nextData.login.userCode
 						? `验证码：${nextData.login.userCode}`
 						: provider.label,
@@ -272,7 +278,7 @@ const APIKeysPanel: React.FC = () => {
 		try {
 			await openExternalURL(challenge.verificationUri);
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "打开即梦授权页失败。";
+			const message = err instanceof Error ? err.message : `打开${provider.label}授权页失败。`;
 			toast.error("打开失败", { description: message });
 		}
 	};
@@ -407,10 +413,10 @@ const APIKeysPanel: React.FC = () => {
 					<CredentialCategorySection
 						className="py-8"
 						title="会员 CLI 接入"
-						description="使用各平台会员账号直接登录接入，无需 API Key。"
+						description="使用本地 CLI 登录或配置对应 Access Key 接入。"
 					>
 						{cliProviders.map((provider) =>
-							renderProvider(provider, cliProviderHints[provider.id]),
+							renderProvider(provider, cliProviderHints[provider.id] ?? provider.help),
 						)}
 					</CredentialCategorySection>
 				) : null}
@@ -479,8 +485,6 @@ const platformProvider = (
 	};
 };
 
-const platformProviderIDs = new Set(["mediago", "openrouter", "dmx"]);
-
 const platformProviders = (
 	platforms: ModelPlatform[],
 	providersByID: Map<string, APIKeyProvider>,
@@ -496,9 +500,13 @@ const platformProviders = (
 					...provider,
 					label: platform.label || provider.label,
 					description: platform.description || provider.description,
-					credentialLabel: undefined,
-					help: undefined,
-					placeholder: undefined,
+					...(kind === "cli"
+						? {}
+						: {
+								credentialLabel: undefined,
+								help: undefined,
+								placeholder: undefined,
+							}),
 				},
 			];
 		});
@@ -506,11 +514,14 @@ const platformProviders = (
 const officialAPIKeyProviders = (providers: APIKeyProvider[], platforms: ModelPlatform[]) => {
 	if (platforms.length === 0) {
 		return providers.filter(
-			(provider) => provider.id !== "mediago" && !cliProviderIDs.has(provider.id),
+			(provider) =>
+				!knownPlatformProviderIDs.has(provider.id) && !fallbackCLIProviderIDs.has(provider.id),
 		);
 	}
+	const platformProviderIDs = new Set(platforms.map((platform) => platform.apiKeyProviderId));
 	return providers.filter(
-		(provider) => !platformProviderIDs.has(provider.id) && !cliProviderIDs.has(provider.id),
+		(provider) =>
+			!knownPlatformProviderIDs.has(provider.id) && !platformProviderIDs.has(provider.id),
 	);
 };
 
@@ -1359,7 +1370,7 @@ const APIKeyProviderRow: React.FC<{
 								variant="outline"
 								onClick={onOpenLogin}
 								className="rounded-md"
-								title="打开即梦授权页"
+								title={`打开 ${provider.label} 授权页`}
 							>
 								<ExternalLink />
 								<span>打开</span>
@@ -1371,7 +1382,7 @@ const APIKeyProviderRow: React.FC<{
 								disabled={isCheckingLogin}
 								onClick={onConfirmLogin}
 								className="rounded-md"
-								title="确认即梦登录"
+								title={`确认 ${provider.label} 登录`}
 							>
 								{isCheckingLogin ? <Loader2 className="animate-spin" /> : <Check />}
 								<span>确认</span>
@@ -1387,7 +1398,7 @@ const APIKeyProviderRow: React.FC<{
 								disabled={isLoggingIn}
 								onClick={onLogin}
 								className="rounded-md"
-								title="打开即梦登录授权"
+								title={`打开 ${provider.label} 登录授权`}
 							>
 								{isLoggingIn ? <Loader2 className="animate-spin" /> : <LogIn />}
 								<span>{provider.configured ? "重新登录" : "登录"}</span>

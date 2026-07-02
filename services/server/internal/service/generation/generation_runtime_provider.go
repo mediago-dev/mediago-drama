@@ -28,6 +28,11 @@ func (workflow *GenerationService) newGenerationProvider(route coregeneration.Mo
 		MediagoBaseURL:                workflow.mediagoBaseURL,
 		JimengBinPath:                 workflow.jimengBinPath,
 		JimengBinDir:                  workflow.jimengBinDir,
+		LibTVBinPath:                  workflow.libTVBinPath,
+		LibTVBinDir:                   workflow.libTVBinDir,
+		LibTVProjectID:                workflow.libTVProjectID,
+		PippitBinPath:                 workflow.pippitBinPath,
+		PippitBinDir:                  workflow.pippitBinDir,
 	})
 }
 

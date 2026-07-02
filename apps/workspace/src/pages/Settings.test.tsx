@@ -154,6 +154,27 @@ describe("Settings API key page", () => {
 		).toBeInTheDocument();
 		expect(screen.queryByText("jimeng")).not.toBeInTheDocument();
 	});
+
+	it("renders LibTV and Xiaoyunque CLI providers from platform data", async () => {
+		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ includeExtraCLI: true }));
+		vi.mocked(getModelPlatforms).mockResolvedValue(
+			modelPlatformsResponse({ cliProviderIDs: ["libtv", "xiaoyunque"] }),
+		);
+
+		renderSettings();
+
+		const cliSection = (await screen.findByRole("heading", { name: "会员 CLI 接入" })).closest(
+			"section",
+		);
+		expect(cliSection).toBeTruthy();
+		expect(within(cliSection as HTMLElement).getByText("LibTV")).toBeInTheDocument();
+		expect(within(cliSection as HTMLElement).getByText("小云雀")).toBeInTheDocument();
+		expect(
+			within(cliSection as HTMLElement).getByRole("button", { name: "登录" }),
+		).toBeInTheDocument();
+		expect(within(cliSection as HTMLElement).getByLabelText("小云雀 API Key")).toBeInTheDocument();
+		expect(within(cliSection as HTMLElement).queryByText("即梦")).not.toBeInTheDocument();
+	});
 });
 
 const renderSettings = () =>
@@ -166,9 +187,11 @@ const renderSettings = () =>
 	);
 
 const apiKeysResponse = ({
+	includeExtraCLI = false,
 	mediagoConfigured = false,
 	openrouterConfigured = false,
 }: {
+	includeExtraCLI?: boolean;
 	mediagoConfigured?: boolean;
 	openrouterConfigured?: boolean;
 }): APIKeyListResponse => ({
@@ -202,6 +225,30 @@ const apiKeysResponse = ({
 			credentialKind: "oauth",
 			capabilities: ["image"],
 		},
+		...(includeExtraCLI
+			? [
+					{
+						id: "libtv",
+						label: "LibTV",
+						description: "LibTV CLI 接入",
+						configured: false,
+						source: "none" as const,
+						credentialKind: "oauth",
+						capabilities: ["image"],
+					},
+					{
+						id: "xiaoyunque",
+						label: "小云雀",
+						description: "小云雀 CLI 接入",
+						configured: false,
+						source: "none" as const,
+						credentialKind: "apiKey",
+						credentialLabel: "小云雀 Access Key",
+						placeholder: "输入 XYQ_ACCESS_KEY",
+						capabilities: ["image", "video"],
+					},
+				]
+			: []),
 		{
 			id: "volcengine",
 			label: "火山引擎",
@@ -214,7 +261,11 @@ const apiKeysResponse = ({
 	],
 });
 
-const modelPlatformsResponse = (): ModelPlatformsResponse => ({
+const modelPlatformsResponse = ({
+	cliProviderIDs = ["jimeng"],
+}: {
+	cliProviderIDs?: string[];
+} = {}): ModelPlatformsResponse => ({
 	platforms: [
 		{
 			id: "mediago",
@@ -236,5 +287,23 @@ const modelPlatformsResponse = (): ModelPlatformsResponse => ({
 			description: "自定义兼容接口",
 			apiKeyProviderId: "openrouter",
 		},
+		...cliProviderIDs.map((providerID) => ({
+			id: providerID,
+			label: cliPlatformLabel(providerID),
+			kind: "cli",
+			description: `${cliPlatformLabel(providerID)} CLI 接入`,
+			apiKeyProviderId: providerID,
+		})),
 	],
 });
+
+const cliPlatformLabel = (providerID: string) => {
+	switch (providerID) {
+		case "libtv":
+			return "LibTV";
+		case "xiaoyunque":
+			return "小云雀";
+		default:
+			return "即梦";
+	}
+};

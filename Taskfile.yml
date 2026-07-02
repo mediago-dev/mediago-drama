@@ -4,6 +4,7 @@ vars:
   ROOT_DIR:
     sh: pwd
   AGENT: '{{.AGENT | default "opencode"}}'
+  GENERATION_CLIS: '{{.GENERATION_CLIS | default "dreamina"}}'
   MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago,openrouter,dmxapi"}}'
   MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default "http://127.0.0.1:3001/api/v1"}}'
   TOOL: '{{.TOOL | default "ffmpeg"}}'
@@ -40,6 +41,7 @@ tasks:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
       MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
       MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
+      MEDIAGO_GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
     cmds:
@@ -47,12 +49,16 @@ tasks:
         vars:
           AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
+      - task: prepare-generation-clis
+        vars:
+          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       - task: workspace:build
       - task: sync:workspace-dist
       - task: build:server
       - task: stage-electron
         vars:
           AGENT: "{{.AGENT}}"
+          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
           MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
           MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
       - pnpm -C apps/workspace electron:build
@@ -70,6 +76,7 @@ tasks:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
       MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
       MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
+      MEDIAGO_GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
     cmds:
@@ -77,12 +84,16 @@ tasks:
         vars:
           AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
+      - task: prepare-generation-clis
+        vars:
+          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       - task: workspace:build
       - task: sync:workspace-dist
       - task: build:server
       - task: stage-electron
         vars:
           AGENT: "{{.AGENT}}"
+          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
           MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
           MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
       - pnpm -C apps/workspace {{.ELECTRON_SCRIPT}}
@@ -99,6 +110,7 @@ tasks:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
       MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
       MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
+      MEDIAGO_GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
     cmds:
@@ -109,6 +121,10 @@ tasks:
       - task: prepare-media-tools
         vars:
           PLATFORM: "{{.PLATFORM}}"
+      - task: prepare-generation-clis
+        vars:
+          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
+          PLATFORM: "{{.PLATFORM}}"
       - task: workspace:build
       - task: sync:workspace-dist
       - task: build:server:target
@@ -118,6 +134,7 @@ tasks:
         vars:
           AGENT: "{{.AGENT}}"
           PLATFORM: "{{.PLATFORM}}"
+          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
           MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
           MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
       - pnpm -C apps/workspace {{.ELECTRON_SCRIPT}}
@@ -144,19 +161,26 @@ tasks:
     vars:
       PLATFORM: '{{.PLATFORM | default ""}}'
     cmds:
-      - task -d packages/vendor prepare AGENT={{.AGENT}} PLATFORM={{.PLATFORM}}
+      - task -d packages/vendor prepare AGENT="{{.AGENT}}" PLATFORM="{{.PLATFORM}}"
 
   prepare-tool:
     vars:
       PLATFORM: '{{.PLATFORM | default ""}}'
     cmds:
-      - task -d packages/vendor prepare:tool TOOL={{.TOOL}} PLATFORM={{.PLATFORM}}
+      - task -d packages/vendor prepare:tool TOOL="{{.TOOL}}" PLATFORM="{{.PLATFORM}}"
 
   prepare-media-tools:
     vars:
       PLATFORM: '{{.PLATFORM | default ""}}'
     cmds:
-      - task -d packages/vendor prepare:media-tools PLATFORM={{.PLATFORM}}
+      - task -d packages/vendor prepare:media-tools PLATFORM="{{.PLATFORM}}"
+
+  prepare-generation-clis:
+    vars:
+      PLATFORM: '{{.PLATFORM | default ""}}'
+      GENERATION_CLIS: '{{.GENERATION_CLIS | default "dreamina"}}'
+    cmds:
+      - task -d packages/vendor prepare:generation-clis GENERATION_CLIS="{{.GENERATION_CLIS}}" PLATFORM="{{.PLATFORM}}"
 
   dev:
     desc: Run the built server binary and web workspace for browser development
@@ -166,14 +190,20 @@ tasks:
         vars:
           AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
+      - task: prepare-generation-clis
+        vars:
+          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
     env:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
       MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
       MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default "http://127.0.0.1:3001/api/v1"}}'
+      MEDIAGO_GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       MEDIAGO_SERVER_PORT: "{{.DEV_SERVER_PORT}}"
       MEDIAGO_AGENT_BIN_DIR: "{{.VENDOR_BIN_DIR}}"
       MEDIAGO_FFMPEG_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
       MEDIAGO_JIMENG_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
+      MEDIAGO_LIBTV_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
+      MEDIAGO_PIPPIT_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
       VITE_API_PROXY_TARGET: "{{.DEV_SERVER_URL}}"
     cmds:
       - task: dev:server:check
@@ -199,14 +229,20 @@ tasks:
         vars:
           AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
+      - task: prepare-generation-clis
+        vars:
+          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
     env:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
       MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
       MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default "http://127.0.0.1:3001/api/v1"}}'
+      MEDIAGO_GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       MEDIAGO_SERVER_PORT: "{{.DEV_SERVER_PORT}}"
       MEDIAGO_AGENT_BIN_DIR: "{{.VENDOR_BIN_DIR}}"
       MEDIAGO_FFMPEG_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
       MEDIAGO_JIMENG_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
+      MEDIAGO_LIBTV_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
+      MEDIAGO_PIPPIT_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
     cmds:
       - task: dev:server:check
       - task -d services/server swagger
@@ -250,8 +286,9 @@ tasks:
       PLATFORM: '{{.PLATFORM | default ""}}'
       MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago,openrouter,dmxapi"}}'
       MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default ""}}'
+      GENERATION_CLIS: '{{.GENERATION_CLIS | default "dreamina"}}'
     cmds:
-      - node apps/workspace/scripts/stage-electron.ts "{{.AGENT}}" "{{.PLATFORM}}" "{{.MODEL_PLATFORM}}" "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
+      - node apps/workspace/scripts/stage-electron.ts "{{.AGENT}}" "{{.PLATFORM}}" "{{.MODEL_PLATFORM}}" "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}" "{{.GENERATION_CLIS}}"
 
   go:check:
     cmds:

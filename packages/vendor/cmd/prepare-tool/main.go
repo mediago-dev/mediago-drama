@@ -1,6 +1,9 @@
 package main
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -26,19 +29,21 @@ type toolSpec struct {
 }
 
 type toolPlatformSpec struct {
-	URL       string `json:"url"`
-	SizeBytes int64  `json:"sizeBytes,omitempty"`
-	SHA256    string `json:"sha256,omitempty"`
+	URL         string `json:"url"`
+	ArchivePath string `json:"archivePath,omitempty"`
+	SizeBytes   int64  `json:"sizeBytes,omitempty"`
+	SHA256      string `json:"sha256,omitempty"`
 }
 
 type toolManifest struct {
-	ID        string `json:"id"`
-	Bin       string `json:"bin"`
-	Version   string `json:"version"`
-	Platform  string `json:"platform"`
-	URL       string `json:"url"`
-	SizeBytes int64  `json:"sizeBytes,omitempty"`
-	SHA256    string `json:"sha256,omitempty"`
+	ID          string `json:"id"`
+	Bin         string `json:"bin"`
+	Version     string `json:"version"`
+	Platform    string `json:"platform"`
+	URL         string `json:"url"`
+	ArchivePath string `json:"archivePath,omitempty"`
+	SizeBytes   int64  `json:"sizeBytes,omitempty"`
+	SHA256      string `json:"sha256,omitempty"`
 }
 
 type platform struct {
@@ -56,7 +61,7 @@ func main() {
 func run(args []string) error {
 	flags := flag.NewFlagSet("prepare-tool", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
-	toolID := flags.String("tool", defaultToolID, "Tool id to prepare: ffmpeg or ffprobe")
+	toolID := flags.String("tool", defaultToolID, "Tool id to prepare from tools.json")
 	targetPlatform := flags.String("platform", "", "Target platform to prepare, e.g. darwin-arm64 or windows-x64")
 	root := flags.String("root", "", "Vendor directory containing tools.json")
 	if err := flags.Parse(args); err != nil {
@@ -78,7 +83,7 @@ func run(args []string) error {
 		return err
 	}
 
-	toolIDValue := strings.TrimSpace(*toolID)
+	toolIDValue := canonicalToolID(*toolID)
 	spec, ok := specs[toolIDValue]
 	if !ok {
 		return fmt.Errorf("unsupported tool %q; must be one of: %s", toolIDValue, strings.Join(toolIDs(specs), ", "))
@@ -213,13 +218,14 @@ func (value platform) DistKey() string {
 
 func prepareTool(id string, spec toolSpec, platformKey string, asset toolPlatformSpec, distDir string) error {
 	expected := toolManifest{
-		ID:        id,
-		Bin:       toolBinaryName(spec.Bin, platformKey),
-		Version:   strings.TrimSpace(spec.Version),
-		Platform:  platformKey,
-		URL:       strings.TrimSpace(asset.URL),
-		SizeBytes: asset.SizeBytes,
-		SHA256:    normalizeSHA256(asset.SHA256),
+		ID:          id,
+		Bin:         toolBinaryName(spec.Bin, platformKey),
+		Version:     strings.TrimSpace(spec.Version),
+		Platform:    platformKey,
+		URL:         strings.TrimSpace(asset.URL),
+		ArchivePath: normalizeArchivePath(asset.ArchivePath),
+		SizeBytes:   asset.SizeBytes,
+		SHA256:      normalizeSHA256(asset.SHA256),
 	}
 	if expected.Bin == "" {
 		return fmt.Errorf("tool %q has empty bin", id)
@@ -255,7 +261,7 @@ func prepareTool(id string, spec toolSpec, platformKey string, asset toolPlatfor
 	if err := os.MkdirAll(distDir, 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", distDir, err)
 	}
-	if err := installDownloadedTool(downloadPath, expected.Bin, distDir); err != nil {
+	if err := installDownloadedTool(downloadPath, expected, distDir); err != nil {
 		return err
 	}
 	if err := writeManifest(distDir, expected); err != nil {
@@ -296,6 +302,7 @@ func manifestMatches(got toolManifest, want toolManifest) bool {
 		strings.TrimSpace(got.Version) == want.Version &&
 		strings.TrimSpace(got.Platform) == want.Platform &&
 		strings.TrimSpace(got.URL) == want.URL &&
+		normalizeArchivePath(got.ArchivePath) == want.ArchivePath &&
 		got.SizeBytes == want.SizeBytes &&
 		normalizeSHA256(got.SHA256) == want.SHA256
 }
@@ -377,7 +384,14 @@ func verifyDownloadedTool(path string, expected toolManifest) error {
 	return nil
 }
 
-func installDownloadedTool(downloadPath string, bin string, distDir string) error {
+func installDownloadedTool(downloadPath string, expected toolManifest, distDir string) error {
+	if expected.ArchivePath != "" {
+		return installArchivedTool(downloadPath, expected, distDir)
+	}
+	return installRawTool(downloadPath, expected.Bin, distDir)
+}
+
+func installRawTool(downloadPath string, bin string, distDir string) error {
 	input, err := os.Open(downloadPath)
 	if err != nil {
 		return fmt.Errorf("opening downloaded tool %s: %w", downloadPath, err)
@@ -385,6 +399,92 @@ func installDownloadedTool(downloadPath string, bin string, distDir string) erro
 	defer input.Close()
 
 	dest := filepath.Join(distDir, bin)
+	output, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return fmt.Errorf("creating %s: %w", dest, err)
+	}
+	if _, err := io.Copy(output, input); err != nil {
+		output.Close()
+		return fmt.Errorf("writing %s: %w", dest, err)
+	}
+	if err := output.Close(); err != nil {
+		return fmt.Errorf("closing %s: %w", dest, err)
+	}
+	if err := os.Chmod(dest, 0o755); err != nil {
+		return fmt.Errorf("marking %s executable: %w", dest, err)
+	}
+	return nil
+}
+
+func installArchivedTool(downloadPath string, expected toolManifest, distDir string) error {
+	switch {
+	case strings.HasSuffix(strings.ToLower(expected.URL), ".zip"):
+		return installZipTool(downloadPath, expected, distDir)
+	case strings.HasSuffix(strings.ToLower(expected.URL), ".tar.gz"), strings.HasSuffix(strings.ToLower(expected.URL), ".tgz"):
+		return installTarGzTool(downloadPath, expected, distDir)
+	default:
+		return fmt.Errorf("tool %q archivePath is set but url is not a supported archive: %s", expected.ID, expected.URL)
+	}
+}
+
+func installZipTool(downloadPath string, expected toolManifest, distDir string) error {
+	reader, err := zip.OpenReader(downloadPath)
+	if err != nil {
+		return fmt.Errorf("opening zip archive %s: %w", downloadPath, err)
+	}
+	defer reader.Close()
+
+	for _, file := range reader.File {
+		if normalizeArchivePath(file.Name) != expected.ArchivePath {
+			continue
+		}
+		if file.FileInfo().IsDir() {
+			return fmt.Errorf("archive path %s is a directory", expected.ArchivePath)
+		}
+		input, err := file.Open()
+		if err != nil {
+			return fmt.Errorf("opening %s in archive: %w", expected.ArchivePath, err)
+		}
+		defer input.Close()
+		return writeExecutable(input, filepath.Join(distDir, expected.Bin))
+	}
+	return fmt.Errorf("archive path %s was not found in %s", expected.ArchivePath, downloadPath)
+}
+
+func installTarGzTool(downloadPath string, expected toolManifest, distDir string) error {
+	file, err := os.Open(downloadPath)
+	if err != nil {
+		return fmt.Errorf("opening tar.gz archive %s: %w", downloadPath, err)
+	}
+	defer file.Close()
+
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("opening gzip stream %s: %w", downloadPath, err)
+	}
+	defer gzipReader.Close()
+
+	tarReader := tar.NewReader(gzipReader)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("reading tar archive %s: %w", downloadPath, err)
+		}
+		if normalizeArchivePath(header.Name) != expected.ArchivePath {
+			continue
+		}
+		if header.FileInfo().IsDir() {
+			return fmt.Errorf("archive path %s is a directory", expected.ArchivePath)
+		}
+		return writeExecutable(tarReader, filepath.Join(distDir, expected.Bin))
+	}
+	return fmt.Errorf("archive path %s was not found in %s", expected.ArchivePath, downloadPath)
+}
+
+func writeExecutable(input io.Reader, dest string) error {
 	output, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
 	if err != nil {
 		return fmt.Errorf("creating %s: %w", dest, err)
@@ -417,6 +517,21 @@ func writeManifest(distDir string, manifest toolManifest) error {
 
 func normalizeSHA256(value string) string {
 	return strings.ToLower(strings.TrimSpace(strings.TrimPrefix(value, "sha256:")))
+}
+
+func normalizeArchivePath(value string) string {
+	value = strings.TrimSpace(filepath.ToSlash(value))
+	value = strings.TrimPrefix(value, "./")
+	return value
+}
+
+func canonicalToolID(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "xiaoyunque", "pippit-tool-cli":
+		return "pippit"
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
 }
 
 func toolBinaryName(bin string, platformKey string) string {

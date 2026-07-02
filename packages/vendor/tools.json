@@ -71,5 +71,77 @@
         "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_windows_amd64.exe"
       }
     }
+  },
+  "libtv": {
+    "bin": "libtv",
+    "version": "1.0.2",
+    "platforms": {
+      "darwin-arm64": {
+        "url": "https://liblibai-web-static.liblib.cloud/cli/1.0.2/libtv-macos-arm64.zip",
+        "archivePath": "libtv-macos-arm64/libtv",
+        "sizeBytes": 24056539,
+        "sha256": "f8a320e9e34b266699410f8ddd00f54004304449cad2ec03367401dac42bba61"
+      },
+      "darwin-x64": {
+        "url": "https://liblibai-web-static.liblib.cloud/cli/1.0.2/libtv-macos-x64.zip",
+        "archivePath": "libtv-macos-x64/libtv",
+        "sizeBytes": 25862561,
+        "sha256": "74f49ac1794c42d6bcf7747d42bd1998f0c8953766c5ec185fe7d8ca04341763"
+      },
+      "linux-arm64": {
+        "url": "https://liblibai-web-static.liblib.cloud/cli/1.0.2/libtv-linux-arm64.zip",
+        "archivePath": "libtv-linux-arm64/libtv",
+        "sizeBytes": 27833025,
+        "sha256": "6eed711cb68c943eef7828be2dd177d3493ae81b64cea90b149e0fd4dead97df"
+      },
+      "linux-x64": {
+        "url": "https://liblibai-web-static.liblib.cloud/cli/1.0.2/libtv-linux-x64.zip",
+        "archivePath": "libtv-linux-x64/libtv",
+        "sizeBytes": 28340061,
+        "sha256": "1596dd93ad9a01c695ec2e15600126bb7e5c1ebda06b2ce880dca778f5da237b"
+      },
+      "win32-x64": {
+        "url": "https://liblibai-web-static.liblib.cloud/cli/1.0.2/libtv-windows-amd64.zip",
+        "archivePath": "libtv-win-x64/libtv.exe",
+        "sizeBytes": 22637858,
+        "sha256": "5a979946a6d6a7d6e704efb91f8246ca6cf1c9a587f00460fdade4518b4d74ac"
+      }
+    }
+  },
+  "pippit": {
+    "bin": "pippit-tool-cli",
+    "version": "1.0.10",
+    "platforms": {
+      "darwin-arm64": {
+        "url": "https://github.com/Pippit-dev/cli/releases/download/v1.0.10/pippit-tool-cli-1.0.10-darwin-arm64.tar.gz",
+        "archivePath": "pippit-tool-cli",
+        "sizeBytes": 3484980,
+        "sha256": "0d77c0aae453c3a64c61699823b775367816f7300aca04f0d47aec1151038092"
+      },
+      "darwin-x64": {
+        "url": "https://github.com/Pippit-dev/cli/releases/download/v1.0.10/pippit-tool-cli-1.0.10-darwin-amd64.tar.gz",
+        "archivePath": "pippit-tool-cli",
+        "sizeBytes": 4721648,
+        "sha256": "44e0b20d9ce770e4a1bfc8ae474aaec8b6fc7e17beb7e9c00468024caa3888dd"
+      },
+      "linux-arm64": {
+        "url": "https://github.com/Pippit-dev/cli/releases/download/v1.0.10/pippit-tool-cli-1.0.10-linux-arm64.tar.gz",
+        "archivePath": "pippit-tool-cli",
+        "sizeBytes": 3358436,
+        "sha256": "95c1b80c2e743eafce3ab91c94f86df727d236c859d8f9d581eb7a7d5b055125"
+      },
+      "linux-x64": {
+        "url": "https://github.com/Pippit-dev/cli/releases/download/v1.0.10/pippit-tool-cli-1.0.10-linux-amd64.tar.gz",
+        "archivePath": "pippit-tool-cli",
+        "sizeBytes": 4638961,
+        "sha256": "7ee3fd6064406864ce4f3bbb8886421dc1cde462cb678e3faac66d81c6e64cbb"
+      },
+      "win32-x64": {
+        "url": "https://github.com/Pippit-dev/cli/releases/download/v1.0.10/pippit-tool-cli-1.0.10-windows-amd64.zip",
+        "archivePath": "pippit-tool-cli.exe",
+        "sizeBytes": 4755768,
+        "sha256": "cd9997499e4a217c456b18b021e0215705bf5fba64325bc3461380fed315cf10"
+      }
+    }
   }
 }

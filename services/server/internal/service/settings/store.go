@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,9 @@ const (
 	jimengLoginCheckTimeout   = 45 * time.Second
 	jimengLoginProcessTimeout = 10 * time.Minute
 	jimengLogoutTimeout       = 30 * time.Second
+	libTVLoginStartTimeout    = 60 * time.Second
+	libTVLoginProcessTimeout  = 10 * time.Minute
+	libTVLogoutTimeout        = 30 * time.Second
 )
 
 var urlPattern = regexp.MustCompile(`https?://[^\s"'<>]+`)
@@ -106,13 +110,18 @@ type JianyingDraftSettings struct {
 
 // Settings provides settings workflows.
 type Settings struct {
-	apiKeys          APIKeyStore
-	agentProfiles    AgentModelProfileStore
-	appSettings      AppSettingStore
-	modelPlatformIDs []string
-	mediagoBaseURL   string
-	jimengBinPath    string
-	jimengBinDir     string
+	apiKeys                  APIKeyStore
+	agentProfiles            AgentModelProfileStore
+	appSettings              AppSettingStore
+	modelPlatformIDs         []string
+	generationCLIProviderIDs []string
+	mediagoBaseURL           string
+	jimengBinPath            string
+	jimengBinDir             string
+	libTVBinPath             string
+	libTVBinDir              string
+	pippitBinPath            string
+	pippitBinDir             string
 }
 
 // NewSettings creates a settings service.
@@ -134,6 +143,18 @@ func NewSettingsWithStores(apiKeys APIKeyStore, agentProfiles AgentModelProfileS
 func (service *Settings) SetJimengCLIPaths(binPath string, binDir string) {
 	service.jimengBinPath = strings.TrimSpace(binPath)
 	service.jimengBinDir = strings.TrimSpace(binDir)
+}
+
+// SetLibTVCLIPaths configures the local LibTV CLI lookup paths.
+func (service *Settings) SetLibTVCLIPaths(binPath string, binDir string) {
+	service.libTVBinPath = strings.TrimSpace(binPath)
+	service.libTVBinDir = strings.TrimSpace(binDir)
+}
+
+// SetPippitCLIPaths configures the local Pippit / Xiaoyunque CLI lookup paths.
+func (service *Settings) SetPippitCLIPaths(binPath string, binDir string) {
+	service.pippitBinPath = strings.TrimSpace(binPath)
+	service.pippitBinDir = strings.TrimSpace(binDir)
 }
 
 const jianyingDraftRootSettingKey = "jianyingdraft.drafts_root"
@@ -195,7 +216,7 @@ func normalizeJianyingDraftRoot(value string) (string, error) {
 // ListAPIKeys lists all providers with their configured state.
 func (service *Settings) ListAPIKeys(ctx context.Context) (APIKeyList, error) {
 	_ = ctx
-	providers := apiKeyProviders()
+	providers := service.apiKeyProviders()
 	for index := range providers {
 		value, source, err := service.apiKeys.Get(providers[index].keyName)
 		if err != nil {
@@ -213,7 +234,7 @@ func (service *Settings) ListAPIKeys(ctx context.Context) (APIKeyList, error) {
 
 // SetAPIKey stores a provider API key and returns the updated provider list.
 func (service *Settings) SetAPIKey(ctx context.Context, providerID string, value string) (APIKeyList, error) {
-	provider, ok := findAPIKeyProvider(providerID)
+	provider, ok := service.findAPIKeyProvider(providerID)
 	if !ok {
 		return APIKeyList{}, ErrAPIKeyProviderNotFound
 	}
@@ -228,12 +249,17 @@ func (service *Settings) SetAPIKey(ctx context.Context, providerID string, value
 
 // ClearAPIKey removes a provider API key and returns the updated provider list.
 func (service *Settings) ClearAPIKey(ctx context.Context, providerID string) (APIKeyList, error) {
-	provider, ok := findAPIKeyProvider(providerID)
+	provider, ok := service.findAPIKeyProvider(providerID)
 	if !ok {
 		return APIKeyList{}, ErrAPIKeyProviderNotFound
 	}
-	if provider.ID == generation.ProviderJimeng {
+	switch provider.ID {
+	case generation.ProviderJimeng:
 		if _, err := service.runJimengCommand(ctx, jimengLogoutTimeout, "logout"); err != nil {
+			return APIKeyList{}, err
+		}
+	case generation.ProviderLibTV:
+		if _, err := service.runLibTVCommand(ctx, libTVLogoutTimeout, "logout"); err != nil {
 			return APIKeyList{}, err
 		}
 	}
@@ -246,7 +272,7 @@ func (service *Settings) ClearAPIKey(ctx context.Context, providerID string) (AP
 // BeginJimengLogin starts the local Jimeng OAuth device login flow.
 func (service *Settings) BeginJimengLogin(ctx context.Context, force bool) (APIKeyLoginResult, error) {
 	_ = force
-	if _, ok := findAPIKeyProvider(generation.ProviderJimeng); !ok {
+	if _, ok := service.findAPIKeyProvider(generation.ProviderJimeng); !ok {
 		return APIKeyLoginResult{}, ErrAPIKeyProviderNotFound
 	}
 	login, waitDone, output, err := service.startJimengLogin(ctx)
@@ -332,18 +358,22 @@ func (service *Settings) startJimengLogin(ctx context.Context) (ProviderLoginCha
 }
 
 func (service *Settings) persistJimengLoginWhenDone(done <-chan error) {
+	service.persistOAuthLoginWhenDone(generation.ProviderJimeng, done)
+}
+
+func (service *Settings) persistOAuthLoginWhenDone(providerID string, done <-chan error) {
 	if done == nil {
 		return
 	}
 	if err := <-done; err != nil {
 		return
 	}
-	_ = service.apiKeys.Set(generation.ProviderJimeng, "oauth:"+time.Now().UTC().Format(time.RFC3339))
+	_ = service.apiKeys.Set(providerID, "oauth:"+time.Now().UTC().Format(time.RFC3339))
 }
 
 // CompleteJimengLogin checks a prior Jimeng OAuth device login and stores a local session marker.
 func (service *Settings) CompleteJimengLogin(ctx context.Context, deviceCode string) (APIKeyLoginResult, error) {
-	if _, ok := findAPIKeyProvider(generation.ProviderJimeng); !ok {
+	if _, ok := service.findAPIKeyProvider(generation.ProviderJimeng); !ok {
 		return APIKeyLoginResult{}, ErrAPIKeyProviderNotFound
 	}
 	deviceCode = strings.TrimSpace(deviceCode)
@@ -374,6 +404,92 @@ func (service *Settings) CompleteJimengLogin(ctx context.Context, deviceCode str
 	return service.apiKeyLoginResult(ctx, login)
 }
 
+// BeginLibTVLogin starts the local LibTV web login flow.
+func (service *Settings) BeginLibTVLogin(ctx context.Context, force bool) (APIKeyLoginResult, error) {
+	_ = force
+	if _, ok := service.findAPIKeyProvider(generation.ProviderLibTV); !ok {
+		return APIKeyLoginResult{}, ErrAPIKeyProviderNotFound
+	}
+	login, waitDone, output, err := service.startLibTVLogin(ctx)
+	if err != nil {
+		return APIKeyLoginResult{}, err
+	}
+	if login.Status == "pending" {
+		if err := service.apiKeys.Clear(generation.ProviderLibTV); err != nil {
+			return APIKeyLoginResult{}, err
+		}
+		go service.persistOAuthLoginWhenDone(generation.ProviderLibTV, waitDone)
+		return service.apiKeyLoginResult(ctx, login)
+	}
+	if err := service.apiKeys.Set(generation.ProviderLibTV, "oauth:"+time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return APIKeyLoginResult{}, err
+	}
+	if login.Status == "" {
+		login.Status = "completed"
+	}
+	if login.Message == "" {
+		login.Message = strings.TrimSpace(output)
+	}
+	if login.Message == "" {
+		login.Message = "LibTV 本地登录态已可用"
+	}
+	return service.apiKeyLoginResult(ctx, login)
+}
+
+func (service *Settings) startLibTVLogin(ctx context.Context) (ProviderLoginChallenge, <-chan error, string, error) {
+	binPath, err := service.resolveLibTVBinary()
+	if err != nil {
+		return ProviderLoginChallenge{}, nil, "", err
+	}
+
+	processCtx, cancelProcess := context.WithTimeout(context.Background(), libTVLoginProcessTimeout)
+	command := exec.CommandContext(processCtx, binPath, "login", "web")
+	output := newCommandOutputWatcher()
+	command.Stdout = output
+	command.Stderr = output
+	if err := command.Start(); err != nil {
+		cancelProcess()
+		return ProviderLoginChallenge{}, nil, "", err
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		err := command.Wait()
+		cancelProcess()
+		done <- err
+	}()
+
+	startTimer := time.NewTimer(libTVLoginStartTimeout)
+	defer startTimer.Stop()
+
+	for {
+		select {
+		case text := <-output.updates:
+			login := parseLibTVLoginChallenge([]byte(text))
+			if login.Status == "pending" && login.VerificationURI != "" {
+				if login.Message == "" {
+					login.Message = "LibTV 登录链接已生成，请在浏览器中完成登录。"
+				}
+				return login, done, text, nil
+			}
+		case err := <-done:
+			text := output.String()
+			if err != nil {
+				return ProviderLoginChallenge{}, nil, text, localCLICommandError("libtv", "login web", err, text)
+			}
+			login := parseLibTVLoginChallenge([]byte(text))
+			login.Status = "completed"
+			return login, nil, text, nil
+		case <-startTimer.C:
+			cancelProcess()
+			return ProviderLoginChallenge{}, nil, output.String(), localCLICommandError("libtv", "login web", context.DeadlineExceeded, output.String())
+		case <-ctx.Done():
+			cancelProcess()
+			return ProviderLoginChallenge{}, nil, output.String(), ctx.Err()
+		}
+	}
+}
+
 func (service *Settings) runJimengCommand(ctx context.Context, timeout time.Duration, args ...string) ([]byte, error) {
 	binPath, err := jimeng.ResolveBinaryPath(service.jimengBinPath, service.jimengBinDir)
 	if err != nil {
@@ -390,12 +506,40 @@ func (service *Settings) runJimengCommand(ctx context.Context, timeout time.Dura
 	return output, nil
 }
 
+func (service *Settings) runLibTVCommand(ctx context.Context, timeout time.Duration, args ...string) ([]byte, error) {
+	binPath, err := service.resolveLibTVBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	commandCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	command := exec.CommandContext(commandCtx, binPath, args...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return output, localCLICommandError("libtv", strings.Join(args, " "), err, string(output))
+	}
+	return output, nil
+}
+
+func (service *Settings) resolveLibTVBinary() (string, error) {
+	return resolveLocalCLIBinary("LibTV", service.libTVBinPath, service.libTVBinDir, "libtv", "libtv")
+}
+
 func jimengCommandError(commandName string, err error, output string) error {
 	message := strings.TrimSpace(output)
 	if message == "" {
 		return fmt.Errorf("jimeng %s failed: %w", commandName, err)
 	}
 	return fmt.Errorf("jimeng %s failed: %w: %s", commandName, err, message)
+}
+
+func localCLICommandError(cliName string, commandName string, err error, output string) error {
+	message := strings.TrimSpace(output)
+	if message == "" {
+		return fmt.Errorf("%s %s failed: %w", cliName, commandName, err)
+	}
+	return fmt.Errorf("%s %s failed: %w: %s", cliName, commandName, err, message)
 }
 
 func (service *Settings) apiKeyLoginResult(ctx context.Context, login ProviderLoginChallenge) (APIKeyLoginResult, error) {
@@ -440,6 +584,12 @@ func parseJimengLoginChallenge(output []byte) ProviderLoginChallenge {
 	return login
 }
 
+func parseLibTVLoginChallenge(output []byte) ProviderLoginChallenge {
+	login := parseJimengLoginChallenge(output)
+	login.DeviceCode = ""
+	return login
+}
+
 func firstString(values map[string]any, keys ...string) string {
 	for _, key := range keys {
 		value, ok := values[key]
@@ -475,6 +625,55 @@ func loginOutputValue(output string, keys ...string) string {
 func firstURL(output string) string {
 	value := urlPattern.FindString(output)
 	return strings.TrimRight(value, ".,;:)]}，。；：")
+}
+
+func resolveLocalCLIBinary(label string, explicitPath string, binDir string, toolID string, binaryName string) (string, error) {
+	binaryName = localCLIExecutableName(binaryName)
+	if explicitPath = strings.TrimSpace(explicitPath); explicitPath != "" {
+		return localCLIExecutableFile(label, explicitPath)
+	}
+	if binDir = strings.TrimSpace(binDir); binDir != "" {
+		candidates := []string{
+			filepath.Join(binDir, toolID, binaryName),
+			filepath.Join(binDir, binaryName),
+		}
+		for _, candidate := range candidates {
+			if path, err := localCLIExecutableFile(label, candidate); err == nil {
+				return path, nil
+			}
+		}
+	}
+
+	path, err := exec.LookPath(binaryName)
+	if err != nil {
+		return "", fmt.Errorf("%s binary %q was not found", label, binaryName)
+	}
+	return path, nil
+}
+
+func localCLIExecutableName(name string) string {
+	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(name), ".exe") {
+		return name + ".exe"
+	}
+	return name
+}
+
+func localCLIExecutableFile(label string, path string) (string, error) {
+	resolved, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolving %s path %s: %w", label, path, err)
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", err
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("%s path %s is a directory", label, resolved)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0 {
+		return "", fmt.Errorf("%s path %s is not executable", label, resolved)
+	}
+	return resolved, nil
 }
 
 type commandOutputWatcher struct {
@@ -522,11 +721,27 @@ func (service *Settings) GetAPIKey(ctx context.Context, keyName string) (string,
 
 // ProviderLabel returns a display label for a provider key name.
 func (service *Settings) ProviderLabel(keyName string) string {
-	provider, ok := findAPIKeyProvider(keyName)
+	provider, ok := service.findAPIKeyProvider(keyName)
+	if !ok {
+		provider, ok = findAPIKeyProvider(keyName)
+	}
 	if ok && provider.Label != "" {
 		return provider.Label
 	}
 	return keyName
+}
+
+func (service *Settings) apiKeyProviders() []APIKeyProvider {
+	providers := apiKeyProviders()
+	enabledCLIProviders := enabledGenerationCLIProviderSet(service.GenerationCLIProviderIDs())
+	filtered := make([]APIKeyProvider, 0, len(providers))
+	for _, provider := range providers {
+		if isGenerationCLIProvider(provider.ID) && !enabledCLIProviders[provider.ID] {
+			continue
+		}
+		filtered = append(filtered, provider)
+	}
+	return filtered
 }
 
 func apiKeyProviders() []APIKeyProvider {
@@ -575,6 +790,16 @@ func apiKeyProviderCapabilities(providerID string, supportsGeneration bool) []st
 
 func findAPIKeyProvider(id string) (APIKeyProvider, bool) {
 	for _, provider := range apiKeyProviders() {
+		if provider.ID == id {
+			return provider, true
+		}
+	}
+
+	return APIKeyProvider{}, false
+}
+
+func (service *Settings) findAPIKeyProvider(id string) (APIKeyProvider, bool) {
+	for _, provider := range service.apiKeyProviders() {
 		if provider.ID == id {
 			return provider, true
 		}

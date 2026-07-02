@@ -17,10 +17,13 @@ type ServerConfig struct {
 	WorkspaceDir   string            `yaml:"workspace_dir"`
 	ACPCommand     string            `yaml:"acp_command"`
 	ModelPlatforms []string          `yaml:"model_platforms"`
+	GenerationCLIs []string          `yaml:"generation_clis"`
 	MediagoBaseURL string            `yaml:"mediago_base_url"`
 	Agent          AgentConfig       `yaml:"agent"`
 	FFmpeg         FFmpegConfig      `yaml:"ffmpeg"`
 	Jimeng         JimengConfig      `yaml:"jimeng"`
+	LibTV          LocalCLIConfig    `yaml:"libtv"`
+	Pippit         LocalCLIConfig    `yaml:"pippit"`
 	Billing        BillingConfig     `yaml:"billing"`
 	Prompt         PromptConfig      `yaml:"prompt"`
 	InternalAPI    InternalAPIConfig `yaml:"internal_api"`
@@ -43,6 +46,13 @@ type FFmpegConfig struct {
 type JimengConfig struct {
 	Path   string `yaml:"path"`
 	BinDir string `yaml:"bin_dir"`
+}
+
+// LocalCLIConfig contains a local generation CLI binary selection.
+type LocalCLIConfig struct {
+	Path      string `yaml:"path"`
+	BinDir    string `yaml:"bin_dir"`
+	ProjectID string `yaml:"project_id"`
 }
 
 // PromptConfig contains system prompt rendering configuration.
@@ -86,7 +96,12 @@ func Load(path string) (ServerConfig, error) {
 }
 
 func defaults() ServerConfig {
-	return ServerConfig{Host: "127.0.0.1", Port: 8080, Prompt: PromptConfig{MaxSectionChars: 12000}}
+	return ServerConfig{
+		Host:           "127.0.0.1",
+		Port:           8080,
+		GenerationCLIs: []string{"dreamina"},
+		Prompt:         PromptConfig{MaxSectionChars: 12000},
+	}
 }
 
 func normalize(config ServerConfig) ServerConfig {
@@ -100,10 +115,13 @@ func normalize(config ServerConfig) ServerConfig {
 	config.WorkspaceDir = strings.TrimSpace(config.WorkspaceDir)
 	config.ACPCommand = strings.TrimSpace(config.ACPCommand)
 	config.ModelPlatforms = normalizeStringList(config.ModelPlatforms)
+	config.GenerationCLIs = normalizeStringList(config.GenerationCLIs)
 	config.MediagoBaseURL = strings.TrimRight(strings.TrimSpace(config.MediagoBaseURL), "/")
 	config.Agent = normalizeAgentConfig(config.Agent)
 	config.FFmpeg = normalizeFFmpegConfig(config.FFmpeg)
 	config.Jimeng = normalizeJimengConfig(config.Jimeng)
+	config.LibTV = normalizeLocalCLIConfig(config.LibTV)
+	config.Pippit = normalizeLocalCLIConfig(config.Pippit)
 	config.Billing = normalizeBillingConfig(config.Billing)
 	config.InternalAPI = normalizeInternalAPIConfig(config.InternalAPI)
 	config.DocumentMCP = normalizeDocumentMCPConfig(config.DocumentMCP)
@@ -128,6 +146,13 @@ func normalizeFFmpegConfig(config FFmpegConfig) FFmpegConfig {
 func normalizeJimengConfig(config JimengConfig) JimengConfig {
 	config.Path = strings.TrimSpace(config.Path)
 	config.BinDir = strings.TrimSpace(config.BinDir)
+	return config
+}
+
+func normalizeLocalCLIConfig(config LocalCLIConfig) LocalCLIConfig {
+	config.Path = strings.TrimSpace(config.Path)
+	config.BinDir = strings.TrimSpace(config.BinDir)
+	config.ProjectID = strings.TrimSpace(config.ProjectID)
 	return config
 }
 

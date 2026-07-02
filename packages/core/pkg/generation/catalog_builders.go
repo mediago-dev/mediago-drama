@@ -98,6 +98,80 @@ func jimengRoute(
 	}
 }
 
+func xiaoyunqueRoute(
+	id string,
+	familyID string,
+	versionID string,
+	label string,
+	model string,
+	adapter string,
+	docURL string,
+	params RouteParamConfig,
+	async bool,
+	supportsReferenceURLs bool,
+	legacyModelID string,
+) ModelRoute {
+	kind := kindForFamily(familyID)
+	return ModelRoute{
+		ID:                    id,
+		FamilyID:              familyID,
+		VersionID:             versionID,
+		Label:                 label,
+		Kind:                  kind,
+		Provider:              ProviderXiaoyunque,
+		Model:                 model,
+		Adapter:               adapter,
+		DocURL:                docURL,
+		Async:                 async,
+		SupportsReferenceURLs: supportsReferenceURLs,
+		Status:                RouteStatusAvailable,
+		AuthKeys:              []string{ProviderXiaoyunque},
+		Params:                routeParamSpecs(kind, params.CanonicalParams),
+		ParamGroups:           routeParamGroups(kind, params.CanonicalParams),
+		Combos:                cloneParamCombos(params.Combos),
+		CanonicalParams:       params.CanonicalParams,
+		Translation:           params.Translation,
+		LegacyModelID:         legacyModelID,
+	}
+}
+
+func libTVRoute(
+	id string,
+	familyID string,
+	versionID string,
+	label string,
+	model string,
+	adapter string,
+	docURL string,
+	params RouteParamConfig,
+	async bool,
+	supportsReferenceURLs bool,
+	legacyModelID string,
+) ModelRoute {
+	kind := kindForFamily(familyID)
+	return ModelRoute{
+		ID:                    id,
+		FamilyID:              familyID,
+		VersionID:             versionID,
+		Label:                 label,
+		Kind:                  kind,
+		Provider:              ProviderLibTV,
+		Model:                 model,
+		Adapter:               adapter,
+		DocURL:                docURL,
+		Async:                 async,
+		SupportsReferenceURLs: supportsReferenceURLs,
+		Status:                RouteStatusAvailable,
+		AuthKeys:              []string{ProviderLibTV},
+		Params:                routeParamSpecs(kind, params.CanonicalParams),
+		ParamGroups:           routeParamGroups(kind, params.CanonicalParams),
+		Combos:                cloneParamCombos(params.Combos),
+		CanonicalParams:       params.CanonicalParams,
+		Translation:           params.Translation,
+		LegacyModelID:         legacyModelID,
+	}
+}
+
 func mediagoRoute(
 	id string,
 	familyID string,

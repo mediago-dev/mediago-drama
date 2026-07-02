@@ -461,6 +461,40 @@ export function jimengSeedanceVIPParams(): GenerationParam[] {
 	return jimengSeedanceParamSet(true);
 }
 
+export function pippitSeedanceParams(): GenerationParam[] {
+	return [
+		selectParam("aspectRatio", "比例", "16:9", [
+			{ label: "16:9", value: "16:9" },
+			{ label: "4:3", value: "4:3" },
+			{ label: "1:1", value: "1:1" },
+			{ label: "3:4", value: "3:4" },
+			{ label: "9:16", value: "9:16" },
+		]),
+		selectParam("resolution", "分辨率", "720p", [{ label: "720p", value: "720p" }]),
+		selectParam("duration", "时长", "5", jimengSeedanceDurationOptions()),
+	];
+}
+
+export function libTVSeedanceParams(): GenerationParam[] {
+	return [
+		selectParam("aspectRatio", "比例", "16:9", [
+			{ label: "Auto", value: "adaptive" },
+			{ label: "16:9", value: "16:9" },
+			{ label: "4:3", value: "4:3" },
+			{ label: "1:1", value: "1:1" },
+			{ label: "3:4", value: "3:4" },
+			{ label: "9:16", value: "9:16" },
+			{ label: "21:9", value: "21:9" },
+		]),
+		selectParam("resolution", "分辨率", "720p", [
+			{ label: "480p", value: "480p" },
+			{ label: "720p", value: "720p" },
+		]),
+		selectParam("duration", "时长", "5", jimengSeedanceDurationOptions()),
+		boolParam("generateAudio", "生成音频", true),
+	];
+}
+
 function jimengSeedanceParamSet(allow1080p: boolean): GenerationParam[] {
 	return [
 		selectParam("aspectRatio", "比例", "16:9", [

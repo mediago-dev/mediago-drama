@@ -16,6 +16,8 @@ const platformArg = process.argv[3]?.trim() || "";
 const modelPlatform = process.argv[4]?.trim() || "mediago";
 const mediagoBaseURL =
 	process.argv[5]?.trim() || process.env.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL?.trim() || "";
+const generationClis =
+	process.argv[6]?.trim() || process.env.MEDIAGO_GENERATION_CLIS?.trim() || "dreamina";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const workspaceDir = resolve(scriptDir, "..");
 const rootDir = resolve(workspaceDir, "../..");
@@ -29,6 +31,9 @@ const serverBin = platformArg
 const agentDist = join(vendorDistRoot, agent);
 const toolsDist = join(vendorDistRoot, "tools");
 const electronResourcesDir = join(workspaceDir, "electron", "resources");
+const baseToolIDs = ["ffmpeg", "ffprobe"];
+const generationCliIDs = parseToolIDs(generationClis);
+const selectedToolIDs = unique([...baseToolIDs, ...generationCliIDs]);
 
 function main(): void {
 	ensureExecutable(serverBin);
@@ -36,36 +41,36 @@ function main(): void {
 		join(agentDist, "agent.json"),
 		`missing prepared agent: ${join(agentDist, "agent.json")}`,
 	);
-	ensureFile(
-		join(toolsDist, "ffmpeg", "tool.json"),
-		`missing prepared ffmpeg: ${join(toolsDist, "ffmpeg", "tool.json")}`,
-	);
-	ensureFile(
-		join(toolsDist, "ffprobe", "tool.json"),
-		`missing prepared ffprobe: ${join(toolsDist, "ffprobe", "tool.json")}`,
-	);
-	ensureFile(
-		join(toolsDist, "dreamina", "tool.json"),
-		`missing prepared dreamina: ${join(toolsDist, "dreamina", "tool.json")}`,
-	);
+	for (const toolID of selectedToolIDs) {
+		ensureFile(
+			join(toolsDist, toolID, "tool.json"),
+			`missing prepared ${toolID}: ${join(toolsDist, toolID, "tool.json")}`,
+		);
+	}
 
 	const binDir = join(electronResourcesDir, "bin");
 	const agentsDir = join(electronResourcesDir, "agents");
-	const toolsDir = join(electronResourcesDir, "tools");
+	const stagedToolsDir = join(electronResourcesDir, "tools");
 	const stagedServer = join(binDir, `mediago-server${targetPlatform.binaryExt}`);
 
 	rmSync(electronResourcesDir, { recursive: true, force: true });
 	mkdirSync(binDir, { recursive: true });
 	mkdirSync(agentsDir, { recursive: true });
-	mkdirSync(toolsDir, { recursive: true });
+	mkdirSync(stagedToolsDir, { recursive: true });
 
 	cpSync(serverBin, stagedServer);
 	chmodSync(stagedServer, 0o755);
 	cpSync(agentDist, join(agentsDir, agent), { recursive: true });
-	cpSync(toolsDist, toolsDir, { recursive: true });
+	for (const toolID of selectedToolIDs) {
+		cpSync(join(toolsDist, toolID), join(stagedToolsDir, toolID), { recursive: true });
+	}
 	writeFileSync(
 		join(electronResourcesDir, "model-platform.json"),
 		JSON.stringify({ mediagoBaseURL, modelPlatform }, null, 2) + "\n",
+	);
+	writeFileSync(
+		join(electronResourcesDir, "local-cli.json"),
+		JSON.stringify({ generationClis: generationCliIDs }, null, 2) + "\n",
 	);
 }
 
@@ -79,6 +84,34 @@ function ensureExecutable(path: string): void {
 
 function ensureFile(path: string, message: string): void {
 	if (!existsSync(path)) throw new Error(message);
+}
+
+function parseToolIDs(value: string): string[] {
+	const normalized = value.trim().toLowerCase();
+	if (!normalized || normalized === "none") return [];
+	return unique(
+		normalized
+			.split(",")
+			.map((item) => canonicalToolID(item))
+			.filter((item) => item && item !== "none"),
+	);
+}
+
+function canonicalToolID(value: string): string {
+	const normalized = value.trim().toLowerCase();
+	if (normalized === "xiaoyunque" || normalized === "pippit-tool-cli") return "pippit";
+	return normalized;
+}
+
+function unique(values: string[]): string[] {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const value of values) {
+		if (seen.has(value)) continue;
+		seen.add(value);
+		result.push(value);
+	}
+	return result;
 }
 
 type TargetPlatform = {

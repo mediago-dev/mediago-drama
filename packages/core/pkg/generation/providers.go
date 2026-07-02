@@ -32,6 +32,8 @@ func Providers() []ProviderInfo {
 		{ID: ProviderDMX, Label: labels[ProviderDMX], ProviderType: ProviderTypeAggregator},
 		{ID: ProviderOpenRouter, Label: labels[ProviderOpenRouter], ProviderType: ProviderTypeAggregator},
 		{ID: ProviderJimeng, Label: labels[ProviderJimeng], ProviderType: ProviderTypeLocal},
+		{ID: ProviderLibTV, Label: labels[ProviderLibTV], ProviderType: ProviderTypeLocal},
+		{ID: ProviderXiaoyunque, Label: labels[ProviderXiaoyunque], ProviderType: ProviderTypeLocal},
 	}
 
 	result := make([]ProviderInfo, len(providers))

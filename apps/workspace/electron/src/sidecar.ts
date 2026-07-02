@@ -14,6 +14,7 @@ export const startServerSidecar = () => {
 		throw new Error(`missing server sidecar: ${serverPath}`);
 	}
 	const platformConfig = packagedModelPlatformConfig();
+	const localCLIConfig = packagedLocalCLIConfig();
 
 	child = spawn(serverPath, [], {
 		env: {
@@ -23,11 +24,16 @@ export const startServerSidecar = () => {
 				process.env.MEDIAGO_MODEL_PLATFORM || platformConfig.modelPlatform || "mediago",
 			MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL:
 				process.env.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL || platformConfig.mediagoBaseURL || "",
+			MEDIAGO_GENERATION_CLIS:
+				process.env.MEDIAGO_GENERATION_CLIS ||
+				localGenerationCLIsEnvValue(localCLIConfig.generationClis),
 			MEDIAGO_SERVER_PORT: process.env.MEDIAGO_SERVER_PORT || "48273",
 			MEDIAGO_EXIT_ON_STDIN_CLOSE: "1",
 			MEDIAGO_AGENT_BIN_DIR: agentsDir(),
 			MEDIAGO_FFMPEG_BIN_DIR: toolsDir(),
 			MEDIAGO_JIMENG_BIN_DIR: toolsDir(),
+			MEDIAGO_LIBTV_BIN_DIR: toolsDir(),
+			MEDIAGO_PIPPIT_BIN_DIR: toolsDir(),
 		},
 		stdio: ["pipe", "pipe", "pipe"],
 	});
@@ -55,6 +61,22 @@ const packagedModelPlatformConfig = () => {
 		return { mediagoBaseURL: "", modelPlatform: "" };
 	}
 };
+
+const packagedLocalCLIConfig = () => {
+	try {
+		const raw = readFileSync(join(resourceRoot(), "local-cli.json"), "utf8");
+		const parsed = JSON.parse(raw) as { generationClis?: unknown };
+		const values = Array.isArray(parsed.generationClis)
+			? parsed.generationClis.filter((value): value is string => typeof value === "string")
+			: [];
+		return { generationClis: values.map((value) => value.trim()).filter(Boolean) };
+	} catch {
+		return { generationClis: ["dreamina"] };
+	}
+};
+
+const localGenerationCLIsEnvValue = (values: string[]) =>
+	values.length > 0 ? values.join(",") : "none";
 
 export const stopServerSidecar = () => {
 	const current = child;

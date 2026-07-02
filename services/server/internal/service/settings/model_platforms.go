@@ -15,6 +15,12 @@ const (
 	ModelPlatformOpenRouter = generation.ProviderOpenRouter
 	// ModelPlatformDMXAPI is the DMXAPI aggregation platform.
 	ModelPlatformDMXAPI = "dmxapi"
+	// ModelPlatformJimeng is the local Dreamina/Jimeng CLI platform.
+	ModelPlatformJimeng = generation.ProviderJimeng
+	// ModelPlatformLibTV is the local LibTV CLI platform.
+	ModelPlatformLibTV = generation.ProviderLibTV
+	// ModelPlatformXiaoyunque is the local Pippit / Xiaoyunque CLI platform.
+	ModelPlatformXiaoyunque = generation.ProviderXiaoyunque
 )
 
 // ModelPlatform describes one aggregation platform exposed by this build.
@@ -73,6 +79,27 @@ func modelPlatformSpecs() []modelPlatformSpec {
 			Description:      "DMXAPI 自定义聚合接口",
 			APIKeyProviderID: generation.ProviderDMX,
 		},
+		{
+			ID:               ModelPlatformJimeng,
+			Label:            "即梦",
+			Kind:             "cli",
+			Description:      "即梦 CLI 接入",
+			APIKeyProviderID: generation.ProviderJimeng,
+		},
+		{
+			ID:               ModelPlatformLibTV,
+			Label:            "LibTV",
+			Kind:             "cli",
+			Description:      "LibTV CLI 接入",
+			APIKeyProviderID: generation.ProviderLibTV,
+		},
+		{
+			ID:               ModelPlatformXiaoyunque,
+			Label:            "小云雀",
+			Kind:             "cli",
+			Description:      "小云雀 / Pippit CLI 接入",
+			APIKeyProviderID: generation.ProviderXiaoyunque,
+		},
 	}
 }
 
@@ -130,12 +157,38 @@ func ParseModelPlatformIDs(value string) ([]string, error) {
 	return ids, nil
 }
 
+// ParseGenerationCLIProviderIDs parses the packaged generation CLI list.
+func ParseGenerationCLIProviderIDs(value string) ([]string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	if strings.EqualFold(value, "none") {
+		return []string{}, nil
+	}
+
+	ids, err := normalizeGenerationCLIProviderIDs(strings.Split(value, ","), true)
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // SetModelPlatforms configures which aggregation platforms this build exposes.
 func (service *Settings) SetModelPlatforms(ids []string) {
 	if service == nil {
 		return
 	}
 	service.modelPlatformIDs = normalizeModelPlatformIDs(ids)
+}
+
+// SetGenerationCLIs configures which local generation CLIs this build exposes.
+func (service *Settings) SetGenerationCLIs(values []string) {
+	if service == nil {
+		return
+	}
+	ids, _ := normalizeGenerationCLIProviderIDs(values, false)
+	service.generationCLIProviderIDs = ids
 }
 
 // ModelPlatformIDs returns the configured aggregation platform ids.
@@ -148,14 +201,29 @@ func (service *Settings) ModelPlatformIDs() []string {
 	return result
 }
 
+// GenerationCLIProviderIDs returns the configured local generation CLI provider ids.
+func (service *Settings) GenerationCLIProviderIDs() []string {
+	if service == nil || service.generationCLIProviderIDs == nil {
+		return defaultGenerationCLIProviderIDs()
+	}
+	result := make([]string, len(service.generationCLIProviderIDs))
+	copy(result, service.generationCLIProviderIDs)
+	return result
+}
+
 // ListModelPlatforms returns enabled aggregation platforms for this build.
 func (service *Settings) ListModelPlatforms(ctx context.Context) ModelPlatformList {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ids := service.ModelPlatformIDs()
+	ids := append(service.ModelPlatformIDs(), service.GenerationCLIProviderIDs()...)
 	platforms := make([]ModelPlatform, 0, len(ids))
+	seen := map[string]bool{}
 	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
 		spec, ok := modelPlatformSpecByID(id)
 		if !ok {
 			continue
@@ -170,6 +238,76 @@ func (service *Settings) ListModelPlatforms(ctx context.Context) ModelPlatformLi
 		})
 	}
 	return ModelPlatformList{Platforms: platforms}
+}
+
+func defaultGenerationCLIProviderIDs() []string {
+	return []string{generation.ProviderJimeng}
+}
+
+func enabledGenerationCLIProviderSet(ids []string) map[string]bool {
+	set := map[string]bool{}
+	for _, id := range ids {
+		if isGenerationCLIProvider(id) {
+			set[id] = true
+		}
+	}
+	return set
+}
+
+func isGenerationCLIProvider(id string) bool {
+	switch strings.ToLower(strings.TrimSpace(id)) {
+	case generation.ProviderJimeng, generation.ProviderLibTV, generation.ProviderXiaoyunque:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeGenerationCLIProviderIDs(values []string, strict bool) ([]string, error) {
+	if values == nil {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	ids := []string{}
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			id, ok := generationCLIProviderID(part)
+			if !ok {
+				if strict {
+					return nil, fmt.Errorf("unsupported generation CLI %q", part)
+				}
+				continue
+			}
+			if id == "" {
+				return []string{}, nil
+			}
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}
+
+func generationCLIProviderID(value string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "none":
+		return "", true
+	case "dreamina", "jimeng":
+		return generation.ProviderJimeng, true
+	case "libtv":
+		return generation.ProviderLibTV, true
+	case "pippit", "pippit-tool-cli", "xiaoyunque":
+		return generation.ProviderXiaoyunque, true
+	default:
+		return "", false
+	}
 }
 
 func (service *Settings) modelPlatformModelGroups(ctx context.Context, platformID string) []ModelPlatformModelGroup {
