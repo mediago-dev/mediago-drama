@@ -916,12 +916,13 @@ func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(
 	if imageRequest.Prompt != "optimized prompt" {
 		t.Fatalf("image prompt = %q, want optimized prompt", imageRequest.Prompt)
 	}
-	if !strings.Contains(textRequest.Prompt, "根据优化 prompt 优化用户的输入。") ||
-		!strings.Contains(textRequest.Prompt, "优化 prompt：\ncinematic lighting, detailed composition") ||
+	if !strings.Contains(textRequest.Prompt, "优化 prompt：\ncinematic lighting, detailed composition") ||
 		!strings.Contains(textRequest.Prompt, "用户的输入：\n原始角色提示词") ||
-		strings.Contains(textRequest.Prompt, "## 输出要求") ||
-		strings.Contains(textRequest.Prompt, "不要输出 JSON") {
-		t.Fatalf("text prompt = %q, want concise optimization prompt", textRequest.Prompt)
+		!strings.Contains(textRequest.Prompt, "请按“优化 prompt”的风格和质量要求改写“用户的输入”") ||
+		!strings.Contains(textRequest.Prompt, "只输出优化后的提示词正文") ||
+		strings.Contains(textRequest.Prompt, "输出要求") ||
+		strings.Contains(textRequest.Prompt, "赛璐珞") {
+		t.Fatalf("text prompt = %q, want concise style-agnostic optimization prompt", textRequest.Prompt)
 	}
 
 	optimizationTask, ok, err := store.Get(response.Optimization.ID)
@@ -990,6 +991,48 @@ func TestPromptOptimizationConversationTitle(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			if got := promptOptimizationConversationTitle(test.projectID); got != test.want {
 				t.Fatalf("promptOptimizationConversationTitle(%q) = %q, want %q", test.projectID, got, test.want)
+			}
+		})
+	}
+}
+
+func TestCleanPromptOptimizationOutput(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{
+			name:  "strips thinking label and code fence",
+			value: "<think>先分析用户输入。</think>\n\n优化后的提示词：\n```text\n电影感城市夜景，雨后路面反光，细节丰富\n```",
+			want:  "电影感城市夜景，雨后路面反光，细节丰富",
+		},
+		{
+			name:  "strips markdown label",
+			value: "**优化后提示词：** 高质量角色设定，服饰清晰，镜头一致",
+			want:  "高质量角色设定，服饰清晰，镜头一致",
+		},
+		{
+			name:  "keeps plain prompt",
+			value: "纯正2D日系动漫插画，线条流畅，色彩鲜艳",
+			want:  "纯正2D日系动漫插画，线条流畅，色彩鲜艳",
+		},
+		{
+			name:  "strips unterminated streaming code fence",
+			value: "```text\n电影感城市夜景，雨后路面反光",
+			want:  "电影感城市夜景，雨后路面反光",
+		},
+		{
+			name:  "hides partial fence header while streaming",
+			value: "```te",
+			want:  "",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := cleanPromptOptimizationOutput(test.value); got != test.want {
+				t.Fatalf("cleanPromptOptimizationOutput() = %q, want %q", got, test.want)
 			}
 		})
 	}

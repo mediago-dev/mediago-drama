@@ -111,6 +111,57 @@ describe("GenerationChatPanel", () => {
 		expect(onCopyPrompt).toHaveBeenCalledWith(entries[0]);
 	});
 
+	it("copies a generated text result through the provided action", () => {
+		HTMLElement.prototype.scrollTo = vi.fn();
+		const onCopyResult = vi.fn();
+		const entries: GenerationEntry[] = [
+			{
+				id: "task-text",
+				kind: "text",
+				status: "completed",
+				content: "AI 生成的文本结果",
+				prompt: "写一段旁白",
+			},
+		];
+
+		render(
+			<GenerationChatPanel
+				entries={entries}
+				onCopyResult={onCopyResult}
+				onRefreshVideo={vi.fn()}
+				onSelectEntry={vi.fn()}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "复制 AI 返回" }));
+
+		expect(onCopyResult).toHaveBeenCalledWith(entries[0]);
+	});
+
+	it("does not show a text result copy action while the text result is empty", () => {
+		HTMLElement.prototype.scrollTo = vi.fn();
+		const entries: GenerationEntry[] = [
+			{
+				id: "task-text",
+				kind: "text",
+				status: "streaming",
+				content: "",
+				prompt: "写一段旁白",
+			},
+		];
+
+		const { container } = render(
+			<GenerationChatPanel
+				entries={entries}
+				onCopyResult={vi.fn()}
+				onRefreshVideo={vi.fn()}
+				onSelectEntry={vi.fn()}
+			/>,
+		);
+
+		expect(within(container).queryByRole("button", { name: "复制 AI 返回" })).toBeNull();
+	});
+
 	it("saves text results when project save is available", () => {
 		HTMLElement.prototype.scrollTo = vi.fn();
 		const onSaveText = vi.fn();

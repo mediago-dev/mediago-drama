@@ -1790,11 +1790,12 @@ describe("MediaGenerationWorkspace", () => {
 			title: "舔狗金 · 提示词生成",
 		});
 		const [request] = generationApiMocks.streamGenerationText.mock.calls[0];
-		expect(request.prompt).toContain("根据优化 prompt 优化用户的输入。");
 		expect(request.prompt).toContain("优化 prompt：\ncinematic lighting, detailed composition");
 		expect(request.prompt).toContain("用户的输入：\n原始角色提示词");
-		expect(request.prompt).not.toContain("## 输出要求");
-		expect(request.prompt).not.toContain("不要输出 JSON");
+		expect(request.prompt).toContain("请按“优化 prompt”的风格和质量要求改写“用户的输入”");
+		expect(request.prompt).toContain("只输出优化后的提示词正文");
+		expect(request.prompt).not.toContain("输出要求");
+		expect(request.prompt).not.toContain("赛璐珞");
 		expect(request).toMatchObject({
 			capabilityId: "character",
 			conversationId: "project-a-text",
@@ -1805,10 +1806,13 @@ describe("MediaGenerationWorkspace", () => {
 			provider: "openai",
 			model: "text-model",
 			params: {
-				system_instruction: "根据优化 prompt 优化用户的输入，只输出优化后的内容。",
+				system_instruction: expect.stringContaining("只输出优化后的提示词正文"),
 			},
 		});
-		expect(setPrompt).toHaveBeenCalledWith("optimized ");
+		expect(String((request.params as Record<string, unknown>).system_instruction)).toContain(
+			"严格保持原有媒介与画风",
+		);
+		expect(setPrompt).toHaveBeenCalledWith("optimized");
 		expect(setPrompt).toHaveBeenCalledWith("optimized prompt");
 	});
 

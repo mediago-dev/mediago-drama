@@ -4,12 +4,17 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
-const promptOptimizationSystemInstructionText = "根据优化 prompt 优化用户的输入，只输出优化后的内容。"
+const promptOptimizationSystemInstructionText = `你是提示词优化助手，负责把“用户的输入”改写成一条可直接用于生成的高质量提示词。
+以“优化 prompt”为风格基准，把其中的媒介、画风和质量要求融入改写结果。
+保留“用户的输入”中的主体、动作、场景等核心内容，不要引入无关的新主体。
+严格保持原有媒介与画风（如 2D 动漫、插画、写实摄影等），不得改成另一种风格方向。
+只输出优化后的提示词正文，不要任何解释、标题、寒暄、标签、Markdown、代码块、JSON、思考过程或额外信息。`
 const promptOptimizationConversationKindLabel = "提示词生成"
 
 // NormalizeGenerationPromptOptimizationRequest trims prompt optimization settings.
@@ -238,12 +243,18 @@ func (workflow *GenerationService) createPromptOptimizationHistoryTask(
 		}
 		return GenerationMessageResponse{}, "", http.StatusBadGateway, fmt.Errorf("%s", failedMessage)
 	}
-	optimizedPrompt := strings.TrimSpace(finalMessage.Text)
+	optimizedPrompt := cleanPromptOptimizationOutput(finalMessage.Text)
 	if optimizedPrompt == "" {
-		optimizedPrompt = strings.TrimSpace(finalMessage.Message)
+		optimizedPrompt = cleanPromptOptimizationOutput(finalMessage.Message)
 	}
 	if optimizedPrompt == "" {
 		return *finalMessage, "", http.StatusBadGateway, fmt.Errorf("提示词优化未返回内容")
+	}
+	finalMessage.Text = optimizedPrompt
+	if task, ok, err := workflow.generationTasks.Get(finalMessage.ID); err == nil && ok {
+		if err := workflow.generationTasks.Upsert(GenerationTaskWithMessage(task, *finalMessage)); err != nil {
+			finalMessage.Message = AppendStorageWarning(finalMessage.Message, err)
+		}
 	}
 	return *finalMessage, optimizedPrompt, http.StatusOK, nil
 }
@@ -262,13 +273,59 @@ func promptOptimizationUserPrompt(request *GenerationPromptOptimizationRequest, 
 	if request != nil {
 		referencePrompt = strings.TrimSpace(request.ReferencePrompt)
 	}
-	return strings.TrimSpace(fmt.Sprintf(`根据优化 prompt 优化用户的输入。
-
-优化 prompt：
+	return strings.TrimSpace(fmt.Sprintf(`优化 prompt：
 %s
 
 用户的输入：
-%s`, referencePrompt, current))
+%s
+
+请按“优化 prompt”的风格和质量要求改写“用户的输入”，只输出优化后的提示词正文，不要任何解释或额外内容。`, referencePrompt, current))
+}
+
+func cleanPromptOptimizationOutput(value string) string {
+	text := strings.TrimSpace(stripPromptOptimizationThinkTags(value))
+	text = stripPromptOptimizationCodeFence(text)
+	text = stripPromptOptimizationLabel(text)
+	text = stripPromptOptimizationCodeFence(text)
+	return strings.TrimSpace(text)
+}
+
+var (
+	promptOptimizationThinkPattern     = regexp.MustCompile(`(?is)<think>.*?</think>`)
+	promptOptimizationOpenThinkPattern = regexp.MustCompile(`(?is)<think>.*$`)
+	promptOptimizationOpenFencePattern = regexp.MustCompile("^```[^\n]*\n")
+	promptOptimizationLabelPattern     = regexp.MustCompile(`(?i)^[#*\s>_-]*(?:优化后的?提示词|优化后 prompt|optimized prompt|优化 prompt|提示词|prompt)\s*[:：]\s*[*\s]*`)
+)
+
+func stripPromptOptimizationThinkTags(value string) string {
+	text := promptOptimizationThinkPattern.ReplaceAllString(value, "")
+	return promptOptimizationOpenThinkPattern.ReplaceAllString(text, "")
+}
+
+// stripPromptOptimizationCodeFence also strips an unterminated opening fence to
+// stay consistent with the frontend streaming cleaner.
+func stripPromptOptimizationCodeFence(value string) string {
+	text := strings.TrimSpace(value)
+	if !strings.HasPrefix(text, "```") {
+		return text
+	}
+	if !strings.Contains(text, "\n") {
+		return ""
+	}
+	text = promptOptimizationOpenFencePattern.ReplaceAllString(text, "")
+	text = strings.TrimSuffix(text, "\n```")
+	return strings.TrimSpace(text)
+}
+
+func stripPromptOptimizationLabel(value string) string {
+	text := strings.TrimSpace(value)
+	for {
+		next := strings.TrimSpace(promptOptimizationLabelPattern.ReplaceAllString(text, ""))
+		if next == text {
+			return text
+		}
+		text = next
+	}
 }
 
 func promptOptimizationParams(params map[string]any) map[string]any {

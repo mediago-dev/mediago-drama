@@ -588,6 +588,9 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 					savingKeys={resultActions.savingKeys}
 					selectedGeneratedAssetKey={selectedGeneratedAssetKey}
 					onCopyPrompt={resultActions.copyPrompt}
+					onCopyResult={(entry) =>
+						void resultActions.copyText(entry.content, "没有可复制的 AI 返回")
+					}
 					onRefreshVideo={(message) => ws.refreshVideo(message)}
 					onSaveAsset={resultActions.saveAsset}
 					onSaveText={resultActions.saveText}

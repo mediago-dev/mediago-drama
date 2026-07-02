@@ -42,6 +42,7 @@ export const GenerationChatPanel: React.FC<{
 	canSaveText?: boolean;
 	entries: GenerationEntry[];
 	onCopyPrompt?: (entry: GenerationEntry) => void;
+	onCopyResult?: (entry: GenerationEntry) => void;
 	onRefreshVideo: (message: ChatMessage) => void;
 	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onSaveText?: (entry: GenerationEntry) => void;
@@ -54,6 +55,7 @@ export const GenerationChatPanel: React.FC<{
 	canSaveText = false,
 	entries,
 	onCopyPrompt,
+	onCopyResult,
 	onRefreshVideo,
 	onSaveAsset,
 	onSaveText,
@@ -92,6 +94,7 @@ export const GenerationChatPanel: React.FC<{
 							canSaveText={canSaveText}
 							onRefreshVideo={onRefreshVideo}
 							onCopyPrompt={onCopyPrompt}
+							onCopyResult={onCopyResult}
 							onSaveAsset={onSaveAsset}
 							onSaveText={onSaveText}
 							onSelect={() => onSelectEntry(entry.id)}
@@ -111,6 +114,7 @@ const GenerationChatEntry: React.FC<{
 	canSaveText: boolean;
 	entry: GenerationEntry;
 	onCopyPrompt?: (entry: GenerationEntry) => void;
+	onCopyResult?: (entry: GenerationEntry) => void;
 	onRefreshVideo: (message: ChatMessage) => void;
 	onSaveAsset?: (entry: GenerationEntry, asset: GenerationAsset) => void;
 	onSaveText?: (entry: GenerationEntry) => void;
@@ -123,6 +127,7 @@ const GenerationChatEntry: React.FC<{
 	canSaveText,
 	entry,
 	onCopyPrompt,
+	onCopyResult,
 	onRefreshVideo,
 	onSaveAsset,
 	onSaveText,
@@ -142,6 +147,7 @@ const GenerationChatEntry: React.FC<{
 	const pendingPlaceholderCount = Math.max(0, requestedImageCount - (entry.assets?.length ?? 0));
 	const isTextEntry = entry.kind === "text";
 	const showTextLoading = isTextEntry && pending && entry.content.trim() === "";
+	const canCopyTextResult = isTextEntry && Boolean(entry.content.trim() && onCopyResult);
 	const failed = isFailedGenerationStatus(entry.assistantMessage?.status ?? entry.status);
 
 	return (
@@ -213,6 +219,26 @@ const GenerationChatEntry: React.FC<{
 					)}
 					{isTextEntry ? (
 						<div className="text-sm leading-6 text-foreground">
+							{canCopyTextResult ? (
+								<div className="mb-2 flex justify-end">
+									<Button
+										type="button"
+										variant="ghost"
+										size="sm"
+										aria-label="复制 AI 返回"
+										title="复制 AI 返回"
+										className="h-6 px-1.5 text-2xs text-muted-foreground hover:text-foreground"
+										onClick={(event) => {
+											event.preventDefault();
+											event.stopPropagation();
+											onCopyResult?.(entry);
+										}}
+									>
+										<Clipboard className="size-3.5" />
+										<span>复制</span>
+									</Button>
+								</div>
+							) : null}
 							{showTextLoading ? (
 								<div className="flex items-center gap-2 text-muted-foreground">
 									<Loader2 className="size-4 animate-spin" />
