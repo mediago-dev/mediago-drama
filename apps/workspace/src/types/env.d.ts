@@ -9,6 +9,7 @@ interface ImportMetaEnv {
 	readonly VITE_ENABLE_JIANYING_DRAFT_EXPORT?: string;
 	readonly VITE_MEDIAGO_APIKEY_URL?: string;
 	readonly VITE_ENABLE_CUSTOM_PROVIDERS?: string;
+	readonly VITE_TALKINGDATA_APP_ID?: string;
 }
 
 interface ImportMeta {

@@ -5,6 +5,7 @@ import {
 	pendingResourceGenerationStatus,
 	type ResourceGenerationStatus,
 } from "@/domains/generation/lib/resource-generation-status";
+import { analytics, AnalyticsEvent } from "@/shared/analytics";
 import { createStore } from "@/shared/lib/utils";
 
 // 三类媒体生成弹窗（图片/音频/视频）共用的「打开请求」。section 模式：
@@ -42,7 +43,16 @@ export const useMediaGenerationStore = createStore<MediaGenerationState>(
 	(set) => ({
 		activeRequest: null,
 		optimisticStatuses: {},
-		open: (request) => set({ activeRequest: request }),
+		open: (request) => {
+			analytics.track(AnalyticsEvent.OpenGenerationDialog, {
+				kind: request.kind,
+				project_id: request.projectId,
+				section_id: request.section.blockId,
+				selected_asset_resource_type: request.selectedAssetResourceType,
+				status_resource_key: request.statusResourceKey,
+			});
+			set({ activeRequest: request });
+		},
 		close: () => set({ activeRequest: null }),
 		markGenerating: (resourceKey, options = {}) =>
 			set((state) => ({

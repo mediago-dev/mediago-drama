@@ -35,6 +35,7 @@ import {
 	ContextMenuTrigger,
 } from "@/shared/components/ui/context-menu";
 import { useToast } from "@/hooks/useToast";
+import { analytics, AnalyticsEvent } from "@/shared/analytics";
 import { cn } from "@/shared/lib/utils";
 
 type ProjectManagementTab = Exclude<ProjectStatusFilter, "all">;
@@ -100,6 +101,11 @@ export const Projects: React.FC = () => {
 	const meta = tabMeta[activeTab];
 
 	const openProject = (project: WorkspaceProject) => {
+		analytics.track(AnalyticsEvent.OpenProject, {
+			document_count: project.documentCount,
+			project_id: project.id,
+			status: project.status,
+		});
 		setActiveProjectId(project.id);
 		navigate(agentProjectPath(project.id), {
 			state: agentProjectRouteState("agent"),
