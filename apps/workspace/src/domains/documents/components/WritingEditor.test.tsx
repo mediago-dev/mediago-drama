@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import type {
 	MarkdownSectionContext,
 	SelectionCoords,
+	SectionGenerateKind,
 } from "@/domains/documents/components/MarkdownHybridEditor";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
@@ -24,7 +25,7 @@ const testState = vi.hoisted(() => ({
 		extraExtensions?: Array<{
 			options?: { suggestion?: { items?: (props: { query: string }) => unknown[] } };
 		}>;
-		onSectionGenerate?: (section: MarkdownSectionContext, kind?: "image") => void;
+		onSectionGenerate?: (section: MarkdownSectionContext, kind?: SectionGenerateKind) => void;
 		onSelectionChange?: (value: string) => void;
 		onSelectionCoordChange?: (coords: SelectionCoords | null) => void;
 		selectedSectionImageAssets?: Array<{ id: string; resourceId?: string; url?: string }>;
@@ -360,6 +361,42 @@ describe("WritingEditor", () => {
 		expect(useMediaGenerationStore.getState().activeRequest).toMatchObject({
 			kind: "image",
 			projectId: "project-a",
+			section: { blockId: "section_visual", documentId: "story-doc", headingText: "画面" },
+		});
+	});
+
+	it("opens character audio selection with a resource type so it can sync to overview", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			documents: [makeDocument({ category: "character" })],
+			projectId: "project-a",
+			workspaceDir: "/workspace/project-a",
+		});
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<WritingEditor />
+			</MemoryRouter>,
+		);
+
+		act(() => {
+			testState.markdownEditorProps?.onSectionGenerate?.(
+				{
+					blockId: "section_visual",
+					documentId: "story-doc",
+					headingLevel: 2,
+					headingOccurrence: 1,
+					headingText: "画面",
+					markdown: "## 画面\n\n画面提示词。",
+					plainText: "画面\n\n画面提示词。",
+					prompt: "画面提示词。",
+				},
+				"audio",
+			);
+		});
+
+		expect(useMediaGenerationStore.getState().activeRequest).toMatchObject({
+			kind: "audio",
+			projectId: "project-a",
+			selectedAssetResourceType: "character",
 			section: { blockId: "section_visual", documentId: "story-doc", headingText: "画面" },
 		});
 	});

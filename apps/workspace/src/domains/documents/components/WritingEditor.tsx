@@ -30,6 +30,7 @@ import {
 import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { useSelectedGenerationAssets } from "@/domains/generation/hooks/useSelectedGenerationAssets";
 import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
+import type { SelectedGenerationResourceType } from "@/domains/generation/api/generation";
 
 const autosaveDelayMs = 500;
 const markerClusterDistance = 28;
@@ -189,9 +190,18 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	);
 
 	const openSectionGeneration = useCallback(
-		(section: MarkdownSectionContext, kind: SectionGenerateKind = "image") =>
-			openGenerationDialog({ kind, projectId: projectId || undefined, section }),
-		[openGenerationDialog, projectId],
+		(section: MarkdownSectionContext, kind: SectionGenerateKind = "image") => {
+			const selectedAssetResourceType =
+				kind === "audio" ? selectedAudioResourceTypeForSection(documents, section) : undefined;
+
+			openGenerationDialog({
+				kind,
+				projectId: projectId || undefined,
+				section,
+				...(selectedAssetResourceType ? { selectedAssetResourceType } : {}),
+			});
+		},
+		[documents, openGenerationDialog, projectId],
 	);
 
 	if (!activeDocument) {
@@ -341,6 +351,14 @@ interface CommentMarker {
 	key: string;
 	top: number;
 }
+
+const selectedAudioResourceTypeForSection = (
+	documents: MarkdownDocument[],
+	section: Pick<MarkdownSectionContext, "documentId">,
+): SelectedGenerationResourceType | undefined => {
+	const category = documents.find((document) => document.id === section.documentId)?.category;
+	return category === "character" ? "character" : undefined;
+};
 
 const buildCommentMarkers = (
 	comments: DocumentComment[],
