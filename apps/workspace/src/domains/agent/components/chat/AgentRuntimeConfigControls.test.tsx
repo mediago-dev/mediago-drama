@@ -389,6 +389,79 @@ describe("AgentRuntimeConfigControls", () => {
 		}
 	});
 
+	it("does not snap the model list back to the selected row while scrolling", async () => {
+		const originalElementScrollIntoView = Element.prototype.scrollIntoView;
+		const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+		const scrollIntoView = vi.fn();
+		Element.prototype.scrollIntoView = scrollIntoView;
+		HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+		try {
+			renderControls(
+				{
+					model: {
+						configId: "model",
+						currentValue: "mediago/glm-4.7",
+						options: [
+							"glm-4.7",
+							"glm-5.2",
+							"gpt-4.1",
+							"gpt-4.1-mini",
+							"minimax-m2.7",
+							"minimax-m2.7-highspeed",
+							"minimax-m3",
+							"qwen3.5-27b",
+						].map((model) => ({
+							name: `MediaGo/${model}`,
+							value: `mediago/${model}`,
+						})),
+					},
+				},
+				{ modelValue: "mediago/glm-4.7" },
+			);
+
+			fireEvent.click(screen.getByRole("button", { name: "模型" }));
+			await waitFor(() => {
+				expect(scrollIntoView).toHaveBeenCalled();
+			});
+			scrollIntoView.mockClear();
+
+			const modelList = screen.getByRole("button", { name: "qwen3.5-27b" })
+				.parentElement as HTMLElement;
+			let scrollTop = 0;
+			Object.defineProperties(modelList, {
+				clientHeight: { configurable: true, value: 200 },
+				scrollHeight: { configurable: true, value: 800 },
+				scrollTop: {
+					configurable: true,
+					get: () => scrollTop,
+					set: (value) => {
+						scrollTop = Number(value);
+					},
+				},
+			});
+
+			scrollTop = 200;
+			fireEvent.scroll(modelList);
+			scrollTop = 600;
+			fireEvent.scroll(modelList);
+
+			await new Promise((resolve) => window.setTimeout(resolve, 0));
+			expect(scrollIntoView).not.toHaveBeenCalled();
+		} finally {
+			if (originalElementScrollIntoView) {
+				Element.prototype.scrollIntoView = originalElementScrollIntoView;
+			} else {
+				delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+			}
+			if (originalScrollIntoView) {
+				HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+			} else {
+				delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+			}
+		}
+	});
+
 	it("keeps the active model category while the pointer crosses the safe triangle", () => {
 		renderControls({
 			model: {

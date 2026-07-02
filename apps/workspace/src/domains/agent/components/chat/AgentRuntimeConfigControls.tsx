@@ -505,9 +505,6 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 										ref={(node) => {
 											if (node) {
 												categoryButtonRefs.current.set(category.key, node);
-												if (category.key === selectedOption?.categoryKey) {
-													schedulePositionSelectedModel();
-												}
 											} else {
 												categoryButtonRefs.current.delete(category.key);
 											}
@@ -577,9 +574,6 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 										ref={(node) => {
 											if (node) {
 												modelButtonRefs.current.set(option.option.value, node);
-												if (option.option.value === resolvedValue) {
-													schedulePositionSelectedModel();
-												}
 											} else {
 												modelButtonRefs.current.delete(option.option.value);
 											}
