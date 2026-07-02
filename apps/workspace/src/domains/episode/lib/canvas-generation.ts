@@ -2,6 +2,8 @@ import type { MarkdownSectionContext } from "@/domains/documents/components/Mark
 import { createSectionGenerationPrompt } from "@/domains/documents/lib/section-generation-prompt";
 import {
 	createSectionBlockId,
+	documentSectionHeadingLevel,
+	documentSectionHeadingText,
 	findMarkdownSectionEndLine,
 	findMarkdownSectionHeadingLine,
 	listDocumentSections,
@@ -108,11 +110,9 @@ const legacySectionIdentityFromBlockId = (document: MarkdownDocument, blockId: s
 	const lines = document.content.split("\n");
 
 	for (const line of lines) {
-		const match = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
-		if (!match) continue;
-
-		const level = match[1].length;
-		const title = normalizeHeadingText(match[2]);
+		const level = documentSectionHeadingLevel;
+		const title = documentSectionHeadingText(line);
+		if (!title) continue;
 		const occurrenceKey = `${level}|${title}`;
 		const headingOccurrence = (occurrenceByHeading.get(occurrenceKey) ?? 0) + 1;
 		occurrenceByHeading.set(occurrenceKey, headingOccurrence);
@@ -168,7 +168,10 @@ const sectionContextFromIdentity = (
 	if (headingIndex < 0) return null;
 
 	const markdown = lines
-		.slice(headingIndex, findMarkdownSectionEndLine(lines, headingIndex, identity.headingLevel))
+		.slice(
+			headingIndex,
+			findMarkdownSectionEndLine(lines, headingIndex, documentSectionHeadingLevel),
+		)
 		.join("\n")
 		.trim();
 	if (!markdown) return null;

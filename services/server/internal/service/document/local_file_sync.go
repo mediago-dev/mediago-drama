@@ -51,6 +51,8 @@ func (store *Service) SyncLocalMarkdownFiles(projectID string) (WorkspaceSyncDel
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
+	previousHashes, previousFolderSignature, hasPrevious := store.currentSyncSnapshotUnlocked(projectID)
+
 	if _, _, err := store.loadLocalMarkdownWorkspaceUnlocked(projectID); err != nil {
 		return WorkspaceSyncDelta{}, err
 	}
@@ -72,7 +74,7 @@ func (store *Service) SyncLocalMarkdownFiles(projectID string) (WorkspaceSyncDel
 	if err != nil {
 		return WorkspaceSyncDelta{}, err
 	}
-	delta := store.computeSyncDeltaUnlocked(projectID, documents, folders)
+	delta := store.computeSyncDeltaUnlocked(projectID, documents, folders, previousHashes, previousFolderSignature, hasPrevious)
 	return delta, nil
 }
 
@@ -83,6 +85,9 @@ func (store *Service) computeSyncDeltaUnlocked(
 	projectID string,
 	documents []mediamcp.WorkspaceDocument,
 	folders []mediamcp.DocumentFolder,
+	previousHashes map[string]string,
+	previousFolderSignature string,
+	hasPrevious bool,
 ) WorkspaceSyncDelta {
 	projectID = domain.CleanProjectID(projectID)
 	newHashes := make(map[string]string, len(documents))
@@ -90,9 +95,6 @@ func (store *Service) computeSyncDeltaUnlocked(
 		newHashes[document.ID] = documentSyncFingerprint(document)
 	}
 	folderSignature := folderStructureSignature(folders)
-
-	previousHashes, hasPrevious := store.docHashes[projectID]
-	previousFolderSignature := store.folderSignatures[projectID]
 
 	delta := WorkspaceSyncDelta{}
 	if !hasPrevious {
@@ -118,9 +120,32 @@ func (store *Service) computeSyncDeltaUnlocked(
 		sort.Strings(delta.RemovedDocumentIDs)
 	}
 
-	store.docHashes[projectID] = newHashes
-	store.folderSignatures[projectID] = folderSignature
+	store.rememberSyncSnapshotUnlocked(projectID, documents, folders)
 	return delta
+}
+
+func (store *Service) currentSyncSnapshotUnlocked(projectID string) (map[string]string, string, bool) {
+	projectID = domain.CleanProjectID(projectID)
+	previousHashes, hasPrevious := store.docHashes[projectID]
+	hashes := make(map[string]string, len(previousHashes))
+	for id, hash := range previousHashes {
+		hashes[id] = hash
+	}
+	return hashes, store.folderSignatures[projectID], hasPrevious
+}
+
+func (store *Service) rememberSyncSnapshotUnlocked(
+	projectID string,
+	documents []mediamcp.WorkspaceDocument,
+	folders []mediamcp.DocumentFolder,
+) {
+	projectID = domain.CleanProjectID(projectID)
+	hashes := make(map[string]string, len(documents))
+	for _, document := range documents {
+		hashes[document.ID] = documentSyncFingerprint(document)
+	}
+	store.docHashes[projectID] = hashes
+	store.folderSignatures[projectID] = folderStructureSignature(folders)
 }
 
 // documentSyncFingerprint hashes the fields that affect how a document renders so

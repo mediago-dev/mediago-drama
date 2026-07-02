@@ -117,7 +117,7 @@ describe("useEpisodeVideoGenerationRequest", () => {
 					category: "character",
 					title: "沈阔",
 					content:
-						"<!-- section-id: section_character -->\n# 沈阔（普通状态）\n\n23 岁男性。\n\n![沈阔图](</api/media/assets/ref-a/content>)",
+						"<!-- section-id: section_character -->\n## 沈阔（普通状态）\n\n23 岁男性。\n\n![沈阔图](</api/media/assets/ref-a/content>)",
 				}),
 			],
 		});
@@ -236,7 +236,7 @@ describe("useEpisodeVideoGenerationRequest", () => {
 					category: "character",
 					title: "顾南衣",
 					content:
-						"<!-- section-id: section_character -->\n# 顾南衣·状态A\n\n18 岁女性，饥饿疲惫。",
+						"<!-- section-id: section_character -->\n## 顾南衣·状态A\n\n18 岁女性，饥饿疲惫。",
 				}),
 			],
 		});

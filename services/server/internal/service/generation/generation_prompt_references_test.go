@@ -49,7 +49,7 @@ func TestProviderPromptForGenerationRewritesDocumentMentions(t *testing.T) {
 				ID: "character-doc",
 				Content: strings.Join([]string{
 					"<!-- section-id: section_shenyan -->",
-					"# 沈言角色",
+					"## 沈言角色",
 					"",
 					"![沈言图](" + asset.URL + ")",
 				}, "\n"),

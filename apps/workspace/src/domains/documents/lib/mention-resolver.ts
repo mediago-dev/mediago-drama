@@ -6,10 +6,11 @@ import {
 } from "@/domains/documents/stores";
 import {
 	createSectionBlockId,
+	documentSectionHeadingLevel,
+	documentSectionHeadingText,
 	findMarkdownSectionEndLine,
 	findMarkdownSectionHeadingLine,
 	listDocumentSections,
-	normalizeHeadingText,
 	stripSectionIdCommentLines,
 } from "@/domains/documents/lib/sections";
 import type { DocumentCategory, MarkdownDocument } from "@/domains/documents/stores";
@@ -29,7 +30,6 @@ export interface ResolvedMention {
 
 const mentionLinkPattern = /@\[((?:\\.|[^\]\\])*)\]\((?:<([^>]+)>|([^\s)]+))\)/g;
 const markdownImageLinePattern = /^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$/;
-const headingLinePattern = /^(#{1,6})\s+(.+?)\s*$/;
 const placeholderImageAltPrefix = "mediago-drama-section-image-pending:";
 const legacyPlaceholderImageAltPrefix = "media-cli-section-image-pending:";
 const placeholderImageAltPrefixes = [placeholderImageAltPrefix, legacyPlaceholderImageAltPrefix];
@@ -216,11 +216,11 @@ const sectionMarkdownByBlockId = (document: MarkdownDocument, blockId: string) =
 	if (headingIndex < 0) headingIndex = findFallbackSectionHeadingLine(document, lines, blockId);
 	if (headingIndex < 0) return null;
 
-	const headingMatch = /^(#{1,6})\s+/.exec(lines[headingIndex]);
-	const headingLevel = headingMatch?.[1]?.length ?? 1;
-
 	return lines
-		.slice(headingIndex, findMarkdownSectionEndLine(lines, headingIndex, headingLevel))
+		.slice(
+			headingIndex,
+			findMarkdownSectionEndLine(lines, headingIndex, documentSectionHeadingLevel),
+		)
 		.join("\n");
 };
 
@@ -232,11 +232,9 @@ const findFallbackSectionHeadingLine = (
 	const occurrenceByHeading = new Map<string, number>();
 
 	for (let index = 0; index < lines.length; index += 1) {
-		const match = headingLinePattern.exec(lines[index]);
-		if (!match) continue;
-
-		const level = match[1].length;
-		const title = normalizeHeadingText(match[2]);
+		const level = documentSectionHeadingLevel;
+		const title = documentSectionHeadingText(lines[index]);
+		if (!title) continue;
 		const occurrenceKey = `${level}|${title}`;
 		const occurrence = (occurrenceByHeading.get(occurrenceKey) ?? 0) + 1;
 		occurrenceByHeading.set(occurrenceKey, occurrence);

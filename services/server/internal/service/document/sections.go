@@ -26,11 +26,14 @@ const (
 )
 
 var (
-	documentSectionHeadingPattern  = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
+	documentMarkdownHeadingPattern = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
+	documentSectionHeadingPattern  = regexp.MustCompile(`^(##)\s+(.+?)\s*$`)
 	documentSectionIDLinePattern   = regexp.MustCompile(`^\s*<!--\s*section-id:\s*([A-Za-z0-9_-]+)\s*-->\s*$`)
 	documentSectionIDPattern       = regexp.MustCompile(`^section_[A-Za-z0-9_-]+$`)
 	documentSectionLegacyIDPattern = regexp.MustCompile(`^section-[A-Za-z0-9]+$`)
 )
+
+const documentSectionHeadingLevel = 2
 
 // DocumentSectionRecord is the API-facing projection of a persisted section.
 type DocumentSectionRecord struct {
@@ -311,7 +314,7 @@ func observeDocumentHeadingSections(
 			fence.update(line)
 			continue
 		}
-		level := len(match[1])
+		level := documentSectionHeadingLevel
 		title := normalizeDocumentSectionHeading(match[2])
 		if title == "" {
 			continue
@@ -483,7 +486,7 @@ func documentSectionEndLine(lines []string, headingIndex int, headingLevel int) 
 			fence.update(lines[index])
 			continue
 		}
-		match := documentSectionHeadingPattern.FindStringSubmatch(lines[index])
+		match := documentMarkdownHeadingPattern.FindStringSubmatch(lines[index])
 		if len(match) > 0 && len(match[1]) <= headingLevel {
 			return documentSectionBoundaryBeforeHeadingLine(lines, headingIndex, index)
 		}

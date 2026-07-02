@@ -1,6 +1,8 @@
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { createSectionGenerationPrompt } from "@/domains/documents/lib/section-generation-prompt";
 import {
+	documentSectionHeadingLevel,
+	documentSectionHeadingText,
 	findMarkdownSectionEndLine,
 	findMarkdownSectionHeadingLine,
 	stripSectionIdCommentLines,
@@ -25,9 +27,8 @@ export const markdownSectionContextFromDocument = (
 	const headingIndex = findMarkdownSectionHeadingLine(lines, section);
 	if (headingIndex < 0) return null;
 
-	const headingMatch = /^(#{1,6})\s+(.+?)\s*$/.exec(lines[headingIndex]);
-	const headingLevel = headingMatch?.[1]?.length ?? section.headingLevel;
-	const headingText = headingMatch?.[2]?.trim() || section.headingText;
+	const headingLevel = documentSectionHeadingLevel;
+	const headingText = documentSectionHeadingText(lines[headingIndex]) || section.headingText;
 	const markdown = lines
 		.slice(headingIndex, findMarkdownSectionEndLine(lines, headingIndex, headingLevel))
 		.join("\n")

@@ -22,6 +22,7 @@ import {
 } from "./helpers";
 import type { DocumentWorkbenchDraft, MarkdownDocument } from "./types";
 import type { WorkspaceMutationSnapshot } from "./helpers";
+import { acknowledgeDocumentSave, scheduleDocumentSave } from "./document-save-queue";
 
 type DocumentMutationActions = Pick<
 	DocumentsActions,
@@ -29,7 +30,6 @@ type DocumentMutationActions = Pick<
 	| "convertDocumentToWorkbenchDraft"
 	| "createDocument"
 	| "deleteDocument"
-	| "markDocumentSaved"
 	| "moveDocument"
 	| "renameDocument"
 	| "setDocumentCategory"
@@ -176,8 +176,32 @@ export const createDocumentMutationActions = ({
 					},
 					capturedProjectId,
 				)
-					.then(({ state: savedState }) => {
+					.then(({ document: saved, state: savedState }) => {
+						if (saved.id !== document.id) {
+							// The backend assigned a different id (e.g. filename-derived).
+							// Drop the optimistic copy so the hydrated record below is
+							// the single authoritative one.
+							set((state) => ({
+								documents: state.documents.filter((item) => item.id !== document.id),
+								activeDocumentId:
+									state.activeDocumentId === document.id ? saved.id : state.activeDocumentId,
+							}));
+						}
 						dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
+						if (capturedProjectId && saved.id === document.id) {
+							acknowledgeDocumentSave(
+								{ get, set },
+								document.id,
+								capturedProjectId,
+								document,
+								saved,
+							);
+							// Edits typed while the create request was in flight are still
+							// dirty after the acknowledgement; push them through the queue.
+							if (get().documents.find((item) => item.id === document.id)?.isDirty) {
+								scheduleDocumentSave({ get, set }, document.id);
+							}
+						}
 					})
 					.catch(() => {
 						dependencies.rollbackWorkspaceStateForProject(
@@ -231,54 +255,6 @@ export const createDocumentMutationActions = ({
 		});
 		runDeferredMutation(persistMutation);
 	},
-	markDocumentSaved: (id) => {
-		let persistMutation: (() => void) | null = null;
-		set((state) => {
-			const documents = state.documents.map((document) =>
-				document.id === id ? { ...document, isDirty: false } : document,
-			);
-			const document = documents.find((item) => item.id === id);
-			if (document) {
-				const capturedProjectId = state.projectId;
-				const rollback = rollbackSnapshot(state);
-				persistMutation = () => {
-					void updateWorkspaceDocumentRecord(
-						id,
-						{
-							title: document.title,
-							content: document.content,
-							parentId: document.parentId,
-							folderId: document.folderId,
-							sortOrder: document.sortOrder,
-							isDirty: false,
-							category: document.category,
-							comments: document.comments,
-							workbenchDraft: document.workbenchDraft,
-						},
-						capturedProjectId,
-					)
-						.then(({ state: savedState }) => {
-							if (!isCurrentDocumentSaveSnapshot(get(), id, document, capturedProjectId)) {
-								return;
-							}
-							dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
-						})
-						.catch(() => {
-							if (!isCurrentDocumentSaveSnapshot(get(), id, document, capturedProjectId)) {
-								return;
-							}
-							dependencies.rollbackWorkspaceStateForProject(
-								capturedProjectId,
-								rollback,
-								"后端保存文档失败",
-							);
-						});
-				};
-			}
-			return { documents };
-		});
-		runDeferredMutation(persistMutation);
-	},
 	moveDocument: (documentId, targetDocumentId, position) => {
 		let persistMutation: (() => void) | null = null;
 		set((state) => {
@@ -328,13 +304,17 @@ export const createDocumentMutationActions = ({
 	},
 	renameDocument: (id, title) => {
 		const nextTitle = title.trimStart();
+		let shouldSchedule = false;
 		set((state) => {
+			const existingDocument = state.documents.find((document) => document.id === id);
+			if (!existingDocument || existingDocument.title === nextTitle) return state;
+
+			shouldSchedule = true;
 			const documents = state.documents.map((document) =>
 				document.id === id
 					? {
 							...document,
 							title: nextTitle,
-							version: document.version + 1,
 							updatedAt: new Date().toISOString(),
 							isDirty: true,
 						}
@@ -342,6 +322,7 @@ export const createDocumentMutationActions = ({
 			);
 			return { documents };
 		});
+		if (shouldSchedule) scheduleDocumentSave({ get, set }, id);
 	},
 	setDocumentCategory: (id, category) => {
 		if (!isDocumentCategory(category) || category === "overview") return;
@@ -435,95 +416,35 @@ export const createDocumentMutationActions = ({
 		return applied;
 	},
 	updateDocumentContent: (id, content) => {
-		let persistMutation: (() => void) | null = null;
+		let shouldSchedule = false;
 		set((state) => {
 			const existingDocument = state.documents.find((document) => document.id === id);
 			if (!existingDocument || existingDocument.content === content) return state;
 
-			const capturedProjectId = state.projectId;
-			const rollback = rollbackSnapshot(state);
-			const expectedVersion = existingDocument.version;
+			shouldSchedule = true;
 			const updatedAt = new Date().toISOString();
-			let didUpdate = false;
-			const documents = state.documents.map((document) => {
-				if (document.id !== id || document.content === content) return document;
-				didUpdate = true;
-				return {
-					...document,
-					content,
-					version: document.version + 1,
-					updatedAt,
-					isDirty: true,
-				};
-			});
-			if (!didUpdate) return state;
-
-			persistMutation = () => {
-				void updateWorkspaceDocumentRecord(id, { content, expectedVersion }, capturedProjectId)
-					.then(({ state: savedState }) => {
-						const latest = get();
-						const latestDocument = latest.documents.find((document) => document.id === id);
-						if (latest.projectId !== capturedProjectId || latestDocument?.content !== content) {
-							return;
+			const documents = state.documents.map((document) =>
+				document.id === id
+					? {
+							...document,
+							content,
+							updatedAt,
+							isDirty: true,
 						}
-
-						dependencies.hydrateWorkspaceDocumentsForProject(savedState, capturedProjectId);
-					})
-					.catch(() => {
-						const latest = get();
-						const latestDocument = latest.documents.find((document) => document.id === id);
-						if (latest.projectId !== capturedProjectId || latestDocument?.content !== content) {
-							dependencies.markWorkspaceSyncErrorForProject(
-								capturedProjectId,
-								"后端保存文档内容失败",
-							);
-							return;
-						}
-
-						dependencies.rollbackWorkspaceStateForProject(
-							capturedProjectId,
-							rollback,
-							"后端保存文档内容失败",
-						);
-					});
-			};
-
+					: document,
+			);
 			return {
 				documents,
 				syncStatus: "syncing",
 				syncMessage: "正在保存文档内容",
 			};
 		});
-		runDeferredMutation(persistMutation);
+		if (shouldSchedule) scheduleDocumentSave({ get, set }, id);
 	},
 });
 
 const isWritableSectionID = (sectionID: string) =>
 	/^section_[A-Za-z0-9_-]+$/.test(sectionID) || /^section-[A-Za-z0-9]+$/.test(sectionID);
-
-const isCurrentDocumentSaveSnapshot = (
-	state: ReturnType<DocumentActionContext["get"]>,
-	documentId: string,
-	snapshot: MarkdownDocument,
-	projectId: string | null,
-) => {
-	if (state.projectId !== projectId) return false;
-
-	const current = state.documents.find((document) => document.id === documentId);
-	if (!current) return false;
-
-	return (
-		current.version === snapshot.version &&
-		current.title === snapshot.title &&
-		current.content === snapshot.content &&
-		current.parentId === snapshot.parentId &&
-		current.folderId === snapshot.folderId &&
-		current.sortOrder === snapshot.sortOrder &&
-		current.category === snapshot.category &&
-		current.workbenchDraft === snapshot.workbenchDraft &&
-		current.comments === snapshot.comments
-	);
-};
 
 const runDeferredMutation = (mutation: (() => void) | null) => {
 	if (mutation) mutation();

@@ -224,6 +224,42 @@ func TestGenerationServiceListStoryboardVideoResourcesDeduplicatesGroupNumbers(t
 	}
 }
 
+func TestStoryboardVideoReelsFromDocumentEndsSecondLevelSectionAtFirstLevelHeading(t *testing.T) {
+	reels := storyboardVideoReelsFromDocument(mediamcp.WorkspaceDocument{
+		ID:       "storyboard-h1-boundary",
+		Title:    "分镜脚本",
+		Category: "storyboard",
+		Content: joinStoryboardVideoTestLines(
+			"# 第一章分镜脚本",
+			"",
+			"<!-- section-id: section_group_01 -->",
+			"## 第 01 组 总时长：00:08",
+			"",
+			"第一组动作。",
+			"",
+			"# 第二章分镜脚本",
+			"",
+			"章节摘要不应该进入第一组。",
+			"",
+			"<!-- section-id: section_group_02 -->",
+			"## 第 02 组 总时长：00:06",
+			"",
+			"第二组动作。",
+		),
+	})
+
+	if len(reels) != 2 {
+		t.Fatalf("reels len = %d, want two h2 storyboard groups: %+v", len(reels), reels)
+	}
+	if strings.Contains(reels[0].Markdown, "# 第二章分镜脚本") ||
+		strings.Contains(reels[0].Markdown, "章节摘要不应该进入第一组") {
+		t.Fatalf("first reel markdown = %q, want h2 section to stop before next h1", reels[0].Markdown)
+	}
+	if reels[1].Title != "第 02 组 总时长：00:06" || !strings.Contains(reels[1].Markdown, "第二组动作。") {
+		t.Fatalf("second reel = %+v, want second h2 storyboard group", reels[1])
+	}
+}
+
 func TestGenerationServiceListStoryboardVideoResourcesGeneratedVideoCount(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	projectID := "project-storyboard-generated-count"

@@ -113,6 +113,43 @@ func TestSyncLocalMarkdownFilesDelta(t *testing.T) {
 	}
 }
 
+func TestSyncLocalMarkdownFilesIgnoresAPISaveEcho(t *testing.T) {
+	store := requireDocumentStore(t)
+	projectID := "api-save-echo-project"
+	projectDir := requireTestProject(t, store, projectID)
+
+	writeWorkFile(t, projectDir, "alpha.md", "# Alpha\n\nfirst")
+	if first, err := store.SyncLocalMarkdownFiles(projectID); err != nil {
+		t.Fatalf("first sync: %v", err)
+	} else if !first.FullReload {
+		t.Fatalf("expected first sync to request a full reload, got %+v", first)
+	}
+
+	alphaID := docIDByFilename(t, store, projectID, "alpha.md")
+	state, err := store.ListWorkspaceDocuments(projectID)
+	if err != nil {
+		t.Fatalf("listing documents: %v", err)
+	}
+	alpha := findTestWorkspaceDocument(state.Documents, alphaID)
+	nextContent := "# Alpha\n\nsaved through the API with a longer body"
+	_, _, err = store.UpdateWorkspaceDocument(projectID, alphaID, updateWorkspaceDocumentRequest{
+		Content:         &nextContent,
+		ExpectedVersion: &alpha.Version,
+	})
+	if err != nil {
+		t.Fatalf("updating document through API: %v", err)
+	}
+
+	echo, err := store.SyncLocalMarkdownFiles(projectID)
+	if err != nil {
+		t.Fatalf("sync after API save: %v", err)
+	}
+	if echo.FullReload || echo.StructureChanged ||
+		len(echo.ChangedDocumentIDs) != 0 || len(echo.RemovedDocumentIDs) != 0 {
+		t.Fatalf("expected API save echo to be suppressed, got %+v", echo)
+	}
+}
+
 func TestListWorkspaceDocumentsByIDs(t *testing.T) {
 	store := requireDocumentStore(t)
 	projectID := "ids-project"

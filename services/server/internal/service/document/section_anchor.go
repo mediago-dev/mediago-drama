@@ -9,11 +9,14 @@ import (
 )
 
 var (
-	workspaceSectionAnchorIDPattern = regexp.MustCompile(`^section_[A-Za-z0-9_-]+$`)
-	workspaceLegacyBlockIDPattern   = regexp.MustCompile(`^section-[A-Za-z0-9]+$`)
-	workspaceSectionIDLinePattern   = regexp.MustCompile(`^\s*<!--\s*section-id:\s*([A-Za-z0-9_-]+)\s*-->\s*$`)
-	workspaceHeadingLinePattern     = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
+	workspaceSectionAnchorIDPattern    = regexp.MustCompile(`^section_[A-Za-z0-9_-]+$`)
+	workspaceLegacyBlockIDPattern      = regexp.MustCompile(`^section-[A-Za-z0-9]+$`)
+	workspaceSectionIDLinePattern      = regexp.MustCompile(`^\s*<!--\s*section-id:\s*([A-Za-z0-9_-]+)\s*-->\s*$`)
+	workspaceMarkdownHeadingPattern    = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
+	workspaceSectionHeadingLinePattern = regexp.MustCompile(`^##\s+(.+?)\s*$`)
 )
+
+const workspaceSectionHeadingLevel = 2
 
 type workspaceSectionLocation struct {
 	headingIndex            int
@@ -24,7 +27,7 @@ type workspaceSectionLocation struct {
 
 func workspaceSectionHeadingLineByID(lines []string, sectionID string) int {
 	for index, line := range lines {
-		if !workspaceHeadingLinePattern.MatchString(line) {
+		if !workspaceSectionHeadingLinePattern.MatchString(line) {
 			continue
 		}
 		if workspaceSectionIDBeforeHeadingLine(lines, index) == sectionID {
@@ -39,7 +42,7 @@ func workspaceSectionLocationByID(lines []string, documentID string, sectionID s
 	if headingIndex >= 0 {
 		return workspaceSectionLocation{
 			headingIndex:           headingIndex,
-			headingLevel:           workspaceHeadingLevel(lines[headingIndex]),
+			headingLevel:           workspaceSectionHeadingLevel,
 			replaceAnchorLineIndex: -1,
 		}, true
 	}
@@ -62,7 +65,7 @@ func workspaceSectionLocationByID(lines []string, documentID string, sectionID s
 
 	return workspaceSectionLocation{
 		headingIndex:            headingIndex,
-		headingLevel:            workspaceHeadingLevel(lines[headingIndex]),
+		headingLevel:            workspaceSectionHeadingLevel,
 		insertedAnchorSectionID: insertedAnchorSectionID,
 		replaceAnchorLineIndex:  replaceAnchorLineIndex,
 	}, true
@@ -72,12 +75,8 @@ func workspaceSectionHeadingLineByLegacyBlockID(lines []string, documentID strin
 	occurrenceByHeading := map[string]int{}
 
 	for index, line := range lines {
-		match := workspaceHeadingLinePattern.FindStringSubmatch(line)
-		if len(match) == 0 {
-			continue
-		}
-		level := len(match[1])
-		title := normalizeWorkspaceHeadingText(match[2])
+		level := workspaceSectionHeadingLevel
+		title := workspaceSectionHeadingText(line)
 		if title == "" {
 			continue
 		}
@@ -146,7 +145,7 @@ func workspaceSectionIDBeforeHeadingLine(lines []string, headingIndex int) strin
 }
 
 func workspaceHeadingLevel(line string) int {
-	match := workspaceHeadingLinePattern.FindStringSubmatch(line)
+	match := workspaceMarkdownHeadingPattern.FindStringSubmatch(line)
 	if len(match) == 0 {
 		return 0
 	}
@@ -155,12 +154,20 @@ func workspaceHeadingLevel(line string) int {
 
 func workspaceSectionEndLine(lines []string, headingIndex int, headingLevel int) int {
 	for index := headingIndex + 1; index < len(lines); index++ {
-		match := workspaceHeadingLinePattern.FindStringSubmatch(lines[index])
+		match := workspaceMarkdownHeadingPattern.FindStringSubmatch(lines[index])
 		if len(match) > 0 && len(match[1]) <= headingLevel {
 			return workspaceSectionBoundaryBeforeHeadingLine(lines, headingIndex, index)
 		}
 	}
 	return len(lines)
+}
+
+func workspaceSectionHeadingText(line string) string {
+	match := workspaceSectionHeadingLinePattern.FindStringSubmatch(line)
+	if len(match) < 2 {
+		return ""
+	}
+	return normalizeWorkspaceHeadingText(match[1])
 }
 
 func workspaceSectionBoundaryBeforeHeadingLine(lines []string, headingIndex int, nextHeadingIndex int) int {

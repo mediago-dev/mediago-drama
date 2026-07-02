@@ -81,7 +81,7 @@ describe("DocumentSectionGenerator", () => {
 					id: "character-doc",
 					title: "沈阔",
 					content:
-						"<!-- section-id: section_character -->\n# 沈阔（普通状态）\n\n23 岁男性。\n\n![沈阔图](</api/media/assets/ref-a/content>)",
+						"<!-- section-id: section_character -->\n## 沈阔（普通状态）\n\n23 岁男性。\n\n![沈阔图](</api/media/assets/ref-a/content>)",
 				}),
 			],
 		});
@@ -249,7 +249,7 @@ describe("DocumentSectionGenerator", () => {
 					category: "character",
 					id: "character-doc",
 					title: "沈阔",
-					content: "<!-- section-id: section_character -->\n# 沈阔（普通状态）\n\n23 岁男性。",
+					content: "<!-- section-id: section_character -->\n## 沈阔（普通状态）\n\n23 岁男性。",
 				}),
 			],
 		});
@@ -307,7 +307,7 @@ describe("DocumentSectionGenerator", () => {
 					category: "character",
 					id: "character-doc",
 					title: "沈阔",
-					content: "<!-- section-id: section_character -->\n# 沈阔（普通状态）\n\n23 岁男性。",
+					content: "<!-- section-id: section_character -->\n## 沈阔（普通状态）\n\n23 岁男性。",
 				}),
 			],
 		});
@@ -371,7 +371,7 @@ describe("DocumentSectionGenerator", () => {
 					category: "character",
 					id: "character-doc",
 					title: "沈阔",
-					content: "<!-- section-id: section_character -->\n# 沈阔（普通状态）\n\n23 岁男性。",
+					content: "<!-- section-id: section_character -->\n## 沈阔（普通状态）\n\n23 岁男性。",
 				}),
 			],
 		});
@@ -425,7 +425,7 @@ describe("DocumentSectionGenerator", () => {
 					category: "character",
 					id: "character-doc",
 					title: "沈阔",
-					content: "<!-- section-id: section_character -->\n# 沈阔（普通状态）\n\n23 岁男性。",
+					content: "<!-- section-id: section_character -->\n## 沈阔（普通状态）\n\n23 岁男性。",
 				}),
 			],
 		});

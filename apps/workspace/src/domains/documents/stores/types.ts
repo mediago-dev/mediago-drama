@@ -215,7 +215,6 @@ export interface DocumentsState {
 	) => void;
 	hydrateWorkspaceDocuments: (payload: WorkspaceDocumentsPayload) => void;
 	markWorkspaceSyncStatus: (status: WorkspaceDocumentSyncStatus, message: string) => void;
-	markDocumentSaved: (id: string) => void;
 	moveDocument: (
 		documentId: string,
 		targetDocumentId: string,

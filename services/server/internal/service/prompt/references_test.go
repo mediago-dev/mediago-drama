@@ -17,10 +17,10 @@ func TestCreateReferenceSectionBlockIDMatchesFrontendHash(t *testing.T) {
 		{
 			name:       "character",
 			documentID: "doc-1",
-			level:      1,
+			level:      2,
 			occurrence: 1,
 			title:      "沈阎",
-			want:       "section-2zy950",
+			want:       "section-2iwmqt",
 		},
 		{
 			name:       "scene",
@@ -51,11 +51,11 @@ func TestBuildReferenceIndexItemsUsesStableSectionIDs(t *testing.T) {
 				Category: "character",
 				Content: strings.Join([]string{
 					"<!-- section-id: section_shenyan -->",
-					"# 沈阎",
+					"## 沈阎",
 					"",
 					"男主角设定正文不应该进入索引。",
 					"",
-					"# 林晚",
+					"## 林晚",
 				}, "\n"),
 			},
 		},
@@ -112,6 +112,41 @@ func TestBuildReferenceIndexItemsSkipsDocumentRootHeadingWhenChildSectionsExist(
 	}
 	if items[1].Title != "林书彤" || items[1].MentionMarkdown != "@[林书彤](mention://character-book-doc/section_linshutong)" {
 		t.Fatalf("second item = %#v, want 林书彤 section mention", items[1])
+	}
+}
+
+func TestBuildReferenceIndexItemsOnlyUsesSecondLevelHeadings(t *testing.T) {
+	items := buildReferenceIndexItems(AgentRunRequest{
+		Documents: []AgentDocumentContext{
+			{
+				ID:       "story-doc",
+				Title:    "第一集剧本",
+				Category: "storyboard",
+				Content: strings.Join([]string{
+					"# 第一集",
+					"",
+					"## 1-1 日 外景 湖大校门口",
+					"",
+					"### 镜头细节",
+					"",
+					"## 1-2 日 外景 湖大校门口",
+				}, "\n"),
+			},
+		},
+	})
+
+	if len(items) != 2 {
+		t.Fatalf("items = %d, want only h2 sections: %#v", len(items), items)
+	}
+	for _, forbidden := range []string{"第一集", "镜头细节"} {
+		for _, item := range items {
+			if item.Title == forbidden {
+				t.Fatalf("items = %#v, want %q ignored", items, forbidden)
+			}
+		}
+	}
+	if items[0].Title != "1-1 日 外景 湖大校门口" || items[1].Title != "1-2 日 外景 湖大校门口" {
+		t.Fatalf("items = %#v, want h2 section titles", items)
 	}
 }
 

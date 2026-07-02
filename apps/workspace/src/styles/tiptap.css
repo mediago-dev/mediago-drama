@@ -152,22 +152,6 @@
 	color: var(--ide-toolbar-foreground);
 }
 
-.tiptap-section-generate-action-group {
-	isolation: isolate;
-}
-
-.tiptap-section-generate-action-group::before {
-	position: absolute;
-	z-index: -1;
-	inset: calc(0px - var(--space-xs) - var(--border-width-scale-sm));
-	border: var(--border-width-scale-sm) solid var(--border);
-	border-radius: calc(var(--radius-scale-sm) + var(--space-xs));
-	background: color-mix(in srgb, var(--popover) 88%, var(--background));
-	box-shadow: var(--shadow-sm);
-	content: "";
-	pointer-events: none;
-}
-
 .tiptap-section-generate-button {
 	display: inline-flex;
 	height: 1.75rem;

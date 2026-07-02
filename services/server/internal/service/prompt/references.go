@@ -14,9 +14,11 @@ const referenceIndexPromptHeading = "# 可用 @ 资源索引"
 const referenceHandlingPromptHeading = "# @ 引用处理要求"
 
 var (
-	referenceHeadingPattern          = regexp.MustCompile(`^(#{1,3})\s+(.+?)\s*$`)
+	referenceHeadingPattern          = regexp.MustCompile(`^##\s+(.+?)\s*$`)
 	referenceSectionIDCommentPattern = regexp.MustCompile(`^\s*<!--\s*section-id:\s*([A-Za-z0-9_-]+)\s*-->\s*$`)
 )
+
+const referenceSectionHeadingLevel = 2
 
 type referenceIndexItem struct {
 	BlockID         string
@@ -220,8 +222,8 @@ func referenceSectionsForDocument(document AgentDocumentContext) []referenceSect
 		if len(match) == 0 {
 			continue
 		}
-		level := len(match[1])
-		title := normalizeReferenceHeadingText(match[2])
+		level := referenceSectionHeadingLevel
+		title := normalizeReferenceHeadingText(match[1])
 		if title == "" {
 			continue
 		}
@@ -245,12 +247,6 @@ func referenceSectionsForDocument(document AgentDocumentContext) []referenceSect
 			Level:   level,
 			Title:   title,
 		})
-	}
-
-	if len(sections) > 1 &&
-		sections[0].Level == 1 &&
-		sections[0].Title == normalizeReferenceHeadingText(document.Title) {
-		return sections[1:]
 	}
 
 	return sections

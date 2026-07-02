@@ -41,6 +41,32 @@ describe("document sections", () => {
 		expect(sections.map((section) => section.blockId)).toEqual(["section_first", "section_second"]);
 	});
 
+	it("only treats second-level headings as document sections", () => {
+		const sections = listDocumentSections(
+			document(
+				[
+					"<!-- section-id: section_episode -->",
+					"# 第一集",
+					"",
+					"<!-- section-id: section_shot -->",
+					"## 镜头 01",
+					"",
+					"### 镜头细节",
+					"",
+					"<!-- section-id: section_prop -->",
+					"#### 道具细节",
+					"",
+					"## 镜头 02",
+				].join("\n"),
+			),
+		);
+
+		expect(sections).toEqual([
+			{ blockId: "section_shot", level: 2, title: "镜头 01" },
+			{ blockId: createSectionBlockId("doc-1", 2, 1, "镜头 02"), level: 2, title: "镜头 02" },
+		]);
+	});
+
 	it("finds heading lines by section-id and strips section-id comments from prompt text", () => {
 		const lines = ["<!-- section-id: section_target -->", "", "## 新标题", "", "正文"];
 

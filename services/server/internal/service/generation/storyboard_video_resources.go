@@ -144,7 +144,7 @@ func collectStoryboardVideoSections(
 		endLine := len(lines)
 		for nextIndex := headingIndex + 1; nextIndex < len(headings); nextIndex++ {
 			nextHeading := headings[nextIndex]
-			if nextHeading.level <= heading.level && shouldStart(nextHeading) {
+			if nextHeading.level <= heading.level {
 				endLine = nextHeading.lineIndex
 				break
 			}

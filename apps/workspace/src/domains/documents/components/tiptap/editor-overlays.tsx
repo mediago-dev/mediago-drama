@@ -1,65 +1,6 @@
 import type React from "react";
-import { ArrowUpRight, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { HoveredBlockRect } from "./types";
-
-export type SectionGenerateKind = "image" | "audio" | "video";
-
-const sectionGenerateActions: Array<{
-	ariaLabel: string;
-	icon: React.ReactNode;
-	kind: SectionGenerateKind;
-	label: string;
-	title: string;
-}> = [
-	{
-		ariaLabel: "根据当前标题区域生成图片",
-		icon: <ArrowUpRight className="size-3.5" />,
-		kind: "image",
-		label: "生成图片",
-		title: "根据当前标题区域生成图片",
-	},
-	{
-		ariaLabel: "根据当前标题区域选择音频",
-		icon: <ArrowUpRight className="size-3.5" />,
-		kind: "audio",
-		label: "选择音频",
-		title: "根据当前标题区域选择音频",
-	},
-	{
-		ariaLabel: "根据当前标题区域生成视频",
-		icon: <ArrowUpRight className="size-3.5" />,
-		kind: "video",
-		label: "生成视频",
-		title: "根据当前标题区域生成视频",
-	},
-];
-
-export const SectionGenerateButton: React.FC<{
-	onGenerate: (kind: SectionGenerateKind) => void;
-	onMouseLeave: () => void;
-	rect: HoveredBlockRect;
-}> = ({ onGenerate, onMouseLeave, rect }) => (
-	<div
-		className="tiptap-section-generate-action tiptap-section-generate-action-group"
-		style={{ top: Math.max(rect.top - 28, 0) }}
-		onMouseDown={(event) => event.preventDefault()}
-		onMouseLeave={onMouseLeave}
-	>
-		{sectionGenerateActions.map((action) => (
-			<button
-				key={action.kind}
-				type="button"
-				className="tiptap-section-generate-button"
-				aria-label={action.ariaLabel}
-				title={action.title}
-				onClick={() => onGenerate(action.kind)}
-			>
-				{action.icon}
-				<span>{action.label}</span>
-			</button>
-		))}
-	</div>
-);
 
 export const HeadingActionButton: React.FC<{
 	ariaLabel: string;

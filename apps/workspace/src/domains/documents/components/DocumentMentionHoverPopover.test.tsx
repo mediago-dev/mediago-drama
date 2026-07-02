@@ -36,7 +36,7 @@ const mentionDocuments = [
 		id: "character-doc",
 		title: "沈阔",
 		content:
-			"<!-- section-id: section_character -->\n# 沈阔（普通状态）\n\n![沈阔图](</api/media/assets/ref-a/content>)",
+			"<!-- section-id: section_character -->\n## 沈阔（普通状态）\n\n![沈阔图](</api/media/assets/ref-a/content>)",
 	}),
 ];
 
@@ -134,7 +134,7 @@ describe("DocumentMentionHoverPopover", () => {
 						category: "character",
 						id: "character-doc",
 						title: "顾南衣",
-						content: "<!-- section-id: section_character -->\n# 顾南衣·状态A\n\n18 岁女性。",
+						content: "<!-- section-id: section_character -->\n## 顾南衣·状态A\n\n18 岁女性。",
 					}),
 				]}
 				projectId="project-a"
@@ -176,7 +176,7 @@ describe("DocumentMentionHoverPopover", () => {
 						category: "character",
 						id: "character-doc",
 						title: "陈远",
-						content: "<!-- section-id: section_character -->\n# 陈远\n\n21 岁男性。",
+						content: "<!-- section-id: section_character -->\n## 陈远\n\n21 岁男性。",
 					}),
 				]}
 				selectedGenerationAssets={[

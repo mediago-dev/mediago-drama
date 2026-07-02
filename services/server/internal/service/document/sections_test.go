@@ -57,6 +57,50 @@ func TestReconcileProjectSectionsAddsStableAnchorsAndRecords(t *testing.T) {
 	}
 }
 
+func TestReconcileProjectSectionsOnlyTracksSecondLevelHeadings(t *testing.T) {
+	store := requireDocumentStore(t)
+	projectID := "project-section-h2-only"
+	requireTestProject(t, store, projectID)
+
+	document, _, err := store.CreateWorkspaceDocument(projectID, CreateWorkspaceDocumentRequest{
+		Title:    "剧本",
+		Category: "screenplay",
+		Content: strings.Join([]string{
+			"# 第一集",
+			"",
+			"## 镜头 01",
+			"",
+			"### 镜头细节",
+			"",
+			"## 镜头 02",
+		}, "\n"),
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkspaceDocument() error = %v", err)
+	}
+
+	response, err := store.ReconcileProjectSections(projectID)
+	if err != nil {
+		t.Fatalf("ReconcileProjectSections() error = %v", err)
+	}
+	if len(response.Sections) != 2 {
+		t.Fatalf("sections len = %d, want only h2 sections: %#v", len(response.Sections), response.Sections)
+	}
+	if findSectionByObservedTitle(response.Sections, "第一集") != nil ||
+		findSectionByObservedTitle(response.Sections, "镜头细节") != nil {
+		t.Fatalf("sections = %#v, want h1 and h3 ignored", response.Sections)
+	}
+
+	saved, ok, err := store.GetWorkspaceDocument(projectID, document.ID)
+	if err != nil || !ok {
+		t.Fatalf("GetWorkspaceDocument() ok=%v err=%v", ok, err)
+	}
+	if regexp.MustCompile(`<!-- section-id: section_[A-Za-z0-9_-]+ -->\n# 第一集`).MatchString(saved.Content) ||
+		regexp.MustCompile(`<!-- section-id: section_[A-Za-z0-9_-]+ -->\n### 镜头细节`).MatchString(saved.Content) {
+		t.Fatalf("content = %q, want no section-id before h1 or h3", saved.Content)
+	}
+}
+
 func TestReconcileProjectSectionsKeepsIdentityAcrossMoveAndRename(t *testing.T) {
 	store := requireDocumentStore(t)
 	projectID := "project-section-move"

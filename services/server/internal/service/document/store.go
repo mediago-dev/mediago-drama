@@ -67,6 +67,10 @@ func (store *Service) saveUnlocked(projectID string, request workspaceStateReque
 	if err != nil {
 		return workspaceStateResponse{}, err
 	}
+	_, _, hasSyncSnapshot := store.currentSyncSnapshotUnlocked(projectID)
+	if hasSyncSnapshot || len(savedDocuments) > 0 || len(savedFolders) > 0 {
+		store.rememberSyncSnapshotUnlocked(projectID, savedDocuments, savedFolders)
+	}
 
 	return workspaceStateResponse{
 		WorkspaceDir: store.projectDir(projectID),

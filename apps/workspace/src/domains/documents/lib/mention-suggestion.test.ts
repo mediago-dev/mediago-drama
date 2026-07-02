@@ -161,6 +161,39 @@ describe("mention suggestion items", () => {
 		expect(items.every((item) => item.kind !== "section" || item.blockId)).toBe(true);
 	});
 
+	it("only exposes second-level headings as section mention items", () => {
+		useDocumentsStore.setState({
+			documents: [
+				makeDocument({
+					content: [
+						"# 第一集",
+						"",
+						"## 1-1 日 外景 湖大校门口",
+						"",
+						"### 镜头细节",
+						"",
+						"#### 调度备注",
+						"",
+						"## 1-2 日 外景 湖大校门口",
+					].join("\n"),
+					title: "第一集剧本",
+				}),
+			],
+			assets: [],
+		});
+
+		const items = createMentionItems("");
+
+		expect(items.map((item) => `${item.kind}:${item.title}`)).toEqual([
+			"document:第一集剧本",
+			"section:1-1 日 外景 湖大校门口",
+			"section:1-2 日 外景 湖大校门口",
+		]);
+		expect(items.some((item) => item.kind === "section" && item.title === "第一集")).toBe(false);
+		expect(items.some((item) => item.kind === "section" && item.title === "镜头细节")).toBe(false);
+		expect(items.some((item) => item.kind === "section" && item.title === "调度备注")).toBe(false);
+	});
+
 	it("keeps reference documents selectable as whole documents even when they have headings", () => {
 		useDocumentsStore.setState({
 			documents: [

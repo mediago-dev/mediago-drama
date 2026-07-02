@@ -9,6 +9,7 @@ import {
 	type APIKeyListResponse,
 	type ModelPlatformsResponse,
 } from "@/domains/settings/api/settings";
+import { openExternalUrl } from "@/shared/desktop/actions";
 import { useSettingsNavigationStore } from "@/lib/stores/settings";
 import { Settings } from "./Settings";
 
@@ -45,48 +46,80 @@ describe("Settings API key page", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		useSettingsNavigationStore.setState({ activeTab: "api-keys" });
-		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse(false));
+		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({}));
 		vi.mocked(getModelPlatforms).mockResolvedValue(modelPlatformsResponse());
-		vi.mocked(saveAPIKey).mockResolvedValue(apiKeysResponse(true));
+		vi.mocked(saveAPIKey).mockResolvedValue(apiKeysResponse({ mediagoConfigured: true }));
 	});
 
 	afterEach(() => {
 		cleanup();
 	});
 
-	it("shows all three credential categories with MediaGo first", async () => {
+	it("shows MediaGo hero and CLI section, keeps other providers collapsed", async () => {
 		renderSettings();
 
-		expect(
-			await screen.findByRole("heading", { name: "配置 MediaGo API Key" }),
-		).toBeInTheDocument();
-		expect(screen.getByRole("heading", { name: "统一接口" })).toBeInTheDocument();
-		expect(screen.getByRole("heading", { name: "自定义接口" })).toBeInTheDocument();
-		expect(screen.getByRole("heading", { name: "官方供应商" })).toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "统一接口" })).toBeInTheDocument();
+		expect(screen.getByText("一个 API Key，通用全部生成模型")).toBeInTheDocument();
 		expect(screen.getAllByText("推荐")).toHaveLength(1);
-		expect(screen.queryByText(/只需要一个 API/)).not.toBeInTheDocument();
-		expect(screen.queryByRole("button", { name: "显示高级选项" })).not.toBeInTheDocument();
-		expect(screen.queryByText("内置模型入口")).not.toBeInTheDocument();
-		expect(screen.queryByText("文本模型")).not.toBeInTheDocument();
-		expect(screen.queryByText("MiniMax M3")).not.toBeInTheDocument();
+
+		expect(screen.getByRole("heading", { name: "会员 CLI 接入" })).toBeInTheDocument();
 		expect(
-			screen.queryByText(/保存后，生成工作区和 Agent 默认模型会读取这个/),
-		).not.toBeInTheDocument();
-		expect(screen.queryByText("配置摘要")).not.toBeInTheDocument();
-		expect(screen.queryByText("一个 Key")).not.toBeInTheDocument();
-		expect(screen.queryByText("优先入口")).not.toBeInTheDocument();
-		expect(screen.queryByText("可随时替换")).not.toBeInTheDocument();
+			screen.getByText("已开通即梦高级会员？可直接登录即梦账号接入，无需 API Key。"),
+		).toBeInTheDocument();
+		expect(screen.getByText("即梦")).toBeInTheDocument();
+
+		expect(screen.getByRole("button", { name: /其他接入方式/ })).toBeInTheDocument();
+		expect(screen.queryByRole("heading", { name: "自定义接口" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("heading", { name: "官方供应商" })).not.toBeInTheDocument();
 	});
 
-	it("saves the MediaGo key from the one-click setup area", async () => {
+	it("renders MediaGo model chips from platform data", async () => {
 		renderSettings();
 
-		const input = (await screen.findByLabelText("MediaGo API Key")) as HTMLInputElement;
+		expect(await screen.findByText("支持模型")).toBeInTheDocument();
+		expect(screen.getByText("MiniMax M3")).toBeInTheDocument();
+		expect(screen.getByText("GLM 4.7")).toBeInTheDocument();
+	});
+
+	it("expands other providers on demand", async () => {
+		renderSettings();
+
+		fireEvent.click(await screen.findByRole("button", { name: /其他接入方式/ }));
+
+		expect(screen.getByRole("heading", { name: "自定义接口" })).toBeInTheDocument();
+		expect(screen.getByRole("heading", { name: "官方供应商" })).toBeInTheDocument();
+		expect(screen.getByText("OpenRouter")).toBeInTheDocument();
+		expect(screen.queryByText("openrouter")).not.toBeInTheDocument();
+	});
+
+	it("keeps other providers collapsed by default even when one is configured", async () => {
+		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ openrouterConfigured: true }));
+		renderSettings();
+
+		expect(await screen.findByRole("button", { name: /其他接入方式/ })).toBeInTheDocument();
+		expect(screen.queryByRole("heading", { name: "自定义接口" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("heading", { name: "官方供应商" })).not.toBeInTheDocument();
+	});
+
+	it("opens the MediaGo API key page from the config dialog", async () => {
+		renderSettings();
+
+		fireEvent.click(await screen.findByRole("button", { name: /配置 API Key/ }));
+		fireEvent.click(await screen.findByRole("button", { name: /免费注册获取/ }));
+
+		expect(openExternalUrl).toHaveBeenCalledWith(expect.stringContaining("apiKeys"));
+	});
+
+	it("saves the MediaGo key from the config dialog", async () => {
+		renderSettings();
+
+		fireEvent.click(await screen.findByRole("button", { name: /配置 API Key/ }));
+		const dialog = await screen.findByRole("dialog", { name: "配置 MediaGo API Key" });
+		const input = within(dialog).getByLabelText("MediaGo API Key") as HTMLInputElement;
 		fireEvent.change(input, { target: { value: "sk-mediago-123456" } });
 
-		expect(screen.queryByText("格式已通过")).not.toBeInTheDocument();
 		expect(screen.getByText("API Key 已输入，可以点击一键配置完成保存。")).toBeInTheDocument();
-		fireEvent.click(screen.getByRole("button", { name: "一键配置" }));
+		fireEvent.click(within(dialog).getByRole("button", { name: "一键配置" }));
 
 		await waitFor(() => expect(saveAPIKey).toHaveBeenCalledWith("mediago", "sk-mediago-123456"));
 	});
@@ -94,11 +127,10 @@ describe("Settings API key page", () => {
 	it("does not render non-editable routing metadata as form inputs", async () => {
 		renderSettings();
 
-		const customSection = (await screen.findByRole("heading", { name: "自定义接口" })).closest(
-			"section",
-		);
+		fireEvent.click(await screen.findByRole("button", { name: /其他接入方式/ }));
+		const customSection = screen.getByRole("heading", { name: "自定义接口" }).closest("section");
 		expect(customSection).toBeTruthy();
-		fireEvent.click(within(customSection as HTMLElement).getByRole("button", { name: "编辑" }));
+		fireEvent.click(within(customSection as HTMLElement).getByRole("button", { name: /编辑/ }));
 
 		const dialog = await screen.findByRole("dialog", { name: "配置 OpenRouter" });
 		expect(dialog).toBeInTheDocument();
@@ -107,18 +139,19 @@ describe("Settings API key page", () => {
 		expect(screen.queryByLabelText("端点策略")).not.toBeInTheDocument();
 		expect(screen.queryByLabelText("模型路由")).not.toBeInTheDocument();
 		expect(screen.queryByLabelText("能力范围")).not.toBeInTheDocument();
-		expect(
-			within(dialog).queryByText("除 API Key 外，其余路由信息由系统读取，不在此弹窗中编辑。"),
-		).not.toBeInTheDocument();
-		expect(within(dialog).queryByText(/能力：/)).not.toBeInTheDocument();
 	});
 
-	it("does not show provider ids beside provider labels in the list", async () => {
+	it("shows the jimeng CLI login flow instead of an API key input", async () => {
 		renderSettings();
 
-		expect(await screen.findByText("OpenRouter")).toBeInTheDocument();
-		expect(screen.getByText("即梦")).toBeInTheDocument();
-		expect(screen.queryByText("openrouter")).not.toBeInTheDocument();
+		const cliSection = (await screen.findByRole("heading", { name: "会员 CLI 接入" })).closest(
+			"section",
+		);
+		expect(cliSection).toBeTruthy();
+		expect(within(cliSection as HTMLElement).getByText("未登录")).toBeInTheDocument();
+		expect(
+			within(cliSection as HTMLElement).getByRole("button", { name: "登录" }),
+		).toBeInTheDocument();
 		expect(screen.queryByText("jimeng")).not.toBeInTheDocument();
 	});
 });
@@ -132,7 +165,13 @@ const renderSettings = () =>
 		</MemoryRouter>,
 	);
 
-const apiKeysResponse = (mediagoConfigured: boolean): APIKeyListResponse => ({
+const apiKeysResponse = ({
+	mediagoConfigured = false,
+	openrouterConfigured = false,
+}: {
+	mediagoConfigured?: boolean;
+	openrouterConfigured?: boolean;
+}): APIKeyListResponse => ({
 	providers: [
 		{
 			id: "mediago",
@@ -148,14 +187,24 @@ const apiKeysResponse = (mediagoConfigured: boolean): APIKeyListResponse => ({
 			id: "openrouter",
 			label: "OpenRouter",
 			description: "自定义兼容接口",
-			configured: false,
-			source: "none",
+			configured: openrouterConfigured,
+			source: openrouterConfigured ? "settings" : "none",
+			masked: openrouterConfigured ? "sk••••7890" : undefined,
 			credentialKind: "apiKey",
 			capabilities: ["text"],
 		},
 		{
 			id: "jimeng",
 			label: "即梦",
+			description: "即梦 CLI 接入",
+			configured: false,
+			source: "none",
+			credentialKind: "oauth",
+			capabilities: ["image"],
+		},
+		{
+			id: "volcengine",
+			label: "火山引擎",
 			description: "官方供应商",
 			configured: false,
 			source: "none",

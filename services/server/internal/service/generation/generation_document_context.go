@@ -13,10 +13,13 @@ import (
 
 var (
 	generationDocumentHeadingPattern          = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
+	generationDocumentSectionHeadingPattern   = regexp.MustCompile(`^##\s+(.+?)\s*$`)
 	generationDocumentMentionPattern          = regexp.MustCompile(`@\[((?:\\.|[^\]\\])*)\]\((?:<([^>]+)>|([^\s)]+))\)`)
 	generationDocumentImageLinePattern        = regexp.MustCompile(`^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$`)
 	generationDocumentSectionIDCommentPattern = regexp.MustCompile(`^\s*<!--\s*section-id:\s*([A-Za-z0-9_-]+)\s*-->\s*$`)
 )
+
+const generationDocumentSectionHeadingLevel = 2
 
 // GenerationDocumentResolver reads workspace documents for generation context.
 type GenerationDocumentResolver interface {
@@ -302,15 +305,11 @@ func generationDocumentSections(document mediamcp.WorkspaceDocument) []generatio
 	sections := []generationDocumentSection{}
 
 	for index, line := range lines {
-		match := generationDocumentHeadingPattern.FindStringSubmatch(line)
-		if len(match) == 0 {
-			continue
-		}
-		level := len(match[1])
-		title := normalizeGenerationDocumentHeadingText(match[2])
+		title := generationDocumentSectionHeadingText(line)
 		if title == "" {
 			continue
 		}
+		level := generationDocumentSectionHeadingLevel
 
 		key := strconv.Itoa(level) + "|" + title
 		occurrenceByHeading[key]++
@@ -343,15 +342,11 @@ func generationDocumentSectionHeadingLine(document mediamcp.WorkspaceDocument, l
 	seenSectionIDs := map[string]bool{}
 
 	for index, line := range lines {
-		match := generationDocumentHeadingPattern.FindStringSubmatch(line)
-		if len(match) == 0 {
-			continue
-		}
-		level := len(match[1])
-		title := normalizeGenerationDocumentHeadingText(match[2])
+		title := generationDocumentSectionHeadingText(line)
 		if title == "" {
 			continue
 		}
+		level := generationDocumentSectionHeadingLevel
 
 		key := strconv.Itoa(level) + "|" + title
 		occurrenceByHeading[key]++
@@ -375,6 +370,14 @@ func generationDocumentSectionHeadingLine(document mediamcp.WorkspaceDocument, l
 	}
 
 	return -1, 0
+}
+
+func generationDocumentSectionHeadingText(line string) string {
+	match := generationDocumentSectionHeadingPattern.FindStringSubmatch(line)
+	if len(match) < 2 {
+		return ""
+	}
+	return normalizeGenerationDocumentHeadingText(match[1])
 }
 
 func generationSectionIDBeforeHeadingLine(lines []string, headingIndex int) string {

@@ -41,11 +41,10 @@ export const createDocumentSyncActions = ({ get, set }: DocumentActionContext): 
 			const merged: MarkdownDocument[] = [];
 			const seen = new Set<string>();
 			for (const document of state.documents) {
-				if (removed.has(document.id)) continue;
+				if (removed.has(document.id) && !document.isDirty) continue;
 				seen.add(document.id);
 				const incoming = changedById.get(document.id);
-				// Never overwrite unsaved local edits; keep the dirty copy until it is saved.
-				merged.push(incoming && !document.isDirty ? incoming : document);
+				merged.push(incoming ? mergeIncomingDocument(document, incoming) : document);
 			}
 			for (const document of changedDocuments) {
 				if (!seen.has(document.id) && !removed.has(document.id)) {
@@ -78,8 +77,7 @@ export const createDocumentSyncActions = ({ get, set }: DocumentActionContext): 
 				activeDocumentId,
 				activeAssetId,
 				...transientState,
-				syncStatus: "synced",
-				syncMessage: "已与后端文档库同步",
+				...hydratedSyncState(documents, state, "已与后端文档库同步"),
 			};
 		});
 	},
@@ -97,13 +95,16 @@ export const createDocumentSyncActions = ({ get, set }: DocumentActionContext): 
 		incomingFolders = [],
 	) => {
 		const folders = normalizeFolders(incomingFolders);
-		const documents = normalizeDocumentsForFolders(normalizeDocuments(incomingDocuments), folders);
 		const folderIds = new Set(folders.map((folder) => folder.id));
 		const assets = incomingAssets.map((asset) => ({
 			...asset,
 			folderId: asset.folderId && folderIds.has(asset.folderId) ? asset.folderId : null,
 		}));
 		set((state) => {
+			const documents = normalizeDocumentsForFolders(
+				normalizeDocuments(mergeWorkspaceDocuments(state, projectId ?? null, incomingDocuments)),
+				folders,
+			);
 			const activeAssetId = nextActiveAssetId(assets, state.activeAssetId);
 			const activeDocumentId = nextActiveDocumentId(
 				documents,
@@ -127,34 +128,36 @@ export const createDocumentSyncActions = ({ get, set }: DocumentActionContext): 
 				...transientState,
 				projectId,
 				workspaceDir,
-				syncStatus: "synced",
-				syncMessage: "已与后端工作区同步",
+				...hydratedSyncState(documents, state, "已与后端工作区同步"),
 			};
 		});
 	},
 	hydrateWorkspaceDocuments: (payload) => {
 		const folders = normalizeFolders(payload.folders);
-		const documents = normalizeDocumentsForFolders(normalizeDocuments(payload.documents), folders);
 		const folderIds = new Set(folders.map((folder) => folder.id));
 		const assets = (payload.assets ?? []).map((asset) => ({
 			...asset,
 			folderId: asset.folderId && folderIds.has(asset.folderId) ? asset.folderId : null,
 		}));
-		const documentIds = new Set(documents.map((document) => document.id));
-		const operationLog = get().operationLog.filter((entry) => documentIds.has(entry.documentId));
 		set((state) => {
+			const incomingProjectId = payload.projectId ?? state.projectId;
+			const documents = normalizeDocumentsForFolders(
+				normalizeDocuments(mergeWorkspaceDocuments(state, incomingProjectId, payload.documents)),
+				folders,
+			);
+			const documentIds = new Set(documents.map((document) => document.id));
+			const operationLog = state.operationLog.filter((entry) => documentIds.has(entry.documentId));
 			const activeAssetId = nextActiveAssetId(assets, state.activeAssetId);
 			const activeDocumentId = nextActiveDocumentId(
 				documents,
 				state.activeDocumentId,
 				activeAssetId,
 			);
-			const projectId = payload.projectId ?? state.projectId;
 			const transientState = preserveTransientDocumentState({
 				activeAssetId,
 				activeDocumentId,
 				documents,
-				projectId,
+				projectId: incomingProjectId,
 				state,
 			});
 			return {
@@ -165,10 +168,9 @@ export const createDocumentSyncActions = ({ get, set }: DocumentActionContext): 
 				activeDocumentId,
 				activeAssetId,
 				...transientState,
-				projectId,
+				projectId: incomingProjectId,
 				workspaceDir: payload.workspaceDir,
-				syncStatus: "synced",
-				syncMessage: "已与后端文档库同步",
+				...hydratedSyncState(documents, state, "已与后端文档库同步"),
 			};
 		});
 	},
@@ -235,6 +237,74 @@ export const createDocumentSyncActions = ({ get, set }: DocumentActionContext): 
 	},
 	toggleComments: () => set((state) => ({ showComments: !state.showComments })),
 });
+
+/**
+ * Hydrates report "synced" only when nothing is dirty; while unsaved edits
+ * remain, the previous status (usually the save queue's "syncing"/"error")
+ * keeps describing the truth.
+ */
+const hydratedSyncState = (
+	documents: MarkdownDocument[],
+	state: Pick<DocumentsState, "syncMessage" | "syncStatus">,
+	message: string,
+): Pick<DocumentsState, "syncMessage" | "syncStatus"> =>
+	documents.some((document) => document.isDirty)
+		? { syncStatus: state.syncStatus, syncMessage: state.syncMessage }
+		: { syncStatus: "synced", syncMessage: message };
+
+/**
+ * Merge one incoming (backend) document into its local counterpart.
+ *
+ * - A dirty local copy always wins on content-bearing fields: unsaved edits are
+ *   never overwritten by echoes of earlier saves or concurrent refetches. Only
+ *   the version advances so the next save targets the current server version.
+ * - A clean local copy accepts the incoming document unless it is stale, i.e.
+ *   its version is older than what the server already confirmed to us.
+ */
+const mergeIncomingDocument = (
+	local: MarkdownDocument,
+	incoming: MarkdownDocument,
+): MarkdownDocument => {
+	if (local.isDirty) {
+		return {
+			...local,
+			version: Math.max(local.version, incoming.version),
+			filename: incoming.filename ?? local.filename,
+		};
+	}
+	return incoming.version >= local.version ? incoming : local;
+};
+
+/**
+ * Merge a full backend document list into the current store state.
+ *
+ * Dirty local documents that are missing from the incoming list are kept
+ * (e.g. optimistic creations whose POST has not landed yet). Cross-project
+ * hydrates skip merging entirely — the incoming list replaces the previous
+ * project's documents.
+ */
+const mergeWorkspaceDocuments = (
+	state: Pick<DocumentsState, "documents" | "projectId">,
+	incomingProjectId: string | null,
+	incomingDocuments: MarkdownDocument[],
+): MarkdownDocument[] => {
+	if (state.projectId !== incomingProjectId || state.documents.length === 0) {
+		return incomingDocuments;
+	}
+
+	const localById = new Map(state.documents.map((document) => [document.id, document]));
+	const merged = incomingDocuments.map((incoming) => {
+		const local = localById.get(incoming.id);
+		return local ? mergeIncomingDocument(local, incoming) : incoming;
+	});
+	const incomingIds = new Set(incomingDocuments.map((document) => document.id));
+	for (const document of state.documents) {
+		if (document.isDirty && !incomingIds.has(document.id)) {
+			merged.push(document);
+		}
+	}
+	return merged;
+};
 
 const nextActiveAssetId = (assets: { id: string }[], currentAssetId: string) =>
 	assets.some((asset) => asset.id === currentAssetId) ? currentAssetId : "";

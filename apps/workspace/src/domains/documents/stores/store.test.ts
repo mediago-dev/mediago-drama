@@ -20,6 +20,7 @@ import {
 	workspaceStateFallbackRefreshIntervalMs,
 } from "@/domains/documents/components/DocumentStateSync";
 import Toast from "@/shared/lib/toast";
+import { resetDocumentSaveQueueForTests } from "./document-save-queue";
 import { selectActiveDocumentOpenComments, useDocumentsStore } from "./store";
 import type { DocumentFolder, DocumentOperationLogEntry, MarkdownDocument } from "./types";
 import { createTextAnchor, type DocumentOperation } from "@/domains/documents/lib/operations";
@@ -193,6 +194,7 @@ describe("documents store remote sync", () => {
 		});
 		vi.mocked(updateWorkspaceFolder).mockReset();
 		vi.mocked(updateWorkspaceState).mockReset();
+		resetDocumentSaveQueueForTests();
 		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
 	});
 
@@ -332,7 +334,7 @@ describe("documents store remote sync", () => {
 		expect(afterState.documents[0]?.isDirty).toBe(false);
 	});
 
-	it("persists document content updates to the backend and hydrates the saved markdown", async () => {
+	it("persists document content updates to the backend and adopts the confirmed version", async () => {
 		const document = makeDocument("doc-a");
 		const nextContent = "# doc-a\n\n新正文。\n";
 		const savedDocument = {
@@ -358,10 +360,12 @@ describe("documents store remote sync", () => {
 
 		useDocumentsStore.getState().updateDocumentContent("doc-a", nextContent);
 
+		// Local edits never bump the version optimistically; it tracks the
+		// last server-confirmed version until the save is acknowledged.
 		expect(useDocumentsStore.getState().documents[0]).toMatchObject({
 			content: nextContent,
 			isDirty: true,
-			version: 2,
+			version: 1,
 		});
 		expect(useDocumentsStore.getState().syncStatus).toBe("syncing");
 		expect(useDocumentsStore.getState().syncMessage).toBe("正在保存文档内容");
@@ -369,12 +373,16 @@ describe("documents store remote sync", () => {
 		await waitFor(() => {
 			expect(updateWorkspaceDocumentRecord).toHaveBeenCalledWith(
 				"doc-a",
-				{ content: nextContent, expectedVersion: 1 },
+				expect.objectContaining({ content: nextContent, isDirty: false, expectedVersion: 1 }),
 				"project-a",
 			);
 		});
 		await waitFor(() => {
-			expect(useDocumentsStore.getState().documents[0]).toMatchObject(savedDocument);
+			expect(useDocumentsStore.getState().documents[0]).toMatchObject({
+				content: nextContent,
+				isDirty: false,
+				version: 2,
+			});
 		});
 		expect(useDocumentsStore.getState().syncStatus).toBe("synced");
 	});
@@ -831,11 +839,14 @@ describe("documents store remote sync", () => {
 		});
 	});
 
-	it("does not hydrate polled workspace state over dirty local documents", () => {
+	it("merges polled workspace state per document while preserving dirty local copies", () => {
 		useDocumentsStore
 			.getState()
 			.hydrateWorkspaceState(
-				[{ ...makeDocument("doc-local"), isDirty: true }],
+				[
+					{ ...makeDocument("doc-local"), content: "# 本地未保存\n", isDirty: true },
+					makeDocument("doc-clean"),
+				],
 				[],
 				"/workspace/project-a",
 				"project-a",
@@ -844,7 +855,12 @@ describe("documents store remote sync", () => {
 			data: {
 				workspaceDir: "/workspace/project-a",
 				projectId: "project-a",
-				documents: [makeDocument("doc-remote")],
+				documents: [
+					// Stale echo of doc-local (older content) plus fresh doc-remote.
+					{ ...makeDocument("doc-local"), content: "# 服务端旧副本\n", version: 3 },
+					{ ...makeDocument("doc-clean"), content: "# 服务端新内容\n", version: 2 },
+					makeDocument("doc-remote"),
+				],
 				folders: [],
 				assets: [],
 				operationLog: [],
@@ -856,8 +872,17 @@ describe("documents store remote sync", () => {
 		render(React.createElement(DocumentStateSync, { projectId: "project-a" }));
 
 		const state = useDocumentsStore.getState();
-		expect(state.documents.map((document) => document.id)).toEqual(["doc-local"]);
-		expect(state.documents[0]?.isDirty).toBe(true);
+		const byId = new Map(state.documents.map((document) => [document.id, document]));
+		expect([...byId.keys()].sort()).toEqual(["doc-clean", "doc-local", "doc-remote"]);
+		// Dirty local edits survive the reconcile; only the version advances.
+		expect(byId.get("doc-local")).toMatchObject({
+			content: "# 本地未保存\n",
+			isDirty: true,
+			version: 3,
+		});
+		// Clean documents accept newer backend content, and new documents appear.
+		expect(byId.get("doc-clean")?.content).toBe("# 服务端新内容\n");
+		expect(byId.has("doc-remote")).toBe(true);
 	});
 
 	it("refreshes workspace state when the workspace event stream reports document changes", async () => {

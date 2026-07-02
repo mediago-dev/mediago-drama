@@ -1,5 +1,6 @@
 import type { Episode, TimelineClip } from "@/domains/episode/lib/sample";
 import {
+	documentSectionHeadingLevel,
 	findMarkdownSectionEndLine,
 	findMarkdownSectionHeadingLine,
 	type MarkdownSectionIdentityLike,
@@ -67,7 +68,7 @@ export const removeStoryboardReelMarkdown = (
 	const start = findMarkdownSectionHeadingLine(lines, section);
 	if (start < 0) return { changed: false, markdown };
 
-	const end = findMarkdownSectionEndLine(lines, start, section.headingLevel);
+	const end = findMarkdownSectionEndLine(lines, start, documentSectionHeadingLevel);
 	const nextLines = [...lines.slice(0, start), ...lines.slice(end)];
 
 	return {

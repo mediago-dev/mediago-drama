@@ -10,6 +10,7 @@ import {
 	type DocumentOperation,
 } from "@/domains/documents/lib/operations";
 import { asOperationDocument, createId, rollbackSnapshot, snapshotDocument } from "./helpers";
+import { scheduleDocumentSave } from "./document-save-queue";
 import type { DocumentActionContext, DocumentsActions } from "./action-types";
 import type { DocumentOperationLogEntry } from "./types";
 
@@ -53,16 +54,19 @@ export const createDocumentOperationActions = ({
 		);
 	},
 	applyDocumentUpdate: (proposal) => {
+		let scheduledDocumentId = "";
 		set((state) => {
 			const targetDocumentId = proposal.documentId || state.activeDocumentId;
 
+			scheduledDocumentId = state.documents.some((document) => document.id === targetDocumentId)
+				? targetDocumentId
+				: "";
 			const documents = state.documents.map((document) =>
 				document.id === targetDocumentId
 					? {
 							...document,
 							title: proposal.title ?? document.title,
 							content: proposal.content ?? document.content,
-							version: document.version + 1,
 							updatedAt: new Date().toISOString(),
 							isDirty: true,
 						}
@@ -70,6 +74,7 @@ export const createDocumentOperationActions = ({
 			);
 			return { documents };
 		});
+		if (scheduledDocumentId) scheduleDocumentSave({ get, set }, scheduledDocumentId);
 	},
 	applyOperations: (documentId, operations, options) => {
 		let applied = 0;
@@ -93,6 +98,9 @@ export const createDocumentOperationActions = ({
 				applied = result.applied;
 				if (result.applied === 0) return document;
 
+				// No isDirty here: this mutation persists itself through
+				// updateWorkspaceState below, and the optimistic version bump
+				// already shields the copy from stale backend echoes.
 				const nextDocument = {
 					...document,
 					title: result.document.title,
@@ -100,7 +108,6 @@ export const createDocumentOperationActions = ({
 					comments: result.document.comments,
 					version: document.version + 1,
 					updatedAt: new Date().toISOString(),
-					isDirty: true,
 				};
 				const after = snapshotDocument(nextDocument);
 				const logEntry: DocumentOperationLogEntry = {
@@ -195,6 +202,8 @@ export const createDocumentOperationActions = ({
 			);
 			if (!entry) return state;
 
+			// Persists via updateWorkspaceState below; see applyOperations for why
+			// this must not set isDirty.
 			const documents = state.documents.map((document) =>
 				document.id === entry.documentId
 					? {
@@ -204,7 +213,6 @@ export const createDocumentOperationActions = ({
 							comments: entry.before.comments,
 							version: document.version + 1,
 							updatedAt: new Date().toISOString(),
-							isDirty: true,
 						}
 					: document,
 			);

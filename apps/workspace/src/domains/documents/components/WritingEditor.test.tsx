@@ -5,7 +5,6 @@ import { MemoryRouter } from "react-router-dom";
 import type {
 	MarkdownSectionContext,
 	SelectionCoords,
-	SectionGenerateKind,
 } from "@/domains/documents/components/MarkdownHybridEditor";
 import type { MarkdownDocument } from "@/domains/documents/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
@@ -25,13 +24,13 @@ const testState = vi.hoisted(() => ({
 		extraExtensions?: Array<{
 			options?: { suggestion?: { items?: (props: { query: string }) => unknown[] } };
 		}>;
-		onSectionGenerate?: (section: MarkdownSectionContext, kind?: SectionGenerateKind) => void;
 		onSelectionChange?: (value: string) => void;
 		onSelectionCoordChange?: (coords: SelectionCoords | null) => void;
 		selectedSectionImageAssets?: Array<{ id: string; resourceId?: string; url?: string }>;
 		value?: string;
 	},
 	mentionPopoverProps: null as null | {
+		onGenerateReference?: (section: MarkdownSectionContext) => void;
 		projectId?: string;
 		selectedGenerationAssets?: Array<Record<string, unknown>>;
 	},
@@ -92,6 +91,7 @@ vi.mock("@/domains/workspace/api/workspace", () => ({
 vi.mock("@/domains/documents/components/DocumentMentionHoverPopover", () => ({
 	DocumentMentionHoverPopover: (props: {
 		children: React.ReactNode;
+		onGenerateReference?: (section: MarkdownSectionContext) => void;
 		projectId?: string;
 		selectedGenerationAssets?: Array<Record<string, unknown>>;
 	}) => {
@@ -300,7 +300,7 @@ describe("WritingEditor", () => {
 				makeDocument(),
 				makeDocument({
 					category: "character",
-					content: "<!-- section-id: section_character -->\n# 陈远\n\n21 岁男大学生。",
+					content: "<!-- section-id: section_character -->\n## 陈远\n\n21 岁男大学生。",
 					id: "character-doc",
 					title: "角色",
 				}),
@@ -330,7 +330,7 @@ describe("WritingEditor", () => {
 		);
 	});
 
-	it("opens the global generation dialog for the requested section and kind", () => {
+	it("opens the global generation dialog for the requested reference section", () => {
 		useDocumentsStore.getState().hydrateWorkspaceDocuments({
 			documents: [makeDocument()],
 			projectId: "project-a",
@@ -343,60 +343,21 @@ describe("WritingEditor", () => {
 		);
 
 		act(() => {
-			testState.markdownEditorProps?.onSectionGenerate?.(
-				{
-					blockId: "section_visual",
-					documentId: "story-doc",
-					headingLevel: 2,
-					headingOccurrence: 1,
-					headingText: "画面",
-					markdown: "## 画面\n\n画面提示词。",
-					plainText: "画面\n\n画面提示词。",
-					prompt: "画面提示词。",
-				},
-				"image",
-			);
+			testState.mentionPopoverProps?.onGenerateReference?.({
+				blockId: "section_visual",
+				documentId: "story-doc",
+				headingLevel: 2,
+				headingOccurrence: 1,
+				headingText: "画面",
+				markdown: "## 画面\n\n画面提示词。",
+				plainText: "画面\n\n画面提示词。",
+				prompt: "画面提示词。",
+			});
 		});
 
 		expect(useMediaGenerationStore.getState().activeRequest).toMatchObject({
 			kind: "image",
 			projectId: "project-a",
-			section: { blockId: "section_visual", documentId: "story-doc", headingText: "画面" },
-		});
-	});
-
-	it("opens character audio selection with a resource type so it can sync to overview", () => {
-		useDocumentsStore.getState().hydrateWorkspaceDocuments({
-			documents: [makeDocument({ category: "character" })],
-			projectId: "project-a",
-			workspaceDir: "/workspace/project-a",
-		});
-		render(
-			<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
-				<WritingEditor />
-			</MemoryRouter>,
-		);
-
-		act(() => {
-			testState.markdownEditorProps?.onSectionGenerate?.(
-				{
-					blockId: "section_visual",
-					documentId: "story-doc",
-					headingLevel: 2,
-					headingOccurrence: 1,
-					headingText: "画面",
-					markdown: "## 画面\n\n画面提示词。",
-					plainText: "画面\n\n画面提示词。",
-					prompt: "画面提示词。",
-				},
-				"audio",
-			);
-		});
-
-		expect(useMediaGenerationStore.getState().activeRequest).toMatchObject({
-			kind: "audio",
-			projectId: "project-a",
-			selectedAssetResourceType: "character",
 			section: { blockId: "section_visual", documentId: "story-doc", headingText: "画面" },
 		});
 	});

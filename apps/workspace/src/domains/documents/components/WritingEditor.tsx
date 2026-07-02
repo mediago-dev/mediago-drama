@@ -5,9 +5,8 @@ import { useLocation } from "react-router-dom";
 import {
 	MarkdownHybridEditor,
 	prewarmMarkdownHybridEditorContent,
-	type MarkdownSectionContext,
 	type MarkdownHybridEditorHandle,
-	type SectionGenerateKind,
+	type MarkdownSectionContext,
 	type SelectionCoords,
 } from "@/domains/documents/components/MarkdownHybridEditor";
 import { DocumentMentionHoverPopover } from "@/domains/documents/components/DocumentMentionHoverPopover";
@@ -30,9 +29,7 @@ import {
 import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { useSelectedGenerationAssets } from "@/domains/generation/hooks/useSelectedGenerationAssets";
 import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
-import type { SelectedGenerationResourceType } from "@/domains/generation/api/generation";
 
-const autosaveDelayMs = 500;
 const markerClusterDistance = 28;
 const selectionBubbleContainerPaddingY = 8;
 const selectionBubbleEdgePaddingX = 80;
@@ -74,7 +71,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	const activeDocumentId = useDocumentsStore((state) => state.activeDocumentId);
 	const activeCommentId = useDocumentsStore((state) => state.activeCommentId);
 	const focusComment = useDocumentsStore((state) => state.focusComment);
-	const markDocumentSaved = useDocumentsStore((state) => state.markDocumentSaved);
 	const openPendingComment = useDocumentsStore((state) => state.openPendingComment);
 	const pendingComment = useDocumentsStore((state) => state.pendingComment);
 	const renameDocument = useDocumentsStore((state) => state.renameDocument);
@@ -106,22 +102,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 		],
 		[],
 	);
-	useEffect(() => {
-		if (!activeDocument?.isDirty) return;
-
-		const timeout = window.setTimeout(() => {
-			markDocumentSaved(activeDocument.id);
-		}, autosaveDelayMs);
-
-		return () => window.clearTimeout(timeout);
-	}, [
-		activeDocument?.id,
-		activeDocument?.isDirty,
-		activeDocument?.title,
-		activeDocument?.content,
-		markDocumentSaved,
-	]);
-
 	useEffect(() => {
 		setSelectionCoords(null);
 		setSelectionRange(null);
@@ -190,18 +170,14 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 	);
 
 	const openSectionGeneration = useCallback(
-		(section: MarkdownSectionContext, kind: SectionGenerateKind = "image") => {
-			const selectedAssetResourceType =
-				kind === "audio" ? selectedAudioResourceTypeForSection(documents, section) : undefined;
-
+		(section: MarkdownSectionContext) => {
 			openGenerationDialog({
-				kind,
+				kind: "image",
 				projectId: projectId || undefined,
 				section,
-				...(selectedAssetResourceType ? { selectedAssetResourceType } : {}),
 			});
 		},
-		[documents, openGenerationDialog, projectId],
+		[openGenerationDialog, projectId],
 	);
 
 	if (!activeDocument) {
@@ -301,7 +277,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 								value={activeDocument.content}
 								onChange={(content) => updateDocumentContent(activeDocument.id, content)}
 								onCommentAnchorClick={focusCommentAnchor}
-								onSectionGenerate={openSectionGeneration}
 								onSelectionChange={(text) => setSelection(activeDocument.id, text)}
 								onSelectionCoordChange={setSelectionCoords}
 								onSelectionRangeChange={setSelectionRange}
@@ -351,14 +326,6 @@ interface CommentMarker {
 	key: string;
 	top: number;
 }
-
-const selectedAudioResourceTypeForSection = (
-	documents: MarkdownDocument[],
-	section: Pick<MarkdownSectionContext, "documentId">,
-): SelectedGenerationResourceType | undefined => {
-	const category = documents.find((document) => document.id === section.documentId)?.category;
-	return category === "character" ? "character" : undefined;
-};
 
 const buildCommentMarkers = (
 	comments: DocumentComment[],

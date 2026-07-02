@@ -27,7 +27,7 @@ describe("section context", () => {
 		editor.destroy();
 	});
 
-	it("uses the hovered heading level as the section boundary", () => {
+	it("only creates section contexts for second-level headings", () => {
 		const editor = new Editor({
 			extensions: [StarterKit, SectionIdAnchor, Markdown],
 			content: [
@@ -59,17 +59,17 @@ describe("section context", () => {
 		});
 
 		const episode = createMarkdownSectionContext(editor, "doc-1", headingRangeAt(editor, 0));
-		expect(episode?.markdown).toContain("## 分镜 02");
-		expect(episode?.markdown).not.toContain("# 第 02 组");
+		expect(episode).toBeNull();
+		expect(ensureMarkdownHeadingSectionId(editor, headingRangeAt(editor, 0))).toBeNull();
 
 		const shot = createMarkdownSectionContext(editor, "doc-1", headingRangeAt(editor, 2));
 		expect(shot?.markdown).toContain("### 镜头细节");
 		expect(shot?.markdown).toContain("### 声音细节");
 		expect(shot?.markdown).not.toContain("## 分镜 02");
+		expect(shot?.markdown).not.toContain("# 第 02 组");
 
 		const detail = createMarkdownSectionContext(editor, "doc-1", headingRangeAt(editor, 4));
-		expect(detail?.markdown).toContain("细节 01");
-		expect(detail?.markdown).not.toContain("### 声音细节");
+		expect(detail).toBeNull();
 
 		editor.destroy();
 	});

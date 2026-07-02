@@ -144,13 +144,8 @@ const hydrateWorkspaceStateFromPayload = (
 	projectId?: string | null,
 ) => {
 	if (projectId && payload.projectId && payload.projectId !== projectId) return;
-	const currentState = useDocumentsStore.getState();
-	if (
-		currentState.projectId === (payload.projectId ?? projectId ?? null) &&
-		currentState.documents.some((document) => document.isDirty)
-	) {
-		return;
-	}
+	// Dirty documents are preserved per-document inside hydrateWorkspaceState,
+	// so the reconcile no longer needs to skip whole payloads while editing.
 	useDocumentsStore
 		.getState()
 		.hydrateWorkspaceState(

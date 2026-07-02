@@ -37,7 +37,7 @@ func TestApplyGenerationDocumentContextResolvesMentionReferencesFromDocuments(t 
 				ID: "character-doc",
 				Content: strings.Join([]string{
 					"<!-- section-id: section_lin -->",
-					"# 林书彤",
+					"## 林书彤",
 					"",
 					"21 岁女大学生。",
 					"",
@@ -171,7 +171,7 @@ func TestGenerationReferencesFromMarkdownResolvesLegacyDocumentMentionToSingleSe
 			"character-doc": {
 				ID: "character-doc",
 				Content: strings.Join([]string{
-					"# 林书彤",
+					"## 林书彤",
 					"",
 					"21 岁女大学生。",
 					"",
@@ -188,6 +188,36 @@ func TestGenerationReferencesFromMarkdownResolvesLegacyDocumentMentionToSingleSe
 
 	if len(assetIDs) != 1 || assetIDs[0] != "lin-image" {
 		t.Fatalf("asset ids = %#v, want lin-image", assetIDs)
+	}
+	if len(referenceURLs) != 0 {
+		t.Fatalf("reference urls = %#v, want none", referenceURLs)
+	}
+}
+
+func TestGenerationReferencesFromMarkdownDoesNotResolveFirstLevelHeadingAsSingleSection(t *testing.T) {
+	workflow := NewGenerationService(nil, nil, nil)
+	workflow.SetDocumentResolver(fakeGenerationDocumentResolver{
+		documents: map[string]mediamcp.WorkspaceDocument{
+			"character-doc": {
+				ID: "character-doc",
+				Content: strings.Join([]string{
+					"# 林书彤",
+					"",
+					"21 岁女大学生。",
+					"",
+					"![林书彤图](/api/v1/media-assets/lin-image/content)",
+				}, "\n"),
+			},
+		},
+	})
+
+	assetIDs, referenceURLs := workflow.generationReferencesFromMarkdown(
+		"project-a",
+		"角色 @[林书彤](mention://character-doc)",
+	)
+
+	if len(assetIDs) != 1 || assetIDs[0] != "lin-image" {
+		t.Fatalf("asset ids = %#v, want document-level image reference", assetIDs)
 	}
 	if len(referenceURLs) != 0 {
 		t.Fatalf("reference urls = %#v, want none", referenceURLs)

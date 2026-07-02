@@ -137,7 +137,7 @@ func TestPromptBuilderDoesNotInlineResourceMentionIndex(t *testing.T) {
 				Category: "character",
 				Content: strings.Join([]string{
 					"<!-- section-id: section_shenyan -->",
-					"# 沈阎",
+					"## 沈阎",
 					"",
 					"玄色长袍，银白发丝，眼尾冷峻。这段正文不能进入资源索引。",
 				}, "\n"),
@@ -177,7 +177,7 @@ func TestBuildACPUserPromptInjectsReferenceIndexForStoryboardRequest(t *testing.
 				Category: "character",
 				Content: strings.Join([]string{
 					"<!-- section-id: section_shenyan -->",
-					"# 沈阎",
+					"## 沈阎",
 					"",
 					"玄色长袍，银白发丝，眼尾冷峻。这段正文不能进入资源索引。",
 				}, "\n"),
@@ -187,7 +187,7 @@ func TestBuildACPUserPromptInjectsReferenceIndexForStoryboardRequest(t *testing.
 				Title:    "场景设定",
 				Category: "scene",
 				Content: strings.Join([]string{
-					"# 审讯室",
+					"## 审讯室",
 					"",
 					"冷白顶灯下的封闭空间。",
 				}, "\n"),
@@ -238,7 +238,7 @@ func TestBuildACPUserPromptInjectsReferenceIndexForActiveStoryboardDocument(t *t
 				Title:    "道具设定",
 				Category: "prop",
 				Content: strings.Join([]string{
-					"# 血玉戒指",
+					"## 血玉戒指",
 					"",
 					"暗红玉石，银色戒托。",
 				}, "\n"),

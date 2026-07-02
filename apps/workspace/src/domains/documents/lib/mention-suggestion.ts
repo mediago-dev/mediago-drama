@@ -41,6 +41,8 @@ import {
 } from "@/domains/documents/lib/categories";
 import {
 	createSectionBlockId,
+	documentSectionHeadingLevel,
+	documentSectionHeadingText,
 	findMarkdownSectionEndLine,
 	listDocumentSections,
 	normalizeHeadingText,
@@ -963,20 +965,7 @@ const documentMentionItem = (
 	title: document.title,
 });
 
-const mentionSectionsForDocument = (document: MarkdownDocument) => {
-	const sections = listDocumentSections(document);
-	if (sections.length <= 1) return sections;
-
-	const [firstSection, ...restSections] = sections;
-	if (
-		firstSection?.level === 1 &&
-		normalizeHeadingText(firstSection.title) === normalizeHeadingText(document.title)
-	) {
-		return restSections;
-	}
-
-	return sections;
-};
+const mentionSectionsForDocument = (document: MarkdownDocument) => listDocumentSections(document);
 
 export const compareDocuments = (a: MarkdownDocument, b: MarkdownDocument) => {
 	const categoryDiff =
@@ -1115,13 +1104,10 @@ const sectionPreviewUrlMap = (document: MarkdownDocument) => {
 	const seenSectionIds = new Set<string>();
 
 	for (let index = 0; index < lines.length; index += 1) {
-		const match = /^(#{1,3})\s+(.+)$/.exec(lines[index]);
-		if (!match) continue;
-
-		const level = match[1].length;
-		const title = normalizeHeadingText(match[2]);
+		const title = documentSectionHeadingText(lines[index]);
 		if (!title) continue;
 
+		const level = documentSectionHeadingLevel;
 		const key = `${level}|${title}`;
 		const occurrence = (occurrenceByHeading.get(key) ?? 0) + 1;
 		occurrenceByHeading.set(key, occurrence);

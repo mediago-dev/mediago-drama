@@ -259,7 +259,7 @@ describe("buildEpisodeCanvasGraph", () => {
 			documents: [
 				makeDocument(
 					[
-						"# 陈远",
+						"## 陈远",
 						"",
 						"形象定位：21岁男大学生，身高179cm，63kg。",
 						"面部特征：清秀五官，眼神明亮。",
@@ -322,7 +322,7 @@ describe("buildEpisodeCanvasGraph", () => {
 		const episode = makeEpisodeFromStoryboard(storyboard);
 		const graph = buildEpisodeCanvasGraph({
 			documents: [
-				makeDocument("<!-- section-id: section_character -->\n# 顾依依\n\n18 岁少女。", {
+				makeDocument("<!-- section-id: section_character -->\n## 顾依依\n\n18 岁少女。", {
 					category: "character",
 					id: "char-1",
 					title: "顾依依",

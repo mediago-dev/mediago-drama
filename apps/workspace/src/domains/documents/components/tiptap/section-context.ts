@@ -5,6 +5,7 @@ import type { MarkdownSectionIdentity } from "@/domains/documents/lib/editor-reg
 import {
 	createSectionBlockId,
 	createSectionId,
+	documentSectionHeadingLevel,
 	normalizeHeadingText,
 	normalizeSectionId,
 	sectionIdAnchorNodeName,
@@ -26,6 +27,7 @@ export const ensureMarkdownHeadingSectionId = (
 	headingRange: BlockRange,
 ): BlockRange | null => {
 	if (headingRange.nodeType !== "heading") return null;
+	if (headingRange.headingLevel !== documentSectionHeadingLevel) return null;
 
 	const anchorIndex = findSectionIdAnchorIndexForHeading(editor.state.doc, headingRange.index);
 	const existingIdsBefore = collectSectionIdsBefore(
@@ -128,6 +130,7 @@ export const createMarkdownHeadingContext = (
 
 	const headingNode = editor.state.doc.child(headingRange.index);
 	const headingLevel = Number(headingNode.attrs.level ?? headingRange.headingLevel ?? 1);
+	if (headingLevel !== documentSectionHeadingLevel) return null;
 	const headingText = headingNode.textContent.trim() || "未命名标题";
 	const headingOccurrence = countHeadingOccurrence(
 		editor.state.doc,

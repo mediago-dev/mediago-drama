@@ -4,6 +4,7 @@ import type {
 	MarkdownSectionMediaKind,
 } from "@/domains/documents/lib/editor-registry";
 import {
+	documentSectionHeadingLevel,
 	findMarkdownSectionEndLine,
 	findMarkdownSectionHeadingLine,
 } from "@/domains/documents/lib/sections";
@@ -19,7 +20,7 @@ export const appendSectionMediaMarkdown = (
 	const headingIndex = findSectionHeadingLine(lines, section);
 	if (headingIndex < 0) return null;
 
-	const sectionEnd = findSectionEndLine(lines, headingIndex, section.headingLevel);
+	const sectionEnd = findSectionEndLine(lines, headingIndex);
 	const sectionLines = lines.slice(headingIndex, sectionEnd);
 	const mediaMarkdown = sectionMediaMarkdown(media);
 	const mediaAlreadyExists = sectionLines.some(
@@ -55,7 +56,7 @@ export const removeSectionMediaMarkdown = (
 	const headingIndex = findSectionHeadingLine(lines, section);
 	if (headingIndex < 0) return null;
 
-	const sectionEnd = findSectionEndLine(lines, headingIndex, section.headingLevel);
+	const sectionEnd = findSectionEndLine(lines, headingIndex);
 	const sectionLines = lines.slice(headingIndex, sectionEnd);
 	let changed = false;
 	const nextSectionLines = trimTrailingBlankLines(
@@ -106,8 +107,8 @@ const findSectionHeadingLine = (lines: string[], section: MarkdownSectionIdentit
 	return findMarkdownSectionHeadingLine(lines, section);
 };
 
-const findSectionEndLine = (lines: string[], headingIndex: number, headingLevel: number) => {
-	return findMarkdownSectionEndLine(lines, headingIndex, headingLevel);
+const findSectionEndLine = (lines: string[], headingIndex: number) => {
+	return findMarkdownSectionEndLine(lines, headingIndex, documentSectionHeadingLevel);
 };
 
 const sectionMediaLabelPrefix: Record<MarkdownSectionMediaKind, string> = {

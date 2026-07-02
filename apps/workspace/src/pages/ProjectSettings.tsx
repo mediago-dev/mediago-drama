@@ -17,11 +17,9 @@ import { Button } from "@/shared/components/ui/button";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { useToast } from "@/hooks/useToast";
 import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
-import { settingsInsetRowClassName } from "@/lib/settings-layout";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { useProjectStore } from "@/domains/projects/stores";
 import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
-import { cn } from "@/shared/lib/utils";
 
 export const ProjectSettings: React.FC = () => {
 	const location = useLocation();
@@ -194,70 +192,64 @@ const ProjectSettingsGeneralPanel: React.FC<{
 		) : null}
 
 		{project ? (
-			<div className="space-y-3">
+			<div className="divide-y divide-border">
 				{isDesktopRuntime() ? (
-					<div className={cn(settingsInsetRowClassName, projectSettingsRowClassName)}>
-						<div className="min-w-0">
+					<div className={projectSettingsRowClassName}>
+						<div className="min-w-0 flex-1">
 							<p className="text-sm font-medium text-foreground">项目文件夹</p>
 							<p className="mt-1 truncate text-xs leading-5 text-muted-foreground">
 								{projectDir || "项目文件夹正在加载。"}
 							</p>
 						</div>
-						<div className="flex min-w-0 justify-start md:justify-end">
-							<Button
-								type="button"
-								variant="secondary"
-								onClick={onOpenProjectFolder}
-								disabled={isOpeningProjectFolder || !projectDir}
-								className="rounded-md"
-							>
-								{isOpeningProjectFolder ? <Loader2 className="animate-spin" /> : <FolderOpen />}
-								<span>打开项目文件夹</span>
-							</Button>
-						</div>
+						<Button
+							type="button"
+							variant="secondary"
+							onClick={onOpenProjectFolder}
+							disabled={isOpeningProjectFolder || !projectDir}
+							className="shrink-0 rounded-md"
+						>
+							{isOpeningProjectFolder ? <Loader2 className="animate-spin" /> : <FolderOpen />}
+							<span>打开项目文件夹</span>
+						</Button>
 					</div>
 				) : null}
 
-				<div className={cn(settingsInsetRowClassName, projectSettingsRowClassName)}>
-					<div className="min-w-0">
+				<div className={projectSettingsRowClassName}>
+					<div className="min-w-0 flex-1">
 						<p className="text-sm font-medium text-foreground">归档项目</p>
 						<p className="mt-1 text-xs leading-5 text-muted-foreground">
 							从默认项目列表隐藏“{project.name}”，项目文件夹仍保留在当前位置。
 						</p>
 					</div>
-					<div className="flex min-w-0 justify-start md:justify-end">
-						<Button
-							type="button"
-							variant="secondary"
-							onClick={onArchive}
-							disabled={isArchiving}
-							className="rounded-md"
-						>
-							{isArchiving ? <Loader2 className="animate-spin" /> : <Archive />}
-							<span>归档项目</span>
-						</Button>
-					</div>
+					<Button
+						type="button"
+						variant="secondary"
+						onClick={onArchive}
+						disabled={isArchiving}
+						className="shrink-0 rounded-md"
+					>
+						{isArchiving ? <Loader2 className="animate-spin" /> : <Archive />}
+						<span>归档项目</span>
+					</Button>
 				</div>
 
-				<div className={cn(settingsInsetRowClassName, projectSettingsRowClassName)}>
-					<div className="min-w-0">
+				<div className={projectSettingsRowClassName}>
+					<div className="min-w-0 flex-1">
 						<p className="text-sm font-medium text-foreground">移到垃圾箱</p>
 						<p className="mt-1 text-xs leading-5 text-muted-foreground">
 							从默认项目列表隐藏“{project.name}”，并把项目文件夹移动到 .mediago-drama/trash。
 						</p>
 					</div>
-					<div className="flex min-w-0 justify-start md:justify-end">
-						<Button
-							type="button"
-							variant="destructive"
-							onClick={onDelete}
-							disabled={isDeleting}
-							className="rounded-md"
-						>
-							{isDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
-							<span>移到垃圾箱</span>
-						</Button>
-					</div>
+					<Button
+						type="button"
+						variant="destructive"
+						onClick={onDelete}
+						disabled={isDeleting}
+						className="shrink-0 rounded-md"
+					>
+						{isDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+						<span>移到垃圾箱</span>
+					</Button>
 				</div>
 			</div>
 		) : null}
@@ -265,7 +257,7 @@ const ProjectSettingsGeneralPanel: React.FC<{
 );
 
 const projectSettingsRowClassName =
-	"grid gap-3 md:grid-cols-[minmax(var(--settings-label-column-min),var(--settings-label-column-max))_minmax(0,1fr)] md:items-start";
+	"flex flex-wrap items-center justify-between gap-3 py-5 first:pt-0 last:pb-0";
 
 const projectSettingsErrorMessage = (err: unknown, fallback: string) => {
 	if (err instanceof Error) return err.message;

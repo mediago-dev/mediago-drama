@@ -18,7 +18,7 @@ const activeDocument: MarkdownDocument = {
 	workbenchDraft: null,
 };
 
-const referencedSectionBlockId = createSectionBlockId("character-1", 1, 1, "林书彤");
+const referencedSectionBlockId = createSectionBlockId("character-1", 2, 1, "林书彤");
 const characterBookLinBlockId = createSectionBlockId("character-book-1", 2, 1, "林书彤（女主）");
 const characterBookWithIdsLegacyLinBlockId = createSectionBlockId(
 	"character-book-with-ids",
@@ -32,7 +32,7 @@ const referencedDocument: MarkdownDocument = {
 	category: "character",
 	comments: [],
 	content:
-		"# 林书彤\n\n林书彤，21岁女大学生，清纯克制，偏甜美系建模。\n\n![角色图](/media/lin.png)",
+		"## 林书彤\n\n林书彤，21岁女大学生，清纯克制，偏甜美系建模。\n\n![角色图](/media/lin.png)",
 	id: "character-1",
 	isDirty: false,
 	parentId: null,

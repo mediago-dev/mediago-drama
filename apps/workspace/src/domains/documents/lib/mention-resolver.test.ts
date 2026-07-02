@@ -64,6 +64,46 @@ describe("mention resolver", () => {
 			title: "林书彤",
 			category: "character",
 			content: [
+				"## 林书彤",
+				"",
+				"21 岁女大学生。",
+				"",
+				"![林书彤图](/api/v1/media-assets/lin-image/content)",
+			].join("\n"),
+		});
+
+		const result = resolveMentionPayload(
+			{
+				documentId: "character-doc",
+				kind: "document",
+				title: "林书彤",
+			},
+			[document],
+		);
+
+		expect(result.status).toBe("ok");
+		expect(result.reference).toMatchObject({
+			blockId: createSectionBlockId("character-doc", 2, 1, "林书彤"),
+			category: "character",
+			documentId: "character-doc",
+			kind: "section",
+			title: "林书彤",
+		});
+		expect(result.text).toContain("21 岁女大学生。");
+		expect(result.images).toEqual([
+			{
+				mediaAssetId: "lin-image",
+				url: "/api/v1/media-assets/lin-image/content",
+			},
+		]);
+	});
+
+	it("does not resolve a legacy document mention to a first-level heading", () => {
+		const document = createMarkdownDocument({
+			id: "character-doc",
+			title: "林书彤",
+			category: "character",
+			content: [
 				"# 林书彤",
 				"",
 				"21 岁女大学生。",
@@ -83,19 +123,12 @@ describe("mention resolver", () => {
 
 		expect(result.status).toBe("ok");
 		expect(result.reference).toMatchObject({
-			blockId: createSectionBlockId("character-doc", 1, 1, "林书彤"),
 			category: "character",
 			documentId: "character-doc",
-			kind: "section",
+			kind: "document",
 			title: "林书彤",
 		});
-		expect(result.text).toContain("21 岁女大学生。");
-		expect(result.images).toEqual([
-			{
-				mediaAssetId: "lin-image",
-				url: "/api/v1/media-assets/lin-image/content",
-			},
-		]);
+		expect(result.reference.kind).toBe("document");
 	});
 
 	it("keeps a legacy document mention as document when the target has no sections", () => {

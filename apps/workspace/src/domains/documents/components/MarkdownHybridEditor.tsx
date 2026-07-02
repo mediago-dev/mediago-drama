@@ -32,8 +32,6 @@ import {
 import {
 	BlockHandle,
 	HeadingActionButton,
-	SectionGenerateButton,
-	type SectionGenerateKind,
 } from "@/domains/documents/components/tiptap/editor-overlays";
 import {
 	diffTopLevelBlocks,
@@ -48,8 +46,6 @@ import {
 } from "@/domains/documents/components/tiptap/storage";
 import {
 	createMarkdownHeadingContext,
-	createMarkdownSectionContext,
-	ensureMarkdownHeadingSectionId,
 	type MarkdownHeadingContext,
 	type MarkdownSectionContext,
 } from "@/domains/documents/components/tiptap/section-context";
@@ -84,7 +80,6 @@ export interface MarkdownHybridEditorProps {
 	onChange: (value: string) => void;
 	onCommentAnchorClick?: (commentId: string) => void;
 	onHeadingAction?: (heading: MarkdownHeadingContext) => void;
-	onSectionGenerate?: (section: MarkdownSectionContext, kind: SectionGenerateKind) => void;
 	onSelectionChange?: (value: string) => void;
 	onSelectionCoordChange?: (coords: SelectionCoords | null) => void;
 	onSelectionRangeChange?: (range: InlineDecorationRange | null) => void;
@@ -92,7 +87,7 @@ export interface MarkdownHybridEditorProps {
 
 export type { MarkdownHybridEditorHandle };
 
-export type { MarkdownHeadingContext, MarkdownSectionContext, SectionGenerateKind };
+export type { MarkdownHeadingContext, MarkdownSectionContext };
 
 export interface SelectionCoords {
 	bottom?: number;
@@ -257,7 +252,6 @@ export const MarkdownHybridEditor = forwardRef<
 		onChange,
 		onCommentAnchorClick,
 		onHeadingAction,
-		onSectionGenerate,
 		onSelectionChange,
 		onSelectionCoordChange,
 		onSelectionRangeChange,
@@ -266,7 +260,6 @@ export const MarkdownHybridEditor = forwardRef<
 ) {
 	const onChangeRef = useRef(onChange);
 	const onHeadingActionRef = useRef(onHeadingAction);
-	const onSectionGenerateRef = useRef(onSectionGenerate);
 	const onSelectionChangeRef = useRef(onSelectionChange);
 	const onSelectionCoordChangeRef = useRef(onSelectionCoordChange);
 	const onSelectionRangeChangeRef = useRef(onSelectionRangeChange);
@@ -313,10 +306,6 @@ export const MarkdownHybridEditor = forwardRef<
 	useEffect(() => {
 		onHeadingActionRef.current = onHeadingAction;
 	}, [onHeadingAction]);
-
-	useEffect(() => {
-		onSectionGenerateRef.current = onSectionGenerate;
-	}, [onSectionGenerate]);
 
 	useEffect(() => {
 		onSelectionChangeRef.current = onSelectionChange;
@@ -535,25 +524,6 @@ export const MarkdownHybridEditor = forwardRef<
 		clearHoveredBlockHandle();
 	}, [clearHoveredBlockHandle, editor]);
 
-	const openSectionGeneration = useCallback(
-		(kind: SectionGenerateKind) => {
-			if (!editor || !onSectionGenerateRef.current) return;
-
-			const range = blockHandleStorage(editor).hoveredRange;
-			if (!range || range.nodeType !== "heading") return;
-
-			const sectionRange = ensureMarkdownHeadingSectionId(editor, range);
-			if (!sectionRange) return;
-
-			const section = createMarkdownSectionContext(editor, documentId, sectionRange);
-			if (!section) return;
-
-			onSectionGenerateRef.current(section, kind);
-			clearHoveredBlockHandle();
-		},
-		[clearHoveredBlockHandle, documentId, editor],
-	);
-
 	const hoveredHeadingContext = useMemo(() => {
 		if (!editor || !hoveredBlockRect?.range || hoveredBlockRect.range.nodeType !== "heading") {
 			return null;
@@ -620,13 +590,6 @@ export const MarkdownHybridEditor = forwardRef<
 								rect={hoveredBlockRect}
 								title={headingActionTitle}
 								onAction={openHeadingAction}
-								onMouseLeave={clearHoveredBlockHandle}
-							/>
-						) : null}
-						{hoveredBlockRect.isHeading && onSectionGenerate ? (
-							<SectionGenerateButton
-								rect={hoveredBlockRect}
-								onGenerate={openSectionGeneration}
 								onMouseLeave={clearHoveredBlockHandle}
 							/>
 						) : null}

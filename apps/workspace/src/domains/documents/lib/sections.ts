@@ -18,6 +18,14 @@ export const sectionIdAnchorNodeName = "sectionIdAnchor";
 const sectionIdPattern = /^section_[A-Za-z0-9_-]+$/;
 const sectionIdCommentPattern = /^\s*<!--\s*section-id:\s*([A-Za-z0-9_-]+)\s*-->\s*$/;
 const headingLinePattern = /^(#{1,6})\s+(.+?)\s*$/;
+const documentSectionHeadingPattern = /^##(?!#)\s+(.+?)\s*$/;
+
+export const documentSectionHeadingLevel = 2;
+
+export const documentSectionHeadingText = (line: string) => {
+	const match = documentSectionHeadingPattern.exec(line);
+	return match ? normalizeHeadingText(match[1] ?? "") : "";
+};
 
 export const listDocumentSections = (doc: MarkdownDocument): DocumentSectionSummary[] => {
 	const occurrenceByHeading = new Map<string, number>();
@@ -26,12 +34,9 @@ export const listDocumentSections = (doc: MarkdownDocument): DocumentSectionSumm
 	const lines = doc.content.split(/\r?\n/);
 
 	for (let index = 0; index < lines.length; index += 1) {
-		const match = /^(#{1,3})\s+(.+)$/.exec(lines[index]);
-		if (!match) continue;
-
-		const level = match[1].length;
-		const title = normalizeHeadingText(match[2]);
+		const title = documentSectionHeadingText(lines[index]);
 		if (!title) continue;
+		const level = documentSectionHeadingLevel;
 
 		const key = `${level}|${title}`;
 		const occurrence = (occurrenceByHeading.get(key) ?? 0) + 1;
@@ -107,7 +112,7 @@ export const findMarkdownSectionEndLine = (
 ) => {
 	for (let index = headingIndex + 1; index < lines.length; index += 1) {
 		const match = headingLinePattern.exec(lines[index]);
-		if (match && match[1].length <= headingLevel) {
+		if (match && (match[1]?.length ?? 0) <= headingLevel) {
 			return sectionBoundaryBeforeHeadingLine(lines, headingIndex, index);
 		}
 	}
@@ -148,7 +153,7 @@ const findMarkdownSectionHeadingLineById = (lines: string[], sectionId: string) 
 	if (!normalizedSectionId) return -1;
 
 	for (let index = 0; index < lines.length; index += 1) {
-		if (!headingLinePattern.test(lines[index])) continue;
+		if (!documentSectionHeadingPattern.test(lines[index])) continue;
 		if (sectionIdBeforeHeadingLine(lines, index) === normalizedSectionId) return index;
 	}
 
@@ -165,9 +170,10 @@ const findMarkdownSectionHeadingLineByHeading = (
 	for (let index = 0; index < lines.length; index += 1) {
 		const match = headingLinePattern.exec(lines[index]);
 		if (!match) continue;
-		const level = match[1].length;
+		const level = match[1]?.length ?? 0;
+		if (level !== documentSectionHeadingLevel) continue;
 		if (level !== section.headingLevel) continue;
-		if (normalizeHeadingText(match[2]) !== normalizedHeading) continue;
+		if (normalizeHeadingText(match[2] ?? "") !== normalizedHeading) continue;
 
 		occurrence += 1;
 		if (occurrence === section.headingOccurrence) return index;
