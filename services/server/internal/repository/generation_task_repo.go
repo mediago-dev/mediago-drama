@@ -160,6 +160,26 @@ func (repo *GenerationTaskRepository) ListPendingGenerationTasks(kind string, st
 	return models, nil
 }
 
+// ListGenerationTasksByKindRoutesAndStatuses returns tasks matching kind, route IDs, and statuses.
+func (repo *GenerationTaskRepository) ListGenerationTasksByKindRoutesAndStatuses(kind string, routeIDs []string, statuses []string, limit int) ([]domain.GenerationTaskModel, error) {
+	models := []domain.GenerationTaskModel{}
+	kind = strings.TrimSpace(kind)
+	routeIDs = normalizeGenerationTaskRouteIDs(routeIDs)
+	statuses = normalizeGenerationTaskStatuses(statuses)
+	if kind == "" || len(routeIDs) == 0 || len(statuses) == 0 {
+		return models, nil
+	}
+	limit = normalizePendingGenerationTaskLimit(limit)
+	if err := repo.generationTaskQuery().
+		Where("kind = ? AND route_id IN ? AND status IN ?", kind, routeIDs, statuses).
+		Order("updated_at ASC").
+		Limit(limit).
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing generation tasks by route and status: %w", err)
+	}
+	return models, nil
+}
+
 // GetGenerationTask returns a generation task by ID.
 func (repo *GenerationTaskRepository) GetGenerationTask(id string) (domain.GenerationTaskModel, error) {
 	var model domain.GenerationTaskModel
@@ -745,6 +765,23 @@ func normalizeGenerationTaskStatuses(statuses []string) []string {
 		}
 		seen[status] = struct{}{}
 		normalized = append(normalized, status)
+	}
+	return normalized
+}
+
+func normalizeGenerationTaskRouteIDs(routeIDs []string) []string {
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(routeIDs))
+	for _, routeID := range routeIDs {
+		routeID = strings.TrimSpace(routeID)
+		if routeID == "" {
+			continue
+		}
+		if _, ok := seen[routeID]; ok {
+			continue
+		}
+		seen[routeID] = struct{}{}
+		normalized = append(normalized, routeID)
 	}
 	return normalized
 }

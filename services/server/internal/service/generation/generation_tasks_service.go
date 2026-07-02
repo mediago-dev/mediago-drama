@@ -252,6 +252,34 @@ func (service *GenerationTaskService) ListPending(limit int) ([]GenerationTaskRe
 	return filtered, nil
 }
 
+// ListVideoTasksByStatusesAndRoutes returns video tasks matching any status and route.
+func (service *GenerationTaskService) ListVideoTasksByStatusesAndRoutes(statuses []string, routeIDs []string, excludeID string, limit int) ([]GenerationTaskRecord, error) {
+	if service.initErr != nil {
+		return nil, service.initErr
+	}
+
+	service.mu.RLock()
+	models, err := service.repo.ListGenerationTasksByKindRoutesAndStatuses("video", routeIDs, statuses, limit)
+	service.mu.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+	tasks, err := generationTaskRecordsFromModels(models)
+	if err != nil {
+		return nil, err
+	}
+
+	excludeID = strings.TrimSpace(excludeID)
+	filtered := make([]GenerationTaskRecord, 0, len(tasks))
+	for _, task := range tasks {
+		if excludeID != "" && strings.TrimSpace(task.ID) == excludeID {
+			continue
+		}
+		filtered = append(filtered, task)
+	}
+	return filtered, nil
+}
+
 // Get returns one generation task by ID.
 func (service *GenerationTaskService) Get(id string) (GenerationTaskRecord, bool, error) {
 	if service.initErr != nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
@@ -31,6 +32,7 @@ type GenerationService struct {
 	mediagoModelCatalog           mediagoModelCatalogCache
 	jimengBinPath                 string
 	jimengBinDir                  string
+	jimengSeedanceQueueMu         sync.Mutex
 }
 
 type generationModelsResponse = GenerationModelsResponse
@@ -175,14 +177,37 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	generationRequest.Prompt = workflow.providerPromptForGeneration(route, payload)
 	if ShouldSubmitGenerationInBackground(route) {
 		messageResponse := SubmittingGenerationResponse("", coregeneration.Kind(payload.Kind))
-		task := GenerationTaskFromMessage(payload, route, messageResponse)
-		if err := workflow.generationTasks.Upsert(task); err != nil {
-			return generationMessageResponse{}, http.StatusInternalServerError, err
+		shouldSubmit := true
+		var task GenerationTaskRecord
+		if shouldQueueJimengSeedanceSubmission(route) {
+			workflow.jimengSeedanceQueueMu.Lock()
+			queueBlocked, queueErr := workflow.jimengSeedanceSubmissionQueueBlocked("")
+			if queueErr != nil {
+				workflow.jimengSeedanceQueueMu.Unlock()
+				return generationMessageResponse{}, http.StatusInternalServerError, queueErr
+			}
+			if queueBlocked {
+				messageResponse = QueuedGenerationResponse("", coregeneration.Kind(payload.Kind))
+				shouldSubmit = false
+			}
+			task = GenerationTaskFromMessage(payload, route, messageResponse)
+			if err := workflow.generationTasks.Upsert(task); err != nil {
+				workflow.jimengSeedanceQueueMu.Unlock()
+				return generationMessageResponse{}, http.StatusInternalServerError, err
+			}
+			workflow.jimengSeedanceQueueMu.Unlock()
+		} else {
+			task = GenerationTaskFromMessage(payload, route, messageResponse)
+			if err := workflow.generationTasks.Upsert(task); err != nil {
+				return generationMessageResponse{}, http.StatusInternalServerError, err
+			}
 		}
 		workflow.trackGenerationNotificationTarget(task, payload.NotificationTarget)
 		workflow.syncGenerationNotificationTask(task)
 		_ = workflow.generationTasks.RecordAttempt(task.ID, "create", messageResponse.Status, messageResponse.Message, nil)
-		go workflow.submitPendingGeneration(context.Background(), task, provider, generationRequest, "create", projectID, payload.ConversationID)
+		if shouldSubmit {
+			go workflow.submitPendingGeneration(context.Background(), task, provider, generationRequest, "create", projectID, payload.ConversationID)
+		}
 		return messageResponse, http.StatusOK, nil
 	}
 	if ShouldRunGenerationInBackground(route) {

@@ -136,14 +136,38 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 	generationRequest.Prompt = workflow.providerPromptForGeneration(route, payload)
 	if ShouldSubmitGenerationInBackground(route) {
 		messageResponse := SubmittingGenerationResponse(task.ID, coregeneration.Kind(payload.Kind))
-		nextTask := GenerationTaskWithMessage(task, messageResponse)
-		nextTask.ProviderTaskID = ""
-		if err := workflow.generationTasks.Upsert(nextTask); err != nil {
-			return generationMessageResponse{}, http.StatusInternalServerError, err
+		shouldSubmit := true
+		var nextTask GenerationTaskRecord
+		if shouldQueueJimengSeedanceSubmission(route) {
+			workflow.jimengSeedanceQueueMu.Lock()
+			queueBlocked, queueErr := workflow.jimengSeedanceSubmissionQueueBlocked(task.ID)
+			if queueErr != nil {
+				workflow.jimengSeedanceQueueMu.Unlock()
+				return generationMessageResponse{}, http.StatusInternalServerError, queueErr
+			}
+			if queueBlocked {
+				messageResponse = QueuedGenerationResponse(task.ID, coregeneration.Kind(payload.Kind))
+				shouldSubmit = false
+			}
+			nextTask = GenerationTaskWithMessage(task, messageResponse)
+			nextTask.ProviderTaskID = ""
+			if err := workflow.generationTasks.Upsert(nextTask); err != nil {
+				workflow.jimengSeedanceQueueMu.Unlock()
+				return generationMessageResponse{}, http.StatusInternalServerError, err
+			}
+			workflow.jimengSeedanceQueueMu.Unlock()
+		} else {
+			nextTask = GenerationTaskWithMessage(task, messageResponse)
+			nextTask.ProviderTaskID = ""
+			if err := workflow.generationTasks.Upsert(nextTask); err != nil {
+				return generationMessageResponse{}, http.StatusInternalServerError, err
+			}
 		}
 		workflow.syncGenerationNotificationTask(nextTask)
 		_ = workflow.generationTasks.RecordAttempt(task.ID, "retry", messageResponse.Status, messageResponse.Message, nil)
-		go workflow.submitPendingGeneration(context.Background(), nextTask, provider, generationRequest, "retry", projectID, nextTask.ConversationID)
+		if shouldSubmit {
+			go workflow.submitPendingGeneration(context.Background(), nextTask, provider, generationRequest, "retry", projectID, nextTask.ConversationID)
+		}
 		return messageResponse, http.StatusOK, nil
 	}
 	if ShouldRunGenerationInBackground(route) {
@@ -596,6 +620,15 @@ func (workflow *GenerationService) PollGenerationTask(ctx context.Context, task 
 	provider, err := workflow.newGenerationProvider(route)
 	if err != nil {
 		_ = workflow.generationTasks.RecordAttempt(task.ID, "poll", task.Status, "后台轮询的供应商未配置。", err)
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(task.Status), "queued") && shouldQueueJimengSeedanceSubmission(route) {
+		generationRequest, err := workflow.generationRequestForTask(task, route)
+		if err != nil {
+			_ = workflow.generationTasks.RecordAttempt(task.ID, "queue", task.Status, "后台提交视频任务失败。", err)
+			return
+		}
+		workflow.submitQueuedJimengSeedanceGeneration(ctx, task, provider, generationRequest)
 		return
 	}
 	if strings.EqualFold(strings.TrimSpace(task.Status), "submitting") {

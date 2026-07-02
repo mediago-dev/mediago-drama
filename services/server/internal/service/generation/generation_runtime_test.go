@@ -756,6 +756,218 @@ func TestCreateVideoGenerationSubmitsProviderTaskInBackground(t *testing.T) {
 	}
 }
 
+func TestCreateJimengSeedanceQueuesWhenActiveTaskExists(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	repo, err := repository.NewGenerationTaskRepository(dbPath)
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{
+			coregeneration.ProviderJimeng: "logged-in",
+		},
+	})
+	active := jimengSeedanceVideoTaskRecord("generation-active", coregeneration.RouteJimengSeedance20Fast, "submitted")
+	active.ProviderTaskID = coregeneration.RouteJimengSeedance20Fast + ":video-active"
+	if err := store.Upsert(active); err != nil {
+		t.Fatalf("Upsert(active) error = %v", err)
+	}
+
+	provider := &blockingVideoGenerateProvider{
+		started:  make(chan struct{}),
+		release:  make(chan struct{}),
+		response: coregeneration.Response{ID: coregeneration.RouteJimengSeedance20 + ":video-next", Status: "submitted"},
+	}
+	workflow := NewGenerationService(settingsSvc, store, nil)
+	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		if route.ID != coregeneration.RouteJimengSeedance20 {
+			t.Fatalf("route = %q, want jimeng seedance 2.0 route", route.ID)
+		}
+		return provider, nil
+	}
+
+	response, status, err := workflow.CreateGenerationMessage(context.Background(), GenerationMessageRequest{
+		Kind:    string(coregeneration.KindVideo),
+		RouteID: coregeneration.RouteJimengSeedance20,
+		Prompt:  "next queued clip",
+		Params: map[string]any{
+			"duration":   "5",
+			"ratio":      "16:9",
+			"resolution": "720p",
+		},
+	})
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("CreateGenerationMessage() status = %d error = %v", status, err)
+	}
+	if response.Status != "queued" {
+		t.Fatalf("response status = %q, want queued", response.Status)
+	}
+	task, ok, err := store.Get(response.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !ok || task.Status != "queued" || task.ProviderTaskID != "" {
+		t.Fatalf("task = %+v, want queued local task without provider id", task)
+	}
+	select {
+	case <-provider.started:
+		t.Fatal("provider should not be called while the jimeng Seedance queue is blocked")
+	default:
+	}
+}
+
+func TestCreateJimengSeedanceMiniAndVIPRoutesBypassQueue(t *testing.T) {
+	routeIDs := []string{
+		coregeneration.RouteJimengSeedance20Mini,
+		coregeneration.RouteJimengSeedance20FastVIP,
+		coregeneration.RouteJimengSeedance20VIP,
+	}
+	for _, routeID := range routeIDs {
+		t.Run(routeID, func(t *testing.T) {
+			dbPath := filepath.Join(t.TempDir(), "settings.db")
+			repo, err := repository.NewGenerationTaskRepository(dbPath)
+			if err != nil {
+				t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+			}
+			store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+			settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+				values: map[string]string{
+					coregeneration.ProviderJimeng: "logged-in",
+				},
+			})
+			active := jimengSeedanceVideoTaskRecord("generation-active", coregeneration.RouteJimengSeedance20Fast, "submitted")
+			active.ProviderTaskID = coregeneration.RouteJimengSeedance20Fast + ":video-active"
+			if err := store.Upsert(active); err != nil {
+				t.Fatalf("Upsert(active) error = %v", err)
+			}
+
+			provider := &blockingVideoGenerateProvider{
+				started:  make(chan struct{}),
+				release:  make(chan struct{}),
+				response: coregeneration.Response{ID: routeID + ":video-direct", Status: "submitted"},
+			}
+			workflow := NewGenerationService(settingsSvc, store, nil)
+			workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+				if route.ID != routeID {
+					t.Fatalf("route = %q, want %q", route.ID, routeID)
+				}
+				return provider, nil
+			}
+
+			response, status, err := workflow.CreateGenerationMessage(context.Background(), GenerationMessageRequest{
+				Kind:    string(coregeneration.KindVideo),
+				RouteID: routeID,
+				Prompt:  "direct premium clip",
+				Params: map[string]any{
+					"duration":   "5",
+					"ratio":      "16:9",
+					"resolution": "720p",
+				},
+			})
+			if err != nil || status != http.StatusOK {
+				t.Fatalf("CreateGenerationMessage() status = %d error = %v", status, err)
+			}
+			if response.Status != "submitting" {
+				t.Fatalf("response status = %q, want submitting", response.Status)
+			}
+			select {
+			case <-provider.started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("provider submission did not start")
+			}
+			close(provider.release)
+			task := waitForGenerationTask(t, store, response.ID, func(task GenerationTaskRecord) bool {
+				return task.ProviderTaskID == routeID+":video-direct"
+			})
+			if task.Status != "submitted" {
+				t.Fatalf("task status = %q, want submitted", task.Status)
+			}
+		})
+	}
+}
+
+func TestPollQueuedJimengSeedanceSubmitsOldestWhenUnblocked(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	repo, err := repository.NewGenerationTaskRepository(dbPath)
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{
+			coregeneration.ProviderJimeng: "logged-in",
+		},
+	})
+	first := jimengSeedanceVideoTaskRecord("generation-queued-1", coregeneration.RouteJimengSeedance20Fast, "queued")
+	second := jimengSeedanceVideoTaskRecord("generation-queued-2", coregeneration.RouteJimengSeedance20, "queued")
+	if err := store.Upsert(first); err != nil {
+		t.Fatalf("Upsert(first) error = %v", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if err := store.Upsert(second); err != nil {
+		t.Fatalf("Upsert(second) error = %v", err)
+	}
+
+	provider := &blockingVideoGenerateProvider{
+		started:  make(chan struct{}),
+		release:  make(chan struct{}),
+		response: coregeneration.Response{ID: coregeneration.RouteJimengSeedance20Fast + ":video-queued-1", Status: "submitted"},
+	}
+	workflow := NewGenerationService(settingsSvc, store, nil)
+	workflow.generationProviderFactory = func(coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		return provider, nil
+	}
+
+	task, ok, err := store.Get(second.ID)
+	if err != nil || !ok {
+		t.Fatalf("Get(second) ok = %v error = %v", ok, err)
+	}
+	workflow.PollGenerationTask(context.Background(), task)
+	select {
+	case <-provider.started:
+		t.Fatal("second queued task should not submit before the older queued task")
+	default:
+	}
+	task, ok, err = store.Get(second.ID)
+	if err != nil {
+		t.Fatalf("Get(second after poll) error = %v", err)
+	}
+	if !ok || task.Status != "queued" {
+		t.Fatalf("second task = %+v, want still queued", task)
+	}
+
+	task, ok, err = store.Get(first.ID)
+	if err != nil || !ok {
+		t.Fatalf("Get(first) ok = %v error = %v", ok, err)
+	}
+	done := make(chan struct{})
+	go func() {
+		workflow.PollGenerationTask(context.Background(), task)
+		close(done)
+	}()
+	select {
+	case <-provider.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("oldest queued task was not submitted")
+	}
+	close(provider.release)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("queued submission did not finish")
+	}
+
+	submitted, ok, err := store.Get(first.ID)
+	if err != nil {
+		t.Fatalf("Get(first after submit) error = %v", err)
+	}
+	if !ok || submitted.Status != "submitted" ||
+		submitted.ProviderTaskID != coregeneration.RouteJimengSeedance20Fast+":video-queued-1" {
+		t.Fatalf("first task = %+v, want submitted provider task", submitted)
+	}
+}
+
 func TestCreateJimengImageGenerationPersistsOneTaskForRequestedCount(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	repo, err := repository.NewGenerationTaskRepository(dbPath)
@@ -1902,6 +2114,25 @@ func jimengImageTaskRecord(id string) GenerationTaskRecord {
 		Model:     coregeneration.ModelSeedream50,
 		Prompt:    "a cat",
 		Status:    "submitted",
+	}
+}
+
+func jimengSeedanceVideoTaskRecord(id string, routeID string, status string) GenerationTaskRecord {
+	route, ok := coregeneration.FindRoute(routeID)
+	if !ok {
+		panic("unknown route " + routeID)
+	}
+	return GenerationTaskRecord{
+		ID:        id,
+		Kind:      string(coregeneration.KindVideo),
+		RouteID:   route.ID,
+		FamilyID:  route.FamilyID,
+		VersionID: route.VersionID,
+		Provider:  route.Provider,
+		ModelID:   route.LegacyModelID,
+		Model:     route.Model,
+		Prompt:    "make a short clip",
+		Status:    status,
 	}
 }
 
