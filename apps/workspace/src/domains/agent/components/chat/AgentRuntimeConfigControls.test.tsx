@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeConfigPayload } from "@/domains/agent/api/agent";
 import {
@@ -298,6 +298,95 @@ describe("AgentRuntimeConfigControls", () => {
 
 		expect(screen.getByText("MiniMax-M3")).toBeTruthy();
 		expect(screen.queryByText("GLM-4 Flash")).toBeNull();
+	});
+
+	it("reopens the model menu on the selected model category", () => {
+		renderControls(
+			{
+				model: {
+					configId: "model",
+					currentValue: "mediago/glm-4-flash",
+					options: [
+						{
+							name: "MediaGo/GLM-4 Flash",
+							value: "mediago/glm-4-flash",
+						},
+						{
+							name: "MiniMax 国内/MiniMax-M3",
+							value: "minimax/minimax-m3",
+						},
+					],
+				},
+			},
+			{ modelValue: "mediago/glm-4-flash" },
+		);
+
+		const trigger = screen.getByRole("button", { name: "模型" });
+		fireEvent.click(trigger);
+		fireEvent.pointerEnter(screen.getByRole("button", { name: "MiniMax 国内" }));
+
+		expect(screen.getByText("MiniMax-M3")).toBeTruthy();
+		expect(screen.queryByText("GLM-4 Flash")).toBeNull();
+
+		fireEvent.click(trigger);
+		expect(screen.queryByLabelText("提供商和模型")).toBeNull();
+
+		fireEvent.click(trigger);
+		expect(screen.getByText("GLM-4 Flash")).toBeTruthy();
+		expect(screen.queryByText("MiniMax-M3")).toBeNull();
+	});
+
+	it("positions the selected model row when opening a long model list", async () => {
+		const originalElementScrollIntoView = Element.prototype.scrollIntoView;
+		const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+		const scrollIntoView = vi.fn();
+		Element.prototype.scrollIntoView = scrollIntoView;
+		HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+		try {
+			renderControls(
+				{
+					model: {
+						configId: "model",
+						currentValue: "mediago/minimax-m3",
+						options: [
+							"glm-4.7",
+							"glm-5.2",
+							"gpt-4.1",
+							"gpt-4.1-mini",
+							"minimax-m2.7",
+							"minimax-m2.7-highspeed",
+							"minimax-m3",
+						].map((model) => ({
+							name: `MediaGo/${model}`,
+							value: `mediago/${model}`,
+						})),
+					},
+				},
+				{ modelValue: "mediago/minimax-m3" },
+			);
+
+			fireEvent.click(screen.getByRole("button", { name: "模型" }));
+
+			const selectedCategory = screen.getByRole("button", { name: "MediaGo" });
+			const selectedModel = screen.getByRole("button", { name: "minimax-m3" });
+			await waitFor(() => {
+				expect(scrollIntoView.mock.contexts).toEqual(
+					expect.arrayContaining([selectedCategory, selectedModel]),
+				);
+			});
+		} finally {
+			if (originalElementScrollIntoView) {
+				Element.prototype.scrollIntoView = originalElementScrollIntoView;
+			} else {
+				delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+			}
+			if (originalScrollIntoView) {
+				HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+			} else {
+				delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+			}
+		}
 	});
 
 	it("keeps the active model category while the pointer crosses the safe triangle", () => {

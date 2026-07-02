@@ -203,9 +203,11 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	);
 	const [suppressedCategoryHoverKey, setSuppressedCategoryHoverKey] = useState<string | null>(null);
 	const categoryButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+	const modelButtonRefs = useRef(new Map<string, HTMLButtonElement>());
 	const categoryListRef = useRef<HTMLDivElement | null>(null);
 	const modelPanelRef = useRef<HTMLElement | null>(null);
 	const modelListRef = useRef<HTMLDivElement | null>(null);
+	const positionSelectedModelFrameRef = useRef<number | null>(null);
 	const safeTriangleOriginRef = useRef<{
 		categoryKey: string;
 		point: AgentRuntimePoint;
@@ -252,41 +254,80 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 		setModelListCanScrollDown(remainingScroll > 1);
 	}, []);
 
+	const clearPositionSelectedModelFrame = useCallback(() => {
+		const frame = positionSelectedModelFrameRef.current;
+		if (frame !== null) {
+			window.cancelAnimationFrame(frame);
+			positionSelectedModelFrameRef.current = null;
+		}
+	}, []);
+
+	const positionSelectedModel = useCallback(() => {
+		positionSelectedModelFrameRef.current = null;
+		if (!selectedOption || activeCategory?.key !== selectedOption.categoryKey) return;
+		categoryButtonRefs.current
+			.get(selectedOption.categoryKey)
+			?.scrollIntoView?.({ block: "nearest" });
+		modelButtonRefs.current.get(resolvedValue)?.scrollIntoView?.({ block: "nearest" });
+		updateCategoryListScrollHint();
+		updateModelListScrollHint();
+	}, [
+		activeCategory?.key,
+		resolvedValue,
+		selectedOption,
+		updateCategoryListScrollHint,
+		updateModelListScrollHint,
+	]);
+
+	const schedulePositionSelectedModel = useCallback(() => {
+		if (!open || !selectedOption || activeCategory?.key !== selectedOption.categoryKey) return;
+		clearPositionSelectedModelFrame();
+		positionSelectedModelFrameRef.current = window.requestAnimationFrame(positionSelectedModel);
+	}, [
+		activeCategory?.key,
+		clearPositionSelectedModelFrame,
+		open,
+		positionSelectedModel,
+		selectedOption,
+	]);
+
 	useEffect(() => {
 		if (!open) {
+			clearPositionSelectedModelFrame();
 			setCategoryListCanScrollDown(false);
 			setModelListCanScrollDown(false);
 			return;
 		}
-		const frame = window.requestAnimationFrame(() => {
-			if (categoryListRef.current) {
-				categoryListRef.current.scrollTop = 0;
-			}
-			if (modelListRef.current) {
-				modelListRef.current.scrollTop = 0;
-			}
+		if (selectedOption && activeCategory?.key === selectedOption.categoryKey) {
+			schedulePositionSelectedModel();
+		} else if (modelListRef.current) {
+			modelListRef.current.scrollTop = 0;
 			updateCategoryListScrollHint();
 			updateModelListScrollHint();
-		});
-		return () => window.cancelAnimationFrame(frame);
+		}
+		return clearPositionSelectedModelFrame;
 	}, [
 		activeCategory?.key,
 		activeCategory?.options.length,
 		categories.length,
+		clearPositionSelectedModelFrame,
 		open,
+		schedulePositionSelectedModel,
+		selectedOption?.categoryKey,
 		updateCategoryListScrollHint,
 		updateModelListScrollHint,
 	]);
 
 	useEffect(() => {
 		return () => {
+			clearPositionSelectedModelFrame();
 			const timer = categoryActivationIntentTimerRef.current;
 			if (timer !== null) {
 				window.clearTimeout(timer);
 				categoryActivationIntentTimerRef.current = null;
 			}
 		};
-	}, []);
+	}, [clearPositionSelectedModelFrame]);
 
 	if (options.length === 0 || !selectedOption) return null;
 
@@ -324,6 +365,17 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	const activateCategoryFromPointer = (categoryKey: string, point: AgentRuntimePoint) => {
 		setActiveCategoryKey(categoryKey);
 		rememberActiveCategoryPointer(categoryKey, point);
+	};
+
+	const handleOpenChange = (nextOpen: boolean) => {
+		setOpen(nextOpen);
+		if (!nextOpen) {
+			clearPositionSelectedModelFrame();
+		}
+		clearSafeTriangle();
+		if (nextOpen) {
+			setActiveCategoryKey(selectedOption.categoryKey);
+		}
 	};
 
 	const scheduleCategoryActivationIntent = (categoryKey: string, point: AgentRuntimePoint) => {
@@ -399,7 +451,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	const selectedProviderBrand = generationProviderBrand(selectedOption.providerLabel);
 
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
+		<Popover open={open} onOpenChange={handleOpenChange}>
 			<PopoverTrigger asChild>
 				<Button
 					type="button"
@@ -428,6 +480,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 				aria-label="提供商和模型"
 				className="agent-config-content grid h-[var(--agent-runtime-model-menu-height)] max-h-[calc(100vh_-_2rem)] w-[min(42rem,calc(100vw_-_2rem))] grid-cols-[minmax(13rem,1fr)_minmax(12rem,0.85fr)] overflow-hidden rounded-[var(--radius-scale-sm)] border-border bg-popover p-0 text-popover-foreground shadow-xl"
 				style={modelMenuStyle}
+				onOpenAutoFocus={(event) => event.preventDefault()}
 				onPointerLeave={() => {
 					clearSafeTriangle();
 				}}
@@ -452,6 +505,9 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 										ref={(node) => {
 											if (node) {
 												categoryButtonRefs.current.set(category.key, node);
+												if (category.key === selectedOption?.categoryKey) {
+													schedulePositionSelectedModel();
+												}
 											} else {
 												categoryButtonRefs.current.delete(category.key);
 											}
@@ -518,6 +574,16 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 									<button
 										key={option.option.value}
 										type="button"
+										ref={(node) => {
+											if (node) {
+												modelButtonRefs.current.set(option.option.value, node);
+												if (option.option.value === resolvedValue) {
+													schedulePositionSelectedModel();
+												}
+											} else {
+												modelButtonRefs.current.delete(option.option.value);
+											}
+										}}
 										disabled={disabled}
 										title={option.option.description}
 										className={cn(
@@ -529,6 +595,8 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 										onClick={() => {
 											onChange(option.option.value);
 											setOpen(false);
+											clearPositionSelectedModelFrame();
+											clearSafeTriangle();
 										}}
 									>
 										<GenerationBrandMark
