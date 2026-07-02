@@ -79,6 +79,7 @@ func (client *acpClient) beginPromptMetrics() {
 	client.promptStartedAt = time.Now()
 	client.firstUpdateLogged = false
 	client.updateCount = 0
+	client.activityUpdateCount = 0
 	client.messageChunkCount = 0
 	client.thoughtChunkCount = 0
 	client.toolCallCount = 0
@@ -94,11 +95,16 @@ func (client *acpClient) recordUpdateMetrics(kind string) (firstUpdateDelay time
 	client.updateCount++
 	switch kind {
 	case "agent_message_chunk":
+		client.activityUpdateCount++
 		client.messageChunkCount++
 	case "agent_thought_chunk":
+		client.activityUpdateCount++
 		client.thoughtChunkCount++
 	case "tool_call":
+		client.activityUpdateCount++
 		client.toolCallCount++
+	case "tool_call_update", "plan":
+		client.activityUpdateCount++
 	}
 	if client.firstUpdateLogged || client.promptStartedAt.IsZero() {
 		return 0, false
@@ -150,10 +156,7 @@ func (client *acpClient) promptMetrics() []any {
 func (client *acpClient) hasPromptActivity() bool {
 	client.mu.Lock()
 	defer client.mu.Unlock()
-	return client.updateCount > 0 ||
-		client.messageChunkCount > 0 ||
-		client.thoughtChunkCount > 0 ||
-		client.toolCallCount > 0
+	return client.activityUpdateCount > 0
 }
 
 func (client *acpClient) logAttrs(extra ...any) []any {

@@ -775,61 +775,49 @@ func TestACPClientSessionUpdateIgnoresReplayOutsidePrompt(t *testing.T) {
 	}
 }
 
-func TestShouldRetryEmptyACPResumedPrompt(t *testing.T) {
+func TestShouldRetryEmptyACPPrompt(t *testing.T) {
 	emptyEndTurn := acp.PromptResponse{
 		StopReason: acp.StopReasonEndTurn,
 		Usage:      &acp.Usage{},
 	}
 
 	tests := []struct {
-		name          string
-		reusedSession bool
-		response      acp.PromptResponse
-		message       string
-		runtimeError  string
-		hadActivity   bool
-		want          bool
+		name         string
+		response     acp.PromptResponse
+		message      string
+		runtimeError string
+		hadActivity  bool
+		want         bool
 	}{
 		{
-			name:          "retries empty zero-token response from resumed session",
-			reusedSession: true,
-			response:      emptyEndTurn,
-			want:          true,
+			name:     "retries empty zero-token response",
+			response: emptyEndTurn,
+			want:     true,
 		},
 		{
-			name:          "does not retry new session",
-			reusedSession: false,
-			response:      emptyEndTurn,
+			name:     "does not retry when message streamed",
+			response: emptyEndTurn,
+			message:  "已完成。",
 		},
 		{
-			name:          "does not retry when message streamed",
-			reusedSession: true,
-			response:      emptyEndTurn,
-			message:       "已完成。",
+			name:         "does not retry provider runtime error",
+			response:     emptyEndTurn,
+			runtimeError: "对应 API Key 的余额不足。",
 		},
 		{
-			name:          "does not retry provider runtime error",
-			reusedSession: true,
-			response:      emptyEndTurn,
-			runtimeError:  "对应 API Key 的余额不足。",
+			name:        "does not retry after prompt activity",
+			response:    emptyEndTurn,
+			hadActivity: true,
 		},
 		{
-			name:          "does not retry after prompt activity",
-			reusedSession: true,
-			response:      emptyEndTurn,
-			hadActivity:   true,
-		},
-		{
-			name:          "does not retry nonzero usage",
-			reusedSession: true,
+			name: "does not retry nonzero usage",
 			response: acp.PromptResponse{
 				StopReason: acp.StopReasonEndTurn,
 				Usage:      &acp.Usage{InputTokens: 12, OutputTokens: 0, TotalTokens: 12},
 			},
 		},
 		{
-			name:          "does not retry unsupported stop reason",
-			reusedSession: true,
+			name: "does not retry unsupported stop reason",
 			response: acp.PromptResponse{
 				StopReason: acp.StopReasonCancelled,
 				Usage:      &acp.Usage{},
@@ -839,11 +827,44 @@ func TestShouldRetryEmptyACPResumedPrompt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := shouldRetryEmptyACPResumedPrompt(tt.reusedSession, tt.response, tt.message, tt.runtimeError, tt.hadActivity)
+			got := shouldRetryEmptyACPPrompt(tt.response, tt.message, tt.runtimeError, tt.hadActivity)
 			if got != tt.want {
-				t.Fatalf("shouldRetryEmptyACPResumedPrompt() = %v, want %v", got, tt.want)
+				t.Fatalf("shouldRetryEmptyACPPrompt() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestACPClientSessionUsageUpdateDoesNotCountAsPromptActivity(t *testing.T) {
+	events := []agentEvent{}
+	client := &acpClient{
+		publish: func(event agentEvent) {
+			events = append(events, event)
+		},
+	}
+	client.beginPromptMetrics()
+	client.setAcceptingSessionUpdates(true)
+
+	err := client.SessionUpdate(context.Background(), acp.SessionNotification{
+		Update: acp.SessionUpdate{
+			UsageUpdate: &acp.SessionUsageUpdate{
+				Used: 0,
+				Size: 1000000,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SessionUpdate returned error: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("events = %#v, want no published event for usage update", events)
+	}
+	if client.hasPromptActivity() {
+		t.Fatal("usage_update should not count as prompt activity")
+	}
+	metrics := client.promptMetrics()
+	if metrics[1] != 1 {
+		t.Fatalf("update_count metric = %#v, want 1", metrics)
 	}
 }
 

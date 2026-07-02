@@ -61,6 +61,7 @@ type acpClient struct {
 	promptStartedAt     time.Time
 	firstUpdateLogged   bool
 	updateCount         int
+	activityUpdateCount int
 	messageChunkCount   int
 	thoughtChunkCount   int
 	toolCallCount       int

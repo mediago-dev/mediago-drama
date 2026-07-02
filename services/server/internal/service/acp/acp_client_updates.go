@@ -184,6 +184,8 @@ func sessionUpdateKind(update acp.SessionUpdate) string {
 		return "tool_call_update"
 	case update.Plan != nil:
 		return "plan"
+	case update.UsageUpdate != nil:
+		return "usage_update"
 	default:
 		return "unknown"
 	}

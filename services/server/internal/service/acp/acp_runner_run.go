@@ -283,11 +283,12 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		promptStartedAt = time.Now()
 		promptResponse, err = promptACPSession(ctx, conn, client, promptRequest)
 	}
-	if err == nil && shouldRetryEmptyACPResumedPrompt(reusedACPSession, promptResponse, client.messageText(), client.runtimeErrorText(), client.hasPromptActivity()) {
+	if err == nil && shouldRetryEmptyACPPrompt(promptResponse, client.messageText(), client.runtimeErrorText(), client.hasPromptActivity()) {
 		acpLog().Warn(
-			"acp resumed prompt returned empty response; retrying new session",
+			"acp prompt returned empty response; retrying new session",
 			append(logArgs,
 				"acp_session_id", sessionID,
+				"reused_acp_session", reusedACPSession,
 				"stop_reason", promptResponse.StopReason,
 				"usage_input_tokens", promptResponse.Usage.InputTokens,
 				"usage_output_tokens", promptResponse.Usage.OutputTokens,
@@ -296,7 +297,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		)
 		publish(agentEvent{
 			Type:    "agent.activity",
-			Message: "ACP 旧会话没有返回内容，正在创建新会话重试。",
+			Message: "ACP 没有返回内容，正在创建新会话重试。",
 		})
 		client.resetMessage()
 		session, createErr := conn.NewSession(ctx, acp.NewSessionRequest{
@@ -390,10 +391,7 @@ func promptACPSession(ctx context.Context, conn *acp.ClientSideConnection, clien
 	return response, err
 }
 
-func shouldRetryEmptyACPResumedPrompt(reusedACPSession bool, response acp.PromptResponse, rawFinalMessage string, runtimeErrorMessage string, promptHadActivity bool) bool {
-	if !reusedACPSession {
-		return false
-	}
+func shouldRetryEmptyACPPrompt(response acp.PromptResponse, rawFinalMessage string, runtimeErrorMessage string, promptHadActivity bool) bool {
 	if promptHadActivity {
 		return false
 	}

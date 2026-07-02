@@ -3,6 +3,7 @@ package generation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
@@ -58,6 +59,12 @@ func (workflow *GenerationService) newGenerationProviderForStoredTask(
 }
 
 func (workflow *GenerationService) requireGenerationRouteConfigured(route coregeneration.ModelRoute) error {
+	if route.Provider == coregeneration.ProviderMediago &&
+		strings.TrimSpace(workflow.mediagoBaseURL) != "" &&
+		workflow.generationRouteCredentialsConfigured(route) &&
+		!workflow.mediagoRouteModelAvailable(context.Background(), route) {
+		return fmt.Errorf("MediaGo 聚合平台当前未启用模型 %s", route.Model)
+	}
 	return RequireGenerationRouteConfigured(
 		route,
 		workflow.generationRouteConfigured(route),
@@ -72,6 +79,17 @@ func (workflow *GenerationService) generationRouteConfigured(route coregeneratio
 	if route.Provider == coregeneration.ProviderMediago && strings.TrimSpace(workflow.mediagoBaseURL) == "" {
 		return false
 	}
+	configured := workflow.generationRouteCredentialsConfigured(route)
+	if !configured {
+		return false
+	}
+	if route.Provider == coregeneration.ProviderMediago {
+		return workflow.mediagoRouteModelAvailable(context.Background(), route)
+	}
+	return true
+}
+
+func (workflow *GenerationService) generationRouteCredentialsConfigured(route coregeneration.ModelRoute) bool {
 	return GenerationRouteConfigured(route, func(authKey string) bool {
 		value, _, err := workflow.settings.GetAPIKey(context.Background(), authKey)
 		if err != nil {
