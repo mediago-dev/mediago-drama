@@ -19,11 +19,11 @@ const sectionGenerateActions: Array<{
 		title: "根据当前标题区域生成图片",
 	},
 	{
-		ariaLabel: "根据当前标题区域生成语音",
+		ariaLabel: "根据当前标题区域选择音频",
 		icon: <ArrowUpRight className="size-3.5" />,
 		kind: "audio",
-		label: "生成语音",
-		title: "根据当前标题区域生成语音",
+		label: "选择音频",
+		title: "根据当前标题区域选择音频",
 	},
 	{
 		ariaLabel: "根据当前标题区域生成视频",

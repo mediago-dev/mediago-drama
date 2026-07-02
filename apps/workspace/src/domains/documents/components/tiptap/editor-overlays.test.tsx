@@ -35,11 +35,11 @@ describe("SectionGenerateButton", () => {
 		);
 
 		fireEvent.click(screen.getByRole("button", { name: "根据当前标题区域生成图片" }));
-		fireEvent.click(screen.getByRole("button", { name: "根据当前标题区域生成语音" }));
+		fireEvent.click(screen.getByRole("button", { name: "根据当前标题区域选择音频" }));
 		fireEvent.click(screen.getByRole("button", { name: "根据当前标题区域生成视频" }));
 
 		expect(screen.getByText("生成图片")).toBeTruthy();
-		expect(screen.getByText("生成语音")).toBeTruthy();
+		expect(screen.getByText("选择音频")).toBeTruthy();
 		expect(screen.getByText("生成视频")).toBeTruthy();
 		expect(
 			screen
