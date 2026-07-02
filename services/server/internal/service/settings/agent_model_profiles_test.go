@@ -175,6 +175,11 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	if !config.RestrictModelValues || !stringSliceContains(config.AllowedModelValues, "openrouter/openai/gpt-5.5") {
 		t.Fatalf("allowed model values = %#v, want openrouter runtime profile whitelist", config.AllowedModelValues)
 	}
+	for _, value := range config.AllowedModelValues {
+		if strings.Contains(strings.ToLower(value), "gemini") {
+			t.Fatalf("allowed model values = %#v, should not include Gemini agent model %q", config.AllowedModelValues, value)
+		}
+	}
 	if !stringSliceContains(config.AllowedModelProviders, "openrouter") {
 		t.Fatalf("allowed model providers = %#v, want openrouter provider whitelist", config.AllowedModelProviders)
 	}
@@ -190,6 +195,9 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	text := string(data)
 	if strings.Contains(text, "sk-openrouter-secret") {
 		t.Fatalf("opencode.json should not contain real API key: %s", text)
+	}
+	if strings.Contains(strings.ToLower(text), "gemini") {
+		t.Fatalf("opencode.json should not include Gemini agent models:\n%s", text)
 	}
 	for _, want := range []string{
 		`"$schema": "https://opencode.ai/config.json"`,
@@ -264,6 +272,15 @@ func TestPrepareOpenCodeRuntimeConfigIncludesDMXAPIWhenPlatformEnabled(t *testin
 	if config.Env[AgentModelProfileEnvName("dmxapi-gpt-4-1-mini")] != "sk-dmx-secret" {
 		t.Fatalf("runtime env = %#v, want DMX key injected for dmxapi", config.Env)
 	}
+	for _, unwanted := range []string{
+		"dmxapi/gemini-3.5-flash",
+		"dmxapi/gemini-3.1-pro-preview",
+		"dmxapi/gemini-3.1-flash-lite",
+	} {
+		if stringSliceContains(config.AllowedModelValues, unwanted) {
+			t.Fatalf("allowed model values = %#v, should not include Gemini agent model %q", config.AllowedModelValues, unwanted)
+		}
+	}
 
 	data, err := os.ReadFile(filepath.Join(config.ConfigDir, "opencode.json"))
 	if err != nil {
@@ -278,6 +295,9 @@ func TestPrepareOpenCodeRuntimeConfigIncludesDMXAPIWhenPlatformEnabled(t *testin
 		if !strings.Contains(text, want) {
 			t.Fatalf("opencode.json missing %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(strings.ToLower(text), "gemini") {
+		t.Fatalf("opencode.json should not include Gemini agent models:\n%s", text)
 	}
 }
 
@@ -315,6 +335,18 @@ func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testi
 						"output_modalities": ["text"]
 					},
 					"supported_parameters": ["stream", "temperature"]
+				},
+				{
+					"id": "local/gemini-test",
+					"name": "Gemini Test",
+					"kind": "text",
+					"tags": ["text", "chat", "gemini"],
+					"categories": ["text", "chat"],
+					"architecture": {
+						"input_modalities": ["text"],
+						"output_modalities": ["text"]
+					},
+					"supported_parameters": ["stream", "tools"]
 				},
 				{
 					"id": "local/image-test",
@@ -428,6 +460,8 @@ func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testi
 		"local/image-output-test",
 		"local/audio-output-test",
 		"local/speech-input-test",
+		"local/gemini-test",
+		"Gemini Test",
 		"qwen/qwen-mt-plus",
 		"Qwen MT Plus",
 	} {

@@ -248,7 +248,7 @@ tasks:
   stage-electron:
     vars:
       PLATFORM: '{{.PLATFORM | default ""}}'
-      MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago"}}'
+      MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago,openrouter,dmxapi"}}'
       MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default ""}}'
     cmds:
       - node apps/workspace/scripts/stage-electron.ts "{{.AGENT}}" "{{.PLATFORM}}" "{{.MODEL_PLATFORM}}" "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}"
