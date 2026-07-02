@@ -3,7 +3,10 @@ import { useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GenerationParam, GenerationParamCombo } from "@/domains/generation/api/generation";
 import { filterImageGenerationSpecParams, resolveImageGenerationSpec } from "./imageGenerationSpec";
-import { ImageGenerationSpecControl } from "./ImageGenerationSpecControl";
+import {
+	ImageGenerationSpecControl,
+	imageGenerationSpecPopoverBoundary,
+} from "./ImageGenerationSpecControl";
 
 const selectParam = (
 	name: string,
@@ -244,6 +247,19 @@ describe("ImageGenerationSpecControl", () => {
 		expect(glyph?.dataset.ratioValue).toBe("16:9");
 		expect(glyph?.style.aspectRatio).toBe("16 / 9");
 		expect(glyph?.style.width).toBe("var(--generation-size-ratio-glyph-max)");
+	});
+
+	it("resolves the modal collision boundary from the trigger", () => {
+		const boundary = document.createElement("div");
+		const trigger = document.createElement("button");
+		boundary.setAttribute("data-agent-mention-popup-root", "");
+		boundary.append(trigger);
+		document.body.append(boundary);
+
+		expect(imageGenerationSpecPopoverBoundary(trigger)).toBe(boundary);
+		expect(imageGenerationSpecPopoverBoundary(null)).toBeUndefined();
+
+		boundary.remove();
 	});
 
 	it("disables unavailable combos and jumps resolution when ratio changes", async () => {

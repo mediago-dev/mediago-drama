@@ -156,6 +156,54 @@ const openRouterSeedreamRoute: GenerationRoute = {
 	versionId: "seedream-5-lite",
 };
 
+const extraSeedreamRoutes: GenerationRoute[] = ["volcengine", "dmxapi"].map((provider) => ({
+	adapter: `test.image.${provider}`,
+	async: false,
+	docUrl: `https://example.com/${provider}`,
+	familyId: "seedream",
+	id: `${provider}.seedream-5-lite`,
+	kind: "image",
+	label: `${provider} Seedream 5`,
+	model: "doubao-seedream-5.0-lite",
+	params: [],
+	provider,
+	status: "available",
+	supportsReferenceUrls: true,
+	versionId: "seedream-5-lite",
+}));
+
+const longSeedanceVersions: GenerationVersion[] = [
+	"Seedance 2.0 Fast",
+	"Seedance 2.0 Mini",
+	"Seedance 2.0",
+	"Seedance 2.0 Fast VIP",
+	"Seedance 2.0 VIP",
+	"Seedance 1.5 Pro",
+].map((label, index) => ({
+	canonicalModel: `seedance-${index + 1}`,
+	capabilities: { async: true, supportsReferenceUrls: true },
+	familyId: "seedance",
+	id: `seedance-version-${index + 1}`,
+	kind: "video",
+	label,
+}));
+
+const longSeedanceRoutes: GenerationRoute[] = longSeedanceVersions.map((version, index) => ({
+	adapter: "test.video.jimeng",
+	async: true,
+	docUrl: "https://example.com/jimeng",
+	familyId: "seedance",
+	id: `jimeng.${version.id}`,
+	kind: "video",
+	label: `即梦 ${version.label}`,
+	model: version.canonicalModel,
+	params: [],
+	provider: "jimeng",
+	status: index === 2 ? "gated" : "available",
+	supportsReferenceUrls: true,
+	versionId: version.id,
+}));
+
 describe("GenerationModelRoutePicker", () => {
 	afterEach(() => {
 		cleanup();
@@ -163,7 +211,7 @@ describe("GenerationModelRoutePicker", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("uses a fixed three-row menu height across provider counts", () => {
+	it("uses a fixed five-row menu height across provider counts", () => {
 		render(
 			<GenerationModelRoutePicker
 				onSelect={vi.fn()}
@@ -181,7 +229,7 @@ describe("GenerationModelRoutePicker", () => {
 		expect(menu).toBeTruthy();
 		expect(menu).toHaveClass("h-[var(--generation-route-picker-menu-height)]");
 		expect(menu.getAttribute("style")).toContain(
-			"3 * var(--generation-model-popover-option-height)",
+			"5 * var(--generation-model-popover-option-height)",
 		);
 		expect(screen.getByRole("button", { name: "MediaGo" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "DMX" })).toBeTruthy();
@@ -194,7 +242,7 @@ describe("GenerationModelRoutePicker", () => {
 		expect(screen.getByRole("button", { name: "即梦" })).toBeTruthy();
 		expect(screen.queryByRole("button", { name: "MediaGo" })).toBeNull();
 		expect(menu.getAttribute("style")).toContain(
-			"3 * var(--generation-model-popover-option-height)",
+			"5 * var(--generation-model-popover-option-height)",
 		);
 
 		const routeList = document.querySelector("[data-generation-route-list]");
@@ -209,11 +257,11 @@ describe("GenerationModelRoutePicker", () => {
 		expect(document.querySelector("[data-generation-route-scroll-hint]")).toBeNull();
 	});
 
-	it("shows a fade hint when the provider list overflows three rows", () => {
+	it("shows a fade hint when the provider list overflows five rows", () => {
 		render(
 			<GenerationModelRoutePicker
 				onSelect={vi.fn()}
-				routes={[...seedreamRoutes, openRouterSeedreamRoute]}
+				routes={[...seedreamRoutes, openRouterSeedreamRoute, ...extraSeedreamRoutes]}
 				selectedRoute={seedreamRoutes[0]}
 				selectedVersion={seedreamVersions[0]}
 				versions={seedreamVersions}
@@ -224,14 +272,45 @@ describe("GenerationModelRoutePicker", () => {
 		const routeList = document.querySelector("[data-generation-route-list]");
 		expect(routeList).toBeTruthy();
 		setScrollableList(routeList as HTMLElement, {
-			clientHeight: 96,
-			scrollHeight: 144,
+			clientHeight: 160,
+			scrollHeight: 192,
 			scrollTop: 0,
 		});
 
 		fireEvent.scroll(routeList as HTMLElement);
 
 		expect(document.querySelector("[data-generation-route-scroll-hint]")).toBeTruthy();
+	});
+
+	it("caps the menu at five rows and keeps long version lists scrollable", () => {
+		render(
+			<GenerationModelRoutePicker
+				onSelect={vi.fn()}
+				routes={longSeedanceRoutes}
+				selectedRoute={longSeedanceRoutes[0]}
+				selectedVersion={longSeedanceVersions[0]}
+				versions={longSeedanceVersions}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+		const menu = screen
+			.getByText("提供方")
+			.closest('[aria-label="模型版本和供应商"]') as HTMLElement;
+		expect(menu.getAttribute("style")).toContain(
+			"5 * var(--generation-model-popover-option-height)",
+		);
+
+		const versionList = document.querySelector("[data-generation-version-list]");
+		expect(versionList).toBeTruthy();
+		setScrollableList(versionList as HTMLElement, {
+			clientHeight: 160,
+			scrollHeight: 192,
+			scrollTop: 0,
+		});
+		fireEvent.scroll(versionList as HTMLElement);
+
+		expect(document.querySelector("[data-generation-version-scroll-hint]")).toBeTruthy();
 	});
 
 	it("keeps the active version while the pointer crosses the safe triangle", () => {

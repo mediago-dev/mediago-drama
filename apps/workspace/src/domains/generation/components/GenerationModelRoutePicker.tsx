@@ -104,7 +104,7 @@ export const GenerationModelRoutePicker: React.FC<{
 
 	const updateVersionListScrollHint = useCallback(() => {
 		const node = versionListRef.current;
-		if (!node || visibleVersions.length <= GENERATION_ROUTE_PICKER_VISIBLE_ROWS) {
+		if (!node || visibleVersions.length <= GENERATION_ROUTE_PICKER_MAX_VISIBLE_ROWS) {
 			setVersionListCanScrollDown(false);
 			return;
 		}
@@ -114,7 +114,7 @@ export const GenerationModelRoutePicker: React.FC<{
 
 	const updateRouteListScrollHint = useCallback(() => {
 		const node = routeListRef.current;
-		if (!node || activeRoutes.length <= GENERATION_ROUTE_PICKER_VISIBLE_ROWS) {
+		if (!node || activeRoutes.length <= GENERATION_ROUTE_PICKER_MAX_VISIBLE_ROWS) {
 			setRouteListCanScrollDown(false);
 			return;
 		}
@@ -416,11 +416,11 @@ const compactLabel = (label: string) => label.replace(/\s+/g, " ").trim();
 
 const GENERATION_ROUTE_PICKER_SAFE_TRIANGLE_EDGE_PADDING = 8;
 const GENERATION_ROUTE_PICKER_SAFE_TRIANGLE_HOVER_INTENT_MS = 180;
-const GENERATION_ROUTE_PICKER_VISIBLE_ROWS = 3;
+const GENERATION_ROUTE_PICKER_MAX_VISIBLE_ROWS = 5;
 
 const generationModelRoutePickerMenuHeight = () => {
-	const gapCount = Math.max(GENERATION_ROUTE_PICKER_VISIBLE_ROWS - 1, 0);
-	return `calc(var(--generation-popover-padding) * 2 + 1.25rem + ${GENERATION_ROUTE_PICKER_VISIBLE_ROWS} * var(--generation-model-popover-option-height) + ${gapCount} * 0.25rem)`;
+	const gapCount = Math.max(GENERATION_ROUTE_PICKER_MAX_VISIBLE_ROWS - 1, 0);
+	return `calc(var(--generation-popover-padding) * 2 + 1.25rem + ${GENERATION_ROUTE_PICKER_MAX_VISIBLE_ROWS} * var(--generation-model-popover-option-height) + ${gapCount} * 0.25rem)`;
 };
 
 const pointerEventPoint = (event: React.PointerEvent): GenerationRoutePickerPoint => ({

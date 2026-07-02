@@ -20,10 +20,8 @@ export const ImageGenerationSpecControl: React.FC<{
 }> = ({ className, label = "图像规格", onChange, showSizePreview = true, spec }) => {
 	const [open, setOpen] = useState(false);
 	const triggerRef = useRef<HTMLButtonElement>(null);
-	// Keep the wide spec popover inside the generation modal when it is opened there.
-	const popoverBoundary = open
-		? (triggerRef.current?.closest<HTMLElement>("[data-agent-mention-popup-root]") ?? undefined)
-		: undefined;
+	// Keep the wide spec popover inside the generation modal through close animations too.
+	const popoverBoundary = imageGenerationSpecPopoverBoundary(triggerRef.current);
 
 	const applyOption = (axis: SpecAxis, option: SpecOption) => {
 		const update = imageGenerationSpecUpdate(spec, axis, option);
@@ -277,3 +275,6 @@ const resolutionDisplayLabel = (resolution: string) => {
 			return resolution;
 	}
 };
+
+export const imageGenerationSpecPopoverBoundary = (trigger: HTMLElement | null) =>
+	trigger?.closest<HTMLElement>("[data-agent-mention-popup-root]") ?? undefined;
