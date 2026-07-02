@@ -7,11 +7,17 @@ func routeParamConfig(params []RouteParam, translation ParamTranslation) RoutePa
 	return RouteParamConfig{
 		CanonicalParams: params,
 		Translation:     translation,
+		Combos:          routeParamCombos(params, translation.Joins),
 	}
 }
 
 func identityRouteParamConfig(params []RouteParam) RouteParamConfig {
 	return routeParamConfig(params, ParamTranslation{})
+}
+
+func withRouteParamCombos(config RouteParamConfig, combos []ParamCombo) RouteParamConfig {
+	config.Combos = append(cloneParamCombos(config.Combos), cloneParamCombos(combos)...)
+	return config
 }
 
 func selectRouteParam(id ParamID, defaultValue string, options []ParamOption) RouteParam {

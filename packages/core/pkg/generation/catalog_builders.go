@@ -54,7 +54,7 @@ func dmxRoute(
 		AuthKeys:              []string{ProviderDMX},
 		Params:                routeParamSpecs(kind, params.CanonicalParams),
 		ParamGroups:           routeParamGroups(kind, params.CanonicalParams),
-		Combos:                routeParamCombos(params.CanonicalParams, params.Translation.Joins),
+		Combos:                cloneParamCombos(params.Combos),
 		CanonicalParams:       params.CanonicalParams,
 		Translation:           params.Translation,
 		LegacyModelID:         legacyModelID,
@@ -91,7 +91,7 @@ func jimengRoute(
 		AuthKeys:              []string{ProviderJimeng},
 		Params:                routeParamSpecs(kind, params.CanonicalParams),
 		ParamGroups:           routeParamGroups(kind, params.CanonicalParams),
-		Combos:                routeParamCombos(params.CanonicalParams, params.Translation.Joins),
+		Combos:                cloneParamCombos(params.Combos),
 		CanonicalParams:       params.CanonicalParams,
 		Translation:           params.Translation,
 		LegacyModelID:         legacyModelID,
@@ -127,7 +127,7 @@ func mediagoRoute(
 		AuthKeys:              []string{ProviderMediago},
 		Params:                routeParamSpecs(kind, params.CanonicalParams),
 		ParamGroups:           routeParamGroups(kind, params.CanonicalParams),
-		Combos:                routeParamCombos(params.CanonicalParams, params.Translation.Joins),
+		Combos:                cloneParamCombos(params.Combos),
 		CanonicalParams:       params.CanonicalParams,
 		Translation:           params.Translation,
 	}
@@ -162,7 +162,7 @@ func openRouterRoute(
 		AuthKeys:              []string{ProviderOpenRouter},
 		Params:                routeParamSpecs(kind, params.CanonicalParams),
 		ParamGroups:           routeParamGroups(kind, params.CanonicalParams),
-		Combos:                routeParamCombos(params.CanonicalParams, params.Translation.Joins),
+		Combos:                cloneParamCombos(params.Combos),
 		CanonicalParams:       params.CanonicalParams,
 		Translation:           params.Translation,
 	}
@@ -198,7 +198,7 @@ func officialRoute(
 		AuthKeys:              authKeys,
 		Params:                routeParamSpecs(kind, params.CanonicalParams),
 		ParamGroups:           routeParamGroups(kind, params.CanonicalParams),
-		Combos:                routeParamCombos(params.CanonicalParams, params.Translation.Joins),
+		Combos:                cloneParamCombos(params.Combos),
 		CanonicalParams:       params.CanonicalParams,
 		Translation:           params.Translation,
 	}
@@ -241,14 +241,18 @@ func routeParamCombos(params []RouteParam, joins []ParamJoin) []ParamCombo {
 		}
 
 		allowed := make([][]string, 0, len(join.Table))
+		outputs := make(map[string]string, len(join.Table))
 		for _, key := range cartesianRouteParamKeys(optionSets) {
-			if _, ok := join.Table[strings.Join(key, "|")]; ok {
+			joinedKey := strings.Join(key, "|")
+			if output, ok := join.Table[joinedKey]; ok {
 				allowed = append(allowed, key)
+				outputs[joinedKey] = output
 			}
 		}
 		combos = append(combos, ParamCombo{
 			Params:  names,
 			Allowed: allowed,
+			Outputs: outputs,
 		})
 	}
 

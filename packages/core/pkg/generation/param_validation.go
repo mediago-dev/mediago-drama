@@ -40,8 +40,69 @@ func NormalizeRouteParams(route ModelRoute, params map[string]any) (map[string]a
 		}
 		result[spec.Name] = normalized
 	}
+	if err := validateRouteParamCombos(route, result); err != nil {
+		return nil, err
+	}
 
 	return result, nil
+}
+
+func validateRouteParamCombos(route ModelRoute, params map[string]any) error {
+	if len(route.Combos) == 0 {
+		return nil
+	}
+
+	defaults := routeParamDefaults(route.CanonicalParams)
+	for _, combo := range route.Combos {
+		parts := make([]string, 0, len(combo.Params))
+		hasSource := false
+		for _, name := range combo.Params {
+			value, ok := params[name]
+			if ok && !isEmptyParamValue(value) {
+				hasSource = true
+			} else {
+				value, ok = defaults[ParamID(name)]
+			}
+			if !ok || isEmptyParamValue(value) {
+				return fmt.Errorf("route %q parameter combo %s is missing %q", route.ID, strings.Join(combo.Params, "+"), name)
+			}
+
+			part, ok := optionComparableString(value)
+			if !ok {
+				return fmt.Errorf("route %q parameter combo %s value for %q must be a string or number", route.ID, strings.Join(combo.Params, "+"), name)
+			}
+			parts = append(parts, part)
+		}
+		if !hasSource {
+			continue
+		}
+
+		if !isParamComboAllowed(combo, parts) {
+			return fmt.Errorf("route %q parameter combo %s has no mapping for %s", route.ID, strings.Join(combo.Params, "+"), strings.Join(parts, "|"))
+		}
+	}
+
+	return nil
+}
+
+func isParamComboAllowed(combo ParamCombo, parts []string) bool {
+	for _, allowed := range combo.Allowed {
+		if len(allowed) != len(parts) {
+			continue
+		}
+		matched := true
+		for index, part := range parts {
+			if allowed[index] != part {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+
+	return false
 }
 
 func normalizeParamValue(spec ParamSpec, value any) (any, error) {

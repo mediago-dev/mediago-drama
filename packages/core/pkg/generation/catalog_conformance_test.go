@@ -12,7 +12,7 @@ func TestCatalogCanonicalParamConformance(t *testing.T) {
 	for _, route := range Routes() {
 		t.Run(route.ID, func(t *testing.T) {
 			assertRouteParamsAreCanonical(t, route)
-			assertRouteCombosAreDerived(t, route)
+			assertRouteCombosAreValid(t, route)
 			assertRouteTranslationConsumesParams(t, route)
 			assertRouteTranslationTargetsAreUnique(t, route)
 		})
@@ -231,12 +231,84 @@ func assertJoinTableIsValid(t *testing.T, route ModelRoute, join ParamJoin) {
 	}
 }
 
-func assertRouteCombosAreDerived(t *testing.T, route ModelRoute) {
+func assertRouteCombosAreValid(t *testing.T, route ModelRoute) {
 	t.Helper()
 
 	expected := routeParamCombos(route.CanonicalParams, route.Translation.Joins)
-	if !reflect.DeepEqual(route.Combos, expected) {
+	if len(expected) > 0 && !reflect.DeepEqual(route.Combos, expected) {
 		t.Fatalf("route %q paramCombos is not derived from joins\ncombos=%#v\nexpected=%#v", route.ID, route.Combos, expected)
+	}
+
+	for _, combo := range route.Combos {
+		assertRouteComboIsValid(t, route, combo)
+	}
+}
+
+func assertRouteComboIsValid(t *testing.T, route ModelRoute, combo ParamCombo) {
+	t.Helper()
+	if len(combo.Params) == 0 || len(combo.Allowed) == 0 {
+		t.Fatalf("route %q has incomplete param combo %#v", route.ID, combo)
+	}
+
+	optionSets := make([]map[string]bool, 0, len(combo.Params))
+	optionHits := make([]map[string]bool, 0, len(combo.Params))
+	defaultParts := make([]string, 0, len(combo.Params))
+	for _, name := range combo.Params {
+		id := ParamID(name)
+		param, ok := routeParamByID(route, id)
+		if !ok {
+			t.Fatalf("route %q combo references missing param %q", route.ID, name)
+		}
+		if len(param.Options) == 0 {
+			t.Fatalf("route %q combo param %q has no options", route.ID, name)
+		}
+		values := make(map[string]bool, len(param.Options))
+		hits := make(map[string]bool, len(param.Options))
+		for _, option := range param.Options {
+			values[option.Value] = true
+			hits[option.Value] = false
+		}
+		optionSets = append(optionSets, values)
+		optionHits = append(optionHits, hits)
+
+		defaultPart, ok := optionComparableString(param.Default)
+		if !ok || defaultPart == "" {
+			t.Fatalf("route %q combo param %q has no default", route.ID, name)
+		}
+		defaultParts = append(defaultParts, defaultPart)
+	}
+
+	allowedKeys := map[string]bool{}
+	for _, parts := range combo.Allowed {
+		if len(parts) != len(combo.Params) {
+			t.Fatalf("route %q combo values %#v has %d parts, want %d", route.ID, parts, len(parts), len(combo.Params))
+		}
+		allowedKeys[strings.Join(parts, "|")] = true
+		for index, part := range parts {
+			if !optionSets[index][part] {
+				t.Fatalf("route %q combo values %#v has invalid value %q for %q", route.ID, parts, part, combo.Params[index])
+			}
+			optionHits[index][part] = true
+		}
+	}
+
+	for index, hits := range optionHits {
+		for option, hit := range hits {
+			if !hit {
+				t.Fatalf("route %q combo param %q option %q is never allowed", route.ID, combo.Params[index], option)
+			}
+		}
+	}
+
+	defaultKey := strings.Join(defaultParts, "|")
+	if !allowedKeys[defaultKey] {
+		t.Fatalf("route %q combo default %q is not allowed", route.ID, defaultKey)
+	}
+
+	for key := range combo.Outputs {
+		if !allowedKeys[key] {
+			t.Fatalf("route %q combo output key %q is not allowed", route.ID, key)
+		}
 	}
 }
 

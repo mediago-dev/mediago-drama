@@ -140,9 +140,21 @@ func cloneParamCombos(combos []ParamCombo) []ParamCombo {
 	for index, combo := range combos {
 		combo.Params = cloneStrings(combo.Params)
 		combo.Allowed = cloneStringMatrix(combo.Allowed)
+		combo.Outputs = cloneStringMap(combo.Outputs)
 		result[index] = combo
 	}
 
+	return result
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	result := make(map[string]string, len(values))
+	for key, value := range values {
+		result[key] = value
+	}
 	return result
 }
 
@@ -159,15 +171,4 @@ func cloneStringMatrix(values [][]string) [][]string {
 
 func cloneStrings(values []string) []string {
 	return cloneSlice(values)
-}
-
-func cloneStringMap(values map[string]string) map[string]string {
-	if values == nil {
-		return nil
-	}
-	result := make(map[string]string, len(values))
-	for key, value := range values {
-		result[key] = value
-	}
-	return result
 }

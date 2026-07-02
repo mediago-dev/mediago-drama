@@ -15,7 +15,7 @@ func (provider *Provider) GenerateTextStream(ctx context.Context, request genera
 	if strings.TrimSpace(request.Prompt) == "" {
 		return nil, generation.ErrMissingPrompt
 	}
-	if err := provider.resolveRequest(&request); err != nil {
+	if _, err := provider.resolveRequest(&request); err != nil {
 		return nil, err
 	}
 

@@ -53,4 +53,6 @@ Client rendering rules:
 
 `Joins` may declare sparse allowed combinations when a provider exposes one vendor field through multiple canonical params. The join `Table` is the source of truth, and route builders derive `paramCombos` from it for UI clients.
 
+Routes may also attach `paramCombos` directly in `RouteParamConfig` when the provider receives separate params but the model only supports a sparse cross-product of those params. These combos are UI-facing and are also enforced during route param validation. When a combo includes `outputs`, UI previews should use the exact output value for the selected combination before falling back to inferred dimensions.
+
 UI should disable unavailable combinations instead of hiding params or exposing provider-native fields. Every joined option must appear in at least one allowed key, and the default value combination must be present in the table; catalog conformance enforces both rules.

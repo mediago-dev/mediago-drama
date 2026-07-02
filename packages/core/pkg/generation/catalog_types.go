@@ -125,8 +125,9 @@ type ParamOption struct {
 
 // ParamCombo lists the allowed value combinations of linked route params.
 type ParamCombo struct {
-	Params  []string   `json:"params"`
-	Allowed [][]string `json:"allowed"`
+	Params  []string          `json:"params"`
+	Allowed [][]string        `json:"allowed"`
+	Outputs map[string]string `json:"outputs,omitempty"`
 }
 
 // CanonicalParamSpec describes the widest allowed shape for one canonical parameter.
@@ -155,6 +156,7 @@ type RouteParam struct {
 type RouteParamConfig struct {
 	CanonicalParams []RouteParam
 	Translation     ParamTranslation
+	Combos          []ParamCombo
 }
 
 // ParamTranslation translates canonical route params into provider-native params.

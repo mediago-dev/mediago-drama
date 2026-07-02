@@ -153,8 +153,8 @@ var familySpecs = []familySpec{
 		},
 		Routes: []ModelRoute{
 			officialRoute(RouteOfficialGPTImage2, FamilyGPTImage, VersionGPTImage2, KindImage, "OpenAI official", "gpt-image-2", AdapterOfficialOpenAIImage, "https://platform.openai.com/docs/guides/image-generation", []string{"openai"}, officialGPTImageParams(), false, false),
-			dmxRoute(RouteDMXGPTImage2, FamilyGPTImage, VersionGPTImage2, "DMX", "gpt-image-2-ssvip", AdapterDMXImagesGenerations, "https://doc.dmxapi.cn/gpt-image-2-image-edit.html", dmxGPTImageParams(), false, true, ModelGPTImage2),
-			mediagoRoute(RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, KindImage, "MediaGo", "gpt-image-2", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, true),
+			dmxRoute(RouteDMXGPTImage2, FamilyGPTImage, VersionGPTImage2, "DMX", "gpt-image-2-ssvip", AdapterDMXImagesGenerations, "https://doc.dmxapi.cn/gpt-image-2-text-to-image.html", dmxGPTImageParams(), false, true, ModelGPTImage2),
+			mediagoRoute(RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, KindImage, "MediaGo", "gpt-image-2", AdapterOpenRouterImages, openRouterImageDocs, mediagoGPTImageParams(), false, true),
 			openRouterRoute(RouteOpenRouterGPT54Image2, FamilyGPTImage, VersionGPT54Image2, KindImage, "OpenRouter", "openai/gpt-5.4-image-2", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, false),
 		},
 	},

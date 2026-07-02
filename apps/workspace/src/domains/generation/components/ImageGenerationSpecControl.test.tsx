@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GenerationParam } from "@/domains/generation/api/generation";
+import type { GenerationParam, GenerationParamCombo } from "@/domains/generation/api/generation";
 import { filterImageGenerationSpecParams, resolveImageGenerationSpec } from "./imageGenerationSpec";
 import { ImageGenerationSpecControl } from "./ImageGenerationSpecControl";
 
@@ -52,6 +52,45 @@ const sparseCombos = [
 			["16:9", "4K"],
 			["9:16", "4K"],
 		],
+	},
+];
+
+const gptImageSplitParams = [
+	selectParam("aspectRatio", "画幅比例", "1:1", [
+		{ label: "1:1", value: "1:1" },
+		{ label: "3:2", value: "3:2" },
+		{ label: "2:3", value: "2:3" },
+		{ label: "16:9", value: "16:9" },
+		{ label: "9:16", value: "9:16" },
+	]),
+	selectParam("resolution", "分辨率", "1K", [
+		{ label: "1K", value: "1K" },
+		{ label: "2K", value: "2K" },
+		{ label: "4K", value: "4K" },
+	]),
+];
+
+const gptImageCombos: GenerationParamCombo[] = [
+	{
+		params: ["aspectRatio", "resolution"],
+		allowed: [
+			["1:1", "1K"],
+			["1:1", "2K"],
+			["3:2", "1K"],
+			["2:3", "1K"],
+			["16:9", "2K"],
+			["16:9", "4K"],
+			["9:16", "4K"],
+		],
+		outputs: {
+			"1:1|1K": "1024x1024",
+			"1:1|2K": "2048x2048",
+			"3:2|1K": "1536x1024",
+			"2:3|1K": "1024x1536",
+			"16:9|2K": "2048x1152",
+			"16:9|4K": "3840x2160",
+			"9:16|4K": "2160x3840",
+		},
 	},
 ];
 
@@ -134,6 +173,28 @@ describe("resolveImageGenerationSpec", () => {
 		expect(spec?.resolutionOptions.find((option) => option.value === "1K")?.disabled).toBe(true);
 		expect(spec?.resolutionOptions.find((option) => option.value === "4K")?.disabled).toBe(false);
 		expect(spec?.ratioOptions.find((option) => option.value === "9:16")?.disabled).toBe(false);
+	});
+
+	it("uses exact combo outputs for GPT Image 2 size preview", () => {
+		const portrait = resolveImageGenerationSpec(
+			gptImageSplitParams,
+			{
+				aspectRatio: "2:3",
+				resolution: "1K",
+			},
+			gptImageCombos,
+		);
+		const wide4k = resolveImageGenerationSpec(
+			gptImageSplitParams,
+			{
+				aspectRatio: "16:9",
+				resolution: "4K",
+			},
+			gptImageCombos,
+		);
+
+		expect(portrait?.sizePreview).toEqual({ width: 1024, height: 1536 });
+		expect(wide4k?.sizePreview).toEqual({ width: 3840, height: 2160 });
 	});
 });
 

@@ -17,6 +17,7 @@ export interface SpecOption {
 
 interface SplitCombo {
 	allowed: Array<{ ratio: string; resolution: string }>;
+	outputs?: Record<string, string>;
 }
 
 export interface SpecParamUpdate {
@@ -141,7 +142,7 @@ const resolveSplitImageGenerationSpec = (
 		resolutionOptions: orderedResolutionOptions,
 		selectedRatio,
 		selectedResolution,
-		sizePreview: inferSizePreview(selectedRatio, selectedResolution),
+		sizePreview: inferSizePreview(selectedRatio, selectedResolution, allowedCombos),
 		ratioParam,
 		resolutionParam,
 	};
@@ -172,7 +173,7 @@ const resolveSplitCombo = (
 		.filter(isPresent);
 	if (allowed.length === 0) return undefined;
 
-	return { allowed };
+	return { allowed, outputs: combo.outputs };
 };
 
 const isSplitComboAllowed = (
@@ -321,12 +322,19 @@ const resolutionRank = (resolution?: string) => {
 	return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
 };
 
-const inferSizePreview = (ratio: SpecOption | null, resolution: SpecOption | null) => {
+const inferSizePreview = (
+	ratio: SpecOption | null,
+	resolution: SpecOption | null,
+	combo?: SplitCombo,
+) => {
 	if (ratio?.width && ratio.height) return { height: ratio.height, width: ratio.width };
 	if (resolution?.width && resolution.height) {
 		return { height: resolution.height, width: resolution.width };
 	}
 	if (!ratio?.ratio || !resolution?.resolution) return null;
+
+	const exactPreview = comboOutputSizePreview(combo, ratio.value, resolution.value);
+	if (exactPreview) return exactPreview;
 
 	const base = resolutionBasePixels(resolution.resolution);
 	if (!base) return null;
@@ -345,6 +353,26 @@ const inferSizePreview = (ratio: SpecOption | null, resolution: SpecOption | nul
 		width: Math.round((base * ratioWidth) / ratioHeight),
 		height: base,
 	};
+};
+
+const comboOutputSizePreview = (
+	combo: SplitCombo | undefined,
+	ratioValue: string,
+	resolutionValue: string,
+) => {
+	const output = combo?.outputs?.[`${ratioValue}|${resolutionValue}`];
+	if (!output) return null;
+
+	const match = output.match(/^(\d+)x(\d+)$/i);
+	if (!match) return null;
+
+	const width = Number(match[1]);
+	const height = Number(match[2]);
+	if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+		return null;
+	}
+
+	return { width, height };
 };
 
 const resolutionBasePixels = (resolution: string) => {

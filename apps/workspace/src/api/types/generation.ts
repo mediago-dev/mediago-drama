@@ -97,6 +97,7 @@ export interface ParamOption {
 export interface ParamCombo {
 	params: string[];
 	allowed: string[][];
+	outputs?: Record<string, string>;
 }
 
 export interface CredentialSpec {

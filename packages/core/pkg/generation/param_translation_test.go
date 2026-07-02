@@ -143,6 +143,41 @@ func TestTranslateRouteParamsJoinsGPTImageSize(t *testing.T) {
 	}
 }
 
+func TestTranslateRouteParamsJoinsMediagoGPTImageSize(t *testing.T) {
+	route := mustRoute(t, RouteMediagoGPTImage2)
+	request := Request{
+		Kind:    KindImage,
+		RouteID: route.ID,
+		Params: map[string]any{
+			"aspectRatio":       "16:9",
+			"resolution":        "2K",
+			"quality":           "high",
+			"outputFormat":      "webp",
+			"moderation":        "low",
+			"outputCompression": float64(60),
+			"background":        "opaque",
+			"n":                 float64(2),
+		},
+	}
+	if err := ValidateRequestForRoute(request, route); err != nil {
+		t.Fatalf("ValidateRequestForRoute() error = %v", err)
+	}
+
+	resolved := ApplyRoute(request, route)
+	if got := resolved.Params["quality"]; got != "high" {
+		t.Fatalf("quality = %#v, want high", got)
+	}
+	if got := resolved.Params["background"]; got != "opaque" {
+		t.Fatalf("background = %#v, want opaque", got)
+	}
+	if got := resolved.Params["size"]; got != "2048x1152" {
+		t.Fatalf("size = %#v, want 2048x1152", got)
+	}
+	if got := resolved.Params["outputFormat"]; got != "webp" {
+		t.Fatalf("outputFormat = %#v, want webp", got)
+	}
+}
+
 func TestTranslateRouteParamsRejectsUnavailableGPTImageCombo(t *testing.T) {
 	route := mustRoute(t, RouteDMXGPTImage2)
 	request := Request{

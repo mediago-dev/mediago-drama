@@ -81,12 +81,16 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 		return generation.Response{}, generation.ErrMissingPrompt
 	}
 
-	if err := provider.resolveRequest(&request); err != nil {
+	adapter, err := provider.resolveRequest(&request)
+	if err != nil {
 		return generation.Response{}, err
 	}
 
 	switch request.Kind {
 	case generation.KindImage:
+		if adapter == generation.AdapterOpenRouterImages {
+			return provider.generateImages(ctx, request)
+		}
 		return provider.generateImage(ctx, request)
 	case generation.KindVideo:
 		return provider.createVideo(ctx, request)
@@ -97,12 +101,12 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 	}
 }
 
-func (provider *Provider) resolveRequest(request *generation.Request) error {
+func (provider *Provider) resolveRequest(request *generation.Request) (string, error) {
 	if request.RouteID == "" && request.ModelID == "" && request.Model != "" {
 		if request.Kind == "" {
 			request.Kind = generation.KindImage
 		}
-		return nil
+		return "", nil
 	}
 
 	route, err := generation.ResolveRoute(generation.RouteQuery{
@@ -112,13 +116,13 @@ func (provider *Provider) resolveRequest(request *generation.Request) error {
 		Provider: provider.providerName,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := generation.ValidateRequestForRoute(*request, route); err != nil {
-		return err
+		return "", err
 	}
 	*request = generation.ApplyRoute(*request, route)
-	return nil
+	return route.Adapter, nil
 }
 
 func (provider *Provider) postJSON(ctx context.Context, endpoint string, payload any, result any) error {

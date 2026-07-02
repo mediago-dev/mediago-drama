@@ -21,6 +21,7 @@ const (
 	AdapterOfficialDeepSeekChatText = "official.deepseek.chat_text"
 	AdapterOfficialVolcengineImage  = "official.volcengine.image"
 	AdapterOfficialVolcengineVideo  = "official.volcengine.video"
+	AdapterOpenRouterImages         = "openrouter.images"
 	AdapterOpenRouterChatImage      = "openrouter.chat.image"
 	AdapterOpenRouterChatText       = "openrouter.chat.text"
 	AdapterOpenRouterVideo          = "openrouter.video"

@@ -69,6 +69,98 @@ func TestGenerateImage(t *testing.T) {
 	}
 }
 
+func TestGenerateImagesAPI(t *testing.T) {
+	var authHeader string
+	var payload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authHeader = request.Header.Get("Authorization")
+		if request.URL.Path != "/images" {
+			t.Fatalf("path = %q, want /images", request.URL.Path)
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"id":"img_1",
+			"model":"gpt-image-2",
+			"created":123,
+			"data":[{"b64_json":"abc","media_type":"image/webp","revised_prompt":"polished"}],
+			"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3,"cost":0.01}
+		}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{
+		BaseURL:      server.URL,
+		APIKey:       "sk-test",
+		ProviderName: generation.ProviderMediago,
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindImage,
+		RouteID: generation.RouteMediagoGPTImage2,
+		Prompt:  "make an image",
+		Params: map[string]any{
+			"aspectRatio":       "16:9",
+			"resolution":        "2K",
+			"size":              "2048x1152",
+			"quality":           "high",
+			"outputFormat":      "webp",
+			"outputCompression": float64(60),
+			"moderation":        "low",
+			"background":        "opaque",
+			"n":                 float64(2),
+		},
+		ReferenceURLs: []string{"https://example.test/reference.png"},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if authHeader != "Bearer sk-test" {
+		t.Fatalf("Authorization = %q, want Bearer sk-test", authHeader)
+	}
+	if payload["model"] != "gpt-image-2" || payload["prompt"] != "make an image" {
+		t.Fatalf("payload model/prompt = %#v", payload)
+	}
+	if payload["size"] != "2048x1152" || payload["quality"] != "high" || payload["output_format"] != "webp" || payload["background"] != "opaque" {
+		t.Fatalf("image params = %#v", payload)
+	}
+	if payload["n"] != float64(2) || payload["output_compression"] != float64(60) {
+		t.Fatalf("numeric params = %#v", payload)
+	}
+	if _, ok := payload["image_config"]; ok {
+		t.Fatalf("images API payload should not include image_config: %#v", payload)
+	}
+	if _, ok := payload["aspectRatio"]; ok {
+		t.Fatalf("canonical aspectRatio leaked: %#v", payload)
+	}
+	references, ok := payload["input_references"].([]any)
+	if !ok || len(references) != 1 {
+		t.Fatalf("input_references = %#v", payload["input_references"])
+	}
+	if _, ok := payload["provider"]; ok {
+		t.Fatalf("mediago images payload should not include provider options: %#v", payload)
+	}
+	if response.ID != "img_1" || response.Model != "gpt-image-2" || response.Usage.TotalTokens != 3 {
+		t.Fatalf("response = %#v", response)
+	}
+	if got := response.Assets[0].Base64; got != "abc" {
+		t.Fatalf("asset base64 = %q, want abc", got)
+	}
+	if response.Assets[0].MIMEType != "image/webp" {
+		t.Fatalf("asset MIMEType = %q, want image/webp", response.Assets[0].MIMEType)
+	}
+	if response.Assets[0].Metadata["revised_prompt"] != "polished" {
+		t.Fatalf("asset metadata = %#v", response.Assets[0].Metadata)
+	}
+}
+
 func TestGenerateTextStream(t *testing.T) {
 	var authHeader string
 	var payload map[string]any

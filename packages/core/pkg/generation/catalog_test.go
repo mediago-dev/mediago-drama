@@ -131,12 +131,13 @@ func TestImageCatalogIncludesMediagoRoutes(t *testing.T) {
 		family  string
 		version string
 		model   string
+		adapter string
 		refs    bool
 	}{
-		{RouteMediagoSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "doubao-seedream-5-0-lite", false},
-		{RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, "gpt-image-2", true},
-		{RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "gemini-3.1-flash-image", true},
-		{RouteMediagoNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, "gemini-2.5-flash-image", true},
+		{RouteMediagoSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "doubao-seedream-5-0-lite", AdapterOpenRouterChatImage, false},
+		{RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, "gpt-image-2", AdapterOpenRouterImages, true},
+		{RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "gemini-3.1-flash-image", AdapterOpenRouterChatImage, true},
+		{RouteMediagoNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, "gemini-2.5-flash-image", AdapterOpenRouterChatImage, true},
 	}
 
 	for _, tc := range cases {
@@ -153,8 +154,8 @@ func TestImageCatalogIncludesMediagoRoutes(t *testing.T) {
 		if len(route.AuthKeys) != 1 || route.AuthKeys[0] != ProviderMediago {
 			t.Fatalf("route %q auth keys = %#v, want MediaGo key", tc.id, route.AuthKeys)
 		}
-		if route.Adapter != AdapterOpenRouterChatImage {
-			t.Fatalf("route %q adapter = %q, want %q", tc.id, route.Adapter, AdapterOpenRouterChatImage)
+		if route.Adapter != tc.adapter {
+			t.Fatalf("route %q adapter = %q, want %q", tc.id, route.Adapter, tc.adapter)
 		}
 		if route.SupportsReferenceURLs != tc.refs {
 			t.Fatalf("route %q refs = %v, want %v", tc.id, route.SupportsReferenceURLs, tc.refs)
@@ -525,6 +526,14 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 		t.Fatal("dmx gpt image route should support reference images")
 	}
 
+	mediagoGPTImage := mustRoute(t, RouteMediagoGPTImage2)
+	assertHasParams(t, mediagoGPTImage, "aspectRatio", "resolution", "quality", "outputFormat", "moderation", "outputCompression", "n", "background")
+	mediagoGPTImageRatio := mustParam(t, mediagoGPTImage, "aspectRatio")
+	assertHasOptions(t, mediagoGPTImageRatio, "adaptive", "1:1", "3:2", "2:3", "16:9", "9:16")
+	assertComboOutput(t, mediagoGPTImage, "aspectRatio", "resolution", "16:9|2K", "2048x1152")
+	assertComboOutput(t, mediagoGPTImage, "aspectRatio", "resolution", "16:9|4K", "3840x2160")
+	assertComboOutput(t, mediagoGPTImage, "aspectRatio", "resolution", "9:16|4K", "2160x3840")
+
 	dmxSeedream := mustRoute(t, RouteDMXSeedream5Lite)
 	assertHasOptions(t, mustParam(t, dmxSeedream, "aspectRatio"), "3:4")
 
@@ -614,7 +623,8 @@ func TestRouteParamsDefaultToLowestCostOptions(t *testing.T) {
 	dmxGPTImage := mustRoute(t, RouteDMXGPTImage2)
 	assertParamDefault(t, dmxGPTImage, "aspectRatio", "1:1")
 	assertParamDefault(t, dmxGPTImage, "resolution", "1K")
-	assertParamDefault(t, dmxGPTImage, "quality", "low")
+	assertParamDefault(t, dmxGPTImage, "quality", "auto")
+	assertParamDefault(t, dmxGPTImage, "outputFormat", "png")
 	assertParamDefault(t, dmxGPTImage, "n", float64(1))
 
 	dmxNanoBanana := mustRoute(t, RouteDMXNanoBanana31)
@@ -686,6 +696,20 @@ func assertLacksOption(t *testing.T, param ParamSpec, value string) {
 			t.Fatalf("param %q should not expose option %q", param.Name, value)
 		}
 	}
+}
+
+func assertComboOutput(t *testing.T, route ModelRoute, firstParam, secondParam, key, want string) {
+	t.Helper()
+
+	for _, combo := range route.Combos {
+		if len(combo.Params) == 2 && combo.Params[0] == firstParam && combo.Params[1] == secondParam {
+			if got := combo.Outputs[key]; got != want {
+				t.Fatalf("route %q combo output %q = %#v, want %#v", route.ID, key, got, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("route %q lacks combo for %s + %s", route.ID, firstParam, secondParam)
 }
 
 func assertParamDefault(t *testing.T, route ModelRoute, name string, want any) {

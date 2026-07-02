@@ -304,6 +304,10 @@ export function jimengSeedreamParams(): GenerationParam[] {
 }
 
 export function officialGPTImageParams(): GenerationParam[] {
+	return gptImageParamsWithBackground();
+}
+
+function gptImageParamsWithBackground(): GenerationParam[] {
 	return [
 		...gptImageParams(),
 		selectParam("background", "背景", "auto", [
@@ -315,6 +319,10 @@ export function officialGPTImageParams(): GenerationParam[] {
 
 export function dmxGPTImageParams(): GenerationParam[] {
 	return gptImageParams();
+}
+
+export function mediagoGPTImageParams(): GenerationParam[] {
+	return gptImageParamsWithBackground();
 }
 
 function gptImageParams(): GenerationParam[] {
@@ -332,13 +340,13 @@ function gptImageParams(): GenerationParam[] {
 			{ label: "2K", value: "2K" },
 			{ label: "4K", value: "4K" },
 		]),
-		selectParam("quality", "质量", "low", [
+		selectParam("quality", "质量", "auto", [
 			{ label: "自动", value: "auto" },
 			{ label: "高", value: "high" },
 			{ label: "中", value: "medium" },
 			{ label: "低", value: "low" },
 		]),
-		selectParam("outputFormat", "输出格式", "jpeg", [
+		selectParam("outputFormat", "输出格式", "png", [
 			{ label: "PNG", value: "png" },
 			{ label: "JPEG", value: "jpeg" },
 			{ label: "WEBP", value: "webp" },
@@ -347,27 +355,49 @@ function gptImageParams(): GenerationParam[] {
 			{ label: "自动", value: "auto" },
 			{ label: "低", value: "low" },
 		]),
-		numberParam("outputCompression", "输出压缩", 100, 0, 100),
+		optionalNumberParam("outputCompression", "输出压缩", 0, 100),
 		numberParam("n", "图像数量", 1, 1, 10),
 	];
 }
 
 export function gptImageParamCombos(): GenerationParamCombo[] {
-	return [
-		{
-			params: ["aspectRatio", "resolution"],
-			allowed: [
-				["adaptive", "1K"],
-				["1:1", "1K"],
-				["1:1", "2K"],
-				["3:2", "1K"],
-				["2:3", "1K"],
-				["16:9", "2K"],
-				["16:9", "4K"],
-				["9:16", "4K"],
-			],
-		},
+	return [gptImageParamCombo(true)];
+}
+
+export function mediagoGPTImageParamCombos(): GenerationParamCombo[] {
+	return [gptImageParamCombo(true)];
+}
+
+function gptImageParamCombo(includeAdaptive: boolean): GenerationParamCombo {
+	const allowed = [
+		["1:1", "1K"],
+		["1:1", "2K"],
+		["3:2", "1K"],
+		["2:3", "1K"],
+		["16:9", "2K"],
+		["16:9", "4K"],
+		["9:16", "4K"],
 	];
+	if (includeAdaptive) {
+		allowed.unshift(["adaptive", "1K"]);
+	}
+	const outputs: Record<string, string> = {
+		"1:1|1K": "1024x1024",
+		"1:1|2K": "2048x2048",
+		"3:2|1K": "1536x1024",
+		"2:3|1K": "1024x1536",
+		"16:9|2K": "2048x1152",
+		"16:9|4K": "3840x2160",
+		"9:16|4K": "2160x3840",
+	};
+	if (includeAdaptive) {
+		outputs["adaptive|1K"] = "auto";
+	}
+	return {
+		params: ["aspectRatio", "resolution"],
+		allowed,
+		outputs,
+	};
 }
 
 export function nanoParams(): GenerationParam[] {

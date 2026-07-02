@@ -25,6 +25,17 @@ const param = (routeId: string, name: string) => {
 	return value;
 };
 
+const gptImageComboOutputs = {
+	"adaptive|1K": "auto",
+	"1:1|1K": "1024x1024",
+	"1:1|2K": "2048x2048",
+	"3:2|1K": "1536x1024",
+	"2:3|1K": "1024x1536",
+	"16:9|2K": "2048x1152",
+	"16:9|4K": "3840x2160",
+	"9:16|4K": "2160x3840",
+};
+
 describe("fallback generation catalog params", () => {
 	it("uses canonical image params", () => {
 		const seedream = routeParams("dmx.seedream-5-lite");
@@ -108,6 +119,33 @@ describe("fallback generation catalog params", () => {
 					["16:9", "4K"],
 					["9:16", "4K"],
 				],
+				outputs: gptImageComboOutputs,
+			},
+		]);
+		expect(routeParams("mediago.gpt-image-2").map((item) => item.name)).toEqual([
+			"aspectRatio",
+			"resolution",
+			"quality",
+			"outputFormat",
+			"moderation",
+			"outputCompression",
+			"n",
+			"background",
+		]);
+		expect(routeCombos("mediago.gpt-image-2")).toEqual([
+			{
+				params: ["aspectRatio", "resolution"],
+				allowed: [
+					["adaptive", "1K"],
+					["1:1", "1K"],
+					["1:1", "2K"],
+					["3:2", "1K"],
+					["2:3", "1K"],
+					["16:9", "2K"],
+					["16:9", "4K"],
+					["9:16", "4K"],
+				],
+				outputs: gptImageComboOutputs,
 			},
 		]);
 		expect(param("dmx.gemini-3.1-flash-image-preview", "resolution").default).toBe("1K");

@@ -1,6 +1,10 @@
 package generation
 
 func officialGPTImageParams() RouteParamConfig {
+	return gptImageParamsWithBackground()
+}
+
+func gptImageParamsWithBackground() RouteParamConfig {
 	base := gptImageParams()
 	params := append(cloneRouteParams(base.CanonicalParams), selectRouteParam(ParamBackground, "auto", []ParamOption{
 		{Label: "Auto", Value: "auto"},
@@ -13,6 +17,10 @@ func officialGPTImageParams() RouteParamConfig {
 
 func dmxGPTImageParams() RouteParamConfig {
 	return gptImageParams()
+}
+
+func mediagoGPTImageParams() RouteParamConfig {
+	return gptImageParamsWithBackground()
 }
 
 func gptImageParams() RouteParamConfig {
@@ -30,13 +38,13 @@ func gptImageParams() RouteParamConfig {
 			{Label: "2K", Value: "2K"},
 			{Label: "4K", Value: "4K"},
 		}),
-		selectRouteParam(ParamQuality, "low", []ParamOption{
+		selectRouteParam(ParamQuality, "auto", []ParamOption{
 			{Label: "Auto", Value: "auto"},
 			{Label: "High", Value: "high"},
 			{Label: "Medium", Value: "medium"},
 			{Label: "Low", Value: "low"},
 		}),
-		selectRouteParam(ParamOutputFormat, "jpeg", []ParamOption{
+		selectRouteParam(ParamOutputFormat, "png", []ParamOption{
 			{Label: "PNG", Value: "png"},
 			{Label: "JPEG", Value: "jpeg"},
 			{Label: "WEBP", Value: "webp"},
@@ -45,7 +53,7 @@ func gptImageParams() RouteParamConfig {
 			{Label: "Auto", Value: "auto"},
 			{Label: "Low", Value: "low"},
 		}),
-		withRouteHelp(numberRouteParam(ParamOutputCompression, 100, 0, 100), "Only applies to JPEG and WEBP output."),
+		withRouteHelp(optionalNumberRouteParam(ParamOutputCompression, 0, 100), "Only applies to JPEG and WEBP output."),
 		numberRouteParam(ParamN, 1, 1, 10),
 	}
 	return routeParamConfig(params, ParamTranslation{
@@ -73,4 +81,36 @@ func gptImageParams() RouteParamConfig {
 			},
 		},
 	})
+}
+
+func gptImageSizeParamCombo(includeAdaptive bool) ParamCombo {
+	allowed := [][]string{
+		{"1:1", "1K"},
+		{"1:1", "2K"},
+		{"3:2", "1K"},
+		{"2:3", "1K"},
+		{"16:9", "2K"},
+		{"16:9", "4K"},
+		{"9:16", "4K"},
+	}
+	if includeAdaptive {
+		allowed = append([][]string{{"adaptive", "1K"}}, allowed...)
+	}
+	outputs := map[string]string{
+		"1:1|1K":  "1024x1024",
+		"1:1|2K":  "2048x2048",
+		"3:2|1K":  "1536x1024",
+		"2:3|1K":  "1024x1536",
+		"16:9|2K": "2048x1152",
+		"16:9|4K": "3840x2160",
+		"9:16|4K": "2160x3840",
+	}
+	if includeAdaptive {
+		outputs["adaptive|1K"] = "auto"
+	}
+	return ParamCombo{
+		Params:  []string{string(ParamAspectRatio), string(ParamResolution)},
+		Allowed: allowed,
+		Outputs: outputs,
+	}
 }
