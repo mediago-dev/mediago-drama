@@ -2,7 +2,7 @@ host: 127.0.0.1
 port: 8080
 # log_path: ""       # Leave empty to use <workspaceDir>/.mediago-drama/logs/server.log
 # log_level: info    # info by default; MEDIAGO_LOG_LEVEL=debug enables diagnostic traces.
-# workspace_dir: ""  # Leave empty to use the app data workspace
+workspace_dir: "~/mediago-drama-dev/workspace" # Dev workspace, isolated from the packaged app's data. Leave empty to use the app data workspace.
 # acp_command: codex-acp
 # model_platforms: ["mediago"] # MEDIAGO_MODEL_PLATFORM=mediago,openrouter,dmxapi overrides this.
 # mediago_base_url: ""         # MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL overrides this.

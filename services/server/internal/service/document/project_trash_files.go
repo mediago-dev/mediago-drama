@@ -15,14 +15,22 @@ import (
 
 var renameDirectory = os.Rename
 
+// projectTrashRoot returns the directory that holds trashed project directories.
+// Permanent deletion only removes paths strictly inside this root.
+func projectTrashRoot(workspaceDir string) string {
+	return filepath.Join(shared.ProjectMetadataDir(workspaceDir), "trash", "projects")
+}
+
 // projectDirExists reports whether the given project directory currently exists on disk.
 // A project whose directory was moved or deleted externally must still be deletable, so
 // callers use this to decide whether there are any files to relocate.
 func projectDirExists(dir string) bool {
-	dir = shared.ResolveWorkspaceDir(dir)
-	if dir == "" {
+	// ResolveWorkspaceDir maps an empty path to the workspace root, which always
+	// exists — an unset project directory must read as missing, not as the root.
+	if strings.TrimSpace(dir) == "" {
 		return false
 	}
+	dir = shared.ResolveWorkspaceDir(dir)
 	info, err := os.Stat(dir)
 	if err != nil {
 		return false
@@ -31,17 +39,22 @@ func projectDirExists(dir string) bool {
 }
 
 func moveProjectDirToTrash(workspaceDir string, projectDir string, projectID string, projectName string, now string) (string, error) {
+	// Validate raw inputs before resolving: ResolveWorkspaceDir maps an empty
+	// path to the workspace root, which would defeat these required checks.
+	if strings.TrimSpace(workspaceDir) == "" {
+		return "", fmt.Errorf("workspaceDir is required")
+	}
+	if strings.TrimSpace(projectDir) == "" {
+		return "", fmt.Errorf("projectDir is required")
+	}
 	workspaceDir = shared.ResolveWorkspaceDir(workspaceDir)
 	projectDir = shared.ResolveWorkspaceDir(projectDir)
 	projectID = strings.TrimSpace(projectID)
-	if workspaceDir == "" {
-		return "", fmt.Errorf("workspaceDir is required")
-	}
-	if projectDir == "" {
-		return "", fmt.Errorf("projectDir is required")
-	}
 	if projectID == "" {
 		return "", fmt.Errorf("projectID is required")
+	}
+	if projectDir == workspaceDir {
+		return "", fmt.Errorf("refusing to trash the workspace root: %s", projectDir)
 	}
 	info, err := os.Stat(projectDir)
 	if err != nil {
@@ -51,7 +64,7 @@ func moveProjectDirToTrash(workspaceDir string, projectDir string, projectID str
 		return "", fmt.Errorf("projectDir is not a directory: %s", projectDir)
 	}
 
-	trashRoot := filepath.Join(shared.ProjectMetadataDir(workspaceDir), "trash", "projects")
+	trashRoot := projectTrashRoot(workspaceDir)
 	stamp := compactTrashTimestamp(now)
 	name := strings.Join([]string{stamp, projectID, safeTrashProjectName(projectName)}, "-")
 	target := uniqueFilesystemPath(filepath.Join(trashRoot, name))
@@ -68,14 +81,17 @@ func moveProjectDirToTrash(workspaceDir string, projectDir string, projectID str
 }
 
 func restoreProjectDirFromTrash(trashProjectDir string, originalProjectDir string, now string) (string, error) {
-	trashProjectDir = shared.ResolveWorkspaceDir(trashProjectDir)
-	originalProjectDir = shared.ResolveWorkspaceDir(originalProjectDir)
-	if trashProjectDir == "" {
+	// Validate raw inputs before resolving: an empty trash path would otherwise
+	// resolve to the workspace root and the restore would relocate the entire
+	// workspace (deleting it via the copy-then-remove fallback).
+	if strings.TrimSpace(trashProjectDir) == "" {
 		return "", fmt.Errorf("trashProjectDir is required")
 	}
-	if originalProjectDir == "" {
+	if strings.TrimSpace(originalProjectDir) == "" {
 		return "", fmt.Errorf("originalProjectDir is required")
 	}
+	trashProjectDir = shared.ResolveWorkspaceDir(trashProjectDir)
+	originalProjectDir = shared.ResolveWorkspaceDir(originalProjectDir)
 	info, err := os.Stat(trashProjectDir)
 	if err != nil {
 		return "", fmt.Errorf("checking trashed project directory: %w", err)
@@ -101,10 +117,15 @@ func restoreProjectDirFromTrash(trashProjectDir string, originalProjectDir strin
 }
 
 func moveDirectory(source string, target string) error {
+	if strings.TrimSpace(source) == "" || strings.TrimSpace(target) == "" {
+		return fmt.Errorf("source and target are required")
+	}
 	source = shared.ResolveWorkspaceDir(source)
 	target = shared.ResolveWorkspaceDir(target)
-	if source == "" || target == "" {
-		return fmt.Errorf("source and target are required")
+	// A target inside the source would survive the copy only to be destroyed by
+	// the RemoveAll fallback below, taking the whole source tree with it.
+	if isPathWithin(target, source) || isPathWithin(source, target) {
+		return fmt.Errorf("cannot move directory %s into %s", source, target)
 	}
 	if err := renameDirectory(source, target); err == nil {
 		return nil

@@ -213,7 +213,12 @@ func (store *Service) trashProject(projectID string) (workspaceProjectRecord, bo
 	}
 
 	now := timestamp.NowRFC3339Nano()
-	originalDir := shared.ResolveWorkspaceDir(project.ProjectDir)
+	// Resolve only a non-empty storage path: ResolveWorkspaceDir maps an empty
+	// path to the workspace root, which must never be treated as a project dir.
+	originalDir := ""
+	if strings.TrimSpace(project.ProjectDir) != "" {
+		originalDir = shared.ResolveWorkspaceDir(project.ProjectDir)
+	}
 
 	// The project directory may have been moved or deleted outside the app. In that case
 	// there are no files to relocate, so trash the record directly instead of failing.
@@ -403,8 +408,13 @@ func (store *Service) permanentlyDeleteProject(projectID string) (workspaceProje
 		return workspaceProjectRecord{}, false, ErrProjectNotInTrash
 	}
 	if strings.TrimSpace(project.TrashProjectDir) != "" {
-		if err := os.RemoveAll(project.TrashProjectDir); err != nil {
-			return workspaceProjectRecord{}, false, fmt.Errorf("removing trashed project directory %s: %w", project.TrashProjectDir, err)
+		trashDir := shared.ResolveWorkspaceDir(project.TrashProjectDir)
+		trashRoot := projectTrashRoot(store.dir)
+		if trashDir == trashRoot || !isPathWithin(trashDir, trashRoot) {
+			return workspaceProjectRecord{}, false, fmt.Errorf("refusing to delete trashed project directory outside the trash root: %s", trashDir)
+		}
+		if err := os.RemoveAll(trashDir); err != nil {
+			return workspaceProjectRecord{}, false, fmt.Errorf("removing trashed project directory %s: %w", trashDir, err)
 		}
 	}
 	deleted, err := store.workspace.PermanentlyDeleteProject(projectID)

@@ -425,6 +425,90 @@ func TestWorkspaceStateServiceTrashesProjectWithMissingDirectory(t *testing.T) {
 	}
 }
 
+func TestWorkspaceStateServiceRestoreWithoutTrashDirLeavesDefaultWorkspaceIntact(t *testing.T) {
+	// A project trashed without files stores an empty trash path. Restoring it
+	// must not resolve that empty path to the default app workspace: doing so
+	// would move (and effectively delete) the real user workspace.
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
+	t.Setenv("APPDATA", filepath.Join(homeDir, "AppData", "Roaming"))
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir() error = %v", err)
+	}
+	sentinelPath := filepath.Join(configDir, "mediago-drama", "workspace", "projects", "project-real", "keep.txt")
+	if err := os.MkdirAll(filepath.Dir(sentinelPath), 0o755); err != nil {
+		t.Fatalf("creating default workspace fixture: %v", err)
+	}
+	if err := os.WriteFile(sentinelPath, []byte("keep"), 0o644); err != nil {
+		t.Fatalf("writing default workspace sentinel: %v", err)
+	}
+
+	store := newWorkspaceStateService(t.TempDir())
+	if store.initErr != nil {
+		t.Fatalf("initializing workspace store: %v", store.initErr)
+	}
+	projectID := "project-missing-restore"
+	projectDir := requireTestProject(t, store, projectID)
+	if err := os.RemoveAll(projectDir); err != nil {
+		t.Fatalf("removing project dir: %v", err)
+	}
+	if _, ok, err := store.DeleteProject(projectID); err != nil || !ok {
+		t.Fatalf("DeleteProject(missing dir) ok=%v err=%v, want ok", ok, err)
+	}
+
+	restored, ok, err := store.RestoreProject(projectID)
+	if err != nil || !ok {
+		t.Fatalf("RestoreProject(missing dir) ok=%v err=%v, want ok", ok, err)
+	}
+	if restored.Status != "active" {
+		t.Fatalf("restored project = %#v, want active", restored)
+	}
+	if got, err := os.ReadFile(sentinelPath); err != nil || string(got) != "keep" {
+		t.Fatalf("default workspace sentinel = %q err=%v, want untouched", got, err)
+	}
+}
+
+func TestWorkspaceStateServicePermanentDeleteRefusesTrashDirOutsideTrashRoot(t *testing.T) {
+	store := newWorkspaceStateService(t.TempDir())
+	if store.initErr != nil {
+		t.Fatalf("initializing workspace store: %v", store.initErr)
+	}
+	projectID := "project-bad-trash-dir"
+	projectDir := requireTestProject(t, store, projectID)
+
+	outsideDir := t.TempDir()
+	sentinelPath := filepath.Join(outsideDir, "keep.txt")
+	if err := os.WriteFile(sentinelPath, []byte("keep"), 0o644); err != nil {
+		t.Fatalf("writing sentinel: %v", err)
+	}
+	// Simulate a corrupted record whose trash path points outside the trash root.
+	if ok, err := store.workspace.TrashProject(projectID, projectDir, outsideDir, "outside", "2026-05-18T00:00:00Z"); err != nil || !ok {
+		t.Fatalf("TrashProject(corrupted) ok=%v err=%v, want ok", ok, err)
+	}
+
+	if _, _, err := store.PermanentlyDeleteProject(projectID); err == nil {
+		t.Fatal("expected permanent delete to refuse a trash dir outside the trash root")
+	}
+	if got, err := os.ReadFile(sentinelPath); err != nil || string(got) != "keep" {
+		t.Fatalf("outside dir sentinel = %q err=%v, want untouched", got, err)
+	}
+}
+
+func TestMoveDirectoryRejectsNestedAndEmptyPaths(t *testing.T) {
+	source := t.TempDir()
+	if err := moveDirectory(source, filepath.Join(source, "child")); err == nil {
+		t.Fatal("expected moving a directory into its own child to fail")
+	}
+	if err := moveDirectory("", filepath.Join(source, "target")); err == nil {
+		t.Fatal("expected moving an empty source to fail")
+	}
+	if err := moveDirectory(source, ""); err == nil {
+		t.Fatal("expected moving to an empty target to fail")
+	}
+}
+
 func TestWorkspaceStateServiceWritesReadableFilenamesAndReconcilesMarkdownFiles(t *testing.T) {
 	workspaceDir := t.TempDir()
 	store := newWorkspaceStateService(workspaceDir)
