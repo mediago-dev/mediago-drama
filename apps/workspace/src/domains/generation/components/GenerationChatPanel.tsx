@@ -11,7 +11,7 @@ import {
 	Save,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PhotoProvider, PhotoView } from "react-photo-view";
 import "react-photo-view/dist/react-photo-view.css";
 import { Virtuoso } from "react-virtuoso";
@@ -63,16 +63,23 @@ export const GenerationChatPanel: React.FC<{
 	savingKeys = [],
 	selectedGeneratedAssetKey,
 }) => {
+	const listIdentity = useMemo(
+		() => entries.map((entry) => entry.id).join("|") || "empty",
+		[entries],
+	);
+
 	return (
 		<section className="flex min-h-0 flex-1 flex-col bg-ide-editor">
 			<Virtuoso
-				className="min-h-0 flex-1"
+				key={listIdentity}
+				className="h-full min-h-0 flex-1"
 				data={entries}
 				alignToBottom
-				computeItemKey={(_, entry) => entry.id}
+				computeItemKey={(index, entry) => entry?.id ?? `generation-entry:${index}`}
 				followOutput={(atBottom) => (atBottom ? "smooth" : false)}
 				initialItemCount={Math.min(entries.length, 20)}
 				increaseViewportBy={{ top: 900, bottom: 900 }}
+				skipAnimationFrameInResizeObserver
 				itemContent={(index, entry) => (
 					<div
 						className={cn(

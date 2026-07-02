@@ -94,6 +94,106 @@ describe("GlobalToolboxButton", () => {
 		expect(workspace).toHaveAttribute("data-scope-id", "agent");
 	});
 
+	it("waits for every toolbox kind before auto-selecting the latest conversation", async () => {
+		const imageConversations = deferred<{
+			conversations: Array<ReturnType<typeof generationConversation>>;
+		}>();
+		vi.mocked(getGenerationConversations).mockImplementation((kind) => {
+			if (kind === "video") {
+				return Promise.resolve({
+					conversations: [
+						generationConversation(
+							"video-old",
+							"video",
+							"未命名会话",
+							"studio",
+							"2026-06-06T12:00:00Z",
+						),
+					],
+				});
+			}
+			if (kind === "image") return imageConversations.promise;
+			return Promise.resolve({ conversations: [] });
+		});
+
+		renderGlobalToolboxButton();
+
+		fireEvent.click(screen.getByRole("button", { name: "打开工具箱" }));
+
+		await waitFor(() =>
+			expect(getGenerationConversations).toHaveBeenCalledWith("video", "studio", {
+				allScopes: true,
+			}),
+		);
+		expect(screen.queryByTestId("global-generation-workspace")).not.toBeInTheDocument();
+		expect(screen.getByText("从历史会话选择或新建会话。")).toBeTruthy();
+
+		imageConversations.resolve({
+			conversations: [
+				generationConversation(
+					"project-image",
+					"image",
+					"测试 · 图片",
+					"agent",
+					"2026-06-06T13:00:00Z",
+				),
+			],
+		});
+
+		const workspace = await screen.findByTestId("global-generation-workspace");
+		expect(workspace).toHaveAttribute("data-conversation-id", "project-image");
+		expect(workspace).toHaveAttribute("data-kind", "image");
+		expect(workspace).toHaveTextContent("测试 · 图片");
+	});
+
+	it("auto-selects the latest conversation again after reopening", async () => {
+		vi.mocked(getGenerationConversations).mockImplementation(async (kind) => ({
+			conversations:
+				kind === "image"
+					? [
+							generationConversation(
+								"project-image",
+								"image",
+								"测试 · 图片",
+								"agent",
+								"2026-06-06T13:00:00Z",
+							),
+						]
+					: kind === "video"
+						? [
+								generationConversation(
+									"video-old",
+									"video",
+									"未命名会话",
+									"studio",
+									"2026-06-06T12:00:00Z",
+								),
+							]
+						: [],
+		}));
+
+		renderGlobalToolboxButton();
+
+		fireEvent.click(screen.getByRole("button", { name: "打开工具箱" }));
+		let workspace = await screen.findByTestId("global-generation-workspace");
+		expect(workspace).toHaveAttribute("data-conversation-id", "project-image");
+
+		fireEvent.click(screen.getByRole("button", { name: "历史会话" }));
+		fireEvent.click(await screen.findByRole("button", { name: "未命名会话" }));
+		workspace = await screen.findByTestId("global-generation-workspace");
+		expect(workspace).toHaveAttribute("data-conversation-id", "video-old");
+
+		fireEvent.click(screen.getByRole("button", { name: "关闭工具箱" }));
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog", { name: "工具箱" })).not.toBeInTheDocument(),
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "打开工具箱" }));
+		workspace = await screen.findByTestId("global-generation-workspace");
+		expect(workspace).toHaveAttribute("data-conversation-id", "project-image");
+		expect(workspace).toHaveTextContent("测试 · 图片");
+	});
+
 	it("creates a studio conversation from the drawer", async () => {
 		vi.mocked(getGenerationConversations).mockImplementation(async (kind) => ({
 			conversations:
@@ -189,3 +289,13 @@ const generationConversation = (
 	title,
 	updatedAt,
 });
+
+const deferred = <T,>() => {
+	let resolve: (value: T) => void = () => {};
+	let reject: (reason?: unknown) => void = () => {};
+	const promise = new Promise<T>((promiseResolve, promiseReject) => {
+		resolve = promiseResolve;
+		reject = promiseReject;
+	});
+	return { promise, reject, resolve };
+};

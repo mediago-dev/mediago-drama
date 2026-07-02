@@ -97,7 +97,9 @@ const GlobalToolboxDrawer: React.FC<{
 	const [activeConversation, setActiveConversation] = useState<GenerationConversation | null>(null);
 	const [historyOpen, setHistoryOpen] = useState(false);
 	const [isCreatingConversation, setIsCreatingConversation] = useState(false);
+	const [selectionMode, setSelectionMode] = useState<"auto" | "manual">("auto");
 	const sheetContentRef = useRef<HTMLDivElement>(null);
+	const wasOpenRef = useRef(open);
 	const toast = useToast();
 	const { mutate } = useSWRConfig();
 
@@ -146,6 +148,19 @@ const GlobalToolboxDrawer: React.FC<{
 		audioConversations.isLoading;
 
 	useEffect(() => {
+		const wasOpen = wasOpenRef.current;
+		wasOpenRef.current = open;
+		if (!open) {
+			if (wasOpen) setSelectionMode("auto");
+			return;
+		}
+		if (wasOpen) return;
+
+		setSelectionMode("auto");
+		setActiveConversation(null);
+	}, [open]);
+
+	useEffect(() => {
 		if (!open) return;
 		if (activeConversation) {
 			if (
@@ -155,17 +170,26 @@ const GlobalToolboxDrawer: React.FC<{
 						conversation.id === activeConversation.id,
 				)
 			) {
+				if (selectionMode === "manual") return;
+				if (isLoadingConversations) return;
+				const latestConversation = allConversations[0] ?? null;
+				if (
+					latestConversation &&
+					!sameGenerationConversation(latestConversation, activeConversation)
+				) {
+					setActiveConversation(latestConversation);
+				}
 				return;
 			}
 			if (isLoadingConversations) return;
+			setSelectionMode("auto");
+			setActiveConversation(null);
 			return;
 		}
-		if (allConversations[0]) {
-			setActiveConversation(allConversations[0]);
-		} else if (!isLoadingConversations) {
-			setActiveConversation(null);
-		}
-	}, [activeConversation, allConversations, isLoadingConversations, open]);
+		if (isLoadingConversations) return;
+		setSelectionMode("auto");
+		setActiveConversation(allConversations[0] ?? null);
+	}, [activeConversation, allConversations, isLoadingConversations, open, selectionMode]);
 
 	const openCreateDialog = async () => {
 		const result = await openGenerationConversationCreateDialog({
@@ -200,6 +224,7 @@ const GlobalToolboxDrawer: React.FC<{
 						upsertGenerationConversation(current, conversation),
 					{ revalidate: false },
 				);
+				setSelectionMode("manual");
 				setActiveConversation(conversation);
 			} catch (err) {
 				const message = err instanceof Error ? err.message : "创建会话失败。";
@@ -273,6 +298,7 @@ const GlobalToolboxDrawer: React.FC<{
 													selectedConversation={selectedConversation}
 													state={conversationStateByKind[group.kind]}
 													onSelectConversation={(conversation) => {
+														setSelectionMode("manual");
 														setActiveConversation(conversation);
 														setHistoryOpen(false);
 													}}
@@ -486,6 +512,9 @@ const toolboxConversationTime = (value: string) => {
 		minute: "2-digit",
 	});
 };
+
+const sameGenerationConversation = (left: GenerationConversation, right: GenerationConversation) =>
+	left.kind === right.kind && left.id === right.id;
 
 const compareGenerationConversationsByUpdatedAt = (
 	left: GenerationConversation,
