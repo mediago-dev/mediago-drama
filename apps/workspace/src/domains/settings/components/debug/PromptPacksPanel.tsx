@@ -25,9 +25,7 @@ import {
 	setPromptPackEnabled,
 	uninstallPromptPack,
 } from "@/domains/settings/api/packs";
-import { skillsKey } from "@/domains/settings/api/skills";
-import { promptCategoriesKey } from "@/domains/generation/api/prompt-categories";
-import { promptPresetsKey } from "@/domains/generation/api/prompt-presets";
+import { isPromptPackContentCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -77,17 +75,7 @@ export const PromptPacksPanel: React.FC = () => {
 	const currentPackId = useMemo(() => currentPromptPackId(packs), [packs]);
 
 	const refreshPromptData = async () => {
-		await Promise.all([
-			mutatePacks(),
-			mutate(
-				(key) => typeof key === "string" && (key === skillsKey || key.startsWith(`${skillsKey}/`)),
-			),
-			mutate(
-				(key) =>
-					typeof key === "string" &&
-					(key.startsWith(promptPresetsKey) || key === promptCategoriesKey),
-			),
-		]);
+		await Promise.all([mutatePacks(), mutate(isPromptPackContentCacheKey)]);
 	};
 
 	const exportPack = async (pack: PromptPack) => {

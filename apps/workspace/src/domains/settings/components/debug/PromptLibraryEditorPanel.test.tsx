@@ -10,6 +10,7 @@ import {
 	createPromptPreset,
 	deletePromptPreset,
 	listPromptPresets,
+	resetPromptPreset,
 } from "@/domains/generation/api/prompt-presets";
 import { ConfirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { PromptPackActionsSlotProvider } from "./PromptPackActionsSlot";
@@ -160,6 +161,28 @@ describe("PromptLibraryEditorPanel", () => {
 		fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
 
 		await waitFor(() => expect(deletePromptPreset).toHaveBeenCalledWith("custom-style"));
+	});
+
+	it("confirms before resetting a pack prompt preset", async () => {
+		vi.mocked(resetPromptPreset).mockResolvedValue({
+			id: "anime-2d",
+			name: "2D动漫",
+			category: "style",
+			prompt: "default 2D anime style",
+			source: "pack",
+			builtin: true,
+		});
+
+		renderPanel();
+
+		await screen.findByText("2D动漫");
+		fireEvent.click(screen.getByRole("button", { name: "恢复默认" }));
+
+		expect(resetPromptPreset).not.toHaveBeenCalled();
+		const dialog = await screen.findByRole("alertdialog", { name: "恢复提示词默认？" });
+		fireEvent.click(within(dialog).getByRole("button", { name: "恢复默认" }));
+
+		await waitFor(() => expect(resetPromptPreset).toHaveBeenCalledWith("anime-2d"));
 	});
 });
 

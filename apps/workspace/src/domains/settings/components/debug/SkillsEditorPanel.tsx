@@ -1,13 +1,14 @@
-import { BookOpenCheck, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { BookOpenCheck, Loader2, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import {
 	createSkill,
 	deleteSkill,
 	getSkill,
 	listSkills,
+	resetSkill,
 	skillsKey,
 	updateSkill,
 } from "@/domains/settings/api/skills";
@@ -28,11 +29,13 @@ import { orderSkillsForPrimaryFlows } from "@/domains/settings/lib/skill-order";
 import { useToast } from "@/hooks/useToast";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
+import { isSkillCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
 import { PromptPackActions } from "./PromptPackActionsSlot";
 import { SettingsMarkdownEditor, SettingsMarkdownPreview } from "./SettingsMarkdownEditor";
 
 export const SkillsEditorPanel: React.FC = () => {
 	const toast = useToast();
+	const { mutate: mutateGlobal } = useSWRConfig();
 	const { data: skills = [], isLoading, mutate: mutateSkills } = useSWR(skillsKey, listSkills);
 	const orderedSkills = useMemo(() => orderSkillsForPrimaryFlows(skills), [skills]);
 	const [selectedName, setSelectedName] = useState("");
@@ -51,6 +54,7 @@ export const SkillsEditorPanel: React.FC = () => {
 	const [error, setError] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const [isResetting, setIsResetting] = useState(false);
 	const [isCreating, setIsCreating] = useState(false);
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
 	const [newSkillName, setNewSkillName] = useState("");
@@ -76,6 +80,10 @@ export const SkillsEditorPanel: React.FC = () => {
 
 	const selectedEntry = selectedSkill ?? selectedMeta;
 	const canDelete = Boolean(selectedEntry);
+	const canReset = Boolean(
+		selectedSkill && (selectedEntry?.source !== "user" || selectedEntry?.overridden),
+	);
+	const refreshSkillCaches = () => mutateGlobal(isSkillCacheKey);
 	const cancelCreateSkill = () => {
 		setIsCreating(false);
 		setNewSkillName("");
@@ -105,7 +113,7 @@ export const SkillsEditorPanel: React.FC = () => {
 		try {
 			const saved = await updateSkill(selectedSkill.name, draft);
 			await mutateSkill(saved, false);
-			await mutateSkills();
+			await refreshSkillCaches();
 			const parts = splitSkillMarkdown(saved.content);
 			setFrontmatterDraft(parts.frontmatter);
 			setBodyDraft(parts.body);
@@ -127,9 +135,8 @@ export const SkillsEditorPanel: React.FC = () => {
 		setCreateError("");
 		try {
 			const created = await createSkill(name, newSkillTemplate(name));
-			await mutateSkills();
+			await refreshSkillCaches();
 			setSelectedName(created.name);
-			await mutateSkill(created, false);
 			const parts = splitSkillMarkdown(created.content);
 			setFrontmatterDraft(parts.frontmatter);
 			setBodyDraft(parts.body);
@@ -154,6 +161,7 @@ export const SkillsEditorPanel: React.FC = () => {
 			await deleteSkill(selectedSkill.name);
 			const nextSkills = skills.filter((skill) => skill.name !== selectedSkill.name);
 			await mutateSkills(nextSkills, false);
+			await refreshSkillCaches();
 			setSelectedName(nextSkills[0]?.name ?? "");
 			toast.success("Skill 已删除");
 			return true;
@@ -181,6 +189,42 @@ export const SkillsEditorPanel: React.FC = () => {
 		});
 	};
 
+	const resetToDefault = async () => {
+		if (!selectedSkill || !canReset) return false;
+		setIsResetting(true);
+		setError("");
+		try {
+			const reset = await resetSkill(selectedSkill.name);
+			await mutateSkill(reset, false);
+			await refreshSkillCaches();
+			const parts = splitSkillMarkdown(reset.content);
+			setFrontmatterDraft(parts.frontmatter);
+			setBodyDraft(parts.body);
+			setEditDialogOpen(false);
+			toast.success("Skill 已恢复默认", { description: reset.title || reset.name });
+			return true;
+		} catch (err) {
+			const message = errorMessage(err);
+			setError(message);
+			toast.error("Skill 恢复失败", { description: message });
+			return false;
+		} finally {
+			setIsResetting(false);
+		}
+	};
+
+	const confirmReset = () => {
+		if (!selectedSkill || !canReset) return;
+		void confirmDialog({
+			title: "恢复 Skill 默认？",
+			description: `将“${selectedSkill.title || selectedSkill.name}”恢复为当前提示词包中的默认内容。`,
+			confirmLabel: "恢复默认",
+			confirmIcon: <RotateCcw className="size-4" />,
+			variant: "default",
+			onConfirm: resetToDefault,
+		});
+	};
+
 	return (
 		<>
 			<PromptPackActions>
@@ -199,6 +243,19 @@ export const SkillsEditorPanel: React.FC = () => {
 					<Button type="button" onClick={openEditDialog} disabled={!selectedSkill}>
 						<Pencil className="size-4" />
 						<span>编辑</span>
+					</Button>
+					<Button
+						type="button"
+						variant="outline"
+						onClick={confirmReset}
+						disabled={!selectedSkill || !canReset || isResetting}
+					>
+						{isResetting ? (
+							<Loader2 className="size-4 animate-spin" />
+						) : (
+							<RotateCcw className="size-4" />
+						)}
+						<span>{isResetting ? "恢复中" : "恢复默认"}</span>
 					</Button>
 					<Button
 						type="button"

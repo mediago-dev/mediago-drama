@@ -1,8 +1,8 @@
-import { Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { Loader2, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import {
 	type PromptPresetCategory,
 	type PromptPreset,
@@ -10,6 +10,7 @@ import {
 	deletePromptPreset,
 	listPromptPresets,
 	promptPresetsKey,
+	resetPromptPreset,
 	updatePromptPreset,
 } from "@/domains/generation/api/prompt-presets";
 import {
@@ -40,6 +41,7 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { useToast } from "@/hooks/useToast";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
+import { isPromptLibraryCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
 import { PromptPackActions } from "./PromptPackActionsSlot";
 import { SettingsMarkdownPreview } from "./SettingsMarkdownEditor";
 
@@ -61,6 +63,7 @@ const emptyDraft = (category: PromptPresetCategory): Draft => ({
 
 export const PromptLibraryEditorPanel: React.FC = () => {
 	const toast = useToast();
+	const { mutate: mutateGlobal } = useSWRConfig();
 	const {
 		data: presets = [],
 		isLoading,
@@ -84,6 +87,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 	const [isCategorySaving, setIsCategorySaving] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const [isResetting, setIsResetting] = useState(false);
 	const [error, setError] = useState("");
 
 	const visiblePresets = useMemo(
@@ -126,10 +130,14 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 	}, [selectedPreset]);
 
 	const canDeletePreset = Boolean(selectedPreset);
+	const canResetPreset = Boolean(
+		selectedPreset && (selectedPreset.source !== "user" || selectedPreset.overridden),
+	);
 	const draftValid = Boolean(draft.category.trim() && draft.name.trim() && draft.prompt.trim());
 	const createDraftValid = Boolean(
 		createDraft.category.trim() && createDraft.name.trim() && createDraft.prompt.trim(),
 	);
+	const refreshPromptLibraryCaches = () => mutateGlobal(isPromptLibraryCacheKey);
 
 	const startCreate = () => {
 		const category = categoryFilter === "all" ? stylePromptCategory : categoryFilter;
@@ -173,7 +181,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 				prompt: draft.prompt.trim(),
 			};
 			const saved = await updatePromptPreset(input.id, input);
-			await mutate();
+			await refreshPromptLibraryCaches();
 			setCategoryFilter((current) => categoryFilterAfterSave(current, saved.category));
 			setSelectedId(saved.id);
 			setEditDialogOpen(false);
@@ -199,7 +207,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 				prompt: createDraft.prompt.trim(),
 			};
 			const saved = await createPromptPreset(input);
-			await mutate();
+			await refreshPromptLibraryCaches();
 			setCreateDialogOpen(false);
 			setCategoryFilter((current) => categoryFilterAfterSave(current, saved.category));
 			setSelectedId(saved.id);
@@ -237,6 +245,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		try {
 			const created = await createPromptCategory({ label: category });
 			await mutateCategories();
+			await refreshPromptLibraryCaches();
 			selectCategory(created.id);
 		} catch (err) {
 			setCategoryError(errorMessage(err));
@@ -263,6 +272,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		try {
 			await deletePromptPreset(selectedPreset.id);
 			await mutate();
+			await refreshPromptLibraryCaches();
 			setSelectedId("");
 			toast.success("已删除");
 			return true;
@@ -290,6 +300,41 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		});
 	};
 
+	const resetPreset = async () => {
+		if (!selectedPreset || !canResetPreset) return false;
+		setIsResetting(true);
+		setError("");
+		try {
+			const reset = await resetPromptPreset(selectedPreset.id);
+			await refreshPromptLibraryCaches();
+			setCategoryFilter((current) => categoryFilterAfterSave(current, reset.category));
+			setSelectedId(reset.id);
+			setDraft(draftFromPreset(reset));
+			setEditDialogOpen(false);
+			toast.success("提示词已恢复默认", { description: reset.name });
+			return true;
+		} catch (err) {
+			const message = errorMessage(err);
+			setError(message);
+			toast.error("恢复失败", { description: message });
+			return false;
+		} finally {
+			setIsResetting(false);
+		}
+	};
+
+	const confirmResetPreset = () => {
+		if (!selectedPreset || !canResetPreset) return;
+		void confirmDialog({
+			title: "恢复提示词默认？",
+			description: `将“${selectedPreset.name}”恢复为当前提示词包中的默认内容。`,
+			confirmLabel: "恢复默认",
+			confirmIcon: <RotateCcw className="size-4" />,
+			variant: "default",
+			onConfirm: resetPreset,
+		});
+	};
+
 	return (
 		<>
 			<PromptPackActions>
@@ -312,6 +357,19 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 						<span>{isDeleting ? "处理中" : "删除"}</span>
 					</Button>
 				) : null}
+				<Button
+					type="button"
+					variant="outline"
+					onClick={confirmResetPreset}
+					disabled={!selectedPreset || !canResetPreset || isResetting}
+				>
+					{isResetting ? (
+						<Loader2 className="size-4 animate-spin" />
+					) : (
+						<RotateCcw className="size-4" />
+					)}
+					<span>{isResetting ? "恢复中" : "恢复默认"}</span>
+				</Button>
 				<Button type="button" onClick={openEditDialog} disabled={!selectedPreset}>
 					<Pencil className="size-4" />
 					<span>编辑</span>
