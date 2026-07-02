@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MediaGenerationWorkspaceProps } from "@/domains/generation/components/MediaGenerationWorkspace";
 import { DocumentSectionGenerator } from "@/domains/documents/components/DocumentSectionGenerator";
@@ -293,6 +293,90 @@ describe("DocumentSectionGenerator", () => {
 		]);
 	});
 
+	it("filters audio and video mention references for image generation", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [
+				baseDocument({
+					id: "story-doc",
+					title: "故事",
+					content: section.markdown,
+				}),
+				baseDocument({
+					category: "character",
+					id: "character-doc",
+					title: "沈阔",
+					content: "<!-- section-id: section_character -->\n## 沈阔（普通状态）\n\n23 岁男性。",
+				}),
+			],
+		});
+
+		render(
+			<DocumentSectionGenerator
+				section={section}
+				selectedAssetKeys={[]}
+				selectedGenerationAssets={[
+					selectedGenerationAsset({
+						mediaAssetId: "selected-ref",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔选中图",
+						url: "/api/v1/media-assets/selected-ref/content",
+					}),
+					selectedGenerationAsset({
+						id: "selected-voice",
+						kind: "audio",
+						mediaAssetId: "selected-voice",
+						mimeType: "audio/mpeg",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔音色",
+						url: "/api/v1/media-assets/selected-voice/content",
+					}),
+					selectedGenerationAsset({
+						id: "selected-video",
+						kind: "video",
+						mediaAssetId: "selected-video",
+						mimeType: "video/mp4",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔视频",
+						url: "/api/v1/media-assets/selected-video/content",
+					}),
+				]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		const previewReferences = resolveReferencePreviewAssets(capturedWorkspaceProps);
+		const referenceAssetIds = resolveReferenceAssetIds(capturedWorkspaceProps);
+		const referenceBindings = resolveReferenceBindings(capturedWorkspaceProps);
+
+		expect(capturedWorkspaceProps?.kind).toBe("image");
+		expect(previewReferences).toEqual([
+			expect.objectContaining({
+				kind: "image",
+				url: "/api/v1/media-assets/selected-ref/content",
+			}),
+		]);
+		expect(referenceAssetIds).toEqual(["selected-ref"]);
+		expect(referenceBindings).toEqual([
+			{
+				assetId: "selected-ref",
+				blockId: "section_character",
+				documentId: "character-doc",
+				kind: "section",
+			},
+		]);
+	});
+
 	it("passes selected character audio as video mention reference material", () => {
 		useDocumentsStore.getState().hydrateWorkspaceDocuments({
 			workspaceDir: "/workspace/project-a",
@@ -355,6 +439,203 @@ describe("DocumentSectionGenerator", () => {
 				kind: "section",
 			},
 		]);
+	});
+
+	it("removes a selected character image reference without removing the selected audio", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [
+				baseDocument({
+					id: "story-doc",
+					title: "故事",
+					content: section.markdown,
+				}),
+				baseDocument({
+					category: "character",
+					id: "character-doc",
+					title: "沈阔",
+					content: "<!-- section-id: section_character -->\n## 沈阔（普通状态）\n\n23 岁男性。",
+				}),
+			],
+		});
+
+		render(
+			<DocumentSectionGenerator
+				kind="video"
+				section={section}
+				selectedGenerationAssets={[
+					selectedGenerationAsset({
+						mediaAssetId: "selected-ref",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔选中图",
+						url: "/api/v1/media-assets/selected-ref/content",
+					}),
+					selectedGenerationAsset({
+						id: "selected-voice",
+						kind: "audio",
+						mediaAssetId: "selected-voice",
+						mimeType: "audio/mpeg",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔音色",
+						url: "/api/v1/media-assets/selected-voice/content",
+					}),
+				]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		const initialReferences = resolveReferencePreviewAssets(capturedWorkspaceProps);
+		expect(initialReferences.map((asset) => asset.kind)).toEqual(["image", "audio"]);
+
+		act(() => {
+			capturedWorkspaceProps?.onRemoveReferencePreview?.(initialReferences[0]);
+		});
+
+		const previewReferences = resolveReferencePreviewAssets(capturedWorkspaceProps);
+		const referenceAssetIds = resolveReferenceAssetIds(capturedWorkspaceProps);
+		const referenceBindings = resolveReferenceBindings(capturedWorkspaceProps);
+
+		expect(previewReferences).toEqual([
+			expect.objectContaining({
+				kind: "audio",
+				url: "/api/v1/media-assets/selected-voice/content",
+			}),
+		]);
+		expect(referenceAssetIds).toEqual(["selected-voice"]);
+		expect(referenceBindings).toEqual([
+			{
+				assetId: "selected-voice",
+				blockId: "section_character",
+				documentId: "character-doc",
+				kind: "section",
+			},
+		]);
+	});
+
+	it("removes a selected character audio reference without removing the selected image", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [
+				baseDocument({
+					id: "story-doc",
+					title: "故事",
+					content: section.markdown,
+				}),
+				baseDocument({
+					category: "character",
+					id: "character-doc",
+					title: "沈阔",
+					content: "<!-- section-id: section_character -->\n## 沈阔（普通状态）\n\n23 岁男性。",
+				}),
+			],
+		});
+
+		render(
+			<DocumentSectionGenerator
+				kind="video"
+				section={section}
+				selectedGenerationAssets={[
+					selectedGenerationAsset({
+						mediaAssetId: "selected-ref",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔选中图",
+						url: "/api/v1/media-assets/selected-ref/content",
+					}),
+					selectedGenerationAsset({
+						id: "selected-voice",
+						kind: "audio",
+						mediaAssetId: "selected-voice",
+						mimeType: "audio/mpeg",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔音色",
+						url: "/api/v1/media-assets/selected-voice/content",
+					}),
+				]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		const initialReferences = resolveReferencePreviewAssets(capturedWorkspaceProps);
+		expect(initialReferences.map((asset) => asset.kind)).toEqual(["image", "audio"]);
+
+		act(() => {
+			capturedWorkspaceProps?.onRemoveReferencePreview?.(initialReferences[1]);
+		});
+
+		const previewReferences = resolveReferencePreviewAssets(capturedWorkspaceProps);
+		const referenceAssetIds = resolveReferenceAssetIds(capturedWorkspaceProps);
+		const referenceBindings = resolveReferenceBindings(capturedWorkspaceProps);
+
+		expect(previewReferences).toEqual([
+			expect.objectContaining({
+				kind: "image",
+				url: "/api/v1/media-assets/selected-ref/content",
+			}),
+		]);
+		expect(referenceAssetIds).toEqual(["selected-ref"]);
+		expect(referenceBindings).toEqual([
+			{
+				assetId: "selected-ref",
+				blockId: "section_character",
+				documentId: "character-doc",
+				kind: "section",
+			},
+		]);
+	});
+
+	it("clears mention references when the prompt has been reset", () => {
+		render(
+			<DocumentSectionGenerator
+				kind="video"
+				section={section}
+				selectedGenerationAssets={[
+					selectedGenerationAsset({
+						mediaAssetId: "selected-ref",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔选中图",
+						url: "/api/v1/media-assets/selected-ref/content",
+					}),
+					selectedGenerationAsset({
+						id: "selected-voice",
+						kind: "audio",
+						mediaAssetId: "selected-voice",
+						mimeType: "audio/mpeg",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "沈阔音色",
+						url: "/api/v1/media-assets/selected-voice/content",
+					}),
+				]}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		expect(resolveReferencePreviewAssets(capturedWorkspaceProps)).toHaveLength(3);
+		expect(resolveReferencePreviewAssets(capturedWorkspaceProps, "")).toEqual([]);
+		expect(resolveReferenceAssetIds(capturedWorkspaceProps, "")).toEqual([]);
+		expect(resolveReferenceBindings(capturedWorkspaceProps, "")).toEqual([]);
 	});
 
 	it("uses the media asset URL when a selected character audio has only an id", () => {
@@ -469,26 +750,35 @@ const selectedGenerationAsset = (
 	...overrides,
 });
 
-const resolveReferencePreviewAssets = (props: MediaGenerationWorkspaceProps | null) => {
+const resolveReferencePreviewAssets = (
+	props: MediaGenerationWorkspaceProps | null,
+	prompt = props?.initialPrompt ?? "",
+) => {
 	if (!props) return [];
 	const value = props.referencePreviewAssets;
 	if (!value) return [];
 
-	return typeof value === "function" ? value(props.initialPrompt) : value;
+	return typeof value === "function" ? value(prompt) : value;
 };
 
-const resolveReferenceAssetIds = (props: MediaGenerationWorkspaceProps | null) => {
+const resolveReferenceAssetIds = (
+	props: MediaGenerationWorkspaceProps | null,
+	prompt = props?.initialPrompt ?? "",
+) => {
 	if (!props) return [];
 	const value = props.extraReferenceAssetIds;
 	if (!value) return [];
 
-	return typeof value === "function" ? value(props.initialPrompt) : value;
+	return typeof value === "function" ? value(prompt) : value;
 };
 
-const resolveReferenceBindings = (props: MediaGenerationWorkspaceProps | null) => {
+const resolveReferenceBindings = (
+	props: MediaGenerationWorkspaceProps | null,
+	prompt = props?.initialPrompt ?? "",
+) => {
 	if (!props) return [];
 	const value = props.extraReferenceBindings;
 	if (!value) return [];
 
-	return typeof value === "function" ? value(props.initialPrompt) : value;
+	return typeof value === "function" ? value(prompt) : value;
 };

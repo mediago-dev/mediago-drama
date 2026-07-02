@@ -1,4 +1,4 @@
-import { cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { isValidElement, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sampleEpisode } from "@/domains/episode/lib/sample";
@@ -316,6 +316,180 @@ describe("useEpisodeVideoGenerationRequest", () => {
 		expect(referenceBadges[previewReferences[0]?.id ?? ""]).toBe("来自 @顾南衣·状态A");
 		expect(referenceBadges[previewReferences[1]?.id ?? ""]).toBe("来自 @顾南衣·状态A");
 	});
+
+	it("removes a single selected reference from mentioned character media", () => {
+		mocks.getProjects.mockResolvedValue({ projects: [] });
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [
+				baseDocument({
+					id: "story-doc",
+					category: "storyboard",
+					title: "第一集分镜",
+					content: [
+						"# 第一集",
+						"",
+						"## 第 01 组",
+						"",
+						"动作：顾南衣 @[顾南衣·状态A](mention://character-doc/section_character?kind=section&category=character) 捡垃圾桶。",
+					].join("\n"),
+				}),
+				baseDocument({
+					id: "character-doc",
+					category: "character",
+					title: "顾南衣",
+					content:
+						"<!-- section-id: section_character -->\n## 顾南衣·状态A\n\n18 岁女性，饥饿疲惫。",
+				}),
+			],
+		});
+		const selectedClip = {
+			id: "video-0-section",
+			title: "第 01 组",
+			start: 0,
+			end: 3,
+			content: "动作：顾南衣 捡垃圾桶。",
+			status: "draft" as const,
+			prompt: "动作：顾南衣 捡垃圾桶。",
+		};
+
+		const { result } = renderHook(() =>
+			useEpisodeVideoGenerationRequest({
+				documentId: "story-doc",
+				documentTitle: "第一集分镜",
+				episode: {
+					...sampleEpisode,
+					id: "episode-story-doc",
+					title: "第一集",
+				},
+				open: true,
+				projectId: "project-a",
+				selectedClip,
+				selectedGenerationAssets: [
+					selectedGenerationAsset({
+						mediaAssetId: "gny-selected",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "顾南衣参考图",
+						url: "/api/v1/media-assets/gny-selected/content",
+					}),
+					selectedGenerationAsset({
+						id: "gny-selected-voice",
+						kind: "audio",
+						mediaAssetId: "gny-selected-voice",
+						mimeType: "audio/mpeg",
+						resourceId: "section_character",
+						resourceType: "character",
+						sourceDocumentId: "character-doc",
+						title: "顾南衣音色",
+						url: "/api/v1/media-assets/gny-selected-voice/content",
+					}),
+				],
+				onGeneratedVideoReady: vi.fn(),
+				onOpenChange: vi.fn(),
+			}),
+		);
+		const initialProps = { ...result.current.workspaceProps, kind: "video" as const };
+		const initialReferences = resolveReferencePreviewAssets(initialProps);
+		expect(initialReferences.map((asset) => asset.kind)).toEqual(["image", "audio"]);
+
+		act(() => {
+			initialProps.onRemoveReferencePreview?.(initialReferences[1]);
+		});
+
+		const nextProps = { ...result.current.workspaceProps, kind: "video" as const };
+		const previewReferences = resolveReferencePreviewAssets(nextProps);
+		const referenceAssetIds = resolveReferenceAssetIds(nextProps);
+
+		expect(previewReferences).toEqual([
+			expect.objectContaining({
+				kind: "image",
+				url: "/api/v1/media-assets/gny-selected/content",
+			}),
+		]);
+		expect(referenceAssetIds).toEqual(["gny-selected"]);
+	});
+
+	it("clears selected mention references when the prompt has been reset", () => {
+		mocks.getProjects.mockResolvedValue({ projects: [] });
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [
+				baseDocument({
+					id: "story-doc",
+					category: "storyboard",
+					title: "第一集分镜",
+					content: [
+						"# 第一集",
+						"",
+						"## 第 01 组",
+						"",
+						"动作：顾南衣 @[顾南衣·状态A](mention://character-doc/section_character?kind=section&category=character) 捡垃圾桶。",
+					].join("\n"),
+				}),
+				baseDocument({
+					id: "character-doc",
+					category: "character",
+					title: "顾南衣",
+					content:
+						"<!-- section-id: section_character -->\n## 顾南衣·状态A\n\n18 岁女性，饥饿疲惫。",
+				}),
+			],
+		});
+		const selectedClip = {
+			id: "video-0-section",
+			title: "第 01 组",
+			start: 0,
+			end: 3,
+			content: "动作：顾南衣 捡垃圾桶。",
+			status: "draft" as const,
+			prompt: "动作：顾南衣 捡垃圾桶。",
+		};
+
+		const workspaceProps = renderWorkspaceProps({
+			documentId: "story-doc",
+			documentTitle: "第一集分镜",
+			episode: {
+				...sampleEpisode,
+				id: "episode-story-doc",
+				title: "第一集",
+			},
+			open: true,
+			projectId: "project-a",
+			selectedClip,
+			selectedGenerationAssets: [
+				selectedGenerationAsset({
+					mediaAssetId: "gny-selected",
+					resourceId: "section_character",
+					resourceType: "character",
+					sourceDocumentId: "character-doc",
+					title: "顾南衣参考图",
+					url: "/api/v1/media-assets/gny-selected/content",
+				}),
+				selectedGenerationAsset({
+					id: "gny-selected-voice",
+					kind: "audio",
+					mediaAssetId: "gny-selected-voice",
+					mimeType: "audio/mpeg",
+					resourceId: "section_character",
+					resourceType: "character",
+					sourceDocumentId: "character-doc",
+					title: "顾南衣音色",
+					url: "/api/v1/media-assets/gny-selected-voice/content",
+				}),
+			],
+			onGeneratedVideoReady: vi.fn(),
+			onOpenChange: vi.fn(),
+		});
+
+		expect(resolveReferencePreviewAssets(workspaceProps)).toHaveLength(2);
+		expect(resolveReferencePreviewAssets(workspaceProps, "")).toEqual([]);
+		expect(resolveReferenceAssetIds(workspaceProps, "")).toEqual([]);
+		expect(resolveReferenceBindings(workspaceProps, "")).toEqual([]);
+	});
 });
 
 const baseDocument = (document: Partial<MarkdownDocument> & Pick<MarkdownDocument, "id">) => ({
@@ -345,30 +519,42 @@ const selectedGenerationAsset = (
 	...overrides,
 });
 
-const resolveReferencePreviewAssets = (props: MediaGenerationWorkspaceProps | null) => {
+const resolveReferencePreviewAssets = (
+	props: MediaGenerationWorkspaceProps | null,
+	prompt = props?.initialPrompt ?? "",
+) => {
 	const value = props?.referencePreviewAssets;
 	if (!value) return [];
 
-	return typeof value === "function" ? value(props.initialPrompt) : value;
+	return typeof value === "function" ? value(prompt) : value;
 };
 
-const resolveReferenceAssetIds = (props: MediaGenerationWorkspaceProps | null) => {
+const resolveReferenceAssetIds = (
+	props: MediaGenerationWorkspaceProps | null,
+	prompt = props?.initialPrompt ?? "",
+) => {
 	const value = props?.extraReferenceAssetIds;
 	if (!value) return [];
 
-	return typeof value === "function" ? value(props.initialPrompt) : value;
+	return typeof value === "function" ? value(prompt) : value;
 };
 
-const resolveReferenceBindings = (props: MediaGenerationWorkspaceProps | null) => {
+const resolveReferenceBindings = (
+	props: MediaGenerationWorkspaceProps | null,
+	prompt = props?.initialPrompt ?? "",
+) => {
 	const value = props?.extraReferenceBindings;
 	if (!value) return [];
 
-	return typeof value === "function" ? value(props.initialPrompt) : value;
+	return typeof value === "function" ? value(prompt) : value;
 };
 
-const resolveReferenceBadges = (props: MediaGenerationWorkspaceProps | null) => {
+const resolveReferenceBadges = (
+	props: MediaGenerationWorkspaceProps | null,
+	prompt = props?.initialPrompt ?? "",
+) => {
 	const value = props?.referenceBadges;
 	if (!value) return {};
 
-	return typeof value === "function" ? value(props.initialPrompt) : value;
+	return typeof value === "function" ? value(prompt) : value;
 };

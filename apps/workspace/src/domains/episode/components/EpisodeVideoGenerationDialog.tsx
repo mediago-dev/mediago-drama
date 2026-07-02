@@ -18,12 +18,12 @@ import {
 	buildMentionPreviewReferences,
 	buildMentionReferenceInputs,
 	extractDocumentImageAssets,
+	filterMentionReferenceMedia,
 	resolveMentionPayloadWithSelectedAssets,
 	type MentionPreviewReferences,
 	uniqueResolvedMention,
 } from "@/domains/documents/lib/mention-generation-references";
 import {
-	mentionReferenceKey,
 	parseMentionsFromMarkdown,
 	resolveMentionPayload,
 } from "@/domains/documents/lib/mention-resolver";
@@ -88,6 +88,9 @@ export interface EpisodeVideoGenerationRequest {
 	workspaceProps: Omit<MediaGenerationWorkspaceProps, "kind">;
 }
 
+const mentionSearchMarkdown = (sourceMarkdown: string, promptMarkdown: string) =>
+	promptMarkdown.trim() ? `${sourceMarkdown}\n\n${promptMarkdown}` : "";
+
 export const useEpisodeVideoGenerationRequest = ({
 	documentId,
 	documentTitle,
@@ -119,8 +122,11 @@ export const useEpisodeVideoGenerationRequest = ({
 		() => buildEpisodeVideoContext(episode, selectedClip, sourceSection),
 		[episode, selectedClip, sourceSection],
 	);
-	const [removedMentionKeys, setRemovedMentionKeys] = useState<string[]>([]);
-	const removedMentionKeySet = useMemo(() => new Set(removedMentionKeys), [removedMentionKeys]);
+	const [removedMentionMediaKeys, setRemovedMentionMediaKeys] = useState<string[]>([]);
+	const removedMentionMediaKeySet = useMemo(
+		() => new Set(removedMentionMediaKeys),
+		[removedMentionMediaKeys],
+	);
 	const mediaAssets = useMemo(
 		() =>
 			allDocuments.flatMap((document) =>
@@ -129,6 +135,7 @@ export const useEpisodeVideoGenerationRequest = ({
 		[allDocuments],
 	);
 	const latestMentionPreviewRef = useRef<MentionPreviewReferences>({
+		assetMediaKeys: {},
 		assetMentionKeys: {},
 		badges: {},
 		references: [],
@@ -173,7 +180,9 @@ export const useEpisodeVideoGenerationRequest = ({
 	}, [normalizedDocumentId, normalizedProjectId, sourceSection?.blockId]);
 	const resolveAllMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
-			parseMentionsFromMarkdown(`${generationContext.sourceMarkdown}\n\n${promptMarkdown}`)
+			parseMentionsFromMarkdown(
+				mentionSearchMarkdown(generationContext.sourceMarkdown, promptMarkdown),
+			)
 				.map((reference) =>
 					resolveMentionPayloadWithSelectedAssets(
 						reference,
@@ -187,10 +196,10 @@ export const useEpisodeVideoGenerationRequest = ({
 	);
 	const resolveActiveMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
-			resolveAllMentionsFromPrompt(promptMarkdown).filter(
-				(mention) => !removedMentionKeySet.has(mentionReferenceKey(mention.reference)),
+			resolveAllMentionsFromPrompt(promptMarkdown).map((mention) =>
+				filterMentionReferenceMedia(mention, removedMentionMediaKeySet),
 			),
-		[removedMentionKeySet, resolveAllMentionsFromPrompt],
+		[removedMentionMediaKeySet, resolveAllMentionsFromPrompt],
 	);
 	const getMentionPreview = useCallback(
 		(promptMarkdown: string) => {
@@ -211,11 +220,11 @@ export const useEpisodeVideoGenerationRequest = ({
 		[resolveActiveMentionsFromPrompt],
 	);
 	const removePreviewReferenceAsset = useCallback((asset: MediaAsset) => {
-		const mentionKey = latestMentionPreviewRef.current.assetMentionKeys[asset.id];
-		if (!mentionKey) return;
+		const mediaKey = latestMentionPreviewRef.current.assetMediaKeys[asset.id];
+		if (!mediaKey) return;
 
-		setRemovedMentionKeys((current) =>
-			current.includes(mentionKey) ? current : [...current, mentionKey],
+		setRemovedMentionMediaKeys((current) =>
+			current.includes(mediaKey) ? current : [...current, mediaKey],
 		);
 	}, []);
 	const notificationTarget = useMemo<GenerationNotificationOpenTarget | undefined>(() => {
@@ -253,7 +262,7 @@ export const useEpisodeVideoGenerationRequest = ({
 	);
 
 	useEffect(() => {
-		setRemovedMentionKeys([]);
+		setRemovedMentionMediaKeys([]);
 	}, [generationContext.blockId, generationContext.sourceMarkdown]);
 
 	return {

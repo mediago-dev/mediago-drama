@@ -20,6 +20,7 @@ import {
 	buildMentionPreviewReferences,
 	buildMentionReferenceInputs,
 	extractDocumentImageAssets,
+	filterMentionReferenceMedia,
 	resolveMentionPayloadWithSelectedAssets,
 	type MentionPreviewReferences,
 	uniqueResolvedMention,
@@ -30,10 +31,7 @@ import {
 } from "@/domains/generation/components/MediaGenerationWorkspace";
 import { selectedGenerationAssetKeysForSection } from "@/domains/generation/lib/selected-asset-keys";
 import { PromptEditor, type PromptEditorProps } from "@/domains/generation/components/PromptEditor";
-import {
-	mentionReferenceKey,
-	parseMentionsFromMarkdown,
-} from "@/domains/documents/lib/mention-resolver";
+import { parseMentionsFromMarkdown } from "@/domains/documents/lib/mention-resolver";
 import { useDocumentSectionGenerationContext } from "@/domains/documents/components/useDocumentSectionGenerationContext";
 import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
 
@@ -63,6 +61,9 @@ export interface DocumentSectionGeneratorProps {
 }
 
 const emptySelectedGenerationAssets: SelectedGenerationAsset[] = [];
+
+const mentionSearchMarkdown = (sourceMarkdown: string, promptMarkdown: string) =>
+	promptMarkdown.trim() ? `${sourceMarkdown}\n\n${promptMarkdown}` : "";
 
 export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> = ({
 	kind = "image",
@@ -104,10 +105,14 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 		resolveLatestSection,
 		section,
 	});
-	const [removedMentionKeys, setRemovedMentionKeys] = useState<string[]>([]);
-	const removedMentionKeySet = useMemo(() => new Set(removedMentionKeys), [removedMentionKeys]);
+	const [removedMentionMediaKeys, setRemovedMentionMediaKeys] = useState<string[]>([]);
+	const removedMentionMediaKeySet = useMemo(
+		() => new Set(removedMentionMediaKeys),
+		[removedMentionMediaKeys],
+	);
 	const mediaAssets = useDocumentsMediaAssets();
 	const latestMentionPreviewRef = useRef<MentionPreviewReferences>({
+		assetMediaKeys: {},
 		assetMentionKeys: {},
 		badges: {},
 		references: [],
@@ -124,6 +129,13 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 		selectedGenerationAssets ??
 		selectedGenerationAssetsData?.assets ??
 		emptySelectedGenerationAssets;
+	const referenceSelectedGenerationAssets = useMemo(
+		() =>
+			generationKind === "image"
+				? mentionSelectedGenerationAssets.filter((asset) => asset.kind === "image")
+				: mentionSelectedGenerationAssets,
+		[generationKind, mentionSelectedGenerationAssets],
+	);
 	const resolvedSelectedAssetKeys = useMemo(
 		() =>
 			selectedAssetKeys ??
@@ -137,24 +149,24 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 
 	const resolveAllMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
-			parseMentionsFromMarkdown(`${activeSection.markdown}\n\n${promptMarkdown}`)
+			parseMentionsFromMarkdown(mentionSearchMarkdown(activeSection.markdown, promptMarkdown))
 				.map((reference) =>
 					resolveMentionPayloadWithSelectedAssets(
 						reference,
 						allDocuments,
 						allAssets,
-						mentionSelectedGenerationAssets,
+						referenceSelectedGenerationAssets,
 					),
 				)
 				.filter(uniqueResolvedMention),
-		[activeSection.markdown, allAssets, allDocuments, mentionSelectedGenerationAssets],
+		[activeSection.markdown, allAssets, allDocuments, referenceSelectedGenerationAssets],
 	);
 	const resolveActiveMentionsFromPrompt = useCallback(
 		(promptMarkdown: string) =>
-			resolveAllMentionsFromPrompt(promptMarkdown).filter(
-				(mention) => !removedMentionKeySet.has(mentionReferenceKey(mention.reference)),
+			resolveAllMentionsFromPrompt(promptMarkdown).map((mention) =>
+				filterMentionReferenceMedia(mention, removedMentionMediaKeySet),
 			),
-		[removedMentionKeySet, resolveAllMentionsFromPrompt],
+		[removedMentionMediaKeySet, resolveAllMentionsFromPrompt],
 	);
 	const getMentionPreview = useCallback(
 		(promptMarkdown: string) => {
@@ -175,15 +187,15 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 		[generationKind, resolveActiveMentionsFromPrompt],
 	);
 	const removePreviewReferenceAsset = useCallback((asset: MediaAsset) => {
-		const mentionKey = latestMentionPreviewRef.current.assetMentionKeys[asset.id];
-		if (!mentionKey) return;
+		const mediaKey = latestMentionPreviewRef.current.assetMediaKeys[asset.id];
+		if (!mediaKey) return;
 
-		setRemovedMentionKeys((current) =>
-			current.includes(mentionKey) ? current : [...current, mentionKey],
+		setRemovedMentionMediaKeys((current) =>
+			current.includes(mediaKey) ? current : [...current, mediaKey],
 		);
 	}, []);
 	useEffect(() => {
-		setRemovedMentionKeys([]);
+		setRemovedMentionMediaKeys([]);
 	}, [activeSection.blockId, activeSection.documentId, activeSection.markdown]);
 
 	return (
@@ -220,7 +232,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 						allDocuments={allDocuments}
 						onGenerateReference={onOpenReferenceGeneration}
 						projectId={normalizedProjectId || undefined}
-						selectedGenerationAssets={mentionSelectedGenerationAssets}
+						selectedGenerationAssets={referenceSelectedGenerationAssets}
 					/>
 				)}
 				selectedAssetKeys={resolvedSelectedAssetKeys}

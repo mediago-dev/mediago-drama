@@ -13,6 +13,7 @@ import { mentionDisplayText } from "@/domains/documents/lib/mention-suggestion";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 
 export interface MentionPreviewReferences {
+	assetMediaKeys: Record<string, string>;
 	assetMentionKeys: Record<string, string>;
 	badges: Record<string, string>;
 	references: MediaAsset[];
@@ -140,6 +141,7 @@ export const buildMentionPreviewReferences = (
 	mediaAssets: MediaAsset[],
 ): MentionPreviewReferences => {
 	const seenReferenceIds = new Set<string>();
+	const assetMediaKeys: Record<string, string> = {};
 	const assetMentionKeys: Record<string, string> = {};
 	const badges: Record<string, string> = {};
 	const references: MediaAsset[] = [];
@@ -154,9 +156,11 @@ export const buildMentionPreviewReferences = (
 			const matchedAsset = findMediaAssetForMentionMedia(image, mediaAssets, "image");
 			const reference = matchedAsset ?? createMentionPreviewAsset(mention, image, "image");
 			addMentionPreviewReference(reference, {
+				assetMediaKeys,
 				assetMentionKeys,
 				badge,
 				badges,
+				mediaKey: mentionReferenceMediaKey("image", image),
 				mentionKey,
 				references,
 				seenReferenceIds,
@@ -167,9 +171,11 @@ export const buildMentionPreviewReferences = (
 			const matchedAsset = findMediaAssetForMentionMedia(audio, mediaAssets, "audio");
 			const reference = matchedAsset ?? createMentionPreviewAsset(mention, audio, "audio");
 			addMentionPreviewReference(reference, {
+				assetMediaKeys,
 				assetMentionKeys,
 				badge,
 				badges,
+				mediaKey: mentionReferenceMediaKey("audio", audio),
 				mentionKey,
 				references,
 				seenReferenceIds,
@@ -177,7 +183,34 @@ export const buildMentionPreviewReferences = (
 		}
 	}
 
-	return { assetMentionKeys, badges, references };
+	return { assetMediaKeys, assetMentionKeys, badges, references };
+};
+
+export const filterMentionReferenceMedia = (
+	mention: ResolvedMentionWithSelectedAssets,
+	removedMediaKeys: ReadonlySet<string>,
+): ResolvedMentionWithSelectedAssets => {
+	if (mention.status !== "ok" || removedMediaKeys.size === 0) return mention;
+
+	const images = mention.images.filter(
+		(image) => !removedMediaKeys.has(mentionReferenceMediaKey("image", image)),
+	);
+	const selectedAudios = mention.selectedAudios?.filter(
+		(audio) => !removedMediaKeys.has(mentionReferenceMediaKey("audio", audio)),
+	);
+
+	if (
+		images.length === mention.images.length &&
+		selectedAudios?.length === mention.selectedAudios?.length
+	) {
+		return mention;
+	}
+
+	return {
+		...mention,
+		images,
+		...(selectedAudios ? { selectedAudios } : {}),
+	};
 };
 
 export const uniqueResolvedMention = (
@@ -247,9 +280,11 @@ const createMentionPreviewAsset = (
 const addMentionPreviewReference = (
 	reference: MediaAsset | null,
 	context: {
+		assetMediaKeys: Record<string, string>;
 		assetMentionKeys: Record<string, string>;
 		badge: string;
 		badges: Record<string, string>;
+		mediaKey: string;
 		mentionKey: string;
 		references: MediaAsset[];
 		seenReferenceIds: Set<string>;
@@ -257,6 +292,7 @@ const addMentionPreviewReference = (
 ) => {
 	if (!reference) return;
 
+	context.assetMediaKeys[reference.id] ??= context.mediaKey;
 	context.badges[reference.id] ??= context.badge;
 	context.assetMentionKeys[reference.id] ??= context.mentionKey;
 	if (context.seenReferenceIds.has(reference.id)) return;
@@ -352,6 +388,16 @@ const selectedGenerationAssetMediaURL = (asset: SelectedGenerationAsset) =>
 	asset.mediaAssetId
 		? `/api/v1/media-assets/${encodeURIComponent(asset.mediaAssetId)}/content`
 		: "";
+
+const mentionReferenceMediaKey = (
+	kind: "audio" | "image",
+	media: ResolvedMention["images"][number] | MentionReferenceAudio,
+) => {
+	const mediaAssetId = media.mediaAssetId?.trim();
+	if (mediaAssetId) return `${kind}:media:${mediaAssetId}`;
+
+	return `${kind}:url:${media.url.trim()}`;
+};
 
 const uniqueMentionImages = (images: ResolvedMention["images"]) => {
 	const seen = new Set<string>();
