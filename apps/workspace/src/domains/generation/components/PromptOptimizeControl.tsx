@@ -11,6 +11,7 @@ import {
 	generationModelBrand,
 } from "@/domains/generation/components/GenerationBrandMark";
 import { GenerationModelRoutePicker } from "@/domains/generation/components/GenerationModelRoutePicker";
+import { displayGenerationLabelWithoutAlias } from "@/domains/generation/components/generationDisplayLabels";
 import { PromptOptimizePicker } from "@/domains/generation/components/PromptOptimizePicker";
 import type { PromptInsertItem } from "@/domains/generation/components/PromptSlashCommand";
 import type { PromptOptimizeModelOption } from "@/domains/generation/hooks/usePromptOptimize";
@@ -81,6 +82,9 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 		selectedFamilyVersions.find((version) => version.id === selectedRoute?.versionId) ??
 		selectedFamilyVersions[0] ??
 		null;
+	const selectedFamilyLabel = selectedFamily
+		? displayGenerationLabelWithoutAlias(selectedFamily.label)
+		: "";
 	const modelSelectorDisabled = modelOptions.length === 0 || isOptimizing;
 
 	const selectFamily = (familyId: string) => {
@@ -159,17 +163,23 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 										brand={generationFamilyBrand(selectedFamily)}
 										className="size-4 text-[0.5rem]"
 									/>
-									<span>{selectedFamily.label}</span>
+									<span>{selectedFamilyLabel}</span>
 								</SelectTrigger>
 								<SelectContent align="start">
 									{modelFamilies.map((family) => (
-										<SelectItem key={family.id} value={family.id} textValue={family.label}>
+										<SelectItem
+											key={family.id}
+											value={family.id}
+											textValue={displayGenerationLabelWithoutAlias(family.label)}
+										>
 											<span className="flex min-w-0 items-center gap-2">
 												<GenerationBrandMark
 													brand={generationFamilyBrand(family)}
 													className="size-4 text-[0.5rem]"
 												/>
-												<span className="min-w-0 truncate">{family.label}</span>
+												<span className="min-w-0 truncate">
+													{displayGenerationLabelWithoutAlias(family.label)}
+												</span>
 											</span>
 										</SelectItem>
 									))}

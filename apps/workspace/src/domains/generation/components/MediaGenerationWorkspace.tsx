@@ -34,6 +34,7 @@ import {
 	filterImageGenerationSpecParams,
 	resolveImageGenerationSpec,
 } from "@/domains/generation/components/imageGenerationSpec";
+import { displayGenerationLabelWithoutAlias } from "@/domains/generation/components/generationDisplayLabels";
 import { ImageGenerationSpecControl } from "@/domains/generation/components/ImageGenerationSpecControl";
 import {
 	GenerationBrandMark,
@@ -614,8 +615,9 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	);
 
 	const modelSummary = ws.hasConfiguredRoutesForKind
-		? `${ws.selectedFamily.label} / ${ws.selectedVersion.label} / ${routeProviderLabel(ws.selectedRoute)}`
+		? `${displayGenerationLabelWithoutAlias(ws.selectedFamily.label)} / ${displayGenerationLabelWithoutAlias(ws.selectedVersion.label)} / ${routeProviderLabel(ws.selectedRoute)}`
 		: `暂无可用${generatedKindLabel}供应商`;
+	const selectedFamilyLabel = displayGenerationLabelWithoutAlias(ws.selectedFamily.label);
 	const selectedFamilyBrand = generationModelBrand({
 		family: ws.selectedFamily,
 		route: ws.selectedRoute,
@@ -629,17 +631,23 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 					className={generationComposerSelectClassName("min-w-32 max-w-56 shrink-0")}
 				>
 					<GenerationBrandMark brand={selectedFamilyBrand} className="size-4 text-[0.5rem]" />
-					<span>{ws.selectedFamily.label}</span>
+					<span>{selectedFamilyLabel}</span>
 				</SelectTrigger>
 				<SelectContent align="start">
 					{ws.visibleFamilies.map((family) => (
-						<SelectItem key={family.id} value={family.id} textValue={family.label}>
+						<SelectItem
+							key={family.id}
+							value={family.id}
+							textValue={displayGenerationLabelWithoutAlias(family.label)}
+						>
 							<span className="flex min-w-0 items-center gap-2">
 								<GenerationBrandMark
 									brand={generationFamilyBrand(family)}
 									className="size-4 text-[0.5rem]"
 								/>
-								<span className="min-w-0 truncate">{family.label}</span>
+								<span className="min-w-0 truncate">
+									{displayGenerationLabelWithoutAlias(family.label)}
+								</span>
 							</span>
 						</SelectItem>
 					))}

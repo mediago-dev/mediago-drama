@@ -30,6 +30,7 @@ import {
 	filterImageGenerationSpecParams,
 	resolveImageGenerationSpec,
 } from "@/domains/generation/components/imageGenerationSpec";
+import { displayGenerationLabelWithoutAlias } from "@/domains/generation/components/generationDisplayLabels";
 import { ImageGenerationSpecControl } from "@/domains/generation/components/ImageGenerationSpecControl";
 import {
 	GenerationCountControl,
@@ -449,6 +450,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 		navigate("/settings");
 	};
 	const promptSlashItems = ws.promptInsertItems;
+	const selectedFamilyLabel = displayGenerationLabelWithoutAlias(ws.selectedFamily.label);
 
 	const generationComposer = (
 		<form onSubmit={ws.submit} className="shrink-0">
@@ -472,17 +474,23 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 										brand={selectedFamilyBrand}
 										className="size-4 text-[0.5rem]"
 									/>
-									<span>{ws.selectedFamily.label}</span>
+									<span>{selectedFamilyLabel}</span>
 								</SelectTrigger>
 								<SelectContent align="start">
 									{ws.visibleFamilies.map((family) => (
-										<SelectItem key={family.id} value={family.id} textValue={family.label}>
+										<SelectItem
+											key={family.id}
+											value={family.id}
+											textValue={displayGenerationLabelWithoutAlias(family.label)}
+										>
 											<span className="flex min-w-0 items-center gap-2">
 												<GenerationBrandMark
 													brand={generationFamilyBrand(family)}
 													className="size-4 text-[0.5rem]"
 												/>
-												<span className="min-w-0 truncate">{family.label}</span>
+												<span className="min-w-0 truncate">
+													{displayGenerationLabelWithoutAlias(family.label)}
+												</span>
 											</span>
 										</SelectItem>
 									))}

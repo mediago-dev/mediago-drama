@@ -17,6 +17,7 @@ import type {
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
 import { GenerationBrandMark, generationFamilyBrand } from "./GenerationBrandMark";
 import { GenerationModelRoutePicker } from "./GenerationModelRoutePicker";
+import { displayGenerationLabelWithoutAlias } from "./generationDisplayLabels";
 import { ImageGenerationSpecControl } from "./ImageGenerationSpecControl";
 import { filterImageGenerationSpecParams, resolveImageGenerationSpec } from "./imageGenerationSpec";
 import {
@@ -442,8 +443,9 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		setStoredSettings(kind, selectedSettingsDraft);
 	}, [hasAvailableRoute, kind, open, selectedSettingsDraft, setStoredSettings]);
 	const modelSummary = hasAvailableRoute
-		? `${ws.selectedFamily.label} / ${ws.selectedVersion.label} / ${routeProviderLabel(ws.selectedRoute)}`
+		? `${displayGenerationLabelWithoutAlias(ws.selectedFamily.label)} / ${displayGenerationLabelWithoutAlias(ws.selectedVersion.label)} / ${routeProviderLabel(ws.selectedRoute)}`
 		: `暂无可用${kindLabel(kind)}生成供应商`;
+	const selectedFamilyLabel = displayGenerationLabelWithoutAlias(ws.selectedFamily.label);
 	const selectedFamilyBrand = generationFamilyBrand(ws.selectedFamily);
 	const title = `批量生成${kind === "image" ? "图片" : "视频"}设置`;
 
@@ -526,17 +528,23 @@ export const BatchGenerationSettingsDialog: React.FC<{
 												brand={selectedFamilyBrand}
 												className="size-4 text-[0.5rem]"
 											/>
-											<span className="min-w-0 truncate">{ws.selectedFamily.label}</span>
+											<span className="min-w-0 truncate">{selectedFamilyLabel}</span>
 										</SelectTrigger>
 										<SelectContent align="start">
 											{ws.visibleFamilies.map((family) => (
-												<SelectItem key={family.id} value={family.id} textValue={family.label}>
+												<SelectItem
+													key={family.id}
+													value={family.id}
+													textValue={displayGenerationLabelWithoutAlias(family.label)}
+												>
 													<span className="flex min-w-0 items-center gap-2">
 														<GenerationBrandMark
 															brand={generationFamilyBrand(family)}
 															className="size-4 text-[0.5rem]"
 														/>
-														<span className="min-w-0 truncate">{family.label}</span>
+														<span className="min-w-0 truncate">
+															{displayGenerationLabelWithoutAlias(family.label)}
+														</span>
 													</span>
 												</SelectItem>
 											))}

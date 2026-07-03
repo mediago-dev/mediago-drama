@@ -228,6 +228,10 @@ describe("GenerationModelRoutePicker", () => {
 			.closest('[aria-label="模型版本和供应商"]') as HTMLElement;
 		expect(menu).toBeTruthy();
 		expect(menu).toHaveClass("h-[var(--generation-route-picker-menu-height)]");
+		expect(menu.className).toContain("w-fit");
+		expect(menu.className).toContain(
+			"grid-cols-[fit-content(var(--generation-model-popover-version-column-max-width))_minmax(var(--generation-model-popover-provider-column-min-width),max-content)]",
+		);
 		expect(menu.getAttribute("style")).toContain(
 			"5 * var(--generation-model-popover-option-height)",
 		);
@@ -303,6 +307,11 @@ describe("GenerationModelRoutePicker", () => {
 
 		const versionList = document.querySelector("[data-generation-version-list]");
 		expect(versionList).toBeTruthy();
+		expect(versionList).toHaveClass("overflow-y-auto");
+		expect(versionList).toHaveClass("overscroll-contain");
+		expect(versionList?.parentElement).toHaveClass("overflow-hidden");
+		expect(versionList?.closest("section")).toHaveClass("h-full");
+		expect(versionList?.closest("section")).toHaveClass("overflow-hidden");
 		setScrollableList(versionList as HTMLElement, {
 			clientHeight: 160,
 			scrollHeight: 192,
@@ -313,12 +322,114 @@ describe("GenerationModelRoutePicker", () => {
 		expect(document.querySelector("[data-generation-version-scroll-hint]")).toBeTruthy();
 	});
 
+	it("scrolls the version list directly on wheel events", () => {
+		render(
+			<GenerationModelRoutePicker
+				onSelect={vi.fn()}
+				routes={longSeedanceRoutes}
+				selectedRoute={longSeedanceRoutes[0]}
+				selectedVersion={longSeedanceVersions[0]}
+				versions={longSeedanceVersions}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+		const versionList = document.querySelector("[data-generation-version-list]");
+		expect(versionList).toBeTruthy();
+		setScrollableList(versionList as HTMLElement, {
+			clientHeight: 160,
+			scrollHeight: 224,
+			scrollTop: 0,
+		});
+
+		fireEvent.wheel(versionList as HTMLElement, { deltaY: 40 });
+
+		expect((versionList as HTMLElement).scrollTop).toBe(40);
+		expect(document.querySelector("[data-generation-version-scroll-hint]")).toBeTruthy();
+	});
+
+	it("hides the fade hint when only layout rounding remains below the version list", () => {
+		render(
+			<GenerationModelRoutePicker
+				onSelect={vi.fn()}
+				routes={longSeedanceRoutes}
+				selectedRoute={longSeedanceRoutes[0]}
+				selectedVersion={longSeedanceVersions[0]}
+				versions={longSeedanceVersions}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+		const versionList = document.querySelector("[data-generation-version-list]");
+		expect(versionList).toBeTruthy();
+		setScrollableList(versionList as HTMLElement, {
+			clientHeight: 160,
+			scrollHeight: 166,
+			scrollTop: 0,
+		});
+		fireEvent.scroll(versionList as HTMLElement);
+
+		expect(document.querySelector("[data-generation-version-scroll-hint]")).toBeNull();
+	});
+
+	it("hides the fade hint when all rendered version rows are visible", () => {
+		const visibleVersions = longSeedanceVersions.slice(0, 5);
+		const visibleRoutes = longSeedanceRoutes.slice(0, 5);
+		render(
+			<GenerationModelRoutePicker
+				onSelect={vi.fn()}
+				routes={visibleRoutes}
+				selectedRoute={visibleRoutes[0]}
+				selectedVersion={visibleVersions[0]}
+				versions={visibleVersions}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+		const versionList = document.querySelector("[data-generation-version-list]");
+		expect(versionList).toBeTruthy();
+		const lastVersionButton = screen.getByRole("button", { name: "Seedance 2.0 VIP" });
+		setScrollableList(versionList as HTMLElement, {
+			clientHeight: 160,
+			scrollHeight: 192,
+			scrollTop: 0,
+		});
+		setElementLayout(lastVersionButton, {
+			offsetHeight: 32,
+			offsetTop: 128,
+		});
+		fireEvent.scroll(versionList as HTMLElement);
+
+		expect(document.querySelector("[data-generation-version-scroll-hint]")).toBeNull();
+	});
+
+	it("shows only the version name for slash-delimited model labels", () => {
+		render(
+			<GenerationModelRoutePicker
+				onSelect={vi.fn()}
+				routes={routes}
+				selectedRoute={routes[1]}
+				selectedVersion={versions[1]}
+				versions={versions}
+			/>,
+		);
+
+		expect(screen.getByRole("button", { name: "模型版本和供应商" })).toHaveTextContent(
+			"Gemini · OpenAI",
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+
+		expect(screen.getByRole("button", { name: "Gemini" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "Nano Banana / Gemini" })).toBeNull();
+	});
+
 	it("keeps the active version while the pointer crosses the safe triangle", () => {
 		renderRoutePicker();
 
 		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
 		const activeVersionButton = screen.getByRole("button", { name: "Nano Banana 2" });
-		const nextVersionButton = screen.getByRole("button", { name: "Nano Banana / Gemini" });
+		const nextVersionButton = screen.getByRole("button", { name: "Gemini" });
 		const routePanel = screen.getByText("提供方").closest("section");
 		expect(routePanel).toBeTruthy();
 		vi.spyOn(activeVersionButton, "getBoundingClientRect").mockReturnValue(
@@ -343,7 +454,7 @@ describe("GenerationModelRoutePicker", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
 		const activeVersionButton = screen.getByRole("button", { name: "Nano Banana 2" });
-		const nextVersionButton = screen.getByRole("button", { name: "Nano Banana / Gemini" });
+		const nextVersionButton = screen.getByRole("button", { name: "Gemini" });
 		const routePanel = screen.getByText("提供方").closest("section");
 		expect(routePanel).toBeTruthy();
 		vi.spyOn(activeVersionButton, "getBoundingClientRect").mockReturnValue(
@@ -373,7 +484,7 @@ describe("GenerationModelRoutePicker", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
 		const activeVersionButton = screen.getByRole("button", { name: "Nano Banana 2" });
-		const nextVersionButton = screen.getByRole("button", { name: "Nano Banana / Gemini" });
+		const nextVersionButton = screen.getByRole("button", { name: "Gemini" });
 		const routePanel = screen.getByText("提供方").closest("section");
 		expect(routePanel).toBeTruthy();
 		vi.spyOn(activeVersionButton, "getBoundingClientRect").mockReturnValue(
@@ -450,6 +561,27 @@ const setScrollableList = (
 	Object.defineProperty(element, "scrollTop", {
 		configurable: true,
 		value: scrollTop,
+		writable: true,
+	});
+};
+
+const setElementLayout = (
+	element: HTMLElement,
+	{
+		offsetHeight,
+		offsetTop,
+	}: {
+		offsetHeight: number;
+		offsetTop: number;
+	},
+) => {
+	Object.defineProperty(element, "offsetHeight", {
+		configurable: true,
+		value: offsetHeight,
+	});
+	Object.defineProperty(element, "offsetTop", {
+		configurable: true,
+		value: offsetTop,
 	});
 };
 

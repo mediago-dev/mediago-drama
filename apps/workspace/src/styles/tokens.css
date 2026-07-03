@@ -203,6 +203,8 @@
 		--generation-model-popover-width: var(--size-352);
 		--generation-model-popover-height: var(--size-196);
 		--generation-model-popover-option-height: var(--generation-control-height-lg);
+		--generation-model-popover-version-column-max-width: var(--size-260);
+		--generation-model-popover-provider-column-min-width: var(--size-112);
 		--generation-primary-popover-width: var(--size-224);
 		--generation-primary-popover-height: var(--size-280);
 		--generation-primary-option-height: var(--space-xl);

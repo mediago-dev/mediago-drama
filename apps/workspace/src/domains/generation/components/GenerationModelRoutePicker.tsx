@@ -13,6 +13,7 @@ import { providerLabel } from "@/domains/generation/hooks/useGenerationWorkspace
 import { Button } from "@/shared/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import { cn } from "@/shared/lib/utils";
+import { displayGenerationLabelWithoutAlias } from "./generationDisplayLabels";
 
 interface GenerationRoutePickerPoint {
 	x: number;
@@ -86,8 +87,9 @@ export const GenerationModelRoutePicker: React.FC<{
 		visibleVersions[0];
 	const activeRoutes = activeVersion ? (routesByVersion.get(activeVersion.id) ?? []) : [];
 	const selectedProvider = providerLabel(selectedRoute.provider);
+	const selectedVersionLabel = displayGenerationLabelWithoutAlias(selectedVersion.label);
 	const selectedLabel = selectedVersion.label
-		? `${compactLabel(selectedVersion.label)} · ${selectedProvider}`
+		? `${selectedVersionLabel} · ${selectedProvider}`
 		: selectedRoute.model;
 	const selectedModelBrand = generationModelBrand({
 		route: selectedRoute,
@@ -103,24 +105,26 @@ export const GenerationModelRoutePicker: React.FC<{
 	}, [selectedVersion.id]);
 
 	const updateVersionListScrollHint = useCallback(() => {
-		const node = versionListRef.current;
-		if (!node || visibleVersions.length <= GENERATION_ROUTE_PICKER_MAX_VISIBLE_ROWS) {
-			setVersionListCanScrollDown(false);
-			return;
-		}
-		const remainingScroll = node.scrollHeight - node.clientHeight - node.scrollTop;
-		setVersionListCanScrollDown(remainingScroll > 1);
-	}, [visibleVersions.length]);
+		setVersionListCanScrollDown(canShowGenerationRoutePickerScrollHint(versionListRef.current));
+	}, []);
 
 	const updateRouteListScrollHint = useCallback(() => {
-		const node = routeListRef.current;
-		if (!node || activeRoutes.length <= GENERATION_ROUTE_PICKER_MAX_VISIBLE_ROWS) {
-			setRouteListCanScrollDown(false);
-			return;
-		}
-		const remainingScroll = node.scrollHeight - node.clientHeight - node.scrollTop;
-		setRouteListCanScrollDown(remainingScroll > 1);
-	}, [activeRoutes.length]);
+		setRouteListCanScrollDown(canShowGenerationRoutePickerScrollHint(routeListRef.current));
+	}, []);
+
+	const handleVersionListWheel = useCallback(
+		(event: React.WheelEvent<HTMLDivElement>) => {
+			scrollGenerationRoutePickerList(event, updateVersionListScrollHint);
+		},
+		[updateVersionListScrollHint],
+	);
+
+	const handleRouteListWheel = useCallback(
+		(event: React.WheelEvent<HTMLDivElement>) => {
+			scrollGenerationRoutePickerList(event, updateRouteListScrollHint);
+		},
+		[updateRouteListScrollHint],
+	);
 
 	useEffect(() => {
 		if (!open) {
@@ -287,24 +291,26 @@ export const GenerationModelRoutePicker: React.FC<{
 				side="top"
 				align="start"
 				aria-label="模型版本和供应商"
-				className="grid h-[var(--generation-route-picker-menu-height)] max-h-[var(--generation-popover-max-block)] w-[min(var(--generation-model-popover-width),var(--generation-popover-max-inline))] grid-cols-2 overflow-hidden rounded-[var(--generation-popover-radius)] border-border bg-popover p-0 text-popover-foreground shadow-xl"
+				className="grid h-[var(--generation-route-picker-menu-height)] max-h-[var(--generation-popover-max-block)] w-fit max-w-[var(--generation-popover-max-inline)] grid-cols-[fit-content(var(--generation-model-popover-version-column-max-width))_minmax(var(--generation-model-popover-provider-column-min-width),max-content)] overflow-hidden rounded-[var(--generation-popover-radius)] border-border bg-popover p-0 text-popover-foreground shadow-xl"
 				style={routePickerMenuStyle}
 				onPointerLeave={clearSafeTriangle}
 			>
-				<section className="flex min-h-0 min-w-0 flex-col p-[var(--generation-popover-padding)]">
+				<section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-[var(--generation-popover-padding)]">
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">模型</p>
-					<div className="relative min-h-0 flex-1">
+					<div className="relative min-h-0 flex-1 overflow-hidden">
 						<div
 							ref={versionListRef}
-							className="grid h-full min-h-0 auto-rows-min gap-1 overflow-y-auto pr-1"
+							className="grid h-full min-h-0 auto-rows-min gap-1 overflow-y-auto overscroll-contain pr-1"
 							data-generation-version-list
 							onScroll={updateVersionListScrollHint}
+							onWheel={handleVersionListWheel}
 						>
 							{visibleVersions.map((version) => {
 								const versionRoutes = routesByVersion.get(version.id) ?? [];
 								const selected = version.id === activeVersion?.id;
 								const versionBrand = generationVersionBrand(version, versionRoutes[0]);
 								const suppressHover = version.id === suppressedVersionHoverId;
+								const versionLabel = displayGenerationLabelWithoutAlias(version.label);
 
 								return (
 									<button
@@ -334,7 +340,7 @@ export const GenerationModelRoutePicker: React.FC<{
 											brand={versionBrand}
 											className="size-3.5 border-0 bg-transparent p-0 text-[0.45rem] shadow-none"
 										/>
-										<span className="min-w-0 flex-1 truncate">{version.label}</span>
+										<span className="min-w-0 flex-1 truncate">{versionLabel}</span>
 										<ChevronRight
 											className={cn(
 												"size-4 shrink-0",
@@ -356,16 +362,17 @@ export const GenerationModelRoutePicker: React.FC<{
 				</section>
 				<section
 					ref={routePanelRef}
-					className="flex min-h-0 min-w-0 flex-col border-l border-border bg-muted/40 p-[var(--generation-popover-padding)]"
+					className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-muted/40 p-[var(--generation-popover-padding)]"
 					onPointerEnter={clearSafeTriangle}
 				>
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">提供方</p>
-					<div className="relative min-h-0 flex-1">
+					<div className="relative min-h-0 flex-1 overflow-hidden">
 						<div
 							ref={routeListRef}
-							className="grid h-full min-h-0 auto-rows-min gap-1 overflow-y-auto pr-1"
+							className="grid h-full min-h-0 auto-rows-min gap-1 overflow-y-auto overscroll-contain pr-1"
 							data-generation-route-list
 							onScroll={updateRouteListScrollHint}
+							onWheel={handleRouteListWheel}
 						>
 							{activeRoutes.map((route) => {
 								const selected = route.id === selectedRoute.id;
@@ -412,15 +419,64 @@ export const GenerationModelRoutePicker: React.FC<{
 	);
 };
 
-const compactLabel = (label: string) => label.replace(/\s+/g, " ").trim();
-
 const GENERATION_ROUTE_PICKER_SAFE_TRIANGLE_EDGE_PADDING = 8;
 const GENERATION_ROUTE_PICKER_SAFE_TRIANGLE_HOVER_INTENT_MS = 180;
 const GENERATION_ROUTE_PICKER_MAX_VISIBLE_ROWS = 5;
+const GENERATION_ROUTE_PICKER_SCROLL_HINT_MIN_REMAINING_PX = 8;
 
 const generationModelRoutePickerMenuHeight = () => {
 	const gapCount = Math.max(GENERATION_ROUTE_PICKER_MAX_VISIBLE_ROWS - 1, 0);
 	return `calc(var(--generation-popover-padding) * 2 + 1.25rem + ${GENERATION_ROUTE_PICKER_MAX_VISIBLE_ROWS} * var(--generation-model-popover-option-height) + ${gapCount} * 0.25rem)`;
+};
+
+const canShowGenerationRoutePickerScrollHint = (node: HTMLElement | null) => {
+	if (!node) return false;
+
+	const maxScrollTop = node.scrollHeight - node.clientHeight;
+	if (maxScrollTop <= GENERATION_ROUTE_PICKER_SCROLL_HINT_MIN_REMAINING_PX) return false;
+
+	const remainingScroll = maxScrollTop - node.scrollTop;
+	if (remainingScroll <= GENERATION_ROUTE_PICKER_SCROLL_HINT_MIN_REMAINING_PX) return false;
+
+	const lastOption = Array.from(node.children)
+		.filter((child): child is HTMLElement => child instanceof HTMLElement)
+		.at(-1);
+	if (!lastOption || lastOption.offsetHeight <= 0) return true;
+
+	const visibleBottom = node.scrollTop + node.clientHeight;
+	const lastOptionBottom = lastOption.offsetTop + lastOption.offsetHeight;
+	return lastOptionBottom - visibleBottom > GENERATION_ROUTE_PICKER_SCROLL_HINT_MIN_REMAINING_PX;
+};
+
+const scrollGenerationRoutePickerList = (
+	event: React.WheelEvent<HTMLDivElement>,
+	onScroll: () => void,
+) => {
+	const node = event.currentTarget;
+	const maxScrollTop = node.scrollHeight - node.clientHeight;
+	if (maxScrollTop <= 0) return;
+
+	const deltaY = wheelDeltaY(event, node.clientHeight);
+	if (deltaY === 0) return;
+
+	const nextScrollTop = Math.max(0, Math.min(maxScrollTop, node.scrollTop + deltaY));
+	if (Math.abs(nextScrollTop - node.scrollTop) < 0.5) return;
+
+	event.preventDefault();
+	event.stopPropagation();
+	node.scrollTop = nextScrollTop;
+	onScroll();
+};
+
+const wheelDeltaY = (event: React.WheelEvent, pageHeight: number) => {
+	switch (event.deltaMode) {
+		case WheelEvent.DOM_DELTA_LINE:
+			return event.deltaY * 16;
+		case WheelEvent.DOM_DELTA_PAGE:
+			return event.deltaY * pageHeight;
+		default:
+			return event.deltaY;
+	}
 };
 
 const pointerEventPoint = (event: React.PointerEvent): GenerationRoutePickerPoint => ({

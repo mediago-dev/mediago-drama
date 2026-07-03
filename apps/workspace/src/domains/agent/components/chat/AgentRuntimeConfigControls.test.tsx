@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeConfigPayload } from "@/domains/agent/api/agent";
 import {
 	AgentRuntimeConfigControls,
@@ -53,6 +53,10 @@ const runtimeControlsElement = (
 );
 
 describe("AgentRuntimeConfigControls", () => {
+	beforeEach(() => {
+		ensurePointerCaptureMocks();
+	});
+
 	afterEach(() => {
 		cleanup();
 		vi.useRealTimers();
@@ -71,7 +75,7 @@ describe("AgentRuntimeConfigControls", () => {
 	it("shows only returned runtime config controls", () => {
 		renderControls(baseConfig);
 
-		expect(screen.getByRole("button", { name: "模型" })).toBeTruthy();
+		expect(screen.getByLabelText("模型")).toBeTruthy();
 		expect(screen.getByLabelText("模式")).toBeTruthy();
 		expect(screen.queryByText("模型")).toBeNull();
 		expect(screen.queryByText("模式")).toBeNull();
@@ -131,6 +135,37 @@ describe("AgentRuntimeConfigControls", () => {
 		fireEvent.click(screen.getByRole("button", { name: "MiniMax-M3" }));
 
 		expect(onModelChange).toHaveBeenCalledWith("minimax/minimax-m3");
+	});
+
+	it("uses the standard select for providerless model options", async () => {
+		renderControls(
+			{
+				model: {
+					configId: "model",
+					currentValue: "gpt-5.5",
+					options: [
+						{ name: "GPT-5.5", value: "gpt-5.5" },
+						{ name: "GPT-5.4", value: "gpt-5.4" },
+					],
+				},
+			},
+			{ modelValue: "gpt-5.5" },
+		);
+
+		expect(agentModelTriggerBrands(document.body)).toEqual(["gpt"]);
+		const modelTriggerBrand = screen
+			.getByRole("combobox", { name: "模型" })
+			.querySelector(".agent-config-brand");
+		expect(modelTriggerBrand?.className).toContain("!flex-none");
+		expect(modelTriggerBrand?.className).toContain("!overflow-visible");
+
+		openSelect("模型");
+
+		expect(await screen.findByRole("option", { name: "GPT-5.5" })).toBeTruthy();
+		expect(screen.getByRole("option", { name: "GPT-5.4" })).toBeTruthy();
+		expect(screen.queryByLabelText("提供商和模型")).toBeNull();
+		expect(screen.queryByText("提供商")).toBeNull();
+		expect(screen.queryByRole("button", { name: "默认提供方" })).toBeNull();
 	});
 
 	it("sizes the model menu to the returned category and model rows", () => {
@@ -710,3 +745,32 @@ const testRect = ({
 		x: left,
 		y: top,
 	}) as DOMRect;
+
+const openSelect = (label: string) => {
+	fireEvent.pointerDown(screen.getByRole("combobox", { name: label }), {
+		button: 0,
+		ctrlKey: false,
+		pageX: 0,
+		pageY: 0,
+		pointerId: 1,
+		pointerType: "mouse",
+	});
+};
+
+const ensurePointerCaptureMocks = () => {
+	const pointerCaptureMethods = {
+		hasPointerCapture: () => false,
+		releasePointerCapture: () => undefined,
+		scrollIntoView: () => undefined,
+		setPointerCapture: () => undefined,
+	};
+
+	for (const [methodName, implementation] of Object.entries(pointerCaptureMethods)) {
+		if (methodName in HTMLElement.prototype) continue;
+		Object.defineProperty(HTMLElement.prototype, methodName, {
+			configurable: true,
+			value: implementation,
+			writable: true,
+		});
+	}
+};

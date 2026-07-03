@@ -220,6 +220,7 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 		categories.find((category) => category.key === selectedOption?.categoryKey) ??
 		categories[0] ??
 		null;
+	const hideProviderColumn = isDefaultProviderOnlyModelMenu(categories);
 	const modelMenuStyle = {
 		"--agent-runtime-model-menu-height": agentRuntimeModelMenuHeight(categories),
 	} as React.CSSProperties;
@@ -448,6 +449,37 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 			label: selectedOption.modelLabel,
 		},
 	});
+
+	if (hideProviderColumn) {
+		return (
+			<Select value={resolvedValue} onValueChange={onChange} disabled={disabled}>
+				<SelectTrigger className="agent-config-trigger" aria-label={label}>
+					{Icon ? (
+						<span className="agent-config-icon" aria-hidden="true">
+							<Icon />
+						</span>
+					) : null}
+					<AgentRuntimeModelBrandStack modelBrand={selectedModelBrand} />
+					<span className="agent-config-value">
+						<SelectValue placeholder={config?.name || label} />
+					</span>
+				</SelectTrigger>
+				<SelectContent align="start" className="agent-config-content">
+					{parsedOptions.map((option) => (
+						<SelectItem
+							key={option.option.value}
+							value={option.option.value}
+							title={option.option.description}
+							className="agent-config-item"
+						>
+							{option.modelLabel}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
+		);
+	}
+
 	const selectedProviderBrand = generationProviderBrand(selectedOption.providerLabel);
 
 	return (
@@ -620,13 +652,18 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 const AgentRuntimeModelBrandStack: React.FC<{
 	className?: string;
 	modelBrand: GenerationBrandKey;
-	providerBrand: GenerationBrandKey;
+	providerBrand?: GenerationBrandKey;
 }> = ({ className, modelBrand, providerBrand }) => {
-	const brands = providerBrand !== modelBrand ? [providerBrand, modelBrand] : [providerBrand];
+	const brands =
+		providerBrand && providerBrand !== modelBrand ? [providerBrand, modelBrand] : [modelBrand];
 
 	return (
 		<span
-			className={cn("flex shrink-0 items-center", brands.length > 1 ? "-space-x-1" : "", className)}
+			className={cn(
+				"agent-config-brand flex !min-w-fit !flex-none items-center !overflow-visible",
+				brands.length > 1 ? "-space-x-1" : "",
+				className,
+			)}
 		>
 			{brands.map((brand, index) => (
 				<GenerationBrandMark
@@ -645,6 +682,8 @@ const AgentRuntimeModelBrandStack: React.FC<{
 
 const runtimeConfigOptions = (config?: AgentRuntimeSelectConfig) =>
 	(config?.options ?? []).filter((option) => option.value.trim().length > 0);
+
+const DEFAULT_AGENT_PROVIDER_LABEL = "默认提供方";
 
 const parseAgentRuntimeModelOption = (
 	option: AgentRuntimeSelectOption,
@@ -737,9 +776,12 @@ const agentProviderLabel = (provider: string) => {
 		case "copilot":
 			return "GitHub Copilot";
 		default:
-			return trimmed || "默认提供方";
+			return trimmed || DEFAULT_AGENT_PROVIDER_LABEL;
 	}
 };
+
+const isDefaultProviderOnlyModelMenu = (categories: AgentRuntimeModelCategory[]) =>
+	categories.length === 1 && categories[0]?.label === DEFAULT_AGENT_PROVIDER_LABEL;
 
 const normalizeAgentOptionKey = (value: string) =>
 	value
