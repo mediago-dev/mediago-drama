@@ -1949,6 +1949,22 @@ func TestCompleteTextRequiresConfiguredTextRoute(t *testing.T) {
 	}
 }
 
+func TestTextRouteForAgentRuntimeModel(t *testing.T) {
+	routeID, model, ok := TextRouteForAgentRuntimeModel("mediago/deepseek-v4-flash")
+	if !ok || routeID != coregeneration.RouteMediagoDeepSeekV4FlashText || model != "deepseek-v4-flash" {
+		t.Fatalf("MediaGo DeepSeek route = %q, %q, %v", routeID, model, ok)
+	}
+
+	routeID, model, ok = TextRouteForAgentRuntimeModel("dmxapi/deepseek-v4-flash")
+	if !ok || routeID != coregeneration.RouteDMXDeepSeekV4FlashText || model != "deepseek-v4-flash" {
+		t.Fatalf("DMXAPI DeepSeek route = %q, %q, %v", routeID, model, ok)
+	}
+
+	if routeID, model, ok = TextRouteForAgentRuntimeModel("mediago/not-in-catalog"); ok {
+		t.Fatalf("unknown route = %q, %q, %v, want no fallback", routeID, model, ok)
+	}
+}
+
 type generationTestAPIKeyStore struct {
 	values map[string]string
 }

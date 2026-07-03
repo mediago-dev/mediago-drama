@@ -220,6 +220,36 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	}
 }
 
+func TestPrepareOpenCodeRuntimeConfigPrefersSelectedModel(t *testing.T) {
+	settings := NewSettingsWithAgentModelProfiles(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
+	)
+	settings.SetModelPlatforms([]string{ModelPlatformOpenRouter})
+	ctx := context.Background()
+
+	if _, err := settings.SetAPIKey(ctx, "openrouter", "sk-openrouter-secret"); err != nil {
+		t.Fatalf("SetAPIKey returned error: %v", err)
+	}
+
+	workspaceDir := t.TempDir()
+	config, err := settings.PrepareOpenCodeRuntimeConfigForModel(ctx, workspaceDir, "openrouter/openai/gpt-4.1-mini")
+	if err != nil {
+		t.Fatalf("PrepareOpenCodeRuntimeConfigForModel returned error: %v", err)
+	}
+	if config.DefaultProfileID != "openrouter-gpt-4-1-mini" {
+		t.Fatalf("DefaultProfileID = %q, want selected model profile", config.DefaultProfileID)
+	}
+
+	data, err := os.ReadFile(filepath.Join(config.ConfigDir, "opencode.json"))
+	if err != nil {
+		t.Fatalf("reading opencode.json: %v", err)
+	}
+	if text := string(data); !strings.Contains(text, `"model": "openrouter/openai/gpt-4.1-mini"`) {
+		t.Fatalf("opencode.json = %s, want selected model as default", text)
+	}
+}
+
 func TestPrepareOpenCodeRuntimeConfigExcludesDMXWhenPlatformDisabled(t *testing.T) {
 	settings := NewSettingsWithAgentModelProfiles(
 		&memoryAPIKeyStore{values: map[string]string{}},

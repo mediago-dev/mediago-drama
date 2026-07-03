@@ -310,6 +310,12 @@ func (service *Settings) ClearAgentModelProfileAPIKey(ctx context.Context, id st
 
 // PrepareOpenCodeRuntimeConfig renders opencode config and resolves process env.
 func (service *Settings) PrepareOpenCodeRuntimeConfig(ctx context.Context, workspaceDir string) (OpenCodeRuntimeConfig, error) {
+	return service.PrepareOpenCodeRuntimeConfigForModel(ctx, workspaceDir, "")
+}
+
+// PrepareOpenCodeRuntimeConfigForModel renders opencode config and resolves
+// process env, preferring the selected runtime model as opencode's default.
+func (service *Settings) PrepareOpenCodeRuntimeConfigForModel(ctx context.Context, workspaceDir string, preferredModel string) (OpenCodeRuntimeConfig, error) {
 	enabled, env, err := service.officialAgentRuntimeProfiles(ctx)
 	if err != nil {
 		return OpenCodeRuntimeConfig{}, err
@@ -322,14 +328,15 @@ func (service *Settings) PrepareOpenCodeRuntimeConfig(ctx context.Context, works
 		return OpenCodeRuntimeConfig{}, fmt.Errorf("creating opencode config directory: %w", err)
 	}
 	configPath := filepath.Join(configDir, "opencode.json")
-	if err := writeOpenCodeConfig(configPath, renderOpenCodeConfig(enabled)); err != nil {
+	defaultProfile := selectedAgentRuntimeDefaultProfile(enabled, preferredModel)
+	if err := writeOpenCodeConfig(configPath, renderOpenCodeConfig(enabled, defaultProfile)); err != nil {
 		return OpenCodeRuntimeConfig{}, err
 	}
 	return OpenCodeRuntimeConfig{
 		ConfigDir:             configDir,
 		Env:                   env,
 		ProfileCount:          len(enabled),
-		DefaultProfileID:      defaultProfileID(enabled),
+		DefaultProfileID:      strings.TrimSpace(defaultProfile.ID),
 		RestrictModelValues:   true,
 		AllowedModelValues:    agentRuntimeModelValues(enabled),
 		AllowedModelProviders: agentRuntimeModelProviders(enabled),
@@ -1185,16 +1192,12 @@ type openCodeModelModalities struct {
 	Output []string `json:"output,omitempty"`
 }
 
-func renderOpenCodeConfig(profiles []domainAgentModelProfile) openCodeConfigFile {
+func renderOpenCodeConfig(profiles []domainAgentModelProfile, defaultProfile domainAgentModelProfile) openCodeConfigFile {
 	config := openCodeConfigFile{
 		Schema:   opencodeConfigSchema,
 		Provider: map[string]openCodeProviderConfig{},
 	}
-	defaultProfile := domainAgentModelProfile{}
 	for _, profile := range profiles {
-		if profile.Enabled && profile.IsDefault && defaultProfile.ID == "" {
-			defaultProfile = profile
-		}
 		if !profile.Enabled {
 			continue
 		}
@@ -1304,12 +1307,27 @@ func openCodeInputModalities(supportsImages bool) []string {
 }
 
 func defaultProfileID(profiles []domainAgentModelProfile) string {
-	for _, profile := range profiles {
-		if profile.Enabled && profile.IsDefault {
-			return profile.ID
+	return strings.TrimSpace(selectedAgentRuntimeDefaultProfile(profiles, "").ID)
+}
+
+func selectedAgentRuntimeDefaultProfile(profiles []domainAgentModelProfile, preferredModel string) domainAgentModelProfile {
+	preferredModel = strings.TrimSpace(preferredModel)
+	if preferredModel != "" {
+		for _, profile := range profiles {
+			if !profile.Enabled {
+				continue
+			}
+			if strings.EqualFold(agentRuntimeModelValue(profile), preferredModel) {
+				return profile
+			}
 		}
 	}
-	return ""
+	for _, profile := range profiles {
+		if profile.Enabled && profile.IsDefault {
+			return profile
+		}
+	}
+	return domainAgentModelProfile{}
 }
 
 func firstNonEmpty(values ...string) string {

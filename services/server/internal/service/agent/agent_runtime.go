@@ -35,8 +35,14 @@ type AgentPendingPermissionProvider interface {
 	PendingPermissions(sessionID string) []AgentACPPermissionRequest
 }
 
+// AgentSessionTitleRequest describes one short display title request.
+type AgentSessionTitleRequest struct {
+	Prompt string
+	Model  AgentACPConfigSelection
+}
+
 // AgentSessionTitleGenerator produces a short display title for a session.
-type AgentSessionTitleGenerator func(context.Context, string) (string, error)
+type AgentSessionTitleGenerator func(context.Context, AgentSessionTitleRequest) (string, error)
 
 // DocumentStore is the document-facing surface consumed by AgentRuntime.
 type DocumentStore interface {
@@ -189,7 +195,7 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 		Message:   payload.Prompt,
 		CreatedAt: timestamp.NowRFC3339Nano(),
 	})
-	runtime.maybeGenerateSessionTitle(payload.SessionID, payload.Prompt)
+	runtime.maybeGenerateSessionTitle(payload.SessionID, payload.Prompt, payload.Model)
 
 	go runtime.runAgent(runCtx, cancelRun, payload, runID, acpSessionID, projectDir, workingDir)
 
@@ -226,22 +232,25 @@ func (runtime *AgentRuntime) workingDirForRun(projectID string, projectDir strin
 	return workingDir, nil
 }
 
-func (runtime *AgentRuntime) maybeGenerateSessionTitle(sessionID string, userPrompt string) {
+func (runtime *AgentRuntime) maybeGenerateSessionTitle(sessionID string, userPrompt string, model AgentACPConfigSelection) {
 	if runtime == nil || runtime.config.SessionTitleGenerator == nil || runtime.sessions == nil {
 		return
 	}
 	if strings.TrimSpace(userPrompt) == "" || !runtime.sessions.NeedsTitle(sessionID) {
 		return
 	}
-	go runtime.generateSessionTitle(context.Background(), sessionID, userPrompt)
+	go runtime.generateSessionTitle(context.Background(), sessionID, userPrompt, model)
 }
 
-func (runtime *AgentRuntime) generateSessionTitle(ctx context.Context, sessionID string, userPrompt string) {
+func (runtime *AgentRuntime) generateSessionTitle(ctx context.Context, sessionID string, userPrompt string, model AgentACPConfigSelection) {
 	ctx, cancel := context.WithTimeout(ctx, runtime.config.SessionTitleTimeout)
 	defer cancel()
 
 	completionPrompt := AgentSessionTitlePrompt(userPrompt)
-	rawTitle, err := runtime.config.SessionTitleGenerator(ctx, completionPrompt)
+	rawTitle, err := runtime.config.SessionTitleGenerator(ctx, AgentSessionTitleRequest{
+		Prompt: completionPrompt,
+		Model:  model,
+	})
 	if err != nil {
 		slog.Debug("agent session title generation failed", "session_id", sessionID, "error", err)
 		return

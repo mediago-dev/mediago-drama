@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"path/filepath"
 	"strconv"
@@ -92,7 +93,7 @@ func newAPIHandler(config Config) *apiHandler {
 		SetProcessConfigProvider(serviceacp.ProcessConfigProvider)
 	}); ok {
 		configurableRunner.SetProcessConfigProvider(serviceacp.ProcessConfigProviderFunc(func(ctx context.Context, request serviceacp.ProcessConfigRequest) (serviceacp.ProcessConfig, error) {
-			config, err := settings.PrepareOpenCodeRuntimeConfig(ctx, request.WorkspaceDir)
+			config, err := settings.PrepareOpenCodeRuntimeConfigForModel(ctx, request.WorkspaceDir, request.PreferredModel)
 			if err != nil {
 				return serviceacp.ProcessConfig{}, err
 			}
@@ -191,14 +192,23 @@ func newAPIHandler(config Config) *apiHandler {
 			BridgeURL:             agentBridgeURL,
 			BridgeToken:           agentBridgeToken,
 			DocumentMCPConfigPath: config.DocumentMCPConfigPath,
-			SessionTitleGenerator: func(ctx context.Context, prompt string) (string, error) {
-				return generationService.CompleteText(ctx, servicegeneration.TextCompletionRequest{
-					Prompt: prompt,
+			SessionTitleGenerator: func(ctx context.Context, request serviceagent.AgentSessionTitleRequest) (string, error) {
+				completion := servicegeneration.TextCompletionRequest{
+					Prompt: request.Prompt,
 					Params: map[string]any{
 						"temperature": 0,
 						"maxTokens":   32,
 					},
-				})
+				}
+				if selectedModel := strings.TrimSpace(request.Model.Value); selectedModel != "" {
+					routeID, model, ok := servicegeneration.TextRouteForAgentRuntimeModel(selectedModel)
+					if !ok {
+						return "", fmt.Errorf("selected agent model %q is unavailable for title generation", selectedModel)
+					}
+					completion.RouteID = routeID
+					completion.Model = model
+				}
+				return generationService.CompleteText(ctx, completion)
 			},
 		},
 	)

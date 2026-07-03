@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -84,6 +85,54 @@ func TestAgentRuntimePublishesFinalMessageAfterStreamedResponse(t *testing.T) {
 	}
 	if completed.Content != "最终回复" || completed.Message != "最终回复" {
 		t.Fatalf("completed = %#v, want final message content", completed)
+	}
+}
+
+func TestAgentRuntimeSessionTitleUsesSelectedModel(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sessions := NewSessionService(nil)
+	sessions.Create("session-1", "")
+	titleRequests := make(chan AgentSessionTitleRequest, 1)
+	runtime := NewAgentRuntime(
+		runtimeTestDocumentStore{dir: workspaceDir},
+		sessions,
+		streamingFinalAgentRunner{},
+		func(AgentEvent) {},
+		AgentRuntimeConfig{
+			WorkspaceDir: workspaceDir,
+			SessionTitleGenerator: func(_ context.Context, request AgentSessionTitleRequest) (string, error) {
+				titleRequests <- request
+				return "问候", nil
+			},
+		},
+	)
+
+	_, status, err := runtime.SubmitAgentMessage(AgentMessageRequest{
+		SessionID: "session-1",
+		Prompt:    "你好",
+		Model: AgentACPConfigSelection{
+			ConfigID: "model",
+			Source:   "configOption",
+			Value:    "mediago/deepseek-v4-flash",
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitAgentMessage returned error: %v", err)
+	}
+	if status != 200 {
+		t.Fatalf("status = %d, want 200", status)
+	}
+
+	select {
+	case request := <-titleRequests:
+		if request.Model.Value != "mediago/deepseek-v4-flash" {
+			t.Fatalf("title model = %#v, want selected model", request.Model)
+		}
+		if !strings.Contains(request.Prompt, "你好") {
+			t.Fatalf("title prompt = %q, want user prompt included", request.Prompt)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for title request")
 	}
 }
 

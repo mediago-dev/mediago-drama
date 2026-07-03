@@ -157,3 +157,49 @@ func (workflow *GenerationService) resolveConfiguredTextRoute(routeID string) (c
 	}
 	return route, workflow.requireGenerationRouteConfigured(route)
 }
+
+// TextRouteForAgentRuntimeModel maps an ACP runtime model value like
+// "mediago/deepseek-v4-flash" back to a generation text route.
+func TextRouteForAgentRuntimeModel(value string) (string, string, bool) {
+	provider, model, ok := strings.Cut(strings.TrimSpace(value), "/")
+	if !ok {
+		return "", "", false
+	}
+	provider, ok = generationProviderForAgentRuntimeProvider(provider)
+	if !ok {
+		return "", "", false
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return "", "", false
+	}
+	for _, route := range coregeneration.Routes() {
+		if route.Kind == coregeneration.KindText &&
+			route.Provider == provider &&
+			strings.EqualFold(strings.TrimSpace(route.Model), model) {
+			return route.ID, route.Model, true
+		}
+	}
+	return "", "", false
+}
+
+func generationProviderForAgentRuntimeProvider(provider string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case coregeneration.ProviderMediago:
+		return coregeneration.ProviderMediago, true
+	case "dmxapi", coregeneration.ProviderDMX:
+		return coregeneration.ProviderDMX, true
+	case coregeneration.ProviderOpenRouter:
+		return coregeneration.ProviderOpenRouter, true
+	case coregeneration.ProviderOpenAI:
+		return coregeneration.ProviderOpenAI, true
+	case "minimax-cn", coregeneration.ProviderMiniMax:
+		return coregeneration.ProviderMiniMax, true
+	case coregeneration.ProviderDeepSeek:
+		return coregeneration.ProviderDeepSeek, true
+	case coregeneration.ProviderGoogle:
+		return coregeneration.ProviderGoogle, true
+	default:
+		return "", false
+	}
+}

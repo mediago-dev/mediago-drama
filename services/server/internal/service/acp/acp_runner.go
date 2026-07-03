@@ -131,10 +131,11 @@ func NewACPAgentRunnerWithDocumentMCPConfigPathAndArgv(
 
 // ProcessConfigRequest describes one ACP child process launch.
 type ProcessConfigRequest struct {
-	WorkspaceDir string
-	ProjectID    string
-	ProjectDir   string
-	WorkingDir   string
+	WorkspaceDir   string
+	ProjectID      string
+	ProjectDir     string
+	WorkingDir     string
+	PreferredModel string
 }
 
 // ProcessConfig contains extra environment for one ACP child process.
@@ -306,10 +307,11 @@ func (runner *acpAgentRunner) prepareProcessConfig(ctx context.Context, command 
 		return ProcessConfig{}, nil
 	}
 	processConfig, err := runner.processConfigProvider.PrepareACPProcessConfig(ctx, ProcessConfigRequest{
-		WorkspaceDir: strings.TrimSpace(request.WorkspaceDir),
-		ProjectID:    strings.TrimSpace(request.ProjectID),
-		ProjectDir:   strings.TrimSpace(request.ProjectDir),
-		WorkingDir:   strings.TrimSpace(request.WorkingDir),
+		WorkspaceDir:   strings.TrimSpace(request.WorkspaceDir),
+		ProjectID:      strings.TrimSpace(request.ProjectID),
+		ProjectDir:     strings.TrimSpace(request.ProjectDir),
+		WorkingDir:     strings.TrimSpace(request.WorkingDir),
+		PreferredModel: strings.TrimSpace(request.Model.Value),
 	})
 	if err != nil {
 		return ProcessConfig{}, fmt.Errorf("preparing opencode config: %w", err)

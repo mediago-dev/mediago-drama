@@ -171,6 +171,9 @@ func TestACPAgentRunnerPrepareProcessConfigOnlyForOpenCodeACP(t *testing.T) {
 		ProjectID:    "project-1",
 		ProjectDir:   "/workspace/project",
 		WorkingDir:   "/workspace/project/work",
+		Model: AgentACPConfigSelection{
+			Value: "mediago/deepseek-v4-flash",
+		},
 	}
 
 	config, err := runner.prepareProcessConfig(context.Background(), "/usr/local/bin/opencode", []string{"acp"}, request)
@@ -182,6 +185,9 @@ func TestACPAgentRunnerPrepareProcessConfigOnlyForOpenCodeACP(t *testing.T) {
 	}
 	if provider.requests[0].WorkingDir != request.WorkingDir || provider.requests[0].ProjectID != request.ProjectID {
 		t.Fatalf("provider request = %#v, want run request fields", provider.requests[0])
+	}
+	if provider.requests[0].PreferredModel != "mediago/deepseek-v4-flash" {
+		t.Fatalf("preferred model = %q, want selected runtime model", provider.requests[0].PreferredModel)
 	}
 	if config.Env["OPENCODE_CONFIG_DIR"] != provider.config.ConfigDir {
 		t.Fatalf("OPENCODE_CONFIG_DIR = %q, want %q", config.Env["OPENCODE_CONFIG_DIR"], provider.config.ConfigDir)
