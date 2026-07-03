@@ -130,6 +130,7 @@ func (store *WorkspaceStateService) initialize() error {
 func (store *WorkspaceStateService) compose(repos WorkspaceStateRepositories) {
 	store.Approvals = approval.NewService(repos.Approvals, store.initErr)
 	store.Documents = document.NewService(store.dir, repos.Workspace, store.Approvals, store.initErr, repos.DocumentSections)
+	store.Documents.SetProjectAssetRepository(repos.ProjectAssets)
 	store.EditStreams = document.NewEditStreamService(repos.EditStreams, store.initErr)
 	store.Documents.SetEditStreamService(store.EditStreams)
 	store.Chat = chat.NewService(store.dir, repos.AgentSessions, store.Documents, store.initErr)

@@ -168,6 +168,7 @@ type Service struct {
 	dir       string
 	workspace *repository.WorkspaceRepository
 	sections  *repository.DocumentSectionRepository
+	assets    *repository.ProjectAssetRepository
 	approvals ApprovalGate
 	streams   *EditStreamService
 	history   *documenthistory.Service
@@ -209,6 +210,14 @@ func NewService(workspaceDir string, repo *repository.WorkspaceRepository, appro
 func (store *Service) SetDocumentSectionRepository(repo *repository.DocumentSectionRepository) {
 	if store != nil {
 		store.sections = repo
+	}
+}
+
+// SetProjectAssetRepository sets the repository used to ignore files already
+// tracked as project assets when scanning editable documents.
+func (store *Service) SetProjectAssetRepository(repo *repository.ProjectAssetRepository) {
+	if store != nil {
+		store.assets = repo
 	}
 }
 

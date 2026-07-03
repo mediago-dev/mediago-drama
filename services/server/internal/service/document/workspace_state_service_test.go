@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 )
 
 func TestWorkspaceStateServiceMoveDocumentAndMetadata(t *testing.T) {
@@ -937,9 +938,8 @@ func TestWorkspaceStateServiceImportsLocalTextFilesFromWorkDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading updated text projection: %v", err)
 	}
-	if !strings.Contains(string(projected), "category: screenplay") ||
-		!strings.Contains(string(projected), nextContent) {
-		t.Fatalf("updated text projection = %q, want frontmatter and content", string(projected))
+	if string(projected) != nextContent {
+		t.Fatalf("updated text projection = %q, want body without frontmatter", string(projected))
 	}
 
 	state, err = store.listDocuments(projectID)
@@ -948,6 +948,72 @@ func TestWorkspaceStateServiceImportsLocalTextFilesFromWorkDir(t *testing.T) {
 	}
 	if len(state.Documents) != 1 {
 		t.Fatalf("documents = %+v, want no duplicate after saving imported text", state.Documents)
+	}
+}
+
+func TestWorkspaceStateServiceSkipsProjectAssetTextFilesAsDocuments(t *testing.T) {
+	workspaceDir := t.TempDir()
+	store := newWorkspaceStateService(workspaceDir)
+	if store.initErr != nil {
+		t.Fatalf("initializing workspace store: %v", store.initErr)
+	}
+	projectID := "project-asset-text"
+	requireTestProject(t, store, projectID)
+
+	workDir := store.documentsDir(projectID)
+	filename := "我有九千万亿舔狗金.txt"
+	content := "原始 txt 内容。"
+	if err := os.WriteFile(filepath.Join(workDir, filename), []byte(content), 0o644); err != nil {
+		t.Fatalf("writing uploaded text asset: %v", err)
+	}
+	now := domain.TimeFromString("2026-07-03T00:00:00Z")
+	if err := store.assets.CreateProjectAsset(domain.ProjectReferenceAssetModel{
+		ProjectID: projectID,
+		ID:        "asset-reference-1",
+		CreatedAt: now,
+		UpdatedAt: now,
+		Asset: domain.AssetModel{
+			ID:            "asset-1",
+			ProjectID:     domain.StringPtr(projectID),
+			Kind:          "text",
+			Filename:      filename,
+			MIMEType:      "text/plain; charset=utf-8",
+			SizeBytes:     int64(len(content)),
+			RelPath:       filepath.ToSlash(filepath.Join("work", filename)),
+			URL:           "/api/v1/projects/project-asset-text/assets/asset-reference-1/content",
+			Source:        "upload",
+			StorageStatus: "ready",
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateProjectAsset() error = %v", err)
+	}
+
+	state, err := store.listDocuments(projectID)
+	if err != nil {
+		t.Fatalf("listing documents: %v", err)
+	}
+	if len(state.Documents) != 0 {
+		t.Fatalf("documents = %+v, want text asset excluded from documents", state.Documents)
+	}
+	assets, err := store.assets.ListProjectAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing project assets: %v", err)
+	}
+	if len(assets) != 1 {
+		t.Fatalf("assets = %+v, want uploaded text asset preserved", assets)
+	}
+
+	if _, err := store.save(projectID, workspaceStateRequest{Documents: state.Documents}); err != nil {
+		t.Fatalf("saving empty document state: %v", err)
+	}
+	projected, err := os.ReadFile(filepath.Join(workDir, filename))
+	if err != nil {
+		t.Fatalf("reading text asset after save: %v", err)
+	}
+	if string(projected) != content {
+		t.Fatalf("text asset content = %q, want original content without frontmatter", string(projected))
 	}
 }
 

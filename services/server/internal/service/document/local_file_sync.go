@@ -205,7 +205,11 @@ func (store *Service) loadLocalMarkdownWorkspaceUnlocked(projectID string) ([]me
 	if err := os.MkdirAll(docsDir, 0o755); err != nil {
 		return nil, nil, fmt.Errorf("creating work directory: %w", err)
 	}
-	tree, err := scanLocalMarkdownTree(docsDir, store.fileCache)
+	assetDocumentPaths, err := store.projectAssetDocumentRelativePaths(projectID, docsDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	tree, err := scanLocalMarkdownTree(docsDir, store.fileCache, assetDocumentPaths)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -242,7 +246,7 @@ func (store *Service) loadLocalMarkdownWorkspaceUnlocked(projectID string) ([]me
 	return NormalizeWorkspaceDocuments(documents), folders, nil
 }
 
-func scanLocalMarkdownTree(root string, cache *markdownFileCache) (localMarkdownTree, error) {
+func scanLocalMarkdownTree(root string, cache *markdownFileCache, excludedFiles map[string]bool) (localMarkdownTree, error) {
 	files := []localMarkdownFile{}
 	folderPaths := []string{}
 	seenFiles := map[string]bool{}
@@ -286,6 +290,9 @@ func scanLocalMarkdownTree(root string, cache *markdownFileCache) (localMarkdown
 		}
 		relative = normalizeLocalMarkdownPath(relative)
 		relativeKey := strings.ToLower(relative)
+		if excludedFiles[relativeKey] {
+			return nil
+		}
 		if seenFiles[relativeKey] {
 			return nil
 		}
@@ -329,6 +336,53 @@ func scanLocalMarkdownTree(root string, cache *markdownFileCache) (localMarkdown
 	})
 	folderPaths = expandedLocalMarkdownFolderPaths(folderPaths)
 	return localMarkdownTree{Files: files, FolderPaths: folderPaths}, nil
+}
+
+func (store *Service) projectAssetDocumentRelativePaths(projectID string, docsDir string) (map[string]bool, error) {
+	if store.assets == nil {
+		return nil, nil
+	}
+	projectDir := store.projectDir(projectID)
+	if projectDir == "" {
+		return nil, nil
+	}
+	models, err := store.assets.ListProjectAssets(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("listing project assets for document scan: %w", err)
+	}
+	excluded := map[string]bool{}
+	for _, model := range models {
+		if isMarkdownProjectAsset(model.Asset.Filename, model.Asset.MIMEType) {
+			continue
+		}
+		relPath := strings.TrimSpace(model.Asset.RelPath)
+		if relPath == "" {
+			continue
+		}
+		path := relPath
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(projectDir, filepath.FromSlash(path))
+		}
+		relative, err := filepath.Rel(docsDir, path)
+		if err != nil || relative == "." || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		relative = normalizeLocalMarkdownPath(relative)
+		if relative == "" || !isLocalDocumentFile(relative) {
+			continue
+		}
+		excluded[strings.ToLower(relative)] = true
+	}
+	return excluded, nil
+}
+
+func isMarkdownProjectAsset(filename string, mimeType string) bool {
+	filename = strings.ToLower(strings.TrimSpace(filename))
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	return strings.HasSuffix(filename, ".md") ||
+		strings.HasSuffix(filename, ".markdown") ||
+		mimeType == "text/markdown" ||
+		mimeType == "text/x-markdown"
 }
 
 type documentMarkdownFrontmatter struct {
@@ -405,7 +459,10 @@ func localMarkdownDocumentID(
 	return uniqueLocalFileID("doc-file-", projectID, relativePath, used)
 }
 
-func localMarkdownProjectionContent(document mediamcp.WorkspaceDocument) string {
+func localMarkdownProjectionContent(document mediamcp.WorkspaceDocument, filename string) string {
+	if !isMarkdownDocumentFilename(filename) {
+		return stripLocalMarkdownFrontmatter(document.Content)
+	}
 	category := NormalizeDocumentCategoryValue(document.Category)
 	if category == "" || ValidateDocumentCategory(category) != nil {
 		category = referenceDocumentCategory
@@ -424,6 +481,15 @@ func localMarkdownProjectionContent(document mediamcp.WorkspaceDocument) string 
 		return stripLocalMarkdownFrontmatter(document.Content)
 	}
 	return fmt.Sprintf("---\n%s---\n%s", string(frontmatter), stripLocalMarkdownFrontmatter(document.Content))
+}
+
+func isMarkdownDocumentFilename(filename string) bool {
+	switch strings.ToLower(filepath.Ext(strings.TrimSpace(filename))) {
+	case ".md", ".markdown":
+		return true
+	default:
+		return false
+	}
 }
 
 func splitLocalMarkdownFrontmatter(content string) (string, string, bool) {
