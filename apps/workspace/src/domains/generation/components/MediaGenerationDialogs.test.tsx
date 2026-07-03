@@ -352,6 +352,58 @@ describe("MaterialLibraryImportDialog", () => {
 		expect(onConfirmSelection).toHaveBeenCalledWith([uploadedAsset]);
 	});
 
+	it("filters to video assets and uploads videos", async () => {
+		const videoAsset = mediaAsset({
+			id: "video-1",
+			filename: "scene.mp4",
+			kind: "video",
+			mimeType: "video/mp4",
+			sizeBytes: 8192,
+			url: "/api/v1/media-assets/video-1/content",
+		});
+		const uploadedAsset = mediaAsset({
+			id: "uploaded-video",
+			filename: "uploaded-scene.mp4",
+			kind: "video",
+			mimeType: "video/mp4",
+			sizeBytes: 16384,
+			url: "/api/v1/media-assets/uploaded-video/content",
+		});
+		const onConfirmSelection = vi.fn();
+		const onUploadAsset = vi.fn().mockResolvedValue(uploadedAsset);
+		render(
+			<MaterialLibraryImportDialog
+				assetKind="video"
+				mediaAssets={[mediaAsset(), videoAsset]}
+				open
+				onConfirmSelection={onConfirmSelection}
+				onOpenChange={vi.fn()}
+				onUploadAsset={onUploadAsset}
+			/>,
+		);
+
+		expect(screen.getByPlaceholderText("搜索视频素材")).toBeTruthy();
+		expect(screen.getByText("scene.mp4")).toBeTruthy();
+		expect(screen.queryByText("still.png")).toBeNull();
+
+		const file = new File(["video"], "uploaded-scene.mp4", { type: "video/mp4" });
+		fireEvent.change(screen.getByLabelText("上传视频素材"), {
+			target: { files: [file] },
+		});
+
+		await waitFor(() => {
+			expect(onUploadAsset).toHaveBeenCalledWith(file);
+		});
+		expect(await screen.findByText("uploaded-scene.mp4")).toBeTruthy();
+		expect(
+			screen.getByRole("checkbox", { name: /uploaded-scene\.mp4/u }).getAttribute("aria-checked"),
+		).toBe("true");
+
+		fireEvent.click(screen.getByRole("button", { name: "加入生成记录" }));
+
+		expect(onConfirmSelection).toHaveBeenCalledWith([uploadedAsset]);
+	});
+
 	it("shows an upload error for non-image files", async () => {
 		const onUploadAsset = vi.fn();
 		render(

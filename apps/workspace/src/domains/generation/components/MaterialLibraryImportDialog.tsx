@@ -22,7 +22,7 @@ export interface MaterialLibraryImportDialogProps {
 	selectedAssetIds?: string[];
 }
 
-type MaterialImportAssetKind = Extract<MediaAsset["kind"], "audio" | "image">;
+type MaterialImportAssetKind = Extract<MediaAsset["kind"], "audio" | "image" | "video">;
 
 type MaterialImportState =
 	| {
@@ -323,6 +323,14 @@ const MaterialLibraryImportCard: React.FC<{
 		<div className="relative aspect-[4/3] bg-muted-foreground/10">
 			{assetKind === "image" ? (
 				<img src={apiResourceURL(asset.url)} alt="" className="size-full object-contain" />
+			) : assetKind === "video" ? (
+				<video
+					src={apiResourceURL(asset.url)}
+					poster={asset.posterUrl ? apiResourceURL(asset.posterUrl) : undefined}
+					className="size-full object-contain"
+					muted
+					preload="metadata"
+				/>
 			) : (
 				<div className="flex size-full items-center justify-center text-muted-foreground">
 					<AudioLines className="size-8" />
@@ -395,6 +403,22 @@ const materialImportKindCopy: Record<
 		uploadFailureMessage: "图片上传失败。",
 		uploadInputLabel: "上传图片素材",
 	},
+	video: {
+		accept: "video/*,.mp4,.webm,.mov,.m4v",
+		confirmingLabel: "加入中...",
+		confirmLabel: "加入生成记录",
+		description: "确认后加入当前视频生成记录，再从生成记录中选择是否放入分镜。",
+		emptyMessage: "当前素材库暂无视频素材。",
+		invalidUploadMessage: "请选择视频文件。",
+		label: "视频",
+		noMatchMessage: "没有匹配的视频素材。",
+		noUploadedSelectableMessage: "上传完成，但没有可选择的视频素材。",
+		searchPlaceholder: "搜索视频素材",
+		unit: "个",
+		uploadButtonLabel: "上传视频",
+		uploadFailureMessage: "视频上传失败。",
+		uploadInputLabel: "上传视频素材",
+	},
 };
 
 const mergeMaterialImportAssets = (baseAssets: MediaAsset[], nextAssets: MediaAsset[]) => {
@@ -423,6 +447,9 @@ const uniqueMaterialAssetIds = (ids: string[]) => {
 const isMaterialUploadFile = (file: File, kind: MaterialImportAssetKind) => {
 	if (kind === "audio") {
 		return file.type.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg|flac|webm)$/iu.test(file.name);
+	}
+	if (kind === "video") {
+		return file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/iu.test(file.name);
 	}
 
 	return file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|avif)$/iu.test(file.name);

@@ -13,7 +13,7 @@ const (
 	importedMediaGenerationDetailsParamID = "_mediago_request_details"
 )
 
-// ImportGenerationMediaAssets imports existing media library images into one
+// ImportGenerationMediaAssets imports existing media library assets into one
 // generation conversation as completed, reference-only history records.
 func (workflow *GenerationService) ImportGenerationMediaAssets(payload ImportGenerationMediaAssetsRequest) (GenerationTasksResponse, int, error) {
 	if workflow.generationTasks == nil || workflow.mediaAssets == nil {
@@ -24,9 +24,10 @@ func (workflow *GenerationService) ImportGenerationMediaAssets(payload ImportGen
 	if kind == "" {
 		kind = string(coregeneration.KindImage)
 	}
-	if kind != string(coregeneration.KindImage) {
-		return GenerationTasksResponse{}, http.StatusBadRequest, fmt.Errorf("only image media assets can be imported into image generation history")
+	if !isImportableMediaGenerationKind(kind) {
+		return GenerationTasksResponse{}, http.StatusBadRequest, fmt.Errorf("only image or video media assets can be imported into generation history")
 	}
+	kindLabel := importedMediaGenerationKindLabel(kind)
 
 	assetIDs := CompactStrings(payload.AssetIDs)
 	if len(assetIDs) == 0 {
@@ -73,8 +74,8 @@ func (workflow *GenerationService) ImportGenerationMediaAssets(payload ImportGen
 		if !ok || !mediaAssetMatchesGenerationProject(asset.ProjectID, payload.ProjectID) {
 			return GenerationTasksResponse{}, http.StatusNotFound, fmt.Errorf("media asset %q was not found", assetID)
 		}
-		if asset.Kind != string(coregeneration.KindImage) {
-			return GenerationTasksResponse{}, http.StatusBadRequest, fmt.Errorf("media asset %q is not an image", assetID)
+		if asset.Kind != kind {
+			return GenerationTasksResponse{}, http.StatusBadRequest, fmt.Errorf("media asset %q is not a %s", assetID, kind)
 		}
 
 		taskID, err := workflow.generationTasks.idGenerator("media-library")
@@ -86,7 +87,7 @@ func (workflow *GenerationService) ImportGenerationMediaAssets(payload ImportGen
 			title = strings.TrimSpace(asset.Filename)
 		}
 		if title == "" {
-			title = "素材库图片"
+			title = "素材库" + kindLabel
 		}
 		prompt := strings.TrimSpace(payload.Prompt)
 		if prompt == "" {
@@ -99,7 +100,7 @@ func (workflow *GenerationService) ImportGenerationMediaAssets(payload ImportGen
 			ProjectID:         payload.ProjectID,
 			DocumentID:        strings.TrimSpace(payload.DocumentID),
 			SectionID:         strings.TrimSpace(payload.SectionID),
-			CapabilityID:      importedMediaGenerationCapabilityID(payload.CapabilityID),
+			CapabilityID:      importedMediaGenerationCapabilityID(payload.CapabilityID, kind),
 			Kind:              kind,
 			RouteID:           importedMediaGenerationRouteID,
 			FamilyID:          importedMediaGenerationRouteID,
@@ -122,6 +123,7 @@ func (workflow *GenerationService) ImportGenerationMediaAssets(payload ImportGen
 					Kind:         asset.Kind,
 					Title:        title,
 					URL:          asset.URL,
+					PosterURL:    asset.PosterURL,
 					MIMEType:     asset.MIMEType,
 					DownloadPath: asset.DownloadPath,
 					Selected:     false,
@@ -144,9 +146,28 @@ func (workflow *GenerationService) ImportGenerationMediaAssets(payload ImportGen
 	return GenerationTasksResponse{Tasks: tasks}, http.StatusOK, nil
 }
 
-func importedMediaGenerationCapabilityID(value string) string {
+func isImportableMediaGenerationKind(kind string) bool {
+	switch kind {
+	case string(coregeneration.KindImage), string(coregeneration.KindVideo):
+		return true
+	default:
+		return false
+	}
+}
+
+func importedMediaGenerationKindLabel(kind string) string {
+	if kind == string(coregeneration.KindVideo) {
+		return "视频"
+	}
+	return "图片"
+}
+
+func importedMediaGenerationCapabilityID(value string, kind string) string {
 	if value = strings.TrimSpace(value); value != "" {
 		return value
+	}
+	if kind == string(coregeneration.KindVideo) {
+		return "video.generate"
 	}
 	return "image.generate"
 }

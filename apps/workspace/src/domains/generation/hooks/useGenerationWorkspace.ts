@@ -389,7 +389,7 @@ export const useGenerationWorkspace = ({
 	const importMediaAssetsToHistory = useCallback(
 		async (assets: MediaAsset[], options: ImportMediaAssetsToHistoryOptions = {}) => {
 			const assetIds = assets
-				.filter((asset) => asset.kind === "image")
+				.filter((asset) => asset.kind === kind)
 				.map((asset) => asset.id.trim())
 				.filter(Boolean);
 			if (assetIds.length === 0) return [];
@@ -398,7 +398,7 @@ export const useGenerationWorkspace = ({
 			setIsImportingMediaAssets(true);
 			try {
 				const response = await importGenerationMediaAssets({
-					kind: "image",
+					kind,
 					conversationId: conversationId ?? undefined,
 					scopeId: resolvedConversationScopeId,
 					conversationTitle: conversationTitle ?? undefined,
@@ -411,9 +411,9 @@ export const useGenerationWorkspace = ({
 					prompt: options.prompt,
 				});
 				await mutateTasks();
-				mutateProjectGenerationTasks("image");
-				void mutateSWR(generationConversationsQueryKey("image", resolvedConversationScopeId));
-				void mutateSWR(generationConversationsQueryKey("image", "", { allScopes: true }));
+				mutateProjectGenerationTasks(kind);
+				void mutateSWR(generationConversationsQueryKey(kind, resolvedConversationScopeId));
+				void mutateSWR(generationConversationsQueryKey(kind, "", { allScopes: true }));
 				return response.tasks;
 			} finally {
 				setIsImportingMediaAssets(false);
@@ -422,6 +422,7 @@ export const useGenerationWorkspace = ({
 		[
 			conversationId,
 			conversationTitle,
+			kind,
 			mediaAssetProjectId,
 			mutateProjectGenerationTasks,
 			mutateTasks,

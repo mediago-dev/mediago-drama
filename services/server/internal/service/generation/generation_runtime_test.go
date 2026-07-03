@@ -353,6 +353,74 @@ func TestImportGenerationMediaAssetsCreatesReferenceHistoryTasks(t *testing.T) {
 	}
 }
 
+func TestImportGenerationMediaAssetsCreatesVideoHistoryTasks(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	seedGenerationTaskProject(t, dbPath, "project-alpha")
+	mediaAssets := media.NewMediaAssets(dbPath, t.TempDir())
+	generatedID := 0
+	generationTasks := NewGenerationTaskService(dbPath, func(prefix string) (string, error) {
+		generatedID++
+		return fmt.Sprintf("%s-%d", prefix, generatedID), nil
+	})
+	workflow := NewGenerationService(nil, generationTasks, mediaAssets)
+	asset, err := mediaAssets.SaveReader(
+		context.Background(),
+		bytes.NewReader([]byte("video-bytes")),
+		"scene.mp4",
+		"video/mp4",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("saving reference video: %v", err)
+	}
+
+	response, status, err := workflow.ImportGenerationMediaAssets(ImportGenerationMediaAssetsRequest{
+		Kind:              "video",
+		ConversationID:    "project-alpha-video",
+		ScopeID:           "agent",
+		ConversationTitle: "Project video session",
+		ProjectID:         "project-alpha",
+		DocumentID:        "story-doc",
+		SectionID:         "section-video",
+		CapabilityID:      "storyboard",
+		AssetIDs:          []string{asset.ID},
+		AssetTitle:        "分镜视频",
+	})
+	if err != nil {
+		t.Fatalf("importing video media assets: %v", err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want %d", status, http.StatusOK)
+	}
+	if len(response.Tasks) != 1 {
+		t.Fatalf("tasks = %+v, want one imported video task", response.Tasks)
+	}
+	task := response.Tasks[0]
+	if task.Kind != "video" ||
+		task.ConversationID != "project-alpha-video" ||
+		task.SectionID != "section-video" ||
+		task.CapabilityID != "storyboard" ||
+		task.RouteID != importedMediaGenerationRouteID ||
+		task.Status != "completed" {
+		t.Fatalf("task = %+v, want completed imported video task", task)
+	}
+	if len(task.Assets) != 1 ||
+		task.Assets[0].Kind != "video" ||
+		task.Assets[0].URL != asset.URL ||
+		task.Assets[0].MIMEType != "video/mp4" ||
+		task.Assets[0].Selected {
+		t.Fatalf("assets = %+v, want unselected video media asset", task.Assets)
+	}
+
+	conversation, ok, err := generationTasks.GetConversation("project-alpha-video")
+	if err != nil {
+		t.Fatalf("getting created conversation: %v", err)
+	}
+	if !ok || conversation.ScopeID != "agent" || conversation.Kind != "video" {
+		t.Fatalf("conversation = %+v ok=%v, want imported video conversation", conversation, ok)
+	}
+}
+
 func TestSanitizedGenerationRequestOmitsReferenceBase64(t *testing.T) {
 	encoded := base64.StdEncoding.EncodeToString([]byte("secret-reference-bytes"))
 	logValue := sanitizedGenerationRequest(coregeneration.Request{

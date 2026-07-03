@@ -350,6 +350,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const resolvedEmptyResultText = emptyResultText ?? generationKindCopy[kind].emptyResultText;
 	const mediaKindLabel = generationKindCopy[kind].mediaLabel;
 	const referenceButtonLabel = kind === "image" ? "参考图" : "参考素材";
+	const materialImportAssetKind = materialImportAssetKindForGenerationKind(kind);
 	const pendingDefaultSelectedAssetRef = useRef<GenerationAsset | null>(null);
 	const handleGenerationComplete = useCallback(
 		(pendingId: string, assets: GenerationAsset[], sourceTaskId: string) => {
@@ -1180,7 +1181,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			const assetsToImport: MediaAsset[] = [];
 
 			for (const asset of selectedAssets) {
-				if (asset.kind !== "image") continue;
+				if (asset.kind !== materialImportAssetKind) continue;
 
 				const existing = findImportedMaterialAsset(generationEntries, asset);
 				if (existing) {
@@ -1216,12 +1217,16 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				});
 			} catch (error) {
 				toast.error("导入失败", {
-					description: apiErrorMessage(error, "素材库图片加入生成记录失败。"),
+					description: apiErrorMessage(
+						error,
+						`素材库${materialImportAssetKindLabel(materialImportAssetKind)}加入生成记录失败。`,
+					),
 				});
 			}
 		},
 		[
 			generationEntries,
+			materialImportAssetKind,
 			onMaterialLibraryImportOpenChange,
 			onViewModeChange,
 			selectedAssetTitle,
@@ -1690,6 +1695,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			/>
 			{onMaterialLibraryImportOpenChange ? (
 				<MaterialLibraryImportDialog
+					assetKind={materialImportAssetKind}
 					confirming={ws.isImportingMediaAssets}
 					mediaAssets={ws.mediaAssets}
 					open={Boolean(materialLibraryImportOpen)}
@@ -1713,6 +1719,14 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 };
 
 const inlineReferenceTimestamp = "1970-01-01T00:00:00.000Z";
+
+type MaterialImportAssetKind = Extract<MediaAsset["kind"], "image" | "video">;
+
+const materialImportAssetKindForGenerationKind = (kind: GenerationKind): MaterialImportAssetKind =>
+	kind === "video" ? "video" : "image";
+
+const materialImportAssetKindLabel = (kind: MaterialImportAssetKind) =>
+	kind === "video" ? "视频" : "图片";
 
 const generationSelectionBaseKeys = (entries: GenerationEntry[], selectedAssetKeys: string[]) => {
 	const keys = new Set(selectedAssetKeys);

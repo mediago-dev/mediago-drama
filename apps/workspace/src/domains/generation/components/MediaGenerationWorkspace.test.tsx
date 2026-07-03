@@ -330,6 +330,18 @@ const mediaAsset: MediaAsset = {
 	updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
+const videoMediaAsset: MediaAsset = {
+	id: "video-a",
+	kind: "video",
+	filename: "scene.mp4",
+	mimeType: "video/mp4",
+	sizeBytes: 4096,
+	url: "/api/v1/media-assets/video-a/content",
+	posterUrl: "/api/v1/media-assets/video-a/poster",
+	createdAt: "2026-01-01T00:00:00.000Z",
+	updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
 const audioVoiceParam: GenerationParam = {
 	name: "voiceId",
 	label: "音色",
@@ -1622,6 +1634,49 @@ describe("MediaGenerationWorkspace", () => {
 		});
 		expect(onToggleAsset).not.toHaveBeenCalled();
 		expect(setActiveEntryId).toHaveBeenCalledWith("imported-entry");
+		expect(onMaterialLibraryImportOpenChange).toHaveBeenCalledWith(false);
+	});
+
+	it("imports selected material library videos in video generation", async () => {
+		const importMediaAssetsToHistory = vi.fn().mockResolvedValue([{ id: "imported-video-entry" }]);
+		const onMaterialLibraryImportOpenChange = vi.fn();
+		const setActiveEntryId = vi.fn();
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			importMediaAssetsToHistory,
+			kind: "video",
+			mediaAssets: [mediaAsset, videoMediaAsset],
+			orderedGenerationEntries: [],
+			setActiveEntryId,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="视频提示词"
+				kind="video"
+				materialLibraryImportOpen
+				onMaterialLibraryImportOpenChange={onMaterialLibraryImportOpenChange}
+				selectedAssetTitle="第 01 组"
+				viewMode="history"
+			/>,
+		);
+
+		expect(screen.getByRole("dialog", { name: "从素材库中选择" })).toBeTruthy();
+		expect(screen.getByText("scene.mp4")).toBeTruthy();
+		expect(screen.queryByText("source.png")).toBeNull();
+		expect(screen.getByLabelText("上传视频素材")).toBeTruthy();
+		expect(screen.queryByLabelText("上传图片素材")).toBeNull();
+
+		fireEvent.click(screen.getByRole("checkbox", { name: /scene\.mp4/u }));
+		fireEvent.click(screen.getByRole("button", { name: "加入生成记录" }));
+
+		await waitFor(() => {
+			expect(importMediaAssetsToHistory).toHaveBeenCalledWith([videoMediaAsset], {
+				assetTitle: "第 01 组",
+			});
+		});
+		expect(setActiveEntryId).toHaveBeenCalledWith("imported-video-entry");
 		expect(onMaterialLibraryImportOpenChange).toHaveBeenCalledWith(false);
 	});
 
