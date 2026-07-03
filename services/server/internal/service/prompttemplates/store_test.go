@@ -19,6 +19,9 @@ func TestStoreLoadReturnsOfficialInstructions(t *testing.T) {
 	if templates["TOOLS"].Content == "" || templates["TOOLS"].Source != sourceOfficial {
 		t.Fatalf("TOOLS template = %#v, want official content", templates["TOOLS"])
 	}
+	if documentRules := templates["DOCUMENT_RULES"]; documentRules.Content == "" || documentRules.Editable {
+		t.Fatalf("DOCUMENT_RULES template = %#v, want non-editable official content", documentRules)
+	}
 	if _, ok := templates["PROMPT_OPTIMIZATION"]; ok {
 		t.Fatalf("templates = %#v, should not include internal prompt optimization instruction", templates)
 	}
@@ -108,8 +111,8 @@ func TestInjectableTemplatesReturnsAgentInstructionTemplates(t *testing.T) {
 			t.Fatalf("InjectableTemplates() included non-injectable template %#v", template)
 		}
 	}
-	if strings.Join(ids, ",") != "AGENTS,TOOLS" {
-		t.Fatalf("injectable ids = %v, want AGENTS,TOOLS", ids)
+	if strings.Join(ids, ",") != "AGENTS,TOOLS,DOCUMENT_RULES" {
+		t.Fatalf("injectable ids = %v, want AGENTS,TOOLS,DOCUMENT_RULES", ids)
 	}
 }
 

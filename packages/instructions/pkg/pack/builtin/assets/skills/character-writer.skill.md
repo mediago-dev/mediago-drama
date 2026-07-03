@@ -3,7 +3,6 @@ name: character-writer
 title: 角色设定写作
 description: 编辑 character 类型文档时使用：梳理剧情提炼人物外观，产出风格中性、可供 GPTImage2 等 AI 图像工具参考的外观描述词
 document_category: character
-template_id: character.v1
 ---
 # 类型专属写作指导：AI 图像外观描述词（character）
 

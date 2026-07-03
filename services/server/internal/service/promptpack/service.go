@@ -171,7 +171,16 @@ func (store *Service) SetEnabled(ctx context.Context, packID string, enabled boo
 			return Pack{}, err
 		}
 	} else {
-		if err := store.repo.SetPackEnabled(packID, false); err != nil {
+		if packID == DefaultPackID {
+			if err := store.repo.SetPackEnabled(packID, false); err != nil {
+				return Pack{}, err
+			}
+		} else if err := store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
+			if err := tx.SetPackEnabled(packID, false); err != nil {
+				return err
+			}
+			return tx.SetPackEnabled(DefaultPackID, true)
+		}); err != nil {
 			return Pack{}, err
 		}
 	}

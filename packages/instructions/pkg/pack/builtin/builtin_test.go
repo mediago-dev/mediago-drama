@@ -2,12 +2,10 @@ package builtin
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
-	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/templates"
 )
 
 func TestBuiltinPackParses(t *testing.T) {
@@ -32,22 +30,14 @@ func TestBuiltinPackParses(t *testing.T) {
 		}
 		if entry.Slug == "auto-mention-resolver" {
 			foundAutoMentionResolver = true
-			if entry.Metadata["template_id"] != "" {
-				t.Fatalf("auto-mention-resolver template_id = %#v, want empty", entry.Metadata["template_id"])
-			}
 			continue
 		}
 		hint, ok := entry.Metadata["hint"].(map[string]string)
 		if !ok || hint["document_category"] == "" {
 			t.Fatalf("%s hint = %#v, want document category", entry.Slug, entry.Metadata["hint"])
 		}
-		templateID := fmt.Sprint(entry.Metadata["template_id"])
-		template, err := templates.TemplateByID(context.Background(), templateID)
-		if err != nil {
-			t.Fatalf("%s template_id = %q: %v", entry.Slug, templateID, err)
-		}
-		if template.DocumentCategory != hint["document_category"] {
-			t.Fatalf("%s template category = %q, want %q", entry.Slug, template.DocumentCategory, hint["document_category"])
+		if entry.Metadata["template_id"] != "" {
+			t.Fatalf("%s template_id = %#v, want empty because core rules live in system prompt", entry.Slug, entry.Metadata["template_id"])
 		}
 		if entry.Slug == "novel-writer" {
 			foundNovelWriter = true

@@ -3,7 +3,6 @@ name: novel-writer
 title: 小说写作
 description: 编辑 reference/资料 类型文档中的小说正文、章节大纲、续写、改写或润色时使用：保持叙事视角、人物动机、情节连续性和章节节奏，输出可继续转为剧本、角色、场景和分镜的小说文本
 document_category: reference
-template_id: novel.v1
 ---
 # 类型专属写作指导：小说正文与资料（reference）
 

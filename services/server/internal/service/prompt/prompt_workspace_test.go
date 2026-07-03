@@ -362,6 +362,10 @@ func TestPromptBuilderKeepsSkillLoadingAsFixedRule(t *testing.T) {
 			if !strings.Contains(prompt, "编辑剧本、角色、场景、道具、分镜或小说资料等类型文档前，先调用 MCP `load_skill`") {
 				t.Fatalf("prompt = %q, want fixed load_skill rule", prompt)
 			}
+			if !strings.Contains(prompt, "业务文档的主体资源边界是二级标题") ||
+				!strings.Contains(prompt, "Skill 只提供业务写作方法") {
+				t.Fatalf("prompt = %q, want system-owned core document rules", prompt)
+			}
 			for _, skillName := range []string{
 				"screenplay-writer:",
 				"character-writer:",

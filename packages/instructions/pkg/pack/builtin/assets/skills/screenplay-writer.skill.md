@@ -3,7 +3,6 @@ name: screenplay-writer
 title: 剧本写作
 description: 编辑 screenplay 类型文档时使用：把小说、梗概或剧情节拍改写成可拍、可演、节奏清晰的短剧剧本
 document_category: screenplay
-template_id: screenplay.v1
 ---
 # 类型专属写作指导：剧本（screenplay）
 

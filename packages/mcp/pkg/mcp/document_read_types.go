@@ -179,7 +179,8 @@ type LoadSkillOutput struct {
 	Available []SkillMeta       `json:"available,omitempty"`
 }
 
-// DocumentTemplate describes a built-in document structure rule for a skill.
+// DocumentTemplate is retained for legacy clients; document structure rules are
+// now injected through the system prompt rather than returned from load_skill.
 type DocumentTemplate struct {
 	ID               string `json:"id"`
 	Name             string `json:"name"`

@@ -12,15 +12,21 @@ func TestInstructionsParsesOfficialTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Instructions() error = %v", err)
 	}
-	if len(instructions) != 2 {
-		t.Fatalf("instructions = %#v, want AGENTS and TOOLS", instructions)
+	if len(instructions) != 3 {
+		t.Fatalf("instructions = %#v, want AGENTS, TOOLS, and DOCUMENT_RULES", instructions)
 	}
-	if instructions[0].ID != "AGENTS" || instructions[1].ID != "TOOLS" {
-		t.Fatalf("instructions = %#v, want AGENTS then TOOLS", instructions)
+	if instructions[0].ID != "AGENTS" || instructions[1].ID != "TOOLS" || instructions[2].ID != "DOCUMENT_RULES" {
+		t.Fatalf("instructions = %#v, want AGENTS, TOOLS, DOCUMENT_RULES", instructions)
 	}
 	for _, instruction := range instructions {
-		if instruction.Name == "" || instruction.Body == "" || !instruction.Editable {
-			t.Fatalf("instruction = %#v, want name, body, editable", instruction)
+		if instruction.Name == "" || instruction.Body == "" {
+			t.Fatalf("instruction = %#v, want name and body", instruction)
+		}
+		if instruction.ID == "DOCUMENT_RULES" && instruction.Editable {
+			t.Fatalf("DOCUMENT_RULES = %#v, want non-editable", instruction)
+		}
+		if instruction.ID != "DOCUMENT_RULES" && !instruction.Editable {
+			t.Fatalf("instruction = %#v, want editable", instruction)
 		}
 	}
 }
@@ -65,6 +71,28 @@ func TestToolsInstructionDoesNotBlockBusinessDocumentsOnMissingStyle(t *testing.
 		if !strings.Contains(instruction.Body, want) {
 			t.Fatalf("TOOLS instruction = %q, want fragment %q", instruction.Body, want)
 		}
+	}
+}
+
+func TestDocumentRulesInstructionDefinesSecondLevelResourceBoundary(t *testing.T) {
+	instruction, err := InstructionByID(context.Background(), "DOCUMENT_RULES")
+	if err != nil {
+		t.Fatalf("InstructionByID(%q) error = %v", "DOCUMENT_RULES", err)
+	}
+	for _, want := range []string{
+		"业务文档的主体资源边界是二级标题",
+		"不要删除、伪造或批量改写已有 `section-id`",
+		"Skill 只提供业务写作方法",
+	} {
+		if !strings.Contains(instruction.Body, want) {
+			t.Fatalf("DOCUMENT_RULES instruction = %q, want fragment %q", instruction.Body, want)
+		}
+	}
+	if instruction.Editable {
+		t.Fatalf("DOCUMENT_RULES = %#v, want non-editable", instruction)
+	}
+	if !instruction.Injectable {
+		t.Fatalf("DOCUMENT_RULES = %#v, want injectable", instruction)
 	}
 }
 

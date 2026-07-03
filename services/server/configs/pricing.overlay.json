@@ -13,6 +13,11 @@
       "perCallPrice": 0.22
     },
     {
+      "routeId": "mediago.seedream-5-lite",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
       "routeId": "jimeng.seedream-5.0",
       "currency": "CNY",
       "unit": "per_call",
@@ -423,6 +428,11 @@
       "perCallPrice": 0.032
     },
     {
+      "routeId": "mediago.gpt-image-2",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
       "routeId": "openrouter.gpt-5.4-image-2",
       "currency": "USD",
       "unit": "per_million_tokens",
@@ -441,6 +451,11 @@
       "currency": "USD",
       "unit": "per_call",
       "perCallPrice": 0.067
+    },
+    {
+      "routeId": "mediago.gemini-3.1-flash-image",
+      "currency": "CNY",
+      "unit": "external"
     },
     {
       "routeId": "openrouter.gemini-3.1-flash-image-preview",
@@ -464,6 +479,11 @@
       "inputTokenPrice": 0.3,
       "outputTokenPrice": 2.5,
       "cachedTokenPrice": 0.03
+    },
+    {
+      "routeId": "mediago.gemini-2.5-flash-image",
+      "currency": "CNY",
+      "unit": "external"
     },
     {
       "routeId": "dmx.seedance-2.0-fast",

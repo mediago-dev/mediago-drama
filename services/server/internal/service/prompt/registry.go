@@ -36,6 +36,14 @@ var fallbackSections = []SectionDescriptor{
 		Editable:    true,
 		Injectable:  true,
 	},
+	{
+		ID:          "DOCUMENT_RULES",
+		Name:        "核心文档规则",
+		Description: "MediaGo Drama 的文档分类、二级标题资源边界和 section-id 规则。",
+		Order:       2,
+		Editable:    false,
+		Injectable:  true,
+	},
 }
 
 // SectionDescriptors returns every registered prompt section in injection order.
@@ -88,7 +96,7 @@ func descriptorsFromTemplates(templates []prompttemplates.PromptTemplate) []Sect
 			Name:        template.Name,
 			Description: template.Description,
 			Order:       template.Order,
-			Editable:    true,
+			Editable:    template.Editable,
 			Injectable:  template.Injectable,
 		}
 		descriptors = append(descriptors, descriptor)

@@ -148,7 +148,6 @@ export const filterAgentSkillSlashItems = (items: AgentSkillSlashItem[], query: 
 				item.name,
 				item.title ?? "",
 				item.description,
-				item.templateId ?? "",
 				item.source ?? "",
 				...Object.values(item.hint ?? {}),
 			].some((value) => normalizeAgentSkillSearchText(value).includes(normalizedQuery)),
@@ -166,9 +165,8 @@ const skillMetaLabel = (item: AgentSkillSlashItem) => {
 	const source =
 		item.source === "user" ? "自定义" : item.source === "pack" ? "内置" : item.source || "Skill";
 	const override = item.overridden ? "已覆盖" : "";
-	const template = item.templateId ? item.templateId : "";
 
-	return [source, override, template].filter(Boolean).join(" · ");
+	return [source, override].filter(Boolean).join(" · ");
 };
 
 const normalizeAgentSkillSearchText = (value: string) =>

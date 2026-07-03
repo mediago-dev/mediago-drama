@@ -32,6 +32,7 @@ type PromptTemplate struct {
 	Source      string `json:"source"`
 	Overridden  bool   `json:"overridden,omitempty"`
 	Order       int    `json:"-"`
+	Editable    bool   `json:"editable"`
 	Injectable  bool   `json:"injectable"`
 }
 
@@ -84,7 +85,7 @@ func (store *Service) Load(ctx context.Context) (map[string]PromptTemplate, erro
 	}
 	templates := map[string]PromptTemplate{}
 	for _, instruction := range instructions {
-		if !instruction.Editable {
+		if !instruction.Editable && !instruction.Injectable {
 			continue
 		}
 		var override *domain.InstructionTemplateModel
@@ -235,6 +236,7 @@ func templateFromInstruction(
 		Source:      source,
 		Overridden:  overridden,
 		Order:       instruction.Order,
+		Editable:    instruction.Editable,
 		Injectable:  instruction.Injectable,
 	}
 }

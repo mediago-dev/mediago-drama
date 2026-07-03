@@ -31,11 +31,11 @@ func TestMain(m *testing.M) {
 
 func TestSectionRegistryLoadsInstructionEntries(t *testing.T) {
 	descriptors := SectionDescriptors()
-	if len(descriptors) != 2 {
-		t.Fatalf("SectionDescriptors() = %#v, want two descriptors", descriptors)
+	if len(descriptors) != 3 {
+		t.Fatalf("SectionDescriptors() = %#v, want three descriptors", descriptors)
 	}
-	if descriptors[0].ID != "AGENTS" || descriptors[1].ID != "TOOLS" {
-		t.Fatalf("descriptors = %#v, want AGENTS then TOOLS", descriptors)
+	if descriptors[0].ID != "AGENTS" || descriptors[1].ID != "TOOLS" || descriptors[2].ID != "DOCUMENT_RULES" {
+		t.Fatalf("descriptors = %#v, want AGENTS, TOOLS, DOCUMENT_RULES", descriptors)
 	}
 }
 
@@ -46,6 +46,9 @@ func TestEditableSectionDescriptorsReturnsAgentInstructions(t *testing.T) {
 	}
 	if descriptorIDsContain(descriptors, "PROMPT_OPTIMIZATION") {
 		t.Fatalf("EditableSectionDescriptors() = %#v, should not include PROMPT_OPTIMIZATION", descriptors)
+	}
+	if descriptorIDsContain(descriptors, "DOCUMENT_RULES") {
+		t.Fatalf("EditableSectionDescriptors() = %#v, should not include non-editable DOCUMENT_RULES", descriptors)
 	}
 	for index := 1; index < len(descriptors); index++ {
 		if descriptors[index-1].Order > descriptors[index].Order {

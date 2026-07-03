@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	instructiontemplates "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/templates"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 )
@@ -64,48 +63,7 @@ func (adapter *Adapter) LoadSkill(ctx context.Context, projectID string, input m
 		}
 		return output, err
 	}
-	content := item.Content
-	var template *mediamcp.DocumentTemplate
-	if strings.TrimSpace(item.TemplateID) != "" {
-		resolved, err := instructiontemplates.TemplateByID(ctx, item.TemplateID)
-		if err != nil {
-			return mediamcp.LoadSkillOutput{Name: item.Name}, err
-		}
-		template = mcpDocumentTemplate(resolved)
-		content = appendDocumentStructureRules(content, resolved)
-	}
-	return mediamcp.LoadSkillOutput{Name: item.Name, Content: content, Template: template}, nil
-}
-
-func appendDocumentStructureRules(content string, template instructiontemplates.Template) string {
-	content = strings.TrimSpace(content)
-	body := strings.TrimSpace(template.Body)
-	if body == "" {
-		return normalizeMCPContent(content)
-	}
-	sections := []string{}
-	if content != "" {
-		sections = append(sections, content)
-	}
-	sections = append(sections, strings.Join([]string{
-		"## 系统内置文档结构规则（内部）",
-		"",
-		"新建或填写本类型文档时，必须遵守下面的内部结构规则。结构规则由 MediaGo Drama 内置管理；编辑 Skill 时不要改写、删除或复述这些规则。",
-		"",
-		"```markdown",
-		body,
-		"```",
-	}, "\n"))
-	return normalizeMCPContent(strings.Join(sections, "\n\n"))
-}
-
-func mcpDocumentTemplate(template instructiontemplates.Template) *mediamcp.DocumentTemplate {
-	return &mediamcp.DocumentTemplate{
-		ID:               template.ID,
-		Name:             template.Name,
-		Description:      template.Description,
-		DocumentCategory: template.DocumentCategory,
-	}
+	return mediamcp.LoadSkillOutput{Name: item.Name, Content: normalizeMCPContent(item.Content)}, nil
 }
 
 func normalizeMCPContent(content string) string {

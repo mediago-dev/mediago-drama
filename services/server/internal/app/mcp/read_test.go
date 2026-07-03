@@ -5,28 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	instructiontemplates "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/templates"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 )
-
-func TestAppendDocumentStructureRulesAddsInternalRulesBlock(t *testing.T) {
-	content := appendDocumentStructureRules("Skill body\n", instructiontemplates.Template{
-		ID:               "screenplay.v1",
-		Name:             "剧本文档模板",
-		DocumentCategory: "screenplay",
-		Body:             "# 第一章\n\n## 1-1\n",
-	})
-
-	for _, want := range []string{
-		"Skill body",
-		"## 系统内置文档结构规则（内部）",
-		"```markdown\n# 第一章\n\n## 1-1\n```",
-	} {
-		if !strings.Contains(content, want) {
-			t.Fatalf("content = %q, want fragment %q", content, want)
-		}
-	}
-}
 
 func TestLoadSkillReadsWorkspaceSettingsDB(t *testing.T) {
 	ctx := context.Background()
@@ -45,6 +25,9 @@ func TestLoadSkillReadsWorkspaceSettingsDB(t *testing.T) {
 	}
 	if output.Name != skillName || !strings.Contains(output.Content, skillBody) {
 		t.Fatalf("LoadSkill() = %#v, want workspace skill body", output)
+	}
+	if output.Template != nil || strings.Contains(output.Content, "系统内置文档结构规则") {
+		t.Fatalf("LoadSkill() = %#v, should not append document template rules", output)
 	}
 }
 

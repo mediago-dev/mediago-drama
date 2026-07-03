@@ -3,7 +3,6 @@ name: scene-writer
 title: 场景设定写作
 description: 编辑 scene 类型文档时使用：从剧情中提炼关键场景，生成纯净、无人、可直接用于生图的电影级场景设定
 document_category: scene
-template_id: scene.v1
 ---
 # 类型专属写作指导：场景设定（scene）
 

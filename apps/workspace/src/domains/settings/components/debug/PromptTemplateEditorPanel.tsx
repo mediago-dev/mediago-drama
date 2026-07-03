@@ -304,7 +304,7 @@ const promptBodyRowClassName = "grid gap-2 py-2";
 const templateMessageClassName = "py-2 text-sm text-muted-foreground";
 
 export const visibleInstructionTemplates = (templates: PromptTemplate[]) =>
-	templates.filter((template) => template.injectable !== false);
+	templates.filter((template) => template.injectable !== false && template.editable !== false);
 
 const EntrySourceBadge: React.FC<Pick<PromptTemplate, "source" | "overridden">> = ({
 	overridden,

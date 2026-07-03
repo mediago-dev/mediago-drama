@@ -9,6 +9,7 @@ export interface PromptTemplate {
 	content: string;
 	source: PromptTemplateSource;
 	overridden?: boolean;
+	editable?: boolean;
 	injectable?: boolean;
 }
 

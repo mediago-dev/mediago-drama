@@ -15,11 +15,23 @@ describe("visibleInstructionTemplates", () => {
 			"TOOLS",
 		]);
 	});
+
+	it("hides non-editable core prompt templates from agent instruction settings", () => {
+		const templates: PromptTemplate[] = [
+			template("AGENTS", true),
+			{ ...template("DOCUMENT_RULES", true), editable: false },
+		];
+
+		expect(visibleInstructionTemplates(templates).map((template) => template.id)).toEqual([
+			"AGENTS",
+		]);
+	});
 });
 
 const template = (id: string, injectable: boolean): PromptTemplate => ({
 	content: `${id} content`,
 	id,
+	editable: true,
 	injectable,
 	name: `${id}.md`,
 	source: "official",
