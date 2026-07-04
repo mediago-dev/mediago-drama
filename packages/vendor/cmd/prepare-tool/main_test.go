@@ -48,6 +48,20 @@ func TestCanonicalToolIDMapsXiaoyunqueToPippit(t *testing.T) {
 	}
 }
 
+func TestGenerationToolIDsNormalizesList(t *testing.T) {
+	got := generationToolIDs(" Dreamina, LIBTV, none, , xiaoyunque, pippit-tool-cli ")
+	want := []string{"dreamina", "libtv", "pippit"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("generationToolIDs() = %#v, want %#v", got, want)
+	}
+}
+
+func TestRunToolsNoneSkipsVendorLookup(t *testing.T) {
+	if err := run([]string{"--tools", " none "}); err != nil {
+		t.Fatalf("run(--tools none) error = %v", err)
+	}
+}
+
 func TestToolsJSONIncludesWindowsX64Assets(t *testing.T) {
 	specs, err := loadToolSpecs(filepath.Join("..", "..", "tools.json"))
 	if err != nil {

@@ -62,16 +62,35 @@ func run(args []string) error {
 	flags := flag.NewFlagSet("prepare-tool", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	toolID := flags.String("tool", defaultToolID, "Tool id to prepare from tools.json")
+	toolList := flags.String("tools", "", "Comma-separated tool ids to prepare from tools.json")
 	targetPlatform := flags.String("platform", "", "Target platform to prepare, e.g. darwin-arm64 or windows-x64")
 	root := flags.String("root", "", "Vendor directory containing tools.json")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	toolsFlagSet := false
+	flags.Visit(func(flag *flag.Flag) {
+		if flag.Name == "tools" {
+			toolsFlagSet = true
+		}
+	})
 	if flags.NArg() > 1 {
 		return fmt.Errorf("unexpected arguments: %s", strings.Join(flags.Args(), " "))
 	}
+	if toolsFlagSet && flags.NArg() > 0 {
+		return fmt.Errorf("unexpected arguments with --tools: %s", strings.Join(flags.Args(), " "))
+	}
 	if flags.NArg() == 1 && strings.TrimSpace(*toolID) == defaultToolID {
 		*toolID = flags.Arg(0)
+	}
+
+	requestedToolIDs := []string{canonicalToolID(*toolID)}
+	if toolsFlagSet {
+		requestedToolIDs = generationToolIDs(*toolList)
+		if len(requestedToolIDs) == 0 {
+			fmt.Println("No generation CLIs selected")
+			return nil
+		}
 	}
 
 	vendorDir, err := resolveVendorDir(*root)
@@ -83,29 +102,34 @@ func run(args []string) error {
 		return err
 	}
 
-	toolIDValue := canonicalToolID(*toolID)
-	spec, ok := specs[toolIDValue]
-	if !ok {
-		return fmt.Errorf("unsupported tool %q; must be one of: %s", toolIDValue, strings.Join(toolIDs(specs), ", "))
-	}
-	if strings.TrimSpace(spec.Version) == "" {
-		return fmt.Errorf("tool %q has no pinned version in tools.json", toolIDValue)
-	}
 	currentPlatform, distPlatformKey, err := resolvePlatform(*targetPlatform)
 	if err != nil {
 		return err
 	}
 	platformKey := currentPlatform.String()
-	asset, ok := spec.Platforms[platformKey]
-	if !ok {
-		return fmt.Errorf("tool %q does not support platform %s", toolIDValue, platformKey)
-	}
 
-	distDir := filepath.Join(vendorDir, "dist", "tools", toolIDValue)
-	if strings.TrimSpace(*targetPlatform) != "" {
-		distDir = filepath.Join(vendorDir, "dist", distPlatformKey, "tools", toolIDValue)
+	for _, toolIDValue := range requestedToolIDs {
+		spec, ok := specs[toolIDValue]
+		if !ok {
+			return fmt.Errorf("unsupported tool %q; must be one of: %s", toolIDValue, strings.Join(toolIDs(specs), ", "))
+		}
+		if strings.TrimSpace(spec.Version) == "" {
+			return fmt.Errorf("tool %q has no pinned version in tools.json", toolIDValue)
+		}
+		asset, ok := spec.Platforms[platformKey]
+		if !ok {
+			return fmt.Errorf("tool %q does not support platform %s", toolIDValue, platformKey)
+		}
+
+		distDir := filepath.Join(vendorDir, "dist", "tools", toolIDValue)
+		if strings.TrimSpace(*targetPlatform) != "" {
+			distDir = filepath.Join(vendorDir, "dist", distPlatformKey, "tools", toolIDValue)
+		}
+		if err := prepareTool(toolIDValue, spec, platformKey, asset, distDir); err != nil {
+			return err
+		}
 	}
-	return prepareTool(toolIDValue, spec, platformKey, asset, distDir)
+	return nil
 }
 
 func resolveVendorDir(root string) (string, error) {
@@ -532,6 +556,20 @@ func canonicalToolID(value string) string {
 	default:
 		return strings.ToLower(strings.TrimSpace(value))
 	}
+}
+
+func generationToolIDs(value string) []string {
+	ids := []string{}
+	seen := map[string]bool{}
+	for _, part := range strings.Split(value, ",") {
+		id := canonicalToolID(part)
+		if id == "" || id == "none" || seen[id] {
+			continue
+		}
+		ids = append(ids, id)
+		seen[id] = true
+	}
+	return ids
 }
 
 func toolBinaryName(bin string, platformKey string) string {
