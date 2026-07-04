@@ -909,6 +909,35 @@ func TestBuildACPFinalMessagePrompt(t *testing.T) {
 	}
 }
 
+func TestACPAgentRunnerBuildPromptForRequestIncludesFixedPrompt(t *testing.T) {
+	runner := &acpAgentRunner{
+		buildPrompt: func(request AgentRunRequest) string {
+			if request.Prompt != "你好" {
+				t.Fatalf("request prompt = %q, want original prompt", request.Prompt)
+			}
+			return "固定系统提示"
+		},
+	}
+
+	prompt := runner.buildPromptForRequest(agentRunRequest{Prompt: "你好"})
+
+	if !strings.Contains(prompt, "固定系统提示") ||
+		!strings.Contains(prompt, "# 用户请求") ||
+		!strings.Contains(prompt, "你好") {
+		t.Fatalf("prompt = %q, want fixed prompt and user request", prompt)
+	}
+}
+
+func TestACPAgentRunnerBuildPromptForRequestFallsBackToUserPrompt(t *testing.T) {
+	runner := &acpAgentRunner{}
+
+	prompt := runner.buildPromptForRequest(agentRunRequest{Prompt: "你好"})
+
+	if prompt != "你好" {
+		t.Fatalf("prompt = %q, want user prompt only", prompt)
+	}
+}
+
 func TestFallbackACPFinalMessage(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -917,24 +946,25 @@ func TestFallbackACPFinalMessage(t *testing.T) {
 		want        string
 	}{
 		{
-			name:    "simple Chinese greeting",
+			name:    "simple Chinese greeting without activity",
 			request: agentRunRequest{Prompt: "你好"},
-			want:    "你好，我在。请告诉我你想在当前文档中插入或改写什么。",
+			want:    "模型调用没有返回可展示内容；这次不能确认调用成功。请重试，或切换模型后再试。",
 		},
 		{
-			name:    "simple English greeting",
+			name:    "simple English greeting without activity",
 			request: agentRunRequest{Prompt: "Hello!"},
-			want:    "你好，我在。请告诉我你想在当前文档中插入或改写什么。",
+			want:    "模型调用没有返回可展示内容；这次不能确认调用成功。请重试，或切换模型后再试。",
 		},
 		{
 			name:        "activity without final message",
 			request:     agentRunRequest{Prompt: "帮我改写第二章"},
 			hadActivity: true,
-			want:        "模型已经完成思考或工具调用，但 ACP 运行时没有发送可展示的最终回复。请重试，或切换到其他模型后再试。",
+			want:        "模型产生了思考或工具调用事件，但 ACP 运行时没有发送可展示的最终回复；这次不能确认调用成功。请重试，或切换模型后再试。",
 		},
 		{
 			name:    "no activity",
 			request: agentRunRequest{Prompt: "帮我改写第二章"},
+			want:    "模型调用没有返回可展示内容；这次不能确认调用成功。请重试，或切换模型后再试。",
 		},
 	}
 
@@ -1416,7 +1446,9 @@ func TestBuildACPPromptDoesNotInlineInjectedSystemOrUserPrompt(t *testing.T) {
 	if !strings.Contains(prompt, "你是 MediaGo Drama 的项目 Agent。") {
 		t.Fatalf("prompt = %q, want fixed agent instruction", prompt)
 	}
-	if !strings.Contains(prompt, "# 工具使用原则") || !strings.Contains(prompt, "- 使用中文回复用户。") {
+	if !strings.Contains(prompt, "# 工具使用原则") ||
+		!strings.Contains(prompt, "- 使用中文回复用户。") ||
+		!strings.Contains(prompt, "不要根据本机可用命令、Skills、MCP、环境变量或工具描述中的 Ark") {
 		t.Fatalf("prompt = %q, want general tool principles preserved", prompt)
 	}
 	if strings.Contains(prompt, "get_document") || strings.Contains(prompt, "replace_section") {

@@ -238,7 +238,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		return agentRunResult{}, err
 	}
 
-	prompt := BuildACPUserPrompt(request)
+	prompt := runner.buildPromptForRequest(request)
 	acpLog().Debug("acp.prompt.assembled", append(logArgs, "acp_session_id", sessionID, "bytes", len(prompt))...)
 	acpLog().Info(
 		"acp prompt starting",
@@ -444,6 +444,21 @@ func promptACPSession(ctx context.Context, conn *acp.ClientSideConnection, clien
 	return response, err
 }
 
+func (runner *acpAgentRunner) buildPromptForRequest(request agentRunRequest) string {
+	userPrompt := strings.TrimSpace(BuildACPUserPrompt(request))
+	if runner == nil || runner.buildPrompt == nil {
+		return userPrompt
+	}
+	systemPrompt := strings.TrimSpace(runner.buildPrompt(request))
+	if systemPrompt == "" {
+		return userPrompt
+	}
+	if userPrompt == "" {
+		return systemPrompt
+	}
+	return strings.Join([]string{systemPrompt, "# 用户请求", userPrompt}, "\n\n")
+}
+
 func shouldRetryEmptyACPPrompt(response acp.PromptResponse, rawFinalMessage string, runtimeErrorMessage string, promptHadActivity bool) bool {
 	if promptHadActivity {
 		return false
@@ -485,24 +500,10 @@ func shouldRequestACPFinalMessage(response acp.PromptResponse, rawFinalMessage s
 }
 
 func fallbackACPFinalMessage(request agentRunRequest, promptHadActivity bool) string {
-	if isSimpleGreetingPrompt(request.Prompt) {
-		return "你好，我在。请告诉我你想在当前文档中插入或改写什么。"
-	}
 	if promptHadActivity {
-		return "模型已经完成思考或工具调用，但 ACP 运行时没有发送可展示的最终回复。请重试，或切换到其他模型后再试。"
+		return "模型产生了思考或工具调用事件，但 ACP 运行时没有发送可展示的最终回复；这次不能确认调用成功。请重试，或切换模型后再试。"
 	}
-	return ""
-}
-
-func isSimpleGreetingPrompt(prompt string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(prompt))
-	normalized = strings.Trim(normalized, " \t\r\n.!?。！？~～")
-	switch normalized {
-	case "你好", "您好", "hello", "hi", "hey", "嗨", "在吗":
-		return true
-	default:
-		return false
-	}
+	return "模型调用没有返回可展示内容；这次不能确认调用成功。请重试，或切换模型后再试。"
 }
 
 func isACPResourceNotFoundError(err error) bool {
