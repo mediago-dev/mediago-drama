@@ -35,7 +35,7 @@ env:
   ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
   HUSKY: "0"
   NODE_VERSION: "24"
-  PNPM_VERSION: "10.14.0"
+  PNPM_VERSION: "11.9.0"
 
 jobs:
   release-version:
