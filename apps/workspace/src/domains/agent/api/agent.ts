@@ -8,6 +8,7 @@ import type {
 	AgentACPRuntimeAlert as GeneratedAgentACPRuntimeAlert,
 	AgentACPToolCallSummary as GeneratedAgentACPToolCallSummary,
 	AgentA2UIPayload as GeneratedAgentA2UIPayload,
+	AgentBackendsPayload,
 	AgentChatAppendRequest as GeneratedAgentChatAppendRequest,
 	AgentChatStateResponse,
 	AgentDocumentContext as GeneratedAgentDocumentContext,
@@ -190,6 +191,13 @@ export const createAgentSession = async (projectId?: string | null, newSession =
 	const response = await httpClient.post<AgentSession>(projectAgentPath(projectId, "/sessions"), {
 		newSession,
 	});
+	return response.data;
+};
+
+export const agentBackendsKey = "/agent/backends";
+
+export const getAgentBackends = async () => {
+	const response = await httpClient.get<AgentBackendsPayload>(agentBackendsKey);
 	return response.data;
 };
 

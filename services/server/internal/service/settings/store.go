@@ -20,15 +20,18 @@ import (
 
 // Settings errors returned by the settings service.
 var (
-	ErrAPIKeyProviderNotFound = errors.New("api key provider not found")
-	ErrAPIKeyRequired         = errors.New("apiKey is required")
-	ErrProviderLoginRequired  = errors.New("provider login challenge is required")
-	ErrAgentModelStoreMissing = errors.New("agent model profile store is unavailable")
-	ErrAgentModelNotFound     = errors.New("agent model profile not found")
-	ErrAgentModelInvalid      = errors.New("agent model profile is invalid")
-	ErrAgentModelConflict     = errors.New("agent model provider id already exists")
-	ErrAppSettingStoreMissing = errors.New("app setting store is unavailable")
-	ErrJianyingDraftInvalid   = errors.New("jianying draft settings are invalid")
+	ErrAPIKeyProviderNotFound  = errors.New("api key provider not found")
+	ErrAPIKeyRequired          = errors.New("apiKey is required")
+	ErrProviderLoginRequired   = errors.New("provider login challenge is required")
+	ErrAgentModelStoreMissing  = errors.New("agent model profile store is unavailable")
+	ErrAgentModelNotFound      = errors.New("agent model profile not found")
+	ErrAgentModelInvalid       = errors.New("agent model profile is invalid")
+	ErrAgentModelConflict      = errors.New("agent model provider id already exists")
+	ErrAppSettingStoreMissing  = errors.New("app setting store is unavailable")
+	ErrCodexRelayInvalid       = errors.New("codex relay settings are invalid")
+	ErrCodexRelayNotConfigured = errors.New("codex relay is not configured")
+	ErrCodexRelayUnauthorized  = errors.New("codex relay request is unauthorized")
+	ErrJianyingDraftInvalid    = errors.New("jianying draft settings are invalid")
 )
 
 const (

@@ -96,3 +96,35 @@ func TestDefaultAgentBridgeURL(t *testing.T) {
 		})
 	}
 }
+
+func TestCodexRelayBridgeBaseURL(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{
+			name: "spawn endpoint",
+			url:  "http://127.0.0.1:8080/api/v1/internal/agent/spawn",
+			want: "http://127.0.0.1:8080",
+		},
+		{
+			name: "already base url",
+			url:  "http://127.0.0.1:8080",
+			want: "http://127.0.0.1:8080",
+		},
+		{
+			name: "query and fragment",
+			url:  "http://localhost:19090/api/v1/internal/agent/spawn?token=x#fragment",
+			want: "http://localhost:19090",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := codexRelayBridgeBaseURL(test.url); got != test.want {
+				t.Fatalf("codexRelayBridgeBaseURL(%q) = %q, want %q", test.url, got, test.want)
+			}
+		})
+	}
+}

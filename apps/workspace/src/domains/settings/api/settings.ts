@@ -93,6 +93,45 @@ export interface AgentModelProfilesResponse {
 	templates: AgentModelProfileTemplate[];
 }
 
+export type CodexRelayProtocol = "responses" | "chatCompletions";
+
+export interface CodexRelayAPIKeyStatus {
+	configured: boolean;
+	source: "settings" | "none" | string;
+	masked?: string;
+}
+
+export interface CodexRelayProfile {
+	id: string;
+	name: string;
+	baseURL: string;
+	model: string;
+	protocol: CodexRelayProtocol;
+	enabled: boolean;
+	apiKey: CodexRelayAPIKeyStatus;
+}
+
+export interface CodexRelaySettingsResponse {
+	enabled: boolean;
+	activeProfileId?: string;
+	profiles: CodexRelayProfile[];
+}
+
+export interface CodexRelayProfileMutation {
+	id: string;
+	name: string;
+	baseURL: string;
+	model: string;
+	protocol: CodexRelayProtocol;
+	enabled: boolean;
+}
+
+export interface CodexRelaySettingsMutation {
+	enabled: boolean;
+	activeProfileId: string;
+	profiles: CodexRelayProfileMutation[];
+}
+
 export interface JianyingDraftSettings {
 	draftsRoot: string;
 }
@@ -117,6 +156,7 @@ export interface AgentModelProfileMutation {
 export const apiKeysKey = "/settings/api-keys";
 export const modelPlatformsKey = "/settings/model-platforms";
 export const agentModelProfilesKey = "/settings/agent-model-profiles";
+export const codexRelaySettingsKey = "/settings/codex-relay";
 export const jianyingDraftSettingsKey = "/settings/jianying-draft";
 
 export const getAPIKeys = async () => {
@@ -167,6 +207,31 @@ export const completeProviderLogin = async (providerID: string, deviceCode: stri
 
 export const getAgentModelProfiles = async () => {
 	const response = await httpClient.get<AgentModelProfilesResponse>(agentModelProfilesKey);
+	return response.data;
+};
+
+export const getCodexRelaySettings = async () => {
+	const response = await httpClient.get<CodexRelaySettingsResponse>(codexRelaySettingsKey);
+	return response.data;
+};
+
+export const saveCodexRelaySettings = async (input: CodexRelaySettingsMutation) => {
+	const response = await httpClient.put<CodexRelaySettingsResponse>(codexRelaySettingsKey, input);
+	return response.data;
+};
+
+export const saveCodexRelayProfileAPIKey = async (profileID: string, apiKey: string) => {
+	const response = await httpClient.put<CodexRelaySettingsResponse>(
+		`${codexRelaySettingsKey}/profiles/${encodeURIComponent(profileID)}/api-key`,
+		{ apiKey },
+	);
+	return response.data;
+};
+
+export const clearCodexRelayProfileAPIKey = async (profileID: string) => {
+	const response = await httpClient.delete<CodexRelaySettingsResponse>(
+		`${codexRelaySettingsKey}/profiles/${encodeURIComponent(profileID)}/api-key`,
+	);
 	return response.data;
 };
 

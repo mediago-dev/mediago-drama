@@ -9,6 +9,7 @@ import {
 	Keyboard,
 	KeyRound,
 	Loader2,
+	Network,
 	ReceiptText,
 	Settings,
 	SlidersHorizontal,
@@ -617,32 +618,46 @@ const debugNavItem = (value: DebugTabValue): SettingsNavItem => {
 	return { value: tab.value, label: tab.label, icon: tab.icon };
 };
 
-const settingsNavGroups: SettingsNavGroup[] = [
-	{
-		label: "工作区",
-		items: [
-			{ value: "appearance", label: "基础设置", icon: SlidersHorizontal },
-			{ value: "shortcuts", label: "快捷键", icon: Keyboard },
-			{ value: "billing", label: "用量与账单", icon: ReceiptText },
-		],
-	},
-	{
-		label: "生成配置",
-		items: [
-			{ value: "api-keys", label: "API 密钥", icon: KeyRound },
-			debugNavItem("instructions"),
-			debugNavItem("prompt-packs"),
-		],
-	},
-];
+const settingsNavGroups = (activeAgentBackendId = "codex"): SettingsNavGroup[] => {
+	const generationItems: SettingsNavItem[] = [
+		{ value: "api-keys", label: "API 密钥", icon: KeyRound },
+	];
+	if (activeAgentBackendId === "codex") {
+		generationItems.push({ value: "codex-relay", label: "Codex 中转", icon: Network });
+	}
+	generationItems.push(debugNavItem("instructions"), debugNavItem("prompt-packs"));
+
+	return [
+		{
+			label: "工作区",
+			items: [
+				{ value: "appearance", label: "基础设置", icon: SlidersHorizontal },
+				{ value: "shortcuts", label: "快捷键", icon: Keyboard },
+				{ value: "billing", label: "用量与账单", icon: ReceiptText },
+			],
+		},
+		{
+			label: "生成配置",
+			items: generationItems,
+		},
+	];
+};
 
 export const SettingsSidebarPanel: React.FC<{
+	activeAgentBackendId?: string;
 	activeTab: SettingsTabValue;
 	isProjectSettings: boolean;
 	onBack: () => void;
 	onOpenGenerationNotification?: (notification: GenerationSuccessNotification) => void;
 	onSelectTab: (tab: SettingsTabValue) => void;
-}> = ({ activeTab, isProjectSettings, onBack, onOpenGenerationNotification, onSelectTab }) => (
+}> = ({
+	activeAgentBackendId,
+	activeTab,
+	isProjectSettings,
+	onBack,
+	onOpenGenerationNotification,
+	onSelectTab,
+}) => (
 	<div className="flex h-full flex-col">
 		<button
 			type="button"
@@ -666,7 +681,7 @@ export const SettingsSidebarPanel: React.FC<{
 		) : null}
 
 		<div className={cn("space-y-4", isProjectSettings ? "mt-4" : "mt-2")}>
-			{settingsNavGroups.map((group) => (
+			{settingsNavGroups(activeAgentBackendId).map((group) => (
 				<section key={group.label} className="space-y-1">
 					<p className="px-2 text-2xs font-semibold text-muted-foreground">{group.label}</p>
 					{group.items.map((item) => {

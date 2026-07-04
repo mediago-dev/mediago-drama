@@ -168,6 +168,8 @@ func swaggerPath(path string) string {
 	for index, segment := range segments {
 		if strings.HasPrefix(segment, ":") {
 			segments[index] = "{" + strings.TrimPrefix(segment, ":") + "}"
+		} else if strings.HasPrefix(segment, "*") {
+			segments[index] = "{" + strings.TrimPrefix(segment, "*") + "}"
 		}
 	}
 	return strings.Join(segments, "/")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -89,10 +90,31 @@ func newAPIHandler(config Config) *apiHandler {
 	settings.SetModelPlatforms(config.ModelPlatforms)
 	settings.SetGenerationCLIs(config.GenerationCLIs)
 	settings.SetMediagoBaseURL(config.MediagoBaseURL)
+	agentBridgeURL := strings.TrimSpace(config.AgentBridgeURL)
+	if agentBridgeURL == "" {
+		agentBridgeURL = defaultAgentBridgeURL(config.Host, config.Port)
+	}
 	if configurableRunner, ok := runner.(interface {
 		SetProcessConfigProvider(serviceacp.ProcessConfigProvider)
 	}); ok {
 		configurableRunner.SetProcessConfigProvider(serviceacp.ProcessConfigProviderFunc(func(ctx context.Context, request serviceacp.ProcessConfigRequest) (serviceacp.ProcessConfig, error) {
+			if request.AgentID == "codex" {
+				config, err := settings.PrepareCodexRelayRuntimeConfig(
+					ctx,
+					request.WorkspaceDir,
+					codexRelayBridgeBaseURL(agentBridgeURL)+"/api/v1/codex-relay",
+				)
+				if err != nil {
+					return serviceacp.ProcessConfig{}, err
+				}
+				return serviceacp.ProcessConfig{
+					ConfigDir: config.ConfigDir,
+					Env:       config.Env,
+				}, nil
+			}
+			if request.AgentID != "opencode" {
+				return serviceacp.ProcessConfig{}, nil
+			}
 			config, err := settings.PrepareOpenCodeRuntimeConfigForModel(ctx, request.WorkspaceDir, request.PreferredModel)
 			if err != nil {
 				return serviceacp.ProcessConfig{}, err
@@ -150,10 +172,6 @@ func newAPIHandler(config Config) *apiHandler {
 	events := appevents.NewBroker(workspaceState.AppendAgentEvent)
 	workspaceEvents := serviceworkspaceevent.NewBroker()
 	agentSessions := appagent.NewSessionService(workspaceState)
-	agentBridgeURL := strings.TrimSpace(config.AgentBridgeURL)
-	if agentBridgeURL == "" {
-		agentBridgeURL = defaultAgentBridgeURL(config.Host, config.Port)
-	}
 
 	handler := &apiHandler{
 		workspaceState:   workspaceState,
@@ -224,4 +242,16 @@ func defaultAgentBridgeURL(host string, port int) string {
 		port = 8080
 	}
 	return "http://" + net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+func codexRelayBridgeBaseURL(agentBridgeURL string) string {
+	agentBridgeURL = strings.TrimRight(strings.TrimSpace(agentBridgeURL), "/")
+	parsed, err := url.Parse(agentBridgeURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return agentBridgeURL
+	}
+	parsed.Path = ""
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return strings.TrimRight(parsed.String(), "/")
 }
