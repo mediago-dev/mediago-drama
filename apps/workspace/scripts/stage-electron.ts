@@ -11,7 +11,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const agent = process.argv[2]?.trim() || "codex";
+const agent = process.argv[2]?.trim() || "opencode";
 const platformArg = process.argv[3]?.trim() || "";
 const modelPlatform = process.argv[4]?.trim() || "mediago";
 const mediagoBaseURL =
@@ -66,7 +66,7 @@ function main(): void {
 	}
 	writeFileSync(
 		join(electronResourcesDir, "model-platform.json"),
-		JSON.stringify({ mediagoBaseURL, modelPlatform }, null, 2) + "\n",
+		JSON.stringify({ agent, mediagoBaseURL, modelPlatform }, null, 2) + "\n",
 	);
 	writeFileSync(
 		join(electronResourcesDir, "local-cli.json"),

@@ -19,7 +19,7 @@ export const startServerSidecar = () => {
 	child = spawn(serverPath, [], {
 		env: {
 			...process.env,
-			MEDIAGO_AGENT_ID: process.env.MEDIAGO_AGENT_ID || "opencode",
+			MEDIAGO_AGENT_ID: process.env.MEDIAGO_AGENT_ID || platformConfig.agent || "opencode",
 			MEDIAGO_MODEL_PLATFORM:
 				process.env.MEDIAGO_MODEL_PLATFORM || platformConfig.modelPlatform || "mediago",
 			MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL:
@@ -52,13 +52,18 @@ export const startServerSidecar = () => {
 const packagedModelPlatformConfig = () => {
 	try {
 		const raw = readFileSync(join(resourceRoot(), "model-platform.json"), "utf8");
-		const parsed = JSON.parse(raw) as { mediagoBaseURL?: unknown; modelPlatform?: unknown };
+		const parsed = JSON.parse(raw) as {
+			agent?: unknown;
+			mediagoBaseURL?: unknown;
+			modelPlatform?: unknown;
+		};
 		return {
+			agent: typeof parsed.agent === "string" ? parsed.agent.trim() : "",
 			mediagoBaseURL: typeof parsed.mediagoBaseURL === "string" ? parsed.mediagoBaseURL.trim() : "",
 			modelPlatform: typeof parsed.modelPlatform === "string" ? parsed.modelPlatform.trim() : "",
 		};
 	} catch {
-		return { mediagoBaseURL: "", modelPlatform: "" };
+		return { agent: "", mediagoBaseURL: "", modelPlatform: "" };
 	}
 };
 
