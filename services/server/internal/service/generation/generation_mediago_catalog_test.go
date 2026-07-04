@@ -83,6 +83,42 @@ func TestListGenerationModelsHidesMediagoRoutesWhenUserCatalogUnavailable(t *tes
 	}
 }
 
+func TestListGenerationModelsHidesDisabledMediagoUserCatalogItems(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{
+				"data": [
+					{"id": "gpt-image-2", "enabled": true},
+					{"id": "gemini-2.5-flash-image", "enabled": false},
+					{"canonical_slug": "doubao-seedream-5-0-lite", "disabled": true},
+					{"id": "MiniMax-M3", "route_status": "disabled"}
+				]
+			}`))
+	}))
+	defer server.Close()
+
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{coregeneration.ProviderMediago: "mgak-test"},
+	})
+	workflow := NewGenerationService(settingsSvc, nil, nil)
+	workflow.SetMediagoBaseURL(server.URL)
+
+	catalog := workflow.ListGenerationModels()
+
+	if !generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoGPTImage2) {
+		t.Fatalf("route %q should be configured when enabled in MediaGo user catalog", coregeneration.RouteMediagoGPTImage2)
+	}
+	if generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoNanoBanana25) {
+		t.Fatalf("route %q should be hidden when disabled in MediaGo user catalog", coregeneration.RouteMediagoNanoBanana25)
+	}
+	if generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoSeedream5Lite) {
+		t.Fatalf("route %q should be hidden when disabled by canonical_slug in MediaGo user catalog", coregeneration.RouteMediagoSeedream5Lite)
+	}
+	if generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoMiniMaxM3Text) {
+		t.Fatalf("route %q should be hidden when route_status is disabled in MediaGo user catalog", coregeneration.RouteMediagoMiniMaxM3Text)
+	}
+}
+
 func TestMediagoRouteUnavailableReportsInactiveModel(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")

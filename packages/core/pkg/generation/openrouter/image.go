@@ -8,15 +8,19 @@ import (
 )
 
 func (provider *Provider) generateImage(ctx context.Context, request generation.Request) (generation.Response, error) {
+	imageConfig := map[string]any{
+		"aspect_ratio": firstNonEmpty(paramString(request.Params, "aspectRatio"), "1:1"),
+	}
+	if !provider.omitChatImageSize(request) {
+		imageConfig["image_size"] = firstNonEmpty(paramString(request.Params, "imageSize"), "1K")
+	}
+
 	payload := chatCompletionRequest{
-		Model:      request.Model,
-		Messages:   []chatMessage{{Role: "user", Content: messageContent(request.Prompt, request.ReferenceURLs)}},
-		Modalities: []string{"image", "text"},
-		Stream:     false,
-		ImageConfig: map[string]any{
-			"aspect_ratio": firstNonEmpty(paramString(request.Params, "aspectRatio"), "1:1"),
-			"image_size":   firstNonEmpty(paramString(request.Params, "imageSize"), "1K"),
-		},
+		Model:       request.Model,
+		Messages:    []chatMessage{{Role: "user", Content: messageContent(request.Prompt, request.ReferenceURLs)}},
+		Modalities:  []string{"image", "text"},
+		Stream:      false,
+		ImageConfig: imageConfig,
 	}
 
 	var payloadResponse chatCompletionResponse
@@ -209,6 +213,14 @@ func (provider *Provider) imageProviderOptions(params map[string]any) map[string
 		return nil
 	}
 	return openAIProviderOptions(params)
+}
+
+func (provider *Provider) omitChatImageSize(request generation.Request) bool {
+	if provider.providerName != generation.ProviderMediago {
+		return false
+	}
+	model := strings.ToLower(strings.TrimSpace(request.Model))
+	return strings.Contains(model, "gemini-2.5-flash-image")
 }
 
 func imageMIMEType(outputFormat string) string {

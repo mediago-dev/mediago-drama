@@ -750,6 +750,16 @@ type mediagoGatewayModel struct {
 	Name                string                     `json:"name"`
 	CanonicalSlug       string                     `json:"canonical_slug"`
 	Kind                string                     `json:"kind"`
+	Enabled             *bool                      `json:"enabled,omitempty"`
+	Disabled            *bool                      `json:"disabled,omitempty"`
+	Available           *bool                      `json:"available,omitempty"`
+	Hidden              *bool                      `json:"hidden,omitempty"`
+	Visible             *bool                      `json:"visible,omitempty"`
+	Status              string                     `json:"status,omitempty"`
+	RouteStatus         string                     `json:"route_status,omitempty"`
+	ChannelStatus       string                     `json:"channel_status,omitempty"`
+	ModelStatus         string                     `json:"model_status,omitempty"`
+	State               string                     `json:"state,omitempty"`
 	Tags                []string                   `json:"tags"`
 	Categories          []string                   `json:"categories"`
 	Capabilities        []string                   `json:"capabilities"`
@@ -784,7 +794,7 @@ func (service *Settings) mediagoAgentRuntimeProfiles(ctx context.Context, spec o
 	seenModels := map[string]bool{}
 	for _, model := range models {
 		modelID := strings.TrimSpace(firstNonEmpty(model.ID, model.CanonicalSlug))
-		if modelID == "" || seenModels[modelID] || !mediagoGatewayModelSupportsAgentConversation(model) {
+		if modelID == "" || seenModels[modelID] || !mediagoGatewayModelAvailable(model) || !mediagoGatewayModelSupportsAgentConversation(model) {
 			continue
 		}
 		seenModels[modelID] = true
@@ -866,6 +876,61 @@ func mediagoGatewayModelSupportsAgentConversation(model mediagoGatewayModel) boo
 		return false
 	}
 	return mediagoGatewayModelLooksAgentTextCapable(model)
+}
+
+func mediagoGatewayModelAvailable(model mediagoGatewayModel) bool {
+	if model.Disabled != nil && *model.Disabled {
+		return false
+	}
+	if model.Hidden != nil && *model.Hidden {
+		return false
+	}
+	if model.Enabled != nil && !*model.Enabled {
+		return false
+	}
+	if model.Available != nil && !*model.Available {
+		return false
+	}
+	if model.Visible != nil && !*model.Visible {
+		return false
+	}
+	for _, status := range []string{model.Status, model.RouteStatus, model.ChannelStatus, model.ModelStatus, model.State} {
+		if mediagoGatewayModelUnavailableStatus(status) {
+			return false
+		}
+	}
+	return true
+}
+
+func mediagoGatewayModelUnavailableStatus(status string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	if normalized == "" {
+		return false
+	}
+	normalized = strings.NewReplacer("_", " ", "-", " ").Replace(normalized)
+	for _, token := range []string{
+		"disabled",
+		"disable",
+		"unavailable",
+		"inactive",
+		"hidden",
+		"offline",
+		"closed",
+		"deleted",
+		"removed",
+		"blocked",
+		"停用",
+		"禁用",
+		"隐藏",
+		"不可用",
+		"关闭",
+		"下架",
+	} {
+		if strings.Contains(normalized, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func mediagoGatewayModelLooksTaskOnly(model mediagoGatewayModel) bool {

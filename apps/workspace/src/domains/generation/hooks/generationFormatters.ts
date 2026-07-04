@@ -226,8 +226,14 @@ export const providerTypeLabel = (providerType?: GenerationProviderType) => {
 	}
 };
 
-export const routeProviderLabel = (route: GenerationRoute, providers?: GenerationProviderInfo[]) =>
-	`${providerLabel(route.provider)} · ${providerTypeLabel(providerTypeOf(route.provider, providers))}`;
+export const routeProviderLabel = (
+	route: GenerationRoute,
+	providers?: GenerationProviderInfo[],
+) => {
+	if (route.provider === "mediago") return `${providerLabel(route.provider)} · 统一接口`;
+
+	return `${providerLabel(route.provider)} · ${providerTypeLabel(providerTypeOf(route.provider, providers))}`;
+};
 
 export const kindLabel = (kind: GenerationKind) =>
 	kind === "image" ? "图像" : kind === "text" ? "文本" : kind === "audio" ? "音频" : "视频";

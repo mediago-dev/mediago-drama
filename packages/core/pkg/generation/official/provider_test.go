@@ -254,8 +254,7 @@ func TestGenerateGoogleImage(t *testing.T) {
 	if payload.ResponseFormat.AspectRatio != "16:9" ||
 		payload.ResponseFormat.ImageSize != "2K" ||
 		payload.ResponseFormat.Type != "image" ||
-		payload.ResponseFormat.MIMEType != "image/png" ||
-		payload.ResponseFormat.Delivery != "inline" {
+		payload.ResponseFormat.MIMEType != "image/jpeg" {
 		t.Fatalf("response format = %#v", payload.ResponseFormat)
 	}
 	if len(payload.Input) != 2 || payload.Input[0].Type != "text" || payload.Input[0].Text != "make an image" {
@@ -268,6 +267,53 @@ func TestGenerateGoogleImage(t *testing.T) {
 	}
 	if got := response.Assets[0].Base64; got != "img" {
 		t.Fatalf("asset base64 = %q, want img", got)
+	}
+}
+
+func TestGenerateGoogleImage25OmitsImageSize(t *testing.T) {
+	var payload googleInteractionRequest
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1beta/interactions" {
+			t.Fatalf("path = %q, want gemini interactions", request.URL.Path)
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"id":"interaction-25",
+			"output_image":{"mime_type":"image/png","data":"img"}
+		}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{GoogleBaseURL: server.URL, APIKey: "gemini-key"})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	_, err = provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindImage,
+		RouteID: generation.RouteOfficialNanoBanana25,
+		Prompt:  "make an image",
+		Params: map[string]any{
+			"aspectRatio": "16:9",
+			"resolution":  "1K",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if payload.Model != "models/gemini-2.5-flash-image" {
+		t.Fatalf("model = %q, want models/gemini-2.5-flash-image", payload.Model)
+	}
+	if payload.ResponseFormat.AspectRatio != "16:9" {
+		t.Fatalf("aspect ratio = %q, want 16:9", payload.ResponseFormat.AspectRatio)
+	}
+	if payload.ResponseFormat.ImageSize != "" {
+		t.Fatalf("image size = %q, want omitted for Gemini 2.5 Flash Image", payload.ResponseFormat.ImageSize)
 	}
 }
 

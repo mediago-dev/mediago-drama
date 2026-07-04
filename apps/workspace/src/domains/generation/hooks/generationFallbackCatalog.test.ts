@@ -155,8 +155,17 @@ describe("fallback generation catalog params", () => {
 			},
 		]);
 		expect(param("dmx.gemini-3.1-flash-image-preview", "resolution").default).toBe("1K");
+		expect(
+			param("dmx.gemini-3.1-flash-image-preview", "resolution").options?.map((item) => item.value),
+		).toEqual(["512px", "1K", "2K", "4K"]);
+		expect(routeCombos("dmx.gemini-3.1-flash-image-preview")[0]?.outputs?.["1:1|512px"]).toBe(
+			"512x512",
+		);
 		expect(routeCombos("dmx.gemini-3.1-flash-image-preview")[0]?.outputs?.["16:9|1K"]).toBe(
 			"1376x768",
+		);
+		expect(routeCombos("dmx.gemini-3.1-flash-image-preview")[0]?.outputs?.["9:21|1K"]).toBe(
+			"672x1584",
 		);
 		expect(routeById("official.gemini-2.5-flash-image")).toMatchObject({
 			provider: "google",
@@ -167,17 +176,62 @@ describe("fallback generation catalog params", () => {
 		expect(
 			param("official.gemini-2.5-flash-image", "resolution").options?.map((item) => item.value),
 		).toEqual(["1K"]);
+		expect(
+			param("official.gemini-2.5-flash-image", "aspectRatio").options?.map((item) => item.value),
+		).toEqual(["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]);
 		expect(routeCombos("official.gemini-2.5-flash-image")[0]?.outputs?.["1:1|1K"]).toBe(
 			"1024x1024",
 		);
+		expect(routeCombos("official.gemini-2.5-flash-image")[0]?.outputs?.["16:9|1K"]).toBe(
+			"1344x768",
+		);
+		expect(routeCombos("official.gemini-2.5-flash-image")[0]?.outputs?.["1:4|1K"]).toBe(undefined);
+		expect(routeCombos("official.gemini-2.5-flash-image")[0]?.outputs?.["9:21|1K"]).toBe(undefined);
 		expect(param("openrouter.gemini-3.1-flash-image-preview", "resolution").default).toBe("1K");
 		expect(routeById("mediago.gemini-3.1-flash-image")).toMatchObject({
 			status: "available",
-			adapter: "openrouter.images",
+			adapter: "openrouter.chat.image",
 			model: "gemini-3.1-flash-image",
 		});
-		expect(routeCombos("mediago.gemini-3.1-flash-image")[0]?.outputs?.["16:9|2K"]).toBe(
-			"2048x1152",
+		expect(
+			param("mediago.gemini-3.1-flash-image", "aspectRatio").options?.map((item) => item.value),
+		).toEqual([
+			"1:1",
+			"1:4",
+			"1:8",
+			"2:3",
+			"3:2",
+			"3:4",
+			"4:1",
+			"4:3",
+			"4:5",
+			"5:4",
+			"8:1",
+			"9:16",
+			"16:9",
+			"21:9",
+		]);
+		expect(routeParams("mediago.gemini-3.1-flash-image").map((item) => item.name)).toEqual([
+			"aspectRatio",
+			"resolution",
+			"n",
+		]);
+		expect(
+			param("mediago.gemini-3.1-flash-image", "resolution").options?.map((item) => item.value),
+		).toEqual(["1K", "2K", "4K"]);
+		expect(routeCombos("mediago.gemini-3.1-flash-image")[0]?.outputs?.["16:9|1K"]).toBe("1376x768");
+		expect(routeCombos("mediago.gemini-3.1-flash-image")[0]?.outputs?.["4:3|2K"]).toBe("2400x1792");
+		expect(routeCombos("mediago.gemini-3.1-flash-image")[0]?.outputs?.["9:21|1K"]).toBe(undefined);
+		expect(routeParams("mediago.gemini-2.5-flash-image").map((item) => item.name)).toEqual([
+			"aspectRatio",
+			"resolution",
+			"n",
+		]);
+		expect(
+			param("mediago.gemini-2.5-flash-image", "resolution").options?.map((item) => item.value),
+		).toEqual(["1K"]);
+		expect(routeCombos("mediago.gemini-2.5-flash-image")[0]?.outputs?.["16:9|1K"]).toBe(
+			"1344x768",
 		);
 	});
 

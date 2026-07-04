@@ -78,7 +78,18 @@ func (workflow *GenerationService) requireGenerationRouteConfigured(route corege
 }
 
 func (workflow *GenerationService) generationRouteConfigured(route coregeneration.ModelRoute) bool {
+	return workflow.generationRouteConfiguredWithMediagoModels(route, nil, false)
+}
+
+func (workflow *GenerationService) generationRouteConfiguredWithMediagoModels(
+	route coregeneration.ModelRoute,
+	mediagoModels map[string]struct{},
+	hasMediagoModels bool,
+) bool {
 	if workflow == nil || workflow.settings == nil {
+		return false
+	}
+	if route.Status != coregeneration.RouteStatusAvailable {
 		return false
 	}
 	if route.Provider == coregeneration.ProviderMediago && strings.TrimSpace(workflow.mediagoBaseURL) == "" {
@@ -89,6 +100,9 @@ func (workflow *GenerationService) generationRouteConfigured(route coregeneratio
 		return false
 	}
 	if route.Provider == coregeneration.ProviderMediago {
+		if hasMediagoModels {
+			return mediagoModelSetHasRoute(mediagoModels, route)
+		}
 		return workflow.mediagoRouteModelAvailable(context.Background(), route)
 	}
 	return true

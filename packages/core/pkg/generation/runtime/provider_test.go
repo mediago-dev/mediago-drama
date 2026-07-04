@@ -109,7 +109,6 @@ func TestProviderDispatchesMediagoImageRoute(t *testing.T) {
 		Prompt:  "make an image",
 		Params: map[string]any{
 			"aspectRatio": "16:9",
-			"imageSize":   "2K",
 		},
 	})
 	if err != nil {
@@ -125,24 +124,26 @@ func TestProviderDispatchesMediagoImageRoute(t *testing.T) {
 	if payload["model"] != "gemini-2.5-flash-image" {
 		t.Fatalf("model = %v", payload["model"])
 	}
-	if imageConfig, ok := payload["image_config"].(map[string]any); !ok ||
-		imageConfig["aspect_ratio"] != "16:9" ||
-		imageConfig["image_size"] != "2K" {
+	imageConfig, ok := payload["image_config"].(map[string]any)
+	if !ok || imageConfig["aspect_ratio"] != "16:9" {
 		t.Fatalf("image_config = %#v", payload["image_config"])
+	}
+	if _, ok := imageConfig["image_size"]; ok {
+		t.Fatalf("image_size should be omitted for MediaGo Gemini 2.5: %#v", imageConfig)
 	}
 	if response.Status != "completed" || len(response.Assets) != 1 || response.Assets[0].URL != "https://example.test/mediago.png" {
 		t.Fatalf("response = %#v, want completed MediaGo image asset", response)
 	}
 }
 
-func TestProviderDispatchesMediagoGemini31ImageRouteThroughImagesAPI(t *testing.T) {
+func TestProviderDispatchesMediagoGemini31ImageRoute(t *testing.T) {
 	var credentialKey string
 	var authHeader string
 	var payload map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		authHeader = request.Header.Get("Authorization")
-		if request.URL.Path != "/images" {
-			t.Fatalf("path = %q, want /images", request.URL.Path)
+		if request.URL.Path != "/chat/completions" {
+			t.Fatalf("path = %q, want /chat/completions", request.URL.Path)
 		}
 		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 			t.Fatalf("Decode() error = %v", err)
@@ -150,9 +151,9 @@ func TestProviderDispatchesMediagoGemini31ImageRouteThroughImagesAPI(t *testing.
 
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{
-			"id":"img_1",
+			"id":"chat_1",
 			"model":"gemini-3.1-flash-image",
-			"data":[{"url":"https://example.test/mediago-31.png"}],
+			"choices":[{"message":{"images":[{"type":"image_url","image_url":{"url":"https://example.test/mediago-31.png"}}]}}],
 			"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}
 		}`))
 	}))
@@ -173,8 +174,11 @@ func TestProviderDispatchesMediagoGemini31ImageRouteThroughImagesAPI(t *testing.
 		RouteID: generation.RouteMediagoNanoBanana31,
 		Prompt:  "make an image",
 		Params: map[string]any{
-			"aspectRatio": "16:9",
-			"resolution":  "2K",
+			"aspectRatio":  "16:9",
+			"resolution":   "2K",
+			"quality":      "high",
+			"outputFormat": "webp",
+			"background":   "opaque",
 		},
 	})
 	if err != nil {
@@ -190,11 +194,24 @@ func TestProviderDispatchesMediagoGemini31ImageRouteThroughImagesAPI(t *testing.
 	if payload["model"] != "gemini-3.1-flash-image" {
 		t.Fatalf("model = %v", payload["model"])
 	}
-	if payload["size"] != "2048x1152" {
-		t.Fatalf("size = %#v, want 2048x1152", payload["size"])
+	imageConfig, ok := payload["image_config"].(map[string]any)
+	if !ok || imageConfig["aspect_ratio"] != "16:9" || imageConfig["image_size"] != "2K" {
+		t.Fatalf("image_config = %#v", payload["image_config"])
+	}
+	if _, ok := payload["size"]; ok {
+		t.Fatalf("size should not be sent for MediaGo Gemini chat image: %#v", payload)
+	}
+	if _, ok := payload["quality"]; ok {
+		t.Fatalf("quality should be suppressed for MediaGo Gemini image: %#v", payload)
+	}
+	if _, ok := payload["output_format"]; ok {
+		t.Fatalf("output_format should be suppressed for MediaGo Gemini image: %#v", payload)
+	}
+	if _, ok := payload["background"]; ok {
+		t.Fatalf("background should be suppressed for MediaGo Gemini image: %#v", payload)
 	}
 	if response.Status != "completed" || len(response.Assets) != 1 || response.Assets[0].URL != "https://example.test/mediago-31.png" {
-		t.Fatalf("response = %#v, want completed MediaGo image asset", response)
+		t.Fatalf("response = %#v, want completed MediaGo 3.1 image asset", response)
 	}
 }
 

@@ -359,23 +359,47 @@ func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testi
 						"output_modalities": ["text"]
 					},
 					"supported_parameters": ["stream", "temperature"]
-				},
-				{
-					"id": "local/gemini-test",
-					"name": "Gemini Test",
-					"kind": "text",
-					"tags": ["text", "chat", "gemini"],
-					"categories": ["text", "chat"],
-					"architecture": {
-						"input_modalities": ["text"],
-						"output_modalities": ["text"]
 					},
-					"supported_parameters": ["stream", "tools"]
-				},
-				{
-					"id": "local/image-test",
-					"architecture": {
-						"input_modalities": ["text"],
+					{
+						"id": "local/gemini-test",
+						"name": "Gemini Test",
+						"kind": "text",
+						"tags": ["text", "chat", "gemini"],
+						"categories": ["text", "chat"],
+						"architecture": {
+							"input_modalities": ["text"],
+							"output_modalities": ["text"]
+						},
+						"supported_parameters": ["stream", "tools"]
+					},
+					{
+						"id": "local/disabled-gpt",
+						"name": "Disabled GPT",
+						"kind": "text",
+						"enabled": false,
+						"tags": ["text", "chat", "gpt"],
+						"categories": ["text", "chat"],
+						"architecture": {
+							"input_modalities": ["text"],
+							"output_modalities": ["text"]
+						}
+					},
+					{
+						"id": "local/hidden-gemini",
+						"name": "Hidden Gemini",
+						"kind": "text",
+						"status": "hidden",
+						"tags": ["text", "chat", "gemini"],
+						"categories": ["text", "chat"],
+						"architecture": {
+							"input_modalities": ["text"],
+							"output_modalities": ["text"]
+						}
+					},
+					{
+						"id": "local/image-test",
+						"architecture": {
+							"input_modalities": ["text"],
 						"output_modalities": ["image"]
 					}
 				},
@@ -489,6 +513,10 @@ func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testi
 		"local/image-output-test",
 		"local/audio-output-test",
 		"local/speech-input-test",
+		"local/disabled-gpt",
+		"Disabled GPT",
+		"local/hidden-gemini",
+		"Hidden Gemini",
 		"qwen/qwen-mt-plus",
 		"Qwen MT Plus",
 	} {

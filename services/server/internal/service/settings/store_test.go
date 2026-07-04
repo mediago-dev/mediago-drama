@@ -189,12 +189,14 @@ func TestSettingsListModelPlatformsUsesMediagoGatewayModels(t *testing.T) {
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(writer, `{
-			"data": [
-				{"id":"glm-5.2","name":"GLM-5.2","kind":"text"},
-				{"id":"qwen-mt-plus","name":"Qwen MT Plus","kind":"text"},
-				{"id":"doubao-seedream-5-0-lite","name":"Seedream 5.0 Lite","kind":"image"}
-			]
-		}`)
+				"data": [
+					{"id":"glm-5.2","name":"GLM-5.2","kind":"text"},
+					{"id":"qwen-mt-plus","name":"Qwen MT Plus","kind":"text"},
+					{"id":"doubao-seedream-5-0-lite","name":"Seedream 5.0 Lite","kind":"image"},
+					{"id":"gemini-disabled","name":"Gemini Disabled","kind":"text","enabled":false},
+					{"id":"hidden-model","name":"Hidden Model","kind":"text","status":"hidden"}
+				]
+			}`)
 	}))
 	defer server.Close()
 
@@ -216,6 +218,10 @@ func TestSettingsListModelPlatformsUsesMediagoGatewayModels(t *testing.T) {
 		!stringSliceContainsFold(groups["通义千问"], "Qwen MT Plus") ||
 		!stringSliceContainsFold(groups["字节"], "Seedream 5.0 Lite") {
 		t.Fatalf("model groups = %#v, want gateway vendor groups", list.Platforms[0].ModelGroups)
+	}
+	if stringSliceContainsFold(groups["Google Gemini"], "Gemini Disabled") ||
+		stringSliceContainsFold(groups["其他"], "Hidden Model") {
+		t.Fatalf("model groups = %#v, want disabled gateway models hidden", list.Platforms[0].ModelGroups)
 	}
 }
 

@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -40,6 +41,7 @@ func GenerationResponseFromCore(response coregeneration.Response, kind string) G
 	status := ValueOrFallback(response.Status, "completed")
 	errorMessage := ""
 	message := "生成请求已完成。"
+	emptyCompletedImage := false
 	if coregeneration.Kind(kind) == coregeneration.KindText {
 		message = "文本生成已完成。"
 		if strings.TrimSpace(response.Text) == "" &&
@@ -57,11 +59,17 @@ func GenerationResponseFromCore(response coregeneration.Response, kind string) G
 	if coregeneration.Kind(kind) == coregeneration.KindImage &&
 		len(response.Assets) == 0 &&
 		(response.Status == "" || response.Status == "completed") {
-		message = "生成请求已完成，但未返回结果素材。"
+		emptyCompletedImage = true
+		status = "failed"
+		message = "图像生成失败。"
+		errorMessage = "生成请求已完成，但未返回图片素材。"
 	}
 	if status == "failed" {
-		message = "生成请求失败。"
+		if !emptyCompletedImage {
+			message = "生成请求失败。"
+		}
 		errorMessage = shared.FirstNonEmpty(
+			errorMessage,
 			StringFromMetadata(response.Metadata, "error"),
 			StringFromMetadata(response.Metadata, "error_message"),
 			StringFromMetadata(response.Metadata, "task_status_msg"),
@@ -171,14 +179,8 @@ func generationParamsForClient(params map[string]any) map[string]any {
 
 // FailedGenerationResponse returns a failed generation response.
 func FailedGenerationResponse(id string, err error) GenerationMessageResponse {
-	errorMessage := "生成请求失败。"
-	if err != nil && strings.TrimSpace(err.Error()) != "" {
-		errorMessage = err.Error()
-	}
 	failure := GenerationFailureDetailsFromError(err)
-	if failure.Raw != "" {
-		errorMessage = failure.Raw
-	}
+	errorMessage := generationSafeFailureError(failure)
 	return GenerationMessageResponse{
 		ID:        ValueOrFallback(id, shared.MustRandomID("generation")),
 		Role:      "assistant",
@@ -191,6 +193,13 @@ func FailedGenerationResponse(id string, err error) GenerationMessageResponse {
 		ErrorType: failure.Type,
 		Retryable: failure.Retryable,
 	}
+}
+
+func generationSafeFailureError(failure generationFailureDetails) string {
+	if message := strings.TrimSpace(failure.Message); message != "" {
+		return message
+	}
+	return "生成请求失败。"
 }
 
 // SubmittingGenerationResponse returns a local async submission response.
@@ -500,11 +509,32 @@ func GenerationFailureDetailsFromError(err error) generationFailureDetails {
 			Retryable: failure.Retryable,
 		}
 	}
+	if isGenerationTimeoutError(err) {
+		failure := coregeneration.FailureInfo{Code: "timeout", Reason: coregeneration.FailureTimeout, Retryable: true}
+		return generationFailureDetails{
+			Code:      failure.Code,
+			Type:      string(failure.Reason),
+			Message:   generationFailureMessage(failure),
+			Raw:       err.Error(),
+			Retryable: failure.Retryable,
+		}
+	}
 
 	return generationFailureDetails{
 		Message: "生成请求失败。",
 		Raw:     err.Error(),
 	}
+}
+
+func isGenerationTimeoutError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	normalized := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(normalized, "deadline exceeded") ||
+		strings.Contains(normalized, "timeout") ||
+		strings.Contains(normalized, "timed out") ||
+		strings.Contains(normalized, "超时")
 }
 
 func generationFailureMessage(failure coregeneration.FailureInfo) string {
@@ -541,6 +571,7 @@ func GenerationTaskFromMessage(
 	}
 	assetTitle := firstNonEmpty(request.AssetTitle, generationFirstAssetTitle(response.Assets))
 	response = generationResponseWithAssetTitle(response, assetTitle)
+	responseError := generationTaskErrorFromResponse(response)
 	return GenerationTaskRecord{
 		ID:                response.ID,
 		ProviderTaskID:    generationProviderTaskIDForResponse(route, response),
@@ -568,11 +599,34 @@ func GenerationTaskFromMessage(
 		Text:      response.Text,
 		Assets:    response.Assets,
 		Usage:     response.Usage,
-		Error:     response.Error,
+		Error:     responseError,
 		ErrorCode: response.ErrorCode,
 		ErrorType: response.ErrorType,
 		Retryable: response.Retryable,
 	}
+}
+
+func generationTaskErrorFromResponse(response GenerationMessageResponse) string {
+	errorMessage := strings.TrimSpace(response.Error)
+	if errorMessage == "" || response.Status != "failed" {
+		return errorMessage
+	}
+	if !shouldRedactGenerationErrorDetail(errorMessage) {
+		return errorMessage
+	}
+	return shared.FirstNonEmpty(strings.TrimSpace(response.Message), "生成请求失败。")
+}
+
+func shouldRedactGenerationErrorDetail(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	normalized := strings.ToLower(trimmed)
+	return strings.HasPrefix(trimmed, "{") ||
+		strings.Contains(normalized, `"error"`) ||
+		strings.Contains(normalized, `\"error\"`) ||
+		strings.Contains(normalized, "request failed with status") ||
+		strings.Contains(normalized, "dmx") ||
+		strings.Contains(normalized, "dmxapi") ||
+		strings.Contains(normalized, "openrouter")
 }
 
 // GenerationCapabilityIDForRequest returns an explicit capability id or the route kind default.

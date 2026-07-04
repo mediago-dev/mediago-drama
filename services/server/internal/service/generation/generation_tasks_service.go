@@ -1147,10 +1147,7 @@ func (service *GenerationTaskService) RecordError(id string, err error) error {
 	defer service.mu.Unlock()
 
 	failure := GenerationFailureDetailsFromError(err)
-	errorMessage := failure.Raw
-	if errorMessage == "" {
-		errorMessage = err.Error()
-	}
+	errorMessage := generationSafeFailureError(failure)
 	return service.repo.RecordGenerationTaskError(
 		id,
 		errorMessage,

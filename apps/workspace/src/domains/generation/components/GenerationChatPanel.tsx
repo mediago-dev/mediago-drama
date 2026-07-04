@@ -37,6 +37,11 @@ import {
 	generatedAssetSaveKey,
 	generatedTextSaveKey,
 } from "@/domains/generation/components/generatedResultActions";
+import {
+	compactGenerationError,
+	shouldHideGenerationErrorDetail,
+	visibleGenerationErrorDetail,
+} from "@/domains/generation/hooks/generationErrorDisplay";
 
 export const GenerationChatPanel: React.FC<{
 	canSaveText?: boolean;
@@ -392,6 +397,7 @@ const GenerationFailureCard: React.FC<{
 		message: entry.content,
 		rawError: legacyRawError,
 	});
+	const errorDetail = visibleGenerationErrorDetail(legacyRawError);
 	const retryable = Boolean(entry.retryable || entry.assistantMessage?.retryable);
 
 	return (
@@ -415,13 +421,13 @@ const GenerationFailureCard: React.FC<{
 					{retryable ? (
 						<p className="mt-1 text-xs leading-5 text-error-foreground/80">可以稍后重试。</p>
 					) : null}
-					{legacyRawError ? (
+					{errorDetail ? (
 						<details className="group mt-3">
 							<summary className="cursor-pointer text-xs font-medium text-error-foreground outline-none transition-colors hover:text-foreground">
 								错误详情
 							</summary>
 							<pre className="mt-2 max-h-36 overflow-auto rounded-sm border border-error-border bg-card p-2 text-xs leading-5 text-muted-foreground whitespace-pre-wrap break-words">
-								{compactGenerationError(legacyRawError)}
+								{errorDetail}
 							</pre>
 						</details>
 					) : null}
@@ -557,6 +563,12 @@ const generationFailureSummary = ({
 	if (!normalized) return "生成服务没有返回错误详情。";
 
 	// Legacy fallback for locally cached messages created before backend error mapping.
+	if (normalized.includes("空的图片数据") || normalized.includes("empty image")) {
+		return "模型服务未返回图片数据，请稍后重试或调整请求。";
+	}
+	if (normalized.includes("invalid_argument") || normalized.includes("invalid value")) {
+		return "请求参数无效，请调整参数后重试。";
+	}
 	if (normalized.includes("policyviolation") || normalized.includes("copyright restrictions")) {
 		return "生成结果触发供应商内容安全策略，未返回可用结果。";
 	}
@@ -568,6 +580,9 @@ const generationFailureSummary = ({
 	}
 	if (normalized.includes("status 400")) {
 		return "供应商返回 400 错误，请调整参数或提示词后重试。";
+	}
+	if (shouldHideGenerationErrorDetail(detail)) {
+		return "供应商返回错误，请稍后重试或调整请求。";
 	}
 
 	return truncateFailureText(detail, 120);
@@ -588,15 +603,6 @@ const isRawFailureText = (text: string) => {
 		normalized.includes('\\"error\\"')
 	);
 };
-
-const compactGenerationError = (rawError: string) =>
-	rawError
-		.trim()
-		.replace(/^生成请求失败。\s*/u, "")
-		.replace(/^视频生成任务已提交，完成后请再次检查状态。\s*/u, "")
-		.replace(/\\n/g, "\n")
-		.replace(/\\"/g, '"')
-		.replace(/\\\\/g, "\\");
 
 const truncateFailureText = (value: string, maxLength: number) => {
 	const text = value.replace(/\s+/g, " ").trim();

@@ -29,7 +29,6 @@ type GenerationService struct {
 	multimodalTextProviderFactory runtime.MultimodalTextProviderFactory
 	voicePreviews                 *VoicePreviewStore
 	mediagoBaseURL                string
-	mediagoModelCatalog           mediagoModelCatalogCache
 	jimengBinPath                 string
 	jimengBinDir                  string
 	libTVBinPath                  string
@@ -84,7 +83,6 @@ func (workflow *GenerationService) SetPippitCLIPaths(binPath string, binDir stri
 // SetMediagoBaseURL configures the MediaGo OpenAI-compatible generation endpoint.
 func (workflow *GenerationService) SetMediagoBaseURL(baseURL string) {
 	workflow.mediagoBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	workflow.mediagoModelCatalog.Clear()
 }
 
 // SetGenerationNotifications sets the notification service used by generation workflows.
@@ -100,8 +98,13 @@ func (workflow *GenerationService) SetDocumentResolver(documents GenerationDocum
 // ListGenerationModels returns the generation model catalog for HTTP handlers.
 func (workflow *GenerationService) ListGenerationModels() generationModelsResponse {
 	catalog := coregeneration.Catalog()
+	mediagoModels, hasMediagoCatalog := workflow.mediagoAvailableModelsForCatalog(context.Background())
 	for index := range catalog.Routes {
-		catalog.Routes[index].Configured = workflow.generationRouteConfigured(catalog.Routes[index])
+		catalog.Routes[index].Configured = workflow.generationRouteConfiguredWithMediagoModels(
+			catalog.Routes[index],
+			mediagoModels,
+			hasMediagoCatalog,
+		)
 	}
 
 	return generationModelsResponse{

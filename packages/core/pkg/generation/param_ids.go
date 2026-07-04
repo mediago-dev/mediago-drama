@@ -88,6 +88,7 @@ func aspectRatioParamOptions() []ParamOption {
 		{Label: "16:9", Value: "16:9"},
 		{Label: "9:16", Value: "9:16"},
 		{Label: "21:9", Value: "21:9"},
+		{Label: "9:21", Value: "9:21"},
 	}
 }
 

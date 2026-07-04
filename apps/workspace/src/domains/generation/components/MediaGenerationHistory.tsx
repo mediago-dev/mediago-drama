@@ -53,6 +53,7 @@ import {
 	generationStatusLabel,
 	type GenerationEntry,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import { safeGenerationHistoryErrorText } from "@/domains/generation/hooks/generationErrorDisplay";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 
@@ -1216,7 +1217,7 @@ const HistoryErrorTooltip: React.FC<{ message: string }> = ({ message }) => (
 );
 
 const entryErrorText = (entry: GenerationEntry) =>
-	entry.error?.trim() || entry.content.trim() || "生成失败，暂无错误详情。";
+	safeGenerationHistoryErrorText(entry.error, entry.content);
 
 interface GenerationSourceBadge {
 	label: string;

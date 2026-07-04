@@ -142,7 +142,6 @@ const catalog: GenerationModelsResponse = {
 			async: false,
 			supportsReferenceUrls: true,
 			status: "available",
-			configured: false,
 			params: [
 				{
 					name: "size",

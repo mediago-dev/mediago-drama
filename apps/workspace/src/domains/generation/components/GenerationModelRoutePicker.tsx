@@ -68,6 +68,9 @@ export const GenerationModelRoutePicker: React.FC<{
 	const routesByVersion = useMemo(() => {
 		const grouped = new Map<string, GenerationRoute[]>();
 		for (const route of routes) {
+			if (route.status !== "available" || route.configured === false) {
+				continue;
+			}
 			const existing = grouped.get(route.versionId);
 			if (existing) {
 				existing.push(route);
@@ -381,7 +384,7 @@ export const GenerationModelRoutePicker: React.FC<{
 									<button
 										key={route.id}
 										type="button"
-										disabled={disabled || route.status !== "available"}
+										disabled={disabled}
 										className={cn(
 											"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45",
 											selected
@@ -389,6 +392,7 @@ export const GenerationModelRoutePicker: React.FC<{
 												: "text-foreground hover:bg-card",
 										)}
 										onClick={() => {
+											if (disabled) return;
 											if (!activeVersion) return;
 
 											onSelect(activeVersion.id, route.id);

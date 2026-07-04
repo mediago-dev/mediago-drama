@@ -146,6 +146,14 @@ export function route(
 	};
 }
 
+export function gatedRoute(item: GenerationRoute, statusReason: string): GenerationRoute {
+	return {
+		...item,
+		status: "gated",
+		statusReason,
+	};
+}
+
 export function plannedRoute(
 	id: string,
 	familyId: string,
@@ -325,6 +333,126 @@ export function mediagoGPTImageParams(): GenerationParam[] {
 	return gptImageParamsWithBackground();
 }
 
+export function mediagoNanoBanana31Params(): GenerationParam[] {
+	return [
+		selectParam("aspectRatio", "画幅比例", "1:1", [
+			{ label: "1:1", value: "1:1" },
+			{ label: "1:4", value: "1:4" },
+			{ label: "1:8", value: "1:8" },
+			{ label: "2:3", value: "2:3" },
+			{ label: "3:2", value: "3:2" },
+			{ label: "3:4", value: "3:4" },
+			{ label: "4:1", value: "4:1" },
+			{ label: "4:3", value: "4:3" },
+			{ label: "4:5", value: "4:5" },
+			{ label: "5:4", value: "5:4" },
+			{ label: "8:1", value: "8:1" },
+			{ label: "9:16", value: "9:16" },
+			{ label: "16:9", value: "16:9" },
+			{ label: "21:9", value: "21:9" },
+		]),
+		selectParam("resolution", "分辨率", "1K", [
+			{ label: "1K", value: "1K" },
+			{ label: "2K", value: "2K" },
+			{ label: "4K", value: "4K" },
+		]),
+		numberParam("n", "图像数量", 1, 1, 4),
+	];
+}
+
+export function mediagoNanoBanana31ParamCombos(): GenerationParamCombo[] {
+	const ratios = [
+		"1:1",
+		"1:4",
+		"1:8",
+		"2:3",
+		"3:2",
+		"3:4",
+		"4:1",
+		"4:3",
+		"4:5",
+		"5:4",
+		"8:1",
+		"9:16",
+		"16:9",
+		"21:9",
+	];
+	const resolutions = ["1K", "2K", "4K"];
+	return [
+		{
+			params: ["aspectRatio", "resolution"],
+			allowed: ratios.flatMap((ratio) => resolutions.map((resolution) => [ratio, resolution])),
+			outputs: {
+				"1:1|1K": "1024x1024",
+				"1:4|1K": "512x2048",
+				"1:8|1K": "384x3072",
+				"2:3|1K": "848x1264",
+				"3:2|1K": "1264x848",
+				"3:4|1K": "896x1200",
+				"4:1|1K": "2048x512",
+				"4:3|1K": "1200x896",
+				"4:5|1K": "928x1152",
+				"5:4|1K": "1152x928",
+				"8:1|1K": "3072x384",
+				"9:16|1K": "768x1376",
+				"16:9|1K": "1376x768",
+				"21:9|1K": "1584x672",
+				"1:1|2K": "2048x2048",
+				"1:4|2K": "1024x4096",
+				"1:8|2K": "768x6144",
+				"2:3|2K": "1696x2528",
+				"3:2|2K": "2528x1696",
+				"3:4|2K": "1792x2400",
+				"4:1|2K": "4096x1024",
+				"4:3|2K": "2400x1792",
+				"4:5|2K": "1856x2304",
+				"5:4|2K": "2304x1856",
+				"8:1|2K": "6144x768",
+				"9:16|2K": "1536x2752",
+				"16:9|2K": "2752x1536",
+				"21:9|2K": "3168x1344",
+				"1:1|4K": "4096x4096",
+				"1:4|4K": "2048x8192",
+				"1:8|4K": "1536x12288",
+				"2:3|4K": "3392x5056",
+				"3:2|4K": "5056x3392",
+				"3:4|4K": "3584x4800",
+				"4:1|4K": "8192x2048",
+				"4:3|4K": "4800x3584",
+				"4:5|4K": "3712x4608",
+				"5:4|4K": "4608x3712",
+				"8:1|4K": "12288x1536",
+				"9:16|4K": "3072x5504",
+				"16:9|4K": "5504x3072",
+				"21:9|4K": "6336x2688",
+			},
+		},
+	];
+}
+
+export function mediagoNanoBanana25Params(): GenerationParam[] {
+	return [
+		selectParam("aspectRatio", "画幅比例", "1:1", [
+			{ label: "1:1", value: "1:1" },
+			{ label: "2:3", value: "2:3" },
+			{ label: "3:2", value: "3:2" },
+			{ label: "3:4", value: "3:4" },
+			{ label: "4:3", value: "4:3" },
+			{ label: "4:5", value: "4:5" },
+			{ label: "5:4", value: "5:4" },
+			{ label: "9:16", value: "9:16" },
+			{ label: "16:9", value: "16:9" },
+			{ label: "21:9", value: "21:9" },
+		]),
+		selectParam("resolution", "分辨率", "1K", [{ label: "1K", value: "1K" }]),
+		numberParam("n", "图像数量", 1, 1, 4),
+	];
+}
+
+export function mediagoNanoBanana25ParamCombos(): GenerationParamCombo[] {
+	return nano25ParamCombos();
+}
+
 function gptImageParams(): GenerationParam[] {
 	return [
 		selectParam("aspectRatio", "画幅比例", "1:1", [
@@ -417,8 +545,10 @@ export function nanoParams(): GenerationParam[] {
 			{ label: "16:9", value: "16:9" },
 			{ label: "9:16", value: "9:16" },
 			{ label: "21:9", value: "21:9" },
+			{ label: "9:21", value: "9:21" },
 		]),
 		selectParam("resolution", "分辨率", "1K", [
+			{ label: "512px", value: "512px" },
 			{ label: "1K", value: "1K" },
 			{ label: "2K", value: "2K" },
 			{ label: "4K", value: "4K" },
@@ -443,13 +573,29 @@ export function nanoParamCombos(): GenerationParamCombo[] {
 		"16:9",
 		"9:16",
 		"21:9",
+		"9:21",
 	];
-	const resolutions = ["1K", "2K", "4K"];
+	const resolutions = ["512px", "1K", "2K", "4K"];
 	return [
 		{
 			params: ["aspectRatio", "resolution"],
 			allowed: ratios.flatMap((ratio) => resolutions.map((resolution) => [ratio, resolution])),
 			outputs: {
+				"1:1|512px": "512x512",
+				"1:4|512px": "256x1024",
+				"1:8|512px": "192x1536",
+				"2:3|512px": "424x632",
+				"3:2|512px": "632x424",
+				"3:4|512px": "448x600",
+				"4:1|512px": "1024x256",
+				"4:3|512px": "600x448",
+				"4:5|512px": "464x576",
+				"5:4|512px": "576x464",
+				"8:1|512px": "1536x192",
+				"16:9|512px": "688x384",
+				"9:16|512px": "384x688",
+				"21:9|512px": "792x168",
+				"9:21|512px": "168x792",
 				"1:1|1K": "1024x1024",
 				"1:4|1K": "512x2048",
 				"1:8|1K": "384x3072",
@@ -464,6 +610,7 @@ export function nanoParamCombos(): GenerationParamCombo[] {
 				"16:9|1K": "1376x768",
 				"9:16|1K": "768x1376",
 				"21:9|1K": "1584x672",
+				"9:21|1K": "672x1584",
 				"1:1|2K": "2048x2048",
 				"1:4|2K": "1024x4096",
 				"1:8|2K": "768x6144",
@@ -478,6 +625,7 @@ export function nanoParamCombos(): GenerationParamCombo[] {
 				"16:9|2K": "2752x1536",
 				"9:16|2K": "1536x2752",
 				"21:9|2K": "3168x1344",
+				"9:21|2K": "1344x3168",
 				"1:1|4K": "4096x4096",
 				"1:4|4K": "2048x8192",
 				"1:8|4K": "1536x12288",
@@ -492,25 +640,59 @@ export function nanoParamCombos(): GenerationParamCombo[] {
 				"16:9|4K": "5504x3072",
 				"9:16|4K": "3072x5504",
 				"21:9|4K": "6336x2688",
+				"9:21|4K": "2688x6336",
 			},
 		},
 	];
 }
 
 export function officialNanoBanana25Params(): GenerationParam[] {
-	return nanoParams().map((param) =>
-		param.name === "resolution" ? { ...param, options: [{ label: "1K", value: "1K" }] } : param,
-	);
+	return nano25Params();
 }
 
 export function officialNanoBanana25ParamCombos(): GenerationParamCombo[] {
-	return nanoParamCombos().map((combo) => ({
-		...combo,
-		allowed: combo.allowed.filter((values) => values[1] === "1K"),
-		outputs: combo.outputs
-			? Object.fromEntries(Object.entries(combo.outputs).filter(([key]) => key.endsWith("|1K")))
-			: undefined,
-	}));
+	return nano25ParamCombos();
+}
+
+export function nano25Params(): GenerationParam[] {
+	return [
+		selectParam("aspectRatio", "画幅比例", "1:1", [
+			{ label: "1:1", value: "1:1" },
+			{ label: "2:3", value: "2:3" },
+			{ label: "3:2", value: "3:2" },
+			{ label: "3:4", value: "3:4" },
+			{ label: "4:3", value: "4:3" },
+			{ label: "4:5", value: "4:5" },
+			{ label: "5:4", value: "5:4" },
+			{ label: "9:16", value: "9:16" },
+			{ label: "16:9", value: "16:9" },
+			{ label: "21:9", value: "21:9" },
+		]),
+		selectParam("resolution", "分辨率", "1K", [{ label: "1K", value: "1K" }]),
+		numberParam("n", "图像数量", 1, 1, 4),
+	];
+}
+
+export function nano25ParamCombos(): GenerationParamCombo[] {
+	const ratios = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
+	return [
+		{
+			params: ["aspectRatio", "resolution"],
+			allowed: ratios.map((ratio) => [ratio, "1K"]),
+			outputs: {
+				"1:1|1K": "1024x1024",
+				"2:3|1K": "832x1248",
+				"3:2|1K": "1248x832",
+				"3:4|1K": "864x1184",
+				"4:3|1K": "1184x864",
+				"4:5|1K": "896x1152",
+				"5:4|1K": "1152x896",
+				"9:16|1K": "768x1344",
+				"16:9|1K": "1344x768",
+				"21:9|1K": "1536x672",
+			},
+		},
+	];
 }
 
 export function openRouterImageParams(): GenerationParam[] {

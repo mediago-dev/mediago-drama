@@ -58,6 +58,43 @@ const routes: GenerationRoute[] = [
 	},
 ];
 
+const disabledGeminiRoutes: GenerationRoute[] = [
+	routes[1],
+	{
+		adapter: "test.image.mediago",
+		async: false,
+		configured: false,
+		docUrl: "https://example.com/mediago",
+		familyId: "image-family",
+		id: "route-mediago-gemini",
+		kind: "image",
+		label: "MediaGo Gemini",
+		model: "nano-banana-gemini",
+		params: [],
+		provider: "mediago",
+		status: "gated",
+		statusReason: "当前路线暂不可用",
+		supportsReferenceUrls: true,
+		versionId: "version-nano-gemini",
+	},
+	{
+		adapter: "test.image.openrouter",
+		async: false,
+		configured: false,
+		docUrl: "https://example.com/openrouter",
+		familyId: "image-family",
+		id: "route-openrouter-gemini",
+		kind: "image",
+		label: "OpenRouter Gemini",
+		model: "nano-banana-gemini",
+		params: [],
+		provider: "openrouter",
+		status: "available",
+		supportsReferenceUrls: true,
+		versionId: "version-nano-gemini",
+	},
+];
+
 const seedreamVersions: GenerationVersion[] = [
 	{
 		canonicalModel: "doubao-seedream-5.0-lite",
@@ -422,6 +459,26 @@ describe("GenerationModelRoutePicker", () => {
 
 		expect(screen.getByRole("button", { name: "Gemini" })).toBeTruthy();
 		expect(screen.queryByRole("button", { name: "Nano Banana / Gemini" })).toBeNull();
+	});
+
+	it("hides gated and unconfigured providers in the provider menu", () => {
+		const onSelect = vi.fn();
+		render(
+			<GenerationModelRoutePicker
+				onSelect={onSelect}
+				routes={disabledGeminiRoutes}
+				selectedRoute={routes[1]}
+				selectedVersion={versions[1]}
+				versions={versions}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+
+		expect(screen.getByRole("button", { name: "OpenAI" })).toBeEnabled();
+		expect(screen.queryByRole("button", { name: "MediaGo" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "OpenRouter" })).toBeNull();
+		expect(onSelect).not.toHaveBeenCalled();
 	});
 
 	it("keeps the active version while the pointer crosses the safe triangle", () => {

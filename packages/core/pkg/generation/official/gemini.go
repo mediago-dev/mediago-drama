@@ -85,10 +85,9 @@ func (provider *Provider) generateSingleGoogleImage(ctx context.Context, request
 		Input: input,
 		ResponseFormat: googleInteractionResponseFormat{
 			Type:        "image",
-			MIMEType:    imageMIMEType(firstNonEmpty(paramString(request.Params, "outputFormat"), request.OutputFormat, "png")),
-			Delivery:    "inline",
+			MIMEType:    "image/jpeg",
 			AspectRatio: firstNonEmpty(paramString(request.Params, "aspectRatio"), "1:1"),
-			ImageSize:   firstNonEmpty(paramString(request.Params, "imageSize"), "1K"),
+			ImageSize:   googleImageSize(request),
 		},
 	}
 
@@ -103,6 +102,14 @@ func (provider *Provider) generateSingleGoogleImage(ctx context.Context, request
 
 func boundedGoogleImageCount(value int) int {
 	return max(1, min(value, googleImageMaxImageCount))
+}
+
+func googleImageSize(request generation.Request) string {
+	imageSize := paramString(request.Params, "imageSize")
+	if strings.TrimPrefix(request.Model, "models/") == generation.VersionNanoBanana25 {
+		return ""
+	}
+	return firstNonEmpty(imageSize, "1K")
 }
 
 func cloneGoogleImageParams(params map[string]any) map[string]any {
@@ -191,7 +198,6 @@ type googleInteractionInput struct {
 type googleInteractionResponseFormat struct {
 	Type        string `json:"type,omitempty"`
 	MIMEType    string `json:"mime_type,omitempty"`
-	Delivery    string `json:"delivery,omitempty"`
 	AspectRatio string `json:"aspect_ratio,omitempty"`
 	ImageSize   string `json:"image_size,omitempty"`
 }
@@ -306,7 +312,7 @@ func (response googleInteractionResponse) toGenerationResponse(model string) gen
 		}
 		asset := generation.Asset{
 			Kind:     generation.KindImage,
-			MIMEType: firstNonEmpty(image.MIMEType, image.MIMETypeC, "image/png"),
+			MIMEType: firstNonEmpty(image.MIMEType, image.MIMETypeC, "image/jpeg"),
 		}
 		if data != "" {
 			asset.Base64 = data

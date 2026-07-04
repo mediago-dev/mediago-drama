@@ -489,7 +489,7 @@ func TestGenerationTaskFromMessageRecordsFailureReason(t *testing.T) {
 		ID:        "generation_failed",
 		Role:      "assistant",
 		Status:    "failed",
-		Message:   "Generation request failed.",
+		Message:   "请求参数无效，请调整参数后重试。",
 		Error:     "dmx request failed with status 400: bad prompt",
 		ErrorCode: "invalid_parameter",
 		ErrorType: "invalid_parameter",
@@ -504,8 +504,8 @@ func TestGenerationTaskFromMessageRecordsFailureReason(t *testing.T) {
 	if task.CapabilityID != "image.generate" {
 		t.Fatalf("capability id = %q, want image.generate", task.CapabilityID)
 	}
-	if !strings.Contains(task.Error, "bad prompt") {
-		t.Fatalf("error = %q, want provider failure reason", task.Error)
+	if task.Error != "请求参数无效，请调整参数后重试。" || strings.Contains(task.Error, "bad prompt") {
+		t.Fatalf("error = %q, want sanitized failure reason", task.Error)
 	}
 	if task.ErrorCode != "invalid_parameter" || task.ErrorType != "invalid_parameter" || task.Retryable {
 		t.Fatalf("failure fields = %+v, want invalid parameter failure", task)
@@ -526,7 +526,7 @@ func TestFailedGenerationResponseMapsProviderFailure(t *testing.T) {
 	if response.Message != "生成结果触发供应商内容安全策略，未返回可用结果。" {
 		t.Fatalf("message = %q, want policy failure message", response.Message)
 	}
-	if response.Error != "raw provider error" ||
+	if response.Error != "生成结果触发供应商内容安全策略，未返回可用结果。" ||
 		response.ErrorCode != "policy_violation" ||
 		response.ErrorType != "policy_violation" ||
 		response.Retryable {
@@ -2285,6 +2285,13 @@ func TestPollGenerationTaskCompletesHandedOffImage(t *testing.T) {
 		getResponse: coregeneration.Response{
 			ID:     "jimeng.seedream-5.0:submit-1",
 			Status: "completed",
+			Assets: []coregeneration.Asset{
+				{
+					Kind:     coregeneration.KindImage,
+					Base64:   "aW1hZ2U=",
+					MIMEType: "image/png",
+				},
+			},
 		},
 	}
 	workflow := NewGenerationService(settingsSvc, store, nil)

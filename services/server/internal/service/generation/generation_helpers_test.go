@@ -56,3 +56,21 @@ func TestGenerationResponseFromCoreIncludesVideoPosterURL(t *testing.T) {
 		t.Fatalf("assets = %#v, want poster URL from metadata", response.Assets)
 	}
 }
+
+func TestGenerationResponseFromCoreFailsCompletedImageWithoutAssets(t *testing.T) {
+	response := GenerationResponseFromCore(coregeneration.Response{
+		ID:     "generation-empty-image",
+		Status: "completed",
+		Model:  "gemini-3.1-flash-image",
+	}, string(coregeneration.KindImage))
+
+	if response.Status != "failed" {
+		t.Fatalf("status = %q, want failed", response.Status)
+	}
+	if response.Message != "图像生成失败。" {
+		t.Fatalf("message = %q, want image failure", response.Message)
+	}
+	if response.Error != "生成请求已完成，但未返回图片素材。" {
+		t.Fatalf("error = %q, want empty image asset reason", response.Error)
+	}
+}

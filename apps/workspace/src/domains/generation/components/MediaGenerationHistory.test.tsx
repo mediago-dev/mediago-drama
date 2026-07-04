@@ -711,6 +711,33 @@ describe("HistoryGenerationList", () => {
 		);
 	});
 
+	it("hides raw provider details for failed image placeholders", async () => {
+		const entry = {
+			...failedImageEntry(),
+			content: "图像生成失败",
+			error: '{"error":{"message":"DMX API 返回了空的图片数据","type":"server_error"}}',
+		};
+		render(
+			<HistoryGenerationList
+				activeEntryId="entry-failed-image"
+				deletingEntryIds={[]}
+				entries={[entry]}
+				kind="image"
+				selectedAssetKeys={[]}
+				variant="list"
+				onDeleteEntry={vi.fn()}
+				onSelectEntry={vi.fn()}
+			/>,
+		);
+
+		fireEvent.pointerMove(screen.getAllByRole("img", { name: /生成失败/ })[0], {
+			pointerType: "mouse",
+		});
+
+		expect(await screen.findByRole("tooltip")).toHaveTextContent("图像生成失败");
+		expect(screen.getByRole("tooltip")).not.toHaveTextContent("DMX");
+	});
+
 	it("shows right-click actions for failed image placeholders", async () => {
 		const entry = failedImageEntry();
 		const onDeleteEntry = vi.fn();

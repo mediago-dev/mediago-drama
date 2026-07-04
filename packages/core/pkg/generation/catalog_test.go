@@ -141,7 +141,7 @@ func TestImageCatalogIncludesMediagoRoutes(t *testing.T) {
 	}{
 		{RouteMediagoSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "doubao-seedream-5-0-lite", AdapterOpenRouterChatImage, false, RouteStatusAvailable, ""},
 		{RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, "gpt-image-2", AdapterOpenRouterImages, true, RouteStatusAvailable, ""},
-		{RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "gemini-3.1-flash-image", AdapterOpenRouterImages, true, RouteStatusAvailable, ""},
+		{RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "gemini-3.1-flash-image", AdapterOpenRouterChatImage, true, RouteStatusAvailable, ""},
 		{RouteMediagoNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, "gemini-2.5-flash-image", AdapterOpenRouterChatImage, true, RouteStatusAvailable, ""},
 	}
 
@@ -195,9 +195,16 @@ func TestImageCatalogIncludesOfficialGoogleNanoBanana25(t *testing.T) {
 		t.Fatal("official Gemini 2.5 Flash Image route should support reference images")
 	}
 	assertHasOptions(t, mustParam(t, route, "resolution"), "1K")
+	assertHasOptions(t, mustParam(t, route, "aspectRatio"), "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9")
+	assertLacksOption(t, mustParam(t, route, "aspectRatio"), "1:4")
+	assertLacksOption(t, mustParam(t, route, "aspectRatio"), "1:8")
+	assertLacksOption(t, mustParam(t, route, "aspectRatio"), "4:1")
+	assertLacksOption(t, mustParam(t, route, "aspectRatio"), "8:1")
+	assertLacksOption(t, mustParam(t, route, "aspectRatio"), "9:21")
 	assertLacksOption(t, mustParam(t, route, "resolution"), "2K")
 	assertLacksOption(t, mustParam(t, route, "resolution"), "4K")
 	assertComboOutput(t, route, "aspectRatio", "resolution", "1:1|1K", "1024x1024")
+	assertComboOutput(t, route, "aspectRatio", "resolution", "16:9|1K", "1344x768")
 }
 
 func TestLibTVCatalogIncludesSeedanceRoute(t *testing.T) {
@@ -665,12 +672,30 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 		t.Fatal("official nano banana route should support reference images")
 	}
 	aspectRatio := mustParam(t, nanoBanana, "aspectRatio")
-	assertHasOptions(t, aspectRatio, "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9")
+	assertHasOptions(t, aspectRatio, "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9", "9:21")
 	assertHasOptions(t, mustParam(t, officialNanoBanana, "resolution"), "512px", "1K", "2K", "4K")
-	assertHasOptions(t, mustParam(t, nanoBanana, "resolution"), "1K", "2K", "4K")
+	assertHasOptions(t, mustParam(t, nanoBanana, "resolution"), "512px", "1K", "2K", "4K")
 	assertComboOutput(t, officialNanoBanana, "aspectRatio", "resolution", "1:1|512px", "512x512")
+	assertComboOutput(t, nanoBanana, "aspectRatio", "resolution", "1:1|512px", "512x512")
 	assertComboOutput(t, nanoBanana, "aspectRatio", "resolution", "16:9|1K", "1376x768")
 	assertComboOutput(t, nanoBanana, "aspectRatio", "resolution", "1:4|4K", "2048x8192")
+	assertComboOutput(t, nanoBanana, "aspectRatio", "resolution", "9:21|1K", "672x1584")
+	mediagoNanoBanana := mustRoute(t, RouteMediagoNanoBanana31)
+	assertHasParams(t, mediagoNanoBanana, "aspectRatio", "resolution", "n")
+	assertNoParams(t, mediagoNanoBanana, "quality", "outputFormat", "moderation", "outputCompression", "background")
+	assertHasOptions(t, mustParam(t, mediagoNanoBanana, "aspectRatio"), "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9")
+	assertLacksOption(t, mustParam(t, mediagoNanoBanana, "aspectRatio"), "9:21")
+	assertHasOptions(t, mustParam(t, mediagoNanoBanana, "resolution"), "1K", "2K", "4K")
+	assertLacksOption(t, mustParam(t, mediagoNanoBanana, "resolution"), "512px")
+	assertComboOutput(t, mediagoNanoBanana, "aspectRatio", "resolution", "16:9|1K", "1376x768")
+	assertComboOutput(t, mediagoNanoBanana, "aspectRatio", "resolution", "4:3|2K", "2400x1792")
+	mediagoNanoBanana25 := mustRoute(t, RouteMediagoNanoBanana25)
+	assertHasParams(t, mediagoNanoBanana25, "aspectRatio", "resolution", "n")
+	assertHasOptions(t, mustParam(t, mediagoNanoBanana25, "resolution"), "1K")
+	assertLacksOption(t, mustParam(t, mediagoNanoBanana25, "resolution"), "2K")
+	assertLacksOption(t, mustParam(t, mediagoNanoBanana25, "resolution"), "4K")
+	assertLacksOption(t, mustParam(t, mediagoNanoBanana25, "aspectRatio"), "1:4")
+	assertComboOutput(t, mediagoNanoBanana25, "aspectRatio", "resolution", "16:9|1K", "1344x768")
 
 	seedanceDuration := mustParam(t, dmxSeedance, "duration")
 	assertHasOptions(t, seedanceDuration, "-1", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15")

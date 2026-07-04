@@ -3,7 +3,7 @@ version: "3"
 vars:
   ROOT_DIR:
     sh: pwd
-  AGENT: '{{.AGENT | default "codex"}}'
+  AGENT: '{{.AGENT | default "opencode"}}'
   GENERATION_CLIS: '{{.GENERATION_CLIS | default "dreamina"}}'
   MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago,openrouter,dmxapi"}}'
   MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default "http://127.0.0.1:3001/api/v1"}}'

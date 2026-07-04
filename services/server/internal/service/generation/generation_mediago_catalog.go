@@ -2,14 +2,11 @@ package generation
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
@@ -18,49 +15,10 @@ import (
 const (
 	mediagoModelCatalogPath       = "/models/user"
 	mediagoModelCatalogTimeout    = 3 * time.Second
-	mediagoModelCatalogCacheTTL   = 30 * time.Second
 	mediagoModelCatalogMaxBytes   = 1 << 20
 	mediagoModelCatalogUserAgent  = "mediago-drama"
 	mediagoModelCatalogAuthScheme = "Bearer "
 )
-
-type mediagoModelCatalogCache struct {
-	mu        sync.Mutex
-	key       string
-	fetchedAt time.Time
-	models    map[string]struct{}
-	err       error
-}
-
-func (cache *mediagoModelCatalogCache) Clear() {
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-
-	cache.key = ""
-	cache.fetchedAt = time.Time{}
-	cache.models = nil
-	cache.err = nil
-}
-
-func (cache *mediagoModelCatalogCache) Get(key string, now time.Time) (map[string]struct{}, bool, error) {
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-
-	if cache.key != key || cache.fetchedAt.IsZero() || now.Sub(cache.fetchedAt) > mediagoModelCatalogCacheTTL {
-		return nil, false, nil
-	}
-	return cloneMediagoModelSet(cache.models), true, cache.err
-}
-
-func (cache *mediagoModelCatalogCache) Set(key string, now time.Time, models map[string]struct{}, err error) {
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-
-	cache.key = key
-	cache.fetchedAt = now
-	cache.models = cloneMediagoModelSet(models)
-	cache.err = err
-}
 
 func (workflow *GenerationService) mediagoRouteModelAvailable(ctx context.Context, route coregeneration.ModelRoute) bool {
 	if workflow == nil {
@@ -74,7 +32,7 @@ func (workflow *GenerationService) mediagoRouteModelAvailable(ctx context.Contex
 	if err != nil || strings.TrimSpace(apiKey) == "" {
 		return false
 	}
-	models, err := workflow.mediagoAvailableModels(ctx, apiKey)
+	models, err := workflow.mediagoAvailableModelsFresh(ctx, apiKey)
 	if err != nil {
 		return false
 	}
@@ -82,7 +40,25 @@ func (workflow *GenerationService) mediagoRouteModelAvailable(ctx context.Contex
 	return ok
 }
 
-func (workflow *GenerationService) mediagoAvailableModels(ctx context.Context, apiKey string) (map[string]struct{}, error) {
+func (workflow *GenerationService) mediagoAvailableModelsForCatalog(ctx context.Context) (map[string]struct{}, bool) {
+	if workflow == nil || workflow.settings == nil {
+		return nil, false
+	}
+	if strings.TrimSpace(workflow.mediagoBaseURL) == "" {
+		return nil, true
+	}
+	apiKey, _, err := workflow.settings.GetAPIKey(ctx, coregeneration.ProviderMediago)
+	if err != nil || strings.TrimSpace(apiKey) == "" {
+		return nil, true
+	}
+	models, err := workflow.mediagoAvailableModelsFresh(ctx, apiKey)
+	if err != nil {
+		return nil, true
+	}
+	return models, true
+}
+
+func (workflow *GenerationService) mediagoAvailableModelsFresh(ctx context.Context, apiKey string) (map[string]struct{}, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(workflow.mediagoBaseURL), "/")
 	apiKey = strings.TrimSpace(apiKey)
 	if baseURL == "" {
@@ -91,16 +67,7 @@ func (workflow *GenerationService) mediagoAvailableModels(ctx context.Context, a
 	if apiKey == "" {
 		return nil, fmt.Errorf("mediago API key is not configured")
 	}
-
-	cacheKey := mediagoModelCatalogCacheKey(baseURL, apiKey)
-	now := time.Now()
-	if models, ok, err := workflow.mediagoModelCatalog.Get(cacheKey, now); ok {
-		return models, err
-	}
-
-	models, err := fetchMediagoAvailableModels(ctx, http.DefaultClient, baseURL, apiKey)
-	workflow.mediagoModelCatalog.Set(cacheKey, now, models, err)
-	return models, err
+	return fetchMediagoAvailableModels(ctx, http.DefaultClient, baseURL, apiKey)
 }
 
 func fetchMediagoAvailableModels(ctx context.Context, client *http.Client, baseURL string, apiKey string) (map[string]struct{}, error) {
@@ -148,6 +115,16 @@ type mediagoModelCatalogResponse struct {
 type mediagoModelCatalogItem struct {
 	ID            string `json:"id"`
 	CanonicalSlug string `json:"canonical_slug"`
+	Enabled       *bool  `json:"enabled,omitempty"`
+	Disabled      *bool  `json:"disabled,omitempty"`
+	Available     *bool  `json:"available,omitempty"`
+	Hidden        *bool  `json:"hidden,omitempty"`
+	Visible       *bool  `json:"visible,omitempty"`
+	Status        string `json:"status,omitempty"`
+	RouteStatus   string `json:"route_status,omitempty"`
+	ChannelStatus string `json:"channel_status,omitempty"`
+	ModelStatus   string `json:"model_status,omitempty"`
+	State         string `json:"state,omitempty"`
 }
 
 func parseMediagoAvailableModels(body []byte) (map[string]struct{}, error) {
@@ -167,6 +144,9 @@ func parseMediagoAvailableModels(body []byte) (map[string]struct{}, error) {
 func mediagoModelSetFromItems(items []mediagoModelCatalogItem) map[string]struct{} {
 	models := make(map[string]struct{}, len(items))
 	for _, item := range items {
+		if !mediagoModelCatalogItemAvailable(item) {
+			continue
+		}
 		for _, id := range []string{item.ID, item.CanonicalSlug} {
 			id = strings.TrimSpace(id)
 			if id != "" {
@@ -177,18 +157,66 @@ func mediagoModelSetFromItems(items []mediagoModelCatalogItem) map[string]struct
 	return models
 }
 
-func mediagoModelCatalogCacheKey(baseURL string, apiKey string) string {
-	sum := sha256.Sum256([]byte(apiKey))
-	return strings.TrimRight(strings.TrimSpace(baseURL), "/") + "\x00" + hex.EncodeToString(sum[:])
+func mediagoModelCatalogItemAvailable(item mediagoModelCatalogItem) bool {
+	if item.Disabled != nil && *item.Disabled {
+		return false
+	}
+	if item.Hidden != nil && *item.Hidden {
+		return false
+	}
+	if item.Enabled != nil && !*item.Enabled {
+		return false
+	}
+	if item.Available != nil && !*item.Available {
+		return false
+	}
+	if item.Visible != nil && !*item.Visible {
+		return false
+	}
+	for _, status := range []string{item.Status, item.RouteStatus, item.ChannelStatus, item.ModelStatus, item.State} {
+		if mediagoModelUnavailableStatus(status) {
+			return false
+		}
+	}
+	return true
 }
 
-func cloneMediagoModelSet(models map[string]struct{}) map[string]struct{} {
-	if models == nil {
-		return nil
+func mediagoModelUnavailableStatus(status string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	if normalized == "" {
+		return false
 	}
-	clone := make(map[string]struct{}, len(models))
-	for model := range models {
-		clone[model] = struct{}{}
+	normalized = strings.NewReplacer("_", " ", "-", " ").Replace(normalized)
+	for _, token := range []string{
+		"disabled",
+		"disable",
+		"unavailable",
+		"inactive",
+		"hidden",
+		"offline",
+		"closed",
+		"deleted",
+		"removed",
+		"blocked",
+		"停用",
+		"禁用",
+		"隐藏",
+		"不可用",
+		"关闭",
+		"下架",
+	} {
+		if strings.Contains(normalized, token) {
+			return true
+		}
 	}
-	return clone
+	return false
+}
+
+func mediagoModelSetHasRoute(models map[string]struct{}, route coregeneration.ModelRoute) bool {
+	model := strings.TrimSpace(route.Model)
+	if model == "" {
+		return false
+	}
+	_, ok := models[model]
+	return ok
 }

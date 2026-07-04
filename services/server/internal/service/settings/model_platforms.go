@@ -352,6 +352,9 @@ func catalogModelPlatformGroups(provider string) []ModelPlatformModelGroup {
 func modelPlatformGroupsFromGatewayModels(models []mediagoGatewayModel) []ModelPlatformModelGroup {
 	builder := newModelPlatformGroupBuilder()
 	for _, model := range models {
+		if !mediagoGatewayModelAvailable(model) {
+			continue
+		}
 		displayName := strings.TrimSpace(firstNonEmpty(model.Name, model.ID, model.CanonicalSlug))
 		if displayName == "" {
 			continue
