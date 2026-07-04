@@ -2,86 +2,37 @@ package mediago
 
 import "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/internal/catalog"
 
-func textParams() catalog.ParamConfig {
-	return catalog.IdentityParamConfig([]catalog.RouteParam{
-		catalog.NumberParam(catalog.ParamTemperature, 0.7, 0, 2),
-		catalog.OptionalNumberParam(catalog.ParamMaxTokens, 1, 32768),
-	})
+const (
+	RouteNanoBanana31  = "mediago.gemini-3.1-flash-image"
+	RouteNanoBananaPro = "mediago.gemini-3-pro-image"
+	RouteNanoBanana25  = "mediago.gemini-2.5-flash-image"
+
+	versionNanoBanana31  = "gemini-3.1-flash-image-preview"
+	versionNanoBananaPro = "gemini-3-pro-image-preview"
+	versionNanoBanana25  = "gemini-2.5-flash-image"
+)
+
+func geminiImageRoutes() []catalog.RouteSpec {
+	return []catalog.RouteSpec{
+		geminiImageRoute(RouteNanoBanana31, versionNanoBanana31, "gemini-3.1-flash-image", nanoBanana31Params()),
+		geminiImageRoute(RouteNanoBananaPro, versionNanoBananaPro, "gemini-3-pro-image", nanoBananaProParams()),
+		geminiImageRoute(RouteNanoBanana25, versionNanoBanana25, "gemini-2.5-flash-image", nanoBanana25Params()),
+	}
 }
 
-func chatImageParams() catalog.ParamConfig {
-	params := []catalog.RouteParam{
-		catalog.SelectParam(catalog.ParamAspectRatio, "1:1", nanoBanana25AspectRatioOptions()),
-		catalog.SelectParam(catalog.ParamResolution, "1K", resolutionOptions("1K", "2K", "4K")),
+func geminiImageRoute(routeID string, versionID string, model string, params catalog.ParamConfig) catalog.RouteSpec {
+	return catalog.RouteSpec{
+		ID:                    routeID,
+		FamilyID:              familyNanoBanana,
+		VersionID:             versionID,
+		Kind:                  kindImage,
+		Label:                 "MediaGo",
+		Model:                 model,
+		Adapter:               adapterOpenRouterChatImage,
+		DocURL:                openRouterImageDocs,
+		SupportsReferenceURLs: true,
+		Params:                params,
 	}
-	return catalog.ParamConfigFor(params, catalog.ParamTranslation{
-		Moves: []catalog.ParamMove{
-			{From: catalog.ParamAspectRatio},
-			{From: catalog.ParamResolution, To: "imageSize"},
-		},
-	})
-}
-
-func gptImageParams() catalog.ParamConfig {
-	params := []catalog.RouteParam{
-		catalog.SelectParam(catalog.ParamAspectRatio, "1:1", []catalog.ParamOption{
-			{Label: "Adaptive", Value: "adaptive"},
-			{Label: "1:1", Value: "1:1"},
-			{Label: "3:2", Value: "3:2"},
-			{Label: "2:3", Value: "2:3"},
-			{Label: "16:9", Value: "16:9"},
-			{Label: "9:16", Value: "9:16"},
-		}),
-		catalog.SelectParam(catalog.ParamResolution, "1K", resolutionOptions("1K", "2K", "4K")),
-		catalog.SelectParam(catalog.ParamQuality, "auto", []catalog.ParamOption{
-			{Label: "Auto", Value: "auto"},
-			{Label: "High", Value: "high"},
-			{Label: "Medium", Value: "medium"},
-			{Label: "Low", Value: "low"},
-		}),
-		catalog.SelectParam(catalog.ParamOutputFormat, "png", []catalog.ParamOption{
-			{Label: "PNG", Value: "png"},
-			{Label: "JPEG", Value: "jpeg"},
-			{Label: "WEBP", Value: "webp"},
-		}),
-		catalog.SelectParam(catalog.ParamModeration, "auto", []catalog.ParamOption{
-			{Label: "Auto", Value: "auto"},
-			{Label: "Low", Value: "low"},
-		}),
-		catalog.WithHelp(catalog.OptionalNumberParam(catalog.ParamOutputCompression, 0, 100), "Only applies to JPEG and WEBP output."),
-		catalog.NumberParam(catalog.ParamN, 1, 1, 10),
-		catalog.SelectParam(catalog.ParamBackground, "auto", []catalog.ParamOption{
-			{Label: "Auto", Value: "auto"},
-			{Label: "Opaque", Value: "opaque"},
-		}),
-	}
-	config := catalog.ParamConfigFor(params, catalog.ParamTranslation{
-		Moves: []catalog.ParamMove{
-			{From: catalog.ParamQuality},
-			{From: catalog.ParamOutputFormat},
-			{From: catalog.ParamModeration},
-			{From: catalog.ParamOutputCompression},
-			{From: catalog.ParamN},
-			{From: catalog.ParamBackground},
-		},
-		Joins: []catalog.ParamJoin{
-			{
-				From: []catalog.ParamID{catalog.ParamAspectRatio, catalog.ParamResolution},
-				To:   "size",
-				Table: map[string]string{
-					"adaptive|1K": "auto",
-					"1:1|1K":      "1024x1024",
-					"1:1|2K":      "2048x2048",
-					"3:2|1K":      "1536x1024",
-					"2:3|1K":      "1024x1536",
-					"16:9|2K":     "2048x1152",
-					"16:9|4K":     "3840x2160",
-					"9:16|4K":     "2160x3840",
-				},
-			},
-		},
-	})
-	return catalog.WithCombos(config, []catalog.ParamCombo{gptImageSizeParamCombo(true)})
 }
 
 func nanoBanana31Params() catalog.ParamConfig {
@@ -104,7 +55,7 @@ func nanoBanana31Params() catalog.ParamConfig {
 func nanoBananaProParams() catalog.ParamConfig {
 	resolutions := resolutionOptions("1K", "2K", "4K")
 	params := []catalog.RouteParam{
-		catalog.SelectParam(catalog.ParamAspectRatio, "1:1", nanoBanana25AspectRatioOptions()),
+		catalog.SelectParam(catalog.ParamAspectRatio, "1:1", standardImageAspectRatioOptions()),
 		catalog.SelectParam(catalog.ParamResolution, "1K", resolutions),
 		catalog.NumberParam(catalog.ParamN, 1, 1, 4),
 	}
@@ -120,7 +71,7 @@ func nanoBananaProParams() catalog.ParamConfig {
 
 func nanoBanana25Params() catalog.ParamConfig {
 	params := []catalog.RouteParam{
-		catalog.SelectParam(catalog.ParamAspectRatio, "1:1", nanoBanana25AspectRatioOptions()),
+		catalog.SelectParam(catalog.ParamAspectRatio, "1:1", standardImageAspectRatioOptions()),
 		catalog.SelectParam(catalog.ParamResolution, "1K", resolutionOptions("1K")),
 		catalog.NumberParam(catalog.ParamN, 1, 1, 4),
 	}
@@ -132,14 +83,6 @@ func nanoBanana25Params() catalog.ParamConfig {
 		},
 	})
 	return catalog.WithCombos(config, []catalog.ParamCombo{nanoBanana25SizeParamCombo()})
-}
-
-func resolutionOptions(values ...string) []catalog.ParamOption {
-	options := make([]catalog.ParamOption, 0, len(values))
-	for _, value := range values {
-		options = append(options, catalog.ParamOption{Label: value, Value: value})
-	}
-	return options
 }
 
 func nanoBanana31AspectRatioOptions() []catalog.ParamOption {
@@ -158,51 +101,6 @@ func nanoBanana31AspectRatioOptions() []catalog.ParamOption {
 		{Label: "9:16", Value: "9:16"},
 		{Label: "16:9", Value: "16:9"},
 		{Label: "21:9", Value: "21:9"},
-	}
-}
-
-func nanoBanana25AspectRatioOptions() []catalog.ParamOption {
-	return []catalog.ParamOption{
-		{Label: "1:1", Value: "1:1"},
-		{Label: "2:3", Value: "2:3"},
-		{Label: "3:2", Value: "3:2"},
-		{Label: "3:4", Value: "3:4"},
-		{Label: "4:3", Value: "4:3"},
-		{Label: "4:5", Value: "4:5"},
-		{Label: "5:4", Value: "5:4"},
-		{Label: "9:16", Value: "9:16"},
-		{Label: "16:9", Value: "16:9"},
-		{Label: "21:9", Value: "21:9"},
-	}
-}
-
-func gptImageSizeParamCombo(includeAdaptive bool) catalog.ParamCombo {
-	allowed := [][]string{
-		{"1:1", "1K"},
-		{"1:1", "2K"},
-		{"3:2", "1K"},
-		{"2:3", "1K"},
-		{"16:9", "2K"},
-		{"16:9", "4K"},
-		{"9:16", "4K"},
-	}
-	outputs := map[string]string{
-		"1:1|1K":  "1024x1024",
-		"1:1|2K":  "2048x2048",
-		"3:2|1K":  "1536x1024",
-		"2:3|1K":  "1024x1536",
-		"16:9|2K": "2048x1152",
-		"16:9|4K": "3840x2160",
-		"9:16|4K": "2160x3840",
-	}
-	if includeAdaptive {
-		allowed = append([][]string{{"adaptive", "1K"}}, allowed...)
-		outputs["adaptive|1K"] = "auto"
-	}
-	return catalog.ParamCombo{
-		Params:  []string{string(catalog.ParamAspectRatio), string(catalog.ParamResolution)},
-		Allowed: allowed,
-		Outputs: outputs,
 	}
 }
 
@@ -322,14 +220,4 @@ func nanoBanana31SizeParamCombo(resolutionOptions []catalog.ParamOption) catalog
 			"21:9|4K": "6336x2688",
 		},
 	}
-}
-
-func sizeAllowedValues(ratios []string, resolutionOptions []catalog.ParamOption) [][]string {
-	allowed := make([][]string, 0, len(ratios)*len(resolutionOptions))
-	for _, ratio := range ratios {
-		for _, resolution := range resolutionOptions {
-			allowed = append(allowed, []string{ratio, resolution.Value})
-		}
-	}
-	return allowed
 }

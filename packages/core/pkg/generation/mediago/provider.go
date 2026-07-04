@@ -1,3 +1,5 @@
+// Package mediago owns MediaGo aggregation route metadata and provider-specific
+// behavior overlays for OpenAI-compatible adapters.
 package mediago
 
 import "strings"
