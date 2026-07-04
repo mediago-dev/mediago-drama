@@ -30,6 +30,7 @@ var (
 	ErrAppSettingStoreMissing  = errors.New("app setting store is unavailable")
 	ErrCodexRelayInvalid       = errors.New("codex relay settings are invalid")
 	ErrCodexRelayNotConfigured = errors.New("codex relay is not configured")
+	ErrCodexRelayCheckFailed   = errors.New("Codex 中转配置不可用")
 	ErrCodexRelayUnauthorized  = errors.New("codex relay request is unauthorized")
 	ErrJianyingDraftInvalid    = errors.New("jianying draft settings are invalid")
 )

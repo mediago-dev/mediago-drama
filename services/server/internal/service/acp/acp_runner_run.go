@@ -325,7 +325,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		if alert := runtimeAlertForACPPromptError(err, ctx.Err()); alert != nil {
 			publish(acpRuntimeAlertEvent(alert))
 		}
-		return agentRunResult{}, fmt.Errorf("running ACP prompt: %w", err)
+		return agentRunResult{}, friendlyACPError("running ACP prompt", err)
 	}
 	acpLog().Info(
 		"acp prompt completed",
@@ -374,7 +374,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 			if alert := runtimeAlertForACPPromptError(finalPromptErr, ctx.Err()); alert != nil {
 				publish(acpRuntimeAlertEvent(alert))
 			}
-			return agentRunResult{}, fmt.Errorf("running ACP final-message prompt: %w", finalPromptErr)
+			return agentRunResult{}, friendlyACPError("running ACP final-message prompt", finalPromptErr)
 		}
 		promptResponse = finalPromptResponse
 		acpLog().Info(
@@ -457,6 +457,16 @@ func (runner *acpAgentRunner) buildPromptForRequest(request agentRunRequest) str
 		return systemPrompt
 	}
 	return strings.Join([]string{systemPrompt, "# 用户请求", userPrompt}, "\n\n")
+}
+
+func friendlyACPError(operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if friendly := friendlyACPProviderErrorMessage(err.Error()); friendly != "" {
+		return fmt.Errorf("%s: %s", operation, friendly)
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func shouldRetryEmptyACPPrompt(response acp.PromptResponse, rawFinalMessage string, runtimeErrorMessage string, promptHadActivity bool) bool {

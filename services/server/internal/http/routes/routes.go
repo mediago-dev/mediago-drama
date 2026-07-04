@@ -105,6 +105,7 @@ func registerSettingsRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.PUT("/settings/jianying-draft", handlers.Settings.HandlePutJianyingDraftSettings)
 	apiRoutes.GET("/settings/codex-relay", handlers.Settings.HandleCodexRelaySettings)
 	apiRoutes.PUT("/settings/codex-relay", handlers.Settings.HandlePutCodexRelaySettings)
+	apiRoutes.POST("/settings/codex-relay/check", handlers.Settings.HandleCheckCodexRelaySettings)
 	apiRoutes.PUT(
 		"/settings/codex-relay/profiles/:profileId/api-key",
 		handlers.Settings.HandlePutCodexRelayProfileAPIKey,

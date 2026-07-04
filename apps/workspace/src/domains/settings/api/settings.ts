@@ -117,6 +117,17 @@ export interface CodexRelaySettingsResponse {
 	profiles: CodexRelayProfile[];
 }
 
+export interface CodexRelayCheckResponse {
+	ok: boolean;
+	profileId: string;
+	baseURL: string;
+	statusCode: number;
+}
+
+export interface CodexRelayCheckRequest {
+	profileId?: string;
+}
+
 export interface CodexRelayProfileMutation {
 	id: string;
 	name: string;
@@ -217,6 +228,14 @@ export const getCodexRelaySettings = async () => {
 
 export const saveCodexRelaySettings = async (input: CodexRelaySettingsMutation) => {
 	const response = await httpClient.put<CodexRelaySettingsResponse>(codexRelaySettingsKey, input);
+	return response.data;
+};
+
+export const checkCodexRelaySettings = async (input: CodexRelayCheckRequest = {}) => {
+	const response = await httpClient.post<CodexRelayCheckResponse>(
+		`${codexRelaySettingsKey}/check`,
+		input,
+	);
 	return response.data;
 };
 

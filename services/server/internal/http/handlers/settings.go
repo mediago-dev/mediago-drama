@@ -47,6 +47,11 @@ type CodexRelayAPIKeyRequest struct {
 	APIKey string `json:"apiKey"`
 }
 
+// CodexRelayCheckRequest selects a Codex relay profile to test.
+type CodexRelayCheckRequest struct {
+	ProfileID string `json:"profileId"`
+}
+
 // HandleAPIKeys godoc
 // @Summary 获取 API Key 配置
 // @Description 返回模型供应商 API Key 的配置和脱敏状态。
@@ -169,6 +174,36 @@ func (handler Settings) HandlePutCodexRelaySettings(context *gin.Context) {
 	httpresponse.OK(context, settings)
 }
 
+// HandleCheckCodexRelaySettings godoc
+// @Summary 检查 Codex 中转配置
+// @Description 使用指定或当前生效的 Codex 中转配置探测上游鉴权是否可用。
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param payload body CodexRelayCheckRequest false "Codex relay check request"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/codex-relay/check [post]
+func (handler Settings) HandleCheckCodexRelaySettings(context *gin.Context) {
+	payload, err := decodeOptionalJSON[CodexRelayCheckRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+
+	result, err := handler.service.CheckCodexRelay(
+		context.Request.Context(),
+		service.CodexRelayCheckRequest{ProfileID: payload.ProfileID},
+	)
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+
+	httpresponse.OK(context, result)
+}
+
 // HandlePutCodexRelayProfileAPIKey godoc
 // @Summary 保存 Codex 中转 API Key
 // @Description 为指定 Codex 中转 Profile 保存 API Key。
@@ -275,7 +310,7 @@ func (handler Settings) HandleCodexRelayProxy(context *gin.Context) {
 	}
 	context.Status(upstream.StatusCode)
 	if _, err := io.Copy(context.Writer, upstream.Body); err != nil {
-		context.Error(err)
+		_ = context.Error(err)
 	}
 }
 
@@ -594,6 +629,8 @@ func writeSettingsError(context *gin.Context, err error) {
 	case errors.Is(err, service.ErrCodexRelayInvalid):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 	case errors.Is(err, service.ErrCodexRelayNotConfigured):
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+	case errors.Is(err, service.ErrCodexRelayCheckFailed):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 	case errors.Is(err, service.ErrJianyingDraftInvalid):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)

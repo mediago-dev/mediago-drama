@@ -2,6 +2,7 @@ package settings
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -224,6 +225,159 @@ func TestOpenCodexRelayRequestRejectsMissingLocalBearer(t *testing.T) {
 	)
 	if err != ErrCodexRelayUnauthorized {
 		t.Fatalf("err = %v, want ErrCodexRelayUnauthorized", err)
+	}
+}
+
+func TestCheckCodexRelayAuthenticatesUpstream(t *testing.T) {
+	var gotAuth string
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		gotAuth = request.Header.Get("Authorization")
+		gotPath = request.URL.Path
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{"data":[]}`)
+	}))
+	defer server.Close()
+
+	service := NewSettingsWithStores(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		nil,
+		&memoryAppSettingStore{values: map[string]string{}},
+	)
+	ctx := context.Background()
+	if _, err := service.SaveCodexRelaySettings(ctx, CodexRelaySettingsMutation{
+		Enabled:         false,
+		ActiveProfileID: "relay",
+		Profiles: []CodexRelayProfileMutation{{
+			ID:       "relay",
+			Name:     "Relay",
+			BaseURL:  server.URL + "/v1",
+			Model:    "gpt-5.5",
+			Protocol: CodexRelayProtocolResponses,
+			Enabled:  true,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveCodexRelaySettings returned error: %v", err)
+	}
+	if _, err := service.SetCodexRelayProfileAPIKey(ctx, "relay", "sk-upstream-check"); err != nil {
+		t.Fatalf("SetCodexRelayProfileAPIKey returned error: %v", err)
+	}
+
+	result, err := service.CheckCodexRelay(ctx, CodexRelayCheckRequest{})
+	if err != nil {
+		t.Fatalf("CheckCodexRelay returned error: %v", err)
+	}
+	if !result.OK || result.StatusCode != http.StatusOK || result.ProfileID != "relay" {
+		t.Fatalf("result = %#v, want successful relay check", result)
+	}
+	if gotAuth != "Bearer sk-upstream-check" {
+		t.Fatalf("authorization = %q, want stored upstream key", gotAuth)
+	}
+	if gotPath != "/v1/models" {
+		t.Fatalf("path = %q, want models check path", gotPath)
+	}
+}
+
+func TestCheckCodexRelayCanProbeSelectedProfile(t *testing.T) {
+	var gotAuth string
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		gotAuth = request.Header.Get("Authorization")
+		gotPath = request.URL.Path
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{"data":[]}`)
+	}))
+	defer server.Close()
+
+	service := NewSettingsWithStores(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		nil,
+		&memoryAppSettingStore{values: map[string]string{}},
+	)
+	ctx := context.Background()
+	if _, err := service.SaveCodexRelaySettings(ctx, CodexRelaySettingsMutation{
+		Enabled:         true,
+		ActiveProfileID: "relay",
+		Profiles: []CodexRelayProfileMutation{
+			{
+				ID:       "relay",
+				Name:     "Relay",
+				BaseURL:  "https://active.example.com/v1",
+				Model:    "gpt-5.5",
+				Protocol: CodexRelayProtocolResponses,
+				Enabled:  true,
+			},
+			{
+				ID:       "relay-2",
+				Name:     "Relay 2",
+				BaseURL:  server.URL + "/v1",
+				Model:    "gpt-5.5",
+				Protocol: CodexRelayProtocolResponses,
+				Enabled:  false,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("SaveCodexRelaySettings returned error: %v", err)
+	}
+	if _, err := service.SetCodexRelayProfileAPIKey(ctx, "relay-2", "sk-selected-check"); err != nil {
+		t.Fatalf("SetCodexRelayProfileAPIKey returned error: %v", err)
+	}
+
+	result, err := service.CheckCodexRelay(ctx, CodexRelayCheckRequest{ProfileID: "relay-2"})
+	if err != nil {
+		t.Fatalf("CheckCodexRelay returned error: %v", err)
+	}
+	if !result.OK || result.StatusCode != http.StatusOK || result.ProfileID != "relay-2" {
+		t.Fatalf("result = %#v, want successful selected relay check", result)
+	}
+	if gotAuth != "Bearer sk-selected-check" {
+		t.Fatalf("authorization = %q, want selected profile key", gotAuth)
+	}
+	if gotPath != "/v1/models" {
+		t.Fatalf("path = %q, want models check path", gotPath)
+	}
+}
+
+func TestCheckCodexRelayReportsInvalidAPIKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(writer, `{"code":"INVALID_API_KEY","message":"Invalid API key"}`)
+	}))
+	defer server.Close()
+
+	service := NewSettingsWithStores(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		nil,
+		&memoryAppSettingStore{values: map[string]string{}},
+	)
+	ctx := context.Background()
+	if _, err := service.SaveCodexRelaySettings(ctx, CodexRelaySettingsMutation{
+		Enabled:         true,
+		ActiveProfileID: "relay",
+		Profiles: []CodexRelayProfileMutation{{
+			ID:       "relay",
+			Name:     "Relay",
+			BaseURL:  server.URL + "/v1",
+			Model:    "gpt-5.5",
+			Protocol: CodexRelayProtocolResponses,
+			Enabled:  true,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveCodexRelaySettings returned error: %v", err)
+	}
+	if _, err := service.SetCodexRelayProfileAPIKey(ctx, "relay", "sk-secret-that-must-not-leak"); err != nil {
+		t.Fatalf("SetCodexRelayProfileAPIKey returned error: %v", err)
+	}
+
+	result, err := service.CheckCodexRelay(ctx, CodexRelayCheckRequest{})
+	if !errors.Is(err, ErrCodexRelayCheckFailed) {
+		t.Fatalf("err = %v, want ErrCodexRelayCheckFailed", err)
+	}
+	if result.OK || result.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("result = %#v, want failed unauthorized check", result)
+	}
+	if strings.Contains(err.Error(), "sk-secret-that-must-not-leak") {
+		t.Fatalf("check error leaked api key: %v", err)
 	}
 }
 

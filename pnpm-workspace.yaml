@@ -3,8 +3,8 @@ packages:
   - "services/*"
   - "packages/*"
 allowBuilds:
-  canvas: set this to true or false
-  core-js: set this to true or false
-  cypress: set this to true or false
-  electron-winstaller: set this to true or false
-  esbuild: set this to true or false
+  canvas: true
+  core-js: true
+  cypress: true
+  electron-winstaller: true
+  esbuild: true

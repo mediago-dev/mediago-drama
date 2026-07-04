@@ -1,4 +1,5 @@
-import { CheckCircle2, KeyRound, Loader2, Network, Plus, Save, Star, Trash2 } from "lucide-react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { KeyRound, Loader2, Network, Plus, Star, Trash2, Wifi, X } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
@@ -6,6 +7,7 @@ import {
 	type CodexRelayProfile,
 	type CodexRelayProfileMutation,
 	type CodexRelayProtocol,
+	checkCodexRelaySettings,
 	codexRelaySettingsKey,
 	clearCodexRelayProfileAPIKey,
 	getCodexRelaySettings,
@@ -15,10 +17,11 @@ import {
 import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
 import { useToast } from "@/hooks/useToast";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
-import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { Switch } from "@/shared/components/ui/switch";
 import { cn } from "@/shared/lib/utils";
 
 interface CodexRelayProfileDraft {
@@ -27,7 +30,6 @@ interface CodexRelayProfileDraft {
 	baseURL: string;
 	model: string;
 	protocol: CodexRelayProtocol;
-	enabled: boolean;
 	apiKey?: CodexRelayProfile["apiKey"];
 }
 
@@ -39,6 +41,7 @@ export const CodexRelayPanel: React.FC = () => {
 	const [profiles, setProfiles] = useState<CodexRelayProfileDraft[]>([]);
 	const [selectedID, setSelectedID] = useState("");
 	const [apiKeys, setAPIKeys] = useState<Record<string, string>>({});
+	const [apiKeyDialogOpen, setAPIKeyDialogOpen] = useState(false);
 	const [busy, setBusy] = useState("");
 
 	useEffect(() => {
@@ -112,15 +115,33 @@ export const CodexRelayPanel: React.FC = () => {
 		});
 	};
 
-	const saveSettings = async () => {
+	const saveEnabled = async (nextEnabled: boolean) => {
 		if (busy) return;
-		setBusy("save");
+		const previousEnabled = enabled;
+		setEnabled(nextEnabled);
+		setBusy("enabled");
+		let settingsSaved = false;
 		try {
-			const nextData = await saveCodexRelaySettings(settingsMutation());
+			const nextData = await saveCodexRelaySettings(settingsMutation(nextEnabled));
+			settingsSaved = true;
 			await mutate(nextData, false);
-			toast.success("Codex 中转已保存");
+			if (nextEnabled) {
+				await checkCodexRelaySettings();
+			}
+			toast.success(nextEnabled ? "Codex 中转已启用" : "Codex 中转已停用");
 		} catch (err) {
-			toast.error("保存失败", { description: errorMessage(err, "保存 Codex 中转失败。") });
+			setEnabled(previousEnabled);
+			if (settingsSaved) {
+				try {
+					const rollbackData = await saveCodexRelaySettings(settingsMutation(previousEnabled));
+					await mutate(rollbackData, false);
+				} catch {
+					// Keep the visible switch consistent; a later refresh will reconcile persisted state.
+				}
+			}
+			toast.error(nextEnabled ? "启用失败" : "保存失败", {
+				description: errorMessage(err, "保存 Codex 中转失败。"),
+			});
 		} finally {
 			setBusy("");
 		}
@@ -135,7 +156,11 @@ export const CodexRelayPanel: React.FC = () => {
 			await mutate(await saveCodexRelaySettings(settingsMutation()), false);
 			const nextData = await saveCodexRelayProfileAPIKey(selectedProfile.id, apiKey);
 			await mutate(nextData, false);
+			if (nextData.enabled && nextData.activeProfileId === selectedProfile.id) {
+				await checkCodexRelaySettings();
+			}
 			setAPIKeys((current) => ({ ...current, [selectedProfile.id]: "" }));
+			setAPIKeyDialogOpen(false);
 			toast.success("API Key 已保存", { description: selectedProfile.name });
 		} catch (err) {
 			toast.error("保存失败", { description: errorMessage(err, "保存 API Key 失败。") });
@@ -144,9 +169,66 @@ export const CodexRelayPanel: React.FC = () => {
 		}
 	};
 
-	const settingsMutation = () => ({
-		enabled,
-		activeProfileId: activeProfileID || selectedProfile?.id || "",
+	const saveActiveProfile = async () => {
+		if (!selectedProfile || busy || activeProfileID === selectedProfile.id) return;
+		const previousActiveID = activeProfileID;
+		const nextActiveID = selectedProfile.id;
+		setActiveProfileID(nextActiveID);
+		setBusy(`active:${nextActiveID}`);
+		let settingsSaved = false;
+		try {
+			const nextData = await saveCodexRelaySettings(settingsMutation(enabled, nextActiveID));
+			settingsSaved = true;
+			await mutate(nextData, false);
+			if (enabled) {
+				await checkCodexRelaySettings();
+			}
+			toast.success("已使用当前配置", { description: selectedProfile.name });
+		} catch (err) {
+			setActiveProfileID(previousActiveID);
+			if (settingsSaved) {
+				try {
+					const rollbackData = await saveCodexRelaySettings(
+						settingsMutation(enabled, previousActiveID),
+					);
+					await mutate(rollbackData, false);
+				} catch {
+					// Keep the visible active marker consistent; a later refresh will reconcile persisted state.
+				}
+			}
+			toast.error("生效失败", { description: errorMessage(err, "保存 Codex 中转失败。") });
+		} finally {
+			setBusy("");
+		}
+	};
+
+	const testConnectivity = async () => {
+		if (!selectedProfile || busy) return;
+		const profileID = selectedProfile.id;
+		const profileName = selectedProfile.name;
+		setBusy("check");
+		try {
+			const nextData = await saveCodexRelaySettings(settingsMutation());
+			await mutate(nextData, false);
+			const result = await checkCodexRelaySettings({ profileId: profileID });
+			toast.success("连通性测试通过", {
+				description: result.baseURL || profileName,
+			});
+		} catch (err) {
+			toast.error("连通性测试失败", {
+				description: errorMessage(err, "Codex 中转连通性测试失败。"),
+			});
+		} finally {
+			setBusy("");
+		}
+	};
+
+	const settingsMutation = (
+		nextEnabled = enabled,
+		nextActiveProfileID = activeProfileID || selectedProfile?.id || "",
+	) => ({
+		enabled: nextEnabled,
+		activeProfileId: nextActiveProfileID,
 		profiles: profiles.map(mutationFromDraft),
 	});
 
@@ -157,6 +239,7 @@ export const CodexRelayPanel: React.FC = () => {
 			const nextData = await clearCodexRelayProfileAPIKey(selectedProfile.id);
 			await mutate(nextData, false);
 			setAPIKeys((current) => ({ ...current, [selectedProfile.id]: "" }));
+			setAPIKeyDialogOpen(false);
 			toast.success("API Key 已清除", { description: selectedProfile.name });
 			return true;
 		} catch (err) {
@@ -184,28 +267,12 @@ export const CodexRelayPanel: React.FC = () => {
 			description="配置 Codex ACP 请求使用的本地中转代理。"
 			icon={<Network className="size-4" />}
 			actions={
-				<div className="flex items-center gap-2">
-					<Button
-						type="button"
-						variant={enabled ? "default" : "outline"}
-						size="sm"
-						className="rounded-md"
-						onClick={() => setEnabled((current) => !current)}
-					>
-						<CheckCircle2 />
-						<span>{enabled ? "已启用" : "未启用"}</span>
-					</Button>
-					<Button
-						type="button"
-						size="sm"
-						className="rounded-md"
-						disabled={busy !== ""}
-						onClick={() => void saveSettings()}
-					>
-						{busy === "save" ? <Loader2 className="animate-spin" /> : <Save />}
-						<span>保存</span>
-					</Button>
-				</div>
+				<HeaderEnableSwitch
+					busy={busy === "enabled"}
+					checked={enabled}
+					disabled={busy !== "" || (isLoading && profiles.length === 0)}
+					onCheckedChange={(nextChecked) => void saveEnabled(nextChecked)}
+				/>
 			}
 		>
 			<div className="grid gap-5 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
@@ -248,22 +315,7 @@ export const CodexRelayPanel: React.FC = () => {
 									<h3 className="truncate text-sm font-semibold text-foreground">
 										{selectedProfile.name}
 									</h3>
-									<Badge
-										variant={selectedProfile.enabled ? "secondary" : "outline"}
-										className="rounded-md"
-									>
-										{selectedProfile.enabled ? "启用" : "停用"}
-									</Badge>
-									<Badge
-										variant={selectedProfile.apiKey?.configured ? "secondary" : "outline"}
-										className="rounded-md"
-									>
-										{selectedProfile.apiKey?.configured ? "Key 已保存" : "未填写 Key"}
-									</Badge>
 								</div>
-								<p className="mt-1 truncate text-xs text-muted-foreground">
-									{selectedProfile.protocol} / {selectedProfile.model || "未设置模型"}
-								</p>
 							</div>
 							<div className="flex flex-wrap items-center gap-2">
 								<Button
@@ -271,12 +323,25 @@ export const CodexRelayPanel: React.FC = () => {
 									variant="outline"
 									size="sm"
 									className="rounded-md"
-									disabled={busy !== "" || activeProfileID === selectedProfile.id}
-									onClick={() => setActiveProfileID(selectedProfile.id)}
+									disabled={busy !== ""}
+									onClick={() => void testConnectivity()}
 								>
-									<Star />
-									<span>设为当前</span>
+									{busy === "check" ? <Loader2 className="animate-spin" /> : <Wifi />}
+									<span>测试连通性</span>
 								</Button>
+								{activeProfileID === selectedProfile.id ? null : (
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										className="rounded-md"
+										disabled={busy !== ""}
+										onClick={() => void saveActiveProfile()}
+									>
+										<Star />
+										<span>使用当前配置</span>
+									</Button>
+								)}
 								<Button
 									type="button"
 									variant="outline"
@@ -295,18 +360,13 @@ export const CodexRelayPanel: React.FC = () => {
 							</div>
 						</div>
 
-						<div className="grid gap-4 md:grid-cols-2">
+						<div className="grid gap-4">
 							<TextField
 								label="名称"
 								value={selectedProfile.name}
 								onChange={(value) => updateProfile(selectedProfile.id, "name", value)}
 							/>
-							<TextField
-								label="模型"
-								value={selectedProfile.model}
-								onChange={(value) => updateProfile(selectedProfile.id, "model", value)}
-							/>
-							<label className="min-w-0 md:col-span-2">
+							<label className="min-w-0">
 								<span className="mb-2 block text-xs text-muted-foreground">Base URL</span>
 								<Input
 									value={selectedProfile.baseURL}
@@ -319,83 +379,41 @@ export const CodexRelayPanel: React.FC = () => {
 							</label>
 						</div>
 
-						<div className="grid gap-3 md:grid-cols-2">
-							<ToggleField
-								label="启用此平台"
-								checked={selectedProfile.enabled}
-								onChange={(value) => updateProfile(selectedProfile.id, "enabled", value)}
-							/>
-							<div className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">
-								<span className="font-medium text-foreground">Responses</span>
-								<span className="ml-2">当前协议</span>
-							</div>
-						</div>
-
-						<div className="border-t border-border pt-4">
-							<div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+						<div>
+							<div className="flex flex-wrap items-center justify-between gap-3">
 								<div className="min-w-0">
-									<Label
-										htmlFor={`codex-relay-key-${selectedProfile.id}`}
-										className="mb-2 block text-xs text-muted-foreground"
-									>
-										API Key
-									</Label>
-									<Input
-										id={`codex-relay-key-${selectedProfile.id}`}
-										type="password"
-										value={apiKeys[selectedProfile.id] ?? ""}
-										onChange={(event) =>
-											setAPIKeys((current) => ({
-												...current,
-												[selectedProfile.id]: event.target.value,
-											}))
-										}
-										placeholder={
-											selectedProfile.apiKey?.configured
-												? "输入新的 Key 以替换当前凭据"
-												: "输入 API Key"
-										}
-										className="rounded-md font-mono"
-									/>
-									{selectedProfile.apiKey?.masked ? (
-										<p className="mt-2 truncate font-mono text-xs text-muted-foreground">
-											{selectedProfile.apiKey.masked}
-										</p>
-									) : null}
+									<div className="text-xs font-medium text-muted-foreground">API Key</div>
+									<p className="mt-1 truncate font-mono text-xs text-muted-foreground">
+										{selectedProfile.apiKey?.masked ||
+											(selectedProfile.apiKey?.configured ? "Key 已保存" : "未配置")}
+									</p>
 								</div>
-								<div className="flex items-center gap-2">
-									<Button
-										type="button"
-										variant="outline"
-										className="rounded-md"
-										disabled={
-											busy !== "" ||
-											(!selectedProfile.apiKey?.configured && !apiKeys[selectedProfile.id]?.trim())
-										}
-										onClick={confirmClearAPIKey}
-									>
-										{busy === `clear-key:${selectedProfile.id}` ? (
-											<Loader2 className="animate-spin" />
-										) : (
-											<Trash2 />
-										)}
-										<span>清除</span>
-									</Button>
-									<Button
-										type="button"
-										className="rounded-md"
-										disabled={busy !== "" || !apiKeys[selectedProfile.id]?.trim()}
-										onClick={() => void saveAPIKey()}
-									>
-										{busy === `key:${selectedProfile.id}` ? (
-											<Loader2 className="animate-spin" />
-										) : (
-											<KeyRound />
-										)}
-										<span>保存 Key</span>
-									</Button>
-								</div>
+								<Button
+									type="button"
+									variant="outline"
+									className="rounded-md"
+									disabled={busy !== ""}
+									onClick={() => setAPIKeyDialogOpen(true)}
+								>
+									<KeyRound />
+									<span>{selectedProfile.apiKey?.configured ? "编辑 Key" : "添加 Key"}</span>
+								</Button>
 							</div>
+							<APIKeyEditDialog
+								apiKey={apiKeys[selectedProfile.id] ?? ""}
+								busy={busy}
+								onAPIKeyChange={(value) =>
+									setAPIKeys((current) => ({
+										...current,
+										[selectedProfile.id]: value,
+									}))
+								}
+								onClear={confirmClearAPIKey}
+								onOpenChange={setAPIKeyDialogOpen}
+								onSave={() => void saveAPIKey()}
+								open={apiKeyDialogOpen}
+								profile={selectedProfile}
+							/>
 						</div>
 					</div>
 				) : null}
@@ -422,7 +440,11 @@ const RelayProfileButton: React.FC<{
 	>
 		<div className="flex min-w-0 items-center justify-between gap-2">
 			<span className="truncate text-sm font-medium">{profile.name || "未命名平台"}</span>
-			{current ? <Star className="size-3.5 shrink-0 text-primary" /> : null}
+			{current ? (
+				<span className="shrink-0 rounded-control border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium leading-none text-primary">
+					已生效
+				</span>
+			) : null}
 		</div>
 		<p className="mt-1 truncate text-xs">{profile.baseURL || "未设置 Base URL"}</p>
 	</button>
@@ -443,35 +465,128 @@ const TextField: React.FC<{
 	</label>
 );
 
-const ToggleField: React.FC<{
+const HeaderEnableSwitch: React.FC<{
+	busy: boolean;
 	checked: boolean;
-	label: string;
-	onChange: (checked: boolean) => void;
-}> = ({ checked, label, onChange }) => (
-	<button
-		type="button"
-		role="switch"
-		aria-checked={checked}
-		onClick={() => onChange(!checked)}
+	disabled: boolean;
+	onCheckedChange: (checked: boolean) => void;
+}> = ({ busy, checked, disabled, onCheckedChange }) => (
+	<div
 		className={cn(
-			"flex h-9 items-center justify-between gap-3 rounded-md border px-3 text-xs transition-colors",
-			checked
-				? "border-primary/50 bg-primary/10 text-foreground"
-				: "border-border bg-ide-editor text-muted-foreground hover:bg-ide-list-hover",
+			"inline-flex h-9 items-center gap-2 rounded-md border border-border bg-ide-editor px-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-ide-list-hover",
+			disabled && "opacity-60",
 		)}
 	>
-		<span className="truncate">{label}</span>
-		<CheckCircle2 className={cn("size-4 shrink-0", checked ? "opacity-100" : "opacity-30")} />
-	</button>
+		<Switch
+			aria-label="Codex 中转启用状态"
+			checked={checked}
+			disabled={disabled}
+			onCheckedChange={onCheckedChange}
+		/>
+		{busy ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
+		<span className={checked ? "text-foreground" : undefined}>{checked ? "已启用" : "未启用"}</span>
+	</div>
 );
+
+const APIKeyEditDialog: React.FC<{
+	apiKey: string;
+	busy: string;
+	onAPIKeyChange: (value: string) => void;
+	onClear: () => void;
+	onOpenChange: (open: boolean) => void;
+	onSave: () => void;
+	open: boolean;
+	profile: CodexRelayProfileDraft;
+}> = ({ apiKey, busy, onAPIKeyChange, onClear, onOpenChange, onSave, open, profile }) => {
+	const inputID = `codex-relay-key-dialog-${profile.id}`;
+	const isSaving = busy === `key:${profile.id}`;
+	const isClearing = busy === `clear-key:${profile.id}`;
+	const hasSavedKey = profile.apiKey?.configured;
+
+	return (
+		<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+			<DialogPrimitive.Portal>
+				<DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
+				<DialogPrimitive.Content
+					aria-describedby={undefined}
+					className={cn(
+						"fixed left-1/2 top-1/2 z-50 w-[calc(100%_-_2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-sm border border-border bg-ide-panel p-4 text-ide-panel-foreground shadow-xl outline-none",
+						dialogContentMotion,
+					)}
+				>
+					<div className="flex items-start justify-between gap-3">
+						<div className="min-w-0">
+							<DialogPrimitive.Title className="truncate text-sm font-semibold text-foreground">
+								编辑 API Key
+							</DialogPrimitive.Title>
+							<p className="mt-1 truncate text-xs text-muted-foreground">{profile.name}</p>
+						</div>
+						<DialogPrimitive.Close asChild>
+							<Button type="button" variant="ghost" size="icon" aria-label="关闭">
+								<X className="size-4" />
+							</Button>
+						</DialogPrimitive.Close>
+					</div>
+
+					<div className="mt-4 grid gap-2">
+						<Label htmlFor={inputID} className="text-xs text-muted-foreground">
+							API Key
+						</Label>
+						<Input
+							id={inputID}
+							type="password"
+							value={apiKey}
+							onChange={(event) => onAPIKeyChange(event.target.value)}
+							placeholder={hasSavedKey ? "输入新的 Key 以替换当前凭据" : "输入 API Key"}
+							className="rounded-md font-mono"
+						/>
+					</div>
+
+					<div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+						<Button
+							type="button"
+							variant="outline"
+							className="rounded-md"
+							disabled={busy !== "" || !hasSavedKey}
+							onClick={onClear}
+						>
+							{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
+							<span>清除</span>
+						</Button>
+						<div className="flex items-center gap-2">
+							<DialogPrimitive.Close asChild>
+								<Button
+									type="button"
+									variant="outline"
+									className="rounded-md"
+									disabled={busy !== ""}
+								>
+									取消
+								</Button>
+							</DialogPrimitive.Close>
+							<Button
+								type="button"
+								className="rounded-md"
+								disabled={busy !== "" || !apiKey.trim()}
+								onClick={onSave}
+							>
+								{isSaving ? <Loader2 className="animate-spin" /> : <KeyRound />}
+								<span>保存 Key</span>
+							</Button>
+						</div>
+					</div>
+				</DialogPrimitive.Content>
+			</DialogPrimitive.Portal>
+		</DialogPrimitive.Root>
+	);
+};
 
 const draftFromProfile = (profile: CodexRelayProfile): CodexRelayProfileDraft => ({
 	id: profile.id,
 	name: profile.name,
 	baseURL: profile.baseURL,
-	model: profile.model,
+	model: profile.model || "gpt-5.5",
 	protocol: profile.protocol,
-	enabled: profile.enabled,
 	apiKey: profile.apiKey,
 });
 
@@ -481,7 +596,6 @@ const defaultDraft = (index = 1): CodexRelayProfileDraft => ({
 	baseURL: "",
 	model: "gpt-5.5",
 	protocol: "responses",
-	enabled: true,
 	apiKey: { configured: false, source: "none" },
 });
 
@@ -489,10 +603,21 @@ const mutationFromDraft = (draft: CodexRelayProfileDraft): CodexRelayProfileMuta
 	id: draft.id,
 	name: draft.name.trim(),
 	baseURL: draft.baseURL.trim(),
-	model: draft.model.trim(),
+	model: draft.model.trim() || "gpt-5.5",
 	protocol: draft.protocol,
-	enabled: draft.enabled,
+	enabled: true,
 });
 
-const errorMessage = (err: unknown, fallback: string) =>
-	err instanceof Error ? err.message : fallback;
+const errorMessage = (err: unknown, fallback: string) => {
+	if (err instanceof Error && err.message) return err.message;
+	if (
+		err &&
+		typeof err === "object" &&
+		"message" in err &&
+		typeof err.message === "string" &&
+		err.message.trim()
+	) {
+		return err.message;
+	}
+	return fallback;
+};

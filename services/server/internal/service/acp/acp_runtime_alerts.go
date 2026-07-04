@@ -32,12 +32,12 @@ func runtimeAlertForACPPromptError(err error, contextErr error) *AgentACPRuntime
 		contextText = contextErr.Error()
 	}
 	normalized := strings.ToLower(strings.TrimSpace(errText + " " + contextText))
-	if friendly := friendlyACPProviderErrorMessage(normalized); friendly != "" {
+	if friendly := friendlyACPProviderErrorFor(normalized); friendly.message != "" {
 		return &AgentACPRuntimeAlert{
 			Severity: "error",
 			Title:    "模型调用失败",
-			Message:  friendly,
-			Reason:   "api_key_balance_insufficient",
+			Message:  friendly.message,
+			Reason:   friendly.reason,
 			Detail:   compactRuntimeAlertDetail(firstNonEmptyRuntimeAlertDetail(errText, contextText)),
 		}
 	}

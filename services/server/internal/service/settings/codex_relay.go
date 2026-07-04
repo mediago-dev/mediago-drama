@@ -23,6 +23,8 @@ const (
 	codexRelayProviderID        = "mediago-codex-relay"
 	codexRelayLocalBearerToken  = "mediago-codex-relay"
 	codexRelayDefaultHTTPClient = 60 * time.Second
+	codexRelayCheckHTTPClient   = 10 * time.Second
+	codexRelayCheckBodyLimit    = 4 * 1024
 )
 
 // CodexRelayProtocol identifies the upstream protocol used by one relay profile.
@@ -58,6 +60,19 @@ type CodexRelaySettingsResponse struct {
 	Enabled         bool                `json:"enabled"`
 	ActiveProfileID string              `json:"activeProfileId,omitempty"`
 	Profiles        []CodexRelayProfile `json:"profiles"`
+}
+
+// CodexRelayCheckRequest chooses which relay profile to probe.
+type CodexRelayCheckRequest struct {
+	ProfileID string `json:"profileId"`
+}
+
+// CodexRelayCheckResponse describes an upstream reachability check for a relay profile.
+type CodexRelayCheckResponse struct {
+	OK         bool   `json:"ok"`
+	ProfileID  string `json:"profileId"`
+	BaseURL    string `json:"baseURL"`
+	StatusCode int    `json:"statusCode"`
 }
 
 // CodexRelayProfileMutation stores non-secret profile fields.
@@ -177,6 +192,49 @@ func (service *Settings) ClearCodexRelayProfileAPIKey(ctx context.Context, profi
 	return service.GetCodexRelaySettings(ctx)
 }
 
+// CheckCodexRelay verifies a Codex relay profile can authenticate against its upstream.
+func (service *Settings) CheckCodexRelay(ctx context.Context, input CodexRelayCheckRequest) (CodexRelayCheckResponse, error) {
+	active, apiKey, err := service.codexRelayProfileWithKey(input.ProfileID, true)
+	if err != nil {
+		return CodexRelayCheckResponse{}, err
+	}
+	if active.Protocol != CodexRelayProtocolResponses {
+		return CodexRelayCheckResponse{}, fmt.Errorf("%w: chat completions relay is not implemented yet", ErrCodexRelayInvalid)
+	}
+	upstreamURL, err := codexRelayUpstreamURL(active.BaseURL, "/v1/models")
+	if err != nil {
+		return CodexRelayCheckResponse{}, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, upstreamURL, nil)
+	if err != nil {
+		return CodexRelayCheckResponse{}, fmt.Errorf("creating codex relay check request: %w", err)
+	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: codexRelayCheckHTTPClient}
+	response, err := client.Do(request)
+	result := CodexRelayCheckResponse{
+		ProfileID: active.ID,
+		BaseURL:   active.BaseURL,
+	}
+	if err != nil {
+		return result, fmt.Errorf("%w：连接上游失败，请检查 Base URL", ErrCodexRelayCheckFailed)
+	}
+	defer response.Body.Close()
+
+	result.StatusCode = response.StatusCode
+	body := readLimitedCodexRelayCheckBody(response.Body)
+	if codexRelayCheckStatusOK(response.StatusCode) && !codexRelayBodyLooksInvalidAPIKey(body) {
+		result.OK = true
+		return result, nil
+	}
+	if codexRelayCheckStatusAuthFailed(response.StatusCode) || codexRelayBodyLooksInvalidAPIKey(body) {
+		return result, fmt.Errorf("%w：上游返回 %d，请检查 API Key 和 Base URL", ErrCodexRelayCheckFailed, response.StatusCode)
+	}
+	return result, fmt.Errorf("%w：上游返回 %d，请检查 Base URL 是否正确", ErrCodexRelayCheckFailed, response.StatusCode)
+}
+
 // PrepareCodexRelayRuntimeConfig writes a Codex home configured for the active relay profile.
 func (service *Settings) PrepareCodexRelayRuntimeConfig(ctx context.Context, workspaceDir string, relayBaseURL string) (CodexRelayRuntimeConfig, error) {
 	_ = ctx
@@ -254,18 +312,27 @@ func CodexRelayAPIKeyName(profileID string) string {
 }
 
 func (service *Settings) activeCodexRelayProfile() (CodexRelayProfileMutation, string, error) {
+	return service.codexRelayProfileWithKey("", false)
+}
+
+func (service *Settings) codexRelayProfileWithKey(profileID string, allowGlobalDisabled bool) (CodexRelayProfileMutation, string, error) {
 	stored, err := service.loadCodexRelayStoredSettings()
 	if err != nil {
 		return CodexRelayProfileMutation{}, "", err
 	}
-	if !stored.Enabled || stored.ActiveProfileID == "" {
-		return CodexRelayProfileMutation{}, "", ErrCodexRelayNotConfigured
+	targetProfileID := strings.TrimSpace(profileID)
+	checkingActiveProfile := targetProfileID == ""
+	if checkingActiveProfile {
+		if (!allowGlobalDisabled && !stored.Enabled) || stored.ActiveProfileID == "" {
+			return CodexRelayProfileMutation{}, "", ErrCodexRelayNotConfigured
+		}
+		targetProfileID = stored.ActiveProfileID
 	}
 	for _, profile := range stored.Profiles {
-		if profile.ID != stored.ActiveProfileID {
+		if profile.ID != targetProfileID {
 			continue
 		}
-		if !profile.Enabled {
+		if checkingActiveProfile && !profile.Enabled {
 			return CodexRelayProfileMutation{}, "", ErrCodexRelayNotConfigured
 		}
 		apiKey, _, err := service.apiKeys.Get(CodexRelayAPIKeyName(profile.ID))
@@ -295,11 +362,7 @@ func (service *Settings) loadCodexRelayStoredSettings() (codexRelayStoredSetting
 	if err := json.Unmarshal([]byte(value), &stored); err != nil {
 		return codexRelayStoredSettings{}, fmt.Errorf("%w: parsing saved settings: %v", ErrCodexRelayInvalid, err)
 	}
-	return normalizeCodexRelaySettings(CodexRelaySettingsMutation{
-		Enabled:         stored.Enabled,
-		ActiveProfileID: stored.ActiveProfileID,
-		Profiles:        stored.Profiles,
-	})
+	return normalizeCodexRelaySettings(CodexRelaySettingsMutation(stored))
 }
 
 func (service *Settings) codexRelaySettingsResponse(stored codexRelayStoredSettings) (CodexRelaySettingsResponse, error) {
@@ -498,4 +561,32 @@ func readCodexRelayBody(reader io.Reader) ([]byte, error) {
 		return nil, fmt.Errorf("reading codex relay body: %w", err)
 	}
 	return body, nil
+}
+
+func codexRelayCheckStatusOK(status int) bool {
+	return status >= http.StatusOK && status < http.StatusMultipleChoices ||
+		status == http.StatusNotFound ||
+		status == http.StatusMethodNotAllowed
+}
+
+func codexRelayCheckStatusAuthFailed(status int) bool {
+	return status == http.StatusUnauthorized || status == http.StatusForbidden
+}
+
+func codexRelayBodyLooksInvalidAPIKey(body string) bool {
+	normalized := strings.ToLower(body)
+	return strings.Contains(normalized, "invalid_api_key") ||
+		strings.Contains(normalized, "invalid api key") ||
+		strings.Contains(normalized, "incorrect api key")
+}
+
+func readLimitedCodexRelayCheckBody(reader io.Reader) string {
+	if reader == nil {
+		return ""
+	}
+	body, err := io.ReadAll(io.LimitReader(reader, codexRelayCheckBodyLimit))
+	if err != nil {
+		return ""
+	}
+	return string(body)
 }

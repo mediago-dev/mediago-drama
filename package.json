@@ -2,7 +2,7 @@
   "name": "mediago-drama",
   "private": true,
   "version": "0.0.0",
-  "packageManager": "pnpm@10.14.0",
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
     "build": "task build",
     "build:server": "task build:server",

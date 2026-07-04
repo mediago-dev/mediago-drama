@@ -16,6 +16,38 @@ func TestFriendlyACPProviderErrorMessageDetectsInsufficientQuota(t *testing.T) {
 	}
 }
 
+func TestFriendlyACPProviderErrorMessageDetectsInvalidAPIKey(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			name: "codex relay",
+			raw:  `unexpected status 401 Unauthorized: {"code":"INVALID_API_KEY","message":"Invalid API key"}, url: http://127.0.0.1:48273/api/v1/codex-relay/v1/responses`,
+			want: codexRelayAPIKeyInvalidMessage,
+		},
+		{
+			name: "generic incorrect key",
+			raw:  `{"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}`,
+			want: apiKeyInvalidMessage,
+		},
+		{
+			name: "generic unauthorized key",
+			raw:  `provider failed: unauthorized api key`,
+			want: apiKeyInvalidMessage,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			message := friendlyACPProviderErrorMessage(test.raw)
+			if message != test.want {
+				t.Fatalf("message = %q, want invalid API key hint", message)
+			}
+		})
+	}
+}
+
 func TestParseACPFinalResponseMapsProviderQuotaError(t *testing.T) {
 	response := ParseACPFinalResponse(
 		`{"error":{"message":"credit insufficient","type":"insufficient_quota","code":"400003"}}`,
@@ -34,6 +66,27 @@ func TestRuntimeAlertForACPPromptErrorDetectsInsufficientQuota(t *testing.T) {
 	}
 	if alert.Message != apiKeyBalanceInsufficientMessage || alert.Reason != "api_key_balance_insufficient" {
 		t.Fatalf("alert = %#v, want balance alert", alert)
+	}
+}
+
+func TestRuntimeAlertForACPPromptErrorDetectsInvalidAPIKey(t *testing.T) {
+	alert := runtimeAlertForACPPromptError(errString(`unexpected status 401 Unauthorized: {"code":"INVALID_API_KEY","message":"Invalid API key"}, url: http://127.0.0.1:48273/api/v1/codex-relay/v1/responses`), nil)
+	if alert == nil {
+		t.Fatal("alert = nil, want invalid API key alert")
+	}
+	if alert.Message != codexRelayAPIKeyInvalidMessage || alert.Reason != "api_key_invalid" {
+		t.Fatalf("alert = %#v, want invalid API key alert", alert)
+	}
+}
+
+func TestFriendlyACPErrorUsesProviderMessage(t *testing.T) {
+	err := friendlyACPError(
+		"running ACP prompt",
+		errString(`unexpected status 401 Unauthorized: {"code":"INVALID_API_KEY","message":"Invalid API key"}, url: http://127.0.0.1:48273/api/v1/codex-relay/v1/responses`),
+	)
+	want := "running ACP prompt: " + codexRelayAPIKeyInvalidMessage
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
 	}
 }
 
