@@ -29,6 +29,20 @@ func TestReleaseAssetName(t *testing.T) {
 			want:     "codex-acp-0.15.0-x86_64-unknown-linux-gnu.tar.gz",
 		},
 		{
+			name:     "codex windows x64",
+			agentID:  "codex",
+			tag:      "v0.15.0",
+			platform: platform{OS: "windows", Arch: "x64"},
+			want:     "codex-acp-0.15.0-x86_64-pc-windows-msvc.zip",
+		},
+		{
+			name:     "codex windows arm64",
+			agentID:  "codex",
+			tag:      "v0.15.0",
+			platform: platform{OS: "windows", Arch: "arm64"},
+			want:     "codex-acp-0.15.0-aarch64-pc-windows-msvc.zip",
+		},
+		{
 			name:     "opencode darwin arm64",
 			agentID:  "opencode",
 			tag:      "v1.17.11",

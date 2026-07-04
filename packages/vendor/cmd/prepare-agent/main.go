@@ -202,7 +202,11 @@ func releaseAssetName(agentID string, tag string, detected platform) (string, er
 			return "", err
 		}
 		version := strings.TrimPrefix(tag, "v")
-		return fmt.Sprintf("codex-acp-%s-%s.tar.gz", version, target), nil
+		extension := "tar.gz"
+		if detected.OS == "windows" {
+			extension = "zip"
+		}
+		return fmt.Sprintf("codex-acp-%s-%s.%s", version, target, extension), nil
 	case "opencode":
 		return opencodeAsset(detected)
 	default:
@@ -220,6 +224,10 @@ func codexTarget(detected platform) (string, error) {
 		return "aarch64-unknown-linux-gnu", nil
 	case platform{OS: "linux", Arch: "x64"}:
 		return "x86_64-unknown-linux-gnu", nil
+	case platform{OS: "windows", Arch: "arm64"}:
+		return "aarch64-pc-windows-msvc", nil
+	case platform{OS: "windows", Arch: "x64"}:
+		return "x86_64-pc-windows-msvc", nil
 	default:
 		return "", fmt.Errorf("unsupported platform: %s/%s", detected.OS, detected.Arch)
 	}
