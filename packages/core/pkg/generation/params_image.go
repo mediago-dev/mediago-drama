@@ -20,6 +20,7 @@ var imageParamRegistry = map[ParamID]CanonicalParamSpec{
 		Type:  "select",
 		Group: ParamGroupSize,
 		Options: []ParamOption{
+			{Label: "512px", Value: "512px"},
 			{Label: "1K", Value: "1K"},
 			{Label: "2K", Value: "2K"},
 			{Label: "3K", Value: "3K"},

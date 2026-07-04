@@ -267,6 +267,9 @@ const parseResolutionLabel = (...values: string[]) => {
 		const kiloMatch = value.match(/([1-9])\s*k/i);
 		if (kiloMatch) return `${kiloMatch[1]}K`;
 
+		const pixelMatch = value.match(/([1-9]\d{2,3})\s*px/i);
+		if (pixelMatch) return `${pixelMatch[1]}px`;
+
 		const verticalPixelsMatch = value.match(/([1-9]\d{2,3})\s*p/i);
 		if (verticalPixelsMatch) return `${verticalPixelsMatch[1]}p`;
 	}

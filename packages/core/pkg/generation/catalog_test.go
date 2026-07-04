@@ -2,6 +2,7 @@ package generation
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -129,17 +130,19 @@ func TestTextCatalogIncludesExpandedRoutes(t *testing.T) {
 
 func TestImageCatalogIncludesMediagoRoutes(t *testing.T) {
 	cases := []struct {
-		id      string
-		family  string
-		version string
-		model   string
-		adapter string
-		refs    bool
+		id           string
+		family       string
+		version      string
+		model        string
+		adapter      string
+		refs         bool
+		status       RouteStatus
+		reasonPrefix string
 	}{
-		{RouteMediagoSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "doubao-seedream-5-0-lite", AdapterOpenRouterChatImage, false},
-		{RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, "gpt-image-2", AdapterOpenRouterImages, true},
-		{RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "gemini-3.1-flash-image", AdapterOpenRouterChatImage, true},
-		{RouteMediagoNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, "gemini-2.5-flash-image", AdapterOpenRouterChatImage, true},
+		{RouteMediagoSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "doubao-seedream-5-0-lite", AdapterOpenRouterChatImage, false, RouteStatusAvailable, ""},
+		{RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, "gpt-image-2", AdapterOpenRouterImages, true, RouteStatusAvailable, ""},
+		{RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "gemini-3.1-flash-image", AdapterOpenRouterImages, true, RouteStatusAvailable, ""},
+		{RouteMediagoNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, "gemini-2.5-flash-image", AdapterOpenRouterChatImage, true, RouteStatusAvailable, ""},
 	}
 
 	for _, tc := range cases {
@@ -162,7 +165,39 @@ func TestImageCatalogIncludesMediagoRoutes(t *testing.T) {
 		if route.SupportsReferenceURLs != tc.refs {
 			t.Fatalf("route %q refs = %v, want %v", tc.id, route.SupportsReferenceURLs, tc.refs)
 		}
+		if route.Status != tc.status {
+			t.Fatalf("route %q status = %q, want %q", tc.id, route.Status, tc.status)
+		}
+		if tc.reasonPrefix != "" && !strings.HasPrefix(route.StatusReason, tc.reasonPrefix) {
+			t.Fatalf("route %q status reason = %q, want prefix %q", tc.id, route.StatusReason, tc.reasonPrefix)
+		}
 	}
+}
+
+func TestImageCatalogIncludesOfficialGoogleNanoBanana25(t *testing.T) {
+	route, ok := FindRoute(RouteOfficialNanoBanana25)
+	if !ok {
+		t.Fatalf("route %q is missing", RouteOfficialNanoBanana25)
+	}
+	if route.Kind != KindImage || route.FamilyID != FamilyNanoBanana || route.VersionID != VersionNanoBanana25 {
+		t.Fatalf("route %q = %#v, want Nano Banana 2.5 image route", RouteOfficialNanoBanana25, route)
+	}
+	if route.Provider != ProviderGoogle || route.Model != "gemini-2.5-flash-image" {
+		t.Fatalf("route %q provider/model = %q/%q, want %q/gemini-2.5-flash-image", route.ID, route.Provider, route.Model, ProviderGoogle)
+	}
+	if route.Adapter != AdapterOfficialGoogleImage {
+		t.Fatalf("route %q adapter = %q, want %q", route.ID, route.Adapter, AdapterOfficialGoogleImage)
+	}
+	if len(route.AuthKeys) != 1 || route.AuthKeys[0] != ProviderGoogle {
+		t.Fatalf("route %q auth keys = %#v, want Google key", route.ID, route.AuthKeys)
+	}
+	if !route.SupportsReferenceURLs {
+		t.Fatal("official Gemini 2.5 Flash Image route should support reference images")
+	}
+	assertHasOptions(t, mustParam(t, route, "resolution"), "1K")
+	assertLacksOption(t, mustParam(t, route, "resolution"), "2K")
+	assertLacksOption(t, mustParam(t, route, "resolution"), "4K")
+	assertComboOutput(t, route, "aspectRatio", "resolution", "1:1|1K", "1024x1024")
 }
 
 func TestLibTVCatalogIncludesSeedanceRoute(t *testing.T) {
@@ -304,7 +339,7 @@ func TestCatalogKeepsLegacyModelIDs(t *testing.T) {
 	if !ok {
 		t.Fatal("legacy nano banana model is missing")
 	}
-	if model.Model != "gemini-3.1-flash-image-preview" {
+	if model.Model != "gemini-3.1-flash-image" {
 		t.Fatalf("legacy nano banana provider model = %q", model.Model)
 	}
 }
@@ -631,6 +666,11 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 	}
 	aspectRatio := mustParam(t, nanoBanana, "aspectRatio")
 	assertHasOptions(t, aspectRatio, "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9")
+	assertHasOptions(t, mustParam(t, officialNanoBanana, "resolution"), "512px", "1K", "2K", "4K")
+	assertHasOptions(t, mustParam(t, nanoBanana, "resolution"), "1K", "2K", "4K")
+	assertComboOutput(t, officialNanoBanana, "aspectRatio", "resolution", "1:1|512px", "512x512")
+	assertComboOutput(t, nanoBanana, "aspectRatio", "resolution", "16:9|1K", "1376x768")
+	assertComboOutput(t, nanoBanana, "aspectRatio", "resolution", "1:4|4K", "2048x8192")
 
 	seedanceDuration := mustParam(t, dmxSeedance, "duration")
 	assertHasOptions(t, seedanceDuration, "-1", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15")

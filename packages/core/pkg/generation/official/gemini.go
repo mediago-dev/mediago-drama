@@ -3,7 +3,7 @@ package official
 import (
 	"context"
 	"encoding/base64"
-	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
@@ -67,35 +67,33 @@ func (provider *Provider) generateGoogleImageBatch(
 }
 
 func (provider *Provider) generateSingleGoogleImage(ctx context.Context, request generation.Request) (generation.Response, error) {
-	parts := []googlePart{{Text: request.Prompt}}
+	input := []googleInteractionInput{{Type: "text", Text: request.Prompt}}
 	for _, reference := range compactStrings(request.ReferenceURLs) {
 		inlineData, err := provider.googleInlineDataFromReference(ctx, reference)
 		if err != nil {
 			return generation.Response{}, err
 		}
-		parts = append(parts, googlePart{InlineData: &inlineData})
+		input = append(input, googleInteractionInput{
+			Type:     "image",
+			Data:     inlineData.Data,
+			MIMEType: inlineData.MIMEType,
+		})
 	}
 
-	payload := googleGenerateContentRequest{
-		Contents: []googleContent{
-			{
-				Role:  "user",
-				Parts: parts,
-			},
-		},
-		GenerationConfig: googleGenerationConfig{
-			ResponseModalities: []string{"IMAGE"},
-			ResponseFormat: googleResponseFormat{
-				Image: googleImageResponseFormat{
-					AspectRatio: firstNonEmpty(paramString(request.Params, "aspectRatio"), "1:1"),
-					ImageSize:   firstNonEmpty(paramString(request.Params, "imageSize"), "1K"),
-				},
-			},
+	payload := googleInteractionRequest{
+		Model: googleInteractionModelName(request.Model),
+		Input: input,
+		ResponseFormat: googleInteractionResponseFormat{
+			Type:        "image",
+			MIMEType:    imageMIMEType(firstNonEmpty(paramString(request.Params, "outputFormat"), request.OutputFormat, "png")),
+			Delivery:    "inline",
+			AspectRatio: firstNonEmpty(paramString(request.Params, "aspectRatio"), "1:1"),
+			ImageSize:   firstNonEmpty(paramString(request.Params, "imageSize"), "1K"),
 		},
 	}
 
-	endpoint := provider.googleBaseURL + "/v1beta/models/" + url.PathEscape(request.Model) + ":generateContent"
-	var payloadResponse googleGenerateContentResponse
+	endpoint := provider.googleBaseURL + "/v1beta/interactions"
+	var payloadResponse googleInteractionResponse
 	if err := provider.postGoogleJSON(ctx, endpoint, payload, &payloadResponse); err != nil {
 		return generation.Response{}, err
 	}
@@ -170,6 +168,34 @@ func (provider *Provider) googleInlineDataFromReference(ctx context.Context, ref
 	}, nil
 }
 
+func googleInteractionModelName(model string) string {
+	if strings.HasPrefix(model, "models/") {
+		return model
+	}
+	return "models/" + model
+}
+
+type googleInteractionRequest struct {
+	Model          string                          `json:"model"`
+	Input          []googleInteractionInput        `json:"input"`
+	ResponseFormat googleInteractionResponseFormat `json:"response_format,omitempty"`
+}
+
+type googleInteractionInput struct {
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	Data     string `json:"data,omitempty"`
+	MIMEType string `json:"mime_type,omitempty"`
+}
+
+type googleInteractionResponseFormat struct {
+	Type        string `json:"type,omitempty"`
+	MIMEType    string `json:"mime_type,omitempty"`
+	Delivery    string `json:"delivery,omitempty"`
+	AspectRatio string `json:"aspect_ratio,omitempty"`
+	ImageSize   string `json:"image_size,omitempty"`
+}
+
 type googleGenerateContentRequest struct {
 	Contents         []googleContent        `json:"contents"`
 	GenerationConfig googleGenerationConfig `json:"generationConfig"`
@@ -206,19 +232,118 @@ type googleImageResponseFormat struct {
 }
 
 type googleGenerateContentResponse struct {
-	Candidates []struct {
-		Content googleContent `json:"content"`
-	} `json:"candidates"`
-	UsageMetadata struct {
-		PromptTokenCount     int `json:"promptTokenCount"`
-		CandidatesTokenCount int `json:"candidatesTokenCount"`
-		TotalTokenCount      int `json:"totalTokenCount"`
-	} `json:"usageMetadata"`
+	Candidates    []googleGenerateContentCandidate `json:"candidates"`
+	UsageMetadata googleInteractionUsageMetadata   `json:"usageMetadata"`
 }
 
 func (response googleGenerateContentResponse) toGenerationResponse(model string) generation.Response {
+	return googleInteractionResponse{
+		Candidates:     response.Candidates,
+		UsageMetadata:  response.UsageMetadata,
+		UsageMetadataC: response.UsageMetadata,
+	}.toGenerationResponse(model)
+}
+
+type googleInteractionResponse struct {
+	ID             string                           `json:"id,omitempty"`
+	OutputImage    *googleInteractionOutputImage    `json:"output_image,omitempty"`
+	OutputText     string                           `json:"output_text,omitempty"`
+	Output         []googleInteractionOutputItem    `json:"output,omitempty"`
+	Steps          []googleInteractionStep          `json:"steps,omitempty"`
+	Candidates     []googleGenerateContentCandidate `json:"candidates,omitempty"`
+	UsageMetadata  googleInteractionUsageMetadata   `json:"usage_metadata,omitempty"`
+	UsageMetadataC googleInteractionUsageMetadata   `json:"usageMetadata,omitempty"`
+}
+
+type googleGenerateContentCandidate struct {
+	Content googleContent `json:"content"`
+}
+
+type googleInteractionOutputItem struct {
+	Type        string                        `json:"type,omitempty"`
+	Text        string                        `json:"text,omitempty"`
+	Data        string                        `json:"data,omitempty"`
+	URI         string                        `json:"uri,omitempty"`
+	MIMEType    string                        `json:"mime_type,omitempty"`
+	Image       *googleInteractionOutputImage `json:"image,omitempty"`
+	OutputImage *googleInteractionOutputImage `json:"output_image,omitempty"`
+}
+
+type googleInteractionStep struct {
+	Type    string                        `json:"type,omitempty"`
+	Content []googleInteractionOutputItem `json:"content,omitempty"`
+}
+
+type googleInteractionOutputImage struct {
+	Data      string `json:"data,omitempty"`
+	Base64    string `json:"base64,omitempty"`
+	URI       string `json:"uri,omitempty"`
+	MIMEType  string `json:"mime_type,omitempty"`
+	MIMETypeC string `json:"mimeType,omitempty"`
+}
+
+type googleInteractionUsageMetadata struct {
+	InputTokenCount      int `json:"input_token_count,omitempty"`
+	OutputTokenCount     int `json:"output_token_count,omitempty"`
+	PromptTokenCount     int `json:"promptTokenCount,omitempty"`
+	CandidatesTokenCount int `json:"candidatesTokenCount,omitempty"`
+	TotalTokenCount      int `json:"total_token_count,omitempty"`
+	TotalTokenCountC     int `json:"totalTokenCount,omitempty"`
+}
+
+func (response googleInteractionResponse) toGenerationResponse(model string) generation.Response {
 	assets := []generation.Asset{}
 	texts := []string{}
+
+	appendImage := func(image *googleInteractionOutputImage) {
+		if image == nil {
+			return
+		}
+		data := firstNonEmpty(image.Data, image.Base64)
+		uri := strings.TrimSpace(image.URI)
+		if data == "" && uri == "" {
+			return
+		}
+		asset := generation.Asset{
+			Kind:     generation.KindImage,
+			MIMEType: firstNonEmpty(image.MIMEType, image.MIMETypeC, "image/png"),
+		}
+		if data != "" {
+			asset.Base64 = data
+		} else {
+			asset.URL = uri
+		}
+		assets = append(assets, asset)
+	}
+	appendOutputItem := func(item googleInteractionOutputItem) {
+		if item.Text != "" {
+			texts = append(texts, item.Text)
+		}
+		if item.Data != "" || strings.TrimSpace(item.URI) != "" {
+			appendImage(&googleInteractionOutputImage{
+				Data:     item.Data,
+				URI:      item.URI,
+				MIMEType: item.MIMEType,
+			})
+		}
+		appendImage(item.Image)
+		appendImage(item.OutputImage)
+	}
+	appendImage(response.OutputImage)
+	if response.OutputText != "" {
+		texts = append(texts, response.OutputText)
+	}
+	for _, item := range response.Output {
+		appendOutputItem(item)
+	}
+	for _, step := range response.Steps {
+		if step.Type != "" && step.Type != "model_output" {
+			continue
+		}
+		for _, item := range step.Content {
+			appendOutputItem(item)
+		}
+	}
 	for _, candidate := range response.Candidates {
 		for _, part := range candidate.Content.Parts {
 			inlineData := part.InlineData
@@ -238,17 +363,48 @@ func (response googleGenerateContentResponse) toGenerationResponse(model string)
 		}
 	}
 
+	usage := response.UsageMetadata
+	if usage.isZero() {
+		usage = response.UsageMetadataC
+	}
+
 	return generation.Response{
+		ID:     response.ID,
 		Status: "completed",
 		Model:  model,
 		Assets: assets,
-		Usage: generation.Usage{
-			InputTokens:  response.UsageMetadata.PromptTokenCount,
-			OutputTokens: response.UsageMetadata.CandidatesTokenCount,
-			TotalTokens:  response.UsageMetadata.TotalTokenCount,
-		},
+		Usage:  usage.toGenerationUsage(),
 		Metadata: map[string]any{
 			"text": texts,
 		},
+	}
+}
+
+func (usage googleInteractionUsageMetadata) isZero() bool {
+	return usage.InputTokenCount == 0 &&
+		usage.OutputTokenCount == 0 &&
+		usage.PromptTokenCount == 0 &&
+		usage.CandidatesTokenCount == 0 &&
+		usage.TotalTokenCount == 0 &&
+		usage.TotalTokenCountC == 0
+}
+
+func (usage googleInteractionUsageMetadata) toGenerationUsage() generation.Usage {
+	inputTokens := usage.InputTokenCount
+	if inputTokens == 0 {
+		inputTokens = usage.PromptTokenCount
+	}
+	outputTokens := usage.OutputTokenCount
+	if outputTokens == 0 {
+		outputTokens = usage.CandidatesTokenCount
+	}
+	totalTokens := usage.TotalTokenCount
+	if totalTokens == 0 {
+		totalTokens = usage.TotalTokenCountC
+	}
+	return generation.Usage{
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		TotalTokens:  totalTokens,
 	}
 }

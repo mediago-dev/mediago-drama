@@ -175,10 +175,8 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	if !config.RestrictModelValues || !stringSliceContains(config.AllowedModelValues, "openrouter/openai/gpt-5.5") {
 		t.Fatalf("allowed model values = %#v, want openrouter runtime profile whitelist", config.AllowedModelValues)
 	}
-	for _, value := range config.AllowedModelValues {
-		if strings.Contains(strings.ToLower(value), "gemini") {
-			t.Fatalf("allowed model values = %#v, should not include Gemini agent model %q", config.AllowedModelValues, value)
-		}
+	if !stringSliceContains(config.AllowedModelValues, "openrouter/google/gemini-3.5-flash") {
+		t.Fatalf("allowed model values = %#v, want OpenRouter Gemini agent model", config.AllowedModelValues)
 	}
 	if !stringSliceContains(config.AllowedModelProviders, "openrouter") {
 		t.Fatalf("allowed model providers = %#v, want openrouter provider whitelist", config.AllowedModelProviders)
@@ -196,12 +194,10 @@ func TestPrepareOpenCodeRuntimeConfigWritesSchemaAndEnvWithoutSecrets(t *testing
 	if strings.Contains(text, "sk-openrouter-secret") {
 		t.Fatalf("opencode.json should not contain real API key: %s", text)
 	}
-	if strings.Contains(strings.ToLower(text), "gemini") {
-		t.Fatalf("opencode.json should not include Gemini agent models:\n%s", text)
-	}
 	for _, want := range []string{
 		`"$schema": "https://opencode.ai/config.json"`,
 		`"model": "openrouter/openai/gpt-5.5"`,
+		`"google/gemini-3.5-flash"`,
 		`"apiKey": "{env:MEDIAGO_AGENT_MODEL_OPENROUTER_GPT_5_5_API_KEY}"`,
 		`"tool_call": true`,
 		`"attachment": true`,
@@ -302,13 +298,13 @@ func TestPrepareOpenCodeRuntimeConfigIncludesDMXAPIWhenPlatformEnabled(t *testin
 	if config.Env[AgentModelProfileEnvName("dmxapi-gpt-4-1-mini")] != "sk-dmx-secret" {
 		t.Fatalf("runtime env = %#v, want DMX key injected for dmxapi", config.Env)
 	}
-	for _, unwanted := range []string{
+	for _, wanted := range []string{
 		"dmxapi/gemini-3.5-flash",
 		"dmxapi/gemini-3.1-pro-preview",
 		"dmxapi/gemini-3.1-flash-lite",
 	} {
-		if stringSliceContains(config.AllowedModelValues, unwanted) {
-			t.Fatalf("allowed model values = %#v, should not include Gemini agent model %q", config.AllowedModelValues, unwanted)
+		if !stringSliceContains(config.AllowedModelValues, wanted) {
+			t.Fatalf("allowed model values = %#v, want Gemini agent model %q", config.AllowedModelValues, wanted)
 		}
 	}
 
@@ -321,13 +317,11 @@ func TestPrepareOpenCodeRuntimeConfigIncludesDMXAPIWhenPlatformEnabled(t *testin
 		`"model": "dmxapi/gpt-4.1-mini"`,
 		`"baseURL": "https://www.dmxapi.cn/v1"`,
 		`"name": "gpt-4.1-mini"`,
+		`"gemini-3.5-flash"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("opencode.json missing %q:\n%s", want, text)
 		}
-	}
-	if strings.Contains(strings.ToLower(text), "gemini") {
-		t.Fatalf("opencode.json should not include Gemini agent models:\n%s", text)
 	}
 }
 
@@ -454,11 +448,14 @@ func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testi
 	if sawAuthorization != "Bearer mgak-secret" {
 		t.Fatalf("Authorization = %q, want bearer key", sawAuthorization)
 	}
-	if config.ProfileCount != 2 || config.DefaultProfileID != "mediago-local-gpt-test" {
+	if config.ProfileCount != 3 || config.DefaultProfileID != "mediago-local-gpt-test" {
 		t.Fatalf("runtime config = %#v, want dynamic MediaGo text profiles", config)
 	}
 	if !config.RestrictModelValues || !stringSliceContains(config.AllowedModelValues, "mediago/local/gpt-test") {
 		t.Fatalf("allowed model values = %#v, want MediaGo dynamic runtime profile whitelist", config.AllowedModelValues)
+	}
+	if !stringSliceContains(config.AllowedModelValues, "mediago/local/gemini-test") {
+		t.Fatalf("allowed model values = %#v, want MediaGo Gemini runtime profile", config.AllowedModelValues)
 	}
 	if !stringSliceContains(config.AllowedModelProviders, "mediago") {
 		t.Fatalf("allowed model providers = %#v, want MediaGo provider whitelist", config.AllowedModelProviders)
@@ -476,6 +473,8 @@ func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testi
 		`"model": "mediago/local/gpt-test"`,
 		`"baseURL": "` + server.URL + `/api/v1"`,
 		`"name": "GPT Test"`,
+		`"local/gemini-test"`,
+		`"name": "Gemini Test"`,
 		`"image"`,
 		`"context": 123456`,
 		`"output": 4096`,
@@ -490,8 +489,6 @@ func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testi
 		"local/image-output-test",
 		"local/audio-output-test",
 		"local/speech-input-test",
-		"local/gemini-test",
-		"Gemini Test",
 		"qwen/qwen-mt-plus",
 		"Qwen MT Plus",
 	} {
@@ -510,6 +507,9 @@ func TestPrepareOpenCodeRuntimeConfigUsesMediagoUserModelsWhenAvailable(t *testi
 	}
 	if mediagoProvider.Models["local/text-test"].ToolCall {
 		t.Fatalf("MediaGo model without tools support should not enable tool_call:\n%s", text)
+	}
+	if !mediagoProvider.Models["local/gemini-test"].ToolCall {
+		t.Fatalf("MediaGo Gemini model with tools support should enable tool_call:\n%s", text)
 	}
 }
 

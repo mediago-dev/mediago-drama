@@ -447,6 +447,12 @@
       "perCallPrice": 0.067
     },
     {
+      "routeId": "official.gemini-2.5-flash-image",
+      "currency": "USD",
+      "unit": "per_call",
+      "perCallPrice": 0.039
+    },
+    {
       "routeId": "dmx.gemini-3.1-flash-image-preview",
       "currency": "USD",
       "unit": "per_call",

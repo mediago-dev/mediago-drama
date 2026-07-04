@@ -124,7 +124,7 @@ func (provider *Provider) generateSingleGeminiImage(ctx context.Context, request
 			},
 		},
 		GenerationConfig: geminiGenerationConfig{
-			ResponseModalities: []string{"Image"},
+			ResponseModalities: []string{"IMAGE"},
 			ImageConfig: geminiImageConfig{
 				AspectRatio: firstNonEmpty(paramString(request.Params, "aspectRatio"), "1:1"),
 				ImageSize:   firstNonEmpty(paramString(request.Params, "imageSize"), "1K"),

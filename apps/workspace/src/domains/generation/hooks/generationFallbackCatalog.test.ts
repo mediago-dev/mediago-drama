@@ -19,6 +19,12 @@ const routeGroups = (routeId: string) => {
 	return route.paramGroups ?? [];
 };
 
+const routeById = (routeId: string) => {
+	const route = fallbackCatalog.routes.find((item) => item.id === routeId);
+	if (!route) throw new Error(`missing route ${routeId}`);
+	return route;
+};
+
 const param = (routeId: string, name: string) => {
 	const value = routeParams(routeId).find((item) => item.name === name);
 	if (!value) throw new Error(`missing param ${routeId}.${name}`);
@@ -149,7 +155,30 @@ describe("fallback generation catalog params", () => {
 			},
 		]);
 		expect(param("dmx.gemini-3.1-flash-image-preview", "resolution").default).toBe("1K");
+		expect(routeCombos("dmx.gemini-3.1-flash-image-preview")[0]?.outputs?.["16:9|1K"]).toBe(
+			"1376x768",
+		);
+		expect(routeById("official.gemini-2.5-flash-image")).toMatchObject({
+			provider: "google",
+			model: "gemini-2.5-flash-image",
+			adapter: "official.google.image",
+			supportsReferenceUrls: true,
+		});
+		expect(
+			param("official.gemini-2.5-flash-image", "resolution").options?.map((item) => item.value),
+		).toEqual(["1K"]);
+		expect(routeCombos("official.gemini-2.5-flash-image")[0]?.outputs?.["1:1|1K"]).toBe(
+			"1024x1024",
+		);
 		expect(param("openrouter.gemini-3.1-flash-image-preview", "resolution").default).toBe("1K");
+		expect(routeById("mediago.gemini-3.1-flash-image")).toMatchObject({
+			status: "available",
+			adapter: "openrouter.images",
+			model: "gemini-3.1-flash-image",
+		});
+		expect(routeCombos("mediago.gemini-3.1-flash-image")[0]?.outputs?.["16:9|2K"]).toBe(
+			"2048x1152",
+		);
 	});
 
 	it("uses canonical video params and backend defaults", () => {

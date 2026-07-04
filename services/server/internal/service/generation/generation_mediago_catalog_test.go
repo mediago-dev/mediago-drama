@@ -25,11 +25,12 @@ func TestListGenerationModelsFiltersMediagoRoutesByUserCatalog(t *testing.T) {
 		}
 		response.Header().Set("Content-Type", "application/json")
 		_, _ = response.Write([]byte(`{
-			"data": [
-				{"id": "gpt-image-2"},
-				{"canonical_slug": "doubao-seedream-5-0-lite"}
-			]
-		}`))
+				"data": [
+					{"id": "gpt-image-2"},
+					{"canonical_slug": "doubao-seedream-5-0-lite"},
+					{"id": "gemini-3.1-flash-image"}
+				]
+			}`))
 	}))
 	defer server.Close()
 
@@ -47,8 +48,11 @@ func TestListGenerationModelsFiltersMediagoRoutesByUserCatalog(t *testing.T) {
 	if !generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoSeedream5Lite) {
 		t.Fatalf("route %q should be configured by canonical_slug in MediaGo user catalog", coregeneration.RouteMediagoSeedream5Lite)
 	}
-	if generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoNanoBanana31) {
-		t.Fatalf("route %q should be hidden when absent from MediaGo user catalog", coregeneration.RouteMediagoNanoBanana31)
+	if !generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoNanoBanana31) {
+		t.Fatalf("route %q should be configured when present in MediaGo user catalog", coregeneration.RouteMediagoNanoBanana31)
+	}
+	if generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoNanoBanana25) {
+		t.Fatalf("route %q should be hidden when absent from MediaGo user catalog", coregeneration.RouteMediagoNanoBanana25)
 	}
 	if got := atomic.LoadInt32(&requests); got != 1 {
 		t.Fatalf("MediaGo model catalog requests = %d, want 1 cached request", got)
@@ -92,12 +96,12 @@ func TestMediagoRouteUnavailableReportsInactiveModel(t *testing.T) {
 	workflow := NewGenerationService(settingsSvc, nil, nil)
 	workflow.SetMediagoBaseURL(server.URL)
 
-	route, ok := coregeneration.FindRoute(coregeneration.RouteMediagoNanoBanana31)
+	route, ok := coregeneration.FindRoute(coregeneration.RouteMediagoNanoBanana25)
 	if !ok {
-		t.Fatalf("missing route %q", coregeneration.RouteMediagoNanoBanana31)
+		t.Fatalf("missing route %q", coregeneration.RouteMediagoNanoBanana25)
 	}
 	_, err := workflow.newGenerationProvider(route)
-	if err == nil || !strings.Contains(err.Error(), "MediaGo 聚合平台当前未启用模型 gemini-3.1-flash-image") {
+	if err == nil || !strings.Contains(err.Error(), "MediaGo 聚合平台当前未启用模型 gemini-2.5-flash-image") {
 		t.Fatalf("newGenerationProvider() error = %v, want inactive MediaGo model", err)
 	}
 }

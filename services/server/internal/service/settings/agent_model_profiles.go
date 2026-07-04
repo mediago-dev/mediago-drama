@@ -718,9 +718,6 @@ func catalogAgentRuntimeProfilesForSpec(spec officialAgentModelProfileSpec) []do
 			strings.TrimSpace(route.Model) == "" {
 			continue
 		}
-		if agentRuntimeModelHidden(route.Model, route.FamilyID, route.VersionID) {
-			continue
-		}
 		if seenModels[route.Model] {
 			continue
 		}
@@ -788,9 +785,6 @@ func (service *Settings) mediagoAgentRuntimeProfiles(ctx context.Context, spec o
 	for _, model := range models {
 		modelID := strings.TrimSpace(firstNonEmpty(model.ID, model.CanonicalSlug))
 		if modelID == "" || seenModels[modelID] || !mediagoGatewayModelSupportsAgentConversation(model) {
-			continue
-		}
-		if agentRuntimeModelHidden(modelID, model.Name, mediagoGatewayModelSignalText(model)) {
 			continue
 		}
 		seenModels[modelID] = true
@@ -871,19 +865,7 @@ func mediagoGatewayModelSupportsAgentConversation(model mediagoGatewayModel) boo
 	if mediagoGatewayModelLooksTaskOnly(model) {
 		return false
 	}
-	if agentRuntimeModelHidden(firstNonEmpty(model.ID, model.CanonicalSlug), model.Name, mediagoGatewayModelSignalText(model)) {
-		return false
-	}
 	return mediagoGatewayModelLooksAgentTextCapable(model)
-}
-
-func agentRuntimeModelHidden(values ...string) bool {
-	for _, value := range values {
-		if strings.Contains(strings.ToLower(strings.TrimSpace(value)), "gemini") {
-			return true
-		}
-	}
-	return false
 }
 
 func mediagoGatewayModelLooksTaskOnly(model mediagoGatewayModel) bool {

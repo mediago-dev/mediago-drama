@@ -207,11 +207,11 @@ func TestGenerateTextStreamUsesOfficialChatEndpoint(t *testing.T) {
 
 func TestGenerateGoogleImage(t *testing.T) {
 	var apiKey string
-	var payload googleGenerateContentRequest
+	var payload googleInteractionRequest
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		apiKey = request.Header.Get("x-goog-api-key")
-		if request.URL.Path != "/v1beta/models/gemini-3.1-flash-image-preview:generateContent" {
-			t.Fatalf("path = %q, want gemini generateContent", request.URL.Path)
+		if request.URL.Path != "/v1beta/interactions" {
+			t.Fatalf("path = %q, want gemini interactions", request.URL.Path)
 		}
 		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 			t.Fatalf("Decode() error = %v", err)
@@ -219,8 +219,9 @@ func TestGenerateGoogleImage(t *testing.T) {
 
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{
-			"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"img"}}]}}],
-			"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":2,"totalTokenCount":3}
+			"id":"interaction-1",
+			"output_image":{"mime_type":"image/png","data":"img"},
+			"usage_metadata":{"input_token_count":1,"output_token_count":2,"total_token_count":3}
 		}`))
 	}))
 	defer server.Close()
@@ -247,19 +248,69 @@ func TestGenerateGoogleImage(t *testing.T) {
 	if apiKey != "gemini-key" {
 		t.Fatalf("x-goog-api-key = %q, want gemini-key", apiKey)
 	}
-	if payload.GenerationConfig.ResponseFormat.Image.AspectRatio != "16:9" ||
-		payload.GenerationConfig.ResponseFormat.Image.ImageSize != "2K" {
-		t.Fatalf("generationConfig = %#v", payload.GenerationConfig)
+	if payload.Model != "models/gemini-3.1-flash-image" {
+		t.Fatalf("model = %q, want models/gemini-3.1-flash-image", payload.Model)
 	}
-	parts := payload.Contents[0].Parts
-	if len(parts) != 2 || parts[0].Text != "make an image" || parts[1].InlineData == nil {
-		t.Fatalf("parts = %#v, want prompt and inline reference", parts)
+	if payload.ResponseFormat.AspectRatio != "16:9" ||
+		payload.ResponseFormat.ImageSize != "2K" ||
+		payload.ResponseFormat.Type != "image" ||
+		payload.ResponseFormat.MIMEType != "image/png" ||
+		payload.ResponseFormat.Delivery != "inline" {
+		t.Fatalf("response format = %#v", payload.ResponseFormat)
 	}
-	if parts[1].InlineData.MIMEType != "image/jpeg" || parts[1].InlineData.Data != "cmVmLWJ5dGVz" {
-		t.Fatalf("inline data = %#v, want jpeg reference bytes", parts[1].InlineData)
+	if len(payload.Input) != 2 || payload.Input[0].Type != "text" || payload.Input[0].Text != "make an image" {
+		t.Fatalf("input = %#v, want prompt and inline reference", payload.Input)
+	}
+	if payload.Input[1].Type != "image" ||
+		payload.Input[1].MIMEType != "image/jpeg" ||
+		payload.Input[1].Data != "cmVmLWJ5dGVz" {
+		t.Fatalf("image input = %#v, want jpeg reference bytes", payload.Input[1])
 	}
 	if got := response.Assets[0].Base64; got != "img" {
 		t.Fatalf("asset base64 = %q, want img", got)
+	}
+}
+
+func TestGenerateGoogleImageParsesStepImageURI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"id":"interaction-steps",
+			"steps":[
+				{"type":"user_input","content":[{"type":"image","uri":"https://example.test/input.png","mime_type":"image/png"}]},
+				{"type":"model_output","content":[
+					{"type":"text","text":"done"},
+					{"type":"image","uri":"https://example.test/generated.png","mime_type":"image/jpeg"}
+				]}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{GoogleBaseURL: server.URL, APIKey: "gemini-key"})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindImage,
+		RouteID: generation.RouteOfficialNanoBanana31,
+		Prompt:  "make an image",
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if len(response.Assets) != 1 {
+		t.Fatalf("asset count = %d, want generated model output image only", len(response.Assets))
+	}
+	if response.Assets[0].URL != "https://example.test/generated.png" ||
+		response.Assets[0].MIMEType != "image/jpeg" {
+		t.Fatalf("asset = %#v, want generated image URI", response.Assets[0])
+	}
+	texts, _ := response.Metadata["text"].([]string)
+	if len(texts) != 1 || texts[0] != "done" {
+		t.Fatalf("texts = %#v, want model output text", response.Metadata["text"])
 	}
 }
 

@@ -562,7 +562,7 @@ func TestGenerateGeminiImageWithReference(t *testing.T) {
 	var payload geminiGenerateContentRequest
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		apiKey = request.Header.Get("x-goog-api-key")
-		if request.URL.Path != "/v1beta/models/gemini-3.1-flash-image-preview:generateContent" {
+		if request.URL.Path != "/v1beta/models/gemini-3.1-flash-image:generateContent" {
 			t.Fatalf("path = %q, want gemini generateContent", request.URL.Path)
 		}
 		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
@@ -609,6 +609,10 @@ func TestGenerateGeminiImageWithReference(t *testing.T) {
 	if payload.GenerationConfig.ImageConfig.AspectRatio != "16:9" ||
 		payload.GenerationConfig.ImageConfig.ImageSize != "2K" {
 		t.Fatalf("image config = %#v", payload.GenerationConfig.ImageConfig)
+	}
+	if len(payload.GenerationConfig.ResponseModalities) != 1 ||
+		payload.GenerationConfig.ResponseModalities[0] != "IMAGE" {
+		t.Fatalf("response modalities = %#v, want IMAGE", payload.GenerationConfig.ResponseModalities)
 	}
 	if got := response.Assets[0].Base64; got != "generated" {
 		t.Fatalf("asset base64 = %q, want generated", got)

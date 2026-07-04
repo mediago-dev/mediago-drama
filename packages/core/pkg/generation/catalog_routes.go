@@ -82,5 +82,6 @@ const (
 	RouteOfficialDeepSeekV4ProText         = "official.deepseek-v4-pro-text"
 	RouteOfficialGPTImage2                 = "official.gpt-image-2"
 	RouteOfficialNanoBanana31              = "official.gemini-3.1-flash-image-preview"
+	RouteOfficialNanoBanana25              = "official.gemini-2.5-flash-image"
 	RouteOfficialSeedance20Fast            = "official.seedance-2.0-fast"
 )

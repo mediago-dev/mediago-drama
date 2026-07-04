@@ -427,6 +427,92 @@ export function nanoParams(): GenerationParam[] {
 	];
 }
 
+export function nanoParamCombos(): GenerationParamCombo[] {
+	const ratios = [
+		"1:1",
+		"1:4",
+		"1:8",
+		"2:3",
+		"3:2",
+		"3:4",
+		"4:1",
+		"4:3",
+		"4:5",
+		"5:4",
+		"8:1",
+		"16:9",
+		"9:16",
+		"21:9",
+	];
+	const resolutions = ["1K", "2K", "4K"];
+	return [
+		{
+			params: ["aspectRatio", "resolution"],
+			allowed: ratios.flatMap((ratio) => resolutions.map((resolution) => [ratio, resolution])),
+			outputs: {
+				"1:1|1K": "1024x1024",
+				"1:4|1K": "512x2048",
+				"1:8|1K": "384x3072",
+				"2:3|1K": "848x1264",
+				"3:2|1K": "1264x848",
+				"3:4|1K": "896x1200",
+				"4:1|1K": "2048x512",
+				"4:3|1K": "1200x896",
+				"4:5|1K": "928x1152",
+				"5:4|1K": "1152x928",
+				"8:1|1K": "3072x384",
+				"16:9|1K": "1376x768",
+				"9:16|1K": "768x1376",
+				"21:9|1K": "1584x672",
+				"1:1|2K": "2048x2048",
+				"1:4|2K": "1024x4096",
+				"1:8|2K": "768x6144",
+				"2:3|2K": "1696x2528",
+				"3:2|2K": "2528x1696",
+				"3:4|2K": "1792x2400",
+				"4:1|2K": "4096x1024",
+				"4:3|2K": "2400x1792",
+				"4:5|2K": "1856x2304",
+				"5:4|2K": "2304x1856",
+				"8:1|2K": "6144x768",
+				"16:9|2K": "2752x1536",
+				"9:16|2K": "1536x2752",
+				"21:9|2K": "3168x1344",
+				"1:1|4K": "4096x4096",
+				"1:4|4K": "2048x8192",
+				"1:8|4K": "1536x12288",
+				"2:3|4K": "3392x5056",
+				"3:2|4K": "5056x3392",
+				"3:4|4K": "3584x4800",
+				"4:1|4K": "8192x2048",
+				"4:3|4K": "4800x3584",
+				"4:5|4K": "3712x4608",
+				"5:4|4K": "4608x3712",
+				"8:1|4K": "12288x1536",
+				"16:9|4K": "5504x3072",
+				"9:16|4K": "3072x5504",
+				"21:9|4K": "6336x2688",
+			},
+		},
+	];
+}
+
+export function officialNanoBanana25Params(): GenerationParam[] {
+	return nanoParams().map((param) =>
+		param.name === "resolution" ? { ...param, options: [{ label: "1K", value: "1K" }] } : param,
+	);
+}
+
+export function officialNanoBanana25ParamCombos(): GenerationParamCombo[] {
+	return nanoParamCombos().map((combo) => ({
+		...combo,
+		allowed: combo.allowed.filter((values) => values[1] === "1K"),
+		outputs: combo.outputs
+			? Object.fromEntries(Object.entries(combo.outputs).filter(([key]) => key.endsWith("|1K")))
+			: undefined,
+	}));
+}
+
 export function openRouterImageParams(): GenerationParam[] {
 	return [
 		selectParam("aspectRatio", "画幅比例", "1:1", [
