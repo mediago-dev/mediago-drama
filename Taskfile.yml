@@ -26,15 +26,11 @@ tasks:
       - task: workspace:check
       - task: workspace:test
       - task: workspace:build
-      - task: app:check
-      - task: app:test
-      - task: app:build
 
   test:
     cmds:
       - task: go:test
       - task: workspace:test
-      - task: app:test
 
   build:
     env:
@@ -326,18 +322,6 @@ tasks:
     desc: Build only the web workspace
     cmds:
       - pnpm -C apps/workspace build
-
-  app:check:
-    cmds:
-      - pnpm -C apps/app lint
-
-  app:test:
-    cmds:
-      - pnpm -C apps/app exec vitest run
-
-  app:build:
-    cmds:
-      - pnpm -C apps/app build
 
   sync:workspace-dist:
     cmds:
