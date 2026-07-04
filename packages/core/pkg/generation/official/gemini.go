@@ -202,11 +202,6 @@ type googleInteractionResponseFormat struct {
 	ImageSize   string `json:"image_size,omitempty"`
 }
 
-type googleGenerateContentRequest struct {
-	Contents         []googleContent        `json:"contents"`
-	GenerationConfig googleGenerationConfig `json:"generationConfig"`
-}
-
 type googleContent struct {
 	Role  string       `json:"role,omitempty"`
 	Parts []googlePart `json:"parts"`
@@ -221,33 +216,6 @@ type googlePart struct {
 type googleInlineData struct {
 	MIMEType string `json:"mimeType"`
 	Data     string `json:"data"`
-}
-
-type googleGenerationConfig struct {
-	ResponseModalities []string             `json:"responseModalities,omitempty"`
-	ResponseFormat     googleResponseFormat `json:"responseFormat,omitempty"`
-}
-
-type googleResponseFormat struct {
-	Image googleImageResponseFormat `json:"image,omitempty"`
-}
-
-type googleImageResponseFormat struct {
-	AspectRatio string `json:"aspectRatio,omitempty"`
-	ImageSize   string `json:"imageSize,omitempty"`
-}
-
-type googleGenerateContentResponse struct {
-	Candidates    []googleGenerateContentCandidate `json:"candidates"`
-	UsageMetadata googleInteractionUsageMetadata   `json:"usageMetadata"`
-}
-
-func (response googleGenerateContentResponse) toGenerationResponse(model string) generation.Response {
-	return googleInteractionResponse{
-		Candidates:     response.Candidates,
-		UsageMetadata:  response.UsageMetadata,
-		UsageMetadataC: response.UsageMetadata,
-	}.toGenerationResponse(model)
 }
 
 type googleInteractionResponse struct {

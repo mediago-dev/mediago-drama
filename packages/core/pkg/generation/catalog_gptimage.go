@@ -78,35 +78,3 @@ func gptImageParams() RouteParamConfig {
 		},
 	})
 }
-
-func gptImageSizeParamCombo(includeAdaptive bool) ParamCombo {
-	allowed := [][]string{
-		{"1:1", "1K"},
-		{"1:1", "2K"},
-		{"3:2", "1K"},
-		{"2:3", "1K"},
-		{"16:9", "2K"},
-		{"16:9", "4K"},
-		{"9:16", "4K"},
-	}
-	if includeAdaptive {
-		allowed = append([][]string{{"adaptive", "1K"}}, allowed...)
-	}
-	outputs := map[string]string{
-		"1:1|1K":  "1024x1024",
-		"1:1|2K":  "2048x2048",
-		"3:2|1K":  "1536x1024",
-		"2:3|1K":  "1024x1536",
-		"16:9|2K": "2048x1152",
-		"16:9|4K": "3840x2160",
-		"9:16|4K": "2160x3840",
-	}
-	if includeAdaptive {
-		outputs["adaptive|1K"] = "auto"
-	}
-	return ParamCombo{
-		Params:  []string{string(ParamAspectRatio), string(ParamResolution)},
-		Allowed: allowed,
-		Outputs: outputs,
-	}
-}

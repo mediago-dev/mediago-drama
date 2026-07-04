@@ -318,7 +318,7 @@ func TestGenerateGoogleImage25OmitsImageSize(t *testing.T) {
 }
 
 func TestGenerateGoogleImageParsesStepImageURI(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{
 			"id":"interaction-steps",

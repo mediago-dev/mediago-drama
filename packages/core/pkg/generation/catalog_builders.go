@@ -172,12 +172,6 @@ func libTVRoute(
 	}
 }
 
-func routeWithStatus(route ModelRoute, status RouteStatus, reason string) ModelRoute {
-	route.Status = status
-	route.StatusReason = reason
-	return route
-}
-
 func openRouterRoute(
 	id string,
 	familyID string,
