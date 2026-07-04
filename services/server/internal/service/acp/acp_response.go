@@ -9,7 +9,7 @@ import (
 func ParseACPFinalResponse(raw string, request AgentRunRequest) AgentFinalResponse {
 	text := strings.TrimSpace(raw)
 	if text == "" {
-		return AgentFinalResponse{Message: "ACP Agent 已完成，但没有最终消息。"}
+		return AgentFinalResponse{}
 	}
 	if friendly := friendlyACPProviderErrorMessage(text); friendly != "" {
 		return AgentFinalResponse{Message: friendly}

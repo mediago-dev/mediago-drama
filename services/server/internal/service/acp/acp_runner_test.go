@@ -96,6 +96,13 @@ func TestParseACPFinalResponseWithA2UI(t *testing.T) {
 	}
 }
 
+func TestParseACPFinalResponseEmptyHasNoLegacyFallback(t *testing.T) {
+	response := ParseACPFinalResponse("   ", agentRunRequest{})
+	if response.Message != "" {
+		t.Fatalf("message = %q, want empty message", response.Message)
+	}
+}
+
 func TestACPClientWorkspacePath(t *testing.T) {
 	root := t.TempDir()
 	client := &acpClient{workspaceDir: root}
@@ -836,6 +843,106 @@ func TestShouldRetryEmptyACPPrompt(t *testing.T) {
 			got := shouldRetryEmptyACPPrompt(tt.response, tt.message, tt.runtimeError, tt.hadActivity)
 			if got != tt.want {
 				t.Fatalf("shouldRetryEmptyACPPrompt() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShouldRequestACPFinalMessage(t *testing.T) {
+	endTurn := acp.PromptResponse{StopReason: acp.StopReasonEndTurn}
+
+	tests := []struct {
+		name         string
+		response     acp.PromptResponse
+		message      string
+		runtimeError string
+		hadActivity  bool
+		want         bool
+	}{
+		{
+			name:        "requests final message after activity without assistant text",
+			response:    endTurn,
+			hadActivity: true,
+			want:        true,
+		},
+		{
+			name:     "does not request final message when no activity happened",
+			response: endTurn,
+		},
+		{
+			name:        "does not request final message when assistant text exists",
+			response:    endTurn,
+			message:     "已完成。",
+			hadActivity: true,
+		},
+		{
+			name:         "does not hide provider runtime error",
+			response:     endTurn,
+			runtimeError: "对应 API Key 的余额不足。",
+			hadActivity:  true,
+		},
+		{
+			name: "does not request final message for cancellation",
+			response: acp.PromptResponse{
+				StopReason: acp.StopReasonCancelled,
+			},
+			hadActivity: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldRequestACPFinalMessage(tt.response, tt.message, tt.runtimeError, tt.hadActivity)
+			if got != tt.want {
+				t.Fatalf("shouldRequestACPFinalMessage() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildACPFinalMessagePrompt(t *testing.T) {
+	prompt := buildACPFinalMessagePrompt()
+	for _, want := range []string{"最终回复", "不要调用工具", "用户最后一条消息"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt = %q, want %q", prompt, want)
+		}
+	}
+}
+
+func TestFallbackACPFinalMessage(t *testing.T) {
+	tests := []struct {
+		name        string
+		request     agentRunRequest
+		hadActivity bool
+		want        string
+	}{
+		{
+			name:    "simple Chinese greeting",
+			request: agentRunRequest{Prompt: "你好"},
+			want:    "你好，我在。请告诉我你想在当前文档中插入或改写什么。",
+		},
+		{
+			name:    "simple English greeting",
+			request: agentRunRequest{Prompt: "Hello!"},
+			want:    "你好，我在。请告诉我你想在当前文档中插入或改写什么。",
+		},
+		{
+			name:        "activity without final message",
+			request:     agentRunRequest{Prompt: "帮我改写第二章"},
+			hadActivity: true,
+			want:        "模型已经完成思考或工具调用，但 ACP 运行时没有发送可展示的最终回复。请重试，或切换到其他模型后再试。",
+		},
+		{
+			name:    "no activity",
+			request: agentRunRequest{Prompt: "帮我改写第二章"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fallbackACPFinalMessage(tt.request, tt.hadActivity)
+			if got != tt.want {
+				t.Fatalf("fallbackACPFinalMessage() = %q, want %q", got, tt.want)
 			}
 		})
 	}

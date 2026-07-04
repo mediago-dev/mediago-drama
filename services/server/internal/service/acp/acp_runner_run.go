@@ -341,12 +341,65 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 			Message: "ACP 停止原因：" + TranslateACPStatus(string(promptResponse.StopReason)),
 		})
 	}
+	requestedFinalMessage := false
+	hadActivityBeforeFinalMessage := false
+	if shouldRequestACPFinalMessage(promptResponse, client.messageText(), client.runtimeErrorText(), client.hasPromptActivity()) {
+		requestedFinalMessage = true
+		hadActivityBeforeFinalMessage = true
+		publish(agentEvent{
+			Type:    "agent.activity",
+			Message: "ACP 没有返回最终消息，正在请求收尾回复。",
+		})
+		acpLog().Warn(
+			"acp prompt completed without final message; requesting final response",
+			append(append(logArgs,
+				"acp_session_id", sessionID,
+				"stop_reason", promptResponse.StopReason,
+			), client.promptMetrics()...)...,
+		)
+		finalPromptStartedAt := time.Now()
+		finalPromptResponse, finalPromptErr := promptACPSession(ctx, conn, client, acp.PromptRequest{
+			SessionId: sessionID,
+			Prompt:    []acp.ContentBlock{acp.TextBlock(buildACPFinalMessagePrompt())},
+		})
+		if finalPromptErr != nil {
+			acpLog().Error(
+				"acp final-message prompt failed",
+				append(logArgs,
+					"acp_session_id", sessionID,
+					"duration_ms", time.Since(finalPromptStartedAt).Milliseconds(),
+					"error", finalPromptErr,
+				)...,
+			)
+			if alert := runtimeAlertForACPPromptError(finalPromptErr, ctx.Err()); alert != nil {
+				publish(acpRuntimeAlertEvent(alert))
+			}
+			return agentRunResult{}, fmt.Errorf("running ACP final-message prompt: %w", finalPromptErr)
+		}
+		promptResponse = finalPromptResponse
+		acpLog().Info(
+			"acp final-message prompt completed",
+			append(append(logArgs,
+				"acp_session_id", sessionID,
+				"stop_reason", promptResponse.StopReason,
+				"duration_ms", time.Since(finalPromptStartedAt).Milliseconds(),
+			), client.promptMetrics()...)...,
+		)
+		if promptResponse.StopReason != "" && promptResponse.StopReason != acp.StopReasonEndTurn {
+			publish(agentEvent{
+				Type:    "agent.activity",
+				Message: "ACP 收尾停止原因：" + TranslateACPStatus(string(promptResponse.StopReason)),
+			})
+		}
+	}
 
 	rawFinalMessage := client.messageText()
 	final := ParseACPFinalResponse(rawFinalMessage, request)
 	if strings.TrimSpace(rawFinalMessage) == "" {
 		if runtimeError := client.runtimeErrorText(); runtimeError != "" {
 			final.Message = runtimeError
+		} else if fallback := fallbackACPFinalMessage(request, requestedFinalMessage || hadActivityBeforeFinalMessage); fallback != "" {
+			final.Message = fallback
 		}
 	}
 	if final.Message == "" {
@@ -407,6 +460,49 @@ func shouldRetryEmptyACPPrompt(response acp.PromptResponse, rawFinalMessage stri
 	return response.Usage.InputTokens == 0 &&
 		response.Usage.OutputTokens == 0 &&
 		response.Usage.TotalTokens == 0
+}
+
+func buildACPFinalMessagePrompt() string {
+	return strings.Join([]string{
+		"上一轮已经结束，但没有通过 ACP agent_message_chunk 发送最终回复。",
+		"请现在只输出面向用户的最终回复：不要调用工具，不要继续探索，不要返回 JSON。",
+		"如果已经完成修改，请简要说明完成内容；如果没有修改任何内容，请直接回答用户最后的问题。",
+		"使用用户最后一条消息的语言。",
+	}, "\n")
+}
+
+func shouldRequestACPFinalMessage(response acp.PromptResponse, rawFinalMessage string, runtimeErrorMessage string, promptHadActivity bool) bool {
+	if strings.TrimSpace(rawFinalMessage) != "" || strings.TrimSpace(runtimeErrorMessage) != "" {
+		return false
+	}
+	if !promptHadActivity {
+		return false
+	}
+	if response.StopReason != "" && response.StopReason != acp.StopReasonEndTurn {
+		return false
+	}
+	return true
+}
+
+func fallbackACPFinalMessage(request agentRunRequest, promptHadActivity bool) string {
+	if isSimpleGreetingPrompt(request.Prompt) {
+		return "你好，我在。请告诉我你想在当前文档中插入或改写什么。"
+	}
+	if promptHadActivity {
+		return "模型已经完成思考或工具调用，但 ACP 运行时没有发送可展示的最终回复。请重试，或切换到其他模型后再试。"
+	}
+	return ""
+}
+
+func isSimpleGreetingPrompt(prompt string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(prompt))
+	normalized = strings.Trim(normalized, " \t\r\n.!?。！？~～")
+	switch normalized {
+	case "你好", "您好", "hello", "hi", "hey", "嗨", "在吗":
+		return true
+	default:
+		return false
+	}
 }
 
 func isACPResourceNotFoundError(err error) bool {
