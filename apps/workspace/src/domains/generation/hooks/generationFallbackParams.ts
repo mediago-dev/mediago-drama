@@ -430,6 +430,72 @@ export function mediagoNanoBanana31ParamCombos(): GenerationParamCombo[] {
 	];
 }
 
+export function mediagoNanoBananaProParams(): GenerationParam[] {
+	return [
+		selectParam("aspectRatio", "画幅比例", "1:1", [
+			{ label: "1:1", value: "1:1" },
+			{ label: "2:3", value: "2:3" },
+			{ label: "3:2", value: "3:2" },
+			{ label: "3:4", value: "3:4" },
+			{ label: "4:3", value: "4:3" },
+			{ label: "4:5", value: "4:5" },
+			{ label: "5:4", value: "5:4" },
+			{ label: "9:16", value: "9:16" },
+			{ label: "16:9", value: "16:9" },
+			{ label: "21:9", value: "21:9" },
+		]),
+		selectParam("resolution", "分辨率", "1K", [
+			{ label: "1K", value: "1K" },
+			{ label: "2K", value: "2K" },
+			{ label: "4K", value: "4K" },
+		]),
+		numberParam("n", "图像数量", 1, 1, 4),
+	];
+}
+
+export function mediagoNanoBananaProParamCombos(): GenerationParamCombo[] {
+	const ratios = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
+	const resolutions = ["1K", "2K", "4K"];
+	return [
+		{
+			params: ["aspectRatio", "resolution"],
+			allowed: ratios.flatMap((ratio) => resolutions.map((resolution) => [ratio, resolution])),
+			outputs: {
+				"1:1|1K": "1024x1024",
+				"2:3|1K": "848x1264",
+				"3:2|1K": "1264x848",
+				"3:4|1K": "896x1200",
+				"4:3|1K": "1200x896",
+				"4:5|1K": "928x1152",
+				"5:4|1K": "1152x928",
+				"9:16|1K": "768x1376",
+				"16:9|1K": "1376x768",
+				"21:9|1K": "1584x672",
+				"1:1|2K": "2048x2048",
+				"2:3|2K": "1696x2528",
+				"3:2|2K": "2528x1696",
+				"3:4|2K": "1792x2400",
+				"4:3|2K": "2400x1792",
+				"4:5|2K": "1856x2304",
+				"5:4|2K": "2304x1856",
+				"9:16|2K": "1536x2752",
+				"16:9|2K": "2752x1536",
+				"21:9|2K": "3168x1344",
+				"1:1|4K": "4096x4096",
+				"2:3|4K": "3392x5056",
+				"3:2|4K": "5056x3392",
+				"3:4|4K": "3584x4800",
+				"4:3|4K": "4800x3584",
+				"4:5|4K": "3712x4608",
+				"5:4|4K": "4608x3712",
+				"9:16|4K": "3072x5504",
+				"16:9|4K": "5504x3072",
+				"21:9|4K": "6336x2688",
+			},
+		},
+	];
+}
+
 export function mediagoNanoBanana25Params(): GenerationParam[] {
 	return [
 		selectParam("aspectRatio", "画幅比例", "1:1", [

@@ -479,6 +479,11 @@
       "cachedTokenPrice": 0.2
     },
     {
+      "routeId": "mediago.gemini-3-pro-image",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
       "routeId": "openrouter.gemini-2.5-flash-image",
       "currency": "USD",
       "unit": "per_million_tokens",

@@ -28,7 +28,8 @@ func TestListGenerationModelsFiltersMediagoRoutesByUserCatalog(t *testing.T) {
 				"data": [
 					{"id": "gpt-image-2"},
 					{"canonical_slug": "doubao-seedream-5-0-lite"},
-					{"id": "gemini-3.1-flash-image"}
+					{"id": "gemini-3.1-flash-image"},
+					{"id": "gemini-3-pro-image"}
 				]
 			}`))
 	}))
@@ -50,6 +51,9 @@ func TestListGenerationModelsFiltersMediagoRoutesByUserCatalog(t *testing.T) {
 	}
 	if !generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoNanoBanana31) {
 		t.Fatalf("route %q should be configured when present in MediaGo user catalog", coregeneration.RouteMediagoNanoBanana31)
+	}
+	if !generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoNanoBananaPro) {
+		t.Fatalf("route %q should be configured when present in MediaGo user catalog", coregeneration.RouteMediagoNanoBananaPro)
 	}
 	if generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoNanoBanana25) {
 		t.Fatalf("route %q should be hidden when absent from MediaGo user catalog", coregeneration.RouteMediagoNanoBanana25)

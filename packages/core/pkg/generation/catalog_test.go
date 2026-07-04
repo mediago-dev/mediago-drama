@@ -142,6 +142,7 @@ func TestImageCatalogIncludesMediagoRoutes(t *testing.T) {
 		{RouteMediagoSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "doubao-seedream-5-0-lite", AdapterOpenRouterChatImage, false, RouteStatusAvailable, ""},
 		{RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, "gpt-image-2", AdapterOpenRouterImages, true, RouteStatusAvailable, ""},
 		{RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "gemini-3.1-flash-image", AdapterOpenRouterChatImage, true, RouteStatusAvailable, ""},
+		{RouteMediagoNanoBananaPro, FamilyNanoBanana, VersionNanoBananaPro, "gemini-3-pro-image", AdapterOpenRouterChatImage, true, RouteStatusAvailable, ""},
 		{RouteMediagoNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, "gemini-2.5-flash-image", AdapterOpenRouterChatImage, true, RouteStatusAvailable, ""},
 	}
 
@@ -689,6 +690,16 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 	assertLacksOption(t, mustParam(t, mediagoNanoBanana, "resolution"), "512px")
 	assertComboOutput(t, mediagoNanoBanana, "aspectRatio", "resolution", "16:9|1K", "1376x768")
 	assertComboOutput(t, mediagoNanoBanana, "aspectRatio", "resolution", "4:3|2K", "2400x1792")
+	mediagoNanoBananaPro := mustRoute(t, RouteMediagoNanoBananaPro)
+	assertHasParams(t, mediagoNanoBananaPro, "aspectRatio", "resolution", "n")
+	assertNoParams(t, mediagoNanoBananaPro, "quality", "outputFormat", "moderation", "outputCompression", "background")
+	assertHasOptions(t, mustParam(t, mediagoNanoBananaPro, "aspectRatio"), "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9")
+	assertLacksOption(t, mustParam(t, mediagoNanoBananaPro, "aspectRatio"), "1:4")
+	assertLacksOption(t, mustParam(t, mediagoNanoBananaPro, "aspectRatio"), "9:21")
+	assertHasOptions(t, mustParam(t, mediagoNanoBananaPro, "resolution"), "1K", "2K", "4K")
+	assertLacksOption(t, mustParam(t, mediagoNanoBananaPro, "resolution"), "512px")
+	assertComboOutput(t, mediagoNanoBananaPro, "aspectRatio", "resolution", "16:9|4K", "5504x3072")
+	assertComboOutput(t, mediagoNanoBananaPro, "aspectRatio", "resolution", "4:3|2K", "2400x1792")
 	mediagoNanoBanana25 := mustRoute(t, RouteMediagoNanoBanana25)
 	assertHasParams(t, mediagoNanoBanana25, "aspectRatio", "resolution", "n")
 	assertHasOptions(t, mustParam(t, mediagoNanoBanana25, "resolution"), "1K")
@@ -779,6 +790,10 @@ func TestRouteParamsDefaultToLowestCostOptions(t *testing.T) {
 	dmxNanoBanana := mustRoute(t, RouteDMXNanoBanana31)
 	assertParamDefault(t, dmxNanoBanana, "resolution", "1K")
 	assertParamDefault(t, dmxNanoBanana, "n", float64(1))
+
+	mediagoNanoBananaPro := mustRoute(t, RouteMediagoNanoBananaPro)
+	assertParamDefault(t, mediagoNanoBananaPro, "resolution", "1K")
+	assertParamDefault(t, mediagoNanoBananaPro, "n", float64(1))
 }
 
 func mustRoute(t *testing.T, id string) ModelRoute {

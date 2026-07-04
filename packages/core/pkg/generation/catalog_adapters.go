@@ -1,12 +1,14 @@
 package generation
 
+import mediagocatalog "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/mediago"
+
 const (
 	ProviderOpenAI     = "openai"
 	ProviderGoogle     = "google"
 	ProviderMiniMax    = "minimax"
 	ProviderDeepSeek   = "deepseek"
 	ProviderVolcengine = "volcengine"
-	ProviderMediago    = "mediago"
+	ProviderMediago    = mediagocatalog.Provider
 	ProviderDMX        = "dmx"
 	ProviderOpenRouter = "openrouter"
 	ProviderJimeng     = "jimeng"

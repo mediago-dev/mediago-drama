@@ -215,6 +215,85 @@ func TestProviderDispatchesMediagoGemini31ImageRoute(t *testing.T) {
 	}
 }
 
+func TestProviderDispatchesMediagoGeminiProImageRoute(t *testing.T) {
+	var credentialKey string
+	var authHeader string
+	var payload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authHeader = request.Header.Get("Authorization")
+		if request.URL.Path != "/chat/completions" {
+			t.Fatalf("path = %q, want /chat/completions", request.URL.Path)
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"id":"chat_1",
+			"model":"gemini-3-pro-image",
+			"choices":[{"message":{"images":[{"type":"image_url","image_url":{"url":"https://example.test/mediago-pro.png"}}]}}],
+			"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}
+		}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{
+		MediagoBaseURL: server.URL,
+		Credentials: CredentialResolverFunc(func(_ context.Context, key string) (string, error) {
+			credentialKey = key
+			return "sk-mediago", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		RouteID: generation.RouteMediagoNanoBananaPro,
+		Prompt:  "make an image",
+		Params: map[string]any{
+			"aspectRatio":  "16:9",
+			"resolution":   "4K",
+			"quality":      "high",
+			"outputFormat": "webp",
+			"background":   "opaque",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if credentialKey != generation.ProviderMediago {
+		t.Fatalf("credential key = %q, want %q", credentialKey, generation.ProviderMediago)
+	}
+	if authHeader != "Bearer sk-mediago" {
+		t.Fatalf("Authorization = %q, want Bearer sk-mediago", authHeader)
+	}
+	if payload["model"] != "gemini-3-pro-image" {
+		t.Fatalf("model = %v", payload["model"])
+	}
+	imageConfig, ok := payload["image_config"].(map[string]any)
+	if !ok || imageConfig["aspect_ratio"] != "16:9" || imageConfig["image_size"] != "4K" {
+		t.Fatalf("image_config = %#v", payload["image_config"])
+	}
+	if _, ok := payload["size"]; ok {
+		t.Fatalf("size should not be sent for MediaGo Gemini Pro image: %#v", payload)
+	}
+	if _, ok := payload["quality"]; ok {
+		t.Fatalf("quality should be suppressed for MediaGo Gemini Pro image: %#v", payload)
+	}
+	if _, ok := payload["output_format"]; ok {
+		t.Fatalf("output_format should be suppressed for MediaGo Gemini Pro image: %#v", payload)
+	}
+	if _, ok := payload["background"]; ok {
+		t.Fatalf("background should be suppressed for MediaGo Gemini Pro image: %#v", payload)
+	}
+	if response.Status != "completed" || len(response.Assets) != 1 || response.Assets[0].URL != "https://example.test/mediago-pro.png" {
+		t.Fatalf("response = %#v, want completed MediaGo Pro image asset", response)
+	}
+}
+
 func TestProviderDispatchesXiaoyunqueRouteThroughPippitCLI(t *testing.T) {
 	if goruntime.GOOS == "windows" {
 		t.Skip("shell-script fake CLI is only used on Unix-like test hosts")

@@ -172,41 +172,6 @@ func libTVRoute(
 	}
 }
 
-func mediagoRoute(
-	id string,
-	familyID string,
-	versionID string,
-	kind Kind,
-	label string,
-	model string,
-	adapter string,
-	docURL string,
-	params RouteParamConfig,
-	async bool,
-	supportsReferenceURLs bool,
-) ModelRoute {
-	return ModelRoute{
-		ID:                    id,
-		FamilyID:              familyID,
-		VersionID:             versionID,
-		Label:                 label,
-		Kind:                  kind,
-		Provider:              ProviderMediago,
-		Model:                 model,
-		Adapter:               adapter,
-		DocURL:                docURL,
-		Async:                 async,
-		SupportsReferenceURLs: supportsReferenceURLs,
-		Status:                RouteStatusAvailable,
-		AuthKeys:              []string{ProviderMediago},
-		Params:                routeParamSpecs(kind, params.CanonicalParams),
-		ParamGroups:           routeParamGroups(kind, params.CanonicalParams),
-		Combos:                cloneParamCombos(params.Combos),
-		CanonicalParams:       params.CanonicalParams,
-		Translation:           params.Translation,
-	}
-}
-
 func routeWithStatus(route ModelRoute, status RouteStatus, reason string) ModelRoute {
 	route.Status = status
 	route.StatusReason = reason

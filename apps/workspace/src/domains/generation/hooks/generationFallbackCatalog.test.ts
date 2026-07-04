@@ -222,6 +222,25 @@ describe("fallback generation catalog params", () => {
 		expect(routeCombos("mediago.gemini-3.1-flash-image")[0]?.outputs?.["16:9|1K"]).toBe("1376x768");
 		expect(routeCombos("mediago.gemini-3.1-flash-image")[0]?.outputs?.["4:3|2K"]).toBe("2400x1792");
 		expect(routeCombos("mediago.gemini-3.1-flash-image")[0]?.outputs?.["9:21|1K"]).toBe(undefined);
+		expect(routeById("mediago.gemini-3-pro-image")).toMatchObject({
+			status: "available",
+			adapter: "openrouter.chat.image",
+			model: "gemini-3-pro-image",
+		});
+		expect(routeParams("mediago.gemini-3-pro-image").map((item) => item.name)).toEqual([
+			"aspectRatio",
+			"resolution",
+			"n",
+		]);
+		expect(
+			param("mediago.gemini-3-pro-image", "aspectRatio").options?.map((item) => item.value),
+		).toEqual(["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]);
+		expect(
+			param("mediago.gemini-3-pro-image", "resolution").options?.map((item) => item.value),
+		).toEqual(["1K", "2K", "4K"]);
+		expect(routeCombos("mediago.gemini-3-pro-image")[0]?.outputs?.["16:9|4K"]).toBe("5504x3072");
+		expect(routeCombos("mediago.gemini-3-pro-image")[0]?.outputs?.["1:4|1K"]).toBe(undefined);
+		expect(routeCombos("mediago.gemini-3-pro-image")[0]?.outputs?.["9:21|1K"]).toBe(undefined);
 		expect(routeParams("mediago.gemini-2.5-flash-image").map((item) => item.name)).toEqual([
 			"aspectRatio",
 			"resolution",
@@ -230,9 +249,7 @@ describe("fallback generation catalog params", () => {
 		expect(
 			param("mediago.gemini-2.5-flash-image", "resolution").options?.map((item) => item.value),
 		).toEqual(["1K"]);
-		expect(routeCombos("mediago.gemini-2.5-flash-image")[0]?.outputs?.["16:9|1K"]).toBe(
-			"1344x768",
-		);
+		expect(routeCombos("mediago.gemini-2.5-flash-image")[0]?.outputs?.["16:9|1K"]).toBe("1344x768");
 	});
 
 	it("uses canonical video params and backend defaults", () => {

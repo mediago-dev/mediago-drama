@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/mediago"
 )
 
 func (provider *Provider) generateImage(ctx context.Context, request generation.Request) (generation.Response, error) {
@@ -209,18 +210,14 @@ func openAIProviderOptions(params map[string]any) map[string]any {
 }
 
 func (provider *Provider) imageProviderOptions(params map[string]any) map[string]any {
-	if provider.providerName == generation.ProviderMediago {
+	if mediago.SuppressOpenAIProviderOptions(provider.providerName) {
 		return nil
 	}
 	return openAIProviderOptions(params)
 }
 
 func (provider *Provider) omitChatImageSize(request generation.Request) bool {
-	if provider.providerName != generation.ProviderMediago {
-		return false
-	}
-	model := strings.ToLower(strings.TrimSpace(request.Model))
-	return strings.Contains(model, "gemini-2.5-flash-image")
+	return mediago.OmitChatImageSize(provider.providerName, request.Model)
 }
 
 func imageMIMEType(outputFormat string) string {

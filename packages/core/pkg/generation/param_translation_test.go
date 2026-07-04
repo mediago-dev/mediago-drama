@@ -215,6 +215,43 @@ func TestTranslateRouteParamsMovesMediagoNanoBanana31ImageConfig(t *testing.T) {
 	}
 }
 
+func TestTranslateRouteParamsMovesMediagoNanoBananaProImageConfig(t *testing.T) {
+	route := mustRoute(t, RouteMediagoNanoBananaPro)
+	request := Request{
+		Kind:    KindImage,
+		RouteID: route.ID,
+		Params: map[string]any{
+			"aspectRatio": "16:9",
+			"resolution":  "4K",
+			"n":           float64(1),
+		},
+	}
+	normalized, err := NormalizeRouteParams(route, request.Params)
+	if err != nil {
+		t.Fatalf("NormalizeRouteParams() error = %v", err)
+	}
+
+	resolved, err := TranslateRouteParams(route, normalized)
+	if err != nil {
+		t.Fatalf("TranslateRouteParams() error = %v", err)
+	}
+	if got := resolved["aspectRatio"]; got != "16:9" {
+		t.Fatalf("aspectRatio = %#v, want 16:9", got)
+	}
+	if got := resolved["imageSize"]; got != "4K" {
+		t.Fatalf("imageSize = %#v, want 4K", got)
+	}
+	if _, ok := resolved["size"]; ok {
+		t.Fatalf("size should not be produced for MediaGo Gemini chat image: %#v", resolved)
+	}
+	if _, ok := resolved["resolution"]; ok {
+		t.Fatalf("canonical resolution leaked after translation: %#v", resolved)
+	}
+	if got := resolved["n"]; got != float64(1) {
+		t.Fatalf("n = %#v, want 1", got)
+	}
+}
+
 func TestTranslateRouteParamsKeepsMediagoNanoBanana25ResolutionUIOnly(t *testing.T) {
 	route := mustRoute(t, RouteMediagoNanoBanana25)
 	request := Request{

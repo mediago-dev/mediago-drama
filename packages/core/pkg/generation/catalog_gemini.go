@@ -17,46 +17,6 @@ func officialNanoBanana25Params() RouteParamConfig {
 	return nanoBanana25Params()
 }
 
-func mediagoNanoBanana31Params() RouteParamConfig {
-	resolutionOptions := []ParamOption{
-		{Label: "1K", Value: "1K"},
-		{Label: "2K", Value: "2K"},
-		{Label: "4K", Value: "4K"},
-	}
-	params := []RouteParam{
-		selectRouteParam(ParamAspectRatio, "1:1", mediagoNanoBanana31AspectRatioOptions()),
-		selectRouteParam(ParamResolution, "1K", resolutionOptions),
-		numberRouteParam(ParamN, 1, 1, 4),
-	}
-	config := routeParamConfig(params, ParamTranslation{
-		Moves: []ParamMove{
-			{From: ParamAspectRatio},
-			{From: ParamResolution, To: "imageSize"},
-			{From: ParamN},
-		},
-	})
-	return withRouteParamCombos(config, []ParamCombo{mediagoNanoBanana31SizeParamCombo(resolutionOptions)})
-}
-
-func mediagoNanoBanana25Params() RouteParamConfig {
-	resolutionOptions := []ParamOption{
-		{Label: "1K", Value: "1K"},
-	}
-	params := []RouteParam{
-		selectRouteParam(ParamAspectRatio, "1:1", nanoBanana25AspectRatioOptions()),
-		selectRouteParam(ParamResolution, "1K", resolutionOptions),
-		numberRouteParam(ParamN, 1, 1, 4),
-	}
-	config := routeParamConfig(params, ParamTranslation{
-		Moves: []ParamMove{
-			{From: ParamAspectRatio},
-			{From: ParamResolution, To: "imageSize"},
-			{From: ParamN},
-		},
-	})
-	return withRouteParamCombos(config, []ParamCombo{nanoBanana25SizeParamCombo()})
-}
-
 func nanoBanana25Params() RouteParamConfig {
 	resolutionOptions := []ParamOption{
 		{Label: "1K", Value: "1K"},
@@ -74,25 +34,6 @@ func nanoBanana25Params() RouteParamConfig {
 		},
 	})
 	return withRouteParamCombos(config, []ParamCombo{nanoBanana25SizeParamCombo()})
-}
-
-func mediagoNanoBanana31AspectRatioOptions() []ParamOption {
-	return []ParamOption{
-		{Label: "1:1", Value: "1:1"},
-		{Label: "1:4", Value: "1:4"},
-		{Label: "1:8", Value: "1:8"},
-		{Label: "2:3", Value: "2:3"},
-		{Label: "3:2", Value: "3:2"},
-		{Label: "3:4", Value: "3:4"},
-		{Label: "4:1", Value: "4:1"},
-		{Label: "4:3", Value: "4:3"},
-		{Label: "4:5", Value: "4:5"},
-		{Label: "5:4", Value: "5:4"},
-		{Label: "8:1", Value: "8:1"},
-		{Label: "9:16", Value: "9:16"},
-		{Label: "16:9", Value: "16:9"},
-		{Label: "21:9", Value: "21:9"},
-	}
 }
 
 func nanoBananaParamsWithResolutions(resolutionOptions []ParamOption) RouteParamConfig {
@@ -178,80 +119,6 @@ func nanoBanana25SizeParamCombo() ParamCombo {
 			"16:9|1K": "1344x768",
 			"21:9|1K": "1536x672",
 		},
-	}
-}
-
-func mediagoNanoBanana31SizeParamCombo(resolutionOptions []ParamOption) ParamCombo {
-	ratios := []string{
-		"1:1",
-		"1:4",
-		"1:8",
-		"2:3",
-		"3:2",
-		"3:4",
-		"4:1",
-		"4:3",
-		"4:5",
-		"5:4",
-		"8:1",
-		"9:16",
-		"16:9",
-		"21:9",
-	}
-	allowed := make([][]string, 0, len(ratios)*len(resolutionOptions))
-	for _, ratio := range ratios {
-		for _, resolution := range resolutionOptions {
-			allowed = append(allowed, []string{ratio, resolution.Value})
-		}
-	}
-	outputs := map[string]string{
-		"1:1|1K":  "1024x1024",
-		"1:4|1K":  "512x2048",
-		"1:8|1K":  "384x3072",
-		"2:3|1K":  "848x1264",
-		"3:2|1K":  "1264x848",
-		"3:4|1K":  "896x1200",
-		"4:1|1K":  "2048x512",
-		"4:3|1K":  "1200x896",
-		"4:5|1K":  "928x1152",
-		"5:4|1K":  "1152x928",
-		"8:1|1K":  "3072x384",
-		"9:16|1K": "768x1376",
-		"16:9|1K": "1376x768",
-		"21:9|1K": "1584x672",
-		"1:1|2K":  "2048x2048",
-		"1:4|2K":  "1024x4096",
-		"1:8|2K":  "768x6144",
-		"2:3|2K":  "1696x2528",
-		"3:2|2K":  "2528x1696",
-		"3:4|2K":  "1792x2400",
-		"4:1|2K":  "4096x1024",
-		"4:3|2K":  "2400x1792",
-		"4:5|2K":  "1856x2304",
-		"5:4|2K":  "2304x1856",
-		"8:1|2K":  "6144x768",
-		"9:16|2K": "1536x2752",
-		"16:9|2K": "2752x1536",
-		"21:9|2K": "3168x1344",
-		"1:1|4K":  "4096x4096",
-		"1:4|4K":  "2048x8192",
-		"1:8|4K":  "1536x12288",
-		"2:3|4K":  "3392x5056",
-		"3:2|4K":  "5056x3392",
-		"3:4|4K":  "3584x4800",
-		"4:1|4K":  "8192x2048",
-		"4:3|4K":  "4800x3584",
-		"4:5|4K":  "3712x4608",
-		"5:4|4K":  "4608x3712",
-		"8:1|4K":  "12288x1536",
-		"9:16|4K": "3072x5504",
-		"16:9|4K": "5504x3072",
-		"21:9|4K": "6336x2688",
-	}
-	return ParamCombo{
-		Params:  []string{string(ParamAspectRatio), string(ParamResolution)},
-		Allowed: allowed,
-		Outputs: outputs,
 	}
 }
 
