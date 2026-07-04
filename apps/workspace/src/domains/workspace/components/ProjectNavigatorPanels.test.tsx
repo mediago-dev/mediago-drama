@@ -43,6 +43,38 @@ describe("SettingsSidebarPanel", () => {
 		expect(onSelectTab).toHaveBeenCalledWith("api-keys");
 	});
 
+	it("shows the Codex relay settings entry for Codex", () => {
+		const onSelectTab = vi.fn();
+
+		render(
+			<SettingsSidebarPanel
+				activeAgentBackendId="codex"
+				activeTab="appearance"
+				isProjectSettings={false}
+				onBack={vi.fn()}
+				onSelectTab={onSelectTab}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "Codex 中转" }));
+
+		expect(onSelectTab).toHaveBeenCalledWith("codex-relay");
+	});
+
+	it("hides the Codex relay settings entry for non-Codex agents", () => {
+		render(
+			<SettingsSidebarPanel
+				activeAgentBackendId="opencode"
+				activeTab="appearance"
+				isProjectSettings={false}
+				onBack={vi.fn()}
+				onSelectTab={vi.fn()}
+			/>,
+		);
+
+		expect(screen.queryByRole("button", { name: "Codex 中转" })).toBeNull();
+	});
+
 	it("hides the Jianying draft settings entry while it is disabled", () => {
 		render(
 			<SettingsSidebarPanel

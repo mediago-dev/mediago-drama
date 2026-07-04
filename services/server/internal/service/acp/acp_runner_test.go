@@ -156,7 +156,7 @@ func TestACPAgentRunnerAbsoluteRunDirFallsBackToWorkspaceDir(t *testing.T) {
 	}
 }
 
-func TestACPAgentRunnerPrepareProcessConfigOnlyForOpenCodeACP(t *testing.T) {
+func TestACPAgentRunnerPrepareProcessConfigForManagedACPBackends(t *testing.T) {
 	provider := &recordingProcessConfigProvider{
 		config: ProcessConfig{
 			ConfigDir:        filepath.Join(t.TempDir(), "opencode-config"),
@@ -183,6 +183,9 @@ func TestACPAgentRunnerPrepareProcessConfigOnlyForOpenCodeACP(t *testing.T) {
 	if len(provider.requests) != 1 {
 		t.Fatalf("provider requests = %d, want 1", len(provider.requests))
 	}
+	if provider.requests[0].AgentID != "opencode" {
+		t.Fatalf("agent id = %q, want opencode", provider.requests[0].AgentID)
+	}
 	if provider.requests[0].WorkingDir != request.WorkingDir || provider.requests[0].ProjectID != request.ProjectID {
 		t.Fatalf("provider request = %#v, want run request fields", provider.requests[0])
 	}
@@ -196,11 +199,25 @@ func TestACPAgentRunnerPrepareProcessConfigOnlyForOpenCodeACP(t *testing.T) {
 		t.Fatalf("profile key env = %q, want injected key", config.Env["MEDIAGO_AGENT_MODEL_MINIMAX_API_KEY"])
 	}
 
-	if _, err := runner.prepareProcessConfig(context.Background(), "codex-acp", nil, request); err != nil {
+	codexConfig, err := runner.prepareProcessConfig(context.Background(), "codex-acp", nil, request)
+	if err != nil {
 		t.Fatalf("prepareProcessConfig codex returned error: %v", err)
 	}
-	if len(provider.requests) != 1 {
-		t.Fatalf("provider requests after codex = %d, want unchanged", len(provider.requests))
+	if len(provider.requests) != 2 {
+		t.Fatalf("provider requests after codex = %d, want 2", len(provider.requests))
+	}
+	if provider.requests[1].AgentID != "codex" {
+		t.Fatalf("agent id = %q, want codex", provider.requests[1].AgentID)
+	}
+	if _, ok := codexConfig.Env["OPENCODE_CONFIG_DIR"]; ok {
+		t.Fatalf("codex env should not include OPENCODE_CONFIG_DIR: %#v", codexConfig.Env)
+	}
+
+	if _, err := runner.prepareProcessConfig(context.Background(), "custom-acp", nil, request); err != nil {
+		t.Fatalf("prepareProcessConfig custom returned error: %v", err)
+	}
+	if len(provider.requests) != 2 {
+		t.Fatalf("provider requests after custom = %d, want unchanged", len(provider.requests))
 	}
 }
 

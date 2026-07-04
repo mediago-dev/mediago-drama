@@ -35,6 +35,8 @@ import {
 	saveAPIKey,
 	saveJianyingDraftSettings,
 } from "@/domains/settings/api/settings";
+import { agentBackendsKey, getAgentBackends } from "@/domains/agent/api/agent";
+import { CodexRelayPanel } from "@/domains/settings/components/CodexRelayPanel";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
 import { BillingPanel } from "@/domains/billing/components/BillingPanel";
 import { Button } from "@/shared/components/ui/button";
@@ -78,6 +80,7 @@ type SettingsTabValue =
 	| "appearance"
 	| "api-keys"
 	| "billing"
+	| "codex-relay"
 	| "jianying-draft"
 	| "shortcuts"
 	| DebugTabValue;
@@ -86,6 +89,7 @@ const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	value === "appearance" ||
 	value === "api-keys" ||
 	value === "billing" ||
+	value === "codex-relay" ||
 	(jianyingDraftSettingsEnabled && value === "jianying-draft") ||
 	value === "shortcuts" ||
 	debugTabs.some((tab) => tab.value === value);
@@ -106,7 +110,12 @@ export const Settings: React.FC = () => {
 	const setThemeMode = useThemeStore((state) => state.setMode);
 	const activeTab = useSettingsNavigationStore((state) => state.activeTab);
 	const normalizedTab = normalizeSettingsTab(activeTab);
-	const visibleTab = isSettingsTabValue(normalizedTab) ? normalizedTab : "appearance";
+	const { data: agentBackends } = useSWR(agentBackendsKey, getAgentBackends);
+	const isCodexActive = (agentBackends?.activeId ?? "codex") === "codex";
+	const visibleTab =
+		isSettingsTabValue(normalizedTab) && (normalizedTab !== "codex-relay" || isCodexActive)
+			? normalizedTab
+			: "appearance";
 
 	if (projectId && normalizedTab === projectSettingsGeneralTab) return <ProjectSettings />;
 
@@ -121,6 +130,7 @@ export const Settings: React.FC = () => {
 			) : null}
 			{visibleTab === "api-keys" ? <APIKeysPanel /> : null}
 			{visibleTab === "billing" ? <BillingPanel /> : null}
+			{visibleTab === "codex-relay" ? <CodexRelayPanel /> : null}
 			{visibleTab === "shortcuts" ? <ShortcutKeysPanel /> : null}
 
 			{debugTabs.map((tab) =>

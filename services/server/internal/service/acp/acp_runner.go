@@ -131,6 +131,7 @@ func NewACPAgentRunnerWithDocumentMCPConfigPathAndArgv(
 
 // ProcessConfigRequest describes one ACP child process launch.
 type ProcessConfigRequest struct {
+	AgentID        string
 	WorkspaceDir   string
 	ProjectID      string
 	ProjectDir     string
@@ -303,10 +304,12 @@ func (runner *acpAgentRunner) activeCommandArgv() (string, []string) {
 }
 
 func (runner *acpAgentRunner) prepareProcessConfig(ctx context.Context, command string, args []string, request agentRunRequest) (ProcessConfig, error) {
-	if runner == nil || runner.processConfigProvider == nil || !isOpenCodeACPCommand(command, args) {
+	agentID := acpAgentIDForCommand(command, args)
+	if runner == nil || runner.processConfigProvider == nil || agentID == "" {
 		return ProcessConfig{}, nil
 	}
 	processConfig, err := runner.processConfigProvider.PrepareACPProcessConfig(ctx, ProcessConfigRequest{
+		AgentID:        agentID,
 		WorkspaceDir:   strings.TrimSpace(request.WorkspaceDir),
 		ProjectID:      strings.TrimSpace(request.ProjectID),
 		ProjectDir:     strings.TrimSpace(request.ProjectDir),
@@ -314,15 +317,17 @@ func (runner *acpAgentRunner) prepareProcessConfig(ctx context.Context, command 
 		PreferredModel: strings.TrimSpace(request.Model.Value),
 	})
 	if err != nil {
-		return ProcessConfig{}, fmt.Errorf("preparing opencode config: %w", err)
+		return ProcessConfig{}, fmt.Errorf("preparing %s config: %w", agentID, err)
 	}
 	if strings.TrimSpace(processConfig.ConfigDir) != "" {
-		if processConfig.Env == nil {
-			processConfig.Env = map[string]string{}
-		}
+		processConfig.Env = cloneProcessConfigEnv(processConfig.Env)
 		processConfig.Env["OPENCODE_CONFIG_DIR"] = strings.TrimSpace(processConfig.ConfigDir)
+		if agentID == "codex" {
+			delete(processConfig.Env, "OPENCODE_CONFIG_DIR")
+		}
 		acpLog().Info(
-			"opencode process config prepared",
+			"acp process config prepared",
+			"agent_id", agentID,
 			"config_dir", strings.TrimSpace(processConfig.ConfigDir),
 			"profile_count", processConfig.ProfileCount,
 			"default_profile_id", strings.TrimSpace(processConfig.DefaultProfileID),
@@ -330,6 +335,14 @@ func (runner *acpAgentRunner) prepareProcessConfig(ctx context.Context, command 
 		)
 	}
 	return processConfig, nil
+}
+
+func cloneProcessConfigEnv(source map[string]string) map[string]string {
+	env := make(map[string]string, len(source)+1)
+	for key, value := range source {
+		env[key] = value
+	}
+	return env
 }
 
 func mergedProcessEnv(processConfig ProcessConfig) []string {
@@ -363,6 +376,23 @@ func isOpenCodeACPCommand(command string, args []string) bool {
 		return false
 	}
 	return len(args) > 0 && strings.TrimSpace(args[0]) == "acp"
+}
+
+func isCodexACPCommand(command string, args []string) bool {
+	_ = args
+	bin := strings.ToLower(filepath.Base(strings.TrimSpace(command)))
+	return bin == "codex-acp" || bin == "codex-acp.exe"
+}
+
+func acpAgentIDForCommand(command string, args []string) string {
+	switch {
+	case isOpenCodeACPCommand(command, args):
+		return "opencode"
+	case isCodexACPCommand(command, args):
+		return "codex"
+	default:
+		return ""
+	}
 }
 
 func applyACPSessionSelections(ctx context.Context, conn acpSessionConfigurator, sessionID acp.SessionId, request agentRunRequest, logArgs []any) error {

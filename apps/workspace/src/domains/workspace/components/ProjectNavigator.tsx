@@ -13,6 +13,7 @@ import {
 	updateProject,
 	type WorkspaceProject,
 } from "@/domains/projects/api/projects";
+import { agentBackendsKey, getAgentBackends } from "@/domains/agent/api/agent";
 import { openProjectRenameDialog } from "@/domains/projects/components/ProjectRenameDialog";
 import {
 	type GenerationSuccessNotification,
@@ -72,6 +73,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	const toast = useToast();
 	const setActiveProjectId = useProjectStore((state) => state.setActiveProjectId);
 	const { data, error, isLoading, mutate } = useSWR(projectsKey, getProjects);
+	const { data: agentBackends } = useSWR(agentBackendsKey, getAgentBackends);
 	const createDocument = useDocumentsStore((state) => state.createDocument);
 	const deleteDocument = useDocumentsStore((state) => state.deleteDocument);
 	const documentsProjectId = useDocumentsStore((state) => state.projectId);
@@ -653,6 +655,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 								level: settingsScreenLevel,
 								node: (
 									<SettingsSidebarPanel
+										activeAgentBackendId={agentBackends?.activeId ?? "codex"}
 										activeTab={activeSettingsTab}
 										isProjectSettings={settingsScreenIsProjectSettings}
 										onBack={returnFromSettings}

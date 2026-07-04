@@ -42,6 +42,11 @@ type JianyingDraftSettingsRequest struct {
 	DraftsRoot string `json:"draftsRoot"`
 }
 
+// CodexRelayAPIKeyRequest updates a Codex relay profile API key.
+type CodexRelayAPIKeyRequest struct {
+	APIKey string `json:"apiKey"`
+}
+
 // HandleAPIKeys godoc
 // @Summary 获取 API Key 配置
 // @Description 返回模型供应商 API Key 的配置和脱敏状态。
@@ -117,6 +122,170 @@ func (handler Settings) HandlePutJianyingDraftSettings(context *gin.Context) {
 	}
 
 	httpresponse.OK(context, settings)
+}
+
+// HandleCodexRelaySettings godoc
+// @Summary 获取 Codex 中转配置
+// @Description 返回 Codex ACP 使用的中转配置和脱敏密钥状态。
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/codex-relay [get]
+func (handler Settings) HandleCodexRelaySettings(context *gin.Context) {
+	settings, err := handler.service.GetCodexRelaySettings(context.Request.Context())
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+
+	httpresponse.OK(context, settings)
+}
+
+// HandlePutCodexRelaySettings godoc
+// @Summary 保存 Codex 中转配置
+// @Description 保存 Codex ACP 使用的非密钥中转配置。
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param payload body SwaggerObject true "Codex relay settings"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/codex-relay [put]
+func (handler Settings) HandlePutCodexRelaySettings(context *gin.Context) {
+	payload, err := decodeJSON[service.CodexRelaySettingsMutation](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+
+	settings, err := handler.service.SaveCodexRelaySettings(context.Request.Context(), payload)
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+
+	httpresponse.OK(context, settings)
+}
+
+// HandlePutCodexRelayProfileAPIKey godoc
+// @Summary 保存 Codex 中转 API Key
+// @Description 为指定 Codex 中转 Profile 保存 API Key。
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param profileId path string true "Profile ID"
+// @Param payload body CodexRelayAPIKeyRequest true "API key payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/codex-relay/profiles/{profileId}/api-key [put]
+func (handler Settings) HandlePutCodexRelayProfileAPIKey(context *gin.Context) {
+	payload, err := decodeJSON[CodexRelayAPIKeyRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+
+	settings, err := handler.service.SetCodexRelayProfileAPIKey(
+		context.Request.Context(),
+		context.Param("profileId"),
+		payload.APIKey,
+	)
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+
+	httpresponse.OK(context, settings)
+}
+
+// HandleDeleteCodexRelayProfileAPIKey godoc
+// @Summary 删除 Codex 中转 API Key
+// @Description 删除指定 Codex 中转 Profile 保存的 API Key。
+// @Tags Settings
+// @Produce json
+// @Param profileId path string true "Profile ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/codex-relay/profiles/{profileId}/api-key [delete]
+func (handler Settings) HandleDeleteCodexRelayProfileAPIKey(context *gin.Context) {
+	settings, err := handler.service.ClearCodexRelayProfileAPIKey(
+		context.Request.Context(),
+		context.Param("profileId"),
+	)
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+
+	httpresponse.OK(context, settings)
+}
+
+// HandleCodexRelayProxy godoc
+// @Summary Codex 中转代理
+// @Description 将 Codex ACP 发出的 Responses 兼容请求代理到当前启用的中转平台。
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param path path string true "Relay API path"
+// @Param payload body SwaggerObject false "Relay request payload"
+// @Success 200 {object} SwaggerObject
+// @Failure 401 {object} SwaggerObject
+// @Failure 400 {object} SwaggerObject
+// @Failure 502 {object} SwaggerObject
+// @Router /api/v1/codex-relay/{path} [get]
+// @Router /api/v1/codex-relay/{path} [post]
+// @Router /api/v1/codex-relay/{path} [delete]
+func (handler Settings) HandleCodexRelayProxy(context *gin.Context) {
+	body, err := io.ReadAll(context.Request.Body)
+	if err != nil {
+		writeCodexRelayError(context, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+		return
+	}
+	relayPath := context.Param("path")
+	if query := context.Request.URL.RawQuery; query != "" {
+		relayPath += "?" + query
+	}
+	upstream, err := handler.service.OpenCodexRelayRequest(
+		context.Request.Context(),
+		context.Request.Method,
+		relayPath,
+		body,
+		context.Request.Header,
+	)
+	if err != nil {
+		status := http.StatusBadGateway
+		if errors.Is(err, service.ErrCodexRelayInvalid) || errors.Is(err, service.ErrCodexRelayNotConfigured) {
+			status = http.StatusBadRequest
+		} else if errors.Is(err, service.ErrCodexRelayUnauthorized) {
+			status = http.StatusUnauthorized
+		}
+		writeCodexRelayError(context, status, err)
+		return
+	}
+	defer upstream.Body.Close()
+
+	for _, key := range []string{"Content-Type", "Cache-Control"} {
+		if value := upstream.Header.Get(key); value != "" {
+			context.Header(key, value)
+		}
+	}
+	context.Status(upstream.StatusCode)
+	if _, err := io.Copy(context.Writer, upstream.Body); err != nil {
+		context.Error(err)
+	}
+}
+
+func writeCodexRelayError(context *gin.Context, status int, err error) {
+	context.JSON(status, gin.H{
+		"error": gin.H{
+			"message": httpresponse.PublicErrorMessage(status, err),
+			"type":    "codex_relay_error",
+		},
+	})
 }
 
 // HandlePutAPIKey godoc
@@ -422,6 +591,10 @@ func writeSettingsError(context *gin.Context, err error) {
 		httpresponse.ErrorFromStatus(context, http.StatusServiceUnavailable, err)
 	case errors.Is(err, service.ErrAppSettingStoreMissing):
 		httpresponse.ErrorFromStatus(context, http.StatusServiceUnavailable, err)
+	case errors.Is(err, service.ErrCodexRelayInvalid):
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+	case errors.Is(err, service.ErrCodexRelayNotConfigured):
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 	case errors.Is(err, service.ErrJianyingDraftInvalid):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 	default:

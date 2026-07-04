@@ -103,6 +103,16 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 func registerSettingsRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.GET("/settings/jianying-draft", handlers.Settings.HandleJianyingDraftSettings)
 	apiRoutes.PUT("/settings/jianying-draft", handlers.Settings.HandlePutJianyingDraftSettings)
+	apiRoutes.GET("/settings/codex-relay", handlers.Settings.HandleCodexRelaySettings)
+	apiRoutes.PUT("/settings/codex-relay", handlers.Settings.HandlePutCodexRelaySettings)
+	apiRoutes.PUT(
+		"/settings/codex-relay/profiles/:profileId/api-key",
+		handlers.Settings.HandlePutCodexRelayProfileAPIKey,
+	)
+	apiRoutes.DELETE(
+		"/settings/codex-relay/profiles/:profileId/api-key",
+		handlers.Settings.HandleDeleteCodexRelayProfileAPIKey,
+	)
 	apiRoutes.GET("/settings/model-platforms", handlers.Settings.HandleModelPlatforms)
 	apiRoutes.GET("/settings/api-keys", handlers.Settings.HandleAPIKeys)
 	apiRoutes.PUT("/settings/api-keys/:provider", handlers.Settings.HandlePutAPIKey)
@@ -140,6 +150,9 @@ func registerSettingsRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 		"/settings/agent-model-profiles/:profileId/api-key",
 		handlers.Settings.HandleDeleteAgentModelProfileAPIKey,
 	)
+	apiRoutes.GET("/codex-relay/*path", handlers.Settings.HandleCodexRelayProxy)
+	apiRoutes.POST("/codex-relay/*path", handlers.Settings.HandleCodexRelayProxy)
+	apiRoutes.DELETE("/codex-relay/*path", handlers.Settings.HandleCodexRelayProxy)
 }
 
 func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
