@@ -173,7 +173,10 @@ jobs:
 
       - name: Build ${{ matrix.label }}
         env:
+          MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: ${{ vars.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL }}
           MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.github_release_type }}
+          MODEL_PLATFORM: ${{ vars.MODEL_PLATFORM }}
+          VITE_TALKINGDATA_APP_ID: ${{ vars.VITE_TALKINGDATA_APP_ID }}
         run: task build:electron:target PLATFORM=${{ matrix.platform }} ELECTRON_SCRIPT=${{ matrix.electron_script }}
 
       - name: Upload ${{ matrix.label }} artifact
