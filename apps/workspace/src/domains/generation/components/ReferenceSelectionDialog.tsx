@@ -17,6 +17,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import { cn } from "@/shared/lib/utils";
 
 export interface ReferenceSelectionDialogProps {
+	acceptedFileTypes?: string;
 	disabled: boolean;
 	entries: GenerationEntry[];
 	inputId: string;
@@ -35,6 +36,7 @@ export interface ReferenceSelectionDialogProps {
 	selectedShortcutAssetIds?: string[];
 	shortcutGroups?: ReferenceSelectionShortcutGroup[];
 	title?: string;
+	visibleKindFilters?: ReferenceKindFilter[];
 	onToggleShortcutReference?: (asset: MediaAsset) => void;
 }
 
@@ -52,9 +54,11 @@ export interface ReferenceSelectionShortcutGroup {
 }
 
 interface ReferenceSelectionDialogController {
+	acceptedFileTypes: string;
 	disabled: boolean;
 	inputId: string;
 	isUploading: boolean;
+	kindFilters: ReferenceKindFilter[];
 	onOpenChange: (open: boolean) => void;
 	onRemoveReference: (asset: MediaAsset) => void;
 	onToggleReference: (asset: MediaAsset) => void;
@@ -81,6 +85,7 @@ export const ReferenceSelectionDialog: React.FC<ReferenceSelectionDialogProps> =
 };
 
 const useReferenceSelectionDialogController = ({
+	acceptedFileTypes = "image/*,video/*,audio/*",
 	disabled,
 	entries,
 	inputId,
@@ -100,8 +105,13 @@ const useReferenceSelectionDialogController = ({
 	selectedShortcutAssetIds = [],
 	shortcutGroups = [],
 	title = "选择参考图",
+	visibleKindFilters,
 }: ReferenceSelectionDialogProps): ReferenceSelectionDialogController => {
-	const [kindFilter, setKindFilter] = useState<ReferenceKindFilter>("all");
+	const kindFilters = useMemo(
+		() => normalizeReferenceKindFilters(visibleKindFilters),
+		[visibleKindFilters],
+	);
+	const [kindFilter, setKindFilter] = useState<ReferenceKindFilter>(kindFilters[0] ?? "all");
 	const options = useMemo(
 		() => buildGeneratedReferenceOptions(entries, mediaAssets),
 		[entries, mediaAssets],
@@ -137,15 +147,22 @@ const useReferenceSelectionDialogController = ({
 	);
 
 	useEffect(() => {
+		if (kindFilters.includes(kindFilter)) return;
+		setKindFilter(kindFilters[0] ?? "all");
+	}, [kindFilter, kindFilters]);
+
+	useEffect(() => {
 		if (!open) return;
 
 		onRefreshAssets?.();
 	}, [onRefreshAssets, open]);
 
 	return {
+		acceptedFileTypes,
 		disabled,
 		inputId,
 		isUploading,
+		kindFilters,
 		onKindFilterChange: setKindFilter,
 		onOpenChange,
 		onRemoveReference,
@@ -185,7 +202,7 @@ const ReferenceSelectionDialogView: React.FC<{
 					<input
 						id={controller.inputId}
 						type="file"
-						accept="image/*,video/*,audio/*"
+						accept={controller.acceptedFileTypes}
 						className="sr-only"
 						disabled={controller.disabled || controller.isUploading}
 						onChange={controller.onUpload}
@@ -231,24 +248,37 @@ const ReferenceSelectionDialogView: React.FC<{
 						onToggleReference={controller.onToggleShortcutReference ?? controller.onToggleReference}
 					/>
 				))}
-				<Tabs
-					value={controller.kindFilter}
-					onValueChange={(value) => controller.onKindFilterChange(value as ReferenceKindFilter)}
-				>
-					<TabsList className="grid h-8 w-full grid-cols-4 sm:w-96">
-						{referenceKindTabs.map((tab) => (
-							<TabsTrigger key={tab.value} value={tab.value} className="text-xs">
-								<span>{tab.label}</span>
-								<span className="text-2xs text-muted-foreground">
-									{controller.optionCounts[tab.value]}
-								</span>
-							</TabsTrigger>
-						))}
-					</TabsList>
-				</Tabs>
+				{controller.kindFilters.length > 1 ? (
+					<Tabs
+						value={controller.kindFilter}
+						onValueChange={(value) => controller.onKindFilterChange(value as ReferenceKindFilter)}
+					>
+						<TabsList
+							className={cn(
+								"grid h-8 w-full sm:w-96",
+								controller.kindFilters.length === 2
+									? "grid-cols-2"
+									: controller.kindFilters.length === 3
+										? "grid-cols-3"
+										: "grid-cols-4",
+							)}
+						>
+							{referenceKindTabs
+								.filter((tab) => controller.kindFilters.includes(tab.value))
+								.map((tab) => (
+									<TabsTrigger key={tab.value} value={tab.value} className="text-xs">
+										<span>{tab.label}</span>
+										<span className="text-2xs text-muted-foreground">
+											{controller.optionCounts[tab.value]}
+										</span>
+									</TabsTrigger>
+								))}
+						</TabsList>
+					</Tabs>
+				) : null}
 				{controller.options.length === 0 ? (
 					<div className="flex min-h-56 items-center justify-center rounded-sm border border-dashed border-border bg-muted px-4 text-center text-xs text-muted-foreground">
-						当前项目暂无可选择的图片、视频或音频素材。
+						{emptyReferenceOptionsText(controller.kindFilters)}
 					</div>
 				) : controller.visibleOptions.length === 0 ? (
 					<div className="flex min-h-56 items-center justify-center rounded-sm border border-dashed border-border bg-muted px-4 text-center text-xs text-muted-foreground">
@@ -285,7 +315,7 @@ const ReferenceSelectionDialogView: React.FC<{
 	);
 };
 
-type ReferenceKindFilter = "all" | "video" | "image" | "audio";
+export type ReferenceKindFilter = "all" | "video" | "image" | "audio";
 
 const referenceKindTabs: Array<{ label: string; value: ReferenceKindFilter }> = [
 	{ label: "全部", value: "all" },
@@ -294,11 +324,23 @@ const referenceKindTabs: Array<{ label: string; value: ReferenceKindFilter }> = 
 	{ label: "音频", value: "audio" },
 ];
 
+const defaultReferenceKindFilters = referenceKindTabs.map((tab) => tab.value);
+
+const normalizeReferenceKindFilters = (filters: ReferenceKindFilter[] | undefined) =>
+	filters?.length ? filters : defaultReferenceKindFilters;
+
 const referenceKindFilterLabel = (value: ReferenceKindFilter) => {
 	if (value === "video") return "视频";
 	if (value === "image") return "图片";
 	if (value === "audio") return "音频";
 	return "参考";
+};
+
+const emptyReferenceOptionsText = (filters: ReferenceKindFilter[]) => {
+	if (filters.length === 1 && filters[0] === "image") return "当前项目暂无可选择的图片素材。";
+	if (filters.length === 1 && filters[0] === "video") return "当前项目暂无可选择的视频素材。";
+	if (filters.length === 1 && filters[0] === "audio") return "当前项目暂无可选择的音频素材。";
+	return "当前项目暂无可选择的图片、视频或音频素材。";
 };
 
 const referenceKindFromMediaAssetKind = (

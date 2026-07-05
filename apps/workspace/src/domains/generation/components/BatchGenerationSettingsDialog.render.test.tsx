@@ -1,7 +1,8 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GenerationRoute } from "@/domains/generation/api/generation";
+import type { MediaAsset } from "@/domains/workspace/api/media";
 import { BatchGenerationSettingsDialog } from "./BatchGenerationSettingsDialog";
 import {
 	batchGenerationSettingsStorageKey,
@@ -48,7 +49,13 @@ const imageRoute = {
 	params: [],
 	provider: "dmx",
 	status: "available",
+	supportsReferenceUrls: true,
 	versionId: imageVersion.id,
+} as unknown as GenerationRoute;
+const unsupportedImageRoute = {
+	...imageRoute,
+	id: "image-route-no-reference",
+	supportsReferenceUrls: false,
 } as unknown as GenerationRoute;
 const textRoute = {
 	configured: true,
@@ -70,6 +77,16 @@ const generationCatalog = {
 	routes: [imageRoute, textRoute],
 	versions: [imageVersion, { id: "gpt-text-mini", label: "GPT Text Mini" }],
 };
+const selectedReferenceAsset: MediaAsset = {
+	createdAt: "2026-06-12T00:00:00.000Z",
+	filename: "reference.png",
+	id: "selected-ref",
+	kind: "image",
+	mimeType: "image/png",
+	sizeBytes: 1024,
+	updatedAt: "2026-06-12T00:00:00.000Z",
+	url: "/api/v1/media-assets/selected-ref/content",
+};
 
 describe("BatchGenerationSettingsDialog rendered preferences", () => {
 	beforeEach(() => {
@@ -79,6 +96,9 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 			catalog: generationCatalog,
 			hasConfiguredRoutesForKind: true,
 			hasLiveCatalog: true,
+			isUploadingAsset: false,
+			mediaAssets: [selectedReferenceAsset],
+			mutateMediaAssets: vi.fn(),
 			promptInsertItems: [
 				{
 					categoryLabel: "风格",
@@ -90,11 +110,16 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 			],
 			selectedFamily: imageFamily,
 			selectedParams: {},
+			selectedReferenceAssetIds: [],
+			selectedReferenceAssets: [],
 			selectedRoute: imageRoute,
 			selectedVersion: imageVersion,
+			removeReferenceAsset: vi.fn(),
+			toggleReferenceAsset: vi.fn(),
 			updateFamily: workspaceMocks.updateFamily,
 			updateModelRoute: workspaceMocks.updateModelRoute,
 			updateParam: workspaceMocks.updateParam,
+			uploadReferenceAsset: vi.fn(),
 			visibleFamilies: [imageFamily],
 			visibleFamilyRoutes: [imageRoute],
 			visibleVersions: [imageVersion],
@@ -184,6 +209,145 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 				},
 				initialModelSelectionKey: expect.stringContaining("jimeng-local-route"),
 				persistModelSelection: false,
+			}),
+		);
+	});
+
+	it("confirms image reference asset ids without persisting them as dialog preferences", () => {
+		const onConfirm = vi.fn();
+		workspaceMocks.useGenerationWorkspace.mockReturnValue({
+			catalog: generationCatalog,
+			hasConfiguredRoutesForKind: true,
+			hasLiveCatalog: true,
+			isUploadingAsset: false,
+			mediaAssets: [selectedReferenceAsset],
+			mutateMediaAssets: vi.fn(),
+			promptInsertItems: [],
+			selectedFamily: imageFamily,
+			selectedParams: {},
+			selectedReferenceAssetIds: ["selected-ref"],
+			selectedReferenceAssets: [selectedReferenceAsset],
+			selectedRoute: imageRoute,
+			selectedVersion: imageVersion,
+			removeReferenceAsset: vi.fn(),
+			toggleReferenceAsset: vi.fn(),
+			updateFamily: workspaceMocks.updateFamily,
+			updateModelRoute: workspaceMocks.updateModelRoute,
+			updateParam: workspaceMocks.updateParam,
+			uploadReferenceAsset: vi.fn(),
+			visibleFamilies: [imageFamily],
+			visibleFamilyRoutes: [imageRoute],
+			visibleVersions: [imageVersion],
+		});
+
+		render(
+			<BatchGenerationSettingsDialog
+				kind="image"
+				open
+				selectedCount={1}
+				onConfirm={onConfirm}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByRole("button", { name: /已选 1 张/ })).toBeEnabled();
+
+		fireEvent.click(screen.getByRole("button", { name: "生成" }));
+
+		expect(onConfirm).toHaveBeenCalledWith(
+			expect.objectContaining({
+				referenceAssetIds: ["selected-ref"],
+			}),
+		);
+		expect(localStorage.getItem(batchGenerationSettingsStorageKey) ?? "").not.toContain(
+			"selected-ref",
+		);
+	});
+
+	it("hides the reference image control when the selected model route does not support references", () => {
+		workspaceMocks.useGenerationWorkspace.mockReturnValue({
+			catalog: generationCatalog,
+			hasConfiguredRoutesForKind: true,
+			hasLiveCatalog: true,
+			isUploadingAsset: false,
+			mediaAssets: [selectedReferenceAsset],
+			mutateMediaAssets: vi.fn(),
+			promptInsertItems: [],
+			selectedFamily: imageFamily,
+			selectedParams: {},
+			selectedReferenceAssetIds: [],
+			selectedReferenceAssets: [],
+			selectedRoute: unsupportedImageRoute,
+			selectedVersion: imageVersion,
+			removeReferenceAsset: vi.fn(),
+			toggleReferenceAsset: vi.fn(),
+			updateFamily: workspaceMocks.updateFamily,
+			updateModelRoute: workspaceMocks.updateModelRoute,
+			updateParam: workspaceMocks.updateParam,
+			uploadReferenceAsset: vi.fn(),
+			visibleFamilies: [imageFamily],
+			visibleFamilyRoutes: [unsupportedImageRoute],
+			visibleVersions: [imageVersion],
+		});
+
+		render(
+			<BatchGenerationSettingsDialog
+				kind="image"
+				open
+				selectedCount={1}
+				onConfirm={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		expect(screen.queryByText("参考图")).toBeNull();
+	});
+
+	it("hides stale selected references and confirms without reference ids when the route cannot use them", () => {
+		const onConfirm = vi.fn();
+		workspaceMocks.useGenerationWorkspace.mockReturnValue({
+			catalog: generationCatalog,
+			hasConfiguredRoutesForKind: true,
+			hasLiveCatalog: true,
+			isUploadingAsset: false,
+			mediaAssets: [selectedReferenceAsset],
+			mutateMediaAssets: vi.fn(),
+			promptInsertItems: [],
+			selectedFamily: imageFamily,
+			selectedParams: {},
+			selectedReferenceAssetIds: ["selected-ref"],
+			selectedReferenceAssets: [selectedReferenceAsset],
+			selectedRoute: unsupportedImageRoute,
+			selectedVersion: imageVersion,
+			removeReferenceAsset: vi.fn(),
+			toggleReferenceAsset: vi.fn(),
+			updateFamily: workspaceMocks.updateFamily,
+			updateModelRoute: workspaceMocks.updateModelRoute,
+			updateParam: workspaceMocks.updateParam,
+			uploadReferenceAsset: vi.fn(),
+			visibleFamilies: [imageFamily],
+			visibleFamilyRoutes: [unsupportedImageRoute],
+			visibleVersions: [imageVersion],
+		});
+
+		render(
+			<BatchGenerationSettingsDialog
+				kind="image"
+				open
+				selectedCount={1}
+				onConfirm={onConfirm}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		expect(screen.queryByText("参考图")).toBeNull();
+		expect(screen.getByRole("button", { name: "生成" })).toBeEnabled();
+
+		fireEvent.click(screen.getByRole("button", { name: "生成" }));
+
+		expect(onConfirm).toHaveBeenCalledWith(
+			expect.not.objectContaining({
+				referenceAssetIds: expect.any(Array),
 			}),
 		);
 	});

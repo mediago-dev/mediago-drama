@@ -17,6 +17,7 @@ export interface DocumentSectionBatchGenerationSettings {
 	params: Record<string, unknown>;
 	promptOptimization?: GenerationPromptOptimizationRequest;
 	promptSupplement?: DocumentSectionPromptSupplement;
+	referenceAssetIds?: string[];
 	route: GenerationRoute;
 	version: GenerationVersion;
 }
@@ -163,6 +164,9 @@ const DocumentSectionBatchGenerationWorker: React.FC<{
 					selectedParams: job.generationSettings.params,
 					...(supplementalPrompt !== undefined ? { prompt: supplementalPrompt } : {}),
 					promptOptimization: job.generationSettings.promptOptimization,
+					...(job.generationSettings.referenceAssetIds?.length
+						? { referenceAssetIds: job.generationSettings.referenceAssetIds }
+						: {}),
 					selectedRoute: job.generationSettings.route,
 					selectedVersion: job.generationSettings.version,
 				}
@@ -180,6 +184,7 @@ const DocumentSectionBatchGenerationWorker: React.FC<{
 		job.generationSettings?.params,
 		job.generationSettings?.promptOptimization,
 		job.generationSettings?.promptSupplement,
+		job.generationSettings?.referenceAssetIds,
 		job.generationSettings?.route,
 		job.generationSettings?.version,
 		job.id,

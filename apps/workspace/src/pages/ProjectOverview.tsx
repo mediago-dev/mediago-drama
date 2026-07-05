@@ -1814,6 +1814,7 @@ const batchGenerationSettingsForJob = (
 	params: settings.params,
 	promptOptimization: settings.promptOptimization,
 	promptSupplement: settings.promptSupplement,
+	...(settings.referenceAssetIds?.length ? { referenceAssetIds: settings.referenceAssetIds } : {}),
 	route: settings.route,
 	version: settings.version,
 });
