@@ -65,6 +65,6 @@ export const resolveAppRouteDescriptor = (
 
 const routeTitle = (screen: SidebarScreenId, isProjectSettings: boolean) => {
 	if (screen === "settings") return isProjectSettings ? "项目设置" : "设置";
-	if (screen === "studio-types" || screen === "studio-conversations") return "工具箱";
+	if (screen === "studio-types" || screen === "studio-conversations") return "生成历史";
 	return "智能体工作台";
 };

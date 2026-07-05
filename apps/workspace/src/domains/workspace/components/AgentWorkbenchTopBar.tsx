@@ -36,7 +36,7 @@ export const AgentWorkbenchTopBar: React.FC<AgentWorkbenchTopBarProps> = ({ mode
 	const storedWorkMode = useWorkModeStore((state) => state.mode);
 	const startWindowDrag = useDesktopWindowDrag();
 	const workMode = mode ?? storedWorkMode;
-	const title = workMode === "studio" ? "工具箱" : "智能体工作台";
+	const title = workMode === "studio" ? "生成历史" : "智能体工作台";
 
 	return (
 		<header
