@@ -651,7 +651,7 @@ describe("useGenerationSubmit", () => {
 			await result.current.submitGeneration();
 		});
 
-		expect(result.current.prompt).toBe("");
+		expect(result.current.prompt).toBe("draw failure");
 		expect(result.current.error).toBe("network down");
 		expect(result.current.messages).toEqual([
 			expect.objectContaining({
