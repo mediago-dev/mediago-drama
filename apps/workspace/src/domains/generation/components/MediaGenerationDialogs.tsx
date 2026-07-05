@@ -712,7 +712,7 @@ export const SecondaryParamSettings: React.FC<{
 			<SlidersHorizontal className="size-3.5 shrink-0 text-muted-foreground" />
 			<h3 className="text-xs font-semibold text-muted-foreground">其他设置</h3>
 		</header>
-		<div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+		<div className="flex flex-wrap items-center gap-x-5 gap-y-1">
 			{params.map((param) => (
 				<SecondaryParamRow
 					key={param.name}
@@ -734,13 +734,13 @@ const SecondaryParamRow: React.FC<{
 	const help = param.help ? paramHelp(param.help) : undefined;
 
 	return (
-		<div className="inline-grid min-w-[11rem] grid-cols-[max-content_auto] items-center gap-2 rounded-[var(--generation-control-radius)] px-1.5 py-1 transition-colors hover:bg-muted/50">
-			<div className="min-w-0 max-w-28">
-				<p className="truncate text-xs font-semibold text-foreground" title={help}>
-					{label}
-				</p>
+		<div className="inline-flex min-w-0 items-center gap-2 py-1.5">
+			<span className="shrink-0 pl-1 text-2xs font-semibold text-muted-foreground" title={help}>
+				{label}
+			</span>
+			<div className="min-w-0">
+				<SecondaryParamInput param={param} value={value} onChange={onChange} />
 			</div>
-			<SecondaryParamInput param={param} value={value} onChange={onChange} />
 		</div>
 	);
 };
@@ -759,7 +759,7 @@ const SecondaryParamInput: React.FC<{
 				<span className="sr-only">{paramLabel(param.label)}</span>
 				<select
 					value={selectedValue}
-					className="h-full w-full appearance-none rounded-[var(--generation-control-radius)] border-0 bg-transparent py-0 pl-2 pr-7 text-xs font-semibold text-foreground outline-none"
+					className="h-full w-full appearance-none rounded-[var(--generation-control-radius)] border-0 bg-transparent py-0 pl-[var(--generation-control-padding-x)] pr-7 text-2xs font-semibold text-foreground outline-none"
 					onChange={(event) => onChange(event.target.value)}
 				>
 					{options.map((option) => (
@@ -806,7 +806,7 @@ const SecondaryParamInput: React.FC<{
 				value={String(value ?? param.default ?? "")}
 				min={param.min}
 				max={param.max}
-				className="h-[var(--generation-control-height)] w-[var(--generation-other-number-width)] shrink-0 rounded-[var(--generation-control-radius)] border-0 bg-muted px-2 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-ide-list-hover focus:ring-2 focus:ring-ring"
+				className="h-[var(--generation-control-height)] w-[var(--generation-other-number-width)] shrink-0 rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs font-semibold text-foreground outline-none transition-colors hover:bg-ide-list-hover focus:ring-2 focus:ring-ring"
 				onChange={(event) => onChange(event.target.value === "" ? "" : Number(event.target.value))}
 			/>
 		);
@@ -815,7 +815,7 @@ const SecondaryParamInput: React.FC<{
 	return (
 		<input
 			value={String(value ?? param.default ?? "")}
-			className="h-[var(--generation-control-height)] w-[var(--generation-other-text-width)] shrink-0 rounded-[var(--generation-control-radius)] border-0 bg-muted px-2 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-ide-list-hover focus:ring-2 focus:ring-ring"
+			className="h-[var(--generation-control-height)] w-[var(--generation-other-text-width)] shrink-0 rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs font-semibold text-foreground outline-none transition-colors hover:bg-ide-list-hover focus:ring-2 focus:ring-ring"
 			onChange={(event) => onChange(event.target.value)}
 		/>
 	);
