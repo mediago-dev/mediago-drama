@@ -182,6 +182,7 @@ describe("ProjectOverview", () => {
 							(onConfirm as (settings: Record<string, unknown>) => void)({
 								family: { id: `${kind}-family`, kind, label: `${kind} family` },
 								params: { n: 2, ratio: "16:9" },
+								...(kind === "image" ? { referenceAssetIds: ["batch-ref"] } : {}),
 								route: {
 									configured: true,
 									familyId: `${kind}-family`,
@@ -904,6 +905,7 @@ describe("ProjectOverview", () => {
 				}),
 				generationSettings: expect.objectContaining({
 					params: { n: 2, ratio: "16:9" },
+					referenceAssetIds: ["batch-ref"],
 					route: expect.objectContaining({ id: "image-route" }),
 				}),
 			}),
@@ -918,6 +920,7 @@ describe("ProjectOverview", () => {
 				}),
 				generationSettings: expect.objectContaining({
 					params: { n: 2, ratio: "16:9" },
+					referenceAssetIds: ["batch-ref"],
 					route: expect.objectContaining({ id: "image-route" }),
 				}),
 			}),

@@ -1,5 +1,6 @@
 import {
 	Check,
+	Images,
 	Loader2,
 	MessageSquarePlus,
 	SlidersHorizontal,
@@ -15,6 +16,7 @@ import type {
 	GenerationVersion,
 } from "@/domains/generation/api/generation";
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
+import type { MediaAsset } from "@/domains/workspace/api/media";
 import { GenerationBrandMark, generationFamilyBrand } from "./GenerationBrandMark";
 import { GenerationModelRoutePicker } from "./GenerationModelRoutePicker";
 import { displayGenerationLabelWithoutAlias } from "./generationDisplayLabels";
@@ -25,6 +27,8 @@ import {
 	PrimaryParamControl,
 	SecondaryParamSettings,
 } from "./MediaGenerationDialogs";
+import { ReferencePreviewStrip } from "./ReferencePreviewStrip";
+import { ReferenceSelectionDialog, type ReferenceKindFilter } from "./ReferenceSelectionDialog";
 import { resolveParamGroups } from "./mediaGenerationHelpers";
 import type { PromptInsertItem } from "./PromptSlashCommand";
 import { useGenerationCountControl } from "./useGenerationCountControl";
@@ -53,6 +57,7 @@ export interface BatchGenerationSettings {
 	params: Record<string, unknown>;
 	promptOptimization?: GenerationPromptOptimizationRequest;
 	promptSupplement?: BatchGenerationPromptSupplement;
+	referenceAssetIds?: string[];
 	route: GenerationRoute;
 	version: GenerationVersion;
 }
@@ -144,6 +149,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 	const [usePromptSupplement, setUsePromptSupplement] = useState(() =>
 		batchGenerationPromptSupplementEnabled(settingsToRestore),
 	);
+	const [referenceDialogOpen, setReferenceDialogOpen] = useState(false);
 	// Seed the workspace from the snapshot captured when the dialog opened, not the
 	// live store. Reading the live store here would feed back into itself: the effect
 	// below persists edits via setStoredSettings, which would change this value, re-seed
@@ -401,6 +407,20 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		ws.selectedRoute.kind === kind &&
 		ws.selectedRoute.status === "available" &&
 		ws.selectedRoute.configured;
+	const supportsBatchReferenceImages =
+		kind === "image" && hasAvailableRoute && ws.selectedRoute.supportsReferenceUrls;
+	const imageReferenceAssets = useMemo(
+		() => ws.mediaAssets.filter((asset) => asset.kind === "image"),
+		[ws.mediaAssets],
+	);
+	const imageReferenceKinds = useMemo(() => new Set<MediaAsset["kind"]>(["image"]), []);
+	const imageReferenceKindFilters = useMemo<ReferenceKindFilter[]>(() => ["image"], []);
+	const selectedBatchReferenceAssetIds = supportsBatchReferenceImages
+		? ws.selectedReferenceAssetIds
+		: [];
+	const selectedBatchReferenceAssets = supportsBatchReferenceImages
+		? ws.selectedReferenceAssets
+		: [];
 	const confirmDisabled = selectedCount === 0 || !hasAvailableRoute;
 	const primaryConfirmDisabled =
 		confirmDisabled ||
@@ -470,6 +490,10 @@ export const BatchGenerationSettingsDialog: React.FC<{
 			generationCountParamName,
 			generationCountControl?.value ?? 1,
 		);
+		const referenceAssetIds =
+			kind === "image" && ws.selectedRoute.supportsReferenceUrls
+				? ws.selectedReferenceAssetIds
+				: [];
 		setStoredSettings(kind, {
 			...selectedSettingsDraft,
 			params,
@@ -481,6 +505,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 			params,
 			promptOptimization,
 			promptSupplement: selectedPromptSupplement,
+			...(referenceAssetIds.length > 0 ? { referenceAssetIds } : {}),
 			route: ws.selectedRoute,
 			version: ws.selectedVersion,
 		});
@@ -595,6 +620,34 @@ export const BatchGenerationSettingsDialog: React.FC<{
 								) : null}
 								{primaryParamControls}
 							</div>
+							{supportsBatchReferenceImages ? (
+								<div className="grid gap-2 pt-1">
+									<LabeledInlineControl label="参考图">
+										<button
+											type="button"
+											title="选择参考图"
+											className="flex h-[var(--generation-control-height)] items-center gap-1.5 rounded-[var(--generation-control-radius)] border-0 bg-muted px-[var(--generation-control-padding-x)] text-2xs font-semibold text-foreground transition-colors hover:bg-ide-list-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+											onClick={() => setReferenceDialogOpen(true)}
+										>
+											<Images className="size-4 shrink-0 text-muted-foreground" />
+											<span>
+												{selectedBatchReferenceAssetIds.length > 0
+													? `已选 ${selectedBatchReferenceAssetIds.length} 张`
+													: "选择"}
+											</span>
+										</button>
+									</LabeledInlineControl>
+									{selectedBatchReferenceAssets.length > 0 ? (
+										<ReferencePreviewStrip
+											tone="card"
+											enableImagePreview
+											references={selectedBatchReferenceAssets}
+											simple
+											onRemove={ws.toggleReferenceAsset}
+										/>
+									) : null}
+								</div>
+							) : null}
 							{secondaryRouteParams.length > 0 ? (
 								<div className="rounded-sm border border-border bg-card p-2">
 									<SecondaryParamSettings
@@ -753,6 +806,28 @@ export const BatchGenerationSettingsDialog: React.FC<{
 					</div>
 				</footer>
 			</div>
+			<ReferenceSelectionDialog
+				acceptedFileTypes="image/*"
+				disabled={!supportsBatchReferenceImages}
+				entries={[]}
+				inputId="batch-generation-reference-upload"
+				isUploading={ws.isUploadingAsset}
+				mediaAssets={imageReferenceAssets}
+				open={referenceDialogOpen}
+				references={selectedBatchReferenceAssets}
+				requiresReference={false}
+				selectableKinds={imageReferenceKinds}
+				selectedAssetIds={ws.selectedReferenceAssetIds}
+				title="选择参考图"
+				visibleKindFilters={imageReferenceKindFilters}
+				onOpenChange={setReferenceDialogOpen}
+				onRefreshAssets={() => {
+					void ws.mutateMediaAssets();
+				}}
+				onRemoveReference={ws.toggleReferenceAsset}
+				onToggleReference={ws.toggleReferenceAsset}
+				onUpload={ws.uploadReferenceAsset}
+			/>
 		</GenerationModalShell>
 	);
 };

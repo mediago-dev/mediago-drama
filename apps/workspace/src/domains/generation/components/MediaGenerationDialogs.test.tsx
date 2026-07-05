@@ -129,6 +129,45 @@ describe("ReferenceSelectionDialog", () => {
 		expect(screen.getByText("audio.mp3")).toBeTruthy();
 	});
 
+	it("allows callers to limit the picker to image references and image uploads", () => {
+		render(
+			<ReferenceSelectionDialog
+				acceptedFileTypes="image/*"
+				disabled={false}
+				entries={[]}
+				inputId="reference-upload"
+				isUploading={false}
+				mediaAssets={[
+					mediaAsset(),
+					mediaAsset({
+						id: "video-1",
+						filename: "scene.mp4",
+						kind: "video",
+						mimeType: "video/mp4",
+						url: "/api/v1/media-assets/video-1/content",
+					}),
+				]}
+				open
+				references={[]}
+				requiresReference={false}
+				selectableKinds={new Set(["image"])}
+				selectedAssetIds={[]}
+				visibleKindFilters={["image"]}
+				onOpenChange={vi.fn()}
+				onRefreshAssets={vi.fn()}
+				onRemoveReference={vi.fn()}
+				onToggleReference={vi.fn()}
+				onUpload={vi.fn()}
+			/>,
+		);
+
+		expect(document.getElementById("reference-upload")?.getAttribute("accept")).toBe("image/*");
+		expect(screen.getByText("still.png")).toBeTruthy();
+		expect(screen.queryByText("scene.mp4")).toBeNull();
+		expect(screen.queryByRole("tab", { name: /视频/ })).toBeNull();
+		expect(screen.queryByRole("tab", { name: /音频/ })).toBeNull();
+	});
+
 	it("renders audio references with a playback button instead of an image preview", async () => {
 		const play = vi.spyOn(window.HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
 		render(

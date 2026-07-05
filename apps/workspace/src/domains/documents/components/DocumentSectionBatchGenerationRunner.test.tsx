@@ -191,6 +191,7 @@ describe("DocumentSectionBatchGenerationRunner", () => {
 				referencePrompt: "强化镜头语言、光影与构图。",
 				routeId: "text-route",
 			},
+			referenceAssetIds: ["selected-ref"],
 			route: {
 				adapter: "test.adapter",
 				async: false,
@@ -232,6 +233,7 @@ describe("DocumentSectionBatchGenerationRunner", () => {
 				selectedFamily: generationSettings?.family,
 				selectedParams: generationSettings?.params,
 				promptOptimization: generationSettings?.promptOptimization,
+				referenceAssetIds: ["selected-ref"],
 				selectedRoute: generationSettings?.route,
 				selectedVersion: generationSettings?.version,
 			});

@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GenerationRoute } from "@/domains/generation/api/generation";
@@ -37,6 +37,11 @@ const videoRoute: GenerationRoute = {
 	model: "video-model",
 	provider: "openrouter",
 	versionId: "video-version",
+};
+const unsupportedImageRoute: GenerationRoute = {
+	...imageRoute,
+	id: "unsupported-image-route",
+	supportsReferenceUrls: false,
 };
 
 const mediaAsset = (overrides: Partial<MediaAsset> = {}): MediaAsset => ({
@@ -126,5 +131,32 @@ describe("useGenerationReferences", () => {
 		});
 
 		expect(result.current.selectedReferenceAssetIds).toEqual([]);
+	});
+
+	it("drops selected references when the active route no longer supports them", async () => {
+		const referenceImage = mediaAsset();
+		const { result, rerender } = renderHook(
+			({ selectedRoute }: { selectedRoute: GenerationRoute }) =>
+				useGenerationReferences({
+					extraReferenceAssetIds: [],
+					extraReferenceUrls: [],
+					mediaAssetProjectId: "project-a",
+					mediaAssets: [referenceImage],
+					mutateMediaAssets: vi.fn(),
+					prompt: "生成图片",
+					selectedRoute,
+					setError: vi.fn(),
+				}),
+			{ initialProps: { selectedRoute: imageRoute } },
+		);
+
+		act(() => {
+			result.current.selectReferenceAsset(referenceImage);
+		});
+		expect(result.current.selectedReferenceAssetIds).toEqual(["reference-image"]);
+
+		rerender({ selectedRoute: unsupportedImageRoute });
+
+		await waitFor(() => expect(result.current.selectedReferenceAssetIds).toEqual([]));
 	});
 });
