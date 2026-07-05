@@ -107,6 +107,13 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 					prompt: "强化镜头语言、光影与构图。",
 					sourceLabel: "来自包",
 				},
+				{
+					categoryLabel: "镜头",
+					id: "prompt-pack-camera",
+					name: "镜头推进",
+					prompt: "拉近镜头，突出主体动作。",
+					sourceLabel: "来自包",
+				},
 			],
 			selectedFamily: imageFamily,
 			selectedParams: {},
@@ -178,7 +185,46 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 		);
 
 		await waitFor(() => expect(screen.getByRole("checkbox", { name: "生成时追加" })).toBeChecked());
-		expect(screen.getByRole("combobox", { name: "补充提示词包" })).toBeEnabled();
+		const trigger = screen.getByRole("button", { name: "补充提示词包" });
+		expect(trigger).toBeEnabled();
+		expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+	});
+
+	it("selects a prompt supplement from the two-column prompt pack picker", async () => {
+		const onConfirm = vi.fn();
+
+		render(
+			<BatchGenerationSettingsDialog
+				kind="image"
+				open
+				selectedCount={1}
+				onConfirm={onConfirm}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("checkbox", { name: "生成时追加" }));
+
+		const trigger = screen.getByRole("button", { name: "补充提示词包" });
+		await waitFor(() => expect(trigger).toBeEnabled());
+		fireEvent.click(trigger);
+
+		expect(screen.getByText("分类")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "风格 1 项" })).toBeTruthy();
+		fireEvent.pointerEnter(screen.getByRole("button", { name: "镜头 1 项" }));
+		fireEvent.click(screen.getByRole("option", { name: "镜头推进" }));
+
+		expect(screen.getByText("镜头推进")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "生成" }));
+
+		expect(onConfirm).toHaveBeenCalledWith(
+			expect.objectContaining({
+				promptSupplement: {
+					referenceName: "镜头推进",
+					referencePrompt: "拉近镜头，突出主体动作。",
+				},
+			}),
+		);
 	});
 
 	it("passes the last saved model selection into workspace initialization", () => {

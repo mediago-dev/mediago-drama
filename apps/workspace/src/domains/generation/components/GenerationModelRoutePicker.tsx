@@ -13,26 +13,13 @@ import { providerLabel } from "@/domains/generation/hooks/useGenerationWorkspace
 import { Button } from "@/shared/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import { cn } from "@/shared/lib/utils";
+import {
+	type CascadedPickerPoint,
+	type CascadedPickerSafeTriangleInput,
+	pointerEventPoint,
+	shouldKeepCascadedPickerSourceActive,
+} from "./cascadedPickerSafeTriangle";
 import { displayGenerationLabelWithoutAlias } from "./generationDisplayLabels";
-
-interface GenerationRoutePickerPoint {
-	x: number;
-	y: number;
-}
-
-interface GenerationRoutePickerRect {
-	bottom: number;
-	left: number;
-	right: number;
-	top: number;
-}
-
-interface GenerationRoutePickerSafeTriangleInput {
-	activeRect?: GenerationRoutePickerRect | null;
-	origin?: GenerationRoutePickerPoint | null;
-	point: GenerationRoutePickerPoint;
-	submenuRect?: GenerationRoutePickerRect | null;
-}
 
 export const GenerationModelRoutePicker: React.FC<{
 	className?: string;
@@ -59,7 +46,7 @@ export const GenerationModelRoutePicker: React.FC<{
 	const routePanelRef = useRef<HTMLElement | null>(null);
 	const routeListRef = useRef<HTMLDivElement | null>(null);
 	const safeTriangleOriginRef = useRef<{
-		point: GenerationRoutePickerPoint;
+		point: CascadedPickerPoint;
 		versionId: string;
 	} | null>(null);
 	const versionActivationIntentTimerRef = useRef<number | null>(null);
@@ -180,7 +167,7 @@ export const GenerationModelRoutePicker: React.FC<{
 		setSuppressedVersionHoverId(null);
 	};
 
-	const rememberActiveVersionPointer = (versionId: string, point: GenerationRoutePickerPoint) => {
+	const rememberActiveVersionPointer = (versionId: string, point: CascadedPickerPoint) => {
 		clearVersionActivationIntent();
 		safeTriangleOriginRef.current = { point, versionId };
 		setSuppressedVersionHoverId(null);
@@ -195,15 +182,12 @@ export const GenerationModelRoutePicker: React.FC<{
 		clearSafeTriangle();
 	};
 
-	const activateVersionFromPointer = (versionId: string, point: GenerationRoutePickerPoint) => {
+	const activateVersionFromPointer = (versionId: string, point: CascadedPickerPoint) => {
 		setActiveVersionId(versionId);
 		rememberActiveVersionPointer(versionId, point);
 	};
 
-	const scheduleVersionActivationIntent = (
-		versionId: string,
-		point: GenerationRoutePickerPoint,
-	) => {
+	const scheduleVersionActivationIntent = (versionId: string, point: CascadedPickerPoint) => {
 		suppressVersionHover(versionId);
 		clearVersionActivationIntent();
 		versionActivationIntentTimerRef.current = window.setTimeout(() => {
@@ -212,7 +196,7 @@ export const GenerationModelRoutePicker: React.FC<{
 		}, GENERATION_ROUTE_PICKER_SAFE_TRIANGLE_HOVER_INTENT_MS);
 	};
 
-	const shouldPreserveActiveVersion = (point: GenerationRoutePickerPoint) => {
+	const shouldPreserveActiveVersion = (point: CascadedPickerPoint) => {
 		const currentActiveVersionId = activeVersion?.id ?? "";
 		const activeButton = currentActiveVersionId
 			? versionButtonRefs.current.get(currentActiveVersionId)
@@ -423,7 +407,6 @@ export const GenerationModelRoutePicker: React.FC<{
 	);
 };
 
-const GENERATION_ROUTE_PICKER_SAFE_TRIANGLE_EDGE_PADDING = 8;
 const GENERATION_ROUTE_PICKER_SAFE_TRIANGLE_HOVER_INTENT_MS = 180;
 const GENERATION_ROUTE_PICKER_MAX_VISIBLE_ROWS = 5;
 const GENERATION_ROUTE_PICKER_SCROLL_HINT_MIN_REMAINING_PX = 8;
@@ -483,57 +466,6 @@ const wheelDeltaY = (event: React.WheelEvent, pageHeight: number) => {
 	}
 };
 
-const pointerEventPoint = (event: React.PointerEvent): GenerationRoutePickerPoint => ({
-	x: event.clientX,
-	y: event.clientY,
-});
-
-export const shouldKeepGenerationRoutePickerVersionActive = ({
-	activeRect,
-	origin,
-	point,
-	submenuRect,
-}: GenerationRoutePickerSafeTriangleInput) => {
-	if (!activeRect || !origin || !submenuRect) return false;
-	const verticalPadding = Math.max(
-		GENERATION_ROUTE_PICKER_SAFE_TRIANGLE_EDGE_PADDING,
-		activeRect.bottom - activeRect.top,
-	);
-	if (origin.y < activeRect.top - verticalPadding) return false;
-	if (origin.y > activeRect.bottom + verticalPadding) return false;
-	if (point.x <= origin.x) return false;
-	if (point.x >= submenuRect.left) return false;
-
-	return pointInTriangle(
-		point,
-		origin,
-		{
-			x: submenuRect.left,
-			y: submenuRect.top - verticalPadding,
-		},
-		{
-			x: submenuRect.left,
-			y: submenuRect.bottom + verticalPadding,
-		},
-	);
-};
-
-const pointInTriangle = (
-	point: GenerationRoutePickerPoint,
-	first: GenerationRoutePickerPoint,
-	second: GenerationRoutePickerPoint,
-	third: GenerationRoutePickerPoint,
-) => {
-	const firstSign = triangleSign(point, first, second);
-	const secondSign = triangleSign(point, second, third);
-	const thirdSign = triangleSign(point, third, first);
-	const hasNegative = firstSign < 0 || secondSign < 0 || thirdSign < 0;
-	const hasPositive = firstSign > 0 || secondSign > 0 || thirdSign > 0;
-	return !(hasNegative && hasPositive);
-};
-
-const triangleSign = (
-	first: GenerationRoutePickerPoint,
-	second: GenerationRoutePickerPoint,
-	third: GenerationRoutePickerPoint,
-) => (first.x - third.x) * (second.y - third.y) - (second.x - third.x) * (first.y - third.y);
+export const shouldKeepGenerationRoutePickerVersionActive = (
+	input: CascadedPickerSafeTriangleInput,
+) => shouldKeepCascadedPickerSourceActive(input);
