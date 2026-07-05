@@ -1,10 +1,14 @@
 import {
 	Check,
+	ChevronDown,
+	ChevronRight,
 	Images,
+	Library,
 	Loader2,
 	MessageSquarePlus,
 	SlidersHorizontal,
 	Sparkles,
+	type LucideIcon,
 	Wand2,
 } from "lucide-react";
 import type React from "react";
@@ -50,7 +54,14 @@ import {
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/components/ui/select";
+import { cn } from "@/shared/lib/utils";
+import {
+	type CascadedPickerPoint,
+	pointerEventPoint,
+	shouldKeepCascadedPickerSourceActive,
+} from "./cascadedPickerSafeTriangle";
 
 export interface BatchGenerationSettings {
 	family: GenerationFamily;
@@ -649,13 +660,12 @@ export const BatchGenerationSettingsDialog: React.FC<{
 								</div>
 							) : null}
 							{secondaryRouteParams.length > 0 ? (
-								<div className="rounded-sm border border-border bg-card p-2">
-									<SecondaryParamSettings
-										params={secondaryRouteParams}
-										values={ws.selectedParams}
-										onChange={ws.updateParam}
-									/>
-								</div>
+								<SecondaryParamSettings
+									className="border-t border-border/70 pt-2"
+									params={secondaryRouteParams}
+									values={ws.selectedParams}
+									onChange={ws.updateParam}
+								/>
 							) : null}
 							{!imageSpec &&
 							primaryParamControls.length === 0 &&
@@ -838,28 +848,268 @@ const PromptPackSelect: React.FC<{
 	items: PromptInsertItem[];
 	onValueChange: (value: string) => void;
 	selectedItem: PromptInsertItem | null;
-}> = ({ ariaLabel, disabled, items, onValueChange, selectedItem }) => (
-	<Select value={selectedItem?.id ?? ""} disabled={disabled} onValueChange={onValueChange}>
-		<SelectTrigger
-			aria-label={ariaLabel}
-			className="h-8 min-w-52 max-w-80 rounded-sm border-input bg-muted px-2 text-xs font-semibold shadow-none"
-		>
-			<span className="min-w-0 truncate">{selectedItem?.name ?? "无可用提示词包"}</span>
-		</SelectTrigger>
-		<SelectContent align="start" className="max-h-80">
-			{items.map((item) => (
-				<SelectItem key={item.id} value={item.id} textValue={item.name}>
-					<span className="flex min-w-0 flex-col">
-						<span className="min-w-0 truncate text-xs font-semibold">{item.name}</span>
-						<span className="min-w-0 truncate text-2xs text-muted-foreground">
-							{promptOptimizeItemMeta(item)}
-						</span>
+}> = ({ ariaLabel, disabled, items, onValueChange, selectedItem }) => {
+	const [open, setOpen] = useState(false);
+	const groups = useMemo(() => groupPromptPackSelectItems(items), [items]);
+	const selectedGroup = useMemo(
+		() => groups.find((group) => group.items.some((item) => item.id === selectedItem?.id)) ?? null,
+		[groups, selectedItem?.id],
+	);
+	const [activeGroupId, setActiveGroupId] = useState(selectedGroup?.id ?? groups[0]?.id ?? "");
+	const [suppressedGroupHoverId, setSuppressedGroupHoverId] = useState<string | null>(null);
+	const groupButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+	const itemPanelRef = useRef<HTMLElement | null>(null);
+	const safeTriangleOriginRef = useRef<{
+		groupId: string;
+		point: CascadedPickerPoint;
+	} | null>(null);
+	const groupActivationIntentTimerRef = useRef<number | null>(null);
+	const activeGroup =
+		groups.find((group) => group.id === activeGroupId) ?? selectedGroup ?? groups[0] ?? null;
+
+	useEffect(() => {
+		return () => {
+			const timer = groupActivationIntentTimerRef.current;
+			if (timer !== null) {
+				window.clearTimeout(timer);
+				groupActivationIntentTimerRef.current = null;
+			}
+		};
+	}, []);
+
+	useEffect(() => {
+		if (disabled && open) setOpen(false);
+	}, [disabled, open]);
+
+	useEffect(() => {
+		if (!open) return;
+		setActiveGroupId(selectedGroup?.id ?? groups[0]?.id ?? "");
+	}, [groups, open, selectedGroup?.id]);
+
+	useEffect(() => {
+		if (!groups.length) {
+			if (activeGroupId) setActiveGroupId("");
+			return;
+		}
+		if (groups.some((group) => group.id === activeGroupId)) return;
+		setActiveGroupId(selectedGroup?.id ?? groups[0]?.id ?? "");
+	}, [activeGroupId, groups, selectedGroup?.id]);
+
+	const selectItem = (item: PromptInsertItem) => {
+		onValueChange(item.id);
+		setOpen(false);
+	};
+	const popoverOpen = open && !disabled;
+
+	const clearGroupActivationIntent = () => {
+		const timer = groupActivationIntentTimerRef.current;
+		if (timer !== null) {
+			window.clearTimeout(timer);
+			groupActivationIntentTimerRef.current = null;
+		}
+	};
+
+	const clearSafeTriangle = () => {
+		clearGroupActivationIntent();
+		safeTriangleOriginRef.current = null;
+		setSuppressedGroupHoverId(null);
+	};
+
+	const rememberActiveGroupPointer = (groupId: string, point: CascadedPickerPoint) => {
+		clearGroupActivationIntent();
+		safeTriangleOriginRef.current = { groupId, point };
+		setSuppressedGroupHoverId(null);
+	};
+
+	const activateGroup = (groupId: string) => {
+		setActiveGroupId(groupId);
+		clearSafeTriangle();
+	};
+
+	const activateGroupFromPointer = (groupId: string, point: CascadedPickerPoint) => {
+		setActiveGroupId(groupId);
+		rememberActiveGroupPointer(groupId, point);
+	};
+
+	const scheduleGroupActivationIntent = (groupId: string, point: CascadedPickerPoint) => {
+		setSuppressedGroupHoverId((currentId) => (currentId === groupId ? currentId : groupId));
+		clearGroupActivationIntent();
+		groupActivationIntentTimerRef.current = window.setTimeout(() => {
+			groupActivationIntentTimerRef.current = null;
+			activateGroupFromPointer(groupId, point);
+		}, PROMPT_PACK_PICKER_SAFE_TRIANGLE_HOVER_INTENT_MS);
+	};
+
+	const shouldPreserveActiveGroup = (point: CascadedPickerPoint) => {
+		const currentActiveGroupId = activeGroup?.id ?? "";
+		const activeButton = currentActiveGroupId
+			? groupButtonRefs.current.get(currentActiveGroupId)
+			: null;
+		const origin =
+			safeTriangleOriginRef.current?.groupId === currentActiveGroupId
+				? safeTriangleOriginRef.current.point
+				: null;
+
+		return shouldKeepCascadedPickerSourceActive({
+			activeRect: activeButton?.getBoundingClientRect(),
+			origin,
+			point,
+			submenuRect: itemPanelRef.current?.getBoundingClientRect(),
+		});
+	};
+
+	const handleGroupPointerEnter = (
+		groupId: string,
+		event: React.PointerEvent<HTMLButtonElement>,
+	) => {
+		const point = pointerEventPoint(event);
+		if (groupId === activeGroup?.id) {
+			rememberActiveGroupPointer(groupId, point);
+			return;
+		}
+
+		if (shouldPreserveActiveGroup(point)) {
+			scheduleGroupActivationIntent(groupId, point);
+			return;
+		}
+
+		activateGroupFromPointer(groupId, point);
+	};
+
+	const handleGroupPointerMove = (
+		groupId: string,
+		event: React.PointerEvent<HTMLButtonElement>,
+	) => {
+		const point = pointerEventPoint(event);
+		if (groupId === activeGroup?.id) {
+			rememberActiveGroupPointer(groupId, point);
+			return;
+		}
+
+		if (shouldPreserveActiveGroup(point)) {
+			scheduleGroupActivationIntent(groupId, point);
+			return;
+		}
+
+		activateGroupFromPointer(groupId, point);
+	};
+
+	return (
+		<Popover open={popoverOpen} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<button
+					type="button"
+					aria-label={ariaLabel}
+					aria-expanded={popoverOpen}
+					aria-haspopup="dialog"
+					disabled={disabled}
+					className={cn(
+						"flex h-8 min-w-52 max-w-80 items-center justify-between gap-2 rounded-sm bg-muted px-2 text-xs font-semibold text-foreground transition-colors hover:bg-ide-list-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+						popoverOpen && "bg-ide-list-active text-ide-list-active-foreground",
+					)}
+				>
+					<span className="min-w-0 flex-1 truncate text-left">
+						{selectedItem?.name ?? "无可用提示词包"}
 					</span>
-				</SelectItem>
-			))}
-		</SelectContent>
-	</Select>
-);
+					<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+				</button>
+			</PopoverTrigger>
+			<PopoverContent
+				side="bottom"
+				align="start"
+				aria-label={`${ariaLabel}选择`}
+				className="grid h-[var(--batch-prompt-pack-picker-menu-height)] max-h-[var(--generation-popover-max-block)] w-fit max-w-[var(--generation-popover-max-inline)] grid-cols-[fit-content(var(--generation-model-popover-version-column-max-width))_minmax(14rem,max-content)] overflow-hidden rounded-[var(--generation-popover-radius)] border-border bg-popover p-0 text-popover-foreground shadow-xl"
+				style={promptPackSelectMenuStyle}
+				onPointerLeave={clearSafeTriangle}
+			>
+				<section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-[var(--generation-popover-padding)]">
+					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">分类</p>
+					<div className="grid min-h-0 auto-rows-min gap-1 overflow-y-auto overscroll-contain pr-1">
+						{groups.map((group) => {
+							const Icon = group.icon;
+							const selected = group.id === activeGroup?.id;
+							const suppressHover = group.id === suppressedGroupHoverId;
+
+							return (
+								<button
+									key={group.id}
+									type="button"
+									ref={(node) => {
+										if (node) {
+											groupButtonRefs.current.set(group.id, node);
+										} else {
+											groupButtonRefs.current.delete(group.id);
+										}
+									}}
+									aria-label={`${group.label} ${group.items.length} 项`}
+									className={cn(
+										"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+										selected
+											? "bg-ide-list-active text-ide-list-active-foreground"
+											: suppressHover
+												? "text-foreground"
+												: "text-foreground hover:bg-muted",
+									)}
+									onPointerEnter={(event) => handleGroupPointerEnter(group.id, event)}
+									onPointerMove={(event) => handleGroupPointerMove(group.id, event)}
+									onFocus={() => activateGroup(group.id)}
+									onClick={() => activateGroup(group.id)}
+								>
+									<Icon className="size-3.5 shrink-0 text-primary" />
+									<span className="min-w-0 flex-1 truncate">{group.label}</span>
+									<span className="shrink-0 text-muted-foreground/70">{group.items.length}</span>
+									<ChevronRight
+										className={cn(
+											"size-4 shrink-0",
+											selected ? "text-primary" : "text-muted-foreground",
+										)}
+									/>
+								</button>
+							);
+						})}
+					</div>
+				</section>
+				<section
+					ref={itemPanelRef}
+					className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-muted/40 p-[var(--generation-popover-padding)]"
+					onPointerEnter={clearSafeTriangle}
+				>
+					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">提示词包</p>
+					<div
+						aria-label="提示词包列表"
+						className="grid min-h-0 auto-rows-min gap-1 overflow-y-auto overscroll-contain pr-1"
+						role="listbox"
+					>
+						{activeGroup?.items.map((item) => {
+							const selected = item.id === selectedItem?.id;
+
+							return (
+								<button
+									key={item.id}
+									type="button"
+									role="option"
+									aria-label={item.name}
+									aria-selected={selected}
+									className={cn(
+										"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+										selected
+											? "bg-ide-list-active text-ide-list-active-foreground"
+											: "text-foreground hover:bg-card",
+									)}
+									onClick={() => selectItem(item)}
+								>
+									<Library className="size-3.5 shrink-0 text-primary" />
+									<span className="min-w-0 flex-1 truncate">{item.name}</span>
+									{selected ? <Check className="size-4 shrink-0 text-primary" /> : null}
+								</button>
+							);
+						}) ?? null}
+					</div>
+				</section>
+			</PopoverContent>
+		</Popover>
+	);
+};
 
 const LabeledInlineControl: React.FC<{
 	children: React.ReactNode;
@@ -873,8 +1123,50 @@ const LabeledInlineControl: React.FC<{
 	</div>
 );
 
-const promptOptimizeItemMeta = (item: PromptInsertItem) =>
-	[item.categoryLabel, item.sourceLabel].filter(Boolean).join(" / ");
+interface PromptPackSelectGroup {
+	icon: LucideIcon;
+	id: string;
+	items: PromptInsertItem[];
+	label: string;
+}
+
+const PROMPT_PACK_PICKER_MAX_VISIBLE_ROWS = 5;
+const PROMPT_PACK_PICKER_SAFE_TRIANGLE_HOVER_INTENT_MS = 180;
+
+const promptPackSelectMenuHeight = () => {
+	const gapCount = Math.max(PROMPT_PACK_PICKER_MAX_VISIBLE_ROWS - 1, 0);
+	return `calc(var(--generation-popover-padding) * 2 + 1.25rem + ${PROMPT_PACK_PICKER_MAX_VISIBLE_ROWS} * var(--generation-control-height-lg) + ${gapCount} * 0.25rem)`;
+};
+
+const promptPackSelectMenuStyle = {
+	"--batch-prompt-pack-picker-menu-height": promptPackSelectMenuHeight(),
+} as React.CSSProperties;
+
+const groupPromptPackSelectItems = (items: PromptInsertItem[]): PromptPackSelectGroup[] => {
+	const groups: PromptPackSelectGroup[] = [];
+	const groupsById = new Map<string, PromptPackSelectGroup>();
+
+	for (const item of items) {
+		const label = item.categoryLabel || "提示词";
+		let group = groupsById.get(label);
+		if (!group) {
+			group = {
+				icon: promptPackSelectGroupIcon(item),
+				id: label,
+				items: [],
+				label,
+			};
+			groupsById.set(label, group);
+			groups.push(group);
+		}
+		group.items.push(item);
+	}
+
+	return groups;
+};
+
+const promptPackSelectGroupIcon = (item: PromptInsertItem): LucideIcon =>
+	item.categoryLabel === "风格" ? Sparkles : Library;
 
 const batchGenerationModelSelectionFromSettings = (
 	kind: BatchGenerationDialogKind,

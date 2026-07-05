@@ -702,15 +702,17 @@ export const SecondaryParamsDropdown: React.FC<{
 };
 
 export const SecondaryParamSettings: React.FC<{
+	className?: string;
 	onChange: (name: string, value: unknown) => void;
 	params: GenerationParam[];
 	values: Record<string, unknown>;
-}> = ({ onChange, params, values }) => (
-	<div className="grid gap-[var(--generation-composer-toolbar-gap)]">
-		<header>
-			<h3 className="px-1 text-sm font-semibold text-foreground">其他设置</h3>
+}> = ({ className, onChange, params, values }) => (
+	<div className={cn("grid gap-2", className)}>
+		<header className="flex min-w-0 items-center gap-1.5 px-1">
+			<SlidersHorizontal className="size-3.5 shrink-0 text-muted-foreground" />
+			<h3 className="text-xs font-semibold text-muted-foreground">其他设置</h3>
 		</header>
-		<div className="grid gap-0.5">
+		<div className="flex flex-wrap items-center gap-x-5 gap-y-2">
 			{params.map((param) => (
 				<SecondaryParamRow
 					key={param.name}
@@ -732,8 +734,8 @@ const SecondaryParamRow: React.FC<{
 	const help = param.help ? paramHelp(param.help) : undefined;
 
 	return (
-		<div className="flex min-w-0 items-center justify-between gap-2 rounded-[var(--generation-control-radius)] px-1 py-1 hover:bg-muted/60">
-			<div className="min-w-0">
+		<div className="inline-grid min-w-[11rem] grid-cols-[max-content_auto] items-center gap-2 rounded-[var(--generation-control-radius)] px-1.5 py-1 transition-colors hover:bg-muted/50">
+			<div className="min-w-0 max-w-28">
 				<p className="truncate text-xs font-semibold text-foreground" title={help}>
 					{label}
 				</p>
@@ -753,11 +755,11 @@ const SecondaryParamInput: React.FC<{
 		const selectedValue = String(value ?? param.default ?? options[0]?.value ?? "");
 
 		return (
-			<label className="relative shrink-0">
+			<label className="relative inline-flex h-[var(--generation-control-height)] min-w-[var(--generation-other-control-min-width)] shrink-0 items-center rounded-[var(--generation-control-radius)] bg-muted transition-colors hover:bg-ide-list-hover focus-within:ring-2 focus-within:ring-ring">
 				<span className="sr-only">{paramLabel(param.label)}</span>
 				<select
 					value={selectedValue}
-					className="h-[var(--generation-other-control-height)] min-w-[var(--generation-other-control-min-width)] appearance-none rounded-[var(--generation-control-radius)] border border-input bg-card py-0 pl-2 pr-6 text-xs font-semibold text-foreground outline-none transition-colors focus:border-ring focus:ring-2 focus:ring-ring/20"
+					className="h-full w-full appearance-none rounded-[var(--generation-control-radius)] border-0 bg-transparent py-0 pl-2 pr-7 text-xs font-semibold text-foreground outline-none"
 					onChange={(event) => onChange(event.target.value)}
 				>
 					{options.map((option) => (
@@ -804,7 +806,7 @@ const SecondaryParamInput: React.FC<{
 				value={String(value ?? param.default ?? "")}
 				min={param.min}
 				max={param.max}
-				className="h-[var(--generation-other-control-height)] w-[var(--generation-other-number-width)] shrink-0 rounded-[var(--generation-control-radius)] border border-input bg-card px-2 text-xs font-semibold text-foreground outline-none transition-colors focus:border-ring focus:ring-2 focus:ring-ring/20"
+				className="h-[var(--generation-control-height)] w-[var(--generation-other-number-width)] shrink-0 rounded-[var(--generation-control-radius)] border-0 bg-muted px-2 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-ide-list-hover focus:ring-2 focus:ring-ring"
 				onChange={(event) => onChange(event.target.value === "" ? "" : Number(event.target.value))}
 			/>
 		);
@@ -813,7 +815,7 @@ const SecondaryParamInput: React.FC<{
 	return (
 		<input
 			value={String(value ?? param.default ?? "")}
-			className="h-[var(--generation-other-control-height)] w-[var(--generation-other-text-width)] shrink-0 rounded-[var(--generation-control-radius)] border border-input bg-card px-2 text-xs font-semibold text-foreground outline-none transition-colors focus:border-ring focus:ring-2 focus:ring-ring/20"
+			className="h-[var(--generation-control-height)] w-[var(--generation-other-text-width)] shrink-0 rounded-[var(--generation-control-radius)] border-0 bg-muted px-2 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-ide-list-hover focus:ring-2 focus:ring-ring"
 			onChange={(event) => onChange(event.target.value)}
 		/>
 	);
