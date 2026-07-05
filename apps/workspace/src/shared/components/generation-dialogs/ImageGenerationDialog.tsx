@@ -10,6 +10,7 @@ import { GenerationModalShell } from "@/domains/documents/components/GenerationM
 import { DocumentSectionGenerator } from "@/domains/documents/components/DocumentSectionGenerator";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { sectionGenerationIdentityKey } from "@/domains/documents/lib/section-generation";
+import { GlobalToolboxButton } from "@/domains/workspace/components/GlobalToolboxDrawer";
 import { Button } from "@/shared/components/ui/button";
 
 interface ImageGenerationDialogProps {
@@ -214,16 +215,19 @@ const ImageGenerationDialogPanel: React.FC<{
 		title={controller.title}
 		titleId={controller.titleId}
 		titleAside={
-			<Button
-				type="button"
-				variant="outline"
-				size="sm"
-				className="h-8 shrink-0 rounded-md px-2.5 text-xs active:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0"
-				onClick={controller.onOpenMaterialLibrary}
-			>
-				<Images className="size-4" />
-				<span>从素材库中选择</span>
-			</Button>
+			<div className="flex items-center gap-2">
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					className="h-8 shrink-0 rounded-md px-2.5 text-xs active:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0"
+					onClick={controller.onOpenMaterialLibrary}
+				>
+					<Images className="size-4" />
+					<span>从素材库中选择</span>
+				</Button>
+				<GlobalToolboxButton kind="image" variant="inline" />
+			</div>
 		}
 		onOpenChange={controller.onOpenChange}
 	>

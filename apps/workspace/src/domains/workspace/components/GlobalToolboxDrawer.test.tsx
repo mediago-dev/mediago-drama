@@ -74,14 +74,14 @@ describe("GlobalToolboxButton", () => {
 
 		renderGlobalToolboxButton();
 
-		fireEvent.click(screen.getByRole("button", { name: "打开工具箱" }));
+		fireEvent.click(screen.getByRole("button", { name: "打开生成历史" }));
 
 		await waitFor(() =>
 			expect(getGenerationConversations).toHaveBeenCalledWith("image", "studio", {
 				allScopes: true,
 			}),
 		);
-		expect(screen.getByRole("dialog", { name: "工具箱" })).toBeTruthy();
+		expect(screen.getByRole("dialog", { name: "生成历史" })).toBeTruthy();
 		expect(screen.getAllByText("项目图片会话").length).toBeGreaterThan(0);
 
 		fireEvent.click(screen.getByRole("button", { name: "历史会话" }));
@@ -92,6 +92,61 @@ describe("GlobalToolboxButton", () => {
 		expect(workspace).toHaveAttribute("data-conversation-id", "project-image");
 		expect(workspace).toHaveAttribute("data-kind", "image");
 		expect(workspace).toHaveAttribute("data-scope-id", "agent");
+	});
+
+	it("opens the same drawer from an inline generation history button", async () => {
+		vi.mocked(getGenerationConversations).mockResolvedValue({ conversations: [] });
+
+		renderGlobalToolboxButton("inline");
+
+		fireEvent.click(screen.getByRole("button", { name: "生成历史" }));
+
+		expect(await screen.findByRole("dialog", { name: "生成历史" })).toBeTruthy();
+	});
+
+	it("filters inline generation history to the requested kind", async () => {
+		vi.mocked(getGenerationConversations).mockImplementation(async (kind) => ({
+			conversations:
+				kind === "video"
+					? [
+							generationConversation(
+								"video-one",
+								"video",
+								"视频会话",
+								"studio",
+								"2026-06-06T12:00:00Z",
+							),
+						]
+					: [],
+		}));
+
+		renderGlobalToolboxButton("inline", "video");
+
+		fireEvent.click(screen.getByRole("button", { name: "生成历史" }));
+
+		await waitFor(() =>
+			expect(getGenerationConversations).toHaveBeenCalledWith("video", "studio", {
+				allScopes: true,
+			}),
+		);
+		expect(getGenerationConversations).not.toHaveBeenCalledWith("image", "studio", {
+			allScopes: true,
+		});
+		expect(getGenerationConversations).not.toHaveBeenCalledWith("text", "studio", {
+			allScopes: true,
+		});
+		expect(getGenerationConversations).not.toHaveBeenCalledWith("audio", "studio", {
+			allScopes: true,
+		});
+		const workspace = await screen.findByTestId("global-generation-workspace");
+		expect(workspace).toHaveAttribute("data-conversation-id", "video-one");
+		expect(workspace).toHaveAttribute("data-kind", "video");
+
+		fireEvent.click(screen.getByRole("button", { name: "历史会话" }));
+		expect(screen.getByText("视频生成")).toBeTruthy();
+		expect(screen.queryByText("图片生成")).not.toBeInTheDocument();
+		expect(screen.queryByText("文本生成")).not.toBeInTheDocument();
+		expect(screen.queryByText("音频生成")).not.toBeInTheDocument();
 	});
 
 	it("waits for every toolbox kind before auto-selecting the latest conversation", async () => {
@@ -118,7 +173,7 @@ describe("GlobalToolboxButton", () => {
 
 		renderGlobalToolboxButton();
 
-		fireEvent.click(screen.getByRole("button", { name: "打开工具箱" }));
+		fireEvent.click(screen.getByRole("button", { name: "打开生成历史" }));
 
 		await waitFor(() =>
 			expect(getGenerationConversations).toHaveBeenCalledWith("video", "studio", {
@@ -174,7 +229,7 @@ describe("GlobalToolboxButton", () => {
 
 		renderGlobalToolboxButton();
 
-		fireEvent.click(screen.getByRole("button", { name: "打开工具箱" }));
+		fireEvent.click(screen.getByRole("button", { name: "打开生成历史" }));
 		let workspace = await screen.findByTestId("global-generation-workspace");
 		expect(workspace).toHaveAttribute("data-conversation-id", "project-image");
 
@@ -183,12 +238,12 @@ describe("GlobalToolboxButton", () => {
 		workspace = await screen.findByTestId("global-generation-workspace");
 		expect(workspace).toHaveAttribute("data-conversation-id", "video-old");
 
-		fireEvent.click(screen.getByRole("button", { name: "关闭工具箱" }));
+		fireEvent.click(screen.getByRole("button", { name: "关闭生成历史" }));
 		await waitFor(() =>
-			expect(screen.queryByRole("dialog", { name: "工具箱" })).not.toBeInTheDocument(),
+			expect(screen.queryByRole("dialog", { name: "生成历史" })).not.toBeInTheDocument(),
 		);
 
-		fireEvent.click(screen.getByRole("button", { name: "打开工具箱" }));
+		fireEvent.click(screen.getByRole("button", { name: "打开生成历史" }));
 		workspace = await screen.findByTestId("global-generation-workspace");
 		expect(workspace).toHaveAttribute("data-conversation-id", "project-image");
 		expect(workspace).toHaveTextContent("测试 · 图片");
@@ -215,7 +270,7 @@ describe("GlobalToolboxButton", () => {
 
 		renderGlobalToolboxButton();
 
-		fireEvent.click(screen.getByRole("button", { name: "打开工具箱" }));
+		fireEvent.click(screen.getByRole("button", { name: "打开生成历史" }));
 		fireEvent.click(await screen.findByRole("button", { name: "新建会话" }));
 		fireEvent.change(screen.getByLabelText("会话名称"), { target: { value: "视频草稿" } });
 		fireEvent.click(screen.getByRole("button", { name: "创建" }));
@@ -255,20 +310,23 @@ describe("GlobalToolboxButton", () => {
 
 		renderGlobalToolboxButton();
 
-		fireEvent.click(screen.getByRole("button", { name: "打开工具箱" }));
-		expect(await screen.findByRole("dialog", { name: "工具箱" })).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "打开生成历史" }));
+		expect(await screen.findByRole("dialog", { name: "生成历史" })).toBeTruthy();
 		fireEvent.click(await screen.findByRole("button", { name: "打开供应商设置" }));
 
 		await waitFor(() =>
-			expect(screen.queryByRole("dialog", { name: "工具箱" })).not.toBeInTheDocument(),
+			expect(screen.queryByRole("dialog", { name: "生成历史" })).not.toBeInTheDocument(),
 		);
 	});
 });
 
-const renderGlobalToolboxButton = () =>
+const renderGlobalToolboxButton = (
+	variant: "icon" | "inline" = "icon",
+	kind?: "image" | "video" | "text" | "audio",
+) =>
 	render(
 		<SWRConfig value={{ provider: () => new Map() }}>
-			<GlobalToolboxButton />
+			<GlobalToolboxButton kind={kind} variant={variant} />
 			<GenerationConversationCreateDialog />
 		</SWRConfig>,
 	);

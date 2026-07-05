@@ -46,6 +46,7 @@ describe("ImageGenerationDialog", () => {
 			/>,
 		);
 
+		expect(screen.getByRole("button", { name: "生成历史" })).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "从素材库中选择" }));
 
 		await waitFor(() => {

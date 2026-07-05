@@ -100,7 +100,7 @@ func (handler GenerationTasks) HandleGenerationMessage(context *gin.Context) {
 
 // HandlePromptOptimizedGenerationMessage godoc
 // @Summary 优化提示词并提交生成
-// @Description 先通过文本路由优化当前 prompt，再用优化后的 prompt 提交媒体生成，并记录两段工具箱历史。
+// @Description 先通过文本路由优化当前 prompt，再用优化后的 prompt 提交媒体生成，并记录两段生成历史。
 // @Tags Generation
 // @Accept json
 // @Produce json

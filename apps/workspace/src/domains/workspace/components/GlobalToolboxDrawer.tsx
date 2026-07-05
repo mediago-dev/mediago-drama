@@ -61,17 +61,50 @@ const toolboxConversationGroups: Array<{
 	{ icon: <AudioLines />, kind: "audio", label: "音频生成" },
 ];
 
-export const GlobalToolboxButton: React.FC = () => {
+interface GlobalToolboxButtonProps {
+	className?: string;
+	kind?: StudioTab;
+	variant?: "icon" | "inline";
+}
+
+export const GlobalToolboxButton: React.FC<GlobalToolboxButtonProps> = ({
+	className,
+	kind,
+	variant = "icon",
+}) => {
 	const [open, setOpen] = useState(false);
 
+	if (variant === "inline") {
+		return (
+			<div className={cn("relative shrink-0", className)}>
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					aria-expanded={open}
+					className={cn(
+						"h-8 shrink-0 rounded-md border border-transparent px-2.5 text-xs font-semibold text-muted-foreground shadow-none hover:bg-ide-list-hover hover:text-foreground active:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0",
+						open &&
+							"border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+					)}
+					onClick={() => setOpen((current) => !current)}
+				>
+					<History className="size-4" />
+					<span>生成历史</span>
+				</Button>
+				<GlobalToolboxDrawer kind={kind} open={open} onOpenChange={setOpen} />
+			</div>
+		);
+	}
+
 	return (
-		<div className="relative shrink-0">
+		<div className={cn("relative shrink-0", className)}>
 			<TooltipProvider delayDuration={180}>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<button
 							type="button"
-							aria-label={open ? "关闭工具箱" : "打开工具箱"}
+							aria-label={open ? "关闭生成历史" : "打开生成历史"}
 							aria-expanded={open}
 							className={cn(
 								"flex size-8 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -82,18 +115,19 @@ export const GlobalToolboxButton: React.FC = () => {
 							<WandSparkles className="size-4" />
 						</button>
 					</TooltipTrigger>
-					<TooltipContent side="top">工具箱</TooltipContent>
+					<TooltipContent side="top">生成历史</TooltipContent>
 				</Tooltip>
 			</TooltipProvider>
-			<GlobalToolboxDrawer open={open} onOpenChange={setOpen} />
+			<GlobalToolboxDrawer kind={kind} open={open} onOpenChange={setOpen} />
 		</div>
 	);
 };
 
 const GlobalToolboxDrawer: React.FC<{
+	kind?: StudioTab;
 	onOpenChange: (open: boolean) => void;
 	open: boolean;
-}> = ({ onOpenChange, open }) => {
+}> = ({ kind, onOpenChange, open }) => {
 	const [activeConversation, setActiveConversation] = useState<GenerationConversation | null>(null);
 	const [historyOpen, setHistoryOpen] = useState(false);
 	const [isCreatingConversation, setIsCreatingConversation] = useState(false);
@@ -102,11 +136,24 @@ const GlobalToolboxDrawer: React.FC<{
 	const wasOpenRef = useRef(open);
 	const toast = useToast();
 	const { mutate } = useSWRConfig();
+	const visibleConversationGroups = useMemo(
+		() =>
+			kind
+				? toolboxConversationGroups.filter((group) => group.kind === kind)
+				: toolboxConversationGroups,
+		[kind],
+	);
+	const isKindVisible = useCallback(
+		(conversationKind: StudioTab) =>
+			visibleConversationGroups.some((group) => group.kind === conversationKind),
+		[visibleConversationGroups],
+	);
+	const visibleDefaultKind = visibleConversationGroups[0]?.kind ?? defaultToolboxKind;
 
-	const videoConversations = useToolboxConversations("video", open);
-	const imageConversations = useToolboxConversations("image", open);
-	const textConversations = useToolboxConversations("text", open);
-	const audioConversations = useToolboxConversations("audio", open);
+	const videoConversations = useToolboxConversations("video", open && isKindVisible("video"));
+	const imageConversations = useToolboxConversations("image", open && isKindVisible("image"));
+	const textConversations = useToolboxConversations("text", open && isKindVisible("text"));
+	const audioConversations = useToolboxConversations("audio", open && isKindVisible("audio"));
 	const conversationStateByKind = useMemo(
 		() => ({
 			video: videoConversations,
@@ -193,10 +240,10 @@ const GlobalToolboxDrawer: React.FC<{
 
 	const openCreateDialog = async () => {
 		const result = await openGenerationConversationCreateDialog({
-			groups: toolboxConversationGroups,
-			initialKind: isToolboxKind(selectedConversation?.kind)
+			groups: visibleConversationGroups,
+			initialKind: isVisibleToolboxKind(selectedConversation?.kind, visibleConversationGroups)
 				? selectedConversation.kind
-				: defaultToolboxKind,
+				: visibleDefaultKind,
 		});
 		if (!result) return;
 		await createConversation(result.kind, result.title);
@@ -246,7 +293,7 @@ const GlobalToolboxDrawer: React.FC<{
 				>
 					<header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border bg-ide-panel px-3">
 						<SheetHeader className="min-w-0">
-							<SheetTitle className="truncate">工具箱</SheetTitle>
+							<SheetTitle className="truncate">生成历史</SheetTitle>
 							<SheetDescription className="mt-0.5 truncate text-2xs">
 								{selectedConversation
 									? selectedConversation.title || "未命名会话"
@@ -291,7 +338,7 @@ const GlobalToolboxDrawer: React.FC<{
 										onTouchMoveCapture={(event) => event.stopPropagation()}
 									>
 										<div className="space-y-2">
-											{toolboxConversationGroups.map((group) => (
+											{visibleConversationGroups.map((group) => (
 												<ToolboxConversationGroup
 													key={group.kind}
 													group={group}
@@ -327,7 +374,7 @@ const GlobalToolboxDrawer: React.FC<{
 									type="button"
 									className="flex size-8 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 									title="关闭"
-									aria-label="关闭工具箱"
+									aria-label="关闭生成历史"
 								>
 									<X className="size-4" />
 								</button>
@@ -341,7 +388,7 @@ const GlobalToolboxDrawer: React.FC<{
 								fallback={
 									<div className="flex h-full items-center justify-center text-xs text-muted-foreground">
 										<Loader2 className="mr-2 size-3.5 animate-spin" />
-										<span>加载工具箱</span>
+										<span>加载生成历史</span>
 									</div>
 								}
 							>
@@ -473,7 +520,7 @@ const ToolboxConversationItem: React.FC<{
 	const title = conversation.title || "未命名会话";
 	const updatedAt = toolboxConversationTime(conversation.updatedAt);
 	const sourceLabel =
-		conversation.scopeId && conversation.scopeId !== globalToolboxScopeId ? "项目" : "工具箱";
+		conversation.scopeId && conversation.scopeId !== globalToolboxScopeId ? "项目" : "生成历史";
 
 	return (
 		<button
@@ -500,6 +547,11 @@ const ToolboxConversationItem: React.FC<{
 
 const isToolboxKind = (kind: string | undefined): kind is StudioTab =>
 	kind === "video" || kind === "image" || kind === "text" || kind === "audio";
+
+const isVisibleToolboxKind = (
+	kind: string | undefined,
+	groups: Array<(typeof toolboxConversationGroups)[number]>,
+): kind is StudioTab => isToolboxKind(kind) && groups.some((group) => group.kind === kind);
 
 const toolboxConversationTime = (value: string) => {
 	const date = new Date(value);

@@ -356,7 +356,7 @@ const AssetLibraryDialog: React.FC<{
 								>
 									{projectMode
 										? `管理${selectedProject?.name || "当前项目"}的生成素材、上传素材和已选生成资源。`
-										: "管理可在工具箱中复用的全局素材。"}
+										: "管理可在生成历史中复用的全局素材。"}
 								</DialogPrimitive.Description>
 							</div>
 							<DialogPrimitive.Close asChild>
@@ -753,7 +753,7 @@ const AssetLibraryEmpty: React.FC<{ projectMode: boolean }> = ({ projectMode }) 
 			<p className="max-w-sm text-xs leading-5 text-muted-foreground">
 				{projectMode
 					? "可上传素材，或从生成结果中选入资源。"
-					: "可上传图片、视频、音频或文本素材，供工具箱生成时复用。"}
+					: "可上传图片、视频、音频或文本素材，供生成历史复用。"}
 			</p>
 		</div>
 	</div>
@@ -902,7 +902,7 @@ const sourceTypeLabel = (source: AssetLibrarySource) => {
 
 const mediaAssetSourceLabel = (source: string) => {
 	if (source === "upload") return "上传";
-	if (source === "toolbox") return "工具箱生成";
+	if (source === "toolbox") return "生成历史";
 	if (source === "generation") return "项目生成";
 	if (source === "preview") return "预览";
 	return source;

@@ -9,6 +9,7 @@ import {
 	MediaGenerationWorkspace,
 	type MediaGenerationWorkspaceProps,
 } from "@/domains/generation/components/MediaGenerationWorkspace";
+import { GlobalToolboxButton } from "@/domains/workspace/components/GlobalToolboxDrawer";
 import { Button } from "@/shared/components/ui/button";
 
 type VideoWorkspaceProps = Omit<MediaGenerationWorkspaceProps, "kind">;
@@ -75,6 +76,7 @@ export const VideoGenerationDialog: React.FC<VideoGenerationDialogProps> = ({
 				open={open}
 				title={title ?? "生成视频"}
 				titleId={titleId}
+				titleAside={<GlobalToolboxButton kind="video" variant="inline" />}
 				onOpenChange={onOpenChange}
 			>
 				<MediaGenerationWorkspace {...workspaceProps} kind="video" />
@@ -91,16 +93,19 @@ export const VideoGenerationDialog: React.FC<VideoGenerationDialogProps> = ({
 			title={title ?? `生成视频素材 · ${activeSection.headingText}`}
 			titleId={titleId}
 			titleAside={
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					className="h-8 shrink-0 rounded-md px-2.5 text-xs active:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0"
-					onClick={() => setMaterialLibraryOpen(true)}
-				>
-					<Images className="size-4" />
-					<span>从素材库中选择</span>
-				</Button>
+				<div className="flex items-center gap-2">
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						className="h-8 shrink-0 rounded-md px-2.5 text-xs active:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0"
+						onClick={() => setMaterialLibraryOpen(true)}
+					>
+						<Images className="size-4" />
+						<span>从素材库中选择</span>
+					</Button>
+					<GlobalToolboxButton kind="video" variant="inline" />
+				</div>
 			}
 			onOpenChange={onOpenChange}
 		>
