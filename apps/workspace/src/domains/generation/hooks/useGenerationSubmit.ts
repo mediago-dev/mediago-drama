@@ -336,7 +336,8 @@ export const useGenerationSubmit = ({
 				localMessageId: loadingMessage.id,
 				prompt: displayPrompt,
 			});
-			if (overrides.resetPrompt ?? true) setPrompt("");
+			const shouldResetPrompt = overrides.resetPrompt ?? true;
+			if (shouldResetPrompt) setPrompt("");
 			let activeAssistantMessageId = loadingMessage.id;
 
 			try {
@@ -552,6 +553,9 @@ export const useGenerationSubmit = ({
 					project_id: mediaAssetProjectId,
 					section_id: requestSectionId,
 				});
+				if (shouldResetPrompt && (promptRef?.current ?? "").trim() === "") {
+					setPrompt(promptInput);
+				}
 				void mutateTasks();
 				mutateProjectGenerationTasks(requestKind);
 				setActiveEntryId(failedAssistantMessageId);
