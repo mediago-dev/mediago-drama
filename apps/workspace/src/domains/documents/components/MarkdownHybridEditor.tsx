@@ -49,6 +49,10 @@ import {
 	type MarkdownHeadingContext,
 	type MarkdownSectionContext,
 } from "@/domains/documents/components/tiptap/section-context";
+import {
+	createVisibleTextSelectionBookmark,
+	restoreVisibleTextSelectionBookmark,
+} from "@/domains/documents/components/tiptap/selection-bookmark";
 import { isSectionImagePlaceholderElement } from "@/domains/documents/components/tiptap/section-images";
 import { TiptapToolbar } from "@/domains/documents/components/tiptap/toolbar";
 import { useMarkdownEditorImperativeHandle } from "@/domains/documents/components/tiptap/useMarkdownEditorImperativeHandle";
@@ -459,7 +463,7 @@ export const MarkdownHybridEditor = forwardRef<
 			}
 		}
 
-		const selection = editor.state.selection;
+		const selectionBookmark = createVisibleTextSelectionBookmark(editor);
 		emittedMarkdownRef.current = value;
 		editor.commands.setContent(value, {
 			contentType: "markdown",
@@ -467,15 +471,7 @@ export const MarkdownHybridEditor = forwardRef<
 		});
 		isStreamingRef.current = false;
 		streamingTargetRef.current = null;
-		try {
-			const size = editor.state.doc.content.size;
-			editor.commands.setTextSelection({
-				from: Math.min(selection.from, size),
-				to: Math.min(selection.to, size),
-			});
-		} catch {
-			// Selection positions can become invalid after a full document replacement.
-		}
+		restoreVisibleTextSelectionBookmark(editor, selectionBookmark);
 	}, [editor, flushPendingMarkdownChange, value]);
 
 	useEffect(() => {
