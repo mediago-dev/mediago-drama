@@ -124,6 +124,7 @@ export function route(
 	supportsReferenceUrls: boolean,
 	legacyModelId?: string,
 	paramCombos?: GenerationParamCombo[],
+	maxReferenceUrls?: number,
 ): GenerationRoute {
 	const groupedParams = params.map(withParamGroup);
 	return {
@@ -138,6 +139,7 @@ export function route(
 		docUrl,
 		async,
 		supportsReferenceUrls,
+		...(maxReferenceUrls ? { maxReferenceUrls } : {}),
 		status: "available",
 		params: groupedParams,
 		paramGroups: fallbackParamGroups(kind, groupedParams),

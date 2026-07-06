@@ -388,6 +388,57 @@ describe("useGenerationSubmit", () => {
 		expect(mutateMediaAssets).toHaveBeenCalledTimes(1);
 	});
 
+	it("does not count reference bindings against the selected route limit", async () => {
+		vi.mocked(sendGenerationMessage).mockResolvedValue(generationResponse());
+		const onSubmitFailure = vi.fn();
+		const { result } = renderSubmitHook({
+			onSubmitFailure,
+			selectedRoute: { ...imageRoute, maxReferenceUrls: 2 },
+		});
+
+		await act(async () => {
+			await result.current.submitGeneration();
+		});
+
+		expect(sendGenerationMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				referenceAssetIds: ["asset-1"],
+				referenceBindings: [
+					{
+						assetId: "asset-1",
+						blockId: "section_ref",
+						documentId: "doc-ref",
+						kind: "section",
+					},
+				],
+				referenceUrls: ["https://example.test/reference.png"],
+			}),
+		);
+		expect(onSubmitFailure).not.toHaveBeenCalled();
+		expect(result.current.error).toBeNull();
+	});
+
+	it("blocks generation when provider references exceed the selected route limit", async () => {
+		const onSubmitFailure = vi.fn();
+		const { result } = renderSubmitHook({
+			onSubmitFailure,
+			selectedRoute: { ...imageRoute, maxReferenceUrls: 1 },
+		});
+
+		await act(async () => {
+			await result.current.submitGeneration();
+		});
+
+		expect(sendGenerationMessage).not.toHaveBeenCalled();
+		expect(result.current.error).toBe("当前模型最多支持 1 张参考图。");
+		expect(onSubmitFailure).toHaveBeenCalledWith({
+			kind: "image",
+			localMessageId: "",
+			message: "当前模型最多支持 1 张参考图。",
+		});
+		expect(result.current.messages).toEqual([]);
+	});
+
 	it("schedules follow-up task refreshes for server-side prompt optimization", async () => {
 		vi.useFakeTimers();
 		try {

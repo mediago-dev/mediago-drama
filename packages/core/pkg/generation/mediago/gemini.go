@@ -31,6 +31,7 @@ func geminiImageRoute(routeID string, versionID string, model string, params cat
 		Adapter:               adapterOpenRouterChatImage,
 		DocURL:                openRouterImageDocs,
 		SupportsReferenceURLs: true,
+		MaxReferenceURLs:      4,
 		Params:                params,
 	}
 }

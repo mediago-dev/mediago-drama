@@ -165,7 +165,7 @@ var familySpecs = []familySpec{
 		Routes: concatModelRoutes(
 			[]ModelRoute{
 				officialRoute(RouteOfficialGPTImage2, FamilyGPTImage, VersionGPTImage2, KindImage, "OpenAI official", "gpt-image-2", AdapterOfficialOpenAIImage, "https://platform.openai.com/docs/guides/image-generation", []string{"openai"}, officialGPTImageParams(), false, false),
-				dmxRoute(RouteDMXGPTImage2, FamilyGPTImage, VersionGPTImage2, "DMX", "gpt-image-2-ssvip", AdapterDMXImagesGenerations, "https://doc.dmxapi.cn/gpt-image-2-text-to-image.html", dmxGPTImageParams(), false, true, ModelGPTImage2),
+				withMaxReferenceURLs(dmxRoute(RouteDMXGPTImage2, FamilyGPTImage, VersionGPTImage2, "DMX", "gpt-image-2-ssvip", AdapterDMXImagesGenerations, "https://doc.dmxapi.cn/gpt-image-2-text-to-image.html", dmxGPTImageParams(), false, true, ModelGPTImage2), 4),
 			},
 			mediagoRoutesForFamily(FamilyGPTImage),
 			[]ModelRoute{
@@ -189,7 +189,7 @@ var familySpecs = []familySpec{
 			[]ModelRoute{
 				officialRoute(RouteOfficialNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, KindImage, "Google official", "gemini-3.1-flash-image", AdapterOfficialGoogleImage, "https://ai.google.dev/gemini-api/docs/image-generation", []string{"google"}, officialNanoBanana31Params(), false, true),
 				officialRoute(RouteOfficialNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, KindImage, "Google official", "gemini-2.5-flash-image", AdapterOfficialGoogleImage, "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-image", []string{"google"}, officialNanoBanana25Params(), false, true),
-				dmxRoute(RouteDMXNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "DMX", "gemini-3.1-flash-image", AdapterDMXGeminiGenerate, "https://doc.dmxapi.cn/gemini-3.1-flash-image-preview-edit.html", nanoBananaParams(), false, true, ModelNanoBanana),
+				withMaxReferenceURLs(dmxRoute(RouteDMXNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "DMX", "gemini-3.1-flash-image", AdapterDMXGeminiGenerate, "https://doc.dmxapi.cn/gemini-3.1-flash-image-preview-edit.html", nanoBananaParams(), false, true, ModelNanoBanana), 4),
 			},
 			mediagoRoutesForFamily(FamilyNanoBanana),
 			[]ModelRoute{

@@ -101,6 +101,7 @@ describe("fallback generation catalog params", () => {
 		]);
 		expect(param("dmx.gpt-image-2", "aspectRatio").default).toBe("1:1");
 		expect(param("dmx.gpt-image-2", "resolution").default).toBe("1K");
+		expect(routeById("dmx.gpt-image-2").maxReferenceUrls).toBe(4);
 		expect(param("dmx.gpt-image-2", "quality").group).toBe("other");
 		expect(param("dmx.gpt-image-2", "quality").menu).toBe("secondary");
 		expect(routeGroups("dmx.gpt-image-2")).toEqual([
@@ -138,6 +139,10 @@ describe("fallback generation catalog params", () => {
 			"n",
 			"background",
 		]);
+		expect(routeById("mediago.gpt-image-2")).toMatchObject({
+			supportsReferenceUrls: true,
+			maxReferenceUrls: 4,
+		});
 		expect(routeCombos("mediago.gpt-image-2")).toEqual([
 			{
 				params: ["aspectRatio", "resolution"],

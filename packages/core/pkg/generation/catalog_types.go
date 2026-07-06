@@ -70,6 +70,7 @@ type ModelRoute struct {
 	DocURL                string            `json:"docUrl"`
 	Async                 bool              `json:"async"`
 	SupportsReferenceURLs bool              `json:"supportsReferenceUrls"`
+	MaxReferenceURLs      int               `json:"maxReferenceUrls,omitempty"`
 	Status                RouteStatus       `json:"status"`
 	StatusReason          string            `json:"statusReason,omitempty"`
 	AuthKeys              []string          `json:"-"`

@@ -20,6 +20,7 @@ func gptImageRoutes() []catalog.RouteSpec {
 			Adapter:               adapterOpenRouterImages,
 			DocURL:                openRouterImageDocs,
 			SupportsReferenceURLs: true,
+			MaxReferenceURLs:      4,
 			Params:                gptImageParams(),
 		},
 	}

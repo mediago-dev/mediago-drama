@@ -29,6 +29,7 @@ func mediagoRouteFromSpec(spec catalog.RouteSpec) ModelRoute {
 		DocURL:                spec.DocURL,
 		Async:                 spec.Async,
 		SupportsReferenceURLs: spec.SupportsReferenceURLs,
+		MaxReferenceURLs:      spec.MaxReferenceURLs,
 		Status:                RouteStatusAvailable,
 		AuthKeys:              []string{ProviderMediago},
 		Params:                routeParamSpecs(kind, params.CanonicalParams),

@@ -6,6 +6,7 @@ import { uploadMediaAsset } from "@/domains/workspace/api/media";
 import type { GenerationRoute } from "@/domains/generation/api/generation";
 import {
 	canUseAssetAsReference,
+	maxReferenceUrlsForRoute,
 	referenceKindsForRoute,
 	resolveGenerationExtraValue,
 	uniqueStrings,
@@ -39,6 +40,7 @@ export const useGenerationReferences = ({
 		() => referenceKindsForRoute(selectedRoute),
 		[selectedRoute],
 	);
+	const maxReferenceUrls = maxReferenceUrlsForRoute(selectedRoute);
 	const selectedReferenceAssets = useMemo(
 		() => mediaAssets.filter((asset) => selectedReferenceAssetIds.includes(asset.id)),
 		[mediaAssets, selectedReferenceAssetIds],
@@ -73,10 +75,10 @@ export const useGenerationReferences = ({
 				.map((asset) => asset.id),
 		);
 		setSelectedReferenceAssetIds((current) => {
-			const next = current.filter((id) => validIDs.has(id));
+			const next = current.filter((id) => validIDs.has(id)).slice(0, maxReferenceUrls);
 			return sameStringList(current, next) ? current : next;
 		});
-	}, [mediaAssets, selectableReferenceKinds, selectedRoute]);
+	}, [maxReferenceUrls, mediaAssets, selectableReferenceKinds, selectedRoute]);
 
 	const removeReferenceAsset = useCallback((assetId: string) => {
 		setSelectedReferenceAssetIds((current) => current.filter((id) => id !== assetId));
@@ -86,24 +88,32 @@ export const useGenerationReferences = ({
 		(asset: MediaAsset) => {
 			if (!canUseAssetAsReference(asset, selectedRoute, selectableReferenceKinds)) return;
 
-			setSelectedReferenceAssetIds((current) =>
-				current.includes(asset.id) ? current : [...current, asset.id],
-			);
+			setSelectedReferenceAssetIds((current) => {
+				if (current.includes(asset.id)) return current;
+				if (maxReferenceUrls && current.length >= maxReferenceUrls) {
+					setError(`当前模型最多支持 ${maxReferenceUrls} 张参考图。`);
+					return current;
+				}
+				return [...current, asset.id];
+			});
 		},
-		[selectableReferenceKinds, selectedRoute],
+		[maxReferenceUrls, selectableReferenceKinds, selectedRoute, setError],
 	);
 
 	const toggleReferenceAsset = useCallback(
 		(asset: MediaAsset) => {
 			if (!canUseAssetAsReference(asset, selectedRoute, selectableReferenceKinds)) return;
 
-			setSelectedReferenceAssetIds((current) =>
-				current.includes(asset.id)
-					? current.filter((id) => id !== asset.id)
-					: [...current, asset.id],
-			);
+			setSelectedReferenceAssetIds((current) => {
+				if (current.includes(asset.id)) return current.filter((id) => id !== asset.id);
+				if (maxReferenceUrls && current.length >= maxReferenceUrls) {
+					setError(`当前模型最多支持 ${maxReferenceUrls} 张参考图。`);
+					return current;
+				}
+				return [...current, asset.id];
+			});
 		},
-		[selectableReferenceKinds, selectedRoute],
+		[maxReferenceUrls, selectableReferenceKinds, selectedRoute, setError],
 	);
 
 	const uploadReferenceAsset = useCallback(
@@ -118,9 +128,14 @@ export const useGenerationReferences = ({
 				const asset = await uploadMediaAsset(file, mediaAssetProjectId);
 				await mutateMediaAssets();
 				if (canUseAssetAsReference(asset, selectedRoute, selectableReferenceKinds)) {
-					setSelectedReferenceAssetIds((current) =>
-						current.includes(asset.id) ? current : [...current, asset.id],
-					);
+					setSelectedReferenceAssetIds((current) => {
+						if (current.includes(asset.id)) return current;
+						if (maxReferenceUrls && current.length >= maxReferenceUrls) {
+							setError(`当前模型最多支持 ${maxReferenceUrls} 张参考图。`);
+							return current;
+						}
+						return [...current, asset.id];
+					});
 				}
 			} catch (err) {
 				const message = err instanceof Error ? err.message : "素材上传失败。";
@@ -129,7 +144,14 @@ export const useGenerationReferences = ({
 				setIsUploadingAsset(false);
 			}
 		},
-		[mediaAssetProjectId, mutateMediaAssets, selectableReferenceKinds, selectedRoute, setError],
+		[
+			maxReferenceUrls,
+			mediaAssetProjectId,
+			mutateMediaAssets,
+			selectableReferenceKinds,
+			selectedRoute,
+			setError,
+		],
 	);
 
 	return {

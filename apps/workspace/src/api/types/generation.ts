@@ -44,6 +44,7 @@ export interface ModelRoute {
 	docUrl: string;
 	async: boolean;
 	supportsReferenceUrls: boolean;
+	maxReferenceUrls?: number;
 	status: RouteStatus;
 	statusReason?: string;
 	params: ParamSpec[];

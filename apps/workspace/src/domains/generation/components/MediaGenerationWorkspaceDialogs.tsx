@@ -4,7 +4,10 @@ import {
 	type ReferenceSelectionShortcutGroup,
 } from "@/domains/generation/components/MediaGenerationDialogs";
 import type { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
-import type { GenerationEntry } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import {
+	maxReferenceUrlsForRoute,
+	type GenerationEntry,
+} from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 
 type GenerationWorkspaceState = ReturnType<typeof useGenerationWorkspace>;
 
@@ -34,6 +37,7 @@ export const MediaGenerationWorkspaceDialogs: React.FC<{
 				entries={generationEntries}
 				inputId={`${workspace.uploadIdPrefix}-reference-dialog-upload`}
 				isUploading={workspace.isUploadingAsset}
+				maxReferences={maxReferenceUrlsForRoute(workspace.selectedRoute)}
 				mediaAssets={workspace.mediaAssets}
 				open={referenceDialogOpen}
 				references={workspace.selectedReferenceAssets}

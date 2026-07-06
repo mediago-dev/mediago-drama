@@ -61,6 +61,11 @@ func dmxRoute(
 	}
 }
 
+func withMaxReferenceURLs(route ModelRoute, maxReferenceURLs int) ModelRoute {
+	route.MaxReferenceURLs = maxReferenceURLs
+	return route
+}
+
 func jimengRoute(
 	id string,
 	familyID string,

@@ -294,6 +294,7 @@ export const fallbackCatalog: GenerationModelsResponse = {
 			true,
 			"gpt-image-2",
 			gptImageParamCombos(),
+			4,
 		),
 		plannedRoute(
 			"official.gpt-image-2",
@@ -322,6 +323,7 @@ export const fallbackCatalog: GenerationModelsResponse = {
 			true,
 			undefined,
 			mediagoGPTImageParamCombos(),
+			4,
 		),
 		route(
 			"dmx.gemini-3.1-flash-image-preview",
@@ -338,6 +340,7 @@ export const fallbackCatalog: GenerationModelsResponse = {
 			true,
 			"nano-banana",
 			nanoParamCombos(),
+			4,
 		),
 		route(
 			"official.gemini-2.5-flash-image",
@@ -370,6 +373,7 @@ export const fallbackCatalog: GenerationModelsResponse = {
 			true,
 			undefined,
 			mediagoNanoBanana31ParamCombos(),
+			4,
 		),
 		route(
 			"mediago.gemini-3-pro-image",
@@ -386,6 +390,7 @@ export const fallbackCatalog: GenerationModelsResponse = {
 			true,
 			undefined,
 			mediagoNanoBananaProParamCombos(),
+			4,
 		),
 		route(
 			"mediago.gemini-2.5-flash-image",
@@ -402,6 +407,7 @@ export const fallbackCatalog: GenerationModelsResponse = {
 			true,
 			undefined,
 			mediagoNanoBanana25ParamCombos(),
+			4,
 		),
 		route(
 			"openrouter.gemini-3.1-flash-image-preview",
