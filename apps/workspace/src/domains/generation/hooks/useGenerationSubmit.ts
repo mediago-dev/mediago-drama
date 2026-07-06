@@ -27,6 +27,7 @@ import { analytics, AnalyticsEvent } from "@/shared/analytics";
 import {
 	generationParamsWithRequestDetails,
 	generatedAssetsIncludeMediaAssets,
+	maxReferenceUrlsForRoute,
 	messageFromResponse,
 	notifySubmitCallback,
 	promptWithExtraContext,
@@ -229,6 +230,18 @@ export const useGenerationSubmit = ({
 			const requestFamilyId = overrides.selectedFamily?.id ?? selectedFamily.id;
 			const requestVersionId = overrides.selectedVersion?.id ?? selectedVersion.id;
 			const requestSelectedParams = overrides.selectedParams ?? selectedParams;
+			const requestReferenceCount = requestReferenceUrls.length + requestReferenceAssetIds.length;
+			const maxReferenceUrls = maxReferenceUrlsForRoute(requestRoute);
+			if (maxReferenceUrls && requestReferenceCount > maxReferenceUrls) {
+				const message = `当前模型最多支持 ${maxReferenceUrls} 张参考图。`;
+				setError(message);
+				notifySubmitCallback(onSubmitFailure, {
+					kind: requestRoute.kind,
+					localMessageId: "",
+					message,
+				});
+				return;
+			}
 			const shouldResolvePromptFromDocumentContext =
 				Boolean(requestDocumentContext) &&
 				useRawPrompt &&
@@ -264,10 +277,7 @@ export const useGenerationSubmit = ({
 				kind: requestKind,
 				project_id: mediaAssetProjectId,
 				provider: requestRoute.provider,
-				reference_count:
-					requestReferenceUrls.length +
-					requestReferenceAssetIds.length +
-					requestReferenceBindings.length,
+				reference_count: requestReferenceCount,
 				route_id: requestRoute.id,
 				section_id: requestSectionId,
 				task_type: requestTaskType,

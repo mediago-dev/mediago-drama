@@ -9,6 +9,7 @@ export {
 	generationAssetSelectionKey,
 	generationAssetSource,
 	isConfiguredRoute,
+	maxReferenceUrlsForRoute,
 	preferredRoute,
 	providerTypeOf,
 	referenceKindsForRoute,

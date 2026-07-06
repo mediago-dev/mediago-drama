@@ -46,6 +46,11 @@ export const canUseAssetAsReference = (
 	selectableKinds = referenceKindsForRoute(route),
 ) => route.supportsReferenceUrls && selectableKinds.has(asset.kind);
 
+export const maxReferenceUrlsForRoute = (route: GenerationRoute) =>
+	route.supportsReferenceUrls && route.maxReferenceUrls && route.maxReferenceUrls > 0
+		? route.maxReferenceUrls
+		: undefined;
+
 const mediaAssetContentPathPattern =
 	/\/api(?:\/v1)?\/(?:media\/assets|media-assets)\/[^/?#]+\/content/;
 
