@@ -9,6 +9,12 @@ vi.mock("@/components/AudioPlayer", () => ({
 	),
 }));
 
+vi.mock("@/components/VideoPlayer", () => ({
+	VideoPlayer: ({ mimeType, src }: { mimeType?: string; src: string }) => (
+		<video data-testid="video-player" data-mime-type={mimeType} src={src} />
+	),
+}));
+
 describe("GenerationChatPanel", () => {
 	it("shows a loading label for empty streaming text results", () => {
 		HTMLElement.prototype.scrollTo = vi.fn();
@@ -262,5 +268,33 @@ describe("GenerationChatPanel", () => {
 		);
 
 		expect(within(container).getByText("图像")).toBeTruthy();
+	});
+
+	it("shows readable provider details when a failed task is expanded", () => {
+		HTMLElement.prototype.scrollTo = vi.fn();
+		const entries: GenerationEntry[] = [
+			{
+				id: "task-video-failed",
+				kind: "video",
+				status: "failed",
+				content: "供应商返回错误，请稍后重试或调整请求。",
+				error:
+					"official request failed with status 404: " +
+					'{"error":{"code":"ModelNotOpen","message":"Your account 2100815854 has not activated the model doubao-seedance-2-0-mini-260615. Please activate the model service in the Ark Console.","type":"Not Found"}}',
+				prompt: "生成一个短视频",
+			},
+		];
+
+		render(
+			<GenerationChatPanel entries={entries} onRefreshVideo={vi.fn()} onSelectEntry={vi.fn()} />,
+		);
+
+		expect(screen.getByText("错误详情")).toBeTruthy();
+		expect(
+			screen.getByText(
+				"Your account 2100815854 has not activated the model doubao-seedance-2-0-mini-260615. Please activate the model service in the Ark Console.",
+			),
+		).toBeTruthy();
+		expect(screen.queryByText(/"error":/u)).toBeNull();
 	});
 });

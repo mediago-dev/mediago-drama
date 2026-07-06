@@ -290,6 +290,43 @@ func TestXiaoyunqueCatalogIncludesPippitSeedanceRoute(t *testing.T) {
 	}
 }
 
+func TestOfficialVolcengineSeedanceCatalogIncludesMiniAndStandard(t *testing.T) {
+	cases := []struct {
+		id      string
+		version string
+		model   string
+	}{
+		{RouteOfficialSeedance20Fast, VersionSeedance20Fast, "doubao-seedance-2-0-fast-260128"},
+		{RouteOfficialSeedance20Mini, VersionSeedance20Mini, "doubao-seedance-2-0-mini-260615"},
+		{RouteOfficialSeedance20, VersionSeedance20, "doubao-seedance-2-0-260128"},
+	}
+
+	for _, tc := range cases {
+		route := mustRoute(t, tc.id)
+		if route.Kind != KindVideo ||
+			route.FamilyID != FamilySeedance ||
+			route.VersionID != tc.version ||
+			route.Provider != ProviderVolcengine ||
+			route.Adapter != AdapterOfficialVolcengineVideo {
+			t.Fatalf("route %q = %#v, want official Volcengine Seedance video route", tc.id, route)
+		}
+		if route.Model != tc.model || !route.Async || !route.SupportsReferenceURLs {
+			t.Fatalf("route %q execution metadata = %#v", tc.id, route)
+		}
+		if len(route.AuthKeys) != 1 || route.AuthKeys[0] != ProviderVolcengine {
+			t.Fatalf("route %q auth keys = %#v, want Volcengine key", tc.id, route.AuthKeys)
+		}
+		assertHasParams(t, route, "aspectRatio", "resolution", "duration", "generateAudio", "seed", "watermark", "returnLastFrame", "executionExpiresAfter", "negativePrompt")
+	}
+
+	for _, route := range Routes() {
+		if route.Provider == ProviderVolcengine &&
+			(route.VersionID == VersionSeedance20FastVIP || route.VersionID == VersionSeedance20VIP) {
+			t.Fatalf("VIP Seedance route %q should not expose Volcengine official provider", route.ID)
+		}
+	}
+}
+
 func TestProviderRegistry(t *testing.T) {
 	providers := map[string]ProviderInfo{}
 	for _, provider := range Providers() {

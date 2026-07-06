@@ -1,6 +1,12 @@
-const hiddenProviderDetailPattern = /\b(dmx|dmxapi|openrouter)\b/i;
-const rawStructuredErrorPattern =
-	/(^\s*\{)|(\\"error\\")|("error")|(request failed with status)|(api returned error)/i;
+const providerErrorMessageKeys = [
+	"message",
+	"error_message",
+	"task_status_msg",
+	"failure_message",
+	"msg",
+	"detail",
+	"reason",
+];
 
 export const compactGenerationError = (rawError: string) =>
 	rawError
@@ -13,16 +19,14 @@ export const compactGenerationError = (rawError: string) =>
 
 export const shouldHideGenerationErrorDetail = (value: string) => {
 	const detail = compactGenerationError(value);
-	if (!detail) return false;
-
-	return hiddenProviderDetailPattern.test(detail) || rawStructuredErrorPattern.test(detail);
+	return !detail;
 };
 
 export const visibleGenerationErrorDetail = (rawError: string) => {
 	const detail = compactGenerationError(rawError);
 	if (!detail || shouldHideGenerationErrorDetail(detail)) return "";
 
-	return detail;
+	return providerErrorMessageFromText(detail) || detail;
 };
 
 export const safeGenerationHistoryErrorText = (
@@ -30,11 +34,74 @@ export const safeGenerationHistoryErrorText = (
 	content: string,
 	fallback = "生成失败，暂无错误详情。",
 ) => {
-	const contentText = visibleGenerationErrorDetail(content);
-	if (contentText) return contentText;
-
 	const errorText = visibleGenerationErrorDetail(error ?? "");
 	if (errorText) return errorText;
 
+	const contentText = visibleGenerationErrorDetail(content);
+	if (contentText) return contentText;
+
 	return fallback;
 };
+
+const providerErrorMessageFromText = (detail: string) => {
+	for (const candidate of jsonCandidatesFromText(detail)) {
+		try {
+			const parsed: unknown = JSON.parse(candidate);
+			const message = providerErrorMessageFromValue(parsed);
+			if (message) return message;
+		} catch {
+			// Keep trying the embedded JSON candidates below.
+		}
+	}
+	return "";
+};
+
+const jsonCandidatesFromText = (detail: string) => {
+	const candidates = [detail.trim()];
+	const firstObjectStart = detail.indexOf("{");
+	const lastObjectEnd = detail.lastIndexOf("}");
+	if (firstObjectStart >= 0 && lastObjectEnd > firstObjectStart) {
+		candidates.push(detail.slice(firstObjectStart, lastObjectEnd + 1));
+	}
+
+	const initialCandidates = candidates.slice();
+	for (const candidate of initialCandidates) {
+		const trimmed = candidate.trim();
+		if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+			candidates.push(trimmed.slice(1, -1));
+		}
+	}
+
+	return [...new Set(candidates.map((candidate) => candidate.trim()).filter(Boolean))];
+};
+
+const providerErrorMessageFromValue = (value: unknown): string => {
+	if (typeof value === "string") return value.trim();
+	if (!value || typeof value !== "object") return "";
+	if (Array.isArray(value)) {
+		for (const item of value) {
+			const message = providerErrorMessageFromValue(item);
+			if (message) return message;
+		}
+		return "";
+	}
+
+	const record = value as Record<string, unknown>;
+	const nestedError = record.error;
+	if (typeof nestedError === "string" && nestedError.trim()) return nestedError.trim();
+	if (nestedError && typeof nestedError === "object") {
+		const nestedMessage = providerErrorMessageFromValue(nestedError);
+		if (nestedMessage) return nestedMessage;
+	}
+
+	for (const key of providerErrorMessageKeys) {
+		const message = stringValue(record[key]);
+		if (message) return message;
+	}
+
+	const code = stringValue(record.code);
+	const type = stringValue(record.type);
+	return [code, type].filter(Boolean).join(" ");
+};
+
+const stringValue = (value: unknown) => (typeof value === "string" ? value.trim() : "");

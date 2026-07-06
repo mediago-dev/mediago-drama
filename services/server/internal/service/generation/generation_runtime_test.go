@@ -504,8 +504,8 @@ func TestGenerationTaskFromMessageRecordsFailureReason(t *testing.T) {
 	if task.CapabilityID != "image.generate" {
 		t.Fatalf("capability id = %q, want image.generate", task.CapabilityID)
 	}
-	if task.Error != "请求参数无效，请调整参数后重试。" || strings.Contains(task.Error, "bad prompt") {
-		t.Fatalf("error = %q, want sanitized failure reason", task.Error)
+	if task.Error != "dmx request failed with status 400: bad prompt" {
+		t.Fatalf("error = %q, want raw failure detail", task.Error)
 	}
 	if task.ErrorCode != "invalid_parameter" || task.ErrorType != "invalid_parameter" || task.Retryable {
 		t.Fatalf("failure fields = %+v, want invalid parameter failure", task)
@@ -513,24 +513,25 @@ func TestGenerationTaskFromMessageRecordsFailureReason(t *testing.T) {
 }
 
 func TestFailedGenerationResponseMapsProviderFailure(t *testing.T) {
+	rawBody := `{"error":{"code":"ModelNotOpen","message":"Your account 2100815854 has not activated the model doubao-seedance-2-0-mini-260615. Please activate the model service in the Ark Console.","type":"Not Found"}}`
 	response := FailedGenerationResponse("task_failed", &coregeneration.HTTPError{
-		Provider:   coregeneration.ProviderDMX,
-		StatusCode: 400,
-		Body:       "raw provider error",
-		Code:       "policy_violation",
-		Reason:     coregeneration.FailurePolicyViolation,
-		Message:    "Provider policy rejected the generation request or result.",
+		Provider:   coregeneration.ProviderVolcengine,
+		StatusCode: 404,
+		Body:       rawBody,
+		Code:       "provider_http_error",
+		Reason:     coregeneration.FailureProviderError,
+		Message:    "Provider request failed.",
 		Retryable:  false,
 	})
 
-	if response.Message != "生成结果触发供应商内容安全策略，未返回可用结果。" {
-		t.Fatalf("message = %q, want policy failure message", response.Message)
+	if response.Message != "供应商返回错误，请稍后重试或调整请求。" {
+		t.Fatalf("message = %q, want provider failure message", response.Message)
 	}
-	if response.Error != "生成结果触发供应商内容安全策略，未返回可用结果。" ||
-		response.ErrorCode != "policy_violation" ||
-		response.ErrorType != "policy_violation" ||
+	if response.Error != rawBody ||
+		response.ErrorCode != "provider_http_error" ||
+		response.ErrorType != "provider_error" ||
 		response.Retryable {
-		t.Fatalf("response = %+v, want structured policy failure", response)
+		t.Fatalf("response = %+v, want structured provider failure with raw detail", response)
 	}
 }
 

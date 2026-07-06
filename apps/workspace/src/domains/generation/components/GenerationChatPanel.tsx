@@ -558,7 +558,7 @@ const generationFailureSummary = ({
 		return "供应商密钥未配置或无效，请检查供应商配置。";
 	}
 
-	const detail = compactGenerationError(rawError);
+	const detail = visibleGenerationErrorDetail(rawError) || compactGenerationError(rawError);
 	const normalized = detail.toLowerCase();
 	if (!normalized) return "生成服务没有返回错误详情。";
 

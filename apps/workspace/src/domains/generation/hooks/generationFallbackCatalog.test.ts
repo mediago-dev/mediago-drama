@@ -335,6 +335,40 @@ describe("fallback generation catalog params", () => {
 			model: "Seedance_2.0_mini_lite",
 			provider: "xiaoyunque",
 		});
+		expect(
+			fallbackCatalog.routes
+				.filter((route) => route.id.startsWith("official.seedance-2.0"))
+				.map((route) => route.id),
+		).toEqual([
+			"official.seedance-2.0-fast",
+			"official.seedance-2.0-mini",
+			"official.seedance-2.0",
+		]);
+		expect(
+			fallbackCatalog.routes.find((route) => route.id === "official.seedance-2.0-mini"),
+		).toMatchObject({
+			adapter: "official.volcengine.video",
+			model: "doubao-seedance-2-0-mini-260615",
+			provider: "volcengine",
+		});
+		expect(
+			fallbackCatalog.routes.find((route) => route.id === "official.seedance-2.0"),
+		).toMatchObject({
+			adapter: "official.volcengine.video",
+			model: "doubao-seedance-2-0-260128",
+			provider: "volcengine",
+		});
+		expect(routeParams("official.seedance-2.0-mini").map((item) => item.name)).toEqual([
+			"aspectRatio",
+			"resolution",
+			"duration",
+			"generateAudio",
+			"seed",
+			"watermark",
+			"returnLastFrame",
+			"executionExpiresAfter",
+			"negativePrompt",
+		]);
 		expect(param("openrouter.seedance-2.0-fast", "duration")).toMatchObject({
 			default: "3",
 			type: "select",

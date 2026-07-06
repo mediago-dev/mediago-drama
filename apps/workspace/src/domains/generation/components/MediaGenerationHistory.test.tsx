@@ -711,7 +711,7 @@ describe("HistoryGenerationList", () => {
 		);
 	});
 
-	it("hides raw provider details for failed image placeholders", async () => {
+	it("extracts raw provider details for failed image placeholders", async () => {
 		const entry = {
 			...failedImageEntry(),
 			content: "图像生成失败",
@@ -734,8 +734,39 @@ describe("HistoryGenerationList", () => {
 			pointerType: "mouse",
 		});
 
-		expect(await screen.findByRole("tooltip")).toHaveTextContent("图像生成失败");
-		expect(screen.getByRole("tooltip")).not.toHaveTextContent("DMX");
+		expect(await screen.findByRole("tooltip")).toHaveTextContent("DMX API 返回了空的图片数据");
+		expect(screen.getByRole("tooltip")).not.toHaveTextContent('{"error"');
+	});
+
+	it("shows prefixed Volcengine provider errors for failed image placeholders", async () => {
+		const providerError =
+			"official request failed with status 404: " +
+			'{"error":{"code":"ModelNotOpen","message":"Your account 2100815854 has not activated the model doubao-seedance-2-0-mini-260615. Please activate the model service in the Ark Console.","type":"Not Found"}}';
+		const entry = {
+			...failedImageEntry(),
+			content: "图像生成失败",
+			error: providerError,
+		};
+		render(
+			<HistoryGenerationList
+				activeEntryId="entry-failed-image"
+				deletingEntryIds={[]}
+				entries={[entry]}
+				kind="image"
+				selectedAssetKeys={[]}
+				variant="list"
+				onDeleteEntry={vi.fn()}
+				onSelectEntry={vi.fn()}
+			/>,
+		);
+
+		fireEvent.pointerMove(screen.getAllByRole("img", { name: /生成失败/ })[0], {
+			pointerType: "mouse",
+		});
+
+		expect(await screen.findByRole("tooltip")).toHaveTextContent(
+			"Your account 2100815854 has not activated the model doubao-seedance-2-0-mini-260615.",
+		);
 	});
 
 	it("shows right-click actions for failed image placeholders", async () => {

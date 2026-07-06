@@ -787,6 +787,10 @@ export function dmxSeedanceParams(): GenerationParam[] {
 	return seedanceParams();
 }
 
+export function officialSeedanceParams(): GenerationParam[] {
+	return [...seedanceParams(), textParam("negativePrompt", "负向提示词", "")];
+}
+
 export function jimengSeedanceParams(): GenerationParam[] {
 	return jimengSeedanceParamSet(false);
 }

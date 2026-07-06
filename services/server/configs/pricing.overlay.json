@@ -549,6 +549,18 @@
       "perCallPrice": 4
     },
     {
+      "routeId": "official.seedance-2.0-mini",
+      "currency": "CNY",
+      "unit": "per_call",
+      "perCallPrice": 2.5
+    },
+    {
+      "routeId": "official.seedance-2.0",
+      "currency": "CNY",
+      "unit": "per_call",
+      "perCallPrice": 5
+    },
+    {
       "routeId": "openrouter.seedance-2.0-fast",
       "currency": "USD",
       "unit": "per_call",

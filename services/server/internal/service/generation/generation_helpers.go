@@ -196,6 +196,9 @@ func FailedGenerationResponse(id string, err error) GenerationMessageResponse {
 }
 
 func generationSafeFailureError(failure generationFailureDetails) string {
+	if raw := strings.TrimSpace(failure.Raw); raw != "" {
+		return raw
+	}
 	if message := strings.TrimSpace(failure.Message); message != "" {
 		return message
 	}
@@ -608,25 +611,10 @@ func GenerationTaskFromMessage(
 
 func generationTaskErrorFromResponse(response GenerationMessageResponse) string {
 	errorMessage := strings.TrimSpace(response.Error)
-	if errorMessage == "" || response.Status != "failed" {
-		return errorMessage
-	}
-	if !shouldRedactGenerationErrorDetail(errorMessage) {
+	if errorMessage != "" || response.Status != "failed" {
 		return errorMessage
 	}
 	return shared.FirstNonEmpty(strings.TrimSpace(response.Message), "生成请求失败。")
-}
-
-func shouldRedactGenerationErrorDetail(value string) bool {
-	trimmed := strings.TrimSpace(value)
-	normalized := strings.ToLower(trimmed)
-	return strings.HasPrefix(trimmed, "{") ||
-		strings.Contains(normalized, `"error"`) ||
-		strings.Contains(normalized, `\"error\"`) ||
-		strings.Contains(normalized, "request failed with status") ||
-		strings.Contains(normalized, "dmx") ||
-		strings.Contains(normalized, "dmxapi") ||
-		strings.Contains(normalized, "openrouter")
 }
 
 // GenerationCapabilityIDForRequest returns an explicit capability id or the route kind default.

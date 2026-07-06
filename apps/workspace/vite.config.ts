@@ -6,6 +6,7 @@ import { defineConfig } from "vite";
 
 const templateDir = path.dirname(fileURLToPath(import.meta.url));
 const isElectronBuild = process.env.VITE_ELECTRON_BUILD === "1";
+const reactDOMDir = path.resolve(templateDir, "node_modules/react-dom");
 
 export default defineConfig({
 	base: isElectronBuild ? "./" : "/",
@@ -29,6 +30,7 @@ export default defineConfig({
 			"@pages": path.resolve(templateDir, "src/pages"),
 			"@hooks": path.resolve(templateDir, "src/hooks"),
 			"@types": path.resolve(templateDir, "src/types"),
+			"react-dom": reactDOMDir,
 		},
 	},
 	build: {
