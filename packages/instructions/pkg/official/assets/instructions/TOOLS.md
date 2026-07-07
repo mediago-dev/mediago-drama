@@ -51,3 +51,15 @@ editable: true
   核心文档规则由系统 prompt 注入，不依赖 Skill，也不随用户编辑 Skill 而变化。
 - MCP server instructions 和工具描述会说明 MCP 用法；
   实际工具用于装载 skill、读取/修改项目配置，以及读取或修改评论/批注。
+
+## 生成媒体（图片/视频/音频）
+
+- 生成能力由独立的 generation MCP 提供（工具名 `list_generation_models`、`generate_media`、
+  `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task`）。
+- 用户需要配图、生成视频/音频或文生图时，先调用 `list_generation_models` 获取可用模型目录，
+  据此选择 `routeId` 与参数；不要臆造 `routeId`、`model` 或参数取值。
+- 目录中 `configured` 为 false 表示对应供应商未配置：提示用户去设置里配置，不要发起生成。
+- 调用 `generate_media` 提交生成（`kind` 默认 image，`prompt` 必填）。返回的 `id` 即任务 `taskId`；
+  当 `status` 为 submitting/submitted 时任务在后台运行，用该 id 调 `poll_generation_task` 直到完成，
+  再从结果资产中取用生成图/视频。
+- 需要把生成结果写入文档时，用文档写工具以 Markdown 图片/资源引用插入到目标章节。
