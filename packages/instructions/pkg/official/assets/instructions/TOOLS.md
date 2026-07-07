@@ -69,9 +69,10 @@ editable: true
 
 ### 生图标准流程（风格推荐 → 确认 → 生成 → 选片）
 
-1. `list_generation_models` 返回的 `stylePresets` 是内置风格推荐（含 `previewUrl` 预览图与 `promptSuffix`）。
-   推荐风格时从中挑 4-8 个匹配项，把 `previewUrl` 作为 `ask_user_selection` 选项的 `imageUrl`，
-   让用户可视化选择；推荐阶段不要实际生图。
+1. `list_generation_models` 返回的 `stylePresets` 来自产品提示词库的 style 分类
+   （内置风格 + 用户自建 + 提示词包，与生成工作台同源），含 `promptSuffix` 与可选的 `previewUrl` 预览图。
+   推荐风格时从中挑选匹配项，`previewUrl` 存在时作为 `ask_user_selection` 选项的 `imageUrl`，
+   缺失时用纯文本选项；推荐阶段不要实际生图。
 2. 用户选定风格后，把该 preset 的 `promptSuffix` 拼到 prompt 末尾、`params` 合并进请求参数，
    再 `generate_media` 提交真实生成。
 3. 一次生成返回多张结果时，用 `ask_user_selection`（imageUrl 用各资产 url）让用户选片，
