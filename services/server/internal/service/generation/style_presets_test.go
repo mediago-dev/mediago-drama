@@ -30,6 +30,11 @@ func TestStylePresetStoreLoadsEmbeddedCatalog(t *testing.T) {
 		if !strings.HasPrefix(preset.PreviewURL, "/api/v1/generation/style-previews/") {
 			t.Fatalf("preset %q preview url = %q, want style-previews route", preset.ID, preset.PreviewURL)
 		}
+		// The endpoint serves immutable cache headers, so the URL must carry a
+		// content-hash version to bust stale client caches on image changes.
+		if !strings.Contains(preset.PreviewURL, "?v=") {
+			t.Fatalf("preset %q preview url = %q, want content-hash version", preset.ID, preset.PreviewURL)
+		}
 
 		asset, data, found, err := store.PreviewContent(preset.ID)
 		if err != nil {
