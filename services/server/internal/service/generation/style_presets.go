@@ -1,155 +1,125 @@
 package generation
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"mime"
 	"net/url"
 	"path"
+	"sort"
 	"strings"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/http/dto"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptlibrary"
 )
 
 const (
-	stylePresetRoot         = "style-presets"
-	stylePresetManifestPath = stylePresetRoot + "/manifest.json"
+	stylePreviewDir      = "style-presets/previews"
+	stylePromptCategory  = "style"
+	stylePreviewURLBase  = "/api/v1/generation/style-previews/"
+	stylePresetKindImage = string(coregeneration.KindImage)
 )
 
-// StylePresetStore indexes bundled visual style presets and their preview images.
-type StylePresetStore struct {
-	files   fs.FS
-	presets []dto.GenerationStylePreset
-	byID    map[string]stylePresetEntry
-	err     error
+// StylePromptSource lists reusable prompt entries; satisfied by the prompt
+// library service. Style presets are the library's "style" category so the
+// agent recommends exactly what the workbench and prompt packs manage.
+type StylePromptSource interface {
+	List(ctx context.Context, filter promptlibrary.Filter) ([]promptlibrary.PromptEntry, error)
 }
 
-type stylePresetManifest struct {
-	SchemaVersion int                        `json:"schemaVersion"`
-	Presets       []stylePresetManifestEntry `json:"presets"`
+// StylePreviewStore indexes bundled style preview images by prompt entry ID
+// (file stem under style-presets/previews).
+type StylePreviewStore struct {
+	files fs.FS
+	byID  map[string]stylePreviewEntry
+	err   error
 }
 
-type stylePresetManifestEntry struct {
-	ID           string         `json:"id"`
-	Title        string         `json:"title"`
-	Description  string         `json:"description,omitempty"`
-	Kinds        []string       `json:"kinds,omitempty"`
-	RouteID      string         `json:"routeId,omitempty"`
-	PromptSuffix string         `json:"promptSuffix"`
-	Params       map[string]any `json:"params,omitempty"`
-	PreviewPath  string         `json:"previewPath,omitempty"`
-	MIMEType     string         `json:"mimeType,omitempty"`
+type stylePreviewEntry struct {
+	URL      string
+	MIMEType string
+	Path     string
 }
 
-type stylePresetEntry struct {
-	Preset      dto.GenerationStylePreset
-	PreviewPath string
-}
-
-// NewStylePresetStore loads the embedded style preset manifest. A missing
-// manifest is treated as an empty catalog.
-func NewStylePresetStore(files fs.FS) *StylePresetStore {
-	store := &StylePresetStore{
-		files: files,
-		byID:  map[string]stylePresetEntry{},
-	}
+// NewStylePreviewStore scans the embedded preview directory. A missing
+// directory is treated as an empty catalog.
+func NewStylePreviewStore(files fs.FS) *StylePreviewStore {
+	store := &StylePreviewStore{files: files, byID: map[string]stylePreviewEntry{}}
 	if files == nil {
 		return store
 	}
-
-	data, err := fs.ReadFile(files, stylePresetManifestPath)
+	entries, err := fs.ReadDir(files, stylePreviewDir)
 	if err != nil {
 		if !fsValidFileMissing(err) {
-			store.err = fmt.Errorf("reading style preset manifest: %w", err)
+			store.err = fmt.Errorf("reading style preview directory: %w", err)
 		}
 		return store
 	}
-
-	var manifest stylePresetManifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		store.err = fmt.Errorf("parsing style preset manifest: %w", err)
-		return store
-	}
-	if manifest.SchemaVersion != 1 {
-		store.err = fmt.Errorf("unsupported style preset manifest schema version %d", manifest.SchemaVersion)
-		return store
-	}
-
-	for index, item := range manifest.Presets {
-		entry, err := store.manifestEntry(item)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		presetID := strings.TrimSuffix(name, path.Ext(name))
+		if presetID == "" {
+			continue
+		}
+		filePath := path.Join(stylePreviewDir, name)
+		data, err := fs.ReadFile(files, filePath)
 		if err != nil {
-			store.err = fmt.Errorf("style preset manifest entry %d: %w", index, err)
+			store.err = fmt.Errorf("reading style preview %q: %w", filePath, err)
 			return store
 		}
-		if _, exists := store.byID[entry.Preset.ID]; exists {
-			store.err = fmt.Errorf("style preset manifest entry %d: duplicate id %q", index, entry.Preset.ID)
+		if existing, ok := store.byID[presetID]; ok {
+			store.err = fmt.Errorf("duplicate style preview id %q (%s and %s)", presetID, existing.Path, filePath)
 			return store
 		}
-		store.byID[entry.Preset.ID] = entry
-		store.presets = append(store.presets, entry.Preset)
+		// Hash the content into the URL: the endpoint replies with an
+		// immutable cache header, so the URL must change whenever the image does.
+		digest := sha256.Sum256(data)
+		store.byID[presetID] = stylePreviewEntry{
+			URL:      stylePreviewURLBase + url.PathEscape(presetID) + "?v=" + hex.EncodeToString(digest[:4]),
+			MIMEType: stylePreviewMIMEType(name),
+			Path:     filePath,
+		}
 	}
 	return store
 }
 
-func (store *StylePresetStore) manifestEntry(item stylePresetManifestEntry) (stylePresetEntry, error) {
-	presetID := strings.TrimSpace(item.ID)
-	title := strings.TrimSpace(item.Title)
-	promptSuffix := strings.TrimSpace(item.PromptSuffix)
-	if presetID == "" {
-		return stylePresetEntry{}, fmt.Errorf("missing id")
+// Lookup returns the preview URL and MIME type for one prompt entry ID.
+func (store *StylePreviewStore) Lookup(presetID string) (string, string, bool) {
+	if store == nil || store.err != nil {
+		return "", "", false
 	}
-	if title == "" {
-		return stylePresetEntry{}, fmt.Errorf("missing title")
+	entry, ok := store.byID[strings.TrimSpace(presetID)]
+	if !ok {
+		return "", "", false
 	}
-	if promptSuffix == "" {
-		return stylePresetEntry{}, fmt.Errorf("missing promptSuffix")
-	}
-	if routeID := strings.TrimSpace(item.RouteID); routeID != "" {
-		if _, ok := coregeneration.FindRoute(routeID); !ok {
-			return stylePresetEntry{}, fmt.Errorf("unknown routeId %q", routeID)
-		}
-	}
-	kinds := CompactStrings(item.Kinds)
-	if len(kinds) == 0 {
-		kinds = []string{string(coregeneration.KindImage)}
-	}
+	return entry.URL, entry.MIMEType, true
+}
 
-	preset := dto.GenerationStylePreset{
-		ID:           presetID,
-		Title:        title,
-		Description:  strings.TrimSpace(item.Description),
-		Kinds:        kinds,
-		RouteID:      strings.TrimSpace(item.RouteID),
-		PromptSuffix: promptSuffix,
-		Params:       item.Params,
+// PreviewContent returns the bundled preview image for one prompt entry ID.
+func (store *StylePreviewStore) PreviewContent(presetID string) (dto.GenerationStylePreset, []byte, bool, error) {
+	if store == nil {
+		return dto.GenerationStylePreset{}, nil, false, nil
 	}
-
-	previewPath := strings.TrimSpace(item.PreviewPath)
-	if previewPath == "" {
-		return stylePresetEntry{Preset: preset}, nil
+	if store.err != nil {
+		return dto.GenerationStylePreset{}, nil, false, store.err
 	}
-	if !fs.ValidPath(previewPath) || strings.HasPrefix(previewPath, "../") || strings.Contains(previewPath, "/../") {
-		return stylePresetEntry{}, fmt.Errorf("invalid previewPath %q", previewPath)
+	entry, ok := store.byID[strings.TrimSpace(presetID)]
+	if !ok {
+		return dto.GenerationStylePreset{}, nil, false, nil
 	}
-	filePath := path.Join(stylePresetRoot, previewPath)
-	// Hash the preview content into the URL: the endpoint replies with an
-	// immutable cache header, so the URL must change whenever the image does.
-	data, err := fs.ReadFile(store.files, filePath)
+	data, err := fs.ReadFile(store.files, entry.Path)
 	if err != nil {
-		return stylePresetEntry{}, fmt.Errorf("reading %q: %w", filePath, err)
+		return dto.GenerationStylePreset{}, nil, false, fmt.Errorf("reading style preview %q: %w", entry.Path, err)
 	}
-	mimeType := strings.TrimSpace(item.MIMEType)
-	if mimeType == "" {
-		mimeType = stylePreviewMIMEType(previewPath)
-	}
-	digest := sha256.Sum256(data)
-	preset.PreviewURL = stylePreviewURL(presetID) + "?v=" + hex.EncodeToString(digest[:4])
-	preset.MIMEType = mimeType
-	return stylePresetEntry{Preset: preset, PreviewPath: filePath}, nil
+	preset := dto.GenerationStylePreset{ID: strings.TrimSpace(presetID), PreviewURL: entry.URL, MIMEType: entry.MIMEType}
+	return preset, data, true, nil
 }
 
 func stylePreviewMIMEType(filename string) string {
@@ -169,38 +139,37 @@ func stylePreviewMIMEType(filename string) string {
 	return "application/octet-stream"
 }
 
-func stylePreviewURL(presetID string) string {
-	return "/api/v1/generation/style-previews/" + url.PathEscape(presetID)
-}
-
-// List returns the bundled style presets in manifest order.
-func (store *StylePresetStore) List() ([]dto.GenerationStylePreset, error) {
-	if store == nil {
-		return nil, nil
+// stylePresetsFromLibrary assembles agent-facing style presets from the prompt
+// library's style category, attaching bundled preview images where available.
+func stylePresetsFromLibrary(ctx context.Context, source StylePromptSource, previews *StylePreviewStore) []dto.GenerationStylePreset {
+	if source == nil {
+		return nil
 	}
-	if store.err != nil {
-		return nil, store.err
-	}
-	presets := make([]dto.GenerationStylePreset, len(store.presets))
-	copy(presets, store.presets)
-	return presets, nil
-}
-
-// PreviewContent returns the bundled preview image for one preset.
-func (store *StylePresetStore) PreviewContent(presetID string) (dto.GenerationStylePreset, []byte, bool, error) {
-	if store == nil {
-		return dto.GenerationStylePreset{}, nil, false, nil
-	}
-	if store.err != nil {
-		return dto.GenerationStylePreset{}, nil, false, store.err
-	}
-	entry, ok := store.byID[strings.TrimSpace(presetID)]
-	if !ok || entry.PreviewPath == "" {
-		return dto.GenerationStylePreset{}, nil, false, nil
-	}
-	data, err := fs.ReadFile(store.files, entry.PreviewPath)
+	entries, err := source.List(ctx, promptlibrary.Filter{Category: stylePromptCategory})
 	if err != nil {
-		return dto.GenerationStylePreset{}, nil, false, fmt.Errorf("reading style preview %q: %w", entry.PreviewPath, err)
+		return nil
 	}
-	return entry.Preset, data, true, nil
+	presets := make([]dto.GenerationStylePreset, 0, len(entries))
+	for _, entry := range entries {
+		promptSuffix := strings.TrimSpace(entry.Prompt)
+		if entry.ID == "" || promptSuffix == "" {
+			continue
+		}
+		preset := dto.GenerationStylePreset{
+			ID:           entry.ID,
+			Title:        firstNonEmpty(entry.Name, entry.ID),
+			Kinds:        []string{stylePresetKindImage},
+			PromptSuffix: promptSuffix,
+		}
+		if previewURL, mimeType, ok := previews.Lookup(entry.ID); ok {
+			preset.PreviewURL = previewURL
+			preset.MIMEType = mimeType
+		}
+		presets = append(presets, preset)
+	}
+	sort.SliceStable(presets, func(left int, right int) bool {
+		// Presets with bundled previews first: they make better selection cards.
+		return presets[left].PreviewURL != "" && presets[right].PreviewURL == ""
+	})
+	return presets
 }

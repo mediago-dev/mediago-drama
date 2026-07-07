@@ -19,6 +19,10 @@ func TestDocumentMCPServersValidateProjectID(t *testing.T) {
 		t.Fatalf("writing fake executable: %v", err)
 	}
 	withProcessExecutable(t, filepath.Join(filepath.Dir(fakeExecutable), "mediago-server"))
+	// Pin the working directory: executable discovery probes cwd-ancestor bin/
+	// directories, and a real bin/mediago-generation-mcp in the repo root would
+	// otherwise leak a second stdio server into this test.
+	withWorkingDir(t, t.TempDir())
 
 	servers := DocumentMCPServers(root, "project-safe_1")
 	if len(servers) != 1 || servers[0].Stdio == nil {

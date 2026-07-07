@@ -28,7 +28,8 @@ type GenerationService struct {
 	generationProviderFactory     func(coregeneration.ModelRoute) (coregeneration.Provider, error)
 	multimodalTextProviderFactory runtime.MultimodalTextProviderFactory
 	voicePreviews                 *VoicePreviewStore
-	stylePresets                  *StylePresetStore
+	stylePreviews                 *StylePreviewStore
+	stylePrompts                  StylePromptSource
 	mediagoBaseURL                string
 	jimengBinPath                 string
 	jimengBinDir                  string
@@ -59,8 +60,13 @@ func NewGenerationService(settings *settings.Settings, generationTasks *Generati
 		mediaAssets:                   mediaAssets,
 		multimodalTextProviderFactory: defaultMultimodalTextProviderFactory,
 		voicePreviews:                 NewVoicePreviewStore(configassets.VoicePreviews),
-		stylePresets:                  NewStylePresetStore(configassets.StylePresets),
+		stylePreviews:                 NewStylePreviewStore(configassets.StylePresets),
 	}
+}
+
+// SetStylePromptLibrary wires the prompt library that owns style presets.
+func (workflow *GenerationService) SetStylePromptLibrary(source StylePromptSource) {
+	workflow.stylePrompts = source
 }
 
 // SetJimengCLIPaths configures the local Jimeng CLI lookup paths.

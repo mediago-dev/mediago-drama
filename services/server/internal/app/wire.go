@@ -162,6 +162,7 @@ func newAPIHandler(config Config) *apiHandler {
 	serviceskill.SetPromptPackStore(promptPack)
 	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
 	promptLibrary := servicepromptlibrary.NewServiceFromPromptPack(promptPack, settingsReposErr)
+	generationService.SetStylePromptLibrary(promptLibrary)
 	capabilityRegistry := corecapability.Default()
 	capabilityService := servicecapability.NewService(capabilityRegistry, generationService.RouteConfigured)
 	billingPrices := config.BillingPrices
