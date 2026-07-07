@@ -55,7 +55,8 @@ editable: true
 ## 生成媒体（图片/视频/音频）
 
 - 生成能力由独立的 generation MCP 提供（工具名 `list_generation_models`、`generate_media`、
-  `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task`）。
+  `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task`、
+  `select_generation_asset`）。
 - 用户需要配图、生成视频/音频或文生图时，先调用 `list_generation_models` 获取可用模型目录，
   据此选择 `routeId` 与参数；不要臆造 `routeId`、`model` 或参数取值。
 - 目录中 `configured` 为 false 表示对应供应商未配置：提示用户去设置里配置，不要发起生成。
@@ -65,3 +66,15 @@ editable: true
 - 需要把生成结果写入文档时，用文档写工具以 Markdown 图片/资源引用插入到目标章节。
 - 生图涉及风格选择或结果多选时，用 `ask_user_selection` 展示带预览图的选项让用户确认，再据其选择继续；
   返回 timeout 或 cancelled 时不要擅自生成，说明情况并结束回合或改为在对话中询问。
+
+### 生图标准流程（风格推荐 → 确认 → 生成 → 选片）
+
+1. `list_generation_models` 返回的 `stylePresets` 是内置风格推荐（含 `previewUrl` 预览图与 `promptSuffix`）。
+   推荐风格时从中挑 4-8 个匹配项，把 `previewUrl` 作为 `ask_user_selection` 选项的 `imageUrl`，
+   让用户可视化选择；推荐阶段不要实际生图。
+2. 用户选定风格后，把该 preset 的 `promptSuffix` 拼到 prompt 末尾、`params` 合并进请求参数，
+   再 `generate_media` 提交真实生成。
+3. 一次生成返回多张结果时，用 `ask_user_selection`（imageUrl 用各资产 url）让用户选片，
+   然后调 `select_generation_asset(taskId, slotIndex)` 标记选中，再取该资产 URL 插入文档。
+4. 视频等长耗时生成不要阻塞轮询到完成：提交时带上 `notificationTarget` 指向目标文档章节，
+   告知用户任务已在后台运行并结束回合，结果由任务通知呈现。

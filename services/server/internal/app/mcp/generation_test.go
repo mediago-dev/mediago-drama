@@ -109,6 +109,68 @@ func TestGenerationServerAllowsUnscopedProjectInput(t *testing.T) {
 	}
 }
 
+func TestGenerationServerSelectAsset(t *testing.T) {
+	service := &generationMCPServiceStub{
+		tasks: map[string]servicegeneration.GenerationTaskRecord{
+			"task-1": {
+				ID:        "task-1",
+				ProjectID: "project-a",
+				Assets: []servicegeneration.GenerationAsset{
+					{Kind: "image", SlotIndex: 0},
+					{Kind: "image", SlotIndex: 1},
+				},
+			},
+		},
+	}
+	server := &GenerationServer{service: service, projectID: "project-a"}
+
+	record, err := server.SelectGenerationAsset(context.Background(), "", mediamcp.GenerationSelectAssetInput{
+		TaskID:    "task-1",
+		SlotIndex: 1,
+		Title:     "定稿",
+	})
+	if err != nil {
+		t.Fatalf("SelectGenerationAsset returned error: %v", err)
+	}
+	if len(record.Assets) != 2 || !record.Assets[1].Selected || record.Assets[1].Title != "定稿" {
+		t.Fatalf("record assets = %#v, want slot 1 selected with title", record.Assets)
+	}
+
+	if _, err := server.SelectGenerationAsset(context.Background(), "", mediamcp.GenerationSelectAssetInput{
+		TaskID:    "task-1",
+		SlotIndex: 9,
+	}); err == nil {
+		t.Fatal("SelectGenerationAsset returned nil error for missing slot")
+	}
+
+	if _, err := server.SelectGenerationAsset(context.Background(), "", mediamcp.GenerationSelectAssetInput{
+		TaskID:    "task-missing",
+		SlotIndex: 0,
+	}); err == nil {
+		t.Fatal("SelectGenerationAsset returned nil error for missing task")
+	}
+}
+
+func TestGenerationServerSelectAssetRespectsProjectScope(t *testing.T) {
+	service := &generationMCPServiceStub{
+		tasks: map[string]servicegeneration.GenerationTaskRecord{
+			"task-b": {
+				ID:        "task-b",
+				ProjectID: "project-b",
+				Assets:    []servicegeneration.GenerationAsset{{Kind: "image", SlotIndex: 0}},
+			},
+		},
+	}
+	server := &GenerationServer{service: service, projectID: "project-a"}
+
+	if _, err := server.SelectGenerationAsset(context.Background(), "", mediamcp.GenerationSelectAssetInput{
+		TaskID:    "task-b",
+		SlotIndex: 0,
+	}); err == nil {
+		t.Fatal("SelectGenerationAsset returned nil error for out-of-scope task")
+	}
+}
+
 type generationMCPServiceStub struct {
 	createRequests []servicegeneration.GenerationMessageRequest
 	listQueries    []servicegeneration.GenerationTaskListQuery
@@ -142,4 +204,25 @@ func (service *generationMCPServiceStub) GetGenerationTask(id string) (servicege
 }
 
 func (service *generationMCPServiceStub) PollGenerationTask(context.Context, servicegeneration.GenerationTaskRecord) {
+}
+
+func (service *generationMCPServiceStub) UpdateGenerationTaskAsset(id string, assetIndex int, patch servicegeneration.UpdateGenerationTaskAssetRequest) (servicegeneration.GenerationTaskRecord, bool, error) {
+	task, ok := service.tasks[id]
+	if !ok {
+		return servicegeneration.GenerationTaskRecord{}, false, nil
+	}
+	for index := range task.Assets {
+		if task.Assets[index].SlotIndex != assetIndex {
+			continue
+		}
+		if patch.Selected != nil {
+			task.Assets[index].Selected = *patch.Selected
+		}
+		if patch.Title != nil {
+			task.Assets[index].Title = *patch.Title
+		}
+		service.tasks[id] = task
+		return task, true, nil
+	}
+	return servicegeneration.GenerationTaskRecord{}, false, nil
 }

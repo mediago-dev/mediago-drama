@@ -42,6 +42,7 @@ type GenerationStore interface {
 	ListGenerationTasks(ctx context.Context, projectID string, input mediamcp.GenerationTaskListInput) (mediamcp.GenerationTasksOutput, error)
 	RetryGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error)
 	PollGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error)
+	SelectGenerationAsset(ctx context.Context, projectID string, input mediamcp.GenerationSelectAssetInput) (mediamcp.GenerationTaskRecord, error)
 }
 
 // SelectionStore supplies run-scoped user-selection prompts.

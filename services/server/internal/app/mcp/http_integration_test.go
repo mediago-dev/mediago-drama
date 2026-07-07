@@ -231,6 +231,7 @@ func TestInternalGenerationMCPHTTPAuthAndTools(t *testing.T) {
 		"list_generation_tasks",
 		"retry_generation_task",
 		"poll_generation_task",
+		"select_generation_asset",
 	)
 }
 

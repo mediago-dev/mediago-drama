@@ -118,6 +118,31 @@ func (server *GenerationServer) PollGenerationTask(ctx context.Context, projectI
 	return generationMessageOutputFromService(servicegeneration.GenerationResponseFromTask(task)), nil
 }
 
+func (server *GenerationServer) SelectGenerationAsset(ctx context.Context, projectID string, input mediamcp.GenerationSelectAssetInput) (mediamcp.GenerationTaskRecord, error) {
+	_ = ctx
+	service, task, err := server.serviceAndVisibleTask(projectID, input.TaskID)
+	if err != nil {
+		return mediamcp.GenerationTaskRecord{}, err
+	}
+	if input.SlotIndex < 0 {
+		return mediamcp.GenerationTaskRecord{}, fmt.Errorf("slotIndex must be >= 0")
+	}
+	server.logToolInvocation(mediamcp.GenerationTools.SelectAsset.Name, "task_id", task.ID, "slot_index", input.SlotIndex)
+	selected := true
+	patch := servicegeneration.UpdateGenerationTaskAssetRequest{Selected: &selected}
+	if title := strings.TrimSpace(input.Title); title != "" {
+		patch.Title = &title
+	}
+	updated, ok, err := service.UpdateGenerationTaskAsset(task.ID, input.SlotIndex, patch)
+	if err != nil {
+		return mediamcp.GenerationTaskRecord{}, err
+	}
+	if !ok {
+		return mediamcp.GenerationTaskRecord{}, fmt.Errorf("generation asset slot %d not found", input.SlotIndex)
+	}
+	return generationTaskRecordFromService(updated), nil
+}
+
 func (server *GenerationServer) serviceAndVisibleTask(projectID string, rawTaskID string) (GenerationService, servicegeneration.GenerationTaskRecord, error) {
 	service, err := server.requireService()
 	if err != nil {

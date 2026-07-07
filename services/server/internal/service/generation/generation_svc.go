@@ -26,6 +26,9 @@ type GenerationVoicePreviewResponse = dto.GenerationVoicePreviewResponse
 // GenerationVoicePreviewAsset is one built-in local voice preview.
 type GenerationVoicePreviewAsset = dto.GenerationVoicePreviewAsset
 
+// GenerationStylePreset is one built-in visual style recommendation.
+type GenerationStylePreset = dto.GenerationStylePreset
+
 // ImportGenerationMediaAssetsRequest imports media library assets into generation history.
 type ImportGenerationMediaAssetsRequest = dto.ImportGenerationMediaAssetsRequest
 

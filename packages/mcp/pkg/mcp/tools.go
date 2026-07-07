@@ -44,7 +44,9 @@ const GenerationMCPInstructions = `MediaGo Drama Generation MCP 使用说明：
 - generate_media 返回的 id 即生成任务的 taskId；status 为 submitting/submitted 时任务在后台运行，用返回的 id 调 poll_generation_task 或 get_generation_task 查询结果。
 - referenceUrls/referenceAssetIds/referenceBindings 可用于传入参考图、参考素材或文档绑定。
 - get_generation_task / list_generation_tasks 用于查询任务状态和结果资产。
-- poll_generation_task 用于轮询需要供应商查询的异步任务；retry_generation_task 用于重试失败或可重试任务。`
+- poll_generation_task 用于轮询需要供应商查询的异步任务；retry_generation_task 用于重试失败或可重试任务。
+- stylePresets 是内置风格推荐：previewUrl 可作为选择卡片的预览图；用户确认某个 preset 后，把它的 promptSuffix 拼到 prompt 末尾、params 合并进请求参数再 generate_media。
+- 一次生成返回多张结果时，让用户选片后调用 select_generation_asset(taskId, slotIndex) 标记选中，再取该资产 URL 使用。`
 
 const publicMCPBoundaryDescription = "MediaGo Drama MCP：Agent 当前工作目录已是项目 work 文档根目录；文档读写直接操作当前目录下的 Markdown 文件，不要再访问 work/ 子目录；项目配置通过 MCP 读取或更新，不要搜索 project.media.json。"
 
@@ -82,19 +84,21 @@ var ExternalTools = struct {
 
 // GenerationTools contains generation MCP tool definitions.
 var GenerationTools = struct {
-	ListModels ToolDefinition
-	Generate   ToolDefinition
-	GetTask    ToolDefinition
-	ListTasks  ToolDefinition
-	RetryTask  ToolDefinition
-	PollTask   ToolDefinition
+	ListModels  ToolDefinition
+	Generate    ToolDefinition
+	GetTask     ToolDefinition
+	ListTasks   ToolDefinition
+	RetryTask   ToolDefinition
+	PollTask    ToolDefinition
+	SelectAsset ToolDefinition
 }{
-	ListModels: ToolDefinition{Name: "list_generation_models", Title: "列出生成模型", Description: "返回 MediaGo Drama 当前可用的生成模型目录、routeId、参数 schema 和供应商配置状态。", ReadOnly: true},
-	Generate:   ToolDefinition{Name: "generate_media", Title: "提交媒体生成", Description: "提交图片、视频、音频或文本生成请求；prompt 必填，kind 默认 image，routeId/model/params 应来自 list_generation_models。"},
-	GetTask:    ToolDefinition{Name: "get_generation_task", Title: "读取生成任务", Description: "按 taskId 读取生成任务的状态、结果资产、错误信息和尝试记录。", ReadOnly: true},
-	ListTasks:  ToolDefinition{Name: "list_generation_tasks", Title: "列出生成任务", Description: "按 projectId、sessionId、kind、limit、offset 列出生成任务。", ReadOnly: true},
-	RetryTask:  ToolDefinition{Name: "retry_generation_task", Title: "重试生成任务", Description: "按 taskId 重新提交失败或可重试的生成任务。"},
-	PollTask:   ToolDefinition{Name: "poll_generation_task", Title: "轮询生成任务", Description: "按 taskId 轮询异步生成任务并同步最新状态。"},
+	ListModels:  ToolDefinition{Name: "list_generation_models", Title: "列出生成模型", Description: "返回 MediaGo Drama 当前可用的生成模型目录、routeId、参数 schema、供应商配置状态和内置风格 preset（stylePresets，含预览图 previewUrl 与 promptSuffix）。", ReadOnly: true},
+	Generate:    ToolDefinition{Name: "generate_media", Title: "提交媒体生成", Description: "提交图片、视频、音频或文本生成请求；prompt 必填，kind 默认 image，routeId/model/params 应来自 list_generation_models。"},
+	GetTask:     ToolDefinition{Name: "get_generation_task", Title: "读取生成任务", Description: "按 taskId 读取生成任务的状态、结果资产、错误信息和尝试记录。", ReadOnly: true},
+	ListTasks:   ToolDefinition{Name: "list_generation_tasks", Title: "列出生成任务", Description: "按 projectId、sessionId、kind、limit、offset 列出生成任务。", ReadOnly: true},
+	RetryTask:   ToolDefinition{Name: "retry_generation_task", Title: "重试生成任务", Description: "按 taskId 重新提交失败或可重试的生成任务。"},
+	PollTask:    ToolDefinition{Name: "poll_generation_task", Title: "轮询生成任务", Description: "按 taskId 轮询异步生成任务并同步最新状态。"},
+	SelectAsset: ToolDefinition{Name: "select_generation_asset", Title: "选定生成结果", Description: "按 taskId + slotIndex 把某张生成结果标记为选中（用户选片后调用），返回更新后的任务。"},
 }
 
 // AgentDocumentTools is the public run-scoped MCP surface exposed to agents.
