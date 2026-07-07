@@ -1,18 +1,26 @@
 import { Download, ExternalLink, RefreshCw, Upload } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
-import type { DesktopUpdateCapability, DesktopUpdateStatus } from "@/shared/desktop/types";
+import type {
+	DesktopUpdateCapability,
+	DesktopUpdateStatus,
+	RendererUpdateCapability,
+	RendererUpdateStatus,
+} from "@/shared/desktop/types";
 import { Button } from "@/shared/components/ui/button";
 import { useToast } from "@/hooks/useToast";
 import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
 import {
 	checkDesktopUpdate,
+	checkRendererUpdate,
 	downloadDesktopUpdate,
 	getDesktopAppVersion,
 	getDesktopUpdateCapability,
+	getRendererUpdateCapability,
 	installDesktopUpdate,
 	openExternalUrl,
 	subscribeDesktopUpdateStatus,
+	subscribeRendererUpdateStatus,
 } from "@/shared/desktop/actions";
 
 type LocalUiState = {
@@ -230,9 +238,143 @@ export const UpdatesPanel: React.FC = () => {
 						</p>
 					</div>
 				)}
+
+				<RendererUpdateSection />
 			</section>
 		</SettingsPanelLayout>
 	);
+};
+
+// Renderer hot updates: small web-layer bundles applied on next launch, without the
+// installer round-trip. Hidden entirely until the shell reports the feature enabled.
+const RendererUpdateSection: React.FC = () => {
+	const toast = useToast();
+	const [capability, setCapability] = useState<RendererUpdateCapability | null>(null);
+	const [status, setStatus] = useState<RendererUpdateStatus | null>(null);
+	const [checking, setChecking] = useState(false);
+
+	useEffect(() => {
+		let cancelled = false;
+
+		void (async () => {
+			const next = await getRendererUpdateCapability();
+			if (!cancelled) setCapability(next);
+		})();
+
+		const unsubscribe = subscribeRendererUpdateStatus((next) => {
+			setStatus(next);
+		});
+
+		return () => {
+			cancelled = true;
+			unsubscribe();
+		};
+	}, []);
+
+	if (!capability?.enabled) return null;
+
+	const check = async () => {
+		setChecking(true);
+		try {
+			const ack = await checkRendererUpdate();
+			if (!ack.ok) {
+				toast.error("检查界面更新失败", { description: ack.message });
+			}
+		} finally {
+			setChecking(false);
+		}
+	};
+
+	return (
+		<div className="space-y-3 border-t border-border pt-4">
+			<div className="flex items-center justify-between gap-2">
+				<div>
+					<p className="text-sm font-medium text-foreground">界面更新</p>
+					<p className="mt-0.5 text-xs text-muted-foreground">
+						小体积界面包，下载后重启应用即可生效，无需重新安装。
+					</p>
+				</div>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					disabled={checking}
+					onClick={() => void check()}
+				>
+					{checking ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw />}
+					<span>{checking ? "检查中" : "检查界面更新"}</span>
+				</Button>
+			</div>
+
+			<div className="rounded-md border border-border bg-muted/60 px-3 py-2 text-sm">
+				<div className="flex items-center justify-between gap-2">
+					<p className="text-muted-foreground">当前界面版本</p>
+					<p className="font-mono text-foreground">
+						rev {capability.currentRev}
+						{capability.source === "downloaded" ? "（热更新）" : "（内置）"}
+					</p>
+				</div>
+				<div className="mt-2 flex items-center justify-between gap-2">
+					<p className="text-muted-foreground">状态</p>
+					<p className="truncate text-foreground">{rendererStatusTitle(status)}</p>
+				</div>
+			</div>
+
+			{status?.phase === "downloading" && status.progress ? (
+				<div className="rounded-md border border-border px-3 py-2 text-sm">
+					<p className="text-muted-foreground">下载进度：{status.progress.percent.toFixed(1)}%</p>
+					<div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+						<div
+							className="h-full bg-primary transition-all"
+							style={{ width: `${Math.min(status.progress.percent, 100).toFixed(1)}%` }}
+						/>
+					</div>
+					<p className="mt-1 text-xs text-muted-foreground">
+						{formatBytes(status.progress.transferred)} / {formatBytes(status.progress.total)}
+					</p>
+				</div>
+			) : null}
+
+			{status?.phase === "ready" ? (
+				<p className="rounded-md border border-border bg-success-surface px-3 py-2 text-xs text-success-foreground">
+					新界面（rev {status.targetRev}）已就绪，重启应用后生效。
+					{status.notes ? ` ${status.notes}` : ""}
+				</p>
+			) : null}
+
+			{status?.phase === "requires-full-update" ? (
+				<p className="rounded-md border border-border bg-warning-surface px-3 py-2 text-xs text-warning-foreground">
+					{status.notes ?? "新界面需要更新桌面端主程序，请通过上方应用更新升级完整版本。"}
+				</p>
+			) : null}
+
+			{status?.error ? (
+				<p className="rounded-md border border-error/40 bg-error-surface px-3 py-2 text-xs text-error-foreground">
+					{status.error}
+				</p>
+			) : null}
+		</div>
+	);
+};
+
+const rendererStatusTitle = (status: RendererUpdateStatus | null): string => {
+	if (!status) return "待检测";
+	switch (status.phase) {
+		case "idle":
+			return "待检测";
+		case "checking":
+			return "正在检查";
+		case "downloading":
+			return "下载中";
+		case "ready":
+			return "待重启生效";
+		case "up-to-date":
+			return "已是最新界面";
+		case "requires-full-update":
+			return "需要完整更新";
+		case "error":
+			return "界面更新异常";
+	}
 };
 
 const statusTitle = (status: DesktopUpdateStatus | null): string => {

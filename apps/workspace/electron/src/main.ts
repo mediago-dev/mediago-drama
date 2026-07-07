@@ -16,12 +16,14 @@ import {
 	type NativeThemeSource,
 	desktopIpcChannel,
 } from "./ipc-contract.js";
-import { preloadPath, rendererDistDir } from "./paths.js";
+import { registerRendererHotUpdater, resolveActiveRenderer } from "./hot-updater.js";
+import { preloadPath } from "./paths.js";
 import { startServerSidecar, stopServerSidecar } from "./sidecar.js";
 import { registerDesktopUpdater } from "./updater.js";
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
+const activeRenderer = resolveActiveRenderer();
 
 const rendererUrl = process.env.ELECTRON_RENDERER_URL?.trim();
 
@@ -86,7 +88,7 @@ const createWindow = async () => {
 		if (app.isPackaged) {
 			await mainWindow.webContents.session.clearCache();
 		}
-		await mainWindow.loadFile(join(rendererDistDir(), "index.html"), {
+		await mainWindow.loadFile(join(activeRenderer.dir, "index.html"), {
 			hash: app.isPackaged ? "/" : undefined,
 			query: app.isPackaged ? { version: app.getVersion() } : undefined,
 		});
@@ -191,6 +193,7 @@ ipcMain.handle(desktopIpcChannel.setNativeThemeSource, (_event, source: unknown)
 });
 
 registerDesktopUpdater({ getWindow: () => mainWindow });
+registerRendererHotUpdater({ getWindow: () => mainWindow, active: activeRenderer });
 
 const safeDownloadFilename = (value: string) => {
 	const cleaned = basename(String(value || "download"))

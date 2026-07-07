@@ -4,6 +4,8 @@ import type {
 	DesktopUpdateAck,
 	DesktopUpdateCapability,
 	DesktopUpdateStatus,
+	RendererUpdateCapability,
+	RendererUpdateStatus,
 } from "@/shared/desktop/types";
 import { desktopRuntime } from "@/shared/desktop/runtime";
 
@@ -141,4 +143,50 @@ export const subscribeDesktopUpdateStatus = (
 	const runtime = desktopRuntime();
 	if (runtime !== "electron") return () => {};
 	return window.mediagoDesktop?.onUpdateStatus(listener) ?? (() => {});
+};
+
+// Renderer hot-update actions. A hot-updated renderer may run against an older shell
+// whose preload lacks these methods, so every call is runtime-guarded.
+
+const disabledRendererCapability: RendererUpdateCapability = {
+	enabled: false,
+	currentRev: 0,
+	source: "builtin",
+	reason: "当前运行环境不支持界面更新。",
+};
+
+const rendererBridge = () => (desktopRuntime() === "electron" ? window.mediagoDesktop : undefined);
+
+export const getRendererUpdateCapability = async (): Promise<RendererUpdateCapability> => {
+	const api = rendererBridge();
+	if (!api || typeof api.getRendererUpdateCapability !== "function") {
+		return disabledRendererCapability;
+	}
+	return (await api.getRendererUpdateCapability()) ?? disabledRendererCapability;
+};
+
+export const checkRendererUpdate = async (): Promise<DesktopUpdateAck> => {
+	const api = rendererBridge();
+	if (!api || typeof api.checkRendererUpdate !== "function") {
+		return { ok: false, message: "当前运行环境不支持界面更新。" };
+	}
+	return (await api.checkRendererUpdate()) ?? missingBridgeAck;
+};
+
+export const markRendererHealthy = async (): Promise<void> => {
+	const api = rendererBridge();
+	if (!api || typeof api.markRendererHealthy !== "function") return;
+	try {
+		await api.markRendererHealthy();
+	} catch {
+		// Health reporting must never break the renderer.
+	}
+};
+
+export const subscribeRendererUpdateStatus = (
+	listener: (status: RendererUpdateStatus) => void,
+): (() => void) => {
+	const api = rendererBridge();
+	if (!api || typeof api.onRendererUpdateStatus !== "function") return () => {};
+	return api.onRendererUpdateStatus(listener) ?? (() => {});
 };
