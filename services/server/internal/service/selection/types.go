@@ -24,9 +24,19 @@ const (
 	StatusCustom    = "custom"
 	StatusCancelled = "cancelled"
 	StatusExpired   = "expired"
+	// StatusSubmitted records a form submission (field values in Decision.Values).
+	StatusSubmitted = "submitted"
 	// StatusTimeout is an output-only status returned to the caller when the
 	// blocking wait elapses. It is never persisted; the record stays pending.
 	StatusTimeout = "timeout"
+)
+
+// Form field types renderable by the client form card.
+const (
+	FieldTypeSelect = "select"
+	FieldTypeToggle = "toggle"
+	FieldTypeNumber = "number"
+	FieldTypeText   = "text"
 )
 
 // Blocking-wait bounds. The caller-supplied timeout is clamped to this range;
@@ -62,9 +72,31 @@ type Option struct {
 
 // Decision is the recorded outcome of a selection.
 type Decision struct {
-	OptionID   string `json:"optionId,omitempty"`
-	CustomText string `json:"customText,omitempty"`
-	Cancelled  bool   `json:"cancelled,omitempty"`
+	OptionID   string         `json:"optionId,omitempty"`
+	CustomText string         `json:"customText,omitempty"`
+	Cancelled  bool           `json:"cancelled,omitempty"`
+	Values     map[string]any `json:"values,omitempty"`
+}
+
+// FormFieldOption is one choice of a select form field.
+type FormFieldOption struct {
+	Value       string `json:"value"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// FormField is one typed input on a form prompt.
+type FormField struct {
+	ID          string            `json:"id"`
+	Label       string            `json:"label"`
+	Type        string            `json:"type"`
+	Description string            `json:"description,omitempty"`
+	Options     []FormFieldOption `json:"options,omitempty"`
+	Default     any               `json:"default,omitempty"`
+	Min         *float64          `json:"min,omitempty"`
+	Max         *float64          `json:"max,omitempty"`
+	Unit        string            `json:"unit,omitempty"`
+	Required    bool              `json:"required,omitempty"`
 }
 
 // Record is the API/service shape of a persisted selection.
@@ -76,9 +108,10 @@ type Record struct {
 	Kind        string    `json:"kind,omitempty"`
 	Title       string    `json:"title"`
 	Prompt      string    `json:"prompt,omitempty"`
-	Options     []Option  `json:"options"`
-	AllowCustom bool      `json:"allowCustom"`
-	Status      string    `json:"status"`
+	Options     []Option    `json:"options"`
+	Fields      []FormField `json:"fields,omitempty"`
+	AllowCustom bool        `json:"allowCustom"`
+	Status      string      `json:"status"`
 	Decision    *Decision `json:"decision,omitempty"`
 	CreatedAt   string    `json:"createdAt"`
 	DecidedAt   string    `json:"decidedAt,omitempty"`
@@ -93,15 +126,17 @@ type CreateRequest struct {
 	Title          string
 	Prompt         string
 	Options        []Option
+	Fields         []FormField
 	AllowCustom    bool
 	TimeoutSeconds int
 }
 
 // DecisionRequest decides a pending selection from HTTP handlers.
 type DecisionRequest struct {
-	OptionID   string `json:"optionId,omitempty"`
-	CustomText string `json:"customText,omitempty"`
-	Cancelled  bool   `json:"cancelled,omitempty"`
+	OptionID   string         `json:"optionId,omitempty"`
+	CustomText string         `json:"customText,omitempty"`
+	Cancelled  bool           `json:"cancelled,omitempty"`
+	Values     map[string]any `json:"values,omitempty"`
 }
 
 // Service owns agent selection prompts.
@@ -156,6 +191,11 @@ func recordFromModel(model domain.AgentSelectionModel) (Record, error) {
 	}
 	if record.Options == nil {
 		record.Options = []Option{}
+	}
+	if strings.TrimSpace(model.FieldsJSON) != "" {
+		if err := json.Unmarshal([]byte(model.FieldsJSON), &record.Fields); err != nil {
+			return Record{}, fmt.Errorf("decoding selection fields: %w", err)
+		}
 	}
 	if strings.TrimSpace(model.DecisionJSON) != "" {
 		decision := Decision{}

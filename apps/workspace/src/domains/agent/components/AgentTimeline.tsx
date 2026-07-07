@@ -32,6 +32,7 @@ import {
 import { cn } from "@/shared/lib/utils";
 import { RuntimeAlertCard } from "./RuntimeAlertCard";
 import { AgentA2UIMessage } from "./timeline/AgentA2UIMessage";
+import { AgentFormCard } from "./timeline/AgentFormCard";
 import { CodeBlock, DiffBlock, TerminalBlock } from "./timeline/CodeBlocks";
 import { compact, formatTime } from "./timeline/format";
 import { MarkdownContent } from "./timeline/MarkdownContent";
@@ -368,6 +369,10 @@ const TimelineAssistantItem: React.FC<{
 	onA2UIAction?: AgentA2UIActionHandler;
 }> = memo(({ message, onA2UIAction }) => {
 	const kind = message.kind ?? "message";
+
+	if (message.metadata?.form) {
+		return <AgentFormCard message={message} />;
+	}
 
 	if (message.metadata?.a2ui) {
 		return <TimelineA2UIItem message={message} onA2UIAction={onA2UIAction} />;

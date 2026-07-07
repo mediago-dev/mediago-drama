@@ -140,7 +140,7 @@ func TestInternalDocumentMCPHTTPAuthAndComments(t *testing.T) {
 	}
 
 	_, toolsMessage := callMCPHTTP(t, handler, path, token, sessionID, 2, "tools/list", map[string]any{})
-	assertMCPTools(t, toolsMessage, "load_skill", "get_project_config", "update_project_config", "list_comments", "get_comment", "mutate_comment", "ask_user_selection", "await_user_selection")
+	assertMCPTools(t, toolsMessage, "load_skill", "get_project_config", "update_project_config", "list_comments", "get_comment", "mutate_comment", "ask_user_selection", "ask_user_form", "await_user_selection")
 
 	_, configMessage := callMCPHTTP(t, handler, path, token, sessionID, 3, "tools/call", map[string]any{
 		"name":      "get_project_config",
