@@ -13,6 +13,7 @@ type WorkspaceRepositories struct {
 	EditStreams             *DocumentEditStreamRepository
 	AgentSessions           *AgentSessionRepository
 	Approvals               *DocumentToolApprovalRepository
+	Selections              *AgentSelectionRepository
 	DocumentSections        *DocumentSectionRepository
 	Billing                 *BillingRepository
 	GenerationNotifications *GenerationNotificationRepository
@@ -34,6 +35,7 @@ func OpenWorkspaceRepositories(dbPath string) (WorkspaceRepositories, error) {
 		EditStreams:             NewDocumentEditStreamRepository(db),
 		AgentSessions:           NewAgentSessionRepository(db),
 		Approvals:               NewDocumentToolApprovalRepository(db),
+		Selections:              NewAgentSelectionRepository(db),
 		DocumentSections:        NewDocumentSectionRepositoryFromDB(db),
 		Billing:                 NewBillingRepositoryFromDB(db),
 		GenerationNotifications: NewGenerationNotificationRepositoryFromDB(db),

@@ -45,6 +45,19 @@
 
 ## 2. PR-B：选择交互闭环（ask_user_selection）
 
+### PR-B 服务端地基进度（2026-07-08）
+
+已实现并通过测试（新建独立 `selection` 包，不泛化 approval）：
+
+- 数据层：`domain.AgentSelectionModel` + `agent_selections` 表（AutoMigrate）；`AgentSelectionRepository`（Create / Get / ListPending / DecidePending 仅 pending 可决 / ExpirePending 仅 pending 可扫）。
+- 服务层：`internal/service/selection`。`Create`（校验选项、去重、生成 id、写 `expires_at = now + RetrieveTTL(30min)`）、`Get`、`ListPending`（先机会性扫描过期）、`Decide`（optionId / customText / cancelled → selected / custom / cancelled；未知选项或 customText 越权报错；已决定则幂等返回）、`WaitForSelection`（阻塞：clamp [30s,10min] 默认 3min；超时返回 `ErrWaitTimeout` 且记录仍 pending；父 ctx 取消返回 `ctx.Err()`）。
+- REST：`GET /projects/{projectId}/agent/selections`、`GET .../selections/{selectionId}`（事后取回）、`POST .../selections/{selectionId}/decision`；OpenAPI 注解 + 路由注册 + app 接线。
+- 测试（`store_test.go`，含 -race）：选中/自定义/取消、非法决定拒绝且保持 pending、双击幂等、not-found、Wait 被决定唤醒、Wait 超时后仍可事后取回、ctx 取消、过期扫描、ClampTimeout 边界。
+
+自动化验证：`services/server` `go vet` / `go build` / `go test -race ./...` 全绿；`golangci-lint` 对新包无告警；swagger 已含 3 条 selection 路由，`TestDevelopmentDocsRoutes` 覆盖检查通过。
+
+下表 B1–B9 中的服务端语义已由单测覆盖（B3 双击幂等、B5 超时哨兵+可取回、B6 取消语义）；A2UI 卡片、`ask_user_selection` MCP 工具、前端交互与端到端项属后续层，仍待实现/人工验证。
+
 | # | 场景 | 步骤 | 预期结果 | 实际结果 | 判定 |
 |---|---|---|---|---|---|
 | B1 | 卡片出现 | Agent 调 `ask_user_selection`（含 4 个带图选项） | 时间线出现 A2UI 图片网格卡片：每项预览图 + 标题 + 按钮；明暗主题下均可读 | | |
