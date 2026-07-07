@@ -16,8 +16,11 @@ import (
 )
 
 const (
-	defaultBaseURL    = "https://openrouter.ai/api/v1"
-	defaultHTTPClient = 90 * time.Second
+	defaultBaseURL = "https://openrouter.ai/api/v1"
+	// Image generations routed through MediaGo regularly take 60-160s upstream;
+	// 90s used to cut them off mid-flight (paid but result lost). Match the DMX
+	// adapter's generous cap and rely on per-request contexts for tighter bounds.
+	defaultHTTPClient = 1000 * time.Second
 )
 
 // Config controls the OpenRouter provider.
@@ -126,6 +129,10 @@ func (provider *Provider) resolveRequest(request *generation.Request) (string, e
 }
 
 func (provider *Provider) postJSON(ctx context.Context, endpoint string, payload any, result any) error {
+	return provider.postJSONWithHeaders(ctx, endpoint, payload, nil, result)
+}
+
+func (provider *Provider) postJSONWithHeaders(ctx context.Context, endpoint string, payload any, headers map[string]string, result any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -137,6 +144,9 @@ func (provider *Provider) postJSON(ctx context.Context, endpoint string, payload
 	}
 	request.Header.Set("Content-Type", "application/json")
 	provider.setHeaders(request)
+	for name, value := range headers {
+		request.Header.Set(name, value)
+	}
 
 	return provider.doJSON(request, result)
 }
@@ -174,6 +184,29 @@ func (provider *Provider) getJSON(ctx context.Context, endpoint string, result a
 	provider.setHeaders(request)
 
 	return provider.doJSON(request, result)
+}
+
+// getJSONStatus is like getJSON but hands back the HTTP status code so callers
+// can branch on non-2xx replies (e.g. 202 pending) without parsing error text.
+// The body is decoded into result only on 200.
+func (provider *Provider) getJSONStatus(ctx context.Context, endpoint string, result any) (int, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, provider.baseURL+endpoint, nil)
+	if err != nil {
+		return 0, err
+	}
+	provider.setHeaders(request)
+
+	response, err := provider.client.Do(request)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusOK && result != nil {
+		return response.StatusCode, json.NewDecoder(response.Body).Decode(result)
+	}
+	_, _ = io.Copy(io.Discard, response.Body)
+	return response.StatusCode, nil
 }
 
 func (provider *Provider) setHeaders(request *http.Request) {
