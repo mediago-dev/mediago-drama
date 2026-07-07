@@ -9,7 +9,7 @@ export const showAgentPermissionSystemNotification = async (
 	onClick: () => void,
 ): Promise<AgentPermissionNotificationResult> => {
 	if (isDesktopRuntime()) {
-		const result = await showPermissionDesktopNotification(request);
+		const result = await showPermissionDesktopNotification(request, onClick);
 		if (result === "shown") return result;
 	}
 
@@ -35,12 +35,14 @@ export const showAgentPermissionSystemNotification = async (
 
 const showPermissionDesktopNotification = async (
 	request: AgentRuntimeACPPermissionRequest,
+	onClick: () => void,
 ): Promise<AgentPermissionNotificationResult> => {
 	const shown = await showDesktopNotification({
 		title: "Agent 等待权限确认",
 		body: notificationBody(request),
 		group: "agent-permissions",
 		autoCancel: true,
+		onClick,
 	});
 	return shown ? "shown" : "fallback";
 };

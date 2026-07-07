@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
 const api = {
 	platform: process.platform,
@@ -14,8 +14,13 @@ const api = {
 		title?: string;
 		filters?: Array<{ name: string; extensions: string[] }>;
 	}) => ipcRenderer.invoke("desktop:pick-file", options),
-	showNotification: (options: { title: string; body?: string }) =>
+	showNotification: (options: { title: string; body?: string; id?: string }) =>
 		ipcRenderer.invoke("desktop:show-notification", options),
+	onNotificationClicked: (callback: (id: string) => void) => {
+		const listener = (_event: IpcRendererEvent, id: string) => callback(id);
+		ipcRenderer.on("desktop:notification-clicked", listener);
+		return () => ipcRenderer.removeListener("desktop:notification-clicked", listener);
+	},
 	startWindowDrag: () => ipcRenderer.invoke("desktop:start-window-drag"),
 	setNativeThemeSource: (source: "light" | "dark" | "system") =>
 		ipcRenderer.invoke("desktop:set-native-theme-source", source),

@@ -27,6 +27,7 @@ describe("permission notifications", () => {
 		expect(showNotification).toHaveBeenCalledWith({
 			title: "Agent 等待权限确认",
 			body: "智能体请求执行 Edit 第一章 分镜脚本.md，需要确认后继续。",
+			id: "agent-permissions",
 		});
 	});
 

@@ -23,7 +23,8 @@ export interface MediagoDesktopAPI {
 	}): Promise<DesktopDownloadResult>;
 	pickDirectory(options?: { title?: string }): Promise<string | null>;
 	pickFile(options?: { title?: string; filters?: DesktopFileFilter[] }): Promise<string | null>;
-	showNotification(options: { title: string; body?: string }): Promise<boolean>;
+	showNotification(options: { title: string; body?: string; id?: string }): Promise<boolean>;
+	onNotificationClicked(callback: (id: string) => void): () => void;
 	startWindowDrag(): Promise<void>;
 	setNativeThemeSource(source: NativeThemeSource): Promise<void>;
 }

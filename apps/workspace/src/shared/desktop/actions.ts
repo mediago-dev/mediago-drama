@@ -62,19 +62,47 @@ export const revealNativePath = async (path: string) => {
 	throw new Error("当前运行环境不支持打开本地文件夹。");
 };
 
+const notificationClickHandlers = new Map<string, () => void>();
+let notificationClickBridgeReady = false;
+
+// Route native-notification clicks (emitted by the Electron main process) back to
+// the handler that was registered when the notification was shown.
+const ensureNotificationClickBridge = () => {
+	if (notificationClickBridgeReady) return;
+	const desktop = window.mediagoDesktop;
+	if (!desktop?.onNotificationClicked) return;
+	notificationClickBridgeReady = true;
+	desktop.onNotificationClicked((id) => {
+		const handler = notificationClickHandlers.get(id);
+		if (!handler) return;
+		notificationClickHandlers.delete(id);
+		handler();
+	});
+};
+
 export const showDesktopNotification = async (options: {
 	autoCancel?: boolean;
 	body: string;
 	group?: string;
+	onClick?: () => void;
 	title: string;
 }) => {
 	const runtime = desktopRuntime();
 	try {
 		if (runtime === "electron") {
+			let id: string | undefined;
+			if (options.onClick) {
+				// Key by group so at most one handler lives per notification channel and
+				// the map cannot grow unbounded.
+				id = options.group ?? `notification-${notificationClickHandlers.size + 1}`;
+				ensureNotificationClickBridge();
+				notificationClickHandlers.set(id, options.onClick);
+			}
 			return Boolean(
 				await window.mediagoDesktop?.showNotification({
 					body: options.body,
 					title: options.title,
+					id,
 				}),
 			);
 		}

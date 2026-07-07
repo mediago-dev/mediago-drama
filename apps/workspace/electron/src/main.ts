@@ -16,6 +16,10 @@ import { startServerSidecar, stopServerSidecar } from "./sidecar.js";
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 
+// Retain shown notifications until they are dismissed. Without a live reference
+// macOS may garbage-collect the Notification before it is displayed.
+const liveNotifications = new Set<Notification>();
+
 const rendererUrl = process.env.ELECTRON_RENDERER_URL?.trim();
 
 type NativeThemeSource = "light" | "dark" | "system";
@@ -170,11 +174,34 @@ ipcMain.handle(
 	},
 );
 
-ipcMain.handle("desktop:show-notification", (_event, options: { title: string; body?: string }) => {
-	if (!Notification.isSupported()) return false;
-	new Notification({ title: options.title, body: options.body }).show();
-	return true;
-});
+ipcMain.handle(
+	"desktop:show-notification",
+	(event, options: { title: string; body?: string; id?: string }) => {
+		if (!Notification.isSupported()) {
+			console.warn("[mediago-electron] system notifications are not supported on this platform");
+			return false;
+		}
+		const notification = new Notification({ title: options.title, body: options.body });
+		liveNotifications.add(notification);
+		const release = () => liveNotifications.delete(notification);
+		const id = typeof options.id === "string" ? options.id.trim() : "";
+		// Clicking the OS notification brings the window forward and tells the
+		// renderer which action to run so it can route to the right page.
+		notification.on("click", () => {
+			if (id) {
+				showMainWindow();
+				event.sender.send("desktop:notification-clicked", id);
+			}
+			release();
+		});
+		notification.on("close", release);
+		notification.show();
+		// Backstop cleanup so the retained reference cannot leak if no event fires.
+		setTimeout(release, 60_000).unref();
+		console.log(`[mediago-electron] system notification shown: ${options.title}`);
+		return true;
+	},
+);
 
 ipcMain.handle("desktop:start-window-drag", () => {
 	// Electron uses CSS app-region for dragging; imperative renderer calls are no-ops.
@@ -220,10 +247,18 @@ const startApp = async () => {
 	await createWindow();
 };
 
-app
-	.whenReady()
-	.then(startApp)
-	.catch((error: unknown) => {
-		console.error("[mediago-electron] failed to start", error);
-		app.quit();
-	});
+// Enforce a single running instance: activating the app again (Dock, `open`,
+// or clicking a notification from a previous run) focuses the existing window
+// instead of spawning a duplicate app + sidecar.
+if (!app.requestSingleInstanceLock()) {
+	app.quit();
+} else {
+	app.on("second-instance", showMainWindow);
+	app
+		.whenReady()
+		.then(startApp)
+		.catch((error: unknown) => {
+			console.error("[mediago-electron] failed to start", error);
+			app.quit();
+		});
+}
