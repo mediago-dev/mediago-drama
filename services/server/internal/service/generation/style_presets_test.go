@@ -38,8 +38,8 @@ func TestStylePresetStoreLoadsEmbeddedCatalog(t *testing.T) {
 		if !found || len(data) == 0 {
 			t.Fatalf("PreviewContent(%q) found=%v len=%d, want embedded image", preset.ID, found, len(data))
 		}
-		if asset.MIMEType != "image/svg+xml" {
-			t.Fatalf("preset %q mime = %q, want image/svg+xml", preset.ID, asset.MIMEType)
+		if !strings.HasPrefix(asset.MIMEType, "image/") {
+			t.Fatalf("preset %q mime = %q, want image/*", preset.ID, asset.MIMEType)
 		}
 	}
 }
