@@ -5,8 +5,12 @@ import { fileURLToPath } from "node:url";
 type WorkspacePackage = {
 	name?: string;
 	version?: string;
+	dependencies?: {
+		"electron-updater"?: string;
+	};
 	devDependencies?: {
 		electron?: string;
+		"electron-updater"?: string;
 	};
 };
 
@@ -24,6 +28,9 @@ function main(): void {
 
 	const workspacePackage = readWorkspacePackage();
 	const electronVersion = normalizeVersion(workspacePackage.devDependencies?.electron);
+	const electronUpdaterVersion =
+		workspacePackage.dependencies?.["electron-updater"] ??
+		workspacePackage.devDependencies?.["electron-updater"];
 	const githubPublisher = githubPublisherOptions();
 	const appPackage = {
 		name: "mediago-drama",
@@ -31,10 +38,18 @@ function main(): void {
 		version: workspacePackage.version ?? "0.0.0",
 		description: "MediaGo Drama desktop workspace",
 		author: "MediaGo Dev",
+		repository: {
+			type: "git",
+			url: `https://github.com/${githubOwner}/${githubRepo}.git`,
+		},
 		private: true,
 		type: "module",
 		main: "main.js",
-		dependencies: {},
+		dependencies: electronUpdaterVersion
+			? {
+					"electron-updater": electronUpdaterVersion,
+				}
+			: {},
 		build: {
 			appId: "team.torchstellar.mediagodrama",
 			productName: "MediaGo Drama",
@@ -43,7 +58,7 @@ function main(): void {
 			directories: {
 				output: "../../release",
 			},
-			...(githubPublisher ? { publish: [githubPublisher] } : {}),
+			publish: [githubPublisher],
 			files: ["package.json", "*.js", "renderer/**/*"],
 			extraResources: [
 				{
@@ -101,11 +116,13 @@ type GitHubReleaseType = "draft" | "prerelease" | "release";
 const githubOwner = "mediago-dev";
 const githubRepo = "mediago-drama";
 
-function githubPublisherOptions():
-	| { provider: "github"; releaseType: GitHubReleaseType; owner: string; repo: string }
-	| undefined {
-	const value = process.env.MEDIAGO_ELECTRON_RELEASE_TYPE?.trim();
-	if (!value) return undefined;
+function githubPublisherOptions(): {
+	provider: "github";
+	releaseType: GitHubReleaseType;
+	owner: string;
+	repo: string;
+} {
+	const value = process.env.MEDIAGO_ELECTRON_RELEASE_TYPE?.trim() || "release";
 	if (value !== "draft" && value !== "prerelease" && value !== "release") {
 		throw new Error(`invalid MEDIAGO_ELECTRON_RELEASE_TYPE: ${value}`);
 	}

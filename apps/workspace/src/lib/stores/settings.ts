@@ -6,6 +6,7 @@ export type SettingsTabValue =
 	| "appearance"
 	| "api-keys"
 	| "billing"
+	| "updates"
 	| "shortcuts"
 	| typeof projectSettingsGeneralTab
 	| string;

@@ -61,6 +61,7 @@ import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
 import { openExternalUrl, pickDesktopDirectory } from "@/shared/desktop/actions";
+import { UpdatesPanel } from "@/domains/settings/components/UpdatesPanel";
 
 const jianyingDraftSettingsEnabled: boolean = false;
 const customProvidersEnabled = import.meta.env.VITE_ENABLE_CUSTOM_PROVIDERS !== "false";
@@ -82,6 +83,7 @@ type SettingsTabValue =
 	| "billing"
 	| "codex-relay"
 	| "jianying-draft"
+	| "updates"
 	| "shortcuts"
 	| DebugTabValue;
 
@@ -90,6 +92,7 @@ const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	value === "api-keys" ||
 	value === "billing" ||
 	value === "codex-relay" ||
+	value === "updates" ||
 	(jianyingDraftSettingsEnabled && value === "jianying-draft") ||
 	value === "shortcuts" ||
 	debugTabs.some((tab) => tab.value === value);
@@ -131,6 +134,7 @@ export const Settings: React.FC = () => {
 			{visibleTab === "api-keys" ? <APIKeysPanel /> : null}
 			{visibleTab === "billing" ? <BillingPanel /> : null}
 			{visibleTab === "codex-relay" ? <CodexRelayPanel /> : null}
+			{visibleTab === "updates" ? <UpdatesPanel /> : null}
 			{visibleTab === "shortcuts" ? <ShortcutKeysPanel /> : null}
 
 			{debugTabs.map((tab) =>
