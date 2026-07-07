@@ -1,11 +1,7 @@
-import { Download, RefreshCw, Upload } from "lucide-react";
+import { Download, ExternalLink, RefreshCw, Upload } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
-import {
-	type DesktopUpdateActionResult,
-	type DesktopUpdateCheckResult,
-	type DesktopUpdateStatus,
-} from "@/shared/desktop/types";
+import type { DesktopUpdateCapability, DesktopUpdateStatus } from "@/shared/desktop/types";
 import { Button } from "@/shared/components/ui/button";
 import { useToast } from "@/hooks/useToast";
 import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
@@ -13,45 +9,52 @@ import {
 	checkDesktopUpdate,
 	downloadDesktopUpdate,
 	getDesktopAppVersion,
+	getDesktopUpdateCapability,
 	installDesktopUpdate,
+	openExternalUrl,
 	subscribeDesktopUpdateStatus,
 } from "@/shared/desktop/actions";
-import { isDesktopRuntime } from "@/shared/desktop/runtime";
 
 type LocalUiState = {
 	appVersion: string | null;
+	capability: DesktopUpdateCapability | null;
+	status: DesktopUpdateStatus | null;
 	checking: boolean;
 	downloading: boolean;
 	installing: boolean;
-	checkResult: DesktopUpdateCheckResult | null;
-	latestStatus: DesktopUpdateStatus | null;
+};
+
+const initialState: LocalUiState = {
+	appVersion: null,
+	capability: null,
+	status: null,
+	checking: false,
+	downloading: false,
+	installing: false,
 };
 
 export const UpdatesPanel: React.FC = () => {
 	const toast = useToast();
-	const [state, setState] = useState<LocalUiState>({
-		appVersion: null,
-		checking: false,
-		downloading: false,
-		installing: false,
-		checkResult: null,
-		latestStatus: null,
-	});
+	const [state, setState] = useState<LocalUiState>(initialState);
 
 	useEffect(() => {
 		let cancelled = false;
 
-		if (!isDesktopRuntime()) return;
-
 		void (async () => {
-			const appVersion = await getDesktopAppVersion();
-			if (!cancelled) {
-				setState((current) => ({ ...current, appVersion: appVersion ?? null }));
-			}
+			const [appVersion, capability] = await Promise.all([
+				getDesktopAppVersion(),
+				getDesktopUpdateCapability(),
+			]);
+			if (cancelled) return;
+			setState((current) => ({
+				...current,
+				appVersion: appVersion ?? null,
+				capability,
+			}));
 		})();
 
 		const unsubscribe = subscribeDesktopUpdateStatus((status) => {
-			setState((current) => ({ ...current, latestStatus: status }));
+			setState((current) => ({ ...current, status }));
 		});
 
 		return () => {
@@ -60,94 +63,66 @@ export const UpdatesPanel: React.FC = () => {
 		};
 	}, []);
 
-	const checkSupported = isDesktopRuntime() && (state.checkResult?.supported ?? true);
-	const status = state.latestStatus || state.checkResult?.status || null;
-	const isCheckingDisabled = state.checking || state.downloading || state.installing;
-	const canDownload = status?.phase === "available" && state.checkResult?.supported !== false;
-	const canInstall = status?.phase === "downloaded" && state.checkResult?.supported !== false;
-
-	const runAction = async (
-		action: () => Promise<DesktopUpdateActionResult>,
-		successMessage: string,
-	) => {
-		try {
-			const result = await action();
-			if (!result.ok) {
-				toast.error("更新操作失败", { description: result.message || "请稍后重试。" });
-				return;
-			}
-			toast.success(successMessage, {
-				description: result.message,
-			});
-		} catch (error) {
-			const message = error instanceof Error ? error.message : "更新操作失败。";
-			toast.error("更新操作失败", { description: message });
-		}
-	};
+	const supportsAutoUpdate = state.capability?.supportsAutoUpdate === true;
+	const status = state.status;
+	const busy = state.checking || state.downloading || state.installing;
+	const canDownload = supportsAutoUpdate && status?.phase === "available";
+	const canInstall = supportsAutoUpdate && status?.phase === "downloaded";
 
 	const check = async () => {
 		setState((current) => ({ ...current, checking: true }));
 		try {
-			const next = await checkDesktopUpdate();
-			const mergedStatus: DesktopUpdateStatus = next.info
-				? { ...next.status, info: next.info }
-				: next.status;
-			setState((current) => ({
-				...current,
-				checking: false,
-				checkResult: next,
-				latestStatus: mergedStatus,
-			}));
-			if (!next.supported) {
-				toast.info("更新不可用", { description: next.message || "当前环境暂不支持自动更新。" });
-				return;
+			const ack = await checkDesktopUpdate();
+			if (!ack.ok) {
+				toast.error("检查更新失败", { description: ack.message });
 			}
-			if (next.status.phase === "error") {
-				const message = next.status.error || next.message;
-				if (message) {
-					toast.error("检查更新失败", { description: message });
-				}
-			}
-		} catch {
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "无法连接更新服务，请稍后再试。";
+			toast.error("检查更新失败", { description: message });
+		} finally {
 			setState((current) => ({ ...current, checking: false }));
-			toast.error("检查更新失败", { description: "无法连接更新服务，请稍后再试。" });
 		}
 	};
 
 	const download = async () => {
 		if (!canDownload) return;
 		setState((current) => ({ ...current, downloading: true }));
-		await runAction(() => downloadDesktopUpdate(), "开始下载更新包");
-		setState((current) => ({ ...current, downloading: false }));
+		try {
+			const ack = await downloadDesktopUpdate();
+			if (!ack.ok) {
+				toast.error("下载更新失败", { description: ack.message });
+			} else {
+				toast.success("下载完成", { description: "点击“安装更新并重启”以完成升级。" });
+			}
+		} finally {
+			setState((current) => ({ ...current, downloading: false }));
+		}
 	};
 
 	const install = async () => {
 		if (!canInstall) return;
 		setState((current) => ({ ...current, installing: true }));
-		await runAction(() => installDesktopUpdate(), "准备安装更新");
-		setState((current) => ({ ...current, installing: false }));
+		try {
+			const ack = await installDesktopUpdate();
+			if (!ack.ok) {
+				toast.error("安装更新失败", { description: ack.message });
+				setState((current) => ({ ...current, installing: false }));
+			}
+			// On success the app quits immediately; no need to reset state.
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "安装更新失败。";
+			toast.error("安装更新失败", { description: message });
+			setState((current) => ({ ...current, installing: false }));
+		}
 	};
 
-	const title = useMemo(() => {
-		if (!status) return "未检测";
-		switch (status.phase) {
-			case "checking":
-				return "正在检查更新";
-			case "available":
-				return "检测到新版本";
-			case "download-progress":
-				return "下载中";
-			case "downloaded":
-				return "更新已下载";
-			case "up-to-date":
-				return "已是最新版本";
-			case "not-available":
-				return "未发现更新";
-			case "error":
-				return "更新服务异常";
-		}
-		return "待检测";
-	}, [status]);
+	const openReleasePage = async () => {
+		const url = state.capability?.releasePageUrl;
+		if (!url) return;
+		await openExternalUrl(url);
+	};
+
+	const title = useMemo(() => statusTitle(status), [status]);
 
 	return (
 		<SettingsPanelLayout
@@ -155,16 +130,18 @@ export const UpdatesPanel: React.FC = () => {
 			title="应用更新"
 			description="检查 GitHub Releases 中的桌面端增量更新包。"
 			actions={
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					disabled={isCheckingDisabled}
-					onClick={() => void check()}
-				>
-					{state.checking ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw />}
-					<span>{state.checking ? "检查中" : "检查更新"}</span>
-				</Button>
+				supportsAutoUpdate ? (
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						disabled={busy}
+						onClick={() => void check()}
+					>
+						{state.checking ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw />}
+						<span>{state.checking ? "检查中" : "检查更新"}</span>
+					</Button>
+				) : null
 			}
 		>
 			<section className="space-y-4">
@@ -192,7 +169,7 @@ export const UpdatesPanel: React.FC = () => {
 					</div>
 				) : null}
 
-				{status?.phase === "download-progress" && status.progress ? (
+				{status?.phase === "downloading" && status.progress ? (
 					<div className="rounded-md border border-border px-3 py-2 text-sm">
 						<p className="text-muted-foreground">下载进度：{status.progress.percent.toFixed(1)}%</p>
 						<div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
@@ -213,42 +190,69 @@ export const UpdatesPanel: React.FC = () => {
 					</p>
 				) : null}
 
-				<div className="flex flex-wrap gap-2">
-					<Button
-						type="button"
-						variant="secondary"
-						onClick={() => void download()}
-						disabled={isCheckingDisabled || !canDownload}
-					>
-						{state.downloading ? (
-							<RefreshCw className="size-3.5 animate-spin" />
-						) : (
-							<Download className="size-3.5" />
-						)}
-						<span>{state.downloading ? "下载中" : "下载更新"}</span>
-					</Button>
-					<Button
-						type="button"
-						variant="default"
-						onClick={() => void install()}
-						disabled={isCheckingDisabled || !canInstall}
-					>
-						{state.installing ? (
-							<RefreshCw className="size-3.5 animate-spin" />
-						) : (
-							<Upload className="size-3.5" />
-						)}
-						<span>{state.installing ? "安装中" : "安装更新并重启"}</span>
-					</Button>
-					{checkSupported ? null : (
-						<p className="w-full text-xs text-muted-foreground">
-							当前运行环境不支持桌面自动更新，请使用安装包升级。
+				{supportsAutoUpdate ? (
+					<div className="flex flex-wrap gap-2">
+						<Button
+							type="button"
+							variant="secondary"
+							onClick={() => void download()}
+							disabled={busy || !canDownload}
+						>
+							{state.downloading ? (
+								<RefreshCw className="size-3.5 animate-spin" />
+							) : (
+								<Download className="size-3.5" />
+							)}
+							<span>{state.downloading ? "下载中" : "下载更新"}</span>
+						</Button>
+						<Button
+							type="button"
+							variant="default"
+							onClick={() => void install()}
+							disabled={busy || !canInstall}
+						>
+							{state.installing ? (
+								<RefreshCw className="size-3.5 animate-spin" />
+							) : (
+								<Upload className="size-3.5" />
+							)}
+							<span>{state.installing ? "安装中" : "安装更新并重启"}</span>
+						</Button>
+					</div>
+				) : (
+					<div className="flex flex-wrap items-center gap-2">
+						<Button type="button" variant="default" onClick={() => void openReleasePage()}>
+							<ExternalLink className="size-3.5" />
+							<span>前往下载页</span>
+						</Button>
+						<p className="text-xs text-muted-foreground">
+							{state.capability?.reason ?? "当前运行环境不支持应用内更新，请前往下载页升级。"}
 						</p>
-					)}
-				</div>
+					</div>
+				)}
 			</section>
 		</SettingsPanelLayout>
 	);
+};
+
+const statusTitle = (status: DesktopUpdateStatus | null): string => {
+	if (!status) return "待检测";
+	switch (status.phase) {
+		case "idle":
+			return "待检测";
+		case "checking":
+			return "正在检查更新";
+		case "available":
+			return "检测到新版本";
+		case "downloading":
+			return "下载中";
+		case "downloaded":
+			return "更新已下载";
+		case "up-to-date":
+			return "已是最新版本";
+		case "error":
+			return "更新服务异常";
+	}
 };
 
 const formatBytes = (value: number) => {

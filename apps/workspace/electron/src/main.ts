@@ -8,200 +8,25 @@ import {
 	shell,
 	type OpenDialogOptions,
 } from "electron";
-import { autoUpdater } from "electron-updater";
 import { copyFile, mkdir, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
+import {
+	type DesktopFileFilter,
+	type DesktopNotificationOptions,
+	type NativeThemeSource,
+	desktopIpcChannel,
+} from "./ipc-contract.js";
 import { preloadPath, rendererDistDir } from "./paths.js";
 import { startServerSidecar, stopServerSidecar } from "./sidecar.js";
+import { registerDesktopUpdater } from "./updater.js";
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
-let isAutoUpdateSupported = app.isPackaged;
-let isAutoUpdaterInitialized = false;
 
 const rendererUrl = process.env.ELECTRON_RENDERER_URL?.trim();
 
-type NativeThemeSource = "light" | "dark" | "system";
-type DesktopUpdateInfo = {
-	version: string;
-	releaseDate?: string;
-	releaseName?: string;
-	releaseNotes?: string;
-};
-type DesktopUpdateStatus = {
-	currentVersion: string;
-	phase:
-		| "checking"
-		| "available"
-		| "not-available"
-		| "up-to-date"
-		| "download-progress"
-		| "downloaded"
-		| "error";
-	error?: string;
-	info?: DesktopUpdateInfo;
-	progress?: {
-		percent: number;
-		transferred: number;
-		total: number;
-		bytesPerSecond: number;
-	};
-};
-type DesktopUpdateCheckResult = {
-	supported: boolean;
-	info?: DesktopUpdateInfo;
-	message?: string;
-	status: DesktopUpdateStatus;
-};
-
 const isNativeThemeSource = (value: unknown): value is NativeThemeSource =>
 	value === "light" || value === "dark" || value === "system";
-const desktopUpdateStatusChannel = "desktop:update-status";
-const isUpdateInfoObject = (value: unknown): value is { version?: string } =>
-	typeof value === "object" && value !== null;
-
-const normalizeDesktopUpdateInfo = (
-	updateInfo:
-		| {
-				version?: string;
-				releaseDate?: string | null;
-				releaseName?: string | null;
-				releaseNotes?: unknown;
-		  }
-		| null
-		| undefined,
-): DesktopUpdateInfo | undefined => {
-	if (!isUpdateInfoObject(updateInfo) || !updateInfo.version) return undefined;
-
-	return {
-		version: updateInfo.version,
-		releaseDate: updateInfo.releaseDate || undefined,
-		releaseName: updateInfo.releaseName || undefined,
-		releaseNotes: extractReleaseNotes(updateInfo.releaseNotes),
-	};
-};
-
-const extractReleaseNotes = (value: unknown) => {
-	if (!value) return undefined;
-	if (typeof value === "string") return value;
-	if (typeof value === "object") {
-		const notesByLang = value && "en" in value ? (value as { en?: unknown }).en : undefined;
-		if (typeof notesByLang === "string") return notesByLang;
-	}
-	return undefined;
-};
-
-const emitUpdateStatus = (status: DesktopUpdateStatus): void => {
-	if (!mainWindow || mainWindow.isDestroyed()) return;
-	mainWindow.webContents.send(desktopUpdateStatusChannel, status);
-};
-
-const setupAutoUpdater = () => {
-	if (!isAutoUpdateSupported || isAutoUpdaterInitialized) return;
-	isAutoUpdaterInitialized = true;
-	autoUpdater.autoDownload = false;
-	autoUpdater.autoInstallOnAppQuit = false;
-
-	autoUpdater.on("checking-for-update", () => {
-		emitUpdateStatus({
-			currentVersion: app.getVersion(),
-			phase: "checking",
-		});
-	});
-
-	autoUpdater.on("update-available", (info) => {
-		emitUpdateStatus({
-			currentVersion: app.getVersion(),
-			phase: "available",
-			info: normalizeDesktopUpdateInfo(info),
-		});
-	});
-
-	autoUpdater.on("update-not-available", () => {
-		emitUpdateStatus({
-			currentVersion: app.getVersion(),
-			phase: "not-available",
-		});
-	});
-
-	autoUpdater.on("error", (error) => {
-		emitUpdateStatus({
-			currentVersion: app.getVersion(),
-			phase: "error",
-			error: error instanceof Error ? error.message : String(error),
-		});
-	});
-
-	autoUpdater.on("download-progress", (progress) => {
-		emitUpdateStatus({
-			currentVersion: app.getVersion(),
-			phase: "download-progress",
-			progress: {
-				percent: progress.percent,
-				transferred: progress.transferred,
-				total: progress.total,
-				bytesPerSecond: progress.bytesPerSecond,
-			},
-		});
-	});
-
-	autoUpdater.on("update-downloaded", (info) => {
-		emitUpdateStatus({
-			currentVersion: app.getVersion(),
-			phase: "downloaded",
-			info: normalizeDesktopUpdateInfo(info),
-		});
-	});
-};
-
-const checkAutoUpdate = async (): Promise<DesktopUpdateCheckResult> => {
-	if (!isAutoUpdateSupported) {
-		return {
-			supported: false as const,
-			message: "当前环境不支持自动更新。",
-			status: {
-				currentVersion: app.getVersion(),
-				phase: "not-available" as const,
-			},
-		};
-	}
-
-	try {
-		const checkResult = await autoUpdater.checkForUpdates();
-		if (!checkResult) {
-			return {
-				supported: false as const,
-				message: "当前环境未启用自动更新。",
-				status: {
-					currentVersion: app.getVersion(),
-					phase: "not-available" as const,
-				},
-			};
-		}
-
-		const info = checkResult.isUpdateAvailable
-			? normalizeDesktopUpdateInfo(checkResult.updateInfo)
-			: undefined;
-		return {
-			supported: true as const,
-			info,
-			status: {
-				currentVersion: app.getVersion(),
-				phase: checkResult.isUpdateAvailable ? "available" : ("up-to-date" as const),
-			},
-		};
-	} catch (error) {
-		return {
-			supported: true as const,
-			message: error instanceof Error ? error.message : "检查更新失败。",
-			status: {
-				currentVersion: app.getVersion(),
-				phase: "error" as const,
-				error: error instanceof Error ? error.message : "检查更新失败。",
-			},
-		};
-	}
-};
 
 const showMainWindow = () => {
 	const window = mainWindow;
@@ -266,8 +91,6 @@ const createWindow = async () => {
 			query: app.isPackaged ? { version: app.getVersion() } : undefined,
 		});
 	}
-
-	setupAutoUpdater();
 };
 
 app.on("before-quit", () => {
@@ -284,21 +107,21 @@ app.on("activate", () => {
 	else mainWindow?.show();
 });
 
-ipcMain.handle("desktop:open-external", async (_event, url: string) => {
+ipcMain.handle(desktopIpcChannel.openExternal, async (_event, url: string) => {
 	await shell.openExternal(url);
 });
 
-ipcMain.handle("desktop:open-path", async (_event, path: string) => {
+ipcMain.handle(desktopIpcChannel.openPath, async (_event, path: string) => {
 	const error = await shell.openPath(path);
 	if (error) throw new Error(error);
 });
 
-ipcMain.handle("desktop:reveal-path", (_event, path: string) => {
+ipcMain.handle(desktopIpcChannel.revealPath, (_event, path: string) => {
 	shell.showItemInFolder(path);
 });
 
 ipcMain.handle(
-	"desktop:copy-file-to-directory",
+	desktopIpcChannel.copyFileToDirectory,
 	async (_event, options: { directory?: string; filename?: string; sourcePath?: string }) => {
 		const sourcePath = String(options?.sourcePath ?? "").trim();
 		if (!sourcePath) throw new Error("sourcePath is required");
@@ -323,7 +146,7 @@ ipcMain.handle(
 	},
 );
 
-ipcMain.handle("desktop:pick-directory", async (_event, options?: { title?: string }) => {
+ipcMain.handle(desktopIpcChannel.pickDirectory, async (_event, options?: { title?: string }) => {
 	const dialogOptions: OpenDialogOptions = {
 		title: options?.title,
 		properties: ["openDirectory"],
@@ -335,11 +158,8 @@ ipcMain.handle("desktop:pick-directory", async (_event, options?: { title?: stri
 });
 
 ipcMain.handle(
-	"desktop:pick-file",
-	async (
-		_event,
-		options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> },
-	) => {
+	desktopIpcChannel.pickFile,
+	async (_event, options?: { title?: string; filters?: DesktopFileFilter[] }) => {
 		const dialogOptions: OpenDialogOptions = {
 			title: options?.title,
 			filters: options?.filters,
@@ -352,70 +172,25 @@ ipcMain.handle(
 	},
 );
 
-ipcMain.handle("desktop:show-notification", (_event, options: { title: string; body?: string }) => {
-	if (!Notification.isSupported()) return false;
-	new Notification({ title: options.title, body: options.body }).show();
-	return true;
-});
+ipcMain.handle(
+	desktopIpcChannel.showNotification,
+	(_event, options: DesktopNotificationOptions) => {
+		if (!Notification.isSupported()) return false;
+		new Notification({ title: options.title, body: options.body }).show();
+		return true;
+	},
+);
 
-ipcMain.handle("desktop:start-window-drag", () => {
+ipcMain.handle(desktopIpcChannel.startWindowDrag, () => {
 	// Electron uses CSS app-region for dragging; imperative renderer calls are no-ops.
 });
 
-ipcMain.handle("desktop:get-app-version", () => {
-	return app.getVersion();
-});
-
-ipcMain.handle("desktop:check-update", async () => {
-	return checkAutoUpdate();
-});
-
-ipcMain.handle("desktop:download-update", async () => {
-	if (!isAutoUpdateSupported) {
-		return {
-			supported: false as const,
-			ok: false as const,
-			message: "当前环境不支持自动下载更新。",
-		};
-	}
-
-	try {
-		await autoUpdater.downloadUpdate();
-		return { supported: true as const, ok: true as const };
-	} catch (error) {
-		return {
-			supported: true as const,
-			ok: false as const,
-			message: error instanceof Error ? error.message : "下载更新失败。",
-		};
-	}
-});
-
-ipcMain.handle("desktop:install-update", async () => {
-	if (!isAutoUpdateSupported) {
-		return {
-			supported: false as const,
-			ok: false as const,
-			message: "当前环境不支持安装更新。",
-		};
-	}
-
-	try {
-		autoUpdater.quitAndInstall(true, true);
-		return { supported: true as const, ok: true as const };
-	} catch (error) {
-		return {
-			supported: true as const,
-			ok: false as const,
-			message: error instanceof Error ? error.message : "安装更新失败。",
-		};
-	}
-});
-
-ipcMain.handle("desktop:set-native-theme-source", (_event, source: unknown) => {
+ipcMain.handle(desktopIpcChannel.setNativeThemeSource, (_event, source: unknown) => {
 	if (!isNativeThemeSource(source)) throw new Error("invalid native theme source");
 	nativeTheme.themeSource = source;
 });
+
+registerDesktopUpdater({ getWindow: () => mainWindow });
 
 const safeDownloadFilename = (value: string) => {
 	const cleaned = basename(String(value || "download"))
