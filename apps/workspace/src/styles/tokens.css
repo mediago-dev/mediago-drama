@@ -210,7 +210,7 @@
 		--generation-primary-option-height: var(--space-xl);
 		--generation-size-popover-width: var(--size-400);
 		--generation-size-popover-height: var(--size-252);
-		--generation-size-ratio-option-height: calc(var(--space-xl) + var(--space-sm));
+		--generation-size-ratio-option-height: calc(var(--space-xl) + var(--space-md));
 		--generation-size-resolution-option-height: var(--generation-control-height-lg);
 		--generation-size-preview-control-height: var(--space-xl);
 		--generation-size-preview-link-size: var(--generation-control-height-lg);
