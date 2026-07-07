@@ -1,0 +1,205 @@
+package mcp
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
+)
+
+func (server *GenerationServer) ListGenerationModels(ctx context.Context) (mediamcp.GenerationModelsOutput, error) {
+	_ = ctx
+	service, err := server.requireService()
+	if err != nil {
+		return mediamcp.GenerationModelsOutput{}, err
+	}
+	server.logToolInvocation(mediamcp.GenerationTools.ListModels.Name)
+	return generationModelsOutputFromService(service.ListGenerationModels()), nil
+}
+
+func (server *GenerationServer) CreateGenerationMessage(ctx context.Context, projectID string, input mediamcp.GenerationMessageInput) (mediamcp.GenerationMessageOutput, error) {
+	service, err := server.requireService()
+	if err != nil {
+		return mediamcp.GenerationMessageOutput{}, err
+	}
+	defaultProjectID, err := server.generationMessageProjectID(projectID, input)
+	if err != nil {
+		return mediamcp.GenerationMessageOutput{}, err
+	}
+	request := generationMessageRequestFromMCP(input, defaultProjectID)
+	server.logToolInvocation(mediamcp.GenerationTools.Generate.Name, "kind", request.Kind, "route_id", request.RouteID)
+	response, status, err := service.CreateGenerationMessage(ctx, request)
+	if err != nil {
+		return mediamcp.GenerationMessageOutput{}, generationStatusError("create generation message", status, err)
+	}
+	return generationMessageOutputFromService(response), nil
+}
+
+func (server *GenerationServer) GetGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationTaskRecord, error) {
+	_ = ctx
+	service, err := server.requireService()
+	if err != nil {
+		return mediamcp.GenerationTaskRecord{}, err
+	}
+	taskID, err := cleanGenerationTaskID(input.TaskID)
+	if err != nil {
+		return mediamcp.GenerationTaskRecord{}, err
+	}
+	server.logToolInvocation(mediamcp.GenerationTools.GetTask.Name, "task_id", taskID)
+	task, ok, err := service.GetGenerationTask(taskID)
+	if err != nil {
+		return mediamcp.GenerationTaskRecord{}, err
+	}
+	effectiveProjectID, err := server.resolveProjectID(projectID)
+	if err != nil {
+		return mediamcp.GenerationTaskRecord{}, err
+	}
+	if !ok || !generationTaskVisibleToProject(task.ProjectID, effectiveProjectID) {
+		return mediamcp.GenerationTaskRecord{}, fmt.Errorf("generation task not found")
+	}
+	return generationTaskRecordFromService(task), nil
+}
+
+func (server *GenerationServer) ListGenerationTasks(ctx context.Context, projectID string, input mediamcp.GenerationTaskListInput) (mediamcp.GenerationTasksOutput, error) {
+	_ = ctx
+	service, err := server.requireService()
+	if err != nil {
+		return mediamcp.GenerationTasksOutput{}, err
+	}
+	effectiveProjectID, err := server.resolveProjectID(projectID, input.ProjectID)
+	if err != nil {
+		return mediamcp.GenerationTasksOutput{}, err
+	}
+	server.logToolInvocation(mediamcp.GenerationTools.ListTasks.Name, "kind", input.Kind, "project_id", effectiveProjectID)
+	tasks, err := service.ListGenerationTasks(servicegeneration.GenerationTaskListQuery{
+		ConversationID: strings.TrimSpace(input.ConversationID),
+		Kind:           strings.TrimSpace(input.Kind),
+		ProjectID:      effectiveProjectID,
+		ScopeID:        strings.TrimSpace(input.ScopeID),
+		Limit:          input.Limit,
+		Offset:         input.Offset,
+	})
+	if err != nil {
+		return mediamcp.GenerationTasksOutput{}, err
+	}
+	return generationTasksOutputFromService(tasks), nil
+}
+
+func (server *GenerationServer) RetryGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error) {
+	service, task, err := server.serviceAndVisibleTask(projectID, input.TaskID)
+	if err != nil {
+		return mediamcp.GenerationMessageOutput{}, err
+	}
+	server.logToolInvocation(mediamcp.GenerationTools.RetryTask.Name, "task_id", task.ID)
+	response, status, err := service.RetryGenerationTask(ctx, task.ID)
+	if err != nil {
+		return mediamcp.GenerationMessageOutput{}, generationStatusError("retry generation task", status, err)
+	}
+	return generationMessageOutputFromService(response), nil
+}
+
+func (server *GenerationServer) PollGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error) {
+	service, task, err := server.serviceAndVisibleTask(projectID, input.TaskID)
+	if err != nil {
+		return mediamcp.GenerationMessageOutput{}, err
+	}
+	server.logToolInvocation(mediamcp.GenerationTools.PollTask.Name, "task_id", task.ID)
+	service.PollGenerationTask(ctx, task)
+	latest, ok, err := service.GetGenerationTask(task.ID)
+	if err != nil {
+		return mediamcp.GenerationMessageOutput{}, err
+	}
+	if ok {
+		task = latest
+	}
+	return generationMessageOutputFromService(servicegeneration.GenerationResponseFromTask(task)), nil
+}
+
+func (server *GenerationServer) serviceAndVisibleTask(projectID string, rawTaskID string) (GenerationService, servicegeneration.GenerationTaskRecord, error) {
+	service, err := server.requireService()
+	if err != nil {
+		return nil, servicegeneration.GenerationTaskRecord{}, err
+	}
+	taskID, err := cleanGenerationTaskID(rawTaskID)
+	if err != nil {
+		return nil, servicegeneration.GenerationTaskRecord{}, err
+	}
+	task, ok, err := service.GetGenerationTask(taskID)
+	if err != nil {
+		return nil, servicegeneration.GenerationTaskRecord{}, err
+	}
+	if !ok {
+		return nil, servicegeneration.GenerationTaskRecord{}, fmt.Errorf("generation task not found")
+	}
+	effectiveProjectID, err := server.resolveProjectID(projectID)
+	if err != nil {
+		return nil, servicegeneration.GenerationTaskRecord{}, err
+	}
+	if !generationTaskVisibleToProject(task.ProjectID, effectiveProjectID) {
+		return nil, servicegeneration.GenerationTaskRecord{}, fmt.Errorf("generation task not found")
+	}
+	return service, task, nil
+}
+
+func (server *GenerationServer) generationMessageProjectID(projectID string, input mediamcp.GenerationMessageInput) (string, error) {
+	values := []string{input.ProjectID}
+	if input.DocumentContext != nil {
+		values = append(values, input.DocumentContext.ProjectID)
+	}
+	if input.NotificationTarget != nil {
+		values = append(values, input.NotificationTarget.ProjectID)
+	}
+	if input.PromptOptimization != nil {
+		values = append(values, input.PromptOptimization.ProjectID)
+	}
+	return server.resolveProjectID(projectID, values...)
+}
+
+func (server *GenerationServer) resolveProjectID(projectID string, overrides ...string) (string, error) {
+	scopedProjectID := server.scopedProjectID(projectID)
+	resolved := ""
+	for _, override := range overrides {
+		override = domain.CleanProjectID(override)
+		if override == "" {
+			continue
+		}
+		if scopedProjectID != "" && override != scopedProjectID {
+			return "", fmt.Errorf("projectId %q is outside generation mcp scope %q", override, scopedProjectID)
+		}
+		if resolved != "" && override != resolved {
+			return "", fmt.Errorf("conflicting projectId values: %q and %q", resolved, override)
+		}
+		resolved = override
+	}
+	if scopedProjectID != "" {
+		return scopedProjectID, nil
+	}
+	return resolved, nil
+}
+
+func (server *GenerationServer) scopedProjectID(projectID string) string {
+	if server == nil {
+		return domain.CleanProjectID(projectID)
+	}
+	return domain.CleanProjectID(firstNonEmpty(projectID, server.projectID))
+}
+
+func cleanGenerationTaskID(taskID string) (string, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return "", fmt.Errorf("taskId is required")
+	}
+	return taskID, nil
+}
+
+func generationTaskVisibleToProject(taskProjectID string, projectID string) bool {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return true
+	}
+	taskProjectID = strings.TrimSpace(taskProjectID)
+	return taskProjectID == "" || taskProjectID == projectID
+}

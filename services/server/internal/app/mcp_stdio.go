@@ -21,6 +21,27 @@ func RunExternalMCP(ctx context.Context, workspaceDir string, config serverconfi
 	return appmcp.RunExternalMCP(ctx, workspaceDir, appevents.NewHTTPEventPublisherFromConfig(config), input, output)
 }
 
+// RunGenerationMCP exposes MediaGo Drama generation tools through MCP stdio.
+func RunGenerationMCP(ctx context.Context, config Config, projectID string, input io.Reader, output io.Writer) error {
+	api := newAPIHandler(config)
+	defer func() {
+		_ = api.Close()
+	}()
+	server, _, err := appmcp.NewGenerationServer(api.workspaceState.Dir(), projectID, api.generation, "stdio")
+	if err != nil {
+		return err
+	}
+	return mediamcp.RunStdio(
+		ctx,
+		server,
+		input,
+		output,
+		"generation mcp server stopped",
+		"project_id", projectID,
+		"transport", "stdio",
+	)
+}
+
 // ResolveWorkspaceDir returns the local MediaGo Drama workspace root used by the server.
 func ResolveWorkspaceDir(workspaceDir string) string {
 	return appworkspace.ResolveWorkspaceDir(workspaceDir)
