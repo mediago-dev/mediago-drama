@@ -18,6 +18,8 @@ const (
 
 	// selectionCardMaxOptions bounds how many options a selection card renders.
 	selectionCardMaxOptions = 8
+	// selectionCardOptionsPerRow is how many option cells share one grid row.
+	selectionCardOptionsPerRow = 4
 )
 
 // SelectionCardOption is one selectable choice rendered on a selection card.
@@ -45,6 +47,7 @@ func BuildSelectionA2UI(projectID string, selectionID string, title string, prom
 		components = append(components, a2uiText("prompt", trimmed, "body"))
 	}
 
+	cellIDs := []string{}
 	for index, option := range options {
 		if index >= selectionCardMaxOptions {
 			break
@@ -69,13 +72,24 @@ func BuildSelectionA2UI(projectID string, selectionID string, title string, prom
 				"optionId":    option.ID,
 			}),
 		)
-		if desc := strings.TrimSpace(option.Description); desc != "" {
+		if desc := truncateSelectionCaption(option.Description); desc != "" {
 			descID := "opt-desc-" + suffix
 			cellChildren = append(cellChildren, descID)
 			components = append(components, a2uiText(descID, desc, "caption"))
 		}
-		rootChildren = append(rootChildren, cellID)
+		cellIDs = append(cellIDs, cellID)
 		components = append(components, a2uiColumn(cellID, cellChildren))
+	}
+	// Option cells flow as a grid: up to selectionCardOptionsPerRow per Row so
+	// style choices read side by side instead of one tall stack.
+	for start := 0; start < len(cellIDs); start += selectionCardOptionsPerRow {
+		end := start + selectionCardOptionsPerRow
+		if end > len(cellIDs) {
+			end = len(cellIDs)
+		}
+		rowID := "opts-row-" + strconv.Itoa(start/selectionCardOptionsPerRow)
+		rootChildren = append(rootChildren, rowID)
+		components = append(components, a2uiOptionRow(rowID, cellIDs[start:end]))
 	}
 
 	cancelLabel := "取消"
@@ -251,6 +265,28 @@ func a2uiRow(id string, children []string) map[string]any {
 		"justify":   "end",
 		"align":     "center",
 	}
+}
+
+func a2uiOptionRow(id string, children []string) map[string]any {
+	return map[string]any{
+		"id":        id,
+		"component": "Row",
+		"children":  append([]string(nil), children...),
+		"justify":   "start",
+		"align":     "start",
+	}
+}
+
+// truncateSelectionCaption bounds option captions so grid cells keep a sane
+// width; the a2ui layout schema has no per-child sizing to rely on.
+func truncateSelectionCaption(value string) string {
+	value = strings.TrimSpace(value)
+	const maxRunes = 60
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+	return string(runes[:maxRunes-1]) + "…"
 }
 
 func a2uiText(id string, text string, variant string) map[string]any {
