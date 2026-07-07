@@ -9,6 +9,10 @@ export type {
 	DesktopUpdateStatus,
 	DesktopUpdateCapability,
 	DesktopUpdateAck,
+	RendererUpdateCapability,
+	RendererUpdatePhase,
+	RendererUpdateSource,
+	RendererUpdateStatus,
 } from "../../../electron/src/ipc-contract";
 
 import type {
@@ -19,6 +23,8 @@ import type {
 	DesktopUpdateCapability,
 	DesktopUpdateStatus,
 	NativeThemeSource,
+	RendererUpdateCapability,
+	RendererUpdateStatus,
 } from "../../../electron/src/ipc-contract";
 
 export interface MediagoDesktopAPI {
@@ -42,6 +48,12 @@ export interface MediagoDesktopAPI {
 	downloadUpdate(): Promise<DesktopUpdateAck>;
 	installUpdate(): Promise<DesktopUpdateAck>;
 	onUpdateStatus(listener: (status: DesktopUpdateStatus) => void): () => void;
+	// Renderer hot-update surface. Optional: a hot-updated renderer may run against an
+	// older shell whose preload predates these methods — callers must runtime-guard.
+	getRendererUpdateCapability?(): Promise<RendererUpdateCapability>;
+	checkRendererUpdate?(): Promise<DesktopUpdateAck>;
+	markRendererHealthy?(): Promise<void>;
+	onRendererUpdateStatus?(listener: (status: RendererUpdateStatus) => void): () => void;
 	startWindowDrag(): Promise<void>;
 	setNativeThemeSource(source: NativeThemeSource): Promise<void>;
 }

@@ -67,6 +67,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-updater": "^6.6.1",
+    "extract-zip": "^2.0.1",
     "fabric": "^7.4.0",
     "immer": "^11.1.8",
     "lucide-react": "^0.563.0",

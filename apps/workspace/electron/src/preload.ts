@@ -6,6 +6,8 @@ import {
 	type DesktopUpdateCapability,
 	type DesktopUpdateStatus,
 	type NativeThemeSource,
+	type RendererUpdateCapability,
+	type RendererUpdateStatus,
 	desktopIpcChannel,
 } from "./ipc-contract.js";
 
@@ -45,6 +47,23 @@ const api = {
 		ipcRenderer.on(desktopIpcChannel.updateStatus, handler);
 		return () => {
 			ipcRenderer.removeListener(desktopIpcChannel.updateStatus, handler);
+		};
+	},
+	getRendererUpdateCapability: () =>
+		ipcRenderer.invoke(
+			desktopIpcChannel.getRendererUpdateCapability,
+		) as Promise<RendererUpdateCapability>,
+	checkRendererUpdate: () =>
+		ipcRenderer.invoke(desktopIpcChannel.checkRendererUpdate) as Promise<DesktopUpdateAck>,
+	markRendererHealthy: () => ipcRenderer.invoke(desktopIpcChannel.markRendererHealthy),
+	onRendererUpdateStatus: (listener: (status: RendererUpdateStatus) => void) => {
+		const handler = (_event: unknown, payload: RendererUpdateStatus | undefined) => {
+			if (!payload) return;
+			listener(payload);
+		};
+		ipcRenderer.on(desktopIpcChannel.rendererUpdateStatus, handler);
+		return () => {
+			ipcRenderer.removeListener(desktopIpcChannel.rendererUpdateStatus, handler);
 		};
 	},
 	startWindowDrag: () => ipcRenderer.invoke(desktopIpcChannel.startWindowDrag),
