@@ -17,7 +17,11 @@ func (server *GenerationServer) ListGenerationModels(ctx context.Context) (media
 		return mediamcp.GenerationModelsOutput{}, err
 	}
 	server.logToolInvocation(mediamcp.GenerationTools.ListModels.Name)
-	return generationModelsOutputFromService(service.ListGenerationModels()), nil
+	output := generationModelsOutputFromService(service.ListGenerationModels())
+	if preference, ok := service.GenerationPreferenceForProject(server.scopedProjectID("")); ok {
+		output.Preferences = generationPreferencesFromService(preference)
+	}
+	return output, nil
 }
 
 func (server *GenerationServer) CreateGenerationMessage(ctx context.Context, projectID string, input mediamcp.GenerationMessageInput) (mediamcp.GenerationMessageOutput, error) {
@@ -30,7 +34,16 @@ func (server *GenerationServer) CreateGenerationMessage(ctx context.Context, pro
 		return mediamcp.GenerationMessageOutput{}, err
 	}
 	request := generationMessageRequestFromMCP(input, defaultProjectID)
-	server.logToolInvocation(mediamcp.GenerationTools.Generate.Name, "kind", request.Kind, "route_id", request.RouteID)
+	server.logToolInvocation(mediamcp.GenerationTools.Generate.Name, "kind", request.Kind, "route_id", request.RouteID, "optimize", request.PromptOptimization != nil)
+	if request.PromptOptimization != nil {
+		response, status, err := service.CreatePromptOptimizedGenerationMessage(ctx, request)
+		if err != nil {
+			return mediamcp.GenerationMessageOutput{}, generationStatusError("optimize and generate", status, err)
+		}
+		output := generationMessageOutputFromService(response.Generation)
+		output.OptimizedPrompt = response.OptimizedPrompt
+		return output, nil
+	}
 	response, status, err := service.CreateGenerationMessage(ctx, request)
 	if err != nil {
 		return mediamcp.GenerationMessageOutput{}, generationStatusError("create generation message", status, err)

@@ -21,6 +21,8 @@ type GenerationService interface {
 	GetGenerationTask(id string) (servicegeneration.GenerationTaskRecord, bool, error)
 	PollGenerationTask(ctx context.Context, task servicegeneration.GenerationTaskRecord)
 	UpdateGenerationTaskAsset(id string, assetIndex int, patch servicegeneration.UpdateGenerationTaskAssetRequest) (servicegeneration.GenerationTaskRecord, bool, error)
+	CreatePromptOptimizedGenerationMessage(ctx context.Context, payload servicegeneration.GenerationMessageRequest) (servicegeneration.GenerationOptimizeAndGenerateResponse, int, error)
+	GenerationPreferenceForProject(projectID string) (servicegeneration.GenerationPreferenceRecord, bool)
 }
 
 // NewGenerationServer creates a generation-scoped MCP server.

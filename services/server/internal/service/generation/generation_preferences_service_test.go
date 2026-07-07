@@ -3,6 +3,8 @@ package generation
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 )
 
 func TestGenerationPreferenceServicePersistToSQLite(t *testing.T) {
@@ -62,5 +64,58 @@ func TestGenerationPreferenceServicePersistToSQLite(t *testing.T) {
 	}
 	if _, ok := updated.FamilyIDs["image"]; ok {
 		t.Fatalf("updated family IDs = %+v, want replacement not merge", updated.FamilyIDs)
+	}
+}
+
+func TestGenerationPreferenceForProjectMergesScopes(t *testing.T) {
+	repos, err := repository.OpenSettingsRepositories(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("opening settings repositories: %v", err)
+	}
+	preferences := NewGenerationPreferenceServiceFromRepository(repos.GenerationPreferences, nil)
+	workflow := &GenerationService{generationPreferences: preferences}
+
+	studioScope := NormalizeGenerationConversationScopeID("")
+	if _, err := preferences.UpsertPreference(UpdateGenerationPreferenceRequest{
+		ScopeID:     studioScope,
+		RouteIDs:    map[string]string{"image": "jimeng.seedream-5.0", "video": "jimeng.seedance-2.0"},
+		RouteParams: map[string]map[string]any{"jimeng.seedream-5.0": {"aspectRatio": "1:1"}},
+	}); err != nil {
+		t.Fatalf("upserting studio preference: %v", err)
+	}
+	if _, err := preferences.UpsertPreference(UpdateGenerationPreferenceRequest{
+		ScopeID:     "project-merge-test",
+		RouteIDs:    map[string]string{"image": "openrouter.seedream-4.5"},
+		RouteParams: map[string]map[string]any{"openrouter.seedream-4.5": {"aspectRatio": "3:4"}},
+	}); err != nil {
+		t.Fatalf("upserting project preference: %v", err)
+	}
+
+	if _, err := preferences.UpsertPreference(UpdateGenerationPreferenceRequest{
+		ScopeID:     "agent",
+		RouteParams: map[string]map[string]any{"jimeng.seedream-5.0": {"resolution": "4K"}},
+	}); err != nil {
+		t.Fatalf("upserting agent preference: %v", err)
+	}
+
+	merged, ok := workflow.GenerationPreferenceForProject("project-merge-test")
+	if !ok {
+		t.Fatal("GenerationPreferenceForProject ok = false")
+	}
+	if merged.RouteParams["jimeng.seedream-5.0"]["resolution"] != "4K" {
+		t.Fatalf("agent scope params = %#v, want seedream 4K habit", merged.RouteParams)
+	}
+	if merged.RouteIDs["image"] != "openrouter.seedream-4.5" {
+		t.Fatalf("image route = %q, want project override", merged.RouteIDs["image"])
+	}
+	if merged.RouteIDs["video"] != "jimeng.seedance-2.0" {
+		t.Fatalf("video route = %q, want studio fallback", merged.RouteIDs["video"])
+	}
+	if merged.RouteParams["openrouter.seedream-4.5"]["aspectRatio"] != "3:4" {
+		t.Fatalf("route params = %#v, want project params", merged.RouteParams)
+	}
+
+	if _, ok := (&GenerationService{}).GenerationPreferenceForProject("project-merge-test"); ok {
+		t.Fatal("ok = true without preference service")
 	}
 }

@@ -14,6 +14,7 @@ type GenerationModelsOutput struct {
 	Providers     []coregeneration.ProviderInfo `json:"providers"`
 	VoicePreviews []GenerationVoicePreviewAsset `json:"voicePreviews,omitempty"`
 	StylePresets  []GenerationStylePreset       `json:"stylePresets,omitempty"`
+	Preferences   *GenerationPreferences        `json:"preferences,omitempty"`
 }
 
 // GenerationVoicePreviewAsset is one built-in local voice preview.
@@ -38,6 +39,14 @@ type GenerationStylePreset struct {
 	Params       map[string]any `json:"params,omitempty"`
 	PreviewURL   string         `json:"previewUrl,omitempty"`
 	MIMEType     string         `json:"mimeType,omitempty"`
+}
+
+// GenerationPreferences mirrors the user's generation workbench defaults so
+// agents can propose the user's usual setup as the default plan.
+type GenerationPreferences struct {
+	RouteIDs      map[string]string         `json:"routeIds,omitempty"`
+	RouteParams   map[string]map[string]any `json:"routeParams,omitempty"`
+	StylePresetID string                    `json:"stylePresetId,omitempty"`
 }
 
 // GenerationSelectAssetInput marks one generated asset slot as the picked result.
@@ -70,7 +79,7 @@ type GenerationMessageInput struct {
 	ReferenceAssetIDs  []string                           `json:"referenceAssetIds,omitempty" jsonschema:"参考媒体资产 ID。"`
 	ReferenceBindings  []GenerationReferenceBinding       `json:"referenceBindings,omitempty" jsonschema:"文档 mention 到参考资源的绑定。"`
 	Params             map[string]any                     `json:"params,omitempty" jsonschema:"模型参数。"`
-	PromptOptimization *GenerationPromptOptimizationInput `json:"promptOptimization,omitempty" jsonschema:"保留字段；普通生成会忽略。"`
+	PromptOptimization *GenerationPromptOptimizationInput `json:"promptOptimization,omitempty" jsonschema:"提示词优化配置；传入时先用文本模型优化提示词再生成（对应工作台的优化提示词开关），输出含 optimizedPrompt。"`
 }
 
 // GenerationDocumentContext identifies the source document section for generation.
@@ -137,6 +146,8 @@ type GenerationMessageOutput struct {
 	ErrorCode string            `json:"errorCode,omitempty"`
 	ErrorType string            `json:"errorType,omitempty"`
 	Retryable bool              `json:"retryable,omitempty"`
+	// OptimizedPrompt is the prompt actually used when promptOptimization ran.
+	OptimizedPrompt string `json:"optimizedPrompt,omitempty"`
 }
 
 // GenerationAsset is a generated asset reference or inline payload.

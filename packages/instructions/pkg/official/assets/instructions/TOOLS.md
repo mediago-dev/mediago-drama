@@ -71,15 +71,22 @@ editable: true
   说明情况并结束回合或改为在对话中询问。
 - 轮询生成任务或等待用户选择期间保持安静，不要每轮都输出状态独白；有实质进展再说话。
 
-### 生图标准流程（风格推荐 → 确认 → 生成 → 选片）
+### 生图标准流程（风格推荐 → 方案确认 → 生成 → 选片）
 
 1. `list_generation_models` 返回的 `stylePresets` 来自产品提示词库的 style 分类
    （内置风格 + 用户自建 + 提示词包，与生成工作台同源），含 `promptSuffix` 与可选的 `previewUrl` 预览图。
    推荐风格时从中挑选匹配项，`previewUrl` 存在时作为 `ask_user_selection` 选项的 `imageUrl`，
    缺失时用纯文本选项；推荐阶段不要实际生图。
-2. 用户选定风格后，把该 preset 的 `promptSuffix` 拼到 prompt 末尾、`params` 合并进请求参数，
-   再 `generate_media` 提交真实生成。
-3. 一次生成返回多张结果时，用 `ask_user_selection`（imageUrl 用各资产 url）让用户选片，
+2. 风格选定后、生成之前，再用一张「生成方案确认」卡让用户确认参数——不要逐个参数追问，
+   而是组 2-4 个完整方案作为选项：每个方案的 label 写清模型、比例、分辨率、张数、是否优化提示词
+   （例如「即梦 seedream-5.0 · 3:4 竖版 · 2K · 4 张 · 优化提示词」），description 写适用场景，
+   并开启 allowCustom 让用户提出调整。方案的默认值优先取 `preferences`（用户在生成工作台的
+   习惯参数：routeIds/routeParams），其余取路由 params schema 的默认项；参数取值必须来自
+   目录 schema，不要臆造。用户选定后严格按该方案生成，不要擅自更换。
+3. `generate_media` 时把选定风格的 `promptSuffix` 拼到 prompt 末尾、方案参数放进 `params`；
+   方案含"优化提示词"时传入 `promptOptimization`（可带 routeId 指定文本模型），
+   返回的 `optimizedPrompt` 是实际使用的提示词，向用户展示。
+4. 一次生成返回多张结果时，用 `ask_user_selection`（imageUrl 用各资产 url）让用户选片，
    然后调 `select_generation_asset(taskId, slotIndex)` 标记选中，再取该资产 URL 插入文档。
-4. 视频等长耗时生成不要阻塞轮询到完成：提交时带上 `notificationTarget` 指向目标文档章节，
+5. 视频等长耗时生成不要阻塞轮询到完成：提交时带上 `notificationTarget` 指向目标文档章节，
    告知用户任务已在后台运行并结束回合，结果由任务通知呈现。
