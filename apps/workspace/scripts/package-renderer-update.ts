@@ -60,11 +60,16 @@ function main(): void {
 	zip.writeZip(zipPath);
 
 	const zipBytes = readFileSync(zipPath);
+	// RENDERER_UPDATE_URL_BASE lets local tests point the bundle at http://127.0.0.1:PORT;
+	// defaults to the GitHub channel release download URL.
+	const urlBase =
+		process.env.RENDERER_UPDATE_URL_BASE?.trim().replace(/\/$/, "") ||
+		`https://github.com/${githubOwner}/${githubRepo}/releases/download/renderer-${channel}`;
 	const payload = {
 		rendererRev,
 		appBaseline,
 		minShellApi: SHELL_API_VERSION,
-		url: `https://github.com/${githubOwner}/${githubRepo}/releases/download/renderer-${channel}/${zipName}`,
+		url: `${urlBase}/${zipName}`,
 		sha256: createHash("sha256").update(zipBytes).digest("hex"),
 		size: zipBytes.length,
 		...(process.env.RENDERER_UPDATE_NOTES?.trim()

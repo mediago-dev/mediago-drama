@@ -190,6 +190,26 @@ describe("payload validation", () => {
 		expect(isValidManifestPayload({ ...base, size: 0 })).toBe(false);
 		expect(isValidManifestPayload(null)).toBe(false);
 	});
+
+	it("allows localhost http only when insecure urls are explicitly permitted (test mode)", () => {
+		const base = {
+			rendererRev: 3,
+			appBaseline: "0.1.0",
+			minShellApi: 1,
+			sha256: "f".repeat(64),
+			size: 1,
+		};
+		// localhost http rejected by default, accepted only with the test-mode flag
+		expect(isValidManifestPayload({ ...base, url: "http://127.0.0.1:8787/r.zip" })).toBe(false);
+		expect(isValidManifestPayload({ ...base, url: "http://127.0.0.1:8787/r.zip" }, true)).toBe(
+			true,
+		);
+		expect(isValidManifestPayload({ ...base, url: "http://localhost:8787/r.zip" }, true)).toBe(
+			true,
+		);
+		// even in test mode, non-localhost http stays rejected
+		expect(isValidManifestPayload({ ...base, url: "http://evil.com/r.zip" }, true)).toBe(false);
+	});
 });
 
 describe("store state validation", () => {
