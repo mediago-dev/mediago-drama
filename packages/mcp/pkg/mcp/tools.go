@@ -38,8 +38,9 @@ const ExternalMCPInstructions = mcpWorkflowInstructions + `
 // GenerationMCPInstructions describes the generation MCP server contract.
 const GenerationMCPInstructions = `MediaGo Drama Generation MCP 使用说明：
 - 本 MCP 只提供 MediaGo Drama 生成工作台能力，不提供文档正文读写。
-- 生成图片/视频/音频/文本前优先调用 list_generation_models，确认 routeId、model、params 和 configured 状态。
+- 生成图片/视频/音频/文本前优先调用 list_generation_models，确认 routeId、model、params 和 configured 状态；configured 为 false 时先提示用户配置供应商，不要发起生成。
 - generate_media 用于提交生成请求；kind 默认 image。prompt 必填，routeId/model/params 应来自模型目录或用户明确输入。
+- generate_media 返回的 id 即生成任务的 taskId；status 为 submitting/submitted 时任务在后台运行，用返回的 id 调 poll_generation_task 或 get_generation_task 查询结果。
 - referenceUrls/referenceAssetIds/referenceBindings 可用于传入参考图、参考素材或文档绑定。
 - get_generation_task / list_generation_tasks 用于查询任务状态和结果资产。
 - poll_generation_task 用于轮询需要供应商查询的异步任务；retry_generation_task 用于重试失败或可重试任务。`

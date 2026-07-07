@@ -3,6 +3,8 @@ package mcp
 const (
 	// ServerName is the canonical MCP server name exposed to ACP clients.
 	ServerName = "mediago_drama"
+	// GenerationServerName is the MCP server name for generation tools exposed to ACP clients.
+	GenerationServerName = "mediago_drama_generation"
 	// BlockIDFreshnessNotice is appended to tools that operate on generated block IDs.
 	BlockIDFreshnessNotice = "写入前必须先调用 get_document_outline 或 get_document 获取最新 blockId/hash；blockId 由当前 Markdown 结构即时计算，跨编辑可能漂移。写入工具成功返回 nextOutline 时，连续编辑同一文档优先复用其中最新 blockId/hash；缺失或文档已被其他操作更新时再重新读取。"
 	// DocumentHTTPPath is the streamable HTTP route for run-scoped document tools.

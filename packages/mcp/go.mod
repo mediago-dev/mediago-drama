@@ -3,6 +3,7 @@ module github.com/mediago-dev/mediago-drama/packages/mcp
 go 1.25.0
 
 require (
+	github.com/mediago-dev/mediago-drama/packages/core v0.0.0-20260707133611-16ed27be3d90
 	github.com/modelcontextprotocol/go-sdk v1.6.0
 	github.com/yuin/goldmark v1.8.2
 )
