@@ -207,7 +207,7 @@ tasks:
       - |
         "{{.DEV_SERVER_BIN}}" --config "{{.SERVER_CONFIG}}" &
         SERVER_PID=$!
-        trap 'kill "$SERVER_PID" 2>/dev/null' EXIT INT TERM
+        trap 'kill "$SERVER_PID" 2>/dev/null' EXIT
         pnpm -C apps/workspace dev
 
   dev:desktop:
