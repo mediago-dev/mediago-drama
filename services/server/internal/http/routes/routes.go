@@ -28,6 +28,7 @@ type Handlers struct {
 	PromptLibrary         httphandlers.PromptLibrary
 	Skills                httphandlers.Skills
 	DocumentToolApprovals httphandlers.DocumentToolApprovals
+	AgentSelections       httphandlers.AgentSelections
 	AgentPermissions      httphandlers.AgentPermissions
 	AgentChat             httphandlers.AgentChat
 	AgentMessages         httphandlers.AgentMessages
@@ -352,6 +353,18 @@ func registerAgentRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
 	projectRoutes.POST(
 		"/agent/document-tool-approvals/:approvalId/decision",
 		handlers.DocumentToolApprovals.HandleDecideDocumentToolApproval,
+	)
+	projectRoutes.GET(
+		"/agent/selections",
+		handlers.AgentSelections.HandleListAgentSelections,
+	)
+	projectRoutes.GET(
+		"/agent/selections/:selectionId",
+		handlers.AgentSelections.HandleGetAgentSelection,
+	)
+	projectRoutes.POST(
+		"/agent/selections/:selectionId/decision",
+		handlers.AgentSelections.HandleDecideAgentSelection,
 	)
 	projectRoutes.POST(
 		"/agent/sessions/:sessionId/permission-requests/:requestId/decision",

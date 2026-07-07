@@ -79,6 +79,31 @@ func (DocumentToolApprovalModel) TableName() string {
 	return "document_tool_approvals"
 }
 
+// AgentSelectionModel is the GORM model for agent user-selection prompts.
+type AgentSelectionModel struct {
+	ProjectID    string     `gorm:"column:project_id;primaryKey;default:'';index:agent_selections_status_idx,priority:1"`
+	ID           string     `gorm:"column:id;primaryKey"`
+	SessionID    string     `gorm:"column:session_id;not null;default:''"`
+	RunID        string     `gorm:"column:run_id;not null;default:''"`
+	Kind         string     `gorm:"column:kind;not null;default:''"`
+	Title        string     `gorm:"column:title;not null;default:''"`
+	Prompt       string     `gorm:"column:prompt;not null;default:''"`
+	OptionsJSON  string     `gorm:"column:options_json;not null;default:'[]'"`
+	AllowCustom  bool       `gorm:"column:allow_custom;not null;default:false"`
+	Status       string     `gorm:"column:status;not null;index:agent_selections_status_idx,priority:2"`
+	DecisionJSON string     `gorm:"column:decision_json;not null;default:''"`
+	CreatedAt    time.Time  `gorm:"column:created_at;not null;autoCreateTime:nano;index:agent_selections_status_idx,priority:3,sort:asc"`
+	DecidedAt    *time.Time `gorm:"column:decided_at"`
+	ExpiresAt    *time.Time `gorm:"column:expires_at"`
+
+	Project WorkspaceProjectModel `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:CASCADE"`
+}
+
+// TableName returns the backing table name.
+func (AgentSelectionModel) TableName() string {
+	return "agent_selections"
+}
+
 // DocumentEditStreamModel is the GORM model for streamed document edits.
 type DocumentEditStreamModel struct {
 	ProjectID       string    `gorm:"column:project_id;primaryKey;default:'';index:document_edit_streams_project_idx,priority:1"`

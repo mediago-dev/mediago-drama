@@ -19,6 +19,7 @@ import (
 	servicepromptlibrary "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptlibrary"
 	servicepromptpack "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 	serviceprompttemplates "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompttemplates"
+	serviceselection "github.com/mediago-dev/mediago-drama/services/server/internal/service/selection"
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	serviceshared "github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
@@ -41,6 +42,7 @@ type apiHandler struct {
 	capability       *servicecapability.Service
 	billing          *servicebilling.Service
 	generation       *servicegeneration.GenerationService
+	selection        *serviceselection.Service
 	jianyingDraft    *servicejianyingdraft.Service
 	mediaAssets      *servicemedia.MediaAssets
 	previewStreamer  *servicemedia.FFmpegPreviewStreamer
