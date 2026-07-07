@@ -44,6 +44,7 @@ type Handlers struct {
 func Register(router *gin.Engine, handlers Handlers) {
 	router.Any("/mcp", handlers.MCP.HandleExternalMCP)
 	router.Any(mediamcp.LegacyDocumentHTTPPath, handlers.MCP.HandleLegacyDocumentMCP)
+	router.Any(mediamcp.LegacyGenerationHTTPPath, handlers.MCP.HandleLegacyGenerationMCP)
 
 	apiRoutes := router.Group("/api/v1")
 	registerCoreRoutes(apiRoutes, handlers)
@@ -90,9 +91,14 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.PUT("/media-assets/:assetId", handlers.MediaAssets.HandleUpdateMediaAsset)
 	apiRoutes.DELETE("/media-assets/:assetId", handlers.MediaAssets.HandleDeleteMediaAsset)
 	apiRoutes.Any("/internal/agent/document-mcp", handlers.MCP.HandleInternalDocumentMCP)
+	apiRoutes.Any("/internal/agent/generation-mcp", handlers.MCP.HandleInternalGenerationMCP)
 	apiRoutes.Any(
 		"/internal/projects/:projectId/agent/document-mcp",
 		handlers.MCP.HandleProjectDocumentMCP,
+	)
+	apiRoutes.Any(
+		"/internal/projects/:projectId/agent/generation-mcp",
+		handlers.MCP.HandleProjectGenerationMCP,
 	)
 	apiRoutes.POST(
 		serviceevents.InternalEventsPublishRoute,
