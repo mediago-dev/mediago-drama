@@ -619,6 +619,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 				maxReferences={maxReferenceUrlsForRoute(ws.selectedRoute)}
 				mediaAssets={ws.mediaAssets}
 				open={referenceDialogOpen}
+				referenceCount={ws.referenceCount}
 				references={ws.selectedReferenceAssets}
 				requiresReference={false}
 				selectableKinds={ws.selectableReferenceKinds}

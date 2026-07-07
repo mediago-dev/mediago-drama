@@ -86,6 +86,7 @@ import {
 	type GenerationEntry,
 	generationAssetSelectionKey,
 	generationAssetSource,
+	maxReferenceUrlsForRoute,
 	preferredRoute,
 	routeProviderLabel,
 	taskIdFromGenerationEntryId,
@@ -710,6 +711,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	);
 	const canSelectReferenceImages =
 		ws.hasConfiguredRoutesForKind && ws.selectedRoute.supportsReferenceUrls;
+	const maxReferenceUrls = maxReferenceUrlsForRoute(ws.selectedRoute);
 	const routeParamGroups = useMemo(() => resolveParamGroups(ws.selectedRoute), [ws.selectedRoute]);
 	const sizeGroupParams = useMemo(
 		() => routeParamGroups.find((group) => group.id === "size")?.params ?? [],
@@ -974,6 +976,31 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		() => new Set(ws.selectedReferenceAssetIds),
 		[ws.selectedReferenceAssetIds],
 	);
+	const inlineReferenceAssetIds = useMemo(
+		() => new Set(inlineReferenceAssets.map((asset) => asset.id)),
+		[inlineReferenceAssets],
+	);
+	const canAddReferenceAssetId = useCallback(
+		(assetId: string) => {
+			if (!maxReferenceUrls) return true;
+			if (selectedReferenceAssetIds.has(assetId) || inlineReferenceAssetIds.has(assetId)) {
+				return true;
+			}
+			if (ws.referenceCount < maxReferenceUrls) return true;
+
+			const referenceLimitUnit = kind === "image" ? "张参考图" : "个参考素材";
+			toast.warning(`当前模型最多支持 ${maxReferenceUrls} ${referenceLimitUnit}。`);
+			return false;
+		},
+		[
+			inlineReferenceAssetIds,
+			kind,
+			maxReferenceUrls,
+			selectedReferenceAssetIds,
+			toast,
+			ws.referenceCount,
+		],
+	);
 	const removePreviewReferenceAsset = useCallback(
 		(asset: MediaAsset) => {
 			if (selectedReferenceAssetIds.has(asset.id)) {
@@ -1033,9 +1060,11 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				? ws.mediaAssets.find((item) => item.id === mediaAssetId && item.kind === "image")
 				: null;
 			if (mediaAsset) {
+				if (!canAddReferenceAssetId(mediaAsset.id)) return;
 				ws.selectReferenceAsset(mediaAsset);
 			} else {
 				const referenceAsset = createInlineResultReferenceAsset(asset, source);
+				if (!canAddReferenceAssetId(referenceAsset.id)) return;
 				setInlineResultReferences((current) =>
 					current.some((item) => item.id === referenceAsset.id)
 						? current
@@ -1053,6 +1082,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			toast,
 			kind,
 			referenceButtonLabel,
+			canAddReferenceAssetId,
 			ws.mediaAssets,
 			ws.selectReferenceAsset,
 		],
@@ -1370,6 +1400,12 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				return;
 			}
 			if (!ws.selectableReferenceKinds.has(asset.kind)) return;
+			if (
+				!inlineShortcutReferences.some((reference) => reference.id === asset.id) &&
+				!canAddReferenceAssetId(asset.id)
+			) {
+				return;
+			}
 
 			setInlineShortcutReferences((current) =>
 				current.some((reference) => reference.id === asset.id)
@@ -1377,7 +1413,15 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 					: [...current, asset],
 			);
 		},
-		[canSelectReferenceImages, kind, referenceButtonLabel, toast, ws.selectableReferenceKinds],
+		[
+			canAddReferenceAssetId,
+			canSelectReferenceImages,
+			inlineShortcutReferences,
+			kind,
+			referenceButtonLabel,
+			toast,
+			ws.selectableReferenceKinds,
+		],
 	);
 
 	useEffect(() => {

@@ -40,6 +40,7 @@ export const MediaGenerationWorkspaceDialogs: React.FC<{
 				maxReferences={maxReferenceUrlsForRoute(workspace.selectedRoute)}
 				mediaAssets={workspace.mediaAssets}
 				open={referenceDialogOpen}
+				referenceCount={workspace.referenceCount}
 				references={workspace.selectedReferenceAssets}
 				requiresReference={false}
 				selectableKinds={workspace.selectableReferenceKinds}
