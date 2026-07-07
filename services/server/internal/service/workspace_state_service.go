@@ -14,6 +14,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/approval"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/chat"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/selection"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 )
 
@@ -21,6 +22,7 @@ import (
 type WorkspaceStateService struct {
 	Documents   *document.Service
 	Approvals   *approval.Service
+	Selections  *selection.Service
 	Chat        *chat.Service
 	EditStreams *document.EditStreamService
 
@@ -103,6 +105,8 @@ func validateWorkspaceStateRepositories(repos WorkspaceStateRepositories) error 
 		return fmt.Errorf("agent session repository is nil")
 	case repos.Approvals == nil:
 		return fmt.Errorf("document tool approval repository is nil")
+	case repos.Selections == nil:
+		return fmt.Errorf("agent selection repository is nil")
 	case repos.DocumentSections == nil:
 		return fmt.Errorf("document section repository is nil")
 	default:
@@ -129,6 +133,7 @@ func (store *WorkspaceStateService) initialize() error {
 
 func (store *WorkspaceStateService) compose(repos WorkspaceStateRepositories) {
 	store.Approvals = approval.NewService(repos.Approvals, store.initErr)
+	store.Selections = selection.NewService(repos.Selections, store.initErr)
 	store.Documents = document.NewService(store.dir, repos.Workspace, store.Approvals, store.initErr, repos.DocumentSections)
 	store.Documents.SetProjectAssetRepository(repos.ProjectAssets)
 	store.EditStreams = document.NewEditStreamService(repos.EditStreams, store.initErr)

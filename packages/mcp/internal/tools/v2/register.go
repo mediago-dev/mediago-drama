@@ -20,6 +20,7 @@ type Dispatcher interface {
 	ListComments(ctx context.Context, projectID string, input mediamcp.ListCommentsInput) (mediamcp.CommentsToolOutput, error)
 	GetComment(ctx context.Context, projectID string, input mediamcp.GetCommentInput) (mediamcp.CommentToolOutput, error)
 	MutateComment(ctx context.Context, projectID string, input mediamcp.MutateCommentInput) (mediamcp.CommentMutationOutput, error)
+	AskUserSelection(ctx context.Context, projectID string, input mediamcp.AskUserSelectionInput) (mediamcp.AskUserSelectionOutput, error)
 }
 
 // Register installs document V2 tools on the MCP server.
@@ -27,6 +28,13 @@ func Register(server *mcpsdk.Server, dispatcher Dispatcher, options Options, clo
 	registerLoadSkillTool(server, dispatcher, options.ProjectID, closedWorld, logToolRegistered)
 	registerProjectConfigTools(server, dispatcher, options.ProjectID, closedWorld, logToolRegistered)
 	registerCommentTools(server, dispatcher, options.ProjectID, closedWorld, logToolRegistered)
+	registerSelectionTools(server, dispatcher, options.ProjectID, closedWorld, logToolRegistered)
+}
+
+func registerSelectionTools(server *mcpsdk.Server, dispatcher Dispatcher, projectID string, closedWorld bool, logToolRegistered func(string)) {
+	add[mediamcp.AskUserSelectionInput](server, dispatcher, projectID, closedWorld, logToolRegistered, mediamcp.AgentDocumentTools.AskUserSelection, func(ctx context.Context, dispatcher Dispatcher, projectID string, input mediamcp.AskUserSelectionInput) (any, error) {
+		return dispatcher.AskUserSelection(ctx, projectID, input)
+	})
 }
 
 func add[In any](

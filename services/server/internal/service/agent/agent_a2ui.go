@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/model"
@@ -13,7 +14,89 @@ const (
 
 	AgentA2UIActionAgentPermission      = "agent.permission.decide"
 	AgentA2UIActionDocumentToolApproval = "document_tool_approval.decide"
+	AgentA2UIActionSelection            = "agent_selection.decide"
+
+	// selectionCardMaxOptions bounds how many options a selection card renders.
+	selectionCardMaxOptions = 8
 )
+
+// SelectionCardOption is one selectable choice rendered on a selection card.
+type SelectionCardOption struct {
+	ID          string
+	Label       string
+	ImageURL    string
+	Description string
+}
+
+// BuildSelectionA2UI builds the deterministic UI surface for an agent
+// user-selection prompt: a titled list of image + label options plus a cancel
+// action. Clicking an option posts its optionId; cancel posts cancelled=true.
+func BuildSelectionA2UI(projectID string, selectionID string, title string, prompt string, options []SelectionCardOption, allowCustom bool) *AgentA2UIPayload {
+	surfaceID := "agent-selection-" + strings.TrimSpace(selectionID)
+	if strings.TrimSpace(selectionID) == "" {
+		surfaceID = "agent-selection"
+	}
+	rootChildren := []string{"title"}
+	components := []map[string]any{
+		a2uiText("title", firstNonEmpty(title, "请选择"), "h5"),
+	}
+	if trimmed := strings.TrimSpace(prompt); trimmed != "" {
+		rootChildren = append(rootChildren, "prompt")
+		components = append(components, a2uiText("prompt", trimmed, "body"))
+	}
+
+	for index, option := range options {
+		if index >= selectionCardMaxOptions {
+			break
+		}
+		suffix := strconv.Itoa(index)
+		cellID := "opt-" + suffix
+		buttonID := "opt-btn-" + suffix
+		labelID := "opt-label-" + suffix
+		cellChildren := []string{}
+		if url := strings.TrimSpace(option.ImageURL); url != "" {
+			imageID := "opt-img-" + suffix
+			cellChildren = append(cellChildren, imageID)
+			components = append(components, a2uiImage(imageID, url, option.Label, "smallFeature"))
+		}
+		cellChildren = append(cellChildren, buttonID)
+		components = append(components,
+			a2uiText(labelID, firstNonEmpty(option.Label, option.ID), "body"),
+			a2uiButton(buttonID, labelID, "primary", AgentA2UIActionSelection, map[string]any{
+				"kind":        "agent_selection",
+				"projectId":   projectID,
+				"selectionId": selectionID,
+				"optionId":    option.ID,
+			}),
+		)
+		if desc := strings.TrimSpace(option.Description); desc != "" {
+			descID := "opt-desc-" + suffix
+			cellChildren = append(cellChildren, descID)
+			components = append(components, a2uiText(descID, desc, "caption"))
+		}
+		rootChildren = append(rootChildren, cellID)
+		components = append(components, a2uiColumn(cellID, cellChildren))
+	}
+
+	cancelLabel := "取消"
+	if allowCustom {
+		cancelLabel = "都不满意，我来描述"
+	}
+	rootChildren = append(rootChildren, "actions")
+	components = append(components,
+		a2uiRow("actions", []string{"cancel"}),
+		a2uiText("cancel-label", cancelLabel, "body"),
+		a2uiButton("cancel", "cancel-label", "default", AgentA2UIActionSelection, map[string]any{
+			"kind":        "agent_selection",
+			"projectId":   projectID,
+			"selectionId": selectionID,
+			"cancelled":   true,
+		}),
+	)
+
+	components = append([]map[string]any{a2uiColumn("root", rootChildren)}, components...)
+	return newA2UIPayload(surfaceID, components)
+}
 
 // BuildAgentPermissionA2UI builds the deterministic UI surface for ACP
 // permission decisions.
@@ -175,6 +258,21 @@ func a2uiText(id string, text string, variant string) map[string]any {
 		"id":        id,
 		"component": "Text",
 		"text":      text,
+	}
+	if strings.TrimSpace(variant) != "" {
+		component["variant"] = variant
+	}
+	return component
+}
+
+func a2uiImage(id string, url string, description string, variant string) map[string]any {
+	component := map[string]any{
+		"id":        id,
+		"component": "Image",
+		"url":       url,
+	}
+	if strings.TrimSpace(description) != "" {
+		component["description"] = description
 	}
 	if strings.TrimSpace(variant) != "" {
 		component["variant"] = variant
