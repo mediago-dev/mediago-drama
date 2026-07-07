@@ -37,6 +37,7 @@ func TestDocumentServerRegistersDocumentTools(t *testing.T) {
 		"get_comment",
 		"mutate_comment",
 		"ask_user_selection",
+		"ask_user_form",
 		"await_user_selection",
 	)
 }
@@ -242,6 +243,10 @@ func (testDeps) AskUserSelection(context.Context, string, mediamcp.AskUserSelect
 }
 
 func (testDeps) AwaitUserSelection(context.Context, string, mediamcp.AwaitUserSelectionInput) (mediamcp.AskUserSelectionOutput, error) {
+	return mediamcp.AskUserSelectionOutput{}, nil
+}
+
+func (testDeps) AskUserForm(context.Context, string, mediamcp.AskUserFormInput) (mediamcp.AskUserSelectionOutput, error) {
 	return mediamcp.AskUserSelectionOutput{}, nil
 }
 

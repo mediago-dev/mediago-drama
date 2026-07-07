@@ -51,6 +51,7 @@ export interface AgentSelectionDecision {
 	optionId?: string;
 	customText?: string;
 	cancelled?: boolean;
+	values?: Record<string, unknown>;
 }
 
 export interface AgentSelection {
@@ -74,6 +75,7 @@ export interface AgentSelectionDecisionRequest {
 	optionId?: string;
 	customText?: string;
 	cancelled?: boolean;
+	values?: Record<string, unknown>;
 }
 
 export interface AgentBackend {
@@ -223,12 +225,41 @@ export interface AgentEvent {
 	documents?: WorkspaceDocument[];
 	projectBrief?: ProjectBrief;
 	a2ui?: AgentA2UIPayload;
+	form?: AgentFormPayload;
 }
 
 export interface AgentA2UIPayload {
 	version?: string;
 	surfaceId?: string;
 	messages: unknown;
+}
+
+export interface AgentFormFieldOption {
+	value: string;
+	label: string;
+	description?: string;
+}
+
+export interface AgentFormField {
+	id: string;
+	label: string;
+	type: "select" | "toggle" | "number" | "text";
+	description?: string;
+	options?: AgentFormFieldOption[];
+	default?: unknown;
+	min?: number;
+	max?: number;
+	unit?: string;
+	required?: boolean;
+}
+
+export interface AgentFormPayload {
+	selectionId: string;
+	projectId?: string;
+	title: string;
+	prompt?: string;
+	submitLabel?: string;
+	fields: AgentFormField[];
 }
 
 export interface AgentACPEvent {
@@ -355,6 +386,7 @@ export interface AgentFinalResponse {
 	message: string;
 	proposedDocument: AgentDocumentProposal;
 	a2ui?: AgentA2UIPayload;
+	form?: AgentFormPayload;
 }
 
 export interface AgentMessageResponse {

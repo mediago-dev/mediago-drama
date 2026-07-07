@@ -23,13 +23,25 @@ func (store *Service) Create(projectID string, request CreateRequest) (Record, e
 	if title == "" {
 		return Record{}, fmt.Errorf("selection title is required")
 	}
-	options, err := normalizeOptions(request.Options)
+	fields, err := normalizeFields(request.Fields)
+	if err != nil {
+		return Record{}, err
+	}
+	options, err := normalizeOptions(request.Options, len(fields) > 0)
 	if err != nil {
 		return Record{}, err
 	}
 	optionsJSON, err := json.Marshal(options)
 	if err != nil {
 		return Record{}, fmt.Errorf("encoding selection options: %w", err)
+	}
+	fieldsJSON := ""
+	if len(fields) > 0 {
+		raw, err := json.Marshal(fields)
+		if err != nil {
+			return Record{}, fmt.Errorf("encoding selection fields: %w", err)
+		}
+		fieldsJSON = string(raw)
 	}
 
 	now := time.Now().UTC()
@@ -43,6 +55,7 @@ func (store *Service) Create(projectID string, request CreateRequest) (Record, e
 		Title:       title,
 		Prompt:      strings.TrimSpace(request.Prompt),
 		OptionsJSON: string(optionsJSON),
+		FieldsJSON:  fieldsJSON,
 		AllowCustom: request.AllowCustom,
 		Status:      StatusPending,
 		CreatedAt:   now,
@@ -234,8 +247,11 @@ func (store *Service) sweepExpiredUnlocked(projectID string, now time.Time) erro
 	return nil
 }
 
-func normalizeOptions(options []Option) ([]Option, error) {
+func normalizeOptions(options []Option, allowEmpty bool) ([]Option, error) {
 	if len(options) == 0 {
+		if allowEmpty {
+			return []Option{}, nil
+		}
 		return nil, fmt.Errorf("at least one selection option is required")
 	}
 	seen := map[string]bool{}
@@ -267,6 +283,13 @@ func resolveDecision(record Record, request DecisionRequest) (string, Decision, 
 	if request.Cancelled {
 		return StatusCancelled, Decision{Cancelled: true}, nil
 	}
+	if len(request.Values) > 0 {
+		values, err := validateFormValues(record.Fields, request.Values)
+		if err != nil {
+			return "", Decision{}, err
+		}
+		return StatusSubmitted, Decision{Values: values}, nil
+	}
 	optionID := strings.TrimSpace(request.OptionID)
 	if optionID != "" {
 		for _, option := range record.Options {
@@ -284,4 +307,118 @@ func resolveDecision(record Record, request DecisionRequest) (string, Decision, 
 		return StatusCustom, Decision{CustomText: customText}, nil
 	}
 	return "", Decision{}, fmt.Errorf("selection decision requires optionId, customText, or cancelled")
+}
+
+func normalizeFields(fields []FormField) ([]FormField, error) {
+	if len(fields) == 0 {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	normalized := make([]FormField, 0, len(fields))
+	for _, field := range fields {
+		id := strings.TrimSpace(field.ID)
+		if id == "" {
+			return nil, fmt.Errorf("form field id is required")
+		}
+		if seen[id] {
+			return nil, fmt.Errorf("duplicate form field id %q", id)
+		}
+		seen[id] = true
+		fieldType := strings.TrimSpace(field.Type)
+		switch fieldType {
+		case FieldTypeSelect:
+			if len(field.Options) == 0 {
+				return nil, fmt.Errorf("form field %q needs options", id)
+			}
+		case FieldTypeToggle, FieldTypeNumber, FieldTypeText:
+		default:
+			return nil, fmt.Errorf("form field %q has unsupported type %q", id, fieldType)
+		}
+		field.ID = id
+		field.Type = fieldType
+		field.Label = strings.TrimSpace(field.Label)
+		if field.Label == "" {
+			field.Label = id
+		}
+		normalized = append(normalized, field)
+	}
+	return normalized, nil
+}
+
+// validateFormValues checks submitted values against the form's field specs
+// and fills defaults for omitted fields.
+func validateFormValues(fields []FormField, values map[string]any) (map[string]any, error) {
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("selection does not accept form values")
+	}
+	byID := map[string]FormField{}
+	for _, field := range fields {
+		byID[field.ID] = field
+	}
+	for id := range values {
+		if _, ok := byID[id]; !ok {
+			return nil, fmt.Errorf("unknown form field %q", id)
+		}
+	}
+	resolved := map[string]any{}
+	for _, field := range fields {
+		value, provided := values[field.ID]
+		if !provided || value == nil {
+			if field.Default != nil {
+				resolved[field.ID] = field.Default
+				continue
+			}
+			if field.Required {
+				return nil, fmt.Errorf("form field %q is required", field.ID)
+			}
+			continue
+		}
+		checked, err := validateFormValue(field, value)
+		if err != nil {
+			return nil, err
+		}
+		resolved[field.ID] = checked
+	}
+	return resolved, nil
+}
+
+func validateFormValue(field FormField, value any) (any, error) {
+	switch field.Type {
+	case FieldTypeSelect:
+		text, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("form field %q expects a string option value", field.ID)
+		}
+		for _, option := range field.Options {
+			if option.Value == text {
+				return text, nil
+			}
+		}
+		return nil, fmt.Errorf("form field %q has no option %q", field.ID, text)
+	case FieldTypeToggle:
+		flag, ok := value.(bool)
+		if !ok {
+			return nil, fmt.Errorf("form field %q expects a boolean", field.ID)
+		}
+		return flag, nil
+	case FieldTypeNumber:
+		number, ok := value.(float64)
+		if !ok {
+			return nil, fmt.Errorf("form field %q expects a number", field.ID)
+		}
+		if field.Min != nil && number < *field.Min {
+			return nil, fmt.Errorf("form field %q must be >= %v", field.ID, *field.Min)
+		}
+		if field.Max != nil && number > *field.Max {
+			return nil, fmt.Errorf("form field %q must be <= %v", field.ID, *field.Max)
+		}
+		return number, nil
+	case FieldTypeText:
+		text, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("form field %q expects a string", field.ID)
+		}
+		return strings.TrimSpace(text), nil
+	}
+	return nil, fmt.Errorf("form field %q has unsupported type %q", field.ID, field.Type)
 }

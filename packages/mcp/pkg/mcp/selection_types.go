@@ -18,12 +18,44 @@ type AskUserSelectionInput struct {
 	TimeoutSeconds int                    `json:"timeoutSeconds,omitempty" jsonschema:"阻塞等待秒数，clamp 到 [30,600]，默认 180。"`
 }
 
-// AskUserSelectionOutput is the resolved outcome of a selection prompt.
+// AskUserSelectionOutput is the resolved outcome of a selection or form prompt.
 type AskUserSelectionOutput struct {
-	SelectionID string `json:"selectionId"`
-	Status      string `json:"status" jsonschema:"selected、custom、cancelled 或 timeout。"`
-	OptionID    string `json:"optionId,omitempty"`
-	CustomText  string `json:"customText,omitempty"`
+	SelectionID string         `json:"selectionId"`
+	Status      string         `json:"status" jsonschema:"selected、submitted、custom、cancelled 或 timeout。"`
+	OptionID    string         `json:"optionId,omitempty"`
+	CustomText  string         `json:"customText,omitempty"`
+	Values      map[string]any `json:"values,omitempty" jsonschema:"表单提交的字段值（status 为 submitted 时）。"`
+}
+
+// FormFieldOptionInput is one choice of a select form field.
+type FormFieldOptionInput struct {
+	Value       string `json:"value" jsonschema:"选项值，提交时原样返回。"`
+	Label       string `json:"label" jsonschema:"选项显示名。"`
+	Description string `json:"description,omitempty"`
+}
+
+// FormFieldInput is one typed input on a user-facing form card.
+type FormFieldInput struct {
+	ID          string                 `json:"id" jsonschema:"字段 ID，提交值以它为键。"`
+	Label       string                 `json:"label" jsonschema:"字段显示名。"`
+	Type        string                 `json:"type" jsonschema:"select、toggle、number 或 text。"`
+	Description string                 `json:"description,omitempty"`
+	Options     []FormFieldOptionInput `json:"options,omitempty" jsonschema:"select 类型的可选值。"`
+	Default     any                    `json:"default,omitempty" jsonschema:"默认值；用 preferences 或 schema 默认项预填。"`
+	Min         *float64               `json:"min,omitempty"`
+	Max         *float64               `json:"max,omitempty"`
+	Unit        string                 `json:"unit,omitempty"`
+	Required    bool                   `json:"required,omitempty"`
+}
+
+// AskUserFormInput presents a parameter form and blocks for submission.
+type AskUserFormInput struct {
+	Title          string           `json:"title" jsonschema:"表单卡标题，例如"确认生成参数"。"`
+	Prompt         string           `json:"prompt,omitempty" jsonschema:"给用户的补充说明。"`
+	Kind           string           `json:"kind,omitempty" jsonschema:"表单类型标记，例如 generation_plan。"`
+	Fields         []FormFieldInput `json:"fields" jsonschema:"表单字段，至少一项。"`
+	SubmitLabel    string           `json:"submitLabel,omitempty" jsonschema:"提交按钮文案，默认"确认"。"`
+	TimeoutSeconds int              `json:"timeoutSeconds,omitempty" jsonschema:"阻塞等待秒数，clamp 到 [30,600]，默认 90；超时后用 await_user_selection 续等。"`
 }
 
 // AwaitUserSelectionInput continues waiting on an existing selection prompt.

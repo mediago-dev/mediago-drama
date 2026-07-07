@@ -89,6 +89,7 @@ type AgentSelectionModel struct {
 	Title        string     `gorm:"column:title;not null;default:''"`
 	Prompt       string     `gorm:"column:prompt;not null;default:''"`
 	OptionsJSON  string     `gorm:"column:options_json;not null;default:'[]'"`
+	FieldsJSON   string     `gorm:"column:fields_json;not null;default:''"`
 	AllowCustom  bool       `gorm:"column:allow_custom;not null;default:false"`
 	Status       string     `gorm:"column:status;not null;index:agent_selections_status_idx,priority:2"`
 	DecisionJSON string     `gorm:"column:decision_json;not null;default:''"`

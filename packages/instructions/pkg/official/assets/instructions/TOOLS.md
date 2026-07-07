@@ -77,12 +77,13 @@ editable: true
    （内置风格 + 用户自建 + 提示词包，与生成工作台同源），含 `promptSuffix` 与可选的 `previewUrl` 预览图。
    推荐风格时从中挑选匹配项，`previewUrl` 存在时作为 `ask_user_selection` 选项的 `imageUrl`，
    缺失时用纯文本选项；推荐阶段不要实际生图。
-2. 风格选定后、生成之前，再用一张「生成方案确认」卡让用户确认参数——不要逐个参数追问，
-   而是组 2-4 个完整方案作为选项：每个方案的 label 写清模型、比例、分辨率、张数、是否优化提示词
-   （例如「即梦 seedream-5.0 · 3:4 竖版 · 2K · 4 张 · 优化提示词」），description 写适用场景，
-   并开启 allowCustom 让用户提出调整。方案的默认值优先取 `preferences`（用户在生成工作台的
-   习惯参数：routeIds/routeParams），其余取路由 params schema 的默认项；参数取值必须来自
-   目录 schema，不要臆造。用户选定后严格按该方案生成，不要擅自更换。
+2. 风格选定后、生成之前，用 `ask_user_form` 弹一张「生成参数」表单让用户确认——不要逐个参数追问，
+   也不要用打包方案的单选卡。字段组织：模型用 select（options 来自目录中 configured 的路由，
+   label 用「供应商 · 模型名」）、比例和分辨率用 select（options 严格取所选默认路由的 params schema）、
+   张数用 number（min/max 按路由限制）、是否优化提示词用 toggle。每个字段的 default 优先取
+   `preferences`（用户在生成工作台的习惯参数：routeIds/routeParams），其余取 schema 默认项。
+   用户提交后严格按返回的 values 生成；若用户改了模型导致比例/分辨率不在新模型 schema 内，
+   按新模型 schema 修正后再弹一次表单确认，不要擅自替换。
 3. `generate_media` 时把选定风格的 `promptSuffix` 拼到 prompt 末尾、方案参数放进 `params`；
    方案含"优化提示词"时传入 `promptOptimization`（可带 routeId 指定文本模型），
    返回的 `optimizedPrompt` 是实际使用的提示词，向用户展示。
