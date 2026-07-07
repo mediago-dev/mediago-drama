@@ -114,6 +114,17 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 			return nil
 		}
 		return server
+	}, func(_ *http.Request, projectID string) *mcp.Server {
+		server, _, err := appmcp.NewGenerationServer(api.workspaceState.Dir(), projectID, api.generation, "http")
+		if err != nil {
+			slog.Error(
+				"generation mcp http server unavailable",
+				"project_id", domain.DiagnosticProjectID(projectID),
+				"error", err,
+			)
+			return nil
+		}
+		return server
 	})
 	router := gin.New()
 	router.Use(middleware.LocalCORS(), middleware.RequestID(), middleware.RequestLogger(), middleware.RecoveryLogger(writeError))

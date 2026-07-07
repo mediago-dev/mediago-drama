@@ -50,7 +50,7 @@ func RequestLogger() gin.HandlerFunc {
 		switch {
 		case status >= http.StatusInternalServerError:
 			slog.Error("http request", args...)
-		case isExpectedDocumentMCPHangingGET(context.Request.Method, path, status):
+		case isExpectedMCPHangingGET(context.Request.Method, path, status):
 			slog.Debug("http request", args...)
 		case status >= http.StatusBadRequest:
 			slog.Warn("http request", args...)
@@ -60,13 +60,16 @@ func RequestLogger() gin.HandlerFunc {
 	}
 }
 
-func isExpectedDocumentMCPHangingGET(method string, path string, status int) bool {
+func isExpectedMCPHangingGET(method string, path string, status int) bool {
 	if method != http.MethodGet || status != http.StatusMethodNotAllowed {
 		return false
 	}
 	return path == mediamcp.DocumentHTTPPath ||
 		path == mediamcp.LegacyDocumentHTTPPath ||
-		(strings.HasPrefix(path, "/api/v1/internal/projects/") && strings.HasSuffix(path, "/agent/document-mcp"))
+		path == mediamcp.GenerationHTTPPath ||
+		path == mediamcp.LegacyGenerationHTTPPath ||
+		(strings.HasPrefix(path, "/api/v1/internal/projects/") &&
+			(strings.HasSuffix(path, "/agent/document-mcp") || strings.HasSuffix(path, "/agent/generation-mcp")))
 }
 
 // RecoveryLogger logs panics and delegates response writing to the HTTP layer.

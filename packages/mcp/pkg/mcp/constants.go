@@ -10,6 +10,10 @@ const (
 	// LegacyDocumentHTTPPath is accepted by the server for in-flight agents started
 	// before the versioned route was introduced.
 	LegacyDocumentHTTPPath = "/api/internal/agent/document-mcp"
+	// GenerationHTTPPath is the streamable HTTP route for generation tools.
+	GenerationHTTPPath = "/api/v1/internal/agent/generation-mcp"
+	// LegacyGenerationHTTPPath is accepted by the server for early generation MCP clients.
+	LegacyGenerationHTTPPath = "/api/internal/agent/generation-mcp"
 	// BridgeURLHeader forwards the bridge base URL to HTTP-hosted MCP tools.
 	BridgeURLHeader = "X-MediaGo-Drama-Agent-Bridge-URL"
 	// BridgeTokenHeader forwards the bridge bearer token to HTTP-hosted MCP tools.
