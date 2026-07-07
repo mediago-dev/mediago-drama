@@ -1,11 +1,26 @@
 import type {
 	DesktopFileFilter,
+	DesktopUpdateAck,
+	DesktopUpdateCapability,
 	DesktopUpdateStatus,
-	DesktopUpdateCheckResult,
-	DesktopUpdateActionResult,
 } from "@/shared/desktop/types";
-import { desktopUpdateStatusEvent } from "@/shared/desktop/types";
 import { desktopRuntime } from "@/shared/desktop/runtime";
+
+const browserFallbackAck: DesktopUpdateAck = {
+	ok: false,
+	message: "当前运行环境不支持应用内更新。",
+};
+
+const missingBridgeAck: DesktopUpdateAck = {
+	ok: false,
+	message: "未检测到桌面端更新接口。",
+};
+
+const browserFallbackCapability: DesktopUpdateCapability = {
+	supportsAutoUpdate: false,
+	releasePageUrl: "https://github.com/mediago-dev/mediago-drama/releases/latest",
+	reason: "当前运行环境不支持应用内更新。",
+};
 
 export const copyDesktopFileToDirectory = async ({
 	directory,
@@ -118,82 +133,40 @@ export const showDesktopNotification = async (options: {
 	return false;
 };
 
-export const checkDesktopUpdate = async (): Promise<DesktopUpdateCheckResult> => {
-	const runtime = desktopRuntime();
-	const unsupportedResult: DesktopUpdateCheckResult = {
-		supported: false as const,
-		status: {
-			currentVersion: "0.0.0",
-			phase: "not-available" as const,
-		},
-		message: "当前运行环境不支持应用更新检查。",
-	} satisfies DesktopUpdateCheckResult;
-	if (runtime !== "electron") {
-		return unsupportedResult;
-	}
-
-	const result = await window.mediagoDesktop?.checkForUpdate();
-	if (!result) {
-		return unsupportedResult;
-	}
-	return result;
-};
-
-export const downloadDesktopUpdate = async () => {
-	const runtime = desktopRuntime();
-	if (runtime !== "electron") {
-		return {
-			supported: false as const,
-			ok: false as const,
-			message: "当前运行环境不支持下载更新。",
-		} satisfies DesktopUpdateActionResult;
-	}
-	const result = await window.mediagoDesktop?.downloadUpdate();
-	if (!result) {
-		return {
-			supported: false as const,
-			ok: false as const,
-			message: "未检测到桌面端更新接口。",
-		} satisfies DesktopUpdateActionResult;
-	}
-	return result;
-};
-
 export const getDesktopAppVersion = async () => {
 	const runtime = desktopRuntime();
 	if (runtime !== "electron") return null;
 	return window.mediagoDesktop?.getAppVersion();
 };
 
-export const installDesktopUpdate = async () => {
+export const getDesktopUpdateCapability = async (): Promise<DesktopUpdateCapability> => {
 	const runtime = desktopRuntime();
-	if (runtime !== "electron") {
-		return {
-			supported: false as const,
-			ok: false as const,
-			message: "当前运行环境不支持安装更新。",
-		} satisfies DesktopUpdateActionResult;
-	}
-	const result = await window.mediagoDesktop?.installUpdate();
-	if (!result) {
-		return {
-			supported: false as const,
-			ok: false as const,
-			message: "未检测到桌面端更新接口。",
-		} satisfies DesktopUpdateActionResult;
-	}
-	return result;
+	if (runtime !== "electron") return browserFallbackCapability;
+	return (await window.mediagoDesktop?.getUpdateCapability()) ?? browserFallbackCapability;
 };
 
-export const subscribeDesktopUpdateStatus = (listener: (payload: DesktopUpdateStatus) => void) => {
-	if (typeof window === "undefined") return () => {};
+export const checkDesktopUpdate = async (): Promise<DesktopUpdateAck> => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return browserFallbackAck;
+	return (await window.mediagoDesktop?.checkForUpdate()) ?? missingBridgeAck;
+};
 
-	const handleEvent = (event: Event) => {
-		const detail = (event as CustomEvent<DesktopUpdateStatus>).detail;
-		if (!detail) return;
-		listener(detail);
-	};
+export const downloadDesktopUpdate = async (): Promise<DesktopUpdateAck> => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return browserFallbackAck;
+	return (await window.mediagoDesktop?.downloadUpdate()) ?? missingBridgeAck;
+};
 
-	window.addEventListener(desktopUpdateStatusEvent, handleEvent as EventListener);
-	return () => window.removeEventListener(desktopUpdateStatusEvent, handleEvent as EventListener);
+export const installDesktopUpdate = async (): Promise<DesktopUpdateAck> => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return browserFallbackAck;
+	return (await window.mediagoDesktop?.installUpdate()) ?? missingBridgeAck;
+};
+
+export const subscribeDesktopUpdateStatus = (
+	listener: (status: DesktopUpdateStatus) => void,
+): (() => void) => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return () => {};
+	return window.mediagoDesktop?.onUpdateStatus(listener) ?? (() => {});
 };
