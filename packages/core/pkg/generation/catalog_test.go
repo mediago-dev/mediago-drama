@@ -795,6 +795,9 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 	if !jimengSeedream.SupportsReferenceURLs {
 		t.Fatal("jimeng seedream route should support reference images")
 	}
+	if jimengSeedream.MaxReferenceURLs != 0 {
+		t.Fatalf("jimeng seedream max references = %d, want unlimited", jimengSeedream.MaxReferenceURLs)
+	}
 	jimengSeedream47 := mustRoute(t, RouteJimengSeedream47)
 	assertHasParams(t, jimengSeedream47, "aspectRatio", "resolution")
 

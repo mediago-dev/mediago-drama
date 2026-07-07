@@ -2,6 +2,26 @@ package generation
 
 import "strings"
 
+type routeOption func(*ModelRoute)
+
+func applyRouteOptions(route *ModelRoute, options ...routeOption) {
+	for _, option := range options {
+		if option != nil {
+			option(route)
+		}
+	}
+}
+
+func withReferenceURLLimit(maxReferenceURLs int) routeOption {
+	return func(route *ModelRoute) {
+		if maxReferenceURLs <= 0 {
+			return
+		}
+		route.SupportsReferenceURLs = true
+		route.MaxReferenceURLs = maxReferenceURLs
+	}
+}
+
 func version(
 	id string,
 	familyID string,
@@ -36,9 +56,10 @@ func dmxRoute(
 	async bool,
 	supportsReferenceURLs bool,
 	legacyModelID string,
+	options ...routeOption,
 ) ModelRoute {
 	kind := kindForFamily(familyID)
-	return ModelRoute{
+	route := ModelRoute{
 		ID:                    id,
 		FamilyID:              familyID,
 		VersionID:             versionID,
@@ -59,10 +80,7 @@ func dmxRoute(
 		Translation:           params.Translation,
 		LegacyModelID:         legacyModelID,
 	}
-}
-
-func withMaxReferenceURLs(route ModelRoute, maxReferenceURLs int) ModelRoute {
-	route.MaxReferenceURLs = maxReferenceURLs
+	applyRouteOptions(&route, options...)
 	return route
 }
 
@@ -78,9 +96,10 @@ func jimengRoute(
 	async bool,
 	supportsReferenceURLs bool,
 	legacyModelID string,
+	options ...routeOption,
 ) ModelRoute {
 	kind := kindForFamily(familyID)
-	return ModelRoute{
+	route := ModelRoute{
 		ID:                    id,
 		FamilyID:              familyID,
 		VersionID:             versionID,
@@ -101,6 +120,8 @@ func jimengRoute(
 		Translation:           params.Translation,
 		LegacyModelID:         legacyModelID,
 	}
+	applyRouteOptions(&route, options...)
+	return route
 }
 
 func xiaoyunqueRoute(
@@ -115,9 +136,10 @@ func xiaoyunqueRoute(
 	async bool,
 	supportsReferenceURLs bool,
 	legacyModelID string,
+	options ...routeOption,
 ) ModelRoute {
 	kind := kindForFamily(familyID)
-	return ModelRoute{
+	route := ModelRoute{
 		ID:                    id,
 		FamilyID:              familyID,
 		VersionID:             versionID,
@@ -138,6 +160,8 @@ func xiaoyunqueRoute(
 		Translation:           params.Translation,
 		LegacyModelID:         legacyModelID,
 	}
+	applyRouteOptions(&route, options...)
+	return route
 }
 
 func libTVRoute(
@@ -152,9 +176,10 @@ func libTVRoute(
 	async bool,
 	supportsReferenceURLs bool,
 	legacyModelID string,
+	options ...routeOption,
 ) ModelRoute {
 	kind := kindForFamily(familyID)
-	return ModelRoute{
+	route := ModelRoute{
 		ID:                    id,
 		FamilyID:              familyID,
 		VersionID:             versionID,
@@ -175,6 +200,8 @@ func libTVRoute(
 		Translation:           params.Translation,
 		LegacyModelID:         legacyModelID,
 	}
+	applyRouteOptions(&route, options...)
+	return route
 }
 
 func openRouterRoute(
@@ -189,8 +216,9 @@ func openRouterRoute(
 	params RouteParamConfig,
 	async bool,
 	supportsReferenceURLs bool,
+	options ...routeOption,
 ) ModelRoute {
-	return ModelRoute{
+	route := ModelRoute{
 		ID:                    id,
 		FamilyID:              familyID,
 		VersionID:             versionID,
@@ -210,6 +238,8 @@ func openRouterRoute(
 		CanonicalParams:       params.CanonicalParams,
 		Translation:           params.Translation,
 	}
+	applyRouteOptions(&route, options...)
+	return route
 }
 
 func officialRoute(
@@ -225,8 +255,9 @@ func officialRoute(
 	params RouteParamConfig,
 	async bool,
 	supportsReferenceURLs bool,
+	options ...routeOption,
 ) ModelRoute {
-	return ModelRoute{
+	route := ModelRoute{
 		ID:                    id,
 		FamilyID:              familyID,
 		VersionID:             versionID,
@@ -246,6 +277,8 @@ func officialRoute(
 		CanonicalParams:       params.CanonicalParams,
 		Translation:           params.Translation,
 	}
+	applyRouteOptions(&route, options...)
+	return route
 }
 
 func routeParamCombos(params []RouteParam, joins []ParamJoin) []ParamCombo {

@@ -143,6 +143,7 @@ describe("fallback generation catalog params", () => {
 			supportsReferenceUrls: true,
 			maxReferenceUrls: 4,
 		});
+		expect(routeById("jimeng.seedream-5.0").maxReferenceUrls).toBeUndefined();
 		expect(routeCombos("mediago.gpt-image-2")).toEqual([
 			{
 				params: ["aspectRatio", "resolution"],
