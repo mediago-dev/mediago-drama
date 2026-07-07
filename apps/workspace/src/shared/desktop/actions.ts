@@ -1,4 +1,11 @@
-import type { DesktopFileFilter } from "@/shared/desktop/types";
+import type {
+	DesktopFileFilter,
+	DesktopNotificationOptions,
+	DesktopUpdateStatus,
+	DesktopUpdateCheckResult,
+	DesktopUpdateActionResult,
+} from "@/shared/desktop/types";
+import { desktopUpdateStatusEvent } from "@/shared/desktop/types";
 import { desktopRuntime } from "@/shared/desktop/runtime";
 
 export const copyDesktopFileToDirectory = async ({
@@ -71,15 +78,94 @@ export const showDesktopNotification = async (options: {
 	const runtime = desktopRuntime();
 	try {
 		if (runtime === "electron") {
-			return Boolean(
-				await window.mediagoDesktop?.showNotification({
-					body: options.body,
-					title: options.title,
-				}),
-			);
+			const notificationOptions: DesktopNotificationOptions = {
+				body: options.body,
+				title: options.title,
+			};
+			return Boolean(await window.mediagoDesktop?.showNotification(notificationOptions));
 		}
 	} catch {
 		return false;
 	}
 	return false;
+};
+
+export const checkDesktopUpdate = async (): Promise<DesktopUpdateCheckResult> => {
+	const runtime = desktopRuntime();
+	const unsupportedResult: DesktopUpdateCheckResult = {
+		supported: false as const,
+		status: {
+			currentVersion: "0.0.0",
+			phase: "not-available" as const,
+		},
+		message: "当前运行环境不支持应用更新检查。",
+	} satisfies DesktopUpdateCheckResult;
+	if (runtime !== "electron") {
+		return unsupportedResult;
+	}
+
+	const result = await window.mediagoDesktop?.checkForUpdate();
+	if (!result) {
+		return unsupportedResult;
+	}
+	return result;
+};
+
+export const downloadDesktopUpdate = async () => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") {
+		return {
+			supported: false as const,
+			ok: false as const,
+			message: "当前运行环境不支持下载更新。",
+		} satisfies DesktopUpdateActionResult;
+	}
+	const result = await window.mediagoDesktop?.downloadUpdate();
+	if (!result) {
+		return {
+			supported: false as const,
+			ok: false as const,
+			message: "未检测到桌面端更新接口。",
+		} satisfies DesktopUpdateActionResult;
+	}
+	return result;
+};
+
+export const getDesktopAppVersion = async () => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return null;
+	return window.mediagoDesktop?.getAppVersion();
+};
+
+export const installDesktopUpdate = async () => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") {
+		return {
+			supported: false as const,
+			ok: false as const,
+			message: "当前运行环境不支持安装更新。",
+		} satisfies DesktopUpdateActionResult;
+	}
+	const result = await window.mediagoDesktop?.installUpdate();
+	if (!result) {
+		return {
+			supported: false as const,
+			ok: false as const,
+			message: "未检测到桌面端更新接口。",
+		} satisfies DesktopUpdateActionResult;
+	}
+	return result;
+};
+
+export const subscribeDesktopUpdateStatus = (listener: (payload: DesktopUpdateStatus) => void) => {
+	if (typeof window === "undefined") return () => {};
+
+	const handleEvent = (event: Event) => {
+		const detail = (event as CustomEvent<DesktopUpdateStatus>).detail;
+		if (!detail) return;
+		listener(detail);
+	};
+
+	window.addEventListener(desktopUpdateStatusEvent, handleEvent as EventListener);
+	return () => window.removeEventListener(desktopUpdateStatusEvent, handleEvent as EventListener);
 };

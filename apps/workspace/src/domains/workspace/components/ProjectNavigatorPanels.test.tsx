@@ -61,6 +61,22 @@ describe("SettingsSidebarPanel", () => {
 		expect(onSelectTab).toHaveBeenCalledWith("codex-relay");
 	});
 
+	it("shows the app updates settings entry", () => {
+		const onSelectTab = vi.fn();
+
+		render(
+			<SettingsSidebarPanel
+				activeTab="appearance"
+				isProjectSettings={false}
+				onBack={vi.fn()}
+				onSelectTab={onSelectTab}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "应用更新" }));
+		expect(onSelectTab).toHaveBeenCalledWith("updates");
+	});
+
 	it("hides the Codex relay settings entry for non-Codex agents", () => {
 		render(
 			<SettingsSidebarPanel
