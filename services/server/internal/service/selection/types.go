@@ -24,6 +24,9 @@ const (
 	StatusCustom    = "custom"
 	StatusCancelled = "cancelled"
 	StatusExpired   = "expired"
+	// StatusTimeout is an output-only status returned to the caller when the
+	// blocking wait elapses. It is never persisted; the record stays pending.
+	StatusTimeout = "timeout"
 )
 
 // Blocking-wait bounds. The caller-supplied timeout is clamped to this range;

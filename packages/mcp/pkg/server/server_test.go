@@ -36,6 +36,7 @@ func TestDocumentServerRegistersDocumentTools(t *testing.T) {
 		"list_comments",
 		"get_comment",
 		"mutate_comment",
+		"ask_user_selection",
 	)
 }
 
@@ -232,6 +233,10 @@ func (testDeps) GetComment(context.Context, string, mediamcp.GetCommentInput) (m
 
 func (testDeps) MutateComment(context.Context, string, mediamcp.MutateCommentInput) (mediamcp.CommentMutationOutput, error) {
 	return mediamcp.CommentMutationOutput{}, nil
+}
+
+func (testDeps) AskUserSelection(context.Context, string, mediamcp.AskUserSelectionInput) (mediamcp.AskUserSelectionOutput, error) {
+	return mediamcp.AskUserSelectionOutput{}, nil
 }
 
 func (testDeps) ListGenerationModels(context.Context) (mediamcp.GenerationModelsOutput, error) {
