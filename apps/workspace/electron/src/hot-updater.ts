@@ -53,17 +53,22 @@ export const resolveActiveRenderer = (): ResolvedRenderer => {
 	return resolveRendererDir(app.getPath("userData"), builtinDir);
 };
 
+/** Delay before the silent background check after startup. */
+const backgroundCheckDelayMs = 15_000;
+
 interface HotUpdaterDeps {
 	getWindow: () => BrowserWindow | null;
 	active: ResolvedRenderer;
 }
 
 export const registerRendererHotUpdater = ({ getWindow, active }: HotUpdaterDeps): void => {
+	// Mutable: apply-now swaps the loaded bundle without an app restart.
+	let current = active;
 	let inFlight = false;
-	let lastStatus: RendererUpdateStatus = { phase: "idle", currentRev: active.rev };
+	let lastStatus: RendererUpdateStatus = { phase: "idle", currentRev: current.rev };
 
 	const emit = (status: Omit<RendererUpdateStatus, "currentRev">): void => {
-		lastStatus = { currentRev: active.rev, ...status };
+		lastStatus = { currentRev: current.rev, ...status };
 		const window = getWindow();
 		if (!window || window.isDestroyed()) return;
 		window.webContents.send(desktopIpcChannel.rendererUpdateStatus, lastStatus);
@@ -73,12 +78,12 @@ export const registerRendererHotUpdater = ({ getWindow, active }: HotUpdaterDeps
 		if (!isHotUpdateActive()) {
 			return {
 				enabled: false,
-				currentRev: active.rev,
-				source: active.source,
+				currentRev: current.rev,
+				source: current.source,
 				reason: hotUpdateEnabled ? "当前运行环境不支持界面更新。" : "界面热更新尚未启用。",
 			};
 		}
-		return { enabled: true, currentRev: active.rev, source: active.source };
+		return { enabled: true, currentRev: current.rev, source: current.source };
 	};
 
 	const check = async (): Promise<DesktopUpdateAck> => {
@@ -105,7 +110,7 @@ export const registerRendererHotUpdater = ({ getWindow, active }: HotUpdaterDeps
 		const store = readStoreState(userDataDir);
 		const decision = evaluateManifest(
 			payload,
-			active.source === "builtin" ? active.rev : 0,
+			current.source === "builtin" ? current.rev : 0,
 			store.activeRev,
 			store.blockedRevs,
 			SHELL_API_VERSION,
@@ -184,14 +189,50 @@ export const registerRendererHotUpdater = ({ getWindow, active }: HotUpdaterDeps
 		}
 	};
 
+	// Reload the window from a freshly activated bundle without restarting the app.
+	// The bundle stays pending; the health beacon in the new renderer confirms it.
+	const applyNow = async (): Promise<DesktopUpdateAck> => {
+		if (!isHotUpdateActive()) return { ok: false, message: "界面热更新尚未启用。" };
+		if (inFlight) return { ok: false, message: "界面更新正在进行，请稍候。" };
+		const window = getWindow();
+		if (!window || window.isDestroyed()) return { ok: false, message: "窗口不可用。" };
+
+		const next = resolveRendererDir(app.getPath("userData"), rendererDistDir());
+		if (next.dir === current.dir) {
+			return { ok: false, message: "没有待生效的界面更新。" };
+		}
+		try {
+			await window.loadFile(join(next.dir, "index.html"), {
+				hash: "/",
+				query: { version: app.getVersion() },
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "刷新界面失败。";
+			return { ok: false, message };
+		}
+		current = next;
+		emit({ phase: "idle" });
+		return { ok: true };
+	};
+
 	ipcMain.handle(desktopIpcChannel.getRendererUpdateCapability, capability);
 
 	ipcMain.handle(desktopIpcChannel.checkRendererUpdate, () => check());
 
+	ipcMain.handle(desktopIpcChannel.applyRendererUpdate, () => applyNow());
+
 	ipcMain.handle(desktopIpcChannel.markRendererHealthy, () => {
-		if (!isHotUpdateActive() || active.source !== "downloaded") return;
+		if (!isHotUpdateActive() || current.source !== "downloaded") return;
 		markHealthy(app.getPath("userData"));
 	});
+
+	// Silent background check shortly after startup: downloads in the background and
+	// applies on next launch. Errors surface only as status pushes (no dialogs).
+	if (isHotUpdateActive()) {
+		setTimeout(() => {
+			void check();
+		}, backgroundCheckDelayMs).unref();
+	}
 };
 
 const fetchSignedManifest = async (): Promise<RendererUpdateManifestPayload> => {

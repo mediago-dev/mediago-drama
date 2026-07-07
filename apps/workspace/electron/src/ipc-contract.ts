@@ -17,6 +17,7 @@ export const desktopIpcChannel = {
 	updateStatus: "desktop:update-status",
 	getRendererUpdateCapability: "desktop:get-renderer-update-capability",
 	checkRendererUpdate: "desktop:check-renderer-update",
+	applyRendererUpdate: "desktop:apply-renderer-update",
 	markRendererHealthy: "desktop:mark-renderer-healthy",
 	rendererUpdateStatus: "desktop:renderer-update-status",
 } as const;

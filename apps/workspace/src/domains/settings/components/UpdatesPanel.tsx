@@ -11,6 +11,7 @@ import { Button } from "@/shared/components/ui/button";
 import { useToast } from "@/hooks/useToast";
 import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
 import {
+	applyRendererUpdate,
 	checkDesktopUpdate,
 	checkRendererUpdate,
 	downloadDesktopUpdate,
@@ -252,6 +253,7 @@ const RendererUpdateSection: React.FC = () => {
 	const [capability, setCapability] = useState<RendererUpdateCapability | null>(null);
 	const [status, setStatus] = useState<RendererUpdateStatus | null>(null);
 	const [checking, setChecking] = useState(false);
+	const [applying, setApplying] = useState(false);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -282,6 +284,22 @@ const RendererUpdateSection: React.FC = () => {
 			}
 		} finally {
 			setChecking(false);
+		}
+	};
+
+	// On success the window reloads from the new bundle — this component unmounts.
+	const applyNow = async () => {
+		setApplying(true);
+		try {
+			const ack = await applyRendererUpdate();
+			if (!ack.ok) {
+				toast.error("刷新界面失败", { description: ack.message });
+				setApplying(false);
+			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "刷新界面失败。";
+			toast.error("刷新界面失败", { description: message });
+			setApplying(false);
 		}
 	};
 
@@ -336,10 +354,22 @@ const RendererUpdateSection: React.FC = () => {
 			) : null}
 
 			{status?.phase === "ready" ? (
-				<p className="rounded-md border border-border bg-success-surface px-3 py-2 text-xs text-success-foreground">
-					新界面（rev {status.targetRev}）已就绪，重启应用后生效。
-					{status.notes ? ` ${status.notes}` : ""}
-				</p>
+				<div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-success-surface px-3 py-2">
+					<p className="text-xs text-success-foreground">
+						新界面（rev {status.targetRev}）已就绪，重启应用后生效。
+						{status.notes ? ` ${status.notes}` : ""}
+					</p>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						disabled={applying}
+						onClick={() => void applyNow()}
+					>
+						{applying ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw />}
+						<span>{applying ? "刷新中" : "立即刷新界面"}</span>
+					</Button>
+				</div>
 			) : null}
 
 			{status?.phase === "requires-full-update" ? (
