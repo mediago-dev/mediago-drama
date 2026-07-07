@@ -71,7 +71,22 @@
 
 > 预存问题（与本改动无关）：`-tags integration` 下 `TestInternalDocumentMCPHTTPAuthAndComments` 与 `TestExternalMCPHTTPCommentLifecycle` 在 initialize instructions 片段断言处失败（要求 `不要把整篇内容一次性放进单个 write/edit 工具调用`，该片段在 dev / PR #20 的 MCP instructions 中从未存在）。默认 `go test` 不含 integration tag，故 CI 未跑到；本 PR 仅修正了其中 document 工具列表断言以纳入 `ask_user_selection`。生成 MCP 的 integration 测试通过。
 
-下表 B1–B9：服务端语义 + MCP 工具 + 卡片构建已由单测覆盖（B2 selected、B3 双击幂等、B4 自定义、B5 超时哨兵+可取回、B6 取消语义；B1 卡片推送由 adapter 测试断言）；前端渲染/点击/刷新恢复（第 3 层）与端到端项仍待实现/人工验证。
+### PR-B 前端进度（2026-07-08，第 3 层完成）
+
+已实现并通过测试：
+
+- 类型 + API：`AgentSelection` 等类型（`api/types/agent.ts`）；`listAgentSelections` / `decideAgentSelection`（`domains/agent/api/agent.ts`）。
+- 动作处理（`a2ui-actions.ts`）：`kind === "agent_selection"` → decide → `replaceMessage` 终态（「已选择：×××」）；decide 幂等——点击已决定/过期的卡片按服务端返回的真实状态显示结果（选中/自定义/取消/已过期），不重复提交；信息不完整时记录错误且不调 API。
+- 时间线（`AgentTimeline.tsx`）：`agent_selection` 加入 dismiss + keep-result 白名单（卡片被替换为结果消息而非移除，也不会落入"转发给 Agent"的兜底分支）。
+- 样式（`AgentA2UIMessage.tsx`）：`[&_img]` 约束（圆角/边框/max-h-40/object-cover），选项预览图不撑爆卡片。
+- 刷新恢复：确认服务端 `agent_event_projection` 已把 `agent.ui` 事件（含 A2UI payload）持久化进会话历史，刷新后卡片自动还原；action context 自带 projectId/selectionId，还原后的卡片点击仍可 decide。与权限卡/审批卡同机制，无需新增同步组件。
+- 测试：a2ui-actions 新增 3 例（选中替换、过期幂等展示、不完整拒绝）；`AgentA2UIMessage` 新增渲染测试——用与服务端 `BuildSelectionA2UI` 相同形状的 payload 验证图片渲染 + 点击动作携带正确 context（两端契约对上）。agent 域 28 个测试文件 169 例全绿。
+
+自动化验证：`pnpm lint`（0 警告）/ `pnpm format` / `pnpm build`（tsc + vite）全绿。
+
+> 预存问题（与本改动无关）：`GenerationModalShell.test.tsx` 与 `ImageGenerationSpecControl.test.tsx` 各 1 例在合并基线 `861b6148`（本工作开始前）即以相同方式失败，属 dev 侧生成弹窗组件的既有问题，本改动未触碰这两个组件。
+
+下表 B1–B9：B1 卡片渲染（含图片）与点击动作由前端渲染测试 + adapter 推送测试覆盖；B2 selected、B3 双击幂等、B4 自定义、B5 超时哨兵+可取回、B6 取消、B7 刷新恢复机制均已由自动化覆盖对应语义；端到端真机走查（真实 Agent backend 触发）仍待人工执行。
 
 | # | 场景 | 步骤 | 预期结果 | 实际结果 | 判定 |
 |---|---|---|---|---|---|

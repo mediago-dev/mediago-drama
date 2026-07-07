@@ -21,6 +21,8 @@ import type {
 	AgentMessageResponse,
 	AgentReference as GeneratedAgentReference,
 	AgentRuntimeConfigResponse,
+	AgentSelection,
+	AgentSelectionDecisionRequest,
 	AgentSessionResponse,
 	AgentSessionsResponse,
 	AgentSessionStatus,
@@ -51,6 +53,9 @@ export type {
 	AgentFinalResponse,
 	AgentRuntimeSelectConfig,
 	AgentRuntimeSelectOption,
+	AgentSelection,
+	AgentSelectionDecisionRequest,
+	AgentSelectionOption,
 	AgentSessionStatus,
 	AgentSessionSummary,
 } from "@/api/types/agent";
@@ -349,6 +354,25 @@ export const decideDocumentToolApproval = async (
 			`/document-tool-approvals/${encodeURIComponent(approvalId)}/decision`,
 		),
 		{ decision, payload },
+	);
+	return response.data;
+};
+
+export const listAgentSelections = async (projectId?: string | null) => {
+	const response = await httpClient.get<AgentSelection[]>(
+		projectAgentPath(projectId, "/selections"),
+	);
+	return response.data;
+};
+
+export const decideAgentSelection = async (
+	selectionId: string,
+	decision: AgentSelectionDecisionRequest,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.post<AgentSelection>(
+		projectAgentPath(projectId, `/selections/${encodeURIComponent(selectionId)}/decision`),
+		decision,
 	);
 	return response.data;
 };
