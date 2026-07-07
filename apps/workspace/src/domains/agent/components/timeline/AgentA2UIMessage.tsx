@@ -46,11 +46,14 @@ export const AgentA2UIMessage: React.FC<{
 				"[&_button]:inline-flex [&_button]:min-h-7 [&_button]:max-w-full [&_button]:items-center [&_button]:justify-center [&_button]:rounded-sm",
 				"[&_button]:whitespace-normal [&_button]:border [&_button]:border-border [&_button]:bg-background [&_button]:px-2.5 [&_button]:py-1 [&_button]:text-center [&_button]:text-xs [&_button]:leading-4",
 				"[&_button]:font-medium [&_button]:text-foreground [&_button]:transition-colors hover:[&_button]:bg-ide-list-hover",
+				"[&_button]:cursor-pointer hover:[&_button]:border-primary",
 				"[&_button:disabled]:cursor-not-allowed [&_button:disabled]:opacity-50",
 				"[&_em]:not-italic [&_em]:text-muted-foreground [&_h1]:m-0 [&_h2]:m-0 [&_h3]:m-0 [&_h4]:m-0 [&_h5]:m-0",
 				"[&_h5]:text-sm [&_h5]:font-semibold [&_p]:m-0 [&_p]:break-words [&_p]:leading-5",
 				"[&_img]:max-h-40 [&_img]:max-w-full [&_img]:rounded-sm [&_img]:border [&_img]:border-border [&_img]:object-cover",
-				"[&_div[style*='flex-direction:_row']:has(img)>div]:min-w-0 [&_div[style*='flex-direction:_row']:has(img)>div]:flex-1",
+				"[&_div[style*='flex-direction:_row']:has(img)]:flex-wrap",
+				"[&_div[style*='flex-direction:_row']:has(img)>div]:min-w-0 [&_div[style*='flex-direction:_row']:has(img)>div]:flex-[1_1_10.5rem]",
+				"[&_div[style*='flex-direction:_row']:has(img)>div]:max-w-56",
 				"[&_div[style*='flex-direction:_row']:has(img)>div_img]:w-full",
 			)}
 		>
