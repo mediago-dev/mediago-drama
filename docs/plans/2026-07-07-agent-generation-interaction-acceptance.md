@@ -102,6 +102,18 @@
 
 ## 3. PR-C：风格推荐与结果选片
 
+### PR-C 实现进度（2026-07-08）
+
+已实现并通过测试：
+
+- 风格 preset 目录：`configs/style-presets/`（manifest.json + 8 张 SVG 预览图，go:embed 打包）；`StylePresetStore`（照 voice preview 模式：manifest 校验含未知 routeId / 重复 id / 路径逃逸拒绝，缺 manifest 视为空目录）。预览图为调色板风格占位 SVG，设计侧有真图后替换文件即可。
+- 暴露：`ListGenerationModels` 响应新增 `stylePresets`（id/title/kinds/promptSuffix/params/previewUrl）；预览图经 `GET /api/v1/generation/style-previews/{presetId}` 提供（immutable 缓存头）；MCP 合约 `GenerationModelsOutput.StylePresets` 同步。
+- 选片工具：生成 MCP 新增 `select_generation_asset(taskId, slotIndex, title?)`，复用服务端 `UpdateGenerationTaskAsset`（slot 语义），带项目作用域校验；工具数 6→7。
+- Agent 指令：TOOLS.md 固化「生图标准流程」四步（preset 推荐不实际生图 → 确认后拼 promptSuffix/params 生成 → 多张结果 ask_user_selection 选片 + select_generation_asset 标记 → 长任务 notificationTarget fire-and-forget 不阻塞轮询）；`GenerationMCPInstructions` 同步。
+- 测试：`style_presets_test.go`（内置目录完整性、预览内容、6 种非法 manifest 拒绝、缺 manifest 为空）；`generation_test.go` 新增选片成功/缺槽位/缺任务/越权 4 例；集成测试工具列表更新为 7 个。
+
+自动化验证：gofmt/vet/lint 全绿；`services/server` 全量 `go test -race ./...` 通过（含 swagger 覆盖检查，style-previews 路由已入 spec）；`packages/mcp` check 全绿；generation MCP 集成测试通过；prompt golden 已随 TOOLS.md 更新。
+
 | # | 场景 | 步骤 | 预期结果 | 实际结果 | 判定 |
 |---|---|---|---|---|---|
 | C1 | 风格推荐零费用 | 对话：「帮我给角色配几种插画风格」 | Agent 从 preset 目录挑 4–8 项发选择卡片，预览图为内置资产；期间生成任务列表无新增任务（未扣费） | | |

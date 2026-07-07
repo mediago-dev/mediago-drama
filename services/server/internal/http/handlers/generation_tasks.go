@@ -23,6 +23,7 @@ type GenerationTaskService interface {
 	CreatePromptOptimizedGenerationMessage(ctx context.Context, payload dto.GenerationMessageRequest) (dto.GenerationOptimizeAndGenerateResponse, int, error)
 	PreviewGenerationVoice(ctx context.Context, payload dto.GenerationVoicePreviewRequest) (dto.GenerationVoicePreviewResponse, int, error)
 	GenerationVoicePreviewContent(routeID string, voiceID string) (dto.GenerationVoicePreviewAsset, []byte, bool, error)
+	GenerationStylePreviewContent(presetID string) (dto.GenerationStylePreset, []byte, bool, error)
 	ImportGenerationMediaAssets(payload dto.ImportGenerationMediaAssetsRequest) (dto.GenerationTasksResponse, int, error)
 	StreamGenerationText(ctx context.Context, payload dto.GenerationMessageRequest, emit func(dto.GenerationTextStreamEvent) error) (int, error)
 	CreateGenerationConversation(payload dto.CreateGenerationConversationRequest) (dto.GenerationConversationRecord, int, error)
@@ -184,6 +185,38 @@ func (handler GenerationTasks) HandleGenerationVoicePreviewContent(context *gin.
 		return
 	}
 	mimeType := strings.TrimSpace(asset.MIMEType)
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+	context.Header("Cache-Control", "public, max-age=31536000, immutable")
+	context.Data(http.StatusOK, mimeType, data)
+}
+
+// HandleGenerationStylePreviewContent godoc
+// @Summary 获取内置风格预览图
+// @Description 返回应用内置的风格 preset 预览图片。
+// @Tags Generation
+// @Produce image/svg+xml
+// @Param presetId path string true "Style preset ID"
+// @Success 200 {file} file
+// @Failure 404 {object} SwaggerEnvelope
+// @Router /api/v1/generation/style-previews/{presetId} [get]
+func (handler GenerationTasks) HandleGenerationStylePreviewContent(context *gin.Context) {
+	presetID, ok := requiredPathParam(context, "presetId", "presetId")
+	if !ok {
+		return
+	}
+
+	preset, data, found, err := handler.service.GenerationStylePreviewContent(presetID)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusInternalServerError, err)
+		return
+	}
+	if !found {
+		httpresponse.ErrorFromStatus(context, http.StatusNotFound, fmt.Errorf("style preview not found"))
+		return
+	}
+	mimeType := strings.TrimSpace(preset.MIMEType)
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}

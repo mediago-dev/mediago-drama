@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "presets": [
+    {
+      "id": "pastel-sweet",
+      "title": "甜美粉彩",
+      "description": "柔和马卡龙色调，粉彩质感，甜美治愈的少女感画面。",
+      "kinds": ["image"],
+      "promptSuffix": "甜美粉彩画风，柔和马卡龙配色，细腻粉彩质感，光线明亮通透，soft pastel illustration style",
+      "previewPath": "previews/pastel-sweet.svg"
+    },
+    {
+      "id": "watercolor-fresh",
+      "title": "清新水彩",
+      "description": "透明水彩晕染，留白呼吸感，清新自然的手绘水彩风。",
+      "kinds": ["image"],
+      "promptSuffix": "清新水彩画风，透明水彩晕染，纸张纹理与自然留白，fresh watercolor illustration style",
+      "previewPath": "previews/watercolor-fresh.svg"
+    },
+    {
+      "id": "retro-line",
+      "title": "复古线条",
+      "description": "复古漫画线稿，昭和风勾线与做旧配色，怀旧氛围。",
+      "kinds": ["image"],
+      "promptSuffix": "复古线条漫画风，清晰勾线与做旧复古配色，昭和怀旧氛围，retro line art comic style",
+      "previewPath": "previews/retro-line.svg"
+    },
+    {
+      "id": "healing-soft",
+      "title": "治愈柔和",
+      "description": "低饱和暖色，柔焦光影，安静治愈的插画氛围。",
+      "kinds": ["image"],
+      "promptSuffix": "治愈系柔和画风，低饱和暖色调，柔焦光影与安静氛围，soft healing illustration style",
+      "previewPath": "previews/healing-soft.svg"
+    },
+    {
+      "id": "crayon-rustic",
+      "title": "质朴蜡笔",
+      "description": "手绘蜡笔笔触，粗颗粒纸面质感，童趣质朴。",
+      "kinds": ["image"],
+      "promptSuffix": "质朴蜡笔手绘风，粗颗粒蜡笔笔触与纸面肌理，童趣温暖，rustic crayon drawing style",
+      "previewPath": "previews/crayon-rustic.svg"
+    },
+    {
+      "id": "colored-pencil",
+      "title": "空气彩铅",
+      "description": "轻盈彩铅排线，通透空气感，细腻淡雅。",
+      "kinds": ["image"],
+      "promptSuffix": "空气感彩色铅笔画风，轻盈排线与通透留白，细腻淡雅，airy colored pencil illustration style",
+      "previewPath": "previews/colored-pencil.svg"
+    },
+    {
+      "id": "warm-paint",
+      "title": "温馨彩绘",
+      "description": "厚涂彩绘质感，暖光色调，温馨故事书插画。",
+      "kinds": ["image"],
+      "promptSuffix": "温馨彩绘故事书插画风，厚涂笔触与暖光色调，warm storybook painting style",
+      "previewPath": "previews/warm-paint.svg"
+    },
+    {
+      "id": "ink-wash",
+      "title": "国风水墨",
+      "description": "水墨晕染与留白构图，东方意境，点缀朱砂印。",
+      "kinds": ["image"],
+      "promptSuffix": "中国水墨画风，墨色晕染与大量留白，东方意境构图，traditional Chinese ink wash painting style",
+      "previewPath": "previews/ink-wash.svg"
+    }
+  ]
+}

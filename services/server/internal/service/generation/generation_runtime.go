@@ -28,6 +28,7 @@ type GenerationService struct {
 	generationProviderFactory     func(coregeneration.ModelRoute) (coregeneration.Provider, error)
 	multimodalTextProviderFactory runtime.MultimodalTextProviderFactory
 	voicePreviews                 *VoicePreviewStore
+	stylePresets                  *StylePresetStore
 	mediagoBaseURL                string
 	jimengBinPath                 string
 	jimengBinDir                  string
@@ -58,6 +59,7 @@ func NewGenerationService(settings *settings.Settings, generationTasks *Generati
 		mediaAssets:                   mediaAssets,
 		multimodalTextProviderFactory: defaultMultimodalTextProviderFactory,
 		voicePreviews:                 NewVoicePreviewStore(configassets.VoicePreviews),
+		stylePresets:                  NewStylePresetStore(configassets.StylePresets),
 	}
 }
 
@@ -114,6 +116,7 @@ func (workflow *GenerationService) ListGenerationModels() generationModelsRespon
 		Models:        catalog.Models,
 		Providers:     catalog.Providers,
 		VoicePreviews: workflow.listVoicePreviewAssets(),
+		StylePresets:  workflow.listStylePresets(),
 	}
 }
 
