@@ -22,6 +22,7 @@ import (
 	servicecapability "github.com/mediago-dev/mediago-drama/services/server/internal/service/capability"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
+	servicelicense "github.com/mediago-dev/mediago-drama/services/server/internal/service/license"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	serviceprojectasset "github.com/mediago-dev/mediago-drama/services/server/internal/service/projectasset"
 	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
@@ -152,11 +153,12 @@ func newAPIHandler(config Config) *apiHandler {
 	workspaceState.StateService().Documents.SetGeneratedAssetCounter(generationTasks)
 	promptTemplates := serviceprompttemplates.NewServiceFromRepository(settingsRepos.Instructions, settingsReposErr)
 	serviceprompt.SetPromptTemplateStore(promptTemplates)
-	promptPack := servicepromptpack.NewServiceFromRepositoryWithPackFilesDir(
+	promptPack := servicepromptpack.NewServiceFromRepositoryWithPackFilesDirAndLicense(
 		settingsRepos.Packs,
 		settingsRepos.PromptLibrary,
 		settingsReposErr,
 		filepath.Join(filepath.Dir(settingsDBPath), "packs"),
+		servicelicense.NewDevProvider(),
 	)
 	serviceskill.SetPromptPackStore(promptPack)
 	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
