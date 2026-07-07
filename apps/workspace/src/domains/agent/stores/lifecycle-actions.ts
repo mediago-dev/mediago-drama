@@ -29,6 +29,7 @@ import type { AgentConversationState, AgentMessage } from "./types";
 type LifecycleActions = Pick<
 	AgentActions,
 	| "addA2UIMessage"
+	| "addFormMessage"
 	| "addAssistantMessage"
 	| "addUserMessage"
 	| "beginPendingRun"
@@ -476,6 +477,26 @@ export const createAgentLifecycleActions = ({
 				return isStandaloneUI ? { ...nextConversation, status: "completed" } : nextConversation;
 			});
 
+			return statePatchWithConversations(state, conversations);
+		});
+	},
+	addFormMessage: (payload, content = "需要你确认参数。", runId) => {
+		set((state) => {
+			const targetRunId = resolveTargetRunId(state, runId);
+			const conversations = updateConversationMessages(state, targetRunId, (conversation) =>
+				appendMessageToConversation(conversation, {
+					id: createId("assistant-form"),
+					role: "assistant",
+					content,
+					kind: "message",
+					createdAt: new Date().toISOString(),
+					status: "complete",
+					metadata: {
+						form: payload,
+						runId: targetRunId,
+					},
+				}),
+			);
 			return statePatchWithConversations(state, conversations);
 		});
 	},

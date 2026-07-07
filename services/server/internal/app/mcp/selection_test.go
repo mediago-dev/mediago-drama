@@ -137,6 +137,86 @@ func TestAskUserSelectionRejectsEmptyOptions(t *testing.T) {
 	}
 }
 
+func TestAskUserFormReturnsSubmittedValues(t *testing.T) {
+	adapter, publisher, projectID := newSelectionAdapter(t)
+
+	go func() {
+		service := adapter.document.store.Selections
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			pending, err := service.ListPending(projectID)
+			if err != nil {
+				t.Errorf("ListPending() error = %v", err)
+				return
+			}
+			if len(pending) > 0 {
+				if _, err := service.Decide(projectID, pending[0].ID, serviceselection.DecisionRequest{
+					Values: map[string]any{"aspectRatio": "3:4", "optimizePrompt": true, "n": float64(4)},
+				}); err != nil {
+					t.Errorf("Decide() error = %v", err)
+				}
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Error("no pending form appeared to submit")
+	}()
+
+	output, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
+		Title: "确认生成参数",
+		Kind:  "generation_plan",
+		Fields: []mediamcp.FormFieldInput{
+			{ID: "aspectRatio", Label: "比例", Type: "select", Default: "3:4", Options: []mediamcp.FormFieldOptionInput{
+				{Value: "3:4", Label: "3:4 竖版"}, {Value: "16:9", Label: "16:9 横版"},
+			}},
+			{ID: "optimizePrompt", Label: "优化提示词", Type: "toggle", Default: true},
+			{ID: "n", Label: "张数", Type: "number", Default: 4},
+		},
+	})
+	if err != nil {
+		t.Fatalf("AskUserForm() error = %v", err)
+	}
+	if output.Status != serviceselection.StatusSubmitted {
+		t.Fatalf("output = %#v, want submitted", output)
+	}
+	if output.Values["aspectRatio"] != "3:4" || output.Values["optimizePrompt"] != true {
+		t.Fatalf("values = %#v, want submitted form values", output.Values)
+	}
+
+	cards := publisher.a2uiEvents()
+	forms := 0
+	for _, event := range publisher.events {
+		if event.Form != nil {
+			forms++
+			if event.Form.SelectionID != output.SelectionID || len(event.Form.Fields) == 0 {
+				t.Fatalf("form event = %#v, want selection id and fields", event.Form)
+			}
+		}
+	}
+	if forms != 1 {
+		t.Fatalf("form events = %d, want 1", forms)
+	}
+	if len(cards) != 0 {
+		t.Fatal("form must not publish an A2UI card")
+	}
+}
+
+func TestAskUserFormRejectsInvalidFields(t *testing.T) {
+	adapter, _, projectID := newSelectionAdapter(t)
+	if _, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
+		Title:  "空字段",
+		Fields: nil,
+	}); err == nil {
+		t.Fatal("AskUserForm() returned nil error for empty fields")
+	}
+	if _, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
+		Title:  "非法类型",
+		Fields: []mediamcp.FormFieldInput{{ID: "x", Type: "dropdown"}},
+	}); err == nil {
+		t.Fatal("AskUserForm() returned nil error for unsupported field type")
+	}
+}
+
 func TestAwaitUserSelectionResolvesExistingCard(t *testing.T) {
 	adapter, publisher, projectID := newSelectionAdapter(t)
 	created, err := adapter.document.store.Selections.Create(projectID, serviceselection.CreateRequest{

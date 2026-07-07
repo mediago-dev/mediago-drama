@@ -27,9 +27,11 @@ const mcpWorkflowInstructions = `MediaGo Drama MCP 使用说明：
 // AgentMCPInstructions describes the run-scoped MCP server contract returned
 // during MCP initialize.
 const AgentMCPInstructions = mcpWorkflowInstructions + `
-- 本 MCP 只提供 load_skill、get_project_config、update_project_config、list_comments、get_comment、mutate_comment、ask_user_selection。
+- 本 MCP 只提供 load_skill、get_project_config、update_project_config、list_comments、get_comment、mutate_comment、ask_user_selection、ask_user_form、await_user_selection。
 - update_project_config 当前仅用于更新 overview.categoryDefaults；style 风格分类会被忽略。
-- ask_user_selection 向用户展示可视化选项并阻塞等待选择，返回 selected/custom/cancelled/timeout；生图前用它确认风格或结果选片。返回 timeout 时先用 await_user_selection 对同一 selectionId 循环续等 3-5 轮；仍无结果再说明情况并结束回合，不要擅自继续。`
+- ask_user_selection 向用户展示可视化选项并阻塞等待选择，返回 selected/custom/cancelled/timeout；生图前用它确认风格或结果选片。
+- ask_user_form 向用户展示参数表单（select/toggle/number/text 字段），提交后返回 values；多参数确认（如生成方案）用它，不要拆成多轮单选。
+- 两者返回 timeout 时先用 await_user_selection 对同一 selectionId 循环续等 3-5 轮；仍无结果再说明情况并结束回合，不要擅自继续。`
 
 // ExternalMCPInstructions describes the cross-project MCP server contract.
 const ExternalMCPInstructions = mcpWorkflowInstructions + `
@@ -113,6 +115,7 @@ var AgentDocumentTools = struct {
 	GetComment          ToolDefinition
 	MutateComment       ToolDefinition
 	AskUserSelection    ToolDefinition
+	AskUserForm         ToolDefinition
 	AwaitUserSelection  ToolDefinition
 }{
 	LoadSkill: ToolDefinition{
@@ -125,6 +128,11 @@ var AgentDocumentTools = struct {
 		Name:        "ask_user_selection",
 		Title:       "请用户选择",
 		Description: "向用户展示一组可视化选项（如风格推荐网格）并阻塞等待其选择：返回所选 optionId（selected）、自定义描述（custom）、取消（cancelled）或超时（timeout）。options 必填，每项含 id/label，可带 imageUrl/description（自然语言，不要暴露内部字段名）。返回 timeout 时用 await_user_selection 对同一 selectionId 继续等待，不要重新弹卡。",
+	},
+	AskUserForm: ToolDefinition{
+		Name:        "ask_user_form",
+		Title:       "请用户填写表单",
+		Description: "向用户展示一张参数表单卡并阻塞等待提交：fields 定义 select/toggle/number/text 字段（select 需给 options，默认值用 default 预填），提交后返回 status=submitted 与 values（字段 ID→值）。适合生成参数确认等多参数场景；单选场景用 ask_user_selection。返回 timeout 时用 await_user_selection 对同一 selectionId 续等。",
 	},
 	AwaitUserSelection: ToolDefinition{
 		Name:        "await_user_selection",

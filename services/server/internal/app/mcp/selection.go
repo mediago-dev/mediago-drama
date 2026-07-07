@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -45,6 +46,91 @@ func (adapter *Adapter) AskUserSelection(ctx context.Context, projectID string, 
 	adapter.publishSelectionCard(projectID, created)
 
 	return waitSelectionOutput(ctx, service, projectID, created.ID, input.TimeoutSeconds)
+}
+
+// AskUserForm presents a native parameter form card, blocks until the user
+// submits, and returns the field values. It shares the selection lifecycle so
+// await_user_selection and the retrieve-after-timeout flow work unchanged.
+func (adapter *Adapter) AskUserForm(ctx context.Context, projectID string, input mediamcp.AskUserFormInput) (mediamcp.AskUserSelectionOutput, error) {
+	if adapter == nil || adapter.document == nil {
+		return mediamcp.AskUserSelectionOutput{}, fmt.Errorf("ask_user_form is only available on the run-scoped document mcp server")
+	}
+	service := adapter.document.store.Selections
+	if service == nil {
+		return mediamcp.AskUserSelectionOutput{}, fmt.Errorf("selection service is not configured")
+	}
+	projectID = adapter.projectIDForAgentEvent(projectID)
+
+	created, err := service.Create(projectID, serviceselection.CreateRequest{
+		SessionID:      adapter.document.config.SessionID,
+		RunID:          adapter.document.config.RunID,
+		Kind:           strings.TrimSpace(firstNonEmpty(input.Kind, "form")),
+		Title:          strings.TrimSpace(input.Title),
+		Prompt:         strings.TrimSpace(input.Prompt),
+		Fields:         selectionFieldsFromMCP(input.Fields),
+		TimeoutSeconds: input.TimeoutSeconds,
+	})
+	if err != nil {
+		return mediamcp.AskUserSelectionOutput{}, err
+	}
+
+	adapter.document.logToolInvocation(mediamcp.AgentDocumentTools.AskUserForm.Name, "selection_id", created.ID, "fields", len(created.Fields))
+	adapter.publishFormCard(projectID, created, strings.TrimSpace(input.SubmitLabel))
+
+	return waitSelectionOutput(ctx, service, projectID, created.ID, input.TimeoutSeconds)
+}
+
+func (adapter *Adapter) publishFormCard(projectID string, record serviceselection.Record, submitLabel string) {
+	publisher := adapter.publisherForAgentEvent(projectID)
+	if publisher == nil {
+		return
+	}
+	fieldsJSON, err := json.Marshal(record.Fields)
+	if err != nil {
+		return
+	}
+	publisher.PublishEvent(agentEvent{
+		ProjectID: projectID,
+		SessionID: adapter.document.config.SessionID,
+		RunID:     adapter.document.config.RunID,
+		Type:      serviceagent.AgentUIEventType,
+		Message:   firstNonEmpty(record.Title, "需要你确认参数"),
+		Form: &serviceagent.AgentFormPayload{
+			SelectionID: record.ID,
+			ProjectID:   projectID,
+			Title:       record.Title,
+			Prompt:      record.Prompt,
+			SubmitLabel: submitLabel,
+			Fields:      fieldsJSON,
+		},
+	})
+}
+
+func selectionFieldsFromMCP(input []mediamcp.FormFieldInput) []serviceselection.FormField {
+	fields := make([]serviceselection.FormField, 0, len(input))
+	for _, field := range input {
+		options := make([]serviceselection.FormFieldOption, 0, len(field.Options))
+		for _, option := range field.Options {
+			options = append(options, serviceselection.FormFieldOption{
+				Value:       option.Value,
+				Label:       option.Label,
+				Description: option.Description,
+			})
+		}
+		fields = append(fields, serviceselection.FormField{
+			ID:          field.ID,
+			Label:       field.Label,
+			Type:        field.Type,
+			Description: field.Description,
+			Options:     options,
+			Default:     field.Default,
+			Min:         field.Min,
+			Max:         field.Max,
+			Unit:        field.Unit,
+			Required:    field.Required,
+		})
+	}
+	return fields
 }
 
 // AwaitUserSelection keeps waiting on an existing selection without creating a
@@ -94,6 +180,7 @@ func selectionOutputFromRecord(record serviceselection.Record) mediamcp.AskUserS
 	if record.Decision != nil {
 		output.OptionID = record.Decision.OptionID
 		output.CustomText = record.Decision.CustomText
+		output.Values = record.Decision.Values
 	}
 	return output
 }

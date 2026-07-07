@@ -169,6 +169,18 @@ type AgentEvent struct {
 	Documents         []mediamcp.WorkspaceDocument          `json:"documents,omitempty"`
 	ProjectBrief      *ProjectBrief                         `json:"projectBrief,omitempty"`
 	A2UI              *AgentA2UIPayload                     `json:"a2ui,omitempty"`
+	Form              *AgentFormPayload                     `json:"form,omitempty"`
+}
+
+// AgentFormPayload describes a native parameter-form card pushed to the run
+// timeline; Fields carries the selection service's form field specs verbatim.
+type AgentFormPayload struct {
+	SelectionID string          `json:"selectionId"`
+	ProjectID   string          `json:"projectId,omitempty"`
+	Title       string          `json:"title"`
+	Prompt      string          `json:"prompt,omitempty"`
+	SubmitLabel string          `json:"submitLabel,omitempty"`
+	Fields      json.RawMessage `json:"fields"`
 }
 
 // AgentA2UIPayload describes A2UI messages returned by an agent.

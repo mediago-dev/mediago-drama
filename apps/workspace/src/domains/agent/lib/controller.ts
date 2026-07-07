@@ -667,6 +667,11 @@ export const handleStreamingAgentEvent = (
 		return;
 	}
 
+	if (event.type === "agent.ui" && event.form) {
+		agentStore.addFormMessage(event.form, event.message, runId);
+		return;
+	}
+
 	if (isStreamingDocumentEditEvent(event)) {
 		handleStreamingDocumentEditEvent(event, { ...context, runId });
 		return;
