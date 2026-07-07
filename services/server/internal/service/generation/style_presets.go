@@ -1,6 +1,8 @@
 package generation
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -134,18 +136,18 @@ func (store *StylePresetStore) manifestEntry(item stylePresetManifestEntry) (sty
 		return stylePresetEntry{}, fmt.Errorf("invalid previewPath %q", previewPath)
 	}
 	filePath := path.Join(stylePresetRoot, previewPath)
-	fileInfo, err := fs.Stat(store.files, filePath)
+	// Hash the preview content into the URL: the endpoint replies with an
+	// immutable cache header, so the URL must change whenever the image does.
+	data, err := fs.ReadFile(store.files, filePath)
 	if err != nil {
-		return stylePresetEntry{}, fmt.Errorf("stat %q: %w", filePath, err)
-	}
-	if fileInfo.IsDir() {
-		return stylePresetEntry{}, fmt.Errorf("previewPath %q is a directory", filePath)
+		return stylePresetEntry{}, fmt.Errorf("reading %q: %w", filePath, err)
 	}
 	mimeType := strings.TrimSpace(item.MIMEType)
 	if mimeType == "" {
 		mimeType = stylePreviewMIMEType(previewPath)
 	}
-	preset.PreviewURL = stylePreviewURL(presetID)
+	digest := sha256.Sum256(data)
+	preset.PreviewURL = stylePreviewURL(presetID) + "?v=" + hex.EncodeToString(digest[:4])
 	preset.MIMEType = mimeType
 	return stylePresetEntry{Preset: preset, PreviewPath: filePath}, nil
 }
