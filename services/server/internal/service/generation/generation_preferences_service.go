@@ -243,3 +243,54 @@ func (workflow *GenerationService) UpdateGenerationPreference(request UpdateGene
 	}
 	return workflow.generationPreferences.UpsertPreference(request)
 }
+
+// GenerationPreferenceForProject merges the studio-wide workbench preference
+// with the project-scoped one (project keys win) so agents can propose the
+// user's usual generation setup as the default plan.
+func (workflow *GenerationService) GenerationPreferenceForProject(projectID string) (GenerationPreferenceRecord, bool) {
+	if workflow.generationPreferences == nil {
+		return GenerationPreferenceRecord{}, false
+	}
+	merged := GenerationPreferenceRecord{
+		FamilyIDs:   map[string]string{},
+		RouteIDs:    map[string]string{},
+		VersionIDs:  map[string]string{},
+		RouteParams: map[string]map[string]any{},
+	}
+	// Later scopes win. The agent-side generation modal saves its defaults
+	// under the "agent" scope (plus a ":video" variant), which is exactly the
+	// context MCP generation runs in; project scope is the most specific.
+	scopes := []string{
+		NormalizeGenerationConversationScopeID(""),
+		agentGenerationConversationScopeID,
+		agentGenerationConversationScopeID + ":video",
+	}
+	if cleaned := GenerationProjectIDForRequest(projectID, ""); cleaned != "" {
+		scopes = append(scopes, cleaned, cleaned+":video")
+	}
+	for _, scopeID := range scopes {
+		record, err := workflow.generationPreferences.GetPreference(scopeID)
+		if err != nil {
+			continue
+		}
+		for kind, familyID := range record.FamilyIDs {
+			merged.FamilyIDs[kind] = familyID
+		}
+		for kind, routeID := range record.RouteIDs {
+			merged.RouteIDs[kind] = routeID
+		}
+		for kind, versionID := range record.VersionIDs {
+			merged.VersionIDs[kind] = versionID
+		}
+		for routeID, params := range record.RouteParams {
+			merged.RouteParams[routeID] = params
+		}
+		if record.StylePresetID != "" {
+			merged.StylePresetID = record.StylePresetID
+		}
+	}
+	found := merged.StylePresetID != "" ||
+		len(merged.FamilyIDs) > 0 || len(merged.RouteIDs) > 0 ||
+		len(merged.VersionIDs) > 0 || len(merged.RouteParams) > 0
+	return merged, found
+}
