@@ -18,8 +18,6 @@ const (
 
 	// selectionCardMaxOptions bounds how many options a selection card renders.
 	selectionCardMaxOptions = 8
-	// selectionCardOptionsPerRow is how many option cells share one grid row.
-	selectionCardOptionsPerRow = 4
 )
 
 // SelectionCardOption is one selectable choice rendered on a selection card.
@@ -80,16 +78,11 @@ func BuildSelectionA2UI(projectID string, selectionID string, title string, prom
 		cellIDs = append(cellIDs, cellID)
 		components = append(components, a2uiColumn(cellID, cellChildren))
 	}
-	// Option cells flow as a grid: up to selectionCardOptionsPerRow per Row so
-	// style choices read side by side instead of one tall stack.
-	for start := 0; start < len(cellIDs); start += selectionCardOptionsPerRow {
-		end := start + selectionCardOptionsPerRow
-		if end > len(cellIDs) {
-			end = len(cellIDs)
-		}
-		rowID := "opts-row-" + strconv.Itoa(start/selectionCardOptionsPerRow)
-		rootChildren = append(rootChildren, rowID)
-		components = append(components, a2uiOptionRow(rowID, cellIDs[start:end]))
+	// Option cells share one flat Row; the renderer wraps it responsively, so
+	// column count adapts to viewport width instead of being fixed here.
+	if len(cellIDs) > 0 {
+		rootChildren = append(rootChildren, "opts-row")
+		components = append(components, a2uiOptionRow("opts-row", cellIDs))
 	}
 
 	cancelLabel := "取消"
