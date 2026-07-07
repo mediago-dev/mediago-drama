@@ -14,9 +14,11 @@ import (
 	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
 	instructionbuiltin "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/builtin"
 	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/codec"
+	instructionpro "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/pro"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/license"
 )
 
 const (
@@ -27,6 +29,7 @@ const (
 
 	packSourceDefault  = "default"
 	packSourceImported = "imported"
+	packSourcePro      = "pro"
 	entrySourcePack    = "pack"
 	entrySourceUser    = "user"
 
@@ -44,6 +47,10 @@ var (
 	ErrEntryNotFound = errors.New("prompt pack entry not found")
 	// ErrEntryExists reports attempts to create a duplicate entry.
 	ErrEntryExists = errors.New("prompt pack entry already exists")
+	// ErrPackLicenseRequired is returned when a pro pack lacks a valid license.
+	ErrPackLicenseRequired = errors.New("pack license is required")
+	// ErrPackExportRestricted reports attempts to export a protected pack as a community pack.
+	ErrPackExportRestricted = errors.New("prompt pack export is restricted")
 )
 
 // Pack describes an installed prompt pack.
@@ -91,6 +98,7 @@ type Service struct {
 	repo         *repository.PackRepository
 	legacyRepo   *repository.PromptLibraryRepository
 	initErr      error
+	license      license.Service
 	seeded       bool
 	packFilesDir string
 }
@@ -116,6 +124,23 @@ func NewServiceFromRepository(
 	return NewServiceFromRepositoryWithPackFilesDir(repo, legacyRepo, initErr, "")
 }
 
+// NewServiceFromRepositoryWithPackFilesDirAndLicense creates a prompt pack service with uploaded pack storage and license checks.
+func NewServiceFromRepositoryWithPackFilesDirAndLicense(
+	repo *repository.PackRepository,
+	legacyRepo *repository.PromptLibraryRepository,
+	initErr error,
+	packFilesDir string,
+	promptLicense license.Service,
+) *Service {
+	return &Service{
+		repo:         repo,
+		legacyRepo:   legacyRepo,
+		initErr:      initErr,
+		license:      promptLicense,
+		packFilesDir: strings.TrimSpace(packFilesDir),
+	}
+}
+
 // NewServiceFromRepositoryWithPackFilesDir creates a prompt pack service with uploaded pack storage.
 func NewServiceFromRepositoryWithPackFilesDir(
 	repo *repository.PackRepository,
@@ -127,6 +152,7 @@ func NewServiceFromRepositoryWithPackFilesDir(
 		repo:         repo,
 		legacyRepo:   legacyRepo,
 		initErr:      initErr,
+		license:      nil,
 		packFilesDir: strings.TrimSpace(packFilesDir),
 	}
 }
@@ -280,7 +306,7 @@ func (store *Service) ResetPack(ctx context.Context, packID string) (Pack, error
 	return packFromModel(model), nil
 }
 
-// InstallPath installs a local pack directory or .mgpack file.
+// InstallPath installs a local pack directory, .mgpack file, or .mgpackpro file.
 func (store *Service) InstallPath(ctx context.Context, path string) (Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return Pack{}, err
@@ -294,10 +320,14 @@ func (store *Service) InstallPath(ctx context.Context, path string) (Pack, error
 		return Pack{}, fmt.Errorf("%w: reading path: %w", ErrInvalidPack, err)
 	}
 	var bundle instructionpack.Bundle
+	source := packSourceImported
 	if info.IsDir() {
 		bundle, err = instructionpack.ParseDir(ctx, path)
 	} else {
-		bundle, err = parsePackFile(ctx, path)
+		bundle, err = store.parsePackFile(ctx, path)
+		if strings.ToLower(filepath.Ext(path)) == proPackFileExt {
+			source = packSourcePro
+		}
 	}
 	if err != nil {
 		return Pack{}, err
@@ -305,7 +335,7 @@ func (store *Service) InstallPath(ctx context.Context, path string) (Pack, error
 	if bundle.Manifest.ID == DefaultPackID {
 		return Pack{}, fmt.Errorf("%w: default pack cannot be imported", ErrInvalidPack)
 	}
-	if err := store.installBundle(ctx, bundle, packSourceImported, path); err != nil {
+	if err := store.installBundle(ctx, bundle, source, path); err != nil {
 		return Pack{}, err
 	}
 	model, err := store.repo.GetPack(bundle.Manifest.ID)
@@ -797,41 +827,114 @@ func (store *Service) bundleForInstalledPack(ctx context.Context, pack domain.Pa
 	switch normalizePackSource(pack.Source, pack.ID) {
 	case packSourceDefault:
 		return instructionbuiltin.Builtin(ctx)
-	case packSourceImported:
+	case packSourceImported, packSourcePro:
 		origin := strings.TrimSpace(pack.Origin)
 		if origin == "" {
 			return instructionpack.Bundle{}, fmt.Errorf("%w: imported pack origin is empty", ErrInvalidPack)
 		}
-		info, err := os.Stat(origin)
-		if err != nil {
-			return instructionpack.Bundle{}, fmt.Errorf("%w: reading pack origin: %w", ErrInvalidPack, err)
-		}
-		if info.IsDir() {
-			return instructionpack.ParseDir(ctx, origin)
-		}
-		return parsePackFile(ctx, origin)
+		return store.parsePackFile(ctx, origin)
 	default:
 		return instructionpack.Bundle{}, fmt.Errorf("%w: unsupported pack source %q", ErrInvalidPack, pack.Source)
 	}
 }
 
-func parsePackFile(ctx context.Context, path string) (instructionpack.Bundle, error) {
-	if filepath.Ext(path) != ".mgpack" {
-		return instructionpack.Bundle{}, fmt.Errorf("%w: expected .mgpack file", ErrInvalidPack)
-	}
+func (store *Service) parsePackFile(ctx context.Context, path string) (instructionpack.Bundle, error) {
+	ext := strings.ToLower(filepath.Ext(strings.TrimSpace(path)))
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return instructionpack.Bundle{}, fmt.Errorf("reading pack file: %w", err)
 	}
-	archive, err := codec.Decode(data)
-	if err != nil {
-		return instructionpack.Bundle{}, err
+	switch ext {
+	case ".mgpack":
+		archive, err := codec.Decode(data)
+		if err != nil {
+			return instructionpack.Bundle{}, err
+		}
+		bundle, err := instructionpack.ParseZip(ctx, archive)
+		if err != nil {
+			return instructionpack.Bundle{}, err
+		}
+		return bundle, nil
+	case ".mgpackpro":
+		manifest, bundle, err := store.unpackProPack(ctx, data)
+		if err != nil {
+			return instructionpack.Bundle{}, err
+		}
+		if manifest.ID != bundle.Manifest.ID {
+			return instructionpack.Bundle{}, fmt.Errorf("%w: manifest id mismatch", ErrInvalidPack)
+		}
+		return bundle, nil
+	default:
+		return instructionpack.Bundle{}, fmt.Errorf("%w: expected .mgpack or .mgpackpro file", ErrInvalidPack)
 	}
-	bundle, err := instructionpack.ParseZip(ctx, archive)
+}
+
+func (store *Service) unpackProPack(ctx context.Context, data []byte) (instructionpro.Manifest, instructionpack.Bundle, error) {
+	manifest, err := instructionpro.Inspect(ctx, data)
 	if err != nil {
-		return instructionpack.Bundle{}, err
+		return instructionpro.Manifest{}, instructionpack.Bundle{}, normalizeProPackError(err)
 	}
-	return bundle, nil
+	entitlement := strings.TrimSpace(manifest.RequiredEntitlement)
+	if entitlement == "" {
+		entitlement = license.DefaultProEntitlement()
+	}
+	hasEntitlement, err := store.hasPackEntitlement(ctx, entitlement)
+	if err != nil {
+		return instructionpro.Manifest{}, instructionpack.Bundle{}, err
+	}
+	if !hasEntitlement {
+		return instructionpro.Manifest{}, instructionpack.Bundle{}, fmt.Errorf("%w: %s", ErrPackLicenseRequired, entitlement)
+	}
+	keyID := strings.TrimSpace(manifest.KeyID)
+	if keyID == "" {
+		keyID = "default"
+	}
+	key, err := store.resolvePackKey(ctx, keyID)
+	if err != nil {
+		return instructionpro.Manifest{}, instructionpack.Bundle{}, err
+	}
+	decompressedManifest, bundle, err := instructionpro.Parse(ctx, data, key)
+	if err != nil {
+		return instructionpro.Manifest{}, instructionpack.Bundle{}, normalizeProPackError(err)
+	}
+	return decompressedManifest, bundle, nil
+}
+
+func normalizeProPackError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, instructionpro.ErrInvalidProPack),
+		errors.Is(err, instructionpro.ErrUnsupportedVersion),
+		errors.Is(err, instructionpro.ErrDigestMismatch):
+		return fmt.Errorf("%w: %s", ErrInvalidPack, err)
+	case errors.Is(err, instructionpro.ErrMissingKey):
+		return fmt.Errorf("%w: %s", ErrPackLicenseRequired, err)
+	default:
+		return err
+	}
+}
+
+func (store *Service) hasPackEntitlement(ctx context.Context, entitlement string) (bool, error) {
+	if store.license == nil {
+		return false, nil
+	}
+	return store.license.HasEntitlement(ctx, entitlement)
+}
+
+func (store *Service) resolvePackKey(ctx context.Context, keyID string) ([]byte, error) {
+	if store.license == nil {
+		return nil, fmt.Errorf("%w", ErrPackLicenseRequired)
+	}
+	key, err := store.license.ResolvePackKey(ctx, keyID)
+	if err != nil {
+		if errors.Is(err, license.ErrPackKeyNotFound) {
+			return nil, fmt.Errorf("%w: key %q", ErrPackLicenseRequired, strings.TrimSpace(keyID))
+		}
+		return nil, err
+	}
+	return key, nil
 }
 
 func defaultPackFilesDir(settingsDBPath string) string {

@@ -197,7 +197,7 @@ export const PromptPacksPanel: React.FC = () => {
 						<input
 							ref={importInputRef}
 							type="file"
-							accept=".mgpack"
+							accept=".mgpack,.mgpackpro"
 							className="sr-only"
 							aria-label="导入提示词包文件"
 							onChange={(event) => void importPackFile(event)}
@@ -360,19 +360,21 @@ const PromptPackPill: React.FC<{
 						<Power className="size-4" />
 					)}
 				</PromptPackActionButton>
-				<PromptPackActionButton
-					ariaLabel="导出提示词包"
-					disabled={exporting || resetting}
-					onClick={onExport}
-					tooltip={exporting ? "导出中" : "导出"}
-				>
-					{exporting ? (
-						<Loader2 className="size-4 animate-spin" />
-					) : (
-						<Download className="size-4" />
-					)}
-				</PromptPackActionButton>
-				{pack.source === "imported" ? (
+				{pack.source !== "pro" ? (
+					<PromptPackActionButton
+						ariaLabel="导出提示词包"
+						disabled={exporting || resetting}
+						onClick={onExport}
+						tooltip={exporting ? "导出中" : "导出"}
+					>
+						{exporting ? (
+							<Loader2 className="size-4 animate-spin" />
+						) : (
+							<Download className="size-4" />
+						)}
+					</PromptPackActionButton>
+				) : null}
+				{pack.source === "imported" || pack.source === "pro" ? (
 					<PromptPackActionButton
 						ariaLabel="卸载提示词包"
 						className="hover:bg-error-surface hover:text-error-foreground"
@@ -421,6 +423,8 @@ const sourceLabel = (source: PromptPack["source"]) => {
 			return "默认包";
 		case "imported":
 			return "已导入";
+		case "pro":
+			return "Pro 已授权";
 	}
 };
 
@@ -432,8 +436,8 @@ const currentPromptPackId = (packs: PromptPack[]) => {
 
 const compareCurrentPromptPacks = (left: PromptPack, right: PromptPack) => {
 	if (left.source !== right.source) {
-		if (left.source === "imported") return -1;
-		if (right.source === "imported") return 1;
+		if (left.source === "imported" || left.source === "pro") return -1;
+		if (right.source === "imported" || right.source === "pro") return 1;
 	}
 	const leftUpdated = promptPackTimestamp(left);
 	const rightUpdated = promptPackTimestamp(right);

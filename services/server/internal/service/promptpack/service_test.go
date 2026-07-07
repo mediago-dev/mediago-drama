@@ -2,6 +2,7 @@ package promptpack
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,8 +12,10 @@ import (
 	"github.com/glebarez/sqlite"
 	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
 	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/codec"
+	instructionpro "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/pro"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/license"
 	"gorm.io/gorm"
 )
 
@@ -135,6 +138,135 @@ func TestServiceInstallsEncodedPackAndUninstalls(t *testing.T) {
 		if pack.ID == installed.ID {
 			t.Fatalf("packs = %#v, want test pack removed", packs)
 		}
+	}
+}
+
+func TestServiceRejectsProPackWithoutLicense(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatalf("rand.Read() error = %v", err)
+	}
+	data, err := writeTestMGPackPro(t, key, "1.0.0")
+	if err != nil {
+		t.Fatalf("writeTestMGPackPro() error = %v", err)
+	}
+	_, err = store.InstallData(ctx, "test.mgpackpro", data)
+	if !errors.Is(err, ErrPackLicenseRequired) {
+		t.Fatalf("InstallData() error = %v, want ErrPackLicenseRequired", err)
+	}
+}
+
+func TestServiceInstallsProPackWithLicense(t *testing.T) {
+	ctx := context.Background()
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatalf("rand.Read() error = %v", err)
+	}
+	data, err := writeTestMGPackPro(t, key, "1.0.0")
+	if err != nil {
+		t.Fatalf("writeTestMGPackPro() error = %v", err)
+	}
+	store := newTestServiceWithLicense(
+		t,
+		newTestLicenseProvider(
+			map[string]struct{}{license.DefaultProEntitlement(): {}},
+			map[string][]byte{
+				"default": key,
+			},
+		),
+	)
+	installed, err := store.InstallData(ctx, "test.mgpackpro", data)
+	if err != nil {
+		t.Fatalf("InstallData() error = %v", err)
+	}
+	if installed.Source != packSourcePro {
+		t.Fatalf("installed source = %q, want %q", installed.Source, packSourcePro)
+	}
+	packs, err := store.ListPacks(ctx)
+	if err != nil {
+		t.Fatalf("ListPacks() error = %v", err)
+	}
+	found := false
+	for _, pack := range packs {
+		if pack.ID == installed.ID {
+			found = true
+			if pack.Source != packSourcePro {
+				t.Fatalf("stored pack source = %q, want %q", pack.Source, packSourcePro)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("pack %q not found after import", installed.ID)
+	}
+	_, err = store.GetEntry(ctx, instructionpack.KindSkill, "pro-skill")
+	if err != nil {
+		t.Fatalf("GetEntry(pro-skill) error = %v", err)
+	}
+}
+
+func TestServiceInstallsProPackPathWithProSource(t *testing.T) {
+	ctx := context.Background()
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatalf("rand.Read() error = %v", err)
+	}
+	path := writeTestMGPackProFile(t, key, "1.0.0")
+	store := newTestServiceWithLicense(
+		t,
+		newTestLicenseProvider(
+			map[string]struct{}{license.DefaultProEntitlement(): {}},
+			map[string][]byte{
+				"default": key,
+			},
+		),
+	)
+	installed, err := store.InstallPath(ctx, path)
+	if err != nil {
+		t.Fatalf("InstallPath() error = %v", err)
+	}
+	if installed.Source != packSourcePro {
+		t.Fatalf("installed source = %q, want %q", installed.Source, packSourcePro)
+	}
+}
+
+func TestServiceRejectsProPackExport(t *testing.T) {
+	ctx := context.Background()
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatalf("rand.Read() error = %v", err)
+	}
+	data, err := writeTestMGPackPro(t, key, "1.0.0")
+	if err != nil {
+		t.Fatalf("writeTestMGPackPro() error = %v", err)
+	}
+	store := newTestServiceWithLicense(
+		t,
+		newTestLicenseProvider(
+			map[string]struct{}{license.DefaultProEntitlement(): {}},
+			map[string][]byte{
+				"default": key,
+			},
+		),
+	)
+	installed, err := store.InstallData(ctx, "test.mgpackpro", data)
+	if err != nil {
+		t.Fatalf("InstallData() error = %v", err)
+	}
+	_, err = store.ExportPack(ctx, installed.ID)
+	if !errors.Is(err, ErrPackExportRestricted) {
+		t.Fatalf("ExportPack() error = %v, want ErrPackExportRestricted", err)
+	}
+}
+
+func TestServiceRejectsInvalidProPackAsInvalidPack(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	_, err := store.InstallData(ctx, "broken.mgpackpro", []byte("not a pro pack"))
+	if !errors.Is(err, ErrInvalidPack) {
+		t.Fatalf("InstallData() error = %v, want ErrInvalidPack", err)
 	}
 }
 
@@ -283,6 +415,31 @@ func newTestService(t *testing.T) *Service {
 	).withTestPackFilesDir(t.TempDir())
 }
 
+func newTestServiceWithLicense(t *testing.T, provider license.Service) *Service {
+	t.Helper()
+	dbName := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name() + "_" + filepath.Base(t.TempDir()))
+	db, err := gorm.Open(sqlite.Open("file:"+dbName+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("opening sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(
+		&domain.PackModel{},
+		&domain.PackEntryModel{},
+		&domain.PackCategoryModel{},
+		&domain.PromptCategoryModel{},
+		&domain.PromptLibraryEntryModel{},
+	); err != nil {
+		t.Fatalf("migrating: %v", err)
+	}
+	return NewServiceFromRepositoryWithPackFilesDirAndLicense(
+		repository.NewPackRepositoryFromDB(db),
+		repository.NewPromptLibraryRepositoryFromDB(db),
+		nil,
+		t.TempDir(),
+		provider,
+	)
+}
+
 func writeTestMGPack(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -316,6 +473,60 @@ Use this for tests.
 	return output
 }
 
+func writeTestMGPackPro(t *testing.T, key []byte, version string) ([]byte, error) {
+	t.Helper()
+	root := t.TempDir()
+	packID := "com.example.pro.test"
+	if err := os.WriteFile(filepath.Join(root, "pack.json"), []byte(`{
+		"id": "`+packID+`",
+		"name": "Pro Test Pack",
+		"version": "`+version+`"
+	}`), 0o644); err != nil {
+		return nil, err
+	}
+	skillsDir := filepath.Join(root, "skills")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(skillsDir, "pro-skill.skill.md"), []byte(`---
+name: pro-skill
+description: Pro skill
+---
+Use this for pro tests.
+`), 0o644); err != nil {
+		return nil, err
+	}
+	raw, err := instructionpack.ArchiveDir(context.Background(), root)
+	if err != nil {
+		return nil, err
+	}
+	return instructionpro.Build(
+		context.Background(),
+		raw,
+		instructionpro.Manifest{
+			ID:                  packID,
+			Name:                "Pro Test Pack",
+			Version:             version,
+			RequiredEntitlement: license.DefaultProEntitlement(),
+			KeyID:               "default",
+		},
+		key,
+	)
+}
+
+func writeTestMGPackProFile(t *testing.T, key []byte, version string) string {
+	t.Helper()
+	data, err := writeTestMGPackPro(t, key, version)
+	if err != nil {
+		t.Fatalf("writeTestMGPackPro() error = %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "test.mgpackpro")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write pro pack file: %v", err)
+	}
+	return path
+}
+
 func findEntry(entries []Entry, slug string) (Entry, bool) {
 	for _, entry := range entries {
 		if entry.Slug == slug {
@@ -323,6 +534,40 @@ func findEntry(entries []Entry, slug string) (Entry, bool) {
 		}
 	}
 	return Entry{}, false
+}
+
+type testLicenseProvider struct {
+	entitlements map[string]struct{}
+	keys         map[string][]byte
+}
+
+func newTestLicenseProvider(entitlements map[string]struct{}, keys map[string][]byte) *testLicenseProvider {
+	return &testLicenseProvider{
+		entitlements: entitlements,
+		keys:         keys,
+	}
+}
+
+func (provider *testLicenseProvider) HasEntitlement(_ context.Context, entitlement string) (bool, error) {
+	if provider == nil {
+		return false, nil
+	}
+	_, ok := provider.entitlements[strings.TrimSpace(entitlement)]
+	return ok, nil
+}
+
+func (provider *testLicenseProvider) ResolvePackKey(_ context.Context, keyID string) ([]byte, error) {
+	if provider == nil {
+		return nil, license.ErrPackKeyNotFound
+	}
+	keyID = strings.TrimSpace(keyID)
+	key, ok := provider.keys[keyID]
+	if !ok {
+		return nil, license.ErrPackKeyNotFound
+	}
+	keyCopy := make([]byte, len(key))
+	copy(keyCopy, key)
+	return keyCopy, nil
 }
 
 func findPackEntry(entries []instructionpack.Entry, slug string) (instructionpack.Entry, bool) {

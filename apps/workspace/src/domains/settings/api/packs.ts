@@ -2,7 +2,7 @@ import httpClient from "@/shared/lib/http";
 import { apiURL } from "@/shared/lib/api-base";
 import type { ApiResponse } from "@/types/api";
 
-export type PromptPackSource = "default" | "imported";
+export type PromptPackSource = "default" | "imported" | "pro";
 
 export interface PromptPack {
 	id: string;

@@ -24,6 +24,7 @@ const (
 	defaultExportPackID      = "mediago.default-prompts"
 	defaultExportPackNameSfx = " Export"
 	maxPromptPackUploadBytes = 32 << 20
+	proPackFileExt           = ".mgpackpro"
 )
 
 // MaxUploadBytes returns the maximum accepted .mgpack upload size.
@@ -51,6 +52,9 @@ func (store *Service) ExportPack(ctx context.Context, packID string) (ExportedPa
 		return ExportedPack{}, err
 	}
 	pack := packFromModel(model)
+	if normalizePackSource(model.Source, model.ID) == packSourcePro {
+		return ExportedPack{}, fmt.Errorf("%w: %s", ErrPackExportRestricted, model.ID)
+	}
 
 	bundle, err := store.bundleFromStoredPack(ctx, model)
 	if err != nil {
@@ -62,20 +66,21 @@ func (store *Service) ExportPack(ctx context.Context, packID string) (ExportedPa
 		return ExportedPack{}, err
 	}
 	return ExportedPack{
-		FileName: safePackFileName(bundle.Manifest.ID, bundle.Manifest.Version),
+		FileName: safePackFileName(bundle.Manifest.ID, bundle.Manifest.Version, ".mgpack"),
 		Data:     data,
 		Pack:     pack,
 	}, nil
 }
 
-// InstallData installs an uploaded .mgpack payload and stores it as an imported pack.
+// InstallData installs an uploaded .mgpack or .mgpackpro payload and stores it as an imported pack.
 func (store *Service) InstallData(ctx context.Context, fileName string, data []byte) (Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return Pack{}, err
 	}
 	fileName = strings.TrimSpace(fileName)
-	if filepath.Ext(fileName) != ".mgpack" {
-		return Pack{}, fmt.Errorf("%w: expected .mgpack file", ErrInvalidPack)
+	extension := strings.ToLower(filepath.Ext(fileName))
+	if extension != ".mgpack" && extension != proPackFileExt {
+		return Pack{}, fmt.Errorf("%w: expected .mgpack or .mgpackpro file", ErrInvalidPack)
 	}
 	if len(data) == 0 {
 		return Pack{}, fmt.Errorf("%w: file is empty", ErrInvalidPack)
@@ -83,24 +88,42 @@ func (store *Service) InstallData(ctx context.Context, fileName string, data []b
 	if len(data) > maxPromptPackUploadBytes {
 		return Pack{}, fmt.Errorf("%w: file is too large", ErrInvalidPack)
 	}
-
-	archive, err := codec.Decode(data)
-	if err != nil {
-		return Pack{}, err
-	}
-	bundle, err := instructionpack.ParseZip(ctx, archive)
-	if err != nil {
-		return Pack{}, err
+	var (
+		bundle     instructionpack.Bundle
+		sourceType = packSourceImported
+		manifestID string
+	)
+	if extension == proPackFileExt {
+		manifest, parsedBundle, err := store.unpackProPack(ctx, data)
+		if err != nil {
+			return Pack{}, err
+		}
+		bundle = parsedBundle
+		sourceType = packSourcePro
+		manifestID = manifest.ID
+	} else {
+		archive, err := codec.Decode(data)
+		if err != nil {
+			return Pack{}, err
+		}
+		parsedBundle, err := instructionpack.ParseZip(ctx, archive)
+		if err != nil {
+			return Pack{}, err
+		}
+		bundle = parsedBundle
 	}
 	if bundle.Manifest.ID == DefaultPackID {
 		return Pack{}, fmt.Errorf("%w: default pack cannot be imported", ErrInvalidPack)
 	}
+	if manifestID != "" && strings.TrimSpace(manifestID) != "" && manifestID != bundle.Manifest.ID {
+		return Pack{}, fmt.Errorf("%w: manifest id mismatch", ErrInvalidPack)
+	}
 
-	origin, err := store.persistUploadedPack(bundle.Manifest, data)
+	origin, err := store.persistUploadedPack(bundle.Manifest, data, extension)
 	if err != nil {
 		return Pack{}, err
 	}
-	if err := store.installBundle(ctx, bundle, packSourceImported, origin); err != nil {
+	if err := store.installBundle(ctx, bundle, sourceType, origin); err != nil {
 		return Pack{}, err
 	}
 	model, err := store.repo.GetPack(bundle.Manifest.ID)
@@ -310,7 +333,7 @@ func promptMarkdown(entry instructionpack.Entry) (string, error) {
 	return "---\n" + strings.TrimSpace(string(frontmatter)) + "\n---\n" + normalizeBody(entry.Body), nil
 }
 
-func (store *Service) persistUploadedPack(manifest instructionpack.Manifest, data []byte) (string, error) {
+func (store *Service) persistUploadedPack(manifest instructionpack.Manifest, data []byte, sourceExt string) (string, error) {
 	dir := strings.TrimSpace(store.packFilesDir)
 	if dir == "" {
 		tempDir, err := os.MkdirTemp("", "mediago-prompt-packs-*")
@@ -322,20 +345,24 @@ func (store *Service) persistUploadedPack(manifest instructionpack.Manifest, dat
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("creating prompt pack directory: %w", err)
 	}
-	path := filepath.Join(dir, safePackFileName(manifest.ID, manifest.Version))
+	path := filepath.Join(dir, safePackFileName(manifest.ID, manifest.Version, sourceExt))
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return "", fmt.Errorf("saving prompt pack file: %w", err)
 	}
 	return path, nil
 }
 
-func safePackFileName(packID string, version string) string {
+func safePackFileName(packID string, version string, sourceExt string) string {
+	extension := strings.ToLower(strings.TrimSpace(sourceExt))
+	if extension != ".mgpack" && extension != proPackFileExt {
+		extension = ".mgpack"
+	}
 	base := sanitizeFilePart(packID)
 	suffix := sanitizeFilePart(version)
 	if suffix == "" {
 		suffix = time.Now().UTC().Format("20060102150405")
 	}
-	return base + "-" + suffix + ".mgpack"
+	return base + "-" + suffix + extension
 }
 
 func sanitizeFilePart(value string) string {

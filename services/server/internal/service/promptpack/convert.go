@@ -216,6 +216,8 @@ func normalizePackSource(source string, packID string) string {
 		return packSourceDefault
 	case packSourceImported:
 		return packSourceImported
+	case packSourcePro:
+		return packSourcePro
 	case "builtin":
 		return packSourceDefault
 	case "":
