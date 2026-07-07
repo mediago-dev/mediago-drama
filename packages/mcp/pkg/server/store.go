@@ -48,6 +48,7 @@ type GenerationStore interface {
 // SelectionStore supplies run-scoped user-selection prompts.
 type SelectionStore interface {
 	AskUserSelection(ctx context.Context, projectID string, input mediamcp.AskUserSelectionInput) (mediamcp.AskUserSelectionOutput, error)
+	AwaitUserSelection(ctx context.Context, projectID string, input mediamcp.AwaitUserSelectionInput) (mediamcp.AskUserSelectionOutput, error)
 }
 
 // DocumentServices is the target dependency set for run-scoped document tools.

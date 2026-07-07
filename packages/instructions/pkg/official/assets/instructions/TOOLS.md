@@ -65,7 +65,11 @@ editable: true
   再从结果资产中取用生成图/视频。
 - 需要把生成结果写入文档时，用文档写工具以 Markdown 图片/资源引用插入到目标章节。
 - 生图涉及风格选择或结果多选时，用 `ask_user_selection` 展示带预览图的选项让用户确认，再据其选择继续；
-  返回 timeout 或 cancelled 时不要擅自生成，说明情况并结束回合或改为在对话中询问。
+  选项的 label/description 用面向用户的自然语言，不要暴露 slotIndex 等内部字段名。
+- `ask_user_selection` 返回 timeout 时，用 `await_user_selection` 对同一 `selectionId` 继续等待
+  （每轮 ≤90 秒，循环 3-5 轮），不要重新弹卡；仍无结果或返回 cancelled 时不要擅自生成，
+  说明情况并结束回合或改为在对话中询问。
+- 轮询生成任务或等待用户选择期间保持安静，不要每轮都输出状态独白；有实质进展再说话。
 
 ### 生图标准流程（风格推荐 → 确认 → 生成 → 选片）
 

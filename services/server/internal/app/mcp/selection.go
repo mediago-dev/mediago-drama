@@ -44,21 +44,58 @@ func (adapter *Adapter) AskUserSelection(ctx context.Context, projectID string, 
 	adapter.document.logToolInvocation(mediamcp.AgentDocumentTools.AskUserSelection.Name, "selection_id", created.ID, "options", len(created.Options))
 	adapter.publishSelectionCard(projectID, created)
 
-	timeout := time.Duration(input.TimeoutSeconds) * time.Second
-	record, err := service.WaitForSelection(ctx, projectID, created.ID, timeout, 0)
+	return waitSelectionOutput(ctx, service, projectID, created.ID, input.TimeoutSeconds)
+}
+
+// AwaitUserSelection keeps waiting on an existing selection without creating a
+// new card, so agents can split a long wait into client-safe short rounds and
+// still catch a decision that lands between rounds.
+func (adapter *Adapter) AwaitUserSelection(ctx context.Context, projectID string, input mediamcp.AwaitUserSelectionInput) (mediamcp.AskUserSelectionOutput, error) {
+	if adapter == nil || adapter.document == nil {
+		return mediamcp.AskUserSelectionOutput{}, fmt.Errorf("await_user_selection is only available on the run-scoped document mcp server")
+	}
+	service := adapter.document.store.Selections
+	if service == nil {
+		return mediamcp.AskUserSelectionOutput{}, fmt.Errorf("selection service is not configured")
+	}
+	selectionID := strings.TrimSpace(input.SelectionID)
+	if selectionID == "" {
+		return mediamcp.AskUserSelectionOutput{}, fmt.Errorf("selectionId is required")
+	}
+	projectID = adapter.projectIDForAgentEvent(projectID)
+	record, ok, err := service.Get(projectID, selectionID)
+	if err != nil {
+		return mediamcp.AskUserSelectionOutput{}, err
+	}
+	if !ok {
+		return mediamcp.AskUserSelectionOutput{}, fmt.Errorf("selection not found")
+	}
+	adapter.document.logToolInvocation(mediamcp.AgentDocumentTools.AwaitUserSelection.Name, "selection_id", selectionID, "status", record.Status)
+	if record.Status != serviceselection.StatusPending {
+		return selectionOutputFromRecord(record), nil
+	}
+	return waitSelectionOutput(ctx, service, projectID, selectionID, input.TimeoutSeconds)
+}
+
+func waitSelectionOutput(ctx context.Context, service *serviceselection.Service, projectID string, selectionID string, timeoutSeconds int) (mediamcp.AskUserSelectionOutput, error) {
+	timeout := time.Duration(timeoutSeconds) * time.Second
+	record, err := service.WaitForSelection(ctx, projectID, selectionID, timeout, 0)
 	if err != nil {
 		if errors.Is(err, serviceselection.ErrWaitTimeout) {
-			return mediamcp.AskUserSelectionOutput{SelectionID: created.ID, Status: serviceselection.StatusTimeout}, nil
+			return mediamcp.AskUserSelectionOutput{SelectionID: selectionID, Status: serviceselection.StatusTimeout}, nil
 		}
 		return mediamcp.AskUserSelectionOutput{}, err
 	}
+	return selectionOutputFromRecord(record), nil
+}
 
+func selectionOutputFromRecord(record serviceselection.Record) mediamcp.AskUserSelectionOutput {
 	output := mediamcp.AskUserSelectionOutput{SelectionID: record.ID, Status: record.Status}
 	if record.Decision != nil {
 		output.OptionID = record.Decision.OptionID
 		output.CustomText = record.Decision.CustomText
 	}
-	return output, nil
+	return output
 }
 
 func (adapter *Adapter) publishSelectionCard(projectID string, record serviceselection.Record) {
