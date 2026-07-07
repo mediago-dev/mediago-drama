@@ -109,6 +109,20 @@ export function version(
 	};
 }
 
+type GenerationRouteOption = (route: GenerationRoute) => GenerationRoute;
+
+export function withReferenceUrlLimit(maxReferenceUrls: number): GenerationRouteOption {
+	return (route) => {
+		if (maxReferenceUrls <= 0) return route;
+
+		return {
+			...route,
+			supportsReferenceUrls: true,
+			maxReferenceUrls,
+		};
+	};
+}
+
 export function route(
 	id: string,
 	familyId: string,
@@ -124,10 +138,10 @@ export function route(
 	supportsReferenceUrls: boolean,
 	legacyModelId?: string,
 	paramCombos?: GenerationParamCombo[],
-	maxReferenceUrls?: number,
+	...options: GenerationRouteOption[]
 ): GenerationRoute {
 	const groupedParams = params.map(withParamGroup);
-	return {
+	const item: GenerationRoute = {
 		id,
 		familyId,
 		versionId,
@@ -139,13 +153,14 @@ export function route(
 		docUrl,
 		async,
 		supportsReferenceUrls,
-		...(maxReferenceUrls ? { maxReferenceUrls } : {}),
 		status: "available",
 		params: groupedParams,
 		paramGroups: fallbackParamGroups(kind, groupedParams),
 		paramCombos,
 		legacyModelId,
 	};
+
+	return options.reduce((current, option) => option(current), item);
 }
 
 export function gatedRoute(item: GenerationRoute, statusReason: string): GenerationRoute {
