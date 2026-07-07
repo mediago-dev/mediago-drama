@@ -45,7 +45,7 @@ const GenerationMCPInstructions = `MediaGo Drama Generation MCP 使用说明：
 - referenceUrls/referenceAssetIds/referenceBindings 可用于传入参考图、参考素材或文档绑定。
 - get_generation_task / list_generation_tasks 用于查询任务状态和结果资产。
 - poll_generation_task 用于轮询需要供应商查询的异步任务；retry_generation_task 用于重试失败或可重试任务。
-- stylePresets 是内置风格推荐：previewUrl 可作为选择卡片的预览图；用户确认某个 preset 后，把它的 promptSuffix 拼到 prompt 末尾、params 合并进请求参数再 generate_media。
+- stylePresets 来自产品提示词库的 style 分类（内置风格 + 用户自建 + 提示词包），与生成工作台同源；previewUrl 存在时可作为选择卡片的预览图，缺失时用纯文本选项。用户确认某个 preset 后，把它的 promptSuffix 拼到 prompt 末尾、params 合并进请求参数再 generate_media。
 - 一次生成返回多张结果时，让用户选片后调用 select_generation_asset(taskId, slotIndex) 标记选中，再取该资产 URL 使用。`
 
 const publicMCPBoundaryDescription = "MediaGo Drama MCP：Agent 当前工作目录已是项目 work 文档根目录；文档读写直接操作当前目录下的 Markdown 文件，不要再访问 work/ 子目录；项目配置通过 MCP 读取或更新，不要搜索 project.media.json。"
