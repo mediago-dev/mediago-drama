@@ -12,6 +12,7 @@
     "electron:stage-app": "node scripts/stage-electron-app.ts",
     "renderer:package": "node scripts/package-renderer-update.ts",
     "renderer:keys": "node scripts/generate-hot-update-keys.ts",
+    "renderer:local-test": "node scripts/hot-update-local-test.ts",
     "electron:dev": "concurrently -k \"pnpm dev:electron:web\" \"wait-on http://127.0.0.1:31420 && pnpm electron:compile && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:31420 electron electron/dist/main.js\"",
     "electron:build": "cross-env VITE_ELECTRON_BUILD=1 pnpm build && pnpm electron:compile && pnpm electron:stage-app && electron-builder --projectDir electron/app",
     "electron:build:darwin-arm64": "cross-env VITE_ELECTRON_BUILD=1 pnpm build && pnpm electron:compile && cross-env MEDIAGO_ELECTRON_TARGET_PLATFORM=darwin-arm64 pnpm electron:stage-app && electron-builder --projectDir electron/app --mac zip --arm64",
