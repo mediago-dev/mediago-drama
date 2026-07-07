@@ -146,6 +146,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	promptLibraryHandler := httphandlers.NewPromptLibrary(api.promptLibrary)
 	skillHandler := httphandlers.NewSkills(api.skillRegistry)
 	approvalHandler := httphandlers.NewDocumentToolApprovals(api.workspaceState, repository.IsRecordNotFound)
+	selectionHandler := httphandlers.NewAgentSelections(api.selection, repository.IsRecordNotFound)
 	permissionHandler := httphandlers.NewAgentPermissions(api)
 	chatHandler := httphandlers.NewAgentChat(api.workspaceState, api.PendingAgentPermissions)
 	messageHandler := httphandlers.NewAgentMessages(api)
@@ -195,6 +196,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		PromptLibrary:         promptLibraryHandler,
 		Skills:                skillHandler,
 		DocumentToolApprovals: approvalHandler,
+		AgentSelections:       selectionHandler,
 		AgentPermissions:      permissionHandler,
 		AgentChat:             chatHandler,
 		AgentMessages:         messageHandler,
