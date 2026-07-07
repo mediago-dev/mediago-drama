@@ -50,6 +50,8 @@ export const AgentA2UIMessage: React.FC<{
 				"[&_em]:not-italic [&_em]:text-muted-foreground [&_h1]:m-0 [&_h2]:m-0 [&_h3]:m-0 [&_h4]:m-0 [&_h5]:m-0",
 				"[&_h5]:text-sm [&_h5]:font-semibold [&_p]:m-0 [&_p]:break-words [&_p]:leading-5",
 				"[&_img]:max-h-40 [&_img]:max-w-full [&_img]:rounded-sm [&_img]:border [&_img]:border-border [&_img]:object-cover",
+				"[&_div[style*='flex-direction:_row']:has(img)>div]:min-w-0 [&_div[style*='flex-direction:_row']:has(img)>div]:flex-1",
+				"[&_div[style*='flex-direction:_row']:has(img)>div_img]:w-full",
 			)}
 		>
 			<MarkdownContext.Provider value={renderA2UIMarkdown}>

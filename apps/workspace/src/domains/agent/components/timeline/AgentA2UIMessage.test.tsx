@@ -60,8 +60,20 @@ const selectionCardMessage = (): AgentMessage => ({
 					updateComponents: {
 						surfaceId: "agent-selection-selection-1",
 						components: [
-							{ id: "root", component: "Column", children: ["title", "opt-0"], align: "stretch" },
+							{
+								id: "root",
+								component: "Column",
+								children: ["title", "opts-row-0"],
+								align: "stretch",
+							},
 							{ id: "title", component: "Text", text: "选择一种插画风格", variant: "h5" },
+							{
+								id: "opts-row-0",
+								component: "Row",
+								children: ["opt-0"],
+								justify: "start",
+								align: "start",
+							},
 							{ id: "opt-0", component: "Column", children: ["opt-img-0", "opt-btn-0"] },
 							{
 								id: "opt-img-0",
