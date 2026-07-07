@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -21,8 +22,18 @@ import (
 
 const aesNonceSize = 12
 
-// Inspect reads and validates manifest metadata from a .mgpackpro archive.
-func Inspect(ctx context.Context, data []byte) (Manifest, error) {
+// Signer identifies the publisher signing key used to author .mgpackpro archives.
+type Signer struct {
+	KeyID string
+	Key   ed25519.PrivateKey
+}
+
+// KeyRing maps publisher key identifiers to trusted Ed25519 public keys.
+type KeyRing map[string]ed25519.PublicKey
+
+// Inspect reads and validates manifest metadata from a .mgpackpro archive,
+// verifying the publisher signature against the trusted key ring.
+func Inspect(ctx context.Context, data []byte, publishers KeyRing) (Manifest, error) {
 	if err := ctxErr(ctx); err != nil {
 		return Manifest{}, err
 	}
@@ -33,27 +44,30 @@ func Inspect(ctx context.Context, data []byte) (Manifest, error) {
 	if err != nil {
 		return Manifest{}, err
 	}
-	manifest, err := readManifest(reader)
+	rawManifest, manifest, err := readManifest(reader)
 	if err != nil {
 		return Manifest{}, err
 	}
 	if err := validateManifest(manifest); err != nil {
 		return Manifest{}, err
 	}
+	if err := verifyPublisherSignature(reader, rawManifest, publishers); err != nil {
+		return Manifest{}, err
+	}
 	return manifest, nil
 }
 
-// Parse decrypts and parses a .mgpackpro package into a pack bundle.
-func Parse(ctx context.Context, data []byte, key []byte) (Manifest, pack.Bundle, error) {
-	manifest, bundle, err := parseBundle(ctx, data, key)
+// Parse verifies, decrypts, and parses a .mgpackpro package into a pack bundle.
+func Parse(ctx context.Context, data []byte, key []byte, publishers KeyRing) (Manifest, pack.Bundle, error) {
+	manifest, bundle, err := parseBundle(ctx, data, key, publishers)
 	if err != nil {
 		return Manifest{}, pack.Bundle{}, err
 	}
 	return manifest, bundle, nil
 }
 
-// Build creates an encrypted .mgpackpro archive from a plain pack zip payload.
-func Build(ctx context.Context, bundleData []byte, manifest Manifest, key []byte) ([]byte, error) {
+// Build creates an encrypted, publisher-signed .mgpackpro archive from a plain pack zip payload.
+func Build(ctx context.Context, bundleData []byte, manifest Manifest, key []byte, signer Signer) ([]byte, error) {
 	if err := ctxErr(ctx); err != nil {
 		return nil, err
 	}
@@ -63,6 +77,13 @@ func Build(ctx context.Context, bundleData []byte, manifest Manifest, key []byte
 	}
 	if len(key) != 32 {
 		return nil, fmt.Errorf("%w: key must be 32 bytes", ErrInvalidProPack)
+	}
+	signer.KeyID = strings.TrimSpace(signer.KeyID)
+	if signer.KeyID == "" {
+		return nil, fmt.Errorf("%w: signer key id is required", ErrInvalidProPack)
+	}
+	if len(signer.Key) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("%w: signer key must be %d bytes", ErrInvalidProPack, ed25519.PrivateKeySize)
 	}
 	if strings.TrimSpace(manifest.Format) == "" {
 		manifest.Format = FormatName
@@ -80,11 +101,18 @@ func Build(ctx context.Context, bundleData []byte, manifest Manifest, key []byte
 	manifest.Payload.Digest = "sha256:" + hex.EncodeToString(hash[:])
 	manifest.Payload.Size = int64(len(bundleData))
 
-	nonce, err := decodeOrNewNonce(manifest.Encryption.Nonce)
-	if err != nil {
-		return nil, err
+	// Nonce is always freshly generated: accepting a caller-supplied nonce
+	// invites catastrophic AES-GCM nonce reuse across builds with one key.
+	nonce := make([]byte, aesNonceSize)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("%w: generating nonce: %s", ErrInvalidProPack, err)
 	}
 	manifest.Encryption.Nonce = base64.StdEncoding.EncodeToString(nonce)
+
+	rawManifest, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, fmt.Errorf("%w: encoding manifest", ErrInvalidProPack)
+	}
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -94,19 +122,25 @@ func Build(ctx context.Context, bundleData []byte, manifest Manifest, key []byte
 	if err != nil {
 		return nil, fmt.Errorf("%w: creating gcm: %s", ErrInvalidProPack, err)
 	}
-	associatedData, err := manifestAssociatedData(manifest)
-	if err != nil {
-		return nil, err
+	encrypted := aead.Seal(nil, nonce, bundleData, rawManifest)
+
+	signature := Signature{
+		Algorithm: signatureAlgorithm,
+		KeyID:     signer.KeyID,
+		Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(signer.Key, rawManifest)),
 	}
-	encrypted := aead.Seal(nil, nonce, bundleData, associatedData)
 
 	var output bytes.Buffer
 	writer := zip.NewWriter(&output)
-	if err := writeZipJSON(writer, manifestFile, manifest); err != nil {
+	if err := writeZipRaw(writer, manifestFile, rawManifest); err != nil {
 		_ = writer.Close()
 		return nil, err
 	}
 	if err := writeZipRaw(writer, payloadFile, encrypted); err != nil {
+		_ = writer.Close()
+		return nil, err
+	}
+	if err := writeZipJSON(writer, signatureFile, signature); err != nil {
 		_ = writer.Close()
 		return nil, err
 	}
@@ -116,22 +150,31 @@ func Build(ctx context.Context, bundleData []byte, manifest Manifest, key []byte
 	return output.Bytes(), nil
 }
 
-func parseBundle(ctx context.Context, data []byte, key []byte) (Manifest, pack.Bundle, error) {
+func parseBundle(ctx context.Context, data []byte, key []byte, publishers KeyRing) (Manifest, pack.Bundle, error) {
+	if err := ctxErr(ctx); err != nil {
+		return Manifest{}, pack.Bundle{}, err
+	}
 	if len(data) == 0 {
 		return Manifest{}, pack.Bundle{}, fmt.Errorf("%w: empty pro pack", ErrInvalidProPack)
 	}
-	manifest, err := Inspect(ctx, data)
+	reader, err := newZipReader(data)
 	if err != nil {
+		return Manifest{}, pack.Bundle{}, err
+	}
+	rawManifest, manifest, err := readManifest(reader)
+	if err != nil {
+		return Manifest{}, pack.Bundle{}, err
+	}
+	if err := validateManifest(manifest); err != nil {
+		return Manifest{}, pack.Bundle{}, err
+	}
+	if err := verifyPublisherSignature(reader, rawManifest, publishers); err != nil {
 		return Manifest{}, pack.Bundle{}, err
 	}
 	if len(key) != 32 {
 		return Manifest{}, pack.Bundle{}, fmt.Errorf("%w: 32-byte key required", ErrMissingKey)
 	}
 	nonce, err := decodeNonce(manifest.Encryption.Nonce)
-	if err != nil {
-		return Manifest{}, pack.Bundle{}, err
-	}
-	reader, err := newZipReader(data)
 	if err != nil {
 		return Manifest{}, pack.Bundle{}, err
 	}
@@ -147,11 +190,7 @@ func parseBundle(ctx context.Context, data []byte, key []byte) (Manifest, pack.B
 	if err != nil {
 		return Manifest{}, pack.Bundle{}, fmt.Errorf("%w: creating gcm: %s", ErrInvalidProPack, err)
 	}
-	associatedData, err := manifestAssociatedData(manifest)
-	if err != nil {
-		return Manifest{}, pack.Bundle{}, err
-	}
-	decrypted, err := aead.Open(nil, nonce, encrypted, associatedData)
+	decrypted, err := aead.Open(nil, nonce, encrypted, rawManifest)
 	if err != nil {
 		return Manifest{}, pack.Bundle{}, fmt.Errorf("%w: decrypt payload", ErrInvalidProPack)
 	}
@@ -163,6 +202,44 @@ func parseBundle(ctx context.Context, data []byte, key []byte) (Manifest, pack.B
 		return Manifest{}, pack.Bundle{}, fmt.Errorf("%w: parsing bundle: %s", ErrInvalidProPack, err)
 	}
 	return manifest, bundle, nil
+}
+
+// verifyPublisherSignature checks the detached Ed25519 signature over the raw
+// manifest bytes against the trusted publisher key ring.
+func verifyPublisherSignature(reader *zip.Reader, rawManifest []byte, publishers KeyRing) error {
+	raw, err := readFile(reader, signatureFile)
+	if err != nil {
+		return fmt.Errorf("%w: publisher signature is missing", ErrInvalidSignature)
+	}
+	var signature Signature
+	if err := json.Unmarshal(raw, &signature); err != nil {
+		return fmt.Errorf("%w: decoding signature", ErrInvalidSignature)
+	}
+	if !strings.EqualFold(strings.TrimSpace(signature.Algorithm), signatureAlgorithm) {
+		return fmt.Errorf("%w: unsupported signature algorithm %q", ErrInvalidSignature, signature.Algorithm)
+	}
+	keyID := strings.TrimSpace(signature.KeyID)
+	if keyID == "" {
+		return fmt.Errorf("%w: signature key id is required", ErrInvalidSignature)
+	}
+	if len(publishers) == 0 {
+		return fmt.Errorf("%w: no trusted publisher keys", ErrMissingPublisherKey)
+	}
+	publicKey, ok := publishers[keyID]
+	if !ok {
+		return fmt.Errorf("%w: %q", ErrMissingPublisherKey, keyID)
+	}
+	if len(publicKey) != ed25519.PublicKeySize {
+		return fmt.Errorf("%w: publisher key %q must be %d bytes", ErrMissingPublisherKey, keyID, ed25519.PublicKeySize)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(signature.Signature))
+	if err != nil || len(decoded) != ed25519.SignatureSize {
+		return fmt.Errorf("%w: malformed signature", ErrInvalidSignature)
+	}
+	if !ed25519.Verify(publicKey, rawManifest, decoded) {
+		return fmt.Errorf("%w: signature verification failed", ErrInvalidSignature)
+	}
+	return nil
 }
 
 func validateManifest(manifest Manifest) error {
@@ -206,18 +283,6 @@ func validateBuildManifest(manifest Manifest) error {
 	return nil
 }
 
-func decodeOrNewNonce(raw string) ([]byte, error) {
-	raw = strings.TrimSpace(raw)
-	if raw != "" {
-		return decodeNonce(raw)
-	}
-	nonce := make([]byte, aesNonceSize)
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, fmt.Errorf("%w: generating nonce: %s", ErrInvalidProPack, err)
-	}
-	return nonce, nil
-}
-
 func decodeNonce(raw string) ([]byte, error) {
 	nonce, err := base64.StdEncoding.DecodeString(strings.TrimSpace(raw))
 	if err != nil {
@@ -257,14 +322,6 @@ func verifyPayloadDigest(meta PayloadMeta, payload []byte) error {
 	return nil
 }
 
-func manifestAssociatedData(manifest Manifest) ([]byte, error) {
-	data, err := json.Marshal(manifest)
-	if err != nil {
-		return nil, fmt.Errorf("%w: encoding manifest authentication data", ErrInvalidProPack)
-	}
-	return data, nil
-}
-
 func newZipReader(data []byte) (*zip.Reader, error) {
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
@@ -273,16 +330,18 @@ func newZipReader(data []byte) (*zip.Reader, error) {
 	return reader, nil
 }
 
-func readManifest(reader *zip.Reader) (Manifest, error) {
+// readManifest returns both the raw manifest bytes (the exact signed and
+// authenticated representation) and the decoded manifest.
+func readManifest(reader *zip.Reader) ([]byte, Manifest, error) {
 	raw, err := readFile(reader, manifestFile)
 	if err != nil {
-		return Manifest{}, err
+		return nil, Manifest{}, err
 	}
 	var manifest Manifest
 	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return Manifest{}, fmt.Errorf("%w: decoding manifest", ErrInvalidProPack)
+		return nil, Manifest{}, fmt.Errorf("%w: decoding manifest", ErrInvalidProPack)
 	}
-	return manifest, nil
+	return raw, manifest, nil
 }
 
 func readFile(reader *zip.Reader, name string) ([]byte, error) {

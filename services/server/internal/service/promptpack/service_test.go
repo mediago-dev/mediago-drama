@@ -2,6 +2,7 @@ package promptpack
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
 	"os"
@@ -148,7 +149,8 @@ func TestServiceRejectsProPackWithoutLicense(t *testing.T) {
 	if _, err := rand.Read(key); err != nil {
 		t.Fatalf("rand.Read() error = %v", err)
 	}
-	data, err := writeTestMGPackPro(t, key, "1.0.0")
+	signer, _ := newTestProSigner(t)
+	data, err := writeTestMGPackPro(t, key, signer, "1.0.0")
 	if err != nil {
 		t.Fatalf("writeTestMGPackPro() error = %v", err)
 	}
@@ -164,7 +166,8 @@ func TestServiceInstallsProPackWithLicense(t *testing.T) {
 	if _, err := rand.Read(key); err != nil {
 		t.Fatalf("rand.Read() error = %v", err)
 	}
-	data, err := writeTestMGPackPro(t, key, "1.0.0")
+	signer, publisherKey := newTestProSigner(t)
+	data, err := writeTestMGPackPro(t, key, signer, "1.0.0")
 	if err != nil {
 		t.Fatalf("writeTestMGPackPro() error = %v", err)
 	}
@@ -174,6 +177,9 @@ func TestServiceInstallsProPackWithLicense(t *testing.T) {
 			map[string]struct{}{license.DefaultProEntitlement(): {}},
 			map[string][]byte{
 				"default": key,
+			},
+			map[string][]byte{
+				signer.KeyID: publisherKey,
 			},
 		),
 	)
@@ -213,13 +219,17 @@ func TestServiceInstallsProPackPathWithProSource(t *testing.T) {
 	if _, err := rand.Read(key); err != nil {
 		t.Fatalf("rand.Read() error = %v", err)
 	}
-	path := writeTestMGPackProFile(t, key, "1.0.0")
+	signer, publisherKey := newTestProSigner(t)
+	path := writeTestMGPackProFile(t, key, signer, "1.0.0")
 	store := newTestServiceWithLicense(
 		t,
 		newTestLicenseProvider(
 			map[string]struct{}{license.DefaultProEntitlement(): {}},
 			map[string][]byte{
 				"default": key,
+			},
+			map[string][]byte{
+				signer.KeyID: publisherKey,
 			},
 		),
 	)
@@ -238,7 +248,8 @@ func TestServiceRejectsProPackExport(t *testing.T) {
 	if _, err := rand.Read(key); err != nil {
 		t.Fatalf("rand.Read() error = %v", err)
 	}
-	data, err := writeTestMGPackPro(t, key, "1.0.0")
+	signer, publisherKey := newTestProSigner(t)
+	data, err := writeTestMGPackPro(t, key, signer, "1.0.0")
 	if err != nil {
 		t.Fatalf("writeTestMGPackPro() error = %v", err)
 	}
@@ -248,6 +259,9 @@ func TestServiceRejectsProPackExport(t *testing.T) {
 			map[string]struct{}{license.DefaultProEntitlement(): {}},
 			map[string][]byte{
 				"default": key,
+			},
+			map[string][]byte{
+				signer.KeyID: publisherKey,
 			},
 		),
 	)
@@ -267,6 +281,66 @@ func TestServiceRejectsInvalidProPackAsInvalidPack(t *testing.T) {
 	_, err := store.InstallData(ctx, "broken.mgpackpro", []byte("not a pro pack"))
 	if !errors.Is(err, ErrInvalidPack) {
 		t.Fatalf("InstallData() error = %v, want ErrInvalidPack", err)
+	}
+}
+
+func TestServiceRejectsForgedProPackAsInvalidPack(t *testing.T) {
+	ctx := context.Background()
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatalf("rand.Read() error = %v", err)
+	}
+	// The attacker signs with their own key under the official publisher key id.
+	officialSigner, officialPublisherKey := newTestProSigner(t)
+	attackerSigner, _ := newTestProSigner(t)
+	attackerSigner.KeyID = officialSigner.KeyID
+	data, err := writeTestMGPackPro(t, key, attackerSigner, "1.0.0")
+	if err != nil {
+		t.Fatalf("writeTestMGPackPro() error = %v", err)
+	}
+	store := newTestServiceWithLicense(
+		t,
+		newTestLicenseProvider(
+			map[string]struct{}{license.DefaultProEntitlement(): {}},
+			map[string][]byte{
+				"default": key,
+			},
+			map[string][]byte{
+				officialSigner.KeyID: officialPublisherKey,
+			},
+		),
+	)
+	_, err = store.InstallData(ctx, "forged.mgpackpro", data)
+	if !errors.Is(err, ErrInvalidPack) {
+		t.Fatalf("InstallData(forged) error = %v, want ErrInvalidPack", err)
+	}
+}
+
+func TestServiceRejectsProPackWithUnknownPublisherAsLicenseRequired(t *testing.T) {
+	ctx := context.Background()
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatalf("rand.Read() error = %v", err)
+	}
+	signer, _ := newTestProSigner(t)
+	data, err := writeTestMGPackPro(t, key, signer, "1.0.0")
+	if err != nil {
+		t.Fatalf("writeTestMGPackPro() error = %v", err)
+	}
+	// License is provisioned but has no trusted key for this publisher.
+	store := newTestServiceWithLicense(
+		t,
+		newTestLicenseProvider(
+			map[string]struct{}{license.DefaultProEntitlement(): {}},
+			map[string][]byte{
+				"default": key,
+			},
+			nil,
+		),
+	)
+	_, err = store.InstallData(ctx, "test.mgpackpro", data)
+	if !errors.Is(err, ErrPackLicenseRequired) {
+		t.Fatalf("InstallData() error = %v, want ErrPackLicenseRequired", err)
 	}
 }
 
@@ -473,7 +547,16 @@ Use this for tests.
 	return output
 }
 
-func writeTestMGPackPro(t *testing.T, key []byte, version string) ([]byte, error) {
+func newTestProSigner(t *testing.T) (instructionpro.Signer, ed25519.PublicKey) {
+	t.Helper()
+	public, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	return instructionpro.Signer{KeyID: "test-publisher", Key: private}, public
+}
+
+func writeTestMGPackPro(t *testing.T, key []byte, signer instructionpro.Signer, version string) ([]byte, error) {
 	t.Helper()
 	root := t.TempDir()
 	packID := "com.example.pro.test"
@@ -511,12 +594,13 @@ Use this for pro tests.
 			KeyID:               "default",
 		},
 		key,
+		signer,
 	)
 }
 
-func writeTestMGPackProFile(t *testing.T, key []byte, version string) string {
+func writeTestMGPackProFile(t *testing.T, key []byte, signer instructionpro.Signer, version string) string {
 	t.Helper()
-	data, err := writeTestMGPackPro(t, key, version)
+	data, err := writeTestMGPackPro(t, key, signer, version)
 	if err != nil {
 		t.Fatalf("writeTestMGPackPro() error = %v", err)
 	}
@@ -537,14 +621,20 @@ func findEntry(entries []Entry, slug string) (Entry, bool) {
 }
 
 type testLicenseProvider struct {
-	entitlements map[string]struct{}
-	keys         map[string][]byte
+	entitlements  map[string]struct{}
+	keys          map[string][]byte
+	publisherKeys map[string][]byte
 }
 
-func newTestLicenseProvider(entitlements map[string]struct{}, keys map[string][]byte) *testLicenseProvider {
+func newTestLicenseProvider(
+	entitlements map[string]struct{},
+	keys map[string][]byte,
+	publisherKeys map[string][]byte,
+) *testLicenseProvider {
 	return &testLicenseProvider{
-		entitlements: entitlements,
-		keys:         keys,
+		entitlements:  entitlements,
+		keys:          keys,
+		publisherKeys: publisherKeys,
 	}
 }
 
@@ -568,6 +658,19 @@ func (provider *testLicenseProvider) ResolvePackKey(_ context.Context, keyID str
 	keyCopy := make([]byte, len(key))
 	copy(keyCopy, key)
 	return keyCopy, nil
+}
+
+func (provider *testLicenseProvider) ResolvePublisherKeys(_ context.Context) (map[string][]byte, error) {
+	if provider == nil {
+		return map[string][]byte{}, nil
+	}
+	keys := make(map[string][]byte, len(provider.publisherKeys))
+	for keyID, key := range provider.publisherKeys {
+		keyCopy := make([]byte, len(key))
+		copy(keyCopy, key)
+		keys[keyID] = keyCopy
+	}
+	return keys, nil
 }
 
 func findPackEntry(entries []instructionpack.Entry, slug string) (instructionpack.Entry, bool) {

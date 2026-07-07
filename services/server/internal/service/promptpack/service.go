@@ -870,7 +870,11 @@ func (store *Service) parsePackFile(ctx context.Context, path string) (instructi
 }
 
 func (store *Service) unpackProPack(ctx context.Context, data []byte) (instructionpro.Manifest, instructionpack.Bundle, error) {
-	manifest, err := instructionpro.Inspect(ctx, data)
+	publishers, err := store.publisherKeyRing(ctx)
+	if err != nil {
+		return instructionpro.Manifest{}, instructionpack.Bundle{}, err
+	}
+	manifest, err := instructionpro.Inspect(ctx, data, publishers)
 	if err != nil {
 		return instructionpro.Manifest{}, instructionpack.Bundle{}, normalizeProPackError(err)
 	}
@@ -893,11 +897,30 @@ func (store *Service) unpackProPack(ctx context.Context, data []byte) (instructi
 	if err != nil {
 		return instructionpro.Manifest{}, instructionpack.Bundle{}, err
 	}
-	decompressedManifest, bundle, err := instructionpro.Parse(ctx, data, key)
+	decompressedManifest, bundle, err := instructionpro.Parse(ctx, data, key, publishers)
 	if err != nil {
 		return instructionpro.Manifest{}, instructionpack.Bundle{}, normalizeProPackError(err)
 	}
 	return decompressedManifest, bundle, nil
+}
+
+// publisherKeyRing loads trusted pack publisher keys from the license service.
+// A missing license service yields an empty ring: structurally invalid packs
+// still fail as invalid, while valid packs fail signature verification with a
+// license-required error.
+func (store *Service) publisherKeyRing(ctx context.Context) (instructionpro.KeyRing, error) {
+	if store.license == nil {
+		return instructionpro.KeyRing{}, nil
+	}
+	keys, err := store.license.ResolvePublisherKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ring := make(instructionpro.KeyRing, len(keys))
+	for keyID, key := range keys {
+		ring[keyID] = key
+	}
+	return ring, nil
 }
 
 func normalizeProPackError(err error) error {
@@ -907,9 +930,11 @@ func normalizeProPackError(err error) error {
 	switch {
 	case errors.Is(err, instructionpro.ErrInvalidProPack),
 		errors.Is(err, instructionpro.ErrUnsupportedVersion),
-		errors.Is(err, instructionpro.ErrDigestMismatch):
+		errors.Is(err, instructionpro.ErrDigestMismatch),
+		errors.Is(err, instructionpro.ErrInvalidSignature):
 		return fmt.Errorf("%w: %s", ErrInvalidPack, err)
-	case errors.Is(err, instructionpro.ErrMissingKey):
+	case errors.Is(err, instructionpro.ErrMissingKey),
+		errors.Is(err, instructionpro.ErrMissingPublisherKey):
 		return fmt.Errorf("%w: %s", ErrPackLicenseRequired, err)
 	default:
 		return err

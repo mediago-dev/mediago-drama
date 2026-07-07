@@ -11,4 +11,8 @@ var (
 	ErrDigestMismatch = errors.New("pro prompt pack digest mismatch")
 	// ErrMissingKey reports that a decryption key is missing.
 	ErrMissingKey = errors.New("pro pack decryption key is missing")
+	// ErrInvalidSignature reports a missing, malformed, or forged publisher signature.
+	ErrInvalidSignature = errors.New("pro pack publisher signature is invalid")
+	// ErrMissingPublisherKey reports that no trusted publisher key is available for verification.
+	ErrMissingPublisherKey = errors.New("pro pack publisher key is missing")
 )
