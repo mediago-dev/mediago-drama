@@ -171,10 +171,60 @@ func TestGenerationServerSelectAssetRespectsProjectScope(t *testing.T) {
 	}
 }
 
+func TestGenerationServerCreateWithPromptOptimization(t *testing.T) {
+	service := &generationMCPServiceStub{}
+	server := &GenerationServer{service: service, projectID: "project-a"}
+
+	output, err := server.CreateGenerationMessage(context.Background(), "", mediamcp.GenerationMessageInput{
+		Prompt:             "generate a scene",
+		PromptOptimization: &mediamcp.GenerationPromptOptimizationInput{RouteID: "text-route"},
+	})
+	if err != nil {
+		t.Fatalf("CreateGenerationMessage returned error: %v", err)
+	}
+	if len(service.optimizeRequests) != 1 || len(service.createRequests) != 0 {
+		t.Fatalf("optimize=%d create=%d, want optimize path only", len(service.optimizeRequests), len(service.createRequests))
+	}
+	if output.ID != "generation-optimized" || output.OptimizedPrompt != "optimized: generate a scene" {
+		t.Fatalf("output = %#v, want optimized generation with optimizedPrompt", output)
+	}
+}
+
+func TestGenerationServerListModelsIncludesPreferences(t *testing.T) {
+	service := &generationMCPServiceStub{
+		preference: servicegeneration.GenerationPreferenceRecord{
+			RouteIDs:    map[string]string{"image": "jimeng.seedream-5.0"},
+			RouteParams: map[string]map[string]any{"jimeng.seedream-5.0": {"aspectRatio": "3:4"}},
+		},
+		preferenceOK: true,
+	}
+	server := &GenerationServer{service: service, projectID: "project-a"}
+
+	output, err := server.ListGenerationModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListGenerationModels returned error: %v", err)
+	}
+	if output.Preferences == nil || output.Preferences.RouteIDs["image"] != "jimeng.seedream-5.0" {
+		t.Fatalf("preferences = %#v, want workbench route defaults", output.Preferences)
+	}
+
+	server.service = &generationMCPServiceStub{}
+	output, err = server.ListGenerationModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListGenerationModels returned error: %v", err)
+	}
+	if output.Preferences != nil {
+		t.Fatalf("preferences = %#v, want nil when unset", output.Preferences)
+	}
+}
+
 type generationMCPServiceStub struct {
-	createRequests []servicegeneration.GenerationMessageRequest
-	listQueries    []servicegeneration.GenerationTaskListQuery
-	tasks          map[string]servicegeneration.GenerationTaskRecord
+	createRequests   []servicegeneration.GenerationMessageRequest
+	optimizeRequests []servicegeneration.GenerationMessageRequest
+	listQueries      []servicegeneration.GenerationTaskListQuery
+	tasks            map[string]servicegeneration.GenerationTaskRecord
+	preference       servicegeneration.GenerationPreferenceRecord
+	preferenceOK     bool
 }
 
 func (service *generationMCPServiceStub) ListGenerationModels() servicegeneration.GenerationModelsResponse {
@@ -204,6 +254,18 @@ func (service *generationMCPServiceStub) GetGenerationTask(id string) (servicege
 }
 
 func (service *generationMCPServiceStub) PollGenerationTask(context.Context, servicegeneration.GenerationTaskRecord) {
+}
+
+func (service *generationMCPServiceStub) CreatePromptOptimizedGenerationMessage(_ context.Context, payload servicegeneration.GenerationMessageRequest) (servicegeneration.GenerationOptimizeAndGenerateResponse, int, error) {
+	service.optimizeRequests = append(service.optimizeRequests, payload)
+	return servicegeneration.GenerationOptimizeAndGenerateResponse{
+		Generation:      servicegeneration.GenerationMessageResponse{ID: "generation-optimized", Status: "submitted"},
+		OptimizedPrompt: "optimized: " + payload.Prompt,
+	}, http.StatusOK, nil
+}
+
+func (service *generationMCPServiceStub) GenerationPreferenceForProject(string) (servicegeneration.GenerationPreferenceRecord, bool) {
+	return service.preference, service.preferenceOK
 }
 
 func (service *generationMCPServiceStub) UpdateGenerationTaskAsset(id string, assetIndex int, patch servicegeneration.UpdateGenerationTaskAssetRequest) (servicegeneration.GenerationTaskRecord, bool, error) {

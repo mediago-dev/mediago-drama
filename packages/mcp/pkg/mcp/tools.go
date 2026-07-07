@@ -46,6 +46,9 @@ const GenerationMCPInstructions = `MediaGo Drama Generation MCP 使用说明：
 - get_generation_task / list_generation_tasks 用于查询任务状态和结果资产。
 - poll_generation_task 用于轮询需要供应商查询的异步任务；retry_generation_task 用于重试失败或可重试任务。
 - stylePresets 来自产品提示词库的 style 分类（内置风格 + 用户自建 + 提示词包），与生成工作台同源；previewUrl 存在时可作为选择卡片的预览图，缺失时用纯文本选项。用户确认某个 preset 后，把它的 promptSuffix 拼到 prompt 末尾、params 合并进请求参数再 generate_media。
+- preferences 是用户在生成工作台的习惯参数（kind→routeId、routeId→params）；组生成方案时优先用它做默认值，参数取值必须来自路由 params schema。
+- 生成前用一张方案确认卡让用户确认模型/比例/分辨率/张数/是否优化提示词（组 2-4 个完整方案供选择，不要逐参数追问）；用户选定后严格执行。
+- generate_media 传入 promptOptimization 时会先优化提示词再生成，返回 optimizedPrompt。
 - 一次生成返回多张结果时，让用户选片后调用 select_generation_asset(taskId, slotIndex) 标记选中，再取该资产 URL 使用。`
 
 const publicMCPBoundaryDescription = "MediaGo Drama MCP：Agent 当前工作目录已是项目 work 文档根目录；文档读写直接操作当前目录下的 Markdown 文件，不要再访问 work/ 子目录；项目配置通过 MCP 读取或更新，不要搜索 project.media.json。"

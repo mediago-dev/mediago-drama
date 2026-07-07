@@ -258,3 +258,12 @@ func generationTaskAttemptsFromService(input []servicegeneration.GenerationTaskA
 	}
 	return output
 }
+
+func generationPreferencesFromService(input servicegeneration.GenerationPreferenceRecord) *mediamcp.GenerationPreferences {
+	preferences := &mediamcp.GenerationPreferences{
+		RouteIDs:      input.RouteIDs,
+		RouteParams:   input.RouteParams,
+		StylePresetID: input.StylePresetID,
+	}
+	return preferences
+}
