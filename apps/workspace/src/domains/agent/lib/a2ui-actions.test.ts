@@ -1,12 +1,13 @@
 import type { A2uiClientAction } from "@a2ui/web_core/v0_9";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { decideAgentPermission } from "@/domains/agent/api/agent";
+import { decideAgentPermission, decideAgentSelection } from "@/domains/agent/api/agent";
 import { selectAgentMessages, type AgentMessage, useAgentStore } from "@/domains/agent/stores";
 import { useProjectStore } from "@/domains/projects/stores";
 import { handleDeterministicA2UIAction } from "./a2ui-actions";
 
 const mocks = vi.hoisted(() => ({
 	decideAgentPermission: vi.fn(),
+	decideAgentSelection: vi.fn(),
 	decideDocumentToolApproval: vi.fn(),
 }));
 
@@ -15,6 +16,7 @@ vi.mock("@/domains/agent/api/agent", () => mocks);
 describe("handleDeterministicA2UIAction", () => {
 	afterEach(() => {
 		vi.mocked(decideAgentPermission).mockReset();
+		vi.mocked(decideAgentSelection).mockReset();
 		useAgentStore.getState().resetSession();
 		useAgentStore.setState({
 			activity: [],
@@ -94,6 +96,148 @@ describe("handleDeterministicA2UIAction", () => {
 		});
 		expect(messages[0]?.metadata?.a2ui).toBeUndefined();
 	});
+
+	it("replaces a selection UI with the picked option label", async () => {
+		vi.mocked(decideAgentSelection).mockResolvedValue({
+			id: "selection-1",
+			title: "选择一种插画风格",
+			options: [
+				{ id: "sweet", label: "甜美粉彩" },
+				{ id: "retro", label: "复古线条" },
+			],
+			allowCustom: true,
+			status: "selected",
+			decision: { optionId: "retro" },
+			createdAt: "2026-06-08T10:00:00.000Z",
+		} as never);
+		const message = selectionMessage();
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		seedConversation(message);
+
+		const handled = await handleDeterministicA2UIAction(message, {
+			name: "agent_selection.decide",
+			context: {
+				kind: "agent_selection",
+				projectId: "project-1",
+				selectionId: "selection-1",
+				optionId: "retro",
+			},
+			sourceComponentId: "opt-btn-1",
+			surfaceId: "agent-selection-selection-1",
+			timestamp: "2026-06-08T10:00:01.000Z",
+		} satisfies A2uiClientAction);
+
+		expect(handled).toBe(true);
+		expect(decideAgentSelection).toHaveBeenCalledWith(
+			"selection-1",
+			{ optionId: "retro" },
+			"project-1",
+		);
+		const messages = selectAgentMessages(useAgentStore.getState());
+		expect(messages[0]).toMatchObject({
+			id: "selection-ui",
+			content: "已选择：复古线条",
+			kind: "message",
+			title: "选择一种插画风格",
+			metadata: {
+				selectionDecision: {
+					optionId: "retro",
+					selectionId: "selection-1",
+					status: "selected",
+				},
+			},
+		});
+		expect(messages[0]?.metadata?.a2ui).toBeUndefined();
+	});
+
+	it("marks a stale selection card with the persisted outcome", async () => {
+		vi.mocked(decideAgentSelection).mockResolvedValue({
+			id: "selection-1",
+			title: "选择一种插画风格",
+			options: [{ id: "sweet", label: "甜美粉彩" }],
+			allowCustom: false,
+			status: "expired",
+			createdAt: "2026-06-08T10:00:00.000Z",
+		} as never);
+		const message = selectionMessage();
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		seedConversation(message);
+
+		const handled = await handleDeterministicA2UIAction(message, {
+			name: "agent_selection.decide",
+			context: {
+				kind: "agent_selection",
+				projectId: "project-1",
+				selectionId: "selection-1",
+				optionId: "sweet",
+			},
+			sourceComponentId: "opt-btn-0",
+			surfaceId: "agent-selection-selection-1",
+			timestamp: "2026-06-08T10:00:01.000Z",
+		} satisfies A2uiClientAction);
+
+		expect(handled).toBe(true);
+		const messages = selectAgentMessages(useAgentStore.getState());
+		expect(messages[0]?.content).toBe("该选择已过期，请让 Agent 重新发起。");
+	});
+
+	it("records an error for an incomplete selection action without calling the API", async () => {
+		const message = selectionMessage();
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		seedConversation(message);
+
+		const handled = await handleDeterministicA2UIAction(message, {
+			name: "agent_selection.decide",
+			context: {
+				kind: "agent_selection",
+				projectId: "project-1",
+				selectionId: "selection-1",
+			},
+			sourceComponentId: "opt-btn-0",
+			surfaceId: "agent-selection-selection-1",
+			timestamp: "2026-06-08T10:00:01.000Z",
+		} satisfies A2uiClientAction);
+
+		expect(handled).toBe(true);
+		expect(decideAgentSelection).not.toHaveBeenCalled();
+		const state = useAgentStore.getState();
+		expect(state.activity.some((item) => item.label === "选择提交失败")).toBe(true);
+	});
+});
+
+const seedConversation = (message: AgentMessage) => {
+	useAgentStore.setState({
+		sessionId: "session-1",
+		rootRunId: "run-1",
+		conversations: {
+			"run-1": {
+				runId: "run-1",
+				name: "主智能体",
+				status: "running",
+				messages: [message],
+				streamingMessageId: null,
+				children: [],
+				createdAt: "2026-06-08T10:00:00.000Z",
+				updatedAt: "2026-06-08T10:00:00.000Z",
+			},
+		},
+	});
+};
+
+const selectionMessage = (): AgentMessage => ({
+	id: "selection-ui",
+	role: "assistant",
+	content: "选择一种插画风格",
+	kind: "message",
+	status: "complete",
+	createdAt: "2026-06-08T10:00:00.000Z",
+	metadata: {
+		a2ui: {
+			version: "v0.9",
+			surfaceId: "agent-selection-selection-1",
+			messages: [],
+		},
+	},
 });
 
 const permissionMessage = (): AgentMessage => ({

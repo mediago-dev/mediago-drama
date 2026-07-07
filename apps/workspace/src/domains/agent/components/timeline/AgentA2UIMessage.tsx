@@ -49,6 +49,7 @@ export const AgentA2UIMessage: React.FC<{
 				"[&_button:disabled]:cursor-not-allowed [&_button:disabled]:opacity-50",
 				"[&_em]:not-italic [&_em]:text-muted-foreground [&_h1]:m-0 [&_h2]:m-0 [&_h3]:m-0 [&_h4]:m-0 [&_h5]:m-0",
 				"[&_h5]:text-sm [&_h5]:font-semibold [&_p]:m-0 [&_p]:break-words [&_p]:leading-5",
+				"[&_img]:max-h-40 [&_img]:max-w-full [&_img]:rounded-sm [&_img]:border [&_img]:border-border [&_img]:object-cover",
 			)}
 		>
 			<MarkdownContext.Provider value={renderA2UIMarkdown}>

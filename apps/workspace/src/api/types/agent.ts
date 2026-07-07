@@ -40,6 +40,42 @@ export interface AgentDocumentToolApprovalConfig {
 	saveSourceMaterial?: boolean;
 }
 
+export interface AgentSelectionOption {
+	id: string;
+	label: string;
+	imageUrl?: string;
+	description?: string;
+}
+
+export interface AgentSelectionDecision {
+	optionId?: string;
+	customText?: string;
+	cancelled?: boolean;
+}
+
+export interface AgentSelection {
+	id: string;
+	projectId?: string;
+	sessionId?: string;
+	runId?: string;
+	kind?: string;
+	title: string;
+	prompt?: string;
+	options: AgentSelectionOption[];
+	allowCustom: boolean;
+	status: string;
+	decision?: AgentSelectionDecision;
+	createdAt: string;
+	decidedAt?: string;
+	expiresAt?: string;
+}
+
+export interface AgentSelectionDecisionRequest {
+	optionId?: string;
+	customText?: string;
+	cancelled?: boolean;
+}
+
 export interface AgentBackend {
 	id: string;
 	name: string;

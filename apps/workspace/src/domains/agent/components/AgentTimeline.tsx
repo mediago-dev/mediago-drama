@@ -764,11 +764,15 @@ const handleA2UIAction = async (
 
 const shouldDismissA2UIOnAction = (action: A2uiClientAction) => {
 	const kind = action.context?.kind;
-	return kind === "agent_permission" || kind === "document_tool_approval";
+	return (
+		kind === "agent_permission" || kind === "document_tool_approval" || kind === "agent_selection"
+	);
 };
 
-const shouldKeepA2UIResultInTimeline = (action: A2uiClientAction) =>
-	action.context?.kind === "agent_permission";
+const shouldKeepA2UIResultInTimeline = (action: A2uiClientAction) => {
+	const kind = action.context?.kind;
+	return kind === "agent_permission" || kind === "agent_selection";
+};
 
 const formatA2UIActionPrompt = (message: AgentMessage, action: A2uiClientAction) =>
 	[

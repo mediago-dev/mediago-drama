@@ -1,5 +1,10 @@
 import type { A2uiClientAction } from "@a2ui/web_core/v0_9";
-import { decideAgentPermission, decideDocumentToolApproval } from "@/domains/agent/api/agent";
+import {
+	decideAgentPermission,
+	decideAgentSelection,
+	decideDocumentToolApproval,
+} from "@/domains/agent/api/agent";
+import type { AgentSelection } from "@/domains/agent/api/agent";
 import type { AgentMessage } from "@/domains/agent/stores";
 import { useAgentStore } from "@/domains/agent/stores";
 import { useDocumentsStore } from "@/domains/documents/stores";
@@ -22,6 +27,10 @@ export const handleDeterministicA2UIAction = async (
 	}
 	if (kind === "document_tool_approval") {
 		await handleDocumentToolApprovalAction(action);
+		return true;
+	}
+	if (kind === "agent_selection") {
+		await handleAgentSelectionAction(message, action);
 		return true;
 	}
 	return false;
@@ -89,6 +98,64 @@ const handleDocumentToolApprovalAction = async (action: A2uiClientAction) => {
 		}
 	} catch (err) {
 		recordA2UIActionError("文档确认失败", getActionError(err));
+	}
+};
+
+const handleAgentSelectionAction = async (message: AgentMessage, action: A2uiClientAction) => {
+	const selectionId = actionContextString(action, "selectionId");
+	const projectId =
+		actionContextString(action, "projectId") || useProjectStore.getState().activeProjectId;
+	const optionId = actionContextString(action, "optionId");
+	const cancelled = actionContextBoolean(action, "cancelled");
+	if (!projectId || !selectionId || (!optionId && !cancelled)) {
+		recordA2UIActionError("选择提交失败", "选择信息不完整，无法提交。");
+		return;
+	}
+	try {
+		const record = await decideAgentSelection(
+			selectionId,
+			cancelled ? { cancelled: true } : { optionId },
+			projectId,
+		);
+		const detail = selectionDecisionSummary(record);
+		const store = useAgentStore.getState();
+		store.replaceMessage(message.id, {
+			content: detail,
+			kind: "message",
+			title: record.title || "用户选择",
+			status: "complete",
+			metadata: {
+				selectionDecision: {
+					optionId: record.decision?.optionId,
+					selectionId,
+					status: record.status,
+				},
+			},
+		});
+		store.recordActivity("runtime", "选择已提交", detail);
+	} catch (err) {
+		recordA2UIActionError("选择提交失败", getActionError(err));
+	}
+};
+
+// The decide endpoint is idempotent: clicking a card that was already decided
+// (or expired) returns the current record, so the summary reflects the real
+// outcome instead of double-submitting.
+const selectionDecisionSummary = (record: AgentSelection) => {
+	switch (record.status) {
+		case "selected": {
+			const option = record.options.find((item) => item.id === record.decision?.optionId);
+			const label = option?.label || record.decision?.optionId || "";
+			return label ? `已选择：${label}` : "选择已提交。";
+		}
+		case "custom":
+			return "已选择自定义描述，请在对话中说明你的需求。";
+		case "cancelled":
+			return "已取消选择。";
+		case "expired":
+			return "该选择已过期，请让 Agent 重新发起。";
+		default:
+			return "选择已提交。";
 	}
 };
 
