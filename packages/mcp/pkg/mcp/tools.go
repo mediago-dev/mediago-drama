@@ -29,7 +29,7 @@ const mcpWorkflowInstructions = `MediaGo Drama MCP 使用说明：
 const AgentMCPInstructions = mcpWorkflowInstructions + `
 - 本 MCP 只提供 load_skill、get_project_config、update_project_config、list_comments、get_comment、mutate_comment、ask_user_selection。
 - update_project_config 当前仅用于更新 overview.categoryDefaults；style 风格分类会被忽略。
-- ask_user_selection 向用户展示可视化选项并阻塞等待选择，返回 selected/custom/cancelled/timeout；生图前用它确认风格或结果选片。timeout 时不要擅自继续，说明情况并结束回合。`
+- ask_user_selection 向用户展示可视化选项并阻塞等待选择，返回 selected/custom/cancelled/timeout；生图前用它确认风格或结果选片。返回 timeout 时先用 await_user_selection 对同一 selectionId 循环续等 3-5 轮；仍无结果再说明情况并结束回合，不要擅自继续。`
 
 // ExternalMCPInstructions describes the cross-project MCP server contract.
 const ExternalMCPInstructions = mcpWorkflowInstructions + `
@@ -110,6 +110,7 @@ var AgentDocumentTools = struct {
 	GetComment          ToolDefinition
 	MutateComment       ToolDefinition
 	AskUserSelection    ToolDefinition
+	AwaitUserSelection  ToolDefinition
 }{
 	LoadSkill: ToolDefinition{
 		Name:        DocumentTools.LoadSkill.Name,
@@ -120,7 +121,13 @@ var AgentDocumentTools = struct {
 	AskUserSelection: ToolDefinition{
 		Name:        "ask_user_selection",
 		Title:       "请用户选择",
-		Description: "向用户展示一组可视化选项（如风格推荐网格）并阻塞等待其选择：返回所选 optionId（selected）、自定义描述（custom）、取消（cancelled）或超时（timeout）。options 必填，每项含 id/label，可带 imageUrl/description。用于生图前让用户确认风格或结果选片；不要用它做纯文本提问。",
+		Description: "向用户展示一组可视化选项（如风格推荐网格）并阻塞等待其选择：返回所选 optionId（selected）、自定义描述（custom）、取消（cancelled）或超时（timeout）。options 必填，每项含 id/label，可带 imageUrl/description（自然语言，不要暴露内部字段名）。返回 timeout 时用 await_user_selection 对同一 selectionId 继续等待，不要重新弹卡。",
+	},
+	AwaitUserSelection: ToolDefinition{
+		Name:        "await_user_selection",
+		Title:       "继续等待用户选择",
+		Description: "继续阻塞等待一张已存在的选择卡（不新建卡片）：传入 ask_user_selection 返回的 selectionId，返回值与 ask_user_selection 相同。用于把长等待拆成多轮 ≤90 秒的短等待，避免客户端工具超时；建议循环 3-5 轮后再改为在对话中询问。",
+		ReadOnly:    true,
 	},
 	GetProjectConfig: ToolDefinition{
 		Name:        DocumentTools.GetProjectConfig.Name,

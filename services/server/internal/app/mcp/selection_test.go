@@ -137,6 +137,69 @@ func TestAskUserSelectionRejectsEmptyOptions(t *testing.T) {
 	}
 }
 
+func TestAwaitUserSelectionResolvesExistingCard(t *testing.T) {
+	adapter, publisher, projectID := newSelectionAdapter(t)
+	created, err := adapter.document.store.Selections.Create(projectID, serviceselection.CreateRequest{
+		Title:   "选择风格",
+		Options: []serviceselection.Option{{ID: "sweet", Label: "甜美粉彩"}},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	go decideWhenPending(t, adapter, projectID, serviceselection.DecisionRequest{OptionID: "sweet"})
+
+	output, err := adapter.AwaitUserSelection(context.Background(), projectID, mediamcp.AwaitUserSelectionInput{
+		SelectionID: created.ID,
+	})
+	if err != nil {
+		t.Fatalf("AwaitUserSelection() error = %v", err)
+	}
+	if output.Status != serviceselection.StatusSelected || output.OptionID != "sweet" {
+		t.Fatalf("output = %#v, want selected sweet", output)
+	}
+	if len(publisher.a2uiEvents()) != 0 {
+		t.Fatal("await must not publish a new A2UI card")
+	}
+}
+
+func TestAwaitUserSelectionReturnsDecidedImmediately(t *testing.T) {
+	adapter, _, projectID := newSelectionAdapter(t)
+	service := adapter.document.store.Selections
+	created, err := service.Create(projectID, serviceselection.CreateRequest{
+		Title:   "选择风格",
+		Options: []serviceselection.Option{{ID: "sweet", Label: "甜美粉彩"}},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := service.Decide(projectID, created.ID, serviceselection.DecisionRequest{Cancelled: true}); err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+
+	output, err := adapter.AwaitUserSelection(context.Background(), projectID, mediamcp.AwaitUserSelectionInput{
+		SelectionID: created.ID,
+	})
+	if err != nil {
+		t.Fatalf("AwaitUserSelection() error = %v", err)
+	}
+	if output.Status != serviceselection.StatusCancelled {
+		t.Fatalf("output = %#v, want cancelled without waiting", output)
+	}
+}
+
+func TestAwaitUserSelectionRejectsUnknownSelection(t *testing.T) {
+	adapter, _, projectID := newSelectionAdapter(t)
+	if _, err := adapter.AwaitUserSelection(context.Background(), projectID, mediamcp.AwaitUserSelectionInput{
+		SelectionID: "selection-missing",
+	}); err == nil {
+		t.Fatal("AwaitUserSelection() returned nil error for unknown selection")
+	}
+	if _, err := adapter.AwaitUserSelection(context.Background(), projectID, mediamcp.AwaitUserSelectionInput{}); err == nil {
+		t.Fatal("AwaitUserSelection() returned nil error for empty selectionId")
+	}
+}
+
 func TestAskUserSelectionCancelledByContext(t *testing.T) {
 	adapter, _, projectID := newSelectionAdapter(t)
 	ctx, cancel := context.WithCancel(context.Background())
