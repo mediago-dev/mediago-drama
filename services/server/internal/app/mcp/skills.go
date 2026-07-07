@@ -5,6 +5,7 @@ import (
 
 	appworkspace "github.com/mediago-dev/mediago-drama/services/server/internal/app/workspace"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	servicelicense "github.com/mediago-dev/mediago-drama/services/server/internal/service/license"
 	servicepromptpack "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 )
@@ -15,11 +16,12 @@ func newSkillRegistryForWorkspace(store *appworkspace.WorkspaceStateService) *se
 	}
 	settingsDBPath := store.SettingsDatabasePath()
 	repos, err := repository.OpenSettingsRepositories(settingsDBPath)
-	promptPack := servicepromptpack.NewServiceFromRepositoryWithPackFilesDir(
+	promptPack := servicepromptpack.NewServiceFromRepositoryWithPackFilesDirAndLicense(
 		repos.Packs,
 		repos.PromptLibrary,
 		err,
 		filepath.Join(filepath.Dir(settingsDBPath), "packs"),
+		servicelicense.NewDevProvider(),
 	)
 	return serviceskill.NewRegistryWithStore(promptPack)
 }

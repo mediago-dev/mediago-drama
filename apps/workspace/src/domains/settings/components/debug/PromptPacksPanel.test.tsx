@@ -126,6 +126,61 @@ describe("PromptPacksPanel", () => {
 
 		await waitFor(() => expect(importPromptPackFile).toHaveBeenCalledWith(file));
 	});
+
+	it("imports a selected mgpackpro file", async () => {
+		vi.mocked(importPromptPackFile).mockResolvedValue({
+			id: "com.example.pro",
+			name: "商业加密包",
+			version: "1.0.0",
+			source: "pro",
+			enabled: true,
+		});
+
+		renderPanel();
+		const input = screen.getByLabelText("导入提示词包文件");
+		const file = new File(["MGPK"], "mediago-pro-pack.mgpackpro", {
+			type: "application/octet-stream",
+		});
+		fireEvent.change(input, {
+			target: {
+				files: [file],
+			},
+		});
+
+		await waitFor(() => expect(importPromptPackFile).toHaveBeenCalledWith(file));
+	});
+
+	it("does not expose pro packs as mgpack exports", async () => {
+		vi.mocked(listPromptPacks).mockResolvedValue([
+			{
+				id: "builtin",
+				name: "默认包",
+				version: "1.0.0",
+				source: "default",
+				enabled: true,
+			},
+			{
+				id: "com.example.test",
+				name: "测试包",
+				version: "1.0.0",
+				source: "imported",
+				enabled: true,
+			},
+			{
+				id: "com.example.pro",
+				name: "商业加密包",
+				version: "1.0.0",
+				source: "pro",
+				enabled: false,
+			},
+		]);
+
+		renderPanel();
+		fireEvent.click(screen.getByRole("button", { name: /管理/ }));
+		await screen.findByText("商业加密包");
+
+		expect(screen.getAllByRole("button", { name: "导出提示词包" })).toHaveLength(2);
+	});
 });
 
 const renderPanel = () =>
