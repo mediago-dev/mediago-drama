@@ -1,6 +1,7 @@
 import type React from "react";
 import { useLocation } from "react-router-dom";
 import { AgentStateSync } from "@/domains/agent/components/AgentStateSync";
+import { AgentCompletionNotificationSync } from "@/domains/agent/components/AgentCompletionNotificationSync";
 import { AgentPanel } from "@/domains/agent/components/AgentPanel";
 import { AgentPermissionNotificationSync } from "@/domains/agent/components/AgentPermissionNotificationSync";
 import { DocumentStateSync } from "@/domains/documents/components/DocumentStateSync";
@@ -75,6 +76,10 @@ export const App: React.FC = () => {
 				routeSessionId={routeAgentSessionId}
 			/>
 			<AgentPermissionNotificationSync
+				isAgentSurfaceActive={isAgentSurfaceActive}
+				projectId={routeProjectId}
+			/>
+			<AgentCompletionNotificationSync
 				isAgentSurfaceActive={isAgentSurfaceActive}
 				projectId={routeProjectId}
 			/>
