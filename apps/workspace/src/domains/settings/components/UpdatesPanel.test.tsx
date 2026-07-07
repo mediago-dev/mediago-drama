@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UpdatesPanel } from "@/domains/settings/components/UpdatesPanel";
 import type { DesktopUpdateStatus, RendererUpdateStatus } from "@/shared/desktop/types";
 import {
+	applyRendererUpdate,
 	checkDesktopUpdate,
 	checkRendererUpdate,
 	downloadDesktopUpdate,
@@ -16,6 +17,7 @@ import {
 } from "@/shared/desktop/actions";
 
 vi.mock("@/shared/desktop/actions", () => ({
+	applyRendererUpdate: vi.fn(),
 	checkDesktopUpdate: vi.fn(),
 	checkRendererUpdate: vi.fn(),
 	downloadDesktopUpdate: vi.fn(),
@@ -238,6 +240,10 @@ describe("UpdatesPanel", () => {
 
 		await pushRendererStatus({ phase: "ready", currentRev: 3, targetRev: 4 });
 		expect(screen.getByText(/rev 4.*已就绪/)).toBeInTheDocument();
+
+		vi.mocked(applyRendererUpdate).mockResolvedValue({ ok: true });
+		fireEvent.click(screen.getByRole("button", { name: /立即刷新界面/ }));
+		await waitFor(() => expect(applyRendererUpdate).toHaveBeenCalled());
 
 		await pushRendererStatus({
 			phase: "requires-full-update",

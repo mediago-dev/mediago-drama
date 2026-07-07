@@ -173,6 +173,14 @@ export const checkRendererUpdate = async (): Promise<DesktopUpdateAck> => {
 	return (await api.checkRendererUpdate()) ?? missingBridgeAck;
 };
 
+export const applyRendererUpdate = async (): Promise<DesktopUpdateAck> => {
+	const api = rendererBridge();
+	if (!api || typeof api.applyRendererUpdate !== "function") {
+		return { ok: false, message: "当前运行环境不支持界面更新。" };
+	}
+	return (await api.applyRendererUpdate()) ?? missingBridgeAck;
+};
+
 export const markRendererHealthy = async (): Promise<void> => {
 	const api = rendererBridge();
 	if (!api || typeof api.markRendererHealthy !== "function") return;

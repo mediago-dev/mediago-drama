@@ -51,6 +51,7 @@ export interface MediagoDesktopAPI {
 	// older shell whose preload predates these methods — callers must runtime-guard.
 	getRendererUpdateCapability?(): Promise<RendererUpdateCapability>;
 	checkRendererUpdate?(): Promise<DesktopUpdateAck>;
+	applyRendererUpdate?(): Promise<DesktopUpdateAck>;
 	markRendererHealthy?(): Promise<void>;
 	onRendererUpdateStatus?(listener: (status: RendererUpdateStatus) => void): () => void;
 	startWindowDrag(): Promise<void>;
