@@ -25,3 +25,9 @@ type AskUserSelectionOutput struct {
 	OptionID    string `json:"optionId,omitempty"`
 	CustomText  string `json:"customText,omitempty"`
 }
+
+// AwaitUserSelectionInput continues waiting on an existing selection prompt.
+type AwaitUserSelectionInput struct {
+	SelectionID    string `json:"selectionId" jsonschema:"ask_user_selection 返回的 selectionId。"`
+	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"本轮阻塞等待秒数，clamp 到 [30,600]，默认 90。"`
+}

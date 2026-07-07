@@ -32,9 +32,12 @@ const (
 // Blocking-wait bounds. The caller-supplied timeout is clamped to this range;
 // DefaultTimeout applies when the caller gives no hint.
 const (
-	MinTimeout     = 30 * time.Second
-	MaxTimeout     = 10 * time.Minute
-	DefaultTimeout = 3 * time.Minute
+	MinTimeout = 30 * time.Second
+	MaxTimeout = 10 * time.Minute
+	// DefaultTimeout keeps one blocking wait under ACP client tool-call
+	// timeouts (codex kills MCP calls at ~120s); agents extend the wait by
+	// looping await_user_selection instead of blocking longer.
+	DefaultTimeout = 90 * time.Second
 	// RetrieveTTL is how long a pending selection stays claimable after
 	// creation. It is deliberately longer than MaxTimeout so a decision that
 	// arrives after the blocking wait returns can still be recorded and
