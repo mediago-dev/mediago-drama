@@ -115,7 +115,7 @@ func (store *Service) InstallData(ctx context.Context, fileName string, data []b
 	if bundle.Manifest.ID == DefaultPackID {
 		return Pack{}, fmt.Errorf("%w: default pack cannot be imported", ErrInvalidPack)
 	}
-	if manifestID != "" && strings.TrimSpace(manifestID) != "" && manifestID != bundle.Manifest.ID {
+	if manifestID != "" && manifestID != bundle.Manifest.ID {
 		return Pack{}, fmt.Errorf("%w: manifest id mismatch", ErrInvalidPack)
 	}
 

@@ -9,22 +9,30 @@ import (
 )
 
 const (
+	// defaultProEntitlement is the fallback entitlement for pro pack imports.
+	// Entitlement ids are governed by contracts/license/v1/features.yaml.
 	defaultProEntitlement = "pack.import.pro"
 
-	licenseEntitlementsEnv = "MEDIAGO_LICENSE_ENTITLEMENTS"
-	licensePackKeysEnv     = "MEDIAGO_LICENSE_PACK_KEYS"
+	licenseEntitlementsEnv  = "MEDIAGO_LICENSE_ENTITLEMENTS"
+	licensePackKeysEnv      = "MEDIAGO_LICENSE_PACK_KEYS"
+	licensePublisherKeysEnv = "MEDIAGO_LICENSE_PUBLISHER_KEYS"
+
+	packKeyLength      = 32
+	publisherKeyLength = 32
 )
 
 var _ Service = (*DevProvider)(nil)
 
-// DevProvider reads entitlement and decryption key config from environment.
+// DevProvider reads entitlement and key config from environment.
 //
 // Format example:
 // - MEDIAGO_LICENSE_ENTITLEMENTS=pack.import.pro,pack.premium.use
 // - MEDIAGO_LICENSE_PACK_KEYS=default=aGVsbG8=,pack-premium-z=MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=
+// - MEDIAGO_LICENSE_PUBLISHER_KEYS=mediago-2026=BASE64_ED25519_PUBLIC_KEY
 type DevProvider struct {
-	entitlements map[string]struct{}
-	keys         map[string][]byte
+	entitlements  map[string]struct{}
+	keys          map[string][]byte
+	publisherKeys map[string][]byte
 }
 
 // NewDevProvider builds a provider from environment variables.
@@ -38,8 +46,9 @@ func NewDevProviderFromLookup(lookup func(string) string) *DevProvider {
 		lookup = func(string) string { return "" }
 	}
 	return &DevProvider{
-		entitlements: parseEntitlements(lookup(licenseEntitlementsEnv)),
-		keys:         parsePackKeys(lookup(licensePackKeysEnv)),
+		entitlements:  parseEntitlements(lookup(licenseEntitlementsEnv)),
+		keys:          parseKeyList(lookup(licensePackKeysEnv), packKeyLength),
+		publisherKeys: parseKeyList(lookup(licensePublisherKeysEnv), publisherKeyLength),
 	}
 }
 
@@ -77,16 +86,18 @@ func (provider *DevProvider) ResolvePackKey(_ context.Context, keyID string) ([]
 	return nil, fmt.Errorf("%w: %q", ErrPackKeyNotFound, keyID)
 }
 
-// HasEntitlements returns entitlement keys for tests.
-func (provider *DevProvider) HasEntitlements() map[string]struct{} {
+// ResolvePublisherKeys returns the trusted publisher Ed25519 public keys.
+func (provider *DevProvider) ResolvePublisherKeys(_ context.Context) (map[string][]byte, error) {
 	if provider == nil {
-		return map[string]struct{}{}
+		return nil, ErrLicenseConfigInvalid
 	}
-	copy := make(map[string]struct{}, len(provider.entitlements))
-	for key := range provider.entitlements {
-		copy[key] = struct{}{}
+	keys := make(map[string][]byte, len(provider.publisherKeys))
+	for keyID, key := range provider.publisherKeys {
+		result := make([]byte, len(key))
+		copy(result, key)
+		keys[keyID] = result
 	}
-	return copy
+	return keys, nil
 }
 
 func parseEntitlements(raw string) map[string]struct{} {
@@ -101,7 +112,7 @@ func parseEntitlements(raw string) map[string]struct{} {
 	return entitlements
 }
 
-func parsePackKeys(raw string) map[string][]byte {
+func parseKeyList(raw string, keyLength int) map[string][]byte {
 	keys := make(map[string][]byte)
 	for _, item := range strings.Split(raw, ",") {
 		part := strings.TrimSpace(item)
@@ -118,7 +129,7 @@ func parsePackKeys(raw string) map[string][]byte {
 			continue
 		}
 		value, err := base64.StdEncoding.DecodeString(encoded)
-		if err != nil || len(value) != 32 {
+		if err != nil || len(value) != keyLength {
 			continue
 		}
 		keys[keyID] = value
