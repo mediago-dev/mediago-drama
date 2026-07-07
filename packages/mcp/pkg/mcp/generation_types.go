@@ -13,6 +13,7 @@ type GenerationModelsOutput struct {
 	Models        []coregeneration.ModelSpec    `json:"models"`
 	Providers     []coregeneration.ProviderInfo `json:"providers"`
 	VoicePreviews []GenerationVoicePreviewAsset `json:"voicePreviews,omitempty"`
+	StylePresets  []GenerationStylePreset       `json:"stylePresets,omitempty"`
 }
 
 // GenerationVoicePreviewAsset is one built-in local voice preview.
@@ -21,6 +22,29 @@ type GenerationVoicePreviewAsset struct {
 	VoiceID  string `json:"voiceId"`
 	URL      string `json:"url"`
 	MIMEType string `json:"mimeType"`
+}
+
+// GenerationStylePreset is one built-in visual style recommendation: append
+// PromptSuffix to the user prompt and merge Params into the generate request.
+// PreviewURL serves the bundled preview image, e.g. for ask_user_selection
+// option imageUrl values.
+type GenerationStylePreset struct {
+	ID           string         `json:"id"`
+	Title        string         `json:"title"`
+	Description  string         `json:"description,omitempty"`
+	Kinds        []string       `json:"kinds"`
+	RouteID      string         `json:"routeId,omitempty"`
+	PromptSuffix string         `json:"promptSuffix"`
+	Params       map[string]any `json:"params,omitempty"`
+	PreviewURL   string         `json:"previewUrl,omitempty"`
+	MIMEType     string         `json:"mimeType,omitempty"`
+}
+
+// GenerationSelectAssetInput marks one generated asset slot as the picked result.
+type GenerationSelectAssetInput struct {
+	TaskID    string `json:"taskId" jsonschema:"生成任务 ID。"`
+	SlotIndex int    `json:"slotIndex" jsonschema:"资产槽位序号，取 get_generation_task 返回资产的 slotIndex。"`
+	Title     string `json:"title,omitempty" jsonschema:"可选：同时更新资产标题。"`
 }
 
 // GenerationMessageInput creates a generation request.

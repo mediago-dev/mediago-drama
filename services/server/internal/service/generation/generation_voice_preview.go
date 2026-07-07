@@ -65,3 +65,16 @@ func (workflow *GenerationService) localVoicePreviewAsset(routeID string, voiceI
 func (workflow *GenerationService) GenerationVoicePreviewContent(routeID string, voiceID string) (GenerationVoicePreviewAsset, []byte, bool, error) {
 	return workflow.voicePreviews.Content(routeID, voiceID)
 }
+
+func (workflow *GenerationService) listStylePresets() []GenerationStylePreset {
+	presets, err := workflow.stylePresets.List()
+	if err != nil {
+		return nil
+	}
+	return presets
+}
+
+// GenerationStylePreviewContent returns a bundled style preview image for HTTP serving.
+func (workflow *GenerationService) GenerationStylePreviewContent(presetID string) (GenerationStylePreset, []byte, bool, error) {
+	return workflow.stylePresets.PreviewContent(presetID)
+}

@@ -71,6 +71,7 @@ func TestGenerationServerRegistersGenerationTools(t *testing.T) {
 		"list_generation_tasks",
 		"retry_generation_task",
 		"poll_generation_task",
+		"select_generation_asset",
 	)
 }
 
@@ -261,4 +262,8 @@ func (testDeps) RetryGenerationTask(context.Context, string, mediamcp.Generation
 
 func (testDeps) PollGenerationTask(context.Context, string, mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error) {
 	return mediamcp.GenerationMessageOutput{}, nil
+}
+
+func (testDeps) SelectGenerationAsset(context.Context, string, mediamcp.GenerationSelectAssetInput) (mediamcp.GenerationTaskRecord, error) {
+	return mediamcp.GenerationTaskRecord{}, nil
 }

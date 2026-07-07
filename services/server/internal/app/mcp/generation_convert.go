@@ -17,6 +17,20 @@ func generationModelsOutputFromService(input servicegeneration.GenerationModelsR
 			MIMEType: preview.MIMEType,
 		})
 	}
+	presets := make([]mediamcp.GenerationStylePreset, 0, len(input.StylePresets))
+	for _, preset := range input.StylePresets {
+		presets = append(presets, mediamcp.GenerationStylePreset{
+			ID:           preset.ID,
+			Title:        preset.Title,
+			Description:  preset.Description,
+			Kinds:        append([]string(nil), preset.Kinds...),
+			RouteID:      preset.RouteID,
+			PromptSuffix: preset.PromptSuffix,
+			Params:       preset.Params,
+			PreviewURL:   preset.PreviewURL,
+			MIMEType:     preset.MIMEType,
+		})
+	}
 	return mediamcp.GenerationModelsOutput{
 		Families:      input.Families,
 		Versions:      input.Versions,
@@ -24,6 +38,7 @@ func generationModelsOutputFromService(input servicegeneration.GenerationModelsR
 		Models:        input.Models,
 		Providers:     input.Providers,
 		VoicePreviews: previews,
+		StylePresets:  presets,
 	}
 }
 

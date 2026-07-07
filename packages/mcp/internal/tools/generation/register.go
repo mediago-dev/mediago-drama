@@ -20,6 +20,7 @@ type Dispatcher interface {
 	ListGenerationTasks(ctx context.Context, projectID string, input mediamcp.GenerationTaskListInput) (mediamcp.GenerationTasksOutput, error)
 	RetryGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error)
 	PollGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error)
+	SelectGenerationAsset(ctx context.Context, projectID string, input mediamcp.GenerationSelectAssetInput) (mediamcp.GenerationTaskRecord, error)
 }
 
 // Register installs generation tools on the MCP server.
@@ -42,6 +43,9 @@ func Register(server *mcpsdk.Server, dispatcher Dispatcher, options Options, clo
 	})
 	add[mediamcp.GenerationTaskInput](server, dispatcher, options.ProjectID, closedWorld, logToolRegistered, mediamcp.GenerationTools.PollTask, func(ctx context.Context, dispatcher Dispatcher, projectID string, input mediamcp.GenerationTaskInput) (any, error) {
 		return dispatcher.PollGenerationTask(ctx, projectID, input)
+	})
+	add[mediamcp.GenerationSelectAssetInput](server, dispatcher, options.ProjectID, closedWorld, logToolRegistered, mediamcp.GenerationTools.SelectAsset, func(ctx context.Context, dispatcher Dispatcher, projectID string, input mediamcp.GenerationSelectAssetInput) (any, error) {
+		return dispatcher.SelectGenerationAsset(ctx, projectID, input)
 	})
 }
 
