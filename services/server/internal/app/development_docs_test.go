@@ -160,6 +160,8 @@ func isMCPAnyRoute(path string, method string) bool {
 	return path == "/mcp" ||
 		path == "/api/internal/agent/document-mcp" ||
 		path == "/api/v1/internal/agent/document-mcp" ||
+		path == "/api/internal/agent/generation-mcp" ||
+		path == "/api/v1/internal/agent/generation-mcp" ||
 		strings.HasPrefix(path, "/api/v1/internal/projects/")
 }
 

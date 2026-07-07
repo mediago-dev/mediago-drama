@@ -14,6 +14,9 @@ import (
 
 const MediaGoDramaMCPServerName = mediamcp.ServerName
 
+// MediaGoDramaGenerationMCPServerName is the ACP server name for generation tools.
+const MediaGoDramaGenerationMCPServerName = mediamcp.GenerationServerName
+
 // DocumentMCPServerResolution describes how an ACP run should attach MediaGo Drama MCP tools.
 type DocumentMCPServerResolution struct {
 	Servers        []acp.McpServer
@@ -24,6 +27,12 @@ type DocumentMCPServerResolution struct {
 	Args           []string
 	DisabledReason string
 	DisabledDetail string
+	// Generation* fields describe the additive generation MCP mount, if any. The
+	// generation server is best-effort: when it cannot mount, the document server
+	// still resolves and these fields stay empty.
+	GenerationTransport  string
+	GenerationURL        string
+	GenerationExecutable string
 }
 
 // DocumentMCPServers returns the document MCP servers for one project.
@@ -63,20 +72,32 @@ func ResolveDocumentMCPServersForRun(workspaceDir string, request AgentRunReques
 	agentTag := FirstNonEmpty(request.AgentTag, agent.DefaultAgentName)
 	if request.BridgeToken != "" {
 		if httpURL, ok := documentMCPHTTPURL(request.BridgeURL, projectID, request, agentTag); ok {
+			bridgeHeaders := []acp.HttpHeader{
+				{Name: "Authorization", Value: "Bearer " + request.BridgeToken},
+				{Name: mediamcp.BridgeURLHeader, Value: request.BridgeURL},
+				{Name: mediamcp.BridgeTokenHeader, Value: request.BridgeToken},
+			}
 			resolution.Transport = "http"
 			resolution.URL = httpURL
 			resolution.Servers = []acp.McpServer{
 				{
 					Http: &acp.McpServerHttpInline{
-						Name: MediaGoDramaMCPServerName,
-						Url:  httpURL,
-						Headers: []acp.HttpHeader{
-							{Name: "Authorization", Value: "Bearer " + request.BridgeToken},
-							{Name: mediamcp.BridgeURLHeader, Value: request.BridgeURL},
-							{Name: mediamcp.BridgeTokenHeader, Value: request.BridgeToken},
-						},
+						Name:    MediaGoDramaMCPServerName,
+						Url:     httpURL,
+						Headers: bridgeHeaders,
 					},
 				},
+			}
+			if generationURL, generationOK := generationMCPHTTPURL(request.BridgeURL, projectID, request, agentTag); generationOK {
+				resolution.GenerationTransport = "http"
+				resolution.GenerationURL = generationURL
+				resolution.Servers = append(resolution.Servers, acp.McpServer{
+					Http: &acp.McpServerHttpInline{
+						Name:    MediaGoDramaGenerationMCPServerName,
+						Url:     generationURL,
+						Headers: bridgeHeaders,
+					},
+				})
 			}
 			acpLog().Debug(
 				"document MCP server configured",
@@ -84,6 +105,8 @@ func ResolveDocumentMCPServersForRun(workspaceDir string, request AgentRunReques
 				"server_name", MediaGoDramaMCPServerName,
 				"transport", resolution.Transport,
 				"url", httpURL,
+				"generation_transport", resolution.GenerationTransport,
+				"generation_url", resolution.GenerationURL,
 				"has_bridge", request.BridgeURL != "" && request.BridgeToken != "",
 			)
 			return resolution
@@ -134,6 +157,25 @@ func ResolveDocumentMCPServersForRun(workspaceDir string, request AgentRunReques
 			},
 		},
 	}
+	if generationExecutable, generationErr := generationMCPExecutable(); generationErr == nil && strings.TrimSpace(generationExecutable) != "" {
+		generationArgs := generationMCPStdioArgs(request, projectID)
+		resolution.GenerationTransport = "stdio"
+		resolution.GenerationExecutable = generationExecutable
+		resolution.Servers = append(resolution.Servers, acp.McpServer{
+			Stdio: &acp.McpServerStdio{
+				Name:    MediaGoDramaGenerationMCPServerName,
+				Command: generationExecutable,
+				Args:    generationArgs,
+				Env:     env,
+			},
+		})
+	} else if generationErr != nil {
+		acpLog().Warn(
+			"generation MCP server unavailable; document tools still mounted",
+			"project_id", DiagnosticProjectID(projectID),
+			"error", generationErr,
+		)
+	}
 	acpLog().Debug(
 		"document MCP server configured",
 		"project_id", projectID,
@@ -141,6 +183,8 @@ func ResolveDocumentMCPServersForRun(workspaceDir string, request AgentRunReques
 		"transport", resolution.Transport,
 		"command", executable,
 		"args", strings.Join(args, " "),
+		"generation_transport", resolution.GenerationTransport,
+		"generation_command", resolution.GenerationExecutable,
 		"has_bridge", request.BridgeURL != "" && request.BridgeToken != "",
 	)
 	return resolution
@@ -149,6 +193,13 @@ func ResolveDocumentMCPServersForRun(workspaceDir string, request AgentRunReques
 var processExecutablePath = os.Executable
 
 func documentMCPExecutable() (string, error) {
+	return mcpExecutable("mediago-document-mcp")
+}
+
+// mcpExecutable resolves the path to a sibling MCP binary (document or
+// generation) by probing the running executable's directory and workspace
+// ancestor bin/ directories.
+func mcpExecutable(binaryName string) (string, error) {
 	executable, err := processExecutablePath()
 	if err != nil {
 		return "", err
@@ -158,14 +209,14 @@ func documentMCPExecutable() (string, error) {
 		return "", nil
 	}
 	candidates := []string{}
-	if filepath.Base(executable) == "mediago-document-mcp" {
+	if filepath.Base(executable) == binaryName {
 		candidates = append(candidates, executable)
 	} else {
-		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "mediago-document-mcp"))
+		candidates = append(candidates, filepath.Join(filepath.Dir(executable), binaryName))
 	}
 	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
 		for _, dir := range ancestorDirs(cwd, 8) {
-			candidates = append(candidates, filepath.Join(dir, "bin", "mediago-document-mcp"))
+			candidates = append(candidates, filepath.Join(dir, "bin", binaryName))
 		}
 	}
 
@@ -231,6 +282,31 @@ func documentMCPHTTPURL(bridgeURL string, projectID string, request AgentRunRequ
 		ActiveDocumentID: activeAgentDocumentID(request),
 		SelectionText:    request.SelectionText,
 	})
+}
+
+func generationMCPHTTPURL(bridgeURL string, projectID string, request AgentRunRequest, agentTag string) (string, bool) {
+	return mediamcp.GenerationHTTPURL(mediamcp.GenerationHTTPURLConfig{
+		BridgeURL: strings.TrimSpace(bridgeURL),
+		ProjectID: projectID,
+		SessionID: request.SessionID,
+		RunID:     request.RunID,
+		AgentTag:  agentTag,
+	})
+}
+
+// generationMCPStdioArgs builds the CLI args for the generation MCP stdio binary.
+// The binary scopes by --project and loads server config the same way the
+// document MCP binary does, so it reuses the document MCP config path.
+func generationMCPStdioArgs(request AgentRunRequest, projectID string) []string {
+	args := []string{}
+	if configPath := strings.TrimSpace(request.DocumentMCPConfigPath); configPath != "" {
+		args = append(args, "--config", configPath)
+	}
+	return append(args, "--project", projectID)
+}
+
+func generationMCPExecutable() (string, error) {
+	return mcpExecutable("mediago-generation-mcp")
 }
 
 // DocumentMCPDisabledActivityMessage returns the activity text for a disabled MCP mount.

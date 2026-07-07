@@ -49,6 +49,40 @@ func DocumentHTTPURL(config DocumentHTTPURLConfig) (string, bool) {
 	return parsed.String(), true
 }
 
+// GenerationHTTPURLConfig describes a generation MCP streamable HTTP URL.
+type GenerationHTTPURLConfig struct {
+	BridgeURL string
+	ProjectID string
+	SessionID string
+	RunID     string
+	AgentTag  string
+}
+
+// GenerationHTTPURL builds the project-scoped generation MCP streamable HTTP URL.
+// SessionID/RunID/AgentTag are attached for server-side diagnostics only; the
+// generation MCP server itself is stateless and scopes solely by projectId.
+func GenerationHTTPURL(config GenerationHTTPURLConfig) (string, bool) {
+	parsed, err := url.Parse(strings.TrimSpace(config.BridgeURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", false
+	}
+	parsed.Path = GenerationHTTPPath
+	parsed.RawPath = ""
+	values := parsed.Query()
+	values.Set("projectId", config.ProjectID)
+	if config.SessionID != "" {
+		values.Set("sessionId", config.SessionID)
+	}
+	if config.RunID != "" {
+		values.Set("runId", config.RunID)
+	}
+	if config.AgentTag != "" {
+		values.Set("agentTag", config.AgentTag)
+	}
+	parsed.RawQuery = values.Encode()
+	return parsed.String(), true
+}
+
 // NewStatelessHTTPHandler creates the shared MCP streamable HTTP handler.
 func NewStatelessHTTPHandler(factory func(*http.Request) *mcpsdk.Server, logger *slog.Logger) http.Handler {
 	if logger == nil {
