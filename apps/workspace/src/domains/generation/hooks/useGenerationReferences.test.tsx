@@ -185,4 +185,29 @@ describe("useGenerationReferences", () => {
 		expect(result.current.selectedReferenceAssetIds).toEqual(["reference-a"]);
 		expect(setError).toHaveBeenCalledWith("当前模型最多支持 1 张参考图。");
 	});
+
+	it("counts extra reference URLs against the selected route limit", () => {
+		const referenceImage = mediaAsset({ id: "reference-a" });
+		const setError = vi.fn();
+		const { result } = renderHook(() =>
+			useGenerationReferences({
+				extraReferenceAssetIds: [],
+				extraReferenceUrls: ["https://example.test/reference.png"],
+				mediaAssetProjectId: "project-a",
+				mediaAssets: [referenceImage],
+				mutateMediaAssets: vi.fn(),
+				prompt: "生成图片",
+				selectedRoute: { ...imageRoute, maxReferenceUrls: 1 },
+				setError,
+			}),
+		);
+
+		act(() => {
+			result.current.selectReferenceAsset(referenceImage);
+		});
+
+		expect(result.current.referenceCount).toBe(1);
+		expect(result.current.selectedReferenceAssetIds).toEqual([]);
+		expect(setError).toHaveBeenCalledWith("当前模型最多支持 1 张参考图。");
+	});
 });

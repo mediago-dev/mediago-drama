@@ -30,6 +30,7 @@ export interface ReferenceSelectionDialogProps {
 	onToggleReference: (asset: MediaAsset) => void;
 	onUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
 	open: boolean;
+	referenceCount?: number;
 	references: MediaAsset[];
 	requiresReference: boolean;
 	selectableKinds: Set<MediaAsset["kind"]>;
@@ -69,6 +70,7 @@ interface ReferenceSelectionDialogController {
 	open: boolean;
 	optionCounts: Record<ReferenceKindFilter, number>;
 	options: GeneratedReferenceOption[];
+	referenceCount: number;
 	references: MediaAsset[];
 	requiresReference: boolean;
 	selectableKinds: Set<MediaAsset["kind"]>;
@@ -102,6 +104,7 @@ const useReferenceSelectionDialogController = ({
 	onToggleShortcutReference,
 	onUpload,
 	open,
+	referenceCount,
 	references,
 	requiresReference,
 	selectableKinds,
@@ -137,7 +140,8 @@ const useReferenceSelectionDialogController = ({
 		() => new Set(selectedShortcutAssetIds),
 		[selectedShortcutAssetIds],
 	);
-	const selectionLimitReached = Boolean(maxReferences && references.length >= maxReferences);
+	const effectiveReferenceCount = referenceCount ?? references.length;
+	const selectionLimitReached = Boolean(maxReferences && effectiveReferenceCount >= maxReferences);
 	const visibleShortcutGroups = useMemo(
 		() =>
 			shortcutGroups
@@ -178,6 +182,7 @@ const useReferenceSelectionDialogController = ({
 		open,
 		optionCounts,
 		options,
+		referenceCount: effectiveReferenceCount,
 		references,
 		requiresReference,
 		selectableKinds,
@@ -229,7 +234,7 @@ const ReferenceSelectionDialogView: React.FC<{
 						<span>上传</span>
 					</Button>
 					<p className="shrink-0 text-xs text-muted-foreground">
-						已选 {controller.references.length}
+						已选 {controller.referenceCount}
 						{controller.maxReferences ? ` / ${controller.maxReferences}` : ""} 个
 					</p>
 				</>

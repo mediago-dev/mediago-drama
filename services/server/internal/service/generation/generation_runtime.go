@@ -185,10 +185,6 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	projectID := payload.ProjectID
 	workflow.appendStudioUserTranscript(conversation, payload)
 
-	provider, err := workflow.newGenerationProvider(route)
-	if err != nil {
-		return generationMessageResponse{}, http.StatusServiceUnavailable, err
-	}
 	referenceURLs, err := workflow.resolveGenerationReferences(route, payload)
 	if err != nil {
 		return generationMessageResponse{}, http.StatusBadRequest, err
@@ -196,6 +192,13 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 
 	generationRequest := GenerationRequestFromMessage(payload, route, referenceURLs)
 	generationRequest.Prompt = workflow.providerPromptForGeneration(route, payload)
+	if err := coregeneration.ValidateRequestForRoute(generationRequest, route); err != nil {
+		return generationMessageResponse{}, http.StatusBadRequest, err
+	}
+	provider, err := workflow.newGenerationProvider(route)
+	if err != nil {
+		return generationMessageResponse{}, http.StatusServiceUnavailable, err
+	}
 	if ShouldSubmitGenerationInBackground(route) {
 		messageResponse := SubmittingGenerationResponse("", coregeneration.Kind(payload.Kind))
 		shouldSubmit := true

@@ -122,11 +122,6 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		return generationMessageResponse{}, http.StatusServiceUnavailable, err
 	}
 
-	provider, err := workflow.newGenerationProvider(route)
-	if err != nil {
-		_ = workflow.generationTasks.RecordAttempt(task.ID, "retry", task.Status, "重试所需供应商未配置。", err)
-		return generationMessageResponse{}, http.StatusServiceUnavailable, err
-	}
 	referenceURLs, err := workflow.resolveGenerationReferences(route, payload)
 	if err != nil {
 		return generationMessageResponse{}, http.StatusBadRequest, err
@@ -134,6 +129,14 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 
 	generationRequest := GenerationRequestFromMessage(payload, route, referenceURLs)
 	generationRequest.Prompt = workflow.providerPromptForGeneration(route, payload)
+	if err := coregeneration.ValidateRequestForRoute(generationRequest, route); err != nil {
+		return generationMessageResponse{}, http.StatusBadRequest, err
+	}
+	provider, err := workflow.newGenerationProvider(route)
+	if err != nil {
+		_ = workflow.generationTasks.RecordAttempt(task.ID, "retry", task.Status, "重试所需供应商未配置。", err)
+		return generationMessageResponse{}, http.StatusServiceUnavailable, err
+	}
 	if ShouldSubmitGenerationInBackground(route) {
 		messageResponse := SubmittingGenerationResponse(task.ID, coregeneration.Kind(payload.Kind))
 		shouldSubmit := true
@@ -257,6 +260,9 @@ func (workflow *GenerationService) generationRequestForTask(
 	}
 	request := GenerationRequestFromMessage(payload, route, referenceURLs)
 	request.Prompt = workflow.providerPromptForGeneration(route, payload)
+	if err := coregeneration.ValidateRequestForRoute(request, route); err != nil {
+		return coregeneration.Request{}, err
+	}
 	return request, nil
 }
 

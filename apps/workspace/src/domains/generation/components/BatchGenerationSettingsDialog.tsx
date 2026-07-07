@@ -829,6 +829,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 				maxReferences={maxBatchReferenceUrls}
 				mediaAssets={imageReferenceAssets}
 				open={referenceDialogOpen}
+				referenceCount={supportsBatchReferenceImages ? ws.referenceCount : 0}
 				references={selectedBatchReferenceAssets}
 				requiresReference={false}
 				selectableKinds={imageReferenceKinds}

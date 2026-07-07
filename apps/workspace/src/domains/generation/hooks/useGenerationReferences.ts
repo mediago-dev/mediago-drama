@@ -61,7 +61,44 @@ export const useGenerationReferences = ({
 		() => uniqueStrings(resolvedExtraReferenceUrls.map((url) => url.trim()).filter(Boolean)),
 		[resolvedExtraReferenceUrls],
 	);
-	const referenceCount = effectiveReferenceAssetIds.length + effectiveReferenceUrls.length;
+	const referenceCountForAssetIds = useCallback(
+		(assetIds: string[]) =>
+			uniqueStrings([...assetIds, ...resolvedExtraReferenceAssetIds]).length +
+			effectiveReferenceUrls.length,
+		[effectiveReferenceUrls, resolvedExtraReferenceAssetIds],
+	);
+	const referenceCount = referenceCountForAssetIds(selectedReferenceAssetIds);
+	const trimReferenceAssetIdsToLimit = useCallback(
+		(assetIds: string[]) => {
+			if (!maxReferenceUrls) return assetIds;
+
+			const next: string[] = [];
+			for (const assetId of assetIds) {
+				const candidate = [...next, assetId];
+				if (referenceCountForAssetIds(candidate) <= maxReferenceUrls) {
+					next.push(assetId);
+				}
+			}
+			return next;
+		},
+		[maxReferenceUrls, referenceCountForAssetIds],
+	);
+	const referenceLimitMessage = useCallback(
+		() => `当前模型最多支持 ${maxReferenceUrls} 张参考图。`,
+		[maxReferenceUrls],
+	);
+	const addReferenceAssetIdWithinLimit = useCallback(
+		(current: string[], assetId: string) => {
+			if (current.includes(assetId)) return current;
+			const next = [...current, assetId];
+			if (maxReferenceUrls && referenceCountForAssetIds(next) > maxReferenceUrls) {
+				setError(referenceLimitMessage());
+				return current;
+			}
+			return next;
+		},
+		[maxReferenceUrls, referenceCountForAssetIds, referenceLimitMessage, setError],
+	);
 
 	useEffect(() => {
 		if (mediaAssets.length === 0) {
@@ -75,10 +112,10 @@ export const useGenerationReferences = ({
 				.map((asset) => asset.id),
 		);
 		setSelectedReferenceAssetIds((current) => {
-			const next = current.filter((id) => validIDs.has(id)).slice(0, maxReferenceUrls);
+			const next = trimReferenceAssetIdsToLimit(current.filter((id) => validIDs.has(id)));
 			return sameStringList(current, next) ? current : next;
 		});
-	}, [maxReferenceUrls, mediaAssets, selectableReferenceKinds, selectedRoute]);
+	}, [mediaAssets, selectableReferenceKinds, selectedRoute, trimReferenceAssetIdsToLimit]);
 
 	const removeReferenceAsset = useCallback((assetId: string) => {
 		setSelectedReferenceAssetIds((current) => current.filter((id) => id !== assetId));
@@ -88,16 +125,9 @@ export const useGenerationReferences = ({
 		(asset: MediaAsset) => {
 			if (!canUseAssetAsReference(asset, selectedRoute, selectableReferenceKinds)) return;
 
-			setSelectedReferenceAssetIds((current) => {
-				if (current.includes(asset.id)) return current;
-				if (maxReferenceUrls && current.length >= maxReferenceUrls) {
-					setError(`当前模型最多支持 ${maxReferenceUrls} 张参考图。`);
-					return current;
-				}
-				return [...current, asset.id];
-			});
+			setSelectedReferenceAssetIds((current) => addReferenceAssetIdWithinLimit(current, asset.id));
 		},
-		[maxReferenceUrls, selectableReferenceKinds, selectedRoute, setError],
+		[addReferenceAssetIdWithinLimit, selectableReferenceKinds, selectedRoute],
 	);
 
 	const toggleReferenceAsset = useCallback(
@@ -106,14 +136,10 @@ export const useGenerationReferences = ({
 
 			setSelectedReferenceAssetIds((current) => {
 				if (current.includes(asset.id)) return current.filter((id) => id !== asset.id);
-				if (maxReferenceUrls && current.length >= maxReferenceUrls) {
-					setError(`当前模型最多支持 ${maxReferenceUrls} 张参考图。`);
-					return current;
-				}
-				return [...current, asset.id];
+				return addReferenceAssetIdWithinLimit(current, asset.id);
 			});
 		},
-		[maxReferenceUrls, selectableReferenceKinds, selectedRoute, setError],
+		[addReferenceAssetIdWithinLimit, selectableReferenceKinds, selectedRoute],
 	);
 
 	const uploadReferenceAsset = useCallback(
@@ -128,14 +154,9 @@ export const useGenerationReferences = ({
 				const asset = await uploadMediaAsset(file, mediaAssetProjectId);
 				await mutateMediaAssets();
 				if (canUseAssetAsReference(asset, selectedRoute, selectableReferenceKinds)) {
-					setSelectedReferenceAssetIds((current) => {
-						if (current.includes(asset.id)) return current;
-						if (maxReferenceUrls && current.length >= maxReferenceUrls) {
-							setError(`当前模型最多支持 ${maxReferenceUrls} 张参考图。`);
-							return current;
-						}
-						return [...current, asset.id];
-					});
+					setSelectedReferenceAssetIds((current) =>
+						addReferenceAssetIdWithinLimit(current, asset.id),
+					);
 				}
 			} catch (err) {
 				const message = err instanceof Error ? err.message : "素材上传失败。";
@@ -145,7 +166,7 @@ export const useGenerationReferences = ({
 			}
 		},
 		[
-			maxReferenceUrls,
+			addReferenceAssetIdWithinLimit,
 			mediaAssetProjectId,
 			mutateMediaAssets,
 			selectableReferenceKinds,
