@@ -34,11 +34,23 @@ import {
 } from "./renderer-store.js";
 import { rendererDistDir } from "./paths.js";
 
+// Local test mode — OFF unless BOTH env vars are set, so production is never affected.
+// Point MEDIAGO_HOT_UPDATE_TEST_URL at a local manifest (http://127.0.0.1 allowed only
+// here) and MEDIAGO_HOT_UPDATE_TEST_PUBKEY at the matching public key to exercise the
+// full check → download → apply loop offline. See scripts/hot-update-local-test.ts.
+const testManifestUrl = process.env.MEDIAGO_HOT_UPDATE_TEST_URL?.trim() || "";
+const testPublicKey = process.env.MEDIAGO_HOT_UPDATE_TEST_PUBKEY?.trim() || "";
+const isTestMode = testManifestUrl.length > 0 && testPublicKey.length > 0;
+
+const effectiveManifestUrl = isTestMode ? testManifestUrl : rendererManifestUrl;
+const effectivePublicKey = isTestMode ? testPublicKey : rendererUpdatePublicKey;
+const effectiveEnabled = isTestMode || hotUpdateEnabled;
+
 const isHotUpdateActive = () =>
-	hotUpdateEnabled &&
+	effectiveEnabled &&
 	app.isPackaged &&
 	!process.env.ELECTRON_RENDERER_URL &&
-	rendererUpdatePublicKey.length > 0;
+	effectivePublicKey.length > 0;
 
 /**
  * Decide which renderer bundle this launch should load. Called once at startup by
@@ -236,7 +248,7 @@ export const registerRendererHotUpdater = ({ getWindow, active }: HotUpdaterDeps
 };
 
 const fetchSignedManifest = async (): Promise<RendererUpdateManifestPayload> => {
-	const response = await fetch(rendererManifestUrl, {
+	const response = await fetch(effectiveManifestUrl, {
 		signal: AbortSignal.timeout(manifestFetchTimeoutMs),
 		cache: "no-store",
 	});
@@ -250,7 +262,7 @@ const fetchSignedManifest = async (): Promise<RendererUpdateManifestPayload> => 
 
 	const payloadBytes = Buffer.from(envelope.payloadB64, "base64");
 	const publicKey = createPublicKey({
-		key: Buffer.from(rendererUpdatePublicKey, "base64"),
+		key: Buffer.from(effectivePublicKey, "base64"),
 		format: "der",
 		type: "spki",
 	});
@@ -265,7 +277,8 @@ const fetchSignedManifest = async (): Promise<RendererUpdateManifestPayload> => 
 	}
 
 	const payload: unknown = JSON.parse(payloadBytes.toString("utf8"));
-	if (!isValidManifestPayload(payload)) {
+	// Only test mode (localhost) may relax the https-only rule on the bundle URL.
+	if (!isValidManifestPayload(payload, isTestMode)) {
 		throw new Error("更新清单内容无效。");
 	}
 	return payload;

@@ -115,8 +115,22 @@ export const isSafeZipEntryPath = (entryPath: string): boolean => {
 	return segments.every((segment) => segment !== "..");
 };
 
-/** Validate that a parsed manifest payload has the expected shape and sane values. */
-export const isValidManifestPayload = (value: unknown): value is RendererUpdateManifestPayload => {
+/** Bundle URL must be https, except localhost http when explicitly allowed (test mode). */
+const isAcceptableBundleUrl = (url: string, allowInsecureUrl: boolean): boolean => {
+	if (url.startsWith("https://")) return true;
+	if (!allowInsecureUrl) return false;
+	return /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(url);
+};
+
+/**
+ * Validate that a parsed manifest payload has the expected shape and sane values.
+ * allowInsecureUrl loosens the https-only rule to localhost http and must only be
+ * passed in local test mode.
+ */
+export const isValidManifestPayload = (
+	value: unknown,
+	allowInsecureUrl = false,
+): value is RendererUpdateManifestPayload => {
 	if (typeof value !== "object" || value === null) return false;
 	const payload = value as Record<string, unknown>;
 	return (
@@ -128,7 +142,7 @@ export const isValidManifestPayload = (value: unknown): value is RendererUpdateM
 		Number.isInteger(payload.minShellApi) &&
 		payload.minShellApi > 0 &&
 		typeof payload.url === "string" &&
-		payload.url.startsWith("https://") &&
+		isAcceptableBundleUrl(payload.url, allowInsecureUrl) &&
 		typeof payload.sha256 === "string" &&
 		/^[0-9a-f]{64}$/.test(payload.sha256) &&
 		typeof payload.size === "number" &&
