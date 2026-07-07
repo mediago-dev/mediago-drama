@@ -44,11 +44,17 @@ type GenerationStore interface {
 	PollGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error)
 }
 
+// SelectionStore supplies run-scoped user-selection prompts.
+type SelectionStore interface {
+	AskUserSelection(ctx context.Context, projectID string, input mediamcp.AskUserSelectionInput) (mediamcp.AskUserSelectionOutput, error)
+}
+
 // DocumentServices is the target dependency set for run-scoped document tools.
 type DocumentServices interface {
 	SkillStore
 	ProjectStore
 	CommentStore
+	SelectionStore
 }
 
 // ExternalServices is the target dependency set for cross-project external tools.

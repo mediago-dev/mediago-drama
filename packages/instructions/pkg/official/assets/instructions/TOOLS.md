@@ -63,3 +63,5 @@ editable: true
   当 `status` 为 submitting/submitted 时任务在后台运行，用该 id 调 `poll_generation_task` 直到完成，
   再从结果资产中取用生成图/视频。
 - 需要把生成结果写入文档时，用文档写工具以 Markdown 图片/资源引用插入到目标章节。
+- 生图涉及风格选择或结果多选时，用 `ask_user_selection` 展示带预览图的选项让用户确认，再据其选择继续；
+  返回 timeout 或 cancelled 时不要擅自生成，说明情况并结束回合或改为在对话中询问。

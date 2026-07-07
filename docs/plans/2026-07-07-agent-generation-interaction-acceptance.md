@@ -56,7 +56,22 @@
 
 自动化验证：`services/server` `go vet` / `go build` / `go test -race ./...` 全绿；`golangci-lint` 对新包无告警；swagger 已含 3 条 selection 路由，`TestDevelopmentDocsRoutes` 覆盖检查通过。
 
-下表 B1–B9 中的服务端语义已由单测覆盖（B3 双击幂等、B5 超时哨兵+可取回、B6 取消语义）；A2UI 卡片、`ask_user_selection` MCP 工具、前端交互与端到端项属后续层，仍待实现/人工验证。
+### PR-B MCP 工具 + A2UI 卡片进度（2026-07-08）
+
+已实现并通过测试（第 2 层，纯服务端）：
+
+- MCP 契约（`packages/mcp`）：`AskUserSelectionInput/Output` + `SelectionOptionInput`；`AgentDocumentTools.AskUserSelection`（tool 名 `ask_user_selection`）；`AgentMCPInstructions` 补说明。
+- 注册：`v2.Dispatcher` 与 `server.DocumentServices` 加 `AskUserSelection`（挂在 run-scoped document server，携带 sessionID/runID）；`registerSelectionTools` 注册；测试 stub 补齐。
+- A2UI 卡片（`agent_a2ui.go`）：`a2uiImage` helper、`AgentA2UIActionSelection` 常量、`BuildSelectionA2UI`（每选项 Image(smallFeature)+标题+按钮 + 取消/自定义按钮，最多 8 项，确定性构建）。
+- 适配器（`app/mcp/selection.go`）：`Adapter.AskUserSelection` — create selection → 沿 `event.A2UI`（AgentUIEventType）推卡片到时间线 → `WaitForSelection` 阻塞 → 映射 `selected/custom/cancelled/timeout`；ctx 取消返回错误。selection.Service 经 `WorkspaceStateService.Selections` 暴露（HTTP/stdio 两模式都从各自 workspace 仓库构建）。
+- Agent 指令：TOOLS.md 生成段补充"风格选择/结果多选用 ask_user_selection 确认，timeout/cancelled 不擅自生成"。
+- 测试（`selection_test.go`，含 -race）：selected 输出 + A2UI 卡片推送（带 session/run 上下文）、cancelled、空选项拒绝且不推卡、ctx 取消报错。文档 server 工具列表新增 `ask_user_selection`。
+
+自动化验证：`packages/mcp` check（fmt+vet+lint+build+race test）全绿；`services/server` 默认 `go test -race ./...` 全绿、vet/lint/build 通过、prompt golden 已更新。
+
+> 预存问题（与本改动无关）：`-tags integration` 下 `TestInternalDocumentMCPHTTPAuthAndComments` 与 `TestExternalMCPHTTPCommentLifecycle` 在 initialize instructions 片段断言处失败（要求 `不要把整篇内容一次性放进单个 write/edit 工具调用`，该片段在 dev / PR #20 的 MCP instructions 中从未存在）。默认 `go test` 不含 integration tag，故 CI 未跑到；本 PR 仅修正了其中 document 工具列表断言以纳入 `ask_user_selection`。生成 MCP 的 integration 测试通过。
+
+下表 B1–B9：服务端语义 + MCP 工具 + 卡片构建已由单测覆盖（B2 selected、B3 双击幂等、B4 自定义、B5 超时哨兵+可取回、B6 取消语义；B1 卡片推送由 adapter 测试断言）；前端渲染/点击/刷新恢复（第 3 层）与端到端项仍待实现/人工验证。
 
 | # | 场景 | 步骤 | 预期结果 | 实际结果 | 判定 |
 |---|---|---|---|---|---|
