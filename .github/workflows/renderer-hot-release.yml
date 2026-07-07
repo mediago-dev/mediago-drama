@@ -1,0 +1,124 @@
+name: Renderer Hot Release
+
+# Publishes a signed renderer hot-update (web layer only) to the fixed channel
+# release tag `renderer-<channel>`. Installed desktop apps download it and apply
+# on next launch — no installer round-trip.
+#
+# Discipline (enforced below where possible):
+#   - Bump apps/workspace/renderer-update.json in a normal PR before dispatching.
+#   - Renderer-only changes may ship here. Anything touching apps/workspace/electron/,
+#     the IPC contract, or the Go server MUST go through the full Electron Release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Hot-update channel tag suffix
+        required: true
+        default: beta
+        type: choice
+        options:
+          - beta
+          - latest
+      notes:
+        description: Optional release notes shown in the app
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: renderer-hot-release-${{ inputs.channel }}
+  cancel-in-progress: false
+
+env:
+  HUSKY: "0"
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.9.0"
+
+jobs:
+  release:
+    name: Build, sign, and publish renderer bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Guard — new rev must be greater than the published one
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          new_rev="$(node -p 'JSON.parse(require("node:fs").readFileSync("apps/workspace/renderer-update.json","utf8")).rendererRev')"
+          if ! [[ "$new_rev" =~ ^[0-9]+$ ]]; then
+            echo "invalid rendererRev in renderer-update.json" >&2
+            exit 1
+          fi
+          tag="renderer-${CHANNEL}"
+          if gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern renderer-manifest.json --output current-manifest.json 2>/dev/null; then
+            current_rev="$(node -p 'const e=JSON.parse(require("node:fs").readFileSync("current-manifest.json","utf8"));JSON.parse(Buffer.from(e.payloadB64,"base64").toString("utf8")).rendererRev')"
+            echo "published rev: $current_rev, new rev: $new_rev"
+            if [[ "$new_rev" -le "$current_rev" ]]; then
+              echo "rendererRev ($new_rev) must be greater than the published rev ($current_rev)." >&2
+              echo "Bump apps/workspace/renderer-update.json in a PR first." >&2
+              exit 1
+            fi
+          else
+            echo "no published manifest on $tag yet; first release for this channel"
+          fi
+
+      - name: Build renderer
+        env:
+          MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: ${{ vars.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL }}
+          MODEL_PLATFORM: ${{ vars.MODEL_PLATFORM }}
+          VITE_ELECTRON_BUILD: "1"
+          VITE_MEDIAGO_APIKEY_URL: ${{ vars.VITE_MEDIAGO_APIKEY_URL }}
+          VITE_TALKINGDATA_APP_ID: ${{ vars.VITE_TALKINGDATA_APP_ID }}
+        run: pnpm --dir apps/workspace build
+
+      - name: Package and sign renderer bundle
+        env:
+          RENDERER_UPDATE_PRIVATE_KEY: ${{ secrets.RENDERER_UPDATE_PRIVATE_KEY }}
+          RENDERER_UPDATE_CHANNEL: ${{ inputs.channel }}
+          RENDERER_UPDATE_NOTES: ${{ inputs.notes }}
+        run: node apps/workspace/scripts/package-renderer-update.ts
+
+      - name: Publish to channel release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          tag="renderer-${CHANNEL}"
+          out="apps/workspace/release/renderer"
+
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Renderer hot updates (${CHANNEL})" \
+              --notes "Fixed channel release. Assets are replaced in place by the Renderer Hot Release workflow; installed apps poll renderer-manifest.json here." \
+              --latest=false
+          fi
+
+          # New zip per rev: never clobber, so a rev can't be silently replaced.
+          gh release upload "$tag" "$out"/renderer-*.zip --repo "$GITHUB_REPOSITORY"
+          # The manifest pointer is the only mutable asset.
+          gh release upload "$tag" "$out/renderer-manifest.json" --repo "$GITHUB_REPOSITORY" --clobber
+
+          echo "published $(ls "$out")"

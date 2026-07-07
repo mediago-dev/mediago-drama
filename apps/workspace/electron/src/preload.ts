@@ -55,6 +55,8 @@ const api = {
 		) as Promise<RendererUpdateCapability>,
 	checkRendererUpdate: () =>
 		ipcRenderer.invoke(desktopIpcChannel.checkRendererUpdate) as Promise<DesktopUpdateAck>,
+	applyRendererUpdate: () =>
+		ipcRenderer.invoke(desktopIpcChannel.applyRendererUpdate) as Promise<DesktopUpdateAck>,
 	markRendererHealthy: () => ipcRenderer.invoke(desktopIpcChannel.markRendererHealthy),
 	onRendererUpdateStatus: (listener: (status: RendererUpdateStatus) => void) => {
 		const handler = (_event: unknown, payload: RendererUpdateStatus | undefined) => {
