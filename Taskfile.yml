@@ -266,6 +266,7 @@ tasks:
       - mkdir -p bin
       - go build -tags workspace_dist -o "{{.DEV_SERVER_BIN}}" ./services/server/cmd/mediago-server
       - go build -o "{{.DEV_DOCUMENT_MCP_BIN}}" ./services/server/cmd/mediago-document-mcp
+      - go build -o "bin/mediago-generation-mcp{{.GOEXE}}" ./services/server/cmd/mediago-generation-mcp
 
   build:server:target:
     desc: Cross-build the server-side binaries for one target platform
