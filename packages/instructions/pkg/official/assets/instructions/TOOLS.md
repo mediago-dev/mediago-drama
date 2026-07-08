@@ -89,12 +89,16 @@ editable: true
    其余取 schema 默认项。用户提交后严格按返回的 values 生成；若用户改了模型导致比例/分辨率
    不在新模型 schema 内，按新模型 schema 修正后再弹一次表单确认，不要擅自替换。
 3. 为角色/场景/道具/分镜等资源生成配图时，`generate_media` 必须带 `documentContext`：
-   `documentId` 用目标文档 ID，`sectionId` 用该资源二级标题前的 `<!-- section-id: ... -->` 值——
-   只有带上它们，任务和资产才会计入项目概览中对应资源的生成历史；同时用 `assetTitle` 命名资产。
+   `documentId` 用目标文档 ID，`sectionId` 用该资源二级标题前的 `<!-- section-id: ... -->` 值，
+   并把 `capabilityId` 设为资源类型（character/scene/prop/storyboard）——
+   只有带上它们，任务和资产才会计入项目概览中对应资源的生成历史与选中资产库；
+   同时用 `assetTitle` 命名资产。
    `generate_media` 时把选定风格的 `promptSuffix` 拼到 prompt 末尾、方案参数放进 `params`；
    方案含"优化提示词"时传入 `promptOptimization`（可带 routeId 指定文本模型），
    返回的 `optimizedPrompt` 是实际使用的提示词，向用户展示。
 4. 一次生成返回多张结果时，用 `ask_user_selection`（imageUrl 用各资产 url）让用户选片，
-   然后调 `select_generation_asset(taskId, slotIndex)` 标记选中，再取该资产 URL 插入文档。
+   然后调 `select_generation_asset(taskId, slotIndex, resourceType)` 标记选中——
+   为项目资源定稿时 `resourceType` 必传（character/scene/prop/storyboard），
+   这样定稿才会进入该资源的选中资产库；再取该资产 URL 插入文档。
 5. 视频等长耗时生成不要阻塞轮询到完成：提交时带上 `notificationTarget` 指向目标文档章节，
    告知用户任务已在后台运行并结束回合，结果由任务通知呈现。

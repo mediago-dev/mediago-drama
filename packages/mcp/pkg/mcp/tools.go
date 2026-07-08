@@ -45,14 +45,14 @@ const GenerationMCPInstructions = `MediaGo Drama Generation MCP 使用说明：
 - generate_media 用于提交生成请求；kind 默认 image。prompt 必填，routeId/model/params 应来自模型目录或用户明确输入。
 - generate_media 返回的 id 即生成任务的 taskId；status 为 submitting/submitted 时任务在后台运行，用返回的 id 调 poll_generation_task 或 get_generation_task 查询结果。
 - referenceUrls/referenceAssetIds/referenceBindings 可用于传入参考图、参考素材或文档绑定。
-- 为项目资源（角色/场景/道具/分镜）生成时必须带 documentContext（documentId + sectionId，sectionId 取文档二级标题前的 section-id 注释），否则任务不会计入该资源的生成历史。
+- 为项目资源（角色/场景/道具/分镜）生成时必须带 documentContext（documentId + sectionId，sectionId 取文档二级标题前的 section-id 注释）并把 capabilityId 设为资源类型（character/scene/prop/storyboard），否则任务不会计入该资源的生成历史与选中资产库。
 - get_generation_task / list_generation_tasks 用于查询任务状态和结果资产。
 - poll_generation_task 用于轮询需要供应商查询的异步任务；retry_generation_task 用于重试失败或可重试任务。
 - stylePresets 来自产品提示词库的 style 分类（内置风格 + 用户自建 + 提示词包），与生成工作台同源；previewUrl 存在时可作为选择卡片的预览图，缺失时用纯文本选项。用户确认某个 preset 后，把它的 promptSuffix 拼到 prompt 末尾、params 合并进请求参数再 generate_media。
 - preferences 是用户在生成工作台的习惯参数（kind→routeId、routeId→params）；组生成方案时优先用它做默认值，参数取值必须来自路由 params schema。
 - 生成前用 ask_user_form 参数表单让用户确认模型/比例/分辨率/张数/是否优化提示词；模型选项必须完整列出全部 configured 图片路由，参数选项 label 直接用取值本身（如 3:4、4K）不加解释；用户提交后严格执行。
 - generate_media 传入 promptOptimization 时会先优化提示词再生成，返回 optimizedPrompt。
-- 一次生成返回多张结果时，让用户选片后调用 select_generation_asset(taskId, slotIndex) 标记选中，再取该资产 URL 使用。`
+- 一次生成返回多张结果时，让用户选片后调用 select_generation_asset(taskId, slotIndex, resourceType) 标记选中（项目资源定稿时 resourceType 必传：character/scene/prop/storyboard），再取该资产 URL 使用。`
 
 const publicMCPBoundaryDescription = "MediaGo Drama MCP：Agent 当前工作目录已是项目 work 文档根目录；文档读写直接操作当前目录下的 Markdown 文件，不要再访问 work/ 子目录；项目配置通过 MCP 读取或更新，不要搜索 project.media.json。"
 
