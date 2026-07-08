@@ -706,7 +706,7 @@ const AssetLibraryPreview: React.FC<{
 					type="button"
 					size="sm"
 					variant="outline"
-					className="h-7 rounded-sm px-2 text-xs text-muted-foreground hover:text-error-foreground"
+					className="ml-auto h-7 rounded-sm px-2 text-xs text-muted-foreground hover:text-error-foreground"
 					disabled={busy}
 					onClick={onDelete}
 				>
