@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 )
@@ -200,7 +201,7 @@ func TestGenerationServerListModelsIncludesPreferences(t *testing.T) {
 	}
 	server := &GenerationServer{service: service, projectID: "project-a"}
 
-	output, err := server.ListGenerationModels(context.Background())
+	output, err := server.ListGenerationModels(context.Background(), mediamcp.GenerationListModelsInput{})
 	if err != nil {
 		t.Fatalf("ListGenerationModels returned error: %v", err)
 	}
@@ -209,7 +210,7 @@ func TestGenerationServerListModelsIncludesPreferences(t *testing.T) {
 	}
 
 	server.service = &generationMCPServiceStub{}
-	output, err = server.ListGenerationModels(context.Background())
+	output, err = server.ListGenerationModels(context.Background(), mediamcp.GenerationListModelsInput{})
 	if err != nil {
 		t.Fatalf("ListGenerationModels returned error: %v", err)
 	}
@@ -287,4 +288,51 @@ func (service *generationMCPServiceStub) UpdateGenerationTaskAsset(id string, as
 		return task, true, nil
 	}
 	return servicegeneration.GenerationTaskRecord{}, false, nil
+}
+
+func TestFilterGenerationModelsOutputByKind(t *testing.T) {
+	full := mediamcp.GenerationModelsOutput{
+		Families: []coregeneration.ModelFamily{
+			{ID: "img-family", Kind: coregeneration.KindImage},
+			{ID: "audio-family", Kind: coregeneration.KindAudio},
+		},
+		Versions: []coregeneration.ModelVersion{
+			{ID: "img-version", Kind: coregeneration.KindImage},
+			{ID: "audio-version", Kind: coregeneration.KindAudio},
+		},
+		Routes: []coregeneration.ModelRoute{
+			{ID: "img-route", Kind: coregeneration.KindImage},
+			{ID: "audio-route", Kind: coregeneration.KindAudio},
+		},
+		Models: []coregeneration.ModelSpec{
+			{ID: "img-model", Kind: coregeneration.KindImage},
+		},
+		VoicePreviews: []mediamcp.GenerationVoicePreviewAsset{{RouteID: "audio-route", VoiceID: "voice-1"}},
+		StylePresets:  []mediamcp.GenerationStylePreset{{ID: "style-anime"}},
+	}
+
+	image := filterGenerationModelsOutputByKind(full, "image")
+	if len(image.Families) != 1 || image.Families[0].ID != "img-family" ||
+		len(image.Versions) != 1 || len(image.Routes) != 1 || len(image.Models) != 1 {
+		t.Fatalf("image filter = %+v, want image-only catalog", image)
+	}
+	if len(image.VoicePreviews) != 0 {
+		t.Fatal("image filter should drop voice previews")
+	}
+	if len(image.StylePresets) != 1 {
+		t.Fatal("image filter should keep style presets")
+	}
+
+	audio := filterGenerationModelsOutputByKind(full, "audio")
+	if len(audio.Routes) != 1 || audio.Routes[0].ID != "audio-route" || len(audio.VoicePreviews) != 1 {
+		t.Fatalf("audio filter = %+v, want audio routes with voice previews", audio)
+	}
+	if len(audio.StylePresets) != 0 {
+		t.Fatal("audio filter should drop style presets")
+	}
+
+	all := filterGenerationModelsOutputByKind(full, "")
+	if len(all.Routes) != 2 || len(all.VoicePreviews) != 1 || len(all.StylePresets) != 1 {
+		t.Fatalf("empty kind should return the full catalog, got %+v", all)
+	}
 }

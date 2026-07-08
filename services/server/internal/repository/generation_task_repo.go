@@ -253,13 +253,13 @@ func (repo *GenerationTaskRepository) UpsertGenerationTask(model domain.Generati
 	return nil
 }
 
-// UpdateGenerationTaskAssets updates a task's capability and timestamp after asset rows change.
-func (repo *GenerationTaskRepository) UpdateGenerationTaskAssets(id string, capabilityID string, updatedAt string) (bool, error) {
+// UpdateGenerationTaskAssets updates a task's resource type and timestamp after asset rows change.
+func (repo *GenerationTaskRepository) UpdateGenerationTaskAssets(id string, resourceType string, updatedAt string) (bool, error) {
 	updates := map[string]any{
 		"updated_at": domain.TimeFromString(updatedAt),
 	}
-	if capabilityID = strings.TrimSpace(capabilityID); capabilityID != "" {
-		updates["capability_id"] = domain.StringPtr(capabilityID)
+	if resourceType = strings.TrimSpace(resourceType); resourceType != "" {
+		updates["resource_type"] = domain.StringPtr(resourceType)
 	}
 	result := repo.db.Model(&domain.GenerationTaskModel{}).
 		Where("id = ?", strings.TrimSpace(id)).

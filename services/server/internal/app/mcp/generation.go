@@ -10,18 +10,61 @@ import (
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 )
 
-func (server *GenerationServer) ListGenerationModels(ctx context.Context) (mediamcp.GenerationModelsOutput, error) {
+func (server *GenerationServer) ListGenerationModels(ctx context.Context, input mediamcp.GenerationListModelsInput) (mediamcp.GenerationModelsOutput, error) {
 	_ = ctx
 	service, err := server.requireService()
 	if err != nil {
 		return mediamcp.GenerationModelsOutput{}, err
 	}
-	server.logToolInvocation(mediamcp.GenerationTools.ListModels.Name)
+	kind := strings.TrimSpace(input.Kind)
+	server.logToolInvocation(mediamcp.GenerationTools.ListModels.Name, "kind", kind)
 	output := generationModelsOutputFromService(service.ListGenerationModels())
+	output = filterGenerationModelsOutputByKind(output, kind)
 	if preference, ok := service.GenerationPreferenceForProject(server.scopedProjectID("")); ok {
 		output.Preferences = generationPreferencesFromService(preference)
 	}
 	return output, nil
+}
+
+// filterGenerationModelsOutputByKind narrows the catalog to one generation
+// kind. The full catalog is ~300KB (654 voice previews alone); an image-only
+// view is ~50KB, which matters because agents pay for the output in tokens.
+func filterGenerationModelsOutputByKind(output mediamcp.GenerationModelsOutput, kind string) mediamcp.GenerationModelsOutput {
+	if kind == "" {
+		return output
+	}
+	filtered := output
+	filtered.Families = nil
+	for _, family := range output.Families {
+		if string(family.Kind) == kind {
+			filtered.Families = append(filtered.Families, family)
+		}
+	}
+	filtered.Versions = nil
+	for _, version := range output.Versions {
+		if string(version.Kind) == kind {
+			filtered.Versions = append(filtered.Versions, version)
+		}
+	}
+	filtered.Routes = nil
+	for _, route := range output.Routes {
+		if string(route.Kind) == kind {
+			filtered.Routes = append(filtered.Routes, route)
+		}
+	}
+	filtered.Models = nil
+	for _, model := range output.Models {
+		if string(model.Kind) == kind {
+			filtered.Models = append(filtered.Models, model)
+		}
+	}
+	if kind != "audio" {
+		filtered.VoicePreviews = nil
+	}
+	if kind != "image" {
+		filtered.StylePresets = nil
+	}
+	return filtered
 }
 
 func (server *GenerationServer) CreateGenerationMessage(ctx context.Context, projectID string, input mediamcp.GenerationMessageInput) (mediamcp.GenerationMessageOutput, error) {

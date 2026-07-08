@@ -3,7 +3,9 @@ package mcp
 import coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 
 // GenerationListModelsInput is the input for list_generation_models.
-type GenerationListModelsInput struct{}
+type GenerationListModelsInput struct {
+	Kind string `json:"kind,omitempty" jsonschema:"可选：只返回该类型的目录（image、video、audio 或 text）。生图流程传 image 可大幅缩小输出；省略时返回全部。"`
+}
 
 // GenerationModelsOutput returns the generation catalog.
 type GenerationModelsOutput struct {
@@ -54,7 +56,7 @@ type GenerationSelectAssetInput struct {
 	TaskID       string `json:"taskId" jsonschema:"生成任务 ID。"`
 	SlotIndex    int    `json:"slotIndex" jsonschema:"资产槽位序号，取 get_generation_task 返回资产的 slotIndex。"`
 	Title        string `json:"title,omitempty" jsonschema:"可选：同时更新资产标题。"`
-	ResourceType string `json:"resourceType,omitempty" jsonschema:"资源类型：character、scene、prop 或 storyboard；为项目资源定稿时必传，才会进入对应资源的选中资产库。"`
+	ResourceType string `json:"resourceType,omitempty" jsonschema:"资源类型：character、scene、prop 或 storyboard；任务带 documentContext 生成时服务端已自动归属可省略，否则为项目资源定稿时必传。"`
 }
 
 // GenerationMessageInput creates a generation request.
@@ -67,6 +69,7 @@ type GenerationMessageInput struct {
 	SectionID          string                             `json:"sectionId,omitempty" jsonschema:"来源章节或块 ID。"`
 	DocumentContext    *GenerationDocumentContext         `json:"documentContext,omitempty" jsonschema:"文档上下文。"`
 	CapabilityID       string                             `json:"capabilityId,omitempty" jsonschema:"能力 ID。"`
+	ResourceType       string                             `json:"resourceType,omitempty" jsonschema:"可选：目标资源类型（character、scene、prop、storyboard）；带 documentContext 时服务端会按目标文档类型自动归属，无需传。"`
 	NotificationTarget *GenerationNotificationTarget      `json:"notificationTarget,omitempty" jsonschema:"生成完成后的通知目标。"`
 	RouteID            string                             `json:"routeId,omitempty" jsonschema:"模型路由 ID，优先从 list_generation_models 选择。"`
 	FamilyID           string                             `json:"familyId,omitempty" jsonschema:"模型家族 ID。"`
@@ -199,6 +202,7 @@ type GenerationTaskRecord struct {
 	DocumentID        string                        `json:"documentId,omitempty"`
 	SectionID         string                        `json:"sectionId,omitempty"`
 	CapabilityID      string                        `json:"capabilityId,omitempty"`
+	ResourceType      string                        `json:"resourceType,omitempty"`
 	Kind              string                        `json:"kind"`
 	RouteID           string                        `json:"routeId"`
 	FamilyID          string                        `json:"familyId"`

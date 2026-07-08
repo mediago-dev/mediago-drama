@@ -14,7 +14,7 @@ type Options struct {
 
 // Dispatcher invokes typed host application generation services.
 type Dispatcher interface {
-	ListGenerationModels(ctx context.Context) (mediamcp.GenerationModelsOutput, error)
+	ListGenerationModels(ctx context.Context, input mediamcp.GenerationListModelsInput) (mediamcp.GenerationModelsOutput, error)
 	CreateGenerationMessage(ctx context.Context, projectID string, input mediamcp.GenerationMessageInput) (mediamcp.GenerationMessageOutput, error)
 	GetGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationTaskRecord, error)
 	ListGenerationTasks(ctx context.Context, projectID string, input mediamcp.GenerationTaskListInput) (mediamcp.GenerationTasksOutput, error)
@@ -26,8 +26,7 @@ type Dispatcher interface {
 // Register installs generation tools on the MCP server.
 func Register(server *mcpsdk.Server, dispatcher Dispatcher, options Options, closedWorld bool, logToolRegistered func(string)) {
 	add[mediamcp.GenerationListModelsInput](server, dispatcher, options.ProjectID, closedWorld, logToolRegistered, mediamcp.GenerationTools.ListModels, func(ctx context.Context, dispatcher Dispatcher, _ string, input mediamcp.GenerationListModelsInput) (any, error) {
-		_ = input
-		return dispatcher.ListGenerationModels(ctx)
+		return dispatcher.ListGenerationModels(ctx, input)
 	})
 	add[mediamcp.GenerationMessageInput](server, dispatcher, options.ProjectID, closedWorld, logToolRegistered, mediamcp.GenerationTools.Generate, func(ctx context.Context, dispatcher Dispatcher, projectID string, input mediamcp.GenerationMessageInput) (any, error) {
 		return dispatcher.CreateGenerationMessage(ctx, projectID, input)

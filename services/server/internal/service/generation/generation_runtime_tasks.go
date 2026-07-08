@@ -92,6 +92,7 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		ProjectID:         task.ProjectID,
 		SectionID:         task.SectionID,
 		CapabilityID:      task.CapabilityID,
+		ResourceType:      task.ResourceType,
 		Prompt:            task.Prompt,
 		AssetTitle:        generationAssetTitleFromTask(task),
 		ReferenceURLs:     task.ReferenceURLs,
@@ -546,6 +547,16 @@ func selectedGenerationResourceType(capabilityID string) string {
 	default:
 		return ""
 	}
+}
+
+// generationTaskResourceType returns the project resource type a task belongs
+// to. The dedicated resourceType field wins; legacy tasks that encoded the
+// resource type in capabilityId keep working through the fallback.
+func generationTaskResourceType(task GenerationTaskRecord) string {
+	if resourceType := selectedGenerationResourceType(task.ResourceType); resourceType != "" {
+		return resourceType
+	}
+	return selectedGenerationResourceType(task.CapabilityID)
 }
 
 func filterSelectedGenerationAssets(assets []SelectedGenerationAssetRecord, query SelectedGenerationAssetQuery) []SelectedGenerationAssetRecord {
