@@ -1,5 +1,13 @@
 import type { AgentReference } from "@/domains/agent/api/agent";
-import type { AgentDisplayAttachment, AgentMessageMetadata } from "@/domains/agent/stores";
+import {
+	hasRichDisplaySegment,
+	normalizeDisplaySegments,
+} from "@/domains/agent/lib/display-segments";
+import type {
+	AgentDisplayAttachment,
+	AgentDisplaySegment,
+	AgentMessageMetadata,
+} from "@/domains/agent/stores";
 
 export interface AgentDisplayAttachmentSource {
 	id?: string;
@@ -10,32 +18,42 @@ export interface AgentDisplayAttachmentSource {
 	url?: string;
 }
 
+// Attachment cards come from uploaded files, plus @-mentioned image assets so
+// their thumbnails stay visible; every other mention renders only as an
+// inline chip via display segments.
 export const buildAgentDisplayMetadata = (
 	attachments: AgentDisplayAttachmentSource[],
+	displaySegments: AgentDisplaySegment[] = [],
 	references: AgentReference[] = [],
 ): AgentMessageMetadata | undefined => {
 	const displayAttachments = uniqueDisplayAttachments([
 		...attachments.map(displayAttachmentFromSource),
-		...references.map(displayAttachmentFromReference).filter(isDisplayAttachment),
+		...references.filter(isImageAssetReference).map(displayAttachmentFromImageReference),
 	]);
-
-	return displayAttachments.length > 0 ? { displayAttachments } : undefined;
-};
-
-export const displayAttachmentFromReference = (
-	reference: AgentReference,
-): AgentDisplayAttachment | null => {
-	const name = reference.title.trim();
-	if (!name) return null;
+	const segments = normalizeDisplaySegments(displaySegments);
+	const includeSegments = hasRichDisplaySegment(segments);
+	if (displayAttachments.length === 0 && !includeSegments) return undefined;
 
 	return {
-		id: displayAttachmentReferenceId(reference),
-		kind: displayAttachmentKindFromReference(reference),
-		mimeType: displayAttachmentReferenceMeta(reference),
-		name,
-		url: reference.url,
+		...(displayAttachments.length > 0 ? { displayAttachments } : {}),
+		...(includeSegments ? { displaySegments: segments } : {}),
 	};
 };
+
+const isImageAssetReference = (reference: AgentReference) =>
+	reference.kind === "asset" &&
+	Boolean(reference.url) &&
+	(reference.assetKind === "image" || (reference.mimeType?.startsWith("image/") ?? false));
+
+const displayAttachmentFromImageReference = (
+	reference: AgentReference,
+): AgentDisplayAttachment => ({
+	id: reference.assetId || reference.documentId,
+	kind: "image",
+	mimeType: reference.mimeType,
+	name: reference.title.trim(),
+	url: reference.url,
+});
 
 const displayAttachmentFromSource = (
 	attachment: AgentDisplayAttachmentSource,
@@ -47,45 +65,6 @@ const displayAttachmentFromSource = (
 	size: attachment.size,
 	url: attachment.url,
 });
-
-const displayAttachmentKindFromReference = (reference: AgentReference) => {
-	if (reference.kind === "asset" && isImageReference(reference)) return "image";
-	return "file";
-};
-
-const displayAttachmentReferenceMeta = (reference: AgentReference) => {
-	if (reference.kind === "document") return "文档";
-	if (reference.kind === "section") return "文档片段";
-	return reference.mimeType || assetKindLabel(reference.assetKind) || "资料";
-};
-
-const displayAttachmentReferenceId = (reference: AgentReference) => {
-	if (reference.kind === "asset") return reference.assetId || reference.documentId;
-	if (reference.kind === "section") return `${reference.documentId}:${reference.blockId ?? ""}`;
-	return reference.documentId;
-};
-
-const isImageReference = (reference: AgentReference) =>
-	reference.assetKind === "image" || (reference.mimeType?.startsWith("image/") ?? false);
-
-const assetKindLabel = (assetKind?: string) => {
-	switch (assetKind) {
-		case "image":
-			return "图片";
-		case "video":
-			return "视频";
-		case "audio":
-			return "音频";
-		case "text":
-			return "文本";
-		default:
-			return "";
-	}
-};
-
-const isDisplayAttachment = (
-	attachment: AgentDisplayAttachment | null,
-): attachment is AgentDisplayAttachment => attachment !== null;
 
 const uniqueDisplayAttachments = (attachments: AgentDisplayAttachment[]) => {
 	const seen = new Set<string>();

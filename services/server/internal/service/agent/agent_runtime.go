@@ -192,14 +192,53 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 		ProjectID: payload.ProjectID,
 		RunID:     runID,
 		Type:      "agent.user.message",
-		Message:   payload.Prompt,
+		Message:   userMessageDisplayText(payload),
+		Metadata:  userMessageDisplayMetadata(payload),
 		CreatedAt: timestamp.NowRFC3339Nano(),
 	})
-	runtime.maybeGenerateSessionTitle(payload.SessionID, payload.Prompt, payload.Model)
+	runtime.maybeGenerateSessionTitle(
+		payload.SessionID,
+		shared.FirstNonEmpty(payload.DisplayPrompt, payload.Prompt),
+		payload.Model,
+	)
 
 	go runtime.runAgent(runCtx, cancelRun, payload, runID, acpSessionID, projectDir, workingDir)
 
 	return AgentMessageResponse{Accepted: true}, http.StatusOK, nil
+}
+
+// userMessageDisplayText picks the transcript text for a user message: the
+// composer's display prompt whenever the request carries renderable display
+// data (an empty display prompt is then intentional — the bubble shows
+// attachment cards alone), otherwise the raw machine prompt. Metadata that is
+// present but empty does not count, so a defensive client sending `{}` cannot
+// blank the transcript.
+func userMessageDisplayText(payload AgentMessageRequest) string {
+	if strings.TrimSpace(payload.DisplayPrompt) != "" || displayMetadataHasContent(payload.DisplayMetadata) {
+		return strings.TrimSpace(payload.DisplayPrompt)
+	}
+	return payload.Prompt
+}
+
+// userMessageDisplayMetadata returns the display metadata to persist on the
+// user message, or nil when it carries nothing renderable.
+func userMessageDisplayMetadata(payload AgentMessageRequest) map[string]any {
+	if !displayMetadataHasContent(payload.DisplayMetadata) {
+		return nil
+	}
+	return payload.DisplayMetadata
+}
+
+// displayMetadataHasContent reports whether display metadata carries at least
+// one renderable entry (attachment cards, prompt segments, or any future
+// list-valued display field).
+func displayMetadataHasContent(metadata map[string]any) bool {
+	for _, value := range metadata {
+		if entries, ok := value.([]any); ok && len(entries) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (runtime *AgentRuntime) projectDirForRun(projectID string) (string, error) {

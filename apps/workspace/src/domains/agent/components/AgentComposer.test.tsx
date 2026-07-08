@@ -48,6 +48,10 @@ describe("AgentComposer", () => {
 		expect(value?.text.trim()).toBe("这个文档转换成 utf8 编码吗？");
 		expect(value?.displayText.trim()).toBe("@完美世界.txt 这个文档转换成 utf8 编码吗？");
 		expect(value?.references).toEqual([assetReference]);
+		expect(value?.displaySegments).toEqual([
+			{ type: "mention", title: "完美世界.txt", category: "reference", kind: "asset" },
+			{ type: "text", text: " 这个文档转换成 utf8 编码吗？" },
+		]);
 	});
 
 	it("limits the chat input to an automatic 2-to-9-line height", () => {
@@ -80,6 +84,9 @@ describe("AgentComposer", () => {
 			);
 		});
 		expect(ref.current?.getValue().displayText.trim()).toBe("角色小传");
+		expect(ref.current?.getValue().displaySegments).toEqual([
+			{ type: "skill", name: "character-writer", title: "角色小传" },
+		]);
 		expect(screen.getByText("角色小传")).toBeTruthy();
 		expect(screen.queryByText(/请先调用 MCP/)).toBeNull();
 		expect(screen.queryByRole("listbox", { name: "Skill 列表" })).toBeNull();

@@ -53,6 +53,7 @@ vi.mock("@/domains/agent/components/chat/AgentChatComposerForm", () => ({
 			clear: vi.fn(),
 			focus: vi.fn(),
 			getValue: () => ({
+				displaySegments: [{ type: "text", text: "hello" }],
 				displayText: "hello",
 				references: [],
 				text: "hello",

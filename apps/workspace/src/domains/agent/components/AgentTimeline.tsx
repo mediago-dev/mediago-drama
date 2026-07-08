@@ -21,8 +21,14 @@ import {
 	handleDeterministicA2UIAction,
 } from "@/domains/agent/lib/a2ui-actions";
 import { agentPermissionRequestIdFromA2UI } from "@/domains/agent/lib/a2ui-permissions";
+import { displaySegmentsFromMetadata } from "@/domains/agent/lib/display-segments";
+import {
+	legacyDisplayAttachments,
+	visibleUserContent,
+} from "@/domains/agent/lib/legacy-attachments";
 import {
 	type AgentDisplayAttachment,
+	type AgentDisplaySegment,
 	type AgentMessage,
 	type AgentMessageKind,
 	type AgentMessageMetadata,
@@ -30,6 +36,7 @@ import {
 	useAgentStore,
 } from "@/domains/agent/stores";
 import { cn } from "@/shared/lib/utils";
+import "@/styles/tiptap-mention.css";
 import { RuntimeAlertCard } from "./RuntimeAlertCard";
 import { AgentA2UIMessage } from "./timeline/AgentA2UIMessage";
 import { AgentFormCard } from "./timeline/AgentFormCard";
@@ -138,6 +145,7 @@ const TimelineUserTurn: React.FC<{ message: AgentMessage }> = memo(({ message })
 	const attachments = uniqueDisplayAttachments(
 		message.metadata?.displayAttachments ?? legacyAttachments,
 	);
+	const segments = displaySegmentsFromMetadata(message.metadata);
 	const content = visibleUserContent(message.content);
 	return (
 		<div className="flex justify-end">
@@ -149,12 +157,40 @@ const TimelineUserTurn: React.FC<{ message: AgentMessage }> = memo(({ message })
 						<span>你</span>
 						<UserRound className="size-3" />
 					</div>
-					<p className="whitespace-pre-wrap break-words">{content}</p>
+					{segments.length > 0 ? (
+						<p className="whitespace-pre-wrap break-words">
+							{segments.map((segment, index) => (
+								<UserPromptSegment key={index} segment={segment} />
+							))}
+						</p>
+					) : content ? (
+						<p className="whitespace-pre-wrap break-words">{content}</p>
+					) : null}
 				</article>
 			</div>
 		</div>
 	);
 });
+
+const UserPromptSegment: React.FC<{ segment: AgentDisplaySegment }> = ({ segment }) => {
+	if (segment.type === "text") return <>{segment.text}</>;
+
+	if (segment.type === "skill") {
+		return (
+			<span className="agent-bubble-chip" title={segment.title || segment.name}>
+				<span className="agent-skill-chip-icon" aria-hidden="true" />
+				<span className="agent-bubble-chip-title">{segment.title || segment.name}</span>
+			</span>
+		);
+	}
+
+	return (
+		<span className="agent-bubble-chip" data-kind={segment.kind} title={segment.title}>
+			<span className="agent-reference-mention-icon" aria-hidden="true" />
+			<span className="agent-bubble-chip-title">{segment.title}</span>
+		</span>
+	);
+};
 
 const UserAttachmentStrip: React.FC<{ attachments: AgentDisplayAttachment[] }> = memo(
 	({ attachments }) => (
@@ -240,104 +276,6 @@ const displayAttachmentSizeKey = (size?: number) =>
 const normalizedDisplayAttachmentKind = (kind?: string) => {
 	const normalized = kind?.trim().toLowerCase() ?? "";
 	return normalized === "image" ? "image" : "file";
-};
-
-const visibleUserContent = (content: string) => {
-	const markerIndex = firstLegacyAttachmentMarkerIndex(content);
-	if (markerIndex < 0) return content;
-	return content.slice(0, markerIndex).trim() || "已上传附件";
-};
-
-const legacyDisplayAttachments = (content: string): AgentDisplayAttachment[] => [
-	...legacyInlineAttachments(content),
-	...legacySavedAssetAttachments(content),
-];
-
-const firstLegacyAttachmentMarkerIndex = (content: string) => {
-	const indexes = legacyAttachmentMarkers
-		.map((marker) => content.indexOf(marker))
-		.filter((index) => index >= 0);
-	return indexes.length > 0 ? Math.min(...indexes) : -1;
-};
-
-const savedAssetAttachmentMarkers = ["已保存到资料的原始文件：", "已保存到素材库的原始文件："];
-const legacyAttachmentMarkers = ["附件上下文：", ...savedAssetAttachmentMarkers];
-
-const legacyInlineAttachments = (content: string): AgentDisplayAttachment[] => {
-	const section = legacySection(content, "附件上下文：");
-	if (!section) return [];
-
-	const attachments: AgentDisplayAttachment[] = [];
-	const headingPattern = /^(\d+)\.\s*(图片|文件)：(.+)$/gm;
-	let match: RegExpExecArray | null;
-	while ((match = headingPattern.exec(section)) !== null) {
-		const start = match.index + match[0].length;
-		const next = section.slice(start).search(/\n\d+\.\s*(?:图片|文件)：/);
-		const block = next >= 0 ? section.slice(start, start + next) : section.slice(start);
-		attachments.push({
-			kind: match[2] === "图片" ? "image" : "file",
-			mimeType: legacyLineValue(block, "MIME"),
-			name: match[3].trim(),
-			size: parseLegacySize(legacyLineValue(block, "大小")),
-			url: legacyLineValue(block, "URL"),
-		});
-	}
-	return attachments;
-};
-
-const legacySavedAssetAttachments = (content: string): AgentDisplayAttachment[] => {
-	const attachments: AgentDisplayAttachment[] = [];
-	for (const marker of savedAssetAttachmentMarkers) {
-		const section = legacySection(content, marker);
-		if (!section) continue;
-
-		const headingPattern = /^(\d+)\.\s*(.+)$/gm;
-		let match: RegExpExecArray | null;
-		while ((match = headingPattern.exec(section)) !== null) {
-			const start = match.index + match[0].length;
-			const next = section.slice(start).search(/\n\d+\.\s*.+/);
-			const block = next >= 0 ? section.slice(start, start + next) : section.slice(start);
-			attachments.push({
-				kind: legacyLineValue(block, "类型") || "file",
-				mimeType: legacyLineValue(block, "MIME"),
-				name: match[2].trim(),
-				size: parseLegacySize(legacyLineValue(block, "大小")),
-				url: legacyLineValue(block, "URL"),
-			});
-		}
-	}
-	return attachments;
-};
-
-const legacySection = (content: string, marker: string) => {
-	const start = content.indexOf(marker);
-	if (start < 0) return "";
-	const afterMarker = content.slice(start + marker.length);
-	const nextMarkerIndexes = legacyAttachmentMarkers
-		.filter((item) => item !== marker)
-		.map((item) => afterMarker.indexOf(item))
-		.filter((index) => index >= 0);
-	const end = nextMarkerIndexes.length > 0 ? Math.min(...nextMarkerIndexes) : afterMarker.length;
-	return afterMarker.slice(0, end).trim();
-};
-
-const legacyLineValue = (block: string, label: string) => {
-	const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const match = block.match(new RegExp(`^${escaped}：\\s*(.+)$`, "m"));
-	return match?.[1]?.trim() || undefined;
-};
-
-const parseLegacySize = (value?: string) => {
-	if (!value) return undefined;
-	const match = value.match(/^([\d.]+)\s*(bytes?|B|KB|MB|GB)$/i);
-	if (!match) return undefined;
-	const amount = Number(match[1]);
-	if (!Number.isFinite(amount)) return undefined;
-	const unit = match[2].toUpperCase();
-	if (unit === "GB") return Math.round(amount * 1024 * 1024 * 1024);
-	if (unit === "MB") return Math.round(amount * 1024 * 1024);
-	if (unit === "KB") return Math.round(amount * 1024);
-	return Math.round(amount);
 };
 
 const TimelineAssistantGroup: React.FC<{

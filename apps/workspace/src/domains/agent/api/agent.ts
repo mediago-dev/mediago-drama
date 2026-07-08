@@ -33,6 +33,7 @@ import type {
 	AgentActivityItem,
 	AgentConversationState,
 	AgentMessage,
+	AgentMessageMetadata,
 } from "@/domains/agent/stores";
 import { ManagedEventSource } from "@/shared/lib/sse/managed-event-source";
 import { apiURL } from "@/shared/lib/api-base";
@@ -83,9 +84,10 @@ export type AgentDocumentContext = Omit<GeneratedAgentDocumentContext, "category
 
 export type AgentMessageRequest = Omit<
 	GeneratedAgentMessageRequest,
-	"comments" | "document" | "documents" | "references"
+	"comments" | "displayMetadata" | "document" | "documents" | "references"
 > & {
 	comments?: DocumentComment[];
+	displayMetadata?: AgentMessageMetadata;
 	document?: AgentDocumentContext;
 	documents?: AgentDocumentContext[];
 	references?: AgentReference[];
