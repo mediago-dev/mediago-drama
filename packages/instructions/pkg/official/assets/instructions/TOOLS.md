@@ -81,14 +81,15 @@ editable: true
    缺失时用纯文本选项；推荐阶段不要实际生图。
 2. 风格选定后、生成之前，用 `ask_user_form` 弹一张「生成参数」表单让用户确认——不要逐个参数追问，
    也不要用打包方案的单选卡。字段组织：
-   - 模型用 select：options 必须完整列出目录中全部 configured 的图片路由，一个不漏，
-     不要只挑某一族模型；label 用「供应商 · 模型名」，同族模型排在一起。
-   - 比例、分辨率等参数用 select：options 严格取所选默认路由的 params schema；
-     label 直接用参数值本身（如 3:4、4K），不要追加任何解释文字，需要说明放 description。
-   - 张数用 number（min/max 按路由限制）、是否优化提示词用 toggle。
-   每个字段的 default 优先取 `preferences`（用户在生成工作台的习惯参数：routeIds/routeParams），
-   其余取 schema 默认项。用户提交后严格按返回的 values 生成；若用户改了模型导致比例/分辨率
-   不在新模型 schema 内，按新模型 schema 修正后再弹一次表单确认，不要擅自替换。
+   - 模型/比例/分辨率/张数用**一个 `type: "generation_params"` 字段**（如 `{id:"generation",
+     type:"generation_params", label:"模型与参数"}`）：客户端会自动渲染已配置的模型目录
+     （模型族 → 模型 → 供应商，只含 configured 路由）和所选模型的比例/分辨率/张数联动控件，
+     不需要也不要提供 options；`default` 可传 `{routeId, params}` 用 `preferences`
+     （用户在生成工作台的习惯参数：routeIds/routeParams）预填。
+   - 是否优化提示词用 toggle；其余业务参数按需用 select/number/text。
+   提交后 values 中该字段为 `{routeId, label, params}`，严格按其 `routeId` 与 `params`
+   调 `generate_media`，不要替换或增删参数；比例/分辨率组合已由客户端按模型 schema 校正，
+   无需再次弹卡确认。
 3. 为角色/场景/道具/分镜等资源生成配图时，`generate_media` 必须带 `documentContext`：
    `documentId` 用目标文档 ID，`sectionId` 用该资源二级标题前的 `<!-- section-id: ... -->` 值——
    带上它们，任务和资产就会计入项目概览中对应资源的生成历史与选中资产库

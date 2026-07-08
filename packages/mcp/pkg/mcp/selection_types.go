@@ -38,7 +38,7 @@ type FormFieldOptionInput struct {
 type FormFieldInput struct {
 	ID          string                 `json:"id" jsonschema:"字段 ID，提交值以它为键。"`
 	Label       string                 `json:"label" jsonschema:"字段显示名。"`
-	Type        string                 `json:"type" jsonschema:"select、toggle、number 或 text。"`
+	Type        string                 `json:"type" jsonschema:"select、toggle、number、text 或 generation_params；generation_params 是生图模型+参数组合选择器，客户端自动渲染已配置的模型目录及所选模型的比例/分辨率/张数（组合联动），无需 options，提交值为 {routeId,label,params}。"`
 	Description string                 `json:"description,omitempty"`
 	Options     []FormFieldOptionInput `json:"options,omitempty" jsonschema:"select 类型的可选值。"`
 	Default     any                    `json:"default,omitempty" jsonschema:"默认值；用 preferences 或 schema 默认项预填。"`

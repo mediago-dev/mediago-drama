@@ -10,14 +10,17 @@ const mocks = vi.hoisted(() => ({
 	decideAgentPermission: vi.fn(),
 	decideAgentSelection: vi.fn(),
 	decideDocumentToolApproval: vi.fn(),
+	useSWR: vi.fn(),
 }));
 
 vi.mock("@/domains/agent/api/agent", () => mocks);
+vi.mock("swr", () => ({ default: mocks.useSWR }));
 
 describe("AgentFormCard", () => {
 	afterEach(() => {
 		cleanup();
 		vi.mocked(decideAgentSelection).mockReset();
+		mocks.useSWR.mockReset();
 		useAgentStore.getState().resetSession();
 		useProjectStore.setState({ activeProjectId: null });
 		useAgentPersistenceStore.setState({ resolvedSelections: {} });
@@ -88,6 +91,42 @@ describe("AgentFormCard", () => {
 		);
 	});
 
+	it("renders a generation_params field from the configured catalog and submits {routeId, params}", async () => {
+		mocks.useSWR.mockReturnValue({ data: generationCatalog() });
+		vi.mocked(decideAgentSelection).mockImplementation(
+			async (_selectionId: string, request: { values?: Record<string, unknown> }) =>
+				({
+					id: "selection-2",
+					title: "确认生成参数",
+					options: [],
+					allowCustom: false,
+					status: "submitted",
+					decision: { values: request.values },
+					createdAt: "2026-06-08T10:00:00.000Z",
+				}) as never,
+		);
+		const message = generationFormMessage();
+		seedConversation(message);
+		useProjectStore.setState({ activeProjectId: "project-1" });
+
+		render(<AgentFormCard message={message} />);
+
+		// Only configured families render; the default route comes from field.default.
+		await waitFor(() => expect(screen.getByText("GPT Image")).toBeTruthy());
+		expect(screen.queryByText(/DMX/)).toBeNull();
+
+		fireEvent.click(screen.getByText("确认生成"));
+		await waitFor(() => expect(decideAgentSelection).toHaveBeenCalledTimes(1));
+		const [, request] = vi.mocked(decideAgentSelection).mock.calls[0];
+		const submitted = (request as { values: Record<string, unknown> }).values.generation as Record<
+			string,
+			unknown
+		>;
+		expect(submitted.routeId).toBe("mediago.gpt-image-2");
+		expect(submitted.label).toBe("MediaGo · GPT Image 2");
+		expect(submitted.params).toEqual({ aspectRatio: "16:9", resolution: "4K", n: 2 });
+	});
+
 	it("renders an already-decided form frozen and non-interactive after a hydrate", () => {
 		// Simulates a transcript hydrate that re-materializes the original
 		// interactive form after the user already decided it.
@@ -128,6 +167,142 @@ const seedConversation = (message: AgentMessage) => {
 		},
 	});
 };
+
+const generationFormMessage = (): AgentMessage => ({
+	id: "generation-form-ui",
+	role: "assistant",
+	content: "需要你确认生成参数",
+	kind: "message",
+	status: "complete",
+	createdAt: "2026-06-08T10:00:00.000Z",
+	metadata: {
+		form: {
+			selectionId: "selection-2",
+			projectId: "project-1",
+			title: "确认生成参数",
+			submitLabel: "确认生成",
+			fields: [
+				{
+					id: "generation",
+					label: "模型与参数",
+					type: "generation_params",
+					default: {
+						routeId: "mediago.gpt-image-2",
+						params: { aspectRatio: "16:9", resolution: "4K", n: 2 },
+					},
+				},
+			],
+		},
+	},
+});
+
+// Compact catalog mirroring /generation/models: one configured route per
+// family plus an unconfigured DMX route that must not render.
+const generationCatalog = () => ({
+	families: [
+		{ id: "seedream", label: "Seedream", kinds: ["image"] },
+		{ id: "gpt-image", label: "GPT Image", kinds: ["image"] },
+	],
+	versions: [
+		{ id: "seedream-5", familyId: "seedream", label: "Seedream 5.0", kind: "image" },
+		{ id: "gpt-image-2", familyId: "gpt-image", label: "GPT Image 2", kind: "image" },
+	],
+	routes: [
+		{
+			id: "jimeng.seedream-5.0",
+			familyId: "seedream",
+			versionId: "seedream-5",
+			kind: "image",
+			label: "即梦",
+			provider: "jimeng",
+			model: "5.0",
+			status: "available",
+			configured: true,
+			params: [
+				{
+					name: "aspectRatio",
+					label: "比例",
+					type: "select",
+					default: "1:1",
+					options: [
+						{ value: "1:1", label: "1:1" },
+						{ value: "16:9", label: "16:9" },
+					],
+				},
+				{
+					name: "resolution",
+					label: "分辨率",
+					type: "select",
+					default: "2K",
+					options: [
+						{ value: "2K", label: "2K" },
+						{ value: "4K", label: "4K" },
+					],
+				},
+				{ name: "n", label: "张数", type: "number", default: 1, min: 1, max: 4 },
+			],
+		},
+		{
+			id: "mediago.gpt-image-2",
+			familyId: "gpt-image",
+			versionId: "gpt-image-2",
+			kind: "image",
+			label: "MediaGo",
+			provider: "mediago",
+			model: "gpt-image-2",
+			status: "available",
+			configured: true,
+			params: [
+				{
+					name: "aspectRatio",
+					label: "比例",
+					type: "select",
+					default: "1:1",
+					options: [
+						{ value: "1:1", label: "1:1" },
+						{ value: "16:9", label: "16:9" },
+					],
+				},
+				{
+					name: "resolution",
+					label: "分辨率",
+					type: "select",
+					default: "1K",
+					options: [
+						{ value: "1K", label: "1K" },
+						{ value: "2K", label: "2K" },
+						{ value: "4K", label: "4K" },
+					],
+				},
+				{ name: "n", label: "张数", type: "number", default: 1, min: 1, max: 10 },
+			],
+			paramCombos: [
+				{
+					params: ["aspectRatio", "resolution"],
+					allowed: [
+						["1:1", "1K"],
+						["1:1", "2K"],
+						["16:9", "2K"],
+						["16:9", "4K"],
+					],
+				},
+			],
+		},
+		{
+			id: "dmx.gpt-image-2",
+			familyId: "gpt-image",
+			versionId: "gpt-image-2",
+			kind: "image",
+			label: "DMX",
+			provider: "dmx",
+			model: "gpt-image-2-ssvip",
+			status: "available",
+			params: [],
+		},
+	],
+	models: [],
+	providers: [],
+});
 
 const formMessage = (): AgentMessage => ({
 	id: "form-ui",
