@@ -36,7 +36,7 @@ type CommentStore interface {
 
 // GenerationStore supplies generation MCP operations.
 type GenerationStore interface {
-	ListGenerationModels(ctx context.Context) (mediamcp.GenerationModelsOutput, error)
+	ListGenerationModels(ctx context.Context, input mediamcp.GenerationListModelsInput) (mediamcp.GenerationModelsOutput, error)
 	CreateGenerationMessage(ctx context.Context, projectID string, input mediamcp.GenerationMessageInput) (mediamcp.GenerationMessageOutput, error)
 	GetGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationTaskRecord, error)
 	ListGenerationTasks(ctx context.Context, projectID string, input mediamcp.GenerationTaskListInput) (mediamcp.GenerationTasksOutput, error)

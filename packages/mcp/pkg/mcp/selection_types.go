@@ -50,11 +50,11 @@ type FormFieldInput struct {
 
 // AskUserFormInput presents a parameter form and blocks for submission.
 type AskUserFormInput struct {
-	Title          string           `json:"title" jsonschema:"表单卡标题，例如"确认生成参数"。"`
+	Title          string           `json:"title" jsonschema:"表单卡标题，例如「确认生成参数」。"`
 	Prompt         string           `json:"prompt,omitempty" jsonschema:"给用户的补充说明。"`
 	Kind           string           `json:"kind,omitempty" jsonschema:"表单类型标记，例如 generation_plan。"`
 	Fields         []FormFieldInput `json:"fields" jsonschema:"表单字段，至少一项。"`
-	SubmitLabel    string           `json:"submitLabel,omitempty" jsonschema:"提交按钮文案，默认"确认"。"`
+	SubmitLabel    string           `json:"submitLabel,omitempty" jsonschema:"提交按钮文案，默认「确认」。"`
 	TimeoutSeconds int              `json:"timeoutSeconds,omitempty" jsonschema:"阻塞等待秒数，clamp 到 [30,600]，默认 90；超时后用 await_user_selection 续等。"`
 }
 

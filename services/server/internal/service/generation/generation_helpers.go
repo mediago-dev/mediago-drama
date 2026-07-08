@@ -583,6 +583,7 @@ func GenerationTaskFromMessage(
 		DocumentID:        documentID,
 		SectionID:         strings.TrimSpace(request.SectionID),
 		CapabilityID:      GenerationCapabilityIDForRequest(request.CapabilityID, route),
+		ResourceType:      GenerationResourceTypeForRequest(request),
 		Kind:              string(route.Kind),
 		RouteID:           route.ID,
 		FamilyID:          route.FamilyID,
@@ -615,6 +616,16 @@ func generationTaskErrorFromResponse(response GenerationMessageResponse) string 
 		return errorMessage
 	}
 	return shared.FirstNonEmpty(strings.TrimSpace(response.Message), "生成请求失败。")
+}
+
+// GenerationResourceTypeForRequest resolves the project resource type a request
+// targets. Explicit resourceType wins; a capabilityId that names a resource type
+// is honored for callers that predate the dedicated field.
+func GenerationResourceTypeForRequest(request GenerationMessageRequest) string {
+	if resourceType := selectedGenerationResourceType(request.ResourceType); resourceType != "" {
+		return resourceType
+	}
+	return selectedGenerationResourceType(request.CapabilityID)
 }
 
 // GenerationCapabilityIDForRequest returns an explicit capability id or the route kind default.

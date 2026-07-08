@@ -313,7 +313,7 @@ func TestGenerationTaskServiceUpdateAssetSelectionPersists(t *testing.T) {
 	if !updated {
 		t.Fatal("update returned false, want true")
 	}
-	if !task.Assets[1].Selected || task.Assets[1].Title != title || task.CapabilityID != "character" {
+	if !task.Assets[1].Selected || task.Assets[1].Title != title || task.ResourceType != "character" {
 		t.Fatalf("task = %+v, want selected character asset with title", task)
 	}
 
@@ -325,7 +325,7 @@ func TestGenerationTaskServiceUpdateAssetSelectionPersists(t *testing.T) {
 	if !ok {
 		t.Fatal("task was not persisted")
 	}
-	if !reloaded.Assets[1].Selected || reloaded.CapabilityID != "character" {
+	if !reloaded.Assets[1].Selected || reloaded.ResourceType != "character" {
 		t.Fatalf("persisted task = %+v, want selected character asset with title", reloaded)
 	}
 
@@ -739,7 +739,7 @@ func TestGenerationServiceUpdateSelectedGenerationAssetFromTask(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("getting task ok=%v error=%v", ok, err)
 	}
-	if !reloaded.Assets[0].Selected || reloaded.CapabilityID != "character" {
+	if !reloaded.Assets[0].Selected || reloaded.ResourceType != "character" {
 		t.Fatalf("task = %+v, want mirrored selected asset state", reloaded)
 	}
 

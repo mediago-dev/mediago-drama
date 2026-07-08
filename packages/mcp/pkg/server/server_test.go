@@ -250,7 +250,7 @@ func (testDeps) AskUserForm(context.Context, string, mediamcp.AskUserFormInput) 
 	return mediamcp.AskUserSelectionOutput{}, nil
 }
 
-func (testDeps) ListGenerationModels(context.Context) (mediamcp.GenerationModelsOutput, error) {
+func (testDeps) ListGenerationModels(context.Context, mediamcp.GenerationListModelsInput) (mediamcp.GenerationModelsOutput, error) {
 	return mediamcp.GenerationModelsOutput{}, nil
 }
 
