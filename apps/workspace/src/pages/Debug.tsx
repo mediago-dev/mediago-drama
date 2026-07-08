@@ -1,9 +1,10 @@
-import { MessageSquareText, PackageOpen } from "lucide-react";
+import { KeyRound, MessageSquareText, PackageOpen } from "lucide-react";
 import type React from "react";
 import { InstructionTemplatesPanel } from "@/domains/settings/components/debug/InstructionTemplatesPanel";
+import { LicensePanel } from "@/domains/settings/components/debug/LicensePanel";
 import { PromptPacksPanel } from "@/domains/settings/components/debug/PromptPacksPanel";
 
-export type DebugTabValue = "instructions" | "prompt-packs";
+export type DebugTabValue = "instructions" | "prompt-packs" | "license";
 
 export const debugTabs: {
 	description: string;
@@ -23,6 +24,12 @@ export const debugTabs: {
 		description: "安装并管理技能与提示词",
 		icon: PackageOpen,
 	},
+	{
+		value: "license",
+		label: "授权激活",
+		description: "激活码与商业授权状态",
+		icon: KeyRound,
+	},
 ];
 
 export const DebugTabPanel: React.FC<{
@@ -39,6 +46,12 @@ export const DebugTabPanel: React.FC<{
 			return (
 				<div className="h-full min-h-0 overflow-hidden">
 					<PromptPacksPanel />
+				</div>
+			);
+		case "license":
+			return (
+				<div className="h-full min-h-0 overflow-hidden">
+					<LicensePanel />
 				</div>
 			);
 	}

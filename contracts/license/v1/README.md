@@ -33,6 +33,19 @@
 4. 集成测试：激活 → 授权 → 加载 → 无权限降级。
 5. 发布顺序：**先 license server，再新版客户端**。
 
+## License Server 接口（v1）
+
+客户端通过 `MEDIAGO_LICENSE_SERVER_URL` 指向授权服务器后，走以下接口（响应为 `{code,message,data}` 信封）：
+
+| 接口 | 说明 |
+|---|---|
+| `POST /api/v1/activate` | 激活码 → 签名 token（token.schema.json 结构；wire 格式 `base64url(payload).base64url(ed25519sig)`） |
+| `POST /api/v1/pack-keys/resolve` | Bearer token → 按 `key_id` 下发 pack 对称密钥 |
+| `GET /api/v1/publisher-keys` | 受信发布者公钥环 |
+| `GET /api/v1/license/public-key` | token 验签公钥（客户端激活时获取并与 token 一起保存本地） |
+
+未配置 `MEDIAGO_LICENSE_SERVER_URL` 时，客户端回退到开发期环境变量授权（见下）。
+
 ## 密钥与信任
 
 - **Pack 解密密钥**（AES-256-GCM，32 字节）：由 license server 在授权校验后按 `keyId` 下发。开发期通过 `MEDIAGO_LICENSE_PACK_KEYS` 环境变量模拟。
