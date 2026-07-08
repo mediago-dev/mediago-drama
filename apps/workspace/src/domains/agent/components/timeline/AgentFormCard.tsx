@@ -4,19 +4,38 @@ import type { AgentFormField, AgentFormPayload } from "@/api/types/agent";
 import { decideAgentSelection } from "@/domains/agent/api/agent";
 import type { AgentMessage } from "@/domains/agent/stores";
 import { useAgentStore } from "@/domains/agent/stores";
+import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
 import { useProjectStore } from "@/domains/projects/stores";
 import { cn } from "@/shared/lib/utils";
 
 export const AgentFormCard: React.FC<{ message: AgentMessage }> = ({ message }) => {
 	const payload = message.metadata?.form;
+	const resolved = useAgentPersistenceStore((state) =>
+		payload ? (state.resolvedSelections[payload.selectionId] ?? null) : null,
+	);
 	if (!payload) return null;
-	return <AgentFormCardInner message={message} payload={payload} />;
+	// A transcript hydrate re-materializes the original interactive form even
+	// after the user decided it, because the chat store is rebuilt from the
+	// server. Render the frozen summary so the form can't be confirmed twice.
+	if (resolved) {
+		return <AgentFormCardResolved title={payload.title} summary={resolved.summary} />;
+	}
+	return <AgentFormCardInner payload={payload} />;
 };
 
-const AgentFormCardInner: React.FC<{ message: AgentMessage; payload: AgentFormPayload }> = ({
-	message,
-	payload,
-}) => {
+const AgentFormCardResolved: React.FC<{ title: string; summary: string }> = ({
+	title,
+	summary,
+}) => (
+	<article className="agent-form-card max-w-[var(--message-bubble-max-width)] rounded-sm border border-border bg-card px-3 py-3 text-xs shadow-sm">
+		<h5 className="m-0 text-sm font-semibold text-foreground">{title}</h5>
+		<p className="mt-1 whitespace-pre-wrap break-words leading-5 text-muted-foreground">
+			{summary || "该参数表单已处理。"}
+		</p>
+	</article>
+);
+
+const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }) => {
 	const [values, setValues] = useState<Record<string, unknown>>(() =>
 		initialFormValues(payload.fields),
 	);
@@ -27,14 +46,13 @@ const AgentFormCardInner: React.FC<{ message: AgentMessage; payload: AgentFormPa
 		setValues((current) => ({ ...current, [fieldId]: value }));
 
 	const finish = (summary: string, status: string) => {
-		useAgentStore.getState().replaceMessage(message.id, {
-			content: summary,
-			kind: "message",
-			title: payload.title,
-			status: "complete",
-			metadata: {
-				formDecision: { selectionId: payload.selectionId, status },
-			},
+		// Record the decision in the persisted store rather than mutating the
+		// message: the in-memory chat store is rebuilt from the server on every
+		// transcript hydrate, so a local edit would be discarded and the form
+		// would come back interactive. AgentFormCard reads this to render frozen.
+		useAgentPersistenceStore.getState().markSelectionResolved(payload.selectionId, {
+			status,
+			summary,
 		});
 	};
 
