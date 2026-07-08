@@ -206,6 +206,53 @@ func (store *Service) waitForSelection(ctx context.Context, projectID string, se
 	}
 }
 
+// FindReusable returns a same-question selection from the run that a repeated
+// ask should attach to instead of popping a duplicate card: a still-pending
+// one, or one decided within the last two minutes (raced with the re-ask).
+func (store *Service) FindReusable(projectID string, runID string, kind string, title string) (Record, bool, error) {
+	if store.initErr != nil {
+		return Record{}, false, store.initErr
+	}
+	runID = strings.TrimSpace(runID)
+	kind = strings.TrimSpace(kind)
+	title = strings.TrimSpace(title)
+	if runID == "" || title == "" {
+		return Record{}, false, nil
+	}
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	if store.repo == nil {
+		return Record{}, false, fmt.Errorf("agent selection repository is not initialized")
+	}
+	models, err := store.repo.ListAgentSelectionsByRun(domain.CleanProjectID(projectID), runID, 20)
+	if err != nil {
+		return Record{}, false, err
+	}
+	now := time.Now().UTC()
+	for _, model := range models {
+		if strings.TrimSpace(model.Kind) != kind || strings.TrimSpace(model.Title) != title {
+			continue
+		}
+		switch model.Status {
+		case StatusPending:
+			record, err := recordFromModel(model)
+			if err != nil {
+				return Record{}, false, err
+			}
+			return record, true, nil
+		case StatusSelected, StatusCustom, StatusSubmitted:
+			if model.DecidedAt != nil && now.Sub(model.DecidedAt.UTC()) <= 2*time.Minute {
+				record, err := recordFromModel(model)
+				if err != nil {
+					return Record{}, false, err
+				}
+				return record, true, nil
+			}
+		}
+	}
+	return Record{}, false, nil
+}
+
 func (store *Service) getUnlocked(projectID string, selectionID string) (Record, bool, error) {
 	if store.repo == nil {
 		return Record{}, false, fmt.Errorf("agent selection repository is not initialized")

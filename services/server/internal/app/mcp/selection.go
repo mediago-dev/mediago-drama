@@ -28,6 +28,10 @@ func (adapter *Adapter) AskUserSelection(ctx context.Context, projectID string, 
 	}
 	projectID = adapter.projectIDForAgentEvent(projectID)
 
+	if reused, ok := adapter.reuseSelection(ctx, projectID, input.Kind, input.Title, input.TimeoutSeconds); ok {
+		return reused.output, reused.err
+	}
+
 	created, err := service.Create(projectID, serviceselection.CreateRequest{
 		SessionID:      adapter.document.config.SessionID,
 		RunID:          adapter.document.config.RunID,
@@ -48,6 +52,30 @@ func (adapter *Adapter) AskUserSelection(ctx context.Context, projectID string, 
 	return waitSelectionOutput(ctx, service, projectID, created.ID, input.TimeoutSeconds)
 }
 
+type reusedSelectionResult struct {
+	output mediamcp.AskUserSelectionOutput
+	err    error
+}
+
+// reuseSelection catches repeated asks for the same question in one run: a
+// model that re-asks instead of awaiting would otherwise pop a duplicate card,
+// and a decision that landed while it was re-asking would be lost. A pending
+// duplicate is waited on (no new card); a decision made within the last two
+// minutes is returned immediately.
+func (adapter *Adapter) reuseSelection(ctx context.Context, projectID string, kind string, title string, timeoutSeconds int) (reusedSelectionResult, bool) {
+	service := adapter.document.store.Selections
+	existing, ok, err := service.FindReusable(projectID, adapter.document.config.RunID, strings.TrimSpace(kind), strings.TrimSpace(title))
+	if err != nil || !ok {
+		return reusedSelectionResult{}, false
+	}
+	adapter.document.logToolInvocation("reuse_user_selection", "selection_id", existing.ID, "status", existing.Status)
+	if existing.Status != serviceselection.StatusPending {
+		return reusedSelectionResult{output: selectionOutputFromRecord(existing)}, true
+	}
+	output, waitErr := waitSelectionOutput(ctx, service, projectID, existing.ID, timeoutSeconds)
+	return reusedSelectionResult{output: output, err: waitErr}, true
+}
+
 // AskUserForm presents a native parameter form card, blocks until the user
 // submits, and returns the field values. It shares the selection lifecycle so
 // await_user_selection and the retrieve-after-timeout flow work unchanged.
@@ -60,6 +88,10 @@ func (adapter *Adapter) AskUserForm(ctx context.Context, projectID string, input
 		return mediamcp.AskUserSelectionOutput{}, fmt.Errorf("selection service is not configured")
 	}
 	projectID = adapter.projectIDForAgentEvent(projectID)
+
+	if reused, ok := adapter.reuseSelection(ctx, projectID, firstNonEmpty(input.Kind, "form"), input.Title, input.TimeoutSeconds); ok {
+		return reused.output, reused.err
+	}
 
 	created, err := service.Create(projectID, serviceselection.CreateRequest{
 		SessionID:      adapter.document.config.SessionID,
