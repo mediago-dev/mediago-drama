@@ -31,6 +31,7 @@ type GenerationService struct {
 	stylePreviews                 *StylePreviewStore
 	stylePrompts                  StylePromptSource
 	mediagoBaseURL                string
+	mediagoModelCatalog           mediagoModelCatalogCache
 	jimengBinPath                 string
 	jimengBinDir                  string
 	libTVBinPath                  string
