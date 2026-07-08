@@ -51,9 +51,10 @@ type GenerationPreferences struct {
 
 // GenerationSelectAssetInput marks one generated asset slot as the picked result.
 type GenerationSelectAssetInput struct {
-	TaskID    string `json:"taskId" jsonschema:"生成任务 ID。"`
-	SlotIndex int    `json:"slotIndex" jsonschema:"资产槽位序号，取 get_generation_task 返回资产的 slotIndex。"`
-	Title     string `json:"title,omitempty" jsonschema:"可选：同时更新资产标题。"`
+	TaskID       string `json:"taskId" jsonschema:"生成任务 ID。"`
+	SlotIndex    int    `json:"slotIndex" jsonschema:"资产槽位序号，取 get_generation_task 返回资产的 slotIndex。"`
+	Title        string `json:"title,omitempty" jsonschema:"可选：同时更新资产标题。"`
+	ResourceType string `json:"resourceType,omitempty" jsonschema:"资源类型：character、scene、prop 或 storyboard；为项目资源定稿时必传，才会进入对应资源的选中资产库。"`
 }
 
 // GenerationMessageInput creates a generation request.

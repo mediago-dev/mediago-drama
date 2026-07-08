@@ -146,6 +146,9 @@ func (server *GenerationServer) SelectGenerationAsset(ctx context.Context, proje
 	if title := strings.TrimSpace(input.Title); title != "" {
 		patch.Title = &title
 	}
+	if resourceType := strings.TrimSpace(input.ResourceType); resourceType != "" {
+		patch.ResourceType = resourceType
+	}
 	updated, ok, err := service.UpdateGenerationTaskAsset(task.ID, input.SlotIndex, patch)
 	if err != nil {
 		return mediamcp.GenerationTaskRecord{}, err
