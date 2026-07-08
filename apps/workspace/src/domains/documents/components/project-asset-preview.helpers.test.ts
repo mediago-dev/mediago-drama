@@ -92,6 +92,46 @@ describe("project asset preview helpers", () => {
 		expect(fetchMock.mock.calls[1][1]).toBeUndefined();
 	});
 
+	it("decodes GBK/GB18030-encoded Chinese text assets", async () => {
+		// 「中文」 encoded as GBK — invalid as UTF-8, so it would render as mojibake
+		// if decoded with the default Response.text() assumption.
+		const gbkBytes = new Uint8Array([0xd6, 0xd0, 0xce, 0xc4]);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(gbkBytes, { headers: { "Content-Type": "text/plain" } })),
+		);
+
+		await expect(fetchTextAsset("/api/v1/projects/project-1/assets/asset-1/content")).resolves.toBe(
+			"中文",
+		);
+	});
+
+	it("keeps decoding UTF-8 Chinese text assets", async () => {
+		const utf8Bytes = new TextEncoder().encode("扮演神明的我成真了");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(utf8Bytes, { headers: { "Content-Type": "text/plain" } })),
+		);
+
+		await expect(fetchTextAsset("/api/v1/projects/project-1/assets/asset-1/content")).resolves.toBe(
+			"扮演神明的我成真了",
+		);
+	});
+
+	it("does not misdetect UTF-8 text sliced mid-character as a legacy encoding", async () => {
+		// The ranged preview fetch can cut the final multibyte sequence in half;
+		// the intact prefix must still decode as UTF-8, not fall back to GB18030.
+		const full = new TextEncoder().encode("神明成真");
+		const sliced = full.slice(0, full.length - 1);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(sliced, { headers: { "Content-Type": "text/plain" } })),
+		);
+
+		const text = await fetchTextAsset("/api/v1/projects/project-1/assets/asset-1/content");
+		expect(text.startsWith("神明成")).toBe(true);
+	});
+
 	it("rejects frontend HTML fallback responses for text assets", async () => {
 		vi.stubGlobal(
 			"fetch",

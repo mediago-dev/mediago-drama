@@ -25,15 +25,41 @@ export const fetchTextAsset = async (url: string) => {
 	if (!url.trim()) throw new Error("素材地址缺失。");
 	const response = await fetchTextPreviewResponse(url);
 	if (!response.ok) throw new Error(`文本读取失败：${response.status}`);
-	const text = await response.text();
+	const bytes = new Uint8Array(await response.arrayBuffer());
+	const text = decodeTextPreview(bytes);
 	if (isHTMLResponse(response, text)) {
 		throw new Error("文本读取失败：素材接口返回了前端页面。");
 	}
 	return truncateTextPreview(text);
 };
 
-// 512 KiB always decodes to at least textPreviewMaxChars characters
-// (UTF-8 spends at most 4 bytes per character), so a ranged fetch never
+// Text assets are stored verbatim, so a Chinese .txt saved in GBK/GB18030 (the
+// dominant legacy encoding) renders as mojibake when forced through UTF-8.
+// Response.text() always assumes UTF-8, so sniff the bytes and pick a decoder.
+const decodeTextPreview = (bytes: Uint8Array) =>
+	new TextDecoder(detectTextEncoding(bytes)).decode(bytes);
+
+const detectTextEncoding = (bytes: Uint8Array): string => {
+	if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) return "utf-16le";
+	if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) return "utf-16be";
+	// A UTF-8 BOM is valid UTF-8, so it falls through and TextDecoder strips it.
+	return isValidUtf8(bytes) ? "utf-8" : "gb18030";
+};
+
+const isValidUtf8 = (bytes: Uint8Array): boolean => {
+	try {
+		// stream: true tolerates a multibyte sequence sliced off by the ranged
+		// preview fetch; any genuinely invalid byte still throws, which points to
+		// a legacy (non-UTF-8) encoding.
+		new TextDecoder("utf-8", { fatal: true }).decode(bytes, { stream: true });
+		return true;
+	} catch {
+		return false;
+	}
+};
+
+// 512 KiB always decodes to at least textPreviewMaxChars characters (UTF-8 and
+// GB18030 both spend at most 4 bytes per character), so a ranged fetch never
 // truncates below the preview cap.
 const textPreviewMaxBytes = 512 * 1024;
 
