@@ -7,6 +7,7 @@ import {
 import type { AgentSelection } from "@/domains/agent/api/agent";
 import type { AgentMessage } from "@/domains/agent/stores";
 import { useAgentStore } from "@/domains/agent/stores";
+import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { useProjectStore } from "@/domains/projects/stores";
 import { getWorkspaceDocuments } from "@/domains/workspace/api/workspace";
@@ -131,6 +132,13 @@ const handleAgentSelectionAction = async (message: AgentMessage, action: A2uiCli
 					status: record.status,
 				},
 			},
+		});
+		// Persist the decision so the card stays frozen after a transcript
+		// hydrate re-materializes the original interactive A2UI payload.
+		useAgentPersistenceStore.getState().markSelectionResolved(selectionId, {
+			status: record.status,
+			summary: detail,
+			title: record.title || "用户选择",
 		});
 		store.recordActivity("runtime", "选择已提交", detail);
 	} catch (err) {

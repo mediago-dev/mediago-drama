@@ -2,10 +2,14 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { basicCatalog } from "@a2ui/react/v0_9";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentMessage } from "@/domains/agent/stores";
+import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
 import { AgentA2UIMessage } from "./AgentA2UIMessage";
 
 describe("AgentA2UIMessage", () => {
-	afterEach(() => cleanup());
+	afterEach(() => {
+		cleanup();
+		useAgentPersistenceStore.setState({ resolvedSelections: {} });
+	});
 
 	it("renders a model-returned A2UI surface", () => {
 		render(<AgentA2UIMessage message={a2uiMessage("测试界面")} />);
@@ -33,6 +37,25 @@ describe("AgentA2UIMessage", () => {
 				selectionId: "selection-1",
 			},
 		});
+	});
+
+	it("renders a decided selection card frozen after a hydrate", () => {
+		// Simulates a transcript hydrate that re-materializes the original
+		// interactive selection card after the user already decided it.
+		useAgentPersistenceStore.setState({
+			resolvedSelections: {
+				"selection-1": { status: "selected", summary: "已选择：甜美粉彩", title: "选择插画风格" },
+			},
+		});
+		const onAction = vi.fn();
+		render(<AgentA2UIMessage message={selectionCardMessage()} onAction={onAction} />);
+
+		expect(screen.getByText("选择插画风格")).toBeTruthy();
+		expect(screen.getByText("已选择：甜美粉彩")).toBeTruthy();
+		// The interactive option button is gone; the card can't be clicked twice.
+		expect(screen.queryByText(/选择一种插画风格/)).toBeNull();
+		expect(document.querySelector("button")).toBeNull();
+		expect(onAction).not.toHaveBeenCalled();
 	});
 });
 

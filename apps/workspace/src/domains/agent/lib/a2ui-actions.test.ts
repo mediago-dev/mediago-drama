@@ -2,6 +2,7 @@ import type { A2uiClientAction } from "@a2ui/web_core/v0_9";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { decideAgentPermission, decideAgentSelection } from "@/domains/agent/api/agent";
 import { selectAgentMessages, type AgentMessage, useAgentStore } from "@/domains/agent/stores";
+import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
 import { useProjectStore } from "@/domains/projects/stores";
 import { handleDeterministicA2UIAction } from "./a2ui-actions";
 
@@ -28,6 +29,7 @@ describe("handleDeterministicA2UIAction", () => {
 			streamingMessageId: null,
 		});
 		useProjectStore.setState({ activeProjectId: null });
+		useAgentPersistenceStore.setState({ resolvedSelections: {} });
 	});
 
 	it("replaces a confirmed permission UI with the selected decision summary", async () => {
@@ -148,6 +150,12 @@ describe("handleDeterministicA2UIAction", () => {
 			},
 		});
 		expect(messages[0]?.metadata?.a2ui).toBeUndefined();
+		// The decision persists so the card stays frozen across hydrates.
+		expect(useAgentPersistenceStore.getState().resolvedSelections["selection-1"]).toEqual({
+			status: "selected",
+			summary: "已选择：复古线条",
+			title: "选择一种插画风格",
+		});
 	});
 
 	it("marks a stale selection card with the persisted outcome", async () => {
