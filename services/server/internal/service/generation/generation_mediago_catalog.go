@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
@@ -14,32 +16,95 @@ import (
 
 const (
 	mediagoModelCatalogPath       = "/models/user"
-	mediagoModelCatalogTimeout    = 3 * time.Second
+	mediagoModelCatalogTimeout    = 10 * time.Second
+	mediagoModelCatalogCacheTTL   = time.Minute
+	mediagoModelCatalogFailureTTL = 15 * time.Second
 	mediagoModelCatalogMaxBytes   = 1 << 20
 	mediagoModelCatalogUserAgent  = "mediago-drama"
 	mediagoModelCatalogAuthScheme = "Bearer "
 )
 
-func (workflow *GenerationService) mediagoRouteModelAvailable(ctx context.Context, route coregeneration.ModelRoute) bool {
-	if workflow == nil {
-		return false
-	}
-	model := strings.TrimSpace(route.Model)
-	if model == "" {
-		return false
-	}
-	apiKey, _, err := workflow.settings.GetAPIKey(ctx, coregeneration.ProviderMediago)
-	if err != nil || strings.TrimSpace(apiKey) == "" {
-		return false
-	}
-	models, err := workflow.mediagoAvailableModelsFresh(ctx, apiKey)
-	if err != nil {
-		return false
-	}
-	_, ok := models[model]
-	return ok
+// mediagoModelCatalogCache holds the last MediaGo user-catalog fetch so callers
+// don't hit the upstream endpoint on every list/generate request.
+type mediagoModelCatalogCache struct {
+	mu        sync.Mutex
+	baseURL   string
+	apiKey    string
+	models    map[string]struct{}
+	fetchedAt time.Time
+	lastErr   error
+	failedAt  time.Time
 }
 
+// mediagoAvailableModels returns the MediaGo models enabled for the configured API
+// key. Successful fetches are cached for mediagoModelCatalogCacheTTL, failed fetches
+// for mediagoModelCatalogFailureTTL, and when a refresh fails the last successful
+// catalog keeps being served so transient upstream slowness does not flip enabled
+// models to disabled.
+func (workflow *GenerationService) mediagoAvailableModels(ctx context.Context) (map[string]struct{}, error) {
+	if workflow == nil || workflow.settings == nil {
+		return nil, fmt.Errorf("generation settings are unavailable")
+	}
+	baseURL := strings.TrimRight(strings.TrimSpace(workflow.mediagoBaseURL), "/")
+	if baseURL == "" {
+		return nil, fmt.Errorf("mediago generation base URL is not configured")
+	}
+	apiKey, _, err := workflow.settings.GetAPIKey(ctx, coregeneration.ProviderMediago)
+	if err != nil {
+		return nil, fmt.Errorf("loading mediago API key: %w", err)
+	}
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return nil, fmt.Errorf("mediago API key is not configured")
+	}
+
+	cache := &workflow.mediagoModelCatalog
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if cache.baseURL != baseURL || cache.apiKey != apiKey {
+		cache.baseURL = baseURL
+		cache.apiKey = apiKey
+		cache.models = nil
+		cache.fetchedAt = time.Time{}
+		cache.lastErr = nil
+		cache.failedAt = time.Time{}
+	}
+	if cache.models != nil && time.Since(cache.fetchedAt) < mediagoModelCatalogCacheTTL {
+		return cache.models, nil
+	}
+	if !cache.failedAt.IsZero() && time.Since(cache.failedAt) < mediagoModelCatalogFailureTTL {
+		if cache.models != nil {
+			return cache.models, nil
+		}
+		return nil, cache.lastErr
+	}
+
+	models, err := fetchMediagoAvailableModels(ctx, http.DefaultClient, baseURL, apiKey)
+	if err != nil {
+		cache.lastErr = err
+		cache.failedAt = time.Now()
+		if cache.models != nil {
+			slog.Warn(
+				"mediago model catalog refresh failed; serving cached catalog",
+				"error", err,
+				"cache_age", time.Since(cache.fetchedAt).Round(time.Second).String(),
+			)
+			return cache.models, nil
+		}
+		slog.Warn("mediago model catalog fetch failed", "error", err)
+		return nil, err
+	}
+	cache.models = models
+	cache.fetchedAt = time.Now()
+	cache.lastErr = nil
+	cache.failedAt = time.Time{}
+	return models, nil
+}
+
+// mediagoAvailableModelsForCatalog resolves the MediaGo user catalog for model
+// listings. The boolean reports whether the result should be used to filter
+// MediaGo routes; a nil set with true hides them all (no key or catalog
+// unavailable with nothing cached).
 func (workflow *GenerationService) mediagoAvailableModelsForCatalog(ctx context.Context) (map[string]struct{}, bool) {
 	if workflow == nil || workflow.settings == nil {
 		return nil, false
@@ -47,27 +112,11 @@ func (workflow *GenerationService) mediagoAvailableModelsForCatalog(ctx context.
 	if strings.TrimSpace(workflow.mediagoBaseURL) == "" {
 		return nil, true
 	}
-	apiKey, _, err := workflow.settings.GetAPIKey(ctx, coregeneration.ProviderMediago)
-	if err != nil || strings.TrimSpace(apiKey) == "" {
-		return nil, true
-	}
-	models, err := workflow.mediagoAvailableModelsFresh(ctx, apiKey)
+	models, err := workflow.mediagoAvailableModels(ctx)
 	if err != nil {
 		return nil, true
 	}
 	return models, true
-}
-
-func (workflow *GenerationService) mediagoAvailableModelsFresh(ctx context.Context, apiKey string) (map[string]struct{}, error) {
-	baseURL := strings.TrimRight(strings.TrimSpace(workflow.mediagoBaseURL), "/")
-	apiKey = strings.TrimSpace(apiKey)
-	if baseURL == "" {
-		return nil, fmt.Errorf("mediago generation base URL is not configured")
-	}
-	if apiKey == "" {
-		return nil, fmt.Errorf("mediago API key is not configured")
-	}
-	return fetchMediagoAvailableModels(ctx, http.DefaultClient, baseURL, apiKey)
 }
 
 func fetchMediagoAvailableModels(ctx context.Context, client *http.Client, baseURL string, apiKey string) (map[string]struct{}, error) {
