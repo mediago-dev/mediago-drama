@@ -637,7 +637,7 @@ const AssetLibraryPreview: React.FC<{
 	const toast = useToast();
 	const source = item ? assetLibraryItemSource(item) : "";
 	const posterSource = item ? assetLibraryItemPosterSource(item) : "";
-	const tags = item ? assetLibraryItemTags(item) : [];
+	const tags = item ? assetLibraryResourceTags(item) : [];
 	const textKey = item?.kind === "text" && source ? source : null;
 	const {
 		data: text,
@@ -899,13 +899,16 @@ const AssetTagList: React.FC<{
 	className?: string;
 	tagClassName?: string;
 	tags: AssetLibraryTag[];
-}> = ({ className, tagClassName, tags }) => (
-	<div className={cn("flex flex-wrap", className)}>
-		{tags.map((tag) => (
-			<AssetTagBadge key={tag.key} tag={tag} className={tagClassName} />
-		))}
-	</div>
-);
+}> = ({ className, tagClassName, tags }) => {
+	if (tags.length === 0) return null;
+	return (
+		<div className={cn("flex flex-wrap", className)}>
+			{tags.map((tag) => (
+				<AssetTagBadge key={tag.key} tag={tag} className={tagClassName} />
+			))}
+		</div>
+	);
+};
 
 const AssetTagBadge: React.FC<{ className?: string; tag: AssetLibraryTag }> = ({
 	className,
@@ -1005,11 +1008,6 @@ const assetLibraryItemPosterSource = (item: AssetLibraryItem) => {
 	const posterURL = item.mediaAsset?.posterUrl?.trim();
 	return posterURL ? apiResourceURL(posterURL) : "";
 };
-
-const assetLibraryItemTags = (item: AssetLibraryItem): AssetLibraryTag[] => [
-	...assetLibraryResourceTags(item),
-	assetLibraryKindTag(item),
-];
 
 const assetLibraryResourceTags = (item: AssetLibraryItem): AssetLibraryTag[] =>
 	item.selectedResourceTypes.map((type) => ({
