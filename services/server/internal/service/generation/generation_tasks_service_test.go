@@ -1206,3 +1206,74 @@ func TestGenerationTaskServiceUpsertExistingDoesNotResurrectDeletedTask(t *testi
 		t.Fatal("deleted task was resurrected by a late background write")
 	}
 }
+
+func TestGenerationTaskServiceManualSelectReplacesOtherTaskSelectionForResource(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	projectID := "project-manual-select-replace"
+	seedGenerationTaskProject(t, dbPath, projectID)
+	seedGenerationTaskAsset(t, dbPath, "old-image", "image", projectID)
+	seedGenerationTaskAsset(t, dbPath, "new-image-a", "image", projectID)
+	seedGenerationTaskAsset(t, dbPath, "new-image-b", "image", projectID)
+
+	service := NewGenerationTaskService(dbPath, nil)
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:           "task-old-pick",
+		ProjectID:    projectID,
+		DocumentID:   "characters",
+		SectionID:    "section-lintong",
+		CapabilityID: "character",
+		Kind:         "image",
+		Status:       "completed",
+		Assets: []GenerationAsset{
+			{Kind: "image", URL: "/api/v1/media-assets/old-image/content", Title: "旧定稿"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting old task: %v", err)
+	}
+
+	// agent 生成的任务通常不带资源 capabilityId，完成时不会默认选中。
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:           "task-agent-pick",
+		ProjectID:    projectID,
+		DocumentID:   "characters",
+		SectionID:    "section-lintong",
+		CapabilityID: "image.generate",
+		Kind:         "image",
+		Status:       "completed",
+		Assets: []GenerationAsset{
+			{Kind: "image", URL: "/api/v1/media-assets/new-image-a/content", Title: "新图 1"},
+			{Kind: "image", URL: "/api/v1/media-assets/new-image-b/content", Title: "新图 2"},
+		},
+	}); err != nil {
+		t.Fatalf("upserting agent task: %v", err)
+	}
+
+	selectedFlag := true
+	if _, ok, err := service.UpdateAsset("task-agent-pick", 1, UpdateGenerationTaskAssetRequest{
+		Selected:     &selectedFlag,
+		ResourceType: "character",
+	}); err != nil || !ok {
+		t.Fatalf("selecting agent asset ok=%v error=%v", ok, err)
+	}
+
+	selected, err := service.ListProjectSelectedAssets(projectID)
+	if err != nil {
+		t.Fatalf("listing selected assets: %v", err)
+	}
+	// 定稿是单选：旧任务的选中被替换，资源只剩本次定稿这一张。
+	if len(selected) != 1 ||
+		selected[0].TaskID != "task-agent-pick" ||
+		selected[0].AssetIndex != 1 ||
+		selected[0].MediaAssetID != "new-image-b" ||
+		selected[0].ResourceID != "section-lintong" {
+		t.Fatalf("selected assets = %+v, want only the newly picked asset", selected)
+	}
+
+	oldTask, ok, err := service.Get("task-old-pick")
+	if err != nil || !ok {
+		t.Fatalf("getting old task ok=%v error=%v", ok, err)
+	}
+	if oldTask.Assets[0].Selected {
+		t.Fatal("old task asset should be unselected after the new pick replaces it")
+	}
+}
