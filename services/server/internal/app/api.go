@@ -14,6 +14,7 @@ import (
 	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
+	servicelicense "github.com/mediago-dev/mediago-drama/services/server/internal/service/license"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	serviceprojectasset "github.com/mediago-dev/mediago-drama/services/server/internal/service/projectasset"
 	servicepromptlibrary "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptlibrary"
@@ -48,6 +49,7 @@ type apiHandler struct {
 	previewStreamer  *servicemedia.FFmpegPreviewStreamer
 	projectAssets    *serviceprojectasset.ProjectAssets
 	promptPack       *servicepromptpack.Service
+	licenseClient    *servicelicense.Client
 	promptTemplates  *serviceprompttemplates.Service
 	promptLibrary    *servicepromptlibrary.Service
 	skillRegistry    *serviceskill.Registry
