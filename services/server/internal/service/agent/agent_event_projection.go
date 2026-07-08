@@ -158,6 +158,7 @@ func ProjectAgentEvent(
 				Kind:      "message",
 				CreatedAt: event.CreatedAt,
 				Status:    "complete",
+				Metadata:  event.Metadata,
 			})
 			conversation.UpdatedAt = event.CreatedAt
 			conversations[conversation.RunID] = conversation

@@ -78,6 +78,61 @@ describe("AgentTimeline", () => {
 		expect(screen.queryByText(/内容：/)).toBeFalsy();
 	});
 
+	it("renders mention and skill chips from display segments in the user bubble", () => {
+		render(
+			<AgentTimeline
+				isRunning={false}
+				messages={[
+					userMessage({
+						content: "剧本写作 理解一下这个文本，帮我进行剧本写作",
+						metadata: {
+							displaySegments: [
+								{ type: "skill", name: "screenplay-writer", title: "剧本写作" },
+								{ type: "text", text: " 理解一下这个文本，帮我进行" },
+								{ type: "mention", title: "角色档案", category: "character", kind: "document" },
+							],
+						},
+					}),
+				]}
+			/>,
+		);
+
+		expect(screen.getByText("剧本写作")).toBeTruthy();
+		expect(screen.getByText("角色档案")).toBeTruthy();
+		expect(screen.getByText(/理解一下这个文本/)).toBeTruthy();
+		// The plain-text fallback must not render alongside the segments.
+		expect(screen.queryByText("剧本写作 理解一下这个文本，帮我进行剧本写作")).toBeFalsy();
+		expect(screen.queryByText(/请先调用 MCP/)).toBeFalsy();
+	});
+
+	it("shows attachment cards without bubble text for attachment-only sends", () => {
+		render(
+			<AgentTimeline
+				isRunning={false}
+				messages={[
+					userMessage({
+						content: "",
+						metadata: {
+							displayAttachments: [
+								{
+									id: "attachment-1",
+									kind: "file",
+									mimeType: "text/plain",
+									name: "开局欺诈师，扮演神明的我成真了.txt",
+									size: 1024,
+								},
+							],
+						},
+					}),
+				]}
+			/>,
+		);
+
+		expect(screen.getByText("开局欺诈师，扮演神明的我成真了.txt")).toBeTruthy();
+		const bubble = document.querySelector(".agent-user-bubble");
+		expect(bubble?.querySelector("p")).toBeNull();
+	});
+
 	it("deduplicates repeated attachment display metadata", () => {
 		render(
 			<AgentTimeline

@@ -332,6 +332,38 @@
 		color: var(--agent-user-meta);
 	}
 
+	/* Inline mention / skill chips inside the sent bubble. The bubble uses the
+	   brand background, so chips render as translucent pills of the on-brand
+	   color instead of the category surfaces used in the composer. */
+	.agent-user-bubble .agent-bubble-chip {
+		display: inline-flex;
+		box-sizing: border-box;
+		max-width: 100%;
+		align-items: center;
+		gap: 0.3rem;
+		overflow: hidden;
+		border-radius: var(--radius-scale-sm);
+		background: color-mix(in srgb, var(--agent-on-brand) 18%, transparent);
+		padding: 0 0.3rem;
+		color: var(--agent-on-brand);
+		font-weight: var(--font-weight-scale-medium);
+		line-height: 1.4;
+		vertical-align: -0.14em;
+		white-space: nowrap;
+	}
+
+	/* Section mentions keep the same inset marker they carry in the composer. */
+	.agent-user-bubble .agent-bubble-chip[data-kind="section"] {
+		box-shadow: inset var(--border-width-scale-md) 0 0 currentColor;
+	}
+
+	.agent-user-bubble .agent-bubble-chip-title {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
 	.agent-user-attachment {
 		border-color: var(--agent-line);
 		border-radius: var(--radius-scale-sm);

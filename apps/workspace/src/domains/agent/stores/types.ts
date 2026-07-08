@@ -60,6 +60,14 @@ export interface AgentDisplayAttachment {
 	url?: string;
 }
 
+// Structured rendering of a user prompt: plain text interleaved with the
+// mention / skill chips the user placed in the composer. Persisted alongside
+// the message so the chat bubble can re-render chips after a transcript reload.
+export type AgentDisplaySegment =
+	| { type: "text"; text: string }
+	| { type: "mention"; title: string; category?: string; kind?: string }
+	| { type: "skill"; name: string; title?: string };
+
 export interface AgentMessageMetadata {
 	toolName?: string;
 	filePath?: string;
@@ -82,6 +90,7 @@ export interface AgentMessageMetadata {
 	a2ui?: AgentA2UIPayload;
 	form?: AgentFormPayload;
 	displayAttachments?: AgentDisplayAttachment[];
+	displaySegments?: AgentDisplaySegment[];
 	[key: string]: unknown;
 }
 

@@ -44,6 +44,47 @@ func TestProjectAgentEventIgnoresTimestampToolTitle(t *testing.T) {
 	}
 }
 
+func TestProjectAgentEventKeepsUserMessageDisplayMetadata(t *testing.T) {
+	conversations := map[string]AgentConversationRecord{}
+	activity := []AgentChatActivityRecord{}
+	event := AgentEvent{
+		ID:        "event-1",
+		SessionID: "session-1",
+		RunID:     "run-1",
+		Type:      "agent.user.message",
+		Message:   "理解一下这个文本，帮我进行剧本写作",
+		CreatedAt: "2026-07-08T10:00:00Z",
+		Metadata: map[string]any{
+			"displaySegments": []any{
+				map[string]any{"type": "skill", "name": "screenplay-writer", "title": "剧本写作"},
+				map[string]any{"type": "text", "text": " 理解一下这个文本"},
+			},
+			"displayAttachments": []any{
+				map[string]any{"kind": "file", "name": "开局欺诈师.txt"},
+			},
+		},
+	}
+
+	ProjectAgentEvent(event, conversations, &activity)
+
+	conversation := conversations["run-1"]
+	if len(conversation.Messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(conversation.Messages))
+	}
+	message := conversation.Messages[0]
+	if message.Content != event.Message {
+		t.Fatalf("content = %q, want display prompt", message.Content)
+	}
+	segments, ok := message.Metadata["displaySegments"].([]any)
+	if !ok || len(segments) != 2 {
+		t.Fatalf("displaySegments = %#v, want 2 entries", message.Metadata["displaySegments"])
+	}
+	attachments, ok := message.Metadata["displayAttachments"].([]any)
+	if !ok || len(attachments) != 1 {
+		t.Fatalf("displayAttachments = %#v, want 1 entry", message.Metadata["displayAttachments"])
+	}
+}
+
 func TestProjectAgentEventInfersMCPToolKindWhenACPKindIsOther(t *testing.T) {
 	conversations := map[string]AgentConversationRecord{}
 	activity := []AgentChatActivityRecord{}

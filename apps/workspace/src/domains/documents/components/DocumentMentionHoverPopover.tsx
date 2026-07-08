@@ -155,7 +155,7 @@ export const DocumentMentionHoverPopover: React.FC<DocumentMentionHoverPopoverPr
 			const target = event.target;
 			if (!(target instanceof Element)) return;
 
-			const mentionElement = target.closest<HTMLElement>(".agent-reference-mention");
+			const mentionElement = target.closest<HTMLElement>(".document-reference-mention");
 			if (!mentionElement || !rootRef.current?.contains(mentionElement)) {
 				return;
 			}
