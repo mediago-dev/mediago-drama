@@ -1,6 +1,8 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
 	AudioLines,
+	Check,
+	Copy,
 	Download,
 	File,
 	FileText,
@@ -10,6 +12,7 @@ import {
 	Images,
 	LibraryBig,
 	Loader2,
+	PencilLine,
 	Search,
 	Trash2,
 	UploadCloud,
@@ -37,6 +40,7 @@ import {
 	deleteMediaAsset,
 	getMediaAssets,
 	mediaAssetsKey,
+	updateMediaAsset,
 	uploadMediaAsset,
 } from "@/domains/workspace/api/media";
 import {
@@ -321,6 +325,26 @@ const AssetLibraryDialog: React.FC<{
 		}
 	};
 
+	const renameItem = async (item: AssetLibraryItem, filename: string) => {
+		const asset = item.mediaAsset;
+		const trimmed = filename.trim();
+		if (!asset || !trimmed) return false;
+		if (trimmed === item.title) return true;
+		if (busyKey) return false;
+		setBusyKey(item.key);
+		try {
+			await updateMediaAsset(asset.id, trimmed, selectedProjectId || undefined);
+			await mutateMediaAssets();
+			toast.success("素材已重命名", { description: trimmed });
+			return true;
+		} catch (err) {
+			toast.error("重命名失败", { description: errorMessage(err, "素材重命名失败。") });
+			return false;
+		} finally {
+			setBusyKey("");
+		}
+	};
+
 	const unselectGenerationAssets = async (assets: SelectedGenerationAsset[]) => {
 		if (!selectedProjectId) return;
 		await Promise.all(
@@ -538,6 +562,9 @@ const AssetLibraryDialog: React.FC<{
 								onDownload={() => {
 									if (activeItem) void downloadItem(activeItem);
 								}}
+								onRename={(filename) =>
+									activeItem ? renameItem(activeItem, filename) : Promise.resolve(false)
+								}
 							/>
 						</div>
 					</DialogPrimitive.Content>
@@ -633,8 +660,10 @@ const AssetLibraryPreview: React.FC<{
 	item: AssetLibraryItem | null;
 	onDelete: () => void;
 	onDownload: () => void;
-}> = ({ busy, item, onDelete, onDownload }) => {
+	onRename: (filename: string) => Promise<boolean>;
+}> = ({ busy, item, onDelete, onDownload, onRename }) => {
 	const toast = useToast();
+	const [draftName, setDraftName] = useState<string | null>(null);
 	const source = item ? assetLibraryItemSource(item) : "";
 	const posterSource = item ? assetLibraryItemPosterSource(item) : "";
 	const tags = item ? assetLibraryResourceTags(item) : [];
@@ -644,6 +673,11 @@ const AssetLibraryPreview: React.FC<{
 		error,
 		isLoading,
 	} = useSWR(textKey, fetchTextAsset, { revalidateOnFocus: false });
+	const itemKey = item?.key ?? "";
+
+	useEffect(() => {
+		setDraftName(null);
+	}, [itemKey]);
 
 	if (!item) {
 		return (
@@ -656,9 +690,27 @@ const AssetLibraryPreview: React.FC<{
 		);
 	}
 
+	const canRename = item.sourceType === "media" && Boolean(item.mediaAsset);
 	const localPath = item.downloadPath?.trim() ?? "";
 	const displayPath = item.mediaAsset?.relativePath?.trim() || localPath;
 	const canReveal = Boolean(localPath) && isElectronRuntime();
+
+	const submitRename = async () => {
+		if (draftName === null) return;
+		const saved = await onRename(draftName);
+		if (saved) setDraftName(null);
+	};
+
+	const copyPath = async () => {
+		const value = localPath || displayPath;
+		if (!value) return;
+		try {
+			await navigator.clipboard.writeText(value);
+			toast.success("路径已复制", { description: value });
+		} catch {
+			toast.error("复制失败", { description: "无法访问剪贴板，请手动复制。" });
+		}
+	};
 
 	const revealInFolder = async () => {
 		if (!localPath) return;
@@ -674,7 +726,60 @@ const AssetLibraryPreview: React.FC<{
 	return (
 		<aside className="flex min-h-0 flex-col gap-3 overflow-y-auto border-t border-border bg-card p-4 lg:border-l lg:border-t-0">
 			<div className="min-w-0 shrink-0">
-				<MiddleTruncatedText className="text-sm font-semibold text-foreground" text={item.title} />
+				{draftName === null ? (
+					<MiddleTruncatedText
+						className="text-sm font-semibold text-foreground"
+						text={item.title}
+					/>
+				) : (
+					<div className="flex items-center gap-1">
+						<Input
+							autoFocus
+							value={draftName}
+							disabled={busy}
+							aria-label="重命名素材"
+							className="h-7 min-w-0 flex-1 rounded-sm text-xs"
+							onChange={(event) => setDraftName(event.target.value)}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") {
+									event.preventDefault();
+									void submitRename();
+								}
+								if (event.key === "Escape") {
+									event.preventDefault();
+									event.stopPropagation();
+									setDraftName(null);
+								}
+							}}
+						/>
+						<Button
+							type="button"
+							size="sm"
+							variant="ghost"
+							className="h-7 w-7 shrink-0 p-0"
+							disabled={busy}
+							aria-label="保存名称"
+							onClick={() => void submitRename()}
+						>
+							{busy ? (
+								<Loader2 className="size-3.5 animate-spin" />
+							) : (
+								<Check className="size-3.5" />
+							)}
+						</Button>
+						<Button
+							type="button"
+							size="sm"
+							variant="ghost"
+							className="h-7 w-7 shrink-0 p-0"
+							disabled={busy}
+							aria-label="取消重命名"
+							onClick={() => setDraftName(null)}
+						>
+							<X className="size-3.5" />
+						</Button>
+					</div>
+				)}
 				<p className="mt-1 truncate text-xs text-muted-foreground">
 					{kindLabel(item.kind)} · {sourceTypeLabel(item.sourceType)} ·{" "}
 					{formatBytes(item.sizeBytes)}
@@ -702,6 +807,19 @@ const AssetLibraryPreview: React.FC<{
 					<Download className="size-3.5" />
 					<span>下载</span>
 				</Button>
+				{canRename ? (
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						className="h-7 rounded-sm px-2 text-xs"
+						disabled={busy || draftName !== null}
+						onClick={() => setDraftName(item.title)}
+					>
+						<PencilLine className="size-3.5" />
+						<span>重命名</span>
+					</Button>
+				) : null}
 				<Button
 					type="button"
 					size="sm"
@@ -725,6 +843,17 @@ const AssetLibraryPreview: React.FC<{
 					<div className="flex min-w-0 items-center gap-1">
 						<span className="shrink-0">路径：</span>
 						<MiddleTruncatedText className="min-w-0 flex-1" text={displayPath} />
+						<Button
+							type="button"
+							size="sm"
+							variant="ghost"
+							className="h-6 w-6 shrink-0 p-0"
+							aria-label="复制路径"
+							title="复制路径"
+							onClick={() => void copyPath()}
+						>
+							<Copy className="size-3" />
+						</Button>
 						{canReveal ? (
 							<Button
 								type="button"
