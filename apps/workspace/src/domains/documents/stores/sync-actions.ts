@@ -16,6 +16,7 @@ import type {
 
 type SyncActions = Pick<
 	DocumentsActions,
+	| "applyAssetUpdate"
 	| "applyWorkspaceDelta"
 	| "clearPendingComment"
 	| "focusComment"
@@ -33,6 +34,19 @@ type SyncActions = Pick<
 >;
 
 export const createDocumentSyncActions = ({ get, set }: DocumentActionContext): SyncActions => ({
+	applyAssetUpdate: (asset) => {
+		set((state) => {
+			const index = state.assets.findIndex((item) => item.id === asset.id);
+			if (index === -1) return {};
+			const folderIds = new Set(state.folders.map((folder) => folder.id));
+			const assets = state.assets.slice();
+			assets[index] = {
+				...asset,
+				folderId: asset.folderId && folderIds.has(asset.folderId) ? asset.folderId : null,
+			};
+			return { assets };
+		});
+	},
 	applyWorkspaceDelta: ({ changedDocuments, removedDocumentIds, folders }) => {
 		const removed = new Set(removedDocumentIds);
 		const changedById = new Map(changedDocuments.map((document) => [document.id, document]));

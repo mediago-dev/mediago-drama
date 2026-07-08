@@ -1,10 +1,10 @@
 import { File, Loader2 } from "lucide-react";
 import type { MediaPlayerInstance } from "@vidstack/react";
 import type React from "react";
-import { useRef } from "react";
+import { memo, useRef } from "react";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
-import { errorMessage, truncateTextPreview } from "./project-asset-preview.helpers";
+import { errorMessage } from "./project-asset-preview.helpers";
 
 export const TextAssetPreview: React.FC<{
 	error: unknown;
@@ -30,14 +30,17 @@ export const TextAssetPreview: React.FC<{
 		);
 	}
 
+	// The fetcher already caps the text at the preview limit; rendering it
+	// as-is keeps the (potentially huge) text node referentially stable
+	// across re-renders.
 	return (
-		<pre className="max-h-[70vh] overflow-auto border border-border bg-card p-4 text-xs leading-5 text-foreground">
-			{truncateTextPreview(text ?? "")}
+		<pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words border border-border bg-card p-4 text-xs leading-5 text-foreground">
+			{text ?? ""}
 		</pre>
 	);
 };
 
-export const AssetPreviewBody: React.FC<{
+const AssetPreviewBodyComponent: React.FC<{
 	asset: ProjectAsset;
 	isTextLoading: boolean;
 	source: string;
@@ -85,3 +88,8 @@ export const AssetPreviewBody: React.FC<{
 		</div>
 	);
 };
+
+// Memoized so keystrokes in the filename input above do not re-render the
+// (potentially heavy) text or video preview — all props stay stable while
+// only the pane's local draft state changes.
+export const AssetPreviewBody = memo(AssetPreviewBodyComponent);

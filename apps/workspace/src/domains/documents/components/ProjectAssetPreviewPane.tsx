@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import { updateProjectAsset } from "@/domains/workspace/api/project-assets";
-import { getWorkspaceDocuments } from "@/domains/workspace/api/workspace";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { downloadLocalFileWithDirectoryPicker } from "@/domains/workspace/lib/downloads";
 import { useToast } from "@/hooks/useToast";
@@ -61,10 +60,11 @@ export const ProjectAssetPreviewPane: React.FC<ProjectAssetPreviewPaneProps> = (
 
 		setIsSaving(true);
 		try {
-			await updateProjectAsset(projectId, asset.id, { filename });
-			const state = await getWorkspaceDocuments(projectId);
-			useDocumentsStore.getState().hydrateWorkspaceDocuments(state);
-			toast.success("素材已重命名", { description: filename });
+			// The server may canonicalize the filename (safe characters, restored
+			// extension), so the returned asset — not the draft — is authoritative.
+			const updated = await updateProjectAsset(projectId, asset.id, { filename });
+			useDocumentsStore.getState().applyAssetUpdate(updated);
+			toast.success("素材已重命名", { description: updated.filename });
 		} catch (err) {
 			const message = errorMessage(err, "重命名失败。");
 			toast.error("重命名失败", { description: message });
