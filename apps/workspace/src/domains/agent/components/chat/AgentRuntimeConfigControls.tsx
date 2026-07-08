@@ -453,7 +453,10 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 	if (hideProviderColumn) {
 		return (
 			<Select value={resolvedValue} onValueChange={onChange} disabled={disabled}>
-				<SelectTrigger className="agent-config-trigger" aria-label={label}>
+				<SelectTrigger
+					className="agent-config-trigger agent-config-trigger-model"
+					aria-label={label}
+				>
 					{Icon ? (
 						<span className="agent-config-icon" aria-hidden="true">
 							<Icon />
@@ -489,8 +492,9 @@ const AgentRuntimeModelSelect: React.FC<AgentRuntimeConfigSelectProps> = ({
 					type="button"
 					variant="outline"
 					aria-label={label}
+					title={selectedOption.option.name}
 					disabled={disabled}
-					className="agent-config-trigger"
+					className="agent-config-trigger agent-config-trigger-model"
 				>
 					{Icon ? (
 						<span className="agent-config-icon" aria-hidden="true">

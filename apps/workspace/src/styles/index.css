@@ -991,6 +991,12 @@
 		box-shadow: none;
 	}
 
+	/* The model selector carries "provider / model" (e.g. MediaGo / DeepSeek V3.2),
+	   so it needs more room than the short reasoning / mode controls. */
+	.agent-config-trigger-model {
+		max-width: 20rem;
+	}
+
 	button.agent-config-trigger > .agent-config-title {
 		flex: 0 0 auto;
 		color: var(--agent-subtle);
