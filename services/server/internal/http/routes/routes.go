@@ -24,6 +24,7 @@ type Handlers struct {
 	JianyingDraft         httphandlers.JianyingDraft
 	WorkspaceEvents       httphandlers.WorkspaceEvents
 	PromptPacks           httphandlers.PromptPacks
+	License               httphandlers.License
 	PromptTemplates       httphandlers.PromptTemplates
 	PromptLibrary         httphandlers.PromptLibrary
 	Skills                httphandlers.Skills
@@ -101,6 +102,9 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 }
 
 func registerSettingsRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
+	apiRoutes.GET("/license", handlers.License.HandleStatus)
+	apiRoutes.POST("/license/activate", handlers.License.HandleActivate)
+	apiRoutes.DELETE("/license", handlers.License.HandleDeactivate)
 	apiRoutes.GET("/settings/jianying-draft", handlers.Settings.HandleJianyingDraftSettings)
 	apiRoutes.PUT("/settings/jianying-draft", handlers.Settings.HandlePutJianyingDraftSettings)
 	apiRoutes.GET("/settings/codex-relay", handlers.Settings.HandleCodexRelaySettings)

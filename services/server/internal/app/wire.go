@@ -153,12 +153,13 @@ func newAPIHandler(config Config) *apiHandler {
 	workspaceState.StateService().Documents.SetGeneratedAssetCounter(generationTasks)
 	promptTemplates := serviceprompttemplates.NewServiceFromRepository(settingsRepos.Instructions, settingsReposErr)
 	serviceprompt.SetPromptTemplateStore(promptTemplates)
+	licenseService, licenseClient := servicelicense.NewFromEnvironment(filepath.Join(filepath.Dir(settingsDBPath), "license"))
 	promptPack := servicepromptpack.NewServiceFromRepositoryWithPackFilesDirAndLicense(
 		settingsRepos.Packs,
 		settingsRepos.PromptLibrary,
 		settingsReposErr,
 		filepath.Join(filepath.Dir(settingsDBPath), "packs"),
-		servicelicense.NewDevProvider(),
+		licenseService,
 	)
 	serviceskill.SetPromptPackStore(promptPack)
 	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
@@ -195,6 +196,7 @@ func newAPIHandler(config Config) *apiHandler {
 		previewStreamer:  previewStreamer,
 		projectAssets:    projectAssets,
 		promptPack:       promptPack,
+		licenseClient:    licenseClient,
 		promptTemplates:  promptTemplates,
 		promptLibrary:    promptLibrary,
 		skillRegistry:    skillRegistry,

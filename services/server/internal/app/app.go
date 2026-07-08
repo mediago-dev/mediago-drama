@@ -131,6 +131,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	jianyingDraftHandler := httphandlers.NewJianyingDraft(api.jianyingDraft)
 	workspaceEventHandler := httphandlers.NewWorkspaceEvents(api)
 	promptPackHandler := httphandlers.NewPromptPacks(api.promptPack)
+	licenseHandler := httphandlers.NewLicense(api.licenseClient)
 	promptTemplateHandler := httphandlers.NewPromptTemplates(api.promptTemplates)
 	promptLibraryHandler := httphandlers.NewPromptLibrary(api.promptLibrary)
 	skillHandler := httphandlers.NewSkills(api.skillRegistry)
@@ -180,6 +181,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		JianyingDraft:         jianyingDraftHandler,
 		WorkspaceEvents:       workspaceEventHandler,
 		PromptPacks:           promptPackHandler,
+		License:               licenseHandler,
 		PromptTemplates:       promptTemplateHandler,
 		PromptLibrary:         promptLibraryHandler,
 		Skills:                skillHandler,

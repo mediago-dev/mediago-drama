@@ -16,12 +16,13 @@ func newSkillRegistryForWorkspace(store *appworkspace.WorkspaceStateService) *se
 	}
 	settingsDBPath := store.SettingsDatabasePath()
 	repos, err := repository.OpenSettingsRepositories(settingsDBPath)
+	licenseService, _ := servicelicense.NewFromEnvironment(filepath.Join(filepath.Dir(settingsDBPath), "license"))
 	promptPack := servicepromptpack.NewServiceFromRepositoryWithPackFilesDirAndLicense(
 		repos.Packs,
 		repos.PromptLibrary,
 		err,
 		filepath.Join(filepath.Dir(settingsDBPath), "packs"),
-		servicelicense.NewDevProvider(),
+		licenseService,
 	)
 	return serviceskill.NewRegistryWithStore(promptPack)
 }
