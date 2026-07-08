@@ -556,9 +556,9 @@ func (service *GenerationTaskService) upsertSelectedAssetRecord(projectID string
 			if title != "" {
 				task.Assets[assetSliceIndex].Title = title
 			}
-			task.CapabilityID = resourceType
+			task.ResourceType = resourceType
 			task.UpdatedAt = timestamp.NowRFC3339Nano()
-			updated, err := service.repo.UpdateGenerationTaskAssets(task.ID, task.CapabilityID, task.UpdatedAt)
+			updated, err := service.repo.UpdateGenerationTaskAssets(task.ID, task.ResourceType, task.UpdatedAt)
 			if err != nil || !updated {
 				return projectSelectedAssetModel{}, updated, err
 			}
@@ -609,16 +609,12 @@ func (service *GenerationTaskService) upsertSelectedAssetRecord(projectID string
 		return projectSelectedAssetModel{}, false, nil
 	}
 	model.ID = projectSelectedAssetID(model)
-	if err := service.clearProjectSelectedAssetRowsForResourceKindLocked(model, assetKind); err != nil {
-		return projectSelectedAssetModel{}, false, err
-	}
-
 	now := timestamp.NowRFC3339Nano()
 	if model.CreatedAt.IsZero() {
 		model.CreatedAt = domain.TimeFromString(now)
 	}
 	model.UpdatedAt = domain.TimeFromString(now)
-	if err := service.repo.UpsertProjectSelectedAsset(model); err != nil {
+	if err := service.replaceResourceSelectionLocked(model, assetKind); err != nil {
 		return projectSelectedAssetModel{}, false, err
 	}
 	persisted, err := service.repo.GetProjectSelectedAsset(model.ID)
@@ -703,10 +699,10 @@ func (service *GenerationTaskService) setTaskAssetSelectedLocked(taskID string, 
 		task.Assets[assetSliceIndex].Title = title
 	}
 	if resourceType = selectedGenerationResourceType(resourceType); resourceType != "" {
-		task.CapabilityID = resourceType
+		task.ResourceType = resourceType
 	}
 	task.UpdatedAt = timestamp.NowRFC3339Nano()
-	updated, err := service.repo.UpdateGenerationTaskAssets(task.ID, task.CapabilityID, task.UpdatedAt)
+	updated, err := service.repo.UpdateGenerationTaskAssets(task.ID, task.ResourceType, task.UpdatedAt)
 	if err != nil || !updated {
 		return err
 	}
@@ -741,11 +737,11 @@ func (service *GenerationTaskService) updateAssetRecord(id string, assetIndex in
 		task.Assets[assetSliceIndex].Title = strings.TrimSpace(*patch.Title)
 	}
 	if resourceType := selectedGenerationResourceType(patch.ResourceType); resourceType != "" {
-		task.CapabilityID = resourceType
+		task.ResourceType = resourceType
 	}
 	task.UpdatedAt = timestamp.NowRFC3339Nano()
 
-	updated, err := service.repo.UpdateGenerationTaskAssets(id, task.CapabilityID, task.UpdatedAt)
+	updated, err := service.repo.UpdateGenerationTaskAssets(id, task.ResourceType, task.UpdatedAt)
 	if err != nil || !updated {
 		return task, updated, err
 	}
@@ -826,6 +822,7 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 		DocumentID:      domain.StringPtr(task.DocumentID),
 		SectionID:       domain.StringPtr(task.SectionID),
 		CapabilityID:    domain.StringPtr(task.CapabilityID),
+		ResourceType:    domain.StringPtr(task.ResourceType),
 		Kind:            task.Kind,
 		RouteID:         task.RouteID,
 		FamilyID:        task.FamilyID,
@@ -878,7 +875,7 @@ func (service *GenerationTaskService) applyDefaultSelectedAssetLocked(task *Gene
 	// （复用手动选中路径的替换逻辑，含把旧任务的 asset.Selected 回置），再选本次第一张。
 	clearModel := domain.ProjectSelectedAssetModel{
 		ProjectID:        GenerationProjectIDForRequest(task.ProjectID, ""),
-		ResourceType:     selectedGenerationResourceType(task.CapabilityID),
+		ResourceType:     generationTaskResourceType(*task),
 		ResourceID:       domain.StringPtr(strings.TrimSpace(task.SectionID)),
 		SourceDocumentID: domain.StringPtr(strings.TrimSpace(task.DocumentID)),
 	}
@@ -895,7 +892,7 @@ func shouldDefaultSelectGenerationAsset(task GenerationTaskRecord) bool {
 		!isSelectableGenerationAssetKind(task.Kind) ||
 		strings.TrimSpace(task.RouteID) == importedMediaGenerationRouteID ||
 		GenerationProjectIDForRequest(task.ProjectID, "") == "" ||
-		selectedGenerationResourceType(task.CapabilityID) == "" ||
+		generationTaskResourceType(task) == "" ||
 		strings.TrimSpace(task.DocumentID) == "" ||
 		strings.TrimSpace(task.SectionID) == "" {
 		return false
@@ -1004,6 +1001,13 @@ func (service *GenerationTaskService) syncNormalizedTaskAssetRowsLocked(task Gen
 	return nil
 }
 
+// upsertProjectSelectedAssetRowsLocked bulk-syncs a task's selected-asset rows
+// on every task upsert. It intentionally does NOT go through
+// replaceResourceSelectionLocked: the single-choice clear already ran in
+// applyDefaultSelectedAssetLocked for the default-select case, and running the
+// clear here would add a full list scan to every poll write and trim legacy
+// multi-select tasks destructively. New selection entry points must use
+// replaceResourceSelectionLocked, not this writer.
 func (service *GenerationTaskService) upsertProjectSelectedAssetRowsLocked(rows []domain.ProjectSelectedAssetModel) error {
 	for _, row := range rows {
 		if err := service.repo.UpsertProjectSelectedAsset(row); err != nil {
@@ -1289,6 +1293,7 @@ func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRec
 		DocumentID:     domain.StringValue(model.DocumentID),
 		SectionID:      domain.StringValue(model.SectionID),
 		CapabilityID:   domain.StringValue(model.CapabilityID),
+		ResourceType:   domain.StringValue(model.ResourceType),
 		Kind:           model.Kind,
 		RouteID:        model.RouteID,
 		FamilyID:       model.FamilyID,
@@ -1451,7 +1456,7 @@ func firstNonEmpty(values ...string) string {
 
 func projectSelectedAssetModelsFromRecord(task GenerationTaskRecord) []domain.ProjectSelectedAssetModel {
 	projectID := GenerationProjectIDForRequest(task.ProjectID, "")
-	resourceType := selectedGenerationResourceType(task.CapabilityID)
+	resourceType := generationTaskResourceType(task)
 	if projectID == "" || resourceType == "" {
 		return []domain.ProjectSelectedAssetModel{}
 	}
@@ -1491,10 +1496,23 @@ func (service *GenerationTaskService) syncProjectSelectedAssetRowForTaskAssetLoc
 	}
 	asset, ok := generationAssetAtSlot(task, assetIndex)
 	if ok && asset.Selected {
-		return service.repo.UpsertProjectSelectedAsset(row)
+		return service.replaceResourceSelectionLocked(row, asset.Kind)
 	}
 	_, err := service.repo.DeleteProjectSelectedAsset(row.ID)
 	return err
+}
+
+// replaceResourceSelectionLocked is the single write path for "this asset is
+// now the resource's selection": selection is single-choice per resource+kind,
+// so the previous selection is cleared (including resetting the old task
+// asset's Selected flag) before the new row is written. Every selection entry
+// point must go through here — a plain upsert would stack a second selected
+// image onto the resource card.
+func (service *GenerationTaskService) replaceResourceSelectionLocked(row domain.ProjectSelectedAssetModel, kind string) error {
+	if err := service.clearProjectSelectedAssetRowsForResourceKindLocked(row, kind); err != nil {
+		return err
+	}
+	return service.repo.UpsertProjectSelectedAsset(row)
 }
 
 func (service *GenerationTaskService) deleteProjectSelectedAssetRowForTaskAssetLocked(task GenerationTaskRecord, assetIndex int) error {
@@ -1516,7 +1534,7 @@ func (service *GenerationTaskService) deleteProjectSelectedAssetRowForTaskAssetL
 
 func projectSelectedAssetModelFromTaskAsset(task GenerationTaskRecord, assetIndex int, includeDeleted bool) (domain.ProjectSelectedAssetModel, bool) {
 	projectID := GenerationProjectIDForRequest(task.ProjectID, "")
-	resourceType := selectedGenerationResourceType(task.CapabilityID)
+	resourceType := generationTaskResourceType(task)
 	if projectID == "" || resourceType == "" || assetIndex < 0 {
 		return domain.ProjectSelectedAssetModel{}, false
 	}

@@ -335,3 +335,88 @@ func (resolver fakeGenerationDocumentResolver) RequireWorkspaceDocument(projectI
 	}
 	return document, nil
 }
+
+func TestApplyGenerationDocumentContextInfersResourceTypeFromDocumentCategory(t *testing.T) {
+	mediaAssets := media.NewMediaAssets(t.TempDir()+"/settings.db", t.TempDir())
+	workflow := NewGenerationService(nil, nil, mediaAssets)
+	workflow.SetDocumentResolver(fakeGenerationDocumentResolver{
+		documents: map[string]mediamcp.WorkspaceDocument{
+			"character-doc": {
+				ID:       "character-doc",
+				Category: "character",
+				Content: strings.Join([]string{
+					"<!-- section-id: section_lin -->",
+					"## 林书彤",
+					"",
+					"21 岁女大学生。",
+				}, "\n"),
+			},
+			"reference-doc": {
+				ID:       "reference-doc",
+				Category: "reference",
+				Content:  "# 原始资料",
+			},
+		},
+	})
+
+	tests := []struct {
+		name         string
+		documentID   string
+		sectionID    string
+		capabilityID string
+		resourceType string
+		want         string
+	}{
+		{
+			name:       "infers from character document",
+			documentID: "character-doc",
+			sectionID:  "section_lin",
+			want:       "character",
+		},
+		{
+			name:         "explicit resourceType wins over category",
+			documentID:   "reference-doc",
+			resourceType: "prop",
+			want:         "prop",
+		},
+		{
+			name:         "legacy capabilityId naming a resource type is honored",
+			documentID:   "reference-doc",
+			capabilityID: "scene",
+			want:         "scene",
+		},
+		{
+			name:         "pure capability id falls back to category",
+			documentID:   "character-doc",
+			sectionID:    "section_lin",
+			capabilityID: "image.generate",
+			want:         "character",
+		},
+		{
+			name:       "non-resource document stays empty",
+			documentID: "reference-doc",
+			want:       "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := generationMessageRequest{
+				ProjectID:    "project-a",
+				Prompt:       "提示词",
+				CapabilityID: tt.capabilityID,
+				ResourceType: tt.resourceType,
+				DocumentContext: &GenerationDocumentContext{
+					ProjectID:  "project-a",
+					DocumentID: tt.documentID,
+					SectionID:  tt.sectionID,
+				},
+			}
+			if err := workflow.applyGenerationDocumentContext(&payload); err != nil {
+				t.Fatalf("applyGenerationDocumentContext() error = %v", err)
+			}
+			if got := GenerationResourceTypeForRequest(payload); got != tt.want {
+				t.Fatalf("resource type = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

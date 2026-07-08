@@ -7,6 +7,7 @@ import { SWRProvider } from "./providers/SWRProvider";
 import { ThemeProvider } from "./providers/ThemeProvider";
 import { DialogCallHost } from "@/shared/components/callable/DialogCallHost";
 import { analytics } from "@/shared/analytics";
+import { markRendererHealthy } from "@/shared/desktop/actions";
 import { desktopRuntime } from "@/shared/desktop/runtime";
 import "@/styles/index.css";
 
@@ -24,6 +25,18 @@ document.documentElement.classList.toggle("is-desktop-macos", isDesktop && isMac
 
 analytics.init();
 
+// Confirms to the shell that this renderer bundle booted successfully, so a hot-updated
+// bundle is not rolled back by the health check (see electron/src/renderer-store.ts).
+// Lives inside the ErrorBoundary: if the tree crashes on mount, the beacon never fires
+// and the shell falls back to the builtin renderer on a later launch.
+const RendererHealthBeacon: React.FC = () => {
+	React.useEffect(() => {
+		if (runtime !== "electron") return;
+		void markRendererHealthy();
+	}, []);
+	return null;
+};
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 	<React.StrictMode>
 		<ThemeProvider>
@@ -32,6 +45,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 					<ErrorBoundary>
 						<App />
 						<DialogCallHost />
+						<RendererHealthBeacon />
 					</ErrorBoundary>
 				</AppRouter>
 			</SWRProvider>

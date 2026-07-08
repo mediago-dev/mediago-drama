@@ -178,11 +178,18 @@ func ProjectAgentEvent(
 			conversations[conversation.RunID] = conversation
 		}
 	case AgentUIEventType:
-		if event.A2UI == nil {
+		if event.A2UI == nil && event.Form == nil {
 			return
 		}
 		if conversation, ok := ensureProjectedUIConversation(conversations, event); ok {
 			conversation = completeProjectedStreamingMessage(conversation)
+			metadata := map[string]any{"runId": event.RunID}
+			if event.A2UI != nil {
+				metadata["a2ui"] = event.A2UI
+			}
+			if event.Form != nil {
+				metadata["form"] = event.Form
+			}
 			conversation.Messages = append(conversation.Messages, AgentChatMessageRecord{
 				ID:        messageIDForEvent(event, "ui"),
 				Role:      "assistant",
@@ -190,10 +197,7 @@ func ProjectAgentEvent(
 				Kind:      "message",
 				CreatedAt: event.CreatedAt,
 				Status:    "complete",
-				Metadata: map[string]any{
-					"a2ui":  event.A2UI,
-					"runId": event.RunID,
-				},
+				Metadata:  metadata,
 			})
 			conversation.UpdatedAt = event.CreatedAt
 			conversations[conversation.RunID] = conversation

@@ -36,6 +36,9 @@ func TestDocumentServerRegistersDocumentTools(t *testing.T) {
 		"list_comments",
 		"get_comment",
 		"mutate_comment",
+		"ask_user_selection",
+		"ask_user_form",
+		"await_user_selection",
 	)
 }
 
@@ -56,7 +59,25 @@ func TestExternalServerRegistersCrossProjectTools(t *testing.T) {
 	)
 }
 
-func listMCPTools(t *testing.T, server *mcpsdk.Server) []string {
+func TestGenerationServerRegistersGenerationTools(t *testing.T) {
+	server, err := NewGenerationServer(Config{ProjectID: "project-test"}, testDeps{})
+	if err != nil {
+		t.Fatalf("creating generation server: %v", err)
+	}
+
+	tools := listMCPTools(t, server, "生成工作台", "list_generation_models", "generate_media")
+	assertMCPTools(t, tools,
+		"list_generation_models",
+		"generate_media",
+		"get_generation_task",
+		"list_generation_tasks",
+		"retry_generation_task",
+		"poll_generation_task",
+		"select_generation_asset",
+	)
+}
+
+func listMCPTools(t *testing.T, server *mcpsdk.Server, instructionFragments ...string) []string {
 	t.Helper()
 
 	if server == nil {
@@ -73,7 +94,7 @@ func listMCPTools(t *testing.T, server *mcpsdk.Server) []string {
 			"version": "0",
 		},
 	})
-	assertMCPInstructions(t, initialized)
+	assertMCPInstructions(t, initialized, instructionFragments...)
 	sessionID := headers.Get("Mcp-Session-Id")
 	if sessionID == "" {
 		t.Fatal("initialize response did not include Mcp-Session-Id")
@@ -103,7 +124,7 @@ func listMCPTools(t *testing.T, server *mcpsdk.Server) []string {
 	return tools
 }
 
-func assertMCPInstructions(t *testing.T, message map[string]any) {
+func assertMCPInstructions(t *testing.T, message map[string]any, fragments ...string) {
 	t.Helper()
 
 	result, ok := message["result"].(map[string]any)
@@ -111,7 +132,10 @@ func assertMCPInstructions(t *testing.T, message map[string]any) {
 		t.Fatalf("initialize result = %#v, want object", message["result"])
 	}
 	instructions, _ := result["instructions"].(string)
-	for _, fragment := range []string{"当前工作目录", "不要再访问或创建名为 work/ 的子目录", "load_skill", "mutate_comment"} {
+	if len(fragments) == 0 {
+		fragments = []string{"当前工作目录", "不要再访问或创建名为 work/ 的子目录", "load_skill", "mutate_comment"}
+	}
+	for _, fragment := range fragments {
 		if !strings.Contains(instructions, fragment) {
 			t.Fatalf("instructions = %q, want fragment %q", instructions, fragment)
 		}
@@ -212,4 +236,44 @@ func (testDeps) GetComment(context.Context, string, mediamcp.GetCommentInput) (m
 
 func (testDeps) MutateComment(context.Context, string, mediamcp.MutateCommentInput) (mediamcp.CommentMutationOutput, error) {
 	return mediamcp.CommentMutationOutput{}, nil
+}
+
+func (testDeps) AskUserSelection(context.Context, string, mediamcp.AskUserSelectionInput) (mediamcp.AskUserSelectionOutput, error) {
+	return mediamcp.AskUserSelectionOutput{}, nil
+}
+
+func (testDeps) AwaitUserSelection(context.Context, string, mediamcp.AwaitUserSelectionInput) (mediamcp.AskUserSelectionOutput, error) {
+	return mediamcp.AskUserSelectionOutput{}, nil
+}
+
+func (testDeps) AskUserForm(context.Context, string, mediamcp.AskUserFormInput) (mediamcp.AskUserSelectionOutput, error) {
+	return mediamcp.AskUserSelectionOutput{}, nil
+}
+
+func (testDeps) ListGenerationModels(context.Context, mediamcp.GenerationListModelsInput) (mediamcp.GenerationModelsOutput, error) {
+	return mediamcp.GenerationModelsOutput{}, nil
+}
+
+func (testDeps) CreateGenerationMessage(context.Context, string, mediamcp.GenerationMessageInput) (mediamcp.GenerationMessageOutput, error) {
+	return mediamcp.GenerationMessageOutput{}, nil
+}
+
+func (testDeps) GetGenerationTask(context.Context, string, mediamcp.GenerationTaskInput) (mediamcp.GenerationTaskRecord, error) {
+	return mediamcp.GenerationTaskRecord{}, nil
+}
+
+func (testDeps) ListGenerationTasks(context.Context, string, mediamcp.GenerationTaskListInput) (mediamcp.GenerationTasksOutput, error) {
+	return mediamcp.GenerationTasksOutput{}, nil
+}
+
+func (testDeps) RetryGenerationTask(context.Context, string, mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error) {
+	return mediamcp.GenerationMessageOutput{}, nil
+}
+
+func (testDeps) PollGenerationTask(context.Context, string, mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error) {
+	return mediamcp.GenerationMessageOutput{}, nil
+}
+
+func (testDeps) SelectGenerationAsset(context.Context, string, mediamcp.GenerationSelectAssetInput) (mediamcp.GenerationTaskRecord, error) {
+	return mediamcp.GenerationTaskRecord{}, nil
 }

@@ -29,6 +29,7 @@ import (
 	servicepromptlibrary "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptlibrary"
 	servicepromptpack "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 	serviceprompttemplates "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompttemplates"
+	serviceselection "github.com/mediago-dev/mediago-drama/services/server/internal/service/selection"
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 	serviceworkspaceevent "github.com/mediago-dev/mediago-drama/services/server/internal/service/workspaceevent"
@@ -164,6 +165,7 @@ func newAPIHandler(config Config) *apiHandler {
 	serviceskill.SetPromptPackStore(promptPack)
 	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
 	promptLibrary := servicepromptlibrary.NewServiceFromPromptPack(promptPack, settingsReposErr)
+	generationService.SetStylePromptLibrary(promptLibrary)
 	capabilityRegistry := corecapability.Default()
 	capabilityService := servicecapability.NewService(capabilityRegistry, generationService.RouteConfigured)
 	billingPrices := config.BillingPrices
@@ -172,6 +174,7 @@ func newAPIHandler(config Config) *apiHandler {
 	}
 	billingService := servicebilling.NewService(workspaceRepos.Billing, billingPrices, capabilityRegistry)
 	projectAssets := serviceprojectasset.NewProjectAssetsFromRepository(workspaceRepos.ProjectAssets, mediaDir, workspaceState.Dir(), workspaceRepos.Workspace, workspaceReposErr)
+	selectionService := serviceselection.NewService(workspaceRepos.Selections, workspaceReposErr)
 	events := appevents.NewBroker(workspaceState.AppendAgentEvent)
 	workspaceEvents := serviceworkspaceevent.NewBroker()
 	agentSessions := appagent.NewSessionService(workspaceState)
@@ -191,6 +194,7 @@ func newAPIHandler(config Config) *apiHandler {
 		billing:          billingService,
 		backendService:   backendService,
 		generation:       generationService,
+		selection:        selectionService,
 		jianyingDraft:    jianyingDraft,
 		mediaAssets:      mediaAssets,
 		previewStreamer:  previewStreamer,

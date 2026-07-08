@@ -52,10 +52,14 @@ func (store *MediaAssets) CompressedImageDataURIValue(
 
 	mimeType, compressed, ok, err := compressReferenceImage(data, asset.MIMEType, options)
 	if err != nil {
-		return dataURIValue(asset.MIMEType, data), nil
+		normalizedMimeType := normalizeImageMIMEType(asset.MIMEType)
+		if isProviderReferenceImageMIMEType(normalizedMimeType) {
+			return dataURIValue(normalizedMimeType, data), nil
+		}
+		return "", err
 	}
 	if !ok {
-		return dataURIValue(asset.MIMEType, data), nil
+		return dataURIValue(normalizeImageMIMEType(asset.MIMEType), data), nil
 	}
 
 	return dataURIValue(mimeType, compressed), nil
@@ -67,9 +71,10 @@ func compressReferenceImage(
 	options ImageCompressionOptions,
 ) (string, []byte, bool, error) {
 	options = normalizeImageCompressionOptions(options)
+	mimeType = normalizeImageMIMEType(mimeType)
 	source, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return "", nil, false, err
+		return "", nil, false, fmt.Errorf("unsupported reference image format %q; use JPEG, PNG, or WEBP", mimeType)
 	}
 
 	sourceBounds := source.Bounds()
@@ -84,7 +89,9 @@ func compressReferenceImage(
 		sourceHeight,
 		options.MaxDimension,
 	)
-	shouldCompress := resized || int64(len(data)) > options.MinBytes
+	shouldCompress := resized ||
+		int64(len(data)) > options.MinBytes ||
+		!isProviderReferenceImageMIMEType(mimeType)
 	if !shouldCompress {
 		return "", nil, false, nil
 	}
@@ -99,11 +106,30 @@ func compressReferenceImage(
 		return "", nil, false, err
 	}
 	compressed := output.Bytes()
-	if !resized && len(compressed) >= len(data) {
+	if !resized && isProviderReferenceImageMIMEType(mimeType) && len(compressed) >= len(data) {
 		return "", nil, false, nil
 	}
 
 	return "image/jpeg", compressed, true, nil
+}
+
+func isProviderReferenceImageMIMEType(mimeType string) bool {
+	switch normalizeImageMIMEType(mimeType) {
+	case "image/jpeg", "image/png", "image/webp":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeImageMIMEType(mimeType string) string {
+	mimeType = strings.ToLower(strings.TrimSpace(strings.Split(mimeType, ";")[0]))
+	switch mimeType {
+	case "image/jpg":
+		return "image/jpeg"
+	default:
+		return mimeType
+	}
 }
 
 func normalizeImageCompressionOptions(options ImageCompressionOptions) ImageCompressionOptions {
@@ -156,7 +182,7 @@ func resizeNearest(source *image.RGBA, width int, height int) *image.RGBA {
 }
 
 func dataURIValue(mimeType string, data []byte) string {
-	mimeType = strings.TrimSpace(strings.Split(mimeType, ";")[0])
+	mimeType = normalizeImageMIMEType(mimeType)
 	if mimeType == "" {
 		mimeType = "image/png"
 	}

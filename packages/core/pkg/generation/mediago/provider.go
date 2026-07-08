@@ -12,6 +12,14 @@ func SuppressOpenAIProviderOptions(providerName string) bool {
 	return providerName == Provider
 }
 
+// SupportsImageResultRecovery reports whether the aggregation platform exposes
+// GET /images/results/{key} for re-fetching an image generation whose HTTP
+// response was lost to a transport failure (the upstream generation keeps
+// running and stays billed, so the result is worth one more round of polling).
+func SupportsImageResultRecovery(providerName string) bool {
+	return providerName == Provider
+}
+
 // OmitChatImageSize reports whether image_size should be omitted from chat image
 // requests for a MediaGo-routed upstream model.
 func OmitChatImageSize(providerName string, model string) bool {

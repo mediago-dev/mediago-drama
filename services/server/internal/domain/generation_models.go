@@ -15,6 +15,7 @@ type GenerationTaskModel struct {
 	DocumentID      *string   `gorm:"column:document_id;index:generation_tasks_document_id_idx"`
 	SectionID       *string   `gorm:"column:section_id;index:generation_tasks_section_id_idx"`
 	CapabilityID    *string   `gorm:"column:capability_id;index:generation_tasks_capability_idx"`
+	ResourceType    *string   `gorm:"column:resource_type;index:generation_tasks_resource_type_idx"`
 	Kind            string    `gorm:"column:kind;not null;index:generation_tasks_kind_status_updated_idx,priority:1"`
 	RouteID         string    `gorm:"column:route_id;not null"`
 	FamilyID        string    `gorm:"column:family_id;not null"`

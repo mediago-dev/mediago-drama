@@ -85,6 +85,7 @@ type RouteSpec struct {
 	DocURL                string
 	Async                 bool
 	SupportsReferenceURLs bool
+	MaxReferenceURLs      int
 	Params                ParamConfig
 }
 

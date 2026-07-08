@@ -10,6 +10,7 @@ type GenerationModelsResponse struct {
 	Models        []coregeneration.ModelSpec    `json:"models"`
 	Providers     []coregeneration.ProviderInfo `json:"providers"`
 	VoicePreviews []GenerationVoicePreviewAsset `json:"voicePreviews,omitempty"`
+	StylePresets  []GenerationStylePreset       `json:"stylePresets,omitempty"`
 }
 
 // GenerationVoicePreviewAsset is one built-in local voice preview.
@@ -18,6 +19,22 @@ type GenerationVoicePreviewAsset struct {
 	VoiceID  string `json:"voiceId"`
 	URL      string `json:"url"`
 	MIMEType string `json:"mimeType"`
+}
+
+// GenerationStylePreset is one built-in visual style recommendation. The
+// preset carries prompt/params templates: generation still goes through a
+// normal generate request with PromptSuffix appended to the user prompt and
+// Params merged into the request params.
+type GenerationStylePreset struct {
+	ID           string         `json:"id"`
+	Title        string         `json:"title"`
+	Description  string         `json:"description,omitempty"`
+	Kinds        []string       `json:"kinds"`
+	RouteID      string         `json:"routeId,omitempty"`
+	PromptSuffix string         `json:"promptSuffix"`
+	Params       map[string]any `json:"params,omitempty"`
+	PreviewURL   string         `json:"previewUrl,omitempty"`
+	MIMEType     string         `json:"mimeType,omitempty"`
 }
 
 // GenerationMessageRequest creates or retries a generation request.
@@ -30,6 +47,7 @@ type GenerationMessageRequest struct {
 	SectionID          string                               `json:"sectionId,omitempty"`
 	DocumentContext    *GenerationDocumentContext           `json:"documentContext,omitempty"`
 	CapabilityID       string                               `json:"capabilityId,omitempty"`
+	ResourceType       string                               `json:"resourceType,omitempty"`
 	NotificationTarget *GenerationNotificationTarget        `json:"notificationTarget,omitempty"`
 	RouteID            string                               `json:"routeId"`
 	FamilyID           string                               `json:"familyId,omitempty"`
@@ -222,6 +240,7 @@ type GenerationTaskRecord struct {
 	DocumentID        string                        `json:"documentId,omitempty"`
 	SectionID         string                        `json:"sectionId,omitempty"`
 	CapabilityID      string                        `json:"capabilityId,omitempty"`
+	ResourceType      string                        `json:"resourceType,omitempty"`
 	Kind              string                        `json:"kind" ts:"Kind"`
 	RouteID           string                        `json:"routeId"`
 	FamilyID          string                        `json:"familyId"`

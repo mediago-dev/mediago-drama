@@ -29,6 +29,7 @@ type Handlers struct {
 	PromptLibrary         httphandlers.PromptLibrary
 	Skills                httphandlers.Skills
 	DocumentToolApprovals httphandlers.DocumentToolApprovals
+	AgentSelections       httphandlers.AgentSelections
 	AgentPermissions      httphandlers.AgentPermissions
 	AgentChat             httphandlers.AgentChat
 	AgentMessages         httphandlers.AgentMessages
@@ -45,6 +46,7 @@ type Handlers struct {
 func Register(router *gin.Engine, handlers Handlers) {
 	router.Any("/mcp", handlers.MCP.HandleExternalMCP)
 	router.Any(mediamcp.LegacyDocumentHTTPPath, handlers.MCP.HandleLegacyDocumentMCP)
+	router.Any(mediamcp.LegacyGenerationHTTPPath, handlers.MCP.HandleLegacyGenerationMCP)
 
 	apiRoutes := router.Group("/api/v1")
 	registerCoreRoutes(apiRoutes, handlers)
@@ -91,9 +93,14 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.PUT("/media-assets/:assetId", handlers.MediaAssets.HandleUpdateMediaAsset)
 	apiRoutes.DELETE("/media-assets/:assetId", handlers.MediaAssets.HandleDeleteMediaAsset)
 	apiRoutes.Any("/internal/agent/document-mcp", handlers.MCP.HandleInternalDocumentMCP)
+	apiRoutes.Any("/internal/agent/generation-mcp", handlers.MCP.HandleInternalGenerationMCP)
 	apiRoutes.Any(
 		"/internal/projects/:projectId/agent/document-mcp",
 		handlers.MCP.HandleProjectDocumentMCP,
+	)
+	apiRoutes.Any(
+		"/internal/projects/:projectId/agent/generation-mcp",
+		handlers.MCP.HandleProjectGenerationMCP,
 	)
 	apiRoutes.POST(
 		serviceevents.InternalEventsPublishRoute,
@@ -166,6 +173,10 @@ func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.GET(
 		"/generation/voice-previews/:routeId/:voiceId",
 		handlers.GenerationTasks.HandleGenerationVoicePreviewContent,
+	)
+	apiRoutes.GET(
+		"/generation/style-previews/:presetId",
+		handlers.GenerationTasks.HandleGenerationStylePreviewContent,
 	)
 	apiRoutes.GET("/generation/sessions", handlers.GenerationTasks.HandleGenerationConversations)
 	apiRoutes.POST("/generation/sessions", handlers.GenerationTasks.HandleCreateGenerationConversation)
@@ -350,6 +361,18 @@ func registerAgentRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
 	projectRoutes.POST(
 		"/agent/document-tool-approvals/:approvalId/decision",
 		handlers.DocumentToolApprovals.HandleDecideDocumentToolApproval,
+	)
+	projectRoutes.GET(
+		"/agent/selections",
+		handlers.AgentSelections.HandleListAgentSelections,
+	)
+	projectRoutes.GET(
+		"/agent/selections/:selectionId",
+		handlers.AgentSelections.HandleGetAgentSelection,
+	)
+	projectRoutes.POST(
+		"/agent/selections/:selectionId/decision",
+		handlers.AgentSelections.HandleDecideAgentSelection,
 	)
 	projectRoutes.POST(
 		"/agent/sessions/:sessionId/permission-requests/:requestId/decision",

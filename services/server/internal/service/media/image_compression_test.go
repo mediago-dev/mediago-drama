@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"image"
 	"image/color"
+	"image/gif"
 	_ "image/jpeg"
 	"image/png"
 	"path/filepath"
@@ -85,6 +86,68 @@ func TestCompressedImageDataURIValueKeepsSmallImageOriginal(t *testing.T) {
 	}
 }
 
+func TestCompressedImageDataURIValueRejectsUnsupportedUndecodableImage(t *testing.T) {
+	store := NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	asset, err := store.SaveReader(
+		context.Background(),
+		bytes.NewReader([]byte("not-avif-image-data")),
+		"reference.avif",
+		"image/avif",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("saving source image: %v", err)
+	}
+
+	_, err = store.CompressedImageDataURIValue(asset, ImageCompressionOptions{
+		MaxDimension: 512,
+		JPEGQuality:  80,
+		MinBytes:     1 << 30,
+	})
+	if err == nil {
+		t.Fatal("CompressedImageDataURIValue() error = nil, want unsupported format error")
+	}
+	if !strings.Contains(err.Error(), `unsupported reference image format "image/avif"`) {
+		t.Fatalf("error = %q, want unsupported avif format", err)
+	}
+}
+
+func TestCompressedImageDataURIValueTranscodesUnsupportedDecodableImage(t *testing.T) {
+	store := NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	source := encodeTestGIF(t, 64, 32)
+	asset, err := store.SaveReader(
+		context.Background(),
+		bytes.NewReader(source),
+		"reference.gif",
+		"image/gif",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("saving source image: %v", err)
+	}
+
+	value, err := store.CompressedImageDataURIValue(asset, ImageCompressionOptions{
+		MaxDimension: 512,
+		JPEGQuality:  80,
+		MinBytes:     1 << 30,
+	})
+	if err != nil {
+		t.Fatalf("compressing image: %v", err)
+	}
+
+	mimeType, data := decodeTestDataURI(t, value)
+	if mimeType != "image/jpeg" {
+		t.Fatalf("mime type = %q, want image/jpeg", mimeType)
+	}
+	_, format, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("decoding transcoded image: %v", err)
+	}
+	if format != "jpeg" {
+		t.Fatalf("format = %q, want jpeg", format)
+	}
+}
+
 func encodeTestPNG(t *testing.T, width int, height int) []byte {
 	t.Helper()
 
@@ -102,6 +165,28 @@ func encodeTestPNG(t *testing.T, width int, height int) []byte {
 
 	var output bytes.Buffer
 	if err := png.Encode(&output, source); err != nil {
+		t.Fatalf("encoding source image: %v", err)
+	}
+	return output.Bytes()
+}
+
+func encodeTestGIF(t *testing.T, width int, height int) []byte {
+	t.Helper()
+
+	palette := []color.Color{
+		color.RGBA{R: 255, A: 255},
+		color.RGBA{G: 255, A: 255},
+		color.RGBA{B: 255, A: 255},
+	}
+	source := image.NewPaletted(image.Rect(0, 0, width, height), palette)
+	for y := range height {
+		for x := range width {
+			source.SetColorIndex(x, y, uint8((x+y)%len(palette)))
+		}
+	}
+
+	var output bytes.Buffer
+	if err := gif.Encode(&output, source, nil); err != nil {
 		t.Fatalf("encoding source image: %v", err)
 	}
 	return output.Bytes()

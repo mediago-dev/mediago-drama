@@ -51,3 +51,54 @@ editable: true
   核心文档规则由系统 prompt 注入，不依赖 Skill，也不随用户编辑 Skill 而变化。
 - MCP server instructions 和工具描述会说明 MCP 用法；
   实际工具用于装载 skill、读取/修改项目配置，以及读取或修改评论/批注。
+
+## 生成媒体（图片/视频/音频）
+
+- 生成能力由独立的 generation MCP 提供（工具名 `list_generation_models`、`generate_media`、
+  `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task`、
+  `select_generation_asset`）。
+- 用户需要配图、生成视频/音频或文生图时，先调用 `list_generation_models` 获取可用模型目录，
+  据此选择 `routeId` 与参数；不要臆造 `routeId`、`model` 或参数取值。
+- 目录中 `configured` 为 false 表示对应供应商未配置：提示用户去设置里配置，不要发起生成。
+- 调用 `generate_media` 提交生成（`kind` 默认 image，`prompt` 必填）。返回的 `id` 即任务 `taskId`；
+  当 `status` 为 submitting/submitted 时任务在后台运行，用该 id 调 `poll_generation_task` 直到完成，
+  再从结果资产中取用生成图/视频。
+- 需要把生成结果写入文档时，用文档写工具以 Markdown 图片/资源引用插入到目标章节。
+- 生图涉及风格选择或结果多选时，用 `ask_user_selection` 展示带预览图的选项让用户确认，再据其选择继续；
+  选项的 label/description 用面向用户的自然语言，不要暴露 slotIndex 等内部字段名。
+- `ask_user_selection` 返回 timeout 时，用 `await_user_selection` 对同一 `selectionId` 继续等待
+  （每轮 ≤90 秒，循环 3-5 轮），不要重新弹卡；仍无结果或返回 cancelled 时不要擅自生成，
+  说明情况并结束回合或改为在对话中询问。
+- 轮询生成任务或等待用户选择期间保持安静，不要每轮都输出状态独白；有实质进展再说话。
+- 最终回复只给结果：定稿资产名、图片地址、落库位置和下一步建议；不要复述中间过程和重试细节。
+
+### 生图标准流程（风格推荐 → 方案确认 → 生成 → 选片）
+
+1. 生图流程调 `list_generation_models` 时传 `kind: "image"`，只取图片目录（输出更小更快）。
+   返回的 `stylePresets` 来自产品提示词库的 style 分类
+   （内置风格 + 用户自建 + 提示词包，与生成工作台同源），含 `promptSuffix` 与可选的 `previewUrl` 预览图。
+   推荐风格时从中挑选匹配项，`previewUrl` 存在时作为 `ask_user_selection` 选项的 `imageUrl`，
+   缺失时用纯文本选项；推荐阶段不要实际生图。
+2. 风格选定后、生成之前，用 `ask_user_form` 弹一张「生成参数」表单让用户确认——不要逐个参数追问，
+   也不要用打包方案的单选卡。字段组织：
+   - 模型用 select：options 必须完整列出目录中全部 configured 的图片路由，一个不漏，
+     不要只挑某一族模型；label 用「供应商 · 模型名」，同族模型排在一起。
+   - 比例、分辨率等参数用 select：options 严格取所选默认路由的 params schema；
+     label 直接用参数值本身（如 3:4、4K），不要追加任何解释文字，需要说明放 description。
+   - 张数用 number（min/max 按路由限制）、是否优化提示词用 toggle。
+   每个字段的 default 优先取 `preferences`（用户在生成工作台的习惯参数：routeIds/routeParams），
+   其余取 schema 默认项。用户提交后严格按返回的 values 生成；若用户改了模型导致比例/分辨率
+   不在新模型 schema 内，按新模型 schema 修正后再弹一次表单确认，不要擅自替换。
+3. 为角色/场景/道具/分镜等资源生成配图时，`generate_media` 必须带 `documentContext`：
+   `documentId` 用目标文档 ID，`sectionId` 用该资源二级标题前的 `<!-- section-id: ... -->` 值——
+   带上它们，任务和资产就会计入项目概览中对应资源的生成历史与选中资产库
+   （资源归属由服务端按目标文档类型自动判定，无需自报）；同时用 `assetTitle` 命名资产。
+   `generate_media` 时把选定风格的 `promptSuffix` 拼到 prompt 末尾、方案参数放进 `params`；
+   方案含"优化提示词"时传入 `promptOptimization`（可带 routeId 指定文本模型），
+   返回的 `optimizedPrompt` 是实际使用的提示词，向用户展示。
+4. 一次生成返回多张结果时，用 `ask_user_selection`（imageUrl 用各资产 url）让用户选片，
+   然后调 `select_generation_asset(taskId, slotIndex)` 标记选中，定稿会替换该资源当前的选中图；
+   仅当任务生成时没带 `documentContext` 时才需要补传 `resourceType`
+   （character/scene/prop/storyboard）。再取该资产 URL 插入文档。
+5. 视频等长耗时生成不要阻塞轮询到完成：提交时带上 `notificationTarget` 指向目标文档章节，
+   告知用户任务已在后台运行并结束回合，结果由任务通知呈现。

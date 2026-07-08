@@ -127,8 +127,12 @@ func ValidateRequestForRoute(request Request, route ModelRoute) error {
 	if request.Kind != "" && request.Kind != route.Kind {
 		return fmt.Errorf("route %q is %s, not %s", route.ID, route.Kind, request.Kind)
 	}
-	if len(compactReferenceURLs(request.ReferenceURLs)) > 0 && !route.SupportsReferenceURLs {
+	referenceURLs := compactReferenceURLs(request.ReferenceURLs)
+	if len(referenceURLs) > 0 && !route.SupportsReferenceURLs {
 		return fmt.Errorf("route %q does not support reference URLs", route.ID)
+	}
+	if route.MaxReferenceURLs > 0 && len(referenceURLs) > route.MaxReferenceURLs {
+		return fmt.Errorf("route %q supports at most %d reference URLs", route.ID, route.MaxReferenceURLs)
 	}
 	if !request.ParamsResolved {
 		normalizedParams, err := NormalizeRouteParams(route, request.Params)

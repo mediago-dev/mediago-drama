@@ -6,6 +6,7 @@ import { uploadMediaAsset } from "@/domains/workspace/api/media";
 import type { GenerationRoute } from "@/domains/generation/api/generation";
 import {
 	canUseAssetAsReference,
+	maxReferenceUrlsForRoute,
 	referenceKindsForRoute,
 	resolveGenerationExtraValue,
 	uniqueStrings,
@@ -39,6 +40,7 @@ export const useGenerationReferences = ({
 		() => referenceKindsForRoute(selectedRoute),
 		[selectedRoute],
 	);
+	const maxReferenceUrls = maxReferenceUrlsForRoute(selectedRoute);
 	const selectedReferenceAssets = useMemo(
 		() => mediaAssets.filter((asset) => selectedReferenceAssetIds.includes(asset.id)),
 		[mediaAssets, selectedReferenceAssetIds],
@@ -59,7 +61,44 @@ export const useGenerationReferences = ({
 		() => uniqueStrings(resolvedExtraReferenceUrls.map((url) => url.trim()).filter(Boolean)),
 		[resolvedExtraReferenceUrls],
 	);
-	const referenceCount = effectiveReferenceAssetIds.length + effectiveReferenceUrls.length;
+	const referenceCountForAssetIds = useCallback(
+		(assetIds: string[]) =>
+			uniqueStrings([...assetIds, ...resolvedExtraReferenceAssetIds]).length +
+			effectiveReferenceUrls.length,
+		[effectiveReferenceUrls, resolvedExtraReferenceAssetIds],
+	);
+	const referenceCount = referenceCountForAssetIds(selectedReferenceAssetIds);
+	const trimReferenceAssetIdsToLimit = useCallback(
+		(assetIds: string[]) => {
+			if (!maxReferenceUrls) return assetIds;
+
+			const next: string[] = [];
+			for (const assetId of assetIds) {
+				const candidate = [...next, assetId];
+				if (referenceCountForAssetIds(candidate) <= maxReferenceUrls) {
+					next.push(assetId);
+				}
+			}
+			return next;
+		},
+		[maxReferenceUrls, referenceCountForAssetIds],
+	);
+	const referenceLimitMessage = useCallback(
+		() => `当前模型最多支持 ${maxReferenceUrls} 张参考图。`,
+		[maxReferenceUrls],
+	);
+	const addReferenceAssetIdWithinLimit = useCallback(
+		(current: string[], assetId: string) => {
+			if (current.includes(assetId)) return current;
+			const next = [...current, assetId];
+			if (maxReferenceUrls && referenceCountForAssetIds(next) > maxReferenceUrls) {
+				setError(referenceLimitMessage());
+				return current;
+			}
+			return next;
+		},
+		[maxReferenceUrls, referenceCountForAssetIds, referenceLimitMessage, setError],
+	);
 
 	useEffect(() => {
 		if (mediaAssets.length === 0) {
@@ -73,10 +112,10 @@ export const useGenerationReferences = ({
 				.map((asset) => asset.id),
 		);
 		setSelectedReferenceAssetIds((current) => {
-			const next = current.filter((id) => validIDs.has(id));
+			const next = trimReferenceAssetIdsToLimit(current.filter((id) => validIDs.has(id)));
 			return sameStringList(current, next) ? current : next;
 		});
-	}, [mediaAssets, selectableReferenceKinds, selectedRoute]);
+	}, [mediaAssets, selectableReferenceKinds, selectedRoute, trimReferenceAssetIdsToLimit]);
 
 	const removeReferenceAsset = useCallback((assetId: string) => {
 		setSelectedReferenceAssetIds((current) => current.filter((id) => id !== assetId));
@@ -86,24 +125,21 @@ export const useGenerationReferences = ({
 		(asset: MediaAsset) => {
 			if (!canUseAssetAsReference(asset, selectedRoute, selectableReferenceKinds)) return;
 
-			setSelectedReferenceAssetIds((current) =>
-				current.includes(asset.id) ? current : [...current, asset.id],
-			);
+			setSelectedReferenceAssetIds((current) => addReferenceAssetIdWithinLimit(current, asset.id));
 		},
-		[selectableReferenceKinds, selectedRoute],
+		[addReferenceAssetIdWithinLimit, selectableReferenceKinds, selectedRoute],
 	);
 
 	const toggleReferenceAsset = useCallback(
 		(asset: MediaAsset) => {
 			if (!canUseAssetAsReference(asset, selectedRoute, selectableReferenceKinds)) return;
 
-			setSelectedReferenceAssetIds((current) =>
-				current.includes(asset.id)
-					? current.filter((id) => id !== asset.id)
-					: [...current, asset.id],
-			);
+			setSelectedReferenceAssetIds((current) => {
+				if (current.includes(asset.id)) return current.filter((id) => id !== asset.id);
+				return addReferenceAssetIdWithinLimit(current, asset.id);
+			});
 		},
-		[selectableReferenceKinds, selectedRoute],
+		[addReferenceAssetIdWithinLimit, selectableReferenceKinds, selectedRoute],
 	);
 
 	const uploadReferenceAsset = useCallback(
@@ -119,7 +155,7 @@ export const useGenerationReferences = ({
 				await mutateMediaAssets();
 				if (canUseAssetAsReference(asset, selectedRoute, selectableReferenceKinds)) {
 					setSelectedReferenceAssetIds((current) =>
-						current.includes(asset.id) ? current : [...current, asset.id],
+						addReferenceAssetIdWithinLimit(current, asset.id),
 					);
 				}
 			} catch (err) {
@@ -129,7 +165,14 @@ export const useGenerationReferences = ({
 				setIsUploadingAsset(false);
 			}
 		},
-		[mediaAssetProjectId, mutateMediaAssets, selectableReferenceKinds, selectedRoute, setError],
+		[
+			addReferenceAssetIdWithinLimit,
+			mediaAssetProjectId,
+			mutateMediaAssets,
+			selectableReferenceKinds,
+			selectedRoute,
+			setError,
+		],
 	);
 
 	return {

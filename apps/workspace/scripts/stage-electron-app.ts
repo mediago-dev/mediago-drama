@@ -2,11 +2,19 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { SHELL_API_VERSION } from "../electron/src/ipc-contract.ts";
+
 type WorkspacePackage = {
 	name?: string;
 	version?: string;
+	dependencies?: {
+		"electron-updater"?: string;
+		"extract-zip"?: string;
+	};
 	devDependencies?: {
 		electron?: string;
+		"electron-updater"?: string;
+		"extract-zip"?: string;
 	};
 };
 
@@ -24,6 +32,13 @@ function main(): void {
 
 	const workspacePackage = readWorkspacePackage();
 	const electronVersion = normalizeVersion(workspacePackage.devDependencies?.electron);
+	const stagedDependencies = Object.fromEntries(
+		(["electron-updater", "extract-zip"] as const).flatMap((name) => {
+			const version =
+				workspacePackage.dependencies?.[name] ?? workspacePackage.devDependencies?.[name];
+			return version ? [[name, version]] : [];
+		}),
+	);
 	const githubPublisher = githubPublisherOptions();
 	const appPackage = {
 		name: "mediago-drama",
@@ -31,10 +46,14 @@ function main(): void {
 		version: workspacePackage.version ?? "0.0.0",
 		description: "MediaGo Drama desktop workspace",
 		author: "MediaGo Dev",
+		repository: {
+			type: "git",
+			url: `https://github.com/${githubOwner}/${githubRepo}.git`,
+		},
 		private: true,
 		type: "module",
 		main: "main.js",
-		dependencies: {},
+		dependencies: stagedDependencies,
 		build: {
 			appId: "team.torchstellar.mediagodrama",
 			productName: "MediaGo Drama",
@@ -43,7 +62,7 @@ function main(): void {
 			directories: {
 				output: "../../release",
 			},
-			...(githubPublisher ? { publish: [githubPublisher] } : {}),
+			publish: [githubPublisher],
 			files: ["package.json", "*.js", "renderer/**/*"],
 			extraResources: [
 				{
@@ -80,10 +99,32 @@ function main(): void {
 	writeFileSync(join(electronAppDir, "package.json"), `${JSON.stringify(appPackage, null, 2)}\n`);
 	cpSync(electronDistDir, electronAppDir, { recursive: true });
 	cpSync(rendererDistDir, join(electronAppDir, "renderer"), { recursive: true });
+	writeRendererMeta(join(electronAppDir, "renderer"), appPackage.version);
 }
 
 function readWorkspacePackage(): WorkspacePackage {
 	return JSON.parse(readFileSync(workspacePackagePath, "utf8")) as WorkspacePackage;
+}
+
+// Identity of the builtin renderer bundle, consumed by the hot-update loader
+// (electron/src/renderer-store.ts) to compare against downloaded bundles.
+function writeRendererMeta(stagedRendererDir: string, appBaseline: string): void {
+	const rendererUpdatePath = join(workspaceDir, "renderer-update.json");
+	const parsed = JSON.parse(readFileSync(rendererUpdatePath, "utf8")) as {
+		rendererRev?: number;
+	};
+	if (!Number.isInteger(parsed.rendererRev) || (parsed.rendererRev ?? 0) < 1) {
+		throw new Error(`invalid rendererRev in ${rendererUpdatePath}`);
+	}
+	const meta = {
+		rendererRev: parsed.rendererRev,
+		minShellApi: SHELL_API_VERSION,
+		appBaseline,
+	};
+	writeFileSync(
+		join(stagedRendererDir, "renderer-meta.json"),
+		`${JSON.stringify(meta, null, 2)}\n`,
+	);
 }
 
 function ensureDirectory(path: string, message: string): void {
@@ -101,11 +142,13 @@ type GitHubReleaseType = "draft" | "prerelease" | "release";
 const githubOwner = "mediago-dev";
 const githubRepo = "mediago-drama";
 
-function githubPublisherOptions():
-	| { provider: "github"; releaseType: GitHubReleaseType; owner: string; repo: string }
-	| undefined {
-	const value = process.env.MEDIAGO_ELECTRON_RELEASE_TYPE?.trim();
-	if (!value) return undefined;
+function githubPublisherOptions(): {
+	provider: "github";
+	releaseType: GitHubReleaseType;
+	owner: string;
+	repo: string;
+} {
+	const value = process.env.MEDIAGO_ELECTRON_RELEASE_TYPE?.trim() || "release";
 	if (value !== "draft" && value !== "prerelease" && value !== "release") {
 		throw new Error(`invalid MEDIAGO_ELECTRON_RELEASE_TYPE: ${value}`);
 	}

@@ -591,6 +591,36 @@ func TestValidateRequestForRouteRejectsUnsupportedReferenceURLs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateRequestForRoute() rejected supported references: %v", err)
 	}
+
+	err = ValidateRequestForRoute(Request{
+		Kind: KindImage,
+		ReferenceURLs: []string{
+			"https://example.test/reference-1.png",
+			"https://example.test/reference-2.png",
+			"https://example.test/reference-3.png",
+			"https://example.test/reference-4.png",
+		},
+	}, route)
+	if err != nil {
+		t.Fatalf("ValidateRequestForRoute() rejected references within the route limit: %v", err)
+	}
+
+	err = ValidateRequestForRoute(Request{
+		Kind: KindImage,
+		ReferenceURLs: []string{
+			"https://example.test/reference-1.png",
+			"https://example.test/reference-2.png",
+			"https://example.test/reference-3.png",
+			"https://example.test/reference-4.png",
+			"https://example.test/reference-5.png",
+		},
+	}, route)
+	if err == nil {
+		t.Fatal("ValidateRequestForRoute() accepted reference URLs beyond the route limit")
+	}
+	if !strings.Contains(err.Error(), "supports at most 4 reference URLs") {
+		t.Fatalf("ValidateRequestForRoute() error = %q, want max reference limit", err)
+	}
 }
 
 func TestValidateRouteParams(t *testing.T) {
@@ -689,9 +719,18 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 	if !dmxGPTImage.SupportsReferenceURLs {
 		t.Fatal("dmx gpt image route should support reference images")
 	}
+	if dmxGPTImage.MaxReferenceURLs != 4 {
+		t.Fatalf("dmx gpt image max references = %d, want 4", dmxGPTImage.MaxReferenceURLs)
+	}
 
 	mediagoGPTImage := mustRoute(t, RouteMediagoGPTImage2)
 	assertHasParams(t, mediagoGPTImage, "aspectRatio", "resolution", "quality", "outputFormat", "moderation", "outputCompression", "n", "background")
+	if !mediagoGPTImage.SupportsReferenceURLs {
+		t.Fatal("mediago gpt image route should support reference images through MediaGo input_references")
+	}
+	if mediagoGPTImage.MaxReferenceURLs != 4 {
+		t.Fatalf("mediago gpt image max references = %d, want 4", mediagoGPTImage.MaxReferenceURLs)
+	}
 	mediagoGPTImageRatio := mustParam(t, mediagoGPTImage, "aspectRatio")
 	assertHasOptions(t, mediagoGPTImageRatio, "adaptive", "1:1", "3:2", "2:3", "16:9", "9:16")
 	assertComboOutput(t, mediagoGPTImage, "aspectRatio", "resolution", "16:9|2K", "2048x1152")
@@ -704,6 +743,9 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 	nanoBanana := mustRoute(t, RouteDMXNanoBanana31)
 	if !nanoBanana.SupportsReferenceURLs {
 		t.Fatal("dmx nano banana route should support reference images")
+	}
+	if nanoBanana.MaxReferenceURLs != 4 {
+		t.Fatalf("dmx nano banana max references = %d, want 4", nanoBanana.MaxReferenceURLs)
 	}
 	officialNanoBanana := mustRoute(t, RouteOfficialNanoBanana31)
 	if !officialNanoBanana.SupportsReferenceURLs {
@@ -752,6 +794,9 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 	assertHasParams(t, jimengSeedream, "aspectRatio", "resolution")
 	if !jimengSeedream.SupportsReferenceURLs {
 		t.Fatal("jimeng seedream route should support reference images")
+	}
+	if jimengSeedream.MaxReferenceURLs != 0 {
+		t.Fatalf("jimeng seedream max references = %d, want unlimited", jimengSeedream.MaxReferenceURLs)
 	}
 	jimengSeedream47 := mustRoute(t, RouteJimengSeedream47)
 	assertHasParams(t, jimengSeedream47, "aspectRatio", "resolution")

@@ -47,6 +47,7 @@ import {
 } from "@/domains/generation/stores/batch-generation-settings";
 import {
 	kindLabel,
+	maxReferenceUrlsForRoute,
 	paramLabel,
 	preferredRoute,
 	routeProviderLabel,
@@ -432,6 +433,9 @@ export const BatchGenerationSettingsDialog: React.FC<{
 	const selectedBatchReferenceAssets = supportsBatchReferenceImages
 		? ws.selectedReferenceAssets
 		: [];
+	const maxBatchReferenceUrls = supportsBatchReferenceImages
+		? maxReferenceUrlsForRoute(ws.selectedRoute)
+		: undefined;
 	const confirmDisabled = selectedCount === 0 || !hasAvailableRoute;
 	const primaryConfirmDisabled =
 		confirmDisabled ||
@@ -503,7 +507,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		);
 		const referenceAssetIds =
 			kind === "image" && ws.selectedRoute.supportsReferenceUrls
-				? ws.selectedReferenceAssetIds
+				? selectedBatchReferenceAssetIds
 				: [];
 		setStoredSettings(kind, {
 			...selectedSettingsDraft,
@@ -822,8 +826,10 @@ export const BatchGenerationSettingsDialog: React.FC<{
 				entries={[]}
 				inputId="batch-generation-reference-upload"
 				isUploading={ws.isUploadingAsset}
+				maxReferences={maxBatchReferenceUrls}
 				mediaAssets={imageReferenceAssets}
 				open={referenceDialogOpen}
+				referenceCount={supportsBatchReferenceImages ? ws.referenceCount : 0}
 				references={selectedBatchReferenceAssets}
 				requiresReference={false}
 				selectableKinds={imageReferenceKinds}

@@ -1,5 +1,28 @@
-import type { DesktopFileFilter } from "@/shared/desktop/types";
+import type {
+	DesktopFileFilter,
+	DesktopUpdateAck,
+	DesktopUpdateCapability,
+	DesktopUpdateStatus,
+	RendererUpdateCapability,
+	RendererUpdateStatus,
+} from "@/shared/desktop/types";
 import { desktopRuntime } from "@/shared/desktop/runtime";
+
+const browserFallbackAck: DesktopUpdateAck = {
+	ok: false,
+	message: "当前运行环境不支持应用内更新。",
+};
+
+const missingBridgeAck: DesktopUpdateAck = {
+	ok: false,
+	message: "未检测到桌面端更新接口。",
+};
+
+const browserFallbackCapability: DesktopUpdateCapability = {
+	supportsAutoUpdate: false,
+	releasePageUrl: "https://github.com/mediago-dev/mediago-drama/releases/latest",
+	reason: "当前运行环境不支持应用内更新。",
+};
 
 export const copyDesktopFileToDirectory = async ({
 	directory,
@@ -62,19 +85,47 @@ export const revealNativePath = async (path: string) => {
 	throw new Error("当前运行环境不支持打开本地文件夹。");
 };
 
+const notificationClickHandlers = new Map<string, () => void>();
+let notificationClickBridgeReady = false;
+
+// Route native-notification clicks (emitted by the Electron main process) back to
+// the handler that was registered when the notification was shown.
+const ensureNotificationClickBridge = () => {
+	if (notificationClickBridgeReady) return;
+	const desktop = window.mediagoDesktop;
+	if (!desktop?.onNotificationClicked) return;
+	notificationClickBridgeReady = true;
+	desktop.onNotificationClicked((id) => {
+		const handler = notificationClickHandlers.get(id);
+		if (!handler) return;
+		notificationClickHandlers.delete(id);
+		handler();
+	});
+};
+
 export const showDesktopNotification = async (options: {
 	autoCancel?: boolean;
 	body: string;
 	group?: string;
+	onClick?: () => void;
 	title: string;
 }) => {
 	const runtime = desktopRuntime();
 	try {
 		if (runtime === "electron") {
+			let id: string | undefined;
+			if (options.onClick) {
+				// Key by group so at most one handler lives per notification channel and
+				// the map cannot grow unbounded.
+				id = options.group ?? `notification-${notificationClickHandlers.size + 1}`;
+				ensureNotificationClickBridge();
+				notificationClickHandlers.set(id, options.onClick);
+			}
 			return Boolean(
 				await window.mediagoDesktop?.showNotification({
 					body: options.body,
 					title: options.title,
+					id,
 				}),
 			);
 		}
@@ -82,4 +133,96 @@ export const showDesktopNotification = async (options: {
 		return false;
 	}
 	return false;
+};
+
+export const getDesktopAppVersion = async () => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return null;
+	return window.mediagoDesktop?.getAppVersion();
+};
+
+export const getDesktopUpdateCapability = async (): Promise<DesktopUpdateCapability> => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return browserFallbackCapability;
+	return (await window.mediagoDesktop?.getUpdateCapability()) ?? browserFallbackCapability;
+};
+
+export const checkDesktopUpdate = async (): Promise<DesktopUpdateAck> => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return browserFallbackAck;
+	return (await window.mediagoDesktop?.checkForUpdate()) ?? missingBridgeAck;
+};
+
+export const downloadDesktopUpdate = async (): Promise<DesktopUpdateAck> => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return browserFallbackAck;
+	return (await window.mediagoDesktop?.downloadUpdate()) ?? missingBridgeAck;
+};
+
+export const installDesktopUpdate = async (): Promise<DesktopUpdateAck> => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return browserFallbackAck;
+	return (await window.mediagoDesktop?.installUpdate()) ?? missingBridgeAck;
+};
+
+export const subscribeDesktopUpdateStatus = (
+	listener: (status: DesktopUpdateStatus) => void,
+): (() => void) => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return () => {};
+	return window.mediagoDesktop?.onUpdateStatus(listener) ?? (() => {});
+};
+
+// Renderer hot-update actions. A hot-updated renderer may run against an older shell
+// whose preload lacks these methods, so every call is runtime-guarded.
+
+const disabledRendererCapability: RendererUpdateCapability = {
+	enabled: false,
+	currentRev: 0,
+	source: "builtin",
+	reason: "当前运行环境不支持界面更新。",
+};
+
+const rendererBridge = () => (desktopRuntime() === "electron" ? window.mediagoDesktop : undefined);
+
+export const getRendererUpdateCapability = async (): Promise<RendererUpdateCapability> => {
+	const api = rendererBridge();
+	if (!api || typeof api.getRendererUpdateCapability !== "function") {
+		return disabledRendererCapability;
+	}
+	return (await api.getRendererUpdateCapability()) ?? disabledRendererCapability;
+};
+
+export const checkRendererUpdate = async (): Promise<DesktopUpdateAck> => {
+	const api = rendererBridge();
+	if (!api || typeof api.checkRendererUpdate !== "function") {
+		return { ok: false, message: "当前运行环境不支持界面更新。" };
+	}
+	return (await api.checkRendererUpdate()) ?? missingBridgeAck;
+};
+
+export const applyRendererUpdate = async (): Promise<DesktopUpdateAck> => {
+	const api = rendererBridge();
+	if (!api || typeof api.applyRendererUpdate !== "function") {
+		return { ok: false, message: "当前运行环境不支持界面更新。" };
+	}
+	return (await api.applyRendererUpdate()) ?? missingBridgeAck;
+};
+
+export const markRendererHealthy = async (): Promise<void> => {
+	const api = rendererBridge();
+	if (!api || typeof api.markRendererHealthy !== "function") return;
+	try {
+		await api.markRendererHealthy();
+	} catch {
+		// Health reporting must never break the renderer.
+	}
+};
+
+export const subscribeRendererUpdateStatus = (
+	listener: (status: RendererUpdateStatus) => void,
+): (() => void) => {
+	const api = rendererBridge();
+	if (!api || typeof api.onRendererUpdateStatus !== "function") return () => {};
+	return api.onRendererUpdateStatus(listener) ?? (() => {});
 };

@@ -31,6 +31,12 @@ run("go", [
 	join(outDir, `mediago-document-mcp${target.exe}`),
 	"./services/server/cmd/mediago-document-mcp",
 ]);
+run("go", [
+	"build",
+	"-o",
+	join(outDir, `mediago-generation-mcp${target.exe}`),
+	"./services/server/cmd/mediago-generation-mcp",
+]);
 
 function run(command, args) {
 	const result = spawnSync(command, args, {

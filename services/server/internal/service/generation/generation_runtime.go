@@ -28,6 +28,8 @@ type GenerationService struct {
 	generationProviderFactory     func(coregeneration.ModelRoute) (coregeneration.Provider, error)
 	multimodalTextProviderFactory runtime.MultimodalTextProviderFactory
 	voicePreviews                 *VoicePreviewStore
+	stylePreviews                 *StylePreviewStore
+	stylePrompts                  StylePromptSource
 	mediagoBaseURL                string
 	jimengBinPath                 string
 	jimengBinDir                  string
@@ -58,7 +60,13 @@ func NewGenerationService(settings *settings.Settings, generationTasks *Generati
 		mediaAssets:                   mediaAssets,
 		multimodalTextProviderFactory: defaultMultimodalTextProviderFactory,
 		voicePreviews:                 NewVoicePreviewStore(configassets.VoicePreviews),
+		stylePreviews:                 NewStylePreviewStore(configassets.StylePresets),
 	}
+}
+
+// SetStylePromptLibrary wires the prompt library that owns style presets.
+func (workflow *GenerationService) SetStylePromptLibrary(source StylePromptSource) {
+	workflow.stylePrompts = source
 }
 
 // SetJimengCLIPaths configures the local Jimeng CLI lookup paths.
@@ -114,6 +122,7 @@ func (workflow *GenerationService) ListGenerationModels() generationModelsRespon
 		Models:        catalog.Models,
 		Providers:     catalog.Providers,
 		VoicePreviews: workflow.listVoicePreviewAssets(),
+		StylePresets:  workflow.listStylePresets(),
 	}
 }
 
@@ -185,10 +194,6 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	projectID := payload.ProjectID
 	workflow.appendStudioUserTranscript(conversation, payload)
 
-	provider, err := workflow.newGenerationProvider(route)
-	if err != nil {
-		return generationMessageResponse{}, http.StatusServiceUnavailable, err
-	}
 	referenceURLs, err := workflow.resolveGenerationReferences(route, payload)
 	if err != nil {
 		return generationMessageResponse{}, http.StatusBadRequest, err
@@ -196,6 +201,13 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 
 	generationRequest := GenerationRequestFromMessage(payload, route, referenceURLs)
 	generationRequest.Prompt = workflow.providerPromptForGeneration(route, payload)
+	if err := coregeneration.ValidateRequestForRoute(generationRequest, route); err != nil {
+		return generationMessageResponse{}, http.StatusBadRequest, err
+	}
+	provider, err := workflow.newGenerationProvider(route)
+	if err != nil {
+		return generationMessageResponse{}, http.StatusServiceUnavailable, err
+	}
 	if ShouldSubmitGenerationInBackground(route) {
 		messageResponse := SubmittingGenerationResponse("", coregeneration.Kind(payload.Kind))
 		shouldSubmit := true

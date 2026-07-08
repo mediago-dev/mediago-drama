@@ -45,7 +45,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/compo
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import { useGeneratedResultActions } from "@/domains/generation/components/generatedResultActions";
 import { resolveParamGroups } from "@/domains/generation/components/mediaGenerationHelpers";
-import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import {
+	generationAssetSource,
+	maxReferenceUrlsForRoute,
+} from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useToast } from "@/hooks/useToast";
 import { openExternalUrl } from "@/shared/desktop/actions";
 
@@ -613,8 +616,10 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 				entries={ws.generationEntries}
 				inputId={`${ws.uploadIdPrefix}-reference-dialog-upload`}
 				isUploading={ws.isUploadingAsset}
+				maxReferences={maxReferenceUrlsForRoute(ws.selectedRoute)}
 				mediaAssets={ws.mediaAssets}
 				open={referenceDialogOpen}
+				referenceCount={ws.referenceCount}
 				references={ws.selectedReferenceAssets}
 				requiresReference={false}
 				selectableKinds={ws.selectableReferenceKinds}

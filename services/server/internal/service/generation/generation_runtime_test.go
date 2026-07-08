@@ -956,6 +956,64 @@ func TestCreateJimengSeedanceMiniAndVIPRoutesBypassQueue(t *testing.T) {
 	}
 }
 
+func TestCreateImageGenerationRejectsReferenceURLsBeyondRouteLimitBeforeTask(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	repo, err := repository.NewGenerationTaskRepository(dbPath)
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{
+			coregeneration.ProviderDMX: "sk-image",
+		},
+	})
+	workflow := NewGenerationService(settingsSvc, store, nil)
+	providerFactoryCalled := false
+	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		providerFactoryCalled = true
+		return &blockingMultiAssetImageGenerateProvider{
+			started: make(chan coregeneration.Request, 1),
+			release: make(chan struct{}),
+		}, nil
+	}
+
+	_, status, err := workflow.CreateGenerationMessage(context.Background(), GenerationMessageRequest{
+		Kind:    string(coregeneration.KindImage),
+		RouteID: coregeneration.RouteDMXGPTImage2,
+		ModelID: coregeneration.ModelGPTImage2,
+		Model:   "gpt-image-2-ssvip",
+		Prompt:  "make an image with too many references",
+		ReferenceURLs: []string{
+			"https://example.test/reference-1.png",
+			"https://example.test/reference-2.png",
+			"https://example.test/reference-3.png",
+			"https://example.test/reference-4.png",
+			"https://example.test/reference-5.png",
+		},
+		Params: map[string]any{
+			"aspectRatio": "1:1",
+			"resolution":  "1K",
+		},
+	})
+	if err == nil || status != http.StatusBadRequest {
+		t.Fatalf("CreateGenerationMessage() status = %d error = %v, want bad request", status, err)
+	}
+	if !strings.Contains(err.Error(), "supports at most 4 reference URLs") {
+		t.Fatalf("error = %q, want reference limit error", err)
+	}
+	if providerFactoryCalled {
+		t.Fatal("provider factory was called before request validation")
+	}
+	tasks, err := store.List()
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("task count = %d, want no persisted failed task", len(tasks))
+	}
+}
+
 func TestPollQueuedJimengSeedanceSubmitsOldestWhenUnblocked(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	repo, err := repository.NewGenerationTaskRepository(dbPath)

@@ -22,6 +22,7 @@ export interface ReferenceSelectionDialogProps {
 	entries: GenerationEntry[];
 	inputId: string;
 	isUploading: boolean;
+	maxReferences?: number;
 	mediaAssets: MediaAsset[];
 	onOpenChange: (open: boolean) => void;
 	onRefreshAssets?: () => void;
@@ -29,6 +30,7 @@ export interface ReferenceSelectionDialogProps {
 	onToggleReference: (asset: MediaAsset) => void;
 	onUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
 	open: boolean;
+	referenceCount?: number;
 	references: MediaAsset[];
 	requiresReference: boolean;
 	selectableKinds: Set<MediaAsset["kind"]>;
@@ -59,6 +61,7 @@ interface ReferenceSelectionDialogController {
 	inputId: string;
 	isUploading: boolean;
 	kindFilters: ReferenceKindFilter[];
+	maxReferences?: number;
 	onOpenChange: (open: boolean) => void;
 	onRemoveReference: (asset: MediaAsset) => void;
 	onToggleReference: (asset: MediaAsset) => void;
@@ -67,11 +70,13 @@ interface ReferenceSelectionDialogController {
 	open: boolean;
 	optionCounts: Record<ReferenceKindFilter, number>;
 	options: GeneratedReferenceOption[];
+	referenceCount: number;
 	references: MediaAsset[];
 	requiresReference: boolean;
 	selectableKinds: Set<MediaAsset["kind"]>;
 	selectedAssetIds: string[];
 	selectedShortcutAssetIds: Set<string>;
+	selectionLimitReached: boolean;
 	shortcutGroups: ReferenceSelectionShortcutGroup[];
 	title: string;
 	visibleOptions: GeneratedReferenceOption[];
@@ -90,6 +95,7 @@ const useReferenceSelectionDialogController = ({
 	entries,
 	inputId,
 	isUploading,
+	maxReferences,
 	mediaAssets,
 	onOpenChange,
 	onRefreshAssets,
@@ -98,6 +104,7 @@ const useReferenceSelectionDialogController = ({
 	onToggleShortcutReference,
 	onUpload,
 	open,
+	referenceCount,
 	references,
 	requiresReference,
 	selectableKinds,
@@ -133,6 +140,8 @@ const useReferenceSelectionDialogController = ({
 		() => new Set(selectedShortcutAssetIds),
 		[selectedShortcutAssetIds],
 	);
+	const effectiveReferenceCount = referenceCount ?? references.length;
+	const selectionLimitReached = Boolean(maxReferences && effectiveReferenceCount >= maxReferences);
 	const visibleShortcutGroups = useMemo(
 		() =>
 			shortcutGroups
@@ -163,6 +172,7 @@ const useReferenceSelectionDialogController = ({
 		inputId,
 		isUploading,
 		kindFilters,
+		maxReferences,
 		onKindFilterChange: setKindFilter,
 		onOpenChange,
 		onRemoveReference,
@@ -172,11 +182,13 @@ const useReferenceSelectionDialogController = ({
 		open,
 		optionCounts,
 		options,
+		referenceCount: effectiveReferenceCount,
 		references,
 		requiresReference,
 		selectableKinds,
 		selectedAssetIds,
 		selectedShortcutAssetIds: selectedShortcutIDSet,
+		selectionLimitReached,
 		shortcutGroups: visibleShortcutGroups,
 		title,
 		visibleOptions,
@@ -222,7 +234,8 @@ const ReferenceSelectionDialogView: React.FC<{
 						<span>上传</span>
 					</Button>
 					<p className="shrink-0 text-xs text-muted-foreground">
-						已选 {controller.references.length} 个
+						已选 {controller.referenceCount}
+						{controller.maxReferences ? ` / ${controller.maxReferences}` : ""} 个
 					</p>
 				</>
 			}
@@ -242,6 +255,7 @@ const ReferenceSelectionDialogView: React.FC<{
 						key={group.id}
 						disabled={controller.disabled}
 						group={group}
+						selectionLimitReached={controller.selectionLimitReached}
 						selectableKinds={controller.selectableKinds}
 						selectedAssetIds={controller.selectedAssetIds}
 						selectedShortcutAssetIds={controller.selectedShortcutAssetIds}
@@ -294,12 +308,13 @@ const ReferenceSelectionDialogView: React.FC<{
 							const selected = Boolean(
 								option.mediaAsset && controller.selectedAssetIds.includes(option.mediaAsset.id),
 							);
+							const limitReached = controller.selectionLimitReached && !selected;
 
 							return (
 								<GeneratedReferenceOptionCard
 									key={option.key}
 									option={option}
-									selectable={selectable}
+									selectable={selectable && !limitReached}
 									selected={selected}
 									supported={supported}
 									onToggle={() => {
@@ -354,6 +369,7 @@ const ReferenceShortcutGroup: React.FC<{
 	disabled: boolean;
 	group: ReferenceSelectionShortcutGroup;
 	onToggleReference: (asset: MediaAsset) => void;
+	selectionLimitReached: boolean;
 	selectableKinds: Set<MediaAsset["kind"]>;
 	selectedAssetIds: string[];
 	selectedShortcutAssetIds: Set<string>;
@@ -361,6 +377,7 @@ const ReferenceShortcutGroup: React.FC<{
 	disabled,
 	group,
 	onToggleReference,
+	selectionLimitReached,
 	selectableKinds,
 	selectedAssetIds,
 	selectedShortcutAssetIds,
@@ -383,13 +400,14 @@ const ReferenceShortcutGroup: React.FC<{
 				const selectable = !disabled && supported;
 				const selected =
 					selectedAssetIds.includes(item.asset.id) || selectedShortcutAssetIds.has(item.asset.id);
+				const limitReached = selectionLimitReached && !selected;
 
 				return (
 					<ReferenceShortcutCard
 						key={`${group.id}:${item.asset.id}`}
 						item={item}
 						referenceKind={referenceKind}
-						selectable={selectable}
+						selectable={selectable && !limitReached}
 						selected={selected}
 						supported={supported}
 						onToggle={() => onToggleReference(item.asset)}

@@ -292,6 +292,39 @@ describe("ReferenceSelectionDialog", () => {
 
 		expect(onToggleShortcutReference).toHaveBeenCalledWith(nodeImage);
 	});
+
+	it("counts external references against the reference selection limit", () => {
+		const onToggleReference = vi.fn();
+		render(
+			<ReferenceSelectionDialog
+				disabled={false}
+				entries={[]}
+				inputId="reference-upload"
+				isUploading={false}
+				maxReferences={1}
+				mediaAssets={[mediaAsset()]}
+				open
+				referenceCount={1}
+				references={[]}
+				requiresReference={false}
+				selectableKinds={new Set(["image"])}
+				selectedAssetIds={[]}
+				onOpenChange={vi.fn()}
+				onRefreshAssets={vi.fn()}
+				onRemoveReference={vi.fn()}
+				onToggleReference={onToggleReference}
+				onUpload={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByText("已选 1 / 1 个")).toBeTruthy();
+		const selectButton = screen.getByRole("button", { name: "选择 still.png" });
+		expect(selectButton.getAttribute("disabled")).not.toBeNull();
+
+		fireEvent.click(selectButton);
+
+		expect(onToggleReference).not.toHaveBeenCalled();
+	});
 });
 
 describe("MaterialLibraryImportDialog", () => {
