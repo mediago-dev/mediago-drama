@@ -370,6 +370,8 @@ export interface AgentMessageRequest {
 	sessionId: string;
 	projectId?: string;
 	prompt: string;
+	displayPrompt?: string;
+	displayMetadata?: Record<string, unknown>;
 	anchorText?: string;
 	commentId?: string;
 	comments?: DocumentComment[];

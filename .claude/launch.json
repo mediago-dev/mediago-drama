@@ -4,8 +4,26 @@
     {
       "name": "workspace",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["-C", "apps/workspace", "dev"],
-      "port": 5173
+      "runtimeArgs": [
+        "-C",
+        "apps/workspace",
+        "dev"
+      ],
+      "port": 5173,
+      "autoPort": true
+    },
+    {
+      "name": "workspace-e2e",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_API_PROXY_TARGET=http://127.0.0.1:18080",
+        "pnpm",
+        "-C",
+        "apps/workspace",
+        "dev"
+      ],
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

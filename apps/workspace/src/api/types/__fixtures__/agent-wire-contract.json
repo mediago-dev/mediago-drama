@@ -1,0 +1,78 @@
+{
+	"messageRequest": {
+		"sessionId": "session-1",
+		"projectId": "project-1",
+		"prompt": "@完美世界.txt 读一下这个内容",
+		"displayPrompt": "读一下这个内容",
+		"displayMetadata": {
+			"displayAttachments": [
+				{
+					"id": "asset-1",
+					"kind": "file",
+					"mimeType": "text/plain",
+					"name": "完美世界.txt",
+					"size": 1024,
+					"url": "/api/v1/projects/project-1/assets/asset-1/content"
+				}
+			],
+			"displaySegments": [
+				{ "type": "skill", "name": "screenplay-writer", "title": "剧本写作" },
+				{ "type": "text", "text": " 读一下这个内容" },
+				{ "type": "mention", "title": "角色档案", "category": "character", "kind": "document" }
+			]
+		},
+		"anchorText": "第一章",
+		"commentId": "comment-1",
+		"comments": [],
+		"document": {
+			"id": "doc-1",
+			"title": "剧本",
+			"content": "# 剧本",
+			"category": "screenplay",
+			"parentId": "doc-0",
+			"sortOrder": 1,
+			"version": 2
+		},
+		"documents": [],
+		"references": [
+			{
+				"kind": "asset",
+				"documentId": "asset-1",
+				"assetId": "asset-1",
+				"assetKind": "text",
+				"blockId": "block-1",
+				"mimeType": "text/plain",
+				"title": "完美世界.txt",
+				"category": "reference",
+				"url": "/api/v1/projects/project-1/assets/asset-1/content"
+			}
+		],
+		"selectionText": "选中文本",
+		"model": { "configId": "model", "source": "configOption", "value": "mediago/minimax-m3" },
+		"reasoning": { "configId": "effort", "source": "configOption", "value": "high" },
+		"permission": { "configId": "permission", "source": "configOption", "value": "build" }
+	},
+	"reference": {
+		"kind": "asset",
+		"documentId": "asset-1",
+		"assetId": "asset-1",
+		"assetKind": "text",
+		"blockId": "block-1",
+		"mimeType": "text/plain",
+		"title": "完美世界.txt",
+		"category": "reference",
+		"url": "/api/v1/projects/project-1/assets/asset-1/content"
+	},
+	"chatMessage": {
+		"id": "user-1",
+		"role": "user",
+		"content": "读一下这个内容",
+		"kind": "message",
+		"title": "用户消息",
+		"createdAt": "2026-07-08T10:00:00Z",
+		"status": "complete",
+		"metadata": {
+			"displaySegments": [{ "type": "text", "text": "读一下这个内容" }]
+		}
+	}
+}

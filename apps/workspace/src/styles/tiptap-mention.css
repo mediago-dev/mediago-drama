@@ -33,61 +33,93 @@
 	pointer-events: none;
 }
 
-.agent-reference-mention {
+/* Shared reference-chip visuals (base + category colors). Carried by both the
+   agent composer chip (.agent-reference-mention) and the document editor chip
+   (.document-reference-mention); component-specific tweaks belong on those
+   classes, deliberate shared changes belong here. */
+.reference-mention-chip {
 	display: inline-flex;
 	box-sizing: border-box;
 	min-height: 1.48em;
 	max-width: min(24rem, 100%);
 	align-items: center;
+	gap: 0.3rem;
 	overflow: hidden;
 	border: var(--border-width-scale-sm) solid transparent;
 	border-radius: var(--radius-scale-sm);
 	background: var(--secondary);
-	padding: 0.02em 0.25rem 0;
+	padding: 0.02em 0.3rem 0;
 	color: var(--secondary-foreground);
 	font-weight: var(--font-weight-scale-medium);
 	line-height: 1;
-	text-overflow: ellipsis;
 	white-space: nowrap;
 	word-break: normal;
 	overflow-wrap: normal;
 }
 
-.agent-reference-mention[data-kind="section"] {
+/* Document glyph drawn with borders so it inherits the chip's category color. */
+.agent-reference-mention-icon {
+	position: relative;
+	display: inline-flex;
+	width: 0.72em;
+	height: 0.92em;
+	flex: 0 0 auto;
+	border: 1.2px solid currentColor;
+	border-radius: 0.14em;
+}
+
+.agent-reference-mention-icon::before {
+	position: absolute;
+	top: 0.2em;
+	right: 0.12em;
+	left: 0.12em;
+	border-top: 1.2px solid currentColor;
+	content: "";
+	box-shadow: 0 0.26em 0 0 currentColor;
+}
+
+.agent-reference-mention-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.reference-mention-chip[data-kind="section"] {
 	box-shadow: inset var(--border-width-scale-md) 0 0 currentColor;
 }
 
-.agent-reference-mention[data-category="screenplay"] {
+.reference-mention-chip[data-category="screenplay"] {
 	border-color: var(--info-border);
 	background: var(--info-surface);
 	color: var(--info-foreground);
 }
 
-.agent-reference-mention[data-category="character"] {
+.reference-mention-chip[data-category="character"] {
 	border-color: var(--success-border);
 	background: var(--success-surface);
 	color: var(--success-foreground);
 }
 
-.agent-reference-mention[data-category="scene"] {
+.reference-mention-chip[data-category="scene"] {
 	border-color: var(--warning-border);
 	background: var(--warning-surface);
 	color: var(--warning-foreground);
 }
 
-.agent-reference-mention[data-category="prop"] {
+.reference-mention-chip[data-category="prop"] {
 	border-color: color-mix(in srgb, var(--doc-category-prop) 36%, var(--border));
 	background: color-mix(in srgb, var(--doc-category-prop) 12%, var(--background));
 	color: var(--doc-category-prop);
 }
 
-.agent-reference-mention[data-category="storyboard"] {
+.reference-mention-chip[data-category="storyboard"] {
 	border-color: color-mix(in srgb, var(--doc-category-storyboard) 40%, var(--border));
 	background: color-mix(in srgb, var(--secondary) 80%, var(--background));
 	color: var(--doc-category-storyboard);
 }
 
-.agent-reference-mention[data-category="reference"] {
+.reference-mention-chip[data-category="reference"] {
 	border-color: var(--border);
 	background: var(--muted);
 	color: var(--muted-foreground);

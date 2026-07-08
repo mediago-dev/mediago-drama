@@ -43,7 +43,7 @@ describe("DocumentMention", () => {
 			kind: "section",
 			title: "下城雨夜出租屋",
 		});
-		expect(editor.getHTML()).toContain("agent-reference-mention");
+		expect(editor.getHTML()).toContain("document-reference-mention");
 		expect(editor.getHTML()).toContain('data-category="scene"');
 		expect(editor.getHTML()).toContain('data-kind="section"');
 		expect(editor.getHTML()).toContain('data-document-id="scene-doc"');

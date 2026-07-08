@@ -136,6 +136,110 @@ func TestAgentRuntimeSessionTitleUsesSelectedModel(t *testing.T) {
 	}
 }
 
+func TestAgentRuntimeUserMessageUsesDisplayPrompt(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sessions := NewSessionService(nil)
+	sessions.Create("session-1", "")
+
+	events := []AgentEvent{}
+	eventsCh := make(chan AgentEvent, 16)
+	var eventsMu sync.Mutex
+	runtime := NewAgentRuntime(
+		runtimeTestDocumentStore{dir: workspaceDir},
+		sessions,
+		streamingFinalAgentRunner{},
+		func(event AgentEvent) {
+			eventsMu.Lock()
+			events = append(events, event)
+			eventsMu.Unlock()
+			eventsCh <- event
+		},
+		AgentRuntimeConfig{WorkspaceDir: workspaceDir},
+	)
+
+	displayMetadata := map[string]any{
+		"displaySegments": []any{
+			map[string]any{"type": "skill", "name": "screenplay-writer", "title": "剧本写作"},
+		},
+	}
+	_, status, err := runtime.SubmitAgentMessage(AgentMessageRequest{
+		SessionID:       "session-1",
+		Prompt:          "请先调用 MCP `load_skill` 装载 `screenplay-writer`（剧本写作），并使用该 Skill 完成以下需求：理解一下",
+		DisplayPrompt:   "剧本写作 理解一下",
+		DisplayMetadata: displayMetadata,
+	})
+	if err != nil {
+		t.Fatalf("SubmitAgentMessage returned error: %v", err)
+	}
+	if status != 200 {
+		t.Fatalf("status = %d, want 200", status)
+	}
+
+	waitForAgentEvent(t, eventsCh, "agent.run.completed")
+
+	eventsMu.Lock()
+	defer eventsMu.Unlock()
+	userMessage := agentEventOfType(events, "agent.user.message")
+	if userMessage == nil {
+		t.Fatalf("events = %#v, want user message event", eventTypes(events))
+	}
+	if userMessage.Message != "剧本写作 理解一下" {
+		t.Fatalf("user message = %q, want display prompt instead of machine prompt", userMessage.Message)
+	}
+	if _, ok := userMessage.Metadata["displaySegments"]; !ok {
+		t.Fatalf("user message metadata = %#v, want display segments", userMessage.Metadata)
+	}
+}
+
+func TestUserMessageDisplayText(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload AgentMessageRequest
+		want    string
+	}{
+		{
+			name:    "machine prompt without display data",
+			payload: AgentMessageRequest{Prompt: "@文件 读一下"},
+			want:    "@文件 读一下",
+		},
+		{
+			name:    "display prompt wins over machine prompt",
+			payload: AgentMessageRequest{Prompt: "@文件 读一下", DisplayPrompt: "读一下"},
+			want:    "读一下",
+		},
+		{
+			name: "attachment-only send keeps the bubble text empty",
+			payload: AgentMessageRequest{
+				Prompt: "@文件",
+				DisplayMetadata: map[string]any{
+					"displayAttachments": []any{map[string]any{"kind": "file", "name": "文件"}},
+				},
+			},
+			want: "",
+		},
+		{
+			name: "metadata without renderable content falls back to the machine prompt",
+			payload: AgentMessageRequest{
+				Prompt:          "@文件 读一下",
+				DisplayMetadata: map[string]any{"displayAttachments": []any{}},
+			},
+			want: "@文件 读一下",
+		},
+		{
+			name:    "empty metadata object falls back to the machine prompt",
+			payload: AgentMessageRequest{Prompt: "@文件 读一下", DisplayMetadata: map[string]any{}},
+			want:    "@文件 读一下",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := userMessageDisplayText(test.payload); got != test.want {
+				t.Fatalf("userMessageDisplayText = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 type streamingFinalAgentRunner struct{}
 
 func (streamingFinalAgentRunner) Run(
