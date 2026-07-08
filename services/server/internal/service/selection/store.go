@@ -377,7 +377,7 @@ func normalizeFields(fields []FormField) ([]FormField, error) {
 			if len(field.Options) == 0 {
 				return nil, fmt.Errorf("form field %q needs options", id)
 			}
-		case FieldTypeToggle, FieldTypeNumber, FieldTypeText:
+		case FieldTypeToggle, FieldTypeNumber, FieldTypeText, FieldTypeGenerationParams:
 		default:
 			return nil, fmt.Errorf("form field %q has unsupported type %q", id, fieldType)
 		}
@@ -466,6 +466,32 @@ func validateFormValue(field FormField, value any) (any, error) {
 			return nil, fmt.Errorf("form field %q expects a string", field.ID)
 		}
 		return strings.TrimSpace(text), nil
+	case FieldTypeGenerationParams:
+		return validateGenerationParamsValue(field, value)
 	}
 	return nil, fmt.Errorf("form field %q has unsupported type %q", field.ID, field.Type)
+}
+
+// validateGenerationParamsValue checks the composite generation-parameter
+// value submitted by the client picker: {"routeId": string, "label"?: string,
+// "params"?: object}. Route and param validity against the model catalog is
+// enforced by the generation service when the request is actually submitted.
+func validateGenerationParamsValue(field FormField, value any) (any, error) {
+	record, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("form field %q expects an object value", field.ID)
+	}
+	routeID, _ := record["routeId"].(string)
+	routeID = strings.TrimSpace(routeID)
+	if routeID == "" {
+		return nil, fmt.Errorf("form field %q requires a routeId", field.ID)
+	}
+	sanitized := map[string]any{"routeId": routeID}
+	if label, ok := record["label"].(string); ok && strings.TrimSpace(label) != "" {
+		sanitized["label"] = strings.TrimSpace(label)
+	}
+	if params, ok := record["params"].(map[string]any); ok && len(params) > 0 {
+		sanitized["params"] = params
+	}
+	return sanitized, nil
 }

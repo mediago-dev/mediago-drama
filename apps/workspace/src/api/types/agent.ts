@@ -243,7 +243,7 @@ export interface AgentFormFieldOption {
 export interface AgentFormField {
 	id: string;
 	label: string;
-	type: "select" | "toggle" | "number" | "text";
+	type: "select" | "toggle" | "number" | "text" | "generation_params";
 	description?: string;
 	options?: AgentFormFieldOption[];
 	default?: unknown;

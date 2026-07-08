@@ -287,3 +287,77 @@ func TestClampTimeout(t *testing.T) {
 		})
 	}
 }
+
+func TestSelectionGenerationParamsField(t *testing.T) {
+	store, _, projectID := newTestStore(t)
+	created, err := store.Create(projectID, CreateRequest{
+		SessionID: "session-1",
+		RunID:     "run-1",
+		Kind:      "generation_plan",
+		Title:     "确认生成参数",
+		Fields: []FormField{
+			{ID: "generation", Label: "模型与参数", Type: FieldTypeGenerationParams},
+			{ID: "optimizePrompt", Label: "优化提示词", Type: FieldTypeToggle, Default: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	decided, err := store.Decide(projectID, created.ID, DecisionRequest{
+		Values: map[string]any{
+			"generation": map[string]any{
+				"routeId": "mediago.gpt-image-2",
+				"label":   "MediaGo · GPT Image 2",
+				"params":  map[string]any{"aspectRatio": "16:9", "resolution": "4K", "n": float64(4)},
+				"junk":    "dropped",
+			},
+			"optimizePrompt": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+	if decided.Status != StatusSubmitted {
+		t.Fatalf("decided.Status = %q, want submitted", decided.Status)
+	}
+	generation, ok := decided.Decision.Values["generation"].(map[string]any)
+	if !ok {
+		t.Fatalf("generation value = %#v, want an object", decided.Decision.Values["generation"])
+	}
+	if generation["routeId"] != "mediago.gpt-image-2" || generation["label"] != "MediaGo · GPT Image 2" {
+		t.Fatalf("generation = %#v, want sanitized routeId and label", generation)
+	}
+	if _, hasJunk := generation["junk"]; hasJunk {
+		t.Fatalf("generation kept unknown key junk: %#v", generation)
+	}
+	params, ok := generation["params"].(map[string]any)
+	if !ok || params["aspectRatio"] != "16:9" {
+		t.Fatalf("generation params = %#v, want the submitted params", generation["params"])
+	}
+}
+
+func TestSelectionGenerationParamsFieldRejectsMissingRoute(t *testing.T) {
+	store, _, projectID := newTestStore(t)
+	created, err := store.Create(projectID, CreateRequest{
+		SessionID: "session-1",
+		RunID:     "run-1",
+		Kind:      "generation_plan",
+		Title:     "确认生成参数",
+		Fields:    []FormField{{ID: "generation", Label: "模型与参数", Type: FieldTypeGenerationParams}},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if _, err := store.Decide(projectID, created.ID, DecisionRequest{
+		Values: map[string]any{"generation": map[string]any{"params": map[string]any{}}},
+	}); err == nil {
+		t.Fatalf("Decide() accepted a generation value without routeId")
+	}
+	if _, err := store.Decide(projectID, created.ID, DecisionRequest{
+		Values: map[string]any{"generation": "mediago.gpt-image-2"},
+	}); err == nil {
+		t.Fatalf("Decide() accepted a non-object generation value")
+	}
+}

@@ -30,7 +30,7 @@ const AgentMCPInstructions = mcpWorkflowInstructions + `
 - 本 MCP 只提供 load_skill、get_project_config、update_project_config、list_comments、get_comment、mutate_comment、ask_user_selection、ask_user_form、await_user_selection。
 - update_project_config 当前仅用于更新 overview.categoryDefaults；style 风格分类会被忽略。
 - ask_user_selection 向用户展示可视化选项并阻塞等待选择，返回 selected/custom/cancelled/timeout；生图前用它确认风格或结果选片。
-- ask_user_form 向用户展示参数表单（select/toggle/number/text 字段），提交后返回 values；多参数确认（如生成方案）用它，不要拆成多轮单选。
+- ask_user_form 向用户展示参数表单（select/toggle/number/text/generation_params 字段），提交后返回 values；多参数确认（如生成方案）用它，不要拆成多轮单选。生图参数确认用单个 generation_params 字段（模型/比例/分辨率/张数由客户端按已配置目录渲染并联动），不要自行罗列模型选项。
 - 两者返回 timeout 时先用 await_user_selection 对同一 selectionId 循环续等 3-5 轮；仍无结果再说明情况并结束回合，不要擅自继续。`
 
 // ExternalMCPInstructions describes the cross-project MCP server contract.
@@ -50,7 +50,7 @@ const GenerationMCPInstructions = `MediaGo Drama Generation MCP 使用说明：
 - poll_generation_task 用于轮询需要供应商查询的异步任务；retry_generation_task 用于重试失败或可重试任务。
 - stylePresets 来自产品提示词库的 style 分类（内置风格 + 用户自建 + 提示词包），与生成工作台同源；previewUrl 存在时可作为选择卡片的预览图，缺失时用纯文本选项。用户确认某个 preset 后，把它的 promptSuffix 拼到 prompt 末尾、params 合并进请求参数再 generate_media。
 - preferences 是用户在生成工作台的习惯参数（kind→routeId、routeId→params）；组生成方案时优先用它做默认值，参数取值必须来自路由 params schema。
-- 生成前用 ask_user_form 参数表单让用户确认模型/比例/分辨率/张数/是否优化提示词；模型选项必须完整列出全部 configured 图片路由，参数选项 label 直接用取值本身（如 3:4、4K）不加解释；用户提交后严格执行。
+- 生成前用 ask_user_form 参数表单让用户确认生成参数：模型/比例/分辨率/张数用一个 type=generation_params 的字段（客户端自动渲染已配置模型目录并联动参数组合，无需也不要提供 options；default 可传 {routeId,params} 预填 preferences 习惯值），是否优化提示词用 toggle。提交后 values 中该字段为 {routeId,label,params}，严格按其 routeId 和 params 调 generate_media。
 - generate_media 传入 promptOptimization 时会先优化提示词再生成，返回 optimizedPrompt。
 - 一次生成返回多张结果时，让用户选片后调用 select_generation_asset(taskId, slotIndex) 标记选中（定稿替换该资源当前选中图；任务生成时没带 documentContext 才需补传 resourceType），再取该资产 URL 使用。`
 
@@ -133,7 +133,7 @@ var AgentDocumentTools = struct {
 	AskUserForm: ToolDefinition{
 		Name:        "ask_user_form",
 		Title:       "请用户填写表单",
-		Description: "向用户展示一张参数表单卡并阻塞等待提交：fields 定义 select/toggle/number/text 字段（select 需给 options，默认值用 default 预填），提交后返回 status=submitted 与 values（字段 ID→值）。适合生成参数确认等多参数场景；单选场景用 ask_user_selection。返回 timeout 时用 await_user_selection 对同一 selectionId 续等。",
+		Description: "向用户展示一张参数表单卡并阻塞等待提交：fields 定义 select/toggle/number/text/generation_params 字段（select 需给 options，默认值用 default 预填），提交后返回 status=submitted 与 values（字段 ID→值）。生图参数确认用单个 generation_params 字段：客户端自动渲染已配置的模型目录（模型族→模型→供应商）及所选模型的比例/分辨率/张数联动控件，无需 options，提交值为 {routeId,label,params}。单选场景用 ask_user_selection。返回 timeout 时用 await_user_selection 对同一 selectionId 续等。",
 	},
 	AwaitUserSelection: ToolDefinition{
 		Name:        "await_user_selection",

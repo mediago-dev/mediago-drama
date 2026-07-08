@@ -37,6 +37,11 @@ const (
 	FieldTypeToggle = "toggle"
 	FieldTypeNumber = "number"
 	FieldTypeText   = "text"
+	// FieldTypeGenerationParams is a composite generation-parameter picker: the
+	// client renders the configured model catalog (family → model → provider)
+	// plus that route's aspect-ratio/resolution/count controls, and submits
+	// {"routeId": string, "params": {...}}. The agent supplies no options.
+	FieldTypeGenerationParams = "generation_params"
 )
 
 // Blocking-wait bounds. The caller-supplied timeout is clamped to this range;

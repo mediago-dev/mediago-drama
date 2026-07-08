@@ -7,6 +7,8 @@ import { useAgentStore } from "@/domains/agent/stores";
 import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
 import { useProjectStore } from "@/domains/projects/stores";
 import { cn } from "@/shared/lib/utils";
+import { AgentFormGenerationParams } from "./AgentFormGenerationParams";
+import { formatGenerationParamsValue } from "./agentFormGenerationParams.helpers";
 
 export const AgentFormCard: React.FC<{ message: AgentMessage }> = ({ message }) => {
 	const payload = message.metadata?.form;
@@ -141,6 +143,9 @@ const FormFieldControl: React.FC<{
 			) : null}
 		</div>
 		<div className="mt-1.5">
+			{field.type === "generation_params" ? (
+				<AgentFormGenerationParams value={value} disabled={disabled} onChange={onChange} />
+			) : null}
 			{field.type === "select" ? (
 				<div className="flex flex-wrap gap-1.5">
 					{(field.options ?? []).map((option) => {
@@ -241,6 +246,7 @@ const formSummary = (fields: AgentFormField[], values: Record<string, unknown>) 
 		.join(" · ");
 
 const formatFormValue = (field: AgentFormField, value: unknown) => {
+	if (field.type === "generation_params") return formatGenerationParamsValue(value);
 	if (field.type === "toggle") return value === true ? "开" : "关";
 	if (field.type === "select") {
 		const option = (field.options ?? []).find((item) => item.value === value);
