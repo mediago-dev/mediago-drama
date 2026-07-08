@@ -7,7 +7,7 @@ import {
 	type SelectedGenerationAsset,
 } from "@/domains/generation/api/generation";
 import { getProjects } from "@/domains/projects/api/projects";
-import { getMediaAssets, type MediaAsset, updateMediaAsset } from "@/domains/workspace/api/media";
+import { getMediaAssets, type MediaAsset } from "@/domains/workspace/api/media";
 import { getWorkspaceDocuments } from "@/domains/workspace/api/workspace";
 import { AssetLibraryButton } from "./AssetLibraryButton";
 
@@ -100,7 +100,6 @@ vi.mock("@/domains/workspace/api/media", () => ({
 	deleteMediaAsset: vi.fn(),
 	getMediaAssets: vi.fn(),
 	mediaAssetsKey: "/media-assets",
-	updateMediaAsset: vi.fn(),
 	uploadMediaAsset: vi.fn(),
 }));
 
@@ -212,7 +211,7 @@ describe("AssetLibraryButton", () => {
 		expect(screen.queryByText("1 / 1")).not.toBeInTheDocument();
 		expect(screen.queryByText("最近更新")).not.toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "取消选入" })).not.toBeInTheDocument();
-		expect(screen.getAllByRole("button", { name: /重命名/ })).toHaveLength(1);
+		expect(screen.queryByRole("button", { name: /重命名/ })).not.toBeInTheDocument();
 		expect(getMediaAssets).toHaveBeenCalledWith({ projectId: "project-a" });
 		expect(getWorkspaceDocuments).toHaveBeenCalledWith("project-a");
 		expect(getSelectedGenerationAssets).toHaveBeenCalledWith("project-a");
@@ -439,35 +438,7 @@ describe("AssetLibraryButton", () => {
 		expect(screen.getByRole("combobox", { name: "项目" })).toHaveTextContent("项目:");
 	});
 
-	it("renames a media asset from the preview panel", async () => {
-		vi.mocked(getMediaAssets).mockResolvedValue({
-			assets: [mediaAsset({ filename: "old-name.png", id: "media-a" })],
-		});
-		vi.mocked(updateMediaAsset).mockResolvedValue(
-			mediaAsset({ filename: "new-name.png", id: "media-a" }),
-		);
-
-		renderAssetLibraryButton("/");
-
-		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
-
-		expect((await screen.findAllByText("old-name.png")).length).toBeGreaterThan(0);
-		fireEvent.click(screen.getByRole("button", { name: "重命名" }));
-		const input = screen.getByRole("textbox", { name: "重命名素材" });
-		fireEvent.change(input, { target: { value: "new-name.png" } });
-		fireEvent.keyDown(input, { key: "Enter" });
-
-		await waitFor(() =>
-			expect(updateMediaAsset).toHaveBeenCalledWith("media-a", "new-name.png", undefined),
-		);
-	});
-
-	it("copies the asset path from the preview panel", async () => {
-		const writeText = vi.fn().mockResolvedValue(undefined);
-		Object.defineProperty(window.navigator, "clipboard", {
-			configurable: true,
-			value: { writeText },
-		});
+	it("hides rename and copy-path controls in the preview panel", async () => {
 		vi.mocked(getMediaAssets).mockResolvedValue({
 			assets: [
 				mediaAsset({
@@ -484,10 +455,8 @@ describe("AssetLibraryButton", () => {
 		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
 
 		expect((await screen.findAllByText("hero.png")).length).toBeGreaterThan(0);
-		fireEvent.click(screen.getByRole("button", { name: "复制路径" }));
-		await waitFor(() =>
-			expect(writeText).toHaveBeenCalledWith("/tmp/library/2026-06-21/asset-media-a.png"),
-		);
+		expect(screen.queryByRole("button", { name: "重命名" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "复制路径" })).not.toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "在文件夹中显示" })).not.toBeInTheDocument();
 	});
 
