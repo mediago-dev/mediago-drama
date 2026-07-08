@@ -672,81 +672,76 @@ const AssetLibraryPreview: React.FC<{
 	};
 
 	return (
-		<aside className="min-h-0 overflow-y-auto border-t border-border bg-card p-4 lg:border-l lg:border-t-0">
-			<div className="grid gap-3">
-				<div className="min-w-0">
-					<MiddleTruncatedText
-						className="text-sm font-semibold text-foreground"
-						text={item.title}
-					/>
-					<p className="mt-1 truncate text-xs text-muted-foreground">
-						{kindLabel(item.kind)} · {sourceTypeLabel(item.sourceType)} ·{" "}
-						{formatBytes(item.sizeBytes)}
-					</p>
-				</div>
-				<div className="overflow-hidden rounded-sm border border-border bg-ide-editor">
-					<AssetPreviewMedia
-						error={error}
-						isTextLoading={isLoading}
-						item={item}
-						posterSource={posterSource}
-						source={source}
-						text={text}
-					/>
-				</div>
-				<div className="flex flex-wrap items-center gap-1.5">
-					<Button
-						type="button"
-						size="sm"
-						variant="outline"
-						className="h-7 rounded-sm px-2 text-xs"
-						disabled={busy}
-						onClick={onDownload}
-					>
-						<Download className="size-3.5" />
-						<span>下载</span>
-					</Button>
-					<Button
-						type="button"
-						size="sm"
-						variant="outline"
-						className="h-7 rounded-sm px-2 text-xs text-muted-foreground hover:text-error-foreground"
-						disabled={busy}
-						onClick={onDelete}
-					>
-						<Trash2 className="size-3.5" />
-						<span>{item.sourceType === "selected" ? "取消选入" : "删除"}</span>
-					</Button>
-				</div>
-				<div className="grid gap-1 text-xs text-muted-foreground">
-					<p>更新：{formatDateTime(item.updatedAt)}</p>
-					<p>创建：{formatDateTime(item.createdAt)}</p>
-					{item.mimeType ? <p className="break-all">MIME：{item.mimeType}</p> : null}
-					{item.mediaAsset?.source ? (
-						<p>来源：{mediaAssetSourceLabel(item.mediaAsset.source)}</p>
-					) : null}
-					{displayPath ? (
-						<div className="flex min-w-0 items-center gap-1">
-							<span className="shrink-0">路径：</span>
-							<MiddleTruncatedText className="min-w-0 flex-1" text={displayPath} />
-							{canReveal ? (
-								<Button
-									type="button"
-									size="sm"
-									variant="ghost"
-									className="h-6 w-6 shrink-0 p-0"
-									aria-label="在文件夹中显示"
-									title="在文件夹中显示"
-									onClick={() => void revealInFolder()}
-								>
-									<FolderOpen className="size-3" />
-								</Button>
-							) : null}
-						</div>
-					) : null}
-				</div>
-				<AssetTagList tags={tags} className="gap-1.5" />
+		<aside className="flex min-h-0 flex-col gap-3 overflow-y-auto border-t border-border bg-card p-4 lg:border-l lg:border-t-0">
+			<div className="min-w-0 shrink-0">
+				<MiddleTruncatedText className="text-sm font-semibold text-foreground" text={item.title} />
+				<p className="mt-1 truncate text-xs text-muted-foreground">
+					{kindLabel(item.kind)} · {sourceTypeLabel(item.sourceType)} ·{" "}
+					{formatBytes(item.sizeBytes)}
+				</p>
 			</div>
+			<div className="flex min-h-64 min-w-0 flex-1 flex-col overflow-hidden rounded-sm border border-border bg-ide-editor lg:min-h-32">
+				<AssetPreviewMedia
+					error={error}
+					isTextLoading={isLoading}
+					item={item}
+					posterSource={posterSource}
+					source={source}
+					text={text}
+				/>
+			</div>
+			<div className="flex shrink-0 flex-wrap items-center gap-1.5">
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					className="h-7 rounded-sm px-2 text-xs"
+					disabled={busy}
+					onClick={onDownload}
+				>
+					<Download className="size-3.5" />
+					<span>下载</span>
+				</Button>
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					className="h-7 rounded-sm px-2 text-xs text-muted-foreground hover:text-error-foreground"
+					disabled={busy}
+					onClick={onDelete}
+				>
+					<Trash2 className="size-3.5" />
+					<span>{item.sourceType === "selected" ? "取消选入" : "删除"}</span>
+				</Button>
+			</div>
+			<div className="grid shrink-0 gap-1 text-xs text-muted-foreground">
+				<p>更新：{formatDateTime(item.updatedAt)}</p>
+				<p>创建：{formatDateTime(item.createdAt)}</p>
+				{item.mimeType ? <p className="break-all">MIME：{item.mimeType}</p> : null}
+				{item.mediaAsset?.source ? (
+					<p>来源：{mediaAssetSourceLabel(item.mediaAsset.source)}</p>
+				) : null}
+				{displayPath ? (
+					<div className="flex min-w-0 items-center gap-1">
+						<span className="shrink-0">路径：</span>
+						<MiddleTruncatedText className="min-w-0 flex-1" text={displayPath} />
+						{canReveal ? (
+							<Button
+								type="button"
+								size="sm"
+								variant="ghost"
+								className="h-6 w-6 shrink-0 p-0"
+								aria-label="在文件夹中显示"
+								title="在文件夹中显示"
+								onClick={() => void revealInFolder()}
+							>
+								<FolderOpen className="size-3" />
+							</Button>
+						) : null}
+					</div>
+				) : null}
+			</div>
+			<AssetTagList tags={tags} className="shrink-0 gap-1.5" />
 		</aside>
 	);
 };
@@ -760,7 +755,9 @@ const AssetPreviewMedia: React.FC<{
 	text?: string;
 }> = ({ error, isTextLoading, item, posterSource, source, text }) => {
 	if (item.kind === "image" && source) {
-		return <img src={source} alt={item.title} className="max-h-[24rem] w-full object-contain" />;
+		return (
+			<img src={source} alt={item.title} className="m-auto max-h-full max-w-full object-contain" />
+		);
 	}
 	if (item.kind === "video" && source) {
 		return (
@@ -770,13 +767,13 @@ const AssetPreviewMedia: React.FC<{
 				mimeType={item.mimeType || "video/mp4"}
 				title={item.title}
 				showTitleInControls={false}
-				className="h-full w-full"
+				className="min-h-0 w-full flex-1"
 			/>
 		);
 	}
 	if (item.kind === "audio" && source) {
 		return (
-			<div className="grid min-h-40 content-center gap-3 p-4">
+			<div className="my-auto grid w-full content-center gap-3 p-4">
 				<div className="flex items-center gap-2 text-sm font-medium text-foreground">
 					<span className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
 						<AudioLines className="size-4" />
@@ -790,7 +787,7 @@ const AssetPreviewMedia: React.FC<{
 	if (item.kind === "text") {
 		if (isTextLoading) {
 			return (
-				<div className="grid min-h-64 place-items-center text-sm text-muted-foreground">
+				<div className="grid flex-1 place-items-center text-sm text-muted-foreground">
 					<Loader2 className="mb-2 size-4 animate-spin" />
 					<span>正在读取文本</span>
 				</div>
@@ -804,7 +801,7 @@ const AssetPreviewMedia: React.FC<{
 			);
 		}
 		return (
-			<pre className="max-h-[24rem] overflow-auto p-4 text-xs leading-5 text-foreground">
+			<pre className="min-h-0 flex-1 overflow-auto p-4 text-xs leading-5 text-foreground">
 				{truncateTextPreview(text ?? "")}
 			</pre>
 		);
@@ -812,7 +809,7 @@ const AssetPreviewMedia: React.FC<{
 
 	const Icon = iconForKind(item.kind);
 	return (
-		<div className="grid min-h-64 place-items-center p-6 text-center">
+		<div className="grid flex-1 place-items-center p-6 text-center">
 			<div className="grid justify-items-center gap-2">
 				<Icon className="size-8 text-muted-foreground" />
 				<p className="text-sm font-medium text-foreground">无法内联预览此文件</p>
