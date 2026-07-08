@@ -70,6 +70,7 @@ editable: true
   （每轮 ≤90 秒，循环 3-5 轮），不要重新弹卡；仍无结果或返回 cancelled 时不要擅自生成，
   说明情况并结束回合或改为在对话中询问。
 - 轮询生成任务或等待用户选择期间保持安静，不要每轮都输出状态独白；有实质进展再说话。
+- 最终回复只给结果：定稿资产名、图片地址、落库位置和下一步建议；不要复述中间过程和重试细节。
 
 ### 生图标准流程（风格推荐 → 方案确认 → 生成 → 选片）
 
@@ -84,7 +85,10 @@ editable: true
    `preferences`（用户在生成工作台的习惯参数：routeIds/routeParams），其余取 schema 默认项。
    用户提交后严格按返回的 values 生成；若用户改了模型导致比例/分辨率不在新模型 schema 内，
    按新模型 schema 修正后再弹一次表单确认，不要擅自替换。
-3. `generate_media` 时把选定风格的 `promptSuffix` 拼到 prompt 末尾、方案参数放进 `params`；
+3. 为角色/场景/道具/分镜等资源生成配图时，`generate_media` 必须带 `documentContext`：
+   `documentId` 用目标文档 ID，`sectionId` 用该资源二级标题前的 `<!-- section-id: ... -->` 值——
+   只有带上它们，任务和资产才会计入项目概览中对应资源的生成历史；同时用 `assetTitle` 命名资产。
+   `generate_media` 时把选定风格的 `promptSuffix` 拼到 prompt 末尾、方案参数放进 `params`；
    方案含"优化提示词"时传入 `promptOptimization`（可带 routeId 指定文本模型），
    返回的 `optimizedPrompt` 是实际使用的提示词，向用户展示。
 4. 一次生成返回多张结果时，用 `ask_user_selection`（imageUrl 用各资产 url）让用户选片，
