@@ -137,6 +137,100 @@ func TestAskUserSelectionRejectsEmptyOptions(t *testing.T) {
 	}
 }
 
+func TestAskUserSelectionReusesPendingDuplicate(t *testing.T) {
+	adapter, publisher, projectID := newSelectionAdapter(t)
+	service := adapter.document.store.Selections
+
+	// First ask creates the card; a duplicate ask must attach to it instead of
+	// popping a second card. Resolve both by deciding the single selection.
+	firstDone := make(chan mediamcp.AskUserSelectionOutput, 1)
+	go func() {
+		output, err := adapter.AskUserSelection(context.Background(), projectID, sampleSelectionInput())
+		if err != nil {
+			t.Errorf("first AskUserSelection() error = %v", err)
+		}
+		firstDone <- output
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		pending, err := service.ListPending(projectID)
+		if err != nil {
+			t.Fatalf("ListPending() error = %v", err)
+		}
+		if len(pending) == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	secondDone := make(chan mediamcp.AskUserSelectionOutput, 1)
+	go func() {
+		output, err := adapter.AskUserSelection(context.Background(), projectID, sampleSelectionInput())
+		if err != nil {
+			t.Errorf("duplicate AskUserSelection() error = %v", err)
+		}
+		secondDone <- output
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	pending, err := service.ListPending(projectID)
+	if err != nil {
+		t.Fatalf("ListPending() error = %v", err)
+	}
+	if len(pending) != 1 {
+		t.Fatalf("pending selections = %d, want 1 (duplicate must reuse the card)", len(pending))
+	}
+	if cards := publisher.a2uiEvents(); len(cards) != 1 {
+		t.Fatalf("published cards = %d, want 1", len(cards))
+	}
+
+	if _, err := service.Decide(projectID, pending[0].ID, serviceselection.DecisionRequest{OptionID: "sweet"}); err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+
+	first := <-firstDone
+	second := <-secondDone
+	if first.Status != serviceselection.StatusSelected || second.Status != serviceselection.StatusSelected {
+		t.Fatalf("outputs = %#v / %#v, want both selected", first, second)
+	}
+	if first.SelectionID != second.SelectionID {
+		t.Fatalf("selection ids differ: %q vs %q", first.SelectionID, second.SelectionID)
+	}
+}
+
+func TestAskUserSelectionReturnsRecentDecisionOnReask(t *testing.T) {
+	adapter, publisher, projectID := newSelectionAdapter(t)
+	service := adapter.document.store.Selections
+
+	created, err := service.Create(projectID, serviceselection.CreateRequest{
+		SessionID: "session-1",
+		RunID:     "run-1",
+		Kind:      "image_style",
+		Title:     "选择一种插画风格",
+		Options:   []serviceselection.Option{{ID: "sweet", Label: "甜美粉彩"}, {ID: "retro", Label: "复古线条"}},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := service.Decide(projectID, created.ID, serviceselection.DecisionRequest{OptionID: "retro"}); err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+
+	// Model re-asks the same question right after the user answered: the
+	// existing decision must come back immediately, without a new card.
+	output, err := adapter.AskUserSelection(context.Background(), projectID, sampleSelectionInput())
+	if err != nil {
+		t.Fatalf("AskUserSelection() error = %v", err)
+	}
+	if output.Status != serviceselection.StatusSelected || output.OptionID != "retro" || output.SelectionID != created.ID {
+		t.Fatalf("output = %#v, want reused decision retro from %s", output, created.ID)
+	}
+	if cards := publisher.a2uiEvents(); len(cards) != 0 {
+		t.Fatalf("published cards = %d, want 0 for reused decision", len(cards))
+	}
+}
+
 func TestAskUserFormReturnsSubmittedValues(t *testing.T) {
 	adapter, publisher, projectID := newSelectionAdapter(t)
 

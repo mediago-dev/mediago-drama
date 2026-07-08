@@ -101,21 +101,21 @@ type FormField struct {
 
 // Record is the API/service shape of a persisted selection.
 type Record struct {
-	ID          string    `json:"id"`
-	ProjectID   string    `json:"projectId,omitempty"`
-	SessionID   string    `json:"sessionId,omitempty"`
-	RunID       string    `json:"runId,omitempty"`
-	Kind        string    `json:"kind,omitempty"`
-	Title       string    `json:"title"`
-	Prompt      string    `json:"prompt,omitempty"`
+	ID          string      `json:"id"`
+	ProjectID   string      `json:"projectId,omitempty"`
+	SessionID   string      `json:"sessionId,omitempty"`
+	RunID       string      `json:"runId,omitempty"`
+	Kind        string      `json:"kind,omitempty"`
+	Title       string      `json:"title"`
+	Prompt      string      `json:"prompt,omitempty"`
 	Options     []Option    `json:"options"`
 	Fields      []FormField `json:"fields,omitempty"`
 	AllowCustom bool        `json:"allowCustom"`
 	Status      string      `json:"status"`
-	Decision    *Decision `json:"decision,omitempty"`
-	CreatedAt   string    `json:"createdAt"`
-	DecidedAt   string    `json:"decidedAt,omitempty"`
-	ExpiresAt   string    `json:"expiresAt,omitempty"`
+	Decision    *Decision   `json:"decision,omitempty"`
+	CreatedAt   string      `json:"createdAt"`
+	DecidedAt   string      `json:"decidedAt,omitempty"`
+	ExpiresAt   string      `json:"expiresAt,omitempty"`
 }
 
 // CreateRequest describes a new selection prompt.

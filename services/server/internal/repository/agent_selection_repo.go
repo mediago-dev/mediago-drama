@@ -79,6 +79,21 @@ func (repo *AgentSelectionRepository) ExpirePendingAgentSelections(projectID str
 	return result.RowsAffected, nil
 }
 
+// ListAgentSelectionsByRun returns a run's selections, newest first.
+func (repo *AgentSelectionRepository) ListAgentSelectionsByRun(projectID string, runID string, limit int) ([]domain.AgentSelectionModel, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	models := []domain.AgentSelectionModel{}
+	if err := repo.db.Where("project_id = ? AND run_id = ?", strings.TrimSpace(projectID), strings.TrimSpace(runID)).
+		Order("created_at DESC").
+		Limit(limit).
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing agent selections by run: %w", err)
+	}
+	return models, nil
+}
+
 // GetAgentSelection returns a selection by ID.
 func (repo *AgentSelectionRepository) GetAgentSelection(projectID string, selectionID string) (domain.AgentSelectionModel, error) {
 	var model domain.AgentSelectionModel
