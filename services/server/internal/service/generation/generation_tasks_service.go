@@ -1491,6 +1491,11 @@ func (service *GenerationTaskService) syncProjectSelectedAssetRowForTaskAssetLoc
 	}
 	asset, ok := generationAssetAtSlot(task, assetIndex)
 	if ok && asset.Selected {
+		// 选中是单选：与手动选中/生成完成默认选中路径一致，先清掉该资源同 kind
+		// 的旧选中（含回置旧任务的 asset.Selected），让本次定稿成为资源当前图。
+		if err := service.clearProjectSelectedAssetRowsForResourceKindLocked(row, asset.Kind); err != nil {
+			return err
+		}
 		return service.repo.UpsertProjectSelectedAsset(row)
 	}
 	_, err := service.repo.DeleteProjectSelectedAsset(row.ID)
