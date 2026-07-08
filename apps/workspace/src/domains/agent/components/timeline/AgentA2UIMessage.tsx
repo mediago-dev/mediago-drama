@@ -43,6 +43,7 @@ export const AgentA2UIMessage: React.FC<{
 				"[--a2ui-color-primary:var(--primary)] [--a2ui-color-surface:var(--card)]",
 				"[--a2ui-font-family-title:inherit] [--a2ui-font-size-m:0.75rem] [--a2ui-font-size-s:0.6875rem]",
 				"[--a2ui-spacing-l:0.75rem] [--a2ui-spacing-m:0.5rem] [--a2ui-spacing-s:0.375rem] [--a2ui-spacing-xs:0.25rem]",
+				"[--a2ui-image-small-feature-size:100%]",
 				"[&_button]:inline-flex [&_button]:min-h-7 [&_button]:max-w-full [&_button]:items-center [&_button]:justify-center [&_button]:rounded-sm",
 				"[&_button]:whitespace-normal [&_button]:border [&_button]:border-border [&_button]:bg-background [&_button]:px-2.5 [&_button]:py-1 [&_button]:text-center [&_button]:text-xs [&_button]:leading-4",
 				"[&_button]:font-medium [&_button]:text-foreground [&_button]:transition-colors [&_button:hover]:bg-ide-list-hover",
@@ -55,6 +56,7 @@ export const AgentA2UIMessage: React.FC<{
 				"[&_div[style*='flex-direction:_row']:has(img)>div]:min-w-0 [&_div[style*='flex-direction:_row']:has(img)>div]:flex-[1_1_10.5rem]",
 				"[&_div[style*='flex-direction:_row']:has(img)>div]:max-w-56",
 				"[&_div[style*='flex-direction:_row']:has(img)>div_img]:w-full",
+				"[&_div[style*='flex-direction:_row']:has(img)>div_img]:max-h-80",
 			)}
 		>
 			<MarkdownContext.Provider value={renderA2UIMarkdown}>
