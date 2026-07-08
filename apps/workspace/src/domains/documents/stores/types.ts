@@ -183,6 +183,7 @@ export interface DocumentsState {
 	syncStatus: WorkspaceDocumentSyncStatus;
 	syncMessage: string;
 	addComment: (documentId: string, anchorText: string, body: string) => void;
+	applyAssetUpdate: (asset: ProjectAsset) => void;
 	applyDocumentUpdate: (proposal: DocumentProposal) => void;
 	applyWorkspaceDelta: (delta: WorkspaceDocumentsDelta) => void;
 	applyOperations: (

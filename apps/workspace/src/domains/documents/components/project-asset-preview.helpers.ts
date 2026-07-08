@@ -23,13 +23,27 @@ export const errorMessage = (error: unknown, fallback: string) => {
 
 export const fetchTextAsset = async (url: string) => {
 	if (!url.trim()) throw new Error("素材地址缺失。");
-	const response = await fetch(url);
+	const response = await fetchTextPreviewResponse(url);
 	if (!response.ok) throw new Error(`文本读取失败：${response.status}`);
 	const text = await response.text();
 	if (isHTMLResponse(response, text)) {
 		throw new Error("文本读取失败：素材接口返回了前端页面。");
 	}
-	return text;
+	return truncateTextPreview(text);
+};
+
+// 512 KiB always decodes to at least textPreviewMaxChars characters
+// (UTF-8 spends at most 4 bytes per character), so a ranged fetch never
+// truncates below the preview cap.
+const textPreviewMaxBytes = 512 * 1024;
+
+const fetchTextPreviewResponse = async (url: string) => {
+	const ranged = await fetch(url, {
+		headers: { Range: `bytes=0-${textPreviewMaxBytes - 1}` },
+	});
+	// A zero-length body satisfies no byte range, so empty files come back 416.
+	if (ranged.status === 416) return fetch(url);
+	return ranged;
 };
 
 export const projectAssetContentPath = (projectId: string, assetId: string) =>
@@ -61,10 +75,10 @@ export const formatBytes = (bytes: number) => {
 	return `${value.toFixed(precision)} ${units[unitIndex]}`;
 };
 
-export const truncateTextPreview = (text: string) => {
-	const maxLength = 80_000;
-	return text.length <= maxLength ? text : `${text.slice(0, maxLength)}\n\n...`;
-};
+export const textPreviewMaxChars = 80_000;
+
+export const truncateTextPreview = (text: string) =>
+	text.length <= textPreviewMaxChars ? text : `${text.slice(0, textPreviewMaxChars)}\n\n...`;
 
 const isHTMLResponse = (response: Response, text: string) => {
 	const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
