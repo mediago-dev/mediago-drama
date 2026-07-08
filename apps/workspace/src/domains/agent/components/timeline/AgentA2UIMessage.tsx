@@ -14,14 +14,40 @@ import {
 } from "@a2ui/web_core/v0_9";
 import type React from "react";
 import { useMemo } from "react";
+import { agentSelectionIdFromA2UI } from "@/domains/agent/lib/a2ui-selections";
 import type { AgentMessage } from "@/domains/agent/stores";
+import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
 import { cn } from "@/shared/lib/utils";
 
 export const AgentA2UIMessage: React.FC<{
 	message: AgentMessage;
 	onAction?: (message: AgentMessage, action: A2uiClientAction) => void;
 }> = ({ message, onAction }) => {
+	// A transcript hydrate re-materializes the original interactive selection
+	// card even after the user decided it (the chat store is rebuilt from the
+	// server); render the persisted decision as a frozen summary instead so
+	// the card can't be clicked twice.
+	const selectionId = useMemo(
+		() => agentSelectionIdFromA2UI(message.metadata?.a2ui),
+		[message.metadata?.a2ui],
+	);
+	const resolved = useAgentPersistenceStore((state) =>
+		selectionId ? (state.resolvedSelections[selectionId] ?? null) : null,
+	);
 	const result = useMemo(() => renderA2UIPayload(message, onAction), [message, onAction]);
+
+	if (resolved) {
+		return (
+			<article className="agent-a2ui-card max-w-[var(--message-bubble-max-width)] rounded-sm border border-border bg-card px-3 py-3 text-xs shadow-sm">
+				<h5 className="m-0 text-sm font-semibold text-foreground">
+					{resolved.title || "用户选择"}
+				</h5>
+				<p className="mt-1 whitespace-pre-wrap break-words leading-5 text-muted-foreground">
+					{resolved.summary || "该选择已处理。"}
+				</p>
+			</article>
+		);
+	}
 
 	if (result.error) {
 		return (
