@@ -47,6 +47,7 @@ type GenerationMessageRequest struct {
 	SectionID          string                               `json:"sectionId,omitempty"`
 	DocumentContext    *GenerationDocumentContext           `json:"documentContext,omitempty"`
 	CapabilityID       string                               `json:"capabilityId,omitempty"`
+	ResourceType       string                               `json:"resourceType,omitempty"`
 	NotificationTarget *GenerationNotificationTarget        `json:"notificationTarget,omitempty"`
 	RouteID            string                               `json:"routeId"`
 	FamilyID           string                               `json:"familyId,omitempty"`
@@ -239,6 +240,7 @@ type GenerationTaskRecord struct {
 	DocumentID        string                        `json:"documentId,omitempty"`
 	SectionID         string                        `json:"sectionId,omitempty"`
 	CapabilityID      string                        `json:"capabilityId,omitempty"`
+	ResourceType      string                        `json:"resourceType,omitempty"`
 	Kind              string                        `json:"kind" ts:"Kind"`
 	RouteID           string                        `json:"routeId"`
 	FamilyID          string                        `json:"familyId"`

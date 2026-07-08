@@ -72,6 +72,12 @@ func (workflow *GenerationService) applyGenerationDocumentContext(payload *gener
 		return err
 	}
 
+	// 资源归属由服务端推断，不依赖调用方自报：显式 resourceType（或旧式
+	// capabilityId=资源类型）优先，否则取目标文档的 category。
+	if GenerationResourceTypeForRequest(*payload) == "" {
+		payload.ResourceType = selectedGenerationResourceType(document.Category)
+	}
+
 	markdown := document.Content
 	if sectionID != "" {
 		section, ok := generationDocumentSectionByBlockID(document, sectionID)
