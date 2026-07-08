@@ -1,7 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { decideAgentSelection } from "@/domains/agent/api/agent";
-import { selectAgentMessages, type AgentMessage, useAgentStore } from "@/domains/agent/stores";
+import { type AgentMessage, useAgentStore } from "@/domains/agent/stores";
+import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
 import { useProjectStore } from "@/domains/projects/stores";
 import { AgentFormCard } from "./AgentFormCard";
 
@@ -19,9 +20,10 @@ describe("AgentFormCard", () => {
 		vi.mocked(decideAgentSelection).mockReset();
 		useAgentStore.getState().resetSession();
 		useProjectStore.setState({ activeProjectId: null });
+		useAgentPersistenceStore.setState({ resolvedSelections: {} });
 	});
 
-	it("submits edited field values and replaces the card with a summary", async () => {
+	it("submits edited field values and freezes the card with a summary", async () => {
 		vi.mocked(decideAgentSelection).mockResolvedValue({
 			id: "selection-1",
 			title: "确认生成参数",
@@ -50,13 +52,17 @@ describe("AgentFormCard", () => {
 			values: { aspectRatio: "16:9", optimizePrompt: true, n: 2 },
 		});
 
-		const messages = selectAgentMessages(useAgentStore.getState());
-		expect(messages[0]?.content).toContain("已提交：");
-		expect(messages[0]?.content).toContain("16:9 横版");
-		expect(messages[0]?.metadata?.form).toBeUndefined();
+		// The card freezes into a read-only summary; the confirm button is gone.
+		await waitFor(() => expect(screen.getByText(/已提交：/)).toBeTruthy());
+		expect(screen.getByText(/16:9 横版/)).toBeTruthy();
+		expect(screen.queryByText("确认生成")).toBeNull();
+
+		const resolved = useAgentPersistenceStore.getState().resolvedSelections["selection-1"];
+		expect(resolved?.status).toBe("submitted");
+		expect(resolved?.summary).toContain("16:9 横版");
 	});
 
-	it("cancels the form and replaces the card", async () => {
+	it("cancels the form and freezes the card", async () => {
 		vi.mocked(decideAgentSelection).mockResolvedValue({
 			id: "selection-1",
 			title: "确认生成参数",
@@ -76,8 +82,31 @@ describe("AgentFormCard", () => {
 		await waitFor(() => expect(decideAgentSelection).toHaveBeenCalledTimes(1));
 		const [, request] = vi.mocked(decideAgentSelection).mock.calls[0];
 		expect(request).toEqual({ cancelled: true });
-		const messages = selectAgentMessages(useAgentStore.getState());
-		expect(messages[0]?.content).toContain("已取消");
+		await waitFor(() => expect(screen.getByText(/已取消/)).toBeTruthy());
+		expect(useAgentPersistenceStore.getState().resolvedSelections["selection-1"]?.status).toBe(
+			"cancelled",
+		);
+	});
+
+	it("renders an already-decided form frozen and non-interactive after a hydrate", () => {
+		// Simulates a transcript hydrate that re-materializes the original
+		// interactive form after the user already decided it.
+		useAgentPersistenceStore.setState({
+			resolvedSelections: {
+				"selection-1": { status: "submitted", summary: "已提交：比例 16:9 横版" },
+			},
+		});
+		const message = formMessage();
+		seedConversation(message);
+
+		render(<AgentFormCard message={message} />);
+
+		expect(screen.getByText("确认生成参数")).toBeTruthy();
+		expect(screen.getByText("已提交：比例 16:9 横版")).toBeTruthy();
+		// No interactive controls: the form cannot be confirmed a second time.
+		expect(screen.queryByText("确认生成")).toBeNull();
+		expect(screen.queryByText("取消")).toBeNull();
+		expect(screen.queryByRole("spinbutton")).toBeNull();
 	});
 });
 
