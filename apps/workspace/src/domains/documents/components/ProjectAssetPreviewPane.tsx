@@ -99,8 +99,8 @@ export const ProjectAssetPreviewPane: React.FC<ProjectAssetPreviewPaneProps> = (
 			<div className="mx-auto flex min-h-full w-full max-w-6xl flex-col gap-4 px-4 py-4">
 				<header className="border-b border-border pb-4">
 					<div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3">
-						<div className="flex size-9 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
-							<Icon className="size-5" />
+						<div className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
+							<Icon className="size-4" />
 						</div>
 						<div className="min-w-0 flex-1">
 							<div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
@@ -108,7 +108,7 @@ export const ProjectAssetPreviewPane: React.FC<ProjectAssetPreviewPaneProps> = (
 									<Input
 										value={draftFilename}
 										onChange={(event) => setDraftFilename(event.target.value)}
-										className="h-9 min-w-0 flex-1 truncate border-0 bg-transparent px-0 text-lg font-semibold leading-tight shadow-none focus-visible:ring-0 sm:text-xl"
+										className="h-8 min-w-0 flex-1 truncate border-0 bg-transparent px-0 text-base font-semibold leading-tight shadow-none focus-visible:ring-0 sm:text-lg"
 										aria-label="素材文件名"
 									/>
 									<div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
