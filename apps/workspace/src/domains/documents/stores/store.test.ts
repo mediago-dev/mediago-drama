@@ -242,6 +242,56 @@ describe("documents store remote sync", () => {
 		expect(state.assets.map((asset) => asset.folderId ?? null)).toEqual(["folder-a", null]);
 	});
 
+	it("applies a single asset update without touching sibling references", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [makeDocument("doc-a")],
+			folders: [makeFolder("folder-a")],
+			assets: [makeAsset("asset-a", "folder-a"), makeAsset("asset-b")],
+		});
+		const before = useDocumentsStore.getState();
+
+		useDocumentsStore.getState().applyAssetUpdate({
+			...makeAsset("asset-a", "folder-a"),
+			filename: "renamed.txt",
+		});
+
+		const state = useDocumentsStore.getState();
+		expect(state.assets[0].filename).toBe("renamed.txt");
+		expect(state.assets[0].folderId).toBe("folder-a");
+		expect(state.assets[1]).toBe(before.assets[1]);
+		expect(state.documents).toBe(before.documents);
+		expect(state.folders).toBe(before.folders);
+	});
+
+	it("normalizes unknown folder ids when applying an asset update", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [],
+			assets: [makeAsset("asset-a")],
+		});
+
+		useDocumentsStore.getState().applyAssetUpdate(makeAsset("asset-a", "missing-folder"));
+
+		expect(useDocumentsStore.getState().assets[0].folderId).toBeNull();
+	});
+
+	it("ignores asset updates for assets missing from the store", () => {
+		useDocumentsStore.getState().hydrateWorkspaceDocuments({
+			workspaceDir: "/workspace/project-a",
+			projectId: "project-a",
+			documents: [],
+			assets: [makeAsset("asset-a")],
+		});
+		const before = useDocumentsStore.getState().assets;
+
+		useDocumentsStore.getState().applyAssetUpdate(makeAsset("asset-x"));
+
+		expect(useDocumentsStore.getState().assets).toBe(before);
+	});
+
 	it("keeps document and asset selection mutually exclusive", () => {
 		useDocumentsStore
 			.getState()
