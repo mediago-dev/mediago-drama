@@ -1970,15 +1970,26 @@ const activeGenerationTaskMaxAge = 6 * time.Hour
 
 // CountActiveGenerationTasks counts tasks whose status is in the shared in-progress
 // list (see activeGenerationStatuses) and that were updated recently enough to
-// plausibly still be running.
+// plausibly still be running. The staleness window is applied on parsed time.Time
+// values (TZ-independent), not via SQL text comparison — see the repository method.
 func (service *GenerationTaskService) CountActiveGenerationTasks(ctx context.Context) (int64, error) {
 	if service.initErr != nil {
 		return 0, service.initErr
 	}
 	service.mu.RLock()
 	defer service.mu.RUnlock()
-	since := time.Now().UTC().Add(-activeGenerationTaskMaxAge)
-	return service.repo.CountGenerationTasksWithStatusesUpdatedSince(ctx, activeGenerationStatuses, since)
+	timestamps, err := service.repo.ListGenerationTaskUpdatedAtsWithStatuses(ctx, activeGenerationStatuses)
+	if err != nil {
+		return 0, err
+	}
+	cutoff := time.Now().Add(-activeGenerationTaskMaxAge)
+	var count int64
+	for _, updatedAt := range timestamps {
+		if updatedAt.After(cutoff) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func defaultGenerationTaskID(prefix string) (string, error) {

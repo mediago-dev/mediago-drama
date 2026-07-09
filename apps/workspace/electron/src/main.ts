@@ -95,8 +95,12 @@ const createWindow = async () => {
 		if (app.isPackaged) {
 			await mainWindow.webContents.session.clearCache();
 		}
-		const rendererDir = activeBundle?.rendererDir ?? prepareActiveBundle().rendererDir;
-		await mainWindow.loadFile(join(rendererDir, "index.html"), {
+		// startApp resolves activeBundle (and spawns the matching sidecar) before ever
+		// calling createWindow. Re-resolving here would re-run launch-safety DB
+		// snapshot/restore while the sidecar is live and could load a renderer from a
+		// different rev than the running server — so require it, never re-resolve.
+		if (!activeBundle) throw new Error("active bundle not resolved before window creation");
+		await mainWindow.loadFile(join(activeBundle.rendererDir, "index.html"), {
 			hash: app.isPackaged ? "/" : undefined,
 			query: app.isPackaged ? { version: app.getVersion() } : undefined,
 		});

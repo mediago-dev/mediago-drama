@@ -305,21 +305,36 @@ func TestCountGenerationTasksWithStatusesUpdatedSince(t *testing.T) {
 	insert("active-stale", "running", "2026-05-20T00:00:00Z")       // orphaned by a crash
 	insert("terminal-fresh", "completed", "2026-05-22T10:30:00Z")
 
-	since := domain.TimeFromString("2026-05-22T00:00:00Z")
-	count, err := repo.CountGenerationTasksWithStatusesUpdatedSince(
+	timestamps, err := repo.ListGenerationTaskUpdatedAtsWithStatuses(
 		context.Background(),
 		[]string{"submitting", "submitted", "running", "pending", "processing", "queued"},
-		since,
 	)
 	if err != nil {
-		t.Fatalf("CountGenerationTasksWithStatusesUpdatedSince() error = %v", err)
+		t.Fatalf("ListGenerationTaskUpdatedAtsWithStatuses() error = %v", err)
 	}
-	if count != 2 {
-		t.Fatalf("count = %d, want 2 (fresh active + legacy-spacing active; stale and terminal excluded)", count)
+	// Three active-status rows (terminal excluded by the status filter); the Go-side
+	// staleness window is applied by the service, not here.
+	if len(timestamps) != 3 {
+		t.Fatalf("len(timestamps) = %d, want 3 (active-status rows; terminal excluded)", len(timestamps))
 	}
 
-	empty, err := repo.CountGenerationTasksWithStatusesUpdatedSince(context.Background(), nil, since)
-	if err != nil || empty != 0 {
-		t.Fatalf("empty status list: count=%d err=%v, want 0,nil", empty, err)
+	// The service applies its staleness window on these parsed time.Time values with a
+	// plain instant comparison — TZ-independent, unlike a SQL text `updated_at >= ?`.
+	// active-fresh(10:00) and active-spacing(11:00) are after a 06:00 cutoff; active-stale
+	// (two days earlier) is before it. This locks in the fix for the timezone-skew bug.
+	cutoff := domain.TimeFromString("2026-05-22T06:00:00Z")
+	fresh := 0
+	for _, updatedAt := range timestamps {
+		if updatedAt.After(cutoff) {
+			fresh++
+		}
+	}
+	if fresh != 2 {
+		t.Fatalf("in-window active count = %d, want 2 (stale row excluded by the Go window)", fresh)
+	}
+
+	empty, err := repo.ListGenerationTaskUpdatedAtsWithStatuses(context.Background(), nil)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty status list: timestamps=%v err=%v, want empty,nil", empty, err)
 	}
 }

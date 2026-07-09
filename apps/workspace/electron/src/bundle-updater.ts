@@ -117,17 +117,23 @@ export const prepareActiveBundle = (): ResolvedBundle => {
 	const runtimeInfo = readRuntimeInfo(userDataDir);
 	const preState = readStoreState(userDataDir);
 	const resolved = resolveBundleDir(userDataDir, builtinRendererDir, builtinServerBin, {
-		// Without cached DB locations we cannot snapshot → never first-boot a pending
-		// bundle. The cache is written before any bundle is staged, so this only
-		// guards against manual tampering / corruption.
-		allowPending: runtimeInfo !== null,
+		// Without cached DB locations we cannot snapshot → never first-boot a migration
+		// bundle. The cache is written before any bundle is staged, so this only guards
+		// against manual tampering / corruption.
+		allowPending: runtimeInfo !== null || !preState.hasMigration,
 	});
 
 	try {
-		if (resolved.blockedRev !== undefined && !preState.serverHealthy) {
+		// Restore only when the blocked rev ran migrations: an older server binary cannot
+		// safely open a forward-migrated schema. A no-migration rev shares the schema, so
+		// its user data must be kept, not wiped. serverHealthy is NOT the right signal —
+		// a server can write data (and migrate) without its /health ever passing.
+		if (resolved.blockedRev !== undefined && preState.hasMigration) {
 			restoreDatabases(dbSnapshotDir(userDataDir, resolved.blockedRev));
 		}
-		if (resolved.firstBootOfPending && runtimeInfo) {
+		// Snapshot before a migration bundle's first boot only; non-migration bundles
+		// never touch the databases, so snapshotting them would be wasted disk I/O.
+		if (resolved.firstBootOfPending && preState.hasMigration && runtimeInfo) {
 			snapshotDatabases(runtimeInfo.databaseFiles, dbSnapshotDir(userDataDir, resolved.rev));
 		}
 		// One-time cleanup of the pre-bundle renderer-only updater's store; nothing
@@ -391,7 +397,7 @@ export const registerBundleUpdater = ({
 			renameSync(stageDir, target);
 
 			const previousActive = readStoreState(userDataDir).activeRev;
-			activateVersion(userDataDir, rev);
+			activateVersion(userDataDir, rev, payload.hasMigration === true);
 			cleanupVersions(userDataDir, [rev, previousActive, current.rev]);
 		} finally {
 			rmSync(scratch, { recursive: true, force: true });
@@ -414,6 +420,7 @@ export const registerBundleUpdater = ({
 		if (stagedRev <= 0 || stagedRev === current.rev) {
 			return { ok: false, message: "没有待生效的更新。" };
 		}
+		const hadMigration = store.hasMigration;
 		const stagedDir = versionDir(userDataDir, stagedRev);
 		if (!isBundleUsable(stagedDir, stagedRev)) {
 			return { ok: false, message: "更新包不完整，请重新检查更新。" };
@@ -431,11 +438,12 @@ export const registerBundleUpdater = ({
 		}
 		// Prefer the live server's own database list over the cache: it is authoritative
 		// at this exact moment. The cache remains the fallback for the no-server launch path.
+		// Only needed for migration releases, which are the only ones we snapshot/rollback.
 		const databaseFiles =
 			activity.databaseFiles.length > 0
 				? activity.databaseFiles
 				: (readRuntimeInfo(userDataDir)?.databaseFiles ?? []);
-		if (databaseFiles.length === 0) {
+		if (hadMigration && databaseFiles.length === 0) {
 			return { ok: false, message: "缺少运行时信息，请重新检查更新。" };
 		}
 
@@ -450,7 +458,11 @@ export const registerBundleUpdater = ({
 				emit({ phase: "staged", targetRev: stagedRev });
 				return { ok: false, message: "旧服务未能及时退出，已取消本次应用；重启应用即可完成更新。" };
 			}
-			snapshotDatabases(databaseFiles, dbSnapshotDir(userDataDir, stagedRev));
+			// Snapshot only for migration releases — a no-migration rev shares the schema
+			// with the old binary, so rollback never touches (nor risks) its databases.
+			if (hadMigration) {
+				snapshotDatabases(databaseFiles, dbSnapshotDir(userDataDir, stagedRev));
+			}
 			// The apply counts as a boot attempt for the pending bundle.
 			recordBootAttempt(userDataDir);
 
@@ -460,7 +472,7 @@ export const registerBundleUpdater = ({
 				if (quitting) {
 					return { ok: false, message: "应用正在退出，更新将于下次启动继续。" };
 				}
-				await rollbackApply(userDataDir, stagedRev);
+				await rollbackApply(userDataDir, stagedRev, hadMigration);
 				emit({
 					phase: "error",
 					targetRev: stagedRev,
@@ -498,7 +510,7 @@ export const registerBundleUpdater = ({
 			const message = error instanceof Error ? error.message : "应用更新失败。";
 			if (!quitting) {
 				try {
-					await rollbackApply(userDataDir, stagedRev);
+					await rollbackApply(userDataDir, stagedRev, hadMigration);
 				} catch (rollbackError) {
 					console.error("[bundle-updater] rollback failed", rollbackError);
 				}
@@ -510,11 +522,28 @@ export const registerBundleUpdater = ({
 		}
 	};
 
-	const rollbackApply = async (userDataDir: string, failedRev: number): Promise<void> => {
+	const rollbackApply = async (
+		userDataDir: string,
+		failedRev: number,
+		hadMigration: boolean,
+	): Promise<void> => {
+		// The failed server must be confirmed stopped before restoring: overwriting the
+		// SQLite files under a process that still holds them open would tear the database.
 		if (isServerSidecarRunning()) {
-			await stopServerSidecarGracefully(2_000);
+			const stopped = await stopServerSidecarGracefully(serverStopGraceMs);
+			if (!stopped) {
+				// Cannot guarantee the failed server released the databases. Do NOT restore
+				// (racing a live writer corrupts data) and do NOT start a second server on
+				// the same port; block the rev and require a restart to finish rollback.
+				blockAndRevert(userDataDir, failedRev, current.source === "downloaded" ? current.rev : 0);
+				throw new Error("新版本服务无法停止，请重启应用以完成回滚。");
+			}
 		}
-		restoreDatabases(dbSnapshotDir(userDataDir, failedRev));
+		// Restore the pre-apply snapshot only for migration releases (a no-migration
+		// rollback keeps the shared-schema data the new binary wrote).
+		if (hadMigration) {
+			restoreDatabases(dbSnapshotDir(userDataDir, failedRev));
+		}
 		blockAndRevert(userDataDir, failedRev, current.source === "downloaded" ? current.rev : 0);
 		startServerSidecar({ binaryPath: current.serverBinPath });
 		await waitForServerHealth(serverHealthTimeoutMs);

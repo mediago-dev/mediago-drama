@@ -88,11 +88,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Guard — new rev must be greater than the published one
+      - name: Guard — monotonic rev and edition continuity
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           CHANNEL: ${{ inputs.channel }}
+          EDITION: ${{ inputs.edition }}
         run: |
           set -euo pipefail
           new_rev="$(node -p 'JSON.parse(require("node:fs").readFileSync("apps/workspace/bundle-update.json","utf8")).bundleRev')"
@@ -101,16 +102,28 @@ jobs:
             exit 1
           fi
           tag="bundle-${CHANNEL}"
-          if gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern bundle-manifest.json --output current-manifest.json 2>/dev/null; then
-            current_rev="$(node -p 'const e=JSON.parse(require("node:fs").readFileSync("current-manifest.json","utf8"));JSON.parse(Buffer.from(e.payloadB64,"base64").toString("utf8")).bundleRev')"
-            echo "published rev: $current_rev, new rev: $new_rev"
-            if [[ "$new_rev" -le "$current_rev" ]]; then
-              echo "bundleRev ($new_rev) must be greater than the published rev ($current_rev)." >&2
-              echo "Bump apps/workspace/bundle-update.json in a PR first." >&2
-              exit 1
-            fi
-          else
-            echo "no published manifest on $tag yet; first release for this channel"
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "no published release on $tag yet; first release for this channel"
+            exit 0
+          fi
+          # Release exists — the manifest MUST be readable; treat any failure as a hard
+          # error (fail closed) rather than silently skipping the regression check.
+          if ! gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern bundle-manifest.json --output current-manifest.json; then
+            echo "release $tag exists but its bundle-manifest.json could not be downloaded — refusing to publish over an unknown state." >&2
+            exit 1
+          fi
+          payload="$(node -p 'JSON.parse(Buffer.from(JSON.parse(require("node:fs").readFileSync("current-manifest.json","utf8")).payloadB64,"base64").toString("utf8"))' )"
+          current_rev="$(node -p "($payload).bundleRev")"
+          current_edition="$(node -p "($payload).edition || 'community'")"
+          echo "published rev=$current_rev edition=$current_edition; new rev=$new_rev edition=$EDITION"
+          if [[ "$new_rev" -le "$current_rev" ]]; then
+            echo "bundleRev ($new_rev) must be greater than the published rev ($current_rev). Bump apps/workspace/bundle-update.json in a PR first." >&2
+            exit 1
+          fi
+          if [[ "$current_edition" != "$EDITION" ]]; then
+            echo "edition mismatch: channel $CHANNEL currently ships '$current_edition' but this run selected '$EDITION'." >&2
+            echo "A mismatched edition hot update would flip installed apps' Pro/community gating. Re-run with edition=$current_edition." >&2
+            exit 1
           fi
 
       - name: Build renderer
@@ -185,6 +198,7 @@ jobs:
           RENDERER_UPDATE_PRIVATE_KEY: ${{ secrets.RENDERER_UPDATE_PRIVATE_KEY }}
           RENDERER_UPDATE_CHANNEL: ${{ inputs.channel }}
           RENDERER_UPDATE_NOTES: ${{ inputs.notes }}
+          RENDERER_UPDATE_EDITION: ${{ inputs.edition }}
           MEDIAGO_BUNDLE_HAS_MIGRATION: ${{ inputs.has_migration && '1' || '' }}
           MEDIAGO_SERVER_BINARY_DARWIN_ARM64: ${{ github.workspace }}/bin/darwin-arm64/mediago-server
           MEDIAGO_SERVER_BINARY_WINDOWS_X64: ${{ github.workspace }}/bin/windows-x64/mediago-server.exe

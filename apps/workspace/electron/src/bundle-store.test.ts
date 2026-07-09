@@ -70,7 +70,7 @@ describe("bundle-store resolve", () => {
 
 	it("loads an activated newer bundle with its own server binary", () => {
 		writeBundle(versionDir(userDataDir, 6), meta(6));
-		activateVersion(userDataDir, 6);
+		activateVersion(userDataDir, 6, false);
 
 		const resolved = resolve();
 		expect(resolved).toMatchObject({ source: "downloaded", rev: 6 });
@@ -81,7 +81,7 @@ describe("bundle-store resolve", () => {
 
 	it("refuses a pending bundle when allowPending is false, without side effects", () => {
 		writeBundle(versionDir(userDataDir, 6), meta(6));
-		activateVersion(userDataDir, 6);
+		activateVersion(userDataDir, 6, false);
 
 		const resolved = resolve({ allowPending: false });
 		expect(resolved.source).toBe("builtin");
@@ -90,13 +90,13 @@ describe("bundle-store resolve", () => {
 
 	it("treats a bundle without a server binary as unusable", () => {
 		writeBundle(versionDir(userDataDir, 6), meta(6), { withServer: false });
-		activateVersion(userDataDir, 6);
+		activateVersion(userDataDir, 6, false);
 		expect(resolve().source).toBe("builtin");
 	});
 
 	it("blocks a bundle that never reports full health and falls back", () => {
 		writeBundle(versionDir(userDataDir, 6), meta(6));
-		activateVersion(userDataDir, 6);
+		activateVersion(userDataDir, 6, false);
 
 		for (let attempt = 0; attempt < maxBootAttempts; attempt += 1) {
 			expect(resolve().source).toBe("downloaded");
@@ -108,7 +108,7 @@ describe("bundle-store resolve", () => {
 
 	it("dual health: one component signal keeps pending; both flip to healthy", () => {
 		writeBundle(versionDir(userDataDir, 6), meta(6));
-		activateVersion(userDataDir, 6);
+		activateVersion(userDataDir, 6, false);
 		resolve();
 
 		markComponentHealthy(userDataDir, "renderer");
@@ -128,7 +128,7 @@ describe("bundle-store resolve", () => {
 
 	it("prefers a builtin bundle that a full update made newer", () => {
 		writeBundle(versionDir(userDataDir, 6), meta(6));
-		activateVersion(userDataDir, 6);
+		activateVersion(userDataDir, 6, false);
 		markComponentHealthy(userDataDir, "renderer");
 		markComponentHealthy(userDataDir, "server");
 		writeFileSync(join(builtinRendererDir, "bundle-meta.json"), JSON.stringify(meta(8)));
@@ -138,16 +138,16 @@ describe("bundle-store resolve", () => {
 
 	it("falls back to builtin when active.json is corrupt", () => {
 		writeBundle(versionDir(userDataDir, 6), meta(6));
-		activateVersion(userDataDir, 6);
+		activateVersion(userDataDir, 6, false);
 		writeFileSync(join(userDataDir, "bundle", "active.json"), "{not json");
 		expect(resolve().source).toBe("builtin");
 	});
 
 	it("activateVersion resets health flags for re-activation", () => {
 		writeBundle(versionDir(userDataDir, 6), meta(6));
-		activateVersion(userDataDir, 6);
+		activateVersion(userDataDir, 6, false);
 		markComponentHealthy(userDataDir, "renderer");
-		activateVersion(userDataDir, 7);
+		activateVersion(userDataDir, 7, false);
 		expect(readStoreState(userDataDir)).toMatchObject({
 			activeRev: 7,
 			state: "pending",
@@ -218,6 +218,30 @@ describe("database snapshot / restore", () => {
 		expect(() => restoreDatabases(dbSnapshotDir(userDataDir, 99))).not.toThrow();
 	});
 
+	it("removes a stale live -wal not present in the snapshot so it cannot be replayed", () => {
+		const dbDir = join(userDataDir, "workspace-db");
+		mkdirSync(dbDir, { recursive: true });
+		const appDb = join(dbDir, "app.db");
+		writeFileSync(appDb, "app-v1"); // checkpointed snapshot: db only, no wal
+
+		const snapDir = dbSnapshotDir(userDataDir, 12);
+		snapshotDatabases([appDb], snapDir);
+		expect(existsSync(`${snapDir}`)).toBe(true);
+
+		// Simulate the failed server having advanced the db and left a hot wal.
+		writeFileSync(appDb, "app-v2");
+		writeFileSync(`${appDb}-wal`, "stale-frames");
+		writeFileSync(`${appDb}-shm`, "stale-shm");
+
+		restoreDatabases(snapDir);
+
+		expect(readFileSync(appDb, "utf8")).toBe("app-v1");
+		// The stale journal must be gone — otherwise SQLite would replay it onto the
+		// restored (older) image and corrupt it.
+		expect(existsSync(`${appDb}-wal`)).toBe(false);
+		expect(existsSync(`${appDb}-shm`)).toBe(false);
+	});
+
 	it("writeStoreState survives roundtrip with health flags", () => {
 		writeStoreState(userDataDir, {
 			activeRev: 3,
@@ -227,6 +251,7 @@ describe("database snapshot / restore", () => {
 			previousRev: 1,
 			rendererHealthy: true,
 			serverHealthy: false,
+			hasMigration: false,
 		});
 		expect(readStoreState(userDataDir)).toMatchObject({
 			activeRev: 3,

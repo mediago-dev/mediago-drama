@@ -9,6 +9,7 @@ import {
 	bundleServerBinaryEnvName,
 	bundleServerBinaryName,
 	bundleTargetPlatforms,
+	type BundleComponentRef,
 } from "../electron/src/ipc-contract.ts";
 import { bundleUpdatePublicKey } from "../electron/src/hot-update-config.ts";
 
@@ -85,7 +86,7 @@ function main(): void {
 	);
 
 	// Server components: one zip per platform with the binary at zip root.
-	const serverRefs: Record<string, { url: string; sha256: string; size: number }> = {};
+	const serverRefs: Record<string, BundleComponentRef> = {};
 	for (const [platform, binaryPath] of Object.entries(serverBinaries)) {
 		const zipName = `server-${bundleRev}-${platform}.zip`;
 		const zip = new AdmZip();
@@ -103,6 +104,9 @@ function main(): void {
 			server: serverRefs,
 		},
 		...(process.env.MEDIAGO_BUNDLE_HAS_MIGRATION === "1" ? { hasMigration: true } : {}),
+		...(process.env.RENDERER_UPDATE_EDITION?.trim()
+			? { edition: process.env.RENDERER_UPDATE_EDITION.trim() }
+			: {}),
 		...(process.env.RENDERER_UPDATE_NOTES?.trim()
 			? { notes: process.env.RENDERER_UPDATE_NOTES.trim() }
 			: {}),
@@ -166,7 +170,7 @@ function collectServerBinaries(): Record<string, string> {
 	return binaries;
 }
 
-function componentRef(filePath: string, url: string) {
+function componentRef(filePath: string, url: string): BundleComponentRef {
 	const bytes = readFileSync(filePath);
 	return {
 		url,
