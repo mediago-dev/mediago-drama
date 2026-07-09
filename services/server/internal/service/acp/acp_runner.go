@@ -37,6 +37,7 @@ type acpAgentRunner struct {
 	workspaceDir          string
 	documentMCPConfigPath string
 	buildPrompt           func(AgentRunRequest) string
+	buildSessionRecap     func(AgentRunRequest) string
 	processConfigProvider ProcessConfigProvider
 	activeClients         sync.Map
 }
