@@ -19,8 +19,12 @@ import (
 const (
 	generationNotificationCompletedEventType = "generation.notification.completed"
 	generationNotificationConnectedEventType = "generation.notification.connected"
-	generationNotificationBufferSize         = 128
-	generationNotificationListLimit          = 100
+	// generationTaskCompletedEventType announces a task that finished in the
+	// background WITHOUT a tracked notification target, so clients can still
+	// revalidate resource covers/counts. It carries no notification record.
+	generationTaskCompletedEventType = "generation.task.completed"
+	generationNotificationBufferSize = 128
+	generationNotificationListLimit  = 100
 )
 
 // GenerationNotificationService persists and publishes generation notifications.
@@ -30,6 +34,10 @@ type GenerationNotificationService struct {
 	initErr     error
 	idGenerator func(string) (string, error)
 	broker      *GenerationNotificationBroker
+	// announcedTasks dedupes untracked task-completion events: SyncTask fires
+	// on every task write, and a completed task may be re-synced by later
+	// reads/retries. Bounded by tasks per process lifetime (desktop scale).
+	announcedTasks map[string]struct{}
 }
 
 type generationNotificationModel = domain.GenerationNotificationModel
@@ -40,10 +48,11 @@ func NewGenerationNotificationServiceFromRepository(repo *repository.GenerationN
 		idGenerator = defaultGenerationNotificationID
 	}
 	service := &GenerationNotificationService{
-		repo:        repo,
-		initErr:     initErr,
-		idGenerator: idGenerator,
-		broker:      NewGenerationNotificationBroker(),
+		repo:           repo,
+		initErr:        initErr,
+		idGenerator:    idGenerator,
+		broker:         NewGenerationNotificationBroker(),
+		announcedTasks: map[string]struct{}{},
 	}
 	if service.initErr == nil && service.repo == nil {
 		service.initErr = errors.New("generation notification repository is nil")
@@ -102,6 +111,7 @@ func (service *GenerationNotificationService) SyncTask(task GenerationTaskRecord
 
 	model, err := service.completeTaskNotification(task)
 	if errors.Is(err, repository.ErrRecordNotFound) {
+		service.publishUntrackedTaskCompletion(task)
 		return
 	}
 	if err != nil {
@@ -123,6 +133,34 @@ func (service *GenerationNotificationService) SyncTask(task GenerationTaskRecord
 		ProjectID:    record.ProjectID,
 		Notification: record,
 		CreatedAt:    record.UpdatedAt,
+	})
+}
+
+// publishUntrackedTaskCompletion tells connected clients that a task reached a
+// terminal completed state even though no notification target was tracked for
+// it (e.g. an agent-submitted image task). Without this, a task finishing
+// after its agent run already ended leaves resource covers and counts stale
+// until something else happens to re-fetch them.
+func (service *GenerationNotificationService) publishUntrackedTaskCompletion(task GenerationTaskRecord) {
+	if !isCompletedGenerationTaskStatus(task.Status) {
+		return
+	}
+	projectID := GenerationProjectIDForRequest(task.ProjectID, "")
+	if projectID == "" {
+		return
+	}
+	service.mu.Lock()
+	if _, announced := service.announcedTasks[task.ID]; announced {
+		service.mu.Unlock()
+		return
+	}
+	service.announcedTasks[task.ID] = struct{}{}
+	service.mu.Unlock()
+	service.broker.Publish(GenerationNotificationEvent{
+		ID:        "task-completed-" + task.ID,
+		Type:      generationTaskCompletedEventType,
+		ProjectID: projectID,
+		CreatedAt: firstNonEmpty(task.UpdatedAt, timestamp.NowRFC3339Nano()),
 	})
 }
 
