@@ -1914,14 +1914,29 @@ func GenerationTaskDurationMS(task GenerationTaskRecord) int64 {
 	return end.Sub(start).Milliseconds()
 }
 
+// terminalGenerationTaskStatuses is the single source of truth for statuses that mean
+// a task no longer has in-flight work.
+var terminalGenerationTaskStatuses = []string{"completed", "failed", "cancelled", "canceled"}
+
 // IsTerminalGenerationTaskStatus reports whether a generation task status is terminal.
 func IsTerminalGenerationTaskStatus(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "completed", "failed", "cancelled", "canceled":
-		return true
-	default:
-		return false
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	for _, terminal := range terminalGenerationTaskStatuses {
+		if normalized == terminal {
+			return true
+		}
 	}
+	return false
+}
+
+// CountActiveGenerationTasks counts tasks that are not in a terminal status yet.
+func (service *GenerationTaskService) CountActiveGenerationTasks() (int64, error) {
+	if service.initErr != nil {
+		return 0, service.initErr
+	}
+	service.mu.RLock()
+	defer service.mu.RUnlock()
+	return service.repo.CountGenerationTasksExcludingStatuses(terminalGenerationTaskStatuses)
 }
 
 func defaultGenerationTaskID(prefix string) (string, error) {

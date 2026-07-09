@@ -4,24 +4,24 @@ import { useEffect, useMemo, useState } from "react";
 import type {
 	DesktopUpdateCapability,
 	DesktopUpdateStatus,
-	RendererUpdateCapability,
-	RendererUpdateStatus,
+	BundleUpdateCapability,
+	BundleUpdateStatus,
 } from "@/shared/desktop/types";
 import { Button } from "@/shared/components/ui/button";
 import { useToast } from "@/hooks/useToast";
 import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
 import {
-	applyRendererUpdate,
+	applyBundleUpdate,
 	checkDesktopUpdate,
-	checkRendererUpdate,
+	checkBundleUpdate,
 	downloadDesktopUpdate,
 	getDesktopAppVersion,
 	getDesktopUpdateCapability,
-	getRendererUpdateCapability,
+	getBundleUpdateCapability,
 	installDesktopUpdate,
 	openExternalUrl,
 	subscribeDesktopUpdateStatus,
-	subscribeRendererUpdateStatus,
+	subscribeBundleUpdateStatus,
 } from "@/shared/desktop/actions";
 
 type LocalUiState = {
@@ -240,18 +240,19 @@ export const UpdatesPanel: React.FC = () => {
 					</div>
 				)}
 
-				<RendererUpdateSection />
+				<BundleUpdateSection />
 			</section>
 		</SettingsPanelLayout>
 	);
 };
 
-// Renderer hot updates: small web-layer bundles applied on next launch, without the
-// installer round-trip. Hidden entirely until the shell reports the feature enabled.
-const RendererUpdateSection: React.FC = () => {
+// Application-bundle hot updates (renderer + server binary pair): staged in the
+// background, applied on next launch or immediately while the server is idle.
+// Hidden entirely until the shell reports the feature enabled.
+const BundleUpdateSection: React.FC = () => {
 	const toast = useToast();
-	const [capability, setCapability] = useState<RendererUpdateCapability | null>(null);
-	const [status, setStatus] = useState<RendererUpdateStatus | null>(null);
+	const [capability, setCapability] = useState<BundleUpdateCapability | null>(null);
+	const [status, setStatus] = useState<BundleUpdateStatus | null>(null);
 	const [checking, setChecking] = useState(false);
 	const [applying, setApplying] = useState(false);
 
@@ -259,11 +260,11 @@ const RendererUpdateSection: React.FC = () => {
 		let cancelled = false;
 
 		void (async () => {
-			const next = await getRendererUpdateCapability();
+			const next = await getBundleUpdateCapability();
 			if (!cancelled) setCapability(next);
 		})();
 
-		const unsubscribe = subscribeRendererUpdateStatus((next) => {
+		const unsubscribe = subscribeBundleUpdateStatus((next) => {
 			setStatus(next);
 		});
 
@@ -278,9 +279,9 @@ const RendererUpdateSection: React.FC = () => {
 	const check = async () => {
 		setChecking(true);
 		try {
-			const ack = await checkRendererUpdate();
+			const ack = await checkBundleUpdate();
 			if (!ack.ok) {
-				toast.error("检查界面更新失败", { description: ack.message });
+				toast.error("检查更新失败", { description: ack.message });
 			}
 		} finally {
 			setChecking(false);
@@ -291,14 +292,14 @@ const RendererUpdateSection: React.FC = () => {
 	const applyNow = async () => {
 		setApplying(true);
 		try {
-			const ack = await applyRendererUpdate();
+			const ack = await applyBundleUpdate();
 			if (!ack.ok) {
-				toast.error("刷新界面失败", { description: ack.message });
+				toast.error("应用更新失败", { description: ack.message });
 				setApplying(false);
 			}
 		} catch (error) {
-			const message = error instanceof Error ? error.message : "刷新界面失败。";
-			toast.error("刷新界面失败", { description: message });
+			const message = error instanceof Error ? error.message : "应用更新失败。";
+			toast.error("应用更新失败", { description: message });
 			setApplying(false);
 		}
 	};
@@ -307,9 +308,9 @@ const RendererUpdateSection: React.FC = () => {
 		<div className="space-y-3 border-t border-border pt-4">
 			<div className="flex items-center justify-between gap-2">
 				<div>
-					<p className="text-sm font-medium text-foreground">界面更新</p>
+					<p className="text-sm font-medium text-foreground">热更新</p>
 					<p className="mt-0.5 text-xs text-muted-foreground">
-						小体积界面包，下载后重启应用即可生效，无需重新安装。
+						小体积更新包（界面 + 服务），后台下载，重启应用或空闲时立即应用，无需重新安装。
 					</p>
 				</div>
 				<Button
@@ -320,13 +321,13 @@ const RendererUpdateSection: React.FC = () => {
 					onClick={() => void check()}
 				>
 					{checking ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw />}
-					<span>{checking ? "检查中" : "检查界面更新"}</span>
+					<span>{checking ? "检查中" : "检查热更新"}</span>
 				</Button>
 			</div>
 
 			<div className="rounded-md border border-border bg-muted/60 px-3 py-2 text-sm">
 				<div className="flex items-center justify-between gap-2">
-					<p className="text-muted-foreground">当前界面版本</p>
+					<p className="text-muted-foreground">当前热更版本</p>
 					<p className="font-mono text-foreground">
 						rev {capability.currentRev}
 						{capability.source === "downloaded" ? "（热更新）" : "（内置）"}
@@ -334,7 +335,7 @@ const RendererUpdateSection: React.FC = () => {
 				</div>
 				<div className="mt-2 flex items-center justify-between gap-2">
 					<p className="text-muted-foreground">状态</p>
-					<p className="truncate text-foreground">{rendererStatusTitle(status)}</p>
+					<p className="truncate text-foreground">{bundleStatusTitle(status)}</p>
 				</div>
 			</div>
 
@@ -353,10 +354,10 @@ const RendererUpdateSection: React.FC = () => {
 				</div>
 			) : null}
 
-			{status?.phase === "ready" ? (
+			{status?.phase === "staged" ? (
 				<div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-success-surface px-3 py-2">
 					<p className="text-xs text-success-foreground">
-						新界面（rev {status.targetRev}）已就绪，重启应用后生效。
+						新版本（rev {status.targetRev}）已就绪，重启应用后生效；服务空闲时也可立即应用。
 						{status.notes ? ` ${status.notes}` : ""}
 					</p>
 					<Button
@@ -367,14 +368,14 @@ const RendererUpdateSection: React.FC = () => {
 						onClick={() => void applyNow()}
 					>
 						{applying ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw />}
-						<span>{applying ? "刷新中" : "立即刷新界面"}</span>
+						<span>{applying ? "应用中" : "立即应用"}</span>
 					</Button>
 				</div>
 			) : null}
 
 			{status?.phase === "requires-full-update" ? (
 				<p className="rounded-md border border-border bg-warning-surface px-3 py-2 text-xs text-warning-foreground">
-					{status.notes ?? "新界面需要更新桌面端主程序，请通过上方应用更新升级完整版本。"}
+					{status.notes ?? "新版本需要更新桌面端主程序，请通过上方应用更新升级完整版本。"}
 				</p>
 			) : null}
 
@@ -387,7 +388,7 @@ const RendererUpdateSection: React.FC = () => {
 	);
 };
 
-const rendererStatusTitle = (status: RendererUpdateStatus | null): string => {
+const bundleStatusTitle = (status: BundleUpdateStatus | null): string => {
 	if (!status) return "待检测";
 	switch (status.phase) {
 		case "idle":
@@ -396,14 +397,16 @@ const rendererStatusTitle = (status: RendererUpdateStatus | null): string => {
 			return "正在检查";
 		case "downloading":
 			return "下载中";
-		case "ready":
-			return "待重启生效";
+		case "staged":
+			return "待生效（重启或立即应用）";
+		case "applying":
+			return "正在应用";
 		case "up-to-date":
-			return "已是最新界面";
+			return "已是最新版本";
 		case "requires-full-update":
 			return "需要完整更新";
 		case "error":
-			return "界面更新异常";
+			return "热更新异常";
 	}
 };
 

@@ -5,11 +5,21 @@ import { agentsDir, resourceRoot, serverBinaryPath, toolsDir } from "./paths.js"
 
 let child: ChildProcessWithoutNullStreams | null = null;
 
-export const startServerSidecar = () => {
+/** Port the sidecar listens on; must stay in sync with the env passed at spawn. */
+export const serverSidecarPort = () => Number(process.env.MEDIAGO_SERVER_PORT || "48273");
+
+export const serverSidecarBaseUrl = () => `http://127.0.0.1:${serverSidecarPort()}`;
+
+export interface StartServerSidecarOptions {
+	/** Absolute server binary path; defaults to the builtin resources binary. */
+	binaryPath?: string;
+}
+
+export const startServerSidecar = (options?: StartServerSidecarOptions) => {
 	if (process.env.ELECTRON_RENDERER_URL) return;
 	if (child) return;
 
-	const serverPath = serverBinaryPath();
+	const serverPath = options?.binaryPath || serverBinaryPath();
 	if (!existsSync(serverPath)) {
 		throw new Error(`missing server sidecar: ${serverPath}`);
 	}
@@ -89,3 +99,33 @@ export const stopServerSidecar = () => {
 	current?.stdin.end();
 	current?.kill();
 };
+
+/**
+ * Stop the sidecar and wait for it to exit. Closes stdin first so the server can
+ * drain in-flight requests (MEDIAGO_EXIT_ON_STDIN_CLOSE + http.Shutdown), escalates
+ * to SIGKILL after the grace period. Resolves true when the process exited.
+ */
+export const stopServerSidecarGracefully = (graceMs = 8_000): Promise<boolean> => {
+	const current = child;
+	child = null;
+	if (!current || current.exitCode !== null) return Promise.resolve(true);
+
+	return new Promise((resolve) => {
+		const killTimer = setTimeout(() => {
+			current.kill("SIGKILL");
+		}, graceMs);
+		const failTimer = setTimeout(() => {
+			clearTimeout(killTimer);
+			resolve(false);
+		}, graceMs + 4_000);
+		current.once("exit", () => {
+			clearTimeout(killTimer);
+			clearTimeout(failTimer);
+			resolve(true);
+		});
+		current.stdin.end();
+	});
+};
+
+/** True while a sidecar child process is running. */
+export const isServerSidecarRunning = () => child !== null;

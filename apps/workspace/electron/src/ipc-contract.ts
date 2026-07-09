@@ -15,11 +15,11 @@ export const desktopIpcChannel = {
 	downloadUpdate: "desktop:download-update",
 	installUpdate: "desktop:install-update",
 	updateStatus: "desktop:update-status",
-	getRendererUpdateCapability: "desktop:get-renderer-update-capability",
-	checkRendererUpdate: "desktop:check-renderer-update",
-	applyRendererUpdate: "desktop:apply-renderer-update",
+	getBundleUpdateCapability: "desktop:get-bundle-update-capability",
+	checkBundleUpdate: "desktop:check-bundle-update",
+	applyBundleUpdate: "desktop:apply-bundle-update",
 	markRendererHealthy: "desktop:mark-renderer-healthy",
-	rendererUpdateStatus: "desktop:renderer-update-status",
+	bundleUpdateStatus: "desktop:bundle-update-status",
 } as const;
 
 // Version of the shell-side IPC surface (main + preload). Bump on every breaking
@@ -93,38 +93,55 @@ export interface DesktopUpdateAckError {
 
 export type DesktopUpdateAck = DesktopUpdateAckOk | DesktopUpdateAckError;
 
-/** Identity of a renderer bundle. Written into dist as renderer-meta.json at build time. */
-export interface RendererMeta {
-	/** Monotonically increasing revision across all renderer releases. */
-	rendererRev: number;
+/**
+ * Identity of an application bundle (renderer + server binary pair). Written as
+ * bundle-meta.json into the builtin renderer dir at stage time and into each
+ * downloaded version dir on activation.
+ */
+export interface BundleMeta {
+	/** Monotonically increasing revision across all bundle releases. */
+	bundleRev: number;
 	/** Minimum SHELL_API_VERSION this bundle requires. */
 	minShellApi: number;
 	/** Full app version this bundle was built from (display only). */
 	appBaseline: string;
+	/**
+	 * sha256 identities of the packaged component artifacts, used to decide which
+	 * components a newer manifest actually changes. Empty string = unknown (builtin
+	 * bundles), which forces a full component download on the first hot update.
+	 */
+	components: {
+		renderer: string;
+		server: string;
+	};
 }
 
-export type RendererUpdateSource = "builtin" | "downloaded";
+export type BundleUpdateSource = "builtin" | "downloaded";
 
-export interface RendererUpdateCapability {
+export type BundleComponentKind = "renderer" | "server";
+
+export interface BundleUpdateCapability {
 	enabled: boolean;
 	currentRev: number;
-	source: RendererUpdateSource;
+	source: BundleUpdateSource;
 	reason?: string;
 }
 
-export type RendererUpdatePhase =
+export type BundleUpdatePhase =
 	| "idle"
 	| "checking"
 	| "downloading"
-	| "ready"
+	| "staged"
+	| "applying"
 	| "up-to-date"
 	| "requires-full-update"
 	| "error";
 
-export interface RendererUpdateStatus {
-	phase: RendererUpdatePhase;
+export interface BundleUpdateStatus {
+	phase: BundleUpdatePhase;
 	currentRev: number;
 	targetRev?: number;
+	components?: BundleComponentKind[];
 	notes?: string;
 	error?: string;
 	progress?: {
@@ -134,14 +151,25 @@ export interface RendererUpdateStatus {
 	};
 }
 
-/** Signed payload of renderer-manifest.json (see hot-updater). */
-export interface RendererUpdateManifestPayload {
-	rendererRev: number;
-	appBaseline: string;
-	minShellApi: number;
+/** One downloadable component artifact referenced by the bundle manifest. */
+export interface BundleComponentRef {
 	url: string;
 	sha256: string;
 	size: number;
+}
+
+/** Signed payload of bundle-manifest.json (see bundle-updater). */
+export interface BundleManifestPayload {
+	bundleRev: number;
+	appBaseline: string;
+	minShellApi: number;
+	components: {
+		renderer: BundleComponentRef;
+		/** Keyed by target platform, e.g. "darwin-arm64" / "windows-x64". */
+		server: Record<string, BundleComponentRef>;
+	};
 	disabled?: boolean;
+	/** Set when this release runs DB migrations; snapshot restore is the only rollback. */
+	hasMigration?: boolean;
 	notes?: string;
 }

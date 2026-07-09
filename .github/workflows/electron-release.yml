@@ -94,7 +94,9 @@ jobs:
       matrix:
         include:
           - label: macOS ARM64 zip
-            runner: ubuntu-latest
+            # Runs on macOS so the app can be Developer ID signed + notarized when the
+            # signing secrets are configured (unsigned ad-hoc build otherwise).
+            runner: macos-14
             platform: darwin-arm64
             electron_script: electron:release:darwin-arm64
             artifact_name: mediago-drama-macos-arm64
@@ -171,10 +173,28 @@ jobs:
           }
           NODE
 
+      - name: Enable macOS signing when secrets are configured
+        if: matrix.platform == 'darwin-arm64'
+        shell: bash
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+        run: |
+          if [[ -n "$MACOS_CERT_P12" ]]; then
+            echo "MEDIAGO_MAC_SIGN=1" >> "$GITHUB_ENV"
+            echo "$MACOS_CERT_P12" | base64 -d > "$RUNNER_TEMP/mac-cert.p12"
+            echo "CSC_LINK=$RUNNER_TEMP/mac-cert.p12" >> "$GITHUB_ENV"
+          else
+            echo "macOS signing secrets not configured — building unsigned"
+          fi
+
       - name: Build ${{ matrix.label }}
         env:
           MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: ${{ vars.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL }}
           MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.github_release_type }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           MODEL_PLATFORM: ${{ vars.MODEL_PLATFORM }}
           VITE_MEDIAGO_APIKEY_URL: ${{ vars.VITE_MEDIAGO_APIKEY_URL }}
           VITE_TALKINGDATA_APP_ID: ${{ vars.VITE_TALKINGDATA_APP_ID }}

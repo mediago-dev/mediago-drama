@@ -789,3 +789,21 @@ func normalizeGenerationTaskRouteIDs(routeIDs []string) []string {
 func normalizeGenerationTaskStatus(status string) string {
 	return strings.ToLower(strings.TrimSpace(status))
 }
+
+// CountGenerationTasksExcludingStatuses counts tasks whose (normalized) status is not
+// in the excluded list. Used by the runtime activity probe to detect in-flight work.
+func (repo *GenerationTaskRepository) CountGenerationTasksExcludingStatuses(excluded []string) (int64, error) {
+	normalized := make([]string, 0, len(excluded))
+	for _, status := range excluded {
+		normalized = append(normalized, normalizeGenerationTaskStatus(status))
+	}
+	var count int64
+	query := repo.db.Model(&domain.GenerationTaskModel{})
+	if len(normalized) > 0 {
+		query = query.Where("LOWER(TRIM(status)) NOT IN ?", normalized)
+	}
+	if err := query.Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("counting active generation tasks: %w", err)
+	}
+	return count, nil
+}

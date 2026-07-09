@@ -177,6 +177,17 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		})
 	}, api.AgentSessionStatus)
 
+	runtimeActivityHandler := httphandlers.NewRuntimeActivity(httphandlers.RuntimeActivitySources{
+		ActiveGenerationTasks: api.generation.CountActiveGenerationTasks,
+		ActiveAgentRuns:       api.agentSessions.CountActiveRuns,
+		DatabaseFiles: func() []string {
+			return []string{
+				api.workspaceState.DatabasePath(),
+				api.workspaceState.SettingsDatabasePath(),
+			}
+		},
+	})
+
 	httproutes.Register(router, httproutes.Handlers{
 		MCP:                   mcpHandler,
 		Settings:              settingsHandler,
@@ -209,6 +220,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		AgentEvents:           agentEventHandler,
 		AgentRuntime:          runtimeHandler,
 		AgentSessions:         sessionHandler,
+		RuntimeActivity:       runtimeActivityHandler,
 	})
 	registerDevelopmentDocs(router)
 
