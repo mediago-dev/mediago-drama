@@ -178,11 +178,19 @@ jobs:
         shell: bash
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [[ -n "$MACOS_CERT_P12" ]]; then
             echo "MEDIAGO_MAC_SIGN=1" >> "$GITHUB_ENV"
             echo "$MACOS_CERT_P12" | base64 -d > "$RUNNER_TEMP/mac-cert.p12"
             echo "CSC_LINK=$RUNNER_TEMP/mac-cert.p12" >> "$GITHUB_ENV"
+            if [[ -n "$APPLE_ID" && -n "$APPLE_APP_SPECIFIC_PASSWORD" && -n "$APPLE_TEAM_ID" ]]; then
+              echo "MEDIAGO_MAC_NOTARIZE=1" >> "$GITHUB_ENV"
+            else
+              echo "notary secrets not configured — signing without notarization"
+            fi
           else
             echo "macOS signing secrets not configured — building unsigned"
           fi

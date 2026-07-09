@@ -9,7 +9,13 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { SHELL_API_VERSION, type BundleComponentKind, type BundleMeta } from "./ipc-contract.js";
+import {
+	SHELL_API_VERSION,
+	bundlePlatformKeyFor,
+	bundleServerBinaryName,
+	type BundleComponentKind,
+	type BundleMeta,
+} from "./ipc-contract.js";
 import {
 	applyComponentHealthy,
 	chooseBundle,
@@ -47,7 +53,7 @@ const activeJsonPath = (userDataDir: string) => join(bundleRootDir(userDataDir),
 
 /** Server binary filename inside a bundle's bin/ dir, per platform. */
 export const serverBinaryFilename = (platform: NodeJS.Platform = process.platform) =>
-	platform === "win32" ? "mediago-server.exe" : "mediago-server";
+	bundleServerBinaryName(bundlePlatformKeyFor(platform, process.arch));
 
 export const bundleServerBinPath = (bundleDir: string) =>
 	join(bundleDir, "bin", serverBinaryFilename());
@@ -206,13 +212,33 @@ export const activateVersion = (userDataDir: string, rev: number): void => {
 	});
 };
 
-/** Record one component's health signal (renderer beacon / server /health probe). */
-export const markComponentHealthy = (userDataDir: string, component: BundleComponentKind): void => {
+/**
+ * Record one component's health signal (renderer beacon / server /health probe).
+ * forRev binds the signal to the bundle revision that produced it: if a newer rev was
+ * staged in the meantime (activeRev moved on), the signal is dropped instead of
+ * crediting a bundle that never ran.
+ */
+export const markComponentHealthy = (
+	userDataDir: string,
+	component: BundleComponentKind,
+	forRev?: number,
+): void => {
 	const store = readStoreState(userDataDir);
 	if (store.activeRev <= 0) return;
+	if (forRev !== undefined && forRev !== store.activeRev) return;
 	const next = applyComponentHealthy(store, component);
 	if (next === store) return;
 	writeStoreState(userDataDir, next);
+};
+
+/**
+ * Count one boot/apply attempt against the active pending bundle. Single owner of the
+ * bootAttempts invariant for both the launch path (resolveBundleDir) and apply-now.
+ */
+export const recordBootAttempt = (userDataDir: string): void => {
+	const store = readStoreState(userDataDir);
+	if (store.activeRev <= 0 || store.state !== "pending") return;
+	writeStoreState(userDataDir, { ...store, bootAttempts: store.bootAttempts + 1 });
 };
 
 /** Block a rev and revert the active pointer (used by apply-now failure rollback). */
@@ -221,40 +247,31 @@ export const blockAndRevert = (userDataDir: string, rev: number, revertToRev: nu
 	writeStoreState(userDataDir, {
 		...initialStoreState,
 		activeRev: revertToRev,
-		state: revertToRev > 0 ? "healthy" : "healthy",
 		blockedRevs: [...new Set([...store.blockedRevs, rev])],
 	});
 };
 
 /** Remove version directories other than the ones we still need (active + previous). */
 export const cleanupVersions = (userDataDir: string, keepRevs: number[]): void => {
-	const dir = versionsDir(userDataDir);
 	const keep = new Set(keepRevs.map(String));
-	if (existsSync(dir)) {
-		for (const entry of readdirSync(dir)) {
-			if (keep.has(entry)) continue;
-			try {
-				rmSync(join(dir, entry), { recursive: true, force: true });
-			} catch {
-				// Best effort — a locked file must not break startup or activation.
-			}
-		}
-	}
-	const snapshots = dbSnapshotsDir(userDataDir);
-	if (existsSync(snapshots)) {
-		for (const entry of readdirSync(snapshots)) {
-			if (keep.has(entry)) continue;
-			try {
-				rmSync(join(snapshots, entry), { recursive: true, force: true });
-			} catch {
-				// Best effort.
-			}
-		}
-	}
+	pruneDirExcept(versionsDir(userDataDir), keep);
+	pruneDirExcept(dbSnapshotsDir(userDataDir), keep);
 	try {
 		rmSync(tmpDir(userDataDir), { recursive: true, force: true });
 	} catch {
 		// Best effort.
+	}
+};
+
+const pruneDirExcept = (dir: string, keep: Set<string>): void => {
+	if (!existsSync(dir)) return;
+	for (const entry of readdirSync(dir)) {
+		if (keep.has(entry)) continue;
+		try {
+			rmSync(join(dir, entry), { recursive: true, force: true });
+		} catch {
+			// Best effort — a locked file must not break startup or activation.
+		}
 	}
 };
 

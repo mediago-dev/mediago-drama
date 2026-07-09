@@ -23,9 +23,31 @@ export const desktopIpcChannel = {
 } as const;
 
 // Version of the shell-side IPC surface (main + preload). Bump on every breaking
-// change to this contract. Hot renderer updates declare the minimum shell API they
-// require; the loader refuses bundles that need a newer shell than the installed one.
-export const SHELL_API_VERSION = 1;
+// change to this contract. Hot bundles declare the minimum shell API they require;
+// the loader refuses bundles that need a newer shell than the installed one.
+// v2: renderer-only hot updates replaced by application bundles (renderer + server).
+export const SHELL_API_VERSION = 2;
+
+/** Target platforms the bundle pipeline builds server binaries for. */
+export const bundleTargetPlatforms = ["darwin-arm64", "windows-x64"] as const;
+
+export type BundleTargetPlatform = (typeof bundleTargetPlatforms)[number];
+
+/** Server binary filename inside a bundle for a given target platform key. */
+export const bundleServerBinaryName = (platformKey: string): string =>
+	platformKey.startsWith("windows") ? "mediago-server.exe" : "mediago-server";
+
+/**
+ * Manifest platform key for a Node/Electron process, e.g. "darwin-arm64" /
+ * "windows-x64". Single source of truth shared by the runtime loader, the packaging
+ * script, and the local test harness — the CI workflow mirrors these literals.
+ */
+export const bundlePlatformKeyFor = (platform: string, arch: string): string =>
+	platform === "win32" ? `windows-${arch}` : `${platform}-${arch}`;
+
+/** Env var carrying the server binary path for a platform in the packaging pipeline. */
+export const bundleServerBinaryEnvName = (platformKey: string): string =>
+	`MEDIAGO_SERVER_BINARY_${platformKey.toUpperCase().replace(/-/g, "_")}`;
 
 export type NativeThemeSource = "light" | "dark" | "system";
 

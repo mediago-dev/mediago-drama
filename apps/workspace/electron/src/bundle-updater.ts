@@ -9,13 +9,13 @@ import {
 	mkdirSync,
 	renameSync,
 	rmSync,
-	unlinkSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
 	SHELL_API_VERSION,
+	bundlePlatformKeyFor,
 	desktopIpcChannel,
 	type BundleComponentKind,
 	type BundleComponentRef,
@@ -51,6 +51,7 @@ import {
 	readBundleMeta,
 	readRuntimeInfo,
 	readStoreState,
+	recordBootAttempt,
 	resolveBundleDir,
 	restoreDatabases,
 	serverBinaryFilename,
@@ -59,7 +60,7 @@ import {
 	versionDir,
 	writeBundleMeta,
 	writeRuntimeInfo,
-	writeStoreState,
+	type BundleRuntimeInfo,
 	type ResolvedBundle,
 } from "./bundle-store.js";
 import { rendererDistDir, serverBinaryPath } from "./paths.js";
@@ -86,17 +87,17 @@ const isHotUpdateActive = () =>
 	!process.env.ELECTRON_RENDERER_URL &&
 	effectivePublicKey.length > 0;
 
-/** Manifest platform key for this process, e.g. "darwin-arm64" / "windows-x64". */
-const platformKey = () =>
-	process.platform === "win32" ? `windows-${process.arch}` : `${process.platform}-${process.arch}`;
+const platformKey = () => bundlePlatformKeyFor(process.platform, process.arch);
 
 /** Delay before the silent background check after startup. */
 const backgroundCheckDelayMs = 15_000;
 
 /**
  * Decide which bundle this launch should load and perform launch-time safety work:
- * restore the DB snapshot when a rev was just blocked (rollback), and take a fresh
- * snapshot before the first boot of a pending bundle. Called once by main.ts before
+ * restore the DB snapshot when a rev was just blocked WITHOUT its server ever having
+ * been confirmed healthy (a server that ran healthy wrote valid data — restoring
+ * would wipe real user sessions), and take a fresh snapshot before the first boot of
+ * a pending bundle. Must be called after the single-instance lock is held and before
  * the sidecar is spawned — i.e. inside the no-server window where SQLite is quiescent.
  */
 export const prepareActiveBundle = (): ResolvedBundle => {
@@ -114,6 +115,7 @@ export const prepareActiveBundle = (): ResolvedBundle => {
 
 	const userDataDir = app.getPath("userData");
 	const runtimeInfo = readRuntimeInfo(userDataDir);
+	const preState = readStoreState(userDataDir);
 	const resolved = resolveBundleDir(userDataDir, builtinRendererDir, builtinServerBin, {
 		// Without cached DB locations we cannot snapshot → never first-boot a pending
 		// bundle. The cache is written before any bundle is staged, so this only
@@ -122,12 +124,15 @@ export const prepareActiveBundle = (): ResolvedBundle => {
 	});
 
 	try {
-		if (resolved.blockedRev !== undefined) {
+		if (resolved.blockedRev !== undefined && !preState.serverHealthy) {
 			restoreDatabases(dbSnapshotDir(userDataDir, resolved.blockedRev));
 		}
 		if (resolved.firstBootOfPending && runtimeInfo) {
 			snapshotDatabases(runtimeInfo.databaseFiles, dbSnapshotDir(userDataDir, resolved.rev));
 		}
+		// One-time cleanup of the pre-bundle renderer-only updater's store; nothing
+		// reads <userData>/renderer anymore.
+		rmSync(join(userDataDir, "renderer"), { recursive: true, force: true });
 	} catch (error) {
 		console.error("[bundle-updater] launch safety work failed", error);
 	}
@@ -139,18 +144,39 @@ interface BundleUpdaterDeps {
 	active: ResolvedBundle;
 }
 
-export const registerBundleUpdater = ({ getWindow, active }: BundleUpdaterDeps): void => {
+export interface BundleUpdaterHandle {
+	/**
+	 * Call right after the sidecar has been spawned for this launch: confirms server
+	 * health for pending bundles (full timeout budget measured from actual server
+	 * start) and schedules the silent background check.
+	 */
+	notifyServerStarted: () => void;
+}
+
+export const registerBundleUpdater = ({
+	getWindow,
+	active,
+}: BundleUpdaterDeps): BundleUpdaterHandle => {
 	// Mutable: apply-now swaps the running bundle without an app restart.
 	let current = active;
 	let inFlight = false;
 	let applying = false;
-	let lastStatus: BundleUpdateStatus = { phase: "idle", currentRev: current.rev };
+	let quitting = false;
+
+	// Never fight the quit sequence: an apply raced by Cmd+Q must not block a healthy
+	// rev or restore databases mid-quit; the next launch re-runs the pending flow with
+	// a fresh health budget.
+	app.once("before-quit", () => {
+		quitting = true;
+	});
 
 	const emit = (status: Omit<BundleUpdateStatus, "currentRev">): void => {
-		lastStatus = { currentRev: current.rev, ...status };
 		const window = getWindow();
 		if (!window || window.isDestroyed()) return;
-		window.webContents.send(desktopIpcChannel.bundleUpdateStatus, lastStatus);
+		window.webContents.send(desktopIpcChannel.bundleUpdateStatus, {
+			currentRev: current.rev,
+			...status,
+		});
 	};
 
 	const capability = (): BundleUpdateCapability => {
@@ -187,11 +213,6 @@ export const registerBundleUpdater = ({ getWindow, active }: BundleUpdaterDeps):
 		emit({ phase: "checking" });
 
 		const payload = await fetchSignedManifest();
-
-		// Refresh runtime facts (DB paths for snapshots) while the server is reachable.
-		// Staging is refused unless this cache exists, so first-boot snapshots always
-		// have the information they need.
-		const runtimeInfo = await refreshRuntimeInfo(userDataDir);
 
 		const store = readStoreState(userDataDir);
 		const stagedRev = store.activeRev;
@@ -240,6 +261,11 @@ export const registerBundleUpdater = ({ getWindow, active }: BundleUpdaterDeps):
 				break;
 		}
 
+		// Refresh runtime facts (DB paths for snapshots) from the live server before
+		// staging — staging is refused without them, so first-boot snapshots always
+		// have the information they need. Deliberately only on the download path: the
+		// common up-to-date check stays a single manifest fetch.
+		const runtimeInfo = await refreshRuntimeInfo(userDataDir);
 		if (!runtimeInfo) {
 			throw new Error("无法获取运行时信息（数据库位置），已跳过本次更新。");
 		}
@@ -250,6 +276,33 @@ export const registerBundleUpdater = ({ getWindow, active }: BundleUpdaterDeps):
 			targetRev: payload.bundleRev,
 			components: decision.components,
 			notes: payload.notes,
+		});
+	};
+
+	const downloadAndExtract = async (
+		ref: BundleComponentRef,
+		zipPath: string,
+		extractDir: string,
+		label: string,
+		rev: number,
+		components: BundleComponentKind[],
+	): Promise<void> => {
+		await downloadWithHash(ref, zipPath, (transferred, total) =>
+			emit({
+				phase: "downloading",
+				targetRev: rev,
+				components,
+				notes: label,
+				progress: progressOf(transferred, total),
+			}),
+		);
+		await extractZip(zipPath, {
+			dir: extractDir,
+			onEntry: (entry) => {
+				if (!isSafeZipEntryPath(entry.fileName)) {
+					throw new Error(`更新包包含非法路径: ${entry.fileName}`);
+				}
+			},
 		});
 	};
 
@@ -271,55 +324,41 @@ export const registerBundleUpdater = ({ getWindow, active }: BundleUpdaterDeps):
 		try {
 			// Renderer component: download+extract, or copy the currently running one.
 			if (components.includes("renderer")) {
-				const zipPath = join(scratch, `renderer-${rev}.zip`);
-				await downloadWithHash(payload.components.renderer, zipPath, (transferred, total) =>
-					emit({
-						phase: "downloading",
-						targetRev: rev,
-						components,
-						notes: "界面资源",
-						progress: progressOf(transferred, total),
-					}),
+				await downloadAndExtract(
+					payload.components.renderer,
+					join(scratch, `renderer-${rev}.zip`),
+					stageDir,
+					"界面资源",
+					rev,
+					components,
 				);
-				await extractZip(zipPath, {
-					dir: stageDir,
-					onEntry: (entry) => {
-						if (!isSafeZipEntryPath(entry.fileName)) {
-							throw new Error(`更新包包含非法路径: ${entry.fileName}`);
-						}
-					},
-				});
 			} else {
+				// Exact-segment exclusion: only the bundle's own bin/ dir and its root
+				// bundle-meta.json — never legitimate dist files that merely share the
+				// prefix or suffix (bin.svg, assets/foo.bundle-meta.json, …).
+				const currentBinDir = join(current.rendererDir, "bin");
+				const currentMetaFile = join(current.rendererDir, bundleMetaFilename);
 				cpSync(current.rendererDir, stageDir, {
 					recursive: true,
 					filter: (source) =>
-						!source.includes(`${join(current.rendererDir, "bin")}`) &&
-						!source.endsWith(bundleMetaFilename),
+						source !== currentBinDir &&
+						!source.startsWith(currentBinDir + sep) &&
+						source !== currentMetaFile,
 				});
 			}
 
 			// Server component: download+extract the platform binary, or copy current.
 			const stagedServerBin = join(stageDir, "bin", serverBinaryFilename());
 			if (components.includes("server")) {
-				const zipPath = join(scratch, `server-${rev}.zip`);
-				await downloadWithHash(serverRef, zipPath, (transferred, total) =>
-					emit({
-						phase: "downloading",
-						targetRev: rev,
-						components,
-						notes: "服务组件",
-						progress: progressOf(transferred, total),
-					}),
-				);
 				const serverExtractDir = join(scratch, `server-${rev}`);
-				await extractZip(zipPath, {
-					dir: serverExtractDir,
-					onEntry: (entry) => {
-						if (!isSafeZipEntryPath(entry.fileName)) {
-							throw new Error(`更新包包含非法路径: ${entry.fileName}`);
-						}
-					},
-				});
+				await downloadAndExtract(
+					serverRef,
+					join(scratch, `server-${rev}.zip`),
+					serverExtractDir,
+					"服务组件",
+					rev,
+					components,
+				);
 				const extractedBin = join(serverExtractDir, serverBinaryFilename());
 				if (!existsSync(extractedBin)) {
 					throw new Error("服务组件更新包内容不完整。");
@@ -330,8 +369,6 @@ export const registerBundleUpdater = ({ getWindow, active }: BundleUpdaterDeps):
 			}
 			if (process.platform !== "win32") {
 				chmodSync(stagedServerBin, 0o755);
-			} else {
-				stripWindowsMotw(stagedServerBin);
 			}
 
 			writeBundleMeta(stageDir, {
@@ -365,6 +402,7 @@ export const registerBundleUpdater = ({ getWindow, active }: BundleUpdaterDeps):
 	// process and reload the window. Refuses while the server reports active work.
 	const applyNow = async (): Promise<DesktopUpdateAck> => {
 		if (!isHotUpdateActive()) return { ok: false, message: "热更新尚未启用。" };
+		if (quitting) return { ok: false, message: "应用正在退出。" };
 		if (inFlight) return { ok: false, message: "更新检查正在进行，请稍候。" };
 		if (applying) return { ok: false, message: "更新正在应用中。" };
 		const window = getWindow();
@@ -380,10 +418,6 @@ export const registerBundleUpdater = ({ getWindow, active }: BundleUpdaterDeps):
 		if (!isBundleUsable(stagedDir, stagedRev)) {
 			return { ok: false, message: "更新包不完整，请重新检查更新。" };
 		}
-		const runtimeInfo = readRuntimeInfo(userDataDir);
-		if (!runtimeInfo) {
-			return { ok: false, message: "缺少运行时信息，请重新检查更新。" };
-		}
 
 		const activity = await fetchServerActivity();
 		if (activity === null) {
@@ -395,21 +429,37 @@ export const registerBundleUpdater = ({ getWindow, active }: BundleUpdaterDeps):
 				message: "当前有任务正在执行，任务完成后再应用更新，或重启应用生效。",
 			};
 		}
+		// Prefer the live server's own database list over the cache: it is authoritative
+		// at this exact moment. The cache remains the fallback for the no-server launch path.
+		const databaseFiles =
+			activity.databaseFiles.length > 0
+				? activity.databaseFiles
+				: (readRuntimeInfo(userDataDir)?.databaseFiles ?? []);
+		if (databaseFiles.length === 0) {
+			return { ok: false, message: "缺少运行时信息，请重新检查更新。" };
+		}
 
 		applying = true;
 		emit({ phase: "applying", targetRev: stagedRev });
 		try {
-			await stopServerSidecarGracefully(serverStopGraceMs);
-			snapshotDatabases(runtimeInfo.databaseFiles, dbSnapshotDir(userDataDir, stagedRev));
+			const stopped = await stopServerSidecarGracefully(serverStopGraceMs);
+			if (!stopped) {
+				// The old server refused to die: its port is still owned and any snapshot
+				// would be torn. Change nothing — the staged bundle stays pending and a
+				// normal restart applies it cleanly.
+				emit({ phase: "staged", targetRev: stagedRev });
+				return { ok: false, message: "旧服务未能及时退出，已取消本次应用；重启应用即可完成更新。" };
+			}
+			snapshotDatabases(databaseFiles, dbSnapshotDir(userDataDir, stagedRev));
 			// The apply counts as a boot attempt for the pending bundle.
-			writeStoreState(userDataDir, {
-				...readStoreState(userDataDir),
-				bootAttempts: readStoreState(userDataDir).bootAttempts + 1,
-			});
+			recordBootAttempt(userDataDir);
 
 			startServerSidecar({ binaryPath: bundleServerBinPath(stagedDir) });
 			const healthy = await waitForServerHealth(serverHealthTimeoutMs);
 			if (!healthy) {
+				if (quitting) {
+					return { ok: false, message: "应用正在退出，更新将于下次启动继续。" };
+				}
 				await rollbackApply(userDataDir, stagedRev);
 				emit({
 					phase: "error",
@@ -419,11 +469,12 @@ export const registerBundleUpdater = ({ getWindow, active }: BundleUpdaterDeps):
 				return { ok: false, message: "新版本服务启动失败，已自动回滚。" };
 			}
 
-			markComponentHealthy(userDataDir, "server");
-			await window.loadFile(join(stagedDir, "index.html"), {
-				hash: "/",
-				query: { version: app.getVersion() },
-			});
+			markComponentHealthy(userDataDir, "server", stagedRev);
+			// Switch `current` BEFORE loading the new renderer: its health beacon can
+			// fire the markRendererHealthy IPC before loadFile resolves, and the handler
+			// gates on current — switching late would drop the signal and let the
+			// health check roll back a working bundle. Restored on failure below.
+			const previous = current;
 			current = {
 				rendererDir: stagedDir,
 				serverBinPath: bundleServerBinPath(stagedDir),
@@ -431,15 +482,26 @@ export const registerBundleUpdater = ({ getWindow, active }: BundleUpdaterDeps):
 				rev: stagedRev,
 				reason: "applied without restart",
 			};
+			try {
+				await window.loadFile(join(stagedDir, "index.html"), {
+					hash: "/",
+					query: { version: app.getVersion() },
+				});
+			} catch (error) {
+				current = previous;
+				throw error;
+			}
 			void refreshRuntimeInfo(userDataDir);
 			emit({ phase: "idle" });
 			return { ok: true };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "应用更新失败。";
-			try {
-				await rollbackApply(userDataDir, stagedRev);
-			} catch (rollbackError) {
-				console.error("[bundle-updater] rollback failed", rollbackError);
+			if (!quitting) {
+				try {
+					await rollbackApply(userDataDir, stagedRev);
+				} catch (rollbackError) {
+					console.error("[bundle-updater] rollback failed", rollbackError);
+				}
 			}
 			emit({ phase: "error", targetRev: stagedRev, error: message });
 			return { ok: false, message: `${message}（已尝试回滚）` };
@@ -466,25 +528,25 @@ export const registerBundleUpdater = ({ getWindow, active }: BundleUpdaterDeps):
 
 	ipcMain.handle(desktopIpcChannel.markRendererHealthy, () => {
 		if (!isHotUpdateActive() || current.source !== "downloaded") return;
-		markComponentHealthy(app.getPath("userData"), "renderer");
+		markComponentHealthy(app.getPath("userData"), "renderer", current.rev);
 	});
 
-	// After main spawned the sidecar for this launch: confirm server health for pending
-	// bundles and keep the runtime-info cache fresh. Also kicks the background check.
-	if (isHotUpdateActive()) {
+	const notifyServerStarted = () => {
+		if (!isHotUpdateActive()) return;
 		void (async () => {
 			const healthy = await waitForServerHealth(serverHealthTimeoutMs);
-			if (healthy) {
-				if (current.source === "downloaded") {
-					markComponentHealthy(app.getPath("userData"), "server");
-				}
-				void refreshRuntimeInfo(app.getPath("userData"));
+			if (!healthy) return;
+			if (current.source === "downloaded") {
+				markComponentHealthy(app.getPath("userData"), "server", current.rev);
 			}
+			void refreshRuntimeInfo(app.getPath("userData"));
 		})();
 		setTimeout(() => {
 			void check();
 		}, backgroundCheckDelayMs).unref();
-	}
+	};
+
+	return { notifyServerStarted };
 };
 
 // --- server probes -------------------------------------------------------------------
@@ -522,10 +584,10 @@ const fetchServerActivity = async (): Promise<ServerActivity | null> => {
 	}
 };
 
-const refreshRuntimeInfo = async (userDataDir: string) => {
+const refreshRuntimeInfo = async (userDataDir: string): Promise<BundleRuntimeInfo | null> => {
 	const activity = await fetchServerActivity();
 	if (!activity || activity.databaseFiles.length === 0) return readRuntimeInfo(userDataDir);
-	const info = {
+	const info: BundleRuntimeInfo = {
 		serverBaseUrl: serverSidecarBaseUrl(),
 		databaseFiles: activity.databaseFiles,
 		updatedAt: new Date().toISOString(),
@@ -631,14 +693,5 @@ const downloadWithHash = async (
 	if (digest !== ref.sha256) {
 		rmSync(destPath, { force: true });
 		throw new Error("更新组件校验失败（sha256 不匹配）。");
-	}
-};
-
-/** Remove the Mark-of-the-Web alternate data stream so Windows treats the binary as local. */
-const stripWindowsMotw = (filePath: string): void => {
-	try {
-		unlinkSync(`${filePath}:Zone.Identifier`);
-	} catch {
-		// Not present — nothing to strip.
 	}
 };

@@ -806,16 +806,27 @@ func GenerationTaskProviderPollID(task GenerationTaskRecord) string {
 	return ""
 }
 
+// activeGenerationStatuses is the single source of truth for statuses that mean a
+// task still has in-flight work. Keep IsActiveGenerationStatus and the runtime
+// activity probe derived from this list so they can never diverge.
+var activeGenerationStatuses = []string{
+	"submitting",
+	"submitted",
+	"running",
+	"pending",
+	"processing",
+	"queued",
+}
+
 // IsActiveGenerationStatus reports whether a task status is still in progress.
 func IsActiveGenerationStatus(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "submitted", "running", "pending", "processing", "queued":
-		return true
-	case "submitting":
-		return true
-	default:
-		return false
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	for _, active := range activeGenerationStatuses {
+		if normalized == active {
+			return true
+		}
 	}
+	return false
 }
 
 func generationProviderTaskIDForResponse(route coregeneration.ModelRoute, response GenerationMessageResponse) string {

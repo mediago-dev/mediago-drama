@@ -33,6 +33,14 @@ on:
         description: Optional release notes shown in the app
         required: false
         type: string
+      edition:
+        description: Build edition — MUST match the installed apps on this channel
+        required: true
+        default: community
+        type: choice
+        options:
+          - community
+          - pro
       has_migration:
         description: This release contains DB migrations (additive-only)
         required: true
@@ -110,6 +118,11 @@ jobs:
           MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: ${{ vars.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL }}
           MODEL_PLATFORM: ${{ vars.MODEL_PLATFORM }}
           VITE_ELECTRON_BUILD: "1"
+          # Parity with Taskfile build:electron (vars EDITION/SERVER_PORT): a hot
+          # renderer compiled with different values would silently flip installed
+          # apps' edition gating or server port.
+          VITE_MEDIAGO_EDITION: ${{ inputs.edition }}
+          VITE_MEDIAGO_SERVER_PORT: "48273"
           VITE_MEDIAGO_APIKEY_URL: ${{ vars.VITE_MEDIAGO_APIKEY_URL }}
           VITE_TALKINGDATA_APP_ID: ${{ vars.VITE_TALKINGDATA_APP_ID }}
         run: |

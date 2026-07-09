@@ -74,11 +74,13 @@ function main(): void {
 				category: "public.app-category.productivity",
 				target: electronTargetPlatform === "darwin-arm64" ? ["zip"] : ["dmg", "zip"],
 				icon: "../../build/icons/icon.icns",
-				// MEDIAGO_MAC_SIGN=1 (set by CI when signing secrets exist) enables Developer
-				// ID signing + notarization; otherwise darwin builds stay unsigned/ad-hoc.
+				// MEDIAGO_MAC_SIGN=1 (set by CI when the signing cert exists) enables Developer
+				// ID signing; MEDIAGO_MAC_NOTARIZE=1 (set only when the Apple notary secrets
+				// also exist) additionally enables notarization — signed-but-not-notarized
+				// builds must not fail on missing notary credentials.
 				...(electronTargetPlatform === "darwin-arm64"
 					? process.env.MEDIAGO_MAC_SIGN === "1"
-						? { hardenedRuntime: true, notarize: true }
+						? { hardenedRuntime: true, notarize: process.env.MEDIAGO_MAC_NOTARIZE === "1" }
 						: { identity: null, hardenedRuntime: false }
 					: {}),
 			},

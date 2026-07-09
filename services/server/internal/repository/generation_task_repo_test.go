@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -275,4 +276,50 @@ func generationTaskModelIDs(tasks []domain.GenerationTaskModel) []string {
 		ids = append(ids, task.ID)
 	}
 	return ids
+}
+
+func TestCountGenerationTasksWithStatusesUpdatedSince(t *testing.T) {
+	repo, err := NewGenerationTaskRepository(filepath.Join(t.TempDir(), "workspace.db"))
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	seedGenerationProject(t, repo, "count-active")
+
+	insert := func(id string, status string, updatedAt string) {
+		task := generationTaskTestModel(id, status, updatedAt)
+		task.ProjectID = domain.StringPtr("count-active")
+		if err := repo.UpsertGenerationTask(task); err != nil {
+			t.Fatalf("UpsertGenerationTask(%s) error = %v", id, err)
+		}
+		// autoUpdateTime overwrites UpdatedAt on write; pin it directly so the
+		// staleness window under test is deterministic.
+		if err := repo.db.Model(&domain.GenerationTaskModel{}).
+			Where("id = ?", id).
+			UpdateColumn("updated_at", domain.TimeFromString(updatedAt)).Error; err != nil {
+			t.Fatalf("pinning updated_at for %s: %v", id, err)
+		}
+	}
+
+	insert("active-fresh", "running", "2026-05-22T10:00:00Z")
+	insert("active-spacing", " Submitted ", "2026-05-22T11:00:00Z") // legacy un-normalized row
+	insert("active-stale", "running", "2026-05-20T00:00:00Z")       // orphaned by a crash
+	insert("terminal-fresh", "completed", "2026-05-22T10:30:00Z")
+
+	since := domain.TimeFromString("2026-05-22T00:00:00Z")
+	count, err := repo.CountGenerationTasksWithStatusesUpdatedSince(
+		context.Background(),
+		[]string{"submitting", "submitted", "running", "pending", "processing", "queued"},
+		since,
+	)
+	if err != nil {
+		t.Fatalf("CountGenerationTasksWithStatusesUpdatedSince() error = %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("count = %d, want 2 (fresh active + legacy-spacing active; stale and terminal excluded)", count)
+	}
+
+	empty, err := repo.CountGenerationTasksWithStatusesUpdatedSince(context.Background(), nil, since)
+	if err != nil || empty != 0 {
+		t.Fatalf("empty status list: count=%d err=%v, want 0,nil", empty, err)
+	}
 }
