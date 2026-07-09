@@ -185,7 +185,7 @@ const markdownExtension = () =>
 		},
 	});
 
-const createMarkdownParsingExtensions = (
+export const createMarkdownParsingExtensions = (
 	extraExtensions: Extensions = defaultExtraExtensions,
 	lockedHeadingPlan: LockedHeadingPlan | null = null,
 ): Extensions => [
