@@ -318,6 +318,6 @@ func (workflow *GenerationService) syncGenerationNotificationTask(task Generatio
 
 // CountActiveGenerationTasks reports how many generation tasks still have in-flight
 // work. Consumed by the runtime activity probe that gates hot-update application.
-func (workflow *GenerationService) CountActiveGenerationTasks() (int64, error) {
-	return workflow.generationTasks.CountActiveGenerationTasks()
+func (workflow *GenerationService) CountActiveGenerationTasks(ctx context.Context) (int64, error) {
+	return workflow.generationTasks.CountActiveGenerationTasks(ctx)
 }

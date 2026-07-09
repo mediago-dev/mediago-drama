@@ -26,7 +26,7 @@ document.documentElement.classList.toggle("is-desktop-macos", isDesktop && isMac
 analytics.init();
 
 // Confirms to the shell that this renderer bundle booted successfully, so a hot-updated
-// bundle is not rolled back by the health check (see electron/src/renderer-store.ts).
+// bundle is not rolled back by the health check (see electron/src/bundle-store.ts).
 // Lives inside the ErrorBoundary: if the tree crashes on mount, the beacon never fires
 // and the shell falls back to the builtin renderer on a later launch.
 const RendererHealthBeacon: React.FC = () => {

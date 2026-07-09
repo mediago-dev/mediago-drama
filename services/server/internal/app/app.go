@@ -19,6 +19,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
+	serviceruntimeactivity "github.com/mediago-dev/mediago-drama/services/server/internal/service/runtimeactivity"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -177,7 +178,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		})
 	}, api.AgentSessionStatus)
 
-	runtimeActivityHandler := httphandlers.NewRuntimeActivity(httphandlers.RuntimeActivitySources{
+	runtimeActivityHandler := httphandlers.NewRuntimeActivity(serviceruntimeactivity.Sources{
 		ActiveGenerationTasks: api.generation.CountActiveGenerationTasks,
 		ActiveAgentRuns:       api.agentSessions.CountActiveRuns,
 		DatabaseFiles: func() []string {
@@ -186,7 +187,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 				api.workspaceState.SettingsDatabasePath(),
 			}
 		},
-	})
+	}.Report)
 
 	httproutes.Register(router, httproutes.Handlers{
 		MCP:                   mcpHandler,

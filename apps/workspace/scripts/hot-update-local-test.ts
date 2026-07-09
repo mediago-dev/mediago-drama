@@ -5,6 +5,12 @@ import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+	bundlePlatformKeyFor,
+	bundleServerBinaryEnvName,
+	bundleServerBinaryName,
+} from "../electron/src/ipc-contract.ts";
+
 // Fully local, offline harness for the application-bundle hot-update loop. It:
 //   1. generates a throwaway Ed25519 keypair (never persisted),
 //   2. packages + signs the current dist/ + a server binary, pointing URLs at 127.0.0.1,
@@ -27,9 +33,8 @@ const repoRoot = resolve(workspaceDir, "..", "..");
 const outputDir = join(workspaceDir, "release", "bundle");
 const port = Number(process.env.PORT) || 8787;
 
-const platform =
-	process.platform === "win32" ? `windows-${process.arch}` : `${process.platform}-${process.arch}`;
-const binName = process.platform === "win32" ? "mediago-server.exe" : "mediago-server";
+const platform = bundlePlatformKeyFor(process.platform, process.arch);
+const binName = bundleServerBinaryName(platform);
 
 if (!existsSync(join(workspaceDir, "dist", "index.html"))) {
 	console.error("missing dist/ — run `pnpm build` first");
@@ -51,7 +56,7 @@ const { publicKey, privateKey } = generateKeyPairSync("ed25519");
 const publicB64 = publicKey.export({ format: "der", type: "spki" }).toString("base64");
 const privateB64 = privateKey.export({ format: "der", type: "pkcs8" }).toString("base64");
 
-const serverBinaryEnvName = `MEDIAGO_SERVER_BINARY_${platform.toUpperCase().replace(/-/g, "_")}`;
+const serverBinaryEnvName = bundleServerBinaryEnvName(platform);
 const packaged = spawnSync(process.execPath, [join(scriptDir, "package-bundle-update.ts")], {
 	cwd: workspaceDir,
 	stdio: "inherit",

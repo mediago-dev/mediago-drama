@@ -23,10 +23,10 @@ import { registerDesktopUpdater } from "./updater.js";
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
-// Resolves the bundle (renderer + server binary) for this launch, restoring the DB
-// snapshot after a rollback and snapshotting before a pending bundle's first boot —
-// this runs before the sidecar spawns, while SQLite is quiescent.
-const activeBundle = prepareActiveBundle();
+// Resolved inside startApp — after the single-instance lock is held (a doomed second
+// instance must not count boot attempts or touch DB snapshots) and after app-ready,
+// but before the sidecar spawns, while SQLite is quiescent.
+let activeBundle: ReturnType<typeof prepareActiveBundle> | null = null;
 
 // Retain shown notifications until they are dismissed. Without a live reference
 // macOS may garbage-collect the Notification before it is displayed.
@@ -95,7 +95,8 @@ const createWindow = async () => {
 		if (app.isPackaged) {
 			await mainWindow.webContents.session.clearCache();
 		}
-		await mainWindow.loadFile(join(activeBundle.rendererDir, "index.html"), {
+		const rendererDir = activeBundle?.rendererDir ?? prepareActiveBundle().rendererDir;
+		await mainWindow.loadFile(join(rendererDir, "index.html"), {
 			hash: app.isPackaged ? "/" : undefined,
 			query: app.isPackaged ? { version: app.getVersion() } : undefined,
 		});
@@ -217,7 +218,6 @@ ipcMain.handle(desktopIpcChannel.setNativeThemeSource, (_event, source: unknown)
 });
 
 registerDesktopUpdater({ getWindow: () => mainWindow });
-registerBundleUpdater({ getWindow: () => mainWindow, active: activeBundle });
 
 const safeDownloadFilename = (value: string) => {
 	const cleaned = basename(String(value || "download"))
@@ -250,7 +250,14 @@ const pathIsAvailable = async (path: string) => {
 };
 
 const startApp = async () => {
+	activeBundle = prepareActiveBundle();
 	startServerSidecar({ binaryPath: activeBundle.serverBinPath });
+	const bundleUpdater = registerBundleUpdater({
+		getWindow: () => mainWindow,
+		active: activeBundle,
+	});
+	// Health confirmation + background check start counting from actual server spawn.
+	bundleUpdater.notifyServerStarted();
 	await createWindow();
 };
 

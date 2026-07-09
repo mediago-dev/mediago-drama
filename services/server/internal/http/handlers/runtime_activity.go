@@ -1,31 +1,25 @@
 package handlers
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	httpresponse "github.com/mediago-dev/mediago-drama/services/server/internal/http/response"
+	serviceruntimeactivity "github.com/mediago-dev/mediago-drama/services/server/internal/service/runtimeactivity"
 )
 
-// RuntimeActivitySources provides the runtime facts the activity probe reports.
-// Function fields keep the handler decoupled and trivially testable.
-type RuntimeActivitySources struct {
-	// ActiveGenerationTasks returns the number of generation tasks with in-flight work.
-	ActiveGenerationTasks func() (int64, error)
-	// ActiveAgentRuns returns the number of non-terminal agent runs.
-	ActiveAgentRuns func() int
-	// DatabaseFiles returns the absolute SQLite paths the desktop shell must snapshot
-	// before switching server binaries.
-	DatabaseFiles func() []string
-}
+// RuntimeActivityReporter computes the aggregated runtime activity snapshot.
+type RuntimeActivityReporter func(ctx context.Context) serviceruntimeactivity.Report
 
-// RuntimeActivity reports whether the server is busy, for the desktop hot-update
+// RuntimeActivity exposes the busy/idle probe consumed by the desktop hot-update
 // orchestrator: updates are only applied while nothing is running.
 type RuntimeActivity struct {
-	sources RuntimeActivitySources
+	report RuntimeActivityReporter
 }
 
 // NewRuntimeActivity creates the runtime activity handler.
-func NewRuntimeActivity(sources RuntimeActivitySources) RuntimeActivity {
-	return RuntimeActivity{sources: sources}
+func NewRuntimeActivity(report RuntimeActivityReporter) RuntimeActivity {
+	return RuntimeActivity{report: report}
 }
 
 type runtimeActivityResponse struct {
@@ -43,40 +37,11 @@ type runtimeActivityResponse struct {
 // @Success 200 {object} SwaggerEnvelope
 // @Router /api/v1/runtime/activity [get]
 func (handler RuntimeActivity) HandleGetRuntimeActivity(context *gin.Context) {
-	runningTasks := int64(0)
-	if handler.sources.ActiveGenerationTasks != nil {
-		count, err := handler.sources.ActiveGenerationTasks()
-		if err != nil {
-			// Fail busy: when we cannot verify, the desktop must not apply updates.
-			httpresponse.OK(context, runtimeActivityResponse{
-				Busy:          true,
-				DatabaseFiles: handler.databaseFiles(),
-			})
-			return
-		}
-		runningTasks = count
-	}
-
-	activeRuns := 0
-	if handler.sources.ActiveAgentRuns != nil {
-		activeRuns = handler.sources.ActiveAgentRuns()
-	}
-
+	report := handler.report(context.Request.Context())
 	httpresponse.OK(context, runtimeActivityResponse{
-		Busy:                   runningTasks > 0 || activeRuns > 0,
-		RunningGenerationTasks: runningTasks,
-		ActiveAgentRuns:        activeRuns,
-		DatabaseFiles:          handler.databaseFiles(),
+		Busy:                   report.Busy,
+		RunningGenerationTasks: report.RunningGenerationTasks,
+		ActiveAgentRuns:        report.ActiveAgentRuns,
+		DatabaseFiles:          report.DatabaseFiles,
 	})
-}
-
-func (handler RuntimeActivity) databaseFiles() []string {
-	if handler.sources.DatabaseFiles == nil {
-		return []string{}
-	}
-	files := handler.sources.DatabaseFiles()
-	if files == nil {
-		return []string{}
-	}
-	return files
 }

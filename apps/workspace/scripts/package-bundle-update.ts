@@ -4,7 +4,12 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { SHELL_API_VERSION } from "../electron/src/ipc-contract.ts";
+import {
+	SHELL_API_VERSION,
+	bundleServerBinaryEnvName,
+	bundleServerBinaryName,
+	bundleTargetPlatforms,
+} from "../electron/src/ipc-contract.ts";
 import { bundleUpdatePublicKey } from "../electron/src/hot-update-config.ts";
 
 // Packages the application bundle (renderer + per-platform server binaries) into a
@@ -34,8 +39,6 @@ const outputDir = join(workspaceDir, "release", "bundle");
 
 const githubOwner = "mediago-dev";
 const githubRepo = "mediago-drama";
-
-const supportedPlatforms = ["darwin-arm64", "windows-x64"] as const;
 
 function main(): void {
 	if (!existsSync(join(distDir, "index.html"))) {
@@ -86,8 +89,7 @@ function main(): void {
 	for (const [platform, binaryPath] of Object.entries(serverBinaries)) {
 		const zipName = `server-${bundleRev}-${platform}.zip`;
 		const zip = new AdmZip();
-		const binName = platform.startsWith("windows") ? "mediago-server.exe" : "mediago-server";
-		zip.addLocalFile(binaryPath, "", binName);
+		zip.addLocalFile(binaryPath, "", bundleServerBinaryName(platform));
 		zip.writeZip(join(outputDir, zipName));
 		serverRefs[platform] = componentRef(join(outputDir, zipName), `${urlBase}/${zipName}`);
 	}
@@ -152,8 +154,8 @@ function main(): void {
 
 function collectServerBinaries(): Record<string, string> {
 	const binaries: Record<string, string> = {};
-	for (const platform of supportedPlatforms) {
-		const envName = `MEDIAGO_SERVER_BINARY_${platform.toUpperCase().replace(/-/g, "_")}`;
+	for (const platform of bundleTargetPlatforms) {
+		const envName = bundleServerBinaryEnvName(platform);
 		const path = process.env[envName]?.trim();
 		if (!path) continue;
 		if (!existsSync(path)) {

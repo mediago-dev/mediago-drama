@@ -1,8 +1,10 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"gorm.io/gorm"
@@ -790,18 +792,28 @@ func normalizeGenerationTaskStatus(status string) string {
 	return strings.ToLower(strings.TrimSpace(status))
 }
 
-// CountGenerationTasksExcludingStatuses counts tasks whose (normalized) status is not
-// in the excluded list. Used by the runtime activity probe to detect in-flight work.
-func (repo *GenerationTaskRepository) CountGenerationTasksExcludingStatuses(excluded []string) (int64, error) {
-	normalized := make([]string, 0, len(excluded))
-	for _, status := range excluded {
+// CountGenerationTasksWithStatusesUpdatedSince counts tasks whose (normalized) status
+// is in the given list and that were updated at or after the given time. Used by the
+// runtime activity probe to detect in-flight work; the time bound keeps rows orphaned
+// by a crash from counting as busy forever. Status is normalized in SQL because rows
+// written before write-time normalization may carry spacing/case variants.
+func (repo *GenerationTaskRepository) CountGenerationTasksWithStatusesUpdatedSince(
+	ctx context.Context,
+	statuses []string,
+	since time.Time,
+) (int64, error) {
+	if len(statuses) == 0 {
+		return 0, nil
+	}
+	normalized := make([]string, 0, len(statuses))
+	for _, status := range statuses {
 		normalized = append(normalized, normalizeGenerationTaskStatus(status))
 	}
 	var count int64
-	query := repo.db.Model(&domain.GenerationTaskModel{})
-	if len(normalized) > 0 {
-		query = query.Where("LOWER(TRIM(status)) NOT IN ?", normalized)
-	}
+	query := repo.db.WithContext(ctx).
+		Model(&domain.GenerationTaskModel{}).
+		Where("LOWER(TRIM(status)) IN ?", normalized).
+		Where("updated_at >= ?", since)
 	if err := query.Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("counting active generation tasks: %w", err)
 	}
