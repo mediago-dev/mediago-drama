@@ -8,6 +8,13 @@ import {
 
 const waitForRadixOutsideListeners = () => new Promise((resolve) => window.setTimeout(resolve, 0));
 
+const fireRadixOutsideClick = async (target: Element) => {
+	await waitForRadixOutsideListeners();
+	fireEvent.pointerDown(target, { button: 0 });
+	fireEvent.click(target);
+	await waitForRadixOutsideListeners();
+};
+
 describe("GenerationModalShell", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
@@ -90,11 +97,11 @@ describe("GenerationModalShell", () => {
 		);
 
 		await waitForRadixOutsideListeners();
-		fireEvent.pointerDown(photoViewClose);
+		await fireRadixOutsideClick(photoViewClose);
 
 		await waitFor(() => expect(onOpenChange).not.toHaveBeenCalled());
 
-		fireEvent.pointerDown(outsideButton);
+		await fireRadixOutsideClick(outsideButton);
 
 		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 		expect(screen.getByText("生成内容").textContent).toBe("生成内容");
