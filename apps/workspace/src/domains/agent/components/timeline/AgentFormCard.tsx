@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import type { AgentFormField, AgentFormPayload, AgentSelection } from "@/api/types/agent";
 import { decideAgentSelection } from "@/domains/agent/api/agent";
 import { useResolvedAgentSelection } from "@/domains/agent/lib/useResolvedAgentSelection";
+import { useSupersededSelectionCard } from "@/domains/agent/lib/useSupersededSelectionCard";
 import type { AgentMessage } from "@/domains/agent/stores";
 import { useAgentStore } from "@/domains/agent/stores";
 import {
@@ -27,9 +28,17 @@ export const AgentFormCard: React.FC<{ message: AgentMessage }> = ({ message }) 
 		[payload],
 	);
 	const resolved = useResolvedAgentSelection(payload?.selectionId, payload?.projectId, mapRecord);
+	// Freeze a card the flow has already moved past even if it was never decided:
+	// on an ask timeout the agent proceeds (e.g. with a suggested fallback) but
+	// the selection record stays pending, so without this it keeps live buttons
+	// that would submit into an already-continued flow.
+	const superseded = useSupersededSelectionCard(message.id);
 	if (!payload) return null;
 	if (resolved) {
 		return <AgentFormCardResolved title={payload.title} summary={resolved.summary} />;
+	}
+	if (superseded) {
+		return <AgentFormCardResolved title={payload.title} summary="流程已继续，无需操作。" />;
 	}
 	return <AgentFormCardInner payload={payload} />;
 };

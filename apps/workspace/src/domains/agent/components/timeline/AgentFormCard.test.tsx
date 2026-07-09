@@ -193,9 +193,27 @@ describe("AgentFormCard", () => {
 		expect(screen.queryByText("取消")).toBeNull();
 		expect(screen.queryByRole("spinbutton")).toBeNull();
 	});
+
+	it("freezes an undecided form the flow has already moved past", () => {
+		// On an ask timeout the agent proceeds (e.g. with a suggested fallback) but
+		// the selection record stays pending. A later message now follows the still-
+		// pending form card, so it must freeze instead of keeping stale buttons that
+		// would submit into an already-continued flow.
+		const message = formMessage();
+		seedConversation(message, laterMessage());
+		useProjectStore.setState({ activeProjectId: "project-1" });
+
+		render(<AgentFormCard message={message} />);
+
+		expect(screen.getByText("确认生成参数")).toBeTruthy();
+		expect(screen.getByText("流程已继续，无需操作。")).toBeTruthy();
+		expect(screen.queryByText("确认生成")).toBeNull();
+		expect(screen.queryByText("取消")).toBeNull();
+		expect(screen.queryByRole("spinbutton")).toBeNull();
+	});
 });
 
-const seedConversation = (message: AgentMessage) => {
+const seedConversation = (message: AgentMessage, ...rest: AgentMessage[]) => {
 	useAgentStore.setState({
 		sessionId: "session-1",
 		rootRunId: "run-1",
@@ -204,7 +222,7 @@ const seedConversation = (message: AgentMessage) => {
 				runId: "run-1",
 				name: "主智能体",
 				status: "running",
-				messages: [message],
+				messages: [message, ...rest],
 				streamingMessageId: null,
 				children: [],
 				createdAt: "2026-06-08T10:00:00.000Z",
@@ -213,6 +231,15 @@ const seedConversation = (message: AgentMessage) => {
 		},
 	});
 };
+
+const laterMessage = (): AgentMessage => ({
+	id: "assistant-follow-up",
+	role: "assistant",
+	content: "好的，我先用建议的参数继续。",
+	kind: "message",
+	status: "complete",
+	createdAt: "2026-06-08T10:01:00.000Z",
+});
 
 const generationFormMessage = (): AgentMessage => ({
 	id: "generation-form-ui",
