@@ -626,7 +626,11 @@ const settingsNavGroups = (activeAgentBackendId = "codex"): SettingsNavGroup[] =
 	if (activeAgentBackendId === "codex") {
 		generationItems.push({ value: "codex-relay", label: "Codex 中转", icon: Network });
 	}
-	generationItems.push(debugNavItem("instructions"), debugNavItem("prompt-packs"));
+	generationItems.push(
+		debugNavItem("instructions"),
+		debugNavItem("prompt-packs"),
+		debugNavItem("license"),
+	);
 
 	return [
 		{
