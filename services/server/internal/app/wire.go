@@ -63,6 +63,19 @@ func newAPIHandler(config Config) *apiHandler {
 			backendService.ActiveArgv,
 		)
 	}
+	// 会话回顾数据源：续接对话的 ACP 会话无法复用（换模型/上游会话失效）时，
+	// runner 用它取本会话聊天记录，把最近对话回放进重建会话的 prompt。
+	if recapAware, ok := runner.(interface {
+		SetSessionRecapBuilder(func(agentRunRequest) string)
+	}); ok {
+		recapAware.SetSessionRecapBuilder(func(request agentRunRequest) string {
+			chat, err := workspaceState.LoadAgentChat(request.ProjectID, request.SessionID)
+			if err != nil {
+				return ""
+			}
+			return serviceacp.BuildACPSessionRecap(chat.Messages)
+		})
+	}
 	documentRunner := config.documentOperationRunner
 	if documentRunner == nil {
 		documentRunner = mockDocumentOperationRunner{}

@@ -174,6 +174,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		})
 	}
 	sessionID := acp.SessionId(strings.TrimSpace(request.ACPSessionID))
+	hadPriorACPSession := sessionID != ""
 	reusedACPSession := false
 	if sessionID != "" {
 		if initializeResponse.AgentCapabilities.SessionCapabilities.Resume != nil {
@@ -239,6 +240,21 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	}
 
 	prompt := runner.buildPromptForRequest(request)
+	recapInjected := false
+	// A continuation whose previous ACP session could not be reused starts
+	// from a blank session: replay a compact transcript recap so decisions the
+	// user already made (target resource, style, params) survive the rebuild.
+	if hadPriorACPSession && !reusedACPSession {
+		if recap := runner.sessionRecapFor(request); recap != "" {
+			prompt = recap + "\n\n" + prompt
+			recapInjected = true
+			acpLog().Info("acp session recap injected", append(logArgs, "acp_session_id", sessionID, "recap_len", len(recap))...)
+			publish(agentEvent{
+				Type:    "agent.activity",
+				Message: "已向新会话回放此前对话，之前的确认继续有效。",
+			})
+		}
+	}
 	acpLog().Debug("acp.prompt.assembled", append(logArgs, "acp_session_id", sessionID, "bytes", len(prompt))...)
 	acpLog().Info(
 		"acp prompt starting",
@@ -278,6 +294,14 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		if err := applyACPSessionSelections(ctx, conn, sessionID, request, logArgs); err != nil {
 			acpLog().Error("acp retry session config selection failed", append(logArgs, "acp_session_id", sessionID, "error", err)...)
 			return agentRunResult{}, err
+		}
+		if !recapInjected {
+			if recap := runner.sessionRecapFor(request); recap != "" {
+				prompt = recap + "\n\n" + prompt
+				promptRequest.Prompt = []acp.ContentBlock{acp.TextBlock(prompt)}
+				recapInjected = true
+				acpLog().Info("acp session recap injected on retry", append(logArgs, "acp_session_id", sessionID, "recap_len", len(recap))...)
+			}
 		}
 		acpLog().Info("acp retry prompt starting", append(logArgs, "acp_session_id", sessionID)...)
 		promptStartedAt = time.Now()
