@@ -17,6 +17,7 @@ import { useMemo } from "react";
 import { agentSelectionRefFromA2UI } from "@/domains/agent/lib/a2ui-selections";
 import { resolvedSelectionFromRecord } from "@/domains/agent/lib/resolved-selection";
 import { useResolvedAgentSelection } from "@/domains/agent/lib/useResolvedAgentSelection";
+import { useSupersededSelectionCard } from "@/domains/agent/lib/useSupersededSelectionCard";
 import type { AgentMessage } from "@/domains/agent/stores";
 import { ResolvedSelectionPreview } from "@/domains/agent/components/timeline/ResolvedSelectionPreview";
 import { cn } from "@/shared/lib/utils";
@@ -40,6 +41,12 @@ export const AgentA2UIMessage: React.FC<{
 		ref?.projectId,
 		resolvedSelectionFromRecord,
 	);
+	// Freeze a selection card the flow has already moved past even if it was
+	// never decided: an ask timeout leaves the record pending, so without this
+	// the card keeps live options that would submit into an already-continued
+	// flow. Only selection cards (those with a ref) freeze; plain informational
+	// A2UI surfaces have nothing to act on.
+	const superseded = useSupersededSelectionCard(message.id);
 	const result = useMemo(() => renderA2UIPayload(message, onAction), [message, onAction]);
 
 	if (resolved) {
@@ -54,6 +61,17 @@ export const AgentA2UIMessage: React.FC<{
 				/>
 				<p className="mt-1 whitespace-pre-wrap break-words leading-5 text-muted-foreground">
 					{resolved.summary || "该选择已处理。"}
+				</p>
+			</article>
+		);
+	}
+
+	if (ref && superseded) {
+		return (
+			<article className="agent-a2ui-card max-w-[var(--message-bubble-max-width)] rounded-sm border border-border bg-card px-3 py-3 text-xs shadow-sm">
+				<h5 className="m-0 text-sm font-semibold text-foreground">用户选择</h5>
+				<p className="mt-1 whitespace-pre-wrap break-words leading-5 text-muted-foreground">
+					流程已继续，无需操作。
 				</p>
 			</article>
 		);
