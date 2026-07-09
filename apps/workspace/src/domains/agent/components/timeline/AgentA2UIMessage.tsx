@@ -18,6 +18,7 @@ import { agentSelectionRefFromA2UI } from "@/domains/agent/lib/a2ui-selections";
 import { resolvedSelectionFromRecord } from "@/domains/agent/lib/resolved-selection";
 import { useResolvedAgentSelection } from "@/domains/agent/lib/useResolvedAgentSelection";
 import type { AgentMessage } from "@/domains/agent/stores";
+import { ResolvedSelectionPreview } from "@/domains/agent/components/timeline/ResolvedSelectionPreview";
 import { cn } from "@/shared/lib/utils";
 
 export const AgentA2UIMessage: React.FC<{
@@ -47,13 +48,10 @@ export const AgentA2UIMessage: React.FC<{
 				<h5 className="m-0 text-sm font-semibold text-foreground">
 					{resolved.title || "用户选择"}
 				</h5>
-				{resolved.imageUrl ? (
-					<img
-						src={resolved.imageUrl}
-						alt={resolved.summary || resolved.title || "已选择的图片"}
-						className="mt-2 max-h-40 max-w-full rounded-sm border border-border object-cover"
-					/>
-				) : null}
+				<ResolvedSelectionPreview
+					imageUrl={resolved.imageUrl}
+					alt={resolved.summary || resolved.title || "已选择的图片"}
+				/>
 				<p className="mt-1 whitespace-pre-wrap break-words leading-5 text-muted-foreground">
 					{resolved.summary || "该选择已处理。"}
 				</p>
