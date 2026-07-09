@@ -8,6 +8,15 @@ import {
 	imageGenerationSpecPopoverBoundary,
 } from "./ImageGenerationSpecControl";
 
+const waitForRadixOutsideListeners = () => new Promise((resolve) => window.setTimeout(resolve, 0));
+
+const fireRadixOutsideClick = async (target: Element) => {
+	await waitForRadixOutsideListeners();
+	fireEvent.pointerDown(target, { button: 0 });
+	fireEvent.click(target);
+	await waitForRadixOutsideListeners();
+};
+
 const selectParam = (
 	name: string,
 	label: string,
@@ -330,7 +339,7 @@ describe("ImageGenerationSpecControl", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: /图像规格/ }));
 		await screen.findByRole("dialog", { name: "图像规格" });
-		fireEvent.pointerDown(document.body);
+		await fireRadixOutsideClick(document.body);
 		await waitFor(() => expect(screen.queryByRole("dialog", { name: "图像规格" })).toBeNull());
 	});
 });
