@@ -1,10 +1,14 @@
 import type React from "react";
-import { useState } from "react";
-import type { AgentFormField, AgentFormPayload } from "@/api/types/agent";
+import { useCallback, useState } from "react";
+import type { AgentFormField, AgentFormPayload, AgentSelection } from "@/api/types/agent";
 import { decideAgentSelection } from "@/domains/agent/api/agent";
+import { useResolvedAgentSelection } from "@/domains/agent/lib/useResolvedAgentSelection";
 import type { AgentMessage } from "@/domains/agent/stores";
 import { useAgentStore } from "@/domains/agent/stores";
-import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
+import {
+	useAgentPersistenceStore,
+	type ResolvedAgentSelection,
+} from "@/domains/agent/stores/persistence";
 import { useProjectStore } from "@/domains/projects/stores";
 import { cn } from "@/shared/lib/utils";
 import { AgentFormGenerationParams } from "./AgentFormGenerationParams";
@@ -12,17 +16,40 @@ import { formatGenerationParamsValue } from "./agentFormGenerationParams.helpers
 
 export const AgentFormCard: React.FC<{ message: AgentMessage }> = ({ message }) => {
 	const payload = message.metadata?.form;
-	const resolved = useAgentPersistenceStore((state) =>
-		payload ? (state.resolvedSelections[payload.selectionId] ?? null) : null,
-	);
-	if (!payload) return null;
 	// A transcript hydrate re-materializes the original interactive form even
 	// after the user decided it, because the chat store is rebuilt from the
-	// server. Render the frozen summary so the form can't be confirmed twice.
+	// server. Render the frozen summary so the form can't be confirmed twice;
+	// the local persisted decision wins, otherwise the server's selection
+	// record is the authority (covers decisions made before local persistence
+	// existed, in another window, or forms whose record no longer exists).
+	const mapRecord = useCallback(
+		(record: AgentSelection) => (payload ? resolvedFormFromRecord(payload, record) : null),
+		[payload],
+	);
+	const resolved = useResolvedAgentSelection(payload?.selectionId, payload?.projectId, mapRecord);
+	if (!payload) return null;
 	if (resolved) {
 		return <AgentFormCardResolved title={payload.title} summary={resolved.summary} />;
 	}
 	return <AgentFormCardInner payload={payload} />;
+};
+
+// resolvedFormFromRecord maps a server-decided form record onto the frozen
+// summary, mirroring the texts finish() writes on a live submission.
+const resolvedFormFromRecord = (
+	payload: AgentFormPayload,
+	record: AgentSelection,
+): ResolvedAgentSelection | null => {
+	if (record.status === "pending") return null;
+	const summary =
+		record.status === "submitted"
+			? `已提交：${formSummary(payload.fields, record.decision?.values ?? {})}`
+			: record.status === "cancelled"
+				? "已取消，请在对话中说明你的调整需求。"
+				: record.status === "expired"
+					? "该表单已过期，请让智能体重新发起。"
+					: `表单已处理（${record.status}）。`;
+	return { status: record.status, summary, title: payload.title };
 };
 
 const AgentFormCardResolved: React.FC<{ title: string; summary: string }> = ({

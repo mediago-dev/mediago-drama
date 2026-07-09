@@ -4,7 +4,7 @@ import {
 	decideAgentSelection,
 	decideDocumentToolApproval,
 } from "@/domains/agent/api/agent";
-import type { AgentSelection } from "@/domains/agent/api/agent";
+import { selectionDecisionSummary } from "@/domains/agent/lib/resolved-selection";
 import type { AgentMessage } from "@/domains/agent/stores";
 import { useAgentStore } from "@/domains/agent/stores";
 import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
@@ -134,36 +134,19 @@ const handleAgentSelectionAction = async (message: AgentMessage, action: A2uiCli
 			},
 		});
 		// Persist the decision so the card stays frozen after a transcript
-		// hydrate re-materializes the original interactive A2UI payload.
+		// hydrate re-materializes the original interactive A2UI payload. Keep
+		// the picked option's preview image so the frozen card still shows
+		// WHAT was chosen (finalized image, style sample), not just a label.
+		const pickedOption = record.options.find((item) => item.id === record.decision?.optionId);
 		useAgentPersistenceStore.getState().markSelectionResolved(selectionId, {
 			status: record.status,
 			summary: detail,
 			title: record.title || "用户选择",
+			...(pickedOption?.imageUrl ? { imageUrl: pickedOption.imageUrl } : {}),
 		});
 		store.recordActivity("runtime", "选择已提交", detail);
 	} catch (err) {
 		recordA2UIActionError("选择提交失败", getActionError(err));
-	}
-};
-
-// The decide endpoint is idempotent: clicking a card that was already decided
-// (or expired) returns the current record, so the summary reflects the real
-// outcome instead of double-submitting.
-const selectionDecisionSummary = (record: AgentSelection) => {
-	switch (record.status) {
-		case "selected": {
-			const option = record.options.find((item) => item.id === record.decision?.optionId);
-			const label = option?.label || record.decision?.optionId || "";
-			return label ? `已选择：${label}` : "选择已提交。";
-		}
-		case "custom":
-			return "已选择自定义描述，请在对话中说明你的需求。";
-		case "cancelled":
-			return "已取消选择。";
-		case "expired":
-			return "该选择已过期，请让 Agent 重新发起。";
-		default:
-			return "选择已提交。";
 	}
 };
 

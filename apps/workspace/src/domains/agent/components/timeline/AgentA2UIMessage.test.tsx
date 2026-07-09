@@ -1,13 +1,23 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { basicCatalog } from "@a2ui/react/v0_9";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentMessage } from "@/domains/agent/stores";
 import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
 import { AgentA2UIMessage } from "./AgentA2UIMessage";
 
+const mocks = vi.hoisted(() => ({ useSWR: vi.fn() }));
+
+vi.mock("swr", () => ({ default: mocks.useSWR }));
+
 describe("AgentA2UIMessage", () => {
+	beforeEach(() => {
+		// Default: the selection-status probe has no data (record still pending
+		// or unreachable) so cards stay interactive unless a test overrides it.
+		mocks.useSWR.mockImplementation(() => ({ data: undefined }));
+	});
 	afterEach(() => {
 		cleanup();
+		mocks.useSWR.mockReset();
 		useAgentPersistenceStore.setState({ resolvedSelections: {} });
 	});
 
@@ -44,7 +54,12 @@ describe("AgentA2UIMessage", () => {
 		// interactive selection card after the user already decided it.
 		useAgentPersistenceStore.setState({
 			resolvedSelections: {
-				"selection-1": { status: "selected", summary: "已选择：甜美粉彩", title: "选择插画风格" },
+				"selection-1": {
+					status: "selected",
+					summary: "已选择：甜美粉彩",
+					title: "选择插画风格",
+					imageUrl: "https://x/sweet.png",
+				},
 			},
 		});
 		const onAction = vi.fn();
@@ -52,10 +67,58 @@ describe("AgentA2UIMessage", () => {
 
 		expect(screen.getByText("选择插画风格")).toBeTruthy();
 		expect(screen.getByText("已选择：甜美粉彩")).toBeTruthy();
+		// The picked option's preview stays visible on the frozen card.
+		expect(document.querySelector("img")?.getAttribute("src")).toBe("https://x/sweet.png");
 		// The interactive option button is gone; the card can't be clicked twice.
 		expect(screen.queryByText(/选择一种插画风格/)).toBeNull();
 		expect(document.querySelector("button")).toBeNull();
 		expect(onAction).not.toHaveBeenCalled();
+	});
+
+	it("freezes a card whose server record is already decided even without a local decision", async () => {
+		// Covers cards decided before local persistence existed or in another
+		// window: the server's selection record is the authority.
+		mocks.useSWR.mockImplementation((key: unknown) =>
+			Array.isArray(key) && key[0] === "agent-selection-status"
+				? {
+						data: {
+							record: {
+								id: "selection-1",
+								title: "选择一种插画风格",
+								options: [{ id: "sweet", label: "甜美粉彩", imageUrl: "https://x/sweet.png" }],
+								allowCustom: false,
+								status: "selected",
+								decision: { optionId: "sweet" },
+								createdAt: "2026-06-08T10:00:00.000Z",
+							},
+						},
+					}
+				: { data: undefined },
+		);
+		const onAction = vi.fn();
+		render(<AgentA2UIMessage message={selectionCardMessage()} onAction={onAction} />);
+
+		expect(screen.getByText("已选择：甜美粉彩")).toBeTruthy();
+		expect(document.querySelector("img")?.getAttribute("src")).toBe("https://x/sweet.png");
+		expect(document.querySelector("button")).toBeNull();
+		// The server-derived resolution persists for later renders.
+		await waitFor(() =>
+			expect(useAgentPersistenceStore.getState().resolvedSelections["selection-1"]?.status).toBe(
+				"selected",
+			),
+		);
+	});
+
+	it("freezes a card whose server record no longer exists", () => {
+		mocks.useSWR.mockImplementation((key: unknown) =>
+			Array.isArray(key) && key[0] === "agent-selection-status"
+				? { data: { missing: true } }
+				: { data: undefined },
+		);
+		render(<AgentA2UIMessage message={selectionCardMessage()} />);
+
+		expect(screen.getByText(/该卡片已失效/)).toBeTruthy();
+		expect(document.querySelector("button")).toBeNull();
 	});
 });
 

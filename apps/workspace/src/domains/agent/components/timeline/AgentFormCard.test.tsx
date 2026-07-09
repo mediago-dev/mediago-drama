@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decideAgentSelection } from "@/domains/agent/api/agent";
 import { type AgentMessage, useAgentStore } from "@/domains/agent/stores";
 import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
@@ -17,6 +17,11 @@ vi.mock("@/domains/agent/api/agent", () => mocks);
 vi.mock("swr", () => ({ default: mocks.useSWR }));
 
 describe("AgentFormCard", () => {
+	beforeEach(() => {
+		// Default: no SWR data — the selection-status probe stays unresolved and
+		// the catalog is absent unless a test overrides the mock.
+		mocks.useSWR.mockImplementation(() => ({ data: undefined }));
+	});
 	afterEach(() => {
 		cleanup();
 		vi.mocked(decideAgentSelection).mockReset();
@@ -92,7 +97,11 @@ describe("AgentFormCard", () => {
 	});
 
 	it("renders a generation_params field from the configured catalog and submits {routeId, params}", async () => {
-		mocks.useSWR.mockReturnValue({ data: generationCatalog() });
+		mocks.useSWR.mockImplementation((key: unknown) =>
+			Array.isArray(key) && key[0] === "agent-selection-status"
+				? { data: undefined }
+				: { data: generationCatalog() },
+		);
 		vi.mocked(decideAgentSelection).mockImplementation(
 			async (_selectionId: string, request: { values?: Record<string, unknown> }) =>
 				({
@@ -125,6 +134,43 @@ describe("AgentFormCard", () => {
 		expect(submitted.routeId).toBe("mediago.gpt-image-2");
 		expect(submitted.label).toBe("MediaGo · GPT Image 2");
 		expect(submitted.params).toEqual({ aspectRatio: "16:9", resolution: "4K", n: 2 });
+	});
+
+	it("freezes a form whose server record is already decided even without a local decision", async () => {
+		// Covers forms decided before local persistence existed, or in another
+		// window: the server's selection record is the authority.
+		mocks.useSWR.mockImplementation((key: unknown) =>
+			Array.isArray(key) && key[0] === "agent-selection-status"
+				? {
+						data: {
+							record: {
+								id: "selection-1",
+								title: "确认生成参数",
+								options: [],
+								allowCustom: false,
+								status: "submitted",
+								decision: { values: { aspectRatio: "16:9", optimizePrompt: true, n: 2 } },
+								createdAt: "2026-06-08T10:00:00.000Z",
+							},
+						},
+					}
+				: { data: undefined },
+		);
+		const message = formMessage();
+		seedConversation(message);
+		useProjectStore.setState({ activeProjectId: "project-1" });
+
+		render(<AgentFormCard message={message} />);
+
+		expect(screen.getByText(/已提交：/)).toBeTruthy();
+		expect(screen.queryByText("确认生成")).toBeNull();
+		expect(screen.queryByText("取消")).toBeNull();
+		// The server-derived resolution persists for later renders.
+		await waitFor(() =>
+			expect(useAgentPersistenceStore.getState().resolvedSelections["selection-1"]?.status).toBe(
+				"submitted",
+			),
+		);
 	});
 
 	it("renders an already-decided form frozen and non-interactive after a hydrate", () => {
