@@ -89,10 +89,29 @@ describe("GenerationNotificationSync", () => {
 		expect(showGenerationSuccessSystemNotification).toHaveBeenCalledWith(
 			expect.objectContaining({ id: "notification-1", sourceTaskId: "task-1" }),
 		);
-		expect(mutateSWR).toHaveBeenCalledTimes(3);
+		// 3 个生成缓存 + 3 个定稿资产缓存（封面/计数）。
+		expect(mutateSWR).toHaveBeenCalledTimes(6);
 		expect(cachePredicateAt(0)(["/generation/tasks", "studio", "", "", ""])).toBe(true);
 		expect(cachePredicateAt(1)(["/generation/sessions", "studio", "image"])).toBe(true);
 		expect(cachePredicateAt(2)(["/media-assets", "project-a"])).toBe(true);
+	});
+
+	it("revalidates finalized-asset caches for an untracked background task completion", async () => {
+		render(<GenerationNotificationSync />);
+		await waitFor(() => expect(FakeEventSource.instances.length).toBe(1));
+		vi.mocked(mutateSWR).mockClear();
+
+		FakeEventSource.instances[0]?.emit("generation.task.completed", {
+			id: "task-completed-generation-1",
+			type: "generation.task.completed",
+			projectId: "project-a",
+			createdAt: "2026-07-10T00:00:00Z",
+		});
+
+		// 无通知记录：不进通知中心、不弹系统通知，但刷新任务与定稿资产缓存。
+		await waitFor(() => expect(vi.mocked(mutateSWR).mock.calls.length).toBe(6));
+		expect(useGenerationNotificationStore.getState().notifications).toHaveLength(0);
+		expect(showGenerationSuccessSystemNotification).not.toHaveBeenCalled();
 	});
 });
 

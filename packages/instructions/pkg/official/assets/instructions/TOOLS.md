@@ -113,5 +113,6 @@ editable: true
    然后调 `select_generation_asset(taskId, slotIndex)` 标记选中，定稿会替换该资源当前的选中图；
    仅当任务生成时没带 `documentContext` 时才需要补传 `resourceType`
    （character/scene/prop/storyboard）。再取该资产 URL 插入文档。
-5. 视频等长耗时生成不要阻塞轮询到完成：提交时带上 `notificationTarget` 指向目标文档章节，
-   告知用户任务已在后台运行并结束回合，结果由任务通知呈现。
+5. 为项目资源生成时，`generate_media` 建议总是带 `notificationTarget` 指向目标文档章节：
+   万一你结束回合时任务还没完成，用户也能在通知中心收到"生成完成"并点击跳转查看结果。
+   视频等长耗时生成必须带，且不要阻塞轮询到完成——告知用户任务已在后台运行并结束回合。
