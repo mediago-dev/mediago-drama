@@ -8,6 +8,9 @@ vars:
   MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago,openrouter,dmxapi"}}'
   MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default "http://127.0.0.1:3001/api/v1"}}'
   TOOL: '{{.TOOL | default "ffmpeg"}}'
+  # EDITION gates commercial (Pro) UI such as the license activation panel.
+  # community (default) omits it; pass EDITION=pro to include it.
+  EDITION: '{{.EDITION | default "community"}}'
   SERVER_PORT: '{{.SERVER_PORT | default "48273"}}'
   DEV_SERVER_PORT: '{{.DEV_SERVER_PORT | default "8080"}}'
   DEV_SERVER_URL: "http://127.0.0.1:{{.DEV_SERVER_PORT}}"
@@ -40,6 +43,7 @@ tasks:
       MEDIAGO_GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
+      VITE_MEDIAGO_EDITION: "{{.EDITION}}"
     cmds:
       - task: prepare-agent
         vars:
@@ -75,6 +79,7 @@ tasks:
       MEDIAGO_GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
+      VITE_MEDIAGO_EDITION: "{{.EDITION}}"
     cmds:
       - task: prepare-agent
         vars:
@@ -109,6 +114,7 @@ tasks:
       MEDIAGO_GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
+      VITE_MEDIAGO_EDITION: "{{.EDITION}}"
     cmds:
       - task: prepare-agent
         vars:
@@ -201,6 +207,7 @@ tasks:
       MEDIAGO_LIBTV_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
       MEDIAGO_PIPPIT_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
       VITE_API_PROXY_TARGET: "{{.DEV_SERVER_URL}}"
+      VITE_MEDIAGO_EDITION: "{{.EDITION}}"
     cmds:
       - task: dev:server:check
       - task -d services/server swagger
@@ -214,6 +221,7 @@ tasks:
     desc: Run the Electron desktop app against an external dev server
     env:
       VITE_MEDIAGO_SERVER_PORT: "{{.DEV_SERVER_PORT}}"
+      VITE_MEDIAGO_EDITION: "{{.EDITION}}"
     cmds:
       - pnpm -C apps/workspace electron:dev
 

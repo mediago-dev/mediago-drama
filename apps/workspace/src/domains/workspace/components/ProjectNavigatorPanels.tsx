@@ -45,6 +45,7 @@ import {
 import { useToast } from "@/hooks/useToast";
 import { projectSettingsGeneralTab, type SettingsTabValue } from "@/lib/stores/settings";
 import { openExternalUrl } from "@/shared/desktop/actions";
+import { isProEdition } from "@/shared/lib/edition";
 import { cn } from "@/shared/lib/utils";
 import { debugTabs, type DebugTabValue } from "@/pages/Debug";
 import { GenerationNotificationButton } from "./GenerationNotificationButton";
@@ -626,11 +627,10 @@ const settingsNavGroups = (activeAgentBackendId = "codex"): SettingsNavGroup[] =
 	if (activeAgentBackendId === "codex") {
 		generationItems.push({ value: "codex-relay", label: "Codex 中转", icon: Network });
 	}
-	generationItems.push(
-		debugNavItem("instructions"),
-		debugNavItem("prompt-packs"),
-		debugNavItem("license"),
-	);
+	generationItems.push(debugNavItem("instructions"), debugNavItem("prompt-packs"));
+	if (isProEdition()) {
+		generationItems.push(debugNavItem("license"));
+	}
 
 	return [
 		{
