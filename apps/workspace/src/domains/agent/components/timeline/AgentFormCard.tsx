@@ -13,6 +13,7 @@ import {
 import { useProjectStore } from "@/domains/projects/stores";
 import { cn } from "@/shared/lib/utils";
 import { AgentFormGenerationParams } from "./AgentFormGenerationParams";
+import { AgentFormImagesField, normalizeImageIds } from "./AgentFormImagesField";
 import { formatGenerationParamsValue } from "./agentFormGenerationParams.helpers";
 
 export const AgentFormCard: React.FC<{ message: AgentMessage }> = ({ message }) => {
@@ -138,6 +139,7 @@ const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }
 						field={field}
 						value={values[field.id]}
 						disabled={submitting}
+						projectId={payload.projectId}
 						onChange={(value) => setValue(field.id, value)}
 					/>
 				))}
@@ -169,8 +171,9 @@ const FormFieldControl: React.FC<{
 	field: AgentFormField;
 	value: unknown;
 	disabled: boolean;
+	projectId?: string;
 	onChange: (value: unknown) => void;
-}> = ({ field, value, disabled, onChange }) => (
+}> = ({ field, value, disabled, projectId, onChange }) => (
 	<div>
 		<div className="flex items-baseline gap-2">
 			<span className="font-medium text-foreground">{field.label}</span>
@@ -181,6 +184,15 @@ const FormFieldControl: React.FC<{
 		<div className="mt-1.5">
 			{field.type === "generation_params" ? (
 				<AgentFormGenerationParams value={value} disabled={disabled} onChange={onChange} />
+			) : null}
+			{field.type === "images" ? (
+				<AgentFormImagesField
+					value={value}
+					max={field.max}
+					disabled={disabled}
+					projectId={projectId}
+					onChange={onChange}
+				/>
 			) : null}
 			{field.type === "select" ? (
 				<div className="flex flex-wrap gap-1.5">
@@ -283,6 +295,7 @@ const formSummary = (fields: AgentFormField[], values: Record<string, unknown>) 
 
 const formatFormValue = (field: AgentFormField, value: unknown) => {
 	if (field.type === "generation_params") return formatGenerationParamsValue(value);
+	if (field.type === "images") return `${normalizeImageIds(value).length} 张`;
 	if (field.type === "toggle") return value === true ? "开" : "关";
 	if (field.type === "select") {
 		const option = (field.options ?? []).find((item) => item.value === value);

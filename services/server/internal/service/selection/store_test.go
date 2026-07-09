@@ -361,3 +361,32 @@ func TestSelectionGenerationParamsFieldRejectsMissingRoute(t *testing.T) {
 		t.Fatalf("Decide() accepted a non-object generation value")
 	}
 }
+
+func TestValidateImagesFieldValues(t *testing.T) {
+	max := 3.0
+	field := FormField{ID: "refs", Type: FieldTypeImages, Max: &max}
+
+	value, err := validateFormValue(field, []any{"asset-a", " asset-a ", "asset-b", ""})
+	if err != nil {
+		t.Fatalf("validateFormValue() error = %v", err)
+	}
+	ids, ok := value.([]any)
+	if !ok || len(ids) != 2 || ids[0] != "asset-a" || ids[1] != "asset-b" {
+		t.Fatalf("value = %#v, want deduplicated trimmed ids", value)
+	}
+
+	if _, err := validateFormValue(field, []any{"a", "b", "c", "d"}); err == nil {
+		t.Fatal("want error when exceeding max image count")
+	}
+	if _, err := validateFormValue(field, "not-an-array"); err == nil {
+		t.Fatal("want error for non-array value")
+	}
+	if _, err := validateFormValue(field, []any{42}); err == nil {
+		t.Fatal("want error for non-string item")
+	}
+
+	required := FormField{ID: "refs", Type: FieldTypeImages, Required: true}
+	if _, err := validateFormValue(required, []any{""}); err == nil {
+		t.Fatal("want error when required field resolves to zero images")
+	}
+}

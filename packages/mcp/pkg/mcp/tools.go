@@ -47,6 +47,7 @@ const GenerationMCPInstructions = `MediaGo Drama Generation MCP 使用说明：
 - referenceUrls/referenceAssetIds/referenceBindings 可用于传入参考图、参考素材或文档绑定。
 - 为项目资源（角色/场景/道具/分镜）生成时必须带 documentContext（documentId + sectionId，sectionId 取文档二级标题前的 section-id 注释），任务即计入该资源的生成历史与选中资产库；资源归属由服务端按目标文档类型自动判定。
 - 目标资源有歧义时（如同名角色有多个阶段 section），先用 ask_user_selection 让用户选定目标，不要自行替用户挑选。
+- 需要形象一致或用户提到参考图时，在参数表单加 type=images 的参考图字段（default 预填已定稿图资产 id），提交的 id 数组填入 generate_media 的 referenceAssetIds。
 - get_generation_task / list_generation_tasks 用于查询任务状态和结果资产。
 - poll_generation_task 用于轮询需要供应商查询的异步任务；retry_generation_task 用于重试失败或可重试任务。
 - stylePresets 来自产品提示词库的 style 分类（内置风格 + 用户自建 + 提示词包），与生成工作台同源；previewUrl 存在时可作为选择卡片的预览图，缺失时用纯文本选项。用户确认某个 preset 后，把它的 promptSuffix 拼到 prompt 末尾、params 合并进请求参数再 generate_media。

@@ -42,6 +42,12 @@ const (
 	// plus that route's aspect-ratio/resolution/count controls, and submits
 	// {"routeId": string, "params": {...}}. The agent supplies no options.
 	FieldTypeGenerationParams = "generation_params"
+	// FieldTypeImages lets the user attach reference images: upload new files
+	// or keep agent-prefilled defaults. The submitted value is a deduplicated
+	// array of media asset ids; Max bounds the count. The client resolves ids
+	// to thumbnails, the server validates shape only — bad ids surface when
+	// generate_media resolves references.
+	FieldTypeImages = "images"
 )
 
 // Blocking-wait bounds. The caller-supplied timeout is clamped to this range;

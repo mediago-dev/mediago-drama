@@ -377,7 +377,7 @@ func normalizeFields(fields []FormField) ([]FormField, error) {
 			if len(field.Options) == 0 {
 				return nil, fmt.Errorf("form field %q needs options", id)
 			}
-		case FieldTypeToggle, FieldTypeNumber, FieldTypeText, FieldTypeGenerationParams:
+		case FieldTypeToggle, FieldTypeNumber, FieldTypeText, FieldTypeGenerationParams, FieldTypeImages:
 		default:
 			return nil, fmt.Errorf("form field %q has unsupported type %q", id, fieldType)
 		}
@@ -468,6 +468,8 @@ func validateFormValue(field FormField, value any) (any, error) {
 		return strings.TrimSpace(text), nil
 	case FieldTypeGenerationParams:
 		return validateGenerationParamsValue(field, value)
+	case FieldTypeImages:
+		return validateImagesValue(field, value)
 	}
 	return nil, fmt.Errorf("form field %q has unsupported type %q", field.ID, field.Type)
 }
@@ -494,4 +496,34 @@ func validateGenerationParamsValue(field FormField, value any) (any, error) {
 		sanitized["params"] = params
 	}
 	return sanitized, nil
+}
+
+// validateImagesValue normalizes an images-field submission to a deduplicated
+// list of non-empty media asset ids within the field's Max bound.
+func validateImagesValue(field FormField, value any) (any, error) {
+	items, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("form field %q expects an array of media asset ids", field.ID)
+	}
+	seen := map[string]bool{}
+	ids := []any{}
+	for _, item := range items {
+		id, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("form field %q expects string asset ids", field.ID)
+		}
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if field.Required && len(ids) == 0 {
+		return nil, fmt.Errorf("form field %q requires at least one image", field.ID)
+	}
+	if field.Max != nil && float64(len(ids)) > *field.Max {
+		return nil, fmt.Errorf("form field %q accepts at most %d images", field.ID, int(*field.Max))
+	}
+	return ids, nil
 }
