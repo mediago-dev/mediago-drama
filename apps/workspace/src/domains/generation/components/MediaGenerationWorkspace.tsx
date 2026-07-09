@@ -216,6 +216,10 @@ export interface MediaGenerationWorkspaceProps {
 	onViewModeChange?: (viewMode: MediaGenerationWorkspaceViewMode) => void;
 	persistAssetSelection?: boolean;
 	projectId?: string;
+	// When true, the history list is fetched project-wide (across every generation
+	// conversation) and then narrowed by the section scope, so agent-generated
+	// assets show alongside ones made in this panel. Defaults to false.
+	projectHistory?: boolean;
 	promptExtras?: React.ReactNode | ((prompt: string) => React.ReactNode);
 	promptPlaceholder?: string;
 	referenceBadges?: Record<string, string> | ((prompt: string) => Record<string, string>);
@@ -266,6 +270,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	onViewModeChange,
 	persistAssetSelection = false,
 	projectId,
+	projectHistory = false,
 	promptExtras,
 	promptPlaceholder,
 	referenceBadges,
@@ -410,6 +415,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		onSubmitResponse: trackGenerationResponse,
 		onSubmitStart: handleSubmitStart,
 		projectId,
+		projectHistory,
 		projectStyleOnly: true,
 		sectionId,
 		taskType,

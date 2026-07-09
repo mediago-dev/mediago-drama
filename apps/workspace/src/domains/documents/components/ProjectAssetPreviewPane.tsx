@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/useToast";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import {
+	assetKindLabel,
 	assetPreviewIcon,
 	errorMessage,
 	fetchTextAsset,
@@ -96,7 +97,7 @@ export const ProjectAssetPreviewPane: React.FC<ProjectAssetPreviewPaneProps> = (
 
 	return (
 		<main className="h-full min-h-0 flex-1 overflow-y-auto bg-ide-editor">
-			<div className="mx-auto flex min-h-full w-full max-w-6xl flex-col gap-4 px-4 py-4">
+			<div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-4 px-4 py-4">
 				<header className="border-b border-border pb-4">
 					<div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3">
 						<div className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
@@ -108,11 +109,14 @@ export const ProjectAssetPreviewPane: React.FC<ProjectAssetPreviewPaneProps> = (
 									<Input
 										value={draftFilename}
 										onChange={(event) => setDraftFilename(event.target.value)}
-										className="h-8 min-w-0 flex-1 truncate border-0 bg-transparent px-0 text-base font-semibold leading-tight shadow-none focus-visible:ring-0 sm:text-lg"
+										className="-mx-2 h-8 min-w-0 flex-1 truncate rounded-md border border-transparent bg-transparent px-2 text-base font-semibold leading-tight shadow-none transition-colors hover:border-input focus-visible:border-input focus-visible:ring-2 focus-visible:ring-ring sm:text-lg"
 										aria-label="素材文件名"
+										title="点击可重命名"
 									/>
 									<div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-										<span className="font-medium text-foreground">{asset.kind}</span>
+										<span className="font-medium text-foreground">
+											{assetKindLabel(asset.kind)}
+										</span>
 										<span className="text-muted-foreground/60">·</span>
 										<span>{asset.mimeType || "unknown"}</span>
 										<span className="text-muted-foreground/60">·</span>
@@ -148,7 +152,7 @@ export const ProjectAssetPreviewPane: React.FC<ProjectAssetPreviewPaneProps> = (
 					</div>
 				</header>
 
-				<section className="min-h-0 flex-1">
+				<section className="flex min-h-0 flex-1 flex-col">
 					<AssetPreviewBody
 						asset={asset}
 						isTextLoading={isLoading}

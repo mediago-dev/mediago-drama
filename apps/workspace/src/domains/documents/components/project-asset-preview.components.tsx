@@ -4,7 +4,7 @@ import type React from "react";
 import { memo, useRef } from "react";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
-import { errorMessage } from "./project-asset-preview.helpers";
+import { errorMessage, splitFrontmatter } from "./project-asset-preview.helpers";
 
 export const TextAssetPreview: React.FC<{
 	error: unknown;
@@ -13,7 +13,7 @@ export const TextAssetPreview: React.FC<{
 }> = ({ error, isLoading, text }) => {
 	if (isLoading) {
 		return (
-			<div className="grid min-h-80 place-items-center border border-border bg-card">
+			<div className="grid min-h-0 flex-1 place-items-center border border-border bg-card">
 				<div className="flex items-center gap-2 text-sm text-muted-foreground">
 					<Loader2 className="size-4 animate-spin" />
 					<span>正在读取文本</span>
@@ -24,19 +24,31 @@ export const TextAssetPreview: React.FC<{
 
 	if (error) {
 		return (
-			<div className="border border-border bg-card p-4 text-sm text-error-foreground">
+			<div className="min-h-0 flex-1 border border-border bg-card p-4 text-sm text-error-foreground">
 				{errorMessage(error, "文本读取失败。")}
 			</div>
 		);
 	}
 
-	// The fetcher already caps the text at the preview limit; rendering it
-	// as-is keeps the (potentially huge) text node referentially stable
-	// across re-renders.
+	// Managed documents carry a leading YAML frontmatter block that is noise for
+	// a reader, so hide it behind a collapsed toggle and show just the body. The
+	// card fills the pane and scrolls internally so a short document never leaves
+	// a dead band below it.
+	const { body, frontmatter } = splitFrontmatter(text ?? "");
 	return (
-		<pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words border border-border bg-card p-4 text-xs leading-5 text-foreground">
-			{text ?? ""}
-		</pre>
+		<div className="min-h-0 flex-1 overflow-auto border border-border bg-card">
+			{frontmatter !== null ? (
+				<details className="border-b border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+					<summary className="cursor-pointer select-none font-medium">文档信息</summary>
+					<pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-5">
+						{frontmatter}
+					</pre>
+				</details>
+			) : null}
+			<pre className="whitespace-pre-wrap break-words p-4 text-sm leading-7 text-foreground">
+				{body}
+			</pre>
+		</div>
 	);
 };
 
@@ -51,16 +63,16 @@ const AssetPreviewBodyComponent: React.FC<{
 
 	if (asset.kind === "image") {
 		return (
-			<div className="flex min-h-80 items-start justify-center overflow-hidden border border-border bg-card">
-				<img src={source} alt={asset.filename} className="max-h-[70vh] max-w-full object-contain" />
+			<div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden border border-border bg-card p-4">
+				<img src={source} alt={asset.filename} className="max-h-full max-w-full object-contain" />
 			</div>
 		);
 	}
 
 	if (asset.kind === "video") {
 		return (
-			<div className="border border-border bg-card p-2">
-				<div className="mx-auto aspect-video w-full max-w-[calc(70vh*16/9)] overflow-hidden bg-background">
+			<div className="flex min-h-0 flex-1 items-center justify-center border border-border bg-card p-2">
+				<div className="aspect-video w-full max-w-[calc(70vh*16/9)] overflow-hidden bg-background">
 					<VideoPlayer
 						playerRef={videoPlayerRef}
 						src={source}
@@ -79,7 +91,7 @@ const AssetPreviewBodyComponent: React.FC<{
 	}
 
 	return (
-		<div className="grid min-h-80 place-items-center border border-border bg-card p-6 text-center">
+		<div className="grid min-h-0 flex-1 place-items-center border border-border bg-card p-6 text-center">
 			<div className="max-w-sm">
 				<File className="mx-auto mb-3 size-8 text-muted-foreground" />
 				<p className="text-sm font-medium text-foreground">无法内联预览此文件</p>
