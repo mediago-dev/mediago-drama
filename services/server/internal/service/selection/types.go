@@ -48,6 +48,13 @@ const (
 	// to thumbnails, the server validates shape only — bad ids surface when
 	// generate_media resolves references.
 	FieldTypeImages = "images"
+	// FieldTypePromptOptimization is a composite prompt-optimization picker:
+	// an on/off switch plus, when on, a text-model route and a prompt-library
+	// package (mirroring the generation workbench control). The submitted
+	// value is {"enabled": bool} or {"enabled": true, "routeId", "label",
+	// "referenceId", "referenceName", "referencePrompt"}; the agent maps an
+	// enabled value onto generate_media's promptOptimization input.
+	FieldTypePromptOptimization = "prompt_optimization"
 )
 
 // Blocking-wait bounds. The caller-supplied timeout is clamped to this range;

@@ -90,7 +90,11 @@ editable: true
      （模型族 → 模型 → 供应商，只含 configured 路由）和所选模型的比例/分辨率/张数联动控件，
      不需要也不要提供 options；`default` 可传 `{routeId, params}` 用 `preferences`
      （用户在生成工作台的习惯参数：routeIds/routeParams）预填。
-   - 是否优化提示词用 toggle；其余业务参数按需用 select/number/text。
+   - 优化提示词用**一个 `type: "prompt_optimization"` 字段**：客户端渲染开关、文本模型选择和
+     提示词包列表（与生成工作台同源），无需 options；`default` 可传
+     `{enabled, routeId, referenceName, referencePrompt}`，建议把所选风格对应的提示词包预填进去。
+     提交值 `enabled` 为 true 时，把其中的 `routeId`/`referenceName`/`referencePrompt`
+     填入 `generate_media` 的 `promptOptimization`。其余业务参数按需用 select/number/text。
    - 需要保持形象一致（角色多阶段、续作配图）或用户提到参考图时，加一个 `type: "images"` 的
      「参考图」字段（max 建议 3）：`default` 预填该资源已定稿图的资产 id，用户可上传或移除；
      提交后把 values 里的 id 数组填入 `generate_media` 的 `referenceAssetIds`。
