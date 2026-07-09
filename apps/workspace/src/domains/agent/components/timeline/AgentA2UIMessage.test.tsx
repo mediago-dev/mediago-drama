@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { basicCatalog } from "@a2ui/react/v0_9";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentMessage } from "@/domains/agent/stores";
+import { type AgentMessage, useAgentStore } from "@/domains/agent/stores";
 import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
 import { AgentA2UIMessage } from "./AgentA2UIMessage";
 
@@ -18,6 +18,7 @@ describe("AgentA2UIMessage", () => {
 	afterEach(() => {
 		cleanup();
 		mocks.useSWR.mockReset();
+		useAgentStore.getState().resetSession();
 		useAgentPersistenceStore.setState({ resolvedSelections: {} });
 	});
 
@@ -113,6 +114,22 @@ describe("AgentA2UIMessage", () => {
 		);
 	});
 
+	it("keeps a superseded undecided selection card visible but non-interactive", () => {
+		// On an ask timeout the agent proceeds while the record stays pending. A
+		// later message now follows the card, so its options must stop submitting —
+		// but the content (the generated image candidates) must stay visible.
+		const message = selectionCardMessage();
+		seedConversation(message, laterMessage());
+		const onAction = vi.fn();
+		render(<AgentA2UIMessage message={message} onAction={onAction} />);
+
+		expect(screen.getByText(/选择一种插画风格/)).toBeTruthy();
+		expect(document.querySelector("img")?.getAttribute("src")).toBe("https://x/sweet.png");
+		expect(screen.getByText("流程已继续，无需操作。")).toBeTruthy();
+		fireEvent.click(screen.getByText(/甜美粉彩/));
+		expect(onAction).not.toHaveBeenCalled();
+	});
+
 	it("freezes a card whose server record no longer exists", () => {
 		mocks.useSWR.mockImplementation((key: unknown) =>
 			Array.isArray(key) && key[0] === "agent-selection-status"
@@ -124,6 +141,34 @@ describe("AgentA2UIMessage", () => {
 		expect(screen.getByText(/该卡片已失效/)).toBeTruthy();
 		expect(document.querySelector("button")).toBeNull();
 	});
+});
+
+const seedConversation = (message: AgentMessage, ...rest: AgentMessage[]) => {
+	useAgentStore.setState({
+		sessionId: "session-1",
+		rootRunId: "run-1",
+		conversations: {
+			"run-1": {
+				runId: "run-1",
+				name: "主智能体",
+				status: "running",
+				messages: [message, ...rest],
+				streamingMessageId: null,
+				children: [],
+				createdAt: "2026-06-08T10:00:00.000Z",
+				updatedAt: "2026-06-08T10:00:00.000Z",
+			},
+		},
+	});
+};
+
+const laterMessage = (): AgentMessage => ({
+	id: "assistant-follow-up",
+	role: "assistant",
+	content: "好的，我先用建议的参数继续。",
+	kind: "message",
+	status: "complete",
+	createdAt: "2026-06-08T10:01:00.000Z",
 });
 
 // Mirrors the server-side BuildSelectionA2UI output shape.
