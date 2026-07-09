@@ -119,6 +119,13 @@ const blockTypeLabel = (range: BlockRange): string => {
 	}
 };
 
+// The handle trigger is 1.5rem (24px) tall. The editor body renders at a 1.75
+// line-height over a 1rem font (see .tiptap-content in tiptap.css), so the first
+// text line is ~28px. Center the handle within that first line rather than the
+// whole block, otherwise a multi-line paragraph pushes it to its vertical middle.
+const TRIGGER_HEIGHT = 24;
+const FIRST_LINE_HEIGHT = 28;
+
 const sameConversion = (a: BlockConversion | null, b: BlockConversion): boolean => {
 	if (!a || a.type !== b.type) return false;
 	if (a.type === "heading" && b.type === "heading") return a.level === b.level;
@@ -154,7 +161,10 @@ export const BlockActionMenu: React.FC<BlockActionMenuProps> = ({
 	return (
 		<div
 			className="tiptap-block-menu"
-			style={{ top: rect.top + Math.max((rect.height - 24) / 2, 0) }}
+			style={{
+				top:
+					rect.top + Math.max((Math.min(rect.height, FIRST_LINE_HEIGHT) - TRIGGER_HEIGHT) / 2, 0),
+			}}
 			onMouseDown={(event) => event.preventDefault()}
 			onMouseLeave={onMouseLeave}
 		>
