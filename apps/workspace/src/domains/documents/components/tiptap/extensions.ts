@@ -131,7 +131,9 @@ const findDecoratableBlockRange = (doc: ProseMirrorNode, range: BlockRange | nul
 
 const isBlockHandleTarget = (target: EventTarget | null) =>
 	target instanceof HTMLElement &&
-	Boolean(target.closest(".tiptap-block-handle, .tiptap-section-generate-action"));
+	Boolean(
+		target.closest(".tiptap-block-handle, .tiptap-block-menu, .tiptap-section-generate-action"),
+	);
 
 export const commentAnchorExtension = Extension.create({
 	name: "commentAnchors",
