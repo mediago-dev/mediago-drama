@@ -377,7 +377,7 @@ func normalizeFields(fields []FormField) ([]FormField, error) {
 			if len(field.Options) == 0 {
 				return nil, fmt.Errorf("form field %q needs options", id)
 			}
-		case FieldTypeToggle, FieldTypeNumber, FieldTypeText, FieldTypeGenerationParams, FieldTypeImages:
+		case FieldTypeToggle, FieldTypeNumber, FieldTypeText, FieldTypeGenerationParams, FieldTypeImages, FieldTypePromptOptimization:
 		default:
 			return nil, fmt.Errorf("form field %q has unsupported type %q", id, fieldType)
 		}
@@ -470,6 +470,8 @@ func validateFormValue(field FormField, value any) (any, error) {
 		return validateGenerationParamsValue(field, value)
 	case FieldTypeImages:
 		return validateImagesValue(field, value)
+	case FieldTypePromptOptimization:
+		return validatePromptOptimizationValue(field, value)
 	}
 	return nil, fmt.Errorf("form field %q has unsupported type %q", field.ID, field.Type)
 }
@@ -526,4 +528,37 @@ func validateImagesValue(field FormField, value any) (any, error) {
 		return nil, fmt.Errorf("form field %q accepts at most %d images", field.ID, int(*field.Max))
 	}
 	return ids, nil
+}
+
+// validatePromptOptimizationValue normalizes a prompt-optimization submission:
+// a disabled value collapses to {"enabled": false}; an enabled one keeps only
+// the known string fields, trimmed. Route/reference existence is not checked
+// here — generate_media resolves them.
+func validatePromptOptimizationValue(field FormField, value any) (any, error) {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("form field %q expects an object with an enabled flag", field.ID)
+	}
+	enabled, ok := object["enabled"].(bool)
+	if !ok {
+		return nil, fmt.Errorf("form field %q expects a boolean enabled flag", field.ID)
+	}
+	if !enabled {
+		return map[string]any{"enabled": false}, nil
+	}
+	resolved := map[string]any{"enabled": true}
+	for _, key := range []string{"routeId", "label", "referenceId", "referenceName", "referencePrompt"} {
+		raw, present := object[key]
+		if !present || raw == nil {
+			continue
+		}
+		text, ok := raw.(string)
+		if !ok {
+			return nil, fmt.Errorf("form field %q expects %s to be a string", field.ID, key)
+		}
+		if text = strings.TrimSpace(text); text != "" {
+			resolved[key] = text
+		}
+	}
+	return resolved, nil
 }

@@ -14,6 +14,10 @@ import { useProjectStore } from "@/domains/projects/stores";
 import { cn } from "@/shared/lib/utils";
 import { AgentFormGenerationParams } from "./AgentFormGenerationParams";
 import { AgentFormImagesField, normalizeImageIds } from "./AgentFormImagesField";
+import {
+	AgentFormPromptOptimization,
+	formatPromptOptimizationValue,
+} from "./AgentFormPromptOptimization";
 import { formatGenerationParamsValue } from "./agentFormGenerationParams.helpers";
 
 export const AgentFormCard: React.FC<{ message: AgentMessage }> = ({ message }) => {
@@ -185,6 +189,9 @@ const FormFieldControl: React.FC<{
 			{field.type === "generation_params" ? (
 				<AgentFormGenerationParams value={value} disabled={disabled} onChange={onChange} />
 			) : null}
+			{field.type === "prompt_optimization" ? (
+				<AgentFormPromptOptimization value={value} disabled={disabled} onChange={onChange} />
+			) : null}
 			{field.type === "images" ? (
 				<AgentFormImagesField
 					value={value}
@@ -296,6 +303,7 @@ const formSummary = (fields: AgentFormField[], values: Record<string, unknown>) 
 const formatFormValue = (field: AgentFormField, value: unknown) => {
 	if (field.type === "generation_params") return formatGenerationParamsValue(value);
 	if (field.type === "images") return `${normalizeImageIds(value).length} 张`;
+	if (field.type === "prompt_optimization") return formatPromptOptimizationValue(value);
 	if (field.type === "toggle") return value === true ? "开" : "关";
 	if (field.type === "select") {
 		const option = (field.options ?? []).find((item) => item.value === value);

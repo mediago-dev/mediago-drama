@@ -250,6 +250,107 @@ describe("AgentFormCard", () => {
 		await waitFor(() => expect(screen.getByText(/已提交：/)).toBeTruthy());
 		expect(screen.getByText(/参考图 1 张/)).toBeTruthy();
 	});
+
+	it("renders a prompt_optimization field with model catalog and package picker, submits the composite", async () => {
+		mocks.useSWR.mockImplementation((key: unknown) => {
+			if (Array.isArray(key)) return { data: undefined };
+			if (key === "/prompt-presets") {
+				return {
+					data: [
+						{
+							id: "preset-2d",
+							name: "2D动漫",
+							category: "style",
+							prompt: "纯正2D日系",
+							source: "pack",
+						},
+					],
+				};
+			}
+			if (key === "/prompt-categories") return { data: [] };
+			return { data: promptOptimizationCatalog() };
+		});
+		vi.mocked(decideAgentSelection).mockImplementation(
+			async (_id, request) =>
+				({
+					id: "selection-4",
+					title: "确认生成参数",
+					options: [],
+					allowCustom: false,
+					status: "submitted",
+					decision: { values: request.values },
+					createdAt: "2026-06-08T10:00:00.000Z",
+				}) as never,
+		);
+		const message = promptOptimizationFormMessage();
+		seedConversation(message);
+		useProjectStore.setState({ activeProjectId: "project-1" });
+
+		render(<AgentFormCard message={message} />);
+
+		// 默认开启：展示文本模型选择与提示词包列表，而不是裸开关。
+		await waitFor(() => expect(screen.getByLabelText("优化模型")).toBeTruthy());
+		expect(screen.getByText("2D动漫")).toBeTruthy();
+		fireEvent.click(screen.getByText("2D动漫"));
+
+		fireEvent.click(screen.getByText("确认生成"));
+		await waitFor(() => expect(decideAgentSelection).toHaveBeenCalledTimes(1));
+		const [, request] = vi.mocked(decideAgentSelection).mock.calls[0];
+		const submitted = (request as { values: Record<string, unknown> }).values.optimize as Record<
+			string,
+			unknown
+		>;
+		expect(submitted.enabled).toBe(true);
+		expect(submitted.routeId).toBe("official.minimax-m3");
+		expect(submitted.referenceName).toBe("2D动漫");
+		expect(submitted.referencePrompt).toBe("纯正2D日系");
+	});
+});
+
+const promptOptimizationCatalog = () => ({
+	families: [{ id: "minimax", label: "MiniMax", kinds: ["text"] }],
+	versions: [{ id: "minimax-m3", familyId: "minimax", label: "MiniMax M3 Text", kind: "text" }],
+	routes: [
+		{
+			id: "official.minimax-m3",
+			familyId: "minimax",
+			versionId: "minimax-m3",
+			kind: "text",
+			label: "MiniMax 国内",
+			provider: "minimax",
+			model: "m3",
+			status: "available",
+			configured: true,
+			params: [],
+		},
+	],
+	models: [],
+	providers: [],
+});
+
+const promptOptimizationFormMessage = (): AgentMessage => ({
+	id: "optimize-form-ui",
+	role: "assistant",
+	content: "需要你确认生成参数",
+	kind: "message",
+	status: "complete",
+	createdAt: "2026-06-08T10:00:00.000Z",
+	metadata: {
+		form: {
+			selectionId: "selection-4",
+			projectId: "project-1",
+			title: "确认生成参数",
+			submitLabel: "确认生成",
+			fields: [
+				{
+					id: "optimize",
+					label: "优化提示词",
+					type: "prompt_optimization",
+					default: { enabled: true },
+				},
+			],
+		},
+	},
 });
 
 const imagesFormMessage = (): AgentMessage => ({

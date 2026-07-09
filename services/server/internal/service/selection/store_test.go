@@ -390,3 +390,46 @@ func TestValidateImagesFieldValues(t *testing.T) {
 		t.Fatal("want error when required field resolves to zero images")
 	}
 }
+
+func TestValidatePromptOptimizationFieldValues(t *testing.T) {
+	field := FormField{ID: "optimize", Type: FieldTypePromptOptimization}
+
+	disabled, err := validateFormValue(field, map[string]any{"enabled": false, "routeId": "stale"})
+	if err != nil {
+		t.Fatalf("validateFormValue() error = %v", err)
+	}
+	if object, ok := disabled.(map[string]any); !ok || len(object) != 1 || object["enabled"] != false {
+		t.Fatalf("disabled value = %#v, want collapsed {enabled: false}", disabled)
+	}
+
+	enabled, err := validateFormValue(field, map[string]any{
+		"enabled":         true,
+		"routeId":         " official.minimax-m3 ",
+		"referenceName":   "2D动漫",
+		"referencePrompt": "纯正2D日系动漫插画",
+		"label":           "",
+	})
+	if err != nil {
+		t.Fatalf("validateFormValue() error = %v", err)
+	}
+	object, ok := enabled.(map[string]any)
+	if !ok ||
+		object["enabled"] != true ||
+		object["routeId"] != "official.minimax-m3" ||
+		object["referenceName"] != "2D动漫" {
+		t.Fatalf("enabled value = %#v, want trimmed known fields", enabled)
+	}
+	if _, present := object["label"]; present {
+		t.Fatal("empty label should be dropped")
+	}
+
+	if _, err := validateFormValue(field, "on"); err == nil {
+		t.Fatal("want error for non-object value")
+	}
+	if _, err := validateFormValue(field, map[string]any{"routeId": "x"}); err == nil {
+		t.Fatal("want error when enabled flag is missing")
+	}
+	if _, err := validateFormValue(field, map[string]any{"enabled": true, "routeId": 42}); err == nil {
+		t.Fatal("want error for non-string routeId")
+	}
+}
