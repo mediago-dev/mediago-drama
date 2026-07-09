@@ -30,6 +30,7 @@ const store = (overrides: Partial<BundleStoreState> = {}): BundleStoreState => (
 	blockedRevs: [],
 	rendererHealthy: false,
 	serverHealthy: false,
+	hasMigration: false,
 	...overrides,
 });
 
@@ -344,8 +345,20 @@ describe("meta and store-state validation", () => {
 				blockedRevs: [1],
 				rendererHealthy: false,
 				serverHealthy: true,
+				hasMigration: true,
 			}),
 		).toBe(true);
+		// missing hasMigration is rejected (forces migration bundles to declare it)
+		expect(
+			isValidBundleStoreState({
+				activeRev: 2,
+				state: "pending",
+				bootAttempts: 1,
+				blockedRevs: [1],
+				rendererHealthy: false,
+				serverHealthy: true,
+			}),
+		).toBe(false);
 		expect(
 			isValidBundleStoreState({
 				activeRev: 2,

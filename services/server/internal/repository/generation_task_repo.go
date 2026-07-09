@@ -792,30 +792,34 @@ func normalizeGenerationTaskStatus(status string) string {
 	return strings.ToLower(strings.TrimSpace(status))
 }
 
-// CountGenerationTasksWithStatusesUpdatedSince counts tasks whose (normalized) status
-// is in the given list and that were updated at or after the given time. Used by the
-// runtime activity probe to detect in-flight work; the time bound keeps rows orphaned
-// by a crash from counting as busy forever. Status is normalized in SQL because rows
-// written before write-time normalization may carry spacing/case variants.
-func (repo *GenerationTaskRepository) CountGenerationTasksWithStatusesUpdatedSince(
+// ListGenerationTaskUpdatedAtsWithStatuses returns the updated_at timestamps of tasks
+// whose (normalized) status is in the given list. The runtime activity probe applies
+// its own wall-clock staleness window in Go on these parsed time.Time values —
+// deliberately NOT a SQL `updated_at >= ?` comparison, because updated_at is persisted
+// as a timezone-offset TEXT string (local wall clock via autoUpdateTime) and SQLite
+// compares it lexicographically, so a UTC-bound cutoff would be skewed by the machine's
+// offset. Active tasks are inherently few, so loading their rows is cheap.
+func (repo *GenerationTaskRepository) ListGenerationTaskUpdatedAtsWithStatuses(
 	ctx context.Context,
 	statuses []string,
-	since time.Time,
-) (int64, error) {
+) ([]time.Time, error) {
 	if len(statuses) == 0 {
-		return 0, nil
+		return nil, nil
 	}
 	normalized := make([]string, 0, len(statuses))
 	for _, status := range statuses {
 		normalized = append(normalized, normalizeGenerationTaskStatus(status))
 	}
-	var count int64
-	query := repo.db.WithContext(ctx).
-		Model(&domain.GenerationTaskModel{}).
+	var models []domain.GenerationTaskModel
+	if err := repo.db.WithContext(ctx).
+		Select("updated_at").
 		Where("LOWER(TRIM(status)) IN ?", normalized).
-		Where("updated_at >= ?", since)
-	if err := query.Count(&count).Error; err != nil {
-		return 0, fmt.Errorf("counting active generation tasks: %w", err)
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing active generation task timestamps: %w", err)
 	}
-	return count, nil
+	timestamps := make([]time.Time, 0, len(models))
+	for _, model := range models {
+		timestamps = append(timestamps, model.UpdatedAt)
+	}
+	return timestamps, nil
 }

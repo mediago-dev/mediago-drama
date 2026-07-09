@@ -199,7 +199,7 @@ export const resolveBundleDir = (
 };
 
 /** Point active.json at a freshly staged bundle; it stays pending until both healthy. */
-export const activateVersion = (userDataDir: string, rev: number): void => {
+export const activateVersion = (userDataDir: string, rev: number, hasMigration: boolean): void => {
 	const store = readStoreState(userDataDir);
 	writeStoreState(userDataDir, {
 		activeRev: rev,
@@ -209,6 +209,7 @@ export const activateVersion = (userDataDir: string, rev: number): void => {
 		previousRev: store.activeRev > 0 ? store.activeRev : undefined,
 		rendererHealthy: false,
 		serverHealthy: false,
+		hasMigration,
 	});
 };
 
@@ -232,8 +233,10 @@ export const markComponentHealthy = (
 };
 
 /**
- * Count one boot/apply attempt against the active pending bundle. Single owner of the
- * bootAttempts invariant for both the launch path (resolveBundleDir) and apply-now.
+ * Count one boot/apply attempt against the active pending bundle. Used by apply-now; the
+ * launch path increments equivalently inside resolveBundleDir (which already holds the
+ * resolved store), guarded by the same pending precondition, so each boot/apply counts
+ * exactly once across the two entry points.
  */
 export const recordBootAttempt = (userDataDir: string): void => {
 	const store = readStoreState(userDataDir);
@@ -316,36 +319,43 @@ export const snapshotDatabases = (dbFiles: string[], destDir: string): string[] 
 };
 
 /**
- * Restore a snapshot taken by snapshotDatabases. For each snapshotted file the current
- * file is replaced; stale -wal/-shm siblings of restored databases that were NOT part
- * of the snapshot are removed so SQLite does not replay a mismatched journal.
+ * Restore a snapshot taken by snapshotDatabases. Restore is only invoked when no server
+ * process runs (SQLite quiescent), so there is no concurrent writer. To stay crash-safe
+ * even so, the live -wal/-shm journals of every restored database are removed BEFORE the
+ * database file is overwritten: an interrupted restore can then never leave a fresh db
+ * beside a stale journal that SQLite would replay onto a mismatched image. The snapshot's
+ * own -wal/-shm (if any) are copied after the db, so the restored set is self-consistent.
  */
 export const restoreDatabases = (snapshotDir: string): void => {
 	const mapping = readJsonFile(join(snapshotDir, snapshotManifestFilename));
 	if (typeof mapping !== "object" || mapping === null) return;
 
-	const restoredTargets = new Set<string>();
-	for (const [entryName, originalPath] of Object.entries(mapping as Record<string, unknown>)) {
-		if (typeof originalPath !== "string") continue;
+	const entries = Object.entries(mapping as Record<string, unknown>).filter(
+		(entry): entry is [string, string] => typeof entry[1] === "string",
+	);
+	const isJournalSibling = (path: string) => sqliteSiblingSuffixes.some((s) => path.endsWith(s));
+	const baseDbPaths = entries.map(([, path]) => path).filter((path) => !isJournalSibling(path));
+
+	// Drop the live journals first so no stale -wal outlives the db swap.
+	for (const dbPath of baseDbPaths) {
+		for (const suffix of sqliteSiblingSuffixes) {
+			try {
+				rmSync(`${dbPath}${suffix}`, { force: true });
+			} catch {
+				// Best effort.
+			}
+		}
+	}
+
+	// db files first, then their snapshotted journals (if the snapshot captured any).
+	const ordered = entries.sort(
+		([, a], [, b]) => Number(isJournalSibling(a)) - Number(isJournalSibling(b)),
+	);
+	for (const [entryName, originalPath] of ordered) {
 		const source = join(snapshotDir, entryName);
 		if (!existsSync(source)) continue;
 		mkdirSync(dirname(originalPath), { recursive: true });
 		copyFileSync(source, originalPath);
-		restoredTargets.add(originalPath);
-	}
-
-	// Remove journal siblings that exist now but were not in the snapshot.
-	for (const target of restoredTargets) {
-		for (const suffix of sqliteSiblingSuffixes) {
-			const sibling = `${target}${suffix}`;
-			if (!restoredTargets.has(sibling) && existsSync(sibling)) {
-				try {
-					rmSync(sibling, { force: true });
-				} catch {
-					// Best effort.
-				}
-			}
-		}
 	}
 };
 

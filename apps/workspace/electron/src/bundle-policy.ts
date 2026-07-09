@@ -25,6 +25,14 @@ export interface BundleStoreState {
 	/** Per-component health signals for the active pending bundle. */
 	rendererHealthy: boolean;
 	serverHealthy: boolean;
+	/**
+	 * Whether the active rev's server runs DB migrations. Only migration releases
+	 * snapshot/restore the databases: rolling back to the previous (older) server binary
+	 * over a forward-migrated schema is unsafe, so the snapshot is restored. A
+	 * no-migration rev shares the schema with the previous binary, so its databases are
+	 * never touched — restoring would only destroy the user data it legitimately wrote.
+	 */
+	hasMigration: boolean;
 }
 
 export const initialStoreState: BundleStoreState = {
@@ -34,6 +42,7 @@ export const initialStoreState: BundleStoreState = {
 	blockedRevs: [],
 	rendererHealthy: false,
 	serverHealthy: false,
+	hasMigration: false,
 };
 
 export interface BundleCandidate {
@@ -215,6 +224,7 @@ export const isValidBundleManifestPayload = (
 		payload.minShellApi <= 0 ||
 		(payload.disabled !== undefined && typeof payload.disabled !== "boolean") ||
 		(payload.hasMigration !== undefined && typeof payload.hasMigration !== "boolean") ||
+		(payload.edition !== undefined && typeof payload.edition !== "string") ||
 		(payload.notes !== undefined && typeof payload.notes !== "string")
 	) {
 		return false;
@@ -266,6 +276,7 @@ export const isValidBundleStoreState = (value: unknown): value is BundleStoreSta
 		state.blockedRevs.every((rev) => typeof rev === "number") &&
 		(state.previousRev === undefined || typeof state.previousRev === "number") &&
 		typeof state.rendererHealthy === "boolean" &&
-		typeof state.serverHealthy === "boolean"
+		typeof state.serverHealthy === "boolean" &&
+		typeof state.hasMigration === "boolean"
 	);
 };

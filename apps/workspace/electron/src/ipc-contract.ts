@@ -193,5 +193,7 @@ export interface BundleManifestPayload {
 	disabled?: boolean;
 	/** Set when this release runs DB migrations; snapshot restore is the only rollback. */
 	hasMigration?: boolean;
+	/** Build edition the renderer was compiled for ("community"/"pro"); release-side continuity check. */
+	edition?: string;
 	notes?: string;
 }
