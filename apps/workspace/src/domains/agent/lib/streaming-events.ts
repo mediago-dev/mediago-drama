@@ -22,6 +22,7 @@ import {
 } from "@/domains/agent/lib/runtime-log";
 import { syncAgentSessionStatus } from "@/domains/agent/lib/session-sync";
 import { inferToolKind } from "@/domains/agent/lib/tool-kind";
+import { refreshSelectedGenerationAssetDependents } from "@/domains/generation/lib/refresh-selected-assets";
 import { useAgentStore } from "@/domains/agent/stores";
 import { pendingRootRunId } from "@/domains/agent/stores/constants";
 import { getEditorHandle } from "@/domains/documents/lib/editor-registry";
@@ -468,7 +469,13 @@ export const handleStreamingAgentEvent = (
 	if (event.type === "agent.run.completed") {
 		if (context.meta?.replay || !isLifecycleEventForCurrentRun(event)) return;
 		agentStore.recordRuntimeStatus(acpRuntimeStatus);
-		void refreshWorkspaceStateFromBackend(event.projectId ?? context.projectId ?? undefined);
+		const completedProjectId = event.projectId ?? context.projectId ?? undefined;
+		void refreshWorkspaceStateFromBackend(completedProjectId);
+		// An agent run may have generated or finalized (定稿) assets. Synchronously
+		// polled image tasks emit no SSE completion event, so nothing else
+		// revalidates the finalized-asset caches that drive resource covers and
+		// counts — do it here so the 角色 · 图片和音频 grid reflects the new pick.
+		refreshSelectedGenerationAssetDependents(completedProjectId);
 		agentStore.finishRun(runId);
 		void refreshAgentChatTranscript(
 			event.sessionId || agentStore.sessionId,
