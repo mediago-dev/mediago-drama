@@ -21,6 +21,33 @@ export const errorMessage = (error: unknown, fallback: string) => {
 	return fallback;
 };
 
+// The raw `kind` enum ("text"/"image"/…) is an internal value; surface a
+// localized label in the Chinese UI instead.
+export const assetKindLabel = (kind: string): string => {
+	switch (kind) {
+		case "image":
+			return "图片";
+		case "video":
+			return "视频";
+		case "audio":
+			return "音频";
+		case "text":
+			return "文本";
+		default:
+			return "文件";
+	}
+};
+
+// Managed documents are stored with a leading YAML frontmatter block
+// (--- id/title/category/version ---) that is noise for a reader. Split it off
+// so the preview can hide it behind a toggle and show just the body. Only a
+// block anchored at the very start with a closing fence counts.
+export const splitFrontmatter = (text: string): { body: string; frontmatter: string | null } => {
+	const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
+	if (!match) return { body: text, frontmatter: null };
+	return { body: text.slice(match[0].length), frontmatter: match[1] };
+};
+
 export const fetchTextAsset = async (url: string) => {
 	if (!url.trim()) throw new Error("素材地址缺失。");
 	const response = await fetchTextPreviewResponse(url);

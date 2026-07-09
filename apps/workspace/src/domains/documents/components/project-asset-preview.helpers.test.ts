@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	assetKindLabel,
 	fetchTextAsset,
 	projectAssetContentURL,
+	splitFrontmatter,
 	textPreviewMaxChars,
 	truncateTextPreview,
 } from "./project-asset-preview.helpers";
@@ -146,5 +148,35 @@ describe("project asset preview helpers", () => {
 		await expect(
 			fetchTextAsset("/api/v1/projects/project-1/assets/asset-1/content"),
 		).rejects.toThrow("素材接口返回了前端页面");
+	});
+
+	it("localizes asset kinds and falls back to 文件 for unknown kinds", () => {
+		expect(assetKindLabel("image")).toBe("图片");
+		expect(assetKindLabel("video")).toBe("视频");
+		expect(assetKindLabel("audio")).toBe("音频");
+		expect(assetKindLabel("text")).toBe("文本");
+		expect(assetKindLabel("binary")).toBe("文件");
+		expect(assetKindLabel("whatever")).toBe("文件");
+	});
+
+	it("splits a leading YAML frontmatter block from the body", () => {
+		const text = "---\nid: doc-1\ntitle: 舔狗系统\nversion: 6\n---\n正文第一行\n第二行";
+		const { body, frontmatter } = splitFrontmatter(text);
+		expect(frontmatter).toBe("id: doc-1\ntitle: 舔狗系统\nversion: 6");
+		expect(body).toBe("正文第一行\n第二行");
+	});
+
+	it("leaves text without frontmatter untouched", () => {
+		const text = "没有任何 frontmatter 的普通正文\n第二行";
+		const { body, frontmatter } = splitFrontmatter(text);
+		expect(frontmatter).toBeNull();
+		expect(body).toBe(text);
+	});
+
+	it("does not treat an unterminated fence as frontmatter", () => {
+		const text = "---\nid: doc-1\n没有结束围栏";
+		const { body, frontmatter } = splitFrontmatter(text);
+		expect(frontmatter).toBeNull();
+		expect(body).toBe(text);
 	});
 });
