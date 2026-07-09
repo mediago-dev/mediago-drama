@@ -1228,6 +1228,78 @@ func TestACPClientSessionUpdatePublishesToolCallUpdatePayload(t *testing.T) {
 	}
 }
 
+func TestACPClientSessionUpdateIgnoresProviderErrorTextInCompletedToolResult(t *testing.T) {
+	events := []agentEvent{}
+	client := &acpClient{
+		publish: func(event agentEvent) {
+			events = append(events, event)
+		},
+	}
+	client.setAcceptingSessionUpdates(true)
+
+	// A generation poll that succeeded after the user recharged: the images are
+	// present, but the task record still carries the earlier attempt's balance
+	// error as data. A completed tool call must not be treated as a run failure.
+	err := client.SessionUpdate(context.Background(), acp.SessionNotification{
+		Update: acp.UpdateToolCall(
+			"call-poll",
+			acp.WithUpdateTitle("Tool: mediago_drama_generation/poll_generation_task"),
+			acp.WithUpdateStatus(acp.ToolCallStatusCompleted),
+			acp.WithUpdateRawOutput(map[string]any{
+				"status": "succeeded",
+				"error":  "当前 API Key 余额不足，请充值后重试。",
+				"assets": []map[string]any{{"kind": "image", "url": "https://example.com/li-jun.png"}},
+			}),
+		),
+	})
+	if err != nil {
+		t.Fatalf("SessionUpdate returned error: %v", err)
+	}
+	if got := client.runtimeErrorText(); got != "" {
+		t.Fatalf("runtimeErrorText = %q, want empty for a completed tool result", got)
+	}
+	if len(events) != 1 || events[0].ACP == nil {
+		t.Fatalf("events = %#v, want one ACP event", events)
+	}
+	event := events[0]
+	if event.ACP.Kind != "toolCallUpdate" || event.ACP.Status != "completed" {
+		t.Fatalf("acp = %#v, want completed tool call update", event.ACP)
+	}
+	if strings.Contains(event.Message, "余额不足") {
+		t.Fatalf("message = %q, want no balance alert for a completed tool result", event.Message)
+	}
+}
+
+func TestACPClientSessionUpdateReportsProviderErrorInFailedToolCall(t *testing.T) {
+	events := []agentEvent{}
+	client := &acpClient{
+		publish: func(event agentEvent) {
+			events = append(events, event)
+		},
+	}
+	client.setAcceptingSessionUpdates(true)
+
+	err := client.SessionUpdate(context.Background(), acp.SessionNotification{
+		Update: acp.UpdateToolCall(
+			"call-fail",
+			acp.WithUpdateTitle("工具调用"),
+			acp.WithUpdateStatus(acp.ToolCallStatusFailed),
+			acp.WithUpdateContent([]acp.ToolCallContent{
+				acp.ToolContent(acp.TextBlock("insufficient_quota: credit balance is too low")),
+			}),
+		),
+	})
+	if err != nil {
+		t.Fatalf("SessionUpdate returned error: %v", err)
+	}
+	if got := client.runtimeErrorText(); got != apiKeyBalanceInsufficientMessage {
+		t.Fatalf("runtimeErrorText = %q, want balance alert for a failed tool call", got)
+	}
+	if len(events) != 1 || events[0].Message != apiKeyBalanceInsufficientMessage {
+		t.Fatalf("events = %#v, want failed tool call to surface the balance alert", events)
+	}
+}
+
 func TestACPClientSessionUpdateClassifiesCodexRuntimeLog(t *testing.T) {
 	events := []agentEvent{}
 	client := &acpClient{
