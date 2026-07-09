@@ -10,10 +10,14 @@ const mocks = vi.hoisted(() => ({
 	decideAgentPermission: vi.fn(),
 	decideAgentSelection: vi.fn(),
 	decideDocumentToolApproval: vi.fn(),
+	uploadMediaAsset: vi.fn(),
 	useSWR: vi.fn(),
 }));
 
 vi.mock("@/domains/agent/api/agent", () => mocks);
+vi.mock("@/domains/workspace/api/media", () => ({
+	uploadMediaAsset: (...args: unknown[]) => mocks.uploadMediaAsset(...args),
+}));
 vi.mock("swr", () => ({ default: mocks.useSWR }));
 
 describe("AgentFormCard", () => {
@@ -211,6 +215,67 @@ describe("AgentFormCard", () => {
 		expect(screen.queryByText("取消")).toBeNull();
 		expect(screen.queryByRole("spinbutton")).toBeNull();
 	});
+
+	it("renders an images field with prefilled thumbnails, removes one, and submits the id array", async () => {
+		vi.mocked(decideAgentSelection).mockImplementation(
+			async (_id, request) =>
+				({
+					id: "selection-3",
+					title: "确认生成参数",
+					options: [],
+					allowCustom: false,
+					status: "submitted",
+					decision: { values: request.values },
+					createdAt: "2026-06-08T10:00:00.000Z",
+				}) as never,
+		);
+		const message = imagesFormMessage();
+		seedConversation(message);
+		useProjectStore.setState({ activeProjectId: "project-1" });
+
+		render(<AgentFormCard message={message} />);
+
+		// 预填的两张定稿图渲染为缩略图，各带移除按钮。
+		const removeButtons = screen.getAllByLabelText("移除参考图");
+		expect(removeButtons.length).toBe(2);
+		fireEvent.click(removeButtons[0]);
+		await waitFor(() => expect(screen.getAllByLabelText("移除参考图").length).toBe(1));
+
+		fireEvent.click(screen.getByText("确认生成"));
+		await waitFor(() => expect(decideAgentSelection).toHaveBeenCalledTimes(1));
+		const [, request] = vi.mocked(decideAgentSelection).mock.calls[0];
+		expect(request).toEqual({ values: { refs: ["asset-b"] } });
+
+		// 冻结摘要按张数汇总。
+		await waitFor(() => expect(screen.getByText(/已提交：/)).toBeTruthy());
+		expect(screen.getByText(/参考图 1 张/)).toBeTruthy();
+	});
+});
+
+const imagesFormMessage = (): AgentMessage => ({
+	id: "images-form-ui",
+	role: "assistant",
+	content: "需要你确认生成参数",
+	kind: "message",
+	status: "complete",
+	createdAt: "2026-06-08T10:00:00.000Z",
+	metadata: {
+		form: {
+			selectionId: "selection-3",
+			projectId: "project-1",
+			title: "确认生成参数",
+			submitLabel: "确认生成",
+			fields: [
+				{
+					id: "refs",
+					label: "参考图",
+					type: "images",
+					max: 3,
+					default: ["asset-a", "asset-b"],
+				},
+			],
+		},
+	},
 });
 
 const seedConversation = (message: AgentMessage, ...rest: AgentMessage[]) => {

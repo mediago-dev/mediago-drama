@@ -91,6 +91,10 @@ editable: true
      不需要也不要提供 options；`default` 可传 `{routeId, params}` 用 `preferences`
      （用户在生成工作台的习惯参数：routeIds/routeParams）预填。
    - 是否优化提示词用 toggle；其余业务参数按需用 select/number/text。
+   - 需要保持形象一致（角色多阶段、续作配图）或用户提到参考图时，加一个 `type: "images"` 的
+     「参考图」字段（max 建议 3）：`default` 预填该资源已定稿图的资产 id，用户可上传或移除；
+     提交后把 values 里的 id 数组填入 `generate_media` 的 `referenceAssetIds`。
+     目标 section 里已插入的图片会被服务端自动作为参考，无需重复传。
    提交后 values 中该字段为 `{routeId, label, params}`，严格按其 `routeId` 与 `params`
    调 `generate_media`，不要替换或增删参数；比例/分辨率组合已由客户端按模型 schema 校正，
    无需再次弹卡确认。
