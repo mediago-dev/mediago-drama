@@ -32,6 +32,7 @@ import {
 } from "@/domains/documents/components/tiptap/extensions";
 import { HeadingActionButton } from "@/domains/documents/components/tiptap/editor-overlays";
 import { BlockActionMenu } from "@/domains/documents/components/tiptap/block-action-menu";
+import { sliceToCleanMarkdown } from "@/domains/documents/lib/mgmd/clipboard";
 import {
 	diffTopLevelBlocks,
 	findTopLevelBlockRangeByIndex,
@@ -273,6 +274,7 @@ export const MarkdownHybridEditor = forwardRef<
 	const pendingMarkdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const streamingTargetRef = useRef<StreamingBlockTarget | null>(null);
 	const editorSurfaceRef = useRef<HTMLDivElement>(null);
+	const clipboardEditorRef = useRef<Editor | null>(null);
 	const blockMenuOpenRef = useRef(false);
 	const [hoveredBlockRect, setHoveredBlockRect] = useState<HoveredBlockRect | null>(null);
 	const [blockMenuOpen, setBlockMenuOpen] = useState(false);
@@ -369,6 +371,7 @@ export const MarkdownHybridEditor = forwardRef<
 					class: "tiptap-content",
 					"aria-label": "Markdown 编辑器",
 				},
+				clipboardTextSerializer: (slice) => sliceToCleanMarkdown(clipboardEditorRef.current, slice),
 			},
 			immediatelyRender: false,
 			shouldRerenderOnTransaction: false,
@@ -376,6 +379,7 @@ export const MarkdownHybridEditor = forwardRef<
 				flushPendingMarkdownChange();
 			},
 			onCreate: ({ editor: nextEditor }) => {
+				clipboardEditorRef.current = nextEditor;
 				rememberParsedMarkdown(documentId, value, nextEditor);
 			},
 			onUpdate: ({ editor: nextEditor }) => {
