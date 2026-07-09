@@ -67,11 +67,13 @@ describe("AgentA2UIMessage", () => {
 
 		expect(screen.getByText("选择插画风格")).toBeTruthy();
 		expect(screen.getByText("已选择：甜美粉彩")).toBeTruthy();
-		// The picked option's preview stays visible on the frozen card.
+		// The picked option's preview stays visible, and clicking it opens the
+		// zoom lightbox rather than re-submitting a decision.
 		expect(document.querySelector("img")?.getAttribute("src")).toBe("https://x/sweet.png");
-		// The interactive option button is gone; the card can't be clicked twice.
+		expect(screen.getByRole("button", { name: /查看大图/ })).toBeTruthy();
+		// The interactive A2UI surface (its option buttons) is gone.
 		expect(screen.queryByText(/选择一种插画风格/)).toBeNull();
-		expect(document.querySelector("button")).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: /查看大图/ }));
 		expect(onAction).not.toHaveBeenCalled();
 	});
 
@@ -100,7 +102,9 @@ describe("AgentA2UIMessage", () => {
 
 		expect(screen.getByText("已选择：甜美粉彩")).toBeTruthy();
 		expect(document.querySelector("img")?.getAttribute("src")).toBe("https://x/sweet.png");
-		expect(document.querySelector("button")).toBeNull();
+		// The only button is the zoom trigger; no decision buttons remain.
+		expect(screen.getByRole("button", { name: /查看大图/ })).toBeTruthy();
+		expect(document.querySelectorAll("button")).toHaveLength(1);
 		// The server-derived resolution persists for later renders.
 		await waitFor(() =>
 			expect(useAgentPersistenceStore.getState().resolvedSelections["selection-1"]?.status).toBe(
