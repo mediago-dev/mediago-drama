@@ -17,14 +17,10 @@ import {
 	generationTasksQueryKey,
 	previewGenerationVoice,
 	projectGenerationConversation,
-	selectedGenerationAssetsKey,
 	updateSelectedGenerationAsset,
 } from "@/domains/generation/api/generation";
+import { refreshSelectedGenerationAssetDependents } from "@/domains/generation/lib/refresh-selected-assets";
 import { uploadMediaAsset, type MediaAsset } from "@/domains/workspace/api/media";
-import {
-	workspaceDocumentResourcesKey,
-	workspaceStoryboardVideoResourcesKey,
-} from "@/domains/workspace/api/workspace";
 import { HistoryGenerationList } from "@/domains/generation/components/MediaGenerationHistory";
 import {
 	ImageStickerEditorDialog,
@@ -1808,14 +1804,6 @@ const selectionKeysWithOverrides = (
 		else keys.delete(key);
 	}
 	return Array.from(keys);
-};
-
-const refreshSelectedGenerationAssetDependents = (projectId: string) => {
-	void mutateSWR(
-		(key) => Array.isArray(key) && key[0] === selectedGenerationAssetsKey && key[1] === projectId,
-	);
-	void mutateSWR(workspaceDocumentResourcesKey(projectId));
-	void mutateSWR(workspaceStoryboardVideoResourcesKey(projectId));
 };
 
 const renameFile = (file: File, filename: string, mimeType: string) => {
