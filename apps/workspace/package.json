@@ -57,6 +57,7 @@
     "@tiptap/extension-table-cell": "^3.23.4",
     "@tiptap/extension-table-header": "^3.23.4",
     "@tiptap/extension-table-row": "^3.23.4",
+    "@tiptap/extension-text-align": "3.27.3",
     "@tiptap/markdown": "^3.23.4",
     "@tiptap/pm": "^3.23.4",
     "@tiptap/react": "^3.23.4",
