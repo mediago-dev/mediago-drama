@@ -14,6 +14,9 @@ export interface ResolvedAgentSelection {
 	status: string;
 	summary: string;
 	title?: string;
+	// Preview of the picked option (e.g. the finalized image or style sample)
+	// so the frozen card still shows WHAT was chosen, not just its label.
+	imageUrl?: string;
 }
 
 // Cap the resolved map so it can't grow without bound across many sessions.
@@ -181,12 +184,13 @@ const normalizeResolvedSelections = (value: unknown) => {
 	const resolvedSelections: Record<string, ResolvedAgentSelection> = {};
 	for (const [selectionId, resolution] of Object.entries(value)) {
 		if (!selectionId || !resolution || typeof resolution !== "object") continue;
-		const { status, summary, title } = resolution as Partial<ResolvedAgentSelection>;
+		const { status, summary, title, imageUrl } = resolution as Partial<ResolvedAgentSelection>;
 		if (typeof status === "string" && status) {
 			resolvedSelections[selectionId] = {
 				status,
 				summary: typeof summary === "string" ? summary : "",
 				...(typeof title === "string" && title ? { title } : {}),
+				...(typeof imageUrl === "string" && imageUrl ? { imageUrl } : {}),
 			};
 		}
 	}

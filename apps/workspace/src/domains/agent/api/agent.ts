@@ -370,6 +370,13 @@ export const listAgentSelections = async (projectId?: string | null) => {
 	return response.data;
 };
 
+export const getAgentSelection = async (selectionId: string, projectId?: string | null) => {
+	const response = await httpClient.get<AgentSelection>(
+		projectAgentPath(projectId, `/selections/${encodeURIComponent(selectionId)}`),
+	);
+	return response.data;
+};
+
 export const decideAgentSelection = async (
 	selectionId: string,
 	decision: AgentSelectionDecisionRequest,

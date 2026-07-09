@@ -105,7 +105,7 @@ describe("handleDeterministicA2UIAction", () => {
 			title: "选择一种插画风格",
 			options: [
 				{ id: "sweet", label: "甜美粉彩" },
-				{ id: "retro", label: "复古线条" },
+				{ id: "retro", label: "复古线条", imageUrl: "https://x/retro.png" },
 			],
 			allowCustom: true,
 			status: "selected",
@@ -150,11 +150,13 @@ describe("handleDeterministicA2UIAction", () => {
 			},
 		});
 		expect(messages[0]?.metadata?.a2ui).toBeUndefined();
-		// The decision persists so the card stays frozen across hydrates.
+		// The decision persists (with the picked option's preview image) so the
+		// card stays frozen across hydrates and still shows what was chosen.
 		expect(useAgentPersistenceStore.getState().resolvedSelections["selection-1"]).toEqual({
 			status: "selected",
 			summary: "已选择：复古线条",
 			title: "选择一种插画风格",
+			imageUrl: "https://x/retro.png",
 		});
 	});
 
