@@ -1,0 +1,203 @@
+name: Bundle Hot Release
+
+# Publishes a signed application-bundle hot update (renderer + server binaries) to the
+# fixed channel release tag `bundle-<channel>`. Installed desktop apps download only
+# the changed components and apply on next launch or while the server is idle — no
+# installer round-trip.
+#
+# Discipline (enforced below where possible):
+#   - Bump apps/workspace/bundle-update.json in a normal PR before dispatching.
+#   - Renderer/Go-server changes may ship here. Anything touching the Electron shell
+#     (apps/workspace/electron/, preload, vendored CLI tools) MUST go through the full
+#     Electron Release.
+#   - Releases containing DB migrations must set the has_migration input; migrations
+#     must stay additive (new tables/columns only).
+#
+# macOS signing (optional but recommended): when the MACOS_CERT_P12 secret is present
+# the darwin server binary is Developer ID signed (+ notarized when notary secrets are
+# present). Without secrets the binary ships with Go's default ad-hoc signature, which
+# is sufficient for the sidecar spawn path.
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Hot-update channel tag suffix
+        required: true
+        default: beta
+        type: choice
+        options:
+          - beta
+          - latest
+      notes:
+        description: Optional release notes shown in the app
+        required: false
+        type: string
+      has_migration:
+        description: This release contains DB migrations (additive-only)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bundle-hot-release-${{ inputs.channel }}
+  cancel-in-progress: false
+
+env:
+  HUSKY: "0"
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.9.0"
+
+jobs:
+  release:
+    name: Build, sign, and publish bundle
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.work
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
+
+      - uses: go-task/setup-task@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Guard — new rev must be greater than the published one
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          new_rev="$(node -p 'JSON.parse(require("node:fs").readFileSync("apps/workspace/bundle-update.json","utf8")).bundleRev')"
+          if ! [[ "$new_rev" =~ ^[0-9]+$ ]]; then
+            echo "invalid bundleRev in bundle-update.json" >&2
+            exit 1
+          fi
+          tag="bundle-${CHANNEL}"
+          if gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern bundle-manifest.json --output current-manifest.json 2>/dev/null; then
+            current_rev="$(node -p 'const e=JSON.parse(require("node:fs").readFileSync("current-manifest.json","utf8"));JSON.parse(Buffer.from(e.payloadB64,"base64").toString("utf8")).bundleRev')"
+            echo "published rev: $current_rev, new rev: $new_rev"
+            if [[ "$new_rev" -le "$current_rev" ]]; then
+              echo "bundleRev ($new_rev) must be greater than the published rev ($current_rev)." >&2
+              echo "Bump apps/workspace/bundle-update.json in a PR first." >&2
+              exit 1
+            fi
+          else
+            echo "no published manifest on $tag yet; first release for this channel"
+          fi
+
+      - name: Build renderer
+        env:
+          MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: ${{ vars.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL }}
+          MODEL_PLATFORM: ${{ vars.MODEL_PLATFORM }}
+          VITE_ELECTRON_BUILD: "1"
+          VITE_MEDIAGO_APIKEY_URL: ${{ vars.VITE_MEDIAGO_APIKEY_URL }}
+          VITE_TALKINGDATA_APP_ID: ${{ vars.VITE_TALKINGDATA_APP_ID }}
+        run: |
+          pnpm --dir apps/workspace build
+          task sync:workspace-dist
+
+      - name: Build server binaries (darwin-arm64 + windows-x64)
+        run: |
+          task build:server:target PLATFORM=darwin-arm64
+          task build:server:target PLATFORM=windows-x64
+
+      - name: Sign darwin server binary (when signing secrets are configured)
+        shell: bash
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          binary="bin/darwin-arm64/mediago-server"
+          if [[ -z "${MACOS_CERT_P12}" ]]; then
+            echo "MACOS_CERT_P12 secret not configured — shipping with Go's ad-hoc signature"
+            exit 0
+          fi
+
+          keychain="$RUNNER_TEMP/bundle-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 16)"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 900 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          echo "$MACOS_CERT_P12" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+          if [[ -z "$identity" ]]; then
+            echo "no Developer ID Application identity found in the imported certificate" >&2
+            exit 1
+          fi
+
+          codesign --force --options runtime --timestamp --sign "$identity" "$binary"
+          codesign --verify --strict --verbose=2 "$binary"
+
+          if [[ -n "${APPLE_ID}" && -n "${APPLE_APP_SPECIFIC_PASSWORD}" && -n "${APPLE_TEAM_ID}" ]]; then
+            ditto -c -k --keepParent "$binary" "$RUNNER_TEMP/mediago-server-notarize.zip"
+            xcrun notarytool submit "$RUNNER_TEMP/mediago-server-notarize.zip" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+          else
+            echo "notary secrets not configured — skipping notarization (signed binary still runs via spawn)"
+          fi
+
+      - name: Package and sign bundle
+        env:
+          RENDERER_UPDATE_PRIVATE_KEY: ${{ secrets.RENDERER_UPDATE_PRIVATE_KEY }}
+          RENDERER_UPDATE_CHANNEL: ${{ inputs.channel }}
+          RENDERER_UPDATE_NOTES: ${{ inputs.notes }}
+          MEDIAGO_BUNDLE_HAS_MIGRATION: ${{ inputs.has_migration && '1' || '' }}
+          MEDIAGO_SERVER_BINARY_DARWIN_ARM64: ${{ github.workspace }}/bin/darwin-arm64/mediago-server
+          MEDIAGO_SERVER_BINARY_WINDOWS_X64: ${{ github.workspace }}/bin/windows-x64/mediago-server.exe
+        run: node apps/workspace/scripts/package-bundle-update.ts
+
+      - name: Publish to channel release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          tag="bundle-${CHANNEL}"
+          out="apps/workspace/release/bundle"
+
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Application bundle hot updates (${CHANNEL})" \
+              --notes "Fixed channel release. bundle-manifest.json is replaced in place by the Bundle Hot Release workflow; installed apps poll it here." \
+              --latest=false
+          fi
+
+          # New zips per rev: never clobber, so a published rev cannot be silently replaced.
+          gh release upload "$tag" "$out"/renderer-*.zip "$out"/server-*.zip --repo "$GITHUB_REPOSITORY"
+          # The manifest pointer is the only mutable asset.
+          gh release upload "$tag" "$out/bundle-manifest.json" --repo "$GITHUB_REPOSITORY" --clobber
+
+          echo "published $(ls "$out")"

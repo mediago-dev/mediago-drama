@@ -74,8 +74,12 @@ function main(): void {
 				category: "public.app-category.productivity",
 				target: electronTargetPlatform === "darwin-arm64" ? ["zip"] : ["dmg", "zip"],
 				icon: "../../build/icons/icon.icns",
+				// MEDIAGO_MAC_SIGN=1 (set by CI when signing secrets exist) enables Developer
+				// ID signing + notarization; otherwise darwin builds stay unsigned/ad-hoc.
 				...(electronTargetPlatform === "darwin-arm64"
-					? { identity: null, hardenedRuntime: false }
+					? process.env.MEDIAGO_MAC_SIGN === "1"
+						? { hardenedRuntime: true, notarize: true }
+						: { identity: null, hardenedRuntime: false }
 					: {}),
 			},
 			win: {
@@ -99,32 +103,32 @@ function main(): void {
 	writeFileSync(join(electronAppDir, "package.json"), `${JSON.stringify(appPackage, null, 2)}\n`);
 	cpSync(electronDistDir, electronAppDir, { recursive: true });
 	cpSync(rendererDistDir, join(electronAppDir, "renderer"), { recursive: true });
-	writeRendererMeta(join(electronAppDir, "renderer"), appPackage.version);
+	writeBundleMeta(join(electronAppDir, "renderer"), appPackage.version);
 }
 
 function readWorkspacePackage(): WorkspacePackage {
 	return JSON.parse(readFileSync(workspacePackagePath, "utf8")) as WorkspacePackage;
 }
 
-// Identity of the builtin renderer bundle, consumed by the hot-update loader
-// (electron/src/renderer-store.ts) to compare against downloaded bundles.
-function writeRendererMeta(stagedRendererDir: string, appBaseline: string): void {
-	const rendererUpdatePath = join(workspaceDir, "renderer-update.json");
-	const parsed = JSON.parse(readFileSync(rendererUpdatePath, "utf8")) as {
-		rendererRev?: number;
+// Identity of the builtin application bundle (renderer + server), consumed by the
+// hot-update loader (electron/src/bundle-store.ts) to compare against downloaded
+// bundles. Component identities are unknown at stage time (empty strings), which
+// makes the first hot update download every component — by design.
+function writeBundleMeta(stagedRendererDir: string, appBaseline: string): void {
+	const bundleUpdatePath = join(workspaceDir, "bundle-update.json");
+	const parsed = JSON.parse(readFileSync(bundleUpdatePath, "utf8")) as {
+		bundleRev?: number;
 	};
-	if (!Number.isInteger(parsed.rendererRev) || (parsed.rendererRev ?? 0) < 1) {
-		throw new Error(`invalid rendererRev in ${rendererUpdatePath}`);
+	if (!Number.isInteger(parsed.bundleRev) || (parsed.bundleRev ?? 0) < 1) {
+		throw new Error(`invalid bundleRev in ${bundleUpdatePath}`);
 	}
 	const meta = {
-		rendererRev: parsed.rendererRev,
+		bundleRev: parsed.bundleRev,
 		minShellApi: SHELL_API_VERSION,
 		appBaseline,
+		components: { renderer: "", server: "" },
 	};
-	writeFileSync(
-		join(stagedRendererDir, "renderer-meta.json"),
-		`${JSON.stringify(meta, null, 2)}\n`,
-	);
+	writeFileSync(join(stagedRendererDir, "bundle-meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
 }
 
 function ensureDirectory(path: string, message: string): void {

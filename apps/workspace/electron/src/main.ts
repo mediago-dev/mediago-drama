@@ -16,14 +16,17 @@ import {
 	type NativeThemeSource,
 	desktopIpcChannel,
 } from "./ipc-contract.js";
-import { registerRendererHotUpdater, resolveActiveRenderer } from "./hot-updater.js";
+import { prepareActiveBundle, registerBundleUpdater } from "./bundle-updater.js";
 import { preloadPath } from "./paths.js";
 import { startServerSidecar, stopServerSidecar } from "./sidecar.js";
 import { registerDesktopUpdater } from "./updater.js";
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
-const activeRenderer = resolveActiveRenderer();
+// Resolves the bundle (renderer + server binary) for this launch, restoring the DB
+// snapshot after a rollback and snapshotting before a pending bundle's first boot —
+// this runs before the sidecar spawns, while SQLite is quiescent.
+const activeBundle = prepareActiveBundle();
 
 // Retain shown notifications until they are dismissed. Without a live reference
 // macOS may garbage-collect the Notification before it is displayed.
@@ -92,7 +95,7 @@ const createWindow = async () => {
 		if (app.isPackaged) {
 			await mainWindow.webContents.session.clearCache();
 		}
-		await mainWindow.loadFile(join(activeRenderer.dir, "index.html"), {
+		await mainWindow.loadFile(join(activeBundle.rendererDir, "index.html"), {
 			hash: app.isPackaged ? "/" : undefined,
 			query: app.isPackaged ? { version: app.getVersion() } : undefined,
 		});
@@ -178,34 +181,31 @@ ipcMain.handle(
 	},
 );
 
-ipcMain.handle(
-	desktopIpcChannel.showNotification,
-	(event, options: DesktopNotificationOptions) => {
-		if (!Notification.isSupported()) {
-			console.warn("[mediago-electron] system notifications are not supported on this platform");
-			return false;
+ipcMain.handle(desktopIpcChannel.showNotification, (event, options: DesktopNotificationOptions) => {
+	if (!Notification.isSupported()) {
+		console.warn("[mediago-electron] system notifications are not supported on this platform");
+		return false;
+	}
+	const notification = new Notification({ title: options.title, body: options.body });
+	liveNotifications.add(notification);
+	const release = () => liveNotifications.delete(notification);
+	const id = typeof options.id === "string" ? options.id.trim() : "";
+	// Clicking the OS notification brings the window forward and tells the
+	// renderer which action to run so it can route to the right page.
+	notification.on("click", () => {
+		if (id) {
+			showMainWindow();
+			event.sender.send(desktopIpcChannel.notificationClicked, id);
 		}
-		const notification = new Notification({ title: options.title, body: options.body });
-		liveNotifications.add(notification);
-		const release = () => liveNotifications.delete(notification);
-		const id = typeof options.id === "string" ? options.id.trim() : "";
-		// Clicking the OS notification brings the window forward and tells the
-		// renderer which action to run so it can route to the right page.
-		notification.on("click", () => {
-			if (id) {
-				showMainWindow();
-				event.sender.send(desktopIpcChannel.notificationClicked, id);
-			}
-			release();
-		});
-		notification.on("close", release);
-		notification.show();
-		// Backstop cleanup so the retained reference cannot leak if no event fires.
-		setTimeout(release, 60_000).unref();
-		console.log(`[mediago-electron] system notification shown: ${options.title}`);
-		return true;
-	},
-);
+		release();
+	});
+	notification.on("close", release);
+	notification.show();
+	// Backstop cleanup so the retained reference cannot leak if no event fires.
+	setTimeout(release, 60_000).unref();
+	console.log(`[mediago-electron] system notification shown: ${options.title}`);
+	return true;
+});
 
 ipcMain.handle(desktopIpcChannel.startWindowDrag, () => {
 	// Electron uses CSS app-region for dragging; imperative renderer calls are no-ops.
@@ -217,7 +217,7 @@ ipcMain.handle(desktopIpcChannel.setNativeThemeSource, (_event, source: unknown)
 });
 
 registerDesktopUpdater({ getWindow: () => mainWindow });
-registerRendererHotUpdater({ getWindow: () => mainWindow, active: activeRenderer });
+registerBundleUpdater({ getWindow: () => mainWindow, active: activeBundle });
 
 const safeDownloadFilename = (value: string) => {
 	const cleaned = basename(String(value || "download"))
@@ -250,7 +250,7 @@ const pathIsAvailable = async (path: string) => {
 };
 
 const startApp = async () => {
-	startServerSidecar();
+	startServerSidecar({ binaryPath: activeBundle.serverBinPath });
 	await createWindow();
 };
 

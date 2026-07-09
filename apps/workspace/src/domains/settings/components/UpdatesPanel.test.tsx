@@ -1,33 +1,33 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UpdatesPanel } from "@/domains/settings/components/UpdatesPanel";
-import type { DesktopUpdateStatus, RendererUpdateStatus } from "@/shared/desktop/types";
+import type { DesktopUpdateStatus, BundleUpdateStatus } from "@/shared/desktop/types";
 import {
-	applyRendererUpdate,
+	applyBundleUpdate,
 	checkDesktopUpdate,
-	checkRendererUpdate,
+	checkBundleUpdate,
 	downloadDesktopUpdate,
 	getDesktopAppVersion,
 	getDesktopUpdateCapability,
-	getRendererUpdateCapability,
+	getBundleUpdateCapability,
 	installDesktopUpdate,
 	openExternalUrl,
 	subscribeDesktopUpdateStatus,
-	subscribeRendererUpdateStatus,
+	subscribeBundleUpdateStatus,
 } from "@/shared/desktop/actions";
 
 vi.mock("@/shared/desktop/actions", () => ({
-	applyRendererUpdate: vi.fn(),
+	applyBundleUpdate: vi.fn(),
 	checkDesktopUpdate: vi.fn(),
-	checkRendererUpdate: vi.fn(),
+	checkBundleUpdate: vi.fn(),
 	downloadDesktopUpdate: vi.fn(),
 	getDesktopAppVersion: vi.fn(),
 	getDesktopUpdateCapability: vi.fn(),
-	getRendererUpdateCapability: vi.fn(),
+	getBundleUpdateCapability: vi.fn(),
 	installDesktopUpdate: vi.fn(),
 	openExternalUrl: vi.fn(),
 	subscribeDesktopUpdateStatus: vi.fn(() => vi.fn()),
-	subscribeRendererUpdateStatus: vi.fn(() => vi.fn()),
+	subscribeBundleUpdateStatus: vi.fn(() => vi.fn()),
 }));
 
 vi.mock("@/shared/desktop/runtime", () => ({
@@ -69,12 +69,12 @@ describe("UpdatesPanel", () => {
 		vi.mocked(getDesktopAppVersion).mockResolvedValue("1.0.0");
 		vi.mocked(getDesktopUpdateCapability).mockResolvedValue(supportedCapability);
 		vi.mocked(subscribeDesktopUpdateStatus).mockImplementation(() => vi.fn());
-		vi.mocked(getRendererUpdateCapability).mockResolvedValue({
+		vi.mocked(getBundleUpdateCapability).mockResolvedValue({
 			enabled: false,
 			currentRev: 0,
 			source: "builtin",
 		});
-		vi.mocked(subscribeRendererUpdateStatus).mockImplementation(() => vi.fn());
+		vi.mocked(subscribeBundleUpdateStatus).mockImplementation(() => vi.fn());
 	});
 
 	afterEach(() => {
@@ -190,40 +190,40 @@ describe("UpdatesPanel", () => {
 		);
 	});
 
-	it("hides the renderer update section while the feature is disabled", async () => {
+	it("hides the bundle update section while the feature is disabled", async () => {
 		render(<UpdatesPanel />);
-		await waitFor(() => expect(getRendererUpdateCapability).toHaveBeenCalled());
-		expect(screen.queryByText("界面更新")).not.toBeInTheDocument();
+		await waitFor(() => expect(getBundleUpdateCapability).toHaveBeenCalled());
+		expect(screen.queryByText("热更新")).not.toBeInTheDocument();
 	});
 
-	it("shows renderer revision and runs a check when enabled", async () => {
-		vi.mocked(getRendererUpdateCapability).mockResolvedValue({
+	it("shows bundle revision and runs a check when enabled", async () => {
+		vi.mocked(getBundleUpdateCapability).mockResolvedValue({
 			enabled: true,
 			currentRev: 3,
 			source: "builtin",
 		});
-		vi.mocked(checkRendererUpdate).mockResolvedValue({ ok: true });
+		vi.mocked(checkBundleUpdate).mockResolvedValue({ ok: true });
 
 		render(<UpdatesPanel />);
-		expect(await screen.findByText("界面更新")).toBeInTheDocument();
+		expect(await screen.findByText("热更新")).toBeInTheDocument();
 		expect(screen.getByText(/rev 3/)).toBeInTheDocument();
 
-		fireEvent.click(screen.getByRole("button", { name: /检查界面更新/ }));
-		await waitFor(() => expect(checkRendererUpdate).toHaveBeenCalled());
+		fireEvent.click(screen.getByRole("button", { name: /检查热更新/ }));
+		await waitFor(() => expect(checkBundleUpdate).toHaveBeenCalled());
 	});
 
-	it("renders ready state from the renderer push stream", async () => {
-		vi.mocked(getRendererUpdateCapability).mockResolvedValue({
+	it("renders staged state from the bundle push stream", async () => {
+		vi.mocked(getBundleUpdateCapability).mockResolvedValue({
 			enabled: true,
 			currentRev: 3,
 			source: "downloaded",
 		});
 
 		render(<UpdatesPanel />);
-		await screen.findByText("界面更新");
+		await screen.findByText("热更新");
 
-		const pushRendererStatus = async (status: RendererUpdateStatus) => {
-			const listener = vi.mocked(subscribeRendererUpdateStatus).mock.calls.at(-1)?.[0];
+		const pushRendererStatus = async (status: BundleUpdateStatus) => {
+			const listener = vi.mocked(subscribeBundleUpdateStatus).mock.calls.at(-1)?.[0];
 			if (!listener) throw new Error("no renderer subscriber attached");
 			await act(async () => {
 				listener(status);
@@ -238,12 +238,12 @@ describe("UpdatesPanel", () => {
 		});
 		expect(screen.getByText(/30\.0%/)).toBeInTheDocument();
 
-		await pushRendererStatus({ phase: "ready", currentRev: 3, targetRev: 4 });
+		await pushRendererStatus({ phase: "staged", currentRev: 3, targetRev: 4 });
 		expect(screen.getByText(/rev 4.*已就绪/)).toBeInTheDocument();
 
-		vi.mocked(applyRendererUpdate).mockResolvedValue({ ok: true });
-		fireEvent.click(screen.getByRole("button", { name: /立即刷新界面/ }));
-		await waitFor(() => expect(applyRendererUpdate).toHaveBeenCalled());
+		vi.mocked(applyBundleUpdate).mockResolvedValue({ ok: true });
+		fireEvent.click(screen.getByRole("button", { name: /立即应用/ }));
+		await waitFor(() => expect(applyBundleUpdate).toHaveBeenCalled());
 
 		await pushRendererStatus({
 			phase: "requires-full-update",

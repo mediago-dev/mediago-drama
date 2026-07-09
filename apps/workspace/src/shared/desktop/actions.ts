@@ -3,8 +3,8 @@ import type {
 	DesktopUpdateAck,
 	DesktopUpdateCapability,
 	DesktopUpdateStatus,
-	RendererUpdateCapability,
-	RendererUpdateStatus,
+	BundleUpdateCapability,
+	BundleUpdateStatus,
 } from "@/shared/desktop/types";
 import { desktopRuntime } from "@/shared/desktop/runtime";
 
@@ -173,40 +173,40 @@ export const subscribeDesktopUpdateStatus = (
 	return window.mediagoDesktop?.onUpdateStatus(listener) ?? (() => {});
 };
 
-// Renderer hot-update actions. A hot-updated renderer may run against an older shell
+// Bundle (renderer + server) hot-update actions. A hot-updated renderer may run against an older shell
 // whose preload lacks these methods, so every call is runtime-guarded.
 
-const disabledRendererCapability: RendererUpdateCapability = {
+const disabledBundleCapability: BundleUpdateCapability = {
 	enabled: false,
 	currentRev: 0,
 	source: "builtin",
-	reason: "当前运行环境不支持界面更新。",
+	reason: "当前运行环境不支持热更新。",
 };
 
 const rendererBridge = () => (desktopRuntime() === "electron" ? window.mediagoDesktop : undefined);
 
-export const getRendererUpdateCapability = async (): Promise<RendererUpdateCapability> => {
+export const getBundleUpdateCapability = async (): Promise<BundleUpdateCapability> => {
 	const api = rendererBridge();
-	if (!api || typeof api.getRendererUpdateCapability !== "function") {
-		return disabledRendererCapability;
+	if (!api || typeof api.getBundleUpdateCapability !== "function") {
+		return disabledBundleCapability;
 	}
-	return (await api.getRendererUpdateCapability()) ?? disabledRendererCapability;
+	return (await api.getBundleUpdateCapability()) ?? disabledBundleCapability;
 };
 
-export const checkRendererUpdate = async (): Promise<DesktopUpdateAck> => {
+export const checkBundleUpdate = async (): Promise<DesktopUpdateAck> => {
 	const api = rendererBridge();
-	if (!api || typeof api.checkRendererUpdate !== "function") {
-		return { ok: false, message: "当前运行环境不支持界面更新。" };
+	if (!api || typeof api.checkBundleUpdate !== "function") {
+		return { ok: false, message: "当前运行环境不支持热更新。" };
 	}
-	return (await api.checkRendererUpdate()) ?? missingBridgeAck;
+	return (await api.checkBundleUpdate()) ?? missingBridgeAck;
 };
 
-export const applyRendererUpdate = async (): Promise<DesktopUpdateAck> => {
+export const applyBundleUpdate = async (): Promise<DesktopUpdateAck> => {
 	const api = rendererBridge();
-	if (!api || typeof api.applyRendererUpdate !== "function") {
-		return { ok: false, message: "当前运行环境不支持界面更新。" };
+	if (!api || typeof api.applyBundleUpdate !== "function") {
+		return { ok: false, message: "当前运行环境不支持热更新。" };
 	}
-	return (await api.applyRendererUpdate()) ?? missingBridgeAck;
+	return (await api.applyBundleUpdate()) ?? missingBridgeAck;
 };
 
 export const markRendererHealthy = async (): Promise<void> => {
@@ -219,10 +219,10 @@ export const markRendererHealthy = async (): Promise<void> => {
 	}
 };
 
-export const subscribeRendererUpdateStatus = (
-	listener: (status: RendererUpdateStatus) => void,
+export const subscribeBundleUpdateStatus = (
+	listener: (status: BundleUpdateStatus) => void,
 ): (() => void) => {
 	const api = rendererBridge();
-	if (!api || typeof api.onRendererUpdateStatus !== "function") return () => {};
-	return api.onRendererUpdateStatus(listener) ?? (() => {});
+	if (!api || typeof api.onBundleUpdateStatus !== "function") return () => {};
+	return api.onBundleUpdateStatus(listener) ?? (() => {});
 };
