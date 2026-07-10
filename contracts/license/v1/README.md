@@ -48,11 +48,18 @@
 
 ## 设备绑定
 
-激活时客户端上报设备指纹（来自 license 目录下持久化的随机 `device-id`），license server 把它写进签名 token 的 `device_hash`。之后**换取 pack 解密密钥时,客户端带上当前设备指纹,server 校验其与 token 中的 `device_hash` 一致**;不一致返回 403（错误码 40314）。这样把已激活的 `license.json` 拷到别的机器就换不到密钥、导入不了 Pro 包。
+激活时客户端上报设备指纹（来自 license 目录下持久化的随机 `device-id`），license server 把它写进签名 token 的 `device_hash`。换取 pack 密钥时客户端带上当前设备指纹，server 校验其与 token 中的 `device_hash` 一致；不一致返回 403（错误码 40314）。`/api/v1/activate` 要求 `device_hash` 非空，避免签发"无绑定"的万能 token。
 
-- 客户端本地也会先校验(离线即拦),server 端校验是权威(改客户端也绕不过——除非篡改二进制伪造指纹,属可接受残留)。
-- `device_hash` 为空的 token 视为**不绑定**(便于团队/浮动授权场景)。
-- 与"传激活码"不同:激活码可被多设备使用,受 `max_activations` 次数限制;设备绑定针对的是"传已激活凭证"。
+**当前强度（务必如实理解，勿夸大）**：这道绑定**只挡住"拷贝 license.json + 运行原版客户端"**这种非技术性共享——原版客户端在新机器上算出的本地指纹不同，本地校验先拦，且上报给 server 的指纹也不匹配。
+
+它**挡不住**稍有技术的复制者：
+- `device_hash` 以明文写在 token 里（`base64url(payload)` 可直接解出），所以持有被拷 token 的人能读出 `device_hash`，再手工发一个 HTTP 请求把同一个值回填过去——**server 端校验会通过**。即 server 端校验**并非真正权威**，一条 curl 即可绕过，无需改二进制。
+- `device-id` 是明文文件、与 `license.json` 同目录，整目录拷贝会一并带走指纹。
+
+要做到真正防"传已激活凭证"，需要**质询-应答**：激活时客户端生成设备密钥对、只上报公钥（server 把公钥哈希写进 token）；换密钥时 server 下发 nonce，客户端用**设备私钥**签名，server 用绑定的公钥验签。私钥不进 token、不随 `license.json` 传播，一条 HTTP 请求无法伪造。此为待实现项。
+
+- `device_hash` 为空的 token 视为**不绑定**（团队/浮动授权场景，仅限内部/管理签发）。
+- 与"传激活码"不同：激活码可多设备使用、受 `max_activations` 次数限制；设备绑定针对的是"传已激活凭证"。
 
 ## 密钥与信任
 

@@ -399,15 +399,26 @@ func (client *Client) loadOrCreateDeviceID() string {
 	}
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
-		hostname, _ := os.Hostname()
-		home, _ := os.UserHomeDir()
-		return "host:" + hostname + "|" + home
+		return machineFallbackID()
 	}
 	id := hex.EncodeToString(buf)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err == nil {
-		_ = os.WriteFile(path, []byte(id+"\n"), 0o600)
+	// If the id cannot be persisted, fall back to a stable machine-derived id
+	// rather than returning this ephemeral one — otherwise every launch would
+	// regenerate a different fingerprint and silently invalidate an already
+	// activated license, forcing re-activation.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return machineFallbackID()
+	}
+	if err := os.WriteFile(path, []byte(id+"\n"), 0o600); err != nil {
+		return machineFallbackID()
 	}
 	return id
+}
+
+func machineFallbackID() string {
+	hostname, _ := os.Hostname()
+	home, _ := os.UserHomeDir()
+	return "host:" + hostname + "|" + home
 }
 
 // tokenMatchesDevice reports whether a token is usable on this device. A token
