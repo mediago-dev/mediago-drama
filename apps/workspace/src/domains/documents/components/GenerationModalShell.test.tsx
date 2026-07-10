@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -184,6 +184,34 @@ describe("GenerationModalShell", () => {
 		expect(screen.getByRole("textbox", { name: "资源备注" })).toBe(lowerInput);
 		expect(lowerInput).toHaveValue("保留这段输入");
 		expect(lowerLayer).toHaveAttribute("data-dialog-layer-state", "top");
+	});
+
+	it("keeps the lower dialog open when the upper header close button is clicked", async () => {
+		render(<LayeredGenerationModalHarness />);
+		await waitForRadixOutsideListeners();
+
+		const lowerDialog = screen.getByRole("dialog", { name: "资源列表" });
+		fireEvent.click(screen.getByRole("button", { name: "打开生成图片" }));
+		const upperDialog = await screen.findByRole("dialog", { name: "生成图片" });
+		const upperCloseButton = within(upperDialog).getByRole("button", { name: "关闭弹窗" });
+		const documentPointerDown = vi.fn();
+		document.addEventListener("pointerdown", documentPointerDown);
+
+		fireEvent.pointerDown(upperCloseButton, { button: 0 });
+		document.removeEventListener("pointerdown", documentPointerDown);
+		expect(documentPointerDown).not.toHaveBeenCalled();
+		fireEvent.click(upperCloseButton);
+		await waitForRadixOutsideListeners();
+
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog", { name: "生成图片" })).toBeNull();
+		});
+		expect(screen.getByRole("dialog", { name: "资源列表" })).toBe(lowerDialog);
+		expect(lowerDialog).toHaveAttribute("data-state", "open");
+		expect(lowerDialog.closest("[data-dialog-layer]")).toHaveAttribute(
+			"data-dialog-layer-state",
+			"top",
+		);
 	});
 
 	it("closes one generation modal per Escape key press", async () => {

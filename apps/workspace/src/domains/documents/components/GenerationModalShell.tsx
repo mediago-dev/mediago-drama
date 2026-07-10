@@ -99,7 +99,13 @@ export const GenerationModalShell: React.FC<{
 									{titleAside ? <div className="shrink-0">{titleAside}</div> : null}
 								</div>
 								<DialogPrimitive.Close asChild>
-									<Button type="button" variant="ghost" size="icon">
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										aria-label="关闭弹窗"
+										onPointerDown={(event) => event.stopPropagation()}
+									>
 										<X />
 									</Button>
 								</DialogPrimitive.Close>

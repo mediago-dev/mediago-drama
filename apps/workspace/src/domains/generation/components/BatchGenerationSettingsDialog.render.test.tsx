@@ -190,6 +190,27 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 		expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
 	});
 
+	it("keeps dialog-closing pointer events inside the batch settings layer", () => {
+		render(
+			<BatchGenerationSettingsDialog
+				kind="image"
+				open
+				selectedCount={2}
+				onConfirm={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		const documentPointerDown = vi.fn();
+		document.addEventListener("pointerdown", documentPointerDown);
+
+		fireEvent.pointerDown(screen.getByRole("button", { name: "取消" }), { button: 0 });
+		fireEvent.pointerDown(screen.getByRole("button", { name: "生成" }), { button: 0 });
+
+		document.removeEventListener("pointerdown", documentPointerDown);
+		expect(documentPointerDown).not.toHaveBeenCalled();
+	});
+
 	it("selects a prompt supplement from the two-column prompt pack picker", async () => {
 		const onConfirm = vi.fn();
 

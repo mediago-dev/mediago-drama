@@ -1126,10 +1126,25 @@ describe("ProjectOverview", () => {
 		});
 		expect(useMediaGenerationStore.getState().activeRequest).toBeNull();
 
-		fireEvent.click(screen.getByRole("button", { name: "关闭局部生成弹窗" }));
+		const generationDialog = await screen.findByRole("dialog", {
+			name: "局部video生成弹窗",
+		});
+		expect(dialog).toHaveAttribute("data-state", "open");
+		expect(dialog.closest("[data-dialog-layer]")).toHaveAttribute(
+			"data-dialog-layer-state",
+			"covered",
+		);
+		const generationDialogClose = within(generationDialog).getByRole("button", {
+			name: "关闭弹窗",
+		});
+		fireEvent.pointerDown(generationDialogClose, { button: 0 });
+		fireEvent.click(generationDialogClose);
 		await waitFor(() => {
 			expect(screen.queryByRole("dialog", { name: "局部video生成弹窗" })).toBeNull();
 		});
+		expect(screen.getByRole("dialog", { name: "视频生成 · 第一章分镜脚本" })).toBe(dialog);
+		expect(dialog).toHaveAttribute("data-state", "open");
+		expect(dialog.closest("[data-dialog-layer]")).toHaveAttribute("data-dialog-layer-state", "top");
 		fireEvent.keyDown(document, { key: "Escape" });
 		await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 		fireEvent.click(screen.getByRole("button", { name: "第二章分镜脚本 视频生成" }));

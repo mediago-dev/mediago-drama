@@ -799,6 +799,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 							variant="outline"
 							size="sm"
 							className="h-8 rounded-sm"
+							onPointerDown={(event) => event.stopPropagation()}
 							onClick={() => onOpenChange(false)}
 						>
 							取消
@@ -808,6 +809,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 							size="sm"
 							className="h-8 rounded-sm"
 							disabled={primaryConfirmDisabled}
+							onPointerDown={(event) => event.stopPropagation()}
 							onClick={() => confirm(usePromptOptimization)}
 						>
 							{usePromptOptimization ? (
