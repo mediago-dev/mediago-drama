@@ -43,7 +43,6 @@ tasks:
       MEDIAGO_GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
-      VITE_MEDIAGO_EDITION: "{{.EDITION}}"
     cmds:
       - task: prepare-agent
         vars:
@@ -79,7 +78,6 @@ tasks:
       MEDIAGO_GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
-      VITE_MEDIAGO_EDITION: "{{.EDITION}}"
     cmds:
       - task: prepare-agent
         vars:
@@ -114,7 +112,6 @@ tasks:
       MEDIAGO_GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
-      VITE_MEDIAGO_EDITION: "{{.EDITION}}"
     cmds:
       - task: prepare-agent
         vars:
@@ -329,6 +326,12 @@ tasks:
 
   workspace:build:
     desc: Build only the web workspace
+    # VITE_MEDIAGO_EDITION must live here (not on the parent build tasks):
+    # go-task does not propagate a parent task's env to called sub-tasks,
+    # and this is the task that actually runs vite build. Reads the global
+    # EDITION var, so `task build:electron:target EDITION=pro` reaches vite.
+    env:
+      VITE_MEDIAGO_EDITION: "{{.EDITION}}"
     cmds:
       - pnpm -C apps/workspace build
 
