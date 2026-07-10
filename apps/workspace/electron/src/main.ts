@@ -16,7 +16,11 @@ import {
 	type NativeThemeSource,
 	desktopIpcChannel,
 } from "./ipc-contract.js";
-import { prepareActiveBundle, registerBundleUpdater } from "./bundle-updater.js";
+import {
+	markActiveBundleServerStarting,
+	prepareActiveBundle,
+	registerBundleUpdater,
+} from "./bundle-updater.js";
 import { preloadPath } from "./paths.js";
 import { startServerSidecar, stopServerSidecar } from "./sidecar.js";
 import { registerDesktopUpdater } from "./updater.js";
@@ -26,7 +30,7 @@ let isQuitting = false;
 // Resolved inside startApp — after the single-instance lock is held (a doomed second
 // instance must not count boot attempts or touch DB snapshots) and after app-ready,
 // but before the sidecar spawns, while SQLite is quiescent.
-let activeBundle: ReturnType<typeof prepareActiveBundle> | null = null;
+let activeBundle: Awaited<ReturnType<typeof prepareActiveBundle>> | null = null;
 
 // Retain shown notifications until they are dismissed. Without a live reference
 // macOS may garbage-collect the Notification before it is displayed.
@@ -221,8 +225,6 @@ ipcMain.handle(desktopIpcChannel.setNativeThemeSource, (_event, source: unknown)
 	nativeTheme.themeSource = source;
 });
 
-registerDesktopUpdater({ getWindow: () => mainWindow });
-
 const safeDownloadFilename = (value: string) => {
 	const cleaned = basename(String(value || "download"))
 		.replace(/[\\/:*?"<>|#%{}^~[\]`]+/g, " ")
@@ -254,14 +256,25 @@ const pathIsAvailable = async (path: string) => {
 };
 
 const startApp = async () => {
-	activeBundle = prepareActiveBundle();
-	startServerSidecar({ binaryPath: activeBundle.serverBinPath });
+	activeBundle = await prepareActiveBundle();
+	// Register only after packaged bundle metadata has passed the strict startup
+	// validation, so a corrupt cohort feed fails through the visible startup error path.
+	registerDesktopUpdater({ getWindow: () => mainWindow });
+	markActiveBundleServerStarting(activeBundle);
+	const sidecarIdentity = startServerSidecar({
+		binaryPath: activeBundle.serverBinPath,
+		bundleRev: activeBundle.rev,
+		schemaVersion: activeBundle.schemaVersion,
+	});
 	const bundleUpdater = registerBundleUpdater({
 		getWindow: () => mainWindow,
 		active: activeBundle,
+		onActiveBundleChanged: (bundle) => {
+			activeBundle = bundle;
+		},
 	});
 	// Health confirmation + background check start counting from actual server spawn.
-	bundleUpdater.notifyServerStarted();
+	await bundleUpdater.notifyServerStarted(sidecarIdentity);
 	await createWindow();
 };
 
@@ -277,6 +290,10 @@ if (!app.requestSingleInstanceLock()) {
 		.then(startApp)
 		.catch((error: unknown) => {
 			console.error("[mediago-electron] failed to start", error);
+			dialog.showErrorBox(
+				"MediaGo Drama 无法安全启动",
+				error instanceof Error ? error.message : "本地数据或服务状态无法安全恢复。",
+			);
 			app.quit();
 		});
 }

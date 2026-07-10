@@ -1,5 +1,10 @@
 name: Electron Release
 
+# Full installers are published to one fixed release per immutable client cohort:
+# `desktop-<channel>-<edition>`. Versioned installer assets accumulate there, while
+# the electron-updater YAML files and desktop-cohort-meta.json are replaced in place.
+# The client must use the matching fixed cohort URL as its full-update feed.
+
 on:
   workflow_dispatch:
     inputs:
@@ -17,6 +22,14 @@ on:
           - alpha
           - beta
           - latest
+      edition:
+        description: Build edition embedded in the installer and update cohort
+        required: true
+        default: community
+        type: choice
+        options:
+          - community
+          - pro
       prerelease_number:
         description: Numeric suffix for alpha/beta releases
         required: true
@@ -24,10 +37,10 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: electron-release-${{ inputs.version }}-${{ inputs.channel }}-${{ inputs.prerelease_number }}
+  group: desktop-cohort-${{ inputs.channel }}-${{ inputs.edition }}
   cancel-in-progress: false
 
 env:
@@ -38,8 +51,22 @@ env:
   PNPM_VERSION: "11.9.0"
 
 jobs:
+  authorize:
+    name: Authorize production release ref
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the dev branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/dev" ]]; then
+            echo "production releases may only be dispatched from refs/heads/dev (got ${GITHUB_REF})" >&2
+            exit 1
+          fi
+
   release-version:
     name: Resolve release version
+    needs: authorize
     runs-on: ubuntu-latest
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
@@ -85,17 +112,203 @@ jobs:
             echo "github_release_type=draft"
           } >> "$GITHUB_OUTPUT"
 
+  quality:
+    name: Hot-update safety gates
+    needs: authorize
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.work
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Require version bumps since the previous full installer
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          EDITION: ${{ inputs.edition }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="desktop-${CHANNEL}-${EDITION}"
+          release_json="$RUNNER_TEMP/previous-desktop-release.json"
+          status="$(curl --silent --show-error --location \
+            --output "$release_json" \
+            --write-out '%{http_code}' \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/tags/${tag}")"
+          if [[ "$status" == "404" || ( "$status" == "200" && "$(jq -r '.draft' "$release_json")" == "true" ) ]]; then
+            echo "no previous published desktop cohort contract"
+            exit 0
+          fi
+          if [[ "$status" != "200" ]]; then
+            echo "GitHub API returned HTTP ${status} while checking ${tag}" >&2
+            exit 1
+          fi
+
+          mapfile -t proof_rows < <(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/$(jq -r '.id' "$release_json")/assets" --paginate \
+              --jq '.[] | select(.name == "desktop-cohort-meta.json" or .name == "desktop-cohort-meta-backup.json") | [.id, .name] | @tsv'
+          )
+          proof_asset_id=""
+          for row in "${proof_rows[@]}"; do
+            IFS=$'\t' read -r asset_id asset_name <<< "$row"
+            if [[ "$asset_name" == "desktop-cohort-meta.json" ]]; then
+              proof_asset_id="$asset_id"
+              break
+            fi
+            proof_asset_id="$asset_id"
+          done
+          if [[ -z "$proof_asset_id" ]]; then
+            echo "published desktop cohort has no contract or recovery backup" >&2
+            exit 1
+          fi
+          gh api -H "Accept: application/octet-stream" \
+            "repos/${GITHUB_REPOSITORY}/releases/assets/${proof_asset_id}" \
+            > "$RUNNER_TEMP/previous-desktop-cohort-meta.json"
+          PREVIOUS_META="$RUNNER_TEMP/previous-desktop-cohort-meta.json" \
+            SOURCE_OUTPUT="$RUNNER_TEMP/previous-desktop-source" node <<'NODE'
+          const fs = require("node:fs");
+          const {execFileSync} = require("node:child_process");
+          const meta = JSON.parse(fs.readFileSync(process.env.PREVIOUS_META, "utf8"));
+          if (meta.channel !== process.env.CHANNEL || meta.edition !== process.env.EDITION) {
+            throw new Error(`previous desktop contract is ${meta.channel}/${meta.edition}`);
+          }
+          if (typeof meta.sourceCommit !== "string" || !/^[0-9a-f]{40}$/.test(meta.sourceCommit)) {
+            throw new Error("previous desktop contract lacks a valid sourceCommit");
+          }
+          execFileSync("git", ["cat-file", "-e", `${meta.sourceCommit}^{commit}`]);
+          execFileSync("git", ["merge-base", "--is-ancestor", meta.sourceCommit, "HEAD"]);
+          fs.writeFileSync(process.env.SOURCE_OUTPUT, meta.sourceCommit);
+          NODE
+          node apps/workspace/scripts/check-bundle-version-bumps.mjs "$(cat "$RUNNER_TEMP/previous-desktop-source")"
+
+      - name: Prevent full-installer floors from regressing below the hot cohort
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          EDITION: ${{ inputs.edition }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="bundle-${CHANNEL}-${EDITION}"
+          release_json="$RUNNER_TEMP/current-hot-release.json"
+          status="$(curl --silent --show-error --location \
+            --output "$release_json" \
+            --write-out '%{http_code}' \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/tags/${tag}")"
+          if [[ "$status" == "404" || ( "$status" == "200" && "$(jq -r '.draft' "$release_json")" == "true" ) ]]; then
+            echo "no published hot cohort floor"
+            exit 0
+          fi
+          if [[ "$status" != "200" ]]; then
+            echo "GitHub API returned HTTP ${status} while checking ${tag}" >&2
+            exit 1
+          fi
+
+          mapfile -t manifest_rows < <(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/$(jq -r '.id' "$release_json")/assets" --paginate \
+              --jq '.[] | select(.name == "bundle-manifest.json" or .name == "bundle-manifest-backup.json") | [.id, .name] | @tsv'
+          )
+          manifest_asset_id=""
+          for row in "${manifest_rows[@]}"; do
+            IFS=$'\t' read -r asset_id asset_name <<< "$row"
+            if [[ "$asset_name" == "bundle-manifest.json" ]]; then
+              manifest_asset_id="$asset_id"
+              break
+            fi
+            manifest_asset_id="$asset_id"
+          done
+          if [[ -z "$manifest_asset_id" ]]; then
+            echo "published hot cohort has no manifest or recovery backup" >&2
+            exit 1
+          fi
+          gh api -H "Accept: application/octet-stream" \
+            "repos/${GITHUB_REPOSITORY}/releases/assets/${manifest_asset_id}" \
+            > "$RUNNER_TEMP/current-hot-manifest.json"
+
+          HOT_MANIFEST="$RUNNER_TEMP/current-hot-manifest.json" node <<'NODE'
+          const fs = require("node:fs");
+          const {createPublicKey, verify} = require("node:crypto");
+          (async () => {
+            const {bundleUpdatePublicKey} = await import("./apps/workspace/electron/src/hot-update-config.ts");
+            if (!bundleUpdatePublicKey) throw new Error("cannot authenticate the hot floor with an empty bundle public key");
+            const publicKey = createPublicKey({
+              key: Buffer.from(bundleUpdatePublicKey, "base64"),
+              format: "der",
+              type: "spki",
+            });
+            const envelope = JSON.parse(fs.readFileSync(process.env.HOT_MANIFEST, "utf8"));
+            const payloadBytes = Buffer.from(envelope.payloadB64, "base64");
+            if (!verify(null, payloadBytes, publicKey, Buffer.from(envelope.signature, "base64"))) {
+              throw new Error("published hot floor signature does not match bundleUpdatePublicKey");
+            }
+            const payload = JSON.parse(payloadBytes.toString("utf8"));
+            if (payload.channel !== process.env.CHANNEL || payload.edition !== process.env.EDITION) {
+              throw new Error(`hot floor cohort is ${payload.channel}/${payload.edition}`);
+            }
+            const next = JSON.parse(fs.readFileSync("apps/workspace/bundle-update.json", "utf8"));
+            for (const field of ["bundleRev", "schemaVersion", "workspaceLayoutVersion"]) {
+              if (!Number.isInteger(payload[field]) || payload[field] < 1) throw new Error(`invalid hot ${field}`);
+              if (!Number.isInteger(next[field]) || next[field] < payload[field]) {
+                throw new Error(`full installer ${field} cannot regress below hot floor (${payload[field]} -> ${next[field]})`);
+              }
+            }
+          })().catch(error => {
+            console.error(error instanceof Error ? error.message : String(error));
+            process.exit(1);
+          });
+          NODE
+
+      - name: Electron compile and bundle tests
+        run: |
+          pnpm --dir apps/workspace exec oxfmt --check electron/src scripts/package-bundle-update.ts scripts/hot-update-local-test.ts scripts/stage-electron-app.ts scripts/check-bundle-version-bumps.mjs
+          pnpm --dir apps/workspace exec oxlint electron/src scripts/package-bundle-update.ts scripts/hot-update-local-test.ts scripts/stage-electron-app.ts scripts/check-bundle-version-bumps.mjs
+          pnpm --dir apps/workspace electron:compile
+          pnpm --dir apps/workspace exec vitest run electron/src
+
+      - name: Go server race tests
+        working-directory: services/server
+        run: go test -race ./...
+
   build:
     name: Build ${{ matrix.label }}
-    needs: release-version
+    needs:
+      - release-version
+      - quality
+    environment: production-release
+    permissions:
+      contents: read
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - label: macOS ARM64 zip
-            # Runs on macOS so the app can be Developer ID signed + notarized when the
-            # signing secrets are configured (unsigned ad-hoc build otherwise).
             runner: macos-14
             platform: darwin-arm64
             electron_script: electron:release:darwin-arm64
@@ -106,19 +319,19 @@ jobs:
             electron_script: electron:release:windows-x64
             artifact_name: mediago-drama-windows-x64
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.work
           cache-dependency-path: |
@@ -126,7 +339,7 @@ jobs:
             **/go.sum
 
       - name: Restore vendored binary cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: packages/vendor/dist/${{ matrix.platform }}
           key: vendor-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('packages/vendor/agents.json', 'packages/vendor/tools.json') }}
@@ -134,14 +347,14 @@ jobs:
             vendor-${{ runner.os }}-${{ matrix.platform }}-
 
       - name: Restore electron-builder cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ env.ELECTRON_BUILDER_CACHE }}
           key: electron-builder-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('pnpm-lock.yaml', 'apps/workspace/package.json') }}
           restore-keys: |
             electron-builder-${{ runner.os }}-${{ matrix.platform }}-
 
-      - uses: go-task/setup-task@v2
+      - uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa # v2
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -197,21 +410,24 @@ jobs:
 
       - name: Build ${{ matrix.label }}
         env:
+          MEDIAGO_BUNDLE_CHANNEL: ${{ inputs.channel }}
+          MEDIAGO_BUNDLE_EDITION: ${{ inputs.edition }}
           MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: ${{ vars.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL }}
           MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.github_release_type }}
-          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'darwin-arm64' && secrets.MACOS_CERT_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.platform == 'darwin-arm64' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'darwin-arm64' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'darwin-arm64' && secrets.APPLE_TEAM_ID || '' }}
           MODEL_PLATFORM: ${{ vars.MODEL_PLATFORM }}
+          VITE_MEDIAGO_EDITION: ${{ inputs.edition }}
           VITE_MEDIAGO_APIKEY_URL: ${{ vars.VITE_MEDIAGO_APIKEY_URL }}
           VITE_TALKINGDATA_APP_ID: ${{ vars.VITE_TALKINGDATA_APP_ID }}
-        run: task build:electron:target PLATFORM=${{ matrix.platform }} ELECTRON_SCRIPT=${{ matrix.electron_script }}
+        run: task build:electron:target PLATFORM=${{ matrix.platform }} ELECTRON_SCRIPT=${{ matrix.electron_script }} EDITION=${{ inputs.edition }}
 
       - name: Upload ${{ matrix.label }} artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ${{ matrix.artifact_name }}
+          name: ${{ matrix.artifact_name }}-${{ inputs.edition }}
           path: |
             apps/workspace/release/*.blockmap
             apps/workspace/release/*.dmg
@@ -222,68 +438,284 @@ jobs:
             !apps/workspace/release/builder-effective-config.yaml
           if-no-files-found: error
 
+      - name: Prepare desktop cohort contract
+        if: matrix.platform == 'darwin-arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p desktop-cohort-contract
+          cp apps/workspace/electron/app/renderer/bundle-meta.json desktop-cohort-contract/desktop-cohort-meta.json
+
+      - name: Upload desktop cohort contract
+        if: matrix.platform == 'darwin-arm64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: desktop-cohort-contract-${{ inputs.edition }}
+          path: desktop-cohort-contract/desktop-cohort-meta.json
+          if-no-files-found: error
+
   publish-release:
-    name: Publish draft release
+    name: Publish desktop cohort release
     needs:
       - release-version
       - build
+    environment: production-release
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           path: release-artifacts
 
-      - name: Publish GitHub draft release
+      - name: Publish fixed cohort release
         shell: bash
         env:
           APP_VERSION: ${{ needs.release-version.outputs.app_version }}
+          CHANNEL: ${{ inputs.channel }}
+          EDITION: ${{ inputs.edition }}
           GH_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ needs.release-version.outputs.prerelease }}
         run: |
           set -euo pipefail
 
-          tag="v${APP_VERSION}"
-          mapfile -t draft_release_ids < <(
-            gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate \
-              --jq ".[] | select(.draft and (.tag_name == \"${tag}\" or .name == \"${APP_VERSION}\")) | .id"
-          )
-          for release_id in "${draft_release_ids[@]}"; do
-            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${release_id}"
-          done
+          tag="desktop-${CHANNEL}-${EDITION}"
+          title="Desktop updates (${CHANNEL}/${EDITION})"
+          body="Fixed desktop-update cohort. Versioned installers accumulate here; updater metadata and desktop-cohort-meta.json point to the newest ${CHANNEL}/${EDITION} installer."
 
-          existing_tag_sha="$(git ls-remote --tags origin "refs/tags/${tag}" | awk 'NR == 1 {print $1}')"
-          if [[ -n "$existing_tag_sha" ]]; then
-            if [[ "$existing_tag_sha" != "$GITHUB_SHA" ]]; then
-              if [[ "${#draft_release_ids[@]}" -eq 0 ]]; then
-                echo "tag ${tag} already exists at ${existing_tag_sha}, expected ${GITHUB_SHA}" >&2
-                exit 1
-              fi
-              git push origin ":refs/tags/${tag}"
-              git tag -f "$tag" "$GITHUB_SHA"
-              git push origin "refs/tags/${tag}"
-            fi
-          else
-            git tag "$tag" "$GITHUB_SHA"
-            git push origin "refs/tags/${tag}"
+          mapfile -t release_rows < <(
+            gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate \
+              --jq ".[] | select(.tag_name == \"${tag}\") | [.id, .draft, (.immutable // false)] | @tsv"
+          )
+          if [[ "${#release_rows[@]}" -gt 1 ]]; then
+            echo "multiple GitHub releases use fixed tag ${tag}; refusing an ambiguous publish" >&2
+            exit 1
           fi
 
-          mapfile -t files < <(
+          if [[ "${#release_rows[@]}" -eq 0 ]]; then
+            release_json="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/releases" \
+              -f tag_name="$tag" \
+              -f target_commitish="$GITHUB_SHA" \
+              -f name="$title" \
+              -f body="$body" \
+              -F draft=true \
+              -F prerelease="$PRERELEASE" \
+              -f make_latest=false)"
+            release_id="$(jq -r '.id' <<< "$release_json")"
+            release_was_draft="true"
+          else
+            IFS=$'\t' read -r release_id release_was_draft release_is_immutable <<< "${release_rows[0]}"
+            if [[ "$release_is_immutable" == "true" ]]; then
+              echo "fixed cohort release ${tag} is immutable and cannot advance in place" >&2
+              exit 1
+            fi
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              -f name="$title" \
+              -f body="$body" \
+              -F prerelease="$PRERELEASE" \
+              -f make_latest=false >/dev/null
+          fi
+
+          mapfile -t cohort_meta_files < <(find release-artifacts -type f -name desktop-cohort-meta.json | sort)
+          if [[ "${#cohort_meta_files[@]}" -ne 1 ]]; then
+            echo "expected exactly one desktop-cohort-meta.json, found ${#cohort_meta_files[@]}" >&2
+            exit 1
+          fi
+          cohort_meta="${cohort_meta_files[0]}"
+
+          CHANNEL="$CHANNEL" EDITION="$EDITION" APP_VERSION="$APP_VERSION" node - "$cohort_meta" <<'NODE'
+          const fs = require("node:fs");
+          const path = process.argv[2];
+          const meta = JSON.parse(fs.readFileSync(path, "utf8"));
+          for (const field of ["bundleRev", "schemaVersion", "workspaceLayoutVersion"]) {
+            if (!Number.isInteger(meta[field]) || meta[field] < 1) throw new Error(`invalid ${field} in desktop cohort metadata`);
+          }
+          if (meta.channel !== process.env.CHANNEL || meta.edition !== process.env.EDITION) {
+            throw new Error(`desktop cohort metadata is ${meta.channel}/${meta.edition}, expected ${process.env.CHANNEL}/${process.env.EDITION}`);
+          }
+          if (meta.appBaseline !== process.env.APP_VERSION) {
+            throw new Error(`desktop cohort metadata baseline ${meta.appBaseline} does not match ${process.env.APP_VERSION}`);
+          }
+          if (meta.sourceCommit !== process.env.GITHUB_SHA) {
+            throw new Error(`desktop cohort metadata source ${meta.sourceCommit} does not match ${process.env.GITHUB_SHA}`);
+          }
+          if (typeof meta.hotUpdateEnabled !== "boolean" || typeof meta.bundleUpdatePublicKey !== "string") {
+            throw new Error("desktop cohort metadata lacks the hot-update rollout contract");
+          }
+          NODE
+
+          cohort_meta_recovery=""
+          if [[ "$release_was_draft" != "true" ]]; then
+            rm -f "$RUNNER_TEMP/previous-desktop-cohort-meta.json"
+            mapfile -t previous_meta_asset_rows < <(
+              gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets" --paginate \
+                --jq '.[] | select(.name == "desktop-cohort-meta.json" or .name == "desktop-cohort-meta-backup.json") | [.id, .name] | @tsv'
+            )
+            canonical_meta_asset_id=""
+            backup_meta_asset_id=""
+            for row in "${previous_meta_asset_rows[@]}"; do
+              IFS=$'\t' read -r asset_id asset_name <<< "$row"
+              if [[ "$asset_name" == "desktop-cohort-meta.json" ]]; then
+                [[ -z "$canonical_meta_asset_id" ]] || { echo "duplicate desktop cohort metadata" >&2; exit 1; }
+                canonical_meta_asset_id="$asset_id"
+              else
+                [[ -z "$backup_meta_asset_id" ]] || { echo "duplicate desktop cohort metadata backup" >&2; exit 1; }
+                backup_meta_asset_id="$asset_id"
+              fi
+            done
+            previous_meta_asset_id="$canonical_meta_asset_id"
+            if [[ -z "$previous_meta_asset_id" ]]; then
+              previous_meta_asset_id="$backup_meta_asset_id"
+            fi
+            if [[ -n "$previous_meta_asset_id" ]]; then
+              gh api -H "Accept: application/octet-stream" \
+                "repos/${GITHUB_REPOSITORY}/releases/assets/${previous_meta_asset_id}" \
+                > "$RUNNER_TEMP/previous-desktop-cohort-meta.json"
+              previous_proof_is_canonical="false"
+              if [[ -n "$canonical_meta_asset_id" ]]; then
+                previous_proof_is_canonical="true"
+                cohort_meta_recovery="$RUNNER_TEMP/desktop-cohort-meta-backup.json"
+                cp "$RUNNER_TEMP/previous-desktop-cohort-meta.json" "$cohort_meta_recovery"
+              else
+                echo "canonical cohort proof is absent; retaining its recovery backup during repair"
+              fi
+              desktop_relation="$(CHANNEL="$CHANNEL" NEW_META="$cohort_meta" \
+                OLD_META="$RUNNER_TEMP/previous-desktop-cohort-meta.json" \
+                PREVIOUS_PROOF_IS_CANONICAL="$previous_proof_is_canonical" node <<'NODE'
+              const fs = require("node:fs");
+              const oldBytes = fs.readFileSync(process.env.OLD_META);
+              const nextBytes = fs.readFileSync(process.env.NEW_META);
+              const oldMeta = JSON.parse(oldBytes.toString("utf8"));
+              const nextMeta = JSON.parse(nextBytes.toString("utf8"));
+              const channel = process.env.CHANNEL;
+              const parse = value => {
+                const pattern = channel === "latest"
+                  ? /^(\d+)\.(\d+)\.(\d+)$/
+                  : new RegExp(`^(\\d+)\\.(\\d+)\\.(\\d+)-${channel}\\.(\\d+)$`);
+                const match = pattern.exec(value);
+                if (!match) throw new Error(`invalid ${channel} app version: ${value}`);
+                return match.slice(1).map(Number);
+              };
+              const compare = (left, right) => {
+                const size = Math.max(left.length, right.length);
+                for (let index = 0; index < size; index += 1) {
+                  const delta = (left[index] ?? 0) - (right[index] ?? 0);
+                  if (delta !== 0) return Math.sign(delta);
+                }
+                return 0;
+              };
+              const order = compare(parse(nextMeta.appBaseline), parse(oldMeta.appBaseline));
+              if (order < 0) throw new Error(`desktop release cannot regress ${oldMeta.appBaseline} -> ${nextMeta.appBaseline}`);
+              if (order === 0 && nextMeta.sourceCommit !== oldMeta.sourceCommit) {
+                throw new Error(`version ${nextMeta.appBaseline} is already bound to source ${oldMeta.sourceCommit}`);
+              }
+              for (const field of ["bundleRev", "schemaVersion", "workspaceLayoutVersion"]) {
+                if (!Number.isInteger(oldMeta[field]) || oldMeta[field] < 1) {
+                  throw new Error(`previous desktop cohort metadata has invalid ${field}`);
+                }
+                if (nextMeta[field] < oldMeta[field]) {
+                  throw new Error(`desktop ${field} cannot decrease (${oldMeta[field]} -> ${nextMeta[field]})`);
+                }
+              }
+              if (oldMeta.bundleUpdatePublicKey && nextMeta.bundleUpdatePublicKey !== oldMeta.bundleUpdatePublicKey) {
+                throw new Error("desktop cohort public key cannot be rotated in place; use a new cohort or a staged trust migration");
+              }
+              if (order === 0) {
+                if (!oldBytes.equals(nextBytes)) {
+                  throw new Error(`version ${nextMeta.appBaseline} already exists with different cohort metadata`);
+                }
+                process.stdout.write(process.env.PREVIOUS_PROOF_IS_CANONICAL === "true" ? "already-published" : "repair");
+              } else {
+                process.stdout.write("advance");
+              }
+              NODE
+              )"
+              if [[ "$desktop_relation" == "already-published" ]]; then
+                echo "desktop ${APP_VERSION} is already published byte-for-byte; refusing to clobber same-version assets"
+                exit 0
+              fi
+            else
+              echo "published cohort ${tag} has no prior contract; treating this run as the contract bootstrap"
+            fi
+          fi
+
+          mapfile -t payload_files < <(
             find release-artifacts -type f \
-              \( -name "*.blockmap" -o -name "*.dmg" -o -name "*.exe" -o -name "*.yml" -o -name "*.zip" \) \
+              \( -name "*.blockmap" -o -name "*.dmg" -o -name "*.exe" -o -name "*.zip" \) |
+              sort
+          )
+          mapfile -t updater_metadata < <(
+            find release-artifacts -type f -name "*.yml" \
               ! -name builder-debug.yml \
               ! -name builder-effective-config.yaml |
               sort
           )
-          if [[ "${#files[@]}" -eq 0 ]]; then
-            echo "no release artifacts found" >&2
+          if [[ "${#payload_files[@]}" -lt 2 || "${#updater_metadata[@]}" -lt 2 ]]; then
+            echo "missing installer payloads or updater metadata" >&2
+            exit 1
+          fi
+          has_channel_metadata="false"
+          has_channel_mac_metadata="false"
+          declare -A asset_sources=()
+          for file in "${payload_files[@]}" "${updater_metadata[@]}" "$cohort_meta"; do
+            asset_name="${file##*/}"
+            if [[ -n "${asset_sources[$asset_name]:-}" ]]; then
+              echo "duplicate release asset name ${asset_name}: ${asset_sources[$asset_name]} and ${file}" >&2
+              exit 1
+            fi
+            asset_sources[$asset_name]="$file"
+            [[ "$asset_name" == "${CHANNEL}.yml" ]] && has_channel_metadata="true"
+            [[ "$asset_name" == "${CHANNEL}-mac.yml" ]] && has_channel_mac_metadata="true"
+          done
+          if [[ "$has_channel_metadata" != "true" || "$has_channel_mac_metadata" != "true" ]]; then
+            echo "electron-builder did not generate ${CHANNEL}.yml and ${CHANNEL}-mac.yml" >&2
             exit 1
           fi
 
-          release_flags=(--repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$APP_VERSION" --notes "MediaGo Drama $APP_VERSION")
-          if [[ "$PRERELEASE" == "true" ]]; then
-            release_flags+=(--prerelease)
+          UPDATER_METADATA_COUNT="${#updater_metadata[@]}" node - \
+            "${updater_metadata[@]}" "${payload_files[@]}" <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const count = Number(process.env.UPDATER_METADATA_COUNT);
+          const args = process.argv.slice(2);
+          const metadataFiles = args.slice(0, count);
+          const payloadNames = new Set(args.slice(count).map(file => path.basename(file)));
+          for (const metadataFile of metadataFiles) {
+            const references = fs.readFileSync(metadataFile, "utf8")
+              .split(/\r?\n/)
+              .flatMap(line => {
+                const match = /^\s*(?:-\s*)?(?:path|url):\s*(.*?)\s*$/.exec(line);
+                if (!match) return [];
+                let value = match[1];
+                if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+                  value = value.slice(1, -1);
+                }
+                return [decodeURIComponent(value.split("/").pop())];
+              });
+            if (references.length === 0) throw new Error(`${metadataFile} contains no updater asset references`);
+            for (const reference of references) {
+              if (!payloadNames.has(reference)) {
+                throw new Error(`${metadataFile} references missing release asset ${reference}`);
+              }
+            }
+          }
+          NODE
+
+          # Crash safety: payloads first, updater YAML second, cohort proof last. On a
+          # retry --clobber repairs partial uploads. A first release remains a draft
+          # until all three phases succeed, so clients never observe a partial cohort.
+          if [[ -n "$cohort_meta_recovery" ]]; then
+            gh release upload "$tag" "$cohort_meta_recovery" --repo "$GITHUB_REPOSITORY" --clobber
+          fi
+          gh release upload "$tag" "${payload_files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$tag" "${updater_metadata[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$tag" "$cohort_meta" --repo "$GITHUB_REPOSITORY" --clobber
+
+          if [[ "$release_was_draft" == "true" ]]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              -F draft=false \
+              -F prerelease="$PRERELEASE" \
+              -f make_latest=false >/dev/null
           fi
 
-          gh release create "$tag" "${files[@]}" "${release_flags[@]}"
+          echo "published ${APP_VERSION} to ${tag}; desktop-cohort-meta.json was uploaded last"

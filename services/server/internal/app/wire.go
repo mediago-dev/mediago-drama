@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -77,8 +78,13 @@ func newAPIHandler(config Config) *apiHandler {
 	}
 
 	settingsRepos, settingsReposErr := repository.OpenSettingsRepositories(settingsDBPath)
+	var settingsMigrationErr error
 	if settingsReposErr == nil && config.SettingsDBPath == "" {
-		migrateDefaultSettingsDB(settingsRepos.DB, workspaceState.DatabasePath(), settingsDBPath)
+		settingsMigrationErr = migrateDefaultSettingsDB(
+			settingsRepos.DB,
+			workspaceState.DatabasePath(),
+			settingsDBPath,
+		)
 	}
 	workspaceRepos, workspaceReposErr := repository.OpenWorkspaceRepositories(workspaceState.DatabasePath())
 	settings := servicesettings.NewSettingsWithStores(
@@ -180,6 +186,12 @@ func newAPIHandler(config Config) *apiHandler {
 	agentSessions := appagent.NewSessionService(workspaceState)
 
 	handler := &apiHandler{
+		initErr: errors.Join(
+			workspaceState.InitErr(),
+			settingsReposErr,
+			settingsMigrationErr,
+			workspaceReposErr,
+		),
 		workspaceState:   workspaceState,
 		events:           events,
 		workspaceEvents:  workspaceEvents,

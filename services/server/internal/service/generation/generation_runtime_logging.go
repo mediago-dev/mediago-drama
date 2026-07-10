@@ -20,6 +20,8 @@ func (workflow *GenerationService) generateWithProvider(
 	request coregeneration.Request,
 	logContext generationProviderLogContext,
 ) (coregeneration.Response, error) {
+	finishRequest := workflow.beginProviderRequest()
+	defer finishRequest()
 	startedAt := time.Now()
 	logArgs := generationProviderLogArgs(provider, request, logContext)
 

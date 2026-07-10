@@ -10,6 +10,8 @@ import "context"
 type Sources struct {
 	// ActiveGenerationTasks returns the number of generation tasks with in-flight work.
 	ActiveGenerationTasks func(ctx context.Context) (int64, error)
+	// InFlightGenerationRequests returns non-persisted provider calls currently running.
+	InFlightGenerationRequests func() int64
 	// ActiveAgentRuns returns the number of non-terminal agent runs.
 	ActiveAgentRuns func() int
 	// DatabaseFiles returns the absolute SQLite paths the desktop shell must snapshot
@@ -19,10 +21,11 @@ type Sources struct {
 
 // Report is the aggregated runtime activity snapshot.
 type Report struct {
-	Busy                   bool
-	RunningGenerationTasks int64
-	ActiveAgentRuns        int
-	DatabaseFiles          []string
+	Busy                       bool
+	RunningGenerationTasks     int64
+	InFlightGenerationRequests int64
+	ActiveAgentRuns            int
+	DatabaseFiles              []string
 }
 
 // Report computes the activity snapshot. When the generation-task count cannot be
@@ -44,9 +47,12 @@ func (sources Sources) Report(ctx context.Context) Report {
 		}
 		report.RunningGenerationTasks = count
 	}
+	if sources.InFlightGenerationRequests != nil {
+		report.InFlightGenerationRequests = sources.InFlightGenerationRequests()
+	}
 	if sources.ActiveAgentRuns != nil {
 		report.ActiveAgentRuns = sources.ActiveAgentRuns()
 	}
-	report.Busy = report.RunningGenerationTasks > 0 || report.ActiveAgentRuns > 0
+	report.Busy = report.RunningGenerationTasks > 0 || report.InFlightGenerationRequests > 0 || report.ActiveAgentRuns > 0
 	return report
 }

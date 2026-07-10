@@ -23,10 +23,11 @@ func NewRuntimeActivity(report RuntimeActivityReporter) RuntimeActivity {
 }
 
 type runtimeActivityResponse struct {
-	Busy                   bool     `json:"busy"`
-	RunningGenerationTasks int64    `json:"runningGenerationTasks"`
-	ActiveAgentRuns        int      `json:"activeAgentRuns"`
-	DatabaseFiles          []string `json:"databaseFiles"`
+	Busy                       bool     `json:"busy"`
+	RunningGenerationTasks     int64    `json:"runningGenerationTasks"`
+	InFlightGenerationRequests int64    `json:"inFlightGenerationRequests"`
+	ActiveAgentRuns            int      `json:"activeAgentRuns"`
+	DatabaseFiles              []string `json:"databaseFiles"`
 }
 
 // HandleGetRuntimeActivity godoc
@@ -39,9 +40,10 @@ type runtimeActivityResponse struct {
 func (handler RuntimeActivity) HandleGetRuntimeActivity(context *gin.Context) {
 	report := handler.report(context.Request.Context())
 	httpresponse.OK(context, runtimeActivityResponse{
-		Busy:                   report.Busy,
-		RunningGenerationTasks: report.RunningGenerationTasks,
-		ActiveAgentRuns:        report.ActiveAgentRuns,
-		DatabaseFiles:          report.DatabaseFiles,
+		Busy:                       report.Busy,
+		RunningGenerationTasks:     report.RunningGenerationTasks,
+		InFlightGenerationRequests: report.InFlightGenerationRequests,
+		ActiveAgentRuns:            report.ActiveAgentRuns,
+		DatabaseFiles:              report.DatabaseFiles,
 	})
 }

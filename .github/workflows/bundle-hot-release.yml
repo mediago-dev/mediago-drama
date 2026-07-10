@@ -1,32 +1,20 @@
 name: Bundle Hot Release
 
-# Publishes a signed application-bundle hot update (renderer + server binaries) to the
-# fixed channel release tag `bundle-<channel>`. Installed desktop apps download only
-# the changed components and apply on next launch or while the server is idle — no
-# installer round-trip.
-#
-# Discipline (enforced below where possible):
-#   - Bump apps/workspace/bundle-update.json in a normal PR before dispatching.
-#   - Renderer/Go-server changes may ship here. Anything touching the Electron shell
-#     (apps/workspace/electron/, preload, vendored CLI tools) MUST go through the full
-#     Electron Release.
-#   - Releases containing DB migrations must set the has_migration input; migrations
-#     must stay additive (new tables/columns only).
-#
-# macOS signing (optional but recommended): when the MACOS_CERT_P12 secret is present
-# the darwin server binary is Developer ID signed (+ notarized when notary secrets are
-# present). Without secrets the binary ships with Go's default ad-hoc signature, which
-# is sufficient for the sidecar spawn path.
+# Publishes a signed renderer + server hot update to the fixed cohort tag
+# `bundle-<channel>-<edition>`. A matching published full installer at
+# `desktop-<channel>-<edition>` is a hard prerequisite: its cohort contract must
+# prove that the installer already carries the same key, layout and shell code.
 
 on:
   workflow_dispatch:
     inputs:
       channel:
-        description: Hot-update channel tag suffix
+        description: Hot-update channel
         required: true
         default: beta
         type: choice
         options:
+          - alpha
           - beta
           - latest
       notes:
@@ -34,24 +22,34 @@ on:
         required: false
         type: string
       edition:
-        description: Build edition — MUST match the installed apps on this channel
+        description: Build edition — must match the installed app cohort
         required: true
         default: community
         type: choice
         options:
           - community
           - pro
-      has_migration:
-        description: This release contains DB migrations (additive-only)
+      schema_version:
+        description: Expected schemaVersion from bundle-update.json
+        required: true
+        default: "1"
+        type: string
+      workspace_layout_version:
+        description: Expected workspaceLayoutVersion from bundle-update.json
+        required: true
+        default: "1"
+        type: string
+      disabled:
+        description: Signed cohort kill-switch; clients quarantine downloaded bundles
         required: true
         default: false
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: bundle-hot-release-${{ inputs.channel }}
+  group: desktop-cohort-${{ inputs.channel }}-${{ inputs.edition }}
   cancel-in-progress: false
 
 env:
@@ -60,89 +58,395 @@ env:
   PNPM_VERSION: "11.9.0"
 
 jobs:
-  release:
-    name: Build, sign, and publish bundle
+  authorize:
+    name: Authorize production release ref
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the dev branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/dev" ]]; then
+            echo "production releases may only be dispatched from refs/heads/dev (got ${GITHUB_REF})" >&2
+            exit 1
+          fi
+
+  build:
+    name: Build and sign bundle
+    needs: authorize
+    outputs:
+      already_published: ${{ steps.release_guard.outputs.already_published }}
+    environment: production-release
+    permissions:
+      contents: read
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.work
           cache-dependency-path: |
             go.work.sum
             **/go.sum
 
-      - uses: go-task/setup-task@v2
+      - uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa # v2
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Guard — monotonic rev and edition continuity
+      - name: Electron hot-update quality gates
+        run: |
+          pnpm --dir apps/workspace exec oxfmt --check electron/src scripts/package-bundle-update.ts scripts/hot-update-local-test.ts scripts/stage-electron-app.ts scripts/check-bundle-version-bumps.mjs
+          pnpm --dir apps/workspace exec oxlint electron/src scripts/package-bundle-update.ts scripts/hot-update-local-test.ts scripts/stage-electron-app.ts scripts/check-bundle-version-bumps.mjs
+          pnpm --dir apps/workspace electron:compile
+          pnpm --dir apps/workspace exec vitest run electron/src
+
+      - name: Go server race tests
+        working-directory: services/server
+        run: go test -race ./...
+
+      - name: Guard full-installer proof and monotonic hot revision
+        id: release_guard
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
           CHANNEL: ${{ inputs.channel }}
           EDITION: ${{ inputs.edition }}
+          EXPECTED_SCHEMA_VERSION: ${{ inputs.schema_version }}
+          EXPECTED_WORKSPACE_LAYOUT_VERSION: ${{ inputs.workspace_layout_version }}
+          EXPECTED_DISABLED: ${{ inputs.disabled }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PRIVATE_KEY: ${{ secrets.RENDERER_UPDATE_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          new_rev="$(node -p 'JSON.parse(require("node:fs").readFileSync("apps/workspace/bundle-update.json","utf8")).bundleRev')"
-          if ! [[ "$new_rev" =~ ^[0-9]+$ ]]; then
-            echo "invalid bundleRev in bundle-update.json" >&2
+          if [[ -z "$RELEASE_PRIVATE_KEY" ]]; then
+            echo "RENDERER_UPDATE_PRIVATE_KEY is required" >&2
             exit 1
           fi
-          tag="bundle-${CHANNEL}"
-          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "no published release on $tag yet; first release for this channel"
-            exit 0
-          fi
-          # Release exists — the manifest MUST be readable; treat any failure as a hard
-          # error (fail closed) rather than silently skipping the regression check.
-          if ! gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern bundle-manifest.json --output current-manifest.json; then
-            echo "release $tag exists but its bundle-manifest.json could not be downloaded — refusing to publish over an unknown state." >&2
-            exit 1
-          fi
-          # Do all parsing/comparison inside one node script reading files + env — never
-          # interpolate JSON into the shell (quotes collide) or print objects via node -p.
-          NEW_REV="$new_rev" node <<'NODE'
-          const fs = require("node:fs");
-          const newRev = Number(process.env.NEW_REV);
-          const envelope = JSON.parse(fs.readFileSync("current-manifest.json", "utf8"));
-          const payload = JSON.parse(Buffer.from(envelope.payloadB64, "base64").toString("utf8"));
-          const currentRev = payload.bundleRev;
-          const currentEdition = payload.edition || "community";
-          const edition = process.env.EDITION;
-          const channel = process.env.CHANNEL;
-          console.log(`published rev=${currentRev} edition=${currentEdition}; new rev=${newRev} edition=${edition}`);
-          if (!(newRev > currentRev)) {
-            console.error(`bundleRev (${newRev}) must be greater than the published rev (${currentRev}). Bump apps/workspace/bundle-update.json in a PR first.`);
-            process.exit(1);
+
+          versions="$(node <<'NODE'
+          const config = JSON.parse(require("node:fs").readFileSync("apps/workspace/bundle-update.json", "utf8"));
+          for (const key of ["bundleRev", "schemaVersion", "workspaceLayoutVersion"]) {
+            if (!Number.isInteger(config[key]) || config[key] < 1) {
+              throw new Error(`invalid ${key} in apps/workspace/bundle-update.json`);
+            }
           }
-          if (currentEdition !== edition) {
-            console.error(`edition mismatch: channel ${channel} currently ships '${currentEdition}' but this run selected '${edition}'.`);
-            console.error(`A mismatched edition hot update would flip installed apps' Pro/community gating. Re-run with edition=${currentEdition}.`);
-            process.exit(1);
+          console.log([config.bundleRev, config.schemaVersion, config.workspaceLayoutVersion].join(" "));
+          NODE
+          )"
+          read -r new_rev new_schema_version new_layout_version <<< "$versions"
+          if [[ "$EXPECTED_SCHEMA_VERSION" != "$new_schema_version" ]]; then
+            echo "schema_version input (${EXPECTED_SCHEMA_VERSION}) must match bundle-update.json (${new_schema_version})" >&2
+            exit 1
+          fi
+          if [[ "$EXPECTED_WORKSPACE_LAYOUT_VERSION" != "$new_layout_version" ]]; then
+            echo "workspace_layout_version input (${EXPECTED_WORKSPACE_LAYOUT_VERSION}) must match bundle-update.json (${new_layout_version})" >&2
+            exit 1
+          fi
+
+          # Full installer is always checked, including the first hot release. A checkbox
+          # is not proof: the published cohort metadata is bound to the actual installer.
+          desktop_tag="desktop-${CHANNEL}-${EDITION}"
+          desktop_release_json="$RUNNER_TEMP/desktop-release.json"
+          desktop_status="$(curl --silent --show-error --location \
+            --output "$desktop_release_json" \
+            --write-out '%{http_code}' \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/tags/${desktop_tag}")"
+          if [[ "$desktop_status" != "200" ]]; then
+            echo "matching published full-installer cohort ${desktop_tag} is required (GitHub API HTTP ${desktop_status})" >&2
+            exit 1
+          fi
+          if [[ "$(jq -r '.draft' "$desktop_release_json")" != "false" ]]; then
+            echo "full-installer cohort ${desktop_tag} is still a draft; publish it before any hot manifest" >&2
+            exit 1
+          fi
+          desktop_asset_names=()
+          while IFS= read -r name; do
+            desktop_asset_names+=("$name")
+          done < <(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/$(jq -r '.id' "$desktop_release_json")/assets" --paginate --jq '.[].name'
+          )
+          has_desktop_proof="false"
+          has_mac_installer="false"
+          has_windows_installer="false"
+          has_mac_updater_metadata="false"
+          has_windows_updater_metadata="false"
+          for name in "${desktop_asset_names[@]}"; do
+            [[ "$name" == "desktop-cohort-meta.json" ]] && has_desktop_proof="true"
+            [[ "$name" == *.zip ]] && has_mac_installer="true"
+            [[ "$name" == *.exe ]] && has_windows_installer="true"
+            [[ "$name" == "${CHANNEL}-mac.yml" ]] && has_mac_updater_metadata="true"
+            [[ "$name" == "${CHANNEL}.yml" ]] && has_windows_updater_metadata="true"
+          done
+          if [[ "$has_desktop_proof" != "true" || "$has_mac_installer" != "true" || \
+            "$has_windows_installer" != "true" || "$has_mac_updater_metadata" != "true" || \
+            "$has_windows_updater_metadata" != "true" ]]; then
+            echo "full-installer cohort ${desktop_tag} lacks its proof, platform installers, or updater metadata" >&2
+            exit 1
+          fi
+          gh release download "$desktop_tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern "${CHANNEL}.yml" --output "$RUNNER_TEMP/desktop-update.yml"
+          gh release download "$desktop_tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern "${CHANNEL}-mac.yml" --output "$RUNNER_TEMP/desktop-update-mac.yml"
+          node - "$RUNNER_TEMP/desktop-update.yml" "$RUNNER_TEMP/desktop-update-mac.yml" \
+            "${desktop_asset_names[@]}" <<'NODE'
+          const fs = require("node:fs");
+          const metadataFiles = process.argv.slice(2, 4);
+          const assetNames = new Set(process.argv.slice(4));
+          for (const metadataFile of metadataFiles) {
+            const references = fs.readFileSync(metadataFile, "utf8")
+              .split(/\r?\n/)
+              .flatMap(line => {
+                const match = /^\s*(?:-\s*)?(?:path|url):\s*(.*?)\s*$/.exec(line);
+                if (!match) return [];
+                let value = match[1];
+                if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+                  value = value.slice(1, -1);
+                }
+                return [decodeURIComponent(value.split("/").pop())];
+              });
+            if (references.length === 0) throw new Error(`${metadataFile} contains no updater asset references`);
+            for (const reference of references) {
+              if (!assetNames.has(reference)) throw new Error(`${metadataFile} references missing asset ${reference}`);
+            }
           }
           NODE
+          rm -f "$RUNNER_TEMP/desktop-cohort-meta.json"
+          gh release download "$desktop_tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern desktop-cohort-meta.json \
+            --output "$RUNNER_TEMP/desktop-cohort-meta.json"
+
+          NEW_REV="$new_rev" NEW_SCHEMA_VERSION="$new_schema_version" NEW_LAYOUT_VERSION="$new_layout_version" \
+            DESKTOP_META="$RUNNER_TEMP/desktop-cohort-meta.json" \
+            FULL_SOURCE_COMMIT_OUTPUT="$RUNNER_TEMP/full-source-commit" node <<'NODE'
+          const fs = require("node:fs");
+          const {createPrivateKey, createPublicKey} = require("node:crypto");
+          const {execFileSync} = require("node:child_process");
+          const meta = JSON.parse(fs.readFileSync(process.env.DESKTOP_META, "utf8"));
+          const channel = process.env.CHANNEL;
+          const edition = process.env.EDITION;
+          const newRev = Number(process.env.NEW_REV);
+          const newSchema = Number(process.env.NEW_SCHEMA_VERSION);
+          const newLayout = Number(process.env.NEW_LAYOUT_VERSION);
+          for (const field of ["bundleRev", "schemaVersion", "workspaceLayoutVersion"]) {
+            if (!Number.isInteger(meta[field]) || meta[field] < 1) throw new Error(`invalid ${field} in desktop cohort metadata`);
+          }
+          if (meta.channel !== channel || meta.edition !== edition) {
+            throw new Error(`full installer cohort is ${meta.channel}/${meta.edition}, expected ${channel}/${edition}`);
+          }
+          if (meta.workspaceLayoutVersion !== newLayout) {
+            throw new Error(`full installer layout ${meta.workspaceLayoutVersion} does not match hot layout ${newLayout}`);
+          }
+          if (meta.schemaVersion > newSchema) {
+            throw new Error(`hot schema ${newSchema} cannot regress below full installer schema ${meta.schemaVersion}`);
+          }
+          if (meta.bundleRev >= newRev) {
+            throw new Error(`hot bundleRev ${newRev} must exceed full installer bundleRev ${meta.bundleRev}`);
+          }
+          if (meta.hotUpdateEnabled !== true) {
+            throw new Error("matching full installer does not have hot updates enabled");
+          }
+          const privateKey = createPrivateKey({
+            key: Buffer.from(process.env.RELEASE_PRIVATE_KEY, "base64"),
+            format: "der",
+            type: "pkcs8",
+          });
+          const expectedPublicKey = createPublicKey(privateKey).export({format: "der", type: "spki"}).toString("base64");
+          if (meta.bundleUpdatePublicKey !== expectedPublicKey) {
+            throw new Error("full installer public key does not match RENDERER_UPDATE_PRIVATE_KEY");
+          }
+          if (typeof meta.sourceCommit !== "string" || !/^[0-9a-f]{40}$/.test(meta.sourceCommit)) {
+            throw new Error("full installer metadata lacks a valid sourceCommit");
+          }
+          if (typeof meta.appBaseline !== "string" || !/^[0-9A-Za-z][0-9A-Za-z.+-]*$/.test(meta.appBaseline)) {
+            throw new Error("full installer metadata lacks a valid appBaseline");
+          }
+          execFileSync("git", ["cat-file", "-e", `${meta.sourceCommit}^{commit}`]);
+          try {
+            execFileSync("git", ["merge-base", "--is-ancestor", meta.sourceCommit, "HEAD"]);
+          } catch {
+            throw new Error(`full installer source ${meta.sourceCommit} is not an ancestor of ${process.env.GITHUB_SHA}`);
+          }
+          const changedAfterInstaller = execFileSync("git", ["diff", "--name-only", `${meta.sourceCommit}...HEAD`], {encoding: "utf8"})
+            .trim().split("\n").filter(Boolean);
+          const requiresFullInstaller = [
+            "apps/workspace/electron/",
+            "apps/workspace/package.json",
+            "apps/workspace/scripts/stage-electron-app.ts",
+            "apps/workspace/scripts/stage-electron.ts",
+            "packages/vendor/",
+            "pnpm-lock.yaml",
+            "Taskfile.yml",
+          ];
+          const unshippedShellChanges = changedAfterInstaller.filter(path =>
+            requiresFullInstaller.some(prefix => path === prefix || path.startsWith(prefix)),
+          );
+          if (unshippedShellChanges.length > 0) {
+            throw new Error(`full installer ${meta.sourceCommit} does not contain shell/runtime changes:\n${unshippedShellChanges.join("\n")}`);
+          }
+          fs.writeFileSync(process.env.FULL_SOURCE_COMMIT_OUTPUT, meta.sourceCommit);
+          fs.appendFileSync(process.env.GITHUB_ENV, `MEDIAGO_BUNDLE_APP_BASELINE=${meta.appBaseline}\n`);
+          NODE
+          node apps/workspace/scripts/check-bundle-version-bumps.mjs "$(cat "$RUNNER_TEMP/full-source-commit")"
+
+          hot_tag="bundle-${CHANNEL}-${EDITION}"
+          hot_release_json="$RUNNER_TEMP/current-hot-release.json"
+          hot_status="$(curl --silent --show-error --location \
+            --output "$hot_release_json" \
+            --write-out '%{http_code}' \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/tags/${hot_tag}")"
+          if [[ "$hot_status" == "200" && "$(jq -r '.draft' "$hot_release_json")" == "true" ]]; then
+            echo "found an unpublished draft for ${hot_tag}; it will be repaired and published after packaging"
+            hot_status="404"
+          fi
+          case "$hot_status" in
+            404)
+              echo "no published hot release on ${hot_tag}; full-installer proof passed"
+              ;;
+            200)
+              hot_asset_names=()
+              while IFS= read -r name; do
+                hot_asset_names+=("$name")
+              done < <(
+                gh api "repos/${GITHUB_REPOSITORY}/releases/$(jq -r '.id' "$hot_release_json")/assets" --paginate \
+                  --jq '.[].name'
+              )
+              current_manifest_asset=""
+              for name in "${hot_asset_names[@]}"; do
+                if [[ "$name" == "bundle-manifest.json" ]]; then
+                  current_manifest_asset="$name"
+                  break
+                fi
+                if [[ "$name" == "bundle-manifest-backup.json" ]]; then
+                  current_manifest_asset="$name"
+                fi
+              done
+              if [[ -z "$current_manifest_asset" ]]; then
+                echo "published hot cohort has neither its manifest nor a recovery backup" >&2
+                exit 1
+              fi
+              if [[ "$current_manifest_asset" == "bundle-manifest-backup.json" ]]; then
+                echo "canonical manifest is missing; validating the last recovery backup before repair"
+              fi
+              rm -f "$RUNNER_TEMP/current-hot-manifest.json"
+              gh release download "$hot_tag" --repo "$GITHUB_REPOSITORY" \
+                --pattern "$current_manifest_asset" \
+                --output "$RUNNER_TEMP/current-hot-manifest.json"
+
+              NEW_REV="$new_rev" NEW_SCHEMA_VERSION="$new_schema_version" NEW_LAYOUT_VERSION="$new_layout_version" \
+                CURRENT_MANIFEST="$RUNNER_TEMP/current-hot-manifest.json" \
+                CURRENT_MANIFEST_IS_CANONICAL="$([[ "$current_manifest_asset" == "bundle-manifest.json" ]] && echo true || echo false)" \
+                CURRENT_FULL_META="$RUNNER_TEMP/desktop-cohort-meta.json" \
+                SOURCE_COMMIT_OUTPUT="$RUNNER_TEMP/published-source-commit" node - "${hot_asset_names[@]}" <<'NODE'
+              const fs = require("node:fs");
+              const {createPrivateKey, createPublicKey, verify} = require("node:crypto");
+              const {execFileSync} = require("node:child_process");
+              const envelope = JSON.parse(fs.readFileSync(process.env.CURRENT_MANIFEST, "utf8"));
+              const payloadBytes = Buffer.from(envelope.payloadB64, "base64");
+              const privateKey = createPrivateKey({
+                key: Buffer.from(process.env.RELEASE_PRIVATE_KEY, "base64"),
+                format: "der",
+                type: "pkcs8",
+              });
+              if (!verify(null, payloadBytes, createPublicKey(privateKey), Buffer.from(envelope.signature, "base64"))) {
+                throw new Error("published hot manifest signature does not match the release key");
+              }
+              const payload = JSON.parse(payloadBytes.toString("utf8"));
+              const next = {
+                bundleRev: Number(process.env.NEW_REV),
+                schemaVersion: Number(process.env.NEW_SCHEMA_VERSION),
+                workspaceLayoutVersion: Number(process.env.NEW_LAYOUT_VERSION),
+              };
+              for (const field of Object.keys(next)) {
+                if (!Number.isInteger(payload[field]) || payload[field] < 1) throw new Error(`invalid published ${field}`);
+              }
+              if (payload.channel !== process.env.CHANNEL || payload.edition !== process.env.EDITION) {
+                throw new Error(`published hot cohort ${payload.channel}/${payload.edition} does not match ${process.env.CHANNEL}/${process.env.EDITION}`);
+              }
+              if (next.bundleRev < payload.bundleRev) {
+                throw new Error(`bundleRev cannot decrease (${payload.bundleRev} -> ${next.bundleRev})`);
+              }
+              const sameRev = next.bundleRev === payload.bundleRev;
+              if (next.schemaVersion < payload.schemaVersion) {
+                throw new Error(`schemaVersion cannot decrease (${payload.schemaVersion} -> ${next.schemaVersion})`);
+              }
+              if (next.workspaceLayoutVersion < payload.workspaceLayoutVersion) {
+                throw new Error(`workspaceLayoutVersion cannot decrease (${payload.workspaceLayoutVersion} -> ${next.workspaceLayoutVersion})`);
+              }
+              if (typeof payload.sourceCommit !== "string" || !/^[0-9a-f]{40}$/.test(payload.sourceCommit)) {
+                throw new Error("published hot manifest lacks a valid sourceCommit");
+              }
+              execFileSync("git", ["cat-file", "-e", `${payload.sourceCommit}^{commit}`]);
+              try {
+                execFileSync("git", ["merge-base", "--is-ancestor", payload.sourceCommit, "HEAD"]);
+              } catch {
+                throw new Error(`published hot source ${payload.sourceCommit} is not an ancestor of HEAD`);
+              }
+              if (sameRev) {
+                if (next.schemaVersion !== payload.schemaVersion || next.workspaceLayoutVersion !== payload.workspaceLayoutVersion) {
+                  throw new Error(`published rev ${payload.bundleRev} has a different schema/layout contract`);
+                }
+                if (payload.sourceCommit !== process.env.GITHUB_SHA) {
+                  throw new Error(`rev ${payload.bundleRev} is already bound to source ${payload.sourceCommit}`);
+                }
+                if (Boolean(payload.disabled) !== (process.env.EXPECTED_DISABLED === "true")) {
+                  throw new Error(`rev ${payload.bundleRev} is already bound to a different disabled state`);
+                }
+                const fullMeta = JSON.parse(fs.readFileSync(process.env.CURRENT_FULL_META, "utf8"));
+                if (payload.appBaseline !== fullMeta.appBaseline) {
+                  throw new Error(`rev ${payload.bundleRev} baseline ${payload.appBaseline} does not match full installer ${fullMeta.appBaseline}`);
+                }
+                const assetNames = new Set(process.argv.slice(2));
+                const componentRefs = [
+                  payload.components?.renderer,
+                  ...Object.values(payload.components?.server ?? {}),
+                ];
+                for (const component of componentRefs) {
+                  if (!component || typeof component.url !== "string") throw new Error("published manifest has an invalid component URL");
+                  const assetName = decodeURIComponent(new URL(component.url).pathname.split("/").pop());
+                  if (!assetNames.has(assetName)) throw new Error(`published rev ${payload.bundleRev} is missing ${assetName}`);
+                }
+                if (process.env.CURRENT_MANIFEST_IS_CANONICAL === "true") {
+                  fs.appendFileSync(process.env.GITHUB_OUTPUT, "already_published=true\n");
+                  console.log(`rev ${payload.bundleRev} is already fully committed; treating rerun as success`);
+                } else {
+                  console.log(`rev ${payload.bundleRev} exists only as a recovery backup; rebuilding the canonical pointer`);
+                }
+              }
+              fs.writeFileSync(process.env.SOURCE_COMMIT_OUTPUT, payload.sourceCommit);
+              NODE
+              node apps/workspace/scripts/check-bundle-version-bumps.mjs "$(cat "$RUNNER_TEMP/published-source-commit")"
+              ;;
+            *)
+              echo "GitHub API returned HTTP ${hot_status} while checking ${hot_tag}; refusing to publish" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Build renderer
+        if: steps.release_guard.outputs.already_published != 'true'
         env:
           MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: ${{ vars.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL }}
           MODEL_PLATFORM: ${{ vars.MODEL_PLATFORM }}
           VITE_ELECTRON_BUILD: "1"
-          # Parity with Taskfile build:electron (vars EDITION/SERVER_PORT): a hot
-          # renderer compiled with different values would silently flip installed
-          # apps' edition gating or server port.
           VITE_MEDIAGO_EDITION: ${{ inputs.edition }}
           VITE_MEDIAGO_SERVER_PORT: "48273"
           VITE_MEDIAGO_APIKEY_URL: ${{ vars.VITE_MEDIAGO_APIKEY_URL }}
@@ -152,11 +456,13 @@ jobs:
           task sync:workspace-dist
 
       - name: Build server binaries (darwin-arm64 + windows-x64)
+        if: steps.release_guard.outputs.already_published != 'true'
         run: |
           task build:server:target PLATFORM=darwin-arm64
           task build:server:target PLATFORM=windows-x64
 
-      - name: Sign darwin server binary (when signing secrets are configured)
+      - name: Sign darwin server binary when configured
+        if: steps.release_guard.outputs.already_published != 'true'
         shell: bash
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
@@ -167,8 +473,8 @@ jobs:
         run: |
           set -euo pipefail
           binary="bin/darwin-arm64/mediago-server"
-          if [[ -z "${MACOS_CERT_P12}" ]]; then
-            echo "MACOS_CERT_P12 secret not configured — shipping with Go's ad-hoc signature"
+          if [[ -z "$MACOS_CERT_P12" ]]; then
+            echo "MACOS_CERT_P12 not configured — retaining the Go binary's ad-hoc signature"
             exit 0
           fi
 
@@ -184,14 +490,13 @@ jobs:
 
           identity="$(security find-identity -v -p codesigning "$keychain" | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
           if [[ -z "$identity" ]]; then
-            echo "no Developer ID Application identity found in the imported certificate" >&2
+            echo "no Developer ID Application identity found" >&2
             exit 1
           fi
-
           codesign --force --options runtime --timestamp --sign "$identity" "$binary"
           codesign --verify --strict --verbose=2 "$binary"
 
-          if [[ -n "${APPLE_ID}" && -n "${APPLE_APP_SPECIFIC_PASSWORD}" && -n "${APPLE_TEAM_ID}" ]]; then
+          if [[ -n "$APPLE_ID" && -n "$APPLE_APP_SPECIFIC_PASSWORD" && -n "$APPLE_TEAM_ID" ]]; then
             ditto -c -k --keepParent "$binary" "$RUNNER_TEMP/mediago-server-notarize.zip"
             xcrun notarytool submit "$RUNNER_TEMP/mediago-server-notarize.zip" \
               --apple-id "$APPLE_ID" \
@@ -199,41 +504,177 @@ jobs:
               --team-id "$APPLE_TEAM_ID" \
               --wait
           else
-            echo "notary secrets not configured — skipping notarization (signed binary still runs via spawn)"
+            echo "notary secrets not configured — signing without notarization"
           fi
 
-      - name: Package and sign bundle
+      - name: Package, sign, and verify reproducibility
+        if: steps.release_guard.outputs.already_published != 'true'
         env:
           RENDERER_UPDATE_PRIVATE_KEY: ${{ secrets.RENDERER_UPDATE_PRIVATE_KEY }}
           RENDERER_UPDATE_CHANNEL: ${{ inputs.channel }}
           RENDERER_UPDATE_NOTES: ${{ inputs.notes }}
           RENDERER_UPDATE_EDITION: ${{ inputs.edition }}
-          MEDIAGO_BUNDLE_HAS_MIGRATION: ${{ inputs.has_migration && '1' || '' }}
+          MEDIAGO_BUNDLE_SCHEMA_VERSION: ${{ inputs.schema_version }}
+          MEDIAGO_BUNDLE_WORKSPACE_LAYOUT_VERSION: ${{ inputs.workspace_layout_version }}
+          MEDIAGO_BUNDLE_DISABLED: ${{ inputs.disabled && '1' || '' }}
           MEDIAGO_SERVER_BINARY_DARWIN_ARM64: ${{ github.workspace }}/bin/darwin-arm64/mediago-server
           MEDIAGO_SERVER_BINARY_WINDOWS_X64: ${{ github.workspace }}/bin/windows-x64/mediago-server.exe
-        run: node apps/workspace/scripts/package-bundle-update.ts
-
-      - name: Publish to channel release
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CHANNEL: ${{ inputs.channel }}
         run: |
           set -euo pipefail
-          tag="bundle-${CHANNEL}"
-          out="apps/workspace/release/bundle"
+          node apps/workspace/scripts/package-bundle-update.ts
+          find apps/workspace/release/bundle -type f -print | sort | while IFS= read -r file; do
+            shasum -a 256 "$file"
+          done > "$RUNNER_TEMP/first-bundle.sha256"
+          node apps/workspace/scripts/package-bundle-update.ts
+          find apps/workspace/release/bundle -type f -print | sort | while IFS= read -r file; do
+            shasum -a 256 "$file"
+          done > "$RUNNER_TEMP/second-bundle.sha256"
+          diff -u "$RUNNER_TEMP/first-bundle.sha256" "$RUNNER_TEMP/second-bundle.sha256"
 
-          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$tag" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "Application bundle hot updates (${CHANNEL})" \
-              --notes "Fixed channel release. bundle-manifest.json is replaced in place by the Bundle Hot Release workflow; installed apps poll it here." \
-              --latest=false
+      - name: Upload signed bundle artifact
+        if: steps.release_guard.outputs.already_published != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: bundle-hot-${{ inputs.channel }}-${{ inputs.edition }}-${{ github.sha }}
+          path: apps/workspace/release/bundle/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish fixed hot-update cohort
+    needs: build
+    if: needs.build.result == 'success' && needs.build.outputs.already_published != 'true'
+    environment: production-release
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: bundle-hot-${{ inputs.channel }}-${{ inputs.edition }}-${{ github.sha }}
+          path: bundle-artifacts
+
+      - name: Publish archives, then manifest
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          EDITION: ${{ inputs.edition }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="bundle-${CHANNEL}-${EDITION}"
+          title="Application bundle hot updates (${CHANNEL}/${EDITION})"
+          body="Fixed signed hot-update cohort. Versioned component archives accumulate here; bundle-manifest.json is the only client pointer."
+          out="bundle-artifacts"
+
+          release_rows=()
+          while IFS= read -r row; do
+            release_rows+=("$row")
+          done < <(
+            gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate \
+              --jq ".[] | select(.tag_name == \"${tag}\") | [.id, .draft, (.immutable // false)] | @tsv"
+          )
+          if [[ "${#release_rows[@]}" -gt 1 ]]; then
+            echo "multiple GitHub releases use fixed tag ${tag}; refusing an ambiguous publish" >&2
+            exit 1
+          fi
+          if [[ "${#release_rows[@]}" -eq 0 ]]; then
+            release_json="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/releases" \
+              -f tag_name="$tag" \
+              -f target_commitish="$GITHUB_SHA" \
+              -f name="$title" \
+              -f body="$body" \
+              -F draft=true \
+              -F prerelease=true \
+              -f make_latest=false)"
+            release_id="$(jq -r '.id' <<< "$release_json")"
+            release_was_draft="true"
+          else
+            IFS=$'\t' read -r release_id release_was_draft release_is_immutable <<< "${release_rows[0]}"
+            if [[ "$release_is_immutable" == "true" ]]; then
+              echo "fixed cohort release ${tag} is immutable and cannot advance in place" >&2
+              exit 1
+            fi
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              -f name="$title" \
+              -f body="$body" \
+              -F prerelease=true \
+              -f make_latest=false >/dev/null
           fi
 
-          # New zips per rev: never clobber, so a published rev cannot be silently replaced.
-          gh release upload "$tag" "$out"/renderer-*.zip "$out"/server-*.zip --repo "$GITHUB_REPOSITORY"
-          # The manifest pointer is the only mutable asset.
+          component_archives=()
+          while IFS= read -r archive; do
+            component_archives+=("$archive")
+          done < <(find "$out" -maxdepth 1 -type f -name "*.zip" | sort)
+          if [[ "${#component_archives[@]}" -ne 3 || ! -f "$out/bundle-manifest.json" ]]; then
+            echo "bundle package is incomplete" >&2
+            exit 1
+          fi
+
+          if [[ "$release_was_draft" != "true" ]]; then
+            manifest_asset_names=()
+            while IFS= read -r name; do
+              manifest_asset_names+=("$name")
+            done < <(
+              gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets" --paginate \
+                --jq '.[] | select(.name == "bundle-manifest.json" or .name == "bundle-manifest-backup.json") | .name'
+            )
+            canonical_exists="false"
+            backup_exists="false"
+            for name in "${manifest_asset_names[@]}"; do
+              [[ "$name" == "bundle-manifest.json" ]] && canonical_exists="true"
+              [[ "$name" == "bundle-manifest-backup.json" ]] && backup_exists="true"
+            done
+            if [[ "$canonical_exists" == "true" ]]; then
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+                --pattern bundle-manifest.json \
+                --output "$RUNNER_TEMP/existing-bundle-manifest.json"
+              manifest_relation="$(EXISTING_MANIFEST="$RUNNER_TEMP/existing-bundle-manifest.json" \
+                NEW_MANIFEST="$out/bundle-manifest.json" node <<'NODE'
+              const fs = require("node:fs");
+              const read = path => {
+                const envelope = JSON.parse(fs.readFileSync(path, "utf8"));
+                const payload = JSON.parse(Buffer.from(envelope.payloadB64, "base64").toString("utf8"));
+                if (!Number.isInteger(payload.bundleRev) || payload.bundleRev < 1) throw new Error("invalid manifest revision");
+                return {bytes: fs.readFileSync(path), rev: payload.bundleRev};
+              };
+              const existing = read(process.env.EXISTING_MANIFEST);
+              const next = read(process.env.NEW_MANIFEST);
+              if (existing.rev > next.rev) throw new Error(`published manifest rev ${existing.rev} is newer than ${next.rev}`);
+              if (existing.rev === next.rev) {
+                if (!existing.bytes.equals(next.bytes)) throw new Error(`rev ${next.rev} is already published with different bytes`);
+                process.stdout.write("already-published");
+              } else {
+                process.stdout.write("advance");
+              }
+              NODE
+              )"
+              if [[ "$manifest_relation" == "already-published" ]]; then
+                echo "bundle manifest is already published byte-for-byte; nothing to repair"
+                exit 0
+              fi
+              cp "$RUNNER_TEMP/existing-bundle-manifest.json" "$RUNNER_TEMP/bundle-manifest-backup.json"
+              gh release upload "$tag" "$RUNNER_TEMP/bundle-manifest-backup.json" \
+                --repo "$GITHUB_REPOSITORY" --clobber
+            elif [[ "$backup_exists" != "true" ]]; then
+              echo "published cohort has no manifest recovery point" >&2
+              exit 1
+            else
+              echo "canonical manifest is absent; retaining the existing recovery backup during repair"
+            fi
+          fi
+
+          # A failed update before the manifest leaves only unreachable rev archives;
+          # --clobber makes that state repairable. Before replacing a published pointer,
+          # its authenticated bytes are saved as bundle-manifest-backup.json so a failed
+          # delete/upload can be retried against the previous monotonic revision.
+          gh release upload "$tag" "${component_archives[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           gh release upload "$tag" "$out/bundle-manifest.json" --repo "$GITHUB_REPOSITORY" --clobber
 
-          echo "published $(ls "$out")"
+          if [[ "$release_was_draft" == "true" ]]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              -F draft=false \
+              -F prerelease=true \
+              -f make_latest=false >/dev/null
+          fi
+          echo "published ${tag}; bundle-manifest.json was uploaded last"

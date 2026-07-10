@@ -27,6 +27,9 @@ import (
 type Config struct {
 	Host                     string
 	Port                     int
+	BundleRev                int
+	SchemaVersion            int
+	InstanceToken            string
 	SettingsDBPath           string
 	MediaDir                 string
 	WorkspaceDir             string
@@ -179,8 +182,9 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	}, api.AgentSessionStatus)
 
 	runtimeActivityHandler := httphandlers.NewRuntimeActivity(serviceruntimeactivity.Sources{
-		ActiveGenerationTasks: api.generation.CountActiveGenerationTasks,
-		ActiveAgentRuns:       api.agentSessions.CountActiveRuns,
+		ActiveGenerationTasks:      api.generation.CountActiveGenerationTasks,
+		InFlightGenerationRequests: api.generation.CountInFlightProviderRequests,
+		ActiveAgentRuns:            api.agentRuntime.CountInFlightRuns,
 		DatabaseFiles: func() []string {
 			return []string{
 				api.workspaceState.DatabasePath(),
@@ -188,8 +192,14 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 			}
 		},
 	}.Report)
+	healthHandler := httphandlers.NewHealth(httphandlers.HealthIdentity{
+		BundleRev:     config.BundleRev,
+		SchemaVersion: config.SchemaVersion,
+		InstanceToken: config.InstanceToken,
+	}, api.ReadinessError)
 
 	httproutes.Register(router, httproutes.Handlers{
+		Health:                healthHandler,
 		MCP:                   mcpHandler,
 		Settings:              settingsHandler,
 		Capabilities:          capabilityHandler,

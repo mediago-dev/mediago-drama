@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	applyComponentHealthy,
+	chooseApplyFailureAction,
 	chooseBundle,
 	evaluateBundleManifest,
 	isSafeZipEntryPath,
@@ -8,19 +9,36 @@ import {
 	isValidBundleMeta,
 	isValidBundleStoreState,
 	maxBootAttempts,
+	normalizeBundleStoreState,
 	type BundleMeta,
 	type BundleStoreState,
 } from "./bundle-policy.js";
 
+const digest = (character: string) => character.repeat(64).slice(0, 64);
+
 const meta = (
 	bundleRev: number,
-	minShellApi = 1,
-	components: { renderer: string; server: string } = { renderer: "", server: "" },
+	options: {
+		minShellApi?: number;
+		schemaVersion?: number;
+		workspaceLayoutVersion?: number;
+		channel?: string;
+		edition?: string;
+		renderer?: string;
+		server?: string;
+	} = {},
 ): BundleMeta => ({
 	bundleRev,
-	minShellApi,
+	schemaVersion: options.schemaVersion ?? 1,
+	workspaceLayoutVersion: options.workspaceLayoutVersion ?? 1,
+	channel: options.channel ?? "beta",
+	edition: options.edition ?? "community",
+	minShellApi: options.minShellApi ?? 1,
 	appBaseline: "0.1.0-test",
-	components,
+	components: {
+		renderer: { contentSha256: options.renderer ?? digest("a") },
+		server: { contentSha256: options.server ?? digest("b") },
+	},
 });
 
 const store = (overrides: Partial<BundleStoreState> = {}): BundleStoreState => ({
@@ -28,10 +46,50 @@ const store = (overrides: Partial<BundleStoreState> = {}): BundleStoreState => (
 	state: "healthy",
 	bootAttempts: 0,
 	blockedRevs: [],
+	lastKnownGoodRev: 0,
+	fallbackRev: 0,
+	activeSchemaVersion: 1,
+	lastKnownGoodSchemaVersion: 1,
+	fallbackSchemaVersion: 1,
+	bundleRevFloor: 0,
+	schemaVersionFloor: 1,
+	workspaceLayoutVersionFloor: 0,
 	rendererHealthy: false,
 	serverHealthy: false,
-	hasMigration: false,
+	migrationStarted: false,
+	channelDisabled: false,
+	channelDisabledAtRev: 0,
+	manifestChannel: "",
+	manifestEdition: "",
 	...overrides,
+});
+
+describe("chooseApplyFailureAction", () => {
+	const action = (overrides: Partial<Parameters<typeof chooseApplyFailureAction>[0]> = {}) =>
+		chooseApplyFailureAction({
+			committed: false,
+			migrationRestoreForbidden: false,
+			newStarted: false,
+			rollbackPrepared: false,
+			snapshotPrepared: false,
+			oldStopped: true,
+			...overrides,
+		});
+
+	it("never rolls back after commit or after a forward-schema process boundary", () => {
+		expect(action({ committed: true, newStarted: true })).toBe("keep-committed");
+		expect(action({ migrationRestoreForbidden: true, newStarted: true })).toBe(
+			"keep-migrated-pending",
+		);
+	});
+
+	it("rolls back every snapshot/marker partial transaction before restarting target", () => {
+		expect(action({ snapshotPrepared: true })).toBe("rollback");
+		expect(action({ rollbackPrepared: true })).toBe("rollback");
+		expect(action({ newStarted: true })).toBe("rollback");
+		expect(action()).toBe("restart-target");
+		expect(action({ oldStopped: false })).toBe("none");
+	});
 });
 
 describe("chooseBundle", () => {
@@ -40,162 +98,134 @@ describe("chooseBundle", () => {
 	});
 
 	it("loads a strictly newer healthy downloaded bundle without counting attempts", () => {
-		const choice = chooseBundle(
-			meta(5),
-			{ rev: 6, meta: meta(6) },
-			store({ activeRev: 6, state: "healthy" }),
-			1,
-		);
-		expect(choice).toEqual({
-			source: "downloaded",
-			reason: expect.any(String),
-			countAttempt: false,
-		});
+		expect(
+			chooseBundle(
+				meta(5),
+				{ rev: 6, meta: meta(6) },
+				store({ activeRev: 6, state: "healthy" }),
+				1,
+			),
+		).toEqual({ source: "downloaded", reason: expect.any(String), countAttempt: false });
 	});
 
-	it("counts a boot attempt while the bundle is still pending", () => {
-		const choice = chooseBundle(
-			meta(5),
-			{ rev: 6, meta: meta(6) },
-			store({ activeRev: 6, state: "pending", bootAttempts: 1 }),
-			1,
-		);
-		expect(choice).toEqual({
-			source: "downloaded",
-			reason: expect.any(String),
-			countAttempt: true,
-		});
+	it("counts pending attempts in the decision but leaves persistence to the caller", () => {
+		expect(
+			chooseBundle(
+				meta(5),
+				{ rev: 6, meta: meta(6) },
+				store({ activeRev: 6, state: "pending", bootAttempts: 1 }),
+				1,
+			),
+		).toEqual({ source: "downloaded", reason: expect.any(String), countAttempt: true });
 	});
 
-	it("prefers builtin when a full update shipped an equal or newer bundle", () => {
-		const choice = chooseBundle(
-			meta(8),
-			{ rev: 6, meta: meta(6) },
-			store({ activeRev: 6, state: "healthy" }),
-			1,
-		);
-		expect(choice.source).toBe("builtin");
+	it("prefers a same/newer builtin and rejects blocked or exhausted revisions", () => {
+		expect(
+			chooseBundle(meta(8), { rev: 6, meta: meta(6) }, store({ activeRev: 6 }), 1).source,
+		).toBe("builtin");
+		expect(
+			chooseBundle(meta(5), { rev: 6, meta: meta(6) }, store({ activeRev: 6, blockedRevs: [6] }), 1)
+				.source,
+		).toBe("builtin");
+		expect(
+			chooseBundle(
+				meta(5),
+				{ rev: 6, meta: meta(6) },
+				store({ activeRev: 6, state: "pending", bootAttempts: maxBootAttempts }),
+				1,
+			),
+		).toMatchObject({ source: "builtin", blockRev: 6 });
 	});
 
-	it("rejects blocked revisions", () => {
-		const choice = chooseBundle(
-			meta(5),
-			{ rev: 6, meta: meta(6) },
-			store({ activeRev: 6, blockedRevs: [6] }),
-			1,
-		);
-		expect(choice.source).toBe("builtin");
-	});
-
-	it("blocks a bundle that requires a newer shell api", () => {
-		const choice = chooseBundle(meta(5), { rev: 6, meta: meta(6, 9) }, store({ activeRev: 6 }), 1);
-		expect(choice).toMatchObject({ source: "builtin", blockRev: 6 });
-	});
-
-	it("blocks a pending bundle after exhausting health-check attempts", () => {
-		const choice = chooseBundle(
-			meta(5),
-			{ rev: 6, meta: meta(6) },
-			store({ activeRev: 6, state: "pending", bootAttempts: maxBootAttempts }),
-			1,
-		);
-		expect(choice).toMatchObject({ source: "builtin", blockRev: 6 });
-	});
-
-	it("ignores candidates that do not match the active pointer", () => {
-		const choice = chooseBundle(meta(5), { rev: 7, meta: meta(7) }, store({ activeRev: 6 }), 1);
-		expect(choice.source).toBe("builtin");
+	it("blocks shell, cohort, edition, and workspace-layout mismatches", () => {
+		for (const candidateMeta of [
+			meta(6, { minShellApi: 9 }),
+			meta(6, { channel: "latest" }),
+			meta(6, { edition: "pro" }),
+			meta(6, { workspaceLayoutVersion: 2 }),
+		]) {
+			expect(
+				chooseBundle(meta(5), { rev: 6, meta: candidateMeta }, store({ activeRev: 6 }), 1),
+			).toMatchObject({ source: "builtin", blockRev: 6 });
+		}
 	});
 });
 
 describe("applyComponentHealthy", () => {
-	it("keeps pending until both components report healthy, then resets attempts", () => {
-		const start = store({ activeRev: 6, state: "pending", bootAttempts: 1 });
-
-		const afterRenderer = applyComponentHealthy(start, "renderer");
-		expect(afterRenderer).toMatchObject({
+	it("promotes only after both signals, shifts LKG to fallback, and clears recovery intent", () => {
+		const start = store({
+			activeRev: 7,
+			activeSchemaVersion: 3,
 			state: "pending",
-			rendererHealthy: true,
-			serverHealthy: false,
 			bootAttempts: 1,
+			lastKnownGoodRev: 6,
+			lastKnownGoodSchemaVersion: 2,
+			fallbackRev: 5,
+			fallbackSchemaVersion: 1,
+			rollbackPending: {
+				failedRev: 7,
+				targetRev: 6,
+				targetSchemaVersion: 2,
+				snapshotRev: 7,
+				restoreSnapshot: true,
+			},
 		});
-
+		const afterRenderer = applyComponentHealthy(start, "renderer");
+		expect(afterRenderer).toMatchObject({ state: "pending", lastKnownGoodRev: 6 });
 		const afterBoth = applyComponentHealthy(afterRenderer, "server");
 		expect(afterBoth).toMatchObject({
 			state: "healthy",
-			rendererHealthy: true,
-			serverHealthy: true,
 			bootAttempts: 0,
+			lastKnownGoodRev: 7,
+			lastKnownGoodSchemaVersion: 3,
+			fallbackRev: 6,
+			fallbackSchemaVersion: 2,
 		});
+		expect(afterBoth.rollbackPending).toBeUndefined();
 	});
 
 	it("is idempotent for repeated signals", () => {
-		const start = store({ activeRev: 6, state: "pending" });
-		const once = applyComponentHealthy(start, "server");
-		const twice = applyComponentHealthy(once, "server");
-		expect(twice).toEqual(once);
+		const once = applyComponentHealthy(store({ activeRev: 6, state: "pending" }), "server");
+		expect(applyComponentHealthy(once, "server")).toBe(once);
 	});
 });
 
 describe("evaluateBundleManifest", () => {
-	const component = (sha: string) => ({
-		url: `https://example.com/${sha}.zip`,
-		sha256: sha.repeat(64).slice(0, 64),
+	const component = (archive: string, content = archive) => ({
+		url: `https://example.com/${archive}.zip`,
+		sha256: digest(archive),
+		contentSha256: digest(content),
 		size: 1024,
 	});
-
 	const payload = (
 		bundleRev: number,
 		extra: Record<string, unknown> = {},
-		serverPlatforms: Record<string, ReturnType<typeof component>> = {
+		serverPlatforms = {
 			"darwin-arm64": component("b"),
 			"windows-x64": component("c"),
 		},
 	) => ({
 		bundleRev,
+		schemaVersion: 1,
+		workspaceLayoutVersion: 1,
+		channel: "beta",
+		edition: "community",
 		appBaseline: "0.1.0-test",
 		minShellApi: 1,
-		components: {
-			renderer: component("a"),
-			server: serverPlatforms,
-		},
+		components: { renderer: component("a"), server: serverPlatforms },
 		...extra,
 	});
 
-	const currentMeta = (renderer: string, server: string) => meta(6, 1, { renderer, server });
-
-	it("downloads both components when identities are unknown (builtin)", () => {
-		const decision = evaluateBundleManifest(payload(7), "darwin-arm64", meta(5), 5, [], 1);
-		expect(decision).toEqual({
-			action: "download",
-			targetRev: 7,
-			components: ["renderer", "server"],
-		});
-	});
-
-	it("downloads only the changed component", () => {
-		const rendererSha = "a".repeat(64);
-		const serverShaOld = "x".repeat(64);
+	it("uses extracted content identities, not archive digests", () => {
 		const decision = evaluateBundleManifest(
-			payload(7),
+			payload(7, {
+				components: {
+					renderer: component("z", "a"),
+					server: { "darwin-arm64": component("y", "b") },
+				},
+			}),
 			"darwin-arm64",
-			currentMeta(rendererSha, serverShaOld),
-			6,
-			[],
-			1,
-		);
-		expect(decision).toEqual({
-			action: "download",
-			targetRev: 7,
-			components: ["server"],
-		});
-	});
-
-	it("returns an empty component list when nothing changed but rev advanced", () => {
-		const decision = evaluateBundleManifest(
-			payload(7),
-			"darwin-arm64",
-			currentMeta("a".repeat(64), "b".repeat(64)),
+			meta(6),
 			6,
 			[],
 			1,
@@ -203,175 +233,229 @@ describe("evaluateBundleManifest", () => {
 		expect(decision).toEqual({ action: "download", targetRev: 7, components: [] });
 	});
 
-	it("reports up-to-date when the manifest rev is not newer", () => {
-		expect(evaluateBundleManifest(payload(6), "darwin-arm64", meta(5), 6, [], 1).action).toBe(
-			"up-to-date",
-		);
-	});
-
-	it("skips blocked revisions", () => {
-		expect(evaluateBundleManifest(payload(7), "darwin-arm64", meta(5), 6, [7], 1).action).toBe(
-			"up-to-date",
-		);
-	});
-
-	it("honours the kill-switch", () => {
-		expect(
-			evaluateBundleManifest(payload(7, { disabled: true }), "darwin-arm64", meta(5), 6, [], 1)
-				.action,
-		).toBe("disabled");
-	});
-
-	it("requires a full update when shell api is too old", () => {
-		expect(
-			evaluateBundleManifest(payload(7, { minShellApi: 3 }), "darwin-arm64", meta(5), 6, [], 1),
-		).toEqual({
-			action: "requires-full-update",
-			targetRev: 7,
-			minShellApi: 3,
-		});
-	});
-
-	it("reports unsupported platform when the manifest lacks this platform's server", () => {
+	it("downloads only changed extracted components", () => {
 		const decision = evaluateBundleManifest(
-			payload(7, {}, { "windows-x64": component("c") }),
+			payload(7),
 			"darwin-arm64",
-			meta(5),
-			5,
+			meta(6, { server: digest("x") }),
+			6,
 			[],
 			1,
 		);
-		expect(decision).toEqual({ action: "unsupported-platform", targetRev: 7 });
+		expect(decision).toEqual({ action: "download", targetRev: 7, components: ["server"] });
+	});
+
+	it("rejects a different channel or edition before honoring its kill switch", () => {
+		for (const mismatch of [{ channel: "latest" }, { edition: "pro" }]) {
+			expect(
+				evaluateBundleManifest(
+					payload(7, { ...mismatch, disabled: true }),
+					"darwin-arm64",
+					meta(6),
+					6,
+					[],
+					1,
+				),
+			).toEqual({ action: "cohort-mismatch", targetRev: 7 });
+		}
+	});
+
+	it("honors a same-cohort kill switch", () => {
+		expect(
+			evaluateBundleManifest(payload(7, { disabled: true }), "darwin-arm64", meta(6), 6, [], 1),
+		).toEqual({ action: "disabled" });
+	});
+
+	it("requires a full update for shell/layout incompatibility or schema downgrade", () => {
+		expect(
+			evaluateBundleManifest(payload(7, { minShellApi: 3 }), "darwin-arm64", meta(6), 6, [], 1),
+		).toMatchObject({ action: "requires-full-update", reason: "shell-api" });
+		expect(
+			evaluateBundleManifest(
+				payload(7, { workspaceLayoutVersion: 2 }),
+				"darwin-arm64",
+				meta(6),
+				6,
+				[],
+				1,
+			),
+		).toMatchObject({ action: "requires-full-update", reason: "workspace-layout" });
+		expect(
+			evaluateBundleManifest(
+				payload(7, { schemaVersion: 1 }),
+				"darwin-arm64",
+				meta(6, { schemaVersion: 2 }),
+				6,
+				[],
+				1,
+			),
+		).toMatchObject({ action: "requires-full-update", reason: "schema-downgrade" });
+	});
+
+	it("reports unsupported platform", () => {
+		expect(
+			evaluateBundleManifest(
+				payload(7, {}, { "windows-x64": component("c") }),
+				"darwin-arm64",
+				meta(6),
+				6,
+				[],
+				1,
+			),
+		).toEqual({ action: "unsupported-platform", targetRev: 7 });
 	});
 });
 
-describe("isValidBundleManifestPayload", () => {
-	const valid = {
+describe("payload/meta/store validation", () => {
+	const ref = {
+		url: "https://example.com/r.zip",
+		sha256: digest("f"),
+		contentSha256: digest("e"),
+		size: 100,
+	};
+	const validPayload = {
 		bundleRev: 3,
+		schemaVersion: 2,
+		workspaceLayoutVersion: 1,
+		channel: "beta",
+		edition: "community",
+		sourceCommit: "a".repeat(40),
 		appBaseline: "0.1.0",
 		minShellApi: 1,
-		components: {
-			renderer: { url: "https://example.com/r.zip", sha256: "f".repeat(64), size: 100 },
-			server: {
-				"darwin-arm64": { url: "https://example.com/s.zip", sha256: "e".repeat(64), size: 100 },
-			},
-		},
+		components: { renderer: ref, server: { "darwin-arm64": ref } },
 	};
 
-	it("accepts a well-formed payload", () => {
-		expect(isValidBundleManifestPayload(valid)).toBe(true);
+	it("requires explicit cohort, generations, and content hashes", () => {
+		expect(isValidBundleManifestPayload(validPayload)).toBe(true);
+		for (const invalid of [
+			{ ...validPayload, channel: undefined },
+			{ ...validPayload, edition: undefined },
+			{ ...validPayload, schemaVersion: undefined },
+			{ ...validPayload, sourceCommit: "not-a-commit" },
+			{
+				...validPayload,
+				components: { ...validPayload.components, renderer: { ...ref, contentSha256: "" } },
+			},
+		]) {
+			expect(isValidBundleManifestPayload(invalid)).toBe(false);
+		}
 	});
 
-	it("rejects missing components, bad urls, and bad hashes", () => {
-		expect(isValidBundleManifestPayload({ ...valid, components: undefined })).toBe(false);
-		expect(
-			isValidBundleManifestPayload({
-				...valid,
-				components: { ...valid.components, renderer: undefined },
-			}),
-		).toBe(false);
-		expect(
-			isValidBundleManifestPayload({
-				...valid,
-				components: {
-					...valid.components,
-					renderer: { url: "http://evil.com/r.zip", sha256: "f".repeat(64), size: 100 },
-				},
-			}),
-		).toBe(false);
-		expect(
-			isValidBundleManifestPayload({
-				...valid,
-				components: {
-					...valid.components,
-					server: {
-						"darwin-arm64": { url: "https://example.com/s.zip", sha256: "zz", size: 100 },
-					},
-				},
-			}),
-		).toBe(false);
-		expect(
-			isValidBundleManifestPayload({ ...valid, components: { ...valid.components, server: {} } }),
-		).toBe(false);
-	});
-
-	it("allows localhost http only in test mode, never other http hosts", () => {
-		const localhost = {
-			...valid,
+	it("allows localhost HTTP only in test mode", () => {
+		const local = {
+			...validPayload,
 			components: {
-				renderer: { url: "http://127.0.0.1:8787/r.zip", sha256: "f".repeat(64), size: 100 },
-				server: {
-					"darwin-arm64": {
-						url: "http://127.0.0.1:8787/s.zip",
-						sha256: "e".repeat(64),
-						size: 100,
-					},
-				},
+				renderer: { ...ref, url: "http://127.0.0.1:8787/r.zip" },
+				server: { "darwin-arm64": { ...ref, url: "http://localhost:8787/s.zip" } },
 			},
 		};
-		expect(isValidBundleManifestPayload(localhost)).toBe(false);
-		expect(isValidBundleManifestPayload(localhost, true)).toBe(true);
-		const evil = {
-			...localhost,
-			components: {
-				...localhost.components,
-				renderer: { url: "http://evil.com/r.zip", sha256: "f".repeat(64), size: 100 },
-			},
-		};
-		expect(isValidBundleManifestPayload(evil, true)).toBe(false);
+		expect(isValidBundleManifestPayload(local)).toBe(false);
+		expect(isValidBundleManifestPayload(local, true)).toBe(true);
 	});
-});
 
-describe("meta and store-state validation", () => {
-	it("accepts valid bundle meta and rejects malformed shapes", () => {
+	it("validates the expanded bundle metadata", () => {
+		expect(isValidBundleMeta(meta(1))).toBe(true);
+		expect(isValidBundleMeta({ ...meta(1), edition: undefined })).toBe(false);
 		expect(
 			isValidBundleMeta({
-				bundleRev: 1,
-				minShellApi: 1,
-				appBaseline: "0.1.0",
-				components: { renderer: "", server: "" },
+				...meta(1),
+				components: { ...meta(1).components, server: { contentSha256: "bad" } },
 			}),
-		).toBe(true);
-		expect(isValidBundleMeta({ bundleRev: 1, minShellApi: 1, appBaseline: "0.1.0" })).toBe(false);
-		expect(isValidBundleMeta(null)).toBe(false);
+		).toBe(false);
 	});
 
-	it("accepts valid store state and rejects corrupt shapes", () => {
-		expect(
-			isValidBundleStoreState({
-				activeRev: 2,
+	it("validates current state and normalizes the legacy previousRev shape", () => {
+		expect(isValidBundleStoreState(store({ activeRev: 2, state: "pending" }))).toBe(true);
+		const migrated = normalizeBundleStoreState({
+			activeRev: 7,
+			state: "pending",
+			bootAttempts: 1,
+			blockedRevs: [3],
+			previousRev: 6,
+			rendererHealthy: false,
+			serverHealthy: true,
+			hasMigration: true,
+		});
+		expect(migrated).toMatchObject({
+			activeRev: 7,
+			lastKnownGoodRev: 6,
+			activeSchemaVersion: 1,
+			lastKnownGoodSchemaVersion: 0,
+			channelDisabled: false,
+			migrationStarted: true,
+		});
+		for (const corruptLegacy of [
+			{
+				activeRev: 7,
 				state: "pending",
 				bootAttempts: 1,
-				blockedRevs: [1],
+				blockedRevs: [3],
+				previousRev: 6,
+				rendererHealthy: false,
+				serverHealthy: true,
+			},
+			{
+				activeRev: 7,
+				state: "pending",
+				bootAttempts: 1,
+				blockedRevs: [3],
+				previousRev: "6",
 				rendererHealthy: false,
 				serverHealthy: true,
 				hasMigration: true,
+			},
+		]) {
+			expect(normalizeBundleStoreState(corruptLegacy)).toBeNull();
+		}
+		expect(normalizeBundleStoreState("garbage")).toBeNull();
+	});
+
+	it("migrates only missing safety fields and fails closed on corrupt modern state", () => {
+		const pendingWithoutFloors = {
+			...store({
+				activeRev: 7,
+				state: "pending" as const,
+				activeSchemaVersion: 3,
+				lastKnownGoodSchemaVersion: 2,
 			}),
-		).toBe(true);
-		// missing hasMigration is rejected (forces migration bundles to declare it)
-		expect(
-			isValidBundleStoreState({
-				activeRev: 2,
+		};
+		delete (pendingWithoutFloors as Partial<BundleStoreState>).bundleRevFloor;
+		delete (pendingWithoutFloors as Partial<BundleStoreState>).schemaVersionFloor;
+		delete (pendingWithoutFloors as Partial<BundleStoreState>).workspaceLayoutVersionFloor;
+		delete (pendingWithoutFloors as Partial<BundleStoreState>).channelDisabledAtRev;
+		delete (pendingWithoutFloors as Partial<BundleStoreState>).manifestChannel;
+		delete (pendingWithoutFloors as Partial<BundleStoreState>).manifestEdition;
+		delete (pendingWithoutFloors as Partial<BundleStoreState>).migrationStarted;
+		expect(normalizeBundleStoreState(pendingWithoutFloors)).toMatchObject({
+			bundleRevFloor: 0,
+			schemaVersionFloor: 2,
+			workspaceLayoutVersionFloor: 0,
+			channelDisabledAtRev: 0,
+			manifestChannel: "",
+			manifestEdition: "",
+			migrationStarted: false,
+		});
+
+		expect(normalizeBundleStoreState({ ...store(), bundleRevFloor: "10" })).toBeNull();
+		expect(normalizeBundleStoreState({ ...store(), activeSchemaVersion: "3" })).toBeNull();
+		expect(normalizeBundleStoreState({ ...store(), migrationStarted: "yes" })).toBeNull();
+		const modernPendingWithoutMigrationFlag = {
+			...store({
+				activeRev: 7,
 				state: "pending",
 				bootAttempts: 1,
-				blockedRevs: [1],
-				rendererHealthy: false,
-				serverHealthy: true,
+				activeSchemaVersion: 3,
+				lastKnownGoodSchemaVersion: 2,
 			}),
-		).toBe(false);
-		expect(
-			isValidBundleStoreState({
-				activeRev: 2,
-				state: "pending",
-				bootAttempts: 1,
-				blockedRevs: [1],
-			}),
-		).toBe(false);
-		expect(isValidBundleStoreState("garbage")).toBe(false);
+		};
+		delete (modernPendingWithoutMigrationFlag as Partial<BundleStoreState>).migrationStarted;
+		expect(normalizeBundleStoreState(modernPendingWithoutMigrationFlag)).toMatchObject({
+			migrationStarted: true,
+		});
 	});
 });
 
-describe("isSafeZipEntryPath (regression from renderer hot update)", () => {
+describe("isSafeZipEntryPath", () => {
 	it("accepts normal entries and rejects traversal", () => {
 		expect(isSafeZipEntryPath("index.html")).toBe(true);
 		expect(isSafeZipEntryPath("bin/mediago-server")).toBe(true);

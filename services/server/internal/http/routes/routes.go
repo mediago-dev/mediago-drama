@@ -9,6 +9,7 @@ import (
 
 // Handlers groups the concrete HTTP handlers used by the app router.
 type Handlers struct {
+	Health                httphandlers.Health
 	MCP                   httphandlers.MCP
 	Settings              httphandlers.Settings
 	Capabilities          httphandlers.Capabilities
@@ -57,7 +58,7 @@ func Register(router *gin.Engine, handlers Handlers) {
 }
 
 func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
-	apiRoutes.GET("/health", httphandlers.HandleHealth)
+	apiRoutes.GET("/health", handlers.Health.HandleHealth)
 	apiRoutes.GET("/runtime/activity", handlers.RuntimeActivity.HandleGetRuntimeActivity)
 	apiRoutes.GET("/capabilities", handlers.Capabilities.HandleListCapabilities)
 	apiRoutes.GET("/billing/summary", handlers.Billing.HandleBillingSummary)

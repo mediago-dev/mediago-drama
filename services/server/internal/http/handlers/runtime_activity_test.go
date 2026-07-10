@@ -16,10 +16,11 @@ func TestHandleGetRuntimeActivity(t *testing.T) {
 	router := gin.New()
 	handler := NewRuntimeActivity(func(context.Context) serviceruntimeactivity.Report {
 		return serviceruntimeactivity.Report{
-			Busy:                   true,
-			RunningGenerationTasks: 2,
-			ActiveAgentRuns:        1,
-			DatabaseFiles:          []string{"/tmp/app.db"},
+			Busy:                       true,
+			RunningGenerationTasks:     2,
+			InFlightGenerationRequests: 3,
+			ActiveAgentRuns:            1,
+			DatabaseFiles:              []string{"/tmp/app.db"},
 		}
 	})
 	router.GET("/runtime/activity", handler.HandleGetRuntimeActivity)
@@ -37,7 +38,8 @@ func TestHandleGetRuntimeActivity(t *testing.T) {
 		t.Fatalf("decoding response: %v", err)
 	}
 	if !envelope.Data.Busy || envelope.Data.RunningGenerationTasks != 2 ||
-		envelope.Data.ActiveAgentRuns != 1 || len(envelope.Data.DatabaseFiles) != 1 {
+		envelope.Data.InFlightGenerationRequests != 3 || envelope.Data.ActiveAgentRuns != 1 ||
+		len(envelope.Data.DatabaseFiles) != 1 {
 		t.Fatalf("unexpected payload: %+v", envelope.Data)
 	}
 }

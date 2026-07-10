@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"log/slog"
 	"path/filepath"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
@@ -11,19 +10,19 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-func migrateDefaultSettingsDB(settingsDB *gorm.DB, legacyDBPath string, settingsDBPath string) {
+func migrateDefaultSettingsDB(settingsDB *gorm.DB, legacyDBPath string, settingsDBPath string) error {
 	if settingsDB == nil || sameDatabasePath(legacyDBPath, settingsDBPath) {
-		return
+		return nil
 	}
 
 	legacyDB, err := repository.OpenGormSQLite(legacyDBPath)
 	if err != nil {
-		slog.Warn("legacy workspace settings database unavailable", "path", legacyDBPath, "error", err)
-		return
+		return fmt.Errorf("opening legacy workspace settings database %q: %w", legacyDBPath, err)
 	}
 	if err := migrateLegacySettingsRows(legacyDB, settingsDB); err != nil {
-		slog.Warn("legacy workspace settings migration skipped", "path", legacyDBPath, "error", err)
+		return fmt.Errorf("migrating legacy workspace settings from %q: %w", legacyDBPath, err)
 	}
+	return nil
 }
 
 func sameDatabasePath(left string, right string) bool {

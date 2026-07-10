@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
@@ -68,11 +69,12 @@ type AgentRuntimeConfig struct {
 
 // AgentRuntime coordinates agent sessions, runner calls, and run events.
 type AgentRuntime struct {
-	workspace DocumentStore
-	sessions  *SessionService
-	runner    AgentRunner
-	publish   func(AgentEvent)
-	config    AgentRuntimeConfig
+	workspace    DocumentStore
+	sessions     *SessionService
+	runner       AgentRunner
+	publish      func(AgentEvent)
+	config       AgentRuntimeConfig
+	inFlightRuns atomic.Int64
 }
 
 // NewAgentRuntime returns an agent runtime service.
@@ -202,6 +204,7 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 		payload.Model,
 	)
 
+	runtime.inFlightRuns.Add(1)
 	go runtime.runAgent(runCtx, cancelRun, payload, runID, acpSessionID, projectDir, workingDir)
 
 	return AgentMessageResponse{Accepted: true}, http.StatusOK, nil
@@ -358,6 +361,7 @@ func (runtime *AgentRuntime) runAgent(
 	projectDir string,
 	workingDir string,
 ) {
+	defer runtime.inFlightRuns.Add(-1)
 	runFinished := false
 	finishRun := func(status string, message string) bool {
 		if runFinished {
@@ -478,6 +482,15 @@ func (runtime *AgentRuntime) runAgent(
 			ACPSessionID: result.ACPSessionID,
 		})
 	}
+}
+
+// CountInFlightRuns includes cancelled runs until their runner and terminal event
+// cleanup have actually returned, so the updater never mistakes cancellation for idle.
+func (runtime *AgentRuntime) CountInFlightRuns() int {
+	if runtime == nil {
+		return 0
+	}
+	return int(runtime.inFlightRuns.Load())
 }
 
 func (runtime *AgentRuntime) applyDocumentProposal(
