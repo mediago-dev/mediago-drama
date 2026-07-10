@@ -553,6 +553,27 @@ describe("MaterialLibraryImportDialog", () => {
 		expect(screen.getByRole("button", { name: "关闭" })).toBeDisabled();
 		expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
 	});
+
+	it("isolates cancel and confirm pointerdown from lower dialogs", () => {
+		const asset = mediaAsset();
+		render(
+			<MaterialLibraryImportDialog
+				mediaAssets={[asset]}
+				open
+				selectedAssetIds={[asset.id]}
+				onConfirmSelection={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		const documentPointerDown = vi.fn();
+		document.addEventListener("pointerdown", documentPointerDown);
+		fireEvent.pointerDown(screen.getByRole("button", { name: "取消" }), { button: 0 });
+		fireEvent.pointerDown(screen.getByRole("button", { name: "加入生成记录" }), { button: 0 });
+		document.removeEventListener("pointerdown", documentPointerDown);
+
+		expect(documentPointerDown).not.toHaveBeenCalled();
+	});
 });
 
 describe("PrimaryParamControl", () => {

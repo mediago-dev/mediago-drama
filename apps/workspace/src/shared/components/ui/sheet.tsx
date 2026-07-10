@@ -1,12 +1,24 @@
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
+import { isolateDialogDismissPointerDown } from "@/shared/components/ui/dialog-dismiss";
 import { cn } from "@/shared/lib/utils";
 
 const Sheet = SheetPrimitive.Root;
 const SheetTrigger = SheetPrimitive.Trigger;
-const SheetClose = SheetPrimitive.Close;
 const SheetPortal = SheetPrimitive.Portal;
+
+const SheetClose = React.forwardRef<
+	React.ElementRef<typeof SheetPrimitive.Close>,
+	React.ComponentPropsWithoutRef<typeof SheetPrimitive.Close>
+>(({ onPointerDown, ...props }, ref) => (
+	<SheetPrimitive.Close
+		ref={ref}
+		onPointerDown={(event) => isolateDialogDismissPointerDown(event, onPointerDown)}
+		{...props}
+	/>
+));
+SheetClose.displayName = SheetPrimitive.Close.displayName;
 
 const SheetOverlay = React.forwardRef<
 	React.ElementRef<typeof SheetPrimitive.Overlay>,

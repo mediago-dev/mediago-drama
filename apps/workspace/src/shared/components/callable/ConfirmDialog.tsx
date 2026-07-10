@@ -11,7 +11,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/shared/components/ui/alert-dialog";
-import { Button } from "@/shared/components/ui/button";
+import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 
 export interface ConfirmDialogOptions {
 	cancelLabel?: string;
@@ -70,7 +70,7 @@ export const ConfirmDialog = createCallable<ConfirmDialogOptions, boolean>(
 					</AlertDialogHeader>
 					<AlertDialogFooter>
 						<AlertDialogCancel disabled={isConfirming}>{cancelLabel}</AlertDialogCancel>
-						<Button
+						<DialogDismissButton
 							type="button"
 							variant={variant}
 							disabled={isConfirming}
@@ -78,7 +78,7 @@ export const ConfirmDialog = createCallable<ConfirmDialogOptions, boolean>(
 						>
 							{isConfirming ? <Loader2 className="animate-spin" /> : confirmIcon}
 							<span>{confirmLabel}</span>
-						</Button>
+						</DialogDismissButton>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>

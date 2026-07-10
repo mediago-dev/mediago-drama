@@ -1,6 +1,7 @@
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 import * as React from "react";
 import { buttonVariants } from "@/shared/components/ui/button";
+import { isolateDialogDismissPointerDown } from "@/shared/components/ui/dialog-dismiss";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 
@@ -90,10 +91,11 @@ AlertDialogDescription.displayName = AlertDialogPrimitive.Description.displayNam
 const AlertDialogAction = React.forwardRef<
 	React.ElementRef<typeof AlertDialogPrimitive.Action>,
 	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
->(({ className, ...props }, ref) => (
+>(({ className, onPointerDown, ...props }, ref) => (
 	<AlertDialogPrimitive.Action
 		ref={ref}
 		className={cn(buttonVariants({ variant: "destructive" }), className)}
+		onPointerDown={(event) => isolateDialogDismissPointerDown(event, onPointerDown)}
 		{...props}
 	/>
 ));
@@ -102,10 +104,11 @@ AlertDialogAction.displayName = AlertDialogPrimitive.Action.displayName;
 const AlertDialogCancel = React.forwardRef<
 	React.ElementRef<typeof AlertDialogPrimitive.Cancel>,
 	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Cancel>
->(({ className, ...props }, ref) => (
+>(({ className, onPointerDown, ...props }, ref) => (
 	<AlertDialogPrimitive.Cancel
 		ref={ref}
 		className={cn(buttonVariants({ variant: "outline" }), className)}
+		onPointerDown={(event) => isolateDialogDismissPointerDown(event, onPointerDown)}
 		{...props}
 	/>
 ));

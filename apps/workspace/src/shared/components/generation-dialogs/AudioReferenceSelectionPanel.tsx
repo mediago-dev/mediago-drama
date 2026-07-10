@@ -23,7 +23,7 @@ import {
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { MaterialLibraryImportDialog } from "@/domains/generation/components/MaterialLibraryImportDialog";
 import { getMediaAssets, uploadMediaAsset, type MediaAsset } from "@/domains/workspace/api/media";
-import { Button } from "@/shared/components/ui/button";
+import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
 
@@ -373,7 +373,7 @@ export const AudioReferenceSelectionPanel: React.FC<AudioReferenceSelectionPanel
 				onUploadAsset={uploadMaterialAudioAsset}
 			/>
 			<footer className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-card px-4 py-3">
-				<Button
+				<DialogDismissButton
 					type="button"
 					variant="outline"
 					size="sm"
@@ -382,8 +382,8 @@ export const AudioReferenceSelectionPanel: React.FC<AudioReferenceSelectionPanel
 					onClick={cancelSelection}
 				>
 					取消
-				</Button>
-				<Button
+				</DialogDismissButton>
+				<DialogDismissButton
 					type="button"
 					size="sm"
 					className="h-8 rounded-sm"
@@ -394,7 +394,7 @@ export const AudioReferenceSelectionPanel: React.FC<AudioReferenceSelectionPanel
 				>
 					{confirming ? <Loader2 className="size-4 animate-spin" /> : null}
 					<span>确定</span>
-				</Button>
+				</DialogDismissButton>
 			</footer>
 		</section>
 	);

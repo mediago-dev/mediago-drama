@@ -28,6 +28,7 @@ import {
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { Button } from "@/shared/components/ui/button";
+import { DialogClose, DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import {
@@ -636,11 +637,11 @@ const CategoryCreateDialog: React.FC<{
 							创建提示词分类。
 						</DialogPrimitive.Description>
 					</div>
-					<DialogPrimitive.Close asChild>
+					<DialogClose asChild>
 						<Button type="button" variant="ghost" size="icon" aria-label="关闭新建分类">
 							<X className="size-4" />
 						</Button>
-					</DialogPrimitive.Close>
+					</DialogClose>
 				</header>
 
 				<div className="space-y-3 p-4">
@@ -664,13 +665,13 @@ const CategoryCreateDialog: React.FC<{
 				</div>
 
 				<footer className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-3">
-					<Button type="button" variant="ghost" onClick={onCancel}>
+					<DialogDismissButton type="button" variant="ghost" onClick={onCancel}>
 						取消
-					</Button>
-					<Button type="button" onClick={onSave} disabled={!name.trim() || isSaving}>
+					</DialogDismissButton>
+					<DialogDismissButton type="button" onClick={onSave} disabled={!name.trim() || isSaving}>
 						{isSaving ? <Loader2 className="size-4 animate-spin" /> : null}
 						<span>创建</span>
-					</Button>
+					</DialogDismissButton>
 				</footer>
 			</DialogPrimitive.Content>
 		</DialogPrimitive.Portal>
@@ -724,11 +725,11 @@ const PromptPresetEditDialog: React.FC<{
 							修改当前分类提示词预设。
 						</DialogPrimitive.Description>
 					</div>
-					<DialogPrimitive.Close asChild>
+					<DialogClose asChild>
 						<Button type="button" variant="ghost" size="icon" aria-label="关闭编辑提示词">
 							<X className="size-4" />
 						</Button>
-					</DialogPrimitive.Close>
+					</DialogClose>
 				</header>
 
 				<div className="min-h-0 overflow-y-auto p-4">
@@ -772,13 +773,13 @@ const PromptPresetEditDialog: React.FC<{
 				</div>
 
 				<footer className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-3">
-					<Button type="button" variant="ghost" onClick={onCancel}>
+					<DialogDismissButton type="button" variant="ghost" onClick={onCancel}>
 						取消
-					</Button>
-					<Button type="button" onClick={onSave} disabled={!valid || isSaving}>
+					</DialogDismissButton>
+					<DialogDismissButton type="button" onClick={onSave} disabled={!valid || isSaving}>
 						{isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
 						<span>{isSaving ? "保存中" : "保存"}</span>
-					</Button>
+					</DialogDismissButton>
 				</footer>
 			</DialogPrimitive.Content>
 		</DialogPrimitive.Portal>
@@ -833,11 +834,11 @@ const PromptPresetCreateDialog: React.FC<{
 								创建可复用的分类提示词预设。
 							</DialogPrimitive.Description>
 						</div>
-						<DialogPrimitive.Close asChild>
+						<DialogClose asChild>
 							<Button type="button" variant="ghost" size="icon" aria-label="关闭新建提示词">
 								<X className="size-4" />
 							</Button>
-						</DialogPrimitive.Close>
+						</DialogClose>
 					</header>
 
 					<div className="min-h-0 overflow-y-auto p-4">
@@ -883,13 +884,13 @@ const PromptPresetCreateDialog: React.FC<{
 					</div>
 
 					<footer className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-3">
-						<Button type="button" variant="ghost" onClick={onCancel}>
+						<DialogDismissButton type="button" variant="ghost" onClick={onCancel}>
 							取消
-						</Button>
-						<Button type="button" onClick={onSave} disabled={!valid || isSaving}>
+						</DialogDismissButton>
+						<DialogDismissButton type="button" onClick={onSave} disabled={!valid || isSaving}>
 							{isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
 							<span>保存</span>
-						</Button>
+						</DialogDismissButton>
 					</footer>
 				</DialogPrimitive.Content>
 			</DialogPrimitive.Portal>

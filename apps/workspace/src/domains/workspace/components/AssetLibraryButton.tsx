@@ -61,6 +61,7 @@ import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspac
 import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { useToast } from "@/hooks/useToast";
 import { Button } from "@/shared/components/ui/button";
+import { DialogClose } from "@/shared/components/ui/dialog-dismiss";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { Input } from "@/shared/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
@@ -423,7 +424,7 @@ const AssetLibraryDialog: React.FC<{
 										: "管理可在生成历史中复用的全局素材。"}
 								</DialogPrimitive.Description>
 							</div>
-							<DialogPrimitive.Close asChild>
+							<DialogClose asChild>
 								<Button
 									type="button"
 									variant="ghost"
@@ -433,7 +434,7 @@ const AssetLibraryDialog: React.FC<{
 								>
 									<X className="size-4" />
 								</Button>
-							</DialogPrimitive.Close>
+							</DialogClose>
 						</header>
 
 						<div

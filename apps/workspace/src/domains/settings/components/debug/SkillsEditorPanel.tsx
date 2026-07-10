@@ -15,6 +15,7 @@ import {
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { Button } from "@/shared/components/ui/button";
+import { DialogClose, DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import {
@@ -411,11 +412,11 @@ const SkillEditDialog: React.FC<{
 							修改当前 Skill 正文内容。
 						</DialogPrimitive.Description>
 					</div>
-					<DialogPrimitive.Close asChild>
+					<DialogClose asChild>
 						<Button type="button" variant="ghost" size="icon" aria-label="关闭编辑 Skill">
 							<X className="size-4" />
 						</Button>
-					</DialogPrimitive.Close>
+					</DialogClose>
 				</header>
 
 				<div className="min-h-0 overflow-y-auto p-4">
@@ -446,13 +447,13 @@ const SkillEditDialog: React.FC<{
 				</div>
 
 				<footer className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-3">
-					<Button type="button" variant="ghost" onClick={onCancel}>
+					<DialogDismissButton type="button" variant="ghost" onClick={onCancel}>
 						取消
-					</Button>
-					<Button type="button" onClick={onSave} disabled={isSaving}>
+					</DialogDismissButton>
+					<DialogDismissButton type="button" onClick={onSave} disabled={isSaving}>
 						{isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
 						<span>{isSaving ? "保存中" : "保存"}</span>
-					</Button>
+					</DialogDismissButton>
 				</footer>
 			</DialogPrimitive.Content>
 		</DialogPrimitive.Portal>
@@ -494,11 +495,11 @@ const SkillCreateDialog: React.FC<{
 								创建自定义 Skill 文件。
 							</DialogPrimitive.Description>
 						</div>
-						<DialogPrimitive.Close asChild>
+						<DialogClose asChild>
 							<Button type="button" variant="ghost" size="icon" aria-label="关闭新建 Skill">
 								<X className="size-4" />
 							</Button>
-						</DialogPrimitive.Close>
+						</DialogClose>
 					</header>
 
 					<div className="space-y-3 p-4">
@@ -532,13 +533,17 @@ const SkillCreateDialog: React.FC<{
 					</div>
 
 					<footer className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-3">
-						<Button type="button" variant="ghost" onClick={onCancel}>
+						<DialogDismissButton type="button" variant="ghost" onClick={onCancel}>
 							取消
-						</Button>
-						<Button type="button" onClick={onSave} disabled={!normalizedName || isSaving}>
+						</DialogDismissButton>
+						<DialogDismissButton
+							type="button"
+							onClick={onSave}
+							disabled={!normalizedName || isSaving}
+						>
 							{isSaving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
 							<span>{isSaving ? "创建中" : "创建"}</span>
-						</Button>
+						</DialogDismissButton>
 					</footer>
 				</DialogPrimitive.Content>
 			</DialogPrimitive.Portal>

@@ -10,7 +10,10 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/shared/components/ui/alert-dialog";
-import { Button } from "@/shared/components/ui/button";
+import {
+	DialogDismissButton,
+	isolateDialogDismissPointerDown,
+} from "@/shared/components/ui/dialog-dismiss";
 import {
 	documentCategoryDescriptorMap,
 	documentCategoryDescriptors,
@@ -95,9 +98,13 @@ export const NewDocumentDialog = createCallable<NewDocumentDialogProps, NewDocum
 
 					<AlertDialogFooter>
 						<AlertDialogCancel className="rounded-sm">取消</AlertDialogCancel>
-						<Button type="button" className="rounded-sm" onClick={createSelectedDocument}>
+						<DialogDismissButton
+							type="button"
+							className="rounded-sm"
+							onClick={createSelectedDocument}
+						>
 							<span>创建</span>
-						</Button>
+						</DialogDismissButton>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
@@ -127,6 +134,7 @@ const TemplateOptionButton: React.FC<TemplateOptionButtonProps> = ({
 		<button
 			type="button"
 			onClick={onSelect}
+			onPointerDown={(event) => isolateDialogDismissPointerDown(event)}
 			aria-pressed={selected}
 			className={cn(
 				"grid grid-cols-[1.75rem_minmax(0,1fr)_0.875rem] gap-2 rounded-sm border p-2 text-left transition-colors",

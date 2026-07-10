@@ -91,6 +91,7 @@ import { getRouteProjectId, type AgentResourceType } from "@/domains/workspace/l
 import { useProjectStore } from "@/domains/projects/stores";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { DialogClose } from "@/shared/components/ui/dialog-dismiss";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import {
 	Tooltip,
@@ -1400,11 +1401,11 @@ const VideoResourcePreviewDialog: React.FC<{
 					<DialogPrimitive.Title className="truncate text-sm font-semibold text-foreground">
 						{title?.trim() || "预览视频"}
 					</DialogPrimitive.Title>
-					<DialogPrimitive.Close asChild>
+					<DialogClose asChild>
 						<Button type="button" variant="ghost" size="icon" aria-label="关闭预览">
 							<X className="size-4" />
 						</Button>
-					</DialogPrimitive.Close>
+					</DialogClose>
 				</div>
 				<div className="bg-black">
 					<VideoPlayer

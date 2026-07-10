@@ -40,6 +40,7 @@ import { CodexRelayPanel } from "@/domains/settings/components/CodexRelayPanel";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
 import { BillingPanel } from "@/domains/billing/components/BillingPanel";
 import { Button } from "@/shared/components/ui/button";
+import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import {
@@ -694,14 +695,14 @@ const MediagoConfigDialog: React.FC<{
 						<span />
 					)}
 					<div className="flex gap-2">
-						<Button
+						<DialogDismissButton
 							type="button"
 							variant="outline"
 							onClick={() => onOpenChange(false)}
 							className="w-24 rounded-md"
 						>
 							取消
-						</Button>
+						</DialogDismissButton>
 						<Button
 							type="button"
 							disabled={!apiKey.trim() || isSaving}
@@ -939,14 +940,14 @@ const ManualProviderConfigDialog: React.FC<{
 
 				<div className="mt-6 flex justify-end gap-2">
 					<div className="flex justify-end gap-2">
-						<Button
+						<DialogDismissButton
 							type="button"
 							variant="outline"
 							onClick={() => onOpenChange(false)}
 							className="w-24 rounded-md"
 						>
 							取消
-						</Button>
+						</DialogDismissButton>
 						<Button
 							type="button"
 							disabled={!apiKey.trim() || isSaving}

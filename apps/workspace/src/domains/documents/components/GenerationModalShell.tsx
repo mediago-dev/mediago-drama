@@ -2,6 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type React from "react";
 import { Button } from "@/shared/components/ui/button";
+import { DialogClose } from "@/shared/components/ui/dialog-dismiss";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 
@@ -82,17 +83,11 @@ export const GenerationModalShell: React.FC<{
 							</DialogPrimitive.Title>
 							{titleAside ? <div className="shrink-0">{titleAside}</div> : null}
 						</div>
-						<DialogPrimitive.Close asChild>
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon"
-								aria-label="关闭弹窗"
-								onPointerDown={(event) => event.stopPropagation()}
-							>
+						<DialogClose asChild>
+							<Button type="button" variant="ghost" size="icon" aria-label="关闭弹窗">
 								<X />
 							</Button>
-						</DialogPrimitive.Close>
+						</DialogClose>
 					</header>
 					<div className="min-h-0 flex-1">{children}</div>
 				</section>

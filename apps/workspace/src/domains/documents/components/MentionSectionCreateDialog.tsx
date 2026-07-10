@@ -10,7 +10,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/shared/components/ui/alert-dialog";
-import { Button } from "@/shared/components/ui/button";
+import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 
@@ -119,9 +119,14 @@ export const MentionSectionCreateDialog = createCallable<
 
 				<AlertDialogFooter>
 					<AlertDialogCancel className="rounded-sm">取消</AlertDialogCancel>
-					<Button type="button" className="rounded-sm" disabled={!title} onClick={confirm}>
+					<DialogDismissButton
+						type="button"
+						className="rounded-sm"
+						disabled={!title}
+						onClick={confirm}
+					>
 						<span>确认</span>
-					</Button>
+					</DialogDismissButton>
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>
