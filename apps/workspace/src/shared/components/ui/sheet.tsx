@@ -1,12 +1,47 @@
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
+import { type DialogLayerController, useDialogLayer } from "@/shared/components/ui/dialog-layer";
 import { cn } from "@/shared/lib/utils";
 
-const Sheet = SheetPrimitive.Root;
+interface SheetLayerContextValue {
+	escapeHandlerRef: React.MutableRefObject<((event: KeyboardEvent) => void) | undefined>;
+	layer: DialogLayerController;
+}
+
+const SheetLayerContext = React.createContext<SheetLayerContextValue | null>(null);
+
+type SheetProps = React.ComponentPropsWithoutRef<typeof SheetPrimitive.Root>;
+
+const Sheet: React.FC<SheetProps> = ({ children, defaultOpen, onOpenChange, open, ...props }) => {
+	const escapeHandlerRef = React.useRef<((event: KeyboardEvent) => void) | undefined>(undefined);
+	const layer = useDialogLayer({
+		defaultOpen,
+		onEscapeKeyDown: (event) => escapeHandlerRef.current?.(event),
+		onOpenChange,
+		open,
+	});
+
+	return (
+		<SheetLayerContext.Provider value={{ escapeHandlerRef, layer }}>
+			<SheetPrimitive.Root {...props} open={layer.open} onOpenChange={layer.requestOpenChange}>
+				{children}
+			</SheetPrimitive.Root>
+		</SheetLayerContext.Provider>
+	);
+};
 const SheetTrigger = SheetPrimitive.Trigger;
 const SheetClose = SheetPrimitive.Close;
-const SheetPortal = SheetPrimitive.Portal;
+
+const SheetPortal: React.FC<React.ComponentPropsWithoutRef<typeof SheetPrimitive.Portal>> = ({
+	container,
+	...props
+}) => {
+	const context = React.useContext(SheetLayerContext);
+	const portalContainer = context?.layer.portalContainer ?? container;
+	if (context && !portalContainer) return null;
+	return <SheetPrimitive.Portal {...props} container={portalContainer} />;
+};
 
 const SheetOverlay = React.forwardRef<
 	React.ElementRef<typeof SheetPrimitive.Overlay>,
@@ -50,18 +85,51 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
 	React.ElementRef<typeof SheetPrimitive.Content>,
 	SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-	<SheetPortal>
-		<SheetOverlay />
-		<SheetPrimitive.Content
-			ref={ref}
-			className={cn(sheetVariants({ side }), "border-border", className)}
-			{...props}
-		>
-			{children}
-		</SheetPrimitive.Content>
-	</SheetPortal>
-));
+>(
+	(
+		{
+			side = "right",
+			className,
+			children,
+			onEscapeKeyDown,
+			onFocusOutside,
+			onInteractOutside,
+			onPointerDownOutside,
+			...props
+		},
+		ref,
+	) => {
+		const context = React.useContext(SheetLayerContext);
+		if (context) context.escapeHandlerRef.current = onEscapeKeyDown;
+
+		return (
+			<SheetPortal>
+				<SheetOverlay />
+				<SheetPrimitive.Content
+					ref={ref}
+					className={cn(sheetVariants({ side }), "border-border", className)}
+					data-dialog-layer-state={context ? (context.layer.isTop ? "top" : "covered") : undefined}
+					onEscapeKeyDown={(event) => event.preventDefault()}
+					onFocusOutside={(event) => {
+						onFocusOutside?.(event);
+						context?.layer.preventDismissWhenCovered(event);
+					}}
+					onInteractOutside={(event) => {
+						onInteractOutside?.(event);
+						context?.layer.preventDismissWhenCovered(event);
+					}}
+					onPointerDownOutside={(event) => {
+						onPointerDownOutside?.(event);
+						context?.layer.preventDismissWhenCovered(event);
+					}}
+					{...props}
+				>
+					{children}
+				</SheetPrimitive.Content>
+			</SheetPortal>
+		);
+	},
+);
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
