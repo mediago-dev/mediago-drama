@@ -5,6 +5,7 @@ import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { SWRProvider } from "./providers/SWRProvider";
 import { ThemeProvider } from "./providers/ThemeProvider";
+import { LicenseGate } from "@/domains/settings/components/license/LicenseGate";
 import { DialogCallHost } from "@/shared/components/callable/DialogCallHost";
 import { analytics } from "@/shared/analytics";
 import { markRendererHealthy } from "@/shared/desktop/actions";
@@ -43,7 +44,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 			<SWRProvider>
 				<AppRouter>
 					<ErrorBoundary>
-						<App />
+						<LicenseGate>
+							<App />
+						</LicenseGate>
 						<DialogCallHost />
 						<RendererHealthBeacon />
 					</ErrorBoundary>
