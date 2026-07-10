@@ -36,6 +36,7 @@ interface DialogDismissEvent {
 
 interface UseDialogLayerOptions {
 	defaultOpen?: boolean;
+	onEscapeKeyDown?: (event: KeyboardEvent) => void;
 	onOpenChange?: (open: boolean) => void;
 	open?: boolean;
 }
@@ -51,31 +52,30 @@ export interface DialogLayerController {
 
 export const useDialogLayer = ({
 	defaultOpen = false,
+	onEscapeKeyDown,
 	onOpenChange,
 	open: controlledOpen,
 }: UseDialogLayerOptions): DialogLayerController => {
 	const layerId = useId();
 	const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
-	const [portalContainer] = useState<HTMLElement | null>(() => {
-		if (typeof document === "undefined") return null;
-		const container = document.createElement("div");
-		container.dataset.dialogLayer = "";
-		return container;
-	});
+	const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
 	const open = controlledOpen ?? uncontrolledOpen;
 	const isTop = useDialogLayerStore(
 		(state) => open && state.layerIds[state.layerIds.length - 1] === layerId,
 	);
 
 	useLayoutEffect(() => {
-		if (!portalContainer) return;
-		portalContainer.dataset.dialogLayerId = layerId;
+		if (typeof document === "undefined") return;
+		const container = document.createElement("div");
+		container.dataset.dialogLayer = "";
+		container.dataset.dialogLayerId = layerId;
+		setPortalContainer(container);
 
 		return () => {
 			useDialogLayerStore.getState().deactivate(layerId);
-			portalContainer.remove();
+			container.remove();
 		};
-	}, [layerId, portalContainer]);
+	}, [layerId]);
 
 	useLayoutEffect(() => {
 		if (!portalContainer || !open) {
@@ -109,6 +109,20 @@ export const useDialogLayer = ({
 		},
 		[isTop, open],
 	);
+
+	useLayoutEffect(() => {
+		if (!open || !isTop || typeof document === "undefined") return;
+
+		const handleEscapeKeyDown = (event: KeyboardEvent) => {
+			if (event.key !== "Escape") return;
+			onEscapeKeyDown?.(event);
+			if (!event.defaultPrevented) requestOpenChange(false);
+			event.preventDefault();
+		};
+
+		document.addEventListener("keydown", handleEscapeKeyDown, { capture: true });
+		return () => document.removeEventListener("keydown", handleEscapeKeyDown, { capture: true });
+	}, [isTop, onEscapeKeyDown, open, requestOpenChange]);
 
 	return {
 		isTop,

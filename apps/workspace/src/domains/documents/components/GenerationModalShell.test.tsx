@@ -1,12 +1,14 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	GenerationModalShell,
 	isPhotoViewPortalOpen,
 	isPhotoViewPortalTarget,
 } from "@/domains/documents/components/GenerationModalShell";
+import { useDialogLayerStore } from "@/shared/components/ui/dialog-layer";
 
-const waitForRadixOutsideListeners = () => new Promise((resolve) => window.setTimeout(resolve, 0));
+const waitForRadixOutsideListeners = () => new Promise((resolve) => window.setTimeout(resolve, 20));
 
 const fireRadixOutsideClick = async (target: Element) => {
 	await waitForRadixOutsideListeners();
@@ -17,6 +19,8 @@ const fireRadixOutsideClick = async (target: Element) => {
 
 describe("GenerationModalShell", () => {
 	afterEach(() => {
+		cleanup();
+		useDialogLayerStore.setState({ layerIds: [] });
 		document.body.innerHTML = "";
 		vi.restoreAllMocks();
 	});
@@ -151,4 +155,85 @@ describe("GenerationModalShell", () => {
 
 		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 	});
+
+	it("restores the same lower dialog instance after the upper dialog submits", async () => {
+		render(<LayeredGenerationModalHarness />);
+
+		const lowerDialog = screen.getByRole("dialog", { name: "资源列表" });
+		const lowerInput = screen.getByRole("textbox", { name: "资源备注" });
+		fireEvent.change(lowerInput, { target: { value: "保留这段输入" } });
+
+		fireEvent.click(screen.getByRole("button", { name: "打开生成图片" }));
+		const upperDialog = await screen.findByRole("dialog", { name: "生成图片" });
+		const lowerLayer = lowerDialog.closest<HTMLElement>("[data-dialog-layer]");
+		const upperLayer = upperDialog.closest<HTMLElement>("[data-dialog-layer]");
+
+		expect(lowerLayer).not.toBeNull();
+		expect(upperLayer).not.toBeNull();
+		expect(lowerLayer).toHaveAttribute("data-dialog-layer-state", "covered");
+		expect(upperLayer).toHaveAttribute("data-dialog-layer-state", "top");
+		expect(Array.from(document.querySelectorAll("[data-dialog-layer]")).at(-1)).toBe(upperLayer);
+
+		fireEvent.click(screen.getByRole("button", { name: "发送生成" }));
+
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog", { name: "生成图片" })).toBeNull();
+		});
+		expect(screen.getByRole("dialog", { name: "资源列表" })).toBe(lowerDialog);
+		expect(screen.getByRole("textbox", { name: "资源备注" })).toBe(lowerInput);
+		expect(lowerInput).toHaveValue("保留这段输入");
+		expect(lowerLayer).toHaveAttribute("data-dialog-layer-state", "top");
+	});
+
+	it("closes one generation modal per Escape key press", async () => {
+		render(<LayeredGenerationModalHarness upperInitiallyOpen />);
+		await waitForRadixOutsideListeners();
+
+		fireEvent.keyDown(document, { key: "Escape" });
+
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog", { name: "生成图片" })).toBeNull();
+		});
+		expect(screen.getByRole("dialog", { name: "资源列表" })).toBeTruthy();
+
+		fireEvent.keyDown(document, { key: "Escape" });
+
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog", { name: "资源列表" })).toBeNull();
+		});
+	});
 });
+
+const LayeredGenerationModalHarness = ({ upperInitiallyOpen = false }) => {
+	const [lowerOpen, setLowerOpen] = useState(true);
+	const [upperOpen, setUpperOpen] = useState(upperInitiallyOpen);
+
+	return (
+		<>
+			<GenerationModalShell
+				open={lowerOpen}
+				title="资源列表"
+				titleId="resource-list-title"
+				onOpenChange={setLowerOpen}
+			>
+				<label>
+					<span>资源备注</span>
+					<input aria-label="资源备注" defaultValue="" />
+				</label>
+				<button type="button" onClick={() => setUpperOpen(true)}>
+					打开生成图片
+				</button>
+			</GenerationModalShell>
+			<GenerationModalShell
+				open={upperOpen}
+				title="生成图片"
+				titleId="generate-image-title"
+				onOpenChange={setUpperOpen}
+			>
+				<button type="button" onClick={() => setUpperOpen(false)}>
+					发送生成
+				</button>
+			</GenerationModalShell>
+		</>
+	);
+};
