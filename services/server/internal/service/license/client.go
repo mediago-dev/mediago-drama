@@ -3,6 +3,7 @@ package license
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -48,6 +49,9 @@ type Client struct {
 	mu             sync.Mutex
 	publisherCache map[string][]byte
 	publisherAt    time.Time
+
+	deviceOnce sync.Once
+	deviceID   string
 }
 
 var _ Service = (*Client)(nil)
@@ -107,6 +111,11 @@ func (client *Client) Status() StatusInfo {
 	if err != nil && !errors.Is(err, ErrTokenExpired) {
 		return info
 	}
+	// A validly-signed token bound to a different device belongs to another
+	// machine (a copied license) — treat this device as not activated.
+	if !client.tokenMatchesDevice(payload) {
+		return info
+	}
 	info.LicenseID = payload.LicenseID
 	info.Plan = payload.Plan
 	info.Entitlements = append([]string(nil), payload.Entitlements...)
@@ -134,7 +143,7 @@ func (client *Client) Activate(ctx context.Context, code string) (StatusInfo, er
 	}
 	err = client.postJSON(ctx, "/api/v1/activate", map[string]string{
 		"activation_code": code,
-		"device_hash":     deviceHash(),
+		"device_hash":     client.deviceHash(),
 	}, "", &activated)
 	if err != nil {
 		return client.Status(), err
@@ -171,6 +180,9 @@ func (client *Client) HasEntitlement(_ context.Context, entitlement string) (boo
 	if err != nil {
 		return false, nil
 	}
+	if !client.tokenMatchesDevice(payload) {
+		return false, nil
+	}
 	entitlement = strings.TrimSpace(entitlement)
 	if entitlement == "" {
 		entitlement = defaultProEntitlement
@@ -184,8 +196,12 @@ func (client *Client) ResolvePackKey(ctx context.Context, keyID string) ([]byte,
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrPackKeyNotFound, ErrNotActivated)
 	}
-	if _, err := VerifyToken(stored.Token, stored.ServerPublicKey); err != nil {
+	payload, err := VerifyToken(stored.Token, stored.ServerPublicKey)
+	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrPackKeyNotFound, err)
+	}
+	if !client.tokenMatchesDevice(payload) {
+		return nil, fmt.Errorf("%w: license is bound to another device", ErrPackKeyNotFound)
 	}
 	keyID = strings.TrimSpace(keyID)
 	if keyID == "" {
@@ -195,7 +211,8 @@ func (client *Client) ResolvePackKey(ctx context.Context, keyID string) ([]byte,
 		Key string `json:"key"`
 	}
 	if err := client.postJSON(ctx, "/api/v1/pack-keys/resolve", map[string]string{
-		"key_id": keyID,
+		"key_id":      keyID,
+		"device_hash": client.deviceHash(),
 	}, stored.Token, &resolved); err != nil {
 		if errors.Is(err, ErrActivationRejected) {
 			return nil, fmt.Errorf("%w: %q", ErrPackKeyNotFound, keyID)
@@ -360,9 +377,44 @@ func clonePublisherKeys(keys map[string][]byte) map[string][]byte {
 	return cloned
 }
 
-func deviceHash() string {
-	hostname, _ := os.Hostname()
-	home, _ := os.UserHomeDir()
-	sum := sha256.Sum256([]byte(hostname + "|" + home))
+// deviceHash returns a stable fingerprint of this installation. It is derived
+// from a random device id persisted next to the license file, so a license
+// token copied to another machine (which has its own device id) fails the
+// device-binding check. Falls back to host attributes if the id cannot be
+// persisted.
+func (client *Client) deviceHash() string {
+	client.deviceOnce.Do(func() {
+		client.deviceID = client.loadOrCreateDeviceID()
+	})
+	sum := sha256.Sum256([]byte(client.deviceID))
 	return hex.EncodeToString(sum[:16])
+}
+
+func (client *Client) loadOrCreateDeviceID() string {
+	path := filepath.Join(filepath.Dir(client.storePath), "device-id")
+	if raw, err := os.ReadFile(path); err == nil {
+		if id := strings.TrimSpace(string(raw)); id != "" {
+			return id
+		}
+	}
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		hostname, _ := os.Hostname()
+		home, _ := os.UserHomeDir()
+		return "host:" + hostname + "|" + home
+	}
+	id := hex.EncodeToString(buf)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err == nil {
+		_ = os.WriteFile(path, []byte(id+"\n"), 0o600)
+	}
+	return id
+}
+
+// tokenMatchesDevice reports whether a token is usable on this device. A token
+// with an empty device hash is unbound (dev/legacy) and passes unconditionally.
+func (client *Client) tokenMatchesDevice(payload TokenPayload) bool {
+	if strings.TrimSpace(payload.DeviceHash) == "" {
+		return true
+	}
+	return payload.DeviceHash == client.deviceHash()
 }

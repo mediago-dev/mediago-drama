@@ -88,7 +88,7 @@ func TestClientRejectsExpiredStoredToken(t *testing.T) {
 	stateDir := t.TempDir()
 	client := NewClient(fake.URL(), stateDir)
 
-	token := fake.issueToken(t, time.Now().Add(-time.Hour))
+	token := fake.issueToken(t, "", time.Now().Add(-time.Hour))
 	if err := client.saveStored(storedLicense{
 		Token:           token,
 		ServerURL:       fake.URL(),
@@ -106,6 +106,54 @@ func TestClientRejectsExpiredStoredToken(t *testing.T) {
 	}
 	if _, err := client.ResolvePackKey(context.Background(), "default"); !errors.Is(err, ErrPackKeyNotFound) {
 		t.Fatalf("ResolvePackKey(expired) error = %v, want ErrPackKeyNotFound", err)
+	}
+}
+
+func TestClientRejectsTokenBoundToAnotherDevice(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeLicenseServer(t)
+	defer fake.Close()
+	client := NewClient(fake.URL(), t.TempDir())
+
+	// A validly-signed token bound to a different device — i.e. a license
+	// file copied from someone else's activated machine.
+	token := fake.issueToken(nil, "some-other-device", time.Now().Add(time.Hour))
+	if err := client.saveStored(storedLicense{
+		Token:           token,
+		ServerURL:       fake.URL(),
+		ServerPublicKey: fake.publicKeyBase64(),
+		SavedAt:         time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("saveStored() error = %v", err)
+	}
+
+	if status := client.Status(); status.Activated {
+		t.Fatalf("Status() = %#v, want not activated on a foreign device", status)
+	}
+	granted, err := client.HasEntitlement(ctx, "pack.import.pro")
+	if err != nil || granted {
+		t.Fatalf("HasEntitlement(foreign device) = %v, %v; want false, nil", granted, err)
+	}
+	if _, err := client.ResolvePackKey(ctx, "default"); !errors.Is(err, ErrPackKeyNotFound) {
+		t.Fatalf("ResolvePackKey(foreign device) error = %v, want ErrPackKeyNotFound", err)
+	}
+}
+
+func TestClientActivateBindsToLocalDevice(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeLicenseServer(t)
+	defer fake.Close()
+	client := NewClient(fake.URL(), t.TempDir())
+
+	// Activation binds the token to this device; the same client resolves fine.
+	if _, err := client.Activate(ctx, "MG-GOOD-CODE"); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+	if status := client.Status(); !status.Activated {
+		t.Fatalf("Status() = %#v, want activated on the binding device", status)
+	}
+	if _, err := client.ResolvePackKey(ctx, "default"); err != nil {
+		t.Fatalf("ResolvePackKey(same device) error = %v", err)
 	}
 }
 
@@ -159,14 +207,16 @@ func newFakeLicenseServer(t *testing.T) *fakeLicenseServer {
 	mux.HandleFunc("POST /api/v1/activate", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			ActivationCode string `json:"activation_code"`
+			DeviceHash     string `json:"device_hash"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body.ActivationCode != "MG-GOOD-CODE" {
 			writeEnvelopeError(w, http.StatusForbidden, 40310, "activation code is invalid")
 			return
 		}
+		// Bind the issued token to the activating device, like the real server.
 		writeEnvelope(w, http.StatusOK, map[string]any{
-			"token": fake.issueToken(nil, time.Now().Add(time.Hour)),
+			"token": fake.issueToken(nil, body.DeviceHash, time.Now().Add(time.Hour)),
 			"plan":  "pro",
 		})
 	})
@@ -199,7 +249,7 @@ func (fake *fakeLicenseServer) publicKeyBase64() string {
 	return base64.StdEncoding.EncodeToString(fake.publicKey)
 }
 
-func (fake *fakeLicenseServer) issueToken(t *testing.T, expiresAt time.Time) string {
+func (fake *fakeLicenseServer) issueToken(t *testing.T, deviceHash string, expiresAt time.Time) string {
 	if t != nil {
 		t.Helper()
 	}
@@ -208,6 +258,7 @@ func (fake *fakeLicenseServer) issueToken(t *testing.T, expiresAt time.Time) str
 		Plan:              "pro",
 		Entitlements:      []string{"pack.import.pro"},
 		ExpiresAt:         expiresAt.UTC(),
+		DeviceHash:        deviceHash,
 		LicenseAPIVersion: "v1",
 	})
 	signature := ed25519.Sign(fake.private, payload)

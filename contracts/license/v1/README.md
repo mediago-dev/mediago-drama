@@ -46,6 +46,14 @@
 
 未配置 `MEDIAGO_LICENSE_SERVER_URL` 时，客户端回退到开发期环境变量授权（见下）。
 
+## 设备绑定
+
+激活时客户端上报设备指纹（来自 license 目录下持久化的随机 `device-id`），license server 把它写进签名 token 的 `device_hash`。之后**换取 pack 解密密钥时,客户端带上当前设备指纹,server 校验其与 token 中的 `device_hash` 一致**;不一致返回 403（错误码 40314）。这样把已激活的 `license.json` 拷到别的机器就换不到密钥、导入不了 Pro 包。
+
+- 客户端本地也会先校验(离线即拦),server 端校验是权威(改客户端也绕不过——除非篡改二进制伪造指纹,属可接受残留)。
+- `device_hash` 为空的 token 视为**不绑定**(便于团队/浮动授权场景)。
+- 与"传激活码"不同:激活码可被多设备使用,受 `max_activations` 次数限制;设备绑定针对的是"传已激活凭证"。
+
 ## 密钥与信任
 
 - **Pack 解密密钥**（AES-256-GCM，32 字节）：由 license server 在授权校验后按 `keyId` 下发。开发期通过 `MEDIAGO_LICENSE_PACK_KEYS` 环境变量模拟。
