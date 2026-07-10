@@ -4,13 +4,14 @@ import type React from "react";
 import { memo, useRef } from "react";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
-import { errorMessage, splitFrontmatter } from "./project-asset-preview.helpers";
+import { errorMessage, isMarkdownAsset, splitFrontmatter } from "./project-asset-preview.helpers";
 
 export const TextAssetPreview: React.FC<{
 	error: unknown;
 	isLoading: boolean;
+	showDocumentInfo: boolean;
 	text?: string;
-}> = ({ error, isLoading, text }) => {
+}> = ({ error, isLoading, showDocumentInfo, text }) => {
 	if (isLoading) {
 		return (
 			<div className="grid min-h-0 flex-1 place-items-center border border-border bg-card">
@@ -30,11 +31,13 @@ export const TextAssetPreview: React.FC<{
 		);
 	}
 
-	// Managed documents carry a leading YAML frontmatter block that is noise for
-	// a reader, so hide it behind a collapsed toggle and show just the body. The
-	// card fills the pane and scrolls internally so a short document never leaves
-	// a dead band below it.
-	const { body, frontmatter } = splitFrontmatter(text ?? "");
+	// Only Markdown files may treat a leading YAML block as document metadata.
+	// Plain text and other source files must remain byte-for-byte equivalent after
+	// decoding, including any leading `---` fences that are part of their content.
+	const sourceText = text ?? "";
+	const { body, frontmatter } = showDocumentInfo
+		? splitFrontmatter(sourceText)
+		: { body: sourceText, frontmatter: null };
 	return (
 		<div className="min-h-0 flex-1 overflow-auto border border-border bg-card">
 			{frontmatter !== null ? (
@@ -87,7 +90,14 @@ const AssetPreviewBodyComponent: React.FC<{
 	}
 
 	if (asset.kind === "text") {
-		return <TextAssetPreview text={text} error={textError} isLoading={isTextLoading} />;
+		return (
+			<TextAssetPreview
+				text={text}
+				error={textError}
+				isLoading={isTextLoading}
+				showDocumentInfo={isMarkdownAsset(asset)}
+			/>
+		);
 	}
 
 	return (

@@ -21,6 +21,12 @@ export const errorMessage = (error: unknown, fallback: string) => {
 	return fallback;
 };
 
+export const isMarkdownAsset = (asset: Pick<ProjectAsset, "filename" | "mimeType">) => {
+	const mimeType = asset.mimeType.trim().toLowerCase();
+	if (mimeType === "text/markdown" || mimeType === "text/x-markdown") return true;
+	return /\.(?:md|markdown)$/i.test(asset.filename.trim());
+};
+
 // The raw `kind` enum ("text"/"image"/…) is an internal value; surface a
 // localized label in the Chinese UI instead.
 export const assetKindLabel = (kind: string): string => {
