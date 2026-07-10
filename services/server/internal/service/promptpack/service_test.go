@@ -45,20 +45,57 @@ func TestServiceSeedsBuiltinPackIdempotently(t *testing.T) {
 	}
 }
 
-func TestServiceHidesDisabledPackEntries(t *testing.T) {
+func TestServiceKeepsDefaultPackAlwaysEnabled(t *testing.T) {
+	ctx := context.Background()
 	store := newTestService(t)
-	if _, err := store.ListEntries(context.Background(), instructionpack.KindSkill); err != nil {
+	before, err := store.ListEntries(ctx, instructionpack.KindSkill)
+	if err != nil {
 		t.Fatalf("seeding: %v", err)
 	}
-	if _, err := store.SetEnabled(context.Background(), DefaultPackID, false); err != nil {
-		t.Fatalf("SetEnabled() error = %v", err)
+	if len(before) == 0 {
+		t.Fatalf("expected built-in skills before disable")
 	}
-	entries, err := store.ListEntries(context.Background(), instructionpack.KindSkill)
+	// The default pack is a permanent base layer: disabling it is a no-op so
+	// its content stays usable while installed packs stack on top.
+	pack, err := store.SetEnabled(ctx, DefaultPackID, false)
+	if err != nil {
+		t.Fatalf("SetEnabled(default,false) error = %v", err)
+	}
+	if !pack.Enabled {
+		t.Fatalf("default pack = %#v, want still enabled", pack)
+	}
+	after, err := store.ListEntries(ctx, instructionpack.KindSkill)
 	if err != nil {
 		t.Fatalf("ListEntries() error = %v", err)
 	}
-	if len(entries) != 0 {
-		t.Fatalf("entries = %#v, want hidden", entries)
+	if len(after) != len(before) {
+		t.Fatalf("entries after disabling default = %d, want unchanged %d", len(after), len(before))
+	}
+}
+
+func TestServiceStacksInstalledPackOnDefault(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	before, err := store.ListEntries(ctx, instructionpack.KindSkill)
+	if err != nil {
+		t.Fatalf("seeding: %v", err)
+	}
+	if _, err := store.InstallPath(ctx, writeTestMGPack(t)); err != nil {
+		t.Fatalf("InstallPath() error = %v", err)
+	}
+	after, err := store.ListEntries(ctx, instructionpack.KindSkill)
+	if err != nil {
+		t.Fatalf("ListEntries() error = %v", err)
+	}
+	// The imported pack stacks on top of the default: both are visible together.
+	if _, ok := findEntry(after, "test-skill"); !ok {
+		t.Fatalf("entries = %#v, want imported test-skill", after)
+	}
+	if _, ok := findEntry(after, "character-writer"); !ok {
+		t.Fatalf("entries = %#v, want default character-writer still present", after)
+	}
+	if len(after) != len(before)+1 {
+		t.Fatalf("entries = %d, want default %d + 1 imported", len(after), len(before))
 	}
 }
 

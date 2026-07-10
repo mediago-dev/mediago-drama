@@ -162,7 +162,7 @@ func (store *Service) ListPacks(ctx context.Context) ([]Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return nil, err
 	}
-	if err := store.ensureSingleEnabledPack(ctx); err != nil {
+	if err := store.ensureDefaultEnabled(ctx); err != nil {
 		return nil, err
 	}
 	models, err := store.repo.ListPacks()
@@ -176,7 +176,9 @@ func (store *Service) ListPacks(ctx context.Context) ([]Pack, error) {
 	return packs, nil
 }
 
-// SetEnabled enables or disables one installed pack.
+// SetEnabled enables or disables one installed pack. Packs are additive: the
+// built-in default pack is always enabled as a base layer and installed packs
+// stack on top, so enabling one never disables another.
 func (store *Service) SetEnabled(ctx context.Context, packID string, enabled bool) (Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return Pack{}, err
@@ -187,26 +189,9 @@ func (store *Service) SetEnabled(ctx context.Context, packID string, enabled boo
 	} else if err != nil {
 		return Pack{}, err
 	}
-	if enabled {
-		if err := store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
-			if err := tx.SetPackEnabled(packID, true); err != nil {
-				return err
-			}
-			return tx.DisableOtherPacks(packID)
-		}); err != nil {
-			return Pack{}, err
-		}
-	} else {
-		if packID == DefaultPackID {
-			if err := store.repo.SetPackEnabled(packID, false); err != nil {
-				return Pack{}, err
-			}
-		} else if err := store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
-			if err := tx.SetPackEnabled(packID, false); err != nil {
-				return err
-			}
-			return tx.SetPackEnabled(DefaultPackID, true)
-		}); err != nil {
+	// The default pack stays usable at all times; disabling it is a no-op.
+	if !(packID == DefaultPackID && !enabled) {
+		if err := store.repo.SetPackEnabled(packID, enabled); err != nil {
 			return Pack{}, err
 		}
 	}
@@ -353,7 +338,7 @@ func (store *Service) ListEntries(ctx context.Context, kind instructionpack.Kind
 	if err := store.ensureSeeded(ctx); err != nil {
 		return nil, err
 	}
-	if err := store.ensureSingleEnabledPack(ctx); err != nil {
+	if err := store.ensureDefaultEnabled(ctx); err != nil {
 		return nil, err
 	}
 	models, err := store.repo.ListEnabledEntries(string(kind))
@@ -529,7 +514,7 @@ func (store *Service) ListCategories(ctx context.Context) ([]Category, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return nil, err
 	}
-	if err := store.ensureSingleEnabledPack(ctx); err != nil {
+	if err := store.ensureDefaultEnabled(ctx); err != nil {
 		return nil, err
 	}
 	models, err := store.repo.ListEnabledCategories()
@@ -609,52 +594,26 @@ func (store *Service) ensureReady(ctx context.Context) error {
 	return nil
 }
 
-func (store *Service) ensureSingleEnabledPack(ctx context.Context) error {
+// ensureDefaultEnabled keeps the built-in default pack enabled at all times so
+// its content is always available as a base layer. Installed packs stack on top
+// additively; this never disables any pack.
+func (store *Service) ensureDefaultEnabled(ctx context.Context) error {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 	}
-	models, err := store.repo.ListPacks()
+	model, err := store.repo.GetPack(DefaultPackID)
+	if repository.IsRecordNotFound(err) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	enabled := make([]domain.PackModel, 0, len(models))
-	for _, model := range models {
-		if model.Enabled {
-			enabled = append(enabled, model)
-		}
-	}
-	if len(enabled) <= 1 {
+	if model.Enabled {
 		return nil
 	}
-	keep := preferredEnabledPack(enabled)
-	return store.repo.DisableOtherPacks(keep.ID)
-}
-
-func preferredEnabledPack(models []domain.PackModel) domain.PackModel {
-	preferred := models[0]
-	for _, model := range models[1:] {
-		if packModelPreferredOver(model, preferred) {
-			preferred = model
-		}
-	}
-	return preferred
-}
-
-func packModelPreferredOver(left domain.PackModel, right domain.PackModel) bool {
-	leftDefault := normalizePackSource(left.Source, left.ID) == packSourceDefault
-	rightDefault := normalizePackSource(right.Source, right.ID) == packSourceDefault
-	if leftDefault != rightDefault {
-		return !leftDefault
-	}
-	if !left.UpdatedAt.Equal(right.UpdatedAt) {
-		return left.UpdatedAt.After(right.UpdatedAt)
-	}
-	if !left.CreatedAt.Equal(right.CreatedAt) {
-		return left.CreatedAt.After(right.CreatedAt)
-	}
-	return left.ID > right.ID
+	return store.repo.SetPackEnabled(DefaultPackID, true)
 }
 
 func (store *Service) migrateLegacyPromptLibrary(ctx context.Context) error {
@@ -765,14 +724,10 @@ func (store *Service) seedBuiltinPack(ctx context.Context) error {
 func (store *Service) installBundle(ctx context.Context, bundle instructionpack.Bundle, source string, origin string) error {
 	return store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
 		transactional := &Service{repo: tx, legacyRepo: store.legacyRepo, initErr: store.initErr}
-		enabled, err := transactional.upsertPackFromBundle(bundle, source, origin)
-		if err != nil {
+		// Importing a pack is additive: it is enabled and stacks on top of the
+		// always-enabled default pack, without disabling any other pack.
+		if _, err := transactional.upsertPackFromBundle(bundle, source, origin); err != nil {
 			return err
-		}
-		if enabled {
-			if err := tx.DisableOtherPacks(bundle.Manifest.ID); err != nil {
-				return err
-			}
 		}
 		if err := tx.DeleteEntriesByPack(bundle.Manifest.ID); err != nil {
 			return err

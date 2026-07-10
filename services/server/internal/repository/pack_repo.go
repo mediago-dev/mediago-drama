@@ -85,18 +85,6 @@ func (repo *PackRepository) SetPackEnabled(id string, enabled bool) error {
 	return nil
 }
 
-// DisableOtherPacks disables every pack except the specified one.
-func (repo *PackRepository) DisableOtherPacks(id string) error {
-	err := repo.db.Model(&domain.PackModel{}).
-		Where("id <> ?", strings.TrimSpace(id)).
-		Update("enabled", false).
-		Error
-	if err != nil {
-		return fmt.Errorf("disabling other packs: %w", err)
-	}
-	return nil
-}
-
 // DeletePack removes an installed prompt pack and its entries.
 func (repo *PackRepository) DeletePack(id string) error {
 	err := repo.db.Delete(&domain.PackModel{}, "id = ?", strings.TrimSpace(id)).Error
