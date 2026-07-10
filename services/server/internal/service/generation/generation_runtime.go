@@ -94,9 +94,14 @@ func (workflow *GenerationService) SetMediagoBaseURL(baseURL string) {
 	workflow.mediagoBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 }
 
-// SetGenerationNotifications sets the notification service used by generation workflows.
+// SetGenerationNotifications sets the notification service used by generation
+// workflows and wires the task service's completion-transition listener to it,
+// so untracked background completions still reach connected clients.
 func (workflow *GenerationService) SetGenerationNotifications(notifications *GenerationNotificationService) {
 	workflow.generationNotifications = notifications
+	if workflow.generationTasks != nil && notifications != nil {
+		workflow.generationTasks.SetTaskCompletionListener(notifications.AnnounceTaskCompletion)
+	}
 }
 
 // SetDocumentResolver sets the workspace document reader used by document-backed generation.

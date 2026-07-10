@@ -145,48 +145,98 @@ func TestGenerationNotificationServicePublishesCompletedVideoTask(t *testing.T) 
 	}
 }
 
-func TestGenerationNotificationServiceAnnouncesUntrackedTaskCompletion(t *testing.T) {
+func TestGenerationTaskCompletionTransitionAnnouncesUntrackedTasks(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "workspace.db")
 	repos, err := repository.OpenWorkspaceRepositories(dbPath)
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
-	service := NewGenerationNotificationServiceFromRepository(repos.GenerationNotifications, nil, nil)
-	events, unsubscribe := service.Subscribe()
+	seedGenerationTaskProject(t, dbPath, "project-a")
+	notifications := NewGenerationNotificationServiceFromRepository(repos.GenerationNotifications, nil, nil)
+	tasks := NewGenerationTaskService(dbPath, nil)
+	tasks.SetTaskCompletionListener(notifications.AnnounceTaskCompletion)
+	events, unsubscribe := notifications.Subscribe()
 	defer unsubscribe()
 
-	// 无通知记录的后台任务完成也要广播，前端才能刷新资源封面/计数。
-	completed := GenerationTaskRecord{
-		ID:        "task-untracked",
-		ProjectID: "project-a",
-		Kind:      "image",
-		Status:    "completed",
-		UpdatedAt: "2026-07-10T00:00:00Z",
-	}
-	service.SyncTask(completed)
-
-	select {
-	case event := <-events:
-		if event.Type != "generation.task.completed" || event.ProjectID != "project-a" {
-			t.Fatalf("event = %+v, want untracked task-completed announcement", event)
+	expectEvent := func(reason string) {
+		t.Helper()
+		select {
+		case event := <-events:
+			if event.Type != "generation.task.completed" || event.ProjectID != "project-a" {
+				t.Fatalf("%s: event = %+v", reason, event)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("%s: no event published", reason)
 		}
-	case <-time.After(time.Second):
-		t.Fatal("no event published for untracked completed task")
+	}
+	expectSilence := func(reason string) {
+		t.Helper()
+		select {
+		case event := <-events:
+			t.Fatalf("%s: unexpected event %+v", reason, event)
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 
-	// 同一任务重复 sync 不再重复广播。
-	service.SyncTask(completed)
-	select {
-	case event := <-events:
-		t.Fatalf("unexpected duplicate event %+v", event)
-	case <-time.After(100 * time.Millisecond):
+	task := GenerationTaskRecord{ID: "task-1", ProjectID: "project-a", Kind: "image", Status: "running"}
+	if err := tasks.Upsert(task); err != nil {
+		t.Fatalf("Upsert(running) error = %v", err)
 	}
+	expectSilence("running task must not announce")
 
-	// 仍在运行的任务不广播。
-	service.SyncTask(GenerationTaskRecord{ID: "task-running", ProjectID: "project-a", Status: "running"})
+	task.Status = "completed"
+	if err := tasks.Upsert(task); err != nil {
+		t.Fatalf("Upsert(completed) error = %v", err)
+	}
+	expectEvent("first completion transition")
+
+	// 已完成任务被读路径/轮询重复 upsert：无迁移，不再广播。
+	if err := tasks.Upsert(task); err != nil {
+		t.Fatalf("re-Upsert(completed) error = %v", err)
+	}
+	expectSilence("re-upsert of completed task must not announce")
+
+	// 重试：completed→submitting→completed 是一次新迁移，必须再次广播。
+	task.Status = "submitting"
+	if err := tasks.Upsert(task); err != nil {
+		t.Fatalf("Upsert(submitting) error = %v", err)
+	}
+	expectSilence("retry submit must not announce")
+	task.Status = "completed"
+	if err := tasks.Upsert(task); err != nil {
+		t.Fatalf("Upsert(retry completed) error = %v", err)
+	}
+	expectEvent("retry completion transition")
+}
+
+func TestAnnounceTaskCompletionSkipsTrackedTasks(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "workspace.db")
+	repos, err := repository.OpenWorkspaceRepositories(dbPath)
+	if err != nil {
+		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
+	}
+	seedGenerationTaskProject(t, dbPath, "project-a")
+	notifications := NewGenerationNotificationServiceFromRepository(repos.GenerationNotifications, nil, nil)
+	tasks := NewGenerationTaskService(dbPath, nil)
+	task := GenerationTaskRecord{ID: "task-tracked", ProjectID: "project-a", Kind: "image", Status: "completed"}
+	if err := tasks.Upsert(task); err != nil {
+		t.Fatalf("Upsert(task) error = %v", err)
+	}
+	if err := notifications.TrackTaskTarget(task, &GenerationNotificationTarget{
+		Kind:       "document-section",
+		ProjectID:  "project-a",
+		DocumentID: "doc-a",
+		Section:    GenerationNotificationSectionTarget{BlockID: "b", DocumentID: "doc-a", HeadingText: "h"},
+	}); err != nil {
+		t.Fatalf("TrackTaskTarget() error = %v", err)
+	}
+	events, unsubscribe := notifications.Subscribe()
+	defer unsubscribe()
+
+	notifications.AnnounceTaskCompletion(task)
 	select {
 	case event := <-events:
-		t.Fatalf("unexpected event for running task %+v", event)
+		t.Fatalf("tracked task must not double-announce, got %+v", event)
 	case <-time.After(100 * time.Millisecond):
 	}
 }

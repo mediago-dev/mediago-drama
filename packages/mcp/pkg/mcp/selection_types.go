@@ -38,7 +38,7 @@ type FormFieldOptionInput struct {
 type FormFieldInput struct {
 	ID          string                 `json:"id" jsonschema:"字段 ID，提交值以它为键。"`
 	Label       string                 `json:"label" jsonschema:"字段显示名。"`
-	Type        string                 `json:"type" jsonschema:"select、toggle、number、text、generation_params 或 images；generation_params 是生图模型+参数组合选择器，客户端自动渲染已配置的模型目录及所选模型的比例/分辨率/张数（组合联动），无需 options，提交值为 {routeId,label,params}；images 是参考图选择器，用户可上传或移除图片，提交值为媒体资产 id 数组，default 可预填资产 id（如该资源已定稿图），max 限制张数。；prompt_optimization 是优化提示词选择器（开关+文本模型+提示词包，与生成工作台同源），无需 options，提交值为 {enabled} 或 {enabled:true, routeId, referenceName, referencePrompt}，default 可预填。"`
+	Type        string                 `json:"type" jsonschema:"select、toggle、number、text、generation_params、images 或 prompt_optimization；generation_params 是生图模型+参数组合选择器，客户端自动渲染已配置的模型目录及所选模型的比例/分辨率/张数（组合联动），无需 options，提交值为 {routeId,label,params}；images 是参考图选择器，用户可上传或移除图片，提交值为媒体资产 id 数组，default 可预填资产 id（如该资源已定稿图），max 限制张数；prompt_optimization 是优化提示词选择器（开关+文本模型+提示词包，与生成工作台同源），无需 options，提交值为 {enabled} 或 {enabled:true, routeId, referenceName, referencePrompt}，default 可预填。"`
 	Description string                 `json:"description,omitempty"`
 	Options     []FormFieldOptionInput `json:"options,omitempty" jsonschema:"select 类型的可选值。"`
 	Default     any                    `json:"default,omitempty" jsonschema:"默认值；用 preferences 或 schema 默认项预填。"`

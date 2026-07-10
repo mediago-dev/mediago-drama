@@ -383,6 +383,9 @@ func normalizeFields(fields []FormField) ([]FormField, error) {
 		}
 		field.ID = id
 		field.Type = fieldType
+		if fieldType == FieldTypeImages {
+			field.Max = clampImagesMax(field.Max)
+		}
 		field.Label = strings.TrimSpace(field.Label)
 		if field.Label == "" {
 			field.Label = id
@@ -412,7 +415,17 @@ func validateFormValues(fields []FormField, values map[string]any) (map[string]a
 		value, provided := values[field.ID]
 		if !provided || value == nil {
 			if field.Default != nil {
-				resolved[field.ID] = field.Default
+				// Defaults come from the agent and would otherwise bypass the
+				// shape checks user submissions must pass — validate them too,
+				// and treat an invalid optional default as absent.
+				checked, err := validateFormValue(field, field.Default)
+				if err == nil {
+					resolved[field.ID] = checked
+					continue
+				}
+				if field.Required {
+					return nil, fmt.Errorf("form field %q default is invalid: %w", field.ID, err)
+				}
 				continue
 			}
 			if field.Required {
@@ -508,7 +521,7 @@ func validateImagesValue(field FormField, value any) (any, error) {
 		return nil, fmt.Errorf("form field %q expects an array of media asset ids", field.ID)
 	}
 	seen := map[string]bool{}
-	ids := []any{}
+	ids := []string{}
 	for _, item := range items {
 		id, ok := item.(string)
 		if !ok {
@@ -535,6 +548,11 @@ func validateImagesValue(field FormField, value any) (any, error) {
 // the known string fields, trimmed. Route/reference existence is not checked
 // here — generate_media resolves them.
 func validatePromptOptimizationValue(field FormField, value any) (any, error) {
+	// Agents may prefill the field with a bare boolean default and clients
+	// submit defaults verbatim — normalize instead of 400ing the whole form.
+	if flag, isBool := value.(bool); isBool {
+		return map[string]any{"enabled": flag}, nil
+	}
 	object, ok := value.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("form field %q expects an object with an enabled flag", field.ID)
@@ -561,4 +579,86 @@ func validatePromptOptimizationValue(field FormField, value any) (any, error) {
 		}
 	}
 	return resolved, nil
+}
+
+// Images-count bounds: the instruction text only *recommends* max 3, but an
+// agent run that omits max must not yield an unbounded uploader (each image is
+// inlined as a base64 data URI in the provider request).
+const (
+	defaultImagesMax = 3
+	ceilingImagesMax = 9
+)
+
+func clampImagesMax(requested *float64) *float64 {
+	max := float64(defaultImagesMax)
+	if requested != nil {
+		max = *requested
+	}
+	if max < 1 {
+		max = 1
+	}
+	if max > ceilingImagesMax {
+		max = ceilingImagesMax
+	}
+	return &max
+}
+
+// ListDecidedBySession returns a session's decided selections oldest-first,
+// for replaying confirmed decisions into a rebuilt agent session.
+func (store *Service) ListDecidedBySession(projectID string, sessionID string, limit int) ([]Record, error) {
+	if store.initErr != nil {
+		return nil, store.initErr
+	}
+	store.mu.RLock()
+	models, err := store.repo.ListDecidedAgentSelectionsBySession(domain.CleanProjectID(projectID), sessionID, limit)
+	store.mu.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+	records := make([]Record, 0, len(models))
+	for _, model := range models {
+		record, err := recordFromModel(model)
+		if err != nil {
+			continue
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
+// FormatDecisionLine renders one decided selection as a single human-readable
+// line for the session recap, e.g. 「〔确认生成参数〕张数 1 · 优化提示词 关」.
+func FormatDecisionLine(record Record) string {
+	if record.Decision == nil {
+		return ""
+	}
+	summary := ""
+	switch {
+	case record.Decision.Cancelled:
+		summary = "已取消"
+	case record.Decision.CustomText != "":
+		summary = record.Decision.CustomText
+	case record.Decision.OptionID != "":
+		summary = record.Decision.OptionID
+		for _, option := range record.Options {
+			if option.ID == record.Decision.OptionID {
+				summary = option.Label
+				break
+			}
+		}
+	case len(record.Decision.Values) > 0:
+		encoded, err := json.Marshal(record.Decision.Values)
+		if err != nil {
+			return ""
+		}
+		summary = string(encoded)
+	}
+	if summary == "" {
+		return ""
+	}
+	title := strings.TrimSpace(record.Title)
+	if title == "" {
+		title = "用户选择"
+	}
+	return "〔" + title + "〕" + summary
 }

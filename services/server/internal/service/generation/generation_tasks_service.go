@@ -35,6 +35,19 @@ type GenerationTaskService struct {
 	repo        *repository.GenerationTaskRepository
 	initErr     error
 	idGenerator func(string) (string, error)
+	// onTaskCompleted fires exactly once per not-completed→completed status
+	// transition persisted by upsertTask, after the service mutex is released.
+	// It anchors "the task finished" at the write that makes it true — poll
+	// re-upserts of an already-completed task do not re-fire.
+	onTaskCompleted func(GenerationTaskRecord)
+}
+
+// SetTaskCompletionListener installs the completion-transition callback.
+func (service *GenerationTaskService) SetTaskCompletionListener(listener func(GenerationTaskRecord)) {
+	if service == nil {
+		return
+	}
+	service.onTaskCompleted = listener
 }
 
 type generationTaskModel = domain.GenerationTaskModel
@@ -795,6 +808,15 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 		return false, err
 	}
 
+	completedTransition := false
+	// Registered before the lock's deferred unlock, so it runs after the
+	// mutex is released (LIFO) — the listener may read back through the
+	// service or publish events without re-entering the lock.
+	defer func() {
+		if completedTransition && service.onTaskCompleted != nil {
+			service.onTaskCompleted(task)
+		}
+	}()
 	service.mu.Lock()
 	defer service.mu.Unlock()
 
@@ -806,6 +828,10 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 		if !exists {
 			return false, nil
 		}
+	}
+	previousStatus, statusErr := service.repo.GetGenerationTaskStatus(task.ID)
+	if statusErr != nil && !repository.IsRecordNotFound(statusErr) {
+		return false, statusErr
 	}
 
 	if err := service.ensureTaskConversationLocked(task); err != nil {
@@ -858,6 +884,8 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 	if err := service.upsertProjectSelectedAssetRowsLocked(projectSelectedAssetModelsFromRecord(task)); err != nil {
 		return false, err
 	}
+	completedTransition = !isCompletedGenerationTaskStatus(previousStatus) &&
+		isCompletedGenerationTaskStatus(task.Status)
 	return true, nil
 }
 
