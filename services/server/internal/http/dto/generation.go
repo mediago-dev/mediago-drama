@@ -39,6 +39,9 @@ type GenerationStylePreset struct {
 
 // GenerationMessageRequest creates or retries a generation request.
 type GenerationMessageRequest struct {
+	BatchID            string                               `json:"-"`
+	BatchItemID        string                               `json:"-"`
+	BatchIndex         int                                  `json:"-"`
 	Kind               string                               `json:"kind" ts:"Kind"`
 	ConversationID     string                               `json:"sessionId,omitempty"`
 	ScopeID            string                               `json:"-"`
@@ -62,6 +65,54 @@ type GenerationMessageRequest struct {
 	ReferenceBindings  []GenerationReferenceBinding         `json:"referenceBindings,omitempty"`
 	Params             map[string]any                       `json:"params"`
 	PromptOptimization *GenerationPromptOptimizationRequest `json:"promptOptimization,omitempty"`
+}
+
+// GenerationBatchRequest submits multiple normal generation requests as one tracked batch.
+type GenerationBatchRequest struct {
+	Kind              string                       `json:"kind,omitempty" ts:"Kind"`
+	ConversationID    string                       `json:"sessionId,omitempty"`
+	ConversationTitle string                       `json:"conversationTitle,omitempty"`
+	ProjectID         string                       `json:"projectId,omitempty"`
+	ScopeID           string                       `json:"scopeId,omitempty"`
+	Items             []GenerationBatchItemRequest `json:"items"`
+}
+
+// GenerationBatchItemRequest is one ordered child request in a generation batch.
+type GenerationBatchItemRequest struct {
+	ID      string                   `json:"id,omitempty"`
+	Request GenerationMessageRequest `json:"request"`
+}
+
+// GenerationBatchItemResponse reports one child submission without failing its siblings.
+type GenerationBatchItemResponse struct {
+	ID              string `json:"id"`
+	Index           int    `json:"index"`
+	TaskID          string `json:"taskId,omitempty"`
+	Status          string `json:"status"`
+	Message         string `json:"message,omitempty"`
+	OptimizedPrompt string `json:"optimizedPrompt,omitempty"`
+	Error           string `json:"error,omitempty"`
+}
+
+// GenerationBatchResponse reports the ordered result of a batch submission.
+type GenerationBatchResponse struct {
+	ID       string                        `json:"id"`
+	Status   string                        `json:"status"`
+	Total    int                           `json:"total"`
+	Accepted int                           `json:"accepted"`
+	Failed   int                           `json:"failed"`
+	Items    []GenerationBatchItemResponse `json:"items"`
+}
+
+// GenerationBatchTasksResponse returns the current persisted state of a batch's child tasks.
+type GenerationBatchTasksResponse struct {
+	ID        string                 `json:"id"`
+	Status    string                 `json:"status"`
+	Total     int                    `json:"total"`
+	Active    int                    `json:"active"`
+	Completed int                    `json:"completed"`
+	Failed    int                    `json:"failed"`
+	Tasks     []GenerationTaskRecord `json:"tasks"`
 }
 
 // GenerationReferenceBinding maps a document mention to a concrete reference.
@@ -234,6 +285,9 @@ type GenerationUsage struct {
 // GenerationTaskRecord is a persisted generation task.
 type GenerationTaskRecord struct {
 	ID                string                        `json:"id"`
+	BatchID           string                        `json:"batchId,omitempty"`
+	BatchItemID       string                        `json:"batchItemId,omitempty"`
+	BatchIndex        int                           `json:"batchIndex,omitempty"`
 	ProviderTaskID    string                        `json:"providerTaskId,omitempty"`
 	ConversationID    string                        `json:"sessionId,omitempty"`
 	ProjectID         string                        `json:"projectId,omitempty"`

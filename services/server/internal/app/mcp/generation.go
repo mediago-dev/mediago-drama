@@ -94,6 +94,25 @@ func (server *GenerationServer) CreateGenerationMessage(ctx context.Context, pro
 	return generationMessageOutputFromService(response), nil
 }
 
+// CreateGenerationBatch submits multiple generation requests through the shared batch service.
+func (server *GenerationServer) CreateGenerationBatch(ctx context.Context, projectID string, input mediamcp.GenerationBatchInput) (mediamcp.GenerationBatchOutput, error) {
+	service, err := server.requireService()
+	if err != nil {
+		return mediamcp.GenerationBatchOutput{}, err
+	}
+	defaultProjectID, err := server.generationBatchProjectID(projectID, input)
+	if err != nil {
+		return mediamcp.GenerationBatchOutput{}, err
+	}
+	request := generationBatchRequestFromMCP(input, defaultProjectID)
+	server.logToolInvocation(mediamcp.GenerationTools.GenerateBatch.Name, "item_count", len(request.Items), "project_id", defaultProjectID)
+	response, status, err := service.CreateGenerationBatch(ctx, request)
+	if err != nil {
+		return mediamcp.GenerationBatchOutput{}, generationStatusError("create generation batch", status, err)
+	}
+	return generationBatchOutputFromService(response), nil
+}
+
 func (server *GenerationServer) GetGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationTaskRecord, error) {
 	_ = ctx
 	service, err := server.requireService()
@@ -129,8 +148,9 @@ func (server *GenerationServer) ListGenerationTasks(ctx context.Context, project
 	if err != nil {
 		return mediamcp.GenerationTasksOutput{}, err
 	}
-	server.logToolInvocation(mediamcp.GenerationTools.ListTasks.Name, "kind", input.Kind, "project_id", effectiveProjectID)
+	server.logToolInvocation(mediamcp.GenerationTools.ListTasks.Name, "batch_id", input.BatchID, "kind", input.Kind, "project_id", effectiveProjectID)
 	tasks, err := service.ListGenerationTasks(servicegeneration.GenerationTaskListQuery{
+		BatchID:        strings.TrimSpace(input.BatchID),
 		ConversationID: strings.TrimSpace(input.ConversationID),
 		Kind:           strings.TrimSpace(input.Kind),
 		ProjectID:      effectiveProjectID,
@@ -229,6 +249,18 @@ func (server *GenerationServer) serviceAndVisibleTask(projectID string, rawTaskI
 }
 
 func (server *GenerationServer) generationMessageProjectID(projectID string, input mediamcp.GenerationMessageInput) (string, error) {
+	return server.resolveProjectID(projectID, generationMessageProjectIDs(input)...)
+}
+
+func (server *GenerationServer) generationBatchProjectID(projectID string, input mediamcp.GenerationBatchInput) (string, error) {
+	values := []string{input.ProjectID}
+	for _, item := range input.Items {
+		values = append(values, generationMessageProjectIDs(item.Request)...)
+	}
+	return server.resolveProjectID(projectID, values...)
+}
+
+func generationMessageProjectIDs(input mediamcp.GenerationMessageInput) []string {
 	values := []string{input.ProjectID}
 	if input.DocumentContext != nil {
 		values = append(values, input.DocumentContext.ProjectID)
@@ -239,7 +271,7 @@ func (server *GenerationServer) generationMessageProjectID(projectID string, inp
 	if input.PromptOptimization != nil {
 		values = append(values, input.PromptOptimization.ProjectID)
 	}
-	return server.resolveProjectID(projectID, values...)
+	return values
 }
 
 func (server *GenerationServer) resolveProjectID(projectID string, overrides ...string) (string, error) {

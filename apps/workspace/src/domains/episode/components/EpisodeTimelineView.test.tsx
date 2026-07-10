@@ -285,7 +285,10 @@ describe("EpisodeTimelineView canvas generation", () => {
 	});
 
 	beforeEach(() => {
-		useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
+		useMediaGenerationStore.setState({
+			activeRequest: null,
+			optimisticStatuses: {},
+		});
 		fixtures.previewNativeVideoPause.mockReset();
 		fixtures.previewNativeVideoPlay.mockReset();
 		fixtures.previewRemoteControl.pause.mockReset();

@@ -21,6 +21,8 @@ type GenerationTaskService interface {
 	ListGenerationModels() dto.GenerationModelsResponse
 	CreateGenerationMessage(ctx context.Context, payload dto.GenerationMessageRequest) (dto.GenerationMessageResponse, int, error)
 	CreatePromptOptimizedGenerationMessage(ctx context.Context, payload dto.GenerationMessageRequest) (dto.GenerationOptimizeAndGenerateResponse, int, error)
+	CreateGenerationBatch(ctx context.Context, payload dto.GenerationBatchRequest) (dto.GenerationBatchResponse, int, error)
+	GetGenerationBatch(batchID string) (dto.GenerationBatchTasksResponse, bool, error)
 	PreviewGenerationVoice(ctx context.Context, payload dto.GenerationVoicePreviewRequest) (dto.GenerationVoicePreviewResponse, int, error)
 	GenerationVoicePreviewContent(routeID string, voiceID string) (dto.GenerationVoicePreviewAsset, []byte, bool, error)
 	GenerationStylePreviewContent(presetID string) (dto.GenerationStylePreset, []byte, bool, error)
@@ -94,6 +96,55 @@ func (handler GenerationTasks) HandleGenerationMessage(context *gin.Context) {
 	response, status, err := handler.service.CreateGenerationMessage(context.Request.Context(), payload)
 	if err != nil {
 		httpresponse.ErrorFromStatus(context, status, err)
+		return
+	}
+	httpresponse.OK(context, response)
+}
+
+// HandleCreateGenerationBatch godoc
+// @Summary 批量提交生成任务
+// @Description 一次提交多个图片或视频生成请求，每项独立返回任务 ID 或错误。
+// @Tags Generation
+// @Accept json
+// @Produce json
+// @Param payload body SwaggerObject true "Generation batch payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/batches [post]
+func (handler GenerationTasks) HandleCreateGenerationBatch(context *gin.Context) {
+	payload, err := decodeJSON[dto.GenerationBatchRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	response, status, err := handler.service.CreateGenerationBatch(context.Request.Context(), payload)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, status, err)
+		return
+	}
+	httpresponse.OK(context, response)
+}
+
+// HandleGenerationBatchTasks godoc
+// @Summary 获取批次子任务
+// @Description 按 batchId 返回批次内当前持久化的生成任务状态。
+// @Tags Generation
+// @Produce json
+// @Param batchId path string true "Batch ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/batches/{batchId}/tasks [get]
+func (handler GenerationTasks) HandleGenerationBatchTasks(context *gin.Context) {
+	batchID := pathParam(context, "batchId")
+	response, ok, err := handler.service.GetGenerationBatch(batchID)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+	if !ok {
+		httpresponse.ErrorFromStatus(context, http.StatusNotFound, fmt.Errorf("generation batch not found"))
 		return
 	}
 	httpresponse.OK(context, response)
@@ -461,6 +512,7 @@ func (handler GenerationTasks) HandleGenerationTasks(context *gin.Context) {
 		return
 	}
 	tasks, err := handler.service.ListGenerationTasks(service.GenerationTaskListQuery{
+		BatchID:        strings.TrimSpace(context.Query("batchId")),
 		ConversationID: sessionID,
 		Kind:           strings.TrimSpace(context.Query("kind")),
 		ProjectID:      strings.TrimSpace(context.Query("projectId")),

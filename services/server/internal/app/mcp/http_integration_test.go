@@ -227,6 +227,7 @@ func TestInternalGenerationMCPHTTPAuthAndTools(t *testing.T) {
 	assertMCPTools(t, toolsMessage,
 		"list_generation_models",
 		"generate_media",
+		"generate_media_batch",
 		"get_generation_task",
 		"list_generation_tasks",
 		"retry_generation_task",
@@ -272,6 +273,7 @@ func assertGenerationMCPInitializeInstructions(t *testing.T, message map[string]
 		"生成工作台",
 		"list_generation_models",
 		"generate_media",
+		"generate_media_batch",
 		"poll_generation_task",
 	} {
 		if !strings.Contains(instructions, fragment) {

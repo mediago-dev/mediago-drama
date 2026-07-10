@@ -152,7 +152,10 @@ describe("WritingEditor", () => {
 	afterEach(() => {
 		cleanup();
 		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
-		useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
+		useMediaGenerationStore.setState({
+			activeRequest: null,
+			optimisticStatuses: {},
+		});
 		testState.markdownEditorProps = null;
 		testState.mentionPopoverProps = null;
 		testState.selectionBubbleProps = null;

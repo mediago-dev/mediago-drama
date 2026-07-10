@@ -28,7 +28,10 @@ const makeTask = (overrides: Partial<GenerationTask> = {}): GenerationTask => ({
 });
 
 afterEach(() => {
-	useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
+	useMediaGenerationStore.setState({
+		activeRequest: null,
+		optimisticStatuses: {},
+	});
 });
 
 describe("useResourceGenerationStatuses", () => {

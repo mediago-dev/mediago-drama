@@ -211,6 +211,11 @@ func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 		"/generation/sessions/:sessionId/messages/optimize-and-generate",
 		handlers.GenerationTasks.HandlePromptOptimizedGenerationMessage,
 	)
+	apiRoutes.POST("/generation/batches", handlers.GenerationTasks.HandleCreateGenerationBatch)
+	apiRoutes.GET(
+		"/generation/batches/:batchId/tasks",
+		handlers.GenerationTasks.HandleGenerationBatchTasks,
+	)
 	apiRoutes.POST(
 		"/generation/sessions/:sessionId/messages/stream",
 		handlers.GenerationTasks.HandleGenerationTextStream,

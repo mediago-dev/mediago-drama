@@ -16,6 +16,7 @@ type Options struct {
 type Dispatcher interface {
 	ListGenerationModels(ctx context.Context, input mediamcp.GenerationListModelsInput) (mediamcp.GenerationModelsOutput, error)
 	CreateGenerationMessage(ctx context.Context, projectID string, input mediamcp.GenerationMessageInput) (mediamcp.GenerationMessageOutput, error)
+	CreateGenerationBatch(ctx context.Context, projectID string, input mediamcp.GenerationBatchInput) (mediamcp.GenerationBatchOutput, error)
 	GetGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationTaskRecord, error)
 	ListGenerationTasks(ctx context.Context, projectID string, input mediamcp.GenerationTaskListInput) (mediamcp.GenerationTasksOutput, error)
 	RetryGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error)
@@ -30,6 +31,9 @@ func Register(server *mcpsdk.Server, dispatcher Dispatcher, options Options, clo
 	})
 	add[mediamcp.GenerationMessageInput](server, dispatcher, options.ProjectID, closedWorld, logToolRegistered, mediamcp.GenerationTools.Generate, func(ctx context.Context, dispatcher Dispatcher, projectID string, input mediamcp.GenerationMessageInput) (any, error) {
 		return dispatcher.CreateGenerationMessage(ctx, projectID, input)
+	})
+	add[mediamcp.GenerationBatchInput](server, dispatcher, options.ProjectID, closedWorld, logToolRegistered, mediamcp.GenerationTools.GenerateBatch, func(ctx context.Context, dispatcher Dispatcher, projectID string, input mediamcp.GenerationBatchInput) (any, error) {
+		return dispatcher.CreateGenerationBatch(ctx, projectID, input)
 	})
 	add[mediamcp.GenerationTaskInput](server, dispatcher, options.ProjectID, closedWorld, logToolRegistered, mediamcp.GenerationTools.GetTask, func(ctx context.Context, dispatcher Dispatcher, projectID string, input mediamcp.GenerationTaskInput) (any, error) {
 		return dispatcher.GetGenerationTask(ctx, projectID, input)

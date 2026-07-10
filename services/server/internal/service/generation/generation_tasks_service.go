@@ -118,6 +118,34 @@ func (service *GenerationTaskService) List(options ...repository.GenerationTaskL
 	return tasks, nil
 }
 
+// ListByBatch returns persisted child tasks in their original batch item order.
+func (service *GenerationTaskService) ListByBatch(batchID string) ([]GenerationTaskRecord, error) {
+	if service.initErr != nil {
+		return nil, service.initErr
+	}
+	batchID = strings.TrimSpace(batchID)
+	if batchID == "" {
+		return []GenerationTaskRecord{}, nil
+	}
+
+	service.mu.RLock()
+	models, err := service.repo.ListGenerationTasksByBatch(batchID)
+	service.mu.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+	tasks, err := generationTaskRecordsFromModels(models)
+	if err != nil {
+		return nil, err
+	}
+	for index := range tasks {
+		if err := service.attachAttemptSummary(&tasks[index]); err != nil {
+			return nil, err
+		}
+	}
+	return tasks, nil
+}
+
 // ListByConversation returns generation tasks in one conversation.
 func (service *GenerationTaskService) ListByConversation(kind string, conversationID string, includeLegacyDefault bool, options ...repository.GenerationTaskListOptions) ([]GenerationTaskRecord, error) {
 	if service.initErr != nil {
@@ -853,6 +881,9 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 	}
 	if err := service.repo.UpsertGenerationTask(generationTaskModel{
 		ID:              task.ID,
+		BatchID:         strings.TrimSpace(task.BatchID),
+		BatchItemID:     strings.TrimSpace(task.BatchItemID),
+		BatchIndex:      task.BatchIndex,
 		ProviderTaskID:  task.ProviderTaskID,
 		ConversationID:  domain.StringPtr(task.ConversationID),
 		ProjectID:       domain.StringPtr(GenerationProjectIDForRequest(task.ProjectID, "")),
@@ -1326,6 +1357,9 @@ func generationTaskRecordsFromModels(models []generationTaskModel) ([]Generation
 func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRecord, error) {
 	task := GenerationTaskRecord{
 		ID:             model.ID,
+		BatchID:        model.BatchID,
+		BatchItemID:    model.BatchItemID,
+		BatchIndex:     model.BatchIndex,
 		ProviderTaskID: model.ProviderTaskID,
 		ConversationID: domain.StringValue(model.ConversationID),
 		ProjectID:      domain.StringValue(model.ProjectID),

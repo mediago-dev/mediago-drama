@@ -577,6 +577,9 @@ func GenerationTaskFromMessage(
 	responseError := generationTaskErrorFromResponse(response)
 	return GenerationTaskRecord{
 		ID:                response.ID,
+		BatchID:           strings.TrimSpace(request.BatchID),
+		BatchItemID:       strings.TrimSpace(request.BatchItemID),
+		BatchIndex:        request.BatchIndex,
 		ProviderTaskID:    generationProviderTaskIDForResponse(route, response),
 		ConversationID:    request.ConversationID,
 		ProjectID:         GenerationProjectIDForRequest(request.ProjectID, request.ScopeID),

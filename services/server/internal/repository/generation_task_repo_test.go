@@ -278,6 +278,43 @@ func generationTaskModelIDs(tasks []domain.GenerationTaskModel) []string {
 	return ids
 }
 
+func TestGenerationTaskRepositoryListsBatchInItemOrder(t *testing.T) {
+	repo, err := NewGenerationTaskRepository(filepath.Join(t.TempDir(), "workspace.db"))
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+
+	for _, fixture := range []struct {
+		id        string
+		batchID   string
+		batchItem string
+		index     int
+	}{
+		{id: "task-second", batchID: "batch-1", batchItem: "item-b", index: 1},
+		{id: "task-other", batchID: "batch-2", batchItem: "item-x", index: 0},
+		{id: "task-first", batchID: "batch-1", batchItem: "item-a", index: 0},
+	} {
+		task := generationTaskTestModel(fixture.id, "submitted", "2026-05-22T00:00:00Z")
+		task.BatchID = fixture.batchID
+		task.BatchItemID = fixture.batchItem
+		task.BatchIndex = fixture.index
+		if err := repo.UpsertGenerationTask(task); err != nil {
+			t.Fatalf("UpsertGenerationTask(%s) error = %v", fixture.id, err)
+		}
+	}
+
+	tasks, err := repo.ListGenerationTasksByBatch("batch-1")
+	if err != nil {
+		t.Fatalf("ListGenerationTasksByBatch() error = %v", err)
+	}
+	if got := generationTaskModelIDs(tasks); fmt.Sprint(got) != "[task-first task-second]" {
+		t.Fatalf("task ids = %v, want batch item order", got)
+	}
+	if tasks[0].BatchItemID != "item-a" || tasks[1].BatchIndex != 1 {
+		t.Fatalf("tasks = %+v, want persisted batch metadata", tasks)
+	}
+}
+
 func TestCountGenerationTasksWithStatusesUpdatedSince(t *testing.T) {
 	repo, err := NewGenerationTaskRepository(filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {

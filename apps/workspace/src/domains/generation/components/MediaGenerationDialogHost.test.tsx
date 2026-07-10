@@ -21,6 +21,7 @@ interface DialogProps {
 	onGenerationComplete?: (pendingId: string, assets: unknown[], sourceTaskId: string) => void;
 	onGenerationError?: (pendingId: string) => void;
 	onGenerationStart?: (pendingId: string, prompt: string) => void;
+	onOpenChange?: (open: boolean) => void;
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;
 	onToggleAsset?: (asset: Record<string, unknown>, selected: boolean) => void | Promise<void>;
 	open: boolean;
@@ -87,7 +88,10 @@ describe("MediaGenerationDialogHost", () => {
 	afterEach(() => {
 		cleanup();
 		useGenerationNotificationStore.getState().clearNotifications();
-		useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
+		useMediaGenerationStore.setState({
+			activeRequest: null,
+			optimisticStatuses: {},
+		});
 		testState.audioDialogProps = null;
 		testState.imageDialogProps = null;
 		testState.mutateSelectedGenerationAssets.mockClear();
@@ -126,7 +130,7 @@ describe("MediaGenerationDialogHost", () => {
 			resolveLatestSection: false,
 			section: { blockId: "section_visual", documentId: "story-doc" },
 		});
-		expect(testState.imageDialogProps?.open).toBe(false);
+		expect(testState.imageDialogProps).toBeNull();
 	});
 
 	it("opens audio notifications through the global dialog host", async () => {
@@ -141,6 +145,37 @@ describe("MediaGenerationDialogHost", () => {
 			resolveLatestSection: false,
 			section: { blockId: "section_visual", documentId: "story-doc" },
 		});
+	});
+
+	it("keeps the video dialog open when its local reference image dialog closes", async () => {
+		const referenceSection: MarkdownSectionContext = {
+			...section,
+			blockId: "section_reference",
+			headingText: "参考画面",
+		};
+		useMediaGenerationStore.getState().open({ kind: "video", projectId: "project-a", section });
+
+		renderHost("/projects?projectId=project-a");
+
+		await waitFor(() => expect(testState.videoDialogProps?.open).toBe(true));
+		expect(screen.queryByTestId("image-dialog")).toBeNull();
+
+		act(() => testState.videoDialogProps?.onOpenReferenceGeneration?.(referenceSection));
+
+		await waitFor(() => {
+			expect(testState.imageDialogProps).toMatchObject({
+				open: true,
+				projectId: "project-a",
+				section: { blockId: "section_reference", documentId: "story-doc" },
+			});
+		});
+		expect(useMediaGenerationStore.getState().activeRequest?.kind).toBe("video");
+
+		act(() => testState.imageDialogProps?.onOpenChange?.(false));
+
+		await waitFor(() => expect(screen.queryByTestId("image-dialog")).toBeNull());
+		expect(screen.getByTestId("video-dialog")).toHaveAttribute("data-open", "true");
+		expect(useMediaGenerationStore.getState().activeRequest?.kind).toBe("video");
 	});
 
 	it("persists audio asset selections for the active document resource", async () => {

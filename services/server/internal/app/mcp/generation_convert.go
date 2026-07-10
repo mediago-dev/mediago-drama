@@ -77,6 +77,24 @@ func generationMessageRequestFromMCP(input mediamcp.GenerationMessageInput, defa
 	return request
 }
 
+func generationBatchRequestFromMCP(input mediamcp.GenerationBatchInput, defaultProjectID string) servicegeneration.GenerationBatchRequest {
+	items := make([]servicegeneration.GenerationBatchItemRequest, 0, len(input.Items))
+	for _, item := range input.Items {
+		items = append(items, servicegeneration.GenerationBatchItemRequest{
+			ID:      strings.TrimSpace(item.ID),
+			Request: generationMessageRequestFromMCP(item.Request, defaultProjectID),
+		})
+	}
+	return servicegeneration.GenerationBatchRequest{
+		Kind:              strings.TrimSpace(input.Kind),
+		ConversationID:    strings.TrimSpace(input.ConversationID),
+		ConversationTitle: strings.TrimSpace(input.ConversationTitle),
+		ProjectID:         firstNonEmpty(input.ProjectID, defaultProjectID),
+		ScopeID:           strings.TrimSpace(input.ScopeID),
+		Items:             items,
+	}
+}
+
 func generationDocumentContextFromMCP(input *mediamcp.GenerationDocumentContext, defaultProjectID string) *servicegeneration.GenerationDocumentContext {
 	if input == nil {
 		return nil
@@ -161,6 +179,29 @@ func generationMessageOutputFromService(input servicegeneration.GenerationMessag
 	}
 }
 
+func generationBatchOutputFromService(input servicegeneration.GenerationBatchResponse) mediamcp.GenerationBatchOutput {
+	items := make([]mediamcp.GenerationBatchItemOutput, 0, len(input.Items))
+	for _, item := range input.Items {
+		items = append(items, mediamcp.GenerationBatchItemOutput{
+			ID:              item.ID,
+			Index:           item.Index,
+			TaskID:          item.TaskID,
+			Status:          item.Status,
+			Message:         item.Message,
+			OptimizedPrompt: item.OptimizedPrompt,
+			Error:           item.Error,
+		})
+	}
+	return mediamcp.GenerationBatchOutput{
+		ID:       input.ID,
+		Status:   input.Status,
+		Total:    input.Total,
+		Accepted: input.Accepted,
+		Failed:   input.Failed,
+		Items:    items,
+	}
+}
+
 func generationTasksOutputFromService(input servicegeneration.GenerationTasksResponse) mediamcp.GenerationTasksOutput {
 	tasks := make([]mediamcp.GenerationTaskRecord, 0, len(input.Tasks))
 	for _, task := range input.Tasks {
@@ -172,6 +213,9 @@ func generationTasksOutputFromService(input servicegeneration.GenerationTasksRes
 func generationTaskRecordFromService(input servicegeneration.GenerationTaskRecord) mediamcp.GenerationTaskRecord {
 	return mediamcp.GenerationTaskRecord{
 		ID:                input.ID,
+		BatchID:           input.BatchID,
+		BatchItemID:       input.BatchItemID,
+		BatchIndex:        input.BatchIndex,
 		ProviderTaskID:    input.ProviderTaskID,
 		ConversationID:    input.ConversationID,
 		ProjectID:         input.ProjectID,

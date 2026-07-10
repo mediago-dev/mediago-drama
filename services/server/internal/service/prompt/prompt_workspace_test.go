@@ -363,7 +363,7 @@ func TestPromptBuilderKeepsSkillLoadingAsFixedRule(t *testing.T) {
 				t.Fatalf("prompt = %q, want fixed load_skill rule", prompt)
 			}
 			if !strings.Contains(prompt, "业务文档的主体资源边界是二级标题") ||
-				!strings.Contains(prompt, "Skill 只提供业务写作方法") {
+				!strings.Contains(prompt, "文档写作 Skill 只提供业务写作方法") {
 				t.Fatalf("prompt = %q, want system-owned core document rules", prompt)
 			}
 			for _, skillName := range []string{
@@ -380,6 +380,24 @@ func TestPromptBuilderKeepsSkillLoadingAsFixedRule(t *testing.T) {
 			assertNoInlineToolUsageCatalog(t, prompt)
 			assertNoInlineCategoryGuidance(t, prompt)
 		})
+	}
+}
+
+func TestPromptBuilderRequiresImageGenerationSkillWithoutInliningWorkflow(t *testing.T) {
+	prompt := BuildACPPrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{})
+
+	if !strings.Contains(prompt, "生成、修改或重绘图片前，必须先调用 MCP `load_skill` 装载 `image-generation`") {
+		t.Fatalf("prompt = %q, want image-generation skill trigger", prompt)
+	}
+	for _, forbidden := range []string{
+		"### 生图标准流程",
+		"type: \"generation_params\"",
+		"type: \"prompt_optimization\"",
+		"select_generation_asset(taskId, slotIndex)",
+	} {
+		if strings.Contains(prompt, forbidden) {
+			t.Fatalf("prompt = %q, should load image workflow from Skill instead of inlining %q", prompt, forbidden)
+		}
 	}
 }
 

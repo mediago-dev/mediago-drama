@@ -28,6 +28,54 @@ func TestGenerationServerCreateUsesScopedProject(t *testing.T) {
 	}
 }
 
+func TestGenerationServerCreateBatchUsesScopedProject(t *testing.T) {
+	service := &generationMCPServiceStub{}
+	server := &GenerationServer{service: service, projectID: "project-a"}
+
+	output, err := server.CreateGenerationBatch(context.Background(), "", mediamcp.GenerationBatchInput{
+		Kind:              "image",
+		ConversationID:    "project-a-image",
+		ConversationTitle: "Project A · 图片",
+		ScopeID:           "agent",
+		Items: []mediamcp.GenerationBatchItemInput{
+			{ID: "scene-1", Request: mediamcp.GenerationMessageInput{Prompt: "generate scene one"}},
+			{ID: "scene-2", Request: mediamcp.GenerationMessageInput{Prompt: "generate scene two"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateGenerationBatch returned error: %v", err)
+	}
+	if len(service.batchRequests) != 1 || service.batchRequests[0].ProjectID != "project-a" {
+		t.Fatalf("batch requests = %+v, want scoped project", service.batchRequests)
+	}
+	if service.batchRequests[0].ConversationID != "project-a-image" || service.batchRequests[0].Kind != "image" {
+		t.Fatalf("batch request = %+v, want shared conversation", service.batchRequests[0])
+	}
+	if len(service.batchRequests[0].Items) != 2 || service.batchRequests[0].Items[1].Request.ProjectID != "project-a" {
+		t.Fatalf("batch items = %+v, want inherited project", service.batchRequests[0].Items)
+	}
+	if output.ID != "generation-batch-test" || len(output.Items) != 2 || output.Items[0].TaskID != "task-1" {
+		t.Fatalf("output = %+v, want converted batch response", output)
+	}
+}
+
+func TestGenerationServerCreateBatchRejectsNestedProjectOverride(t *testing.T) {
+	service := &generationMCPServiceStub{}
+	server := &GenerationServer{service: service, projectID: "project-a"}
+
+	_, err := server.CreateGenerationBatch(context.Background(), "", mediamcp.GenerationBatchInput{
+		Items: []mediamcp.GenerationBatchItemInput{
+			{ID: "scene-1", Request: mediamcp.GenerationMessageInput{ProjectID: "project-b", Prompt: "generate"}},
+		},
+	})
+	if err == nil {
+		t.Fatal("CreateGenerationBatch returned nil error, want project scope error")
+	}
+	if len(service.batchRequests) != 0 {
+		t.Fatalf("batch request count = %d, want 0", len(service.batchRequests))
+	}
+}
+
 func TestGenerationServerRejectsProjectScopeOverrides(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -220,6 +268,7 @@ func TestGenerationServerListModelsIncludesPreferences(t *testing.T) {
 }
 
 type generationMCPServiceStub struct {
+	batchRequests    []servicegeneration.GenerationBatchRequest
 	createRequests   []servicegeneration.GenerationMessageRequest
 	optimizeRequests []servicegeneration.GenerationMessageRequest
 	listQueries      []servicegeneration.GenerationTaskListQuery
@@ -235,6 +284,20 @@ func (service *generationMCPServiceStub) ListGenerationModels() servicegeneratio
 func (service *generationMCPServiceStub) CreateGenerationMessage(_ context.Context, payload servicegeneration.GenerationMessageRequest) (servicegeneration.GenerationMessageResponse, int, error) {
 	service.createRequests = append(service.createRequests, payload)
 	return servicegeneration.GenerationMessageResponse{ID: "generation-test", Status: "completed"}, http.StatusOK, nil
+}
+
+func (service *generationMCPServiceStub) CreateGenerationBatch(_ context.Context, payload servicegeneration.GenerationBatchRequest) (servicegeneration.GenerationBatchResponse, int, error) {
+	service.batchRequests = append(service.batchRequests, payload)
+	return servicegeneration.GenerationBatchResponse{
+		ID:       "generation-batch-test",
+		Status:   "submitted",
+		Total:    2,
+		Accepted: 2,
+		Items: []servicegeneration.GenerationBatchItemResponse{
+			{ID: "scene-1", Index: 0, TaskID: "task-1", Status: "submitted"},
+			{ID: "scene-2", Index: 1, TaskID: "task-2", Status: "submitted"},
+		},
+	}, http.StatusOK, nil
 }
 
 func (service *generationMCPServiceStub) RetryGenerationTask(_ context.Context, id string) (servicegeneration.GenerationMessageResponse, int, error) {

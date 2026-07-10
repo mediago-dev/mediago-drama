@@ -69,6 +69,7 @@ func TestGenerationServerRegistersGenerationTools(t *testing.T) {
 	assertMCPTools(t, tools,
 		"list_generation_models",
 		"generate_media",
+		"generate_media_batch",
 		"get_generation_task",
 		"list_generation_tasks",
 		"retry_generation_task",
@@ -256,6 +257,10 @@ func (testDeps) ListGenerationModels(context.Context, mediamcp.GenerationListMod
 
 func (testDeps) CreateGenerationMessage(context.Context, string, mediamcp.GenerationMessageInput) (mediamcp.GenerationMessageOutput, error) {
 	return mediamcp.GenerationMessageOutput{}, nil
+}
+
+func (testDeps) CreateGenerationBatch(context.Context, string, mediamcp.GenerationBatchInput) (mediamcp.GenerationBatchOutput, error) {
+	return mediamcp.GenerationBatchOutput{}, nil
 }
 
 func (testDeps) GetGenerationTask(context.Context, string, mediamcp.GenerationTaskInput) (mediamcp.GenerationTaskRecord, error) {

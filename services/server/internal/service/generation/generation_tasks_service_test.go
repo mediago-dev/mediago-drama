@@ -24,6 +24,9 @@ func TestGenerationTaskServicePersistToSQLite(t *testing.T) {
 	service := NewGenerationTaskService(dbPath, nil)
 	if err := service.Upsert(GenerationTaskRecord{
 		ID:                taskID,
+		BatchID:           "batch-persisted",
+		BatchItemID:       "scene-1",
+		BatchIndex:        2,
 		ProviderTaskID:    "official.seedance-2.0-fast:provider-task",
 		Kind:              "video",
 		RouteID:           "official.seedance-2.0-fast",
@@ -66,6 +69,16 @@ func TestGenerationTaskServicePersistToSQLite(t *testing.T) {
 	}
 	if task.ProviderTaskID != "official.seedance-2.0-fast:provider-task" {
 		t.Fatalf("provider task id = %q, want persisted provider task id", task.ProviderTaskID)
+	}
+	if task.BatchID != "batch-persisted" || task.BatchItemID != "scene-1" || task.BatchIndex != 2 {
+		t.Fatalf("batch metadata = %+v, want persisted batch fields", task)
+	}
+	batchTasks, err := restarted.ListByBatch("batch-persisted")
+	if err != nil {
+		t.Fatalf("listing batch tasks: %v", err)
+	}
+	if len(batchTasks) != 1 || batchTasks[0].ID != taskID {
+		t.Fatalf("batch tasks = %+v, want persisted task", batchTasks)
 	}
 	if task.Error != "raw provider error" ||
 		task.ErrorCode != "policy_violation" ||

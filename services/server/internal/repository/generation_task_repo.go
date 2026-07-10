@@ -109,6 +109,19 @@ func (repo *GenerationTaskRepository) ListGenerationTasksByProject(kind string, 
 	return models, nil
 }
 
+// ListGenerationTasksByBatch returns generation tasks in their original batch item order.
+func (repo *GenerationTaskRepository) ListGenerationTasksByBatch(batchID string) ([]domain.GenerationTaskModel, error) {
+	models := []domain.GenerationTaskModel{}
+	if err := repo.generationTaskQuery().
+		Where("batch_id = ?", strings.TrimSpace(batchID)).
+		Order("batch_index ASC").
+		Order("created_at ASC").
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing generation tasks by batch: %w", err)
+	}
+	return models, nil
+}
+
 // GenerationSectionAssetCount is the number of stored generated assets for one document section.
 type GenerationSectionAssetCount struct {
 	DocumentID string `gorm:"column:document_id"`

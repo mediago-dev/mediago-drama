@@ -16,6 +16,7 @@ import (
 type GenerationService interface {
 	ListGenerationModels() servicegeneration.GenerationModelsResponse
 	CreateGenerationMessage(ctx context.Context, payload servicegeneration.GenerationMessageRequest) (servicegeneration.GenerationMessageResponse, int, error)
+	CreateGenerationBatch(ctx context.Context, payload servicegeneration.GenerationBatchRequest) (servicegeneration.GenerationBatchResponse, int, error)
 	RetryGenerationTask(ctx context.Context, id string) (servicegeneration.GenerationMessageResponse, int, error)
 	ListGenerationTasks(query servicegeneration.GenerationTaskListQuery) (servicegeneration.GenerationTasksResponse, error)
 	GetGenerationTask(id string) (servicegeneration.GenerationTaskRecord, bool, error)

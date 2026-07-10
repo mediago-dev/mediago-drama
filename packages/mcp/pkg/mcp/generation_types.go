@@ -4,7 +4,7 @@ import coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/ge
 
 // GenerationListModelsInput is the input for list_generation_models.
 type GenerationListModelsInput struct {
-	Kind string `json:"kind,omitempty" jsonschema:"可选：只返回该类型的目录（image、video、audio 或 text）。生图流程传 image 可大幅缩小输出；省略时返回全部。"`
+	Kind string `json:"kind,omitempty" jsonschema:"可选：只返回该类型的目录（image、video、audio 或 text）；省略时返回全部。"`
 }
 
 // GenerationModelsOutput returns the generation catalog.
@@ -84,6 +84,43 @@ type GenerationMessageInput struct {
 	ReferenceBindings  []GenerationReferenceBinding       `json:"referenceBindings,omitempty" jsonschema:"文档 mention 到参考资源的绑定。"`
 	Params             map[string]any                     `json:"params,omitempty" jsonschema:"模型参数。"`
 	PromptOptimization *GenerationPromptOptimizationInput `json:"promptOptimization,omitempty" jsonschema:"提示词优化配置；传入时先用文本模型优化提示词再生成（对应工作台的优化提示词开关），输出含 optimizedPrompt。"`
+}
+
+// GenerationBatchInput submits multiple normal media generation requests together.
+type GenerationBatchInput struct {
+	Kind              string                     `json:"kind,omitempty" jsonschema:"批次共用生成类型；指定 sessionId 时必填。"`
+	ConversationID    string                     `json:"sessionId,omitempty" jsonschema:"批次共用生成会话 ID。"`
+	ConversationTitle string                     `json:"conversationTitle,omitempty" jsonschema:"创建批次共用会话时使用的标题。"`
+	ProjectID         string                     `json:"projectId,omitempty" jsonschema:"项目 ID；项目级 MCP 可省略。"`
+	ScopeID           string                     `json:"scopeId,omitempty" jsonschema:"批次内请求缺省使用的会话作用域。"`
+	Items             []GenerationBatchItemInput `json:"items" jsonschema:"批次子请求，按输入顺序返回；最多 50 项。"`
+}
+
+// GenerationBatchItemInput is one ordered child request in a generation batch.
+type GenerationBatchItemInput struct {
+	ID      string                 `json:"id,omitempty" jsonschema:"调用方用于匹配结果的唯一子项 ID；省略时服务端按顺序生成。"`
+	Request GenerationMessageInput `json:"request" jsonschema:"与 generate_media 相同的单项生成参数。"`
+}
+
+// GenerationBatchItemOutput reports one child submission result.
+type GenerationBatchItemOutput struct {
+	ID              string `json:"id"`
+	Index           int    `json:"index"`
+	TaskID          string `json:"taskId,omitempty"`
+	Status          string `json:"status"`
+	Message         string `json:"message,omitempty"`
+	OptimizedPrompt string `json:"optimizedPrompt,omitempty"`
+	Error           string `json:"error,omitempty"`
+}
+
+// GenerationBatchOutput reports an ordered batch submission.
+type GenerationBatchOutput struct {
+	ID       string                      `json:"id"`
+	Status   string                      `json:"status"`
+	Total    int                         `json:"total"`
+	Accepted int                         `json:"accepted"`
+	Failed   int                         `json:"failed"`
+	Items    []GenerationBatchItemOutput `json:"items"`
 }
 
 // GenerationDocumentContext identifies the source document section for generation.
@@ -185,6 +222,7 @@ type GenerationTaskInput struct {
 
 // GenerationTaskListInput filters generation tasks.
 type GenerationTaskListInput struct {
+	BatchID        string `json:"batchId,omitempty" jsonschema:"可选：只返回指定批次的子任务。"`
 	ConversationID string `json:"sessionId,omitempty" jsonschema:"生成会话 ID。"`
 	Kind           string `json:"kind,omitempty" jsonschema:"生成类型。"`
 	ProjectID      string `json:"projectId,omitempty" jsonschema:"项目 ID；项目级 MCP 可省略。"`
@@ -196,6 +234,9 @@ type GenerationTaskListInput struct {
 // GenerationTaskRecord is a persisted generation task.
 type GenerationTaskRecord struct {
 	ID                string                        `json:"id"`
+	BatchID           string                        `json:"batchId,omitempty"`
+	BatchItemID       string                        `json:"batchItemId,omitempty"`
+	BatchIndex        int                           `json:"batchIndex,omitempty"`
 	ProviderTaskID    string                        `json:"providerTaskId,omitempty"`
 	ConversationID    string                        `json:"sessionId,omitempty"`
 	ProjectID         string                        `json:"projectId,omitempty"`

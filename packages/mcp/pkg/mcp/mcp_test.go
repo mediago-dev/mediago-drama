@@ -150,3 +150,39 @@ func TestDocumentToolDefinitions(t *testing.T) {
 		t.Fatalf("ListProjects definition = %#v", ExternalDocumentTools.ListProjects)
 	}
 }
+
+func TestMCPInstructionsKeepGenerationContractsWithoutImageWorkflow(t *testing.T) {
+	for _, fragment := range []string{
+		"list_generation_models",
+		"generate_media",
+		"generate_media_batch",
+		"referenceAssetIds",
+		"documentContext",
+		"notificationTarget",
+		"poll_generation_task",
+		"select_generation_asset",
+	} {
+		if !strings.Contains(GenerationMCPInstructions, fragment) {
+			t.Fatalf("GenerationMCPInstructions missing contract %q: %q", fragment, GenerationMCPInstructions)
+		}
+	}
+	for _, fragment := range []string{
+		"目标资源有歧义",
+		"需要形象一致",
+		"参数表单",
+		"用户确认某个 preset",
+		"一次生成返回多张结果",
+	} {
+		if strings.Contains(GenerationMCPInstructions, fragment) {
+			t.Fatalf("GenerationMCPInstructions should delegate image workflow %q to Skill: %q", fragment, GenerationMCPInstructions)
+		}
+	}
+	for _, fragment := range []string{
+		"生图前用它确认风格或结果选片",
+		"生图参数确认用单个 generation_params",
+	} {
+		if strings.Contains(AgentMCPInstructions, fragment) {
+			t.Fatalf("AgentMCPInstructions should expose generic selection contracts instead of image workflow %q: %q", fragment, AgentMCPInstructions)
+		}
+	}
+}
