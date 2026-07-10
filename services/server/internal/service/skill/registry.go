@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -240,7 +239,7 @@ func (registry *Registry) Reset(ctx context.Context, name string) (Skill, error)
 // ParseRaw validates full skill Markdown for a specific skill name.
 func ParseRaw(name string, raw string) (Skill, error) {
 	name = strings.TrimSpace(name)
-	if !isSafeSkillName(name) {
+	if !instructionpack.IsSafeSkillName(name) {
 		return Skill{}, fmt.Errorf("%w: skill name is required", ErrInvalidSkill)
 	}
 	item, err := parseRaw(raw, SourceUser)
@@ -264,7 +263,7 @@ func parseRaw(raw string, source Source) (Skill, error) {
 		return Skill{}, fmt.Errorf("%w: parsing frontmatter: %w", ErrInvalidSkill, err)
 	}
 	name := strings.TrimSpace(meta.Name)
-	if !isSafeSkillName(name) {
+	if !instructionpack.IsSafeSkillName(name) {
 		return Skill{}, fmt.Errorf("%w: frontmatter name is required", ErrInvalidSkill)
 	}
 	description := strings.TrimSpace(meta.Description)
@@ -446,27 +445,6 @@ func normalizeBody(body string) string {
 		return ""
 	}
 	return body + "\n"
-}
-
-func isSafeSkillName(name string) bool {
-	name = strings.TrimSpace(name)
-	if name == "" || name == "." || name == ".." || filepath.Base(name) != name || strings.Contains(name, "\\") {
-		return false
-	}
-	for index, char := range name {
-		valid := char >= 'a' && char <= 'z' ||
-			char >= 'A' && char <= 'Z' ||
-			char >= '0' && char <= '9' ||
-			char == '-' ||
-			char == '_'
-		if !valid {
-			return false
-		}
-		if index == 0 && (char == '-' || char == '_') {
-			return false
-		}
-	}
-	return true
 }
 
 // NotFoundError includes the current available skill list.

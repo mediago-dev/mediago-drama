@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { projectSettingsGeneralTab } from "@/lib/stores/settings";
 import { SettingsSidebarPanel } from "./ProjectNavigatorPanels";
@@ -75,6 +75,25 @@ describe("SettingsSidebarPanel", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "应用更新" }));
 		expect(onSelectTab).toHaveBeenCalledWith("updates");
+	});
+
+	it("shows app updates at the bottom of the workspace settings group", () => {
+		render(
+			<SettingsSidebarPanel
+				activeTab="appearance"
+				isProjectSettings={false}
+				onBack={vi.fn()}
+				onSelectTab={vi.fn()}
+			/>,
+		);
+
+		const workspaceGroup = screen.getByText("工作区").closest("section");
+		expect(workspaceGroup).not.toBeNull();
+		expect(
+			within(workspaceGroup as HTMLElement)
+				.getAllByRole("button")
+				.map((button) => button.textContent),
+		).toEqual(["基础设置", "快捷键", "用量与账单", "应用更新"]);
 	});
 
 	it("hides the Codex relay settings entry for non-Codex agents", () => {

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -108,7 +109,7 @@ func parseSkillEntries(ctx context.Context, fsys fs.FS, packID string, entries *
 			return fmt.Errorf("%w: parsing %s frontmatter: %w", ErrInvalidPack, path, err)
 		}
 		name := strings.TrimSpace(meta.Name)
-		if !isSafeSlug(name) {
+		if !IsSafeSkillName(name) {
 			return fmt.Errorf("%w: skill name %q is invalid", ErrInvalidPack, name)
 		}
 		description := strings.TrimSpace(meta.Description)
@@ -373,6 +374,24 @@ func isSafeSlug(slug string) bool {
 			char >= '0' && char <= '9' ||
 			char == '-' ||
 			char == '_'
+		if !valid {
+			return false
+		}
+		if index == 0 && (char == '-' || char == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// IsSafeSkillName reports whether name is a path-safe skill identifier.
+func IsSafeSkillName(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name || strings.Contains(name, "\\") {
+		return false
+	}
+	for index, char := range name {
+		valid := unicode.IsLetter(char) || unicode.IsNumber(char) || char == '-' || char == '_'
 		if !valid {
 			return false
 		}

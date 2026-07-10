@@ -636,10 +636,10 @@ const settingsNavGroups = (activeAgentBackendId = "codex"): SettingsNavGroup[] =
 		{
 			label: "工作区",
 			items: [
-				{ value: "updates", label: "应用更新", icon: Download },
 				{ value: "appearance", label: "基础设置", icon: SlidersHorizontal },
 				{ value: "shortcuts", label: "快捷键", icon: Keyboard },
 				{ value: "billing", label: "用量与账单", icon: ReceiptText },
+				{ value: "updates", label: "应用更新", icon: Download },
 			],
 		},
 		{
