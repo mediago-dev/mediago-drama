@@ -1,7 +1,9 @@
 import { Box } from "lucide-react";
 import type React from "react";
 import dmxIcon from "@/domains/generation/assets/dmxapi-logo.png";
+import libtvIcon from "@/domains/generation/assets/libtv-logo.svg";
 import mediagoIcon from "@/domains/generation/assets/mediago-logo.png";
+import xiaoyunqueIcon from "@/domains/generation/assets/xiaoyunque-logo.svg";
 import type {
 	GenerationFamily,
 	GenerationRoute,
@@ -30,6 +32,7 @@ export type GenerationBrandKey =
 	| "glm"
 	| "gpt"
 	| "jimeng"
+	| "libtv"
 	| "mediago"
 	| "minimax"
 	| "model"
@@ -37,7 +40,8 @@ export type GenerationBrandKey =
 	| "openai"
 	| "openrouter"
 	| "qwen"
-	| "volcengine";
+	| "volcengine"
+	| "xiaoyunque";
 
 interface BrandSpec {
 	icon?: string;
@@ -53,6 +57,7 @@ const brandSpecs: Record<GenerationBrandKey, BrandSpec> = {
 	glm: { icon: chatGLMIcon, label: "GLM / 智谱" },
 	gpt: { icon: openAIIcon, label: "GPT / OpenAI" },
 	jimeng: { icon: jimengIcon, label: "即梦" },
+	libtv: { icon: libtvIcon, label: "LibTV" },
 	mediago: { icon: mediagoIcon, label: "MediaGo" },
 	minimax: { icon: minimaxIcon, label: "MiniMax 国内" },
 	model: { label: "模型" },
@@ -64,6 +69,7 @@ const brandSpecs: Record<GenerationBrandKey, BrandSpec> = {
 	},
 	qwen: { icon: qwenIcon, label: "Qwen" },
 	volcengine: { icon: volcengineIcon, label: "火山引擎" },
+	xiaoyunque: { icon: xiaoyunqueIcon, label: "小云雀" },
 };
 
 export const GenerationBrandMark: React.FC<{
@@ -134,6 +140,11 @@ export const generationProviderBrand = (provider: string): GenerationBrandKey =>
 			return "opencode";
 		case "jimeng":
 			return "jimeng";
+		case "libtv":
+			return "libtv";
+		case "xiaoyunque":
+		case "pippit":
+			return "xiaoyunque";
 		case "mediago":
 			return "mediago";
 		case "minimax":
@@ -190,6 +201,14 @@ const generationBrandFromTokens = (tokens: Array<string | undefined>): Generatio
 		return "doubao";
 	}
 	if (normalized.includes("jimeng") || normalized.includes("即梦")) return "jimeng";
+	if (normalized.includes("libtv") || normalized.includes("liblib")) return "libtv";
+	if (
+		normalized.includes("xiaoyunque") ||
+		normalized.includes("小云雀") ||
+		normalized.includes("pippit")
+	) {
+		return "xiaoyunque";
+	}
 	if (normalized.includes("minimax") || normalized.includes("speech-2.8")) return "minimax";
 	if (normalized.includes("deepseek")) return "deepseek";
 	if (normalized === "text" || normalized.includes("gpt text")) return "gpt";

@@ -13,7 +13,7 @@ import { rendererDistDir } from "./paths.js";
 const { autoUpdater } = electronUpdater;
 
 const releaseRepositoryUrl = "https://github.com/mediago-dev/mediago-drama";
-const defaultReleasePageUrl = `${releaseRepositoryUrl}/releases/latest`;
+const defaultReleasePageUrl = releaseRepositoryUrl;
 
 // Flip to true after macOS code signing + notarization are set up in CI. Until then
 // electron-updater cannot install updates on unsigned mac builds (Squirrel.Mac refuses),
@@ -50,8 +50,6 @@ const configureDesktopCohort = (): void => {
 		if (!/^[a-z0-9-]+$/.test(value)) throw new Error(`invalid desktop ${name}: ${value}`);
 	}
 	const tag = `desktop-${meta.channel}-${meta.edition}`;
-	const releasePageUrl = `${releaseRepositoryUrl}/releases/tag/${tag}`;
-	capability = { ...capability, releasePageUrl };
 	if (!capability.supportsAutoUpdate) return;
 	const feedUrl = `${releaseRepositoryUrl}/releases/download/${tag}`;
 	autoUpdater.setFeedURL({ provider: "generic", url: feedUrl });

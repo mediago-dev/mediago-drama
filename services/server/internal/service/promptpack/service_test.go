@@ -506,6 +506,67 @@ func TestServiceExportsDefaultPackAsImportableMGPack(t *testing.T) {
 	}
 }
 
+func TestServiceExportsDefaultPackWithUserUnicodeCategory(t *testing.T) {
+	ctx := context.Background()
+	source := newTestService(t)
+	if _, err := source.CreateCategory(ctx, Category{ID: "角色", Label: "角色"}); err != nil {
+		t.Fatalf("CreateCategory() error = %v", err)
+	}
+	if _, err := source.CreateEntry(ctx, instructionpack.KindPrompt, Entry{
+		Slug: "character-reference",
+		Name: "角色参考",
+		Body: "保持角色一致。",
+		Metadata: map[string]any{
+			"category": "角色",
+			"type":     "image",
+		},
+	}); err != nil {
+		t.Fatalf("CreateEntry(prompt) error = %v", err)
+	}
+
+	exported, err := source.ExportPack(ctx, DefaultPackID)
+	if err != nil {
+		t.Fatalf("ExportPack(default) error = %v", err)
+	}
+	archive, err := codec.Decode(exported.Data)
+	if err != nil {
+		t.Fatalf("Decode(default export) error = %v", err)
+	}
+	bundle, err := instructionpack.ParseZip(ctx, archive)
+	if err != nil {
+		t.Fatalf("ParseZip(default export) error = %v", err)
+	}
+	if !hasPackCategory(bundle.Categories, "角色", "角色") {
+		t.Fatalf("categories = %#v, want Unicode category", bundle.Categories)
+	}
+	if entry, ok := findPackEntry(bundle.Entries, "character-reference"); !ok || entry.Metadata["category"] != "角色" {
+		t.Fatalf("entries = %#v, want exported Unicode prompt category", bundle.Entries)
+	}
+
+	target := newTestService(t)
+	imported, err := target.InstallData(ctx, exported.FileName, exported.Data)
+	if err != nil {
+		t.Fatalf("InstallData(default export) error = %v", err)
+	}
+	if imported.ID != defaultExportPackID || imported.Source != packSourceImported {
+		t.Fatalf("imported = %#v, want importable default export pack", imported)
+	}
+	categories, err := target.ListCategories(ctx)
+	if err != nil {
+		t.Fatalf("ListCategories() error = %v", err)
+	}
+	if !hasCategory(categories, "角色", "角色") {
+		t.Fatalf("categories = %#v, want imported Unicode category", categories)
+	}
+	prompt, err := target.GetEntry(ctx, instructionpack.KindPrompt, "character-reference")
+	if err != nil {
+		t.Fatalf("GetEntry(imported prompt) error = %v", err)
+	}
+	if prompt.PackID != defaultExportPackID || metadataString(prompt.Metadata, "category") != "角色" {
+		t.Fatalf("prompt = %#v, want imported Unicode category", prompt)
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 	dbName := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name() + "_" + filepath.Base(t.TempDir()))
@@ -720,6 +781,24 @@ func findPackEntry(entries []instructionpack.Entry, slug string) (instructionpac
 		}
 	}
 	return instructionpack.Entry{}, false
+}
+
+func hasCategory(categories []Category, id string, label string) bool {
+	for _, category := range categories {
+		if category.ID == id && category.Label == label {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPackCategory(categories []instructionpack.Category, id string, label string) bool {
+	for _, category := range categories {
+		if category.ID == id && category.Label == label {
+			return true
+		}
+	}
+	return false
 }
 
 func (store *Service) withTestPackFilesDir(dir string) *Service {

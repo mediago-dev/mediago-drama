@@ -634,5 +634,7 @@ export const fallbackCatalog: GenerationModelsResponse = {
 		{ id: "dmx", label: "DMX", providerType: "aggregator" },
 		{ id: "openrouter", label: "OpenRouter", providerType: "aggregator" },
 		{ id: "jimeng", label: "即梦", providerType: "local" },
+		{ id: "libtv", label: "LibTV", providerType: "local" },
+		{ id: "xiaoyunque", label: "小云雀", providerType: "local" },
 	],
 };

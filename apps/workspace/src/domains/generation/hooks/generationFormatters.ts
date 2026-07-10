@@ -208,6 +208,11 @@ export const providerLabel = (provider: string) => {
 			return "OpenRouter";
 		case "jimeng":
 			return "即梦";
+		case "libtv":
+			return "LibTV";
+		case "xiaoyunque":
+		case "pippit":
+			return "小云雀";
 		default:
 			return provider;
 	}

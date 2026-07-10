@@ -20,7 +20,7 @@ const missingBridgeAck: DesktopUpdateAck = {
 
 const browserFallbackCapability: DesktopUpdateCapability = {
 	supportsAutoUpdate: false,
-	releasePageUrl: "https://github.com/mediago-dev/mediago-drama/releases/latest",
+	releasePageUrl: "https://github.com/mediago-dev/mediago-drama",
 	reason: "当前运行环境不支持应用内更新。",
 };
 

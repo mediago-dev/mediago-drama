@@ -74,7 +74,6 @@ const knownPlatformProviderIDs = new Set(["mediago", "openrouter", "dmx"]);
 const cliProviderHints: Record<string, string> = {
 	jimeng: "已开通即梦高级会员？可直接登录即梦账号接入，无需 API Key。",
 	libtv: "已开通 LibTV 会员？可直接登录 LibTV 账号接入本地 CLI。",
-	xiaoyunque: "已有小云雀 Access Key？可通过本地 Pippit CLI 接入。",
 };
 const providerRowClassName = settingsInsetRowClassName;
 
@@ -350,7 +349,11 @@ const APIKeysPanel: React.FC = () => {
 		);
 	};
 
-	const renderManualProvider = (provider: APIKeyProvider, variant: ManualProviderVariant) => {
+	const renderManualProvider = (
+		provider: APIKeyProvider,
+		variant: ManualProviderVariant,
+		hint?: string,
+	) => {
 		if (provider.credentialKind === "oauth") return renderProvider(provider);
 
 		const apiKey = apiKeys[provider.id] ?? "";
@@ -366,6 +369,7 @@ const APIKeysPanel: React.FC = () => {
 				onSave={() => void saveManualConfig(provider)}
 				open={manualProviderID === provider.id}
 				provider={provider}
+				hint={hint}
 				variant={variant}
 			/>
 		);
@@ -375,6 +379,10 @@ const APIKeysPanel: React.FC = () => {
 		renderManualProvider(provider, "custom");
 	const renderOfficialProvider = (provider: APIKeyProvider) =>
 		renderManualProvider(provider, "official");
+	const renderCLIProvider = (provider: APIKeyProvider) =>
+		provider.credentialKind === "oauth"
+			? renderProvider(provider, cliProviderHint(provider))
+			: renderManualProvider(provider, "cli", cliProviderHint(provider));
 
 	return (
 		<SettingsPanelLayout
@@ -430,9 +438,7 @@ const APIKeysPanel: React.FC = () => {
 						title="会员 CLI 接入"
 						description="使用本地 CLI 登录或配置对应 Access Key 接入。"
 					>
-						{cliProviders.map((provider) =>
-							renderProvider(provider, cliProviderHints[provider.id] ?? provider.help),
-						)}
+						{cliProviders.map(renderCLIProvider)}
 					</CredentialCategorySection>
 				) : null}
 				{customProviders.length > 0 || officialProviders.length > 0 ? (
@@ -525,6 +531,11 @@ const platformProviders = (
 				},
 			];
 		});
+
+const cliProviderHint = (provider: APIKeyProvider) => {
+	if (provider.id === "xiaoyunque") return undefined;
+	return cliProviderHints[provider.id] ?? provider.help;
+};
 
 const officialAPIKeyProviders = (providers: APIKeyProvider[], platforms: ModelPlatform[]) => {
 	if (platforms.length === 0) {
@@ -786,7 +797,7 @@ const ProviderStatusLabel: React.FC<{
 	</span>
 );
 
-type ManualProviderVariant = "custom" | "official";
+type ManualProviderVariant = "cli" | "custom" | "official";
 
 const ManualAPIKeyProviderRow: React.FC<{
 	apiKey: string;
@@ -798,9 +809,11 @@ const ManualAPIKeyProviderRow: React.FC<{
 	onSave: () => void;
 	open: boolean;
 	provider: APIKeyProvider;
+	hint?: string;
 	variant: ManualProviderVariant;
 }> = ({
 	apiKey,
+	hint,
 	isClearing,
 	isSaving,
 	onAPIKeyChange,
@@ -822,6 +835,7 @@ const ManualAPIKeyProviderRow: React.FC<{
 						<h3 className="truncate text-sm font-semibold text-foreground">{provider.label}</h3>
 						<ProviderStatusLabel active={provider.configured} />
 					</div>
+					{hint ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{hint}</p> : null}
 					{savedCredential ? (
 						<p className="mt-1 truncate font-mono text-xs text-muted-foreground">
 							{savedCredential}
@@ -913,7 +927,9 @@ const ManualProviderConfigDialog: React.FC<{
 						<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
 							{variant === "custom"
 								? "这里仅保存该接口的 API Key。供应商标识、端点和模型路由由系统预设，不需要在这里填写。"
-								: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
+								: variant === "cli"
+									? "这里仅保存本地 CLI 使用的 Access Key。端点和模型能力由系统预设。"
+									: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
 						</p>
 					</div>
 					<span className="rounded-full bg-ide-list-hover px-2 py-1 text-xs font-medium text-muted-foreground">
@@ -1453,5 +1469,12 @@ function maskCredentialValue(value: string) {
 }
 
 function manualProviderVariantLabel(variant: ManualProviderVariant) {
-	return variant === "custom" ? "自定义" : "官方";
+	switch (variant) {
+		case "cli":
+			return "本地 CLI";
+		case "custom":
+			return "自定义";
+		default:
+			return "官方";
+	}
 }

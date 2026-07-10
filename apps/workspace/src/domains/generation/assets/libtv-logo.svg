@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="LibTV">
+  <rect width="48" height="48" rx="10" fill="#050505"/>
+  <path d="M12 16h13l-4.7 6H12v12h-6V22l6-6Z" fill="#fff"/>
+  <path d="M36 32H23l4.7-6H36V14h6v12l-6 6Z" fill="#fff"/>
+</svg>

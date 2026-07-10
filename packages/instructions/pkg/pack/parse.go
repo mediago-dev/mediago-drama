@@ -16,11 +16,12 @@ import (
 )
 
 const (
-	instructionsDir = "instructions"
-	skillsDir       = "skills"
-	promptsDir      = "prompts"
-	markdownExt     = ".md"
-	skillExt        = ".skill.md"
+	instructionsDir  = "instructions"
+	skillsDir        = "skills"
+	promptsDir       = "prompts"
+	markdownExt      = ".md"
+	skillExt         = ".skill.md"
+	maxCategoryRunes = 64
 )
 
 var (
@@ -183,7 +184,7 @@ func parsePromptEntries(ctx context.Context, fsys fs.FS, packID string, entries 
 		if category == "" {
 			category = "extra"
 		}
-		if !isSafeSlug(category) {
+		if !isSafeCategoryID(category) {
 			return fmt.Errorf("%w: prompt %q category is invalid", ErrInvalidPack, id)
 		}
 		*entries = append(*entries, Entry{
@@ -263,7 +264,7 @@ func validateManifest(manifest Manifest) error {
 		return fmt.Errorf("%w: pack version is required", ErrInvalidPack)
 	}
 	for _, category := range manifest.Categories {
-		if !isSafeSlug(category.ID) || strings.TrimSpace(category.Label) == "" {
+		if !isSafeCategoryID(category.ID) || strings.TrimSpace(category.Label) == "" {
 			return fmt.Errorf("%w: category %q is invalid", ErrInvalidPack, category.ID)
 		}
 	}
@@ -378,6 +379,22 @@ func isSafeSlug(slug string) bool {
 			return false
 		}
 		if index == 0 && (char == '-' || char == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+func isSafeCategoryID(category string) bool {
+	category = strings.TrimSpace(category)
+	if category == "" || category == "." || category == ".." || strings.ContainsAny(category, `/\`) {
+		return false
+	}
+	if len([]rune(category)) > maxCategoryRunes {
+		return false
+	}
+	for _, char := range category {
+		if unicode.IsControl(char) {
 			return false
 		}
 	}

@@ -10,6 +10,9 @@ describe("generation brand marks", () => {
 		expect(generationProviderBrand("google")).toBe("gemini");
 		expect(generationProviderBrand("volcengine")).toBe("volcengine");
 		expect(generationProviderBrand("jimeng")).toBe("jimeng");
+		expect(generationProviderBrand("libtv")).toBe("libtv");
+		expect(generationProviderBrand("xiaoyunque")).toBe("xiaoyunque");
+		expect(generationProviderBrand("pippit")).toBe("xiaoyunque");
 		expect(generationProviderBrand("dmx")).toBe("dmx");
 		expect(generationProviderBrand("openrouter")).toBe("openrouter");
 	});
