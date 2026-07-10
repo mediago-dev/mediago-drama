@@ -219,6 +219,23 @@ describe("AssetLibraryButton", () => {
 		expect(deleteSelectedGenerationAsset).not.toHaveBeenCalled();
 	});
 
+	it("opens the file picker directly from the upload button", async () => {
+		vi.mocked(getMediaAssets).mockResolvedValue({ assets: [] });
+		vi.mocked(getSelectedGenerationAssets).mockResolvedValue({ assets: [] });
+
+		renderAssetLibraryButton("/projects?projectId=project-a");
+		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
+
+		await screen.findByRole("dialog", { name: "项目素材库" });
+		const uploadInput = screen.getByLabelText("上传素材");
+		const inputClick = vi.spyOn(uploadInput, "click");
+
+		fireEvent.click(screen.getByRole("button", { name: "上传" }));
+
+		expect(inputClick).toHaveBeenCalledOnce();
+		expect(screen.queryByRole("button", { name: "上传素材" })).not.toBeInTheDocument();
+	});
+
 	it("labels project media by source document category before it is selected", async () => {
 		vi.mocked(getWorkspaceDocuments).mockResolvedValue(
 			workspaceDocuments({

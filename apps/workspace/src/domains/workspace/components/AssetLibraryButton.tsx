@@ -64,7 +64,6 @@ import { Button } from "@/shared/components/ui/button";
 import { DialogClose } from "@/shared/components/ui/dialog-dismiss";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { Input } from "@/shared/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import {
 	Select,
 	SelectContent,
@@ -156,7 +155,6 @@ const AssetLibraryDialog: React.FC<{
 	const [query, setQuery] = useState("");
 	const [resourceFilter, setResourceFilter] = useState<AssetLibraryResourceFilter>("all");
 	const [sourceFilter, setSourceFilter] = useState<AssetLibrarySourceFilter>("all");
-	const [uploadOpen, setUploadOpen] = useState(false);
 	const [uploading, setUploading] = useState<"media" | null>(null);
 	const projectMode = Boolean(selectedProjectId);
 	const mediaProjectId = selectedProjectId;
@@ -394,6 +392,7 @@ const AssetLibraryDialog: React.FC<{
 			<input
 				ref={mediaUploadRef}
 				type="file"
+				aria-label="上传素材"
 				accept="image/*,video/*,audio/*,text/*,.txt,.md,.json"
 				className="sr-only"
 				disabled={Boolean(uploading)}
@@ -487,35 +486,20 @@ const AssetLibraryDialog: React.FC<{
 									/>
 								</>
 							) : null}
-							<div className="flex items-center gap-2">
-								<Popover open={uploadOpen} onOpenChange={setUploadOpen}>
-									<PopoverTrigger asChild>
-										<Button
-											type="button"
-											size="sm"
-											className="h-8 shrink-0 rounded-md px-2.5 text-xs"
-											disabled={Boolean(uploading)}
-										>
-											{uploading ? (
-												<Loader2 className="size-3.5 animate-spin" />
-											) : (
-												<UploadCloud className="size-3.5" />
-											)}
-											<span>上传</span>
-										</Button>
-									</PopoverTrigger>
-									<PopoverContent align="end" className="w-48 p-1.5">
-										<UploadMenuButton
-											disabled={Boolean(uploading)}
-											label="上传素材"
-											onClick={() => {
-												setUploadOpen(false);
-												mediaUploadRef.current?.click();
-											}}
-										/>
-									</PopoverContent>
-								</Popover>
-							</div>
+							<Button
+								type="button"
+								size="sm"
+								className="h-8 shrink-0 rounded-md px-2.5 text-xs"
+								disabled={Boolean(uploading)}
+								onClick={() => mediaUploadRef.current?.click()}
+							>
+								{uploading ? (
+									<Loader2 className="size-3.5 animate-spin" />
+								) : (
+									<UploadCloud className="size-3.5" />
+								)}
+								<span>上传</span>
+							</Button>
 						</div>
 
 						{error ? (
@@ -973,22 +957,6 @@ const AssetLibrarySelect: React.FC<{
 			))}
 		</SelectContent>
 	</Select>
-);
-
-const UploadMenuButton: React.FC<{
-	disabled?: boolean;
-	label: string;
-	onClick: () => void;
-}> = ({ disabled, label, onClick }) => (
-	<button
-		type="button"
-		className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-xs text-popover-foreground hover:bg-ide-list-hover disabled:pointer-events-none disabled:opacity-50"
-		disabled={disabled}
-		onClick={onClick}
-	>
-		<UploadCloud className="size-3.5 text-muted-foreground" />
-		<span className="min-w-0 flex-1 truncate">{label}</span>
-	</button>
 );
 
 const AssetLibraryEmpty: React.FC<{ projectMode: boolean }> = ({ projectMode }) => (
