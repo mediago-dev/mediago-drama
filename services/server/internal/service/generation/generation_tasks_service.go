@@ -769,7 +769,17 @@ func (service *GenerationTaskService) updateAssetRecord(id string, assetIndex in
 
 // Upsert creates or updates a generation task.
 func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
-	_, err := service.upsertTask(task, false)
+	_, err := service.upsertTask(task, false, true)
+	return err
+}
+
+// UpsertWithoutCompletionListener creates or updates a generation task without
+// firing the completion-transition listener. Generation orchestration uses it
+// when a completed task has a notification target that will be persisted and
+// published immediately after this write, avoiding a premature untracked-task
+// event before the richer notification exists.
+func (service *GenerationTaskService) UpsertWithoutCompletionListener(task GenerationTaskRecord) error {
+	_, err := service.upsertTask(task, false, false)
 	return err
 }
 
@@ -777,10 +787,10 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 // workers (submit/poll/progress/handoff) use this so a task the user deleted mid-generation is
 // not resurrected by a late write from the in-flight goroutine.
 func (service *GenerationTaskService) UpsertExisting(task GenerationTaskRecord) (bool, error) {
-	return service.upsertTask(task, true)
+	return service.upsertTask(task, true, true)
 }
 
-func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requireExisting bool) (bool, error) {
+func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requireExisting bool, notifyCompletion bool) (bool, error) {
 	if service.initErr != nil {
 		return false, service.initErr
 	}
@@ -813,7 +823,7 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 	// mutex is released (LIFO) — the listener may read back through the
 	// service or publish events without re-entering the lock.
 	defer func() {
-		if completedTransition && service.onTaskCompleted != nil {
+		if notifyCompletion && completedTransition && service.onTaskCompleted != nil {
 			service.onTaskCompleted(task)
 		}
 	}()

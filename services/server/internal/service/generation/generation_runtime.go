@@ -291,8 +291,17 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	messageResponse := generationResponseWithAssetTitle(GenerationResponseFromCore(response, payload.Kind), payload.AssetTitle)
 	if ShouldPersistGenerationTask(route) {
 		task := GenerationTaskFromMessage(payload, route, messageResponse)
-		if err := workflow.generationTasks.Upsert(task); err != nil {
-			messageResponse.Message = AppendStorageWarning(messageResponse.Message, err)
+		// A synchronous completed task has no persisted notification yet. Suppress
+		// the untracked-task listener when a target is about to be registered;
+		// SyncTask below will publish the single richer completion event.
+		var persistErr error
+		if payload.NotificationTarget != nil && isCompletedGenerationTaskStatus(task.Status) {
+			persistErr = workflow.generationTasks.UpsertWithoutCompletionListener(task)
+		} else {
+			persistErr = workflow.generationTasks.Upsert(task)
+		}
+		if persistErr != nil {
+			messageResponse.Message = AppendStorageWarning(messageResponse.Message, persistErr)
 		} else {
 			messageResponse.Assets = generationAssetsWithTaskSlots(task.ID, task.Assets)
 			workflow.trackGenerationNotificationTarget(task, payload.NotificationTarget)

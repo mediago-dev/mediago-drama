@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import useSWR from "swr";
 import { generationModelsKey, getGenerationModels } from "@/domains/generation/api/generation";
 import {
@@ -51,13 +51,13 @@ export const AgentFormPromptOptimization: React.FC<{
 		modelOptions.find((option) => option.route.id === resolved.routeId) ?? modelOptions[0] ?? null;
 
 	// An enabled value without a resolvable route adopts the first configured
-	// text model once the catalog arrives, so the submitted routeId is always
-	// one the server can run. Guarded by a ref against onChange loops.
-	const adoptedRef = useRef(false);
+	// text model once the catalog arrives. Repeat this check whenever the
+	// catalog changes: a previously valid route may disappear while the form is
+	// still open, and the displayed fallback must also become the submitted
+	// value.
 	useEffect(() => {
-		if (!resolved.enabled || adoptedRef.current || !selectedOption) return;
+		if (!resolved.enabled || !selectedOption) return;
 		if (resolved.routeId === selectedOption.route.id) return;
-		adoptedRef.current = true;
 		onChange({
 			...resolved,
 			routeId: selectedOption.route.id,

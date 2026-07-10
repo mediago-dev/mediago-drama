@@ -335,6 +335,50 @@ describe("AgentFormCard", () => {
 		});
 	});
 
+	it("updates the submitted prompt-optimization route when the catalog removes the current route", async () => {
+		let catalog = promptOptimizationCatalog();
+		mocks.useSWR.mockImplementation((key: unknown) => {
+			if (Array.isArray(key) || key === "/prompt-presets" || key === "/prompt-categories") {
+				return { data: undefined };
+			}
+			return { data: catalog };
+		});
+		vi.mocked(decideAgentSelection).mockImplementation(
+			async (_id, request) =>
+				({
+					id: "selection-6",
+					title: "确认生成参数",
+					options: [],
+					allowCustom: false,
+					status: "submitted",
+					decision: { values: request.values },
+					createdAt: "2026-06-08T10:00:00.000Z",
+				}) as never,
+		);
+		const message = promptOptimizationFormMessage();
+		seedConversation(message);
+		useProjectStore.setState({ activeProjectId: "project-1" });
+
+		const { rerender } = render(<AgentFormCard message={message} />);
+		await waitFor(() =>
+			expect(screen.getByLabelText("优化模型").textContent).toContain("MiniMax 国内"),
+		);
+
+		catalog = promptOptimizationCatalog("official.minimax-m4", "MiniMax M4 国内");
+		rerender(<AgentFormCard message={message} />);
+		await waitFor(() =>
+			expect(screen.getByLabelText("优化模型").textContent).toContain("MiniMax M4 国内"),
+		);
+
+		fireEvent.click(screen.getByText("确认生成"));
+		await waitFor(() => expect(decideAgentSelection).toHaveBeenCalledTimes(1));
+		const [, request] = vi.mocked(decideAgentSelection).mock.calls[0];
+		expect(
+			((request as { values: Record<string, unknown> }).values.optimize as { routeId: string })
+				.routeId,
+		).toBe("official.minimax-m4");
+	});
+
 	it("keeps already-uploaded reference images when a later file in the batch fails", async () => {
 		mocks.uploadMediaAsset
 			.mockResolvedValueOnce({ id: "asset-new-1" })
@@ -363,16 +407,19 @@ describe("AgentFormCard", () => {
 	});
 });
 
-const promptOptimizationCatalog = () => ({
+const promptOptimizationCatalog = (
+	routeId = "official.minimax-m3",
+	routeLabel = "MiniMax 国内",
+) => ({
 	families: [{ id: "minimax", label: "MiniMax", kinds: ["text"] }],
 	versions: [{ id: "minimax-m3", familyId: "minimax", label: "MiniMax M3 Text", kind: "text" }],
 	routes: [
 		{
-			id: "official.minimax-m3",
+			id: routeId,
 			familyId: "minimax",
 			versionId: "minimax-m3",
 			kind: "text",
-			label: "MiniMax 国内",
+			label: routeLabel,
 			provider: "minimax",
 			model: "m3",
 			status: "available",

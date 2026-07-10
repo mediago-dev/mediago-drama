@@ -240,3 +240,58 @@ func TestAnnounceTaskCompletionSkipsTrackedTasks(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 }
+
+func TestTrackedSynchronousCompletionPublishesOnlyRichNotification(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "workspace.db")
+	seedGenerationTaskProject(t, dbPath, "project-a")
+	seedGenerationTaskAsset(t, dbPath, "image-1", "image", "project-a")
+	repos, err := repository.OpenWorkspaceRepositories(dbPath)
+	if err != nil {
+		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
+	}
+	notifications := NewGenerationNotificationServiceFromRepository(repos.GenerationNotifications, nil, nil)
+	tasks := NewGenerationTaskService(dbPath, nil)
+	tasks.SetTaskCompletionListener(notifications.AnnounceTaskCompletion)
+	events, unsubscribe := notifications.Subscribe()
+	defer unsubscribe()
+
+	task := GenerationTaskRecord{
+		ID:        "task-synchronous",
+		ProjectID: "project-a",
+		Kind:      "image",
+		Status:    "completed",
+		Assets:    []GenerationAsset{{Kind: "image", URL: "/api/v1/media-assets/image-1/content"}},
+	}
+	if err := tasks.UpsertWithoutCompletionListener(task); err != nil {
+		t.Fatalf("UpsertWithoutCompletionListener() error = %v", err)
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("completion must wait for the tracked notification, got %+v", event)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if err := notifications.TrackTaskTarget(task, &GenerationNotificationTarget{
+		Kind:       "document-section",
+		ProjectID:  "project-a",
+		DocumentID: "doc-a",
+		Section:    GenerationNotificationSectionTarget{BlockID: "b", DocumentID: "doc-a", HeadingText: "h"},
+	}); err != nil {
+		t.Fatalf("TrackTaskTarget() error = %v", err)
+	}
+	notifications.SyncTask(task)
+
+	select {
+	case event := <-events:
+		if event.Type != generationNotificationCompletedEventType || event.Notification.TaskID != task.ID {
+			t.Fatalf("event = %+v, want one rich completion notification", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for rich completion notification")
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("unexpected duplicate completion event: %+v", event)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
