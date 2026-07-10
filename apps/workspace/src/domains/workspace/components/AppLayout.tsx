@@ -37,6 +37,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 			maxSidebarWidth={workspaceSidebarWidth.max}
 			minSidebarWidth={workspaceSidebarWidth.min}
 			resizeStep={workspaceSidebarWidth.resizeStep}
+			showDesktopDragRegion
 			sidebar={sidebar}
 			sidebarClassName="text-ide-sidebar-foreground"
 			sidebarHidden={sidebarHidden}
@@ -58,7 +59,7 @@ interface AppHeaderProps {
 
 /**
  * AppHeader is the draggable title bar for the right content area.
- * The action slot is intentionally outside the drag handle so buttons remain clickable.
+ * Interactive actions opt out of the drag region so they remain clickable.
  */
 export const AppHeader: React.FC<AppHeaderProps> = ({ actions, title }) => {
 	const startWindowDrag = useDesktopWindowDragHandler();
@@ -66,9 +67,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ actions, title }) => {
 	return (
 		<header
 			className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-ide-toolbar/95 px-3 text-ide-toolbar-foreground"
+			data-desktop-drag-region
 			onPointerDown={startWindowDrag}
 		>
-			<div className="flex h-full min-w-0 flex-1 items-center" data-desktop-drag-region>
+			<div className="flex h-full min-w-0 flex-1 items-center">
 				<h1 className="min-w-0 truncate text-sm font-medium text-foreground">{title}</h1>
 			</div>
 			{actions ? (
