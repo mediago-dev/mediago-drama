@@ -22,7 +22,6 @@ import {
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type React from "react";
 import { Button } from "@/shared/components/ui/button";
-import { useDialogLayer } from "@/shared/components/ui/dialog-layer";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 import type { ImageStickerEditorDialogController } from "./ImageStickerEditorDialog";
@@ -78,101 +77,94 @@ export const ImageStickerEditorDialogView: React.FC<{
 		switchToBrushTool,
 		switchToSelectTool,
 	} = controller;
-	const layer = useDialogLayer({ onOpenChange, open });
 
 	return (
-		<DialogPrimitive.Root open={layer.open} onOpenChange={layer.requestOpenChange}>
-			{layer.portalContainer ? (
-				<DialogPrimitive.Portal container={layer.portalContainer}>
-					<DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
-					<DialogPrimitive.Content
-						aria-describedby={undefined}
-						className={cn(
-							"fixed inset-3 z-50 flex flex-col overflow-hidden rounded-sm border border-white/15 bg-[#202124] text-[#e8eaed] shadow-2xl outline-none sm:inset-4",
-							dialogContentMotion,
-						)}
-						data-dialog-layer-state={layer.isTop ? "top" : "covered"}
-						onEscapeKeyDown={(event) => event.preventDefault()}
-						onFocusOutside={(event) => layer.preventDismissWhenCovered(event)}
-						onKeyDown={handleKeyDown}
-						onPointerDownOutside={(event) => layer.preventDismissWhenCovered(event)}
-					>
-						<ImageStickerEditorHeader
+		<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+			<DialogPrimitive.Portal>
+				<DialogPrimitive.Overlay className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
+				<DialogPrimitive.Content
+					aria-describedby={undefined}
+					className={cn(
+						"fixed inset-3 z-[71] flex flex-col overflow-hidden rounded-sm border border-white/15 bg-[#202124] text-[#e8eaed] shadow-2xl outline-none sm:inset-4",
+						dialogContentMotion,
+					)}
+					onKeyDown={handleKeyDown}
+				>
+					<ImageStickerEditorHeader
+						ready={ready}
+						saving={saving}
+						titleText={titleText}
+						onSave={saveCanvas}
+					/>
+					<div className="flex min-h-0 flex-1 max-lg:flex-col">
+						<ImageStickerToolRail
+							activeTool={activeTool}
+							busyTool={busyTool}
+							hasSelection={hasSelection}
 							ready={ready}
-							saving={saving}
-							titleText={titleText}
-							onSave={saveCanvas}
+							uploadInputRef={uploadInputRef}
+							onAddMosaic={addMosaic}
+							onAddRectangle={addRectangle}
+							onAddText={addTextSticker}
+							onDeleteSelection={deleteSelection}
+							onResetCanvas={resetCanvas}
+							onSelectBrush={switchToBrushTool}
+							onSelectPointer={switchToSelectTool}
+							onUploadChange={handleUploadChange}
+							onUploadClick={handleUploadClick}
 						/>
-						<div className="flex min-h-0 flex-1 max-lg:flex-col">
-							<ImageStickerToolRail
-								activeTool={activeTool}
-								busyTool={busyTool}
-								hasSelection={hasSelection}
-								ready={ready}
-								uploadInputRef={uploadInputRef}
-								onAddMosaic={addMosaic}
-								onAddRectangle={addRectangle}
-								onAddText={addTextSticker}
-								onDeleteSelection={deleteSelection}
-								onResetCanvas={resetCanvas}
-								onSelectBrush={switchToBrushTool}
-								onSelectPointer={switchToSelectTool}
-								onUploadChange={handleUploadChange}
-								onUploadClick={handleUploadClick}
-							/>
 
-							<div className="flex min-w-0 flex-1 flex-col max-lg:min-h-0">
-								<ImageStickerCanvasTopbar
-									canRedo={canRedo}
-									canUndo={canUndo}
-									canvasSizeLabel={canvasSizeLabel}
-									hasSelection={hasSelection}
-									selectionCount={selectionCount}
-									onMoveSelection={moveSelection}
-									onRedo={redo}
-									onUndo={undo}
-								/>
-								<ImageStickerCanvasStage
-									loadError={loadError}
-									ready={ready}
-									onCanvasElement={setEditorCanvasElement}
-								/>
-								<ImageStickerStatusBar
-									canvasSizeLabel={canvasSizeLabel}
-									editableLayerCount={editableLayerCount}
-									loadError={loadError}
-									ready={ready}
-								/>
-							</div>
-
-							<ImageStickerInspector
-								activeTool={activeTool}
-								brushColor={brushColor}
-								brushWidth={brushWidth}
-								busyTool={busyTool}
-								editableLayerCount={editableLayerCount}
+						<div className="flex min-w-0 flex-1 flex-col max-lg:min-h-0">
+							<ImageStickerCanvasTopbar
+								canRedo={canRedo}
+								canUndo={canUndo}
+								canvasSizeLabel={canvasSizeLabel}
 								hasSelection={hasSelection}
-								hasShapeSelection={hasShapeSelection}
-								layerSummary={layerSummary}
-								ready={ready}
-								saveError={saveError}
-								selectedOpacity={selectedOpacity}
-								selectedShapeAngle={selectedShapeAngle}
-								selectedShapeColor={selectedShapeColor}
-								onAddImageSticker={addImageSticker}
-								onChangeBrushColor={changeBrushColor}
-								onChangeBrushWidth={changeBrushWidth}
-								onChangeSelectionOpacity={changeSelectionOpacity}
-								onChangeShapeAngle={changeShapeAngle}
-								onChangeShapeColor={changeShapeColor}
-								onDeleteSelection={deleteSelection}
+								selectionCount={selectionCount}
 								onMoveSelection={moveSelection}
-								onResetCanvas={resetCanvas}
+								onRedo={redo}
+								onUndo={undo}
+							/>
+							<ImageStickerCanvasStage
+								loadError={loadError}
+								ready={ready}
+								onCanvasElement={setEditorCanvasElement}
+							/>
+							<ImageStickerStatusBar
+								canvasSizeLabel={canvasSizeLabel}
+								editableLayerCount={editableLayerCount}
+								loadError={loadError}
+								ready={ready}
 							/>
 						</div>
-					</DialogPrimitive.Content>
-				</DialogPrimitive.Portal>
-			) : null}
+
+						<ImageStickerInspector
+							activeTool={activeTool}
+							brushColor={brushColor}
+							brushWidth={brushWidth}
+							busyTool={busyTool}
+							editableLayerCount={editableLayerCount}
+							hasSelection={hasSelection}
+							hasShapeSelection={hasShapeSelection}
+							layerSummary={layerSummary}
+							ready={ready}
+							saveError={saveError}
+							selectedOpacity={selectedOpacity}
+							selectedShapeAngle={selectedShapeAngle}
+							selectedShapeColor={selectedShapeColor}
+							onAddImageSticker={addImageSticker}
+							onChangeBrushColor={changeBrushColor}
+							onChangeBrushWidth={changeBrushWidth}
+							onChangeSelectionOpacity={changeSelectionOpacity}
+							onChangeShapeAngle={changeShapeAngle}
+							onChangeShapeColor={changeShapeColor}
+							onDeleteSelection={deleteSelection}
+							onMoveSelection={moveSelection}
+							onResetCanvas={resetCanvas}
+						/>
+					</div>
+				</DialogPrimitive.Content>
+			</DialogPrimitive.Portal>
 		</DialogPrimitive.Root>
 	);
 };

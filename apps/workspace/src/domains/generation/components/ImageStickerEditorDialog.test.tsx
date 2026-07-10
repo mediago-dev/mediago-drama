@@ -276,9 +276,6 @@ describe("ImageStickerEditorDialog", () => {
 		);
 
 		expect(screen.queryByText("图片编辑器初始化失败，请关闭后重试。")).not.toBeInTheDocument();
-		expect(
-			screen.getByRole("dialog", { name: "图片编辑工作台" }).closest("[data-dialog-layer]"),
-		).toHaveAttribute("data-dialog-layer-state", "top");
 
 		await waitFor(() => {
 			expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();

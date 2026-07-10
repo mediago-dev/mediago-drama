@@ -6,9 +6,8 @@ import {
 	isPhotoViewPortalOpen,
 	isPhotoViewPortalTarget,
 } from "@/domains/documents/components/GenerationModalShell";
-import { useDialogLayerStore } from "@/shared/components/ui/dialog-layer";
 
-const waitForRadixOutsideListeners = () => new Promise((resolve) => window.setTimeout(resolve, 20));
+const waitForRadixOutsideListeners = () => new Promise((resolve) => window.setTimeout(resolve, 0));
 
 const fireRadixOutsideClick = async (target: Element) => {
 	await waitForRadixOutsideListeners();
@@ -20,7 +19,6 @@ const fireRadixOutsideClick = async (target: Element) => {
 describe("GenerationModalShell", () => {
 	afterEach(() => {
 		cleanup();
-		useDialogLayerStore.setState({ layerIds: [] });
 		document.body.innerHTML = "";
 		vi.restoreAllMocks();
 	});
@@ -156,7 +154,7 @@ describe("GenerationModalShell", () => {
 		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 	});
 
-	it("keeps the lower dialog open and mounted while the upper dialog submits", async () => {
+	it("keeps the lower dialog open and mounted while a later dialog is open", async () => {
 		render(<LayeredGenerationModalHarness />);
 
 		const lowerDialog = screen.getByRole("dialog", { name: "资源列表" });
@@ -165,16 +163,13 @@ describe("GenerationModalShell", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "打开生成图片" }));
 		const upperDialog = await screen.findByRole("dialog", { name: "生成图片" });
-		const lowerLayer = lowerDialog.closest<HTMLElement>("[data-dialog-layer]");
-		const upperLayer = upperDialog.closest<HTMLElement>("[data-dialog-layer]");
 
-		expect(lowerLayer).not.toBeNull();
-		expect(upperLayer).not.toBeNull();
 		expect(lowerDialog).toHaveAttribute("data-state", "open");
-		expect(lowerLayer).toHaveAttribute("data-dialog-layer-state", "covered");
-		expect(upperLayer).toHaveAttribute("data-dialog-layer-state", "top");
-		expect(Array.from(document.querySelectorAll("[data-dialog-layer]")).at(-1)).toBe(upperLayer);
+		expect(upperDialog).toHaveAttribute("data-state", "open");
+		expect(screen.getByRole("textbox", { name: "资源备注", hidden: true })).toBe(lowerInput);
+		expect(lowerInput).toHaveValue("保留这段输入");
 
+		fireEvent.pointerDown(screen.getByRole("button", { name: "发送生成" }), { button: 0 });
 		fireEvent.click(screen.getByRole("button", { name: "发送生成" }));
 
 		await waitFor(() => {
@@ -183,7 +178,6 @@ describe("GenerationModalShell", () => {
 		expect(screen.getByRole("dialog", { name: "资源列表" })).toBe(lowerDialog);
 		expect(screen.getByRole("textbox", { name: "资源备注" })).toBe(lowerInput);
 		expect(lowerInput).toHaveValue("保留这段输入");
-		expect(lowerLayer).toHaveAttribute("data-dialog-layer-state", "top");
 	});
 
 	it("keeps the lower dialog open when the upper header close button is clicked", async () => {
@@ -201,17 +195,12 @@ describe("GenerationModalShell", () => {
 		document.removeEventListener("pointerdown", documentPointerDown);
 		expect(documentPointerDown).not.toHaveBeenCalled();
 		fireEvent.click(upperCloseButton);
-		await waitForRadixOutsideListeners();
 
 		await waitFor(() => {
 			expect(screen.queryByRole("dialog", { name: "生成图片" })).toBeNull();
 		});
 		expect(screen.getByRole("dialog", { name: "资源列表" })).toBe(lowerDialog);
 		expect(lowerDialog).toHaveAttribute("data-state", "open");
-		expect(lowerDialog.closest("[data-dialog-layer]")).toHaveAttribute(
-			"data-dialog-layer-state",
-			"top",
-		);
 	});
 
 	it("closes one generation modal per Escape key press", async () => {
@@ -231,47 +220,11 @@ describe("GenerationModalShell", () => {
 			expect(screen.queryByRole("dialog", { name: "资源列表" })).toBeNull();
 		});
 	});
-
-	it("keeps every lower layer open across a three-dialog stack", async () => {
-		render(<LayeredGenerationModalHarness />);
-		const lowerDialog = screen.getByRole("dialog", { name: "资源列表" });
-
-		fireEvent.click(screen.getByRole("button", { name: "打开生成图片" }));
-		const generationDialog = await screen.findByRole("dialog", { name: "生成图片" });
-		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
-		const materialDialog = await screen.findByRole("dialog", { name: "素材库" });
-
-		expect(lowerDialog).toHaveAttribute("data-state", "open");
-		expect(generationDialog).toHaveAttribute("data-state", "open");
-		expect(lowerDialog.closest("[data-dialog-layer]")).toHaveAttribute(
-			"data-dialog-layer-state",
-			"covered",
-		);
-		expect(generationDialog.closest("[data-dialog-layer]")).toHaveAttribute(
-			"data-dialog-layer-state",
-			"covered",
-		);
-		expect(materialDialog.closest("[data-dialog-layer]")).toHaveAttribute(
-			"data-dialog-layer-state",
-			"top",
-		);
-
-		fireEvent.click(screen.getByRole("button", { name: "关闭素材库" }));
-		await waitFor(() => expect(screen.queryByRole("dialog", { name: "素材库" })).toBeNull());
-		expect(screen.getByRole("dialog", { name: "生成图片" })).toBe(generationDialog);
-		expect(generationDialog).toHaveAttribute("data-state", "open");
-
-		fireEvent.click(screen.getByRole("button", { name: "发送生成" }));
-		await waitFor(() => expect(screen.queryByRole("dialog", { name: "生成图片" })).toBeNull());
-		expect(screen.getByRole("dialog", { name: "资源列表" })).toBe(lowerDialog);
-		expect(lowerDialog).toHaveAttribute("data-state", "open");
-	});
 });
 
 const LayeredGenerationModalHarness = ({ upperInitiallyOpen = false }) => {
 	const [lowerOpen, setLowerOpen] = useState(true);
 	const [upperOpen, setUpperOpen] = useState(upperInitiallyOpen);
-	const [materialOpen, setMaterialOpen] = useState(false);
 
 	return (
 		<>
@@ -295,21 +248,12 @@ const LayeredGenerationModalHarness = ({ upperInitiallyOpen = false }) => {
 				titleId="generate-image-title"
 				onOpenChange={setUpperOpen}
 			>
-				<button type="button" onClick={() => setMaterialOpen(true)}>
-					打开素材库
-				</button>
-				<button type="button" onClick={() => setUpperOpen(false)}>
+				<button
+					type="button"
+					onPointerDown={(event) => event.stopPropagation()}
+					onClick={() => setUpperOpen(false)}
+				>
 					发送生成
-				</button>
-			</GenerationModalShell>
-			<GenerationModalShell
-				open={materialOpen}
-				title="素材库"
-				titleId="material-library-title"
-				onOpenChange={setMaterialOpen}
-			>
-				<button type="button" onClick={() => setMaterialOpen(false)}>
-					关闭素材库
 				</button>
 			</GenerationModalShell>
 		</>

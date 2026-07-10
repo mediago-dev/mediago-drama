@@ -1,56 +1,12 @@
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 import * as React from "react";
 import { buttonVariants } from "@/shared/components/ui/button";
-import { type DialogLayerController, useDialogLayer } from "@/shared/components/ui/dialog-layer";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 
-interface AlertDialogLayerContextValue {
-	escapeHandlerRef: React.MutableRefObject<((event: KeyboardEvent) => void) | undefined>;
-	layer: DialogLayerController;
-}
-
-const AlertDialogLayerContext = React.createContext<AlertDialogLayerContextValue | null>(null);
-
-type AlertDialogProps = React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Root>;
-
-const AlertDialog: React.FC<AlertDialogProps> = ({
-	children,
-	defaultOpen,
-	onOpenChange,
-	open,
-	...props
-}) => {
-	const escapeHandlerRef = React.useRef<((event: KeyboardEvent) => void) | undefined>(undefined);
-	const layer = useDialogLayer({
-		defaultOpen,
-		onEscapeKeyDown: (event) => escapeHandlerRef.current?.(event),
-		onOpenChange,
-		open,
-	});
-
-	return (
-		<AlertDialogLayerContext.Provider value={{ escapeHandlerRef, layer }}>
-			<AlertDialogPrimitive.Root
-				{...props}
-				open={layer.open}
-				onOpenChange={layer.requestOpenChange}
-			>
-				{children}
-			</AlertDialogPrimitive.Root>
-		</AlertDialogLayerContext.Provider>
-	);
-};
+const AlertDialog = AlertDialogPrimitive.Root;
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
-
-const AlertDialogPortal: React.FC<
-	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Portal>
-> = ({ container, ...props }) => {
-	const context = React.useContext(AlertDialogLayerContext);
-	const portalContainer = context?.layer.portalContainer ?? container;
-	if (context && !portalContainer) return null;
-	return <AlertDialogPrimitive.Portal {...props} container={portalContainer} />;
-};
+const AlertDialogPortal = AlertDialogPrimitive.Portal;
 
 const AlertDialogOverlay = React.forwardRef<
 	React.ElementRef<typeof AlertDialogPrimitive.Overlay>,
@@ -70,35 +26,28 @@ AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName;
 const AlertDialogContent = React.forwardRef<
 	React.ElementRef<typeof AlertDialogPrimitive.Content>,
 	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
->(({ className, children, onEscapeKeyDown, ...props }, ref) => {
-	const context = React.useContext(AlertDialogLayerContext);
-	if (context) context.escapeHandlerRef.current = onEscapeKeyDown;
-
-	return (
-		<AlertDialogPortal>
-			<AlertDialogOverlay />
-			<AlertDialogPrimitive.Content
-				ref={ref}
+>(({ className, children, ...props }, ref) => (
+	<AlertDialogPortal>
+		<AlertDialogOverlay />
+		<AlertDialogPrimitive.Content
+			ref={ref}
+			className={cn(
+				"group fixed left-1/2 top-1/2 z-50 w-[calc(100%_-_var(--dialog-inline-gutter))] -translate-x-1/2 -translate-y-1/2 outline-none",
+				dialogContentMotion,
+			)}
+			{...props}
+		>
+			<div
 				className={cn(
-					"group fixed left-1/2 top-1/2 z-50 w-[calc(100%_-_var(--dialog-inline-gutter))] -translate-x-1/2 -translate-y-1/2 outline-none",
-					dialogContentMotion,
+					"mx-auto grid w-full max-w-md gap-4 rounded-sm border border-border bg-ide-panel p-4 text-ide-panel-foreground shadow-lg",
+					className,
 				)}
-				data-dialog-layer-state={context ? (context.layer.isTop ? "top" : "covered") : undefined}
-				onEscapeKeyDown={(event) => event.preventDefault()}
-				{...props}
 			>
-				<div
-					className={cn(
-						"mx-auto grid w-full max-w-md gap-4 rounded-sm border border-border bg-ide-panel p-4 text-ide-panel-foreground shadow-lg",
-						className,
-					)}
-				>
-					{children}
-				</div>
-			</AlertDialogPrimitive.Content>
-		</AlertDialogPortal>
-	);
-});
+				{children}
+			</div>
+		</AlertDialogPrimitive.Content>
+	</AlertDialogPortal>
+));
 AlertDialogContent.displayName = AlertDialogPrimitive.Content.displayName;
 
 const AlertDialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
