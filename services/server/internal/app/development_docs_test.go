@@ -28,9 +28,10 @@ func TestDevelopmentDocsRoutes(t *testing.T) {
 			Description string `json:"description"`
 		} `json:"tags"`
 		Paths map[string]map[string]struct {
-			Summary     string   `json:"summary"`
-			Description string   `json:"description"`
-			Tags        []string `json:"tags"`
+			Summary     string                     `json:"summary"`
+			Description string                     `json:"description"`
+			Tags        []string                   `json:"tags"`
+			Responses   map[string]json.RawMessage `json:"responses"`
 			Parameters  []struct {
 				Name string `json:"name"`
 				In   string `json:"in"`
@@ -50,6 +51,12 @@ func TestDevelopmentDocsRoutes(t *testing.T) {
 	}
 	if healthOperation.Summary != "服务健康检查" || len(healthOperation.Tags) != 1 || healthOperation.Tags[0] != "System" {
 		t.Fatalf("health operation = %#v, want annotated summary and System tag", healthOperation)
+	}
+	if _, ok := healthOperation.Responses["200"]; !ok {
+		t.Fatal("health operation missing 200 response")
+	}
+	if _, ok := healthOperation.Responses["503"]; !ok {
+		t.Fatal("health operation missing 503 response")
 	}
 	workspaceOperation, ok := document.Paths["/api/v1/projects/{projectId}/workspace/state"]["get"]
 	if !ok {
@@ -115,9 +122,10 @@ func hasTagDescription(tags []struct {
 }
 
 func assertSwaggerCoversRouter(t *testing.T, handler http.Handler, paths map[string]map[string]struct {
-	Summary     string   `json:"summary"`
-	Description string   `json:"description"`
-	Tags        []string `json:"tags"`
+	Summary     string                     `json:"summary"`
+	Description string                     `json:"description"`
+	Tags        []string                   `json:"tags"`
+	Responses   map[string]json.RawMessage `json:"responses"`
 	Parameters  []struct {
 		Name string `json:"name"`
 		In   string `json:"in"`
