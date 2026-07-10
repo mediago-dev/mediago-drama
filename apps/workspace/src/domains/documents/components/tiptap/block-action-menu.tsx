@@ -16,6 +16,9 @@ import {
 	List,
 	ListOrdered,
 	MessageSquarePlus,
+	ImagePlus,
+	Video,
+	AudioLines,
 	Plus,
 	Quote,
 	Scissors,
@@ -48,6 +51,7 @@ import {
 	type BlockConversion,
 } from "./block-actions";
 import type { BlockRange, HoveredBlockRect } from "./types";
+import { supportsBlockMediaActions } from "./block-action-menu-visibility";
 
 interface BlockActionMenuProps {
 	editor: Editor;
@@ -56,6 +60,7 @@ interface BlockActionMenuProps {
 	open: boolean;
 	range: BlockRange;
 	rect: HoveredBlockRect;
+	onMediaAction?: (kind: "image" | "video" | "audio", range: BlockRange) => void;
 }
 
 interface ConversionOption {
@@ -139,6 +144,7 @@ export const BlockActionMenu: React.FC<BlockActionMenuProps> = ({
 	open,
 	range,
 	rect,
+	onMediaAction,
 }) => {
 	const active = activeBlockConversion(range);
 	const showConversions = canConvertBlock(range);
@@ -149,6 +155,14 @@ export const BlockActionMenu: React.FC<BlockActionMenuProps> = ({
 			onOpenChange(false);
 		},
 		[onOpenChange],
+	);
+
+	const handleMediaAction = useCallback(
+		(kind: "image" | "video" | "audio") => {
+			onMediaAction?.(kind, range);
+			onOpenChange(false);
+		},
+		[onMediaAction, onOpenChange, range],
 	);
 
 	const handleComment = useCallback(() => {
@@ -245,6 +259,26 @@ export const BlockActionMenu: React.FC<BlockActionMenuProps> = ({
 						label="在下方添加"
 						onSelect={() => runAndClose(() => insertBlockAfter(editor, range.index))}
 					/>
+					{onMediaAction && supportsBlockMediaActions(range) ? (
+						<>
+							<MenuSeparator />
+							<MenuItem
+								icon={<ImagePlus className="size-4" />}
+								label="生成图片"
+								onSelect={() => handleMediaAction("image")}
+							/>
+							<MenuItem
+								icon={<Video className="size-4" />}
+								label="生成视频"
+								onSelect={() => handleMediaAction("video")}
+							/>
+							<MenuItem
+								icon={<AudioLines className="size-4" />}
+								label="选择音频"
+								onSelect={() => handleMediaAction("audio")}
+							/>
+						</>
+					) : null}
 				</PopoverContent>
 			</Popover>
 		</div>

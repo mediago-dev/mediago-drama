@@ -46,6 +46,7 @@ import {
 } from "@/domains/documents/components/tiptap/storage";
 import {
 	createMarkdownHeadingContext,
+	createMarkdownSectionContext,
 	type MarkdownHeadingContext,
 	type MarkdownSectionContext,
 } from "@/domains/documents/components/tiptap/section-context";
@@ -84,6 +85,7 @@ export interface MarkdownHybridEditorProps {
 	onChange: (value: string) => void;
 	onCommentAnchorClick?: (commentId: string) => void;
 	onHeadingAction?: (heading: MarkdownHeadingContext) => void;
+	onBlockMediaAction?: (kind: "image" | "video" | "audio", section: MarkdownSectionContext) => void;
 	onSelectionChange?: (value: string) => void;
 	onSelectionCoordChange?: (coords: SelectionCoords | null) => void;
 	onSelectionRangeChange?: (range: InlineDecorationRange | null) => void;
@@ -256,6 +258,7 @@ export const MarkdownHybridEditor = forwardRef<
 		value,
 		onChange,
 		onCommentAnchorClick,
+		onBlockMediaAction,
 		onHeadingAction,
 		onSelectionChange,
 		onSelectionCoordChange,
@@ -603,6 +606,20 @@ export const MarkdownHybridEditor = forwardRef<
 						rect={activeBlockRect}
 						onMouseLeave={clearHoveredBlockHandle}
 						onOpenChange={handleBlockMenuOpenChange}
+						onMediaAction={
+							onBlockMediaAction
+								? (kind, range) => {
+										for (let index = range.index; index >= 0; index -= 1) {
+											const candidate = findTopLevelBlockRangeByIndex(editor.state.doc, index);
+											if (candidate?.nodeType !== "heading" || candidate.headingLevel !== 2)
+												continue;
+											const section = createMarkdownSectionContext(editor, documentId, candidate);
+											if (section) onBlockMediaAction(kind, section);
+											break;
+										}
+									}
+								: undefined
+						}
 					/>
 				) : null}
 				<EditorContent editor={editor} />
