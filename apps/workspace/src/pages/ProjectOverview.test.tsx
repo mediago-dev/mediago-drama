@@ -239,6 +239,9 @@ describe("ProjectOverview", () => {
 					<button type="button" onClick={() => onOpenChange(false)}>
 						关闭局部生成弹窗
 					</button>
+					<button type="button" onClick={() => onOpenChange(false)}>
+						发送局部生成弹窗
+					</button>
 				</GenerationModalShell>
 			) : null,
 		);
@@ -760,7 +763,7 @@ describe("ProjectOverview", () => {
 		}
 	});
 
-	it("keeps the resource list open after its local image generation dialog closes", async () => {
+	it("keeps the resource list open while its local image generation dialog is active", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
 				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
@@ -773,10 +776,19 @@ describe("ProjectOverview", () => {
 		fireEvent.click(screen.getByRole("button", { name: "角色 图片和音频" }));
 
 		const resourceDialog = await screen.findByRole("dialog", { name: "角色 · 图片和音频" });
+		fireEvent.click(within(resourceDialog).getByRole("checkbox", { name: "选择 林书彤" }));
 		fireEvent.click(within(resourceDialog).getAllByRole("button", { name: "生成图片" })[0]);
 
 		const generationDialog = await screen.findByRole("dialog", { name: "局部image生成弹窗" });
 		expect(resourceDialog).toBeInTheDocument();
+		expect(resourceDialog).toHaveAttribute("data-state", "open");
+		expect(resourceDialog.closest("[data-dialog-layer]")).toHaveAttribute(
+			"data-dialog-layer-state",
+			"covered",
+		);
+		expect(
+			within(resourceDialog).getByRole("checkbox", { name: "取消选择 林书彤", hidden: true }),
+		).toHaveAttribute("aria-checked", "true");
 		expect(dialogMocks.MediaGenerationDialog.mock.calls.at(-1)?.[0].request).toMatchObject({
 			kind: "image",
 			projectId: "project-a",
@@ -793,7 +805,39 @@ describe("ProjectOverview", () => {
 		await waitFor(() => {
 			expect(screen.queryByRole("dialog", { name: "局部image生成弹窗" })).toBeNull();
 		});
-		expect(screen.getByRole("dialog", { name: "角色 · 图片和音频" })).toBeInTheDocument();
+		expect(screen.getByRole("dialog", { name: "角色 · 图片和音频" })).toBe(resourceDialog);
+		expect(resourceDialog.closest("[data-dialog-layer]")).toHaveAttribute(
+			"data-dialog-layer-state",
+			"top",
+		);
+		expect(
+			within(resourceDialog).getByRole("checkbox", { name: "取消选择 林书彤" }),
+		).toHaveAttribute("aria-checked", "true");
+	});
+
+	it("keeps the resource list open when the upper image generation dialog submits", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+					<ProjectOverview />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		await screen.findByText("文档 2 项 · 图片 1 张");
+		fireEvent.click(screen.getByRole("button", { name: "角色 图片和音频" }));
+		const resourceDialog = await screen.findByRole("dialog", { name: "角色 · 图片和音频" });
+		fireEvent.click(within(resourceDialog).getAllByRole("button", { name: "生成图片" })[0]);
+
+		const generationDialog = await screen.findByRole("dialog", { name: "局部image生成弹窗" });
+		expect(resourceDialog).toHaveAttribute("data-state", "open");
+		fireEvent.click(within(generationDialog).getByRole("button", { name: "发送局部生成弹窗" }));
+
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog", { name: "局部image生成弹窗" })).toBeNull();
+		});
+		expect(screen.getByRole("dialog", { name: "角色 · 图片和音频" })).toBe(resourceDialog);
+		expect(resourceDialog).toHaveAttribute("data-state", "open");
 	});
 
 	it("hides audio actions for non-character document resources", async () => {

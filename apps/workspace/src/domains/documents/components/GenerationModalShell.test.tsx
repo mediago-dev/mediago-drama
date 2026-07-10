@@ -203,11 +203,47 @@ describe("GenerationModalShell", () => {
 			expect(screen.queryByRole("dialog", { name: "资源列表" })).toBeNull();
 		});
 	});
+
+	it("keeps every lower layer open across a three-dialog stack", async () => {
+		render(<LayeredGenerationModalHarness />);
+		const lowerDialog = screen.getByRole("dialog", { name: "资源列表" });
+
+		fireEvent.click(screen.getByRole("button", { name: "打开生成图片" }));
+		const generationDialog = await screen.findByRole("dialog", { name: "生成图片" });
+		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
+		const materialDialog = await screen.findByRole("dialog", { name: "素材库" });
+
+		expect(lowerDialog).toHaveAttribute("data-state", "open");
+		expect(generationDialog).toHaveAttribute("data-state", "open");
+		expect(lowerDialog.closest("[data-dialog-layer]")).toHaveAttribute(
+			"data-dialog-layer-state",
+			"covered",
+		);
+		expect(generationDialog.closest("[data-dialog-layer]")).toHaveAttribute(
+			"data-dialog-layer-state",
+			"covered",
+		);
+		expect(materialDialog.closest("[data-dialog-layer]")).toHaveAttribute(
+			"data-dialog-layer-state",
+			"top",
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "关闭素材库" }));
+		await waitFor(() => expect(screen.queryByRole("dialog", { name: "素材库" })).toBeNull());
+		expect(screen.getByRole("dialog", { name: "生成图片" })).toBe(generationDialog);
+		expect(generationDialog).toHaveAttribute("data-state", "open");
+
+		fireEvent.click(screen.getByRole("button", { name: "发送生成" }));
+		await waitFor(() => expect(screen.queryByRole("dialog", { name: "生成图片" })).toBeNull());
+		expect(screen.getByRole("dialog", { name: "资源列表" })).toBe(lowerDialog);
+		expect(lowerDialog).toHaveAttribute("data-state", "open");
+	});
 });
 
 const LayeredGenerationModalHarness = ({ upperInitiallyOpen = false }) => {
 	const [lowerOpen, setLowerOpen] = useState(true);
 	const [upperOpen, setUpperOpen] = useState(upperInitiallyOpen);
+	const [materialOpen, setMaterialOpen] = useState(false);
 
 	return (
 		<>
@@ -231,8 +267,21 @@ const LayeredGenerationModalHarness = ({ upperInitiallyOpen = false }) => {
 				titleId="generate-image-title"
 				onOpenChange={setUpperOpen}
 			>
+				<button type="button" onClick={() => setMaterialOpen(true)}>
+					打开素材库
+				</button>
 				<button type="button" onClick={() => setUpperOpen(false)}>
 					发送生成
+				</button>
+			</GenerationModalShell>
+			<GenerationModalShell
+				open={materialOpen}
+				title="素材库"
+				titleId="material-library-title"
+				onOpenChange={setMaterialOpen}
+			>
+				<button type="button" onClick={() => setMaterialOpen(false)}>
+					关闭素材库
 				</button>
 			</GenerationModalShell>
 		</>
