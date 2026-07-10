@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +26,7 @@ const (
 	codexRelayLocalBearerToken  = "mediago-codex-relay"
 	codexRelayDefaultHTTPClient = 60 * time.Second
 	codexRelayCheckHTTPClient   = 10 * time.Second
-	codexRelayCheckBodyLimit    = 4 * 1024
+	codexRelayCheckBodyLimit    = 1024 * 1024
 )
 
 // CodexRelayProtocol identifies the upstream protocol used by one relay profile.
@@ -69,10 +71,17 @@ type CodexRelayCheckRequest struct {
 
 // CodexRelayCheckResponse describes an upstream reachability check for a relay profile.
 type CodexRelayCheckResponse struct {
-	OK         bool   `json:"ok"`
-	ProfileID  string `json:"profileId"`
-	BaseURL    string `json:"baseURL"`
-	StatusCode int    `json:"statusCode"`
+	OK         bool     `json:"ok"`
+	ProfileID  string   `json:"profileId"`
+	BaseURL    string   `json:"baseURL"`
+	StatusCode int      `json:"statusCode"`
+	Models     []string `json:"models"`
+}
+
+type codexRelayModelsPayload struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
 }
 
 // CodexRelayProfileMutation stores non-secret profile fields.
@@ -217,6 +226,7 @@ func (service *Settings) CheckCodexRelay(ctx context.Context, input CodexRelayCh
 	result := CodexRelayCheckResponse{
 		ProfileID: active.ID,
 		BaseURL:   active.BaseURL,
+		Models:    []string{},
 	}
 	if err != nil {
 		return result, fmt.Errorf("%w：连接上游失败，请检查 Base URL", ErrCodexRelayCheckFailed)
@@ -227,6 +237,7 @@ func (service *Settings) CheckCodexRelay(ctx context.Context, input CodexRelayCh
 	body := readLimitedCodexRelayCheckBody(response.Body)
 	if codexRelayCheckStatusOK(response.StatusCode) && !codexRelayBodyLooksInvalidAPIKey(body) {
 		result.OK = true
+		result.Models = codexRelayModelIDs(body)
 		return result, nil
 	}
 	if codexRelayCheckStatusAuthFailed(response.StatusCode) || codexRelayBodyLooksInvalidAPIKey(body) {
@@ -589,4 +600,104 @@ func readLimitedCodexRelayCheckBody(reader io.Reader) string {
 		return ""
 	}
 	return string(body)
+}
+
+func codexRelayModelIDs(body string) []string {
+	payload := codexRelayModelsPayload{}
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		return []string{}
+	}
+	seen := make(map[string]struct{}, len(payload.Data))
+	models := make([]string, 0, len(payload.Data))
+	for _, item := range payload.Data {
+		model := strings.TrimSpace(item.ID)
+		if model == "" {
+			continue
+		}
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+	}
+	sort.SliceStable(models, func(left int, right int) bool {
+		return codexRelayModelLess(models[left], models[right])
+	})
+	return models
+}
+
+type codexRelayModelSortKey struct {
+	isGPT       bool
+	major       int
+	minor       int
+	variantRank int
+	normalized  string
+}
+
+func codexRelayModelLess(left string, right string) bool {
+	leftKey := codexRelayModelKey(left)
+	rightKey := codexRelayModelKey(right)
+	if leftKey.isGPT != rightKey.isGPT {
+		return leftKey.isGPT
+	}
+	if leftKey.isGPT {
+		if leftKey.major != rightKey.major {
+			return leftKey.major > rightKey.major
+		}
+		if leftKey.minor != rightKey.minor {
+			return leftKey.minor > rightKey.minor
+		}
+		if leftKey.variantRank != rightKey.variantRank {
+			return leftKey.variantRank < rightKey.variantRank
+		}
+	}
+	return leftKey.normalized < rightKey.normalized
+}
+
+func codexRelayModelKey(model string) codexRelayModelSortKey {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	key := codexRelayModelSortKey{normalized: normalized, variantRank: 100}
+	if !strings.HasPrefix(normalized, "gpt-") {
+		return key
+	}
+	versionAndVariant := strings.TrimPrefix(normalized, "gpt-")
+	version, variant, _ := strings.Cut(versionAndVariant, "-")
+	parts := strings.Split(version, ".")
+	if len(parts) != 2 {
+		return key
+	}
+	major, majorErr := strconv.Atoi(parts[0])
+	minor, minorErr := strconv.Atoi(parts[1])
+	if majorErr != nil || minorErr != nil {
+		return key
+	}
+	variant, _, _ = strings.Cut(variant, "-")
+	key.isGPT = true
+	key.major = major
+	key.minor = minor
+	key.variantRank = codexRelayModelVariantRank(variant)
+	return key
+}
+
+func codexRelayModelVariantRank(variant string) int {
+	switch variant {
+	case "":
+		return 0
+	case "sol":
+		return 10
+	case "terra":
+		return 20
+	case "luna":
+		return 30
+	case "pro":
+		return 40
+	case "codex":
+		return 50
+	case "mini":
+		return 60
+	case "nano":
+		return 70
+	default:
+		return 100
+	}
 }

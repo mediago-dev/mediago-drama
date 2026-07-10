@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"sort"
 	"strings"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -19,6 +20,7 @@ type agentRuntimeModelFilter struct {
 	Restrict         bool
 	AllowedValues    []string
 	AllowedProviders []string
+	DiscoveredValues []string
 }
 
 // AgentRuntimeConfigFromACPSession maps ACP session metadata to UI runtime config.
@@ -124,9 +126,11 @@ func agentRuntimeModelSelectConfigFromACP(option acp.SessionConfigOptionSelect, 
 		return nil
 	}
 	config.Options = AgentRuntimeModelOptions(config.Options)
+	config.Options = agentRuntimeModelOptionsWithDiscovered(config.Options, filter.DiscoveredValues)
 	if filter.Restrict {
 		config.Options = agentRuntimeModelOptionsMatching(config.Options, filter.AllowedValues, filter.AllowedProviders)
 	}
+	config.Options = agentRuntimeModelOptionsOrderedByValues(config.Options, filter.DiscoveredValues)
 	if len(config.Options) == 0 {
 		return nil
 	}
@@ -134,6 +138,60 @@ func agentRuntimeModelSelectConfigFromACP(option acp.SessionConfigOptionSelect, 
 		config.CurrentValue = config.Options[0].Value
 	}
 	return config
+}
+
+func agentRuntimeModelOptionsOrderedByValues(options []AgentRuntimeSelectOption, values []string) []AgentRuntimeSelectOption {
+	if len(options) < 2 || len(values) == 0 {
+		return options
+	}
+	order := make(map[string]int, len(values))
+	for index, value := range values {
+		key := normalizedAgentRuntimeModelValue(value)
+		if key == "" {
+			continue
+		}
+		if _, exists := order[key]; !exists {
+			order[key] = index
+		}
+	}
+	result := append([]AgentRuntimeSelectOption(nil), options...)
+	sort.SliceStable(result, func(left int, right int) bool {
+		leftOrder, leftExists := order[normalizedAgentRuntimeModelValue(result[left].Value)]
+		rightOrder, rightExists := order[normalizedAgentRuntimeModelValue(result[right].Value)]
+		if leftExists != rightExists {
+			return leftExists
+		}
+		if !leftExists {
+			return false
+		}
+		return leftOrder < rightOrder
+	})
+	return result
+}
+
+func agentRuntimeModelOptionsWithDiscovered(options []AgentRuntimeSelectOption, values []string) []AgentRuntimeSelectOption {
+	result := append([]AgentRuntimeSelectOption(nil), options...)
+	seen := make(map[string]struct{}, len(result)+len(values))
+	for _, option := range result {
+		seen[normalizedAgentRuntimeModelValue(option.Value)] = struct{}{}
+	}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		key := normalizedAgentRuntimeModelValue(value)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		option := AgentRuntimeSelectOption{Value: value, Name: value}
+		if len(AgentRuntimeModelOptions([]AgentRuntimeSelectOption{option})) == 0 {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, option)
+	}
+	return result
 }
 
 // AgentRuntimeSelectOptionsFromACP maps ACP select choices.

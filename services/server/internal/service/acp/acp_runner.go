@@ -37,6 +37,7 @@ type acpAgentRunner struct {
 	workspaceDir          string
 	documentMCPConfigPath string
 	buildPrompt           func(AgentRunRequest) string
+	buildSessionRecap     SessionRecapBuilder
 	processConfigProvider ProcessConfigProvider
 	activeClients         sync.Map
 }
@@ -148,6 +149,7 @@ type ProcessConfig struct {
 	RestrictModelValues   bool
 	AllowedModelValues    []string
 	AllowedModelProviders []string
+	DiscoveredModelValues []string
 }
 
 // ProcessConfigProvider prepares extra config for one ACP child process.
@@ -267,6 +269,7 @@ func (runner *acpAgentRunner) InspectSessionConfig(ctx context.Context, projectI
 		Restrict:         processConfig.RestrictModelValues,
 		AllowedValues:    processConfig.AllowedModelValues,
 		AllowedProviders: processConfig.AllowedModelProviders,
+		DiscoveredValues: processConfig.DiscoveredModelValues,
 	})
 	acpLog().Debug(
 		"acp config probe completed",

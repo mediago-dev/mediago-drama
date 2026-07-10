@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
@@ -60,6 +61,14 @@ func TestListGenerationModelsFiltersMediagoRoutesByUserCatalog(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&requests); got != 1 {
 		t.Fatalf("MediaGo model catalog requests = %d, want 1 cached request", got)
+	}
+
+	catalog = workflow.ListGenerationModels()
+	if !generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoGPTImage2) {
+		t.Fatalf("route %q should stay configured on a cached catalog", coregeneration.RouteMediagoGPTImage2)
+	}
+	if got := atomic.LoadInt32(&requests); got != 1 {
+		t.Fatalf("MediaGo model catalog requests = %d, want cached catalog to avoid a second fetch", got)
 	}
 }
 
@@ -120,6 +129,72 @@ func TestListGenerationModelsHidesDisabledMediagoUserCatalogItems(t *testing.T) 
 	}
 	if generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoMiniMaxM3Text) {
 		t.Fatalf("route %q should be hidden when route_status is disabled in MediaGo user catalog", coregeneration.RouteMediagoMiniMaxM3Text)
+	}
+}
+
+func TestListGenerationModelsServesStaleMediagoCatalogWhenRefreshFails(t *testing.T) {
+	var requests int32
+	var fail atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		if fail.Load() {
+			http.Error(response, "gateway unavailable", http.StatusBadGateway)
+			return
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"data":[{"id":"gpt-image-2"}]}`))
+	}))
+	defer server.Close()
+
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{coregeneration.ProviderMediago: "mgak-test"},
+	})
+	workflow := NewGenerationService(settingsSvc, nil, nil)
+	workflow.SetMediagoBaseURL(server.URL)
+
+	catalog := workflow.ListGenerationModels()
+	if !generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoGPTImage2) {
+		t.Fatalf("route %q should be configured while the catalog fetch succeeds", coregeneration.RouteMediagoGPTImage2)
+	}
+
+	fail.Store(true)
+	workflow.mediagoModelCatalog.fetchedAt = time.Now().Add(-2 * mediagoModelCatalogCacheTTL)
+
+	catalog = workflow.ListGenerationModels()
+	if !generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoGPTImage2) {
+		t.Fatalf("route %q should stay configured on the stale catalog when the refresh fails", coregeneration.RouteMediagoGPTImage2)
+	}
+	if got := atomic.LoadInt32(&requests); got != 2 {
+		t.Fatalf("MediaGo model catalog requests = %d, want initial fetch plus failed refresh", got)
+	}
+}
+
+func TestNewGenerationProviderFailsOpenWhenUserCatalogUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		http.Error(response, "gateway unavailable", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{coregeneration.ProviderMediago: "mgak-test"},
+	})
+	workflow := NewGenerationService(settingsSvc, nil, nil)
+	workflow.SetMediagoBaseURL(server.URL)
+	var factoryCalls int32
+	workflow.generationProviderFactory = func(coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		atomic.AddInt32(&factoryCalls, 1)
+		return nil, nil
+	}
+
+	route, ok := coregeneration.FindRoute(coregeneration.RouteMediagoGPTImage2)
+	if !ok {
+		t.Fatalf("missing route %q", coregeneration.RouteMediagoGPTImage2)
+	}
+	if _, err := workflow.newGenerationProvider(route); err != nil {
+		t.Fatalf("newGenerationProvider() error = %v, want fail-open when the MediaGo catalog is unavailable", err)
+	}
+	if got := atomic.LoadInt32(&factoryCalls); got != 1 {
+		t.Fatalf("provider factory calls = %d, want 1", got)
 	}
 }
 

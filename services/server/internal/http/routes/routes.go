@@ -9,6 +9,7 @@ import (
 
 // Handlers groups the concrete HTTP handlers used by the app router.
 type Handlers struct {
+	Health                httphandlers.Health
 	MCP                   httphandlers.MCP
 	Settings              httphandlers.Settings
 	Capabilities          httphandlers.Capabilities
@@ -24,10 +25,12 @@ type Handlers struct {
 	JianyingDraft         httphandlers.JianyingDraft
 	WorkspaceEvents       httphandlers.WorkspaceEvents
 	PromptPacks           httphandlers.PromptPacks
+	License               httphandlers.License
 	PromptTemplates       httphandlers.PromptTemplates
 	PromptLibrary         httphandlers.PromptLibrary
 	Skills                httphandlers.Skills
 	DocumentToolApprovals httphandlers.DocumentToolApprovals
+	AgentSelections       httphandlers.AgentSelections
 	AgentPermissions      httphandlers.AgentPermissions
 	AgentChat             httphandlers.AgentChat
 	AgentMessages         httphandlers.AgentMessages
@@ -38,12 +41,14 @@ type Handlers struct {
 	AgentEvents           httphandlers.AgentEvents
 	AgentRuntime          httphandlers.AgentRuntime
 	AgentSessions         httphandlers.AgentSessions
+	RuntimeActivity       httphandlers.RuntimeActivity
 }
 
 // Register attaches all app routes to the provided Gin engine.
 func Register(router *gin.Engine, handlers Handlers) {
 	router.Any("/mcp", handlers.MCP.HandleExternalMCP)
 	router.Any(mediamcp.LegacyDocumentHTTPPath, handlers.MCP.HandleLegacyDocumentMCP)
+	router.Any(mediamcp.LegacyGenerationHTTPPath, handlers.MCP.HandleLegacyGenerationMCP)
 
 	apiRoutes := router.Group("/api/v1")
 	registerCoreRoutes(apiRoutes, handlers)
@@ -53,7 +58,8 @@ func Register(router *gin.Engine, handlers Handlers) {
 }
 
 func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
-	apiRoutes.GET("/health", httphandlers.HandleHealth)
+	apiRoutes.GET("/health", handlers.Health.HandleHealth)
+	apiRoutes.GET("/runtime/activity", handlers.RuntimeActivity.HandleGetRuntimeActivity)
 	apiRoutes.GET("/capabilities", handlers.Capabilities.HandleListCapabilities)
 	apiRoutes.GET("/billing/summary", handlers.Billing.HandleBillingSummary)
 	apiRoutes.GET("/projects", handlers.Projects.HandleListProjects)
@@ -90,9 +96,14 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.PUT("/media-assets/:assetId", handlers.MediaAssets.HandleUpdateMediaAsset)
 	apiRoutes.DELETE("/media-assets/:assetId", handlers.MediaAssets.HandleDeleteMediaAsset)
 	apiRoutes.Any("/internal/agent/document-mcp", handlers.MCP.HandleInternalDocumentMCP)
+	apiRoutes.Any("/internal/agent/generation-mcp", handlers.MCP.HandleInternalGenerationMCP)
 	apiRoutes.Any(
 		"/internal/projects/:projectId/agent/document-mcp",
 		handlers.MCP.HandleProjectDocumentMCP,
+	)
+	apiRoutes.Any(
+		"/internal/projects/:projectId/agent/generation-mcp",
+		handlers.MCP.HandleProjectGenerationMCP,
 	)
 	apiRoutes.POST(
 		serviceevents.InternalEventsPublishRoute,
@@ -101,6 +112,9 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 }
 
 func registerSettingsRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
+	apiRoutes.GET("/license", handlers.License.HandleStatus)
+	apiRoutes.POST("/license/activate", handlers.License.HandleActivate)
+	apiRoutes.DELETE("/license", handlers.License.HandleDeactivate)
 	apiRoutes.GET("/settings/jianying-draft", handlers.Settings.HandleJianyingDraftSettings)
 	apiRoutes.PUT("/settings/jianying-draft", handlers.Settings.HandlePutJianyingDraftSettings)
 	apiRoutes.GET("/settings/codex-relay", handlers.Settings.HandleCodexRelaySettings)
@@ -163,6 +177,10 @@ func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 		"/generation/voice-previews/:routeId/:voiceId",
 		handlers.GenerationTasks.HandleGenerationVoicePreviewContent,
 	)
+	apiRoutes.GET(
+		"/generation/style-previews/:presetId",
+		handlers.GenerationTasks.HandleGenerationStylePreviewContent,
+	)
 	apiRoutes.GET("/generation/sessions", handlers.GenerationTasks.HandleGenerationConversations)
 	apiRoutes.POST("/generation/sessions", handlers.GenerationTasks.HandleCreateGenerationConversation)
 	apiRoutes.DELETE(
@@ -192,6 +210,11 @@ func registerGenerationRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.POST(
 		"/generation/sessions/:sessionId/messages/optimize-and-generate",
 		handlers.GenerationTasks.HandlePromptOptimizedGenerationMessage,
+	)
+	apiRoutes.POST("/generation/batches", handlers.GenerationTasks.HandleCreateGenerationBatch)
+	apiRoutes.GET(
+		"/generation/batches/:batchId/tasks",
+		handlers.GenerationTasks.HandleGenerationBatchTasks,
 	)
 	apiRoutes.POST(
 		"/generation/sessions/:sessionId/messages/stream",
@@ -346,6 +369,18 @@ func registerAgentRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
 	projectRoutes.POST(
 		"/agent/document-tool-approvals/:approvalId/decision",
 		handlers.DocumentToolApprovals.HandleDecideDocumentToolApproval,
+	)
+	projectRoutes.GET(
+		"/agent/selections",
+		handlers.AgentSelections.HandleListAgentSelections,
+	)
+	projectRoutes.GET(
+		"/agent/selections/:selectionId",
+		handlers.AgentSelections.HandleGetAgentSelection,
+	)
+	projectRoutes.POST(
+		"/agent/selections/:selectionId/decision",
+		handlers.AgentSelections.HandleDecideAgentSelection,
 	)
 	projectRoutes.POST(
 		"/agent/sessions/:sessionId/permission-requests/:requestId/decision",

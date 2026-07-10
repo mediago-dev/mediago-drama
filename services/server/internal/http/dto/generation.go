@@ -10,6 +10,7 @@ type GenerationModelsResponse struct {
 	Models        []coregeneration.ModelSpec    `json:"models"`
 	Providers     []coregeneration.ProviderInfo `json:"providers"`
 	VoicePreviews []GenerationVoicePreviewAsset `json:"voicePreviews,omitempty"`
+	StylePresets  []GenerationStylePreset       `json:"stylePresets,omitempty"`
 }
 
 // GenerationVoicePreviewAsset is one built-in local voice preview.
@@ -20,8 +21,27 @@ type GenerationVoicePreviewAsset struct {
 	MIMEType string `json:"mimeType"`
 }
 
+// GenerationStylePreset is one built-in visual style recommendation. The
+// preset carries prompt/params templates: generation still goes through a
+// normal generate request with PromptSuffix appended to the user prompt and
+// Params merged into the request params.
+type GenerationStylePreset struct {
+	ID           string         `json:"id"`
+	Title        string         `json:"title"`
+	Description  string         `json:"description,omitempty"`
+	Kinds        []string       `json:"kinds"`
+	RouteID      string         `json:"routeId,omitempty"`
+	PromptSuffix string         `json:"promptSuffix"`
+	Params       map[string]any `json:"params,omitempty"`
+	PreviewURL   string         `json:"previewUrl,omitempty"`
+	MIMEType     string         `json:"mimeType,omitempty"`
+}
+
 // GenerationMessageRequest creates or retries a generation request.
 type GenerationMessageRequest struct {
+	BatchID            string                               `json:"-"`
+	BatchItemID        string                               `json:"-"`
+	BatchIndex         int                                  `json:"-"`
 	Kind               string                               `json:"kind" ts:"Kind"`
 	ConversationID     string                               `json:"sessionId,omitempty"`
 	ScopeID            string                               `json:"-"`
@@ -30,6 +50,7 @@ type GenerationMessageRequest struct {
 	SectionID          string                               `json:"sectionId,omitempty"`
 	DocumentContext    *GenerationDocumentContext           `json:"documentContext,omitempty"`
 	CapabilityID       string                               `json:"capabilityId,omitempty"`
+	ResourceType       string                               `json:"resourceType,omitempty"`
 	NotificationTarget *GenerationNotificationTarget        `json:"notificationTarget,omitempty"`
 	RouteID            string                               `json:"routeId"`
 	FamilyID           string                               `json:"familyId,omitempty"`
@@ -44,6 +65,54 @@ type GenerationMessageRequest struct {
 	ReferenceBindings  []GenerationReferenceBinding         `json:"referenceBindings,omitempty"`
 	Params             map[string]any                       `json:"params"`
 	PromptOptimization *GenerationPromptOptimizationRequest `json:"promptOptimization,omitempty"`
+}
+
+// GenerationBatchRequest submits multiple normal generation requests as one tracked batch.
+type GenerationBatchRequest struct {
+	Kind              string                       `json:"kind,omitempty" ts:"Kind"`
+	ConversationID    string                       `json:"sessionId,omitempty"`
+	ConversationTitle string                       `json:"conversationTitle,omitempty"`
+	ProjectID         string                       `json:"projectId,omitempty"`
+	ScopeID           string                       `json:"scopeId,omitempty"`
+	Items             []GenerationBatchItemRequest `json:"items"`
+}
+
+// GenerationBatchItemRequest is one ordered child request in a generation batch.
+type GenerationBatchItemRequest struct {
+	ID      string                   `json:"id,omitempty"`
+	Request GenerationMessageRequest `json:"request"`
+}
+
+// GenerationBatchItemResponse reports one child submission without failing its siblings.
+type GenerationBatchItemResponse struct {
+	ID              string `json:"id"`
+	Index           int    `json:"index"`
+	TaskID          string `json:"taskId,omitempty"`
+	Status          string `json:"status"`
+	Message         string `json:"message,omitempty"`
+	OptimizedPrompt string `json:"optimizedPrompt,omitempty"`
+	Error           string `json:"error,omitempty"`
+}
+
+// GenerationBatchResponse reports the ordered result of a batch submission.
+type GenerationBatchResponse struct {
+	ID       string                        `json:"id"`
+	Status   string                        `json:"status"`
+	Total    int                           `json:"total"`
+	Accepted int                           `json:"accepted"`
+	Failed   int                           `json:"failed"`
+	Items    []GenerationBatchItemResponse `json:"items"`
+}
+
+// GenerationBatchTasksResponse returns the current persisted state of a batch's child tasks.
+type GenerationBatchTasksResponse struct {
+	ID        string                 `json:"id"`
+	Status    string                 `json:"status"`
+	Total     int                    `json:"total"`
+	Active    int                    `json:"active"`
+	Completed int                    `json:"completed"`
+	Failed    int                    `json:"failed"`
+	Tasks     []GenerationTaskRecord `json:"tasks"`
 }
 
 // GenerationReferenceBinding maps a document mention to a concrete reference.
@@ -216,12 +285,16 @@ type GenerationUsage struct {
 // GenerationTaskRecord is a persisted generation task.
 type GenerationTaskRecord struct {
 	ID                string                        `json:"id"`
+	BatchID           string                        `json:"batchId,omitempty"`
+	BatchItemID       string                        `json:"batchItemId,omitempty"`
+	BatchIndex        int                           `json:"batchIndex,omitempty"`
 	ProviderTaskID    string                        `json:"providerTaskId,omitempty"`
 	ConversationID    string                        `json:"sessionId,omitempty"`
 	ProjectID         string                        `json:"projectId,omitempty"`
 	DocumentID        string                        `json:"documentId,omitempty"`
 	SectionID         string                        `json:"sectionId,omitempty"`
 	CapabilityID      string                        `json:"capabilityId,omitempty"`
+	ResourceType      string                        `json:"resourceType,omitempty"`
 	Kind              string                        `json:"kind" ts:"Kind"`
 	RouteID           string                        `json:"routeId"`
 	FamilyID          string                        `json:"familyId"`

@@ -11,7 +11,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/shared/components/ui/alert-dialog";
-import { Button } from "@/shared/components/ui/button";
+import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Input } from "@/shared/components/ui/input";
 
 export interface ProjectRenameDialogOptions {
@@ -58,10 +58,10 @@ export const ProjectRenameDialog = createCallable<ProjectRenameDialogOptions, st
 						</div>
 						<AlertDialogFooter>
 							<AlertDialogCancel>取消</AlertDialogCancel>
-							<Button type="submit" disabled={!normalizedName}>
+							<DialogDismissButton type="submit" disabled={!normalizedName}>
 								<Pencil className="size-3.5" />
 								<span>重命名</span>
-							</Button>
+							</DialogDismissButton>
 						</AlertDialogFooter>
 					</form>
 				</AlertDialogContent>

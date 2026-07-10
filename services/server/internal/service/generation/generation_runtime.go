@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
@@ -28,7 +29,10 @@ type GenerationService struct {
 	generationProviderFactory     func(coregeneration.ModelRoute) (coregeneration.Provider, error)
 	multimodalTextProviderFactory runtime.MultimodalTextProviderFactory
 	voicePreviews                 *VoicePreviewStore
+	stylePreviews                 *StylePreviewStore
+	stylePrompts                  StylePromptSource
 	mediagoBaseURL                string
+	mediagoModelCatalog           mediagoModelCatalogCache
 	jimengBinPath                 string
 	jimengBinDir                  string
 	libTVBinPath                  string
@@ -37,6 +41,7 @@ type GenerationService struct {
 	pippitBinPath                 string
 	pippitBinDir                  string
 	jimengSeedanceQueueMu         sync.Mutex
+	inFlightProviderRequests      atomic.Int64
 }
 
 type generationModelsResponse = GenerationModelsResponse
@@ -58,7 +63,13 @@ func NewGenerationService(settings *settings.Settings, generationTasks *Generati
 		mediaAssets:                   mediaAssets,
 		multimodalTextProviderFactory: defaultMultimodalTextProviderFactory,
 		voicePreviews:                 NewVoicePreviewStore(configassets.VoicePreviews),
+		stylePreviews:                 NewStylePreviewStore(configassets.StylePresets),
 	}
+}
+
+// SetStylePromptLibrary wires the prompt library that owns style presets.
+func (workflow *GenerationService) SetStylePromptLibrary(source StylePromptSource) {
+	workflow.stylePrompts = source
 }
 
 // SetJimengCLIPaths configures the local Jimeng CLI lookup paths.
@@ -85,9 +96,14 @@ func (workflow *GenerationService) SetMediagoBaseURL(baseURL string) {
 	workflow.mediagoBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 }
 
-// SetGenerationNotifications sets the notification service used by generation workflows.
+// SetGenerationNotifications sets the notification service used by generation
+// workflows and wires the task service's completion-transition listener to it,
+// so untracked background completions still reach connected clients.
 func (workflow *GenerationService) SetGenerationNotifications(notifications *GenerationNotificationService) {
 	workflow.generationNotifications = notifications
+	if workflow.generationTasks != nil && notifications != nil {
+		workflow.generationTasks.SetTaskCompletionListener(notifications.AnnounceTaskCompletion)
+	}
 }
 
 // SetDocumentResolver sets the workspace document reader used by document-backed generation.
@@ -114,6 +130,7 @@ func (workflow *GenerationService) ListGenerationModels() generationModelsRespon
 		Models:        catalog.Models,
 		Providers:     catalog.Providers,
 		VoicePreviews: workflow.listVoicePreviewAssets(),
+		StylePresets:  workflow.listStylePresets(),
 	}
 }
 
@@ -276,8 +293,17 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	messageResponse := generationResponseWithAssetTitle(GenerationResponseFromCore(response, payload.Kind), payload.AssetTitle)
 	if ShouldPersistGenerationTask(route) {
 		task := GenerationTaskFromMessage(payload, route, messageResponse)
-		if err := workflow.generationTasks.Upsert(task); err != nil {
-			messageResponse.Message = AppendStorageWarning(messageResponse.Message, err)
+		// A synchronous completed task has no persisted notification yet. Suppress
+		// the untracked-task listener when a target is about to be registered;
+		// SyncTask below will publish the single richer completion event.
+		var persistErr error
+		if payload.NotificationTarget != nil && isCompletedGenerationTaskStatus(task.Status) {
+			persistErr = workflow.generationTasks.UpsertWithoutCompletionListener(task)
+		} else {
+			persistErr = workflow.generationTasks.Upsert(task)
+		}
+		if persistErr != nil {
+			messageResponse.Message = AppendStorageWarning(messageResponse.Message, persistErr)
 		} else {
 			messageResponse.Assets = generationAssetsWithTaskSlots(task.ID, task.Assets)
 			workflow.trackGenerationNotificationTarget(task, payload.NotificationTarget)
@@ -304,4 +330,30 @@ func (workflow *GenerationService) syncGenerationNotificationTask(task Generatio
 		return
 	}
 	workflow.generationNotifications.SyncTask(task)
+}
+
+// CountActiveGenerationTasks reports how many generation tasks still have in-flight
+// work. Consumed by the runtime activity probe that gates hot-update application.
+func (workflow *GenerationService) CountActiveGenerationTasks(ctx context.Context) (int64, error) {
+	return workflow.generationTasks.CountActiveGenerationTasks(ctx)
+}
+
+// CountInFlightProviderRequests reports provider calls that have started but not returned.
+// This includes non-persisted text and multimodal completions, which cannot be inferred
+// from the generation task database.
+func (workflow *GenerationService) CountInFlightProviderRequests() int64 {
+	if workflow == nil {
+		return 0
+	}
+	return workflow.inFlightProviderRequests.Load()
+}
+
+func (workflow *GenerationService) beginProviderRequest() func() {
+	if workflow == nil {
+		return func() {}
+	}
+	workflow.inFlightProviderRequests.Add(1)
+	return func() {
+		workflow.inFlightProviderRequests.Add(-1)
+	}
 }

@@ -81,6 +81,9 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 	projectID := workflow.projectIDForTask(task)
 
 	payload := generationMessageRequest{
+		BatchID:           task.BatchID,
+		BatchItemID:       task.BatchItemID,
+		BatchIndex:        task.BatchIndex,
 		Kind:              task.Kind,
 		ConversationID:    task.ConversationID,
 		RouteID:           task.RouteID,
@@ -92,6 +95,7 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		ProjectID:         task.ProjectID,
 		SectionID:         task.SectionID,
 		CapabilityID:      task.CapabilityID,
+		ResourceType:      task.ResourceType,
 		Prompt:            task.Prompt,
 		AssetTitle:        generationAssetTitleFromTask(task),
 		ReferenceURLs:     task.ReferenceURLs,
@@ -268,6 +272,7 @@ func (workflow *GenerationService) generationRequestForTask(
 
 // ListGenerationTasks lists generation tasks for HTTP handlers.
 func (workflow *GenerationService) ListGenerationTasks(query GenerationTaskListQuery) (generationTasksResponse, error) {
+	batchID := strings.TrimSpace(query.BatchID)
 	kind := strings.TrimSpace(query.Kind)
 	conversationID := strings.TrimSpace(query.ConversationID)
 	projectID := strings.TrimSpace(query.ProjectID)
@@ -275,7 +280,31 @@ func (workflow *GenerationService) ListGenerationTasks(query GenerationTaskListQ
 	scopeID := NormalizeGenerationConversationScopeID(query.ScopeID)
 	includeLegacyDefault := false
 	listOptions := generationTaskListOptions(query.Limit, query.Offset)
-	if projectID != "" {
+	if batchID != "" {
+		tasks, err := workflow.generationTasks.ListByBatch(batchID)
+		if err != nil {
+			return generationTasksResponse{}, err
+		}
+		filtered := make([]GenerationTaskRecord, 0, len(tasks))
+		for _, task := range tasks {
+			if projectID != "" && strings.TrimSpace(task.ProjectID) != projectID {
+				continue
+			}
+			if kind != "" && strings.TrimSpace(task.Kind) != kind {
+				continue
+			}
+			if conversationID != "" && strings.TrimSpace(task.ConversationID) != conversationID {
+				continue
+			}
+			filtered = append(filtered, task)
+		}
+		start := min(max(query.Offset, 0), len(filtered))
+		end := len(filtered)
+		if query.Limit > 0 {
+			end = min(start+query.Limit, end)
+		}
+		return generationTasksResponse{Tasks: GenerationTasksForClient(filtered[start:end])}, nil
+	} else if projectID != "" {
 		tasks, err := workflow.generationTasks.ListByProject(kind, projectID, listOptions)
 		if err != nil {
 			return generationTasksResponse{}, err
@@ -546,6 +575,16 @@ func selectedGenerationResourceType(capabilityID string) string {
 	default:
 		return ""
 	}
+}
+
+// generationTaskResourceType returns the project resource type a task belongs
+// to. The dedicated resourceType field wins; legacy tasks that encoded the
+// resource type in capabilityId keep working through the fallback.
+func generationTaskResourceType(task GenerationTaskRecord) string {
+	if resourceType := selectedGenerationResourceType(task.ResourceType); resourceType != "" {
+		return resourceType
+	}
+	return selectedGenerationResourceType(task.CapabilityID)
 }
 
 func filterSelectedGenerationAssets(assets []SelectedGenerationAssetRecord, query SelectedGenerationAssetQuery) []SelectedGenerationAssetRecord {

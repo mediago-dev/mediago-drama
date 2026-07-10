@@ -9,12 +9,16 @@ import (
 // GenerationTaskModel is the GORM model for generation tasks.
 type GenerationTaskModel struct {
 	ID              string    `gorm:"column:id;primaryKey"`
+	BatchID         string    `gorm:"column:batch_id;not null;default:'';index:generation_tasks_batch_idx,priority:1"`
+	BatchItemID     string    `gorm:"column:batch_item_id;not null;default:''"`
+	BatchIndex      int       `gorm:"column:batch_index;not null;default:0;index:generation_tasks_batch_idx,priority:2"`
 	ProviderTaskID  string    `gorm:"column:provider_task_id;not null;default:'';index:generation_tasks_provider_task_id_idx"`
 	ConversationID  *string   `gorm:"column:conversation_id;index:generation_tasks_conversation_idx,priority:1"`
 	ProjectID       *string   `gorm:"column:project_id;index:generation_tasks_project_id_idx"`
 	DocumentID      *string   `gorm:"column:document_id;index:generation_tasks_document_id_idx"`
 	SectionID       *string   `gorm:"column:section_id;index:generation_tasks_section_id_idx"`
 	CapabilityID    *string   `gorm:"column:capability_id;index:generation_tasks_capability_idx"`
+	ResourceType    *string   `gorm:"column:resource_type;index:generation_tasks_resource_type_idx"`
 	Kind            string    `gorm:"column:kind;not null;index:generation_tasks_kind_status_updated_idx,priority:1"`
 	RouteID         string    `gorm:"column:route_id;not null"`
 	FamilyID        string    `gorm:"column:family_id;not null"`

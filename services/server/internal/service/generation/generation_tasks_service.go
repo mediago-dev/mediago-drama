@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -35,6 +36,19 @@ type GenerationTaskService struct {
 	repo        *repository.GenerationTaskRepository
 	initErr     error
 	idGenerator func(string) (string, error)
+	// onTaskCompleted fires exactly once per not-completed→completed status
+	// transition persisted by upsertTask, after the service mutex is released.
+	// It anchors "the task finished" at the write that makes it true — poll
+	// re-upserts of an already-completed task do not re-fire.
+	onTaskCompleted func(GenerationTaskRecord)
+}
+
+// SetTaskCompletionListener installs the completion-transition callback.
+func (service *GenerationTaskService) SetTaskCompletionListener(listener func(GenerationTaskRecord)) {
+	if service == nil {
+		return
+	}
+	service.onTaskCompleted = listener
 }
 
 type generationTaskModel = domain.GenerationTaskModel
@@ -101,6 +115,34 @@ func (service *GenerationTaskService) List(options ...repository.GenerationTaskL
 		return nil, err
 	}
 
+	return tasks, nil
+}
+
+// ListByBatch returns persisted child tasks in their original batch item order.
+func (service *GenerationTaskService) ListByBatch(batchID string) ([]GenerationTaskRecord, error) {
+	if service.initErr != nil {
+		return nil, service.initErr
+	}
+	batchID = strings.TrimSpace(batchID)
+	if batchID == "" {
+		return []GenerationTaskRecord{}, nil
+	}
+
+	service.mu.RLock()
+	models, err := service.repo.ListGenerationTasksByBatch(batchID)
+	service.mu.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+	tasks, err := generationTaskRecordsFromModels(models)
+	if err != nil {
+		return nil, err
+	}
+	for index := range tasks {
+		if err := service.attachAttemptSummary(&tasks[index]); err != nil {
+			return nil, err
+		}
+	}
 	return tasks, nil
 }
 
@@ -556,9 +598,9 @@ func (service *GenerationTaskService) upsertSelectedAssetRecord(projectID string
 			if title != "" {
 				task.Assets[assetSliceIndex].Title = title
 			}
-			task.CapabilityID = resourceType
+			task.ResourceType = resourceType
 			task.UpdatedAt = timestamp.NowRFC3339Nano()
-			updated, err := service.repo.UpdateGenerationTaskAssets(task.ID, task.CapabilityID, task.UpdatedAt)
+			updated, err := service.repo.UpdateGenerationTaskAssets(task.ID, task.ResourceType, task.UpdatedAt)
 			if err != nil || !updated {
 				return projectSelectedAssetModel{}, updated, err
 			}
@@ -609,16 +651,12 @@ func (service *GenerationTaskService) upsertSelectedAssetRecord(projectID string
 		return projectSelectedAssetModel{}, false, nil
 	}
 	model.ID = projectSelectedAssetID(model)
-	if err := service.clearProjectSelectedAssetRowsForResourceKindLocked(model, assetKind); err != nil {
-		return projectSelectedAssetModel{}, false, err
-	}
-
 	now := timestamp.NowRFC3339Nano()
 	if model.CreatedAt.IsZero() {
 		model.CreatedAt = domain.TimeFromString(now)
 	}
 	model.UpdatedAt = domain.TimeFromString(now)
-	if err := service.repo.UpsertProjectSelectedAsset(model); err != nil {
+	if err := service.replaceResourceSelectionLocked(model, assetKind); err != nil {
 		return projectSelectedAssetModel{}, false, err
 	}
 	persisted, err := service.repo.GetProjectSelectedAsset(model.ID)
@@ -703,10 +741,10 @@ func (service *GenerationTaskService) setTaskAssetSelectedLocked(taskID string, 
 		task.Assets[assetSliceIndex].Title = title
 	}
 	if resourceType = selectedGenerationResourceType(resourceType); resourceType != "" {
-		task.CapabilityID = resourceType
+		task.ResourceType = resourceType
 	}
 	task.UpdatedAt = timestamp.NowRFC3339Nano()
-	updated, err := service.repo.UpdateGenerationTaskAssets(task.ID, task.CapabilityID, task.UpdatedAt)
+	updated, err := service.repo.UpdateGenerationTaskAssets(task.ID, task.ResourceType, task.UpdatedAt)
 	if err != nil || !updated {
 		return err
 	}
@@ -741,11 +779,11 @@ func (service *GenerationTaskService) updateAssetRecord(id string, assetIndex in
 		task.Assets[assetSliceIndex].Title = strings.TrimSpace(*patch.Title)
 	}
 	if resourceType := selectedGenerationResourceType(patch.ResourceType); resourceType != "" {
-		task.CapabilityID = resourceType
+		task.ResourceType = resourceType
 	}
 	task.UpdatedAt = timestamp.NowRFC3339Nano()
 
-	updated, err := service.repo.UpdateGenerationTaskAssets(id, task.CapabilityID, task.UpdatedAt)
+	updated, err := service.repo.UpdateGenerationTaskAssets(id, task.ResourceType, task.UpdatedAt)
 	if err != nil || !updated {
 		return task, updated, err
 	}
@@ -760,7 +798,17 @@ func (service *GenerationTaskService) updateAssetRecord(id string, assetIndex in
 
 // Upsert creates or updates a generation task.
 func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
-	_, err := service.upsertTask(task, false)
+	_, err := service.upsertTask(task, false, true)
+	return err
+}
+
+// UpsertWithoutCompletionListener creates or updates a generation task without
+// firing the completion-transition listener. Generation orchestration uses it
+// when a completed task has a notification target that will be persisted and
+// published immediately after this write, avoiding a premature untracked-task
+// event before the richer notification exists.
+func (service *GenerationTaskService) UpsertWithoutCompletionListener(task GenerationTaskRecord) error {
+	_, err := service.upsertTask(task, false, false)
 	return err
 }
 
@@ -768,10 +816,10 @@ func (service *GenerationTaskService) Upsert(task GenerationTaskRecord) error {
 // workers (submit/poll/progress/handoff) use this so a task the user deleted mid-generation is
 // not resurrected by a late write from the in-flight goroutine.
 func (service *GenerationTaskService) UpsertExisting(task GenerationTaskRecord) (bool, error) {
-	return service.upsertTask(task, true)
+	return service.upsertTask(task, true, true)
 }
 
-func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requireExisting bool) (bool, error) {
+func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requireExisting bool, notifyCompletion bool) (bool, error) {
 	if service.initErr != nil {
 		return false, service.initErr
 	}
@@ -799,6 +847,15 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 		return false, err
 	}
 
+	completedTransition := false
+	// Registered before the lock's deferred unlock, so it runs after the
+	// mutex is released (LIFO) — the listener may read back through the
+	// service or publish events without re-entering the lock.
+	defer func() {
+		if notifyCompletion && completedTransition && service.onTaskCompleted != nil {
+			service.onTaskCompleted(task)
+		}
+	}()
 	service.mu.Lock()
 	defer service.mu.Unlock()
 
@@ -811,6 +868,10 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 			return false, nil
 		}
 	}
+	previousStatus, statusErr := service.repo.GetGenerationTaskStatus(task.ID)
+	if statusErr != nil && !repository.IsRecordNotFound(statusErr) {
+		return false, statusErr
+	}
 
 	if err := service.ensureTaskConversationLocked(task); err != nil {
 		return false, err
@@ -820,12 +881,16 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 	}
 	if err := service.repo.UpsertGenerationTask(generationTaskModel{
 		ID:              task.ID,
+		BatchID:         strings.TrimSpace(task.BatchID),
+		BatchItemID:     strings.TrimSpace(task.BatchItemID),
+		BatchIndex:      task.BatchIndex,
 		ProviderTaskID:  task.ProviderTaskID,
 		ConversationID:  domain.StringPtr(task.ConversationID),
 		ProjectID:       domain.StringPtr(GenerationProjectIDForRequest(task.ProjectID, "")),
 		DocumentID:      domain.StringPtr(task.DocumentID),
 		SectionID:       domain.StringPtr(task.SectionID),
 		CapabilityID:    domain.StringPtr(task.CapabilityID),
+		ResourceType:    domain.StringPtr(task.ResourceType),
 		Kind:            task.Kind,
 		RouteID:         task.RouteID,
 		FamilyID:        task.FamilyID,
@@ -861,6 +926,8 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 	if err := service.upsertProjectSelectedAssetRowsLocked(projectSelectedAssetModelsFromRecord(task)); err != nil {
 		return false, err
 	}
+	completedTransition = !isCompletedGenerationTaskStatus(previousStatus) &&
+		isCompletedGenerationTaskStatus(task.Status)
 	return true, nil
 }
 
@@ -878,7 +945,7 @@ func (service *GenerationTaskService) applyDefaultSelectedAssetLocked(task *Gene
 	// （复用手动选中路径的替换逻辑，含把旧任务的 asset.Selected 回置），再选本次第一张。
 	clearModel := domain.ProjectSelectedAssetModel{
 		ProjectID:        GenerationProjectIDForRequest(task.ProjectID, ""),
-		ResourceType:     selectedGenerationResourceType(task.CapabilityID),
+		ResourceType:     generationTaskResourceType(*task),
 		ResourceID:       domain.StringPtr(strings.TrimSpace(task.SectionID)),
 		SourceDocumentID: domain.StringPtr(strings.TrimSpace(task.DocumentID)),
 	}
@@ -895,7 +962,7 @@ func shouldDefaultSelectGenerationAsset(task GenerationTaskRecord) bool {
 		!isSelectableGenerationAssetKind(task.Kind) ||
 		strings.TrimSpace(task.RouteID) == importedMediaGenerationRouteID ||
 		GenerationProjectIDForRequest(task.ProjectID, "") == "" ||
-		selectedGenerationResourceType(task.CapabilityID) == "" ||
+		generationTaskResourceType(task) == "" ||
 		strings.TrimSpace(task.DocumentID) == "" ||
 		strings.TrimSpace(task.SectionID) == "" {
 		return false
@@ -1004,6 +1071,13 @@ func (service *GenerationTaskService) syncNormalizedTaskAssetRowsLocked(task Gen
 	return nil
 }
 
+// upsertProjectSelectedAssetRowsLocked bulk-syncs a task's selected-asset rows
+// on every task upsert. It intentionally does NOT go through
+// replaceResourceSelectionLocked: the single-choice clear already ran in
+// applyDefaultSelectedAssetLocked for the default-select case, and running the
+// clear here would add a full list scan to every poll write and trim legacy
+// multi-select tasks destructively. New selection entry points must use
+// replaceResourceSelectionLocked, not this writer.
 func (service *GenerationTaskService) upsertProjectSelectedAssetRowsLocked(rows []domain.ProjectSelectedAssetModel) error {
 	for _, row := range rows {
 		if err := service.repo.UpsertProjectSelectedAsset(row); err != nil {
@@ -1283,12 +1357,16 @@ func generationTaskRecordsFromModels(models []generationTaskModel) ([]Generation
 func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRecord, error) {
 	task := GenerationTaskRecord{
 		ID:             model.ID,
+		BatchID:        model.BatchID,
+		BatchItemID:    model.BatchItemID,
+		BatchIndex:     model.BatchIndex,
 		ProviderTaskID: model.ProviderTaskID,
 		ConversationID: domain.StringValue(model.ConversationID),
 		ProjectID:      domain.StringValue(model.ProjectID),
 		DocumentID:     domain.StringValue(model.DocumentID),
 		SectionID:      domain.StringValue(model.SectionID),
 		CapabilityID:   domain.StringValue(model.CapabilityID),
+		ResourceType:   domain.StringValue(model.ResourceType),
 		Kind:           model.Kind,
 		RouteID:        model.RouteID,
 		FamilyID:       model.FamilyID,
@@ -1451,7 +1529,7 @@ func firstNonEmpty(values ...string) string {
 
 func projectSelectedAssetModelsFromRecord(task GenerationTaskRecord) []domain.ProjectSelectedAssetModel {
 	projectID := GenerationProjectIDForRequest(task.ProjectID, "")
-	resourceType := selectedGenerationResourceType(task.CapabilityID)
+	resourceType := generationTaskResourceType(task)
 	if projectID == "" || resourceType == "" {
 		return []domain.ProjectSelectedAssetModel{}
 	}
@@ -1491,10 +1569,23 @@ func (service *GenerationTaskService) syncProjectSelectedAssetRowForTaskAssetLoc
 	}
 	asset, ok := generationAssetAtSlot(task, assetIndex)
 	if ok && asset.Selected {
-		return service.repo.UpsertProjectSelectedAsset(row)
+		return service.replaceResourceSelectionLocked(row, asset.Kind)
 	}
 	_, err := service.repo.DeleteProjectSelectedAsset(row.ID)
 	return err
+}
+
+// replaceResourceSelectionLocked is the single write path for "this asset is
+// now the resource's selection": selection is single-choice per resource+kind,
+// so the previous selection is cleared (including resetting the old task
+// asset's Selected flag) before the new row is written. Every selection entry
+// point must go through here — a plain upsert would stack a second selected
+// image onto the resource card.
+func (service *GenerationTaskService) replaceResourceSelectionLocked(row domain.ProjectSelectedAssetModel, kind string) error {
+	if err := service.clearProjectSelectedAssetRowsForResourceKindLocked(row, kind); err != nil {
+		return err
+	}
+	return service.repo.UpsertProjectSelectedAsset(row)
 }
 
 func (service *GenerationTaskService) deleteProjectSelectedAssetRowForTaskAssetLocked(task GenerationTaskRecord, assetIndex int) error {
@@ -1516,7 +1607,7 @@ func (service *GenerationTaskService) deleteProjectSelectedAssetRowForTaskAssetL
 
 func projectSelectedAssetModelFromTaskAsset(task GenerationTaskRecord, assetIndex int, includeDeleted bool) (domain.ProjectSelectedAssetModel, bool) {
 	projectID := GenerationProjectIDForRequest(task.ProjectID, "")
-	resourceType := selectedGenerationResourceType(task.CapabilityID)
+	resourceType := generationTaskResourceType(task)
 	if projectID == "" || resourceType == "" || assetIndex < 0 {
 		return domain.ProjectSelectedAssetModel{}, false
 	}
@@ -1904,6 +1995,35 @@ func IsTerminalGenerationTaskStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+// activeGenerationTaskMaxAge bounds how long an in-flight status keeps a task counted
+// as active work: rows orphaned in "running"/"pending" by a crash or SIGKILL must not
+// report the server busy (and block hot-update apply) forever.
+const activeGenerationTaskMaxAge = 6 * time.Hour
+
+// CountActiveGenerationTasks counts tasks whose status is in the shared in-progress
+// list (see activeGenerationStatuses) and that were updated recently enough to
+// plausibly still be running. The staleness window is applied on parsed time.Time
+// values (TZ-independent), not via SQL text comparison — see the repository method.
+func (service *GenerationTaskService) CountActiveGenerationTasks(ctx context.Context) (int64, error) {
+	if service.initErr != nil {
+		return 0, service.initErr
+	}
+	service.mu.RLock()
+	defer service.mu.RUnlock()
+	timestamps, err := service.repo.ListGenerationTaskUpdatedAtsWithStatuses(ctx, activeGenerationStatuses)
+	if err != nil {
+		return 0, err
+	}
+	cutoff := time.Now().Add(-activeGenerationTaskMaxAge)
+	var count int64
+	for _, updatedAt := range timestamps {
+		if updatedAt.After(cutoff) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func defaultGenerationTaskID(prefix string) (string, error) {

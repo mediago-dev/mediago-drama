@@ -33,6 +33,7 @@ import {
 	isPendingGenerationStatus,
 } from "@/domains/generation/components/mediaGenerationHelpers";
 import { Button } from "@/shared/components/ui/button";
+import { DialogClose } from "@/shared/components/ui/dialog-dismiss";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import {
 	ContextMenu,
@@ -634,11 +635,11 @@ const HistoryVideoPreviewDialog: React.FC<{
 					<DialogPrimitive.Title className="truncate text-sm font-semibold text-foreground">
 						预览视频
 					</DialogPrimitive.Title>
-					<DialogPrimitive.Close asChild>
+					<DialogClose asChild>
 						<Button type="button" variant="ghost" size="icon" aria-label="关闭预览">
 							<X className="size-4" />
 						</Button>
-					</DialogPrimitive.Close>
+					</DialogClose>
 				</div>
 				<div className="bg-black">
 					<VideoPlayer

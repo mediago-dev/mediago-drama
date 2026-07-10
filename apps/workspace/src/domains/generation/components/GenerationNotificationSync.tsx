@@ -7,11 +7,16 @@ import {
 	getGenerationNotifications,
 	type GenerationNotificationEvent,
 } from "@/domains/generation/api/generation";
+import { refreshSelectedGenerationAssetDependents } from "@/domains/generation/lib/refresh-selected-assets";
 import { showGenerationSuccessSystemNotification } from "@/domains/generation/lib/generation-notifications";
 import { useGenerationNotificationStore } from "@/domains/generation/stores/generation-notifications";
 import { mediaAssetsKey } from "@/domains/workspace/api/media";
 
 const generationNotificationCompletedEventType = "generation.notification.completed";
+// Fired for tasks that completed in the background without a tracked
+// notification target (e.g. agent-submitted image tasks): no notification
+// record, but resource covers/counts still need revalidating.
+const generationTaskCompletedEventType = "generation.task.completed";
 
 export const GenerationNotificationSync = () => {
 	useEffect(() => {
@@ -35,6 +40,7 @@ export const GenerationNotificationSync = () => {
 			if (!payload?.notification) return;
 
 			revalidateGenerationCaches();
+			refreshSelectedGenerationAssetDependents(payload.projectId || payload.notification.projectId);
 			const result = useGenerationNotificationStore
 				.getState()
 				.upsertNotificationFromServer(payload.notification);
@@ -42,11 +48,19 @@ export const GenerationNotificationSync = () => {
 				void showGenerationSuccessSystemNotification(result.notification);
 			}
 		};
+		const handleTaskCompleted = (event: MessageEvent<string>) => {
+			const payload = parseGenerationNotificationEvent(event.data);
+			if (!payload) return;
+			revalidateGenerationCaches();
+			refreshSelectedGenerationAssetDependents(payload.projectId);
+		};
 
 		source.addEventListener(generationNotificationCompletedEventType, handleCompleted);
+		source.addEventListener(generationTaskCompletedEventType, handleTaskCompleted);
 		return () => {
 			closed = true;
 			source.removeEventListener(generationNotificationCompletedEventType, handleCompleted);
+			source.removeEventListener(generationTaskCompletedEventType, handleTaskCompleted);
 			source.close();
 		};
 	}, []);

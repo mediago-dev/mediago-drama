@@ -1,5 +1,28 @@
-import type { DesktopFileFilter } from "@/shared/desktop/types";
+import type {
+	DesktopFileFilter,
+	DesktopUpdateAck,
+	DesktopUpdateCapability,
+	DesktopUpdateStatus,
+	BundleUpdateCapability,
+	BundleUpdateStatus,
+} from "@/shared/desktop/types";
 import { desktopRuntime } from "@/shared/desktop/runtime";
+
+const browserFallbackAck: DesktopUpdateAck = {
+	ok: false,
+	message: "当前运行环境不支持应用内更新。",
+};
+
+const missingBridgeAck: DesktopUpdateAck = {
+	ok: false,
+	message: "未检测到桌面端更新接口。",
+};
+
+const browserFallbackCapability: DesktopUpdateCapability = {
+	supportsAutoUpdate: false,
+	releasePageUrl: "https://github.com/mediago-dev/mediago-drama",
+	reason: "当前运行环境不支持应用内更新。",
+};
 
 export const copyDesktopFileToDirectory = async ({
 	directory,
@@ -110,4 +133,96 @@ export const showDesktopNotification = async (options: {
 		return false;
 	}
 	return false;
+};
+
+export const getDesktopAppVersion = async () => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return null;
+	return window.mediagoDesktop?.getAppVersion();
+};
+
+export const getDesktopUpdateCapability = async (): Promise<DesktopUpdateCapability> => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return browserFallbackCapability;
+	return (await window.mediagoDesktop?.getUpdateCapability()) ?? browserFallbackCapability;
+};
+
+export const checkDesktopUpdate = async (): Promise<DesktopUpdateAck> => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return browserFallbackAck;
+	return (await window.mediagoDesktop?.checkForUpdate()) ?? missingBridgeAck;
+};
+
+export const downloadDesktopUpdate = async (): Promise<DesktopUpdateAck> => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return browserFallbackAck;
+	return (await window.mediagoDesktop?.downloadUpdate()) ?? missingBridgeAck;
+};
+
+export const installDesktopUpdate = async (): Promise<DesktopUpdateAck> => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return browserFallbackAck;
+	return (await window.mediagoDesktop?.installUpdate()) ?? missingBridgeAck;
+};
+
+export const subscribeDesktopUpdateStatus = (
+	listener: (status: DesktopUpdateStatus) => void,
+): (() => void) => {
+	const runtime = desktopRuntime();
+	if (runtime !== "electron") return () => {};
+	return window.mediagoDesktop?.onUpdateStatus(listener) ?? (() => {});
+};
+
+// Bundle (renderer + server) hot-update actions. A hot-updated renderer may run against an older shell
+// whose preload lacks these methods, so every call is runtime-guarded.
+
+const disabledBundleCapability: BundleUpdateCapability = {
+	enabled: false,
+	currentRev: 0,
+	source: "builtin",
+	reason: "当前运行环境不支持热更新。",
+};
+
+const rendererBridge = () => (desktopRuntime() === "electron" ? window.mediagoDesktop : undefined);
+
+export const getBundleUpdateCapability = async (): Promise<BundleUpdateCapability> => {
+	const api = rendererBridge();
+	if (!api || typeof api.getBundleUpdateCapability !== "function") {
+		return disabledBundleCapability;
+	}
+	return (await api.getBundleUpdateCapability()) ?? disabledBundleCapability;
+};
+
+export const checkBundleUpdate = async (): Promise<DesktopUpdateAck> => {
+	const api = rendererBridge();
+	if (!api || typeof api.checkBundleUpdate !== "function") {
+		return { ok: false, message: "当前运行环境不支持热更新。" };
+	}
+	return (await api.checkBundleUpdate()) ?? missingBridgeAck;
+};
+
+export const applyBundleUpdate = async (): Promise<DesktopUpdateAck> => {
+	const api = rendererBridge();
+	if (!api || typeof api.applyBundleUpdate !== "function") {
+		return { ok: false, message: "当前运行环境不支持热更新。" };
+	}
+	return (await api.applyBundleUpdate()) ?? missingBridgeAck;
+};
+
+export const markRendererHealthy = async (): Promise<void> => {
+	const api = rendererBridge();
+	if (!api || typeof api.markRendererHealthy !== "function") return;
+	try {
+		await api.markRendererHealthy();
+	} catch {
+		// Health reporting must never break the renderer.
+	}
+};
+
+export const subscribeBundleUpdateStatus = (
+	listener: (status: BundleUpdateStatus) => void,
+): (() => void) => {
+	const api = rendererBridge();
+	if (!api || typeof api.onBundleUpdateStatus !== "function") return () => {};
+	return api.onBundleUpdateStatus(listener) ?? (() => {});
 };

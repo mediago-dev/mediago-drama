@@ -5,7 +5,10 @@ import { createPortal } from "react-dom";
 import useSWR from "swr";
 import type { WorkspaceProject } from "@/domains/projects/api/projects";
 import { getWorkspaceDocuments } from "@/domains/workspace/api/workspace";
-import { Button } from "@/shared/components/ui/button";
+import {
+	DialogDismissButton,
+	isolateDialogDismissPointerDown,
+} from "@/shared/components/ui/dialog-dismiss";
 import {
 	dialogContentMotion,
 	dialogOverlayMotion,
@@ -183,7 +186,7 @@ export const ProjectDocumentSearchDialog: React.FC<ProjectDocumentSearchDialogPr
 						placeholder={`搜索${scopeLabel}文档标题和正文`}
 						className="h-10 border-transparent bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
 					/>
-					<Button
+					<DialogDismissButton
 						type="button"
 						variant="ghost"
 						size="icon"
@@ -192,7 +195,7 @@ export const ProjectDocumentSearchDialog: React.FC<ProjectDocumentSearchDialogPr
 						aria-label="关闭搜索"
 					>
 						<X className="size-4" />
-					</Button>
+					</DialogDismissButton>
 				</div>
 
 				<div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2 text-xs text-muted-foreground">
@@ -233,6 +236,7 @@ export const ProjectDocumentSearchDialog: React.FC<ProjectDocumentSearchDialogPr
 										type="button"
 										key={`${result.project.id}:${result.document.id}`}
 										onMouseEnter={() => setActiveIndex(index)}
+										onPointerDown={(event) => isolateDialogDismissPointerDown(event)}
 										onClick={() => openResult(result)}
 										className={cn(
 											"flex w-full items-start gap-3 rounded-sm px-3 py-2 text-left transition-colors",

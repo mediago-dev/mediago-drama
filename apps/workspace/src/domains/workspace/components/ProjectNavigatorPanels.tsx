@@ -5,6 +5,7 @@ import {
 	Ellipsis,
 	FileText,
 	Film,
+	Download,
 	Image as ImageIcon,
 	Keyboard,
 	KeyRound,
@@ -44,6 +45,7 @@ import {
 import { useToast } from "@/hooks/useToast";
 import { projectSettingsGeneralTab, type SettingsTabValue } from "@/lib/stores/settings";
 import { openExternalUrl } from "@/shared/desktop/actions";
+import { isProEdition } from "@/shared/lib/edition";
 import { cn } from "@/shared/lib/utils";
 import { debugTabs, type DebugTabValue } from "@/pages/Debug";
 import { GenerationNotificationButton } from "./GenerationNotificationButton";
@@ -626,6 +628,9 @@ const settingsNavGroups = (activeAgentBackendId = "codex"): SettingsNavGroup[] =
 		generationItems.push({ value: "codex-relay", label: "Codex 中转", icon: Network });
 	}
 	generationItems.push(debugNavItem("instructions"), debugNavItem("prompt-packs"));
+	if (isProEdition()) {
+		generationItems.push(debugNavItem("license"));
+	}
 
 	return [
 		{
@@ -634,6 +639,7 @@ const settingsNavGroups = (activeAgentBackendId = "codex"): SettingsNavGroup[] =
 				{ value: "appearance", label: "基础设置", icon: SlidersHorizontal },
 				{ value: "shortcuts", label: "快捷键", icon: Keyboard },
 				{ value: "billing", label: "用量与账单", icon: ReceiptText },
+				{ value: "updates", label: "应用更新", icon: Download },
 			],
 		},
 		{

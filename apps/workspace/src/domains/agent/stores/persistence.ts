@@ -6,11 +6,28 @@ export type DocumentAgentRuntimeMode = "mock" | "remote";
 export type AgentRuntimeConfigField = "model" | "reasoning" | "permission";
 export type PersistedAgentRuntimeConfig = Partial<Record<AgentRuntimeConfigField, string>>;
 
+// A selection/form card the user has already decided. Persisted so the card
+// renders frozen after a transcript hydrate re-materializes the original
+// interactive payload (the in-memory chat store is rebuilt from the server on
+// every refresh/reload, discarding the local freeze).
+export interface ResolvedAgentSelection {
+	status: string;
+	summary: string;
+	title?: string;
+	// Preview of the picked option (e.g. the finalized image or style sample)
+	// so the frozen card still shows WHAT was chosen, not just its label.
+	imageUrl?: string;
+}
+
+// Cap the resolved map so it can't grow without bound across many sessions.
+const resolvedSelectionLimit = 500;
+
 interface AgentPersistenceState {
 	documentRuntimeMode: DocumentAgentRuntimeMode;
 	runtimeConfigDefaults: PersistedAgentRuntimeConfig;
 	runtimeConfigByProject: Record<string, PersistedAgentRuntimeConfig>;
 	sessionIdsByProject: Record<string, string>;
+	resolvedSelections: Record<string, ResolvedAgentSelection>;
 	getSessionId: (projectId: string) => string | null;
 	setDocumentRuntimeMode: (mode: DocumentAgentRuntimeMode) => void;
 	setRuntimeConfigValue: (
@@ -19,6 +36,7 @@ interface AgentPersistenceState {
 		value: string,
 	) => void;
 	setSessionId: (projectId: string, sessionId: string) => void;
+	markSelectionResolved: (selectionId: string, resolution: ResolvedAgentSelection) => void;
 }
 
 const agentPersistenceStoreKey = "agent-persistence.v1";
@@ -30,6 +48,7 @@ export const useAgentPersistenceStore = create<AgentPersistenceState>()(
 			runtimeConfigDefaults: {},
 			runtimeConfigByProject: {},
 			sessionIdsByProject: {},
+			resolvedSelections: {},
 			getSessionId: (projectId) => get().sessionIdsByProject[projectId] ?? null,
 			setDocumentRuntimeMode: (mode) =>
 				set((state) => {
@@ -60,6 +79,18 @@ export const useAgentPersistenceStore = create<AgentPersistenceState>()(
 					if (!projectId || !sessionId) return;
 					state.sessionIdsByProject[projectId] = sessionId;
 				}),
+			markSelectionResolved: (selectionId, resolution) =>
+				set((state) => {
+					const id = selectionId.trim();
+					if (!id) return;
+					state.resolvedSelections[id] = resolution;
+					const ids = Object.keys(state.resolvedSelections);
+					if (ids.length > resolvedSelectionLimit) {
+						for (const staleId of ids.slice(0, ids.length - resolvedSelectionLimit)) {
+							delete state.resolvedSelections[staleId];
+						}
+					}
+				}),
 		})),
 		{
 			name: agentPersistenceStoreKey,
@@ -70,6 +101,7 @@ export const useAgentPersistenceStore = create<AgentPersistenceState>()(
 				runtimeConfigDefaults: state.runtimeConfigDefaults,
 				runtimeConfigByProject: state.runtimeConfigByProject,
 				sessionIdsByProject: state.sessionIdsByProject,
+				resolvedSelections: state.resolvedSelections,
 			}),
 			merge: (persisted, current) => {
 				const state =
@@ -81,6 +113,7 @@ export const useAgentPersistenceStore = create<AgentPersistenceState>()(
 									| "runtimeConfigDefaults"
 									| "runtimeConfigByProject"
 									| "sessionIdsByProject"
+									| "resolvedSelections"
 								>
 						  >
 						| undefined) ?? {};
@@ -90,6 +123,7 @@ export const useAgentPersistenceStore = create<AgentPersistenceState>()(
 					runtimeConfigDefaults: normalizeRuntimeConfig(state.runtimeConfigDefaults),
 					runtimeConfigByProject: normalizeRuntimeConfigByProject(state.runtimeConfigByProject),
 					sessionIdsByProject: normalizeSessionIdsByProject(state.sessionIdsByProject),
+					resolvedSelections: normalizeResolvedSelections(state.resolvedSelections),
 				};
 			},
 		},
@@ -142,4 +176,24 @@ const normalizeSessionIdsByProject = (value: unknown) => {
 	}
 
 	return sessionIdsByProject;
+};
+
+const normalizeResolvedSelections = (value: unknown) => {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+	const resolvedSelections: Record<string, ResolvedAgentSelection> = {};
+	for (const [selectionId, resolution] of Object.entries(value)) {
+		if (!selectionId || !resolution || typeof resolution !== "object") continue;
+		const { status, summary, title, imageUrl } = resolution as Partial<ResolvedAgentSelection>;
+		if (typeof status === "string" && status) {
+			resolvedSelections[selectionId] = {
+				status,
+				summary: typeof summary === "string" ? summary : "",
+				...(typeof title === "string" && title ? { title } : {}),
+				...(typeof imageUrl === "string" && imageUrl ? { imageUrl } : {}),
+			};
+		}
+	}
+
+	return resolvedSelections;
 };

@@ -4,25 +4,35 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BillingSummaryResponse } from "@/domains/billing/api/billing";
+import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
 import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
-import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
+import {
+	type MediaGenerationDialogRequest,
+	useMediaGenerationStore,
+} from "@/domains/generation/stores/media-generation";
 import type { ProjectConfig } from "@/domains/projects/api/projects";
 import httpClient from "@/shared/lib/http";
 import type { ApiResponse } from "@/types/api";
 import { ProjectOverview } from "./ProjectOverview";
 
+interface MediaGenerationDialogMockProps {
+	onOpenChange: (open: boolean) => void;
+	open: boolean;
+	request: MediaGenerationDialogRequest | null;
+}
+
 const dialogMocks = vi.hoisted(() => ({
 	BatchGenerationSettingsDialog: vi.fn((_props: Record<string, unknown>): React.ReactNode => null),
-	DocumentSectionBatchGenerationRunner: vi.fn((_props: Record<string, unknown>) => null),
 	EpisodeTimelineView: vi.fn((_props: Record<string, unknown>): React.ReactNode => null),
+	MediaGenerationDialog: vi.fn((_props: MediaGenerationDialogMockProps): React.ReactNode => null),
 }));
 
 vi.mock("@/domains/generation/components/BatchGenerationSettingsDialog", () => ({
 	BatchGenerationSettingsDialog: dialogMocks.BatchGenerationSettingsDialog,
 }));
 
-vi.mock("@/domains/documents/components/DocumentSectionBatchGenerationRunner", () => ({
-	DocumentSectionBatchGenerationRunner: dialogMocks.DocumentSectionBatchGenerationRunner,
+vi.mock("@/domains/generation/components/MediaGenerationDialog", () => ({
+	MediaGenerationDialog: dialogMocks.MediaGenerationDialog,
 }));
 
 vi.mock("@/domains/episode/components/EpisodeTimelineView", () => ({
@@ -39,6 +49,7 @@ vi.mock("@/shared/lib/http", () => ({
 	default: {
 		get: vi.fn(),
 		patch: vi.fn(),
+		post: vi.fn(),
 	},
 }));
 
@@ -217,6 +228,20 @@ describe("ProjectOverview", () => {
 				</div>
 			),
 		);
+		dialogMocks.MediaGenerationDialog.mockImplementation(({ onOpenChange, open, request }) =>
+			open && request ? (
+				<GenerationModalShell
+					open
+					title={`局部${request.kind}生成弹窗`}
+					titleId={`local-${request.kind}-generation-title`}
+					onOpenChange={onOpenChange}
+				>
+					<button type="button" onClick={() => onOpenChange(false)}>
+						关闭局部生成弹窗
+					</button>
+				</GenerationModalShell>
+			) : null,
+		);
 		vi.mocked(httpClient.patch).mockImplementation(async (url, payload) => {
 			const documentId = String(url).split("/").pop() ?? "";
 			const current = useDocumentsStore.getState();
@@ -244,6 +269,25 @@ describe("ProjectOverview", () => {
 					projectId: current.projectId ?? undefined,
 					workspaceDir: current.workspaceDir,
 				},
+			});
+		});
+		vi.mocked(httpClient.post).mockImplementation(async (url, payload) => {
+			if (String(url) !== "/generation/batches") {
+				throw new Error(`unexpected POST ${String(url)}`);
+			}
+			const items = (payload as { items?: Array<{ id?: string }> }).items ?? [];
+			return apiResponse({
+				accepted: items.length,
+				failed: 0,
+				id: "generation-batch-server",
+				items: items.map((item, index) => ({
+					id: item.id ?? `item-${index + 1}`,
+					index,
+					status: "submitted",
+					taskId: `batch-task-${index + 1}`,
+				})),
+				status: "submitted",
+				total: items.length,
 			});
 		});
 		vi.mocked(httpClient.get).mockImplementation(async (url, config) => {
@@ -575,7 +619,10 @@ describe("ProjectOverview", () => {
 		cleanup();
 		vi.unstubAllGlobals();
 		useDocumentsStore.getState().prepareWorkspaceLoad("reset");
-		useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
+		useMediaGenerationStore.setState({
+			activeRequest: null,
+			optimisticStatuses: {},
+		});
 	});
 
 	it("does not render the selected generation resources overview section", async () => {
@@ -713,6 +760,42 @@ describe("ProjectOverview", () => {
 		}
 	});
 
+	it("keeps the resource list open after its local image generation dialog closes", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+					<ProjectOverview />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		await screen.findByText("文档 2 项 · 图片 1 张");
+		fireEvent.click(screen.getByRole("button", { name: "角色 图片和音频" }));
+
+		const resourceDialog = await screen.findByRole("dialog", { name: "角色 · 图片和音频" });
+		fireEvent.click(within(resourceDialog).getAllByRole("button", { name: "生成图片" })[0]);
+
+		const generationDialog = await screen.findByRole("dialog", { name: "局部image生成弹窗" });
+		expect(resourceDialog).toBeInTheDocument();
+		expect(dialogMocks.MediaGenerationDialog.mock.calls.at(-1)?.[0].request).toMatchObject({
+			kind: "image",
+			projectId: "project-a",
+			statusResourceKey: "character:characters:section_lintong",
+			section: expect.objectContaining({
+				blockId: "section_lintong",
+				documentId: "characters",
+			}),
+		});
+		expect(useMediaGenerationStore.getState().activeRequest).toBeNull();
+
+		fireEvent.click(within(generationDialog).getByRole("button", { name: "关闭局部生成弹窗" }));
+
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog", { name: "局部image生成弹窗" })).toBeNull();
+		});
+		expect(screen.getByRole("dialog", { name: "角色 · 图片和音频" })).toBeInTheDocument();
+	});
+
 	it("hides audio actions for non-character document resources", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
@@ -778,7 +861,7 @@ describe("ProjectOverview", () => {
 		expect(pause).toHaveBeenCalled();
 	});
 
-	it("opens audio selection from document-derived resource cards", async () => {
+	it("opens audio selection as a locally owned child dialog", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
 				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
@@ -794,7 +877,7 @@ describe("ProjectOverview", () => {
 		fireEvent.click(within(dialog).getAllByRole("button", { name: "选择音频" })[0]);
 
 		await waitFor(() => {
-			expect(useMediaGenerationStore.getState().activeRequest).toMatchObject({
+			expect(dialogMocks.MediaGenerationDialog.mock.calls.at(-1)?.[0].request).toMatchObject({
 				kind: "audio",
 				projectId: "project-a",
 				selectedAssetResourceType: "character",
@@ -809,6 +892,8 @@ describe("ProjectOverview", () => {
 				}),
 			});
 		});
+		expect(useMediaGenerationStore.getState().activeRequest).toBeNull();
+		expect(dialog).toBeInTheDocument();
 	});
 
 	it("shows in-progress generation status in resource dialogs", async () => {
@@ -883,48 +968,41 @@ describe("ProjectOverview", () => {
 		expect(within(dialog).queryByText("已完成")).not.toBeInTheDocument();
 		expect(within(dialog).getAllByText("生成中")).toHaveLength(2);
 
-		await waitFor(() => {
-			const props = dialogMocks.DocumentSectionBatchGenerationRunner.mock.calls.at(-1)?.[0] as
-				| { jobs?: unknown[] }
-				| undefined;
-			expect(props?.jobs).toHaveLength(2);
+		await waitFor(() => expect(httpClient.post).toHaveBeenCalledTimes(1));
+		const [url, payload] = vi.mocked(httpClient.post).mock.calls[0];
+		expect(url).toBe("/generation/batches");
+		expect(payload).toEqual({
+			conversationTitle: "222 · 图片",
+			kind: "image",
+			projectId: "project-a",
+			scopeId: "agent",
+			sessionId: "project-a-image",
+			items: [
+				expect.objectContaining({
+					id: "character:characters:section_lintong",
+					request: expect.objectContaining({
+						assetTitle: "林书彤",
+						capabilityId: "character",
+						documentContext: {
+							documentId: "characters",
+							projectId: "project-a",
+							sectionId: "section_lintong",
+						},
+						kind: "image",
+						params: { n: 2, ratio: "16:9" },
+						referenceAssetIds: ["batch-ref"],
+						routeId: "image-route",
+					}),
+				}),
+				expect.objectContaining({
+					id: "character:characters:section_xulele",
+					request: expect.objectContaining({
+						assetTitle: "徐乐乐",
+						documentContext: expect.objectContaining({ sectionId: "section_xulele" }),
+					}),
+				}),
+			],
 		});
-
-		const props = dialogMocks.DocumentSectionBatchGenerationRunner.mock.calls.at(-1)?.[0] as {
-			jobs: Array<Record<string, unknown>>;
-		};
-		expect(props.jobs).toEqual([
-			expect.objectContaining({
-				batchId: expect.stringMatching(/^batch:/),
-				kind: "image",
-				projectId: "project-a",
-				section: expect.objectContaining({
-					blockId: "section_lintong",
-					documentId: "characters",
-					headingText: "林书彤",
-				}),
-				generationSettings: expect.objectContaining({
-					params: { n: 2, ratio: "16:9" },
-					referenceAssetIds: ["batch-ref"],
-					route: expect.objectContaining({ id: "image-route" }),
-				}),
-			}),
-			expect.objectContaining({
-				batchId: expect.stringMatching(/^batch:/),
-				kind: "image",
-				projectId: "project-a",
-				section: expect.objectContaining({
-					blockId: "section_xulele",
-					documentId: "characters",
-					headingText: "徐乐乐",
-				}),
-				generationSettings: expect.objectContaining({
-					params: { n: 2, ratio: "16:9" },
-					referenceAssetIds: ["batch-ref"],
-					route: expect.objectContaining({ id: "image-route" }),
-				}),
-			}),
-		]);
 		expect(useMediaGenerationStore.getState().activeRequest).toBeNull();
 
 		await waitFor(() => {
@@ -978,7 +1056,7 @@ describe("ProjectOverview", () => {
 
 		fireEvent.click(within(dialog).getAllByRole("button", { name: "生成视频" })[0]);
 		await waitFor(() => {
-			expect(useMediaGenerationStore.getState().activeRequest).toMatchObject({
+			expect(dialogMocks.MediaGenerationDialog.mock.calls.at(-1)?.[0].request).toMatchObject({
 				kind: "video",
 				projectId: "project-a",
 				resolveLatestSection: false,
@@ -993,7 +1071,22 @@ describe("ProjectOverview", () => {
 				}),
 			});
 		});
+		expect(useMediaGenerationStore.getState().activeRequest).toBeNull();
 
+		const generationDialog = await screen.findByRole("dialog", {
+			name: "局部video生成弹窗",
+		});
+		expect(dialog).toHaveAttribute("data-state", "open");
+		const generationDialogClose = within(generationDialog).getByRole("button", {
+			name: "关闭弹窗",
+		});
+		fireEvent.pointerDown(generationDialogClose, { button: 0 });
+		fireEvent.click(generationDialogClose);
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog", { name: "局部video生成弹窗" })).toBeNull();
+		});
+		expect(screen.getByRole("dialog", { name: "视频生成 · 第一章分镜脚本" })).toBe(dialog);
+		expect(dialog).toHaveAttribute("data-state", "open");
 		fireEvent.keyDown(document, { key: "Escape" });
 		await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 		fireEvent.click(screen.getByRole("button", { name: "第二章分镜脚本 视频生成" }));
@@ -1098,48 +1191,36 @@ describe("ProjectOverview", () => {
 		expect(within(dialog).queryByText("已完成")).not.toBeInTheDocument();
 		expect(within(dialog).getAllByText("生成中")).toHaveLength(2);
 
-		await waitFor(() => {
-			const props = dialogMocks.DocumentSectionBatchGenerationRunner.mock.calls.at(-1)?.[0] as
-				| { jobs?: unknown[] }
-				| undefined;
-			expect(props?.jobs).toHaveLength(2);
+		await waitFor(() => expect(httpClient.post).toHaveBeenCalledTimes(1));
+		const [url, payload] = vi.mocked(httpClient.post).mock.calls[0];
+		expect(url).toBe("/generation/batches");
+		expect(payload).toEqual({
+			conversationTitle: "222 · 视频",
+			kind: "video",
+			projectId: "project-a",
+			scopeId: "agent",
+			sessionId: "project-a-video",
+			items: [
+				expect.objectContaining({
+					id: "storyboard-a:section_reel_01",
+					request: expect.objectContaining({
+						assetTitle: "第 01 组 总时长：00:08",
+						capabilityId: "storyboard",
+						documentContext: expect.objectContaining({ sectionId: "section_reel_01" }),
+						kind: "video",
+						params: { n: 2, ratio: "16:9" },
+						routeId: "video-route",
+					}),
+				}),
+				expect.objectContaining({
+					id: "storyboard-a:section_reel_02",
+					request: expect.objectContaining({
+						assetTitle: "第 02 组 总时长：00:06",
+						documentContext: expect.objectContaining({ sectionId: "section_reel_02" }),
+					}),
+				}),
+			],
 		});
-
-		const props = dialogMocks.DocumentSectionBatchGenerationRunner.mock.calls.at(-1)?.[0] as {
-			jobs: Array<Record<string, unknown>>;
-		};
-		expect(props.jobs).toEqual([
-			expect.objectContaining({
-				batchId: expect.stringMatching(/^batch:/),
-				kind: "video",
-				projectId: "project-a",
-				resolveLatestSection: false,
-				section: expect.objectContaining({
-					blockId: "section_reel_01",
-					documentId: "storyboard-a",
-					headingText: "第 01 组 总时长：00:08",
-				}),
-				generationSettings: expect.objectContaining({
-					params: { n: 2, ratio: "16:9" },
-					route: expect.objectContaining({ id: "video-route" }),
-				}),
-			}),
-			expect.objectContaining({
-				batchId: expect.stringMatching(/^batch:/),
-				kind: "video",
-				projectId: "project-a",
-				resolveLatestSection: false,
-				section: expect.objectContaining({
-					blockId: "section_reel_02",
-					documentId: "storyboard-a",
-					headingText: "第 02 组 总时长：00:06",
-				}),
-				generationSettings: expect.objectContaining({
-					params: { n: 2, ratio: "16:9" },
-					route: expect.objectContaining({ id: "video-route" }),
-				}),
-			}),
-		]);
 		expect(useMediaGenerationStore.getState().activeRequest).toBeNull();
 
 		await waitFor(() => {

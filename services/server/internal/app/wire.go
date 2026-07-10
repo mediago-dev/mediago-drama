@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"path/filepath"
@@ -22,12 +24,14 @@ import (
 	servicecapability "github.com/mediago-dev/mediago-drama/services/server/internal/service/capability"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
+	servicelicense "github.com/mediago-dev/mediago-drama/services/server/internal/service/license"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	serviceprojectasset "github.com/mediago-dev/mediago-drama/services/server/internal/service/projectasset"
 	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
 	servicepromptlibrary "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptlibrary"
 	servicepromptpack "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 	serviceprompttemplates "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompttemplates"
+	serviceselection "github.com/mediago-dev/mediago-drama/services/server/internal/service/selection"
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 	serviceworkspaceevent "github.com/mediago-dev/mediago-drama/services/server/internal/service/workspaceevent"
@@ -61,6 +65,36 @@ func newAPIHandler(config Config) *apiHandler {
 			backendService.ActiveArgv,
 		)
 	}
+	// 会话回顾数据源：续接对话的 ACP 会话无法复用（换模型/上游会话失效）时，
+	// runner 用它取本会话聊天记录和已确认的选择决定，回放进重建会话的 prompt。
+	buildSessionRecap := func(ctx context.Context, request agentRunRequest) string {
+		if ctx.Err() != nil {
+			return ""
+		}
+		chat, err := workspaceState.LoadAgentChat(request.ProjectID, request.SessionID)
+		if err != nil {
+			return ""
+		}
+		decisionLines := []string{}
+		if selections := workspaceState.StateService().Selections; selections != nil {
+			if decided, err := selections.ListDecidedBySession(request.ProjectID, request.SessionID, 12); err == nil {
+				for _, record := range decided {
+					if line := serviceselection.FormatDecisionLine(record); line != "" {
+						decisionLines = append(decisionLines, line)
+					}
+				}
+			}
+		}
+		return serviceacp.BuildACPSessionRecap(chat.Messages, request.Prompt, decisionLines)
+	}
+	if recapAware, ok := runner.(interface {
+		SetSessionRecapBuilder(serviceacp.SessionRecapBuilder)
+	}); ok {
+		recapAware.SetSessionRecapBuilder(buildSessionRecap)
+	} else {
+		// 断言失败必须可见：否则回顾功能无声关闭，回归会伪装成模型行为问题。
+		slog.Warn("agent runner does not accept a session recap builder; session rebuilds will lose context")
+	}
 	documentRunner := config.documentOperationRunner
 	if documentRunner == nil {
 		documentRunner = mockDocumentOperationRunner{}
@@ -75,8 +109,13 @@ func newAPIHandler(config Config) *apiHandler {
 	}
 
 	settingsRepos, settingsReposErr := repository.OpenSettingsRepositories(settingsDBPath)
+	var settingsMigrationErr error
 	if settingsReposErr == nil && config.SettingsDBPath == "" {
-		migrateDefaultSettingsDB(settingsRepos.DB, workspaceState.DatabasePath(), settingsDBPath)
+		settingsMigrationErr = migrateDefaultSettingsDB(
+			settingsRepos.DB,
+			workspaceState.DatabasePath(),
+			settingsDBPath,
+		)
 	}
 	workspaceRepos, workspaceReposErr := repository.OpenWorkspaceRepositories(workspaceState.DatabasePath())
 	settings := servicesettings.NewSettingsWithStores(
@@ -107,10 +146,19 @@ func newAPIHandler(config Config) *apiHandler {
 				if err != nil {
 					return serviceacp.ProcessConfig{}, err
 				}
-				return serviceacp.ProcessConfig{
+				processConfig := serviceacp.ProcessConfig{
 					ConfigDir: config.ConfigDir,
-					Env:       config.Env,
-				}, nil
+					Env:       mergeACPProcessEnv(config.Env, backendService.ActiveEnv()),
+				}
+				if strings.TrimSpace(request.PreferredModel) == "" {
+					check, checkErr := settings.CheckCodexRelay(ctx, servicesettings.CodexRelayCheckRequest{})
+					if checkErr == nil && len(check.Models) > 0 {
+						processConfig.RestrictModelValues = true
+						processConfig.AllowedModelValues = append([]string(nil), check.Models...)
+						processConfig.DiscoveredModelValues = append([]string(nil), check.Models...)
+					}
+				}
+				return processConfig, nil
 			}
 			if request.AgentID != "opencode" {
 				return serviceacp.ProcessConfig{}, nil
@@ -152,15 +200,18 @@ func newAPIHandler(config Config) *apiHandler {
 	workspaceState.StateService().Documents.SetGeneratedAssetCounter(generationTasks)
 	promptTemplates := serviceprompttemplates.NewServiceFromRepository(settingsRepos.Instructions, settingsReposErr)
 	serviceprompt.SetPromptTemplateStore(promptTemplates)
-	promptPack := servicepromptpack.NewServiceFromRepositoryWithPackFilesDir(
+	licenseService, licenseClient := servicelicense.NewFromEnvironment(filepath.Join(filepath.Dir(settingsDBPath), "license"))
+	promptPack := servicepromptpack.NewServiceFromRepositoryWithPackFilesDirAndLicense(
 		settingsRepos.Packs,
 		settingsRepos.PromptLibrary,
 		settingsReposErr,
 		filepath.Join(filepath.Dir(settingsDBPath), "packs"),
+		licenseService,
 	)
 	serviceskill.SetPromptPackStore(promptPack)
 	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
 	promptLibrary := servicepromptlibrary.NewServiceFromPromptPack(promptPack, settingsReposErr)
+	generationService.SetStylePromptLibrary(promptLibrary)
 	capabilityRegistry := corecapability.Default()
 	capabilityService := servicecapability.NewService(capabilityRegistry, generationService.RouteConfigured)
 	billingPrices := config.BillingPrices
@@ -169,11 +220,18 @@ func newAPIHandler(config Config) *apiHandler {
 	}
 	billingService := servicebilling.NewService(workspaceRepos.Billing, billingPrices, capabilityRegistry)
 	projectAssets := serviceprojectasset.NewProjectAssetsFromRepository(workspaceRepos.ProjectAssets, mediaDir, workspaceState.Dir(), workspaceRepos.Workspace, workspaceReposErr)
+	selectionService := serviceselection.NewService(workspaceRepos.Selections, workspaceReposErr)
 	events := appevents.NewBroker(workspaceState.AppendAgentEvent)
 	workspaceEvents := serviceworkspaceevent.NewBroker()
 	agentSessions := appagent.NewSessionService(workspaceState)
 
 	handler := &apiHandler{
+		initErr: errors.Join(
+			workspaceState.InitErr(),
+			settingsReposErr,
+			settingsMigrationErr,
+			workspaceReposErr,
+		),
 		workspaceState:   workspaceState,
 		events:           events,
 		workspaceEvents:  workspaceEvents,
@@ -188,11 +246,13 @@ func newAPIHandler(config Config) *apiHandler {
 		billing:          billingService,
 		backendService:   backendService,
 		generation:       generationService,
+		selection:        selectionService,
 		jianyingDraft:    jianyingDraft,
 		mediaAssets:      mediaAssets,
 		previewStreamer:  previewStreamer,
 		projectAssets:    projectAssets,
 		promptPack:       promptPack,
+		licenseClient:    licenseClient,
 		promptTemplates:  promptTemplates,
 		promptLibrary:    promptLibrary,
 		skillRegistry:    skillRegistry,
@@ -231,6 +291,20 @@ func newAPIHandler(config Config) *apiHandler {
 		},
 	)
 	return handler
+}
+
+func mergeACPProcessEnv(base map[string]string, overrides map[string]string) map[string]string {
+	merged := make(map[string]string, len(base)+len(overrides))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range overrides {
+		merged[key] = value
+	}
+	if strings.TrimSpace(merged["CODEX_API_KEY"]) != "" || strings.TrimSpace(merged["OPENAI_API_KEY"]) != "" {
+		merged["DEFAULT_AUTH_REQUEST"] = `{"methodId":"api-key"}`
+	}
+	return merged
 }
 
 func defaultAgentBridgeURL(host string, port int) string {

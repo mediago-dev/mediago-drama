@@ -19,8 +19,12 @@ import (
 const (
 	generationNotificationCompletedEventType = "generation.notification.completed"
 	generationNotificationConnectedEventType = "generation.notification.connected"
-	generationNotificationBufferSize         = 128
-	generationNotificationListLimit          = 100
+	// generationTaskCompletedEventType announces a task that finished in the
+	// background WITHOUT a tracked notification target, so clients can still
+	// revalidate resource covers/counts. It carries no notification record.
+	generationTaskCompletedEventType = "generation.task.completed"
+	generationNotificationBufferSize = 128
+	generationNotificationListLimit  = 100
 )
 
 // GenerationNotificationService persists and publishes generation notifications.
@@ -123,6 +127,40 @@ func (service *GenerationNotificationService) SyncTask(task GenerationTaskRecord
 		ProjectID:    record.ProjectID,
 		Notification: record,
 		CreatedAt:    record.UpdatedAt,
+	})
+}
+
+// AnnounceTaskCompletion tells connected clients that a task just reached a
+// terminal completed state without a tracked notification target (e.g. an
+// agent-submitted image task): without this, a task finishing after its agent
+// run ended leaves resource covers and counts stale. It is driven by the task
+// service's status-transition listener, so it fires exactly once per real
+// not-completed→completed write — retried tasks announce again, and poll
+// re-upserts of an already-completed task never reach here. Tracked tasks are
+// skipped: SyncTask publishes the richer notification event for them.
+func (service *GenerationNotificationService) AnnounceTaskCompletion(task GenerationTaskRecord) {
+	if service == nil || service.initErr != nil || !isCompletedGenerationTaskStatus(task.Status) {
+		return
+	}
+	projectID := GenerationProjectIDForRequest(task.ProjectID, "")
+	if projectID == "" {
+		return
+	}
+	service.mu.RLock()
+	_, lookupErr := service.repo.GetGenerationNotificationByTaskID(task.ID)
+	service.mu.RUnlock()
+	if lookupErr == nil {
+		return
+	}
+	if !errors.Is(lookupErr, repository.ErrRecordNotFound) {
+		slog.Warn("task completion announce lookup failed", "task_id", task.ID, "error", lookupErr)
+		return
+	}
+	service.broker.Publish(GenerationNotificationEvent{
+		ID:        "task-completed-" + task.ID,
+		Type:      generationTaskCompletedEventType,
+		ProjectID: projectID,
+		CreatedAt: firstNonEmpty(task.UpdatedAt, timestamp.NowRFC3339Nano()),
 	})
 }
 

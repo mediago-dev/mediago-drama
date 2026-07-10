@@ -8,6 +8,7 @@ The stable ACP agent output contract is:
 dist/<agent-id>/
   agent.json
   <agent binary>
+  codex/             # Codex only: pinned native Codex distribution
 ```
 
 `agent.json` stores relative launch metadata. The server joins it with the
@@ -29,14 +30,21 @@ task prepare:all
 task prepare:clean
 ```
 
-Supported agents and pinned versions are defined in `agents.json`. The Go
-prepare command under `cmd/prepare-agent` downloads the matching GitHub release
-asset for the current OS and architecture, extracts the native binary, and
-writes the manifest consumed by `services/server`.
+Supported agents and pinned versions are defined in `agents.json`. OpenCode is
+prepared from its matching GitHub release asset. Codex is prepared from the
+official `@agentclientprotocol/codex-acp` npm package: the command compiles its
+published JavaScript entry point into a standalone executable with the pinned
+Bun version, then installs the matching pinned `@openai/codex` platform package
+beside it. Node/npm are build-time requirements only; packaged applications do
+not require a user-installed Node.js runtime.
 
-If `dist/<agent-id>/agent.json` already matches the pinned version, binary name,
-args, and executable file, prepare reuses the cached artifact and skips the
-download.
+The Codex manifest records `codexBin` as a relative companion path. The server
+resolves it inside the agent directory and supplies it to the adapter through
+`CODEX_PATH`.
+
+If `dist/<agent-id>/agent.json` already matches the pinned versions, binary
+names, args, and required executable files, prepare reuses the cached artifact
+and skips the download.
 
 Vendored tools such as `ffmpeg`, `ffprobe`, and generation CLIs are defined in
 `tools.json` and prepared under:

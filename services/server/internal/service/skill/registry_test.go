@@ -36,6 +36,27 @@ func TestParseRawSkillFrontmatterAcceptsLegacyHintDocumentCategory(t *testing.T)
 	}
 }
 
+func TestParseRawSkillFrontmatterAcceptsUnicodeName(t *testing.T) {
+	item, err := ParseRaw("产品图", testSkillRaw("产品图", "产品图生成指导", "正文"))
+	if err != nil {
+		t.Fatalf("ParseRaw() error = %v", err)
+	}
+	if item.Name != "产品图" {
+		t.Fatalf("skill name = %q, want 产品图", item.Name)
+	}
+}
+
+func TestParseRawSkillFrontmatterRejectsUnsafeUnicodeNames(t *testing.T) {
+	for _, name := range []string{"产品/图", `产品\图`, "-产品图", "产品.图"} {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseRaw(name, testSkillRaw(name, "产品图生成指导", "正文"))
+			if !errors.Is(err, ErrInvalidSkill) {
+				t.Fatalf("ParseRaw() error = %v, want ErrInvalidSkill", err)
+			}
+		})
+	}
+}
+
 func TestRegistryListsAndGetsSkillsFromPackStore(t *testing.T) {
 	registry := NewRegistryWithStore(newFakeSkillPackStore())
 

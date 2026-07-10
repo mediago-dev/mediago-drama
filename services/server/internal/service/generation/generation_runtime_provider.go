@@ -66,9 +66,14 @@ func (workflow *GenerationService) newGenerationProviderForStoredTask(
 func (workflow *GenerationService) requireGenerationRouteConfigured(route coregeneration.ModelRoute) error {
 	if route.Provider == coregeneration.ProviderMediago &&
 		strings.TrimSpace(workflow.mediagoBaseURL) != "" &&
-		workflow.generationRouteCredentialsConfigured(route) &&
-		!workflow.mediagoRouteModelAvailable(context.Background(), route) {
-		return fmt.Errorf("MediaGo 聚合平台当前未启用模型 %s", route.Model)
+		workflow.generationRouteCredentialsConfigured(route) {
+		// Only a successfully fetched catalog may veto the route: a fetch failure
+		// means the enablement state is unknown, and failing open lets the real
+		// generation request surface the actual error instead of a misleading
+		// "model disabled" message.
+		if models, err := workflow.mediagoAvailableModels(context.Background()); err == nil && !mediagoModelSetHasRoute(models, route) {
+			return fmt.Errorf("MediaGo 聚合平台当前未启用模型 %s", route.Model)
+		}
 	}
 	return RequireGenerationRouteConfigured(
 		route,
@@ -100,10 +105,17 @@ func (workflow *GenerationService) generationRouteConfiguredWithMediagoModels(
 		return false
 	}
 	if route.Provider == coregeneration.ProviderMediago {
-		if hasMediagoModels {
-			return mediagoModelSetHasRoute(mediagoModels, route)
+		if !hasMediagoModels {
+			models, err := workflow.mediagoAvailableModels(context.Background())
+			if err != nil {
+				// Enablement is unknown when the catalog cannot be fetched; fail
+				// open so a transient catalog outage does not report enabled
+				// models as unconfigured.
+				return true
+			}
+			mediagoModels = models
 		}
-		return workflow.mediagoRouteModelAvailable(context.Background(), route)
+		return mediagoModelSetHasRoute(mediagoModels, route)
 	}
 	return true
 }

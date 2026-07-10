@@ -1,9 +1,77 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import httpClient from "@/shared/lib/http";
 import {
 	agentGenerationConversationScopeId,
 	projectGenerationConversation,
 	projectGenerationConversationId,
+	sendGenerationBatch,
 } from "@/domains/generation/api/generation";
+
+vi.mock("@/shared/lib/http", () => ({
+	default: {
+		post: vi.fn(),
+	},
+}));
+
+beforeEach(() => {
+	vi.clearAllMocks();
+});
+
+describe("sendGenerationBatch", () => {
+	it("posts one ordered batch request without rewriting child requests", async () => {
+		vi.mocked(httpClient.post).mockResolvedValue({
+			code: 0,
+			data: {
+				id: "generation-batch-1",
+				status: "submitted",
+				total: 2,
+				accepted: 2,
+				failed: 0,
+				items: [],
+			},
+			message: "ok",
+			success: true,
+		});
+		const request = {
+			projectId: "project-a",
+			scopeId: "project-a",
+			items: [
+				{
+					id: "scene-1",
+					request: {
+						kind: "image" as const,
+						routeId: "route-image",
+						modelId: "model-image",
+						model: "image-model",
+						prompt: "first",
+						referenceUrls: [],
+						referenceAssetIds: [],
+						params: { ratio: "16:9" },
+					},
+				},
+				{
+					id: "scene-2",
+					request: {
+						kind: "image" as const,
+						routeId: "route-image",
+						modelId: "model-image",
+						model: "image-model",
+						prompt: "second",
+						referenceUrls: [],
+						referenceAssetIds: [],
+						params: { ratio: "16:9" },
+					},
+				},
+			],
+		};
+
+		await sendGenerationBatch(request);
+
+		expect(httpClient.post).toHaveBeenCalledWith("/generation/batches", request, {
+			timeout: 1_000_000,
+		});
+	});
+});
 
 describe("projectGenerationConversationId", () => {
 	it("joins trimmed project id and kind", () => {

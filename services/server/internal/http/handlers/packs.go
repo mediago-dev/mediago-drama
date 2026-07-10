@@ -65,13 +65,14 @@ func (handler PromptPacks) HandleExportPack(context *gin.Context) {
 
 // HandleImportPack godoc
 // @Summary 导入用户提示词包
-// @Description 上传并安装一个 MediaGo .mgpack 提示词包。
+// @Description 上传并安装一个 MediaGo .mgpack 或 .mgpackpro 提示词包。
 // @Tags Prompt Packs
 // @Accept multipart/form-data
 // @Produce json
-// @Param file formData file true "Prompt pack .mgpack file"
+// @Param file formData file true "Prompt pack .mgpack or .mgpackpro file"
 // @Success 200 {object} SwaggerEnvelope
 // @Failure 400 {object} SwaggerEnvelope
+// @Failure 403 {object} SwaggerEnvelope
 // @Failure 500 {object} SwaggerEnvelope
 // @Router /api/v1/packs/import [post]
 func (handler PromptPacks) HandleImportPack(context *gin.Context) {
@@ -215,6 +216,10 @@ func writePromptPackError(context *gin.Context, err error) {
 	switch {
 	case errors.Is(err, promptpack.ErrInvalidPack):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+	case errors.Is(err, promptpack.ErrPackLicenseRequired):
+		httpresponse.ErrorFromStatus(context, http.StatusForbidden, err)
+	case errors.Is(err, promptpack.ErrPackExportRestricted):
+		httpresponse.ErrorFromStatus(context, http.StatusForbidden, err)
 	case errors.Is(err, promptpack.ErrPackReadonly):
 		httpresponse.ErrorFromStatus(context, http.StatusForbidden, err)
 	case errors.Is(err, promptpack.ErrPackNotFound), errors.Is(err, promptpack.ErrEntryNotFound):

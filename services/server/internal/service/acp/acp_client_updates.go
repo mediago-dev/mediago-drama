@@ -135,12 +135,22 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 		}
 		message := FormatACPToolCall(FirstNonEmpty(title, string(update.ToolCallUpdate.ToolCallId)), status)
 		runtimeText := ACPRuntimeLogText(*acpPayload)
-		friendlyError := friendlyACPProviderErrorMessage(runtimeText)
+		isRuntimeLog := IsACPToolRuntimeLog(*acpPayload)
+		// Only reinterpret tool output as a provider runtime error when the tool call
+		// itself failed or the payload is a process runtime log. A successful MCP tool
+		// result can legitimately carry provider-error text as data — e.g. a generation
+		// task record whose historical `error` field still reads "余额不足" after the user
+		// recharged and the images returned — and scanning that would wrongly end the run
+		// with an API-key balance alert.
+		friendlyError := ""
+		if status == "failed" || isRuntimeLog {
+			friendlyError = friendlyACPProviderErrorMessage(runtimeText)
+		}
 		if friendlyError != "" {
 			client.setRuntimeErrorMessage(friendlyError)
 			message = friendlyError
 		}
-		if IsACPToolRuntimeLog(*acpPayload) {
+		if isRuntimeLog {
 			acpPayload.Kind = ACPRuntimeLogKind
 			message = FirstNonEmpty(friendlyError, TruncateAgentMessage(runtimeText), "运行日志")
 		}

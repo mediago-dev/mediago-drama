@@ -169,6 +169,21 @@ type AgentEvent struct {
 	Documents         []mediamcp.WorkspaceDocument          `json:"documents,omitempty"`
 	ProjectBrief      *ProjectBrief                         `json:"projectBrief,omitempty"`
 	A2UI              *AgentA2UIPayload                     `json:"a2ui,omitempty"`
+	Form              *AgentFormPayload                     `json:"form,omitempty"`
+	// Metadata carries display data projected onto the chat message record,
+	// e.g. attachment cards and mention/skill chips for user messages.
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+// AgentFormPayload describes a native parameter-form card pushed to the run
+// timeline; Fields carries the selection service's form field specs verbatim.
+type AgentFormPayload struct {
+	SelectionID string          `json:"selectionId"`
+	ProjectID   string          `json:"projectId,omitempty"`
+	Title       string          `json:"title"`
+	Prompt      string          `json:"prompt,omitempty"`
+	SubmitLabel string          `json:"submitLabel,omitempty"`
+	Fields      json.RawMessage `json:"fields"`
 }
 
 // AgentA2UIPayload describes A2UI messages returned by an agent.
@@ -295,21 +310,29 @@ type AgentReference struct {
 
 // AgentMessageRequest starts an agent run.
 type AgentMessageRequest struct {
-	SessionID     string                     `json:"sessionId"`
-	ProjectID     string                     `json:"projectId,omitempty"`
-	Prompt        string                     `json:"prompt"`
-	AgentTag      string                     `json:"-"`
-	SystemPrompt  string                     `json:"-"`
-	AnchorText    string                     `json:"anchorText,omitempty"`
-	CommentID     string                     `json:"commentId,omitempty"`
-	Comments      []mediamcp.DocumentComment `json:"comments,omitempty"`
-	Document      *AgentDocumentContext      `json:"document,omitempty"`
-	Documents     []AgentDocumentContext     `json:"documents,omitempty"`
-	References    []AgentReference           `json:"references,omitempty"`
-	SelectionText string                     `json:"selectionText,omitempty"`
-	Model         AgentACPConfigSelection    `json:"model,omitempty"`
-	Reasoning     AgentACPConfigSelection    `json:"reasoning,omitempty"`
-	Permission    AgentACPConfigSelection    `json:"permission,omitempty"`
+	SessionID string `json:"sessionId"`
+	ProjectID string `json:"projectId,omitempty"`
+	Prompt    string `json:"prompt"`
+	// DisplayPrompt is the user-facing text shown in the chat transcript; the
+	// machine Prompt may carry extra instructions (reference tokens, skill
+	// loading directives) that must not render in the UI.
+	DisplayPrompt string `json:"displayPrompt,omitempty"`
+	// DisplayMetadata carries structured rendering data for the transcript
+	// bubble (attachment cards, mention/skill chips). Stored verbatim on the
+	// projected user message.
+	DisplayMetadata map[string]any             `json:"displayMetadata,omitempty"`
+	AgentTag        string                     `json:"-"`
+	SystemPrompt    string                     `json:"-"`
+	AnchorText      string                     `json:"anchorText,omitempty"`
+	CommentID       string                     `json:"commentId,omitempty"`
+	Comments        []mediamcp.DocumentComment `json:"comments,omitempty"`
+	Document        *AgentDocumentContext      `json:"document,omitempty"`
+	Documents       []AgentDocumentContext     `json:"documents,omitempty"`
+	References      []AgentReference           `json:"references,omitempty"`
+	SelectionText   string                     `json:"selectionText,omitempty"`
+	Model           AgentACPConfigSelection    `json:"model,omitempty"`
+	Reasoning       AgentACPConfigSelection    `json:"reasoning,omitempty"`
+	Permission      AgentACPConfigSelection    `json:"permission,omitempty"`
 }
 
 // AgentRunRequest is the normalized runtime request passed to an agent runner.

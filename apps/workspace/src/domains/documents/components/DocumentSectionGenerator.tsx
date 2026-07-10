@@ -219,6 +219,11 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				materialLibraryImportOpen={materialLibraryImportOpen}
 				notificationTarget={notificationTarget}
 				projectId={normalizedProjectId || undefined}
+				// Section history is keyed by (project, document, section), so pull tasks
+				// project-wide and let the section scope filter narrow them. This surfaces
+				// assets the agent generated in its own conversation, matching the
+				// "已生成 N 张" count on the resource card.
+				projectHistory={Boolean(normalizedProjectId)}
 				promptPlaceholder={sectionGenerationWorkspaceCopy[generationKind].promptPlaceholder}
 				extraReferenceAssetIds={(prompt) => getMentionReferenceInputs(prompt).assetIds}
 				extraReferenceBindings={(prompt) => getMentionReferenceInputs(prompt).bindings}

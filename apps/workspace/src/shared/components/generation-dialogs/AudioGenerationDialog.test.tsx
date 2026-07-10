@@ -188,6 +188,19 @@ describe("AudioGenerationDialog", () => {
 		expect(onOpenChange).toHaveBeenCalledWith(false);
 	});
 
+	it("isolates cancel and confirm pointerdown from lower dialogs", async () => {
+		renderAudioDialog();
+		await screen.findByRole("dialog", { name: "选择音频素材 · 旁白" });
+		const documentPointerDown = vi.fn();
+		document.addEventListener("pointerdown", documentPointerDown);
+
+		fireEvent.pointerDown(screen.getByRole("button", { name: "取消" }), { button: 0 });
+		fireEvent.pointerDown(screen.getByRole("button", { name: "确定" }), { button: 0 });
+		document.removeEventListener("pointerdown", documentPointerDown);
+
+		expect(documentPointerDown).not.toHaveBeenCalled();
+	});
+
 	it("switches to user audio assets from the material library button", async () => {
 		const onToggleAsset = vi.fn();
 		renderAudioDialog({ onToggleAsset });

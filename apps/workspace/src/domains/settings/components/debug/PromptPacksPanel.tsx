@@ -13,7 +13,7 @@ import {
 	Upload,
 } from "lucide-react";
 import type React from "react";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import {
 	type PromptPack,
@@ -72,7 +72,6 @@ export const PromptPacksPanel: React.FC = () => {
 	const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
 	const importInputRef = useRef<HTMLInputElement | null>(null);
 	const startWindowDrag = useDesktopWindowDrag();
-	const currentPackId = useMemo(() => currentPromptPackId(packs), [packs]);
 
 	const refreshPromptData = async () => {
 		await Promise.all([mutatePacks(), mutate(isPromptPackContentCacheKey)]);
@@ -111,13 +110,15 @@ export const PromptPacksPanel: React.FC = () => {
 		}
 	};
 
-	const togglePack = async (pack: PromptPack, current: boolean) => {
-		if (current) return;
+	const togglePack = async (pack: PromptPack) => {
+		if (pack.source === "default") return; // default pack is always enabled
 		setBusyPackId(pack.id);
 		try {
-			const updated = await setPromptPackEnabled(pack.id, true);
+			const updated = await setPromptPackEnabled(pack.id, !pack.enabled);
 			await refreshPromptData();
-			toast.success("已设为当前提示词包", { description: updated.name });
+			toast.success(updated.enabled ? "已启用提示词包" : "已停用提示词包", {
+				description: updated.name,
+			});
 		} catch (error) {
 			toast.error("更新失败", { description: errorMessage(error) });
 		} finally {
@@ -197,7 +198,7 @@ export const PromptPacksPanel: React.FC = () => {
 						<input
 							ref={importInputRef}
 							type="file"
-							accept=".mgpack"
+							accept=".mgpack,.mgpackpro"
 							className="sr-only"
 							aria-label="导入提示词包文件"
 							onChange={(event) => void importPackFile(event)}
@@ -240,23 +241,19 @@ export const PromptPacksPanel: React.FC = () => {
 										) : packs.length === 0 ? (
 											<span className="text-xs text-muted-foreground">暂无提示词包。</span>
 										) : (
-											packs.map((pack) => {
-												const current = pack.id === currentPackId;
-												return (
-													<PromptPackPill
-														key={pack.id}
-														busy={busyPackId === pack.id}
-														current={current}
-														exporting={exportingPackId === pack.id}
-														pack={pack}
-														resetting={resettingPackId === pack.id}
-														onExport={() => void exportPack(pack)}
-														onRemove={() => confirmRemovePack(pack)}
-														onReset={() => confirmResetPack(pack)}
-														onToggle={() => void togglePack(pack, current)}
-													/>
-												);
-											})
+											packs.map((pack) => (
+												<PromptPackPill
+													key={pack.id}
+													busy={busyPackId === pack.id}
+													exporting={exportingPackId === pack.id}
+													pack={pack}
+													resetting={resettingPackId === pack.id}
+													onExport={() => void exportPack(pack)}
+													onRemove={() => confirmRemovePack(pack)}
+													onReset={() => confirmResetPack(pack)}
+													onToggle={() => void togglePack(pack)}
+												/>
+											))
 										)}
 									</div>
 								</div>
@@ -303,7 +300,6 @@ export const PromptPacksPanel: React.FC = () => {
 
 const PromptPackPill: React.FC<{
 	busy: boolean;
-	current: boolean;
 	exporting: boolean;
 	onExport: () => void;
 	onRemove: () => void;
@@ -311,82 +307,88 @@ const PromptPackPill: React.FC<{
 	onToggle: () => void;
 	pack: PromptPack;
 	resetting: boolean;
-}> = ({ busy, current, exporting, onExport, onRemove, onReset, onToggle, pack, resetting }) => (
-	<div
-		className={cn(
-			"grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border bg-ide-toolbar px-2 py-1.5",
-			!current && "opacity-70",
-		)}
-	>
-		<div className="min-w-0">
-			<div className="flex min-w-0 items-center gap-1.5">
-				<span className="max-w-44 truncate text-xs font-medium text-foreground">{pack.name}</span>
-				<Badge variant={current ? "secondary" : "outline"} className="shrink-0">
-					{current ? "当前" : "未启用"}
-				</Badge>
-				<Badge variant="outline" className="shrink-0">
-					{sourceLabel(pack.source)}
-				</Badge>
+}> = ({ busy, exporting, onExport, onRemove, onReset, onToggle, pack, resetting }) => {
+	const isDefault = pack.source === "default";
+	const enabled = pack.enabled;
+	return (
+		<div
+			className={cn(
+				"grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border bg-ide-toolbar px-2 py-1.5",
+				!enabled && "opacity-70",
+			)}
+		>
+			<div className="min-w-0">
+				<div className="flex min-w-0 items-center gap-1.5">
+					<span className="max-w-44 truncate text-xs font-medium text-foreground">{pack.name}</span>
+					<Badge variant={enabled ? "secondary" : "outline"} className="shrink-0">
+						{enabled ? "已启用" : "已停用"}
+					</Badge>
+					<Badge variant="outline" className="shrink-0">
+						{sourceLabel(pack.source)}
+					</Badge>
+				</div>
+				<p className="mt-0.5 truncate text-2xs text-muted-foreground">
+					{pack.id} · v{pack.version}
+				</p>
 			</div>
-			<p className="mt-0.5 truncate text-2xs text-muted-foreground">
-				{pack.id} · v{pack.version}
-			</p>
-		</div>
-		<TooltipProvider delayDuration={180}>
-			<div className="flex shrink-0 items-center gap-1 rounded-md bg-background/50 p-0.5">
-				<PromptPackActionButton
-					ariaLabel="恢复提示词包默认"
-					disabled={busy || resetting}
-					onClick={onReset}
-					tooltip={resetting ? "恢复中" : "恢复默认"}
-				>
-					{resetting ? (
-						<Loader2 className="size-4 animate-spin" />
-					) : (
-						<RotateCcw className="size-4" />
-					)}
-				</PromptPackActionButton>
-				<PromptPackActionButton
-					ariaLabel={current ? "当前提示词包" : "设为当前提示词包"}
-					disabled={busy || resetting || current}
-					onClick={onToggle}
-					tooltip={current ? "当前使用" : "设为当前"}
-				>
-					{busy ? (
-						<Loader2 className="size-4 animate-spin" />
-					) : current ? (
-						<CheckCircle2 className="size-4" />
-					) : (
-						<Power className="size-4" />
-					)}
-				</PromptPackActionButton>
-				<PromptPackActionButton
-					ariaLabel="导出提示词包"
-					disabled={exporting || resetting}
-					onClick={onExport}
-					tooltip={exporting ? "导出中" : "导出"}
-				>
-					{exporting ? (
-						<Loader2 className="size-4 animate-spin" />
-					) : (
-						<Download className="size-4" />
-					)}
-				</PromptPackActionButton>
-				{pack.source === "imported" ? (
+			<TooltipProvider delayDuration={180}>
+				<div className="flex shrink-0 items-center gap-1 rounded-md bg-background/50 p-0.5">
 					<PromptPackActionButton
-						ariaLabel="卸载提示词包"
-						className="hover:bg-error-surface hover:text-error-foreground"
+						ariaLabel="恢复提示词包默认"
 						disabled={busy || resetting}
-						onClick={onRemove}
-						tooltip="卸载"
+						onClick={onReset}
+						tooltip={resetting ? "恢复中" : "恢复默认"}
 					>
-						<Trash2 className="size-4" />
+						{resetting ? (
+							<Loader2 className="size-4 animate-spin" />
+						) : (
+							<RotateCcw className="size-4" />
+						)}
 					</PromptPackActionButton>
-				) : null}
-			</div>
-		</TooltipProvider>
-	</div>
-);
+					<PromptPackActionButton
+						ariaLabel={enabled ? "停用提示词包" : "启用提示词包"}
+						disabled={busy || resetting || isDefault}
+						onClick={onToggle}
+						tooltip={isDefault ? "默认包始终启用" : enabled ? "停用" : "启用"}
+					>
+						{busy ? (
+							<Loader2 className="size-4 animate-spin" />
+						) : enabled ? (
+							<CheckCircle2 className="size-4" />
+						) : (
+							<Power className="size-4" />
+						)}
+					</PromptPackActionButton>
+					{pack.source !== "pro" ? (
+						<PromptPackActionButton
+							ariaLabel="导出提示词包"
+							disabled={exporting || resetting}
+							onClick={onExport}
+							tooltip={exporting ? "导出中" : "导出"}
+						>
+							{exporting ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<Download className="size-4" />
+							)}
+						</PromptPackActionButton>
+					) : null}
+					{pack.source === "imported" || pack.source === "pro" ? (
+						<PromptPackActionButton
+							ariaLabel="卸载提示词包"
+							className="hover:bg-error-surface hover:text-error-foreground"
+							disabled={busy || resetting}
+							onClick={onRemove}
+							tooltip="卸载"
+						>
+							<Trash2 className="size-4" />
+						</PromptPackActionButton>
+					) : null}
+				</div>
+			</TooltipProvider>
+		</div>
+	);
+};
 
 const PromptPackActionButton: React.FC<{
 	ariaLabel: string;
@@ -421,29 +423,9 @@ const sourceLabel = (source: PromptPack["source"]) => {
 			return "默认包";
 		case "imported":
 			return "已导入";
+		case "pro":
+			return "Pro 已授权";
 	}
-};
-
-const currentPromptPackId = (packs: PromptPack[]) => {
-	const enabled = packs.filter((pack) => pack.enabled);
-	if (enabled.length === 0) return undefined;
-	return [...enabled].sort(compareCurrentPromptPacks)[0]?.id;
-};
-
-const compareCurrentPromptPacks = (left: PromptPack, right: PromptPack) => {
-	if (left.source !== right.source) {
-		if (left.source === "imported") return -1;
-		if (right.source === "imported") return 1;
-	}
-	const leftUpdated = promptPackTimestamp(left);
-	const rightUpdated = promptPackTimestamp(right);
-	if (leftUpdated !== rightUpdated) return rightUpdated - leftUpdated;
-	return right.id.localeCompare(left.id);
-};
-
-const promptPackTimestamp = (pack: PromptPack) => {
-	const parsed = Date.parse(pack.updatedAt || pack.createdAt || "");
-	return Number.isNaN(parsed) ? 0 : parsed;
 };
 
 const downloadBlob = (blob: Blob, fileName: string) => {

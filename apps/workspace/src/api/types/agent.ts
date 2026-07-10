@@ -40,6 +40,44 @@ export interface AgentDocumentToolApprovalConfig {
 	saveSourceMaterial?: boolean;
 }
 
+export interface AgentSelectionOption {
+	id: string;
+	label: string;
+	imageUrl?: string;
+	description?: string;
+}
+
+export interface AgentSelectionDecision {
+	optionId?: string;
+	customText?: string;
+	cancelled?: boolean;
+	values?: Record<string, unknown>;
+}
+
+export interface AgentSelection {
+	id: string;
+	projectId?: string;
+	sessionId?: string;
+	runId?: string;
+	kind?: string;
+	title: string;
+	prompt?: string;
+	options: AgentSelectionOption[];
+	allowCustom: boolean;
+	status: string;
+	decision?: AgentSelectionDecision;
+	createdAt: string;
+	decidedAt?: string;
+	expiresAt?: string;
+}
+
+export interface AgentSelectionDecisionRequest {
+	optionId?: string;
+	customText?: string;
+	cancelled?: boolean;
+	values?: Record<string, unknown>;
+}
+
 export interface AgentBackend {
 	id: string;
 	name: string;
@@ -187,12 +225,48 @@ export interface AgentEvent {
 	documents?: WorkspaceDocument[];
 	projectBrief?: ProjectBrief;
 	a2ui?: AgentA2UIPayload;
+	form?: AgentFormPayload;
 }
 
 export interface AgentA2UIPayload {
 	version?: string;
 	surfaceId?: string;
 	messages: unknown;
+}
+
+export interface AgentFormFieldOption {
+	value: string;
+	label: string;
+	description?: string;
+}
+
+export interface AgentFormField {
+	id: string;
+	label: string;
+	type:
+		| "select"
+		| "toggle"
+		| "number"
+		| "text"
+		| "generation_params"
+		| "images"
+		| "prompt_optimization";
+	description?: string;
+	options?: AgentFormFieldOption[];
+	default?: unknown;
+	min?: number;
+	max?: number;
+	unit?: string;
+	required?: boolean;
+}
+
+export interface AgentFormPayload {
+	selectionId: string;
+	projectId?: string;
+	title: string;
+	prompt?: string;
+	submitLabel?: string;
+	fields: AgentFormField[];
 }
 
 export interface AgentACPEvent {
@@ -303,6 +377,8 @@ export interface AgentMessageRequest {
 	sessionId: string;
 	projectId?: string;
 	prompt: string;
+	displayPrompt?: string;
+	displayMetadata?: Record<string, unknown>;
 	anchorText?: string;
 	commentId?: string;
 	comments?: DocumentComment[];
@@ -319,6 +395,7 @@ export interface AgentFinalResponse {
 	message: string;
 	proposedDocument: AgentDocumentProposal;
 	a2ui?: AgentA2UIPayload;
+	form?: AgentFormPayload;
 }
 
 export interface AgentMessageResponse {

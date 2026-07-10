@@ -145,9 +145,20 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	bundleRev, err := parseNonNegativeEnvInt("MEDIAGO_BUNDLE_REV")
+	if err != nil {
+		return err
+	}
+	schemaVersion, err := parseNonNegativeEnvInt("MEDIAGO_SCHEMA_VERSION")
+	if err != nil {
+		return err
+	}
 	handler := server.NewHandlerWithConfig(staticFS, server.Config{
 		Host:                  config.Host,
 		Port:                  config.Port,
+		BundleRev:             bundleRev,
+		SchemaVersion:         schemaVersion,
+		InstanceToken:         strings.TrimSpace(os.Getenv("MEDIAGO_INSTANCE_TOKEN")),
 		WorkspaceDir:          workspaceDir,
 		ACPCommand:            config.ACPCommand,
 		AgentID:               config.Agent.ID,
@@ -365,6 +376,18 @@ func parseServerPort(value string) (int, error) {
 		return 0, fmt.Errorf("port must be between 1 and 65535")
 	}
 	return port, nil
+}
+
+func parseNonNegativeEnvInt(name string) (int, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return 0, fmt.Errorf("invalid %s: expected a non-negative integer", name)
+	}
+	return parsed, nil
 }
 
 func displayAgentID(id string) string {

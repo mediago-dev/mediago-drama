@@ -47,7 +47,29 @@ editable: true
 - 生成角色、场景、道具等业务文档时，缺少视觉风格不得中断任务或先询问用户；
   先生成风格中性的基础设定。只有用户明确要求先选择风格时，才把风格选择作为前置步骤。
 - 编辑剧本、角色、场景、道具、分镜或小说资料等类型文档前，先调用 MCP `load_skill` 装载对应 Skill。
-  Skill 正文只提供业务写作提示词；
+  这些文档写作 Skill 正文只提供业务写作提示词；
   核心文档规则由系统 prompt 注入，不依赖 Skill，也不随用户编辑 Skill 而变化。
 - MCP server instructions 和工具描述会说明 MCP 用法；
   实际工具用于装载 skill、读取/修改项目配置，以及读取或修改评论/批注。
+
+## 生成媒体（图片/视频/音频）
+
+- 生成能力由独立的 generation MCP 提供（工具名 `list_generation_models`、`generate_media`、`generate_media_batch`、
+  `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task`、
+  `select_generation_asset`）。
+- 生成、修改或重绘图片前，必须先调用 MCP `load_skill` 装载 `image-generation`；
+  图片专属的参数确认、参考图、选片与文档回写流程以该 Skill 为准。
+- 生成视频或音频时，先调用 `list_generation_models` 获取可用模型目录，
+  据此选择 `routeId` 与参数；不要臆造 `routeId`、`model` 或参数取值。
+- 目录中 `configured` 为 false 表示对应供应商未配置：提示用户去设置里配置，不要发起生成。
+- 调用 `generate_media` 提交生成（`prompt` 必填）。返回的 `id` 即任务 `taskId`；
+  当 `status` 为 submitting/submitted 时任务在后台运行，用该 id 调 `poll_generation_task` 直到完成，
+  再从结果资产中取用生成图/视频。
+- 多个独立目标使用同一套已确认设置时，调用一次 `generate_media_batch`；每个子项返回独立 `taskId`
+  或错误，可用 `list_generation_tasks(batchId: ...)` 汇总查询后继续按 taskId 轮询。
+- 需要把生成结果写入文档时，用文档写工具以 Markdown 图片/资源引用插入到目标章节。
+- `ask_user_selection` 返回 timeout 时，用 `await_user_selection` 对同一 `selectionId` 继续等待
+  （每轮 ≤90 秒，循环 3-5 轮），不要重新弹卡；仍无结果或返回 cancelled 时不要擅自生成，
+  说明情况并结束回合或改为在对话中询问。
+- 轮询生成任务或等待用户选择期间保持安静，不要每轮都输出状态独白；有实质进展再说话。
+- 最终回复只给结果：定稿资产名、图片地址、落库位置和下一步建议；不要复述中间过程和重试细节。

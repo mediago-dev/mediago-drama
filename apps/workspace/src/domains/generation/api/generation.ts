@@ -3,6 +3,7 @@ import { apiURL } from "@/shared/lib/api-base";
 import { ManagedEventSource } from "@/shared/lib/sse/managed-event-source";
 import type {
 	Capabilities,
+	GenerationBatchResponse as GeneratedGenerationBatchResponse,
 	CreateGenerationConversationRequest as GeneratedCreateGenerationConversationRequest,
 	GenerationAsset as GeneratedGenerationAsset,
 	GenerationConversationRecord,
@@ -68,6 +69,18 @@ export type GenerationMessageRequest = Omit<GeneratedGenerationMessageRequest, "
 	conversationId?: string;
 	scopeId?: string;
 };
+export interface GenerationBatchRequest {
+	kind?: GenerationKind;
+	sessionId?: string;
+	conversationTitle?: string;
+	projectId?: string;
+	scopeId?: string;
+	items: Array<{
+		id?: string;
+		request: GenerationMessageRequest;
+	}>;
+}
+export type GenerationBatchResponse = GeneratedGenerationBatchResponse;
 export type GenerationPromptOptimizationRequest = GeneratedGenerationPromptOptimizationRequest;
 export type ImportGenerationMediaAssetsRequest = Omit<
 	GeneratedImportGenerationMediaAssetsRequest,
@@ -158,6 +171,7 @@ export interface StreamGenerationTextHandlers {
 export const generationModelsKey = "/generation/models";
 export const generationPreferencesKey = "/generation/sessions";
 export const generationTasksKey = "/generation/tasks";
+export const generationBatchesKey = "/generation/batches";
 export const generationConversationsKey = "/generation/sessions";
 export const generationNotificationsKey = "/generation/notifications";
 export const selectedGenerationAssetsKey = "/generation/selected-assets";
@@ -508,6 +522,13 @@ export const sendGenerationMessage = async (request: GenerationMessageRequest) =
 			timeout: generationRequestTimeoutMs,
 		},
 	);
+	return response.data;
+};
+
+export const sendGenerationBatch = async (request: GenerationBatchRequest) => {
+	const response = await httpClient.post<GenerationBatchResponse>(generationBatchesKey, request, {
+		timeout: generationRequestTimeoutMs,
+	});
 	return response.data;
 };
 

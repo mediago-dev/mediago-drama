@@ -19,6 +19,10 @@ func TestDocumentMCPServersValidateProjectID(t *testing.T) {
 		t.Fatalf("writing fake executable: %v", err)
 	}
 	withProcessExecutable(t, filepath.Join(filepath.Dir(fakeExecutable), "mediago-server"))
+	// Pin the working directory: executable discovery probes cwd-ancestor bin/
+	// directories, and a real bin/mediago-generation-mcp in the repo root would
+	// otherwise leak a second stdio server into this test.
+	withWorkingDir(t, t.TempDir())
 
 	servers := DocumentMCPServers(root, "project-safe_1")
 	if len(servers) != 1 || servers[0].Stdio == nil {
@@ -71,8 +75,8 @@ func TestDocumentMCPServersValidateProjectID(t *testing.T) {
 		BridgeURL:   "http://127.0.0.1:8080/api/v1/internal/mcp",
 		BridgeToken: "bridge-token",
 	})
-	if len(httpServers) != 1 || httpServers[0].Http == nil {
-		t.Fatalf("servers = %#v, want one http server when bridge is available", httpServers)
+	if len(httpServers) != 2 || httpServers[0].Http == nil {
+		t.Fatalf("servers = %#v, want document + generation http servers when bridge is available", httpServers)
 	}
 	if httpServers[0].Http.Name != MediaGoDramaMCPServerName {
 		t.Fatalf("http server name = %q, want %q", httpServers[0].Http.Name, MediaGoDramaMCPServerName)
@@ -96,6 +100,111 @@ func TestDocumentMCPServersValidateProjectID(t *testing.T) {
 		headers[mediamcp.BridgeURLHeader] == "" ||
 		headers[mediamcp.BridgeTokenHeader] != "bridge-token" {
 		t.Fatalf("http headers = %#v, want auth and bridge headers", headers)
+	}
+}
+
+func TestGenerationMCPServerMountedOverHTTP(t *testing.T) {
+	root := t.TempDir()
+
+	resolution := ResolveDocumentMCPServersForRun(root, AgentRunRequest{
+		ProjectID:   "project-safe_1",
+		SessionID:   "session-1",
+		RunID:       "run-1",
+		AgentTag:    "MediaGo Drama Agent",
+		BridgeURL:   "http://127.0.0.1:8080/api/v1/internal/mcp",
+		BridgeToken: "bridge-token",
+	})
+	if len(resolution.Servers) != 2 {
+		t.Fatalf("servers = %#v, want document + generation http servers", resolution.Servers)
+	}
+	generation := resolution.Servers[1]
+	if generation.Http == nil {
+		t.Fatalf("generation server = %#v, want http transport", generation)
+	}
+	if generation.Http.Name != MediaGoDramaGenerationMCPServerName {
+		t.Fatalf("generation server name = %q, want %q", generation.Http.Name, MediaGoDramaGenerationMCPServerName)
+	}
+	if generation.Http.Name == resolution.Servers[0].Http.Name {
+		t.Fatalf("generation server name must differ from document server name %q", generation.Http.Name)
+	}
+	if !strings.Contains(generation.Http.Url, mediamcp.GenerationHTTPPath) ||
+		!strings.Contains(generation.Http.Url, "projectId=project-safe_1") {
+		t.Fatalf("generation url = %q, want generation MCP route scoped to project", generation.Http.Url)
+	}
+	if strings.Contains(generation.Http.Url, "bridge-token") {
+		t.Fatalf("generation url = %q, should not leak bridge token", generation.Http.Url)
+	}
+	headers := map[string]string{}
+	for _, item := range generation.Http.Headers {
+		headers[item.Name] = item.Value
+	}
+	if headers["Authorization"] != "Bearer bridge-token" ||
+		headers[mediamcp.BridgeTokenHeader] != "bridge-token" {
+		t.Fatalf("generation headers = %#v, want bridge auth headers", headers)
+	}
+	if resolution.GenerationTransport != "http" || resolution.GenerationURL == "" {
+		t.Fatalf("resolution = %#v, want http generation diagnostics", resolution)
+	}
+}
+
+func TestGenerationMCPServerMountedOverStdio(t *testing.T) {
+	root := t.TempDir()
+	binDir := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("creating bin dir: %v", err)
+	}
+	for _, name := range []string{"mediago-document-mcp", "mediago-generation-mcp"} {
+		if err := os.WriteFile(filepath.Join(binDir, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatalf("writing fake %s: %v", name, err)
+		}
+	}
+	withProcessExecutable(t, filepath.Join(binDir, "mediago-server"))
+
+	resolution := ResolveDocumentMCPServersForRun(root, AgentRunRequest{
+		ProjectID:             "project-safe_1",
+		DocumentMCPConfigPath: "/tmp/mediago-server.yaml",
+	})
+	if len(resolution.Servers) != 2 {
+		t.Fatalf("servers = %#v, want document + generation stdio servers", resolution.Servers)
+	}
+	generation := resolution.Servers[1]
+	if generation.Stdio == nil {
+		t.Fatalf("generation server = %#v, want stdio transport", generation)
+	}
+	if generation.Stdio.Name != MediaGoDramaGenerationMCPServerName {
+		t.Fatalf("generation server name = %q, want %q", generation.Stdio.Name, MediaGoDramaGenerationMCPServerName)
+	}
+	if filepath.Base(generation.Stdio.Command) != "mediago-generation-mcp" {
+		t.Fatalf("generation command = %q, want mediago-generation-mcp binary", generation.Stdio.Command)
+	}
+	args := strings.Join(generation.Stdio.Args, " ")
+	if !strings.Contains(args, "--config /tmp/mediago-server.yaml") ||
+		!strings.Contains(args, "--project project-safe_1") {
+		t.Fatalf("generation args = %q, want config and project arguments", args)
+	}
+	if resolution.GenerationTransport != "stdio" || resolution.GenerationExecutable == "" {
+		t.Fatalf("resolution = %#v, want stdio generation diagnostics", resolution)
+	}
+}
+
+func TestGenerationMCPServerSkippedWhenBinaryMissing(t *testing.T) {
+	root := t.TempDir()
+	binDir := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("creating bin dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "mediago-document-mcp"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("writing fake document MCP: %v", err)
+	}
+	withProcessExecutable(t, filepath.Join(binDir, "mediago-server"))
+	withWorkingDir(t, t.TempDir())
+
+	resolution := ResolveDocumentMCPServersForRun(root, AgentRunRequest{ProjectID: "project-safe_1"})
+	if len(resolution.Servers) != 1 || resolution.Servers[0].Stdio == nil {
+		t.Fatalf("servers = %#v, want only the document server when generation binary is missing", resolution.Servers)
+	}
+	if resolution.GenerationTransport != "" {
+		t.Fatalf("resolution = %#v, want no generation mount", resolution)
 	}
 }
 

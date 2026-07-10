@@ -21,15 +21,88 @@ export const errorMessage = (error: unknown, fallback: string) => {
 	return fallback;
 };
 
+export const isMarkdownAsset = (asset: Pick<ProjectAsset, "filename" | "mimeType">) => {
+	const mimeType = asset.mimeType.trim().toLowerCase();
+	if (mimeType === "text/markdown" || mimeType === "text/x-markdown") return true;
+	return /\.(?:md|markdown)$/i.test(asset.filename.trim());
+};
+
+// The raw `kind` enum ("text"/"image"/…) is an internal value; surface a
+// localized label in the Chinese UI instead.
+export const assetKindLabel = (kind: string): string => {
+	switch (kind) {
+		case "image":
+			return "图片";
+		case "video":
+			return "视频";
+		case "audio":
+			return "音频";
+		case "text":
+			return "文本";
+		default:
+			return "文件";
+	}
+};
+
+// Managed documents are stored with a leading YAML frontmatter block
+// (--- id/title/category/version ---) that is noise for a reader. Split it off
+// so the preview can hide it behind a toggle and show just the body. Only a
+// block anchored at the very start with a closing fence counts.
+export const splitFrontmatter = (text: string): { body: string; frontmatter: string | null } => {
+	const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
+	if (!match) return { body: text, frontmatter: null };
+	return { body: text.slice(match[0].length), frontmatter: match[1] };
+};
+
 export const fetchTextAsset = async (url: string) => {
 	if (!url.trim()) throw new Error("素材地址缺失。");
-	const response = await fetch(url);
+	const response = await fetchTextPreviewResponse(url);
 	if (!response.ok) throw new Error(`文本读取失败：${response.status}`);
-	const text = await response.text();
+	const bytes = new Uint8Array(await response.arrayBuffer());
+	const text = decodeTextPreview(bytes);
 	if (isHTMLResponse(response, text)) {
 		throw new Error("文本读取失败：素材接口返回了前端页面。");
 	}
-	return text;
+	return truncateTextPreview(text);
+};
+
+// Text assets are stored verbatim, so a Chinese .txt saved in GBK/GB18030 (the
+// dominant legacy encoding) renders as mojibake when forced through UTF-8.
+// Response.text() always assumes UTF-8, so sniff the bytes and pick a decoder.
+const decodeTextPreview = (bytes: Uint8Array) =>
+	new TextDecoder(detectTextEncoding(bytes)).decode(bytes);
+
+const detectTextEncoding = (bytes: Uint8Array): string => {
+	if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) return "utf-16le";
+	if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) return "utf-16be";
+	// A UTF-8 BOM is valid UTF-8, so it falls through and TextDecoder strips it.
+	return isValidUtf8(bytes) ? "utf-8" : "gb18030";
+};
+
+const isValidUtf8 = (bytes: Uint8Array): boolean => {
+	try {
+		// stream: true tolerates a multibyte sequence sliced off by the ranged
+		// preview fetch; any genuinely invalid byte still throws, which points to
+		// a legacy (non-UTF-8) encoding.
+		new TextDecoder("utf-8", { fatal: true }).decode(bytes, { stream: true });
+		return true;
+	} catch {
+		return false;
+	}
+};
+
+// 512 KiB always decodes to at least textPreviewMaxChars characters (UTF-8 and
+// GB18030 both spend at most 4 bytes per character), so a ranged fetch never
+// truncates below the preview cap.
+const textPreviewMaxBytes = 512 * 1024;
+
+const fetchTextPreviewResponse = async (url: string) => {
+	const ranged = await fetch(url, {
+		headers: { Range: `bytes=0-${textPreviewMaxBytes - 1}` },
+	});
+	// A zero-length body satisfies no byte range, so empty files come back 416.
+	if (ranged.status === 416) return fetch(url);
+	return ranged;
 };
 
 export const projectAssetContentPath = (projectId: string, assetId: string) =>
@@ -61,10 +134,10 @@ export const formatBytes = (bytes: number) => {
 	return `${value.toFixed(precision)} ${units[unitIndex]}`;
 };
 
-export const truncateTextPreview = (text: string) => {
-	const maxLength = 80_000;
-	return text.length <= maxLength ? text : `${text.slice(0, maxLength)}\n\n...`;
-};
+export const textPreviewMaxChars = 80_000;
+
+export const truncateTextPreview = (text: string) =>
+	text.length <= textPreviewMaxChars ? text : `${text.slice(0, textPreviewMaxChars)}\n\n...`;
 
 const isHTMLResponse = (response: Response, text: string) => {
 	const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";

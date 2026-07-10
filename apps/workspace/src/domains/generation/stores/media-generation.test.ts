@@ -14,11 +14,14 @@ const section: MarkdownSectionContext = {
 };
 
 afterEach(() => {
-	useMediaGenerationStore.setState({ activeRequest: null, optimisticStatuses: {} });
+	useMediaGenerationStore.setState({
+		activeRequest: null,
+		optimisticStatuses: {},
+	});
 });
 
 describe("useMediaGenerationStore active request", () => {
-	it("opens and closes a single active request", () => {
+	it("keeps one global notification request and replaces it on the next open", () => {
 		const { open, close } = useMediaGenerationStore.getState();
 		open({ kind: "image", projectId: "project-a", section });
 		expect(useMediaGenerationStore.getState().activeRequest).toMatchObject({

@@ -7,7 +7,6 @@ import {
 	Image as ImageIcon,
 	Loader2,
 	Plus,
-	WandSparkles,
 	X,
 } from "lucide-react";
 import type React from "react";
@@ -112,7 +111,7 @@ export const GlobalToolboxButton: React.FC<GlobalToolboxButtonProps> = ({
 							)}
 							onClick={() => setOpen((current) => !current)}
 						>
-							<WandSparkles className="size-4" />
+							<History className="size-4" />
 						</button>
 					</TooltipTrigger>
 					<TooltipContent side="top">生成历史</TooltipContent>

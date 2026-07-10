@@ -22,16 +22,23 @@ import {
 } from "@/domains/agent/components/AgentSkillSlashMenu";
 import type { AgentReference } from "@/domains/agent/api/agent";
 import {
+	displaySegmentsToText,
+	normalizeDisplaySegments,
+} from "@/domains/agent/lib/display-segments";
+import type { AgentDisplaySegment } from "@/domains/agent/stores";
+import {
 	createMentionSuggestion,
 	fallbackMentionCategory,
 	mentionDisplayText,
 	referenceFromMentionNode,
 	renderDataAttribute,
+	stringAttribute,
 } from "@/domains/documents/lib/mention-suggestion";
 import { cn } from "@/shared/lib/utils";
 import "@/styles/tiptap-mention.css";
 
 export interface AgentComposerValue {
+	displaySegments: AgentDisplaySegment[];
 	displayText: string;
 	references: AgentReference[];
 	text: string;
@@ -181,15 +188,19 @@ const AgentMention = Mention.extend({
 }).configure({
 	deleteTriggerWithBackspace: true,
 	HTMLAttributes: {
-		class: "agent-reference-mention",
+		// `reference-mention-chip` carries the shared chip visuals (base +
+		// category colors); the agent-specific class scopes composer-only styles.
+		class: "agent-reference-mention reference-mention-chip",
 	},
+	// The node's attribute definitions already emit the data-* attributes onto
+	// the rendered span; only the visual structure is customized here.
 	renderHTML: ({ node, options }) => [
 		"span",
 		options.HTMLAttributes,
-		mentionDisplayText(node.attrs.title ?? node.attrs.label ?? node.attrs.id),
+		["span", { class: "agent-reference-mention-icon", "aria-hidden": "true" }],
+		["span", { class: "agent-reference-mention-title" }, mentionChipTitle(node.attrs)],
 	],
-	renderText: ({ node }) =>
-		mentionDisplayText(node.attrs.title ?? node.attrs.label ?? node.attrs.id),
+	renderText: ({ node }) => mentionTextFromAttrs(node.attrs),
 	suggestion: createMentionSuggestion() as Omit<SuggestionOptions, "editor">,
 });
 
@@ -228,12 +239,8 @@ export const AgentComposer = forwardRef<AgentComposerHandle, AgentComposerProps>
 		}, [skillSlashState]);
 
 		const emitChange = useCallback((nextEditor: Editor) => {
-			const value = readComposerValue(nextEditor);
-			const nextIsReferenceOnly = value.references.length > 0 && value.text.trim().length === 0;
-			const nextState = {
-				hasText: value.text.trim().length > 0,
-				referenceCount: value.references.length,
-			};
+			const nextState = readComposerState(nextEditor);
+			const nextIsReferenceOnly = nextState.referenceCount > 0 && !nextState.hasText;
 			setIsReferenceOnly((current) =>
 				current === nextIsReferenceOnly ? current : nextIsReferenceOnly,
 			);
@@ -455,7 +462,9 @@ export const AgentComposer = forwardRef<AgentComposerHandle, AgentComposerProps>
 					editor?.chain().focus().run();
 				},
 				getValue: () =>
-					editor ? readComposerValue(editor) : { displayText: "", references: [], text: "" },
+					editor
+						? readComposerValue(editor)
+						: { displaySegments: [], displayText: "", references: [], text: "" },
 				seed: (seed) => {
 					if (!editor) return false;
 					editor.commands.clearContent();
@@ -667,29 +676,42 @@ const readComposerValue = (editor: Editor): AgentComposerValue => {
 	const references: AgentReference[] = [];
 	const seenReferences = new Set<string>();
 	const blockTexts: string[] = [];
-	const displayBlockTexts: string[] = [];
+	const displaySegments: AgentDisplaySegment[] = [];
+	let blockIndex = 0;
 
 	editor.state.doc.forEach((node) => {
 		const parts: string[] = [];
-		const displayParts: string[] = [];
+		if (blockIndex > 0) displaySegments.push({ type: "text", text: "\n" });
+		blockIndex += 1;
 		node.descendants((child) => {
 			if (child.isText) {
 				parts.push(child.text ?? "");
-				displayParts.push(child.text ?? "");
+				displaySegments.push({ type: "text", text: child.text ?? "" });
 				return false;
 			}
 
 			if (child.type.name === "hardBreak") {
 				parts.push("\n");
-				displayParts.push("\n");
+				displaySegments.push({ type: "text", text: "\n" });
 				return false;
 			}
 
 			if (child.type.name === "mention") {
-				const displayText = mentionTextFromAttrs(child.attrs);
 				const reference = referenceFromMentionNode(child);
 				parts.push(" ");
-				if (displayText) displayParts.push(displayText);
+				const title = mentionChipTitle(child.attrs);
+				if (title) {
+					displaySegments.push({
+						type: "mention",
+						title,
+						...(stringAttribute(child.attrs.category)
+							? { category: stringAttribute(child.attrs.category) }
+							: {}),
+						...(stringAttribute(child.attrs.kind)
+							? { kind: stringAttribute(child.attrs.kind) }
+							: {}),
+					});
+				}
 				if (reference) {
 					const key = `${reference.documentId}:${reference.blockId ?? ""}`;
 					if (!seenReferences.has(key)) {
@@ -704,7 +726,7 @@ const readComposerValue = (editor: Editor): AgentComposerValue => {
 				const skill = agentSkillFromAttrs(child.attrs);
 				if (skill) {
 					parts.push(agentSkillInstructionText(skill));
-					displayParts.push(agentSkillDisplayLabel(child.attrs));
+					displaySegments.push({ type: "skill", name: skill.name, title: skill.title });
 				}
 				return false;
 			}
@@ -712,18 +734,51 @@ const readComposerValue = (editor: Editor): AgentComposerValue => {
 			return true;
 		});
 		blockTexts.push(parts.join(""));
-		displayBlockTexts.push(displayParts.join(""));
 	});
 
+	const segments = normalizeDisplaySegments(displaySegments);
 	return {
-		displayText: displayBlockTexts.join("\n"),
+		displaySegments: segments,
+		displayText: displaySegmentsToText(segments),
 		references,
 		text: blockTexts.join("\n"),
 	};
 };
 
+// Lightweight per-keystroke walk for emitChange: mirrors readComposerValue's
+// hasText/reference semantics (mentions and hard breaks contribute only
+// whitespace to the machine text; a skill always contributes instruction text)
+// without building the segment and text accumulators.
+const readComposerState = (editor: Editor): AgentComposerState => {
+	let hasText = false;
+	const seenReferences = new Set<string>();
+
+	editor.state.doc.descendants((child) => {
+		if (child.isText) {
+			if ((child.text ?? "").trim().length > 0) hasText = true;
+			return false;
+		}
+		if (child.type.name === "mention") {
+			const reference = referenceFromMentionNode(child);
+			if (reference) seenReferences.add(`${reference.documentId}:${reference.blockId ?? ""}`);
+			return false;
+		}
+		if (child.type.name === "skill") {
+			if (agentSkillFromAttrs(child.attrs)) hasText = true;
+			return false;
+		}
+		return true;
+	});
+
+	return { hasText, referenceCount: seenReferences.size };
+};
+
+// Single owner of the mention title precedence rule; every text/HTML
+// rendering of a mention derives from it.
+const mentionChipTitle = (attrs: Record<string, unknown>) =>
+	stringAttribute(attrs.title ?? attrs.label ?? attrs.id).trim();
+
 const mentionTextFromAttrs = (attrs: Record<string, unknown>) => {
-	const value = attrs.title ?? attrs.label ?? attrs.id;
-	if (typeof value !== "string" || value.trim() === "") return "";
-	return mentionDisplayText(value);
+	const title = mentionChipTitle(attrs);
+	return title ? mentionDisplayText(title) : "";
 };

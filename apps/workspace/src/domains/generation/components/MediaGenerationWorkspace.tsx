@@ -17,14 +17,10 @@ import {
 	generationTasksQueryKey,
 	previewGenerationVoice,
 	projectGenerationConversation,
-	selectedGenerationAssetsKey,
 	updateSelectedGenerationAsset,
 } from "@/domains/generation/api/generation";
+import { refreshSelectedGenerationAssetDependents } from "@/domains/generation/lib/refresh-selected-assets";
 import { uploadMediaAsset, type MediaAsset } from "@/domains/workspace/api/media";
-import {
-	workspaceDocumentResourcesKey,
-	workspaceStoryboardVideoResourcesKey,
-} from "@/domains/workspace/api/workspace";
 import { HistoryGenerationList } from "@/domains/generation/components/MediaGenerationHistory";
 import {
 	ImageStickerEditorDialog,
@@ -216,6 +212,10 @@ export interface MediaGenerationWorkspaceProps {
 	onViewModeChange?: (viewMode: MediaGenerationWorkspaceViewMode) => void;
 	persistAssetSelection?: boolean;
 	projectId?: string;
+	// When true, the history list is fetched project-wide (across every generation
+	// conversation) and then narrowed by the section scope, so agent-generated
+	// assets show alongside ones made in this panel. Defaults to false.
+	projectHistory?: boolean;
 	promptExtras?: React.ReactNode | ((prompt: string) => React.ReactNode);
 	promptPlaceholder?: string;
 	referenceBadges?: Record<string, string> | ((prompt: string) => Record<string, string>);
@@ -266,6 +266,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	onViewModeChange,
 	persistAssetSelection = false,
 	projectId,
+	projectHistory = false,
 	promptExtras,
 	promptPlaceholder,
 	referenceBadges,
@@ -410,6 +411,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		onSubmitResponse: trackGenerationResponse,
 		onSubmitStart: handleSubmitStart,
 		projectId,
+		projectHistory,
 		projectStyleOnly: true,
 		sectionId,
 		taskType,
@@ -1802,14 +1804,6 @@ const selectionKeysWithOverrides = (
 		else keys.delete(key);
 	}
 	return Array.from(keys);
-};
-
-const refreshSelectedGenerationAssetDependents = (projectId: string) => {
-	void mutateSWR(
-		(key) => Array.isArray(key) && key[0] === selectedGenerationAssetsKey && key[1] === projectId,
-	);
-	void mutateSWR(workspaceDocumentResourcesKey(projectId));
-	void mutateSWR(workspaceStoryboardVideoResourcesKey(projectId));
 };
 
 const renameFile = (file: File, filename: string, mimeType: string) => {

@@ -11,7 +11,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/shared/components/ui/alert-dialog";
-import { Button } from "@/shared/components/ui/button";
+import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Input } from "@/shared/components/ui/input";
 
 export const AgentProjectCreateDialog = createCallable<void, string | null>(({ call }) => {
@@ -50,10 +50,10 @@ export const AgentProjectCreateDialog = createCallable<void, string | null>(({ c
 					</div>
 					<AlertDialogFooter>
 						<AlertDialogCancel>取消</AlertDialogCancel>
-						<Button type="submit">
+						<DialogDismissButton type="submit">
 							<Plus className="size-3.5" />
 							<span>创建</span>
-						</Button>
+						</DialogDismissButton>
 					</AlertDialogFooter>
 				</form>
 			</AlertDialogContent>

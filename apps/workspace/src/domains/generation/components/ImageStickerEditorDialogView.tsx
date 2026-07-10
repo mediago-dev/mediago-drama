@@ -22,6 +22,7 @@ import {
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type React from "react";
 import { Button } from "@/shared/components/ui/button";
+import { DialogClose } from "@/shared/components/ui/dialog-dismiss";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 import type { ImageStickerEditorDialogController } from "./ImageStickerEditorDialog";
@@ -199,7 +200,7 @@ const ImageStickerEditorHeader: React.FC<{
 				{saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
 				<span>保存</span>
 			</Button>
-			<DialogPrimitive.Close asChild>
+			<DialogClose asChild>
 				<Button
 					type="button"
 					variant="ghost"
@@ -209,7 +210,7 @@ const ImageStickerEditorHeader: React.FC<{
 				>
 					<X className="size-4" />
 				</Button>
-			</DialogPrimitive.Close>
+			</DialogClose>
 		</div>
 	</header>
 );

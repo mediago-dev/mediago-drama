@@ -10,19 +10,33 @@ import {
 } from "electron";
 import { copyFile, mkdir, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import { preloadPath, rendererDistDir } from "./paths.js";
+import {
+	type DesktopFileFilter,
+	type DesktopNotificationOptions,
+	type NativeThemeSource,
+	desktopIpcChannel,
+} from "./ipc-contract.js";
+import {
+	markActiveBundleServerStarting,
+	prepareActiveBundle,
+	registerBundleUpdater,
+} from "./bundle-updater.js";
+import { preloadPath } from "./paths.js";
 import { startServerSidecar, stopServerSidecar } from "./sidecar.js";
+import { registerDesktopUpdater } from "./updater.js";
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
+// Resolved inside startApp — after the single-instance lock is held (a doomed second
+// instance must not count boot attempts or touch DB snapshots) and after app-ready,
+// but before the sidecar spawns, while SQLite is quiescent.
+let activeBundle: Awaited<ReturnType<typeof prepareActiveBundle>> | null = null;
 
 // Retain shown notifications until they are dismissed. Without a live reference
 // macOS may garbage-collect the Notification before it is displayed.
 const liveNotifications = new Set<Notification>();
 
 const rendererUrl = process.env.ELECTRON_RENDERER_URL?.trim();
-
-type NativeThemeSource = "light" | "dark" | "system";
 
 const isNativeThemeSource = (value: unknown): value is NativeThemeSource =>
 	value === "light" || value === "dark" || value === "system";
@@ -85,7 +99,12 @@ const createWindow = async () => {
 		if (app.isPackaged) {
 			await mainWindow.webContents.session.clearCache();
 		}
-		await mainWindow.loadFile(join(rendererDistDir(), "index.html"), {
+		// startApp resolves activeBundle (and spawns the matching sidecar) before ever
+		// calling createWindow. Re-resolving here would re-run launch-safety DB
+		// snapshot/restore while the sidecar is live and could load a renderer from a
+		// different rev than the running server — so require it, never re-resolve.
+		if (!activeBundle) throw new Error("active bundle not resolved before window creation");
+		await mainWindow.loadFile(join(activeBundle.rendererDir, "index.html"), {
 			hash: app.isPackaged ? "/" : undefined,
 			query: app.isPackaged ? { version: app.getVersion() } : undefined,
 		});
@@ -106,21 +125,21 @@ app.on("activate", () => {
 	else mainWindow?.show();
 });
 
-ipcMain.handle("desktop:open-external", async (_event, url: string) => {
+ipcMain.handle(desktopIpcChannel.openExternal, async (_event, url: string) => {
 	await shell.openExternal(url);
 });
 
-ipcMain.handle("desktop:open-path", async (_event, path: string) => {
+ipcMain.handle(desktopIpcChannel.openPath, async (_event, path: string) => {
 	const error = await shell.openPath(path);
 	if (error) throw new Error(error);
 });
 
-ipcMain.handle("desktop:reveal-path", (_event, path: string) => {
+ipcMain.handle(desktopIpcChannel.revealPath, (_event, path: string) => {
 	shell.showItemInFolder(path);
 });
 
 ipcMain.handle(
-	"desktop:copy-file-to-directory",
+	desktopIpcChannel.copyFileToDirectory,
 	async (_event, options: { directory?: string; filename?: string; sourcePath?: string }) => {
 		const sourcePath = String(options?.sourcePath ?? "").trim();
 		if (!sourcePath) throw new Error("sourcePath is required");
@@ -145,7 +164,7 @@ ipcMain.handle(
 	},
 );
 
-ipcMain.handle("desktop:pick-directory", async (_event, options?: { title?: string }) => {
+ipcMain.handle(desktopIpcChannel.pickDirectory, async (_event, options?: { title?: string }) => {
 	const dialogOptions: OpenDialogOptions = {
 		title: options?.title,
 		properties: ["openDirectory"],
@@ -157,11 +176,8 @@ ipcMain.handle("desktop:pick-directory", async (_event, options?: { title?: stri
 });
 
 ipcMain.handle(
-	"desktop:pick-file",
-	async (
-		_event,
-		options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> },
-	) => {
+	desktopIpcChannel.pickFile,
+	async (_event, options?: { title?: string; filters?: DesktopFileFilter[] }) => {
 		const dialogOptions: OpenDialogOptions = {
 			title: options?.title,
 			filters: options?.filters,
@@ -174,40 +190,37 @@ ipcMain.handle(
 	},
 );
 
-ipcMain.handle(
-	"desktop:show-notification",
-	(event, options: { title: string; body?: string; id?: string }) => {
-		if (!Notification.isSupported()) {
-			console.warn("[mediago-electron] system notifications are not supported on this platform");
-			return false;
+ipcMain.handle(desktopIpcChannel.showNotification, (event, options: DesktopNotificationOptions) => {
+	if (!Notification.isSupported()) {
+		console.warn("[mediago-electron] system notifications are not supported on this platform");
+		return false;
+	}
+	const notification = new Notification({ title: options.title, body: options.body });
+	liveNotifications.add(notification);
+	const release = () => liveNotifications.delete(notification);
+	const id = typeof options.id === "string" ? options.id.trim() : "";
+	// Clicking the OS notification brings the window forward and tells the
+	// renderer which action to run so it can route to the right page.
+	notification.on("click", () => {
+		if (id) {
+			showMainWindow();
+			event.sender.send(desktopIpcChannel.notificationClicked, id);
 		}
-		const notification = new Notification({ title: options.title, body: options.body });
-		liveNotifications.add(notification);
-		const release = () => liveNotifications.delete(notification);
-		const id = typeof options.id === "string" ? options.id.trim() : "";
-		// Clicking the OS notification brings the window forward and tells the
-		// renderer which action to run so it can route to the right page.
-		notification.on("click", () => {
-			if (id) {
-				showMainWindow();
-				event.sender.send("desktop:notification-clicked", id);
-			}
-			release();
-		});
-		notification.on("close", release);
-		notification.show();
-		// Backstop cleanup so the retained reference cannot leak if no event fires.
-		setTimeout(release, 60_000).unref();
-		console.log(`[mediago-electron] system notification shown: ${options.title}`);
-		return true;
-	},
-);
+		release();
+	});
+	notification.on("close", release);
+	notification.show();
+	// Backstop cleanup so the retained reference cannot leak if no event fires.
+	setTimeout(release, 60_000).unref();
+	console.log(`[mediago-electron] system notification shown: ${options.title}`);
+	return true;
+});
 
-ipcMain.handle("desktop:start-window-drag", () => {
+ipcMain.handle(desktopIpcChannel.startWindowDrag, () => {
 	// Electron uses CSS app-region for dragging; imperative renderer calls are no-ops.
 });
 
-ipcMain.handle("desktop:set-native-theme-source", (_event, source: unknown) => {
+ipcMain.handle(desktopIpcChannel.setNativeThemeSource, (_event, source: unknown) => {
 	if (!isNativeThemeSource(source)) throw new Error("invalid native theme source");
 	nativeTheme.themeSource = source;
 });
@@ -243,7 +256,25 @@ const pathIsAvailable = async (path: string) => {
 };
 
 const startApp = async () => {
-	startServerSidecar();
+	activeBundle = await prepareActiveBundle();
+	// Register only after packaged bundle metadata has passed the strict startup
+	// validation, so a corrupt cohort feed fails through the visible startup error path.
+	registerDesktopUpdater({ getWindow: () => mainWindow });
+	markActiveBundleServerStarting(activeBundle);
+	const sidecarIdentity = startServerSidecar({
+		binaryPath: activeBundle.serverBinPath,
+		bundleRev: activeBundle.rev,
+		schemaVersion: activeBundle.schemaVersion,
+	});
+	const bundleUpdater = registerBundleUpdater({
+		getWindow: () => mainWindow,
+		active: activeBundle,
+		onActiveBundleChanged: (bundle) => {
+			activeBundle = bundle;
+		},
+	});
+	// Health confirmation + background check start counting from actual server spawn.
+	await bundleUpdater.notifyServerStarted(sidecarIdentity);
 	await createWindow();
 };
 
@@ -259,6 +290,10 @@ if (!app.requestSingleInstanceLock()) {
 		.then(startApp)
 		.catch((error: unknown) => {
 			console.error("[mediago-electron] failed to start", error);
+			dialog.showErrorBox(
+				"MediaGo Drama 无法安全启动",
+				error instanceof Error ? error.message : "本地数据或服务状态无法安全恢复。",
+			);
 			app.quit();
 		});
 }

@@ -165,6 +165,7 @@ export interface GenerationMessageRequest {
 	sectionId?: string;
 	documentContext?: GenerationDocumentContext;
 	capabilityId?: string;
+	resourceType?: string;
 	notificationTarget?: GenerationNotificationTarget;
 	routeId: string;
 	familyId?: string;
@@ -179,6 +180,49 @@ export interface GenerationMessageRequest {
 	referenceBindings?: GenerationReferenceBinding[];
 	params: Record<string, unknown>;
 	promptOptimization?: GenerationPromptOptimizationRequest;
+}
+
+export interface GenerationBatchRequest {
+	kind?: Kind;
+	sessionId?: string;
+	conversationTitle?: string;
+	projectId?: string;
+	scopeId?: string;
+	items: GenerationBatchItemRequest[];
+}
+
+export interface GenerationBatchItemRequest {
+	id?: string;
+	request: GenerationMessageRequest;
+}
+
+export interface GenerationBatchItemResponse {
+	id: string;
+	index: number;
+	taskId?: string;
+	status: string;
+	message?: string;
+	optimizedPrompt?: string;
+	error?: string;
+}
+
+export interface GenerationBatchResponse {
+	id: string;
+	status: string;
+	total: number;
+	accepted: number;
+	failed: number;
+	items: GenerationBatchItemResponse[];
+}
+
+export interface GenerationBatchTasksResponse {
+	id: string;
+	status: string;
+	total: number;
+	active: number;
+	completed: number;
+	failed: number;
+	tasks: GenerationTaskRecord[];
 }
 
 export interface GenerationReferenceBinding {
@@ -339,6 +383,9 @@ export interface GenerationUsage {
 
 export interface GenerationTaskRecord {
 	id: string;
+	batchId?: string;
+	batchItemId?: string;
+	batchIndex?: number;
 	providerTaskId?: string;
 	sessionId?: string;
 	projectId?: string;

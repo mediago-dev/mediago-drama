@@ -18,6 +18,7 @@ import { Table } from "@tiptap/extension-table";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
+import TextAlign from "@tiptap/extension-text-align";
 import type { MarkdownHybridEditorHandle } from "@/domains/documents/lib/editor-registry";
 import {
 	createLockedHeadingsExtension,
@@ -29,10 +30,9 @@ import {
 	commentAnchorExtension,
 	createBlockHandleExtension,
 } from "@/domains/documents/components/tiptap/extensions";
-import {
-	BlockHandle,
-	HeadingActionButton,
-} from "@/domains/documents/components/tiptap/editor-overlays";
+import { HeadingActionButton } from "@/domains/documents/components/tiptap/editor-overlays";
+import { BlockActionMenu } from "@/domains/documents/components/tiptap/block-action-menu";
+import { sliceToCleanMarkdown } from "@/domains/documents/lib/mgmd/clipboard";
 import {
 	diffTopLevelBlocks,
 	findTopLevelBlockRangeByIndex,
@@ -46,6 +46,7 @@ import {
 } from "@/domains/documents/components/tiptap/storage";
 import {
 	createMarkdownHeadingContext,
+	createMarkdownSectionContext,
 	type MarkdownHeadingContext,
 	type MarkdownSectionContext,
 } from "@/domains/documents/components/tiptap/section-context";
@@ -84,6 +85,7 @@ export interface MarkdownHybridEditorProps {
 	onChange: (value: string) => void;
 	onCommentAnchorClick?: (commentId: string) => void;
 	onHeadingAction?: (heading: MarkdownHeadingContext) => void;
+	onBlockMediaAction?: (kind: "image" | "video" | "audio", section: MarkdownSectionContext) => void;
 	onSelectionChange?: (value: string) => void;
 	onSelectionCoordChange?: (coords: SelectionCoords | null) => void;
 	onSelectionRangeChange?: (range: InlineDecorationRange | null) => void;
@@ -152,6 +154,7 @@ const createMarkdownSchemaExtensions = (
 		},
 	}),
 	LockedHeading.configure({ levels: [1, 2, 3, 4] }),
+	TextAlign.configure({ types: ["heading", "paragraph"] }),
 	SectionIdAnchor,
 	SectionMediaPreview,
 	MarkdownImage.configure({
@@ -185,7 +188,7 @@ const markdownExtension = () =>
 		},
 	});
 
-const createMarkdownParsingExtensions = (
+export const createMarkdownParsingExtensions = (
 	extraExtensions: Extensions = defaultExtraExtensions,
 	lockedHeadingPlan: LockedHeadingPlan | null = null,
 ): Extensions => [
@@ -255,6 +258,7 @@ export const MarkdownHybridEditor = forwardRef<
 		value,
 		onChange,
 		onCommentAnchorClick,
+		onBlockMediaAction,
 		onHeadingAction,
 		onSelectionChange,
 		onSelectionCoordChange,
@@ -273,7 +277,11 @@ export const MarkdownHybridEditor = forwardRef<
 	const pendingMarkdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const streamingTargetRef = useRef<StreamingBlockTarget | null>(null);
 	const editorSurfaceRef = useRef<HTMLDivElement>(null);
+	const clipboardEditorRef = useRef<Editor | null>(null);
+	const blockMenuOpenRef = useRef(false);
 	const [hoveredBlockRect, setHoveredBlockRect] = useState<HoveredBlockRect | null>(null);
+	const [blockMenuOpen, setBlockMenuOpen] = useState(false);
+	const [blockMenuRect, setBlockMenuRect] = useState<HoveredBlockRect | null>(null);
 	const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
 	const initialEditorContent = useMemo(
 		() => cachedParsedMarkdown(documentId, value) ?? value,
@@ -366,6 +374,7 @@ export const MarkdownHybridEditor = forwardRef<
 					class: "tiptap-content",
 					"aria-label": "Markdown 编辑器",
 				},
+				clipboardTextSerializer: (slice) => sliceToCleanMarkdown(clipboardEditorRef.current, slice),
 			},
 			immediatelyRender: false,
 			shouldRerenderOnTransaction: false,
@@ -373,6 +382,7 @@ export const MarkdownHybridEditor = forwardRef<
 				flushPendingMarkdownChange();
 			},
 			onCreate: ({ editor: nextEditor }) => {
+				clipboardEditorRef.current = nextEditor;
 				rememberParsedMarkdown(documentId, value, nextEditor);
 			},
 			onUpdate: ({ editor: nextEditor }) => {
@@ -494,6 +504,7 @@ export const MarkdownHybridEditor = forwardRef<
 	]);
 
 	const clearHoveredBlockHandle = useCallback(() => {
+		if (blockMenuOpenRef.current) return;
 		setHoveredBlockRect(null);
 		if (!editor) return;
 
@@ -504,21 +515,19 @@ export const MarkdownHybridEditor = forwardRef<
 		editor.view.dispatch(editor.state.tr.setMeta(blockHandlePluginKey, Date.now()));
 	}, [editor]);
 
-	const insertBlockAfterHoveredBlock = useCallback(() => {
-		if (!editor) return;
-
-		const range = blockHandleStorage(editor).hoveredRange;
-		if (!range) return;
-
-		const insertAt = range.to;
-		editor
-			.chain()
-			.focus()
-			.insertContentAt(insertAt, { type: "paragraph" })
-			.setTextSelection(insertAt + 1)
-			.run();
-		clearHoveredBlockHandle();
-	}, [clearHoveredBlockHandle, editor]);
+	const handleBlockMenuOpenChange = useCallback(
+		(open: boolean) => {
+			blockMenuOpenRef.current = open;
+			setBlockMenuOpen(open);
+			if (open) {
+				setBlockMenuRect(hoveredBlockRect);
+				return;
+			}
+			setBlockMenuRect(null);
+			clearHoveredBlockHandle();
+		},
+		[clearHoveredBlockHandle, hoveredBlockRect],
+	);
 
 	const hoveredHeadingContext = useMemo(() => {
 		if (!editor || !hoveredBlockRect?.range || hoveredBlockRect.range.nodeType !== "heading") {
@@ -572,29 +581,46 @@ export const MarkdownHybridEditor = forwardRef<
 		});
 	}, []);
 
+	const activeBlockRect = blockMenuOpen ? blockMenuRect : hoveredBlockRect;
+
 	return (
 		<div className="tiptap-editor">
 			<TiptapToolbar editor={editor} />
 			<div ref={editorSurfaceRef} className="tiptap-editor-surface" onClick={openImagePreview}>
-				{hoveredBlockRect ? (
-					<>
-						{canShowHeadingAction ? (
-							<HeadingActionButton
-								ariaLabel={headingActionAriaLabel}
-								icon={headingActionIcon ?? <Settings2 className="size-3.5" />}
-								label={headingActionLabel}
-								rect={hoveredBlockRect}
-								title={headingActionTitle}
-								onAction={openHeadingAction}
-								onMouseLeave={clearHoveredBlockHandle}
-							/>
-						) : null}
-						<BlockHandle
-							rect={hoveredBlockRect}
-							onInsertAfter={insertBlockAfterHoveredBlock}
-							onMouseLeave={clearHoveredBlockHandle}
-						/>
-					</>
+				{canShowHeadingAction && hoveredBlockRect ? (
+					<HeadingActionButton
+						ariaLabel={headingActionAriaLabel}
+						icon={headingActionIcon ?? <Settings2 className="size-3.5" />}
+						label={headingActionLabel}
+						rect={hoveredBlockRect}
+						title={headingActionTitle}
+						onAction={openHeadingAction}
+						onMouseLeave={clearHoveredBlockHandle}
+					/>
+				) : null}
+				{editor && activeBlockRect?.range ? (
+					<BlockActionMenu
+						editor={editor}
+						open={blockMenuOpen}
+						range={activeBlockRect.range}
+						rect={activeBlockRect}
+						onMouseLeave={clearHoveredBlockHandle}
+						onOpenChange={handleBlockMenuOpenChange}
+						onMediaAction={
+							onBlockMediaAction
+								? (kind, range) => {
+										for (let index = range.index; index >= 0; index -= 1) {
+											const candidate = findTopLevelBlockRangeByIndex(editor.state.doc, index);
+											if (candidate?.nodeType !== "heading" || candidate.headingLevel !== 2)
+												continue;
+											const section = createMarkdownSectionContext(editor, documentId, candidate);
+											if (section) onBlockMediaAction(kind, section);
+											break;
+										}
+									}
+								: undefined
+						}
+					/>
 				) : null}
 				<EditorContent editor={editor} />
 			</div>

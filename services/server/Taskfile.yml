@@ -61,7 +61,16 @@ tasks:
 
   swagger:
     cmds:
-      - GOWORK=off go run github.com/swaggo/swag/cmd/swag@v1.8.12 init -g main.go -d cmd/mediago-server,internal/http/handlers -o ../../.cache/server-swagger --parseInternal --outputTypes json
+      - |
+        if GOWORK=off go run github.com/swaggo/swag/cmd/swag@v1.8.12 init -g main.go -d cmd/mediago-server,internal/http/handlers -o ../../.cache/server-swagger --parseInternal --outputTypes json; then
+          exit 0
+        fi
+        if [ -s ../../.cache/server-swagger/swagger.json ]; then
+          echo "swag generation failed (network?); reusing cached swagger.json"
+          exit 0
+        fi
+        echo "swag generation failed and no cached swagger.json exists"
+        exit 1
 
   check:
     cmds:

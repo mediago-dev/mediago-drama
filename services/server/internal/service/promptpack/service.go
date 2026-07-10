@@ -14,9 +14,11 @@ import (
 	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
 	instructionbuiltin "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/builtin"
 	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/codec"
+	instructionpro "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/pro"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/license"
 )
 
 const (
@@ -27,6 +29,7 @@ const (
 
 	packSourceDefault  = "default"
 	packSourceImported = "imported"
+	packSourcePro      = "pro"
 	entrySourcePack    = "pack"
 	entrySourceUser    = "user"
 
@@ -44,6 +47,10 @@ var (
 	ErrEntryNotFound = errors.New("prompt pack entry not found")
 	// ErrEntryExists reports attempts to create a duplicate entry.
 	ErrEntryExists = errors.New("prompt pack entry already exists")
+	// ErrPackLicenseRequired is returned when a pro pack lacks a valid license.
+	ErrPackLicenseRequired = errors.New("pack license is required")
+	// ErrPackExportRestricted reports attempts to export a protected pack as a community pack.
+	ErrPackExportRestricted = errors.New("prompt pack export is restricted")
 )
 
 // Pack describes an installed prompt pack.
@@ -91,6 +98,7 @@ type Service struct {
 	repo         *repository.PackRepository
 	legacyRepo   *repository.PromptLibraryRepository
 	initErr      error
+	license      license.Service
 	seeded       bool
 	packFilesDir string
 }
@@ -116,6 +124,23 @@ func NewServiceFromRepository(
 	return NewServiceFromRepositoryWithPackFilesDir(repo, legacyRepo, initErr, "")
 }
 
+// NewServiceFromRepositoryWithPackFilesDirAndLicense creates a prompt pack service with uploaded pack storage and license checks.
+func NewServiceFromRepositoryWithPackFilesDirAndLicense(
+	repo *repository.PackRepository,
+	legacyRepo *repository.PromptLibraryRepository,
+	initErr error,
+	packFilesDir string,
+	promptLicense license.Service,
+) *Service {
+	return &Service{
+		repo:         repo,
+		legacyRepo:   legacyRepo,
+		initErr:      initErr,
+		license:      promptLicense,
+		packFilesDir: strings.TrimSpace(packFilesDir),
+	}
+}
+
 // NewServiceFromRepositoryWithPackFilesDir creates a prompt pack service with uploaded pack storage.
 func NewServiceFromRepositoryWithPackFilesDir(
 	repo *repository.PackRepository,
@@ -127,6 +152,7 @@ func NewServiceFromRepositoryWithPackFilesDir(
 		repo:         repo,
 		legacyRepo:   legacyRepo,
 		initErr:      initErr,
+		license:      nil,
 		packFilesDir: strings.TrimSpace(packFilesDir),
 	}
 }
@@ -136,7 +162,7 @@ func (store *Service) ListPacks(ctx context.Context) ([]Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return nil, err
 	}
-	if err := store.ensureSingleEnabledPack(ctx); err != nil {
+	if err := store.ensureDefaultEnabled(ctx); err != nil {
 		return nil, err
 	}
 	models, err := store.repo.ListPacks()
@@ -150,7 +176,9 @@ func (store *Service) ListPacks(ctx context.Context) ([]Pack, error) {
 	return packs, nil
 }
 
-// SetEnabled enables or disables one installed pack.
+// SetEnabled enables or disables one installed pack. Packs are additive: the
+// built-in default pack is always enabled as a base layer and installed packs
+// stack on top, so enabling one never disables another.
 func (store *Service) SetEnabled(ctx context.Context, packID string, enabled bool) (Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return Pack{}, err
@@ -161,26 +189,9 @@ func (store *Service) SetEnabled(ctx context.Context, packID string, enabled boo
 	} else if err != nil {
 		return Pack{}, err
 	}
-	if enabled {
-		if err := store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
-			if err := tx.SetPackEnabled(packID, true); err != nil {
-				return err
-			}
-			return tx.DisableOtherPacks(packID)
-		}); err != nil {
-			return Pack{}, err
-		}
-	} else {
-		if packID == DefaultPackID {
-			if err := store.repo.SetPackEnabled(packID, false); err != nil {
-				return Pack{}, err
-			}
-		} else if err := store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
-			if err := tx.SetPackEnabled(packID, false); err != nil {
-				return err
-			}
-			return tx.SetPackEnabled(DefaultPackID, true)
-		}); err != nil {
+	// The default pack stays usable at all times; disabling it is a no-op.
+	if !(packID == DefaultPackID && !enabled) {
+		if err := store.repo.SetPackEnabled(packID, enabled); err != nil {
 			return Pack{}, err
 		}
 	}
@@ -280,7 +291,7 @@ func (store *Service) ResetPack(ctx context.Context, packID string) (Pack, error
 	return packFromModel(model), nil
 }
 
-// InstallPath installs a local pack directory or .mgpack file.
+// InstallPath installs a local pack directory, .mgpack file, or .mgpackpro file.
 func (store *Service) InstallPath(ctx context.Context, path string) (Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return Pack{}, err
@@ -294,10 +305,14 @@ func (store *Service) InstallPath(ctx context.Context, path string) (Pack, error
 		return Pack{}, fmt.Errorf("%w: reading path: %w", ErrInvalidPack, err)
 	}
 	var bundle instructionpack.Bundle
+	source := packSourceImported
 	if info.IsDir() {
 		bundle, err = instructionpack.ParseDir(ctx, path)
 	} else {
-		bundle, err = parsePackFile(ctx, path)
+		bundle, err = store.parsePackFile(ctx, path)
+		if strings.ToLower(filepath.Ext(path)) == proPackFileExt {
+			source = packSourcePro
+		}
 	}
 	if err != nil {
 		return Pack{}, err
@@ -305,7 +320,7 @@ func (store *Service) InstallPath(ctx context.Context, path string) (Pack, error
 	if bundle.Manifest.ID == DefaultPackID {
 		return Pack{}, fmt.Errorf("%w: default pack cannot be imported", ErrInvalidPack)
 	}
-	if err := store.installBundle(ctx, bundle, packSourceImported, path); err != nil {
+	if err := store.installBundle(ctx, bundle, source, path); err != nil {
 		return Pack{}, err
 	}
 	model, err := store.repo.GetPack(bundle.Manifest.ID)
@@ -323,7 +338,7 @@ func (store *Service) ListEntries(ctx context.Context, kind instructionpack.Kind
 	if err := store.ensureSeeded(ctx); err != nil {
 		return nil, err
 	}
-	if err := store.ensureSingleEnabledPack(ctx); err != nil {
+	if err := store.ensureDefaultEnabled(ctx); err != nil {
 		return nil, err
 	}
 	models, err := store.repo.ListEnabledEntries(string(kind))
@@ -499,7 +514,7 @@ func (store *Service) ListCategories(ctx context.Context) ([]Category, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return nil, err
 	}
-	if err := store.ensureSingleEnabledPack(ctx); err != nil {
+	if err := store.ensureDefaultEnabled(ctx); err != nil {
 		return nil, err
 	}
 	models, err := store.repo.ListEnabledCategories()
@@ -579,52 +594,26 @@ func (store *Service) ensureReady(ctx context.Context) error {
 	return nil
 }
 
-func (store *Service) ensureSingleEnabledPack(ctx context.Context) error {
+// ensureDefaultEnabled keeps the built-in default pack enabled at all times so
+// its content is always available as a base layer. Installed packs stack on top
+// additively; this never disables any pack.
+func (store *Service) ensureDefaultEnabled(ctx context.Context) error {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 	}
-	models, err := store.repo.ListPacks()
+	model, err := store.repo.GetPack(DefaultPackID)
+	if repository.IsRecordNotFound(err) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	enabled := make([]domain.PackModel, 0, len(models))
-	for _, model := range models {
-		if model.Enabled {
-			enabled = append(enabled, model)
-		}
-	}
-	if len(enabled) <= 1 {
+	if model.Enabled {
 		return nil
 	}
-	keep := preferredEnabledPack(enabled)
-	return store.repo.DisableOtherPacks(keep.ID)
-}
-
-func preferredEnabledPack(models []domain.PackModel) domain.PackModel {
-	preferred := models[0]
-	for _, model := range models[1:] {
-		if packModelPreferredOver(model, preferred) {
-			preferred = model
-		}
-	}
-	return preferred
-}
-
-func packModelPreferredOver(left domain.PackModel, right domain.PackModel) bool {
-	leftDefault := normalizePackSource(left.Source, left.ID) == packSourceDefault
-	rightDefault := normalizePackSource(right.Source, right.ID) == packSourceDefault
-	if leftDefault != rightDefault {
-		return !leftDefault
-	}
-	if !left.UpdatedAt.Equal(right.UpdatedAt) {
-		return left.UpdatedAt.After(right.UpdatedAt)
-	}
-	if !left.CreatedAt.Equal(right.CreatedAt) {
-		return left.CreatedAt.After(right.CreatedAt)
-	}
-	return left.ID > right.ID
+	return store.repo.SetPackEnabled(DefaultPackID, true)
 }
 
 func (store *Service) migrateLegacyPromptLibrary(ctx context.Context) error {
@@ -735,14 +724,10 @@ func (store *Service) seedBuiltinPack(ctx context.Context) error {
 func (store *Service) installBundle(ctx context.Context, bundle instructionpack.Bundle, source string, origin string) error {
 	return store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
 		transactional := &Service{repo: tx, legacyRepo: store.legacyRepo, initErr: store.initErr}
-		enabled, err := transactional.upsertPackFromBundle(bundle, source, origin)
-		if err != nil {
+		// Importing a pack is additive: it is enabled and stacks on top of the
+		// always-enabled default pack, without disabling any other pack.
+		if _, err := transactional.upsertPackFromBundle(bundle, source, origin); err != nil {
 			return err
-		}
-		if enabled {
-			if err := tx.DisableOtherPacks(bundle.Manifest.ID); err != nil {
-				return err
-			}
 		}
 		if err := tx.DeleteEntriesByPack(bundle.Manifest.ID); err != nil {
 			return err
@@ -797,41 +782,139 @@ func (store *Service) bundleForInstalledPack(ctx context.Context, pack domain.Pa
 	switch normalizePackSource(pack.Source, pack.ID) {
 	case packSourceDefault:
 		return instructionbuiltin.Builtin(ctx)
-	case packSourceImported:
+	case packSourceImported, packSourcePro:
 		origin := strings.TrimSpace(pack.Origin)
 		if origin == "" {
 			return instructionpack.Bundle{}, fmt.Errorf("%w: imported pack origin is empty", ErrInvalidPack)
 		}
-		info, err := os.Stat(origin)
-		if err != nil {
-			return instructionpack.Bundle{}, fmt.Errorf("%w: reading pack origin: %w", ErrInvalidPack, err)
-		}
-		if info.IsDir() {
-			return instructionpack.ParseDir(ctx, origin)
-		}
-		return parsePackFile(ctx, origin)
+		return store.parsePackFile(ctx, origin)
 	default:
 		return instructionpack.Bundle{}, fmt.Errorf("%w: unsupported pack source %q", ErrInvalidPack, pack.Source)
 	}
 }
 
-func parsePackFile(ctx context.Context, path string) (instructionpack.Bundle, error) {
-	if filepath.Ext(path) != ".mgpack" {
-		return instructionpack.Bundle{}, fmt.Errorf("%w: expected .mgpack file", ErrInvalidPack)
-	}
+func (store *Service) parsePackFile(ctx context.Context, path string) (instructionpack.Bundle, error) {
+	ext := strings.ToLower(filepath.Ext(strings.TrimSpace(path)))
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return instructionpack.Bundle{}, fmt.Errorf("reading pack file: %w", err)
 	}
-	archive, err := codec.Decode(data)
-	if err != nil {
-		return instructionpack.Bundle{}, err
+	switch ext {
+	case ".mgpack":
+		archive, err := codec.Decode(data)
+		if err != nil {
+			return instructionpack.Bundle{}, err
+		}
+		bundle, err := instructionpack.ParseZip(ctx, archive)
+		if err != nil {
+			return instructionpack.Bundle{}, err
+		}
+		return bundle, nil
+	case ".mgpackpro":
+		manifest, bundle, err := store.unpackProPack(ctx, data)
+		if err != nil {
+			return instructionpack.Bundle{}, err
+		}
+		if manifest.ID != bundle.Manifest.ID {
+			return instructionpack.Bundle{}, fmt.Errorf("%w: manifest id mismatch", ErrInvalidPack)
+		}
+		return bundle, nil
+	default:
+		return instructionpack.Bundle{}, fmt.Errorf("%w: expected .mgpack or .mgpackpro file", ErrInvalidPack)
 	}
-	bundle, err := instructionpack.ParseZip(ctx, archive)
+}
+
+func (store *Service) unpackProPack(ctx context.Context, data []byte) (instructionpro.Manifest, instructionpack.Bundle, error) {
+	publishers, err := store.publisherKeyRing(ctx)
 	if err != nil {
-		return instructionpack.Bundle{}, err
+		return instructionpro.Manifest{}, instructionpack.Bundle{}, err
 	}
-	return bundle, nil
+	manifest, err := instructionpro.Inspect(ctx, data, publishers)
+	if err != nil {
+		return instructionpro.Manifest{}, instructionpack.Bundle{}, normalizeProPackError(err)
+	}
+	entitlement := strings.TrimSpace(manifest.RequiredEntitlement)
+	if entitlement == "" {
+		entitlement = license.DefaultProEntitlement()
+	}
+	hasEntitlement, err := store.hasPackEntitlement(ctx, entitlement)
+	if err != nil {
+		return instructionpro.Manifest{}, instructionpack.Bundle{}, err
+	}
+	if !hasEntitlement {
+		return instructionpro.Manifest{}, instructionpack.Bundle{}, fmt.Errorf("%w: %s", ErrPackLicenseRequired, entitlement)
+	}
+	keyID := strings.TrimSpace(manifest.KeyID)
+	if keyID == "" {
+		keyID = "default"
+	}
+	key, err := store.resolvePackKey(ctx, keyID, entitlement)
+	if err != nil {
+		return instructionpro.Manifest{}, instructionpack.Bundle{}, err
+	}
+	decompressedManifest, bundle, err := instructionpro.Parse(ctx, data, key, publishers)
+	if err != nil {
+		return instructionpro.Manifest{}, instructionpack.Bundle{}, normalizeProPackError(err)
+	}
+	return decompressedManifest, bundle, nil
+}
+
+// publisherKeyRing loads trusted pack publisher keys from the license service.
+// A missing license service yields an empty ring: structurally invalid packs
+// still fail as invalid, while valid packs fail signature verification with a
+// license-required error.
+func (store *Service) publisherKeyRing(ctx context.Context) (instructionpro.KeyRing, error) {
+	if store.license == nil {
+		return instructionpro.KeyRing{}, nil
+	}
+	keys, err := store.license.ResolvePublisherKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ring := make(instructionpro.KeyRing, len(keys))
+	for keyID, key := range keys {
+		ring[keyID] = key
+	}
+	return ring, nil
+}
+
+func normalizeProPackError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, instructionpro.ErrInvalidProPack),
+		errors.Is(err, instructionpro.ErrUnsupportedVersion),
+		errors.Is(err, instructionpro.ErrDigestMismatch),
+		errors.Is(err, instructionpro.ErrInvalidSignature):
+		return fmt.Errorf("%w: %s", ErrInvalidPack, err)
+	case errors.Is(err, instructionpro.ErrMissingKey),
+		errors.Is(err, instructionpro.ErrMissingPublisherKey):
+		return fmt.Errorf("%w: %s", ErrPackLicenseRequired, err)
+	default:
+		return err
+	}
+}
+
+func (store *Service) hasPackEntitlement(ctx context.Context, entitlement string) (bool, error) {
+	if store.license == nil {
+		return false, nil
+	}
+	return store.license.HasEntitlement(ctx, entitlement)
+}
+
+func (store *Service) resolvePackKey(ctx context.Context, keyID string, entitlement string) ([]byte, error) {
+	if store.license == nil {
+		return nil, fmt.Errorf("%w", ErrPackLicenseRequired)
+	}
+	key, err := store.license.ResolvePackKey(ctx, keyID, entitlement)
+	if err != nil {
+		if errors.Is(err, license.ErrPackKeyNotFound) {
+			return nil, fmt.Errorf("%w: key %q", ErrPackLicenseRequired, strings.TrimSpace(keyID))
+		}
+		return nil, err
+	}
+	return key, nil
 }
 
 func defaultPackFilesDir(settingsDBPath string) string {

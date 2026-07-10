@@ -63,6 +63,35 @@ func TestParseFSAcceptsLegacyNestedSkillDocumentCategory(t *testing.T) {
 	}
 }
 
+func TestParseFSAcceptsUnicodeSkillName(t *testing.T) {
+	bundle, err := ParseFS(context.Background(), fstest.MapFS{
+		"pack.json":           {Data: []byte(`{"id":"sample","name":"Sample","version":"1.0.0"}`)},
+		"skills/产品图.skill.md": {Data: []byte("---\nname: 产品图\ndescription: 产品图生成指导\n---\nSkill body\n")},
+	})
+	if err != nil {
+		t.Fatalf("ParseFS() error = %v", err)
+	}
+	if len(bundle.Entries) != 1 || bundle.Entries[0].Slug != "产品图" {
+		t.Fatalf("entries = %#v, want Unicode skill name", bundle.Entries)
+	}
+}
+
+func TestParseFSAcceptsUnicodePromptCategory(t *testing.T) {
+	bundle, err := ParseFS(context.Background(), fstest.MapFS{
+		"pack.json":        {Data: []byte(`{"id":"sample","name":"Sample","version":"1.0.0","categories":[{"id":"角色","label":"角色"}]}`)},
+		"prompts/image.md": {Data: []byte("---\nid: image\nname: Image\ntype: image\ncategory: 角色\n---\nPrompt body\n")},
+	})
+	if err != nil {
+		t.Fatalf("ParseFS() error = %v", err)
+	}
+	if len(bundle.Categories) != 1 || bundle.Categories[0].ID != "角色" {
+		t.Fatalf("categories = %#v, want Unicode category", bundle.Categories)
+	}
+	if len(bundle.Entries) != 1 || bundle.Entries[0].Metadata["category"] != "角色" {
+		t.Fatalf("entries = %#v, want prompt category", bundle.Entries)
+	}
+}
+
 func TestParseZipParsesPackArchive(t *testing.T) {
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)

@@ -27,7 +27,6 @@ export interface MediaGenerationDialogRequest {
 }
 
 interface MediaGenerationState {
-	// 当前打开的生成弹窗（全局唯一）；null = 未打开。
 	activeRequest: MediaGenerationDialogRequest | null;
 	// 列表「生成中/失败」的乐观层，按资源 key 索引；与 SWR 任务派生状态合并后展示。
 	optimisticStatuses: Record<string, ResourceGenerationStatus>;

@@ -22,22 +22,28 @@ import { VideoPlayer } from "@/components/VideoPlayer";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { Navigate, useLocation } from "react-router-dom";
 import useSWR from "swr";
-import type { GenerationTask } from "@/domains/generation/api/generation";
+import type {
+	GenerationBatchRequest,
+	GenerationMessageRequest,
+	GenerationNotificationOpenTarget,
+	GenerationTask,
+} from "@/domains/generation/api/generation";
 import {
 	generationProjectConversationScopeId,
 	generationTasksQueryKey,
+	projectGenerationConversation,
 	type SelectedGenerationAsset,
 	getGenerationTasks,
+	sendGenerationBatch,
 } from "@/domains/generation/api/generation";
+import { MediaGenerationDialog } from "@/domains/generation/components/MediaGenerationDialog";
 import { useSelectedGenerationAssets } from "@/domains/generation/hooks/useSelectedGenerationAssets";
-import { useMediaGenerationStore } from "@/domains/generation/stores/media-generation";
+import {
+	type MediaGenerationDialogRequest,
+	useMediaGenerationStore,
+} from "@/domains/generation/stores/media-generation";
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
 import { EpisodeTimelineView } from "@/domains/episode/components/EpisodeTimelineView";
-import {
-	DocumentSectionBatchGenerationRunner,
-	type DocumentSectionBatchGenerationJob,
-	type DocumentSectionBatchGenerationSettings,
-} from "@/domains/documents/components/DocumentSectionBatchGenerationRunner";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
@@ -62,6 +68,7 @@ import {
 	resourceGenerationStatusTitle,
 	visibleResourceGenerationStatus,
 } from "@/domains/generation/lib/resource-generation-status";
+import { taskTypeForCategory } from "@/domains/generation/lib/prompt-categories";
 import {
 	billingSummaryKey,
 	getBillingSummary,
@@ -84,6 +91,7 @@ import { getRouteProjectId, type AgentResourceType } from "@/domains/workspace/l
 import { useProjectStore } from "@/domains/projects/stores";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { DialogClose } from "@/shared/components/ui/dialog-dismiss";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import {
 	Tooltip,
@@ -122,13 +130,11 @@ export const ProjectOverview: React.FC = () => {
 	const setActiveProjectId = useProjectStore((state) => state.setActiveProjectId);
 	const [documentResourceDialogType, setDocumentResourceDialogType] =
 		useState<AgentResourceType | null>(null);
-	const [batchGenerationJobs, setBatchGenerationJobs] = useState<
-		DocumentSectionBatchGenerationJob[]
-	>([]);
 	const [batchGenerationDialog, setBatchGenerationDialog] =
 		useState<OverviewBatchGenerationDialogState | null>(null);
+	const [mediaGenerationRequest, setMediaGenerationRequest] =
+		useState<MediaGenerationDialogRequest | null>(null);
 	const optimisticGenerationStatuses = useMediaGenerationStore((state) => state.optimisticStatuses);
-	const openGenerationDialog = useMediaGenerationStore((state) => state.open);
 	const markGenerating = useMediaGenerationStore((state) => state.markGenerating);
 	const markFailed = useMediaGenerationStore((state) => state.markFailed);
 	const clearStatus = useMediaGenerationStore((state) => state.clearStatus);
@@ -170,7 +176,7 @@ export const ProjectOverview: React.FC = () => {
 	);
 	const { assets: selectedGenerationAssets, mutate: mutateSelectedResources } =
 		useSelectedGenerationAssets(projectId);
-	const { data: imageTaskData } = useSWR(
+	const { data: imageTaskData, mutate: mutateImageTasks } = useSWR(
 		projectId ? generationTasksQueryKey(null, "image", projectGenerationScopeId, projectId) : null,
 		() => getGenerationTasks(null, "image", projectGenerationScopeId, projectId),
 		{
@@ -180,7 +186,7 @@ export const ProjectOverview: React.FC = () => {
 					: 0,
 		},
 	);
-	const { data: videoTaskData } = useSWR(
+	const { data: videoTaskData, mutate: mutateVideoTasks } = useSWR(
 		projectId ? generationTasksQueryKey(null, "video", projectGenerationScopeId, projectId) : null,
 		() => getGenerationTasks(null, "video", projectGenerationScopeId, projectId),
 		{
@@ -221,8 +227,8 @@ export const ProjectOverview: React.FC = () => {
 
 	useEffect(() => {
 		setDocumentResourceDialogType(null);
-		setBatchGenerationJobs([]);
 		setBatchGenerationDialog(null);
+		setMediaGenerationRequest(null);
 		clearStatuses();
 		setStoryboardVideoDocumentId(null);
 		refreshedSelectedAssetTaskKeysRef.current.clear();
@@ -326,18 +332,18 @@ export const ProjectOverview: React.FC = () => {
 	}, []);
 	const openImageGeneration = useCallback(
 		(resource: WorkspaceDocumentResource) => {
-			openGenerationDialog({
+			setMediaGenerationRequest({
 				kind: "image",
 				projectId: projectId ?? undefined,
 				section: documentResourceToSectionContext(resource),
 				statusResourceKey: resource.id,
 			});
 		},
-		[openGenerationDialog, projectId],
+		[projectId],
 	);
 	const openAudioSelection = useCallback(
 		(resource: WorkspaceDocumentResource) => {
-			openGenerationDialog({
+			setMediaGenerationRequest({
 				kind: "audio",
 				projectId: projectId ?? undefined,
 				section: documentResourceToSectionContext(resource),
@@ -345,7 +351,7 @@ export const ProjectOverview: React.FC = () => {
 				statusResourceKey: resource.id,
 			});
 		},
-		[openGenerationDialog, projectId],
+		[projectId],
 	);
 	const openImageGenerationBatch = useCallback((resources: WorkspaceDocumentResource[]) => {
 		if (resources.length === 0) return;
@@ -353,7 +359,7 @@ export const ProjectOverview: React.FC = () => {
 	}, []);
 	const openStoryboardVideoGeneration = useCallback(
 		(group: WorkspaceStoryboardVideoDocumentGroup, reel: WorkspaceStoryboardVideoReel) => {
-			openGenerationDialog({
+			setMediaGenerationRequest({
 				kind: "video",
 				projectId: projectId ?? undefined,
 				section: storyboardReelToSectionContext(group, reel),
@@ -361,7 +367,7 @@ export const ProjectOverview: React.FC = () => {
 				statusResourceKey: reel.id,
 			});
 		},
-		[openGenerationDialog, projectId],
+		[projectId],
 	);
 	const openStoryboardVideoGenerationBatch = useCallback(
 		(group: WorkspaceStoryboardVideoDocumentGroup, reels: WorkspaceStoryboardVideoReel[]) => {
@@ -377,67 +383,84 @@ export const ProjectOverview: React.FC = () => {
 		[convertDocumentToWorkbenchDraft],
 	);
 	const confirmBatchGeneration = useCallback(
-		(settings: BatchGenerationSettings) => {
-			if (!batchGenerationDialog) return;
-
-			const batchId = createBatchGenerationBatchId();
-			const generationSettings = batchGenerationSettingsForJob(settings);
-			const jobs =
-				batchGenerationDialog.kind === "image"
-					? batchGenerationDialog.resources.map((resource) =>
-							documentResourceToBatchGenerationJob(
-								resource,
-								projectId ?? "",
-								generationSettings,
-								batchId,
-							),
-						)
-					: batchGenerationDialog.reels.map((reel) =>
-							storyboardReelToBatchGenerationJob(
-								batchGenerationDialog.group,
-								reel,
-								projectId ?? "",
-								generationSettings,
-								batchId,
-							),
-						);
-			if (jobs.length === 0) return;
+		async (settings: BatchGenerationSettings) => {
+			if (!batchGenerationDialog || !projectId) return;
+			const kind = batchGenerationDialog.kind;
+			const items = overviewBatchGenerationItems(batchGenerationDialog, settings, projectId);
+			if (items.length === 0) return;
 
 			setBatchGenerationDialog(null);
-			setBatchGenerationJobs((current) => [...current, ...jobs]);
-			for (const job of jobs) {
-				const resourceId = job.statusResourceId?.trim();
-				if (resourceId) {
-					markGenerating(resourceId, {
-						message: "已加入后台批量生成。",
-						taskId: `local:${job.id}`,
+			for (const item of items) {
+				if (!item.id) continue;
+				markGenerating(item.id, {
+					message: "正在提交服务端批量生成。",
+					taskId: `local:${item.id}`,
+				});
+			}
+			toast.info("正在提交批量生成", {
+				description: `本次共 ${items.length} 项，将由服务端统一创建任务。`,
+			});
+
+			try {
+				const conversation = projectGenerationConversation(projectId, kind, config?.name);
+				const response = await sendGenerationBatch({
+					conversationTitle: conversation?.conversationTitle,
+					kind,
+					projectId,
+					scopeId: conversation?.conversationScopeId ?? projectGenerationScopeId,
+					sessionId: conversation?.conversationId,
+					items,
+				});
+				for (const result of response.items) {
+					const resourceId = result.id.trim();
+					if (!resourceId) continue;
+					if (result.taskId && !isFailedGenerationBatchStatus(result.status)) {
+						markGenerating(resourceId, {
+							message: result.message || "批量生成任务已提交。",
+							taskId: result.taskId,
+						});
+					} else {
+						markFailed(resourceId, {
+							message: result.error || "批量生成子任务提交失败。",
+							taskId: `batch:${response.id}:${result.index}`,
+						});
+					}
+				}
+				if (kind === "image") void mutateImageTasks();
+				if (kind === "video") void mutateVideoTasks();
+				if (response.failed > 0) {
+					toast.error("部分批量任务提交失败", {
+						description: `成功 ${response.accepted} 项，失败 ${response.failed} 项。`,
+					});
+				} else {
+					toast.success("批量任务已提交", {
+						description: `服务端批次 ${response.id} 已创建 ${response.accepted} 个任务。`,
 					});
 				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "批量生成提交失败。";
+				for (const item of items) {
+					if (!item.id) continue;
+					markFailed(item.id, { message, taskId: `local:${item.id}` });
+				}
+				toast.error("批量生成提交失败", { description: message });
 			}
-			toast.info("正在后台批量生成", {
-				description: `已加入 ${jobs.length} 项队列，将按顺序使用本次批量设置。`,
-			});
 		},
-		[batchGenerationDialog, markGenerating, projectId, toast],
+		[
+			batchGenerationDialog,
+			config?.name,
+			markFailed,
+			markGenerating,
+			mutateImageTasks,
+			mutateVideoTasks,
+			projectGenerationScopeId,
+			projectId,
+			toast,
+		],
 	);
 	const closeBatchGenerationDialog = useCallback((open: boolean) => {
 		if (!open) setBatchGenerationDialog(null);
 	}, []);
-	const removeBatchGenerationJob = useCallback((jobId: string) => {
-		setBatchGenerationJobs((current) => current.filter((job) => job.id !== jobId));
-	}, []);
-	const reportBatchGenerationError = useCallback(
-		(job: DocumentSectionBatchGenerationJob, message: string) => {
-			const resourceId = job.statusResourceId?.trim();
-			if (resourceId) {
-				markFailed(resourceId, { message, taskId: `local:${job.id}` });
-			}
-			toast.error("后台生成提交失败", {
-				description: `${job.section.headingText}：${message}`,
-			});
-		},
-		[markFailed, toast],
-	);
 
 	if (!projectId) return <Navigate to="/" replace />;
 
@@ -525,6 +548,13 @@ export const ProjectOverview: React.FC = () => {
 										if (!open) setDocumentResourceDialogType(null);
 									}}
 								/>
+								<MediaGenerationDialog
+									open={Boolean(mediaGenerationRequest)}
+									request={mediaGenerationRequest}
+									onOpenChange={(open) => {
+										if (!open) setMediaGenerationRequest(null);
+									}}
+								/>
 								{batchGenerationDialog ? (
 									<BatchGenerationSettingsDialog
 										kind={batchGenerationDialog.kind}
@@ -535,11 +565,6 @@ export const ProjectOverview: React.FC = () => {
 										onOpenChange={closeBatchGenerationDialog}
 									/>
 								) : null}
-								<DocumentSectionBatchGenerationRunner
-									jobs={batchGenerationJobs}
-									onJobError={reportBatchGenerationError}
-									onJobSettled={removeBatchGenerationJob}
-								/>
 							</section>
 						) : null}
 					</main>
@@ -1376,11 +1401,11 @@ const VideoResourcePreviewDialog: React.FC<{
 					<DialogPrimitive.Title className="truncate text-sm font-semibold text-foreground">
 						{title?.trim() || "预览视频"}
 					</DialogPrimitive.Title>
-					<DialogPrimitive.Close asChild>
+					<DialogClose asChild>
 						<Button type="button" variant="ghost" size="icon" aria-label="关闭预览">
 							<X className="size-4" />
 						</Button>
-					</DialogPrimitive.Close>
+					</DialogClose>
 				</div>
 				<div className="bg-black">
 					<VideoPlayer
@@ -1769,55 +1794,133 @@ const storyboardReelToSectionContext = (
 	prompt: reel.prompt ?? reel.markdown,
 });
 
-const documentResourceToBatchGenerationJob = (
-	resource: WorkspaceDocumentResource,
-	projectId: string,
-	generationSettings?: DocumentSectionBatchGenerationSettings,
-	batchId?: string,
-): DocumentSectionBatchGenerationJob => ({
-	batchId,
-	generationSettings,
-	id: createBatchGenerationJobId("image", resource.id),
-	kind: "image",
-	projectId,
-	section: documentResourceToSectionContext(resource),
-	statusResourceId: resource.id,
-});
-
-const storyboardReelToBatchGenerationJob = (
-	group: WorkspaceStoryboardVideoDocumentGroup,
-	reel: WorkspaceStoryboardVideoReel,
-	projectId: string,
-	generationSettings?: DocumentSectionBatchGenerationSettings,
-	batchId?: string,
-): DocumentSectionBatchGenerationJob => ({
-	batchId,
-	generationSettings,
-	id: createBatchGenerationJobId("video", reel.id),
-	kind: "video",
-	projectId,
-	resolveLatestSection: false,
-	section: storyboardReelToSectionContext(group, reel),
-	statusResourceId: reel.id,
-});
-
-const createBatchGenerationJobId = (kind: "image" | "video", sourceId: string) =>
-	`${kind}:${sourceId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
-
-const createBatchGenerationBatchId = () =>
-	`batch:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
-
-const batchGenerationSettingsForJob = (
+const overviewBatchGenerationItems = (
+	dialog: OverviewBatchGenerationDialogState,
 	settings: BatchGenerationSettings,
-): DocumentSectionBatchGenerationSettings => ({
-	family: settings.family,
+	projectId: string,
+): GenerationBatchRequest["items"] => {
+	if (dialog.kind === "image") {
+		return dialog.resources.map((resource) => ({
+			id: resource.id,
+			request: generationBatchRequestForSection({
+				assetTitle: resource.title,
+				capabilityId: taskTypeForCategory(resource.sourceCategory),
+				documentId: resource.documentId,
+				documentTitle: resource.documentTitle,
+				kind: "image",
+				projectId,
+				prompt: resource.prompt ?? resource.title,
+				resourceType: resource.type,
+				section: documentResourceToSectionContext(resource),
+				settings,
+			}),
+		}));
+	}
+
+	return dialog.reels.map((reel) => ({
+		id: reel.id,
+		request: generationBatchRequestForSection({
+			assetTitle: reel.title,
+			capabilityId: "storyboard",
+			documentId: dialog.group.documentId,
+			documentTitle: dialog.group.documentTitle,
+			kind: "video",
+			projectId,
+			prompt: reel.prompt ?? reel.markdown,
+			resourceType: "storyboard",
+			section: storyboardReelToSectionContext(dialog.group, reel),
+			settings,
+		}),
+	}));
+};
+
+const generationBatchRequestForSection = ({
+	assetTitle,
+	capabilityId,
+	documentId,
+	documentTitle,
+	kind,
+	projectId,
+	prompt,
+	resourceType,
+	section,
+	settings,
+}: {
+	assetTitle: string;
+	capabilityId: string;
+	documentId: string;
+	documentTitle: string;
+	kind: "image" | "video";
+	projectId: string;
+	prompt: string;
+	resourceType: AgentResourceType;
+	section: MarkdownSectionContext;
+	settings: BatchGenerationSettings;
+}): GenerationMessageRequest => ({
+	assetTitle,
+	capabilityId,
+	documentContext: {
+		documentId,
+		projectId,
+		sectionId: section.blockId,
+	},
+	documentId,
+	familyId: settings.family.id,
+	kind,
+	model: settings.route.model,
+	modelId: settings.route.legacyModelId ?? "",
+	notificationTarget: generationBatchNotificationTarget(
+		projectId,
+		documentId,
+		documentTitle,
+		section,
+	),
 	params: settings.params,
+	projectId,
+	prompt: appendBatchPromptSupplement(prompt, settings.promptSupplement?.referencePrompt),
 	promptOptimization: settings.promptOptimization,
-	promptSupplement: settings.promptSupplement,
-	...(settings.referenceAssetIds?.length ? { referenceAssetIds: settings.referenceAssetIds } : {}),
-	route: settings.route,
-	version: settings.version,
+	provider: settings.route.provider,
+	referenceAssetIds: settings.referenceAssetIds ?? [],
+	referenceBindings: [],
+	referenceUrls: [],
+	resourceType,
+	routeId: settings.route.id,
+	sectionId: section.blockId,
+	versionId: settings.version.id,
 });
+
+const generationBatchNotificationTarget = (
+	projectId: string,
+	documentId: string,
+	documentTitle: string,
+	section: MarkdownSectionContext,
+): GenerationNotificationOpenTarget => ({
+	documentId,
+	documentTitle,
+	kind: "document-section",
+	projectId,
+	section: {
+		blockId: section.blockId,
+		documentId,
+		headingLevel: section.headingLevel,
+		headingOccurrence: section.headingOccurrence,
+		headingText: section.headingText,
+		markdown: section.markdown,
+		plainText: section.plainText,
+		prompt: section.prompt,
+	},
+});
+
+const appendBatchPromptSupplement = (prompt: string, supplement?: string) => {
+	const current = prompt.trim();
+	const extra = supplement?.trim() ?? "";
+	if (!current) return extra;
+	if (!extra || current.includes(extra)) return current;
+	return `${current}\n\n${extra}`;
+};
+
+const isFailedGenerationBatchStatus = (status: string) =>
+	["failed", "error", "cancelled", "canceled"].includes(status.trim().toLowerCase());
 
 const selectedAssetCountForResourceType = (
 	assets: SelectedGenerationAsset[],

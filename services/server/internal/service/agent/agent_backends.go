@@ -39,10 +39,12 @@ type AgentBackendService struct {
 }
 
 type agentManifest struct {
-	ID      string   `json:"id"`
-	Bin     string   `json:"bin"`
-	Args    []string `json:"args"`
-	Version string   `json:"version"`
+	ID           string   `json:"id"`
+	Bin          string   `json:"bin"`
+	Args         []string `json:"args"`
+	Version      string   `json:"version"`
+	CodexBin     string   `json:"codexBin,omitempty"`
+	CodexVersion string   `json:"codexVersion,omitempty"`
 }
 
 // NewAgentBackendService creates an in-memory service for the configured ACP backend.
@@ -135,6 +137,28 @@ func (store *AgentBackendService) ActiveArgv() []string {
 	return splitAgentBackendCommand(command)
 }
 
+// ActiveEnv returns environment variables required by the active vendored backend.
+func (store *AgentBackendService) ActiveEnv() map[string]string {
+	if store == nil {
+		return map[string]string{}
+	}
+
+	store.mu.RLock()
+	activeID := store.activeID
+	binDir := store.binDir
+	store.mu.RUnlock()
+	if strings.TrimSpace(binDir) == "" || strings.TrimSpace(activeID) == "" {
+		return map[string]string{}
+	}
+	manifest, err := loadAgentManifest(binDir, activeID)
+	if err != nil || manifest.CodexBin == "" {
+		return map[string]string{}
+	}
+	return map[string]string{
+		"CODEX_PATH": filepath.Join(binDir, activeID, manifest.CodexBin),
+	}
+}
+
 func (store *AgentBackendService) activeCommandLocked() string {
 	for _, backend := range store.backends {
 		if backend.ID == store.activeID {
@@ -208,6 +232,8 @@ func loadAgentManifest(binDir string, id string) (agentManifest, error) {
 	manifest.ID = strings.TrimSpace(manifest.ID)
 	manifest.Bin = strings.TrimSpace(manifest.Bin)
 	manifest.Version = strings.TrimSpace(manifest.Version)
+	manifest.CodexBin = strings.TrimSpace(manifest.CodexBin)
+	manifest.CodexVersion = strings.TrimSpace(manifest.CodexVersion)
 	for index := range manifest.Args {
 		manifest.Args[index] = strings.TrimSpace(manifest.Args[index])
 	}
@@ -217,10 +243,25 @@ func loadAgentManifest(binDir string, id string) (agentManifest, error) {
 	if manifest.Bin == "" {
 		return agentManifest{}, fmt.Errorf("agent manifest %s has empty bin", path)
 	}
-	if filepath.IsAbs(manifest.Bin) {
-		return agentManifest{}, fmt.Errorf("agent manifest %s bin must be relative", path)
+	manifest.Bin, err = cleanAgentManifestPath(manifest.Bin)
+	if err != nil {
+		return agentManifest{}, fmt.Errorf("agent manifest %s bin: %w", path, err)
+	}
+	if manifest.CodexBin != "" {
+		manifest.CodexBin, err = cleanAgentManifestPath(manifest.CodexBin)
+		if err != nil {
+			return agentManifest{}, fmt.Errorf("agent manifest %s codexBin: %w", path, err)
+		}
 	}
 	return manifest, nil
+}
+
+func cleanAgentManifestPath(value string) (string, error) {
+	cleaned := filepath.Clean(strings.TrimSpace(value))
+	if cleaned == "" || cleaned == "." || filepath.IsAbs(cleaned) || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("must be a relative path inside the agent directory")
+	}
+	return cleaned, nil
 }
 
 func manifestArgv(binDir string, id string, manifest agentManifest) []string {

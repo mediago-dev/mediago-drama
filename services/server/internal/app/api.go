@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -14,11 +15,13 @@ import (
 	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
+	servicelicense "github.com/mediago-dev/mediago-drama/services/server/internal/service/license"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	serviceprojectasset "github.com/mediago-dev/mediago-drama/services/server/internal/service/projectasset"
 	servicepromptlibrary "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptlibrary"
 	servicepromptpack "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 	serviceprompttemplates "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompttemplates"
+	serviceselection "github.com/mediago-dev/mediago-drama/services/server/internal/service/selection"
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	serviceshared "github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
@@ -26,6 +29,7 @@ import (
 )
 
 type apiHandler struct {
+	initErr          error
 	workspaceState   *appworkspace.WorkspaceStateService
 	events           *appevents.Broker
 	workspaceEvents  *serviceworkspaceevent.Broker
@@ -41,17 +45,27 @@ type apiHandler struct {
 	capability       *servicecapability.Service
 	billing          *servicebilling.Service
 	generation       *servicegeneration.GenerationService
+	selection        *serviceselection.Service
 	jianyingDraft    *servicejianyingdraft.Service
 	mediaAssets      *servicemedia.MediaAssets
 	previewStreamer  *servicemedia.FFmpegPreviewStreamer
 	projectAssets    *serviceprojectasset.ProjectAssets
 	promptPack       *servicepromptpack.Service
+	licenseClient    *servicelicense.Client
 	promptTemplates  *serviceprompttemplates.Service
 	promptLibrary    *servicepromptlibrary.Service
 	skillRegistry    *serviceskill.Registry
 	shutdownCtx      context.Context
 	shutdownCancel   context.CancelFunc
 	workers          sync.WaitGroup
+}
+
+// ReadinessError returns startup dependency initialization failures, if any.
+func (handler *apiHandler) ReadinessError() error {
+	if handler == nil {
+		return errors.New("api handler is nil")
+	}
+	return handler.initErr
 }
 
 type agentRuntimeConfigInspector interface {
@@ -153,6 +167,9 @@ func (handler *apiHandler) Close() error {
 	}
 	if handler.shutdownCancel != nil {
 		handler.shutdownCancel()
+	}
+	if handler.agentRuntime != nil {
+		handler.agentRuntime.Close()
 	}
 	handler.workers.Wait()
 	if handler.workspaceState != nil {

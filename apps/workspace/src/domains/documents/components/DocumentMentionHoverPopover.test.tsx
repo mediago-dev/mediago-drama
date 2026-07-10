@@ -51,7 +51,7 @@ describe("DocumentMentionHoverPopover", () => {
 		render(
 			<DocumentMentionHoverPopover allAssets={[]} allDocuments={mentionDocuments}>
 				<span
-					className="agent-reference-mention"
+					className="document-reference-mention"
 					data-block-id="section_character"
 					data-category="character"
 					data-document-id="character-doc"
@@ -75,7 +75,7 @@ describe("DocumentMentionHoverPopover", () => {
 			<DocumentMentionHoverPopover allAssets={[]} allDocuments={mentionDocuments}>
 				<p>
 					<span
-						className="agent-reference-mention"
+						className="document-reference-mention"
 						data-block-id="section_character"
 						data-category="character"
 						data-document-id="character-doc"
@@ -140,7 +140,7 @@ describe("DocumentMentionHoverPopover", () => {
 				projectId="project-a"
 			>
 				<span
-					className="agent-reference-mention"
+					className="document-reference-mention"
 					data-block-id="section_character"
 					data-category="character"
 					data-document-id="character-doc"
@@ -194,7 +194,7 @@ describe("DocumentMentionHoverPopover", () => {
 				]}
 			>
 				<span
-					className="agent-reference-mention"
+					className="document-reference-mention"
 					data-block-id="section_character"
 					data-category="character"
 					data-document-id="character-doc"
@@ -229,7 +229,7 @@ describe("DocumentMentionHoverPopover", () => {
 				onGenerateReference={onGenerateReference}
 			>
 				<span
-					className="agent-reference-mention"
+					className="document-reference-mention"
 					data-block-id="section_testc"
 					data-category="character"
 					data-document-id="character-doc"

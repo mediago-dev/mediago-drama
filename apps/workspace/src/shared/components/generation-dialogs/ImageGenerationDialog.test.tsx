@@ -223,6 +223,25 @@ describe("ImageGenerationDialog", () => {
 		});
 	});
 
+	it("passes undefined selectedAssetKeys through so the section generator falls back to the selected-assets store", () => {
+		render(
+			<ImageGenerationDialog
+				open
+				section={section}
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		// A concrete [] here would short-circuit DocumentSectionGenerator's
+		// fallback to the authoritative selected-assets store, leaving the
+		// already-定稿 asset unchecked when the dialog reopens.
+		expect(capturedGeneratorProps).not.toBeNull();
+		expect(capturedGeneratorProps?.selectedAssetKeys).toBeUndefined();
+	});
+
 	it("toggles the generated image on the dialog section that owns the asset", async () => {
 		const onToggleImage = vi.fn();
 		const referenceSection: MarkdownSectionContext = {

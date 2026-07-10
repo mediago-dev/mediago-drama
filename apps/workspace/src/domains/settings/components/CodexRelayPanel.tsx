@@ -18,6 +18,7 @@ import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanel
 import { useToast } from "@/hooks/useToast";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { Button } from "@/shared/components/ui/button";
+import { DialogClose } from "@/shared/components/ui/dialog-dismiss";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -521,11 +522,11 @@ const APIKeyEditDialog: React.FC<{
 							</DialogPrimitive.Title>
 							<p className="mt-1 truncate text-xs text-muted-foreground">{profile.name}</p>
 						</div>
-						<DialogPrimitive.Close asChild>
+						<DialogClose asChild>
 							<Button type="button" variant="ghost" size="icon" aria-label="关闭">
 								<X className="size-4" />
 							</Button>
-						</DialogPrimitive.Close>
+						</DialogClose>
 					</div>
 
 					<div className="mt-4 grid gap-2">
@@ -554,7 +555,7 @@ const APIKeyEditDialog: React.FC<{
 							<span>清除</span>
 						</Button>
 						<div className="flex items-center gap-2">
-							<DialogPrimitive.Close asChild>
+							<DialogClose asChild>
 								<Button
 									type="button"
 									variant="outline"
@@ -563,7 +564,7 @@ const APIKeyEditDialog: React.FC<{
 								>
 									取消
 								</Button>
-							</DialogPrimitive.Close>
+							</DialogClose>
 							<Button
 								type="button"
 								className="rounded-md"

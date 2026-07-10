@@ -122,6 +122,7 @@ export interface CodexRelayCheckResponse {
 	profileId: string;
 	baseURL: string;
 	statusCode: number;
+	models: string[];
 }
 
 export interface CodexRelayCheckRequest {

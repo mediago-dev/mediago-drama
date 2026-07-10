@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
@@ -68,11 +70,17 @@ type AgentRuntimeConfig struct {
 
 // AgentRuntime coordinates agent sessions, runner calls, and run events.
 type AgentRuntime struct {
-	workspace DocumentStore
-	sessions  *SessionService
-	runner    AgentRunner
-	publish   func(AgentEvent)
-	config    AgentRuntimeConfig
+	workspace      DocumentStore
+	sessions       *SessionService
+	runner         AgentRunner
+	publish        func(AgentEvent)
+	config         AgentRuntimeConfig
+	inFlightRuns   atomic.Int64
+	lifecycleMu    sync.Mutex
+	lifecycleGroup sync.WaitGroup
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
+	closed         bool
 }
 
 // NewAgentRuntime returns an agent runtime service.
@@ -89,13 +97,55 @@ func NewAgentRuntime(
 	if config.WorkspaceDir == "" && workspace != nil {
 		config.WorkspaceDir = workspace.Dir()
 	}
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 	return &AgentRuntime{
-		workspace: workspace,
-		sessions:  sessions,
-		runner:    runner,
-		publish:   publish,
-		config:    config,
+		workspace:      workspace,
+		sessions:       sessions,
+		runner:         runner,
+		publish:        publish,
+		config:         config,
+		shutdownCtx:    shutdownCtx,
+		shutdownCancel: shutdownCancel,
 	}
+}
+
+// Close cancels and waits for every goroutine owned by the runtime. It is safe
+// to call concurrently and more than once.
+func (runtime *AgentRuntime) Close() {
+	if runtime == nil {
+		return
+	}
+
+	runtime.lifecycleMu.Lock()
+	if !runtime.closed {
+		runtime.closed = true
+		if runtime.shutdownCancel != nil {
+			runtime.shutdownCancel()
+		}
+	}
+	runtime.lifecycleMu.Unlock()
+
+	runtime.lifecycleGroup.Wait()
+}
+
+func (runtime *AgentRuntime) beginLifecycleWork() bool {
+	if runtime == nil {
+		return false
+	}
+	runtime.lifecycleMu.Lock()
+	defer runtime.lifecycleMu.Unlock()
+	if runtime.closed {
+		return false
+	}
+	runtime.lifecycleGroup.Add(1)
+	return true
+}
+
+func (runtime *AgentRuntime) finishLifecycleWork() {
+	if runtime == nil {
+		return
+	}
+	runtime.lifecycleGroup.Done()
 }
 
 // SubmitAgentMessage accepts an agent message and starts a background run.
@@ -103,6 +153,15 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 	if runtime == nil || runtime.workspace == nil || runtime.sessions == nil || runtime.runner == nil {
 		return AgentMessageResponse{}, http.StatusServiceUnavailable, fmt.Errorf("agent runtime is unavailable")
 	}
+	if !runtime.beginLifecycleWork() {
+		return AgentMessageResponse{}, http.StatusServiceUnavailable, fmt.Errorf("agent runtime is closed")
+	}
+	workTransferred := false
+	defer func() {
+		if !workTransferred {
+			runtime.finishLifecycleWork()
+		}
+	}()
 	if payload.SessionID == "" {
 		return AgentMessageResponse{}, http.StatusBadRequest, fmt.Errorf("缺少 sessionId")
 	}
@@ -123,7 +182,7 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 	payload.AgentTag = shared.FirstNonEmpty(payload.AgentTag, DefaultAgentName)
 
 	runID := shared.MustRandomID("run")
-	runCtx, cancelRun := agentRunContext(runtime.config.RunTimeout)
+	runCtx, cancelRun := agentRunContextWithParent(runtime.shutdownCtx, runtime.config.RunTimeout)
 	acpSessionID, ok := runtime.sessions.StartRun(
 		payload.SessionID,
 		payload.ProjectID,
@@ -192,14 +251,58 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 		ProjectID: payload.ProjectID,
 		RunID:     runID,
 		Type:      "agent.user.message",
-		Message:   payload.Prompt,
+		Message:   userMessageDisplayText(payload),
+		Metadata:  userMessageDisplayMetadata(payload),
 		CreatedAt: timestamp.NowRFC3339Nano(),
 	})
-	runtime.maybeGenerateSessionTitle(payload.SessionID, payload.Prompt, payload.Model)
+	runtime.maybeGenerateSessionTitle(
+		payload.SessionID,
+		shared.FirstNonEmpty(payload.DisplayPrompt, payload.Prompt),
+		payload.Model,
+	)
 
-	go runtime.runAgent(runCtx, cancelRun, payload, runID, acpSessionID, projectDir, workingDir)
+	runtime.inFlightRuns.Add(1)
+	go func() {
+		defer runtime.finishLifecycleWork()
+		runtime.runAgent(runCtx, cancelRun, payload, runID, acpSessionID, projectDir, workingDir)
+	}()
+	workTransferred = true
 
 	return AgentMessageResponse{Accepted: true}, http.StatusOK, nil
+}
+
+// userMessageDisplayText picks the transcript text for a user message: the
+// composer's display prompt whenever the request carries renderable display
+// data (an empty display prompt is then intentional — the bubble shows
+// attachment cards alone), otherwise the raw machine prompt. Metadata that is
+// present but empty does not count, so a defensive client sending `{}` cannot
+// blank the transcript.
+func userMessageDisplayText(payload AgentMessageRequest) string {
+	if strings.TrimSpace(payload.DisplayPrompt) != "" || displayMetadataHasContent(payload.DisplayMetadata) {
+		return strings.TrimSpace(payload.DisplayPrompt)
+	}
+	return payload.Prompt
+}
+
+// userMessageDisplayMetadata returns the display metadata to persist on the
+// user message, or nil when it carries nothing renderable.
+func userMessageDisplayMetadata(payload AgentMessageRequest) map[string]any {
+	if !displayMetadataHasContent(payload.DisplayMetadata) {
+		return nil
+	}
+	return payload.DisplayMetadata
+}
+
+// displayMetadataHasContent reports whether display metadata carries at least
+// one renderable entry (attachment cards, prompt segments, or any future
+// list-valued display field).
+func displayMetadataHasContent(metadata map[string]any) bool {
+	for _, value := range metadata {
+		if entries, ok := value.([]any); ok && len(entries) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (runtime *AgentRuntime) projectDirForRun(projectID string) (string, error) {
@@ -239,7 +342,13 @@ func (runtime *AgentRuntime) maybeGenerateSessionTitle(sessionID string, userPro
 	if strings.TrimSpace(userPrompt) == "" || !runtime.sessions.NeedsTitle(sessionID) {
 		return
 	}
-	go runtime.generateSessionTitle(context.Background(), sessionID, userPrompt, model)
+	if !runtime.beginLifecycleWork() {
+		return
+	}
+	go func() {
+		defer runtime.finishLifecycleWork()
+		runtime.generateSessionTitle(runtime.shutdownCtx, sessionID, userPrompt, model)
+	}()
 }
 
 func (runtime *AgentRuntime) generateSessionTitle(ctx context.Context, sessionID string, userPrompt string, model AgentACPConfigSelection) {
@@ -319,6 +428,7 @@ func (runtime *AgentRuntime) runAgent(
 	projectDir string,
 	workingDir string,
 ) {
+	defer runtime.inFlightRuns.Add(-1)
 	runFinished := false
 	finishRun := func(status string, message string) bool {
 		if runFinished {
@@ -439,6 +549,15 @@ func (runtime *AgentRuntime) runAgent(
 			ACPSessionID: result.ACPSessionID,
 		})
 	}
+}
+
+// CountInFlightRuns includes cancelled runs until their runner and terminal event
+// cleanup have actually returned, so the updater never mistakes cancellation for idle.
+func (runtime *AgentRuntime) CountInFlightRuns() int {
+	if runtime == nil {
+		return 0
+	}
+	return int(runtime.inFlightRuns.Load())
 }
 
 func (runtime *AgentRuntime) applyDocumentProposal(
@@ -596,8 +715,15 @@ func (runtime *AgentRuntime) publishEvent(event AgentEvent) {
 }
 
 func agentRunContext(timeout time.Duration) (context.Context, context.CancelFunc) {
-	if timeout <= 0 {
-		return context.WithCancel(context.Background())
+	return agentRunContextWithParent(context.Background(), timeout)
+}
+
+func agentRunContextWithParent(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
 	}
-	return context.WithTimeout(context.Background(), timeout)
+	if timeout <= 0 {
+		return context.WithCancel(parent)
+	}
+	return context.WithTimeout(parent, timeout)
 }

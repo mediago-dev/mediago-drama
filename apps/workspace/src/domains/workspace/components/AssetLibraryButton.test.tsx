@@ -7,7 +7,7 @@ import {
 	type SelectedGenerationAsset,
 } from "@/domains/generation/api/generation";
 import { getProjects } from "@/domains/projects/api/projects";
-import { getMediaAssets, type MediaAsset } from "@/domains/workspace/api/media";
+import { getMediaAssets, type MediaAsset, updateMediaAsset } from "@/domains/workspace/api/media";
 import { getWorkspaceDocuments } from "@/domains/workspace/api/workspace";
 import { AssetLibraryButton } from "./AssetLibraryButton";
 
@@ -212,11 +212,28 @@ describe("AssetLibraryButton", () => {
 		expect(screen.queryByText("1 / 1")).not.toBeInTheDocument();
 		expect(screen.queryByText("最近更新")).not.toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "取消选入" })).not.toBeInTheDocument();
-		expect(screen.queryByRole("button", { name: /重命名/ })).not.toBeInTheDocument();
+		expect(screen.getAllByRole("button", { name: /重命名/ })).toHaveLength(1);
 		expect(getMediaAssets).toHaveBeenCalledWith({ projectId: "project-a" });
 		expect(getWorkspaceDocuments).toHaveBeenCalledWith("project-a");
 		expect(getSelectedGenerationAssets).toHaveBeenCalledWith("project-a");
 		expect(deleteSelectedGenerationAsset).not.toHaveBeenCalled();
+	});
+
+	it("opens the file picker directly from the upload button", async () => {
+		vi.mocked(getMediaAssets).mockResolvedValue({ assets: [] });
+		vi.mocked(getSelectedGenerationAssets).mockResolvedValue({ assets: [] });
+
+		renderAssetLibraryButton("/projects?projectId=project-a");
+		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
+
+		await screen.findByRole("dialog", { name: "项目素材库" });
+		const uploadInput = screen.getByLabelText("上传素材");
+		const inputClick = vi.spyOn(uploadInput, "click");
+
+		fireEvent.click(screen.getByRole("button", { name: "上传" }));
+
+		expect(inputClick).toHaveBeenCalledOnce();
+		expect(screen.queryByRole("button", { name: "上传素材" })).not.toBeInTheDocument();
 	});
 
 	it("labels project media by source document category before it is selected", async () => {
@@ -404,6 +421,121 @@ describe("AssetLibraryButton", () => {
 		expect(getMediaAssets).toHaveBeenCalledWith({ projectId: "project-b" });
 		expect(getWorkspaceDocuments).toHaveBeenCalledWith("project-b");
 		expect(getSelectedGenerationAssets).toHaveBeenCalledWith("project-b");
+	});
+
+	it("keeps the tail of long filenames visible via middle truncation", async () => {
+		const longName = "林墨（高三·契约小悟空后）2D动漫定稿候选B.png";
+		vi.mocked(getMediaAssets).mockResolvedValue({
+			assets: [mediaAsset({ filename: longName, id: "long-name" })],
+		});
+
+		renderAssetLibraryButton("/");
+
+		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
+
+		await screen.findByRole("dialog", { name: "全局素材库" });
+		await waitFor(() => {
+			expect(document.body.querySelector(`span[title="${longName}"]`)).toBeTruthy();
+		});
+		const truncated = document.body.querySelector(`span[title="${longName}"]`);
+		expect(truncated?.textContent).toBe(longName);
+		expect(truncated?.children).toHaveLength(2);
+		expect(truncated?.children[1].textContent).toBe("稿候选B.png");
+	});
+
+	it("shows the filter dimension as a prefix inside each select", async () => {
+		vi.mocked(getMediaAssets).mockResolvedValue({ assets: [mediaAsset()] });
+
+		renderAssetLibraryButton("/");
+
+		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
+
+		await screen.findByRole("dialog", { name: "全局素材库" });
+		expect(screen.getByRole("combobox", { name: "类型" })).toHaveTextContent("类型:");
+		expect(screen.getByRole("combobox", { name: "类型" })).toHaveTextContent("全部");
+		expect(screen.getByRole("combobox", { name: "项目" })).toHaveTextContent("项目:");
+	});
+
+	it("renames a media asset from the preview panel", async () => {
+		vi.mocked(getMediaAssets).mockResolvedValue({
+			assets: [mediaAsset({ filename: "old-name.png", id: "media-a" })],
+		});
+		vi.mocked(updateMediaAsset).mockResolvedValue(
+			mediaAsset({ filename: "new-name.png", id: "media-a" }),
+		);
+
+		renderAssetLibraryButton("/");
+
+		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
+
+		expect((await screen.findAllByText("old-name.png")).length).toBeGreaterThan(0);
+		fireEvent.click(screen.getByRole("button", { name: "重命名" }));
+		const input = screen.getByRole("textbox", { name: "重命名素材" });
+		fireEvent.change(input, { target: { value: "new-name.png" } });
+		fireEvent.keyDown(input, { key: "Enter" });
+
+		await waitFor(() =>
+			expect(updateMediaAsset).toHaveBeenCalledWith("media-a", "new-name.png", undefined),
+		);
+	});
+
+	it("copies the asset path from the preview panel", async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(window.navigator, "clipboard", {
+			configurable: true,
+			value: { writeText },
+		});
+		vi.mocked(getMediaAssets).mockResolvedValue({
+			assets: [
+				mediaAsset({
+					downloadPath: "/tmp/library/2026-06-21/asset-media-a.png",
+					filename: "hero.png",
+					id: "media-a",
+					relativePath: "library/2026-06-21/asset-media-a.png",
+				}),
+			],
+		});
+
+		renderAssetLibraryButton("/");
+
+		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
+
+		expect((await screen.findAllByText("hero.png")).length).toBeGreaterThan(0);
+		fireEvent.click(screen.getByRole("button", { name: "复制路径" }));
+		await waitFor(() =>
+			expect(writeText).toHaveBeenCalledWith("/tmp/library/2026-06-21/asset-media-a.png"),
+		);
+		expect(screen.queryByRole("button", { name: "在文件夹中显示" })).not.toBeInTheDocument();
+	});
+
+	it("moves the previewed asset with arrow keys", async () => {
+		vi.mocked(getMediaAssets).mockResolvedValue({
+			assets: [
+				mediaAsset({ filename: "first.png", id: "media-a", updatedAt: "2026-06-02T09:00:00Z" }),
+				mediaAsset({ filename: "second.png", id: "media-b", updatedAt: "2026-06-01T09:00:00Z" }),
+			],
+		});
+
+		renderAssetLibraryButton("/");
+
+		fireEvent.click(screen.getByRole("button", { name: "打开素材库" }));
+
+		const dialog = await screen.findByRole("dialog", { name: "全局素材库" });
+		expect((await screen.findAllByText("first.png")).length).toBeGreaterThan(0);
+
+		fireEvent.keyDown(dialog, { key: "ArrowRight" });
+		await waitFor(() => {
+			expect(document.body.querySelector('[data-asset-key="media:media-b"]')).toHaveClass(
+				"border-primary",
+			);
+		});
+
+		fireEvent.keyDown(dialog, { key: "ArrowLeft" });
+		await waitFor(() => {
+			expect(document.body.querySelector('[data-asset-key="media:media-a"]')).toHaveClass(
+				"border-primary",
+			);
+		});
 	});
 });
 

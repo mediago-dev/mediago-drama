@@ -11,7 +11,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/shared/components/ui/alert-dialog";
-import { Button } from "@/shared/components/ui/button";
+import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Input } from "@/shared/components/ui/input";
 import {
 	Select,
@@ -108,10 +108,10 @@ export const GenerationConversationCreateDialog = createCallable<
 					</div>
 					<AlertDialogFooter>
 						<AlertDialogCancel>取消</AlertDialogCancel>
-						<Button type="submit" disabled={!trimmedTitle}>
+						<DialogDismissButton type="submit" disabled={!trimmedTitle}>
 							<Plus />
 							<span>创建</span>
-						</Button>
+						</DialogDismissButton>
 					</AlertDialogFooter>
 				</form>
 			</AlertDialogContent>

@@ -1,7 +1,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type React from "react";
-import { Button } from "@/shared/components/ui/button";
+import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 
@@ -73,7 +73,7 @@ export const GenerationDialogShell: React.FC<GenerationDialogShellProps> = ({
 								</DialogPrimitive.Description>
 							) : null}
 						</div>
-						<Button
+						<DialogDismissButton
 							type="button"
 							variant="ghost"
 							size="icon"
@@ -82,7 +82,7 @@ export const GenerationDialogShell: React.FC<GenerationDialogShellProps> = ({
 							onClick={() => requestOpenChange(false)}
 						>
 							<X className="size-4" />
-						</Button>
+						</DialogDismissButton>
 					</header>
 					{toolbar ? (
 						<div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">

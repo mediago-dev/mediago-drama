@@ -12,6 +12,7 @@ import {
 } from "@/domains/settings/api/prompt-templates";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { DialogClose, DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Label } from "@/shared/components/ui/label";
 import {
 	Select,
@@ -248,11 +249,11 @@ const PromptTemplateEditDialog: React.FC<{
 							修改当前系统指令内容。
 						</DialogPrimitive.Description>
 					</div>
-					<DialogPrimitive.Close asChild>
+					<DialogClose asChild>
 						<Button type="button" variant="ghost" size="icon" aria-label="关闭编辑指令">
 							<X className="size-4" />
 						</Button>
-					</DialogPrimitive.Close>
+					</DialogClose>
 				</header>
 
 				<div className="min-h-0 overflow-y-auto p-4">
@@ -281,13 +282,13 @@ const PromptTemplateEditDialog: React.FC<{
 				</div>
 
 				<footer className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-3">
-					<Button type="button" variant="ghost" onClick={onCancel}>
+					<DialogDismissButton type="button" variant="ghost" onClick={onCancel}>
 						取消
-					</Button>
-					<Button type="button" onClick={onSave} disabled={!draft || isSaving}>
+					</DialogDismissButton>
+					<DialogDismissButton type="button" onClick={onSave} disabled={!draft || isSaving}>
 						<Save className="size-4" />
 						<span>{isSaving ? "保存中" : "保存"}</span>
-					</Button>
+					</DialogDismissButton>
 				</footer>
 			</DialogPrimitive.Content>
 		</DialogPrimitive.Portal>

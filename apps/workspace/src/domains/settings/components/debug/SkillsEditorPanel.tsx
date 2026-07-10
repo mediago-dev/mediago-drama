@@ -15,6 +15,7 @@ import {
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { Button } from "@/shared/components/ui/button";
+import { DialogClose, DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import {
@@ -25,6 +26,7 @@ import {
 	SelectValue,
 } from "@/shared/components/ui/select";
 import { composeSkillMarkdown, splitSkillMarkdown } from "@/domains/settings/lib/skill-markdown";
+import { sanitizeSkillName } from "@/domains/settings/lib/skill-name";
 import { orderSkillsForPrimaryFlows } from "@/domains/settings/lib/skill-order";
 import { useToast } from "@/hooks/useToast";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
@@ -307,8 +309,8 @@ export const SkillsEditorPanel: React.FC = () => {
 				onSave={() => void save()}
 			/>
 
-			<div className="h-full min-h-0 overflow-y-auto px-5 py-5">
-				<div className="space-y-3">
+			<div className="flex h-full min-h-0 flex-col px-5 py-5">
+				<div className="flex h-full min-h-0 flex-col gap-3">
 					{isLoading && skills.length === 0 ? (
 						<p className={skillMessageClassName}>正在加载技能。</p>
 					) : !selectedSkill && isSkillLoading ? (
@@ -358,7 +360,7 @@ export const SkillsEditorPanel: React.FC = () => {
 								) : null}
 								<SettingsMarkdownPreview
 									ariaLabelledBy="skill-body-content-label"
-									className="min-h-72"
+									className="min-h-0 flex-1 overflow-y-auto"
 									placeholder="暂无 Skill 内容。"
 									value={bodyDraft}
 								/>
@@ -376,7 +378,7 @@ const settingsFormRowClassName = cn(
 	"grid gap-3 md:grid-cols-[minmax(var(--settings-label-column-min),var(--settings-label-column-max))_minmax(0,1fr)] md:items-start",
 );
 
-const skillBodyRowClassName = "grid gap-2 py-2";
+const skillBodyRowClassName = "flex min-h-0 flex-1 flex-col gap-2 py-2";
 const skillMessageClassName = "py-2 text-sm text-muted-foreground";
 
 const SkillEditDialog: React.FC<{
@@ -411,11 +413,11 @@ const SkillEditDialog: React.FC<{
 							修改当前 Skill 正文内容。
 						</DialogPrimitive.Description>
 					</div>
-					<DialogPrimitive.Close asChild>
+					<DialogClose asChild>
 						<Button type="button" variant="ghost" size="icon" aria-label="关闭编辑 Skill">
 							<X className="size-4" />
 						</Button>
-					</DialogPrimitive.Close>
+					</DialogClose>
 				</header>
 
 				<div className="min-h-0 overflow-y-auto p-4">
@@ -446,13 +448,13 @@ const SkillEditDialog: React.FC<{
 				</div>
 
 				<footer className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-3">
-					<Button type="button" variant="ghost" onClick={onCancel}>
+					<DialogDismissButton type="button" variant="ghost" onClick={onCancel}>
 						取消
-					</Button>
-					<Button type="button" onClick={onSave} disabled={isSaving}>
+					</DialogDismissButton>
+					<DialogDismissButton type="button" onClick={onSave} disabled={isSaving}>
 						{isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
 						<span>{isSaving ? "保存中" : "保存"}</span>
-					</Button>
+					</DialogDismissButton>
 				</footer>
 			</DialogPrimitive.Content>
 		</DialogPrimitive.Portal>
@@ -494,11 +496,11 @@ const SkillCreateDialog: React.FC<{
 								创建自定义 Skill 文件。
 							</DialogPrimitive.Description>
 						</div>
-						<DialogPrimitive.Close asChild>
+						<DialogClose asChild>
 							<Button type="button" variant="ghost" size="icon" aria-label="关闭新建 Skill">
 								<X className="size-4" />
 							</Button>
-						</DialogPrimitive.Close>
+						</DialogClose>
 					</header>
 
 					<div className="space-y-3 p-4">
@@ -532,26 +534,23 @@ const SkillCreateDialog: React.FC<{
 					</div>
 
 					<footer className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-3">
-						<Button type="button" variant="ghost" onClick={onCancel}>
+						<DialogDismissButton type="button" variant="ghost" onClick={onCancel}>
 							取消
-						</Button>
-						<Button type="button" onClick={onSave} disabled={!normalizedName || isSaving}>
+						</DialogDismissButton>
+						<DialogDismissButton
+							type="button"
+							onClick={onSave}
+							disabled={!normalizedName || isSaving}
+						>
 							{isSaving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
 							<span>{isSaving ? "创建中" : "创建"}</span>
-						</Button>
+						</DialogDismissButton>
 					</footer>
 				</DialogPrimitive.Content>
 			</DialogPrimitive.Portal>
 		</DialogPrimitive.Root>
 	);
 };
-
-const sanitizeSkillName = (value: string) =>
-	value
-		.trim()
-		.replace(/\.skill\.md$/i, "")
-		.replace(/[^a-zA-Z0-9_-]/g, "-")
-		.replace(/^[-_]+/, "");
 
 const newSkillTemplate = (name: string) => `---
 name: ${name}

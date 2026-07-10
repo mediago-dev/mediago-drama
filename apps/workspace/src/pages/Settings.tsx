@@ -40,6 +40,7 @@ import { CodexRelayPanel } from "@/domains/settings/components/CodexRelayPanel";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
 import { BillingPanel } from "@/domains/billing/components/BillingPanel";
 import { Button } from "@/shared/components/ui/button";
+import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import {
@@ -61,6 +62,7 @@ import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
 import { openExternalUrl, pickDesktopDirectory } from "@/shared/desktop/actions";
+import { UpdatesPanel } from "@/domains/settings/components/UpdatesPanel";
 
 const jianyingDraftSettingsEnabled: boolean = false;
 const customProvidersEnabled = import.meta.env.VITE_ENABLE_CUSTOM_PROVIDERS !== "false";
@@ -72,7 +74,6 @@ const knownPlatformProviderIDs = new Set(["mediago", "openrouter", "dmx"]);
 const cliProviderHints: Record<string, string> = {
 	jimeng: "已开通即梦高级会员？可直接登录即梦账号接入，无需 API Key。",
 	libtv: "已开通 LibTV 会员？可直接登录 LibTV 账号接入本地 CLI。",
-	xiaoyunque: "已有小云雀 Access Key？可通过本地 Pippit CLI 接入。",
 };
 const providerRowClassName = settingsInsetRowClassName;
 
@@ -82,6 +83,7 @@ type SettingsTabValue =
 	| "billing"
 	| "codex-relay"
 	| "jianying-draft"
+	| "updates"
 	| "shortcuts"
 	| DebugTabValue;
 
@@ -90,6 +92,7 @@ const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	value === "api-keys" ||
 	value === "billing" ||
 	value === "codex-relay" ||
+	value === "updates" ||
 	(jianyingDraftSettingsEnabled && value === "jianying-draft") ||
 	value === "shortcuts" ||
 	debugTabs.some((tab) => tab.value === value);
@@ -131,6 +134,7 @@ export const Settings: React.FC = () => {
 			{visibleTab === "api-keys" ? <APIKeysPanel /> : null}
 			{visibleTab === "billing" ? <BillingPanel /> : null}
 			{visibleTab === "codex-relay" ? <CodexRelayPanel /> : null}
+			{visibleTab === "updates" ? <UpdatesPanel /> : null}
 			{visibleTab === "shortcuts" ? <ShortcutKeysPanel /> : null}
 
 			{debugTabs.map((tab) =>
@@ -345,7 +349,11 @@ const APIKeysPanel: React.FC = () => {
 		);
 	};
 
-	const renderManualProvider = (provider: APIKeyProvider, variant: ManualProviderVariant) => {
+	const renderManualProvider = (
+		provider: APIKeyProvider,
+		variant: ManualProviderVariant,
+		hint?: string,
+	) => {
 		if (provider.credentialKind === "oauth") return renderProvider(provider);
 
 		const apiKey = apiKeys[provider.id] ?? "";
@@ -361,6 +369,7 @@ const APIKeysPanel: React.FC = () => {
 				onSave={() => void saveManualConfig(provider)}
 				open={manualProviderID === provider.id}
 				provider={provider}
+				hint={hint}
 				variant={variant}
 			/>
 		);
@@ -370,6 +379,10 @@ const APIKeysPanel: React.FC = () => {
 		renderManualProvider(provider, "custom");
 	const renderOfficialProvider = (provider: APIKeyProvider) =>
 		renderManualProvider(provider, "official");
+	const renderCLIProvider = (provider: APIKeyProvider) =>
+		provider.credentialKind === "oauth"
+			? renderProvider(provider, cliProviderHint(provider))
+			: renderManualProvider(provider, "cli", cliProviderHint(provider));
 
 	return (
 		<SettingsPanelLayout
@@ -425,9 +438,7 @@ const APIKeysPanel: React.FC = () => {
 						title="会员 CLI 接入"
 						description="使用本地 CLI 登录或配置对应 Access Key 接入。"
 					>
-						{cliProviders.map((provider) =>
-							renderProvider(provider, cliProviderHints[provider.id] ?? provider.help),
-						)}
+						{cliProviders.map(renderCLIProvider)}
 					</CredentialCategorySection>
 				) : null}
 				{customProviders.length > 0 || officialProviders.length > 0 ? (
@@ -520,6 +531,11 @@ const platformProviders = (
 				},
 			];
 		});
+
+const cliProviderHint = (provider: APIKeyProvider) => {
+	if (provider.id === "xiaoyunque") return undefined;
+	return cliProviderHints[provider.id] ?? provider.help;
+};
 
 const officialAPIKeyProviders = (providers: APIKeyProvider[], platforms: ModelPlatform[]) => {
 	if (platforms.length === 0) {
@@ -690,14 +706,14 @@ const MediagoConfigDialog: React.FC<{
 						<span />
 					)}
 					<div className="flex gap-2">
-						<Button
+						<DialogDismissButton
 							type="button"
 							variant="outline"
 							onClick={() => onOpenChange(false)}
 							className="w-24 rounded-md"
 						>
 							取消
-						</Button>
+						</DialogDismissButton>
 						<Button
 							type="button"
 							disabled={!apiKey.trim() || isSaving}
@@ -781,7 +797,7 @@ const ProviderStatusLabel: React.FC<{
 	</span>
 );
 
-type ManualProviderVariant = "custom" | "official";
+type ManualProviderVariant = "cli" | "custom" | "official";
 
 const ManualAPIKeyProviderRow: React.FC<{
 	apiKey: string;
@@ -793,9 +809,11 @@ const ManualAPIKeyProviderRow: React.FC<{
 	onSave: () => void;
 	open: boolean;
 	provider: APIKeyProvider;
+	hint?: string;
 	variant: ManualProviderVariant;
 }> = ({
 	apiKey,
+	hint,
 	isClearing,
 	isSaving,
 	onAPIKeyChange,
@@ -817,6 +835,7 @@ const ManualAPIKeyProviderRow: React.FC<{
 						<h3 className="truncate text-sm font-semibold text-foreground">{provider.label}</h3>
 						<ProviderStatusLabel active={provider.configured} />
 					</div>
+					{hint ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{hint}</p> : null}
 					{savedCredential ? (
 						<p className="mt-1 truncate font-mono text-xs text-muted-foreground">
 							{savedCredential}
@@ -908,7 +927,9 @@ const ManualProviderConfigDialog: React.FC<{
 						<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
 							{variant === "custom"
 								? "这里仅保存该接口的 API Key。供应商标识、端点和模型路由由系统预设，不需要在这里填写。"
-								: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
+								: variant === "cli"
+									? "这里仅保存本地 CLI 使用的 Access Key。端点和模型能力由系统预设。"
+									: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
 						</p>
 					</div>
 					<span className="rounded-full bg-ide-list-hover px-2 py-1 text-xs font-medium text-muted-foreground">
@@ -935,14 +956,14 @@ const ManualProviderConfigDialog: React.FC<{
 
 				<div className="mt-6 flex justify-end gap-2">
 					<div className="flex justify-end gap-2">
-						<Button
+						<DialogDismissButton
 							type="button"
 							variant="outline"
 							onClick={() => onOpenChange(false)}
 							className="w-24 rounded-md"
 						>
 							取消
-						</Button>
+						</DialogDismissButton>
 						<Button
 							type="button"
 							disabled={!apiKey.trim() || isSaving}
@@ -1448,5 +1469,12 @@ function maskCredentialValue(value: string) {
 }
 
 function manualProviderVariantLabel(variant: ManualProviderVariant) {
-	return variant === "custom" ? "自定义" : "官方";
+	switch (variant) {
+		case "cli":
+			return "本地 CLI";
+		case "custom":
+			return "自定义";
+		default:
+			return "官方";
+	}
 }

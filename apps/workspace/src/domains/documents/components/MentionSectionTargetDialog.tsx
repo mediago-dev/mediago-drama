@@ -11,6 +11,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/shared/components/ui/alert-dialog";
+import { isolateDialogDismissPointerDown } from "@/shared/components/ui/dialog-dismiss";
 import { cn } from "@/shared/lib/utils";
 
 export type MentionSectionTargetCategory = Extract<
@@ -85,6 +86,7 @@ const MentionSectionTargetOption: React.FC<{
 				"grid min-h-12 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 rounded-sm border border-border bg-ide-editor p-2 text-left text-foreground transition-colors hover:bg-ide-list-hover",
 			)}
 			onClick={onSelect}
+			onPointerDown={(event) => isolateDialogDismissPointerDown(event)}
 		>
 			<span className="flex size-7 items-center justify-center rounded-sm bg-ide-toolbar">
 				<OptionIcon

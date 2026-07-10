@@ -12,6 +12,8 @@ import (
 const (
 	// DocumentHTTPPath is the streamable HTTP route for run-scoped document tools.
 	DocumentHTTPPath = mediamcp.DocumentHTTPPath
+	// GenerationHTTPPath is the streamable HTTP route for generation tools.
+	GenerationHTTPPath = mediamcp.GenerationHTTPPath
 	// BridgeURLHeader forwards the bridge base URL to HTTP-hosted MCP tools.
 	BridgeURLHeader = mediamcp.BridgeURLHeader
 	// BridgeTokenHeader forwards the bridge bearer token to HTTP-hosted MCP tools.

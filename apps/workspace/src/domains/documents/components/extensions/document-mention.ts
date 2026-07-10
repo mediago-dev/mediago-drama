@@ -121,7 +121,10 @@ export const DocumentMention = Mention.extend({
 }).configure({
 	deleteTriggerWithBackspace: true,
 	HTMLAttributes: {
-		class: "agent-reference-mention",
+		// `reference-mention-chip` carries the shared chip visuals; the
+		// document-specific class keeps this renderer decoupled from the agent
+		// composer's chip so the two can evolve independently.
+		class: "document-reference-mention reference-mention-chip",
 	},
 	renderHTML: ({ node, options }) => [
 		"span",

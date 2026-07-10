@@ -21,8 +21,11 @@ type GenerationTaskService interface {
 	ListGenerationModels() dto.GenerationModelsResponse
 	CreateGenerationMessage(ctx context.Context, payload dto.GenerationMessageRequest) (dto.GenerationMessageResponse, int, error)
 	CreatePromptOptimizedGenerationMessage(ctx context.Context, payload dto.GenerationMessageRequest) (dto.GenerationOptimizeAndGenerateResponse, int, error)
+	CreateGenerationBatch(ctx context.Context, payload dto.GenerationBatchRequest) (dto.GenerationBatchResponse, int, error)
+	GetGenerationBatch(batchID string) (dto.GenerationBatchTasksResponse, bool, error)
 	PreviewGenerationVoice(ctx context.Context, payload dto.GenerationVoicePreviewRequest) (dto.GenerationVoicePreviewResponse, int, error)
 	GenerationVoicePreviewContent(routeID string, voiceID string) (dto.GenerationVoicePreviewAsset, []byte, bool, error)
+	GenerationStylePreviewContent(presetID string) (dto.GenerationStylePreset, []byte, bool, error)
 	ImportGenerationMediaAssets(payload dto.ImportGenerationMediaAssetsRequest) (dto.GenerationTasksResponse, int, error)
 	StreamGenerationText(ctx context.Context, payload dto.GenerationMessageRequest, emit func(dto.GenerationTextStreamEvent) error) (int, error)
 	CreateGenerationConversation(payload dto.CreateGenerationConversationRequest) (dto.GenerationConversationRecord, int, error)
@@ -93,6 +96,55 @@ func (handler GenerationTasks) HandleGenerationMessage(context *gin.Context) {
 	response, status, err := handler.service.CreateGenerationMessage(context.Request.Context(), payload)
 	if err != nil {
 		httpresponse.ErrorFromStatus(context, status, err)
+		return
+	}
+	httpresponse.OK(context, response)
+}
+
+// HandleCreateGenerationBatch godoc
+// @Summary 批量提交生成任务
+// @Description 一次提交多个图片或视频生成请求，每项独立返回任务 ID 或错误。
+// @Tags Generation
+// @Accept json
+// @Produce json
+// @Param payload body SwaggerObject true "Generation batch payload"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/batches [post]
+func (handler GenerationTasks) HandleCreateGenerationBatch(context *gin.Context) {
+	payload, err := decodeJSON[dto.GenerationBatchRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	response, status, err := handler.service.CreateGenerationBatch(context.Request.Context(), payload)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, status, err)
+		return
+	}
+	httpresponse.OK(context, response)
+}
+
+// HandleGenerationBatchTasks godoc
+// @Summary 获取批次子任务
+// @Description 按 batchId 返回批次内当前持久化的生成任务状态。
+// @Tags Generation
+// @Produce json
+// @Param batchId path string true "Batch ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/generation/batches/{batchId}/tasks [get]
+func (handler GenerationTasks) HandleGenerationBatchTasks(context *gin.Context) {
+	batchID := pathParam(context, "batchId")
+	response, ok, err := handler.service.GetGenerationBatch(batchID)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
+		return
+	}
+	if !ok {
+		httpresponse.ErrorFromStatus(context, http.StatusNotFound, fmt.Errorf("generation batch not found"))
 		return
 	}
 	httpresponse.OK(context, response)
@@ -184,6 +236,38 @@ func (handler GenerationTasks) HandleGenerationVoicePreviewContent(context *gin.
 		return
 	}
 	mimeType := strings.TrimSpace(asset.MIMEType)
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+	context.Header("Cache-Control", "public, max-age=31536000, immutable")
+	context.Data(http.StatusOK, mimeType, data)
+}
+
+// HandleGenerationStylePreviewContent godoc
+// @Summary 获取内置风格预览图
+// @Description 返回应用内置的风格 preset 预览图片。
+// @Tags Generation
+// @Produce image/svg+xml
+// @Param presetId path string true "Style preset ID"
+// @Success 200 {file} file
+// @Failure 404 {object} SwaggerEnvelope
+// @Router /api/v1/generation/style-previews/{presetId} [get]
+func (handler GenerationTasks) HandleGenerationStylePreviewContent(context *gin.Context) {
+	presetID, ok := requiredPathParam(context, "presetId", "presetId")
+	if !ok {
+		return
+	}
+
+	preset, data, found, err := handler.service.GenerationStylePreviewContent(presetID)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusInternalServerError, err)
+		return
+	}
+	if !found {
+		httpresponse.ErrorFromStatus(context, http.StatusNotFound, fmt.Errorf("style preview not found"))
+		return
+	}
+	mimeType := strings.TrimSpace(preset.MIMEType)
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
@@ -428,6 +512,7 @@ func (handler GenerationTasks) HandleGenerationTasks(context *gin.Context) {
 		return
 	}
 	tasks, err := handler.service.ListGenerationTasks(service.GenerationTaskListQuery{
+		BatchID:        strings.TrimSpace(context.Query("batchId")),
 		ConversationID: sessionID,
 		Kind:           strings.TrimSpace(context.Query("kind")),
 		ProjectID:      strings.TrimSpace(context.Query("projectId")),

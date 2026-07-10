@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	GenerationModalShell,
@@ -17,6 +18,7 @@ const fireRadixOutsideClick = async (target: Element) => {
 
 describe("GenerationModalShell", () => {
 	afterEach(() => {
+		cleanup();
 		document.body.innerHTML = "";
 		vi.restoreAllMocks();
 	});
@@ -151,4 +153,109 @@ describe("GenerationModalShell", () => {
 
 		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 	});
+
+	it("keeps the lower dialog open and mounted while a later dialog is open", async () => {
+		render(<LayeredGenerationModalHarness />);
+
+		const lowerDialog = screen.getByRole("dialog", { name: "资源列表" });
+		const lowerInput = screen.getByRole("textbox", { name: "资源备注" });
+		fireEvent.change(lowerInput, { target: { value: "保留这段输入" } });
+
+		fireEvent.click(screen.getByRole("button", { name: "打开生成图片" }));
+		const upperDialog = await screen.findByRole("dialog", { name: "生成图片" });
+
+		expect(lowerDialog).toHaveAttribute("data-state", "open");
+		expect(upperDialog).toHaveAttribute("data-state", "open");
+		expect(screen.getByRole("textbox", { name: "资源备注", hidden: true })).toBe(lowerInput);
+		expect(lowerInput).toHaveValue("保留这段输入");
+
+		fireEvent.pointerDown(screen.getByRole("button", { name: "发送生成" }), { button: 0 });
+		fireEvent.click(screen.getByRole("button", { name: "发送生成" }));
+
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog", { name: "生成图片" })).toBeNull();
+		});
+		expect(screen.getByRole("dialog", { name: "资源列表" })).toBe(lowerDialog);
+		expect(screen.getByRole("textbox", { name: "资源备注" })).toBe(lowerInput);
+		expect(lowerInput).toHaveValue("保留这段输入");
+	});
+
+	it("keeps the lower dialog open when the upper header close button is clicked", async () => {
+		render(<LayeredGenerationModalHarness />);
+		await waitForRadixOutsideListeners();
+
+		const lowerDialog = screen.getByRole("dialog", { name: "资源列表" });
+		fireEvent.click(screen.getByRole("button", { name: "打开生成图片" }));
+		const upperDialog = await screen.findByRole("dialog", { name: "生成图片" });
+		const upperCloseButton = within(upperDialog).getByRole("button", { name: "关闭弹窗" });
+		const documentPointerDown = vi.fn();
+		document.addEventListener("pointerdown", documentPointerDown);
+
+		fireEvent.pointerDown(upperCloseButton, { button: 0 });
+		document.removeEventListener("pointerdown", documentPointerDown);
+		expect(documentPointerDown).not.toHaveBeenCalled();
+		fireEvent.click(upperCloseButton);
+
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog", { name: "生成图片" })).toBeNull();
+		});
+		expect(screen.getByRole("dialog", { name: "资源列表" })).toBe(lowerDialog);
+		expect(lowerDialog).toHaveAttribute("data-state", "open");
+	});
+
+	it("closes one generation modal per Escape key press", async () => {
+		render(<LayeredGenerationModalHarness upperInitiallyOpen />);
+		await waitForRadixOutsideListeners();
+
+		fireEvent.keyDown(document, { key: "Escape" });
+
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog", { name: "生成图片" })).toBeNull();
+		});
+		expect(screen.getByRole("dialog", { name: "资源列表" })).toBeTruthy();
+
+		fireEvent.keyDown(document, { key: "Escape" });
+
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog", { name: "资源列表" })).toBeNull();
+		});
+	});
 });
+
+const LayeredGenerationModalHarness = ({ upperInitiallyOpen = false }) => {
+	const [lowerOpen, setLowerOpen] = useState(true);
+	const [upperOpen, setUpperOpen] = useState(upperInitiallyOpen);
+
+	return (
+		<>
+			<GenerationModalShell
+				open={lowerOpen}
+				title="资源列表"
+				titleId="resource-list-title"
+				onOpenChange={setLowerOpen}
+			>
+				<label>
+					<span>资源备注</span>
+					<input aria-label="资源备注" defaultValue="" />
+				</label>
+				<button type="button" onClick={() => setUpperOpen(true)}>
+					打开生成图片
+				</button>
+			</GenerationModalShell>
+			<GenerationModalShell
+				open={upperOpen}
+				title="生成图片"
+				titleId="generate-image-title"
+				onOpenChange={setUpperOpen}
+			>
+				<button
+					type="button"
+					onPointerDown={(event) => event.stopPropagation()}
+					onClick={() => setUpperOpen(false)}
+				>
+					发送生成
+				</button>
+			</GenerationModalShell>
+		</>
+	);
+};

@@ -179,6 +179,12 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 		},
 		[openGenerationDialog, projectId],
 	);
+	const openBlockMediaDialog = useCallback(
+		(kind: "image" | "video" | "audio", section: MarkdownSectionContext) => {
+			openGenerationDialog({ kind, projectId: projectId || undefined, section });
+		},
+		[openGenerationDialog, projectId],
+	);
 
 	if (!activeDocument) {
 		return (
@@ -276,6 +282,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({ onOpenDocumentList
 								}
 								value={activeDocument.content}
 								onChange={(content) => updateDocumentContent(activeDocument.id, content)}
+								onBlockMediaAction={openBlockMediaDialog}
 								onCommentAnchorClick={focusCommentAnchor}
 								onSelectionChange={(text) => setSelection(activeDocument.id, text)}
 								onSelectionCoordChange={setSelectionCoords}

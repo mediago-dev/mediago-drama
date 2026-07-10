@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="小云雀">
+  <defs>
+    <linearGradient id="xyq-wing" x1="9" y1="9" x2="39" y2="39" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A96BFF"/>
+      <stop offset=".52" stop-color="#5D6DFF"/>
+      <stop offset="1" stop-color="#12D9C8"/>
+    </linearGradient>
+    <linearGradient id="xyq-tail" x1="12" y1="36" x2="33" y2="14" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7B61FF"/>
+      <stop offset="1" stop-color="#00D4FF"/>
+    </linearGradient>
+  </defs>
+  <path d="M26.9 5.8c6.2 1.2 11.2 5.8 13 11.8-4.9-.8-9.7.8-13.2 4.3-3.9 3.9-5.3 9.5-4 14.6-7.5-1.1-13.2-7.5-13.2-15.3 0-8.5 6.9-15.4 15.4-15.4h2Z" fill="url(#xyq-wing)"/>
+  <path d="M24.4 11.5c3.2 6.1 2.8 13.8-1.9 19.6-2.9 3.6-7 5.8-11.3 6.5C7.9 34.8 6 30.7 6 26.2c0-8.1 6.1-14.8 14-15.8 1.5-.2 3-.2 4.4 1.1Z" fill="url(#xyq-tail)"/>
+  <path d="M31.9 20.3c3.8-.6 7.6.6 10.3 3.3-2.7.7-5.2 2.1-7.2 4.1-2.2 2.2-3.6 4.9-4.2 7.8-2.5-3.7-2.1-8.8 1.1-12.1Z" fill="#11D6CF"/>
+</svg>

@@ -1,7 +1,13 @@
 import type { A2uiClientAction } from "@a2ui/web_core/v0_9";
-import { decideAgentPermission, decideDocumentToolApproval } from "@/domains/agent/api/agent";
+import {
+	decideAgentPermission,
+	decideAgentSelection,
+	decideDocumentToolApproval,
+} from "@/domains/agent/api/agent";
+import { selectionDecisionSummary } from "@/domains/agent/lib/resolved-selection";
 import type { AgentMessage } from "@/domains/agent/stores";
 import { useAgentStore } from "@/domains/agent/stores";
+import { useAgentPersistenceStore } from "@/domains/agent/stores/persistence";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { useProjectStore } from "@/domains/projects/stores";
 import { getWorkspaceDocuments } from "@/domains/workspace/api/workspace";
@@ -22,6 +28,10 @@ export const handleDeterministicA2UIAction = async (
 	}
 	if (kind === "document_tool_approval") {
 		await handleDocumentToolApprovalAction(action);
+		return true;
+	}
+	if (kind === "agent_selection") {
+		await handleAgentSelectionAction(message, action);
 		return true;
 	}
 	return false;
@@ -89,6 +99,54 @@ const handleDocumentToolApprovalAction = async (action: A2uiClientAction) => {
 		}
 	} catch (err) {
 		recordA2UIActionError("文档确认失败", getActionError(err));
+	}
+};
+
+const handleAgentSelectionAction = async (message: AgentMessage, action: A2uiClientAction) => {
+	const selectionId = actionContextString(action, "selectionId");
+	const projectId =
+		actionContextString(action, "projectId") || useProjectStore.getState().activeProjectId;
+	const optionId = actionContextString(action, "optionId");
+	const cancelled = actionContextBoolean(action, "cancelled");
+	if (!projectId || !selectionId || (!optionId && !cancelled)) {
+		recordA2UIActionError("选择提交失败", "选择信息不完整，无法提交。");
+		return;
+	}
+	try {
+		const record = await decideAgentSelection(
+			selectionId,
+			cancelled ? { cancelled: true } : { optionId },
+			projectId,
+		);
+		const detail = selectionDecisionSummary(record);
+		const store = useAgentStore.getState();
+		store.replaceMessage(message.id, {
+			content: detail,
+			kind: "message",
+			title: record.title || "用户选择",
+			status: "complete",
+			metadata: {
+				selectionDecision: {
+					optionId: record.decision?.optionId,
+					selectionId,
+					status: record.status,
+				},
+			},
+		});
+		// Persist the decision so the card stays frozen after a transcript
+		// hydrate re-materializes the original interactive A2UI payload. Keep
+		// the picked option's preview image so the frozen card still shows
+		// WHAT was chosen (finalized image, style sample), not just a label.
+		const pickedOption = record.options.find((item) => item.id === record.decision?.optionId);
+		useAgentPersistenceStore.getState().markSelectionResolved(selectionId, {
+			status: record.status,
+			summary: detail,
+			title: record.title || "用户选择",
+			...(pickedOption?.imageUrl ? { imageUrl: pickedOption.imageUrl } : {}),
+		});
+		store.recordActivity("runtime", "选择已提交", detail);
+	} catch (err) {
+		recordA2UIActionError("选择提交失败", getActionError(err));
 	}
 };
 

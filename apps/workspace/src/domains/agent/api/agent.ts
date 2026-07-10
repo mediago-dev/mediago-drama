@@ -21,6 +21,8 @@ import type {
 	AgentMessageResponse,
 	AgentReference as GeneratedAgentReference,
 	AgentRuntimeConfigResponse,
+	AgentSelection,
+	AgentSelectionDecisionRequest,
 	AgentSessionResponse,
 	AgentSessionsResponse,
 	AgentSessionStatus,
@@ -31,6 +33,7 @@ import type {
 	AgentActivityItem,
 	AgentConversationState,
 	AgentMessage,
+	AgentMessageMetadata,
 } from "@/domains/agent/stores";
 import { ManagedEventSource } from "@/shared/lib/sse/managed-event-source";
 import { apiURL } from "@/shared/lib/api-base";
@@ -51,6 +54,12 @@ export type {
 	AgentFinalResponse,
 	AgentRuntimeSelectConfig,
 	AgentRuntimeSelectOption,
+	AgentFormField,
+	AgentFormFieldOption,
+	AgentFormPayload,
+	AgentSelection,
+	AgentSelectionDecisionRequest,
+	AgentSelectionOption,
 	AgentSessionStatus,
 	AgentSessionSummary,
 } from "@/api/types/agent";
@@ -75,9 +84,10 @@ export type AgentDocumentContext = Omit<GeneratedAgentDocumentContext, "category
 
 export type AgentMessageRequest = Omit<
 	GeneratedAgentMessageRequest,
-	"comments" | "document" | "documents" | "references"
+	"comments" | "displayMetadata" | "document" | "documents" | "references"
 > & {
 	comments?: DocumentComment[];
+	displayMetadata?: AgentMessageMetadata;
 	document?: AgentDocumentContext;
 	documents?: AgentDocumentContext[];
 	references?: AgentReference[];
@@ -349,6 +359,32 @@ export const decideDocumentToolApproval = async (
 			`/document-tool-approvals/${encodeURIComponent(approvalId)}/decision`,
 		),
 		{ decision, payload },
+	);
+	return response.data;
+};
+
+export const listAgentSelections = async (projectId?: string | null) => {
+	const response = await httpClient.get<AgentSelection[]>(
+		projectAgentPath(projectId, "/selections"),
+	);
+	return response.data;
+};
+
+export const getAgentSelection = async (selectionId: string, projectId?: string | null) => {
+	const response = await httpClient.get<AgentSelection>(
+		projectAgentPath(projectId, `/selections/${encodeURIComponent(selectionId)}`),
+	);
+	return response.data;
+};
+
+export const decideAgentSelection = async (
+	selectionId: string,
+	decision: AgentSelectionDecisionRequest,
+	projectId?: string | null,
+) => {
+	const response = await httpClient.post<AgentSelection>(
+		projectAgentPath(projectId, `/selections/${encodeURIComponent(selectionId)}/decision`),
+		decision,
 	);
 	return response.data;
 };

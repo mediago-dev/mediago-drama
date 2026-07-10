@@ -19,6 +19,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
+	serviceruntimeactivity "github.com/mediago-dev/mediago-drama/services/server/internal/service/runtimeactivity"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -26,6 +27,9 @@ import (
 type Config struct {
 	Host                     string
 	Port                     int
+	BundleRev                int
+	SchemaVersion            int
+	InstanceToken            string
 	SettingsDBPath           string
 	MediaDir                 string
 	WorkspaceDir             string
@@ -114,6 +118,17 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 			return nil
 		}
 		return server
+	}, func(_ *http.Request, projectID string) *mcp.Server {
+		server, _, err := appmcp.NewGenerationServer(api.workspaceState.Dir(), projectID, api.generation, "http")
+		if err != nil {
+			slog.Error(
+				"generation mcp http server unavailable",
+				"project_id", domain.DiagnosticProjectID(projectID),
+				"error", err,
+			)
+			return nil
+		}
+		return server
 	})
 	router := gin.New()
 	router.Use(middleware.LocalCORS(), middleware.RequestID(), middleware.RequestLogger(), middleware.RecoveryLogger(writeError))
@@ -131,10 +146,12 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	jianyingDraftHandler := httphandlers.NewJianyingDraft(api.jianyingDraft)
 	workspaceEventHandler := httphandlers.NewWorkspaceEvents(api)
 	promptPackHandler := httphandlers.NewPromptPacks(api.promptPack)
+	licenseHandler := httphandlers.NewLicense(api.licenseClient)
 	promptTemplateHandler := httphandlers.NewPromptTemplates(api.promptTemplates)
 	promptLibraryHandler := httphandlers.NewPromptLibrary(api.promptLibrary)
 	skillHandler := httphandlers.NewSkills(api.skillRegistry)
 	approvalHandler := httphandlers.NewDocumentToolApprovals(api.workspaceState, repository.IsRecordNotFound)
+	selectionHandler := httphandlers.NewAgentSelections(api.selection, repository.IsRecordNotFound)
 	permissionHandler := httphandlers.NewAgentPermissions(api)
 	chatHandler := httphandlers.NewAgentChat(api.workspaceState, api.PendingAgentPermissions)
 	messageHandler := httphandlers.NewAgentMessages(api)
@@ -164,7 +181,25 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		})
 	}, api.AgentSessionStatus)
 
+	runtimeActivityHandler := httphandlers.NewRuntimeActivity(serviceruntimeactivity.Sources{
+		ActiveGenerationTasks:      api.generation.CountActiveGenerationTasks,
+		InFlightGenerationRequests: api.generation.CountInFlightProviderRequests,
+		ActiveAgentRuns:            api.agentRuntime.CountInFlightRuns,
+		DatabaseFiles: func() []string {
+			return []string{
+				api.workspaceState.DatabasePath(),
+				api.workspaceState.SettingsDatabasePath(),
+			}
+		},
+	}.Report)
+	healthHandler := httphandlers.NewHealth(httphandlers.HealthIdentity{
+		BundleRev:     config.BundleRev,
+		SchemaVersion: config.SchemaVersion,
+		InstanceToken: config.InstanceToken,
+	}, api.ReadinessError)
+
 	httproutes.Register(router, httproutes.Handlers{
+		Health:                healthHandler,
 		MCP:                   mcpHandler,
 		Settings:              settingsHandler,
 		Capabilities:          capabilityHandler,
@@ -180,10 +215,12 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		JianyingDraft:         jianyingDraftHandler,
 		WorkspaceEvents:       workspaceEventHandler,
 		PromptPacks:           promptPackHandler,
+		License:               licenseHandler,
 		PromptTemplates:       promptTemplateHandler,
 		PromptLibrary:         promptLibraryHandler,
 		Skills:                skillHandler,
 		DocumentToolApprovals: approvalHandler,
+		AgentSelections:       selectionHandler,
 		AgentPermissions:      permissionHandler,
 		AgentChat:             chatHandler,
 		AgentMessages:         messageHandler,
@@ -194,6 +231,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		AgentEvents:           agentEventHandler,
 		AgentRuntime:          runtimeHandler,
 		AgentSessions:         sessionHandler,
+		RuntimeActivity:       runtimeActivityHandler,
 	})
 	registerDevelopmentDocs(router)
 

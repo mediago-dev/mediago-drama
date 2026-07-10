@@ -69,7 +69,10 @@ interface ImageGenerationDialogPanelController {
 	projectId?: string;
 	resolveLatestSection?: boolean;
 	section: MarkdownSectionContext;
-	selectedAssetKeys: string[];
+	// undefined (rather than []) when the host supplies no keys, so
+	// DocumentSectionGenerator falls back to the project's authoritative
+	// selected-assets store and pre-checks the 定稿 asset.
+	selectedAssetKeys: string[] | undefined;
 	selectedGenerationAssets?: SelectedGenerationAsset[];
 	title: string;
 	titleId: string;
@@ -252,11 +255,13 @@ const ImageGenerationDialogPanel: React.FC<{
 	</GenerationModalShell>
 );
 
+// Passes undefined through when the host supplies no keys: a concrete []
+// would short-circuit DocumentSectionGenerator's fallback to the project's
+// authoritative selected-assets store, leaving the 定稿 asset unchecked.
 const resolveSelectedAssetKeys = (
 	selectedAssetKeys: ImageGenerationDialogProps["selectedAssetKeys"],
 	section: MarkdownSectionContext,
-) =>
-	typeof selectedAssetKeys === "function" ? selectedAssetKeys(section) : (selectedAssetKeys ?? []);
+) => (typeof selectedAssetKeys === "function" ? selectedAssetKeys(section) : selectedAssetKeys);
 
 const clearDialogStackState = (
 	setMaterialLibraryOpenByDialog: React.Dispatch<React.SetStateAction<Record<string, boolean>>>,

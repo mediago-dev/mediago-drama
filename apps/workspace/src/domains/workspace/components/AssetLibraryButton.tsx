@@ -1,14 +1,18 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
 	AudioLines,
+	Check,
+	Copy,
 	Download,
 	File,
 	FileText,
 	Film,
+	FolderOpen,
 	Image as ImageIcon,
 	Images,
 	LibraryBig,
 	Loader2,
+	PencilLine,
 	Search,
 	Trash2,
 	UploadCloud,
@@ -36,6 +40,7 @@ import {
 	deleteMediaAsset,
 	getMediaAssets,
 	mediaAssetsKey,
+	updateMediaAsset,
 	uploadMediaAsset,
 } from "@/domains/workspace/api/media";
 import {
@@ -50,13 +55,15 @@ import {
 	filterAssetLibraryItems,
 } from "@/domains/workspace/lib/asset-library";
 import { downloadLocalFileWithDirectoryPicker } from "@/domains/workspace/lib/downloads";
+import { revealNativePath } from "@/shared/desktop/actions";
+import { isElectronRuntime } from "@/shared/desktop/runtime";
 import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspace/api/workspace";
 import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { useToast } from "@/hooks/useToast";
 import { Button } from "@/shared/components/ui/button";
+import { DialogClose } from "@/shared/components/ui/dialog-dismiss";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { Input } from "@/shared/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import {
 	Select,
 	SelectContent,
@@ -75,7 +82,7 @@ import { apiResourceURL } from "@/shared/lib/api-base";
 import { cn } from "@/shared/lib/utils";
 
 const kindOptions: Array<{ label: string; value: AssetLibraryKindFilter }> = [
-	{ label: "全部类型", value: "all" },
+	{ label: "全部", value: "all" },
 	{ label: "图片", value: "image" },
 	{ label: "视频", value: "video" },
 	{ label: "音频", value: "audio" },
@@ -84,13 +91,13 @@ const kindOptions: Array<{ label: string; value: AssetLibraryKindFilter }> = [
 ];
 
 const projectSourceOptions: Array<{ label: string; value: AssetLibrarySourceFilter }> = [
-	{ label: "全部来源", value: "all" },
+	{ label: "全部", value: "all" },
 	{ label: "媒体素材", value: "media" },
 	{ label: "已选资源", value: "selected" },
 ];
 
 const resourceOptions: Array<{ label: string; value: AssetLibraryResourceFilter }> = [
-	{ label: "全部资源标签", value: "all" },
+	{ label: "全部", value: "all" },
 	{ label: "剧本", value: "screenplay" },
 	{ label: "角色", value: "character" },
 	{ label: "场景", value: "scene" },
@@ -140,6 +147,7 @@ const AssetLibraryDialog: React.FC<{
 }> = ({ onOpenChange, open, projectId }) => {
 	const toast = useToast();
 	const mediaUploadRef = useRef<HTMLInputElement | null>(null);
+	const gridRef = useRef<HTMLElement | null>(null);
 	const [activeKey, setActiveKey] = useState("");
 	const [busyKey, setBusyKey] = useState("");
 	const [kindFilter, setKindFilter] = useState<AssetLibraryKindFilter>("all");
@@ -147,7 +155,6 @@ const AssetLibraryDialog: React.FC<{
 	const [query, setQuery] = useState("");
 	const [resourceFilter, setResourceFilter] = useState<AssetLibraryResourceFilter>("all");
 	const [sourceFilter, setSourceFilter] = useState<AssetLibrarySourceFilter>("all");
-	const [uploadOpen, setUploadOpen] = useState(false);
 	const [uploading, setUploading] = useState<"media" | null>(null);
 	const projectMode = Boolean(selectedProjectId);
 	const mediaProjectId = selectedProjectId;
@@ -317,6 +324,26 @@ const AssetLibraryDialog: React.FC<{
 		}
 	};
 
+	const renameItem = async (item: AssetLibraryItem, filename: string) => {
+		const asset = item.mediaAsset;
+		const trimmed = filename.trim();
+		if (!asset || !trimmed) return false;
+		if (trimmed === item.title) return true;
+		if (busyKey) return false;
+		setBusyKey(item.key);
+		try {
+			await updateMediaAsset(asset.id, trimmed, selectedProjectId || undefined);
+			await mutateMediaAssets();
+			toast.success("素材已重命名", { description: trimmed });
+			return true;
+		} catch (err) {
+			toast.error("重命名失败", { description: errorMessage(err, "素材重命名失败。") });
+			return false;
+		} finally {
+			setBusyKey("");
+		}
+	};
+
 	const unselectGenerationAssets = async (assets: SelectedGenerationAsset[]) => {
 		if (!selectedProjectId) return;
 		await Promise.all(
@@ -325,11 +352,47 @@ const AssetLibraryDialog: React.FC<{
 		await mutateSelectedAssets();
 	};
 
+	const moveActiveItem = (offset: number) => {
+		if (filteredItems.length === 0) return;
+		const currentIndex = activeItem
+			? filteredItems.findIndex((entry) => entry.key === activeItem.key)
+			: -1;
+		const nextIndex =
+			currentIndex < 0 ? 0 : Math.min(Math.max(currentIndex + offset, 0), filteredItems.length - 1);
+		const next = filteredItems[nextIndex];
+		if (!next || next.key === activeItem?.key) return;
+		setActiveKey(next.key);
+		scrollAssetCardIntoView(gridRef.current, next.key);
+	};
+
+	const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+		if (event.defaultPrevented) return;
+		const target = event.target as HTMLElement | null;
+		if (
+			target?.closest(
+				"input, textarea, [contenteditable='true'], [role='combobox'], [role='listbox']",
+			)
+		) {
+			return;
+		}
+		if (event.key === "Delete" || event.key === "Backspace") {
+			if (!activeItem || busyKey) return;
+			event.preventDefault();
+			void deleteItem(activeItem);
+			return;
+		}
+		const offset = arrowKeyOffset(event.key, gridColumnCount(gridRef.current));
+		if (offset === 0) return;
+		event.preventDefault();
+		moveActiveItem(offset);
+	};
+
 	return (
 		<>
 			<input
 				ref={mediaUploadRef}
 				type="file"
+				aria-label="上传素材"
 				accept="image/*,video/*,audio/*,text/*,.txt,.md,.json"
 				className="sr-only"
 				disabled={Boolean(uploading)}
@@ -344,6 +407,7 @@ const AssetLibraryDialog: React.FC<{
 							"fixed left-1/2 top-1/2 z-50 flex h-[min(46rem,calc(100vh-2rem))] w-[calc(100vw-2rem)] max-w-7xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-2xl outline-none",
 							dialogContentMotion,
 						)}
+						onKeyDown={handleDialogKeyDown}
 					>
 						<header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
 							<div className="min-w-0">
@@ -359,7 +423,7 @@ const AssetLibraryDialog: React.FC<{
 										: "管理可在生成历史中复用的全局素材。"}
 								</DialogPrimitive.Description>
 							</div>
-							<DialogPrimitive.Close asChild>
+							<DialogClose asChild>
 								<Button
 									type="button"
 									variant="ghost"
@@ -369,7 +433,7 @@ const AssetLibraryDialog: React.FC<{
 								>
 									<X className="size-4" />
 								</Button>
-							</DialogPrimitive.Close>
+							</DialogClose>
 						</header>
 
 						<div
@@ -413,7 +477,7 @@ const AssetLibraryDialog: React.FC<{
 										onValueChange={(value) => setSourceFilter(value as AssetLibrarySourceFilter)}
 									/>
 									<AssetLibrarySelect
-										label="资源标签"
+										label="标签"
 										value={resourceFilter}
 										options={resourceOptions}
 										onValueChange={(value) =>
@@ -422,35 +486,20 @@ const AssetLibraryDialog: React.FC<{
 									/>
 								</>
 							) : null}
-							<div className="flex items-center gap-2">
-								<Popover open={uploadOpen} onOpenChange={setUploadOpen}>
-									<PopoverTrigger asChild>
-										<Button
-											type="button"
-											size="sm"
-											className="h-8 shrink-0 rounded-md px-2.5 text-xs"
-											disabled={Boolean(uploading)}
-										>
-											{uploading ? (
-												<Loader2 className="size-3.5 animate-spin" />
-											) : (
-												<UploadCloud className="size-3.5" />
-											)}
-											<span>上传</span>
-										</Button>
-									</PopoverTrigger>
-									<PopoverContent align="end" className="w-48 p-1.5">
-										<UploadMenuButton
-											disabled={Boolean(uploading)}
-											label="上传素材"
-											onClick={() => {
-												setUploadOpen(false);
-												mediaUploadRef.current?.click();
-											}}
-										/>
-									</PopoverContent>
-								</Popover>
-							</div>
+							<Button
+								type="button"
+								size="sm"
+								className="h-8 shrink-0 rounded-md px-2.5 text-xs"
+								disabled={Boolean(uploading)}
+								onClick={() => mediaUploadRef.current?.click()}
+							>
+								{uploading ? (
+									<Loader2 className="size-3.5 animate-spin" />
+								) : (
+									<UploadCloud className="size-3.5" />
+								)}
+								<span>上传</span>
+							</Button>
 						</div>
 
 						{error ? (
@@ -471,7 +520,10 @@ const AssetLibraryDialog: React.FC<{
 								) : filteredItems.length === 0 ? (
 									<AssetLibraryEmpty projectMode={projectMode} />
 								) : (
-									<section className="grid grid-cols-[repeat(auto-fill,minmax(12.5rem,1fr))] gap-3">
+									<section
+										ref={gridRef}
+										className="grid grid-cols-[repeat(auto-fill,minmax(12.5rem,1fr))] gap-3"
+									>
 										{filteredItems.map((item) => (
 											<AssetLibraryCard
 												key={item.key}
@@ -486,7 +538,19 @@ const AssetLibraryDialog: React.FC<{
 									</section>
 								)}
 							</div>
-							<AssetLibraryPreview item={activeItem} />
+							<AssetLibraryPreview
+								busy={Boolean(activeItem && busyKey === activeItem.key)}
+								item={activeItem}
+								onDelete={() => {
+									if (activeItem) void deleteItem(activeItem);
+								}}
+								onDownload={() => {
+									if (activeItem) void downloadItem(activeItem);
+								}}
+								onRename={(filename) =>
+									activeItem ? renameItem(activeItem, filename) : Promise.resolve(false)
+								}
+							/>
 						</div>
 					</DialogPrimitive.Content>
 				</DialogPrimitive.Portal>
@@ -510,6 +574,7 @@ const AssetLibraryCard: React.FC<{
 
 	return (
 		<article
+			data-asset-key={item.key}
 			className={cn(
 				"min-w-0 overflow-hidden rounded-sm border bg-card transition-colors",
 				active ? "border-primary" : "border-border hover:border-input",
@@ -532,9 +597,10 @@ const AssetLibraryCard: React.FC<{
 					<AssetCornerTags tags={resourceTags} />
 				</div>
 				<div className="grid gap-1 px-3 py-2">
-					<p className="truncate text-xs font-semibold text-foreground" title={item.title}>
-						{item.title}
-					</p>
+					<MiddleTruncatedText
+						className="text-xs font-semibold text-foreground"
+						text={item.title}
+					/>
 					<div className="flex min-w-0 items-center gap-1 text-2xs text-muted-foreground">
 						<AssetTagBadge tag={kindTag} className="px-1 py-0 text-2xs shadow-none" />
 						<span aria-hidden="true">·</span>
@@ -575,17 +641,28 @@ const AssetLibraryCard: React.FC<{
 };
 
 const AssetLibraryPreview: React.FC<{
+	busy: boolean;
 	item: AssetLibraryItem | null;
-}> = ({ item }) => {
+	onDelete: () => void;
+	onDownload: () => void;
+	onRename: (filename: string) => Promise<boolean>;
+}> = ({ busy, item, onDelete, onDownload, onRename }) => {
+	const toast = useToast();
+	const [draftName, setDraftName] = useState<string | null>(null);
 	const source = item ? assetLibraryItemSource(item) : "";
 	const posterSource = item ? assetLibraryItemPosterSource(item) : "";
-	const tags = item ? assetLibraryItemTags(item) : [];
+	const tags = item ? assetLibraryResourceTags(item) : [];
 	const textKey = item?.kind === "text" && source ? source : null;
 	const {
 		data: text,
 		error,
 		isLoading,
 	} = useSWR(textKey, fetchTextAsset, { revalidateOnFocus: false });
+	const itemKey = item?.key ?? "";
+
+	useEffect(() => {
+		setDraftName(null);
+	}, [itemKey]);
 
 	if (!item) {
 		return (
@@ -598,41 +675,187 @@ const AssetLibraryPreview: React.FC<{
 		);
 	}
 
+	const canRename = item.sourceType === "media" && Boolean(item.mediaAsset);
+	const localPath = item.downloadPath?.trim() ?? "";
+	const displayPath = item.mediaAsset?.relativePath?.trim() || localPath;
+	const canReveal = Boolean(localPath) && isElectronRuntime();
+
+	const submitRename = async () => {
+		if (draftName === null) return;
+		const saved = await onRename(draftName);
+		if (saved) setDraftName(null);
+	};
+
+	const copyPath = async () => {
+		const value = localPath || displayPath;
+		if (!value) return;
+		try {
+			await navigator.clipboard.writeText(value);
+			toast.success("路径已复制", { description: value });
+		} catch {
+			toast.error("复制失败", { description: "无法访问剪贴板，请手动复制。" });
+		}
+	};
+
+	const revealInFolder = async () => {
+		if (!localPath) return;
+		try {
+			await revealNativePath(localPath);
+		} catch (err) {
+			toast.error("无法在文件夹中显示", {
+				description: errorMessage(err, "打开所在文件夹失败。"),
+			});
+		}
+	};
+
 	return (
-		<aside className="min-h-0 overflow-y-auto border-t border-border bg-card p-4 lg:border-l lg:border-t-0">
-			<div className="grid gap-3">
-				<div className="min-w-0">
-					<p className="truncate text-sm font-semibold text-foreground" title={item.title}>
-						{item.title}
-					</p>
-					<p className="mt-1 truncate text-xs text-muted-foreground">
-						{kindLabel(item.kind)} · {sourceTypeLabel(item.sourceType)} ·{" "}
-						{formatBytes(item.sizeBytes)}
-					</p>
-				</div>
-				<div className="overflow-hidden rounded-sm border border-border bg-ide-editor">
-					<AssetPreviewMedia
-						error={error}
-						isTextLoading={isLoading}
-						item={item}
-						posterSource={posterSource}
-						source={source}
-						text={text}
+		<aside className="flex min-h-0 flex-col gap-3 overflow-y-auto border-t border-border bg-card p-4 lg:border-l lg:border-t-0">
+			<div className="min-w-0 shrink-0">
+				{draftName === null ? (
+					<MiddleTruncatedText
+						className="text-sm font-semibold text-foreground"
+						text={item.title}
 					/>
-				</div>
-				<div className="grid gap-1 text-xs text-muted-foreground">
-					<p>更新：{formatDateTime(item.updatedAt)}</p>
-					<p>创建：{formatDateTime(item.createdAt)}</p>
-					{item.mimeType ? <p className="break-all">MIME：{item.mimeType}</p> : null}
-					{item.mediaAsset?.source ? (
-						<p>来源：{mediaAssetSourceLabel(item.mediaAsset.source)}</p>
-					) : null}
-					{item.mediaAsset?.relativePath ? (
-						<p className="break-all">路径：{item.mediaAsset.relativePath}</p>
-					) : null}
-				</div>
-				<AssetTagList tags={tags} className="gap-1.5" />
+				) : (
+					<div className="flex items-center gap-1">
+						<Input
+							autoFocus
+							value={draftName}
+							disabled={busy}
+							aria-label="重命名素材"
+							className="h-7 min-w-0 flex-1 rounded-sm text-xs"
+							onChange={(event) => setDraftName(event.target.value)}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") {
+									event.preventDefault();
+									void submitRename();
+								}
+								if (event.key === "Escape") {
+									event.preventDefault();
+									event.stopPropagation();
+									setDraftName(null);
+								}
+							}}
+						/>
+						<Button
+							type="button"
+							size="sm"
+							variant="ghost"
+							className="h-7 w-7 shrink-0 p-0"
+							disabled={busy}
+							aria-label="保存名称"
+							onClick={() => void submitRename()}
+						>
+							{busy ? (
+								<Loader2 className="size-3.5 animate-spin" />
+							) : (
+								<Check className="size-3.5" />
+							)}
+						</Button>
+						<Button
+							type="button"
+							size="sm"
+							variant="ghost"
+							className="h-7 w-7 shrink-0 p-0"
+							disabled={busy}
+							aria-label="取消重命名"
+							onClick={() => setDraftName(null)}
+						>
+							<X className="size-3.5" />
+						</Button>
+					</div>
+				)}
+				<p className="mt-1 truncate text-xs text-muted-foreground">
+					{kindLabel(item.kind)} · {sourceTypeLabel(item.sourceType)} ·{" "}
+					{formatBytes(item.sizeBytes)}
+				</p>
 			</div>
+			<div className="flex min-h-64 min-w-0 flex-1 flex-col overflow-hidden rounded-sm border border-border bg-ide-editor lg:min-h-32">
+				<AssetPreviewMedia
+					error={error}
+					isTextLoading={isLoading}
+					item={item}
+					posterSource={posterSource}
+					source={source}
+					text={text}
+				/>
+			</div>
+			<div className="flex shrink-0 flex-wrap items-center gap-1.5">
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					className="h-7 rounded-sm px-2 text-xs"
+					disabled={busy}
+					onClick={onDownload}
+				>
+					<Download className="size-3.5" />
+					<span>下载</span>
+				</Button>
+				{canRename ? (
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						className="h-7 rounded-sm px-2 text-xs"
+						disabled={busy || draftName !== null}
+						onClick={() => setDraftName(item.title)}
+					>
+						<PencilLine className="size-3.5" />
+						<span>重命名</span>
+					</Button>
+				) : null}
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					className="ml-auto h-7 rounded-sm px-2 text-xs text-muted-foreground hover:text-error-foreground"
+					disabled={busy}
+					onClick={onDelete}
+				>
+					<Trash2 className="size-3.5" />
+					<span>{item.sourceType === "selected" ? "取消选入" : "删除"}</span>
+				</Button>
+			</div>
+			<div className="grid shrink-0 gap-1 text-xs text-muted-foreground">
+				<p>更新：{formatDateTime(item.updatedAt)}</p>
+				<p>创建：{formatDateTime(item.createdAt)}</p>
+				{item.mimeType ? <p className="break-all">MIME：{item.mimeType}</p> : null}
+				{item.mediaAsset?.source ? (
+					<p>来源：{mediaAssetSourceLabel(item.mediaAsset.source)}</p>
+				) : null}
+				{displayPath ? (
+					<div className="flex min-w-0 items-center gap-1">
+						<span className="shrink-0">路径：</span>
+						<MiddleTruncatedText className="min-w-0 flex-1" text={displayPath} />
+						<Button
+							type="button"
+							size="sm"
+							variant="ghost"
+							className="h-6 w-6 shrink-0 p-0"
+							aria-label="复制路径"
+							title="复制路径"
+							onClick={() => void copyPath()}
+						>
+							<Copy className="size-3" />
+						</Button>
+						{canReveal ? (
+							<Button
+								type="button"
+								size="sm"
+								variant="ghost"
+								className="h-6 w-6 shrink-0 p-0"
+								aria-label="在文件夹中显示"
+								title="在文件夹中显示"
+								onClick={() => void revealInFolder()}
+							>
+								<FolderOpen className="size-3" />
+							</Button>
+						) : null}
+					</div>
+				) : null}
+			</div>
+			<AssetTagList tags={tags} className="shrink-0 gap-1.5" />
 		</aside>
 	);
 };
@@ -646,7 +869,9 @@ const AssetPreviewMedia: React.FC<{
 	text?: string;
 }> = ({ error, isTextLoading, item, posterSource, source, text }) => {
 	if (item.kind === "image" && source) {
-		return <img src={source} alt={item.title} className="max-h-[24rem] w-full object-contain" />;
+		return (
+			<img src={source} alt={item.title} className="m-auto max-h-full max-w-full object-contain" />
+		);
 	}
 	if (item.kind === "video" && source) {
 		return (
@@ -656,13 +881,13 @@ const AssetPreviewMedia: React.FC<{
 				mimeType={item.mimeType || "video/mp4"}
 				title={item.title}
 				showTitleInControls={false}
-				className="h-full w-full"
+				className="min-h-0 w-full flex-1"
 			/>
 		);
 	}
 	if (item.kind === "audio" && source) {
 		return (
-			<div className="grid min-h-40 content-center gap-3 p-4">
+			<div className="my-auto grid w-full content-center gap-3 p-4">
 				<div className="flex items-center gap-2 text-sm font-medium text-foreground">
 					<span className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground">
 						<AudioLines className="size-4" />
@@ -676,7 +901,7 @@ const AssetPreviewMedia: React.FC<{
 	if (item.kind === "text") {
 		if (isTextLoading) {
 			return (
-				<div className="grid min-h-64 place-items-center text-sm text-muted-foreground">
+				<div className="grid flex-1 place-items-center text-sm text-muted-foreground">
 					<Loader2 className="mb-2 size-4 animate-spin" />
 					<span>正在读取文本</span>
 				</div>
@@ -690,7 +915,7 @@ const AssetPreviewMedia: React.FC<{
 			);
 		}
 		return (
-			<pre className="max-h-[24rem] overflow-auto p-4 text-xs leading-5 text-foreground">
+			<pre className="min-h-0 flex-1 overflow-auto p-4 text-xs leading-5 text-foreground">
 				{truncateTextPreview(text ?? "")}
 			</pre>
 		);
@@ -698,7 +923,7 @@ const AssetPreviewMedia: React.FC<{
 
 	const Icon = iconForKind(item.kind);
 	return (
-		<div className="grid min-h-64 place-items-center p-6 text-center">
+		<div className="grid flex-1 place-items-center p-6 text-center">
 			<div className="grid justify-items-center gap-2">
 				<Icon className="size-8 text-muted-foreground" />
 				<p className="text-sm font-medium text-foreground">无法内联预览此文件</p>
@@ -717,7 +942,12 @@ const AssetLibrarySelect: React.FC<{
 }> = ({ label, loading, onValueChange, options, value }) => (
 	<Select value={value} onValueChange={onValueChange}>
 		<SelectTrigger className="h-8 min-w-32 rounded-md text-xs text-foreground" aria-label={label}>
-			<SelectValue placeholder={loading ? "加载中..." : undefined} />
+			<span className="flex min-w-0 items-center gap-1">
+				<span className="shrink-0 text-muted-foreground">{label}:</span>
+				<span className="min-w-0 truncate">
+					<SelectValue placeholder={loading ? "加载中..." : undefined} />
+				</span>
+			</span>
 		</SelectTrigger>
 		<SelectContent align="start">
 			{options.map((option) => (
@@ -727,22 +957,6 @@ const AssetLibrarySelect: React.FC<{
 			))}
 		</SelectContent>
 	</Select>
-);
-
-const UploadMenuButton: React.FC<{
-	disabled?: boolean;
-	label: string;
-	onClick: () => void;
-}> = ({ disabled, label, onClick }) => (
-	<button
-		type="button"
-		className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-xs text-popover-foreground hover:bg-ide-list-hover disabled:pointer-events-none disabled:opacity-50"
-		disabled={disabled}
-		onClick={onClick}
-	>
-		<UploadCloud className="size-3.5 text-muted-foreground" />
-		<span className="min-w-0 flex-1 truncate">{label}</span>
-	</button>
 );
 
 const AssetLibraryEmpty: React.FC<{ projectMode: boolean }> = ({ projectMode }) => (
@@ -780,13 +994,16 @@ const AssetTagList: React.FC<{
 	className?: string;
 	tagClassName?: string;
 	tags: AssetLibraryTag[];
-}> = ({ className, tagClassName, tags }) => (
-	<div className={cn("flex flex-wrap", className)}>
-		{tags.map((tag) => (
-			<AssetTagBadge key={tag.key} tag={tag} className={tagClassName} />
-		))}
-	</div>
-);
+}> = ({ className, tagClassName, tags }) => {
+	if (tags.length === 0) return null;
+	return (
+		<div className={cn("flex flex-wrap", className)}>
+			{tags.map((tag) => (
+				<AssetTagBadge key={tag.key} tag={tag} className={tagClassName} />
+			))}
+		</div>
+	);
+};
 
 const AssetTagBadge: React.FC<{ className?: string; tag: AssetLibraryTag }> = ({
 	className,
@@ -803,6 +1020,67 @@ const AssetTagBadge: React.FC<{ className?: string; tag: AssetLibraryTag }> = ({
 		<span className="min-w-0 truncate">{tag.label}</span>
 	</span>
 );
+
+const MiddleTruncatedText: React.FC<{ className?: string; text: string }> = ({
+	className,
+	text,
+}) => {
+	const { head, tail } = splitTextForMiddleTruncation(text);
+	if (!tail) {
+		return (
+			<span className={cn("block min-w-0 truncate", className)} title={text}>
+				{text}
+			</span>
+		);
+	}
+	return (
+		<span className={cn("flex min-w-0", className)} title={text}>
+			<span className="min-w-0 truncate">{head}</span>
+			<span className="shrink-0 whitespace-pre">{tail}</span>
+		</span>
+	);
+};
+
+// 生成类文件名多为「相同前缀 + 尾部序号/版本」，溢出时省略中段、保住尾部才能区分同批素材。
+const splitTextForMiddleTruncation = (text: string) => {
+	if (textDisplayWidthUnits(text) <= 20) return { head: text, tail: "" };
+	const extension = text.match(/\.[a-z0-9]{1,8}$/i)?.[0] ?? "";
+	const stem = extension ? text.slice(0, -extension.length) : text;
+	const tail = stem.slice(-4) + extension;
+	if (tail.length >= text.length - 2) return { head: text, tail: "" };
+	return { head: text.slice(0, text.length - tail.length), tail };
+};
+
+// 粗略估算显示宽度：CJK 等全角字符按 2 个单位计。
+const textDisplayWidthUnits = (text: string) => {
+	let units = 0;
+	for (const char of text) units += (char.codePointAt(0) ?? 0) > 0x2e7f ? 2 : 1;
+	return units;
+};
+
+const arrowKeyOffset = (key: string, columns: number) => {
+	if (key === "ArrowLeft") return -1;
+	if (key === "ArrowRight") return 1;
+	if (key === "ArrowUp") return -columns;
+	if (key === "ArrowDown") return columns;
+	return 0;
+};
+
+const gridColumnCount = (grid: HTMLElement | null) => {
+	if (!grid || typeof window === "undefined") return 1;
+	const template = window.getComputedStyle(grid).gridTemplateColumns;
+	const count = template.split(" ").filter((track) => track && track !== "0px").length;
+	return Math.max(1, count);
+};
+
+const scrollAssetCardIntoView = (grid: HTMLElement | null, key: string) => {
+	if (!grid) return;
+	for (const card of grid.querySelectorAll<HTMLElement>("[data-asset-key]")) {
+		if (card.dataset.assetKey !== key) continue;
+		card.scrollIntoView({ block: "nearest" });
+		return;
+	}
+};
 
 const assetLibraryItemSource = (item: AssetLibraryItem) => {
 	if (item.sourceType === "media" && item.mediaAsset) {
@@ -825,11 +1103,6 @@ const assetLibraryItemPosterSource = (item: AssetLibraryItem) => {
 	const posterURL = item.mediaAsset?.posterUrl?.trim();
 	return posterURL ? apiResourceURL(posterURL) : "";
 };
-
-const assetLibraryItemTags = (item: AssetLibraryItem): AssetLibraryTag[] => [
-	...assetLibraryResourceTags(item),
-	assetLibraryKindTag(item),
-];
 
 const assetLibraryResourceTags = (item: AssetLibraryItem): AssetLibraryTag[] =>
 	item.selectedResourceTypes.map((type) => ({

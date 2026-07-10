@@ -7,7 +7,6 @@ import {
 	type AgentReference,
 	type AgentRuntimeConfigPayload,
 } from "@/domains/agent/api/agent";
-import { agentDisplayPrompt } from "@/domains/agent/lib/display-prompt";
 import { uploadProjectAsset, type ProjectAsset } from "@/domains/workspace/api/project-assets";
 import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspace/api/workspace";
 import {
@@ -26,6 +25,7 @@ import {
 } from "@/domains/agent/components/chat/AgentRuntimeConfigControls";
 import { listSkills, skillsKey } from "@/domains/settings/api/skills";
 import { buildAgentDisplayMetadata } from "@/domains/agent/lib/display-attachments";
+import { openCommentsPromptFallback } from "@/domains/agent/lib/display-prompt";
 import {
 	createPendingAttachment,
 	getAttachmentError,
@@ -161,6 +161,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 
 	const runPrompt = async () => {
 		const composerValue = composerRef.current?.getValue() ?? {
+			displaySegments: [],
 			displayText: "",
 			references: [],
 			text: "",
@@ -179,19 +180,22 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 			return;
 		}
 
-		const effectivePrompt = prompt;
+		// The bubble shows exactly what the user composed: chips travel as
+		// displaySegments and uploads as attachment cards, so the display prompt
+		// carries no `@Title` prefixes and no skill instruction template.
 		const pendingSend: PendingAttachmentSend = {
-			displayPrompt: agentDisplayPrompt({
-				prompt: displayText || effectivePrompt || (hasOpenComments ? "处理未解决批注" : ""),
-				references: composerValue.references,
-			}),
-			displayMetadata: buildAgentDisplayMetadata(readyAttachments, composerValue.references),
+			displayPrompt: displayText || prompt || (hasOpenComments ? openCommentsPromptFallback : ""),
+			displayMetadata: buildAgentDisplayMetadata(
+				readyAttachments,
+				composerValue.displaySegments,
+				composerValue.references,
+			),
 			model: buildRuntimeConfigSelection(runtimeConfigForSelectedModel?.model, selectedModel),
 			permission: buildRuntimeConfigSelection(
 				runtimeConfigForSelectedModel?.permission,
 				selectedPermission,
 			),
-			prompt: effectivePrompt,
+			prompt,
 			references: composerValue.references,
 			reasoning: buildRuntimeConfigSelection(
 				runtimeConfigForSelectedModel?.reasoning,
@@ -211,10 +215,6 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 					...pendingSend.references,
 					...uploadedAssets.map(projectAssetReference),
 				]);
-				pendingSend.displayPrompt = agentDisplayPrompt({
-					prompt: displayText || effectivePrompt || (hasOpenComments ? "处理未解决批注" : ""),
-					references: pendingSend.references,
-				});
 			} catch (err) {
 				useAgentStore
 					.getState()

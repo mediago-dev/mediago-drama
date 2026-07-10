@@ -1,49 +1,50 @@
+import {
+	cancelAgentSession,
+	toAgentDocumentSnapshot,
+	type AgentACPConfigSelection,
+	type AgentReference,
+} from "@/domains/agent/api/agent";
+import {
+	agentPromptWithReferences,
+	openCommentsPromptFallback,
+} from "@/domains/agent/lib/display-prompt";
+import { agentSource } from "@/domains/agent/lib/document-streaming";
 import { runDocumentAgent } from "@/domains/agent/lib/document-runtime";
-import { refreshAgentChatTranscript } from "@/domains/agent/lib/chat-sync";
+import { connectRemoteAgentRuntime } from "@/domains/agent/lib/remote-runtime";
+import { fallbackAgentDocument } from "@/domains/agent/lib/runtime-shared";
+import { syncAgentSessionStatus, waitForStreamingRun } from "@/domains/agent/lib/session-sync";
 import {
-	connectRemoteAgentRuntime,
-	type RemoteAgentRuntimeEventMeta,
-	runtimeEventTypes,
-} from "@/domains/agent/lib/remote-runtime";
-import { agentPromptWithReferences } from "@/domains/agent/lib/display-prompt";
-import {
-	acpRuntimeLogText,
-	containsRuntimeLogMarkers,
-	isACPToolRuntimeLog,
-} from "@/domains/agent/lib/runtime-log";
+	closeResumedAgentEventStream,
+	createStreamingEventContext,
+	handleStreamingAgentEvent,
+} from "@/domains/agent/lib/streaming-events";
 import type { AgentExecutionContext } from "@/domains/agent/lib/types";
-import { getEditorHandle } from "@/domains/documents/lib/editor-registry";
+import { type AgentMessageMetadata, useAgentStore } from "@/domains/agent/stores";
+import { setPersistedAgentSessionId } from "@/domains/agent/stores/persistence";
 import {
 	createDocumentOperation,
 	type DocumentOperation,
 } from "@/domains/documents/lib/operations";
-import { inferToolKind } from "@/domains/agent/lib/tool-kind";
 import {
-	type AgentMessageMetadata,
-	type AgentRuntimeStatus,
-	useAgentStore,
-} from "@/domains/agent/stores";
-import { setPersistedAgentSessionId } from "@/domains/agent/stores/persistence";
-import { pendingRootRunId } from "@/domains/agent/stores/constants";
-import { getWorkspaceState } from "@/domains/workspace/api/workspace";
-import {
-	type DocumentComment,
-	type DocumentOperationSource,
-	type MarkdownDocument,
 	selectActiveDocument,
 	useDocumentsStore,
+	type DocumentComment,
+	type MarkdownDocument,
 } from "@/domains/documents/stores";
 import { useProjectStore } from "@/domains/projects/stores";
-import {
-	cancelAgentSession,
-	createAgentEventSource,
-	getAgentSessionStatus,
-	type AgentACPConfigSelection,
-	type AgentDocumentProposal,
-	type AgentReference,
-	type AgentRuntimeEvent,
-	toAgentDocumentSnapshot,
-} from "@/domains/agent/api/agent";
+
+// Orchestrates a single agent run: builds the execution context, derives the
+// machine/task prompt and the user-facing display prompt, then dispatches to
+// the remote ACP runtime or the local mock runtime. Event handling, session
+// reconciliation, and document streaming live in their own modules; the
+// re-exports below keep this file the stable public entry point.
+
+export {
+	closeAllResumedAgentEventStreams,
+	closeResumedAgentEventStream,
+	handleStreamingAgentEvent,
+	resumeAgentSessionEventStream,
+} from "@/domains/agent/lib/streaming-events";
 
 interface RunAgentPromptOptions {
 	anchorText?: string;
@@ -73,17 +74,20 @@ export const runAgentPrompt = async (prompt: string, options: RunAgentPromptOpti
 	});
 	const taskPrompt =
 		referencedPrompt || optionTaskPrompt || defaultStructuredAgentDisplayPrompt(context);
+	// With renderable display metadata (attachment cards / chips) an empty
+	// display prompt is intentional — the bubble shows the cards alone instead
+	// of the machine prompt with its `@Title` prefixes. A metadata object
+	// without content does not count.
+	const displayPrompt =
+		options.displayPrompt?.trim() ||
+		(displayMetadataHasContent(options.displayMetadata)
+			? ""
+			: referencedPrompt || optionTaskPrompt || defaultStructuredAgentDisplayPrompt(context));
 
 	if (options.reuseCurrentRun) {
 		agentStore.beginPendingRun();
 	} else {
-		agentStore.startRun(
-			options.displayPrompt?.trim() ||
-				referencedPrompt ||
-				optionTaskPrompt ||
-				defaultStructuredAgentDisplayPrompt(context),
-			options.displayMetadata,
-		);
+		agentStore.startRun(displayPrompt, options.displayMetadata);
 	}
 
 	try {
@@ -211,157 +215,6 @@ export const stopAgentRun = async () => {
 	agentStore.cancelRun("智能体运行已中断。");
 };
 
-const resumedEventStreams = new Map<string, () => void>();
-const assistantDeltaFlushDelayMs = 40;
-const pendingAssistantDeltas = new Map<
-	string,
-	{ content: string; runId?: string; timer: ReturnType<typeof setTimeout> | null }
->();
-
-const resumedEventStreamKey = (projectId: string, sessionId: string) => `${projectId}:${sessionId}`;
-const assistantDeltaBufferKey = (runId?: string) => runId?.trim() || "__default__";
-
-const queueAssistantDelta = (content: string, runId?: string) => {
-	if (!content) return;
-	const key = assistantDeltaBufferKey(runId);
-	const pending = pendingAssistantDeltas.get(key);
-	if (pending) {
-		pending.content += content;
-		return;
-	}
-	const next = {
-		content,
-		runId,
-		timer: setTimeout(() => flushAssistantDelta(runId), assistantDeltaFlushDelayMs),
-	};
-	pendingAssistantDeltas.set(key, next);
-};
-
-const flushAssistantDelta = (runId?: string) => {
-	const key = assistantDeltaBufferKey(runId);
-	const pending = pendingAssistantDeltas.get(key);
-	if (!pending) return;
-	pendingAssistantDeltas.delete(key);
-	if (pending.timer) clearTimeout(pending.timer);
-	useAgentStore.getState().appendAssistantDelta(pending.content, pending.runId);
-};
-
-const flushAllAssistantDeltas = () => {
-	for (const pending of pendingAssistantDeltas.values()) {
-		if (pending.timer) clearTimeout(pending.timer);
-		useAgentStore.getState().appendAssistantDelta(pending.content, pending.runId);
-	}
-	pendingAssistantDeltas.clear();
-};
-
-export const closeResumedAgentEventStream = (sessionId: string, projectId: string | null) => {
-	if (!projectId) return;
-	resumedEventStreams.get(resumedEventStreamKey(projectId, sessionId.trim()))?.();
-};
-
-export const closeAllResumedAgentEventStreams = () => {
-	for (const close of resumedEventStreams.values()) {
-		close();
-	}
-	flushAllAssistantDeltas();
-};
-
-const transcriptResyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const transcriptResyncDelayMs = 300;
-
-// Debounced authoritative re-sync triggered when a live event sequence gap reveals
-// a missed event (e.g. one dropped from a full subscriber buffer). Coalesces bursts
-// per session so a run of gaps issues a single transcript fetch.
-const scheduleTranscriptResync = (
-	sessionId: string | null | undefined,
-	projectId: string | null,
-) => {
-	const trimmedSessionId = sessionId?.trim();
-	if (!trimmedSessionId || !projectId) return;
-	const key = resumedEventStreamKey(projectId, trimmedSessionId);
-	const existing = transcriptResyncTimers.get(key);
-	if (existing) clearTimeout(existing);
-	transcriptResyncTimers.set(
-		key,
-		setTimeout(() => {
-			transcriptResyncTimers.delete(key);
-			void refreshAgentChatTranscript(trimmedSessionId, projectId).catch((error) =>
-				debugAgentError("failed to resync transcript after sequence gap", error),
-			);
-		}, transcriptResyncDelayMs),
-	);
-};
-
-type StreamingEventContext = Parameters<typeof handleStreamingAgentEvent>[1];
-
-// Builds the per-stream context handed to handleStreamingAgentEvent, owning the
-// rolling `latestDelta` tail. Shared by the live run connection and the resume
-// stream so both feed events through one consistent shape.
-const createStreamingEventContext = (input: {
-	activeDocument: MarkdownDocument;
-	anchorText: string;
-	isSelectionScoped: boolean;
-	projectId: string | null;
-}): StreamingEventContext => {
-	let latestDelta = "";
-	return {
-		anchorText: input.anchorText,
-		activeDocument: input.activeDocument,
-		getLatestDelta: () => latestDelta,
-		isSelectionScoped: input.isSelectionScoped,
-		projectId: input.projectId,
-		setLatestDelta: (delta: string) => {
-			latestDelta = delta;
-		},
-	};
-};
-
-export const resumeAgentSessionEventStream = (
-	sessionId: string,
-	projectId: string | null,
-	afterEventId?: string | null,
-) => {
-	const trimmedSessionId = sessionId.trim();
-	if (!trimmedSessionId || !projectId) return;
-	const key = resumedEventStreamKey(projectId, trimmedSessionId);
-	if (resumedEventStreams.has(key)) return;
-
-	const eventSource = createAgentEventSource(trimmedSessionId, projectId, afterEventId);
-	const close = () => {
-		for (const eventType of runtimeEventTypes) {
-			eventSource.removeEventListener(eventType, listener);
-		}
-		eventSource.close();
-		resumedEventStreams.delete(key);
-	};
-	resumedEventStreams.set(key, close);
-	const activeDocument = selectActiveDocument() ?? fallbackAgentDocument();
-	const context = createStreamingEventContext({
-		activeDocument,
-		anchorText: activeDocument.title || activeDocument.id,
-		isSelectionScoped: false,
-		projectId,
-	});
-	function listener(event: MessageEvent) {
-		const parsed = JSON.parse(event.data) as AgentRuntimeEvent;
-		// Dedup is centralized in handleStreamingAgentEvent via applyEventSequence,
-		// so the resume stream no longer keeps its own seen-sequence set.
-		handleStreamingAgentEvent(parsed, context);
-		if (
-			parsed.type === "agent.run.completed" ||
-			parsed.type === "agent.run.cancelled" ||
-			parsed.type === "agent.run.failed"
-		) {
-			window.setTimeout(() => {
-				if (!useAgentStore.getState().isRunning) close();
-			}, 0);
-		}
-	}
-	for (const eventType of runtimeEventTypes) {
-		eventSource.addEventListener(eventType, listener);
-	}
-};
-
 const runStreamingACPAgent = async (
 	prompt: string,
 	context: AgentExecutionContext,
@@ -406,6 +259,8 @@ const runStreamingACPAgent = async (
 	try {
 		await connection.send({
 			prompt,
+			displayPrompt: options.displayPrompt?.trim() || undefined,
+			displayMetadata: options.displayMetadata,
 			projectId: projectId ?? undefined,
 			document: toAgentDocumentSnapshot(activeDocument),
 			documents: documentSnapshots,
@@ -425,595 +280,17 @@ const runStreamingACPAgent = async (
 	}
 };
 
+const displayMetadataHasContent = (metadata?: AgentMessageMetadata) =>
+	Boolean(metadata?.displayAttachments?.length || metadata?.displaySegments?.length);
+
 const defaultStructuredAgentDisplayPrompt = (context: AgentExecutionContext) => {
 	if (context.commentId) return "根据选中的批注修改文档";
 	if (context.selection) return "优化选中文本";
-	return "处理当前未解决批注";
-};
-
-type StreamingDocumentEditRuntimeEvent = Extract<
-	AgentRuntimeEvent,
-	{
-		type:
-			| "agent.document.edit.started"
-			| "agent.document.edit.delta"
-			| "agent.document.edit.checkpoint"
-			| "agent.document.edit.completed"
-			| "agent.document.edit.failed";
-	}
->;
-
-const isStreamingDocumentEditEvent = (
-	event: AgentRuntimeEvent,
-): event is StreamingDocumentEditRuntimeEvent =>
-	event.type === "agent.document.edit.started" ||
-	event.type === "agent.document.edit.delta" ||
-	event.type === "agent.document.edit.checkpoint" ||
-	event.type === "agent.document.edit.completed" ||
-	event.type === "agent.document.edit.failed";
-
-const handleACPAgentEvent = (event: Extract<AgentRuntimeEvent, { type: "agent.acp" }>) => {
-	const agentStore = useAgentStore.getState();
-	const acp = event.acp;
-	const runId = eventRunId(event);
-	if (!acp) {
-		agentStore.recordActivity("runtime", "ACP", event.message || "ACP 更新缺少负载。", runId);
-		return;
-	}
-
-	if (acp.kind === "thought") {
-		agentStore.appendThought(acp.thought || event.message, runId);
-		return;
-	}
-
-	if (acp.kind === "runtimeLog" || isACPToolRuntimeLog(acp)) {
-		agentStore.recordRuntimeLog(
-			{
-				content: acpRuntimeLogText(acp) || event.message,
-				outputBlocks: acp.content,
-				outputJson: acp.rawOutput,
-				status: acp.status,
-				toolCallId: acp.toolCallId?.trim() || event.id,
-			},
-			runId,
-		);
-		return;
-	}
-
-	if (acp.kind === "toolCall" || acp.kind === "toolCallUpdate") {
-		const toolCallId = acp.toolCallId?.trim() || event.id;
-		const title = acp.title?.trim();
-		const displayTitle = displayACPToolTitle(title, toolCallId);
-		agentStore.upsertToolCallMessage(
-			toolCallId,
-			{
-				title: displayTitle,
-				toolName: displayTitle,
-				acpKind: acp.toolKind || (displayTitle ? inferToolKind(displayTitle) : undefined),
-				status: acp.status,
-				inputJson: acp.rawInput,
-				outputJson: acp.rawOutput,
-				outputBlocks: acp.content,
-				locations: acp.locations,
-				content: event.message,
-			},
-			runId,
-		);
-		return;
-	}
-
-	if (acp.kind === "plan") {
-		agentStore.setPlan(acp.plan ?? [], runId);
-		return;
-	}
-
-	if (acp.kind === "permissionRequest" && acp.permissionRequest) {
-		agentStore.addPermissionRequest(acp.permissionRequest);
-		return;
-	}
-
-	if (acp.kind === "permissionResolved" || acp.kind === "permissionExpired") {
-		const requestId = acp.permissionRequest?.requestId?.trim();
-		if (requestId) {
-			agentStore.removePermissionRequest(requestId);
-		}
-		if (acp.status === "expired") {
-			agentStore.recordActivity(
-				"runtime",
-				"权限请求超时",
-				event.message || "权限请求长时间未确认，已自动取消。",
-				runId,
-			);
-		}
-		return;
-	}
-
-	if ((acp.kind === "mcpUnavailable" || acp.kind === "runtimeError") && acp.runtimeAlert) {
-		agentStore.addRuntimeAlert(acp.runtimeAlert, runId);
-		return;
-	}
-
-	agentStore.recordActivity("runtime", "ACP", event.message || `ACP 更新：${acp.kind}`, runId);
-};
-
-const displayACPToolTitle = (title: string | undefined, toolCallId: string) => {
-	const trimmed = title?.trim();
-	if (
-		!trimmed ||
-		trimmed === toolCallId ||
-		trimmed === "工具调用" ||
-		trimmed === "ACP 工具调用" ||
-		trimmed === "tool call" ||
-		trimmed === "tool_call" ||
-		/^\d{4}-\d{2}-\d{2}T\d{2}/.test(trimmed)
-	) {
-		return undefined;
-	}
-	return trimmed;
-};
-
-export const handleStreamingAgentEvent = (
-	event: AgentRuntimeEvent,
-	context: {
-		anchorText: string;
-		activeDocument: MarkdownDocument;
-		getLatestDelta: () => string;
-		isSelectionScoped: boolean;
-		meta?: RemoteAgentRuntimeEventMeta;
-		projectId: string | null;
-		setLatestDelta: (delta: string) => void;
-	},
-) => {
-	if (!isCurrentAgentProject(context.projectId)) return;
-	if (event.projectId && event.projectId !== context.projectId) return;
-
-	const agentStore = useAgentStore.getState();
-	// Central sequence reconciliation for both the live run stream and the resume
-	// stream: skip events already applied, and re-sync the authoritative transcript
-	// when a sequence gap reveals a missed (e.g. buffer-dropped) event.
-	const { duplicate, gap } = agentStore.applyEventSequence(event.sequence);
-	if (duplicate) return;
-	if (gap) scheduleTranscriptResync(event.sessionId || agentStore.sessionId, context.projectId);
-	const runId = eventRunId(event);
-	// A transcript hydrate during a live run collapses the store onto the
-	// `pending-root` placeholder (the backend chat state carries no runId), which
-	// would otherwise strand every later live event in a separate conversation and
-	// make lifecycle events fail isLifecycleEventForCurrentRun — leaving the
-	// timeline frozen until a manual page refresh. Re-bind the placeholder to the
-	// live run id so updates land in the active conversation and the run can finish.
-	if (runId && agentStore.isRunning && agentStore.rootRunId === pendingRootRunId) {
-		agentStore.bindRootRun(runId);
-	}
-	if (event.type !== "agent.message.delta") {
-		flushAssistantDelta(runId);
-	}
-	if (event.type === "agent.user.message") {
-		return;
-	}
-	if (event.type === "agent.session.replay.completed") {
-		// Replayed history may re-add permission requests the backend already
-		// resolved or expired; reconcile against the live pending list.
-		const sessionId = event.sessionId?.trim() || agentStore.sessionId;
-		if (sessionId) {
-			void syncAgentSessionStatus(sessionId, context.projectId, { applyTerminal: false }).catch(
-				() => {},
-			);
-		}
-		return;
-	}
-	if (event.type === "agent.message.accepted") {
-		agentStore.recordActivity(
-			"runtime",
-			"请求已接收",
-			event.message || "本地智能体已接收请求。",
-			runId,
-		);
-		return;
-	}
-
-	if (event.type === "agent.run.started") {
-		if (runId) agentStore.bindRootRun(runId);
-		agentStore.recordActivity(
-			"runtime",
-			"运行开始",
-			event.message || "本地智能体开始运行。",
-			runId,
-		);
-		return;
-	}
-
-	if (event.type === "agent.message.delta" && event.delta) {
-		queueAssistantDelta(event.delta, runId);
-		const nextDelta = `${context.getLatestDelta()}${event.delta}`.slice(-180);
-		context.setLatestDelta(nextDelta);
-		return;
-	}
-
-	if (event.type === "agent.acp") {
-		handleACPAgentEvent(event);
-		return;
-	}
-
-	if (event.type === "agent.activity") {
-		// Legacy/mock fallback: upgraded ACP runtimes send structured agent.acp events instead.
-		if (containsRuntimeLogMarkers(event.message)) {
-			agentStore.recordRuntimeLog(
-				{
-					content: event.message,
-					status: "failed",
-					toolCallId: event.id,
-				},
-				runId,
-			);
-			return;
-		}
-		const activity = splitActivityMessage(event.message);
-		agentStore.recordActivity(
-			isRuntimeActivity(event.message) ? "runtime" : "tool",
-			activity.label,
-			activity.detail,
-			runId,
-		);
-		return;
-	}
-
-	if (event.type === "agent.message.completed") {
-		agentStore.completeAssistantMessage(event.content || event.message, runId);
-		return;
-	}
-
-	if (event.type === "agent.ui" && event.a2ui) {
-		agentStore.addA2UIMessage(event.a2ui, event.message, runId);
-		return;
-	}
-
-	if (isStreamingDocumentEditEvent(event)) {
-		handleStreamingDocumentEditEvent(event, { ...context, runId });
-		return;
-	}
-
-	if (event.type === "agent.document.selection.set") {
-		const selection = event.documentSelection;
-		const editorHandle = getEditorHandle();
-		if (selection && editorHandle?.documentId === selection.documentId) {
-			editorHandle.setSelection(selection.selection);
-		}
-		return;
-	}
-
-	if (event.type === "agent.patch.proposed" && event.documentProposal) {
-		agentStore.recordActivity(
-			"patch",
-			"文档方案",
-			event.documentProposal.summary || "智能体已生成文档更新方案。",
-			runId,
-		);
-		if (event.documents && event.documents.length > 0) {
-			useDocumentsStore.getState().hydrateWorkspaceDocuments({
-				workspaceDir: useDocumentsStore.getState().workspaceDir,
-				projectId: event.projectId ?? context.projectId ?? undefined,
-				documents: event.documents,
-			});
-			agentStore.recordDocumentUpdated(
-				event.documentProposal.summary || "已由后端应用文档方案。",
-				runId,
-			);
-		} else {
-			applyDocumentProposal(context.activeDocument, event.documentProposal);
-		}
-		return;
-	}
-
-	if (event.type === "agent.run.failed") {
-		if (context.meta?.replay || !isLifecycleEventForCurrentRun(event)) return;
-		agentStore.failRun(event.message, runId);
-		void refreshAgentChatTranscript(
-			event.sessionId || agentStore.sessionId,
-			context.projectId,
-		).catch((error) => debugAgentError("failed to refresh transcript after run failure", error));
-		return;
-	}
-
-	if (event.type === "agent.run.cancelled") {
-		if (context.meta?.replay || !isLifecycleEventForCurrentRun(event)) return;
-		agentStore.cancelRun(event.message || "智能体运行已中断。", runId);
-		void refreshAgentChatTranscript(
-			event.sessionId || agentStore.sessionId,
-			context.projectId,
-		).catch((error) =>
-			debugAgentError("failed to refresh transcript after run cancellation", error),
-		);
-		return;
-	}
-
-	if (event.type === "agent.run.completed") {
-		if (context.meta?.replay || !isLifecycleEventForCurrentRun(event)) return;
-		agentStore.recordRuntimeStatus(acpRuntimeStatus);
-		void refreshWorkspaceStateFromBackend(event.projectId ?? context.projectId ?? undefined);
-		agentStore.finishRun(runId);
-		void refreshAgentChatTranscript(
-			event.sessionId || agentStore.sessionId,
-			context.projectId,
-		).catch((error) => debugAgentError("failed to refresh transcript after run completion", error));
-	}
-};
-
-const handleStreamingDocumentEditEvent = (
-	event: StreamingDocumentEditRuntimeEvent,
-	context: {
-		anchorText: string;
-		isSelectionScoped: boolean;
-		projectId: string | null;
-		runId?: string;
-	},
-) => {
-	const edit = event.documentEdit;
-	if (!edit.documentId) return;
-
-	const agentStore = useAgentStore.getState();
-	const documentsStore = useDocumentsStore.getState();
-	const title = edit.title || "生成中文档";
-	const anchorText = edit.anchorText?.trim() || context.anchorText || title;
-	const editorHandle = getEditorHandle();
-	const editorMatchesDocument = editorHandle?.documentId === edit.documentId;
-	const canUseLocalBlockEditor =
-		editorMatchesDocument && (Boolean(edit.anchorText?.trim()) || context.isSelectionScoped);
-	const isLocalBlockStreaming = canUseLocalBlockEditor && editorHandle?.hasPendingBlockDelta();
-
-	if (event.type === "agent.document.edit.delta") {
-		const nextContent = edit.content ?? edit.delta;
-		let appliedInEditor = false;
-		if (canUseLocalBlockEditor && anchorText && nextContent) {
-			appliedInEditor =
-				editorHandle?.applyBlockDelta(anchorText, nextContent, {
-					fullDocument: edit.content !== undefined,
-					blockId: edit.blockId,
-				}) ?? false;
-		}
-
-		if (!appliedInEditor) {
-			documentsStore.applyStreamingDocumentEdit(edit);
-		}
-	} else if (event.type === "agent.document.edit.completed") {
-		if (editorMatchesDocument) {
-			editorHandle?.commitBlockDelta();
-		}
-		documentsStore.applyStreamingDocumentEdit(edit);
-	} else if (event.type === "agent.document.edit.checkpoint") {
-		if (!isLocalBlockStreaming) {
-			documentsStore.applyStreamingDocumentEdit(edit);
-		}
-	} else {
-		documentsStore.applyStreamingDocumentEdit(edit);
-	}
-
-	if (event.type === "agent.document.edit.started") {
-		return;
-	}
-
-	if (event.type === "agent.document.edit.delta") {
-		return;
-	}
-
-	if (event.type === "agent.document.edit.checkpoint") {
-		return;
-	}
-
-	if (event.type === "agent.document.edit.completed") {
-		void refreshWorkspaceStateFromBackend(event.projectId ?? context.projectId ?? undefined);
-		return;
-	}
-
-	if (event.type === "agent.document.edit.failed") {
-		agentStore.recordActivity(
-			"runtime",
-			"流式编辑失败",
-			edit.summary || event.message,
-			context.runId,
-		);
-	}
-};
-
-const isCurrentAgentProject = (projectId: string | null) =>
-	useProjectStore.getState().activeProjectId === projectId;
-
-const eventRunId = (event: AgentRuntimeEvent) => event.runId?.trim() || undefined;
-
-const isLifecycleEventForCurrentRun = (event: AgentRuntimeEvent) => {
-	const runId = eventRunId(event);
-	if (!runId) return true;
-	const currentRunId = useAgentStore.getState().rootRunId?.trim();
-	// `pending-root` is a placeholder, not a real run id; a terminal event must
-	// still be accepted so the run can settle and the transcript can refresh.
-	if (!currentRunId || currentRunId === pendingRootRunId) return true;
-	return currentRunId === runId;
-};
-
-const refreshWorkspaceStateFromBackend = async (projectId?: string) => {
-	const targetProjectId = projectId ?? useProjectStore.getState().activeProjectId;
-	if (!targetProjectId) return;
-	try {
-		const state = await getWorkspaceState(targetProjectId);
-		if (!isCurrentAgentProject(targetProjectId)) return;
-		useDocumentsStore
-			.getState()
-			.hydrateWorkspaceState(
-				state.documents,
-				state.operationLog,
-				state.workspaceDir,
-				state.projectId ?? targetProjectId,
-				state.assets,
-			);
-	} catch {
-		useAgentStore
-			.getState()
-			.recordActivity("runtime", "文档同步失败", "智能体完成后刷新后端文档状态失败。");
-	}
-};
-
-const syncAgentSessionStatus = async (
-	sessionId: string,
-	projectId: string | null,
-	options: { applyTerminal: boolean; settle?: () => void },
-) => {
-	const status = await getAgentSessionStatus(sessionId, projectId);
-	const agentStore = useAgentStore.getState();
-	logPendingPermissionStatus(status, options.applyTerminal ? "poll" : "connect");
-	agentStore.syncPermissionRequests(status.pendingPermissions ?? []);
-	if (status.running || !options.applyTerminal) return;
-
-	if (status.lastStatus === "cancelled") {
-		agentStore.cancelRun(status.lastMessage || "智能体运行已中断。");
-	} else if (status.lastStatus === "interrupted" || status.lastStatus === "paused") {
-		agentStore.cancelRun(status.lastMessage || "上次运行已因应用重启暂停。");
-	} else if (status.lastStatus === "failed") {
-		agentStore.failRun(status.lastMessage || "智能体运行失败。");
-	} else if (agentStore.isRunning) {
-		agentStore.recordActivity(
-			"runtime",
-			"状态已同步",
-			status.lastMessage || "后端运行已结束，已释放输入框。",
-		);
-		void refreshWorkspaceStateFromBackend(projectId ?? undefined);
-		agentStore.finishRun();
-	}
-	await refreshAgentChatTranscript(sessionId, projectId).catch((error) =>
-		debugAgentError("failed to refresh transcript after session status sync", error),
-	);
-	options.settle?.();
-};
-
-const debugAgentError = (message: string, error: unknown) => {
-	if (!import.meta.env.DEV) return;
-	console.debug(`[agent] ${message}`, error);
-};
-
-const logPendingPermissionStatus = (status: { pendingPermissions?: unknown[] }, source: string) => {
-	if (!import.meta.env.DEV) return;
-	console.debug("[agent] session status pendingPermissions", {
-		source,
-		count: status.pendingPermissions?.length ?? 0,
-	});
-};
-
-const waitForStreamingRun = (sessionId: string, projectId: string | null) =>
-	new Promise<void>((resolve) => {
-		let settled = false;
-		let isPolling = false;
-		let unsubscribe = () => {};
-		let interval: number | undefined;
-		const settle = () => {
-			if (settled) return;
-			settled = true;
-			unsubscribe();
-			if (interval !== undefined) window.clearInterval(interval);
-			resolve();
-		};
-		const shouldResolve = () => {
-			const state = useAgentStore.getState();
-			return !state.isRunning;
-		};
-		unsubscribe = useAgentStore.subscribe((state) => {
-			if (!state.isRunning) {
-				settle();
-			}
-		});
-		if (shouldResolve()) {
-			settle();
-			return;
-		}
-
-		const syncStatus = async () => {
-			if (settled || isPolling) return;
-			if (!isCurrentAgentProject(projectId)) {
-				settle();
-				return;
-			}
-			isPolling = true;
-			try {
-				await syncAgentSessionStatus(sessionId, projectId, { applyTerminal: true, settle });
-			} catch {
-				// SSE is the primary path; polling only unlocks the UI if a terminal event is missed.
-			} finally {
-				isPolling = false;
-			}
-		};
-
-		interval = window.setInterval(() => {
-			void syncStatus();
-		}, 1000);
-		void syncStatus();
-	});
-
-const applyDocumentProposal = (
-	activeDocument: MarkdownDocument,
-	proposal: AgentDocumentProposal,
-) => {
-	const operations: DocumentOperation[] = [];
-	if (proposal.title && proposal.title !== activeDocument.title) {
-		operations.push(
-			createDocumentOperation<DocumentOperation>({
-				type: "update_document_metadata",
-				summary: "已更新文档标题。",
-				target: {},
-				payload: { title: proposal.title },
-			}),
-		);
-	}
-	if (proposal.content && proposal.content.trim() !== activeDocument.content.trim()) {
-		operations.push(
-			createDocumentOperation<DocumentOperation>({
-				type: "replace_text",
-				summary: proposal.summary || "已替换文档内容。",
-				target: {
-					anchor: {
-						quote: activeDocument.content.trim(),
-						contextBefore: "",
-						contextAfter: "",
-					},
-				},
-				payload: { replacement: proposal.content },
-			}),
-		);
-	}
-	if (operations.length === 0) return;
-
-	useDocumentsStore.getState().applyOperations(activeDocument.id, operations, {
-		source: agentSource("orchestrator"),
-		summary: proposal.summary || "已应用智能体文档方案。",
-	});
-	useAgentStore.getState().recordDocumentUpdated(proposal.summary || "已应用智能体文档方案。");
-};
-
-const acpRuntimeStatus: AgentRuntimeStatus = {
-	runtime: "acp",
-	fallback: false,
-	validated: true,
+	return openCommentsPromptFallback;
 };
 
 export const agentSessionStorageKey = (projectId: string) =>
 	`mediago_drama_agent_session_${projectId}`;
-
-const splitActivityMessage = (message: string) => {
-	const trimmed = message.trim();
-	const separator = trimmed.search(/[：:]/);
-	if (separator > 0 && separator < 18) {
-		return {
-			label: trimmed.slice(0, separator).trim(),
-			detail: trimmed.slice(separator + 1).trim() || trimmed,
-		};
-	}
-
-	return {
-		label: "智能体动作",
-		detail: trimmed || "智能体正在处理请求。",
-	};
-};
-
-const isRuntimeActivity = (message: string) =>
-	/(^|\s)(ACP|MCP)\b|会话|运行时|停止原因|stderr|旧会话|恢复失败|载入失败|刷新\s*mediago_drama/i.test(
-		message,
-	);
 
 const chooseAgentAnchor = (
 	document: MarkdownDocument,
@@ -1038,27 +315,6 @@ const chooseAgentAnchor = (
 };
 
 const compactAnchorText = (value: string) => value.trim().replace(/\s+/g, " ").slice(0, 120);
-
-const fallbackAgentDocument = (): MarkdownDocument => ({
-	id: "",
-	title: "当前文档",
-	content: "",
-	parentId: null,
-	sortOrder: 0,
-	version: 1,
-	updatedAt: new Date().toISOString(),
-	isDirty: false,
-	comments: [],
-	workbenchDraft: null,
-});
-
-const agentSource = (role?: string): DocumentOperationSource => {
-	const normalizedRole = role
-		?.trim()
-		.replace(/[^A-Za-z0-9_-]+/g, "-")
-		.replace(/^[-_]+|[-_]+$/g, "");
-	return normalizedRole ? `agent:${normalizedRole}` : "agent";
-};
 
 const resolveAppliedComment = (
 	documentId: string,

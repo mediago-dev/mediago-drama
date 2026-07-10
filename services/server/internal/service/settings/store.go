@@ -335,7 +335,7 @@ func (service *Settings) startJimengLogin(ctx context.Context) (ProviderLoginCha
 		select {
 		case text := <-output.updates:
 			login := parseJimengLoginChallenge([]byte(text))
-			if login.Status == "pending" && login.VerificationURI != "" {
+			if login.Status == "pending" && login.VerificationURI != "" && login.UserCode != "" {
 				login.DeviceCode = ""
 				if login.Message == "" {
 					login.Message = "即梦登录链接已生成，请在浏览器中完成登录。"

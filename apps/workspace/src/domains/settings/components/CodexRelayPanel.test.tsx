@@ -36,6 +36,7 @@ describe("CodexRelayPanel", () => {
 			profileId: "relay",
 			baseURL: "https://relay.example.com/v1",
 			statusCode: 200,
+			models: [],
 		});
 	});
 
@@ -134,6 +135,7 @@ describe("CodexRelayPanel", () => {
 			profileId: "relay",
 			baseURL: "https://relay.example.com/v1",
 			statusCode: 200,
+			models: [],
 		});
 
 		renderPanel();
@@ -173,6 +175,7 @@ describe("CodexRelayPanel", () => {
 			profileId: "relay-2",
 			baseURL: "https://relay-two.example.com/v1",
 			statusCode: 200,
+			models: [],
 		});
 
 		renderPanel();

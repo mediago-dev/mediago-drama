@@ -14,14 +14,61 @@ import {
 } from "@a2ui/web_core/v0_9";
 import type React from "react";
 import { useMemo } from "react";
+import { agentSelectionRefFromA2UI } from "@/domains/agent/lib/a2ui-selections";
+import { resolvedSelectionFromRecord } from "@/domains/agent/lib/resolved-selection";
+import { useResolvedAgentSelection } from "@/domains/agent/lib/useResolvedAgentSelection";
+import { useSupersededSelectionCard } from "@/domains/agent/lib/useSupersededSelectionCard";
 import type { AgentMessage } from "@/domains/agent/stores";
+import { ResolvedSelectionPreview } from "@/domains/agent/components/timeline/ResolvedSelectionPreview";
 import { cn } from "@/shared/lib/utils";
 
 export const AgentA2UIMessage: React.FC<{
 	message: AgentMessage;
 	onAction?: (message: AgentMessage, action: A2uiClientAction) => void;
 }> = ({ message, onAction }) => {
-	const result = useMemo(() => renderA2UIPayload(message, onAction), [message, onAction]);
+	// A transcript hydrate re-materializes the original interactive selection
+	// card even after the user decided it (the chat store is rebuilt from the
+	// server); render the decision as a frozen summary instead so the card
+	// can't be clicked twice. The local persisted decision wins; otherwise the
+	// server's selection record decides — covering cards decided before local
+	// persistence existed, in another window, or re-asked by the agent.
+	const ref = useMemo(
+		() => agentSelectionRefFromA2UI(message.metadata?.a2ui),
+		[message.metadata?.a2ui],
+	);
+	const resolved = useResolvedAgentSelection(
+		ref?.selectionId,
+		ref?.projectId,
+		resolvedSelectionFromRecord,
+	);
+	// Freeze a selection card the flow has already moved past even if it was
+	// never decided: an ask timeout leaves the record pending, so without this
+	// the card keeps live options that would submit into an already-continued
+	// flow. The card's content (e.g. generated image candidates) must stay
+	// visible — only the actions are disabled. Only selection cards (those with
+	// a ref) freeze; plain informational A2UI surfaces have nothing to act on.
+	const frozen = useSupersededSelectionCard(message.id) && Boolean(ref);
+	const result = useMemo(
+		() => renderA2UIPayload(message, frozen ? undefined : onAction),
+		[message, onAction, frozen],
+	);
+
+	if (resolved) {
+		return (
+			<article className="agent-a2ui-card max-w-[var(--message-bubble-max-width)] rounded-sm border border-border bg-card px-3 py-3 text-xs shadow-sm">
+				<h5 className="m-0 text-sm font-semibold text-foreground">
+					{resolved.title || "用户选择"}
+				</h5>
+				<ResolvedSelectionPreview
+					imageUrl={resolved.imageUrl}
+					alt={resolved.summary || resolved.title || "已选择的图片"}
+				/>
+				<p className="mt-1 whitespace-pre-wrap break-words leading-5 text-muted-foreground">
+					{resolved.summary || "该选择已处理。"}
+				</p>
+			</article>
+		);
+	}
 
 	if (result.error) {
 		return (
@@ -43,12 +90,23 @@ export const AgentA2UIMessage: React.FC<{
 				"[--a2ui-color-primary:var(--primary)] [--a2ui-color-surface:var(--card)]",
 				"[--a2ui-font-family-title:inherit] [--a2ui-font-size-m:0.75rem] [--a2ui-font-size-s:0.6875rem]",
 				"[--a2ui-spacing-l:0.75rem] [--a2ui-spacing-m:0.5rem] [--a2ui-spacing-s:0.375rem] [--a2ui-spacing-xs:0.25rem]",
+				"[--a2ui-image-small-feature-size:100%]",
 				"[&_button]:inline-flex [&_button]:min-h-7 [&_button]:max-w-full [&_button]:items-center [&_button]:justify-center [&_button]:rounded-sm",
 				"[&_button]:whitespace-normal [&_button]:border [&_button]:border-border [&_button]:bg-background [&_button]:px-2.5 [&_button]:py-1 [&_button]:text-center [&_button]:text-xs [&_button]:leading-4",
-				"[&_button]:font-medium [&_button]:text-foreground [&_button]:transition-colors hover:[&_button]:bg-ide-list-hover",
+				"[&_button]:font-medium [&_button]:text-foreground [&_button]:transition-colors [&_button:hover]:bg-ide-list-hover",
+				"[&_button]:cursor-pointer [&_button:hover]:border-primary",
 				"[&_button:disabled]:cursor-not-allowed [&_button:disabled]:opacity-50",
 				"[&_em]:not-italic [&_em]:text-muted-foreground [&_h1]:m-0 [&_h2]:m-0 [&_h3]:m-0 [&_h4]:m-0 [&_h5]:m-0",
 				"[&_h5]:text-sm [&_h5]:font-semibold [&_p]:m-0 [&_p]:break-words [&_p]:leading-5",
+				"[&_img]:max-h-40 [&_img]:max-w-full [&_img]:rounded-sm [&_img]:border [&_img]:border-border [&_img]:object-cover",
+				"[&_div[style*='flex-direction:_row']:has(img)]:flex-wrap",
+				"[&_div[style*='flex-direction:_row']:has(img)>div]:min-w-0 [&_div[style*='flex-direction:_row']:has(img)>div]:flex-[1_1_10.5rem]",
+				"[&_div[style*='flex-direction:_row']:has(img)>div]:max-w-56",
+				"[&_div[style*='flex-direction:_row']:has(img)>div_img]:w-full",
+				"[&_div[style*='flex-direction:_row']:has(img)>div_img]:max-h-80",
+				// Frozen: keep the card's content (e.g. image candidates) visible but
+				// grey out and inert the option buttons; onAction is already dropped.
+				frozen && "[&_button]:pointer-events-none [&_button]:opacity-50",
 			)}
 		>
 			<MarkdownContext.Provider value={renderA2UIMarkdown}>
@@ -58,6 +116,9 @@ export const AgentA2UIMessage: React.FC<{
 					))}
 				</div>
 			</MarkdownContext.Provider>
+			{frozen ? (
+				<p className="mt-2 leading-5 text-muted-foreground">流程已继续，无需操作。</p>
+			) : null}
 		</article>
 	);
 };

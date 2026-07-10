@@ -54,7 +54,7 @@ import {
 	type StoredGenerationModelSelection,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { Badge } from "@/shared/components/ui/badge";
-import { Button } from "@/shared/components/ui/button";
+import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
@@ -794,7 +794,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 						将按顺序对 {selectedCount} 项各提交一次生成任务。
 					</p>
 					<div className="flex justify-end gap-2">
-						<Button
+						<DialogDismissButton
 							type="button"
 							variant="outline"
 							size="sm"
@@ -802,8 +802,8 @@ export const BatchGenerationSettingsDialog: React.FC<{
 							onClick={() => onOpenChange(false)}
 						>
 							取消
-						</Button>
-						<Button
+						</DialogDismissButton>
+						<DialogDismissButton
 							type="button"
 							size="sm"
 							className="h-8 rounded-sm"
@@ -816,7 +816,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 								<Check className="size-4" />
 							)}
 							{primaryConfirmLabel}
-						</Button>
+						</DialogDismissButton>
 					</div>
 				</footer>
 			</div>

@@ -8,6 +8,21 @@ type GenerationModelsResponse = dto.GenerationModelsResponse
 // GenerationMessageRequest creates or retries a generation request.
 type GenerationMessageRequest = dto.GenerationMessageRequest
 
+// GenerationBatchRequest submits multiple normal generation requests as one batch.
+type GenerationBatchRequest = dto.GenerationBatchRequest
+
+// GenerationBatchItemRequest is one child request in a generation batch.
+type GenerationBatchItemRequest = dto.GenerationBatchItemRequest
+
+// GenerationBatchItemResponse reports one child submission result.
+type GenerationBatchItemResponse = dto.GenerationBatchItemResponse
+
+// GenerationBatchResponse reports an ordered batch submission.
+type GenerationBatchResponse = dto.GenerationBatchResponse
+
+// GenerationBatchTasksResponse returns current child task states for a batch.
+type GenerationBatchTasksResponse = dto.GenerationBatchTasksResponse
+
 // GenerationPromptOptimizationRequest configures server-side prompt optimization before generation.
 type GenerationPromptOptimizationRequest = dto.GenerationPromptOptimizationRequest
 
@@ -25,6 +40,9 @@ type GenerationVoicePreviewResponse = dto.GenerationVoicePreviewResponse
 
 // GenerationVoicePreviewAsset is one built-in local voice preview.
 type GenerationVoicePreviewAsset = dto.GenerationVoicePreviewAsset
+
+// GenerationStylePreset is one built-in visual style recommendation.
+type GenerationStylePreset = dto.GenerationStylePreset
 
 // ImportGenerationMediaAssetsRequest imports media library assets into generation history.
 type ImportGenerationMediaAssetsRequest = dto.ImportGenerationMediaAssetsRequest
@@ -112,6 +130,7 @@ type CreateGenerationConversationRequest = dto.CreateGenerationConversationReque
 
 // GenerationTaskListQuery filters generation tasks.
 type GenerationTaskListQuery struct {
+	BatchID        string
 	ConversationID string
 	Kind           string
 	ProjectID      string

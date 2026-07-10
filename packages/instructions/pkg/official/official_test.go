@@ -74,6 +74,33 @@ func TestToolsInstructionDoesNotBlockBusinessDocumentsOnMissingStyle(t *testing.
 	}
 }
 
+func TestToolsInstructionDelegatesImageWorkflowToSkill(t *testing.T) {
+	instruction, err := InstructionByID(context.Background(), "TOOLS")
+	if err != nil {
+		t.Fatalf("InstructionByID(%q) error = %v", "TOOLS", err)
+	}
+
+	for _, want := range []string{
+		"生成、修改或重绘图片前，必须先调用 MCP `load_skill` 装载 `image-generation`",
+		"图片专属的参数确认、参考图、选片与文档回写流程以该 Skill 为准",
+	} {
+		if !strings.Contains(instruction.Body, want) {
+			t.Fatalf("TOOLS instruction = %q, want image skill trigger %q", instruction.Body, want)
+		}
+	}
+	for _, forbidden := range []string{
+		"### 生图标准流程",
+		"type: \"generation_params\"",
+		"type: \"prompt_optimization\"",
+		"referenceAssetIds",
+		"select_generation_asset(taskId, slotIndex)",
+	} {
+		if strings.Contains(instruction.Body, forbidden) {
+			t.Fatalf("TOOLS instruction should delegate image detail %q to Skill:\n%s", forbidden, instruction.Body)
+		}
+	}
+}
+
 func TestDocumentRulesInstructionDefinesSecondLevelResourceBoundary(t *testing.T) {
 	instruction, err := InstructionByID(context.Background(), "DOCUMENT_RULES")
 	if err != nil {
@@ -82,7 +109,7 @@ func TestDocumentRulesInstructionDefinesSecondLevelResourceBoundary(t *testing.T
 	for _, want := range []string{
 		"业务文档的主体资源边界是二级标题",
 		"不要删除、伪造或批量改写已有 `section-id`",
-		"Skill 只提供业务写作方法",
+		"文档写作 Skill 只提供业务写作方法",
 	} {
 		if !strings.Contains(instruction.Body, want) {
 			t.Fatalf("DOCUMENT_RULES instruction = %q, want fragment %q", instruction.Body, want)

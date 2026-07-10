@@ -12,6 +12,7 @@ import {
 	AlertDialogTitle,
 } from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
+import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import type { NewDocumentDialogChoice } from "./NewDocumentDialog";
 
 export const NewReferenceDocumentDialog = createCallable<void, NewDocumentDialogChoice | null>(
@@ -48,7 +49,7 @@ export const NewReferenceDocumentDialog = createCallable<void, NewDocumentDialog
 							<Upload className="size-4" />
 							<span>上传文件</span>
 						</Button>
-						<Button
+						<DialogDismissButton
 							type="button"
 							variant="outline"
 							className="h-12 justify-start rounded-sm px-3"
@@ -56,7 +57,7 @@ export const NewReferenceDocumentDialog = createCallable<void, NewDocumentDialog
 						>
 							<FileText className="size-4" />
 							<span>新建空白资料</span>
-						</Button>
+						</DialogDismissButton>
 					</div>
 
 					<AlertDialogFooter>

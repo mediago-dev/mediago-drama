@@ -1,6 +1,7 @@
 import type {
 	AgentReference,
 	AgentA2UIPayload,
+	AgentFormPayload,
 	AgentRuntimeACPPermissionRequest,
 	AgentRuntimeACPRuntimeAlert,
 } from "@/domains/agent/api/agent";
@@ -59,6 +60,14 @@ export interface AgentDisplayAttachment {
 	url?: string;
 }
 
+// Structured rendering of a user prompt: plain text interleaved with the
+// mention / skill chips the user placed in the composer. Persisted alongside
+// the message so the chat bubble can re-render chips after a transcript reload.
+export type AgentDisplaySegment =
+	| { type: "text"; text: string }
+	| { type: "mention"; title: string; category?: string; kind?: string }
+	| { type: "skill"; name: string; title?: string };
+
 export interface AgentMessageMetadata {
 	toolName?: string;
 	filePath?: string;
@@ -79,7 +88,9 @@ export interface AgentMessageMetadata {
 	lines?: number;
 	startedAt?: string;
 	a2ui?: AgentA2UIPayload;
+	form?: AgentFormPayload;
 	displayAttachments?: AgentDisplayAttachment[];
+	displaySegments?: AgentDisplaySegment[];
 	[key: string]: unknown;
 }
 
@@ -195,6 +206,7 @@ export interface AgentState {
 	addUserMessage: (content: string, metadata?: AgentMessageMetadata) => void;
 	beginPendingRun: () => void;
 	addA2UIMessage: (payload: AgentA2UIPayload, content?: string, runId?: string) => void;
+	addFormMessage: (payload: AgentFormPayload, content?: string, runId?: string) => void;
 	addAssistantMessage: (content: string, runId?: string) => void;
 	appendThought: (thought: string, runId?: string) => void;
 	setPlan: (entries: AgentACPPlanEntry[], runId?: string) => void;

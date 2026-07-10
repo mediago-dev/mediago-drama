@@ -140,7 +140,7 @@ func TestInternalDocumentMCPHTTPAuthAndComments(t *testing.T) {
 	}
 
 	_, toolsMessage := callMCPHTTP(t, handler, path, token, sessionID, 2, "tools/list", map[string]any{})
-	assertMCPTools(t, toolsMessage, "load_skill", "get_project_config", "update_project_config", "list_comments", "get_comment", "mutate_comment")
+	assertMCPTools(t, toolsMessage, "load_skill", "get_project_config", "update_project_config", "list_comments", "get_comment", "mutate_comment", "ask_user_selection", "ask_user_form", "await_user_selection")
 
 	_, configMessage := callMCPHTTP(t, handler, path, token, sessionID, 3, "tools/call", map[string]any{
 		"name":      "get_project_config",
@@ -189,6 +189,53 @@ func TestInternalDocumentMCPHTTPAuthAndComments(t *testing.T) {
 	}
 }
 
+func TestInternalGenerationMCPHTTPAuthAndTools(t *testing.T) {
+	const token = "test-bridge-token"
+	handler := newMCPHTTPTestHandler(t, token)
+	projectID := "project-generation-http"
+	path := mediamcp.GenerationHTTPPath + "?projectId=" + url.QueryEscape(projectID)
+
+	unauthorized := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(`{}`))
+	handler.ServeHTTP(unauthorized, request)
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status = %d, want %d", unauthorized.Code, http.StatusUnauthorized)
+	}
+
+	legacyUnauthorized := httptest.NewRecorder()
+	legacyRequest := httptest.NewRequest(http.MethodPost, mediamcp.LegacyGenerationHTTPPath+"?projectId="+url.QueryEscape(projectID), bytes.NewBufferString(`{}`))
+	handler.ServeHTTP(legacyUnauthorized, legacyRequest)
+	if legacyUnauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("legacy unauthorized status = %d, want %d", legacyUnauthorized.Code, http.StatusUnauthorized)
+	}
+
+	headers, initialized := callMCPHTTP(t, handler, path, token, "", 1, "initialize", map[string]any{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]any{},
+		"clientInfo": map[string]any{
+			"name":    "generation-mcp-http-test",
+			"version": "0",
+		},
+	})
+	assertGenerationMCPInitializeInstructions(t, initialized)
+	sessionID := headers.Get("Mcp-Session-Id")
+	if sessionID == "" {
+		t.Fatal("initialize response did not include Mcp-Session-Id")
+	}
+
+	_, toolsMessage := callMCPHTTP(t, handler, path, token, sessionID, 2, "tools/list", map[string]any{})
+	assertMCPTools(t, toolsMessage,
+		"list_generation_models",
+		"generate_media",
+		"generate_media_batch",
+		"get_generation_task",
+		"list_generation_tasks",
+		"retry_generation_task",
+		"poll_generation_task",
+		"select_generation_asset",
+	)
+}
+
 func assertMCPInitializeInstructions(t *testing.T, message map[string]any) {
 	t.Helper()
 
@@ -211,6 +258,27 @@ func assertMCPInitializeInstructions(t *testing.T, message map[string]any) {
 	}
 	if strings.Contains(instructions, "get_guidelines") {
 		t.Fatalf("instructions = %q, should not mention get_guidelines", instructions)
+	}
+}
+
+func assertGenerationMCPInitializeInstructions(t *testing.T, message map[string]any) {
+	t.Helper()
+
+	result, ok := message["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("initialize result = %#v, want object", message["result"])
+	}
+	instructions, _ := result["instructions"].(string)
+	for _, fragment := range []string{
+		"生成工作台",
+		"list_generation_models",
+		"generate_media",
+		"generate_media_batch",
+		"poll_generation_task",
+	} {
+		if !strings.Contains(instructions, fragment) {
+			t.Fatalf("instructions = %q, want fragment %q", instructions, fragment)
+		}
 	}
 }
 

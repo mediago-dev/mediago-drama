@@ -577,12 +577,16 @@ func GenerationTaskFromMessage(
 	responseError := generationTaskErrorFromResponse(response)
 	return GenerationTaskRecord{
 		ID:                response.ID,
+		BatchID:           strings.TrimSpace(request.BatchID),
+		BatchItemID:       strings.TrimSpace(request.BatchItemID),
+		BatchIndex:        request.BatchIndex,
 		ProviderTaskID:    generationProviderTaskIDForResponse(route, response),
 		ConversationID:    request.ConversationID,
 		ProjectID:         GenerationProjectIDForRequest(request.ProjectID, request.ScopeID),
 		DocumentID:        documentID,
 		SectionID:         strings.TrimSpace(request.SectionID),
 		CapabilityID:      GenerationCapabilityIDForRequest(request.CapabilityID, route),
+		ResourceType:      GenerationResourceTypeForRequest(request),
 		Kind:              string(route.Kind),
 		RouteID:           route.ID,
 		FamilyID:          route.FamilyID,
@@ -615,6 +619,16 @@ func generationTaskErrorFromResponse(response GenerationMessageResponse) string 
 		return errorMessage
 	}
 	return shared.FirstNonEmpty(strings.TrimSpace(response.Message), "生成请求失败。")
+}
+
+// GenerationResourceTypeForRequest resolves the project resource type a request
+// targets. Explicit resourceType wins; a capabilityId that names a resource type
+// is honored for callers that predate the dedicated field.
+func GenerationResourceTypeForRequest(request GenerationMessageRequest) string {
+	if resourceType := selectedGenerationResourceType(request.ResourceType); resourceType != "" {
+		return resourceType
+	}
+	return selectedGenerationResourceType(request.CapabilityID)
 }
 
 // GenerationCapabilityIDForRequest returns an explicit capability id or the route kind default.
@@ -754,8 +768,34 @@ func GenerationTaskWithMessage(task GenerationTaskRecord, response GenerationMes
 		task.ErrorType = ""
 		task.Retryable = false
 	}
+	// A failed batch that still produced stored assets is a partial success:
+	// keep the results usable downstream (section history, overview counts,
+	// selected-asset sync) instead of hiding them behind a failed task. The
+	// error fields stay populated so the shortfall remains visible.
+	if strings.EqualFold(strings.TrimSpace(task.Status), "failed") {
+		if kept := storedGenerationAssetCount(task); kept > 0 {
+			task.Status = "completed"
+			task.Message = fmt.Sprintf("部分成功：已生成 %d 张，其余失败。%s", kept, strings.TrimSpace(task.Message))
+		}
+	}
 
 	return task
+}
+
+// storedGenerationAssetCount counts non-deleted assets that reference stored
+// content (asset id, URL, or inline payload).
+func storedGenerationAssetCount(task GenerationTaskRecord) int {
+	deleted := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
+	count := 0
+	for _, asset := range task.Assets {
+		if deleted[asset.SlotIndex] {
+			continue
+		}
+		if strings.TrimSpace(asset.AssetID) != "" || strings.TrimSpace(asset.URL) != "" || strings.TrimSpace(asset.Base64) != "" {
+			count++
+		}
+	}
+	return count
 }
 
 // GenerationTaskProviderPollID returns the provider task id used for video polling.
@@ -769,16 +809,27 @@ func GenerationTaskProviderPollID(task GenerationTaskRecord) string {
 	return ""
 }
 
+// activeGenerationStatuses is the single source of truth for statuses that mean a
+// task still has in-flight work. Keep IsActiveGenerationStatus and the runtime
+// activity probe derived from this list so they can never diverge.
+var activeGenerationStatuses = []string{
+	"submitting",
+	"submitted",
+	"running",
+	"pending",
+	"processing",
+	"queued",
+}
+
 // IsActiveGenerationStatus reports whether a task status is still in progress.
 func IsActiveGenerationStatus(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "submitted", "running", "pending", "processing", "queued":
-		return true
-	case "submitting":
-		return true
-	default:
-		return false
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	for _, active := range activeGenerationStatuses {
+		if normalized == active {
+			return true
+		}
 	}
+	return false
 }
 
 func generationProviderTaskIDForResponse(route coregeneration.ModelRoute, response GenerationMessageResponse) string {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { showDesktopNotification } from "@/shared/desktop/actions";
+import { getDesktopUpdateCapability, showDesktopNotification } from "@/shared/desktop/actions";
 
 describe("showDesktopNotification click bridge", () => {
 	afterEach(() => {
@@ -53,6 +53,20 @@ describe("showDesktopNotification click bridge", () => {
 			title: "生成完成",
 			body: "已生成图片。",
 			id: undefined,
+		});
+	});
+});
+
+describe("getDesktopUpdateCapability", () => {
+	afterEach(() => {
+		delete window.mediagoDesktop;
+		vi.restoreAllMocks();
+	});
+
+	it("uses the repository page for the browser fallback download link", async () => {
+		await expect(getDesktopUpdateCapability()).resolves.toMatchObject({
+			supportsAutoUpdate: false,
+			releasePageUrl: "https://github.com/mediago-dev/mediago-drama",
 		});
 	});
 });

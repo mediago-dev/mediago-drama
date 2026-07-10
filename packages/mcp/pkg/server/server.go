@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	externaltools "github.com/mediago-dev/mediago-drama/packages/mcp/internal/tools/external"
+	generationtools "github.com/mediago-dev/mediago-drama/packages/mcp/internal/tools/generation"
 	v2tools "github.com/mediago-dev/mediago-drama/packages/mcp/internal/tools/v2"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -23,6 +24,27 @@ func NewDocumentServer(cfg Config, deps DocumentDeps) (*mcpsdk.Server, error) {
 	}
 	rt.logger.Debug(
 		"document mcp server assembled",
+		"project_id", rt.cfg.ProjectID,
+		"transport", rt.cfg.Transport,
+		"tool_count", rt.toolLogs,
+	)
+	return server, nil
+}
+
+// NewGenerationServer creates the generation MCP server.
+func NewGenerationServer(cfg Config, deps GenerationDeps) (*mcpsdk.Server, error) {
+	rt := newRuntime(cfg, slog.Default())
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{
+		Name:    rt.implementationName(),
+		Version: rt.cfg.Version,
+	}, &mcpsdk.ServerOptions{Instructions: mediamcp.GenerationMCPInstructions})
+	if deps != nil {
+		generationtools.Register(server, deps, generationtools.Options{
+			ProjectID: rt.cfg.ProjectID,
+		}, false, rt.logToolRegistered)
+	}
+	rt.logger.Debug(
+		"generation mcp server assembled",
 		"project_id", rt.cfg.ProjectID,
 		"transport", rt.cfg.Transport,
 		"tool_count", rt.toolLogs,

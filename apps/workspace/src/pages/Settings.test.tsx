@@ -172,8 +172,40 @@ describe("Settings API key page", () => {
 		expect(
 			within(cliSection as HTMLElement).getByRole("button", { name: "登录" }),
 		).toBeInTheDocument();
-		expect(within(cliSection as HTMLElement).getByLabelText("小云雀 API Key")).toBeInTheDocument();
+		expect(
+			screen.queryByText("已有小云雀 Access Key？可通过本地 Pippit CLI 接入。"),
+		).not.toBeInTheDocument();
+		expect(
+			within(cliSection as HTMLElement).queryByLabelText("小云雀 API Key"),
+		).not.toBeInTheDocument();
+		fireEvent.click(within(cliSection as HTMLElement).getByRole("button", { name: "编辑 小云雀" }));
+		const dialog = await screen.findByRole("dialog", { name: "配置 小云雀" });
+		expect(within(dialog).getByLabelText("小云雀 API Key")).toBeInTheDocument();
 		expect(within(cliSection as HTMLElement).queryByText("即梦")).not.toBeInTheDocument();
+	});
+
+	it("saves the Xiaoyunque key from a CLI config dialog", async () => {
+		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ includeExtraCLI: true }));
+		vi.mocked(getModelPlatforms).mockResolvedValue(
+			modelPlatformsResponse({ cliProviderIDs: ["xiaoyunque"] }),
+		);
+
+		renderSettings();
+
+		const cliSection = (await screen.findByRole("heading", { name: "会员 CLI 接入" })).closest(
+			"section",
+		);
+		expect(cliSection).toBeTruthy();
+		fireEvent.click(within(cliSection as HTMLElement).getByRole("button", { name: "编辑 小云雀" }));
+		const dialog = await screen.findByRole("dialog", { name: "配置 小云雀" });
+		fireEvent.change(within(dialog).getByLabelText("小云雀 API Key"), {
+			target: { value: "xyq-access-key-123456" },
+		});
+		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+
+		await waitFor(() =>
+			expect(saveAPIKey).toHaveBeenCalledWith("xiaoyunque", "xyq-access-key-123456"),
+		);
 	});
 });
 
@@ -244,6 +276,7 @@ const apiKeysResponse = ({
 						source: "none" as const,
 						credentialKind: "apiKey",
 						credentialLabel: "小云雀 Access Key",
+						help: "已有小云雀 Access Key？可通过本地 Pippit CLI 接入。",
 						placeholder: "输入 XYQ_ACCESS_KEY",
 						capabilities: ["image", "video"],
 					},

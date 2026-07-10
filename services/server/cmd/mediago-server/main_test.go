@@ -219,6 +219,40 @@ func TestParseServerPort(t *testing.T) {
 	}
 }
 
+func TestParseNonNegativeEnvInt(t *testing.T) {
+	testCases := []struct {
+		name    string
+		value   string
+		want    int
+		wantErr bool
+	}{
+		{name: "missing", value: "", want: 0},
+		{name: "zero", value: "0", want: 0},
+		{name: "positive", value: "42", want: 42},
+		{name: "negative", value: "-1", wantErr: true},
+		{name: "invalid", value: "latest", wantErr: true},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("MEDIAGO_TEST_VERSION", testCase.value)
+			got, err := parseNonNegativeEnvInt("MEDIAGO_TEST_VERSION")
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatal("parseNonNegativeEnvInt returned nil error, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseNonNegativeEnvInt returned error: %v", err)
+			}
+			if got != testCase.want {
+				t.Fatalf("parseNonNegativeEnvInt = %d, want %d", got, testCase.want)
+			}
+		})
+	}
+}
+
 func TestLoadBillingPricesFromConfigRelativeOverlay(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "server.yaml")

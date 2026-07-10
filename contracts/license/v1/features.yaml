@@ -1,0 +1,39 @@
+# License feature contract v1
+#
+# This file is the versioned agreement between the open-source app and the
+# private license server. The license server CI reads this contract at the
+# app tag it targets; the app gates features ONLY on entitlements listed here.
+#
+# Rules (see README.md):
+# - Clients check entitlements, never plans.
+# - Unknown entitlement => treated as not granted.
+# - Removing or renaming an entitlement is a breaking change => new contract version.
+contract_version: license-features-v1
+
+# Two independent kinds of activation codes, no relation between them:
+#   - an app code grants app.access (enter the software)
+#   - a pack code grants that pack's entitlement (import that one pack)
+# A client may hold several activations at once; entitlements are the union of
+# all valid, device-matched, unexpired tokens. Entering the software checks
+# app.access; importing a pack checks that pack's requiredEntitlement.
+features:
+  - id: app.entry
+    title: Enter the software (Pro build gate)
+    description: >
+      Pro builds require this entitlement to open. Sold as an app license,
+      independent of any prompt pack purchase.
+    introduced_in: "0.1.0"
+    required_entitlement: app.access
+    default_enabled: false
+
+  - id: promptpack.pro-import
+    title: Licensed Pro prompt pack import (.mgpackpro)
+    description: >
+      Import encrypted, publisher-signed .mgpackpro prompt packs. Each pack
+      declares its own requiredEntitlement in its manifest and is sold per
+      pack; the license server maps each pack keyId to the entitlement a
+      buyer's token must hold. pack.import.pro is the entitlement for the
+      default sample/premium pack.
+    introduced_in: "0.1.0"
+    required_entitlement: pack.import.pro
+    default_enabled: false

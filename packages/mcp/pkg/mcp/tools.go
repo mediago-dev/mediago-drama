@@ -19,7 +19,7 @@ const mcpWorkflowInstructions = `MediaGo Drama MCP 使用说明：
 - Agent 进程启动时当前工作目录已经是当前项目的文档根目录（项目的 work 文件夹）；当前目录树就是文档树，Markdown 文件就是文档。不要再访问或创建名为 work/ 的子目录。
 - 读取、创建、修改、移动和删除文档时，直接操作当前工作目录 . 下的本地文件；不要通过 MCP 读取或编辑文档正文。
 - 需要读取项目配置时调用 get_project_config；不要在当前工作目录或父目录中搜索 project.media.json。项目配置不再承载视觉风格，风格提示应来自用户本轮需求或提示词包。
-- load_skill 用于装载 screenplay、character、scene、prop、storyboard 等写作 skill；Skill 正文只承载业务写作提示。核心文档规则由系统 prompt 注入，不依赖 Skill。
+- load_skill 用于按任务装载 screenplay、character、scene、prop、storyboard 等写作 Skill，以及 image-generation 等工作流 Skill；核心文档规则仍由系统 prompt 注入，不依赖 Skill。
 - get_project_config 用于读取当前项目配置，例如提示词分类默认预设。
 - list_comments / get_comment / mutate_comment 用于读取和处理评论/批注；mutate_comment.op 支持 add、update、reply、resolve、unresolve、delete。
 - 用户划词后的局部任务应转成评论/批注处理，不依赖瞬时编辑器选区。`
@@ -27,13 +27,31 @@ const mcpWorkflowInstructions = `MediaGo Drama MCP 使用说明：
 // AgentMCPInstructions describes the run-scoped MCP server contract returned
 // during MCP initialize.
 const AgentMCPInstructions = mcpWorkflowInstructions + `
-- 本 MCP 只提供 load_skill、get_project_config、update_project_config、list_comments、get_comment、mutate_comment。
-- update_project_config 当前仅用于更新 overview.categoryDefaults；style 风格分类会被忽略。`
+- 本 MCP 只提供 load_skill、get_project_config、update_project_config、list_comments、get_comment、mutate_comment、ask_user_selection、ask_user_form、await_user_selection。
+- update_project_config 当前仅用于更新 overview.categoryDefaults；style 风格分类会被忽略。
+- ask_user_selection 向用户展示可视化选项并阻塞等待选择，返回 selected/custom/cancelled/timeout。
+- ask_user_form 向用户展示参数表单，支持 select、toggle、number、text、generation_params、images 和 prompt_optimization 字段，提交后返回 values。
+- 两者返回 timeout 时先用 await_user_selection 对同一 selectionId 循环续等 3-5 轮；仍无结果再说明情况并结束回合，不要擅自继续。`
 
 // ExternalMCPInstructions describes the cross-project MCP server contract.
 const ExternalMCPInstructions = mcpWorkflowInstructions + `
 - 本 MCP 只提供 list_projects、load_skill、get_project_config、list_comments、get_comment、mutate_comment。
 - external cross-project server 的 get_project_config 和评论工具参数必须携带 projectId。`
+
+// GenerationMCPInstructions describes the generation MCP server contract.
+const GenerationMCPInstructions = `MediaGo Drama Generation MCP 使用说明：
+- 本 MCP 只提供 MediaGo Drama 生成工作台能力，不提供文档正文读写。
+- list_generation_models 返回模型目录、routeId、参数 schema、configured 状态、preferences 和 stylePresets；configured 表示当前路由是否可提交。
+- generate_media 用于提交生成请求；kind 默认 image。prompt 必填，routeId/model/params 应来自模型目录或用户明确输入。
+- generate_media_batch 用于一次提交多个独立媒体生成请求；返回 batch id 和每项 taskId，单项失败不会取消其他项。
+- generate_media 返回的 id 即生成任务的 taskId；status 为 submitting/submitted 时任务在后台运行，用返回的 id 调 poll_generation_task 或 get_generation_task 查询结果。
+- referenceUrls/referenceAssetIds/referenceBindings 可用于传入参考图、参考素材或文档绑定。
+- documentContext（documentId + sectionId）把任务归入项目资源的生成历史与选中资产库；资源归属由服务端按目标文档类型自动判定。
+- notificationTarget 指定生成完成通知跳转的项目文档章节。
+- promptOptimization 请求服务端先优化提示词再生成，响应中的 optimizedPrompt 是实际生成提示词。
+- get_generation_task / list_generation_tasks 用于查询任务状态和结果资产。
+- poll_generation_task 用于轮询需要供应商查询的异步任务；retry_generation_task 用于重试失败或可重试任务。
+- select_generation_asset 按 taskId 和 slotIndex 标记选中资产；未带 documentContext 的任务可补传 resourceType。`
 
 const publicMCPBoundaryDescription = "MediaGo Drama MCP：Agent 当前工作目录已是项目 work 文档根目录；文档读写直接操作当前目录下的 Markdown 文件，不要再访问 work/ 子目录；项目配置通过 MCP 读取或更新，不要搜索 project.media.json。"
 
@@ -46,7 +64,7 @@ var DocumentTools = struct {
 	GetComment          ToolDefinition
 	MutateComment       ToolDefinition
 }{
-	LoadSkill:           ToolDefinition{Name: "load_skill", Title: "装载 Agent Skill", Description: "按 name 装载一个可用 skill，返回 frontmatter 之外的业务写作提示。核心文档规则由系统 prompt 注入，不依赖 skill 或 template_id。编辑 screenplay/character/scene/prop/storyboard 类型文档前必须先装载对应写作 skill，并同时遵守系统核心文档规则。", ReadOnly: true},
+	LoadSkill:           ToolDefinition{Name: "load_skill", Title: "装载 Agent Skill", Description: "按 name 装载一个可用 Skill，返回 frontmatter 之外的任务说明。核心文档规则由系统 prompt 注入，不依赖 Skill 或 template_id。编辑 screenplay/character/scene/prop/storyboard 类型文档前必须先装载对应写作 Skill；图片生成按系统指示装载 image-generation。", ReadOnly: true},
 	GetProjectConfig:    ToolDefinition{Name: "get_project_config", Title: "读取项目配置", Description: "读取当前项目配置，例如提示词分类默认预设；项目配置不再承载视觉风格，不要通过文件系统查找 project.media.json。", ReadOnly: true},
 	UpdateProjectConfig: ToolDefinition{Name: "update_project_config", Title: "更新项目配置", Description: "按字段更新当前项目的 project.media.json；当前仅支持 overview.categoryDefaults，style 风格分类会被忽略。"},
 	ListComments:        ToolDefinition{Name: "list_comments", Title: "列出评论线程", Description: "按文档、块和解决状态列出评论线程。", ReadOnly: true},
@@ -69,6 +87,27 @@ var ExternalTools = struct {
 	MutateComment:    ToolDefinition{Name: "mutate_comment", Title: "修改评论（外部）", Description: "统一评论 mutation 入口；op 支持 add、update、reply、resolve、unresolve、delete。"},
 }
 
+// GenerationTools contains generation MCP tool definitions.
+var GenerationTools = struct {
+	ListModels    ToolDefinition
+	Generate      ToolDefinition
+	GenerateBatch ToolDefinition
+	GetTask       ToolDefinition
+	ListTasks     ToolDefinition
+	RetryTask     ToolDefinition
+	PollTask      ToolDefinition
+	SelectAsset   ToolDefinition
+}{
+	ListModels:    ToolDefinition{Name: "list_generation_models", Title: "列出生成模型", Description: "返回 MediaGo Drama 当前可用的生成模型目录、routeId、参数 schema、供应商配置状态和内置风格 preset（stylePresets，含预览图 previewUrl 与 promptSuffix）。可传 kind（image/video/audio/text）只返回对应类型。", ReadOnly: true},
+	Generate:      ToolDefinition{Name: "generate_media", Title: "提交媒体生成", Description: "提交图片、视频、音频或文本生成请求；prompt 必填，kind 默认 image，routeId/model/params 应来自 list_generation_models。"},
+	GenerateBatch: ToolDefinition{Name: "generate_media_batch", Title: "批量提交媒体生成", Description: "一次提交最多 50 个独立媒体生成请求；每项 request 与 generate_media 相同，返回批次 ID、每项 taskId 或独立错误。"},
+	GetTask:       ToolDefinition{Name: "get_generation_task", Title: "读取生成任务", Description: "按 taskId 读取生成任务的状态、结果资产、错误信息和尝试记录。", ReadOnly: true},
+	ListTasks:     ToolDefinition{Name: "list_generation_tasks", Title: "列出生成任务", Description: "按 batchId、projectId、sessionId、kind、limit、offset 列出生成任务。", ReadOnly: true},
+	RetryTask:     ToolDefinition{Name: "retry_generation_task", Title: "重试生成任务", Description: "按 taskId 重新提交失败或可重试的生成任务。"},
+	PollTask:      ToolDefinition{Name: "poll_generation_task", Title: "轮询生成任务", Description: "按 taskId 轮询异步生成任务并同步最新状态。"},
+	SelectAsset:   ToolDefinition{Name: "select_generation_asset", Title: "选定生成结果", Description: "按 taskId + slotIndex 把某张生成结果标记为选中（用户选片后调用），返回更新后的任务。"},
+}
+
 // AgentDocumentTools is the public run-scoped MCP surface exposed to agents.
 var AgentDocumentTools = struct {
 	LoadSkill           ToolDefinition
@@ -77,11 +116,30 @@ var AgentDocumentTools = struct {
 	ListComments        ToolDefinition
 	GetComment          ToolDefinition
 	MutateComment       ToolDefinition
+	AskUserSelection    ToolDefinition
+	AskUserForm         ToolDefinition
+	AwaitUserSelection  ToolDefinition
 }{
 	LoadSkill: ToolDefinition{
 		Name:        DocumentTools.LoadSkill.Name,
 		Title:       DocumentTools.LoadSkill.Title,
 		Description: publicMCPBoundaryDescription + " " + DocumentTools.LoadSkill.Description,
+		ReadOnly:    true,
+	},
+	AskUserSelection: ToolDefinition{
+		Name:        "ask_user_selection",
+		Title:       "请用户选择",
+		Description: "向用户展示一组可视化选项（如风格推荐网格）并阻塞等待其选择：返回所选 optionId（selected）、自定义描述（custom）、取消（cancelled）或超时（timeout）。options 必填，每项含 id/label，可带 imageUrl/description（自然语言，不要暴露内部字段名）。返回 timeout 时用 await_user_selection 对同一 selectionId 继续等待，不要重新弹卡。",
+	},
+	AskUserForm: ToolDefinition{
+		Name:        "ask_user_form",
+		Title:       "请用户填写表单",
+		Description: "向用户展示一张参数表单卡并阻塞等待提交：fields 支持 select、toggle、number、text、generation_params、images 和 prompt_optimization（select 需 options，默认值用 default 预填）。generation_params 自动渲染已配置模型目录及联动参数，无需 options，提交值为 {routeId,label,params}；images 提交资产 ID 数组；prompt_optimization 提交优化开关及可选文本模型与提示词包。结果为 status=submitted 与 values（字段 ID→值）；返回 timeout 时用 await_user_selection 对同一 selectionId 续等。",
+	},
+	AwaitUserSelection: ToolDefinition{
+		Name:        "await_user_selection",
+		Title:       "继续等待用户选择",
+		Description: "继续阻塞等待一张已存在的选择卡（不新建卡片）：传入 ask_user_selection 返回的 selectionId，返回值与 ask_user_selection 相同。用于把长等待拆成多轮 ≤90 秒的短等待，避免客户端工具超时；建议循环 3-5 轮后再改为在对话中询问。",
 		ReadOnly:    true,
 	},
 	GetProjectConfig: ToolDefinition{

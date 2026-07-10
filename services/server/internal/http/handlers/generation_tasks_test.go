@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,89 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/http/dto"
 	generationservice "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 )
+
+type fakeGenerationBatchService struct {
+	GenerationTaskService
+	request dto.GenerationBatchRequest
+	batchID string
+}
+
+func (service *fakeGenerationBatchService) CreateGenerationBatch(_ context.Context, request dto.GenerationBatchRequest) (dto.GenerationBatchResponse, int, error) {
+	service.request = request
+	return dto.GenerationBatchResponse{
+		ID:       "generation-batch-1",
+		Status:   "partial",
+		Total:    2,
+		Accepted: 1,
+		Failed:   1,
+		Items: []dto.GenerationBatchItemResponse{
+			{ID: "one", Index: 0, TaskID: "task-1", Status: "submitted"},
+			{ID: "two", Index: 1, Status: "failed", Error: "bad prompt"},
+		},
+	}, http.StatusOK, nil
+}
+
+func (service *fakeGenerationBatchService) GetGenerationBatch(batchID string) (dto.GenerationBatchTasksResponse, bool, error) {
+	service.batchID = batchID
+	return dto.GenerationBatchTasksResponse{
+		ID:     batchID,
+		Status: "running",
+		Total:  1,
+		Active: 1,
+		Tasks: []dto.GenerationTaskRecord{
+			{ID: "task-1", BatchID: batchID, Kind: "image", Status: "submitted"},
+		},
+	}, true, nil
+}
+
+func TestHandleCreateGenerationBatch(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	service := &fakeGenerationBatchService{}
+	handler := NewGenerationTasks(service)
+	router := gin.New()
+	router.POST("/generation/batches", handler.HandleCreateGenerationBatch)
+
+	request := httptest.NewRequest(http.MethodPost, "/generation/batches", strings.NewReader(`{
+		"projectId":"project-a",
+		"scopeId":"project-a",
+		"items":[
+			{"id":"one","request":{"kind":"image","prompt":"first"}},
+			{"id":"two","request":{"kind":"image","prompt":"second"}}
+		]
+	}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if service.request.ProjectID != "project-a" || len(service.request.Items) != 2 || service.request.Items[1].ID != "two" {
+		t.Fatalf("request = %+v, want decoded batch", service.request)
+	}
+	if body := response.Body.String(); !strings.Contains(body, "generation-batch-1") || !strings.Contains(body, "bad prompt") {
+		t.Fatalf("body = %s, want partial batch response", body)
+	}
+}
+
+func TestHandleGenerationBatchTasks(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	service := &fakeGenerationBatchService{}
+	handler := NewGenerationTasks(service)
+	router := gin.New()
+	router.GET("/generation/batches/:batchId/tasks", handler.HandleGenerationBatchTasks)
+
+	request := httptest.NewRequest(http.MethodGet, "/generation/batches/generation-batch-1/tasks", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || service.batchID != "generation-batch-1" {
+		t.Fatalf("status = %d batchID = %q body = %s", response.Code, service.batchID, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "task-1") {
+		t.Fatalf("body = %s, want task-1", response.Body.String())
+	}
+}
 
 type fakeGenerationTaskAssetService struct {
 	GenerationTaskService
@@ -92,7 +176,7 @@ func TestHandleGenerationTasksPassesProjectIDFilter(t *testing.T) {
 
 	request := httptest.NewRequest(
 		http.MethodGet,
-		"/generation/tasks?kind=image&projectId=project-a&limit=25&offset=5",
+		"/generation/tasks?batchId=batch-1&kind=image&projectId=project-a&limit=25&offset=5",
 		nil,
 	)
 	response := httptest.NewRecorder()
@@ -102,8 +186,8 @@ func TestHandleGenerationTasksPassesProjectIDFilter(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status code = %d, want %d", response.Code, http.StatusOK)
 	}
-	if service.query.Kind != "image" || service.query.ProjectID != "project-a" {
-		t.Fatalf("query = %+v, want kind=image projectId=project-a", service.query)
+	if service.query.BatchID != "batch-1" || service.query.Kind != "image" || service.query.ProjectID != "project-a" {
+		t.Fatalf("query = %+v, want batchId=batch-1 kind=image projectId=project-a", service.query)
 	}
 	if service.query.Limit != 25 || service.query.Offset != 5 {
 		t.Fatalf("query = %+v, want limit=25 offset=5", service.query)

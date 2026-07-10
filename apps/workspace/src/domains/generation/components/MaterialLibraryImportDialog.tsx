@@ -4,6 +4,7 @@ import { useEffect, useMemo, useReducer, useRef } from "react";
 import { GenerationDialogShell } from "@/domains/generation/components/GenerationDialogShell";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import { Button } from "@/shared/components/ui/button";
+import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Input } from "@/shared/components/ui/input";
 import { apiResourceURL } from "@/shared/lib/api-base";
 import { formatBytes } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
@@ -205,7 +206,7 @@ export const MaterialLibraryImportDialog: React.FC<MaterialLibraryImportDialogPr
 						已选 {selectedAssets.length} {kindCopy.unit}
 					</p>
 					<div className="flex items-center gap-2">
-						<Button
+						<DialogDismissButton
 							type="button"
 							variant="ghost"
 							size="sm"
@@ -213,15 +214,15 @@ export const MaterialLibraryImportDialog: React.FC<MaterialLibraryImportDialogPr
 							onClick={() => onOpenChange(false)}
 						>
 							取消
-						</Button>
-						<Button
+						</DialogDismissButton>
+						<DialogDismissButton
 							type="button"
 							size="sm"
 							disabled={confirming || isUploading}
 							onClick={confirmSelection}
 						>
 							{confirming ? kindCopy.confirmingLabel : kindCopy.confirmLabel}
-						</Button>
+						</DialogDismissButton>
 					</div>
 				</>
 			}
