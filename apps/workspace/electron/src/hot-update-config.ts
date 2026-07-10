@@ -3,15 +3,27 @@
 // ⚠️ hotUpdateEnabled must stay false until:
 //   1. the Ed25519 release keypair exists (private key in GitHub Actions secrets),
 //   2. bundleUpdatePublicKey below is filled with the matching public key,
-//   3. the bundle-hot-release pipeline publishes signed manifests to the channel tag.
+//   3. a full installer carrying that key is published to desktop-<channel>-<edition>,
+//   4. only then, the bundle-hot-release pipeline publishes a signed manifest.
 // With the switch off the loader always uses the builtin bundle and no network
 // requests are made.
 
 export const hotUpdateEnabled = false;
 
-/** Fixed channel tag on GitHub Releases; the manifest is replaced in-place by CI. */
-export const bundleManifestUrl =
-	"https://github.com/mediago-dev/mediago-drama/releases/download/bundle-beta/bundle-manifest.json";
+const bundleReleaseBaseUrl = "https://github.com/mediago-dev/mediago-drama/releases/download";
+
+/**
+ * Return the signed-manifest URL for one immutable client cohort.
+ *
+ * Channel and edition come from the builtin bundle metadata that was compiled
+ * into the full installer. Keeping both values in the tag prevents a Pro shell
+ * from ever polling a community manifest (or vice versa).
+ */
+export function bundleManifestUrlFor(channel: string, edition: string): string {
+	if (!/^[a-z0-9-]+$/.test(channel)) throw new Error(`invalid bundle channel: ${channel}`);
+	if (!/^[a-z0-9-]+$/.test(edition)) throw new Error(`invalid bundle edition: ${edition}`);
+	return `${bundleReleaseBaseUrl}/bundle-${channel}-${edition}/bundle-manifest.json`;
+}
 
 /** Ed25519 public key, base64-encoded SPKI DER. Empty disables verification AND updates. */
 export const bundleUpdatePublicKey = "";

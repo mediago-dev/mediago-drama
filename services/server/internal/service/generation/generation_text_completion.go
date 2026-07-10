@@ -42,6 +42,8 @@ func (workflow *GenerationService) CompleteText(ctx context.Context, request Tex
 	}
 	runCtx, cancel := context.WithTimeout(ctx, generationRequestTimeout)
 	defer cancel()
+	finishRequest := workflow.beginProviderRequest()
+	defer finishRequest()
 	generationRequest := coregeneration.Request{
 		Kind:      coregeneration.KindText,
 		RouteID:   route.ID,

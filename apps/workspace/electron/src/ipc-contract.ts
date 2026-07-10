@@ -123,18 +123,25 @@ export type DesktopUpdateAck = DesktopUpdateAckOk | DesktopUpdateAckError;
 export interface BundleMeta {
 	/** Monotonically increasing revision across all bundle releases. */
 	bundleRev: number;
+	/** Monotonic SQLite schema generation used to decide whether rollback needs a snapshot. */
+	schemaVersion: number;
+	/** Persistent workspace layout generation. Changes require a full shell update. */
+	workspaceLayoutVersion: number;
+	/** Update cohort compiled into the shell (for example "beta" or "latest"). */
+	channel: string;
+	/** Product edition compiled into the shell (for example "community" or "pro"). */
+	edition: string;
 	/** Minimum SHELL_API_VERSION this bundle requires. */
 	minShellApi: number;
 	/** Full app version this bundle was built from (display only). */
 	appBaseline: string;
 	/**
-	 * sha256 identities of the packaged component artifacts, used to decide which
-	 * components a newer manifest actually changes. Empty string = unknown (builtin
-	 * bundles), which forces a full component download on the first hot update.
+	 * Content identities of the extracted components. Archive SHA-256 values are not
+	 * component identities because ZIP metadata can change without content changing.
 	 */
 	components: {
-		renderer: string;
-		server: string;
+		renderer: { contentSha256: string };
+		server: { contentSha256: string };
 	};
 }
 
@@ -176,13 +183,22 @@ export interface BundleUpdateStatus {
 /** One downloadable component artifact referenced by the bundle manifest. */
 export interface BundleComponentRef {
 	url: string;
+	/** Digest of the downloadable archive. */
 	sha256: string;
+	/** Digest of extracted component content, used for pairing and at-rest verification. */
+	contentSha256: string;
 	size: number;
 }
 
 /** Signed payload of bundle-manifest.json (see bundle-updater). */
 export interface BundleManifestPayload {
 	bundleRev: number;
+	schemaVersion: number;
+	workspaceLayoutVersion: number;
+	channel: string;
+	edition: string;
+	/** Source commit used by release guards to bind migration-sensitive diffs to bumps. */
+	sourceCommit: string;
 	appBaseline: string;
 	minShellApi: number;
 	components: {
@@ -191,9 +207,5 @@ export interface BundleManifestPayload {
 		server: Record<string, BundleComponentRef>;
 	};
 	disabled?: boolean;
-	/** Set when this release runs DB migrations; snapshot restore is the only rollback. */
-	hasMigration?: boolean;
-	/** Build edition the renderer was compiled for ("community"/"pro"); release-side continuity check. */
-	edition?: string;
 	notes?: string;
 }

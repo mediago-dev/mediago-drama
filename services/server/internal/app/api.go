@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 )
 
 type apiHandler struct {
+	initErr          error
 	workspaceState   *appworkspace.WorkspaceStateService
 	events           *appevents.Broker
 	workspaceEvents  *serviceworkspaceevent.Broker
@@ -56,6 +58,14 @@ type apiHandler struct {
 	shutdownCtx      context.Context
 	shutdownCancel   context.CancelFunc
 	workers          sync.WaitGroup
+}
+
+// ReadinessError returns startup dependency initialization failures, if any.
+func (handler *apiHandler) ReadinessError() error {
+	if handler == nil {
+		return errors.New("api handler is nil")
+	}
+	return handler.initErr
 }
 
 type agentRuntimeConfigInspector interface {

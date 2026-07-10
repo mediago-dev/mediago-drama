@@ -1,14 +1,19 @@
 import {
 	copyFileSync,
+	closeSync,
 	existsSync,
+	fsyncSync,
 	mkdirSync,
+	openSync,
 	readFileSync,
 	readdirSync,
 	renameSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { basename, dirname, isAbsolute, join } from "node:path";
+import { hashBundleFile, hashRendererTree } from "./bundle-content.js";
 import {
 	SHELL_API_VERSION,
 	bundlePlatformKeyFor,
@@ -21,7 +26,8 @@ import {
 	chooseBundle,
 	initialStoreState,
 	isValidBundleMeta,
-	isValidBundleStoreState,
+	normalizeBundleStoreState,
+	type BundleRollbackPending,
 	type BundleStoreState,
 } from "./bundle-policy.js";
 
@@ -69,13 +75,58 @@ const readJsonFile = (path: string): unknown => {
 const writeJsonAtomic = (path: string, value: unknown): void => {
 	mkdirSync(dirname(path), { recursive: true });
 	const tmp = `${path}.tmp`;
-	writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
+	const file = openSync(tmp, "w", 0o600);
+	try {
+		writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+		fsyncSync(file);
+	} finally {
+		closeSync(file);
+	}
 	renameSync(tmp, path);
+	syncDirectory(dirname(path));
+};
+
+const syncFile = (path: string): void => {
+	const file = openSync(path, "r");
+	try {
+		fsyncSync(file);
+	} finally {
+		closeSync(file);
+	}
+};
+
+const syncDirectory = (path: string): void => {
+	try {
+		const directory = openSync(path, "r");
+		try {
+			fsyncSync(directory);
+		} finally {
+			closeSync(directory);
+		}
+	} catch (error) {
+		// Windows does not allow opening directory handles through fs.open. File fsync
+		// above still guarantees bytes; POSIX must also durably order the rename.
+		if (process.platform !== "win32") throw error;
+	}
 };
 
 export const readStoreState = (userDataDir: string): BundleStoreState => {
-	const parsed = readJsonFile(activeJsonPath(userDataDir));
-	return isValidBundleStoreState(parsed) ? parsed : { ...initialStoreState };
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(readFileSync(activeJsonPath(userDataDir), "utf8"));
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "ENOENT") {
+			if (!existsSync(bundleRootDir(userDataDir))) return { ...initialStoreState };
+			throw new Error("bundle active.json is missing while bundle safety state exists", {
+				cause: error,
+			});
+		}
+		throw new Error("bundle active.json is unreadable or corrupt", { cause: error });
+	}
+	const normalized = normalizeBundleStoreState(parsed);
+	if (!normalized) throw new Error("bundle active.json has an invalid state shape");
+	return normalized;
 };
 
 export const writeStoreState = (userDataDir: string, state: BundleStoreState): void => {
@@ -97,10 +148,17 @@ export const writeBundleMeta = (bundleDir: string, meta: BundleMeta): void => {
  */
 export const isBundleUsable = (bundleDir: string, expectedRev: number): BundleMeta | null => {
 	if (!existsSync(join(bundleDir, "index.html"))) return null;
-	if (!existsSync(bundleServerBinPath(bundleDir))) return null;
+	const serverBinPath = bundleServerBinPath(bundleDir);
+	if (!existsSync(serverBinPath)) return null;
 	const meta = readBundleMeta(bundleDir);
 	if (!meta || meta.bundleRev !== expectedRev) return null;
-	return meta;
+	try {
+		if (hashRendererTree(bundleDir) !== meta.components.renderer.contentSha256) return null;
+		if (hashBundleFile(serverBinPath) !== meta.components.server.contentSha256) return null;
+		return meta;
+	} catch {
+		return null;
+	}
 };
 
 export interface ResolvedBundle {
@@ -109,31 +167,214 @@ export interface ResolvedBundle {
 	serverBinPath: string;
 	source: "builtin" | "downloaded";
 	rev: number;
+	schemaVersion: number;
+	workspaceLayoutVersion: number;
+	channel: string;
+	edition: string;
 	reason: string;
 	/** Set when this resolve blocked a rev (rollback happened). */
 	blockedRev?: number;
 	/** True when this is the first boot attempt of a pending bundle. */
 	firstBootOfPending?: boolean;
+	/** Durable rollback work that must complete before this bundle may start. */
+	rollbackPending?: BundleRollbackPending;
 }
 
 const fallbackBuiltinMeta: BundleMeta = {
 	bundleRev: 0,
+	schemaVersion: 0,
+	workspaceLayoutVersion: 0,
+	channel: "beta",
+	edition: "community",
 	minShellApi: SHELL_API_VERSION,
 	appBaseline: "unknown",
-	components: { renderer: "", server: "" },
+	components: {
+		renderer: { contentSha256: "" },
+		server: { contentSha256: "" },
+	},
 };
 
-export const readBuiltinMeta = (builtinRendererDir: string): BundleMeta =>
-	readBundleMeta(builtinRendererDir) ?? fallbackBuiltinMeta;
+export const readBuiltinMeta = (
+	builtinRendererDir: string,
+	options?: { allowFallback?: boolean },
+): BundleMeta => {
+	const meta = readBundleMeta(builtinRendererDir);
+	if (meta) return meta;
+	if (options?.allowFallback) return fallbackBuiltinMeta;
+	throw new Error(`builtin bundle metadata is missing or invalid: ${builtinRendererDir}`);
+};
+
+/** Reject a full-installer downgrade before resolve/rollback performs any side effect. */
+export const assertBuiltinFloors = (userDataDir: string, builtinMeta: BundleMeta): void => {
+	const store = readStoreState(userDataDir);
+	const sameCohort =
+		store.manifestChannel.length === 0 ||
+		(store.manifestChannel === builtinMeta.channel &&
+			store.manifestEdition === builtinMeta.edition);
+	if (sameCohort && builtinMeta.bundleRev < store.bundleRevFloor) {
+		throw new Error(
+			`builtin rev ${builtinMeta.bundleRev} is below previously installed rev ${store.bundleRevFloor}`,
+		);
+	}
+	if (builtinMeta.workspaceLayoutVersion < store.workspaceLayoutVersionFloor) {
+		throw new Error(
+			`builtin workspace layout ${builtinMeta.workspaceLayoutVersion} is below persisted floor ${store.workspaceLayoutVersionFloor}`,
+		);
+	}
+};
 
 /**
- * Resolve which bundle to load at startup. Applies health-tracking side effects:
- * counts a boot attempt for pending bundles and blocks bundles that were rejected
- * (incompatible or repeatedly unhealthy), reverting the active pointer.
- *
- * Pass allowPending=false to refuse pending bundles without any side effects — used
- * as a safety net when prerequisites for first boot (e.g. DB snapshot info) are
- * missing.
+ * Persist monotonic floors for the user-data lineage. This runs even when network hot
+ * updates are disabled, so manually installing an older full bundle cannot make an
+ * older schema/layout open data already advanced by a newer install.
+ */
+export const recordBundleFloors = (
+	userDataDir: string,
+	builtinMeta: BundleMeta,
+	resolved: ResolvedBundle,
+): void => {
+	const existing = readStoreState(userDataDir);
+	const cohortChanged =
+		existing.manifestChannel.length > 0 &&
+		(existing.manifestChannel !== builtinMeta.channel ||
+			existing.manifestEdition !== builtinMeta.edition);
+	const store: BundleStoreState = cohortChanged
+		? {
+				...initialStoreState,
+				activeSchemaVersion: resolved.schemaVersion,
+				lastKnownGoodSchemaVersion: resolved.schemaVersion,
+				bundleRevFloor: builtinMeta.bundleRev,
+				schemaVersionFloor: existing.schemaVersionFloor,
+				workspaceLayoutVersionFloor: existing.workspaceLayoutVersionFloor,
+				manifestChannel: builtinMeta.channel,
+				manifestEdition: builtinMeta.edition,
+			}
+		: existing;
+	if (resolved.schemaVersion < store.schemaVersionFloor) {
+		throw new Error(
+			`resolved schema ${resolved.schemaVersion} is below persisted floor ${store.schemaVersionFloor}`,
+		);
+	}
+	if (resolved.workspaceLayoutVersion < store.workspaceLayoutVersionFloor) {
+		throw new Error(
+			`resolved workspace layout ${resolved.workspaceLayoutVersion} is below persisted floor ${store.workspaceLayoutVersionFloor}`,
+		);
+	}
+	const durableSchemaVersion =
+		resolved.source === "builtin" || store.state === "healthy"
+			? resolved.schemaVersion
+			: store.lastKnownGoodSchemaVersion;
+	writeStoreState(userDataDir, {
+		...store,
+		activeSchemaVersion: store.activeRev <= 0 ? resolved.schemaVersion : store.activeSchemaVersion,
+		lastKnownGoodSchemaVersion:
+			store.activeRev <= 0 ? resolved.schemaVersion : store.lastKnownGoodSchemaVersion,
+		bundleRevFloor: cohortChanged
+			? builtinMeta.bundleRev
+			: Math.max(store.bundleRevFloor, builtinMeta.bundleRev),
+		schemaVersionFloor: Math.max(store.schemaVersionFloor, durableSchemaVersion),
+		workspaceLayoutVersionFloor: Math.max(
+			store.workspaceLayoutVersionFloor,
+			resolved.workspaceLayoutVersion,
+		),
+		manifestChannel: builtinMeta.channel,
+		manifestEdition: builtinMeta.edition,
+	});
+};
+
+const downloadedResolved = (
+	userDataDir: string,
+	rev: number,
+	meta: BundleMeta,
+	reason: string,
+): ResolvedBundle => {
+	const rendererDir = versionDir(userDataDir, rev);
+	return {
+		rendererDir,
+		serverBinPath: bundleServerBinPath(rendererDir),
+		source: "downloaded",
+		rev,
+		schemaVersion: meta.schemaVersion,
+		workspaceLayoutVersion: meta.workspaceLayoutVersion,
+		channel: meta.channel,
+		edition: meta.edition,
+		reason,
+	};
+};
+
+const resolveStoredRevision = (
+	userDataDir: string,
+	builtin: ResolvedBundle,
+	builtinMeta: BundleMeta,
+	rev: number,
+	excludeRev?: number,
+): ResolvedBundle | null => {
+	if (rev <= 0 || rev === excludeRev) return null;
+	const meta = isBundleUsable(versionDir(userDataDir, rev), rev);
+	if (
+		!meta ||
+		meta.minShellApi > SHELL_API_VERSION ||
+		meta.channel !== builtinMeta.channel ||
+		meta.edition !== builtinMeta.edition ||
+		meta.workspaceLayoutVersion !== builtinMeta.workspaceLayoutVersion
+	) {
+		return null;
+	}
+	if (rev <= builtin.rev && meta.schemaVersion <= builtin.schemaVersion) return null;
+	return downloadedResolved(userDataDir, rev, meta, `known-good rev ${rev}`);
+};
+
+const resolveKnownGood = (
+	userDataDir: string,
+	builtin: ResolvedBundle,
+	builtinMeta: BundleMeta,
+	store: BundleStoreState,
+	excludeRev?: number,
+): ResolvedBundle =>
+	resolveStoredRevision(userDataDir, builtin, builtinMeta, store.lastKnownGoodRev, excludeRev) ??
+	resolveStoredRevision(userDataDir, builtin, builtinMeta, store.fallbackRev, excludeRev) ??
+	builtin;
+
+const builtinNormalizedState = (
+	store: BundleStoreState,
+	builtin: ResolvedBundle,
+): BundleStoreState => {
+	const sameManifestCohort =
+		store.manifestChannel.length === 0 ||
+		(store.manifestChannel === builtin.channel && store.manifestEdition === builtin.edition);
+	return {
+		...initialStoreState,
+		blockedRevs: sameManifestCohort ? store.blockedRevs : [],
+		activeSchemaVersion: builtin.schemaVersion,
+		lastKnownGoodSchemaVersion: builtin.schemaVersion,
+		bundleRevFloor: sameManifestCohort ? store.bundleRevFloor : builtin.rev,
+		schemaVersionFloor: store.schemaVersionFloor,
+		workspaceLayoutVersionFloor: store.workspaceLayoutVersionFloor,
+		channelDisabled: sameManifestCohort ? store.channelDisabled : false,
+		channelDisabledAtRev: sameManifestCohort ? store.channelDisabledAtRev : 0,
+		manifestChannel: builtin.channel,
+		manifestEdition: builtin.edition,
+	};
+};
+
+const rollbackFor = (
+	failedRev: number,
+	failedSchemaVersion: number,
+	target: ResolvedBundle,
+	hasRun: boolean,
+): BundleRollbackPending => ({
+	failedRev,
+	targetRev: target.source === "downloaded" ? target.rev : 0,
+	targetSchemaVersion: target.schemaVersion,
+	snapshotRev: failedRev,
+	restoreSnapshot: hasRun && failedSchemaVersion > target.schemaVersion,
+});
+
+/**
+ * Resolve which bundle to load at startup without consuming a boot attempt. The
+ * caller must first complete any returned rollback, take any required snapshot, and
+ * only then call recordBootAttempt. This ordering prevents an unsafe bundle from
+ * launching when recovery prerequisites fail.
  */
 export const resolveBundleDir = (
 	userDataDir: string,
@@ -147,69 +388,197 @@ export const resolveBundleDir = (
 		serverBinPath: builtinServerBinPath,
 		source: "builtin",
 		rev: builtinMeta.bundleRev,
+		schemaVersion: builtinMeta.schemaVersion,
+		workspaceLayoutVersion: builtinMeta.workspaceLayoutVersion,
+		channel: builtinMeta.channel,
+		edition: builtinMeta.edition,
 		reason: "builtin bundle",
 	};
 
-	let store: BundleStoreState;
-	try {
-		store = readStoreState(userDataDir);
-	} catch {
-		return builtin;
+	const store = readStoreState(userDataDir);
+	if (
+		store.channelDisabled &&
+		store.manifestChannel.length > 0 &&
+		(store.manifestChannel !== builtin.channel || store.manifestEdition !== builtin.edition)
+	) {
+		if (
+			builtin.schemaVersion < store.activeSchemaVersion ||
+			builtin.schemaVersion < store.schemaVersionFloor
+		) {
+			throw new Error(
+				`new cohort schema ${builtin.schemaVersion} is below persisted schema ${Math.max(store.activeSchemaVersion, store.schemaVersionFloor)}`,
+			);
+		}
+		writeStoreState(userDataDir, builtinNormalizedState(store, builtin));
+		return resolveBundleDir(userDataDir, builtinRendererDir, builtinServerBinPath, options);
 	}
+	if (store.rollbackPending) {
+		const pending = store.rollbackPending;
+		const requestedTarget = resolveStoredRevision(
+			userDataDir,
+			builtin,
+			builtinMeta,
+			pending.targetRev,
+			pending.failedRev,
+		);
+		const target =
+			requestedTarget ??
+			resolveKnownGood(userDataDir, builtin, builtinMeta, store, pending.failedRev);
+		if (target.schemaVersion < pending.targetSchemaVersion) {
+			throw new Error(
+				`rollback target schema ${target.schemaVersion} is older than the snapshot schema ${pending.targetSchemaVersion}`,
+			);
+		}
+		const normalizedPending = {
+			...pending,
+			targetRev: target.source === "downloaded" ? target.rev : 0,
+			targetSchemaVersion: target.schemaVersion,
+		};
+		if (JSON.stringify(normalizedPending) !== JSON.stringify(pending)) {
+			writeStoreState(userDataDir, { ...store, rollbackPending: normalizedPending });
+		}
+		return {
+			...target,
+			reason: `rollback pending for rev ${pending.failedRev}`,
+			blockedRev: pending.failedRev,
+			rollbackPending: normalizedPending,
+		};
+	}
+
 	if (store.activeRev <= 0) return builtin;
 
 	const candidateDir = versionDir(userDataDir, store.activeRev);
 	const candidateMeta = isBundleUsable(candidateDir, store.activeRev);
 	const candidate = candidateMeta ? { rev: store.activeRev, meta: candidateMeta } : null;
+	if (store.channelDisabled) {
+		if (candidate && !store.blockedRevs.includes(candidate.rev)) {
+			const compatibleWithShell =
+				candidate.meta.minShellApi <= SHELL_API_VERSION &&
+				candidate.meta.channel === builtinMeta.channel &&
+				candidate.meta.edition === builtinMeta.edition &&
+				candidate.meta.workspaceLayoutVersion === builtinMeta.workspaceLayoutVersion;
+			const builtinSupersedes = candidate.rev <= builtin.rev || !compatibleWithShell;
+			if (builtinSupersedes) {
+				if (builtin.schemaVersion < store.activeSchemaVersion) {
+					throw new Error(
+						`builtin schema ${builtin.schemaVersion} cannot safely supersede disabled rev ${candidate.rev} schema ${store.activeSchemaVersion}`,
+					);
+				}
+				writeStoreState(userDataDir, builtinNormalizedState(store, builtin));
+				return { ...builtin, reason: "full installer superseded disabled fallback" };
+			}
+			return downloadedResolved(
+				userDataDir,
+				candidate.rev,
+				candidate.meta,
+				"cached channel kill switch; running fallback revision",
+			);
+		}
+		const target = resolveKnownGood(userDataDir, builtin, builtinMeta, store, store.activeRev);
+		if (
+			(store.state === "healthy" || store.serverHealthy || store.migrationStarted) &&
+			store.activeSchemaVersion > target.schemaVersion
+		) {
+			throw new Error(
+				`rev ${store.activeRev} is disabled, but automatic rollback would regress schema ${store.activeSchemaVersion} to ${target.schemaVersion}; install a full update with a compatible schema`,
+			);
+		}
+		if (
+			target.source === "builtin" &&
+			(store.state === "healthy" || store.serverHealthy || store.migrationStarted)
+		) {
+			writeStoreState(userDataDir, builtinNormalizedState(store, builtin));
+		}
+		return { ...target, reason: "cached channel kill switch" };
+	}
 
 	if (options?.allowPending === false && store.state === "pending") {
-		return { ...builtin, reason: "pending bundle deferred (prerequisites missing)" };
+		return {
+			...resolveKnownGood(userDataDir, builtin, builtinMeta, store, store.activeRev),
+			reason: "pending bundle deferred (prerequisites missing)",
+		};
 	}
 
 	const choice = chooseBundle(builtinMeta, candidate, store, SHELL_API_VERSION);
 
-	try {
-		if (choice.source === "builtin") {
-			if (choice.blockRev !== undefined) {
-				writeStoreState(userDataDir, {
-					...initialStoreState,
-					activeRev: store.previousRev ?? 0,
-					blockedRevs: [...new Set([...store.blockedRevs, choice.blockRev])],
-				});
-				return { ...builtin, reason: choice.reason, blockedRev: choice.blockRev };
+	if (choice.source === "builtin") {
+		if (choice.blockRev !== undefined || !candidate) {
+			const failedRev = choice.blockRev ?? store.activeRev;
+			const target = resolveKnownGood(userDataDir, builtin, builtinMeta, store, failedRev);
+			if (
+				(store.state === "healthy" || store.serverHealthy || store.migrationStarted) &&
+				store.activeSchemaVersion > target.schemaVersion
+			) {
+				throw new Error(
+					`rev ${failedRev} is unusable, but automatic rollback would discard data by regressing schema ${store.activeSchemaVersion} to ${target.schemaVersion}`,
+				);
 			}
-			return { ...builtin, reason: choice.reason };
+			const hasRun = store.state === "healthy" || store.bootAttempts > 0 || store.serverHealthy;
+			const rollbackPending = rollbackFor(failedRev, store.activeSchemaVersion, target, hasRun);
+			// This write is a safety boundary: propagate failure so startup stops rather
+			// than launching an older binary against a possibly forward-migrated schema.
+			markRollbackPending(userDataDir, rollbackPending);
+			return {
+				...target,
+				reason: choice.reason,
+				blockedRev: failedRev,
+				rollbackPending,
+			};
 		}
-
-		const firstBootOfPending = choice.countAttempt && store.bootAttempts === 0;
-		if (choice.countAttempt) {
-			writeStoreState(userDataDir, { ...store, bootAttempts: store.bootAttempts + 1 });
-		}
-		return {
-			rendererDir: candidateDir,
-			serverBinPath: bundleServerBinPath(candidateDir),
-			source: "downloaded",
-			rev: store.activeRev,
-			reason: choice.reason,
-			firstBootOfPending,
-		};
-	} catch {
-		return builtin;
+		// A full installer superseded the downloaded pointer. Normalize the store so
+		// a later check/apply cannot reinterpret the old rev as staged downgrade.
+		writeStoreState(userDataDir, builtinNormalizedState(store, builtin));
+		return { ...builtin, reason: choice.reason };
 	}
+
+	const firstBootOfPending = choice.countAttempt && store.bootAttempts === 0;
+	return {
+		...downloadedResolved(userDataDir, store.activeRev, candidateMeta!, choice.reason),
+		firstBootOfPending,
+	};
 };
 
+export interface ActivateVersionOptions {
+	rev: number;
+	schemaVersion: number;
+	lastKnownGoodRev: number;
+	lastKnownGoodSchemaVersion: number;
+}
+
 /** Point active.json at a freshly staged bundle; it stays pending until both healthy. */
-export const activateVersion = (userDataDir: string, rev: number, hasMigration: boolean): void => {
+export const activateVersion = (userDataDir: string, options: ActivateVersionOptions): void => {
 	const store = readStoreState(userDataDir);
+	if (store.rollbackPending) {
+		throw new Error(
+			`cannot activate rev ${options.rev} while rollback for rev ${store.rollbackPending.failedRev} is pending`,
+		);
+	}
+	if (store.state === "pending" && store.activeRev !== options.rev) {
+		throw new Error(
+			`cannot activate rev ${options.rev} while rev ${store.activeRev} is still pending`,
+		);
+	}
+	if (store.blockedRevs.includes(options.rev)) {
+		throw new Error(`cannot activate blocked rev ${options.rev}`);
+	}
+	if (options.schemaVersion < options.lastKnownGoodSchemaVersion) {
+		throw new Error(
+			`cannot activate schema ${options.schemaVersion} over ${options.lastKnownGoodSchemaVersion}`,
+		);
+	}
+	if (store.state === "pending" && store.activeRev === options.rev) return;
 	writeStoreState(userDataDir, {
-		activeRev: rev,
+		...store,
+		activeRev: options.rev,
 		state: "pending",
 		bootAttempts: 0,
-		blockedRevs: store.blockedRevs,
-		previousRev: store.activeRev > 0 ? store.activeRev : undefined,
+		lastKnownGoodRev: options.lastKnownGoodRev,
+		activeSchemaVersion: options.schemaVersion,
+		lastKnownGoodSchemaVersion: options.lastKnownGoodSchemaVersion,
 		rendererHealthy: false,
 		serverHealthy: false,
-		hasMigration,
+		migrationStarted: false,
+		rollbackPending: undefined,
 	});
 };
 
@@ -238,20 +607,214 @@ export const markComponentHealthy = (
  * resolved store), guarded by the same pending precondition, so each boot/apply counts
  * exactly once across the two entry points.
  */
-export const recordBootAttempt = (userDataDir: string): void => {
+export const recordBootAttempt = (userDataDir: string, rev: number): void => {
 	const store = readStoreState(userDataDir);
-	if (store.activeRev <= 0 || store.state !== "pending") return;
+	if (store.activeRev !== rev || store.state !== "pending") return;
 	writeStoreState(userDataDir, { ...store, bootAttempts: store.bootAttempts + 1 });
 };
 
-/** Block a rev and revert the active pointer (used by apply-now failure rollback). */
+/**
+ * Persist the point after which a forward-schema child may have started migrations,
+ * watchers, or workers. From this point the pre-start snapshot is archival only and
+ * must never be restored automatically.
+ */
+export const markMigrationStarted = (userDataDir: string, rev: number): void => {
+	const store = readStoreState(userDataDir);
+	if (
+		store.activeRev !== rev ||
+		store.state !== "pending" ||
+		store.activeSchemaVersion <= store.lastKnownGoodSchemaVersion ||
+		store.migrationStarted
+	) {
+		return;
+	}
+	writeStoreState(userDataDir, { ...store, migrationStarted: true });
+};
+
+/** Persist recovery intent before restoring data or changing the active pointer. */
+export const markRollbackPending = (
+	userDataDir: string,
+	rollbackPending: BundleRollbackPending,
+): void => {
+	const store = readStoreState(userDataDir);
+	const sameRollback = (left: BundleRollbackPending, right: BundleRollbackPending) =>
+		left.failedRev === right.failedRev &&
+		left.targetRev === right.targetRev &&
+		left.targetSchemaVersion === right.targetSchemaVersion &&
+		left.snapshotRev === right.snapshotRev &&
+		left.restoreSnapshot === right.restoreSnapshot;
+	if (store.rollbackPending && !sameRollback(store.rollbackPending, rollbackPending)) {
+		throw new Error(`rollback for rev ${store.rollbackPending.failedRev} is already pending`);
+	}
+	writeStoreState(userDataDir, { ...store, rollbackPending });
+};
+
+/**
+ * Finish a durable rollback after any required snapshot restore succeeds. The failed
+ * revision is blocked and the pointer is moved to the marker's known-good target.
+ */
+export const completeRollback = (userDataDir: string, failedRev: number): void => {
+	const store = readStoreState(userDataDir);
+	const pending = store.rollbackPending;
+	if (!pending || pending.failedRev !== failedRev) {
+		throw new Error(`no rollback pending for rev ${failedRev}`);
+	}
+	const revokedKnownGood = store.lastKnownGoodRev === failedRev;
+	writeStoreState(userDataDir, {
+		...store,
+		activeRev: pending.targetRev,
+		activeSchemaVersion: pending.targetSchemaVersion,
+		state: "healthy",
+		bootAttempts: 0,
+		blockedRevs: [...new Set([...store.blockedRevs, failedRev])],
+		lastKnownGoodRev: pending.targetRev,
+		lastKnownGoodSchemaVersion: pending.targetSchemaVersion,
+		fallbackRev: revokedKnownGood ? 0 : store.fallbackRev,
+		fallbackSchemaVersion: revokedKnownGood ? 0 : store.fallbackSchemaVersion,
+		rendererHealthy: pending.targetRev > 0,
+		serverHealthy: pending.targetRev > 0,
+		migrationStarted: false,
+		rollbackPending: undefined,
+	});
+};
+
+/** Cache a signed kill switch and revert a revoked active/known-good revision. */
+export const disableChannelAndRevert = (
+	userDataDir: string,
+	revokedRev: number,
+	disabledAtRev = revokedRev,
+	channel = "",
+	edition = "",
+): "disabled" | "rollback-pending" | "requires-full-update" | "stale-manifest" => {
+	const existing = readStoreState(userDataDir);
+	const hasCohort = channel.length > 0 && edition.length > 0;
+	const cohortChanged =
+		hasCohort &&
+		existing.manifestChannel.length > 0 &&
+		(existing.manifestChannel !== channel || existing.manifestEdition !== edition);
+	const store: BundleStoreState = {
+		...existing,
+		channelDisabled: cohortChanged ? false : existing.channelDisabled,
+		channelDisabledAtRev: cohortChanged ? 0 : existing.channelDisabledAtRev,
+		manifestChannel: hasCohort ? channel : existing.manifestChannel,
+		manifestEdition: hasCohort ? edition : existing.manifestEdition,
+	};
+	if (
+		disabledAtRev < store.channelDisabledAtRev ||
+		(disabledAtRev === store.channelDisabledAtRev && !store.channelDisabled)
+	) {
+		return "stale-manifest";
+	}
+	const channelDisabledAtRev = Math.max(store.channelDisabledAtRev, disabledAtRev);
+	if (
+		revokedRev <= 0 ||
+		(store.activeRev !== revokedRev && store.lastKnownGoodRev !== revokedRev)
+	) {
+		writeStoreState(userDataDir, { ...store, channelDisabled: true, channelDisabledAtRev });
+		return "disabled";
+	}
+	const revokedKnownGood = store.lastKnownGoodRev === revokedRev;
+	const targetRev = revokedKnownGood ? store.fallbackRev : store.lastKnownGoodRev;
+	const targetSchemaVersion = revokedKnownGood
+		? store.fallbackSchemaVersion
+		: store.lastKnownGoodSchemaVersion;
+	const hasRun =
+		store.state === "healthy" ||
+		store.bootAttempts > 0 ||
+		store.serverHealthy ||
+		store.migrationStarted;
+	if (
+		(store.state === "healthy" || store.serverHealthy || store.migrationStarted) &&
+		store.activeSchemaVersion > targetSchemaVersion
+	) {
+		// A snapshot belongs to the pre-activation point. Restoring it after a healthy
+		// revision has carried real writes would silently delete user data. Quarantine the
+		// binary and fail closed on the next launch until a schema-compatible full update.
+		writeStoreState(userDataDir, {
+			...store,
+			blockedRevs: [...new Set([...store.blockedRevs, revokedRev])],
+			rollbackPending: undefined,
+			channelDisabled: true,
+			channelDisabledAtRev,
+		});
+		return "requires-full-update";
+	}
+	const rollbackPending =
+		store.rollbackPending ??
+		({
+			failedRev: revokedRev,
+			targetRev,
+			targetSchemaVersion,
+			snapshotRev: revokedRev,
+			restoreSnapshot: hasRun && store.activeSchemaVersion > targetSchemaVersion,
+		} satisfies BundleRollbackPending);
+	writeStoreState(userDataDir, {
+		...store,
+		activeRev: targetRev,
+		activeSchemaVersion: targetSchemaVersion,
+		state: "healthy",
+		bootAttempts: 0,
+		blockedRevs: [...new Set([...store.blockedRevs, revokedRev])],
+		lastKnownGoodRev: targetRev,
+		lastKnownGoodSchemaVersion: targetSchemaVersion,
+		fallbackRev: revokedKnownGood ? 0 : store.fallbackRev,
+		fallbackSchemaVersion: revokedKnownGood ? 0 : store.fallbackSchemaVersion,
+		rendererHealthy: targetRev > 0,
+		serverHealthy: targetRev > 0,
+		rollbackPending,
+		channelDisabled: true,
+		channelDisabledAtRev,
+	});
+	return "rollback-pending";
+};
+
+/** Clear a cached kill switch after a valid enabled manifest for this cohort is verified. */
+export const setChannelEnabled = (
+	userDataDir: string,
+	manifestRev: number,
+	channel = "",
+	edition = "",
+): boolean => {
+	const existing = readStoreState(userDataDir);
+	const hasCohort = channel.length > 0 && edition.length > 0;
+	const cohortChanged =
+		hasCohort &&
+		existing.manifestChannel.length > 0 &&
+		(existing.manifestChannel !== channel || existing.manifestEdition !== edition);
+	const store: BundleStoreState = {
+		...existing,
+		channelDisabled: cohortChanged ? false : existing.channelDisabled,
+		channelDisabledAtRev: cohortChanged ? 0 : existing.channelDisabledAtRev,
+		manifestChannel: hasCohort ? channel : existing.manifestChannel,
+		manifestEdition: hasCohort ? edition : existing.manifestEdition,
+	};
+	if (manifestRev < store.channelDisabledAtRev) return false;
+	if (manifestRev === store.channelDisabledAtRev) return !store.channelDisabled;
+	writeStoreState(userDataDir, {
+		...store,
+		channelDisabled: false,
+		channelDisabledAtRev: manifestRev,
+	});
+	return true;
+};
+
+/** @deprecated Use markRollbackPending + completeRollback around the restore operation. */
 export const blockAndRevert = (userDataDir: string, rev: number, revertToRev: number): void => {
 	const store = readStoreState(userDataDir);
-	writeStoreState(userDataDir, {
-		...initialStoreState,
-		activeRev: revertToRev,
-		blockedRevs: [...new Set([...store.blockedRevs, rev])],
+	const targetSchemaVersion =
+		revertToRev === store.lastKnownGoodRev
+			? store.lastKnownGoodSchemaVersion
+			: revertToRev === store.fallbackRev
+				? store.fallbackSchemaVersion
+				: 0;
+	markRollbackPending(userDataDir, {
+		failedRev: rev,
+		targetRev: revertToRev,
+		targetSchemaVersion,
+		snapshotRev: rev,
+		restoreSnapshot: false,
 	});
+	completeRollback(userDataDir, rev);
 };
 
 /** Remove version directories other than the ones we still need (active + previous). */
@@ -287,35 +850,162 @@ const pruneDirExcept = (dir: string, keep: Set<string>): void => {
 const snapshotManifestFilename = "snapshot-manifest.json";
 const sqliteSiblingSuffixes = ["-wal", "-shm"];
 
-/**
- * Copy the given database files (plus any existing -wal/-shm siblings) into destDir.
- * Missing sources are skipped. Returns the list of original paths actually copied.
- */
-export const snapshotDatabases = (dbFiles: string[], destDir: string): string[] => {
-	rmSync(destDir, { recursive: true, force: true });
-	mkdirSync(destDir, { recursive: true });
+interface SnapshotFileEntry {
+	entryName: string;
+	sha256: string;
+}
 
-	const copied: string[] = [];
-	const mapping: Record<string, string> = {};
-	let index = 0;
-	const copyOne = (sourcePath: string) => {
-		if (!existsSync(sourcePath)) return;
-		index += 1;
-		const entryName = `${index}-${basename(sourcePath)}`;
-		copyFileSync(sourcePath, join(destDir, entryName));
-		mapping[entryName] = sourcePath;
-		copied.push(sourcePath);
-	};
+interface SnapshotDatabaseEntry {
+	originalPath: string;
+	base: SnapshotFileEntry;
+	wal?: SnapshotFileEntry;
+	shm?: SnapshotFileEntry;
+}
 
-	for (const dbFile of dbFiles) {
-		copyOne(dbFile);
-		for (const suffix of sqliteSiblingSuffixes) {
-			copyOne(`${dbFile}${suffix}`);
+interface SnapshotManifest {
+	version: 1;
+	databases: SnapshotDatabaseEntry[];
+}
+
+const snapshotEntryIsValid = (value: unknown): value is SnapshotFileEntry => {
+	if (typeof value !== "object" || value === null) return false;
+	const entry = value as Record<string, unknown>;
+	return (
+		typeof entry.entryName === "string" &&
+		entry.entryName.length > 0 &&
+		basename(entry.entryName) === entry.entryName &&
+		typeof entry.sha256 === "string" &&
+		/^[0-9a-f]{64}$/.test(entry.sha256)
+	);
+};
+
+const readSnapshotManifest = (snapshotDir: string): SnapshotManifest => {
+	const value = readJsonFile(join(snapshotDir, snapshotManifestFilename));
+	if (typeof value !== "object" || value === null) {
+		throw new Error(`snapshot manifest is missing or invalid: ${snapshotDir}`);
+	}
+	const manifest = value as Record<string, unknown>;
+	if (
+		manifest.version !== 1 ||
+		!Array.isArray(manifest.databases) ||
+		manifest.databases.length === 0
+	) {
+		throw new Error(`snapshot manifest has an unsupported shape: ${snapshotDir}`);
+	}
+	const databases: SnapshotDatabaseEntry[] = [];
+	const originalPaths = new Set<string>();
+	const entryNames = new Set<string>();
+	for (const valueEntry of manifest.databases) {
+		if (typeof valueEntry !== "object" || valueEntry === null) {
+			throw new Error(`snapshot manifest contains an invalid database entry: ${snapshotDir}`);
+		}
+		const entry = valueEntry as Record<string, unknown>;
+		if (
+			typeof entry.originalPath !== "string" ||
+			!isAbsolute(entry.originalPath) ||
+			originalPaths.has(entry.originalPath) ||
+			!snapshotEntryIsValid(entry.base) ||
+			(entry.wal !== undefined && !snapshotEntryIsValid(entry.wal)) ||
+			(entry.shm !== undefined && !snapshotEntryIsValid(entry.shm))
+		) {
+			throw new Error(`snapshot manifest contains an invalid database entry: ${snapshotDir}`);
+		}
+		const snapshotEntries = [
+			entry.base as SnapshotFileEntry,
+			...(entry.wal ? [entry.wal as SnapshotFileEntry] : []),
+			...(entry.shm ? [entry.shm as SnapshotFileEntry] : []),
+		];
+		if (snapshotEntries.some((snapshotEntry) => entryNames.has(snapshotEntry.entryName))) {
+			throw new Error(`snapshot manifest reuses a file entry: ${snapshotDir}`);
+		}
+		for (const snapshotEntry of snapshotEntries) entryNames.add(snapshotEntry.entryName);
+		originalPaths.add(entry.originalPath);
+		databases.push(entry as unknown as SnapshotDatabaseEntry);
+	}
+	return { version: 1, databases };
+};
+
+const validateSnapshotFiles = (snapshotDir: string, manifest: SnapshotManifest): void => {
+	for (const database of manifest.databases) {
+		for (const entry of [database.base, database.wal, database.shm]) {
+			if (!entry) continue;
+			const path = join(snapshotDir, entry.entryName);
+			if (!existsSync(path) || hashBundleFile(path) !== entry.sha256) {
+				throw new Error(`snapshot file is missing or corrupt: ${entry.entryName}`);
+			}
 		}
 	}
+};
 
-	writeJsonAtomic(join(destDir, snapshotManifestFilename), mapping);
-	return copied;
+/**
+ * Copy the given database files (plus any existing -wal/-shm siblings) into a complete
+ * temporary snapshot and atomically rename it into place. Every base DB is required;
+ * a missing source aborts without replacing an earlier valid snapshot.
+ */
+export const snapshotDatabases = (dbFiles: string[], destDir: string): string[] => {
+	const uniqueDbFiles = [...new Set(dbFiles)];
+	if (uniqueDbFiles.length === 0) throw new Error("cannot snapshot an empty database list");
+	for (const dbFile of uniqueDbFiles) {
+		if (!isAbsolute(dbFile)) throw new Error(`database path is not absolute: ${dbFile}`);
+		if (!existsSync(dbFile)) throw new Error(`database file is missing: ${dbFile}`);
+	}
+	if (existsSync(destDir)) {
+		const existing = readSnapshotManifest(destDir);
+		validateSnapshotFiles(destDir, existing);
+		const existingPaths = new Set(existing.databases.map((database) => database.originalPath));
+		if (
+			existingPaths.size !== uniqueDbFiles.length ||
+			uniqueDbFiles.some((dbFile) => !existingPaths.has(dbFile))
+		) {
+			throw new Error("existing snapshot database set does not match requested sources");
+		}
+		return existing.databases.flatMap((database) => [
+			database.originalPath,
+			...(database.wal ? [`${database.originalPath}-wal`] : []),
+			...(database.shm ? [`${database.originalPath}-shm`] : []),
+		]);
+	}
+
+	const stagingDir = `${destDir}.tmp-${randomUUID()}`;
+	mkdirSync(stagingDir, { recursive: true });
+	const copied: string[] = [];
+	const databases: SnapshotDatabaseEntry[] = [];
+	const copyOne = (sourcePath: string, entryName: string): SnapshotFileEntry => {
+		const destination = join(stagingDir, entryName);
+		copyFileSync(sourcePath, destination);
+		syncFile(destination);
+		copied.push(sourcePath);
+		return { entryName, sha256: hashBundleFile(destination) };
+	};
+
+	try {
+		for (const [index, dbFile] of uniqueDbFiles.entries()) {
+			const prefix = `${index + 1}-${basename(dbFile)}`;
+			const database: SnapshotDatabaseEntry = {
+				originalPath: dbFile,
+				base: copyOne(dbFile, `${prefix}.db-image`),
+			};
+			if (existsSync(`${dbFile}-wal`)) {
+				database.wal = copyOne(`${dbFile}-wal`, `${prefix}.wal-image`);
+			}
+			if (existsSync(`${dbFile}-shm`)) {
+				database.shm = copyOne(`${dbFile}-shm`, `${prefix}.shm-image`);
+			}
+			databases.push(database);
+		}
+		writeJsonAtomic(join(stagingDir, snapshotManifestFilename), {
+			version: 1,
+			databases,
+		} satisfies SnapshotManifest);
+		// Validate everything before replacing a previous snapshot.
+		readSnapshotManifest(stagingDir);
+		renameSync(stagingDir, destDir);
+		syncDirectory(dirname(destDir));
+		return copied;
+	} catch (error) {
+		rmSync(stagingDir, { recursive: true, force: true });
+		throw error;
+	}
 };
 
 /**
@@ -327,35 +1017,63 @@ export const snapshotDatabases = (dbFiles: string[], destDir: string): string[] 
  * own -wal/-shm (if any) are copied after the db, so the restored set is self-consistent.
  */
 export const restoreDatabases = (snapshotDir: string): void => {
-	const mapping = readJsonFile(join(snapshotDir, snapshotManifestFilename));
-	if (typeof mapping !== "object" || mapping === null) return;
+	const manifest = readSnapshotManifest(snapshotDir);
+	validateSnapshotFiles(snapshotDir, manifest);
+	const stagedFiles: Array<{ temporaryPath: string; destinationPath: string }> = [];
+	const stageRestoreFile = (entry: SnapshotFileEntry, destinationPath: string): void => {
+		const source = join(snapshotDir, entry.entryName);
+		mkdirSync(dirname(destinationPath), { recursive: true });
+		const temporaryPath = `${destinationPath}.restore-${randomUUID()}`;
+		copyFileSync(source, temporaryPath);
+		syncFile(temporaryPath);
+		if (hashBundleFile(temporaryPath) !== entry.sha256) {
+			rmSync(temporaryPath, { force: true });
+			throw new Error(`staged restore file failed verification: ${entry.entryName}`);
+		}
+		stagedFiles.push({ temporaryPath, destinationPath });
+	};
 
-	const entries = Object.entries(mapping as Record<string, unknown>).filter(
-		(entry): entry is [string, string] => typeof entry[1] === "string",
-	);
-	const isJournalSibling = (path: string) => sqliteSiblingSuffixes.some((s) => path.endsWith(s));
-	const baseDbPaths = entries.map(([, path]) => path).filter((path) => !isJournalSibling(path));
+	try {
+		// Preflight and stage every snapshot file before mutating live databases.
+		for (const database of manifest.databases) {
+			stageRestoreFile(database.base, database.originalPath);
+			if (database.wal) stageRestoreFile(database.wal, `${database.originalPath}-wal`);
+			if (database.shm) stageRestoreFile(database.shm, `${database.originalPath}-shm`);
+		}
 
-	// Drop the live journals first so no stale -wal outlives the db swap.
-	for (const dbPath of baseDbPaths) {
-		for (const suffix of sqliteSiblingSuffixes) {
-			try {
-				rmSync(`${dbPath}${suffix}`, { force: true });
-			} catch {
-				// Best effort.
+		// Drop live journals first. Any failure aborts before a base database is swapped.
+		for (const database of manifest.databases) {
+			for (const suffix of sqliteSiblingSuffixes) {
+				try {
+					rmSync(`${database.originalPath}${suffix}`, { force: true });
+				} catch (error) {
+					throw new Error(
+						`failed to remove SQLite journal ${database.originalPath}${suffix}: ${String(error)}`,
+					);
+				}
 			}
 		}
-	}
 
-	// db files first, then their snapshotted journals (if the snapshot captured any).
-	const ordered = entries.sort(
-		([, a], [, b]) => Number(isJournalSibling(a)) - Number(isJournalSibling(b)),
-	);
-	for (const [entryName, originalPath] of ordered) {
-		const source = join(snapshotDir, entryName);
-		if (!existsSync(source)) continue;
-		mkdirSync(dirname(originalPath), { recursive: true });
-		copyFileSync(source, originalPath);
+		const isJournal = (path: string) =>
+			sqliteSiblingSuffixes.some((suffix) => path.endsWith(suffix));
+		stagedFiles.sort(
+			(a, b) => Number(isJournal(a.destinationPath)) - Number(isJournal(b.destinationPath)),
+		);
+		for (const staged of stagedFiles) {
+			renameSync(staged.temporaryPath, staged.destinationPath);
+		}
+		for (const directory of new Set(stagedFiles.map((staged) => dirname(staged.destinationPath)))) {
+			syncDirectory(directory);
+		}
+	} catch (error) {
+		for (const staged of stagedFiles) {
+			try {
+				rmSync(staged.temporaryPath, { force: true });
+			} catch {
+				// The durable rollback marker makes a later retry safe.
+			}
+		}
+		throw error;
 	}
 };
 

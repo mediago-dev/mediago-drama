@@ -63,6 +63,7 @@ const packaged = spawnSync(process.execPath, [join(scriptDir, "package-bundle-up
 	env: {
 		...process.env,
 		RENDERER_UPDATE_PRIVATE_KEY: privateB64,
+		RENDERER_UPDATE_EXPECTED_PUBLIC_KEY: publicB64,
 		RENDERER_UPDATE_URL_BASE: `http://127.0.0.1:${port}`,
 		RENDERER_UPDATE_NOTES: "本地测试热更新",
 		[serverBinaryEnvName]: serverBinary,

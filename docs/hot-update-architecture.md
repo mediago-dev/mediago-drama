@@ -1,212 +1,324 @@
-# 桌面端热更新架构(Bundle 热更)
+# 桌面端 Bundle 热更新架构
 
-> 状态:实现完成、ships dark(默认关闭),见 PR #30。本文自包含:讲清楚**现在怎么实现的**、
-> **还有哪些方案**、以及**在每个岔路口为什么这么选**。既是设计说明,也是维护参考。
+> 状态：实现完成、ships dark（默认关闭），见 PR #30。本文描述当前安全边界和发布流程；
+> 若代码与本文不一致，应先停止发布并补齐二者，而不是把清单强行推给客户端。
 
-## 0. 背景与目标
+## 1. 目标与边界
 
-桌面端(`apps/workspace` 的 Electron 壳)之前有两条更新通道:
-
-- **全量更新**(electron-updater,PR #18):下整包、走安装器、冷启动。能更新一切,但重。
-- **渲染层热更新**(PR #21):只热更 React 界面,几 MB、不重装。但覆盖不了 server。
-
-问题:mediago-drama 的日常改动**经常牵扯 Go server**(`services/server` 的 `mediago-server`
-二进制)。渲染层单独热更解决不了真实需求,而全量更新对"改一行 server 逻辑"又太重。
-
-**本方案目标**:让"渲染层 + Go server"的改动也能**不重装、不冷启动**地更新——默认下次打开生效,
-server 空闲时可"立即应用"(只重启 sidecar 子进程 + 重载窗口,Electron 主进程不退出)。
-
-**明确的非目标**:
-
-- ❌ 零中断实时热替换。Go server 是编译型二进制,进程必须重启一次;做不到"用户无感换后端"。
-- ❌ 更新 Electron 壳 / main.js / preload / 原生 node 模块 / ffmpeg 等 CLI —— 仍走全量(#18)。
-
-## 1. 核心模型:Bundle = 渲染层 + server 二进制(配套版本对)
-
-整套系统的地基:**把 React 界面和 `mediago-server` 二进制打成一个"配套的版本对"(`bundleRev`),
-一起下载、一起生效、一起回滚。**
-
-为什么配对而不是两条独立通道:前后端之间有约 160 条 HTTP API 契约
-(`services/server/internal/http/routes/routes.go`)。分开更新会导致版本错配(前端调了新 API、
-后端没跟上)。配成一对,一个 `bundleRev` 管两个组件,永远配套,这个问题从根上消失。
-
-代价("只改 server 也要带上 renderer 的引用")靠**按组件哈希只下载变化的组件**降到最低。
-
-## 2. 完整生命周期
-
-四个阶段,分布在 Electron 主进程(`electron/src/bundle-*.ts`)与 Go server 两侧。
+MediaGo Drama 的桌面业务由 React renderer 和本地 Go server 共同组成。日常变更经常同时修改
+两边，因此热更新的最小发布单元不是单个静态站点，而是一组配套组件：
 
 ```
-① 启动加载 ───────────────────────────────────────────────────
-  单实例锁拿到后 → prepareActiveBundle()          [bundle-updater.ts]
-    ├─ 关闸/未打包 → 内置(asar 里 renderer + Resources/bin 的 server)
-    └─ 开闸 → resolveBundleDir 在 userData/bundle/versions/<rev> 与内置之间决策
-              胜出:严格更新 + 兼容 SHELL_API + 未拉黑 + 健康预算内 + 文件完整
-    ├─ 启动安全工作(此刻无 server,SQLite 静止):
-    │    · 刚被拉黑的版本 且 其 server 从未健康过 → 恢复 DB 快照
-    │    · pending 版本首次启动 → 先给 DB 拍快照
-    └─ startServerSidecar(选中的二进制路径) → notifyServerStarted()
-
-② 检查(启动 15s 后台静默 + 手动)──────────────────────────────
-  拉签名清单(Ed25519 验签 + 结构校验)             [fetchSignedManifest]
-    → evaluateBundleManifest 比组件 sha256           [bundle-policy.ts]
-      判定:up-to-date / requires-full-update / unsupported-platform / disabled / download
-  download 分支:
-    从"活着的 server"刷新 DB 路径(/runtime/activity)
-    → 只下变化的组件(sha256 校验 + 防 zip-slip)
-    → 组装自包含版本目录(没变的组件从当前版本复制进来)
-    → activateVersion(标 pending) → 清理旧版本
-
-③ 应用(用户点"立即应用" 或 下次启动)──────────────────────────
-  立即应用:                                        [applyNow]
-    空闲门控(/runtime/activity 报 busy 就拒)
-    → 优雅停旧 server(stdin→http.Shutdown;没停下来就中止,不硬来)
-    → 快照 DB → 记一次 boot attempt
-    → 起新 server → 轮询 /health
-    → 标 server 健康(绑定该 rev)→ 切 current → 窗口重载新界面
-    → 新界面 beacon 上报 renderer 健康 → 两个都健康 = 转正
-  下次启动:走 ① 的路径自然加载 pending 版本
-
-④ 健康 / 回滚 ────────────────────────────────────────────────
-  必须 renderer beacon + server /health 都确认,pending 才转正
-  连续 2 次启动没转正 → 拉黑该 rev + 回退指针 +(server 没健康过才)恢复快照
-  清单里 disabled 字段 = 远程 kill-switch
+Bundle(rev) = renderer(rev) + mediago-server(rev, platform)
 ```
 
-### 磁盘布局(`<userData>/bundle/`)
+一个签名清单一次性声明整组组件，客户端一次性 stage、apply、健康确认或回滚，避免前后端 API
+错配。组件内容未变化时可复用当前文件，不重复下载。
+
+本方案覆盖：
+
+- React renderer；
+- `mediago-server` 的 macOS ARM64 / Windows x64 二进制；
+- additive SQLite schema 迁移（有严格快照与回滚）。
+
+下列变化必须走全量 Electron installer：
+
+- Electron main / preload、原生 Node 模块、壳 API；
+- ffmpeg、agent、tools 等 extra resources；
+- workspace 文件布局、文件移动/删除、SQLite 之外的持久化迁移；
+- 客户端不支持的 `minShellApi`。
+
+热更新并不承诺 server 零中断。立即应用会重启 sidecar 并重载窗口，但 Electron 主进程不退出；
+默认路径仍是下载后下次启动生效。
+
+## 2. 三类版本，不能混用
+
+`apps/workspace/bundle-update.json` 是发布 PR 中必须显式 review 的版本契约：
+
+```json
+{
+  "bundleRev": 1,
+  "schemaVersion": 1,
+  "workspaceLayoutVersion": 1
+}
+```
+
+| 字段                     | 含义                        | 热更新规则                                     |
+| ------------------------ | --------------------------- | ---------------------------------------------- |
+| `bundleRev`              | renderer/server 配套版本    | cohort 内严格递增                              |
+| `schemaVersion`          | SQLite schema 世代          | 不可下降；目标高于当前时必须先快照             |
+| `workspaceLayoutVersion` | SQLite 之外的持久化文件布局 | 必须等于安装包内置版本；变化先发全量 installer |
+
+这取代了人工勾选 `hasMigration`。例如客户端从 rev 6 直接跳到 rev 8，只要
+`schemaVersion(8) > schemaVersion(6)` 就一定拍快照，不会因为 rev 8 自己“没有 migration”而漏掉
+rev 7 的 schema 变化。
+
+`workspaceLayoutVersion` 不负责回滚文件系统迁移，而是明确禁止它们穿过热更新边界。新布局先随
+全量安装包落地；旧安装包看到更高 layout version 会显示“需要全量更新”，不会执行新 server。
+
+## 3. cohort：channel 与 edition 同时隔离
+
+安装包在 `bundle-meta.json` 中固化 `channel` 和 `edition`。全量更新与 bundle 热更新分别使用固定
+cohort tag：
 
 ```
-active.json                — 指针 + 双组件健康状态(原子写)
-versions/<rev>/            — 自包含 bundle:
-     index.html + assets/…      (renderer)
-     bin/mediago-server[.exe]   (该平台 server 二进制)
-     bundle-meta.json           (身份:bundleRev / minShellApi / 各组件 sha256)
-tmp/                       — 下载 / 解压临时区
-db-snapshots/<rev>/        — 某 rev 首次启动前的 SQLite 快照
-runtime-info.json          — 缓存的 server 运行时信息(DB 路径),供无 server 的启动路径用
+desktop-<channel>-<edition>   # 全量安装包 + electron-updater YAML + cohort proof
+bundle-<channel>-<edition>    # renderer/server ZIP + 签名 manifest
+
+例如：desktop-beta-community、bundle-beta-community
 ```
 
-## 3. 关键机制与"为什么这么写"
+签名 payload 自身也必须携带相同的 `channel`、`edition`；URL、tag 与 payload 三者任一不一致即
+拒绝。这样 community 清单不能改变 Pro 安装包的 renderer gating，反之亦然。
 
-| 机制 | 代码 | 为什么 |
-|---|---|---|
-| **健康信号绑定 rev** | `markComponentHealthy(…, forRev)` | 后台可能刚 stage 了更新的 rev;不绑定的话,旧版本迟到的健康信号会记到新 rev 头上,坏包白白转正、永不回滚 |
-| **DB 快照是唯一的跨迁移回滚** | `snapshotDatabases` / `restoreDatabases` | server 换了,新版可能迁移 schema;迁移跑过后老二进制读新 schema 会崩/坏数据。先快照,回滚=恢复快照 |
-| **恢复快照仅在 server 从未健康过时** | `prepareActiveBundle` | 健康跑过的版本写的是真实数据;无条件恢复会抹掉用户在那些会话里写的一切 |
-| **空闲门控:server 出数据、客户端做决策** | `/api/v1/runtime/activity` | busy = 非终态生成任务(共享 `IsActiveGenerationStatus` 正面清单 + 6h 时效窗,防孤儿行永久锁死)或活跃 agent run;查询失败按"忙"处理 |
-| **只重启子进程** | `stopServerSidecarGracefully` | 编译型二进制没法原地热替换,进程必须重启——但只重启 sidecar + 重载窗口,主进程不退出,这才是"不冷启动" |
-| **单实例锁之后才做副作用** | `startApp` 里调 `prepareActiveBundle` | 被 doom 的第二实例不能计 bootAttempts,也不能在主实例 server 运行时拷贝/覆盖 SQLite |
-| **退出感知** | `quitting` 标志 | apply 与 Cmd+Q 竞态不再误拉黑健康版本、不在退出中恢复 DB |
-| **Ships dark** | `hotUpdateEnabled=false` + 空公钥 | 关闸时加载器透传内置版、不发网络请求,对现有用户零影响 |
+## 4. 签名清单与内容身份
 
-### 安全(下载并执行原生代码 = 最高风险面)
+发布物包含：
 
-- **Ed25519 签名**:清单被私钥签名,app 内置公钥验签;私钥只在 CI Secret,不在发布物里 →
-  即便有人能往 release 传文件也伪造不出合法清单。
-- **sha256**:每个组件下载时流式校验哈希。
-- **HTTPS only**:组件 URL 必须 https(仅本地测试模式放行 127.0.0.1)。
-- **防 zip-slip**:解压逐条校验路径,拒绝 `..` / 绝对路径。
-- **mac 签名(1A)**:CI 用 Developer ID 签 + 公证 darwin server 二进制,secrets 门控
-  (没配就退回 Go 的 ad-hoc 签名,不硬失败)。顺带解决 P0-2(mac 全量自动更新)。
+```
+renderer-<rev>.zip
+server-<rev>-darwin-arm64.zip
+server-<rev>-windows-x64.zip
+bundle-manifest.json        # payloadB64 + Ed25519 signature
+```
 
-## 4. 其他实现方案(六个岔路口)
+清单中的每个组件有两种哈希：
 
-这套设计是在六个决策点各选一条得到的。每个点都有别的走法。
+- `sha256`：压缩包字节哈希，下载时流式校验；
+- `contentSha256`：解压后真实内容身份，用于组件复用和每次执行前的磁盘完整性校验。
 
-### 岔路 1:更新粒度——换多少?
+renderer 内容哈希按 POSIX 相对路径代码点排序。每个 path 和文件内容都先写入 8-byte big-endian
+长度，再写原始 bytes；这种 length-prefix framing 不会产生路径/内容边界碰撞。哈希排除
+`bundle-meta.json`、`renderer-meta.json` 与顶层 `bin/`；server 内容哈希就是原始二进制 SHA-256。
+ZIP 条目顺序、权限和 DOS 时间固定，因此相同输入的 archive hash 也可复现，但运行时身份不依赖
+ZIP 元数据。
 
-| 方案 | 做法 | 为什么没选 |
-|---|---|---|
-| 全量更新(electron-updater) | 下整包、走安装器、冷启动 | 太重;作为兜底保留(#18) |
-| 纯数据外置(Route B) | 易变逻辑从二进制搬成可下发数据 | 不够:改动常动 server 编译型代码,数据外置只覆盖提示词/配置 |
-| 纯远端(Route C) | 逻辑挪云端,本地变瘦客户端 | 不适配:捆了 ffmpeg/CLI、要离线,核心必须本地 |
-| **✅ Bundle 热更(本方案)** | 渲染层 + server 二进制配套热swap | 本地优先 + 小更新 + 覆盖日常全部改动 |
+安全边界：
 
-### 岔路 2:渲染层与 server——分开还是配对?
+- 清单使用 Ed25519 签名，私钥只存在 GitHub Actions Secret，客户端只内置公钥；
+- 组件 URL 仅允许 HTTPS；本地测试模式只额外允许 loopback HTTP；
+- 下载校验 archive hash 和 size，解压拒绝绝对路径、`..` 与 zip-slip；
+- stage 后写入内容身份，每次执行下载 bundle 前重新计算，磁盘被篡改则隔离该 rev；
+- macOS server 在配置证书时使用 Developer ID 签名并公证。
 
-- 两条独立通道:各自版本 → 省流量但**前后端版本错配**。
-- **✅ 配成一对**:一个 `bundleRev` 管两个组件,永远配套;按组件哈希只下变化的那个。
+## 5. 磁盘状态与 Last Known Good
 
-### 岔路 3:DB 安全——怎么防迁移把数据搞坏?
+```
+<userData>/bundle/
+├── active.json                 # 原子写的状态机、LKG、回滚意图、kill-switch 缓存
+├── versions/<rev>/
+│   ├── index.html + assets/
+│   ├── bin/mediago-server[.exe]
+│   └── bundle-meta.json
+├── db-snapshots/<rev>/         # temp 完成后原子发布的 SQLite 快照集合
+├── tmp/
+└── runtime-info.json           # server 报告的 DB 路径缓存
+```
 
-- 不管 → 坏迁移/回滚损坏用户数据,不可接受。
-- 只允许向后兼容迁移、不快照 → 轻但脆弱。
-- **✅ 快照 + 只加不减迁移 + 跨迁移禁热更回滚(2A)**。
+状态机显式区分：
 
-### 岔路 4:busy 门控——客户端查还是服务端拒?
+- `active`：下一次/当前准备执行的版本；
+- `lastKnownGood`（LKG）：renderer 与 server 均通过身份绑定健康检查的版本；
+- `pending`：已 stage、尚未成为 LKG；
+- `rollbackPending`：失败 rev、目标 LKG 与是否需要恢复快照的持久化意图；
+- `migrationStarted`：forward-schema 子进程可能已经执行 migration/watcher/worker 的持久化边界；
+- `channelDisabled`：最近一次有效签名清单下发的 cohort kill-switch；
+- signed-manifest high-water 与 `bundleRev` floor：都绑定 channel/edition，切换 cohort 时清空；schema/layout
+  floor 绑定同一 userData，跨 cohort 仍不允许倒退。
 
-- **✅ 客户端 check-then-act(现在)**:简单、复用现有 IPC。**代价**:探测到停止之间约 200ms
-  窗口,期间起的新任务可能被打断(任务可经 poll-id 恢复,影响有限)。
-- 服务端原子 quiesce 端点(更深):server 自己"拒新→排空→退出",无竞态,更正确但要改 server
-  生命周期。**已记录为 follow-up,未在本 PR 做。**
+只有“双健康”才能推进 LKG。下载另一个版本不会把尚未运行的 pending 版本当作 LKG；已有 pending
+时也不会被后续检查静默覆盖。全量安装包内置的 rev 更新后，若它不低于下载指针，客户端以新的
+builtin 为基线并清理陈旧 pending，避免安装 rev 8 后误把 rev 6 当成可应用更新。
 
-### 岔路 5:二进制分发——全量还是差量?
+## 6. 启动、stage、apply
 
-- bsdiff/blockmap 二进制差量:理论上只传变化字节。**没做**:复杂度高,而 82MB→zip 约 35MB
-  已可接受,留作未来优化。
-- **✅ 整个 server 组件 zip**:简单可靠,配合"只下变化组件"已够省。
+### 6.1 启动
 
-### 岔路 6:mac 信任——签名还是硬扛?
+单实例锁成功后才允许任何副作用：
 
-- 不签名硬扛:靠"不带 quarantine + chmod + Go 自带 ad-hoc 签名"能跑,但 fiddly。
-- **✅ Developer ID 签名 + 公证(1A)**:secrets 门控;顺带解决 P0-2。
+1. 读取并校验 builtin meta、状态文件和候选下载目录；
+2. 若有 `rollbackPending`，先重试完整恢复，成功后才清除意图；
+3. 从 active/LKG/builtin 选择可执行版本；被禁用、拉黑、超预算或内容损坏的版本不可执行；
+4. 目标 `schemaVersion` 高于当前时，严格创建 DB 快照；任何 DB 源缺失、复制或原子发布失败都
+   fail closed，目标版本不会获得 boot attempt、也不会启动；
+5. 安全准备完成后才记 boot attempt；forward-schema 版本在 spawn **之前**持久化
+   `migrationStarted`，再启动 sidecar。
 
-## 5. 为什么最终是这套(把约束串起来)
+连续两次启动没有“双健康”时，同 schema 或尚未开始 forward migration 的 pending rev 会被拉黑并
+回到真实 LKG（它可能是下载版本，也可能是 builtin）。若 `migrationStarted=true`，则不会把旧 binary
+放到可能已升级的数据上，而是 fail closed，等待同 schema 重试或兼容完整安装包。
 
-产品形态和改动模式几乎把选择空间逼到唯一解:
+### 6.2 下载与 stage
 
-1. 本地优先 + 要离线 + 捆了 ffmpeg/CLI → 排除纯远端(C);
-2. 改动经常动 server 编译型代码 → 排除纯数据外置(B)和"只渲染层热更"(#21 单独不够);
-3. server 是编译型二进制 → 注定重启进程,目标定在"不重装、不冷启动"而非"无感";
-4. 前后端强耦合(160 路由)→ 必须配对成 bundle,而非两条独立通道;
-5. server 有本地 SQLite 用户数据 → 必须有快照回滚,这是它和渲染层热更**本质的区别**;
-6. 已有 #21 基建 → 策略层/store/健康/回滚/签名/管线约 80% 复用,增量主要是"多组件 +
-   二进制处理 + DB 安全 + mac 签名"。
+1. 拉取 cohort manifest，验签后再解析 payload；
+2. 校验 `bundleRev`、shell API、schema/layout、channel/edition 和目标 platform；
+3. 从 `/api/v1/runtime/activity` 刷新 DB 路径；查询失败按 busy/fail closed 处理；
+4. 仅下载 `contentSha256` 与当前不同的组件；其余从当前自包含版本复制；
+5. 在临时目录验 archive、解压、验 content，最后原子 rename 为 `versions/<rev>`；
+6. 在一个 store 写入中标记 pending，不改变 LKG。
 
-**行业验证**:这正是 VS Code(语言服务器按需下载到可写目录、当子进程拉起)和 Chrome
-(Component Updater:签名组件下到可写目录、运行时加载,独立于浏览器本体)的形状。成熟模式,非新发明。
+### 6.3 立即应用
 
-## 6. 清醒接受的代价(诚实)
+检查与 apply 共用进程内互斥锁；锁在第一次 `await` 之前获取，并在锁内重读 store，因此双击
+Apply 或 check/apply 交错不会同时改指针、快照或 sidecar。
 
-- busy 门控的 ~200ms 竞态(已记录待深修:server 端原子 quiesce)。
-- 只改 server 时仍整份复制渲染层到新版本目录(为保持"版本目录自包含"接受;可用 APFS clone 优化)。
-- 编译型 server 无法真正"无感",总要重启一次进程。
+立即应用流程：
 
-## 7. 发布与开闸
+1. activity 必须 idle；除持久化任务/agent run 外，provider 调用还有内存 in-flight counter，覆盖
+   “请求尚未结束、任务行尚未写入”的窗口；
+2. 通过 stdin 请求旧 server `http.Shutdown`，等待排空；
+3. 若 grace period 后仍存活会发送 `SIGKILL`（Windows 使用等价强制终止），并等待确认退出；若
+   仍无法确认退出，apply 中止，绝不在可能仍有 writer 时恢复 DB 或启动第二个 server；
+4. 创建所需快照、持久化 rollback intent；forward-schema 版本在 spawn 前再持久化
+   `migrationStarted`，然后启动新 sidecar；
+5. readiness 通过后标记 server healthy，切换 renderer 并重载窗口；
+6. 新 renderer beacon 到达且身份匹配后，pending 转为 LKG。
 
-### 打包管线
+这不是“绝不硬杀”。真实策略是先优雅排空、超时后强制终止、必须确认旧进程退出后才继续。
 
-- `.github/workflows/bundle-hot-release.yml`(macos-14):双平台交叉编译 → darwin
-  codesign+notarize(cert/notary secrets 分别门控)→ `package-bundle-update.ts` 签名多组件清单
-  → 上传固定 `bundle-<channel>` tag(zip 追加、`bundle-manifest.json` 唯一可变)。rev 单调守卫;
-  **edition 为必选输入**(热更渲染层与安装包版本必须一致,否则 Pro 用户会被降级)。
-- `.github/workflows/electron-release.yml`:darwin 腿在 macos-14,secrets 门控签名。
+## 7. readiness 不是固定端口上的任意 2xx
 
-### 开闸三步(合并后)
+每次 Electron 启动 sidecar 都生成一次性 instance token，并通过环境变量传入：
 
-1. `pnpm bundle:keys` 生成 Ed25519 密钥对;私钥入 Secret `RENDERER_UPDATE_PRIVATE_KEY`,
-   公钥填入 `electron/src/hot-update-config.ts` 的 `bundleUpdatePublicKey`,`hotUpdateEnabled=true`。
-2.(推荐)配 mac 签名 secrets:`MACOS_CERT_P12` / `MACOS_CERT_PASSWORD` +
-   `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID`。
-3. 日常发版:改代码 → PR 里 bump `apps/workspace/bundle-update.json` 的 `bundleRev` → 合并 →
-   触发 "Bundle Hot Release"(选对 edition + 有迁移则勾 has_migration)。
+- 期望的 `bundleRev`；
+- 期望的 `schemaVersion`；
+- 随机 `instanceToken`。
 
-### 本地离线测试
+`/api/v1/health` 只有在 workspace/settings repository 初始化和 migration 均成功时才返回 ready；
+响应同时回显上述三个字段。Electron 必须验证全部字段，因此固定端口上残留的旧 server 或其他
+进程返回 200 也不能让新版本转正。
 
-`pnpm bundle:local-test`(在 `apps/workspace`):生成临时密钥、打包签名指向 127.0.0.1、起本地
-服务器、打印带 `MEDIAGO_HOT_UPDATE_TEST_URL` / `_PUBKEY` 的启动命令。不碰生产配置、不碰 GitHub。
+sidecar 的 `error`/`exit` 事件绑定具体 child 实例。全局 child 引用只在确认该实例退出时清除，旧
+实例迟到的 `exit` 不会把新 child 清空。
 
-## 8. 关键文件索引
+## 8. DB 快照与可重入回滚
 
-| 关注点 | 文件 |
-|---|---|
-| 纯决策逻辑(可单测) | `apps/workspace/electron/src/bundle-policy.ts` |
-| 文件系统层(版本目录/快照/健康态) | `apps/workspace/electron/src/bundle-store.ts` |
-| 编排(检查/下载/应用/回滚) | `apps/workspace/electron/src/bundle-updater.ts` |
-| 开关 + 信任锚 | `apps/workspace/electron/src/hot-update-config.ts` |
-| 契约(通道/DTO/平台常量/SHELL_API) | `apps/workspace/electron/src/ipc-contract.ts` |
-| sidecar 启停 | `apps/workspace/electron/src/sidecar.ts` |
-| 忙/闲聚合(业务规则) | `services/server/internal/service/runtimeactivity/report.go` |
-| activity 端点 | `services/server/internal/http/handlers/runtime_activity.go` |
-| 打包签名 | `apps/workspace/scripts/package-bundle-update.ts` |
-| UI | `apps/workspace/src/domains/settings/components/UpdatesPanel.tsx` |
+SQLite 快照只在 server 完全停止时进行。快照要求所有声明的 DB 主文件存在；先复制到临时目录，
+写完整 manifest 后再原子 rename。WAL/SHM 的处理失败即停止，不再继续复制一个不一致的集合。
+
+恢复前先持久化 `rollbackPending`。每个 live DB 先写 sibling temp，再原子替换；多 DB 之间无法由
+文件系统提供单事务原子性，所以进程崩溃后仍保留 intent，下次启动会从同一快照重放全部替换。
+只有恢复完全成功才切指针并清除 intent。
+
+只要 forward-schema server **开始 spawn**，migration、workspace watcher 或 generation worker 就可能已写入
+真实数据；不能把 `/health ready` 当作“首次可能写”的边界。因此 `migrationStarted` 一旦落盘，即使
+server 尚未 ready、renderer load/beacon 失败或客户端随后收到 kill-switch，也绝不自动恢复启动前快照。
+客户端只会重试同一 schema，或等待 schema/layout 兼容的完整安装包接管；达到重试预算后 fail closed。
+只有在子进程尚未开始、且 rollback marker/快照事务能完整完成时，才允许恢复快照并启动旧 binary。
+
+## 9. 签名 kill-switch
+
+payload 的 `disabled: true` 是 cohort 级 kill-switch。客户端只接受签名且 cohort 匹配的 disabled
+清单，收到后把 `channelDisabled` 持久化并隔离已下载 active/pending 版本，回到 builtin/LKG 安全
+路径。该缓存让后续离线启动仍保持禁用，不会因为拉不到网络又执行已撤回二进制。
+
+重新启用必须发布更高 `bundleRev` 的有效签名清单；不能通过删除远端 asset 清除本地安全状态。
+
+## 10. 发布与 CI
+
+### 10.1 PR 门禁
+
+`.github/workflows/bundle-hot-checks.yml` 在相关 PR 和 `dev` push 上运行：
+
+- Electron TypeScript compile；
+- policy/store 状态机测试；
+- Go `-race` 测试（包括 readiness/activity）；
+- hot-update 源码 format/lint；
+- 实际 package smoke test，并对同一输入打包两次比较所有产物 hash。
+
+手工发布 workflow 重复关键门禁，避免绕过 PR checks 的 dispatch 直接出包。
+
+### 10.2 Bundle Hot Release
+
+`.github/workflows/bundle-hot-release.yml` 的输入包括 channel、edition、schema version、workspace
+layout version 与 disabled。workflow 会：
+
+1. 校验输入版本与 `bundle-update.json` 精确一致；
+2. 强制查询已公开的 `desktop-<channel>-<edition>/desktop-cohort-meta.json`，验证 cohort、layout、
+   builtin rev、source commit、`hotUpdateEnabled` 与 Ed25519 公钥；不存在或不匹配都会失败，人工勾选
+   不能替代发布证据；
+3. 校验 hot rev 严格递增、schema/layout 不下降，并基于上一个签名 manifest 的 `sourceCommit`
+   自动检查 schema/layout 敏感源码是否同步 bump；若 full installer 之后仍有 Electron shell 或
+   extra-resource 变化，也会拒绝热更；
+4. 构建 renderer 和两平台 server，签名/公证 macOS 二进制，生成可复现 ZIP 与签名清单；
+5. 首次 cohort release 先建 draft，ZIP 全部成功后才上传 `bundle-manifest.json`，最后公开；已有
+   release 也始终 manifest-last。替换前把当前签名指针保存为 `bundle-manifest-backup.json`；若
+   GitHub 的 delete/upload 在中间失败，下一次运行用该已验签备份继续做单调性检查并修复指针。
+   中断重跑可覆盖尚未被 manifest 引用的同 rev ZIP。
+
+若 manifest 已经成功移动、但 job 在最终回执前中断，重跑会验签并核对同 rev 的 source、cohort、
+schema/layout、disabled、full baseline 和全部组件 asset；完全一致就按“已提交”成功结束，不会要求
+伪造新 rev，也不会重新上传不同字节。
+
+### 10.3 Full Electron Release
+
+`.github/workflows/electron-release.yml` 明确选择 channel 与 edition，并把它们传入 renderer build 和
+stage，使安装包的 builtin meta 固化正确 cohort、schema 和 layout。每个 cohort 发布到固定
+`desktop-<channel>-<edition>`，避免相同 SemVer 的 community/pro 或 alpha/beta 互相覆盖。
+Electron main 必须据 builtin meta 把 `electron-updater` 的 generic feed 指向该固定 tag；不能继续让
+GitHub provider 从全仓库 release 列表自动挑版本，否则 edition 隔离只存在于发布端。
+这两类固定 cohort release 必须保持 mutable；workflow 会拒绝 GitHub 的 immutable release，因为
+固定 tag 的 YAML/manifest 指针需要原位推进。
+
+发布顺序是版本化 installer/blockmap → electron-updater YAML → `desktop-cohort-meta.json`。首次发布在
+全部资产到齐前保持 draft；更新已公开 cohort 时，proof 最后移动，因此工作流中断只会暂时阻止后续
+hot release，不会把半套安装包证明为可用。proof 自身也保留上一次 backup 供同版本重跑修复。
+全量和热更 workflow 只能从 `dev` dispatch，使用
+`production-release` Environment；两者共用 cohort 级 concurrency lock，不能交错移动 full proof 和
+hot manifest；Windows job 不注入 Apple secrets。
+
+electron-builder publisher 显式使用 cohort channel，因此 beta/alpha 产物分别是 `beta.yml` /
+`beta-mac.yml`、`alpha.yml` / `alpha-mac.yml`；installer 文件名固定为无空格的
+`${name}-${version}-${os}-${arch}.${ext}`。发布前和 hot guard 都解析 YAML 的 `path/url`，确认它引用
+的 basename 确实已上传。Full release 还会验签当前 hot manifest，禁止 builtin rev/schema/layout
+低于已发布 hot floor；同 app version + source 的 canonical proof 若完全相同则 no-op，不允许重签后
+clobber 成另一套同版本资产。
+
+## 11. 开闸顺序
+
+`hotUpdateEnabled` 和空公钥让功能默认不发网络请求。生产开闸必须严格按以下顺序：
+
+1. `pnpm bundle:keys` 生成 Ed25519 keypair；私钥写入 GitHub Secret
+   `RENDERER_UPDATE_PRIVATE_KEY`，公钥写入 `hot-update-config.ts`；
+2. 配置 `production-release` GitHub Environment、macOS signing/notary secrets，并完成 workflow
+   演练；
+3. 打开公钥和 `hotUpdateEnabled=true` 后，**先走 Full Electron Release**，发布并实际安装一个包含
+   新公钥、开关、cohort meta、readiness 协议和版本字段的安装包；旧安装包不能安全消费新清单；
+4. 在该安装包上做本地/测试 cohort 的下载、下次启动、立即应用、进程残留、快照失败、断电重启、
+   disabled 离线重启和回滚演练；
+5. 最后才向同 cohort 的 `bundle-<channel>-<edition>` 发布第一个生产签名 manifest；workflow 会
+   重新下载并验证第 3 步的 `desktop-cohort-meta.json`，无法跳过。
+
+不能先发热更新清单再等全量安装包跟上；也不能只打开 main 分支开关而不发 installer。
+
+## 12. 本地测试
+
+在 `apps/workspace` 下运行 `pnpm bundle:local-test`。脚本生成临时 keypair、指向 loopback URL 打包，
+并打印 `MEDIAGO_HOT_UPDATE_TEST_URL` / `MEDIAGO_HOT_UPDATE_TEST_PUBKEY` 启动参数；它不修改生产
+公钥、不访问 GitHub。
+
+至少覆盖：
+
+- 同 schema 普通升级；
+- 跨过中间 rev 的 schema 升级；
+- readiness nonce/rev 不匹配；
+- snapshot/restore 中途失败并重启重试；
+- pending 未运行时又发现新 rev；
+- full installer builtin rev 高于旧 active；
+- activity busy 与重复点击 Apply；
+- disabled 后断网重启。
+
+## 13. 关键文件
+
+| 关注点                         | 文件                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| manifest/meta/store 契约       | `apps/workspace/electron/src/ipc-contract.ts`                                  |
+| 纯策略与兼容判断               | `apps/workspace/electron/src/bundle-policy.ts`                                 |
+| LKG、内容校验、快照/回滚       | `apps/workspace/electron/src/bundle-store.ts`                                  |
+| 下载/apply/互斥/readiness 编排 | `apps/workspace/electron/src/bundle-updater.ts`                                |
+| cohort URL、开关与公钥         | `apps/workspace/electron/src/hot-update-config.ts`                             |
+| sidecar 生命周期               | `apps/workspace/electron/src/sidecar.ts`                                       |
+| Go readiness/activity          | `services/server/internal/http/handlers/`、`internal/service/runtimeactivity/` |
+| 打包签名                       | `apps/workspace/scripts/package-bundle-update.ts`                              |
+| 全量安装包 stage               | `apps/workspace/scripts/stage-electron-app.ts`                                 |
+| PR/发布门禁                    | `.github/workflows/bundle-hot-checks.yml`、`bundle-hot-release.yml`            |

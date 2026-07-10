@@ -506,11 +506,11 @@ func (store *SessionService) statusFromRun(sessionID string, run *AgentRun) Agen
 
 // CountActiveRuns reports how many agent runs across all sessions are not terminal.
 // Consumed by the runtime activity probe that gates hot-update application.
-func (service *SessionService) CountActiveRuns() int {
-	service.mu.Lock()
-	defer service.mu.Unlock()
+func (store *SessionService) CountActiveRuns() int {
+	store.mu.Lock()
+	defer store.mu.Unlock()
 	count := 0
-	for _, session := range service.sessions {
+	for _, session := range store.sessions {
 		for _, run := range session.runs {
 			if !isTerminalRunStatus(run.Status) {
 				count++
