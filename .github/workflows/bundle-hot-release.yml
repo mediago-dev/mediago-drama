@@ -112,19 +112,28 @@ jobs:
             echo "release $tag exists but its bundle-manifest.json could not be downloaded — refusing to publish over an unknown state." >&2
             exit 1
           fi
-          payload="$(node -p 'JSON.parse(Buffer.from(JSON.parse(require("node:fs").readFileSync("current-manifest.json","utf8")).payloadB64,"base64").toString("utf8"))' )"
-          current_rev="$(node -p "($payload).bundleRev")"
-          current_edition="$(node -p "($payload).edition || 'community'")"
-          echo "published rev=$current_rev edition=$current_edition; new rev=$new_rev edition=$EDITION"
-          if [[ "$new_rev" -le "$current_rev" ]]; then
-            echo "bundleRev ($new_rev) must be greater than the published rev ($current_rev). Bump apps/workspace/bundle-update.json in a PR first." >&2
-            exit 1
-          fi
-          if [[ "$current_edition" != "$EDITION" ]]; then
-            echo "edition mismatch: channel $CHANNEL currently ships '$current_edition' but this run selected '$EDITION'." >&2
-            echo "A mismatched edition hot update would flip installed apps' Pro/community gating. Re-run with edition=$current_edition." >&2
-            exit 1
-          fi
+          # Do all parsing/comparison inside one node script reading files + env — never
+          # interpolate JSON into the shell (quotes collide) or print objects via node -p.
+          NEW_REV="$new_rev" node <<'NODE'
+          const fs = require("node:fs");
+          const newRev = Number(process.env.NEW_REV);
+          const envelope = JSON.parse(fs.readFileSync("current-manifest.json", "utf8"));
+          const payload = JSON.parse(Buffer.from(envelope.payloadB64, "base64").toString("utf8"));
+          const currentRev = payload.bundleRev;
+          const currentEdition = payload.edition || "community";
+          const edition = process.env.EDITION;
+          const channel = process.env.CHANNEL;
+          console.log(`published rev=${currentRev} edition=${currentEdition}; new rev=${newRev} edition=${edition}`);
+          if (!(newRev > currentRev)) {
+            console.error(`bundleRev (${newRev}) must be greater than the published rev (${currentRev}). Bump apps/workspace/bundle-update.json in a PR first.`);
+            process.exit(1);
+          }
+          if (currentEdition !== edition) {
+            console.error(`edition mismatch: channel ${channel} currently ships '${currentEdition}' but this run selected '${edition}'.`);
+            console.error(`A mismatched edition hot update would flip installed apps' Pro/community gating. Re-run with edition=${currentEdition}.`);
+            process.exit(1);
+          }
+          NODE
 
       - name: Build renderer
         env:
