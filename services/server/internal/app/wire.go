@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"path/filepath"
@@ -64,17 +65,34 @@ func newAPIHandler(config Config) *apiHandler {
 		)
 	}
 	// 会话回顾数据源：续接对话的 ACP 会话无法复用（换模型/上游会话失效）时，
-	// runner 用它取本会话聊天记录，把最近对话回放进重建会话的 prompt。
-	if recapAware, ok := runner.(interface {
-		SetSessionRecapBuilder(func(agentRunRequest) string)
-	}); ok {
-		recapAware.SetSessionRecapBuilder(func(request agentRunRequest) string {
-			chat, err := workspaceState.LoadAgentChat(request.ProjectID, request.SessionID)
-			if err != nil {
-				return ""
+	// runner 用它取本会话聊天记录和已确认的选择决定，回放进重建会话的 prompt。
+	buildSessionRecap := func(ctx context.Context, request agentRunRequest) string {
+		if ctx.Err() != nil {
+			return ""
+		}
+		chat, err := workspaceState.LoadAgentChat(request.ProjectID, request.SessionID)
+		if err != nil {
+			return ""
+		}
+		decisionLines := []string{}
+		if selections := workspaceState.StateService().Selections; selections != nil {
+			if decided, err := selections.ListDecidedBySession(request.ProjectID, request.SessionID, 12); err == nil {
+				for _, record := range decided {
+					if line := serviceselection.FormatDecisionLine(record); line != "" {
+						decisionLines = append(decisionLines, line)
+					}
+				}
 			}
-			return serviceacp.BuildACPSessionRecap(chat.Messages)
-		})
+		}
+		return serviceacp.BuildACPSessionRecap(chat.Messages, request.Prompt, decisionLines)
+	}
+	if recapAware, ok := runner.(interface {
+		SetSessionRecapBuilder(serviceacp.SessionRecapBuilder)
+	}); ok {
+		recapAware.SetSessionRecapBuilder(buildSessionRecap)
+	} else {
+		// 断言失败必须可见：否则回顾功能无声关闭，回归会伪装成模型行为问题。
+		slog.Warn("agent runner does not accept a session recap builder; session rebuilds will lose context")
 	}
 	documentRunner := config.documentOperationRunner
 	if documentRunner == nil {

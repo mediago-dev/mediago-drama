@@ -98,10 +98,11 @@ editable: true
    - 需要保持形象一致（角色多阶段、续作配图）或用户提到参考图时，加一个 `type: "images"` 的
      「参考图」字段（max 建议 3）：`default` 预填该资源已定稿图的资产 id，用户可上传或移除；
      提交后把 values 里的 id 数组填入 `generate_media` 的 `referenceAssetIds`。
-     目标 section 里已插入的图片会被服务端自动作为参考，无需重复传。
-   提交后 values 中该字段为 `{routeId, label, params}`，严格按其 `routeId` 与 `params`
-   调 `generate_media`，不要替换或增删参数；比例/分辨率组合已由客户端按模型 schema 校正，
-   无需再次弹卡确认。
+     注意：目标 section 里已插入的图片**不会**自动作为参考（只有 @mention 引用会被抽取），
+     需要沿用时把它们的资产 id 也放进 `default` 或 `referenceAssetIds`。
+   提交后 values 中 `generation_params` 字段的值为 `{routeId, label, params}`，严格按其
+   `routeId` 与 `params` 调 `generate_media`，不要替换或增删参数；比例/分辨率组合已由
+   客户端按模型 schema 校正，无需再次弹卡确认。
 3. 为角色/场景/道具/分镜等资源生成配图时，`generate_media` 必须带 `documentContext`：
    `documentId` 用目标文档 ID，`sectionId` 用该资源二级标题前的 `<!-- section-id: ... -->` 值——
    带上它们，任务和资产就会计入项目概览中对应资源的生成历史与选中资产库

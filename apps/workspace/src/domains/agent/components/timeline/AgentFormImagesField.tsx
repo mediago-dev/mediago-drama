@@ -1,6 +1,6 @@
 import { Plus, X } from "lucide-react";
 import type React from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { uploadMediaAsset } from "@/domains/workspace/api/media";
 import { useProjectStore } from "@/domains/projects/stores";
 import { apiResourceURL } from "@/shared/lib/api-base";
@@ -16,8 +16,16 @@ export const AgentFormImagesField: React.FC<{
 	disabled: boolean;
 	projectId?: string;
 	onChange: (value: string[]) => void;
-}> = ({ value, max, disabled, projectId, onChange }) => {
+	onBusyChange?: (busy: boolean) => void;
+}> = ({ value, max, disabled, projectId, onChange, onBusyChange }) => {
 	const ids = normalizeImageIds(value);
+	// The upload loop reads the LATEST ids through this ref instead of the
+	// render-time snapshot, so removing a thumbnail mid-batch can't be undone
+	// by a later per-file commit.
+	const idsRef = useRef(ids);
+	useEffect(() => {
+		idsRef.current = ids;
+	});
 	const inputRef = useRef<HTMLInputElement>(null);
 	const [uploading, setUploading] = useState(false);
 	const [error, setError] = useState("");
@@ -27,19 +35,31 @@ export const AgentFormImagesField: React.FC<{
 		if (!files || files.length === 0) return;
 		const targetProjectId = projectId || useProjectStore.getState().activeProjectId || undefined;
 		setUploading(true);
+		onBusyChange?.(true);
 		setError("");
+		let dropped = 0;
 		try {
-			const next = [...ids];
 			for (const file of Array.from(files)) {
-				if (typeof max === "number" && next.length >= max) break;
+				if (typeof max === "number" && idsRef.current.length >= max) {
+					dropped += 1;
+					continue;
+				}
 				const asset = await uploadMediaAsset(file, targetProjectId);
-				if (!next.includes(asset.id)) next.push(asset.id);
+				if (idsRef.current.includes(asset.id)) continue;
+				// Commit per file: a later failure must not discard assets that
+				// already uploaded successfully.
+				const next = [...idsRef.current, asset.id];
+				idsRef.current = next;
+				onChange(next);
 			}
-			onChange(next);
+			if (dropped > 0) {
+				setError(`已达上限 ${max} 张，${dropped} 个文件未上传。`);
+			}
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "上传失败，请重试。");
 		} finally {
 			setUploading(false);
+			onBusyChange?.(false);
 			if (inputRef.current) inputRef.current.value = "";
 		}
 	};
@@ -102,13 +122,13 @@ export const AgentFormImagesField: React.FC<{
 
 export const normalizeImageIds = (value: unknown): string[] => {
 	if (!Array.isArray(value)) return [];
-	const ids: string[] = [];
+	const seen = new Set<string>();
 	for (const item of value) {
 		if (typeof item !== "string") continue;
 		const id = item.trim();
-		if (id && !ids.includes(id)) ids.push(id);
+		if (id) seen.add(id);
 	}
-	return ids;
+	return Array.from(seen);
 };
 
 const mediaAssetThumbnailURL = (assetId: string) =>

@@ -370,7 +370,7 @@ func TestValidateImagesFieldValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("validateFormValue() error = %v", err)
 	}
-	ids, ok := value.([]any)
+	ids, ok := value.([]string)
 	if !ok || len(ids) != 2 || ids[0] != "asset-a" || ids[1] != "asset-b" {
 		t.Fatalf("value = %#v, want deduplicated trimmed ids", value)
 	}
@@ -431,5 +431,59 @@ func TestValidatePromptOptimizationFieldValues(t *testing.T) {
 	}
 	if _, err := validateFormValue(field, map[string]any{"enabled": true, "routeId": 42}); err == nil {
 		t.Fatal("want error for non-string routeId")
+	}
+}
+
+func TestValidatePromptOptimizationAcceptsBooleanValue(t *testing.T) {
+	field := FormField{ID: "optimize", Type: FieldTypePromptOptimization}
+	value, err := validateFormValue(field, false)
+	if err != nil {
+		t.Fatalf("validateFormValue(bool) error = %v", err)
+	}
+	if object, ok := value.(map[string]any); !ok || object["enabled"] != false {
+		t.Fatalf("value = %#v, want normalized {enabled:false}", value)
+	}
+}
+
+func TestValidateFormValuesValidatesDefaults(t *testing.T) {
+	max := 3.0
+	fields := []FormField{
+		// 坏的可选 default（重复+超限）应按缺省丢弃，而不是原样落库。
+		{ID: "refs", Type: FieldTypeImages, Max: &max, Default: []any{"a", "a", "b", "c", "d"}},
+		// 好的 default 要经过归一化（去重/trim）。
+		{ID: "extra", Type: FieldTypeImages, Max: &max, Default: []any{" x ", "x"}},
+	}
+	values, err := validateFormValues(fields, map[string]any{"refs": nil})
+	if err != nil {
+		t.Fatalf("validateFormValues() error = %v", err)
+	}
+	if _, present := values["refs"]; present {
+		t.Fatalf("values = %#v, invalid optional default should be dropped", values)
+	}
+	extra, ok := values["extra"].([]string)
+	if !ok || len(extra) != 1 || extra[0] != "x" {
+		t.Fatalf("values[extra] = %#v, want normalized default", values["extra"])
+	}
+
+	required := []FormField{{ID: "refs", Type: FieldTypeImages, Required: true, Default: "not-an-array"}}
+	if _, err := validateFormValues(required, map[string]any{}); err == nil {
+		t.Fatal("want error for invalid required default")
+	}
+}
+
+func TestNormalizeFieldsClampsImagesMax(t *testing.T) {
+	big := 50.0
+	fields, err := normalizeFields([]FormField{
+		{ID: "a", Type: FieldTypeImages},
+		{ID: "b", Type: FieldTypeImages, Max: &big},
+	})
+	if err != nil {
+		t.Fatalf("normalizeFields() error = %v", err)
+	}
+	if fields[0].Max == nil || *fields[0].Max != defaultImagesMax {
+		t.Fatalf("nil max = %#v, want default %d", fields[0].Max, defaultImagesMax)
+	}
+	if fields[1].Max == nil || *fields[1].Max != ceilingImagesMax {
+		t.Fatalf("oversize max = %#v, want ceiling %d", fields[1].Max, ceilingImagesMax)
 	}
 }

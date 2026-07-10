@@ -245,7 +245,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	// from a blank session: replay a compact transcript recap so decisions the
 	// user already made (target resource, style, params) survive the rebuild.
 	if hadPriorACPSession && !reusedACPSession {
-		if recap := runner.sessionRecapFor(request); recap != "" {
+		if recap := runner.sessionRecapFor(ctx, request); recap != "" {
 			prompt = recap + "\n\n" + prompt
 			recapInjected = true
 			acpLog().Info("acp session recap injected", append(logArgs, "acp_session_id", sessionID, "recap_len", len(recap))...)
@@ -296,7 +296,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 			return agentRunResult{}, err
 		}
 		if !recapInjected {
-			if recap := runner.sessionRecapFor(request); recap != "" {
+			if recap := runner.sessionRecapFor(ctx, request); recap != "" {
 				prompt = recap + "\n\n" + prompt
 				promptRequest.Prompt = []acp.ContentBlock{acp.TextBlock(prompt)}
 				recapInjected = true
@@ -339,6 +339,17 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		if err := applyACPSessionSelections(ctx, conn, sessionID, request, logArgs); err != nil {
 			acpLog().Error("acp empty-response retry session config selection failed", append(logArgs, "acp_session_id", sessionID, "error", err)...)
 			return agentRunResult{}, err
+		}
+		// This retry also lands on a brand-new blank session — inject the
+		// recap here too, or the rebuilt session loses every prior
+		// confirmation exactly like the paths above.
+		if !recapInjected {
+			if recap := runner.sessionRecapFor(ctx, request); recap != "" {
+				prompt = recap + "\n\n" + prompt
+				promptRequest.Prompt = []acp.ContentBlock{acp.TextBlock(prompt)}
+				recapInjected = true
+				acpLog().Info("acp session recap injected on empty-response retry", append(logArgs, "acp_session_id", sessionID, "recap_len", len(recap))...)
+			}
 		}
 		acpLog().Info("acp empty-response retry prompt starting", append(logArgs, "acp_session_id", sessionID)...)
 		promptStartedAt = time.Now()

@@ -253,6 +253,22 @@ func (repo *GenerationTaskRepository) UpsertGenerationTask(model domain.Generati
 	return nil
 }
 
+// GetGenerationTaskStatus returns just the status column of one task.
+func (repo *GenerationTaskRepository) GetGenerationTaskStatus(id string) (string, error) {
+	var status string
+	result := repo.db.Model(&domain.GenerationTaskModel{}).
+		Select("status").
+		Where("id = ?", strings.TrimSpace(id)).
+		Take(&status)
+	if result.Error == gorm.ErrRecordNotFound {
+		return "", ErrRecordNotFound
+	}
+	if result.Error != nil {
+		return "", fmt.Errorf("loading generation task status %s: %w", id, result.Error)
+	}
+	return status, nil
+}
+
 // UpdateGenerationTaskAssets updates a task's resource type and timestamp after asset rows change.
 func (repo *GenerationTaskRepository) UpdateGenerationTaskAssets(id string, resourceType string, updatedAt string) (bool, error) {
 	updates := map[string]any{

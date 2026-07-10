@@ -94,6 +94,30 @@ func (repo *AgentSelectionRepository) ListAgentSelectionsByRun(projectID string,
 	return models, nil
 }
 
+// ListDecidedAgentSelectionsBySession returns a session's decided selections
+// (selected/custom/submitted), oldest first, for conversation-recap replay.
+func (repo *AgentSelectionRepository) ListDecidedAgentSelectionsBySession(projectID string, sessionID string, limit int) ([]domain.AgentSelectionModel, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	models := []domain.AgentSelectionModel{}
+	if err := repo.db.Where(
+		"project_id = ? AND session_id = ? AND status IN ?",
+		strings.TrimSpace(projectID),
+		strings.TrimSpace(sessionID),
+		[]string{"selected", "custom", "submitted"},
+	).
+		Order("decided_at DESC").
+		Limit(limit).
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing decided agent selections by session: %w", err)
+	}
+	for left, right := 0, len(models)-1; left < right; left, right = left+1, right-1 {
+		models[left], models[right] = models[right], models[left]
+	}
+	return models, nil
+}
+
 // GetAgentSelection returns a selection by ID.
 func (repo *AgentSelectionRepository) GetAgentSelection(projectID string, selectionID string) (domain.AgentSelectionModel, error) {
 	var model domain.AgentSelectionModel

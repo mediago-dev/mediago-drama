@@ -17,6 +17,7 @@ import { AgentFormImagesField, normalizeImageIds } from "./AgentFormImagesField"
 import {
 	AgentFormPromptOptimization,
 	formatPromptOptimizationValue,
+	normalizePromptOptimizationValue,
 } from "./AgentFormPromptOptimization";
 import { formatGenerationParamsValue } from "./agentFormGenerationParams.helpers";
 
@@ -83,7 +84,11 @@ const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }
 		initialFormValues(payload.fields),
 	);
 	const [submitting, setSubmitting] = useState(false);
+	// Reference-image uploads in flight: submitting now would snapshot values
+	// without the pending asset ids, so the buttons wait for the batch.
+	const [busyFieldCount, setBusyFieldCount] = useState(0);
 	const [error, setError] = useState("");
+	const busy = submitting || busyFieldCount > 0;
 
 	const setValue = (fieldId: string, value: unknown) =>
 		setValues((current) => ({ ...current, [fieldId]: value }));
@@ -108,7 +113,13 @@ const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }
 		setSubmitting(true);
 		setError("");
 		try {
-			const record = await decideAgentSelection(payload.selectionId, request, projectId);
+			const record = await decideAgentSelection(
+				payload.selectionId,
+				request.values
+					? { ...request, values: normalizeFormValues(payload.fields, request.values) }
+					: request,
+				projectId,
+			);
 			if (record.status === "submitted") {
 				finish(
 					`已提交：${formSummary(payload.fields, record.decision?.values ?? {})}`,
@@ -145,6 +156,9 @@ const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }
 						disabled={submitting}
 						projectId={payload.projectId}
 						onChange={(value) => setValue(field.id, value)}
+						onBusyChange={(fieldBusy) =>
+							setBusyFieldCount((count) => Math.max(0, count + (fieldBusy ? 1 : -1)))
+						}
 					/>
 				))}
 			</div>
@@ -153,7 +167,7 @@ const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }
 				<button
 					type="button"
 					className="inline-flex min-h-7 cursor-pointer items-center rounded-sm border border-border bg-background px-2.5 py-1 font-medium text-foreground transition-colors hover:bg-ide-list-hover disabled:cursor-not-allowed disabled:opacity-50"
-					disabled={submitting}
+					disabled={busy}
 					onClick={() => void decide({ cancelled: true })}
 				>
 					取消
@@ -161,7 +175,7 @@ const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }
 				<button
 					type="button"
 					className="inline-flex min-h-7 cursor-pointer items-center rounded-sm border border-primary bg-primary px-2.5 py-1 font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-					disabled={submitting}
+					disabled={busy}
 					onClick={() => void decide({ values })}
 				>
 					{payload.submitLabel || "确认"}
@@ -177,7 +191,8 @@ const FormFieldControl: React.FC<{
 	disabled: boolean;
 	projectId?: string;
 	onChange: (value: unknown) => void;
-}> = ({ field, value, disabled, projectId, onChange }) => (
+	onBusyChange?: (busy: boolean) => void;
+}> = ({ field, value, disabled, projectId, onChange, onBusyChange }) => (
 	<div>
 		<div className="flex items-baseline gap-2">
 			<span className="font-medium text-foreground">{field.label}</span>
@@ -199,6 +214,7 @@ const FormFieldControl: React.FC<{
 					disabled={disabled}
 					projectId={projectId}
 					onChange={onChange}
+					onBusyChange={onBusyChange}
 				/>
 			) : null}
 			{field.type === "select" ? (
@@ -277,6 +293,19 @@ const FormFieldControl: React.FC<{
 		</div>
 	</div>
 );
+
+// normalizeFormValues fixes up agent-prefilled defaults the user never
+// touched before they go to the server — e.g. a bare-boolean
+// prompt_optimization default becomes the object shape validation expects.
+const normalizeFormValues = (fields: AgentFormField[], values: Record<string, unknown>) => {
+	const normalized: Record<string, unknown> = { ...values };
+	for (const field of fields) {
+		if (field.type === "prompt_optimization" && field.id in normalized) {
+			normalized[field.id] = normalizePromptOptimizationValue(normalized[field.id]);
+		}
+	}
+	return normalized;
+};
 
 const initialFormValues = (fields: AgentFormField[]) => {
 	const values: Record<string, unknown> = {};

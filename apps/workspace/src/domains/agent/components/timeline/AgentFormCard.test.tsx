@@ -305,6 +305,62 @@ describe("AgentFormCard", () => {
 		expect(submitted.referenceName).toBe("2D动漫");
 		expect(submitted.referencePrompt).toBe("纯正2D日系");
 	});
+
+	it("normalizes a bare-boolean prompt_optimization default into the object shape on submit", async () => {
+		vi.mocked(decideAgentSelection).mockImplementation(
+			async (_id, request) =>
+				({
+					id: "selection-5",
+					title: "确认生成参数",
+					options: [],
+					allowCustom: false,
+					status: "submitted",
+					decision: { values: request.values },
+					createdAt: "2026-06-08T10:00:00.000Z",
+				}) as never,
+		);
+		const message = promptOptimizationFormMessage();
+		const form = message.metadata?.form;
+		if (form) form.fields = [{ ...form.fields[0], default: false }];
+		seedConversation(message);
+		useProjectStore.setState({ activeProjectId: "project-1" });
+
+		render(<AgentFormCard message={message} />);
+		// 用户不碰字段直接提交：boolean default 必须被归一化为对象，服务端才不会 400。
+		fireEvent.click(screen.getByText("确认生成"));
+		await waitFor(() => expect(decideAgentSelection).toHaveBeenCalledTimes(1));
+		const [, request] = vi.mocked(decideAgentSelection).mock.calls[0];
+		expect((request as { values: Record<string, unknown> }).values.optimize).toEqual({
+			enabled: false,
+		});
+	});
+
+	it("keeps already-uploaded reference images when a later file in the batch fails", async () => {
+		mocks.uploadMediaAsset
+			.mockResolvedValueOnce({ id: "asset-new-1" })
+			.mockRejectedValueOnce(new Error("network down"));
+		const message = imagesFormMessage();
+		const form = message.metadata?.form;
+		if (form) form.fields = [{ ...form.fields[0], default: ["asset-a"] }];
+		seedConversation(message);
+		useProjectStore.setState({ activeProjectId: "project-1" });
+
+		const { container } = render(<AgentFormCard message={message} />);
+		const fileInput = container.querySelector('input[type="file"]');
+		if (!fileInput) throw new Error("file input missing");
+		fireEvent.change(fileInput, {
+			target: {
+				files: [
+					new File(["a"], "a.png", { type: "image/png" }),
+					new File(["b"], "b.png", { type: "image/png" }),
+				],
+			},
+		});
+
+		// 第 1 张成功即入列（2 张缩略图），第 2 张失败展示错误但不吞掉已成功的。
+		await waitFor(() => expect(screen.getAllByLabelText("移除参考图").length).toBe(2));
+		await waitFor(() => expect(screen.getByText("network down")).toBeTruthy());
+	});
 });
 
 const promptOptimizationCatalog = () => ({
