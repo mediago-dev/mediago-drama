@@ -187,6 +187,10 @@ describe("HistoryGenerationList", () => {
 		const previewVideo = within(previewDialog).getByTestId("video-preview");
 		expect(previewVideo.getAttribute("src")).toBe("https://example.test/scene.mp4");
 		expect(previewVideo.getAttribute("data-mime-type")).toBe("video/mp4");
+		expect(previewDialog.closest("[data-dialog-layer]")).toHaveAttribute(
+			"data-dialog-layer-state",
+			"top",
+		);
 		fireEvent.click(within(previewDialog).getByRole("button", { name: "关闭预览" }));
 
 		const card = container.querySelector("article");

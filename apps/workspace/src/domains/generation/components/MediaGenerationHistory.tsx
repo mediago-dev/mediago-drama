@@ -34,6 +34,7 @@ import {
 } from "@/domains/generation/components/mediaGenerationHelpers";
 import { Button } from "@/shared/components/ui/button";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
+import { useDialogLayer } from "@/shared/components/ui/dialog-layer";
 import {
 	ContextMenu,
 	ContextMenuContent,
@@ -619,40 +620,50 @@ const HistoryVideoPreviewDialog: React.FC<{
 	onOpenChange: (open: boolean) => void;
 	open: boolean;
 	source: string;
-}> = ({ mimeType, onOpenChange, open, source }) => (
-	<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-		<DialogPrimitive.Portal>
-			<DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-foreground/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
-			<DialogPrimitive.Content
-				aria-describedby={undefined}
-				className={cn(
-					"fixed left-1/2 top-1/2 z-[61] w-[min(80rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-sm border border-border bg-card shadow-2xl outline-none",
-					dialogContentMotion,
-				)}
-			>
-				<div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
-					<DialogPrimitive.Title className="truncate text-sm font-semibold text-foreground">
-						预览视频
-					</DialogPrimitive.Title>
-					<DialogPrimitive.Close asChild>
-						<Button type="button" variant="ghost" size="icon" aria-label="关闭预览">
-							<X className="size-4" />
-						</Button>
-					</DialogPrimitive.Close>
-				</div>
-				<div className="bg-black">
-					<VideoPlayer
-						src={source}
-						mimeType={mimeType || "video/mp4"}
-						load="eager"
-						showTitleInControls={false}
-						className="aspect-video h-auto max-h-[calc(100vh-10rem)] w-full"
-					/>
-				</div>
-			</DialogPrimitive.Content>
-		</DialogPrimitive.Portal>
-	</DialogPrimitive.Root>
-);
+}> = ({ mimeType, onOpenChange, open, source }) => {
+	const layer = useDialogLayer({ onOpenChange, open });
+
+	return (
+		<DialogPrimitive.Root open={layer.open} onOpenChange={layer.requestOpenChange}>
+			{layer.portalContainer ? (
+				<DialogPrimitive.Portal container={layer.portalContainer}>
+					<DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-foreground/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
+					<DialogPrimitive.Content
+						aria-describedby={undefined}
+						className={cn(
+							"fixed left-1/2 top-1/2 z-50 w-[min(80rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-sm border border-border bg-card shadow-2xl outline-none",
+							dialogContentMotion,
+						)}
+						data-dialog-layer-state={layer.isTop ? "top" : "covered"}
+						onEscapeKeyDown={(event) => event.preventDefault()}
+						onFocusOutside={(event) => layer.preventDismissWhenCovered(event)}
+						onPointerDownOutside={(event) => layer.preventDismissWhenCovered(event)}
+					>
+						<div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
+							<DialogPrimitive.Title className="truncate text-sm font-semibold text-foreground">
+								预览视频
+							</DialogPrimitive.Title>
+							<DialogPrimitive.Close asChild>
+								<Button type="button" variant="ghost" size="icon" aria-label="关闭预览">
+									<X className="size-4" />
+								</Button>
+							</DialogPrimitive.Close>
+						</div>
+						<div className="bg-black">
+							<VideoPlayer
+								src={source}
+								mimeType={mimeType || "video/mp4"}
+								load="eager"
+								showTitleInControls={false}
+								className="aspect-video h-auto max-h-[calc(100vh-10rem)] w-full"
+							/>
+						</div>
+					</DialogPrimitive.Content>
+				</DialogPrimitive.Portal>
+			) : null}
+		</DialogPrimitive.Root>
+	);
+};
 
 const HistoryAudioCardBody: React.FC<{
 	asset: GenerationAsset;

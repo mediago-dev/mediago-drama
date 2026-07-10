@@ -1044,6 +1044,15 @@ describe("ProjectOverview", () => {
 		expect(videoPreview.getAttribute("src")).toContain(
 			"/api/v1/media-assets/selected-video-1/content",
 		);
+		expect(dialog).toHaveAttribute("data-state", "open");
+		expect(dialog.closest("[data-dialog-layer]")).toHaveAttribute(
+			"data-dialog-layer-state",
+			"covered",
+		);
+		expect(videoPreview.closest("[role='dialog']")?.closest("[data-dialog-layer]")).toHaveAttribute(
+			"data-dialog-layer-state",
+			"top",
+		);
 		fireEvent.click(screen.getByLabelText("关闭预览"));
 		await waitFor(() => expect(screen.queryByTestId("video-preview")).not.toBeInTheDocument());
 

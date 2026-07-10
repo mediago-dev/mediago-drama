@@ -19,6 +19,7 @@ import "react-photo-view/dist/react-photo-view.css";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VideoPlayer } from "@/components/VideoPlayer";
+import { useDialogLayer } from "@/shared/components/ui/dialog-layer";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { Navigate, useLocation } from "react-router-dom";
 import useSWR from "swr";
@@ -1376,8 +1377,7 @@ const isStoryboardVideoResourcesDialogTab = (
 ): value is StoryboardVideoResourcesDialogTab =>
 	value === "list" || value === "canvas" || value === "preview";
 
-// 成片封面点击后的视频预览弹窗，复用共享的 VideoPlayer。作为 Radix 弹窗嵌在资源弹窗之上，
-// 由 dismissable-layer 层级栈处理，不会误关外层 GenerationModalShell。
+// 成片封面点击后的视频预览弹窗，复用共享的 VideoPlayer，并参与统一弹窗层级栈。
 const VideoResourcePreviewDialog: React.FC<{
 	mimeType?: string;
 	onOpenChange: (open: boolean) => void;
@@ -1385,41 +1385,51 @@ const VideoResourcePreviewDialog: React.FC<{
 	poster?: string;
 	source: string;
 	title?: string;
-}> = ({ mimeType, onOpenChange, open, poster, source, title }) => (
-	<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-		<DialogPrimitive.Portal>
-			<DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-foreground/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
-			<DialogPrimitive.Content
-				aria-describedby={undefined}
-				className={cn(
-					"fixed left-1/2 top-1/2 z-[61] w-[min(80rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-sm border border-border bg-card shadow-2xl outline-none",
-					dialogContentMotion,
-				)}
-			>
-				<div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
-					<DialogPrimitive.Title className="truncate text-sm font-semibold text-foreground">
-						{title?.trim() || "预览视频"}
-					</DialogPrimitive.Title>
-					<DialogPrimitive.Close asChild>
-						<Button type="button" variant="ghost" size="icon" aria-label="关闭预览">
-							<X className="size-4" />
-						</Button>
-					</DialogPrimitive.Close>
-				</div>
-				<div className="bg-black">
-					<VideoPlayer
-						src={source}
-						poster={poster}
-						mimeType={mimeType || "video/mp4"}
-						load="eager"
-						showTitleInControls={false}
-						className="aspect-video h-auto max-h-[calc(100vh-10rem)] w-full"
-					/>
-				</div>
-			</DialogPrimitive.Content>
-		</DialogPrimitive.Portal>
-	</DialogPrimitive.Root>
-);
+}> = ({ mimeType, onOpenChange, open, poster, source, title }) => {
+	const layer = useDialogLayer({ onOpenChange, open });
+
+	return (
+		<DialogPrimitive.Root open={layer.open} onOpenChange={layer.requestOpenChange}>
+			{layer.portalContainer ? (
+				<DialogPrimitive.Portal container={layer.portalContainer}>
+					<DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-foreground/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
+					<DialogPrimitive.Content
+						aria-describedby={undefined}
+						className={cn(
+							"fixed left-1/2 top-1/2 z-50 w-[min(80rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-sm border border-border bg-card shadow-2xl outline-none",
+							dialogContentMotion,
+						)}
+						data-dialog-layer-state={layer.isTop ? "top" : "covered"}
+						onEscapeKeyDown={(event) => event.preventDefault()}
+						onFocusOutside={(event) => layer.preventDismissWhenCovered(event)}
+						onPointerDownOutside={(event) => layer.preventDismissWhenCovered(event)}
+					>
+						<div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
+							<DialogPrimitive.Title className="truncate text-sm font-semibold text-foreground">
+								{title?.trim() || "预览视频"}
+							</DialogPrimitive.Title>
+							<DialogPrimitive.Close asChild>
+								<Button type="button" variant="ghost" size="icon" aria-label="关闭预览">
+									<X className="size-4" />
+								</Button>
+							</DialogPrimitive.Close>
+						</div>
+						<div className="bg-black">
+							<VideoPlayer
+								src={source}
+								poster={poster}
+								mimeType={mimeType || "video/mp4"}
+								load="eager"
+								showTitleInControls={false}
+								className="aspect-video h-auto max-h-[calc(100vh-10rem)] w-full"
+							/>
+						</div>
+					</DialogPrimitive.Content>
+				</DialogPrimitive.Portal>
+			) : null}
+		</DialogPrimitive.Root>
+	);
+};
 
 const StoryboardReelVideoCard: React.FC<{
 	generationStatus?: ResourceGenerationStatus;
