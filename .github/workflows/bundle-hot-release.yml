@@ -116,7 +116,7 @@ jobs:
 
       - name: Go server race tests
         working-directory: services/server
-        run: go test -race ./...
+        run: task test
 
       - name: Guard full-installer proof and monotonic hot revision
         id: release_guard
