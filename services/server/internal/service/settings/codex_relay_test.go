@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -109,7 +110,7 @@ func TestPrepareCodexRelayRuntimeConfigWritesLocalCodexHomeWithoutSecret(t *test
 			ID:       "relay",
 			Name:     "Relay",
 			BaseURL:  "https://relay.example.com/v1",
-			Model:    "deepseek-v4-pro",
+			Model:    "gpt-5.6-sol",
 			Protocol: CodexRelayProtocolResponses,
 			Enabled:  true,
 		}},
@@ -137,7 +138,7 @@ func TestPrepareCodexRelayRuntimeConfigWritesLocalCodexHomeWithoutSecret(t *test
 		t.Fatalf("config.toml leaks secret:\n%s", configText)
 	}
 	for _, want := range []string{
-		`model = "deepseek-v4-pro"`,
+		`model = "gpt-5.6-sol"`,
 		`model_provider = "mediago-codex-relay"`,
 		`base_url = "http://127.0.0.1:8080/api/v1/codex-relay/v1"`,
 	} {
@@ -235,7 +236,7 @@ func TestCheckCodexRelayAuthenticatesUpstream(t *testing.T) {
 		gotAuth = request.Header.Get("Authorization")
 		gotPath = request.URL.Path
 		writer.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(writer, `{"data":[]}`)
+		fmt.Fprint(writer, `{"data":[{"id":"GPT-5.5"},{"id":"gpt-5.4"},{"id":"GPT-5.4-Mini"},{"id":"gpt-5.6-terra"},{"id":"codex-auto-review"},{"id":"gpt-5.6-luna"},{"id":"gpt-5.6-sol"},{"id":"gpt-5.6-sol"},{"id":"  "},{"object":"model"}]}`)
 	}))
 	defer server.Close()
 
@@ -275,6 +276,58 @@ func TestCheckCodexRelayAuthenticatesUpstream(t *testing.T) {
 	}
 	if gotPath != "/v1/models" {
 		t.Fatalf("path = %q, want models check path", gotPath)
+	}
+	wantModels := []string{
+		"gpt-5.6-sol",
+		"gpt-5.6-terra",
+		"gpt-5.6-luna",
+		"GPT-5.5",
+		"gpt-5.4",
+		"GPT-5.4-Mini",
+		"codex-auto-review",
+	}
+	if !reflect.DeepEqual(result.Models, wantModels) {
+		t.Fatalf("models = %#v, want sorted unique model ids %#v", result.Models, wantModels)
+	}
+}
+
+func TestCheckCodexRelayKeepsConnectivitySuccessWhenModelCatalogIsMalformed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{"data":`)
+	}))
+	defer server.Close()
+
+	service := NewSettingsWithStores(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		nil,
+		&memoryAppSettingStore{values: map[string]string{}},
+	)
+	ctx := context.Background()
+	if _, err := service.SaveCodexRelaySettings(ctx, CodexRelaySettingsMutation{
+		Enabled:         true,
+		ActiveProfileID: "relay",
+		Profiles: []CodexRelayProfileMutation{{
+			ID:       "relay",
+			Name:     "Relay",
+			BaseURL:  server.URL + "/v1",
+			Model:    "gpt-5.6-sol",
+			Protocol: CodexRelayProtocolResponses,
+			Enabled:  true,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveCodexRelaySettings returned error: %v", err)
+	}
+	if _, err := service.SetCodexRelayProfileAPIKey(ctx, "relay", "sk-upstream-check"); err != nil {
+		t.Fatalf("SetCodexRelayProfileAPIKey returned error: %v", err)
+	}
+
+	result, err := service.CheckCodexRelay(ctx, CodexRelayCheckRequest{})
+	if err != nil {
+		t.Fatalf("CheckCodexRelay returned error: %v", err)
+	}
+	if !result.OK || result.StatusCode != http.StatusOK || len(result.Models) != 0 {
+		t.Fatalf("result = %#v, want successful check with no parsed models", result)
 	}
 }
 

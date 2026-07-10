@@ -91,7 +91,7 @@ func TestAgentBackendServiceKeepsSpacesInsideVendoredExecutablePath(t *testing.T
 	if err := os.MkdirAll(agentDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	manifest := `{"id":"codex","bin":"codex-acp","args":[],"version":"v0.15.0"}`
+	manifest := `{"id":"codex","bin":"codex-acp","args":[],"version":"1.1.2"}`
 	if err := os.WriteFile(filepath.Join(agentDir, "agent.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -102,6 +102,44 @@ func TestAgentBackendServiceKeepsSpacesInsideVendoredExecutablePath(t *testing.T
 	assertArgv(t, argv, []string{filepath.Join(binDir, "codex", "codex-acp")})
 	if len(argv) != 1 {
 		t.Fatalf("len(ActiveArgv()) = %d, want 1", len(argv))
+	}
+}
+
+func TestAgentBackendServiceResolvesVendoredCodexEnvironment(t *testing.T) {
+	binDir := filepath.Join(t.TempDir(), "MediaGo Drama Resources")
+	agentDir := filepath.Join(binDir, "codex")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	manifest := `{"id":"codex","bin":"codex-acp","args":[],"version":"1.1.2","codexBin":"codex/vendor/aarch64-apple-darwin/bin/codex","codexVersion":"0.144.0"}`
+	if err := os.WriteFile(filepath.Join(agentDir, "agent.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	store := NewAgentBackendServiceWithBinDir("", binDir, "codex")
+	env := store.ActiveEnv()
+	want := filepath.Join(agentDir, "codex", "vendor", "aarch64-apple-darwin", "bin", "codex")
+	if env["CODEX_PATH"] != want {
+		t.Fatalf("CODEX_PATH = %q, want %q", env["CODEX_PATH"], want)
+	}
+	if _, ok := env["DEFAULT_AUTH_REQUEST"]; ok {
+		t.Fatalf("vendored backend env should not force an authentication method: %#v", env)
+	}
+}
+
+func TestLoadAgentManifestRejectsEscapingCodexPath(t *testing.T) {
+	binDir := t.TempDir()
+	agentDir := filepath.Join(binDir, "codex")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	manifest := `{"id":"codex","bin":"codex-acp","args":[],"version":"1.1.2","codexBin":"../codex"}`
+	if err := os.WriteFile(filepath.Join(agentDir, "agent.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if _, err := loadAgentManifest(binDir, "codex"); err == nil {
+		t.Fatal("loadAgentManifest() error = nil, want escaping path rejection")
 	}
 }
 

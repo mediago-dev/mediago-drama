@@ -146,10 +146,19 @@ func newAPIHandler(config Config) *apiHandler {
 				if err != nil {
 					return serviceacp.ProcessConfig{}, err
 				}
-				return serviceacp.ProcessConfig{
+				processConfig := serviceacp.ProcessConfig{
 					ConfigDir: config.ConfigDir,
-					Env:       config.Env,
-				}, nil
+					Env:       mergeACPProcessEnv(config.Env, backendService.ActiveEnv()),
+				}
+				if strings.TrimSpace(request.PreferredModel) == "" {
+					check, checkErr := settings.CheckCodexRelay(ctx, servicesettings.CodexRelayCheckRequest{})
+					if checkErr == nil && len(check.Models) > 0 {
+						processConfig.RestrictModelValues = true
+						processConfig.AllowedModelValues = append([]string(nil), check.Models...)
+						processConfig.DiscoveredModelValues = append([]string(nil), check.Models...)
+					}
+				}
+				return processConfig, nil
 			}
 			if request.AgentID != "opencode" {
 				return serviceacp.ProcessConfig{}, nil
@@ -282,6 +291,20 @@ func newAPIHandler(config Config) *apiHandler {
 		},
 	)
 	return handler
+}
+
+func mergeACPProcessEnv(base map[string]string, overrides map[string]string) map[string]string {
+	merged := make(map[string]string, len(base)+len(overrides))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range overrides {
+		merged[key] = value
+	}
+	if strings.TrimSpace(merged["CODEX_API_KEY"]) != "" || strings.TrimSpace(merged["OPENAI_API_KEY"]) != "" {
+		merged["DEFAULT_AUTH_REQUEST"] = `{"methodId":"api-key"}`
+	}
+	return merged
 }
 
 func defaultAgentBridgeURL(host string, port int) string {

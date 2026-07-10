@@ -228,6 +228,62 @@ func TestACPAgentRunnerPrepareProcessConfigForManagedACPBackends(t *testing.T) {
 	}
 }
 
+func TestOfficialCodexACPCompatibilityProbe(t *testing.T) {
+	adapterPath := strings.TrimSpace(os.Getenv("MEDIAGO_TEST_CODEX_ACP"))
+	codexPath := strings.TrimSpace(os.Getenv("MEDIAGO_TEST_CODEX_PATH"))
+	if adapterPath == "" || codexPath == "" {
+		t.Skip("set MEDIAGO_TEST_CODEX_ACP and MEDIAGO_TEST_CODEX_PATH to run the packaged compatibility probe")
+	}
+
+	workspaceDir := t.TempDir()
+	if configPath := strings.TrimSpace(os.Getenv("MEDIAGO_TEST_CODEX_CONFIG")); configPath != "" {
+		config, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("ReadFile(Codex config) error = %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(workspaceDir, "config.toml"), config, 0o600); err != nil {
+			t.Fatalf("WriteFile(Codex config) error = %v", err)
+		}
+	}
+	runner := NewACPAgentRunnerWithDocumentMCPConfigPathAndArgv(
+		adapterPath,
+		workspaceDir,
+		"",
+		nil,
+		nil,
+		func() []string { return []string{adapterPath} },
+	)
+	runner.SetProcessConfigProvider(ProcessConfigProviderFunc(func(context.Context, ProcessConfigRequest) (ProcessConfig, error) {
+		return ProcessConfig{Env: map[string]string{
+			"CODEX_HOME":           workspaceDir,
+			"CODEX_PATH":           codexPath,
+			"DEFAULT_AUTH_REQUEST": `{"methodId":"api-key"}`,
+			"NO_BROWSER":           "1",
+			"OPENAI_API_KEY":       "mediago-codex-relay",
+		}}, nil
+	}))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	config, err := runner.InspectSessionConfig(ctx, "compatibility-probe", workspaceDir)
+	if err != nil {
+		t.Fatalf("InspectSessionConfig() error = %v", err)
+	}
+	if config.Model == nil || len(config.Model.Options) == 0 {
+		t.Fatalf("model config = %#v, want official Codex ACP model options", config.Model)
+	}
+	foundGPT56 := false
+	for _, option := range config.Model.Options {
+		if strings.EqualFold(option.Value, "gpt-5.6-sol") {
+			foundGPT56 = true
+			break
+		}
+	}
+	if !foundGPT56 {
+		t.Fatalf("model options = %#v, want gpt-5.6-sol from Codex 0.144.0", config.Model.Options)
+	}
+}
+
 func TestMergedProcessEnvOverridesRuntimeConfigVariables(t *testing.T) {
 	t.Setenv("OPENCODE_CONFIG_DIR", "/old/config")
 	t.Setenv("MEDIAGO_AGENT_MODEL_MINIMAX_API_KEY", "old-key")
@@ -376,6 +432,60 @@ func TestAgentRuntimeConfigFromACPSessionRestrictsModelsToRuntimeProfiles(t *tes
 	}
 	if config.Reasoning == nil {
 		t.Fatal("reasoning config is nil")
+	}
+}
+
+func TestAgentRuntimeConfigFromACPSessionUsesDiscoveredRelayModels(t *testing.T) {
+	modelCategory := acp.SessionConfigOptionCategoryModel
+	modelOptions := acp.SessionConfigSelectOptionsUngrouped{
+		{Name: "GPT-5.5", Value: acp.SessionConfigValueId("gpt-5.5")},
+		{Name: "GPT-5.4", Value: acp.SessionConfigValueId("gpt-5.4")},
+		{Name: "GPT-5.4-Mini", Value: acp.SessionConfigValueId("gpt-5.4-mini")},
+	}
+	discovered := []string{
+		"gpt-5.6-sol",
+		"gpt-5.6-terra",
+		"gpt-5.6-luna",
+		"gpt-5.5",
+		"gpt-5.4",
+		"gpt-5.4-mini",
+		"codex-auto-review",
+	}
+	config := agentRuntimeConfigFromACPSession(acp.NewSessionResponse{
+		SessionId: acp.SessionId("session-1"),
+		ConfigOptions: []acp.SessionConfigOption{
+			{
+				Select: &acp.SessionConfigOptionSelect{
+					Id:           acp.SessionConfigId("model"),
+					Name:         "Model",
+					Category:     &modelCategory,
+					CurrentValue: acp.SessionConfigValueId("gpt-5.5"),
+					Options:      acp.SessionConfigSelectOptions{Ungrouped: &modelOptions},
+				},
+			},
+		},
+	}, agentRuntimeModelFilter{
+		Restrict:         true,
+		AllowedValues:    discovered,
+		DiscoveredValues: discovered,
+	})
+
+	if config.Model == nil {
+		t.Fatal("model config is nil")
+	}
+	if config.Model.CurrentValue != "gpt-5.5" {
+		t.Fatalf("current model = %q, want ACP current model preserved", config.Model.CurrentValue)
+	}
+	if len(config.Model.Options) != len(discovered) {
+		t.Fatalf("model options = %#v, want discovered relay models", config.Model.Options)
+	}
+	for index, model := range discovered {
+		if config.Model.Options[index].Value != model {
+			t.Fatalf("model option %d = %#v, want merged models ordered like relay catalog %q", index, config.Model.Options[index], model)
+		}
+	}
+	if config.Model.Options[3].Name != "GPT-5.5" {
+		t.Fatalf("existing ACP display name = %q, want preserved", config.Model.Options[3].Name)
 	}
 }
 
