@@ -333,6 +333,7 @@ func TestSettingsJimengBrowserLoginReturnsChallengeAndPersistsAfterCLICompletes(
 	script := `#!/bin/sh
 if [ "$1" = "login" ] && [ "$#" -eq 1 ]; then
   echo "verification_uri: https://example.test/device"
+  sleep 0.05
   echo "user_code: ABCD-EFGH"
   echo "device_code: device-123"
   sleep 0.2
