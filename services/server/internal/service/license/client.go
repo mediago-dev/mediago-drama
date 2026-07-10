@@ -3,10 +3,10 @@ package license
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -51,7 +51,7 @@ type Client struct {
 	publisherAt    time.Time
 
 	deviceOnce sync.Once
-	deviceID   string
+	deviceKey  ed25519.PrivateKey
 }
 
 var _ Service = (*Client)(nil)
@@ -142,8 +142,8 @@ func (client *Client) Activate(ctx context.Context, code string) (StatusInfo, er
 		Token string `json:"token"`
 	}
 	err = client.postJSON(ctx, "/api/v1/activate", map[string]string{
-		"activation_code": code,
-		"device_hash":     client.deviceHash(),
+		"activation_code":   code,
+		"device_public_key": client.devicePublicKeyBase64(),
 	}, "", &activated)
 	if err != nil {
 		return client.Status(), err
@@ -207,12 +207,25 @@ func (client *Client) ResolvePackKey(ctx context.Context, keyID string) ([]byte,
 	if keyID == "" {
 		keyID = "default"
 	}
+	// Prove device possession: fetch a server challenge and sign it with the
+	// device private key (which never left this machine and is not in the token).
+	var challenged struct {
+		Challenge string `json:"challenge"`
+	}
+	if err := client.postJSON(ctx, "/api/v1/pack-keys/challenge", nil, stored.Token, &challenged); err != nil {
+		if errors.Is(err, ErrActivationRejected) {
+			return nil, fmt.Errorf("%w: challenge rejected", ErrPackKeyNotFound)
+		}
+		return nil, err
+	}
+	signature := ed25519.Sign(client.devicePrivateKey(), []byte(challenged.Challenge))
 	var resolved struct {
 		Key string `json:"key"`
 	}
 	if err := client.postJSON(ctx, "/api/v1/pack-keys/resolve", map[string]string{
-		"key_id":      keyID,
-		"device_hash": client.deviceHash(),
+		"key_id":           keyID,
+		"challenge":        challenged.Challenge,
+		"device_signature": base64.StdEncoding.EncodeToString(signature),
 	}, stored.Token, &resolved); err != nil {
 		if errors.Is(err, ErrActivationRejected) {
 			return nil, fmt.Errorf("%w: %q", ErrPackKeyNotFound, keyID)
@@ -377,55 +390,61 @@ func clonePublisherKeys(keys map[string][]byte) map[string][]byte {
 	return cloned
 }
 
-// deviceHash returns a stable fingerprint of this installation. It is derived
-// from a random device id persisted next to the license file, so a license
-// token copied to another machine (which has its own device id) fails the
-// device-binding check. Falls back to host attributes if the id cannot be
-// persisted.
-func (client *Client) deviceHash() string {
+// deviceKeyOnce loads (or creates) this installation's Ed25519 device keypair.
+// The private key is persisted next to the license file and never leaves the
+// device; only its public key is bound into the license token. Pack-key
+// resolution requires signing a server challenge with the private key, so a
+// license token copied to another machine cannot obtain keys.
+func (client *Client) devicePrivateKey() ed25519.PrivateKey {
 	client.deviceOnce.Do(func() {
-		client.deviceID = client.loadOrCreateDeviceID()
+		client.deviceKey = client.loadOrCreateDeviceKey()
 	})
-	sum := sha256.Sum256([]byte(client.deviceID))
-	return hex.EncodeToString(sum[:16])
+	return client.deviceKey
 }
 
-func (client *Client) loadOrCreateDeviceID() string {
-	path := filepath.Join(filepath.Dir(client.storePath), "device-id")
+// devicePublicKeyBase64 returns the base64-std device public key sent at
+// activation and matched against the token binding.
+func (client *Client) devicePublicKeyBase64() string {
+	pub := client.devicePrivateKey().Public().(ed25519.PublicKey)
+	return base64.StdEncoding.EncodeToString(pub)
+}
+
+func (client *Client) loadOrCreateDeviceKey() ed25519.PrivateKey {
+	path := filepath.Join(filepath.Dir(client.storePath), "device-key")
 	if raw, err := os.ReadFile(path); err == nil {
-		if id := strings.TrimSpace(string(raw)); id != "" {
-			return id
+		if seed, decodeErr := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw))); decodeErr == nil && len(seed) == ed25519.SeedSize {
+			return ed25519.NewKeyFromSeed(seed)
 		}
 	}
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		return machineFallbackID()
+	seed := make([]byte, ed25519.SeedSize)
+	if _, err := rand.Read(seed); err != nil {
+		return machineFallbackKey()
 	}
-	id := hex.EncodeToString(buf)
-	// If the id cannot be persisted, fall back to a stable machine-derived id
-	// rather than returning this ephemeral one — otherwise every launch would
-	// regenerate a different fingerprint and silently invalidate an already
-	// activated license, forcing re-activation.
+	// If the key cannot be persisted, derive a stable machine-bound key instead
+	// of returning this ephemeral one — otherwise every launch would regenerate
+	// a different key and silently invalidate an already activated license.
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return machineFallbackID()
+		return machineFallbackKey()
 	}
-	if err := os.WriteFile(path, []byte(id+"\n"), 0o600); err != nil {
-		return machineFallbackID()
+	if err := os.WriteFile(path, []byte(base64.StdEncoding.EncodeToString(seed)+"\n"), 0o600); err != nil {
+		return machineFallbackKey()
 	}
-	return id
+	return ed25519.NewKeyFromSeed(seed)
 }
 
-func machineFallbackID() string {
+func machineFallbackKey() ed25519.PrivateKey {
 	hostname, _ := os.Hostname()
 	home, _ := os.UserHomeDir()
-	return "host:" + hostname + "|" + home
+	seed := sha256.Sum256([]byte("mediago-device|" + hostname + "|" + home))
+	return ed25519.NewKeyFromSeed(seed[:])
 }
 
 // tokenMatchesDevice reports whether a token is usable on this device. A token
-// with an empty device hash is unbound (dev/legacy) and passes unconditionally.
+// with no bound device public key is unbound (dev/legacy) and passes. This is a
+// fast local check; the authoritative proof is the server challenge signature.
 func (client *Client) tokenMatchesDevice(payload TokenPayload) bool {
-	if strings.TrimSpace(payload.DeviceHash) == "" {
+	if strings.TrimSpace(payload.DevicePublicKey) == "" {
 		return true
 	}
-	return payload.DeviceHash == client.deviceHash()
+	return payload.DevicePublicKey == client.devicePublicKeyBase64()
 }

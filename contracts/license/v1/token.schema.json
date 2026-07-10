@@ -30,7 +30,11 @@
 		},
 		"device_hash": {
 			"type": "string",
-			"description": "Optional device binding fingerprint."
+			"description": "Optional short fingerprint of the bound device public key (display/records only, non-authoritative)."
+		},
+		"device_public_key": {
+			"type": "string",
+			"description": "Base64 Ed25519 device public key. When present, pack-key resolution requires a challenge signed by the matching device private key. Empty means unbound (floating license)."
 		},
 		"license_api_version": {
 			"type": "string",

@@ -25,6 +25,7 @@ type TokenPayload struct {
 	Entitlements      []string  `json:"entitlements"`
 	ExpiresAt         time.Time `json:"expires_at"`
 	DeviceHash        string    `json:"device_hash,omitempty"`
+	DevicePublicKey   string    `json:"device_public_key,omitempty"`
 	LicenseAPIVersion string    `json:"license_api_version"`
 }
 

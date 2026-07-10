@@ -206,23 +206,46 @@ func newFakeLicenseServer(t *testing.T) *fakeLicenseServer {
 	})
 	mux.HandleFunc("POST /api/v1/activate", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			ActivationCode string `json:"activation_code"`
-			DeviceHash     string `json:"device_hash"`
+			ActivationCode  string `json:"activation_code"`
+			DevicePublicKey string `json:"device_public_key"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body.ActivationCode != "MG-GOOD-CODE" {
 			writeEnvelopeError(w, http.StatusForbidden, 40310, "activation code is invalid")
 			return
 		}
-		// Bind the issued token to the activating device, like the real server.
+		// Bind the issued token to the activating device's public key.
 		writeEnvelope(w, http.StatusOK, map[string]any{
-			"token": fake.issueToken(nil, body.DeviceHash, time.Now().Add(time.Hour)),
+			"token": fake.issueToken(nil, body.DevicePublicKey, time.Now().Add(time.Hour)),
 			"plan":  "pro",
 		})
 	})
-	mux.HandleFunc("POST /api/v1/pack-keys/resolve", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/pack-keys/challenge", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 			writeEnvelopeError(w, http.StatusUnauthorized, 40110, "license token is required")
+			return
+		}
+		nonce := make([]byte, 32)
+		_, _ = rand.Read(nonce)
+		writeEnvelope(w, http.StatusOK, map[string]any{"challenge": base64.StdEncoding.EncodeToString(nonce)})
+	})
+	mux.HandleFunc("POST /api/v1/pack-keys/resolve", func(w http.ResponseWriter, r *http.Request) {
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if strings.TrimSpace(token) == "" {
+			writeEnvelopeError(w, http.StatusUnauthorized, 40110, "license token is required")
+			return
+		}
+		var body struct {
+			KeyID           string `json:"key_id"`
+			Challenge       string `json:"challenge"`
+			DeviceSignature string `json:"device_signature"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		// Verify the device proved possession of the private key bound in the token.
+		pub := fake.tokenDevicePublicKey(token)
+		sig, _ := base64.StdEncoding.DecodeString(body.DeviceSignature)
+		if len(pub) != ed25519.PublicKeySize || !ed25519.Verify(pub, []byte(body.Challenge), sig) {
+			writeEnvelopeError(w, http.StatusForbidden, 40314, "license is bound to another device")
 			return
 		}
 		writeEnvelope(w, http.StatusOK, map[string]any{
@@ -249,7 +272,7 @@ func (fake *fakeLicenseServer) publicKeyBase64() string {
 	return base64.StdEncoding.EncodeToString(fake.publicKey)
 }
 
-func (fake *fakeLicenseServer) issueToken(t *testing.T, deviceHash string, expiresAt time.Time) string {
+func (fake *fakeLicenseServer) issueToken(t *testing.T, devicePublicKey string, expiresAt time.Time) string {
 	if t != nil {
 		t.Helper()
 	}
@@ -258,11 +281,33 @@ func (fake *fakeLicenseServer) issueToken(t *testing.T, deviceHash string, expir
 		Plan:              "pro",
 		Entitlements:      []string{"pack.import.pro"},
 		ExpiresAt:         expiresAt.UTC(),
-		DeviceHash:        deviceHash,
+		DevicePublicKey:   devicePublicKey,
 		LicenseAPIVersion: "v1",
 	})
 	signature := ed25519.Sign(fake.private, payload)
 	return base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(signature)
+}
+
+// tokenDevicePublicKey extracts the bound device public key from a token,
+// mirroring how the real server reads it to verify the challenge signature.
+func (fake *fakeLicenseServer) tokenDevicePublicKey(token string) []byte {
+	parts := strings.SplitN(strings.TrimSpace(token), ".", 2)
+	if len(parts) != 2 {
+		return nil
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil
+	}
+	var payload TokenPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil
+	}
+	pub, err := base64.StdEncoding.DecodeString(payload.DevicePublicKey)
+	if err != nil {
+		return nil
+	}
+	return pub
 }
 
 func writeEnvelope(w http.ResponseWriter, status int, data any) {
