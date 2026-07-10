@@ -12,6 +12,8 @@ const (
 	// defaultProEntitlement is the fallback entitlement for pro pack imports.
 	// Entitlement ids are governed by contracts/license/v1/features.yaml.
 	defaultProEntitlement = "pack.import.pro"
+	// appAccessEntitlement gates entering the software (separate from packs).
+	appAccessEntitlement = "app.access"
 
 	licenseEntitlementsEnv  = "MEDIAGO_LICENSE_ENTITLEMENTS"
 	licensePackKeysEnv      = "MEDIAGO_LICENSE_PACK_KEYS"
@@ -68,8 +70,9 @@ func (provider *DevProvider) HasEntitlement(_ context.Context, entitlement strin
 	return wildcard, nil
 }
 
-// ResolvePackKey returns the raw 32-byte AES key for the key identifier.
-func (provider *DevProvider) ResolvePackKey(_ context.Context, keyID string) ([]byte, error) {
+// ResolvePackKey returns the raw 32-byte AES key for the key identifier. The
+// dev provider trusts its environment config and ignores the entitlement.
+func (provider *DevProvider) ResolvePackKey(_ context.Context, keyID string, _ string) ([]byte, error) {
 	if provider == nil {
 		return nil, ErrLicenseConfigInvalid
 	}

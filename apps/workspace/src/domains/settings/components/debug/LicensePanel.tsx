@@ -1,9 +1,9 @@
-import { BadgeCheck, KeyRound, Loader2, ShieldOff } from "lucide-react";
+import { BadgeCheck, KeyRound, Loader2, ShieldCheck, ShieldOff } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
 import useSWR from "swr";
 import {
-	type LicenseStatus,
+	type LicenseActivation,
 	activateLicense,
 	deactivateLicense,
 	getLicenseStatus,
@@ -24,8 +24,11 @@ export const LicensePanel: React.FC = () => {
 	} = useSWR(licenseStatusKey, getLicenseStatus);
 	const [code, setCode] = useState("");
 	const [isActivating, setIsActivating] = useState(false);
-	const [isDeactivating, setIsDeactivating] = useState(false);
+	const [busyLicenseId, setBusyLicenseId] = useState<string>();
 	const startWindowDrag = useDesktopWindowDrag();
+
+	const activations = status?.activations ?? [];
+	const configured = status?.configured ?? false;
 
 	const submitActivation = async () => {
 		const trimmed = code.trim();
@@ -35,7 +38,7 @@ export const LicensePanel: React.FC = () => {
 			const next = await activateLicense(trimmed);
 			await mutateStatus(next, { revalidate: false });
 			setCode("");
-			toast.success("激活成功", { description: planLabel(next) });
+			toast.success("激活成功", { description: "已添加一个授权。" });
 		} catch (error) {
 			toast.error("激活失败", { description: errorMessage(error) });
 		} finally {
@@ -43,16 +46,16 @@ export const LicensePanel: React.FC = () => {
 		}
 	};
 
-	const removeActivation = async () => {
-		setIsDeactivating(true);
+	const removeActivation = async (licenseId: string) => {
+		setBusyLicenseId(licenseId);
 		try {
-			const next = await deactivateLicense();
+			const next = await deactivateLicense(licenseId);
 			await mutateStatus(next, { revalidate: false });
-			toast.success("已取消激活", { description: "商业授权功能已停用。" });
+			toast.success("已取消该激活");
 		} catch (error) {
 			toast.error("取消激活失败", { description: errorMessage(error) });
 		} finally {
-			setIsDeactivating(false);
+			setBusyLicenseId(undefined);
 		}
 	};
 
@@ -67,7 +70,9 @@ export const LicensePanel: React.FC = () => {
 					<KeyRound className="size-4 text-muted-foreground" />
 					<h2 className="truncate text-sm font-semibold text-foreground">授权激活</h2>
 				</div>
-				<p className="mt-1 text-xs text-muted-foreground">输入激活码以启用商业授权功能。</p>
+				<p className="mt-1 text-xs text-muted-foreground">
+					分别输入「进入软件」和「购买提示词包」的激活码，多个激活可同时生效。
+				</p>
 			</header>
 
 			<div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -76,20 +81,24 @@ export const LicensePanel: React.FC = () => {
 						<Loader2 className="size-4 animate-spin" />
 						加载授权状态
 					</span>
-				) : status?.activated ? (
-					<ActivatedCard
-						deactivating={isDeactivating}
-						status={status}
-						onDeactivate={() => void removeActivation()}
-					/>
 				) : (
 					<div className="max-w-xl space-y-3">
-						{status && !status.configured ? (
+						{!configured ? (
 							<p className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
 								<ShieldOff className="size-4 shrink-0" />
 								未配置授权服务器，暂时无法激活。
 							</p>
-						) : null}
+						) : (
+							<p className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+								{status?.hasAppAccess ? (
+									<ShieldCheck className="size-4 shrink-0 text-success-foreground" />
+								) : (
+									<ShieldOff className="size-4 shrink-0" />
+								)}
+								{status?.hasAppAccess ? "已激活「进入软件」授权。" : "尚未激活「进入软件」授权。"}
+							</p>
+						)}
+
 						<form
 							className="space-y-3 rounded-md border border-border bg-card p-4"
 							onSubmit={(event) => {
@@ -98,9 +107,9 @@ export const LicensePanel: React.FC = () => {
 							}}
 						>
 							<div>
-								<h3 className="text-sm font-medium text-foreground">激活商业授权</h3>
+								<h3 className="text-sm font-medium text-foreground">添加激活码</h3>
 								<p className="mt-1 text-xs text-muted-foreground">
-									输入购买后获得的激活码，激活后即可使用商业提示词包等功能。
+									输入购买后获得的激活码。软件激活码开启使用权限，提示词包激活码解锁对应的 Pro 包。
 								</p>
 							</div>
 							<div className="flex items-center gap-2">
@@ -109,13 +118,13 @@ export const LicensePanel: React.FC = () => {
 									placeholder="请输入激活码"
 									value={code}
 									autoComplete="off"
-									disabled={!status?.configured || isActivating}
+									disabled={!configured || isActivating}
 									onChange={(event) => setCode(event.currentTarget.value)}
 								/>
 								<Button
 									type="submit"
 									className="shrink-0"
-									disabled={!status?.configured || isActivating || !code.trim()}
+									disabled={!configured || isActivating || !code.trim()}
 								>
 									{isActivating ? (
 										<Loader2 className="size-4 animate-spin" />
@@ -126,6 +135,20 @@ export const LicensePanel: React.FC = () => {
 								</Button>
 							</div>
 						</form>
+
+						{activations.length > 0 ? (
+							<div className="space-y-2">
+								<p className="text-xs text-muted-foreground">已激活（{activations.length}）</p>
+								{activations.map((activation) => (
+									<ActivationCard
+										key={activation.licenseId}
+										activation={activation}
+										busy={busyLicenseId === activation.licenseId}
+										onDeactivate={() => void removeActivation(activation.licenseId)}
+									/>
+								))}
+							</div>
+						) : null}
 					</div>
 				)}
 			</div>
@@ -133,46 +156,38 @@ export const LicensePanel: React.FC = () => {
 	);
 };
 
-const ActivatedCard: React.FC<{
-	deactivating: boolean;
+const ActivationCard: React.FC<{
+	activation: LicenseActivation;
+	busy: boolean;
 	onDeactivate: () => void;
-	status: LicenseStatus;
-}> = ({ deactivating, onDeactivate, status }) => (
-	<div className="max-w-xl space-y-3 rounded-md border border-border bg-card p-4">
+}> = ({ activation, busy, onDeactivate }) => (
+	<div className="space-y-2 rounded-md border border-border bg-card p-4">
 		<div className="flex flex-wrap items-center gap-2">
 			<BadgeCheck className="size-4 text-muted-foreground" />
-			<span className="text-sm font-medium text-foreground">已激活</span>
-			{status.plan ? <Badge variant="secondary">{status.plan}</Badge> : null}
+			<span className="text-sm font-medium text-foreground">
+				{activation.expired ? "已过期" : "已激活"}
+			</span>
+			{activation.plan ? <Badge variant="secondary">{activation.plan}</Badge> : null}
 		</div>
 		<div className="space-y-1 text-xs text-muted-foreground">
-			{status.licenseId ? <p>授权编号：{status.licenseId}</p> : null}
-			<p>到期时间：{formatExpiresAt(status.expiresAt)}</p>
+			<p>授权编号：{activation.licenseId}</p>
+			<p>到期时间：{formatExpiresAt(activation.expiresAt)}</p>
 		</div>
-		{status.entitlements && status.entitlements.length > 0 ? (
-			<div className="space-y-1.5">
-				<p className="text-xs text-muted-foreground">已授权功能</p>
-				<div className="flex flex-wrap items-center gap-1.5">
-					{status.entitlements.map((entitlement) => (
-						<Badge key={entitlement} variant="outline">
-							{entitlement}
-						</Badge>
-					))}
-				</div>
+		{activation.entitlements && activation.entitlements.length > 0 ? (
+			<div className="flex flex-wrap items-center gap-1.5">
+				{activation.entitlements.map((entitlement) => (
+					<Badge key={entitlement} variant="outline">
+						{entitlement}
+					</Badge>
+				))}
 			</div>
 		) : null}
-		<Button type="button" variant="outline" disabled={deactivating} onClick={onDeactivate}>
-			{deactivating ? (
-				<Loader2 className="size-4 animate-spin" />
-			) : (
-				<ShieldOff className="size-4" />
-			)}
-			<span>{deactivating ? "取消中" : "取消激活"}</span>
+		<Button type="button" variant="outline" size="sm" disabled={busy} onClick={onDeactivate}>
+			{busy ? <Loader2 className="size-4 animate-spin" /> : <ShieldOff className="size-4" />}
+			<span>{busy ? "取消中" : "取消激活"}</span>
 		</Button>
 	</div>
 );
-
-const planLabel = (status: LicenseStatus) =>
-	status.plan ? `当前方案：${status.plan}` : "商业授权已生效。";
 
 const formatExpiresAt = (value?: string) => {
 	if (!value) return "长期有效";

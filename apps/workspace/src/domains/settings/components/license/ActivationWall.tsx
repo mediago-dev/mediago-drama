@@ -26,7 +26,7 @@ export const ActivationWall: React.FC<{
 		try {
 			const next = await activateLicense(trimmed);
 			toast.success("激活成功", {
-				description: next.plan ? `当前方案：${next.plan}` : "商业授权已生效。",
+				description: next.hasAppAccess ? "已获得进入软件的授权。" : "激活已添加。",
 			});
 			onActivated(next);
 		} catch (error) {
@@ -51,7 +51,9 @@ export const ActivationWall: React.FC<{
 						<KeyRound className="size-5 text-muted-foreground" />
 					</div>
 					<h1 className="text-base font-semibold text-foreground">激活以使用 MediaGo Drama</h1>
-					<p className="text-xs text-muted-foreground">本版本为商业授权版，请输入激活码后继续。</p>
+					<p className="text-xs text-muted-foreground">
+						本版本为商业授权版，请输入「进入软件」的激活码后继续。
+					</p>
 				</div>
 				{!configured ? (
 					<p className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">

@@ -9,7 +9,9 @@ import "context"
 // entitlements as not granted.
 type Service interface {
 	HasEntitlement(ctx context.Context, entitlement string) (bool, error)
-	ResolvePackKey(ctx context.Context, keyID string) ([]byte, error)
+	// ResolvePackKey returns the decryption key for keyID, authorized by a
+	// license that grants entitlement.
+	ResolvePackKey(ctx context.Context, keyID string, entitlement string) ([]byte, error)
 	// ResolvePublisherKeys returns the trusted pack publisher Ed25519 public
 	// keys (32 bytes each) keyed by publisher key id.
 	ResolvePublisherKeys(ctx context.Context) (map[string][]byte, error)

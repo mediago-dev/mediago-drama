@@ -17,7 +17,7 @@ export const ProLicenseGate: React.FC<{ children: React.ReactNode }> = ({ childr
 		);
 	}
 
-	if (status?.activated) {
+	if (status?.hasAppAccess) {
 		return <>{children}</>;
 	}
 

@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -83,14 +84,22 @@ func (client *Client) Configured() bool {
 	return client != nil && client.baseURL != ""
 }
 
-// StatusInfo describes the local activation state for the settings UI.
-type StatusInfo struct {
-	Configured   bool     `json:"configured"`
-	Activated    bool     `json:"activated"`
-	LicenseID    string   `json:"licenseId,omitempty"`
+// ActivationInfo describes one stored activation for the settings UI.
+type ActivationInfo struct {
+	LicenseID    string   `json:"licenseId"`
 	Plan         string   `json:"plan,omitempty"`
 	Entitlements []string `json:"entitlements,omitempty"`
 	ExpiresAt    string   `json:"expiresAt,omitempty"`
+	Expired      bool     `json:"expired"`
+}
+
+// StatusInfo describes the local activation state for the settings UI. Multiple
+// independent activations (an app license plus pack purchases) can coexist.
+type StatusInfo struct {
+	Configured   bool             `json:"configured"`
+	HasAppAccess bool             `json:"hasAppAccess"`
+	Entitlements []string         `json:"entitlements,omitempty"`
+	Activations  []ActivationInfo `json:"activations,omitempty"`
 }
 
 type storedLicense struct {
@@ -100,32 +109,47 @@ type storedLicense struct {
 	SavedAt         string `json:"savedAt"`
 }
 
-// Status returns the current activation state, verifying the stored token.
+type licenseStore struct {
+	Licenses []storedLicense `json:"licenses"`
+}
+
+// Status returns the current activation state across all stored licenses.
 func (client *Client) Status() StatusInfo {
 	info := StatusInfo{Configured: client.Configured()}
-	stored, err := client.loadStored()
-	if err != nil {
-		return info
+	licenses, _ := client.loadStore()
+	granted := map[string]struct{}{}
+	for _, stored := range licenses {
+		payload, err := VerifyToken(stored.Token, stored.ServerPublicKey)
+		if err != nil && !errors.Is(err, ErrTokenExpired) {
+			continue
+		}
+		// A validly-signed token bound to a different device belongs to another
+		// machine (a copied license) — ignore it here.
+		if !client.tokenMatchesDevice(payload) {
+			continue
+		}
+		expired := errors.Is(err, ErrTokenExpired)
+		info.Activations = append(info.Activations, ActivationInfo{
+			LicenseID:    payload.LicenseID,
+			Plan:         payload.Plan,
+			Entitlements: append([]string(nil), payload.Entitlements...),
+			ExpiresAt:    payload.ExpiresAt.UTC().Format(time.RFC3339),
+			Expired:      expired,
+		})
+		if !expired {
+			for _, entitlement := range payload.Entitlements {
+				granted[strings.TrimSpace(entitlement)] = struct{}{}
+			}
+		}
 	}
-	payload, err := VerifyToken(stored.Token, stored.ServerPublicKey)
-	if err != nil && !errors.Is(err, ErrTokenExpired) {
-		return info
-	}
-	// A validly-signed token bound to a different device belongs to another
-	// machine (a copied license) — treat this device as not activated.
-	if !client.tokenMatchesDevice(payload) {
-		return info
-	}
-	info.LicenseID = payload.LicenseID
-	info.Plan = payload.Plan
-	info.Entitlements = append([]string(nil), payload.Entitlements...)
-	info.ExpiresAt = payload.ExpiresAt.UTC().Format(time.RFC3339)
-	info.Activated = err == nil
+	info.Entitlements = sortedSet(granted)
+	_, info.HasAppAccess = granted[appAccessEntitlement]
 	return info
 }
 
-// Activate redeems an activation code against the license server, verifies
-// the issued token with the server's published key, and persists it.
+// Activate redeems an activation code and stores the issued license alongside
+// any existing ones (an app license and pack purchases coexist). Re-activating
+// a license that grants the same entitlements replaces the older one.
 func (client *Client) Activate(ctx context.Context, code string) (StatusInfo, error) {
 	if !client.Configured() {
 		return client.Status(), ErrNotConfigured
@@ -148,60 +172,84 @@ func (client *Client) Activate(ctx context.Context, code string) (StatusInfo, er
 	if err != nil {
 		return client.Status(), err
 	}
-	if _, err := VerifyToken(activated.Token, publicKey); err != nil {
+	payload, err := VerifyToken(activated.Token, publicKey)
+	if err != nil {
 		return client.Status(), fmt.Errorf("%w: issued token failed verification", ErrActivationRejected)
 	}
-	if err := client.saveStored(storedLicense{
+	licenses, _ := client.loadStore()
+	next := storedLicense{
 		Token:           activated.Token,
 		ServerURL:       client.baseURL,
 		ServerPublicKey: publicKey,
 		SavedAt:         time.Now().UTC().Format(time.RFC3339),
-	}); err != nil {
+	}
+	licenses = upsertLicense(licenses, next, entitlementSignature(payload.Entitlements))
+	if err := client.saveStore(licenses); err != nil {
 		return client.Status(), err
 	}
 	return client.Status(), nil
 }
 
-// Deactivate removes the stored license token.
-func (client *Client) Deactivate() (StatusInfo, error) {
-	if err := os.Remove(client.storePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+// Deactivate removes one stored license by id, or all licenses when id is empty.
+func (client *Client) Deactivate(licenseID string) (StatusInfo, error) {
+	licenseID = strings.TrimSpace(licenseID)
+	licenses, err := client.loadStore()
+	if err != nil {
+		return client.Status(), nil
+	}
+	if licenseID == "" {
+		if err := client.saveStore(nil); err != nil {
+			return client.Status(), fmt.Errorf("removing stored licenses: %w", err)
+		}
+		return client.Status(), nil
+	}
+	kept := make([]storedLicense, 0, len(licenses))
+	for _, stored := range licenses {
+		if payload, verr := VerifyToken(stored.Token, stored.ServerPublicKey); verr == nil || errors.Is(verr, ErrTokenExpired) {
+			if payload.LicenseID == licenseID {
+				continue
+			}
+		}
+		kept = append(kept, stored)
+	}
+	if err := client.saveStore(kept); err != nil {
 		return client.Status(), fmt.Errorf("removing stored license: %w", err)
 	}
 	return client.Status(), nil
 }
 
-// HasEntitlement verifies the stored token locally and checks the grant.
+// HasEntitlement reports whether any stored, device-matched, unexpired license
+// grants the entitlement.
 func (client *Client) HasEntitlement(_ context.Context, entitlement string) (bool, error) {
-	stored, err := client.loadStored()
-	if err != nil {
-		return false, nil
-	}
-	payload, err := VerifyToken(stored.Token, stored.ServerPublicKey)
-	if err != nil {
-		return false, nil
-	}
-	if !client.tokenMatchesDevice(payload) {
-		return false, nil
-	}
 	entitlement = strings.TrimSpace(entitlement)
 	if entitlement == "" {
 		entitlement = defaultProEntitlement
 	}
-	return payload.HasEntitlement(entitlement), nil
+	for _, stored := range client.validLicenses() {
+		if stored.payload.HasEntitlement(entitlement) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
-// ResolvePackKey exchanges the stored token for a pack decryption key.
-func (client *Client) ResolvePackKey(ctx context.Context, keyID string) ([]byte, error) {
-	stored, err := client.loadStored()
-	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrPackKeyNotFound, ErrNotActivated)
+// ResolvePackKey exchanges the license that grants entitlement for the pack
+// decryption key. It selects the stored token holding that entitlement so an
+// app license cannot be used to fetch a pack key it did not purchase.
+func (client *Client) ResolvePackKey(ctx context.Context, keyID string, entitlement string) ([]byte, error) {
+	entitlement = strings.TrimSpace(entitlement)
+	if entitlement == "" {
+		entitlement = defaultProEntitlement
 	}
-	payload, err := VerifyToken(stored.Token, stored.ServerPublicKey)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrPackKeyNotFound, err)
+	var token string
+	for _, stored := range client.validLicenses() {
+		if stored.payload.HasEntitlement(entitlement) {
+			token = stored.license.Token
+			break
+		}
 	}
-	if !client.tokenMatchesDevice(payload) {
-		return nil, fmt.Errorf("%w: license is bound to another device", ErrPackKeyNotFound)
+	if token == "" {
+		return nil, fmt.Errorf("%w: no license grants %s", ErrPackKeyNotFound, entitlement)
 	}
 	keyID = strings.TrimSpace(keyID)
 	if keyID == "" {
@@ -212,7 +260,7 @@ func (client *Client) ResolvePackKey(ctx context.Context, keyID string) ([]byte,
 	var challenged struct {
 		Challenge string `json:"challenge"`
 	}
-	if err := client.postJSON(ctx, "/api/v1/pack-keys/challenge", nil, stored.Token, &challenged); err != nil {
+	if err := client.postJSON(ctx, "/api/v1/pack-keys/challenge", nil, token, &challenged); err != nil {
 		if errors.Is(err, ErrActivationRejected) {
 			return nil, fmt.Errorf("%w: challenge rejected", ErrPackKeyNotFound)
 		}
@@ -226,7 +274,7 @@ func (client *Client) ResolvePackKey(ctx context.Context, keyID string) ([]byte,
 		"key_id":           keyID,
 		"challenge":        challenged.Challenge,
 		"device_signature": base64.StdEncoding.EncodeToString(signature),
-	}, stored.Token, &resolved); err != nil {
+	}, token, &resolved); err != nil {
 		if errors.Is(err, ErrActivationRejected) {
 			return nil, fmt.Errorf("%w: %q", ErrPackKeyNotFound, keyID)
 		}
@@ -351,26 +399,59 @@ func (client *Client) doJSON(request *http.Request, out any) error {
 	return nil
 }
 
-func (client *Client) loadStored() (storedLicense, error) {
-	raw, err := os.ReadFile(client.storePath)
-	if err != nil {
-		return storedLicense{}, err
-	}
-	var stored storedLicense
-	if err := json.Unmarshal(raw, &stored); err != nil {
-		return storedLicense{}, err
-	}
-	if strings.TrimSpace(stored.Token) == "" || strings.TrimSpace(stored.ServerPublicKey) == "" {
-		return storedLicense{}, errors.New("stored license is incomplete")
-	}
-	return stored, nil
+// verifiedLicense pairs a stored license with its verified token payload.
+type verifiedLicense struct {
+	license storedLicense
+	payload TokenPayload
 }
 
-func (client *Client) saveStored(stored storedLicense) error {
+// validLicenses returns stored licenses that verify, match this device, and are
+// not expired.
+func (client *Client) validLicenses() []verifiedLicense {
+	licenses, _ := client.loadStore()
+	valid := make([]verifiedLicense, 0, len(licenses))
+	for _, stored := range licenses {
+		payload, err := VerifyToken(stored.Token, stored.ServerPublicKey)
+		if err != nil {
+			continue
+		}
+		if !client.tokenMatchesDevice(payload) {
+			continue
+		}
+		valid = append(valid, verifiedLicense{license: stored, payload: payload})
+	}
+	return valid
+}
+
+// loadStore reads all stored licenses, migrating the legacy single-object file.
+func (client *Client) loadStore() ([]storedLicense, error) {
+	raw, err := os.ReadFile(client.storePath)
+	if err != nil {
+		return nil, err
+	}
+	var store licenseStore
+	if err := json.Unmarshal(raw, &store); err == nil && len(store.Licenses) > 0 {
+		return completeLicenses(store.Licenses), nil
+	}
+	var single storedLicense
+	if err := json.Unmarshal(raw, &single); err == nil {
+		return completeLicenses([]storedLicense{single}), nil
+	}
+	return nil, errors.New("no stored licenses")
+}
+
+func (client *Client) saveStore(licenses []storedLicense) error {
+	licenses = completeLicenses(licenses)
+	if len(licenses) == 0 {
+		if err := os.Remove(client.storePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
 	if err := os.MkdirAll(filepath.Dir(client.storePath), 0o700); err != nil {
 		return fmt.Errorf("creating license dir: %w", err)
 	}
-	raw, err := json.MarshalIndent(stored, "", "\t")
+	raw, err := json.MarshalIndent(licenseStore{Licenses: licenses}, "", "\t")
 	if err != nil {
 		return err
 	}
@@ -378,6 +459,53 @@ func (client *Client) saveStored(stored storedLicense) error {
 		return fmt.Errorf("saving license: %w", err)
 	}
 	return nil
+}
+
+func completeLicenses(licenses []storedLicense) []storedLicense {
+	complete := make([]storedLicense, 0, len(licenses))
+	for _, stored := range licenses {
+		if strings.TrimSpace(stored.Token) != "" && strings.TrimSpace(stored.ServerPublicKey) != "" {
+			complete = append(complete, stored)
+		}
+	}
+	return complete
+}
+
+// upsertLicense appends next, replacing any existing license that grants the
+// same set of entitlements (re-activating an app or pack code refreshes it).
+func upsertLicense(licenses []storedLicense, next storedLicense, signature string) []storedLicense {
+	kept := make([]storedLicense, 0, len(licenses)+1)
+	for _, stored := range licenses {
+		if payload, err := VerifyToken(stored.Token, stored.ServerPublicKey); err == nil || errors.Is(err, ErrTokenExpired) {
+			if entitlementSignature(payload.Entitlements) == signature {
+				continue
+			}
+		}
+		kept = append(kept, stored)
+	}
+	return append(kept, next)
+}
+
+func entitlementSignature(entitlements []string) string {
+	trimmed := make([]string, 0, len(entitlements))
+	for _, entitlement := range entitlements {
+		if e := strings.TrimSpace(entitlement); e != "" {
+			trimmed = append(trimmed, e)
+		}
+	}
+	sort.Strings(trimmed)
+	return strings.Join(trimmed, "\x00")
+}
+
+func sortedSet(set map[string]struct{}) []string {
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		if key != "" {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func clonePublisherKeys(keys map[string][]byte) map[string][]byte {

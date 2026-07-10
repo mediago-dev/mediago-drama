@@ -73,13 +73,14 @@ func (handler License) HandleActivate(context *gin.Context) {
 
 // HandleDeactivate godoc
 // @Summary 取消激活
-// @Description 删除本地保存的授权 token。
+// @Description 删除本地保存的授权。传 licenseId 只取消该激活，否则全部取消。
 // @Tags License
 // @Produce json
+// @Param licenseId query string false "只取消该 license 的激活"
 // @Success 200 {object} SwaggerEnvelope
 // @Router /api/v1/license [delete]
 func (handler License) HandleDeactivate(context *gin.Context) {
-	status, err := handler.client.Deactivate()
+	status, err := handler.client.Deactivate(context.Query("licenseId"))
 	if err != nil {
 		httpresponse.ErrorFromStatus(context, http.StatusInternalServerError, err)
 		return

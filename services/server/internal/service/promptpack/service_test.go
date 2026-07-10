@@ -683,7 +683,7 @@ func (provider *testLicenseProvider) HasEntitlement(_ context.Context, entitleme
 	return ok, nil
 }
 
-func (provider *testLicenseProvider) ResolvePackKey(_ context.Context, keyID string) ([]byte, error) {
+func (provider *testLicenseProvider) ResolvePackKey(_ context.Context, keyID string, _ string) ([]byte, error) {
 	if provider == nil {
 		return nil, license.ErrPackKeyNotFound
 	}

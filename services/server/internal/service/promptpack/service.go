@@ -848,7 +848,7 @@ func (store *Service) unpackProPack(ctx context.Context, data []byte) (instructi
 	if keyID == "" {
 		keyID = "default"
 	}
-	key, err := store.resolvePackKey(ctx, keyID)
+	key, err := store.resolvePackKey(ctx, keyID, entitlement)
 	if err != nil {
 		return instructionpro.Manifest{}, instructionpack.Bundle{}, err
 	}
@@ -903,11 +903,11 @@ func (store *Service) hasPackEntitlement(ctx context.Context, entitlement string
 	return store.license.HasEntitlement(ctx, entitlement)
 }
 
-func (store *Service) resolvePackKey(ctx context.Context, keyID string) ([]byte, error) {
+func (store *Service) resolvePackKey(ctx context.Context, keyID string, entitlement string) ([]byte, error) {
 	if store.license == nil {
 		return nil, fmt.Errorf("%w", ErrPackLicenseRequired)
 	}
-	key, err := store.license.ResolvePackKey(ctx, keyID)
+	key, err := store.license.ResolvePackKey(ctx, keyID, entitlement)
 	if err != nil {
 		if errors.Is(err, license.ErrPackKeyNotFound) {
 			return nil, fmt.Errorf("%w: key %q", ErrPackLicenseRequired, strings.TrimSpace(keyID))

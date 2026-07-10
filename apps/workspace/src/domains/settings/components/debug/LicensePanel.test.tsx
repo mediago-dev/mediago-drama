@@ -35,18 +35,24 @@ describe("LicensePanel", () => {
 		cleanup();
 	});
 
-	it("activates with the submitted code when not activated", async () => {
+	it("activates with the submitted code", async () => {
 		vi.mocked(getLicenseStatus).mockResolvedValue({
 			configured: true,
-			activated: false,
+			hasAppAccess: false,
+			activations: [],
 		});
 		vi.mocked(activateLicense).mockResolvedValue({
 			configured: true,
-			activated: true,
-			licenseId: "lic_123",
-			plan: "pro",
-			entitlements: ["pro-packs"],
-			expiresAt: "2027-01-01T00:00:00Z",
+			hasAppAccess: false,
+			entitlements: ["pack.import.pro"],
+			activations: [
+				{
+					licenseId: "lic_123",
+					plan: "pro",
+					entitlements: ["pack.import.pro"],
+					expiresAt: "2027-01-01T00:00:00Z",
+				},
+			],
 		});
 
 		renderPanel();
@@ -59,35 +65,36 @@ describe("LicensePanel", () => {
 		expect(screen.getByText("pro")).toBeTruthy();
 	});
 
-	it("shows plan, entitlements and deactivate button when activated", async () => {
+	it("lists each activation with entitlements and a per-activation deactivate", async () => {
 		vi.mocked(getLicenseStatus).mockResolvedValue({
 			configured: true,
-			activated: true,
-			licenseId: "lic_456",
-			plan: "pro",
-			entitlements: ["pro-packs", "cloud-render"],
-			expiresAt: "2027-06-30T00:00:00Z",
+			hasAppAccess: true,
+			entitlements: ["app.access", "pack.import.pro"],
+			activations: [
+				{ licenseId: "lic_app", plan: "app", entitlements: ["app.access"] },
+				{ licenseId: "lic_456", plan: "pro", entitlements: ["pack.import.pro"] },
+			],
 		});
 		vi.mocked(deactivateLicense).mockResolvedValue({
 			configured: true,
-			activated: false,
+			hasAppAccess: true,
+			activations: [{ licenseId: "lic_app", plan: "app", entitlements: ["app.access"] }],
 		});
 
 		renderPanel();
-		await screen.findByText("已激活");
-		expect(screen.getByText("pro")).toBeTruthy();
-		expect(screen.getByText("pro-packs")).toBeTruthy();
-		expect(screen.getByText("cloud-render")).toBeTruthy();
+		await screen.findByText("已激活（2）");
+		expect(screen.getByText("app.access")).toBeTruthy();
+		expect(screen.getByText("pack.import.pro")).toBeTruthy();
 
-		fireEvent.click(screen.getByRole("button", { name: /取消激活/ }));
-		await waitFor(() => expect(deactivateLicense).toHaveBeenCalled());
-		await screen.findByLabelText("激活码");
+		fireEvent.click(screen.getAllByRole("button", { name: /取消激活/ })[1]);
+		await waitFor(() => expect(deactivateLicense).toHaveBeenCalledWith("lic_456"));
 	});
 
 	it("disables the code input when license server is not configured", async () => {
 		vi.mocked(getLicenseStatus).mockResolvedValue({
 			configured: false,
-			activated: false,
+			hasAppAccess: false,
+			activations: [],
 		});
 
 		renderPanel();

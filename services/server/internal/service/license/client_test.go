@@ -23,16 +23,16 @@ func TestClientActivateAndResolveFlow(t *testing.T) {
 	if !client.Configured() {
 		t.Fatal("Configured() = false, want true")
 	}
-	if status := client.Status(); status.Activated {
-		t.Fatalf("Status() = %#v, want not activated", status)
+	if status := client.Status(); len(status.Entitlements) > 0 {
+		t.Fatalf("Status() = %#v, want no active grants", status)
 	}
 
 	status, err := client.Activate(ctx, "MG-GOOD-CODE")
 	if err != nil {
 		t.Fatalf("Activate() error = %v", err)
 	}
-	if !status.Activated || status.Plan != "pro" {
-		t.Fatalf("status = %#v, want activated pro", status)
+	if len(status.Activations) != 1 || status.Activations[0].Plan != "pro" {
+		t.Fatalf("status = %#v, want one pro activation", status)
 	}
 
 	granted, err := client.HasEntitlement(ctx, "pack.import.pro")
@@ -44,7 +44,7 @@ func TestClientActivateAndResolveFlow(t *testing.T) {
 		t.Fatalf("HasEntitlement(other) = %v, %v; want false, nil", denied, err)
 	}
 
-	key, err := client.ResolvePackKey(ctx, "default")
+	key, err := client.ResolvePackKey(ctx, "default", "pack.import.pro")
 	if err != nil {
 		t.Fatalf("ResolvePackKey() error = %v", err)
 	}
@@ -60,14 +60,14 @@ func TestClientActivateAndResolveFlow(t *testing.T) {
 		t.Fatalf("publishers = %v, want mediago-test 32B", publishers)
 	}
 
-	status, err = client.Deactivate()
+	status, err = client.Deactivate("")
 	if err != nil {
 		t.Fatalf("Deactivate() error = %v", err)
 	}
-	if status.Activated {
-		t.Fatalf("status after deactivate = %#v, want not activated", status)
+	if len(status.Entitlements) > 0 {
+		t.Fatalf("status after deactivate = %#v, want no active grants", status)
 	}
-	if _, err := client.ResolvePackKey(ctx, "default"); !errors.Is(err, ErrPackKeyNotFound) {
+	if _, err := client.ResolvePackKey(ctx, "default", "pack.import.pro"); !errors.Is(err, ErrPackKeyNotFound) {
 		t.Fatalf("ResolvePackKey() after deactivate error = %v, want ErrPackKeyNotFound", err)
 	}
 }
@@ -89,22 +89,22 @@ func TestClientRejectsExpiredStoredToken(t *testing.T) {
 	client := NewClient(fake.URL(), stateDir)
 
 	token := fake.issueToken(t, "", time.Now().Add(-time.Hour))
-	if err := client.saveStored(storedLicense{
+	if err := client.saveStore([]storedLicense{{
 		Token:           token,
 		ServerURL:       fake.URL(),
 		ServerPublicKey: fake.publicKeyBase64(),
 		SavedAt:         time.Now().UTC().Format(time.RFC3339),
-	}); err != nil {
-		t.Fatalf("saveStored() error = %v", err)
+	}}); err != nil {
+		t.Fatalf("saveStore() error = %v", err)
 	}
-	if status := client.Status(); status.Activated {
-		t.Fatalf("Status() = %#v, want expired => not activated", status)
+	if status := client.Status(); len(status.Entitlements) > 0 {
+		t.Fatalf("Status() = %#v, want expired => no active grants", status)
 	}
 	granted, err := client.HasEntitlement(context.Background(), "pack.import.pro")
 	if err != nil || granted {
 		t.Fatalf("HasEntitlement(expired) = %v, %v; want false, nil", granted, err)
 	}
-	if _, err := client.ResolvePackKey(context.Background(), "default"); !errors.Is(err, ErrPackKeyNotFound) {
+	if _, err := client.ResolvePackKey(context.Background(), "default", "pack.import.pro"); !errors.Is(err, ErrPackKeyNotFound) {
 		t.Fatalf("ResolvePackKey(expired) error = %v, want ErrPackKeyNotFound", err)
 	}
 }
@@ -118,23 +118,23 @@ func TestClientRejectsTokenBoundToAnotherDevice(t *testing.T) {
 	// A validly-signed token bound to a different device — i.e. a license
 	// file copied from someone else's activated machine.
 	token := fake.issueToken(nil, "some-other-device", time.Now().Add(time.Hour))
-	if err := client.saveStored(storedLicense{
+	if err := client.saveStore([]storedLicense{{
 		Token:           token,
 		ServerURL:       fake.URL(),
 		ServerPublicKey: fake.publicKeyBase64(),
 		SavedAt:         time.Now().UTC().Format(time.RFC3339),
-	}); err != nil {
-		t.Fatalf("saveStored() error = %v", err)
+	}}); err != nil {
+		t.Fatalf("saveStore() error = %v", err)
 	}
 
-	if status := client.Status(); status.Activated {
-		t.Fatalf("Status() = %#v, want not activated on a foreign device", status)
+	if status := client.Status(); len(status.Entitlements) > 0 {
+		t.Fatalf("Status() = %#v, want no active grants on a foreign device", status)
 	}
 	granted, err := client.HasEntitlement(ctx, "pack.import.pro")
 	if err != nil || granted {
 		t.Fatalf("HasEntitlement(foreign device) = %v, %v; want false, nil", granted, err)
 	}
-	if _, err := client.ResolvePackKey(ctx, "default"); !errors.Is(err, ErrPackKeyNotFound) {
+	if _, err := client.ResolvePackKey(ctx, "default", "pack.import.pro"); !errors.Is(err, ErrPackKeyNotFound) {
 		t.Fatalf("ResolvePackKey(foreign device) error = %v, want ErrPackKeyNotFound", err)
 	}
 }
@@ -149,10 +149,10 @@ func TestClientActivateBindsToLocalDevice(t *testing.T) {
 	if _, err := client.Activate(ctx, "MG-GOOD-CODE"); err != nil {
 		t.Fatalf("Activate() error = %v", err)
 	}
-	if status := client.Status(); !status.Activated {
-		t.Fatalf("Status() = %#v, want activated on the binding device", status)
+	if status := client.Status(); len(status.Entitlements) == 0 {
+		t.Fatalf("Status() = %#v, want active grants on the binding device", status)
 	}
-	if _, err := client.ResolvePackKey(ctx, "default"); err != nil {
+	if _, err := client.ResolvePackKey(ctx, "default", "pack.import.pro"); err != nil {
 		t.Fatalf("ResolvePackKey(same device) error = %v", err)
 	}
 }

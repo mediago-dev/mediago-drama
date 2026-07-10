@@ -120,7 +120,7 @@ func TestDevProviderResolvePackKey(t *testing.T) {
 				}
 				return ""
 			})
-			key, err := provider.ResolvePackKey(context.Background(), tt.keyID)
+			key, err := provider.ResolvePackKey(context.Background(), tt.keyID, "")
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
 					t.Fatalf("ResolvePackKey() error = %v, want %v", err, tt.wantErr)

@@ -41,14 +41,14 @@ describe("LicenseGate", () => {
 
 	it("renders the app when a Pro build is already activated", async () => {
 		vi.mocked(isProEdition).mockReturnValue(true);
-		vi.mocked(getLicenseStatus).mockResolvedValue({ configured: true, activated: true });
+		vi.mocked(getLicenseStatus).mockResolvedValue({ configured: true, hasAppAccess: true });
 		renderGate();
 		expect(await screen.findByText("APP CONTENT")).toBeInTheDocument();
 	});
 
 	it("blocks the app behind the activation wall when a Pro build is not activated", async () => {
 		vi.mocked(isProEdition).mockReturnValue(true);
-		vi.mocked(getLicenseStatus).mockResolvedValue({ configured: true, activated: false });
+		vi.mocked(getLicenseStatus).mockResolvedValue({ configured: true, hasAppAccess: false });
 		renderGate();
 		expect(await screen.findByLabelText("激活码")).toBeInTheDocument();
 		expect(screen.queryByText("APP CONTENT")).not.toBeInTheDocument();
@@ -56,11 +56,11 @@ describe("LicenseGate", () => {
 
 	it("unlocks the app after a successful activation", async () => {
 		vi.mocked(isProEdition).mockReturnValue(true);
-		vi.mocked(getLicenseStatus).mockResolvedValue({ configured: true, activated: false });
+		vi.mocked(getLicenseStatus).mockResolvedValue({ configured: true, hasAppAccess: false });
 		vi.mocked(activateLicense).mockResolvedValue({
 			configured: true,
-			activated: true,
-			plan: "pro",
+			hasAppAccess: true,
+			activations: [{ licenseId: "lic_app", plan: "app" }],
 		});
 		renderGate();
 		const input = await screen.findByLabelText("激活码");
@@ -71,7 +71,7 @@ describe("LicenseGate", () => {
 
 	it("disables activation when the license server is not configured", async () => {
 		vi.mocked(isProEdition).mockReturnValue(true);
-		vi.mocked(getLicenseStatus).mockResolvedValue({ configured: false, activated: false });
+		vi.mocked(getLicenseStatus).mockResolvedValue({ configured: false, hasAppAccess: false });
 		renderGate();
 		expect(await screen.findByText(/未配置授权服务器/)).toBeInTheDocument();
 		expect(screen.getByLabelText("激活码")).toBeDisabled();
