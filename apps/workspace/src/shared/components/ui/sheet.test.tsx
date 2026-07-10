@@ -12,7 +12,7 @@ describe("layered Sheet", () => {
 		document.body.innerHTML = "";
 	});
 
-	it("restores the same Sheet after a later generation dialog closes", async () => {
+	it("keeps the Sheet open while a later generation dialog opens and closes", async () => {
 		render(<SheetBelowDialogHarness />);
 
 		const sheet = screen.getByRole("dialog", { name: "生成历史" });
@@ -21,6 +21,7 @@ describe("layered Sheet", () => {
 		fireEvent.click(screen.getByRole("button", { name: "打开生成图片" }));
 
 		const dialog = await screen.findByRole("dialog", { name: "生成图片" });
+		expect(sheet).toHaveAttribute("data-state", "open");
 		expect(sheet.closest("[data-dialog-layer]")).toHaveAttribute(
 			"data-dialog-layer-state",
 			"covered",
@@ -37,13 +38,14 @@ describe("layered Sheet", () => {
 		expect(draft).toHaveValue("角色");
 	});
 
-	it("restores the same generation dialog after a later Sheet closes", async () => {
+	it("keeps the generation dialog open while a later Sheet opens and closes", async () => {
 		render(<DialogBelowSheetHarness />);
 
 		const dialog = screen.getByRole("dialog", { name: "生成图片" });
 		fireEvent.click(screen.getByRole("button", { name: "打开生成历史" }));
 		const sheet = await screen.findByRole("dialog", { name: "生成历史" });
 
+		expect(dialog).toHaveAttribute("data-state", "open");
 		expect(dialog.closest("[data-dialog-layer]")).toHaveAttribute(
 			"data-dialog-layer-state",
 			"covered",

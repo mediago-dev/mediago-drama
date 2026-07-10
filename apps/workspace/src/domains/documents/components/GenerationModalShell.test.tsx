@@ -156,7 +156,7 @@ describe("GenerationModalShell", () => {
 		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 	});
 
-	it("restores the same lower dialog instance after the upper dialog submits", async () => {
+	it("keeps the lower dialog open and mounted while the upper dialog submits", async () => {
 		render(<LayeredGenerationModalHarness />);
 
 		const lowerDialog = screen.getByRole("dialog", { name: "资源列表" });
@@ -170,6 +170,7 @@ describe("GenerationModalShell", () => {
 
 		expect(lowerLayer).not.toBeNull();
 		expect(upperLayer).not.toBeNull();
+		expect(lowerDialog).toHaveAttribute("data-state", "open");
 		expect(lowerLayer).toHaveAttribute("data-dialog-layer-state", "covered");
 		expect(upperLayer).toHaveAttribute("data-dialog-layer-state", "top");
 		expect(Array.from(document.querySelectorAll("[data-dialog-layer]")).at(-1)).toBe(upperLayer);

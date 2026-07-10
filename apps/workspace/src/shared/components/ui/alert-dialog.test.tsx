@@ -18,7 +18,7 @@ describe("layered AlertDialog", () => {
 		document.body.innerHTML = "";
 	});
 
-	it("returns to the same generation-history Sheet after cancellation", async () => {
+	it("keeps the generation-history Sheet open while the AlertDialog is active", async () => {
 		render(<AlertAboveSheetHarness />);
 
 		const sheet = screen.getByRole("dialog", { name: "生成历史" });
@@ -27,6 +27,7 @@ describe("layered AlertDialog", () => {
 		fireEvent.click(screen.getByRole("button", { name: "新建会话" }));
 
 		const alert = await screen.findByRole("alertdialog", { name: "创建生成会话" });
+		expect(sheet).toHaveAttribute("data-state", "open");
 		expect(sheet.closest("[data-dialog-layer]")).toHaveAttribute(
 			"data-dialog-layer-state",
 			"covered",

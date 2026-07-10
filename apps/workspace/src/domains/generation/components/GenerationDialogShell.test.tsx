@@ -12,7 +12,7 @@ describe("GenerationDialogShell", () => {
 		document.body.innerHTML = "";
 	});
 
-	it("returns to the same lower generation modal after completion", async () => {
+	it("keeps the lower generation modal open while the secondary dialog completes", async () => {
 		render(<GenerationDialogShellHarness />);
 
 		const lowerDialog = screen.getByRole("dialog", { name: "生成图片" });
@@ -24,6 +24,7 @@ describe("GenerationDialogShell", () => {
 		const lowerLayer = lowerDialog.closest<HTMLElement>("[data-dialog-layer]");
 		const upperLayer = upperDialog.closest<HTMLElement>("[data-dialog-layer]");
 
+		expect(lowerDialog).toHaveAttribute("data-state", "open");
 		expect(lowerLayer).toHaveAttribute("data-dialog-layer-state", "covered");
 		expect(upperLayer).toHaveAttribute("data-dialog-layer-state", "top");
 
