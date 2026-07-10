@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -69,12 +70,17 @@ type AgentRuntimeConfig struct {
 
 // AgentRuntime coordinates agent sessions, runner calls, and run events.
 type AgentRuntime struct {
-	workspace    DocumentStore
-	sessions     *SessionService
-	runner       AgentRunner
-	publish      func(AgentEvent)
-	config       AgentRuntimeConfig
-	inFlightRuns atomic.Int64
+	workspace      DocumentStore
+	sessions       *SessionService
+	runner         AgentRunner
+	publish        func(AgentEvent)
+	config         AgentRuntimeConfig
+	inFlightRuns   atomic.Int64
+	lifecycleMu    sync.Mutex
+	lifecycleGroup sync.WaitGroup
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
+	closed         bool
 }
 
 // NewAgentRuntime returns an agent runtime service.
@@ -91,13 +97,55 @@ func NewAgentRuntime(
 	if config.WorkspaceDir == "" && workspace != nil {
 		config.WorkspaceDir = workspace.Dir()
 	}
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 	return &AgentRuntime{
-		workspace: workspace,
-		sessions:  sessions,
-		runner:    runner,
-		publish:   publish,
-		config:    config,
+		workspace:      workspace,
+		sessions:       sessions,
+		runner:         runner,
+		publish:        publish,
+		config:         config,
+		shutdownCtx:    shutdownCtx,
+		shutdownCancel: shutdownCancel,
 	}
+}
+
+// Close cancels and waits for every goroutine owned by the runtime. It is safe
+// to call concurrently and more than once.
+func (runtime *AgentRuntime) Close() {
+	if runtime == nil {
+		return
+	}
+
+	runtime.lifecycleMu.Lock()
+	if !runtime.closed {
+		runtime.closed = true
+		if runtime.shutdownCancel != nil {
+			runtime.shutdownCancel()
+		}
+	}
+	runtime.lifecycleMu.Unlock()
+
+	runtime.lifecycleGroup.Wait()
+}
+
+func (runtime *AgentRuntime) beginLifecycleWork() bool {
+	if runtime == nil {
+		return false
+	}
+	runtime.lifecycleMu.Lock()
+	defer runtime.lifecycleMu.Unlock()
+	if runtime.closed {
+		return false
+	}
+	runtime.lifecycleGroup.Add(1)
+	return true
+}
+
+func (runtime *AgentRuntime) finishLifecycleWork() {
+	if runtime == nil {
+		return
+	}
+	runtime.lifecycleGroup.Done()
 }
 
 // SubmitAgentMessage accepts an agent message and starts a background run.
@@ -105,6 +153,15 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 	if runtime == nil || runtime.workspace == nil || runtime.sessions == nil || runtime.runner == nil {
 		return AgentMessageResponse{}, http.StatusServiceUnavailable, fmt.Errorf("agent runtime is unavailable")
 	}
+	if !runtime.beginLifecycleWork() {
+		return AgentMessageResponse{}, http.StatusServiceUnavailable, fmt.Errorf("agent runtime is closed")
+	}
+	workTransferred := false
+	defer func() {
+		if !workTransferred {
+			runtime.finishLifecycleWork()
+		}
+	}()
 	if payload.SessionID == "" {
 		return AgentMessageResponse{}, http.StatusBadRequest, fmt.Errorf("缺少 sessionId")
 	}
@@ -125,7 +182,7 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 	payload.AgentTag = shared.FirstNonEmpty(payload.AgentTag, DefaultAgentName)
 
 	runID := shared.MustRandomID("run")
-	runCtx, cancelRun := agentRunContext(runtime.config.RunTimeout)
+	runCtx, cancelRun := agentRunContextWithParent(runtime.shutdownCtx, runtime.config.RunTimeout)
 	acpSessionID, ok := runtime.sessions.StartRun(
 		payload.SessionID,
 		payload.ProjectID,
@@ -205,7 +262,11 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 	)
 
 	runtime.inFlightRuns.Add(1)
-	go runtime.runAgent(runCtx, cancelRun, payload, runID, acpSessionID, projectDir, workingDir)
+	go func() {
+		defer runtime.finishLifecycleWork()
+		runtime.runAgent(runCtx, cancelRun, payload, runID, acpSessionID, projectDir, workingDir)
+	}()
+	workTransferred = true
 
 	return AgentMessageResponse{Accepted: true}, http.StatusOK, nil
 }
@@ -281,7 +342,13 @@ func (runtime *AgentRuntime) maybeGenerateSessionTitle(sessionID string, userPro
 	if strings.TrimSpace(userPrompt) == "" || !runtime.sessions.NeedsTitle(sessionID) {
 		return
 	}
-	go runtime.generateSessionTitle(context.Background(), sessionID, userPrompt, model)
+	if !runtime.beginLifecycleWork() {
+		return
+	}
+	go func() {
+		defer runtime.finishLifecycleWork()
+		runtime.generateSessionTitle(runtime.shutdownCtx, sessionID, userPrompt, model)
+	}()
 }
 
 func (runtime *AgentRuntime) generateSessionTitle(ctx context.Context, sessionID string, userPrompt string, model AgentACPConfigSelection) {
@@ -648,8 +715,15 @@ func (runtime *AgentRuntime) publishEvent(event AgentEvent) {
 }
 
 func agentRunContext(timeout time.Duration) (context.Context, context.CancelFunc) {
-	if timeout <= 0 {
-		return context.WithCancel(context.Background())
+	return agentRunContextWithParent(context.Background(), timeout)
+}
+
+func agentRunContextWithParent(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
 	}
-	return context.WithTimeout(context.Background(), timeout)
+	if timeout <= 0 {
+		return context.WithCancel(parent)
+	}
+	return context.WithTimeout(parent, timeout)
 }

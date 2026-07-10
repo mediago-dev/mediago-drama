@@ -168,6 +168,9 @@ func (handler *apiHandler) Close() error {
 	if handler.shutdownCancel != nil {
 		handler.shutdownCancel()
 	}
+	if handler.agentRuntime != nil {
+		handler.agentRuntime.Close()
+	}
 	handler.workers.Wait()
 	if handler.workspaceState != nil {
 		return handler.workspaceState.Close()
