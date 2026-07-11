@@ -46,6 +46,7 @@ type GenerationMessageRequest struct {
 	ConversationID     string                               `json:"sessionId,omitempty"`
 	ScopeID            string                               `json:"-"`
 	ProjectID          string                               `json:"projectId,omitempty"`
+	ProjectName        string                               `json:"-"`
 	DocumentID         string                               `json:"documentId,omitempty"`
 	SectionID          string                               `json:"sectionId,omitempty"`
 	DocumentContext    *GenerationDocumentContext           `json:"documentContext,omitempty"`

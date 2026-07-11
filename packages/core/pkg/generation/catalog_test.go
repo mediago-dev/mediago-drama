@@ -208,25 +208,50 @@ func TestImageCatalogIncludesOfficialGoogleNanoBanana25(t *testing.T) {
 	assertComboOutput(t, route, "aspectRatio", "resolution", "16:9|1K", "1344x768")
 }
 
-func TestLibTVCatalogIncludesSeedanceRoute(t *testing.T) {
-	route, ok := FindRoute(RouteLibTVSeedance20Mini)
-	if !ok {
-		t.Fatalf("route %q is missing", RouteLibTVSeedance20Mini)
-	}
-	if route.Kind != KindVideo ||
-		route.FamilyID != FamilySeedance ||
-		route.VersionID != VersionSeedance20Mini ||
-		route.Provider != ProviderLibTV ||
-		route.Adapter != AdapterLibTVCLIVideo {
-		t.Fatalf("route = %#v, want LibTV video route", route)
-	}
-	if route.Model != "Seedance 2.0 Mini" || !route.Async || route.SupportsReferenceURLs {
-		t.Fatalf("route execution metadata = %#v", route)
-	}
-	if len(route.AuthKeys) != 1 || route.AuthKeys[0] != ProviderLibTV {
-		t.Fatalf("auth keys = %#v, want LibTV key", route.AuthKeys)
+func TestLibTVCatalogIncludesSeedanceRoutes(t *testing.T) {
+	cases := []struct {
+		id      string
+		version string
+		model   string
+		hasHigh bool
+		noHigh  bool
+	}{
+		{RouteLibTVSeedance20Fast, VersionSeedance20Fast, "Seedance 2.0 Fast VIP", false, true},
+		{RouteLibTVSeedance20Mini, VersionSeedance20Mini, "Seedance 2.0 Mini", false, true},
+		{RouteLibTVSeedance20, VersionSeedance20, "Seedance 2.0 VIP", true, false},
 	}
 
+	for _, tc := range cases {
+		route, ok := FindRoute(tc.id)
+		if !ok {
+			t.Fatalf("route %q is missing", tc.id)
+		}
+		if route.Kind != KindVideo ||
+			route.FamilyID != FamilySeedance ||
+			route.VersionID != tc.version ||
+			route.Provider != ProviderLibTV ||
+			route.Adapter != AdapterLibTVCLIVideo {
+			t.Fatalf("route %q = %#v, want LibTV video route", tc.id, route)
+		}
+		if route.Model != tc.model || !route.Async || !route.SupportsReferenceURLs || route.MaxReferenceURLs != 15 {
+			t.Fatalf("route %q execution metadata = %#v", tc.id, route)
+		}
+		if len(route.AuthKeys) != 1 || route.AuthKeys[0] != ProviderLibTV {
+			t.Fatalf("route %q auth keys = %#v, want LibTV key", tc.id, route.AuthKeys)
+		}
+		assertHasParams(t, route, "aspectRatio", "resolution", "duration", "generateAudio")
+		resolution := mustParam(t, route, "resolution")
+		assertHasOptions(t, resolution, "480p", "720p")
+		if tc.hasHigh {
+			assertHasOptions(t, resolution, "1080p", "4k")
+		}
+		if tc.noHigh {
+			assertLacksOption(t, resolution, "1080p")
+			assertLacksOption(t, resolution, "4k")
+		}
+	}
+
+	route := mustRoute(t, RouteLibTVSeedance20Mini)
 	params, err := NormalizeRouteParams(route, map[string]any{
 		"aspectRatio":   "9:16",
 		"resolution":    "720p",
@@ -250,25 +275,47 @@ func TestLibTVCatalogIncludesSeedanceRoute(t *testing.T) {
 	}
 }
 
-func TestXiaoyunqueCatalogIncludesPippitSeedanceRoute(t *testing.T) {
-	route, ok := FindRoute(RouteXiaoyunqueSeedance20MiniLite)
-	if !ok {
-		t.Fatalf("route %q is missing", RouteXiaoyunqueSeedance20MiniLite)
-	}
-	if route.Kind != KindVideo ||
-		route.FamilyID != FamilySeedance ||
-		route.VersionID != VersionSeedance20MiniLite ||
-		route.Provider != ProviderXiaoyunque ||
-		route.Adapter != AdapterPippitCLIVideo {
-		t.Fatalf("route = %#v, want Xiaoyunque Pippit video route", route)
-	}
-	if route.Model != "Seedance_2.0_mini_lite" || !route.Async || !route.SupportsReferenceURLs {
-		t.Fatalf("route execution metadata = %#v", route)
-	}
-	if len(route.AuthKeys) != 1 || route.AuthKeys[0] != ProviderXiaoyunque {
-		t.Fatalf("auth keys = %#v, want Xiaoyunque key", route.AuthKeys)
+func TestXiaoyunqueCatalogIncludesPippitSeedanceRoutes(t *testing.T) {
+	cases := []struct {
+		id       string
+		version  string
+		model    string
+		has1080p bool
+	}{
+		{RouteXiaoyunqueSeedance20Fast, VersionSeedance20Fast, "seedance2.0_fast_vision", false},
+		{RouteXiaoyunqueSeedance20Mini, VersionSeedance20Mini, "Seedance_2.0_mini", false},
+		{RouteXiaoyunqueSeedance20, VersionSeedance20, "seedance2.0_vision", true},
+		{RouteXiaoyunqueSeedance20MiniLite, VersionSeedance20MiniLite, "Seedance_2.0_mini_lite", false},
 	}
 
+	for _, tc := range cases {
+		route, ok := FindRoute(tc.id)
+		if !ok {
+			t.Fatalf("route %q is missing", tc.id)
+		}
+		if route.Kind != KindVideo ||
+			route.FamilyID != FamilySeedance ||
+			route.VersionID != tc.version ||
+			route.Provider != ProviderXiaoyunque ||
+			route.Adapter != AdapterPippitCLIVideo {
+			t.Fatalf("route %q = %#v, want Xiaoyunque Pippit video route", tc.id, route)
+		}
+		if route.Model != tc.model || !route.Async || !route.SupportsReferenceURLs {
+			t.Fatalf("route %q execution metadata = %#v", tc.id, route)
+		}
+		if len(route.AuthKeys) != 1 || route.AuthKeys[0] != ProviderXiaoyunque {
+			t.Fatalf("route %q auth keys = %#v, want Xiaoyunque key", tc.id, route.AuthKeys)
+		}
+		resolution := mustParam(t, route, "resolution")
+		assertHasOptions(t, resolution, "720p")
+		if tc.has1080p {
+			assertHasOptions(t, resolution, "1080p")
+		} else {
+			assertLacksOption(t, resolution, "1080p")
+		}
+	}
+
+	route := mustRoute(t, RouteXiaoyunqueSeedance20MiniLite)
 	params, err := NormalizeRouteParams(route, map[string]any{
 		"aspectRatio": "9:16",
 		"resolution":  "720p",

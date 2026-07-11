@@ -38,6 +38,12 @@ const videoRoute: GenerationRoute = {
 	provider: "openrouter",
 	versionId: "video-version",
 };
+const libTVVideoRoute: GenerationRoute = {
+	...videoRoute,
+	adapter: "libtv.cli.video",
+	id: "libtv-video-route",
+	provider: "libtv",
+};
 const unsupportedImageRoute: GenerationRoute = {
 	...imageRoute,
 	id: "unsupported-image-route",
@@ -99,6 +105,55 @@ describe("useGenerationReferences", () => {
 		});
 
 		expect(result.current.selectedReferenceAssetIds).toEqual(["reference-video"]);
+	});
+
+	it("allows LibTV routes to select image video and audio references", () => {
+		const referenceImage = mediaAsset({ id: "reference-image", kind: "image" });
+		const referenceVideo = mediaAsset({
+			filename: "scene.mp4",
+			id: "reference-video",
+			kind: "video",
+			mimeType: "video/mp4",
+			url: "/api/v1/media-assets/reference-video/content",
+		});
+		const referenceAudio = mediaAsset({
+			filename: "voice.wav",
+			id: "reference-audio",
+			kind: "audio",
+			mimeType: "audio/wav",
+			url: "/api/v1/media-assets/reference-audio/content",
+		});
+
+		const { result } = renderHook(() =>
+			useGenerationReferences({
+				extraReferenceAssetIds: [],
+				extraReferenceUrls: [],
+				mediaAssetProjectId: "project-a",
+				mediaAssets: [referenceImage, referenceVideo, referenceAudio],
+				mutateMediaAssets: vi.fn(),
+				prompt: "多模态参考",
+				selectedRoute: libTVVideoRoute,
+				setError: vi.fn(),
+			}),
+		);
+
+		expect(Array.from(result.current.selectableReferenceKinds).sort()).toEqual([
+			"audio",
+			"image",
+			"video",
+		]);
+
+		act(() => {
+			result.current.selectReferenceAsset(referenceImage);
+			result.current.selectReferenceAsset(referenceVideo);
+			result.current.selectReferenceAsset(referenceAudio);
+		});
+
+		expect(result.current.selectedReferenceAssetIds).toEqual([
+			"reference-image",
+			"reference-video",
+			"reference-audio",
+		]);
 	});
 
 	it("does not select an uploaded video for image-only reference routes", async () => {
@@ -183,7 +238,7 @@ describe("useGenerationReferences", () => {
 		});
 
 		expect(result.current.selectedReferenceAssetIds).toEqual(["reference-a"]);
-		expect(setError).toHaveBeenCalledWith("当前模型最多支持 1 张参考图。");
+		expect(setError).toHaveBeenCalledWith("当前模型最多支持 1 个参考素材。");
 	});
 
 	it("counts extra reference URLs against the selected route limit", () => {
@@ -208,6 +263,6 @@ describe("useGenerationReferences", () => {
 
 		expect(result.current.referenceCount).toBe(1);
 		expect(result.current.selectedReferenceAssetIds).toEqual([]);
-		expect(setError).toHaveBeenCalledWith("当前模型最多支持 1 张参考图。");
+		expect(setError).toHaveBeenCalledWith("当前模型最多支持 1 个参考素材。");
 	});
 });

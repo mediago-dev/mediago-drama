@@ -200,6 +200,9 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 		payload.ProjectID = GenerationProjectIDFromScopeID(conversation.ScopeID)
 	}
 	projectID := payload.ProjectID
+	if payload.ProjectName == "" {
+		payload.ProjectName = workflow.generationProjectName(projectID)
+	}
 	workflow.appendStudioUserTranscript(conversation, payload)
 
 	referenceURLs, err := workflow.resolveGenerationReferences(route, payload)

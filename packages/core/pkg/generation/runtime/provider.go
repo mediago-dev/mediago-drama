@@ -58,6 +58,7 @@ type Config struct {
 	LibTVBinPath      string
 	LibTVBinDir       string
 	LibTVProjectID    string
+	LibTVProjectStore libtv.ProjectStore
 	PippitBinPath     string
 	PippitBinDir      string
 	XiaoyunqueBaseURL string
@@ -233,9 +234,10 @@ func (provider *Provider) libTVProvider() (generation.Provider, error) {
 	)
 	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
 		return libtv.NewProvider(libtv.Config{
-			BinPath:   provider.config.LibTVBinPath,
-			BinDir:    provider.config.LibTVBinDir,
-			ProjectID: provider.config.LibTVProjectID,
+			BinPath:      provider.config.LibTVBinPath,
+			BinDir:       provider.config.LibTVBinDir,
+			ProjectID:    provider.config.LibTVProjectID,
+			ProjectStore: provider.config.LibTVProjectStore,
 		})
 	})
 }

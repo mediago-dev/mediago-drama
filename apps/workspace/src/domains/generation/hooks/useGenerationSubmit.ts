@@ -233,7 +233,7 @@ export const useGenerationSubmit = ({
 			const requestReferenceCount = requestReferenceUrls.length + requestReferenceAssetIds.length;
 			const maxReferenceUrls = maxReferenceUrlsForRoute(requestRoute);
 			if (maxReferenceUrls && requestReferenceCount > maxReferenceUrls) {
-				const message = `当前模型最多支持 ${maxReferenceUrls} 张参考图。`;
+				const message = `当前模型最多支持 ${maxReferenceUrls} 个参考素材。`;
 				setError(message);
 				notifySubmitCallback(onSubmitFailure, {
 					kind: requestRoute.kind,

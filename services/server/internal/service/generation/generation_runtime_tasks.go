@@ -102,6 +102,7 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		ReferenceAssetIDs: task.ReferenceAssetIDs,
 		Params:            task.Params,
 	}
+	payload.ProjectName = workflow.generationProjectName(payload.ProjectID)
 
 	route, err := ResolveGenerationRoute(payload)
 	if err != nil {
@@ -249,6 +250,7 @@ func (workflow *GenerationService) generationRequestForTask(
 		ReferenceAssetIDs: task.ReferenceAssetIDs,
 		Params:            task.Params,
 	}
+	payload.ProjectName = workflow.generationProjectName(payload.ProjectID)
 	if payload.Model == "" {
 		payload.Model = route.Model
 	}

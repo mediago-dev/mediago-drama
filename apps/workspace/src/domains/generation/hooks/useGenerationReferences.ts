@@ -84,7 +84,7 @@ export const useGenerationReferences = ({
 		[maxReferenceUrls, referenceCountForAssetIds],
 	);
 	const referenceLimitMessage = useCallback(
-		() => `当前模型最多支持 ${maxReferenceUrls} 张参考图。`,
+		() => `当前模型最多支持 ${maxReferenceUrls} 个参考素材。`,
 		[maxReferenceUrls],
 	);
 	const addReferenceAssetIdWithinLimit = useCallback(

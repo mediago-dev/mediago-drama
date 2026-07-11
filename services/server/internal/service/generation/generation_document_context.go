@@ -26,6 +26,11 @@ type GenerationDocumentResolver interface {
 	RequireWorkspaceDocument(projectID string, documentID string) (mediamcp.WorkspaceDocument, error)
 }
 
+// GenerationProjectConfigResolver reads workspace project config when available.
+type GenerationProjectConfigResolver interface {
+	LoadProjectConfig(projectID string) (mediamcp.ProjectConfig, error)
+}
+
 type generationDocumentSection struct {
 	Markdown string
 }
@@ -35,6 +40,22 @@ type generationMentionReference struct {
 	BlockID    string
 	DocumentID string
 	Kind       string
+}
+
+func (workflow *GenerationService) generationProjectName(projectID string) string {
+	projectID = GenerationProjectIDForRequest(projectID, "")
+	if projectID == "" || workflow == nil || workflow.documents == nil {
+		return ""
+	}
+	resolver, ok := workflow.documents.(GenerationProjectConfigResolver)
+	if !ok {
+		return ""
+	}
+	config, err := resolver.LoadProjectConfig(projectID)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(config.Name)
 }
 
 func (workflow *GenerationService) applyGenerationDocumentContext(payload *generationMessageRequest) error {

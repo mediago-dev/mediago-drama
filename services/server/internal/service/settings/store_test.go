@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/libtv"
 )
 
 type memoryAPIKeyStore struct {
@@ -155,6 +156,40 @@ func TestSettingsGenerationCLIProvidersFollowConfiguration(t *testing.T) {
 	}
 	if _, err := settings.SetAPIKey(context.Background(), generation.ProviderJimeng, "oauth:old"); err != ErrAPIKeyProviderNotFound {
 		t.Fatalf("SetAPIKey jimeng error = %v, want ErrAPIKeyProviderNotFound", err)
+	}
+}
+
+func TestSettingsLibTVProjectBindingsPersist(t *testing.T) {
+	ctx := context.Background()
+	settings := NewSettingsWithStores(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		nil,
+		&memoryAppSettingStore{values: map[string]string{}},
+	)
+
+	if _, ok, err := settings.GetLibTVProjectBinding(ctx, "project-alpha"); err != nil || ok {
+		t.Fatalf("empty GetLibTVProjectBinding ok=%v err=%v, want missing without error", ok, err)
+	}
+	if err := settings.SaveLibTVProjectBinding(ctx, libtv.ProjectBinding{
+		InternalProjectID:   "project-alpha",
+		InternalProjectName: "天机阁",
+		ProjectID:           "22222222-3333-4444-5555-666666666666",
+		ProjectName:         "MediaGo - 天机阁",
+		CreatedAt:           "2026-07-11T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("SaveLibTVProjectBinding returned error: %v", err)
+	}
+
+	binding, ok, err := settings.GetLibTVProjectBinding(ctx, "project-alpha")
+	if err != nil || !ok {
+		t.Fatalf("GetLibTVProjectBinding ok=%v err=%v, want stored binding", ok, err)
+	}
+	if binding.ProjectID != "22222222-3333-4444-5555-666666666666" ||
+		binding.InternalProjectName != "天机阁" ||
+		binding.ProjectName != "MediaGo - 天机阁" ||
+		binding.CreatedAt != "2026-07-11T00:00:00Z" ||
+		binding.UpdatedAt == "" {
+		t.Fatalf("binding = %#v, want persisted LibTV project binding", binding)
 	}
 }
 

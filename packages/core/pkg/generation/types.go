@@ -32,6 +32,8 @@ type Request struct {
 	FamilyID       string
 	VersionID      string
 	Provider       string
+	ProjectID      string
+	ProjectName    string
 	ModelID        string
 	Model          string
 	Prompt         string

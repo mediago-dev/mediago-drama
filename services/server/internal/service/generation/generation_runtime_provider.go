@@ -31,6 +31,7 @@ func (workflow *GenerationService) newGenerationProvider(route coregeneration.Mo
 		LibTVBinPath:                  workflow.libTVBinPath,
 		LibTVBinDir:                   workflow.libTVBinDir,
 		LibTVProjectID:                workflow.libTVProjectID,
+		LibTVProjectStore:             workflow.settings,
 		PippitBinPath:                 workflow.pippitBinPath,
 		PippitBinDir:                  workflow.pippitBinDir,
 	})

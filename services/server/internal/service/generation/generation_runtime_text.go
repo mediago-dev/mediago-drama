@@ -71,6 +71,9 @@ func (workflow *GenerationService) StreamGenerationText(
 	if payload.ProjectID == "" {
 		payload.ProjectID = GenerationProjectIDFromScopeID(conversation.ScopeID)
 	}
+	if payload.ProjectName == "" {
+		payload.ProjectName = workflow.generationProjectName(payload.ProjectID)
+	}
 	workflow.appendStudioUserTranscript(conversation, payload)
 
 	provider, err := workflow.newGenerationProvider(route)

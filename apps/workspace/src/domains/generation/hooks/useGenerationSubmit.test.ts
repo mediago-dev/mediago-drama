@@ -430,11 +430,11 @@ describe("useGenerationSubmit", () => {
 		});
 
 		expect(sendGenerationMessage).not.toHaveBeenCalled();
-		expect(result.current.error).toBe("当前模型最多支持 1 张参考图。");
+		expect(result.current.error).toBe("当前模型最多支持 1 个参考素材。");
 		expect(onSubmitFailure).toHaveBeenCalledWith({
 			kind: "image",
 			localMessageId: "",
-			message: "当前模型最多支持 1 张参考图。",
+			message: "当前模型最多支持 1 个参考素材。",
 		});
 		expect(result.current.messages).toEqual([]);
 	});

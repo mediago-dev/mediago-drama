@@ -327,13 +327,48 @@ describe("fallback generation catalog params", () => {
 			"jimeng.seedance-2.0-vip",
 		]);
 		expect(
+			fallbackCatalog.routes
+				.filter((route) => route.id.startsWith("libtv.seedance-2.0"))
+				.map((route) => route.id),
+		).toEqual(["libtv.seedance-2.0-fast", "libtv.seedance-2.0-mini", "libtv.seedance-2.0"]);
+		expect(
 			fallbackCatalog.routes.find((route) => route.id === "libtv.seedance-2.0-mini"),
 		).toMatchObject({
 			adapter: "libtv.cli.video",
 			model: "Seedance 2.0 Mini",
+			maxReferenceUrls: 15,
 			provider: "libtv",
-			supportsReferenceUrls: false,
+			supportsReferenceUrls: true,
 		});
+		expect(fallbackCatalog.routes.find((route) => route.id === "libtv.seedance-2.0")).toMatchObject(
+			{
+				adapter: "libtv.cli.video",
+				model: "Seedance 2.0 VIP",
+				maxReferenceUrls: 15,
+				provider: "libtv",
+				supportsReferenceUrls: true,
+			},
+		);
+		expect(param("libtv.seedance-2.0-fast", "resolution").options).toEqual([
+			{ label: "480p", value: "480p" },
+			{ label: "720p", value: "720p" },
+		]);
+		expect(param("libtv.seedance-2.0", "resolution").options).toEqual([
+			{ label: "480p", value: "480p" },
+			{ label: "720p", value: "720p" },
+			{ label: "1080p", value: "1080p" },
+			{ label: "4K", value: "4k" },
+		]);
+		expect(
+			fallbackCatalog.routes
+				.filter((route) => route.id.startsWith("xiaoyunque.seedance-2.0"))
+				.map((route) => route.id),
+		).toEqual([
+			"xiaoyunque.seedance-2.0-fast",
+			"xiaoyunque.seedance-2.0-mini",
+			"xiaoyunque.seedance-2.0",
+			"xiaoyunque.seedance-2.0-mini-lite",
+		]);
 		expect(
 			fallbackCatalog.routes.find((route) => route.id === "xiaoyunque.seedance-2.0-mini-lite"),
 		).toMatchObject({
@@ -341,6 +376,31 @@ describe("fallback generation catalog params", () => {
 			model: "Seedance_2.0_mini_lite",
 			provider: "xiaoyunque",
 		});
+		expect(
+			fallbackCatalog.routes.find((route) => route.id === "xiaoyunque.seedance-2.0-fast"),
+		).toMatchObject({
+			adapter: "pippit.cli.video",
+			model: "seedance2.0_fast_vision",
+			provider: "xiaoyunque",
+		});
+		expect(
+			fallbackCatalog.routes.find((route) => route.id === "xiaoyunque.seedance-2.0-mini"),
+		).toMatchObject({
+			adapter: "pippit.cli.video",
+			model: "Seedance_2.0_mini",
+			provider: "xiaoyunque",
+		});
+		expect(
+			fallbackCatalog.routes.find((route) => route.id === "xiaoyunque.seedance-2.0"),
+		).toMatchObject({
+			adapter: "pippit.cli.video",
+			model: "seedance2.0_vision",
+			provider: "xiaoyunque",
+		});
+		expect(param("xiaoyunque.seedance-2.0", "resolution").options).toEqual([
+			{ label: "720p", value: "720p" },
+			{ label: "1080p", value: "1080p" },
+		]);
 		expect(
 			fallbackCatalog.routes
 				.filter((route) => route.id.startsWith("official.seedance-2.0"))

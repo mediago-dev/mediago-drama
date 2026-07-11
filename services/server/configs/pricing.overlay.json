@@ -515,7 +515,22 @@
       "perCallPrice": 0
     },
     {
+      "routeId": "libtv.seedance-2.0-fast",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
       "routeId": "libtv.seedance-2.0-mini",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "xiaoyunque.seedance-2.0-fast",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "xiaoyunque.seedance-2.0-mini",
       "currency": "CNY",
       "unit": "external"
     },
@@ -524,6 +539,16 @@
       "currency": "CNY",
       "unit": "per_call",
       "perCallPrice": 0
+    },
+    {
+      "routeId": "libtv.seedance-2.0",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "xiaoyunque.seedance-2.0",
+      "currency": "CNY",
+      "unit": "external"
     },
     {
       "routeId": "jimeng.seedance-2.0-fast-vip",

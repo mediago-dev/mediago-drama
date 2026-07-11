@@ -71,6 +71,37 @@ func TestGenerateVideoSubmitsPippitCLIRequest(t *testing.T) {
 	}
 }
 
+func TestGenerateVideoUsesSeedance20RouteModel(t *testing.T) {
+	binPath := fakeExecutable(t, "pippit-tool-cli")
+	var gotArgs []string
+	runner := CommandRunnerFunc(func(_ context.Context, _ string, _ map[string]string, args ...string) ([]byte, error) {
+		gotArgs = append([]string{}, args...)
+		return []byte(`{"thread_id":"thread_123","run_id":"run_456"}`), nil
+	})
+	provider, err := NewProvider(Config{APIKey: "xyq-key", BinPath: binPath, Runner: runner})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	if _, err := provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindVideo,
+		RouteID: generation.RouteXiaoyunqueSeedance20,
+		Prompt:  "make a cinematic video",
+		Params: map[string]any{
+			"aspectRatio": "16:9",
+			"resolution":  "1080p",
+			"duration":    "5",
+		},
+	}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if !stringSliceContains(gotArgs, "--model=seedance2.0_vision") ||
+		!stringSliceContains(gotArgs, "--resolution=1080p") {
+		t.Fatalf("args = %#v, want Seedance 2.0 model and 1080p resolution", gotArgs)
+	}
+}
+
 func TestGenerateVideoPassesReferenceMediaByKind(t *testing.T) {
 	binPath := fakeExecutable(t, "pippit-tool-cli")
 	dir := t.TempDir()
