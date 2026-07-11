@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestNPMRegistryPackageVersionURL(t *testing.T) {
@@ -191,6 +193,104 @@ func TestLoadAgentSpecsReadsNPMBundleMetadata(t *testing.T) {
 	}
 }
 
+func TestRunCodexBunCompileRetriesTransientFailure(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "codex-acp")
+	workDir := t.TempDir()
+	attempts := 0
+	cacheCleanups := 0
+	sleeps := 0
+
+	err := runCodexBunCompile(
+		"npx",
+		"index.js",
+		output,
+		"1.3.14",
+		"bun-windows-x64-baseline",
+		workDir,
+		func(command *exec.Cmd) error {
+			attempts++
+			if command.Dir != workDir {
+				t.Fatalf("command.Dir = %q, want %q", command.Dir, workDir)
+			}
+			for _, want := range []string{
+				"--yes",
+				"bun@1.3.14",
+				"build",
+				"index.js",
+				"--compile",
+				"--target=bun-windows-x64-baseline",
+				"--outfile=" + output,
+			} {
+				if !hasArg(command.Args, want) {
+					t.Fatalf("command.Args = %#v, missing %q", command.Args, want)
+				}
+			}
+			if attempts < bunCompileAttempts {
+				return fmt.Errorf("transient attempt %d", attempts)
+			}
+			return os.WriteFile(output, []byte("binary"), 0o755)
+		},
+		func(target string, bunVersion string) error {
+			cacheCleanups++
+			if target != "bun-windows-x64-baseline" || bunVersion != "1.3.14" {
+				t.Fatalf("cache cleaner got %s/%s", target, bunVersion)
+			}
+			return nil
+		},
+		func(duration time.Duration) {
+			sleeps++
+			if duration <= 0 {
+				t.Fatalf("sleep duration = %s, want positive", duration)
+			}
+		},
+	)
+	if err != nil {
+		t.Fatalf("runCodexBunCompile() error = %v", err)
+	}
+	if attempts != bunCompileAttempts {
+		t.Fatalf("attempts = %d, want %d", attempts, bunCompileAttempts)
+	}
+	if cacheCleanups != bunCompileAttempts-1 {
+		t.Fatalf("cacheCleanups = %d, want %d", cacheCleanups, bunCompileAttempts-1)
+	}
+	if sleeps != bunCompileAttempts-1 {
+		t.Fatalf("sleeps = %d, want %d", sleeps, bunCompileAttempts-1)
+	}
+}
+
+func TestRunCodexBunCompileReturnsLastFailure(t *testing.T) {
+	wantErr := fmt.Errorf("backend exe not created")
+	attempts := 0
+	cacheCleanups := 0
+
+	err := runCodexBunCompile(
+		"npx",
+		"index.js",
+		filepath.Join(t.TempDir(), "codex-acp"),
+		"1.3.14",
+		"bun-windows-x64-baseline",
+		t.TempDir(),
+		func(command *exec.Cmd) error {
+			attempts++
+			return wantErr
+		},
+		func(target string, bunVersion string) error {
+			cacheCleanups++
+			return nil
+		},
+		func(duration time.Duration) {},
+	)
+	if err != wantErr {
+		t.Fatalf("runCodexBunCompile() error = %v, want %v", err, wantErr)
+	}
+	if attempts != bunCompileAttempts {
+		t.Fatalf("attempts = %d, want %d", attempts, bunCompileAttempts)
+	}
+	if cacheCleanups != bunCompileAttempts-1 {
+		t.Fatalf("cacheCleanups = %d, want %d", cacheCleanups, bunCompileAttempts-1)
+	}
+}
+
 func TestAgentBinaryNameUsesExeOnWindows(t *testing.T) {
 	got := agentBinaryName("opencode", platform{OS: "windows", Arch: "x64"})
 	if got != "opencode.exe" {
@@ -292,4 +392,13 @@ func TestHasPreparedAgentRequiresCodexCompanion(t *testing.T) {
 	if err != nil || !cached {
 		t.Fatalf("hasPreparedAgent() = %v, %v; want true", cached, err)
 	}
+}
+
+func hasArg(args []string, want string) bool {
+	for _, arg := range args {
+		if arg == want {
+			return true
+		}
+	}
+	return false
 }

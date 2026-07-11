@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	defaultAgentID = "codex"
-	npmRegistryURL = "https://registry.npmjs.org"
+	bunCompileAttempts = 3
+	defaultAgentID     = "codex"
+	npmRegistryURL     = "https://registry.npmjs.org"
 )
 
 type agentSpec struct {
@@ -246,25 +247,113 @@ func compileCodexACPWithBun(entry string, output string, bunVersion string, targ
 	if err != nil {
 		return fmt.Errorf("finding npx for pinned Bun build: %w", err)
 	}
-	command := exec.Command(
-		npx,
-		"--yes",
-		"bun@"+strings.TrimSpace(bunVersion),
-		"build",
-		entry,
-		"--compile",
-		"--target="+strings.TrimSpace(target),
-		"--outfile="+output,
-	)
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
-	if err := command.Run(); err != nil {
+
+	workDir, cleanup, err := bunCompileWorkDir()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	if err := runCodexBunCompile(npx, entry, output, bunVersion, target, workDir, runCommand, cleanBunCompileCache, time.Sleep); err != nil {
 		return fmt.Errorf("compiling Codex ACP with Bun %s for %s: %w", bunVersion, target, err)
 	}
 	if err := os.Chmod(output, 0o755); err != nil && !errors.Is(err, os.ErrPermission) {
 		return fmt.Errorf("marking compiled Codex ACP executable: %w", err)
 	}
 	return nil
+}
+
+type commandRunner func(command *exec.Cmd) error
+
+type bunCacheCleaner func(target string, bunVersion string) error
+
+type sleeper func(duration time.Duration)
+
+func runCommand(command *exec.Cmd) error {
+	return command.Run()
+}
+
+func runCodexBunCompile(
+	npx string,
+	entry string,
+	output string,
+	bunVersion string,
+	target string,
+	workDir string,
+	runner commandRunner,
+	cacheCleaner bunCacheCleaner,
+	sleep sleeper,
+) error {
+	bunVersion = strings.TrimSpace(bunVersion)
+	target = strings.TrimSpace(target)
+	args := []string{
+		"--yes",
+		"bun@" + bunVersion,
+		"build",
+		entry,
+		"--compile",
+		"--target=" + target,
+		"--outfile=" + output,
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= bunCompileAttempts; attempt++ {
+		command := exec.Command(npx, args...)
+		command.Stdout = os.Stdout
+		command.Stderr = os.Stderr
+		command.Dir = workDir
+		if err := runner(command); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+
+		if attempt == bunCompileAttempts {
+			break
+		}
+		if err := cacheCleaner(target, bunVersion); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: cleaning Bun compile cache after attempt %d failed: %v\n", attempt, err)
+		}
+		delay := time.Duration(attempt) * 2 * time.Second
+		fmt.Fprintf(os.Stderr, "Bun compile attempt %d/%d failed: %v; retrying in %s\n", attempt, bunCompileAttempts, lastErr, delay)
+		sleep(delay)
+	}
+	return lastErr
+}
+
+func bunCompileWorkDir() (string, func(), error) {
+	if runtime.GOOS != "windows" {
+		return "", func() {}, nil
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", nil, fmt.Errorf("resolving user home for Bun compile workdir: %w", err)
+	}
+	workDir, err := os.MkdirTemp(homeDir, ".mediago-bun-build-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("creating Bun compile workdir: %w", err)
+	}
+	return workDir, func() {
+		if err := os.RemoveAll(workDir); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: cleaning Bun compile workdir %s: %v\n", workDir, err)
+		}
+	}, nil
+}
+
+func cleanBunCompileCache(target string, bunVersion string) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolving user home: %w", err)
+	}
+	cachePath := filepath.Join(
+		homeDir,
+		".bun",
+		"install",
+		"cache",
+		fmt.Sprintf("%s-v%s", strings.TrimSpace(target), strings.TrimPrefix(strings.TrimSpace(bunVersion), "v")),
+	)
+	return os.RemoveAll(cachePath)
 }
 
 type npmPackageVersionMetadata struct {
