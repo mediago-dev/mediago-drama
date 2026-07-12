@@ -17,6 +17,7 @@ import {
 	type CascadedPickerPoint,
 	type CascadedPickerSafeTriangleInput,
 	pointerEventPoint,
+	scrollCascadedPickerListOnWheel,
 	shouldKeepCascadedPickerSourceActive,
 } from "./cascadedPickerSafeTriangle";
 import { displayGenerationLabelWithoutAlias } from "./generationDisplayLabels";
@@ -104,14 +105,14 @@ export const GenerationModelRoutePicker: React.FC<{
 
 	const handleVersionListWheel = useCallback(
 		(event: React.WheelEvent<HTMLDivElement>) => {
-			scrollGenerationRoutePickerList(event, updateVersionListScrollHint);
+			scrollCascadedPickerListOnWheel(event, updateVersionListScrollHint);
 		},
 		[updateVersionListScrollHint],
 	);
 
 	const handleRouteListWheel = useCallback(
 		(event: React.WheelEvent<HTMLDivElement>) => {
-			scrollGenerationRoutePickerList(event, updateRouteListScrollHint);
+			scrollCascadedPickerListOnWheel(event, updateRouteListScrollHint);
 		},
 		[updateRouteListScrollHint],
 	);
@@ -433,37 +434,6 @@ const canShowGenerationRoutePickerScrollHint = (node: HTMLElement | null) => {
 	const visibleBottom = node.scrollTop + node.clientHeight;
 	const lastOptionBottom = lastOption.offsetTop + lastOption.offsetHeight;
 	return lastOptionBottom - visibleBottom > GENERATION_ROUTE_PICKER_SCROLL_HINT_MIN_REMAINING_PX;
-};
-
-const scrollGenerationRoutePickerList = (
-	event: React.WheelEvent<HTMLDivElement>,
-	onScroll: () => void,
-) => {
-	const node = event.currentTarget;
-	const maxScrollTop = node.scrollHeight - node.clientHeight;
-	if (maxScrollTop <= 0) return;
-
-	const deltaY = wheelDeltaY(event, node.clientHeight);
-	if (deltaY === 0) return;
-
-	const nextScrollTop = Math.max(0, Math.min(maxScrollTop, node.scrollTop + deltaY));
-	if (Math.abs(nextScrollTop - node.scrollTop) < 0.5) return;
-
-	event.preventDefault();
-	event.stopPropagation();
-	node.scrollTop = nextScrollTop;
-	onScroll();
-};
-
-const wheelDeltaY = (event: React.WheelEvent, pageHeight: number) => {
-	switch (event.deltaMode) {
-		case WheelEvent.DOM_DELTA_LINE:
-			return event.deltaY * 16;
-		case WheelEvent.DOM_DELTA_PAGE:
-			return event.deltaY * pageHeight;
-		default:
-			return event.deltaY;
-	}
 };
 
 export const shouldKeepGenerationRoutePickerVersionActive = (

@@ -75,3 +75,42 @@ const triangleSign = (
 	second: CascadedPickerPoint,
 	third: CascadedPickerPoint,
 ) => (first.x - third.x) * (second.y - third.y) - (second.x - third.x) * (first.y - third.y);
+
+const cascadedPickerWheelDeltaY = (event: React.WheelEvent, pageHeight: number) => {
+	switch (event.deltaMode) {
+		case WheelEvent.DOM_DELTA_LINE:
+			return event.deltaY * 16;
+		case WheelEvent.DOM_DELTA_PAGE:
+			return event.deltaY * pageHeight;
+		default:
+			return event.deltaY;
+	}
+};
+
+/**
+ * scrollCascadedPickerListOnWheel forwards a wheel event to its own list.
+ *
+ * Cascaded pickers render their popover in a portal that lands outside the
+ * enclosing modal dialog's `react-remove-scroll` guard, which blocks native
+ * wheel scrolling on the list. Manually applying the delta keeps the options
+ * scrollable while still preventing the wheel event from leaking to the page.
+ */
+export const scrollCascadedPickerListOnWheel = (
+	event: React.WheelEvent<HTMLDivElement>,
+	onScroll?: () => void,
+) => {
+	const node = event.currentTarget;
+	const maxScrollTop = node.scrollHeight - node.clientHeight;
+	if (maxScrollTop <= 0) return;
+
+	const deltaY = cascadedPickerWheelDeltaY(event, node.clientHeight);
+	if (deltaY === 0) return;
+
+	const nextScrollTop = Math.max(0, Math.min(maxScrollTop, node.scrollTop + deltaY));
+	if (Math.abs(nextScrollTop - node.scrollTop) < 0.5) return;
+
+	event.preventDefault();
+	event.stopPropagation();
+	node.scrollTop = nextScrollTop;
+	onScroll?.();
+};

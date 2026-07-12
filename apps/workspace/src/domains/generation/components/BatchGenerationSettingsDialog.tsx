@@ -61,6 +61,7 @@ import { cn } from "@/shared/lib/utils";
 import {
 	type CascadedPickerPoint,
 	pointerEventPoint,
+	scrollCascadedPickerListOnWheel,
 	shouldKeepCascadedPickerSourceActive,
 } from "./cascadedPickerSafeTriangle";
 
@@ -1030,7 +1031,10 @@ const PromptPackSelect: React.FC<{
 			>
 				<section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-[var(--generation-popover-padding)]">
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">分类</p>
-					<div className="grid min-h-0 auto-rows-min gap-1 overflow-y-auto overscroll-contain pr-1">
+					<div
+						className="grid min-h-0 auto-rows-min gap-1 overflow-y-auto overscroll-contain pr-1"
+						onWheel={scrollCascadedPickerListOnWheel}
+					>
 						{groups.map((group) => {
 							const Icon = group.icon;
 							const selected = group.id === activeGroup?.id;
@@ -1084,6 +1088,7 @@ const PromptPackSelect: React.FC<{
 					<div
 						aria-label="提示词包列表"
 						className="grid min-h-0 auto-rows-min gap-1 overflow-y-auto overscroll-contain pr-1"
+						onWheel={scrollCascadedPickerListOnWheel}
 						role="listbox"
 					>
 						{activeGroup?.items.map((item) => {
