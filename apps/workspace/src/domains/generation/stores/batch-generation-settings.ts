@@ -10,7 +10,7 @@ export interface BatchGenerationStoredSettings {
 	params?: Record<string, unknown>;
 	promptOptimizeItemId?: string;
 	promptOptimizeRouteId?: string;
-	promptSupplementItemId?: string;
+	promptSupplementItemIds?: string[];
 	routeId?: string;
 	usePromptOptimization?: boolean;
 	usePromptSupplement?: boolean;
@@ -114,7 +114,7 @@ function normalizeBatchGenerationStoredSettings(
 		params: isRecord(value.params) ? { ...value.params } : undefined,
 		promptOptimizeItemId: stringValue(value.promptOptimizeItemId),
 		promptOptimizeRouteId: stringValue(value.promptOptimizeRouteId),
-		promptSupplementItemId: stringValue(value.promptSupplementItemId),
+		promptSupplementItemIds: promptSupplementItemIdsValue(value),
 		routeId: stringValue(value.routeId),
 		usePromptOptimization:
 			typeof value.usePromptOptimization === "boolean" ? value.usePromptOptimization : undefined,
@@ -133,8 +133,8 @@ function compactBatchGenerationStoredSettings(
 		next.params = { ...settings.params };
 	if (settings.promptOptimizeItemId) next.promptOptimizeItemId = settings.promptOptimizeItemId;
 	if (settings.promptOptimizeRouteId) next.promptOptimizeRouteId = settings.promptOptimizeRouteId;
-	if (settings.promptSupplementItemId)
-		next.promptSupplementItemId = settings.promptSupplementItemId;
+	if (settings.promptSupplementItemIds && settings.promptSupplementItemIds.length > 0)
+		next.promptSupplementItemIds = [...settings.promptSupplementItemIds];
 	if (settings.routeId) next.routeId = settings.routeId;
 	if (typeof settings.usePromptOptimization === "boolean") {
 		next.usePromptOptimization = settings.usePromptOptimization;
@@ -152,4 +152,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringValue(value: unknown) {
 	return typeof value === "string" ? value.trim() : undefined;
+}
+
+function promptSupplementItemIdsValue(value: Record<string, unknown>): string[] | undefined {
+	const candidates = Array.isArray(value.promptSupplementItemIds)
+		? value.promptSupplementItemIds
+		: [];
+	// promptSupplementItemId is the legacy single-value field written before multi-select.
+	const ids = [
+		...new Set(
+			[...candidates, value.promptSupplementItemId]
+				.map(stringValue)
+				.filter((id): id is string => Boolean(id)),
+		),
+	];
+	return ids.length > 0 ? ids : undefined;
 }

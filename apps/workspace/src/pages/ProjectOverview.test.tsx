@@ -27,9 +27,15 @@ const dialogMocks = vi.hoisted(() => ({
 	MediaGenerationDialog: vi.fn((_props: MediaGenerationDialogMockProps): React.ReactNode => null),
 }));
 
-vi.mock("@/domains/generation/components/BatchGenerationSettingsDialog", () => ({
-	BatchGenerationSettingsDialog: dialogMocks.BatchGenerationSettingsDialog,
-}));
+vi.mock(
+	"@/domains/generation/components/BatchGenerationSettingsDialog",
+	async (importOriginal) => ({
+		...(await importOriginal<
+			typeof import("@/domains/generation/components/BatchGenerationSettingsDialog")
+		>()),
+		BatchGenerationSettingsDialog: dialogMocks.BatchGenerationSettingsDialog,
+	}),
+);
 
 vi.mock("@/domains/generation/components/MediaGenerationDialog", () => ({
 	MediaGenerationDialog: dialogMocks.MediaGenerationDialog,
