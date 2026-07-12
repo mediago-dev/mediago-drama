@@ -88,6 +88,27 @@ const selectedReferenceAsset: MediaAsset = {
 	url: "/api/v1/media-assets/selected-ref/content",
 };
 
+const setScrollableList = (
+	element: HTMLElement,
+	{
+		clientHeight,
+		scrollHeight,
+		scrollTop,
+	}: {
+		clientHeight: number;
+		scrollHeight: number;
+		scrollTop: number;
+	},
+) => {
+	Object.defineProperty(element, "clientHeight", { configurable: true, value: clientHeight });
+	Object.defineProperty(element, "scrollHeight", { configurable: true, value: scrollHeight });
+	Object.defineProperty(element, "scrollTop", {
+		configurable: true,
+		value: scrollTop,
+		writable: true,
+	});
+};
+
 describe("BatchGenerationSettingsDialog rendered preferences", () => {
 	beforeEach(() => {
 		localStorage.removeItem(batchGenerationSettingsStorageKey);
@@ -246,6 +267,39 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 				},
 			}),
 		);
+	});
+
+	it("scrolls the prompt pack list directly on wheel events", async () => {
+		render(
+			<BatchGenerationSettingsDialog
+				kind="image"
+				open
+				selectedCount={1}
+				onConfirm={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("checkbox", { name: "生成时追加" }));
+
+		const trigger = screen.getByRole("button", { name: "补充提示词包" });
+		await waitFor(() => expect(trigger).toBeEnabled());
+		fireEvent.click(trigger);
+
+		const packList = document.querySelector('[aria-label="提示词包列表"]');
+		expect(packList).toBeTruthy();
+		// jsdom never scrolls on wheel, so this asserts the manual onWheel handler
+		// moves scrollTop — removing it would leave the list unscrollable in the
+		// modal (where react-remove-scroll blocks native wheel scrolling).
+		setScrollableList(packList as HTMLElement, {
+			clientHeight: 150,
+			scrollHeight: 210,
+			scrollTop: 0,
+		});
+
+		fireEvent.wheel(packList as HTMLElement, { deltaY: 40 });
+
+		expect((packList as HTMLElement).scrollTop).toBe(40);
 	});
 
 	it("passes the last saved model selection into workspace initialization", () => {
