@@ -48,6 +48,7 @@ import type { MarkdownSectionContext } from "@/domains/documents/components/Mark
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import {
+	appendBatchPromptSupplements,
 	BatchGenerationSettingsDialog,
 	type BatchGenerationSettings,
 } from "@/domains/generation/components/BatchGenerationSettingsDialog";
@@ -1877,7 +1878,7 @@ const generationBatchRequestForSection = ({
 	),
 	params: settings.params,
 	projectId,
-	prompt: appendBatchPromptSupplement(prompt, settings.promptSupplement?.referencePrompt),
+	prompt: appendBatchPromptSupplements(prompt, settings.promptSupplements),
 	promptOptimization: settings.promptOptimization,
 	provider: settings.route.provider,
 	referenceAssetIds: settings.referenceAssetIds ?? [],
@@ -1910,14 +1911,6 @@ const generationBatchNotificationTarget = (
 		prompt: section.prompt,
 	},
 });
-
-const appendBatchPromptSupplement = (prompt: string, supplement?: string) => {
-	const current = prompt.trim();
-	const extra = supplement?.trim() ?? "";
-	if (!current) return extra;
-	if (!extra || current.includes(extra)) return current;
-	return `${current}\n\n${extra}`;
-};
 
 const isFailedGenerationBatchStatus = (status: string) =>
 	["failed", "error", "cancelled", "canceled"].includes(status.trim().toLowerCase());

@@ -10,6 +10,7 @@ import {
 	Sparkles,
 	type LucideIcon,
 	Wand2,
+	X,
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -69,7 +70,7 @@ export interface BatchGenerationSettings {
 	family: GenerationFamily;
 	params: Record<string, unknown>;
 	promptOptimization?: GenerationPromptOptimizationRequest;
-	promptSupplement?: BatchGenerationPromptSupplement;
+	promptSupplements?: BatchGenerationPromptSupplement[];
 	referenceAssetIds?: string[];
 	route: GenerationRoute;
 	version: GenerationVersion;
@@ -117,17 +118,34 @@ export const batchGenerationPromptOptimizationForConfirm = (
 	};
 };
 
-export const batchGenerationPromptSupplementForConfirm = (
-	item: Pick<PromptInsertItem, "name" | "prompt"> | null | undefined,
-): BatchGenerationPromptSupplement | undefined => {
-	if (!item) return undefined;
-	const referencePrompt = item.prompt.trim();
-	if (!referencePrompt) return undefined;
+export const batchGenerationPromptSupplementsForConfirm = (
+	items: readonly Pick<PromptInsertItem, "name" | "prompt">[] | null | undefined,
+): BatchGenerationPromptSupplement[] | undefined => {
+	if (!items || items.length === 0) return undefined;
+	const supplements = items
+		.map((item) => ({ referenceName: item.name.trim(), referencePrompt: item.prompt.trim() }))
+		.filter((supplement) => supplement.referencePrompt);
+	return supplements.length > 0 ? supplements : undefined;
+};
 
-	return {
-		referenceName: item.name,
-		referencePrompt,
-	};
+// Packs stay separate entries so each one can be deduped against prompts that
+// already contain its text (e.g. inserted earlier via the prompt slash command).
+export const appendBatchPromptSupplements = (
+	prompt: string,
+	supplements?: readonly BatchGenerationPromptSupplement[],
+) => {
+	let current = prompt.trim();
+	for (const supplement of supplements ?? []) {
+		const extra = supplement.referencePrompt.trim();
+		if (!extra) continue;
+		if (!current) {
+			current = extra;
+			continue;
+		}
+		if (current.includes(extra)) continue;
+		current = `${current}\n\n${extra}`;
+	}
+	return current;
 };
 
 export const batchGenerationConfirmButtonLabel = (optimizePrompt: boolean) =>
@@ -153,9 +171,9 @@ export const BatchGenerationSettingsDialog: React.FC<{
 	const [selectedPromptOptimizeRouteId, setSelectedPromptOptimizeRouteId] = useState(
 		settingsToRestore?.promptOptimizeRouteId ?? "",
 	);
-	const [selectedPromptSupplementItemId, setSelectedPromptSupplementItemId] = useState<
-		string | null
-	>(settingsToRestore?.promptSupplementItemId ?? null);
+	const [selectedPromptSupplementItemIds, setSelectedPromptSupplementItemIds] = useState<string[]>(
+		() => settingsToRestore?.promptSupplementItemIds ?? [],
+	);
 	const [usePromptOptimization, setUsePromptOptimization] = useState(() =>
 		batchGenerationPromptOptimizationEnabled(settingsToRestore),
 	);
@@ -203,7 +221,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		setSettingsToRestore(latestSettings);
 		setSelectedPromptOptimizeItemId(latestSettings?.promptOptimizeItemId ?? null);
 		setSelectedPromptOptimizeRouteId(latestSettings?.promptOptimizeRouteId ?? "");
-		setSelectedPromptSupplementItemId(latestSettings?.promptSupplementItemId ?? null);
+		setSelectedPromptSupplementItemIds(latestSettings?.promptSupplementItemIds ?? []);
 		setUsePromptOptimization(batchGenerationPromptOptimizationEnabled(latestSettings));
 		setUsePromptSupplement(batchGenerationPromptSupplementEnabled(latestSettings));
 		restoredStoredSettingsRef.current = false;
@@ -386,8 +404,13 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		null;
 	const selectedPromptOptimizeItem =
 		ws.promptInsertItems.find((item) => item.id === selectedPromptOptimizeItemId) ?? null;
-	const selectedPromptSupplementItem =
-		ws.promptInsertItems.find((item) => item.id === selectedPromptSupplementItemId) ?? null;
+	const selectedPromptSupplementItems = useMemo(
+		() =>
+			selectedPromptSupplementItemIds
+				.map((id) => ws.promptInsertItems.find((item) => item.id === id))
+				.filter((item): item is PromptInsertItem => Boolean(item)),
+		[selectedPromptSupplementItemIds, ws.promptInsertItems],
+	);
 	useEffect(() => {
 		if (!selectedPromptOptimizeItemId || ws.promptInsertItems.length === 0) return;
 		if (ws.promptInsertItems.some((item) => item.id === selectedPromptOptimizeItemId)) return;
@@ -397,23 +420,31 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		if (selectedPromptOptimizeItemId || !ws.promptInsertItems[0]) return;
 		setSelectedPromptOptimizeItemId(ws.promptInsertItems[0].id);
 	}, [selectedPromptOptimizeItemId, ws.promptInsertItems]);
+	// Prune stored supplement ids once the pack list has loaded; while /prompt-presets
+	// is still loading (or failed) the raw ids are kept so the persisted selection is
+	// not wiped — display and confirm read through selectedPromptSupplementItems, which
+	// filters at read time.
 	useEffect(() => {
-		if (!selectedPromptSupplementItemId || ws.promptInsertItems.length === 0) return;
-		if (ws.promptInsertItems.some((item) => item.id === selectedPromptSupplementItemId)) return;
-		setSelectedPromptSupplementItemId(null);
-	}, [selectedPromptSupplementItemId, ws.promptInsertItems]);
-	useEffect(() => {
-		if (selectedPromptSupplementItemId || !ws.promptInsertItems[0]) return;
-		setSelectedPromptSupplementItemId(ws.promptInsertItems[0].id);
-	}, [selectedPromptSupplementItemId, ws.promptInsertItems]);
-	const promptSupplement = useMemo(
-		() => batchGenerationPromptSupplementForConfirm(selectedPromptSupplementItem),
-		[selectedPromptSupplementItem],
+		if (selectedPromptSupplementItemIds.length === 0 || ws.promptInsertItems.length === 0) return;
+		const available = new Set(ws.promptInsertItems.map((item) => item.id));
+		const next = selectedPromptSupplementItemIds.filter((id) => available.has(id));
+		if (next.length !== selectedPromptSupplementItemIds.length) {
+			setSelectedPromptSupplementItemIds(next);
+		}
+	}, [selectedPromptSupplementItemIds, ws.promptInsertItems]);
+	const toggleSupplementItemId = (id: string) => {
+		setSelectedPromptSupplementItemIds((current) =>
+			current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
+		);
+	};
+	const promptSupplements = useMemo(
+		() => batchGenerationPromptSupplementsForConfirm(selectedPromptSupplementItems),
+		[selectedPromptSupplementItems],
 	);
 	const promptOptimizationReady = Boolean(
 		selectedPromptOptimizeItem && selectedPromptOptimizeModel?.route,
 	);
-	const promptSupplementReady = Boolean(promptSupplement);
+	const promptSupplementReady = Boolean(promptSupplements);
 	const hasAvailableRoute =
 		ws.hasLiveCatalog &&
 		ws.hasConfiguredRoutesForKind &&
@@ -443,6 +474,10 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		(usePromptOptimization && !promptOptimizationReady) ||
 		(usePromptSupplement && !promptSupplementReady);
 	const primaryConfirmLabel = batchGenerationConfirmButtonLabel(usePromptOptimization);
+	// Persist the RAW selection state, not the ids resolved against the pack list:
+	// /prompt-presets loads independently of the model catalog that gates the persist
+	// effect below, and persisting resolved ids would wipe the stored selection during
+	// the window where the catalog is ready but the packs are still loading.
 	const selectedSettingsDraft = useMemo<BatchGenerationStoredSettings>(
 		() => ({
 			familyId: ws.selectedFamily.id,
@@ -452,9 +487,9 @@ export const BatchGenerationSettingsDialog: React.FC<{
 				generationCountParamName,
 				generationCountControl?.value ?? 1,
 			),
-			promptOptimizeItemId: selectedPromptOptimizeItem?.id,
+			promptOptimizeItemId: selectedPromptOptimizeItemId ?? undefined,
 			promptOptimizeRouteId: selectedPromptOptimizeModel?.id,
-			promptSupplementItemId: selectedPromptSupplementItem?.id,
+			promptSupplementItemIds: selectedPromptSupplementItemIds,
 			routeId: ws.selectedRoute.id,
 			usePromptOptimization,
 			usePromptSupplement,
@@ -463,9 +498,9 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		[
 			generationCountControl?.value,
 			generationCountParamName,
-			selectedPromptOptimizeItem?.id,
+			selectedPromptOptimizeItemId,
 			selectedPromptOptimizeModel?.id,
-			selectedPromptSupplementItem?.id,
+			selectedPromptSupplementItemIds,
 			usePromptOptimization,
 			usePromptSupplement,
 			ws.selectedFamily.id,
@@ -489,7 +524,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		if (
 			confirmDisabled ||
 			(optimizePrompt && !promptOptimizationReady) ||
-			(usePromptSupplement && !promptSupplement)
+			(usePromptSupplement && !promptSupplements)
 		) {
 			return;
 		}
@@ -499,7 +534,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 					selectedPromptOptimizeModel,
 				)
 			: undefined;
-		const selectedPromptSupplement = usePromptSupplement ? promptSupplement : undefined;
+		const selectedPromptSupplements = usePromptSupplement ? promptSupplements : undefined;
 		const params = batchGenerationParamsForConfirm(
 			ws.selectedRoute,
 			ws.selectedParams,
@@ -520,7 +555,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 			family: ws.selectedFamily,
 			params,
 			promptOptimization,
-			promptSupplement: selectedPromptSupplement,
+			promptSupplements: selectedPromptSupplements,
 			...(referenceAssetIds.length > 0 ? { referenceAssetIds } : {}),
 			route: ws.selectedRoute,
 			version: ws.selectedVersion,
@@ -702,14 +737,22 @@ export const BatchGenerationSettingsDialog: React.FC<{
 										ariaLabel="补充提示词包"
 										disabled={!usePromptSupplement || ws.promptInsertItems.length === 0}
 										items={ws.promptInsertItems}
-										selectedItem={selectedPromptSupplementItem}
-										onValueChange={setSelectedPromptSupplementItemId}
+										multiple
+										selectedIds={selectedPromptSupplementItems.map((item) => item.id)}
+										onSelect={toggleSupplementItemId}
 									/>
 								</LabeledInlineControl>
+								<PromptPackChips
+									disabled={!usePromptSupplement}
+									items={selectedPromptSupplementItems}
+									onRemove={toggleSupplementItemId}
+								/>
 							</div>
 							{usePromptSupplement && !promptSupplementReady ? (
 								<p className="text-xs text-muted-foreground">
-									需要可用的提示词包后才能追加并生成。
+									{ws.promptInsertItems.length === 0
+										? "需要可用的提示词包后才能追加并生成。"
+										: "需要选择至少一个提示词包后才能追加并生成。"}
 								</p>
 							) : null}
 						</section>
@@ -737,8 +780,8 @@ export const BatchGenerationSettingsDialog: React.FC<{
 										ariaLabel="优化提示词包"
 										disabled={!usePromptOptimization || ws.promptInsertItems.length === 0}
 										items={ws.promptInsertItems}
-										selectedItem={selectedPromptOptimizeItem}
-										onValueChange={setSelectedPromptOptimizeItemId}
+										selectedIds={selectedPromptOptimizeItemId ? [selectedPromptOptimizeItemId] : []}
+										onSelect={setSelectedPromptOptimizeItemId}
 									/>
 								</LabeledInlineControl>
 								<LabeledInlineControl label="优化模型">
@@ -853,15 +896,25 @@ const PromptPackSelect: React.FC<{
 	ariaLabel: string;
 	disabled: boolean;
 	items: PromptInsertItem[];
-	onValueChange: (value: string) => void;
-	selectedItem: PromptInsertItem | null;
-}> = ({ ariaLabel, disabled, items, onValueChange, selectedItem }) => {
+	multiple?: boolean;
+	onSelect: (value: string) => void;
+	selectedIds: string[];
+}> = ({ ariaLabel, disabled, items, multiple = false, onSelect, selectedIds }) => {
 	const [open, setOpen] = useState(false);
 	const groups = useMemo(() => groupPromptPackSelectItems(items), [items]);
+	const primarySelectedId = selectedIds[0] ?? null;
 	const selectedGroup = useMemo(
-		() => groups.find((group) => group.items.some((item) => item.id === selectedItem?.id)) ?? null,
-		[groups, selectedItem?.id],
+		() => groups.find((group) => group.items.some((item) => item.id === primarySelectedId)) ?? null,
+		[groups, primarySelectedId],
 	);
+	const triggerLabel =
+		items.length === 0
+			? "无可用提示词包"
+			: multiple
+				? selectedIds.length > 0
+					? `已选 ${selectedIds.length} 个`
+					: "选择提示词包"
+				: (items.find((item) => item.id === primarySelectedId)?.name ?? "选择提示词包");
 	const [activeGroupId, setActiveGroupId] = useState(selectedGroup?.id ?? groups[0]?.id ?? "");
 	const [suppressedGroupHoverId, setSuppressedGroupHoverId] = useState<string | null>(null);
 	const groupButtonRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -888,8 +941,17 @@ const PromptPackSelect: React.FC<{
 		if (disabled && open) setOpen(false);
 	}, [disabled, open]);
 
+	// Sync the active group to the selection only when the popover opens. In multiple
+	// mode the popover stays open across toggles, and re-syncing on every selection
+	// change would yank the item panel to another group mid-interaction.
+	const openSyncedRef = useRef(false);
 	useEffect(() => {
-		if (!open) return;
+		if (!open) {
+			openSyncedRef.current = false;
+			return;
+		}
+		if (openSyncedRef.current) return;
+		openSyncedRef.current = true;
 		setActiveGroupId(selectedGroup?.id ?? groups[0]?.id ?? "");
 	}, [groups, open, selectedGroup?.id]);
 
@@ -903,8 +965,8 @@ const PromptPackSelect: React.FC<{
 	}, [activeGroupId, groups, selectedGroup?.id]);
 
 	const selectItem = (item: PromptInsertItem) => {
-		onValueChange(item.id);
-		setOpen(false);
+		onSelect(item.id);
+		if (!multiple) setOpen(false);
 	};
 	const popoverOpen = open && !disabled;
 
@@ -1015,9 +1077,7 @@ const PromptPackSelect: React.FC<{
 						popoverOpen && "bg-ide-list-active text-ide-list-active-foreground",
 					)}
 				>
-					<span className="min-w-0 flex-1 truncate text-left">
-						{selectedItem?.name ?? "无可用提示词包"}
-					</span>
+					<span className="min-w-0 flex-1 truncate text-left">{triggerLabel}</span>
 					<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
 				</button>
 			</PopoverTrigger>
@@ -1087,12 +1147,13 @@ const PromptPackSelect: React.FC<{
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">提示词包</p>
 					<div
 						aria-label="提示词包列表"
+						aria-multiselectable={multiple || undefined}
 						className="grid min-h-0 auto-rows-min gap-1 overflow-y-auto overscroll-contain pr-1"
 						onWheel={scrollCascadedPickerListOnWheel}
 						role="listbox"
 					>
 						{activeGroup?.items.map((item) => {
-							const selected = item.id === selectedItem?.id;
+							const selected = selectedIds.includes(item.id);
 
 							return (
 								<button
@@ -1119,6 +1180,62 @@ const PromptPackSelect: React.FC<{
 				</section>
 			</PopoverContent>
 		</Popover>
+	);
+};
+
+const PromptPackChips: React.FC<{
+	disabled: boolean;
+	items: PromptInsertItem[];
+	onRemove: (id: string) => void;
+}> = ({ disabled, items, onRemove }) => {
+	const removeButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+	const pendingFocusIdRef = useRef<string | null>(null);
+
+	// Removing a chip unmounts the focused button; hand focus to a neighbour chip
+	// so keyboard users are not dropped back to the document body.
+	useEffect(() => {
+		const id = pendingFocusIdRef.current;
+		if (id === null) return;
+		pendingFocusIdRef.current = null;
+		removeButtonRefs.current.get(id)?.focus();
+	}, [items]);
+
+	if (items.length === 0) return null;
+
+	const removeAt = (index: number) => {
+		const item = items[index];
+		if (!item) return;
+		pendingFocusIdRef.current = (items[index + 1] ?? items[index - 1])?.id ?? null;
+		onRemove(item.id);
+	};
+
+	return (
+		<div className={cn("flex flex-wrap items-center gap-1.5", disabled && "opacity-50")}>
+			{items.map((item, index) => (
+				<span
+					key={item.id}
+					className="flex h-8 max-w-52 items-center gap-1 rounded-sm bg-muted pl-2 pr-1 text-2xs font-semibold text-foreground"
+				>
+					<span className="min-w-0 truncate">{item.name}</span>
+					<button
+						type="button"
+						aria-label={`移除${item.name}`}
+						disabled={disabled}
+						ref={(node) => {
+							if (node) {
+								removeButtonRefs.current.set(item.id, node);
+							} else {
+								removeButtonRefs.current.delete(item.id);
+							}
+						}}
+						className="flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring enabled:hover:bg-ide-list-hover enabled:hover:text-foreground disabled:cursor-not-allowed"
+						onClick={() => removeAt(index)}
+					>
+						<X className="size-3" />
+					</button>
+				</span>
+			))}
+		</div>
 	);
 };
 

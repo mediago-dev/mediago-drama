@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GenerationRoute } from "@/domains/generation/api/generation";
 import {
+	appendBatchPromptSupplements,
 	batchGenerationConfirmButtonLabel,
 	batchGenerationParamsForConfirm,
 	batchGenerationPromptOptimizationForConfirm,
-	batchGenerationPromptSupplementForConfirm,
+	batchGenerationPromptSupplementsForConfirm,
 } from "./BatchGenerationSettingsDialog";
 import {
 	batchGenerationPromptOptimizationEnabled,
@@ -73,24 +74,59 @@ describe("batchGenerationPromptOptimizationForConfirm", () => {
 	});
 });
 
-describe("batchGenerationPromptSupplementForConfirm", () => {
-	it("builds the prompt supplement request from the selected prompt pack", () => {
+describe("batchGenerationPromptSupplementsForConfirm", () => {
+	it("builds one supplement per selected prompt pack, in selection order", () => {
 		expect(
-			batchGenerationPromptSupplementForConfirm({
-				name: "电影感提示词",
-				prompt: "  强化镜头语言、光影与构图。  ",
-			}),
-		).toEqual({
-			referenceName: "电影感提示词",
-			referencePrompt: "强化镜头语言、光影与构图。",
-		});
+			batchGenerationPromptSupplementsForConfirm([
+				{ name: "电影感提示词", prompt: "  强化镜头语言、光影与构图。  " },
+				{ name: "空提示词", prompt: "   " },
+				{ name: "镜头推进", prompt: "拉近镜头，突出主体动作。" },
+			]),
+		).toEqual([
+			{ referenceName: "电影感提示词", referencePrompt: "强化镜头语言、光影与构图。" },
+			{ referenceName: "镜头推进", referencePrompt: "拉近镜头，突出主体动作。" },
+		]);
 	});
 
-	it("skips prompt supplement when the prompt pack is missing or empty", () => {
-		expect(batchGenerationPromptSupplementForConfirm(null)).toBeUndefined();
+	it("skips prompt supplements when no prompt pack is selected or all are empty", () => {
+		expect(batchGenerationPromptSupplementsForConfirm(null)).toBeUndefined();
+		expect(batchGenerationPromptSupplementsForConfirm([])).toBeUndefined();
 		expect(
-			batchGenerationPromptSupplementForConfirm({ name: "空提示词", prompt: " " }),
+			batchGenerationPromptSupplementsForConfirm([{ name: "空提示词", prompt: " " }]),
 		).toBeUndefined();
+	});
+});
+
+describe("appendBatchPromptSupplements", () => {
+	const filmPack = {
+		referenceName: "电影感提示词",
+		referencePrompt: "强化镜头语言、光影与构图。",
+	};
+	const cameraPack = {
+		referenceName: "镜头推进",
+		referencePrompt: "拉近镜头，突出主体动作。",
+	};
+
+	it("appends every selected pack after the base prompt", () => {
+		expect(appendBatchPromptSupplements("一个角色站在教室里。", [filmPack, cameraPack])).toBe(
+			"一个角色站在教室里。\n\n强化镜头语言、光影与构图。\n\n拉近镜头，突出主体动作。",
+		);
+	});
+
+	it("dedupes each pack individually against the base prompt", () => {
+		const basePrompt = `一个角色站在教室里。\n\n${filmPack.referencePrompt}`;
+		expect(appendBatchPromptSupplements(basePrompt, [filmPack, cameraPack])).toBe(
+			`${basePrompt}\n\n${cameraPack.referencePrompt}`,
+		);
+	});
+
+	it("returns the packs alone when the base prompt is empty", () => {
+		expect(appendBatchPromptSupplements("  ", [filmPack])).toBe(filmPack.referencePrompt);
+	});
+
+	it("returns the trimmed prompt when no packs are provided", () => {
+		expect(appendBatchPromptSupplements(" 一个角色。 ", undefined)).toBe("一个角色。");
+		expect(appendBatchPromptSupplements(" 一个角色。 ", [])).toBe("一个角色。");
 	});
 });
 
@@ -135,14 +171,16 @@ describe("batchGeneration settings preference storage", () => {
 		const { useBatchGenerationSettingsPreferenceStore: freshStore } =
 			await import("../stores/batch-generation-settings");
 
-		expect(freshStore.getState().settingsByKind.image).toMatchObject({
+		const image = freshStore.getState().settingsByKind.image;
+		expect(image).toMatchObject({
 			promptOptimizeItemId: "legacy-pack",
 			promptOptimizeRouteId: "legacy-text-route",
-			promptSupplementItemId: "legacy-supplement-pack",
+			promptSupplementItemIds: ["legacy-supplement-pack"],
 			routeId: "legacy-image-route",
 			usePromptOptimization: true,
 			usePromptSupplement: true,
 		});
+		expect(image).not.toHaveProperty("promptSupplementItemId");
 	});
 
 	it("hydrates persisted batch dialog settings", async () => {
@@ -171,7 +209,7 @@ describe("batchGeneration settings preference storage", () => {
 			{
 				promptOptimizeItemId: "prompt-pack-2",
 				promptOptimizeRouteId: "text-route-2",
-				promptSupplementItemId: "prompt-pack-extra",
+				promptSupplementItemIds: ["prompt-pack-extra"],
 				routeId: "image-route-2",
 				usePromptOptimization: true,
 				usePromptSupplement: true,
@@ -185,7 +223,7 @@ describe("batchGeneration settings preference storage", () => {
 			params: { aspectRatio: "3:4", n: 2 },
 			promptOptimizeItemId: "prompt-pack-1",
 			promptOptimizeRouteId: "text-route-1",
-			promptSupplementItemId: "prompt-pack-extra",
+			promptSupplementItemIds: ["prompt-pack-extra", "prompt-pack-camera"],
 			routeId: "image-route-1",
 			usePromptOptimization: true,
 			usePromptSupplement: true,
@@ -204,7 +242,7 @@ describe("batchGeneration settings preference storage", () => {
 				params: { aspectRatio: "3:4", n: 2 },
 				promptOptimizeItemId: "prompt-pack-1",
 				promptOptimizeRouteId: "text-route-1",
-				promptSupplementItemId: "prompt-pack-extra",
+				promptSupplementItemIds: ["prompt-pack-extra", "prompt-pack-camera"],
 				routeId: "image-route-1",
 				usePromptOptimization: true,
 				usePromptSupplement: true,
@@ -227,7 +265,7 @@ describe("batchGeneration settings preference storage", () => {
 					image: {
 						promptOptimizeItemId: "prompt-pack-1",
 						promptOptimizeRouteId: "text-route-1",
-						promptSupplementItemId: "prompt-pack-extra",
+						promptSupplementItemIds: ["prompt-pack-extra", "prompt-pack-camera"],
 						routeId: "image-route-1",
 						usePromptOptimization: true,
 						usePromptSupplement: true,

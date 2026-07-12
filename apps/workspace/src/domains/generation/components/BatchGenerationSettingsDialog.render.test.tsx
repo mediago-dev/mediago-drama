@@ -189,7 +189,7 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 
 	it("shows the last saved prompt supplement choice when opened", async () => {
 		useBatchGenerationSettingsPreferenceStore.getState().setSettings("image", {
-			promptSupplementItemId: "prompt-pack-1",
+			promptSupplementItemIds: ["prompt-pack-1"],
 			routeId: "image-route-1",
 			usePromptSupplement: true,
 			versionId: "gpt-image-2",
@@ -209,6 +209,44 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 		const trigger = screen.getByRole("button", { name: "补充提示词包" });
 		expect(trigger).toBeEnabled();
 		expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+		expect(trigger).toHaveTextContent("已选 1 个");
+		expect(screen.getByRole("button", { name: "移除电影感提示词" })).toBeTruthy();
+	});
+
+	it("keeps stored supplement ids while the prompt pack list is still loading", async () => {
+		useBatchGenerationSettingsPreferenceStore.getState().setSettings("image", {
+			promptSupplementItemIds: ["prompt-pack-1", "prompt-pack-camera"],
+			routeId: "image-route-1",
+			usePromptSupplement: true,
+			versionId: "gpt-image-2",
+		});
+		workspaceMocks.useGenerationWorkspace.mockReturnValue({
+			...workspaceMocks.useGenerationWorkspace(),
+			promptInsertItems: [],
+		});
+
+		render(
+			<BatchGenerationSettingsDialog
+				kind="image"
+				open
+				selectedCount={1}
+				onConfirm={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		await waitFor(() => expect(screen.getByRole("checkbox", { name: "生成时追加" })).toBeChecked());
+		const trigger = screen.getByRole("button", { name: "补充提示词包" });
+		expect(trigger).toBeDisabled();
+		expect(trigger).toHaveTextContent("无可用提示词包");
+		expect(screen.getByText("需要可用的提示词包后才能追加并生成。")).toBeTruthy();
+		// The auto-persist effect must not wipe the stored selection while packs load.
+		await waitFor(() =>
+			expect(
+				useBatchGenerationSettingsPreferenceStore.getState().settingsByKind.image
+					?.promptSupplementItemIds,
+			).toEqual(["prompt-pack-1", "prompt-pack-camera"]),
+		);
 	});
 
 	it("keeps dialog-closing pointer events inside the batch settings layer", () => {
@@ -232,7 +270,7 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 		expect(documentPointerDown).not.toHaveBeenCalled();
 	});
 
-	it("selects a prompt supplement from the two-column prompt pack picker", async () => {
+	it("combines multiple prompt supplements from the two-column prompt pack picker", async () => {
 		const onConfirm = vi.fn();
 
 		render(
@@ -253,18 +291,56 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 
 		expect(screen.getByText("分类")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "风格 1 项" })).toBeTruthy();
+		// The 风格 group is active by default; picking a pack keeps the popover open.
+		fireEvent.click(screen.getByRole("option", { name: "电影感提示词" }));
 		fireEvent.pointerEnter(screen.getByRole("button", { name: "镜头 1 项" }));
 		fireEvent.click(screen.getByRole("option", { name: "镜头推进" }));
 
-		expect(screen.getByText("镜头推进")).toBeTruthy();
+		expect(trigger).toHaveTextContent("已选 2 个");
 		fireEvent.click(screen.getByRole("button", { name: "生成" }));
 
 		expect(onConfirm).toHaveBeenCalledWith(
 			expect.objectContaining({
-				promptSupplement: {
-					referenceName: "镜头推进",
-					referencePrompt: "拉近镜头，突出主体动作。",
-				},
+				promptSupplements: [
+					{ referenceName: "电影感提示词", referencePrompt: "强化镜头语言、光影与构图。" },
+					{ referenceName: "镜头推进", referencePrompt: "拉近镜头，突出主体动作。" },
+				],
+			}),
+		);
+	});
+
+	it("removes a selected prompt supplement pack via its chip", async () => {
+		const onConfirm = vi.fn();
+
+		render(
+			<BatchGenerationSettingsDialog
+				kind="image"
+				open
+				selectedCount={1}
+				onConfirm={onConfirm}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("checkbox", { name: "生成时追加" }));
+
+		const trigger = screen.getByRole("button", { name: "补充提示词包" });
+		await waitFor(() => expect(trigger).toBeEnabled());
+		fireEvent.click(trigger);
+		fireEvent.click(screen.getByRole("option", { name: "电影感提示词" }));
+		fireEvent.pointerEnter(screen.getByRole("button", { name: "镜头 1 项" }));
+		fireEvent.click(screen.getByRole("option", { name: "镜头推进" }));
+
+		fireEvent.click(screen.getByRole("button", { name: "移除电影感提示词" }));
+		expect(trigger).toHaveTextContent("已选 1 个");
+
+		fireEvent.click(screen.getByRole("button", { name: "生成" }));
+
+		expect(onConfirm).toHaveBeenCalledWith(
+			expect.objectContaining({
+				promptSupplements: [
+					{ referenceName: "镜头推进", referencePrompt: "拉近镜头，突出主体动作。" },
+				],
 			}),
 		);
 	});
