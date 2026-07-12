@@ -202,7 +202,12 @@ const FormFieldControl: React.FC<{
 		</div>
 		<div className="mt-1.5">
 			{field.type === "generation_params" ? (
-				<AgentFormGenerationParams value={value} disabled={disabled} onChange={onChange} />
+				<AgentFormGenerationParams
+					value={value}
+					kind={field.kind}
+					disabled={disabled}
+					onChange={onChange}
+				/>
 			) : null}
 			{field.type === "prompt_optimization" ? (
 				<AgentFormPromptOptimization value={value} disabled={disabled} onChange={onChange} />

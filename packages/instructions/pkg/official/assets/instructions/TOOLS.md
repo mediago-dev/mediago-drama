@@ -59,12 +59,14 @@ editable: true
   `select_generation_asset`）。
 - 生成、修改或重绘图片前，必须先调用 MCP `load_skill` 装载 `image-generation`；
   图片专属的参数确认、参考图、选片与文档回写流程以该 Skill 为准。
-- 生成视频或音频时，先调用 `list_generation_models` 获取可用模型目录，
+- 生成、修改或衔接视频前，必须先调用 MCP `load_skill` 装载 `video-generation`；
+  视频专属的模型选择、首帧参考、时长与分辨率参数、后台异步轮询与文档回写流程以该 Skill 为准。
+- 生成音频时，先调用 `list_generation_models` 获取可用模型目录，
   据此选择 `routeId` 与参数；不要臆造 `routeId`、`model` 或参数取值。
 - 目录中 `configured` 为 false 表示对应供应商未配置：提示用户去设置里配置，不要发起生成。
 - 调用 `generate_media` 提交生成（`prompt` 必填）。返回的 `id` 即任务 `taskId`；
   当 `status` 为 submitting/submitted 时任务在后台运行，用该 id 调 `poll_generation_task` 直到完成，
-  再从结果资产中取用生成图/视频。
+  再从结果资产中取用生成结果。
 - 多个独立目标使用同一套已确认设置时，调用一次 `generate_media_batch`；每个子项返回独立 `taskId`
   或错误，可用 `list_generation_tasks(batchId: ...)` 汇总查询后继续按 taskId 轮询。
 - 需要把生成结果写入文档时，用文档写工具以 Markdown 图片/资源引用插入到目标章节。

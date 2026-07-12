@@ -18,7 +18,7 @@ func TestBuiltinPackParses(t *testing.T) {
 		counts[entry.Kind]++
 	}
 	if bundle.Manifest.ID != "builtin" ||
-		counts[pack.KindSkill] != 8 ||
+		counts[pack.KindSkill] != 9 ||
 		counts[pack.KindPrompt] != 10 {
 		t.Fatalf("builtin manifest=%#v counts=%#v", bundle.Manifest, counts)
 	}
@@ -32,7 +32,7 @@ func TestBuiltinPackParses(t *testing.T) {
 			foundAutoMentionResolver = true
 			continue
 		}
-		if entry.Slug == "image-generation" {
+		if entry.Slug == "image-generation" || entry.Slug == "video-generation" {
 			continue
 		}
 		hint, ok := entry.Metadata["hint"].(map[string]string)
@@ -98,6 +98,57 @@ func TestImageGenerationSkillOwnsAgentImageWorkflow(t *testing.T) {
 	}
 
 	t.Fatal("builtin skills missing image-generation")
+}
+
+func TestVideoGenerationSkillOwnsAgentVideoWorkflow(t *testing.T) {
+	bundle, err := Builtin(context.Background())
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+
+	for _, entry := range bundle.Entries {
+		if entry.Kind != pack.KindSkill || entry.Slug != "video-generation" {
+			continue
+		}
+
+		body := entry.Description + "\n" + entry.Body
+		for _, fragment := range []string{
+			"list_generation_models",
+			"kind: \"video\"",
+			"stylePresets",
+			"首帧",
+			"后台异步",
+			"ask_user_selection",
+			"ask_user_form",
+			"generation_params",
+			"prompt_optimization",
+			"referenceAssetIds",
+			"generate_media",
+			"generate_media_batch",
+			"list_generation_tasks(batchId: ...)",
+			"documentContext",
+			"notificationTarget",
+			"poll_generation_task",
+			"retry_generation_task",
+			"select_generation_asset",
+			"slotIndex",
+			"returnLastFrame",
+			"为分镜批量生成视频",
+			"第 0N 组",
+			"先试片",
+			"组号",
+		} {
+			if !strings.Contains(body, fragment) {
+				t.Fatalf("video-generation missing workflow rule %q:\n%s", fragment, body)
+			}
+		}
+		if hint, ok := entry.Metadata["hint"].(map[string]string); !ok || len(hint) != 0 {
+			t.Fatalf("video-generation hint = %#v, want no document category restriction", entry.Metadata["hint"])
+		}
+		return
+	}
+
+	t.Fatal("builtin skills missing video-generation")
 }
 
 func TestCharacterWriterSplitsVisualVariants(t *testing.T) {

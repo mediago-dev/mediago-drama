@@ -401,6 +401,24 @@ func TestPromptBuilderRequiresImageGenerationSkillWithoutInliningWorkflow(t *tes
 	}
 }
 
+func TestPromptBuilderRequiresVideoGenerationSkillWithoutInliningWorkflow(t *testing.T) {
+	prompt := BuildACPPrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{})
+
+	if !strings.Contains(prompt, "生成、修改或衔接视频前，必须先调用 MCP `load_skill` 装载 `video-generation`") {
+		t.Fatalf("prompt = %q, want video-generation skill trigger", prompt)
+	}
+	for _, forbidden := range []string{
+		"### 视频生成标准流程",
+		"type: \"generation_params\"",
+		"type: \"prompt_optimization\"",
+		"select_generation_asset(taskId, slotIndex)",
+	} {
+		if strings.Contains(prompt, forbidden) {
+			t.Fatalf("prompt = %q, should load video workflow from Skill instead of inlining %q", prompt, forbidden)
+		}
+	}
+}
+
 func TestPromptBuilderDoesNotInlineCategoryGuidance(t *testing.T) {
 	tests := []struct {
 		name     string

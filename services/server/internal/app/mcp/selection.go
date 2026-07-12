@@ -153,6 +153,7 @@ func selectionFieldsFromMCP(input []mediamcp.FormFieldInput) []serviceselection.
 			ID:          field.ID,
 			Label:       field.Label,
 			Type:        field.Type,
+			Kind:        field.Kind,
 			Description: field.Description,
 			Options:     options,
 			Default:     field.Default,

@@ -39,21 +39,22 @@ export interface ResolvedGenerationSelection {
 }
 
 // resolveGenerationRoute maps whatever value the agent (or a previous edit)
-// provided onto the configured image catalog: unknown routes fall back to the
-// first configured route, params are validated against the route's schema and
-// combo table, and the picker's family/version groupings are derived.
+// provided onto the configured catalog for the given routes (already filtered
+// to one kind): unknown routes fall back to the first configured route, params
+// are validated against the route's schema and combo table, and the picker's
+// family/version groupings are derived.
 export const resolveGenerationRoute = (
 	catalog: GenerationModelsResponse,
-	imageRoutes: GenerationRoute[],
+	routes: GenerationRoute[],
 	rawValue: unknown,
 ): ResolvedGenerationSelection | null => {
-	if (imageRoutes.length === 0) return null;
+	if (routes.length === 0) return null;
 
 	const raw = parseFieldValue(rawValue);
-	const route = imageRoutes.find((candidate) => candidate.id === raw.routeId) ?? imageRoutes[0];
+	const route = routes.find((candidate) => candidate.id === raw.routeId) ?? routes[0];
 
 	const familyRoutes = new Map<string, GenerationRoute[]>();
-	for (const candidate of imageRoutes) {
+	for (const candidate of routes) {
 		const existing = familyRoutes.get(candidate.familyId);
 		if (existing) {
 			existing.push(candidate);
@@ -91,6 +92,23 @@ export const normalizeGenerationParamsValue = (
 ): GenerationParamsFieldValue => {
 	const params: Record<string, unknown> = {};
 	const spec = resolveImageGenerationSpec(route.params, rawParams, route.paramCombos);
+	// Carry over the route's other params the card has no dedicated control for
+	// (e.g. video duration / generateAudio) so agent- or user-supplied values
+	// survive; the spec/count controls below stay authoritative for
+	// ratio/resolution/count. Select params only survive with a valid option so
+	// stray values are still dropped, matching the previous behaviour.
+	const controlled = new Set<string>(["n"]);
+	if (spec?.ratioParam) controlled.add(spec.ratioParam.name);
+	if (spec?.resolutionParam) controlled.add(spec.resolutionParam.name);
+	for (const param of route.params) {
+		if (controlled.has(param.name)) continue;
+		if (!Object.hasOwn(rawParams, param.name)) continue;
+		const raw = rawParams[param.name];
+		if (param.type === "select" && !(param.options ?? []).some((option) => option.value === raw)) {
+			continue;
+		}
+		params[param.name] = raw;
+	}
 	if (spec?.ratioParam && spec.selectedRatio) {
 		params[spec.ratioParam.name] = spec.selectedRatio.value;
 	}

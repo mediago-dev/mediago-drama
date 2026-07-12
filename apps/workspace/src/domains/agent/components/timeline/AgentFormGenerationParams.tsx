@@ -19,20 +19,22 @@ import {
 } from "./agentFormGenerationParams.helpers";
 
 // AgentFormGenerationParams renders the composite `generation_params` form
-// field: the configured image-model catalog (family → model → provider) plus
-// the selected route's aspect-ratio/resolution/count controls, mirroring the
-// manual generation composer. It submits {routeId, label, params}.
+// field: the configured model catalog for the field's kind (image by default,
+// or video/audio) — family → model → provider — plus the selected route's
+// aspect-ratio/resolution/count controls, mirroring the manual generation
+// composer. It submits {routeId, label, params}.
 export const AgentFormGenerationParams: React.FC<{
 	value: unknown;
+	kind?: "image" | "video" | "audio";
 	disabled: boolean;
 	onChange: (value: GenerationParamsFieldValue) => void;
-}> = ({ value, disabled, onChange }) => {
+}> = ({ value, kind = "image", disabled, onChange }) => {
 	const { data: catalog } = useSWR(generationModelsKey, getGenerationModels);
 
-	const imageRoutes = (catalog?.routes ?? []).filter(
-		(route) => route.kind === "image" && isConfiguredRoute(route),
+	const kindRoutes = (catalog?.routes ?? []).filter(
+		(route) => route.kind === kind && isConfiguredRoute(route),
 	);
-	const resolved = catalog ? resolveGenerationRoute(catalog, imageRoutes, value) : null;
+	const resolved = catalog ? resolveGenerationRoute(catalog, kindRoutes, value) : null;
 
 	// The spec control reports combo corrections as consecutive onChange calls
 	// (ratio, then adjusted resolution); accumulate them against the latest
@@ -58,8 +60,11 @@ export const AgentFormGenerationParams: React.FC<{
 		);
 	}
 	if (!resolved) {
+		const kindLabel = kind === "video" ? "视频" : kind === "audio" ? "音频" : "生图";
 		return (
-			<p className="text-muted-foreground">当前没有可用的生图模型，请先在设置中配置供应商。</p>
+			<p className="text-muted-foreground">
+				当前没有可用的{kindLabel}模型，请先在设置中配置供应商。
+			</p>
 		);
 	}
 
@@ -72,7 +77,7 @@ export const AgentFormGenerationParams: React.FC<{
 		onChange(normalizeGenerationParamsValue(catalog, nextRoute, {}));
 	};
 	const selectRoute = (_versionId: string, routeId: string) => {
-		const nextRoute = imageRoutes.find((candidate) => candidate.id === routeId);
+		const nextRoute = kindRoutes.find((candidate) => candidate.id === routeId);
 		if (!nextRoute || nextRoute.id === route.id) return;
 		// Carry the current selections over; normalization drops what the new
 		// route does not support and re-applies its defaults.

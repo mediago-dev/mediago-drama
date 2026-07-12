@@ -108,6 +108,7 @@ type FormField struct {
 	ID          string            `json:"id"`
 	Label       string            `json:"label"`
 	Type        string            `json:"type"`
+	Kind        string            `json:"kind,omitempty"`
 	Description string            `json:"description,omitempty"`
 	Options     []FormFieldOption `json:"options,omitempty"`
 	Default     any               `json:"default,omitempty"`
