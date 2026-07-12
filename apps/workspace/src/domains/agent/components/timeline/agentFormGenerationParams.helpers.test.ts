@@ -38,6 +38,24 @@ describe("resolveGenerationRoute", () => {
 	it("returns null when no image route is configured", () => {
 		expect(resolveGenerationRoute(catalog(), [], { routeId: "" })).toBeNull();
 	});
+
+	it("resolves a video route and keeps duration/audio while hiding the count", () => {
+		const resolved = resolveGenerationRoute(catalog(), videoRoutes(), {
+			routeId: "jimeng.seedance-2.0",
+			params: { aspectRatio: "16:9", resolution: "720p", duration: "10", generateAudio: true },
+		});
+
+		expect(resolved?.route.id).toBe("jimeng.seedance-2.0");
+		expect(resolved?.family.id).toBe("seedance");
+		// Video routes have no `n` param, so the 张数 control is absent.
+		expect(resolved?.count).toBeNull();
+		expect(resolved?.value.params).toEqual({
+			aspectRatio: "16:9",
+			resolution: "720p",
+			duration: "10",
+			generateAudio: true,
+		});
+	});
 });
 
 describe("normalizeGenerationParamsValue", () => {
@@ -91,15 +109,20 @@ const gptImageRoute = (): GenerationRoute =>
 const imageRoutes = (): GenerationRoute[] =>
 	catalog().routes.filter((route) => route.kind === "image" && route.configured === true);
 
+const videoRoutes = (): GenerationRoute[] =>
+	catalog().routes.filter((route) => route.kind === "video" && route.configured === true);
+
 const catalog = (): GenerationModelsResponse =>
 	({
 		families: [
 			{ id: "seedream", label: "Seedream", kinds: ["image"] },
 			{ id: "gpt-image", label: "GPT Image", kinds: ["image"] },
+			{ id: "seedance", label: "Seedance", kinds: ["video"] },
 		],
 		versions: [
 			{ id: "seedream-5", familyId: "seedream", label: "Seedream 5.0", kind: "image" },
 			{ id: "gpt-image-2", familyId: "gpt-image", label: "GPT Image 2", kind: "image" },
+			{ id: "seedance-2", familyId: "seedance", label: "Seedance 2.0", kind: "video" },
 		],
 		routes: [
 			{
@@ -201,6 +224,51 @@ const catalog = (): GenerationModelsResponse =>
 				model: "gpt-image-2-ssvip",
 				status: "available",
 				params: [],
+			},
+			{
+				id: "jimeng.seedance-2.0",
+				familyId: "seedance",
+				versionId: "seedance-2",
+				kind: "video",
+				label: "即梦",
+				provider: "jimeng",
+				model: "seedance-2.0",
+				status: "available",
+				configured: true,
+				params: [
+					{
+						name: "aspectRatio",
+						label: "比例",
+						type: "select",
+						default: "16:9",
+						options: [
+							{ value: "16:9", label: "16:9" },
+							{ value: "9:16", label: "9:16" },
+						],
+					},
+					{
+						name: "resolution",
+						label: "分辨率",
+						type: "select",
+						default: "720p",
+						options: [
+							{ value: "480p", label: "480p" },
+							{ value: "720p", label: "720p" },
+							{ value: "1080p", label: "1080p" },
+						],
+					},
+					{
+						name: "duration",
+						label: "时长",
+						type: "select",
+						default: "5",
+						options: [
+							{ value: "5", label: "5s" },
+							{ value: "10", label: "10s" },
+						],
+					},
+					{ name: "generateAudio", label: "生成音频", type: "boolean", default: false },
+				],
 			},
 		],
 		models: [],

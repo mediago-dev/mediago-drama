@@ -101,6 +101,33 @@ func TestToolsInstructionDelegatesImageWorkflowToSkill(t *testing.T) {
 	}
 }
 
+func TestToolsInstructionDelegatesVideoWorkflowToSkill(t *testing.T) {
+	instruction, err := InstructionByID(context.Background(), "TOOLS")
+	if err != nil {
+		t.Fatalf("InstructionByID(%q) error = %v", "TOOLS", err)
+	}
+
+	for _, want := range []string{
+		"生成、修改或衔接视频前，必须先调用 MCP `load_skill` 装载 `video-generation`",
+		"视频专属的模型选择、首帧参考、时长与分辨率参数、后台异步轮询与文档回写流程以该 Skill 为准",
+	} {
+		if !strings.Contains(instruction.Body, want) {
+			t.Fatalf("TOOLS instruction = %q, want video skill trigger %q", instruction.Body, want)
+		}
+	}
+	for _, forbidden := range []string{
+		"### 视频生成标准流程",
+		"type: \"generation_params\"",
+		"type: \"prompt_optimization\"",
+		"referenceAssetIds",
+		"select_generation_asset(taskId, slotIndex)",
+	} {
+		if strings.Contains(instruction.Body, forbidden) {
+			t.Fatalf("TOOLS instruction should delegate video detail %q to Skill:\n%s", forbidden, instruction.Body)
+		}
+	}
+}
+
 func TestDocumentRulesInstructionDefinesSecondLevelResourceBoundary(t *testing.T) {
 	instruction, err := InstructionByID(context.Background(), "DOCUMENT_RULES")
 	if err != nil {

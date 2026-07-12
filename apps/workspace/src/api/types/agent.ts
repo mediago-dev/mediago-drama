@@ -251,6 +251,8 @@ export interface AgentFormField {
 		| "generation_params"
 		| "images"
 		| "prompt_optimization";
+	// generation_params only: which model catalog to render. Defaults to "image".
+	kind?: "image" | "video" | "audio";
 	description?: string;
 	options?: AgentFormFieldOption[];
 	default?: unknown;

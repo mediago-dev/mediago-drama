@@ -295,6 +295,22 @@ func TestAskUserFormReturnsSubmittedValues(t *testing.T) {
 	}
 }
 
+func TestSelectionFieldsFromMCPCarriesGenerationParamsKind(t *testing.T) {
+	fields := selectionFieldsFromMCP([]mediamcp.FormFieldInput{
+		{ID: "generation", Label: "模型与参数", Type: "generation_params", Kind: "video"},
+		{ID: "scope", Label: "生成范围", Type: "text"},
+	})
+	if len(fields) != 2 {
+		t.Fatalf("fields = %#v, want 2", fields)
+	}
+	if fields[0].Kind != "video" {
+		t.Fatalf("generation_params kind = %q, want video", fields[0].Kind)
+	}
+	if fields[1].Kind != "" {
+		t.Fatalf("text field kind = %q, want empty", fields[1].Kind)
+	}
+}
+
 func TestAskUserFormRejectsInvalidFields(t *testing.T) {
 	adapter, _, projectID := newSelectionAdapter(t)
 	if _, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{

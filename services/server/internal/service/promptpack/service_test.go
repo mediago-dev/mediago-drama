@@ -30,8 +30,8 @@ func TestServiceSeedsBuiltinPackIdempotently(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntries() second error = %v", err)
 	}
-	if len(first) != 8 || len(second) != len(first) {
-		t.Fatalf("skill counts first=%d second=%d, want 8 and idempotent", len(first), len(second))
+	if len(first) != 9 || len(second) != len(first) {
+		t.Fatalf("skill counts first=%d second=%d, want 9 and idempotent", len(first), len(second))
 	}
 	if _, ok := findEntry(first, "auto-mention-resolver"); !ok {
 		t.Fatalf("entries = %#v, want auto-mention-resolver", first)

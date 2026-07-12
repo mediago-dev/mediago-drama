@@ -19,7 +19,7 @@ const mcpWorkflowInstructions = `MediaGo Drama MCP 使用说明：
 - Agent 进程启动时当前工作目录已经是当前项目的文档根目录（项目的 work 文件夹）；当前目录树就是文档树，Markdown 文件就是文档。不要再访问或创建名为 work/ 的子目录。
 - 读取、创建、修改、移动和删除文档时，直接操作当前工作目录 . 下的本地文件；不要通过 MCP 读取或编辑文档正文。
 - 需要读取项目配置时调用 get_project_config；不要在当前工作目录或父目录中搜索 project.media.json。项目配置不再承载视觉风格，风格提示应来自用户本轮需求或提示词包。
-- load_skill 用于按任务装载 screenplay、character、scene、prop、storyboard 等写作 Skill，以及 image-generation 等工作流 Skill；核心文档规则仍由系统 prompt 注入，不依赖 Skill。
+- load_skill 用于按任务装载 screenplay、character、scene、prop、storyboard 等写作 Skill，以及 image-generation、video-generation 等工作流 Skill；核心文档规则仍由系统 prompt 注入，不依赖 Skill。
 - get_project_config 用于读取当前项目配置，例如提示词分类默认预设。
 - list_comments / get_comment / mutate_comment 用于读取和处理评论/批注；mutate_comment.op 支持 add、update、reply、resolve、unresolve、delete。
 - 用户划词后的局部任务应转成评论/批注处理，不依赖瞬时编辑器选区。`
@@ -64,7 +64,7 @@ var DocumentTools = struct {
 	GetComment          ToolDefinition
 	MutateComment       ToolDefinition
 }{
-	LoadSkill:           ToolDefinition{Name: "load_skill", Title: "装载 Agent Skill", Description: "按 name 装载一个可用 Skill，返回 frontmatter 之外的任务说明。核心文档规则由系统 prompt 注入，不依赖 Skill 或 template_id。编辑 screenplay/character/scene/prop/storyboard 类型文档前必须先装载对应写作 Skill；图片生成按系统指示装载 image-generation。", ReadOnly: true},
+	LoadSkill:           ToolDefinition{Name: "load_skill", Title: "装载 Agent Skill", Description: "按 name 装载一个可用 Skill，返回 frontmatter 之外的任务说明。核心文档规则由系统 prompt 注入，不依赖 Skill 或 template_id。编辑 screenplay/character/scene/prop/storyboard 类型文档前必须先装载对应写作 Skill；图片生成按系统指示装载 image-generation，视频生成装载 video-generation。", ReadOnly: true},
 	GetProjectConfig:    ToolDefinition{Name: "get_project_config", Title: "读取项目配置", Description: "读取当前项目配置，例如提示词分类默认预设；项目配置不再承载视觉风格，不要通过文件系统查找 project.media.json。", ReadOnly: true},
 	UpdateProjectConfig: ToolDefinition{Name: "update_project_config", Title: "更新项目配置", Description: "按字段更新当前项目的 project.media.json；当前仅支持 overview.categoryDefaults，style 风格分类会被忽略。"},
 	ListComments:        ToolDefinition{Name: "list_comments", Title: "列出评论线程", Description: "按文档、块和解决状态列出评论线程。", ReadOnly: true},
