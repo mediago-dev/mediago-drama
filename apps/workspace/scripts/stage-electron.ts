@@ -25,9 +25,16 @@ const targetPlatform = resolveTargetPlatform(platformArg);
 const vendorDistRoot = platformArg
 	? join(rootDir, "packages", "vendor", "dist", targetPlatform.key)
 	: join(rootDir, "packages", "vendor", "dist");
-const serverBin = platformArg
-	? join(rootDir, "bin", targetPlatform.key, `mediago-server${targetPlatform.binaryExt}`)
-	: join(rootDir, "bin", `mediago-server${targetPlatform.binaryExt}`);
+const serverBinDir = platformArg ? join(rootDir, "bin", targetPlatform.key) : join(rootDir, "bin");
+const serviceBinaryNames = [
+	"mediago-server",
+	"mediago-document-mcp",
+	"mediago-generation-mcp",
+] as const;
+const serviceBinaries = serviceBinaryNames.map((name) => ({
+	name: `${name}${targetPlatform.binaryExt}`,
+	path: join(serverBinDir, `${name}${targetPlatform.binaryExt}`),
+}));
 const agentDist = join(vendorDistRoot, agent);
 const toolsDist = join(vendorDistRoot, "tools");
 const electronResourcesDir = join(workspaceDir, "electron", "resources");
@@ -36,7 +43,7 @@ const generationCliIDs = parseToolIDs(generationClis);
 const selectedToolIDs = unique([...baseToolIDs, ...generationCliIDs]);
 
 function main(): void {
-	ensureExecutable(serverBin);
+	for (const binary of serviceBinaries) ensureExecutable(binary.path);
 	ensureFile(
 		join(agentDist, "agent.json"),
 		`missing prepared agent: ${join(agentDist, "agent.json")}`,
@@ -51,15 +58,16 @@ function main(): void {
 	const binDir = join(electronResourcesDir, "bin");
 	const agentsDir = join(electronResourcesDir, "agents");
 	const stagedToolsDir = join(electronResourcesDir, "tools");
-	const stagedServer = join(binDir, `mediago-server${targetPlatform.binaryExt}`);
-
 	rmSync(electronResourcesDir, { recursive: true, force: true });
 	mkdirSync(binDir, { recursive: true });
 	mkdirSync(agentsDir, { recursive: true });
 	mkdirSync(stagedToolsDir, { recursive: true });
 
-	cpSync(serverBin, stagedServer);
-	chmodSync(stagedServer, 0o755);
+	for (const binary of serviceBinaries) {
+		const stagedBinary = join(binDir, binary.name);
+		cpSync(binary.path, stagedBinary);
+		chmodSync(stagedBinary, 0o755);
+	}
 	cpSync(agentDist, join(agentsDir, agent), { recursive: true });
 	for (const toolID of selectedToolIDs) {
 		cpSync(join(toolsDist, toolID), join(stagedToolsDir, toolID), { recursive: true });
@@ -78,7 +86,7 @@ function ensureExecutable(path: string): void {
 	try {
 		accessSync(path, constants.X_OK);
 	} catch {
-		throw new Error(`missing server binary: ${path}`);
+		throw new Error(`missing service binary: ${path}`);
 	}
 }
 

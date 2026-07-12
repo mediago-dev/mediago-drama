@@ -301,6 +301,28 @@ func TestMergedProcessEnvOverridesRuntimeConfigVariables(t *testing.T) {
 	}
 }
 
+func TestMergedProcessEnvBypassesProxiesForLoopback(t *testing.T) {
+	t.Setenv("NO_PROXY", "internal.example")
+	t.Setenv("no_proxy", "localhost,legacy.example")
+
+	env := mergedProcessEnv(ProcessConfig{})
+
+	for _, test := range []struct {
+		name string
+		want []string
+	}{
+		{name: "NO_PROXY", want: []string{"internal.example", "127.0.0.1", "localhost", "::1"}},
+		{name: "no_proxy", want: []string{"localhost", "legacy.example", "127.0.0.1", "::1"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := strings.Split(envValue(env, test.name), ",")
+			if strings.Join(got, ",") != strings.Join(test.want, ",") {
+				t.Fatalf("%s = %q, want %q", test.name, got, test.want)
+			}
+		})
+	}
+}
+
 func TestAgentRuntimeConfigFromACPSession(t *testing.T) {
 	modelDescription := "frontier"
 	modeDescription := "Ask before edits"

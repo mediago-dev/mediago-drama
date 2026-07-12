@@ -349,9 +349,6 @@ func cloneProcessConfigEnv(source map[string]string) map[string]string {
 }
 
 func mergedProcessEnv(processConfig ProcessConfig) []string {
-	if len(processConfig.Env) == 0 {
-		return nil
-	}
 	env := map[string]string{}
 	for _, item := range os.Environ() {
 		key, value, ok := strings.Cut(item, "=")
@@ -365,12 +362,32 @@ func mergedProcessEnv(processConfig ProcessConfig) []string {
 			env[key] = value
 		}
 	}
+	for _, key := range []string{"NO_PROXY", "no_proxy"} {
+		env[key] = appendEnvListValues(env[key], "127.0.0.1", "localhost", "::1")
+	}
 	result := make([]string, 0, len(env))
 	for key, value := range env {
 		result = append(result, key+"="+value)
 	}
 	sort.Strings(result)
 	return result
+}
+
+func appendEnvListValues(current string, required ...string) string {
+	values := []string{}
+	seen := map[string]struct{}{}
+	for _, value := range append(strings.Split(current, ","), required...) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	return strings.Join(values, ",")
 }
 
 func isOpenCodeACPCommand(command string, args []string) bool {
