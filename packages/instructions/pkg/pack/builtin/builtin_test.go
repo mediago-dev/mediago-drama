@@ -33,6 +33,9 @@ func TestBuiltinPackParses(t *testing.T) {
 			continue
 		}
 		if entry.Slug == "image-generation" || entry.Slug == "video-generation" {
+			if hidden, _ := entry.Metadata["hidden"].(bool); !hidden {
+				t.Fatalf("%s hidden = %#v, want true while the skill is under test", entry.Slug, entry.Metadata["hidden"])
+			}
 			continue
 		}
 		hint, ok := entry.Metadata["hint"].(map[string]string)
