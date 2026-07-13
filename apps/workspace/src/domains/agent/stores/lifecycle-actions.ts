@@ -154,17 +154,17 @@ export const createAgentLifecycleActions = ({
 	},
 	cancelRun: (message = "智能体运行已中断。", runId) => {
 		set((state) => {
-			if (!state.isRunning && !runId) return state;
+			if (!state.isRunning && !runId && !deriveIsRunning(state.conversations)) return state;
 
 			const targetRunId = resolveTargetRunId(state, runId);
 			const conversations = mapConversations(state.conversations, (conversation) => {
-				if (runId && conversation.runId !== targetRunId) return conversation;
-				if (!runId && isTerminalConversationStatus(conversation.status)) return conversation;
+				if (isTerminalConversationStatus(conversation.status)) return conversation;
 
-				return finishConversation(
-					appendTraceToConversation(conversation, "runtime", "运行已终止", message),
-					"cancelled",
-				);
+				const nextConversation =
+					!runId || conversation.runId === targetRunId
+						? appendTraceToConversation(conversation, "runtime", "运行已终止", message)
+						: conversation;
+				return finishConversation(nextConversation, "cancelled");
 			});
 
 			const activity = prependActivity(state.activity, "runtime", "运行已终止", message);
@@ -202,20 +202,24 @@ export const createAgentLifecycleActions = ({
 	failRun: (message, runId) => {
 		set((state) => {
 			const targetRunId = resolveTargetRunId(state, runId);
-			const conversations = updateConversationMessages(state, targetRunId, (conversation) =>
-				finishConversation(
-					appendMessageToConversation(conversation, {
-						id: createId("assistant-error"),
-						role: "assistant",
-						content: message,
-						kind: "runtime",
-						title: "运行失败",
-						createdAt: new Date().toISOString(),
-						status: "error",
-					}),
-					"failed",
-				),
+			const conversationsWithFailure = updateConversationMessages(
+				state,
+				targetRunId,
+				(conversation) =>
+					finishConversation(
+						appendMessageToConversation(conversation, {
+							id: createId("assistant-error"),
+							role: "assistant",
+							content: message,
+							kind: "runtime",
+							title: "运行失败",
+							createdAt: new Date().toISOString(),
+							status: "error",
+						}),
+						"failed",
+					),
 			);
+			const conversations = finishNonTerminalConversations(conversationsWithFailure, "failed");
 			const activity = prependActivity(state.activity, "runtime", "运行失败", message);
 
 			return {
@@ -231,8 +235,14 @@ export const createAgentLifecycleActions = ({
 	finishRun: (runId) => {
 		set((state) => {
 			const targetRunId = resolveTargetRunId(state, runId);
-			const conversations = updateConversationMessages(state, targetRunId, (conversation) =>
-				finishConversation(conversation, "completed"),
+			const conversationsWithCompletion = updateConversationMessages(
+				state,
+				targetRunId,
+				(conversation) => finishConversation(conversation, "completed"),
+			);
+			const conversations = finishNonTerminalConversations(
+				conversationsWithCompletion,
+				"completed",
 			);
 
 			return {
@@ -576,3 +586,16 @@ const normalizePermissionRequests = (
 	}
 	return normalized;
 };
+
+const finishNonTerminalConversations = (
+	conversations: Record<string, AgentConversationState>,
+	status: Extract<AgentConversationState["status"], "completed" | "failed" | "cancelled">,
+) =>
+	// The backend permits only one active run per session. Once that session
+	// reaches a terminal state, every locally stale waiting/running projection
+	// must converge too or the global isRunning selector remains stuck forever.
+	mapConversations(conversations, (conversation) =>
+		isTerminalConversationStatus(conversation.status)
+			? conversation
+			: finishConversation(conversation, status),
+	);

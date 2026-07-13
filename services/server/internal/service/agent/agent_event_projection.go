@@ -250,15 +250,27 @@ func ProjectAgentEvent(
 	case "agent.run.failed":
 		appendProjectedActivity(activity, "runtime", "运行失败", event.Message, event.CreatedAt)
 		appendProjectedTrace(conversations, event, "runtime", "运行失败", event.Message, "error")
+		finishProjectedConversation(conversations, event, "failed")
 	case "agent.run.cancelled":
 		appendProjectedActivity(activity, "runtime", "运行已终止", event.Message, event.CreatedAt)
 		appendProjectedTrace(conversations, event, "runtime", "运行已终止", event.Message, "error")
+		finishProjectedConversation(conversations, event, "cancelled")
 	case "agent.run.completed":
-		if conversation, ok := ensureProjectedConversation(conversations, event); ok {
-			conversation = completeProjectedStreamingMessage(conversation)
-			conversation.Status = "completed"
-			conversation.UpdatedAt = event.CreatedAt
-			conversations[conversation.RunID] = conversation
-		}
+		finishProjectedConversation(conversations, event, "completed")
 	}
+}
+
+func finishProjectedConversation(
+	conversations map[string]AgentConversationRecord,
+	event AgentEvent,
+	status string,
+) {
+	conversation, ok := ensureProjectedConversation(conversations, event)
+	if !ok {
+		return
+	}
+	conversation = completeProjectedStreamingMessage(conversation)
+	conversation.Status = status
+	conversation.UpdatedAt = event.CreatedAt
+	conversations[conversation.RunID] = conversation
 }

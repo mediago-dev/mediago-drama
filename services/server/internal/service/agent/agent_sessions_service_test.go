@@ -49,8 +49,8 @@ func TestSessionServiceCancelActiveRun(t *testing.T) {
 	if !cancelled {
 		t.Fatal("Cancel should call the active run cancel function")
 	}
-	if status.Running || status.LastStatus != "cancelled" {
-		t.Fatalf("Cancel status = %+v, want cancelled and not running", status)
+	if status.Running || status.LastStatus != "cancelled" || status.ProjectID != "project-1" || status.RunID != "run-1" {
+		t.Fatalf("Cancel status = %+v, want cancelled project/run metadata and not running", status)
 	}
 }
 

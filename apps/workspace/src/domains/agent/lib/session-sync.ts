@@ -40,7 +40,9 @@ export const syncAgentSessionStatus = async (
 	await refreshAgentChatTranscript(sessionId, projectId).catch((error) =>
 		debugAgentError("failed to refresh transcript after session status sync", error),
 	);
-	options.settle?.();
+	if (!useAgentStore.getState().isRunning) {
+		options.settle?.();
+	}
 };
 
 const logPendingPermissionStatus = (status: { pendingPermissions?: unknown[] }, source: string) => {

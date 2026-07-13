@@ -713,6 +713,85 @@ describe("AgentStateSync", () => {
 		expect(agentApiMocks.getAgentSessionStatus).toHaveBeenCalledWith("session-1", "project-1");
 		expect(agentApiMocks.getAgentChatState).toHaveBeenCalledWith("project-1", "session-1");
 	});
+
+	it("rechecks a running session when returning from the project overview", async () => {
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		useAgentPersistenceStore.getState().setSessionId("project-1", "session-1");
+		swrMock.chatData = {
+			__requestProjectId: "project-1",
+			__requestSessionId: "session-1",
+			projectId: "project-1",
+			sessionId: "session-1",
+			messages: [
+				{
+					id: "user-1",
+					role: "user",
+					content: "继续处理",
+					kind: "message",
+					status: "complete",
+				},
+			],
+			activity: [],
+			running: true,
+			lastEventId: "12",
+		};
+		agentApiMocks.getAgentSessionStatus.mockResolvedValue({
+			sessionId: "session-1",
+			running: true,
+			lastStatus: "running",
+		});
+		agentApiMocks.getAgentChatState.mockResolvedValue({
+			projectId: "project-1",
+			sessionId: "session-1",
+			messages: [
+				{
+					id: "user-1",
+					role: "user",
+					content: "继续处理",
+					kind: "message",
+					status: "complete",
+				},
+				{
+					id: "assistant-1",
+					role: "assistant",
+					content: "处理完成",
+					kind: "message",
+					status: "complete",
+				},
+			],
+			activity: [],
+			running: false,
+			lastEventId: "13",
+		});
+
+		const { rerenderAgentStateSync } = renderAgentStateSync({
+			agentSurfaceActive: false,
+			projectId: "project-1",
+			routeSessionId: "session-1",
+		});
+
+		await vi.waitFor(() => expect(agentApiMocks.getAgentSessionStatus).toHaveBeenCalledTimes(1));
+		expect(useAgentStore.getState().isRunning).toBe(true);
+
+		agentApiMocks.getAgentSessionStatus.mockResolvedValue({
+			sessionId: "session-1",
+			running: false,
+			lastStatus: "completed",
+			lastMessage: "Agent 运行已完成。",
+		});
+		rerenderAgentStateSync({
+			agentSurfaceActive: true,
+			projectId: "project-1",
+			routeSessionId: "session-1",
+		});
+
+		await vi.waitFor(() => expect(useAgentStore.getState().isRunning).toBe(false));
+		expect(agentApiMocks.getAgentSessionStatus).toHaveBeenCalledTimes(2);
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({ id: "user-1", content: "继续处理" }),
+			expect.objectContaining({ id: "assistant-1", content: "处理完成" }),
+		]);
+	});
 });
 
 type AgentStateSyncData = {

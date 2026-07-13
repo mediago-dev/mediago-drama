@@ -85,6 +85,64 @@ func TestProjectAgentEventKeepsUserMessageDisplayMetadata(t *testing.T) {
 	}
 }
 
+func TestProjectAgentEventMarksFailedAndCancelledConversationsTerminal(t *testing.T) {
+	tests := []struct {
+		name       string
+		eventType  string
+		wantStatus string
+	}{
+		{name: "failed", eventType: "agent.run.failed", wantStatus: "failed"},
+		{name: "cancelled", eventType: "agent.run.cancelled", wantStatus: "cancelled"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			conversations := map[string]AgentConversationRecord{
+				"run-1": {
+					RunID:              "run-1",
+					Status:             "running",
+					StreamingMessageID: "assistant-stream",
+					Messages: []AgentChatMessageRecord{
+						{
+							ID:      "assistant-stream",
+							Role:    "assistant",
+							Content: "处理中",
+							Kind:    "message",
+							Status:  "streaming",
+						},
+					},
+					CreatedAt: "2026-07-13T00:00:00Z",
+					UpdatedAt: "2026-07-13T00:00:01Z",
+				},
+			}
+			activity := []AgentChatActivityRecord{}
+
+			ProjectAgentEvent(AgentEvent{
+				ID:        "event-terminal",
+				SessionID: "session-1",
+				RunID:     "run-1",
+				Type:      test.eventType,
+				Message:   "运行已结束",
+				CreatedAt: "2026-07-13T00:00:02Z",
+			}, conversations, &activity)
+
+			conversation := conversations["run-1"]
+			if conversation.Status != test.wantStatus {
+				t.Fatalf("status = %q, want %q", conversation.Status, test.wantStatus)
+			}
+			if conversation.StreamingMessageID != "" {
+				t.Fatalf("streaming message id = %q, want empty", conversation.StreamingMessageID)
+			}
+			if conversation.Messages[0].Status != "complete" {
+				t.Fatalf("streaming message status = %q, want complete", conversation.Messages[0].Status)
+			}
+			if len(conversation.Messages) != 2 || conversation.Messages[1].Kind != "runtime" {
+				t.Fatalf("messages = %#v, want terminal runtime trace", conversation.Messages)
+			}
+		})
+	}
+}
+
 func TestProjectAgentEventInfersMCPToolKindWhenACPKindIsOther(t *testing.T) {
 	conversations := map[string]AgentConversationRecord{}
 	activity := []AgentChatActivityRecord{}

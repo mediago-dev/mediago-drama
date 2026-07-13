@@ -15,6 +15,7 @@ import (
 
 type pagingAgentEventService struct {
 	events    []service.AgentEvent
+	live      chan service.AgentEvent
 	loadCalls int
 }
 
@@ -33,7 +34,10 @@ func (svc *pagingAgentEventService) LoadAgentEvents(_ string, _ string, afterSeq
 }
 
 func (svc *pagingAgentEventService) SubscribeAgentEvents() (<-chan service.AgentEvent, func()) {
-	return make(chan service.AgentEvent), func() {}
+	if svc.live == nil {
+		svc.live = make(chan service.AgentEvent)
+	}
+	return svc.live, func() {}
 }
 
 func (svc *pagingAgentEventService) NewEventID() string { return "control" }
@@ -77,6 +81,59 @@ func TestHandleAgentEventsReplaysEveryPage(t *testing.T) {
 	}
 	if !strings.Contains(body, "agent.session.replay.completed") {
 		t.Fatal("replay did not complete")
+	}
+}
+
+func TestHandleAgentEventsSkipsBufferedEventsAlreadyCoveredByReplay(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	replay := []service.AgentEvent{
+		{Sequence: 1, SessionID: "session-1", ProjectID: "project-1", Type: "agent.run.started"},
+		{Sequence: 2, SessionID: "session-1", ProjectID: "project-1", Type: "agent.run.completed"},
+	}
+	live := make(chan service.AgentEvent, 4)
+	live <- replay[0]
+	live <- replay[1]
+	live <- service.AgentEvent{
+		SessionID: "session-1",
+		ProjectID: "project-1",
+		Type:      "agent.message.delta",
+		Delta:     "实时增量",
+	}
+	live <- service.AgentEvent{
+		Sequence:  3,
+		SessionID: "session-1",
+		ProjectID: "project-1",
+		Type:      "agent.activity",
+		Message:   "回放后的实时事件",
+	}
+	svc := &pagingAgentEventService{events: replay, live: live}
+	handler := NewAgentEvents(svc)
+
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	requestContext, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	ginContext.Request = httptest.NewRequest(http.MethodGet, "/", nil).WithContext(requestContext)
+	ginContext.Params = gin.Params{
+		{Key: "projectId", Value: "project-1"},
+		{Key: "sessionId", Value: "session-1"},
+	}
+
+	handler.HandleAgentEvents(ginContext)
+
+	body := recorder.Body.String()
+	if count := strings.Count(body, "id: 1\n"); count != 1 {
+		t.Fatalf("event 1 count = %d, want 1", count)
+	}
+	if count := strings.Count(body, "id: 2\n"); count != 1 {
+		t.Fatalf("event 2 count = %d, want 1", count)
+	}
+	if count := strings.Count(body, "id: 3\n"); count != 1 {
+		t.Fatalf("event 3 count = %d, want 1", count)
+	}
+	if !strings.Contains(body, `"delta":"实时增量"`) {
+		t.Fatalf("body = %q, want unpersisted live delta", body)
 	}
 }
 

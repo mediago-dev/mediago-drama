@@ -49,6 +49,8 @@ type AgentSessionsResponse struct {
 // AgentSessionStatus is the current run status for an agent session.
 type AgentSessionStatus struct {
 	SessionID          string                      `json:"sessionId"`
+	ProjectID          string                      `json:"-"`
+	RunID              string                      `json:"-"`
 	Running            bool                        `json:"running"`
 	LastStatus         string                      `json:"lastStatus,omitempty"`
 	LastMessage        string                      `json:"lastMessage,omitempty"`

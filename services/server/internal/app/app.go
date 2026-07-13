@@ -175,6 +175,8 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		api.events.Publish(agentEvent{
 			ID:        mustRandomID("event"),
 			SessionID: status.SessionID,
+			ProjectID: status.ProjectID,
+			RunID:     status.RunID,
 			Type:      "agent.run.cancelled",
 			Message:   "Agent 运行已中断。",
 			CreatedAt: timestamp.NowRFC3339Nano(),

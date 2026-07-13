@@ -476,6 +476,7 @@ func (store *SessionService) statusFromSession(
 	if RunID != "" {
 		if run := session.runs[RunID]; run != nil {
 			Status := store.statusFromRun(sessionID, run)
+			Status.ProjectID = strings.TrimSpace(session.projectID)
 			Status.Running = session.hasActiveRuns()
 			if session.lastStatus != "" {
 				Status.LastStatus = session.lastStatus
@@ -486,6 +487,8 @@ func (store *SessionService) statusFromSession(
 	}
 	return AgentSessionStatus{
 		SessionID:   sessionID,
+		ProjectID:   strings.TrimSpace(session.projectID),
+		RunID:       strings.TrimSpace(RunID),
 		Running:     session.hasActiveRuns(),
 		LastStatus:  session.lastStatus,
 		LastMessage: session.lastMessage,
@@ -498,6 +501,7 @@ func (store *SessionService) statusFromRun(sessionID string, run *AgentRun) Agen
 	}
 	return AgentSessionStatus{
 		SessionID:   sessionID,
+		RunID:       strings.TrimSpace(run.RunID),
 		Running:     !isTerminalRunStatus(run.Status),
 		LastStatus:  run.Status,
 		LastMessage: run.Message,

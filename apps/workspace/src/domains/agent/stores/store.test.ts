@@ -219,6 +219,87 @@ describe("agent store runtime recovery", () => {
 			}),
 		]);
 	});
+
+	it.each([
+		{
+			label: "completed",
+			apply: () => useAgentStore.getState().finishRun("run-current"),
+			status: "completed" as const,
+		},
+		{
+			label: "failed",
+			apply: () => useAgentStore.getState().failRun("运行失败", "run-current"),
+			status: "failed" as const,
+		},
+		{
+			label: "cancelled",
+			apply: () => useAgentStore.getState().cancelRun("运行已取消", "run-current"),
+			status: "cancelled" as const,
+		},
+	])(
+		"reconciles every nonterminal conversation when the session is $label",
+		({ apply, status }) => {
+			useAgentStore.setState({
+				isRunning: true,
+				permissionRequests: [
+					{
+						requestId: "permission-1",
+						options: [{ optionId: "allow", kind: "allow_once", name: "Allow once" }],
+						toolCall: { title: "写入文档" },
+					},
+				],
+				rootRunId: "run-current",
+				conversations: {
+					"run-complete": {
+						runId: "run-complete",
+						status: "completed",
+						messages: [],
+						streamingMessageId: null,
+						children: [],
+						createdAt: "2026-07-13T00:00:00.000Z",
+						updatedAt: "2026-07-13T00:00:01.000Z",
+					},
+					"run-stale": {
+						runId: "run-stale",
+						status: "waiting",
+						messages: [
+							{
+								id: "stale-stream",
+								role: "assistant",
+								content: "历史输出",
+								kind: "message",
+								status: "streaming",
+							},
+						],
+						streamingMessageId: "stale-stream",
+						children: [],
+						createdAt: "2026-07-13T00:00:02.000Z",
+						updatedAt: "2026-07-13T00:00:03.000Z",
+					},
+					"run-current": {
+						runId: "run-current",
+						status: "running",
+						messages: [],
+						streamingMessageId: null,
+						children: [],
+						createdAt: "2026-07-13T00:00:04.000Z",
+						updatedAt: "2026-07-13T00:00:05.000Z",
+					},
+				},
+			});
+
+			apply();
+
+			const state = useAgentStore.getState();
+			expect(state.isRunning).toBe(false);
+			expect(state.permissionRequests).toEqual([]);
+			expect(state.conversations["run-current"]?.status).toBe(status);
+			expect(state.conversations["run-stale"]?.status).toBe(status);
+			expect(state.conversations["run-stale"]?.streamingMessageId).toBeNull();
+			expect(state.conversations["run-stale"]?.messages[0]?.status).toBe("complete");
+			expect(state.conversations["run-complete"]?.status).toBe("completed");
+		},
+	);
 });
 
 describe("agent store thought streaming", () => {

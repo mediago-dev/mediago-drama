@@ -274,7 +274,14 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [data, persistenceHydrated, persistedSessionId, projectId, routeSessionId]);
+	}, [
+		agentSurfaceActive,
+		data,
+		persistenceHydrated,
+		persistedSessionId,
+		projectId,
+		routeSessionId,
+	]);
 
 	return null;
 };

@@ -136,6 +136,7 @@ func (handler AgentEvents) HandleAgentEvents(context *gin.Context) {
 		CreatedAt: timestamp.NowRFC3339Nano(),
 	})
 	flusher.Flush()
+	replayWatermark := replayCursor
 
 	heartbeat := time.NewTicker(sseHeartbeatInterval)
 	defer heartbeat.Stop()
@@ -147,8 +148,19 @@ func (handler AgentEvents) HandleAgentEvents(context *gin.Context) {
 		case <-heartbeat.C:
 			writeSSEHeartbeat(context.Writer)
 			flusher.Flush()
-		case event := <-events:
+		case event, open := <-events:
+			if !open {
+				return
+			}
 			if !agentEventMatchesSubscription(event, sessionID, projectID) {
+				continue
+			}
+			// The live subscription is established before replay so no event can be
+			// lost during a long history read. Persisted events published in that
+			// overlap are therefore present both in replay and in the buffered live
+			// channel; discard only those fixed-watermark duplicates. Sequence-zero
+			// frames were never persisted and must always remain live-deliverable.
+			if event.SessionID == sessionID && event.Sequence > 0 && event.Sequence <= replayWatermark {
 				continue
 			}
 			heartbeat.Reset(sseHeartbeatInterval)
