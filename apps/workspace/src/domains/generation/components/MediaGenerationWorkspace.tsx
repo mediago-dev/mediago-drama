@@ -1,7 +1,7 @@
 import { FileText } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { mutate as mutateSWR } from "swr";
+import { mutate as mutateSWR, useSWRConfig } from "swr";
 import type {
 	GenerationAsset,
 	GenerationKind,
@@ -286,6 +286,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	assetTitle,
 }) => {
 	const toast = useToast();
+	const { mutate: mutateSWRCache } = useSWRConfig();
 	const [inlineHistoryReferences, setInlineHistoryReferences] = useState<MediaAsset[]>([]);
 	const [inlineResultReferences, setInlineResultReferences] = useState<MediaAsset[]>([]);
 	const [inlineShortcutReferences, setInlineShortcutReferences] = useState<MediaAsset[]>([]);
@@ -1116,6 +1117,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			sourceType: "edited" | "generated" = "generated",
 		) => {
 			const persistTarget = resolveGeneratedAssetTaskSlot(asset, generationEntries);
+			const mediaAssetId = asset.assetId?.trim();
 			const normalizedProjectId = projectId?.trim();
 			const resourceId = selectedAssetResourceId?.trim();
 			const resourceType = resolvedSelectedAssetResourceType;
@@ -1124,39 +1126,56 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				!normalizedProjectId ||
 				!resourceId ||
 				!selectableKind ||
-				!persistTarget ||
+				(!mediaAssetId && !persistTarget) ||
 				!resourceType
 			) {
-				// 已配置好持久化（项目 / 资源 / 归属 / 类型都在）却解析不到任务槽位时，
-				// 选中会被静默丢弃——这是「选了不回流列表」最常见的根因，开发期显式告警。
-				if (normalizedProjectId && resourceId && resourceType && selectableKind && !persistTarget) {
+				// 新历史优先使用稳定的素材 ID；旧历史回退到任务槽位。
+				// 两者都缺失时显式失败，避免只更新弹窗勾选而不回流资源列表。
+				if (
+					normalizedProjectId &&
+					resourceId &&
+					resourceType &&
+					selectableKind &&
+					!mediaAssetId &&
+					!persistTarget
+				) {
 					warnSkippedAssetSelectionPersistence(asset, { resourceId, resourceType });
+					toast.error("图片选择保存失败：历史记录缺少资源 ID。");
 				}
-				return true;
+				return false;
 			}
 
 			const persistedTitle = asset.title?.trim() || selectedAssetTitle?.trim() || undefined;
 
 			try {
-				await updateSelectedGenerationAsset(normalizedProjectId, {
-					assetIndex: persistTarget.slotIndex,
+				const response = await updateSelectedGenerationAsset(normalizedProjectId, {
+					...(!mediaAssetId && persistTarget
+						? {
+								assetIndex: persistTarget.slotIndex,
+								sourceAssetIndex: persistTarget.slotIndex,
+								sourceTaskId: persistTarget.taskId,
+								taskId: persistTarget.taskId,
+							}
+						: {}),
 					base64: asset.base64,
 					kind: asset.kind,
+					mediaAssetId,
 					mimeType: asset.mimeType,
 					resourceId,
 					resourceTitle: selectedAssetTitle?.trim() || asset.title?.trim() || undefined,
 					resourceType,
 					selected,
-					sourceAssetIndex: persistTarget.slotIndex,
 					sourceDocumentId: selectedAssetSourceDocumentId?.trim() || undefined,
-					sourceTaskId: persistTarget.taskId,
 					sourceType,
-					taskId: persistTarget.taskId,
 					title: persistedTitle,
 					url: asset.url,
 				});
 				void ws.mutateTasks();
-				refreshSelectedGenerationAssetDependents(normalizedProjectId);
+				refreshSelectedGenerationAssetDependents(
+					normalizedProjectId,
+					response.asset,
+					mutateSWRCache,
+				);
 				onAssetSelectionPersisted?.();
 				return true;
 			} catch (err) {
@@ -1174,6 +1193,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			resolvedSelectedAssetResourceType,
 			onAssetSelectionPersisted,
 			toast,
+			mutateSWRCache,
 			ws.mutateTasks,
 		],
 	);
@@ -1843,16 +1863,13 @@ const warnSkippedAssetSelectionPersistence = (
 	context: { resourceId: string; resourceType: SelectedGenerationResourceType },
 ) => {
 	if (!import.meta.env.DEV) return;
-	console.warn(
-		"[generation] 选中未持久化：解析不到该资源的任务槽位（taskId/slotIndex），成片不会回流到列表。",
-		{
-			resourceId: context.resourceId,
-			resourceType: context.resourceType,
-			kind: asset.kind,
-			taskId: asset.taskId,
-			slotIndex: asset.slotIndex,
-		},
-	);
+	console.warn("[generation] 选中未持久化：缺少资源 ID，且解析不到任务槽位（taskId/slotIndex）。", {
+		resourceId: context.resourceId,
+		resourceType: context.resourceType,
+		kind: asset.kind,
+		taskId: asset.taskId,
+		slotIndex: asset.slotIndex,
+	});
 };
 
 const resolveGeneratedAssetTaskSlot = (

@@ -51,7 +51,9 @@ const generationApiMocks = vi.hoisted(() => ({
 		projectId,
 	]),
 	streamGenerationText: vi.fn(),
-	updateSelectedGenerationAsset: vi.fn(async () => undefined),
+	updateSelectedGenerationAsset: vi.fn(
+		async (_projectId: string, _request: Record<string, unknown>) => ({}),
+	),
 }));
 const mediaApiMocks = vi.hoisted(() => ({
 	uploadMediaAsset: vi.fn(),
@@ -1136,6 +1138,64 @@ describe("MediaGenerationWorkspace", () => {
 		});
 	});
 
+	it("persists a historical generated image by asset id without sending a mismatched task slot", async () => {
+		const historicalEntry: GenerationEntry = {
+			...imageEntry,
+			id: "local-history-entry",
+			assets: [
+				{
+					assetId: "historical-media-a",
+					kind: "image",
+					mimeType: "image/png",
+					slotIndex: 0,
+					taskId: "mismatched-task-for-another-image",
+					url: "/api/v1/media-assets/historical-media-a/content",
+				},
+			],
+		};
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: historicalEntry.id,
+			orderedGenerationEntries: [historicalEntry],
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="image"
+				projectId="project-a"
+				selectedAssetResourceId="section-character"
+				selectedAssetSourceDocumentId="character-doc"
+				selectedAssetTitle="林墨"
+				taskType="character"
+				viewMode="history"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("checkbox", { name: "选入结果" }));
+
+		await waitFor(() => {
+			expect(generationApiMocks.updateSelectedGenerationAsset).toHaveBeenCalled();
+		});
+		const request = generationApiMocks.updateSelectedGenerationAsset.mock.calls.at(-1)?.[1];
+		expect(request).toEqual(
+			expect.objectContaining({
+				kind: "image",
+				mediaAssetId: "historical-media-a",
+				resourceId: "section-character",
+				resourceType: "character",
+				selected: true,
+				sourceDocumentId: "character-doc",
+				title: "林墨",
+			}),
+		);
+		expect(request).not.toHaveProperty("assetIndex");
+		expect(request).not.toHaveProperty("sourceAssetIndex");
+		expect(request).not.toHaveProperty("sourceTaskId");
+		expect(request).not.toHaveProperty("taskId");
+	});
+
 	it("does not expose project resource selection without a resource id", () => {
 		const selectedEntry: GenerationEntry = {
 			...imageEntry,
@@ -1398,7 +1458,7 @@ describe("MediaGenerationWorkspace", () => {
 		};
 		generationApiMocks.updateSelectedGenerationAsset
 			.mockRejectedValueOnce(new Error("backend unavailable"))
-			.mockResolvedValueOnce(undefined);
+			.mockResolvedValueOnce({});
 		vi.mocked(useGenerationWorkspace).mockReturnValue({
 			...workspaceDefaults,
 			activeEntryId: selectedEntry.id,

@@ -361,6 +361,7 @@ export interface GenerationNotificationEvent {
 }
 
 export interface GenerationAsset {
+	assetId?: string;
 	kind: Kind;
 	taskId?: string;
 	title?: string;

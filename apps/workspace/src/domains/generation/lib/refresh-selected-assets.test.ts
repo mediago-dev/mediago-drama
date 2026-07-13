@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { selectedGenerationAssetsKey } from "@/domains/generation/api/generation";
+import {
+	selectedGenerationAssetsKey,
+	selectedGenerationAssetsQueryKey,
+	type SelectedGenerationAssetsResponse,
+} from "@/domains/generation/api/generation";
 import {
 	workspaceDocumentResourcesKey,
 	workspaceStoryboardVideoResourcesKey,
@@ -29,10 +33,64 @@ describe("refreshSelectedGenerationAssetDependents", () => {
 		expect(mocks.mutate).toHaveBeenCalledWith(workspaceStoryboardVideoResourcesKey("project-1"));
 	});
 
+	it("optimistically replaces the selected image in the project cover cache", () => {
+		const selectedAsset = {
+			assetIndex: -1,
+			id: "selected-new",
+			kind: "image" as const,
+			mediaAssetId: "asset-new",
+			resourceId: "character-1",
+			resourceType: "character" as const,
+			url: "/api/v1/media-assets/asset-new/content",
+		};
+		refreshSelectedGenerationAssetDependents("project-1", selectedAsset);
+
+		expect(mocks.mutate).toHaveBeenCalledTimes(4);
+		expect(mocks.mutate.mock.calls[0][0]).toEqual(selectedGenerationAssetsQueryKey("project-1"));
+		expect(mocks.mutate.mock.calls[0][2]).toEqual({ revalidate: false });
+
+		const updateCache = mocks.mutate.mock.calls[0][1] as (
+			current: SelectedGenerationAssetsResponse,
+		) => SelectedGenerationAssetsResponse;
+		const updated = updateCache({
+			assets: [
+				{
+					assetIndex: 0,
+					id: "selected-old",
+					kind: "image",
+					mediaAssetId: "asset-old",
+					resourceId: "character-1",
+					resourceType: "character",
+					url: "/api/v1/media-assets/asset-old/content",
+				},
+				{
+					assetIndex: 0,
+					id: "selected-other",
+					kind: "image",
+					mediaAssetId: "asset-other",
+					resourceId: "character-2",
+					resourceType: "character",
+					url: "/api/v1/media-assets/asset-other/content",
+				},
+			],
+		});
+
+		expect(updated.assets.map((asset) => asset.mediaAssetId)).toEqual(["asset-other", "asset-new"]);
+	});
+
 	it("is a no-op for a missing project id", () => {
 		refreshSelectedGenerationAssetDependents("");
 		refreshSelectedGenerationAssetDependents(null);
 		refreshSelectedGenerationAssetDependents(undefined);
+		expect(mocks.mutate).not.toHaveBeenCalled();
+	});
+
+	it("uses the bound mutator from the active SWR provider", () => {
+		const boundMutate = vi.fn();
+
+		refreshSelectedGenerationAssetDependents("project-1", undefined, boundMutate);
+
+		expect(boundMutate).toHaveBeenCalledTimes(3);
 		expect(mocks.mutate).not.toHaveBeenCalled();
 	});
 });
