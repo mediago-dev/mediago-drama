@@ -97,9 +97,6 @@ func TestAgentRuntimeCloseLifecycle(t *testing.T) {
 				waitForLifecycleSignal(t, allClosed, "concurrent Close calls")
 				waitForLifecycleSignal(t, runnerCancelled, "runner cancellation")
 				waitForLifecycleSignal(t, titleCancelled, "title cancellation")
-				if got := runtime.CountInFlightRuns(); got != 0 {
-					t.Fatalf("CountInFlightRuns() = %d, want 0 after Close", got)
-				}
 			},
 		},
 		{

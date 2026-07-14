@@ -15,22 +15,13 @@ import {
 	type NativeThemeSource,
 	desktopIpcChannel,
 } from "./ipc-contract.js";
-import {
-	markActiveBundleServerStarting,
-	prepareActiveBundle,
-	registerBundleUpdater,
-} from "./bundle-updater.js";
 import { showDesktopSystemNotification } from "./desktop-notifications.js";
-import { preloadPath } from "./paths.js";
+import { preloadPath, rendererDistDir } from "./paths.js";
 import { startServerSidecar, stopServerSidecar } from "./sidecar.js";
 import { registerDesktopUpdater } from "./updater.js";
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
-// Resolved inside startApp — after the single-instance lock is held (a doomed second
-// instance must not count boot attempts or touch DB snapshots) and after app-ready,
-// but before the sidecar spawns, while SQLite is quiescent.
-let activeBundle: Awaited<ReturnType<typeof prepareActiveBundle>> | null = null;
 
 const rendererUrl = process.env.ELECTRON_RENDERER_URL?.trim();
 
@@ -95,12 +86,7 @@ const createWindow = async () => {
 		if (app.isPackaged) {
 			await mainWindow.webContents.session.clearCache();
 		}
-		// startApp resolves activeBundle (and spawns the matching sidecar) before ever
-		// calling createWindow. Re-resolving here would re-run launch-safety DB
-		// snapshot/restore while the sidecar is live and could load a renderer from a
-		// different rev than the running server — so require it, never re-resolve.
-		if (!activeBundle) throw new Error("active bundle not resolved before window creation");
-		await mainWindow.loadFile(join(activeBundle.rendererDir, "index.html"), {
+		await mainWindow.loadFile(join(rendererDistDir(), "index.html"), {
 			hash: app.isPackaged ? "/" : undefined,
 			query: app.isPackaged ? { version: app.getVersion() } : undefined,
 		});
@@ -239,25 +225,8 @@ const pathIsAvailable = async (path: string) => {
 };
 
 const startApp = async () => {
-	activeBundle = await prepareActiveBundle();
-	// Register only after packaged bundle metadata has passed the strict startup
-	// validation, so a corrupt cohort feed fails through the visible startup error path.
 	registerDesktopUpdater({ getWindow: () => mainWindow });
-	markActiveBundleServerStarting(activeBundle);
-	const sidecarIdentity = startServerSidecar({
-		binaryPath: activeBundle.serverBinPath,
-		bundleRev: activeBundle.rev,
-		schemaVersion: activeBundle.schemaVersion,
-	});
-	const bundleUpdater = registerBundleUpdater({
-		getWindow: () => mainWindow,
-		active: activeBundle,
-		onActiveBundleChanged: (bundle) => {
-			activeBundle = bundle;
-		},
-	});
-	// Health confirmation + background check start counting from actual server spawn.
-	await bundleUpdater.notifyServerStarted(sidecarIdentity);
+	startServerSidecar();
 	await createWindow();
 };
 

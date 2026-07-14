@@ -3,16 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	spawn: vi.fn(),
-	randomUUID: vi.fn(),
 }));
 
 vi.mock("node:child_process", () => ({
 	default: { spawn: mocks.spawn },
 	spawn: mocks.spawn,
-}));
-vi.mock("node:crypto", () => ({
-	default: { randomUUID: mocks.randomUUID },
-	randomUUID: mocks.randomUUID,
 }));
 vi.mock("node:fs", () => {
 	const existsSync = () => true;
@@ -45,94 +40,82 @@ class FakeChildProcess extends EventEmitter {
 describe("server sidecar lifecycle", () => {
 	beforeEach(() => {
 		vi.resetModules();
-		vi.useRealTimers();
 		mocks.spawn.mockReset();
-		mocks.randomUUID.mockReset();
 		delete process.env.ELECTRON_RENDERER_URL;
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
-		vi.useRealTimers();
 	});
 
-	it("injects the expected identity and consumes spawn errors", async () => {
+	it("starts the builtin server without bundle identity", async () => {
 		const processChild = new FakeChildProcess();
 		mocks.spawn.mockReturnValue(processChild);
-		mocks.randomUUID.mockReturnValue("instance-a");
-		vi.spyOn(console, "error").mockImplementation(() => undefined);
 		const sidecar = await import("./sidecar.js");
 
-		const identity = sidecar.startServerSidecar({
-			binaryPath: "/bundle/server",
-			bundleRev: 12,
-			schemaVersion: 4,
-		});
+		sidecar.startServerSidecar();
 
-		expect(identity).toEqual({ bundleRev: 12, schemaVersion: 4, instanceToken: "instance-a" });
+		expect(mocks.spawn).toHaveBeenCalledOnce();
+		expect(mocks.spawn.mock.calls[0]?.[0]).toBe("/resources/bin/server");
 		const spawnOptions = mocks.spawn.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
-		expect(spawnOptions.env).toMatchObject({
-			MEDIAGO_BUNDLE_REV: "12",
-			MEDIAGO_SCHEMA_VERSION: "4",
-			MEDIAGO_INSTANCE_TOKEN: "instance-a",
-		});
-		expect(sidecar.isServerSidecarRunning()).toBe(true);
-
-		processChild.emit("error", new Error("spawn failed"));
-		expect(sidecar.isServerSidecarRunning()).toBe(false);
+		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_BUNDLE_REV");
+		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_SCHEMA_VERSION");
+		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_INSTANCE_TOKEN");
 	});
 
-	it("does not let a stale child exit clear a replacement", async () => {
+	it("clears a failed spawn and allows retry", async () => {
 		const first = new FakeChildProcess();
 		const second = new FakeChildProcess();
 		mocks.spawn.mockReturnValueOnce(first).mockReturnValueOnce(second);
-		mocks.randomUUID.mockReturnValueOnce("instance-a").mockReturnValueOnce("instance-b");
 		vi.spyOn(console, "error").mockImplementation(() => undefined);
 		const sidecar = await import("./sidecar.js");
 
-		sidecar.startServerSidecar({ bundleRev: 1, schemaVersion: 1 });
+		sidecar.startServerSidecar();
 		first.emit("error", new Error("spawn failed"));
-		sidecar.startServerSidecar({ bundleRev: 2, schemaVersion: 1 });
-		first.exit();
+		sidecar.startServerSidecar();
 
-		expect(sidecar.isServerSidecarRunning()).toBe(true);
-		second.exit();
-		expect(sidecar.isServerSidecarRunning()).toBe(false);
+		expect(mocks.spawn).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not let a stale child exit clear its replacement", async () => {
+		const first = new FakeChildProcess();
+		const second = new FakeChildProcess();
+		mocks.spawn.mockReturnValueOnce(first).mockReturnValueOnce(second);
+		vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const sidecar = await import("./sidecar.js");
+
+		sidecar.startServerSidecar();
+		first.emit("error", new Error("spawn failed"));
+		sidecar.startServerSidecar();
+		first.exit();
+		sidecar.startServerSidecar();
+
+		expect(mocks.spawn).toHaveBeenCalledTimes(2);
 	});
 
 	it("retains a live child when a post-spawn operation emits error", async () => {
 		const processChild = new FakeChildProcess();
 		processChild.pid = 4242;
 		mocks.spawn.mockReturnValue(processChild);
-		mocks.randomUUID.mockReturnValue("instance-a");
 		vi.spyOn(console, "error").mockImplementation(() => undefined);
 		const sidecar = await import("./sidecar.js");
-		sidecar.startServerSidecar({ bundleRev: 1, schemaVersion: 1 });
 
+		sidecar.startServerSidecar();
 		processChild.emit("error", new Error("kill EPERM"));
+		sidecar.startServerSidecar();
 
-		expect(sidecar.isServerSidecarRunning()).toBe(true);
-		processChild.exit();
-		expect(sidecar.isServerSidecarRunning()).toBe(false);
+		expect(mocks.spawn).toHaveBeenCalledOnce();
 	});
 
-	it("keeps the child handle when graceful and forced stops do not exit", async () => {
-		vi.useFakeTimers();
+	it("requests graceful shutdown through stdin and SIGTERM", async () => {
 		const processChild = new FakeChildProcess();
 		mocks.spawn.mockReturnValue(processChild);
-		mocks.randomUUID.mockReturnValue("instance-a");
 		const sidecar = await import("./sidecar.js");
-		sidecar.startServerSidecar({ bundleRev: 1, schemaVersion: 1 });
+		sidecar.startServerSidecar();
 
-		const stopped = sidecar.stopServerSidecarGracefully(10);
+		sidecar.stopServerSidecar();
+
 		expect(processChild.stdin.end).toHaveBeenCalledOnce();
-		await vi.advanceTimersByTimeAsync(4_010);
-
-		await expect(stopped).resolves.toBe(false);
-		expect(processChild.kill).toHaveBeenNthCalledWith(1, "SIGTERM");
-		expect(processChild.kill).toHaveBeenNthCalledWith(2, "SIGKILL");
-		expect(sidecar.isServerSidecarRunning()).toBe(true);
-		processChild.exit();
-		expect(sidecar.isServerSidecarRunning()).toBe(false);
+		expect(processChild.kill).toHaveBeenCalledWith("SIGTERM");
 	});
 });

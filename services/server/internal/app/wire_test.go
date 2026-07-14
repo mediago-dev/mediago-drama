@@ -81,9 +81,6 @@ func TestHealthIsNotReadyWhenRepositoryInitializationFails(t *testing.T) {
 		Config{
 			WorkspaceDir:            filepath.Join(root, "workspace"),
 			SettingsDBPath:          filepath.Join(blockedParent, "settings.sqlite"),
-			BundleRev:               12,
-			SchemaVersion:           4,
-			InstanceToken:           "readiness-test",
 			DisableGenerationWorker: true,
 			DisableWorkspaceWatcher: true,
 			agentRunner:             fakeAgentRunner{},
@@ -100,9 +97,8 @@ func TestHealthIsNotReadyWhenRepositoryInitializationFails(t *testing.T) {
 		t.Fatalf("status code = %d, want %d: %s", response.StatusCode, http.StatusServiceUnavailable, readBody(t, response.Body))
 	}
 	body := readBody(t, response.Body)
-	if !strings.Contains(body, `"ready":false`) || !strings.Contains(body, `"status":"not_ready"`) ||
-		!strings.Contains(body, `"bundleRev":12`) || !strings.Contains(body, `"instanceToken":"readiness-test"`) {
-		t.Fatalf("body = %s, want non-ready identity", body)
+	if !strings.Contains(body, `"ready":false`) || !strings.Contains(body, `"status":"not_ready"`) {
+		t.Fatalf("body = %s, want non-ready status", body)
 	}
 }
 

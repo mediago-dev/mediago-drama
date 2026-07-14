@@ -1,24 +1,16 @@
-import { execFileSync } from "node:child_process";
-import { createPublicKey } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { hashRendererTree } from "../electron/src/bundle-content.ts";
-import { bundleUpdatePublicKey, hotUpdateEnabled } from "../electron/src/hot-update-config.ts";
-import { SHELL_API_VERSION } from "../electron/src/ipc-contract.ts";
 
 type WorkspacePackage = {
 	name?: string;
 	version?: string;
 	dependencies?: {
 		"electron-updater"?: string;
-		"extract-zip"?: string;
 	};
 	devDependencies?: {
 		electron?: string;
 		"electron-updater"?: string;
-		"extract-zip"?: string;
 	};
 };
 
@@ -30,26 +22,21 @@ const electronDistDir = join(workspaceDir, "electron", "dist");
 const electronAppDir = join(workspaceDir, "electron", "app");
 const electronTargetPlatform = process.env.MEDIAGO_ELECTRON_TARGET_PLATFORM?.trim();
 
-type BundleVersionConfig = {
-	bundleRev: number;
-	schemaVersion: number;
-	workspaceLayoutVersion: number;
-};
-
 function main(): void {
 	ensureDirectory(rendererDistDir, "missing renderer build output");
 	ensureDirectory(electronDistDir, "missing Electron main process build output");
+	ensureStagedServerBinary();
 
 	const workspacePackage = readWorkspacePackage();
 	const electronVersion = normalizeVersion(workspacePackage.devDependencies?.electron);
-	const stagedDependencies = Object.fromEntries(
-		(["electron-updater", "extract-zip"] as const).flatMap((name) => {
-			const version =
-				workspacePackage.dependencies?.[name] ?? workspacePackage.devDependencies?.[name];
-			return version ? [[name, version]] : [];
-		}),
-	);
-	const channel = readBundleChannel();
+	const electronUpdaterVersion =
+		workspacePackage.dependencies?.["electron-updater"] ??
+		workspacePackage.devDependencies?.["electron-updater"];
+	if (!electronUpdaterVersion) {
+		throw new Error("missing electron-updater dependency in workspace package");
+	}
+	const stagedDependencies = { "electron-updater": electronUpdaterVersion };
+	const channel = readElectronChannel();
 	const githubPublisher = githubPublisherOptions(channel);
 	const appPackage = {
 		name: "mediago-drama",
@@ -120,82 +107,19 @@ function main(): void {
 	writeFileSync(join(electronAppDir, "package.json"), `${JSON.stringify(appPackage, null, 2)}\n`);
 	cpSync(electronDistDir, electronAppDir, { recursive: true });
 	cpSync(rendererDistDir, join(electronAppDir, "renderer"), { recursive: true });
-	writeBundleMeta(join(electronAppDir, "renderer"), appPackage.version, channel);
 }
 
 function readWorkspacePackage(): WorkspacePackage {
 	return JSON.parse(readFileSync(workspacePackagePath, "utf8")) as WorkspacePackage;
 }
 
-// Identity and cohort of the builtin application bundle, consumed by the hot-update
-// loader to compare against downloaded bundles and choose the matching manifest tag.
-function writeBundleMeta(stagedRendererDir: string, appBaseline: string, channel: string): void {
-	const bundleUpdatePath = join(workspaceDir, "bundle-update.json");
-	const parsed = JSON.parse(readFileSync(bundleUpdatePath, "utf8")) as Partial<BundleVersionConfig>;
-	for (const key of ["bundleRev", "schemaVersion", "workspaceLayoutVersion"] as const) {
-		if (!Number.isInteger(parsed[key]) || (parsed[key] ?? 0) < 1) {
-			throw new Error(`invalid ${key} in ${bundleUpdatePath}`);
-		}
-	}
-	const edition =
-		process.env.MEDIAGO_BUNDLE_EDITION?.trim() ||
-		process.env.VITE_MEDIAGO_EDITION?.trim() ||
-		"community";
-	if (edition !== "community" && edition !== "pro") {
-		throw new Error(`invalid bundle edition: ${edition}`);
-	}
-	assertHotUpdateTrustAnchor();
-	stagedServerBinaryPath();
-	const meta = {
-		bundleRev: parsed.bundleRev,
-		schemaVersion: parsed.schemaVersion,
-		workspaceLayoutVersion: parsed.workspaceLayoutVersion,
-		channel,
-		edition,
-		sourceCommit: readSourceCommit(),
-		hotUpdateEnabled,
-		bundleUpdatePublicKey,
-		minShellApi: SHELL_API_VERSION,
-		appBaseline,
-		components: {
-			renderer: { contentSha256: hashRendererTree(stagedRendererDir) },
-			// electron-builder may codesign this nested binary after staging, changing its
-			// bytes. Unknown is explicit and forces the first hot update to download server.
-			server: { contentSha256: "" },
-		},
-	};
-	writeFileSync(join(stagedRendererDir, "bundle-meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
-}
-
-function assertHotUpdateTrustAnchor(): void {
-	if (!bundleUpdatePublicKey) {
-		if (hotUpdateEnabled) {
-			throw new Error("hotUpdateEnabled requires a non-empty bundleUpdatePublicKey");
-		}
-		return;
-	}
-	const key = createPublicKey({
-		key: Buffer.from(bundleUpdatePublicKey, "base64"),
-		format: "der",
-		type: "spki",
-	});
-	if (key.asymmetricKeyType !== "ed25519") {
-		throw new Error(`bundleUpdatePublicKey must be Ed25519, got ${key.asymmetricKeyType}`);
+function ensureDirectory(path: string, message: string): void {
+	if (!existsSync(path)) {
+		throw new Error(`${message}: ${path}`);
 	}
 }
 
-function readSourceCommit(): string {
-	const value =
-		process.env.GITHUB_SHA?.trim() ||
-		execFileSync("git", ["rev-parse", "HEAD"], {
-			cwd: workspaceDir,
-			encoding: "utf8",
-		}).trim();
-	if (!/^[0-9a-f]{40}$/.test(value)) throw new Error(`invalid source commit: ${value}`);
-	return value;
-}
-
-function stagedServerBinaryPath(): string {
+function ensureStagedServerBinary(): void {
 	const isWindows = electronTargetPlatform
 		? electronTargetPlatform.startsWith("windows-")
 		: process.platform === "win32";
@@ -206,13 +130,8 @@ function stagedServerBinaryPath(): string {
 		"bin",
 		`mediago-server${isWindows ? ".exe" : ""}`,
 	);
-	if (!existsSync(path)) throw new Error(`missing staged server binary: ${path}`);
-	return path;
-}
-
-function ensureDirectory(path: string, message: string): void {
 	if (!existsSync(path)) {
-		throw new Error(`${message}: ${path}`);
+		throw new Error(`missing staged server binary: ${path}`);
 	}
 }
 
@@ -225,10 +144,10 @@ type GitHubReleaseType = "draft" | "prerelease" | "release";
 const githubOwner = "mediago-dev";
 const githubRepo = "mediago-drama";
 
-function readBundleChannel(): string {
-	const channel = process.env.MEDIAGO_BUNDLE_CHANNEL?.trim() || "beta";
+function readElectronChannel(): string {
+	const channel = process.env.MEDIAGO_ELECTRON_CHANNEL?.trim() || "beta";
 	if (!/^[a-z0-9-]+$/.test(channel)) {
-		throw new Error(`invalid MEDIAGO_BUNDLE_CHANNEL: ${channel}`);
+		throw new Error(`invalid MEDIAGO_ELECTRON_CHANNEL: ${channel}`);
 	}
 	return channel;
 }

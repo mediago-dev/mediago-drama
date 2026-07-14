@@ -1,10 +1,8 @@
 package repository
 
 import (
-	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"gorm.io/gorm"
@@ -819,36 +817,4 @@ func normalizeGenerationTaskRouteIDs(routeIDs []string) []string {
 
 func normalizeGenerationTaskStatus(status string) string {
 	return strings.ToLower(strings.TrimSpace(status))
-}
-
-// ListGenerationTaskUpdatedAtsWithStatuses returns the updated_at timestamps of tasks
-// whose (normalized) status is in the given list. The runtime activity probe applies
-// its own wall-clock staleness window in Go on these parsed time.Time values —
-// deliberately NOT a SQL `updated_at >= ?` comparison, because updated_at is persisted
-// as a timezone-offset TEXT string (local wall clock via autoUpdateTime) and SQLite
-// compares it lexicographically, so a UTC-bound cutoff would be skewed by the machine's
-// offset. Active tasks are inherently few, so loading their rows is cheap.
-func (repo *GenerationTaskRepository) ListGenerationTaskUpdatedAtsWithStatuses(
-	ctx context.Context,
-	statuses []string,
-) ([]time.Time, error) {
-	if len(statuses) == 0 {
-		return nil, nil
-	}
-	normalized := make([]string, 0, len(statuses))
-	for _, status := range statuses {
-		normalized = append(normalized, normalizeGenerationTaskStatus(status))
-	}
-	var models []domain.GenerationTaskModel
-	if err := repo.db.WithContext(ctx).
-		Select("updated_at").
-		Where("LOWER(TRIM(status)) IN ?", normalized).
-		Find(&models).Error; err != nil {
-		return nil, fmt.Errorf("listing active generation task timestamps: %w", err)
-	}
-	timestamps := make([]time.Time, 0, len(models))
-	for _, model := range models {
-		timestamps = append(timestamps, model.UpdatedAt)
-	}
-	return timestamps, nil
 }

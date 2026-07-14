@@ -9,10 +9,6 @@ export type {
 	DesktopUpdateStatus,
 	DesktopUpdateCapability,
 	DesktopUpdateAck,
-	BundleUpdateCapability,
-	BundleUpdatePhase,
-	BundleUpdateSource,
-	BundleUpdateStatus,
 } from "../../../electron/src/ipc-contract";
 
 import type {
@@ -23,8 +19,6 @@ import type {
 	DesktopUpdateCapability,
 	DesktopUpdateStatus,
 	NativeThemeSource,
-	BundleUpdateCapability,
-	BundleUpdateStatus,
 } from "../../../electron/src/ipc-contract";
 
 export interface MediagoDesktopAPI {
@@ -48,13 +42,6 @@ export interface MediagoDesktopAPI {
 	downloadUpdate(): Promise<DesktopUpdateAck>;
 	installUpdate(): Promise<DesktopUpdateAck>;
 	onUpdateStatus(listener: (status: DesktopUpdateStatus) => void): () => void;
-	// Bundle (renderer + server) hot-update surface. Optional: a hot-updated renderer may run against an
-	// older shell whose preload predates these methods — callers must runtime-guard.
-	getBundleUpdateCapability?(): Promise<BundleUpdateCapability>;
-	checkBundleUpdate?(): Promise<DesktopUpdateAck>;
-	applyBundleUpdate?(): Promise<DesktopUpdateAck>;
-	markRendererHealthy?(): Promise<void>;
-	onBundleUpdateStatus?(listener: (status: BundleUpdateStatus) => void): () => void;
 	startWindowDrag(): Promise<void>;
 	setNativeThemeSource(source: NativeThemeSource): Promise<void>;
 }

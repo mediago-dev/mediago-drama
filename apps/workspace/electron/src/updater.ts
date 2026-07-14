@@ -7,13 +7,10 @@ import {
 	type DesktopUpdateStatus,
 	desktopIpcChannel,
 } from "./ipc-contract.js";
-import { readBuiltinMeta } from "./bundle-store.js";
-import { rendererDistDir } from "./paths.js";
 
 const { autoUpdater } = electronUpdater;
 
-const releaseRepositoryUrl = "https://github.com/mediago-dev/mediago-drama";
-const defaultReleasePageUrl = releaseRepositoryUrl;
+const defaultReleasePageUrl = "https://github.com/mediago-dev/mediago-drama/releases";
 
 // Flip to true after macOS code signing + notarization are set up in CI. Until then
 // electron-updater cannot install updates on unsigned mac builds (Squirrel.Mac refuses),
@@ -38,27 +35,7 @@ const resolveCapability = (): DesktopUpdateCapability => {
 	return { supportsAutoUpdate: true, releasePageUrl: defaultReleasePageUrl };
 };
 
-let capability = resolveCapability();
-
-const configureDesktopCohort = (): void => {
-	if (!app.isPackaged) return;
-	const meta = readBuiltinMeta(rendererDistDir());
-	for (const [name, value] of [
-		["channel", meta.channel],
-		["edition", meta.edition],
-	] as const) {
-		if (!/^[a-z0-9-]+$/.test(value)) throw new Error(`invalid desktop ${name}: ${value}`);
-	}
-	const tag = `desktop-${meta.channel}-${meta.edition}`;
-	if (!capability.supportsAutoUpdate) return;
-	const feedUrl = `${releaseRepositoryUrl}/releases/download/${tag}`;
-	autoUpdater.setFeedURL({ provider: "generic", url: feedUrl });
-	autoUpdater.channel = meta.channel;
-	// electron-updater's channel setter implicitly enables downgrades. The fixed
-	// cohort feed is monotonic, so explicitly keep installer rollback disabled.
-	autoUpdater.allowDowngrade = false;
-	autoUpdater.allowPrerelease = meta.channel !== "latest";
-};
+const capability = resolveCapability();
 
 let listenersAttached = false;
 
@@ -147,7 +124,6 @@ export interface DesktopUpdaterDeps {
 }
 
 export const registerDesktopUpdater = ({ getWindow }: DesktopUpdaterDeps): void => {
-	configureDesktopCohort();
 	if (capability.supportsAutoUpdate) attachListeners(getWindow);
 
 	ipcMain.handle(desktopIpcChannel.getAppVersion, () => currentVersion());

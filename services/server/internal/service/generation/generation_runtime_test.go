@@ -2169,50 +2169,6 @@ type blockingVideoGenerateProvider struct {
 	err      error
 }
 
-func TestGenerateWithProviderTracksInFlightRequest(t *testing.T) {
-	workflow := NewGenerationService(nil, nil, nil)
-	provider := &blockingVideoGenerateProvider{
-		started: make(chan struct{}),
-		release: make(chan struct{}),
-		response: coregeneration.Response{
-			ID:     "tracked-request",
-			Status: "completed",
-		},
-	}
-	done := make(chan error, 1)
-	go func() {
-		_, err := workflow.generateWithProvider(
-			context.Background(),
-			provider,
-			coregeneration.Request{Kind: coregeneration.KindVideo},
-			generationProviderLogContext{Action: "test"},
-		)
-		done <- err
-	}()
-
-	select {
-	case <-provider.started:
-	case <-time.After(time.Second):
-		t.Fatal("provider did not start")
-	}
-	if count := workflow.CountInFlightProviderRequests(); count != 1 {
-		t.Fatalf("CountInFlightProviderRequests() = %d, want 1", count)
-	}
-
-	close(provider.release)
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("generateWithProvider() error = %v", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("provider did not finish")
-	}
-	if count := workflow.CountInFlightProviderRequests(); count != 0 {
-		t.Fatalf("CountInFlightProviderRequests() = %d, want 0", count)
-	}
-}
-
 type blockingMultiAssetImageGenerateProvider struct {
 	started chan coregeneration.Request
 	release chan struct{}

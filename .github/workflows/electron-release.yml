@@ -173,6 +173,7 @@ jobs:
 
       - name: Build ${{ matrix.label }}
         env:
+          MEDIAGO_ELECTRON_CHANNEL: ${{ inputs.channel }}
           MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: ${{ vars.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL }}
           MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.github_release_type }}
           MODEL_PLATFORM: ${{ vars.MODEL_PLATFORM }}

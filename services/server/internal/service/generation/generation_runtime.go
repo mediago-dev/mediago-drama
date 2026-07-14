@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
@@ -41,7 +40,6 @@ type GenerationService struct {
 	pippitBinPath                 string
 	pippitBinDir                  string
 	jimengSeedanceQueueMu         sync.Mutex
-	inFlightProviderRequests      atomic.Int64
 }
 
 type generationModelsResponse = GenerationModelsResponse
@@ -333,30 +331,4 @@ func (workflow *GenerationService) syncGenerationNotificationTask(task Generatio
 		return
 	}
 	workflow.generationNotifications.SyncTask(task)
-}
-
-// CountActiveGenerationTasks reports how many generation tasks still have in-flight
-// work. Consumed by the runtime activity probe that gates hot-update application.
-func (workflow *GenerationService) CountActiveGenerationTasks(ctx context.Context) (int64, error) {
-	return workflow.generationTasks.CountActiveGenerationTasks(ctx)
-}
-
-// CountInFlightProviderRequests reports provider calls that have started but not returned.
-// This includes non-persisted text and multimodal completions, which cannot be inferred
-// from the generation task database.
-func (workflow *GenerationService) CountInFlightProviderRequests() int64 {
-	if workflow == nil {
-		return 0
-	}
-	return workflow.inFlightProviderRequests.Load()
-}
-
-func (workflow *GenerationService) beginProviderRequest() func() {
-	if workflow == nil {
-		return func() {}
-	}
-	workflow.inFlightProviderRequests.Add(1)
-	return func() {
-		workflow.inFlightProviderRequests.Add(-1)
-	}
 }

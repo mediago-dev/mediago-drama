@@ -10,14 +10,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestHealthReportsReadyProcessIdentity(t *testing.T) {
+func TestHealthReportsReady(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewHealth(HealthIdentity{
-		BundleRev:     42,
-		SchemaVersion: 7,
-		InstanceToken: "instance-42",
-	}, func() error { return nil })
+	handler := NewHealth(func() error { return nil })
 	router.GET("/health", handler.HandleHealth)
 
 	recorder := httptest.NewRecorder()
@@ -27,8 +23,7 @@ func TestHealthReportsReadyProcessIdentity(t *testing.T) {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
 	}
 	response := decodeHealthEnvelope(t, recorder)
-	if !response.Ready || response.Status != "ok" || response.BundleRev != 42 ||
-		response.SchemaVersion != 7 || response.InstanceToken != "instance-42" {
+	if !response.Ready || response.Status != "ok" {
 		t.Fatalf("response = %+v", response)
 	}
 }
@@ -36,11 +31,7 @@ func TestHealthReportsReadyProcessIdentity(t *testing.T) {
 func TestHealthFailsClosedWhenStartupDependenciesFailed(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewHealth(HealthIdentity{
-		BundleRev:     43,
-		SchemaVersion: 8,
-		InstanceToken: "instance-43",
-	}, func() error { return errors.New("opening workspace database") })
+	handler := NewHealth(func() error { return errors.New("opening workspace database") })
 	router.GET("/health", handler.HandleHealth)
 
 	recorder := httptest.NewRecorder()
@@ -50,8 +41,7 @@ func TestHealthFailsClosedWhenStartupDependenciesFailed(t *testing.T) {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)
 	}
 	response := decodeHealthEnvelope(t, recorder)
-	if response.Ready || response.Status != "not_ready" || response.BundleRev != 43 ||
-		response.SchemaVersion != 8 || response.InstanceToken != "instance-43" {
+	if response.Ready || response.Status != "not_ready" {
 		t.Fatalf("response = %+v", response)
 	}
 }

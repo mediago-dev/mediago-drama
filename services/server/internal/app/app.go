@@ -20,7 +20,6 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
-	serviceruntimeactivity "github.com/mediago-dev/mediago-drama/services/server/internal/service/runtimeactivity"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -30,9 +29,6 @@ var errAgentRuntimeConfigInspectionUnsupported = errors.New("agent runner does n
 type Config struct {
 	Host                     string
 	Port                     int
-	BundleRev                int
-	SchemaVersion            int
-	InstanceToken            string
 	SettingsDBPath           string
 	MediaDir                 string
 	WorkspaceDir             string
@@ -177,22 +173,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		})
 	}, api.AgentSessionStatus)
 
-	runtimeActivityHandler := httphandlers.NewRuntimeActivity(serviceruntimeactivity.Sources{
-		ActiveGenerationTasks:      api.generation.CountActiveGenerationTasks,
-		InFlightGenerationRequests: api.generation.CountInFlightProviderRequests,
-		ActiveAgentRuns:            api.agentRuntime.CountInFlightRuns,
-		DatabaseFiles: func() []string {
-			return []string{
-				api.workspaceState.DatabasePath(),
-				api.workspaceState.SettingsDatabasePath(),
-			}
-		},
-	}.Report)
-	healthHandler := httphandlers.NewHealth(httphandlers.HealthIdentity{
-		BundleRev:     config.BundleRev,
-		SchemaVersion: config.SchemaVersion,
-		InstanceToken: config.InstanceToken,
-	}, api.ReadinessError)
+	healthHandler := httphandlers.NewHealth(api.ReadinessError)
 
 	httproutes.Register(router, httproutes.Handlers{
 		Health:                healthHandler,
@@ -228,7 +209,6 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		AgentEvents:           agentEventHandler,
 		AgentRuntime:          runtimeHandler,
 		AgentSessions:         sessionHandler,
-		RuntimeActivity:       runtimeActivityHandler,
 	})
 	registerDevelopmentDocs(router)
 

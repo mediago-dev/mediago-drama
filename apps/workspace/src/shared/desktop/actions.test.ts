@@ -63,10 +63,10 @@ describe("getDesktopUpdateCapability", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("uses the repository page for the browser fallback download link", async () => {
+	it("uses the release list for the browser fallback download link", async () => {
 		await expect(getDesktopUpdateCapability()).resolves.toMatchObject({
 			supportsAutoUpdate: false,
-			releasePageUrl: "https://github.com/mediago-dev/mediago-drama",
+			releasePageUrl: "https://github.com/mediago-dev/mediago-drama/releases",
 		});
 	});
 });

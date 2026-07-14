@@ -815,9 +815,7 @@ func GenerationTaskProviderPollID(task GenerationTaskRecord) string {
 	return ""
 }
 
-// activeGenerationStatuses is the single source of truth for statuses that mean a
-// task still has in-flight work. Keep IsActiveGenerationStatus and the runtime
-// activity probe derived from this list so they can never diverge.
+// activeGenerationStatuses contains statuses that mean a task is still in progress.
 var activeGenerationStatuses = []string{
 	"submitting",
 	"submitted",

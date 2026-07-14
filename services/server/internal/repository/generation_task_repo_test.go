@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -312,66 +311,5 @@ func TestGenerationTaskRepositoryListsBatchInItemOrder(t *testing.T) {
 	}
 	if tasks[0].BatchItemID != "item-a" || tasks[1].BatchIndex != 1 {
 		t.Fatalf("tasks = %+v, want persisted batch metadata", tasks)
-	}
-}
-
-func TestCountGenerationTasksWithStatusesUpdatedSince(t *testing.T) {
-	repo, err := NewGenerationTaskRepository(filepath.Join(t.TempDir(), "workspace.db"))
-	if err != nil {
-		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
-	}
-	seedGenerationProject(t, repo, "count-active")
-
-	insert := func(id string, status string, updatedAt string) {
-		task := generationTaskTestModel(id, status, updatedAt)
-		task.ProjectID = domain.StringPtr("count-active")
-		if err := repo.UpsertGenerationTask(task); err != nil {
-			t.Fatalf("UpsertGenerationTask(%s) error = %v", id, err)
-		}
-		// autoUpdateTime overwrites UpdatedAt on write; pin it directly so the
-		// staleness window under test is deterministic.
-		if err := repo.db.Model(&domain.GenerationTaskModel{}).
-			Where("id = ?", id).
-			UpdateColumn("updated_at", domain.TimeFromString(updatedAt)).Error; err != nil {
-			t.Fatalf("pinning updated_at for %s: %v", id, err)
-		}
-	}
-
-	insert("active-fresh", "running", "2026-05-22T10:00:00Z")
-	insert("active-spacing", " Submitted ", "2026-05-22T11:00:00Z") // legacy un-normalized row
-	insert("active-stale", "running", "2026-05-20T00:00:00Z")       // orphaned by a crash
-	insert("terminal-fresh", "completed", "2026-05-22T10:30:00Z")
-
-	timestamps, err := repo.ListGenerationTaskUpdatedAtsWithStatuses(
-		context.Background(),
-		[]string{"submitting", "submitted", "running", "pending", "processing", "queued"},
-	)
-	if err != nil {
-		t.Fatalf("ListGenerationTaskUpdatedAtsWithStatuses() error = %v", err)
-	}
-	// Three active-status rows (terminal excluded by the status filter); the Go-side
-	// staleness window is applied by the service, not here.
-	if len(timestamps) != 3 {
-		t.Fatalf("len(timestamps) = %d, want 3 (active-status rows; terminal excluded)", len(timestamps))
-	}
-
-	// The service applies its staleness window on these parsed time.Time values with a
-	// plain instant comparison — TZ-independent, unlike a SQL text `updated_at >= ?`.
-	// active-fresh(10:00) and active-spacing(11:00) are after a 06:00 cutoff; active-stale
-	// (two days earlier) is before it. This locks in the fix for the timezone-skew bug.
-	cutoff := domain.TimeFromString("2026-05-22T06:00:00Z")
-	fresh := 0
-	for _, updatedAt := range timestamps {
-		if updatedAt.After(cutoff) {
-			fresh++
-		}
-	}
-	if fresh != 2 {
-		t.Fatalf("in-window active count = %d, want 2 (stale row excluded by the Go window)", fresh)
-	}
-
-	empty, err := repo.ListGenerationTaskUpdatedAtsWithStatuses(context.Background(), nil)
-	if err != nil || len(empty) != 0 {
-		t.Fatalf("empty status list: timestamps=%v err=%v, want empty,nil", empty, err)
 	}
 }

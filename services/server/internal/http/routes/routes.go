@@ -42,7 +42,6 @@ type Handlers struct {
 	AgentEvents           httphandlers.AgentEvents
 	AgentRuntime          httphandlers.AgentRuntime
 	AgentSessions         httphandlers.AgentSessions
-	RuntimeActivity       httphandlers.RuntimeActivity
 }
 
 // Register attaches all app routes to the provided Gin engine.
@@ -60,7 +59,6 @@ func Register(router *gin.Engine, handlers Handlers) {
 
 func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.GET("/health", handlers.Health.HandleHealth)
-	apiRoutes.GET("/runtime/activity", handlers.RuntimeActivity.HandleGetRuntimeActivity)
 	apiRoutes.GET("/capabilities", handlers.Capabilities.HandleListCapabilities)
 	apiRoutes.GET("/billing/summary", handlers.Billing.HandleBillingSummary)
 	apiRoutes.GET("/projects", handlers.Projects.HandleListProjects)

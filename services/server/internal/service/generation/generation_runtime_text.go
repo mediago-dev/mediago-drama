@@ -124,11 +124,9 @@ func (workflow *GenerationService) StreamGenerationText(
 			emit,
 		)
 	}
-	finishRequest := workflow.beginProviderRequest()
 	stream, err := streamProvider.GenerateTextStream(runCtx, generationRequest)
 	if err != nil {
 		if errors.Is(err, coregeneration.ErrTextStreamingUnsupported) {
-			finishRequest()
 			return workflow.generateGenerationTextWithoutStream(
 				runCtx,
 				provider,
@@ -138,7 +136,6 @@ func (workflow *GenerationService) StreamGenerationText(
 				emit,
 			)
 		}
-		finishRequest()
 		message := workflow.persistTextStreamFailure(task, "", err)
 		workflow.appendStudioAssistantTranscript(conversation, message)
 		return http.StatusOK, emit(GenerationTextStreamEvent{
@@ -149,7 +146,6 @@ func (workflow *GenerationService) StreamGenerationText(
 			Error:          err.Error(),
 		})
 	}
-	defer finishRequest()
 	defer stream.Close()
 
 	var builder strings.Builder

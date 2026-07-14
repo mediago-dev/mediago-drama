@@ -90,8 +90,6 @@ func (workflow *GenerationService) CompleteMultimodal(ctx context.Context, reque
 	}
 	runCtx, cancel := context.WithTimeout(ctx, generationRequestTimeout)
 	defer cancel()
-	finishRequest := workflow.beginProviderRequest()
-	defer finishRequest()
 	response, err := provider.Generate(runCtx, multimodal.GenerateRequest{
 		Messages: []multimodal.Message{{
 			Role:  multimodal.RoleUser,
