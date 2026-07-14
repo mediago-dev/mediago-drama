@@ -90,9 +90,6 @@ func TestToolsInstructionDelegatesImageWorkflowToSkill(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		"### 生图标准流程",
-		"type: \"generation_params\"",
-		"type: \"prompt_optimization\"",
-		"referenceAssetIds",
 		"select_generation_asset(taskId, slotIndex)",
 	} {
 		if strings.Contains(instruction.Body, forbidden) {
@@ -117,14 +114,45 @@ func TestToolsInstructionDelegatesVideoWorkflowToSkill(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		"### 视频生成标准流程",
-		"type: \"generation_params\"",
-		"type: \"prompt_optimization\"",
-		"referenceAssetIds",
 		"select_generation_asset(taskId, slotIndex)",
 	} {
 		if strings.Contains(instruction.Body, forbidden) {
 			t.Fatalf("TOOLS instruction should delegate video detail %q to Skill:\n%s", forbidden, instruction.Body)
 		}
+	}
+}
+
+func TestToolsInstructionDefinesSplitGenerationPlanContracts(t *testing.T) {
+	instruction, err := InstructionByID(context.Background(), "TOOLS")
+	if err != nil {
+		t.Fatalf("InstructionByID(%q) error = %v", "TOOLS", err)
+	}
+	for _, want := range []string{
+		"kind: \"generation_plan\"",
+		"图片表单必须恰好包含一个 required `generation_settings`",
+		"kind: \"image\"",
+		"不得混入 `generation_params`、`images` 或 `prompt_optimization`",
+		"routeId、label、params、referenceAssetIds、promptSupplements、promptOptimization",
+		"视频表单本轮继续使用旧协议",
+		"一个 required `generation_params`（`kind: \"video\"`）",
+		"至多一个 `images` 和一个 `prompt_optimization`",
+		"`confirmationSelectionId`",
+		"`routeId`/`params`",
+		"参考图、补充提示词和提示词优化与用户确认值一致",
+		"传输心跳",
+		"对同一 `selectionId` 持续等待",
+		"等待期间不得调用其他工具、不得生成、不得结束回合或发送最终答复",
+		"只有状态明确为 `submitted` 才能继续生成",
+		"pending/timeout",
+		"关闭弹窗",
+		"cancelled 或 expired",
+	} {
+		if !strings.Contains(instruction.Body, want) {
+			t.Fatalf("TOOLS instruction = %q, want selection contract %q", instruction.Body, want)
+		}
+	}
+	if strings.Contains(instruction.Body, "循环 3-5 轮") {
+		t.Fatalf("TOOLS instruction must not cap selection waiting: %q", instruction.Body)
 	}
 }
 

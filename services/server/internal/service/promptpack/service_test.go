@@ -30,15 +30,15 @@ func TestServiceSeedsBuiltinPackIdempotently(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntries() second error = %v", err)
 	}
-	if len(first) != 7 || len(second) != len(first) {
-		t.Fatalf("skill counts first=%d second=%d, want 7 visible skills and idempotent", len(first), len(second))
+	if len(first) != 9 || len(second) != len(first) {
+		t.Fatalf("skill counts first=%d second=%d, want 9 visible skills and idempotent", len(first), len(second))
 	}
 	if _, ok := findEntry(first, "auto-mention-resolver"); !ok {
 		t.Fatalf("entries = %#v, want auto-mention-resolver", first)
 	}
-	for _, hiddenSlug := range []string{"image-generation", "video-generation"} {
-		if _, ok := findEntry(first, hiddenSlug); ok {
-			t.Fatalf("entries = %#v, want %s hidden while under test", first, hiddenSlug)
+	for _, generationSlug := range []string{"image-generation", "video-generation"} {
+		if _, ok := findEntry(first, generationSlug); !ok {
+			t.Fatalf("entries = %#v, want visible %s skill", first, generationSlug)
 		}
 	}
 	packs, err := store.ListPacks(context.Background())

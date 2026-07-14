@@ -67,6 +67,22 @@ func ACPContentBlockText(content acp.ContentBlock) string {
 	return string(encoded)
 }
 
+func acpMessagePhaseFromMeta(meta map[string]any) AgentMessagePhase {
+	codex, ok := meta["codex"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	phase, _ := codex["phase"].(string)
+	switch strings.TrimSpace(phase) {
+	case "commentary":
+		return "commentary"
+	case "final_answer":
+		return "final_answer"
+	default:
+		return ""
+	}
+}
+
 // MarshalACPRawMessage marshals ACP raw payloads into JSON when present.
 func MarshalACPRawMessage(value any) json.RawMessage {
 	if value == nil {

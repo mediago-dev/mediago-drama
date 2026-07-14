@@ -1,577 +1,282 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GenerationRoute } from "@/domains/generation/api/generation";
-import type { MediaAsset } from "@/domains/workspace/api/media";
+import type { GenerationSettingsFormController } from "@/domains/generation/hooks/useGenerationSettingsForm";
 import { BatchGenerationSettingsDialog } from "./BatchGenerationSettingsDialog";
-import {
-	batchGenerationSettingsStorageKey,
-	useBatchGenerationSettingsPreferenceStore,
-} from "../stores/batch-generation-settings";
 
-const workspaceMocks = vi.hoisted(() => ({
-	useGenerationWorkspace: vi.fn(),
-	updateFamily: vi.fn(),
-	updateModelRoute: vi.fn(),
-	updateParam: vi.fn(),
+const mocks = vi.hoisted(() => ({
+	renderSharedForm: vi.fn(),
+	useGenerationSettingsForm: vi.fn(),
 }));
 
 vi.mock("@/domains/documents/components/GenerationModalShell", () => ({
-	GenerationModalShell: ({ children, open }: { children: React.ReactNode; open: boolean }) =>
-		open ? <div role="dialog">{children}</div> : null,
-}));
-
-vi.mock("@/domains/generation/hooks/useGenerationWorkspace", () => ({
-	useGenerationWorkspace: workspaceMocks.useGenerationWorkspace,
-}));
-
-vi.mock("./GenerationBrandMark", () => ({
-	GenerationBrandStack: () => <span />,
-	GenerationBrandMark: () => <span />,
-	generationFamilyBrand: () => null,
-	generationModelBrand: () => null,
-	generationProviderBrand: () => null,
-}));
-
-vi.mock("./GenerationModelRoutePicker", () => ({
-	GenerationModelRoutePicker: () => <button type="button">模型路由</button>,
-}));
-
-const imageFamily = { id: "gpt-image", label: "GPT Image" };
-const imageVersion = { id: "gpt-image-2", label: "GPT Image 2" };
-const imageRoute = {
-	configured: true,
-	familyId: imageFamily.id,
-	id: "image-route-1",
-	kind: "image",
-	model: "image-model",
-	paramCombos: [],
-	params: [],
-	provider: "dmx",
-	status: "available",
-	supportsReferenceUrls: true,
-	versionId: imageVersion.id,
-} as unknown as GenerationRoute;
-const unsupportedImageRoute = {
-	...imageRoute,
-	id: "image-route-no-reference",
-	supportsReferenceUrls: false,
-} as unknown as GenerationRoute;
-const textRoute = {
-	configured: true,
-	familyId: "gpt-text",
-	id: "text-route-1",
-	kind: "text",
-	label: "DMX",
-	model: "text-model",
-	paramCombos: [],
-	params: [],
-	provider: "dmx",
-	status: "available",
-	versionId: "gpt-text-mini",
-} as unknown as GenerationRoute;
-const generationCatalog = {
-	families: [imageFamily, { id: "gpt-text", label: "GPT Text" }],
-	models: [],
-	providers: [],
-	routes: [imageRoute, textRoute],
-	versions: [imageVersion, { id: "gpt-text-mini", label: "GPT Text Mini" }],
-};
-const selectedReferenceAsset: MediaAsset = {
-	createdAt: "2026-06-12T00:00:00.000Z",
-	filename: "reference.png",
-	id: "selected-ref",
-	kind: "image",
-	mimeType: "image/png",
-	sizeBytes: 1024,
-	updatedAt: "2026-06-12T00:00:00.000Z",
-	url: "/api/v1/media-assets/selected-ref/content",
-};
-
-const setScrollableList = (
-	element: HTMLElement,
-	{
-		clientHeight,
-		scrollHeight,
-		scrollTop,
+	GenerationModalShell: ({
+		children,
+		open,
+		title,
+		titleAside,
 	}: {
-		clientHeight: number;
-		scrollHeight: number;
-		scrollTop: number;
-	},
-) => {
-	Object.defineProperty(element, "clientHeight", { configurable: true, value: clientHeight });
-	Object.defineProperty(element, "scrollHeight", { configurable: true, value: scrollHeight });
-	Object.defineProperty(element, "scrollTop", {
-		configurable: true,
-		value: scrollTop,
-		writable: true,
-	});
-};
+		children: React.ReactNode;
+		open: boolean;
+		title: React.ReactNode;
+		titleAside?: React.ReactNode;
+	}) =>
+		open ? (
+			<div role="dialog">
+				<h2>{title}</h2>
+				{titleAside}
+				{children}
+			</div>
+		) : null,
+}));
 
-describe("BatchGenerationSettingsDialog rendered preferences", () => {
+vi.mock("@/domains/generation/hooks/useGenerationSettingsForm", () => ({
+	useGenerationSettingsForm: mocks.useGenerationSettingsForm,
+}));
+
+vi.mock("./GenerationSettingsForm", () => ({
+	GenerationSettingsForm: ({ controller }: { controller: GenerationSettingsFormController }) => {
+		mocks.renderSharedForm(controller);
+		return (
+			<div data-testid="shared-generation-settings-form">
+				<span>模型</span>
+				<span>参数</span>
+				<span>参考图</span>
+				<span>补充提示词</span>
+				<span>优化提示词</span>
+			</div>
+		);
+	},
+}));
+
+vi.mock("@/shared/components/ui/dialog-dismiss", () => ({
+	DialogDismissButton: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+		<button {...props}>{children}</button>
+	),
+}));
+
+describe("BatchGenerationSettingsDialog shared form adapter", () => {
 	beforeEach(() => {
-		localStorage.removeItem(batchGenerationSettingsStorageKey);
-		useBatchGenerationSettingsPreferenceStore.setState({ settingsByKind: {} });
-		workspaceMocks.useGenerationWorkspace.mockReturnValue({
-			catalog: generationCatalog,
-			hasConfiguredRoutesForKind: true,
-			hasLiveCatalog: true,
-			isUploadingAsset: false,
-			mediaAssets: [selectedReferenceAsset],
-			mutateMediaAssets: vi.fn(),
-			promptInsertItems: [
+		mocks.renderSharedForm.mockClear();
+		mocks.useGenerationSettingsForm.mockReset();
+		mocks.useGenerationSettingsForm.mockReturnValue(controllerFixture());
+	});
+
+	afterEach(cleanup);
+
+	it("keeps the batch shell and renders the shared five-section form", () => {
+		render(
+			<BatchGenerationSettingsDialog
+				kind="image"
+				open
+				projectId="project-a"
+				selectedCount={2}
+				onConfirm={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByRole("heading", { name: "批量生成图片设置" })).toBeTruthy();
+		expect(screen.getByText("已选 2 项")).toBeTruthy();
+		expect(screen.getByTestId("shared-generation-settings-form")).toBeTruthy();
+		expect(mocks.useGenerationSettingsForm).toHaveBeenCalledWith({
+			kind: "image",
+			persist: true,
+			projectId: "project-a",
+			uploadIdPrefix: "batch-generation-settings-image",
+		});
+		expect(mocks.renderSharedForm).toHaveBeenCalledWith(
+			mocks.useGenerationSettingsForm.mock.results[0]?.value,
+		);
+		expect(screen.getByText("将按顺序对 2 项各提交一次生成任务。")).toBeTruthy();
+	});
+
+	it("maps the complete shared value to the existing batch confirm payload", () => {
+		const onConfirm = vi.fn();
+		render(
+			<BatchGenerationSettingsDialog
+				kind="image"
+				open
+				selectedCount={1}
+				onConfirm={onConfirm}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "优化并生成" }));
+
+		expect(onConfirm).toHaveBeenCalledWith({
+			family: expect.objectContaining({ id: "family-image" }),
+			params: { n: 2, ratio: "1:1" },
+			promptOptimization: {
+				model: "text-model",
+				referenceName: "场景氛围图",
+				referencePrompt: "突出空间层次和光线。",
+				routeId: "route-text",
+			},
+			promptSupplements: [
 				{
-					categoryLabel: "风格",
-					id: "prompt-pack-1",
-					name: "电影感提示词",
-					prompt: "强化镜头语言、光影与构图。",
-					sourceLabel: "来自包",
-				},
-				{
-					categoryLabel: "镜头",
-					id: "prompt-pack-camera",
-					name: "镜头推进",
-					prompt: "拉近镜头，突出主体动作。",
-					sourceLabel: "来自包",
+					referenceId: "pack-style",
+					referenceName: "2D动漫",
+					referencePrompt: "纯正二维动画风格。",
 				},
 			],
-			selectedFamily: imageFamily,
-			selectedParams: {},
-			selectedReferenceAssetIds: [],
-			selectedReferenceAssets: [],
-			selectedRoute: imageRoute,
-			selectedVersion: imageVersion,
-			removeReferenceAsset: vi.fn(),
-			toggleReferenceAsset: vi.fn(),
-			updateFamily: workspaceMocks.updateFamily,
-			updateModelRoute: workspaceMocks.updateModelRoute,
-			updateParam: workspaceMocks.updateParam,
-			uploadReferenceAsset: vi.fn(),
-			visibleFamilies: [imageFamily],
-			visibleFamilyRoutes: [imageRoute],
-			visibleVersions: [imageVersion],
+			referenceAssetIds: ["asset-reference"],
+			route: expect.objectContaining({ id: "route-image" }),
+			version: expect.objectContaining({ id: "version-image" }),
 		});
-		workspaceMocks.useGenerationWorkspace.mockClear();
-		workspaceMocks.updateFamily.mockClear();
-		workspaceMocks.updateModelRoute.mockClear();
-		workspaceMocks.updateParam.mockClear();
 	});
 
-	afterEach(() => {
-		cleanup();
-	});
-
-	it("uses plain sections separated by divider lines", () => {
-		render(
-			<BatchGenerationSettingsDialog
-				kind="image"
-				open
-				selectedCount={2}
-				onConfirm={vi.fn()}
-				onOpenChange={vi.fn()}
-			/>,
+	it("disables only confirm while shared settings are not ready and keeps cancel actionable", () => {
+		mocks.useGenerationSettingsForm.mockReturnValue(
+			controllerFixture({ isBusy: true, isValid: false }),
 		);
-
-		for (const label of ["模型设置", "参数设置", "补充提示词设置", "优化提示词设置"]) {
-			const section = screen.getByLabelText(label);
-			expect(section).not.toHaveClass("rounded-lg", "bg-muted/45", "bg-card");
-			expect(section).not.toHaveClass("border", "border-border");
-		}
-		expect(screen.getByLabelText("模型设置").parentElement).toHaveClass(
-			"divide-y",
-			"divide-border/70",
-		);
-
-		expect(screen.getByRole("combobox", { name: "模型名称" })).toHaveClass("border-0", "bg-muted");
-		const supplementToggle = screen.getByRole("checkbox", { name: "生成时追加" }).closest("label");
-		expect(supplementToggle).not.toHaveClass("border", "bg-card/80", "rounded-full");
-	});
-
-	it("shows the last saved prompt optimization choice when opened", async () => {
-		useBatchGenerationSettingsPreferenceStore.getState().setSettings("image", {
-			promptOptimizeItemId: "prompt-pack-1",
-			promptOptimizeRouteId: "text-route-1",
-			routeId: "image-route-1",
-			usePromptOptimization: true,
-			versionId: "gpt-image-2",
-		});
-
+		const onOpenChange = vi.fn();
 		render(
 			<BatchGenerationSettingsDialog
 				kind="image"
 				open
 				selectedCount={1}
 				onConfirm={vi.fn()}
-				onOpenChange={vi.fn()}
+				onOpenChange={onOpenChange}
 			/>,
 		);
 
-		await waitFor(() =>
-			expect(screen.getByRole("checkbox", { name: "优化并生成时使用" })).toBeChecked(),
-		);
-		expect(screen.getByRole("button", { name: /优化并生成/ })).toBeEnabled();
+		expect(screen.getByRole("button", { name: "优化并生成" })).toBeDisabled();
+		const cancel = screen.getByRole("button", { name: "取消" });
+		expect(cancel).toBeEnabled();
+		fireEvent.click(cancel);
+		expect(onOpenChange).toHaveBeenCalledWith(false);
 	});
 
-	it("shows the last saved prompt supplement choice when opened", async () => {
-		useBatchGenerationSettingsPreferenceStore.getState().setSettings("image", {
-			promptSupplementItemIds: ["prompt-pack-1"],
-			routeId: "image-route-1",
-			usePromptSupplement: true,
-			versionId: "gpt-image-2",
-		});
+	it("unmounts the form while closed so reopening drops transient references", () => {
+		const props = {
+			kind: "image" as const,
+			onConfirm: vi.fn(),
+			onOpenChange: vi.fn(),
+			selectedCount: 1,
+		};
+		const { rerender } = render(<BatchGenerationSettingsDialog {...props} open />);
+		expect(mocks.useGenerationSettingsForm).toHaveBeenCalledTimes(1);
 
-		render(
-			<BatchGenerationSettingsDialog
-				kind="image"
-				open
-				selectedCount={1}
-				onConfirm={vi.fn()}
-				onOpenChange={vi.fn()}
-			/>,
-		);
+		rerender(<BatchGenerationSettingsDialog {...props} open={false} />);
+		expect(screen.queryByTestId("shared-generation-settings-form")).toBeNull();
+		expect(mocks.useGenerationSettingsForm).toHaveBeenCalledTimes(1);
 
-		await waitFor(() => expect(screen.getByRole("checkbox", { name: "生成时追加" })).toBeChecked());
-		const trigger = screen.getByRole("button", { name: "补充提示词包" });
-		expect(trigger).toBeEnabled();
-		expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
-		expect(trigger).toHaveTextContent("已选 1 个");
-		expect(screen.getByRole("button", { name: "移除电影感提示词" })).toBeTruthy();
-	});
-
-	it("keeps stored supplement ids while the prompt pack list is still loading", async () => {
-		useBatchGenerationSettingsPreferenceStore.getState().setSettings("image", {
-			promptSupplementItemIds: ["prompt-pack-1", "prompt-pack-camera"],
-			routeId: "image-route-1",
-			usePromptSupplement: true,
-			versionId: "gpt-image-2",
-		});
-		workspaceMocks.useGenerationWorkspace.mockReturnValue({
-			...workspaceMocks.useGenerationWorkspace(),
-			promptInsertItems: [],
-		});
-
-		render(
-			<BatchGenerationSettingsDialog
-				kind="image"
-				open
-				selectedCount={1}
-				onConfirm={vi.fn()}
-				onOpenChange={vi.fn()}
-			/>,
-		);
-
-		await waitFor(() => expect(screen.getByRole("checkbox", { name: "生成时追加" })).toBeChecked());
-		const trigger = screen.getByRole("button", { name: "补充提示词包" });
-		expect(trigger).toBeDisabled();
-		expect(trigger).toHaveTextContent("无可用提示词包");
-		expect(screen.getByText("需要可用的提示词包后才能追加并生成。")).toBeTruthy();
-		// The auto-persist effect must not wipe the stored selection while packs load.
-		await waitFor(() =>
-			expect(
-				useBatchGenerationSettingsPreferenceStore.getState().settingsByKind.image
-					?.promptSupplementItemIds,
-			).toEqual(["prompt-pack-1", "prompt-pack-camera"]),
-		);
-	});
-
-	it("keeps dialog-closing pointer events inside the batch settings layer", () => {
-		render(
-			<BatchGenerationSettingsDialog
-				kind="image"
-				open
-				selectedCount={2}
-				onConfirm={vi.fn()}
-				onOpenChange={vi.fn()}
-			/>,
-		);
-
-		const documentPointerDown = vi.fn();
-		document.addEventListener("pointerdown", documentPointerDown);
-
-		fireEvent.pointerDown(screen.getByRole("button", { name: "取消" }), { button: 0 });
-		fireEvent.pointerDown(screen.getByRole("button", { name: "生成" }), { button: 0 });
-
-		document.removeEventListener("pointerdown", documentPointerDown);
-		expect(documentPointerDown).not.toHaveBeenCalled();
-	});
-
-	it("combines multiple prompt supplements from the two-column prompt pack picker", async () => {
-		const onConfirm = vi.fn();
-
-		render(
-			<BatchGenerationSettingsDialog
-				kind="image"
-				open
-				selectedCount={1}
-				onConfirm={onConfirm}
-				onOpenChange={vi.fn()}
-			/>,
-		);
-
-		fireEvent.click(screen.getByRole("checkbox", { name: "生成时追加" }));
-
-		const trigger = screen.getByRole("button", { name: "补充提示词包" });
-		await waitFor(() => expect(trigger).toBeEnabled());
-		fireEvent.click(trigger);
-
-		expect(screen.getByText("分类")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "风格 1 项" })).toBeTruthy();
-		// The 风格 group is active by default; picking a pack keeps the popover open.
-		fireEvent.click(screen.getByRole("option", { name: "电影感提示词" }));
-		fireEvent.pointerEnter(screen.getByRole("button", { name: "镜头 1 项" }));
-		fireEvent.click(screen.getByRole("option", { name: "镜头推进" }));
-
-		expect(trigger).toHaveTextContent("已选 2 个");
-		fireEvent.click(screen.getByRole("button", { name: "生成" }));
-
-		expect(onConfirm).toHaveBeenCalledWith(
-			expect.objectContaining({
-				promptSupplements: [
-					{ referenceName: "电影感提示词", referencePrompt: "强化镜头语言、光影与构图。" },
-					{ referenceName: "镜头推进", referencePrompt: "拉近镜头，突出主体动作。" },
-				],
-			}),
-		);
-	});
-
-	it("removes a selected prompt supplement pack via its chip", async () => {
-		const onConfirm = vi.fn();
-
-		render(
-			<BatchGenerationSettingsDialog
-				kind="image"
-				open
-				selectedCount={1}
-				onConfirm={onConfirm}
-				onOpenChange={vi.fn()}
-			/>,
-		);
-
-		fireEvent.click(screen.getByRole("checkbox", { name: "生成时追加" }));
-
-		const trigger = screen.getByRole("button", { name: "补充提示词包" });
-		await waitFor(() => expect(trigger).toBeEnabled());
-		fireEvent.click(trigger);
-		fireEvent.click(screen.getByRole("option", { name: "电影感提示词" }));
-		fireEvent.pointerEnter(screen.getByRole("button", { name: "镜头 1 项" }));
-		fireEvent.click(screen.getByRole("option", { name: "镜头推进" }));
-
-		fireEvent.click(screen.getByRole("button", { name: "移除电影感提示词" }));
-		expect(trigger).toHaveTextContent("已选 1 个");
-
-		fireEvent.click(screen.getByRole("button", { name: "生成" }));
-
-		expect(onConfirm).toHaveBeenCalledWith(
-			expect.objectContaining({
-				promptSupplements: [
-					{ referenceName: "镜头推进", referencePrompt: "拉近镜头，突出主体动作。" },
-				],
-			}),
-		);
-	});
-
-	it("scrolls the prompt pack list directly on wheel events", async () => {
-		render(
-			<BatchGenerationSettingsDialog
-				kind="image"
-				open
-				selectedCount={1}
-				onConfirm={vi.fn()}
-				onOpenChange={vi.fn()}
-			/>,
-		);
-
-		fireEvent.click(screen.getByRole("checkbox", { name: "生成时追加" }));
-
-		const trigger = screen.getByRole("button", { name: "补充提示词包" });
-		await waitFor(() => expect(trigger).toBeEnabled());
-		fireEvent.click(trigger);
-
-		const packList = document.querySelector('[aria-label="提示词包列表"]');
-		expect(packList).toBeTruthy();
-		// jsdom never scrolls on wheel, so this asserts the manual onWheel handler
-		// moves scrollTop — removing it would leave the list unscrollable in the
-		// modal (where react-remove-scroll blocks native wheel scrolling).
-		setScrollableList(packList as HTMLElement, {
-			clientHeight: 150,
-			scrollHeight: 210,
-			scrollTop: 0,
-		});
-
-		fireEvent.wheel(packList as HTMLElement, { deltaY: 40 });
-
-		expect((packList as HTMLElement).scrollTop).toBe(40);
-	});
-
-	it("passes the last saved model selection into workspace initialization", () => {
-		useBatchGenerationSettingsPreferenceStore.getState().setSettings("image", {
-			familyId: "jimeng-local",
-			params: { size: "1024x1024" },
-			routeId: "jimeng-local-route",
-			versionId: "jimeng-local-v1",
-		});
-
-		render(
-			<BatchGenerationSettingsDialog
-				kind="image"
-				open
-				selectedCount={1}
-				onConfirm={vi.fn()}
-				onOpenChange={vi.fn()}
-			/>,
-		);
-
-		expect(workspaceMocks.useGenerationWorkspace).toHaveBeenCalledWith(
-			expect.objectContaining({
-				initialModelSelection: {
-					familyIds: { image: "jimeng-local" },
-					routeIds: { "jimeng-local-v1": "jimeng-local-route" },
-					routeParams: { "jimeng-local-route": { size: "1024x1024" } },
-					versionIds: { "jimeng-local": "jimeng-local-v1" },
-				},
-				initialModelSelectionKey: expect.stringContaining("jimeng-local-route"),
-				persistModelSelection: false,
-			}),
-		);
-	});
-
-	it("confirms image reference asset ids without persisting them as dialog preferences", () => {
-		const onConfirm = vi.fn();
-		workspaceMocks.useGenerationWorkspace.mockReturnValue({
-			catalog: generationCatalog,
-			hasConfiguredRoutesForKind: true,
-			hasLiveCatalog: true,
-			isUploadingAsset: false,
-			mediaAssets: [selectedReferenceAsset],
-			mutateMediaAssets: vi.fn(),
-			promptInsertItems: [],
-			selectedFamily: imageFamily,
-			selectedParams: {},
-			selectedReferenceAssetIds: ["selected-ref"],
-			selectedReferenceAssets: [selectedReferenceAsset],
-			selectedRoute: imageRoute,
-			selectedVersion: imageVersion,
-			removeReferenceAsset: vi.fn(),
-			toggleReferenceAsset: vi.fn(),
-			updateFamily: workspaceMocks.updateFamily,
-			updateModelRoute: workspaceMocks.updateModelRoute,
-			updateParam: workspaceMocks.updateParam,
-			uploadReferenceAsset: vi.fn(),
-			visibleFamilies: [imageFamily],
-			visibleFamilyRoutes: [imageRoute],
-			visibleVersions: [imageVersion],
-		});
-
-		render(
-			<BatchGenerationSettingsDialog
-				kind="image"
-				open
-				selectedCount={1}
-				onConfirm={onConfirm}
-				onOpenChange={vi.fn()}
-			/>,
-		);
-
-		expect(screen.getByRole("button", { name: /已选 1 张/ })).toBeEnabled();
-
-		fireEvent.click(screen.getByRole("button", { name: "生成" }));
-
-		expect(onConfirm).toHaveBeenCalledWith(
-			expect.objectContaining({
-				referenceAssetIds: ["selected-ref"],
-			}),
-		);
-		expect(localStorage.getItem(batchGenerationSettingsStorageKey) ?? "").not.toContain(
-			"selected-ref",
-		);
-	});
-
-	it("hides the reference image control when the selected model route does not support references", () => {
-		workspaceMocks.useGenerationWorkspace.mockReturnValue({
-			catalog: generationCatalog,
-			hasConfiguredRoutesForKind: true,
-			hasLiveCatalog: true,
-			isUploadingAsset: false,
-			mediaAssets: [selectedReferenceAsset],
-			mutateMediaAssets: vi.fn(),
-			promptInsertItems: [],
-			selectedFamily: imageFamily,
-			selectedParams: {},
-			selectedReferenceAssetIds: [],
-			selectedReferenceAssets: [],
-			selectedRoute: unsupportedImageRoute,
-			selectedVersion: imageVersion,
-			removeReferenceAsset: vi.fn(),
-			toggleReferenceAsset: vi.fn(),
-			updateFamily: workspaceMocks.updateFamily,
-			updateModelRoute: workspaceMocks.updateModelRoute,
-			updateParam: workspaceMocks.updateParam,
-			uploadReferenceAsset: vi.fn(),
-			visibleFamilies: [imageFamily],
-			visibleFamilyRoutes: [unsupportedImageRoute],
-			visibleVersions: [imageVersion],
-		});
-
-		render(
-			<BatchGenerationSettingsDialog
-				kind="image"
-				open
-				selectedCount={1}
-				onConfirm={vi.fn()}
-				onOpenChange={vi.fn()}
-			/>,
-		);
-
-		expect(screen.queryByText("参考图")).toBeNull();
-	});
-
-	it("hides stale selected references and confirms without reference ids when the route cannot use them", () => {
-		const onConfirm = vi.fn();
-		workspaceMocks.useGenerationWorkspace.mockReturnValue({
-			catalog: generationCatalog,
-			hasConfiguredRoutesForKind: true,
-			hasLiveCatalog: true,
-			isUploadingAsset: false,
-			mediaAssets: [selectedReferenceAsset],
-			mutateMediaAssets: vi.fn(),
-			promptInsertItems: [],
-			selectedFamily: imageFamily,
-			selectedParams: {},
-			selectedReferenceAssetIds: ["selected-ref"],
-			selectedReferenceAssets: [selectedReferenceAsset],
-			selectedRoute: unsupportedImageRoute,
-			selectedVersion: imageVersion,
-			removeReferenceAsset: vi.fn(),
-			toggleReferenceAsset: vi.fn(),
-			updateFamily: workspaceMocks.updateFamily,
-			updateModelRoute: workspaceMocks.updateModelRoute,
-			updateParam: workspaceMocks.updateParam,
-			uploadReferenceAsset: vi.fn(),
-			visibleFamilies: [imageFamily],
-			visibleFamilyRoutes: [unsupportedImageRoute],
-			visibleVersions: [imageVersion],
-		});
-
-		render(
-			<BatchGenerationSettingsDialog
-				kind="image"
-				open
-				selectedCount={1}
-				onConfirm={onConfirm}
-				onOpenChange={vi.fn()}
-			/>,
-		);
-
-		expect(screen.queryByText("参考图")).toBeNull();
-		expect(screen.getByRole("button", { name: "生成" })).toBeEnabled();
-
-		fireEvent.click(screen.getByRole("button", { name: "生成" }));
-
-		expect(onConfirm).toHaveBeenCalledWith(
-			expect.not.objectContaining({
-				referenceAssetIds: expect.any(Array),
-			}),
-		);
+		rerender(<BatchGenerationSettingsDialog {...props} open />);
+		expect(mocks.useGenerationSettingsForm).toHaveBeenCalledTimes(2);
 	});
 });
+
+const controllerFixture = (
+	overrides: Partial<GenerationSettingsFormController> = {},
+): GenerationSettingsFormController => {
+	const imageFamily = { id: "family-image", kind: "image", label: "图片模型" };
+	const imageVersion = {
+		canonicalModel: "image-model",
+		capabilities: { async: false, supportsReferenceUrls: true },
+		familyId: imageFamily.id,
+		id: "version-image",
+		kind: "image",
+		label: "图片 V1",
+	};
+	const imageRoute = {
+		adapter: "test.image",
+		async: false,
+		configured: true,
+		docUrl: "",
+		familyId: imageFamily.id,
+		id: "route-image",
+		kind: "image",
+		label: "图片路由",
+		model: "image-model",
+		params: [
+			{ default: 1, label: "张数", name: "n", type: "number" },
+			{
+				default: "1:1",
+				label: "比例",
+				name: "ratio",
+				options: [{ label: "1:1", value: "1:1" }],
+				type: "select",
+			},
+		],
+		provider: "test",
+		status: "available",
+		supportsReferenceUrls: true,
+		versionId: imageVersion.id,
+	};
+	const textFamily = { id: "family-text", kind: "text", label: "文本模型" };
+	const textVersion = {
+		canonicalModel: "text-model",
+		capabilities: { async: false, supportsReferenceUrls: false },
+		familyId: textFamily.id,
+		id: "version-text",
+		kind: "text",
+		label: "文本 V1",
+	};
+	const textRoute = {
+		adapter: "test.text",
+		async: false,
+		configured: true,
+		docUrl: "",
+		familyId: textFamily.id,
+		id: "route-text",
+		kind: "text",
+		label: "文本路由",
+		model: "text-model",
+		params: [],
+		provider: "test",
+		status: "available",
+		supportsReferenceUrls: false,
+		versionId: textVersion.id,
+	};
+	const catalog = {
+		families: [imageFamily, textFamily],
+		models: [],
+		providers: [],
+		routes: [imageRoute, textRoute],
+		versions: [imageVersion, textVersion],
+	};
+
+	return {
+		catalog,
+		isBusy: false,
+		isValid: true,
+		promptInsertItems: [
+			{
+				categoryLabel: "风格",
+				id: "pack-style",
+				name: "2D动漫",
+				prompt: "纯正二维动画风格。",
+			},
+			{
+				categoryLabel: "构图",
+				id: "pack-optimize",
+				name: "场景氛围图",
+				prompt: "突出空间层次和光线。",
+			},
+		],
+		value: {
+			kind: "image",
+			label: "图片路由",
+			params: { n: 2, ratio: "1:1" },
+			promptOptimization: {
+				enabled: true,
+				referenceId: "pack-optimize",
+				referenceName: "场景氛围图",
+				referencePrompt: "突出空间层次和光线。",
+				routeId: "route-text",
+			},
+			promptSupplements: [
+				{
+					referenceId: "pack-style",
+					referenceName: "2D动漫",
+					referencePrompt: "纯正二维动画风格。",
+				},
+			],
+			referenceAssetIds: ["asset-reference"],
+			routeId: "route-image",
+		},
+		...overrides,
+	} as GenerationSettingsFormController;
+};

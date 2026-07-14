@@ -238,6 +238,87 @@ func TestAgentRuntimePublishesFinalMessageAfterStreamedResponse(t *testing.T) {
 	}
 }
 
+func TestAgentRuntimeReportsAuthoritativeTerminalState(t *testing.T) {
+	t.Run("completed", func(t *testing.T) {
+		workspaceDir := t.TempDir()
+		sessions := NewSessionService(nil)
+		sessions.Create("session-1", "project-1")
+		terminalEvents := make(chan AgentRunTerminalEvent, 1)
+		runtime := NewAgentRuntime(
+			runtimeTestDocumentStore{dir: workspaceDir},
+			sessions,
+			streamingFinalAgentRunner{},
+			func(AgentEvent) {},
+			AgentRuntimeConfig{
+				WorkspaceDir:       workspaceDir,
+				RunTerminalHandler: func(event AgentRunTerminalEvent) { terminalEvents <- event },
+			},
+		)
+		defer runtime.Close()
+
+		_, status, err := runtime.SubmitAgentMessage(AgentMessageRequest{
+			SessionID: "session-1",
+			ProjectID: "project-1",
+			Prompt:    "hello",
+		})
+		if err != nil || status != http.StatusOK {
+			t.Fatalf("SubmitAgentMessage() status = %d, err = %v", status, err)
+		}
+		select {
+		case event := <-terminalEvents:
+			if event.SessionID != "session-1" || event.ProjectID != "project-1" ||
+				event.RunID == "" || event.Status != "completed" {
+				t.Fatalf("terminal event = %#v, want completed run context", event)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for completed terminal event")
+		}
+	})
+
+	t.Run("cancelled", func(t *testing.T) {
+		workspaceDir := t.TempDir()
+		sessions := NewSessionService(nil)
+		sessions.Create("session-1", "project-1")
+		runnerStarted := make(chan struct{})
+		runnerCancelled := make(chan struct{})
+		terminalEvents := make(chan AgentRunTerminalEvent, 1)
+		runtime := NewAgentRuntime(
+			runtimeTestDocumentStore{dir: workspaceDir},
+			sessions,
+			blockingLifecycleAgentRunner{started: runnerStarted, cancelled: runnerCancelled},
+			func(AgentEvent) {},
+			AgentRuntimeConfig{
+				WorkspaceDir:       workspaceDir,
+				RunTerminalHandler: func(event AgentRunTerminalEvent) { terminalEvents <- event },
+			},
+		)
+		defer runtime.Close()
+
+		_, status, err := runtime.SubmitAgentMessage(AgentMessageRequest{
+			SessionID: "session-1",
+			ProjectID: "project-1",
+			Prompt:    "hello",
+		})
+		if err != nil || status != http.StatusOK {
+			t.Fatalf("SubmitAgentMessage() status = %d, err = %v", status, err)
+		}
+		waitForLifecycleSignal(t, runnerStarted, "runner start")
+		if _, cancelled := sessions.CancelRun("session-1"); !cancelled {
+			t.Fatal("CancelRun() cancelled = false, want true")
+		}
+		waitForLifecycleSignal(t, runnerCancelled, "runner cancellation")
+
+		select {
+		case event := <-terminalEvents:
+			if event.RunID == "" || event.Status != "cancelled" {
+				t.Fatalf("terminal event = %#v, want cancelled run", event)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for cancelled terminal event")
+		}
+	})
+}
+
 func TestAgentRuntimeSessionTitleUsesSelectedModel(t *testing.T) {
 	workspaceDir := t.TempDir()
 	sessions := NewSessionService(nil)

@@ -58,9 +58,10 @@ type GenerationHTTPURLConfig struct {
 	AgentTag  string
 }
 
-// GenerationHTTPURL builds the project-scoped generation MCP streamable HTTP URL.
-// SessionID/RunID/AgentTag are attached for server-side diagnostics only; the
-// generation MCP server itself is stateless and scopes solely by projectId.
+// GenerationHTTPURL builds the project- and run-scoped generation MCP
+// streamable HTTP URL. SessionID/RunID bind image and video submissions to the
+// generation_plan explicitly confirmed in that agent run; AgentTag is used for
+// diagnostics.
 func GenerationHTTPURL(config GenerationHTTPURLConfig) (string, bool) {
 	parsed, err := url.Parse(strings.TrimSpace(config.BridgeURL))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {

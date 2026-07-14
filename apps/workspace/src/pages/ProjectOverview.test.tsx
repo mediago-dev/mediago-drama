@@ -202,6 +202,12 @@ describe("ProjectOverview", () => {
 							(onConfirm as (settings: Record<string, unknown>) => void)({
 								family: { id: `${kind}-family`, kind, label: `${kind} family` },
 								params: { n: 2, ratio: "16:9" },
+								promptSupplements: [
+									{
+										referenceName: "电影感",
+										referencePrompt: "补充电影感光影。",
+									},
+								],
 								...(kind === "image" ? { referenceAssetIds: ["batch-ref"] } : {}),
 								route: {
 									configured: true,
@@ -1009,6 +1015,13 @@ describe("ProjectOverview", () => {
 						},
 						kind: "image",
 						params: { n: 2, ratio: "16:9" },
+						prompt: "## 林书彤\n\n冷静的调查记者。",
+						promptSupplements: [
+							{
+								referenceName: "电影感",
+								referencePrompt: "补充电影感光影。",
+							},
+						],
 						referenceAssetIds: ["batch-ref"],
 						routeId: "image-route",
 					}),

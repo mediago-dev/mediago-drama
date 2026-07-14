@@ -1,12 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GenerationRoute } from "@/domains/generation/api/generation";
-import {
-	appendBatchPromptSupplements,
-	batchGenerationConfirmButtonLabel,
-	batchGenerationParamsForConfirm,
-	batchGenerationPromptOptimizationForConfirm,
-	batchGenerationPromptSupplementsForConfirm,
-} from "./BatchGenerationSettingsDialog";
+import { batchGenerationConfirmButtonLabel } from "./BatchGenerationSettingsDialog";
 import {
 	batchGenerationPromptOptimizationEnabled,
 	batchGenerationPromptSupplementEnabled,
@@ -17,117 +10,6 @@ import {
 beforeEach(() => {
 	localStorage.removeItem(batchGenerationSettingsStorageKey);
 	useBatchGenerationSettingsPreferenceStore.setState({ settingsByKind: {} });
-});
-
-describe("batchGenerationParamsForConfirm", () => {
-	it("uses the visible count value when confirming supported count params", () => {
-		const route = generationRoute([
-			{ name: "n", type: "number" },
-			{ name: "ratio", type: "select" },
-		]);
-
-		expect(
-			batchGenerationParamsForConfirm(route, { n: 3, ratio: "16:9", stale: true }, "n", 1),
-		).toEqual({
-			n: 1,
-			ratio: "16:9",
-		});
-	});
-
-	it("drops stale count params when the selected route has no count control", () => {
-		const route = generationRoute([{ name: "duration", type: "number" }]);
-
-		expect(batchGenerationParamsForConfirm(route, { duration: 5, n: 3 })).toEqual({
-			duration: 5,
-		});
-	});
-});
-
-describe("batchGenerationPromptOptimizationForConfirm", () => {
-	it("builds the optimization request from the selected prompt pack and text model", () => {
-		expect(
-			batchGenerationPromptOptimizationForConfirm(
-				{
-					name: "电影感提示词",
-					prompt: "  强化镜头语言、光影与构图。  ",
-				},
-				{
-					route: {
-						id: "text-route",
-						model: "text-model",
-					},
-				},
-			),
-		).toEqual({
-			model: "text-model",
-			referenceName: "电影感提示词",
-			referencePrompt: "强化镜头语言、光影与构图。",
-			routeId: "text-route",
-		});
-	});
-
-	it("skips optimization when the prompt pack or text model is missing", () => {
-		expect(batchGenerationPromptOptimizationForConfirm(null, null)).toBeUndefined();
-		expect(
-			batchGenerationPromptOptimizationForConfirm({ name: "空提示词", prompt: " " }, null),
-		).toBeUndefined();
-	});
-});
-
-describe("batchGenerationPromptSupplementsForConfirm", () => {
-	it("builds one supplement per selected prompt pack, in selection order", () => {
-		expect(
-			batchGenerationPromptSupplementsForConfirm([
-				{ name: "电影感提示词", prompt: "  强化镜头语言、光影与构图。  " },
-				{ name: "空提示词", prompt: "   " },
-				{ name: "镜头推进", prompt: "拉近镜头，突出主体动作。" },
-			]),
-		).toEqual([
-			{ referenceName: "电影感提示词", referencePrompt: "强化镜头语言、光影与构图。" },
-			{ referenceName: "镜头推进", referencePrompt: "拉近镜头，突出主体动作。" },
-		]);
-	});
-
-	it("skips prompt supplements when no prompt pack is selected or all are empty", () => {
-		expect(batchGenerationPromptSupplementsForConfirm(null)).toBeUndefined();
-		expect(batchGenerationPromptSupplementsForConfirm([])).toBeUndefined();
-		expect(
-			batchGenerationPromptSupplementsForConfirm([{ name: "空提示词", prompt: " " }]),
-		).toBeUndefined();
-	});
-});
-
-describe("appendBatchPromptSupplements", () => {
-	const filmPack = {
-		referenceName: "电影感提示词",
-		referencePrompt: "强化镜头语言、光影与构图。",
-	};
-	const cameraPack = {
-		referenceName: "镜头推进",
-		referencePrompt: "拉近镜头，突出主体动作。",
-	};
-
-	it("appends every selected pack after the base prompt", () => {
-		expect(appendBatchPromptSupplements("一个角色站在教室里。", [filmPack, cameraPack])).toBe(
-			"一个角色站在教室里。\n\n强化镜头语言、光影与构图。\n\n拉近镜头，突出主体动作。",
-		);
-	});
-
-	it("dedupes each pack individually against the base prompt", () => {
-		const basePrompt = `一个角色站在教室里。\n\n${filmPack.referencePrompt}`;
-		expect(appendBatchPromptSupplements(basePrompt, [filmPack, cameraPack])).toBe(
-			`${basePrompt}\n\n${cameraPack.referencePrompt}`,
-		);
-	});
-
-	it("returns the packs alone when the base prompt is empty", () => {
-		expect(appendBatchPromptSupplements("  ", [filmPack])).toBe(filmPack.referencePrompt);
-	});
-
-	it("returns the trimmed prompt when no packs are provided", () => {
-		expect(appendBatchPromptSupplements(" 一个角色。 ", undefined)).toBe("一个角色。");
-		expect(appendBatchPromptSupplements(" 一个角色。 ", [])).toBe("一个角色。");
-	});
 });
 
 describe("batchGenerationConfirmButtonLabel", () => {
@@ -281,10 +163,3 @@ describe("batchGeneration settings preference storage", () => {
 		});
 	});
 });
-
-const generationRoute = (
-	params: Array<{ name: string; type: "boolean" | "number" | "select" | "text" }>,
-) =>
-	({
-		params,
-	}) as Pick<GenerationRoute, "params">;

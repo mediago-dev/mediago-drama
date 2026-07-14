@@ -45,6 +45,29 @@ func TestDocumentHTTPURLRejectsInvalidBridgeURL(t *testing.T) {
 	}
 }
 
+func TestGenerationHTTPURLIncludesConfirmationScope(t *testing.T) {
+	got, ok := GenerationHTTPURL(GenerationHTTPURLConfig{
+		BridgeURL: "https://example.test/base",
+		ProjectID: "project-1",
+		SessionID: "session-1",
+		RunID:     "run-1",
+		AgentTag:  "MediaGo Drama Agent",
+	})
+	if !ok {
+		t.Fatal("GenerationHTTPURL returned ok=false")
+	}
+	for _, fragment := range []string{
+		"/api/v1/internal/agent/generation-mcp?",
+		"projectId=project-1",
+		"sessionId=session-1",
+		"runId=run-1",
+	} {
+		if !strings.Contains(got, fragment) {
+			t.Fatalf("url = %q, want fragment %q", got, fragment)
+		}
+	}
+}
+
 func TestDocumentStdioEnvUsesFixedAgentConfig(t *testing.T) {
 	env := DocumentStdioEnv(DocumentLaunchConfig{
 		SessionID:   "session-1",
@@ -146,6 +169,30 @@ func TestDocumentToolDefinitions(t *testing.T) {
 		!strings.Contains(AgentDocumentTools.MutateComment.Description, "add、update、reply、resolve、unresolve、delete") {
 		t.Fatalf("MutateComment definition = %#v", AgentDocumentTools.MutateComment)
 	}
+	for _, fragment := range []string{
+		"kind=generation_plan",
+		"generation_settings(kind=image)",
+		"generation_params(kind=video)",
+		"timeout 只表示一次 MCP 传输等待结束",
+		"不设轮数上限",
+		"不得调用其他工具",
+	} {
+		if !strings.Contains(AgentMCPInstructions, fragment) {
+			t.Fatalf("AgentMCPInstructions missing form/wait contract %q: %q", fragment, AgentMCPInstructions)
+		}
+	}
+	if strings.Contains(AgentMCPInstructions, "3-5") {
+		t.Fatalf("AgentMCPInstructions must not cap selection waiting: %q", AgentMCPInstructions)
+	}
+	if !strings.Contains(AgentDocumentTools.AskUserForm.Description, "不得与 generation_params") ||
+		!strings.Contains(AgentDocumentTools.AskUserForm.Description, "generation_settings(kind=image)") ||
+		!strings.Contains(AgentDocumentTools.AskUserForm.Description, "timeout 只是传输心跳") {
+		t.Fatalf("AskUserForm description = %q, want generation plan and timeout contracts", AgentDocumentTools.AskUserForm.Description)
+	}
+	if !strings.Contains(AgentDocumentTools.AwaitUserSelection.Description, "不设轮数上限") ||
+		!strings.Contains(AgentDocumentTools.AwaitUserSelection.Description, "不得调用其他工具") {
+		t.Fatalf("AwaitUserSelection description = %q, want continuous wait contract", AgentDocumentTools.AwaitUserSelection.Description)
+	}
 	if ExternalDocumentTools.ListProjects.Name != "list_projects" || !ExternalDocumentTools.ListProjects.ReadOnly {
 		t.Fatalf("ListProjects definition = %#v", ExternalDocumentTools.ListProjects)
 	}
@@ -159,6 +206,7 @@ func TestMCPInstructionsKeepGenerationContractsWithoutImageWorkflow(t *testing.T
 		"referenceAssetIds",
 		"documentContext",
 		"notificationTarget",
+		"confirmationSelectionId",
 		"poll_generation_task",
 		"select_generation_asset",
 	} {
@@ -183,6 +231,35 @@ func TestMCPInstructionsKeepGenerationContractsWithoutImageWorkflow(t *testing.T
 	} {
 		if strings.Contains(AgentMCPInstructions, fragment) {
 			t.Fatalf("AgentMCPInstructions should expose generic selection contracts instead of image workflow %q: %q", fragment, AgentMCPInstructions)
+		}
+	}
+}
+
+func TestGenerationInstructionsDoNotAdvertiseStandaloneStylePresets(t *testing.T) {
+	for name, value := range map[string]string{
+		"GenerationMCPInstructions":           GenerationMCPInstructions,
+		"GenerationTools.ListModels":          GenerationTools.ListModels.Description,
+		"AgentDocumentTools.AskUserSelection": AgentDocumentTools.AskUserSelection.Description,
+	} {
+		for _, fragment := range []string{"stylePresets", "promptSuffix", "风格推荐网格"} {
+			if strings.Contains(value, fragment) {
+				t.Fatalf("%s should not advertise standalone style workflow %q: %q", name, fragment, value)
+			}
+		}
+	}
+	if !strings.Contains(GenerationMCPInstructions, "统一生成设置表单中的动态提示词包") {
+		t.Fatalf("GenerationMCPInstructions should point to dynamic prompt packs: %q", GenerationMCPInstructions)
+	}
+	if !strings.Contains(GenerationTools.ListModels.Description, "动态提示词包") {
+		t.Fatalf("ListModels description should point to dynamic prompt packs: %q", GenerationTools.ListModels.Description)
+	}
+	for name, value := range map[string]string{
+		"GenerationMCPInstructions":     GenerationMCPInstructions,
+		"GenerationTools.Generate":      GenerationTools.Generate.Description,
+		"GenerationTools.GenerateBatch": GenerationTools.GenerateBatch.Description,
+	} {
+		if !strings.Contains(value, "promptSupplements") {
+			t.Fatalf("%s should state that confirmation validates promptSupplements: %q", name, value)
 		}
 	}
 }

@@ -17,20 +17,6 @@ func generationModelsOutputFromService(input servicegeneration.GenerationModelsR
 			MIMEType: preview.MIMEType,
 		})
 	}
-	presets := make([]mediamcp.GenerationStylePreset, 0, len(input.StylePresets))
-	for _, preset := range input.StylePresets {
-		presets = append(presets, mediamcp.GenerationStylePreset{
-			ID:           preset.ID,
-			Title:        preset.Title,
-			Description:  preset.Description,
-			Kinds:        append([]string(nil), preset.Kinds...),
-			RouteID:      preset.RouteID,
-			PromptSuffix: preset.PromptSuffix,
-			Params:       preset.Params,
-			PreviewURL:   preset.PreviewURL,
-			MIMEType:     preset.MIMEType,
-		})
-	}
 	return mediamcp.GenerationModelsOutput{
 		Families:      input.Families,
 		Versions:      input.Versions,
@@ -38,7 +24,6 @@ func generationModelsOutputFromService(input servicegeneration.GenerationModelsR
 		Models:        input.Models,
 		Providers:     input.Providers,
 		VoicePreviews: previews,
-		StylePresets:  presets,
 	}
 }
 
@@ -59,6 +44,7 @@ func generationMessageRequestFromMCP(input mediamcp.GenerationMessageInput, defa
 		ModelID:           strings.TrimSpace(input.ModelID),
 		Model:             strings.TrimSpace(input.Model),
 		Prompt:            strings.TrimSpace(input.Prompt),
+		PromptSupplements: generationPromptSupplementsFromMCP(input.PromptSupplements),
 		AssetTitle:        strings.TrimSpace(input.AssetTitle),
 		ReferenceURLs:     append([]string(nil), input.ReferenceURLs...),
 		ReferenceAssetIDs: append([]string(nil), input.ReferenceAssetIDs...),
@@ -75,6 +61,21 @@ func generationMessageRequestFromMCP(input mediamcp.GenerationMessageInput, defa
 		request.PromptOptimization = generationPromptOptimizationFromMCP(input.PromptOptimization, defaultProjectID)
 	}
 	return request
+}
+
+func generationPromptSupplementsFromMCP(input []mediamcp.GenerationPromptSupplementInput) []servicegeneration.GenerationPromptSupplementRequest {
+	if len(input) == 0 {
+		return nil
+	}
+	output := make([]servicegeneration.GenerationPromptSupplementRequest, 0, len(input))
+	for _, supplement := range input {
+		output = append(output, servicegeneration.GenerationPromptSupplementRequest{
+			ReferenceID:     strings.TrimSpace(supplement.ReferenceID),
+			ReferenceName:   strings.TrimSpace(supplement.ReferenceName),
+			ReferencePrompt: strings.TrimSpace(supplement.ReferencePrompt),
+		})
+	}
+	return output
 }
 
 func generationBatchRequestFromMCP(input mediamcp.GenerationBatchInput, defaultProjectID string) servicegeneration.GenerationBatchRequest {
@@ -307,9 +308,8 @@ func generationTaskAttemptsFromService(input []servicegeneration.GenerationTaskA
 
 func generationPreferencesFromService(input servicegeneration.GenerationPreferenceRecord) *mediamcp.GenerationPreferences {
 	preferences := &mediamcp.GenerationPreferences{
-		RouteIDs:      input.RouteIDs,
-		RouteParams:   input.RouteParams,
-		StylePresetID: input.StylePresetID,
+		RouteIDs:    input.RouteIDs,
+		RouteParams: input.RouteParams,
 	}
 	return preferences
 }

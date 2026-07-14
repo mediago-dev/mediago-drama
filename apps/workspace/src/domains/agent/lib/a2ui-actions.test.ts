@@ -189,6 +189,42 @@ describe("handleDeterministicA2UIAction", () => {
 		expect(handled).toBe(true);
 		const messages = selectAgentMessages(useAgentStore.getState());
 		expect(messages[0]?.content).toBe("该选择已过期，请让 Agent 重新发起。");
+		expect(useAgentStore.getState().activity[0]?.label).toBe("选择已过期");
+	});
+
+	it("records cancellation as cancelled instead of submitted", async () => {
+		vi.mocked(decideAgentSelection).mockResolvedValue({
+			id: "selection-1",
+			title: "选择一种插画风格",
+			options: [{ id: "sweet", label: "甜美粉彩" }],
+			allowCustom: false,
+			status: "cancelled",
+			decision: { cancelled: true },
+			createdAt: "2026-06-08T10:00:00.000Z",
+		} as never);
+		const message = selectionMessage();
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		seedConversation(message);
+
+		await handleDeterministicA2UIAction(message, {
+			name: "agent_selection.decide",
+			context: {
+				cancelled: true,
+				kind: "agent_selection",
+				projectId: "project-1",
+				selectionId: "selection-1",
+			},
+			sourceComponentId: "selection-cancel",
+			surfaceId: "agent-selection-selection-1",
+			timestamp: "2026-06-08T10:00:01.000Z",
+		} satisfies A2uiClientAction);
+
+		expect(decideAgentSelection).toHaveBeenCalledWith(
+			"selection-1",
+			{ cancelled: true },
+			"project-1",
+		);
+		expect(useAgentStore.getState().activity[0]?.label).toBe("选择已取消");
 	});
 
 	it("records an error for an incomplete selection action without calling the API", async () => {

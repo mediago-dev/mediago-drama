@@ -31,6 +31,23 @@ func TestLoadSkillReadsWorkspaceSettingsDB(t *testing.T) {
 	}
 }
 
+func TestLoadSkillResolvesBuiltinImageGenerationAcrossPromptPack(t *testing.T) {
+	ctx := context.Background()
+	store := newWorkspaceStateService(t.TempDir())
+	adapter := NewAdapter(store, nil)
+
+	output, err := adapter.LoadSkill(ctx, "", mediamcp.LoadSkillInput{Name: "image-generation"})
+	if err != nil {
+		t.Fatalf("LoadSkill(image-generation) error = %v", err)
+	}
+	if output.Name != "image-generation" ||
+		!strings.Contains(output.Content, "# 图片生成与选片") ||
+		!strings.Contains(output.Content, "kind: \"generation_plan\"") ||
+		!strings.Contains(output.Content, "传输心跳") {
+		t.Fatalf("LoadSkill(image-generation) = %#v, want builtin generation workflow", output)
+	}
+}
+
 func testMCPRawSkill(name string, description string, body string) string {
 	return `---
 name: ` + name + `

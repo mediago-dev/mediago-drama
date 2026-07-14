@@ -67,11 +67,19 @@ editable: true
 - 调用 `generate_media` 提交生成（`prompt` 必填）。返回的 `id` 即任务 `taskId`；
   当 `status` 为 submitting/submitted 时任务在后台运行，用该 id 调 `poll_generation_task` 直到完成，
   再从结果资产中取用生成结果。
+- Agent 发起图片或视频生成时，必须把已提交 `generation_plan` 返回的 `selectionId` 作为
+  `confirmationSelectionId` 传入；服务端会核验它属于当前 session/run，且 `routeId`/`params`、参考图、补充提示词和提示词优化与用户确认值一致。
 - 多个独立目标使用同一套已确认设置时，调用一次 `generate_media_batch`；每个子项返回独立 `taskId`
   或错误，可用 `list_generation_tasks(batchId: ...)` 汇总查询后继续按 taskId 轮询。
 - 需要把生成结果写入文档时，用文档写工具以 Markdown 图片/资源引用插入到目标章节。
-- `ask_user_selection` 返回 timeout 时，用 `await_user_selection` 对同一 `selectionId` 继续等待
-  （每轮 ≤90 秒，循环 3-5 轮），不要重新弹卡；仍无结果或返回 cancelled 时不要擅自生成，
-  说明情况并结束回合或改为在对话中询问。
+- 生成参数确认表单必须使用 `kind: "generation_plan"`，但图片和视频使用不同字段契约：
+  图片表单必须恰好包含一个 required `generation_settings`（`kind: "image"`），不得混入 `generation_params`、`images` 或 `prompt_optimization`；
+  它的单一 value 一次包含 `routeId、label、params、referenceAssetIds、promptSupplements、promptOptimization`。
+  视频表单本轮继续使用旧协议：一个 required `generation_params`（`kind: "video"`），只允许按需再有至多一个 `images` 和一个 `prompt_optimization`。
+  两种表单都不要用通用字段另造风格、构图、比例或张数参数。
+- `ask_user_selection` / `ask_user_form` 返回 timeout 时，它只表示一次 MCP 阻塞等待结束，是传输心跳，
+  不是用户决定。必须用 `await_user_selection` 对同一 `selectionId` 持续等待（每轮 ≤90 秒），不要重新弹卡，
+  不要设置等待轮数上限；等待期间不得调用其他工具、不得生成、不得结束回合或发送最终答复。
+  只有状态明确为 `submitted` 才能继续生成；pending/timeout 和关闭弹窗都不授权继续，返回 cancelled 或 expired 时停止对应流程。
 - 轮询生成任务或等待用户选择期间保持安静，不要每轮都输出状态独白；有实质进展再说话。
 - 最终回复只给结果：定稿资产名、图片地址、落库位置和下一步建议；不要复述中间过程和重试细节。

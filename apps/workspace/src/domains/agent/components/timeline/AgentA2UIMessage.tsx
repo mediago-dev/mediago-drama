@@ -17,7 +17,6 @@ import { useMemo } from "react";
 import { agentSelectionRefFromA2UI } from "@/domains/agent/lib/a2ui-selections";
 import { resolvedSelectionFromRecord } from "@/domains/agent/lib/resolved-selection";
 import { useResolvedAgentSelection } from "@/domains/agent/lib/useResolvedAgentSelection";
-import { useSupersededSelectionCard } from "@/domains/agent/lib/useSupersededSelectionCard";
 import type { AgentMessage } from "@/domains/agent/stores";
 import { ResolvedSelectionPreview } from "@/domains/agent/components/timeline/ResolvedSelectionPreview";
 import { cn } from "@/shared/lib/utils";
@@ -41,17 +40,7 @@ export const AgentA2UIMessage: React.FC<{
 		ref?.projectId,
 		resolvedSelectionFromRecord,
 	);
-	// Freeze a selection card the flow has already moved past even if it was
-	// never decided: an ask timeout leaves the record pending, so without this
-	// the card keeps live options that would submit into an already-continued
-	// flow. The card's content (e.g. generated image candidates) must stay
-	// visible — only the actions are disabled. Only selection cards (those with
-	// a ref) freeze; plain informational A2UI surfaces have nothing to act on.
-	const frozen = useSupersededSelectionCard(message.id) && Boolean(ref);
-	const result = useMemo(
-		() => renderA2UIPayload(message, frozen ? undefined : onAction),
-		[message, onAction, frozen],
-	);
+	const result = useMemo(() => renderA2UIPayload(message, onAction), [message, onAction]);
 
 	if (resolved) {
 		return (
@@ -104,9 +93,6 @@ export const AgentA2UIMessage: React.FC<{
 				"[&_div[style*='flex-direction:_row']:has(img)>div]:max-w-56",
 				"[&_div[style*='flex-direction:_row']:has(img)>div_img]:w-full",
 				"[&_div[style*='flex-direction:_row']:has(img)>div_img]:max-h-80",
-				// Frozen: keep the card's content (e.g. image candidates) visible but
-				// grey out and inert the option buttons; onAction is already dropped.
-				frozen && "[&_button]:pointer-events-none [&_button]:opacity-50",
 			)}
 		>
 			<MarkdownContext.Provider value={renderA2UIMarkdown}>
@@ -116,9 +102,6 @@ export const AgentA2UIMessage: React.FC<{
 					))}
 				</div>
 			</MarkdownContext.Provider>
-			{frozen ? (
-				<p className="mt-2 leading-5 text-muted-foreground">流程已继续，无需操作。</p>
-			) : null}
 		</article>
 	);
 };

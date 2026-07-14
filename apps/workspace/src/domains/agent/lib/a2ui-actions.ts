@@ -144,7 +144,13 @@ const handleAgentSelectionAction = async (message: AgentMessage, action: A2uiCli
 			title: record.title || "用户选择",
 			...(pickedOption?.imageUrl ? { imageUrl: pickedOption.imageUrl } : {}),
 		});
-		store.recordActivity("runtime", "选择已提交", detail);
+		const activityLabel =
+			record.status === "cancelled"
+				? "选择已取消"
+				: record.status === "expired"
+					? "选择已过期"
+					: "选择已提交";
+		store.recordActivity("runtime", activityLabel, detail);
 	} catch (err) {
 		recordA2UIActionError("选择提交失败", getActionError(err));
 	}

@@ -12,6 +12,8 @@ import { useProjectStore } from "@/domains/projects/stores";
 
 type SelectionStatusFetch = { record: AgentSelection } | { missing: true };
 
+const pendingSelectionRefreshIntervalMs = 5000;
+
 // useResolvedAgentSelection reports whether a selection/form card has already
 // been decided, so re-materialized cards render frozen instead of interactive.
 // The locally persisted decision wins; otherwise the server's selection record
@@ -38,6 +40,17 @@ export const useResolvedAgentSelection = (
 				if (isAxiosError(err) && err.response?.status === 404) return { missing: true };
 				throw err;
 			}
+		},
+		{
+			// A timed-out ask only ends the current transport wait; the selection
+			// remains pending and interactive. Recheck it at a low frequency so a
+			// decision made in another window replaces this card with its summary.
+			// Once a terminal status is observed (or a local decision is persisted),
+			// polling stops: terminal data returns zero, while local makes the key null.
+			refreshInterval: (latest) =>
+				latest && "record" in latest && latest.record.status === "pending"
+					? pendingSelectionRefreshIntervalMs
+					: 0,
 		},
 	);
 

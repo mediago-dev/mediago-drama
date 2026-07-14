@@ -21,7 +21,7 @@ describe("resolveGenerationRoute", () => {
 		expect(resolved?.value).toEqual({
 			routeId: "mediago.gpt-image-2",
 			label: "MediaGo · GPT Image 2",
-			params: { aspectRatio: "16:9", resolution: "4K", n: 2 },
+			params: { aspectRatio: "16:9", resolution: "4K", quality: "auto", n: 2 },
 		});
 		expect(resolved?.families.map((family) => family.id)).toEqual(["seedream", "gpt-image"]);
 	});
@@ -73,15 +73,33 @@ describe("normalizeGenerationParamsValue", () => {
 		expect(value.params.n).toBe(4);
 	});
 
-	it("drops params the route does not support and clamps the count", () => {
+	it("falls back to schema defaults, drops unknown params, and clamps the count", () => {
 		const value = normalizeGenerationParamsValue(catalog(), gptImageRoute(), {
 			quality: "high",
 			n: 99,
+			rogue: "value",
 		});
 
-		expect(value.params.quality).toBeUndefined();
+		expect(value.params.quality).toBe("auto");
 		expect(value.params.n).toBe(10);
+		expect(value.params.rogue).toBeUndefined();
 		expect(value.label).toBe("MediaGo · GPT Image 2");
+	});
+
+	it("fills and validates select, boolean, number, and text schema params", () => {
+		const value = normalizeGenerationParamsValue(catalog(), routeWithAllParamTypes(), {
+			style: "unsupported",
+			enhance: "false",
+			steps: 999,
+			negativePrompt: 42,
+		});
+
+		expect(value.params).toMatchObject({
+			style: "realistic",
+			enhance: false,
+			steps: 20,
+			negativePrompt: "none",
+		});
 	});
 });
 
@@ -105,6 +123,29 @@ describe("formatGenerationParamsValue", () => {
 
 const gptImageRoute = (): GenerationRoute =>
 	imageRoutes().find((route) => route.id === "mediago.gpt-image-2") as GenerationRoute;
+
+const routeWithAllParamTypes = (): GenerationRoute => {
+	const route = gptImageRoute();
+	return {
+		...route,
+		params: [
+			...route.params,
+			{
+				name: "style",
+				label: "风格",
+				type: "select",
+				default: "realistic",
+				options: [
+					{ value: "realistic", label: "写实" },
+					{ value: "anime", label: "动漫" },
+				],
+			},
+			{ name: "enhance", label: "增强", type: "boolean", default: true },
+			{ name: "steps", label: "步数", type: "number", default: 20, min: 1, max: 50 },
+			{ name: "negativePrompt", label: "负面提示词", type: "text", default: "none" },
+		],
+	};
+};
 
 const imageRoutes = (): GenerationRoute[] =>
 	catalog().routes.filter((route) => route.kind === "image" && route.configured === true);

@@ -170,6 +170,10 @@ func (workflow *GenerationService) submitGenerationBatchItem(
 	}
 
 	result := GenerationBatchItemResponse{ID: item.ID, Index: index, Status: "failed"}
+	if item.PreflightError != "" {
+		result.Error = item.PreflightError
+		return result
+	}
 	if request.PromptOptimization != nil {
 		optimized, _, err := workflow.CreatePromptOptimizedGenerationMessage(ctx, request)
 		if err != nil {

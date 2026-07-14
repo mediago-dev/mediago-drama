@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"io"
+	"os"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	appevents "github.com/mediago-dev/mediago-drama/services/server/internal/app/events"
@@ -27,7 +28,18 @@ func RunGenerationMCP(ctx context.Context, config Config, projectID string, inpu
 	defer func() {
 		_ = api.Close()
 	}()
-	server, _, err := appmcp.NewGenerationServer(api.workspaceState.Dir(), projectID, api.generation, "stdio")
+	runConfig := mediamcp.DocumentConfigFromEnvVars(os.Getenv)
+	server, _, err := appmcp.NewGenerationServerForRun(
+		api.workspaceState.Dir(),
+		projectID,
+		api.generation,
+		appmcp.GenerationRunContext{
+			SessionID:  runConfig.SessionID,
+			RunID:      runConfig.RunID,
+			Selections: api.selection,
+		},
+		"stdio",
+	)
 	if err != nil {
 		return err
 	}

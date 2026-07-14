@@ -76,6 +76,38 @@ func TestCreateGenerationBatchAllowsPartialSuccess(t *testing.T) {
 	}
 }
 
+func TestCreateGenerationBatchReportsTrustedPreflightFailurePerItem(t *testing.T) {
+	workflow, store := newGenerationBatchTestWorkflow(t)
+
+	response, status, err := workflow.CreateGenerationBatch(context.Background(), GenerationBatchRequest{
+		Items: []GenerationBatchItemRequest{
+			{ID: "valid", Request: generationBatchImageRequest("valid prompt")},
+			{
+				ID:             "unconfirmed",
+				Request:        generationBatchImageRequest("must not submit"),
+				PreflightError: "generation confirmation is missing",
+			},
+		},
+	})
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("CreateGenerationBatch() status = %d error = %v", status, err)
+	}
+	if response.Status != "partial" || response.Accepted != 1 || response.Failed != 1 {
+		t.Fatalf("response = %+v, want one accepted item and one preflight failure", response)
+	}
+	if response.Items[0].TaskID == "" || response.Items[1].TaskID != "" ||
+		!strings.Contains(response.Items[1].Error, "confirmation is missing") {
+		t.Fatalf("items = %+v, want a non-submitted preflight failure", response.Items)
+	}
+	tasks, err := store.ListByBatch(response.ID)
+	if err != nil {
+		t.Fatalf("ListByBatch() error = %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].BatchItemID != "valid" {
+		t.Fatalf("tasks = %+v, want only the authorized item persisted", tasks)
+	}
+}
+
 func TestCreateGenerationBatchValidatesStructureBeforeSubmission(t *testing.T) {
 	workflow, store := newGenerationBatchTestWorkflow(t)
 

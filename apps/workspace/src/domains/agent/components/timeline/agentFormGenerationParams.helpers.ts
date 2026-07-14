@@ -9,11 +9,12 @@ import {
 	resolveImageGenerationSpec,
 	type ImageGenerationSpec,
 } from "@/domains/generation/components/imageGenerationSpec";
+import { routeParamValues } from "@/domains/generation/hooks/generationCatalog";
 import { providerLabel } from "@/domains/generation/hooks/generationFormatters";
 
 // GenerationParamsFieldValue is the submitted value of a `generation_params`
 // form field: the chosen route, a human-readable label for summaries and the
-// agent, and the route params surfaced by the card (ratio/resolution/count).
+// agent, and every schema-defined route parameter surfaced by the card.
 export interface GenerationParamsFieldValue {
 	routeId: string;
 	label: string;
@@ -82,33 +83,21 @@ export const resolveGenerationRoute = (
 	};
 };
 
-// normalizeGenerationParamsValue coerces raw params onto route's schema: the
-// ratio/resolution pair is validated (and combo-corrected) by the shared spec
-// resolver, and the count is clamped to the route's n bounds.
+// normalizeGenerationParamsValue coerces raw params onto route's schema: every
+// schema parameter receives its default and is validated by type, unknown
+// parameters are discarded, the ratio/resolution pair is combo-corrected, and
+// the count is clamped to the route's n bounds.
 export const normalizeGenerationParamsValue = (
 	catalog: GenerationModelsResponse,
 	route: GenerationRoute,
 	rawParams: Record<string, unknown>,
 ): GenerationParamsFieldValue => {
-	const params: Record<string, unknown> = {};
-	const spec = resolveImageGenerationSpec(route.params, rawParams, route.paramCombos);
-	// Carry over the route's other params the card has no dedicated control for
-	// (e.g. video duration / generateAudio) so agent- or user-supplied values
-	// survive; the spec/count controls below stay authoritative for
-	// ratio/resolution/count. Select params only survive with a valid option so
-	// stray values are still dropped, matching the previous behaviour.
-	const controlled = new Set<string>(["n"]);
-	if (spec?.ratioParam) controlled.add(spec.ratioParam.name);
-	if (spec?.resolutionParam) controlled.add(spec.resolutionParam.name);
+	const schemaRawParams: Record<string, unknown> = {};
 	for (const param of route.params) {
-		if (controlled.has(param.name)) continue;
-		if (!Object.hasOwn(rawParams, param.name)) continue;
-		const raw = rawParams[param.name];
-		if (param.type === "select" && !(param.options ?? []).some((option) => option.value === raw)) {
-			continue;
-		}
-		params[param.name] = raw;
+		if (Object.hasOwn(rawParams, param.name)) schemaRawParams[param.name] = rawParams[param.name];
 	}
+	const params = routeParamValues(route.params, schemaRawParams);
+	const spec = resolveImageGenerationSpec(route.params, params, route.paramCombos);
 	if (spec?.ratioParam && spec.selectedRatio) {
 		params[spec.ratioParam.name] = spec.selectedRatio.value;
 	}

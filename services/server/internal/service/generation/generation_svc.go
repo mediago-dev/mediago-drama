@@ -26,6 +26,9 @@ type GenerationBatchTasksResponse = dto.GenerationBatchTasksResponse
 // GenerationPromptOptimizationRequest configures server-side prompt optimization before generation.
 type GenerationPromptOptimizationRequest = dto.GenerationPromptOptimizationRequest
 
+// GenerationPromptSupplementRequest is one prompt-pack snapshot appended by the service.
+type GenerationPromptSupplementRequest = dto.GenerationPromptSupplementRequest
+
 // GenerationDocumentContext identifies the source document section for generation.
 type GenerationDocumentContext = dto.GenerationDocumentContext
 

@@ -238,6 +238,10 @@ func newAPIHandler(config Config) *apiHandler {
 	events := appevents.NewBroker(workspaceState.AppendAgentEvent)
 	workspaceEvents := serviceworkspaceevent.NewBroker()
 	agentSessions := appagent.NewSessionService(workspaceState)
+	selectionService.SetRunDecisionGuard(agentSessions)
+	if documentSelections := workspaceState.StateService().Selections; documentSelections != nil {
+		documentSelections.SetRunDecisionGuard(agentSessions)
+	}
 
 	handler := &apiHandler{
 		initErr: errors.Join(
@@ -285,6 +289,38 @@ func newAPIHandler(config Config) *apiHandler {
 			BridgeURL:             agentBridgeURL,
 			BridgeToken:           agentBridgeToken,
 			DocumentMCPConfigPath: config.DocumentMCPConfigPath,
+			RunTerminalHandler: func(event serviceagent.AgentRunTerminalEvent) {
+				var (
+					count int64
+					err   error
+				)
+				if event.Status == "cancelled" {
+					count, err = selectionService.CancelPendingByRun(event.ProjectID, event.RunID)
+				} else {
+					count, err = selectionService.ExpirePendingByRun(event.ProjectID, event.RunID)
+				}
+				if err != nil {
+					slog.Warn(
+						"finishing pending selections for terminal agent run failed",
+						"session_id", event.SessionID,
+						"run_id", event.RunID,
+						"project_id", event.ProjectID,
+						"status", event.Status,
+						"error", err,
+					)
+					return
+				}
+				if count > 0 {
+					slog.Info(
+						"finished pending selections for terminal agent run",
+						"session_id", event.SessionID,
+						"run_id", event.RunID,
+						"project_id", event.ProjectID,
+						"status", event.Status,
+						"selection_count", count,
+					)
+				}
+			},
 			SessionTitleGenerator: func(ctx context.Context, request serviceagent.AgentSessionTitleRequest) (string, error) {
 				completion := servicegeneration.TextCompletionRequest{
 					Prompt: request.Prompt,

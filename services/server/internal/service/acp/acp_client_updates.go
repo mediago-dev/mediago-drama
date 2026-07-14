@@ -38,6 +38,7 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 				Type:    "agent.message.delta",
 				Message: TruncateAgentMessage(text),
 				ItemID:  itemID,
+				Phase:   acpMessagePhaseFromMeta(update.AgentMessageChunk.Meta),
 				Delta:   text,
 			})
 			normalized = &event

@@ -48,7 +48,6 @@ import type { MarkdownSectionContext } from "@/domains/documents/components/Mark
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import {
-	appendBatchPromptSupplements,
 	BatchGenerationSettingsDialog,
 	type BatchGenerationSettings,
 } from "@/domains/generation/components/BatchGenerationSettingsDialog";
@@ -1880,7 +1879,8 @@ const generationBatchRequestForSection = ({
 	),
 	params: settings.params,
 	projectId,
-	prompt: appendBatchPromptSupplements(prompt, settings.promptSupplements),
+	prompt,
+	promptSupplements: settings.promptSupplements,
 	promptOptimization: settings.promptOptimization,
 	provider: settings.route.provider,
 	referenceAssetIds: settings.referenceAssetIds ?? [],

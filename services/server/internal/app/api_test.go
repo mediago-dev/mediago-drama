@@ -23,6 +23,7 @@ import (
 	servicecodexskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/codexskill"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
+	serviceselection "github.com/mediago-dev/mediago-drama/services/server/internal/service/selection"
 )
 
 var testSessionProjects sync.Map
@@ -1857,6 +1858,88 @@ func TestAPIKeySettingsPersistToSQLite(t *testing.T) {
 	}
 }
 
+func TestCancelRunImmediatelyCancelsPendingSelections(t *testing.T) {
+	started := make(chan agentRunRequest, 1)
+	release := make(chan struct{})
+	defer close(release)
+	rawHandler := NewHandlerWithConfig(
+		fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
+		Config{
+			SettingsDBPath:          filepath.Join(t.TempDir(), "settings.db"),
+			WorkspaceDir:            filepath.Join(t.TempDir(), "workspace"),
+			DisableGenerationWorker: true,
+			agentRunner: delayedCleanupAgentRunner{
+				started: started,
+				release: release,
+			},
+			documentOperationRunner: fakeDocumentOperationRunner{},
+		},
+	)
+	closeTestHandler(t, rawHandler)
+	handler, ok := rawHandler.(*Handler)
+	if !ok {
+		t.Fatalf("handler = %T, want *Handler", rawHandler)
+	}
+	project, _ := createExternalProjectForTest(t, rawHandler, "Cancel Selection")
+	sessionID := createAgentSessionForProject(t, rawHandler, project.ID)
+
+	message := requestJSON(
+		t,
+		rawHandler,
+		http.MethodPost,
+		"/api/v1/projects/"+url.PathEscape(project.ID)+"/agent/sessions/"+url.PathEscape(sessionID)+"/messages",
+		`{"prompt":"wait for confirmation"}`,
+	)
+	defer message.Body.Close()
+	if message.StatusCode != http.StatusOK {
+		t.Fatalf("message status = %d, want 200: %s", message.StatusCode, readBody(t, message.Body))
+	}
+
+	var run agentRunRequest
+	select {
+	case run = <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("agent runner did not start")
+	}
+	created, err := handler.api.selection.Create(project.ID, serviceselection.CreateRequest{
+		SessionID: sessionID,
+		RunID:     run.RunID,
+		Kind:      "image_style",
+		Title:     "选择风格",
+		Options:   []serviceselection.Option{{ID: "a", Label: "A"}},
+	})
+	if err != nil {
+		t.Fatalf("Create(selection) error = %v", err)
+	}
+
+	cancel := requestJSON(
+		t,
+		rawHandler,
+		http.MethodPost,
+		"/api/v1/projects/"+url.PathEscape(project.ID)+"/agent/sessions/"+url.PathEscape(sessionID)+"/cancel",
+		"",
+	)
+	defer cancel.Body.Close()
+	if cancel.StatusCode != http.StatusOK {
+		t.Fatalf("cancel status = %d, want 200: %s", cancel.StatusCode, readBody(t, cancel.Body))
+	}
+
+	record, found, err := handler.api.selection.Get(project.ID, created.ID)
+	if err != nil || !found {
+		t.Fatalf("Get(selection) = %#v, found=%v, error=%v", record, found, err)
+	}
+	if record.Status != serviceselection.StatusCancelled {
+		t.Fatalf("selection status = %q, want cancelled before runner cleanup", record.Status)
+	}
+	late, err := handler.api.selection.Decide(project.ID, created.ID, serviceselection.DecisionRequest{OptionID: "a"})
+	if err != nil {
+		t.Fatalf("late Decide() error = %v", err)
+	}
+	if late.Status != serviceselection.StatusCancelled {
+		t.Fatalf("late Decide() = %#v, want cancelled", late)
+	}
+}
+
 func newTestHandler(t *testing.T, dbPath string) http.Handler {
 	t.Helper()
 
@@ -2066,6 +2149,17 @@ type recordingAgentRunner struct {
 func (runner recordingAgentRunner) Run(ctx context.Context, request agentRunRequest, publish func(agentEvent)) (agentRunResult, error) {
 	runner.requests <- request
 	return fakeAgentRunner{}.Run(ctx, request, publish)
+}
+
+type delayedCleanupAgentRunner struct {
+	started chan agentRunRequest
+	release <-chan struct{}
+}
+
+func (runner delayedCleanupAgentRunner) Run(_ context.Context, request agentRunRequest, _ func(agentEvent)) (agentRunResult, error) {
+	runner.started <- request
+	<-runner.release
+	return agentRunResult{Message: "released"}, nil
 }
 
 type fakeDocumentOperationRunner struct{}

@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -202,13 +203,16 @@ func TestAskUserSelectionReusesPendingDuplicate(t *testing.T) {
 func TestAskUserSelectionReturnsRecentDecisionOnReask(t *testing.T) {
 	adapter, publisher, projectID := newSelectionAdapter(t)
 	service := adapter.document.store.Selections
+	input := sampleSelectionInput()
 
 	created, err := service.Create(projectID, serviceselection.CreateRequest{
-		SessionID: "session-1",
-		RunID:     "run-1",
-		Kind:      "image_style",
-		Title:     "选择一种插画风格",
-		Options:   []serviceselection.Option{{ID: "sweet", Label: "甜美粉彩"}, {ID: "retro", Label: "复古线条"}},
+		SessionID:   "session-1",
+		RunID:       "run-1",
+		Kind:        input.Kind,
+		Title:       input.Title,
+		Prompt:      input.Prompt,
+		Options:     selectionOptionsFromMCP(input.Options),
+		AllowCustom: input.AllowCustom,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -219,7 +223,7 @@ func TestAskUserSelectionReturnsRecentDecisionOnReask(t *testing.T) {
 
 	// Model re-asks the same question right after the user answered: the
 	// existing decision must come back immediately, without a new card.
-	output, err := adapter.AskUserSelection(context.Background(), projectID, sampleSelectionInput())
+	output, err := adapter.AskUserSelection(context.Background(), projectID, input)
 	if err != nil {
 		t.Fatalf("AskUserSelection() error = %v", err)
 	}
@@ -228,6 +232,45 @@ func TestAskUserSelectionReturnsRecentDecisionOnReask(t *testing.T) {
 	}
 	if cards := publisher.a2uiEvents(); len(cards) != 0 {
 		t.Fatalf("published cards = %d, want 0 for reused decision", len(cards))
+	}
+}
+
+func TestReuseSelectionDoesNotCollapseDifferentFormDefaults(t *testing.T) {
+	adapter, _, projectID := newSelectionAdapter(t)
+	service := adapter.document.store.Selections
+	if _, err := service.Create(projectID, serviceselection.CreateRequest{
+		SessionID: "session-1",
+		RunID:     "run-1",
+		Kind:      "form",
+		Title:     "生成参数",
+		Prompt:    "确认参数",
+		Fields: []serviceselection.FormField{{
+			ID:      "count",
+			Label:   "张数",
+			Type:    serviceselection.FieldTypeNumber,
+			Default: float64(1),
+		}},
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if result, reused := adapter.reuseSelection(
+		context.Background(),
+		projectID,
+		"form",
+		"生成参数",
+		"确认参数",
+		nil,
+		[]serviceselection.FormField{{
+			ID:      "count",
+			Label:   "张数",
+			Type:    serviceselection.FieldTypeNumber,
+			Default: float64(4),
+		}},
+		false,
+		30,
+	); reused {
+		t.Fatalf("reuseSelection() = %#v, reused=true; want a distinct form", result)
 	}
 }
 
@@ -258,7 +301,7 @@ func TestAskUserFormReturnsSubmittedValues(t *testing.T) {
 
 	output, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
 		Title: "确认生成参数",
-		Kind:  "generation_plan",
+		Kind:  "form",
 		Fields: []mediamcp.FormFieldInput{
 			{ID: "aspectRatio", Label: "比例", Type: "select", Default: "3:4", Options: []mediamcp.FormFieldOptionInput{
 				{Value: "3:4", Label: "3:4 竖版"}, {Value: "16:9", Label: "16:9 横版"},
@@ -292,6 +335,91 @@ func TestAskUserFormReturnsSubmittedValues(t *testing.T) {
 	}
 	if len(cards) != 0 {
 		t.Fatal("form must not publish an A2UI card")
+	}
+}
+
+func TestAskUserFormRejectsNonCanonicalGenerationPlanFields(t *testing.T) {
+	adapter, _, projectID := newSelectionAdapter(t)
+	_, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
+		Title: "确认生成参数",
+		Kind:  serviceselection.KindGenerationPlan,
+		Fields: []mediamcp.FormFieldInput{
+			{ID: "generation", Label: "模型与参数", Type: serviceselection.FieldTypeGenerationParams},
+			{ID: "style", Label: "视觉风格", Type: serviceselection.FieldTypeSelect, Options: []mediamcp.FormFieldOptionInput{
+				{Value: "anime", Label: "2D 动漫"},
+			}},
+		},
+	})
+	if !errors.Is(err, serviceselection.ErrInvalidGenerationPlan) {
+		t.Fatalf("AskUserForm() error = %v, want ErrInvalidGenerationPlan", err)
+	}
+}
+
+func TestAskUserFormAcceptsImageGenerationSettingsContract(t *testing.T) {
+	adapter, publisher, projectID := newSelectionAdapter(t)
+	value := map[string]any{
+		"kind":               "image",
+		"routeId":            "route-image",
+		"params":             map[string]any{"ratio": "3:4", "n": float64(1)},
+		"referenceAssetIds":  []any{"asset-a"},
+		"promptSupplements":  []any{},
+		"promptOptimization": map[string]any{"enabled": false},
+	}
+	go decideWhenPending(t, adapter, projectID, serviceselection.DecisionRequest{
+		Values: map[string]any{"settings": value},
+	})
+
+	output, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
+		Title: "确认图片生成设置",
+		Kind:  serviceselection.KindGenerationPlan,
+		Fields: []mediamcp.FormFieldInput{{
+			ID:       "settings",
+			Label:    "生成设置",
+			Type:     mediamcp.FieldTypeGenerationSettings,
+			Kind:     "image",
+			Default:  value,
+			Required: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("AskUserForm() error = %v", err)
+	}
+	if output.Status != serviceselection.StatusSubmitted {
+		t.Fatalf("output = %#v, want submitted", output)
+	}
+	settings, ok := output.Values["settings"].(map[string]any)
+	if !ok || settings["kind"] != "image" || settings["routeId"] != "route-image" {
+		t.Fatalf("settings = %#v, want submitted image generation settings", output.Values["settings"])
+	}
+
+	formEvents := 0
+	for _, event := range publisher.events {
+		if event.Form != nil {
+			formEvents++
+		}
+	}
+	if formEvents != 1 {
+		t.Fatalf("form events = %d, want 1", formEvents)
+	}
+}
+
+func TestAskUserFormRejectsUnsupportedGenerationSettingsKinds(t *testing.T) {
+	adapter, _, projectID := newSelectionAdapter(t)
+	for _, kind := range []string{"", "video", "audio"} {
+		t.Run("kind="+kind, func(t *testing.T) {
+			_, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
+				Title: "确认生成设置",
+				Kind:  serviceselection.KindGenerationPlan,
+				Fields: []mediamcp.FormFieldInput{{
+					ID:   "settings",
+					Type: mediamcp.FieldTypeGenerationSettings,
+					Kind: kind,
+				}},
+			})
+			if !errors.Is(err, serviceselection.ErrInvalidGenerationPlan) {
+				t.Fatalf("AskUserForm() error = %v, want ErrInvalidGenerationPlan", err)
+			}
+		})
 	}
 }
 

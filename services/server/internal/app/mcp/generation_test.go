@@ -2,12 +2,16 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
+	serviceselection "github.com/mediago-dev/mediago-drama/services/server/internal/service/selection"
 )
 
 func TestGenerationServerCreateUsesScopedProject(t *testing.T) {
@@ -25,6 +29,397 @@ func TestGenerationServerCreateUsesScopedProject(t *testing.T) {
 	}
 	if service.createRequests[0].ProjectID != "project-a" {
 		t.Fatalf("project id = %q, want project-a", service.createRequests[0].ProjectID)
+	}
+}
+
+func TestGenerationMessageRequestFromMCPPreservesPromptSupplements(t *testing.T) {
+	input := mediamcp.GenerationMessageInput{
+		PromptSupplements: []mediamcp.GenerationPromptSupplementInput{
+			{ReferenceID: " pack-style ", ReferenceName: " 电影质感 ", ReferencePrompt: " cinematic lighting "},
+			{ReferenceID: "pack-camera", ReferenceName: "镜头", ReferencePrompt: "close-up camera"},
+		},
+	}
+
+	request := generationMessageRequestFromMCP(input, "project-a")
+	want := []servicegeneration.GenerationPromptSupplementRequest{
+		{ReferenceID: "pack-style", ReferenceName: "电影质感", ReferencePrompt: "cinematic lighting"},
+		{ReferenceID: "pack-camera", ReferenceName: "镜头", ReferencePrompt: "close-up camera"},
+	}
+	if fmt.Sprint(request.PromptSupplements) != fmt.Sprint(want) {
+		t.Fatalf("prompt supplements = %#v, want %#v", request.PromptSupplements, want)
+	}
+}
+
+func TestGenerationBatchRequestFromMCPPreservesPromptSupplements(t *testing.T) {
+	request := generationBatchRequestFromMCP(mediamcp.GenerationBatchInput{
+		Items: []mediamcp.GenerationBatchItemInput{
+			{
+				ID: "character-a",
+				Request: mediamcp.GenerationMessageInput{PromptSupplements: []mediamcp.GenerationPromptSupplementInput{
+					{ReferenceID: "pack-style", ReferenceName: "电影质感", ReferencePrompt: "cinematic lighting"},
+				}},
+			},
+		},
+	}, "project-a")
+
+	if len(request.Items) != 1 || len(request.Items[0].Request.PromptSupplements) != 1 {
+		t.Fatalf("batch request = %#v, want one prompt supplement", request)
+	}
+	if got := request.Items[0].Request.PromptSupplements[0]; got.ReferenceID != "pack-style" || got.ReferencePrompt != "cinematic lighting" {
+		t.Fatalf("prompt supplement = %#v", got)
+	}
+}
+
+func TestGenerationModelsOutputOmitsAgentStylePresets(t *testing.T) {
+	output := generationModelsOutputFromService(servicegeneration.GenerationModelsResponse{
+		StylePresets: []servicegeneration.GenerationStylePreset{{ID: "style-anime"}},
+	})
+	payload, err := json.Marshal(output)
+	if err != nil {
+		t.Fatalf("json.Marshal(output) error = %v", err)
+	}
+	if strings.Contains(string(payload), "stylePresets") {
+		t.Fatalf("Agent generation catalog leaked stylePresets: %s", payload)
+	}
+}
+
+func TestGenerationServerRequiresSubmittedRunConfirmation(t *testing.T) {
+	baseRecord := confirmedGenerationSelectionRecord()
+	baseInput := mediamcp.GenerationMessageInput{
+		ConfirmationSelectionID: baseRecord.ID,
+		Kind:                    "image",
+		RouteID:                 "route-a",
+		Prompt:                  "generate a portrait",
+		Params: map[string]any{
+			"aspectRatio": "3:4",
+			"n":           1,
+		},
+	}
+
+	tests := []struct {
+		name       string
+		mutate     func(*serviceselection.Record, *mediamcp.GenerationMessageInput)
+		missing    bool
+		lookupErr  error
+		wantErr    string
+		wantCreate bool
+	}{
+		{name: "submitted exact plan", wantCreate: true},
+		{
+			name: "missing confirmation id",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.ConfirmationSelectionID = ""
+			},
+			wantErr: "confirmationSelectionId",
+		},
+		{name: "unknown selection", missing: true, wantErr: "was not found"},
+		{name: "lookup failure", lookupErr: fmt.Errorf("database offline"), wantErr: "database offline"},
+		{
+			name: "pending",
+			mutate: func(record *serviceselection.Record, _ *mediamcp.GenerationMessageInput) {
+				record.Status = serviceselection.StatusPending
+				record.Decision = nil
+			},
+			wantErr: "explicit user submission",
+		},
+		{
+			name: "cancelled",
+			mutate: func(record *serviceselection.Record, _ *mediamcp.GenerationMessageInput) {
+				record.Status = serviceselection.StatusCancelled
+				record.Decision = &serviceselection.Decision{Cancelled: true}
+			},
+			wantErr: "explicit user submission",
+		},
+		{
+			name: "different run",
+			mutate: func(record *serviceselection.Record, _ *mediamcp.GenerationMessageInput) {
+				record.RunID = "run-b"
+			},
+			wantErr: "different agent run",
+		},
+		{
+			name: "different session",
+			mutate: func(record *serviceselection.Record, _ *mediamcp.GenerationMessageInput) {
+				record.SessionID = "session-b"
+			},
+			wantErr: "different agent session",
+		},
+		{
+			name: "generic selection kind",
+			mutate: func(record *serviceselection.Record, _ *mediamcp.GenerationMessageInput) {
+				record.Kind = "form"
+			},
+			wantErr: "not a generation_plan",
+		},
+		{
+			name: "legacy generic field in generation plan",
+			mutate: func(record *serviceselection.Record, _ *mediamcp.GenerationMessageInput) {
+				record.Fields = append(record.Fields, serviceselection.FormField{
+					ID:   "framing",
+					Type: serviceselection.FieldTypeSelect,
+				})
+			},
+			wantErr: "cannot mix",
+		},
+		{
+			name: "different media kind",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.Kind = "video"
+			},
+			wantErr: "does not match confirmed kind",
+		},
+		{
+			name: "route changed after confirmation",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.RouteID = "route-b"
+			},
+			wantErr: "does not match confirmed route",
+		},
+		{
+			name: "legacy model override",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.Model = "unconfirmed-model"
+			},
+			wantErr: "model overrides are not allowed",
+		},
+		{
+			name: "params changed after confirmation",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.Params["n"] = 2
+			},
+			wantErr: "do not match",
+		},
+		{
+			name: "reference assets without images field",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.ReferenceAssetIDs = []string{"asset-unconfirmed"}
+			},
+			wantErr: "reference assets do not match",
+		},
+		{
+			name: "optimization without prompt optimization field",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.PromptOptimization = &mediamcp.GenerationPromptOptimizationInput{
+					ReferencePrompt: "unconfirmed",
+				}
+			},
+			wantErr: "was not enabled",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			record := confirmedGenerationSelectionRecord()
+			input := baseInput
+			input.Params = map[string]any{"aspectRatio": "3:4", "n": 1}
+			if test.mutate != nil {
+				test.mutate(&record, &input)
+			}
+			service := &generationMCPServiceStub{}
+			server := &GenerationServer{
+				service:    service,
+				projectID:  "project-a",
+				sessionID:  "session-a",
+				runID:      "run-a",
+				selections: &generationSelectionStoreStub{record: record, missing: test.missing, err: test.lookupErr},
+			}
+
+			_, err := server.CreateGenerationMessage(context.Background(), "", input)
+			if test.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("CreateGenerationMessage() error = %v, want fragment %q", err, test.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("CreateGenerationMessage() error = %v", err)
+			}
+			if got := len(service.createRequests); got != boolCount(test.wantCreate) {
+				t.Fatalf("create request count = %d, want %d", got, boolCount(test.wantCreate))
+			}
+		})
+	}
+}
+
+func confirmedGenerationSelectionRecord() serviceselection.Record {
+	return serviceselection.Record{
+		ID:        "selection-confirmed",
+		ProjectID: "project-a",
+		SessionID: "session-a",
+		RunID:     "run-a",
+		Kind:      serviceselection.KindGenerationPlan,
+		Status:    serviceselection.StatusSubmitted,
+		Fields: []serviceselection.FormField{{
+			ID:   "generation",
+			Type: serviceselection.FieldTypeGenerationSettings,
+			Kind: "image",
+		}},
+		Decision: &serviceselection.Decision{Values: map[string]any{
+			"generation": map[string]any{
+				"kind":    "image",
+				"routeId": "route-a",
+				"params": map[string]any{
+					"aspectRatio": "3:4",
+					"n":           float64(1),
+				},
+				"referenceAssetIds": []any{},
+				"promptSupplements": []any{},
+				"promptOptimization": map[string]any{
+					"enabled": false,
+				},
+			},
+		}},
+	}
+}
+
+func TestGenerationServerConfirmationCoversReferencesAndPromptOptimization(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(*serviceselection.Record, *mediamcp.GenerationMessageInput)
+		wantErr string
+	}{
+		{name: "exact optional settings"},
+		{
+			name: "different reference asset",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.ReferenceAssetIDs = []string{"asset-a", "asset-c"}
+			},
+			wantErr: "reference assets do not match",
+		},
+		{
+			name: "unconfirmed reference url",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.ReferenceURLs = []string{"https://example.test/reference.png"}
+			},
+			wantErr: "must use only the asset ids",
+		},
+		{
+			name: "unconfirmed reference binding",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.ReferenceBindings = []mediamcp.GenerationReferenceBinding{{AssetID: "asset-a"}}
+			},
+			wantErr: "must use only the asset ids",
+		},
+		{
+			name: "missing enabled prompt optimization",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.PromptOptimization = nil
+			},
+			wantErr: "prompt optimization does not match",
+		},
+		{
+			name: "changed prompt optimization route",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.PromptOptimization.RouteID = "text-route-b"
+			},
+			wantErr: "prompt optimization does not match",
+		},
+		{
+			name: "unconfirmed prompt optimization model",
+			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
+				input.PromptOptimization.Model = "unconfirmed-model"
+			},
+			wantErr: "prompt optimization does not match",
+		},
+		{
+			name: "disabled prompt optimization",
+			mutate: func(record *serviceselection.Record, _ *mediamcp.GenerationMessageInput) {
+				settings := record.Decision.Values["generation"].(map[string]any)
+				settings["promptOptimization"] = map[string]any{"enabled": false}
+			},
+			wantErr: "was not enabled",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			record := confirmedGenerationSelectionRecord()
+			settings := record.Decision.Values["generation"].(map[string]any)
+			settings["referenceAssetIds"] = []any{"asset-a", "asset-b"}
+			settings["promptOptimization"] = map[string]any{
+				"enabled":         true,
+				"routeId":         "text-route-a",
+				"referenceName":   "角色定妆",
+				"referencePrompt": "cinematic portrait",
+			}
+			input := mediamcp.GenerationMessageInput{
+				ConfirmationSelectionID: record.ID,
+				Kind:                    "image",
+				RouteID:                 "route-a",
+				Params:                  map[string]any{"aspectRatio": "3:4", "n": 1},
+				ReferenceAssetIDs:       []string{"asset-a", "asset-b"},
+				PromptOptimization: &mediamcp.GenerationPromptOptimizationInput{
+					RouteID:         "text-route-a",
+					ReferenceName:   "角色定妆",
+					ReferencePrompt: "cinematic portrait",
+				},
+			}
+			if test.mutate != nil {
+				test.mutate(&record, &input)
+			}
+			server := &GenerationServer{
+				projectID:  "project-a",
+				sessionID:  "session-a",
+				runID:      "run-a",
+				selections: &generationSelectionStoreStub{record: record},
+			}
+
+			err := server.authorizeGeneration(input, "image")
+			if test.wantErr == "" && err != nil {
+				t.Fatalf("authorizeGeneration() error = %v", err)
+			}
+			if test.wantErr != "" && (err == nil || !strings.Contains(err.Error(), test.wantErr)) {
+				t.Fatalf("authorizeGeneration() error = %v, want fragment %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestGenerationServerBatchReportsUnconfirmedItemWithoutRejectingSiblings(t *testing.T) {
+	record := confirmedGenerationSelectionRecord()
+	service := &generationMCPServiceStub{}
+	server := &GenerationServer{
+		service:    service,
+		projectID:  "project-a",
+		sessionID:  "session-a",
+		runID:      "run-a",
+		selections: &generationSelectionStoreStub{record: record},
+	}
+
+	output, err := server.CreateGenerationBatch(context.Background(), "", mediamcp.GenerationBatchInput{
+		Kind: "image",
+		Items: []mediamcp.GenerationBatchItemInput{
+			{
+				ID: "confirmed",
+				Request: mediamcp.GenerationMessageInput{
+					ConfirmationSelectionID: record.ID,
+					Kind:                    "image",
+					RouteID:                 "route-a",
+					Params:                  map[string]any{"aspectRatio": "3:4", "n": 1},
+					Prompt:                  "generate confirmed",
+				},
+			},
+			{
+				ID: "missing-confirmation",
+				Request: mediamcp.GenerationMessageInput{
+					Kind:    "image",
+					RouteID: "route-a",
+					Params:  map[string]any{"aspectRatio": "3:4", "n": 1},
+					Prompt:  "must not generate",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateGenerationBatch() error = %v", err)
+	}
+	if output.Status != "partial" || output.Accepted != 1 || output.Failed != 1 {
+		t.Fatalf("output = %+v, want partial success", output)
+	}
+	if len(service.batchRequests) != 1 || len(service.batchRequests[0].Items) != 2 {
+		t.Fatalf("batch requests = %+v, want both items passed to the batch service", service.batchRequests)
+	}
+	items := service.batchRequests[0].Items
+	if items[0].PreflightError != "" || !strings.Contains(items[1].PreflightError, "confirmationSelectionId") {
+		t.Fatalf("batch items = %+v, want only the unconfirmed item rejected", items)
 	}
 }
 
@@ -274,8 +669,9 @@ func TestGenerationServerCreateWithPromptOptimization(t *testing.T) {
 func TestGenerationServerListModelsIncludesPreferences(t *testing.T) {
 	service := &generationMCPServiceStub{
 		preference: servicegeneration.GenerationPreferenceRecord{
-			RouteIDs:    map[string]string{"image": "jimeng.seedream-5.0"},
-			RouteParams: map[string]map[string]any{"jimeng.seedream-5.0": {"aspectRatio": "3:4"}},
+			RouteIDs:      map[string]string{"image": "jimeng.seedream-5.0"},
+			RouteParams:   map[string]map[string]any{"jimeng.seedream-5.0": {"aspectRatio": "3:4"}},
+			StylePresetID: "legacy-style-preset",
 		},
 		preferenceOK: true,
 	}
@@ -287,6 +683,13 @@ func TestGenerationServerListModelsIncludesPreferences(t *testing.T) {
 	}
 	if output.Preferences == nil || output.Preferences.RouteIDs["image"] != "jimeng.seedream-5.0" {
 		t.Fatalf("preferences = %#v, want workbench route defaults", output.Preferences)
+	}
+	payload, err := json.Marshal(output)
+	if err != nil {
+		t.Fatalf("json.Marshal(output) error = %v", err)
+	}
+	if strings.Contains(string(payload), "stylePresetId") {
+		t.Fatalf("Agent generation preferences leaked legacy stylePresetId: %s", payload)
 	}
 
 	server.service = &generationMCPServiceStub{}
@@ -346,6 +749,29 @@ type generationMCPServiceStub struct {
 	preferenceOK     bool
 }
 
+type generationSelectionStoreStub struct {
+	record  serviceselection.Record
+	missing bool
+	err     error
+}
+
+func (store *generationSelectionStoreStub) Get(string, string) (serviceselection.Record, bool, error) {
+	if store.err != nil {
+		return serviceselection.Record{}, false, store.err
+	}
+	if store.missing {
+		return serviceselection.Record{}, false, nil
+	}
+	return store.record, true, nil
+}
+
+func boolCount(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
 func (service *generationMCPServiceStub) ListGenerationModels() servicegeneration.GenerationModelsResponse {
 	return service.models
 }
@@ -357,16 +783,31 @@ func (service *generationMCPServiceStub) CreateGenerationMessage(_ context.Conte
 
 func (service *generationMCPServiceStub) CreateGenerationBatch(_ context.Context, payload servicegeneration.GenerationBatchRequest) (servicegeneration.GenerationBatchResponse, int, error) {
 	service.batchRequests = append(service.batchRequests, payload)
-	return servicegeneration.GenerationBatchResponse{
-		ID:       "generation-batch-test",
-		Status:   "submitted",
-		Total:    2,
-		Accepted: 2,
-		Items: []servicegeneration.GenerationBatchItemResponse{
-			{ID: "scene-1", Index: 0, TaskID: "task-1", Status: "submitted"},
-			{ID: "scene-2", Index: 1, TaskID: "task-2", Status: "submitted"},
-		},
-	}, http.StatusOK, nil
+	response := servicegeneration.GenerationBatchResponse{
+		ID:     "generation-batch-test",
+		Status: "submitted",
+		Total:  len(payload.Items),
+		Items:  make([]servicegeneration.GenerationBatchItemResponse, len(payload.Items)),
+	}
+	for index, item := range payload.Items {
+		result := servicegeneration.GenerationBatchItemResponse{ID: item.ID, Index: index, Status: "submitted"}
+		if item.PreflightError != "" {
+			result.Status = "failed"
+			result.Error = item.PreflightError
+			response.Failed++
+		} else {
+			result.TaskID = fmt.Sprintf("task-%d", index+1)
+			response.Accepted++
+		}
+		response.Items[index] = result
+	}
+	if response.Failed > 0 {
+		response.Status = "partial"
+		if response.Accepted == 0 {
+			response.Status = "failed"
+		}
+	}
+	return response, http.StatusOK, nil
 }
 
 func (service *generationMCPServiceStub) RetryGenerationTask(_ context.Context, id string) (servicegeneration.GenerationMessageResponse, int, error) {
@@ -440,7 +881,6 @@ func TestFilterGenerationModelsOutputByKind(t *testing.T) {
 			{ID: "img-model", Kind: coregeneration.KindImage},
 		},
 		VoicePreviews: []mediamcp.GenerationVoicePreviewAsset{{RouteID: "audio-route", VoiceID: "voice-1"}},
-		StylePresets:  []mediamcp.GenerationStylePreset{{ID: "style-anime"}},
 	}
 
 	image := filterGenerationModelsOutputByKind(full, "image")
@@ -451,20 +891,12 @@ func TestFilterGenerationModelsOutputByKind(t *testing.T) {
 	if len(image.VoicePreviews) != 0 {
 		t.Fatal("image filter should drop voice previews")
 	}
-	if len(image.StylePresets) != 1 {
-		t.Fatal("image filter should keep style presets")
-	}
-
 	audio := filterGenerationModelsOutputByKind(full, "audio")
 	if len(audio.Routes) != 1 || audio.Routes[0].ID != "audio-route" || len(audio.VoicePreviews) != 1 {
 		t.Fatalf("audio filter = %+v, want audio routes with voice previews", audio)
 	}
-	if len(audio.StylePresets) != 0 {
-		t.Fatal("audio filter should drop style presets")
-	}
-
 	all := filterGenerationModelsOutputByKind(full, "")
-	if len(all.Routes) != 2 || len(all.VoicePreviews) != 1 || len(all.StylePresets) != 1 {
+	if len(all.Routes) != 2 || len(all.VoicePreviews) != 1 {
 		t.Fatalf("empty kind should return the full catalog, got %+v", all)
 	}
 }

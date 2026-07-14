@@ -7,9 +7,24 @@ import { useProjectStore } from "@/domains/projects/stores";
 import { AgentFormCard } from "./AgentFormCard";
 
 const mocks = vi.hoisted(() => ({
+	agentFormGenerationSettings: vi.fn(),
 	decideAgentPermission: vi.fn(),
 	decideAgentSelection: vi.fn(),
 	decideDocumentToolApproval: vi.fn(),
+	generationSettingsRuntime: {
+		busy: false,
+		emitValue: true,
+		valid: true,
+		value: {
+			kind: "image",
+			label: "Seedream 5",
+			params: { n: 1, ratio: "3:4", resolution: "2k" },
+			promptOptimization: { enabled: false },
+			promptSupplements: [],
+			referenceAssetIds: ["asset-a"],
+			routeId: "route-canonical",
+		},
+	},
 	uploadMediaAsset: vi.fn(),
 	useSWR: vi.fn(),
 }));
@@ -19,12 +34,64 @@ vi.mock("@/domains/workspace/api/media", () => ({
 	uploadMediaAsset: (...args: unknown[]) => mocks.uploadMediaAsset(...args),
 }));
 vi.mock("swr", () => ({ default: mocks.useSWR }));
+vi.mock("./AgentFormGenerationSettings", async () => {
+	const React = await vi.importActual<typeof import("react")>("react");
+	return {
+		AgentFormGenerationSettings: (props: {
+			disabled: boolean;
+			onBusyChange?: (busy: boolean) => void;
+			onChange: (value: unknown) => void;
+			onValidityChange?: (valid: boolean) => void;
+			projectId?: string;
+		}) => {
+			const runtime = mocks.generationSettingsRuntime;
+			mocks.agentFormGenerationSettings(props);
+			React.useEffect(() => {
+				if (runtime.emitValue) props.onChange(runtime.value);
+				props.onBusyChange?.(runtime.busy);
+				props.onValidityChange?.(runtime.valid);
+			}, [props.onBusyChange, props.onChange, props.onValidityChange, runtime]);
+			return (
+				<div data-testid="shared-agent-generation-settings" data-project-id={props.projectId}>
+					<span>共享生成五区块</span>
+					<button
+						type="button"
+						onClick={() => {
+							props.onBusyChange?.(true);
+							props.onBusyChange?.(true);
+						}}
+					>
+						重复上报忙碌
+					</button>
+					<button type="button" onClick={() => props.onBusyChange?.(false)}>
+						上报空闲
+					</button>
+				</div>
+			);
+		},
+	};
+});
 
 describe("AgentFormCard", () => {
 	beforeEach(() => {
 		// Default: no SWR data — the selection-status probe stays unresolved and
 		// the catalog is absent unless a test overrides the mock.
 		mocks.useSWR.mockImplementation(() => ({ data: undefined }));
+		mocks.agentFormGenerationSettings.mockClear();
+		mocks.generationSettingsRuntime = {
+			busy: false,
+			emitValue: true,
+			valid: true,
+			value: {
+				kind: "image",
+				label: "Seedream 5",
+				params: { n: 1, ratio: "3:4", resolution: "2k" },
+				promptOptimization: { enabled: false },
+				promptSupplements: [],
+				referenceAssetIds: ["asset-a"],
+				routeId: "route-canonical",
+			},
+		};
 	});
 	afterEach(() => {
 		cleanup();
@@ -98,6 +165,7 @@ describe("AgentFormCard", () => {
 		expect(useAgentPersistenceStore.getState().resolvedSelections["selection-1"]?.status).toBe(
 			"cancelled",
 		);
+		expect(useAgentStore.getState().activity[0]?.label).toBe("参数已取消");
 	});
 
 	it("renders a generation_params field from the configured catalog and submits {routeId, params}", async () => {
@@ -138,6 +206,104 @@ describe("AgentFormCard", () => {
 		expect(submitted.routeId).toBe("mediago.gpt-image-2");
 		expect(submitted.label).toBe("MediaGo · GPT Image 2");
 		expect(submitted.params).toEqual({ aspectRatio: "16:9", resolution: "4K", n: 2 });
+	});
+
+	it("submits one canonical generation_settings value and uses the effective project id", async () => {
+		vi.mocked(decideAgentSelection).mockImplementation(
+			async (_selectionId, request) =>
+				({
+					id: "selection-settings",
+					title: "确认图片生成设置",
+					options: [],
+					allowCustom: false,
+					status: "submitted",
+					decision: { values: request.values },
+					createdAt: "2026-07-15T00:00:00.000Z",
+				}) as never,
+		);
+		const message = generationSettingsFormMessage();
+		seedConversation(message);
+		useProjectStore.setState({ activeProjectId: "project-active" });
+
+		render(<AgentFormCard message={message} />);
+
+		await waitFor(() => expect(screen.getByText("确认生成")).toBeEnabled());
+		expect(screen.getByTestId("shared-agent-generation-settings")).toHaveAttribute(
+			"data-project-id",
+			"project-active",
+		);
+		expect(screen.queryByText("不应显示旧字段标签")).toBeNull();
+		fireEvent.click(screen.getByText("确认生成"));
+
+		await waitFor(() => expect(decideAgentSelection).toHaveBeenCalledTimes(1));
+		const [selectionId, request, projectId] = vi.mocked(decideAgentSelection).mock.calls[0];
+		expect(selectionId).toBe("selection-settings");
+		expect(projectId).toBe("project-active");
+		expect(request).toEqual({
+			values: { settings: mocks.generationSettingsRuntime.value },
+		});
+		await waitFor(() => expect(screen.getByText(/已提交：Seedream 5/)).toBeTruthy());
+		expect(screen.getByText(/1 张参考图/)).toBeTruthy();
+	});
+
+	it("keeps confirm disabled while generation settings are not ready, but cancel remains actionable", async () => {
+		mocks.generationSettingsRuntime = {
+			...mocks.generationSettingsRuntime,
+			busy: false,
+			valid: false,
+		};
+		vi.mocked(decideAgentSelection).mockResolvedValue({
+			id: "selection-settings",
+			title: "确认图片生成设置",
+			options: [],
+			allowCustom: false,
+			status: "cancelled",
+			decision: { cancelled: true },
+			createdAt: "2026-07-15T00:00:00.000Z",
+		} as never);
+		const message = generationSettingsFormMessage();
+		seedConversation(message, ...laterProcessMessages());
+		useProjectStore.setState({ activeProjectId: "project-active" });
+
+		render(<AgentFormCard message={message} />);
+
+		await waitFor(() => expect(screen.getByText("确认生成")).toBeDisabled());
+		expect(screen.getByText("取消")).toBeEnabled();
+		expect(decideAgentSelection).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByText("取消"));
+
+		await waitFor(() => expect(decideAgentSelection).toHaveBeenCalledTimes(1));
+		expect(vi.mocked(decideAgentSelection).mock.calls[0]?.[1]).toEqual({ cancelled: true });
+		await waitFor(() => expect(screen.getByText(/已取消/)).toBeTruthy());
+	});
+
+	it("does not seed a raw composite default before the adapter emits its canonical value", async () => {
+		mocks.generationSettingsRuntime = {
+			...mocks.generationSettingsRuntime,
+			emitValue: false,
+			valid: true,
+		};
+		const message = generationSettingsFormMessage();
+		seedConversation(message);
+		useProjectStore.setState({ activeProjectId: "project-active" });
+
+		render(<AgentFormCard message={message} />);
+
+		await waitFor(() => expect(screen.getByText("确认生成")).toBeDisabled());
+		expect(decideAgentSelection).not.toHaveBeenCalled();
+	});
+
+	it("tracks repeated field busy reports idempotently by field id", async () => {
+		const message = generationSettingsFormMessage();
+		seedConversation(message);
+		useProjectStore.setState({ activeProjectId: "project-active" });
+		render(<AgentFormCard message={message} />);
+
+		await waitFor(() => expect(screen.getByText("确认生成")).toBeEnabled());
+		fireEvent.click(screen.getByText("重复上报忙碌"));
+		await waitFor(() => expect(screen.getByText("确认生成")).toBeDisabled());
+		fireEvent.click(screen.getByText("上报空闲"));
+		await waitFor(() => expect(screen.getByText("确认生成")).toBeEnabled());
 	});
 
 	it("freezes a form whose server record is already decided even without a local decision", async () => {
@@ -196,24 +362,49 @@ describe("AgentFormCard", () => {
 		expect(screen.queryByText("确认生成")).toBeNull();
 		expect(screen.queryByText("取消")).toBeNull();
 		expect(screen.queryByRole("spinbutton")).toBeNull();
+		// A local terminal result disables the SWR key, so the pending-status
+		// refresh loop cannot keep issuing requests after this render.
+		expect(mocks.useSWR.mock.calls[0]?.[0]).toBeNull();
 	});
 
-	it("freezes an undecided form the flow has already moved past", () => {
-		// On an ask timeout the agent proceeds (e.g. with a suggested fallback) but
-		// the selection record stays pending. A later message now follows the still-
-		// pending form card, so it must freeze instead of keeping stale buttons that
-		// would submit into an already-continued flow.
+	it("keeps a pending form interactive when later process messages are appended", () => {
+		// ask_user_form and await_user_selection both emit process updates after the
+		// card. Those transport messages do not resolve the selection and therefore
+		// must not make its controls disappear.
 		const message = formMessage();
-		seedConversation(message, laterMessage());
+		seedConversation(message, ...laterProcessMessages());
 		useProjectStore.setState({ activeProjectId: "project-1" });
 
 		render(<AgentFormCard message={message} />);
 
 		expect(screen.getByText("确认生成参数")).toBeTruthy();
-		expect(screen.getByText("流程已继续，无需操作。")).toBeTruthy();
-		expect(screen.queryByText("确认生成")).toBeNull();
-		expect(screen.queryByText("取消")).toBeNull();
-		expect(screen.queryByRole("spinbutton")).toBeNull();
+		expect(screen.queryByText("流程已继续，无需操作。")).toBeNull();
+		expect(screen.getByText("确认生成")).toBeTruthy();
+		expect(screen.getByText("取消")).toBeTruthy();
+		expect(screen.getByRole("spinbutton")).toBeTruthy();
+	});
+
+	it("polls a server-pending selection and stops scheduling polls for terminal data", () => {
+		mocks.useSWR.mockImplementation(() => ({
+			data: {
+				record: {
+					id: "selection-1",
+					status: "pending",
+				},
+			},
+		}));
+		const message = formMessage();
+		seedConversation(message);
+		useProjectStore.setState({ activeProjectId: "project-1" });
+
+		render(<AgentFormCard message={message} />);
+
+		const options = mocks.useSWR.mock.calls[0]?.[2] as {
+			refreshInterval?: (data: unknown) => number;
+		};
+		expect(options.refreshInterval?.({ record: { status: "pending" } })).toBe(5000);
+		expect(options.refreshInterval?.({ record: { status: "submitted" } })).toBe(0);
+		expect(options.refreshInterval?.({ missing: true })).toBe(0);
 	});
 
 	it("renders an images field with prefilled thumbnails, removes one, and submits the id array", async () => {
@@ -501,14 +692,36 @@ const seedConversation = (message: AgentMessage, ...rest: AgentMessage[]) => {
 	});
 };
 
-const laterMessage = (): AgentMessage => ({
-	id: "assistant-follow-up",
-	role: "assistant",
-	content: "好的，我先用建议的参数继续。",
-	kind: "message",
-	status: "complete",
-	createdAt: "2026-06-08T10:01:00.000Z",
-});
+const laterProcessMessages = (): AgentMessage[] => [
+	{
+		id: "assistant-thought",
+		role: "assistant",
+		content: "等待用户确认。",
+		kind: "thought",
+		phase: "commentary",
+		status: "complete",
+		createdAt: "2026-06-08T10:01:00.000Z",
+	},
+	{
+		id: "await-tool-call",
+		role: "assistant",
+		content: "await_user_selection",
+		kind: "tool",
+		phase: "commentary",
+		status: "complete",
+		metadata: { toolName: "mcp.mediago_drama.await_user_selection" },
+		createdAt: "2026-06-08T10:01:01.000Z",
+	},
+	{
+		id: "await-runtime",
+		role: "assistant",
+		content: "等待用户选择中",
+		kind: "runtime",
+		phase: "commentary",
+		status: "complete",
+		createdAt: "2026-06-08T10:01:02.000Z",
+	},
+];
 
 const generationFormMessage = (): AgentMessage => ({
 	id: "generation-form-ui",
@@ -531,6 +744,39 @@ const generationFormMessage = (): AgentMessage => ({
 					default: {
 						routeId: "mediago.gpt-image-2",
 						params: { aspectRatio: "16:9", resolution: "4K", n: 2 },
+					},
+				},
+			],
+		},
+	},
+});
+
+const generationSettingsFormMessage = (): AgentMessage => ({
+	id: "generation-settings-form-ui",
+	role: "assistant",
+	content: "需要你确认图片生成设置",
+	kind: "message",
+	status: "complete",
+	createdAt: "2026-07-15T00:00:00.000Z",
+	metadata: {
+		form: {
+			selectionId: "selection-settings",
+			title: "确认图片生成设置",
+			submitLabel: "确认生成",
+			fields: [
+				{
+					id: "settings",
+					label: "不应显示旧字段标签",
+					type: "generation_settings",
+					kind: "image",
+					default: {
+						kind: "image",
+						label: "Agent 原始默认值",
+						params: {},
+						promptOptimization: { enabled: false },
+						promptSupplements: [],
+						referenceAssetIds: [],
+						routeId: "route-agent-raw-default",
 					},
 				},
 			],

@@ -171,7 +171,11 @@ export const useGenerationWorkspace = ({
 	const needsConversation = requireConversation && !conversationId?.trim();
 
 	const { data: modelCatalog } = useSWR(generationModelsKey, getGenerationModels);
-	const { data: generationPreferences, mutate: mutatePreferences } = useSWR(
+	const {
+		data: generationPreferences,
+		error: generationPreferencesError,
+		mutate: mutatePreferences,
+	} = useSWR(
 		resolvedPreferenceScopeId ? generationPreferencesQueryKey(resolvedPreferenceScopeId) : null,
 		() => getGenerationPreferences(resolvedPreferenceScopeId),
 	);
@@ -185,13 +189,26 @@ export const useGenerationWorkspace = ({
 		projectStyleOnly ? null : stylePresetsKey,
 		listStylePresets,
 	);
-	const { data: allPresets = emptyPromptPresets } = useSWR(promptPresetsKey, () =>
+	const { data: loadedPromptPresets, error: promptPresetsError } = useSWR(promptPresetsKey, () =>
 		listPromptPresets(),
 	);
-	const { data: promptCategories = emptyPromptCategories } = useSWR(
+	const { data: loadedPromptCategories, error: promptCategoriesError } = useSWR(
 		promptCategoriesKey,
 		listPromptCategories,
 	);
+	const allPresets = loadedPromptPresets ?? emptyPromptPresets;
+	const promptCategories = loadedPromptCategories ?? emptyPromptCategories;
+	const hasSettledGenerationPreferences =
+		!resolvedPreferenceScopeId ||
+		generationPreferences !== undefined ||
+		generationPreferencesError !== undefined;
+	// Only successful responses are authoritative for pruning saved prompt-pack ids.
+	// Failed requests still settle the form, but must not masquerade as an empty catalog.
+	const hasLoadedPromptInsertItems =
+		loadedPromptPresets !== undefined && loadedPromptCategories !== undefined;
+	const hasSettledPromptInsertItems =
+		(loadedPromptPresets !== undefined || promptPresetsError !== undefined) &&
+		(loadedPromptCategories !== undefined || promptCategoriesError !== undefined);
 	const {
 		catalog,
 		hasConfiguredRoutesForKind,
@@ -464,9 +481,13 @@ export const useGenerationWorkspace = ({
 		error,
 		filteredMediaAssets,
 		fullPrompt,
+		generationPreferences,
 		generationEntries,
 		hasConfiguredRoutesForKind,
+		hasLoadedPromptInsertItems,
 		hasLiveCatalog,
+		hasSettledGenerationPreferences,
+		hasSettledPromptInsertItems,
 		isSubmitting,
 		isImportingMediaAssets,
 		isUploadingAsset,

@@ -27,8 +27,19 @@ func (adapter *Adapter) AskUserSelection(ctx context.Context, projectID string, 
 		return mediamcp.AskUserSelectionOutput{}, fmt.Errorf("selection service is not configured")
 	}
 	projectID = adapter.projectIDForAgentEvent(projectID)
+	options := selectionOptionsFromMCP(input.Options)
 
-	if reused, ok := adapter.reuseSelection(ctx, projectID, input.Kind, input.Title, input.TimeoutSeconds); ok {
+	if reused, ok := adapter.reuseSelection(
+		ctx,
+		projectID,
+		input.Kind,
+		input.Title,
+		input.Prompt,
+		options,
+		nil,
+		input.AllowCustom,
+		input.TimeoutSeconds,
+	); ok {
 		return reused.output, reused.err
 	}
 
@@ -38,7 +49,7 @@ func (adapter *Adapter) AskUserSelection(ctx context.Context, projectID string, 
 		Kind:           strings.TrimSpace(input.Kind),
 		Title:          strings.TrimSpace(input.Title),
 		Prompt:         strings.TrimSpace(input.Prompt),
-		Options:        selectionOptionsFromMCP(input.Options),
+		Options:        options,
 		AllowCustom:    input.AllowCustom,
 		TimeoutSeconds: input.TimeoutSeconds,
 	})
@@ -62,9 +73,27 @@ type reusedSelectionResult struct {
 // and a decision that landed while it was re-asking would be lost. A pending
 // duplicate is waited on (no new card); a decision made within the last two
 // minutes is returned immediately.
-func (adapter *Adapter) reuseSelection(ctx context.Context, projectID string, kind string, title string, timeoutSeconds int) (reusedSelectionResult, bool) {
+func (adapter *Adapter) reuseSelection(
+	ctx context.Context,
+	projectID string,
+	kind string,
+	title string,
+	prompt string,
+	options []serviceselection.Option,
+	fields []serviceselection.FormField,
+	allowCustom bool,
+	timeoutSeconds int,
+) (reusedSelectionResult, bool) {
 	service := adapter.document.store.Selections
-	existing, ok, err := service.FindReusable(projectID, adapter.document.config.RunID, strings.TrimSpace(kind), strings.TrimSpace(title))
+	existing, ok, err := service.FindReusable(projectID, serviceselection.ReuseRequest{
+		RunID:       adapter.document.config.RunID,
+		Kind:        strings.TrimSpace(kind),
+		Title:       strings.TrimSpace(title),
+		Prompt:      strings.TrimSpace(prompt),
+		Options:     options,
+		Fields:      fields,
+		AllowCustom: allowCustom,
+	})
 	if err != nil || !ok {
 		return reusedSelectionResult{}, false
 	}
@@ -88,8 +117,19 @@ func (adapter *Adapter) AskUserForm(ctx context.Context, projectID string, input
 		return mediamcp.AskUserSelectionOutput{}, fmt.Errorf("selection service is not configured")
 	}
 	projectID = adapter.projectIDForAgentEvent(projectID)
+	fields := selectionFieldsFromMCP(input.Fields)
 
-	if reused, ok := adapter.reuseSelection(ctx, projectID, firstNonEmpty(input.Kind, "form"), input.Title, input.TimeoutSeconds); ok {
+	if reused, ok := adapter.reuseSelection(
+		ctx,
+		projectID,
+		firstNonEmpty(input.Kind, "form"),
+		input.Title,
+		input.Prompt,
+		nil,
+		fields,
+		false,
+		input.TimeoutSeconds,
+	); ok {
 		return reused.output, reused.err
 	}
 
@@ -99,7 +139,7 @@ func (adapter *Adapter) AskUserForm(ctx context.Context, projectID string, input
 		Kind:           strings.TrimSpace(firstNonEmpty(input.Kind, "form")),
 		Title:          strings.TrimSpace(input.Title),
 		Prompt:         strings.TrimSpace(input.Prompt),
-		Fields:         selectionFieldsFromMCP(input.Fields),
+		Fields:         fields,
 		TimeoutSeconds: input.TimeoutSeconds,
 	})
 	if err != nil {

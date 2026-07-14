@@ -52,7 +52,7 @@ export const useBatchGenerationSettingsPreferenceStore =
 				settingsByKind: readLegacyBatchGenerationSettings(),
 				setSettings: (kind, settings) =>
 					set((state) => {
-						state.settingsByKind[kind] = compactBatchGenerationStoredSettings(settings);
+						state.settingsByKind[kind] = batchGenerationStoredSettingsForPersistence(settings);
 					}),
 			})),
 			{
@@ -104,7 +104,7 @@ function hasBatchGenerationStoredSettings(settings: BatchGenerationStoredSetting
 	return Boolean(settings.image || settings.video);
 }
 
-function normalizeBatchGenerationStoredSettings(
+export function normalizeBatchGenerationStoredSettings(
 	value: unknown,
 ): BatchGenerationStoredSettings | null {
 	if (!isRecord(value)) return null;
@@ -124,25 +124,39 @@ function normalizeBatchGenerationStoredSettings(
 	});
 }
 
+// Keep the persisted preference intentionally smaller than a generation request.
+// In particular, references and prompt snapshots are request-scoped and must never
+// be restored into a later generation by localStorage.
+export const batchGenerationStoredSettingsForPersistence = (
+	settings: BatchGenerationStoredSettings,
+): BatchGenerationStoredSettings => normalizeBatchGenerationStoredSettings(settings) ?? {};
+
 function compactBatchGenerationStoredSettings(
 	settings: BatchGenerationStoredSettings,
 ): BatchGenerationStoredSettings {
 	const next: BatchGenerationStoredSettings = {};
-	if (settings.familyId) next.familyId = settings.familyId;
+	const familyId = stringValue(settings.familyId);
+	const promptOptimizeItemId = stringValue(settings.promptOptimizeItemId);
+	const promptOptimizeRouteId = stringValue(settings.promptOptimizeRouteId);
+	const promptSupplementItemIds = promptSupplementItemIdsValue({
+		promptSupplementItemIds: settings.promptSupplementItemIds,
+	});
+	const routeId = stringValue(settings.routeId);
+	const versionId = stringValue(settings.versionId);
+	if (familyId) next.familyId = familyId;
 	if (settings.params && Object.keys(settings.params).length > 0)
 		next.params = { ...settings.params };
-	if (settings.promptOptimizeItemId) next.promptOptimizeItemId = settings.promptOptimizeItemId;
-	if (settings.promptOptimizeRouteId) next.promptOptimizeRouteId = settings.promptOptimizeRouteId;
-	if (settings.promptSupplementItemIds && settings.promptSupplementItemIds.length > 0)
-		next.promptSupplementItemIds = [...settings.promptSupplementItemIds];
-	if (settings.routeId) next.routeId = settings.routeId;
+	if (promptOptimizeItemId) next.promptOptimizeItemId = promptOptimizeItemId;
+	if (promptOptimizeRouteId) next.promptOptimizeRouteId = promptOptimizeRouteId;
+	if (promptSupplementItemIds) next.promptSupplementItemIds = promptSupplementItemIds;
+	if (routeId) next.routeId = routeId;
 	if (typeof settings.usePromptOptimization === "boolean") {
 		next.usePromptOptimization = settings.usePromptOptimization;
 	}
 	if (typeof settings.usePromptSupplement === "boolean") {
 		next.usePromptSupplement = settings.usePromptSupplement;
 	}
-	if (settings.versionId) next.versionId = settings.versionId;
+	if (versionId) next.versionId = versionId;
 	return next;
 }
 

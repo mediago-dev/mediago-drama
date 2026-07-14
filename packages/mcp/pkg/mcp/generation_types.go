@@ -15,7 +15,6 @@ type GenerationModelsOutput struct {
 	Models        []coregeneration.ModelSpec    `json:"models"`
 	Providers     []coregeneration.ProviderInfo `json:"providers"`
 	VoicePreviews []GenerationVoicePreviewAsset `json:"voicePreviews,omitempty"`
-	StylePresets  []GenerationStylePreset       `json:"stylePresets,omitempty"`
 	Preferences   *GenerationPreferences        `json:"preferences,omitempty"`
 }
 
@@ -27,28 +26,11 @@ type GenerationVoicePreviewAsset struct {
 	MIMEType string `json:"mimeType"`
 }
 
-// GenerationStylePreset is one built-in visual style recommendation: append
-// PromptSuffix to the user prompt and merge Params into the generate request.
-// PreviewURL serves the bundled preview image, e.g. for ask_user_selection
-// option imageUrl values.
-type GenerationStylePreset struct {
-	ID           string         `json:"id"`
-	Title        string         `json:"title"`
-	Description  string         `json:"description,omitempty"`
-	Kinds        []string       `json:"kinds"`
-	RouteID      string         `json:"routeId,omitempty"`
-	PromptSuffix string         `json:"promptSuffix"`
-	Params       map[string]any `json:"params,omitempty"`
-	PreviewURL   string         `json:"previewUrl,omitempty"`
-	MIMEType     string         `json:"mimeType,omitempty"`
-}
-
 // GenerationPreferences mirrors the user's generation workbench defaults so
 // agents can propose the user's usual setup as the default plan.
 type GenerationPreferences struct {
-	RouteIDs      map[string]string         `json:"routeIds,omitempty"`
-	RouteParams   map[string]map[string]any `json:"routeParams,omitempty"`
-	StylePresetID string                    `json:"stylePresetId,omitempty"`
+	RouteIDs    map[string]string         `json:"routeIds,omitempty"`
+	RouteParams map[string]map[string]any `json:"routeParams,omitempty"`
 }
 
 // GenerationSelectAssetInput marks one generated asset slot as the picked result.
@@ -61,29 +43,38 @@ type GenerationSelectAssetInput struct {
 
 // GenerationMessageInput creates a generation request.
 type GenerationMessageInput struct {
-	Kind               string                             `json:"kind,omitempty" jsonschema:"生成类型：image、video、audio 或 text；默认 image。"`
-	ConversationID     string                             `json:"sessionId,omitempty" jsonschema:"生成会话 ID。"`
-	ScopeID            string                             `json:"scopeId,omitempty" jsonschema:"生成会话作用域。"`
-	ProjectID          string                             `json:"projectId,omitempty" jsonschema:"项目 ID；项目级 MCP 可省略。"`
-	DocumentID         string                             `json:"documentId,omitempty" jsonschema:"来源文档 ID。"`
-	SectionID          string                             `json:"sectionId,omitempty" jsonschema:"来源章节或块 ID。"`
-	DocumentContext    *GenerationDocumentContext         `json:"documentContext,omitempty" jsonschema:"文档上下文。"`
-	CapabilityID       string                             `json:"capabilityId,omitempty" jsonschema:"能力 ID。"`
-	ResourceType       string                             `json:"resourceType,omitempty" jsonschema:"可选：目标资源类型（character、scene、prop、storyboard）；带 documentContext 时服务端会按目标文档类型自动归属，无需传。"`
-	NotificationTarget *GenerationNotificationTarget      `json:"notificationTarget,omitempty" jsonschema:"生成完成后的通知目标。"`
-	RouteID            string                             `json:"routeId,omitempty" jsonschema:"模型路由 ID，优先从 list_generation_models 选择。"`
-	FamilyID           string                             `json:"familyId,omitempty" jsonschema:"模型家族 ID。"`
-	VersionID          string                             `json:"versionId,omitempty" jsonschema:"模型版本 ID。"`
-	Provider           string                             `json:"provider,omitempty" jsonschema:"供应商。"`
-	ModelID            string                             `json:"modelId,omitempty" jsonschema:"旧版模型 ID。"`
-	Model              string                             `json:"model,omitempty" jsonschema:"供应商模型名。"`
-	Prompt             string                             `json:"prompt" jsonschema:"生成提示词。"`
-	AssetTitle         string                             `json:"assetTitle,omitempty" jsonschema:"生成资产标题。"`
-	ReferenceURLs      []string                           `json:"referenceUrls,omitempty" jsonschema:"参考资源 URL。"`
-	ReferenceAssetIDs  []string                           `json:"referenceAssetIds,omitempty" jsonschema:"参考媒体资产 ID。"`
-	ReferenceBindings  []GenerationReferenceBinding       `json:"referenceBindings,omitempty" jsonschema:"文档 mention 到参考资源的绑定。"`
-	Params             map[string]any                     `json:"params,omitempty" jsonschema:"模型参数。"`
-	PromptOptimization *GenerationPromptOptimizationInput `json:"promptOptimization,omitempty" jsonschema:"提示词优化配置；传入时先用文本模型优化提示词再生成（对应工作台的优化提示词开关），输出含 optimizedPrompt。"`
+	ConfirmationSelectionID string                             `json:"confirmationSelectionId,omitempty" jsonschema:"本次生成参数表单提交后返回的 selectionId；Agent 发起图片或视频生成时必填，服务端会核验其属于当前 run、状态为 submitted，且路由参数、参考图、附加提示词和提示词优化与已确认值一致。"`
+	Kind                    string                             `json:"kind,omitempty" jsonschema:"生成类型：image、video、audio 或 text；默认 image。"`
+	ConversationID          string                             `json:"sessionId,omitempty" jsonschema:"生成会话 ID。"`
+	ScopeID                 string                             `json:"scopeId,omitempty" jsonschema:"生成会话作用域。"`
+	ProjectID               string                             `json:"projectId,omitempty" jsonschema:"项目 ID；项目级 MCP 可省略。"`
+	DocumentID              string                             `json:"documentId,omitempty" jsonschema:"来源文档 ID。"`
+	SectionID               string                             `json:"sectionId,omitempty" jsonschema:"来源章节或块 ID。"`
+	DocumentContext         *GenerationDocumentContext         `json:"documentContext,omitempty" jsonschema:"文档上下文。"`
+	CapabilityID            string                             `json:"capabilityId,omitempty" jsonschema:"能力 ID。"`
+	ResourceType            string                             `json:"resourceType,omitempty" jsonschema:"可选：目标资源类型（character、scene、prop、storyboard）；带 documentContext 时服务端会按目标文档类型自动归属，无需传。"`
+	NotificationTarget      *GenerationNotificationTarget      `json:"notificationTarget,omitempty" jsonschema:"生成完成后的通知目标。"`
+	RouteID                 string                             `json:"routeId,omitempty" jsonschema:"模型路由 ID，优先从 list_generation_models 选择。"`
+	FamilyID                string                             `json:"familyId,omitempty" jsonschema:"模型家族 ID。"`
+	VersionID               string                             `json:"versionId,omitempty" jsonschema:"模型版本 ID。"`
+	Provider                string                             `json:"provider,omitempty" jsonschema:"供应商。"`
+	ModelID                 string                             `json:"modelId,omitempty" jsonschema:"旧版模型 ID。"`
+	Model                   string                             `json:"model,omitempty" jsonschema:"供应商模型名。"`
+	Prompt                  string                             `json:"prompt" jsonschema:"生成提示词。"`
+	PromptSupplements       []GenerationPromptSupplementInput  `json:"promptSupplements,omitempty" jsonschema:"可选：按顺序追加到基础提示词的结构化提示词包快照；服务端负责去空、去重和拼接。"`
+	AssetTitle              string                             `json:"assetTitle,omitempty" jsonschema:"生成资产标题。"`
+	ReferenceURLs           []string                           `json:"referenceUrls,omitempty" jsonschema:"参考资源 URL。"`
+	ReferenceAssetIDs       []string                           `json:"referenceAssetIds,omitempty" jsonschema:"参考媒体资产 ID。"`
+	ReferenceBindings       []GenerationReferenceBinding       `json:"referenceBindings,omitempty" jsonschema:"文档 mention 到参考资源的绑定。"`
+	Params                  map[string]any                     `json:"params,omitempty" jsonschema:"模型参数。"`
+	PromptOptimization      *GenerationPromptOptimizationInput `json:"promptOptimization,omitempty" jsonschema:"提示词优化配置；传入时先用文本模型优化提示词再生成（对应工作台的优化提示词开关），输出含 optimizedPrompt。"`
+}
+
+// GenerationPromptSupplementInput is one prompt-pack snapshot appended by the server.
+type GenerationPromptSupplementInput struct {
+	ReferenceID     string `json:"referenceId,omitempty" jsonschema:"可选：提示词包 ID，用于去重和追踪选择快照。"`
+	ReferenceName   string `json:"referenceName,omitempty" jsonschema:"可选：提示词包名称快照。"`
+	ReferencePrompt string `json:"referencePrompt" jsonschema:"追加到基础提示词的提示词包内容。"`
 }
 
 // GenerationBatchInput submits multiple normal media generation requests together.

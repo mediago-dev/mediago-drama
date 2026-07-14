@@ -64,38 +64,36 @@ func ensureProjectedUIConversation(
 }
 
 func appendProjectedAssistantDelta(conversation AgentConversationRecord, event AgentEvent) AgentConversationRecord {
-	if strings.TrimSpace(event.Delta) == "" {
+	if event.Delta == "" {
 		return conversation
 	}
 	if IsTerminalRunStatus(conversation.Status) {
 		conversation.Status = "running"
 	}
-	streamingID := conversation.StreamingMessageID
-	if streamingID == "" {
-		streamingID = messageIDForEvent(event, "assistant-stream")
+	streamingIndex := projectedStreamingMessageIndex(conversation, event)
+	if streamingIndex < 0 && conversation.StreamingMessageID != "" {
+		completeProjectedStreamingMessageByID(&conversation, conversation.StreamingMessageID)
 	}
-	found := false
-	for index := range conversation.Messages {
-		if conversation.Messages[index].ID == streamingID {
-			message := conversation.Messages[index]
-			message.Content += event.Delta
-			message.Status = "streaming"
-			conversation.Messages[index] = applyProjectedMessageSemantics(message, event)
-			found = true
-			break
-		}
+	if streamingIndex >= 0 {
+		message := conversation.Messages[streamingIndex]
+		message.Content += event.Delta
+		message.Status = "streaming"
+		conversation.Messages[streamingIndex] = applyProjectedMessageSemantics(message, event)
+		conversation.StreamingMessageID = message.ID
+		conversation.UpdatedAt = event.CreatedAt
+		return conversation
 	}
-	if !found {
-		message := applyProjectedMessageSemantics(AgentChatMessageRecord{
-			ID:        streamingID,
-			Role:      "assistant",
-			Content:   event.Delta,
-			Kind:      "message",
-			CreatedAt: event.CreatedAt,
-			Status:    "streaming",
-		}, event)
-		conversation.Messages = append(conversation.Messages, message)
-	}
+
+	streamingID := messageIDForEvent(event, "assistant-stream")
+	message := applyProjectedMessageSemantics(AgentChatMessageRecord{
+		ID:        streamingID,
+		Role:      "assistant",
+		Content:   event.Delta,
+		Kind:      "message",
+		CreatedAt: event.CreatedAt,
+		Status:    "streaming",
+	}, event)
+	conversation.Messages = append(conversation.Messages, message)
 	conversation.StreamingMessageID = streamingID
 	conversation.UpdatedAt = event.CreatedAt
 	return conversation
@@ -103,19 +101,18 @@ func appendProjectedAssistantDelta(conversation AgentConversationRecord, event A
 
 func completeProjectedAssistantMessage(conversation AgentConversationRecord, event AgentEvent) AgentConversationRecord {
 	content := firstNonEmpty(event.Content, event.Message)
-	if conversation.StreamingMessageID != "" {
-		for index := range conversation.Messages {
-			if conversation.Messages[index].ID == conversation.StreamingMessageID {
-				if strings.TrimSpace(content) != "" && !shouldPreserveProjectedSegmentedContent(conversation, index) {
-					conversation.Messages[index].Content = content
-				}
-				conversation.Messages[index].Status = "complete"
-				conversation.Messages[index] = applyProjectedMessageSemantics(conversation.Messages[index], event)
-				conversation.StreamingMessageID = ""
-				conversation.UpdatedAt = event.CreatedAt
-				return conversation
-			}
+	streamingIndex := projectedStreamingMessageIndex(conversation, event)
+	if streamingIndex >= 0 {
+		if strings.TrimSpace(content) != "" && !shouldPreserveProjectedSegmentedContent(conversation, streamingIndex) {
+			conversation.Messages[streamingIndex].Content = content
 		}
+		conversation.Messages[streamingIndex].Status = "complete"
+		conversation.Messages[streamingIndex] = applyProjectedMessageSemantics(conversation.Messages[streamingIndex], event)
+		if conversation.Messages[streamingIndex].ID == conversation.StreamingMessageID {
+			conversation.StreamingMessageID = ""
+		}
+		conversation.UpdatedAt = event.CreatedAt
+		return conversation
 	}
 	if strings.TrimSpace(content) == "" {
 		return conversation
@@ -137,14 +134,40 @@ func completeProjectedStreamingMessage(conversation AgentConversationRecord) Age
 	if conversation.StreamingMessageID == "" {
 		return conversation
 	}
-	for index := range conversation.Messages {
-		if conversation.Messages[index].ID == conversation.StreamingMessageID {
-			conversation.Messages[index].Status = "complete"
-			break
-		}
-	}
+	completeProjectedStreamingMessageByID(&conversation, conversation.StreamingMessageID)
 	conversation.StreamingMessageID = ""
 	return conversation
+}
+
+func projectedStreamingMessageIndex(conversation AgentConversationRecord, event AgentEvent) int {
+	itemID := strings.TrimSpace(event.ItemID)
+	if itemID != "" {
+		for index := len(conversation.Messages) - 1; index >= 0; index-- {
+			message := conversation.Messages[index]
+			if message.Role != "assistant" || message.Kind != "message" || message.ItemID != itemID {
+				continue
+			}
+			if event.TurnID == "" || message.TurnID == "" || message.TurnID == event.TurnID {
+				return index
+			}
+		}
+		return -1
+	}
+	for index := len(conversation.Messages) - 1; index >= 0; index-- {
+		if conversation.Messages[index].ID == conversation.StreamingMessageID {
+			return index
+		}
+	}
+	return -1
+}
+
+func completeProjectedStreamingMessageByID(conversation *AgentConversationRecord, messageID string) {
+	for index := range conversation.Messages {
+		if conversation.Messages[index].ID == messageID {
+			conversation.Messages[index].Status = "complete"
+			return
+		}
+	}
 }
 
 func shouldPreserveProjectedSegmentedContent(conversation AgentConversationRecord, streamingIndex int) bool {

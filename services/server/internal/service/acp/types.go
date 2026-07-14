@@ -24,6 +24,7 @@ type AgentACPRuntimeAlert = agent.AgentACPRuntimeAlert
 type AgentACPToolCallSummary = agent.AgentACPToolCallSummary
 type AgentACPPermissionOption = agent.AgentACPPermissionOption
 type AgentEvent = agent.AgentEvent
+type AgentMessagePhase = agent.AgentMessagePhase
 type PromptBuildOptions = prompt.PromptBuildOptions
 
 type agentEvent = agent.AgentEvent

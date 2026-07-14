@@ -33,8 +33,8 @@ func TestBuiltinPackParses(t *testing.T) {
 			continue
 		}
 		if entry.Slug == "image-generation" || entry.Slug == "video-generation" {
-			if hidden, _ := entry.Metadata["hidden"].(bool); !hidden {
-				t.Fatalf("%s hidden = %#v, want true while the skill is under test", entry.Slug, entry.Metadata["hidden"])
+			if hidden, _ := entry.Metadata["hidden"].(bool); hidden {
+				t.Fatalf("%s hidden = %#v, want visible so load_skill can resolve it", entry.Slug, entry.Metadata["hidden"])
 			}
 			continue
 		}
@@ -77,21 +77,54 @@ func TestImageGenerationSkillOwnsAgentImageWorkflow(t *testing.T) {
 			"kind: \"image\"",
 			"ask_user_selection",
 			"ask_user_form",
-			"generation_params",
+			"直接调用一次 `ask_user_form` 打开统一生成设置表单",
+			"不要在模型目录之后单独展示通用“风格选择”卡",
+			"用户可维护的动态提示词包",
+			"名为 `style` 的参数",
+			"type: \"generation_settings\"",
+			"required: true",
+			"kind: \"image\"",
+			"kind: \"generation_plan\"",
+			"恰好一个 required `generation_settings`",
+			"不得再添加 `generation_params`、`images`、`prompt_optimization`",
+			"routeId、label、params、referenceAssetIds、promptSupplements、promptOptimization",
+			"`default` 可省略",
+			"没有本轮明确 override 时，不要传 `default`",
+			"与批量生成弹窗相同的本地保存状态和偏好恢复",
+			"一旦提供，必须是完整设置对象",
+			"传输心跳",
+			"只有状态明确为 `submitted`",
+			"pending/timeout",
+			"关闭弹窗",
 			"用户已经明确比例、分辨率或张数",
-			"prompt_optimization",
 			"referenceAssetIds",
+			"promptSupplements",
+			"promptOptimization",
 			"generate_media",
 			"generate_media_batch",
 			"list_generation_tasks(batchId: ...)",
 			"documentContext",
 			"notificationTarget",
+			"confirmationSelectionId",
 			"poll_generation_task",
 			"select_generation_asset",
 			"slotIndex",
 		} {
 			if !strings.Contains(body, fragment) {
 				t.Fatalf("image-generation missing workflow rule %q:\n%s", fragment, body)
+			}
+		}
+		for _, fragment := range []string{
+			"stylePresets",
+			"promptSuffix",
+			"获取模型目录并确定风格",
+			"用户选定 preset",
+			"恰好一个 `generation_params`",
+			"从 `values.generation` 原样取得 `{routeId, label, params}`",
+			"`default` 必须是完整设置对象",
+		} {
+			if strings.Contains(body, fragment) {
+				t.Fatalf("image-generation should not use standalone style workflow %q:\n%s", fragment, body)
 			}
 		}
 		if hint, ok := entry.Metadata["hint"].(map[string]string); !ok || len(hint) != 0 {
@@ -118,12 +151,22 @@ func TestVideoGenerationSkillOwnsAgentVideoWorkflow(t *testing.T) {
 		for _, fragment := range []string{
 			"list_generation_models",
 			"kind: \"video\"",
-			"stylePresets",
+			"不要在模型目录之后单独展示通用“风格选择”卡",
+			"用户可维护的动态提示词包",
+			"名为 `style` 的参数",
 			"首帧",
 			"后台异步",
 			"ask_user_selection",
 			"ask_user_form",
 			"generation_params",
+			"required: true",
+			"本轮视频继续使用旧复合字段协议",
+			"不得改用 `generation_settings`",
+			"kind: \"generation_plan\"",
+			"恰好一个",
+			"不要添加 `select`、`toggle`、`number`、`text`",
+			"传输心跳",
+			"不得调用其他工具",
 			"prompt_optimization",
 			"referenceAssetIds",
 			"generate_media",
@@ -131,6 +174,7 @@ func TestVideoGenerationSkillOwnsAgentVideoWorkflow(t *testing.T) {
 			"list_generation_tasks(batchId: ...)",
 			"documentContext",
 			"notificationTarget",
+			"confirmationSelectionId",
 			"poll_generation_task",
 			"retry_generation_task",
 			"select_generation_asset",
@@ -144,6 +188,9 @@ func TestVideoGenerationSkillOwnsAgentVideoWorkflow(t *testing.T) {
 			if !strings.Contains(body, fragment) {
 				t.Fatalf("video-generation missing workflow rule %q:\n%s", fragment, body)
 			}
+		}
+		if strings.Contains(body, "stylePresets") {
+			t.Fatalf("video-generation should not depend on standalone style presets:\n%s", body)
 		}
 		if hint, ok := entry.Metadata["hint"].(map[string]string); !ok || len(hint) != 0 {
 			t.Fatalf("video-generation hint = %#v, want no document category restriction", entry.Metadata["hint"])

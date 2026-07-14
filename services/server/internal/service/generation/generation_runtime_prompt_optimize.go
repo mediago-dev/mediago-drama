@@ -79,6 +79,7 @@ func (workflow *GenerationService) CreatePromptOptimizedGenerationMessage(
 	payload.ModelID = strings.TrimSpace(payload.ModelID)
 	payload.Model = strings.TrimSpace(payload.Model)
 	payload.AssetTitle = strings.TrimSpace(payload.AssetTitle)
+	payload.PromptSupplements = NormalizeGenerationPromptSupplements(payload.PromptSupplements)
 	payload.ReferenceURLs = CompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = CompactStrings(payload.ReferenceAssetIDs)
 	payload.ReferenceBindings = normalizeGenerationReferenceBindings(payload.ReferenceBindings)
@@ -95,6 +96,8 @@ func (workflow *GenerationService) CreatePromptOptimizedGenerationMessage(
 	if payload.AssetTitle == "" {
 		payload.AssetTitle = generationAssetTitleFromNotificationTarget(payload.NotificationTarget)
 	}
+	payload.Prompt = ApplyGenerationPromptSupplements(payload.Prompt, payload.PromptSupplements)
+	payload.PromptSupplements = nil
 	payload.ReferenceURLs = uniqueCompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = uniqueCompactStrings(payload.ReferenceAssetIDs)
 	if payload.Kind == "" && payload.RouteID == "" && payload.ModelID == "" {

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -476,5 +477,90 @@ func TestProjectAgentEventPromotesStreamingItemOnlyOnCompletion(t *testing.T) {
 	message := messages[0]
 	if message.ItemID != "message-1" || message.Phase != AgentMessagePhaseFinalAnswer || message.Status != "complete" || message.Content != "最终回复。" {
 		t.Fatalf("message after completion = %#v, want final-answer phase transition", message)
+	}
+}
+
+func TestProjectAgentEventKeepsCommentaryAndFinalStreamingItemsSeparate(t *testing.T) {
+	conversations := map[string]AgentConversationRecord{}
+	activity := []AgentChatActivityRecord{}
+	events := []AgentEvent{
+		{
+			ID:        "event-commentary",
+			SessionID: "session-1",
+			RunID:     "run-1",
+			TurnID:    "run-1",
+			ItemID:    "message-commentary",
+			Phase:     AgentMessagePhaseCommentary,
+			Type:      "agent.message.delta",
+			Delta:     "我先检查工具。",
+			CreatedAt: "2026-07-15T00:00:00Z",
+		},
+		{
+			ID:        "event-final",
+			SessionID: "session-1",
+			RunID:     "run-1",
+			TurnID:    "run-1",
+			ItemID:    "message-final",
+			Phase:     AgentMessagePhaseFinalAnswer,
+			Type:      "agent.message.delta",
+			Delta:     "最终工具清单。",
+			CreatedAt: "2026-07-15T00:00:01Z",
+		},
+		{
+			ID:        "event-completed",
+			SessionID: "session-1",
+			RunID:     "run-1",
+			TurnID:    "run-1",
+			ItemID:    "message-final",
+			Phase:     AgentMessagePhaseFinalAnswer,
+			Type:      "agent.message.completed",
+			Content:   "最终工具清单。",
+			CreatedAt: "2026-07-15T00:00:02Z",
+		},
+	}
+
+	for _, event := range events {
+		ProjectAgentEvent(event, conversations, &activity)
+	}
+
+	messages := conversations["run-1"].Messages
+	if len(messages) != 2 {
+		t.Fatalf("messages = %#v, want separate commentary and final items", messages)
+	}
+	commentary := messages[0]
+	if commentary.ItemID != "message-commentary" || commentary.Phase != AgentMessagePhaseCommentary || commentary.Content != "我先检查工具。" || commentary.Status != "complete" {
+		t.Fatalf("commentary = %#v, want completed commentary item", commentary)
+	}
+	final := messages[1]
+	if final.ItemID != "message-final" || final.Phase != AgentMessagePhaseFinalAnswer || final.Content != "最终工具清单。" || final.Status != "complete" {
+		t.Fatalf("final = %#v, want completed final-answer item", final)
+	}
+}
+
+func TestProjectAgentEventPreservesWhitespaceOnlyStreamingDelta(t *testing.T) {
+	conversations := map[string]AgentConversationRecord{}
+	activity := []AgentChatActivityRecord{}
+	deltas := []string{"第一行", "\n\n", "第二行"}
+
+	for index, delta := range deltas {
+		ProjectAgentEvent(AgentEvent{
+			ID:        fmt.Sprintf("event-delta-%d", index),
+			SessionID: "session-1",
+			RunID:     "run-1",
+			TurnID:    "run-1",
+			ItemID:    "message-final",
+			Phase:     AgentMessagePhaseFinalAnswer,
+			Type:      "agent.message.delta",
+			Delta:     delta,
+			CreatedAt: "2026-07-15T00:00:00Z",
+		}, conversations, &activity)
+	}
+
+	messages := conversations["run-1"].Messages
+	if len(messages) != 1 {
+		t.Fatalf("messages = %#v, want one streamed item", messages)
+	}
+	if messages[0].Content != "第一行\n\n第二行" {
+		t.Fatalf("content = %q, want whitespace-only delta preserved", messages[0].Content)
 	}
 }

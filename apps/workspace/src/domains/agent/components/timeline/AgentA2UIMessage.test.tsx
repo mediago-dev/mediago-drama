@@ -114,20 +114,19 @@ describe("AgentA2UIMessage", () => {
 		);
 	});
 
-	it("keeps a superseded undecided selection card visible but non-interactive", () => {
-		// On an ask timeout the agent proceeds while the record stays pending. A
-		// later message now follows the card, so its options must stop submitting —
-		// but the content (the generated image candidates) must stay visible.
+	it("keeps a pending selection interactive when later process messages are appended", () => {
+		// Tool/thought/runtime updates emitted while awaiting the user's decision
+		// do not resolve the server selection and must not disable its options.
 		const message = selectionCardMessage();
-		seedConversation(message, laterMessage());
+		seedConversation(message, ...laterProcessMessages());
 		const onAction = vi.fn();
 		render(<AgentA2UIMessage message={message} onAction={onAction} />);
 
 		expect(screen.getByText(/选择一种插画风格/)).toBeTruthy();
 		expect(document.querySelector("img")?.getAttribute("src")).toBe("https://x/sweet.png");
-		expect(screen.getByText("流程已继续，无需操作。")).toBeTruthy();
+		expect(screen.queryByText("流程已继续，无需操作。")).toBeNull();
 		fireEvent.click(screen.getByText(/甜美粉彩/));
-		expect(onAction).not.toHaveBeenCalled();
+		expect(onAction).toHaveBeenCalledTimes(1);
 	});
 
 	it("freezes a card whose server record no longer exists", () => {
@@ -162,14 +161,36 @@ const seedConversation = (message: AgentMessage, ...rest: AgentMessage[]) => {
 	});
 };
 
-const laterMessage = (): AgentMessage => ({
-	id: "assistant-follow-up",
-	role: "assistant",
-	content: "好的，我先用建议的参数继续。",
-	kind: "message",
-	status: "complete",
-	createdAt: "2026-06-08T10:01:00.000Z",
-});
+const laterProcessMessages = (): AgentMessage[] => [
+	{
+		id: "assistant-thought",
+		role: "assistant",
+		content: "等待用户确认。",
+		kind: "thought",
+		phase: "commentary",
+		status: "complete",
+		createdAt: "2026-06-08T10:01:00.000Z",
+	},
+	{
+		id: "await-tool-call",
+		role: "assistant",
+		content: "await_user_selection",
+		kind: "tool",
+		phase: "commentary",
+		status: "complete",
+		metadata: { toolName: "mcp.mediago_drama.await_user_selection" },
+		createdAt: "2026-06-08T10:01:01.000Z",
+	},
+	{
+		id: "await-runtime",
+		role: "assistant",
+		content: "等待用户选择中",
+		kind: "runtime",
+		phase: "commentary",
+		status: "complete",
+		createdAt: "2026-06-08T10:01:02.000Z",
+	},
+];
 
 // Mirrors the server-side BuildSelectionA2UI output shape.
 const selectionCardMessage = (): AgentMessage => ({

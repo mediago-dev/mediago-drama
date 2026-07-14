@@ -174,12 +174,19 @@ export interface GenerationMessageRequest {
 	modelId: string;
 	model: string;
 	prompt: string;
+	promptSupplements?: GenerationPromptSupplementRequest[];
 	assetTitle?: string;
 	referenceUrls: string[];
 	referenceAssetIds: string[];
 	referenceBindings?: GenerationReferenceBinding[];
 	params: Record<string, unknown>;
 	promptOptimization?: GenerationPromptOptimizationRequest;
+}
+
+export interface GenerationPromptSupplementRequest {
+	referenceId?: string;
+	referenceName?: string;
+	referencePrompt: string;
 }
 
 export interface GenerationBatchRequest {

@@ -117,8 +117,19 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 			return nil
 		}
 		return server
-	}, func(_ *http.Request, projectID string) *mcp.Server {
-		server, _, err := appmcp.NewGenerationServer(api.workspaceState.Dir(), projectID, api.generation, "http")
+	}, func(request *http.Request, projectID string) *mcp.Server {
+		query := request.URL.Query()
+		server, _, err := appmcp.NewGenerationServerForRun(
+			api.workspaceState.Dir(),
+			projectID,
+			api.generation,
+			appmcp.GenerationRunContext{
+				SessionID:  query.Get("sessionId"),
+				RunID:      query.Get("runId"),
+				Selections: api.selection,
+			},
+			"http",
+		)
 		if err != nil {
 			slog.Error(
 				"generation mcp http server unavailable",
@@ -162,6 +173,26 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	agentEventHandler := httphandlers.NewAgentEvents(api)
 	runtimeHandler := httphandlers.NewAgentRuntime(newAgentRuntimeConfigInspector(api))
 	sessionHandler := httphandlers.NewAgentSessions(api.agentSessions, randomID, func(status agentSessionStatus) {
+		if api.selection != nil && strings.TrimSpace(status.RunID) != "" {
+			count, err := api.selection.CancelPendingByRun(status.ProjectID, status.RunID)
+			if err != nil {
+				slog.Warn(
+					"cancelling pending selections with agent run failed",
+					"session_id", status.SessionID,
+					"run_id", status.RunID,
+					"project_id", status.ProjectID,
+					"error", err,
+				)
+			} else if count > 0 {
+				slog.Info(
+					"cancelled pending selections with agent run",
+					"session_id", status.SessionID,
+					"run_id", status.RunID,
+					"project_id", status.ProjectID,
+					"selection_count", count,
+				)
+			}
+		}
 		api.events.Publish(agentEvent{
 			ID:        mustRandomID("event"),
 			SessionID: status.SessionID,

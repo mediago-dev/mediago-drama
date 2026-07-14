@@ -45,6 +45,20 @@ type AgentSessionTitleRequest struct {
 // AgentSessionTitleGenerator produces a short display title for a session.
 type AgentSessionTitleGenerator func(context.Context, AgentSessionTitleRequest) (string, error)
 
+// AgentRunTerminalEvent describes one authoritative run transition into a
+// terminal state. Consumers use it to finish run-scoped resources such as
+// pending user selections without coupling AgentRuntime to those services.
+type AgentRunTerminalEvent struct {
+	SessionID string
+	ProjectID string
+	RunID     string
+	Status    string
+}
+
+// AgentRunTerminalHandler is called once after a run reaches its authoritative
+// terminal state.
+type AgentRunTerminalHandler func(AgentRunTerminalEvent)
+
 // DocumentStore is the document-facing surface consumed by AgentRuntime.
 type DocumentStore interface {
 	Dir() string
@@ -65,6 +79,7 @@ type AgentRuntimeConfig struct {
 	DocumentEvents        bool
 	SessionTitleGenerator AgentSessionTitleGenerator
 	SessionTitleTimeout   time.Duration
+	RunTerminalHandler    AgentRunTerminalHandler
 }
 
 // AgentRuntime coordinates agent sessions, runner calls, and run events.
@@ -432,6 +447,14 @@ func (runtime *AgentRuntime) runAgent(
 		}
 		result := runtime.sessions.FinishRun(payload.SessionID, runID, status, message)
 		runFinished = true
+		if handler := runtime.config.RunTerminalHandler; handler != nil {
+			handler(AgentRunTerminalEvent{
+				SessionID: payload.SessionID,
+				ProjectID: payload.ProjectID,
+				RunID:     runID,
+				Status:    result.Status.LastStatus,
+			})
+		}
 		return result.Terminal
 	}
 	defer finishRun("finished", "Agent 运行已结束。")

@@ -31,12 +31,25 @@ const (
 	StatusTimeout = "timeout"
 )
 
+// Selection kinds with a server-enforced field contract.
+const (
+	// KindGenerationPlan is the canonical media-generation confirmation form.
+	// Image plans use one generation_settings snapshot. During the migration,
+	// video plans keep the legacy generation_params picker plus optional images
+	// and prompt_optimization controls. Generic fields are never accepted.
+	KindGenerationPlan = "generation_plan"
+)
+
 // Form field types renderable by the client form card.
 const (
 	FieldTypeSelect = "select"
 	FieldTypeToggle = "toggle"
 	FieldTypeNumber = "number"
 	FieldTypeText   = "text"
+	// FieldTypeGenerationSettings is the complete image-generation form value:
+	// route/params, reference assets, prompt supplements, and prompt optimization
+	// are confirmed and submitted as one immutable snapshot.
+	FieldTypeGenerationSettings = "generation_settings"
 	// FieldTypeGenerationParams is a composite generation-parameter picker: the
 	// client renders the configured model catalog (family → model → provider)
 	// plus that route's aspect-ratio/resolution/count controls, and submits
@@ -63,8 +76,9 @@ const (
 	MinTimeout = 30 * time.Second
 	MaxTimeout = 10 * time.Minute
 	// DefaultTimeout keeps one blocking wait under ACP client tool-call
-	// timeouts (codex kills MCP calls at ~120s); agents extend the wait by
-	// looping await_user_selection instead of blocking longer.
+	// timeouts (codex kills MCP calls at ~120s). Reaching this transport window
+	// is not a user decision: agents keep waiting on the same selection by
+	// calling await_user_selection again.
 	DefaultTimeout = 90 * time.Second
 	// RetrieveTTL is how long a pending selection stays claimable after
 	// creation. It is deliberately longer than MaxTimeout so a decision that
@@ -78,7 +92,12 @@ const (
 // ErrWaitTimeout is returned by WaitForSelection when the blocking window
 // elapses before the user decides. The selection stays pending, so the caller
 // can surface a timeout sentinel while the decision remains retrievable.
-var ErrWaitTimeout = errors.New("selection wait timed out")
+var (
+	ErrWaitTimeout = errors.New("selection wait timed out")
+	// ErrInvalidGenerationPlan reports a generation_plan form that does not use
+	// the catalog-backed composite field contract.
+	ErrInvalidGenerationPlan = errors.New("invalid generation_plan form")
+)
 
 // Option is one selectable choice presented to the user.
 type Option struct {
@@ -150,6 +169,19 @@ type CreateRequest struct {
 	TimeoutSeconds int
 }
 
+// ReuseRequest identifies an existing prompt that a repeated ask may reuse.
+// It carries the full form or option contract so distinct questions never
+// collapse into one card merely because their run, kind, and title match.
+type ReuseRequest struct {
+	RunID       string
+	Kind        string
+	Title       string
+	Prompt      string
+	Options     []Option
+	Fields      []FormField
+	AllowCustom bool
+}
+
 // DecisionRequest decides a pending selection from HTTP handlers.
 type DecisionRequest struct {
 	OptionID   string         `json:"optionId,omitempty"`
@@ -158,11 +190,19 @@ type DecisionRequest struct {
 	Values     map[string]any `json:"values,omitempty"`
 }
 
+// RunDecisionGuard serializes a selection decision with authoritative agent
+// run state. Implementations must keep the reported run status stable until
+// callback returns; this prevents a cancellation from racing a late submit.
+type RunDecisionGuard interface {
+	WithRunStatus(sessionID string, runID string, callback func(status string, found bool) error) error
+}
+
 // Service owns agent selection prompts.
 type Service struct {
-	mu      sync.RWMutex
-	repo    *repository.AgentSelectionRepository
-	initErr error
+	mu               sync.RWMutex
+	repo             *repository.AgentSelectionRepository
+	initErr          error
+	runDecisionGuard RunDecisionGuard
 }
 
 // NewService returns a selection service backed by a repository.
@@ -172,6 +212,18 @@ func NewService(repo *repository.AgentSelectionRepository, initErr error) *Servi
 		service.initErr = fmt.Errorf("agent selection repository is nil")
 	}
 	return service
+}
+
+// SetRunDecisionGuard attaches authoritative agent-run state to decision
+// validation. It should be configured during application wiring before the
+// service accepts requests.
+func (service *Service) SetRunDecisionGuard(guard RunDecisionGuard) {
+	if service == nil {
+		return
+	}
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	service.runDecisionGuard = guard
 }
 
 // ClampTimeout bounds a caller-supplied blocking timeout to [MinTimeout, MaxTimeout].

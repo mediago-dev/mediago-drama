@@ -298,6 +298,38 @@ func (store *SessionService) Run(sessionID string, RunID string) (*AgentRun, boo
 	return &copyRun, true
 }
 
+// WithRunStatus invokes callback while the authoritative status of one run is
+// stable. Selection decisions use this guard so a late submit is serialized
+// before or after cancellation instead of racing the terminal transition.
+func (store *SessionService) WithRunStatus(
+	sessionID string,
+	RunID string,
+	callback func(status string, found bool) error,
+) error {
+	if callback == nil {
+		return nil
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	session, ok := store.sessions[sessionID]
+	if !ok {
+		if loaded, loadedOK := store.loadSessionUnlocked(sessionID); loadedOK {
+			store.sessions[sessionID] = loaded
+			session = loaded
+			ok = true
+		}
+	}
+	if !ok || session == nil {
+		return callback("", false)
+	}
+	run, ok := session.runs[strings.TrimSpace(RunID)]
+	if !ok || run == nil {
+		return callback("", false)
+	}
+	return callback(run.Status, true)
+}
+
 func (store *SessionService) cancelRun(sessionID string) (AgentSessionStatus, bool) {
 	store.mu.Lock()
 	defer store.mu.Unlock()

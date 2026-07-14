@@ -3,6 +3,7 @@ package repository
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"gorm.io/gorm"
@@ -40,7 +41,7 @@ func (repo *AgentSelectionRepository) CreateAgentSelection(model domain.AgentSel
 // DecidePendingAgentSelection updates a pending selection and reports whether it changed.
 // The status guard makes the update idempotent: only the first decision on a
 // pending selection wins, so concurrent double-clicks cannot both succeed.
-func (repo *AgentSelectionRepository) DecidePendingAgentSelection(projectID string, selectionID string, status string, decidedAt string, decisionJSON string) (bool, error) {
+func (repo *AgentSelectionRepository) DecidePendingAgentSelection(projectID string, selectionID string, status string, now time.Time, decidedAt string, decisionJSON string) (bool, error) {
 	updates := map[string]any{
 		"status":     strings.TrimSpace(status),
 		"decided_at": decidedAt,
@@ -49,7 +50,13 @@ func (repo *AgentSelectionRepository) DecidePendingAgentSelection(projectID stri
 		updates["decision_json"] = decisionJSON
 	}
 	result := repo.db.Model(&domain.AgentSelectionModel{}).
-		Where("project_id = ? AND id = ? AND status = ?", strings.TrimSpace(projectID), strings.TrimSpace(selectionID), "pending").
+		Where(
+			"project_id = ? AND id = ? AND status = ? AND (expires_at IS NULL OR expires_at > ?)",
+			strings.TrimSpace(projectID),
+			strings.TrimSpace(selectionID),
+			"pending",
+			now.UTC(),
+		).
 		Updates(updates)
 	if result.Error != nil {
 		return false, fmt.Errorf("deciding agent selection: %w", result.Error)
@@ -57,10 +64,49 @@ func (repo *AgentSelectionRepository) DecidePendingAgentSelection(projectID stri
 	return result.RowsAffected > 0, nil
 }
 
+// CancelPendingAgentSelectionsByRun atomically cancels every pending selection
+// belonging to one run and reports how many records changed.
+func (repo *AgentSelectionRepository) CancelPendingAgentSelectionsByRun(projectID string, runID string, decidedAt string, decisionJSON string) (int64, error) {
+	updates := map[string]any{
+		"status":        "cancelled",
+		"decided_at":    decidedAt,
+		"decision_json": decisionJSON,
+	}
+	result := repo.db.Model(&domain.AgentSelectionModel{}).
+		Where(
+			"project_id = ? AND run_id = ? AND status = ?",
+			strings.TrimSpace(projectID),
+			strings.TrimSpace(runID),
+			"pending",
+		).
+		Updates(updates)
+	if result.Error != nil {
+		return 0, fmt.Errorf("cancelling pending agent selections by run: %w", result.Error)
+	}
+	return result.RowsAffected, nil
+}
+
+// ExpirePendingAgentSelectionsByRun atomically expires every pending selection
+// belonging to one run and reports how many records changed.
+func (repo *AgentSelectionRepository) ExpirePendingAgentSelectionsByRun(projectID string, runID string, decidedAt string) (int64, error) {
+	result := repo.db.Model(&domain.AgentSelectionModel{}).
+		Where(
+			"project_id = ? AND run_id = ? AND status = ?",
+			strings.TrimSpace(projectID),
+			strings.TrimSpace(runID),
+			"pending",
+		).
+		Updates(map[string]any{"status": "expired", "decided_at": decidedAt})
+	if result.Error != nil {
+		return 0, fmt.Errorf("expiring pending agent selections by run: %w", result.Error)
+	}
+	return result.RowsAffected, nil
+}
+
 // ExpirePendingAgentSelections marks the given pending selections as expired.
 // The status guard preserves any decision that landed between the sweep read
 // and this update.
-func (repo *AgentSelectionRepository) ExpirePendingAgentSelections(projectID string, selectionIDs []string, decidedAt string) (int64, error) {
+func (repo *AgentSelectionRepository) ExpirePendingAgentSelections(projectID string, selectionIDs []string, expiresBefore time.Time, decidedAt string) (int64, error) {
 	ids := make([]string, 0, len(selectionIDs))
 	for _, id := range selectionIDs {
 		if trimmed := strings.TrimSpace(id); trimmed != "" {
@@ -71,7 +117,13 @@ func (repo *AgentSelectionRepository) ExpirePendingAgentSelections(projectID str
 		return 0, nil
 	}
 	result := repo.db.Model(&domain.AgentSelectionModel{}).
-		Where("project_id = ? AND status = ? AND id IN ?", strings.TrimSpace(projectID), "pending", ids).
+		Where(
+			"project_id = ? AND status = ? AND expires_at IS NOT NULL AND expires_at <= ? AND id IN ?",
+			strings.TrimSpace(projectID),
+			"pending",
+			expiresBefore.UTC(),
+			ids,
+		).
 		Updates(map[string]any{"status": "expired", "decided_at": decidedAt})
 	if result.Error != nil {
 		return 0, fmt.Errorf("expiring agent selections: %w", result.Error)

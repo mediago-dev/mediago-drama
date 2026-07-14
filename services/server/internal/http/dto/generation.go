@@ -60,12 +60,20 @@ type GenerationMessageRequest struct {
 	ModelID            string                               `json:"modelId"`
 	Model              string                               `json:"model"`
 	Prompt             string                               `json:"prompt"`
+	PromptSupplements  []GenerationPromptSupplementRequest  `json:"promptSupplements,omitempty"`
 	AssetTitle         string                               `json:"assetTitle,omitempty"`
 	ReferenceURLs      []string                             `json:"referenceUrls"`
 	ReferenceAssetIDs  []string                             `json:"referenceAssetIds"`
 	ReferenceBindings  []GenerationReferenceBinding         `json:"referenceBindings,omitempty"`
 	Params             map[string]any                       `json:"params"`
 	PromptOptimization *GenerationPromptOptimizationRequest `json:"promptOptimization,omitempty"`
+}
+
+// GenerationPromptSupplementRequest is one prompt-pack snapshot appended by the service.
+type GenerationPromptSupplementRequest struct {
+	ReferenceID     string `json:"referenceId,omitempty"`
+	ReferenceName   string `json:"referenceName,omitempty"`
+	ReferencePrompt string `json:"referencePrompt"`
 }
 
 // GenerationBatchRequest submits multiple normal generation requests as one tracked batch.
@@ -82,6 +90,9 @@ type GenerationBatchRequest struct {
 type GenerationBatchItemRequest struct {
 	ID      string                   `json:"id,omitempty"`
 	Request GenerationMessageRequest `json:"request"`
+	// PreflightError is set by trusted adapters (for example, run-scoped MCP
+	// authorization) so one rejected item is reported without aborting siblings.
+	PreflightError string `json:"-"`
 }
 
 // GenerationBatchItemResponse reports one child submission without failing its siblings.

@@ -947,6 +947,40 @@ func TestACPClientSessionUpdatePublishesMessageChunkDelta(t *testing.T) {
 	}
 }
 
+func TestACPClientSessionUpdatePreservesFinalAnswerPhase(t *testing.T) {
+	events := []agentEvent{}
+	messageID := "message-final-1"
+	client := &acpClient{
+		runID: "run-1",
+		publish: func(event agentEvent) {
+			events = append(events, event)
+		},
+	}
+	client.setAcceptingSessionUpdates(true)
+
+	err := client.SessionUpdate(context.Background(), acp.SessionNotification{
+		Update: acp.SessionUpdate{
+			AgentMessageChunk: &acp.SessionUpdateAgentMessageChunk{
+				Meta: map[string]any{
+					"codex": map[string]any{"phase": "final_answer"},
+				},
+				Content:   acp.TextBlock("最终回复。"),
+				MessageId: &messageID,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SessionUpdate returned error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events = %d, want 1", len(events))
+	}
+	event := events[0]
+	if event.ItemID != messageID || event.Phase != "final_answer" {
+		t.Fatalf("event semantics = %#v, want final-answer message item", event)
+	}
+}
+
 func TestACPClientSessionUpdateUsesStableFallbackMessageItemID(t *testing.T) {
 	events := []agentEvent{}
 	client := &acpClient{

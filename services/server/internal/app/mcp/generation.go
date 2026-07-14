@@ -61,9 +61,6 @@ func filterGenerationModelsOutputByKind(output mediamcp.GenerationModelsOutput, 
 	if kind != "audio" {
 		filtered.VoicePreviews = nil
 	}
-	if kind != "image" {
-		filtered.StylePresets = nil
-	}
 	return filtered
 }
 
@@ -74,6 +71,9 @@ func (server *GenerationServer) CreateGenerationMessage(ctx context.Context, pro
 	}
 	defaultProjectID, err := server.generationMessageProjectID(projectID, input)
 	if err != nil {
+		return mediamcp.GenerationMessageOutput{}, err
+	}
+	if err := server.authorizeGeneration(input, input.Kind); err != nil {
 		return mediamcp.GenerationMessageOutput{}, err
 	}
 	request := generationMessageRequestFromMCP(input, defaultProjectID)
@@ -105,6 +105,17 @@ func (server *GenerationServer) CreateGenerationBatch(ctx context.Context, proje
 		return mediamcp.GenerationBatchOutput{}, err
 	}
 	request := generationBatchRequestFromMCP(input, defaultProjectID)
+	for index, item := range input.Items {
+		kind := firstNonEmpty(item.Request.Kind, input.Kind, "image")
+		if err := server.authorizeGeneration(item.Request, kind); err != nil {
+			request.Items[index].PreflightError = fmt.Sprintf(
+				"authorizing generation batch item %d (%s): %v",
+				index,
+				firstNonEmpty(item.ID, "unnamed"),
+				err,
+			)
+		}
+	}
 	server.logToolInvocation(mediamcp.GenerationTools.GenerateBatch.Name, "item_count", len(request.Items), "project_id", defaultProjectID)
 	response, status, err := service.CreateGenerationBatch(ctx, request)
 	if err != nil {

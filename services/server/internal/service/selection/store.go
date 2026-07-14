@@ -27,6 +27,10 @@ func (store *Service) Create(projectID string, request CreateRequest) (Record, e
 	if err != nil {
 		return Record{}, err
 	}
+	kind := strings.TrimSpace(request.Kind)
+	if err := validateGenerationPlanFields(kind, fields); err != nil {
+		return Record{}, err
+	}
 	options, err := normalizeOptions(request.Options, len(fields) > 0)
 	if err != nil {
 		return Record{}, err
@@ -51,7 +55,7 @@ func (store *Service) Create(projectID string, request CreateRequest) (Record, e
 		ID:          shared.MustRandomID("selection"),
 		SessionID:   strings.TrimSpace(request.SessionID),
 		RunID:       strings.TrimSpace(request.RunID),
-		Kind:        strings.TrimSpace(request.Kind),
+		Kind:        kind,
 		Title:       title,
 		Prompt:      strings.TrimSpace(request.Prompt),
 		OptionsJSON: string(optionsJSON),
@@ -73,13 +77,71 @@ func (store *Service) Create(projectID string, request CreateRequest) (Record, e
 	return recordFromModel(model)
 }
 
+// CancelPendingByRun atomically cancels every still-pending selection for one
+// agent run. Decisions that won the race before this call are left unchanged.
+func (store *Service) CancelPendingByRun(projectID string, runID string) (int64, error) {
+	if store.initErr != nil {
+		return 0, store.initErr
+	}
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return 0, fmt.Errorf("selection run id is required")
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.repo == nil {
+		return 0, fmt.Errorf("agent selection repository is not initialized")
+	}
+	decisionJSON, err := json.Marshal(Decision{Cancelled: true})
+	if err != nil {
+		return 0, fmt.Errorf("encoding cancelled selection decision: %w", err)
+	}
+	count, err := store.repo.CancelPendingAgentSelectionsByRun(
+		domain.CleanProjectID(projectID),
+		runID,
+		timestamp.NowRFC3339Nano(),
+		string(decisionJSON),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("cancelling pending selections by run: %w", err)
+	}
+	return count, nil
+}
+
+// ExpirePendingByRun atomically expires every still-pending selection for one
+// finished agent run. Decisions that won the race before this call are left
+// unchanged.
+func (store *Service) ExpirePendingByRun(projectID string, runID string) (int64, error) {
+	if store.initErr != nil {
+		return 0, store.initErr
+	}
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return 0, fmt.Errorf("selection run id is required")
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.repo == nil {
+		return 0, fmt.Errorf("agent selection repository is not initialized")
+	}
+	count, err := store.repo.ExpirePendingAgentSelectionsByRun(
+		domain.CleanProjectID(projectID),
+		runID,
+		timestamp.NowRFC3339Nano(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("expiring pending selections by run: %w", err)
+	}
+	return count, nil
+}
+
 // Get returns a selection by ID. The bool reports whether it exists.
 func (store *Service) Get(projectID string, selectionID string) (Record, bool, error) {
 	if store.initErr != nil {
 		return Record{}, false, store.initErr
 	}
-	store.mu.RLock()
-	defer store.mu.RUnlock()
+	store.mu.Lock()
+	defer store.mu.Unlock()
 	return store.getUnlocked(projectID, selectionID)
 }
 
@@ -117,6 +179,50 @@ func (store *Service) Decide(projectID string, selectionID string, request Decis
 	if store.initErr != nil {
 		return Record{}, store.initErr
 	}
+	projectID = domain.CleanProjectID(projectID)
+	selectionID = strings.TrimSpace(selectionID)
+	current, ok, err := store.Get(projectID, selectionID)
+	if err != nil {
+		return Record{}, err
+	}
+	if !ok {
+		return Record{}, repository.ErrRecordNotFound
+	}
+	if current.Status != StatusPending {
+		return current, nil
+	}
+
+	store.mu.RLock()
+	guard := store.runDecisionGuard
+	store.mu.RUnlock()
+	if guard != nil && strings.TrimSpace(current.SessionID) != "" && strings.TrimSpace(current.RunID) != "" {
+		var (
+			decided     Record
+			callbackErr error
+		)
+		guardErr := guard.WithRunStatus(current.SessionID, current.RunID, func(status string, found bool) error {
+			decided, callbackErr = store.decideWithRunStatus(projectID, selectionID, request, status, found, true)
+			return callbackErr
+		})
+		if callbackErr != nil {
+			return Record{}, callbackErr
+		}
+		if guardErr != nil {
+			return Record{}, fmt.Errorf("checking agent run before deciding selection: %w", guardErr)
+		}
+		return decided, nil
+	}
+	return store.decideWithRunStatus(projectID, selectionID, request, "", false, false)
+}
+
+func (store *Service) decideWithRunStatus(
+	projectID string,
+	selectionID string,
+	request DecisionRequest,
+	runStatus string,
+	runFound bool,
+	runChecked bool,
+) (Record, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	if store.repo == nil {
@@ -133,6 +239,9 @@ func (store *Service) Decide(projectID string, selectionID string, request Decis
 	if current.Status != StatusPending {
 		return current, nil
 	}
+	if runChecked && (!runFound || isTerminalSelectionRunStatus(runStatus)) {
+		return store.finishTerminalRunSelectionUnlocked(projectID, current, runStatus)
+	}
 
 	status, decision, err := resolveDecision(current, request)
 	if err != nil {
@@ -145,10 +254,12 @@ func (store *Service) Decide(projectID string, selectionID string, request Decis
 
 	// The conditional update is idempotent at the DB level; whether or not this
 	// call won the race, we return the current persisted record.
+	now := time.Now().UTC()
 	if _, err := store.repo.DecidePendingAgentSelection(
-		domain.CleanProjectID(projectID),
+		projectID,
 		selectionID,
 		status,
+		now,
 		timestamp.NowRFC3339Nano(),
 		string(decisionJSON),
 	); err != nil {
@@ -162,6 +273,47 @@ func (store *Service) Decide(projectID string, selectionID string, request Decis
 		return Record{}, repository.ErrRecordNotFound
 	}
 	return record, nil
+}
+
+func (store *Service) finishTerminalRunSelectionUnlocked(projectID string, current Record, runStatus string) (Record, error) {
+	status := StatusExpired
+	decisionJSON := ""
+	if strings.TrimSpace(runStatus) == StatusCancelled {
+		status = StatusCancelled
+		raw, err := json.Marshal(Decision{Cancelled: true})
+		if err != nil {
+			return Record{}, fmt.Errorf("encoding cancelled selection decision: %w", err)
+		}
+		decisionJSON = string(raw)
+	}
+	now := time.Now().UTC()
+	if _, err := store.repo.DecidePendingAgentSelection(
+		projectID,
+		current.ID,
+		status,
+		now,
+		timestamp.NowRFC3339Nano(),
+		decisionJSON,
+	); err != nil {
+		return Record{}, fmt.Errorf("finishing selection for terminal agent run: %w", err)
+	}
+	record, ok, err := store.getUnlocked(projectID, current.ID)
+	if err != nil {
+		return Record{}, err
+	}
+	if !ok {
+		return Record{}, repository.ErrRecordNotFound
+	}
+	return record, nil
+}
+
+func isTerminalSelectionRunStatus(status string) bool {
+	switch strings.TrimSpace(status) {
+	case "completed", "failed", "cancelled", "finished", "interrupted", "paused":
+		return true
+	default:
+		return false
+	}
 }
 
 // WaitForSelection blocks until the selection leaves pending or the blocking
@@ -206,51 +358,129 @@ func (store *Service) waitForSelection(ctx context.Context, projectID string, se
 	}
 }
 
-// FindReusable returns a same-question selection from the run that a repeated
-// ask should attach to instead of popping a duplicate card: a still-pending
-// one, or one decided within the last two minutes (raced with the re-ask).
-func (store *Service) FindReusable(projectID string, runID string, kind string, title string) (Record, bool, error) {
+// FindReusable returns a semantically identical selection from the run that a
+// repeated ask should attach to instead of popping a duplicate card: a
+// still-pending one, or one decided within the last two minutes (raced with the
+// re-ask). Reuse compares a normalized prompt and the complete interaction
+// contract (form fields, or options plus allowCustom) so distinct questions
+// never collapse merely because their titles match.
+func (store *Service) FindReusable(projectID string, request ReuseRequest) (Record, bool, error) {
 	if store.initErr != nil {
 		return Record{}, false, store.initErr
 	}
-	runID = strings.TrimSpace(runID)
-	kind = strings.TrimSpace(kind)
-	title = strings.TrimSpace(title)
+	runID := strings.TrimSpace(request.RunID)
+	kind := strings.TrimSpace(request.Kind)
+	title := strings.TrimSpace(request.Title)
 	if runID == "" || title == "" {
 		return Record{}, false, nil
 	}
-	store.mu.RLock()
-	defer store.mu.RUnlock()
+	expectedFingerprint, err := reusableSelectionFingerprint(request)
+	if err != nil {
+		return Record{}, false, err
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
 	if store.repo == nil {
 		return Record{}, false, fmt.Errorf("agent selection repository is not initialized")
+	}
+	now := time.Now().UTC()
+	if err := store.sweepExpiredUnlocked(projectID, now); err != nil {
+		return Record{}, false, err
 	}
 	models, err := store.repo.ListAgentSelectionsByRun(domain.CleanProjectID(projectID), runID, 20)
 	if err != nil {
 		return Record{}, false, err
 	}
-	now := time.Now().UTC()
 	for _, model := range models {
 		if strings.TrimSpace(model.Kind) != kind || strings.TrimSpace(model.Title) != title {
 			continue
 		}
+		record, err := recordFromModel(model)
+		if err != nil {
+			return Record{}, false, err
+		}
+		candidateFingerprint, err := reusableSelectionFingerprint(ReuseRequest{
+			Kind:        kind,
+			Prompt:      record.Prompt,
+			Options:     record.Options,
+			Fields:      record.Fields,
+			AllowCustom: record.AllowCustom,
+		})
+		if err != nil || candidateFingerprint != expectedFingerprint {
+			continue
+		}
 		switch model.Status {
 		case StatusPending:
-			record, err := recordFromModel(model)
-			if err != nil {
-				return Record{}, false, err
-			}
 			return record, true, nil
 		case StatusSelected, StatusCustom, StatusSubmitted:
 			if model.DecidedAt != nil && now.Sub(model.DecidedAt.UTC()) <= 2*time.Minute {
-				record, err := recordFromModel(model)
-				if err != nil {
-					return Record{}, false, err
-				}
 				return record, true, nil
 			}
 		}
 	}
 	return Record{}, false, nil
+}
+
+func reusableSelectionFingerprint(request ReuseRequest) (string, error) {
+	// ask_user_form permits domain-specific kind values in addition to "form"
+	// and generation_plan. Fields, rather than the label-like kind, are the
+	// reliable discriminator between a form and an option selection.
+	if len(request.Fields) > 0 {
+		return reusableFormFingerprint(request.Kind, request.Prompt, request.Fields)
+	}
+	options, err := normalizeOptions(request.Options, false)
+	if err != nil {
+		return "", fmt.Errorf("normalizing reusable selection options: %w", err)
+	}
+	raw, err := json.Marshal(struct {
+		Prompt      string   `json:"prompt"`
+		Options     []Option `json:"options"`
+		AllowCustom bool     `json:"allowCustom"`
+	}{
+		Prompt:      strings.TrimSpace(request.Prompt),
+		Options:     options,
+		AllowCustom: request.AllowCustom,
+	})
+	if err != nil {
+		return "", fmt.Errorf("encoding reusable selection fingerprint: %w", err)
+	}
+	return string(raw), nil
+}
+
+func reusableFormFingerprint(kind string, prompt string, fields []FormField) (string, error) {
+	normalized, err := normalizeFields(fields)
+	if err != nil {
+		return "", fmt.Errorf("normalizing reusable form fields: %w", err)
+	}
+	if err := validateGenerationPlanFields(strings.TrimSpace(kind), normalized); err != nil {
+		return "", fmt.Errorf("normalizing reusable generation plan: %w", err)
+	}
+	canonical := make([]FormField, len(normalized))
+	for index, field := range normalized {
+		field.Kind = strings.TrimSpace(field.Kind)
+		field.Description = strings.TrimSpace(field.Description)
+		field.Unit = strings.TrimSpace(field.Unit)
+		if len(field.Options) > 0 {
+			field.Options = append([]FormFieldOption(nil), field.Options...)
+			for optionIndex := range field.Options {
+				field.Options[optionIndex].Value = strings.TrimSpace(field.Options[optionIndex].Value)
+				field.Options[optionIndex].Label = strings.TrimSpace(field.Options[optionIndex].Label)
+				field.Options[optionIndex].Description = strings.TrimSpace(field.Options[optionIndex].Description)
+			}
+		}
+		canonical[index] = field
+	}
+	raw, err := json.Marshal(struct {
+		Prompt string      `json:"prompt"`
+		Fields []FormField `json:"fields"`
+	}{
+		Prompt: strings.TrimSpace(prompt),
+		Fields: canonical,
+	})
+	if err != nil {
+		return "", fmt.Errorf("encoding reusable form fingerprint: %w", err)
+	}
+	return string(raw), nil
 }
 
 func (store *Service) getUnlocked(projectID string, selectionID string) (Record, bool, error) {
@@ -263,6 +493,24 @@ func (store *Service) getUnlocked(projectID string, selectionID string) (Record,
 	}
 	if err != nil {
 		return Record{}, false, err
+	}
+	now := time.Now().UTC()
+	if selectionModelIsDue(model, now) {
+		if _, err := store.repo.ExpirePendingAgentSelections(
+			domain.CleanProjectID(projectID),
+			[]string{model.ID},
+			now,
+			timestamp.NowRFC3339Nano(),
+		); err != nil {
+			return Record{}, false, fmt.Errorf("expiring due agent selection: %w", err)
+		}
+		model, err = store.repo.GetAgentSelection(domain.CleanProjectID(projectID), strings.TrimSpace(selectionID))
+		if isNotFound(err) {
+			return Record{}, false, nil
+		}
+		if err != nil {
+			return Record{}, false, err
+		}
 	}
 	record, err := recordFromModel(model)
 	if err != nil {
@@ -278,20 +526,28 @@ func (store *Service) sweepExpiredUnlocked(projectID string, now time.Time) erro
 	}
 	expiredIDs := make([]string, 0)
 	for _, model := range models {
-		if model.ExpiresAt == nil {
-			continue
-		}
-		if now.After(model.ExpiresAt.UTC()) {
+		if selectionModelIsDue(model, now) {
 			expiredIDs = append(expiredIDs, model.ID)
 		}
 	}
 	if len(expiredIDs) == 0 {
 		return nil
 	}
-	if _, err := store.repo.ExpirePendingAgentSelections(domain.CleanProjectID(projectID), expiredIDs, timestamp.NowRFC3339Nano()); err != nil {
+	if _, err := store.repo.ExpirePendingAgentSelections(
+		domain.CleanProjectID(projectID),
+		expiredIDs,
+		now,
+		timestamp.NowRFC3339Nano(),
+	); err != nil {
 		return err
 	}
 	return nil
+}
+
+func selectionModelIsDue(model domain.AgentSelectionModel, now time.Time) bool {
+	return model.Status == StatusPending &&
+		model.ExpiresAt != nil &&
+		!model.ExpiresAt.UTC().After(now.UTC())
 }
 
 func normalizeOptions(options []Option, allowEmpty bool) ([]Option, error) {
@@ -377,14 +633,22 @@ func normalizeFields(fields []FormField) ([]FormField, error) {
 			if len(field.Options) == 0 {
 				return nil, fmt.Errorf("form field %q needs options", id)
 			}
-		case FieldTypeToggle, FieldTypeNumber, FieldTypeText, FieldTypeGenerationParams, FieldTypeImages, FieldTypePromptOptimization:
+		case FieldTypeToggle, FieldTypeNumber, FieldTypeText, FieldTypeGenerationSettings, FieldTypeGenerationParams, FieldTypeImages, FieldTypePromptOptimization:
 		default:
 			return nil, fmt.Errorf("form field %q has unsupported type %q", id, fieldType)
 		}
 		field.ID = id
 		field.Type = fieldType
+		field.Kind = strings.TrimSpace(field.Kind)
 		if fieldType == FieldTypeImages {
 			field.Max = clampImagesMax(field.Max)
+		}
+		if fieldType == FieldTypeGenerationSettings && field.Default != nil {
+			checked, err := validateGenerationSettingsValue(field, field.Default)
+			if err != nil {
+				return nil, fmt.Errorf("form field %q default is invalid: %w", id, err)
+			}
+			field.Default = checked
 		}
 		field.Label = strings.TrimSpace(field.Label)
 		if field.Label == "" {
@@ -393,6 +657,91 @@ func normalizeFields(fields []FormField) ([]FormField, error) {
 		normalized = append(normalized, field)
 	}
 	return normalized, nil
+}
+
+func validateGenerationPlanFields(kind string, fields []FormField) error {
+	if kind != KindGenerationPlan {
+		return nil
+	}
+	settingsCount := 0
+	for _, field := range fields {
+		if field.Type == FieldTypeGenerationSettings {
+			settingsCount++
+		}
+	}
+	if settingsCount > 0 {
+		if settingsCount != 1 || len(fields) != 1 {
+			return fmt.Errorf(
+				"%w: image plans require exactly one %s field and cannot mix legacy or generic fields",
+				ErrInvalidGenerationPlan,
+				FieldTypeGenerationSettings,
+			)
+		}
+		if fields[0].Kind != "image" {
+			return fmt.Errorf(
+				"%w: %s field %q requires kind=image (got %q)",
+				ErrInvalidGenerationPlan,
+				FieldTypeGenerationSettings,
+				fields[0].ID,
+				fields[0].Kind,
+			)
+		}
+		fields[0].Required = true
+		return nil
+	}
+
+	counts := map[string]int{}
+	for index, field := range fields {
+		switch field.Type {
+		case FieldTypeGenerationParams, FieldTypeImages, FieldTypePromptOptimization:
+			counts[field.Type]++
+			if field.Type == FieldTypeGenerationParams {
+				// A generation plan has no meaning without an explicit catalog-backed
+				// route/params value. Enforce this even when the agent omitted required.
+				fields[index].Required = true
+			}
+		default:
+			return fmt.Errorf(
+				"%w: field %q uses disallowed type %q; allowed types are %s, %s, and %s",
+				ErrInvalidGenerationPlan,
+				field.ID,
+				field.Type,
+				FieldTypeGenerationParams,
+				FieldTypeImages,
+				FieldTypePromptOptimization,
+			)
+		}
+	}
+	if counts[FieldTypeGenerationParams] != 1 {
+		return fmt.Errorf(
+			"%w: exactly one %s field is required (got %d)",
+			ErrInvalidGenerationPlan,
+			FieldTypeGenerationParams,
+			counts[FieldTypeGenerationParams],
+		)
+	}
+	for _, field := range fields {
+		if field.Type == FieldTypeGenerationParams && field.Kind != "video" {
+			return fmt.Errorf(
+				"%w: legacy %s field %q requires kind=video (got %q)",
+				ErrInvalidGenerationPlan,
+				FieldTypeGenerationParams,
+				field.ID,
+				field.Kind,
+			)
+		}
+	}
+	for _, fieldType := range []string{FieldTypeImages, FieldTypePromptOptimization} {
+		if counts[fieldType] > 1 {
+			return fmt.Errorf(
+				"%w: at most one %s field is allowed (got %d)",
+				ErrInvalidGenerationPlan,
+				fieldType,
+				counts[fieldType],
+			)
+		}
+	}
+	return nil
 }
 
 // validateFormValues checks submitted values against the form's field specs
@@ -479,6 +828,8 @@ func validateFormValue(field FormField, value any) (any, error) {
 			return nil, fmt.Errorf("form field %q expects a string", field.ID)
 		}
 		return strings.TrimSpace(text), nil
+	case FieldTypeGenerationSettings:
+		return validateGenerationSettingsValue(field, value)
 	case FieldTypeGenerationParams:
 		return validateGenerationParamsValue(field, value)
 	case FieldTypeImages:
@@ -487,6 +838,154 @@ func validateFormValue(field FormField, value any) (any, error) {
 		return validatePromptOptimizationValue(field, value)
 	}
 	return nil, fmt.Errorf("form field %q has unsupported type %q", field.ID, field.Type)
+}
+
+// validateGenerationSettingsValue validates and normalizes the complete image
+// generation snapshot submitted by the shared settings form. Catalog-specific
+// route/param validity remains the generation service's responsibility.
+func validateGenerationSettingsValue(field FormField, value any) (any, error) {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("form field %q expects an object value", field.ID)
+	}
+	kind, ok := object["kind"].(string)
+	if !ok || strings.TrimSpace(kind) != "image" {
+		return nil, fmt.Errorf("form field %q requires kind=image", field.ID)
+	}
+	routeID, ok := object["routeId"].(string)
+	if !ok || strings.TrimSpace(routeID) == "" {
+		return nil, fmt.Errorf("form field %q requires a routeId", field.ID)
+	}
+	params, ok := object["params"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("form field %q expects params to be an object", field.ID)
+	}
+
+	referenceAssetIDs, err := validateGenerationSettingsReferenceAssetIDs(field, object["referenceAssetIds"])
+	if err != nil {
+		return nil, err
+	}
+	promptSupplements, err := validateGenerationSettingsPromptSupplements(field, object["promptSupplements"])
+	if err != nil {
+		return nil, err
+	}
+	promptOptimization, err := validateGenerationSettingsPromptOptimization(field, object["promptOptimization"])
+	if err != nil {
+		return nil, err
+	}
+
+	resolved := map[string]any{
+		"kind":               "image",
+		"routeId":            strings.TrimSpace(routeID),
+		"params":             params,
+		"referenceAssetIds":  referenceAssetIDs,
+		"promptSupplements":  promptSupplements,
+		"promptOptimization": promptOptimization,
+	}
+	if label, present := object["label"]; present && label != nil {
+		text, ok := label.(string)
+		if !ok {
+			return nil, fmt.Errorf("form field %q expects label to be a string", field.ID)
+		}
+		if text = strings.TrimSpace(text); text != "" {
+			resolved["label"] = text
+		}
+	}
+	return resolved, nil
+}
+
+func validateGenerationSettingsReferenceAssetIDs(field FormField, value any) ([]string, error) {
+	items, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("form field %q expects referenceAssetIds to be an array", field.ID)
+	}
+	seen := map[string]bool{}
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		id, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("form field %q expects referenceAssetIds to contain strings", field.ID)
+		}
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func validateGenerationSettingsPromptSupplements(field FormField, value any) ([]map[string]any, error) {
+	items, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("form field %q expects promptSupplements to be an array", field.ID)
+	}
+	resolved := make([]map[string]any, 0, len(items))
+	for index, item := range items {
+		object, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("form field %q expects promptSupplements[%d] to be an object", field.ID, index)
+		}
+		name, ok := object["referenceName"].(string)
+		if !ok {
+			return nil, fmt.Errorf("form field %q expects promptSupplements[%d].referenceName to be a string", field.ID, index)
+		}
+		prompt, ok := object["referencePrompt"].(string)
+		if !ok || strings.TrimSpace(prompt) == "" {
+			return nil, fmt.Errorf("form field %q requires promptSupplements[%d].referencePrompt", field.ID, index)
+		}
+		supplement := map[string]any{
+			"referenceName":   strings.TrimSpace(name),
+			"referencePrompt": strings.TrimSpace(prompt),
+		}
+		if rawID, present := object["referenceId"]; present && rawID != nil {
+			id, ok := rawID.(string)
+			if !ok {
+				return nil, fmt.Errorf("form field %q expects promptSupplements[%d].referenceId to be a string", field.ID, index)
+			}
+			if id = strings.TrimSpace(id); id != "" {
+				supplement["referenceId"] = id
+			}
+		}
+		resolved = append(resolved, supplement)
+	}
+	return resolved, nil
+}
+
+func validateGenerationSettingsPromptOptimization(field FormField, value any) (map[string]any, error) {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("form field %q expects promptOptimization to be an object", field.ID)
+	}
+	enabled, ok := object["enabled"].(bool)
+	if !ok {
+		return nil, fmt.Errorf("form field %q expects promptOptimization.enabled to be a boolean", field.ID)
+	}
+	if !enabled {
+		return map[string]any{"enabled": false}, nil
+	}
+	resolved := map[string]any{"enabled": true}
+	for _, key := range []string{"routeId", "label", "referenceId", "referenceName", "referencePrompt"} {
+		raw, present := object[key]
+		if !present || raw == nil {
+			continue
+		}
+		text, ok := raw.(string)
+		if !ok {
+			return nil, fmt.Errorf("form field %q expects promptOptimization.%s to be a string", field.ID, key)
+		}
+		if text = strings.TrimSpace(text); text != "" {
+			resolved[key] = text
+		}
+	}
+	if _, ok := resolved["routeId"]; !ok {
+		return nil, fmt.Errorf("form field %q requires promptOptimization.routeId when enabled", field.ID)
+	}
+	if _, ok := resolved["referencePrompt"]; !ok {
+		return nil, fmt.Errorf("form field %q requires promptOptimization.referencePrompt when enabled", field.ID)
+	}
+	return resolved, nil
 }
 
 // validateGenerationParamsValue checks the composite generation-parameter

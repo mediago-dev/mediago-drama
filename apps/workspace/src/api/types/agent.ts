@@ -254,10 +254,12 @@ export interface AgentFormField {
 		| "toggle"
 		| "number"
 		| "text"
+		| "generation_settings"
 		| "generation_params"
 		| "images"
 		| "prompt_optimization";
-	// generation_params only: which model catalog to render. Defaults to "image".
+	// generation_settings currently renders the complete image form;
+	// legacy generation_params uses this to choose the video catalog.
 	kind?: "image" | "video" | "audio";
 	description?: string;
 	options?: AgentFormFieldOption[];

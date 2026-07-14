@@ -3,6 +3,7 @@ package agent
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
@@ -51,6 +52,56 @@ func TestSessionServiceCancelActiveRun(t *testing.T) {
 	}
 	if status.Running || status.LastStatus != "cancelled" || status.ProjectID != "project-1" || status.RunID != "run-1" {
 		t.Fatalf("Cancel status = %+v, want cancelled project/run metadata and not running", status)
+	}
+}
+
+func TestSessionServiceRunStatusGuardSerializesCancellation(t *testing.T) {
+	store := NewSessionService(nil)
+	store.create("session-1", "project-1")
+	if _, ok := store.StartRun("session-1", "project-1", "run-1", func() {}, AgentRunStartOptions{}); !ok {
+		t.Fatal("starting run failed")
+	}
+
+	guardEntered := make(chan struct{})
+	releaseGuard := make(chan struct{})
+	guardDone := make(chan error, 1)
+	go func() {
+		guardDone <- store.WithRunStatus("session-1", "run-1", func(status string, found bool) error {
+			if !found || status != "running" {
+				t.Errorf("WithRunStatus() = %q, found=%v; want running", status, found)
+			}
+			close(guardEntered)
+			<-releaseGuard
+			return nil
+		})
+	}()
+	<-guardEntered
+
+	cancelDone := make(chan bool, 1)
+	go func() {
+		_, cancelled := store.CancelRun("session-1")
+		cancelDone <- cancelled
+	}()
+	select {
+	case <-cancelDone:
+		t.Fatal("CancelRun() completed while guarded decision was still in progress")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(releaseGuard)
+	if err := <-guardDone; err != nil {
+		t.Fatalf("WithRunStatus() error = %v", err)
+	}
+	if cancelled := <-cancelDone; !cancelled {
+		t.Fatal("CancelRun() did not cancel after guard released")
+	}
+
+	if err := store.WithRunStatus("session-1", "run-1", func(status string, found bool) error {
+		if !found || status != "cancelled" {
+			t.Fatalf("WithRunStatus() after cancel = %q, found=%v; want cancelled", status, found)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("WithRunStatus() after cancel error = %v", err)
 	}
 }
 

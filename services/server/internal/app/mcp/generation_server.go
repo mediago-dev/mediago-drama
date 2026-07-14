@@ -28,9 +28,30 @@ type GenerationService interface {
 
 // NewGenerationServer creates a generation-scoped MCP server.
 func NewGenerationServer(workspaceDir string, projectID string, service GenerationService, transport string) (*mcp.Server, *GenerationServer, error) {
+	return NewGenerationServerForRun(
+		workspaceDir,
+		projectID,
+		service,
+		GenerationRunContext{},
+		transport,
+	)
+}
+
+// NewGenerationServerForRun creates a generation MCP server scoped to an
+// agent run and its user-confirmation store.
+func NewGenerationServerForRun(
+	workspaceDir string,
+	projectID string,
+	service GenerationService,
+	run GenerationRunContext,
+	transport string,
+) (*mcp.Server, *GenerationServer, error) {
 	toolServer := &GenerationServer{
-		service:   service,
-		projectID: domain.CleanProjectID(projectID),
+		service:    service,
+		projectID:  domain.CleanProjectID(projectID),
+		sessionID:  strings.TrimSpace(run.SessionID),
+		runID:      strings.TrimSpace(run.RunID),
+		selections: run.Selections,
 	}
 	slog.Debug(
 		"generation mcp server starting",
@@ -57,8 +78,11 @@ func NewGenerationServer(workspaceDir string, projectID string, service Generati
 
 // GenerationServer owns generation MCP runtime state.
 type GenerationServer struct {
-	service   GenerationService
-	projectID string
+	service    GenerationService
+	projectID  string
+	sessionID  string
+	runID      string
+	selections GenerationSelectionStore
 }
 
 func (server *GenerationServer) requireService() (GenerationService, error) {
