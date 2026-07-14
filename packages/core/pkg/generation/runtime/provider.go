@@ -59,6 +59,7 @@ type Config struct {
 	LibTVBinDir       string
 	LibTVProjectID    string
 	LibTVProjectStore libtv.ProjectStore
+	LibTVRunner       libtv.CommandRunner
 	PippitBinPath     string
 	PippitBinDir      string
 	XiaoyunqueBaseURL string
@@ -238,6 +239,7 @@ func (provider *Provider) libTVProvider() (generation.Provider, error) {
 			BinDir:       provider.config.LibTVBinDir,
 			ProjectID:    provider.config.LibTVProjectID,
 			ProjectStore: provider.config.LibTVProjectStore,
+			Runner:       provider.config.LibTVRunner,
 		})
 	})
 }

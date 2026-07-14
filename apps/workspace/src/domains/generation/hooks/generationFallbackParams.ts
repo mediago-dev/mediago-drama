@@ -328,6 +328,78 @@ export function jimengSeedreamParams(): GenerationParam[] {
 	];
 }
 
+const libTVImageOptions = (values: string[]) =>
+	values.map((value) => ({ label: value === "adaptive" ? "Adaptive" : value, value }));
+
+export function libTVGPTImageParams(): GenerationParam[] {
+	return [
+		selectParam(
+			"aspectRatio",
+			"Aspect ratio",
+			"16:9",
+			libTVImageOptions([
+				"1:1",
+				"9:16",
+				"16:9",
+				"3:4",
+				"4:3",
+				"3:2",
+				"2:3",
+				"5:4",
+				"4:5",
+				"21:9",
+				"9:21",
+			]),
+		),
+		selectParam("resolution", "Resolution", "2K", libTVImageOptions(["1K", "2K", "4K"])),
+		selectParam("quality", "Quality", "medium", [
+			{ label: "Low", value: "low" },
+			{ label: "Medium", value: "medium" },
+			{ label: "High", value: "high" },
+		]),
+	];
+}
+
+export function libTVNanoBananaParams(): GenerationParam[] {
+	return [
+		selectParam(
+			"aspectRatio",
+			"Aspect ratio",
+			"16:9",
+			libTVImageOptions([
+				"adaptive",
+				"1:1",
+				"9:16",
+				"16:9",
+				"3:4",
+				"4:3",
+				"3:2",
+				"2:3",
+				"4:5",
+				"5:4",
+				"8:1",
+				"1:8",
+				"4:1",
+				"1:4",
+				"21:9",
+			]),
+		),
+		selectParam("resolution", "Resolution", "2K", libTVImageOptions(["1K", "2K", "4K"])),
+	];
+}
+
+export function libTVSeedreamParams(): GenerationParam[] {
+	return [
+		selectParam(
+			"aspectRatio",
+			"Aspect ratio",
+			"16:9",
+			libTVImageOptions(["1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3"]),
+		),
+		selectParam("resolution", "Resolution", "2K", libTVImageOptions(["2K", "3K"])),
+	];
+}
+
 export function officialGPTImageParams(): GenerationParam[] {
 	return gptImageParamsWithBackground();
 }

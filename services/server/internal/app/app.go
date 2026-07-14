@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -22,6 +23,8 @@ import (
 	serviceruntimeactivity "github.com/mediago-dev/mediago-drama/services/server/internal/service/runtimeactivity"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+var errAgentRuntimeConfigInspectionUnsupported = errors.New("agent runner does not support runtime config inspection")
 
 // Config controls local server persistence and runtime behavior.
 type Config struct {
@@ -160,17 +163,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	generationPreferenceHandler := httphandlers.NewGenerationPreferences(api.generation)
 	internalEventHandler := httphandlers.NewInternalEvents(api.agentBridgeToken, api)
 	agentEventHandler := httphandlers.NewAgentEvents(api)
-	runtimeHandler := httphandlers.NewAgentRuntime(func(ctx context.Context, projectID string) (agentRuntimeConfigResponse, error) {
-		inspector, ok := api.agentRunner.(agentRuntimeConfigInspector)
-		if !ok {
-			return agentRuntimeConfigResponse{}, nil
-		}
-		projectDir, err := api.workspaceState.StateService().Documents.ProjectDir(projectID)
-		if err != nil {
-			return agentRuntimeConfigResponse{}, err
-		}
-		return inspector.InspectSessionConfig(ctx, projectID, projectDir)
-	})
+	runtimeHandler := httphandlers.NewAgentRuntime(newAgentRuntimeConfigInspector(api))
 	sessionHandler := httphandlers.NewAgentSessions(api.agentSessions, randomID, func(status agentSessionStatus) {
 		api.events.Publish(agentEvent{
 			ID:        mustRandomID("event"),
@@ -248,6 +241,23 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	})
 
 	return &Handler{Handler: router, api: api}
+}
+
+func newAgentRuntimeConfigInspector(api *apiHandler) httphandlers.AgentRuntimeConfigInspector {
+	return func(ctx context.Context, projectID string) (agentRuntimeConfigResponse, error) {
+		if api == nil {
+			return agentRuntimeConfigResponse{}, errAgentRuntimeConfigInspectionUnsupported
+		}
+		inspector, ok := api.agentRunner.(agentRuntimeConfigInspector)
+		if !ok {
+			return agentRuntimeConfigResponse{}, errAgentRuntimeConfigInspectionUnsupported
+		}
+		projectDir, err := api.workspaceState.StateService().Documents.ProjectDir(projectID)
+		if err != nil {
+			return agentRuntimeConfigResponse{}, err
+		}
+		return inspector.InspectSessionConfig(ctx, projectID, projectDir)
+	}
 }
 
 func writeError(context *gin.Context, status int, message string) {

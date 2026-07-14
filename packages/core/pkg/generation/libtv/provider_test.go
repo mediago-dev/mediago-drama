@@ -15,6 +15,498 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
+func TestResolveImageModelNameUsesExactModelKey(t *testing.T) {
+	tests := []struct {
+		name      string
+		routeID   string
+		modelKey  string
+		modelName string
+	}{
+		{
+			name:      "gpt image 2",
+			routeID:   generation.RouteLibTVGPTImage2,
+			modelKey:  "lib-image-2",
+			modelName: "Lib Image Current",
+		},
+		{
+			name:      "nano banana 31",
+			routeID:   generation.RouteLibTVNanoBanana31,
+			modelKey:  "nebula-2-flash",
+			modelName: "Lib Navo 2 Current",
+		},
+		{
+			name:      "seedream 5 lite",
+			routeID:   generation.RouteLibTVSeedream5Lite,
+			modelKey:  "seedream-5",
+			modelName: "Seedream 5.0 Current",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binPath := fakeExecutable(t, "libtv")
+			var calls [][]string
+			runner := CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+				calls = append(calls, append([]string{}, args...))
+				return []byte(fmt.Sprintf(
+					"checking models\n{\"matches\":[{\"modelKey\":\"other\",\"modelName\":\"Other\"},{\"modelKey\":%q,\"modelName\":%q}]}\n",
+					test.modelKey,
+					test.modelName,
+				)), nil
+			})
+			provider, err := NewProvider(Config{BinPath: binPath, Runner: runner})
+			if err != nil {
+				t.Fatalf("NewProvider() error = %v", err)
+			}
+
+			got, err := provider.resolveImageModelName(context.Background(), test.routeID)
+			if err != nil {
+				t.Fatalf("resolveImageModelName() error = %v", err)
+			}
+			if got != test.modelName {
+				t.Fatalf("resolveImageModelName() = %q, want %q", got, test.modelName)
+			}
+			if !reflect.DeepEqual(calls, [][]string{{"model", "search", "--type=image"}}) {
+				t.Fatalf("calls = %#v, want one exact image model search", calls)
+			}
+		})
+	}
+}
+
+func TestResolveImageModelNameRejectsUnavailableOrInvalidResults(t *testing.T) {
+	tests := []struct {
+		name       string
+		routeID    string
+		output     string
+		runErr     error
+		wantErrors []string
+	}{
+		{
+			name:       "model key absent",
+			routeID:    generation.RouteLibTVGPTImage2,
+			output:     `{"matches":[{"modelKey":"lib-image","modelName":"Different"}]}`,
+			wantErrors: []string{"lib-image-2", "Lib Image"},
+		},
+		{
+			name:       "matched model name empty",
+			routeID:    generation.RouteLibTVNanoBanana31,
+			output:     `{"matches":[{"modelKey":"nebula-2-flash","modelName":"  "}]}`,
+			wantErrors: []string{"nebula-2-flash", "modelName"},
+		},
+		{
+			name:       "malformed output",
+			routeID:    generation.RouteLibTVSeedream5Lite,
+			output:     `not json`,
+			wantErrors: []string{"seedream-5", "JSON"},
+		},
+		{
+			name:       "command failure",
+			routeID:    generation.RouteLibTVGPTImage2,
+			output:     `not logged in`,
+			runErr:     errors.New("exit status 1"),
+			wantErrors: []string{"lib-image-2", "model search", "not logged in"},
+		},
+		{
+			name:       "unknown route",
+			routeID:    "libtv.unknown-image",
+			output:     `{"matches":[]}`,
+			wantErrors: []string{"libtv.unknown-image", "not configured"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binPath := fakeExecutable(t, "libtv")
+			calls := 0
+			runner := CommandRunnerFunc(func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+				calls++
+				return []byte(test.output), test.runErr
+			})
+			provider, err := NewProvider(Config{BinPath: binPath, Runner: runner})
+			if err != nil {
+				t.Fatalf("NewProvider() error = %v", err)
+			}
+
+			_, err = provider.resolveImageModelName(context.Background(), test.routeID)
+			if err == nil {
+				t.Fatal("resolveImageModelName() error = nil, want failure")
+			}
+			for _, want := range test.wantErrors {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error = %q, missing %q", err.Error(), want)
+				}
+			}
+			if test.routeID == "libtv.unknown-image" && calls != 0 {
+				t.Fatalf("calls = %d, want unknown route to fail before CLI", calls)
+			}
+		})
+	}
+}
+
+func TestGenerateImageCreatesAndRunsLibTVNode(t *testing.T) {
+	binPath := fakeExecutable(t, "libtv")
+	var calls [][]string
+	runner := CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string{}, args...))
+		if len(args) == 0 {
+			t.Fatal("runner received no args")
+		}
+		switch args[0] {
+		case "model":
+			return imageModelSearchOutput("lib-image-2", "Lib Image"), nil
+		case "node":
+			return []byte(`{"id":"node_123","name":"generated"}`), nil
+		default:
+			t.Fatalf("unexpected args = %#v", args)
+			return nil, nil
+		}
+	})
+	provider, err := NewProvider(Config{
+		BinPath:   binPath,
+		ProjectID: "project-123",
+		Runner:    runner,
+		Now:       func() time.Time { return time.Unix(1, 234) },
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindImage,
+		RouteID: generation.RouteLibTVGPTImage2,
+		Prompt:  "make an image",
+		Params: map[string]any{
+			"aspectRatio": "16:9",
+			"resolution":  "2K",
+			"quality":     "medium",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	wantCalls := [][]string{
+		{"model", "search", "--type=image"},
+		{
+			"node",
+			"--project=project-123",
+			"create",
+			"mediago-image-1000000234",
+			"--type=image",
+			"--prompt=make an image",
+			"--set=model=Lib Image",
+			"--set=ratio=16:9",
+			"--set=resolution=2K",
+			"--set=quality=medium",
+			"--set=count=1",
+			"--run",
+		},
+	}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Fatalf("calls = %#v, want %#v", calls, wantCalls)
+	}
+	if response.ID != generation.RouteLibTVGPTImage2+":project-123:node_123" ||
+		response.Status != "submitted" || response.Model != "Lib Image" {
+		t.Fatalf("response = %#v, want submitted LibTV image task", response)
+	}
+}
+
+func TestGenerateImageUsesRouteSpecificParameters(t *testing.T) {
+	tests := []struct {
+		name      string
+		routeID   string
+		modelKey  string
+		modelName string
+		params    map[string]any
+		wantFlags []string
+	}{
+		{
+			name:      "lib navo 2",
+			routeID:   generation.RouteLibTVNanoBanana31,
+			modelKey:  "nebula-2-flash",
+			modelName: "Lib Navo 2",
+			params: map[string]any{
+				"aspectRatio": "adaptive",
+				"resolution":  "4K",
+			},
+			wantFlags: []string{
+				"--set=model=Lib Navo 2",
+				"--set=ratio=auto",
+				"--set=quality=4K",
+				"--set=count=1",
+			},
+		},
+		{
+			name:      "seedream 5 lite",
+			routeID:   generation.RouteLibTVSeedream5Lite,
+			modelKey:  "seedream-5",
+			modelName: "Seedream 5.0 Lite",
+			params: map[string]any{
+				"aspectRatio": "3:4",
+				"resolution":  "3K",
+			},
+			wantFlags: []string{
+				"--set=model=Seedream 5.0 Lite",
+				"--set=ratio=3:4",
+				"--set=quality=3K",
+				"--set=sequential=0",
+				"--set=count=1",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binPath := fakeExecutable(t, "libtv")
+			var nodeArgs []string
+			runner := CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+				if len(args) == 0 {
+					t.Fatal("runner received no args")
+				}
+				switch args[0] {
+				case "model":
+					return imageModelSearchOutput(test.modelKey, test.modelName), nil
+				case "node":
+					nodeArgs = append([]string{}, args...)
+					return []byte(`{"id":"node_route"}`), nil
+				default:
+					t.Fatalf("unexpected args = %#v", args)
+					return nil, nil
+				}
+			})
+			provider, err := NewProvider(Config{
+				BinPath:   binPath,
+				ProjectID: "project-route",
+				Runner:    runner,
+			})
+			if err != nil {
+				t.Fatalf("NewProvider() error = %v", err)
+			}
+
+			_, err = provider.Generate(context.Background(), generation.Request{
+				Kind:    generation.KindImage,
+				RouteID: test.routeID,
+				Prompt:  "make an image",
+				Params:  test.params,
+			})
+			if err != nil {
+				t.Fatalf("Generate() error = %v", err)
+			}
+			for _, want := range append([]string{"--type=image"}, test.wantFlags...) {
+				if !stringSliceContains(nodeArgs, want) {
+					t.Fatalf("node args = %#v, missing %q", nodeArgs, want)
+				}
+			}
+			for _, unwanted := range []string{"--set=duration=5", "--set=enableSound=off", "--set=modeType=mixed2video"} {
+				if stringSliceContains(nodeArgs, unwanted) {
+					t.Fatalf("node args = %#v, contains video-only %q", nodeArgs, unwanted)
+				}
+			}
+		})
+	}
+}
+
+func TestGenerateImageUploadsAndLinksImageReference(t *testing.T) {
+	binPath := fakeExecutable(t, "libtv")
+	dir := t.TempDir()
+	imagePath := filepath.Join(dir, "style.png")
+	if err := os.WriteFile(imagePath, []byte("image-bytes"), 0o600); err != nil {
+		t.Fatalf("writing image reference: %v", err)
+	}
+
+	var calls [][]string
+	runner := CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string{}, args...))
+		if len(args) == 0 {
+			t.Fatal("runner received no args")
+		}
+		switch args[0] {
+		case "model":
+			return imageModelSearchOutput("lib-image-2", "Lib Image"), nil
+		case "upload":
+			return []byte(`{"id":"ref_image"}`), nil
+		case "node":
+			return []byte(`{"id":"node_image_ref"}`), nil
+		default:
+			t.Fatalf("unexpected args = %#v", args)
+			return nil, nil
+		}
+	})
+	provider, err := NewProvider(Config{
+		BinPath:   binPath,
+		ProjectID: "project-123",
+		Runner:    runner,
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		Kind:          generation.KindImage,
+		RouteID:       generation.RouteLibTVGPTImage2,
+		Prompt:        "edit this image",
+		ReferenceURLs: []string{imagePath},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if len(calls) != 3 || calls[0][0] != "model" || calls[1][0] != "upload" || calls[2][0] != "node" {
+		t.Fatalf("calls = %#v, want model search, upload, node create", calls)
+	}
+	if !stringSliceContains(calls[1], "--type=image") || !stringSliceContains(calls[1], "--resource="+imagePath) {
+		t.Fatalf("upload args = %#v, want image reference", calls[1])
+	}
+	for _, want := range []string{"--set=modeType=image2image", "--left-add=ref_image"} {
+		if !stringSliceContains(calls[2], want) {
+			t.Fatalf("node args = %#v, missing %q", calls[2], want)
+		}
+	}
+	if response.ID != generation.RouteLibTVGPTImage2+":project-123:node_image_ref" {
+		t.Fatalf("response = %#v, want image reference task id", response)
+	}
+}
+
+func TestGenerateImageRejectsNonImageReferencesBeforeCLISideEffects(t *testing.T) {
+	tests := []struct {
+		name      string
+		filename  string
+		wantError string
+	}{
+		{name: "video", filename: "motion.mp4", wantError: "image"},
+		{name: "audio", filename: "voice.wav", wantError: "image"},
+		{name: "unknown", filename: "brief.pdf", wantError: "recognized image"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			withWorkingDir(t, dir)
+			referencePath := filepath.Join(dir, test.filename)
+			if err := os.WriteFile(referencePath, []byte("reference"), 0o600); err != nil {
+				t.Fatalf("writing reference: %v", err)
+			}
+			binPath := fakeExecutable(t, "libtv")
+			calls := 0
+			runner := CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+				calls++
+				t.Fatalf("unexpected CLI side effect before validation: %#v", args)
+				return nil, nil
+			})
+			provider, err := NewProvider(Config{BinPath: binPath, Runner: runner})
+			if err != nil {
+				t.Fatalf("NewProvider() error = %v", err)
+			}
+
+			_, err = provider.Generate(context.Background(), generation.Request{
+				Kind:          generation.KindImage,
+				RouteID:       generation.RouteLibTVGPTImage2,
+				Prompt:        "make an image",
+				ReferenceURLs: []string{referencePath},
+			})
+			if err == nil {
+				t.Fatal("Generate() error = nil, want reference rejection")
+			}
+			if !strings.Contains(strings.ToLower(err.Error()), test.wantError) {
+				t.Fatalf("error = %q, missing %q", err.Error(), test.wantError)
+			}
+			if calls != 0 {
+				t.Fatalf("calls = %d, want zero CLI side effects", calls)
+			}
+		})
+	}
+}
+
+func TestGenerateImageRejectsCallerControlledSequential(t *testing.T) {
+	tests := []struct {
+		name       string
+		routeID    string
+		sequential any
+	}{
+		{name: "non seedream route", routeID: generation.RouteLibTVGPTImage2, sequential: 0},
+		{name: "seedream nonzero", routeID: generation.RouteLibTVSeedream5Lite, sequential: 1},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binPath := fakeExecutable(t, "libtv")
+			calls := 0
+			provider, err := NewProvider(Config{
+				BinPath: binPath,
+				Runner: CommandRunnerFunc(func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+					calls++
+					return nil, nil
+				}),
+			})
+			if err != nil {
+				t.Fatalf("NewProvider() error = %v", err)
+			}
+
+			_, err = provider.Generate(context.Background(), generation.Request{
+				Kind:           generation.KindImage,
+				RouteID:        test.routeID,
+				Prompt:         "make an image",
+				ParamsResolved: true,
+				Params: map[string]any{
+					"ratio":      "16:9",
+					"quality":    "2K",
+					"sequential": test.sequential,
+				},
+			})
+			if err == nil || !strings.Contains(err.Error(), "sequential") {
+				t.Fatalf("Generate() error = %v, want sequential rejection", err)
+			}
+			if calls != 0 {
+				t.Fatalf("calls = %d, want zero CLI calls", calls)
+			}
+		})
+	}
+}
+
+func TestGenerateImageForcesSeedreamSingleImageForResolvedParams(t *testing.T) {
+	binPath := fakeExecutable(t, "libtv")
+	var nodeArgs []string
+	provider, err := NewProvider(Config{
+		BinPath:   binPath,
+		ProjectID: "project-seedream",
+		Runner: CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+			if len(args) == 0 {
+				t.Fatal("runner received no args")
+			}
+			switch args[0] {
+			case "model":
+				return imageModelSearchOutput("seedream-5", "Seedream 5.0 Lite"), nil
+			case "node":
+				nodeArgs = append([]string{}, args...)
+				return []byte(`{"id":"node_seedream"}`), nil
+			default:
+				t.Fatalf("unexpected args = %#v", args)
+				return nil, nil
+			}
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	_, err = provider.Generate(context.Background(), generation.Request{
+		Kind:           generation.KindImage,
+		RouteID:        generation.RouteLibTVSeedream5Lite,
+		Prompt:         "make one image",
+		ParamsResolved: true,
+		Params: map[string]any{
+			"ratio":   "16:9",
+			"quality": "2K",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if !stringSliceContains(nodeArgs, "--set=sequential=0") ||
+		!stringSliceContains(nodeArgs, "--set=count=1") {
+		t.Fatalf("node args = %#v, want forced single-image settings", nodeArgs)
+	}
+}
+
 func TestGenerateVideoCreatesAndRunsLibTVNode(t *testing.T) {
 	binPath := fakeExecutable(t, "libtv")
 	var gotArgs []string
@@ -649,6 +1141,71 @@ func TestGetReturnsSubmittedWhenLibTVDownloadIsPending(t *testing.T) {
 	}
 }
 
+func TestAssetsFromDownloadDirClassifiesSupportedMedia(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		kind     generation.Kind
+		mimeType string
+	}{
+		{name: "png", filename: "result.png", kind: generation.KindImage, mimeType: "image/png"},
+		{name: "jpeg", filename: "result.jpg", kind: generation.KindImage, mimeType: "image/jpeg"},
+		{name: "webp", filename: "result.webp", kind: generation.KindImage, mimeType: "image/webp"},
+		{name: "video regression", filename: "result.mp4", kind: generation.KindVideo, mimeType: "video/mp4"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			data := []byte("result-bytes")
+			if err := os.WriteFile(filepath.Join(dir, test.filename), data, 0o600); err != nil {
+				t.Fatalf("writing result: %v", err)
+			}
+
+			assets, err := assetsFromDownloadDir(dir)
+			if err != nil {
+				t.Fatalf("assetsFromDownloadDir() error = %v", err)
+			}
+			if len(assets) != 1 || assets[0].Kind != test.kind || assets[0].MIMEType != test.mimeType {
+				t.Fatalf("assets = %#v, want one %s %s asset", assets, test.kind, test.mimeType)
+			}
+			if assets[0].Base64 != base64.StdEncoding.EncodeToString(data) {
+				t.Fatalf("asset base64 = %q, want encoded test data", assets[0].Base64)
+			}
+		})
+	}
+}
+
+func TestAssetsFromDownloadDirRejectsUnsupportedResults(t *testing.T) {
+	tests := []struct {
+		name       string
+		filename   string
+		wantErrors []string
+	}{
+		{name: "zip archive", filename: "result.zip", wantErrors: []string{"ZIP", "single-image"}},
+		{name: "unknown media", filename: "result.bin", wantErrors: []string{"unsupported", "text/plain"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, test.filename), []byte("result-bytes"), 0o600); err != nil {
+				t.Fatalf("writing result: %v", err)
+			}
+
+			assets, err := assetsFromDownloadDir(dir)
+			if err == nil {
+				t.Fatalf("assetsFromDownloadDir() assets = %#v, error = nil", assets)
+			}
+			for _, want := range test.wantErrors {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error = %q, missing %q", err.Error(), want)
+				}
+			}
+		})
+	}
+}
+
 func fakeExecutable(t *testing.T, name string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
@@ -656,6 +1213,14 @@ func fakeExecutable(t *testing.T, name string) string {
 		t.Fatalf("writing fake executable: %v", err)
 	}
 	return path
+}
+
+func imageModelSearchOutput(modelKey string, modelName string) []byte {
+	return []byte(fmt.Sprintf(
+		`{"matches":[{"modelKey":%q,"modelName":%q}]}`,
+		modelKey,
+		modelName,
+	))
 }
 
 func stringSliceContains(values []string, want string) bool {

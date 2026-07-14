@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { SWRConfig } from "swr";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import useSWR, { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodexRelaySettingsResponse } from "@/domains/settings/api/settings";
 import {
@@ -92,6 +92,7 @@ describe("CodexRelayPanel", () => {
 	});
 
 	it("shows the API error message when enabling relay check fails", async () => {
+		const runtimeConfigFetcher = vi.fn().mockResolvedValue({});
 		vi.mocked(getCodexRelaySettings).mockResolvedValue(responseWithRelay({}, { enabled: false }));
 		vi.mocked(saveCodexRelaySettings)
 			.mockResolvedValueOnce(responseWithRelay())
@@ -100,7 +101,8 @@ describe("CodexRelayPanel", () => {
 			message: "Codex 中转配置不可用：上游返回 401，请检查 API Key 和 Base URL",
 		});
 
-		renderPanel();
+		renderPanel(runtimeConfigFetcher);
+		await waitFor(() => expect(runtimeConfigFetcher).toHaveBeenCalledTimes(1));
 
 		const enabledSwitch = await screen.findByRole("switch", { name: "Codex 中转启用状态" });
 		expect(enabledSwitch.getAttribute("aria-checked")).toBe("false");
@@ -111,6 +113,8 @@ describe("CodexRelayPanel", () => {
 		expect(toastMock.error).toHaveBeenCalledWith("启用失败", {
 			description: "Codex 中转配置不可用：上游返回 401，请检查 API Key 和 Base URL",
 		});
+		await act(async () => Promise.resolve());
+		await waitFor(() => expect(runtimeConfigFetcher).toHaveBeenCalledTimes(2));
 	});
 
 	it("marks the active relay profile as effective", async () => {
@@ -281,13 +285,15 @@ describe("CodexRelayPanel", () => {
 	});
 
 	it("saves the selected relay API key and clears the password input", async () => {
+		const runtimeConfigFetcher = vi.fn().mockResolvedValue({});
 		vi.mocked(getCodexRelaySettings).mockResolvedValue(responseWithRelay());
 		vi.mocked(saveCodexRelaySettings).mockResolvedValue(responseWithRelay());
 		vi.mocked(saveCodexRelayProfileAPIKey).mockResolvedValue(
 			responseWithRelay({ apiKey: { configured: true, source: "settings" } }),
 		);
 
-		renderPanel();
+		renderPanel(runtimeConfigFetcher);
+		await waitFor(() => expect(runtimeConfigFetcher).toHaveBeenCalledTimes(1));
 
 		fireEvent.click(await screen.findByRole("button", { name: "添加 Key" }));
 		const dialog = await screen.findByRole("dialog", { name: "编辑 API Key" });
@@ -300,9 +306,52 @@ describe("CodexRelayPanel", () => {
 		);
 		expect(checkCodexRelaySettings).toHaveBeenCalledTimes(1);
 		await waitFor(() => expect(screen.queryByRole("dialog", { name: "编辑 API Key" })).toBeNull());
+		await waitFor(() => expect(runtimeConfigFetcher).toHaveBeenCalledTimes(2));
+	});
+
+	it("clears dormant runtime config data after persisted relay changes", async () => {
+		vi.mocked(getCodexRelaySettings).mockResolvedValue(responseWithRelay());
+		vi.mocked(saveCodexRelaySettings).mockResolvedValue(responseWithRelay());
+		vi.mocked(saveCodexRelayProfileAPIKey).mockResolvedValue(
+			responseWithRelay({ apiKey: { configured: true, source: "settings" } }),
+		);
+		const cache = new Map();
+		const warmRuntimeConfig = vi.fn().mockResolvedValue({ model: { options: ["gpt-5.5"] } });
+		const view = render(
+			<SWRConfig value={{ dedupingInterval: 0, provider: () => cache }}>
+				<RuntimeConfigProbe fetcher={warmRuntimeConfig} />
+			</SWRConfig>,
+		);
+		await waitFor(() =>
+			expect(screen.getByTestId("runtime-config-probe")).toHaveTextContent("loaded"),
+		);
+
+		view.rerender(
+			<SWRConfig value={{ dedupingInterval: 0, provider: () => cache }}>
+				<CodexRelayPanel />
+			</SWRConfig>,
+		);
+		fireEvent.click(await screen.findByRole("button", { name: "添加 Key" }));
+		const dialog = await screen.findByRole("dialog", { name: "编辑 API Key" });
+		fireEvent.change(within(dialog).getByLabelText("API Key"), {
+			target: { value: "sk-relay-secret" },
+		});
+		fireEvent.click(within(dialog).getByRole("button", { name: "保存 Key" }));
+		await waitFor(() => expect(screen.queryByRole("dialog", { name: "编辑 API Key" })).toBeNull());
+
+		const pendingRuntimeConfig = vi.fn(() => new Promise<unknown>(() => {}));
+		view.rerender(
+			<SWRConfig value={{ dedupingInterval: 0, provider: () => cache }}>
+				<RuntimeConfigProbe fetcher={pendingRuntimeConfig} />
+			</SWRConfig>,
+		);
+		await waitFor(() =>
+			expect(screen.getByTestId("runtime-config-probe")).toHaveTextContent("empty"),
+		);
 	});
 
 	it("keeps the API key dialog open when the active relay check fails", async () => {
+		const runtimeConfigFetcher = vi.fn().mockResolvedValue({});
 		vi.mocked(getCodexRelaySettings).mockResolvedValue(responseWithRelay());
 		vi.mocked(saveCodexRelaySettings).mockResolvedValue(responseWithRelay());
 		vi.mocked(saveCodexRelayProfileAPIKey).mockResolvedValue(
@@ -312,7 +361,8 @@ describe("CodexRelayPanel", () => {
 			new Error("Codex 中转配置不可用：上游返回 401，请检查 API Key 和 Base URL"),
 		);
 
-		renderPanel();
+		renderPanel(runtimeConfigFetcher);
+		await waitFor(() => expect(runtimeConfigFetcher).toHaveBeenCalledTimes(1));
 
 		fireEvent.click(await screen.findByRole("button", { name: "添加 Key" }));
 		const dialog = await screen.findByRole("dialog", { name: "编辑 API Key" });
@@ -326,6 +376,7 @@ describe("CodexRelayPanel", () => {
 		expect(toastMock.error).toHaveBeenCalledWith("保存失败", {
 			description: "Codex 中转配置不可用：上游返回 401，请检查 API Key 和 Base URL",
 		});
+		await waitFor(() => expect(runtimeConfigFetcher).toHaveBeenCalledTimes(2));
 	});
 
 	it("persists a new draft relay before saving its API key", async () => {
@@ -372,10 +423,20 @@ describe("CodexRelayPanel", () => {
 	});
 });
 
-const renderPanel = () =>
+const runtimeConfigKey = "/projects/project-1/agent/runtime-config";
+
+const RuntimeConfigProbe: React.FC<{ fetcher: () => Promise<unknown> }> = ({ fetcher }) => {
+	const { data } = useSWR(runtimeConfigKey, fetcher);
+	return (
+		<output data-testid="runtime-config-probe">{data === undefined ? "empty" : "loaded"}</output>
+	);
+};
+
+const renderPanel = (runtimeConfigFetcher?: () => Promise<unknown>) =>
 	render(
-		<SWRConfig value={{ provider: () => new Map() }}>
+		<SWRConfig value={{ dedupingInterval: 0, provider: () => new Map() }}>
 			<CodexRelayPanel />
+			{runtimeConfigFetcher ? <RuntimeConfigProbe fetcher={runtimeConfigFetcher} /> : null}
 		</SWRConfig>,
 	);
 

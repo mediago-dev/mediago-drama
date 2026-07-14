@@ -5,6 +5,84 @@ import (
 	"testing"
 )
 
+func TestLibTVImageParamTranslation(t *testing.T) {
+	tests := []struct {
+		name   string
+		route  string
+		params map[string]any
+		want   map[string]any
+	}{
+		{
+			name:  "lib image",
+			route: RouteLibTVGPTImage2,
+			params: map[string]any{
+				"aspectRatio": "16:9",
+				"resolution":  "2K",
+				"quality":     "medium",
+			},
+			want: map[string]any{
+				"ratio":      "16:9",
+				"resolution": "2K",
+				"quality":    "medium",
+			},
+		},
+		{
+			name:  "lib navo 2",
+			route: RouteLibTVNanoBanana31,
+			params: map[string]any{
+				"aspectRatio": "3:4",
+				"resolution":  "2K",
+			},
+			want: map[string]any{
+				"ratio":   "3:4",
+				"quality": "2K",
+			},
+		},
+		{
+			name:  "lib navo 2 adaptive",
+			route: RouteLibTVNanoBanana31,
+			params: map[string]any{
+				"aspectRatio": "adaptive",
+				"resolution":  "4K",
+			},
+			want: map[string]any{
+				"ratio":   "auto",
+				"quality": "4K",
+			},
+		},
+		{
+			name:  "seedream 5 lite",
+			route: RouteLibTVSeedream5Lite,
+			params: map[string]any{
+				"aspectRatio": "3:4",
+				"resolution":  "3K",
+			},
+			want: map[string]any{
+				"ratio":      "3:4",
+				"quality":    "3K",
+				"sequential": 0,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			route := mustRoute(t, test.route)
+			normalized, err := NormalizeRouteParams(route, test.params)
+			if err != nil {
+				t.Fatalf("NormalizeRouteParams() error = %v", err)
+			}
+			got, err := TranslateRouteParams(route, normalized)
+			if err != nil {
+				t.Fatalf("TranslateRouteParams() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("TranslateRouteParams() = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestTranslateRouteParamsMovesAndValues(t *testing.T) {
 	route := mustRoute(t, RouteJimengSeedream50)
 	request := Request{

@@ -1570,6 +1570,51 @@ func TestGetGenerationVideoPollsProviderTaskID(t *testing.T) {
 	}
 }
 
+func TestGetGenerationVideoUsesStoredImageKind(t *testing.T) {
+	repo, err := repository.NewGenerationTaskRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{coregeneration.ProviderLibTV: "oauth:configured"},
+	})
+	provider := &stubImageProvider{
+		getResponse: coregeneration.Response{
+			ID:     coregeneration.RouteLibTVGPTImage2 + ":project-123:node-empty",
+			Status: "completed",
+		},
+	}
+	workflow := NewGenerationService(settingsSvc, store, nil)
+	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		if route.ID != coregeneration.RouteLibTVGPTImage2 {
+			t.Fatalf("route = %q, want LibTV GPT Image 2", route.ID)
+		}
+		return provider, nil
+	}
+
+	task := libTVImageTaskRecord("generation-image-local")
+	task.ProviderTaskID = coregeneration.RouteLibTVGPTImage2 + ":project-123:node-empty"
+	if err := store.Upsert(task); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	response, status, err := workflow.GetGenerationVideo(context.Background(), task.ID)
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("GetGenerationVideo() status = %d error = %v", status, err)
+	}
+	if response.Status != "failed" || !strings.Contains(response.Error, "未返回图片素材") {
+		t.Fatalf("response = %+v, want image-specific empty result failure", response)
+	}
+	stored, ok, err := store.Get(task.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !ok || stored.Kind != string(coregeneration.KindImage) || stored.Status != "failed" {
+		t.Fatalf("task = %+v, want failed task retaining image kind", stored)
+	}
+}
+
 func TestGetGenerationVideoCachesRemoteAssetWithTaskAssetTitle(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	seedGenerationTaskProject(t, dbPath, "project-alpha")
@@ -2304,6 +2349,20 @@ func jimengImageTaskRecord(id string) GenerationTaskRecord {
 	}
 }
 
+func libTVImageTaskRecord(id string) GenerationTaskRecord {
+	return GenerationTaskRecord{
+		ID:        id,
+		Kind:      string(coregeneration.KindImage),
+		RouteID:   coregeneration.RouteLibTVGPTImage2,
+		FamilyID:  coregeneration.FamilyGPTImage,
+		VersionID: coregeneration.VersionGPTImage2,
+		Provider:  coregeneration.ProviderLibTV,
+		Model:     "Lib Image",
+		Prompt:    "a cat",
+		Status:    "submitted",
+	}
+}
+
 func jimengSeedanceVideoTaskRecord(id string, routeID string, status string) GenerationTaskRecord {
 	route, ok := coregeneration.FindRoute(routeID)
 	if !ok {
@@ -2372,6 +2431,80 @@ func TestCompleteSubmittedGenerationHandsOffPendingImage(t *testing.T) {
 	}
 	if !slicesContainsTaskID(pending, "generation-img-1") {
 		t.Fatalf("ListPending = %+v, want the handed-off image task", pending)
+	}
+}
+
+func TestLibTVImageGenerationHandoffAndPoll(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	repo, err := repository.NewGenerationTaskRepository(dbPath)
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	mediaAssets := media.NewMediaAssets(dbPath, t.TempDir())
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{coregeneration.ProviderLibTV: "oauth:configured"},
+	})
+	provider := &stubImageProvider{
+		generateResponse: coregeneration.Response{
+			ID:     coregeneration.RouteLibTVGPTImage2 + ":project-123:node-123",
+			Status: "submitted",
+		},
+		getResponse: coregeneration.Response{
+			ID:     coregeneration.RouteLibTVGPTImage2 + ":project-123:node-123",
+			Status: "completed",
+			Assets: []coregeneration.Asset{{
+				Kind:     coregeneration.KindImage,
+				Base64:   "aW1hZ2U=",
+				MIMEType: "image/png",
+			}},
+		},
+	}
+	workflow := NewGenerationService(settingsSvc, store, mediaAssets)
+	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		if route.ID != coregeneration.RouteLibTVGPTImage2 {
+			t.Fatalf("route = %q, want LibTV GPT Image 2", route.ID)
+		}
+		return provider, nil
+	}
+
+	route, ok := coregeneration.FindRoute(coregeneration.RouteLibTVGPTImage2)
+	if !ok {
+		t.Fatal("LibTV GPT Image 2 route is missing")
+	}
+	if route.Async {
+		t.Fatal("LibTV GPT Image 2 async = true, want server-managed background execution")
+	}
+
+	response, status, err := workflow.CreateGenerationMessage(context.Background(), GenerationMessageRequest{
+		Kind:    string(coregeneration.KindImage),
+		RouteID: coregeneration.RouteLibTVGPTImage2,
+		Prompt:  "a cinematic cat portrait",
+	})
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("CreateGenerationMessage() status = %d error = %v", status, err)
+	}
+	if !IsActiveGenerationStatus(response.Status) || strings.Contains(response.ID, ":") {
+		t.Fatalf("response = %+v, want active task with a local task ID", response)
+	}
+
+	handedOff := waitForGenerationTask(t, store, response.ID, func(task GenerationTaskRecord) bool {
+		return task.ProviderTaskID == coregeneration.RouteLibTVGPTImage2+":project-123:node-123"
+	})
+	if handedOff.RouteID != coregeneration.RouteLibTVGPTImage2 || handedOff.Kind != string(coregeneration.KindImage) {
+		t.Fatalf("handed-off task = %+v, want persisted LibTV image route", handedOff)
+	}
+
+	workflow.PollGenerationTask(context.Background(), handedOff)
+	completed, ok, err := store.Get(response.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !ok || completed.Status != "completed" || completed.Kind != string(coregeneration.KindImage) || len(completed.Assets) != 1 {
+		t.Fatalf("task = %+v, want the same local task completed with one image", completed)
+	}
+	if provider.getID != coregeneration.RouteLibTVGPTImage2+":project-123:node-123" {
+		t.Fatalf("provider get id = %q, want handed-off LibTV node id", provider.getID)
 	}
 }
 
@@ -2472,6 +2605,71 @@ func TestPollGenerationTaskTimesOutExpiredHandedOffImage(t *testing.T) {
 	}
 	if !strings.Contains(failed.Error, "超时") {
 		t.Fatalf("error = %q, want a timeout message", failed.Error)
+	}
+}
+
+func TestLibTVImagePollErrorTimesOutOnlyExpiredTask(t *testing.T) {
+	tests := []struct {
+		name       string
+		createdAt  string
+		wantStatus string
+	}{
+		{
+			name:       "before age cap remains retryable",
+			wantStatus: "submitted",
+		},
+		{
+			name:       "after age cap fails",
+			createdAt:  time.Now().UTC().Add(-maxBackgroundImageGenerationAge - time.Minute).Format(time.RFC3339Nano),
+			wantStatus: "failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, err := repository.NewGenerationTaskRepository(filepath.Join(t.TempDir(), "settings.db"))
+			if err != nil {
+				t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+			}
+			store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+			settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+				values: map[string]string{coregeneration.ProviderLibTV: "oauth:configured"},
+			})
+			provider := &stubImageProvider{getErr: fmt.Errorf("libtv status unavailable")}
+			workflow := NewGenerationService(settingsSvc, store, nil)
+			workflow.generationProviderFactory = func(coregeneration.ModelRoute) (coregeneration.Provider, error) {
+				return provider, nil
+			}
+
+			handedOff := libTVImageTaskRecord("generation-libtv-poll-error")
+			handedOff.ProviderTaskID = coregeneration.RouteLibTVGPTImage2 + ":project-123:node-error"
+			handedOff.CreatedAt = tt.createdAt
+			if err := store.Upsert(handedOff); err != nil {
+				t.Fatalf("Upsert() error = %v", err)
+			}
+			task, ok, err := store.Get(handedOff.ID)
+			if err != nil || !ok {
+				t.Fatalf("Get() ok = %v error = %v", ok, err)
+			}
+
+			workflow.PollGenerationTask(context.Background(), task)
+
+			stored, ok, err := store.Get(handedOff.ID)
+			if err != nil {
+				t.Fatalf("Get() error = %v", err)
+			}
+			if !ok || stored.Status != tt.wantStatus {
+				t.Fatalf("task = %+v, want status %q", stored, tt.wantStatus)
+			}
+			if tt.wantStatus == "failed" {
+				if !strings.Contains(stored.Error, "图片生成超时") {
+					t.Fatalf("error = %q, want generic image timeout", stored.Error)
+				}
+				if strings.Contains(stored.Error, "即梦") {
+					t.Fatalf("error = %q, should not name another provider", stored.Error)
+				}
+			}
+		})
 	}
 }
 

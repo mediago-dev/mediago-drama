@@ -89,6 +89,42 @@ const imageRoute: GenerationRoute = {
 	params: [],
 };
 
+const libTVImageFamily: GenerationFamily = {
+	id: "gpt-image",
+	label: "GPT Image",
+	kind: "image",
+};
+
+const libTVImageVersion: GenerationVersion = {
+	id: "gpt-image-2",
+	familyId: libTVImageFamily.id,
+	label: "GPT Image 2",
+	kind: "image",
+	canonicalModel: "gpt-image-2",
+	capabilities: {
+		async: false,
+		supportsReferenceUrls: true,
+	},
+};
+
+const libTVImageRoute: GenerationRoute = {
+	id: "libtv.gpt-image-2",
+	familyId: libTVImageFamily.id,
+	versionId: libTVImageVersion.id,
+	label: "LibTV",
+	kind: "image",
+	provider: "libtv",
+	model: "Lib Image",
+	adapter: "libtv.cli.image",
+	docUrl: "https://www.liblib.tv/cli",
+	async: false,
+	supportsReferenceUrls: true,
+	maxReferenceUrls: 10,
+	status: "available",
+	configured: true,
+	params: [],
+};
+
 const videoFamily: GenerationFamily = {
 	id: "family-video",
 	label: "Video Family",
@@ -190,6 +226,7 @@ const renderSubmitHook = (
 		prompt?: string;
 		promptRef?: React.MutableRefObject<string>;
 		selectedFamily?: GenerationFamily;
+		selectedParams?: Record<string, unknown>;
 		selectedRoute?: GenerationRoute;
 		selectedVersion?: GenerationVersion;
 		useRawPrompt?: boolean;
@@ -259,7 +296,7 @@ const renderSubmitHook = (
 				promptRef: options.promptRef,
 				resolvedConversationScopeId: "scope-1",
 				selectedFamily: options.selectedFamily ?? imageFamily,
-				selectedParams: {
+				selectedParams: options.selectedParams ?? {
 					size: "1024x1024",
 				},
 				selectedRoute: options.selectedRoute ?? imageRoute,
@@ -386,6 +423,42 @@ describe("useGenerationSubmit", () => {
 		expect(mutateTasks).toHaveBeenCalledTimes(1);
 		expect(mutateProjectGenerationTasks).toHaveBeenCalledWith("image");
 		expect(mutateMediaAssets).toHaveBeenCalledTimes(1);
+	});
+
+	it("submits LibTV image route metadata, canonical params, and image references", async () => {
+		vi.mocked(sendGenerationMessage).mockResolvedValue(generationResponse());
+		const { result } = renderSubmitHook({
+			selectedFamily: libTVImageFamily,
+			selectedParams: {
+				aspectRatio: "9:16",
+				quality: "high",
+				resolution: "4K",
+			},
+			selectedRoute: libTVImageRoute,
+			selectedVersion: libTVImageVersion,
+		});
+
+		await act(async () => {
+			await result.current.submitGeneration();
+		});
+
+		expect(sendGenerationMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				familyId: "gpt-image",
+				kind: "image",
+				model: "Lib Image",
+				params: {
+					aspectRatio: "9:16",
+					quality: "high",
+					resolution: "4K",
+				},
+				provider: "libtv",
+				referenceAssetIds: ["asset-1"],
+				referenceUrls: ["https://example.test/reference.png"],
+				routeId: "libtv.gpt-image-2",
+				versionId: "gpt-image-2",
+			}),
+		);
 	});
 
 	it("does not count reference bindings against the selected route limit", async () => {

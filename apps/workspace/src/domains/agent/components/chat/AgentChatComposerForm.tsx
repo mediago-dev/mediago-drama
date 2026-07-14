@@ -37,10 +37,12 @@ export const AgentChatComposerForm: React.FC<{
 	onAttachFiles: (event: React.ChangeEvent<HTMLInputElement>) => void;
 	onComposerChange: (nextState: AgentComposerState) => void;
 	onModelChange: (value: string) => void;
+	onOpenRuntimeSettings: () => void;
 	onPermissionChange: (value: string) => void;
 	onReasoningChange: (value: string) => void;
 	onRemoveAttachment: (id: string) => void;
 	onRemoveComment: (id: string) => void;
+	onRetryRuntimeConfig: () => void;
 	onRunPrompt: () => void;
 	onStopRun: () => void;
 	onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -65,10 +67,12 @@ export const AgentChatComposerForm: React.FC<{
 	onAttachFiles,
 	onComposerChange,
 	onModelChange,
+	onOpenRuntimeSettings,
 	onPermissionChange,
 	onReasoningChange,
 	onRemoveAttachment,
 	onRemoveComment,
+	onRetryRuntimeConfig,
 	onRunPrompt,
 	onStopRun,
 	onSubmit,
@@ -138,8 +142,10 @@ export const AgentChatComposerForm: React.FC<{
 				errorMessage={runtimeConfigErrorMessage}
 				isLoading={isRuntimeConfigLoading}
 				onModelChange={onModelChange}
+				onOpenSettings={onOpenRuntimeSettings}
 				onReasoningChange={onReasoningChange}
 				onPermissionChange={onPermissionChange}
+				onRetry={onRetryRuntimeConfig}
 			/>
 			<div className="agent-composer-actions">
 				<span className="agent-composer-hint">@ 引用文档 · Enter 发送</span>

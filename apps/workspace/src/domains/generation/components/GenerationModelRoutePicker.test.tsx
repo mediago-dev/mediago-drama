@@ -193,6 +193,22 @@ const openRouterSeedreamRoute: GenerationRoute = {
 	versionId: "seedream-5-lite",
 };
 
+const libTVSeedreamRoute: GenerationRoute = {
+	adapter: "libtv.cli.image",
+	async: false,
+	docUrl: "https://www.liblib.tv/cli",
+	familyId: "seedream",
+	id: "libtv.seedream-5-lite",
+	kind: "image",
+	label: "LibTV",
+	model: "Seedream 5.0 Lite",
+	params: [],
+	provider: "libtv",
+	status: "available",
+	supportsReferenceUrls: true,
+	versionId: "seedream-5-lite",
+};
+
 const extraSeedreamRoutes: GenerationRoute[] = ["volcengine", "dmxapi"].map((provider) => ({
 	adapter: `test.image.${provider}`,
 	async: false,
@@ -479,6 +495,28 @@ describe("GenerationModelRoutePicker", () => {
 		expect(screen.queryByRole("button", { name: "MediaGo" })).toBeNull();
 		expect(screen.queryByRole("button", { name: "OpenRouter" })).toBeNull();
 		expect(onSelect).not.toHaveBeenCalled();
+	});
+
+	it("shows and selects LibTV beside other providers for the same version", () => {
+		const onSelect = vi.fn();
+		render(
+			<GenerationModelRoutePicker
+				onSelect={onSelect}
+				routes={[...seedreamRoutes, libTVSeedreamRoute]}
+				selectedRoute={seedreamRoutes[0]}
+				selectedVersion={seedreamVersions[0]}
+				versions={seedreamVersions}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+
+		expect(screen.getByRole("button", { name: "MediaGo" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "DMX" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "即梦" })).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "LibTV" }));
+
+		expect(onSelect).toHaveBeenCalledWith("seedream-5-lite", "libtv.seedream-5-lite");
 	});
 
 	it("keeps the active version while the pointer crosses the safe triangle", () => {

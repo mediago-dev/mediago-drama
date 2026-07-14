@@ -274,6 +274,18 @@ describe("useGenerationModelSelection", () => {
 		expect(readGenerationStylePresetId()).toBe(stylePreset.id);
 
 		act(() => {
+			result.current.updateRoute("route-image");
+		});
+
+		expect(result.current.selectedParams).toEqual({ size: "768x768" });
+
+		act(() => {
+			result.current.updateRoute("route-image-dmx");
+		});
+
+		expect(result.current.selectedParams).toEqual({ size: "256x256" });
+
+		act(() => {
 			result.current.updateModelRoute("version-image-alt", "route-image-alt");
 		});
 

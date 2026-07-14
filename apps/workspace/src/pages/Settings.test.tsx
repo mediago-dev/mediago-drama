@@ -1,17 +1,35 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	beginProviderLogin,
+	clearAPIKey,
+	completeProviderLogin,
 	getAPIKeys,
 	getModelPlatforms,
 	saveAPIKey,
+	type APIKeyLoginChallenge,
 	type APIKeyListResponse,
 	type ModelPlatformsResponse,
 } from "@/domains/settings/api/settings";
+import { isAgentRuntimeConfigKey } from "@/domains/agent/api/agent";
+import { generationModelsKey } from "@/domains/generation/api/generation";
 import { openExternalUrl } from "@/shared/desktop/actions";
 import { useSettingsNavigationStore } from "@/lib/stores/settings";
 import { Settings } from "./Settings";
+
+const swrMocks = vi.hoisted(() => ({
+	mutate: vi.fn(),
+}));
+
+vi.mock("swr", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("swr")>();
+	return {
+		...actual,
+		useSWRConfig: () => ({ mutate: swrMocks.mutate }),
+	};
+});
 
 vi.mock("@/domains/settings/api/settings", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@/domains/settings/api/settings")>();
@@ -122,6 +140,19 @@ describe("Settings API key page", () => {
 		fireEvent.click(within(dialog).getByRole("button", { name: "一键配置" }));
 
 		await waitFor(() => expect(saveAPIKey).toHaveBeenCalledWith("mediago", "sk-mediago-123456"));
+		expectModelDependentCachesRevalidated();
+	});
+
+	it("refreshes model-dependent caches after clearing a credential", async () => {
+		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ mediagoConfigured: true }));
+		vi.mocked(clearAPIKey).mockResolvedValue(apiKeysResponse({}));
+		renderSettings();
+
+		fireEvent.click(await screen.findByRole("button", { name: /管理 API Key/ }));
+		fireEvent.click(await screen.findByRole("button", { name: "清除当前 Key" }));
+
+		await waitFor(() => expect(clearAPIKey).toHaveBeenCalledWith("mediago"));
+		expectModelDependentCachesRevalidated();
 	});
 
 	it("does not render non-editable routing metadata as form inputs", async () => {
@@ -207,6 +238,96 @@ describe("Settings API key page", () => {
 			expect(saveAPIKey).toHaveBeenCalledWith("xiaoyunque", "xyq-access-key-123456"),
 		);
 	});
+
+	it("refreshes model-dependent caches after an immediate LibTV login", async () => {
+		mockLibTVSettings();
+		vi.mocked(beginProviderLogin).mockResolvedValue(
+			libTVLoginResponse({ status: "completed" }, true),
+		);
+		renderSettings();
+
+		fireEvent.click(await screen.findByRole("button", { name: "登录" }));
+
+		await waitFor(() => expect(beginProviderLogin).toHaveBeenCalledWith("libtv", false));
+		expectModelDependentCachesRevalidated();
+	});
+
+	it("refreshes model-dependent caches only after a pending LibTV login is confirmed", async () => {
+		mockLibTVSettings();
+		vi.mocked(beginProviderLogin).mockResolvedValue(
+			libTVLoginResponse({
+				status: "pending",
+				verificationUri: "https://lib.tv/device",
+				deviceCode: "libtv-device-code",
+				userCode: "LIB-TV",
+			}),
+		);
+		vi.mocked(completeProviderLogin).mockResolvedValue(
+			libTVLoginResponse({ status: "completed" }, true),
+		);
+		renderSettings();
+
+		fireEvent.click(await screen.findByRole("button", { name: "登录" }));
+
+		expect(await screen.findByText("等待浏览器授权")).toBeInTheDocument();
+		expect(swrMocks.mutate).not.toHaveBeenCalled();
+
+		fireEvent.click(screen.getByRole("button", { name: "确认" }));
+
+		await waitFor(() =>
+			expect(completeProviderLogin).toHaveBeenCalledWith("libtv", "libtv-device-code"),
+		);
+		expectModelDependentCachesRevalidated();
+	});
+
+	it("refreshes model-dependent caches when polling observes LibTV become configured", async () => {
+		let pollLogin: TimerHandler | undefined;
+		let finishOpeningLoginPage: (() => void) | undefined;
+		const setIntervalSpy = vi
+			.spyOn(window, "setInterval")
+			.mockImplementation((handler, timeout) => {
+				if (timeout === 3000) pollLogin = handler;
+				return 1 as unknown as ReturnType<typeof window.setInterval>;
+			});
+		vi.mocked(openExternalUrl).mockImplementation(
+			() =>
+				new Promise<void>((resolve) => {
+					finishOpeningLoginPage = resolve;
+				}),
+		);
+		mockLibTVSettings();
+		vi.mocked(beginProviderLogin).mockResolvedValue(
+			libTVLoginResponse({
+				status: "pending",
+				verificationUri: "https://lib.tv/device",
+				userCode: "LIB-TV",
+			}),
+		);
+		renderSettings();
+
+		fireEvent.click(await screen.findByRole("button", { name: "登录" }));
+
+		expect(await screen.findByText("等待浏览器授权")).toBeInTheDocument();
+		expect(swrMocks.mutate).not.toHaveBeenCalled();
+		await waitFor(() => expect(pollLogin).toBeTypeOf("function"));
+
+		vi.mocked(getAPIKeys).mockResolvedValue(
+			apiKeysResponse({ includeExtraCLI: true, libtvConfigured: true }),
+		);
+		await act(async () => {
+			if (typeof pollLogin === "function") pollLogin();
+		});
+
+		await waitFor(() => expect(getAPIKeys).toHaveBeenCalledTimes(2));
+		expect(screen.getByText("等待浏览器授权")).toBeInTheDocument();
+		expect(swrMocks.mutate).not.toHaveBeenCalled();
+		await act(async () => {
+			finishOpeningLoginPage?.();
+		});
+		await waitFor(() => expect(screen.queryByText("等待浏览器授权")).not.toBeInTheDocument());
+		expectModelDependentCachesRevalidated();
+		setIntervalSpy.mockRestore();
+	});
 });
 
 const renderSettings = () =>
@@ -220,10 +341,12 @@ const renderSettings = () =>
 
 const apiKeysResponse = ({
 	includeExtraCLI = false,
+	libtvConfigured = false,
 	mediagoConfigured = false,
 	openrouterConfigured = false,
 }: {
 	includeExtraCLI?: boolean;
+	libtvConfigured?: boolean;
 	mediagoConfigured?: boolean;
 	openrouterConfigured?: boolean;
 }): APIKeyListResponse => ({
@@ -263,8 +386,8 @@ const apiKeysResponse = ({
 						id: "libtv",
 						label: "LibTV",
 						description: "LibTV CLI 接入",
-						configured: false,
-						source: "none" as const,
+						configured: libtvConfigured,
+						source: libtvConfigured ? ("settings" as const) : ("none" as const),
 						credentialKind: "oauth",
 						capabilities: ["image"],
 					},
@@ -339,4 +462,26 @@ const cliPlatformLabel = (providerID: string) => {
 		default:
 			return "即梦";
 	}
+};
+
+const mockLibTVSettings = () => {
+	vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ includeExtraCLI: true }));
+	vi.mocked(getModelPlatforms).mockResolvedValue(
+		modelPlatformsResponse({ cliProviderIDs: ["libtv"] }),
+	);
+};
+
+const libTVLoginResponse = (login: APIKeyLoginChallenge, configured = false) => ({
+	...apiKeysResponse({ includeExtraCLI: true, libtvConfigured: configured }),
+	login,
+});
+
+const expectModelDependentCachesRevalidated = () => {
+	expect(swrMocks.mutate).toHaveBeenCalledTimes(2);
+	expect(swrMocks.mutate).toHaveBeenCalledWith(generationModelsKey, undefined, {
+		revalidate: true,
+	});
+	expect(swrMocks.mutate).toHaveBeenCalledWith(isAgentRuntimeConfigKey, undefined, {
+		revalidate: true,
+	});
 };
