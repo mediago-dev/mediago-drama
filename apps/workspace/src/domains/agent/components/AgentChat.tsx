@@ -1,8 +1,11 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import useSWR, { mutate as mutateSWR } from "swr";
 import {
+	agentBackendsKey,
 	agentRuntimeConfigKey,
+	getAgentBackends,
 	getAgentRuntimeConfig,
 	type AgentReference,
 	type AgentRuntimeConfigPayload,
@@ -54,12 +57,14 @@ import {
 	useDocumentsStore,
 } from "@/domains/documents/stores";
 import { useProjectStore } from "@/domains/projects/stores";
+import { useSettingsNavigationStore } from "@/lib/stores/settings";
 
 interface AgentChatProps {
 	projectId?: string | null;
 }
 
 export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId }) => {
+	const navigate = useNavigate();
 	const [attachments, setAttachments] = useState<AgentAttachment[]>([]);
 	const [composerContext, setComposerContext] = useState<ComposerContext>("default");
 	const [composerState, setComposerState] = useState<AgentComposerState>({
@@ -86,6 +91,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 		(state) => state.runtimeConfigDefaults,
 	);
 	const setRuntimeConfigValue = useAgentPersistenceStore((state) => state.setRuntimeConfigValue);
+	const setSettingsTab = useSettingsNavigationStore((state) => state.setActiveTab);
 	const composerRef = useRef<AgentComposerHandle>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const hasUploadingAttachment = attachments.some(
@@ -100,7 +106,13 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 		data: runtimeConfig,
 		error: runtimeConfigError,
 		isLoading: isRuntimeConfigLoading,
+		isValidating: isRuntimeConfigValidating,
+		mutate: retryRuntimeConfig,
 	} = useSWR(runtimeConfigKey, () => getAgentRuntimeConfig(projectId), {
+		revalidateOnFocus: false,
+		shouldRetryOnError: false,
+	});
+	const { data: agentBackends } = useSWR(agentBackendsKey, getAgentBackends, {
 		revalidateOnFocus: false,
 	});
 	const isAgentPersistenceHydrated = useAgentPersistenceHydrated();
@@ -296,6 +308,11 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 		setRuntimeConfigValue(projectId, field, value);
 	};
 
+	const openRuntimeSettings = () => {
+		setSettingsTab((agentBackends?.activeId ?? "codex") === "codex" ? "codex-relay" : "api-keys");
+		navigate("/settings");
+	};
+
 	const removeAttachment = (id: string) => {
 		setAttachments((items) => items.filter((item) => item.id !== id));
 	};
@@ -337,7 +354,9 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				composerRef={composerRef}
 				disabled={isRunning || isSavingAttachments}
 				fileInputRef={fileInputRef}
-				isRuntimeConfigLoading={isRuntimeConfigLoading || !isAgentPersistenceHydrated}
+				isRuntimeConfigLoading={
+					isRuntimeConfigLoading || isRuntimeConfigValidating || !isAgentPersistenceHydrated
+				}
 				isSkillsLoading={isSkillsLoading}
 				isStopping={isStopping}
 				openComments={openComments}
@@ -353,10 +372,12 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				onAttachFiles={(event) => void attachFiles(event)}
 				onComposerChange={handleComposerChange}
 				onModelChange={(value) => updateRuntimeConfigValue("model", value)}
+				onOpenRuntimeSettings={openRuntimeSettings}
 				onPermissionChange={(value) => updateRuntimeConfigValue("permission", value)}
 				onReasoningChange={(value) => updateRuntimeConfigValue("reasoning", value)}
 				onRemoveAttachment={removeAttachment}
 				onRemoveComment={removeComment}
+				onRetryRuntimeConfig={() => void retryRuntimeConfig()}
 				onRunPrompt={() => void runPrompt()}
 				onStopRun={() => void stopRun()}
 				onSubmit={submit}

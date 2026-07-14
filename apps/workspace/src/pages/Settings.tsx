@@ -35,7 +35,11 @@ import {
 	saveAPIKey,
 	saveJianyingDraftSettings,
 } from "@/domains/settings/api/settings";
-import { agentBackendsKey, getAgentBackends } from "@/domains/agent/api/agent";
+import {
+	agentBackendsKey,
+	getAgentBackends,
+	isAgentRuntimeConfigKey,
+} from "@/domains/agent/api/agent";
 import { CodexRelayPanel } from "@/domains/settings/components/CodexRelayPanel";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
 import { BillingPanel } from "@/domains/billing/components/BillingPanel";
@@ -1023,9 +1027,6 @@ const withoutRecordKey = <TValue,>(values: Record<string, TValue>, key: string) 
 	delete next[key];
 	return next;
 };
-
-const isAgentRuntimeConfigKey = (key: unknown) =>
-	typeof key === "string" && key.endsWith("/agent/runtime-config");
 
 const openExternalURL = async (url: string) => {
 	await openExternalUrl(url);

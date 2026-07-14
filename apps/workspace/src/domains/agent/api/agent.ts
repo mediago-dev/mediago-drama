@@ -214,6 +214,9 @@ export const getAgentBackends = async () => {
 export const agentRuntimeConfigKey = (projectId?: string | null) =>
 	projectAgentPath(projectId, "/runtime-config");
 
+export const isAgentRuntimeConfigKey = (key: unknown) =>
+	typeof key === "string" && key.endsWith("/agent/runtime-config");
+
 export const getAgentRuntimeConfig = async (projectId?: string | null) => {
 	const response = await httpClient.get<AgentRuntimeConfigPayload>(
 		agentRuntimeConfigKey(projectId),

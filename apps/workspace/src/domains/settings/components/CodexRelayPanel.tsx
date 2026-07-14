@@ -2,7 +2,8 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { KeyRound, Loader2, Network, Plus, Star, Trash2, Wifi, X } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
+import { isAgentRuntimeConfigKey } from "@/domains/agent/api/agent";
 import {
 	type CodexRelayProfile,
 	type CodexRelayProfileMutation,
@@ -36,6 +37,7 @@ interface CodexRelayProfileDraft {
 
 export const CodexRelayPanel: React.FC = () => {
 	const toast = useToast();
+	const { mutate: mutateGlobal } = useSWRConfig();
 	const { data, mutate, isLoading } = useSWR(codexRelaySettingsKey, getCodexRelaySettings);
 	const [enabled, setEnabled] = useState(false);
 	const [activeProfileID, setActiveProfileID] = useState("");
@@ -63,6 +65,10 @@ export const CodexRelayPanel: React.FC = () => {
 		() => profiles.find((profile) => profile.id === selectedID) ?? profiles[0],
 		[profiles, selectedID],
 	);
+
+	const revalidateAgentRuntimeConfig = () => {
+		void mutateGlobal(isAgentRuntimeConfigKey, undefined, { revalidate: true });
+	};
 
 	const updateProfile = <K extends keyof CodexRelayProfileDraft>(
 		profileID: string,
@@ -94,6 +100,7 @@ export const CodexRelayPanel: React.FC = () => {
 				profiles: nextProfiles.map(mutationFromDraft),
 			});
 			await mutate(nextData, false);
+			revalidateAgentRuntimeConfig();
 			setSelectedID(nextActiveID || nextProfiles[0]?.id || "");
 			toast.success("中转配置已删除", { description: selectedProfile.name });
 			return true;
@@ -144,6 +151,7 @@ export const CodexRelayPanel: React.FC = () => {
 				description: errorMessage(err, "保存 Codex 中转失败。"),
 			});
 		} finally {
+			if (settingsSaved) revalidateAgentRuntimeConfig();
 			setBusy("");
 		}
 	};
@@ -153,9 +161,13 @@ export const CodexRelayPanel: React.FC = () => {
 		const apiKey = apiKeys[selectedProfile.id]?.trim() ?? "";
 		if (!apiKey) return;
 		setBusy(`key:${selectedProfile.id}`);
+		let runtimeConfigChanged = false;
 		try {
-			await mutate(await saveCodexRelaySettings(settingsMutation()), false);
+			const savedSettings = await saveCodexRelaySettings(settingsMutation());
+			runtimeConfigChanged = true;
+			await mutate(savedSettings, false);
 			const nextData = await saveCodexRelayProfileAPIKey(selectedProfile.id, apiKey);
+			runtimeConfigChanged = true;
 			await mutate(nextData, false);
 			if (nextData.enabled && nextData.activeProfileId === selectedProfile.id) {
 				await checkCodexRelaySettings();
@@ -166,6 +178,7 @@ export const CodexRelayPanel: React.FC = () => {
 		} catch (err) {
 			toast.error("保存失败", { description: errorMessage(err, "保存 API Key 失败。") });
 		} finally {
+			if (runtimeConfigChanged) revalidateAgentRuntimeConfig();
 			setBusy("");
 		}
 	};
@@ -199,6 +212,7 @@ export const CodexRelayPanel: React.FC = () => {
 			}
 			toast.error("生效失败", { description: errorMessage(err, "保存 Codex 中转失败。") });
 		} finally {
+			if (settingsSaved) revalidateAgentRuntimeConfig();
 			setBusy("");
 		}
 	};
@@ -208,8 +222,10 @@ export const CodexRelayPanel: React.FC = () => {
 		const profileID = selectedProfile.id;
 		const profileName = selectedProfile.name;
 		setBusy("check");
+		let settingsSaved = false;
 		try {
 			const nextData = await saveCodexRelaySettings(settingsMutation());
+			settingsSaved = true;
 			await mutate(nextData, false);
 			const result = await checkCodexRelaySettings({ profileId: profileID });
 			toast.success("连通性测试通过", {
@@ -220,6 +236,7 @@ export const CodexRelayPanel: React.FC = () => {
 				description: errorMessage(err, "Codex 中转连通性测试失败。"),
 			});
 		} finally {
+			if (settingsSaved) revalidateAgentRuntimeConfig();
 			setBusy("");
 		}
 	};
@@ -239,6 +256,7 @@ export const CodexRelayPanel: React.FC = () => {
 		try {
 			const nextData = await clearCodexRelayProfileAPIKey(selectedProfile.id);
 			await mutate(nextData, false);
+			revalidateAgentRuntimeConfig();
 			setAPIKeys((current) => ({ ...current, [selectedProfile.id]: "" }));
 			setAPIKeyDialogOpen(false);
 			toast.success("API Key 已清除", { description: selectedProfile.name });

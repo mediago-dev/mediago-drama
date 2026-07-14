@@ -2,12 +2,21 @@ package handlers
 
 import (
 	"context"
-	"log/slog"
+	"errors"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	httpresponse "github.com/mediago-dev/mediago-drama/services/server/internal/http/response"
+	serviceacp "github.com/mediago-dev/mediago-drama/services/server/internal/service/acp"
 	service "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
 )
+
+const (
+	agentRuntimeAuthenticationRequiredMessage = "Agent 尚未完成认证，请前往设置配置对应凭据后重试"
+	agentRuntimeUnavailableMessage            = "Agent 运行环境暂不可用，请检查运行配置后重试"
+)
+
+var errAgentRuntimeConfigInspectorUnavailable = errors.New("agent runtime config inspector is unavailable")
 
 // AgentRuntimeConfigInspector probes agent runtime configuration.
 type AgentRuntimeConfigInspector func(ctx context.Context, projectID string) (service.AgentRuntimeConfigResponse, error)
@@ -30,11 +39,16 @@ func NewAgentRuntime(inspect AgentRuntimeConfigInspector) AgentRuntime {
 // @Param projectId path string true "Project ID"
 // @Success 200 {object} SwaggerEnvelope
 // @Failure 400 {object} SwaggerEnvelope
-// @Failure 500 {object} SwaggerEnvelope
+// @Failure 503 {object} SwaggerEnvelope
 // @Router /api/v1/projects/{projectId}/agent/runtime-config [get]
 func (handler AgentRuntime) HandleAgentRuntimeConfig(context *gin.Context) {
 	if handler.inspect == nil {
-		httpresponse.OK(context, service.AgentRuntimeConfigResponse{})
+		httpresponse.Fail(
+			context,
+			http.StatusServiceUnavailable,
+			agentRuntimeUnavailableMessage,
+			errAgentRuntimeConfigInspectorUnavailable,
+		)
 		return
 	}
 	projectID, ok := requiredProjectID(context)
@@ -43,8 +57,11 @@ func (handler AgentRuntime) HandleAgentRuntimeConfig(context *gin.Context) {
 	}
 	config, err := handler.inspect(context.Request.Context(), projectID)
 	if err != nil {
-		slog.Warn("agent runtime config probe failed", "error", err)
-		httpresponse.OK(context, service.AgentRuntimeConfigResponse{})
+		publicMessage := agentRuntimeUnavailableMessage
+		if serviceacp.IsAuthenticationRequiredError(err) {
+			publicMessage = agentRuntimeAuthenticationRequiredMessage
+		}
+		httpresponse.Fail(context, http.StatusServiceUnavailable, publicMessage, err)
 		return
 	}
 	httpresponse.OK(context, config)

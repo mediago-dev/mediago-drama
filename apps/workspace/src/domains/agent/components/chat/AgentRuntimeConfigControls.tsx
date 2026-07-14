@@ -2,6 +2,7 @@ import {
 	Check,
 	ChevronDown,
 	ChevronRight,
+	CircleAlert,
 	LayoutGrid,
 	Loader2,
 	type LucideIcon,
@@ -40,8 +41,10 @@ interface AgentRuntimeConfigControlsProps {
 	errorMessage: string;
 	isLoading: boolean;
 	onModelChange: (value: string) => void;
+	onOpenSettings: () => void;
 	onReasoningChange: (value: string) => void;
 	onPermissionChange: (value: string) => void;
+	onRetry: () => void;
 }
 
 export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProps> = ({
@@ -50,10 +53,13 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 	reasoningValue,
 	permissionValue,
 	disabled,
+	errorMessage,
 	isLoading,
 	onModelChange,
+	onOpenSettings,
 	onReasoningChange,
 	onPermissionChange,
+	onRetry,
 }) => {
 	const hasRuntimeConfigOptions = [config?.model, config?.reasoning, config?.permission].some(
 		(item) => runtimeConfigOptions(item).length > 0,
@@ -63,6 +69,37 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 			<div className="agent-runtime-config-loading" role="status">
 				<Loader2 className="animate-spin" aria-hidden="true" />
 				<span>配置读取中</span>
+			</div>
+		);
+	}
+	if (!hasRuntimeConfigOptions && errorMessage) {
+		return (
+			<div
+				className="flex w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-warning-border bg-warning-surface px-2 py-1.5 text-warning-foreground"
+				role="alert"
+			>
+				<CircleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+				<span className="min-w-0 flex-1 text-xs leading-5">{errorMessage}</span>
+				<div className="ml-auto flex shrink-0 items-center gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="h-6 px-2 text-xs"
+						onClick={onRetry}
+					>
+						重试
+					</Button>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						className="h-6 bg-transparent px-2 text-xs"
+						onClick={onOpenSettings}
+					>
+						前往设置
+					</Button>
+				</div>
 			</div>
 		);
 	}
@@ -876,6 +913,10 @@ export const buildRuntimeConfigSelection = (
 export const getRuntimeConfigError = (err: unknown) => {
 	if (err && typeof err === "object" && "code" in err && (err as { code?: unknown }).code === 404) {
 		return "ACP 配置接口不可用";
+	}
+	if (err && typeof err === "object" && "message" in err) {
+		const message = (err as { message?: unknown }).message;
+		if (typeof message === "string" && message.trim()) return message.trim();
 	}
 	if (err instanceof Error) return err.message;
 	return "ACP 配置不可用";

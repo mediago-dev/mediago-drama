@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeConfigPayload } from "@/domains/agent/api/agent";
 import {
 	AgentRuntimeConfigControls,
+	getRuntimeConfigError,
 	shouldKeepAgentRuntimeCategoryActive,
 } from "./AgentRuntimeConfigControls";
 
@@ -26,6 +27,8 @@ const renderControls = (
 		isLoading?: boolean;
 		modelValue?: string;
 		onModelChange?: (value: string) => void;
+		onOpenSettings?: () => void;
+		onRetry?: () => void;
 	} = {},
 ) => render(runtimeControlsElement(config, options));
 
@@ -36,6 +39,8 @@ const runtimeControlsElement = (
 		isLoading?: boolean;
 		modelValue?: string;
 		onModelChange?: (value: string) => void;
+		onOpenSettings?: () => void;
+		onRetry?: () => void;
 	} = {},
 ) => (
 	<AgentRuntimeConfigControls
@@ -47,8 +52,10 @@ const runtimeControlsElement = (
 		permissionValue=""
 		reasoningValue=""
 		onModelChange={options.onModelChange ?? vi.fn()}
+		onOpenSettings={options.onOpenSettings ?? vi.fn()}
 		onPermissionChange={vi.fn()}
 		onReasoningChange={vi.fn()}
+		onRetry={options.onRetry ?? vi.fn()}
 	/>
 );
 
@@ -70,6 +77,35 @@ describe("AgentRuntimeConfigControls", () => {
 		expect(screen.queryByText("模型")).toBeNull();
 		expect(screen.queryByText("推理强度")).toBeNull();
 		expect(screen.queryByText("模式")).toBeNull();
+	});
+
+	it("shows a compact recovery state and runs its recovery callbacks", () => {
+		const onOpenSettings = vi.fn();
+		const onRetry = vi.fn();
+		renderControls(undefined, {
+			errorMessage: "Agent 尚未认证，请先配置凭据",
+			onOpenSettings,
+			onRetry,
+		});
+
+		const alert = screen.getByRole("alert");
+		expect(alert).toHaveTextContent("Agent 尚未认证，请先配置凭据");
+		expect(screen.queryByLabelText("模型")).toBeNull();
+
+		fireEvent.click(screen.getByRole("button", { name: "重试" }));
+		fireEvent.click(screen.getByRole("button", { name: "前往设置" }));
+
+		expect(onRetry).toHaveBeenCalledTimes(1);
+		expect(onOpenSettings).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps stale runtime options visible when a refresh fails", () => {
+		renderControls(baseConfig, { errorMessage: "运行时暂时不可用" });
+
+		expect(screen.getByLabelText("模型")).toBeTruthy();
+		expect(screen.getByLabelText("模式")).toBeTruthy();
+		expect(screen.queryByRole("alert")).toBeNull();
+		expect(screen.queryByRole("button", { name: "重试" })).toBeNull();
 	});
 
 	it("shows only returned runtime config controls", () => {
@@ -696,6 +732,17 @@ describe("AgentRuntimeConfigControls", () => {
 
 		expect(screen.getByText("GLM-4 Flash")).toBeTruthy();
 		expect(screen.queryByText("MiniMax-M3")).toBeNull();
+	});
+});
+
+describe("getRuntimeConfigError", () => {
+	it("preserves the message from a plain ApiError object", () => {
+		expect(
+			getRuntimeConfigError({
+				code: 503,
+				message: "Agent 尚未认证，请先配置凭据",
+			}),
+		).toBe("Agent 尚未认证，请先配置凭据");
 	});
 });
 
