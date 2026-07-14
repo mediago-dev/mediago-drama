@@ -13,7 +13,7 @@ import {
 	type APIKeyListResponse,
 	type ModelPlatformsResponse,
 } from "@/domains/settings/api/settings";
-import { isAgentRuntimeConfigKey } from "@/domains/agent/api/agent";
+import { agentBackendsKey, isAgentRuntimeConfigKey } from "@/domains/agent/api/agent";
 import { generationModelsKey } from "@/domains/generation/api/generation";
 import { openExternalUrl } from "@/shared/desktop/actions";
 import { useSettingsNavigationStore } from "@/lib/stores/settings";
@@ -53,6 +53,10 @@ vi.mock("@/hooks/useToast", () => ({
 		success: vi.fn(),
 		warning: vi.fn(),
 	}),
+}));
+
+vi.mock("@/domains/settings/components/CodexSkillsPanel", () => ({
+	CodexSkillsPanel: () => <h2>Codex 全局技能</h2>,
 }));
 
 vi.mock("@/shared/desktop/actions", () => ({
@@ -328,6 +332,40 @@ describe("Settings API key page", () => {
 		expectModelDependentCachesRevalidated();
 		setIntervalSpy.mockRestore();
 	});
+});
+
+describe("Settings Codex skills page", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	it.each(["codex", "opencode"])(
+		"keeps the Codex skills tab valid when the active backend is %s",
+		(activeBackendID) => {
+			useSettingsNavigationStore.setState({ activeTab: "codex-skills" });
+
+			render(
+				<MemoryRouter>
+					<SWRConfig
+						value={{
+							fallback: {
+								[agentBackendsKey]: {
+									activeId: activeBackendID,
+									backends: [],
+								},
+							},
+							provider: () => new Map(),
+							revalidateOnMount: false,
+						}}
+					>
+						<Settings />
+					</SWRConfig>
+				</MemoryRouter>,
+			);
+
+			expect(screen.getByRole("heading", { name: "Codex 全局技能" })).toBeInTheDocument();
+		},
+	);
 });
 
 const renderSettings = () =>

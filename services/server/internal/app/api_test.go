@@ -20,6 +20,7 @@ import (
 	"time"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	servicecodexskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/codexskill"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 )
@@ -41,6 +42,67 @@ func TestAPIHandler(t *testing.T) {
 		body := readBody(t, response.Body)
 		if !strings.Contains(body, `"status":"ok"`) {
 			t.Fatalf("body = %s, want health status", body)
+		}
+	})
+
+	t.Run("Codex skill inventory is read only and separate from prompt pack skills", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+		skillDir := filepath.Join(home, ".agents", "skills", "route-check")
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatalf("creating Codex skill fixture: %v", err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(skillDir, "SKILL.md"),
+			[]byte("---\nname: route-check\ndescription: Verify app routes.\n---\n"),
+			0o600,
+		); err != nil {
+			t.Fatalf("writing Codex skill fixture: %v", err)
+		}
+
+		list := requestJSON(t, handler, http.MethodGet, "/api/v1/codex-skills", "")
+		defer list.Body.Close()
+		if list.StatusCode != http.StatusOK {
+			t.Fatalf("list status = %d, want %d: %s", list.StatusCode, http.StatusOK, readBody(t, list.Body))
+		}
+		var listEnvelope struct {
+			Data servicecodexskill.ListResponse `json:"data"`
+		}
+		if err := json.NewDecoder(list.Body).Decode(&listEnvelope); err != nil {
+			t.Fatalf("decoding Codex skill list: %v", err)
+		}
+		var routeSkill *servicecodexskill.SkillSummary
+		for index := range listEnvelope.Data.Skills {
+			if listEnvelope.Data.Skills[index].Name == "route-check" {
+				routeSkill = &listEnvelope.Data.Skills[index]
+				break
+			}
+		}
+		if routeSkill == nil {
+			t.Fatalf("Codex skills = %#v, want route fixture", listEnvelope.Data.Skills)
+		}
+
+		detail := requestJSON(t, handler, http.MethodGet, "/api/v1/codex-skills/"+routeSkill.ID, "")
+		defer detail.Body.Close()
+		if detail.StatusCode != http.StatusOK {
+			t.Fatalf("detail status = %d, want %d: %s", detail.StatusCode, http.StatusOK, readBody(t, detail.Body))
+		}
+		detailBody := readBody(t, detail.Body)
+		if !strings.Contains(detailBody, `"name":"route-check"`) || !strings.Contains(detailBody, `"previewAvailable":true`) {
+			t.Fatalf("detail body = %s, want bounded detail", detailBody)
+		}
+
+		legacy := requestJSON(t, handler, http.MethodGet, "/api/v1/skills", "")
+		defer legacy.Body.Close()
+		if legacy.StatusCode != http.StatusOK || !strings.Contains(readBody(t, legacy.Body), `"skills"`) {
+			t.Fatalf("legacy /skills behavior changed: status=%d", legacy.StatusCode)
+		}
+
+		writeAttempt := requestJSON(t, handler, http.MethodPost, "/api/v1/codex-skills", `{}`)
+		defer writeAttempt.Body.Close()
+		if writeAttempt.StatusCode != http.StatusNotFound {
+			t.Fatalf("POST /codex-skills status = %d, want no write route", writeAttempt.StatusCode)
 		}
 	})
 

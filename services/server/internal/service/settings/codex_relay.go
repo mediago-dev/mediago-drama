@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -107,6 +108,12 @@ type CodexRelayRuntimeConfig struct {
 	CodexHome  string
 	Env        map[string]string
 	Configured bool
+}
+
+// CodexRuntimeHomeDescriptor describes an optional isolated Codex home without preparing it.
+type CodexRuntimeHomeDescriptor struct {
+	CodexHome string
+	Isolated  bool
 }
 
 type codexRelayStoredSettings struct {
@@ -284,6 +291,21 @@ func (service *Settings) PrepareCodexRelayRuntimeConfig(ctx context.Context, wor
 	}, nil
 }
 
+// DescribeCodexRuntimeHome returns the isolated Codex home used by an active relay without writing files.
+func (service *Settings) DescribeCodexRuntimeHome(ctx context.Context, workspaceDir string) (CodexRuntimeHomeDescriptor, error) {
+	_ = ctx
+	if _, _, err := service.activeCodexRelayProfile(); err != nil {
+		if errors.Is(err, ErrCodexRelayNotConfigured) {
+			return CodexRuntimeHomeDescriptor{}, nil
+		}
+		return CodexRuntimeHomeDescriptor{}, err
+	}
+	return CodexRuntimeHomeDescriptor{
+		CodexHome: filepath.Join(shared.WorkspacePathsFor(workspaceDir).GlobalMetadataDir(), "runtime", "agents", "codex", "home"),
+		Isolated:  true,
+	}, nil
+}
+
 // OpenCodexRelayRequest opens an upstream request for the active Codex relay profile.
 func (service *Settings) OpenCodexRelayRequest(ctx context.Context, method string, relayPath string, body []byte, headers http.Header) (*http.Response, error) {
 	if !validCodexRelayLocalAuthorization(headers) {
@@ -345,6 +367,9 @@ func (service *Settings) codexRelayProfileWithKey(profileID string, allowGlobalD
 		}
 		if checkingActiveProfile && !profile.Enabled {
 			return CodexRelayProfileMutation{}, "", ErrCodexRelayNotConfigured
+		}
+		if service.apiKeys == nil {
+			return CodexRelayProfileMutation{}, "", ErrAPIKeyProviderNotFound
 		}
 		apiKey, _, err := service.apiKeys.Get(CodexRelayAPIKeyName(profile.ID))
 		if err != nil {

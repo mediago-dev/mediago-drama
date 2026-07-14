@@ -152,6 +152,91 @@ func TestPrepareCodexRelayRuntimeConfigWritesLocalCodexHomeWithoutSecret(t *test
 	}
 }
 
+func TestDescribeCodexRuntimeHomeIsPureAndUsesActiveRelayPredicate(t *testing.T) {
+	tests := []struct {
+		name       string
+		configure  func(*testing.T, *Settings, context.Context)
+		wantActive bool
+	}{
+		{name: "relay absent"},
+		{
+			name: "relay disabled",
+			configure: func(t *testing.T, service *Settings, ctx context.Context) {
+				saveCodexRelayRuntimeHomeFixture(t, service, false, true)
+			},
+		},
+		{
+			name: "credentials missing",
+			configure: func(t *testing.T, service *Settings, ctx context.Context) {
+				saveCodexRelayRuntimeHomeFixture(t, service, true, false)
+			},
+		},
+		{
+			name: "relay active",
+			configure: func(t *testing.T, service *Settings, ctx context.Context) {
+				saveCodexRelayRuntimeHomeFixture(t, service, true, true)
+			},
+			wantActive: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := NewSettingsWithStores(
+				&memoryAPIKeyStore{values: map[string]string{}},
+				nil,
+				&memoryAppSettingStore{values: map[string]string{}},
+			)
+			ctx := context.Background()
+			if tt.configure != nil {
+				tt.configure(t, service, ctx)
+			}
+			workspaceDir := t.TempDir()
+			descriptor, err := service.DescribeCodexRuntimeHome(ctx, workspaceDir)
+			if err != nil {
+				t.Fatalf("DescribeCodexRuntimeHome returned error: %v", err)
+			}
+			wantHome := filepath.Join(workspaceDir, ".mediago-drama", "runtime", "agents", "codex", "home")
+			if tt.wantActive {
+				if !descriptor.Isolated || descriptor.CodexHome != wantHome {
+					t.Fatalf("descriptor = %#v, want isolated %q", descriptor, wantHome)
+				}
+			} else if descriptor.Isolated || descriptor.CodexHome != "" {
+				t.Fatalf("descriptor = %#v, want no override", descriptor)
+			}
+			for _, path := range []string{wantHome, filepath.Join(wantHome, "config.toml"), filepath.Join(wantHome, "auth.json")} {
+				if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+					t.Fatalf("pure descriptor created %s: %v", path, statErr)
+				}
+			}
+		})
+	}
+}
+
+func saveCodexRelayRuntimeHomeFixture(t *testing.T, service *Settings, enabled bool, withKey bool) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := service.SaveCodexRelaySettings(ctx, CodexRelaySettingsMutation{
+		Enabled:         enabled,
+		ActiveProfileID: "relay",
+		Profiles: []CodexRelayProfileMutation{{
+			ID:       "relay",
+			Name:     "Relay",
+			BaseURL:  "https://relay.example.com/v1",
+			Model:    "gpt-5.6",
+			Protocol: CodexRelayProtocolResponses,
+			Enabled:  true,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveCodexRelaySettings returned error: %v", err)
+	}
+	if withKey {
+		if _, err := service.SetCodexRelayProfileAPIKey(ctx, "relay", "sk-runtime-home"); err != nil {
+			t.Fatalf("SetCodexRelayProfileAPIKey returned error: %v", err)
+		}
+	}
+}
+
 func TestOpenCodexRelayRequestForwardsResponsesRequestWithStoredKey(t *testing.T) {
 	var gotAuth string
 	var gotPath string

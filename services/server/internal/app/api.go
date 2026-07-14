@@ -12,6 +12,7 @@ import (
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
 	servicebilling "github.com/mediago-dev/mediago-drama/services/server/internal/service/billing"
 	servicecapability "github.com/mediago-dev/mediago-drama/services/server/internal/service/capability"
+	servicecodexskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/codexskill"
 	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
@@ -55,6 +56,7 @@ type apiHandler struct {
 	promptTemplates  *serviceprompttemplates.Service
 	promptLibrary    *servicepromptlibrary.Service
 	skillRegistry    *serviceskill.Registry
+	codexSkills      *servicecodexskill.Service
 	shutdownCtx      context.Context
 	shutdownCancel   context.CancelFunc
 	workers          sync.WaitGroup

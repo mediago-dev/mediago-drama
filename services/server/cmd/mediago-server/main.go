@@ -53,6 +53,8 @@ import (
 // @tag.description Reusable generation prompt library APIs.
 // @tag.name Skills
 // @tag.description Built-in and user skill management APIs.
+// @tag.name Codex Skills
+// @tag.description Read-only global Codex skill inventory and availability diagnostics.
 // @tag.name Settings
 // @tag.description API keys and model profile settings APIs.
 // @tag.name Generation

@@ -1,5 +1,6 @@
 import {
 	AudioLines,
+	Blocks,
 	ChevronLeft,
 	CircleQuestionMark,
 	Ellipsis,
@@ -627,6 +628,7 @@ const settingsNavGroups = (activeAgentBackendId = "codex"): SettingsNavGroup[] =
 	if (activeAgentBackendId === "codex") {
 		generationItems.push({ value: "codex-relay", label: "Codex 中转", icon: Network });
 	}
+	generationItems.push({ value: "codex-skills", label: "Codex 技能", icon: Blocks });
 	generationItems.push(debugNavItem("instructions"), debugNavItem("prompt-packs"));
 	if (isProEdition()) {
 		generationItems.push(debugNavItem("license"));

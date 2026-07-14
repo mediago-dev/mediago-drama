@@ -145,8 +145,8 @@ export const PromptTemplateEditorPanel: React.FC = () => {
 				onSave={() => void save()}
 			/>
 
-			<div className="h-full min-h-0 overflow-y-auto px-5 py-5">
-				<div className="space-y-3">
+			<div className="flex h-full min-h-0 flex-col px-5 py-5">
+				<div className="flex h-full min-h-0 flex-col gap-3">
 					{isLoading && templateList.length === 0 ? (
 						<p className={templateMessageClassName}>正在加载系统指令。</p>
 					) : !draft ? (
@@ -205,7 +205,7 @@ export const PromptTemplateEditorPanel: React.FC = () => {
 								</div>
 								<SettingsMarkdownPreview
 									ariaLabelledBy="prompt-template-content-label"
-									className="min-h-72"
+									className="min-h-0 flex-1 overflow-y-auto"
 									placeholder="暂无提示词内容。"
 									value={draft.content}
 								/>
@@ -300,7 +300,7 @@ const settingsFormRowClassName = cn(
 	"grid gap-3 md:grid-cols-[minmax(var(--settings-label-column-min),var(--settings-label-column-max))_minmax(0,1fr)] md:items-start",
 );
 
-const promptBodyRowClassName = "grid gap-2 py-2";
+const promptBodyRowClassName = "flex min-h-0 flex-1 flex-col gap-2 py-2";
 
 const templateMessageClassName = "py-2 text-sm text-muted-foreground";
 

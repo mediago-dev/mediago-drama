@@ -22,6 +22,7 @@ import (
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
 	servicebilling "github.com/mediago-dev/mediago-drama/services/server/internal/service/billing"
 	servicecapability "github.com/mediago-dev/mediago-drama/services/server/internal/service/capability"
+	servicecodexskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/codexskill"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
 	servicelicense "github.com/mediago-dev/mediago-drama/services/server/internal/service/license"
@@ -129,6 +130,19 @@ func newAPIHandler(config Config) *apiHandler {
 	settings.SetModelPlatforms(config.ModelPlatforms)
 	settings.SetGenerationCLIs(config.GenerationCLIs)
 	settings.SetMediagoBaseURL(config.MediagoBaseURL)
+	codexSkills := servicecodexskill.NewService(
+		workspaceState.Dir(),
+		func(ctx context.Context) (servicecodexskill.RuntimeHomeDescriptor, error) {
+			descriptor, err := settings.DescribeCodexRuntimeHome(ctx, workspaceState.Dir())
+			if err != nil {
+				return servicecodexskill.RuntimeHomeDescriptor{}, err
+			}
+			return servicecodexskill.RuntimeHomeDescriptor{
+				CodexHome: descriptor.CodexHome,
+				Isolated:  descriptor.Isolated,
+			}, nil
+		},
+	)
 	agentBridgeURL := strings.TrimSpace(config.AgentBridgeURL)
 	if agentBridgeURL == "" {
 		agentBridgeURL = defaultAgentBridgeURL(config.Host, config.Port)
@@ -256,6 +270,7 @@ func newAPIHandler(config Config) *apiHandler {
 		promptTemplates:  promptTemplates,
 		promptLibrary:    promptLibrary,
 		skillRegistry:    skillRegistry,
+		codexSkills:      codexSkills,
 		shutdownCtx:      shutdownCtx,
 		shutdownCancel:   shutdownCancel,
 	}

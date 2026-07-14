@@ -153,6 +153,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	promptTemplateHandler := httphandlers.NewPromptTemplates(api.promptTemplates)
 	promptLibraryHandler := httphandlers.NewPromptLibrary(api.promptLibrary)
 	skillHandler := httphandlers.NewSkills(api.skillRegistry)
+	codexSkillHandler := httphandlers.NewCodexSkills(api.codexSkills)
 	approvalHandler := httphandlers.NewDocumentToolApprovals(api.workspaceState, repository.IsRecordNotFound)
 	selectionHandler := httphandlers.NewAgentSelections(api.selection, repository.IsRecordNotFound)
 	permissionHandler := httphandlers.NewAgentPermissions(api)
@@ -214,6 +215,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		PromptTemplates:       promptTemplateHandler,
 		PromptLibrary:         promptLibraryHandler,
 		Skills:                skillHandler,
+		CodexSkills:           codexSkillHandler,
 		DocumentToolApprovals: approvalHandler,
 		AgentSelections:       selectionHandler,
 		AgentPermissions:      permissionHandler,

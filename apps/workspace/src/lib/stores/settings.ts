@@ -6,6 +6,7 @@ export type SettingsTabValue =
 	| "appearance"
 	| "api-keys"
 	| "billing"
+	| "codex-skills"
 	| "updates"
 	| "shortcuts"
 	| typeof projectSettingsGeneralTab

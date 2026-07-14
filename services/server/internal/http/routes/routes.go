@@ -29,6 +29,7 @@ type Handlers struct {
 	PromptTemplates       httphandlers.PromptTemplates
 	PromptLibrary         httphandlers.PromptLibrary
 	Skills                httphandlers.Skills
+	CodexSkills           httphandlers.CodexSkills
 	DocumentToolApprovals httphandlers.DocumentToolApprovals
 	AgentSelections       httphandlers.AgentSelections
 	AgentPermissions      httphandlers.AgentPermissions
@@ -88,6 +89,8 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.PUT("/skills/:name", handlers.Skills.HandlePutSkill)
 	apiRoutes.POST("/skills/:name/reset", handlers.Skills.HandleResetSkill)
 	apiRoutes.DELETE("/skills/:name", handlers.Skills.HandleDeleteSkill)
+	apiRoutes.GET("/codex-skills", handlers.CodexSkills.HandleListCodexSkills)
+	apiRoutes.GET("/codex-skills/:id", handlers.CodexSkills.HandleGetCodexSkill)
 	apiRoutes.GET("/agent/backends", handlers.AgentBackends.HandleListBackends)
 	apiRoutes.GET("/media-assets", handlers.MediaAssets.HandleMediaAssets)
 	apiRoutes.POST("/media-assets", handlers.MediaAssets.HandleUploadMediaAsset)

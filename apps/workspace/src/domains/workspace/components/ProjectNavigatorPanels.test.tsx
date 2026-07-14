@@ -61,6 +61,70 @@ describe("SettingsSidebarPanel", () => {
 		expect(onSelectTab).toHaveBeenCalledWith("codex-relay");
 	});
 
+	it("shows Codex skills for every agent backend and selects its own tab", () => {
+		const onSelectTab = vi.fn();
+
+		const { rerender } = render(
+			<SettingsSidebarPanel
+				activeAgentBackendId="codex"
+				activeTab="appearance"
+				isProjectSettings={false}
+				onBack={vi.fn()}
+				onSelectTab={onSelectTab}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "Codex 技能" }));
+		expect(onSelectTab).toHaveBeenLastCalledWith("codex-skills");
+
+		rerender(
+			<SettingsSidebarPanel
+				activeAgentBackendId="opencode"
+				activeTab="appearance"
+				isProjectSettings={false}
+				onBack={vi.fn()}
+				onSelectTab={onSelectTab}
+			/>,
+		);
+		expect(screen.getByRole("button", { name: "Codex 技能" })).toBeInTheDocument();
+	});
+
+	it("orders Codex skills after relay when present and before agent instructions", () => {
+		const { rerender } = render(
+			<SettingsSidebarPanel
+				activeAgentBackendId="codex"
+				activeTab="appearance"
+				isProjectSettings={false}
+				onBack={vi.fn()}
+				onSelectTab={vi.fn()}
+			/>,
+		);
+		const codexGroup = screen.getByText("生成配置").closest("section");
+		expect(
+			within(codexGroup as HTMLElement)
+				.getAllByRole("button")
+				.map((button) => button.textContent)
+				.slice(0, 4),
+		).toEqual(["API 密钥", "Codex 中转", "Codex 技能", "智能体指令"]);
+
+		rerender(
+			<SettingsSidebarPanel
+				activeAgentBackendId="opencode"
+				activeTab="appearance"
+				isProjectSettings={false}
+				onBack={vi.fn()}
+				onSelectTab={vi.fn()}
+			/>,
+		);
+		const otherGroup = screen.getByText("生成配置").closest("section");
+		expect(
+			within(otherGroup as HTMLElement)
+				.getAllByRole("button")
+				.map((button) => button.textContent)
+				.slice(0, 3),
+		).toEqual(["API 密钥", "Codex 技能", "智能体指令"]);
+	});
+
 	it("shows the app updates settings entry", () => {
 		const onSelectTab = vi.fn();
 
