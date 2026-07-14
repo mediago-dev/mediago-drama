@@ -103,10 +103,16 @@ export const createBlockHandleExtension = (
 									return false;
 								}
 
+								const rect = element.getBoundingClientRect();
+								if (event.clientY < rect.top || event.clientY > rect.bottom) {
+									clearHoveredBlock(view);
+									return false;
+								}
+
 								const storage = blockHandleStorage(editor);
 								const previousRange = storage.hoveredRange;
 								storage.hoveredRange = range;
-								onHoverChange(element.getBoundingClientRect(), range);
+								onHoverChange(rect, range);
 
 								if (!sameBlockRange(previousRange, range)) {
 									view.dispatch(view.state.tr.setMeta(blockHandlePluginKey, Date.now()));
