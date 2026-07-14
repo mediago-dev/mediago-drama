@@ -8,7 +8,10 @@ import {
 	type GenerationNotificationEvent,
 } from "@/domains/generation/api/generation";
 import { refreshSelectedGenerationAssetDependents } from "@/domains/generation/lib/refresh-selected-assets";
-import { showGenerationSuccessSystemNotification } from "@/domains/generation/lib/generation-notifications";
+import {
+	showGenerationSuccessSystemNotification,
+	showGenerationTaskCompletedSystemNotification,
+} from "@/domains/generation/lib/generation-notifications";
 import { useGenerationNotificationStore } from "@/domains/generation/stores/generation-notifications";
 import { mediaAssetsKey } from "@/domains/workspace/api/media";
 
@@ -53,6 +56,7 @@ export const GenerationNotificationSync = () => {
 			if (!payload) return;
 			revalidateGenerationCaches();
 			refreshSelectedGenerationAssetDependents(payload.projectId);
+			void showGenerationTaskCompletedSystemNotification();
 		};
 
 		source.addEventListener(generationNotificationCompletedEventType, handleCompleted);

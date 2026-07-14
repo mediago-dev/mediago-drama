@@ -20,6 +20,7 @@ vi.mock("@/domains/generation/api/generation", () => ({
 	generationModelsKey: "/generation/models",
 	getGenerationModels: mocks.getGenerationModels,
 	previewGenerationVoice: mocks.previewGenerationVoice,
+	projectGenerationConversation: vi.fn(() => null),
 }));
 
 vi.mock("@/domains/workspace/api/media", () => ({

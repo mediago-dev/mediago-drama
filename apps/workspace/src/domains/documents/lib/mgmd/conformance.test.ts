@@ -77,3 +77,60 @@ describe("mgmd conformance corpus", () => {
 		expect(count(output, /^\s*-\s/gm)).toBe(count(input, /^\s*-\s/gm)); // bullet items
 	});
 });
+
+describe("explicit blank paragraphs", () => {
+	it("keeps every blank paragraph after editing later content and reloading", () => {
+		const editor = new Editor({
+			extensions: createMarkdownParsingExtensions([DocumentMention]),
+			content: {
+				type: "doc",
+				content: [
+					{ type: "paragraph", content: [{ type: "text", text: "上方内容" }] },
+					{ type: "paragraph" },
+					{ type: "paragraph" },
+					{ type: "paragraph", content: [{ type: "text", text: "下方内容" }] },
+				],
+			},
+		});
+
+		editor.commands.insertContentAt(editor.state.doc.content.size - 1, {
+			type: "text",
+			text: "继续编辑",
+		});
+		const markdown = editor.getMarkdown();
+		editor.destroy();
+
+		const reloaded = new Editor({
+			extensions: createMarkdownParsingExtensions([DocumentMention]),
+			content: markdown,
+			contentType: "markdown",
+		});
+		const reloadedContent = reloaded.getJSON().content;
+		const lowerParagraphText = reloaded.state.doc.child(3).textContent;
+		reloaded.destroy();
+
+		expect(
+			reloadedContent
+				?.slice(1, 3)
+				.every((node) => node.type === "paragraph" && !node.content?.length),
+		).toBe(true);
+		expect(lowerParagraphText).toBe("下方内容继续编辑");
+	});
+
+	it("keeps the cursor after the first character typed in a new paragraph", () => {
+		const editor = new Editor({
+			extensions: createMarkdownParsingExtensions([DocumentMention]),
+			content: "上一行",
+			contentType: "markdown",
+		});
+
+		editor.commands.setTextSelection(editor.state.doc.content.size);
+		editor.commands.splitBlock();
+		editor.commands.insertContent({ type: "text", text: "新" });
+
+		const { from, to } = editor.state.selection;
+		expect(from).toBe(to);
+		expect(editor.state.doc.textBetween(from - 1, from)).toBe("新");
+		editor.destroy();
+	});
+});

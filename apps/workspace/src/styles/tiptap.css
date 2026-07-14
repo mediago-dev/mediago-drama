@@ -84,7 +84,6 @@
 	caret-color: var(--ide-editor-foreground);
 }
 
-.tiptap-content > p,
 .tiptap-content > ul,
 .tiptap-content > ol,
 .tiptap-content > blockquote,

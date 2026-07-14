@@ -6,7 +6,10 @@ import {
 	createGenerationNotificationEventSource,
 	getGenerationNotifications,
 } from "@/domains/generation/api/generation";
-import { showGenerationSuccessSystemNotification } from "@/domains/generation/lib/generation-notifications";
+import {
+	showGenerationSuccessSystemNotification,
+	showGenerationTaskCompletedSystemNotification,
+} from "@/domains/generation/lib/generation-notifications";
 import { useGenerationNotificationStore } from "@/domains/generation/stores/generation-notifications";
 import { GenerationNotificationSync } from "./GenerationNotificationSync";
 
@@ -21,6 +24,7 @@ vi.mock("@/domains/generation/api/generation", async (importOriginal) => {
 
 vi.mock("@/domains/generation/lib/generation-notifications", () => ({
 	showGenerationSuccessSystemNotification: vi.fn(),
+	showGenerationTaskCompletedSystemNotification: vi.fn(),
 }));
 
 vi.mock("swr", async (importOriginal) => {
@@ -96,7 +100,7 @@ describe("GenerationNotificationSync", () => {
 		expect(cachePredicateAt(2)(["/media-assets", "project-a"])).toBe(true);
 	});
 
-	it("revalidates finalized-asset caches for an untracked background task completion", async () => {
+	it("revalidates caches and shows a desktop notification for an untracked completion", async () => {
 		render(<GenerationNotificationSync />);
 		await waitFor(() => expect(FakeEventSource.instances.length).toBe(1));
 		vi.mocked(mutateSWR).mockClear();
@@ -108,10 +112,11 @@ describe("GenerationNotificationSync", () => {
 			createdAt: "2026-07-10T00:00:00Z",
 		});
 
-		// 无通知记录：不进通知中心、不弹系统通知，但刷新任务与定稿资产缓存。
+		// 无通知记录：不进通知中心，但仍弹通用系统通知并刷新相关缓存。
 		await waitFor(() => expect(vi.mocked(mutateSWR).mock.calls.length).toBe(6));
 		expect(useGenerationNotificationStore.getState().notifications).toHaveLength(0);
 		expect(showGenerationSuccessSystemNotification).not.toHaveBeenCalled();
+		expect(showGenerationTaskCompletedSystemNotification).toHaveBeenCalledTimes(1);
 	});
 });
 

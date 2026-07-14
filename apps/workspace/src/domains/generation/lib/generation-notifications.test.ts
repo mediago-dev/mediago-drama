@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MarkdownSectionContext } from "@/domains/documents/components/tiptap/section-context";
 import type { GenerationSuccessNotification } from "@/domains/generation/stores/generation-notifications";
-import { showGenerationSuccessSystemNotification } from "./generation-notifications";
+import {
+	showGenerationSuccessSystemNotification,
+	showGenerationTaskCompletedSystemNotification,
+} from "./generation-notifications";
 
 const section: MarkdownSectionContext = {
 	blockId: "section_visual",
@@ -51,6 +54,22 @@ describe("generation system notifications", () => {
 		expect(showNotification).toHaveBeenCalledWith({
 			title: "生成完成",
 			body: "第一集 · 画面 已生成图片。",
+		});
+	});
+
+	it("shows a generic notification for a completed task without a notification target", async () => {
+		const showNotification = vi.fn().mockResolvedValue(true);
+		window.mediagoDesktop = {
+			isElectron: true,
+			showNotification,
+		} as unknown as typeof window.mediagoDesktop;
+
+		const result = await showGenerationTaskCompletedSystemNotification();
+
+		expect(result).toBe("shown");
+		expect(showNotification).toHaveBeenCalledWith({
+			title: "生成完成",
+			body: "生成任务已完成。",
 		});
 	});
 

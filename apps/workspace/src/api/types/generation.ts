@@ -356,7 +356,7 @@ export interface GenerationNotificationEvent {
 	id: string;
 	type: string;
 	projectId?: string;
-	notification: GenerationNotificationRecord;
+	notification?: GenerationNotificationRecord;
 	createdAt: string;
 }
 

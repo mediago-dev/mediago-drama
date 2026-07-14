@@ -1,6 +1,5 @@
 import {
 	BrowserWindow,
-	Notification,
 	app,
 	dialog,
 	ipcMain,
@@ -21,6 +20,7 @@ import {
 	prepareActiveBundle,
 	registerBundleUpdater,
 } from "./bundle-updater.js";
+import { showDesktopSystemNotification } from "./desktop-notifications.js";
 import { preloadPath } from "./paths.js";
 import { startServerSidecar, stopServerSidecar } from "./sidecar.js";
 import { registerDesktopUpdater } from "./updater.js";
@@ -31,10 +31,6 @@ let isQuitting = false;
 // instance must not count boot attempts or touch DB snapshots) and after app-ready,
 // but before the sidecar spawns, while SQLite is quiescent.
 let activeBundle: Awaited<ReturnType<typeof prepareActiveBundle>> | null = null;
-
-// Retain shown notifications until they are dismissed. Without a live reference
-// macOS may garbage-collect the Notification before it is displayed.
-const liveNotifications = new Set<Notification>();
 
 const rendererUrl = process.env.ELECTRON_RENDERER_URL?.trim();
 
@@ -191,29 +187,16 @@ ipcMain.handle(
 );
 
 ipcMain.handle(desktopIpcChannel.showNotification, (event, options: DesktopNotificationOptions) => {
-	if (!Notification.isSupported()) {
-		console.warn("[mediago-electron] system notifications are not supported on this platform");
-		return false;
-	}
-	const notification = new Notification({ title: options.title, body: options.body });
-	liveNotifications.add(notification);
-	const release = () => liveNotifications.delete(notification);
 	const id = typeof options.id === "string" ? options.id.trim() : "";
-	// Clicking the OS notification brings the window forward and tells the
-	// renderer which action to run so it can route to the right page.
-	notification.on("click", () => {
-		if (id) {
-			showMainWindow();
-			event.sender.send(desktopIpcChannel.notificationClicked, id);
-		}
-		release();
+	return showDesktopSystemNotification({
+		notification: options,
+		onClick: id
+			? () => {
+					showMainWindow();
+					event.sender.send(desktopIpcChannel.notificationClicked, id);
+				}
+			: undefined,
 	});
-	notification.on("close", release);
-	notification.show();
-	// Backstop cleanup so the retained reference cannot leak if no event fires.
-	setTimeout(release, 60_000).unref();
-	console.log(`[mediago-electron] system notification shown: ${options.title}`);
-	return true;
 });
 
 ipcMain.handle(desktopIpcChannel.startWindowDrag, () => {
