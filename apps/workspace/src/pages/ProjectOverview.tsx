@@ -398,7 +398,7 @@ export const ProjectOverview: React.FC = () => {
 					taskId: `local:${item.id}`,
 				});
 			}
-			toast.info("正在提交批量生成", {
+			const submissionToastKey = toast.info("正在提交批量生成", {
 				description: `本次共 ${items.length} 项，将由服务端统一创建任务。`,
 			});
 
@@ -430,11 +430,11 @@ export const ProjectOverview: React.FC = () => {
 				if (kind === "image") void mutateImageTasks();
 				if (kind === "video") void mutateVideoTasks();
 				if (response.failed > 0) {
-					toast.error("部分批量任务提交失败", {
+					toast.update(submissionToastKey, "部分批量任务提交失败", "error", {
 						description: `成功 ${response.accepted} 项，失败 ${response.failed} 项。`,
 					});
 				} else {
-					toast.success("批量任务已提交", {
+					toast.update(submissionToastKey, "批量任务已提交", "success", {
 						description: `服务端批次 ${response.id} 已创建 ${response.accepted} 个任务。`,
 					});
 				}
@@ -444,7 +444,9 @@ export const ProjectOverview: React.FC = () => {
 					if (!item.id) continue;
 					markFailed(item.id, { message, taskId: `local:${item.id}` });
 				}
-				toast.error("批量生成提交失败", { description: message });
+				toast.update(submissionToastKey, "批量生成提交失败", "error", {
+					description: message,
+				});
 			}
 		},
 		[

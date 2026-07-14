@@ -27,6 +27,13 @@ const dialogMocks = vi.hoisted(() => ({
 	MediaGenerationDialog: vi.fn((_props: MediaGenerationDialogMockProps): React.ReactNode => null),
 }));
 
+const toastMocks = vi.hoisted(() => ({
+	error: vi.fn(),
+	info: vi.fn(() => "batch-submission-toast"),
+	success: vi.fn(),
+	update: vi.fn(),
+}));
+
 vi.mock(
 	"@/domains/generation/components/BatchGenerationSettingsDialog",
 	async (importOriginal) => ({
@@ -60,11 +67,7 @@ vi.mock("@/shared/lib/http", () => ({
 }));
 
 vi.mock("@/hooks/useToast", () => ({
-	useToast: () => ({
-		error: vi.fn(),
-		info: vi.fn(),
-		success: vi.fn(),
-	}),
+	useToast: () => toastMocks,
 }));
 
 const LocationProbe = () => {
@@ -975,6 +978,16 @@ describe("ProjectOverview", () => {
 		expect(within(dialog).getAllByText("生成中")).toHaveLength(2);
 
 		await waitFor(() => expect(httpClient.post).toHaveBeenCalledTimes(1));
+		expect(toastMocks.info).toHaveBeenCalledWith("正在提交批量生成", {
+			description: "本次共 2 项，将由服务端统一创建任务。",
+		});
+		expect(toastMocks.update).toHaveBeenCalledWith(
+			"batch-submission-toast",
+			"批量任务已提交",
+			"success",
+			{ description: "服务端批次 generation-batch-server 已创建 2 个任务。" },
+		);
+		expect(toastMocks.success).not.toHaveBeenCalled();
 		const [url, payload] = vi.mocked(httpClient.post).mock.calls[0];
 		expect(url).toBe("/generation/batches");
 		expect(payload).toEqual({
