@@ -282,12 +282,19 @@ describe("Settings API key page", () => {
 
 	it("refreshes model-dependent caches when polling observes LibTV become configured", async () => {
 		let pollLogin: TimerHandler | undefined;
+		let finishOpeningLoginPage: (() => void) | undefined;
 		const setIntervalSpy = vi
 			.spyOn(window, "setInterval")
 			.mockImplementation((handler, timeout) => {
 				if (timeout === 3000) pollLogin = handler;
 				return 1 as unknown as ReturnType<typeof window.setInterval>;
 			});
+		vi.mocked(openExternalUrl).mockImplementation(
+			() =>
+				new Promise<void>((resolve) => {
+					finishOpeningLoginPage = resolve;
+				}),
+		);
 		mockLibTVSettings();
 		vi.mocked(beginProviderLogin).mockResolvedValue(
 			libTVLoginResponse({
@@ -312,6 +319,11 @@ describe("Settings API key page", () => {
 		});
 
 		await waitFor(() => expect(getAPIKeys).toHaveBeenCalledTimes(2));
+		expect(screen.getByText("等待浏览器授权")).toBeInTheDocument();
+		expect(swrMocks.mutate).not.toHaveBeenCalled();
+		await act(async () => {
+			finishOpeningLoginPage?.();
+		});
 		await waitFor(() => expect(screen.queryByText("等待浏览器授权")).not.toBeInTheDocument());
 		expectModelDependentCachesRevalidated();
 		setIntervalSpy.mockRestore();

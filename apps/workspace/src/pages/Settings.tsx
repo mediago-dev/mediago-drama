@@ -15,7 +15,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import useSWR, { useSWRConfig } from "swr";
 import {
@@ -186,7 +186,6 @@ const APIKeysPanel: React.FC = () => {
 	const [checkingLoginID, setCheckingLoginID] = useState<string>();
 	const [manualProviderID, setManualProviderID] = useState<string>();
 	const [loginChallenges, setLoginChallenges] = useState<Record<string, APIKeyLoginChallenge>>({});
-	const providerConfiguredRef = useRef(new Map<string, boolean>());
 	const hasPendingBrowserLogin = Object.values(loginChallenges).some(
 		(challenge) => challenge.status === "pending" && Boolean(challenge.verificationUri),
 	);
@@ -206,20 +205,15 @@ const APIKeysPanel: React.FC = () => {
 	useEffect(() => {
 		if (!data?.providers) return;
 
-		const completedProviderIDs: string[] = [];
-		for (const provider of data.providers) {
-			const wasConfigured = providerConfiguredRef.current.get(provider.id);
-			providerConfiguredRef.current.set(provider.id, provider.configured);
-			if (
-				provider.configured &&
-				wasConfigured === false &&
-				loginChallenges[provider.id]?.status === "pending" &&
-				loggingInID !== provider.id &&
-				checkingLoginID !== provider.id
-			) {
-				completedProviderIDs.push(provider.id);
-			}
-		}
+		const completedProviderIDs = data.providers
+			.filter(
+				(provider) =>
+					provider.configured &&
+					loginChallenges[provider.id]?.status === "pending" &&
+					loggingInID !== provider.id &&
+					checkingLoginID !== provider.id,
+			)
+			.map((provider) => provider.id);
 		if (completedProviderIDs.length === 0) return;
 
 		setLoginChallenges((current) => {
