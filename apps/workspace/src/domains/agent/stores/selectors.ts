@@ -9,6 +9,9 @@ export const selectAgentComposerSeed = (state: AgentState) => state.composerSeed
 
 export const selectAgentConversations = (state: AgentState) => state.conversations;
 
+export const selectAgentActiveConversation = (state: AgentState) =>
+	resolveActiveConversation(state.conversations, state.rootRunId);
+
 export const selectAgentExpand = (state: AgentState) => state.expand;
 
 export const selectAgentIsConnected = (state: AgentState) => state.isConnected;
@@ -20,7 +23,7 @@ export const selectAgentLastRuntimeStatus = (state: AgentState) => state.lastRun
 export const selectAgentLatestActivity = (state: AgentState) => state.activity[0];
 
 export const selectAgentMessages = (state: AgentState) =>
-	resolveActiveConversation(state.conversations, state.rootRunId)?.messages ?? emptyAgentMessages;
+	selectAgentActiveConversation(state)?.messages ?? emptyAgentMessages;
 
 export const selectAgentPermissionRequests = (state: AgentState) => state.permissionRequests;
 

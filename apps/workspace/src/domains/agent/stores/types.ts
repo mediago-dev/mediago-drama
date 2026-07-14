@@ -7,6 +7,9 @@ import type {
 } from "@/domains/agent/api/agent";
 
 export type AgentMessageRole = "user" | "assistant";
+export type AgentMessagePhase = "commentary" | "final_answer";
+export type AgentTurnLifecycle = "pending" | "in_progress" | "waiting" | "completed";
+export type AgentTurnOutcome = "succeeded" | "failed" | "interrupted" | "cancelled" | "refused";
 export type AgentMessageKind =
 	| "message"
 	| "thought"
@@ -96,13 +99,26 @@ export interface AgentMessageMetadata {
 
 export interface AgentMessage {
 	id: string;
+	/** Stable identity of the item inside its agent turn. Falls back to `id` for legacy records. */
+	itemId?: string;
+	/** Stable turn identity. The server maps this to the run that accepted the user request. */
+	turnId?: string;
 	role: AgentMessageRole;
 	content: string;
 	kind?: AgentMessageKind;
+	/** Distinguishes collapsible process narration from the durable final answer. */
+	phase?: AgentMessagePhase;
 	title?: string;
 	createdAt?: string;
 	status?: "streaming" | "complete" | "error";
 	metadata?: AgentMessageMetadata;
+}
+
+/** Stable protocol identity used to route and upsert one item inside an agent turn. */
+export interface AgentItemIdentity {
+	turnId?: string;
+	itemId?: string;
+	phase?: AgentMessagePhase;
 }
 
 export interface AgentActivityItem {
@@ -172,13 +188,13 @@ export interface AgentState {
 	lastRuntimeStatus: AgentRuntimeStatus;
 	addPermissionRequest: (request: AgentRuntimeACPPermissionRequest) => void;
 	addRuntimeAlert: (alert: AgentRuntimeACPRuntimeAlert, runId?: string) => void;
-	appendAssistantDelta: (content: string, runId?: string) => void;
+	appendAssistantDelta: (content: string, runId?: string, identity?: AgentItemIdentity) => void;
 	bindRootRun: (runId: string) => void;
 	cancelRun: (message?: string, runId?: string) => void;
 	clearPermissionRequests: () => void;
 	clearRuntimeAlerts: () => void;
 	collapse: () => void;
-	completeAssistantMessage: (content: string, runId?: string) => void;
+	completeAssistantMessage: (content: string, runId?: string, identity?: AgentItemIdentity) => void;
 	consumeComposerSeed: () => void;
 	expand: () => void;
 	failRun: (message: string, runId?: string) => void;
@@ -205,11 +221,21 @@ export interface AgentState {
 	startRun: (content: string, metadata?: AgentMessageMetadata) => void;
 	addUserMessage: (content: string, metadata?: AgentMessageMetadata) => void;
 	beginPendingRun: () => void;
-	addA2UIMessage: (payload: AgentA2UIPayload, content?: string, runId?: string) => void;
-	addFormMessage: (payload: AgentFormPayload, content?: string, runId?: string) => void;
-	addAssistantMessage: (content: string, runId?: string) => void;
-	appendThought: (thought: string, runId?: string) => void;
-	setPlan: (entries: AgentACPPlanEntry[], runId?: string) => void;
+	addA2UIMessage: (
+		payload: AgentA2UIPayload,
+		content?: string,
+		runId?: string,
+		identity?: AgentItemIdentity,
+	) => void;
+	addFormMessage: (
+		payload: AgentFormPayload,
+		content?: string,
+		runId?: string,
+		identity?: AgentItemIdentity,
+	) => void;
+	addAssistantMessage: (content: string, runId?: string, identity?: AgentItemIdentity) => void;
+	appendThought: (thought: string, runId?: string, identity?: AgentItemIdentity) => void;
+	setPlan: (entries: AgentACPPlanEntry[], runId?: string, identity?: AgentItemIdentity) => void;
 	upsertToolCallMessage: (
 		toolCallId: string,
 		patch: Partial<AgentMessageMetadata> & {
@@ -219,6 +245,7 @@ export interface AgentState {
 			outputBlocks?: AgentACPContentBlock[];
 		},
 		runId?: string,
+		identity?: AgentItemIdentity,
 	) => void;
 	recordActivity: (kind: ActivityKind, label: string, detail: string, runId?: string) => void;
 	recordDocumentUpdated: (detail: string, runId?: string) => void;
@@ -231,6 +258,7 @@ export interface AgentState {
 			toolCallId?: string;
 		},
 		runId?: string,
+		identity?: AgentItemIdentity,
 	) => void;
 	recordRuntimeStatus: (status: AgentRuntimeStatus) => void;
 	resetSession: () => void;

@@ -132,7 +132,7 @@ describe("agent conversation helpers", () => {
 		]);
 	});
 
-	it("upserts ACP tool calls and records output measurements", () => {
+	it("upserts ACP tool calls without completing an unrelated assistant stream", () => {
 		const conversation = baseConversation({
 			streamingMessageId: "assistant-stream",
 			messages: [
@@ -146,18 +146,27 @@ describe("agent conversation helpers", () => {
 			],
 		});
 
-		const next = upsertToolCallInConversation(conversation, "tool-1", {
-			title: "读取文件",
-			status: "completed",
-			outputBlocks: [{ type: "text", text: "line one\nline two" }],
-		});
+		const next = upsertToolCallInConversation(
+			conversation,
+			"tool-1",
+			{
+				title: "读取文件",
+				status: "completed",
+				outputBlocks: [{ type: "text", text: "line one\nline two" }],
+			},
+			{ turnId: "turn-1", itemId: "tool-item-1", phase: "commentary" },
+		);
 
-		expect(next.streamingMessageId).toBeNull();
+		expect(next.streamingMessageId).toBe("assistant-stream");
 		expect(next.messages[0]).toMatchObject({
 			id: "assistant-stream",
-			status: "complete",
+			status: "streaming",
 		});
 		expect(next.messages[1]).toMatchObject({
+			id: "tool-item-1",
+			itemId: "tool-item-1",
+			turnId: "turn-1",
+			phase: "commentary",
 			kind: "tool",
 			title: "读取文件",
 			status: "complete",
@@ -169,7 +178,7 @@ describe("agent conversation helpers", () => {
 		});
 	});
 
-	it("upserts visible runtime logs and records output measurements", () => {
+	it("upserts visible runtime logs without completing an unrelated assistant stream", () => {
 		const conversation = baseConversation({
 			streamingMessageId: "assistant-stream",
 			messages: [
@@ -183,18 +192,26 @@ describe("agent conversation helpers", () => {
 			],
 		});
 
-		const next = upsertRuntimeLogInConversation(conversation, {
-			toolCallId: "runtime-1",
-			status: "failed",
-			outputBlocks: [{ type: "text", text: "line one\nline two" }],
-		});
+		const next = upsertRuntimeLogInConversation(
+			conversation,
+			{
+				toolCallId: "runtime-1",
+				status: "failed",
+				outputBlocks: [{ type: "text", text: "line one\nline two" }],
+			},
+			{ turnId: "turn-1", itemId: "runtime-item-1", phase: "commentary" },
+		);
 
-		expect(next.streamingMessageId).toBeNull();
+		expect(next.streamingMessageId).toBe("assistant-stream");
 		expect(next.messages[0]).toMatchObject({
 			id: "assistant-stream",
-			status: "complete",
+			status: "streaming",
 		});
 		expect(next.messages[1]).toMatchObject({
+			id: "runtime-item-1",
+			itemId: "runtime-item-1",
+			turnId: "turn-1",
+			phase: "commentary",
 			kind: "runtime",
 			title: "运行日志",
 			status: "error",

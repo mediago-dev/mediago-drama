@@ -1,11 +1,15 @@
 import {
-	completeStreamingMessageInConversation,
+	agentMessageId,
 	createId,
+	findLastMessageIndexByIdentity,
 	nonTerminalConversationStatus,
+	normalizeAgentItemIdentity,
+	withAgentItemIdentity,
 } from "./conversation";
 import type {
 	AgentACPContentBlock,
 	AgentConversationState,
+	AgentItemIdentity,
 	AgentMessage,
 	AgentMessageMetadata,
 	AgentToolCallStatus,
@@ -20,10 +24,17 @@ export const upsertRuntimeLogInConversation = (
 		status?: AgentToolCallStatus;
 		toolCallId?: string;
 	},
+	identity?: AgentItemIdentity,
 ): AgentConversationState => {
 	const now = new Date().toISOString();
 	const toolCallId = input.toolCallId?.trim();
-	const existing = toolCallId
+	const normalizedIdentity = normalizeAgentItemIdentity(identity, { phase: "commentary" });
+	const identityIndex = normalizedIdentity.itemId
+		? findLastMessageIndexByIdentity(conversation.messages, normalizedIdentity, (message) =>
+				Boolean(message.kind === "runtime" && message.metadata?.runtimeLog === true),
+			)
+		: -1;
+	const toolCallExisting = toolCallId
 		? conversation.messages.find(
 				(message) =>
 					message.kind === "runtime" &&
@@ -31,9 +42,9 @@ export const upsertRuntimeLogInConversation = (
 					message.metadata.toolCallId === toolCallId,
 			)
 		: undefined;
-	const baseConversation = existing
-		? conversation
-		: completeStreamingMessageInConversation(conversation);
+	const existing =
+		(identityIndex >= 0 ? conversation.messages[identityIndex] : undefined) ??
+		(!normalizedIdentity.itemId || !toolCallExisting?.itemId ? toolCallExisting : undefined);
 	const previousMetadata = existing?.metadata ?? {};
 	const startedAt =
 		typeof previousMetadata.startedAt === "string" ? previousMetadata.startedAt : now;
@@ -68,22 +79,31 @@ export const upsertRuntimeLogInConversation = (
 		(outputJson === undefined ? "" : stringifyOutput(outputJson)) ||
 		existing?.content ||
 		"运行日志";
-	const message: AgentMessage = {
-		id: existing?.id ?? createId("runtime"),
-		role: "assistant",
-		content,
-		kind: "runtime",
-		title: "运行日志",
-		createdAt: existing?.createdAt ?? now,
-		status: messageStatusFromRuntimeStatus(nextStatus),
-		metadata: nextMetadata,
-	};
+	const id = existing?.id ?? agentMessageId(normalizedIdentity, createId("runtime"));
+	const message: AgentMessage = withAgentItemIdentity(
+		{
+			id,
+			role: "assistant",
+			content,
+			kind: "runtime",
+			title: "运行日志",
+			createdAt: existing?.createdAt ?? now,
+			status: messageStatusFromRuntimeStatus(nextStatus),
+			metadata: nextMetadata,
+		},
+		normalizedIdentity,
+		{
+			turnId: existing?.turnId,
+			itemId: existing?.itemId ?? id,
+			phase: existing?.phase ?? "commentary",
+		},
+	);
 	const messages = existing
-		? baseConversation.messages.map((item) => (item.id === existing.id ? message : item))
-		: [...baseConversation.messages, message];
+		? conversation.messages.map((item) => (item.id === existing.id ? message : item))
+		: [...conversation.messages, message];
 
 	return {
-		...baseConversation,
+		...conversation,
 		messages,
 		status: nonTerminalConversationStatus(conversation.status),
 		updatedAt: now,

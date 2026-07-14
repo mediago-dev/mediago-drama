@@ -80,7 +80,7 @@ func (client *acpClient) RequestPermission(ctx context.Context, params acp.Reque
 	acpLog().Info("acp permission requested", client.logAttrs("title", title, "request_id", requestID, "options", len(params.Options))...)
 	requestedAt := time.Now()
 	client.flushThoughts()
-	client.publish(agentEvent{
+	client.publishEvent(agentEvent{
 		Type:    "agent.acp",
 		Message: "权限请求：" + title,
 		ACP: &agentACPEvent{
@@ -88,7 +88,7 @@ func (client *acpClient) RequestPermission(ctx context.Context, params acp.Reque
 			PermissionRequest: &permissionRequest,
 		},
 	})
-	client.publish(agentEvent{
+	client.publishEvent(agentEvent{
 		Type:    AgentUIEventType,
 		Message: "需要确认工具权限",
 		A2UI:    BuildAgentPermissionA2UI(permissionRequest),
@@ -165,7 +165,7 @@ func (client *acpClient) publishPermissionResolution(requestID string, status st
 	case permissionResolutionExpired:
 		message = "权限请求超时，已自动取消：" + title
 	}
-	client.publish(agentEvent{
+	client.publishEvent(agentEvent{
 		Type:    "agent.acp",
 		Message: message,
 		ACP: &agentACPEvent{

@@ -2,20 +2,26 @@ import type { AgentRuntimeACPPermissionRequest } from "@/domains/agent/api/agent
 import type { AgentActionContext, AgentActions } from "./action-types";
 import { pendingRootRunId } from "./constants";
 import {
+	agentMessageId,
 	appendMessageToConversation,
 	appendTraceForTarget,
 	appendTraceToConversation,
+	bindLatestTurnIdentity,
 	completeConversationAssistantMessage,
 	createConversation,
 	createId,
 	deriveIsRunning,
+	findLastMessageIndexByIdentity,
 	finishConversation,
+	hasAgentItemIdentity,
 	isTerminalConversationStatus,
+	latestStreamingAssistantMessageId,
 	latestConversationRunId,
 	mapConversations,
 	nonTerminalConversationStatus,
 	normalizeAgentActivity,
 	normalizeAgentConversations,
+	normalizeAgentItemIdentity,
 	normalizeAgentMessages,
 	normalizeEventSequence,
 	prependActivity,
@@ -23,8 +29,9 @@ import {
 	rootConversation,
 	statePatchWithConversations,
 	updateConversationMessages,
+	withAgentItemIdentity,
 } from "./conversation";
-import type { AgentConversationState, AgentMessage } from "./types";
+import type { AgentConversationState, AgentItemIdentity, AgentMessage } from "./types";
 
 type LifecycleActions = Pick<
 	AgentActions,
@@ -81,37 +88,57 @@ export const createAgentLifecycleActions = ({
 			};
 		});
 	},
-	appendAssistantDelta: (content, runId) => {
+	appendAssistantDelta: (content, runId, identity) => {
 		if (!content) return;
 
 		set((state) => {
 			const targetRunId = resolveTargetRunId(state, runId);
+			const itemIdentity = normalizeAgentItemIdentity(identity, {
+				turnId: targetRunId,
+				phase: "final_answer",
+			});
+			const usesSemanticRouting = hasAgentItemIdentity(identity);
 			const conversations = updateConversationMessages(state, targetRunId, (conversation) => {
-				const streamingMessageId = conversation.streamingMessageId ?? createId("assistant");
-				const hasStreamingMessage = conversation.messages.some(
-					(message) => message.id === streamingMessageId,
-				);
-				const messages = hasStreamingMessage
-					? conversation.messages.map((message) =>
-							message.id === streamingMessageId
-								? {
-										...message,
-										content: message.content + content,
-										status: "streaming" as const,
-									}
-								: message,
+				let streamingIndex = usesSemanticRouting
+					? findLastMessageIndexByIdentity(
+							conversation.messages,
+							itemIdentity,
+							(message) =>
+								message.role === "assistant" &&
+								(message.kind ?? "message") === "message" &&
+								(Boolean(itemIdentity.itemId) || message.status === "streaming"),
 						)
-					: [
-							...conversation.messages,
-							{
-								id: streamingMessageId,
-								role: "assistant" as const,
-								content,
-								kind: "message" as const,
-								createdAt: new Date().toISOString(),
-								status: "streaming" as const,
-							},
-						];
+					: -1;
+				if (streamingIndex < 0 && !usesSemanticRouting && conversation.streamingMessageId) {
+					streamingIndex = conversation.messages.findIndex(
+						(message) => message.id === conversation.streamingMessageId,
+					);
+				}
+				const existing = streamingIndex >= 0 ? conversation.messages[streamingIndex] : undefined;
+				const streamingMessageId =
+					existing?.id ?? agentMessageId(itemIdentity, createId("assistant"));
+				const streamingMessage = withAgentItemIdentity(
+					{
+						id: streamingMessageId,
+						role: "assistant" as const,
+						content: (existing?.content ?? "") + content,
+						kind: "message" as const,
+						createdAt: existing?.createdAt ?? new Date().toISOString(),
+						status: "streaming" as const,
+						metadata: existing?.metadata,
+					},
+					itemIdentity,
+					{
+						turnId: existing?.turnId,
+						itemId: existing?.itemId ?? streamingMessageId,
+						phase: existing?.phase ?? "final_answer",
+					},
+				);
+				const messages = existing
+					? conversation.messages.map((message, index) =>
+							index === streamingIndex ? streamingMessage : message,
+						)
+					: [...conversation.messages, streamingMessage];
 
 				return {
 					...conversation,
@@ -135,10 +162,12 @@ export const createAgentLifecycleActions = ({
 			const pending = state.conversations[pendingRootRunId];
 			const existing = state.conversations[trimmed];
 			const now = new Date().toISOString();
+			const source = pending ?? existing ?? createConversation(trimmed, { name: "主智能体" });
 			const rootConversation: AgentConversationState = {
-				...(pending ?? existing ?? createConversation(trimmed, { name: "主智能体" })),
+				...source,
 				runId: trimmed,
 				status: nonTerminalConversationStatus((pending ?? existing)?.status ?? "running"),
+				messages: pending ? bindLatestTurnIdentity(source.messages, trimmed) : source.messages,
 				updatedAt: now,
 			};
 			const conversations = { ...state.conversations, [trimmed]: rootConversation };
@@ -181,15 +210,18 @@ export const createAgentLifecycleActions = ({
 	},
 	clearPermissionRequests: () => set({ permissionRequests: [] }),
 	collapse: () => set({ isCollapsed: true }),
-	completeAssistantMessage: (content, runId) => {
+	completeAssistantMessage: (content, runId, identity) => {
 		set((state) => {
 			const targetRunId = resolveTargetRunId(state, runId);
 			const conversations = updateConversationMessages(state, targetRunId, (conversation) => {
-				const messages = completeConversationAssistantMessage(conversation, content);
+				const messages = completeConversationAssistantMessage(conversation, content, identity, {
+					turnId: targetRunId,
+					phase: "final_answer",
+				});
 				return {
 					...conversation,
 					messages,
-					streamingMessageId: null,
+					streamingMessageId: latestStreamingAssistantMessageId(messages),
 					updatedAt: new Date().toISOString(),
 				};
 			});
@@ -392,8 +424,10 @@ export const createAgentLifecycleActions = ({
 	setSessionId: (sessionId) => set({ sessionId }),
 	addUserMessage: (content, metadata) => {
 		set((state) => {
+			const id = createId("user");
 			const message: AgentMessage = {
-				id: createId("user"),
+				id,
+				itemId: id,
 				role: "user",
 				content,
 				kind: "message",
@@ -441,8 +475,10 @@ export const createAgentLifecycleActions = ({
 	},
 	startRun: (content, metadata) => {
 		set((state) => {
+			const id = createId("user");
 			const message: AgentMessage = {
-				id: createId("user"),
+				id,
+				itemId: id,
 				role: "user",
 				content,
 				kind: "message",
@@ -467,61 +503,91 @@ export const createAgentLifecycleActions = ({
 			};
 		});
 	},
-	addA2UIMessage: (payload, content = "Agent 已生成交互界面。", runId) => {
+	addA2UIMessage: (payload, content = "Agent 已生成交互界面。", runId, identity) => {
 		set((state) => {
 			const targetRunId = resolveTargetRunId(state, runId);
+			const itemIdentity = normalizeAgentItemIdentity(identity, { turnId: targetRunId });
 			const isStandaloneUI = !runId?.trim() && !state.rootRunId;
 			const conversations = updateConversationMessages(state, targetRunId, (conversation) => {
-				const nextConversation = appendMessageToConversation(conversation, {
-					id: createId("assistant-ui"),
-					role: "assistant",
-					content,
-					kind: "message",
-					createdAt: new Date().toISOString(),
-					status: "complete",
-					metadata: {
-						a2ui: payload,
-						runId: targetRunId,
-					},
-				});
+				const id = agentMessageId(itemIdentity, createId("assistant-ui"));
+				const nextConversation = upsertIdentityMessageInConversation(
+					conversation,
+					withAgentItemIdentity(
+						{
+							id,
+							role: "assistant",
+							content,
+							kind: "message",
+							createdAt: new Date().toISOString(),
+							status: "complete",
+							metadata: {
+								a2ui: payload,
+								runId: targetRunId,
+							},
+						},
+						itemIdentity,
+						{ itemId: id },
+					),
+					itemIdentity,
+				);
 				return isStandaloneUI ? { ...nextConversation, status: "completed" } : nextConversation;
 			});
 
 			return statePatchWithConversations(state, conversations);
 		});
 	},
-	addFormMessage: (payload, content = "需要你确认参数。", runId) => {
+	addFormMessage: (payload, content = "需要你确认参数。", runId, identity) => {
 		set((state) => {
 			const targetRunId = resolveTargetRunId(state, runId);
+			const itemIdentity = normalizeAgentItemIdentity(identity, { turnId: targetRunId });
 			const conversations = updateConversationMessages(state, targetRunId, (conversation) =>
-				appendMessageToConversation(conversation, {
-					id: createId("assistant-form"),
-					role: "assistant",
-					content,
-					kind: "message",
-					createdAt: new Date().toISOString(),
-					status: "complete",
-					metadata: {
-						form: payload,
-						runId: targetRunId,
-					},
-				}),
+				upsertIdentityMessageInConversation(
+					conversation,
+					withAgentItemIdentity(
+						{
+							id: agentMessageId(itemIdentity, createId("assistant-form")),
+							role: "assistant",
+							content,
+							kind: "message",
+							createdAt: new Date().toISOString(),
+							status: "complete",
+							metadata: {
+								form: payload,
+								runId: targetRunId,
+							},
+						},
+						itemIdentity,
+					),
+					itemIdentity,
+				),
 			);
 			return statePatchWithConversations(state, conversations);
 		});
 	},
-	addAssistantMessage: (content, runId) => {
+	addAssistantMessage: (content, runId, identity) => {
 		set((state) => {
 			const targetRunId = resolveTargetRunId(state, runId);
+			const itemIdentity = normalizeAgentItemIdentity(identity, {
+				turnId: targetRunId,
+				phase: "final_answer",
+			});
 			const conversations = updateConversationMessages(state, targetRunId, (conversation) =>
-				appendMessageToConversation(conversation, {
-					id: createId("assistant"),
-					role: "assistant",
-					content,
-					kind: "message",
-					createdAt: new Date().toISOString(),
-					status: "complete",
-				}),
+				upsertIdentityMessageInConversation(
+					conversation,
+					withAgentItemIdentity(
+						{
+							id: agentMessageId(itemIdentity, createId("assistant")),
+							role: "assistant",
+							content,
+							kind: "message",
+							createdAt: new Date().toISOString(),
+							status: "complete",
+						},
+						itemIdentity,
+						{ phase: "final_answer" },
+					),
+					itemIdentity,
+				),
 			);
 
 			return statePatchWithConversations(state, conversations);
@@ -543,6 +609,28 @@ export const createAgentLifecycleActions = ({
 		set({ runtimeMode });
 	},
 });
+
+const upsertIdentityMessageInConversation = (
+	conversation: AgentConversationState,
+	message: AgentMessage,
+	identity: AgentItemIdentity,
+) => {
+	if (!identity.itemId) return appendMessageToConversation(conversation, message);
+	const existingIndex = findLastMessageIndexByIdentity(conversation.messages, identity);
+	if (existingIndex < 0) return appendMessageToConversation(conversation, message);
+	const existing = conversation.messages[existingIndex];
+	const messages = [...conversation.messages];
+	messages[existingIndex] = {
+		...message,
+		id: existing.id,
+		createdAt: existing.createdAt ?? message.createdAt,
+	};
+	return {
+		...conversation,
+		messages,
+		updatedAt: new Date().toISOString(),
+	};
+};
 
 const createPendingRootConversation = (
 	state: {

@@ -17,54 +17,88 @@ const (
 // bufferThought coalesces token-level thought chunks into larger blocks before
 // publishing. Each published event costs persistence, SSE fan-out, and a
 // frontend store update, so per-chunk publishing floods the whole pipeline.
-func (client *acpClient) bufferThought(text string) {
+func (client *acpClient) bufferThought(text string, itemID string) {
 	if text == "" {
 		return
 	}
 
-	var flushed string
+	flushed := []bufferedThought{}
 	client.thoughtMu.Lock()
+	itemID = strings.TrimSpace(itemID)
+	if itemID != "" && client.thoughtItemID != "" && client.thoughtItemID != itemID {
+		flushed = append(flushed, client.takeThoughtsLocked(false))
+	}
+	if itemID != "" {
+		client.thoughtItemID = itemID
+	}
+	if client.thoughtItemID == "" {
+		client.thoughtItemID = MustRandomID("thought")
+	}
 	client.thoughtBuf.WriteString(text)
 	if client.thoughtBuf.Len() >= thoughtFlushMaxBytes {
-		flushed = client.takeThoughtsLocked()
+		flushed = append(flushed, client.takeThoughtsLocked(false))
 	} else if client.thoughtTimer == nil {
 		client.thoughtTimer = time.AfterFunc(thoughtFlushInterval, client.flushThoughts)
 	}
 	client.thoughtMu.Unlock()
 
-	client.publishThought(flushed)
+	for _, thought := range flushed {
+		client.publishThought(thought)
+	}
 }
 
-// flushThoughts publishes any buffered thought text. Callers publishing other
-// event kinds flush first so event ordering matches the agent's output.
+// flushThoughts publishes buffered text while keeping the current item open for
+// later chunks from the timer or size-threshold path.
 func (client *acpClient) flushThoughts() {
 	client.thoughtMu.Lock()
-	flushed := client.takeThoughtsLocked()
+	flushed := client.takeThoughtsLocked(false)
 	client.thoughtMu.Unlock()
 
 	client.publishThought(flushed)
 }
 
-func (client *acpClient) takeThoughtsLocked() string {
+// finishThoughts publishes buffered text and closes the current thought item
+// before a different event kind or prompt boundary.
+func (client *acpClient) finishThoughts() {
+	client.thoughtMu.Lock()
+	flushed := client.takeThoughtsLocked(true)
+	client.thoughtMu.Unlock()
+
+	client.publishThought(flushed)
+}
+
+type bufferedThought struct {
+	text   string
+	itemID string
+}
+
+func (client *acpClient) takeThoughtsLocked(resetItem bool) bufferedThought {
 	if client.thoughtTimer != nil {
 		client.thoughtTimer.Stop()
 		client.thoughtTimer = nil
 	}
-	text := client.thoughtBuf.String()
+	thought := bufferedThought{
+		text:   client.thoughtBuf.String(),
+		itemID: client.thoughtItemID,
+	}
 	client.thoughtBuf.Reset()
-	return text
+	if resetItem {
+		client.thoughtItemID = ""
+	}
+	return thought
 }
 
-func (client *acpClient) publishThought(text string) {
-	if strings.TrimSpace(text) == "" {
+func (client *acpClient) publishThought(thought bufferedThought) {
+	if strings.TrimSpace(thought.text) == "" {
 		return
 	}
-	client.publish(agentEvent{
+	client.publishEvent(agentEvent{
 		Type:    "agent.acp",
-		Message: "思考：" + TruncateAgentMessage(text),
+		Message: "思考：" + TruncateAgentMessage(thought.text),
+		ItemID:  thought.itemID,
 		ACP: &agentACPEvent{
 			Kind:    "thought",
-			Thought: text,
+			Thought: thought.text,
 		},
 	})
 }

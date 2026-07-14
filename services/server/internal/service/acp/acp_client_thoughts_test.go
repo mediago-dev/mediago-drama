@@ -36,6 +36,20 @@ func sendThoughtChunk(t *testing.T, client *acpClient, text string) {
 	}
 }
 
+func sendThoughtChunkWithMessageID(t *testing.T, client *acpClient, messageID string, text string) {
+	t.Helper()
+	if err := client.SessionUpdate(context.Background(), acp.SessionNotification{
+		Update: acp.SessionUpdate{
+			AgentThoughtChunk: &acp.SessionUpdateAgentThoughtChunk{
+				Content:   acp.TextBlock(text),
+				MessageId: &messageID,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("SessionUpdate returned error: %v", err)
+	}
+}
+
 func TestACPClientCoalescesThoughtChunksUntilFlush(t *testing.T) {
 	collector := &thoughtEventCollector{}
 	client := &acpClient{publish: collector.publish}
@@ -66,6 +80,25 @@ func TestACPClientCoalescesThoughtChunksUntilFlush(t *testing.T) {
 	client.flushThoughts()
 	if events := collector.snapshot(); len(events) != 1 {
 		t.Fatalf("events = %d, want repeated flush to publish nothing new", len(events))
+	}
+}
+
+func TestACPClientPreservesThoughtMessageIdentityAcrossBufferedChunks(t *testing.T) {
+	collector := &thoughtEventCollector{}
+	client := &acpClient{publish: collector.publish, runID: "run-1"}
+	client.setAcceptingSessionUpdates(true)
+
+	sendThoughtChunkWithMessageID(t, client, "thought-1", "先读")
+	sendThoughtChunkWithMessageID(t, client, "thought-1", "文档")
+	client.flushThoughts()
+
+	events := collector.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("events = %#v, want one buffered thought item", events)
+	}
+	event := events[0]
+	if event.TurnID != "run-1" || event.ItemID != "thought-1" || event.Phase != "commentary" {
+		t.Fatalf("event semantics = %#v, want thought message identity", event)
 	}
 }
 

@@ -48,6 +48,39 @@ func TestAppendAgentEventAssignsMonotonicSequences(t *testing.T) {
 	}
 }
 
+func TestAppendAgentEventDoesNotConsumeSequenceOnEncodingFailure(t *testing.T) {
+	store := newTestChatStore(t)
+	projectID := "project-sequence-encoding-error"
+	sessionID := "session-sequence-encoding-error"
+
+	_, err := store.AppendAgentEvent(AgentEvent{
+		ID:        "bad-event",
+		SessionID: sessionID,
+		ProjectID: projectID,
+		RunID:     "run-1",
+		Type:      "agent.message.delta",
+		Metadata:  map[string]any{"invalid": func() {}},
+	})
+	if err == nil {
+		t.Fatal("AppendAgentEvent returned nil error for unencodable metadata")
+	}
+
+	event, err := store.AppendAgentEvent(AgentEvent{
+		ID:        "good-event",
+		SessionID: sessionID,
+		ProjectID: projectID,
+		RunID:     "run-1",
+		Type:      "agent.message.completed",
+		Content:   "完成",
+	})
+	if err != nil {
+		t.Fatalf("appending valid event: %v", err)
+	}
+	if event.Sequence != 1 {
+		t.Fatalf("sequence = %d, want 1 after failed append", event.Sequence)
+	}
+}
+
 func TestLoadAgentEventsCachesReadCursorAcrossBatches(t *testing.T) {
 	store := newTestChatStore(t)
 	projectID := "project-sequence-cursor"

@@ -57,9 +57,12 @@ const REFERENCE_KEYS = [
 
 const CHAT_MESSAGE_KEYS = [
 	"id",
+	"itemId",
+	"turnId",
 	"role",
 	"content",
 	"kind",
+	"phase",
 	"title",
 	"createdAt",
 	"status",

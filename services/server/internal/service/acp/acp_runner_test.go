@@ -103,6 +103,21 @@ func TestParseACPFinalResponseEmptyHasNoLegacyFallback(t *testing.T) {
 	}
 }
 
+func TestParseACPFinalResponseForItemKeepsStructuredPayloadButUsesFinalItemText(t *testing.T) {
+	response := parseACPFinalResponseForItem(
+		"正在读取文档。\n{\"proposedDocument\":{\"content\":\"# Draft\\n\"}}\n文档已更新。",
+		"文档已更新。",
+		agentRunRequest{Document: &agentDocumentContext{ID: "doc-1"}},
+	)
+
+	if response.Message != "文档已更新。" {
+		t.Fatalf("message = %q, want final item text only", response.Message)
+	}
+	if response.ProposedDocument == nil || response.ProposedDocument.DocumentID != "doc-1" || response.ProposedDocument.Content != "# Draft\n" {
+		t.Fatalf("proposal = %#v, want structured payload retained from full response", response.ProposedDocument)
+	}
+}
+
 func TestACPClientWorkspacePath(t *testing.T) {
 	root := t.TempDir()
 	client := &acpClient{workspaceDir: root}
@@ -797,6 +812,7 @@ func TestApplyACPSessionSelectionsReturnsModelInvalidParams(t *testing.T) {
 func TestACPClientSessionUpdatePublishesToolCallPayload(t *testing.T) {
 	events := []agentEvent{}
 	client := &acpClient{
+		runID: "run-1",
 		publish: func(event agentEvent) {
 			events = append(events, event)
 		},
@@ -826,6 +842,9 @@ func TestACPClientSessionUpdatePublishesToolCallPayload(t *testing.T) {
 	}
 	if event.ACP.Kind != "toolCall" || event.ACP.ToolCallID != "call-readme" || event.ACP.ToolKind != "read" {
 		t.Fatalf("acp = %#v, want read tool call", event.ACP)
+	}
+	if event.TurnID != "run-1" || event.ItemID != "call-readme" || event.Phase != "commentary" {
+		t.Fatalf("event semantics = %#v, want tool call commentary identity", event)
 	}
 	if len(event.ACP.Locations) != 1 || event.ACP.Locations[0].Path != "README.md" || event.ACP.Locations[0].Line == nil || *event.ACP.Locations[0].Line != line {
 		t.Fatalf("locations = %#v, want README.md:7", event.ACP.Locations)
@@ -887,7 +906,9 @@ func envValue(env []string, key string) string {
 
 func TestACPClientSessionUpdatePublishesMessageChunkDelta(t *testing.T) {
 	events := []agentEvent{}
+	messageID := "message-final-1"
 	client := &acpClient{
+		runID: "run-1",
 		publish: func(event agentEvent) {
 			events = append(events, event)
 		},
@@ -895,7 +916,12 @@ func TestACPClientSessionUpdatePublishesMessageChunkDelta(t *testing.T) {
 	client.setAcceptingSessionUpdates(true)
 
 	err := client.SessionUpdate(context.Background(), acp.SessionNotification{
-		Update: acp.UpdateAgentMessage(acp.TextBlock("正在处理第一章。")),
+		Update: acp.SessionUpdate{
+			AgentMessageChunk: &acp.SessionUpdateAgentMessageChunk{
+				Content:   acp.TextBlock("正在处理第一章。"),
+				MessageId: &messageID,
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("SessionUpdate returned error: %v", err)
@@ -910,11 +936,140 @@ func TestACPClientSessionUpdatePublishesMessageChunkDelta(t *testing.T) {
 	if event.Delta != "正在处理第一章。" {
 		t.Fatalf("delta = %q, want chunk text", event.Delta)
 	}
+	if event.TurnID != "run-1" || event.ItemID != messageID || event.Phase != "commentary" {
+		t.Fatalf("event semantics = %#v, want running ACP message commentary", event)
+	}
 	if client.messageText() != "正在处理第一章。" {
 		t.Fatalf("buffered message = %q, want chunk text", client.messageText())
 	}
 	if !client.hasStreamedMessage() {
 		t.Fatal("hasStreamedMessage() = false, want true")
+	}
+}
+
+func TestACPClientSessionUpdateUsesStableFallbackMessageItemID(t *testing.T) {
+	events := []agentEvent{}
+	client := &acpClient{
+		runID: "run-1",
+		publish: func(event agentEvent) {
+			events = append(events, event)
+		},
+	}
+	client.setAcceptingSessionUpdates(true)
+
+	for _, text := range []string{"第一段", "第二段"} {
+		if err := client.SessionUpdate(context.Background(), acp.SessionNotification{
+			Update: acp.UpdateAgentMessage(acp.TextBlock(text)),
+		}); err != nil {
+			t.Fatalf("SessionUpdate returned error: %v", err)
+		}
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("events = %#v, want two delta events", events)
+	}
+	if events[0].ItemID == "" || events[1].ItemID != events[0].ItemID {
+		t.Fatalf("item ids = %q, %q; want one stable fallback", events[0].ItemID, events[1].ItemID)
+	}
+	if client.messageItemID() != events[0].ItemID {
+		t.Fatalf("final item id = %q, want %q", client.messageItemID(), events[0].ItemID)
+	}
+}
+
+func TestACPClientToolBoundaryClosesRunningMessageCandidate(t *testing.T) {
+	events := []agentEvent{}
+	client := &acpClient{
+		runID: "run-1",
+		publish: func(event agentEvent) {
+			events = append(events, event)
+		},
+	}
+	client.setAcceptingSessionUpdates(true)
+	messageID := "message-before-tool"
+
+	if err := client.SessionUpdate(context.Background(), acp.SessionNotification{
+		Update: acp.SessionUpdate{
+			AgentMessageChunk: &acp.SessionUpdateAgentMessageChunk{
+				Content:   acp.TextBlock("我先读取文档。"),
+				MessageId: &messageID,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("publishing message chunk: %v", err)
+	}
+	if err := client.SessionUpdate(context.Background(), acp.SessionNotification{
+		Update: acp.StartToolCall("call-read", "读取文档", acp.WithStartKind(acp.ToolKindRead)),
+	}); err != nil {
+		t.Fatalf("publishing tool call: %v", err)
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("events = %#v, want message then tool", events)
+	}
+	if events[0].ItemID != messageID || events[0].Phase != "commentary" {
+		t.Fatalf("pre-tool message = %#v, want commentary", events[0])
+	}
+	if client.messageItemID() != "" {
+		t.Fatalf("completion candidate = %q, want tool boundary to clear pre-tool item", client.messageItemID())
+	}
+}
+
+func TestACPClientProgressToolFinalKeepsOnlyFinalItemVisible(t *testing.T) {
+	client := &acpClient{
+		runID:   "run-1",
+		publish: func(agentEvent) {},
+	}
+	client.setAcceptingSessionUpdates(true)
+	progressID := "message-progress"
+	finalID := "message-final"
+
+	updates := []acp.SessionUpdate{
+		{
+			AgentMessageChunk: &acp.SessionUpdateAgentMessageChunk{
+				Content:   acp.TextBlock("我先检查文档。"),
+				MessageId: &progressID,
+			},
+		},
+		acp.StartToolCall("call-read", "读取文档", acp.WithStartKind(acp.ToolKindRead)),
+		{
+			AgentMessageChunk: &acp.SessionUpdateAgentMessageChunk{
+				Content:   acp.TextBlock("文档已更新。"),
+				MessageId: &finalID,
+			},
+		},
+	}
+	for _, update := range updates {
+		if err := client.SessionUpdate(context.Background(), acp.SessionNotification{Update: update}); err != nil {
+			t.Fatalf("SessionUpdate returned error: %v", err)
+		}
+	}
+
+	if client.messageText() != "我先检查文档。文档已更新。" {
+		t.Fatalf("full message = %q, want complete raw transcript", client.messageText())
+	}
+	if client.messageItemText() != "文档已更新。" || client.messageItemID() != finalID {
+		t.Fatalf("final item = (%q, %q), want final segment", client.messageItemID(), client.messageItemText())
+	}
+	result := parseACPFinalResponseForItem(client.messageText(), client.messageItemText(), agentRunRequest{})
+	if result.Message != "文档已更新。" || strings.Contains(result.Message, "我先检查") {
+		t.Fatalf("result message = %q, want progress excluded", result.Message)
+	}
+}
+
+func TestScopedACPEventPublisherAddsActivitySemantics(t *testing.T) {
+	events := []agentEvent{}
+	publish := scopedACPEventPublisher("run-1", func(event agentEvent) {
+		events = append(events, event)
+	})
+
+	publish(agentEvent{ID: "activity-1", Type: "agent.activity", Message: "正在恢复会话"})
+
+	if len(events) != 1 {
+		t.Fatalf("events = %#v, want one activity", events)
+	}
+	event := events[0]
+	if event.RunID != "run-1" || event.TurnID != "run-1" || event.ItemID != "activity-1" || event.Phase != "commentary" {
+		t.Fatalf("event semantics = %#v, want run-scoped commentary activity", event)
 	}
 }
 
@@ -1540,6 +1695,7 @@ func TestACPClientSessionUpdateInfersMCPToolKind(t *testing.T) {
 func TestACPClientSessionUpdatePublishesPlanPayload(t *testing.T) {
 	events := []agentEvent{}
 	client := &acpClient{
+		runID: "run-1",
 		publish: func(event agentEvent) {
 			events = append(events, event)
 		},
@@ -1572,6 +1728,9 @@ func TestACPClientSessionUpdatePublishesPlanPayload(t *testing.T) {
 	}
 	if event.ACP.Kind != "plan" {
 		t.Fatalf("kind = %q, want plan", event.ACP.Kind)
+	}
+	if event.TurnID != "run-1" || event.ItemID != "run-1:plan" || event.Phase != "commentary" {
+		t.Fatalf("event semantics = %#v, want turn-scoped plan commentary", event)
 	}
 	if len(event.ACP.Plan) != 2 {
 		t.Fatalf("plan = %#v, want two entries", event.ACP.Plan)

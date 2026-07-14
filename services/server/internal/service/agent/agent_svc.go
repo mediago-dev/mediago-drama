@@ -96,15 +96,30 @@ type AgentChatAppendRequest struct {
 
 // AgentChatMessageRecord is a persisted chat message.
 type AgentChatMessageRecord struct {
-	ID        string         `json:"id"`
-	Role      string         `json:"role"`
-	Content   string         `json:"content"`
-	Kind      string         `json:"kind,omitempty"`
-	Title     string         `json:"title,omitempty"`
-	CreatedAt string         `json:"createdAt,omitempty"`
-	Status    string         `json:"status,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
+	ID        string            `json:"id"`
+	TurnID    string            `json:"turnId,omitempty"`
+	ItemID    string            `json:"itemId,omitempty"`
+	Role      string            `json:"role"`
+	Content   string            `json:"content"`
+	Kind      string            `json:"kind,omitempty"`
+	Phase     AgentMessagePhase `json:"phase,omitempty"`
+	Title     string            `json:"title,omitempty"`
+	CreatedAt string            `json:"createdAt,omitempty"`
+	Status    string            `json:"status,omitempty"`
+	Metadata  map[string]any    `json:"metadata,omitempty"`
 }
+
+// AgentMessagePhase identifies whether an assistant item belongs to the
+// collapsible process stream or the final answer.
+type AgentMessagePhase string
+
+const (
+	// AgentMessagePhaseCommentary marks reasoning, plans, tools, and other
+	// intermediate process items.
+	AgentMessagePhaseCommentary AgentMessagePhase = "commentary"
+	// AgentMessagePhaseFinalAnswer marks user-visible final response content.
+	AgentMessagePhaseFinalAnswer AgentMessagePhase = "final_answer"
+)
 
 // AgentChatActivityRecord is a derived chat activity item.
 type AgentChatActivityRecord struct {
@@ -161,6 +176,9 @@ type AgentEvent struct {
 	Message           string                                `json:"message"`
 	CreatedAt         string                                `json:"createdAt"`
 	RunID             string                                `json:"runId,omitempty"`
+	TurnID            string                                `json:"turnId,omitempty"`
+	ItemID            string                                `json:"itemId,omitempty"`
+	Phase             AgentMessagePhase                     `json:"phase,omitempty"`
 	Delta             string                                `json:"delta,omitempty"`
 	Content           string                                `json:"content,omitempty"`
 	ACPSessionID      string                                `json:"acpSessionId,omitempty"`
@@ -368,6 +386,7 @@ type AgentRunRequest struct {
 type AgentRunResult struct {
 	ACPSessionID     string
 	Message          string
+	MessageItemID    string
 	StreamedMessage  bool
 	DocumentProposal *AgentDocumentProposal
 	A2UI             *AgentA2UIPayload

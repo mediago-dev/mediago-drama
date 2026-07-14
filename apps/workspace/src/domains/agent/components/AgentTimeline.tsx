@@ -7,13 +7,12 @@ import {
 	GitBranch,
 	ImageIcon,
 	LoaderCircle,
-	Sparkles,
 	TerminalSquare,
 	UserRound,
 } from "lucide-react";
 import type { A2uiClientAction } from "@a2ui/web_core/v0_9";
 import type React from "react";
-import { memo, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { runAgentPrompt } from "@/domains/agent/lib/controller";
 import {
@@ -29,10 +28,12 @@ import {
 import {
 	type AgentDisplayAttachment,
 	type AgentDisplaySegment,
+	type AgentConversationStatus,
 	type AgentMessage,
 	type AgentMessageKind,
 	type AgentMessageMetadata,
 	type AgentRuntimeAlert,
+	selectAgentActiveConversation,
 	useAgentStore,
 } from "@/domains/agent/stores";
 import { cn } from "@/shared/lib/utils";
@@ -43,10 +44,15 @@ import { AgentFormCard } from "./timeline/AgentFormCard";
 import { CodeBlock, DiffBlock, TerminalBlock } from "./timeline/CodeBlocks";
 import { compact, formatTime } from "./timeline/format";
 import { MarkdownContent } from "./timeline/MarkdownContent";
-import { buildTimelineEntries, groupAssistantMessages } from "./timeline/model";
+import {
+	buildAgentTurnViewModels,
+	type AgentTurnProjectionState,
+	groupAssistantMessages,
+	type AgentTurnViewModel,
+} from "./timeline/model";
 import { PlanBlock } from "./timeline/PlanBlock";
-import { ThoughtBlock } from "./timeline/ThoughtBlock";
-import { ToolCallCard } from "./timeline/ToolCallCard";
+import { ProcessDisclosure, type ProcessDisclosureOverride } from "./timeline/ProcessDisclosure";
+import { readableThoughtContent } from "./timeline/ThoughtBlock";
 import { ToolGroup } from "./timeline/ToolGroup";
 
 interface AgentTimelineProps {
@@ -66,19 +72,65 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 	runtimeAlerts = [],
 	onA2UIAction,
 }) => {
-	const entries = useMemo(() => buildTimelineEntries(messages), [messages]);
-	const hasStreamingMessage = messages.some((message) => message.status === "streaming");
+	const now = useAgentElapsedClock(isRunning);
+	const activeConversation = useAgentStore(selectAgentActiveConversation);
+	const pendingPermissionCount = useAgentStore((state) => state.permissionRequests.length);
+	const activeTurn = useMemo(
+		() =>
+			turnProjectionFromConversation(
+				activeConversation?.status,
+				isRunning,
+				pendingPermissionCount > 0,
+				activeConversation?.createdAt,
+				activeConversation?.updatedAt,
+			),
+		[
+			activeConversation?.createdAt,
+			activeConversation?.status,
+			activeConversation?.updatedAt,
+			isRunning,
+			pendingPermissionCount,
+		],
+	);
+	const turns = useMemo(
+		() =>
+			buildAgentTurnViewModels(messages, {
+				activeTurnId: activeConversation?.runId,
+				activeTurn,
+				now,
+			}),
+		[activeConversation?.runId, activeTurn, messages, now],
+	);
+	const [disclosureOverrides, setDisclosureOverrides] = useState<
+		Record<string, ProcessDisclosureOverrideRecord>
+	>({});
+	const updateDisclosureOverride = useCallback(
+		(
+			turnId: string,
+			override: ProcessDisclosureOverride,
+			lifecycle: AgentTurnViewModel["lifecycle"],
+		) => {
+			setDisclosureOverrides((current) => {
+				const currentRecord = current[turnId];
+				if (currentRecord?.value === override && currentRecord.lifecycle === lifecycle) {
+					return current;
+				}
+				return { ...current, [turnId]: { lifecycle, value: override } };
+			});
+		},
+		[],
+	);
 	const items = useMemo<TimelineRenderItem[]>(() => {
-		const timelineItems = entries.map((entry): TimelineRenderItem => ({ type: "entry", entry }));
+		const timelineItems = turns.map((turn): TimelineRenderItem => ({ type: "turn", turn }));
 		const alertItems = runtimeAlerts.map(
 			(alert): TimelineRenderItem => ({ type: "runtime-alert", alert }),
 		);
-		if (!isRunning || hasStreamingMessage) return [...timelineItems, ...alertItems];
+		if (!isRunning || turns.length > 0) return [...timelineItems, ...alertItems];
 
 		return [...timelineItems, ...alertItems, { type: "running", id: "agent-running" }];
-	}, [entries, hasStreamingMessage, isRunning, runtimeAlerts]);
+	}, [isRunning, runtimeAlerts, turns]);
 
-	if (isHydrating && entries.length === 0) {
+	if (isHydrating && turns.length === 0) {
 		return (
 			<div
 				className={cn(
@@ -102,25 +154,26 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 			increaseViewportBy={{ top: 800, bottom: 800 }}
 			itemContent={(index, item) => (
 				<div className={cn("agent-timeline-row px-4 pb-3", index === 0 && "pt-4")}>
-					{renderTimelineItem(item, onA2UIAction)}
+					{renderTimelineItem(item, onA2UIAction, disclosureOverrides, updateDisclosureOverride)}
 				</div>
 			)}
 		/>
 	);
 };
 
-type TimelineEntry = ReturnType<typeof buildTimelineEntries>[number];
-
 type TimelineRenderItem =
-	| { type: "entry"; entry: TimelineEntry }
+	| { type: "turn"; turn: AgentTurnViewModel }
 	| { type: "runtime-alert"; alert: AgentRuntimeAlert }
 	| { type: "running"; id: string };
 
+interface ProcessDisclosureOverrideRecord {
+	lifecycle: AgentTurnViewModel["lifecycle"];
+	value: ProcessDisclosureOverride;
+}
+
 const timelineRenderItemKey = (item: TimelineRenderItem | undefined, index: number) => {
 	if (!item) return `agent-timeline-placeholder:${index}`;
-	if (item.type === "entry") {
-		return item.entry.type === "user" ? item.entry.message.id : item.entry.id;
-	}
+	if (item.type === "turn") return `agent-turn:${item.turn.id}`;
 	if (item.type === "runtime-alert") return `runtime-alert:${item.alert.id}`;
 	return item.id;
 };
@@ -128,17 +181,135 @@ const timelineRenderItemKey = (item: TimelineRenderItem | undefined, index: numb
 const renderTimelineItem = (
 	item: TimelineRenderItem | undefined,
 	onA2UIAction?: AgentA2UIActionHandler,
+	disclosureOverrides: Record<string, ProcessDisclosureOverrideRecord> = {},
+	onDisclosureOverrideChange?: (
+		turnId: string,
+		override: ProcessDisclosureOverride,
+		lifecycle: AgentTurnViewModel["lifecycle"],
+	) => void,
 ) => {
 	if (!item) return null;
 	if (item.type === "runtime-alert") return <RuntimeAlertCard alert={item.alert} />;
 	if (item.type === "running") return <TimelineRunning />;
 
-	return item.entry.type === "user" ? (
-		<TimelineUserTurn message={item.entry.message} />
-	) : (
-		<TimelineAssistantGroup messages={item.entry.messages} onA2UIAction={onA2UIAction} />
+	return (
+		<TimelineTurn
+			turn={item.turn}
+			disclosureOverride={effectiveDisclosureOverride(disclosureOverrides[item.turn.id], item.turn)}
+			onDisclosureOverrideChange={(override) =>
+				onDisclosureOverrideChange?.(item.turn.id, override, item.turn.lifecycle)
+			}
+			onA2UIAction={onA2UIAction}
+		/>
 	);
 };
+
+const effectiveDisclosureOverride = (
+	record: ProcessDisclosureOverrideRecord | undefined,
+	turn: AgentTurnViewModel,
+): ProcessDisclosureOverride => {
+	if (!record) return "auto";
+	if (turn.lifecycle === "completed" && record.lifecycle !== "completed") return "auto";
+	return record.value;
+};
+
+const useAgentElapsedClock = (active: boolean) => {
+	const [now, setNow] = useState(() => Date.now());
+
+	useEffect(() => {
+		if (!active) return;
+		setNow(Date.now());
+		const interval = window.setInterval(() => setNow(Date.now()), 1000);
+		return () => window.clearInterval(interval);
+	}, [active]);
+
+	return now;
+};
+
+const turnProjectionFromConversation = (
+	status: AgentConversationStatus | undefined,
+	isRunning: boolean,
+	isWaitingForPermission: boolean,
+	startedAt?: string,
+	updatedAt?: string,
+): AgentTurnProjectionState | undefined => {
+	const started: AgentTurnProjectionState = startedAt ? { startedAt } : {};
+	const terminalTiming = {
+		...started,
+		...(updatedAt ? { completedAt: updatedAt } : {}),
+	};
+	if (status === "failed") {
+		return { ...terminalTiming, lifecycle: "completed", outcome: "failed" };
+	}
+	if (status === "interrupted" || status === "paused") {
+		return { ...terminalTiming, lifecycle: "completed", outcome: "interrupted" };
+	}
+	if (status === "cancelled") {
+		return { ...terminalTiming, lifecycle: "completed", outcome: "cancelled" };
+	}
+	if (status === "completed") {
+		return { ...terminalTiming, lifecycle: "completed", outcome: "succeeded" };
+	}
+	if (status === "pending") return { ...started, lifecycle: "pending", outcome: null };
+	if (status === "waiting" || (isRunning && isWaitingForPermission)) {
+		return { ...started, lifecycle: "waiting", outcome: null };
+	}
+	if (status === "running" || isRunning) {
+		return { ...started, lifecycle: "in_progress", outcome: null };
+	}
+	return undefined;
+};
+
+const TimelineTurn: React.FC<{
+	turn: AgentTurnViewModel;
+	disclosureOverride: ProcessDisclosureOverride;
+	onDisclosureOverrideChange: (override: ProcessDisclosureOverride) => void;
+	onA2UIAction?: AgentA2UIActionHandler;
+}> = memo(({ turn, disclosureOverride, onDisclosureOverrideChange, onA2UIAction }) => {
+	const showProcess =
+		turn.processItems.length > 0 ||
+		turn.lifecycle !== "completed" ||
+		(turn.outcome !== null && turn.outcome !== "succeeded");
+	const hasAssistantContent =
+		showProcess || turn.finalAnswerItems.length > 0 || turn.interactionItems.length > 0;
+
+	return (
+		<section className="agent-turn space-y-3" data-agent-turn-id={turn.id}>
+			{turn.userMessage ? <TimelineUserTurn message={turn.userMessage} /> : null}
+			{hasAssistantContent ? (
+				<div className="agent-turn-response min-w-0 space-y-3 px-1">
+					{showProcess ? (
+						<ProcessDisclosure
+							turnId={turn.id}
+							lifecycle={turn.lifecycle}
+							outcome={turn.outcome}
+							durationMs={turn.durationMs}
+							itemCount={turn.processSummary.itemCount}
+							override={disclosureOverride}
+							onOverrideChange={onDisclosureOverrideChange}
+						>
+							{turn.processItems.length > 0 ? (
+								<TimelineProcessItems messages={turn.processItems} />
+							) : (
+								<TimelineProcessEmpty lifecycle={turn.lifecycle} outcome={turn.outcome} />
+							)}
+						</ProcessDisclosure>
+					) : null}
+					{turn.finalAnswerItems.map((message) => (
+						<TimelineFinalAnswer key={message.itemId ?? message.id} message={message} />
+					))}
+					{turn.interactionItems.map((message) => (
+						<TimelineAssistantItem
+							key={message.itemId ?? message.id}
+							message={message}
+							onA2UIAction={onA2UIAction}
+						/>
+					))}
+				</div>
+			) : null}
+		</section>
+	);
+});
 
 const TimelineUserTurn: React.FC<{ message: AgentMessage }> = memo(({ message }) => {
 	const legacyAttachments = legacyDisplayAttachments(message.content);
@@ -278,23 +449,19 @@ const normalizedDisplayAttachmentKind = (kind?: string) => {
 	return normalized === "image" ? "image" : "file";
 };
 
-const TimelineAssistantGroup: React.FC<{
-	messages: AgentMessage[];
-	onA2UIAction?: AgentA2UIActionHandler;
-}> = memo(({ messages, onA2UIAction }) => {
+const TimelineProcessItems: React.FC<{ messages: AgentMessage[] }> = memo(({ messages }) => {
 	const items = useMemo(() => groupAssistantMessages(messages), [messages]);
 	return (
-		<div className="agent-assistant-group space-y-2 px-1">
+		<div className="agent-process-stream space-y-2">
 			{items.map((item) =>
 				item.type === "thoughts" ? (
-					<ThoughtBlock key={item.id} messages={item.messages} />
+					<ProcessThoughtGroup key={item.id} messages={item.messages} />
 				) : item.type === "tools" ? (
 					<ToolGroup key={item.id} messages={item.messages} />
 				) : (
-					<TimelineAssistantItem
-						key={item.message.id}
+					<TimelineProcessItem
+						key={item.message.itemId ?? item.message.id}
 						message={item.message}
-						onA2UIAction={onA2UIAction}
 					/>
 				),
 			)}
@@ -302,25 +469,57 @@ const TimelineAssistantGroup: React.FC<{
 	);
 });
 
-const TimelineAssistantItem: React.FC<{
-	message: AgentMessage;
-	onA2UIAction?: AgentA2UIActionHandler;
-}> = memo(({ message, onA2UIAction }) => {
+const TimelineProcessEmpty: React.FC<{
+	lifecycle: AgentTurnViewModel["lifecycle"];
+	outcome: AgentTurnViewModel["outcome"];
+}> = ({ lifecycle, outcome }) => (
+	<div className="agent-process-empty flex items-center gap-2 py-1 text-muted-foreground">
+		{lifecycle !== "completed" ? (
+			<LoaderCircle className="size-3.5 motion-safe:animate-spin" aria-hidden="true" />
+		) : null}
+		<span>{emptyProcessLabel(lifecycle, outcome)}</span>
+	</div>
+);
+
+const emptyProcessLabel = (
+	lifecycle: AgentTurnViewModel["lifecycle"],
+	outcome: AgentTurnViewModel["outcome"],
+) => {
+	if (lifecycle === "waiting") return "正在等待确认…";
+	if (lifecycle !== "completed") return "正在准备第一项操作…";
+	if (outcome === "failed") return "运行在产生过程记录前失败。";
+	if (outcome === "interrupted") return "运行在产生过程记录前中断。";
+	if (outcome === "cancelled") return "运行已取消。";
+	if (outcome === "refused") return "运行已拒绝。";
+	return "没有可显示的过程记录。";
+};
+
+const ProcessThoughtGroup: React.FC<{ messages: AgentMessage[] }> = memo(({ messages }) => {
+	const content = readableThoughtContent(messages);
+	return (
+		<article className="agent-process-thought grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] gap-2 py-1 text-muted-foreground">
+			<Brain className="mt-1 size-3.5" aria-hidden="true" />
+			<div className="agent-process-markdown min-w-0 leading-5">
+				<span className="sr-only">思考：</span>
+				<MarkdownContent content={content} />
+			</div>
+		</article>
+	);
+});
+
+const TimelineProcessItem: React.FC<{ message: AgentMessage }> = memo(({ message }) => {
 	const kind = message.kind ?? "message";
-
-	if (message.metadata?.form) {
-		return <AgentFormCard message={message} />;
-	}
-
-	if (message.metadata?.a2ui) {
-		return <TimelineA2UIItem message={message} onA2UIAction={onA2UIAction} />;
-	}
-
 	if (kind === "message") {
-		return <TimelineMessage message={message} />;
-	}
-	if (kind === "tool" && isACPToolMessage(message)) {
-		return <ToolCallCard message={message} />;
+		return (
+			<article
+				className={cn(
+					"agent-process-commentary min-w-0 py-1 leading-5 text-foreground",
+					message.status === "error" && "text-error-foreground",
+				)}
+			>
+				<MarkdownContent content={message.content} />
+			</article>
+		);
 	}
 	if (kind === "plan") {
 		return (
@@ -335,6 +534,21 @@ const TimelineAssistantItem: React.FC<{
 			<ActionContent message={message} />
 		</TimelineAction>
 	);
+});
+
+const TimelineAssistantItem: React.FC<{
+	message: AgentMessage;
+	onA2UIAction?: AgentA2UIActionHandler;
+}> = memo(({ message, onA2UIAction }) => {
+	if (message.metadata?.form) {
+		return <AgentFormCard message={message} />;
+	}
+
+	if (message.metadata?.a2ui) {
+		return <TimelineA2UIItem message={message} onA2UIAction={onA2UIAction} />;
+	}
+
+	return <TimelineFinalAnswer message={message} />;
 });
 
 const TimelineA2UIItem: React.FC<{
@@ -354,64 +568,22 @@ const TimelineA2UIItem: React.FC<{
 	);
 });
 
-const TimelineMessage: React.FC<{ message: AgentMessage }> = memo(({ message }) => {
-	const { thoughts, text } = splitAssistantInlineThoughts(message.content);
-	return (
-		<>
-			{thoughts.map((thought, index) => (
-				<ThoughtBlock
-					key={`${message.id}-inline-thought-${index}`}
-					messages={[
-						{
-							...message,
-							id: `${message.id}-inline-thought-${index}`,
-							content: thought,
-							kind: "thought",
-						},
-					]}
-				/>
-			))}
-			{text ? <AssistantTextMessage message={message} content={text} /> : null}
-		</>
-	);
-});
-
-const AssistantTextMessage: React.FC<{ message: AgentMessage; content: string }> = ({
-	message,
-	content,
-}) => {
-	const rich = isRichAssistantMarkdown(content);
+const TimelineFinalAnswer: React.FC<{ message: AgentMessage }> = memo(({ message }) => {
+	if (!message.content.trim() && message.status !== "streaming") return null;
 	return (
 		<article
 			className={cn(
-				"agent-assistant-message text-xs leading-5",
-				rich
-					? "agent-assistant-message-card px-3 py-3"
-					: "agent-assistant-message-inline px-1 py-1",
+				"agent-final-answer min-w-0 text-xs leading-5 text-foreground",
 				message.status === "error" ? "text-error-foreground" : "text-foreground",
 			)}
 		>
-			{rich ? (
-				<div className="agent-assistant-message-heading">
-					<span className="agent-assistant-message-icon" aria-hidden="true">
-						<Sparkles />
-					</span>
-					<span className="agent-assistant-message-title">文档智能体</span>
-					<span className="agent-assistant-message-dot">·</span>
-					<span className="agent-assistant-message-subtitle">最终回复</span>
-				</div>
-			) : (
-				<span className="agent-assistant-inline-icon" aria-hidden="true">
-					<Sparkles />
-				</span>
-			)}
-			<div className="agent-assistant-message-content">
-				<MarkdownContent content={content} />
+			<div className="agent-final-answer-content">
+				<MarkdownContent content={message.content} />
 				{message.status === "streaming" ? <StreamingCursor /> : null}
 			</div>
 		</article>
 	);
-};
+});
 
 const TimelineAction: React.FC<{
 	message: AgentMessage;
@@ -486,7 +658,6 @@ const TimelineAction: React.FC<{
 							)}
 						>
 							{children}
-							{message.status === "streaming" ? <StreamingCursor /> : null}
 						</div>
 					) : null}
 				</div>
@@ -494,53 +665,6 @@ const TimelineAction: React.FC<{
 		</article>
 	);
 });
-
-const isRichAssistantMarkdown = (content: string) => {
-	const trimmed = content.trim();
-	if (!trimmed) return false;
-	if (trimmed.length > 120) return true;
-	return /(^|\n)(#{1,6}\s|[-*]\s|\d+[.)]\s|>\s|```)/.test(trimmed);
-};
-
-const splitAssistantInlineThoughts = (content: string) => {
-	const thoughts: string[] = [];
-	const textSegments: string[] = [];
-	const openPattern = /<think>/gi;
-	let cursor = 0;
-	let openMatch: RegExpExecArray | null;
-
-	while ((openMatch = openPattern.exec(content)) !== null) {
-		if (openMatch.index > cursor) {
-			textSegments.push(content.slice(cursor, openMatch.index));
-		}
-
-		const start = openPattern.lastIndex;
-		const closePattern = /<\/think>/gi;
-		closePattern.lastIndex = start;
-		const closeMatch = closePattern.exec(content);
-		if (!closeMatch) {
-			const thought = content.slice(start).trim();
-			if (thought) thoughts.push(thought);
-			cursor = content.length;
-			break;
-		}
-
-		const thought = content.slice(start, closeMatch.index).trim();
-		if (thought) thoughts.push(thought);
-		cursor = closeMatch.index + closeMatch[0].length;
-		openPattern.lastIndex = cursor;
-	}
-
-	if (cursor < content.length) textSegments.push(content.slice(cursor));
-
-	return {
-		thoughts,
-		text: textSegments
-			.map((segment) => segment.trim())
-			.filter(Boolean)
-			.join("\n\n"),
-	};
-};
 
 const PlanProgressBadge: React.FC<{ entries?: AgentMessageMetadata["planEntries"] }> = ({
 	entries,
@@ -636,9 +760,6 @@ const actionSummary = (message: AgentMessage) => {
 	if (metadata?.outputResult) return compact(metadata.outputResult);
 	return compact(message.content);
 };
-
-const isACPToolMessage = (message: AgentMessage) =>
-	typeof message.metadata?.toolCallId === "string" && message.metadata.toolCallId.trim() !== "";
 
 const iconByKind: Partial<Record<AgentMessageKind, React.ComponentType<{ className?: string }>>> = {
 	diff: FilePenLine,

@@ -65,9 +65,12 @@
 	},
 	"chatMessage": {
 		"id": "user-1",
+		"itemId": "user-item-1",
+		"turnId": "run-1",
 		"role": "user",
 		"content": "读一下这个内容",
 		"kind": "message",
+		"phase": "final_answer",
 		"title": "用户消息",
 		"createdAt": "2026-07-08T10:00:00Z",
 		"status": "complete",

@@ -77,28 +77,32 @@ func appendProjectedAssistantDelta(conversation AgentConversationRecord, event A
 	found := false
 	for index := range conversation.Messages {
 		if conversation.Messages[index].ID == streamingID {
-			conversation.Messages[index].Content += event.Delta
-			conversation.Messages[index].Status = "streaming"
+			message := conversation.Messages[index]
+			message.Content += event.Delta
+			message.Status = "streaming"
+			conversation.Messages[index] = applyProjectedMessageSemantics(message, event)
 			found = true
 			break
 		}
 	}
 	if !found {
-		conversation.Messages = append(conversation.Messages, AgentChatMessageRecord{
+		message := applyProjectedMessageSemantics(AgentChatMessageRecord{
 			ID:        streamingID,
 			Role:      "assistant",
 			Content:   event.Delta,
 			Kind:      "message",
 			CreatedAt: event.CreatedAt,
 			Status:    "streaming",
-		})
+		}, event)
+		conversation.Messages = append(conversation.Messages, message)
 	}
 	conversation.StreamingMessageID = streamingID
 	conversation.UpdatedAt = event.CreatedAt
 	return conversation
 }
 
-func completeProjectedAssistantMessage(conversation AgentConversationRecord, id string, content string, createdAt string) AgentConversationRecord {
+func completeProjectedAssistantMessage(conversation AgentConversationRecord, event AgentEvent) AgentConversationRecord {
+	content := firstNonEmpty(event.Content, event.Message)
 	if conversation.StreamingMessageID != "" {
 		for index := range conversation.Messages {
 			if conversation.Messages[index].ID == conversation.StreamingMessageID {
@@ -106,8 +110,9 @@ func completeProjectedAssistantMessage(conversation AgentConversationRecord, id 
 					conversation.Messages[index].Content = content
 				}
 				conversation.Messages[index].Status = "complete"
+				conversation.Messages[index] = applyProjectedMessageSemantics(conversation.Messages[index], event)
 				conversation.StreamingMessageID = ""
-				conversation.UpdatedAt = createdAt
+				conversation.UpdatedAt = event.CreatedAt
 				return conversation
 			}
 		}
@@ -115,15 +120,16 @@ func completeProjectedAssistantMessage(conversation AgentConversationRecord, id 
 	if strings.TrimSpace(content) == "" {
 		return conversation
 	}
-	conversation.Messages = append(conversation.Messages, AgentChatMessageRecord{
-		ID:        id,
+	message := applyProjectedMessageSemantics(AgentChatMessageRecord{
+		ID:        messageIDForEvent(event, "assistant"),
 		Role:      "assistant",
 		Content:   content,
 		Kind:      "message",
-		CreatedAt: createdAt,
+		CreatedAt: event.CreatedAt,
 		Status:    "complete",
-	})
-	conversation.UpdatedAt = createdAt
+	}, event)
+	conversation.Messages = append(conversation.Messages, message)
+	conversation.UpdatedAt = event.CreatedAt
 	return conversation
 }
 
@@ -177,7 +183,7 @@ func appendProjectedTrace(
 	if !ok {
 		return
 	}
-	conversation.Messages = append(conversation.Messages, AgentChatMessageRecord{
+	message := applyProjectedMessageSemantics(AgentChatMessageRecord{
 		ID:        messageIDForEvent(event, kind),
 		Role:      "assistant",
 		Content:   content,
@@ -186,7 +192,8 @@ func appendProjectedTrace(
 		CreatedAt: event.CreatedAt,
 		Status:    status,
 		Metadata:  metadataForProjectedMessage(title, content),
-	})
+	}, event)
+	conversation.Messages = append(conversation.Messages, message)
 	conversation.UpdatedAt = event.CreatedAt
 	conversations[conversation.RunID] = conversation
 }

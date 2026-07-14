@@ -1,15 +1,18 @@
 import type { AgentActionContext, AgentActions } from "./action-types";
 import {
+	agentMessageId,
 	appendThoughtToConversation,
 	appendTraceForTarget,
 	createId,
 	findCurrentTurnPlanMessage,
 	nonTerminalConversationStatus,
+	normalizeAgentItemIdentity,
 	prependActivity,
 	resolveTargetRunId,
 	runtimeLabel,
 	statePatchWithConversations,
 	updateConversationMessages,
+	withAgentItemIdentity,
 } from "./conversation";
 import { upsertRuntimeLogInConversation } from "./runtime-log";
 import { upsertToolCallInConversation } from "./tool-metadata";
@@ -59,38 +62,55 @@ export const createAgentActivityActions = ({ set }: AgentActionContext): Activit
 		});
 	},
 	clearRuntimeAlerts: () => set({ runtimeAlerts: [] }),
-	appendThought: (thought, runId) => {
+	appendThought: (thought, runId, identity) => {
 		if (!thought.trim()) return;
 
 		set((state) => {
 			const targetRunId = resolveTargetRunId(state, runId);
+			const itemIdentity = normalizeAgentItemIdentity(identity, {
+				turnId: targetRunId,
+				phase: "commentary",
+			});
 			const conversations = updateConversationMessages(state, targetRunId, (conversation) =>
-				appendThoughtToConversation(conversation, thought),
+				appendThoughtToConversation(conversation, thought, itemIdentity),
 			);
 
 			return statePatchWithConversations(state, conversations);
 		});
 	},
-	setPlan: (entries, runId) => {
+	setPlan: (entries, runId, identity) => {
 		set((state) => {
 			const targetRunId = resolveTargetRunId(state, runId);
+			const itemIdentity = normalizeAgentItemIdentity(identity, {
+				turnId: targetRunId,
+				phase: "commentary",
+			});
 			const conversations = updateConversationMessages(state, targetRunId, (conversation) => {
 				const createdAt = new Date().toISOString();
 				const content = entries.map((entry) => entry.content).join("\n");
-				const existing = findCurrentTurnPlanMessage(conversation.messages);
-				const planMessage: AgentMessage = {
-					id: existing?.id ?? createId("plan"),
-					role: "assistant",
-					content,
-					kind: "plan",
-					title: "计划",
-					createdAt: existing?.createdAt ?? createdAt,
-					status: "complete",
-					metadata: {
-						...existing?.metadata,
-						planEntries: entries,
+				const existing = findCurrentTurnPlanMessage(conversation.messages, itemIdentity);
+				const id = existing?.id ?? agentMessageId(itemIdentity, createId("plan"));
+				const planMessage: AgentMessage = withAgentItemIdentity(
+					{
+						id,
+						role: "assistant",
+						content,
+						kind: "plan",
+						title: "计划",
+						createdAt: existing?.createdAt ?? createdAt,
+						status: "complete",
+						metadata: {
+							...existing?.metadata,
+							planEntries: entries,
+						},
 					},
-				};
+					itemIdentity,
+					{
+						turnId: existing?.turnId,
+						itemId: existing?.itemId ?? id,
+						phase: existing?.phase ?? "commentary",
+					},
+				);
 				const messages = existing
 					? conversation.messages.map((message) =>
 							message.id === existing.id ? planMessage : message,
@@ -107,27 +127,35 @@ export const createAgentActivityActions = ({ set }: AgentActionContext): Activit
 			return statePatchWithConversations(state, conversations);
 		});
 	},
-	upsertToolCallMessage: (toolCallId, patch, runId) => {
+	upsertToolCallMessage: (toolCallId, patch, runId, identity) => {
 		const trimmedToolCallId = toolCallId.trim();
 		if (!trimmedToolCallId) return;
 
 		set((state) => {
 			const targetRunId = resolveTargetRunId(state, runId);
+			const itemIdentity = normalizeAgentItemIdentity(identity, {
+				turnId: targetRunId,
+				phase: "commentary",
+			});
 			const conversations = updateConversationMessages(state, targetRunId, (conversation) =>
-				upsertToolCallInConversation(conversation, trimmedToolCallId, patch),
+				upsertToolCallInConversation(conversation, trimmedToolCallId, patch, itemIdentity),
 			);
 
 			return statePatchWithConversations(state, conversations);
 		});
 	},
-	recordRuntimeLog: (input, runId) => {
+	recordRuntimeLog: (input, runId, identity) => {
 		const content = input.content?.trim() ?? "";
 		if (!content && !input.outputBlocks?.length && input.outputJson === undefined) return;
 
 		set((state) => {
 			const targetRunId = resolveTargetRunId(state, runId);
+			const itemIdentity = normalizeAgentItemIdentity(identity, {
+				turnId: targetRunId,
+				phase: "commentary",
+			});
 			const conversations = updateConversationMessages(state, targetRunId, (conversation) =>
-				upsertRuntimeLogInConversation(conversation, input),
+				upsertRuntimeLogInConversation(conversation, input, itemIdentity),
 			);
 			const detail = content || "运行日志已更新。";
 

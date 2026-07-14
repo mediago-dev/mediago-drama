@@ -292,7 +292,6 @@ func (writer *agentEventWriter) append(event agentEvent, upsertIndex func(agentE
 	}
 
 	event.Sequence = writer.nextSequence
-	writer.nextSequence++
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return event, fmt.Errorf("encoding agent event %s: %w", event.ID, err)
@@ -300,6 +299,7 @@ func (writer *agentEventWriter) append(event agentEvent, upsertIndex func(agentE
 	if _, err := writer.buffer.Write(append(payload, '\n')); err != nil {
 		return event, fmt.Errorf("appending agent event %s: %w", event.ID, err)
 	}
+	writer.nextSequence++
 	if shouldFlushAgentEvent(event, writer.lastFlush, now) {
 		if err := writer.flushLocked(); err != nil {
 			return event, err

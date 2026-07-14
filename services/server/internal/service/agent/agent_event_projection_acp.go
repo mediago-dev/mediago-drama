@@ -20,7 +20,7 @@ func projectACPEvent(
 			return
 		}
 		if conversation, ok := ensureProjectedConversation(conversations, event); ok {
-			conversation.Messages = append(conversation.Messages, AgentChatMessageRecord{
+			message := applyProjectedMessageSemantics(AgentChatMessageRecord{
 				ID:        messageIDForEvent(event, "thought"),
 				Role:      "assistant",
 				Content:   content,
@@ -28,7 +28,8 @@ func projectACPEvent(
 				Title:     "思考",
 				CreatedAt: event.CreatedAt,
 				Status:    "complete",
-			})
+			}, event)
+			conversation.Messages = append(conversation.Messages, message)
 			conversation.UpdatedAt = event.CreatedAt
 			conversations[conversation.RunID] = conversation
 		}
@@ -141,14 +142,18 @@ func upsertProjectedACPToolCall(
 	})
 	message := AgentChatMessageRecord{
 		ID:        firstNonEmpty(previous.ID, messageIDForEvent(event, "tool")),
+		TurnID:    previous.TurnID,
+		ItemID:    previous.ItemID,
 		Role:      "assistant",
 		Content:   firstNonEmpty(event.Message, projectedACPToolSummary(status, lines, bytes), previous.Content, title),
 		Kind:      "tool",
+		Phase:     previous.Phase,
 		Title:     title,
 		CreatedAt: firstNonEmpty(previous.CreatedAt, event.CreatedAt),
 		Status:    projectedMessageStatusFromToolStatus(status),
 		Metadata:  metadata,
 	}
+	message = applyProjectedMessageSemantics(message, event)
 
 	if existingIndex >= 0 {
 		conversation.Messages[existingIndex] = message
@@ -211,14 +216,18 @@ func upsertProjectedACPRuntimeLog(
 	})
 	message := AgentChatMessageRecord{
 		ID:        firstNonEmpty(previous.ID, messageIDForEvent(event, "runtime")),
+		TurnID:    previous.TurnID,
+		ItemID:    previous.ItemID,
 		Role:      "assistant",
 		Content:   content,
 		Kind:      "runtime",
+		Phase:     previous.Phase,
 		Title:     "运行日志",
 		CreatedAt: firstNonEmpty(previous.CreatedAt, event.CreatedAt),
 		Status:    projectedMessageStatusFromToolStatus(status),
 		Metadata:  metadata,
 	}
+	message = applyProjectedMessageSemantics(message, event)
 
 	if existingIndex >= 0 {
 		conversation.Messages[existingIndex] = message
@@ -260,7 +269,13 @@ func upsertProjectedACPPlan(
 	if existingIndex >= 0 {
 		previous := conversation.Messages[existingIndex]
 		message.ID = previous.ID
+		message.TurnID = previous.TurnID
+		message.ItemID = previous.ItemID
+		message.Phase = previous.Phase
 		message.CreatedAt = firstNonEmpty(previous.CreatedAt, event.CreatedAt)
+	}
+	message = applyProjectedMessageSemantics(message, event)
+	if existingIndex >= 0 {
 		conversation.Messages[existingIndex] = message
 	} else {
 		conversation.Messages = append(conversation.Messages, message)

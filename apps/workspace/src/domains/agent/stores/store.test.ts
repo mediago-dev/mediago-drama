@@ -355,6 +355,291 @@ describe("agent store thought streaming", () => {
 	});
 });
 
+describe("agent store item identity", () => {
+	afterEach(() => {
+		useAgentStore.getState().resetSession();
+		useAgentStore.setState({
+			activity: [],
+			conversations: {},
+			isRunning: false,
+			rootRunId: null,
+			streamingMessageId: null,
+		});
+	});
+
+	it("isolates concurrent assistant streams by turn, item, and phase", () => {
+		const store = useAgentStore.getState();
+		store.startRun("检查项目");
+		store.bindRootRun("run-1");
+		store.appendAssistantDelta("正在检查", "run-1", {
+			turnId: "turn-1",
+			itemId: "commentary-1",
+			phase: "commentary",
+		});
+		store.appendAssistantDelta("已完成", "run-1", {
+			turnId: "turn-1",
+			itemId: "answer-1",
+			phase: "final_answer",
+		});
+		store.completeAssistantMessage("已完成。", "run-1", {
+			turnId: "turn-1",
+			itemId: "answer-1",
+			phase: "final_answer",
+		});
+		store.completeAssistantMessage("已完成。", "run-1", {
+			turnId: "turn-1",
+			itemId: "answer-1",
+			phase: "final_answer",
+		});
+
+		const assistants = selectAgentMessages(useAgentStore.getState()).filter(
+			(message) => message.role === "assistant",
+		);
+		expect(assistants).toEqual([
+			expect.objectContaining({
+				id: "commentary-1",
+				itemId: "commentary-1",
+				turnId: "turn-1",
+				phase: "commentary",
+				content: "正在检查",
+				status: "streaming",
+			}),
+			expect.objectContaining({
+				id: "answer-1",
+				itemId: "answer-1",
+				turnId: "turn-1",
+				phase: "final_answer",
+				content: "已完成。",
+				status: "complete",
+			}),
+		]);
+	});
+
+	it("upgrades a stable assistant item from commentary to final on completion", () => {
+		const store = useAgentStore.getState();
+		store.startRun("检查项目");
+		store.bindRootRun("run-1");
+		store.appendAssistantDelta("检查中", "run-1", {
+			turnId: "turn-1",
+			itemId: "answer-1",
+			phase: "commentary",
+		});
+		store.completeAssistantMessage("检查完成。", "run-1", {
+			turnId: "turn-1",
+			itemId: "answer-1",
+			phase: "final_answer",
+		});
+
+		const assistants = selectAgentMessages(useAgentStore.getState()).filter(
+			(message) => message.role === "assistant",
+		);
+		expect(assistants).toEqual([
+			expect.objectContaining({
+				id: "answer-1",
+				itemId: "answer-1",
+				turnId: "turn-1",
+				phase: "final_answer",
+				content: "检查完成。",
+				status: "complete",
+			}),
+		]);
+	});
+
+	it("keeps phases isolated when an assistant event has no item id", () => {
+		const store = useAgentStore.getState();
+		store.startRun("检查项目");
+		store.bindRootRun("run-1");
+		store.appendAssistantDelta("检查中", "run-1", {
+			turnId: "turn-1",
+			phase: "commentary",
+		});
+		store.appendAssistantDelta("已完成", "run-1", {
+			turnId: "turn-1",
+			phase: "final_answer",
+		});
+		store.completeAssistantMessage("已完成。", "run-1", {
+			turnId: "turn-1",
+			phase: "final_answer",
+		});
+
+		const assistants = selectAgentMessages(useAgentStore.getState()).filter(
+			(message) => message.role === "assistant",
+		);
+		expect(assistants).toEqual([
+			expect.objectContaining({
+				phase: "commentary",
+				content: "检查中",
+				status: "streaming",
+			}),
+			expect.objectContaining({
+				phase: "final_answer",
+				content: "已完成。",
+				status: "complete",
+			}),
+		]);
+	});
+
+	it("strips prior assistant message segments from an aggregate semantic completion", () => {
+		const store = useAgentStore.getState();
+		store.startRun("检查项目");
+		store.bindRootRun("run-1");
+		store.appendAssistantDelta("进度1", "run-1", {
+			turnId: "turn-1",
+			itemId: "progress-1",
+			phase: "commentary",
+		});
+		store.upsertToolCallMessage("tool-1", { title: "读取文件", status: "completed" }, "run-1", {
+			turnId: "turn-1",
+			itemId: "tool-1",
+			phase: "commentary",
+		});
+		store.appendThought("工具外过程", "run-1", {
+			turnId: "turn-1",
+			itemId: "thought-1",
+			phase: "commentary",
+		});
+		store.appendAssistantDelta("进度2", "run-1", {
+			turnId: "turn-1",
+			itemId: "progress-2",
+			phase: "commentary",
+		});
+		store.appendAssistantDelta("最终", "run-1", {
+			turnId: "turn-1",
+			itemId: "answer-1",
+			phase: "final_answer",
+		});
+		store.completeAssistantMessage("进度1进度2最终", "run-1", {
+			turnId: "turn-1",
+			itemId: "answer-1",
+			phase: "final_answer",
+		});
+
+		const assistantMessages = selectAgentMessages(useAgentStore.getState()).filter(
+			(message) => message.role === "assistant" && message.kind === "message",
+		);
+		expect(assistantMessages.map((message) => message.content)).toEqual(["进度1", "进度2", "最终"]);
+		expect(assistantMessages.at(-1)).toMatchObject({
+			itemId: "answer-1",
+			phase: "final_answer",
+			status: "complete",
+		});
+	});
+
+	it("merges thought chunks by item id even when other items interleave", () => {
+		const store = useAgentStore.getState();
+		store.startRun("分析");
+		store.bindRootRun("run-1");
+		store.appendThought("先读", "run-1", {
+			turnId: "turn-1",
+			itemId: "thought-1",
+			phase: "commentary",
+		});
+		store.appendThought("再看", "run-1", {
+			turnId: "turn-1",
+			itemId: "thought-2",
+			phase: "commentary",
+		});
+		store.appendThought("文件", "run-1", {
+			turnId: "turn-1",
+			itemId: "thought-1",
+			phase: "commentary",
+		});
+
+		const thoughts = selectAgentMessages(useAgentStore.getState()).filter(
+			(message) => message.kind === "thought",
+		);
+		expect(thoughts).toEqual([
+			expect.objectContaining({ itemId: "thought-1", content: "先读文件" }),
+			expect.objectContaining({ itemId: "thought-2", content: "再看" }),
+		]);
+	});
+
+	it("preserves semantic identity for plans, tools, runtime logs, and forms", () => {
+		const store = useAgentStore.getState();
+		store.startRun("执行");
+		store.bindRootRun("run-1");
+		store.setPlan([{ content: "读取", status: "in_progress" }], "run-1", {
+			turnId: "turn-1",
+			itemId: "plan-1",
+			phase: "commentary",
+		});
+		store.upsertToolCallMessage("tool-call-1", { status: "in_progress" }, "run-1", {
+			turnId: "turn-1",
+			itemId: "tool-item-1",
+			phase: "commentary",
+		});
+		store.recordRuntimeLog({ content: "stderr", toolCallId: "runtime-1" }, "run-1", {
+			turnId: "turn-1",
+			itemId: "runtime-item-1",
+			phase: "commentary",
+		});
+		store.addFormMessage(
+			{ selectionId: "selection-1", title: "确认", fields: [] },
+			"需要确认",
+			"run-1",
+			{ turnId: "turn-1", itemId: "form-1" },
+		);
+
+		const messages = selectAgentMessages(useAgentStore.getState());
+		expect(messages.find((message) => message.kind === "plan")).toMatchObject({
+			id: "plan-1",
+			itemId: "plan-1",
+			turnId: "turn-1",
+			phase: "commentary",
+		});
+		expect(messages.find((message) => message.kind === "tool")).toMatchObject({
+			id: "tool-item-1",
+			itemId: "tool-item-1",
+			turnId: "turn-1",
+			phase: "commentary",
+		});
+		expect(messages.find((message) => message.kind === "runtime")).toMatchObject({
+			id: "runtime-item-1",
+			itemId: "runtime-item-1",
+			turnId: "turn-1",
+			phase: "commentary",
+		});
+		expect(messages.find((message) => message.metadata?.form)).toMatchObject({
+			id: "form-1",
+			itemId: "form-1",
+			turnId: "turn-1",
+		});
+	});
+
+	it("binds only the latest optimistic turn to the accepted run", () => {
+		useAgentStore.setState({
+			rootRunId: "run-old",
+			conversations: {
+				"run-old": {
+					runId: "run-old",
+					status: "completed",
+					messages: [
+						{ id: "user-old", role: "user", content: "旧问题", status: "complete" },
+						{ id: "answer-old", role: "assistant", content: "旧回答", status: "complete" },
+					],
+					streamingMessageId: null,
+					children: [],
+					createdAt: "2026-07-14T00:00:00.000Z",
+					updatedAt: "2026-07-14T00:00:01.000Z",
+				},
+			},
+		});
+
+		useAgentStore.getState().startRun("新问题");
+		useAgentStore.getState().bindRootRun("run-new");
+
+		const messages = selectAgentMessages(useAgentStore.getState());
+		expect(messages[0]).not.toHaveProperty("turnId");
+		expect(messages[1]).not.toHaveProperty("turnId");
+		expect(messages[2]).toMatchObject({
+			role: "user",
+			content: "新问题",
+			turnId: "run-new",
+			itemId: expect.any(String),
+		});
+	});
+});
+
 describe("agent store pending user turns", () => {
 	afterEach(() => {
 		useAgentStore.getState().resetSession();

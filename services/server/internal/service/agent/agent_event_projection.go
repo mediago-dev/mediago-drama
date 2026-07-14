@@ -92,7 +92,7 @@ func NormalizeAgentEventForPersistence(event AgentEvent) AgentEvent {
 	if event.CreatedAt == "" {
 		event.CreatedAt = timestamp.NowRFC3339Nano()
 	}
-	return event
+	return NormalizeAgentEventSemantics(event)
 }
 
 // AttachConversationChildren normalizes legacy conversation child arrays.
@@ -145,13 +145,14 @@ func ProjectAgentEvent(
 	conversations map[string]AgentConversationRecord,
 	activity *[]AgentChatActivityRecord,
 ) {
+	event = NormalizeAgentEventSemantics(event)
 	switch event.Type {
 	case "agent.user.message":
 		if conversation, ok := ensureProjectedConversation(conversations, event); ok {
 			if conversation.Prompt == "" {
 				conversation.Prompt = event.Message
 			}
-			conversation.Messages = append(conversation.Messages, AgentChatMessageRecord{
+			message := applyProjectedMessageSemantics(AgentChatMessageRecord{
 				ID:        messageIDForEvent(event, "user"),
 				Role:      "user",
 				Content:   event.Message,
@@ -159,7 +160,8 @@ func ProjectAgentEvent(
 				CreatedAt: event.CreatedAt,
 				Status:    "complete",
 				Metadata:  event.Metadata,
-			})
+			}, event)
+			conversation.Messages = append(conversation.Messages, message)
 			conversation.UpdatedAt = event.CreatedAt
 			conversations[conversation.RunID] = conversation
 		}
@@ -170,12 +172,7 @@ func ProjectAgentEvent(
 		}
 	case "agent.message.completed":
 		if conversation, ok := ensureProjectedConversation(conversations, event); ok {
-			conversation = completeProjectedAssistantMessage(
-				conversation,
-				messageIDForEvent(event, "assistant"),
-				firstNonEmpty(event.Content, event.Message),
-				event.CreatedAt,
-			)
+			conversation = completeProjectedAssistantMessage(conversation, event)
 			conversations[conversation.RunID] = conversation
 		}
 	case AgentUIEventType:
@@ -184,6 +181,9 @@ func ProjectAgentEvent(
 		}
 		if conversation, ok := ensureProjectedUIConversation(conversations, event); ok {
 			conversation = completeProjectedStreamingMessage(conversation)
+			if event.TurnID == "" {
+				event.TurnID = conversation.RunID
+			}
 			metadata := map[string]any{"runId": event.RunID}
 			if event.A2UI != nil {
 				metadata["a2ui"] = event.A2UI
@@ -191,7 +191,7 @@ func ProjectAgentEvent(
 			if event.Form != nil {
 				metadata["form"] = event.Form
 			}
-			conversation.Messages = append(conversation.Messages, AgentChatMessageRecord{
+			message := applyProjectedMessageSemantics(AgentChatMessageRecord{
 				ID:        messageIDForEvent(event, "ui"),
 				Role:      "assistant",
 				Content:   firstNonEmpty(event.Message, "Agent 已生成交互界面。"),
@@ -199,7 +199,8 @@ func ProjectAgentEvent(
 				CreatedAt: event.CreatedAt,
 				Status:    "complete",
 				Metadata:  metadata,
-			})
+			}, event)
+			conversation.Messages = append(conversation.Messages, message)
 			conversation.UpdatedAt = event.CreatedAt
 			conversations[conversation.RunID] = conversation
 		}
@@ -211,7 +212,7 @@ func ProjectAgentEvent(
 		}
 		appendProjectedActivity(activity, activityKind, label, detail, event.CreatedAt)
 		if conversation, ok := ensureProjectedConversation(conversations, event); ok {
-			conversation.Messages = append(conversation.Messages, AgentChatMessageRecord{
+			message := applyProjectedMessageSemantics(AgentChatMessageRecord{
 				ID:        messageIDForEvent(event, "activity"),
 				Role:      "assistant",
 				Content:   detail,
@@ -220,7 +221,8 @@ func ProjectAgentEvent(
 				CreatedAt: event.CreatedAt,
 				Status:    "complete",
 				Metadata:  metadataForProjectedMessage(label, detail),
-			})
+			}, event)
+			conversation.Messages = append(conversation.Messages, message)
 			conversation.UpdatedAt = event.CreatedAt
 			conversations[conversation.RunID] = conversation
 		}

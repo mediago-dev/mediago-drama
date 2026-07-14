@@ -18,7 +18,7 @@ func (client *acpClient) ReadTextFile(_ context.Context, params acp.ReadTextFile
 	}
 	acpLog().Debug("acp read file", client.logAttrs("path", client.displayPath(path), "line", OptionalInt(params.Line), "limit", OptionalInt(params.Limit))...)
 	client.flushThoughts()
-	client.publish(agentEvent{
+	client.publishEvent(agentEvent{
 		Type:    "agent.activity",
 		Message: "读取文件：" + client.displayPath(path),
 	})
@@ -62,7 +62,7 @@ func (client *acpClient) WriteTextFile(_ context.Context, params acp.WriteTextFi
 		return acp.WriteTextFileResponse{}, err
 	}
 	client.flushThoughts()
-	client.publish(agentEvent{
+	client.publishEvent(agentEvent{
 		Type:    "agent.activity",
 		Message: "已写入文件：" + client.displayPath(path),
 	})

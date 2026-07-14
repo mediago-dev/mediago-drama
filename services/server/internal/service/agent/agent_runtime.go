@@ -534,6 +534,8 @@ func (runtime *AgentRuntime) runAgent(
 			Type:    "agent.message.completed",
 			Message: result.Message,
 			Content: result.Message,
+			ItemID:  result.MessageItemID,
+			Phase:   AgentMessagePhaseFinalAnswer,
 		})
 	}
 	terminal := finishRun("completed", "Agent 运行已完成。")

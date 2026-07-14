@@ -23,7 +23,7 @@ import {
 import { syncAgentSessionStatus } from "@/domains/agent/lib/session-sync";
 import { inferToolKind } from "@/domains/agent/lib/tool-kind";
 import { refreshSelectedGenerationAssetDependents } from "@/domains/generation/lib/refresh-selected-assets";
-import { useAgentStore } from "@/domains/agent/stores";
+import { type AgentItemIdentity, useAgentStore } from "@/domains/agent/stores";
 import { pendingRootRunId } from "@/domains/agent/stores/constants";
 import { getEditorHandle } from "@/domains/documents/lib/editor-registry";
 import {
@@ -40,15 +40,27 @@ const resumedEventStreams = new Map<string, () => void>();
 const assistantDeltaFlushDelayMs = 40;
 const pendingAssistantDeltas = new Map<
 	string,
-	{ content: string; runId?: string; timer: ReturnType<typeof setTimeout> | null }
+	{
+		content: string;
+		runId?: string;
+		identity: AgentItemIdentity;
+		timer: ReturnType<typeof setTimeout> | null;
+	}
 >();
 
 const resumedEventStreamKey = (projectId: string, sessionId: string) => `${projectId}:${sessionId}`;
-const assistantDeltaBufferKey = (runId?: string) => runId?.trim() || "__default__";
+const assistantDeltaScope = (runId?: string, identity?: AgentItemIdentity) =>
+	identity?.turnId?.trim() || runId?.trim() || "__default__";
+const assistantDeltaBufferKey = (runId?: string, identity?: AgentItemIdentity) =>
+	JSON.stringify([
+		assistantDeltaScope(runId, identity),
+		identity?.itemId?.trim() || "__legacy_item__",
+		identity?.phase || "__legacy_phase__",
+	]);
 
-const queueAssistantDelta = (content: string, runId?: string) => {
+const queueAssistantDelta = (content: string, runId?: string, identity: AgentItemIdentity = {}) => {
 	if (!content) return;
-	const key = assistantDeltaBufferKey(runId);
+	const key = assistantDeltaBufferKey(runId, identity);
 	const pending = pendingAssistantDeltas.get(key);
 	if (pending) {
 		pending.content += content;
@@ -57,26 +69,30 @@ const queueAssistantDelta = (content: string, runId?: string) => {
 	const next = {
 		content,
 		runId,
-		timer: setTimeout(() => flushAssistantDelta(runId), assistantDeltaFlushDelayMs),
+		identity,
+		timer: setTimeout(() => flushAssistantDeltaBuffer(key), assistantDeltaFlushDelayMs),
 	};
 	pendingAssistantDeltas.set(key, next);
 };
 
-const flushAssistantDelta = (runId?: string) => {
-	const key = assistantDeltaBufferKey(runId);
+const flushAssistantDeltaBuffer = (key: string) => {
 	const pending = pendingAssistantDeltas.get(key);
 	if (!pending) return;
 	pendingAssistantDeltas.delete(key);
 	if (pending.timer) clearTimeout(pending.timer);
-	useAgentStore.getState().appendAssistantDelta(pending.content, pending.runId);
+	useAgentStore.getState().appendAssistantDelta(pending.content, pending.runId, pending.identity);
+};
+
+const flushAssistantDeltasForScope = (runId?: string, identity?: AgentItemIdentity) => {
+	const scope = assistantDeltaScope(runId, identity);
+	const keys = [...pendingAssistantDeltas.entries()]
+		.filter(([, pending]) => assistantDeltaScope(pending.runId, pending.identity) === scope)
+		.map(([key]) => key);
+	for (const key of keys) flushAssistantDeltaBuffer(key);
 };
 
 const flushAllAssistantDeltas = () => {
-	for (const pending of pendingAssistantDeltas.values()) {
-		if (pending.timer) clearTimeout(pending.timer);
-		useAgentStore.getState().appendAssistantDelta(pending.content, pending.runId);
-	}
-	pendingAssistantDeltas.clear();
+	for (const key of pendingAssistantDeltas.keys()) flushAssistantDeltaBuffer(key);
 };
 
 export const closeResumedAgentEventStream = (sessionId: string, projectId: string | null) => {
@@ -187,30 +203,47 @@ export const resumeAgentSessionEventStream = (
 	}
 };
 
+const eventItemIdentity = (event: AgentRuntimeEvent): AgentItemIdentity => ({
+	turnId: event.turnId?.trim() || eventRunId(event),
+	itemId: event.itemId?.trim() || undefined,
+	phase: event.phase,
+});
+
+const identityWithFallbackItem = (
+	identity: AgentItemIdentity,
+	fallbackItemId: string,
+): AgentItemIdentity => ({
+	...identity,
+	itemId: identity.itemId || fallbackItemId.trim() || undefined,
+});
+
 const handleACPAgentEvent = (event: Extract<AgentRuntimeEvent, { type: "agent.acp" }>) => {
 	const agentStore = useAgentStore.getState();
 	const acp = event.acp;
 	const runId = eventRunId(event);
+	const itemIdentity = eventItemIdentity(event);
 	if (!acp) {
 		agentStore.recordActivity("runtime", "ACP", event.message || "ACP 更新缺少负载。", runId);
 		return;
 	}
 
 	if (acp.kind === "thought") {
-		agentStore.appendThought(acp.thought || event.message, runId);
+		agentStore.appendThought(acp.thought || event.message, runId, itemIdentity);
 		return;
 	}
 
 	if (acp.kind === "runtimeLog" || isACPToolRuntimeLog(acp)) {
+		const toolCallId = acp.toolCallId?.trim() || event.id;
 		agentStore.recordRuntimeLog(
 			{
 				content: acpRuntimeLogText(acp) || event.message,
 				outputBlocks: acp.content,
 				outputJson: acp.rawOutput,
 				status: acp.status,
-				toolCallId: acp.toolCallId?.trim() || event.id,
+				toolCallId,
 			},
 			runId,
+			identityWithFallbackItem(itemIdentity, toolCallId),
 		);
 		return;
 	}
@@ -233,12 +266,13 @@ const handleACPAgentEvent = (event: Extract<AgentRuntimeEvent, { type: "agent.ac
 				content: event.message,
 			},
 			runId,
+			identityWithFallbackItem(itemIdentity, toolCallId),
 		);
 		return;
 	}
 
 	if (acp.kind === "plan") {
-		agentStore.setPlan(acp.plan ?? [], runId);
+		agentStore.setPlan(acp.plan ?? [], runId, itemIdentity);
 		return;
 	}
 
@@ -310,6 +344,7 @@ export const handleStreamingAgentEvent = (
 	if (duplicate) return;
 	if (gap) scheduleTranscriptResync(event.sessionId || agentStore.sessionId, context.projectId);
 	const runId = eventRunId(event);
+	const itemIdentity = eventItemIdentity(event);
 	// A transcript hydrate during a live run collapses the store onto the
 	// `pending-root` placeholder (the backend chat state carries no runId), which
 	// would otherwise strand every later live event in a separate conversation and
@@ -320,7 +355,7 @@ export const handleStreamingAgentEvent = (
 		agentStore.bindRootRun(runId);
 	}
 	if (event.type !== "agent.message.delta") {
-		flushAssistantDelta(runId);
+		flushAssistantDeltasForScope(runId, itemIdentity);
 	}
 	if (event.type === "agent.user.message") {
 		return;
@@ -358,7 +393,7 @@ export const handleStreamingAgentEvent = (
 	}
 
 	if (event.type === "agent.message.delta" && event.delta) {
-		queueAssistantDelta(event.delta, runId);
+		queueAssistantDelta(event.delta, runId, itemIdentity);
 		const nextDelta = `${context.getLatestDelta()}${event.delta}`.slice(-180);
 		context.setLatestDelta(nextDelta);
 		return;
@@ -379,6 +414,7 @@ export const handleStreamingAgentEvent = (
 					toolCallId: event.id,
 				},
 				runId,
+				identityWithFallbackItem(itemIdentity, event.id),
 			);
 			return;
 		}
@@ -393,17 +429,17 @@ export const handleStreamingAgentEvent = (
 	}
 
 	if (event.type === "agent.message.completed") {
-		agentStore.completeAssistantMessage(event.content || event.message, runId);
+		agentStore.completeAssistantMessage(event.content || event.message, runId, itemIdentity);
 		return;
 	}
 
 	if (event.type === "agent.ui" && event.a2ui) {
-		agentStore.addA2UIMessage(event.a2ui, event.message, runId);
+		agentStore.addA2UIMessage(event.a2ui, event.message, runId, itemIdentity);
 		return;
 	}
 
 	if (event.type === "agent.ui" && event.form) {
-		agentStore.addFormMessage(event.form, event.message, runId);
+		agentStore.addFormMessage(event.form, event.message, runId, itemIdentity);
 		return;
 	}
 

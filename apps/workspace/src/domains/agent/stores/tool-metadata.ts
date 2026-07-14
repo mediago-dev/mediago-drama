@@ -1,11 +1,15 @@
 import {
-	completeStreamingMessageInConversation,
+	agentMessageId,
 	createId,
+	findLastMessageIndexByIdentity,
 	nonTerminalConversationStatus,
+	normalizeAgentItemIdentity,
+	withAgentItemIdentity,
 } from "./conversation";
 import type {
 	AgentACPContentBlock,
 	AgentConversationState,
+	AgentItemIdentity,
 	AgentMessage,
 	AgentMessageMetadata,
 	AgentToolCallStatus,
@@ -20,14 +24,21 @@ export const upsertToolCallInConversation = (
 		status?: AgentToolCallStatus;
 		outputBlocks?: AgentACPContentBlock[];
 	},
+	identity?: AgentItemIdentity,
 ): AgentConversationState => {
 	const now = new Date().toISOString();
-	const existing = conversation.messages.find(
+	const normalizedIdentity = normalizeAgentItemIdentity(identity, { phase: "commentary" });
+	const identityIndex = normalizedIdentity.itemId
+		? findLastMessageIndexByIdentity(conversation.messages, normalizedIdentity, (message) =>
+				Boolean(message.kind === "tool"),
+			)
+		: -1;
+	const toolCallExisting = conversation.messages.find(
 		(message) => message.metadata?.toolCallId === toolCallId,
 	);
-	const baseConversation = existing
-		? conversation
-		: completeStreamingMessageInConversation(conversation);
+	const existing =
+		(identityIndex >= 0 ? conversation.messages[identityIndex] : undefined) ??
+		(!normalizedIdentity.itemId || !toolCallExisting?.itemId ? toolCallExisting : undefined);
 	const previousMetadata = existing?.metadata ?? {};
 	const startedAt =
 		typeof previousMetadata.startedAt === "string" ? previousMetadata.startedAt : now;
@@ -64,22 +75,31 @@ export const upsertToolCallInConversation = (
 		existing?.content ??
 		patch.title ??
 		"ACP 工具调用";
-	const message: AgentMessage = {
-		id: existing?.id ?? createId("tool"),
-		role: "assistant",
-		content,
-		kind: "tool",
-		title: patch.title ?? existing?.title ?? nextMetadata.toolName ?? "工具调用",
-		createdAt: existing?.createdAt ?? now,
-		status: agentMessageStatusFromToolStatus(nextStatus),
-		metadata: nextMetadata,
-	};
+	const id = existing?.id ?? agentMessageId(normalizedIdentity, createId("tool"));
+	const message: AgentMessage = withAgentItemIdentity(
+		{
+			id,
+			role: "assistant",
+			content,
+			kind: "tool",
+			title: patch.title ?? existing?.title ?? nextMetadata.toolName ?? "工具调用",
+			createdAt: existing?.createdAt ?? now,
+			status: agentMessageStatusFromToolStatus(nextStatus),
+			metadata: nextMetadata,
+		},
+		normalizedIdentity,
+		{
+			turnId: existing?.turnId,
+			itemId: existing?.itemId ?? id,
+			phase: existing?.phase ?? "commentary",
+		},
+	);
 	const messages = existing
-		? baseConversation.messages.map((item) => (item.id === existing.id ? message : item))
-		: [...baseConversation.messages, message];
+		? conversation.messages.map((item) => (item.id === existing.id ? message : item))
+		: [...conversation.messages, message];
 
 	return {
-		...baseConversation,
+		...conversation,
 		messages,
 		status: nonTerminalConversationStatus(conversation.status),
 		updatedAt: now,

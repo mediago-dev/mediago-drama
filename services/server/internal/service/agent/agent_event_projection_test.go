@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -311,5 +312,169 @@ func TestProjectAgentEventProjectsLegacyRuntimeLogToolUpdate(t *testing.T) {
 	message := conversation.Messages[0]
 	if message.Kind != "runtime" || !metadataBool(message.Metadata, "runtimeLog") {
 		t.Fatalf("message = %#v, want legacy tool update projected as runtime log", message)
+	}
+}
+
+func TestProjectAgentEventPreservesTurnItemAndPhase(t *testing.T) {
+	conversations := map[string]AgentConversationRecord{}
+	activity := []AgentChatActivityRecord{}
+
+	ProjectAgentEvent(AgentEvent{
+		ID:        "event-user",
+		SessionID: "session-1",
+		RunID:     "run-1",
+		Type:      "agent.user.message",
+		Message:   "更新 README",
+		CreatedAt: "2026-07-14T10:00:00Z",
+	}, conversations, &activity)
+	ProjectAgentEvent(AgentEvent{
+		ID:        "event-tool-start",
+		SessionID: "session-1",
+		RunID:     "run-1",
+		Type:      "agent.acp",
+		Message:   "正在更新 README",
+		CreatedAt: "2026-07-14T10:00:01Z",
+		ACP: &AgentACPEvent{
+			Kind:       "toolCall",
+			ToolCallID: "call-edit",
+			Title:      "更新 README",
+			Status:     "in_progress",
+		},
+	}, conversations, &activity)
+	ProjectAgentEvent(AgentEvent{
+		ID:        "event-tool-done",
+		SessionID: "session-1",
+		RunID:     "run-1",
+		Type:      "agent.acp",
+		Message:   "README 已更新",
+		CreatedAt: "2026-07-14T10:00:02Z",
+		ACP: &AgentACPEvent{
+			Kind:       "toolCallUpdate",
+			ToolCallID: "call-edit",
+			Title:      "更新 README",
+			Status:     "completed",
+		},
+	}, conversations, &activity)
+	ProjectAgentEvent(AgentEvent{
+		ID:        "event-final",
+		SessionID: "session-1",
+		RunID:     "run-1",
+		Type:      "agent.message.completed",
+		Content:   "README 已更新。",
+		CreatedAt: "2026-07-14T10:00:03Z",
+	}, conversations, &activity)
+
+	messages := conversations["run-1"].Messages
+	if len(messages) != 3 {
+		t.Fatalf("messages = %#v, want user, tool, and final answer", messages)
+	}
+	tool := messages[1]
+	if tool.TurnID != "run-1" || tool.ItemID != "call-edit" || tool.Phase != AgentMessagePhaseCommentary {
+		t.Fatalf("tool semantics = %#v, want stable commentary item", tool)
+	}
+	final := messages[2]
+	if final.TurnID != "run-1" || final.ItemID != "event-final" || final.Phase != AgentMessagePhaseFinalAnswer {
+		t.Fatalf("final semantics = %#v, want final-answer item", final)
+	}
+}
+
+func TestProjectAgentEventReplaysExplicitStreamingSemantics(t *testing.T) {
+	events := []AgentEvent{
+		{
+			ID:        "event-delta-1",
+			SessionID: "session-1",
+			RunID:     "run-1",
+			TurnID:    "turn-explicit",
+			ItemID:    "message-explicit",
+			Phase:     AgentMessagePhaseCommentary,
+			Type:      "agent.message.delta",
+			Delta:     "正在处理",
+			CreatedAt: "2026-07-14T10:00:00Z",
+		},
+		{
+			ID:        "event-delta-2",
+			SessionID: "session-1",
+			RunID:     "run-1",
+			TurnID:    "turn-explicit",
+			ItemID:    "message-explicit",
+			Phase:     AgentMessagePhaseCommentary,
+			Type:      "agent.message.delta",
+			Delta:     "中",
+			CreatedAt: "2026-07-14T10:00:01Z",
+		},
+		{
+			ID:        "event-completed",
+			SessionID: "session-1",
+			RunID:     "run-1",
+			TurnID:    "turn-explicit",
+			ItemID:    "message-explicit",
+			Phase:     AgentMessagePhaseFinalAnswer,
+			Type:      "agent.message.completed",
+			Content:   "处理完成。",
+			CreatedAt: "2026-07-14T10:00:02Z",
+		},
+	}
+
+	project := func() AgentConversationRecord {
+		conversations := map[string]AgentConversationRecord{}
+		activity := []AgentChatActivityRecord{}
+		for _, event := range events {
+			ProjectAgentEvent(event, conversations, &activity)
+		}
+		return conversations["run-1"]
+	}
+
+	first := project()
+	replayed := project()
+	if len(first.Messages) != 1 || len(replayed.Messages) != 1 {
+		t.Fatalf("messages after projection/replay = %#v / %#v, want one streamed item", first.Messages, replayed.Messages)
+	}
+	message := first.Messages[0]
+	if message.Content != "处理完成。" || message.Status != "complete" {
+		t.Fatalf("message = %#v, want exact completed content", message)
+	}
+	if message.TurnID != "turn-explicit" || message.ItemID != "message-explicit" || message.Phase != AgentMessagePhaseFinalAnswer {
+		t.Fatalf("message semantics = %#v, want explicit completed identity", message)
+	}
+	if !reflect.DeepEqual(replayed.Messages[0], message) {
+		t.Fatalf("replayed message = %#v, want deterministic %#v", replayed.Messages[0], message)
+	}
+}
+
+func TestProjectAgentEventPromotesStreamingItemOnlyOnCompletion(t *testing.T) {
+	conversations := map[string]AgentConversationRecord{}
+	activity := []AgentChatActivityRecord{}
+	delta := AgentEvent{
+		ID:        "event-delta",
+		SessionID: "session-1",
+		RunID:     "run-1",
+		ItemID:    "message-1",
+		Type:      "agent.message.delta",
+		Delta:     "最终回复",
+		CreatedAt: "2026-07-14T10:00:00Z",
+	}
+
+	ProjectAgentEvent(delta, conversations, &activity)
+	messages := conversations["run-1"].Messages
+	if len(messages) != 1 || messages[0].Phase != AgentMessagePhaseCommentary || messages[0].Status != "streaming" {
+		t.Fatalf("messages after delta = %#v, want running commentary item", messages)
+	}
+
+	ProjectAgentEvent(AgentEvent{
+		ID:        "event-completed",
+		SessionID: "session-1",
+		RunID:     "run-1",
+		ItemID:    "message-1",
+		Type:      "agent.message.completed",
+		Content:   "最终回复。",
+		CreatedAt: "2026-07-14T10:00:01Z",
+	}, conversations, &activity)
+	messages = conversations["run-1"].Messages
+	if len(messages) != 1 {
+		t.Fatalf("messages after completion = %#v, want same item promoted in place", messages)
+	}
+	message := messages[0]
+	if message.ItemID != "message-1" || message.Phase != AgentMessagePhaseFinalAnswer || message.Status != "complete" || message.Content != "最终回复。" {
+		t.Fatalf("message after completion = %#v, want final-answer phase transition", message)
 	}
 }

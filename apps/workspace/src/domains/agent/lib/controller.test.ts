@@ -261,6 +261,146 @@ describe("agent controller", () => {
 		);
 	});
 
+	it("buffers and completes assistant items independently by semantic identity", () => {
+		vi.useFakeTimers();
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		useAgentStore.getState().startRun("问题");
+		const context = eventContext();
+
+		handleStreamingAgentEvent(
+			{
+				id: "event-started",
+				sessionId: "session-1",
+				type: "agent.run.started",
+				runId: "run-1",
+				turnId: "turn-1",
+				message: "",
+				createdAt: new Date().toISOString(),
+			},
+			context,
+		);
+		handleStreamingAgentEvent(
+			{
+				id: "event-commentary-delta",
+				sessionId: "session-1",
+				type: "agent.message.delta",
+				runId: "run-1",
+				turnId: "turn-1",
+				itemId: "commentary-1",
+				phase: "commentary",
+				delta: "正在检查",
+				message: "",
+				createdAt: new Date().toISOString(),
+			},
+			context,
+		);
+		handleStreamingAgentEvent(
+			{
+				id: "event-answer-delta",
+				sessionId: "session-1",
+				type: "agent.message.delta",
+				runId: "run-1",
+				turnId: "turn-1",
+				itemId: "answer-1",
+				phase: "final_answer",
+				delta: "已完成",
+				message: "",
+				createdAt: new Date().toISOString(),
+			},
+			context,
+		);
+		handleStreamingAgentEvent(
+			{
+				id: "event-answer-completed",
+				sessionId: "session-1",
+				type: "agent.message.completed",
+				runId: "run-1",
+				turnId: "turn-1",
+				itemId: "answer-1",
+				phase: "final_answer",
+				content: "已完成。",
+				message: "",
+				createdAt: new Date().toISOString(),
+			},
+			context,
+		);
+
+		const assistantMessages = selectAgentMessages(useAgentStore.getState()).filter(
+			(message) => message.role === "assistant" && message.kind === "message",
+		);
+		expect(assistantMessages).toEqual([
+			expect.objectContaining({
+				itemId: "commentary-1",
+				turnId: "turn-1",
+				phase: "commentary",
+				content: "正在检查",
+				status: "streaming",
+			}),
+			expect.objectContaining({
+				itemId: "answer-1",
+				turnId: "turn-1",
+				phase: "final_answer",
+				content: "已完成。",
+				status: "complete",
+			}),
+		]);
+	});
+
+	it("keeps commentary and final buffers separate when legacy events omit item ids", () => {
+		vi.useFakeTimers();
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		useAgentStore.getState().startRun("问题");
+		const context = eventContext();
+		const send = (event: AgentRuntimeEvent) => handleStreamingAgentEvent(event, context);
+
+		send({
+			id: "event-commentary-delta",
+			sessionId: "session-1",
+			type: "agent.message.delta",
+			runId: "run-1",
+			phase: "commentary",
+			delta: "检查中",
+			message: "",
+			createdAt: new Date().toISOString(),
+		});
+		send({
+			id: "event-answer-delta",
+			sessionId: "session-1",
+			type: "agent.message.delta",
+			runId: "run-1",
+			phase: "final_answer",
+			delta: "完成",
+			message: "",
+			createdAt: new Date().toISOString(),
+		});
+		send({
+			id: "event-answer-completed",
+			sessionId: "session-1",
+			type: "agent.message.completed",
+			runId: "run-1",
+			phase: "final_answer",
+			content: "完成。",
+			message: "",
+			createdAt: new Date().toISOString(),
+		});
+
+		const assistantMessages = selectAgentMessages(useAgentStore.getState()).filter(
+			(message) => message.role === "assistant" && message.kind === "message",
+		);
+		expect(assistantMessages).toEqual([
+			expect.objectContaining({
+				phase: "commentary",
+				content: "检查中",
+				status: "streaming",
+			}),
+			expect.objectContaining({
+				phase: "final_answer",
+				content: "完成。",
+				status: "complete",
+			}),
+		]);
+	});
+
 	it("re-binds a hydrated pending-root run so resumed live events are not stranded", () => {
 		vi.useFakeTimers();
 		useProjectStore.setState({ activeProjectId: "project-1" });

@@ -56,6 +56,9 @@ func (broker *AgentEventBroker) Publish(event AgentEvent) {
 	if broker.normalize != nil {
 		event = broker.normalize(event)
 	}
+	// A positive sequence is proof that the event was accepted by persistence.
+	// Never trust a caller-provided cursor or leak one after a storage failure.
+	event.Sequence = 0
 	if broker.persist != nil && shouldPersistAgentEvent(event.Type) {
 		persisted, err := broker.persist(event)
 		if err != nil {
@@ -90,12 +93,11 @@ func (broker *AgentEventBroker) Publish(event AgentEvent) {
 
 // shouldPersistAgentEvent reports whether an event type is written to the
 // session history log. The `agent.session.connected` frame is a per-connection
-// control event, and `agent.message.delta` is high-volume streaming text fully
-// superseded by the terminal `agent.message.completed` payload; persisting
-// deltas would bloat the log and slow replay without adding recoverable state.
+// control event. Message deltas are persisted so their sequence remains a
+// reliable SSE resume cursor and replay can reconstruct in-flight output.
 func shouldPersistAgentEvent(eventType string) bool {
 	switch eventType {
-	case "agent.session.connected", "agent.message.delta":
+	case "agent.session.connected":
 		return false
 	default:
 		return true

@@ -17,6 +17,7 @@ func (runner *acpAgentRunner) Run(ctx context.Context, request agentRunRequest, 
 }
 
 func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunRequest, publish func(agentEvent)) (agentRunResult, error) {
+	publish = scopedACPEventPublisher(request.RunID, publish)
 	runStartedAt := time.Now()
 	command, args := runner.activeCommandArgv()
 	workspaceDir := runner.absoluteWorkspaceDir()
@@ -378,7 +379,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	}
 	requestedFinalMessage := false
 	hadActivityBeforeFinalMessage := false
-	if shouldRequestACPFinalMessage(promptResponse, client.messageText(), client.runtimeErrorText(), client.hasPromptActivity()) {
+	if shouldRequestACPFinalMessage(promptResponse, client.messageItemText(), client.runtimeErrorText(), client.hasPromptActivity()) {
 		requestedFinalMessage = true
 		hadActivityBeforeFinalMessage = true
 		publish(agentEvent{
@@ -429,8 +430,9 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	}
 
 	rawFinalMessage := client.messageText()
-	final := ParseACPFinalResponse(rawFinalMessage, request)
-	if strings.TrimSpace(rawFinalMessage) == "" {
+	rawFinalItem := client.messageItemText()
+	final := parseACPFinalResponseForItem(rawFinalMessage, rawFinalItem, request)
+	if strings.TrimSpace(rawFinalItem) == "" {
 		if runtimeError := client.runtimeErrorText(); runtimeError != "" {
 			final.Message = runtimeError
 		} else if fallback := fallbackACPFinalMessage(request, requestedFinalMessage || hadActivityBeforeFinalMessage); fallback != "" {
@@ -463,6 +465,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	return agentRunResult{
 		ACPSessionID:     string(sessionID),
 		Message:          final.Message,
+		MessageItemID:    client.messageItemID(),
 		StreamedMessage:  client.hasStreamedMessage(),
 		DocumentProposal: final.ProposedDocument,
 		A2UI:             final.A2UI,
@@ -475,7 +478,7 @@ func promptACPSession(ctx context.Context, conn *acp.ClientSideConnection, clien
 	client.setAcceptingSessionUpdates(true)
 	response, err := conn.Prompt(ctx, request)
 	client.setAcceptingSessionUpdates(false)
-	client.flushThoughts()
+	client.finishThoughts()
 	return response, err
 }
 

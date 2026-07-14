@@ -9,11 +9,31 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 )
 
-func (client *acpClient) appendMessage(text string) {
+func (client *acpClient) appendMessage(text string, itemID string) string {
 	client.mu.Lock()
 	defer client.mu.Unlock()
+	itemID = strings.TrimSpace(itemID)
+	if itemID == "" {
+		itemID = client.activeMessageItemID
+	}
+	if itemID == "" {
+		itemID = MustRandomID("message")
+	}
+	if itemID != client.activeMessageItemID {
+		client.messageItem.Reset()
+	}
 	client.message.WriteString(text)
+	client.messageItem.WriteString(text)
+	client.activeMessageItemID = itemID
 	client.streamedMessage = true
+	return itemID
+}
+
+func (client *acpClient) finishMessageItem() {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	client.activeMessageItemID = ""
+	client.messageItem.Reset()
 }
 
 func (client *acpClient) setRuntimeErrorMessage(message string) {
@@ -57,18 +77,64 @@ func (client *acpClient) messageText() string {
 	return client.message.String()
 }
 
+func (client *acpClient) messageItemText() string {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.messageItem.String()
+}
+
 func (client *acpClient) hasStreamedMessage() bool {
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	return client.streamedMessage
 }
 
+func (client *acpClient) messageItemID() string {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.activeMessageItemID
+}
+
 func (client *acpClient) resetMessage() {
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	client.message.Reset()
+	client.messageItem.Reset()
+	client.activeMessageItemID = ""
 	client.streamedMessage = false
 	client.runtimeErrorMessage = ""
+}
+
+func (client *acpClient) normalizeEvent(event agentEvent) agentEvent {
+	if strings.TrimSpace(event.RunID) == "" {
+		event.RunID = client.runID
+	}
+	if strings.TrimSpace(event.TurnID) == "" {
+		event.TurnID = client.runID
+	}
+	return normalizeAgentEvent(event)
+}
+
+func (client *acpClient) publishEvent(event agentEvent) {
+	if client == nil || client.publish == nil {
+		return
+	}
+	client.publish(client.normalizeEvent(event))
+}
+
+func scopedACPEventPublisher(runID string, publish func(agentEvent)) func(agentEvent) {
+	return func(event agentEvent) {
+		if publish == nil {
+			return
+		}
+		if strings.TrimSpace(event.RunID) == "" {
+			event.RunID = strings.TrimSpace(runID)
+		}
+		if strings.TrimSpace(event.TurnID) == "" {
+			event.TurnID = strings.TrimSpace(runID)
+		}
+		publish(normalizeAgentEvent(event))
+	}
 }
 
 // beginPromptMetrics resets the per-prompt counters and timing baselines

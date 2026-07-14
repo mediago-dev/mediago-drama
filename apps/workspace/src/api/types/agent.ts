@@ -157,9 +157,12 @@ export interface AgentChatAppendRequest {
 
 export interface AgentChatMessageRecord {
 	id: string;
+	itemId?: string;
+	turnId?: string;
 	role: string;
 	content: string;
 	kind?: string;
+	phase?: "commentary" | "final_answer";
 	title?: string;
 	createdAt?: string;
 	status?: string;
@@ -211,6 +214,9 @@ export interface AgentEvent {
 	sequence?: number;
 	sessionId: string;
 	projectId?: string;
+	turnId?: string;
+	itemId?: string;
+	phase?: "commentary" | "final_answer";
 	type: string;
 	message: string;
 	createdAt: string;

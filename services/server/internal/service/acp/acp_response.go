@@ -45,6 +45,25 @@ func ParseACPFinalResponse(raw string, request AgentRunRequest) AgentFinalRespon
 	return response
 }
 
+func parseACPFinalResponseForItem(raw string, itemText string, request AgentRunRequest) AgentFinalResponse {
+	response := ParseACPFinalResponse(raw, request)
+	itemText = strings.TrimSpace(itemText)
+	if itemText == "" {
+		response.Message = ""
+		return response
+	}
+
+	itemResponse := ParseACPFinalResponse(itemText, request)
+	response.Message = itemResponse.Message
+	if itemResponse.ProposedDocument != nil {
+		response.ProposedDocument = itemResponse.ProposedDocument
+	}
+	if itemResponse.A2UI != nil {
+		response.A2UI = itemResponse.A2UI
+	}
+	return response
+}
+
 // SplitACPResponseObject extracts a trailing structured JSON object from ACP text.
 func SplitACPResponseObject(text string) (string, string) {
 	trimmed := strings.TrimSpace(text)

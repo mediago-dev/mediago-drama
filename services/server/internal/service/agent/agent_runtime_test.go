@@ -222,12 +222,19 @@ func TestAgentRuntimePublishesFinalMessageAfterStreamedResponse(t *testing.T) {
 	if !hasAgentEvent(events, "agent.message.delta") {
 		t.Fatalf("events = %#v, want streamed delta event", eventTypes(events))
 	}
+	delta := agentEventOfType(events, "agent.message.delta")
 	completed := agentEventOfType(events, "agent.message.completed")
 	if completed == nil {
 		t.Fatalf("events = %#v, want final completed message event", eventTypes(events))
 	}
 	if completed.Content != "最终回复" || completed.Message != "最终回复" {
 		t.Fatalf("completed = %#v, want final message content", completed)
+	}
+	if completed.ItemID != "message-final-1" || completed.TurnID == "" || completed.Phase != AgentMessagePhaseFinalAnswer {
+		t.Fatalf("completed semantics = %#v, want streamed item completed as final answer", completed)
+	}
+	if delta == nil || delta.ItemID != completed.ItemID || delta.Phase != AgentMessagePhaseCommentary {
+		t.Fatalf("delta semantics = %#v, want same item as running commentary", delta)
 	}
 }
 
@@ -394,9 +401,11 @@ func (streamingFinalAgentRunner) Run(
 		Type:    "agent.message.delta",
 		Message: "最终",
 		Delta:   "最终",
+		ItemID:  "message-final-1",
 	})
 	return AgentRunResult{
 		Message:         "最终回复",
+		MessageItemID:   "message-final-1",
 		StreamedMessage: true,
 	}, nil
 }

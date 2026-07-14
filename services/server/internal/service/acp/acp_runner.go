@@ -57,6 +57,8 @@ type acpClient struct {
 	mu                  sync.Mutex
 	acceptUpdate        bool
 	message             strings.Builder
+	messageItem         strings.Builder
+	activeMessageItemID string
 	streamedMessage     bool
 	runtimeErrorMessage string
 	promptStartedAt     time.Time
@@ -72,6 +74,7 @@ type acpClient struct {
 	permissionTimeout   time.Duration
 	thoughtMu           sync.Mutex
 	thoughtBuf          strings.Builder
+	thoughtItemID       string
 	thoughtTimer        *time.Timer
 }
 

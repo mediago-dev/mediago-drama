@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"strings"
 
 	acp "github.com/coder/acp-go-sdk"
 )
@@ -31,31 +32,36 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 	case update.AgentMessageChunk != nil:
 		if text := ACPContentBlockText(update.AgentMessageChunk.Content); text != "" {
 			acpLog().Debug("acp session update", client.logAttrs("update", "agent_message_chunk", "chunk_len", len(text), "buffered", true)...)
-			client.flushThoughts()
-			client.appendMessage(text)
-			event := agentEvent{
+			client.finishThoughts()
+			itemID := client.appendMessage(text, optionalACPMessageID(update.AgentMessageChunk.MessageId))
+			event := client.normalizeEvent(agentEvent{
 				Type:    "agent.message.delta",
 				Message: TruncateAgentMessage(text),
+				ItemID:  itemID,
 				Delta:   text,
-			}
+			})
 			normalized = &event
-			client.publish(event)
+			client.publishEvent(event)
 		}
 	case update.AgentThoughtChunk != nil:
 		if text := ACPContentBlockText(update.AgentThoughtChunk.Content); text != "" {
+			client.finishMessageItem()
 			acpLog().Debug("acp session update", client.logAttrs("update", "agent_thought_chunk", "chunk_len", len(text), "buffered", true)...)
-			event := agentEvent{
+			itemID := optionalACPMessageID(update.AgentThoughtChunk.MessageId)
+			event := client.normalizeEvent(agentEvent{
 				Type:    "agent.acp",
 				Message: "思考：" + TruncateAgentMessage(text),
+				ItemID:  itemID,
 				ACP: &agentACPEvent{
 					Kind:    "thought",
 					Thought: text,
 				},
-			}
+			})
 			normalized = &event
-			client.bufferThought(text)
+			client.bufferThought(text, itemID)
 		}
 	case update.ToolCall != nil:
+		client.finishMessageItem()
 		toolKind := InferACPToolKind(string(update.ToolCall.Kind), update.ToolCall.Title)
 		rawInput := MarshalACPRawMessage(update.ToolCall.RawInput)
 		rawOutput := MarshalACPRawMessage(update.ToolCall.RawOutput)
@@ -69,7 +75,7 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 				"kind", update.ToolCall.Kind,
 			)...,
 		)
-		event := agentEvent{
+		event := client.normalizeEvent(agentEvent{
 			Type:    "agent.acp",
 			Message: FormatACPToolCall(update.ToolCall.Title, string(update.ToolCall.Status)),
 			ACP: &agentACPEvent{
@@ -83,12 +89,13 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 				RawOutput:  rawOutput,
 				Content:    MapACPToolCallContent(update.ToolCall.Content),
 			},
-		}
+		})
 		normalized = &event
 		client.markToolCallStarted(string(update.ToolCall.ToolCallId))
-		client.flushThoughts()
-		client.publish(event)
+		client.finishThoughts()
+		client.publishEvent(event)
 	case update.ToolCallUpdate != nil:
+		client.finishMessageItem()
 		title := ""
 		if update.ToolCallUpdate.Title != nil && *update.ToolCallUpdate.Title != "" {
 			title = *update.ToolCallUpdate.Title
@@ -154,32 +161,40 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 			acpPayload.Kind = ACPRuntimeLogKind
 			message = FirstNonEmpty(friendlyError, TruncateAgentMessage(runtimeText), "运行日志")
 		}
-		event := agentEvent{
+		event := client.normalizeEvent(agentEvent{
 			Type:    "agent.acp",
 			Message: message,
 			ACP:     acpPayload,
-		}
+		})
 		normalized = &event
-		client.flushThoughts()
-		client.publish(event)
+		client.finishThoughts()
+		client.publishEvent(event)
 	case update.Plan != nil:
+		client.finishMessageItem()
 		acpLog().Debug("acp session update", client.logAttrs("update", "plan", "entries", len(update.Plan.Entries))...)
-		event := agentEvent{
+		event := client.normalizeEvent(agentEvent{
 			Type:    "agent.acp",
 			Message: FormatACPPlan(update.Plan.Entries),
 			ACP: &agentACPEvent{
 				Kind: "plan",
 				Plan: MapACPPlanEntries(update.Plan.Entries),
 			},
-		}
+		})
 		normalized = &event
-		client.flushThoughts()
-		client.publish(event)
+		client.finishThoughts()
+		client.publishEvent(event)
 	default:
 		acpLog().Debug("acp session update", client.logAttrs("update", "unknown")...)
 	}
 
 	return nil
+}
+
+func optionalACPMessageID(messageID *string) string {
+	if messageID == nil {
+		return ""
+	}
+	return strings.TrimSpace(*messageID)
 }
 
 func sessionUpdateKind(update acp.SessionUpdate) string {

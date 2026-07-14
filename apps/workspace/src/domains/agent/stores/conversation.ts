@@ -5,6 +5,7 @@ import type {
 	AgentActivityItem,
 	AgentConversationState,
 	AgentConversationStatus,
+	AgentItemIdentity,
 	AgentMessage,
 	AgentMessageKind,
 	AgentMessageMetadata,
@@ -13,6 +14,109 @@ import type {
 
 export const createId = (prefix: string) =>
 	`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const normalizeIdentityValue = (value?: string) => value?.trim() || undefined;
+
+export const normalizeAgentItemIdentity = (
+	identity?: AgentItemIdentity,
+	defaults: AgentItemIdentity = {},
+): AgentItemIdentity => {
+	const turnId =
+		normalizeIdentityValue(identity?.turnId) ?? normalizeIdentityValue(defaults.turnId);
+	const itemId =
+		normalizeIdentityValue(identity?.itemId) ?? normalizeIdentityValue(defaults.itemId);
+	const phase = identity?.phase ?? defaults.phase;
+	return {
+		...(turnId && turnId !== pendingRootRunId ? { turnId } : {}),
+		...(itemId ? { itemId } : {}),
+		...(phase ? { phase } : {}),
+	};
+};
+
+export const hasAgentItemIdentity = (identity?: AgentItemIdentity) => {
+	const normalized = normalizeAgentItemIdentity(identity);
+	return Boolean(normalized.turnId || normalized.itemId || normalized.phase);
+};
+
+export const agentMessageId = (identity: AgentItemIdentity | undefined, fallback: string) =>
+	normalizeIdentityValue(identity?.itemId) ?? fallback;
+
+export const withAgentItemIdentity = (
+	message: AgentMessage,
+	identity?: AgentItemIdentity,
+	defaults: AgentItemIdentity = {},
+): AgentMessage => {
+	const normalized = normalizeAgentItemIdentity(identity, {
+		turnId: message.turnId ?? defaults.turnId,
+		itemId: message.itemId ?? defaults.itemId ?? message.id,
+		phase: message.phase ?? defaults.phase,
+	});
+	return {
+		...message,
+		...(normalized.turnId ? { turnId: normalized.turnId } : {}),
+		...(normalized.itemId ? { itemId: normalized.itemId } : {}),
+		...(normalized.phase ? { phase: normalized.phase } : {}),
+	};
+};
+
+export const messageMatchesAgentItemIdentity = (
+	message: AgentMessage,
+	identity?: AgentItemIdentity,
+) => {
+	const normalized = normalizeAgentItemIdentity(identity);
+	if (!hasAgentItemIdentity(normalized)) return false;
+
+	if (normalized.itemId) {
+		if (message.itemId !== normalized.itemId && message.id !== normalized.itemId) return false;
+		if (normalized.turnId && message.turnId && message.turnId !== normalized.turnId) return false;
+		// The item is stable across lifecycle updates; phase is mutable classification
+		// metadata (for example commentary promoted to the final answer on completion).
+		return true;
+	}
+
+	if (normalized.turnId && message.turnId !== normalized.turnId) return false;
+	if (normalized.phase && message.phase !== normalized.phase) return false;
+	return true;
+};
+
+export const findLastMessageIndexByIdentity = (
+	messages: AgentMessage[],
+	identity: AgentItemIdentity,
+	predicate: (message: AgentMessage) => boolean = () => true,
+) => {
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (predicate(message) && messageMatchesAgentItemIdentity(message, identity)) return index;
+	}
+	return -1;
+};
+
+export const latestStreamingAssistantMessageId = (messages: AgentMessage[]) => {
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (
+			message.role === "assistant" &&
+			(message.kind ?? "message") === "message" &&
+			message.status === "streaming"
+		) {
+			return message.id;
+		}
+	}
+	return null;
+};
+
+export const bindLatestTurnIdentity = (messages: AgentMessage[], turnId: string) => {
+	const lastUserIndex = findLastIndex(messages, (message) => message.role === "user");
+	if (lastUserIndex < 0) return messages;
+	return messages.map((message, index) =>
+		index < lastUserIndex
+			? message
+			: withAgentItemIdentity(message, {
+					turnId: message.turnId ?? turnId,
+					itemId: message.itemId ?? message.id,
+				}),
+	);
+};
 
 export const createConversation = (
 	runId: string,
@@ -161,14 +265,29 @@ export const appendMessageToConversation = (
 export const appendThoughtToConversation = (
 	conversation: AgentConversationState,
 	thought: string,
+	identity?: AgentItemIdentity,
 ): AgentConversationState => {
 	const lastMessage = conversation.messages[conversation.messages.length - 1];
-	if (lastMessage?.kind === "thought") {
+	const normalizedIdentity = normalizeAgentItemIdentity(identity, { phase: "commentary" });
+	const explicitItemId = normalizeIdentityValue(identity?.itemId);
+	const existingIndex = explicitItemId
+		? findLastMessageIndexByIdentity(conversation.messages, normalizedIdentity, (message) =>
+				Boolean(message.kind === "thought"),
+			)
+		: lastMessage?.kind === "thought"
+			? conversation.messages.length - 1
+			: -1;
+	if (existingIndex >= 0) {
 		const messages = [...conversation.messages];
-		messages[messages.length - 1] = {
-			...lastMessage,
-			content: lastMessage.content + thought,
-		};
+		const existing = messages[existingIndex];
+		messages[existingIndex] = withAgentItemIdentity(
+			{
+				...existing,
+				content: existing.content + thought,
+			},
+			normalizedIdentity,
+			{ phase: "commentary" },
+		);
 		return {
 			...conversation,
 			messages,
@@ -176,18 +295,36 @@ export const appendThoughtToConversation = (
 			updatedAt: new Date().toISOString(),
 		};
 	}
-	return appendMessageToConversation(conversation, {
-		id: createId("thought"),
-		role: "assistant",
-		content: thought.trimStart(),
-		kind: "thought",
-		title: "思考",
-		createdAt: new Date().toISOString(),
-		status: "complete",
-	});
+	const id = agentMessageId(normalizedIdentity, createId("thought"));
+	return appendMessageToConversation(
+		conversation,
+		withAgentItemIdentity(
+			{
+				id,
+				role: "assistant",
+				content: thought.trimStart(),
+				kind: "thought",
+				title: "思考",
+				createdAt: new Date().toISOString(),
+				status: "complete",
+			},
+			normalizedIdentity,
+			{ phase: "commentary" },
+		),
+	);
 };
 
-export const findCurrentTurnPlanMessage = (messages: AgentMessage[]) => {
+export const findCurrentTurnPlanMessage = (
+	messages: AgentMessage[],
+	identity?: AgentItemIdentity,
+) => {
+	const normalizedIdentity = normalizeAgentItemIdentity(identity);
+	if (normalizedIdentity.itemId) {
+		const index = findLastMessageIndexByIdentity(messages, normalizedIdentity, (message) =>
+			Boolean(message.kind === "plan" && message.metadata?.planEntries),
+		);
+		return index >= 0 ? messages[index] : undefined;
+	}
 	const lastUserIndex = findLastIndex(messages, (message) => message.role === "user");
 	return messages.find(
 		(message, index) =>
@@ -205,54 +342,99 @@ export const findLastIndex = <T>(items: T[], predicate: (item: T) => boolean) =>
 export const completeConversationAssistantMessage = (
 	conversation: AgentConversationState,
 	content: string,
+	identity?: AgentItemIdentity,
+	fallbackIdentity: AgentItemIdentity = { phase: "final_answer" },
 ) => {
-	if (!conversation.streamingMessageId) {
-		if (!content.trim()) return conversation.messages;
+	const normalizedIdentity = normalizeAgentItemIdentity(identity, fallbackIdentity);
+	const usesSemanticRouting = hasAgentItemIdentity(identity);
+	let streamingIndex = usesSemanticRouting
+		? findLastMessageIndexByIdentity(conversation.messages, normalizedIdentity, (message) =>
+				Boolean(
+					message.role === "assistant" &&
+					(message.kind ?? "message") === "message" &&
+					(Boolean(normalizedIdentity.itemId) || message.status === "streaming"),
+				),
+			)
+		: -1;
+	if (streamingIndex < 0 && !usesSemanticRouting && conversation.streamingMessageId) {
+		streamingIndex = conversation.messages.findIndex(
+			(message) => message.id === conversation.streamingMessageId,
+		);
+	}
+	const completedContent = normalizedIdentity.itemId
+		? stripPriorAssistantMessageAggregatePrefix(
+				conversation.messages,
+				streamingIndex >= 0 ? streamingIndex : conversation.messages.length,
+				normalizedIdentity,
+				content,
+			)
+		: content;
+
+	if (streamingIndex < 0) {
+		if (!completedContent.trim()) return conversation.messages;
+		const id = agentMessageId(normalizedIdentity, createId("assistant"));
 		return [
 			...conversation.messages,
-			{
-				id: createId("assistant"),
-				role: "assistant" as const,
-				content,
-				kind: "message" as const,
-				createdAt: new Date().toISOString(),
-				status: "complete" as const,
-			},
+			withAgentItemIdentity(
+				{
+					id,
+					role: "assistant" as const,
+					content: completedContent,
+					kind: "message" as const,
+					createdAt: new Date().toISOString(),
+					status: "complete" as const,
+				},
+				normalizedIdentity,
+				{ phase: "final_answer" },
+			),
 		];
 	}
 
-	const streamingIndex = conversation.messages.findIndex(
-		(message) => message.id === conversation.streamingMessageId,
-	);
 	return conversation.messages.map((message, index) =>
-		message.id === conversation.streamingMessageId
-			? {
-					...message,
-					content:
-						content && !shouldPreserveSegmentedStreamingContent(conversation, streamingIndex)
-							? content
-							: message.content,
-					status: "complete" as const,
-				}
-			: index === streamingIndex
-				? { ...message, status: "complete" as const }
-				: message,
+		index === streamingIndex
+			? withAgentItemIdentity(
+					{
+						...message,
+						content:
+							completedContent &&
+							(usesSemanticRouting ||
+								!shouldPreserveSegmentedStreamingContent(conversation, streamingIndex))
+								? completedContent
+								: message.content,
+						status: "complete" as const,
+					},
+					normalizedIdentity,
+					{ phase: "final_answer" },
+				)
+			: message,
 	);
 };
 
-export const completeStreamingMessageInConversation = (
-	conversation: AgentConversationState,
-): AgentConversationState => {
-	if (!conversation.streamingMessageId) return conversation;
-	return {
-		...conversation,
-		streamingMessageId: null,
-		messages: conversation.messages.map((message) =>
-			message.id === conversation.streamingMessageId
-				? { ...message, status: "complete" as const }
-				: message,
-		),
-	};
+const stripPriorAssistantMessageAggregatePrefix = (
+	messages: AgentMessage[],
+	targetIndex: number,
+	identity: AgentItemIdentity,
+	content: string,
+) => {
+	if (!content || targetIndex <= 0) return content;
+	const lastUserIndex = findLastIndex(
+		messages.slice(0, targetIndex),
+		(message) => message.role === "user",
+	);
+	const prefix = messages
+		.slice(lastUserIndex + 1, targetIndex)
+		.filter(
+			(message) =>
+				message.role === "assistant" &&
+				(message.kind ?? "message") === "message" &&
+				!message.metadata?.a2ui &&
+				!message.metadata?.form &&
+				(!identity.turnId || !message.turnId || message.turnId === identity.turnId) &&
+				(!identity.itemId || message.itemId !== identity.itemId),
+		)
+		.map((message) => message.content)
+		.join("");
+	return prefix && content.startsWith(prefix) ? content.slice(prefix.length) : content;
 };
 
 const shouldPreserveSegmentedStreamingContent = (

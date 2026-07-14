@@ -42,4 +42,5 @@ var (
 	ACPRuntimeLogText        = agent.ACPRuntimeLogText
 	BuildAgentPermissionA2UI = agent.BuildAgentPermissionA2UI
 	IsACPToolRuntimeLog      = agent.IsACPToolRuntimeLog
+	normalizeAgentEvent      = agent.NormalizeAgentEventSemantics
 )

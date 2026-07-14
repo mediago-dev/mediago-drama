@@ -19,7 +19,7 @@ import {
 } from "@/domains/agent/stores";
 import { inferToolKind } from "@/domains/agent/lib/tool-kind";
 import { cn } from "@/shared/lib/utils";
-import { DiffBlock, JsonViewBlock, TerminalBlock, TextOutputBlock } from "./CodeBlocks";
+import { DiffBlock, JsonViewBlock, TextOutputBlock } from "./CodeBlocks";
 import {
 	byteLength,
 	cleanToolTitle,
@@ -30,9 +30,8 @@ import {
 	hasAnsiEscape,
 	outputBlockPlainText,
 	prettyJson,
+	stripAnsiEscape,
 } from "./format";
-
-type ToolCallTab = "input" | "output" | "locations";
 
 interface ToolCallDetails {
 	metadata: AgentMessageMetadata;
@@ -53,7 +52,6 @@ interface ToolCallDetails {
 
 export const ToolCallCard: React.FC<{ message: AgentMessage }> = memo(({ message }) => {
 	const [expanded, setExpanded] = useState(false);
-	const [activeTab, setActiveTab] = useState<ToolCallTab>("output");
 	const details = useMemo(() => getToolCallDetails(message), [message]);
 	const { metadata, title, acpKind, Icon, status, inputSummary, outputSummary, isMCP } = details;
 
@@ -102,7 +100,7 @@ export const ToolCallCard: React.FC<{ message: AgentMessage }> = memo(({ message
 				</span>
 			</button>
 			{expanded ? (
-				<ToolCallBody message={message} activeTab={activeTab} onTabChange={setActiveTab} />
+				<ToolCallBody message={message} className="border-t border-border px-3 py-2" />
 			) : null}
 		</article>
 	);
@@ -110,57 +108,39 @@ export const ToolCallCard: React.FC<{ message: AgentMessage }> = memo(({ message
 
 export const ToolCallBody: React.FC<{
 	message: AgentMessage;
-	activeTab?: ToolCallTab;
-	onTabChange?: (tab: ToolCallTab) => void;
 	className?: string;
-}> = memo(({ message, activeTab, onTabChange, className }) => {
-	const [internalActiveTab, setInternalActiveTab] = useState<ToolCallTab>("output");
-	const currentTab = activeTab ?? internalActiveTab;
-	const setTab = (tab: ToolCallTab) => {
-		if (onTabChange) {
-			onTabChange(tab);
-			return;
-		}
-		setInternalActiveTab(tab);
-	};
+}> = memo(({ message, className }) => {
 	const details = useMemo(() => getToolCallDetails(message), [message]);
 	const { metadata, acpKind, inputText, inputValue, outputBlocks, rawOutputValue } = details;
+	const hasInput = inputValue !== undefined || Boolean(inputText);
+	const hasLocations = Boolean(metadata.locations?.length);
 
 	return (
-		<div className={cn("agent-tool-body border-t border-border bg-ide-toolbar/45", className)}>
-			<div className="flex border-b border-border">
-				<ToolTabButton active={currentTab === "input"} onClick={() => setTab("input")}>
-					输入
-				</ToolTabButton>
-				<ToolTabButton active={currentTab === "output"} onClick={() => setTab("output")}>
-					输出
-				</ToolTabButton>
-				<ToolTabButton active={currentTab === "locations"} onClick={() => setTab("locations")}>
-					位置
-				</ToolTabButton>
-			</div>
-			<div className="space-y-2 px-2.5 py-2">
-				{currentTab === "input" ? (
-					inputValue !== undefined ? (
-						<JsonViewBlock label="rawInput" value={inputValue} />
-					) : inputText ? (
-						<TextOutputBlock label="rawInput" text={inputText} />
-					) : (
-						<EmptyToolPanel>暂无输入</EmptyToolPanel>
-					)
-				) : null}
-				{currentTab === "output" ? (
-					<ToolOutputPanel
-						acpKind={acpKind}
-						blocks={outputBlocks}
-						rawOutputValue={rawOutputValue}
-						message={message}
-					/>
-				) : null}
-				{currentTab === "locations" ? (
-					<ToolLocationsPanel locations={metadata.locations ?? []} />
-				) : null}
-			</div>
+		<div className={cn("agent-tool-body min-w-0 space-y-2", className)}>
+			<ToolOutputPanel acpKind={acpKind} blocks={outputBlocks} message={message} />
+			{hasInput || hasLocations || rawOutputValue !== undefined ? (
+				<div className="agent-tool-secondary-details flex flex-wrap items-start gap-x-3 gap-y-1">
+					{hasInput ? (
+						<CompactToolDetails label="输入">
+							{inputValue !== undefined ? (
+								<JsonViewBlock label="输入数据" value={inputValue} />
+							) : inputText ? (
+								<TextOutputBlock label="输入文本" text={inputText} />
+							) : null}
+						</CompactToolDetails>
+					) : null}
+					{hasLocations ? (
+						<CompactToolDetails label="位置">
+							<ToolLocationsPanel locations={metadata.locations ?? []} />
+						</CompactToolDetails>
+					) : null}
+					{rawOutputValue !== undefined ? (
+						<CompactToolDetails label="原始结果">
+							<JsonViewBlock label="原始结果" value={rawOutputValue} />
+						</CompactToolDetails>
+					) : null}
+				</div>
+			) : null}
 		</div>
 	);
 });
@@ -186,11 +166,17 @@ export const getToolCallDetails = (message: AgentMessage): ToolCallDetails => {
 	const protocolOutputBlocks = metadata.outputBlocks ?? [];
 	const rawOutputValue =
 		metadata.outputJson === undefined ? metadata.outputResult : metadata.outputJson;
-	const rawOutputBlock =
-		protocolOutputBlocks.length === 0
-			? contentBlockFromRawOutput(rawOutputValue, acpKind)
-			: undefined;
-	const outputBlocks = rawOutputBlock ? [rawOutputBlock] : protocolOutputBlocks;
+	const protocolHasText = protocolOutputBlocks.some((block) => {
+		if (block.type === "diff") return Boolean(block.oldText || block.newText);
+		const text = block.text?.trim();
+		return Boolean(text && text !== block.terminalId?.trim());
+	});
+	const rawOutputBlock = contentBlockFromRawOutput(rawOutputValue, acpKind);
+	const outputBlocks = protocolHasText
+		? protocolOutputBlocks
+		: rawOutputBlock
+			? [rawOutputBlock]
+			: protocolOutputBlocks;
 	const rawOutputJsonText =
 		metadata.outputJson === undefined ? "" : prettyJson(metadata.outputJson);
 	const outputText = [outputBlocks.map(outputBlockPlainText).join("\n"), rawOutputJsonText]
@@ -224,74 +210,61 @@ export const getToolCallDetails = (message: AgentMessage): ToolCallDetails => {
 	};
 };
 
-const ToolTabButton: React.FC<{
-	active: boolean;
-	onClick: () => void;
-	children: React.ReactNode;
-}> = ({ active, onClick, children }) => (
-	<button
-		type="button"
-		className={cn(
-			"agent-tool-tab border-r border-border px-2.5 py-1.5 text-caption transition-colors",
-			active ? "bg-ide-editor text-foreground" : "text-muted-foreground hover:bg-ide-editor",
-		)}
-		onClick={onClick}
-	>
-		{children}
-	</button>
-);
-
 const ToolOutputPanel: React.FC<{
 	acpKind: string;
 	blocks: AgentACPContentBlock[];
-	rawOutputValue?: unknown;
 	message: AgentMessage;
-}> = ({ acpKind, blocks, rawOutputValue, message }) => {
-	if (blocks.length === 0 && rawOutputValue === undefined) {
+}> = ({ acpKind, blocks, message }) => {
+	if (blocks.length === 0) {
 		return <EmptyToolPanel>{message.content || "暂无输出"}</EmptyToolPanel>;
 	}
 
 	return (
-		<div className="space-y-2">
+		<section className="agent-tool-output min-w-0 space-y-1.5">
+			<p className="text-caption font-medium text-muted-foreground">输出</p>
 			{blocks.map((block, index) => {
 				if (block.type === "diff") {
 					return <DiffBlock key={`${block.type}-${index}`} block={block} />;
 				}
-				if (block.type === "terminal") {
-					return <TerminalBlock key={`${block.type}-${index}`} block={block} />;
-				}
-				if (acpKind === "execute" || hasAnsiEscape(block.text ?? "")) {
-					return (
-						<TerminalBlock
-							key={`${block.type}-${index}`}
-							block={{ ...block, type: "terminal", text: block.text ?? "" }}
-						/>
-					);
-				}
-				const parsedJsonText = parseJsonTextBlock(block.text);
-				if (parsedJsonText !== undefined) {
-					return (
-						<JsonViewBlock
-							key={`${block.type}-${index}`}
-							label={block.type || "text JSON"}
-							value={parsedJsonText}
-						/>
-					);
-				}
+				const rawText = outputBlockPlainText(block);
+				const parsedJsonText = parseJsonTextBlock(rawText);
+				const text =
+					parsedJsonText !== undefined
+						? prettyJson(parsedJsonText)
+						: acpKind === "execute" || hasAnsiEscape(rawText)
+							? stripAnsiEscape(rawText)
+							: rawText;
+				if (!text) return null;
 				return (
-					<TextOutputBlock
-						key={`${block.type}-${index}`}
-						label={block.type || "text"}
-						text={block.text ?? ""}
-					/>
+					<div key={`${block.type}-${index}`} className="agent-tool-output-block min-w-0">
+						<pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-ide-toolbar/65 px-2.5 py-2 font-mono text-caption leading-5 text-foreground">
+							<code>{text}</code>
+						</pre>
+						{block.exitCode !== undefined ? (
+							<p className="mt-1 text-2xs text-muted-foreground">退出码 {block.exitCode}</p>
+						) : null}
+					</div>
 				);
 			})}
-			{rawOutputValue !== undefined ? (
-				<JsonViewBlock label="rawOutput JSON" value={rawOutputValue} />
-			) : null}
-		</div>
+		</section>
 	);
 };
+
+const CompactToolDetails: React.FC<{
+	label: string;
+	children: React.ReactNode;
+}> = ({ label, children }) => (
+	<details className="agent-tool-detail group min-w-0 text-caption text-muted-foreground">
+		<summary className="flex cursor-pointer list-none items-center gap-1 rounded-sm py-1 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+			<ChevronRight
+				className="size-3 transition-transform group-open:rotate-90"
+				aria-hidden="true"
+			/>
+			<span>{label}</span>
+		</summary>
+		<div className="mt-1 min-w-0">{children}</div>
+	</details>
+);
 
 const contentBlockFromRawOutput = (
 	rawOutput: unknown,

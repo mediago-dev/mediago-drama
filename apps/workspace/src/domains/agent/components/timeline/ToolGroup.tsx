@@ -38,7 +38,7 @@ export const ToolGroup: React.FC<{ messages: AgentMessage[] }> = ({ messages }) 
 	};
 
 	return (
-		<section className="agent-tool-group px-1 text-xs">
+		<section className="agent-tool-group text-xs">
 			<button
 				type="button"
 				className={cn(
@@ -60,7 +60,7 @@ export const ToolGroup: React.FC<{ messages: AgentMessage[] }> = ({ messages }) 
 				</span>
 			</button>
 			{expanded ? (
-				<div className="agent-tool-group-body mt-2 space-y-1 rounded-sm bg-ide-toolbar/50 px-2.5 py-2">
+				<div className="agent-tool-group-body mt-1 space-y-0.5">
 					{messages.map((message) => (
 						<ToolGroupRow key={message.id} message={message} />
 					))}
@@ -73,43 +73,32 @@ export const ToolGroup: React.FC<{ messages: AgentMessage[] }> = ({ messages }) 
 const ToolGroupRow: React.FC<{ message: AgentMessage }> = ({ message }) => {
 	const [expanded, setExpanded] = useState(false);
 	const details = getToolCallDetails(message);
-	const { Icon, title, acpKind, status } = details;
+	const { Icon, title, status } = details;
 	const target = toolTarget(message);
+	const visibleTarget = compact(target) === compact(title) ? "" : target;
 	const hasFailure = status === "failed";
 
 	return (
-		<div className="border-b border-border/50 pb-1 last:border-0 last:pb-0">
+		<div className="agent-tool-group-row">
 			<button
 				type="button"
-				className="agent-tool-row flex w-full items-center gap-2 py-1 text-left"
+				className="agent-tool-row flex min-h-8 w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left"
 				onClick={() => setExpanded((value) => !value)}
 				aria-expanded={expanded}
 			>
-				<span
-					className={cn(
-						"flex size-5 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-editor",
-						rowIconTone(status),
-					)}
-				>
-					<Icon className="size-3" />
-				</span>
+				<Icon className={cn("size-3.5 shrink-0", rowIconTone(status))} aria-hidden="true" />
 				<span className="min-w-0 flex-1">
-					<span className="flex min-w-0 items-center gap-1.5">
-						<span
-							className={cn(
-								"truncate font-medium text-foreground",
-								hasFailure && "text-error-foreground",
-							)}
-						>
-							{title}
-						</span>
-						<span className="agent-chip shrink-0 rounded-sm border border-border bg-ide-editor px-1.5 py-0.5 text-2xs text-muted-foreground">
-							{acpKind}
-						</span>
+					<span
+						className={cn(
+							"block truncate font-medium text-foreground",
+							hasFailure && "text-error-foreground",
+						)}
+					>
+						{title}
 					</span>
-					{target ? (
+					{visibleTarget ? (
 						<span className="mt-0.5 block truncate text-caption text-muted-foreground">
-							{target}
+							{visibleTarget}
 						</span>
 					) : null}
 				</span>
@@ -126,7 +115,7 @@ const ToolGroupRow: React.FC<{ message: AgentMessage }> = ({ message }) => {
 			{expanded ? (
 				<ToolCallBody
 					message={message}
-					className="mt-1.5 overflow-hidden rounded-sm border border-border bg-ide-editor"
+					className="agent-tool-row-body mb-1 ml-6 min-w-0 border-l border-border py-1 pl-3"
 				/>
 			) : null}
 		</div>
@@ -140,7 +129,7 @@ const RowStatus: React.FC<{ status?: string }> = ({ status }) => {
 	return (
 		<span
 			className={cn(
-				"agent-tool-status flex shrink-0 items-center gap-1 rounded-sm border px-1.5 py-0.5 text-2xs",
+				"agent-tool-status flex shrink-0 items-center gap-1 text-caption",
 				statusTone(status),
 			)}
 			title={status}
@@ -222,13 +211,12 @@ const sumDuration = (messages: AgentMessage[]) =>
 	}, 0);
 
 const statusTone = (status: string) => {
-	if (status === "completed")
-		return "border-success-border bg-success-surface text-success-foreground";
-	if (status === "failed") return "border-error-border bg-error-surface text-error-foreground";
+	if (status === "completed") return "text-success-foreground";
+	if (status === "failed") return "text-error-foreground";
 	if (status === "in_progress" || status === "pending" || status === "streaming") {
-		return "border-warning-border bg-warning-surface text-warning-foreground";
+		return "text-warning-foreground";
 	}
-	return "border-info-border bg-info-surface text-info-foreground";
+	return "text-muted-foreground";
 };
 
 const toolStatusLabel = (status: string) => {

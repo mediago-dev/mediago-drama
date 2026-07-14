@@ -85,7 +85,7 @@ func (bus *AgentEventBus) Decorate(event AgentEvent) AgentEvent {
 			event.DocumentSelection.AgentTag = bus.context.AgentTag
 		}
 	}
-	return event
+	return NormalizeAgentEventSemantics(event)
 }
 
 // PublishProjectBriefUpdated publishes a project brief update event.

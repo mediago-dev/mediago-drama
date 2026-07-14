@@ -88,6 +88,11 @@
 		--shadow-toast: 0 22px 40px -24px rgb(109 121 143 / 0.45);
 		--shadow-agent-panel: 0 1.5rem 5rem rgb(0 0 0 / 0.24);
 
+		/* —— 动效 Motion —— */
+		--duration-scale-fast: 120ms;
+		--duration-scale-base: 180ms;
+		--easing-scale-standard: cubic-bezier(0.2, 0, 0, 1);
+
 		/* —— 边框 / 描边 / 模糊 / 层级 Misc —— */
 		--border-width-scale-sm: 1px;
 		--border-width-scale-md: 2px;
