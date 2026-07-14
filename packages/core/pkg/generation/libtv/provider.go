@@ -1352,13 +1352,6 @@ func formatNumber(value float64) string {
 	return strings.TrimRight(text, ".")
 }
 
-func truncate(value string, maxLength int) string {
-	if len(value) <= maxLength {
-		return value
-	}
-	return value[:maxLength] + "..."
-}
-
 func truncateRunes(value string, maxLength int) string {
 	if maxLength <= 0 {
 		return ""
