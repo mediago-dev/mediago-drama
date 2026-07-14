@@ -26,6 +26,7 @@ var familySpecs = []familySpec{
 			},
 			mediagoRoutesForFamily(FamilySeedream),
 			[]ModelRoute{
+				libTVRoute(RouteLibTVSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "LibTV", "Seedream 5.0 Lite", AdapterLibTVCLIImage, "https://www.liblib.tv/cli", libTVSeedreamParams(), false, true, "", withReferenceURLLimit(6)),
 				jimengRoute(RouteJimengSeedream50, FamilySeedream, VersionSeedream5Lite, "即梦", "5.0", AdapterJimengCLIImage, "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg", jimengSeedreamParams(), false, true, ModelSeedream50),
 				jimengRoute(RouteJimengSeedream47, FamilySeedream, VersionSeedream47, "即梦", "4.7", AdapterJimengCLIImage, "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg", jimengSeedreamParams(), false, true, ModelSeedream47),
 				openRouterRoute(RouteOpenRouterSeedream45, FamilySeedream, VersionSeedream45, KindImage, "OpenRouter", "bytedance-seed/seedream-4.5", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, true),
@@ -169,6 +170,7 @@ var familySpecs = []familySpec{
 			},
 			mediagoRoutesForFamily(FamilyGPTImage),
 			[]ModelRoute{
+				libTVRoute(RouteLibTVGPTImage2, FamilyGPTImage, VersionGPTImage2, "LibTV", "Lib Image", AdapterLibTVCLIImage, "https://www.liblib.tv/cli", libTVGPTImageParams(), false, true, "", withReferenceURLLimit(10)),
 				openRouterRoute(RouteOpenRouterGPT54Image2, FamilyGPTImage, VersionGPT54Image2, KindImage, "OpenRouter", "openai/gpt-5.4-image-2", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, false),
 			},
 		),
@@ -193,6 +195,7 @@ var familySpecs = []familySpec{
 			},
 			mediagoRoutesForFamily(FamilyNanoBanana),
 			[]ModelRoute{
+				libTVRoute(RouteLibTVNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "LibTV", "Lib Navo 2", AdapterLibTVCLIImage, "https://www.liblib.tv/cli", libTVNanoBananaParams(), false, true, "", withReferenceURLLimit(7)),
 				openRouterRoute(RouteOpenRouterNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, KindImage, "OpenRouter", "google/gemini-3.1-flash-image-preview", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, false),
 				openRouterRoute(RouteOpenRouterNanoBananaPro, FamilyNanoBanana, VersionNanoBananaPro, KindImage, "OpenRouter", "google/gemini-3-pro-image-preview", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, false),
 				openRouterRoute(RouteOpenRouterNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, KindImage, "OpenRouter", "google/gemini-2.5-flash-image", AdapterOpenRouterChatImage, openRouterImageDocs, nanoBanana25Params(), false, false),

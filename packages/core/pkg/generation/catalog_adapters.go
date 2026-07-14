@@ -36,6 +36,7 @@ const (
 	AdapterDMXResponsesVideo        = "dmx.responses.video"
 	AdapterJimengCLIImage           = "jimeng.cli.image"
 	AdapterJimengCLIVideo           = "jimeng.cli.video"
+	AdapterLibTVCLIImage            = "libtv.cli.image"
 	AdapterLibTVCLIVideo            = "libtv.cli.video"
 	AdapterPippitCLIVideo           = "pippit.cli.video"
 )

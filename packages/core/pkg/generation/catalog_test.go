@@ -208,6 +208,93 @@ func TestImageCatalogIncludesOfficialGoogleNanoBanana25(t *testing.T) {
 	assertComboOutput(t, route, "aspectRatio", "resolution", "16:9|1K", "1344x768")
 }
 
+func TestLibTVImageCatalogIncludesRequestedRoutes(t *testing.T) {
+	cases := []struct {
+		id            string
+		familyID      string
+		versionID     string
+		model         string
+		maxReferences int
+		params        map[string]any
+		ratios        []string
+		resolutions   []string
+		qualities     []string
+	}{
+		{
+			id:            RouteLibTVGPTImage2,
+			familyID:      FamilyGPTImage,
+			versionID:     VersionGPTImage2,
+			model:         "Lib Image",
+			maxReferences: 10,
+			params: map[string]any{
+				"aspectRatio": "16:9",
+				"resolution":  "2K",
+				"quality":     "medium",
+			},
+			ratios:      []string{"1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3", "5:4", "4:5", "21:9", "9:21"},
+			resolutions: []string{"1K", "2K", "4K"},
+			qualities:   []string{"low", "medium", "high"},
+		},
+		{
+			id:            RouteLibTVNanoBanana31,
+			familyID:      FamilyNanoBanana,
+			versionID:     VersionNanoBanana31,
+			model:         "Lib Navo 2",
+			maxReferences: 7,
+			params: map[string]any{
+				"aspectRatio": "16:9",
+				"resolution":  "2K",
+			},
+			ratios:      []string{"adaptive", "1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3", "4:5", "5:4", "8:1", "1:8", "4:1", "1:4", "21:9"},
+			resolutions: []string{"1K", "2K", "4K"},
+		},
+		{
+			id:            RouteLibTVSeedream5Lite,
+			familyID:      FamilySeedream,
+			versionID:     VersionSeedream5Lite,
+			model:         "Seedream 5.0 Lite",
+			maxReferences: 6,
+			params: map[string]any{
+				"aspectRatio": "16:9",
+				"resolution":  "2K",
+			},
+			ratios:      []string{"1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3"},
+			resolutions: []string{"2K", "3K"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			route, ok := FindRoute(tc.id)
+			if !ok {
+				t.Fatalf("route %q is missing", tc.id)
+			}
+			if route.FamilyID != tc.familyID || route.VersionID != tc.versionID || route.Model != tc.model {
+				t.Fatalf("route %q family/version/model = %q/%q/%q, want %q/%q/%q", tc.id, route.FamilyID, route.VersionID, route.Model, tc.familyID, tc.versionID, tc.model)
+			}
+			if route.Provider != ProviderLibTV || route.Kind != KindImage ||
+				route.Adapter != AdapterLibTVCLIImage || route.Async ||
+				!route.SupportsReferenceURLs || route.MaxReferenceURLs != tc.maxReferences {
+				t.Fatalf("route %q metadata = %#v", tc.id, route)
+			}
+			if !reflect.DeepEqual(route.AuthKeys, []string{ProviderLibTV}) {
+				t.Fatalf("route %q auth keys = %#v, want %#v", tc.id, route.AuthKeys, []string{ProviderLibTV})
+			}
+			if len(route.Params) != len(tc.params) {
+				t.Fatalf("route %q params = %#v, want exactly %#v", tc.id, route.Params, tc.params)
+			}
+			for name, want := range tc.params {
+				assertParamDefault(t, route, name, want)
+			}
+			assertOptionValues(t, mustParam(t, route, "aspectRatio"), tc.ratios)
+			assertOptionValues(t, mustParam(t, route, "resolution"), tc.resolutions)
+			if tc.qualities != nil {
+				assertOptionValues(t, mustParam(t, route, "quality"), tc.qualities)
+			}
+		})
+	}
+}
+
 func TestLibTVCatalogIncludesSeedanceRoutes(t *testing.T) {
 	cases := []struct {
 		id      string
@@ -988,6 +1075,18 @@ func assertLacksOption(t *testing.T, param ParamSpec, value string) {
 		if option.Value == value {
 			t.Fatalf("param %q should not expose option %q", param.Name, value)
 		}
+	}
+}
+
+func assertOptionValues(t *testing.T, param ParamSpec, want []string) {
+	t.Helper()
+
+	got := make([]string, 0, len(param.Options))
+	for _, option := range param.Options {
+		got = append(got, option.Value)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("param %q options = %#v, want %#v", param.Name, got, want)
 	}
 }
 
