@@ -44,6 +44,13 @@ const libTVVideoRoute: GenerationRoute = {
 	id: "libtv-video-route",
 	provider: "libtv",
 };
+const libTVImageRoute: GenerationRoute = {
+	...imageRoute,
+	adapter: "libtv.cli.image",
+	id: "libtv-image-route",
+	maxReferenceUrls: 2,
+	provider: "libtv",
+};
 const unsupportedImageRoute: GenerationRoute = {
 	...imageRoute,
 	id: "unsupported-image-route",
@@ -154,6 +161,55 @@ describe("useGenerationReferences", () => {
 			"reference-video",
 			"reference-audio",
 		]);
+	});
+
+	it("limits LibTV image routes to image references and honors the route maximum", () => {
+		const firstImage = mediaAsset({ id: "reference-image-a" });
+		const secondImage = mediaAsset({ id: "reference-image-b" });
+		const thirdImage = mediaAsset({ id: "reference-image-c" });
+		const referenceVideo = mediaAsset({
+			filename: "scene.mp4",
+			id: "reference-video",
+			kind: "video",
+			mimeType: "video/mp4",
+			url: "/api/v1/media-assets/reference-video/content",
+		});
+		const referenceAudio = mediaAsset({
+			filename: "voice.wav",
+			id: "reference-audio",
+			kind: "audio",
+			mimeType: "audio/wav",
+			url: "/api/v1/media-assets/reference-audio/content",
+		});
+		const setError = vi.fn();
+		const { result } = renderHook(() =>
+			useGenerationReferences({
+				extraReferenceAssetIds: [],
+				extraReferenceUrls: [],
+				mediaAssetProjectId: "project-a",
+				mediaAssets: [firstImage, secondImage, thirdImage, referenceVideo, referenceAudio],
+				mutateMediaAssets: vi.fn(),
+				prompt: "图片参考",
+				selectedRoute: libTVImageRoute,
+				setError,
+			}),
+		);
+
+		expect(Array.from(result.current.selectableReferenceKinds)).toEqual(["image"]);
+
+		act(() => {
+			result.current.selectReferenceAsset(firstImage);
+			result.current.selectReferenceAsset(referenceVideo);
+			result.current.selectReferenceAsset(referenceAudio);
+			result.current.selectReferenceAsset(secondImage);
+			result.current.selectReferenceAsset(thirdImage);
+		});
+
+		expect(result.current.selectedReferenceAssetIds).toEqual([
+			"reference-image-a",
+			"reference-image-b",
+		]);
+		expect(setError).toHaveBeenCalledWith("当前模型最多支持 2 个参考素材。");
 	});
 
 	it("does not select an uploaded video for image-only reference routes", async () => {

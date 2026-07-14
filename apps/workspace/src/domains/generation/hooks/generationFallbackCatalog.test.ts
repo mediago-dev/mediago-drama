@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { providerTypeOf } from "./generationCatalog";
 import { fallbackCatalog } from "./generationFallbackCatalog";
 
 const routeParams = (routeId: string) => {
@@ -43,6 +44,120 @@ const gptImageComboOutputs = {
 };
 
 describe("fallback generation catalog params", () => {
+	it("mirrors the LibTV image routes from the backend catalog", () => {
+		const expectedRoutes = [
+			{
+				familyId: "gpt-image",
+				id: "libtv.gpt-image-2",
+				maxReferenceUrls: 10,
+				model: "Lib Image",
+				params: [
+					{
+						default: "16:9",
+						name: "aspectRatio",
+						options: [
+							"1:1",
+							"9:16",
+							"16:9",
+							"3:4",
+							"4:3",
+							"3:2",
+							"2:3",
+							"5:4",
+							"4:5",
+							"21:9",
+							"9:21",
+						],
+					},
+					{ default: "2K", name: "resolution", options: ["1K", "2K", "4K"] },
+					{ default: "medium", name: "quality", options: ["low", "medium", "high"] },
+				],
+				versionId: "gpt-image-2",
+			},
+			{
+				familyId: "nano-banana",
+				id: "libtv.gemini-3.1-flash-image-preview",
+				maxReferenceUrls: 7,
+				model: "Lib Navo 2",
+				params: [
+					{
+						default: "16:9",
+						name: "aspectRatio",
+						options: [
+							"adaptive",
+							"1:1",
+							"9:16",
+							"16:9",
+							"3:4",
+							"4:3",
+							"3:2",
+							"2:3",
+							"4:5",
+							"5:4",
+							"8:1",
+							"1:8",
+							"4:1",
+							"1:4",
+							"21:9",
+						],
+					},
+					{ default: "2K", name: "resolution", options: ["1K", "2K", "4K"] },
+				],
+				versionId: "gemini-3.1-flash-image-preview",
+			},
+			{
+				familyId: "seedream",
+				id: "libtv.seedream-5-lite",
+				maxReferenceUrls: 6,
+				model: "Seedream 5.0 Lite",
+				params: [
+					{
+						default: "16:9",
+						name: "aspectRatio",
+						options: ["1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3"],
+					},
+					{ default: "2K", name: "resolution", options: ["2K", "3K"] },
+				],
+				versionId: "seedream-5-lite",
+			},
+		];
+
+		for (const expected of expectedRoutes) {
+			const item = routeById(expected.id);
+			expect(item).toMatchObject({
+				adapter: "libtv.cli.image",
+				async: false,
+				familyId: expected.familyId,
+				kind: "image",
+				label: "LibTV",
+				maxReferenceUrls: expected.maxReferenceUrls,
+				model: expected.model,
+				provider: "libtv",
+				supportsReferenceUrls: true,
+				versionId: expected.versionId,
+			});
+			expect(
+				item.params.map((item) => ({
+					default: item.default,
+					name: item.name,
+					options: item.options?.map((option) => option.value),
+				})),
+			).toEqual(expected.params);
+			expect(item).not.toHaveProperty("translation");
+		}
+
+		expect(param("libtv.gpt-image-2", "quality").options).toEqual([
+			{ label: "Low", value: "low" },
+			{ label: "Medium", value: "medium" },
+			{ label: "High", value: "high" },
+		]);
+		expect(param("libtv.gemini-3.1-flash-image-preview", "aspectRatio").options?.[0]).toEqual({
+			label: "Adaptive",
+			value: "adaptive",
+		});
+		expect(providerTypeOf("libtv", [])).toBe("local");
+	});
+
 	it("uses canonical image params", () => {
 		const seedream = routeParams("dmx.seedream-5-lite");
 		expect(seedream.map((item) => item.name)).toEqual([

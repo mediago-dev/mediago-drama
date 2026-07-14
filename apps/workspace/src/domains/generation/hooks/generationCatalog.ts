@@ -85,6 +85,7 @@ const fallbackProviderTypes: Record<string, GenerationProviderType> = {
 	dmx: "aggregator",
 	openrouter: "aggregator",
 	jimeng: "local",
+	libtv: "local",
 };
 
 export const providerTypeOf = (
