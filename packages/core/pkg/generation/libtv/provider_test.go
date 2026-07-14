@@ -1141,6 +1141,71 @@ func TestGetReturnsSubmittedWhenLibTVDownloadIsPending(t *testing.T) {
 	}
 }
 
+func TestAssetsFromDownloadDirClassifiesSupportedMedia(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		kind     generation.Kind
+		mimeType string
+	}{
+		{name: "png", filename: "result.png", kind: generation.KindImage, mimeType: "image/png"},
+		{name: "jpeg", filename: "result.jpg", kind: generation.KindImage, mimeType: "image/jpeg"},
+		{name: "webp", filename: "result.webp", kind: generation.KindImage, mimeType: "image/webp"},
+		{name: "video regression", filename: "result.mp4", kind: generation.KindVideo, mimeType: "video/mp4"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			data := []byte("result-bytes")
+			if err := os.WriteFile(filepath.Join(dir, test.filename), data, 0o600); err != nil {
+				t.Fatalf("writing result: %v", err)
+			}
+
+			assets, err := assetsFromDownloadDir(dir)
+			if err != nil {
+				t.Fatalf("assetsFromDownloadDir() error = %v", err)
+			}
+			if len(assets) != 1 || assets[0].Kind != test.kind || assets[0].MIMEType != test.mimeType {
+				t.Fatalf("assets = %#v, want one %s %s asset", assets, test.kind, test.mimeType)
+			}
+			if assets[0].Base64 != base64.StdEncoding.EncodeToString(data) {
+				t.Fatalf("asset base64 = %q, want encoded test data", assets[0].Base64)
+			}
+		})
+	}
+}
+
+func TestAssetsFromDownloadDirRejectsUnsupportedResults(t *testing.T) {
+	tests := []struct {
+		name       string
+		filename   string
+		wantErrors []string
+	}{
+		{name: "zip archive", filename: "result.zip", wantErrors: []string{"ZIP", "single-image"}},
+		{name: "unknown media", filename: "result.bin", wantErrors: []string{"unsupported", "text/plain"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, test.filename), []byte("result-bytes"), 0o600); err != nil {
+				t.Fatalf("writing result: %v", err)
+			}
+
+			assets, err := assetsFromDownloadDir(dir)
+			if err == nil {
+				t.Fatalf("assetsFromDownloadDir() assets = %#v, error = nil", assets)
+			}
+			for _, want := range test.wantErrors {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error = %q, missing %q", err.Error(), want)
+				}
+			}
+		})
+	}
+}
+
 func fakeExecutable(t *testing.T, name string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)

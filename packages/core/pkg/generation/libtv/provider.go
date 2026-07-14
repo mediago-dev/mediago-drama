@@ -655,8 +655,15 @@ func assetsFromDownloadDir(dir string) ([]generation.Asset, error) {
 			return nil
 		}
 		mimeType := mimeTypeForPathAndData(path, data)
+		kind, ok := kindForMIMEType(mimeType)
+		if !ok {
+			if strings.EqualFold(strings.TrimSpace(mimeType), "application/zip") {
+				return fmt.Errorf("LibTV download returned a ZIP archive; the current integration supports single-image output only")
+			}
+			return fmt.Errorf("LibTV download file %s has unsupported media type %s", filepath.Base(path), mimeType)
+		}
 		assets = append(assets, generation.Asset{
-			Kind:     kindForMIMEType(mimeType),
+			Kind:     kind,
 			Base64:   base64.StdEncoding.EncodeToString(data),
 			MIMEType: mimeType,
 			Metadata: map[string]any{
@@ -1031,14 +1038,18 @@ func mimeTypeForPathAndData(path string, data []byte) string {
 	}
 }
 
-func kindForMIMEType(mimeType string) generation.Kind {
-	if strings.HasPrefix(strings.ToLower(mimeType), "image/") {
-		return generation.KindImage
+func kindForMIMEType(mimeType string) (generation.Kind, bool) {
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	switch {
+	case strings.HasPrefix(mimeType, "image/"):
+		return generation.KindImage, true
+	case strings.HasPrefix(mimeType, "video/"):
+		return generation.KindVideo, true
+	case strings.HasPrefix(mimeType, "audio/"):
+		return generation.KindAudio, true
+	default:
+		return "", false
 	}
-	if strings.HasPrefix(strings.ToLower(mimeType), "audio/") {
-		return generation.KindAudio
-	}
-	return generation.KindVideo
 }
 
 func commandError(commandName string, output []byte, err error) error {
