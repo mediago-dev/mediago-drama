@@ -229,7 +229,7 @@ const ImageGenerationDialogPanel: React.FC<{
 					<Images className="size-4" />
 					<span>从素材库中选择</span>
 				</Button>
-				<GlobalToolboxButton kind="image" variant="inline" />
+				<GlobalToolboxButton kind="image" projectId={controller.projectId} variant="inline" />
 			</div>
 		}
 		onOpenChange={controller.onOpenChange}

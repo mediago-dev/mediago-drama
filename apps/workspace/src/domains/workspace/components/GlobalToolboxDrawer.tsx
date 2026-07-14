@@ -16,6 +16,7 @@ import {
 	createGenerationConversation,
 	generationConversationsQueryKey,
 	getGenerationConversations,
+	projectGenerationConversation,
 	type GenerationConversation,
 	type GenerationConversationsResponse,
 } from "@/domains/generation/api/generation";
@@ -63,12 +64,14 @@ const toolboxConversationGroups: Array<{
 interface GlobalToolboxButtonProps {
 	className?: string;
 	kind?: StudioTab;
+	projectId?: string;
 	variant?: "icon" | "inline";
 }
 
 export const GlobalToolboxButton: React.FC<GlobalToolboxButtonProps> = ({
 	className,
 	kind,
+	projectId,
 	variant = "icon",
 }) => {
 	const [open, setOpen] = useState(false);
@@ -91,7 +94,7 @@ export const GlobalToolboxButton: React.FC<GlobalToolboxButtonProps> = ({
 					<History className="size-4" />
 					<span>生成历史</span>
 				</Button>
-				<GlobalToolboxDrawer kind={kind} open={open} onOpenChange={setOpen} />
+				<GlobalToolboxDrawer kind={kind} open={open} projectId={projectId} onOpenChange={setOpen} />
 			</div>
 		);
 	}
@@ -117,7 +120,7 @@ export const GlobalToolboxButton: React.FC<GlobalToolboxButtonProps> = ({
 					<TooltipContent side="top">生成历史</TooltipContent>
 				</Tooltip>
 			</TooltipProvider>
-			<GlobalToolboxDrawer kind={kind} open={open} onOpenChange={setOpen} />
+			<GlobalToolboxDrawer kind={kind} open={open} projectId={projectId} onOpenChange={setOpen} />
 		</div>
 	);
 };
@@ -126,7 +129,8 @@ const GlobalToolboxDrawer: React.FC<{
 	kind?: StudioTab;
 	onOpenChange: (open: boolean) => void;
 	open: boolean;
-}> = ({ kind, onOpenChange, open }) => {
+	projectId?: string;
+}> = ({ kind, onOpenChange, open, projectId }) => {
 	const [activeConversation, setActiveConversation] = useState<GenerationConversation | null>(null);
 	const [historyOpen, setHistoryOpen] = useState(false);
 	const [isCreatingConversation, setIsCreatingConversation] = useState(false);
@@ -148,6 +152,10 @@ const GlobalToolboxDrawer: React.FC<{
 		[visibleConversationGroups],
 	);
 	const visibleDefaultKind = visibleConversationGroups[0]?.kind ?? defaultToolboxKind;
+	const projectConversation = useMemo(
+		() => (kind ? createProjectToolboxConversation(projectId, kind) : null),
+		[kind, projectId],
+	);
 
 	const videoConversations = useToolboxConversations("video", open && isKindVisible("video"));
 	const imageConversations = useToolboxConversations("image", open && isKindVisible("image"));
@@ -192,6 +200,16 @@ const GlobalToolboxDrawer: React.FC<{
 		imageConversations.isLoading ||
 		textConversations.isLoading ||
 		audioConversations.isLoading;
+	const preferredConversation = useMemo(() => {
+		if (projectConversation) {
+			return (
+				allConversations.find((conversation) =>
+					sameGenerationConversation(conversation, projectConversation),
+				) ?? projectConversation
+			);
+		}
+		return allConversations[0] ?? null;
+	}, [allConversations, projectConversation]);
 
 	useEffect(() => {
 		const wasOpen = wasOpenRef.current;
@@ -208,34 +226,31 @@ const GlobalToolboxDrawer: React.FC<{
 
 	useEffect(() => {
 		if (!open) return;
-		if (activeConversation) {
-			if (
-				allConversations.some(
-					(conversation) =>
-						conversation.kind === activeConversation.kind &&
-						conversation.id === activeConversation.id,
-				)
-			) {
-				if (selectionMode === "manual") return;
-				if (isLoadingConversations) return;
-				const latestConversation = allConversations[0] ?? null;
-				if (
-					latestConversation &&
-					!sameGenerationConversation(latestConversation, activeConversation)
-				) {
-					setActiveConversation(latestConversation);
-				}
-				return;
-			}
-			if (isLoadingConversations) return;
+		if (isLoadingConversations) return;
+		if (selectionMode === "manual" && activeConversation) {
+			const conversationStillAvailable = allConversations.some((conversation) =>
+				sameGenerationConversation(conversation, activeConversation),
+			);
+			if (conversationStillAvailable) return;
 			setSelectionMode("auto");
-			setActiveConversation(null);
+		}
+		if (
+			activeConversation &&
+			preferredConversation &&
+			sameGenerationConversation(activeConversation, preferredConversation)
+		) {
 			return;
 		}
-		if (isLoadingConversations) return;
 		setSelectionMode("auto");
-		setActiveConversation(allConversations[0] ?? null);
-	}, [activeConversation, allConversations, isLoadingConversations, open, selectionMode]);
+		setActiveConversation(preferredConversation);
+	}, [
+		activeConversation,
+		allConversations,
+		isLoadingConversations,
+		open,
+		preferredConversation,
+		selectionMode,
+	]);
 
 	const openCreateDialog = async () => {
 		const result = await openGenerationConversationCreateDialog({
@@ -566,6 +581,24 @@ const toolboxConversationTime = (value: string) => {
 
 const sameGenerationConversation = (left: GenerationConversation, right: GenerationConversation) =>
 	left.kind === right.kind && left.id === right.id;
+
+const createProjectToolboxConversation = (
+	projectId: string | undefined,
+	kind: StudioTab,
+): GenerationConversation | null => {
+	const conversation = projectGenerationConversation(projectId, kind);
+	if (!conversation) return null;
+
+	return {
+		createdAt: "",
+		id: conversation.conversationId,
+		kind,
+		scopeId: conversation.conversationScopeId,
+		taskCount: 0,
+		title: conversation.conversationTitle,
+		updatedAt: "",
+	};
+};
 
 const compareGenerationConversationsByUpdatedAt = (
 	left: GenerationConversation,

@@ -76,7 +76,13 @@ export const VideoGenerationDialog: React.FC<VideoGenerationDialogProps> = ({
 				open={open}
 				title={title ?? "生成视频"}
 				titleId={titleId}
-				titleAside={<GlobalToolboxButton kind="video" variant="inline" />}
+				titleAside={
+					<GlobalToolboxButton
+						kind="video"
+						projectId={projectId ?? workspaceProps.projectId}
+						variant="inline"
+					/>
+				}
 				onOpenChange={onOpenChange}
 			>
 				<MediaGenerationWorkspace {...workspaceProps} kind="video" />
@@ -104,7 +110,7 @@ export const VideoGenerationDialog: React.FC<VideoGenerationDialogProps> = ({
 						<Images className="size-4" />
 						<span>从素材库中选择</span>
 					</Button>
-					<GlobalToolboxButton kind="video" variant="inline" />
+					<GlobalToolboxButton kind="video" projectId={projectId} variant="inline" />
 				</div>
 			}
 			onOpenChange={onOpenChange}

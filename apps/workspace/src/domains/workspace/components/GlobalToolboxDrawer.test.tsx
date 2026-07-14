@@ -16,6 +16,15 @@ vi.mock("@/domains/generation/api/generation", () => ({
 		options: { allScopes?: boolean } = {},
 	) => ["/generation/sessions", options.allScopes ? "*" : scopeId, kind ?? ""],
 	getGenerationConversations: vi.fn(),
+	projectGenerationConversation: (projectId: string | undefined, kind: string) =>
+		projectId?.trim()
+			? {
+					conversationId: `${projectId.trim()}-${kind}`,
+					conversationScopeId: "agent",
+					conversationTitle: `项目 · ${kind === "image" ? "图片" : "视频"}`,
+					historyScopeId: `${projectId.trim()}-${kind}`,
+				}
+			: undefined,
 }));
 
 vi.mock("@/domains/generation/components/GenerationWorkspace", () => ({
@@ -147,6 +156,70 @@ describe("GlobalToolboxButton", () => {
 		expect(screen.queryByText("图片生成")).not.toBeInTheDocument();
 		expect(screen.queryByText("文本生成")).not.toBeInTheDocument();
 		expect(screen.queryByText("音频生成")).not.toBeInTheDocument();
+	});
+
+	it("opens the current project's matching history instead of a newer project conversation", async () => {
+		vi.mocked(getGenerationConversations).mockImplementation(async (kind) => ({
+			conversations:
+				kind === "image"
+					? [
+							generationConversation(
+								"other-project-image",
+								"image",
+								"其他项目 · 图片",
+								"agent",
+								"2026-06-06T14:00:00Z",
+							),
+							generationConversation(
+								"current-project-image",
+								"image",
+								"当前项目 · 图片",
+								"agent",
+								"2026-06-06T12:00:00Z",
+							),
+						]
+					: [],
+		}));
+
+		renderGlobalToolboxButton("inline", "image", "current-project");
+		fireEvent.click(screen.getByRole("button", { name: "生成历史" }));
+
+		const workspace = await screen.findByTestId("global-generation-workspace");
+		expect(workspace).toHaveAttribute("data-conversation-id", "current-project-image");
+		expect(workspace).toHaveAttribute("data-kind", "image");
+		expect(workspace).toHaveTextContent("当前项目 · 图片");
+	});
+
+	it("opens the current project's video history from a video generation dialog", async () => {
+		vi.mocked(getGenerationConversations).mockImplementation(async (kind) => ({
+			conversations:
+				kind === "video"
+					? [
+							generationConversation(
+								"other-project-video",
+								"video",
+								"其他项目 · 视频",
+								"agent",
+								"2026-06-06T14:00:00Z",
+							),
+							generationConversation(
+								"current-project-video",
+								"video",
+								"当前项目 · 视频",
+								"agent",
+								"2026-06-06T12:00:00Z",
+							),
+						]
+					: [],
+		}));
+
+		renderGlobalToolboxButton("inline", "video", "current-project");
+		fireEvent.click(screen.getByRole("button", { name: "生成历史" }));
+
+		const workspace = await screen.findByTestId("global-generation-workspace");
+		expect(workspace).toHaveAttribute("data-conversation-id", "current-project-video");
+		expect(workspace).toHaveAttribute("data-kind", "video");
+		expect(workspace).toHaveTextContent("当前项目 · 视频");
 	});
 
 	it("waits for every toolbox kind before auto-selecting the latest conversation", async () => {
@@ -323,10 +396,11 @@ describe("GlobalToolboxButton", () => {
 const renderGlobalToolboxButton = (
 	variant: "icon" | "inline" = "icon",
 	kind?: "image" | "video" | "text" | "audio",
+	projectId?: string,
 ) =>
 	render(
 		<SWRConfig value={{ provider: () => new Map() }}>
-			<GlobalToolboxButton kind={kind} variant={variant} />
+			<GlobalToolboxButton kind={kind} projectId={projectId} variant={variant} />
 			<GenerationConversationCreateDialog />
 		</SWRConfig>,
 	);
