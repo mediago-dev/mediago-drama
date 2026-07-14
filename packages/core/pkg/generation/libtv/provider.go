@@ -66,6 +66,33 @@ type ProjectStore interface {
 	SaveLibTVProjectBinding(ctx context.Context, binding ProjectBinding) error
 }
 
+type imageModelSpec struct {
+	Key         string
+	CatalogName string
+}
+
+type modelSearchResponse struct {
+	Matches []struct {
+		ModelKey  string `json:"modelKey"`
+		ModelName string `json:"modelName"`
+	} `json:"matches"`
+}
+
+var imageModelsByRoute = map[string]imageModelSpec{
+	generation.RouteLibTVGPTImage2: {
+		Key:         "lib-image-2",
+		CatalogName: "Lib Image",
+	},
+	generation.RouteLibTVNanoBanana31: {
+		Key:         "nebula-2-flash",
+		CatalogName: "Lib Navo 2",
+	},
+	generation.RouteLibTVSeedream5Lite: {
+		Key:         "seedream-5",
+		CatalogName: "Seedream 5.0 Lite",
+	},
+}
+
 // Config controls the LibTV CLI provider.
 type Config struct {
 	BinPath           string
@@ -121,6 +148,42 @@ func NewProvider(config Config) (*Provider, error) {
 // Name returns the provider name.
 func (provider *Provider) Name() string {
 	return "libtv-cli"
+}
+
+func (provider *Provider) resolveImageModelName(ctx context.Context, routeID string) (string, error) {
+	spec, ok := imageModelsByRoute[strings.TrimSpace(routeID)]
+	if !ok {
+		return "", fmt.Errorf("libtv image route %q is not configured", routeID)
+	}
+
+	output, err := provider.runner.Run(ctx, provider.binPath, "model", "search", "--type=image")
+	if err != nil {
+		return "", fmt.Errorf("resolving libtv image model %s: %w", spec.Key, commandError("model search", output, err))
+	}
+	payload, err := extractJSONObject(output)
+	if err != nil {
+		return "", fmt.Errorf("parsing LibTV model search JSON for %s: %w", spec.Key, err)
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("encoding LibTV model search JSON for %s: %w", spec.Key, err)
+	}
+	var search modelSearchResponse
+	if err := json.Unmarshal(encoded, &search); err != nil {
+		return "", fmt.Errorf("decoding LibTV model search JSON for %s: %w", spec.Key, err)
+	}
+	for _, match := range search.Matches {
+		if match.ModelKey != spec.Key {
+			continue
+		}
+		modelName := strings.TrimSpace(match.ModelName)
+		if modelName == "" {
+			return "", fmt.Errorf("LibTV image model %s returned an empty modelName", spec.Key)
+		}
+		return modelName, nil
+	}
+
+	return "", fmt.Errorf("当前 LibTV CLI/账号未提供模型 %s（%s）", spec.Key, spec.CatalogName)
 }
 
 // Generate submits a LibTV canvas node and triggers one generation run.

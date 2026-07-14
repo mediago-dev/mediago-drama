@@ -15,6 +15,134 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
+func TestResolveImageModelNameUsesExactModelKey(t *testing.T) {
+	tests := []struct {
+		name      string
+		routeID   string
+		modelKey  string
+		modelName string
+	}{
+		{
+			name:      "gpt image 2",
+			routeID:   generation.RouteLibTVGPTImage2,
+			modelKey:  "lib-image-2",
+			modelName: "Lib Image Current",
+		},
+		{
+			name:      "nano banana 31",
+			routeID:   generation.RouteLibTVNanoBanana31,
+			modelKey:  "nebula-2-flash",
+			modelName: "Lib Navo 2 Current",
+		},
+		{
+			name:      "seedream 5 lite",
+			routeID:   generation.RouteLibTVSeedream5Lite,
+			modelKey:  "seedream-5",
+			modelName: "Seedream 5.0 Current",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binPath := fakeExecutable(t, "libtv")
+			var calls [][]string
+			runner := CommandRunnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+				calls = append(calls, append([]string{}, args...))
+				return []byte(fmt.Sprintf(
+					"checking models\n{\"matches\":[{\"modelKey\":\"other\",\"modelName\":\"Other\"},{\"modelKey\":%q,\"modelName\":%q}]}\n",
+					test.modelKey,
+					test.modelName,
+				)), nil
+			})
+			provider, err := NewProvider(Config{BinPath: binPath, Runner: runner})
+			if err != nil {
+				t.Fatalf("NewProvider() error = %v", err)
+			}
+
+			got, err := provider.resolveImageModelName(context.Background(), test.routeID)
+			if err != nil {
+				t.Fatalf("resolveImageModelName() error = %v", err)
+			}
+			if got != test.modelName {
+				t.Fatalf("resolveImageModelName() = %q, want %q", got, test.modelName)
+			}
+			if !reflect.DeepEqual(calls, [][]string{{"model", "search", "--type=image"}}) {
+				t.Fatalf("calls = %#v, want one exact image model search", calls)
+			}
+		})
+	}
+}
+
+func TestResolveImageModelNameRejectsUnavailableOrInvalidResults(t *testing.T) {
+	tests := []struct {
+		name       string
+		routeID    string
+		output     string
+		runErr     error
+		wantErrors []string
+	}{
+		{
+			name:       "model key absent",
+			routeID:    generation.RouteLibTVGPTImage2,
+			output:     `{"matches":[{"modelKey":"lib-image","modelName":"Different"}]}`,
+			wantErrors: []string{"lib-image-2", "Lib Image"},
+		},
+		{
+			name:       "matched model name empty",
+			routeID:    generation.RouteLibTVNanoBanana31,
+			output:     `{"matches":[{"modelKey":"nebula-2-flash","modelName":"  "}]}`,
+			wantErrors: []string{"nebula-2-flash", "modelName"},
+		},
+		{
+			name:       "malformed output",
+			routeID:    generation.RouteLibTVSeedream5Lite,
+			output:     `not json`,
+			wantErrors: []string{"seedream-5", "JSON"},
+		},
+		{
+			name:       "command failure",
+			routeID:    generation.RouteLibTVGPTImage2,
+			output:     `not logged in`,
+			runErr:     errors.New("exit status 1"),
+			wantErrors: []string{"lib-image-2", "model search", "not logged in"},
+		},
+		{
+			name:       "unknown route",
+			routeID:    "libtv.unknown-image",
+			output:     `{"matches":[]}`,
+			wantErrors: []string{"libtv.unknown-image", "not configured"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binPath := fakeExecutable(t, "libtv")
+			calls := 0
+			runner := CommandRunnerFunc(func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+				calls++
+				return []byte(test.output), test.runErr
+			})
+			provider, err := NewProvider(Config{BinPath: binPath, Runner: runner})
+			if err != nil {
+				t.Fatalf("NewProvider() error = %v", err)
+			}
+
+			_, err = provider.resolveImageModelName(context.Background(), test.routeID)
+			if err == nil {
+				t.Fatal("resolveImageModelName() error = nil, want failure")
+			}
+			for _, want := range test.wantErrors {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error = %q, missing %q", err.Error(), want)
+				}
+			}
+			if test.routeID == "libtv.unknown-image" && calls != 0 {
+				t.Fatalf("calls = %d, want unknown route to fail before CLI", calls)
+			}
+		})
+	}
+}
+
 func TestGenerateVideoCreatesAndRunsLibTVNode(t *testing.T) {
 	binPath := fakeExecutable(t, "libtv")
 	var gotArgs []string
