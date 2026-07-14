@@ -162,6 +162,32 @@ describe("BatchGenerationSettingsDialog rendered preferences", () => {
 		cleanup();
 	});
 
+	it("uses plain sections separated by divider lines", () => {
+		render(
+			<BatchGenerationSettingsDialog
+				kind="image"
+				open
+				selectedCount={2}
+				onConfirm={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		for (const label of ["模型设置", "参数设置", "补充提示词设置", "优化提示词设置"]) {
+			const section = screen.getByLabelText(label);
+			expect(section).not.toHaveClass("rounded-lg", "bg-muted/45", "bg-card");
+			expect(section).not.toHaveClass("border", "border-border");
+		}
+		expect(screen.getByLabelText("模型设置").parentElement).toHaveClass(
+			"divide-y",
+			"divide-border/70",
+		);
+
+		expect(screen.getByRole("combobox", { name: "模型名称" })).toHaveClass("border-0", "bg-muted");
+		const supplementToggle = screen.getByRole("checkbox", { name: "生成时追加" }).closest("label");
+		expect(supplementToggle).not.toHaveClass("border", "bg-card/80", "rounded-full");
+	});
+
 	it("shows the last saved prompt optimization choice when opened", async () => {
 		useBatchGenerationSettingsPreferenceStore.getState().setSettings("image", {
 			promptOptimizeItemId: "prompt-pack-1",

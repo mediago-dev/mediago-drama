@@ -67,6 +67,7 @@ describe("SkillsEditorPanel layout", () => {
 		);
 
 		const preview = await screen.findByLabelText("Skill Markdown 预览");
+		expect(screen.getByText("图片生成指导")).toBeInTheDocument();
 		expect(preview).toHaveClass("min-h-0", "flex-1", "overflow-y-auto");
 
 		const bodySection = preview.parentElement;

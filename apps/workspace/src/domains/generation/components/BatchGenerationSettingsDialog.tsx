@@ -578,12 +578,20 @@ export const BatchGenerationSettingsDialog: React.FC<{
 		>
 			<div className="flex h-full min-h-0 flex-col bg-card">
 				<div className="min-h-0 flex-1 overflow-y-auto p-4">
-					<div className="grid gap-4">
-						<section className="grid gap-3 rounded-sm border border-border bg-ide-editor p-3">
+					<div className="divide-y divide-border/70">
+						<section aria-label="模型设置" className={batchSettingsSectionClassName}>
 							<div className="flex min-w-0 items-center justify-between gap-3">
-								<div className="min-w-0">
-									<h3 className="text-sm font-semibold text-foreground">模型</h3>
-									<p className="truncate text-xs text-muted-foreground">{modelSummary}</p>
+								<div className="flex min-w-0 items-center gap-2.5">
+									<div className={batchSettingsSectionIconClassName}>
+										<GenerationBrandMark
+											brand={selectedFamilyBrand}
+											className="size-4 border-0 bg-transparent p-0 text-[0.5rem] shadow-none"
+										/>
+									</div>
+									<div className="min-w-0">
+										<h3 className="text-sm font-semibold text-foreground">模型</h3>
+										<p className="truncate text-xs text-muted-foreground">{modelSummary}</p>
+									</div>
 								</div>
 								{ws.hasLiveCatalog ? null : (
 									<span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
@@ -598,7 +606,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 									<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
 										<SelectTrigger
 											aria-label="模型名称"
-											className="h-9 rounded-sm border-input bg-muted px-2 text-xs font-semibold shadow-none"
+											className="h-9 rounded-md border-0 bg-muted px-2.5 text-xs font-semibold shadow-none focus:ring-2 focus:ring-ring data-[state=open]:ring-2 data-[state=open]:ring-ring"
 										>
 											<GenerationBrandMark
 												brand={selectedFamilyBrand}
@@ -627,7 +635,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 										</SelectContent>
 									</Select>
 									<GenerationModelRoutePicker
-										className="h-9 max-w-none rounded-sm text-xs"
+										className="h-9 max-w-none rounded-md bg-muted px-2.5 text-xs hover:bg-ide-list-hover"
 										routes={ws.visibleFamilyRoutes}
 										selectedRoute={ws.selectedRoute}
 										selectedVersion={ws.selectedVersion}
@@ -642,9 +650,11 @@ export const BatchGenerationSettingsDialog: React.FC<{
 							)}
 						</section>
 
-						<section className="grid gap-3 rounded-sm border border-border bg-ide-editor p-3">
+						<section aria-label="参数设置" className={batchSettingsSectionClassName}>
 							<div className="flex min-w-0 items-center gap-2">
-								<SlidersHorizontal className="size-4 shrink-0 text-muted-foreground" />
+								<div className={batchSettingsSectionIconClassName}>
+									<SlidersHorizontal className="size-4 shrink-0" />
+								</div>
 								<h3 className="text-sm font-semibold text-foreground">参数</h3>
 							</div>
 							<div className="flex flex-wrap items-center gap-2">
@@ -701,7 +711,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 							) : null}
 							{secondaryRouteParams.length > 0 ? (
 								<SecondaryParamSettings
-									className="border-t border-border/70 pt-2"
+									className="border-t border-border/70 pt-3"
 									params={secondaryRouteParams}
 									values={ws.selectedParams}
 									onChange={ws.updateParam}
@@ -714,13 +724,15 @@ export const BatchGenerationSettingsDialog: React.FC<{
 							) : null}
 						</section>
 
-						<section className="grid gap-3 rounded-sm border border-border bg-ide-editor p-3">
+						<section aria-label="补充提示词设置" className={batchSettingsSectionClassName}>
 							<div className="flex min-w-0 items-center justify-between gap-3">
-								<div className="flex min-w-0 items-center gap-2">
-									<MessageSquarePlus className="size-4 shrink-0 text-primary" />
+								<div className="flex min-w-0 items-center gap-2.5">
+									<div className={batchSettingsSectionIconClassName}>
+										<MessageSquarePlus className="size-4 shrink-0" />
+									</div>
 									<h3 className="text-sm font-semibold text-foreground">补充提示词</h3>
 								</div>
-								<label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-sm border border-border bg-card px-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-ide-list-hover">
+								<label className={batchSettingsToggleClassName}>
 									<input
 										type="checkbox"
 										checked={usePromptSupplement}
@@ -757,13 +769,15 @@ export const BatchGenerationSettingsDialog: React.FC<{
 							) : null}
 						</section>
 
-						<section className="grid gap-3 rounded-sm border border-border bg-ide-editor p-3">
+						<section aria-label="优化提示词设置" className={batchSettingsSectionClassName}>
 							<div className="flex min-w-0 items-center justify-between gap-3">
-								<div className="flex min-w-0 items-center gap-2">
-									<Wand2 className="size-4 shrink-0 text-primary" />
+								<div className="flex min-w-0 items-center gap-2.5">
+									<div className={batchSettingsSectionIconClassName}>
+										<Wand2 className="size-4 shrink-0" />
+									</div>
 									<h3 className="text-sm font-semibold text-foreground">优化提示词</h3>
 								</div>
-								<label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-sm border border-border bg-card px-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-ide-list-hover">
+								<label className={batchSettingsToggleClassName}>
 									<input
 										type="checkbox"
 										checked={usePromptOptimization}
@@ -792,7 +806,7 @@ export const BatchGenerationSettingsDialog: React.FC<{
 									>
 										<SelectTrigger
 											aria-label="优化模型"
-											className="h-8 min-w-44 max-w-72 rounded-sm border-input bg-muted px-2 text-xs font-semibold shadow-none"
+											className="h-8 min-w-44 max-w-72 rounded-md border-0 bg-muted px-2.5 text-xs font-semibold shadow-none focus:ring-2 focus:ring-ring data-[state=open]:ring-2 data-[state=open]:ring-ring"
 										>
 											{selectedPromptOptimizeModel ? (
 												<>
@@ -1250,6 +1264,12 @@ const LabeledInlineControl: React.FC<{
 		<div className="min-w-0">{children}</div>
 	</div>
 );
+
+const batchSettingsSectionClassName = "grid gap-4 py-4 first:pt-0 last:pb-0";
+const batchSettingsSectionIconClassName =
+	"flex size-5 shrink-0 items-center justify-center text-primary";
+const batchSettingsToggleClassName =
+	"flex shrink-0 cursor-pointer items-center gap-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground";
 
 interface PromptPackSelectGroup {
 	icon: LucideIcon;

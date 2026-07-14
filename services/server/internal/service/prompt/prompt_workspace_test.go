@@ -383,6 +383,30 @@ func TestPromptBuilderKeepsSkillLoadingAsFixedRule(t *testing.T) {
 	}
 }
 
+func TestPromptBuilderLoadsSkillDescriptionsWithoutInliningBodies(t *testing.T) {
+	prompt := BuildACPPrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{
+		Skills: []SkillDescriptor{
+			{Name: "scene-writer", Description: "根据任务生成场景设定。"},
+			{Name: "image-generation", Description: "生成或编辑图片时使用。"},
+		},
+	})
+
+	for _, want := range []string{
+		"# 可用 Skills",
+		"根据名称与描述判断当前任务需要的 Skill",
+		"`image-generation`：生成或编辑图片时使用。",
+		"`scene-writer`：根据任务生成场景设定。",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt = %q, want skill index segment %q", prompt, want)
+		}
+	}
+	if strings.Index(prompt, "`image-generation`：生成或编辑图片时使用。") >
+		strings.Index(prompt, "`scene-writer`：根据任务生成场景设定。") {
+		t.Fatalf("prompt = %q, want deterministic skill name ordering", prompt)
+	}
+}
+
 func TestPromptBuilderRequiresImageGenerationSkillWithoutInliningWorkflow(t *testing.T) {
 	prompt := BuildACPPrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{})
 

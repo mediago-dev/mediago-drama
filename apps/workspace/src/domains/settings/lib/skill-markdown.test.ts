@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { composeSkillMarkdown, splitSkillMarkdown } from "./skill-markdown";
+import { composeSkillMarkdown, splitSkillMarkdown, updateSkillDescription } from "./skill-markdown";
 
 describe("skill markdown helpers", () => {
 	it("splits skill frontmatter from markdown body", () => {
@@ -42,5 +42,22 @@ description: 场景指导
 		expect(parts.hasFrontmatter).toBe(false);
 		expect(parts.frontmatter).toBe("");
 		expect(parts.body).toBe("not frontmatter\n# Heading");
+	});
+
+	it("updates an existing description without changing other metadata", () => {
+		const frontmatter = updateSkillDescription(
+			"name: scene-writer\ndescription: 旧描述\nhint:\n  document_category: scene",
+			"按场景任务提供写作指导",
+		);
+
+		expect(frontmatter).toBe(
+			'name: scene-writer\ndescription: "按场景任务提供写作指导"\nhint:\n  document_category: scene',
+		);
+	});
+
+	it("adds a missing description after the skill name", () => {
+		expect(updateSkillDescription("name: scene-writer\ntitle: 场景写作", "场景指导")).toBe(
+			'name: scene-writer\ndescription: "场景指导"\ntitle: 场景写作',
+		);
 	});
 });

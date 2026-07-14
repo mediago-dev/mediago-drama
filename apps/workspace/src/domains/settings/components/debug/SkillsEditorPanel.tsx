@@ -25,11 +25,16 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/shared/components/ui/select";
-import { composeSkillMarkdown, splitSkillMarkdown } from "@/domains/settings/lib/skill-markdown";
+import {
+	composeSkillMarkdown,
+	splitSkillMarkdown,
+	updateSkillDescription,
+} from "@/domains/settings/lib/skill-markdown";
 import { sanitizeSkillName } from "@/domains/settings/lib/skill-name";
 import { orderSkillsForPrimaryFlows } from "@/domains/settings/lib/skill-order";
 import { useToast } from "@/hooks/useToast";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
+import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/lib/utils";
 import { isSkillCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
 import { PromptPackActions } from "./PromptPackActionsSlot";
@@ -42,6 +47,7 @@ export const SkillsEditorPanel: React.FC = () => {
 	const orderedSkills = useMemo(() => orderSkillsForPrimaryFlows(skills), [skills]);
 	const [selectedName, setSelectedName] = useState("");
 	const [frontmatterDraft, setFrontmatterDraft] = useState("");
+	const [descriptionDraft, setDescriptionDraft] = useState("");
 	const [bodyDraft, setBodyDraft] = useState("");
 	const selectedMeta = useMemo(
 		() => orderedSkills.find((skill) => skill.name === selectedName) ?? orderedSkills[0],
@@ -60,10 +66,15 @@ export const SkillsEditorPanel: React.FC = () => {
 	const [isCreating, setIsCreating] = useState(false);
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
 	const [newSkillName, setNewSkillName] = useState("");
+	const [newSkillDescription, setNewSkillDescription] = useState("");
 	const [createError, setCreateError] = useState("");
 	const draft = useMemo(
-		() => composeSkillMarkdown({ body: bodyDraft, frontmatter: frontmatterDraft }),
-		[bodyDraft, frontmatterDraft],
+		() =>
+			composeSkillMarkdown({
+				body: bodyDraft,
+				frontmatter: updateSkillDescription(frontmatterDraft, descriptionDraft),
+			}),
+		[bodyDraft, descriptionDraft, frontmatterDraft],
 	);
 
 	useEffect(() => {
@@ -76,6 +87,7 @@ export const SkillsEditorPanel: React.FC = () => {
 	useEffect(() => {
 		const parts = splitSkillMarkdown(selectedSkill?.content ?? "");
 		setFrontmatterDraft(parts.frontmatter);
+		setDescriptionDraft(selectedSkill?.description ?? "");
 		setBodyDraft(parts.body);
 		setError("");
 	}, [selectedSkill]);
@@ -89,12 +101,14 @@ export const SkillsEditorPanel: React.FC = () => {
 	const cancelCreateSkill = () => {
 		setIsCreating(false);
 		setNewSkillName("");
+		setNewSkillDescription("");
 		setCreateError("");
 	};
 
 	const openEditDialog = () => {
 		const parts = splitSkillMarkdown(selectedSkill?.content ?? "");
 		setFrontmatterDraft(parts.frontmatter);
+		setDescriptionDraft(selectedSkill?.description ?? "");
 		setBodyDraft(parts.body);
 		setError("");
 		setEditDialogOpen(true);
@@ -103,6 +117,7 @@ export const SkillsEditorPanel: React.FC = () => {
 	const closeEditDialog = () => {
 		const parts = splitSkillMarkdown(selectedSkill?.content ?? "");
 		setFrontmatterDraft(parts.frontmatter);
+		setDescriptionDraft(selectedSkill?.description ?? "");
 		setBodyDraft(parts.body);
 		setError("");
 		setEditDialogOpen(false);
@@ -110,6 +125,10 @@ export const SkillsEditorPanel: React.FC = () => {
 
 	const save = async () => {
 		if (!selectedSkill) return;
+		if (!descriptionDraft.trim()) {
+			setError("Skill 描述不能为空");
+			return;
+		}
 		setIsSaving(true);
 		setError("");
 		try {
@@ -118,6 +137,7 @@ export const SkillsEditorPanel: React.FC = () => {
 			await refreshSkillCaches();
 			const parts = splitSkillMarkdown(saved.content);
 			setFrontmatterDraft(parts.frontmatter);
+			setDescriptionDraft(saved.description);
 			setBodyDraft(parts.body);
 			setEditDialogOpen(false);
 			toast.success("Skill 已保存");
@@ -136,13 +156,20 @@ export const SkillsEditorPanel: React.FC = () => {
 		setIsSaving(true);
 		setCreateError("");
 		try {
-			const created = await createSkill(name, newSkillTemplate(name));
+			const description = newSkillDescription.trim();
+			if (!description) {
+				setCreateError("Skill 描述不能为空");
+				return;
+			}
+			const created = await createSkill(name, newSkillTemplate(name, description));
 			await refreshSkillCaches();
 			setSelectedName(created.name);
 			const parts = splitSkillMarkdown(created.content);
 			setFrontmatterDraft(parts.frontmatter);
+			setDescriptionDraft(created.description);
 			setBodyDraft(parts.body);
 			setNewSkillName("");
+			setNewSkillDescription("");
 			setIsCreating(false);
 			setCreateError("");
 			toast.success("Skill 已创建", { description: created.name });
@@ -201,6 +228,7 @@ export const SkillsEditorPanel: React.FC = () => {
 			await refreshSkillCaches();
 			const parts = splitSkillMarkdown(reset.content);
 			setFrontmatterDraft(parts.frontmatter);
+			setDescriptionDraft(reset.description);
 			setBodyDraft(parts.body);
 			setEditDialogOpen(false);
 			toast.success("Skill 已恢复默认", { description: reset.title || reset.name });
@@ -272,6 +300,7 @@ export const SkillsEditorPanel: React.FC = () => {
 			</PromptPackActions>
 
 			<SkillCreateDialog
+				description={newSkillDescription}
 				error={createError}
 				isSaving={isSaving}
 				name={newSkillName}
@@ -279,6 +308,10 @@ export const SkillsEditorPanel: React.FC = () => {
 				onCancel={cancelCreateSkill}
 				onNameChange={(value) => {
 					setNewSkillName(value);
+					setCreateError("");
+				}}
+				onDescriptionChange={(value) => {
+					setNewSkillDescription(value);
 					setCreateError("");
 				}}
 				onOpenChange={(open) => {
@@ -294,10 +327,12 @@ export const SkillsEditorPanel: React.FC = () => {
 
 			<SkillEditDialog
 				bodyDraft={bodyDraft}
+				descriptionDraft={descriptionDraft}
 				error={error}
 				isSaving={isSaving}
 				open={editDialogOpen}
 				onBodyChange={setBodyDraft}
+				onDescriptionChange={setDescriptionDraft}
 				onCancel={closeEditDialog}
 				onOpenChange={(open) => {
 					if (open) {
@@ -338,6 +373,13 @@ export const SkillsEditorPanel: React.FC = () => {
 										))}
 									</SelectContent>
 								</Select>
+							</div>
+
+							<div className={settingsFormRowClassName}>
+								<Label className="text-sm font-medium text-foreground">Skill 描述</Label>
+								<p className="py-2 text-sm leading-5 text-muted-foreground">
+									{selectedEntry?.description || "暂无描述。"}
+								</p>
 							</div>
 
 							<div className={skillBodyRowClassName}>
@@ -383,14 +425,27 @@ const skillMessageClassName = "py-2 text-sm text-muted-foreground";
 
 const SkillEditDialog: React.FC<{
 	bodyDraft: string;
+	descriptionDraft: string;
 	error: string;
 	isSaving: boolean;
 	open: boolean;
 	onBodyChange: (value: string) => void;
+	onDescriptionChange: (value: string) => void;
 	onCancel: () => void;
 	onOpenChange: (open: boolean) => void;
 	onSave: () => void;
-}> = ({ bodyDraft, error, isSaving, open, onBodyChange, onCancel, onOpenChange, onSave }) => (
+}> = ({
+	bodyDraft,
+	descriptionDraft,
+	error,
+	isSaving,
+	open,
+	onBodyChange,
+	onCancel,
+	onDescriptionChange,
+	onOpenChange,
+	onSave,
+}) => (
 	<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
 		<DialogPrimitive.Portal>
 			<DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-200" />
@@ -410,7 +465,7 @@ const SkillEditDialog: React.FC<{
 							id="skill-edit-description"
 							className="mt-1 text-xs text-muted-foreground"
 						>
-							修改当前 Skill 正文内容。
+							修改 Skill 描述与正文内容。
 						</DialogPrimitive.Description>
 					</div>
 					<DialogClose asChild>
@@ -427,6 +482,24 @@ const SkillEditDialog: React.FC<{
 								<AlertDescription>{error}</AlertDescription>
 							</Alert>
 						) : null}
+						<div className="grid gap-2">
+							<Label
+								htmlFor="skill-edit-description-field"
+								className="text-sm font-medium text-foreground"
+							>
+								Skill 描述
+							</Label>
+							<Textarea
+								id="skill-edit-description-field"
+								value={descriptionDraft}
+								placeholder="说明该 Skill 适用于什么任务，帮助 Agent 判断何时加载。"
+								className="min-h-20 resize-y rounded-md"
+								onChange={(event) => onDescriptionChange(event.target.value)}
+							/>
+							<p className="text-xs text-muted-foreground">
+								Agent 初始化时会读取此描述，并据此选择需要装载的 Skill。
+							</p>
+						</div>
 						<div className="grid gap-2">
 							<div className="flex items-center justify-between gap-2">
 								<Label id="skill-edit-body-label" className="text-sm font-medium text-foreground">
@@ -462,15 +535,28 @@ const SkillEditDialog: React.FC<{
 );
 
 const SkillCreateDialog: React.FC<{
+	description: string;
 	error: string;
 	isSaving: boolean;
 	name: string;
 	open: boolean;
 	onCancel: () => void;
+	onDescriptionChange: (value: string) => void;
 	onNameChange: (value: string) => void;
 	onOpenChange: (open: boolean) => void;
 	onSave: () => void;
-}> = ({ error, isSaving, name, open, onCancel, onNameChange, onOpenChange, onSave }) => {
+}> = ({
+	description,
+	error,
+	isSaving,
+	name,
+	open,
+	onCancel,
+	onDescriptionChange,
+	onNameChange,
+	onOpenChange,
+	onSave,
+}) => {
 	const normalizedName = sanitizeSkillName(name);
 
 	return (
@@ -531,6 +617,21 @@ const SkillCreateDialog: React.FC<{
 								<p className="text-xs text-muted-foreground">将保存为 {normalizedName}.skill.md</p>
 							) : null}
 						</div>
+						<div className="grid gap-2">
+							<Label
+								htmlFor="new-skill-description"
+								className="text-sm font-medium text-foreground"
+							>
+								Skill 描述
+							</Label>
+							<Textarea
+								id="new-skill-description"
+								value={description}
+								placeholder="说明适用任务和触发场景"
+								className="min-h-20 resize-y rounded-md"
+								onChange={(event) => onDescriptionChange(event.target.value)}
+							/>
+						</div>
 					</div>
 
 					<footer className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-3">
@@ -540,7 +641,7 @@ const SkillCreateDialog: React.FC<{
 						<DialogDismissButton
 							type="button"
 							onClick={onSave}
-							disabled={!normalizedName || isSaving}
+							disabled={!normalizedName || !description.trim() || isSaving}
 						>
 							{isSaving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
 							<span>{isSaving ? "创建中" : "创建"}</span>
@@ -552,9 +653,9 @@ const SkillCreateDialog: React.FC<{
 	);
 };
 
-const newSkillTemplate = (name: string) => `---
+const newSkillTemplate = (name: string, description: string) => `---
 name: ${name}
-description: 自定义写作指导
+description: ${JSON.stringify(description)}
 ---
 # ${name}
 
