@@ -15,7 +15,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import useSWR, { useSWRConfig } from "swr";
 import {
@@ -40,6 +40,7 @@ import {
 	getAgentBackends,
 	isAgentRuntimeConfigKey,
 } from "@/domains/agent/api/agent";
+import { generationModelsKey } from "@/domains/generation/api/generation";
 import { CodexRelayPanel } from "@/domains/settings/components/CodexRelayPanel";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
 import { BillingPanel } from "@/domains/billing/components/BillingPanel";
@@ -185,9 +186,14 @@ const APIKeysPanel: React.FC = () => {
 	const [checkingLoginID, setCheckingLoginID] = useState<string>();
 	const [manualProviderID, setManualProviderID] = useState<string>();
 	const [loginChallenges, setLoginChallenges] = useState<Record<string, APIKeyLoginChallenge>>({});
+	const providerConfiguredRef = useRef(new Map<string, boolean>());
 	const hasPendingBrowserLogin = Object.values(loginChallenges).some(
 		(challenge) => challenge.status === "pending" && Boolean(challenge.verificationUri),
 	);
+	const revalidateModelDependentCaches = useCallback(() => {
+		void mutateGlobal(generationModelsKey, undefined, { revalidate: true });
+		void mutateGlobal(isAgentRuntimeConfigKey, undefined, { revalidate: true });
+	}, [mutateGlobal]);
 
 	useEffect(() => {
 		if (!hasPendingBrowserLogin) return;
@@ -199,25 +205,39 @@ const APIKeysPanel: React.FC = () => {
 
 	useEffect(() => {
 		if (!data?.providers) return;
-		setLoginChallenges((current) => {
-			let changed = false;
-			const next = { ...current };
-			for (const provider of data.providers) {
-				if (provider.configured && next[provider.id]?.status === "pending") {
-					delete next[provider.id];
-					changed = true;
-				}
+
+		const completedProviderIDs: string[] = [];
+		for (const provider of data.providers) {
+			const wasConfigured = providerConfiguredRef.current.get(provider.id);
+			providerConfiguredRef.current.set(provider.id, provider.configured);
+			if (
+				provider.configured &&
+				wasConfigured === false &&
+				loginChallenges[provider.id]?.status === "pending" &&
+				loggingInID !== provider.id &&
+				checkingLoginID !== provider.id
+			) {
+				completedProviderIDs.push(provider.id);
 			}
-			return changed ? next : current;
+		}
+		if (completedProviderIDs.length === 0) return;
+
+		setLoginChallenges((current) => {
+			const next = { ...current };
+			for (const providerID of completedProviderIDs) delete next[providerID];
+			return next;
 		});
-	}, [data?.providers]);
+		revalidateModelDependentCaches();
+	}, [
+		checkingLoginID,
+		data?.providers,
+		loggingInID,
+		loginChallenges,
+		revalidateModelDependentCaches,
+	]);
 
 	const updateAPIKey = (providerID: string, value: string) => {
 		setAPIKeys((current) => ({ ...current, [providerID]: value }));
-	};
-
-	const revalidateAgentRuntimeConfig = () => {
-		void mutateGlobal(isAgentRuntimeConfigKey, undefined, { revalidate: true });
 	};
 
 	const save = async (provider: APIKeyProvider) => {
@@ -228,7 +248,7 @@ const APIKeysPanel: React.FC = () => {
 		try {
 			const nextData = await saveAPIKey(provider.id, apiKey);
 			await mutate(nextData, false);
-			revalidateAgentRuntimeConfig();
+			revalidateModelDependentCaches();
 			setAPIKeys((current) => ({ ...current, [provider.id]: "" }));
 			toast.success("API Key 已保存", { description: provider.label });
 			return true;
@@ -246,7 +266,7 @@ const APIKeysPanel: React.FC = () => {
 		try {
 			const nextData = await clearAPIKey(provider.id);
 			await mutate(nextData, false);
-			revalidateAgentRuntimeConfig();
+			revalidateModelDependentCaches();
 			setAPIKeys((current) => ({ ...current, [provider.id]: "" }));
 			toast.success("API Key 已清除", { description: provider.label });
 		} catch (err) {
@@ -281,6 +301,7 @@ const APIKeysPanel: React.FC = () => {
 				return;
 			}
 			setLoginChallenges((current) => withoutRecordKey(current, provider.id));
+			revalidateModelDependentCaches();
 			toast.success("登录已完成", { description: provider.label });
 		} catch (err) {
 			const message = err instanceof Error ? err.message : "登录失败。";
@@ -310,6 +331,7 @@ const APIKeysPanel: React.FC = () => {
 			const nextData = await completeProviderLogin(provider.id, challenge.deviceCode);
 			await mutate(nextData, false);
 			setLoginChallenges((current) => withoutRecordKey(current, provider.id));
+			revalidateModelDependentCaches();
 			toast.success("登录已完成", { description: provider.label });
 		} catch (err) {
 			const message = err instanceof Error ? err.message : "登录确认失败。";
