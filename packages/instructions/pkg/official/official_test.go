@@ -135,6 +135,10 @@ func TestDocumentRulesInstructionDefinesSecondLevelResourceBoundary(t *testing.T
 	}
 	for _, want := range []string{
 		"业务文档的主体资源边界是二级标题",
+		"没有二级标题的内容不会被识别为独立业务资源",
+		"逐项检查所有主体资源是否都有对应的二级标题",
+		"只修正标题层级和必要的标题文字",
+		"不得借机重写、删减或调整正文顺序",
 		"不要删除、伪造或批量改写已有 `section-id`",
 		"文档写作 Skill 只提供业务写作方法",
 	} {
