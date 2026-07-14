@@ -544,10 +544,10 @@ const platformProviders = (
 					...(kind === "cli"
 						? {}
 						: {
-								credentialLabel: undefined,
-								help: undefined,
-								placeholder: undefined,
-							}),
+							credentialLabel: undefined,
+							help: undefined,
+							placeholder: undefined,
+						}),
 				},
 			];
 		});
@@ -665,90 +665,90 @@ const MediagoConfigDialog: React.FC<{
 	open,
 	provider,
 }) => {
-	if (!open) return null;
+		if (!open) return null;
 
-	const helperText = mediaGoKeyHelperText(provider, apiKey, isSaving);
+		const helperText = mediaGoKeyHelperText(provider, apiKey, isSaving);
 
-	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6">
-			<div
-				aria-labelledby="mediago-config-dialog-title"
-				aria-modal="true"
-				className="max-h-[calc(100vh-3rem)] w-full max-w-xl overflow-auto rounded-md border border-border bg-background p-6 shadow-xl"
-				role="dialog"
-			>
-				<div className="text-xs font-semibold text-muted-foreground">统一接口</div>
-				<h3 id="mediago-config-dialog-title" className="mt-2 text-lg font-semibold text-foreground">
-					配置 MediaGo API Key
-				</h3>
-				<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-					粘贴已有的 API Key 完成接入；还没有账号可先去官网注册获取。
-				</p>
-
-				<div className="mt-6 grid gap-2">
-					<Label htmlFor="mediago-api-key" className="text-sm font-medium text-foreground">
-						API Key
-					</Label>
-					<MaskedAPIKeyInput
-						id="mediago-api-key"
-						aria-label="MediaGo API Key"
-						className="h-10 rounded-md bg-ide-editor font-mono text-sm text-foreground"
-						onChange={onAPIKeyChange}
-						placeholder="粘贴 MediaGo API Key"
-						provider={provider}
-						value={apiKey}
-					/>
-					<p className="text-xs leading-5 text-muted-foreground">{helperText}</p>
-				</div>
-
-				<button
-					type="button"
-					onClick={onRegister}
-					className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+		return (
+			<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6">
+				<div
+					aria-labelledby="mediago-config-dialog-title"
+					aria-modal="true"
+					className="max-h-[calc(100vh-3rem)] w-full max-w-xl overflow-auto rounded-md border border-border bg-background p-6 shadow-xl"
+					role="dialog"
 				>
-					<span>还没有账号？免费注册获取</span>
-					<ArrowRight className="size-3.5" />
-				</button>
+					<div className="text-xs font-semibold text-muted-foreground">统一接口</div>
+					<h3 id="mediago-config-dialog-title" className="mt-2 text-lg font-semibold text-foreground">
+						配置 MediaGo API Key
+					</h3>
+					<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+						粘贴已有的 API Key 完成接入；还没有账号可先去官网注册获取。
+					</p>
 
-				<div className="mt-6 flex flex-wrap items-center justify-between gap-2">
-					{provider.configured ? (
-						<Button
-							type="button"
-							variant="ghost"
-							disabled={isClearing}
-							onClick={onClear}
-							className="rounded-md text-muted-foreground"
-						>
-							{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
-							<span>清除当前 Key</span>
-						</Button>
-					) : (
-						<span />
-					)}
-					<div className="flex gap-2">
-						<DialogDismissButton
-							type="button"
-							variant="outline"
-							onClick={() => onOpenChange(false)}
-							className="w-24 rounded-md"
-						>
-							取消
-						</DialogDismissButton>
-						<Button
-							type="button"
-							disabled={!apiKey.trim() || isSaving}
-							onClick={onSave}
-							className="rounded-md px-4"
-						>
-							{isSaving ? <Loader2 className="animate-spin" /> : <Sparkles />}
-							<span>一键配置</span>
-						</Button>
+					<div className="mt-6 grid gap-2">
+						<Label htmlFor="mediago-api-key" className="text-sm font-medium text-foreground">
+							API Key
+						</Label>
+						<MaskedAPIKeyInput
+							id="mediago-api-key"
+							aria-label="MediaGo API Key"
+							className="h-10 rounded-md bg-ide-editor font-mono text-sm text-foreground"
+							onChange={onAPIKeyChange}
+							placeholder="粘贴 MediaGo API Key"
+							provider={provider}
+							value={apiKey}
+						/>
+						<p className="text-xs leading-5 text-muted-foreground">{helperText}</p>
+					</div>
+
+					<button
+						type="button"
+						onClick={onRegister}
+						className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+					>
+						<span>还没有账号？免费注册获取</span>
+						<ArrowRight className="size-3.5" />
+					</button>
+
+					<div className="mt-6 flex flex-wrap items-center justify-between gap-2">
+						{provider.configured ? (
+							<Button
+								type="button"
+								variant="ghost"
+								disabled={isClearing}
+								onClick={onClear}
+								className="rounded-md text-muted-foreground"
+							>
+								{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
+								<span>清除当前 Key</span>
+							</Button>
+						) : (
+							<span />
+						)}
+						<div className="flex gap-2">
+							<DialogDismissButton
+								type="button"
+								variant="outline"
+								onClick={() => onOpenChange(false)}
+								className="w-24 rounded-md"
+							>
+								取消
+							</DialogDismissButton>
+							<Button
+								type="button"
+								disabled={!apiKey.trim() || isSaving}
+								onClick={onSave}
+								className="rounded-md px-4"
+							>
+								{isSaving ? <Loader2 className="animate-spin" /> : <Sparkles />}
+								<span>一键配置</span>
+							</Button>
+						</div>
 					</div>
 				</div>
 			</div>
-		</div>
-	);
-};
+		);
+	};
 
 const maxVisibleModelChips = 8;
 
@@ -844,63 +844,63 @@ const ManualAPIKeyProviderRow: React.FC<{
 	provider,
 	variant,
 }) => {
-	const variantLabel = manualProviderVariantLabel(variant);
-	const savedCredential = provider.configured ? providerSavedCredentialLabel(provider) : "";
+		const variantLabel = manualProviderVariantLabel(variant);
+		const savedCredential = provider.configured ? providerSavedCredentialLabel(provider) : "";
 
-	return (
-		<>
-			<section className={cn(providerRowClassName, "flex flex-wrap items-center gap-3")}>
-				<div className="min-w-0 flex-1">
-					<div className="flex flex-wrap items-center gap-2.5">
-						<h3 className="truncate text-sm font-semibold text-foreground">{provider.label}</h3>
-						<ProviderStatusLabel active={provider.configured} />
+		return (
+			<>
+				<section className={cn(providerRowClassName, "flex flex-wrap items-center gap-3")}>
+					<div className="min-w-0 flex-1">
+						<div className="flex flex-wrap items-center gap-2.5">
+							<h3 className="truncate text-sm font-semibold text-foreground">{provider.label}</h3>
+							<ProviderStatusLabel active={provider.configured} />
+						</div>
+						{hint ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{hint}</p> : null}
+						{savedCredential ? (
+							<p className="mt-1 truncate font-mono text-xs text-muted-foreground">
+								{savedCredential}
+							</p>
+						) : null}
 					</div>
-					{hint ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{hint}</p> : null}
-					{savedCredential ? (
-						<p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-							{savedCredential}
-						</p>
-					) : null}
-				</div>
 
-				<div className="flex shrink-0 items-center gap-1">
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon"
-						onClick={() => onOpenChange(true)}
-						className="text-muted-foreground"
-						title={`编辑 ${provider.label}`}
-					>
-						<Pencil />
-					</Button>
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon"
-						disabled={!provider.configured || isClearing}
-						onClick={onClear}
-						className="text-muted-foreground"
-						title={`清除 ${provider.label} API Key`}
-					>
-						{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
-					</Button>
-				</div>
-			</section>
-			<ManualProviderConfigDialog
-				apiKey={apiKey}
-				isSaving={isSaving}
-				onAPIKeyChange={onAPIKeyChange}
-				onOpenChange={onOpenChange}
-				onSave={onSave}
-				open={open}
-				provider={provider}
-				variant={variant}
-				variantLabel={variantLabel}
-			/>
-		</>
-	);
-};
+					<div className="flex shrink-0 items-center gap-1">
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							onClick={() => onOpenChange(true)}
+							className="text-muted-foreground"
+							title={`编辑 ${provider.label}`}
+						>
+							<Pencil />
+						</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							disabled={!provider.configured || isClearing}
+							onClick={onClear}
+							className="text-muted-foreground"
+							title={`清除 ${provider.label} API Key`}
+						>
+							{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
+						</Button>
+					</div>
+				</section>
+				<ManualProviderConfigDialog
+					apiKey={apiKey}
+					isSaving={isSaving}
+					onAPIKeyChange={onAPIKeyChange}
+					onOpenChange={onOpenChange}
+					onSave={onSave}
+					open={open}
+					provider={provider}
+					variant={variant}
+					variantLabel={variantLabel}
+				/>
+			</>
+		);
+	};
 
 const ManualProviderConfigDialog: React.FC<{
 	apiKey: string;
@@ -923,82 +923,82 @@ const ManualProviderConfigDialog: React.FC<{
 	variant,
 	variantLabel,
 }) => {
-	if (!open) return null;
+		if (!open) return null;
 
-	const inputID = `manual-api-key-${provider.id}`;
+		const inputID = `manual-api-key-${provider.id}`;
 
-	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6">
-			<div
-				aria-labelledby={`manual-provider-config-title-${provider.id}`}
-				aria-modal="true"
-				className="max-h-[calc(100vh-3rem)] w-full max-w-xl overflow-auto rounded-md border border-border bg-background p-6 shadow-xl"
-				role="dialog"
-			>
-				<div className="flex items-start justify-between gap-4">
-					<div>
-						<div className="text-xs font-semibold text-muted-foreground">高级配置</div>
-						<h3
-							id={`manual-provider-config-title-${provider.id}`}
-							className="mt-2 text-lg font-semibold text-foreground"
-						>
-							配置 {provider.label}
-						</h3>
-						<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-							{variant === "custom"
-								? "这里仅保存该接口的 API Key。供应商标识、端点和模型路由由系统预设，不需要在这里填写。"
-								: variant === "cli"
-									? "这里仅保存本地 CLI 使用的 Access Key。端点和模型能力由系统预设。"
-									: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
-						</p>
+		return (
+			<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6">
+				<div
+					aria-labelledby={`manual-provider-config-title-${provider.id}`}
+					aria-modal="true"
+					className="max-h-[calc(100vh-3rem)] w-full max-w-xl overflow-auto rounded-md border border-border bg-background p-6 shadow-xl"
+					role="dialog"
+				>
+					<div className="flex items-start justify-between gap-4">
+						<div>
+							<div className="text-xs font-semibold text-muted-foreground">高级配置</div>
+							<h3
+								id={`manual-provider-config-title-${provider.id}`}
+								className="mt-2 text-lg font-semibold text-foreground"
+							>
+								配置 {provider.label}
+							</h3>
+							<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+								{variant === "custom"
+									? "这里仅保存该接口的 API Key。供应商标识、端点和模型路由由系统预设，不需要在这里填写。"
+									: variant === "cli"
+										? "这里仅保存本地 CLI 使用的 Access Key。端点和模型能力由系统预设。"
+										: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
+							</p>
+						</div>
+						<span className="rounded-full bg-ide-list-hover px-2 py-1 text-xs font-medium text-muted-foreground">
+							{variantLabel}
+						</span>
 					</div>
-					<span className="rounded-full bg-ide-list-hover px-2 py-1 text-xs font-medium text-muted-foreground">
-						{variantLabel}
-					</span>
-				</div>
 
-				<div className="mt-6">
-					<div className="grid gap-2">
-						<Label htmlFor={inputID} className="text-sm font-medium text-foreground">
-							{provider.credentialLabel || "API Key"}
-						</Label>
-						<MaskedAPIKeyInput
-							id={inputID}
-							aria-label={`${provider.label} API Key`}
-							className="h-10 rounded-md font-mono text-sm text-foreground"
-							onChange={onAPIKeyChange}
-							placeholder={apiKeyInputPlaceholder(provider, "输入API Key")}
-							provider={provider}
-							value={apiKey}
-						/>
+					<div className="mt-6">
+						<div className="grid gap-2">
+							<Label htmlFor={inputID} className="text-sm font-medium text-foreground">
+								{provider.credentialLabel || "API Key"}
+							</Label>
+							<MaskedAPIKeyInput
+								id={inputID}
+								aria-label={`${provider.label} API Key`}
+								className="h-10 rounded-md font-mono text-sm text-foreground"
+								onChange={onAPIKeyChange}
+								placeholder={apiKeyInputPlaceholder(provider, "输入API Key")}
+								provider={provider}
+								value={apiKey}
+							/>
+						</div>
 					</div>
-				</div>
 
-				<div className="mt-6 flex justify-end gap-2">
-					<div className="flex justify-end gap-2">
-						<DialogDismissButton
-							type="button"
-							variant="outline"
-							onClick={() => onOpenChange(false)}
-							className="w-24 rounded-md"
-						>
-							取消
-						</DialogDismissButton>
-						<Button
-							type="button"
-							disabled={!apiKey.trim() || isSaving}
-							onClick={onSave}
-							className="w-24 rounded-md"
-						>
-							{isSaving ? <Loader2 className="animate-spin" /> : <Save />}
-							<span>保存</span>
-						</Button>
+					<div className="mt-6 flex justify-end gap-2">
+						<div className="flex justify-end gap-2">
+							<DialogDismissButton
+								type="button"
+								variant="outline"
+								onClick={() => onOpenChange(false)}
+								className="w-24 rounded-md"
+							>
+								取消
+							</DialogDismissButton>
+							<Button
+								type="button"
+								disabled={!apiKey.trim() || isSaving}
+								onClick={onSave}
+								className="w-24 rounded-md"
+							>
+								{isSaving ? <Loader2 className="animate-spin" /> : <Save />}
+								<span>保存</span>
+							</Button>
+						</div>
 					</div>
 				</div>
 			</div>
-		</div>
-	);
-};
+		);
+	};
 
 const MaskedAPIKeyInput: React.FC<{
 	"aria-label": string;
@@ -1283,10 +1283,10 @@ const themeModeOptions: Array<{
 	label: string;
 	value: ThemeMode;
 }> = [
-	{ value: "light", label: "浅色", description: "使用浅色编辑器和面板。" },
-	{ value: "dark", label: "深色", description: "使用深色编辑器和面板。" },
-	{ value: "system", label: "跟随系统", description: "根据系统外观自动切换。" },
-];
+		{ value: "light", label: "浅色", description: "使用浅色编辑器和面板。" },
+		{ value: "dark", label: "深色", description: "使用深色编辑器和面板。" },
+		{ value: "system", label: "跟随系统", description: "根据系统外观自动切换。" },
+	];
 
 const APIKeyProviderRow: React.FC<{
 	apiKey: string;
@@ -1321,153 +1321,153 @@ const APIKeyProviderRow: React.FC<{
 	onSave,
 	provider,
 }) => {
-	const inputID = `api-key-${provider.id}`;
-	const canClear = provider.configured || Boolean(apiKey);
-	const isOAuthProvider = provider.credentialKind === "oauth";
-	const isLoginPending = loginChallenge?.status === "pending";
-	const canConfirmLogin = isLoginPending && Boolean(loginChallenge?.deviceCode);
-	const isMediago = provider.id === mediagoProviderID;
+		const inputID = `api-key-${provider.id}`;
+		const canClear = provider.configured || Boolean(apiKey);
+		const isOAuthProvider = provider.credentialKind === "oauth";
+		const isLoginPending = loginChallenge?.status === "pending";
+		const canConfirmLogin = isLoginPending && Boolean(loginChallenge?.deviceCode);
+		const isMediago = provider.id === mediagoProviderID;
 
-	return (
-		<section
-			className={cn(
-				providerRowClassName,
-				"grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center",
-			)}
-		>
-			<div className="min-w-0">
-				<div className="flex flex-wrap items-center gap-2.5">
-					<h3 className="truncate text-sm font-semibold text-foreground">{provider.label}</h3>
-					{isOAuthProvider ? (
-						isLoginPending ? (
-							<span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-warning-foreground">
-								<span className="size-1.5 rounded-full bg-warning-foreground" />
-								等待浏览器授权
-							</span>
-						) : (
-							<ProviderStatusLabel
-								active={provider.configured}
-								activeText="已登录"
-								inactiveText="未登录"
-							/>
-						)
-					) : (
-						<ProviderStatusLabel active={provider.configured} />
-					)}
-				</div>
-				{hint ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{hint}</p> : null}
-				{!isOAuthProvider ? (
-					<div className="mt-2 max-w-md">
-						<Input
-							id={inputID}
-							aria-label={`${provider.label} API Key`}
-							type="password"
-							value={apiKey}
-							onChange={(event) => onAPIKeyChange(event.target.value)}
-							placeholder={apiKeyInputPlaceholder(provider, "输入API Key")}
-							className="h-8 rounded-md font-mono text-xs text-foreground"
-						/>
-					</div>
-				) : null}
-				{isOAuthProvider && isLoginPending ? (
-					<div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-						{loginChallenge.userCode ? (
-							<div className="flex items-center gap-2">
-								<span>验证码</span>
-								<span className="font-mono text-foreground">{loginChallenge.userCode}</span>
-							</div>
-						) : null}
-						{loginChallenge.verificationUri ? (
-							<div className="flex min-w-0 items-center gap-2">
-								<span className="shrink-0">授权页</span>
-								<span className="min-w-0 truncate font-mono text-foreground">
-									{loginChallenge.verificationUri}
+		return (
+			<section
+				className={cn(
+					providerRowClassName,
+					"grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center",
+				)}
+			>
+				<div className="min-w-0">
+					<div className="flex flex-wrap items-center gap-2.5">
+						<h3 className="truncate text-sm font-semibold text-foreground">{provider.label}</h3>
+						{isOAuthProvider ? (
+							isLoginPending ? (
+								<span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-warning-foreground">
+									<span className="size-1.5 rounded-full bg-warning-foreground" />
+									等待浏览器授权
 								</span>
-							</div>
-						) : null}
-					</div>
-				) : null}
-				{isMediago && onRegister ? (
-					<button
-						type="button"
-						onClick={onRegister}
-						className="mt-1 inline-flex text-xs font-medium leading-4 text-primary transition-colors hover:text-primary/80"
-					>
-						还没有账号？立即注册
-					</button>
-				) : null}
-			</div>
-
-			<div className="flex shrink-0 items-center justify-end gap-1.5">
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon"
-					disabled={isClearing || !canClear}
-					onClick={onClear}
-					className="text-muted-foreground"
-					title={`清除 ${provider.label} 凭据`}
-				>
-					{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
-				</Button>
-				{isOAuthProvider ? (
-					<>
-						{isLoginPending && loginChallenge?.verificationUri ? (
-							<Button
-								type="button"
-								variant="outline"
-								onClick={onOpenLogin}
-								className="rounded-md"
-								title={`打开 ${provider.label} 授权页`}
-							>
-								<ExternalLink />
-								<span>打开</span>
-							</Button>
-						) : null}
-						{canConfirmLogin ? (
-							<Button
-								type="button"
-								disabled={isCheckingLogin}
-								onClick={onConfirmLogin}
-								className="rounded-md"
-								title={`确认 ${provider.label} 登录`}
-							>
-								{isCheckingLogin ? <Loader2 className="animate-spin" /> : <Check />}
-								<span>确认</span>
-							</Button>
-						) : isLoginPending ? (
-							<Button type="button" disabled className="rounded-md">
-								<Loader2 className="animate-spin" />
-								<span>登录中</span>
-							</Button>
+							) : (
+								<ProviderStatusLabel
+									active={provider.configured}
+									activeText="已登录"
+									inactiveText="未登录"
+								/>
+							)
 						) : (
-							<Button
-								type="button"
-								disabled={isLoggingIn}
-								onClick={onLogin}
-								className="rounded-md"
-								title={`打开 ${provider.label} 登录授权`}
-							>
-								{isLoggingIn ? <Loader2 className="animate-spin" /> : <LogIn />}
-								<span>{provider.configured ? "重新登录" : "登录"}</span>
-							</Button>
+							<ProviderStatusLabel active={provider.configured} />
 						)}
-					</>
-				) : (
+					</div>
+					{hint ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{hint}</p> : null}
+					{!isOAuthProvider ? (
+						<div className="mt-2 max-w-md">
+							<Input
+								id={inputID}
+								aria-label={`${provider.label} API Key`}
+								type="password"
+								value={apiKey}
+								onChange={(event) => onAPIKeyChange(event.target.value)}
+								placeholder={apiKeyInputPlaceholder(provider, "输入API Key")}
+								className="h-8 rounded-md font-mono text-xs text-foreground"
+							/>
+						</div>
+					) : null}
+					{isOAuthProvider && isLoginPending ? (
+						<div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+							{loginChallenge.userCode ? (
+								<div className="flex items-center gap-2">
+									<span>验证码</span>
+									<span className="font-mono text-foreground">{loginChallenge.userCode}</span>
+								</div>
+							) : null}
+							{loginChallenge.verificationUri ? (
+								<div className="flex min-w-0 items-center gap-2">
+									<span className="shrink-0">授权页</span>
+									<span className="min-w-0 truncate font-mono text-foreground">
+										{loginChallenge.verificationUri}
+									</span>
+								</div>
+							) : null}
+						</div>
+					) : null}
+					{isMediago && onRegister ? (
+						<button
+							type="button"
+							onClick={onRegister}
+							className="mt-1 inline-flex text-xs font-medium leading-4 text-primary transition-colors hover:text-primary/80"
+						>
+							还没有账号？立即注册
+						</button>
+					) : null}
+				</div>
+
+				<div className="flex shrink-0 items-center justify-end gap-1.5">
 					<Button
 						type="button"
-						disabled={!apiKey.trim() || isSaving}
-						onClick={onSave}
-						className="rounded-md"
+						variant="ghost"
+						size="icon"
+						disabled={isClearing || !canClear}
+						onClick={onClear}
+						className="text-muted-foreground"
+						title={`清除 ${provider.label} 凭据`}
 					>
-						{isSaving ? <Loader2 className="animate-spin" /> : <Save />}
-						<span>保存</span>
+						{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
 					</Button>
-				)}
-			</div>
-		</section>
-	);
-};
+					{isOAuthProvider ? (
+						<>
+							{isLoginPending && loginChallenge?.verificationUri ? (
+								<Button
+									type="button"
+									variant="outline"
+									onClick={onOpenLogin}
+									className="rounded-md"
+									title={`打开 ${provider.label} 授权页`}
+								>
+									<ExternalLink />
+									<span>打开</span>
+								</Button>
+							) : null}
+							{canConfirmLogin ? (
+								<Button
+									type="button"
+									disabled={isCheckingLogin}
+									onClick={onConfirmLogin}
+									className="rounded-md"
+									title={`确认 ${provider.label} 登录`}
+								>
+									{isCheckingLogin ? <Loader2 className="animate-spin" /> : <Check />}
+									<span>确认</span>
+								</Button>
+							) : isLoginPending ? (
+								<Button type="button" disabled className="rounded-md">
+									<Loader2 className="animate-spin" />
+									<span>登录中</span>
+								</Button>
+							) : (
+								<Button
+									type="button"
+									disabled={isLoggingIn}
+									onClick={onLogin}
+									className="rounded-md"
+									title={`打开 ${provider.label} 登录授权`}
+								>
+									{isLoggingIn ? <Loader2 className="animate-spin" /> : <LogIn />}
+									<span>{provider.configured ? "重新登录" : "登录"}</span>
+								</Button>
+							)}
+						</>
+					) : (
+						<Button
+							type="button"
+							disabled={!apiKey.trim() || isSaving}
+							onClick={onSave}
+							className="rounded-md"
+						>
+							{isSaving ? <Loader2 className="animate-spin" /> : <Save />}
+							<span>保存</span>
+						</Button>
+					)}
+				</div>
+			</section>
+		);
+	};
 
 function apiKeyInputPlaceholder(provider: APIKeyProvider, emptyText: string) {
 	return provider.configured ? "输入新的 Key 以替换当前凭据" : emptyText;
