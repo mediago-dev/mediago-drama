@@ -4,10 +4,12 @@ import {
 	ChevronDown,
 	Clapperboard,
 	ExternalLink,
+	Ellipsis,
 	FolderOpen,
 	KeyRound,
 	Loader2,
 	LogIn,
+	LogOut,
 	Pencil,
 	Save,
 	SlidersHorizontal,
@@ -46,9 +48,11 @@ import { CodexSkillsPanel } from "@/domains/settings/components/CodexSkillsPanel
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
 import { BillingPanel } from "@/domains/billing/components/BillingPanel";
 import { Button } from "@/shared/components/ui/button";
+import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import {
 	Select,
 	SelectContent,
@@ -260,19 +264,54 @@ const APIKeysPanel: React.FC = () => {
 	};
 
 	const clear = async (provider: APIKeyProvider) => {
+		const wasLoginPending = loginChallenges[provider.id]?.status === "pending";
 		setClearingID(provider.id);
 		try {
 			const nextData = await clearAPIKey(provider.id);
 			await mutate(nextData, false);
 			revalidateModelDependentCaches();
 			setAPIKeys((current) => ({ ...current, [provider.id]: "" }));
-			toast.success("API Key 已清除", { description: provider.label });
+			setLoginChallenges((current) => withoutRecordKey(current, provider.id));
+			toast.success(
+				provider.credentialKind === "oauth"
+					? wasLoginPending
+						? "登录已取消"
+						: "已退出登录"
+					: "API Key 已清除",
+				{ description: provider.label },
+			);
+			return true;
 		} catch (err) {
 			const message = err instanceof Error ? err.message : "清除 API Key 失败。";
 			toast.error("清除失败", { description: message });
+			return false;
 		} finally {
 			setClearingID(undefined);
 		}
+	};
+
+	const confirmClear = (provider: APIKeyProvider) => {
+		const isOAuthProvider = provider.credentialKind === "oauth";
+		const isLoginPending = loginChallenges[provider.id]?.status === "pending";
+		const actionLabel = isLoginPending ? "取消登录" : isOAuthProvider ? "退出登录" : "清除 API Key";
+		const title = isLoginPending
+			? `取消 ${provider.label} 登录？`
+			: isOAuthProvider
+				? `退出 ${provider.label} 登录？`
+				: `清除 ${provider.label} API Key？`;
+		const description = isLoginPending
+			? "当前授权信息将被清除，之后可以重新发起登录。"
+			: isOAuthProvider
+				? "退出后将无法继续使用该账号，需要重新登录才能恢复。"
+				: "清除后依赖此凭据的功能将不可用，需要重新配置才能恢复。";
+
+		void confirmDialog({
+			title,
+			description,
+			confirmLabel: actionLabel,
+			confirmIcon: isOAuthProvider ? <LogOut /> : <Trash2 />,
+			onConfirm: () => clear(provider),
+		});
 	};
 
 	const saveMediagoQuickSetup = async () => {
@@ -363,7 +402,7 @@ const APIKeysPanel: React.FC = () => {
 				isCheckingLogin={isCheckingLogin}
 				loginChallenge={loginChallenges[provider.id]}
 				onAPIKeyChange={(value) => updateAPIKey(provider.id, value)}
-				onClear={() => void clear(provider)}
+				onClear={() => confirmClear(provider)}
 				onConfirmLogin={() => void completeLogin(provider)}
 				onLogin={() => void login(provider)}
 				onOpenLogin={() => void openLoginChallenge(provider)}
@@ -388,7 +427,7 @@ const APIKeysPanel: React.FC = () => {
 				isClearing={clearingID === provider.id}
 				isSaving={savingID === provider.id}
 				onAPIKeyChange={(value) => updateAPIKey(provider.id, value)}
-				onClear={() => void clear(provider)}
+				onClear={() => confirmClear(provider)}
 				onOpenChange={(open) => setManualProviderID(open ? provider.id : undefined)}
 				onSave={() => void saveManualConfig(provider)}
 				open={manualProviderID === provider.id}
@@ -447,7 +486,7 @@ const APIKeysPanel: React.FC = () => {
 							isClearing={clearingID === mediagoProvider.id}
 							isSaving={savingID === mediagoProvider.id}
 							onAPIKeyChange={(value) => updateAPIKey(mediagoProvider.id, value)}
-							onClear={() => void clear(mediagoProvider)}
+							onClear={() => confirmClear(mediagoProvider)}
 							onOpenChange={setMediagoDialogOpen}
 							onRegister={() => void openMediagoAPIKeyPage()}
 							onSave={() => void saveMediagoQuickSetup()}
@@ -821,6 +860,52 @@ const ProviderStatusLabel: React.FC<{
 	</span>
 );
 
+const CredentialMoreMenu: React.FC<{
+	canClear?: boolean;
+	isClearing: boolean;
+	isLoginPending?: boolean;
+	onClear: () => void;
+	provider: APIKeyProvider;
+}> = ({ canClear, isClearing, isLoginPending = false, onClear, provider }) => {
+	const [open, setOpen] = useState(false);
+	const isOAuthProvider = provider.credentialKind === "oauth";
+	const actionLabel = isLoginPending ? "取消登录" : isOAuthProvider ? "退出登录" : "清除 API Key";
+	const actionDisabled = isClearing || (!(canClear ?? provider.configured) && !isLoginPending);
+
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					aria-label={`${provider.label} 更多操作`}
+					aria-haspopup="menu"
+					aria-expanded={open}
+					className="text-muted-foreground"
+				>
+					{isClearing ? <Loader2 className="animate-spin" /> : <Ellipsis />}
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent align="end" sideOffset={4} className="w-44 p-1" role="menu">
+				<button
+					type="button"
+					role="menuitem"
+					disabled={actionDisabled}
+					onClick={() => {
+						setOpen(false);
+						onClear();
+					}}
+					className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:text-muted-foreground disabled:opacity-50"
+				>
+					{isOAuthProvider ? <LogOut className="size-4" /> : <Trash2 className="size-4" />}
+					<span>{actionLabel}</span>
+				</button>
+			</PopoverContent>
+		</Popover>
+	);
+};
+
 type ManualProviderVariant = "cli" | "custom" | "official";
 
 const ManualAPIKeyProviderRow: React.FC<{
@@ -878,17 +963,7 @@ const ManualAPIKeyProviderRow: React.FC<{
 					>
 						<Pencil />
 					</Button>
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon"
-						disabled={!provider.configured || isClearing}
-						onClick={onClear}
-						className="text-muted-foreground"
-						title={`清除 ${provider.label} API Key`}
-					>
-						{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
-					</Button>
+					<CredentialMoreMenu isClearing={isClearing} onClear={onClear} provider={provider} />
 				</div>
 			</section>
 			<ManualProviderConfigDialog
@@ -1326,7 +1401,6 @@ const APIKeyProviderRow: React.FC<{
 	provider,
 }) => {
 	const inputID = `api-key-${provider.id}`;
-	const canClear = provider.configured || Boolean(apiKey);
 	const isOAuthProvider = provider.credentialKind === "oauth";
 	const isLoginPending = loginChallenge?.status === "pending";
 	const canConfirmLogin = isLoginPending && Boolean(loginChallenge?.deviceCode);
@@ -1403,17 +1477,6 @@ const APIKeyProviderRow: React.FC<{
 			</div>
 
 			<div className="flex shrink-0 items-center justify-end gap-1.5">
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon"
-					disabled={isClearing || !canClear}
-					onClick={onClear}
-					className="text-muted-foreground"
-					title={`清除 ${provider.label} 凭据`}
-				>
-					{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
-				</Button>
 				{isOAuthProvider ? (
 					<>
 						{isLoginPending && loginChallenge?.verificationUri ? (
@@ -1468,6 +1531,13 @@ const APIKeyProviderRow: React.FC<{
 						<span>保存</span>
 					</Button>
 				)}
+				<CredentialMoreMenu
+					canClear={provider.configured || Boolean(apiKey)}
+					isClearing={isClearing}
+					isLoginPending={isLoginPending}
+					onClear={onClear}
+					provider={provider}
+				/>
 			</div>
 		</section>
 	);

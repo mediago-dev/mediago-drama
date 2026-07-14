@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -334,7 +335,7 @@ func TestSettingsBeginJimengLoginStoresOAuthMarkerWhenSessionExists(t *testing.T
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
 	binPath := filepath.Join(t.TempDir(), "dreamina")
 	script := `#!/bin/sh
-if [ "$1" = "login" ] && [ "$#" -eq 1 ]; then
+if [ "$1" = "login" ] && [ "$2" = "--headless" ] && [ "$#" -eq 2 ]; then
   echo '已复用当前本地 OAuth 登录态。'
   exit 0
 fi
@@ -361,21 +362,26 @@ exit 1
 	}
 }
 
-func TestSettingsJimengBrowserLoginReturnsChallengeAndPersistsAfterCLICompletes(t *testing.T) {
+func TestSettingsJimengHeadlessLoginReturnsChallengeAndCompletes(t *testing.T) {
 	store := &memoryAPIKeyStore{values: map[string]string{}}
 	settings := NewSettings(store)
-	binPath := filepath.Join(t.TempDir(), "dreamina")
-	script := `#!/bin/sh
-if [ "$1" = "login" ] && [ "$#" -eq 1 ]; then
+	tempDir := t.TempDir()
+	argsPath := filepath.Join(tempDir, "args.log")
+	binPath := filepath.Join(tempDir, "dreamina")
+	script := fmt.Sprintf(`#!/bin/sh
+printf '%%s\n' "$*" >> %q
+if [ "$1" = "login" ] && [ "$2" = "--headless" ] && [ "$#" -eq 2 ]; then
   echo "verification_uri: https://example.test/device"
-  sleep 0.05
   echo "user_code: ABCD-EFGH"
   echo "device_code: device-123"
-  sleep 0.2
+  exit 0
+fi
+if [ "$1" = "login" ] && [ "$2" = "checklogin" ]; then
+  echo "即梦本地登录态已可用"
   exit 0
 fi
 exit 1
-`
+`, argsPath)
 	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("writing fake jimeng CLI: %v", err)
 	}
@@ -390,26 +396,40 @@ exit 1
 		result.Login.UserCode != "ABCD-EFGH" {
 		t.Fatalf("login = %#v, want parsed browser challenge", result.Login)
 	}
-	if result.Login.DeviceCode != "" {
-		t.Fatalf("login device code = %q, want hidden device code for browser login", result.Login.DeviceCode)
+	if result.Login.DeviceCode != "device-123" {
+		t.Fatalf("login device code = %q, want device-123", result.Login.DeviceCode)
 	}
 	provider := providerByID(t, APIKeyList{Providers: result.Providers}, "jimeng")
 	if provider.Configured {
 		t.Fatalf("provider = %#v, want unconfigured while challenge is pending", provider)
 	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		value, _, err := store.Get("jimeng")
-		if err != nil {
-			t.Fatalf("Get returned error: %v", err)
-		}
-		if strings.HasPrefix(value, "oauth:") {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
+	value, _, err := store.Get("jimeng")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
 	}
-	t.Fatal("jimeng oauth marker was not persisted after login command completed")
+	if value != "" {
+		t.Fatalf("stored jimeng marker = %q, want empty before confirmation", value)
+	}
+
+	completed, err := settings.CompleteJimengLogin(context.Background(), result.Login.DeviceCode)
+	if err != nil {
+		t.Fatalf("CompleteJimengLogin returned error: %v", err)
+	}
+	if completed.Login.Status != "completed" {
+		t.Fatalf("completed login = %#v, want completed", completed.Login)
+	}
+	provider = providerByID(t, APIKeyList{Providers: completed.Providers}, "jimeng")
+	if !provider.Configured {
+		t.Fatalf("provider = %#v, want configured after confirmation", provider)
+	}
+	output, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("reading fake jimeng args: %v", err)
+	}
+	wantArgs := "login --headless\nlogin checklogin --device_code=device-123 --poll=30"
+	if strings.TrimSpace(string(output)) != wantArgs {
+		t.Fatalf("jimeng args = %q, want %q", strings.TrimSpace(string(output)), wantArgs)
+	}
 }
 
 func TestSettingsBeginLibTVLoginReturnsChallengeAndPersistsAfterCLICompletes(t *testing.T) {
@@ -458,6 +478,91 @@ exit 1
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("libtv oauth marker was not persisted after login command completed")
+}
+
+func TestSettingsLibTVPendingLoginCanBeReplacedAndClearedForRetry(t *testing.T) {
+	store := &memoryAPIKeyStore{values: map[string]string{}}
+	settings := NewSettings(store)
+	settings.SetGenerationCLIs([]string{"libtv"})
+	tempDir := t.TempDir()
+	argsPath := filepath.Join(tempDir, "args.log")
+	pidsPath := filepath.Join(tempDir, "pids.log")
+	currentPIDPath := filepath.Join(tempDir, "current.pid")
+	binPath := filepath.Join(tempDir, "libtv")
+	script := fmt.Sprintf(`#!/bin/sh
+printf '%%s\n' "$*" >> %q
+if [ "$1" = "login" ] && [ "$2" = "web" ] && [ "$#" -eq 2 ]; then
+  if [ -f %q ]; then
+    current_pid=$(cat %q)
+    if kill -0 "$current_pid" 2>/dev/null; then
+      echo "LibTV login is already running" >&2
+      exit 23
+    fi
+  fi
+  echo $$ > %q
+  echo $$ >> %q
+  echo "Open https://libtv.example.test/login in your browser"
+  while :; do sleep 1; done
+fi
+if [ "$1" = "logout" ] && [ "$#" -eq 1 ]; then
+  exit 0
+fi
+exit 1
+`, argsPath, currentPIDPath, currentPIDPath, currentPIDPath, pidsPath)
+	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("writing fake libtv CLI: %v", err)
+	}
+	t.Cleanup(func() {
+		output, _ := os.ReadFile(pidsPath)
+		for _, line := range strings.Fields(string(output)) {
+			pid, err := strconv.Atoi(line)
+			if err != nil {
+				continue
+			}
+			if process, err := os.FindProcess(pid); err == nil {
+				_ = process.Kill()
+			}
+		}
+	})
+	settings.SetLibTVCLIPaths(binPath, "")
+
+	first, err := settings.BeginLibTVLogin(context.Background(), false)
+	if err != nil {
+		t.Fatalf("first BeginLibTVLogin returned error: %v", err)
+	}
+	if first.Login.Status != "pending" {
+		t.Fatalf("first login = %#v, want pending", first.Login)
+	}
+	second, err := settings.BeginLibTVLogin(context.Background(), false)
+	if err != nil {
+		t.Fatalf("second BeginLibTVLogin returned error: %v", err)
+	}
+	if second.Login.Status != "pending" {
+		t.Fatalf("second login = %#v, want pending", second.Login)
+	}
+	if _, err := settings.ClearAPIKey(context.Background(), "libtv"); err != nil {
+		t.Fatalf("ClearAPIKey returned error: %v", err)
+	}
+
+	third, err := settings.BeginLibTVLogin(context.Background(), false)
+	if err != nil {
+		t.Fatalf("third BeginLibTVLogin returned error: %v", err)
+	}
+	if third.Login.Status != "pending" {
+		t.Fatalf("third login = %#v, want pending", third.Login)
+	}
+	if _, err := settings.ClearAPIKey(context.Background(), "libtv"); err != nil {
+		t.Fatalf("second ClearAPIKey returned error: %v", err)
+	}
+
+	output, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("reading fake libtv args: %v", err)
+	}
+	wantArgs := "login web\nlogin web\nlogout\nlogin web\nlogout"
+	if strings.TrimSpace(string(output)) != wantArgs {
+		t.Fatalf("libtv args = %q, want %q", strings.TrimSpace(string(output)), wantArgs)
+	}
 }
 
 func providerByID(t *testing.T, list APIKeyList, id string) APIKeyProvider {

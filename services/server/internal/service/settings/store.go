@@ -36,13 +36,13 @@ var (
 )
 
 const (
-	jimengLoginStartTimeout   = 60 * time.Second
-	jimengLoginCheckTimeout   = 45 * time.Second
-	jimengLoginProcessTimeout = 10 * time.Minute
-	jimengLogoutTimeout       = 30 * time.Second
-	libTVLoginStartTimeout    = 60 * time.Second
-	libTVLoginProcessTimeout  = 10 * time.Minute
-	libTVLogoutTimeout        = 30 * time.Second
+	jimengLoginStartTimeout  = 60 * time.Second
+	jimengLoginCheckTimeout  = 45 * time.Second
+	jimengLogoutTimeout      = 30 * time.Second
+	libTVLoginStartTimeout   = 60 * time.Second
+	libTVLoginProcessTimeout = 10 * time.Minute
+	providerLoginCancelWait  = 5 * time.Second
+	libTVLogoutTimeout       = 30 * time.Second
 )
 
 var urlPattern = regexp.MustCompile(`https?://[^\s"'<>]+`)
@@ -107,6 +107,12 @@ type APIKeyLoginResult struct {
 	Login     ProviderLoginChallenge `json:"login"`
 }
 
+type activeProviderLogin struct {
+	id       uint64
+	cancel   context.CancelFunc
+	finished <-chan struct{}
+}
+
 // JianyingDraftSettings describes the local Jianying draft folder settings.
 type JianyingDraftSettings struct {
 	DraftsRoot string `json:"draftsRoot"`
@@ -126,6 +132,10 @@ type Settings struct {
 	libTVBinDir              string
 	pippitBinPath            string
 	pippitBinDir             string
+	libTVLoginOperationMu    sync.Mutex
+	providerLoginMu          sync.Mutex
+	providerLoginSequence    uint64
+	activeProviderLogins     map[string]activeProviderLogin
 }
 
 // NewSettings creates a settings service.
@@ -263,6 +273,11 @@ func (service *Settings) ClearAPIKey(ctx context.Context, providerID string) (AP
 			return APIKeyList{}, err
 		}
 	case generation.ProviderLibTV:
+		service.libTVLoginOperationMu.Lock()
+		defer service.libTVLoginOperationMu.Unlock()
+		if err := service.cancelActiveProviderLogin(ctx, generation.ProviderLibTV); err != nil {
+			return APIKeyList{}, err
+		}
 		if _, err := service.runLibTVCommand(ctx, libTVLogoutTimeout, "logout"); err != nil {
 			return APIKeyList{}, err
 		}
@@ -279,7 +294,7 @@ func (service *Settings) BeginJimengLogin(ctx context.Context, force bool) (APIK
 	if _, ok := service.findAPIKeyProvider(generation.ProviderJimeng); !ok {
 		return APIKeyLoginResult{}, ErrAPIKeyProviderNotFound
 	}
-	login, waitDone, output, err := service.startJimengLogin(ctx)
+	login, output, err := service.startJimengLogin(ctx)
 	if err != nil {
 		return APIKeyLoginResult{}, err
 	}
@@ -287,7 +302,6 @@ func (service *Settings) BeginJimengLogin(ctx context.Context, force bool) (APIK
 		if err := service.apiKeys.Clear(generation.ProviderJimeng); err != nil {
 			return APIKeyLoginResult{}, err
 		}
-		go service.persistJimengLoginWhenDone(waitDone)
 		return service.apiKeyLoginResult(ctx, login)
 	}
 	if err := service.apiKeys.Set(generation.ProviderJimeng, "oauth:"+time.Now().UTC().Format(time.RFC3339)); err != nil {
@@ -305,64 +319,23 @@ func (service *Settings) BeginJimengLogin(ctx context.Context, force bool) (APIK
 	return service.apiKeyLoginResult(ctx, login)
 }
 
-func (service *Settings) startJimengLogin(ctx context.Context) (ProviderLoginChallenge, <-chan error, string, error) {
-	binPath, err := jimeng.ResolveBinaryPath(service.jimengBinPath, service.jimengBinDir)
+func (service *Settings) startJimengLogin(ctx context.Context) (ProviderLoginChallenge, string, error) {
+	output, err := service.runJimengCommand(ctx, jimengLoginStartTimeout, "login", "--headless")
 	if err != nil {
-		return ProviderLoginChallenge{}, nil, "", err
+		return ProviderLoginChallenge{}, string(output), err
 	}
 
-	processCtx, cancelProcess := context.WithTimeout(context.Background(), jimengLoginProcessTimeout)
-	command := exec.CommandContext(processCtx, binPath, "login")
-	output := newCommandOutputWatcher()
-	command.Stdout = output
-	command.Stderr = output
-	if err := command.Start(); err != nil {
-		cancelProcess()
-		return ProviderLoginChallenge{}, nil, "", err
-	}
-
-	done := make(chan error, 1)
-	go func() {
-		err := command.Wait()
-		cancelProcess()
-		done <- err
-	}()
-
-	startTimer := time.NewTimer(jimengLoginStartTimeout)
-	defer startTimer.Stop()
-
-	for {
-		select {
-		case text := <-output.updates:
-			login := parseJimengLoginChallenge([]byte(text))
-			if login.Status == "pending" && login.VerificationURI != "" && login.UserCode != "" {
-				login.DeviceCode = ""
-				if login.Message == "" {
-					login.Message = "即梦登录链接已生成，请在浏览器中完成登录。"
-				}
-				return login, done, text, nil
-			}
-		case err := <-done:
-			text := output.String()
-			if err != nil {
-				return ProviderLoginChallenge{}, nil, text, jimengCommandError("login", err, text)
-			}
-			login := parseJimengLoginChallenge([]byte(text))
-			login.Status = "completed"
-			login.DeviceCode = ""
-			return login, nil, text, nil
-		case <-startTimer.C:
-			cancelProcess()
-			return ProviderLoginChallenge{}, nil, output.String(), jimengCommandError("login", context.DeadlineExceeded, output.String())
-		case <-ctx.Done():
-			cancelProcess()
-			return ProviderLoginChallenge{}, nil, output.String(), ctx.Err()
+	text := string(output)
+	login := parseJimengLoginChallenge(output)
+	if login.Status == "pending" {
+		if login.VerificationURI == "" || login.UserCode == "" || login.DeviceCode == "" {
+			return ProviderLoginChallenge{}, text, errors.New("jimeng login returned an incomplete device challenge")
+		}
+		if login.Message == "" {
+			login.Message = "即梦登录链接已生成，请在浏览器中完成登录。"
 		}
 	}
-}
-
-func (service *Settings) persistJimengLoginWhenDone(done <-chan error) {
-	service.persistOAuthLoginWhenDone(generation.ProviderJimeng, done)
+	return login, text, nil
 }
 
 func (service *Settings) persistOAuthLoginWhenDone(providerID string, done <-chan error) {
@@ -373,6 +346,56 @@ func (service *Settings) persistOAuthLoginWhenDone(providerID string, done <-cha
 		return
 	}
 	_ = service.apiKeys.Set(providerID, "oauth:"+time.Now().UTC().Format(time.RFC3339))
+}
+
+func (service *Settings) registerProviderLogin(
+	providerID string,
+	cancel context.CancelFunc,
+	finished <-chan struct{},
+) uint64 {
+	service.providerLoginMu.Lock()
+	defer service.providerLoginMu.Unlock()
+	service.providerLoginSequence++
+	attemptID := service.providerLoginSequence
+	if service.activeProviderLogins == nil {
+		service.activeProviderLogins = make(map[string]activeProviderLogin)
+	}
+	service.activeProviderLogins[providerID] = activeProviderLogin{
+		id:       attemptID,
+		cancel:   cancel,
+		finished: finished,
+	}
+	return attemptID
+}
+
+func (service *Settings) unregisterProviderLogin(providerID string, attemptID uint64) {
+	service.providerLoginMu.Lock()
+	defer service.providerLoginMu.Unlock()
+	login, ok := service.activeProviderLogins[providerID]
+	if ok && login.id == attemptID {
+		delete(service.activeProviderLogins, providerID)
+	}
+}
+
+func (service *Settings) cancelActiveProviderLogin(ctx context.Context, providerID string) error {
+	service.providerLoginMu.Lock()
+	login, ok := service.activeProviderLogins[providerID]
+	service.providerLoginMu.Unlock()
+	if !ok {
+		return nil
+	}
+
+	login.cancel()
+	timer := time.NewTimer(providerLoginCancelWait)
+	defer timer.Stop()
+	select {
+	case <-login.finished:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("cancelling %s login: %w", providerID, ctx.Err())
+	case <-timer.C:
+		return fmt.Errorf("cancelling %s login: process did not exit within %s", providerID, providerLoginCancelWait)
+	}
 }
 
 // CompleteJimengLogin checks a prior Jimeng OAuth device login and stores a local session marker.
@@ -411,8 +434,13 @@ func (service *Settings) CompleteJimengLogin(ctx context.Context, deviceCode str
 // BeginLibTVLogin starts the local LibTV web login flow.
 func (service *Settings) BeginLibTVLogin(ctx context.Context, force bool) (APIKeyLoginResult, error) {
 	_ = force
+	service.libTVLoginOperationMu.Lock()
+	defer service.libTVLoginOperationMu.Unlock()
 	if _, ok := service.findAPIKeyProvider(generation.ProviderLibTV); !ok {
 		return APIKeyLoginResult{}, ErrAPIKeyProviderNotFound
+	}
+	if err := service.cancelActiveProviderLogin(ctx, generation.ProviderLibTV); err != nil {
+		return APIKeyLoginResult{}, err
 	}
 	login, waitDone, output, err := service.startLibTVLogin(ctx)
 	if err != nil {
@@ -457,10 +485,18 @@ func (service *Settings) startLibTVLogin(ctx context.Context) (ProviderLoginChal
 	}
 
 	done := make(chan error, 1)
+	finished := make(chan struct{})
+	attemptID := service.registerProviderLogin(
+		generation.ProviderLibTV,
+		cancelProcess,
+		finished,
+	)
 	go func() {
 		err := command.Wait()
 		cancelProcess()
 		done <- err
+		close(finished)
+		service.unregisterProviderLogin(generation.ProviderLibTV, attemptID)
 	}()
 
 	startTimer := time.NewTimer(libTVLoginStartTimeout)

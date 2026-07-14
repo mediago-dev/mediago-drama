@@ -17,6 +17,7 @@ import { agentBackendsKey, isAgentRuntimeConfigKey } from "@/domains/agent/api/a
 import { generationModelsKey } from "@/domains/generation/api/generation";
 import { openExternalUrl } from "@/shared/desktop/actions";
 import { useSettingsNavigationStore } from "@/lib/stores/settings";
+import { ConfirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { Settings } from "./Settings";
 
 const swrMocks = vi.hoisted(() => ({
@@ -154,9 +155,39 @@ describe("Settings API key page", () => {
 
 		fireEvent.click(await screen.findByRole("button", { name: /管理 API Key/ }));
 		fireEvent.click(await screen.findByRole("button", { name: "清除当前 Key" }));
+		expect(clearAPIKey).not.toHaveBeenCalled();
+		fireEvent.click(await screen.findByRole("button", { name: "清除 API Key" }));
 
 		await waitFor(() => expect(clearAPIKey).toHaveBeenCalledWith("mediago"));
 		expectModelDependentCachesRevalidated();
+	});
+
+	it("clears a configured API key from the row menu only after confirmation", async () => {
+		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ openrouterConfigured: true }));
+		vi.mocked(clearAPIKey).mockResolvedValue(apiKeysResponse({}));
+		renderSettings();
+
+		fireEvent.click(await screen.findByRole("button", { name: /其他接入方式/ }));
+		fireEvent.click(screen.getByRole("button", { name: "OpenRouter 更多操作" }));
+		fireEvent.click(await screen.findByRole("menuitem", { name: "清除 API Key" }));
+
+		expect(clearAPIKey).not.toHaveBeenCalled();
+		expect(
+			await screen.findByRole("alertdialog", { name: "清除 OpenRouter API Key？" }),
+		).toBeVisible();
+		fireEvent.click(screen.getByRole("button", { name: "取消" }));
+		await waitFor(() =>
+			expect(
+				screen.queryByRole("alertdialog", { name: "清除 OpenRouter API Key？" }),
+			).not.toBeInTheDocument(),
+		);
+		expect(clearAPIKey).not.toHaveBeenCalled();
+
+		fireEvent.click(screen.getByRole("button", { name: "OpenRouter 更多操作" }));
+		fireEvent.click(await screen.findByRole("menuitem", { name: "清除 API Key" }));
+		fireEvent.click(screen.getByRole("button", { name: "清除 API Key" }));
+
+		await waitFor(() => expect(clearAPIKey).toHaveBeenCalledWith("openrouter"));
 	});
 
 	it("does not render non-editable routing metadata as form inputs", async () => {
@@ -188,6 +219,32 @@ describe("Settings API key page", () => {
 			within(cliSection as HTMLElement).getByRole("button", { name: "登录" }),
 		).toBeInTheDocument();
 		expect(screen.queryByText("jimeng")).not.toBeInTheDocument();
+	});
+
+	it("clears a pending jimeng login so it can be retried", async () => {
+		vi.mocked(beginProviderLogin).mockResolvedValue({
+			...apiKeysResponse({}),
+			login: {
+				status: "pending",
+				verificationUri: "https://jimeng.example.test/device",
+				userCode: "JIM-ENG",
+				deviceCode: "jimeng-device-code",
+			},
+		});
+		vi.mocked(clearAPIKey).mockResolvedValue(apiKeysResponse({}));
+		renderSettings();
+
+		fireEvent.click(await screen.findByRole("button", { name: "登录" }));
+
+		expect(await screen.findByRole("button", { name: "确认" })).toBeEnabled();
+		fireEvent.click(screen.getByRole("button", { name: "即梦 更多操作" }));
+		fireEvent.click(await screen.findByRole("menuitem", { name: "取消登录" }));
+		expect(clearAPIKey).not.toHaveBeenCalled();
+		fireEvent.click(await screen.findByRole("button", { name: "取消登录" }));
+
+		await waitFor(() => expect(clearAPIKey).toHaveBeenCalledWith("jimeng"));
+		await waitFor(() => expect(screen.queryByText("等待浏览器授权")).not.toBeInTheDocument());
+		expect(await screen.findByRole("button", { name: "登录" })).toBeEnabled();
 	});
 
 	it("renders LibTV and Xiaoyunque CLI providers from platform data", async () => {
@@ -373,6 +430,7 @@ const renderSettings = () =>
 		<MemoryRouter>
 			<SWRConfig value={{ provider: () => new Map() }}>
 				<Settings />
+				<ConfirmDialog />
 			</SWRConfig>
 		</MemoryRouter>,
 	);
