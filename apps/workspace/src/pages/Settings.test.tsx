@@ -286,7 +286,7 @@ describe("Settings API key page", () => {
 			.spyOn(window, "setInterval")
 			.mockImplementation((handler, timeout) => {
 				if (timeout === 3000) pollLogin = handler;
-				return 1;
+				return 1 as unknown as ReturnType<typeof window.setInterval>;
 			});
 		mockLibTVSettings();
 		vi.mocked(beginProviderLogin).mockResolvedValue(
