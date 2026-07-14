@@ -602,6 +602,21 @@
       "currency": "USD",
       "unit": "per_call",
       "perCallPrice": 0
+    },
+    {
+      "routeId": "libtv.gpt-image-2",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "libtv.gemini-3.1-flash-image-preview",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "libtv.seedream-5-lite",
+      "currency": "CNY",
+      "unit": "external"
     }
   ]
 }

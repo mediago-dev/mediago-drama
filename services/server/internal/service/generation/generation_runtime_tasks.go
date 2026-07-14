@@ -14,7 +14,8 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 )
 
-// GetGenerationVideo polls one generation video task for HTTP handlers.
+// GetGenerationVideo polls one generation task for HTTP handlers; the legacy
+// method name is retained for API compatibility.
 func (workflow *GenerationService) GetGenerationVideo(ctx context.Context, id string) (generationMessageResponse, int, error) {
 	storedTask, found, err := workflow.generationTasks.Get(id)
 	if err != nil {
@@ -54,7 +55,11 @@ func (workflow *GenerationService) GetGenerationVideo(ctx context.Context, id st
 		response = workflow.cacheGenerationResponseAssetsForScope(ctx, response, projectID, "")
 	}
 
-	messageResponse := GenerationResponseFromCore(response, string(coregeneration.KindVideo))
+	responseKind := string(coregeneration.KindVideo)
+	if found {
+		responseKind = storedTask.Kind
+	}
+	messageResponse := GenerationResponseFromCore(response, responseKind)
 	if found {
 		messageResponse.ID = storedTask.ID
 		storedTask = GenerationTaskWithMessage(storedTask, messageResponse)
@@ -699,6 +704,23 @@ func (workflow *GenerationService) PollGenerationTask(ctx context.Context, task 
 	response, err := provider.Get(pollCtx, pollID)
 	if err != nil {
 		_ = workflow.generationTasks.RecordError(task.ID, err)
+		if route.Kind == coregeneration.KindImage &&
+			isExpiredBackgroundImageGeneration(task, time.Now().UTC()) {
+			timeoutErr := backgroundImageGenerationTimeoutError()
+			messageResponse := FailedGenerationResponse(task.ID, timeoutErr)
+			failedTask := GenerationTaskWithMessage(task, messageResponse)
+			existed, saveErr := workflow.generationTasks.UpsertExisting(failedTask)
+			if saveErr != nil {
+				_ = workflow.generationTasks.RecordAttempt(task.ID, "poll", task.Status, "后台状态检查超时结果保存失败。", saveErr)
+				return
+			}
+			if !existed {
+				return
+			}
+			workflow.syncGenerationNotificationTask(failedTask)
+			_ = workflow.generationTasks.RecordAttempt(task.ID, "poll", messageResponse.Status, messageResponse.Message, timeoutErr)
+			return
+		}
 		_ = workflow.generationTasks.RecordAttempt(task.ID, "poll", task.Status, "后台状态检查失败。", err)
 		return
 	}
@@ -926,7 +948,7 @@ func (workflow *GenerationService) handOffPendingGeneration(
 
 func backgroundImageGenerationTimeoutError() error {
 	return fmt.Errorf(
-		"即梦生成超时：超过 %d 分钟仍未返回结果，请重试。",
+		"图片生成超时：超过 %d 分钟仍未返回结果，请重试。",
 		int(maxBackgroundImageGenerationAge/time.Minute),
 	)
 }

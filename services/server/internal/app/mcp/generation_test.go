@@ -28,6 +28,38 @@ func TestGenerationServerCreateUsesScopedProject(t *testing.T) {
 	}
 }
 
+func TestGenerationServerCreateLibTVImageUsesExistingPayload(t *testing.T) {
+	service := &generationMCPServiceStub{}
+	server := &GenerationServer{service: service, projectID: "project-a"}
+
+	_, err := server.CreateGenerationMessage(context.Background(), "", mediamcp.GenerationMessageInput{
+		Kind:          string(coregeneration.KindImage),
+		RouteID:       coregeneration.RouteLibTVGPTImage2,
+		Prompt:        "generate a character portrait",
+		ReferenceURLs: []string{"https://example.com/reference.png"},
+		Params: map[string]any{
+			"aspectRatio": "1:1",
+			"resolution":  "2K",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateGenerationMessage returned error: %v", err)
+	}
+	if len(service.createRequests) != 1 {
+		t.Fatalf("create request count = %d, want 1", len(service.createRequests))
+	}
+	request := service.createRequests[0]
+	if request.Kind != string(coregeneration.KindImage) || request.RouteID != coregeneration.RouteLibTVGPTImage2 {
+		t.Fatalf("request = %+v, want LibTV image route", request)
+	}
+	if len(request.ReferenceURLs) != 1 || request.ReferenceURLs[0] != "https://example.com/reference.png" {
+		t.Fatalf("reference URLs = %#v, want existing image reference payload", request.ReferenceURLs)
+	}
+	if request.Params["aspectRatio"] != "1:1" || request.Params["resolution"] != "2K" {
+		t.Fatalf("params = %#v, want existing generation params unchanged", request.Params)
+	}
+}
+
 func TestGenerationServerCreateBatchUsesScopedProject(t *testing.T) {
 	service := &generationMCPServiceStub{}
 	server := &GenerationServer{service: service, projectID: "project-a"}
@@ -267,18 +299,55 @@ func TestGenerationServerListModelsIncludesPreferences(t *testing.T) {
 	}
 }
 
+func TestGenerationServerListModelsIncludesLibTVImageRoutes(t *testing.T) {
+	routeIDs := []string{
+		coregeneration.RouteLibTVGPTImage2,
+		coregeneration.RouteLibTVNanoBanana31,
+		coregeneration.RouteLibTVSeedream5Lite,
+	}
+	routes := make([]coregeneration.ModelRoute, 0, len(routeIDs))
+	for _, routeID := range routeIDs {
+		route, ok := coregeneration.FindRoute(routeID)
+		if !ok {
+			t.Fatalf("route %q is missing from the core catalog", routeID)
+		}
+		route.Configured = true
+		routes = append(routes, route)
+	}
+	service := &generationMCPServiceStub{
+		models: servicegeneration.GenerationModelsResponse{Routes: routes},
+	}
+	server := &GenerationServer{service: service, projectID: "project-a"}
+
+	output, err := server.ListGenerationModels(context.Background(), mediamcp.GenerationListModelsInput{
+		Kind: string(coregeneration.KindImage),
+	})
+	if err != nil {
+		t.Fatalf("ListGenerationModels returned error: %v", err)
+	}
+	if len(output.Routes) != len(routeIDs) {
+		t.Fatalf("routes = %#v, want three LibTV image routes", output.Routes)
+	}
+	for index, route := range output.Routes {
+		if route.ID != routeIDs[index] || route.Kind != coregeneration.KindImage || !route.Configured {
+			t.Errorf("route[%d] = %+v, want configured LibTV image route %q", index, route, routeIDs[index])
+		}
+	}
+}
+
 type generationMCPServiceStub struct {
 	batchRequests    []servicegeneration.GenerationBatchRequest
 	createRequests   []servicegeneration.GenerationMessageRequest
 	optimizeRequests []servicegeneration.GenerationMessageRequest
 	listQueries      []servicegeneration.GenerationTaskListQuery
 	tasks            map[string]servicegeneration.GenerationTaskRecord
+	models           servicegeneration.GenerationModelsResponse
 	preference       servicegeneration.GenerationPreferenceRecord
 	preferenceOK     bool
 }
 
 func (service *generationMCPServiceStub) ListGenerationModels() servicegeneration.GenerationModelsResponse {
-	return servicegeneration.GenerationModelsResponse{}
+	return service.models
 }
 
 func (service *generationMCPServiceStub) CreateGenerationMessage(_ context.Context, payload servicegeneration.GenerationMessageRequest) (servicegeneration.GenerationMessageResponse, int, error) {
