@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/libtv"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/multimodal"
 )
 
@@ -430,6 +431,82 @@ func TestProviderDispatchesLibTVRouteThroughCLI(t *testing.T) {
 	if response.ID != generation.RouteLibTVSeedance20Mini+":project-123:node_123" ||
 		response.Status != "submitted" {
 		t.Fatalf("response = %#v, want submitted LibTV task", response)
+	}
+}
+
+func TestProviderDispatchesLibTVImageRouteThroughCLI(t *testing.T) {
+	binPath, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() error = %v", err)
+	}
+
+	var calls [][]string
+	runner := libtv.CommandRunnerFunc(func(_ context.Context, path string, args ...string) ([]byte, error) {
+		if path != binPath {
+			t.Fatalf("runner path = %q, want %q", path, binPath)
+		}
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) == 3 && args[0] == "model" && args[1] == "search" && args[2] == "--type=image" {
+			return []byte(`{"matches":[{"modelKey":"lib-image-2","modelName":"Lib Image Current"}]}`), nil
+		}
+		if len(args) > 0 && args[0] == "node" {
+			return []byte(`{"id":"node_image_123"}`), nil
+		}
+		return nil, errors.New("unexpected LibTV command")
+	})
+
+	provider, err := NewProvider(Config{
+		LibTVBinPath:   binPath,
+		LibTVProjectID: "project-image-123",
+		LibTVRunner:    runner,
+		Credentials: CredentialResolverFunc(func(context.Context, string) (string, error) {
+			return "oauth:ready", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		RouteID: generation.RouteLibTVGPTImage2,
+		Prompt:  "make an image",
+		Params: map[string]any{
+			"aspectRatio": "16:9",
+			"resolution":  "2K",
+			"quality":     "medium",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if len(calls) != 2 {
+		t.Fatalf("calls = %#v, want model search followed by node create", calls)
+	}
+	wantModelSearch := []string{"model", "search", "--type=image"}
+	if strings.Join(calls[0], "\n") != strings.Join(wantModelSearch, "\n") {
+		t.Fatalf("model search args = %#v, want %#v", calls[0], wantModelSearch)
+	}
+	for _, want := range []string{
+		"node",
+		"--project=project-image-123",
+		"create",
+		"--type=image",
+		"--prompt=make an image",
+		"--set=model=Lib Image Current",
+		"--set=ratio=16:9",
+		"--set=resolution=2K",
+		"--set=quality=medium",
+		"--set=count=1",
+		"--run",
+	} {
+		if !containsString(calls[1], want) {
+			t.Fatalf("node args = %#v, missing %q", calls[1], want)
+		}
+	}
+	if response.ID != generation.RouteLibTVGPTImage2+":project-image-123:node_image_123" ||
+		response.Status != "submitted" {
+		t.Fatalf("response = %#v, want submitted LibTV image task", response)
 	}
 }
 

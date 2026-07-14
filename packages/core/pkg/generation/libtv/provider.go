@@ -201,19 +201,35 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 		}
 		request = generation.ApplyRoute(request, route)
 	}
-	if request.Kind != generation.KindVideo {
-		return generation.Response{}, fmt.Errorf("libtv CLI currently supports video generation routes")
+	switch request.Kind {
+	case generation.KindImage, generation.KindVideo:
+	default:
+		return generation.Response{}, fmt.Errorf("libtv CLI does not support %s generation routes", request.Kind)
+	}
+
+	references, cleanup, err := materializeReferences(ctx, request.ReferenceURLs)
+	if err != nil {
+		return generation.Response{}, err
+	}
+	defer cleanup()
+	if request.Kind == generation.KindImage {
+		if err := validateImageReferences(references.media()); err != nil {
+			return generation.Response{}, err
+		}
+		if err := validateImageParams(request.RouteID, request.Params); err != nil {
+			return generation.Response{}, err
+		}
+		modelName, err := provider.resolveImageModelName(ctx, request.RouteID)
+		if err != nil {
+			return generation.Response{}, err
+		}
+		request.Model = modelName
 	}
 
 	projectID, err := provider.ensureProjectID(ctx, request)
 	if err != nil {
 		return generation.Response{}, err
 	}
-	references, cleanup, err := materializeReferences(ctx, request.ReferenceURLs)
-	if err != nil {
-		return generation.Response{}, err
-	}
-	defer cleanup()
 
 	referenceNodes, err := provider.uploadReferences(ctx, projectID, references.media())
 	if err != nil {
@@ -232,11 +248,11 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 		"--prompt="+request.Prompt,
 	)
 	appendSetFlag(&args, "model", request.Model)
-	appendSetFlag(&args, "ratio", paramString(request.Params, "ratio"))
-	appendSetFlag(&args, "resolution", paramString(request.Params, "resolution"))
-	appendSetFlag(&args, "duration", paramString(request.Params, "duration"))
-	appendSetFlag(&args, "enableSound", libTVEnableSoundValue(request.Params["enableSound"]))
-	appendSetFlag(&args, "modeType", libTVModeTypeValue(request.Params, len(referenceNodes) > 0))
+	if request.Kind == generation.KindImage {
+		appendImageNodeParams(&args, request, len(referenceNodes) > 0)
+	} else {
+		appendVideoNodeParams(&args, request.Params, len(referenceNodes) > 0)
+	}
 	for _, referenceNode := range referenceNodes {
 		args = append(args, "--left-add="+referenceNode.Node)
 	}
@@ -549,6 +565,41 @@ func appendSetFlag(args *[]string, name string, value string) {
 	}
 }
 
+func appendImageNodeParams(args *[]string, request generation.Request, hasReferences bool) {
+	appendSetFlag(args, "ratio", paramString(request.Params, "ratio"))
+	appendSetFlag(args, "resolution", paramString(request.Params, "resolution"))
+	appendSetFlag(args, "quality", paramString(request.Params, "quality"))
+	if request.RouteID == generation.RouteLibTVSeedream5Lite {
+		appendSetFlag(args, "sequential", "0")
+	}
+	appendSetFlag(args, "count", "1")
+	if hasReferences {
+		appendSetFlag(args, "modeType", "image2image")
+	}
+}
+
+func appendVideoNodeParams(args *[]string, params map[string]any, hasReferences bool) {
+	appendSetFlag(args, "ratio", paramString(params, "ratio"))
+	appendSetFlag(args, "resolution", paramString(params, "resolution"))
+	appendSetFlag(args, "duration", paramString(params, "duration"))
+	appendSetFlag(args, "enableSound", libTVEnableSoundValue(params["enableSound"]))
+	appendSetFlag(args, "modeType", libTVModeTypeValue(params, hasReferences))
+}
+
+func validateImageParams(routeID string, params map[string]any) error {
+	sequential := paramString(params, "sequential")
+	if sequential == "" {
+		return nil
+	}
+	if routeID != generation.RouteLibTVSeedream5Lite {
+		return fmt.Errorf("libtv image parameter sequential is only supported by the Seedream route")
+	}
+	if sequential != "0" {
+		return fmt.Errorf("libtv Seedream image parameter sequential must be 0 for single-image generation")
+	}
+	return nil
+}
+
 func libTVEnableSoundValue(value any) string {
 	switch typed := value.(type) {
 	case bool:
@@ -710,8 +761,21 @@ type referenceFiles struct {
 }
 
 type referenceFile struct {
-	path string
-	kind generation.Kind
+	path       string
+	kind       generation.Kind
+	recognized bool
+}
+
+func validateImageReferences(files []referenceFile) error {
+	for index, file := range files {
+		if !file.recognized {
+			return fmt.Errorf("libtv image routes require a recognized image reference at index %d (%s)", index+1, filepath.Base(file.path))
+		}
+		if file.kind != generation.KindImage {
+			return fmt.Errorf("libtv image routes only accept image references; reference %d is %s", index+1, file.kind)
+		}
+	}
+	return nil
 }
 
 func (files referenceFiles) media() []referenceFile {
@@ -760,7 +824,11 @@ func materializeReference(ctx context.Context, dir string, index int, value stri
 		if err := os.WriteFile(path, decoded, 0o600); err != nil {
 			return referenceFile{}, fmt.Errorf("writing libtv reference file: %w", err)
 		}
-		return referenceFile{path: path, kind: referenceKindForMediaType(mediaType)}, nil
+		kind, recognized := referenceKindForMediaType(mediaType)
+		if !recognized {
+			kind, recognized = referenceKindForMediaType(http.DetectContentType(decoded))
+		}
+		return referenceFile{path: path, kind: kind, recognized: recognized}, nil
 	}
 	if strings.HasPrefix(strings.ToLower(value), "http://") ||
 		strings.HasPrefix(strings.ToLower(value), "https://") {
@@ -772,7 +840,14 @@ func materializeReference(ctx context.Context, dir string, index int, value stri
 		if err := os.WriteFile(path, data, 0o600); err != nil {
 			return referenceFile{}, fmt.Errorf("writing libtv reference file: %w", err)
 		}
-		return referenceFile{path: path, kind: referenceKindForMediaType(firstNonEmpty(mimeType, value))}, nil
+		kind, recognized := referenceKindForMediaType(mimeType)
+		if !recognized {
+			kind, recognized = referenceKindForMediaType(referenceMIMETypeFromURL(value))
+		}
+		if !recognized {
+			kind, recognized = referenceKindForMediaType(http.DetectContentType(data))
+		}
+		return referenceFile{path: path, kind: kind, recognized: recognized}, nil
 	}
 	if strings.HasPrefix(strings.ToLower(value), "file://") {
 		value = strings.TrimPrefix(value, "file://")
@@ -782,7 +857,8 @@ func materializeReference(ctx context.Context, dir string, index int, value stri
 		if err != nil {
 			return referenceFile{}, err
 		}
-		return referenceFile{path: path, kind: referenceKindForPath(path)}, nil
+		kind, recognized := referenceKindForPath(path)
+		return referenceFile{path: path, kind: kind, recognized: recognized}, nil
 	}
 	return referenceFile{}, fmt.Errorf("libtv CLI references must be local files, HTTP URLs, or data URIs")
 }
@@ -835,26 +911,31 @@ func readableFile(path string) (string, error) {
 	return resolved, nil
 }
 
-func referenceKindForMediaType(mediaType string) generation.Kind {
+func referenceKindForMediaType(mediaType string) (generation.Kind, bool) {
 	mediaType = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(mediaType)), "data:")
 	mediaType, _, _ = strings.Cut(mediaType, ";")
+	if strings.HasPrefix(mediaType, "image/") {
+		return generation.KindImage, true
+	}
 	if strings.HasPrefix(mediaType, "audio/") {
-		return generation.KindAudio
+		return generation.KindAudio, true
 	}
 	if strings.HasPrefix(mediaType, "video/") {
-		return generation.KindVideo
+		return generation.KindVideo, true
 	}
-	return generation.KindImage
+	return generation.KindImage, false
 }
 
-func referenceKindForPath(path string) generation.Kind {
+func referenceKindForPath(path string) (generation.Kind, bool) {
 	switch strings.ToLower(filepath.Ext(path)) {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".tif", ".tiff", ".avif", ".heic", ".heif":
+		return generation.KindImage, true
 	case ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg":
-		return generation.KindAudio
+		return generation.KindAudio, true
 	case ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".mkv", ".m4v":
-		return generation.KindVideo
+		return generation.KindVideo, true
 	default:
-		return generation.KindImage
+		return generation.KindImage, false
 	}
 }
 
