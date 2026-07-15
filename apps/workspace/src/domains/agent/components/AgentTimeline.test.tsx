@@ -323,34 +323,36 @@ describe("AgentTimeline", () => {
 		expect(screen.getByText("需要先读取项目结构，再输出结论。")).toBeInTheDocument();
 	});
 
-	it("renders plan entries with progress state", () => {
-		render(
-			<AgentTimeline
-				isRunning={false}
-				messages={[
-					assistantMessage({
-						id: "plan-1",
-						kind: "plan",
-						content: "",
-						metadata: {
-							planEntries: [
-								{ content: "读取第二章剧本与角色设定", status: "completed" },
-								{ content: "匹配分镜模板与镜头规范", status: "completed" },
-								{ content: "逐场拆解镜头并撰写画面说明", status: "in_progress" },
-							],
-						},
-					}),
-				]}
-			/>,
-		);
+	it("settles plan progress and stops its spinner after the task completes", () => {
+		const messages = [
+			assistantMessage({
+				id: "plan-1",
+				kind: "plan",
+				content: "",
+				metadata: {
+					planEntries: [
+						{ content: "读取第二章剧本与角色设定", status: "completed" },
+						{ content: "匹配分镜模板与镜头规范", status: "completed" },
+						{ content: "逐场拆解镜头并撰写画面说明", status: "in_progress" },
+					],
+				},
+			}),
+		];
+		const view = render(<AgentTimeline isRunning messages={messages} />);
+
+		expect(screen.getByText("2 / 3 完成")).toBeTruthy();
+		expect(document.querySelector(".agent-plan-status-icon.animate-spin")).not.toBeNull();
+
+		view.rerender(<AgentTimeline isRunning={false} messages={messages} />);
 
 		const disclosure = screen.getByRole("button", { name: /已处理/ });
 		expect(disclosure).toHaveAttribute("aria-expanded", "false");
 		fireEvent.click(disclosure);
 
-		expect(screen.getByText("2 / 3 完成")).toBeTruthy();
+		expect(screen.getByText("3 / 3 完成")).toBeTruthy();
 		expect(screen.getByText("读取第二章剧本与角色设定")).toBeTruthy();
 		expect(screen.getByText("逐场拆解镜头并撰写画面说明")).toBeTruthy();
+		expect(document.querySelector(".agent-plan-status-icon.animate-spin")).toBeNull();
 	});
 
 	it("renders tool group rows with localized status badges", () => {
