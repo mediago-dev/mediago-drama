@@ -82,7 +82,12 @@ func TestToolsInstructionDelegatesImageWorkflowToSkill(t *testing.T) {
 
 	for _, want := range []string{
 		"生成、修改或重绘图片前，必须先调用 MCP `load_skill` 装载 `image-generation`",
-		"图片专属的参数确认、参考图、选片与文档回写流程以该 Skill 为准",
+		"图片专属的参数确认、参考图与异步提交流程以该 Skill 为准",
+		"图片或视频生成请求成功提交并取得任务 ID 后，当前 Agent run 的职责立即结束",
+		"不要在同一个 run 中等待图片或视频生成完成",
+		"不得在同一个 run 内调用 `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task` 或 `select_generation_asset`",
+		"不得展示结果选片卡，也不得把生成结果回写到文档",
+		"后台服务会继续执行任务、同步状态、落库结果并发送完成通知",
 	} {
 		if !strings.Contains(instruction.Body, want) {
 			t.Fatalf("TOOLS instruction = %q, want image skill trigger %q", instruction.Body, want)
@@ -91,6 +96,9 @@ func TestToolsInstructionDelegatesImageWorkflowToSkill(t *testing.T) {
 	for _, forbidden := range []string{
 		"### 生图标准流程",
 		"select_generation_asset(taskId, slotIndex)",
+		"用该 id 调 `poll_generation_task` 直到完成",
+		"汇总查询后继续按 taskId 轮询",
+		"最终回复只给结果：定稿资产名、图片地址、落库位置",
 	} {
 		if strings.Contains(instruction.Body, forbidden) {
 			t.Fatalf("TOOLS instruction should delegate image detail %q to Skill:\n%s", forbidden, instruction.Body)
@@ -106,7 +114,12 @@ func TestToolsInstructionDelegatesVideoWorkflowToSkill(t *testing.T) {
 
 	for _, want := range []string{
 		"生成、修改或衔接视频前，必须先调用 MCP `load_skill` 装载 `video-generation`",
-		"视频专属的模型选择、首帧参考、时长与分辨率参数、后台异步轮询与文档回写流程以该 Skill 为准",
+		"视频专属的模型选择、首帧参考、时长与分辨率参数和异步提交流程以该 Skill 为准",
+		"图片或视频生成请求成功提交并取得任务 ID 后，当前 Agent run 的职责立即结束",
+		"不要在同一个 run 中等待图片或视频生成完成",
+		"不得在同一个 run 内调用 `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task` 或 `select_generation_asset`",
+		"不得展示结果选片卡，也不得把生成结果回写到文档",
+		"后台服务会继续执行任务、同步状态、落库结果并发送完成通知",
 	} {
 		if !strings.Contains(instruction.Body, want) {
 			t.Fatalf("TOOLS instruction = %q, want video skill trigger %q", instruction.Body, want)
@@ -115,6 +128,7 @@ func TestToolsInstructionDelegatesVideoWorkflowToSkill(t *testing.T) {
 	for _, forbidden := range []string{
 		"### 视频生成标准流程",
 		"select_generation_asset(taskId, slotIndex)",
+		"后台异步轮询与文档回写流程以该 Skill 为准",
 	} {
 		if strings.Contains(instruction.Body, forbidden) {
 			t.Fatalf("TOOLS instruction should delegate video detail %q to Skill:\n%s", forbidden, instruction.Body)

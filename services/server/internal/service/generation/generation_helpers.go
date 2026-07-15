@@ -344,7 +344,7 @@ func generationAssetTitleFromRequest(request coregeneration.Request) string {
 
 // ShouldRunGenerationInBackground reports whether the route should be executed asynchronously by the server.
 func ShouldRunGenerationInBackground(route coregeneration.ModelRoute) bool {
-	return route.Kind == coregeneration.KindImage && !route.Async
+	return (route.Kind == coregeneration.KindImage || route.Kind == coregeneration.KindVideo) && !route.Async
 }
 
 // ShouldSubmitGenerationInBackground reports whether the provider task should be submitted after the HTTP response.

@@ -37,6 +37,50 @@ func TestGenerationProjectIDForRequestPrefersExplicitProjectID(t *testing.T) {
 	}
 }
 
+func TestGenerationBackgroundRouting(t *testing.T) {
+	tests := []struct {
+		name       string
+		route      coregeneration.ModelRoute
+		wantRun    bool
+		wantSubmit bool
+	}{
+		{
+			name:    "synchronous image runs in server background",
+			route:   coregeneration.ModelRoute{Kind: coregeneration.KindImage},
+			wantRun: true,
+		},
+		{
+			name:    "synchronous video runs in server background",
+			route:   coregeneration.ModelRoute{Kind: coregeneration.KindVideo},
+			wantRun: true,
+		},
+		{
+			name:       "asynchronous video submits in server background",
+			route:      coregeneration.ModelRoute{Kind: coregeneration.KindVideo, Async: true},
+			wantSubmit: true,
+		},
+		{
+			name:  "audio keeps foreground behavior",
+			route: coregeneration.ModelRoute{Kind: coregeneration.KindAudio},
+		},
+		{
+			name:  "text keeps foreground behavior",
+			route: coregeneration.ModelRoute{Kind: coregeneration.KindText},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ShouldRunGenerationInBackground(test.route); got != test.wantRun {
+				t.Fatalf("ShouldRunGenerationInBackground() = %v, want %v", got, test.wantRun)
+			}
+			if got := ShouldSubmitGenerationInBackground(test.route); got != test.wantSubmit {
+				t.Fatalf("ShouldSubmitGenerationInBackground() = %v, want %v", got, test.wantSubmit)
+			}
+		})
+	}
+}
+
 func TestGenerationResponseFromCoreIncludesVideoPosterURL(t *testing.T) {
 	response := GenerationResponseFromCore(coregeneration.Response{
 		ID:     "generation-video-poster",

@@ -102,13 +102,16 @@ func TestImageGenerationSkillOwnsAgentImageWorkflow(t *testing.T) {
 			"promptOptimization",
 			"generate_media",
 			"generate_media_batch",
-			"list_generation_tasks(batchId: ...)",
 			"documentContext",
 			"notificationTarget",
 			"confirmationSelectionId",
-			"poll_generation_task",
-			"select_generation_asset",
-			"slotIndex",
+			"图片生成请求成功提交后，当前 Agent run 的职责立即结束",
+			"不要在同一个 run 中等待图片生成完成",
+			"不得在同一个 run 内调用 `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task` 或 `select_generation_asset`",
+			"不得展示结果选片卡",
+			"不得把生成结果回写到文档",
+			"后台服务会继续执行任务、同步状态、落库结果并发送完成通知",
+			"携带 `documentContext` 的项目资源会在后台完成后自动选中本次第一张结果",
 		} {
 			if !strings.Contains(body, fragment) {
 				t.Fatalf("image-generation missing workflow rule %q:\n%s", fragment, body)
@@ -122,9 +125,12 @@ func TestImageGenerationSkillOwnsAgentImageWorkflow(t *testing.T) {
 			"恰好一个 `generation_params`",
 			"从 `values.generation` 原样取得 `{routeId, label, params}`",
 			"`default` 必须是完整设置对象",
+			"### 5. 等待任务完成",
+			"### 6. 选片并回写",
+			"用户选定后，用对应资产的真实 `slotIndex` 调用 `select_generation_asset",
 		} {
 			if strings.Contains(body, fragment) {
-				t.Fatalf("image-generation should not use standalone style workflow %q:\n%s", fragment, body)
+				t.Fatalf("image-generation should not contain obsolete workflow rule %q:\n%s", fragment, body)
 			}
 		}
 		if hint, ok := entry.Metadata["hint"].(map[string]string); !ok || len(hint) != 0 {
@@ -155,7 +161,7 @@ func TestVideoGenerationSkillOwnsAgentVideoWorkflow(t *testing.T) {
 			"用户可维护的动态提示词包",
 			"名为 `style` 的参数",
 			"首帧",
-			"后台异步",
+			"异步任务提交",
 			"ask_user_selection",
 			"ask_user_form",
 			"generation_params",
@@ -171,18 +177,24 @@ func TestVideoGenerationSkillOwnsAgentVideoWorkflow(t *testing.T) {
 			"referenceAssetIds",
 			"generate_media",
 			"generate_media_batch",
-			"list_generation_tasks(batchId: ...)",
+			"标准流程中的多个独立目标超过 50 个时",
 			"documentContext",
 			"notificationTarget",
 			"confirmationSelectionId",
-			"poll_generation_task",
-			"retry_generation_task",
-			"select_generation_asset",
-			"slotIndex",
 			"returnLastFrame",
+			"视频生成请求成功提交后，当前 Agent run 的职责立即结束",
+			"不要在同一个 run 中等待视频生成完成",
+			"不得在同一个 run 内调用 `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task` 或 `select_generation_asset`",
+			"不得展示结果选片卡",
+			"不得把生成结果回写到文档",
+			"后台服务会继续执行任务、同步状态、落库结果并发送完成通知",
+			"携带 `documentContext` 的项目资源会在后台完成后自动选中本次第一条视频",
 			"为分镜批量生成视频",
 			"第 0N 组",
 			"先试片",
+			"试片提交成功后立即结束当前 run",
+			"后续 run",
+			"重新确认生成参数",
 			"组号",
 		} {
 			if !strings.Contains(body, fragment) {
@@ -191,6 +203,19 @@ func TestVideoGenerationSkillOwnsAgentVideoWorkflow(t *testing.T) {
 		}
 		if strings.Contains(body, "stylePresets") {
 			t.Fatalf("video-generation should not depend on standalone style presets:\n%s", body)
+		}
+		for _, fragment := range []string{
+			"### 5. 等待任务完成",
+			"### 6. 交付并回写",
+			"需要在同一回合内跟进时",
+			"用户选定后，用对应资产的真实 `slotIndex`",
+			"需要汇总时用 `list_generation_tasks",
+			"各镜头完成后按其 `documentContext` 回写",
+			"只总结实际结果：任务状态、定稿资产名、视频地址",
+		} {
+			if strings.Contains(body, fragment) {
+				t.Fatalf("video-generation should not contain same-run completion rule %q:\n%s", fragment, body)
+			}
 		}
 		if hint, ok := entry.Metadata["hint"].(map[string]string); !ok || len(hint) != 0 {
 			t.Fatalf("video-generation hint = %#v, want no document category restriction", entry.Metadata["hint"])

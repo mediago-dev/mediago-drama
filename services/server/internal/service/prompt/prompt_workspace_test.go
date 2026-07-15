@@ -425,6 +425,23 @@ func TestPromptBuilderRequiresImageGenerationSkillWithoutInliningWorkflow(t *tes
 	}
 }
 
+func TestPromptBuilderEndsAgentRunAfterVisualMediaSubmission(t *testing.T) {
+	prompt := BuildACPPrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{})
+
+	for _, want := range []string{
+		"图片或视频生成请求成功提交并取得任务 ID 后，当前 Agent run 的职责立即结束。",
+		"不要在同一个 run 中等待图片或视频生成完成",
+		"不得在同一个 run 内调用 `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task` 或 `select_generation_asset`",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt = %q, want asynchronous visual-media boundary %q", prompt, want)
+		}
+	}
+	if strings.Contains(prompt, "当 `status` 为 submitting/submitted 时任务在后台运行，用该 id 调 `poll_generation_task` 直到完成") {
+		t.Fatalf("prompt = %q, should not require the current Agent run to wait for image completion", prompt)
+	}
+}
+
 func TestPromptBuilderRequiresVideoGenerationSkillWithoutInliningWorkflow(t *testing.T) {
 	prompt := BuildACPPrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{})
 

@@ -235,6 +235,73 @@ func TestMCPInstructionsKeepGenerationContractsWithoutImageWorkflow(t *testing.T
 	}
 }
 
+func TestGenerationToolsEndVisualMediaRunAfterSubmission(t *testing.T) {
+	for name, contract := range map[string]struct {
+		value     string
+		fragments []string
+	}{
+		"GenerationMCPInstructions": {
+			value: GenerationMCPInstructions,
+			fragments: []string{
+				"图片或视频生成提交成功并取得 taskId 后，必须结束当前回合",
+				"不得调用 get_generation_task、list_generation_tasks、poll_generation_task、retry_generation_task 或 select_generation_asset",
+				"不得展示结果选片或回写文档",
+				"后台服务会继续执行任务、同步状态、落库并发送完成通知",
+				"适用的音频或文本流程，或用户后续显式查询",
+			},
+		},
+		"GenerationTools.Generate": {
+			value: GenerationTools.Generate.Description,
+			fragments: []string{
+				"图片或视频请求返回 taskId 后必须结束当前回合",
+				"不得继续查询或轮询等待图片或视频完成",
+			},
+		},
+		"GenerationTools.GenerateBatch": {
+			value: GenerationTools.GenerateBatch.Description,
+			fragments: []string{
+				"图片或视频批次返回各子项 taskId 后必须结束当前回合",
+				"不得继续查询或轮询等待图片或视频完成",
+			},
+		},
+	} {
+		for _, fragment := range contract.fragments {
+			if !strings.Contains(contract.value, fragment) {
+				t.Fatalf("%s missing image submission boundary %q: %q", name, fragment, contract.value)
+			}
+		}
+	}
+
+	for name, description := range map[string]string{
+		"GenerationTools.GetTask":   GenerationTools.GetTask.Description,
+		"GenerationTools.ListTasks": GenerationTools.ListTasks.Description,
+		"GenerationTools.PollTask":  GenerationTools.PollTask.Description,
+	} {
+		for _, fragment := range []string{
+			"适用的音频或文本流程，或用户后续显式查询",
+			"不得用于当前回合等待刚提交的图片或视频",
+		} {
+			if !strings.Contains(description, fragment) {
+				t.Fatalf("%s missing query boundary %q: %q", name, fragment, description)
+			}
+		}
+	}
+
+	for name, description := range map[string]string{
+		"GenerationTools.RetryTask":   GenerationTools.RetryTask.Description,
+		"GenerationTools.SelectAsset": GenerationTools.SelectAsset.Description,
+	} {
+		for _, fragment := range []string{
+			"适用的音频或文本流程，或用户后续显式处理",
+			"不得作为当前图片或视频生成提交回合的后置步骤",
+		} {
+			if !strings.Contains(description, fragment) {
+				t.Fatalf("%s missing post-submission boundary %q: %q", name, fragment, description)
+			}
+		}
+	}
+}
+
 func TestGenerationInstructionsDoNotAdvertiseStandaloneStylePresets(t *testing.T) {
 	for name, value := range map[string]string{
 		"GenerationMCPInstructions":           GenerationMCPInstructions,
