@@ -12,8 +12,7 @@ import {
 } from "lucide-react";
 import type { A2uiClientAction } from "@a2ui/web_core/v0_9";
 import type React from "react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { Virtuoso } from "react-virtuoso";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { runAgentPrompt } from "@/domains/agent/lib/controller";
 import {
 	type AgentA2UIActionHandler,
@@ -34,6 +33,7 @@ import {
 	type AgentMessageMetadata,
 	type AgentRuntimeAlert,
 	selectAgentActiveConversation,
+	selectAgentSessionId,
 	useAgentStore,
 } from "@/domains/agent/stores";
 import { cn } from "@/shared/lib/utils";
@@ -74,6 +74,7 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 }) => {
 	const now = useAgentElapsedClock(isRunning);
 	const activeConversation = useAgentStore(selectAgentActiveConversation);
+	const sessionId = useAgentStore(selectAgentSessionId);
 	const pendingPermissionCount = useAgentStore((state) => state.permissionRequests.length);
 	const activeTurn = useMemo(
 		() =>
@@ -104,6 +105,10 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 	const [disclosureOverrides, setDisclosureOverrides] = useState<
 		Record<string, ProcessDisclosureOverrideRecord>
 	>({});
+	const timelineRef = useRef<HTMLDivElement>(null);
+	const timelineContentRef = useRef<HTMLDivElement>(null);
+	const shouldFollowTimelineRef = useRef(true);
+	const previousSessionIdRef = useRef(sessionId);
 	const updateDisclosureOverride = useCallback(
 		(
 			turnId: string,
@@ -130,6 +135,32 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 		return [...timelineItems, ...alertItems, { type: "running", id: "agent-running" }];
 	}, [isRunning, runtimeAlerts, turns]);
 
+	useLayoutEffect(() => {
+		if (previousSessionIdRef.current !== sessionId) {
+			previousSessionIdRef.current = sessionId;
+			shouldFollowTimelineRef.current = true;
+		}
+		const timeline = timelineRef.current;
+		if (timeline && shouldFollowTimelineRef.current) timeline.scrollTop = timeline.scrollHeight;
+	}, [items, sessionId]);
+
+	useEffect(() => {
+		const timeline = timelineRef.current;
+		const content = timelineContentRef.current;
+		if (!timeline || !content || typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(() => {
+			if (shouldFollowTimelineRef.current) timeline.scrollTop = timeline.scrollHeight;
+		});
+		observer.observe(content);
+		return () => observer.disconnect();
+	}, [isHydrating]);
+
+	const handleTimelineScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+		const timeline = event.currentTarget;
+		const remaining = timeline.scrollHeight - timeline.clientHeight - timeline.scrollTop;
+		shouldFollowTimelineRef.current = remaining <= 48;
+	}, []);
+
 	if (isHydrating && turns.length === 0) {
 		return (
 			<div
@@ -145,19 +176,28 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 	}
 
 	return (
-		<Virtuoso
-			className={cn("agent-timeline h-full", className)}
-			data={items}
-			alignToBottom
-			computeItemKey={(index, item) => timelineRenderItemKey(item, index)}
-			followOutput={(atBottom) => (atBottom ? "smooth" : false)}
-			increaseViewportBy={{ top: 800, bottom: 800 }}
-			itemContent={(index, item) => (
-				<div className={cn("agent-timeline-row px-4 pb-3", index === 0 && "pt-4")}>
-					{renderTimelineItem(item, onA2UIAction, disclosureOverrides, updateDisclosureOverride)}
-				</div>
-			)}
-		/>
+		<div
+			ref={timelineRef}
+			className={cn("agent-timeline h-full overflow-y-auto", className)}
+			data-agent-session={sessionId ?? "pending"}
+			data-testid="agent-timeline"
+			onScroll={handleTimelineScroll}
+		>
+			<div
+				ref={timelineContentRef}
+				className="flex min-h-full flex-col justify-end"
+				data-testid="agent-timeline-list"
+			>
+				{items.map((item, index) => (
+					<div
+						key={timelineRenderItemKey(item, index)}
+						className={cn("agent-timeline-row px-4 pb-3", index === 0 && "pt-4")}
+					>
+						{renderTimelineItem(item, onA2UIAction, disclosureOverrides, updateDisclosureOverride)}
+					</div>
+				))}
+			</div>
+		</div>
 	);
 };
 

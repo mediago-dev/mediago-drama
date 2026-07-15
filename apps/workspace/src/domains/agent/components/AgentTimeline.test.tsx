@@ -1,29 +1,7 @@
-import type { Key, ReactNode } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { type AgentMessage, useAgentStore } from "@/domains/agent/stores";
 import { AgentTimeline } from "./AgentTimeline";
-
-vi.mock("react-virtuoso", () => ({
-	Virtuoso: ({ className, data = [], computeItemKey, itemContent }: MockVirtuosoProps) => (
-		<div className={className} data-testid="virtuoso">
-			{[{ index: -1, item: undefined }, ...data.map((item, index) => ({ index, item }))].map(
-				({ index, item }) => (
-					<div key={computeItemKey?.(index, item, undefined) ?? index}>
-						{itemContent(index, item, undefined)}
-					</div>
-				),
-			)}
-		</div>
-	),
-}));
-
-interface MockVirtuosoProps {
-	className?: string;
-	data?: unknown[];
-	computeItemKey?: (index: number, item: unknown, context: unknown) => Key;
-	itemContent: (index: number, item: unknown, context: unknown) => ReactNode;
-}
 
 describe("AgentTimeline", () => {
 	afterEach(() => {
@@ -36,7 +14,30 @@ describe("AgentTimeline", () => {
 		});
 	});
 
-	it("ignores transient empty rows emitted by the virtual list", () => {
+	it("uses real content height and bottom-aligns short conversations", () => {
+		useAgentStore.setState({ sessionId: "session-1" });
+
+		render(
+			<AgentTimeline
+				isRunning={false}
+				messages={[
+					userMessage({
+						content: "第一轮消息",
+					}),
+					userMessage({
+						id: "user-message-2",
+						content: "贴近输入框显示",
+					}),
+				]}
+			/>,
+		);
+
+		expect(screen.getByTestId("agent-timeline")).toHaveAttribute("data-agent-session", "session-1");
+		expect(screen.getByTestId("agent-timeline")).toHaveClass("overflow-y-auto");
+		expect(screen.getByTestId("agent-timeline-list")).toHaveClass("min-h-full", "justify-end");
+	});
+
+	it("renders conversation rows without virtual placeholders", () => {
 		expect(() =>
 			render(
 				<AgentTimeline
