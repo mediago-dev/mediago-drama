@@ -133,6 +133,7 @@ func (handler PromptPacks) HandleExportPack(context *gin.Context) {
 // @Success 200 {object} SwaggerEnvelope
 // @Failure 400 {object} SwaggerEnvelope
 // @Failure 403 {object} SwaggerEnvelope
+// @Failure 422 {object} SwaggerEnvelope
 // @Failure 500 {object} SwaggerEnvelope
 // @Router /api/v1/packs/import [post]
 func (handler PromptPacks) HandleImportPack(context *gin.Context) {
@@ -454,6 +455,12 @@ func (handler PromptPacks) HandleResetPack(context *gin.Context) {
 
 func writePromptPackError(context *gin.Context, err error) {
 	switch {
+	case errors.Is(err, promptpack.ErrUnsupportedPackVersion):
+		httpresponse.Error(
+			context,
+			http.StatusUnprocessableEntity,
+			"当前构建不支持此提示词包版本，请使用 MediaGo Drama 官方版导入",
+		)
 	case errors.Is(err, promptpack.ErrInvalidPack):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 	case errors.Is(err, promptpack.ErrPackExists), errors.Is(err, promptpack.ErrEntryExists):

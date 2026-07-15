@@ -43,6 +43,8 @@ const (
 var (
 	// ErrInvalidPack reports invalid pack data or operations.
 	ErrInvalidPack = errors.New("invalid prompt pack")
+	// ErrUnsupportedPackVersion reports a valid .mgpack version this build cannot import.
+	ErrUnsupportedPackVersion = errors.New("unsupported prompt pack version")
 	// ErrPackNotFound reports a missing installed pack.
 	ErrPackNotFound = errors.New("prompt pack not found")
 	// ErrPackExists reports an attempt to reuse an installed pack ID.

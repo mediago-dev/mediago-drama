@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -141,12 +142,15 @@ func (store *Service) installData(ctx context.Context, fileName string, data []b
 		return Pack{}, fmt.Errorf("%w: file is too large", ErrInvalidPack)
 	}
 	archive, err := codec.Decode(data)
+	if errors.Is(err, codec.ErrUnsupportedVersion) {
+		return Pack{}, fmt.Errorf("%w: %v", ErrUnsupportedPackVersion, err)
+	}
 	if err != nil {
-		return Pack{}, err
+		return Pack{}, fmt.Errorf("%w: decoding .mgpack: %v", ErrInvalidPack, err)
 	}
 	bundle, err := instructionpack.ParseZip(ctx, archive)
 	if err != nil {
-		return Pack{}, err
+		return Pack{}, fmt.Errorf("%w: parsing .mgpack: %v", ErrInvalidPack, err)
 	}
 	if bundle.Manifest.ID == DefaultPackID {
 		return Pack{}, fmt.Errorf("%w: default pack cannot be imported", ErrInvalidPack)

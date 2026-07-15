@@ -142,7 +142,13 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		return server
 	})
 	router := gin.New()
-	router.Use(middleware.LocalCORS(), middleware.RequestID(), middleware.RequestLogger(), middleware.RecoveryLogger(writeError))
+	router.Use(
+		middleware.LocalCORS(),
+		middleware.Edition(runtimeEdition(config.RuntimeExtensions)),
+		middleware.RequestID(),
+		middleware.RequestLogger(),
+		middleware.RecoveryLogger(writeError),
+	)
 	settingsHandler := httphandlers.NewSettings(api.settings)
 	capabilityHandler := httphandlers.NewCapabilities(api.capability)
 	billingHandler := httphandlers.NewBilling(api.billing)

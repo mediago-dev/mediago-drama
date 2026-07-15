@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -165,6 +166,46 @@ func TestPromptPacksHandlerCopiesEntriesAndReturnsPackContents(t *testing.T) {
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("remove status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestPromptPacksHandlerRejectsUnsupportedPackVersion(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	store := newPromptPackHandlerTestStore(t)
+	handler := NewPromptPacks(store)
+	router := gin.New()
+	router.POST("/packs/import", handler.HandleImportPack)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "commercial.mgpack")
+	if err != nil {
+		t.Fatalf("CreateFormFile() error = %v", err)
+	}
+	if _, err := part.Write([]byte{'M', 'G', 'P', 'K', 2}); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/packs/import", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+	}
+	var envelope struct {
+		Message string `json:"message"`
+		Success bool   `json:"success"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if envelope.Success || envelope.Message != "当前构建不支持此提示词包版本，请使用 MediaGo Drama 官方版导入" {
+		t.Fatalf("body = %s, want unsupported-version guidance", response.Body.String())
 	}
 }
 
