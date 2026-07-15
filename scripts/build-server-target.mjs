@@ -17,14 +17,26 @@ if (!target) {
 const outDir = join("bin", platform);
 mkdirSync(outDir, { recursive: true });
 
-run("go", [
+const extraBuildTags = (process.env.MEDIAGO_GO_BUILD_TAGS ?? "")
+	.split(/[\s,]+/u)
+	.map((tag) => tag.trim())
+	.filter(Boolean);
+const obfuscateServer = process.env.MEDIAGO_GO_OBFUSCATE === "1";
+const serverBuildCommand = obfuscateServer ? "garble" : "go";
+const serverBuildArgs = [
+	...(obfuscateServer ? ["-literals"] : []),
 	"build",
 	"-tags",
-	"workspace_dist",
+	["workspace_dist", ...extraBuildTags].join(","),
+];
+const serverLDFlags = process.env.MEDIAGO_GO_LDFLAGS?.trim();
+if (serverLDFlags) serverBuildArgs.push("-ldflags", serverLDFlags);
+serverBuildArgs.push(
 	"-o",
 	join(outDir, `mediago-server${target.exe}`),
 	"./services/server/cmd/mediago-server",
-]);
+);
+run(serverBuildCommand, serverBuildArgs);
 run("go", [
 	"build",
 	"-o",

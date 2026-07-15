@@ -8,5 +8,8 @@ export const isSkillCacheKey = (key: unknown) =>
 export const isPromptLibraryCacheKey = (key: unknown) =>
 	typeof key === "string" && (key === promptCategoriesKey || key.startsWith(promptPresetsKey));
 
+export const isPromptPackContentsCacheKey = (key: unknown) =>
+	typeof key === "string" && key.startsWith("/packs/") && key.endsWith("/contents");
+
 export const isPromptPackContentCacheKey = (key: unknown) =>
-	isSkillCacheKey(key) || isPromptLibraryCacheKey(key);
+	isSkillCacheKey(key) || isPromptLibraryCacheKey(key) || isPromptPackContentsCacheKey(key);

@@ -36,14 +36,17 @@ import { useToast } from "@/hooks/useToast";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/lib/utils";
-import { isSkillCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
+import { isPromptPackContentCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
+import { listPromptPacks, promptPacksKey } from "@/domains/settings/api/packs";
 import { PromptPackActions } from "./PromptPackActionsSlot";
+import { PromptPackMembershipBadge } from "./PromptPackMembershipBadge";
 import { SettingsMarkdownEditor, SettingsMarkdownPreview } from "./SettingsMarkdownEditor";
 
 export const SkillsEditorPanel: React.FC = () => {
 	const toast = useToast();
 	const { mutate: mutateGlobal } = useSWRConfig();
 	const { data: skills = [], isLoading, mutate: mutateSkills } = useSWR(skillsKey, listSkills);
+	const { data: packs = [] } = useSWR(promptPacksKey, listPromptPacks);
 	const orderedSkills = useMemo(() => orderSkillsForPrimaryFlows(skills), [skills]);
 	const [selectedName, setSelectedName] = useState("");
 	const [frontmatterDraft, setFrontmatterDraft] = useState("");
@@ -67,6 +70,7 @@ export const SkillsEditorPanel: React.FC = () => {
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
 	const [newSkillName, setNewSkillName] = useState("");
 	const [newSkillDescription, setNewSkillDescription] = useState("");
+	const [newSkillPackID, setNewSkillPackID] = useState("builtin");
 	const [createError, setCreateError] = useState("");
 	const draft = useMemo(
 		() =>
@@ -97,11 +101,12 @@ export const SkillsEditorPanel: React.FC = () => {
 	const canReset = Boolean(
 		selectedSkill && (selectedEntry?.source !== "user" || selectedEntry?.overridden),
 	);
-	const refreshSkillCaches = () => mutateGlobal(isSkillCacheKey);
+	const refreshSkillCaches = () => mutateGlobal(isPromptPackContentCacheKey);
 	const cancelCreateSkill = () => {
 		setIsCreating(false);
 		setNewSkillName("");
 		setNewSkillDescription("");
+		setNewSkillPackID("builtin");
 		setCreateError("");
 	};
 
@@ -161,7 +166,7 @@ export const SkillsEditorPanel: React.FC = () => {
 				setCreateError("Skill 描述不能为空");
 				return;
 			}
-			const created = await createSkill(name, newSkillTemplate(name, description));
+			const created = await createSkill(name, newSkillTemplate(name, description), newSkillPackID);
 			await refreshSkillCaches();
 			setSelectedName(created.name);
 			const parts = splitSkillMarkdown(created.content);
@@ -170,6 +175,7 @@ export const SkillsEditorPanel: React.FC = () => {
 			setBodyDraft(parts.body);
 			setNewSkillName("");
 			setNewSkillDescription("");
+			setNewSkillPackID("builtin");
 			setIsCreating(false);
 			setCreateError("");
 			toast.success("Skill 已创建", { description: created.name });
@@ -304,12 +310,15 @@ export const SkillsEditorPanel: React.FC = () => {
 				error={createError}
 				isSaving={isSaving}
 				name={newSkillName}
+				packId={newSkillPackID}
+				packs={packs}
 				open={isCreating}
 				onCancel={cancelCreateSkill}
 				onNameChange={(value) => {
 					setNewSkillName(value);
 					setCreateError("");
 				}}
+				onPackChange={setNewSkillPackID}
 				onDescriptionChange={(value) => {
 					setNewSkillDescription(value);
 					setCreateError("");
@@ -367,8 +376,21 @@ export const SkillsEditorPanel: React.FC = () => {
 									</SelectTrigger>
 									<SelectContent align="start">
 										{orderedSkills.map((skill) => (
-											<SelectItem key={skill.name} value={skill.name}>
-												<span className="truncate">{skill.title || skill.name}</span>
+											<SelectItem
+												key={skill.name}
+												value={skill.name}
+												textValue={skill.title || skill.name}
+											>
+												<span className="flex min-w-0 items-center gap-2">
+													<span className="min-w-0 flex-1 truncate">
+														{skill.title || skill.name}
+													</span>
+													<PromptPackMembershipBadge
+														className="max-w-40 shrink-0"
+														packId={skill.packId}
+														packs={packs}
+													/>
+												</span>
 											</SelectItem>
 										))}
 									</SelectContent>
@@ -539,10 +561,13 @@ const SkillCreateDialog: React.FC<{
 	error: string;
 	isSaving: boolean;
 	name: string;
+	packId: string;
+	packs: Array<{ id: string; name: string }>;
 	open: boolean;
 	onCancel: () => void;
 	onDescriptionChange: (value: string) => void;
 	onNameChange: (value: string) => void;
+	onPackChange: (value: string) => void;
 	onOpenChange: (open: boolean) => void;
 	onSave: () => void;
 }> = ({
@@ -550,10 +575,13 @@ const SkillCreateDialog: React.FC<{
 	error,
 	isSaving,
 	name,
+	packId,
+	packs,
 	open,
 	onCancel,
 	onDescriptionChange,
 	onNameChange,
+	onPackChange,
 	onOpenChange,
 	onSave,
 }) => {
@@ -595,6 +623,21 @@ const SkillCreateDialog: React.FC<{
 								<AlertDescription>{error}</AlertDescription>
 							</Alert>
 						) : null}
+						<div className="grid gap-2">
+							<Label className="text-sm font-medium text-foreground">所属词包</Label>
+							<Select value={packId} onValueChange={onPackChange}>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{packs.map((pack) => (
+										<SelectItem key={pack.id} value={pack.id}>
+											{pack.name}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
 						<div className="grid gap-2">
 							<Label htmlFor="new-skill-name" className="text-sm font-medium text-foreground">
 								文件名

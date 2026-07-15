@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+	fileContents: "sidecar",
 	spawn: vi.fn(),
 }));
 
@@ -11,7 +12,18 @@ vi.mock("node:child_process", () => ({
 }));
 vi.mock("node:fs", () => {
 	const existsSync = () => true;
-	const readFileSync = () => {
+	const readFileSync = (path: string) => {
+		if (String(path).endsWith("sidecar-integrity.json")) {
+			return JSON.stringify({
+				algorithm: "sha256",
+				files: {
+					server: "6c8b4535ccc87f19061c4646189e33d78f01c8b63dc4e3cb2f630b1796ee93b6",
+				},
+				format: "mediago-sidecar-integrity",
+				version: 1,
+			});
+		}
+		if (String(path).endsWith("/bin/server")) return Buffer.from(mocks.fileContents);
 		throw new Error("no packaged config in unit test");
 	};
 	return { default: { existsSync, readFileSync }, existsSync, readFileSync };
@@ -40,6 +52,7 @@ class FakeChildProcess extends EventEmitter {
 describe("server sidecar lifecycle", () => {
 	beforeEach(() => {
 		vi.resetModules();
+		mocks.fileContents = "sidecar";
 		mocks.spawn.mockReset();
 		delete process.env.ELECTRON_RENDERER_URL;
 	});
@@ -61,6 +74,14 @@ describe("server sidecar lifecycle", () => {
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_BUNDLE_REV");
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_SCHEMA_VERSION");
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_INSTANCE_TOKEN");
+	});
+
+	it("refuses to start a modified server sidecar", async () => {
+		mocks.fileContents = "modified-sidecar";
+		const sidecar = await import("./sidecar.js");
+
+		expect(() => sidecar.startServerSidecar()).toThrow("server sidecar integrity check failed");
+		expect(mocks.spawn).not.toHaveBeenCalled();
 	});
 
 	it("clears a failed spawn and allows retry", async () => {

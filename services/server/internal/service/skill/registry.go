@@ -39,13 +39,17 @@ var (
 
 // SkillMeta is the public skill index entry.
 type SkillMeta struct {
-	Name        string            `json:"name"`
-	Title       string            `json:"title,omitempty"`
-	Description string            `json:"description"`
-	Source      Source            `json:"source"`
-	Overridden  bool              `json:"overridden,omitempty"`
-	TemplateID  string            `json:"templateId,omitempty"`
-	Hint        map[string]string `json:"hint,omitempty"`
+	Name            string            `json:"name"`
+	Title           string            `json:"title,omitempty"`
+	Description     string            `json:"description"`
+	Source          Source            `json:"source"`
+	Overridden      bool              `json:"overridden,omitempty"`
+	TemplateID      string            `json:"templateId,omitempty"`
+	Hint            map[string]string `json:"hint,omitempty"`
+	PackID          string            `json:"packId,omitempty"`
+	ReleaseID       string            `json:"releaseId,omitempty"`
+	SourcePackageID string            `json:"sourcePackageId,omitempty"`
+	SourceReleaseID string            `json:"sourceReleaseId,omitempty"`
 }
 
 // Skill contains a parsed skill, including body content and raw Markdown.
@@ -191,11 +195,18 @@ func (registry *Registry) Save(ctx context.Context, name string, raw string) (Sk
 
 // Create validates and writes a new user skill.
 func (registry *Registry) Create(ctx context.Context, name string, raw string) (Skill, error) {
+	return registry.CreateInPack(ctx, name, raw, "")
+}
+
+// CreateInPack validates and writes a new user skill into a selected local pack.
+func (registry *Registry) CreateInPack(ctx context.Context, name string, raw string, packID string) (Skill, error) {
 	parsed, err := ParseRaw(name, raw)
 	if err != nil {
 		return Skill{}, err
 	}
-	created, err := registry.store.CreateEntry(ctx, instructionpack.KindSkill, entryFromSkill(parsed))
+	entry := entryFromSkill(parsed)
+	entry.PackID = strings.TrimSpace(packID)
+	created, err := registry.store.CreateEntry(ctx, instructionpack.KindSkill, entry)
 	if err != nil {
 		if errors.Is(err, promptpack.ErrEntryExists) {
 			return Skill{}, fmt.Errorf("%w: %s", ErrSkillExists, parsed.Name)
@@ -304,13 +315,17 @@ func skillFromEntry(entry promptpack.Entry) Skill {
 	hint := metadataStringMap(entry.Metadata, "hint")
 	item := Skill{
 		SkillMeta: SkillMeta{
-			Name:        entry.Slug,
-			Title:       entry.Title,
-			Description: entry.Description,
-			Source:      Source(entry.Source),
-			Overridden:  entry.Source == string(SourceUser) && entry.OverriddenFrom != "",
-			TemplateID:  metadataString(entry.Metadata, "template_id"),
-			Hint:        hint,
+			Name:            entry.Slug,
+			Title:           entry.Title,
+			Description:     entry.Description,
+			Source:          Source(entry.Source),
+			Overridden:      entry.Source == string(SourceUser) && entry.OverriddenFrom != "",
+			TemplateID:      metadataString(entry.Metadata, "template_id"),
+			Hint:            hint,
+			PackID:          entry.PackID,
+			ReleaseID:       entry.ReleaseID,
+			SourcePackageID: entry.SourcePackageID,
+			SourceReleaseID: entry.SourceReleaseID,
 		},
 		Content: normalizeBody(entry.Body),
 	}

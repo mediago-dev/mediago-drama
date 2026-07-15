@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { composeSkillMarkdown, splitSkillMarkdown, updateSkillDescription } from "./skill-markdown";
+import {
+	composeSkillMarkdown,
+	splitSkillMarkdown,
+	updateSkillDescription,
+	updateSkillName,
+} from "./skill-markdown";
 
 describe("skill markdown helpers", () => {
 	it("splits skill frontmatter from markdown body", () => {
@@ -59,5 +64,14 @@ description: 场景指导
 		expect(updateSkillDescription("name: scene-writer\ntitle: 场景写作", "场景指导")).toBe(
 			'name: scene-writer\ndescription: "场景指导"\ntitle: 场景写作',
 		);
+	});
+
+	it("updates the skill name while preserving the remaining frontmatter", () => {
+		expect(
+			updateSkillName(
+				"name: source-skill\ndescription: Source\nhint:\n  document_category: scene",
+				"package-skill",
+			),
+		).toBe("name: package-skill\ndescription: Source\nhint:\n  document_category: scene");
 	});
 });

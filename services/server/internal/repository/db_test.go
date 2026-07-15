@@ -1,7 +1,10 @@
 package repository
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -97,6 +100,47 @@ func TestOpenGormSQLiteConfiguresLocalPragmas(t *testing.T) {
 	}
 	if foreignKeys != 1 {
 		t.Fatalf("foreign_keys = %d, want 1", foreignKeys)
+	}
+}
+
+func TestOpenGormSQLiteRestrictsDatabaseFilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose Unix permission bits")
+	}
+	dir := filepath.Join(t.TempDir(), "database")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatalf("creating database directory: %v", err)
+	}
+	dbPath := filepath.Join(dir, "settings.sqlite")
+	db, err := OpenGormSQLite(dbPath)
+	if err != nil {
+		t.Fatalf("OpenGormSQLite returned error: %v", err)
+	}
+	if err := db.Exec("CREATE TABLE permission_probe (id INTEGER PRIMARY KEY)").Error; err != nil {
+		t.Fatalf("creating permission probe: %v", err)
+	}
+	if err := tightenSQLiteFilePermissions(dbPath); err != nil {
+		t.Fatalf("tightenSQLiteFilePermissions returned error: %v", err)
+	}
+
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stating database directory: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("database directory mode = %o, want 700", got)
+	}
+	for _, path := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+		info, statErr := os.Stat(path)
+		if errors.Is(statErr, os.ErrNotExist) {
+			continue
+		}
+		if statErr != nil {
+			t.Fatalf("stating %s: %v", filepath.Base(path), statErr)
+		}
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Fatalf("%s mode = %o, want 600", filepath.Base(path), got)
+		}
 	}
 }
 

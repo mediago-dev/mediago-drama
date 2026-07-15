@@ -17,7 +17,7 @@ task test
 pkg/greeter/           # public API — what consumers import
 go.mod                 # module declaration
 Taskfile.yml           # go-task tasks (fmt / vet / test / tidy / check)
-LICENSE                # MIT
+LICENSE                # PolyForm Noncommercial 1.0.0
 ```
 
 The starter ships with a single placeholder package `pkg/greeter/`. See
@@ -40,4 +40,4 @@ func main() {
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+PolyForm Noncommercial 1.0.0 — see [LICENSE](LICENSE).

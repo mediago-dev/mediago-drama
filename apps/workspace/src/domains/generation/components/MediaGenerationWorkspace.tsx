@@ -519,6 +519,10 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		(item: (typeof ws.promptInsertItems)[number]) => {
 			const referencePrompt = item.prompt.trim();
 			if (!referencePrompt) return;
+			ws.addPromptSource(item);
+			const sourceRefs = item.sourceRef
+				? [...ws.promptSourceRefs, item.sourceRef]
+				: ws.promptSourceRefs;
 
 			if (!ws.prompt.trim()) {
 				ws.setPrompt(referencePrompt);
@@ -538,6 +542,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				currentPrompt: ws.prompt,
 				referenceName: item.name,
 				referencePrompt,
+				sourceRefs,
 			});
 		},
 		[canOptimizePrompt, optimizePrompt, toast, ws],
@@ -547,10 +552,14 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			if (!canSubmitPromptOverride) return;
 			const referencePrompt = item.prompt.trim();
 			if (!referencePrompt) return;
+			ws.addPromptSource(item);
+			const sourceRefs = item.sourceRef
+				? [...ws.promptSourceRefs, item.sourceRef]
+				: ws.promptSourceRefs;
 
 			if (!ws.prompt.trim()) {
 				ws.setPrompt(referencePrompt);
-				await ws.submitGeneration({ prompt: referencePrompt });
+				await ws.submitGeneration({ prompt: referencePrompt, sourceRefs });
 				return;
 			}
 
@@ -563,6 +572,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			}
 			await ws.submitGeneration({
 				prompt: ws.prompt,
+				sourceRefs,
 				promptOptimization: {
 					capabilityId: taskType ?? "studio",
 					conversationTitle: promptOptimizeConversationTitle ?? undefined,
@@ -1561,6 +1571,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			value: ws.prompt,
 			placeholder: resolvedPromptPlaceholder,
 			onChange: ws.setPrompt,
+			onInsertItem: ws.addPromptSource,
 			className: promptEditorClassName,
 			slashItems: promptSlashItems,
 		})
@@ -1568,6 +1579,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		<PromptEditor
 			value={ws.prompt}
 			onChange={ws.setPrompt}
+			onInsertItem={ws.addPromptSource}
 			placeholder={resolvedPromptPlaceholder}
 			className={promptEditorClassName}
 			slashItems={promptSlashItems}

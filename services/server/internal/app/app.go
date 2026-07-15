@@ -58,6 +58,7 @@ type Config struct {
 	DisableWorkspaceWatcher  bool
 	WorkspaceWatcherInterval time.Duration
 	BillingPrices            corepricing.Table
+	RuntimeExtensions        []RuntimeExtension
 	agentRunner              agentRunner
 	documentOperationRunner  documentOperationRunner
 }
@@ -156,7 +157,6 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	jianyingDraftHandler := httphandlers.NewJianyingDraft(api.jianyingDraft)
 	workspaceEventHandler := httphandlers.NewWorkspaceEvents(api)
 	promptPackHandler := httphandlers.NewPromptPacks(api.promptPack)
-	licenseHandler := httphandlers.NewLicense(api.licenseClient)
 	promptTemplateHandler := httphandlers.NewPromptTemplates(api.promptTemplates)
 	promptLibraryHandler := httphandlers.NewPromptLibrary(api.promptLibrary)
 	skillHandler := httphandlers.NewSkills(api.skillRegistry)
@@ -223,7 +223,6 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		JianyingDraft:         jianyingDraftHandler,
 		WorkspaceEvents:       workspaceEventHandler,
 		PromptPacks:           promptPackHandler,
-		License:               licenseHandler,
 		PromptTemplates:       promptTemplateHandler,
 		PromptLibrary:         promptLibraryHandler,
 		Skills:                skillHandler,
@@ -241,6 +240,15 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		AgentRuntime:          runtimeHandler,
 		AgentSessions:         sessionHandler,
 	})
+	for _, extension := range api.runtimeExtensions {
+		if extension == nil {
+			continue
+		}
+		extension.RegisterRoutes(router, RuntimeExtensionServices{
+			PromptPacks:  api.promptPack,
+			WorkspaceDir: api.workspaceState.Dir(),
+		})
+	}
 	registerDevelopmentDocs(router)
 
 	static := httphandlers.NewSPA(staticFS)

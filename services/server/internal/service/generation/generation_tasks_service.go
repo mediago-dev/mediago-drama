@@ -834,6 +834,9 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 	if task.ReferenceAssetIDs == nil {
 		task.ReferenceAssetIDs = []string{}
 	}
+	if task.SourceRefs == nil {
+		task.SourceRefs = []ContentSourceRef{}
+	}
 	if task.Params == nil {
 		task.Params = map[string]any{}
 	}
@@ -842,6 +845,10 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 	}
 
 	paramsJSON, err := json.Marshal(task.Params)
+	if err != nil {
+		return false, err
+	}
+	sourceRefsJSON, err := json.Marshal(task.SourceRefs)
 	if err != nil {
 		return false, err
 	}
@@ -898,6 +905,7 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 		ModelID:         task.ModelID,
 		Model:           task.Model,
 		Prompt:          task.Prompt,
+		SourceRefsJSON:  string(sourceRefsJSON),
 		ParamsJSON:      string(paramsJSON),
 		Status:          strings.ToLower(strings.TrimSpace(task.Status)),
 		Message:         task.Message,
@@ -1393,6 +1401,9 @@ func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRec
 	}
 
 	if err := decodeGenerationTaskJSON(model.ParamsJSON, &task.Params); err != nil {
+		return GenerationTaskRecord{}, err
+	}
+	if err := decodeGenerationTaskJSON(model.SourceRefsJSON, &task.SourceRefs); err != nil {
 		return GenerationTaskRecord{}, err
 	}
 	task.ReferenceURLs, task.ReferenceAssetIDs = generationTaskReferencesFromModels(model.References)

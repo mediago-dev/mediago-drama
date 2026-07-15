@@ -21,6 +21,9 @@ const rendererDistDir = join(workspaceDir, "dist");
 const electronDistDir = join(workspaceDir, "electron", "dist");
 const electronAppDir = join(workspaceDir, "electron", "app");
 const electronTargetPlatform = process.env.MEDIAGO_ELECTRON_TARGET_PLATFORM?.trim();
+const buildsMacOS = electronTargetPlatform
+	? electronTargetPlatform.startsWith("darwin-")
+	: process.platform === "darwin";
 
 function main(): void {
 	ensureDirectory(rendererDistDir, "missing renderer build output");
@@ -80,7 +83,7 @@ function main(): void {
 				// ID signing; MEDIAGO_MAC_NOTARIZE=1 (set only when the Apple notary secrets
 				// also exist) additionally enables notarization — signed-but-not-notarized
 				// builds must not fail on missing notary credentials.
-				...(electronTargetPlatform === "darwin-arm64"
+				...(buildsMacOS
 					? process.env.MEDIAGO_MAC_SIGN === "1"
 						? { hardenedRuntime: true, notarize: process.env.MEDIAGO_MAC_NOTARIZE === "1" }
 						: { identity: null, hardenedRuntime: false }

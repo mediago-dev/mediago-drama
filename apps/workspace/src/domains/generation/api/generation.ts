@@ -7,6 +7,7 @@ import type {
 	CreateGenerationConversationRequest as GeneratedCreateGenerationConversationRequest,
 	GenerationAsset as GeneratedGenerationAsset,
 	GenerationConversationRecord,
+	ContentSourceRef,
 	GenerationConversationsResponse as GeneratedGenerationConversationsResponse,
 	GenerationMessageRequest as GeneratedGenerationMessageRequest,
 	GenerationMessageResponse as GeneratedGenerationMessageResponse,
@@ -50,6 +51,7 @@ import type {
 } from "@/api/types/generation";
 
 export type GenerationKind = Kind;
+export type GenerationContentSourceRef = ContentSourceRef;
 export type GenerationProvider = string;
 export type GenerationProviderInfo = ProviderInfo;
 export type GenerationProviderType = ProviderType;

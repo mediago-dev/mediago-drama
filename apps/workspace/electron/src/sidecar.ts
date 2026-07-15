@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { agentsDir, resourceRoot, serverBinaryPath, toolsDir } from "./paths.js";
+import { verifySidecarIntegrity } from "./sidecar-integrity.js";
 
 let child: ChildProcessWithoutNullStreams | null = null;
 
@@ -13,6 +14,7 @@ export const startServerSidecar = (): void => {
 	if (!existsSync(serverPath)) {
 		throw new Error(`missing server sidecar: ${serverPath}`);
 	}
+	verifySidecarIntegrity(serverPath, resourceRoot());
 	const platformConfig = packagedModelPlatformConfig();
 	const localCLIConfig = packagedLocalCLIConfig();
 

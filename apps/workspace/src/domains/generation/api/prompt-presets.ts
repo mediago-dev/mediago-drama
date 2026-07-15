@@ -16,6 +16,10 @@ export interface PromptPreset {
 	category: PromptPresetCategory;
 	type?: PromptPresetType;
 	prompt: string;
+	packId?: string;
+	releaseId?: string;
+	sourcePackageId?: string;
+	sourceReleaseId?: string;
 	source: PromptPresetSource;
 	builtin?: boolean;
 	overridden?: boolean;
@@ -33,6 +37,7 @@ interface PromptPresetsResponse {
 }
 
 export type PromptPresetInput = Pick<PromptPreset, "id" | "name" | "category" | "prompt"> &
+	Partial<Pick<PromptPreset, "packId">> &
 	Partial<Pick<PromptPreset, "type">>;
 
 const promptPresetResource = createResource<

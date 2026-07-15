@@ -65,8 +65,9 @@ const createWindow = async () => {
 		webPreferences: {
 			preload: preloadPath(),
 			contextIsolation: true,
+			devTools: Boolean(rendererUrl),
 			nodeIntegration: false,
-			sandbox: false,
+			sandbox: true,
 		},
 	});
 

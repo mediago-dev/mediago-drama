@@ -1,12 +1,12 @@
 import {
 	BookOpenCheck,
-	CheckCircle2,
+	Boxes,
 	ChevronDown,
 	Download,
 	Library,
 	Loader2,
 	PackageOpen,
-	Power,
+	PackagePlus,
 	RotateCcw,
 	Settings2,
 	Trash2,
@@ -17,12 +17,12 @@ import { useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import {
 	type PromptPack,
+	createPromptPack,
 	exportPromptPack,
 	importPromptPackFile,
 	listPromptPacks,
 	promptPacksKey,
 	resetPromptPack,
-	setPromptPackEnabled,
 	uninstallPromptPack,
 } from "@/domains/settings/api/packs";
 import { isPromptPackContentCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
@@ -41,18 +41,25 @@ import { useDesktopWindowDrag } from "@/domains/workspace/lib/desktop-window-dra
 import { useToast } from "@/hooks/useToast";
 import { cn } from "@/shared/lib/utils";
 import { PromptPackActionsSlotProvider } from "./PromptPackActionsSlot";
+import {
+	canExportPromptPackAsV1,
+	PromptPackAccountButton,
+	PromptPackExtension,
+} from "./PromptPackExtension";
+import { PromptPackWorkspace } from "./PromptPackWorkspace";
 import { PromptLibraryEditorPanel } from "./PromptLibraryEditorPanel";
 import { SkillsEditorPanel } from "./SkillsEditorPanel";
 
-type PromptPackSection = "skills" | "library";
+type PromptPackSection = "skills" | "library" | "packs";
 
 const promptPackSections: Array<{
 	icon: React.ComponentType<{ className?: string }>;
 	label: string;
 	value: PromptPackSection;
 }> = [
-	{ value: "skills", label: "技能", icon: BookOpenCheck },
-	{ value: "library", label: "提示词库", icon: Library },
+	{ value: "skills", label: "全部技能", icon: BookOpenCheck },
+	{ value: "library", label: "全部提示词", icon: Library },
+	{ value: "packs", label: "词包", icon: Boxes },
 ];
 
 export const PromptPacksPanel: React.FC = () => {
@@ -64,11 +71,16 @@ export const PromptPacksPanel: React.FC = () => {
 		mutate: mutatePacks,
 	} = useSWR(promptPacksKey, listPromptPacks);
 	const [activeSection, setActiveSection] = useState<PromptPackSection>("skills");
+	const [selectedPackID, setSelectedPackID] = useState<string>();
 	const [busyPackId, setBusyPackId] = useState<string>();
 	const [exportingPackId, setExportingPackId] = useState<string>();
 	const [resettingPackId, setResettingPackId] = useState<string>();
 	const [isImporting, setIsImporting] = useState(false);
 	const [manageOpen, setManageOpen] = useState(false);
+	const [createOpen, setCreateOpen] = useState(false);
+	const [createBusy, setCreateBusy] = useState(false);
+	const [createName, setCreateName] = useState("");
+	const [createAuthor, setCreateAuthor] = useState("");
 	const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
 	const importInputRef = useRef<HTMLInputElement | null>(null);
 	const startWindowDrag = useDesktopWindowDrag();
@@ -94,6 +106,30 @@ export const PromptPacksPanel: React.FC = () => {
 		importInputRef.current?.click();
 	};
 
+	const createLocalPack = async () => {
+		if (!createName.trim()) return;
+		setCreateBusy(true);
+		try {
+			const pack = await createPromptPack({
+				id: createLocalPromptPackID(),
+				name: createName.trim(),
+				author: createAuthor.trim(),
+				version: "1.0.0",
+			});
+			await refreshPromptData();
+			setCreateOpen(false);
+			setActiveSection("packs");
+			setSelectedPackID(pack.id);
+			setCreateName("");
+			setCreateAuthor("");
+			toast.success("提示词包已创建", { description: pack.name });
+		} catch (error) {
+			toast.error("创建失败", { description: errorMessage(error) });
+		} finally {
+			setCreateBusy(false);
+		}
+	};
+
 	const importPackFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
 		const file = event.currentTarget.files?.[0];
 		event.currentTarget.value = "";
@@ -110,27 +146,15 @@ export const PromptPacksPanel: React.FC = () => {
 		}
 	};
 
-	const togglePack = async (pack: PromptPack) => {
-		if (pack.source === "default") return; // default pack is always enabled
-		setBusyPackId(pack.id);
-		try {
-			const updated = await setPromptPackEnabled(pack.id, !pack.enabled);
-			await refreshPromptData();
-			toast.success(updated.enabled ? "已启用提示词包" : "已停用提示词包", {
-				description: updated.name,
-			});
-		} catch (error) {
-			toast.error("更新失败", { description: errorMessage(error) });
-		} finally {
-			setBusyPackId(undefined);
-		}
-	};
-
 	const removePack = async (pack: PromptPack) => {
 		setBusyPackId(pack.id);
 		try {
 			await uninstallPromptPack(pack.id);
-			await refreshPromptData();
+			setSelectedPackID((current) => (current === pack.id ? undefined : current));
+			await mutatePacks((current) => current?.filter((candidate) => candidate.id !== pack.id), {
+				revalidate: false,
+			});
+			await Promise.allSettled([mutatePacks(), mutate(isPromptPackContentCacheKey)]);
 			toast.success("提示词包已卸载", { description: pack.name });
 			return true;
 		} catch (error) {
@@ -195,10 +219,11 @@ export const PromptPacksPanel: React.FC = () => {
 						</p>
 					</div>
 					<div className="flex shrink-0 items-center gap-2" data-desktop-no-drag>
+						<PromptPackAccountButton />
 						<input
 							ref={importInputRef}
 							type="file"
-							accept=".mgpack,.mgpackpro"
+							accept=".mgpack"
 							className="sr-only"
 							aria-label="导入提示词包文件"
 							onChange={(event) => void importPackFile(event)}
@@ -251,7 +276,6 @@ export const PromptPacksPanel: React.FC = () => {
 													onExport={() => void exportPack(pack)}
 													onRemove={() => confirmRemovePack(pack)}
 													onReset={() => confirmResetPack(pack)}
-													onToggle={() => void togglePack(pack)}
 												/>
 											))
 										)}
@@ -270,7 +294,7 @@ export const PromptPacksPanel: React.FC = () => {
 			>
 				<PromptPackActionsSlotProvider slotEl={actionsSlot}>
 					<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-2">
-						<TabsList className="grid w-full max-w-sm grid-cols-2 sm:w-64">
+						<TabsList className="grid w-full max-w-md grid-cols-3 sm:w-96">
 							{promptPackSections.map((section) => {
 								const Icon = section.icon;
 								return (
@@ -292,6 +316,69 @@ export const PromptPacksPanel: React.FC = () => {
 					<TabsContent value="library" className="mt-0 min-h-0 flex-1 overflow-hidden">
 						<PromptLibraryEditorPanel />
 					</TabsContent>
+					<TabsContent value="packs" className="mt-0 min-h-0 flex-1 overflow-hidden">
+						<PromptPackWorkspace
+							listActions={
+								<Popover open={createOpen} onOpenChange={setCreateOpen}>
+									<PopoverTrigger asChild>
+										<Button type="button" size="sm" variant="outline">
+											<PackagePlus className="size-4" />
+											<span>新建词包</span>
+										</Button>
+									</PopoverTrigger>
+									<PopoverContent
+										align="end"
+										className="w-[min(24rem,calc(100vw-2rem))] space-y-3 p-4"
+									>
+										<div>
+											<p className="text-sm font-medium text-foreground">创建本地提示词包</p>
+											<p className="mt-1 text-xs text-muted-foreground">
+												新建提示词或 Skill 时可选择保存到该包。
+											</p>
+										</div>
+										<label className="block space-y-1.5 text-xs font-medium text-foreground">
+											<span>名称</span>
+											<input
+												className={packInputClassName}
+												value={createName}
+												onChange={(event) => setCreateName(event.target.value)}
+											/>
+										</label>
+										<label className="block space-y-1.5 text-xs font-medium text-foreground">
+											<span>作者</span>
+											<input
+												className={packInputClassName}
+												value={createAuthor}
+												onChange={(event) => setCreateAuthor(event.target.value)}
+											/>
+										</label>
+										<div className="flex justify-end gap-2">
+											<Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>
+												取消
+											</Button>
+											<Button
+												type="button"
+												disabled={createBusy || !createName.trim()}
+												onClick={() => void createLocalPack()}
+											>
+												{createBusy && <Loader2 className="size-4 animate-spin" />}
+												<span>创建并编辑</span>
+											</Button>
+										</div>
+									</PopoverContent>
+								</Popover>
+							}
+							onChanged={refreshPromptData}
+							onSelectedPackChange={setSelectedPackID}
+							packs={packs}
+							renderPackActions={(pack) =>
+								pack.source !== "default" ? (
+									<PromptPackExtension pack={pack} onPublished={refreshPromptData} />
+								) : null
+							}
+							selectedPackID={selectedPackID}
+						/>
+					</TabsContent>
 				</PromptPackActionsSlotProvider>
 			</Tabs>
 		</section>
@@ -304,25 +391,15 @@ const PromptPackPill: React.FC<{
 	onExport: () => void;
 	onRemove: () => void;
 	onReset: () => void;
-	onToggle: () => void;
 	pack: PromptPack;
 	resetting: boolean;
-}> = ({ busy, exporting, onExport, onRemove, onReset, onToggle, pack, resetting }) => {
-	const isDefault = pack.source === "default";
-	const enabled = pack.enabled;
+}> = ({ busy, exporting, onExport, onRemove, onReset, pack, resetting }) => {
+	const isLocal = pack.source === "local";
 	return (
-		<div
-			className={cn(
-				"grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border bg-ide-toolbar px-2 py-1.5",
-				!enabled && "opacity-70",
-			)}
-		>
+		<div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border bg-ide-toolbar px-2 py-1.5">
 			<div className="min-w-0">
 				<div className="flex min-w-0 items-center gap-1.5">
 					<span className="max-w-44 truncate text-xs font-medium text-foreground">{pack.name}</span>
-					<Badge variant={enabled ? "secondary" : "outline"} className="shrink-0">
-						{enabled ? "已启用" : "已停用"}
-					</Badge>
 					<Badge variant="outline" className="shrink-0">
 						{sourceLabel(pack.source)}
 					</Badge>
@@ -335,9 +412,9 @@ const PromptPackPill: React.FC<{
 				<div className="flex shrink-0 items-center gap-1 rounded-md bg-background/50 p-0.5">
 					<PromptPackActionButton
 						ariaLabel="恢复提示词包默认"
-						disabled={busy || resetting}
+						disabled={busy || resetting || isLocal}
 						onClick={onReset}
-						tooltip={resetting ? "恢复中" : "恢复默认"}
+						tooltip={isLocal ? "本地创作包没有安装默认值" : resetting ? "恢复中" : "恢复默认"}
 					>
 						{resetting ? (
 							<Loader2 className="size-4 animate-spin" />
@@ -345,21 +422,7 @@ const PromptPackPill: React.FC<{
 							<RotateCcw className="size-4" />
 						)}
 					</PromptPackActionButton>
-					<PromptPackActionButton
-						ariaLabel={enabled ? "停用提示词包" : "启用提示词包"}
-						disabled={busy || resetting || isDefault}
-						onClick={onToggle}
-						tooltip={isDefault ? "默认包始终启用" : enabled ? "停用" : "启用"}
-					>
-						{busy ? (
-							<Loader2 className="size-4 animate-spin" />
-						) : enabled ? (
-							<CheckCircle2 className="size-4" />
-						) : (
-							<Power className="size-4" />
-						)}
-					</PromptPackActionButton>
-					{pack.source !== "pro" ? (
+					{canExportPromptPackAsV1(pack) && !pack.releaseId ? (
 						<PromptPackActionButton
 							ariaLabel="导出提示词包"
 							disabled={exporting || resetting}
@@ -373,7 +436,7 @@ const PromptPackPill: React.FC<{
 							)}
 						</PromptPackActionButton>
 					) : null}
-					{pack.source === "imported" || pack.source === "pro" ? (
+					{pack.source === "imported" || pack.source === "local" ? (
 						<PromptPackActionButton
 							ariaLabel="卸载提示词包"
 							className="hover:bg-error-surface hover:text-error-foreground"
@@ -423,10 +486,15 @@ const sourceLabel = (source: PromptPack["source"]) => {
 			return "默认包";
 		case "imported":
 			return "已导入";
-		case "pro":
-			return "Pro 已授权";
+		case "local":
+			return "本地创作";
 	}
 };
+
+const packInputClassName =
+	"h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+const createLocalPromptPackID = () => `local.${globalThis.crypto.randomUUID()}`;
 
 const downloadBlob = (blob: Blob, fileName: string) => {
 	const url = URL.createObjectURL(blob);

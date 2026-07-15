@@ -46,7 +46,6 @@ import {
 import { useToast } from "@/hooks/useToast";
 import { projectSettingsGeneralTab, type SettingsTabValue } from "@/lib/stores/settings";
 import { openExternalUrl } from "@/shared/desktop/actions";
-import { isProEdition } from "@/shared/lib/edition";
 import { cn } from "@/shared/lib/utils";
 import { debugTabs, type DebugTabValue } from "@/pages/Debug";
 import { GenerationNotificationButton } from "./GenerationNotificationButton";
@@ -630,10 +629,6 @@ const settingsNavGroups = (activeAgentBackendId = "codex"): SettingsNavGroup[] =
 	}
 	generationItems.push({ value: "codex-skills", label: "Codex 技能", icon: Blocks });
 	generationItems.push(debugNavItem("instructions"), debugNavItem("prompt-packs"));
-	if (isProEdition()) {
-		generationItems.push(debugNavItem("license"));
-	}
-
 	return [
 		{
 			label: "工作区",

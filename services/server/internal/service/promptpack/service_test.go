@@ -2,8 +2,6 @@ package promptpack
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"errors"
 	"os"
 	"path/filepath"
@@ -13,10 +11,8 @@ import (
 	"github.com/glebarez/sqlite"
 	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
 	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/codec"
-	instructionpro "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/pro"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/service/license"
 	"gorm.io/gorm"
 )
 
@@ -75,6 +71,356 @@ func TestServiceKeepsDefaultPackAlwaysEnabled(t *testing.T) {
 	}
 	if len(after) != len(before) {
 		t.Fatalf("entries after disabling default = %d, want unchanged %d", len(after), len(before))
+	}
+}
+
+func TestServiceCreatesLocalAuthoringPackAndExportsV1(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	created, err := store.CreatePack(ctx, Pack{
+		ID:      "company.story-prompts",
+		Name:    "Story Prompts",
+		Version: "1.0.0",
+		Author:  "Creator",
+	})
+	if err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+	if created.Source != packSourceLocal || !created.Enabled {
+		t.Fatalf("created = %#v, want enabled local pack", created)
+	}
+	entry, err := store.CreateEntry(ctx, instructionpack.KindPrompt, Entry{
+		PackID: "company.story-prompts",
+		Slug:   "red-dress",
+		Name:   "Red Dress",
+		Body:   "A red silk dress",
+	})
+	if err != nil {
+		t.Fatalf("CreateEntry() error = %v", err)
+	}
+	if entry.PackID != created.ID {
+		t.Fatalf("entry.PackID = %q, want %q", entry.PackID, created.ID)
+	}
+	exported, err := store.ExportPack(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("ExportPack() error = %v", err)
+	}
+	if len(exported.Data) == 0 || exported.Pack.ID != created.ID {
+		t.Fatalf("exported = %#v, want encoded local pack", exported)
+	}
+	recorded, err := store.RecordSubmittedRelease(ctx, created.ID, "release-1", "1.0.0")
+	if err != nil {
+		t.Fatalf("RecordSubmittedRelease() error = %v", err)
+	}
+	if recorded.ReleaseID != "release-1" || recorded.Version != "1.0.0" {
+		t.Fatalf("recorded = %#v, want latest release provenance", recorded)
+	}
+}
+
+func TestServiceLinksEntriesIntoLocalAuthoringPackAndTracksSources(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	for _, pack := range []Pack{
+		{ID: "company.source-pack", Name: "Source Pack", Version: "1.0.0"},
+		{ID: "company.target-pack", Name: "Target Pack", Version: "1.0.0"},
+	} {
+		if _, err := store.CreatePack(ctx, pack); err != nil {
+			t.Fatalf("CreatePack(%s) error = %v", pack.ID, err)
+		}
+	}
+	if err := store.repo.UpsertCategory(domain.PackCategoryModel{
+		PackID: "company.source-pack",
+		ID:     "story",
+		Label:  "Story",
+		Order:  7,
+		Source: entrySourceUser,
+	}); err != nil {
+		t.Fatalf("UpsertCategory() error = %v", err)
+	}
+	if _, err := store.CreateEntry(ctx, instructionpack.KindSkill, Entry{
+		PackID:      "company.source-pack",
+		Slug:        "story-helper",
+		Name:        "story-helper",
+		Title:       "Story Helper",
+		Description: "Helps with stories",
+		Body:        "Write a story.",
+	}); err != nil {
+		t.Fatalf("CreateEntry(skill) error = %v", err)
+	}
+	if _, err := store.CreateEntry(ctx, instructionpack.KindPrompt, Entry{
+		PackID: "company.source-pack",
+		Slug:   "red-dress",
+		Name:   "Red Dress",
+		Body:   "A red silk dress.",
+		Metadata: map[string]any{
+			"category": "story",
+			"type":     "image",
+		},
+	}); err != nil {
+		t.Fatalf("CreateEntry(prompt) error = %v", err)
+	}
+
+	references := []EntryReference{
+		{PackID: "company.source-pack", Kind: instructionpack.KindSkill, Slug: "story-helper"},
+		{PackID: "company.source-pack", Kind: instructionpack.KindPrompt, Slug: "red-dress"},
+	}
+	linked, err := store.CopyEntries(ctx, "company.target-pack", references)
+	if err != nil {
+		t.Fatalf("CopyEntries() error = %v", err)
+	}
+	if len(linked) != 2 {
+		t.Fatalf("len(linked) = %d, want 2", len(linked))
+	}
+	if _, ok := findEntry(linked, "story-helper-copy"); !ok {
+		t.Fatalf("linked = %#v, want materialized story-helper reference", linked)
+	}
+	promptLink, ok := findEntry(linked, "red-dress-copy")
+	if !ok {
+		t.Fatalf("linked = %#v, want materialized red-dress reference", linked)
+	}
+	if !promptLink.Linked || promptLink.ReferenceSlug != "red-dress" || !promptLink.ReferenceEditable {
+		t.Fatalf("prompt link = %#v, want editable source reference", promptLink)
+	}
+	if promptLink.Metadata[entryMetadataCopiedFromPack] != "company.source-pack" {
+		t.Fatalf("link metadata = %#v, want source pack provenance", promptLink.Metadata)
+	}
+	if _, err := store.GetEntry(ctx, instructionpack.KindPrompt, "red-dress"); err != nil {
+		t.Fatalf("source prompt moved or removed: %v", err)
+	}
+	category, err := store.repo.GetCategory("company.target-pack", "story")
+	if err != nil {
+		t.Fatalf("target category missing: %v", err)
+	}
+	if category.Label != "Story" || category.Order != 7 || category.Source != entrySourceUser {
+		t.Fatalf("target category = %#v, want copied user category", category)
+	}
+
+	if _, err := store.CopyEntries(ctx, "company.target-pack", references[:1]); !errors.Is(err, ErrEntryExists) {
+		t.Fatalf("CopyEntries() duplicate error = %v, want ErrEntryExists", err)
+	}
+	contents, err := store.GetPackContents(ctx, "company.target-pack")
+	if err != nil {
+		t.Fatalf("GetPackContents() error = %v", err)
+	}
+	if len(contents.Entries) != 2 {
+		t.Fatalf("target entries = %#v, want 2 linked entries", contents.Entries)
+	}
+
+	if _, err := store.SaveEntry(ctx, instructionpack.KindPrompt, "red-dress", Entry{
+		Slug: "red-dress",
+		Name: "Red Dress Updated",
+		Body: "A crimson silk dress.",
+		Metadata: map[string]any{
+			"category": "story",
+			"type":     "image",
+		},
+	}); err != nil {
+		t.Fatalf("SaveEntry(source) error = %v", err)
+	}
+	contents, err = store.GetPackContents(ctx, "company.target-pack")
+	if err != nil {
+		t.Fatalf("GetPackContents() after source update error = %v", err)
+	}
+	promptLink, ok = findEntry(contents.Entries, "red-dress-copy")
+	if !ok || promptLink.Name != "Red Dress Updated" || !strings.Contains(promptLink.Body, "crimson") {
+		t.Fatalf("linked prompt = %#v, want current source content", promptLink)
+	}
+
+	exported, err := store.ExportPack(ctx, "company.target-pack")
+	if err != nil {
+		t.Fatalf("ExportPack() error = %v", err)
+	}
+	archive, err := codec.Decode(exported.Data)
+	if err != nil {
+		t.Fatalf("Decode(exported) error = %v", err)
+	}
+	bundle, err := instructionpack.ParseZip(ctx, archive)
+	if err != nil {
+		t.Fatalf("ParseZip(exported) error = %v", err)
+	}
+	exportedPrompt, ok := findPackEntry(bundle.Entries, "red-dress-copy")
+	if !ok || !strings.Contains(exportedPrompt.Body, "crimson") {
+		t.Fatalf("exported prompt = %#v, want resolved source snapshot", exportedPrompt)
+	}
+	if _, exists := exportedPrompt.Metadata[entryMetadataCopiedFrom]; exists {
+		t.Fatalf("exported prompt metadata = %#v, want no draft reference fields", exportedPrompt.Metadata)
+	}
+	if _, exists := exportedPrompt.Metadata[entryMetadataLinked]; exists {
+		t.Fatalf("exported prompt metadata = %#v, want no linked marker", exportedPrompt.Metadata)
+	}
+
+	detached, err := store.DetachEntry(ctx, "company.target-pack", promptLink.ID)
+	if err != nil {
+		t.Fatalf("DetachEntry() error = %v", err)
+	}
+	if detached.Linked || detached.ReferenceEntryID != "" {
+		t.Fatalf("detached = %#v, want package-owned entry", detached)
+	}
+	if _, err := store.SaveEntry(ctx, instructionpack.KindPrompt, "red-dress", Entry{
+		Slug:     "red-dress",
+		Name:     "Red Dress Newer",
+		Body:     "A blue dress.",
+		Metadata: map[string]any{"category": "story"},
+	}); err != nil {
+		t.Fatalf("SaveEntry(source after detach) error = %v", err)
+	}
+	contents, err = store.GetPackContents(ctx, "company.target-pack")
+	if err != nil {
+		t.Fatalf("GetPackContents() after detach error = %v", err)
+	}
+	detached, ok = findEntry(contents.Entries, "red-dress-copy")
+	if !ok || !strings.Contains(detached.Body, "crimson") || strings.Contains(detached.Body, "blue") {
+		t.Fatalf("detached prompt = %#v, want frozen package-specific content", detached)
+	}
+}
+
+func TestServiceMigratesOnlyUntouchedLegacyCopiesToLinks(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	if _, err := store.CreatePack(ctx, Pack{ID: "company.source-pack", Name: "Source"}); err != nil {
+		t.Fatalf("CreatePack(source) error = %v", err)
+	}
+	if _, err := store.CreatePack(ctx, Pack{ID: "company.target-pack", Name: "Target"}); err != nil {
+		t.Fatalf("CreatePack(target) error = %v", err)
+	}
+	source, err := store.CreateEntry(ctx, instructionpack.KindPrompt, Entry{
+		PackID: "company.source-pack",
+		Slug:   "source-prompt",
+		Name:   "Source Prompt",
+		Body:   "Original body",
+		Metadata: map[string]any{
+			"category": "extra",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateEntry(source) error = %v", err)
+	}
+	legacyMetadata := cloneMetadata(source.Metadata)
+	legacyMetadata[entryMetadataCopiedFrom] = source.ID
+	legacyMetadata[entryMetadataCopiedFromPack] = source.PackID
+	for _, legacy := range []Entry{
+		{
+			ID:       instructionpack.EntryID("company.target-pack", instructionpack.KindPrompt, "untouched-copy"),
+			PackID:   "company.target-pack",
+			Kind:     instructionpack.KindPrompt,
+			Slug:     "untouched-copy",
+			Name:     source.Name,
+			Body:     source.Body,
+			Metadata: cloneMetadata(legacyMetadata),
+			Source:   entrySourceUser,
+		},
+		{
+			ID:       instructionpack.EntryID("company.target-pack", instructionpack.KindPrompt, "edited-copy"),
+			PackID:   "company.target-pack",
+			Kind:     instructionpack.KindPrompt,
+			Slug:     "edited-copy",
+			Name:     "Edited Prompt",
+			Body:     "Locally edited body",
+			Metadata: cloneMetadata(legacyMetadata),
+			Source:   entrySourceUser,
+		},
+	} {
+		if err := store.repo.UpsertEntry(entryModelFromEntry(legacy)); err != nil {
+			t.Fatalf("UpsertEntry(%s) error = %v", legacy.Slug, err)
+		}
+	}
+
+	if err := store.migrateCopiedEntriesToLinks(); err != nil {
+		t.Fatalf("migrateCopiedEntriesToLinks() error = %v", err)
+	}
+	untouchedModel, err := store.repo.GetEntry(instructionpack.EntryID(
+		"company.target-pack",
+		instructionpack.KindPrompt,
+		"untouched-copy",
+	))
+	if err != nil {
+		t.Fatalf("GetEntry(untouched) error = %v", err)
+	}
+	untouched := entryFromModel(untouchedModel)
+	if !untouched.Linked || untouched.ReferenceEntryID != source.ID {
+		t.Fatalf("untouched = %#v, want upgraded linked reference", untouched)
+	}
+	editedModel, err := store.repo.GetEntry(instructionpack.EntryID(
+		"company.target-pack",
+		instructionpack.KindPrompt,
+		"edited-copy",
+	))
+	if err != nil {
+		t.Fatalf("GetEntry(edited) error = %v", err)
+	}
+	edited := entryFromModel(editedModel)
+	if edited.Linked || edited.ReferenceEntryID != "" || !strings.Contains(edited.Body, "Locally edited") {
+		t.Fatalf("edited = %#v, want preserved independent content", edited)
+	}
+}
+
+func TestServiceRejectsCopyIntoNonLocalPack(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	if _, err := store.ListEntries(ctx, instructionpack.KindSkill); err != nil {
+		t.Fatalf("ListEntries() error = %v", err)
+	}
+	_, err := store.CopyEntries(ctx, DefaultPackID, []EntryReference{
+		{PackID: DefaultPackID, Kind: instructionpack.KindSkill, Slug: "character-writer"},
+	})
+	if !errors.Is(err, ErrInvalidPack) {
+		t.Fatalf("CopyEntries(default) error = %v, want ErrInvalidPack for same target", err)
+	}
+
+	if _, err := store.CreatePack(ctx, Pack{ID: "company.source-pack", Name: "Source"}); err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+	if _, err := store.CreateEntry(ctx, instructionpack.KindSkill, Entry{
+		PackID: "company.source-pack",
+		Slug:   "source-skill",
+		Name:   "source-skill",
+		Body:   "Source body",
+	}); err != nil {
+		t.Fatalf("CreateEntry() error = %v", err)
+	}
+	_, err = store.CopyEntries(ctx, DefaultPackID, []EntryReference{
+		{PackID: "company.source-pack", Kind: instructionpack.KindSkill, Slug: "source-skill"},
+	})
+	if !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("CopyEntries(default) error = %v, want ErrPackReadonly", err)
+	}
+}
+
+func TestServiceFormalPackOnlyAllowsInternalSnapshotExport(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	raw, err := os.ReadFile(writeTestMGPack(t))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	installed, err := store.InstallDataWithProvenance(ctx, "test.mgpack", raw, InstallProvenance{
+		PackageID: "com.example.test",
+		ReleaseID: "release-1",
+		Version:   "1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("InstallDataWithProvenance() error = %v", err)
+	}
+	if _, err := store.ExportPack(ctx, installed.ID); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("ExportPack() error = %v, want ErrPackReadonly", err)
+	}
+	if _, err := store.ExportPackSnapshot(ctx, installed.ID); err != nil {
+		t.Fatalf("ExportPackSnapshot() error = %v", err)
+	}
+	versioned, err := store.ExportPackSnapshotAtVersion(ctx, installed.ID, "1.0.7")
+	if err != nil {
+		t.Fatalf("ExportPackSnapshotAtVersion() error = %v", err)
+	}
+	archive, err := codec.Decode(versioned.Data)
+	if err != nil {
+		t.Fatalf("Decode(versioned snapshot) error = %v", err)
+	}
+	bundle, err := instructionpack.ParseZip(ctx, archive)
+	if err != nil {
+		t.Fatalf("ParseZip(versioned snapshot) error = %v", err)
+	}
+	if bundle.Manifest.Version != "1.0.7" || versioned.Pack.Version != "1.0.7" {
+		t.Fatalf("versioned snapshot = %#v / %#v, want version 1.0.7", bundle.Manifest, versioned.Pack)
 	}
 }
 
@@ -142,20 +488,19 @@ func TestServiceInstallsEncodedPackAndUninstalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntries() error = %v", err)
 	}
-	if entry, ok := findEntry(entries, "test-skill"); !ok || entry.Source != entrySourcePack {
+	entry, ok := findEntry(entries, "test-skill")
+	if !ok || entry.Source != entrySourcePack {
 		t.Fatalf("entries = %#v, want imported test-skill", entries)
 	}
-	if _, err := store.SaveEntry(ctx, instructionpack.KindSkill, "test-skill", Entry{
-		Slug:        "test-skill",
-		Name:        "test-skill",
+	if _, err := store.SavePackEntry(ctx, installed.ID, entry.ID, EntryUpdate{
 		Description: "Changed",
 		Body:        "Changed body",
 	}); err != nil {
-		t.Fatalf("SaveEntry(imported skill) error = %v", err)
+		t.Fatalf("SavePackEntry(imported skill) error = %v", err)
 	}
-	reset, err := store.ResetEntry(ctx, instructionpack.KindSkill, "test-skill")
+	reset, err := store.ResetPackEntry(ctx, installed.ID, entry.ID)
 	if err != nil {
-		t.Fatalf("ResetEntry(imported skill) error = %v", err)
+		t.Fatalf("ResetPackEntry(imported skill) error = %v", err)
 	}
 	if reset.Source != entrySourcePack || reset.Description != "Test skill" || !strings.Contains(reset.Body, "Use this for tests.") {
 		t.Fatalf("reset = %#v, want imported pack default", reset)
@@ -184,205 +529,62 @@ func TestServiceInstallsEncodedPackAndUninstalls(t *testing.T) {
 	}
 }
 
-func TestServiceRejectsProPackWithoutLicense(t *testing.T) {
+func TestServiceSavePackEntryTargetsExactDuplicateSlug(t *testing.T) {
 	ctx := context.Background()
 	store := newTestService(t)
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatalf("rand.Read() error = %v", err)
-	}
-	signer, _ := newTestProSigner(t)
-	data, err := writeTestMGPackPro(t, key, signer, "1.0.0")
-	if err != nil {
-		t.Fatalf("writeTestMGPackPro() error = %v", err)
-	}
-	_, err = store.InstallData(ctx, "test.mgpackpro", data)
-	if !errors.Is(err, ErrPackLicenseRequired) {
-		t.Fatalf("InstallData() error = %v, want ErrPackLicenseRequired", err)
-	}
-}
-
-func TestServiceInstallsProPackWithLicense(t *testing.T) {
-	ctx := context.Background()
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatalf("rand.Read() error = %v", err)
-	}
-	signer, publisherKey := newTestProSigner(t)
-	data, err := writeTestMGPackPro(t, key, signer, "1.0.0")
-	if err != nil {
-		t.Fatalf("writeTestMGPackPro() error = %v", err)
-	}
-	store := newTestServiceWithLicense(
-		t,
-		newTestLicenseProvider(
-			map[string]struct{}{license.DefaultProEntitlement(): {}},
-			map[string][]byte{
-				"default": key,
-			},
-			map[string][]byte{
-				signer.KeyID: publisherKey,
-			},
-		),
-	)
-	installed, err := store.InstallData(ctx, "test.mgpackpro", data)
-	if err != nil {
-		t.Fatalf("InstallData() error = %v", err)
-	}
-	if installed.Source != packSourcePro {
-		t.Fatalf("installed source = %q, want %q", installed.Source, packSourcePro)
-	}
-	packs, err := store.ListPacks(ctx)
-	if err != nil {
-		t.Fatalf("ListPacks() error = %v", err)
-	}
-	found := false
-	for _, pack := range packs {
-		if pack.ID == installed.ID {
-			found = true
-			if pack.Source != packSourcePro {
-				t.Fatalf("stored pack source = %q, want %q", pack.Source, packSourcePro)
-			}
-			break
+	for _, packID := range []string{"company.duplicate-a", "company.duplicate-b"} {
+		if _, err := store.CreatePack(ctx, Pack{ID: packID, Name: packID, Version: "1.0.0"}); err != nil {
+			t.Fatalf("CreatePack(%s) error = %v", packID, err)
+		}
+		if err := store.repo.UpsertEntry(domain.PackEntryModel{
+			ID:     instructionpack.EntryID(packID, instructionpack.KindPrompt, "shared-name"),
+			PackID: packID,
+			Kind:   string(instructionpack.KindPrompt),
+			Slug:   "shared-name",
+			Name:   "Shared prompt",
+			Body:   "original " + packID,
+			Source: entrySourceUser,
+		}); err != nil {
+			t.Fatalf("UpsertEntry(%s) error = %v", packID, err)
 		}
 	}
-	if !found {
-		t.Fatalf("pack %q not found after import", installed.ID)
-	}
-	_, err = store.GetEntry(ctx, instructionpack.KindSkill, "pro-skill")
-	if err != nil {
-		t.Fatalf("GetEntry(pro-skill) error = %v", err)
-	}
-}
 
-func TestServiceInstallsProPackPathWithProSource(t *testing.T) {
-	ctx := context.Background()
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatalf("rand.Read() error = %v", err)
+	targetID := instructionpack.EntryID("company.duplicate-b", instructionpack.KindPrompt, "shared-name")
+	updated, err := store.SavePackEntry(ctx, "company.duplicate-b", targetID, EntryUpdate{
+		Name: "Only B changed",
+		Body: "updated B",
+		Metadata: map[string]any{
+			"category":                  "style",
+			entryMetadataLinked:         true,
+			entryMetadataCopiedFrom:     "malicious-reference",
+			entryMetadataCopiedFromPack: "malicious-pack",
+		},
+	})
+	if err != nil {
+		t.Fatalf("SavePackEntry() error = %v", err)
 	}
-	signer, publisherKey := newTestProSigner(t)
-	path := writeTestMGPackProFile(t, key, signer, "1.0.0")
-	store := newTestServiceWithLicense(
-		t,
-		newTestLicenseProvider(
-			map[string]struct{}{license.DefaultProEntitlement(): {}},
-			map[string][]byte{
-				"default": key,
-			},
-			map[string][]byte{
-				signer.KeyID: publisherKey,
-			},
-		),
+	if updated.PackID != "company.duplicate-b" || updated.Name != "Only B changed" || strings.TrimSpace(updated.Body) != "updated B" {
+		t.Fatalf("updated = %#v, want exact entry in duplicate-b", updated)
+	}
+	if updated.Linked || updated.Metadata[entryMetadataCopiedFrom] != nil || updated.Metadata[entryMetadataCopiedFromPack] != nil {
+		t.Fatalf("updated metadata = %#v, want reserved link metadata ignored", updated.Metadata)
+	}
+
+	otherModel, err := store.repo.GetEntry(
+		instructionpack.EntryID("company.duplicate-a", instructionpack.KindPrompt, "shared-name"),
 	)
-	installed, err := store.InstallPath(ctx, path)
 	if err != nil {
-		t.Fatalf("InstallPath() error = %v", err)
+		t.Fatalf("GetEntry(duplicate-a) error = %v", err)
 	}
-	if installed.Source != packSourcePro {
-		t.Fatalf("installed source = %q, want %q", installed.Source, packSourcePro)
+	other := entryFromModel(otherModel)
+	if other.Name != "Shared prompt" || strings.TrimSpace(other.Body) != "original company.duplicate-a" {
+		t.Fatalf("other = %#v, want duplicate-a unchanged", other)
 	}
-}
-
-func TestServiceRejectsProPackExport(t *testing.T) {
-	ctx := context.Background()
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatalf("rand.Read() error = %v", err)
-	}
-	signer, publisherKey := newTestProSigner(t)
-	data, err := writeTestMGPackPro(t, key, signer, "1.0.0")
-	if err != nil {
-		t.Fatalf("writeTestMGPackPro() error = %v", err)
-	}
-	store := newTestServiceWithLicense(
-		t,
-		newTestLicenseProvider(
-			map[string]struct{}{license.DefaultProEntitlement(): {}},
-			map[string][]byte{
-				"default": key,
-			},
-			map[string][]byte{
-				signer.KeyID: publisherKey,
-			},
-		),
-	)
-	installed, err := store.InstallData(ctx, "test.mgpackpro", data)
-	if err != nil {
-		t.Fatalf("InstallData() error = %v", err)
-	}
-	_, err = store.ExportPack(ctx, installed.ID)
-	if !errors.Is(err, ErrPackExportRestricted) {
-		t.Fatalf("ExportPack() error = %v, want ErrPackExportRestricted", err)
-	}
-}
-
-func TestServiceRejectsInvalidProPackAsInvalidPack(t *testing.T) {
-	ctx := context.Background()
-	store := newTestService(t)
-	_, err := store.InstallData(ctx, "broken.mgpackpro", []byte("not a pro pack"))
-	if !errors.Is(err, ErrInvalidPack) {
-		t.Fatalf("InstallData() error = %v, want ErrInvalidPack", err)
-	}
-}
-
-func TestServiceRejectsForgedProPackAsInvalidPack(t *testing.T) {
-	ctx := context.Background()
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatalf("rand.Read() error = %v", err)
-	}
-	// The attacker signs with their own key under the official publisher key id.
-	officialSigner, officialPublisherKey := newTestProSigner(t)
-	attackerSigner, _ := newTestProSigner(t)
-	attackerSigner.KeyID = officialSigner.KeyID
-	data, err := writeTestMGPackPro(t, key, attackerSigner, "1.0.0")
-	if err != nil {
-		t.Fatalf("writeTestMGPackPro() error = %v", err)
-	}
-	store := newTestServiceWithLicense(
-		t,
-		newTestLicenseProvider(
-			map[string]struct{}{license.DefaultProEntitlement(): {}},
-			map[string][]byte{
-				"default": key,
-			},
-			map[string][]byte{
-				officialSigner.KeyID: officialPublisherKey,
-			},
-		),
-	)
-	_, err = store.InstallData(ctx, "forged.mgpackpro", data)
-	if !errors.Is(err, ErrInvalidPack) {
-		t.Fatalf("InstallData(forged) error = %v, want ErrInvalidPack", err)
-	}
-}
-
-func TestServiceRejectsProPackWithUnknownPublisherAsLicenseRequired(t *testing.T) {
-	ctx := context.Background()
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatalf("rand.Read() error = %v", err)
-	}
-	signer, _ := newTestProSigner(t)
-	data, err := writeTestMGPackPro(t, key, signer, "1.0.0")
-	if err != nil {
-		t.Fatalf("writeTestMGPackPro() error = %v", err)
-	}
-	// License is provisioned but has no trusted key for this publisher.
-	store := newTestServiceWithLicense(
-		t,
-		newTestLicenseProvider(
-			map[string]struct{}{license.DefaultProEntitlement(): {}},
-			map[string][]byte{
-				"default": key,
-			},
-			nil,
-		),
-	)
-	_, err = store.InstallData(ctx, "test.mgpackpro", data)
-	if !errors.Is(err, ErrPackLicenseRequired) {
-		t.Fatalf("InstallData() error = %v, want ErrPackLicenseRequired", err)
+	if _, err := store.SavePackEntry(ctx, "company.duplicate-a", targetID, EntryUpdate{
+		Name: "Wrong pack",
+		Body: "wrong",
+	}); !errors.Is(err, ErrEntryNotFound) {
+		t.Fatalf("SavePackEntry(wrong pack) error = %v, want ErrEntryNotFound", err)
 	}
 }
 
@@ -448,6 +650,81 @@ func TestServiceExportsAndImportsFullMGPack(t *testing.T) {
 	}
 	if _, ok := findEntry(entries, "test-skill"); ok {
 		t.Fatalf("entries = %#v, want imported pack disabled", entries)
+	}
+}
+
+func TestServiceInstallsFormalReleaseWithProvenance(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	path := writeTestMGPack(t)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	pack, err := store.InstallDataWithProvenance(ctx, filepath.Base(path), data, InstallProvenance{
+		PackageID: "com.example.test",
+		ReleaseID: "release-1",
+		Version:   "1.0.1",
+	})
+	if err != nil {
+		t.Fatalf("InstallDataWithProvenance() error = %v", err)
+	}
+	if pack.ReleaseID != "release-1" || pack.Version != "1.0.1" {
+		t.Fatalf("pack release = %q v%s, want release-1 v1.0.1", pack.ReleaseID, pack.Version)
+	}
+	entry, err := store.GetEntry(ctx, instructionpack.KindSkill, "test-skill")
+	if err != nil {
+		t.Fatalf("GetEntry() error = %v", err)
+	}
+	if entry.PackID != pack.ID || entry.ReleaseID != "release-1" {
+		t.Fatalf("entry provenance = %s/%s, want %s/release-1", entry.PackID, entry.ReleaseID, pack.ID)
+	}
+	if entry.SourcePackageID != pack.ID || entry.SourceReleaseID != "release-1" {
+		t.Fatalf("content provenance = %s/%s, want %s/release-1", entry.SourcePackageID, entry.SourceReleaseID, pack.ID)
+	}
+	updated, err := store.SavePackEntry(ctx, pack.ID, entry.ID, EntryUpdate{
+		Description: entry.Description,
+		Body:        "local edit",
+	})
+	if err != nil {
+		t.Fatalf("SavePackEntry() error = %v", err)
+	}
+	if updated.ReleaseID != "release-1" || updated.SourcePackageID != pack.ID || updated.SourceReleaseID != "release-1" {
+		t.Fatalf("updated provenance = %#v, want original formal source", updated)
+	}
+	if _, err := store.ExportPack(ctx, pack.ID); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("ExportPack() error = %v, want ErrPackReadonly", err)
+	}
+	recovered, err := store.PromoteImportedPackToLocal(ctx, pack.ID)
+	if err != nil {
+		t.Fatalf("PromoteImportedPackToLocal() error = %v", err)
+	}
+	if recovered.Source != packSourceLocal || recovered.ReleaseID != "release-1" || recovered.Origin != "" {
+		t.Fatalf("recovered = %#v, want local draft with formal release history", recovered)
+	}
+	recoveredEntry, err := store.GetEntry(ctx, instructionpack.KindSkill, "test-skill")
+	if err != nil {
+		t.Fatalf("GetEntry(recovered) error = %v", err)
+	}
+	if recoveredEntry.Source != entrySourceUser || recoveredEntry.OverriddenFrom != "" || recoveredEntry.ReleaseID != "" || recoveredEntry.SourcePackageID != pack.ID || recoveredEntry.SourceReleaseID != "release-1" || strings.TrimSpace(recoveredEntry.Body) != "local edit" {
+		t.Fatalf("recovered entry = %#v, want standalone local edit", recoveredEntry)
+	}
+	if _, err := store.CreatePack(ctx, Pack{ID: "com.example.derivative", Name: "Derivative"}); err != nil {
+		t.Fatalf("CreatePack(derivative) error = %v", err)
+	}
+	copied, err := store.CopyEntries(ctx, "com.example.derivative", []EntryReference{{
+		PackID: pack.ID,
+		Kind:   instructionpack.KindSkill,
+		Slug:   recoveredEntry.Slug,
+	}})
+	if err != nil {
+		t.Fatalf("CopyEntries(formal source) error = %v", err)
+	}
+	if len(copied) != 1 || copied[0].SourcePackageID != pack.ID || copied[0].SourceReleaseID != "release-1" {
+		t.Fatalf("copied provenance = %#v, want original formal source", copied)
+	}
+	if err := store.RemoveEntry(ctx, recovered.ID, recoveredEntry.ID); err != nil {
+		t.Fatalf("RemoveEntry(recovered) error = %v", err)
 	}
 }
 
@@ -592,31 +869,6 @@ func newTestService(t *testing.T) *Service {
 	).withTestPackFilesDir(t.TempDir())
 }
 
-func newTestServiceWithLicense(t *testing.T, provider license.Service) *Service {
-	t.Helper()
-	dbName := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name() + "_" + filepath.Base(t.TempDir()))
-	db, err := gorm.Open(sqlite.Open("file:"+dbName+"?mode=memory&cache=shared"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("opening sqlite: %v", err)
-	}
-	if err := db.AutoMigrate(
-		&domain.PackModel{},
-		&domain.PackEntryModel{},
-		&domain.PackCategoryModel{},
-		&domain.PromptCategoryModel{},
-		&domain.PromptLibraryEntryModel{},
-	); err != nil {
-		t.Fatalf("migrating: %v", err)
-	}
-	return NewServiceFromRepositoryWithPackFilesDirAndLicense(
-		repository.NewPackRepositoryFromDB(db),
-		repository.NewPromptLibraryRepositoryFromDB(db),
-		nil,
-		t.TempDir(),
-		provider,
-	)
-}
-
 func writeTestMGPack(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -650,70 +902,6 @@ Use this for tests.
 	return output
 }
 
-func newTestProSigner(t *testing.T) (instructionpro.Signer, ed25519.PublicKey) {
-	t.Helper()
-	public, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("GenerateKey() error = %v", err)
-	}
-	return instructionpro.Signer{KeyID: "test-publisher", Key: private}, public
-}
-
-func writeTestMGPackPro(t *testing.T, key []byte, signer instructionpro.Signer, version string) ([]byte, error) {
-	t.Helper()
-	root := t.TempDir()
-	packID := "com.example.pro.test"
-	if err := os.WriteFile(filepath.Join(root, "pack.json"), []byte(`{
-		"id": "`+packID+`",
-		"name": "Pro Test Pack",
-		"version": "`+version+`"
-	}`), 0o644); err != nil {
-		return nil, err
-	}
-	skillsDir := filepath.Join(root, "skills")
-	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(filepath.Join(skillsDir, "pro-skill.skill.md"), []byte(`---
-name: pro-skill
-description: Pro skill
----
-Use this for pro tests.
-`), 0o644); err != nil {
-		return nil, err
-	}
-	raw, err := instructionpack.ArchiveDir(context.Background(), root)
-	if err != nil {
-		return nil, err
-	}
-	return instructionpro.Build(
-		context.Background(),
-		raw,
-		instructionpro.Manifest{
-			ID:                  packID,
-			Name:                "Pro Test Pack",
-			Version:             version,
-			RequiredEntitlement: license.DefaultProEntitlement(),
-			KeyID:               "default",
-		},
-		key,
-		signer,
-	)
-}
-
-func writeTestMGPackProFile(t *testing.T, key []byte, signer instructionpro.Signer, version string) string {
-	t.Helper()
-	data, err := writeTestMGPackPro(t, key, signer, version)
-	if err != nil {
-		t.Fatalf("writeTestMGPackPro() error = %v", err)
-	}
-	path := filepath.Join(t.TempDir(), "test.mgpackpro")
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatalf("write pro pack file: %v", err)
-	}
-	return path
-}
-
 func findEntry(entries []Entry, slug string) (Entry, bool) {
 	for _, entry := range entries {
 		if entry.Slug == slug {
@@ -721,59 +909,6 @@ func findEntry(entries []Entry, slug string) (Entry, bool) {
 		}
 	}
 	return Entry{}, false
-}
-
-type testLicenseProvider struct {
-	entitlements  map[string]struct{}
-	keys          map[string][]byte
-	publisherKeys map[string][]byte
-}
-
-func newTestLicenseProvider(
-	entitlements map[string]struct{},
-	keys map[string][]byte,
-	publisherKeys map[string][]byte,
-) *testLicenseProvider {
-	return &testLicenseProvider{
-		entitlements:  entitlements,
-		keys:          keys,
-		publisherKeys: publisherKeys,
-	}
-}
-
-func (provider *testLicenseProvider) HasEntitlement(_ context.Context, entitlement string) (bool, error) {
-	if provider == nil {
-		return false, nil
-	}
-	_, ok := provider.entitlements[strings.TrimSpace(entitlement)]
-	return ok, nil
-}
-
-func (provider *testLicenseProvider) ResolvePackKey(_ context.Context, keyID string, _ string) ([]byte, error) {
-	if provider == nil {
-		return nil, license.ErrPackKeyNotFound
-	}
-	keyID = strings.TrimSpace(keyID)
-	key, ok := provider.keys[keyID]
-	if !ok {
-		return nil, license.ErrPackKeyNotFound
-	}
-	keyCopy := make([]byte, len(key))
-	copy(keyCopy, key)
-	return keyCopy, nil
-}
-
-func (provider *testLicenseProvider) ResolvePublisherKeys(_ context.Context) (map[string][]byte, error) {
-	if provider == nil {
-		return map[string][]byte{}, nil
-	}
-	keys := make(map[string][]byte, len(provider.publisherKeys))
-	for keyID, key := range provider.publisherKeys {
-		keyCopy := make([]byte, len(key))
-		copy(keyCopy, key)
-		keys[keyID] = keyCopy
-	}
-	return keys, nil
 }
 
 func findPackEntry(entries []instructionpack.Entry, slug string) (instructionpack.Entry, bool) {

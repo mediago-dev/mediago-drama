@@ -21,6 +21,7 @@ vars:
   SERVER_CONFIG: services/server/configs/server.yaml
   VENDOR_BIN_DIR: "{{.ROOT_DIR}}/packages/vendor/dist"
   VENDOR_TOOL_DIR: "{{.VENDOR_BIN_DIR}}/tools"
+  SERVER_GO_BUILD: '{{if eq .MEDIAGO_GO_OBFUSCATE "1"}}garble -literals{{else}}go{{end}}'
 
 tasks:
   check:
@@ -267,9 +268,11 @@ tasks:
 
   build:server:
     desc: Build the server-side binaries used by dev:server and dev
+    vars:
+      SERVER_BUILD_TAGS: 'workspace_dist{{if .MEDIAGO_GO_BUILD_TAGS}},{{.MEDIAGO_GO_BUILD_TAGS}}{{end}}'
     cmds:
       - mkdir -p bin
-      - go build -tags workspace_dist -o "{{.DEV_SERVER_BIN}}" ./services/server/cmd/mediago-server
+      - '{{.SERVER_GO_BUILD}} build -tags "{{.SERVER_BUILD_TAGS}}" {{if .MEDIAGO_GO_LDFLAGS}}-ldflags "{{.MEDIAGO_GO_LDFLAGS}}"{{end}} -o "{{.DEV_SERVER_BIN}}" ./services/server/cmd/mediago-server'
       - go build -o "{{.DEV_DOCUMENT_MCP_BIN}}" ./services/server/cmd/mediago-document-mcp
       - go build -o "bin/mediago-generation-mcp{{.GOEXE}}" ./services/server/cmd/mediago-generation-mcp
 

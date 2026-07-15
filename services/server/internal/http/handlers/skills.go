@@ -37,6 +37,8 @@ type skillResponse struct {
 	Template    *skillTemplate      `json:"template,omitempty"`
 	Hint        map[string]string   `json:"hint,omitempty"`
 	Content     string              `json:"content"`
+	PackID      string              `json:"packId,omitempty"`
+	ReleaseID   string              `json:"releaseId,omitempty"`
 }
 
 type skillTemplate struct {
@@ -49,6 +51,7 @@ type skillTemplate struct {
 type createSkillRequest struct {
 	Name    string `json:"name"`
 	Content string `json:"content"`
+	PackID  string `json:"packId"`
 }
 
 type deleteSkillResponse struct {
@@ -134,7 +137,7 @@ func (handler Skills) HandlePostSkill(context *gin.Context) {
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 		return
 	}
-	item, err := handler.registry.Create(context.Request.Context(), payload.Name, payload.Content)
+	item, err := handler.registry.CreateInPack(context.Request.Context(), payload.Name, payload.Content, payload.PackID)
 	if err != nil {
 		writeSkillError(context, err)
 		return
@@ -208,6 +211,8 @@ func skillHTTPResponse(item serviceskill.Skill) skillResponse {
 		TemplateID:  item.TemplateID,
 		Hint:        item.Hint,
 		Content:     item.Raw,
+		PackID:      item.PackID,
+		ReleaseID:   item.ReleaseID,
 	}
 }
 

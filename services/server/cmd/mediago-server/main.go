@@ -147,7 +147,7 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	handler := server.NewHandlerWithConfig(staticFS, server.Config{
+	appConfig := server.Config{
 		Host:                  config.Host,
 		Port:                  config.Port,
 		WorkspaceDir:          workspaceDir,
@@ -171,7 +171,11 @@ func run(args []string) error {
 		AgentBridgeToken:      bridgeToken,
 		PromptMaxSectionChars: config.Prompt.MaxSectionChars,
 		BillingPrices:         billingPrices,
-	})
+	}
+	if err := configureEdition(&appConfig); err != nil {
+		return fmt.Errorf("configuring server edition: %w", err)
+	}
+	handler := server.NewHandlerWithConfig(staticFS, appConfig)
 	defer closeServerHandler(handler)
 	httpServer := &http.Server{
 		Addr:    addr,

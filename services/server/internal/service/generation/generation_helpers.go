@@ -601,6 +601,7 @@ func GenerationTaskFromMessage(
 		ModelID:           request.ModelID,
 		Model:             request.Model,
 		Prompt:            request.Prompt,
+		SourceRefs:        request.SourceRefs,
 		ReferenceURLs:     CompactStrings(request.ReferenceURLs),
 		ReferenceAssetIDs: CompactStrings(request.ReferenceAssetIDs),
 		Params: generationParamsWithReferenceBindings(

@@ -27,6 +27,7 @@ type GenerationTaskModel struct {
 	ModelID         string    `gorm:"column:model_id;not null"`
 	Model           string    `gorm:"column:model;not null"`
 	Prompt          string    `gorm:"column:prompt;not null"`
+	SourceRefsJSON  string    `gorm:"column:source_refs_json;not null;default:'[]'"`
 	ParamsJSON      string    `gorm:"column:params_json;not null"`
 	Status          string    `gorm:"column:status;not null;index:generation_tasks_kind_status_updated_idx,priority:2"`
 	Message         string    `gorm:"column:message;not null"`

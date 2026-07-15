@@ -5,12 +5,14 @@ import type React from "react";
 import { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import "@/styles/tiptap-prompt-slash.css";
+import type { GenerationContentSourceRef } from "@/domains/generation/api/generation";
 
 export interface PromptInsertItem {
 	id: string;
 	categoryLabel: string;
 	name: string;
 	prompt: string;
+	sourceRef?: GenerationContentSourceRef;
 	sourceLabel?: string;
 }
 

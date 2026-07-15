@@ -181,6 +181,12 @@ export interface GenerationMessageRequest {
 	referenceBindings?: GenerationReferenceBinding[];
 	params: Record<string, unknown>;
 	promptOptimization?: GenerationPromptOptimizationRequest;
+	sourceRefs?: ContentSourceRef[];
+}
+
+export interface ContentSourceRef {
+	packageId: string;
+	releaseId: string;
 }
 
 export interface GenerationPromptSupplementRequest {
@@ -408,6 +414,7 @@ export interface GenerationTaskRecord {
 	modelId: string;
 	model: string;
 	prompt: string;
+	sourceRefs?: ContentSourceRef[];
 	referenceUrls: string[];
 	referenceAssetIds: string[];
 	params: Record<string, unknown>;

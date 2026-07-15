@@ -523,6 +523,7 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 						<PromptEditor
 							value={ws.prompt}
 							onChange={ws.setPrompt}
+							onInsertItem={ws.addPromptSource}
 							placeholder={compactPromptPlaceholder}
 							className={generationComposerPromptInputClassName}
 							slashItems={promptSlashItems}

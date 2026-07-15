@@ -19,6 +19,10 @@ export const promptInsertItemsFromPresets = (
 			categoryLabel: promptCategoryLabel(preset.category, categories),
 			name: preset.name,
 			prompt: preset.prompt,
+			sourceRef:
+				preset.sourcePackageId && preset.sourceReleaseId
+					? { packageId: preset.sourcePackageId, releaseId: preset.sourceReleaseId }
+					: undefined,
 			sourceLabel: preset.source === "pack" ? "来自包" : "用户新增",
 		}));
 

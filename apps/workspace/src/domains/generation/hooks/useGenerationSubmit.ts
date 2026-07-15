@@ -5,6 +5,7 @@ import { mutate as mutateSWR } from "swr";
 import type { MediaAsset, MediaAssetsResponse } from "@/domains/workspace/api/media";
 import type {
 	GenerationFamily,
+	GenerationContentSourceRef,
 	GenerationKind,
 	GenerationMessageRequest,
 	GenerationMessageResponse,
@@ -76,6 +77,7 @@ export interface GenerationSubmitOverrides {
 	selectedParams?: Record<string, unknown>;
 	selectedRoute?: GenerationRoute;
 	selectedVersion?: GenerationVersion;
+	sourceRefs?: GenerationContentSourceRef[];
 	taskType?: GenerationTaskType;
 }
 
@@ -157,6 +159,7 @@ interface UseGenerationSubmitOptions {
 	rememberSelectedModel?: () => void;
 	prompt: string;
 	promptRef?: React.MutableRefObject<string>;
+	sourceRefs?: GenerationContentSourceRef[];
 	requireConversation?: boolean;
 	resolvedConversationScopeId?: string;
 	sectionId?: string;
@@ -195,6 +198,7 @@ export const useGenerationSubmit = ({
 	rememberSelectedModel,
 	prompt,
 	promptRef,
+	sourceRefs = [],
 	requireConversation = false,
 	resolvedConversationScopeId,
 	sectionId,
@@ -230,6 +234,7 @@ export const useGenerationSubmit = ({
 			const requestFamilyId = overrides.selectedFamily?.id ?? selectedFamily.id;
 			const requestVersionId = overrides.selectedVersion?.id ?? selectedVersion.id;
 			const requestSelectedParams = overrides.selectedParams ?? selectedParams;
+			const requestSourceRefs = overrides.sourceRefs ?? sourceRefs;
 			const requestReferenceCount = requestReferenceUrls.length + requestReferenceAssetIds.length;
 			const maxReferenceUrls = maxReferenceUrlsForRoute(requestRoute);
 			if (maxReferenceUrls && requestReferenceCount > maxReferenceUrls) {
@@ -476,6 +481,7 @@ export const useGenerationSubmit = ({
 					assetTitle: requestAssetTitle || undefined,
 					params: requestParams,
 					promptOptimization: overrides.promptOptimization,
+					sourceRefs: requestSourceRefs,
 					referenceUrls: requestRoute.supportsReferenceUrls ? requestReferenceUrls : [],
 					referenceAssetIds: requestRoute.supportsReferenceUrls ? requestReferenceAssetIds : [],
 					referenceBindings: requestRoute.supportsReferenceUrls ? requestReferenceBindings : [],
@@ -627,6 +633,7 @@ export const useGenerationSubmit = ({
 			selectedParams,
 			selectedRoute,
 			selectedVersion.id,
+			sourceRefs,
 			setActiveEntryId,
 			setError,
 			setMessages,

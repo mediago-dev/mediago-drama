@@ -12,6 +12,7 @@ import {
 	listPromptPresets,
 	resetPromptPreset,
 } from "@/domains/generation/api/prompt-presets";
+import { listPromptPacks } from "@/domains/settings/api/packs";
 import { ConfirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { PromptPackActionsSlotProvider } from "./PromptPackActionsSlot";
 import { PromptLibraryEditorPanel } from "./PromptLibraryEditorPanel";
@@ -31,6 +32,11 @@ vi.mock("@/domains/generation/api/prompt-presets", () => ({
 	updatePromptPreset: vi.fn(),
 }));
 
+vi.mock("@/domains/settings/api/packs", () => ({
+	listPromptPacks: vi.fn(),
+	promptPacksKey: "/packs",
+}));
+
 vi.mock("@/hooks/useToast", () => ({
 	useToast: () => ({
 		error: vi.fn(),
@@ -41,6 +47,15 @@ vi.mock("@/hooks/useToast", () => ({
 describe("PromptLibraryEditorPanel", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.mocked(listPromptPacks).mockResolvedValue([
+			{
+				id: "builtin",
+				name: "MediaGo 默认词包",
+				version: "1.0.0",
+				source: "default",
+				enabled: true,
+			},
+		]);
 		vi.mocked(listPromptCategories).mockResolvedValue([
 			{
 				id: "style",
@@ -65,11 +80,19 @@ describe("PromptLibraryEditorPanel", () => {
 				id: "anime-2d",
 				name: "2D动漫",
 				category: "style",
+				packId: "builtin",
 				prompt: "2D anime style",
 				source: "pack",
 				builtin: true,
 			},
 		]);
+	});
+
+	it("shows the owning prompt pack in the global prompt list and details", async () => {
+		renderPanel();
+
+		await screen.findByText("2D动漫");
+		expect(screen.getAllByLabelText("所属词包：默认词包")).toHaveLength(2);
 	});
 
 	afterEach(() => {
@@ -85,7 +108,7 @@ describe("PromptLibraryEditorPanel", () => {
 		const dialog = await screen.findByRole("dialog", { name: "新建提示词" });
 		expect(within(dialog).getByText("创建可复用的分类提示词预设。")).toBeTruthy();
 		expect(within(dialog).getByText("分类")).toBeTruthy();
-		const categorySelect = within(dialog).getByRole("combobox");
+		const categorySelect = within(dialog).getByRole("combobox", { name: "分类" });
 		expect(categorySelect.textContent).toContain("风格");
 		expect(categorySelect.textContent).not.toContain("style");
 		expect(within(dialog).getByText("名称")).toBeTruthy();

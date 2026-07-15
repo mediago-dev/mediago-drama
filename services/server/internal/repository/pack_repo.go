@@ -59,6 +59,7 @@ func (repo *PackRepository) UpsertPack(model domain.PackModel) error {
 		DoUpdates: clause.AssignmentColumns([]string{
 			"name",
 			"version",
+			"release_id",
 			"author",
 			"description",
 			"source",
@@ -81,6 +82,30 @@ func (repo *PackRepository) SetPackEnabled(id string, enabled bool) error {
 		Error
 	if err != nil {
 		return fmt.Errorf("setting pack enabled: %w", err)
+	}
+	return nil
+}
+
+// SetPackRelease records the formal release provenance for a pack.
+func (repo *PackRepository) SetPackRelease(id string, releaseID string) error {
+	if err := repo.db.Model(&domain.PackModel{}).
+		Where("id = ?", strings.TrimSpace(id)).
+		Update("release_id", strings.TrimSpace(releaseID)).
+		Error; err != nil {
+		return fmt.Errorf("setting pack release: %w", err)
+	}
+	return nil
+}
+
+// SetPackReleaseVersion records the latest submitted release and its version.
+func (repo *PackRepository) SetPackReleaseVersion(id string, releaseID string, version string) error {
+	if err := repo.db.Model(&domain.PackModel{}).
+		Where("id = ?", strings.TrimSpace(id)).
+		Updates(map[string]any{
+			"release_id": strings.TrimSpace(releaseID),
+			"version":    strings.TrimSpace(version),
+		}).Error; err != nil {
+		return fmt.Errorf("setting pack release version: %w", err)
 	}
 	return nil
 }
@@ -178,6 +203,9 @@ func (repo *PackRepository) UpsertEntry(model domain.PackEntryModel) error {
 		Columns: []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"pack_id",
+			"release_id",
+			"source_package_id",
+			"source_release_id",
 			"kind",
 			"slug",
 			"name",
