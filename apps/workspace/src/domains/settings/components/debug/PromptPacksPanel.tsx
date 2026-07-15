@@ -80,7 +80,6 @@ export const PromptPacksPanel: React.FC = () => {
 	const [createOpen, setCreateOpen] = useState(false);
 	const [createBusy, setCreateBusy] = useState(false);
 	const [createName, setCreateName] = useState("");
-	const [createAuthor, setCreateAuthor] = useState("");
 	const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
 	const importInputRef = useRef<HTMLInputElement | null>(null);
 	const startWindowDrag = useDesktopWindowDrag();
@@ -113,7 +112,6 @@ export const PromptPacksPanel: React.FC = () => {
 			const pack = await createPromptPack({
 				id: createLocalPromptPackID(),
 				name: createName.trim(),
-				author: createAuthor.trim(),
 				version: "1.0.0",
 			});
 			await refreshPromptData();
@@ -121,7 +119,6 @@ export const PromptPacksPanel: React.FC = () => {
 			setActiveSection("packs");
 			setSelectedPackID(pack.id);
 			setCreateName("");
-			setCreateAuthor("");
 			toast.success("提示词包已创建", { description: pack.name });
 		} catch (error) {
 			toast.error("创建失败", { description: errorMessage(error) });
@@ -342,14 +339,6 @@ export const PromptPacksPanel: React.FC = () => {
 												className={packInputClassName}
 												value={createName}
 												onChange={(event) => setCreateName(event.target.value)}
-											/>
-										</label>
-										<label className="block space-y-1.5 text-xs font-medium text-foreground">
-											<span>作者</span>
-											<input
-												className={packInputClassName}
-												value={createAuthor}
-												onChange={(event) => setCreateAuthor(event.target.value)}
 											/>
 										</label>
 										<div className="flex justify-end gap-2">

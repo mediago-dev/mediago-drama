@@ -353,12 +353,12 @@ describe("PromptPacksPanel", () => {
 		selectTab("词包");
 		fireEvent.click(await screen.findByRole("button", { name: "新建词包" }));
 		expect(screen.queryByLabelText("Package ID")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("作者")).not.toBeInTheDocument();
 		fireEvent.change(screen.getByLabelText("名称"), { target: { value: "新词包" } });
 		fireEvent.click(screen.getByRole("button", { name: "创建并编辑" }));
 
 		await waitFor(() =>
 			expect(createPromptPack).toHaveBeenCalledWith({
-				author: "",
 				id: generatedPackID,
 				name: "新词包",
 				version: "1.0.0",
