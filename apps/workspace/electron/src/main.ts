@@ -67,7 +67,7 @@ const createWindow = async () => {
 			contextIsolation: true,
 			devTools: Boolean(rendererUrl),
 			nodeIntegration: false,
-			sandbox: true,
+			sandbox: false,
 		},
 	});
 
