@@ -186,6 +186,8 @@ tasks:
     desc: Run the built server binary and web workspace for browser development
     deps:
       - task: build:server
+        vars:
+          INCLUDE_WORKSPACE_DIST: "0"
       - task: prepare-agent
         vars:
           AGENT: "{{.AGENT}}"
@@ -218,6 +220,7 @@ tasks:
   dev:desktop:
     desc: Run the Electron desktop app against an external dev server
     env:
+      VITE_API_PROXY_TARGET: "{{.DEV_SERVER_URL}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.DEV_SERVER_PORT}}"
       VITE_MEDIAGO_EDITION: "{{.EDITION}}"
     cmds:
@@ -227,6 +230,8 @@ tasks:
     desc: Run only the built server binary for desktop development
     deps:
       - task: build:server
+        vars:
+          INCLUDE_WORKSPACE_DIST: "0"
       - task: prepare-agent
         vars:
           AGENT: "{{.AGENT}}"
@@ -269,10 +274,11 @@ tasks:
   build:server:
     desc: Build the server-side binaries used by dev:server and dev
     vars:
-      SERVER_BUILD_TAGS: 'workspace_dist{{if .MEDIAGO_GO_BUILD_TAGS}},{{.MEDIAGO_GO_BUILD_TAGS}}{{end}}'
+      INCLUDE_WORKSPACE_DIST: '{{.INCLUDE_WORKSPACE_DIST | default "1"}}'
+      SERVER_BUILD_TAGS: '{{if eq .INCLUDE_WORKSPACE_DIST "1"}}workspace_dist{{if .MEDIAGO_GO_BUILD_TAGS}},{{.MEDIAGO_GO_BUILD_TAGS}}{{end}}{{else}}{{.MEDIAGO_GO_BUILD_TAGS}}{{end}}'
     cmds:
       - mkdir -p bin
-      - '{{.SERVER_GO_BUILD}} build -tags "{{.SERVER_BUILD_TAGS}}" {{if .MEDIAGO_GO_LDFLAGS}}-ldflags "{{.MEDIAGO_GO_LDFLAGS}}"{{end}} -o "{{.DEV_SERVER_BIN}}" ./services/server/cmd/mediago-server'
+      - '{{.SERVER_GO_BUILD}} build {{if .SERVER_BUILD_TAGS}}-tags "{{.SERVER_BUILD_TAGS}}"{{end}} {{if .MEDIAGO_GO_LDFLAGS}}-ldflags "{{.MEDIAGO_GO_LDFLAGS}}"{{end}} -o "{{.DEV_SERVER_BIN}}" ./services/server/cmd/mediago-server'
       - go build -o "{{.DEV_DOCUMENT_MCP_BIN}}" ./services/server/cmd/mediago-document-mcp
       - go build -o "bin/mediago-generation-mcp{{.GOEXE}}" ./services/server/cmd/mediago-generation-mcp
 
