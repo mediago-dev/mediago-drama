@@ -112,6 +112,62 @@ func TestApplyEnvOverridesRejectsInvalidGenerationCLI(t *testing.T) {
 	}
 }
 
+func TestApplySidecarDefaultsForcesLoopback(t *testing.T) {
+	t.Setenv("MEDIAGO_SIDECAR_MODE", "1")
+	config := serverconfig.ServerConfig{Host: "0.0.0.0"}
+
+	applySidecarDefaults(&config)
+
+	if config.Host != "127.0.0.1" {
+		t.Fatalf("Host = %q, want loopback", config.Host)
+	}
+}
+
+func TestApplySidecarDefaultsLeavesStandaloneHostUnchanged(t *testing.T) {
+	config := serverconfig.ServerConfig{Host: "0.0.0.0"}
+
+	applySidecarDefaults(&config)
+
+	if config.Host != "0.0.0.0" {
+		t.Fatalf("Host = %q, want standalone host unchanged", config.Host)
+	}
+}
+
+func TestConfiguredSidecarToken(t *testing.T) {
+	t.Run("standalone does not require token", func(t *testing.T) {
+		t.Setenv("MEDIAGO_SIDECAR_MODE", "")
+		t.Setenv("MEDIAGO_SIDECAR_TOKEN", "")
+		token, err := configuredSidecarToken()
+		if err != nil {
+			t.Fatalf("configuredSidecarToken() error = %v", err)
+		}
+		if token != "" {
+			t.Fatalf("token = %q, want empty", token)
+		}
+	})
+
+	t.Run("sidecar requires token", func(t *testing.T) {
+		t.Setenv("MEDIAGO_SIDECAR_MODE", "1")
+		t.Setenv("MEDIAGO_SIDECAR_TOKEN", "short")
+		if _, err := configuredSidecarToken(); err == nil {
+			t.Fatal("configuredSidecarToken() returned nil error")
+		}
+	})
+
+	t.Run("sidecar accepts generated token", func(t *testing.T) {
+		const expected = "a-generated-sidecar-token-that-is-long-enough"
+		t.Setenv("MEDIAGO_SIDECAR_MODE", "1")
+		t.Setenv("MEDIAGO_SIDECAR_TOKEN", expected)
+		token, err := configuredSidecarToken()
+		if err != nil {
+			t.Fatalf("configuredSidecarToken() error = %v", err)
+		}
+		if token != expected {
+			t.Fatalf("token = %q, want %q", token, expected)
+		}
+	})
+}
+
 func TestApplyPackagedToolDefaultsUsesSiblingToolsDir(t *testing.T) {
 	resourcesDir := t.TempDir()
 	binDir := filepath.Join(resourcesDir, "bin")

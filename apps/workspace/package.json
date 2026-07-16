@@ -87,6 +87,8 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@electron/asar": "3.4.1",
+    "@electron/fuses": "2.1.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.2.2",
@@ -97,6 +99,7 @@
     "cross-env": "^10.1.0",
     "electron": "^42.4.1",
     "electron-builder": "^26.15.3",
+    "esbuild": "0.28.1",
     "jsdom": "^29.1.1",
     "lint-staged": "^16.2.7",
     "oxfmt": "^0.41.0",

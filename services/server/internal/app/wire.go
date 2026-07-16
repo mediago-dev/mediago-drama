@@ -17,6 +17,7 @@ import (
 	appevents "github.com/mediago-dev/mediago-drama/services/server/internal/app/events"
 	appworkspace "github.com/mediago-dev/mediago-drama/services/server/internal/app/workspace"
 	corecapability "github.com/mediago-dev/mediago-drama/services/server/internal/capability"
+	platformprotectedpack "github.com/mediago-dev/mediago-drama/services/server/internal/platform/protectedpack"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	serviceacp "github.com/mediago-dev/mediago-drama/services/server/internal/service/acp"
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
@@ -219,6 +220,20 @@ func newAPIHandler(config Config) *apiHandler {
 		settingsReposErr,
 		filepath.Join(filepath.Dir(settingsDBPath), "packs"),
 	)
+	promptPack.SetUnprotectedImportAllowed(config.AllowUnprotectedPackImport)
+	var protectedPackImporterErr error
+	if importerPath := strings.TrimSpace(config.ProtectedPackImporterPath); importerPath != "" {
+		var importer *platformprotectedpack.Importer
+		importer, protectedPackImporterErr = platformprotectedpack.New(
+			importerPath,
+			config.ProtectedPackImporterSHA256,
+		)
+		if protectedPackImporterErr == nil {
+			promptPack.SetProtectedImporter(importer)
+		} else {
+			promptPack.SetProtectedImporterUnavailable(protectedPackImporterErr)
+		}
+	}
 	serviceskill.SetPromptPackStore(promptPack)
 	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
 	promptLibrary := servicepromptlibrary.NewServiceFromPromptPack(promptPack, settingsReposErr)
@@ -251,6 +266,7 @@ func newAPIHandler(config Config) *apiHandler {
 			settingsReposErr,
 			settingsMigrationErr,
 			workspaceReposErr,
+			protectedPackImporterErr,
 		),
 		workspaceState:    workspaceState,
 		events:            events,

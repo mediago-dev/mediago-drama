@@ -169,6 +169,50 @@ func TestPromptPacksHandlerCopiesEntriesAndReturnsPackContents(t *testing.T) {
 	}
 }
 
+func TestPromptPacksHandlerCreatesLocalDraftEntry(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	store := newPromptPackHandlerTestStore(t)
+	if _, err := store.CreatePack(t.Context(), promptpack.Pack{
+		ID:      "company.handler-draft",
+		Name:    "Handler Draft",
+		Version: "1.0.0",
+	}); err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+
+	handler := NewPromptPacks(store)
+	router := gin.New()
+	router.POST("/packs/:id/entries", handler.HandleCreatePackEntry)
+	body, err := json.Marshal(createPromptPackEntryRequest{
+		Kind: instructionpack.KindPrompt,
+		Slug: "prompt-handler-draft",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/packs/company.handler-draft/entries",
+		bytes.NewReader(body),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var envelope struct {
+		Success bool             `json:"success"`
+		Data    promptpack.Entry `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if !envelope.Success || envelope.Data.Name != "未命名提示词" || envelope.Data.Body != "" {
+		t.Fatalf("POST body = %s, want an empty prompt draft", response.Body.String())
+	}
+}
+
 func TestPromptPacksHandlerRejectsUnsupportedPackVersion(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	store := newPromptPackHandlerTestStore(t)

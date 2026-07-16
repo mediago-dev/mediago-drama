@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -25,6 +27,7 @@ const defaultToolID = "ffmpeg"
 type toolSpec struct {
 	Bin       string                      `json:"bin"`
 	Version   string                      `json:"version"`
+	Policy    string                      `json:"policy,omitempty"`
 	Platforms map[string]toolPlatformSpec `json:"platforms"`
 }
 
@@ -39,6 +42,7 @@ type toolManifest struct {
 	ID          string `json:"id"`
 	Bin         string `json:"bin"`
 	Version     string `json:"version"`
+	Policy      string `json:"policy,omitempty"`
 	Platform    string `json:"platform"`
 	URL         string `json:"url"`
 	ArchivePath string `json:"archivePath,omitempty"`
@@ -65,6 +69,11 @@ func run(args []string) error {
 	toolList := flags.String("tools", "", "Comma-separated tool ids to prepare from tools.json")
 	targetPlatform := flags.String("platform", "", "Target platform to prepare, e.g. darwin-arm64 or windows-x64")
 	root := flags.String("root", "", "Vendor directory containing tools.json")
+	toolsOverlay := flags.String(
+		"tools-overlay",
+		strings.TrimSpace(os.Getenv("MEDIAGO_VENDOR_TOOLS_OVERLAY")),
+		"Optional JSON file whose pinned tool specs override tools.json",
+	)
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -101,6 +110,16 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	if overlayPath := strings.TrimSpace(*toolsOverlay); overlayPath != "" {
+		if !filepath.IsAbs(overlayPath) {
+			overlayPath = filepath.Join(vendorDir, overlayPath)
+		}
+		overlay, overlayErr := loadToolSpecs(overlayPath)
+		if overlayErr != nil {
+			return overlayErr
+		}
+		mergeToolSpecs(specs, overlay)
+	}
 
 	currentPlatform, distPlatformKey, err := resolvePlatform(*targetPlatform)
 	if err != nil {
@@ -116,9 +135,15 @@ func run(args []string) error {
 		if strings.TrimSpace(spec.Version) == "" {
 			return fmt.Errorf("tool %q has no pinned version in tools.json", toolIDValue)
 		}
+		if err := validateToolPolicy(toolIDValue, spec, os.Getenv("MEDIAGO_PROMPT_PACK_POLICY")); err != nil {
+			return err
+		}
 		asset, ok := spec.Platforms[platformKey]
 		if !ok {
 			return fmt.Errorf("tool %q does not support platform %s", toolIDValue, platformKey)
+		}
+		if err := validatePinnedToolAsset(toolIDValue, platformKey, spec, asset); err != nil {
+			return err
 		}
 
 		distDir := filepath.Join(vendorDir, "dist", "tools", toolIDValue)
@@ -128,6 +153,75 @@ func run(args []string) error {
 		if err := prepareTool(toolIDValue, spec, platformKey, asset, distDir); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateToolPolicy(id string, spec toolSpec, expectedValue string) error {
+	if id != "mediago-rights" {
+		return nil
+	}
+	buildPolicy := strings.ToLower(strings.TrimSpace(expectedValue))
+	if buildPolicy == "" {
+		buildPolicy = "marketplace"
+	}
+	if buildPolicy != "marketplace" && buildPolicy != "partner" {
+		return fmt.Errorf("invalid MEDIAGO_PROMPT_PACK_POLICY %q", buildPolicy)
+	}
+	actual := strings.ToLower(strings.TrimSpace(spec.Policy))
+	if actual == "" {
+		return fmt.Errorf("tool %q manifest has no prompt-pack policy", id)
+	}
+	if actual != "marketplace" {
+		return fmt.Errorf("tool %q policy %q must be marketplace for build policy %q", id, actual, buildPolicy)
+	}
+	return nil
+}
+
+func validatePinnedToolAsset(id string, platformKey string, spec toolSpec, asset toolPlatformSpec) error {
+	if id != "mediago-rights" {
+		return nil
+	}
+	manifest := toolManifest{
+		ID:          id,
+		Bin:         toolBinaryName(spec.Bin, platformKey),
+		Version:     strings.TrimSpace(spec.Version),
+		Policy:      strings.ToLower(strings.TrimSpace(spec.Policy)),
+		Platform:    platformKey,
+		URL:         strings.TrimSpace(asset.URL),
+		ArchivePath: normalizeArchivePath(asset.ArchivePath),
+		SizeBytes:   asset.SizeBytes,
+		SHA256:      normalizeSHA256(asset.SHA256),
+	}
+	return validatePinnedRuntimeManifest(manifest)
+}
+
+func validatePinnedRuntimeManifest(manifest toolManifest) error {
+	if strings.TrimSpace(manifest.ID) != "mediago-rights" {
+		return nil
+	}
+	parsed, err := url.Parse(strings.TrimSpace(manifest.URL))
+	if err != nil {
+		return fmt.Errorf("tool %q has invalid URL: %w", manifest.ID, err)
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") || parsed.User != nil {
+		return fmt.Errorf("tool %q URL must use HTTPS without user information", manifest.ID)
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "github.com" && host != "api.github.com" {
+		return fmt.Errorf("tool %q URL must use github.com or api.github.com", manifest.ID)
+	}
+	if manifest.SizeBytes <= 0 {
+		return fmt.Errorf("tool %q sizeBytes must be positive", manifest.ID)
+	}
+	shaValue := normalizeSHA256(manifest.SHA256)
+	shaBytes, err := hex.DecodeString(shaValue)
+	if err != nil || len(shaBytes) != sha256.Size {
+		return fmt.Errorf("tool %q sha256 must be exactly 64 hexadecimal characters", manifest.ID)
+	}
+	archivePath := normalizeArchivePath(manifest.ArchivePath)
+	if archivePath == "" || archivePath == "." || path.IsAbs(archivePath) || path.Clean(archivePath) != archivePath || strings.HasPrefix(archivePath, "../") {
+		return fmt.Errorf("tool %q archivePath must be a safe relative file path", manifest.ID)
 	}
 	return nil
 }
@@ -164,6 +258,12 @@ func loadToolSpecs(path string) (map[string]toolSpec, error) {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
 	return specs, nil
+}
+
+func mergeToolSpecs(base map[string]toolSpec, overlay map[string]toolSpec) {
+	for id, spec := range overlay {
+		base[id] = spec
+	}
 }
 
 func detectPlatform() (platform, error) {
@@ -245,6 +345,7 @@ func prepareTool(id string, spec toolSpec, platformKey string, asset toolPlatfor
 		ID:          id,
 		Bin:         toolBinaryName(spec.Bin, platformKey),
 		Version:     strings.TrimSpace(spec.Version),
+		Policy:      strings.ToLower(strings.TrimSpace(spec.Policy)),
 		Platform:    platformKey,
 		URL:         strings.TrimSpace(asset.URL),
 		ArchivePath: normalizeArchivePath(asset.ArchivePath),
@@ -324,6 +425,7 @@ func manifestMatches(got toolManifest, want toolManifest) bool {
 	return strings.TrimSpace(got.ID) == want.ID &&
 		strings.TrimSpace(got.Bin) == want.Bin &&
 		strings.TrimSpace(got.Version) == want.Version &&
+		strings.ToLower(strings.TrimSpace(got.Policy)) == want.Policy &&
 		strings.TrimSpace(got.Platform) == want.Platform &&
 		strings.TrimSpace(got.URL) == want.URL &&
 		normalizeArchivePath(got.ArchivePath) == want.ArchivePath &&
@@ -356,6 +458,10 @@ func downloadToolAsset(url string, out string) error {
 		return fmt.Errorf("creating download request: %w", err)
 	}
 	request.Header.Set("User-Agent", "mediago-vendor-prepare")
+	request.Header.Set("Accept", "application/octet-stream")
+	if token := githubDownloadToken(url); token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
 
 	response, err := client.Do(request)
 	if err != nil {
@@ -377,7 +483,29 @@ func downloadToolAsset(url string, out string) error {
 	return nil
 }
 
+func githubDownloadToken(rawURL string) string {
+	token := strings.TrimSpace(os.Getenv("MEDIAGO_VENDOR_GITHUB_TOKEN"))
+	if token == "" {
+		return ""
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") || parsed.User != nil {
+		return ""
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "github.com" || host == "api.github.com" {
+		return token
+	}
+	return ""
+}
+
 func verifyDownloadedTool(path string, expected toolManifest) error {
+	if err := validatePinnedRuntimeManifest(expected); err != nil {
+		return err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("checking downloaded tool: %w", err)
@@ -441,13 +569,24 @@ func installRawTool(downloadPath string, bin string, distDir string) error {
 }
 
 func installArchivedTool(downloadPath string, expected toolManifest, distDir string) error {
+	file, err := os.Open(downloadPath)
+	if err != nil {
+		return fmt.Errorf("opening downloaded archive %s: %w", downloadPath, err)
+	}
+	header := make([]byte, 4)
+	read, err := io.ReadFull(file, header)
+	file.Close()
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return fmt.Errorf("reading downloaded archive %s: %w", downloadPath, err)
+	}
 	switch {
-	case strings.HasSuffix(strings.ToLower(expected.URL), ".zip"):
+	case read >= 4 && header[0] == 'P' && header[1] == 'K' &&
+		((header[2] == 3 && header[3] == 4) || (header[2] == 5 && header[3] == 6) || (header[2] == 7 && header[3] == 8)):
 		return installZipTool(downloadPath, expected, distDir)
-	case strings.HasSuffix(strings.ToLower(expected.URL), ".tar.gz"), strings.HasSuffix(strings.ToLower(expected.URL), ".tgz"):
+	case read >= 2 && header[0] == 0x1f && header[1] == 0x8b:
 		return installTarGzTool(downloadPath, expected, distDir)
 	default:
-		return fmt.Errorf("tool %q archivePath is set but url is not a supported archive: %s", expected.ID, expected.URL)
+		return fmt.Errorf("tool %q downloaded asset is not a supported zip or tar.gz archive", expected.ID)
 	}
 }
 
@@ -544,7 +683,7 @@ func normalizeSHA256(value string) string {
 }
 
 func normalizeArchivePath(value string) string {
-	value = strings.TrimSpace(filepath.ToSlash(value))
+	value = strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
 	value = strings.TrimPrefix(value, "./")
 	return value
 }

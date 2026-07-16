@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +25,11 @@ import (
 	platformlogger "github.com/mediago-dev/mediago-drama/services/server/internal/platform/logger"
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/workspace"
+)
+
+var (
+	defaultPromptPackPolicy            = "marketplace"
+	defaultProtectedPackImporterSHA256 string
 )
 
 // @title MediaGo Drama API
@@ -98,6 +104,7 @@ func run(args []string) error {
 	if err := applyEnvOverrides(&config); err != nil {
 		return err
 	}
+	applySidecarDefaults(&config)
 	applyPackagedToolDefaults(&config)
 
 	staticFS, err := workspace.StaticFS()
@@ -147,30 +154,46 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	protectedPackImporterPath, err := resolveProtectedPackImporterPath()
+	if err != nil {
+		return err
+	}
+	allowUnprotectedPackImport, err := unprotectedPromptPackImportAllowed()
+	if err != nil {
+		return err
+	}
+	sidecarToken, err := configuredSidecarToken()
+	if err != nil {
+		return err
+	}
 	appConfig := server.Config{
-		Host:                  config.Host,
-		Port:                  config.Port,
-		WorkspaceDir:          workspaceDir,
-		ACPCommand:            config.ACPCommand,
-		AgentID:               config.Agent.ID,
-		AgentBinDir:           config.Agent.BinDir,
-		ModelPlatforms:        config.ModelPlatforms,
-		GenerationCLIs:        config.GenerationCLIs,
-		MediagoBaseURL:        config.MediagoBaseURL,
-		FFmpegPath:            config.FFmpeg.Path,
-		FFmpegBinDir:          config.FFmpeg.BinDir,
-		JimengBinPath:         config.Jimeng.Path,
-		JimengBinDir:          config.Jimeng.BinDir,
-		LibTVBinPath:          config.LibTV.Path,
-		LibTVBinDir:           config.LibTV.BinDir,
-		LibTVProjectID:        config.LibTV.ProjectID,
-		PippitBinPath:         config.Pippit.Path,
-		PippitBinDir:          config.Pippit.BinDir,
-		DocumentMCPConfigPath: configPath,
-		AgentBridgeURL:        internalAPIURL + "/api/v1/internal/agent/spawn",
-		AgentBridgeToken:      bridgeToken,
-		PromptMaxSectionChars: config.Prompt.MaxSectionChars,
-		BillingPrices:         billingPrices,
+		Host:                        config.Host,
+		Port:                        config.Port,
+		WorkspaceDir:                workspaceDir,
+		ACPCommand:                  config.ACPCommand,
+		AgentID:                     config.Agent.ID,
+		AgentBinDir:                 config.Agent.BinDir,
+		ModelPlatforms:              config.ModelPlatforms,
+		GenerationCLIs:              config.GenerationCLIs,
+		MediagoBaseURL:              config.MediagoBaseURL,
+		SidecarToken:                sidecarToken,
+		ProtectedPackImporterPath:   protectedPackImporterPath,
+		ProtectedPackImporterSHA256: defaultProtectedPackImporterSHA256,
+		AllowUnprotectedPackImport:  allowUnprotectedPackImport,
+		FFmpegPath:                  config.FFmpeg.Path,
+		FFmpegBinDir:                config.FFmpeg.BinDir,
+		JimengBinPath:               config.Jimeng.Path,
+		JimengBinDir:                config.Jimeng.BinDir,
+		LibTVBinPath:                config.LibTV.Path,
+		LibTVBinDir:                 config.LibTV.BinDir,
+		LibTVProjectID:              config.LibTV.ProjectID,
+		PippitBinPath:               config.Pippit.Path,
+		PippitBinDir:                config.Pippit.BinDir,
+		DocumentMCPConfigPath:       configPath,
+		AgentBridgeURL:              internalAPIURL + "/api/v1/internal/agent/spawn",
+		AgentBridgeToken:            bridgeToken,
+		PromptMaxSectionChars:       config.Prompt.MaxSectionChars,
+		BillingPrices:               billingPrices,
 	}
 	if err := configureEdition(&appConfig); err != nil {
 		return fmt.Errorf("configuring server edition: %w", err)
@@ -336,6 +359,24 @@ func applyPackagedToolDefaults(config *serverconfig.ServerConfig) {
 	}
 }
 
+func applySidecarDefaults(config *serverconfig.ServerConfig) {
+	if config == nil || !truthyEnvValue(os.Getenv("MEDIAGO_SIDECAR_MODE")) {
+		return
+	}
+	config.Host = "127.0.0.1"
+}
+
+func configuredSidecarToken() (string, error) {
+	if !truthyEnvValue(os.Getenv("MEDIAGO_SIDECAR_MODE")) {
+		return "", nil
+	}
+	token := strings.TrimSpace(os.Getenv("MEDIAGO_SIDECAR_TOKEN"))
+	if len(token) < 32 {
+		return "", fmt.Errorf("MEDIAGO_SIDECAR_TOKEN must contain at least 32 characters in sidecar mode")
+	}
+	return token, nil
+}
+
 func packagedToolsDir() (string, bool) {
 	executable, err := executablePath()
 	if err != nil {
@@ -347,6 +388,56 @@ func packagedToolsDir() (string, bool) {
 		return "", false
 	}
 	return candidate, true
+}
+
+func resolveProtectedPackImporterPath() (string, error) {
+	if _, err := promptPackPolicy(); err != nil {
+		return "", err
+	}
+	if configured := strings.TrimSpace(os.Getenv("MEDIAGO_PROMPT_PACK_IMPORTER_PATH")); configured != "" {
+		return configured, nil
+	}
+	toolsDir, ok := packagedToolsDir()
+	if !ok {
+		return "", nil
+	}
+	candidate := filepath.Join(toolsDir, "mediago-rights", protectedPackImporterExecutableName())
+	info, err := os.Stat(candidate)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", nil
+	}
+	return candidate, nil
+}
+
+func unprotectedPromptPackImportAllowed() (bool, error) {
+	policy, err := promptPackPolicy()
+	if err != nil {
+		return false, err
+	}
+	return policy == "partner", nil
+}
+
+func promptPackPolicy() (string, error) {
+	policy := strings.ToLower(strings.TrimSpace(defaultPromptPackPolicy))
+	if policy == "" {
+		policy = "marketplace"
+	}
+	switch policy {
+	case "marketplace", "partner":
+		return policy, nil
+	default:
+		return "", fmt.Errorf(
+			"invalid embedded prompt-pack policy %q: expected marketplace or partner",
+			policy,
+		)
+	}
+}
+
+func protectedPackImporterExecutableName() string {
+	if runtime.GOOS == "windows" {
+		return "mediago-rights.exe"
+	}
+	return "mediago-rights"
 }
 
 func exitOnStdinCloseEnabled() bool {

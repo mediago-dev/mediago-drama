@@ -1,12 +1,13 @@
 import {
 	BookOpenCheck,
-	Boxes,
 	ChevronDown,
 	Download,
+	Ellipsis,
 	Library,
 	Loader2,
 	PackageOpen,
 	PackagePlus,
+	Pencil,
 	RotateCcw,
 	Settings2,
 	Trash2,
@@ -17,49 +18,46 @@ import { useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import {
 	type PromptPack,
-	createPromptPack,
 	exportPromptPack,
 	importPromptPackFile,
 	listPromptPacks,
+	promptPackExportFileName,
 	promptPacksKey,
 	resetPromptPack,
+	setPromptPackEnabled,
 	uninstallPromptPack,
 } from "@/domains/settings/api/packs";
 import { isPromptPackContentCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@/shared/components/ui/tooltip";
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/shared/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
+import { Switch } from "@/shared/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import { useDesktopWindowDrag } from "@/domains/workspace/lib/desktop-window-drag";
 import { useToast } from "@/hooks/useToast";
 import { cn } from "@/shared/lib/utils";
+import { openPromptPackEditor } from "@/shared/desktop/actions";
 import { PromptPackActionsSlotProvider } from "./PromptPackActionsSlot";
-import {
-	canExportPromptPackAsV1,
-	PromptPackAccountButton,
-	PromptPackExtension,
-} from "./PromptPackExtension";
-import { PromptPackWorkspace } from "./PromptPackWorkspace";
 import { PromptLibraryEditorPanel } from "./PromptLibraryEditorPanel";
 import { SkillsEditorPanel } from "./SkillsEditorPanel";
 
-type PromptPackSection = "skills" | "library" | "packs";
+type PromptPackSection = "skills" | "library";
 
 const promptPackSections: Array<{
 	icon: React.ComponentType<{ className?: string }>;
 	label: string;
 	value: PromptPackSection;
 }> = [
-	{ value: "skills", label: "全部技能", icon: BookOpenCheck },
-	{ value: "library", label: "全部提示词", icon: Library },
-	{ value: "packs", label: "词包", icon: Boxes },
+	{ value: "skills", label: "技能", icon: BookOpenCheck },
+	{ value: "library", label: "提示词库", icon: Library },
 ];
 
 export const PromptPacksPanel: React.FC = () => {
@@ -71,15 +69,12 @@ export const PromptPacksPanel: React.FC = () => {
 		mutate: mutatePacks,
 	} = useSWR(promptPacksKey, listPromptPacks);
 	const [activeSection, setActiveSection] = useState<PromptPackSection>("skills");
-	const [selectedPackID, setSelectedPackID] = useState<string>();
 	const [busyPackId, setBusyPackId] = useState<string>();
+	const [togglingPackId, setTogglingPackId] = useState<string>();
 	const [exportingPackId, setExportingPackId] = useState<string>();
 	const [resettingPackId, setResettingPackId] = useState<string>();
 	const [isImporting, setIsImporting] = useState(false);
 	const [manageOpen, setManageOpen] = useState(false);
-	const [createOpen, setCreateOpen] = useState(false);
-	const [createBusy, setCreateBusy] = useState(false);
-	const [createName, setCreateName] = useState("");
 	const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
 	const importInputRef = useRef<HTMLInputElement | null>(null);
 	const startWindowDrag = useDesktopWindowDrag();
@@ -88,12 +83,18 @@ export const PromptPacksPanel: React.FC = () => {
 		await Promise.all([mutatePacks(), mutate(isPromptPackContentCacheKey)]);
 	};
 
+	const refreshPromptDataInBackground = () => {
+		void Promise.allSettled([mutatePacks(), mutate(isPromptPackContentCacheKey)]);
+	};
+
 	const exportPack = async (pack: PromptPack) => {
 		setExportingPackId(pack.id);
 		try {
 			const exported = await exportPromptPack(pack.id);
-			downloadBlob(exported.blob, exported.fileName || `${pack.id}.mgpack`);
-			toast.success("提示词包已导出", { description: pack.name });
+			downloadBlob(exported.blob, exported.fileName || promptPackExportFileName(pack));
+			toast.success("提示词包已导出", {
+				description: "如需发布，请前往 MediaGo 官网上传并设置分发方式。",
+			});
 		} catch (error) {
 			toast.error("导出失败", { description: errorMessage(error) });
 		} finally {
@@ -105,28 +106,6 @@ export const PromptPacksPanel: React.FC = () => {
 		importInputRef.current?.click();
 	};
 
-	const createLocalPack = async () => {
-		if (!createName.trim()) return;
-		setCreateBusy(true);
-		try {
-			const pack = await createPromptPack({
-				id: createLocalPromptPackID(),
-				name: createName.trim(),
-				version: "1.0.0",
-			});
-			await refreshPromptData();
-			setCreateOpen(false);
-			setActiveSection("packs");
-			setSelectedPackID(pack.id);
-			setCreateName("");
-			toast.success("提示词包已创建", { description: pack.name });
-		} catch (error) {
-			toast.error("创建失败", { description: errorMessage(error) });
-		} finally {
-			setCreateBusy(false);
-		}
-	};
-
 	const importPackFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
 		const file = event.currentTarget.files?.[0];
 		event.currentTarget.value = "";
@@ -134,8 +113,17 @@ export const PromptPacksPanel: React.FC = () => {
 		setIsImporting(true);
 		try {
 			const pack = await importPromptPackFile(file);
-			await refreshPromptData();
+			await mutatePacks(
+				(current) => {
+					if (!current) return [pack];
+					const existingIndex = current.findIndex((candidate) => candidate.id === pack.id);
+					if (existingIndex < 0) return [...current, pack];
+					return current.map((candidate, index) => (index === existingIndex ? pack : candidate));
+				},
+				{ revalidate: false },
+			);
 			toast.success("提示词包已导入", { description: pack.name });
+			refreshPromptDataInBackground();
 		} catch (error) {
 			toast.error("导入失败", { description: errorMessage(error) });
 		} finally {
@@ -147,7 +135,6 @@ export const PromptPacksPanel: React.FC = () => {
 		setBusyPackId(pack.id);
 		try {
 			await uninstallPromptPack(pack.id);
-			setSelectedPackID((current) => (current === pack.id ? undefined : current));
 			await mutatePacks((current) => current?.filter((candidate) => candidate.id !== pack.id), {
 				revalidate: false,
 			});
@@ -159,6 +146,29 @@ export const PromptPacksPanel: React.FC = () => {
 			return false;
 		} finally {
 			setBusyPackId(undefined);
+		}
+	};
+
+	const togglePack = async (pack: PromptPack, enabled: boolean) => {
+		setTogglingPackId(pack.id);
+		try {
+			await mutatePacks(
+				(current) =>
+					current?.map((candidate) =>
+						candidate.id === pack.id ? { ...candidate, enabled } : candidate,
+					),
+				{ revalidate: false },
+			);
+			await setPromptPackEnabled(pack.id, enabled);
+			await Promise.all([mutatePacks(), mutate(isPromptPackContentCacheKey)]);
+			toast.success(enabled ? "提示词包已启用" : "提示词包已停用", {
+				description: pack.name,
+			});
+		} catch (error) {
+			await mutatePacks();
+			toast.error("更新失败", { description: errorMessage(error) });
+		} finally {
+			setTogglingPackId(undefined);
 		}
 	};
 
@@ -216,7 +226,6 @@ export const PromptPacksPanel: React.FC = () => {
 						</p>
 					</div>
 					<div className="flex shrink-0 items-center gap-2" data-desktop-no-drag>
-						<PromptPackAccountButton />
 						<input
 							ref={importInputRef}
 							type="file"
@@ -249,19 +258,43 @@ export const PromptPacksPanel: React.FC = () => {
 							<PopoverContent
 								align="end"
 								className="w-[min(28rem,calc(100vw-2rem))] overflow-hidden p-0"
+								onInteractOutside={(event) => {
+									const target = event.target;
+									if (
+										target instanceof Element &&
+										target.closest("[data-prompt-pack-action-menu]")
+									) {
+										event.preventDefault();
+									}
+								}}
 							>
-								<div className="max-h-[22rem] overflow-y-auto p-3">
-									<div className="mb-2 flex items-center gap-2">
-										<span className="text-xs font-medium text-foreground">提示词包</span>
-									</div>
-									<div className="space-y-2">
+								<div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
+									<div className="text-xs font-medium text-foreground">提示词包</div>
+									<Button
+										type="button"
+										variant="ghost"
+										size="sm"
+										className="h-7 gap-1 px-2 text-xs text-primary hover:text-primary"
+										onClick={() => {
+											setManageOpen(false);
+											void openPromptPackEditor({ mode: "create" });
+										}}
+									>
+										<PackagePlus className="size-3.5" />
+										<span>制作</span>
+									</Button>
+								</div>
+								<div className="max-h-[22rem] overflow-y-auto px-3">
+									<div className="divide-y divide-border">
 										{isLoading && packs.length === 0 ? (
-											<span className="flex items-center gap-2 text-xs text-muted-foreground">
+											<span className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
 												<Loader2 className="size-4 animate-spin" />
 												加载提示词包
 											</span>
 										) : packs.length === 0 ? (
-											<span className="text-xs text-muted-foreground">暂无提示词包。</span>
+											<span className="block py-3 text-xs text-muted-foreground">
+												暂无提示词包。
+											</span>
 										) : (
 											packs.map((pack) => (
 												<PromptPackPill
@@ -270,9 +303,15 @@ export const PromptPacksPanel: React.FC = () => {
 													exporting={exportingPackId === pack.id}
 													pack={pack}
 													resetting={resettingPackId === pack.id}
+													toggling={togglingPackId === pack.id}
+													onEdit={() => {
+														setManageOpen(false);
+														void openPromptPackEditor({ packId: pack.id });
+													}}
 													onExport={() => void exportPack(pack)}
 													onRemove={() => confirmRemovePack(pack)}
 													onReset={() => confirmResetPack(pack)}
+													onToggle={(enabled) => void togglePack(pack, enabled)}
 												/>
 											))
 										)}
@@ -291,7 +330,7 @@ export const PromptPacksPanel: React.FC = () => {
 			>
 				<PromptPackActionsSlotProvider slotEl={actionsSlot}>
 					<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-2">
-						<TabsList className="grid w-full max-w-md grid-cols-3 sm:w-96">
+						<TabsList className="grid w-full max-w-sm grid-cols-2 sm:w-80">
 							{promptPackSections.map((section) => {
 								const Icon = section.icon;
 								return (
@@ -313,61 +352,6 @@ export const PromptPacksPanel: React.FC = () => {
 					<TabsContent value="library" className="mt-0 min-h-0 flex-1 overflow-hidden">
 						<PromptLibraryEditorPanel />
 					</TabsContent>
-					<TabsContent value="packs" className="mt-0 min-h-0 flex-1 overflow-hidden">
-						<PromptPackWorkspace
-							listActions={
-								<Popover open={createOpen} onOpenChange={setCreateOpen}>
-									<PopoverTrigger asChild>
-										<Button type="button" size="sm" variant="outline">
-											<PackagePlus className="size-4" />
-											<span>新建词包</span>
-										</Button>
-									</PopoverTrigger>
-									<PopoverContent
-										align="end"
-										className="w-[min(24rem,calc(100vw-2rem))] space-y-3 p-4"
-									>
-										<div>
-											<p className="text-sm font-medium text-foreground">创建本地提示词包</p>
-											<p className="mt-1 text-xs text-muted-foreground">
-												新建提示词或 Skill 时可选择保存到该包。
-											</p>
-										</div>
-										<label className="block space-y-1.5 text-xs font-medium text-foreground">
-											<span>名称</span>
-											<input
-												className={packInputClassName}
-												value={createName}
-												onChange={(event) => setCreateName(event.target.value)}
-											/>
-										</label>
-										<div className="flex justify-end gap-2">
-											<Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>
-												取消
-											</Button>
-											<Button
-												type="button"
-												disabled={createBusy || !createName.trim()}
-												onClick={() => void createLocalPack()}
-											>
-												{createBusy && <Loader2 className="size-4 animate-spin" />}
-												<span>创建并编辑</span>
-											</Button>
-										</div>
-									</PopoverContent>
-								</Popover>
-							}
-							onChanged={refreshPromptData}
-							onSelectedPackChange={setSelectedPackID}
-							packs={packs}
-							renderPackActions={(pack) =>
-								pack.source !== "default" ? (
-									<PromptPackExtension pack={pack} onPublished={refreshPromptData} />
-								) : null
-							}
-							selectedPackID={selectedPackID}
-						/>
-					</TabsContent>
 				</PromptPackActionsSlotProvider>
 			</Tabs>
 		</section>
@@ -377,18 +361,40 @@ export const PromptPacksPanel: React.FC = () => {
 const PromptPackPill: React.FC<{
 	busy: boolean;
 	exporting: boolean;
+	onEdit: () => void;
 	onExport: () => void;
 	onRemove: () => void;
 	onReset: () => void;
+	onToggle: (enabled: boolean) => void;
 	pack: PromptPack;
 	resetting: boolean;
-}> = ({ busy, exporting, onExport, onRemove, onReset, pack, resetting }) => {
+	toggling: boolean;
+}> = ({
+	busy,
+	exporting,
+	onEdit,
+	onExport,
+	onRemove,
+	onReset,
+	onToggle,
+	pack,
+	resetting,
+	toggling,
+}) => {
 	const isLocal = pack.source === "local";
+	const isDefault = pack.source === "default";
+	const canUninstall = pack.source === "imported" || isLocal;
+	const enabled = pack.enabled;
 	return (
-		<div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border bg-ide-toolbar px-2 py-1.5">
+		<div
+			className={cn(
+				"flex w-full min-w-0 items-center justify-between gap-3 py-2",
+				!enabled && "opacity-70",
+			)}
+		>
 			<div className="min-w-0">
 				<div className="flex min-w-0 items-center gap-1.5">
-					<span className="max-w-44 truncate text-xs font-medium text-foreground">{pack.name}</span>
+					<span className="max-w-52 truncate text-xs font-medium text-foreground">{pack.name}</span>
 					<Badge variant="outline" className="shrink-0">
 						{sourceLabel(pack.source)}
 					</Badge>
@@ -397,77 +403,79 @@ const PromptPackPill: React.FC<{
 					{pack.id} · v{pack.version}
 				</p>
 			</div>
-			<TooltipProvider delayDuration={180}>
-				<div className="flex shrink-0 items-center gap-1 rounded-md bg-background/50 p-0.5">
-					<PromptPackActionButton
-						ariaLabel="恢复提示词包默认"
-						disabled={busy || resetting || isLocal}
-						onClick={onReset}
-						tooltip={isLocal ? "本地创作包没有安装默认值" : resetting ? "恢复中" : "恢复默认"}
-					>
-						{resetting ? (
-							<Loader2 className="size-4 animate-spin" />
-						) : (
-							<RotateCcw className="size-4" />
-						)}
-					</PromptPackActionButton>
-					{canExportPromptPackAsV1(pack) && !pack.releaseId ? (
-						<PromptPackActionButton
-							ariaLabel="导出提示词包"
-							disabled={exporting || resetting}
-							onClick={onExport}
-							tooltip={exporting ? "导出中" : "导出"}
+			<div className="flex shrink-0 items-center gap-2">
+				<Switch
+					checked={enabled}
+					disabled={isDefault || toggling || busy}
+					onCheckedChange={isDefault ? undefined : onToggle}
+					className={cn(
+						isDefault &&
+							"data-[state=checked]:bg-muted-foreground/40 disabled:cursor-not-allowed disabled:opacity-70",
+					)}
+					aria-label={
+						isDefault
+							? `默认提示词包不可停用 ${pack.name}`
+							: `${enabled ? "停用" : "启用"}提示词包 ${pack.name}`
+					}
+					title={isDefault ? "默认包始终启用" : toggling ? "更新中" : enabled ? "停用" : "启用"}
+				/>
+				<DropdownMenu modal={false}>
+					<DropdownMenuTrigger asChild>
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="size-7 text-muted-foreground hover:text-foreground"
+							disabled={busy}
+							aria-label={`更多操作 ${pack.name}`}
 						>
+							<Ellipsis className="size-4" />
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" data-prompt-pack-action-menu>
+						{isLocal ? (
+							<DropdownMenuItem disabled={busy} onSelect={onEdit}>
+								<Pencil className="size-4" />
+								编辑
+							</DropdownMenuItem>
+						) : null}
+						{!isLocal ? (
+							<DropdownMenuItem disabled={busy || resetting} onSelect={onReset}>
+								{resetting ? (
+									<Loader2 className="size-4 animate-spin" />
+								) : (
+									<RotateCcw className="size-4" />
+								)}
+								{resetting ? "恢复中" : "恢复默认"}
+							</DropdownMenuItem>
+						) : null}
+						<DropdownMenuItem disabled={busy || exporting || resetting} onSelect={onExport}>
 							{exporting ? (
 								<Loader2 className="size-4 animate-spin" />
 							) : (
 								<Download className="size-4" />
 							)}
-						</PromptPackActionButton>
-					) : null}
-					{pack.source === "imported" || pack.source === "local" ? (
-						<PromptPackActionButton
-							ariaLabel="卸载提示词包"
-							className="hover:bg-error-surface hover:text-error-foreground"
-							disabled={busy || resetting}
-							onClick={onRemove}
-							tooltip="卸载"
-						>
-							<Trash2 className="size-4" />
-						</PromptPackActionButton>
-					) : null}
-				</div>
-			</TooltipProvider>
+							{exporting ? "导出中" : "导出"}
+						</DropdownMenuItem>
+						{canUninstall ? (
+							<>
+								<DropdownMenuSeparator />
+								<DropdownMenuItem
+									className="text-destructive focus:bg-error-surface focus:text-error-foreground"
+									disabled={busy || exporting || resetting}
+									onSelect={onRemove}
+								>
+									<Trash2 className="size-4" />
+									卸载
+								</DropdownMenuItem>
+							</>
+						) : null}
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</div>
 		</div>
 	);
 };
-
-const PromptPackActionButton: React.FC<{
-	ariaLabel: string;
-	children: React.ReactNode;
-	className?: string;
-	disabled?: boolean;
-	onClick: () => void;
-	tooltip: string;
-}> = ({ ariaLabel, children, className, disabled, onClick, tooltip }) => (
-	<Tooltip>
-		<TooltipTrigger asChild>
-			<Button
-				type="button"
-				size="icon"
-				variant="ghost"
-				className={cn("size-7 rounded-md text-muted-foreground hover:text-foreground", className)}
-				onClick={onClick}
-				disabled={disabled}
-				aria-label={ariaLabel}
-				title={tooltip}
-			>
-				{children}
-			</Button>
-		</TooltipTrigger>
-		<TooltipContent side="top">{tooltip}</TooltipContent>
-	</Tooltip>
-);
 
 const sourceLabel = (source: PromptPack["source"]) => {
 	switch (source) {
@@ -479,11 +487,6 @@ const sourceLabel = (source: PromptPack["source"]) => {
 			return "本地创作";
 	}
 };
-
-const packInputClassName =
-	"h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-const createLocalPromptPackID = () => `local.${globalThis.crypto.randomUUID()}`;
 
 const downloadBlob = (blob: Blob, fileName: string) => {
 	const url = URL.createObjectURL(blob);

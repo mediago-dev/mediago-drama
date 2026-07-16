@@ -2,10 +2,15 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import {
 	type DesktopFileFilter,
 	type DesktopNotificationOptions,
+	type DesktopPromptPackSaveOptions,
+	type DesktopPromptPackSaveResult,
 	type DesktopUpdateAck,
 	type DesktopUpdateCapability,
 	type DesktopUpdateStatus,
 	type NativeThemeSource,
+	type PromptPackEditorCloseRequest,
+	type PromptPackEditorCloseResult,
+	type PromptPackEditorOpenOptions,
 	desktopIpcChannel,
 } from "./ipc-contract.js";
 
@@ -21,6 +26,11 @@ const api = {
 		ipcRenderer.invoke(desktopIpcChannel.pickDirectory, options),
 	pickFile: (options?: { title?: string; filters?: DesktopFileFilter[] }) =>
 		ipcRenderer.invoke(desktopIpcChannel.pickFile, options),
+	savePromptPack: (options: DesktopPromptPackSaveOptions) =>
+		ipcRenderer.invoke(
+			desktopIpcChannel.savePromptPack,
+			options,
+		) as Promise<DesktopPromptPackSaveResult>,
 	showNotification: (options: DesktopNotificationOptions) =>
 		ipcRenderer.invoke(desktopIpcChannel.showNotification, options),
 	onNotificationClicked: (callback: (id: string) => void) => {
@@ -28,6 +38,20 @@ const api = {
 		ipcRenderer.on(desktopIpcChannel.notificationClicked, listener);
 		return () => ipcRenderer.removeListener(desktopIpcChannel.notificationClicked, listener);
 	},
+	openPromptPackEditor: (options?: PromptPackEditorOpenOptions) =>
+		ipcRenderer.invoke(desktopIpcChannel.openPromptPackEditor, options),
+	onPromptPackEditorCloseRequested: (callback: (request: PromptPackEditorCloseRequest) => void) => {
+		const listener = (_event: IpcRendererEvent, value: unknown) => {
+			if (!value || typeof value !== "object") return;
+			const requestId = String((value as { requestId?: unknown }).requestId ?? "").trim();
+			if (requestId) callback({ requestId });
+		};
+		ipcRenderer.on(desktopIpcChannel.promptPackEditorCloseRequested, listener);
+		return () =>
+			ipcRenderer.removeListener(desktopIpcChannel.promptPackEditorCloseRequested, listener);
+	},
+	completePromptPackEditorClose: (result: PromptPackEditorCloseResult) =>
+		ipcRenderer.invoke(desktopIpcChannel.completePromptPackEditorClose, result),
 	getAppVersion: () => ipcRenderer.invoke(desktopIpcChannel.getAppVersion) as Promise<string>,
 	getUpdateCapability: () =>
 		ipcRenderer.invoke(desktopIpcChannel.getUpdateCapability) as Promise<DesktopUpdateCapability>,

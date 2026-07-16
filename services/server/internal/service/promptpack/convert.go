@@ -289,11 +289,39 @@ func entryIsLinkedReference(entry Entry) bool {
 }
 
 func validateEntryForWrite(entry Entry) error {
-	if strings.TrimSpace(entry.Slug) == "" || strings.TrimSpace(entry.Name) == "" {
-		return fmt.Errorf("%w: entry slug and name are required", ErrInvalidPack)
+	if err := validateDraftEntryForWrite(entry); err != nil {
+		return err
 	}
 	if strings.TrimSpace(entry.Body) == "" {
 		return fmt.Errorf("%w: entry body is required", ErrInvalidPack)
+	}
+	return nil
+}
+
+func validateDraftEntryForWrite(entry Entry) error {
+	if strings.TrimSpace(entry.Slug) == "" {
+		return fmt.Errorf("%w: entry slug is required", ErrInvalidPack)
+	}
+	name := strings.TrimSpace(entry.Name)
+	if entry.Kind == instructionpack.KindSkill && strings.TrimSpace(entry.Title) != "" {
+		name = strings.TrimSpace(entry.Title)
+	}
+	if name == "" {
+		return fmt.Errorf("%w: entry name is required", ErrInvalidPack)
+	}
+	return nil
+}
+
+func validateEntrySlug(kind instructionpack.Kind, slug string) error {
+	slug = strings.TrimSpace(slug)
+	if kind == instructionpack.KindSkill {
+		if !instructionpack.IsSafeSkillName(slug) {
+			return fmt.Errorf("%w: skill slug is invalid", ErrInvalidPack)
+		}
+		return nil
+	}
+	if !localPackIDPattern.MatchString(slug) {
+		return fmt.Errorf("%w: prompt slug is invalid", ErrInvalidPack)
 	}
 	return nil
 }

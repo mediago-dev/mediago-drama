@@ -20,6 +20,8 @@ const mediagoBaseURL =
 	process.argv[5]?.trim() || process.env.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL?.trim() || "";
 const generationClis =
 	process.argv[6]?.trim() || process.env.MEDIAGO_GENERATION_CLIS?.trim() || "dreamina";
+const includeProtectedPackRuntime =
+	process.env.MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME?.trim() === "1";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const workspaceDir = resolve(scriptDir, "..");
 const rootDir = resolve(workspaceDir, "../..");
@@ -42,7 +44,11 @@ const toolsDist = join(vendorDistRoot, "tools");
 const electronResourcesDir = join(workspaceDir, "electron", "resources");
 const baseToolIDs = ["ffmpeg", "ffprobe"];
 const generationCliIDs = parseToolIDs(generationClis);
-const selectedToolIDs = unique([...baseToolIDs, ...generationCliIDs]);
+const selectedToolIDs = unique([
+	...baseToolIDs,
+	...generationCliIDs,
+	...(includeProtectedPackRuntime ? ["mediago-rights"] : []),
+]);
 
 function main(): void {
 	for (const binary of serviceBinaries) ensureExecutable(binary.path);

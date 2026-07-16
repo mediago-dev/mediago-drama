@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename } from "node:path";
 
 type SidecarIntegrityManifest = {
 	algorithm?: unknown;
@@ -9,18 +9,18 @@ type SidecarIntegrityManifest = {
 	version?: unknown;
 };
 
-const manifestFilename = "sidecar-integrity.json";
-
-export const verifySidecarIntegrity = (serverPath: string, resourcesRoot: string): void => {
-	const manifest = readManifest(join(resourcesRoot, manifestFilename));
-	const filename = basename(serverPath);
-	const expected = manifest.files[filename];
-	if (!expected) {
-		throw new Error(`sidecar integrity manifest does not contain ${filename}`);
-	}
-	const actual = createHash("sha256").update(readFileSync(serverPath)).digest("hex");
-	if (actual !== expected) {
-		throw new Error(`server sidecar integrity check failed: ${filename}`);
+export const verifySidecarIntegrity = (binaryPaths: string[], manifestPath: string): void => {
+	const manifest = readManifest(manifestPath);
+	for (const binaryPath of binaryPaths) {
+		const filename = basename(binaryPath);
+		const expected = manifest.files[filename];
+		if (!expected) {
+			throw new Error(`sidecar integrity manifest does not contain ${filename}`);
+		}
+		const actual = createHash("sha256").update(readFileSync(binaryPath)).digest("hex");
+		if (actual !== expected) {
+			throw new Error(`server sidecar integrity check failed: ${filename}`);
+		}
 	}
 };
 

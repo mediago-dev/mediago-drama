@@ -1,7 +1,6 @@
 import httpClient from "@/shared/lib/http";
 import { apiURL } from "@/shared/lib/api-base";
 import type { ApiResponse } from "@/types/api";
-import { tryImportPromptPackExtension } from "@/domains/settings/components/debug/PromptPackExtension";
 
 export type PromptPackSource = "default" | "imported" | "local";
 
@@ -119,6 +118,22 @@ export interface UpdatePromptPackEntryInput {
 	metadata?: Record<string, unknown>;
 }
 
+export interface CreatePromptPackEntryInput {
+	kind: PromptPackEntryKind;
+	slug: string;
+}
+
+export const createPromptPackEntry = async (
+	packId: string,
+	input: CreatePromptPackEntryInput,
+): Promise<PromptPackEntry> => {
+	const response = await httpClient.post<PromptPackEntry>(
+		`${promptPacksKey}/${encodeURIComponent(packId)}/entries`,
+		input,
+	);
+	return response.data;
+};
+
 export const updatePromptPackEntry = async (
 	packId: string,
 	entryId: string,
@@ -153,6 +168,26 @@ export interface ExportPromptPackResult {
 	fileName: string;
 }
 
+export const promptPackExportFileName = (
+	pack: Pick<PromptPack, "id" | "name" | "version">,
+): string => {
+	const sanitizeSegment = (value: string, maxLength: number) => {
+		const withoutControls = Array.from(value, (character) => {
+			const code = character.charCodeAt(0);
+			return code <= 0x1f || code === 0x7f ? "-" : character;
+		}).join("");
+		return withoutControls
+			.replace(/[<>:"/\\|?*]/g, "-")
+			.replace(/\s+/g, " ")
+			.replace(/-+/g, "-")
+			.replace(/^[ ._-]+|[ ._-]+$/g, "")
+			.slice(0, maxLength);
+	};
+	const readableName = sanitizeSegment(pack.name.trim() || pack.id, 96);
+	const version = sanitizeSegment(pack.version.trim().replace(/^[vV]/, ""), 32) || "1.0.0";
+	return `${readableName || "prompt-pack"}-v${version}.mgpack`;
+};
+
 export const exportPromptPack = async (id: string): Promise<ExportPromptPackResult> => {
 	const response = await fetch(apiURL(`/packs/${encodeURIComponent(id)}/export`), {
 		headers: authHeaders(),
@@ -160,14 +195,11 @@ export const exportPromptPack = async (id: string): Promise<ExportPromptPackResu
 	if (!response.ok) throw await apiFetchError(response);
 	return {
 		blob: await response.blob(),
-		fileName:
-			fileNameFromContentDisposition(response.headers.get("content-disposition")) || `${id}.mgpack`,
+		fileName: fileNameFromContentDisposition(response.headers.get("content-disposition")),
 	};
 };
 
 export const importPromptPackFile = async (file: File): Promise<PromptPack> => {
-	const extended = await tryImportPromptPackExtension(file);
-	if (extended) return extended;
 	const formData = new FormData();
 	formData.append("file", file);
 	const response = await fetch(apiURL("/packs/import"), {
@@ -214,7 +246,13 @@ const apiFetchError = async (response: Response) => {
 const fileNameFromContentDisposition = (value: string | null) => {
 	if (!value) return "";
 	const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(value);
-	if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+	if (utf8Match?.[1]) {
+		try {
+			return decodeURIComponent(utf8Match[1].replace(/^"|"$/g, ""));
+		} catch {
+			return "";
+		}
+	}
 	const asciiMatch = /filename="?([^";]+)"?/i.exec(value);
 	return asciiMatch?.[1] ?? "";
 };

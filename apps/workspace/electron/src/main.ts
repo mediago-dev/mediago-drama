@@ -4,29 +4,156 @@ import {
 	dialog,
 	ipcMain,
 	nativeTheme,
+	net,
+	protocol,
+	session,
 	shell,
 	type OpenDialogOptions,
+	type SaveDialogOptions,
 } from "electron";
-import { copyFile, mkdir, stat } from "node:fs/promises";
+import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { basename, extname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
 	type DesktopFileFilter,
 	type DesktopNotificationOptions,
 	type NativeThemeSource,
+	type PromptPackEditorCloseResult,
+	type PromptPackEditorOpenOptions,
 	desktopIpcChannel,
 } from "./ipc-contract.js";
+import { assertTrustedIpcSender, normalizeDevelopmentRendererURL } from "./ipc-security.js";
 import { showDesktopSystemNotification } from "./desktop-notifications.js";
 import { preloadPath, rendererDistDir } from "./paths.js";
-import { startServerSidecar, stopServerSidecar } from "./sidecar.js";
+import { parsePromptPackSaveRequest } from "./prompt-pack-save.js";
+import { normalizeExternalURL } from "./navigation-security.js";
+import {
+	rendererContentSecurityPolicy,
+	rendererProtocolScheme,
+	resolveRendererAssetPath,
+} from "./renderer-protocol.js";
+import { type SidecarConnection, startServerSidecar, stopServerSidecar } from "./sidecar.js";
 import { registerDesktopUpdater } from "./updater.js";
 
+protocol.registerSchemesAsPrivileged([
+	{
+		scheme: rendererProtocolScheme,
+		privileges: {
+			standard: true,
+			secure: true,
+			supportFetchAPI: true,
+		},
+	},
+]);
+
 let mainWindow: BrowserWindow | null = null;
+let promptPackEditorWindow: BrowserWindow | null = null;
+let promptPackEditorCloseAllowed = false;
+let pendingPromptPackEditorClose: { action: "close" | "quit"; requestId: string } | null = null;
 let isQuitting = false;
 
-const rendererUrl = process.env.ELECTRON_RENDERER_URL?.trim();
+const configuredRendererURL = process.env.ELECTRON_RENDERER_URL?.trim();
+const rendererUrl = app.isPackaged
+	? undefined
+	: normalizeDevelopmentRendererURL(configuredRendererURL);
+if (!app.isPackaged && configuredRendererURL && !rendererUrl) {
+	console.warn("[mediago-electron] ignoring unsafe ELECTRON_RENDERER_URL");
+}
+
+const trustedRendererOptions = {
+	developmentRendererRoot: rendererDistDir(),
+	developmentRendererURL: rendererUrl,
+	packaged: app.isPackaged,
+};
+
+const authorizeDesktopIpc = (event: Electron.IpcMainInvokeEvent) => {
+	assertTrustedIpcSender(event, trustedRendererOptions);
+};
 
 const isNativeThemeSource = (value: unknown): value is NativeThemeSource =>
 	value === "light" || value === "dark" || value === "system";
+
+const requestPromptPackEditorClose = (action: "close" | "quit"): boolean => {
+	const editorWindow = promptPackEditorWindow;
+	if (!editorWindow || editorWindow.isDestroyed() || editorWindow.webContents.isDestroyed()) {
+		return false;
+	}
+	if (pendingPromptPackEditorClose) {
+		if (action === "quit") pendingPromptPackEditorClose.action = "quit";
+		return true;
+	}
+	const requestId = randomUUID();
+	pendingPromptPackEditorClose = { action, requestId };
+	editorWindow.webContents.send(desktopIpcChannel.promptPackEditorCloseRequested, { requestId });
+	return true;
+};
+
+const parsePromptPackEditorOpenOptions = (value: unknown): PromptPackEditorOpenOptions => {
+	if (value === undefined) return {};
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error("invalid prompt pack editor options");
+	}
+	const options = value as Record<string, unknown>;
+	if (options.mode !== undefined && options.mode !== "create") {
+		throw new Error("invalid prompt pack editor mode");
+	}
+	if (options.packId !== undefined && typeof options.packId !== "string") {
+		throw new Error("invalid prompt pack id");
+	}
+	return {
+		...(options.mode === "create" ? { mode: options.mode } : {}),
+		...(typeof options.packId === "string" ? { packId: options.packId } : {}),
+	};
+};
+
+const openExternalURL = async (value: string) => {
+	const url = normalizeExternalURL(value);
+	if (!url) throw new Error("external URL must use HTTP or HTTPS");
+	await shell.openExternal(url);
+};
+
+const sidecarTokenHeader = "X-MediaGo-Sidecar-Token";
+
+const registerRendererProtocol = () => {
+	session.defaultSession.webRequest.onHeadersReceived(
+		{ urls: ["app://localhost/*"] },
+		(details, callback) => {
+			callback({
+				responseHeaders: {
+					...details.responseHeaders,
+					"Content-Security-Policy": [rendererContentSecurityPolicy],
+					"Referrer-Policy": ["no-referrer"],
+					"X-Content-Type-Options": ["nosniff"],
+				},
+			});
+		},
+	);
+	protocol.handle(rendererProtocolScheme, (request) => {
+		const assetPath = resolveRendererAssetPath(request.url, rendererDistDir());
+		if (!assetPath) {
+			return new Response("Not found", {
+				status: 404,
+				headers: { "content-type": "text/plain; charset=utf-8" },
+			});
+		}
+		return net.fetch(pathToFileURL(assetPath).toString());
+	});
+};
+
+const authenticateSidecarRequests = (sidecar: SidecarConnection) => {
+	session.defaultSession.webRequest.onBeforeSendHeaders(
+		{ urls: [`${sidecar.origin}/*`] },
+		(details, callback) => {
+			callback({
+				requestHeaders: {
+					...details.requestHeaders,
+					[sidecarTokenHeader]: sidecar.token,
+				},
+			});
+		},
+	);
+};
 
 const showMainWindow = () => {
 	const window = mainWindow;
@@ -51,6 +178,87 @@ const showMainWindow = () => {
 	}
 };
 
+const secureRendererWindow = (window: BrowserWindow) => {
+	window.webContents.setWindowOpenHandler(({ url }) => {
+		const externalURL = normalizeExternalURL(url);
+		if (externalURL) void shell.openExternal(externalURL);
+		return { action: "deny" };
+	});
+	window.webContents.on("will-navigate", (event, url) => {
+		event.preventDefault();
+		const externalURL = normalizeExternalURL(url);
+		if (externalURL) void shell.openExternal(externalURL);
+	});
+	window.webContents.on("will-attach-webview", (event) => event.preventDefault());
+};
+
+const loadRendererRoute = async (window: BrowserWindow, route: string, search = "") => {
+	if (rendererUrl) {
+		const url = new URL(route, rendererUrl);
+		url.search = search;
+		await window.loadURL(url.toString());
+		return;
+	}
+	if (app.isPackaged) {
+		const url = new URL("app://localhost/index.html");
+		url.searchParams.set("version", app.getVersion());
+		url.hash = `${route}${search}`;
+		await window.loadURL(url.toString());
+		return;
+	}
+	await window.loadFile(join(rendererDistDir(), "index.html"), {
+		hash: `${route}${search}`,
+	});
+};
+
+const openPromptPackEditorWindow = async (options: PromptPackEditorOpenOptions = {}) => {
+	const searchParams = new URLSearchParams();
+	const normalizedPackId = options.packId?.trim();
+	if (normalizedPackId) searchParams.set("packId", normalizedPackId);
+	else if (options.mode === "create") searchParams.set("mode", "create");
+	const search = searchParams.size > 0 ? `?${searchParams.toString()}` : "";
+	if (promptPackEditorWindow && !promptPackEditorWindow.isDestroyed()) {
+		await loadRendererRoute(promptPackEditorWindow, "/prompt-pack-editor", search);
+		promptPackEditorWindow.show();
+		promptPackEditorWindow.focus();
+		return;
+	}
+
+	promptPackEditorWindow = new BrowserWindow({
+		title: "提示词包编辑器",
+		width: 1180,
+		height: 820,
+		minWidth: 900,
+		minHeight: 640,
+		center: true,
+		show: false,
+		titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+		trafficLightPosition: { x: 16, y: 22 },
+		webPreferences: {
+			preload: preloadPath(),
+			contextIsolation: true,
+			devTools: Boolean(rendererUrl),
+			nodeIntegration: false,
+			sandbox: true,
+		},
+	});
+	promptPackEditorCloseAllowed = false;
+	pendingPromptPackEditorClose = null;
+	secureRendererWindow(promptPackEditorWindow);
+	promptPackEditorWindow.once("ready-to-show", () => promptPackEditorWindow?.show());
+	promptPackEditorWindow.on("close", (event) => {
+		if (promptPackEditorCloseAllowed) return;
+		if (!requestPromptPackEditorClose("close")) return;
+		event.preventDefault();
+	});
+	promptPackEditorWindow.on("closed", () => {
+		promptPackEditorWindow = null;
+		promptPackEditorCloseAllowed = false;
+		pendingPromptPackEditorClose = null;
+	});
+	await loadRendererRoute(promptPackEditorWindow, "/prompt-pack-editor", search);
+};
+
 const createWindow = async () => {
 	mainWindow = new BrowserWindow({
 		title: "MediaGo Drama",
@@ -67,9 +275,11 @@ const createWindow = async () => {
 			contextIsolation: true,
 			devTools: Boolean(rendererUrl),
 			nodeIntegration: false,
-			sandbox: false,
+			sandbox: true,
 		},
 	});
+
+	secureRendererWindow(mainWindow);
 
 	mainWindow.once("ready-to-show", showMainWindow);
 	mainWindow.webContents.once("did-finish-load", showMainWindow);
@@ -81,20 +291,15 @@ const createWindow = async () => {
 		mainWindow?.hide();
 	});
 
-	if (rendererUrl) {
-		await mainWindow.loadURL(rendererUrl);
-	} else {
-		if (app.isPackaged) {
-			await mainWindow.webContents.session.clearCache();
-		}
-		await mainWindow.loadFile(join(rendererDistDir(), "index.html"), {
-			hash: app.isPackaged ? "/" : undefined,
-			query: app.isPackaged ? { version: app.getVersion() } : undefined,
-		});
-	}
+	if (app.isPackaged) await mainWindow.webContents.session.clearCache();
+	await loadRendererRoute(mainWindow, "/");
 };
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+	if (!promptPackEditorCloseAllowed && requestPromptPackEditorClose("quit")) {
+		event.preventDefault();
+		return;
+	}
 	isQuitting = true;
 	stopServerSidecar();
 });
@@ -108,22 +313,26 @@ app.on("activate", () => {
 	else mainWindow?.show();
 });
 
-ipcMain.handle(desktopIpcChannel.openExternal, async (_event, url: string) => {
-	await shell.openExternal(url);
+ipcMain.handle(desktopIpcChannel.openExternal, async (event, url: string) => {
+	authorizeDesktopIpc(event);
+	await openExternalURL(url);
 });
 
-ipcMain.handle(desktopIpcChannel.openPath, async (_event, path: string) => {
+ipcMain.handle(desktopIpcChannel.openPath, async (event, path: string) => {
+	authorizeDesktopIpc(event);
 	const error = await shell.openPath(path);
 	if (error) throw new Error(error);
 });
 
-ipcMain.handle(desktopIpcChannel.revealPath, (_event, path: string) => {
+ipcMain.handle(desktopIpcChannel.revealPath, (event, path: string) => {
+	authorizeDesktopIpc(event);
 	shell.showItemInFolder(path);
 });
 
 ipcMain.handle(
 	desktopIpcChannel.copyFileToDirectory,
-	async (_event, options: { directory?: string; filename?: string; sourcePath?: string }) => {
+	async (event, options: { directory?: string; filename?: string; sourcePath?: string }) => {
+		authorizeDesktopIpc(event);
 		const sourcePath = String(options?.sourcePath ?? "").trim();
 		if (!sourcePath) throw new Error("sourcePath is required");
 
@@ -147,7 +356,8 @@ ipcMain.handle(
 	},
 );
 
-ipcMain.handle(desktopIpcChannel.pickDirectory, async (_event, options?: { title?: string }) => {
+ipcMain.handle(desktopIpcChannel.pickDirectory, async (event, options?: { title?: string }) => {
+	authorizeDesktopIpc(event);
 	const dialogOptions: OpenDialogOptions = {
 		title: options?.title,
 		properties: ["openDirectory"],
@@ -160,7 +370,8 @@ ipcMain.handle(desktopIpcChannel.pickDirectory, async (_event, options?: { title
 
 ipcMain.handle(
 	desktopIpcChannel.pickFile,
-	async (_event, options?: { title?: string; filters?: DesktopFileFilter[] }) => {
+	async (event, options?: { title?: string; filters?: DesktopFileFilter[] }) => {
+		authorizeDesktopIpc(event);
 		const dialogOptions: OpenDialogOptions = {
 			title: options?.title,
 			filters: options?.filters,
@@ -173,7 +384,30 @@ ipcMain.handle(
 	},
 );
 
+ipcMain.handle(desktopIpcChannel.savePromptPack, async (event, value: unknown) => {
+	authorizeDesktopIpc(event);
+	const request = parsePromptPackSaveRequest(value);
+	const dialogOptions: SaveDialogOptions = {
+		title: "导出提示词包",
+		defaultPath: request.filename,
+		filters: [{ name: "MediaGo 提示词包", extensions: ["mgpack"] }],
+	};
+	const owner = BrowserWindow.fromWebContents(event.sender);
+	const result = owner
+		? await dialog.showSaveDialog(owner, dialogOptions)
+		: await dialog.showSaveDialog(dialogOptions);
+	if (result.canceled || !result.filePath) return { canceled: true };
+
+	const targetPath =
+		extname(result.filePath).toLowerCase() === ".mgpack"
+			? result.filePath
+			: `${result.filePath}.mgpack`;
+	await writeFile(targetPath, request.data);
+	return { canceled: false, path: targetPath };
+});
+
 ipcMain.handle(desktopIpcChannel.showNotification, (event, options: DesktopNotificationOptions) => {
+	authorizeDesktopIpc(event);
 	const id = typeof options.id === "string" ? options.id.trim() : "";
 	return showDesktopSystemNotification({
 		notification: options,
@@ -186,11 +420,46 @@ ipcMain.handle(desktopIpcChannel.showNotification, (event, options: DesktopNotif
 	});
 });
 
-ipcMain.handle(desktopIpcChannel.startWindowDrag, () => {
+ipcMain.handle(desktopIpcChannel.openPromptPackEditor, async (event, value: unknown) => {
+	authorizeDesktopIpc(event);
+	await openPromptPackEditorWindow(parsePromptPackEditorOpenOptions(value));
+});
+
+ipcMain.handle(desktopIpcChannel.completePromptPackEditorClose, (event, value: unknown) => {
+	authorizeDesktopIpc(event);
+	const editorWindow = promptPackEditorWindow;
+	if (!editorWindow || editorWindow.isDestroyed() || event.sender !== editorWindow.webContents) {
+		throw new Error("prompt pack editor close response came from the wrong window");
+	}
+	if (!value || typeof value !== "object") {
+		throw new Error("prompt pack editor close response is invalid");
+	}
+	const result = value as Partial<PromptPackEditorCloseResult>;
+	const requestId = typeof result.requestId === "string" ? result.requestId.trim() : "";
+	const pending = pendingPromptPackEditorClose;
+	if (
+		!pending ||
+		!requestId ||
+		requestId !== pending.requestId ||
+		typeof result.allow !== "boolean"
+	) {
+		throw new Error("prompt pack editor close response does not match the pending request");
+	}
+	pendingPromptPackEditorClose = null;
+	if (!result.allow) return;
+
+	promptPackEditorCloseAllowed = true;
+	if (pending.action === "quit") app.quit();
+	else editorWindow.close();
+});
+
+ipcMain.handle(desktopIpcChannel.startWindowDrag, (event) => {
+	authorizeDesktopIpc(event);
 	// Electron uses CSS app-region for dragging; imperative renderer calls are no-ops.
 });
 
-ipcMain.handle(desktopIpcChannel.setNativeThemeSource, (_event, source: unknown) => {
+ipcMain.handle(desktopIpcChannel.setNativeThemeSource, (event, source: unknown) => {
+	authorizeDesktopIpc(event);
 	if (!isNativeThemeSource(source)) throw new Error("invalid native theme source");
 	nativeTheme.themeSource = source;
 });
@@ -226,8 +495,10 @@ const pathIsAvailable = async (path: string) => {
 };
 
 const startApp = async () => {
-	registerDesktopUpdater({ getWindow: () => mainWindow });
-	startServerSidecar();
+	registerRendererProtocol();
+	registerDesktopUpdater({ authorizeIpcSender: authorizeDesktopIpc, getWindow: () => mainWindow });
+	const sidecar = startServerSidecar();
+	if (sidecar) authenticateSidecarRequests(sidecar);
 	await createWindow();
 };
 

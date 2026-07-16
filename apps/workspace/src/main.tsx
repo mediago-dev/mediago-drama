@@ -12,7 +12,10 @@ import "@/styles/index.css";
 
 const runtime = desktopRuntime();
 const isDesktop = runtime !== "browser";
-const AppRouter = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
+const AppRouter =
+	window.location.protocol === "file:" || window.location.protocol === "app:"
+		? HashRouter
+		: BrowserRouter;
 const platformSignal = `${window.navigator.platform} ${window.navigator.userAgent}`;
 const isMacLikePlatform =
 	window.mediagoDesktop?.platform === "darwin" ||

@@ -33,7 +33,13 @@ export class TalkingDataAnalytics {
 		if (this.initialized) return Boolean(this.appId);
 		this.initialized = true;
 
-		if (!this.appId || typeof document === "undefined") return false;
+		if (
+			!this.appId ||
+			typeof document === "undefined" ||
+			(typeof window !== "undefined" && window.mediagoDesktop?.isElectron)
+		) {
+			return false;
+		}
 		if (document.querySelector("script[data-mediago-analytics='talking-data']")) return true;
 
 		const script = document.createElement("script");

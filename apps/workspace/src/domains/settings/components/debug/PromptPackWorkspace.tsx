@@ -1,794 +1,1085 @@
 import {
-	ArrowLeft,
 	BookOpenCheck,
-	ChevronRight,
-	CopyPlus,
+	Check,
+	ChevronLeft,
 	FileText,
+	FilePlus2,
+	FolderTree,
+	LayoutDashboard,
+	LayoutList,
 	Library,
 	Loader2,
 	PackageOpen,
-	Plus,
+	PackagePlus,
 	Search,
 	Trash2,
 	X,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import {
-	listPromptPresets,
-	promptPresetsKey,
-	type PromptPreset,
-} from "@/domains/generation/api/prompt-presets";
-import {
-	copyPromptPackEntries,
 	getPromptPackContents,
 	promptPackContentsKey,
+	createPromptPackEntry,
 	type PromptPack,
+	type PromptPackContents,
 	type PromptPackEntry,
 	type PromptPackEntryKind,
-	type PromptPackEntryReference,
 	removePromptPackEntry,
 } from "@/domains/settings/api/packs";
-import { listSkills, skillsKey, type SkillMeta } from "@/domains/settings/api/skills";
 import { isPromptPackContentCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
+import {
+	SidebarContentLayout,
+	useWorkspaceSidebarWidth,
+	workspaceSidebarWidth,
+} from "@/domains/workspace/components/SidebarContentLayout";
+import { useToast } from "@/hooks/useToast";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
-import { Badge } from "@/shared/components/ui/badge";
+import { Alert, AlertDescription } from "@/shared/components/ui/alert";
+import {
+	AlertDialog,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
-import {
-	Sheet,
-	SheetClose,
-	SheetContent,
-	SheetDescription,
-	SheetFooter,
-	SheetHeader,
-	SheetTitle,
-} from "@/shared/components/ui/sheet";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
-import { useToast } from "@/hooks/useToast";
+import { Label } from "@/shared/components/ui/label";
+import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/lib/utils";
-import { CreatePackContentSheet, PromptPackEntryEditor } from "./PromptPackContentEditor";
+import { PromptPackEntryEditor, type PromptPackEntryEditorHandle } from "./PromptPackContentEditor";
 
-type PackContentSection = "skill" | "prompt";
+type WorkspaceView = { type: "idle" } | { entryID: string; type: "entry" };
 
 interface PromptPackWorkspaceProps {
-	listActions?: React.ReactNode;
+	createError?: string;
+	creatingPack: boolean;
+	header?: React.ReactNode;
+	isCreatingPack: boolean;
+	isLoading?: boolean;
+	onCancelCreatePack: () => void;
 	onChanged: () => Promise<void>;
+	onCreatePack: (input: { description: string; name: string }) => Promise<void>;
 	onSelectedPackChange: (packID?: string) => void;
+	onStartCreatePack: () => void;
 	packs: PromptPack[];
-	renderPackActions?: (pack: PromptPack) => React.ReactNode;
 	selectedPackID?: string;
 }
 
-export const PromptPackWorkspace: React.FC<PromptPackWorkspaceProps> = ({
-	listActions,
-	onChanged,
-	onSelectedPackChange,
-	packs,
-	renderPackActions,
-	selectedPackID,
-}) => {
-	const toast = useToast();
-	const { mutate: mutateGlobal } = useSWRConfig();
-	const { data: skills = [], isLoading: skillsLoading } = useSWR(skillsKey, listSkills);
-	const { data: prompts = [], isLoading: promptsLoading } = useSWR(promptPresetsKey, () =>
-		listPromptPresets(),
-	);
-	const contentsKey = selectedPackID ? promptPackContentsKey(selectedPackID) : null;
-	const {
-		data: contents,
-		isLoading: contentsLoading,
-		mutate: mutateContents,
-	} = useSWR(contentsKey, () => getPromptPackContents(selectedPackID ?? ""));
-	const [activeSection, setActiveSection] = useState<PackContentSection>("skill");
-	const [pickerOpen, setPickerOpen] = useState(false);
-	const [copying, setCopying] = useState(false);
-	const [createKind, setCreateKind] = useState<PromptPackEntryKind>("prompt");
-	const [createOpen, setCreateOpen] = useState(false);
-	const [deletingSlug, setDeletingSlug] = useState<string>();
-	const [selectedEntryID, setSelectedEntryID] = useState<string>();
+export interface PromptPackWorkspaceHandle {
+	flush: () => Promise<boolean>;
+	openEntry: (entryID: string) => void;
+}
 
-	const selectedPack = packs.find((pack) => pack.id === selectedPackID);
-	const entries = contents?.entries ?? [];
-	const skillEntries = entries.filter((entry) => entry.kind === "skill");
-	const promptEntries = entries.filter((entry) => entry.kind === "prompt");
-	const counts = useMemo(() => packContentCounts(packs, skills, prompts), [packs, prompts, skills]);
+export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptPackWorkspaceProps>(
+	function PromptPackWorkspace(
+		{
+			createError,
+			creatingPack,
+			header,
+			isCreatingPack,
+			isLoading = false,
+			onCancelCreatePack,
+			onChanged,
+			onCreatePack,
+			onSelectedPackChange,
+			onStartCreatePack,
+			packs,
+			selectedPackID,
+		},
+		ref,
+	) {
+		const toast = useToast();
+		const { mutate: mutateGlobal } = useSWRConfig();
+		const selectedPack = packs.find((pack) => pack.id === selectedPackID);
+		const contentsKey =
+			selectedPackID && !creatingPack ? promptPackContentsKey(selectedPackID) : null;
+		const {
+			data: contents,
+			isLoading: contentsLoading,
+			mutate: mutateContents,
+		} = useSWR(contentsKey, () => getPromptPackContents(selectedPackID ?? ""));
+		const [view, setView] = useState<WorkspaceView>({ type: "idle" });
+		const [entrySearch, setEntrySearch] = useState("");
+		const [packSearch, setPackSearch] = useState("");
+		const [searchOpen, setSearchOpen] = useState(false);
+		const [navigatorMode, setNavigatorMode] = useState<"flat" | "grouped">("grouped");
+		const [createEntryDialogOpen, setCreateEntryDialogOpen] = useState(false);
+		const [creatingEntry, setCreatingEntry] = useState(false);
+		const [deletingEntryID, setDeletingEntryID] = useState<string>();
+		const entryEditorRef = useRef<PromptPackEntryEditorHandle>(null);
+		const [navigatorWidth, setNavigatorWidth] = useWorkspaceSidebarWidth();
 
-	useEffect(() => {
-		if (selectedPackID && !selectedPack && !contentsLoading) {
-			onSelectedPackChange(undefined);
-		}
-	}, [contentsLoading, onSelectedPackChange, selectedPack, selectedPackID]);
+		const entries = contents?.entries ?? [];
+		const skillEntries = entries.filter((entry) => entry.kind === "skill");
+		const promptEntries = entries.filter((entry) => entry.kind === "prompt");
+		const selectedEntry =
+			view.type === "entry" ? entries.find((entry) => entry.id === view.entryID) : undefined;
 
-	const refreshContents = async () => {
-		await Promise.all([onChanged(), mutateContents(), mutateGlobal(isPromptPackContentCacheKey)]);
-	};
+		useEffect(() => {
+			setView({ type: "idle" });
+			setCreateEntryDialogOpen(false);
+			setEntrySearch("");
+			setSearchOpen(false);
+			setNavigatorMode("grouped");
+		}, [selectedPackID]);
 
-	const copyEntries = async (references: PromptPackEntryReference[]) => {
-		if (!selectedPack || references.length === 0) return;
-		setCopying(true);
-		try {
-			const copied = await copyPromptPackEntries(selectedPack.id, references);
-			await refreshContents();
-			setPickerOpen(false);
-			toast.success("内容已加入词包", {
-				description: `已引用 ${copied.length} 项到“${selectedPack.name}”`,
-			});
-		} catch (error) {
-			toast.error("添加失败", { description: errorMessage(error) });
-		} finally {
-			setCopying(false);
-		}
-	};
+		useEffect(() => {
+			if (selectedPackID && !selectedPack && !isLoading && !contentsLoading) {
+				onSelectedPackChange(undefined);
+			}
+		}, [contentsLoading, isLoading, onSelectedPackChange, selectedPack, selectedPackID]);
 
-	const removeEntry = async (entry: PromptPackEntry) => {
-		setDeletingSlug(entry.slug);
-		try {
+		useEffect(() => {
+			if (view.type === "entry" && contents && !selectedEntry) {
+				setView({ type: "idle" });
+			}
+		}, [contents, selectedEntry, view]);
+
+		const refreshContents = async (): Promise<PromptPackContents | undefined> => {
+			await onChanged();
+			const refreshed = await mutateContents();
+			await mutateGlobal(isPromptPackContentCacheKey);
+			return refreshed;
+		};
+
+		const saveActiveEntry = useCallback(async () => {
+			if (view.type !== "entry") return true;
+			return (await entryEditorRef.current?.flush()) !== false;
+		}, [view.type]);
+
+		const flushForExport = useCallback(() => saveActiveEntry(), [saveActiveEntry]);
+		const openEntry = useCallback((entryID: string) => {
+			setView({ entryID, type: "entry" });
+		}, []);
+
+		useImperativeHandle(ref, () => ({ flush: flushForExport, openEntry }), [
+			flushForExport,
+			openEntry,
+		]);
+
+		const leaveCurrentView = async (action: () => void) => {
+			if (!(await saveActiveEntry())) return;
+			action();
+		};
+
+		const navigate = async (next: WorkspaceView) => {
+			await leaveCurrentView(() => setView(next));
+		};
+
+		const selectPack = async (packID: string) => {
+			await leaveCurrentView(() => onSelectedPackChange(packID));
+		};
+
+		const startCreatePack = async () => {
+			await leaveCurrentView(onStartCreatePack);
+		};
+
+		const createEntry = async (kind: PromptPackEntryKind): Promise<boolean> => {
+			if (!selectedPack || creatingEntry) return false;
+			setCreatingEntry(true);
+			try {
+				const created = await createPromptPackEntry(selectedPack.id, {
+					kind,
+					slug: `${kind}-${globalThis.crypto.randomUUID()}`,
+				});
+				await refreshContents();
+				setView({ entryID: created.id, type: "entry" });
+				setCreateEntryDialogOpen(false);
+				toast.success(kind === "skill" ? "Skill 已创建" : "提示词已创建");
+				return true;
+			} catch (error) {
+				toast.error("创建失败", { description: errorMessage(error) });
+				return false;
+			} finally {
+				setCreatingEntry(false);
+			}
+		};
+
+		const removeEntry = async (entry: PromptPackEntry) => {
 			if (!selectedPack) return false;
-			await removePromptPackEntry(selectedPack.id, entry.id);
-			await refreshContents();
-			toast.success("已从词包移除", { description: entryDisplayName(entry) });
-			return true;
-		} catch (error) {
-			toast.error("移除失败", { description: errorMessage(error) });
-			return false;
-		} finally {
-			setDeletingSlug(undefined);
-		}
-	};
+			setDeletingEntryID(entry.id);
+			try {
+				await removePromptPackEntry(selectedPack.id, entry.id);
+				await refreshContents();
+				if (view.type === "entry" && view.entryID === entry.id) {
+					setView({ type: "idle" });
+				}
+				toast.success("内容已删除", { description: entryDisplayName(entry) });
+				return true;
+			} catch (error) {
+				toast.error("删除失败", { description: errorMessage(error) });
+				return false;
+			} finally {
+				setDeletingEntryID(undefined);
+			}
+		};
 
-	const confirmRemoveEntry = (entry: PromptPackEntry) => {
-		void confirmDialog({
-			title: "从词包移除内容？",
-			description: entry.linked
-				? `只会从“${selectedPack?.name ?? "当前词包"}”移除引用，原内容仍会保留。`
-				: `将删除“${entryDisplayName(entry)}”。此内容也会从全局列表中移除。`,
-			confirmLabel: "移除",
-			confirmIcon: <Trash2 className="size-4" />,
-			onConfirm: () => removeEntry(entry),
-		});
-	};
+		const confirmRemoveEntry = (entry: PromptPackEntry) => {
+			void confirmDialog({
+				title: "删除词包内容？",
+				description: `将从“${selectedPack?.name ?? "当前词包"}”永久删除“${entryDisplayName(entry)}”。`,
+				confirmLabel: "删除",
+				confirmIcon: <Trash2 className="size-4" />,
+				variant: "destructive",
+				onConfirm: () => removeEntry(entry),
+			});
+		};
 
-	if (!selectedPackID) {
 		return (
-			<PackList
-				actions={listActions}
-				counts={counts}
-				isLoading={skillsLoading || promptsLoading}
-				packs={packs}
-				onSelect={onSelectedPackChange}
-			/>
+			<>
+				<SidebarContentLayout
+					className="desktop-window-frame h-full w-full"
+					contentClassName="bg-ide-editor text-ide-editor-foreground"
+					contentInset
+					maxSidebarWidth={workspaceSidebarWidth.max}
+					minSidebarWidth={workspaceSidebarWidth.min}
+					onSidebarWidthChange={setNavigatorWidth}
+					resizeLabel="调整词包编辑器侧边栏宽度"
+					resizeStep={workspaceSidebarWidth.resizeStep}
+					showDesktopDragRegion
+					sidebar={
+						<PromptPackNavigator
+							creatingPack={creatingPack}
+							deletingEntryID={deletingEntryID}
+							entrySearch={entrySearch}
+							isLoading={isLoading}
+							navigatorMode={navigatorMode}
+							onBackToPacks={() => void selectPack("")}
+							onCancelCreatePack={onCancelCreatePack}
+							onCreateEntry={() => setCreateEntryDialogOpen(true)}
+							onEntrySearchChange={setEntrySearch}
+							onNavigatorModeChange={setNavigatorMode}
+							onOpenOverview={() => void navigate({ type: "idle" })}
+							onPackSearchChange={setPackSearch}
+							onRemoveEntry={confirmRemoveEntry}
+							onSelectEntry={(entryID) => void navigate({ entryID, type: "entry" })}
+							onSelectPack={(packID) => void selectPack(packID)}
+							onStartCreatePack={() => void startCreatePack()}
+							packs={packs}
+							packSearch={packSearch}
+							promptEntries={promptEntries}
+							searchOpen={searchOpen}
+							selectedPack={selectedPack}
+							onSearchOpenChange={setSearchOpen}
+							skillEntries={skillEntries}
+							view={view}
+						/>
+					}
+					sidebarClassName="bg-ide-sidebar text-ide-sidebar-foreground"
+					sidebarWidth={navigatorWidth}
+				>
+					<div className="flex h-full min-h-0 flex-col overflow-hidden bg-ide-editor text-ide-editor-foreground">
+						{header}
+						<div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-ide-editor">
+							{creatingPack ? (
+								<CreatePackCanvas
+									error={createError}
+									isCreating={isCreatingPack}
+									onCancel={onCancelCreatePack}
+									onCreate={onCreatePack}
+								/>
+							) : !selectedPackID ? (
+								<WorkspaceStart
+									isLoading={isLoading}
+									onSelectPack={(packID) => void selectPack(packID)}
+									packs={packs}
+									search={packSearch}
+								/>
+							) : contentsLoading || !selectedPack || !contents ? (
+								<LoadingState label="加载词包内容" />
+							) : view.type === "entry" && selectedEntry ? (
+								<PromptPackEntryEditor
+									ref={entryEditorRef}
+									entry={selectedEntry}
+									onChanged={async () => {
+										await refreshContents();
+									}}
+									pack={selectedPack}
+								/>
+							) : (
+								<WorkspaceIdle contents={contents} pack={selectedPack} />
+							)}
+						</div>
+					</div>
+				</SidebarContentLayout>
+				<CreateEntryDialog
+					busy={creatingEntry}
+					onCreate={createEntry}
+					onOpenChange={setCreateEntryDialogOpen}
+					open={createEntryDialogOpen}
+				/>
+			</>
 		);
-	}
+	},
+);
 
-	if (contentsLoading && !selectedPack) {
-		return <LoadingState label="加载词包内容" />;
-	}
-
-	if (!selectedPack) return null;
-	const canManageContents = selectedPack.source === "local";
-	const canEditEntries = selectedPack.source === "local" || selectedPack.source === "imported";
+const PromptPackNavigator: React.FC<{
+	creatingPack: boolean;
+	deletingEntryID?: string;
+	entrySearch: string;
+	isLoading: boolean;
+	navigatorMode: "flat" | "grouped";
+	onBackToPacks: () => void;
+	onCancelCreatePack: () => void;
+	onCreateEntry: () => void;
+	onEntrySearchChange: (value: string) => void;
+	onNavigatorModeChange: (mode: "flat" | "grouped") => void;
+	onOpenOverview: () => void;
+	onPackSearchChange: (value: string) => void;
+	onRemoveEntry: (entry: PromptPackEntry) => void;
+	onSearchOpenChange: (open: boolean) => void;
+	onSelectEntry: (entryID: string) => void;
+	onSelectPack: (packID: string) => void;
+	onStartCreatePack: () => void;
+	packSearch: string;
+	packs: PromptPack[];
+	promptEntries: PromptPackEntry[];
+	searchOpen: boolean;
+	selectedPack?: PromptPack;
+	skillEntries: PromptPackEntry[];
+	view: WorkspaceView;
+}> = ({
+	creatingPack,
+	deletingEntryID,
+	entrySearch,
+	isLoading,
+	navigatorMode,
+	onBackToPacks,
+	onCancelCreatePack,
+	onCreateEntry,
+	onEntrySearchChange,
+	onNavigatorModeChange,
+	onOpenOverview,
+	onPackSearchChange,
+	onRemoveEntry,
+	onSearchOpenChange,
+	onSelectEntry,
+	onSelectPack,
+	onStartCreatePack,
+	packSearch,
+	packs,
+	promptEntries,
+	searchOpen,
+	selectedPack,
+	skillEntries,
+	view,
+}) => {
+	const filteredSkills = filterEntries(skillEntries, entrySearch);
+	const filteredPrompts = filterEntries(promptEntries, entrySearch);
+	const filteredEntries = filterEntries([...skillEntries, ...promptEntries], entrySearch);
 
 	return (
-		<div className="flex h-full min-h-0 flex-col overflow-hidden">
-			<div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
-				<div className="flex min-w-0 items-center gap-3">
+		<nav
+			aria-label="提示词包编辑器导航"
+			className="flex h-full min-h-0 w-full flex-col bg-ide-sidebar text-ide-sidebar-foreground"
+		>
+			{selectedPack && !creatingPack ? (
+				<>
+					<div className="shrink-0 px-2 pb-2 pt-3">
+						<div className="flex items-center justify-between gap-2">
+							<button
+								type="button"
+								className={sidebarToolbarIconButtonClassName}
+								onClick={onBackToPacks}
+								title="返回词包列表"
+								aria-label="返回词包列表"
+							>
+								<ChevronLeft className="size-3.5" />
+							</button>
+							<div className="flex min-w-0 items-center justify-end gap-1">
+								<button
+									type="button"
+									className={cn(
+										sidebarToolbarIconButtonClassName,
+										searchOpen && "bg-ide-list-active text-ide-list-active-foreground",
+									)}
+									onClick={() => onSearchOpenChange(!searchOpen)}
+									title="搜索当前词包"
+									aria-label="搜索当前词包"
+									aria-pressed={searchOpen}
+								>
+									<Search className="size-3.5" />
+								</button>
+								<CreateEntryButton onClick={onCreateEntry} />
+								<NavigatorViewModeSwitcher
+									mode={navigatorMode}
+									onSelectMode={onNavigatorModeChange}
+								/>
+							</div>
+						</div>
+						{searchOpen ? (
+							<div className="relative mt-2">
+								<Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+								<Input
+									autoFocus
+									aria-label="搜索词包内容"
+									value={entrySearch}
+									onChange={(event) => onEntrySearchChange(event.target.value)}
+									placeholder="搜索 Skill 或提示词"
+									className="h-8 pl-7 pr-7 text-xs"
+								/>
+								{entrySearch ? (
+									<button
+										type="button"
+										className="absolute right-1.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground hover:bg-ide-list-hover hover:text-foreground"
+										onClick={() => onEntrySearchChange("")}
+										title="清除搜索"
+										aria-label="清除搜索"
+									>
+										<X className="size-3" />
+									</button>
+								) : null}
+							</div>
+						) : null}
+					</div>
+
+					<div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+						<button
+							type="button"
+							onClick={onOpenOverview}
+							className={cn(
+								"flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-xs transition-colors",
+								view.type === "idle"
+									? "bg-ide-list-active text-ide-list-active-foreground"
+									: "text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+							)}
+						>
+							<LayoutDashboard className="size-3.5 shrink-0" />
+							<span className="min-w-0 flex-1 truncate">词包概览</span>
+						</button>
+
+						{navigatorMode === "grouped" ? (
+							<>
+								<NavigatorGroup icon={<BookOpenCheck className="size-4" />} label="Skills">
+									<EntryRows
+										deletingEntryID={deletingEntryID}
+										entries={filteredSkills}
+										onRemove={onRemoveEntry}
+										onSelect={onSelectEntry}
+										selectedEntryID={view.type === "entry" ? view.entryID : undefined}
+									/>
+								</NavigatorGroup>
+								<NavigatorGroup icon={<Library className="size-4" />} label="提示词">
+									<EntryRows
+										deletingEntryID={deletingEntryID}
+										entries={filteredPrompts}
+										onRemove={onRemoveEntry}
+										onSelect={onSelectEntry}
+										selectedEntryID={view.type === "entry" ? view.entryID : undefined}
+									/>
+								</NavigatorGroup>
+							</>
+						) : (
+							<section className="mt-3">
+								<p className="mb-1 px-2 text-xs font-medium text-muted-foreground">全部内容</p>
+								<EntryRows
+									deletingEntryID={deletingEntryID}
+									entries={filteredEntries}
+									indented={false}
+									onRemove={onRemoveEntry}
+									onSelect={onSelectEntry}
+									selectedEntryID={view.type === "entry" ? view.entryID : undefined}
+								/>
+							</section>
+						)}
+					</div>
+				</>
+			) : (
+				<PackLibraryNavigator
+					creatingPack={creatingPack}
+					isLoading={isLoading}
+					onCancelCreatePack={onCancelCreatePack}
+					onSearchChange={onPackSearchChange}
+					onSelectPack={onSelectPack}
+					onStartCreatePack={onStartCreatePack}
+					packs={packs}
+					search={packSearch}
+				/>
+			)}
+		</nav>
+	);
+};
+
+const PackLibraryNavigator: React.FC<{
+	creatingPack: boolean;
+	isLoading: boolean;
+	onCancelCreatePack: () => void;
+	onSearchChange: (value: string) => void;
+	onSelectPack: (packID: string) => void;
+	onStartCreatePack: () => void;
+	packs: PromptPack[];
+	search: string;
+}> = ({
+	creatingPack,
+	isLoading,
+	onCancelCreatePack,
+	onSearchChange,
+	onSelectPack,
+	onStartCreatePack,
+	packs,
+	search,
+}) => {
+	const [searchOpen, setSearchOpen] = useState(false);
+	const filteredPacks = filterPacks(packs, search);
+	const startCreatePack = () => {
+		setSearchOpen(false);
+		onSearchChange("");
+		onStartCreatePack();
+	};
+	const toggleSearch = () => {
+		const nextOpen = !searchOpen;
+		setSearchOpen(nextOpen);
+		if (nextOpen && creatingPack) onCancelCreatePack();
+		if (!nextOpen) onSearchChange("");
+	};
+
+	return (
+		<>
+			<div className="shrink-0 space-y-1 border-b border-border px-3 py-3">
+				<button
+					type="button"
+					className={cn(
+						"flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-ide-sidebar-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground",
+						creatingPack && "bg-ide-list-active text-ide-list-active-foreground",
+					)}
+					onClick={startCreatePack}
+				>
+					<PackagePlus className="size-4 shrink-0" />
+					<span className="min-w-0 flex-1 truncate">新建词包</span>
+				</button>
+				<button
+					type="button"
+					className={cn(
+						"flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground",
+						searchOpen && "bg-ide-list-active text-ide-list-active-foreground",
+					)}
+					onClick={toggleSearch}
+					aria-expanded={searchOpen}
+				>
+					<Search className="size-4 shrink-0" />
+					<span className="min-w-0 flex-1 truncate">搜索词包</span>
+				</button>
+				{searchOpen ? (
+					<Input
+						autoFocus
+						aria-label="搜索本地词包"
+						value={search}
+						onChange={(event) => onSearchChange(event.target.value)}
+						placeholder="输入词包名称"
+						className="h-8 text-xs"
+					/>
+				) : null}
+			</div>
+			<div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+				<p className="mb-1 px-2 text-xs font-medium text-muted-foreground">词包</p>
+				{isLoading ? (
+					<div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
+						<Loader2 className="size-3.5 animate-spin" />
+						<span>加载本地词包</span>
+					</div>
+				) : filteredPacks.length === 0 ? (
+					<p className="px-2 py-2 text-xs text-muted-foreground">
+						{search ? "没有匹配的词包" : "暂无本地词包"}
+					</p>
+				) : (
+					<div className="space-y-0.5">
+						{filteredPacks.map((pack) => (
+							<button
+								key={pack.id}
+								type="button"
+								className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-ide-sidebar-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground"
+								onClick={() => onSelectPack(pack.id)}
+							>
+								<PackageOpen className="size-3.5 shrink-0 text-muted-foreground" />
+								<span className="min-w-0 flex-1 truncate">{pack.name}</span>
+							</button>
+						))}
+					</div>
+				)}
+			</div>
+		</>
+	);
+};
+
+const CreateEntryButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+	<button
+		type="button"
+		className={sidebarToolbarIconButtonClassName}
+		title="新建内容"
+		aria-label="新建内容"
+		onClick={onClick}
+	>
+		<FilePlus2 className="size-3.5" />
+	</button>
+);
+
+const createEntryOptions: Array<{
+	description: string;
+	icon: React.ComponentType<{ className?: string }>;
+	kind: PromptPackEntryKind;
+	label: string;
+}> = [
+	{
+		description: "编写可复用的提示词正文",
+		icon: FileText,
+		kind: "prompt",
+		label: "提示词",
+	},
+	{
+		description: "编写带说明的 Skill 内容",
+		icon: BookOpenCheck,
+		kind: "skill",
+		label: "Skill",
+	},
+];
+
+const CreateEntryDialog: React.FC<{
+	busy: boolean;
+	onCreate: (kind: PromptPackEntryKind) => Promise<boolean>;
+	onOpenChange: (open: boolean) => void;
+	open: boolean;
+}> = ({ busy, onCreate, onOpenChange, open }) => {
+	const [kind, setKind] = useState<PromptPackEntryKind>("prompt");
+
+	useEffect(() => {
+		if (open) setKind("prompt");
+	}, [open]);
+
+	const selected = createEntryOptions.find((option) => option.kind === kind);
+
+	return (
+		<AlertDialog
+			open={open}
+			onOpenChange={(nextOpen) => {
+				if (!busy) onOpenChange(nextOpen);
+			}}
+		>
+			<AlertDialogContent
+				className="max-w-xl gap-5 p-5"
+				onOpenAutoFocus={(event) => {
+					event.preventDefault();
+					document.getElementById(`prompt-pack-entry-${kind}`)?.focus();
+				}}
+			>
+				<AlertDialogHeader>
+					<AlertDialogTitle>新建词包内容</AlertDialogTitle>
+					<AlertDialogDescription>选择一种内容类型开始创作。</AlertDialogDescription>
+				</AlertDialogHeader>
+
+				<div role="radiogroup" aria-label="词包内容类型" className="grid gap-2 sm:grid-cols-2">
+					{createEntryOptions.map((option) => {
+						const OptionIcon = option.icon;
+						const optionSelected = option.kind === kind;
+						return (
+							<button
+								id={`prompt-pack-entry-${option.kind}`}
+								key={option.kind}
+								type="button"
+								role="radio"
+								aria-checked={optionSelected}
+								tabIndex={optionSelected ? 0 : -1}
+								disabled={busy}
+								onClick={() => setKind(option.kind)}
+								onKeyDown={(event) => {
+									if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+										return;
+									}
+									event.preventDefault();
+									const nextKind = option.kind === "prompt" ? "skill" : "prompt";
+									setKind(nextKind);
+									document.getElementById(`prompt-pack-entry-${nextKind}`)?.focus();
+								}}
+								className={cn(
+									"grid min-h-24 grid-cols-[2.5rem_minmax(0,1fr)_1rem] items-start gap-3 rounded-sm border p-3 text-left transition-[background-color,border-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-60",
+									optionSelected
+										? "border-primary bg-ide-list-active shadow-sm"
+										: "border-border bg-ide-editor hover:bg-ide-list-hover",
+								)}
+							>
+								<span className="flex size-10 items-center justify-center rounded-sm bg-ide-toolbar text-primary">
+									<OptionIcon className="size-5" />
+								</span>
+								<span className="min-w-0 pt-0.5">
+									<span className="block text-sm font-semibold text-foreground">
+										{option.label}
+									</span>
+									<span className="mt-1 block text-xs leading-5 text-muted-foreground">
+										{option.description}
+									</span>
+								</span>
+								<span
+									className={cn(
+										"mt-1 flex size-4 items-center justify-center rounded-full border",
+										optionSelected
+											? "border-primary bg-primary text-primary-foreground"
+											: "border-border",
+									)}
+									aria-hidden="true"
+								>
+									{optionSelected ? <Check className="size-3" strokeWidth={2.5} /> : null}
+								</span>
+							</button>
+						);
+					})}
+				</div>
+
+				<AlertDialogFooter>
+					<AlertDialogCancel disabled={busy} className="rounded-sm">
+						取消
+					</AlertDialogCancel>
+					<Button type="button" disabled={busy} onClick={() => void onCreate(kind)}>
+						{busy ? <Loader2 className="size-4 animate-spin" /> : <FilePlus2 className="size-4" />}
+						<span>{busy ? "创建中" : `创建${selected?.label ?? "内容"}`}</span>
+					</Button>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
+	);
+};
+
+const NavigatorViewModeSwitcher: React.FC<{
+	mode: "flat" | "grouped";
+	onSelectMode: (mode: "flat" | "grouped") => void;
+}> = ({ mode, onSelectMode }) => (
+	<div className="flex h-7 shrink-0 items-center rounded-sm border border-border bg-ide-toolbar p-0.5">
+		<button
+			type="button"
+			className={cn(
+				"flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground",
+				mode === "flat" && "bg-ide-list-active text-ide-list-active-foreground",
+			)}
+			onClick={() => onSelectMode("flat")}
+			title="列表视图"
+			aria-label="列表视图"
+			aria-pressed={mode === "flat"}
+		>
+			<LayoutList className="size-3.5" />
+		</button>
+		<button
+			type="button"
+			className={cn(
+				"flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground",
+				mode === "grouped" && "bg-ide-list-active text-ide-list-active-foreground",
+			)}
+			onClick={() => onSelectMode("grouped")}
+			title="分组视图"
+			aria-label="分组视图"
+			aria-pressed={mode === "grouped"}
+		>
+			<FolderTree className="size-3.5" />
+		</button>
+	</div>
+);
+
+const sidebarToolbarIconButtonClassName =
+	"flex size-7 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50";
+
+const NavigatorGroup: React.FC<{
+	children: React.ReactNode;
+	icon: React.ReactNode;
+	label: string;
+}> = ({ children, icon, label }) => (
+	<section className="mt-4">
+		<div className="mb-1 flex h-7 items-center gap-2 px-2 text-xs font-medium text-muted-foreground">
+			<span className="text-muted-foreground">{icon}</span>
+			<span className="flex-1">{label}</span>
+		</div>
+		{children}
+	</section>
+);
+
+const EntryRows: React.FC<{
+	deletingEntryID?: string;
+	entries: PromptPackEntry[];
+	indented?: boolean;
+	onRemove: (entry: PromptPackEntry) => void;
+	onSelect: (entryID: string) => void;
+	selectedEntryID?: string;
+}> = ({ deletingEntryID, entries, indented = true, onRemove, onSelect, selectedEntryID }) => {
+	if (entries.length === 0) {
+		return <p className="px-8 py-1 text-xs text-muted-foreground">暂无内容</p>;
+	}
+
+	return (
+		<div className="space-y-0.5">
+			{entries.map((entry) => (
+				<div
+					key={entry.id}
+					className={cn(
+						"group flex h-8 items-center rounded-md pr-1 hover:bg-ide-list-hover",
+						selectedEntryID === entry.id && "bg-ide-list-active",
+					)}
+				>
+					<button
+						type="button"
+						className={cn(
+							"flex min-w-0 flex-1 items-center gap-2 px-2 text-left text-xs text-foreground",
+							indented && "pl-8",
+						)}
+						onClick={() => onSelect(entry.id)}
+					>
+						{entry.kind === "skill" ? (
+							<BookOpenCheck className="size-3.5 shrink-0 text-muted-foreground" />
+						) : (
+							<FileText className="size-3.5 shrink-0 text-muted-foreground" />
+						)}
+						<span className="truncate">{entryDisplayName(entry)}</span>
+					</button>
 					<Button
 						type="button"
 						size="icon"
 						variant="ghost"
-						aria-label="返回词包列表"
-						title="返回词包列表"
-						onClick={() => onSelectedPackChange(undefined)}
+						className="size-6 shrink-0 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
+						aria-label={`删除 ${entryDisplayName(entry)}`}
+						disabled={deletingEntryID === entry.id}
+						onClick={() => onRemove(entry)}
 					>
-						<ArrowLeft className="size-4" />
+						{deletingEntryID === entry.id ? (
+							<Loader2 className="size-3.5 animate-spin" />
+						) : (
+							<Trash2 className="size-3.5" />
+						)}
 					</Button>
-					<div className="min-w-0">
-						<div className="flex min-w-0 flex-wrap items-center gap-2">
-							<h3 className="truncate text-sm font-semibold text-foreground">
-								{selectedPack.name}
-							</h3>
-							<Badge variant="outline">{sourceLabel(selectedPack.source)}</Badge>
-							{canManageContents ? <Badge variant="secondary">草稿</Badge> : null}
-						</div>
-						<p className="mt-0.5 truncate text-xs text-muted-foreground">
-							{selectedPack.id} · v{selectedPack.version}
-						</p>
-					</div>
 				</div>
-				<div className="flex shrink-0 items-center gap-2">
-					{canManageContents ? (
-						<>
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => {
-									setCreateKind("skill");
-									setCreateOpen(true);
-								}}
-							>
-								<Plus className="size-4" />
-								<span>新建 Skill</span>
-							</Button>
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => {
-									setCreateKind("prompt");
-									setCreateOpen(true);
-								}}
-							>
-								<Plus className="size-4" />
-								<span>新建提示词</span>
-							</Button>
-							<Button type="button" onClick={() => setPickerOpen(true)}>
-								<CopyPlus className="size-4" />
-								<span>从已有内容添加</span>
-							</Button>
-						</>
-					) : null}
-					{renderPackActions?.(selectedPack)}
-				</div>
-			</div>
+			))}
+		</div>
+	);
+};
 
-			<Tabs
-				value={activeSection}
-				onValueChange={(value) => setActiveSection(value as PackContentSection)}
-				className="flex min-h-0 flex-1 flex-col overflow-hidden"
+const CreatePackCanvas: React.FC<{
+	error?: string;
+	isCreating: boolean;
+	onCancel: () => void;
+	onCreate: (input: { description: string; name: string }) => Promise<void>;
+}> = ({ error, isCreating, onCancel, onCreate }) => {
+	const [name, setName] = useState("");
+	const [description, setDescription] = useState("");
+
+	return (
+		<div className="h-full overflow-y-auto px-8 py-8">
+			<form
+				className="mx-auto w-full max-w-2xl"
+				onSubmit={(event) => {
+					event.preventDefault();
+					if (!name.trim() || isCreating) return;
+					void onCreate({ description, name });
+				}}
 			>
-				<div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-2">
-					<TabsList className="grid w-64 grid-cols-2">
-						<TabsTrigger value="skill">
-							<BookOpenCheck className="size-3.5" />
-							<span>Skills ({skillEntries.length})</span>
-						</TabsTrigger>
-						<TabsTrigger value="prompt">
-							<Library className="size-3.5" />
-							<span>提示词 ({promptEntries.length})</span>
-						</TabsTrigger>
-					</TabsList>
-				</div>
-				<TabsContent value="skill" className="mt-0 min-h-0 flex-1 overflow-hidden">
-					<PackEntryBrowser
-						deletingSlug={deletingSlug}
-						editable={canEditEntries}
-						entries={skillEntries}
-						onRemove={confirmRemoveEntry}
-						onSelect={setSelectedEntryID}
-						onChanged={refreshContents}
-						pack={selectedPack}
-						removable={canManageContents}
-						selectedEntryID={selectedEntryID}
-					/>
-				</TabsContent>
-				<TabsContent value="prompt" className="mt-0 min-h-0 flex-1 overflow-hidden">
-					<PackEntryBrowser
-						deletingSlug={deletingSlug}
-						editable={canEditEntries}
-						entries={promptEntries}
-						onRemove={confirmRemoveEntry}
-						onSelect={setSelectedEntryID}
-						onChanged={refreshContents}
-						pack={selectedPack}
-						removable={canManageContents}
-						selectedEntryID={selectedEntryID}
-					/>
-				</TabsContent>
-			</Tabs>
-
-			<AddContentSheet
-				copying={copying}
-				onCopy={(references) => void copyEntries(references)}
-				onOpenChange={setPickerOpen}
-				open={pickerOpen}
-				packs={packs}
-				prompts={prompts}
-				skills={skills}
-				existingEntries={entries}
-				targetPack={selectedPack}
-			/>
-			<CreatePackContentSheet
-				kind={createKind}
-				onCreated={async (kind, slug) => {
-					setActiveSection(kind);
-					await refreshContents();
-					const refreshed = await getPromptPackContents(selectedPack.id);
-					const created = refreshed.entries.find(
-						(entry) => entry.kind === kind && entry.slug === slug,
-					);
-					setSelectedEntryID(created?.id);
-				}}
-				onOpenChange={setCreateOpen}
-				open={createOpen}
-				pack={selectedPack}
-			/>
-		</div>
-	);
-};
-
-const PackEntryBrowser: React.FC<{
-	deletingSlug?: string;
-	editable: boolean;
-	entries: PromptPackEntry[];
-	onRemove: (entry: PromptPackEntry) => void;
-	onSelect: (entryID: string) => void;
-	onChanged: (selectedEntryID?: string) => Promise<void>;
-	pack: PromptPack;
-	removable: boolean;
-	selectedEntryID?: string;
-}> = ({
-	deletingSlug,
-	editable,
-	entries,
-	onChanged,
-	onRemove,
-	onSelect,
-	pack,
-	removable,
-	selectedEntryID,
-}) => {
-	if (entries.length === 0) {
-		return (
-			<div className="flex h-full min-h-48 items-center justify-center px-6 text-sm text-muted-foreground">
-				暂无内容
-			</div>
-		);
-	}
-
-	const selectedEntry = entries.find((entry) => entry.id === selectedEntryID) ?? entries[0];
-	return (
-		<div className="grid h-full min-h-0 grid-rows-[minmax(10rem,40%)_minmax(0,1fr)] lg:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] lg:grid-rows-1">
-			<div className="min-h-0 overflow-y-auto border-b border-border lg:border-b-0 lg:border-r">
-				<PackEntryList
-					deletingSlug={deletingSlug}
-					entries={entries}
-					onRemove={onRemove}
-					onSelect={onSelect}
-					removable={removable}
-					selectedEntryID={selectedEntry.id}
-				/>
-			</div>
-			<PromptPackEntryEditor
-				editable={editable}
-				entry={selectedEntry}
-				onChanged={async (nextSelectedID) => {
-					await onChanged(nextSelectedID);
-					if (nextSelectedID) onSelect(nextSelectedID);
-				}}
-				pack={pack}
-			/>
-		</div>
-	);
-};
-
-const PackList: React.FC<{
-	actions?: React.ReactNode;
-	counts: Map<string, { prompts: number; skills: number }>;
-	isLoading: boolean;
-	onSelect: (packID: string) => void;
-	packs: PromptPack[];
-}> = ({ actions, counts, isLoading, onSelect, packs }) => {
-	const orderedPacks = useMemo(
-		() =>
-			[...packs].sort((first, second) => {
-				const priority = { local: 0, imported: 1, default: 2 };
-				return (
-					priority[first.source] - priority[second.source] || first.name.localeCompare(second.name)
-				);
-			}),
-		[packs],
-	);
-
-	if (isLoading && packs.length === 0) return <LoadingState label="加载词包" />;
-
-	return (
-		<div className="h-full min-h-0 overflow-y-auto px-5 py-4">
-			{actions ? (
-				<div className="mx-auto mb-3 flex w-full max-w-5xl justify-end">{actions}</div>
-			) : null}
-			<div className="mx-auto w-full max-w-5xl overflow-hidden rounded-md border border-border bg-background">
-				<div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-border bg-ide-toolbar px-4 py-2 text-xs font-medium text-muted-foreground sm:grid-cols-[minmax(0,1fr)_11rem_7rem_auto]">
-					<span>词包</span>
-					<span className="hidden sm:block">内容</span>
-					<span className="hidden sm:block">状态</span>
-					<span className="sr-only">操作</span>
-				</div>
-				{orderedPacks.map((pack) => {
-					const count = counts.get(pack.id) ?? { prompts: 0, skills: 0 };
-					const actionLabel =
-						pack.source === "local" ? "编辑" : pack.source === "imported" ? "查看与编辑" : "查看";
-					return (
-						<div
-							key={pack.id}
-							className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_11rem_7rem_auto]"
-						>
-							<div className="flex min-w-0 items-center gap-3">
-								<div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-ide-toolbar text-muted-foreground">
-									<PackageOpen className="size-4" />
-								</div>
-								<div className="min-w-0">
-									<p className="truncate text-sm font-medium text-foreground">{pack.name}</p>
-									<p className="mt-0.5 truncate text-xs text-muted-foreground">
-										{pack.id} · v{pack.version}
-									</p>
-								</div>
-							</div>
-							<div className="hidden text-xs text-muted-foreground sm:block">
-								{count.skills} Skills · {count.prompts} 提示词
-							</div>
-							<div className="hidden sm:block">
-								<Badge variant={pack.source === "local" ? "secondary" : "outline"}>
-									{pack.source === "local" ? "草稿" : sourceLabel(pack.source)}
-								</Badge>
-							</div>
-							<Button
-								type="button"
-								variant="ghost"
-								aria-label={`${actionLabel} ${pack.name}`}
-								onClick={() => onSelect(pack.id)}
-							>
-								<span>{actionLabel}</span>
-								<ChevronRight className="size-4" />
-							</Button>
-						</div>
-					);
-				})}
-			</div>
-		</div>
-	);
-};
-
-const PackEntryList: React.FC<{
-	deletingSlug?: string;
-	entries: PromptPackEntry[];
-	onRemove: (entry: PromptPackEntry) => void;
-	onSelect: (entryID: string) => void;
-	removable: boolean;
-	selectedEntryID: string;
-}> = ({ deletingSlug, entries, onRemove, onSelect, removable, selectedEntryID }) => {
-	return (
-		<div className="divide-y divide-border">
-			{entries.map((entry) => {
-				const selected = entry.id === selectedEntryID;
-				return (
-					<div
-						key={entry.id}
-						className={cn("flex min-w-0 items-center", selected && "bg-ide-list-active")}
-					>
-						<button
-							type="button"
-							className="flex min-w-0 flex-1 items-center gap-3 px-5 py-3 text-left outline-none hover:bg-ide-list-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-							aria-label={`查看 ${entryDisplayName(entry)}`}
-							aria-pressed={selected}
-							onClick={() => onSelect(entry.id)}
-						>
-							<div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-ide-toolbar text-muted-foreground">
-								{entry.kind === "skill" ? (
-									<BookOpenCheck className="size-4" />
-								) : (
-									<FileText className="size-4" />
-								)}
-							</div>
-							<div className="min-w-0 flex-1">
-								<p className="truncate text-sm font-medium text-foreground">
-									{entryDisplayName(entry)}
-								</p>
-								<p className="mt-0.5 truncate text-xs text-muted-foreground">
-									{entry.slug}
-									{entry.description ? ` · ${entry.description}` : ""}
-								</p>
-							</div>
-						</button>
-						{removable ? (
-							<Button
-								type="button"
-								size="icon"
-								variant="ghost"
-								className="mr-3 text-muted-foreground hover:bg-error-surface hover:text-error-foreground"
-								aria-label={`移除 ${entryDisplayName(entry)}`}
-								title="从词包移除"
-								disabled={Boolean(deletingSlug)}
-								onClick={() => onRemove(entry)}
-							>
-								{deletingSlug === entry.slug ? (
-									<Loader2 className="size-4 animate-spin" />
-								) : (
-									<Trash2 className="size-4" />
-								)}
-							</Button>
-						) : null}
+				<div className="border-b border-border pb-5">
+					<div className="flex items-center gap-2 text-xs font-medium text-primary">
+						<PackagePlus className="size-4" />
+						<span>新建词包</span>
 					</div>
-				);
-			})}
-		</div>
-	);
-};
+					<h2 className="mt-2 text-lg font-semibold text-foreground">创建一个本地词包</h2>
+					<p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+						创建后即可在左侧添加 Skill 和提示词。Package ID 和初始版本由系统生成。
+					</p>
+				</div>
 
-interface PickerItem {
-	description: string;
-	key: string;
-	kind: PromptPackEntryKind;
-	reference: PromptPackEntryReference;
-	title: string;
-}
+				{error ? (
+					<Alert variant="destructive" className="mt-6">
+						<AlertDescription>{error}</AlertDescription>
+					</Alert>
+				) : null}
 
-const AddContentSheet: React.FC<{
-	copying: boolean;
-	existingEntries: PromptPackEntry[];
-	onCopy: (references: PromptPackEntryReference[]) => void;
-	onOpenChange: (open: boolean) => void;
-	open: boolean;
-	packs: PromptPack[];
-	prompts: PromptPreset[];
-	skills: SkillMeta[];
-	targetPack: PromptPack;
-}> = ({
-	copying,
-	existingEntries,
-	onCopy,
-	onOpenChange,
-	open,
-	packs,
-	prompts,
-	skills,
-	targetPack,
-}) => {
-	const [activeSection, setActiveSection] = useState<PackContentSection>("skill");
-	const [query, setQuery] = useState("");
-	const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-	const packNames = useMemo(() => new Map(packs.map((pack) => [pack.id, pack.name])), [packs]);
-	const items = useMemo(
-		() => pickerItems(skills, prompts, targetPack.id, packNames, existingEntries),
-		[existingEntries, packNames, prompts, skills, targetPack.id],
-	);
-	const visibleItems = useMemo(() => {
-		const normalizedQuery = query.trim().toLocaleLowerCase();
-		return items.filter((item) => {
-			if (item.kind !== activeSection) return false;
-			if (!normalizedQuery) return true;
-			return `${item.title} ${item.description}`.toLocaleLowerCase().includes(normalizedQuery);
-		});
-	}, [activeSection, items, query]);
-	const selectedItems = items.filter((item) => selectedKeys.has(item.key));
-
-	useEffect(() => {
-		if (!open) return;
-		setQuery("");
-		setSelectedKeys(new Set());
-	}, [open]);
-
-	const toggleItem = (key: string) => {
-		setSelectedKeys((current) => {
-			const next = new Set(current);
-			if (next.has(key)) next.delete(key);
-			else next.add(key);
-			return next;
-		});
-	};
-
-	const allVisibleSelected =
-		visibleItems.length > 0 && visibleItems.every((item) => selectedKeys.has(item.key));
-	const toggleVisible = () => {
-		setSelectedKeys((current) => {
-			const next = new Set(current);
-			for (const item of visibleItems) {
-				if (allVisibleSelected) next.delete(item.key);
-				else next.add(item.key);
-			}
-			return next;
-		});
-	};
-
-	return (
-		<Sheet open={open} onOpenChange={onOpenChange}>
-			<SheetContent className="flex w-full max-w-xl flex-col p-0 sm:w-[34rem]">
-				<SheetHeader className="shrink-0 border-b border-border px-5 py-4">
-					<div className="flex items-start justify-between gap-3">
-						<div className="min-w-0">
-							<SheetTitle>添加到“{targetPack.name}”</SheetTitle>
-							<SheetDescription className="sr-only">添加现有 Skills 和提示词</SheetDescription>
-						</div>
-						<SheetClose asChild>
-							<Button type="button" size="icon" variant="ghost" aria-label="关闭内容选择">
-								<X className="size-4" />
-							</Button>
-						</SheetClose>
-					</div>
-				</SheetHeader>
-
-				<div className="shrink-0 space-y-3 border-b border-border px-5 py-3">
-					<div className="relative">
-						<Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+				<div className="space-y-5 py-6">
+					<div className="space-y-2">
+						<Label htmlFor="prompt-pack-name" className="text-sm font-medium text-foreground">
+							名称
+						</Label>
 						<Input
-							value={query}
-							onChange={(event) => setQuery(event.target.value)}
-							placeholder="搜索内容"
-							className="pl-9"
+							id="prompt-pack-name"
+							autoFocus
+							value={name}
+							onChange={(event) => setName(event.target.value)}
+							placeholder="例如：角色视觉风格"
+							className="h-10 text-sm"
 						/>
 					</div>
-					<Tabs
-						value={activeSection}
-						onValueChange={(value) => setActiveSection(value as PackContentSection)}
-					>
-						<TabsList className="grid w-full grid-cols-2">
-							<TabsTrigger value="skill">Skills</TabsTrigger>
-							<TabsTrigger value="prompt">提示词</TabsTrigger>
-						</TabsList>
-					</Tabs>
-				</div>
-
-				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-					<div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-2">
-						<span className="text-xs text-muted-foreground">{visibleItems.length} 项</span>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							disabled={visibleItems.length === 0}
-							onClick={toggleVisible}
+					<div className="space-y-2">
+						<Label
+							htmlFor="prompt-pack-description"
+							className="text-sm font-medium text-foreground"
 						>
-							{allVisibleSelected ? "取消全选" : "全选"}
-						</Button>
-					</div>
-					<div className="min-h-0 flex-1 overflow-y-auto">
-						{visibleItems.length === 0 ? (
-							<div className="flex min-h-40 items-center justify-center px-6 text-sm text-muted-foreground">
-								没有可添加的内容
-							</div>
-						) : (
-							<div className="divide-y divide-border">
-								{visibleItems.map((item) => (
-									<label
-										key={item.key}
-										className={cn(
-											"flex cursor-pointer items-start gap-3 px-5 py-3 hover:bg-ide-list-hover",
-											selectedKeys.has(item.key) && "bg-ide-list-active",
-										)}
-									>
-										<input
-											type="checkbox"
-											className="mt-0.5 size-4 shrink-0 accent-primary"
-											checked={selectedKeys.has(item.key)}
-											onChange={() => toggleItem(item.key)}
-										/>
-										<span className="min-w-0 flex-1">
-											<span className="block truncate text-sm font-medium text-foreground">
-												{item.title}
-											</span>
-											<span className="mt-0.5 block truncate text-xs text-muted-foreground">
-												{item.description}
-											</span>
-										</span>
-									</label>
-								))}
-							</div>
-						)}
+							简介
+						</Label>
+						<Textarea
+							id="prompt-pack-description"
+							value={description}
+							onChange={(event) => setDescription(event.target.value)}
+							placeholder="说明这个词包适合解决什么问题（选填）"
+							className="min-h-24 resize-y text-sm"
+						/>
 					</div>
 				</div>
 
-				<SheetFooter className="shrink-0 border-t border-border px-5 py-3">
-					<SheetClose asChild>
-						<Button type="button" variant="ghost" disabled={copying}>
-							取消
-						</Button>
-					</SheetClose>
-					<Button
-						type="button"
-						disabled={copying || selectedItems.length === 0}
-						onClick={() => onCopy(selectedItems.map((item) => item.reference))}
-					>
-						{copying ? (
+				<div className="flex justify-end gap-2 border-t border-border pt-5">
+					<Button type="button" variant="ghost" disabled={isCreating} onClick={onCancel}>
+						取消
+					</Button>
+					<Button type="submit" disabled={isCreating || !name.trim()}>
+						{isCreating ? (
 							<Loader2 className="size-4 animate-spin" />
 						) : (
-							<CopyPlus className="size-4" />
+							<PackagePlus className="size-4" />
 						)}
-						<span>添加 {selectedItems.length || ""} 项</span>
+						<span>{isCreating ? "创建中" : "创建并开始编辑"}</span>
 					</Button>
-				</SheetFooter>
-			</SheetContent>
-		</Sheet>
+				</div>
+			</form>
+		</div>
 	);
 };
 
-const pickerItems = (
-	skills: SkillMeta[],
-	prompts: PromptPreset[],
-	targetPackID: string,
-	packNames: Map<string, string>,
-	existingEntries: PromptPackEntry[],
-): PickerItem[] => {
-	const existingReferences = new Set(
-		existingEntries.map((entry) => {
-			const packID = entry.linked ? entry.referencePackId : entry.packId;
-			const slug = entry.linked ? entry.referenceSlug : entry.slug;
-			return `${entry.kind}/${packID}/${slug}`;
-		}),
+const WorkspaceStart: React.FC<{
+	isLoading: boolean;
+	onSelectPack: (packID: string) => void;
+	packs: PromptPack[];
+	search: string;
+}> = ({ isLoading, onSelectPack, packs, search }) => {
+	if (isLoading) return <LoadingState label="加载本地词包" />;
+	const filteredPacks = filterPacks(packs, search);
+
+	return (
+		<div className="h-full overflow-y-auto px-8 py-8">
+			<div className="mx-auto w-full max-w-5xl">
+				<div className="border-b border-border pb-5">
+					<h2 className="text-xl font-semibold text-foreground">词包管理</h2>
+					<p className="mt-1 text-sm text-muted-foreground">本地草稿</p>
+				</div>
+
+				{filteredPacks.length > 0 ? (
+					<div className="mt-6 divide-y divide-border border-y border-border">
+						{filteredPacks.map((pack) => (
+							<div key={pack.id} className="flex min-h-24 items-center gap-4 px-4 py-4">
+								<span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-ide-toolbar text-muted-foreground">
+									<PackageOpen className="size-5" />
+								</span>
+								<div className="min-w-0 flex-1">
+									<div className="flex flex-wrap items-center gap-2">
+										<h3 className="truncate text-sm font-semibold text-foreground">{pack.name}</h3>
+										<span className="rounded-sm border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">
+											本地草稿
+										</span>
+									</div>
+									<p className="mt-1 truncate text-xs text-muted-foreground">
+										{pack.description || pack.id}
+									</p>
+									<p className="mt-1 text-xs text-muted-foreground">
+										{pack.skillCount ?? 0} Skills · {pack.promptCount ?? 0} 提示词 · v{pack.version}
+									</p>
+								</div>
+								<Button type="button" variant="outline" onClick={() => onSelectPack(pack.id)}>
+									<PackageOpen className="size-4" />
+									<span>打开</span>
+								</Button>
+							</div>
+						))}
+					</div>
+				) : (
+					<div className="py-16 text-center">
+						<PackageOpen className="mx-auto size-8 text-muted-foreground" />
+						<h3 className="mt-4 text-sm font-medium text-foreground">
+							{search ? "没有匹配的词包" : "还没有本地词包"}
+						</h3>
+						<p className="mt-1 text-xs text-muted-foreground">
+							{search ? "请调整左侧搜索条件。" : "使用左侧的新建词包入口开始制作。"}
+						</p>
+					</div>
+				)}
+			</div>
+		</div>
 	);
-	const skillItems = skills
-		.filter(
-			(skill) =>
-				skill.packId &&
-				skill.packId !== targetPackID &&
-				!existingReferences.has(`skill/${skill.packId}/${skill.name}`),
-		)
-		.map((skill) => ({
-			key: `skill/${skill.packId}/${skill.name}`,
-			kind: "skill" as const,
-			title: skill.title || skill.name,
-			description: `${packNames.get(skill.packId ?? "") ?? skill.packId} · ${skill.description}`,
-			reference: { packId: skill.packId ?? "", kind: "skill" as const, slug: skill.name },
-		}));
-	const promptItems = prompts
-		.filter(
-			(prompt) =>
-				prompt.packId &&
-				prompt.packId !== targetPackID &&
-				!existingReferences.has(`prompt/${prompt.packId}/${prompt.id}`),
-		)
-		.map((prompt) => ({
-			key: `prompt/${prompt.packId}/${prompt.id}`,
-			kind: "prompt" as const,
-			title: prompt.name,
-			description: `${packNames.get(prompt.packId ?? "") ?? prompt.packId} · ${prompt.category}`,
-			reference: { packId: prompt.packId ?? "", kind: "prompt" as const, slug: prompt.id },
-		}));
-	return [...skillItems, ...promptItems];
 };
 
-const packContentCounts = (packs: PromptPack[], skills: SkillMeta[], prompts: PromptPreset[]) => {
-	const counts = new Map<string, { prompts: number; skills: number }>();
-	const serverCountPacks = new Set<string>();
-	for (const pack of packs) {
-		const hasServerCounts = pack.promptCount !== undefined || pack.skillCount !== undefined;
-		if (hasServerCounts) serverCountPacks.add(pack.id);
-		counts.set(pack.id, {
-			prompts: pack.promptCount ?? 0,
-			skills: pack.skillCount ?? 0,
-		});
-	}
-	for (const skill of skills) {
-		if (!skill.packId) continue;
-		if (serverCountPacks.has(skill.packId)) continue;
-		const count = counts.get(skill.packId) ?? { prompts: 0, skills: 0 };
-		count.skills++;
-		counts.set(skill.packId, count);
-	}
-	for (const prompt of prompts) {
-		if (!prompt.packId) continue;
-		if (serverCountPacks.has(prompt.packId)) continue;
-		const count = counts.get(prompt.packId) ?? { prompts: 0, skills: 0 };
-		count.prompts++;
-		counts.set(prompt.packId, count);
-	}
-	return counts;
-};
+const WorkspaceIdle: React.FC<{ contents: PromptPackContents; pack: PromptPack }> = ({
+	contents,
+	pack,
+}) => (
+	<div className="h-full overflow-y-auto px-10 py-10 xl:px-14">
+		<div className="mx-auto w-full max-w-4xl">
+			<div className="flex items-start gap-4 border-b border-border pb-6">
+				<span className="flex size-11 shrink-0 items-center justify-center rounded-md border border-border bg-ide-toolbar text-primary">
+					<PackageOpen className="size-5" />
+				</span>
+				<div className="min-w-0">
+					<div className="flex flex-wrap items-center gap-2">
+						<h2 className="truncate text-2xl font-semibold text-foreground">{pack.name}</h2>
+						<span className="rounded-sm border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
+							本地草稿
+						</span>
+					</div>
+					<p className="mt-2 text-sm leading-6 text-muted-foreground">
+						{pack.description || "这个词包还没有简介。"}
+					</p>
+				</div>
+			</div>
+			<div className="grid grid-cols-2 gap-6 py-7">
+				<div className="border-b border-border pb-4">
+					<p className="text-xs text-muted-foreground">Skills</p>
+					<p className="mt-2 text-2xl font-semibold text-foreground">
+						{contents.entries.filter((entry) => entry.kind === "skill").length}
+					</p>
+				</div>
+				<div className="border-b border-border pb-4">
+					<p className="text-xs text-muted-foreground">提示词</p>
+					<p className="mt-2 text-2xl font-semibold text-foreground">
+						{contents.entries.filter((entry) => entry.kind === "prompt").length}
+					</p>
+				</div>
+			</div>
+			<p className="text-sm text-muted-foreground">使用左侧顶部的新建图标添加内容。</p>
+		</div>
+	</div>
+);
 
 const LoadingState: React.FC<{ label: string }> = ({ label }) => (
-	<div className="flex h-full min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+	<div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
 		<Loader2 className="size-4 animate-spin" />
 		<span>{label}</span>
 	</div>
 );
 
+const orderPacks = (packs: PromptPack[]) =>
+	[...packs].sort((first, second) => {
+		const firstTime = Date.parse(first.updatedAt || first.createdAt || "");
+		const secondTime = Date.parse(second.updatedAt || second.createdAt || "");
+		if (Number.isFinite(firstTime) && Number.isFinite(secondTime) && firstTime !== secondTime) {
+			return secondTime - firstTime;
+		}
+		return first.name.localeCompare(second.name, "zh-CN");
+	});
+
+const filterPacks = (packs: PromptPack[], search: string) => {
+	const query = search.trim().toLocaleLowerCase();
+	const ordered = orderPacks(packs);
+	if (!query) return ordered;
+	return ordered.filter((pack) =>
+		[pack.name, pack.description, pack.id].some((value) =>
+			value?.toLocaleLowerCase().includes(query),
+		),
+	);
+};
+
+const filterEntries = (entries: PromptPackEntry[], search: string) => {
+	const query = search.trim().toLocaleLowerCase();
+	const ordered = [...entries].sort((first, second) =>
+		entryDisplayName(first).localeCompare(entryDisplayName(second), "zh-CN"),
+	);
+	if (!query) return ordered;
+	return ordered.filter((entry) =>
+		[entryDisplayName(entry), entry.slug, entry.description].some((value) =>
+			value?.toLocaleLowerCase().includes(query),
+		),
+	);
+};
+
 const entryDisplayName = (entry: PromptPackEntry) => entry.title || entry.name || entry.slug;
 
-const sourceLabel = (source: PromptPack["source"]) => {
-	switch (source) {
-		case "default":
-			return "默认包";
-		case "imported":
-			return "已导入";
-		case "local":
-			return "本地创作";
-	}
-};
-
-const errorMessage = (error: unknown) => {
-	if (error instanceof Error) return error.message;
-	if (typeof error === "object" && error && "message" in error) {
-		const message = (error as { message?: unknown }).message;
-		if (typeof message === "string" && message.trim()) return message;
-	}
-	return "请稍后重试。";
-};
+const errorMessage = (error: unknown) =>
+	error instanceof Error && error.message.trim() ? error.message : "请稍后重试。";

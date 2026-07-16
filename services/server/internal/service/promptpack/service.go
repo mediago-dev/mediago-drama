@@ -45,6 +45,14 @@ var (
 	ErrInvalidPack = errors.New("invalid prompt pack")
 	// ErrUnsupportedPackVersion reports a valid .mgpack version this build cannot import.
 	ErrUnsupportedPackVersion = errors.New("unsupported prompt pack version")
+	// ErrProtectedPackAccessDenied reports that the active account cannot import a protected pack.
+	ErrProtectedPackAccessDenied = errors.New("protected prompt pack access denied")
+	// ErrProtectedPackAuthorizationExpired reports an incomplete protected-pack authorization.
+	ErrProtectedPackAuthorizationExpired = errors.New("protected prompt pack authorization expired")
+	// ErrProtectedPackUnavailable reports that the optional protected-pack importer cannot be reached.
+	ErrProtectedPackUnavailable = errors.New("protected prompt pack importer unavailable")
+	// ErrUnprotectedPackImportDenied reports that this build only imports Composer-protected packs.
+	ErrUnprotectedPackImportDenied = errors.New("unprotected prompt pack import denied")
 	// ErrPackNotFound reports a missing installed pack.
 	ErrPackNotFound = errors.New("prompt pack not found")
 	// ErrPackExists reports an attempt to reuse an installed pack ID.
@@ -135,12 +143,15 @@ type PackContents struct {
 
 // Service coordinates prompt pack persistence and built-in seeding.
 type Service struct {
-	mu           sync.Mutex
-	repo         *repository.PackRepository
-	legacyRepo   *repository.PromptLibraryRepository
-	initErr      error
-	seeded       bool
-	packFilesDir string
+	mu                 sync.Mutex
+	repo               *repository.PackRepository
+	legacyRepo         *repository.PromptLibraryRepository
+	protectedImporter  ProtectedImporter
+	protectedImportErr error
+	allowUnprotected   bool
+	initErr            error
+	seeded             bool
+	packFilesDir       string
 }
 
 // NewService creates a prompt pack service backed by the default settings DB.
@@ -182,9 +193,6 @@ func NewServiceFromRepositoryWithPackFilesDir(
 // ListPacks returns every installed prompt pack.
 func (store *Service) ListPacks(ctx context.Context) ([]Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
-		return nil, err
-	}
-	if err := store.ensureDefaultEnabled(ctx); err != nil {
 		return nil, err
 	}
 	models, err := store.repo.ListPacks()
@@ -416,6 +424,66 @@ func (store *Service) CreatePack(ctx context.Context, pack Pack) (Pack, error) {
 	return store.GetPack(ctx, pack.ID)
 }
 
+// CreatePackEntryDraft creates an empty, editable entry inside a local authoring pack.
+func (store *Service) CreatePackEntryDraft(
+	ctx context.Context,
+	packID string,
+	kind instructionpack.Kind,
+	slug string,
+) (Entry, error) {
+	if err := kind.Validate(); err != nil {
+		return Entry{}, fmt.Errorf("%w: %w", ErrInvalidPack, err)
+	}
+	if err := store.ensureSeeded(ctx); err != nil {
+		return Entry{}, err
+	}
+	packID = strings.TrimSpace(packID)
+	slug = strings.TrimSpace(slug)
+	if err := validateEntrySlug(kind, slug); err != nil {
+		return Entry{}, err
+	}
+	pack, err := store.repo.GetPack(packID)
+	if repository.IsRecordNotFound(err) {
+		return Entry{}, fmt.Errorf("%w: %s", ErrPackNotFound, packID)
+	}
+	if err != nil {
+		return Entry{}, err
+	}
+	if normalizePackSource(pack.Source, pack.ID) != packSourceLocal {
+		return Entry{}, fmt.Errorf("%w: only local authoring packs accept draft entries", ErrPackReadonly)
+	}
+
+	entry := Entry{
+		ID:        instructionpack.EntryID(packID, kind, slug),
+		PackID:    packID,
+		ReleaseID: pack.ReleaseID,
+		Kind:      kind,
+		Slug:      slug,
+		Source:    entrySourceUser,
+	}
+	switch kind {
+	case instructionpack.KindSkill:
+		entry.Name = slug
+		entry.Title = "未命名 Skill"
+	case instructionpack.KindPrompt:
+		entry.Name = "未命名提示词"
+		entry.Title = entry.Name
+		entry.Metadata = map[string]any{"category": "extra"}
+	}
+	if err := validateDraftEntryForWrite(entry); err != nil {
+		return Entry{}, err
+	}
+	if _, err := store.repo.GetEntry(entry.ID); err == nil {
+		return Entry{}, fmt.Errorf("%w: %s/%s", ErrEntryExists, kind, slug)
+	} else if !repository.IsRecordNotFound(err) {
+		return Entry{}, err
+	}
+	if err := store.repo.UpsertEntry(entryModelFromEntry(entry)); err != nil {
+		return Entry{}, err
+	}
+	return store.getPackEntry(packID, entry.ID)
+}
+
 // CopyEntries links resolved source entries into a local authoring pack. A
 // materialized row preserves v1 export compatibility while reads resolve the
 // latest source content and global content lists continue to show one entry.
@@ -644,9 +712,8 @@ func (store *Service) RemoveEntry(ctx context.Context, packID string, entryID st
 	return store.repo.DeleteEntry(entryID)
 }
 
-// SetEnabled enables or disables one installed pack. Packs are additive: the
-// built-in default pack is always enabled as a base layer and installed packs
-// stack on top, so enabling one never disables another.
+// SetEnabled enables or disables one installed pack. Packs are additive, so
+// enabling one never disables another.
 func (store *Service) SetEnabled(ctx context.Context, packID string, enabled bool) (Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return Pack{}, err
@@ -657,11 +724,8 @@ func (store *Service) SetEnabled(ctx context.Context, packID string, enabled boo
 	} else if err != nil {
 		return Pack{}, err
 	}
-	// The default pack stays usable at all times; disabling it is a no-op.
-	if !(packID == DefaultPackID && !enabled) {
-		if err := store.repo.SetPackEnabled(packID, enabled); err != nil {
-			return Pack{}, err
-		}
+	if err := store.repo.SetPackEnabled(packID, enabled); err != nil {
+		return Pack{}, err
 	}
 	model, err := store.repo.GetPack(packID)
 	if err != nil {
@@ -764,6 +828,9 @@ func (store *Service) InstallPath(ctx context.Context, path string) (Pack, error
 	if err := store.ensureSeeded(ctx); err != nil {
 		return Pack{}, err
 	}
+	if !store.allowUnprotected {
+		return Pack{}, ErrUnprotectedPackImportDenied
+	}
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return Pack{}, fmt.Errorf("%w: path is required", ErrInvalidPack)
@@ -801,9 +868,6 @@ func (store *Service) ListEntries(ctx context.Context, kind instructionpack.Kind
 		return nil, fmt.Errorf("%w: %w", ErrInvalidPack, err)
 	}
 	if err := store.ensureSeeded(ctx); err != nil {
-		return nil, err
-	}
-	if err := store.ensureDefaultEnabled(ctx); err != nil {
 		return nil, err
 	}
 	models, err := store.repo.ListEnabledEntries(string(kind))
@@ -888,7 +952,9 @@ func (store *Service) SavePackEntry(
 	updated.Source = entrySourceUser
 	if current.Kind == instructionpack.KindPrompt {
 		updated.Name = strings.TrimSpace(update.Name)
+		updated.Title = updated.Name
 	} else {
+		updated.Title = strings.TrimSpace(update.Name)
 		updated.Description = strings.TrimSpace(update.Description)
 	}
 	updated.Metadata = cloneMetadata(current.Metadata)
@@ -910,7 +976,18 @@ func (store *Service) SavePackEntry(
 	} else {
 		updated.OverriddenFrom = current.ID
 	}
-	if err := validateEntryForWrite(updated); err != nil {
+	pack, err := store.repo.GetPack(current.PackID)
+	if repository.IsRecordNotFound(err) {
+		return Entry{}, fmt.Errorf("%w: %s", ErrPackNotFound, current.PackID)
+	}
+	if err != nil {
+		return Entry{}, err
+	}
+	validate := validateEntryForWrite
+	if normalizePackSource(pack.Source, pack.ID) == packSourceLocal {
+		validate = validateDraftEntryForWrite
+	}
+	if err := validate(updated); err != nil {
 		return Entry{}, err
 	}
 	if err := store.repo.UpsertEntry(entryModelFromEntry(updated)); err != nil {
@@ -1118,9 +1195,6 @@ func (store *Service) ListCategories(ctx context.Context) ([]Category, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return nil, err
 	}
-	if err := store.ensureDefaultEnabled(ctx); err != nil {
-		return nil, err
-	}
 	models, err := store.repo.ListEnabledCategories()
 	if err != nil {
 		return nil, err
@@ -1325,28 +1399,6 @@ func (store *Service) ensureReady(ctx context.Context) error {
 		return errors.New("prompt pack repository is nil")
 	}
 	return nil
-}
-
-// ensureDefaultEnabled keeps the built-in default pack enabled at all times so
-// its content is always available as a base layer. Installed packs stack on top
-// additively; this never disables any pack.
-func (store *Service) ensureDefaultEnabled(ctx context.Context) error {
-	if ctx != nil {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-	}
-	model, err := store.repo.GetPack(DefaultPackID)
-	if repository.IsRecordNotFound(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if model.Enabled {
-		return nil
-	}
-	return store.repo.SetPackEnabled(DefaultPackID, true)
 }
 
 func (store *Service) migrateLegacyPromptLibrary(ctx context.Context) error {

@@ -2,15 +2,52 @@ package app
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
 
+	"github.com/mediago-dev/mediago-drama/services/server/internal/http/middleware"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	serviceshared "github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 )
+
+func TestNewHandlerRequiresSidecarToken(t *testing.T) {
+	const token = "sidecar-token-with-at-least-thirty-two-bytes"
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	handler := NewHandlerWithConfig(
+		fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
+		Config{
+			WorkspaceDir:            workspaceDir,
+			SidecarToken:            token,
+			AgentBridgeToken:        "agent-bridge-token",
+			DisableGenerationWorker: true,
+			DisableWorkspaceWatcher: true,
+			agentRunner:             fakeAgentRunner{},
+			documentOperationRunner: fakeDocumentOperationRunner{},
+		},
+	)
+	if closer, ok := handler.(interface{ Close() error }); ok {
+		t.Cleanup(func() { _ = closer.Close() })
+	}
+
+	missing := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	missingResponse := httptest.NewRecorder()
+	handler.ServeHTTP(missingResponse, missing)
+	if missingResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("missing token status = %d, want %d", missingResponse.Code, http.StatusUnauthorized)
+	}
+
+	authorized := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	authorized.Header.Set(middleware.SidecarTokenHeader, token)
+	authorizedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(authorizedResponse, authorized)
+	if authorizedResponse.Code != http.StatusOK {
+		t.Fatalf("authorized status = %d, want %d", authorizedResponse.Code, http.StatusOK)
+	}
+}
 
 func TestNewHandlerDefaultsSettingsDBToWorkspaceDatabaseDir(t *testing.T) {
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")

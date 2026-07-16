@@ -1,4 +1,4 @@
-import { type BrowserWindow, app, ipcMain } from "electron";
+import { type BrowserWindow, type IpcMainInvokeEvent, app, ipcMain } from "electron";
 import electronUpdater, { type UpdateInfo } from "electron-updater";
 import {
 	type DesktopUpdateAck,
@@ -120,17 +120,28 @@ const attachListeners = (getWindow: () => BrowserWindow | null) => {
 const unsupportedAck = (message: string): DesktopUpdateAck => ({ ok: false, message });
 
 export interface DesktopUpdaterDeps {
+	authorizeIpcSender: (event: IpcMainInvokeEvent) => void;
 	getWindow: () => BrowserWindow | null;
 }
 
-export const registerDesktopUpdater = ({ getWindow }: DesktopUpdaterDeps): void => {
+export const registerDesktopUpdater = ({
+	authorizeIpcSender,
+	getWindow,
+}: DesktopUpdaterDeps): void => {
 	if (capability.supportsAutoUpdate) attachListeners(getWindow);
 
-	ipcMain.handle(desktopIpcChannel.getAppVersion, () => currentVersion());
+	ipcMain.handle(desktopIpcChannel.getAppVersion, (event) => {
+		authorizeIpcSender(event);
+		return currentVersion();
+	});
 
-	ipcMain.handle(desktopIpcChannel.getUpdateCapability, (): DesktopUpdateCapability => capability);
+	ipcMain.handle(desktopIpcChannel.getUpdateCapability, (event): DesktopUpdateCapability => {
+		authorizeIpcSender(event);
+		return capability;
+	});
 
-	ipcMain.handle(desktopIpcChannel.checkUpdate, async (): Promise<DesktopUpdateAck> => {
+	ipcMain.handle(desktopIpcChannel.checkUpdate, async (event): Promise<DesktopUpdateAck> => {
+		authorizeIpcSender(event);
 		if (!capability.supportsAutoUpdate)
 			return unsupportedAck(capability.reason ?? "不支持自动更新。");
 		try {
@@ -143,7 +154,8 @@ export const registerDesktopUpdater = ({ getWindow }: DesktopUpdaterDeps): void 
 		}
 	});
 
-	ipcMain.handle(desktopIpcChannel.downloadUpdate, async (): Promise<DesktopUpdateAck> => {
+	ipcMain.handle(desktopIpcChannel.downloadUpdate, async (event): Promise<DesktopUpdateAck> => {
+		authorizeIpcSender(event);
 		if (!capability.supportsAutoUpdate)
 			return unsupportedAck(capability.reason ?? "不支持自动更新。");
 		try {
@@ -155,7 +167,8 @@ export const registerDesktopUpdater = ({ getWindow }: DesktopUpdaterDeps): void 
 		}
 	});
 
-	ipcMain.handle(desktopIpcChannel.installUpdate, async (): Promise<DesktopUpdateAck> => {
+	ipcMain.handle(desktopIpcChannel.installUpdate, async (event): Promise<DesktopUpdateAck> => {
+		authorizeIpcSender(event);
 		if (!capability.supportsAutoUpdate)
 			return unsupportedAck(capability.reason ?? "不支持自动更新。");
 		try {

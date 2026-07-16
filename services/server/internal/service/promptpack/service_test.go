@@ -46,7 +46,7 @@ func TestServiceSeedsBuiltinPackIdempotently(t *testing.T) {
 	}
 }
 
-func TestServiceKeepsDefaultPackAlwaysEnabled(t *testing.T) {
+func TestServiceCanDisableDefaultPack(t *testing.T) {
 	ctx := context.Background()
 	store := newTestService(t)
 	before, err := store.ListEntries(ctx, instructionpack.KindSkill)
@@ -56,21 +56,19 @@ func TestServiceKeepsDefaultPackAlwaysEnabled(t *testing.T) {
 	if len(before) == 0 {
 		t.Fatalf("expected built-in skills before disable")
 	}
-	// The default pack is a permanent base layer: disabling it is a no-op so
-	// its content stays usable while installed packs stack on top.
 	pack, err := store.SetEnabled(ctx, DefaultPackID, false)
 	if err != nil {
 		t.Fatalf("SetEnabled(default,false) error = %v", err)
 	}
-	if !pack.Enabled {
-		t.Fatalf("default pack = %#v, want still enabled", pack)
+	if pack.Enabled {
+		t.Fatalf("default pack = %#v, want disabled", pack)
 	}
 	after, err := store.ListEntries(ctx, instructionpack.KindSkill)
 	if err != nil {
 		t.Fatalf("ListEntries() error = %v", err)
 	}
-	if len(after) != len(before) {
-		t.Fatalf("entries after disabling default = %d, want unchanged %d", len(after), len(before))
+	if len(after) != 0 {
+		t.Fatalf("entries after disabling default = %d, want none", len(after))
 	}
 }
 
@@ -114,6 +112,70 @@ func TestServiceCreatesLocalAuthoringPackAndExportsV1(t *testing.T) {
 	}
 	if recorded.ReleaseID != "release-1" || recorded.Version != "1.0.0" {
 		t.Fatalf("recorded = %#v, want latest release provenance", recorded)
+	}
+}
+
+func TestServiceCreatesPackDraftEntriesBeforeContentIsWritten(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	pack, err := store.CreatePack(ctx, Pack{
+		ID:      "company.draft-pack",
+		Name:    "Draft Pack",
+		Version: "1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+
+	prompt, err := store.CreatePackEntryDraft(ctx, pack.ID, instructionpack.KindPrompt, "prompt-draft")
+	if err != nil {
+		t.Fatalf("CreatePackEntryDraft(prompt) error = %v", err)
+	}
+	if prompt.Name != "未命名提示词" || prompt.Body != "" || prompt.Source != entrySourceUser {
+		t.Fatalf("prompt draft = %#v, want an empty user draft", prompt)
+	}
+	if _, err := store.ExportPack(ctx, pack.ID); !errors.Is(err, ErrInvalidPack) {
+		t.Fatalf("ExportPack(incomplete) error = %v, want ErrInvalidPack", err)
+	}
+
+	prompt, err = store.SavePackEntry(ctx, pack.ID, prompt.ID, EntryUpdate{
+		Name: "Finished Prompt",
+		Body: "Finished prompt body",
+	})
+	if err != nil {
+		t.Fatalf("SavePackEntry(prompt) error = %v", err)
+	}
+	if prompt.Name != "Finished Prompt" {
+		t.Fatalf("saved prompt = %#v, want renamed prompt", prompt)
+	}
+	if _, err := store.ExportPack(ctx, pack.ID); err != nil {
+		t.Fatalf("ExportPack(complete prompt) error = %v", err)
+	}
+
+	skill, err := store.CreatePackEntryDraft(ctx, pack.ID, instructionpack.KindSkill, "skill-draft")
+	if err != nil {
+		t.Fatalf("CreatePackEntryDraft(skill) error = %v", err)
+	}
+	if skill.Title != "未命名 Skill" || skill.Body != "" {
+		t.Fatalf("skill draft = %#v, want an empty titled draft", skill)
+	}
+	skill, err = store.SavePackEntry(ctx, pack.ID, skill.ID, EntryUpdate{
+		Name:        "Finished Skill",
+		Description: "A complete Skill",
+		Body:        "Finished Skill body",
+	})
+	if err != nil {
+		t.Fatalf("SavePackEntry(skill) error = %v", err)
+	}
+	if skill.Title != "Finished Skill" {
+		t.Fatalf("saved skill = %#v, want editable title", skill)
+	}
+	if _, err := store.ExportPack(ctx, pack.ID); err != nil {
+		t.Fatalf("ExportPack(complete entries) error = %v", err)
+	}
+
+	if _, err := store.CreatePackEntryDraft(ctx, DefaultPackID, instructionpack.KindPrompt, "blocked-draft"); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("CreatePackEntryDraft(default) error = %v, want ErrPackReadonly", err)
 	}
 }
 
@@ -386,7 +448,7 @@ func TestServiceRejectsCopyIntoNonLocalPack(t *testing.T) {
 	}
 }
 
-func TestServiceFormalPackOnlyAllowsInternalSnapshotExport(t *testing.T) {
+func TestServiceFormalPackExportsUnprotectedV1Snapshot(t *testing.T) {
 	ctx := context.Background()
 	store := newTestService(t)
 	raw, err := os.ReadFile(writeTestMGPack(t))
@@ -401,8 +463,20 @@ func TestServiceFormalPackOnlyAllowsInternalSnapshotExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallDataWithProvenance() error = %v", err)
 	}
-	if _, err := store.ExportPack(ctx, installed.ID); !errors.Is(err, ErrPackReadonly) {
-		t.Fatalf("ExportPack() error = %v, want ErrPackReadonly", err)
+	exported, err := store.ExportPack(ctx, installed.ID)
+	if err != nil {
+		t.Fatalf("ExportPack() error = %v", err)
+	}
+	archive, err := codec.Decode(exported.Data)
+	if err != nil {
+		t.Fatalf("Decode(exported formal pack) error = %v", err)
+	}
+	exportedBundle, err := instructionpack.ParseZip(ctx, archive)
+	if err != nil {
+		t.Fatalf("ParseZip(exported formal pack) error = %v", err)
+	}
+	if exportedBundle.Manifest.ID != installed.ID {
+		t.Fatalf("exported package id = %q, want %q", exportedBundle.Manifest.ID, installed.ID)
 	}
 	if _, err := store.ExportPackSnapshot(ctx, installed.ID); err != nil {
 		t.Fatalf("ExportPackSnapshot() error = %v", err)
@@ -411,7 +485,7 @@ func TestServiceFormalPackOnlyAllowsInternalSnapshotExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExportPackSnapshotAtVersion() error = %v", err)
 	}
-	archive, err := codec.Decode(versioned.Data)
+	archive, err = codec.Decode(versioned.Data)
 	if err != nil {
 		t.Fatalf("Decode(versioned snapshot) error = %v", err)
 	}
@@ -608,8 +682,8 @@ func TestServiceExportsAndImportsFullMGPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExportPack() error = %v", err)
 	}
-	if exported.FileName == "" || filepath.Ext(exported.FileName) != ".mgpack" {
-		t.Fatalf("exported filename = %q, want .mgpack", exported.FileName)
+	if exported.FileName != "Test Pack-v1.0.0.mgpack" {
+		t.Fatalf("exported filename = %q, want readable pack name and version", exported.FileName)
 	}
 	archive, err := codec.Decode(exported.Data)
 	if err != nil {
@@ -653,6 +727,27 @@ func TestServiceExportsAndImportsFullMGPack(t *testing.T) {
 	}
 }
 
+func TestReadablePackFileNamePreservesNameAndSanitizesPathCharacters(t *testing.T) {
+	tests := []struct {
+		name     string
+		packName string
+		packID   string
+		version  string
+		want     string
+	}{
+		{name: "Chinese name", packName: "测试风格", packID: "local.uuid", version: "1.0.0", want: "测试风格-v1.0.0.mgpack"},
+		{name: "path characters", packName: "角色/场景:套装", packID: "local.uuid", version: "v2.1.0", want: "角色-场景-套装-v2.1.0.mgpack"},
+		{name: "fallback to id", packID: "local.readable", version: "1.0.0", want: "local.readable-v1.0.0.mgpack"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := readablePackFileName(test.packName, test.packID, test.version); got != test.want {
+				t.Fatalf("readablePackFileName() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestServiceInstallsFormalReleaseWithProvenance(t *testing.T) {
 	ctx := context.Background()
 	store := newTestService(t)
@@ -692,8 +787,8 @@ func TestServiceInstallsFormalReleaseWithProvenance(t *testing.T) {
 	if updated.ReleaseID != "release-1" || updated.SourcePackageID != pack.ID || updated.SourceReleaseID != "release-1" {
 		t.Fatalf("updated provenance = %#v, want original formal source", updated)
 	}
-	if _, err := store.ExportPack(ctx, pack.ID); !errors.Is(err, ErrPackReadonly) {
-		t.Fatalf("ExportPack() error = %v, want ErrPackReadonly", err)
+	if _, err := store.ExportPack(ctx, pack.ID); err != nil {
+		t.Fatalf("ExportPack(imported formal pack) error = %v", err)
 	}
 	recovered, err := store.PromoteImportedPackToLocal(ctx, pack.ID)
 	if err != nil {
@@ -862,11 +957,13 @@ func newTestService(t *testing.T) *Service {
 	); err != nil {
 		t.Fatalf("migrating: %v", err)
 	}
-	return NewServiceFromRepository(
+	store := NewServiceFromRepository(
 		repository.NewPackRepositoryFromDB(db),
 		repository.NewPromptLibraryRepositoryFromDB(db),
 		nil,
 	).withTestPackFilesDir(t.TempDir())
+	store.SetUnprotectedImportAllowed(true)
+	return store
 }
 
 func writeTestMGPack(t *testing.T) string {

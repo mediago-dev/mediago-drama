@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
 	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/codec"
@@ -48,18 +49,7 @@ type InstallProvenance struct {
 
 // ExportPack encodes one installed prompt pack as a complete .mgpack file.
 func (store *Service) ExportPack(ctx context.Context, packID string) (ExportedPack, error) {
-	pack, err := store.GetPack(ctx, packID)
-	if err != nil {
-		return ExportedPack{}, err
-	}
-	if pack.ReleaseID != "" {
-		return ExportedPack{}, fmt.Errorf("%w: formal releases cannot be exported as v1", ErrPackReadonly)
-	}
-	exported, err := store.ExportPackSnapshot(ctx, packID)
-	if err != nil {
-		return ExportedPack{}, err
-	}
-	return exported, nil
+	return store.ExportPackSnapshot(ctx, packID)
 }
 
 // ExportPackSnapshot encodes a pack for trusted in-process commercial wrapping.
@@ -94,6 +84,9 @@ func (store *Service) exportPackSnapshot(ctx context.Context, packID string, ver
 	if err != nil {
 		return ExportedPack{}, err
 	}
+	if err := validateBundleForExport(bundle); err != nil {
+		return ExportedPack{}, err
+	}
 	if version != "" {
 		bundle.Manifest.Version = version
 		pack.Version = version
@@ -104,15 +97,54 @@ func (store *Service) exportPackSnapshot(ctx context.Context, packID string, ver
 		return ExportedPack{}, err
 	}
 	return ExportedPack{
-		FileName: safePackFileName(bundle.Manifest.ID, bundle.Manifest.Version, ".mgpack"),
+		FileName: readablePackFileName(bundle.Manifest.Name, bundle.Manifest.ID, bundle.Manifest.Version),
 		Data:     data,
 		Pack:     pack,
 	}, nil
 }
 
-// InstallData installs an uploaded v1 .mgpack payload.
+func validateBundleForExport(bundle instructionpack.Bundle) error {
+	for _, packedEntry := range bundle.Entries {
+		entry := Entry{
+			Kind:        packedEntry.Kind,
+			Slug:        packedEntry.Slug,
+			Name:        packedEntry.Name,
+			Title:       packedEntry.Title,
+			Description: packedEntry.Description,
+			Body:        packedEntry.Body,
+		}
+		if err := validateEntryForWrite(entry); err != nil {
+			return fmt.Errorf("%w: %s %q is incomplete", ErrInvalidPack, packedEntry.Kind, packedEntry.Slug)
+		}
+		if packedEntry.Kind == instructionpack.KindSkill && strings.TrimSpace(packedEntry.Description) == "" {
+			return fmt.Errorf("%w: skill %q description is required", ErrInvalidPack, packedEntry.Slug)
+		}
+	}
+	return nil
+}
+
+// InstallData installs an uploaded v1 .mgpack payload. Unsupported container
+// versions are delegated to the optional protected importer.
 func (store *Service) InstallData(ctx context.Context, fileName string, data []byte) (Pack, error) {
-	return store.installData(ctx, fileName, data, InstallProvenance{})
+	pack, err := store.installData(ctx, fileName, data, InstallProvenance{})
+	if !errors.Is(err, ErrUnsupportedPackVersion) {
+		return pack, err
+	}
+	if store.protectedImporter == nil {
+		if store.protectedImportErr != nil {
+			return Pack{}, fmt.Errorf("%w: %v", ErrProtectedPackUnavailable, store.protectedImportErr)
+		}
+		return pack, err
+	}
+	imported, importErr := store.protectedImporter.Import(ctx, fileName, data)
+	if importErr != nil {
+		return Pack{}, importErr
+	}
+	return store.InstallDataWithProvenance(ctx, fileName, imported.Payload, InstallProvenance{
+		PackageID: imported.PackageID,
+		ReleaseID: imported.ReleaseID,
+		Version:   imported.Version,
+	})
 }
 
 // InstallDataWithProvenance atomically imports decrypted content with its formal source.
@@ -147,6 +179,9 @@ func (store *Service) installData(ctx context.Context, fileName string, data []b
 	}
 	if err != nil {
 		return Pack{}, fmt.Errorf("%w: decoding .mgpack: %v", ErrInvalidPack, err)
+	}
+	if provenance.PackageID == "" && !store.allowUnprotected {
+		return Pack{}, ErrUnprotectedPackImportDenied
 	}
 	bundle, err := instructionpack.ParseZip(ctx, archive)
 	if err != nil {
@@ -411,6 +446,45 @@ func safePackFileName(packID string, version string, sourceExt string) string {
 		suffix = time.Now().UTC().Format("20060102150405")
 	}
 	return base + "-" + suffix + extension
+}
+
+func readablePackFileName(name string, packID string, version string) string {
+	base := sanitizeReadableFilePart(name)
+	if base == "" {
+		base = sanitizeReadableFilePart(packID)
+	}
+	if base == "" {
+		base = "prompt-pack"
+	}
+	version = strings.TrimSpace(version)
+	version = strings.TrimPrefix(strings.TrimPrefix(version, "v"), "V")
+	version = strings.ReplaceAll(sanitizeReadableFilePart(version), " ", "-")
+	if version == "" {
+		version = time.Now().UTC().Format("20060102150405")
+	}
+	return base + "-v" + version + ".mgpack"
+}
+
+func sanitizeReadableFilePart(value string) string {
+	var builder strings.Builder
+	for _, char := range strings.TrimSpace(value) {
+		switch {
+		case unicode.IsControl(char), strings.ContainsRune(`<>:"/\|?*`, char):
+			builder.WriteByte('-')
+		default:
+			builder.WriteRune(char)
+		}
+	}
+	result := strings.Join(strings.Fields(builder.String()), " ")
+	for strings.Contains(result, "--") {
+		result = strings.ReplaceAll(result, "--", "-")
+	}
+	result = strings.Trim(result, " .-_")
+	runes := []rune(result)
+	if len(runes) > 96 {
+		result = strings.TrimRight(string(runes[:96]), " .-_")
+	}
+	return result
 }
 
 func sanitizeFilePart(value string) string {

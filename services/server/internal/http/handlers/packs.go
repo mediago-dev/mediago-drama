@@ -2,12 +2,12 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"io"
+	"mime"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
+	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
 	httpresponse "github.com/mediago-dev/mediago-drama/services/server/internal/http/response"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 )
@@ -52,6 +52,11 @@ type copyPromptPackEntriesResponse struct {
 
 type promptPackEntryRequest struct {
 	EntryID string `json:"entryId"`
+}
+
+type createPromptPackEntryRequest struct {
+	Kind instructionpack.Kind `json:"kind"`
+	Slug string               `json:"slug"`
 }
 
 type updatePromptPackEntryRequest struct {
@@ -116,10 +121,8 @@ func (handler PromptPacks) HandleExportPack(context *gin.Context) {
 		return
 	}
 	context.Header("Content-Type", "application/octet-stream")
-	context.Header(
-		"Content-Disposition",
-		fmt.Sprintf(`attachment; filename="%s"`, strings.ReplaceAll(exported.FileName, `"`, "")),
-	)
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": exported.FileName})
+	context.Header("Content-Disposition", disposition)
 	context.Data(http.StatusOK, "application/octet-stream", exported.Data)
 }
 
@@ -223,6 +226,40 @@ func (handler PromptPacks) HandleCopyPackEntries(context *gin.Context) {
 		return
 	}
 	httpresponse.OK(context, copyPromptPackEntriesResponse{Entries: entries})
+}
+
+// HandleCreatePackEntry godoc
+// @Summary 新建词包草稿内容
+// @Description 在本地创作词包中创建一个可自动保存的空 Skill 或提示词草稿。
+// @Tags Prompt Packs
+// @Accept json
+// @Produce json
+// @Param id path string true "Target pack ID"
+// @Param payload body SwaggerObject true "Draft entry"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 403 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 409 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/packs/{id}/entries [post]
+func (handler PromptPacks) HandleCreatePackEntry(context *gin.Context) {
+	payload, err := decodeJSON[createPromptPackEntryRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	entry, err := handler.store.CreatePackEntryDraft(
+		context.Request.Context(),
+		context.Param("id"),
+		payload.Kind,
+		payload.Slug,
+	)
+	if err != nil {
+		writePromptPackError(context, err)
+		return
+	}
+	httpresponse.OK(context, entry)
 }
 
 // HandlePutPackEntry godoc
@@ -455,6 +492,30 @@ func (handler PromptPacks) HandleResetPack(context *gin.Context) {
 
 func writePromptPackError(context *gin.Context, err error) {
 	switch {
+	case errors.Is(err, promptpack.ErrProtectedPackAccessDenied):
+		httpresponse.Error(
+			context,
+			http.StatusForbidden,
+			"当前 MediaGo 账号没有该提示词包的导入权限，请先购买或使用分发席位兑换码",
+		)
+	case errors.Is(err, promptpack.ErrProtectedPackAuthorizationExpired):
+		httpresponse.Error(
+			context,
+			http.StatusRequestTimeout,
+			"提示词包授权已过期，请重新导入并完成授权",
+		)
+	case errors.Is(err, promptpack.ErrProtectedPackUnavailable):
+		httpresponse.Error(
+			context,
+			http.StatusServiceUnavailable,
+			"提示词包授权服务暂时不可用，请稍后重试",
+		)
+	case errors.Is(err, promptpack.ErrUnprotectedPackImportDenied):
+		httpresponse.Error(
+			context,
+			http.StatusUnprocessableEntity,
+			"未加密提示词包不能直接导入，请先前往 MediaGo 官网完成发布和加密",
+		)
 	case errors.Is(err, promptpack.ErrUnsupportedPackVersion):
 		httpresponse.Error(
 			context,
