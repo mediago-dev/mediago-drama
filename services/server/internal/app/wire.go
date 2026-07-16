@@ -21,6 +21,7 @@ import (
 	appevents "github.com/mediago-dev/mediago-drama/services/server/internal/app/events"
 	appworkspace "github.com/mediago-dev/mediago-drama/services/server/internal/app/workspace"
 	corecapability "github.com/mediago-dev/mediago-drama/services/server/internal/capability"
+	platformprotectedpack "github.com/mediago-dev/mediago-drama/services/server/internal/platform/protectedpack"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	serviceacp "github.com/mediago-dev/mediago-drama/services/server/internal/service/acp"
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
@@ -29,7 +30,6 @@ import (
 	servicecodexskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/codexskill"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
-	servicelicense "github.com/mediago-dev/mediago-drama/services/server/internal/service/license"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	serviceprojectasset "github.com/mediago-dev/mediago-drama/services/server/internal/service/projectasset"
 	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
@@ -239,18 +239,35 @@ func newAPIHandler(config Config) *apiHandler {
 	workspaceState.StateService().Documents.SetGeneratedAssetCounter(generationTasks)
 	promptTemplates := serviceprompttemplates.NewServiceFromRepository(settingsRepos.Instructions, settingsReposErr)
 	serviceprompt.SetPromptTemplateStore(promptTemplates)
-	licenseService, licenseClient := servicelicense.NewFromEnvironment(filepath.Join(filepath.Dir(settingsDBPath), "license"))
-	promptPack := servicepromptpack.NewServiceFromRepositoryWithPackFilesDirAndLicense(
+	promptPack := servicepromptpack.NewServiceFromRepositoryWithPackFilesDir(
 		settingsRepos.Packs,
 		settingsRepos.PromptLibrary,
 		settingsReposErr,
 		filepath.Join(filepath.Dir(settingsDBPath), "packs"),
-		licenseService,
 	)
+	promptPack.SetUnprotectedImportAllowed(config.AllowUnprotectedPackImport)
+	var protectedPackImporterErr error
+	if importerPath := strings.TrimSpace(config.ProtectedPackImporterPath); importerPath != "" {
+		var importer *platformprotectedpack.Importer
+		importer, protectedPackImporterErr = platformprotectedpack.New(
+			importerPath,
+			config.ProtectedPackImporterSHA256,
+		)
+		if protectedPackImporterErr == nil {
+			promptPack.SetProtectedImporter(importer)
+		} else {
+			promptPack.SetProtectedImporterUnavailable(protectedPackImporterErr)
+		}
+	}
 	serviceskill.SetPromptPackStore(promptPack)
 	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
 	promptLibrary := servicepromptlibrary.NewServiceFromPromptPack(promptPack, settingsReposErr)
 	generationService.SetStylePromptLibrary(promptLibrary)
+	for _, extension := range config.RuntimeExtensions {
+		if extension != nil && extension.ContentUseAuthorizer() != nil {
+			generationService.SetContentUseAuthorizer(extension.ContentUseAuthorizer())
+		}
+	}
 	capabilityRegistry := corecapability.Default()
 	capabilityService := servicecapability.NewService(capabilityRegistry, generationService.RouteConfigured)
 	billingPrices := config.BillingPrices
@@ -274,34 +291,35 @@ func newAPIHandler(config Config) *apiHandler {
 			settingsReposErr,
 			settingsMigrationErr,
 			workspaceReposErr,
+			protectedPackImporterErr,
 		),
-		workspaceState:   workspaceState,
-		events:           events,
-		workspaceEvents:  workspaceEvents,
-		agentSessions:    agentSessions,
-		agentRunner:      runner,
-		documentRunner:   documentRunner,
-		agentRunTimeout:  agentRunTimeout,
-		agentBridgeURL:   agentBridgeURL,
-		agentBridgeToken: agentBridgeToken,
-		settings:         settings,
-		capability:       capabilityService,
-		billing:          billingService,
-		backendService:   backendService,
-		generation:       generationService,
-		selection:        selectionService,
-		jianyingDraft:    jianyingDraft,
-		mediaAssets:      mediaAssets,
-		previewStreamer:  previewStreamer,
-		projectAssets:    projectAssets,
-		promptPack:       promptPack,
-		licenseClient:    licenseClient,
-		promptTemplates:  promptTemplates,
-		promptLibrary:    promptLibrary,
-		skillRegistry:    skillRegistry,
-		codexSkills:      codexSkills,
-		shutdownCtx:      shutdownCtx,
-		shutdownCancel:   shutdownCancel,
+		workspaceState:    workspaceState,
+		events:            events,
+		workspaceEvents:   workspaceEvents,
+		agentSessions:     agentSessions,
+		agentRunner:       runner,
+		documentRunner:    documentRunner,
+		agentRunTimeout:   agentRunTimeout,
+		agentBridgeURL:    agentBridgeURL,
+		agentBridgeToken:  agentBridgeToken,
+		settings:          settings,
+		capability:        capabilityService,
+		billing:           billingService,
+		backendService:    backendService,
+		generation:        generationService,
+		selection:         selectionService,
+		jianyingDraft:     jianyingDraft,
+		mediaAssets:       mediaAssets,
+		previewStreamer:   previewStreamer,
+		projectAssets:     projectAssets,
+		promptPack:        promptPack,
+		promptTemplates:   promptTemplates,
+		promptLibrary:     promptLibrary,
+		skillRegistry:     skillRegistry,
+		codexSkills:       codexSkills,
+		runtimeExtensions: append([]RuntimeExtension(nil), config.RuntimeExtensions...),
+		shutdownCtx:       shutdownCtx,
+		shutdownCancel:    shutdownCancel,
 	}
 	handler.agentRuntime = serviceagent.NewAgentRuntime(
 		workspaceState.StateService().Documents,

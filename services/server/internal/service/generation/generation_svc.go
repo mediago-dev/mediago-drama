@@ -35,6 +35,9 @@ type GenerationDocumentContext = dto.GenerationDocumentContext
 // GenerationReferenceBinding maps a document mention to a concrete reference.
 type GenerationReferenceBinding = dto.GenerationReferenceBinding
 
+// ContentSourceRef identifies content originating from a formal package release.
+type ContentSourceRef = dto.ContentSourceRef
+
 // GenerationVoicePreviewRequest creates a short audio sample for a voice.
 type GenerationVoicePreviewRequest = dto.GenerationVoicePreviewRequest
 

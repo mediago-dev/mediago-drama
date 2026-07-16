@@ -5,9 +5,11 @@ import {
 	cpSync,
 	existsSync,
 	mkdirSync,
+	readFileSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,6 +20,8 @@ const mediagoBaseURL =
 	process.argv[5]?.trim() || process.env.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL?.trim() || "";
 const generationClis =
 	process.argv[6]?.trim() || process.env.MEDIAGO_GENERATION_CLIS?.trim() || "dreamina";
+const includeProtectedPackRuntime =
+	process.env.MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME?.trim() === "1";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const workspaceDir = resolve(scriptDir, "..");
 const rootDir = resolve(workspaceDir, "../..");
@@ -40,7 +44,11 @@ const toolsDist = join(vendorDistRoot, "tools");
 const electronResourcesDir = join(workspaceDir, "electron", "resources");
 const baseToolIDs = ["ffmpeg", "ffprobe"];
 const generationCliIDs = parseToolIDs(generationClis);
-const selectedToolIDs = unique([...baseToolIDs, ...generationCliIDs]);
+const selectedToolIDs = unique([
+	...baseToolIDs,
+	...generationCliIDs,
+	...(includeProtectedPackRuntime ? ["mediago-rights"] : []),
+]);
 
 function main(): void {
 	for (const binary of serviceBinaries) ensureExecutable(binary.path);
@@ -68,6 +76,7 @@ function main(): void {
 		cpSync(binary.path, stagedBinary);
 		chmodSync(stagedBinary, 0o755);
 	}
+	writeSidecarIntegrityManifest(binDir);
 	cpSync(agentDist, join(agentsDir, agent), { recursive: true });
 	for (const toolID of selectedToolIDs) {
 		cpSync(join(toolsDist, toolID), join(stagedToolsDir, toolID), { recursive: true });
@@ -79,6 +88,28 @@ function main(): void {
 	writeFileSync(
 		join(electronResourcesDir, "local-cli.json"),
 		JSON.stringify({ generationClis: generationCliIDs }, null, 2) + "\n",
+	);
+}
+
+function writeSidecarIntegrityManifest(binDir: string): void {
+	const files = Object.fromEntries(
+		serviceBinaries.map((binary) => {
+			const stagedBinary = join(binDir, binary.name);
+			return [binary.name, createHash("sha256").update(readFileSync(stagedBinary)).digest("hex")];
+		}),
+	);
+	writeFileSync(
+		join(electronResourcesDir, "sidecar-integrity.json"),
+		`${JSON.stringify(
+			{
+				format: "mediago-sidecar-integrity",
+				version: 1,
+				algorithm: "sha256",
+				files,
+			},
+			null,
+			2,
+		)}\n`,
 	);
 }
 

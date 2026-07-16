@@ -175,7 +175,7 @@ func TestInstallDownloadedToolExtractsZipArchivePath(t *testing.T) {
 	err := installDownloadedTool(archivePath, toolManifest{
 		ID:          "libtv",
 		Bin:         "libtv",
-		URL:         "https://example.test/libtv.zip",
+		URL:         "https://api.github.com/repos/example/private/releases/assets/1",
 		ArchivePath: "bundle/libtv",
 	}, distDir)
 	if err != nil {

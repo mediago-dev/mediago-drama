@@ -120,7 +120,6 @@ func run(args []string) error {
 		if !ok {
 			return fmt.Errorf("tool %q does not support platform %s", toolIDValue, platformKey)
 		}
-
 		distDir := filepath.Join(vendorDir, "dist", "tools", toolIDValue)
 		if strings.TrimSpace(*targetPlatform) != "" {
 			distDir = filepath.Join(vendorDir, "dist", distPlatformKey, "tools", toolIDValue)
@@ -356,6 +355,7 @@ func downloadToolAsset(url string, out string) error {
 		return fmt.Errorf("creating download request: %w", err)
 	}
 	request.Header.Set("User-Agent", "mediago-vendor-prepare")
+	request.Header.Set("Accept", "application/octet-stream")
 
 	response, err := client.Do(request)
 	if err != nil {
@@ -441,13 +441,24 @@ func installRawTool(downloadPath string, bin string, distDir string) error {
 }
 
 func installArchivedTool(downloadPath string, expected toolManifest, distDir string) error {
+	file, err := os.Open(downloadPath)
+	if err != nil {
+		return fmt.Errorf("opening downloaded archive %s: %w", downloadPath, err)
+	}
+	header := make([]byte, 4)
+	read, err := io.ReadFull(file, header)
+	file.Close()
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return fmt.Errorf("reading downloaded archive %s: %w", downloadPath, err)
+	}
 	switch {
-	case strings.HasSuffix(strings.ToLower(expected.URL), ".zip"):
+	case read >= 4 && header[0] == 'P' && header[1] == 'K' &&
+		((header[2] == 3 && header[3] == 4) || (header[2] == 5 && header[3] == 6) || (header[2] == 7 && header[3] == 8)):
 		return installZipTool(downloadPath, expected, distDir)
-	case strings.HasSuffix(strings.ToLower(expected.URL), ".tar.gz"), strings.HasSuffix(strings.ToLower(expected.URL), ".tgz"):
+	case read >= 2 && header[0] == 0x1f && header[1] == 0x8b:
 		return installTarGzTool(downloadPath, expected, distDir)
 	default:
-		return fmt.Errorf("tool %q archivePath is set but url is not a supported archive: %s", expected.ID, expected.URL)
+		return fmt.Errorf("tool %q downloaded asset is not a supported zip or tar.gz archive", expected.ID)
 	}
 }
 
@@ -544,7 +555,7 @@ func normalizeSHA256(value string) string {
 }
 
 func normalizeArchivePath(value string) string {
-	value = strings.TrimSpace(filepath.ToSlash(value))
+	value = strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
 	value = strings.TrimPrefix(value, "./")
 	return value
 }

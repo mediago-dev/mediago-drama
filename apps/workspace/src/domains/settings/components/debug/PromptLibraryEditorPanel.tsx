@@ -42,8 +42,10 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { useToast } from "@/hooks/useToast";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
-import { isPromptLibraryCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
+import { isPromptPackContentCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
+import { listPromptPacks, promptPacksKey } from "@/domains/settings/api/packs";
 import { PromptPackActions } from "./PromptPackActionsSlot";
+import { PromptPackMembershipBadge } from "./PromptPackMembershipBadge";
 import { SettingsMarkdownPreview } from "./SettingsMarkdownEditor";
 
 interface Draft {
@@ -51,6 +53,7 @@ interface Draft {
 	name: string;
 	category: PromptPresetCategory;
 	prompt: string;
+	packId: string;
 }
 
 type CategoryDialogTarget = "edit" | "create";
@@ -60,6 +63,7 @@ const emptyDraft = (category: PromptPresetCategory): Draft => ({
 	name: "",
 	category,
 	prompt: "",
+	packId: "builtin",
 });
 
 export const PromptLibraryEditorPanel: React.FC = () => {
@@ -74,6 +78,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 		promptCategoriesKey,
 		listPromptCategories,
 	);
+	const { data: packs = [] } = useSWR(promptPacksKey, listPromptPacks);
 	const [categoryFilter, setCategoryFilter] = useState<PromptPresetCategory | "all">("all");
 	const [selectedId, setSelectedId] = useState("");
 	const [draft, setDraft] = useState<Draft>(emptyDraft("style"));
@@ -138,7 +143,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 	const createDraftValid = Boolean(
 		createDraft.category.trim() && createDraft.name.trim() && createDraft.prompt.trim(),
 	);
-	const refreshPromptLibraryCaches = () => mutateGlobal(isPromptLibraryCacheKey);
+	const refreshPromptLibraryCaches = () => mutateGlobal(isPromptPackContentCacheKey);
 
 	const startCreate = () => {
 		const category = categoryFilter === "all" ? stylePromptCategory : categoryFilter;
@@ -206,6 +211,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 				name: createDraft.name.trim(),
 				category: createDraft.category.trim() || extraPromptCategory,
 				prompt: createDraft.prompt.trim(),
+				packId: createDraft.packId,
 			};
 			const saved = await createPromptPreset(input);
 			await refreshPromptLibraryCaches();
@@ -410,17 +416,26 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 									type="button"
 									onClick={() => selectPreset(preset.id)}
 									className={cn(
-										"flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left",
+										"flex w-full items-start gap-2 border-l-2 px-3 py-2 text-left",
 										preset.id === selectedId
 											? "border-primary bg-ide-list-hover"
 											: "border-transparent hover:bg-ide-list-hover",
 									)}
 								>
-									<span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
-										{preset.name}
-									</span>
-									<span className="shrink-0 text-2xs text-muted-foreground">
-										{promptCategoryOptionLabel(preset.category, categoryOptions)}
+									<span className="min-w-0 flex-1">
+										<span className="block truncate text-xs font-medium text-foreground">
+											{preset.name}
+										</span>
+										<span className="mt-1 flex min-w-0 items-center gap-1.5">
+											<PromptPackMembershipBadge
+												className="max-w-32 shrink-0"
+												packId={preset.packId}
+												packs={packs}
+											/>
+											<span className="min-w-0 truncate text-2xs text-muted-foreground">
+												{promptCategoryOptionLabel(preset.category, categoryOptions)}
+											</span>
+										</span>
 									</span>
 								</button>
 							))
@@ -452,6 +467,16 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 									</p>
 								</FieldRow>
 
+								<FieldRow label="所属词包">
+									<div className="flex min-h-8 items-center rounded-md border border-border bg-ide-panel px-3 py-1.5">
+										<PromptPackMembershipBadge
+											className="max-w-64"
+											packId={selectedPreset.packId}
+											packs={packs}
+										/>
+									</div>
+								</FieldRow>
+
 								<div className="grid gap-2">
 									<Label
 										id="prompt-preset-preview-label"
@@ -478,6 +503,7 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 				isSaving={isSaving}
 				open={createDialogOpen}
 				categoryOptions={categoryOptions}
+				packs={packs}
 				valid={createDraftValid}
 				onCancel={cancelCreate}
 				onCreateCategory={() => openCategoryDialog("create")}
@@ -580,7 +606,7 @@ const CategorySelectField: React.FC<{
 }> = ({ disabled = false, onCreate, onChange, options, value }) => (
 	<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2rem] gap-2">
 		<Select value={value} disabled={disabled} onValueChange={onChange}>
-			<SelectTrigger className="rounded-md text-foreground">
+			<SelectTrigger aria-label="分类" className="rounded-md text-foreground">
 				<SelectValue placeholder="选择分类" />
 			</SelectTrigger>
 			<SelectContent align="start">
@@ -788,6 +814,7 @@ const PromptPresetEditDialog: React.FC<{
 
 const PromptPresetCreateDialog: React.FC<{
 	categoryOptions: PromptCategoryOption[];
+	packs: Array<{ id: string; name: string }>;
 	draft: Draft;
 	error: string;
 	isSaving: boolean;
@@ -800,6 +827,7 @@ const PromptPresetCreateDialog: React.FC<{
 	onSave: () => void;
 }> = ({
 	categoryOptions,
+	packs,
 	draft,
 	error,
 	isSaving,
@@ -848,6 +876,26 @@ const PromptPresetCreateDialog: React.FC<{
 									<AlertDescription>{error}</AlertDescription>
 								</Alert>
 							) : null}
+
+							<FieldRow label="所属词包">
+								<Select
+									value={draft.packId}
+									onValueChange={(value) =>
+										onDraftChange((current) => ({ ...current, packId: value }))
+									}
+								>
+									<SelectTrigger aria-label="所属词包">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{packs.map((pack) => (
+											<SelectItem key={pack.id} value={pack.id}>
+												{pack.name}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</FieldRow>
 
 							<FieldRow label="分类">
 								<CategorySelectField
@@ -903,6 +951,7 @@ const draftFromPreset = (preset: PromptPreset): Draft => ({
 	name: preset.name,
 	category: preset.category || extraPromptCategory,
 	prompt: preset.prompt,
+	packId: preset.packId || "builtin",
 });
 
 const promptCategoryOptions = (

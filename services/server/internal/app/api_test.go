@@ -20,6 +20,7 @@ import (
 	"time"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/http/middleware"
 	servicecodexskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/codexskill"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
@@ -38,6 +39,9 @@ func TestAPIHandler(t *testing.T) {
 
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("status code = %d, want %d", response.StatusCode, http.StatusOK)
+		}
+		if got := response.Header.Get(middleware.EditionHeader); got != "community" {
+			t.Fatalf("%s = %q, want community", middleware.EditionHeader, got)
 		}
 
 		body := readBody(t, response.Body)

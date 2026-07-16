@@ -6,6 +6,9 @@ dist
 bin
 coverage
 packages/server/internal/app/docs/
+/mediago-server
+__pycache__/
+*.py[cod]
 
 # local media workspace state
 media.workspace.json
@@ -40,3 +43,4 @@ ds-bundle/
 
 /tmp
 .cache
+.commercial/

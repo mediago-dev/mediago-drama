@@ -359,6 +359,7 @@ const audioVoiceParam: GenerationParam = {
 
 const workspaceDefaults = {
 	activeEntryId: "entry-image",
+	addPromptSource: vi.fn(),
 	canSubmit: true,
 	deletedAssetPlaceholderCounts: {},
 	deleteGenerationEntry: vi.fn(),
@@ -379,6 +380,7 @@ const workspaceDefaults = {
 	fullPrompt: "完整提示词",
 	prompt: "旧提示词",
 	promptInsertItems: [],
+	promptSourceRefs: [],
 	selectableReferenceKinds: new Set(["image"]),
 	selectedFamily: { id: "image-family", label: "图像模型" },
 	selectedParams: {},
@@ -1971,6 +1973,7 @@ describe("MediaGenerationWorkspace", () => {
 					scopeId: "agent",
 					sessionId: "project-a-text",
 				}),
+				sourceRefs: [],
 			}),
 		);
 		expect(generationApiMocks.streamGenerationText).not.toHaveBeenCalled();
@@ -2018,6 +2021,7 @@ describe("MediaGenerationWorkspace", () => {
 					scopeId: "agent",
 					sessionId: "project-a-text",
 				}),
+				sourceRefs: [],
 			}),
 		);
 		expect(setPrompt).not.toHaveBeenCalledWith(

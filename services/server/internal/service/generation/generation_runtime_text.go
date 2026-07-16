@@ -36,9 +36,17 @@ func (workflow *GenerationService) StreamGenerationText(
 	payload.Model = strings.TrimSpace(payload.Model)
 	payload.ReferenceURLs = []string{}
 	payload.ReferenceAssetIDs = []string{}
+	var sourceRefsErr error
+	payload.SourceRefs, sourceRefsErr = normalizeContentSourceRefs(payload.SourceRefs)
+	if sourceRefsErr != nil {
+		return http.StatusForbidden, sourceRefsErr
+	}
 	payload.Params = NormalizeGenerationParams(payload.Params)
 	if payload.Prompt == "" {
 		return http.StatusBadRequest, fmt.Errorf("缺少 prompt")
+	}
+	if status, err := workflow.authorizeContentUse(ctx, "call", payload.SourceRefs); err != nil {
+		return status, err
 	}
 
 	route, err := ResolveGenerationRoute(payload)

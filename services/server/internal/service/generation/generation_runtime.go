@@ -30,6 +30,7 @@ type GenerationService struct {
 	voicePreviews                 *VoicePreviewStore
 	stylePreviews                 *StylePreviewStore
 	stylePrompts                  StylePromptSource
+	contentUseAuthorizer          ContentUseAuthorizer
 	mediagoBaseURL                string
 	mediagoModelCatalog           mediagoModelCatalogCache
 	jimengBinPath                 string
@@ -68,6 +69,11 @@ func NewGenerationService(settings *settings.Settings, generationTasks *Generati
 // SetStylePromptLibrary wires the prompt library that owns style presets.
 func (workflow *GenerationService) SetStylePromptLibrary(source StylePromptSource) {
 	workflow.stylePrompts = source
+}
+
+// SetContentUseAuthorizer installs the edition-specific formal-content gate.
+func (workflow *GenerationService) SetContentUseAuthorizer(authorizer ContentUseAuthorizer) {
+	workflow.contentUseAuthorizer = authorizer
 }
 
 // SetJimengCLIPaths configures the local Jimeng CLI lookup paths.
@@ -154,6 +160,11 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	payload.ReferenceURLs = CompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = CompactStrings(payload.ReferenceAssetIDs)
 	payload.ReferenceBindings = normalizeGenerationReferenceBindings(payload.ReferenceBindings)
+	var sourceRefsErr error
+	payload.SourceRefs, sourceRefsErr = normalizeContentSourceRefs(payload.SourceRefs)
+	if sourceRefsErr != nil {
+		return generationMessageResponse{}, http.StatusForbidden, sourceRefsErr
+	}
 	// Prompt optimization is handled exclusively by CreatePromptOptimizedGenerationMessage
 	// (the optimize-and-generate endpoint); plain generation ignores this field.
 	payload.PromptOptimization = nil
@@ -173,6 +184,9 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	payload.Params = NormalizeGenerationParams(payload.Params)
 	if payload.Prompt == "" {
 		return generationMessageResponse{}, http.StatusBadRequest, fmt.Errorf("缺少 prompt")
+	}
+	if status, err := workflow.authorizeContentUse(ctx, "call", payload.SourceRefs); err != nil {
+		return generationMessageResponse{}, status, err
 	}
 	route, err := ResolveGenerationRoute(payload)
 	if err != nil {

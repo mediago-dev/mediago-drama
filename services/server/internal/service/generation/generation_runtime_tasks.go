@@ -102,10 +102,15 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		CapabilityID:      task.CapabilityID,
 		ResourceType:      task.ResourceType,
 		Prompt:            task.Prompt,
+		SourceRefs:        task.SourceRefs,
 		AssetTitle:        generationAssetTitleFromTask(task),
 		ReferenceURLs:     task.ReferenceURLs,
 		ReferenceAssetIDs: task.ReferenceAssetIDs,
 		Params:            task.Params,
+	}
+	if status, err := workflow.authorizeContentUse(ctx, "call", payload.SourceRefs); err != nil {
+		_ = workflow.generationTasks.RecordAttempt(task.ID, "retry", task.Status, "提示词包权益校验失败。", err)
+		return generationMessageResponse{}, status, err
 	}
 	// Promote a legacy result-derived title into the retry request so later
 	// status transitions keep the same user-facing task summary.
@@ -238,6 +243,7 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 }
 
 func (workflow *GenerationService) generationRequestForTask(
+	ctx context.Context,
 	task generationTaskRecord,
 	route coregeneration.ModelRoute,
 ) (coregeneration.Request, error) {
@@ -253,10 +259,14 @@ func (workflow *GenerationService) generationRequestForTask(
 		DocumentID:        task.DocumentID,
 		ConversationID:    task.ConversationID,
 		Prompt:            task.Prompt,
+		SourceRefs:        task.SourceRefs,
 		AssetTitle:        generationAssetTitleFromTask(task),
 		ReferenceURLs:     task.ReferenceURLs,
 		ReferenceAssetIDs: task.ReferenceAssetIDs,
 		Params:            task.Params,
+	}
+	if _, err := workflow.authorizeContentUse(ctx, "call", payload.SourceRefs); err != nil {
+		return coregeneration.Request{}, err
 	}
 	payload.ProjectName = workflow.generationProjectName(payload.ProjectID)
 	if payload.Model == "" {
@@ -678,7 +688,7 @@ func (workflow *GenerationService) PollGenerationTask(ctx context.Context, task 
 		return
 	}
 	if strings.EqualFold(strings.TrimSpace(task.Status), "queued") && shouldQueueJimengSeedanceSubmission(route) {
-		generationRequest, err := workflow.generationRequestForTask(task, route)
+		generationRequest, err := workflow.generationRequestForTask(ctx, task, route)
 		if err != nil {
 			_ = workflow.generationTasks.RecordAttempt(task.ID, "queue", task.Status, "后台提交视频任务失败。", err)
 			return
@@ -687,7 +697,7 @@ func (workflow *GenerationService) PollGenerationTask(ctx context.Context, task 
 		return
 	}
 	if strings.EqualFold(strings.TrimSpace(task.Status), "submitting") {
-		generationRequest, err := workflow.generationRequestForTask(task, route)
+		generationRequest, err := workflow.generationRequestForTask(ctx, task, route)
 		if err != nil {
 			_ = workflow.generationTasks.RecordAttempt(task.ID, "create", task.Status, "后台提交视频任务失败。", err)
 			return

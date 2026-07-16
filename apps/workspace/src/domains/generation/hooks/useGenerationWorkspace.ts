@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { mutate as mutateSWR } from "swr";
 import {
 	type GenerationKind,
+	type GenerationContentSourceRef,
 	type GenerationMessageRequest,
 	type GenerationNotificationOpenTarget,
 	type GenerationReferenceBinding,
@@ -33,6 +34,7 @@ import {
 	type GenerationTaskType,
 } from "@/domains/generation/lib/prompt-categories";
 import { promptInsertItemsFromPresets } from "@/domains/generation/lib/prompt-insertions";
+import type { PromptInsertItem } from "@/domains/generation/components/PromptSlashCommand";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import {
 	filterGenerationTasksForScope,
@@ -142,12 +144,29 @@ export const useGenerationWorkspace = ({
 	useRawPrompt = false,
 }: UseGenerationWorkspaceOptions = {}) => {
 	const promptRef = useRef(initialPrompt);
+	const [promptSourceRefs, setPromptSourceRefs] = useState<GenerationContentSourceRef[]>([]);
 	const [prompt, setPromptState] = useState(initialPrompt);
 	const setPrompt = useCallback((next: React.SetStateAction<string>) => {
 		const resolved =
 			typeof next === "function" ? (next as (current: string) => string)(promptRef.current) : next;
 		promptRef.current = resolved;
 		setPromptState(resolved);
+		if (!resolved.trim()) setPromptSourceRefs([]);
+	}, []);
+	const addPromptSource = useCallback((item: PromptInsertItem) => {
+		if (!item.sourceRef) return;
+		setPromptSourceRefs((current) => {
+			if (
+				current.some(
+					(ref) =>
+						ref.packageId === item.sourceRef?.packageId &&
+						ref.releaseId === item.sourceRef?.releaseId,
+				)
+			) {
+				return current;
+			}
+			return [...current, item.sourceRef as GenerationContentSourceRef];
+		});
 	}, []);
 	const [error, setError] = useState<string | null>(null);
 	const [isImportingMediaAssets, setIsImportingMediaAssets] = useState(false);
@@ -366,6 +385,7 @@ export const useGenerationWorkspace = ({
 		rememberSelectedModel,
 		prompt,
 		promptRef,
+		sourceRefs: promptSourceRefs,
 		requireConversation,
 		resolvedConversationScopeId,
 		sectionId: trimmedSectionId,
@@ -502,6 +522,7 @@ export const useGenerationWorkspace = ({
 		orderedGenerationEntries,
 		prompt,
 		promptInsertItems,
+		promptSourceRefs,
 		referenceCount,
 		refreshVideo,
 		removeMediaAsset,
@@ -521,6 +542,7 @@ export const useGenerationWorkspace = ({
 		setMediaKindFilter,
 		setMediaQuery,
 		setPrompt,
+		addPromptSource,
 		submit,
 		submitGeneration,
 		toggleReferenceAsset,

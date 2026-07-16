@@ -27,40 +27,45 @@ var errAgentRuntimeConfigInspectionUnsupported = errors.New("agent runner does n
 
 // Config controls local server persistence and runtime behavior.
 type Config struct {
-	Host                     string
-	Port                     int
-	SettingsDBPath           string
-	MediaDir                 string
-	WorkspaceDir             string
-	ACPCommand               string
-	AgentID                  string
-	AgentBinDir              string
-	ModelPlatforms           []string
-	GenerationCLIs           []string
-	MediagoBaseURL           string
-	FFmpegPath               string
-	FFmpegBinDir             string
-	JimengBinPath            string
-	JimengBinDir             string
-	LibTVBinPath             string
-	LibTVBinDir              string
-	LibTVProjectID           string
-	PippitBinPath            string
-	PippitBinDir             string
-	DocumentMCPConfigPath    string
-	AgentBridgeURL           string
-	AgentBridgeToken         string
-	AgentRunTimeout          time.Duration
-	PromptMaxSectionChars    int
-	PromptDelivery           string
-	DisableGenerationWorker  bool
-	GenerationWorkerInterval time.Duration
-	GenerationWorkerLimit    int
-	DisableWorkspaceWatcher  bool
-	WorkspaceWatcherInterval time.Duration
-	BillingPrices            corepricing.Table
-	agentRunner              agentRunner
-	documentOperationRunner  documentOperationRunner
+	Host                        string
+	Port                        int
+	SettingsDBPath              string
+	MediaDir                    string
+	WorkspaceDir                string
+	ACPCommand                  string
+	AgentID                     string
+	AgentBinDir                 string
+	ModelPlatforms              []string
+	GenerationCLIs              []string
+	MediagoBaseURL              string
+	SidecarToken                string
+	ProtectedPackImporterPath   string
+	ProtectedPackImporterSHA256 string
+	AllowUnprotectedPackImport  bool
+	FFmpegPath                  string
+	FFmpegBinDir                string
+	JimengBinPath               string
+	JimengBinDir                string
+	LibTVBinPath                string
+	LibTVBinDir                 string
+	LibTVProjectID              string
+	PippitBinPath               string
+	PippitBinDir                string
+	DocumentMCPConfigPath       string
+	AgentBridgeURL              string
+	AgentBridgeToken            string
+	AgentRunTimeout             time.Duration
+	PromptMaxSectionChars       int
+	PromptDelivery              string
+	DisableGenerationWorker     bool
+	GenerationWorkerInterval    time.Duration
+	GenerationWorkerLimit       int
+	DisableWorkspaceWatcher     bool
+	WorkspaceWatcherInterval    time.Duration
+	BillingPrices               corepricing.Table
+	RuntimeExtensions           []RuntimeExtension
+	agentRunner                 agentRunner
+	documentOperationRunner     documentOperationRunner
 }
 
 // NewHandler returns an HTTP handler for a client-side rendered SPA.
@@ -142,7 +147,14 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		return server
 	})
 	router := gin.New()
-	router.Use(middleware.LocalCORS(), middleware.RequestID(), middleware.RequestLogger(), middleware.RecoveryLogger(writeError))
+	router.Use(
+		middleware.LocalCORS(),
+		middleware.SidecarToken(config.SidecarToken, api.agentBridgeToken),
+		middleware.Edition(runtimeEdition(config.RuntimeExtensions)),
+		middleware.RequestID(),
+		middleware.RequestLogger(),
+		middleware.RecoveryLogger(writeError),
+	)
 	settingsHandler := httphandlers.NewSettings(api.settings)
 	capabilityHandler := httphandlers.NewCapabilities(api.capability)
 	billingHandler := httphandlers.NewBilling(api.billing)
@@ -157,7 +169,6 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	jianyingDraftHandler := httphandlers.NewJianyingDraft(api.jianyingDraft)
 	workspaceEventHandler := httphandlers.NewWorkspaceEvents(api)
 	promptPackHandler := httphandlers.NewPromptPacks(api.promptPack)
-	licenseHandler := httphandlers.NewLicense(api.licenseClient)
 	promptTemplateHandler := httphandlers.NewPromptTemplates(api.promptTemplates)
 	promptLibraryHandler := httphandlers.NewPromptLibrary(api.promptLibrary)
 	skillHandler := httphandlers.NewSkills(api.skillRegistry)
@@ -224,7 +235,6 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		JianyingDraft:         jianyingDraftHandler,
 		WorkspaceEvents:       workspaceEventHandler,
 		PromptPacks:           promptPackHandler,
-		License:               licenseHandler,
 		PromptTemplates:       promptTemplateHandler,
 		PromptLibrary:         promptLibraryHandler,
 		Skills:                skillHandler,
@@ -242,6 +252,15 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		AgentRuntime:          runtimeHandler,
 		AgentSessions:         sessionHandler,
 	})
+	for _, extension := range api.runtimeExtensions {
+		if extension == nil {
+			continue
+		}
+		extension.RegisterRoutes(router, RuntimeExtensionServices{
+			PromptPacks:  api.promptPack,
+			WorkspaceDir: api.workspaceState.Dir(),
+		})
+	}
 	registerDevelopmentDocs(router)
 
 	static := httphandlers.NewSPA(staticFS)

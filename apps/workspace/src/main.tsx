@@ -5,7 +5,6 @@ import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { SWRProvider } from "./providers/SWRProvider";
 import { ThemeProvider } from "./providers/ThemeProvider";
-import { LicenseGate } from "@/domains/settings/components/license/LicenseGate";
 import { DialogCallHost } from "@/shared/components/callable/DialogCallHost";
 import { analytics } from "@/shared/analytics";
 import { desktopRuntime } from "@/shared/desktop/runtime";
@@ -13,7 +12,10 @@ import "@/styles/index.css";
 
 const runtime = desktopRuntime();
 const isDesktop = runtime !== "browser";
-const AppRouter = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
+const AppRouter =
+	window.location.protocol === "file:" || window.location.protocol === "app:"
+		? HashRouter
+		: BrowserRouter;
 const platformSignal = `${window.navigator.platform} ${window.navigator.userAgent}`;
 const isMacLikePlatform =
 	window.mediagoDesktop?.platform === "darwin" ||
@@ -31,9 +33,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 			<SWRProvider>
 				<AppRouter>
 					<ErrorBoundary>
-						<LicenseGate>
-							<App />
-						</LicenseGate>
+						<App />
 						<DialogCallHost />
 					</ErrorBoundary>
 				</AppRouter>

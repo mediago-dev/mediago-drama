@@ -1,0 +1,50 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { exportPromptPack, promptPackExportFileName } from "./packs";
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("promptPackExportFileName", () => {
+	it("uses the readable pack name and version", () => {
+		expect(
+			promptPackExportFileName({
+				id: "local.e73c61d0-e311-438d-a939-2d0bc0609cf8",
+				name: "测试风格",
+				version: "1.0.0",
+			}),
+		).toBe("测试风格-v1.0.0.mgpack");
+	});
+
+	it("removes path characters from the suggested name", () => {
+		expect(
+			promptPackExportFileName({
+				id: "local.test",
+				name: "角色/场景:套装",
+				version: "v2.1.0",
+			}),
+		).toBe("角色-场景-套装-v2.1.0.mgpack");
+	});
+
+	it("removes path characters from the version", () => {
+		expect(
+			promptPackExportFileName({
+				id: "local.test",
+				name: "风格包",
+				version: "v2/1:0",
+			}),
+		).toBe("风格包-v2-1-0.mgpack");
+	});
+
+	it("falls back when the server returns a malformed UTF-8 filename", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue(
+				new Response("pack", {
+					headers: { "content-disposition": "attachment; filename*=UTF-8''%E0%A4%A" },
+					status: 200,
+				}),
+			),
+		);
+
+		await expect(exportPromptPack("local.test")).resolves.toMatchObject({ fileName: "" });
+	});
+});

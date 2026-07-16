@@ -16,6 +16,10 @@ const presets: PromptPreset[] = [
 		category: "style",
 		name: "电影感",
 		prompt: "电影感柔光。",
+		packId: "local.derivative",
+		releaseId: "local-release",
+		sourcePackageId: "com.mediago.cinematic",
+		sourceReleaseId: "release-1",
 		source: "pack",
 	},
 	{
@@ -47,6 +51,10 @@ describe("promptInsertItemsFromPresets", () => {
 		expect(items[0]).toEqual(
 			expect.objectContaining({
 				categoryLabel: "风格",
+				sourceRef: {
+					packageId: "com.mediago.cinematic",
+					releaseId: "release-1",
+				},
 				sourceLabel: "来自包",
 			}),
 		);

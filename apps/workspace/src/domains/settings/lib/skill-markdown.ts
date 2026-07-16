@@ -60,3 +60,15 @@ export const updateSkillDescription = (frontmatter: string, description: string)
 	lines.splice(nameLine >= 0 ? nameLine + 1 : 0, 0, descriptionLine);
 	return lines.join("\n");
 };
+
+export const updateSkillName = (frontmatter: string, name: string) => {
+	const lines = frontmatter.replace(/\r\n/g, "\n").trim().split("\n");
+	const nameLine = `name: ${name.trim()}`;
+	const index = lines.findIndex((line) => /^name\s*:/.test(line));
+	if (index >= 0) {
+		lines[index] = nameLine;
+		return lines.join("\n");
+	}
+	lines.unshift(nameLine);
+	return lines.join("\n");
+};

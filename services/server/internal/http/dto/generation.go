@@ -67,6 +67,14 @@ type GenerationMessageRequest struct {
 	ReferenceBindings  []GenerationReferenceBinding         `json:"referenceBindings,omitempty"`
 	Params             map[string]any                       `json:"params"`
 	PromptOptimization *GenerationPromptOptimizationRequest `json:"promptOptimization,omitempty"`
+	SourceRefs         []ContentSourceRef                   `json:"sourceRefs,omitempty"`
+}
+
+// ContentSourceRef identifies formal content inserted from an installed pack.
+// Community-created text has no source references.
+type ContentSourceRef struct {
+	PackageID string `json:"packageId"`
+	ReleaseID string `json:"releaseId"`
 }
 
 // GenerationPromptSupplementRequest is one prompt-pack snapshot appended by the service.
@@ -315,6 +323,7 @@ type GenerationTaskRecord struct {
 	ModelID           string                        `json:"modelId"`
 	Model             string                        `json:"model"`
 	Prompt            string                        `json:"prompt"`
+	SourceRefs        []ContentSourceRef            `json:"sourceRefs,omitempty"`
 	AssetTitle        string                        `json:"assetTitle,omitempty"`
 	ReferenceURLs     []string                      `json:"referenceUrls"`
 	ReferenceAssetIDs []string                      `json:"referenceAssetIds"`

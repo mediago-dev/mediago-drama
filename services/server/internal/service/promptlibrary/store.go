@@ -63,14 +63,18 @@ type PromptCategory struct {
 
 // PromptEntry describes a reusable generation prompt category preset.
 type PromptEntry struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Category   string `json:"category"`
-	Type       string `json:"type,omitempty"`
-	Prompt     string `json:"prompt"`
-	Source     Source `json:"source"`
-	Builtin    bool   `json:"builtin,omitempty"`
-	Overridden bool   `json:"overridden,omitempty"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Category        string `json:"category"`
+	Type            string `json:"type,omitempty"`
+	Prompt          string `json:"prompt"`
+	PackID          string `json:"packId,omitempty"`
+	ReleaseID       string `json:"releaseId,omitempty"`
+	SourcePackageID string `json:"sourcePackageId,omitempty"`
+	SourceReleaseID string `json:"sourceReleaseId,omitempty"`
+	Source          Source `json:"source"`
+	Builtin         bool   `json:"builtin,omitempty"`
+	Overridden      bool   `json:"overridden,omitempty"`
 }
 
 // Filter limits prompt library list results.
@@ -305,14 +309,18 @@ func promptEntryFromPackEntry(entry promptpack.Entry) PromptEntry {
 	category := metadataString(entry.Metadata, "category")
 	promptType := metadataString(entry.Metadata, "type")
 	item := normalizePromptEntry(PromptEntry{
-		ID:         entry.Slug,
-		Name:       entry.Name,
-		Category:   category,
-		Type:       promptType,
-		Prompt:     entry.Body,
-		Source:     Source(entry.Source),
-		Builtin:    entry.Source == string(SourcePack) || entry.OverriddenFrom != "",
-		Overridden: entry.Source == string(SourceUser) && entry.OverriddenFrom != "",
+		ID:              entry.Slug,
+		Name:            entry.Name,
+		Category:        category,
+		Type:            promptType,
+		Prompt:          entry.Body,
+		PackID:          entry.PackID,
+		ReleaseID:       entry.ReleaseID,
+		SourcePackageID: entry.SourcePackageID,
+		SourceReleaseID: entry.SourceReleaseID,
+		Source:          Source(entry.Source),
+		Builtin:         entry.Source == string(SourcePack) || entry.OverriddenFrom != "",
+		Overridden:      entry.Source == string(SourceUser) && entry.OverriddenFrom != "",
 	})
 	return item
 }
@@ -320,11 +328,12 @@ func promptEntryFromPackEntry(entry promptpack.Entry) PromptEntry {
 func packEntryFromPromptEntry(entry PromptEntry) promptpack.Entry {
 	entry = normalizePromptEntry(entry)
 	return promptpack.Entry{
-		Kind:  instructionpack.KindPrompt,
-		Slug:  entry.ID,
-		Name:  entry.Name,
-		Title: entry.Name,
-		Body:  entry.Prompt,
+		PackID: entry.PackID,
+		Kind:   instructionpack.KindPrompt,
+		Slug:   entry.ID,
+		Name:   entry.Name,
+		Title:  entry.Name,
+		Body:   entry.Prompt,
 		Metadata: map[string]any{
 			"category": entry.Category,
 			"type":     entry.Type,

@@ -20,6 +20,7 @@ export interface PromptEditorProps {
 	editorClassName?: string;
 	extensions?: Extensions;
 	onChange: (value: string) => void;
+	onInsertItem?: (item: PromptInsertItem) => void;
 	placeholder: string;
 	slashItems?: PromptInsertItem[];
 	value: string;
@@ -40,6 +41,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
 	editorClassName,
 	extensions,
 	onChange,
+	onInsertItem,
 	placeholder,
 	slashItems,
 	value,
@@ -115,9 +117,10 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
 			if (!editor || !current) return;
 
 			insertPromptItem(editor, current.range, item);
+			onInsertItem?.(item);
 			setSlashState(null);
 		},
-		[editor],
+		[editor, onInsertItem],
 	);
 
 	const handleKeyDownCapture = useCallback(

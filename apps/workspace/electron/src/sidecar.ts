@@ -1,43 +1,95 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { agentsDir, resourceRoot, serverBinaryPath, toolsDir } from "./paths.js";
+import { basename, join } from "node:path";
+import {
+	agentsDir,
+	isPackaged,
+	resourceRoot,
+	serverBinaryPath,
+	serviceBinaryPaths,
+	sidecarIntegrityManifestPath,
+	toolsDir,
+} from "./paths.js";
 
 let child: ChildProcessWithoutNullStreams | null = null;
+let connection: SidecarConnection | null = null;
 
-export const startServerSidecar = (): void => {
-	if (process.env.ELECTRON_RENDERER_URL) return;
-	if (child && child.exitCode === null) return;
+export type SidecarConnection = {
+	origin: string;
+	token: string;
+};
+
+type SidecarIntegrityManifest = {
+	algorithm?: unknown;
+	files?: unknown;
+	format?: unknown;
+	version?: unknown;
+};
+
+const verifySidecarIntegrity = (binaryPaths: string[], manifestPath: string): void => {
+	const manifest = readSidecarIntegrityManifest(manifestPath);
+	for (const binaryPath of binaryPaths) {
+		const filename = basename(binaryPath);
+		const expected = manifest.files[filename];
+		if (!expected) {
+			throw new Error(`sidecar integrity manifest does not contain ${filename}`);
+		}
+		const actual = createHash("sha256").update(readFileSync(binaryPath)).digest("hex");
+		if (actual !== expected) {
+			throw new Error(`server sidecar integrity check failed: ${filename}`);
+		}
+	}
+};
+
+const readSidecarIntegrityManifest = (path: string): { files: Record<string, string> } => {
+	let value: SidecarIntegrityManifest;
+	try {
+		value = JSON.parse(readFileSync(path, "utf8")) as SidecarIntegrityManifest;
+	} catch {
+		throw new Error(`missing or invalid sidecar integrity manifest: ${path}`);
+	}
+	if (
+		value.format !== "mediago-sidecar-integrity" ||
+		value.version !== 1 ||
+		value.algorithm !== "sha256" ||
+		!value.files ||
+		typeof value.files !== "object" ||
+		Array.isArray(value.files)
+	) {
+		throw new Error(`unsupported sidecar integrity manifest: ${path}`);
+	}
+	const files: Record<string, string> = {};
+	for (const [filename, digest] of Object.entries(value.files)) {
+		if (!filename || typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)) {
+			throw new Error(`invalid sidecar integrity entry: ${filename || "<empty>"}`);
+		}
+		files[filename] = digest;
+	}
+	return { files };
+};
+
+export const startServerSidecar = (): SidecarConnection | null => {
+	if (!isPackaged() && process.env.ELECTRON_RENDERER_URL) return null;
+	if (child && child.exitCode === null && connection) return connection;
 
 	const serverPath = serverBinaryPath();
 	if (!existsSync(serverPath)) {
 		throw new Error(`missing server sidecar: ${serverPath}`);
 	}
+	verifySidecarIntegrity(serviceBinaryPaths(), sidecarIntegrityManifestPath());
 	const platformConfig = packagedModelPlatformConfig();
 	const localCLIConfig = packagedLocalCLIConfig();
+	const token = randomBytes(32).toString("base64url");
+	const serverPort = configuredServerPort();
+	const environment = sidecarEnvironment(platformConfig, localCLIConfig, serverPort, token);
 
 	const spawned = spawn(serverPath, [], {
-		env: {
-			...process.env,
-			MEDIAGO_AGENT_ID: process.env.MEDIAGO_AGENT_ID || platformConfig.agent || "opencode",
-			MEDIAGO_MODEL_PLATFORM:
-				process.env.MEDIAGO_MODEL_PLATFORM || platformConfig.modelPlatform || "mediago",
-			MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL:
-				process.env.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL || platformConfig.mediagoBaseURL || "",
-			MEDIAGO_GENERATION_CLIS:
-				process.env.MEDIAGO_GENERATION_CLIS ||
-				localGenerationCLIsEnvValue(localCLIConfig.generationClis),
-			MEDIAGO_SERVER_PORT: process.env.MEDIAGO_SERVER_PORT || "48273",
-			MEDIAGO_EXIT_ON_STDIN_CLOSE: "1",
-			MEDIAGO_AGENT_BIN_DIR: agentsDir(),
-			MEDIAGO_FFMPEG_BIN_DIR: toolsDir(),
-			MEDIAGO_JIMENG_BIN_DIR: toolsDir(),
-			MEDIAGO_LIBTV_BIN_DIR: toolsDir(),
-			MEDIAGO_PIPPIT_BIN_DIR: toolsDir(),
-		},
+		env: environment,
 		stdio: ["pipe", "pipe", "pipe"],
 	});
 	child = spawned;
+	connection = { origin: `http://127.0.0.1:${serverPort}`, token };
 
 	spawned.stdout.on("data", (chunk) => {
 		console.info(`[mediago-server] ${String(chunk).trimEnd()}`);
@@ -53,10 +105,14 @@ export const startServerSidecar = (): void => {
 		if (spawned.pid === undefined) clearSidecar(spawned);
 	});
 	spawned.on("exit", () => clearSidecar(spawned));
+	return connection;
 };
 
 const clearSidecar = (exited: ChildProcessWithoutNullStreams) => {
-	if (child === exited) child = null;
+	if (child === exited) {
+		child = null;
+		connection = null;
+	}
 };
 
 const packagedModelPlatformConfig = () => {
@@ -92,6 +148,93 @@ const packagedLocalCLIConfig = () => {
 
 const localGenerationCLIsEnvValue = (values: string[]) =>
 	values.length > 0 ? values.join(",") : "none";
+
+const sidecarEnvironment = (
+	platformConfig: ReturnType<typeof packagedModelPlatformConfig>,
+	localCLIConfig: ReturnType<typeof packagedLocalCLIConfig>,
+	serverPort: string,
+	token: string,
+): NodeJS.ProcessEnv => {
+	const packaged = isPackaged();
+	const inherited = packaged ? sanitizedPackagedEnvironment(process.env) : { ...process.env };
+	const configuredValue = (name: string, fallback: string) => {
+		if (!packaged) {
+			const override = process.env[name]?.trim();
+			if (override) return override;
+		}
+		return fallback;
+	};
+
+	return {
+		...inherited,
+		MEDIAGO_AGENT_ID: configuredValue("MEDIAGO_AGENT_ID", platformConfig.agent || "opencode"),
+		MEDIAGO_MODEL_PLATFORM: configuredValue(
+			"MEDIAGO_MODEL_PLATFORM",
+			platformConfig.modelPlatform || "mediago",
+		),
+		MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: configuredValue(
+			"MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL",
+			platformConfig.mediagoBaseURL || "",
+		),
+		MEDIAGO_GENERATION_CLIS: configuredValue(
+			"MEDIAGO_GENERATION_CLIS",
+			localGenerationCLIsEnvValue(localCLIConfig.generationClis),
+		),
+		MEDIAGO_SERVER_PORT: serverPort,
+		MEDIAGO_EXIT_ON_STDIN_CLOSE: "1",
+		MEDIAGO_SIDECAR_MODE: "1",
+		MEDIAGO_SIDECAR_TOKEN: token,
+		MEDIAGO_AGENT_BIN_DIR: agentsDir(),
+		MEDIAGO_FFMPEG_BIN_DIR: toolsDir(),
+		MEDIAGO_JIMENG_BIN_DIR: toolsDir(),
+		MEDIAGO_LIBTV_BIN_DIR: toolsDir(),
+		MEDIAGO_PIPPIT_BIN_DIR: toolsDir(),
+	};
+};
+
+const configuredServerPort = () => {
+	if (!isPackaged()) {
+		const override = process.env.MEDIAGO_SERVER_PORT?.trim();
+		if (override) return override;
+	}
+	return "48273";
+};
+
+const blockedPackagedEnvironmentNames = new Set([
+	"BASH_ENV",
+	"ELECTRON_RUN_AS_NODE",
+	"ENV",
+	"GODEBUG",
+	"GOTRACEBACK",
+	"HTTP_PROXY",
+	"HTTPS_PROXY",
+	"ALL_PROXY",
+	"LD_LIBRARY_PATH",
+	"LD_PRELOAD",
+	"NO_PROXY",
+	"NODE_OPTIONS",
+	"NODE_PATH",
+	"PERL5OPT",
+	"PYTHONHOME",
+	"PYTHONPATH",
+	"RUBYOPT",
+	"SSL_CERT_DIR",
+	"SSL_CERT_FILE",
+	"SSLKEYLOGFILE",
+]);
+
+const sanitizedPackagedEnvironment = (environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
+	Object.fromEntries(
+		Object.entries(environment).filter(([name]) => {
+			const normalized = name.toUpperCase();
+			return (
+				!normalized.startsWith("MEDIAGO_") &&
+				!normalized.startsWith("ONE_INTERNAL_") &&
+				!normalized.startsWith("DYLD_") &&
+				!blockedPackagedEnvironmentNames.has(normalized)
+			);
+		}),
+	);
 
 export const stopServerSidecar = () => {
 	const current = child;

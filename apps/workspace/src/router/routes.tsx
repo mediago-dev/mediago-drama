@@ -11,6 +11,9 @@ const Projects = lazy(() =>
 const Settings = lazy(() =>
 	import("@/pages/Settings").then((module) => ({ default: module.Settings })),
 );
+const PromptPackEditor = lazy(() =>
+	import("@/pages/PromptPackEditor").then((module) => ({ default: module.PromptPackEditor })),
+);
 const StudioHome = lazy(() =>
 	import("@/pages/Studio").then((module) => ({ default: module.StudioHome })),
 );
@@ -67,6 +70,7 @@ const routes: RouteObject[] = [
 	{ path: "/agent", element: <LegacyWorkspaceRouteRedirect /> },
 	{ path: "/studio/*", element: <LegacyWorkspaceRouteRedirect /> },
 	{ path: "/settings", element: <Settings /> },
+	{ path: "/prompt-pack-editor", element: <PromptPackEditor /> },
 	{ path: "*", element: <div>404 - 页面未找到</div> },
 ];
 

@@ -3,6 +3,7 @@ import type {
 	DesktopUpdateAck,
 	DesktopUpdateCapability,
 	DesktopUpdateStatus,
+	PromptPackEditorOpenOptions,
 } from "@/shared/desktop/types";
 import { desktopRuntime } from "@/shared/desktop/runtime";
 
@@ -69,6 +70,19 @@ export const openExternalUrl = async (url: string) => {
 		// Fall back to the browser path below.
 	}
 	window.open(url, "_blank", "noopener,noreferrer");
+};
+
+export const openPromptPackEditor = async (options: PromptPackEditorOpenOptions = {}) => {
+	const runtime = desktopRuntime();
+	if (runtime === "electron") {
+		await window.mediagoDesktop?.openPromptPackEditor(options);
+		return;
+	}
+	const url = new URL("/prompt-pack-editor", window.location.origin);
+	const packId = options.packId?.trim();
+	if (packId) url.searchParams.set("packId", packId);
+	else if (options.mode === "create") url.searchParams.set("mode", "create");
+	window.open(url.toString(), "mediago-prompt-pack-editor", "popup,width=1180,height=820");
 };
 
 export const openNativePath = async (path: string) => {

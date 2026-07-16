@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import {
 	createGenerationConversation,
 	type GenerationFamily,
+	type GenerationContentSourceRef,
 	type GenerationModelsResponse,
 	type GenerationRoute,
 	type GenerationVersion,
@@ -17,6 +18,7 @@ export interface PromptOptimizeInput {
 	currentPrompt: string;
 	referencePrompt: string;
 	referenceName: string;
+	sourceRefs?: GenerationContentSourceRef[];
 }
 
 export interface PromptOptimizeModelOption {
@@ -107,6 +109,7 @@ export const usePromptOptimize = ({
 						modelId: textRoute.legacyModelId ?? "",
 						model: textRoute.model,
 						prompt: userPrompt,
+						sourceRefs: input.sourceRefs,
 						params: {
 							system_instruction: promptOptimizeSystemInstruction,
 						},

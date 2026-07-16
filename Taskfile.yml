@@ -8,12 +8,10 @@ vars:
   MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago,openrouter,dmxapi"}}'
   MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default "http://127.0.0.1:3001/api/v1"}}'
   TOOL: '{{.TOOL | default "ffmpeg"}}'
-  # EDITION gates commercial (Pro) UI such as the license activation panel.
-  # community (default) omits it; pass EDITION=pro to include it.
-  EDITION: '{{.EDITION | default "community"}}'
   SERVER_PORT: '{{.SERVER_PORT | default "48273"}}'
   DEV_SERVER_PORT: '{{.DEV_SERVER_PORT | default "8080"}}'
   DEV_SERVER_URL: "http://127.0.0.1:{{.DEV_SERVER_PORT}}"
+  DEV_PROMPT_PACK_PUBLISH_URL: '{{.VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL | default "http://localhost:4321/account#promptPacks"}}'
   GOEXE:
     sh: go env GOEXE
   DEV_SERVER_BIN: '{{.DEV_SERVER_BIN | default (printf "bin/mediago-server%s" .GOEXE)}}'
@@ -185,6 +183,8 @@ tasks:
     desc: Run the built server binary and web workspace for browser development
     deps:
       - task: build:server
+        vars:
+          INCLUDE_WORKSPACE_DIST: "0"
       - task: prepare-agent
         vars:
           AGENT: "{{.AGENT}}"
@@ -204,7 +204,7 @@ tasks:
       MEDIAGO_LIBTV_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
       MEDIAGO_PIPPIT_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
       VITE_API_PROXY_TARGET: "{{.DEV_SERVER_URL}}"
-      VITE_MEDIAGO_EDITION: "{{.EDITION}}"
+      VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL: "{{.DEV_PROMPT_PACK_PUBLISH_URL}}"
     cmds:
       - task: dev:server:check
       - task -d services/server swagger
@@ -217,8 +217,9 @@ tasks:
   dev:desktop:
     desc: Run the Electron desktop app against an external dev server
     env:
+      VITE_API_PROXY_TARGET: "{{.DEV_SERVER_URL}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.DEV_SERVER_PORT}}"
-      VITE_MEDIAGO_EDITION: "{{.EDITION}}"
+      VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL: "{{.DEV_PROMPT_PACK_PUBLISH_URL}}"
     cmds:
       - pnpm -C apps/workspace electron:dev
 
@@ -226,6 +227,8 @@ tasks:
     desc: Run only the built server binary for desktop development
     deps:
       - task: build:server
+        vars:
+          INCLUDE_WORKSPACE_DIST: "0"
       - task: prepare-agent
         vars:
           AGENT: "{{.AGENT}}"
@@ -267,9 +270,12 @@ tasks:
 
   build:server:
     desc: Build the server-side binaries used by dev:server and dev
+    vars:
+      INCLUDE_WORKSPACE_DIST: '{{.INCLUDE_WORKSPACE_DIST | default "1"}}'
+      SERVER_BUILD_TAGS: '{{if eq .INCLUDE_WORKSPACE_DIST "1"}}workspace_dist{{end}}'
     cmds:
       - mkdir -p bin
-      - go build -tags workspace_dist -o "{{.DEV_SERVER_BIN}}" ./services/server/cmd/mediago-server
+      - 'go build {{if .SERVER_BUILD_TAGS}}-tags "{{.SERVER_BUILD_TAGS}}"{{end}} -o "{{.DEV_SERVER_BIN}}" ./services/server/cmd/mediago-server'
       - go build -o "{{.DEV_DOCUMENT_MCP_BIN}}" ./services/server/cmd/mediago-document-mcp
       - go build -o "bin/mediago-generation-mcp{{.GOEXE}}" ./services/server/cmd/mediago-generation-mcp
 
@@ -321,17 +327,13 @@ tasks:
 
   workspace:dev:
     desc: Run only the web workspace dev server
+    env:
+      VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL: "{{.DEV_PROMPT_PACK_PUBLISH_URL}}"
     cmds:
       - pnpm -C apps/workspace dev
 
   workspace:build:
     desc: Build only the web workspace
-    # VITE_MEDIAGO_EDITION must live here (not on the parent build tasks):
-    # go-task does not propagate a parent task's env to called sub-tasks,
-    # and this is the task that actually runs vite build. Reads the global
-    # EDITION var, so `task build:electron:target EDITION=pro` reaches vite.
-    env:
-      VITE_MEDIAGO_EDITION: "{{.EDITION}}"
     cmds:
       - pnpm -C apps/workspace build
 

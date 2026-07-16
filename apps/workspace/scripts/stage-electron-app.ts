@@ -20,12 +20,24 @@ const workspacePackagePath = join(workspaceDir, "package.json");
 const rendererDistDir = join(workspaceDir, "dist");
 const electronDistDir = join(workspaceDir, "electron", "dist");
 const electronAppDir = join(workspaceDir, "electron", "app");
+const sidecarIntegrityManifestPath = join(
+	workspaceDir,
+	"electron",
+	"resources",
+	"sidecar-integrity.json",
+);
 const electronTargetPlatform = process.env.MEDIAGO_ELECTRON_TARGET_PLATFORM?.trim();
+const buildsMacOS = electronTargetPlatform
+	? electronTargetPlatform.startsWith("darwin-")
+	: process.platform === "darwin";
+const requiresCodeSigning =
+	process.env.MEDIAGO_CODE_SIGN === "1" || process.env.MEDIAGO_MAC_SIGN === "1";
 
 function main(): void {
 	ensureDirectory(rendererDistDir, "missing renderer build output");
 	ensureDirectory(electronDistDir, "missing Electron main process build output");
 	ensureStagedServerBinary();
+	ensureFile(sidecarIntegrityManifestPath, "missing sidecar integrity manifest");
 
 	const workspacePackage = readWorkspacePackage();
 	const electronVersion = normalizeVersion(workspacePackage.devDependencies?.electron);
@@ -55,6 +67,18 @@ function main(): void {
 		build: {
 			appId: "team.torchstellar.mediagodrama",
 			productName: "MediaGo Drama",
+			asar: true,
+			electronFuses: {
+				runAsNode: false,
+				enableCookieEncryption: true,
+				enableNodeOptionsEnvironmentVariable: false,
+				enableNodeCliInspectArguments: false,
+				enableEmbeddedAsarIntegrityValidation: true,
+				onlyLoadAppFromAsar: true,
+				loadBrowserProcessSpecificV8Snapshot: true,
+				grantFileProtocolExtraPrivileges: false,
+			},
+			...(requiresCodeSigning ? { forceCodeSigning: true } : {}),
 			// Keep the on-disk filename identical to electron-builder's updater YAML path.
 			// Spaces in productName otherwise trigger provider-specific safeArtifactName
 			// rewriting, while our manual GitHub upload keeps a different basename.
@@ -65,11 +89,19 @@ function main(): void {
 				output: "../../release",
 			},
 			publish: [githubPublisher],
-			files: ["package.json", "*.js", "renderer/**/*"],
+			files: [
+				"package.json",
+				"*.js",
+				"*.cjs",
+				"sidecar-integrity.json",
+				"renderer/**/*",
+				"!**/*.map",
+			],
 			extraResources: [
 				{
 					from: "../resources",
 					to: ".",
+					filter: ["**/*", "!sidecar-integrity.json"],
 				},
 			],
 			mac: {
@@ -80,7 +112,7 @@ function main(): void {
 				// ID signing; MEDIAGO_MAC_NOTARIZE=1 (set only when the Apple notary secrets
 				// also exist) additionally enables notarization — signed-but-not-notarized
 				// builds must not fail on missing notary credentials.
-				...(electronTargetPlatform === "darwin-arm64"
+				...(buildsMacOS
 					? process.env.MEDIAGO_MAC_SIGN === "1"
 						? { hardenedRuntime: true, notarize: process.env.MEDIAGO_MAC_NOTARIZE === "1" }
 						: { identity: null, hardenedRuntime: false }
@@ -107,6 +139,7 @@ function main(): void {
 	writeFileSync(join(electronAppDir, "package.json"), `${JSON.stringify(appPackage, null, 2)}\n`);
 	cpSync(electronDistDir, electronAppDir, { recursive: true });
 	cpSync(rendererDistDir, join(electronAppDir, "renderer"), { recursive: true });
+	cpSync(sidecarIntegrityManifestPath, join(electronAppDir, "sidecar-integrity.json"));
 }
 
 function readWorkspacePackage(): WorkspacePackage {
@@ -114,6 +147,12 @@ function readWorkspacePackage(): WorkspacePackage {
 }
 
 function ensureDirectory(path: string, message: string): void {
+	if (!existsSync(path)) {
+		throw new Error(`${message}: ${path}`);
+	}
+}
+
+function ensureFile(path: string, message: string): void {
 	if (!existsSync(path)) {
 		throw new Error(`${message}: ${path}`);
 	}

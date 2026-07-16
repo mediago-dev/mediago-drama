@@ -48,6 +48,16 @@ describe("TalkingDataAnalytics", () => {
 		);
 	});
 
+	it("does not inject remote analytics code into Electron", () => {
+		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+		const analytics = new TalkingDataAnalytics({ appId: "app-123" });
+
+		expect(analytics.init()).toBe(false);
+		expect(document.querySelector("script[data-mediago-analytics='talking-data']")).toBeNull();
+
+		delete window.mediagoDesktop;
+	});
+
 	it("tracks events through TDAPP when available", () => {
 		const onEvent = vi.fn();
 		window.TDAPP = { onEvent };

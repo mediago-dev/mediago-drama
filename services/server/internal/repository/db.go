@@ -28,12 +28,18 @@ func OpenGormSQLite(dbPath string) (*gorm.DB, error) {
 	cacheKey, cacheable := sqliteCacheKey(dbPath)
 	if cacheable {
 		if cached, ok := sqliteDBCache.Load(cacheKey); ok {
+			if err := tightenSQLiteFilePermissions(dbPath); err != nil {
+				return nil, err
+			}
 			return cached.(*gorm.DB), nil
 		}
 	}
 
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
 		return nil, fmt.Errorf("creating database directory: %w", err)
+	}
+	if err := tightenSQLiteDirectoryPermissions(dbPath); err != nil {
+		return nil, err
 	}
 
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
@@ -54,6 +60,9 @@ func OpenGormSQLite(dbPath string) (*gorm.DB, error) {
 	if err := db.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
 		return nil, fmt.Errorf("configuring sqlite foreign keys: %w", err)
 	}
+	if err := tightenSQLiteFilePermissions(dbPath); err != nil {
+		return nil, err
+	}
 
 	if cacheable {
 		actual, loaded := sqliteDBCache.LoadOrStore(cacheKey, db)
@@ -65,6 +74,42 @@ func OpenGormSQLite(dbPath string) (*gorm.DB, error) {
 		}
 	}
 	return db, nil
+}
+
+func tightenSQLiteDirectoryPermissions(dbPath string) error {
+	path, ok := sqliteFilesystemPath(dbPath)
+	if !ok {
+		return nil
+	}
+	dir := filepath.Dir(path)
+	if dir == "." || dir == "" {
+		return nil
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return fmt.Errorf("securing database directory: %w", err)
+	}
+	return nil
+}
+
+func tightenSQLiteFilePermissions(dbPath string) error {
+	path, ok := sqliteFilesystemPath(dbPath)
+	if !ok {
+		return nil
+	}
+	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(candidate, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("securing sqlite file %s: %w", filepath.Base(candidate), err)
+		}
+	}
+	return nil
+}
+
+func sqliteFilesystemPath(dbPath string) (string, bool) {
+	path := strings.TrimSpace(dbPath)
+	if path == "" || strings.Contains(path, ":memory:") || strings.HasPrefix(path, "file:") {
+		return "", false
+	}
+	return path, true
 }
 
 func sqliteCacheKey(dbPath string) (string, bool) {

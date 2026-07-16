@@ -11,6 +11,10 @@ export interface SkillMeta {
 	overridden?: boolean;
 	templateId?: string;
 	hint?: Record<string, string>;
+	packId?: string;
+	releaseId?: string;
+	sourcePackageId?: string;
+	sourceReleaseId?: string;
 }
 
 export interface SkillTemplate {
@@ -35,6 +39,7 @@ interface SkillsResponse {
 interface CreateSkillInput {
 	name: string;
 	content: string;
+	packId?: string;
 }
 
 const skillResource = createResource<
@@ -56,8 +61,11 @@ export const updateSkill = (name: string, content: string): Promise<SkillDocumen
 	return skillResource.update(name, content, { headers: { "Content-Type": "text/plain" } });
 };
 
-export const createSkill = (name: string, content: string): Promise<SkillDocument> =>
-	skillResource.create({ name, content });
+export const createSkill = (
+	name: string,
+	content: string,
+	packId?: string,
+): Promise<SkillDocument> => skillResource.create({ name, content, packId });
 
 export const deleteSkill = skillResource.remove;
 

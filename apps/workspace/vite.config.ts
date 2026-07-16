@@ -37,7 +37,7 @@ export default defineConfig({
 	build: {
 		target: "chrome120",
 		minify: "oxc",
-		sourcemap: true,
+		sourcemap: !isElectronBuild,
 		rollupOptions: {
 			output: {
 				manualChunks(id) {

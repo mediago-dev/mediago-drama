@@ -25,7 +25,6 @@ type Handlers struct {
 	JianyingDraft         httphandlers.JianyingDraft
 	WorkspaceEvents       httphandlers.WorkspaceEvents
 	PromptPacks           httphandlers.PromptPacks
-	License               httphandlers.License
 	PromptTemplates       httphandlers.PromptTemplates
 	PromptLibrary         httphandlers.PromptLibrary
 	Skills                httphandlers.Skills
@@ -64,8 +63,16 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.GET("/projects", handlers.Projects.HandleListProjects)
 	apiRoutes.POST("/projects", handlers.Projects.HandleCreateProject)
 	apiRoutes.GET("/packs", handlers.PromptPacks.HandleListPacks)
+	apiRoutes.POST("/packs", handlers.PromptPacks.HandleCreatePack)
 	apiRoutes.POST("/packs/import", handlers.PromptPacks.HandleImportPack)
 	apiRoutes.POST("/packs/install", handlers.PromptPacks.HandleInstallPack)
+	apiRoutes.GET("/packs/:id/contents", handlers.PromptPacks.HandleGetPackContents)
+	apiRoutes.POST("/packs/:id/entries/copy", handlers.PromptPacks.HandleCopyPackEntries)
+	apiRoutes.POST("/packs/:id/entries", handlers.PromptPacks.HandleCreatePackEntry)
+	apiRoutes.PUT("/packs/:id/entries", handlers.PromptPacks.HandlePutPackEntry)
+	apiRoutes.POST("/packs/:id/entries/reset", handlers.PromptPacks.HandleResetPackEntry)
+	apiRoutes.POST("/packs/:id/entries/detach", handlers.PromptPacks.HandleDetachPackEntry)
+	apiRoutes.POST("/packs/:id/entries/remove", handlers.PromptPacks.HandleRemovePackEntry)
 	apiRoutes.GET("/packs/:id/export", handlers.PromptPacks.HandleExportPack)
 	apiRoutes.POST("/packs/:id/reset", handlers.PromptPacks.HandleResetPack)
 	apiRoutes.PATCH("/packs/:id", handlers.PromptPacks.HandlePatchPack)
@@ -113,9 +120,6 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 }
 
 func registerSettingsRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
-	apiRoutes.GET("/license", handlers.License.HandleStatus)
-	apiRoutes.POST("/license/activate", handlers.License.HandleActivate)
-	apiRoutes.DELETE("/license", handlers.License.HandleDeactivate)
 	apiRoutes.GET("/settings/jianying-draft", handlers.Settings.HandleJianyingDraftSettings)
 	apiRoutes.PUT("/settings/jianying-draft", handlers.Settings.HandlePutJianyingDraftSettings)
 	apiRoutes.GET("/settings/codex-relay", handlers.Settings.HandleCodexRelaySettings)
