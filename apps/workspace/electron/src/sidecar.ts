@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
 	agentsDir,
 	isPackaged,
@@ -11,7 +11,6 @@ import {
 	sidecarIntegrityManifestPath,
 	toolsDir,
 } from "./paths.js";
-import { verifySidecarIntegrity } from "./sidecar-integrity.js";
 
 let child: ChildProcessWithoutNullStreams | null = null;
 let connection: SidecarConnection | null = null;
@@ -19,6 +18,55 @@ let connection: SidecarConnection | null = null;
 export type SidecarConnection = {
 	origin: string;
 	token: string;
+};
+
+type SidecarIntegrityManifest = {
+	algorithm?: unknown;
+	files?: unknown;
+	format?: unknown;
+	version?: unknown;
+};
+
+const verifySidecarIntegrity = (binaryPaths: string[], manifestPath: string): void => {
+	const manifest = readSidecarIntegrityManifest(manifestPath);
+	for (const binaryPath of binaryPaths) {
+		const filename = basename(binaryPath);
+		const expected = manifest.files[filename];
+		if (!expected) {
+			throw new Error(`sidecar integrity manifest does not contain ${filename}`);
+		}
+		const actual = createHash("sha256").update(readFileSync(binaryPath)).digest("hex");
+		if (actual !== expected) {
+			throw new Error(`server sidecar integrity check failed: ${filename}`);
+		}
+	}
+};
+
+const readSidecarIntegrityManifest = (path: string): { files: Record<string, string> } => {
+	let value: SidecarIntegrityManifest;
+	try {
+		value = JSON.parse(readFileSync(path, "utf8")) as SidecarIntegrityManifest;
+	} catch {
+		throw new Error(`missing or invalid sidecar integrity manifest: ${path}`);
+	}
+	if (
+		value.format !== "mediago-sidecar-integrity" ||
+		value.version !== 1 ||
+		value.algorithm !== "sha256" ||
+		!value.files ||
+		typeof value.files !== "object" ||
+		Array.isArray(value.files)
+	) {
+		throw new Error(`unsupported sidecar integrity manifest: ${path}`);
+	}
+	const files: Record<string, string> = {};
+	for (const [filename, digest] of Object.entries(value.files)) {
+		if (!filename || typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)) {
+			throw new Error(`invalid sidecar integrity entry: ${filename || "<empty>"}`);
+		}
+		files[filename] = digest;
+	}
+	return { files };
 };
 
 export const startServerSidecar = (): SidecarConnection | null => {
