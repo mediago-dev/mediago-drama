@@ -127,6 +127,9 @@ func (adapter *Adapter) AskUserForm(ctx context.Context, projectID string, input
 	projectID = adapter.projectIDForAgentEvent(projectID)
 	fields := selectionFieldsFromMCP(input.Fields)
 	intent := selectionIntentFromMCP(input.Intent)
+	if err := adapter.applyDocumentResourcePrompts(projectID, input.Kind, intent); err != nil {
+		return mediamcp.AskUserSelectionOutput{}, err
+	}
 
 	if reused, ok := adapter.reuseSelection(
 		ctx,
@@ -161,6 +164,69 @@ func (adapter *Adapter) AskUserForm(ctx context.Context, projectID string, input
 	adapter.publishFormCard(projectID, created, strings.TrimSpace(input.SubmitLabel))
 
 	return waitSelectionOutput(ctx, service, projectID, created.ID, input.TimeoutSeconds)
+}
+
+func (adapter *Adapter) applyDocumentResourcePrompts(
+	projectID string,
+	kind string,
+	intent *serviceselection.GenerationPlanIntent,
+) error {
+	if adapter == nil || adapter.document == nil || intent == nil ||
+		strings.TrimSpace(kind) != serviceselection.KindGenerationPlan {
+		return nil
+	}
+	resources, err := adapter.document.store.ListWorkspaceDocumentResources(projectID)
+	if err != nil {
+		return fmt.Errorf("loading document resource prompts: %w", err)
+	}
+	resourceBySection := make(map[string]struct {
+		prompt       string
+		resourceType string
+	}, len(resources.Resources))
+	resourceDocuments := make(map[string]bool, len(resources.Resources))
+	for _, resource := range resources.Resources {
+		documentID := strings.TrimSpace(resource.DocumentID)
+		sectionID := strings.TrimSpace(resource.SectionID)
+		if documentID == "" || sectionID == "" {
+			continue
+		}
+		resourceDocuments[documentID] = true
+		resourceBySection[documentID+"\x00"+sectionID] = struct {
+			prompt       string
+			resourceType string
+		}{
+			prompt:       strings.TrimSpace(resource.Prompt),
+			resourceType: strings.TrimSpace(resource.Type),
+		}
+	}
+
+	for index := range intent.Items {
+		item := &intent.Items[index]
+		documentID, sectionID := generationIntentDocumentSection(*item)
+		if documentID == "" || !resourceDocuments[documentID] {
+			continue
+		}
+		resource, ok := resourceBySection[documentID+"\x00"+sectionID]
+		if !ok || resource.prompt == "" {
+			return fmt.Errorf(
+				"generation intent item %q does not match a generatable document resource section",
+				strings.TrimSpace(item.ID),
+			)
+		}
+		item.Prompt = resource.prompt
+		item.ResourceType = resource.resourceType
+	}
+	return nil
+}
+
+func generationIntentDocumentSection(item serviceselection.GenerationPlanIntentItem) (string, string) {
+	documentID := strings.TrimSpace(item.DocumentID)
+	sectionID := strings.TrimSpace(item.SectionID)
+	if item.DocumentContext != nil {
+		documentID = firstNonEmpty(item.DocumentContext.DocumentID, documentID)
+		sectionID = firstNonEmpty(item.DocumentContext.SectionID, sectionID)
+	}
+	return strings.TrimSpace(documentID), strings.TrimSpace(sectionID)
 }
 
 func (adapter *Adapter) publishFormCard(projectID string, record serviceselection.Record, submitLabel string) {

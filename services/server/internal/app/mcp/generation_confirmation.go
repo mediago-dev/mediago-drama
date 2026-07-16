@@ -424,6 +424,10 @@ func (server *GenerationServer) prepareAgentGenerationMessage(
 	expected := expectedGenerationMessageInput(item, plan)
 	actualCanonical := canonicalGenerationMessageInput(input, effectiveProjectID)
 	expectedCanonical := canonicalGenerationMessageInput(expected, effectiveProjectID)
+	if usesConfirmedDocumentResourcePrompt(item) {
+		actualCanonical.Prompt = expectedCanonical.Prompt
+		actualCanonical.ResourceType = expectedCanonical.ResourceType
+	}
 	actualJSON, err := json.Marshal(actualCanonical)
 	if err != nil {
 		return preparedGenerationMessage{}, false, generationConfirmationError(
@@ -637,6 +641,12 @@ func (server *GenerationServer) prepareAgentGenerationBatch(
 
 	actualCanonical := canonicalGenerationBatchInput(input, effectiveProjectID)
 	expectedCanonical := canonicalGenerationBatchInput(authorizedInput, effectiveProjectID)
+	for index, item := range record.Intent.Items {
+		if usesConfirmedDocumentResourcePrompt(item) {
+			actualCanonical.Items[index].Request.Prompt = expectedCanonical.Items[index].Request.Prompt
+			actualCanonical.Items[index].Request.ResourceType = expectedCanonical.Items[index].Request.ResourceType
+		}
+	}
 	actualJSON, err := json.Marshal(actualCanonical)
 	if err != nil {
 		return preparedGenerationBatch{}, false, generationConfirmationError(
@@ -753,6 +763,20 @@ func expectedGenerationMessageInput(
 		}
 	}
 	return expected
+}
+
+func usesConfirmedDocumentResourcePrompt(item serviceselection.GenerationPlanIntentItem) bool {
+	if item.DocumentContext == nil ||
+		strings.TrimSpace(item.DocumentContext.DocumentID) == "" ||
+		strings.TrimSpace(item.DocumentContext.SectionID) == "" {
+		return false
+	}
+	switch strings.TrimSpace(item.ResourceType) {
+	case "character", "scene", "prop", "storyboard":
+		return true
+	default:
+		return false
+	}
 }
 
 func generationDocumentContextFromIntent(

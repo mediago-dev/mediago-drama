@@ -35,11 +35,23 @@ type GenerationTaskService struct {
 	repo        *repository.GenerationTaskRepository
 	initErr     error
 	idGenerator func(string) (string, error)
+	// onTaskStarted fires once when a task enters an active generation state
+	// from a non-active state. It lets global clients discover newly persisted
+	// tasks without polling every task list continuously.
+	onTaskStarted func(GenerationTaskRecord)
 	// onTaskCompleted fires exactly once per not-completed→completed status
 	// transition persisted by upsertTask, after the service mutex is released.
 	// It anchors "the task finished" at the write that makes it true — poll
 	// re-upserts of an already-completed task do not re-fire.
 	onTaskCompleted func(GenerationTaskRecord)
+}
+
+// SetTaskStartedListener installs the active-task transition callback.
+func (service *GenerationTaskService) SetTaskStartedListener(listener func(GenerationTaskRecord)) {
+	if service == nil {
+		return
+	}
+	service.onTaskStarted = listener
 }
 
 // SetTaskCompletionListener installs the completion-transition callback.
@@ -846,11 +858,15 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 		return false, err
 	}
 
+	startedTransition := false
 	completedTransition := false
 	// Registered before the lock's deferred unlock, so it runs after the
 	// mutex is released (LIFO) — the listener may read back through the
 	// service or publish events without re-entering the lock.
 	defer func() {
+		if startedTransition && service.onTaskStarted != nil {
+			service.onTaskStarted(task)
+		}
 		if notifyCompletion && completedTransition && service.onTaskCompleted != nil {
 			service.onTaskCompleted(task)
 		}
@@ -925,6 +941,8 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 	if err := service.upsertProjectSelectedAssetRowsLocked(projectSelectedAssetModelsFromRecord(task)); err != nil {
 		return false, err
 	}
+	startedTransition = !IsActiveGenerationStatus(previousStatus) &&
+		IsActiveGenerationStatus(task.Status)
 	completedTransition = !isCompletedGenerationTaskStatus(previousStatus) &&
 		isCompletedGenerationTaskStatus(task.Status)
 	return true, nil

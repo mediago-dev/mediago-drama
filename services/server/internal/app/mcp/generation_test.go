@@ -580,6 +580,124 @@ func TestGenerationServerBatchUsesOneConfirmedOrderedIntent(t *testing.T) {
 	}
 }
 
+func TestGenerationServerUsesConfirmedDocumentPromptInsteadOfAgentRewrite(t *testing.T) {
+	record := confirmedGenerationSelectionRecord()
+	record.Intent.Items[0].Prompt = "## 雷劫少年\n\n文档中的权威角色提示词。"
+	record.Intent.Items[0].DocumentID = "characters"
+	record.Intent.Items[0].SectionID = "section_thunder"
+	record.Intent.Items[0].ResourceType = "character"
+	record.Intent.Items[0].DocumentContext = &serviceselection.GenerationDocumentContext{
+		ProjectID:  "project-a",
+		DocumentID: "characters",
+		SectionID:  "section_thunder",
+	}
+	service := &generationMCPServiceStub{}
+	store := &generationSelectionStoreStub{record: record}
+	server := &GenerationServer{
+		service:    service,
+		projectID:  "project-a",
+		callerMode: GenerationCallerAgent,
+		sessionID:  "session-a",
+		runID:      "run-a",
+		selections: store,
+	}
+
+	_, err := server.CreateGenerationMessage(context.Background(), "", mediamcp.GenerationMessageInput{
+		ConfirmationSelectionID: record.ID,
+		Kind:                    "image",
+		DocumentID:              "characters",
+		SectionID:               "section_thunder",
+		DocumentContext: &mediamcp.GenerationDocumentContext{
+			ProjectID:  "project-a",
+			DocumentID: "characters",
+			SectionID:  "section_thunder",
+		},
+		RouteID: "route-a",
+		Params:  map[string]any{"aspectRatio": "3:4", "n": 1},
+		Prompt:  "Agent 自行改写的角色提示词",
+	})
+	if err != nil {
+		t.Fatalf("CreateGenerationMessage() error = %v", err)
+	}
+	if len(service.createRequests) != 1 {
+		t.Fatalf("create requests = %d, want 1", len(service.createRequests))
+	}
+	if got, want := service.createRequests[0].Prompt, record.Intent.Items[0].Prompt; got != want {
+		t.Fatalf("submitted prompt = %q, want confirmed document prompt %q", got, want)
+	}
+}
+
+func TestGenerationServerBatchUsesConfirmedDocumentPromptsInsteadOfAgentRewrites(t *testing.T) {
+	record := confirmedGenerationSelectionRecord()
+	record.Intent.Operation = serviceselection.GenerationPlanOperationCreateBatch
+	record.Intent.Items = []serviceselection.GenerationPlanIntentItem{
+		{
+			ID:           "character-1",
+			Kind:         "image",
+			Prompt:       "## 雷劫少年\n\n文档角色提示词。",
+			ResourceType: "character",
+			DocumentContext: &serviceselection.GenerationDocumentContext{
+				ProjectID: "project-a", DocumentID: "characters", SectionID: "section_thunder",
+			},
+		},
+		{
+			ID:           "character-2",
+			Kind:         "image",
+			Prompt:       "## 白衣长老\n\n文档长老提示词。",
+			ResourceType: "character",
+			DocumentContext: &serviceselection.GenerationDocumentContext{
+				ProjectID: "project-a", DocumentID: "characters", SectionID: "section_elder",
+			},
+		},
+	}
+	service := &generationMCPServiceStub{}
+	store := &generationSelectionStoreStub{record: record}
+	server := &GenerationServer{
+		service:    service,
+		projectID:  "project-a",
+		callerMode: GenerationCallerAgent,
+		sessionID:  "session-a",
+		runID:      "run-a",
+		selections: store,
+	}
+
+	_, err := server.CreateGenerationBatch(context.Background(), "", mediamcp.GenerationBatchInput{
+		ConfirmationSelectionID: record.ID,
+		Kind:                    "image",
+		Items: []mediamcp.GenerationBatchItemInput{
+			{
+				ID: "character-1",
+				Request: mediamcp.GenerationMessageInput{
+					Kind: "image", RouteID: "route-a", Params: map[string]any{"aspectRatio": "3:4", "n": 1},
+					Prompt: "Agent 改写角色一", DocumentContext: &mediamcp.GenerationDocumentContext{
+						ProjectID: "project-a", DocumentID: "characters", SectionID: "section_thunder",
+					},
+				},
+			},
+			{
+				ID: "character-2",
+				Request: mediamcp.GenerationMessageInput{
+					Kind: "image", RouteID: "route-a", Params: map[string]any{"aspectRatio": "3:4", "n": 1},
+					Prompt: "Agent 改写角色二", DocumentContext: &mediamcp.GenerationDocumentContext{
+						ProjectID: "project-a", DocumentID: "characters", SectionID: "section_elder",
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateGenerationBatch() error = %v", err)
+	}
+	if len(service.batchRequests) != 1 || len(service.batchRequests[0].Items) != 2 {
+		t.Fatalf("batch requests = %#v, want two items", service.batchRequests)
+	}
+	for index, item := range service.batchRequests[0].Items {
+		if got, want := item.Request.Prompt, record.Intent.Items[index].Prompt; got != want {
+			t.Fatalf("item %d prompt = %q, want confirmed document prompt %q", index, got, want)
+		}
+	}
+}
+
 func TestGenerationServerCreateLibTVImageUsesExistingPayload(t *testing.T) {
 	service := &generationMCPServiceStub{}
 	server := &GenerationServer{service: service, projectID: "project-a", callerMode: GenerationCallerTrustedManual}

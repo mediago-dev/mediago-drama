@@ -1,5 +1,4 @@
 import { cleanup, render, waitFor } from "@testing-library/react";
-import { mutate as mutateSWR } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GenerationNotification } from "@/domains/generation/api/generation";
 import {
@@ -12,6 +11,11 @@ import {
 } from "@/domains/generation/lib/generation-notifications";
 import { useGenerationNotificationStore } from "@/domains/generation/stores/generation-notifications";
 import { GenerationNotificationSync } from "./GenerationNotificationSync";
+
+const mocks = vi.hoisted(() => ({
+	boundMutate: vi.fn(),
+	globalMutate: vi.fn(),
+}));
 
 vi.mock("@/domains/generation/api/generation", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@/domains/generation/api/generation")>();
@@ -31,7 +35,8 @@ vi.mock("swr", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("swr")>();
 	return {
 		...actual,
-		mutate: vi.fn(),
+		mutate: mocks.globalMutate,
+		useSWRConfig: vi.fn(() => ({ cache: new Map(), mutate: mocks.boundMutate })),
 	};
 });
 
@@ -94,16 +99,59 @@ describe("GenerationNotificationSync", () => {
 			expect.objectContaining({ id: "notification-1", sourceTaskId: "task-1" }),
 		);
 		// 3 个生成缓存 + 3 个定稿资产缓存（封面/计数）。
-		expect(mutateSWR).toHaveBeenCalledTimes(6);
+		expect(mocks.boundMutate).toHaveBeenCalledTimes(6);
+		expect(mocks.globalMutate).not.toHaveBeenCalled();
 		expect(cachePredicateAt(0)(["/generation/tasks", "studio", "", "", ""])).toBe(true);
 		expect(cachePredicateAt(1)(["/generation/sessions", "studio", "image"])).toBe(true);
 		expect(cachePredicateAt(2)(["/media-assets", "project-a"])).toBe(true);
 	});
 
+	it("revalidates provider-bound task caches when a task starts", async () => {
+		render(<GenerationNotificationSync />);
+		await waitFor(() => expect(FakeEventSource.instances.length).toBe(1));
+		mocks.boundMutate.mockClear();
+
+		FakeEventSource.instances[0]?.emit("generation.task.started", {
+			id: "task-started-generation-1",
+			type: "generation.task.started",
+			projectId: "project-a",
+			createdAt: "2026-07-16T02:36:31Z",
+		});
+
+		await waitFor(() => expect(mocks.boundMutate).toHaveBeenCalledTimes(2));
+		expect(cachePredicateAt(0)(["/generation/tasks", "project-a", "", "image", "project-a"])).toBe(
+			true,
+		);
+		expect(cachePredicateAt(1)(["/generation/sessions", "project-a", "image"])).toBe(true);
+		expect(mocks.globalMutate).not.toHaveBeenCalled();
+		expect(showGenerationSuccessSystemNotification).not.toHaveBeenCalled();
+		expect(showGenerationTaskCompletedSystemNotification).not.toHaveBeenCalled();
+		expect(useGenerationNotificationStore.getState().notifications).toHaveLength(0);
+	});
+
+	it("revalidates task caches after reconnect to recover missed start events", async () => {
+		render(<GenerationNotificationSync />);
+		await waitFor(() => expect(FakeEventSource.instances.length).toBe(1));
+		mocks.boundMutate.mockClear();
+
+		FakeEventSource.instances[0]?.emit("generation.notification.connected", {
+			id: "generation-notification-connected",
+			type: "generation.notification.connected",
+			projectId: "project-a",
+			createdAt: "2026-07-16T02:36:30Z",
+		});
+
+		await waitFor(() => expect(mocks.boundMutate).toHaveBeenCalledTimes(2));
+		expect(cachePredicateAt(0)(["/generation/tasks", "project-a", "", "image", "project-a"])).toBe(
+			true,
+		);
+		expect(cachePredicateAt(1)(["/generation/sessions", "project-a", "image"])).toBe(true);
+	});
+
 	it("revalidates caches and shows a desktop notification for an untracked completion", async () => {
 		render(<GenerationNotificationSync />);
 		await waitFor(() => expect(FakeEventSource.instances.length).toBe(1));
-		vi.mocked(mutateSWR).mockClear();
+		mocks.boundMutate.mockClear();
 
 		FakeEventSource.instances[0]?.emit("generation.task.completed", {
 			id: "task-completed-generation-1",
@@ -113,7 +161,7 @@ describe("GenerationNotificationSync", () => {
 		});
 
 		// 无通知记录：不进通知中心，但仍弹通用系统通知并刷新相关缓存。
-		await waitFor(() => expect(vi.mocked(mutateSWR).mock.calls.length).toBe(6));
+		await waitFor(() => expect(mocks.boundMutate.mock.calls.length).toBe(6));
 		expect(useGenerationNotificationStore.getState().notifications).toHaveLength(0);
 		expect(showGenerationSuccessSystemNotification).not.toHaveBeenCalled();
 		expect(showGenerationTaskCompletedSystemNotification).toHaveBeenCalledTimes(1);
@@ -121,7 +169,7 @@ describe("GenerationNotificationSync", () => {
 });
 
 const cachePredicateAt = (index: number) => {
-	const predicate = vi.mocked(mutateSWR).mock.calls[index]?.[0];
+	const predicate = mocks.boundMutate.mock.calls[index]?.[0];
 	if (typeof predicate !== "function") throw new Error("missing cache predicate");
 	return predicate as (key: unknown) => boolean;
 };

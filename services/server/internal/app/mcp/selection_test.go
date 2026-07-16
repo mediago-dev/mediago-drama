@@ -3,12 +3,14 @@ package mcp
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
+	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
 	serviceselection "github.com/mediago-dev/mediago-drama/services/server/internal/service/selection"
 )
 
@@ -503,6 +505,128 @@ func TestAskUserFormPersistsNormalizedGenerationPlanIntent(t *testing.T) {
 	}
 	if item.NotificationTarget == nil || item.NotificationTarget.ProjectID != projectID || item.NotificationTarget.Section.BlockID != "block-1" {
 		t.Fatalf("normalized notification target = %#v", item.NotificationTarget)
+	}
+}
+
+func TestAskUserFormUsesDocumentResourcePromptForGenerationIntent(t *testing.T) {
+	adapter, _, projectID := newSelectionAdapter(t)
+	document, _, err := adapter.document.store.CreateWorkspaceDocument(
+		projectID,
+		servicedocument.CreateWorkspaceDocumentRequest{
+			ID:       "characters",
+			Title:    "角色设定",
+			Category: "character",
+			Content: strings.Join([]string{
+				"# 角色设定",
+				"",
+				"<!-- section-id: section_thunder -->",
+				"## 雷劫少年",
+				"",
+				"仙门域被雷劫击中的少年修士，身体边缘已被雷电数据化。",
+				"",
+				"![定稿图](/api/v1/media-assets/character-a/content)",
+			}, "\n"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateWorkspaceDocument() error = %v", err)
+	}
+
+	value := map[string]any{
+		"kind":               "image",
+		"routeId":            "route-image",
+		"params":             map[string]any{},
+		"referenceAssetIds":  []any{},
+		"promptSupplements":  []any{},
+		"promptOptimization": map[string]any{"enabled": false},
+	}
+	intent := sampleGenerationIntentInput("image", "Agent 自行改写的角色提示词")
+	intent.Items[0].DocumentID = document.ID
+	intent.Items[0].SectionID = "section_thunder"
+	intent.Items[0].DocumentContext = &mediamcp.GenerationDocumentContext{
+		DocumentID: document.ID,
+		SectionID:  "section_thunder",
+	}
+	go decideWhenPending(t, adapter, projectID, serviceselection.DecisionRequest{
+		Values: map[string]any{"generation": value},
+	})
+
+	output, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
+		Title:  "生成参数",
+		Kind:   serviceselection.KindGenerationPlan,
+		Intent: intent,
+		Fields: []mediamcp.FormFieldInput{{
+			ID:       "generation",
+			Label:    "生成设置",
+			Type:     mediamcp.FieldTypeGenerationSettings,
+			Kind:     "image",
+			Default:  value,
+			Required: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("AskUserForm() error = %v", err)
+	}
+	record, ok, err := adapter.document.store.Selections.Get(projectID, output.SelectionID)
+	if err != nil || !ok {
+		t.Fatalf("Get() = %#v, ok=%v, error=%v", record, ok, err)
+	}
+	if record.Intent == nil || len(record.Intent.Items) != 1 {
+		t.Fatalf("record.Intent = %#v, want one item", record.Intent)
+	}
+	wantPrompt := "## 雷劫少年\n\n仙门域被雷劫击中的少年修士，身体边缘已被雷电数据化。"
+	if got := record.Intent.Items[0].Prompt; got != wantPrompt {
+		t.Fatalf("intent prompt = %q, want document prompt %q", got, wantPrompt)
+	}
+	if strings.Contains(record.Intent.Items[0].Prompt, "Agent 自行改写") {
+		t.Fatalf("intent prompt retained agent rewrite: %q", record.Intent.Items[0].Prompt)
+	}
+}
+
+func TestAskUserFormRejectsMissingDocumentResourceSection(t *testing.T) {
+	adapter, publisher, projectID := newSelectionAdapter(t)
+	_, _, err := adapter.document.store.CreateWorkspaceDocument(
+		projectID,
+		servicedocument.CreateWorkspaceDocumentRequest{
+			ID:       "characters",
+			Title:    "角色设定",
+			Category: "character",
+			Content: strings.Join([]string{
+				"# 角色设定",
+				"",
+				"<!-- section-id: section_existing -->",
+				"## 已有角色",
+				"",
+				"已有角色提示词。",
+			}, "\n"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateWorkspaceDocument() error = %v", err)
+	}
+	intent := sampleGenerationIntentInput("image", "Agent 自行改写的角色提示词")
+	intent.Items[0].DocumentContext = &mediamcp.GenerationDocumentContext{
+		DocumentID: "characters",
+		SectionID:  "section_missing",
+	}
+
+	_, err = adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
+		Title:  "生成参数",
+		Kind:   serviceselection.KindGenerationPlan,
+		Intent: intent,
+		Fields: []mediamcp.FormFieldInput{{
+			ID:       "generation",
+			Label:    "生成设置",
+			Type:     mediamcp.FieldTypeGenerationSettings,
+			Kind:     "image",
+			Required: true,
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "does not match a generatable document resource section") {
+		t.Fatalf("AskUserForm() error = %v, want missing resource section error", err)
+	}
+	if len(publisher.events) != 0 {
+		t.Fatalf("published events = %d, want none", len(publisher.events))
 	}
 }
 

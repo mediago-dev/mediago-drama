@@ -145,6 +145,75 @@ func TestGenerationNotificationServicePublishesCompletedVideoTask(t *testing.T) 
 	}
 }
 
+func TestGenerationTaskStartedTransitionAnnouncesActiveCycles(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "workspace.db")
+	seedGenerationTaskProject(t, dbPath, "project-a")
+	repos, err := repository.OpenWorkspaceRepositories(dbPath)
+	if err != nil {
+		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
+	}
+	notifications := NewGenerationNotificationServiceFromRepository(repos.GenerationNotifications, nil, nil)
+	tasks := NewGenerationTaskService(dbPath, nil)
+	workflow := NewGenerationService(nil, tasks, nil)
+	workflow.SetGenerationNotifications(notifications)
+	events, unsubscribe := notifications.Subscribe()
+	defer unsubscribe()
+
+	expectStarted := func(reason string) {
+		t.Helper()
+		select {
+		case event := <-events:
+			if event.Type != generationTaskStartedEventType || event.ProjectID != "project-a" {
+				t.Fatalf("%s: event = %+v", reason, event)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("%s: no event published", reason)
+		}
+	}
+	expectSilence := func(reason string) {
+		t.Helper()
+		select {
+		case event := <-events:
+			t.Fatalf("%s: unexpected event %+v", reason, event)
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+
+	task := GenerationTaskRecord{
+		ID:        "task-started",
+		ProjectID: "project-a",
+		Kind:      "image",
+		Status:    "submitted",
+	}
+	if err := tasks.Upsert(task); err != nil {
+		t.Fatalf("Upsert(submitted) error = %v", err)
+	}
+	expectStarted("first active state")
+
+	task.Status = "running"
+	if err := tasks.Upsert(task); err != nil {
+		t.Fatalf("Upsert(running) error = %v", err)
+	}
+	expectSilence("active-to-active transition")
+
+	task.Status = "failed"
+	if err := tasks.Upsert(task); err != nil {
+		t.Fatalf("Upsert(failed) error = %v", err)
+	}
+	expectSilence("terminal transition")
+
+	task.Status = "submitting"
+	if err := tasks.Upsert(task); err != nil {
+		t.Fatalf("Upsert(retry submitting) error = %v", err)
+	}
+	expectStarted("retry active cycle")
+
+	if err := tasks.Upsert(task); err != nil {
+		t.Fatalf("re-Upsert(submitting) error = %v", err)
+	}
+	expectSilence("same active status rewrite")
+}
+
 func TestGenerationTaskCompletionTransitionAnnouncesUntrackedTasks(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "workspace.db")
 	repos, err := repository.OpenWorkspaceRepositories(dbPath)
