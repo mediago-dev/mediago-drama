@@ -74,7 +74,9 @@ func (writer acpStderrWriter) Write(data []byte) (int, error) {
 			},
 		}
 		writer.rawLog.logStderr(message, event)
-		writer.publish(event)
+		if writer.publish != nil {
+			writer.publish(event)
+		}
 	}
 	return len(data), nil
 }
@@ -90,11 +92,37 @@ func logACPStderr(sessionID string, runID string, message string) {
 
 var _ io.Writer = acpStderrWriter{}
 
+type acpRoutedStderrWriter struct {
+	router *acpClientRouter
+}
+
+func (writer acpRoutedStderrWriter) Write(data []byte) (int, error) {
+	client, unlock := writer.router.lockCurrent()
+	defer unlock()
+	if client == nil {
+		message := strings.TrimSpace(string(data))
+		if message != "" {
+			acpLog().Debug("acp stderr without active run", "message", TruncateAgentMessage(message))
+		}
+		return len(data), nil
+	}
+	return (acpStderrWriter{
+		publish:            client.publish,
+		recordRuntimeError: client.setRuntimeErrorMessage,
+		sessionID:          client.sessionID,
+		runID:              client.runID,
+		rawLog:             client.rawLog,
+	}).Write(data)
+}
+
+var _ io.Writer = acpRoutedStderrWriter{}
+
 type acpStdoutLogReader struct {
-	reader  io.Reader
-	rawLog  *acpRawLogger
-	pending []byte
-	flushed bool
+	reader    io.Reader
+	rawLog    *acpRawLogger
+	logLineFn func(string)
+	pending   []byte
+	flushed   bool
 }
 
 func newACPStdoutLogReader(reader io.Reader, rawLog *acpRawLogger) io.Reader {
@@ -102,6 +130,13 @@ func newACPStdoutLogReader(reader io.Reader, rawLog *acpRawLogger) io.Reader {
 		return reader
 	}
 	return &acpStdoutLogReader{reader: reader, rawLog: rawLog}
+}
+
+func newACPRoutedStdoutLogReader(reader io.Reader, router *acpClientRouter) io.Reader {
+	if reader == nil || router == nil {
+		return reader
+	}
+	return &acpStdoutLogReader{reader: reader, logLineFn: router.logStdoutLine}
 }
 
 func (reader *acpStdoutLogReader) Read(data []byte) (int, error) {
@@ -123,7 +158,7 @@ func (reader *acpStdoutLogReader) logChunk(data []byte) {
 			return
 		}
 		line := string(reader.pending[:index+1])
-		reader.rawLog.logStdoutLine(line)
+		reader.logStdoutLine(line)
 		reader.pending = reader.pending[index+1:]
 	}
 }
@@ -136,8 +171,19 @@ func (reader *acpStdoutLogReader) flushPending() {
 	if len(reader.pending) == 0 {
 		return
 	}
-	reader.rawLog.logStdoutLine(string(reader.pending))
+	reader.logStdoutLine(string(reader.pending))
 	reader.pending = nil
+}
+
+func (reader *acpStdoutLogReader) logStdoutLine(line string) {
+	if reader == nil {
+		return
+	}
+	if reader.logLineFn != nil {
+		reader.logLineFn(line)
+		return
+	}
+	reader.rawLog.logStdoutLine(line)
 }
 
 var _ io.Reader = (*acpStdoutLogReader)(nil)

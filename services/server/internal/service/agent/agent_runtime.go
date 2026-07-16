@@ -26,6 +26,13 @@ type AgentRunner interface {
 	Run(context.Context, AgentRunRequest, func(AgentEvent)) (AgentRunResult, error)
 }
 
+// AgentRunnerCloser releases long-lived resources owned by an AgentRunner.
+// AgentRuntime invokes it after cancelling run contexts and before waiting for
+// run goroutines, allowing a stuck transport to be terminated during shutdown.
+type AgentRunnerCloser interface {
+	Close() error
+}
+
 // AgentPermissionResolver resolves in-flight ACP tool permission requests.
 type AgentPermissionResolver interface {
 	ResolvePermission(sessionID string, requestID string, optionID string, cancelled bool) error
@@ -84,16 +91,17 @@ type AgentRuntimeConfig struct {
 
 // AgentRuntime coordinates agent sessions, runner calls, and run events.
 type AgentRuntime struct {
-	workspace      DocumentStore
-	sessions       *SessionService
-	runner         AgentRunner
-	publish        func(AgentEvent)
-	config         AgentRuntimeConfig
-	lifecycleMu    sync.Mutex
-	lifecycleGroup sync.WaitGroup
-	shutdownCtx    context.Context
-	shutdownCancel context.CancelFunc
-	closed         bool
+	workspace       DocumentStore
+	sessions        *SessionService
+	runner          AgentRunner
+	publish         func(AgentEvent)
+	config          AgentRuntimeConfig
+	lifecycleMu     sync.Mutex
+	lifecycleGroup  sync.WaitGroup
+	shutdownCtx     context.Context
+	shutdownCancel  context.CancelFunc
+	runnerCloseOnce sync.Once
+	closed          bool
 }
 
 // NewAgentRuntime returns an agent runtime service.
@@ -138,6 +146,13 @@ func (runtime *AgentRuntime) Close() {
 	}
 	runtime.lifecycleMu.Unlock()
 
+	if closer, ok := runtime.runner.(AgentRunnerCloser); ok {
+		runtime.runnerCloseOnce.Do(func() {
+			if err := closer.Close(); err != nil {
+				slog.Warn("closing agent runner failed", "error", err)
+			}
+		})
+	}
 	runtime.lifecycleGroup.Wait()
 }
 
@@ -196,7 +211,7 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 
 	runID := shared.MustRandomID("run")
 	runCtx, cancelRun := agentRunContextWithParent(runtime.shutdownCtx, runtime.config.RunTimeout)
-	acpSessionID, ok := runtime.sessions.StartRun(
+	acpSessionState, ok := runtime.sessions.StartRun(
 		payload.SessionID,
 		payload.ProjectID,
 		runID,
@@ -246,7 +261,7 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 		"document_count", len(payload.Documents),
 		"project_dir", projectDir,
 		"working_dir", workingDir,
-		"has_acp_session", acpSessionID != "",
+		"has_acp_session", acpSessionState.SessionID != "",
 	)
 
 	runtime.publishEvent(AgentEvent{
@@ -276,7 +291,7 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 
 	go func() {
 		defer runtime.finishLifecycleWork()
-		runtime.runAgent(runCtx, cancelRun, payload, runID, acpSessionID, projectDir, workingDir)
+		runtime.runAgent(runCtx, cancelRun, payload, runID, acpSessionState, projectDir, workingDir)
 	}()
 	workTransferred = true
 
@@ -436,7 +451,7 @@ func (runtime *AgentRuntime) runAgent(
 	cancel context.CancelFunc,
 	payload AgentMessageRequest,
 	runID string,
-	acpSessionID string,
+	acpSessionState ACPSessionState,
 	projectDir string,
 	workingDir string,
 ) {
@@ -492,12 +507,13 @@ func (runtime *AgentRuntime) runAgent(
 		"session_id", payload.SessionID,
 		"run_id", runID,
 		"timeout_ms", runtime.config.RunTimeout.Milliseconds(),
-		"has_acp_session", acpSessionID != "",
+		"has_acp_session", acpSessionState.SessionID != "",
 	)
 	result, err := runtime.runner.Run(ctx, AgentRunRequest{
 		SessionID:             payload.SessionID,
 		RunID:                 runID,
-		ACPSessionID:          acpSessionID,
+		ACPSessionID:          acpSessionState.SessionID,
+		ACPInstructionHash:    acpSessionState.InstructionHash,
 		ProjectID:             payload.ProjectID,
 		Prompt:                payload.Prompt,
 		AgentTag:              agentTag,
@@ -539,7 +555,10 @@ func (runtime *AgentRuntime) runAgent(
 		return
 	}
 	if result.ACPSessionID != "" {
-		runtime.sessions.SetACPSessionID(payload.SessionID, runID, result.ACPSessionID)
+		runtime.sessions.SetACPSessionState(payload.SessionID, runID, ACPSessionState{
+			SessionID:       result.ACPSessionID,
+			InstructionHash: result.ACPInstructionHash,
+		})
 	}
 
 	if result.DocumentProposal != nil {

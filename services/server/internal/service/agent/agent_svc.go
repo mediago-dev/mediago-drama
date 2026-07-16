@@ -362,6 +362,7 @@ type AgentRunRequest struct {
 	SessionID             string
 	RunID                 string
 	ACPSessionID          string
+	ACPInstructionHash    string
 	ProjectID             string
 	Prompt                string
 	AgentTag              string
@@ -386,12 +387,13 @@ type AgentRunRequest struct {
 
 // AgentRunResult is returned by an agent runner.
 type AgentRunResult struct {
-	ACPSessionID     string
-	Message          string
-	MessageItemID    string
-	StreamedMessage  bool
-	DocumentProposal *AgentDocumentProposal
-	A2UI             *AgentA2UIPayload
+	ACPSessionID       string
+	ACPInstructionHash string
+	Message            string
+	MessageItemID      string
+	StreamedMessage    bool
+	DocumentProposal   *AgentDocumentProposal
+	A2UI               *AgentA2UIPayload
 }
 
 // AgentFinalResponse is the JSON shape an ACP agent may emit at the end of a turn.

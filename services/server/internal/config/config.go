@@ -57,7 +57,8 @@ type LocalCLIConfig struct {
 
 // PromptConfig contains system prompt rendering configuration.
 type PromptConfig struct {
-	MaxSectionChars int `yaml:"max_section_chars"`
+	MaxSectionChars     int    `yaml:"max_section_chars"`
+	InstructionDelivery string `yaml:"instruction_delivery"`
 }
 
 // BillingConfig contains billing and pricing configuration.
@@ -100,7 +101,10 @@ func defaults() ServerConfig {
 		Host:           "127.0.0.1",
 		Port:           8080,
 		GenerationCLIs: []string{"dreamina"},
-		Prompt:         PromptConfig{MaxSectionChars: 12000},
+		Prompt: PromptConfig{
+			MaxSectionChars:     12000,
+			InstructionDelivery: "native",
+		},
 	}
 }
 
@@ -127,6 +131,10 @@ func normalize(config ServerConfig) ServerConfig {
 	config.DocumentMCP = normalizeDocumentMCPConfig(config.DocumentMCP)
 	if config.Prompt.MaxSectionChars <= 0 {
 		config.Prompt.MaxSectionChars = defaults.Prompt.MaxSectionChars
+	}
+	config.Prompt.InstructionDelivery = strings.ToLower(strings.TrimSpace(config.Prompt.InstructionDelivery))
+	if config.Prompt.InstructionDelivery != "native" && config.Prompt.InstructionDelivery != "inline" {
+		config.Prompt.InstructionDelivery = defaults.Prompt.InstructionDelivery
 	}
 	return config
 }

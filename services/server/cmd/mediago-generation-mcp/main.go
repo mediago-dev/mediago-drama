@@ -68,6 +68,7 @@ func appConfigFromServerConfig(config serverconfig.ServerConfig) server.Config {
 		PippitBinDir:          config.Pippit.BinDir,
 		AgentBridgeToken:      "generation-mcp-stdio",
 		PromptMaxSectionChars: config.Prompt.MaxSectionChars,
+		PromptDelivery:        config.Prompt.InstructionDelivery,
 	}
 }
 

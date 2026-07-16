@@ -181,13 +181,19 @@ func TestACPAgentRunnerAbsoluteRunDirFallsBackToWorkspaceDir(t *testing.T) {
 func TestACPAgentRunnerPrepareProcessConfigForManagedACPBackends(t *testing.T) {
 	provider := &recordingProcessConfigProvider{
 		config: ProcessConfig{
-			ConfigDir:        filepath.Join(t.TempDir(), "opencode-config"),
-			Env:              map[string]string{"MEDIAGO_AGENT_MODEL_MINIMAX_API_KEY": "sk-test"},
-			ProfileCount:     1,
-			DefaultProfileID: "minimax",
+			ConfigDir:                  filepath.Join(t.TempDir(), "opencode-config"),
+			Env:                        map[string]string{"MEDIAGO_AGENT_MODEL_MINIMAX_API_KEY": "sk-test"},
+			ProfileCount:               1,
+			DefaultProfileID:           "minimax",
+			NativeInstructionsInjected: true,
 		},
 	}
-	runner := &acpAgentRunner{processConfigProvider: provider}
+	runner := &acpAgentRunner{
+		buildPrompt: func(AgentRunRequest) string {
+			return "固定系统提示"
+		},
+		processConfigProvider: provider,
+	}
 	request := agentRunRequest{
 		WorkspaceDir: "/workspace",
 		ProjectID:    "project-1",
@@ -213,6 +219,12 @@ func TestACPAgentRunnerPrepareProcessConfigForManagedACPBackends(t *testing.T) {
 	}
 	if provider.requests[0].PreferredModel != "mediago/deepseek-v4-flash" {
 		t.Fatalf("preferred model = %q, want selected runtime model", provider.requests[0].PreferredModel)
+	}
+	if provider.requests[0].FixedInstructions != "固定系统提示" {
+		t.Fatalf("fixed instructions = %q, want rendered runtime instructions", provider.requests[0].FixedInstructions)
+	}
+	if !config.NativeInstructionsInjected {
+		t.Fatal("NativeInstructionsInjected = false, want provider acknowledgement preserved")
 	}
 	if config.Env["OPENCODE_CONFIG_DIR"] != provider.config.ConfigDir {
 		t.Fatalf("OPENCODE_CONFIG_DIR = %q, want %q", config.Env["OPENCODE_CONFIG_DIR"], provider.config.ConfigDir)
@@ -240,6 +252,34 @@ func TestACPAgentRunnerPrepareProcessConfigForManagedACPBackends(t *testing.T) {
 	}
 	if len(provider.requests) != 2 {
 		t.Fatalf("provider requests after custom = %d, want unchanged", len(provider.requests))
+	}
+}
+
+func TestACPAgentRunnerPrepareProcessConfigUsesPreRenderedInstructions(t *testing.T) {
+	renderCount := 0
+	provider := &recordingProcessConfigProvider{}
+	runner := &acpAgentRunner{
+		buildPrompt: func(AgentRunRequest) string {
+			renderCount++
+			return "unexpected second render"
+		},
+		processConfigProvider: provider,
+	}
+
+	if _, err := runner.prepareProcessConfig(
+		context.Background(),
+		"codex-acp",
+		nil,
+		agentRunRequest{},
+		"pre-rendered instructions",
+	); err != nil {
+		t.Fatalf("prepareProcessConfig returned error: %v", err)
+	}
+	if renderCount != 0 {
+		t.Fatalf("fixed instruction render count = %d, want 0 with pre-rendered override", renderCount)
+	}
+	if len(provider.requests) != 1 || provider.requests[0].FixedInstructions != "pre-rendered instructions" {
+		t.Fatalf("provider requests = %#v, want pre-rendered instructions", provider.requests)
 	}
 }
 
@@ -1247,7 +1287,7 @@ func TestBuildACPFinalMessagePrompt(t *testing.T) {
 	}
 }
 
-func TestACPAgentRunnerBuildPromptForRequestIncludesFixedPrompt(t *testing.T) {
+func TestACPAgentRunnerBuildPromptForRequestUsesUserIncrementAfterNativeInjection(t *testing.T) {
 	runner := &acpAgentRunner{
 		buildPrompt: func(request AgentRunRequest) string {
 			if request.Prompt != "你好" {
@@ -1257,22 +1297,101 @@ func TestACPAgentRunnerBuildPromptForRequestIncludesFixedPrompt(t *testing.T) {
 		},
 	}
 
-	prompt := runner.buildPromptForRequest(agentRunRequest{Prompt: "你好"})
+	request := agentRunRequest{Prompt: "你好"}
+	fixedInstructions := runner.fixedInstructions(request)
+	prompt := runner.buildPromptForRequest(request, fixedInstructions, true)
+
+	if prompt != "你好" {
+		t.Fatalf("prompt = %q, want user increment only", prompt)
+	}
+	if strings.Contains(prompt, "固定系统提示") || strings.Contains(prompt, "# 用户请求") {
+		t.Fatalf("prompt = %q, should not include fixed instructions after native injection", prompt)
+	}
+}
+
+func TestACPAgentRunnerBuildPromptForRequestKeepsCompatibilityFallback(t *testing.T) {
+	runner := &acpAgentRunner{
+		buildPrompt: func(AgentRunRequest) string {
+			return "固定系统提示"
+		},
+	}
+	request := agentRunRequest{Prompt: "你好"}
+	fixedInstructions := runner.fixedInstructions(request)
+
+	prompt := runner.buildPromptForRequest(request, fixedInstructions, false)
 
 	if !strings.Contains(prompt, "固定系统提示") ||
 		!strings.Contains(prompt, "# 用户请求") ||
 		!strings.Contains(prompt, "你好") {
-		t.Fatalf("prompt = %q, want fixed prompt and user request", prompt)
+		t.Fatalf("prompt = %q, want fixed prompt and user request fallback", prompt)
 	}
 }
 
 func TestACPAgentRunnerBuildPromptForRequestFallsBackToUserPrompt(t *testing.T) {
 	runner := &acpAgentRunner{}
 
-	prompt := runner.buildPromptForRequest(agentRunRequest{Prompt: "你好"})
+	request := agentRunRequest{Prompt: "你好"}
+	prompt := runner.buildPromptForRequest(request, runner.fixedInstructions(request), false)
 
 	if prompt != "你好" {
 		t.Fatalf("prompt = %q, want user prompt only", prompt)
+	}
+}
+
+func TestInstructionFingerprintIsStableAndScoped(t *testing.T) {
+	first := instructionFingerprint("codex", "native", "固定系统提示")
+	second := instructionFingerprint("codex", "native", "固定系统提示")
+	if first == "" || first != second {
+		t.Fatalf("fingerprints = %q and %q, want stable non-empty value", first, second)
+	}
+	if first == instructionFingerprint("opencode", "native", "固定系统提示") {
+		t.Fatal("fingerprint should change with backend")
+	}
+	if first == instructionFingerprint("codex", "inline", "固定系统提示") {
+		t.Fatal("fingerprint should change with delivery mode")
+	}
+	if first == instructionFingerprint("codex", "native", "更新后的系统提示") {
+		t.Fatal("fingerprint should change with instruction body")
+	}
+}
+
+func TestInstructionHashMatchesRequiresSameDeliveryState(t *testing.T) {
+	codexNativeHash := instructionFingerprint("codex", "native", "固定系统提示")
+	codexInlineHash := instructionFingerprint("codex", "inline", "固定系统提示")
+	opencodeNativeHash := instructionFingerprint("opencode", "native", "固定系统提示")
+	tests := []struct {
+		name    string
+		stored  string
+		current string
+		want    bool
+	}{
+		{name: "legacy session migrates to versioned inline", current: codexInlineHash},
+		{name: "legacy session migrates to native", current: codexNativeHash},
+		{name: "same native instructions resume", stored: codexNativeHash, current: codexNativeHash, want: true},
+		{name: "same inline instructions resume", stored: codexInlineHash, current: codexInlineHash, want: true},
+		{name: "backend change migrates", stored: codexNativeHash, current: opencodeNativeHash},
+		{name: "native rollback to inline migrates", stored: codexNativeHash, current: codexInlineHash},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := instructionHashMatches(test.stored, test.current); got != test.want {
+				t.Fatalf("instructionHashMatches(%q, %q) = %v, want %v", test.stored, test.current, got, test.want)
+			}
+		})
+	}
+}
+
+func TestACPBackendIdentityScopesCustomCommands(t *testing.T) {
+	first := acpBackendIdentity("custom-acp", []string{"--profile", "one"})
+	if first == "" || first != acpBackendIdentity("custom-acp", []string{"--profile", "one"}) {
+		t.Fatalf("custom backend identity = %q, want stable non-empty value", first)
+	}
+	if first == acpBackendIdentity("custom-acp", []string{"--profile", "two"}) {
+		t.Fatal("custom backend identity should include argv")
+	}
+	if got := acpBackendIdentity("codex-acp", nil); got != "codex" {
+		t.Fatalf("Codex backend identity = %q, want codex", got)
 	}
 }
 

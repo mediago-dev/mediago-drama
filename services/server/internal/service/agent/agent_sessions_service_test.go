@@ -212,6 +212,47 @@ func TestSessionServicePersistsGeneratedTitle(t *testing.T) {
 	}
 }
 
+func TestSessionServicePersistsAndClearsACPInstructionState(t *testing.T) {
+	repo := newTestAgentSessionRepository(t)
+	store := NewSessionService(repo)
+	store.create("session-1", "project-1")
+
+	initial, ok := store.StartRun("session-1", "project-1", "run-1", func() {}, AgentRunStartOptions{})
+	if !ok {
+		t.Fatal("starting first run failed")
+	}
+	if initial.SessionID != "" || initial.InstructionHash != "" {
+		t.Fatalf("initial ACP state = %#v, want empty", initial)
+	}
+
+	want := ACPSessionState{
+		SessionID:       "acp-session-1",
+		InstructionHash: "instruction-v1:abc123",
+	}
+	store.SetACPSessionState("session-1", "run-1", want)
+	run, ok := store.Run("session-1", "run-1")
+	if !ok || run.ACPSessionID != want.SessionID || run.ACPInstructionHash != want.InstructionHash {
+		t.Fatalf("run ACP state = %#v, want %#v", run, want)
+	}
+	store.FinishRun("session-1", "run-1", "completed", "done")
+
+	restarted := NewSessionService(repo)
+	loaded, ok := restarted.StartRun("session-1", "project-1", "run-2", func() {}, AgentRunStartOptions{})
+	if !ok || loaded != want {
+		t.Fatalf("loaded ACP state = %#v, ok=%v; want %#v", loaded, ok, want)
+	}
+	restarted.FinishRun("session-1", "run-2", "completed", "done")
+	restarted.ClearACPSessionID("session-1")
+
+	cleared, ok := restarted.StartRun("session-1", "project-1", "run-3", func() {}, AgentRunStartOptions{})
+	if !ok {
+		t.Fatal("starting run after clear failed")
+	}
+	if cleared.SessionID != "" || cleared.InstructionHash != "" {
+		t.Fatalf("cleared ACP state = %#v, want empty", cleared)
+	}
+}
+
 func newTestAgentSessionRepository(t *testing.T) *repository.AgentSessionRepository {
 	t.Helper()
 	db, err := repository.OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))

@@ -52,6 +52,7 @@ type Config struct {
 	AgentBridgeToken         string
 	AgentRunTimeout          time.Duration
 	PromptMaxSectionChars    int
+	PromptDelivery           string
 	DisableGenerationWorker  bool
 	GenerationWorkerInterval time.Duration
 	GenerationWorkerLimit    int

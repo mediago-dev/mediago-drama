@@ -35,6 +35,7 @@ billing:
   price_overlay_path: " ./pricing.json "
 prompt:
   max_section_chars: 9000
+  instruction_delivery: " inline "
 internal_api:
   url: " http://internal.test "
   token: " yaml-token "
@@ -75,6 +76,7 @@ document_mcp:
 		config.Pippit.BinDir != "/opt/vendor/pippit" ||
 		config.Billing.PriceOverlayPath != "./pricing.json" ||
 		config.Prompt.MaxSectionChars != 9000 ||
+		config.Prompt.InstructionDelivery != "inline" ||
 		config.InternalAPI.URL != "http://internal.test" ||
 		config.InternalAPI.Token != "yaml-token" ||
 		config.DocumentMCP.SessionID != "session-yaml" ||
@@ -97,9 +99,25 @@ func TestLoadDefaults(t *testing.T) {
 	if config.Host != "127.0.0.1" ||
 		config.Port != 8080 ||
 		config.Prompt.MaxSectionChars != 12000 ||
+		config.Prompt.InstructionDelivery != "native" ||
 		len(config.GenerationCLIs) != 1 ||
 		config.GenerationCLIs[0] != "dreamina" {
 		t.Fatalf("config = %#v, want default host and port", config)
+	}
+}
+
+func TestLoadNormalizesUnknownPromptInstructionDelivery(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "server.yaml")
+	if err := os.WriteFile(path, []byte("prompt:\n  instruction_delivery: unsupported\n"), 0o600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+
+	config, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if config.Prompt.InstructionDelivery != "native" {
+		t.Fatalf("instruction delivery = %q, want native fallback", config.Prompt.InstructionDelivery)
 	}
 }
 

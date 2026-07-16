@@ -2,14 +2,18 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/url"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 
 	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
 	draftlib "github.com/mediago-dev/mediago-drama/packages/jianyingdraft/pkg/jianyingdraft"
@@ -151,8 +155,9 @@ func newAPIHandler(config Config) *apiHandler {
 		SetProcessConfigProvider(serviceacp.ProcessConfigProvider)
 	}); ok {
 		configurableRunner.SetProcessConfigProvider(serviceacp.ProcessConfigProviderFunc(func(ctx context.Context, request serviceacp.ProcessConfigRequest) (serviceacp.ProcessConfig, error) {
+			nativeInstructions := useNativeACPInstructions(config.PromptDelivery)
 			if request.AgentID == "codex" {
-				config, err := settings.PrepareCodexRelayRuntimeConfig(
+				codexConfig, err := settings.PrepareCodexRelayRuntimeConfig(
 					ctx,
 					request.WorkspaceDir,
 					codexRelayBridgeBaseURL(agentBridgeURL)+"/api/v1/codex-relay",
@@ -160,9 +165,17 @@ func newAPIHandler(config Config) *apiHandler {
 				if err != nil {
 					return serviceacp.ProcessConfig{}, err
 				}
+				env := mergeACPProcessEnv(codexConfig.Env, backendService.ActiveEnv())
+				if nativeInstructions {
+					env, err = withCodexDeveloperInstructions(env, request.FixedInstructions)
+					if err != nil {
+						return serviceacp.ProcessConfig{}, err
+					}
+				}
 				processConfig := serviceacp.ProcessConfig{
-					ConfigDir: config.ConfigDir,
-					Env:       mergeACPProcessEnv(config.Env, backendService.ActiveEnv()),
+					ConfigDir:                  codexConfig.ConfigDir,
+					Env:                        env,
+					NativeInstructionsInjected: nativeInstructions,
 				}
 				if strings.TrimSpace(request.PreferredModel) == "" {
 					check, checkErr := settings.CheckCodexRelay(ctx, servicesettings.CodexRelayCheckRequest{})
@@ -177,18 +190,30 @@ func newAPIHandler(config Config) *apiHandler {
 			if request.AgentID != "opencode" {
 				return serviceacp.ProcessConfig{}, nil
 			}
-			config, err := settings.PrepareOpenCodeRuntimeConfigForModel(ctx, request.WorkspaceDir, request.PreferredModel)
+			var openCodeConfig servicesettings.OpenCodeRuntimeConfig
+			var err error
+			if nativeInstructions {
+				openCodeConfig, err = settings.PrepareOpenCodeRuntimeConfigForModelAndInstructions(
+					ctx,
+					request.WorkspaceDir,
+					request.PreferredModel,
+					request.FixedInstructions,
+				)
+			} else {
+				openCodeConfig, err = settings.PrepareOpenCodeRuntimeConfigForModel(ctx, request.WorkspaceDir, request.PreferredModel)
+			}
 			if err != nil {
 				return serviceacp.ProcessConfig{}, err
 			}
 			return serviceacp.ProcessConfig{
-				ConfigDir:             config.ConfigDir,
-				Env:                   config.Env,
-				ProfileCount:          config.ProfileCount,
-				DefaultProfileID:      config.DefaultProfileID,
-				RestrictModelValues:   config.RestrictModelValues,
-				AllowedModelValues:    config.AllowedModelValues,
-				AllowedModelProviders: config.AllowedModelProviders,
+				ConfigDir:                  openCodeConfig.ConfigDir,
+				Env:                        openCodeConfig.Env,
+				ProfileCount:               openCodeConfig.ProfileCount,
+				DefaultProfileID:           openCodeConfig.DefaultProfileID,
+				RestrictModelValues:        openCodeConfig.RestrictModelValues,
+				AllowedModelValues:         openCodeConfig.AllowedModelValues,
+				AllowedModelProviders:      openCodeConfig.AllowedModelProviders,
+				NativeInstructionsInjected: nativeInstructions,
 			}, nil
 		}))
 	}
@@ -356,6 +381,80 @@ func mergeACPProcessEnv(base map[string]string, overrides map[string]string) map
 		merged["DEFAULT_AUTH_REQUEST"] = `{"methodId":"api-key"}`
 	}
 	return merged
+}
+
+func useNativeACPInstructions(delivery string) bool {
+	return !strings.EqualFold(strings.TrimSpace(delivery), "inline")
+}
+
+func withCodexDeveloperInstructions(env map[string]string, instructions string) (map[string]string, error) {
+	return withCodexDeveloperInstructionsForGOOS(env, instructions, runtime.GOOS)
+}
+
+const windowsEnvironmentVariableMaxUTF16CodeUnits = 32767
+
+func withCodexDeveloperInstructionsForGOOS(env map[string]string, instructions string, targetGOOS string) (map[string]string, error) {
+	result := make(map[string]string, len(env)+1)
+	for key, value := range env {
+		result[key] = value
+	}
+	rawConfig, exists := result["CODEX_CONFIG"]
+	if !exists {
+		rawConfig = os.Getenv("CODEX_CONFIG")
+	}
+	mergedConfig, err := mergeCodexConfigWithDeveloperInstructions(rawConfig, instructions)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateCodexConfigEnvironmentSize(mergedConfig, targetGOOS); err != nil {
+		return nil, err
+	}
+	result["CODEX_CONFIG"] = mergedConfig
+	return result, nil
+}
+
+func validateCodexConfigEnvironmentSize(config string, targetGOOS string) error {
+	if targetGOOS != "windows" {
+		return nil
+	}
+	jsonCodeUnits := utf16CodeUnitCount(config)
+	// A Windows environment entry contains NAME=VALUE followed by a terminating NUL.
+	entryCodeUnits := utf16CodeUnitCount("CODEX_CONFIG="+config) + 1
+	if entryCodeUnits <= windowsEnvironmentVariableMaxUTF16CodeUnits {
+		return nil
+	}
+	return fmt.Errorf(
+		"injecting native Codex developer instructions: CODEX_CONFIG JSON requires %d UTF-16 code units (%d including environment entry overhead) on Windows, exceeding the %d-unit limit; shorten the fixed Agent instructions or set prompt.instruction_delivery to inline",
+		jsonCodeUnits,
+		entryCodeUnits,
+		windowsEnvironmentVariableMaxUTF16CodeUnits,
+	)
+}
+
+func utf16CodeUnitCount(value string) int {
+	return len(utf16.Encode([]rune(value)))
+}
+
+func mergeCodexConfigWithDeveloperInstructions(rawConfig string, instructions string) (string, error) {
+	config := map[string]json.RawMessage{}
+	if strings.TrimSpace(rawConfig) != "" {
+		if err := json.Unmarshal([]byte(rawConfig), &config); err != nil {
+			return "", fmt.Errorf("parsing CODEX_CONFIG as a JSON object: %w", err)
+		}
+		if config == nil {
+			return "", fmt.Errorf("parsing CODEX_CONFIG as a JSON object: value must not be null")
+		}
+	}
+	rawInstructions, err := json.Marshal(instructions)
+	if err != nil {
+		return "", fmt.Errorf("encoding Codex developer instructions: %w", err)
+	}
+	config["developer_instructions"] = rawInstructions
+	encoded, err := json.Marshal(config)
+	if err != nil {
+		return "", fmt.Errorf("encoding CODEX_CONFIG: %w", err)
+	}
+	return string(encoded), nil
 }
 
 func defaultAgentBridgeURL(host string, port int) string {

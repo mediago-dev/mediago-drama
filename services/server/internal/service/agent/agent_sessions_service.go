@@ -18,22 +18,30 @@ type SessionService struct {
 }
 
 type agentSession struct {
-	projectID     string
-	title         string
-	ACPSessionID  string
-	runs          map[string]*AgentRun
-	lastRootRunID string
-	lastStatus    string
-	lastMessage   string
+	projectID          string
+	title              string
+	ACPSessionID       string
+	ACPInstructionHash string
+	runs               map[string]*AgentRun
+	lastRootRunID      string
+	lastStatus         string
+	lastMessage        string
 }
 
 type AgentRun struct {
-	RunID        string
-	ACPSessionID string
-	Cancel       context.CancelFunc
-	Status       string
-	Message      string
-	AgentTag     string
+	RunID              string
+	ACPSessionID       string
+	ACPInstructionHash string
+	Cancel             context.CancelFunc
+	Status             string
+	Message            string
+	AgentTag           string
+}
+
+// ACPSessionState identifies reusable Agent state and the instructions it uses.
+type ACPSessionState struct {
+	SessionID       string
+	InstructionHash string
 }
 
 type AgentRunStartOptions struct {
@@ -253,7 +261,7 @@ func (store *SessionService) StartRun(
 	RunID string,
 	Cancel context.CancelFunc,
 	options AgentRunStartOptions,
-) (string, bool) {
+) (ACPSessionState, bool) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
@@ -264,11 +272,14 @@ func (store *SessionService) StartRun(
 	}
 	session, ok := store.sessions[sessionID]
 	if !ok || session.projectID != strings.TrimSpace(projectID) {
-		return "", false
+		return ACPSessionState{}, false
 	}
 
 	if session.hasActiveRuns() {
-		return session.ACPSessionID, false
+		return ACPSessionState{
+			SessionID:       session.ACPSessionID,
+			InstructionHash: session.ACPInstructionHash,
+		}, false
 	}
 	session.lastRootRunID = RunID
 	session.lastStatus = "running"
@@ -283,7 +294,10 @@ func (store *SessionService) StartRun(
 	session.runs[RunID] = run
 	store.persistSessionUnlocked(sessionID, session)
 	store.persistRunUnlocked(sessionID, run, false)
-	return session.ACPSessionID, true
+	return ACPSessionState{
+		SessionID:       session.ACPSessionID,
+		InstructionHash: session.ACPInstructionHash,
+	}, true
 }
 
 // Run returns a copy of a run.
@@ -409,6 +423,7 @@ func (store *SessionService) FinishRun(sessionID string, RunID string, Status st
 	run.Status = normalizeRunStatus(Status)
 	if run.ACPSessionID != "" {
 		session.ACPSessionID = run.ACPSessionID
+		session.ACPInstructionHash = run.ACPInstructionHash
 	}
 	session.lastStatus = run.Status
 	session.lastMessage = Message
@@ -421,9 +436,9 @@ func (store *SessionService) FinishRun(sessionID string, RunID string, Status st
 	}
 }
 
-// SetACPSessionID records the ACP session ID for a run.
-func (store *SessionService) SetACPSessionID(sessionID string, RunID string, ACPSessionID string) {
-	if ACPSessionID == "" {
+// SetACPSessionState records reusable ACP state for a run.
+func (store *SessionService) SetACPSessionState(sessionID string, RunID string, state ACPSessionState) {
+	if strings.TrimSpace(state.SessionID) == "" {
 		return
 	}
 
@@ -445,10 +460,17 @@ func (store *SessionService) SetACPSessionID(sessionID string, RunID string, ACP
 	if !ok {
 		return
 	}
-	run.ACPSessionID = ACPSessionID
-	session.ACPSessionID = ACPSessionID
+	run.ACPSessionID = strings.TrimSpace(state.SessionID)
+	run.ACPInstructionHash = strings.TrimSpace(state.InstructionHash)
+	session.ACPSessionID = run.ACPSessionID
+	session.ACPInstructionHash = run.ACPInstructionHash
 	store.persistSessionUnlocked(sessionID, session)
 	store.persistRunUnlocked(sessionID, run, false)
+}
+
+// SetACPSessionID records a legacy ACP session without an instruction fingerprint.
+func (store *SessionService) SetACPSessionID(sessionID string, RunID string, ACPSessionID string) {
+	store.SetACPSessionState(sessionID, RunID, ACPSessionState{SessionID: ACPSessionID})
 }
 
 // ClearACPSessionID clears the reusable ACP session ID.
@@ -468,6 +490,7 @@ func (store *SessionService) ClearACPSessionID(sessionID string) {
 		return
 	}
 	session.ACPSessionID = ""
+	session.ACPInstructionHash = ""
 	store.persistSessionUnlocked(sessionID, session)
 }
 

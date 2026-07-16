@@ -39,3 +39,4 @@ billing:
 #   selection_text: ""
 prompt:
   max_section_chars: 12000
+  instruction_delivery: native # native (default) or inline rollback mode.

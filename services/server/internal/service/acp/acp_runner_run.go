@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -47,7 +46,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		"workspace", workspaceDir,
 		"cwd", runDir,
 	}
-	acpLog().Info("acp process starting", logArgs...)
+	acpLog().Info("acp run starting", logArgs...)
 	rawLog := newACPRawLogger(workspaceDir, request.ProjectDir, request.ProjectID, request.SessionID, request.RunID)
 	client := &acpClient{
 		publish:      publish,
@@ -57,86 +56,91 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		rawLog:       rawLog,
 	}
 
-	processConfig, err := runner.prepareProcessConfig(ctx, command, args, request)
+	fixedInstructions := runner.fixedInstructions(request)
+	processConfig, err := runner.prepareProcessConfig(ctx, command, args, request, fixedInstructions)
 	if err != nil {
 		return agentRunResult{}, err
 	}
-	cmd := exec.CommandContext(ctx, command, args...)
-	if runDir != "" {
-		cmd.Dir = runDir
+	instructionDelivery := "inline"
+	if processConfig.NativeInstructionsInjected {
+		instructionDelivery = "native"
 	}
-	cmd.Env = mergedProcessEnv(processConfig)
-	cmd.Stderr = acpStderrWriter{
-		publish:            publish,
-		recordRuntimeError: client.setRuntimeErrorMessage,
-		sessionID:          request.SessionID,
-		runID:              request.RunID,
-		rawLog:             rawLog,
+	currentInstructionHash := instructionFingerprint(
+		acpBackendIdentity(command, args),
+		instructionDelivery,
+		fixedInstructions,
+	)
+	processSpec := acpResidentProcessSpec{
+		command:         command,
+		args:            append([]string(nil), args...),
+		dir:             runDir,
+		workspaceDir:    workspaceDir,
+		env:             mergedProcessEnv(processConfig),
+		configDir:       processConfig.ConfigDir,
+		instructionHash: currentInstructionHash,
+		logArgs:         append([]any(nil), logArgs...),
 	}
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return agentRunResult{}, fmt.Errorf("opening ACP stdin: %w", err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return agentRunResult{}, fmt.Errorf("opening ACP stdout: %w", err)
-	}
+	processSpec.fingerprint = residentACPProcessFingerprint(processSpec)
 
-	if err := cmd.Start(); err != nil {
-		acpLog().Error("acp process start failed", append(logArgs, "error", err)...)
-		return agentRunResult{}, fmt.Errorf("starting ACP agent %q: %w", command, err)
+	lease, err := runner.acquireResidentLease(request.SessionID)
+	if err != nil {
+		return agentRunResult{}, err
 	}
-	startedAt := time.Now()
-	pid := 0
-	if cmd.Process != nil {
-		pid = cmd.Process.Pid
-	}
-	acpLog().Info("acp process started", append(logArgs, "pid", pid)...)
-	defer func() {
-		cleanupACPProcess(cmd, stdin, stdout, logArgs, pid, startedAt)
-	}()
-
-	runner.activeClients.Store(request.SessionID, client)
+	residentEnabled := supportsResidentACP(command, args)
+	retainProcess := false
+	var process *acpResidentProcess
+	var router *acpClientRouter
 	defer func() {
 		client.cancelPendingPermissions()
 		runner.activeClients.Delete(request.SessionID)
+		if router != nil {
+			router.unbind(client)
+		}
+		if !retainProcess || !residentEnabled {
+			lease.invalidate(process)
+		}
+		lease.release()
 	}()
-	conn := acp.NewClientSideConnection(client, stdin, newACPStdoutLogReader(stdout, rawLog))
-	conn.SetLogger(acpLog())
 
-	acpLog().Debug("acp initialize starting", logArgs...)
-	initializeStartedAt := time.Now()
-	initializeResponse, err := conn.Initialize(ctx, acp.InitializeRequest{
-		ProtocolVersion: acp.ProtocolVersionNumber,
-		ClientInfo: &acp.Implementation{
-			Name:    "MediaGo Drama",
-			Version: "0.0.0",
-		},
-		ClientCapabilities: acp.ClientCapabilities{
-			Fs: acp.FileSystemCapabilities{
-				ReadTextFile:  true,
-				WriteTextFile: true,
-			},
-			Terminal: false,
-		},
-	})
-	if err != nil {
-		acpLog().Error("acp initialize failed", append(logArgs, "error", err)...)
-		return agentRunResult{}, fmt.Errorf("initializing ACP agent: %w", err)
+	process = lease.process()
+	if process != nil && process.fingerprint != processSpec.fingerprint {
+		acpLog().Info("acp resident process config changed; restarting", logArgs...)
+		lease.invalidate(process)
+		process = nil
 	}
-	acpLog().Info(
-		"acp initialize completed",
-		append(logArgs,
-			"duration_ms", time.Since(initializeStartedAt).Milliseconds(),
-			"protocol_version", initializeResponse.ProtocolVersion,
-			"agent", ImplementationLabel(initializeResponse.AgentInfo),
-			"mcp_capability_acp", initializeResponse.AgentCapabilities.McpCapabilities.Acp,
-			"mcp_capability_http", initializeResponse.AgentCapabilities.McpCapabilities.Http,
-			"mcp_capability_sse", initializeResponse.AgentCapabilities.McpCapabilities.Sse,
-			"resume_supported", initializeResponse.AgentCapabilities.SessionCapabilities.Resume != nil,
-			"load_session_supported", initializeResponse.AgentCapabilities.LoadSession,
-		)...,
-	)
+	if process == nil {
+		router = &acpClientRouter{}
+		if err := router.bind(client); err != nil {
+			return agentRunResult{}, err
+		}
+		runner.activeClients.Store(request.SessionID, client)
+		process, err = runner.startResidentProcess(ctx, processSpec, router)
+		if err != nil {
+			return agentRunResult{}, err
+		}
+		if err := lease.setProcess(process); err != nil {
+			return agentRunResult{}, err
+		}
+		if err := runner.initializeResidentProcess(ctx, process, processSpec); err != nil {
+			lease.invalidate(process)
+			return agentRunResult{}, err
+		}
+	} else {
+		router = process.router
+		if router == nil {
+			return agentRunResult{}, fmt.Errorf("reusing ACP resident process: missing client router")
+		}
+		if err := router.bind(client); err != nil {
+			return agentRunResult{}, err
+		}
+		runner.activeClients.Store(request.SessionID, client)
+		acpLog().Info("acp resident process reused", logArgs...)
+	}
+	conn := process.connection
+	initializeResponse := process.initializeResponse
+	invalidateCancelledProcess := func() {
+		lease.invalidate(process)
+	}
 
 	mcpResolution := resolveDocumentMCPServersForRun(workspaceDir, request)
 	mcpServers := mcpResolution.Servers
@@ -177,6 +181,17 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	sessionID := acp.SessionId(strings.TrimSpace(request.ACPSessionID))
 	hadPriorACPSession := sessionID != ""
 	reusedACPSession := false
+	if sessionID != "" && !instructionHashMatches(request.ACPInstructionHash, currentInstructionHash) {
+		acpLog().Info(
+			"acp session instruction fingerprint changed; creating new session",
+			append(logArgs, "acp_session_id", sessionID)...,
+		)
+		publish(agentEvent{
+			Type:    "agent.activity",
+			Message: "Agent 指令已更新，正在迁移到新会话。",
+		})
+		sessionID = ""
+	}
 	if sessionID != "" {
 		if initializeResponse.AgentCapabilities.SessionCapabilities.Resume != nil {
 			acpLog().Debug("acp session resume starting", append(logArgs, "acp_session_id", sessionID)...)
@@ -240,7 +255,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		return agentRunResult{}, err
 	}
 
-	prompt := runner.buildPromptForRequest(request)
+	prompt := runner.buildPromptForRequest(request, fixedInstructions, processConfig.NativeInstructionsInjected)
 	recapInjected := false
 	// A continuation whose previous ACP session could not be reused starts
 	// from a blank session: replay a compact transcript recap so decisions the
@@ -256,13 +271,23 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 			})
 		}
 	}
-	acpLog().Debug("acp.prompt.assembled", append(logArgs, "acp_session_id", sessionID, "bytes", len(prompt))...)
+	acpLog().Debug(
+		"acp.prompt.assembled",
+		append(logArgs,
+			"acp_session_id", sessionID,
+			"bytes", len(prompt),
+			"fixed_instruction_bytes", len(fixedInstructions),
+			"instruction_delivery", instructionDelivery,
+		)...,
+	)
 	acpLog().Info(
 		"acp prompt starting",
 		append(logArgs,
 			"acp_session_id", sessionID,
 			"prompt_len", len(prompt),
 			"user_prompt_len", len(request.Prompt),
+			"fixed_instruction_len", len(fixedInstructions),
+			"instruction_delivery", instructionDelivery,
 			"has_document", request.Document != nil,
 			"document_count", len(request.Documents),
 		)...,
@@ -272,7 +297,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		Prompt:    []acp.ContentBlock{acp.TextBlock(prompt)},
 	}
 	promptStartedAt := time.Now()
-	promptResponse, err := promptACPSession(ctx, conn, client, promptRequest)
+	promptResponse, err := promptACPSession(ctx, conn, client, promptRequest, invalidateCancelledProcess)
 	if err != nil && reusedACPSession && isACPResourceNotFoundError(err) {
 		acpLog().Warn("acp prompt failed for resumed session; retrying new session", append(logArgs, "acp_session_id", sessionID, "error", err)...)
 		publish(agentEvent{
@@ -306,7 +331,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		}
 		acpLog().Info("acp retry prompt starting", append(logArgs, "acp_session_id", sessionID)...)
 		promptStartedAt = time.Now()
-		promptResponse, err = promptACPSession(ctx, conn, client, promptRequest)
+		promptResponse, err = promptACPSession(ctx, conn, client, promptRequest, invalidateCancelledProcess)
 	}
 	if err == nil && shouldRetryEmptyACPPrompt(promptResponse, client.messageText(), client.runtimeErrorText(), client.hasPromptActivity()) {
 		acpLog().Warn(
@@ -354,7 +379,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		}
 		acpLog().Info("acp empty-response retry prompt starting", append(logArgs, "acp_session_id", sessionID)...)
 		promptStartedAt = time.Now()
-		promptResponse, err = promptACPSession(ctx, conn, client, promptRequest)
+		promptResponse, err = promptACPSession(ctx, conn, client, promptRequest, invalidateCancelledProcess)
 	}
 	if err != nil {
 		acpLog().Error("acp prompt failed", append(logArgs, "acp_session_id", sessionID, "duration_ms", time.Since(promptStartedAt).Milliseconds(), "error", err)...)
@@ -397,7 +422,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		finalPromptResponse, finalPromptErr := promptACPSession(ctx, conn, client, acp.PromptRequest{
 			SessionId: sessionID,
 			Prompt:    []acp.ContentBlock{acp.TextBlock(buildACPFinalMessagePrompt())},
-		})
+		}, invalidateCancelledProcess)
 		if finalPromptErr != nil {
 			acpLog().Error(
 				"acp final-message prompt failed",
@@ -462,32 +487,64 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		), client.promptMetrics()...)...,
 	)
 
+	retainProcess = true
 	return agentRunResult{
-		ACPSessionID:     string(sessionID),
-		Message:          final.Message,
-		MessageItemID:    client.messageItemID(),
-		StreamedMessage:  client.hasStreamedMessage(),
-		DocumentProposal: final.ProposedDocument,
-		A2UI:             final.A2UI,
+		ACPSessionID:       string(sessionID),
+		ACPInstructionHash: currentInstructionHash,
+		Message:            final.Message,
+		MessageItemID:      client.messageItemID(),
+		StreamedMessage:    client.hasStreamedMessage(),
+		DocumentProposal:   final.ProposedDocument,
+		A2UI:               final.A2UI,
 	}, nil
 }
 
-func promptACPSession(ctx context.Context, conn *acp.ClientSideConnection, client *acpClient, request acp.PromptRequest) (acp.PromptResponse, error) {
+func promptACPSession(
+	ctx context.Context,
+	conn acpPromptConnection,
+	client *acpClient,
+	request acp.PromptRequest,
+	onCancellationTimeout func(),
+) (acp.PromptResponse, error) {
 	client.resetMessage()
 	client.beginPromptMetrics()
 	client.setAcceptingSessionUpdates(true)
+	promptDone := make(chan struct{})
+	if onCancellationTimeout != nil && ctx.Done() != nil {
+		go func() {
+			select {
+			case <-ctx.Done():
+				timer := time.NewTimer(residentACPCancelGracePeriod)
+				defer timer.Stop()
+				select {
+				case <-timer.C:
+					onCancellationTimeout()
+				case <-promptDone:
+				}
+			case <-promptDone:
+			}
+		}()
+	}
 	response, err := conn.Prompt(ctx, request)
+	close(promptDone)
 	client.setAcceptingSessionUpdates(false)
 	client.finishThoughts()
+	if err == nil && ctx.Err() != nil {
+		err = ctx.Err()
+	}
 	return response, err
 }
 
-func (runner *acpAgentRunner) buildPromptForRequest(request agentRunRequest) string {
+func (runner *acpAgentRunner) buildPromptForRequest(
+	request agentRunRequest,
+	fixedInstructions string,
+	nativeInstructionsInjected bool,
+) string {
 	userPrompt := strings.TrimSpace(BuildACPUserPrompt(request))
-	if runner == nil || runner.buildPrompt == nil {
+	if nativeInstructionsInjected {
 		return userPrompt
 	}
-	systemPrompt := strings.TrimSpace(runner.buildPrompt(request))
+	systemPrompt := strings.TrimSpace(fixedInstructions)
 	if systemPrompt == "" {
 		return userPrompt
 	}
