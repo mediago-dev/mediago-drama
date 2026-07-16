@@ -1,4 +1,4 @@
-import { Check, Circle, LoaderCircle } from "lucide-react";
+import { Check, Circle, LoaderCircle, X } from "lucide-react";
 import type React from "react";
 import type { AgentACPPlanEntry } from "@/domains/agent/stores";
 import { cn } from "@/shared/lib/utils";
@@ -25,6 +25,7 @@ export const PlanBlock: React.FC<{ content: string; entries?: AgentACPPlanEntry[
 									"agent-plan-status-icon mt-0.5 size-3.5 shrink-0",
 									entry.status === "completed" && "text-success-foreground",
 									entry.status === "in_progress" && "animate-spin text-warning-foreground",
+									entry.status === "failed" && "text-error-foreground",
 								)}
 							/>
 							<span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
@@ -61,5 +62,6 @@ export const PlanBlock: React.FC<{ content: string; entries?: AgentACPPlanEntry[
 const planStatusIcon = (status: string) => {
 	if (status === "completed") return Check;
 	if (status === "in_progress") return LoaderCircle;
+	if (status === "failed") return X;
 	return Circle;
 };

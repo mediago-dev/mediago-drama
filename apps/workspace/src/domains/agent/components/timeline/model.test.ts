@@ -206,6 +206,44 @@ describe("agent turn view model", () => {
 		expect(turns[0]?.processItems.map((item) => item.id)).toEqual(["long-commentary"]);
 		expect(turns[0]?.finalAnswerItems.map((item) => item.id)).toEqual(["short-final"]);
 	});
+
+	it("settles stale plan progress when a turn reaches a terminal state", () => {
+		const plan = message({
+			id: "plan-1",
+			kind: "plan",
+			metadata: {
+				planEntries: [
+					{ content: "读取资料", status: "completed" },
+					{ content: "生成内容", status: "in_progress" },
+					{ content: "回写结果", status: "pending" },
+				],
+			},
+		});
+		const succeeded = buildAgentTurnViewModels([
+			message({ id: "user-success", role: "user", turnId: "turn-success" }),
+			{ ...plan, turnId: "turn-success" },
+			message({ id: "final-success", turnId: "turn-success", phase: "final_answer" }),
+		]);
+		const failed = buildAgentTurnViewModels(
+			[
+				message({ id: "user-failed", role: "user", turnId: "turn-failed" }),
+				{ ...plan, id: "plan-failed", turnId: "turn-failed" },
+			],
+			{ activeTurnId: "turn-failed", activeTurn: { lifecycle: "completed", outcome: "failed" } },
+		);
+
+		expect(
+			succeeded[0]?.processItems[0]?.metadata?.planEntries?.map((entry) => entry.status),
+		).toEqual(["completed", "completed", "completed"]);
+		expect(failed[0]?.processItems[0]?.metadata?.planEntries?.map((entry) => entry.status)).toEqual(
+			["completed", "pending", "pending"],
+		);
+		expect(plan.metadata?.planEntries?.map((entry) => entry.status)).toEqual([
+			"completed",
+			"in_progress",
+			"pending",
+		]);
+	});
 });
 
 describe("legacy timeline compatibility", () => {

@@ -1,49 +1,8 @@
 package mcp
 
-import coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
-
-// GenerationListModelsInput is the input for list_generation_models.
-type GenerationListModelsInput struct {
-	Kind string `json:"kind,omitempty" jsonschema:"可选：只返回该类型的目录（image、video、audio 或 text）；省略时返回全部。"`
-}
-
-// GenerationModelsOutput returns the generation catalog.
-type GenerationModelsOutput struct {
-	Families      []coregeneration.ModelFamily  `json:"families"`
-	Versions      []coregeneration.ModelVersion `json:"versions"`
-	Routes        []coregeneration.ModelRoute   `json:"routes"`
-	Models        []coregeneration.ModelSpec    `json:"models"`
-	Providers     []coregeneration.ProviderInfo `json:"providers"`
-	VoicePreviews []GenerationVoicePreviewAsset `json:"voicePreviews,omitempty"`
-	Preferences   *GenerationPreferences        `json:"preferences,omitempty"`
-}
-
-// GenerationVoicePreviewAsset is one built-in local voice preview.
-type GenerationVoicePreviewAsset struct {
-	RouteID  string `json:"routeId"`
-	VoiceID  string `json:"voiceId"`
-	URL      string `json:"url"`
-	MIMEType string `json:"mimeType"`
-}
-
-// GenerationPreferences mirrors the user's generation workbench defaults so
-// agents can propose the user's usual setup as the default plan.
-type GenerationPreferences struct {
-	RouteIDs    map[string]string         `json:"routeIds,omitempty"`
-	RouteParams map[string]map[string]any `json:"routeParams,omitempty"`
-}
-
-// GenerationSelectAssetInput marks one generated asset slot as the picked result.
-type GenerationSelectAssetInput struct {
-	TaskID       string `json:"taskId" jsonschema:"生成任务 ID。"`
-	SlotIndex    int    `json:"slotIndex" jsonschema:"资产槽位序号，取 get_generation_task 返回资产的 slotIndex。"`
-	Title        string `json:"title,omitempty" jsonschema:"可选：同时更新资产标题。"`
-	ResourceType string `json:"resourceType,omitempty" jsonschema:"资源类型：character、scene、prop 或 storyboard；任务带 documentContext 生成时服务端已自动归属可省略，否则为项目资源定稿时必传。"`
-}
-
 // GenerationMessageInput creates a generation request.
 type GenerationMessageInput struct {
-	ConfirmationSelectionID string                             `json:"confirmationSelectionId,omitempty" jsonschema:"本次生成参数表单提交后返回的 selectionId；Agent 发起图片或视频生成时必填，服务端会核验其属于当前 run、状态为 submitted，且路由参数、参考图、附加提示词和提示词优化与已确认值一致。"`
+	ConfirmationSelectionID string                             `json:"confirmationSelectionId,omitempty" jsonschema:"本次生成参数表单提交后返回的 selectionId；Agent 发起图片或视频生成时必填，一次确认只授权一次完整单项请求，服务端会核验意图、当前 run 和已确认设置。"`
 	Kind                    string                             `json:"kind,omitempty" jsonschema:"生成类型：image、video、audio 或 text；默认 image。"`
 	ConversationID          string                             `json:"sessionId,omitempty" jsonschema:"生成会话 ID。"`
 	ScopeID                 string                             `json:"scopeId,omitempty" jsonschema:"生成会话作用域。"`
@@ -54,7 +13,7 @@ type GenerationMessageInput struct {
 	CapabilityID            string                             `json:"capabilityId,omitempty" jsonschema:"能力 ID。"`
 	ResourceType            string                             `json:"resourceType,omitempty" jsonschema:"可选：目标资源类型（character、scene、prop、storyboard）；带 documentContext 时服务端会按目标文档类型自动归属，无需传。"`
 	NotificationTarget      *GenerationNotificationTarget      `json:"notificationTarget,omitempty" jsonschema:"生成完成后的通知目标。"`
-	RouteID                 string                             `json:"routeId,omitempty" jsonschema:"模型路由 ID，优先从 list_generation_models 选择。"`
+	RouteID                 string                             `json:"routeId,omitempty" jsonschema:"模型路由 ID；Agent 图片或视频生成时必须与已提交 generation_settings 中的 routeId 一致。"`
 	FamilyID                string                             `json:"familyId,omitempty" jsonschema:"模型家族 ID。"`
 	VersionID               string                             `json:"versionId,omitempty" jsonschema:"模型版本 ID。"`
 	Provider                string                             `json:"provider,omitempty" jsonschema:"供应商。"`
@@ -79,18 +38,19 @@ type GenerationPromptSupplementInput struct {
 
 // GenerationBatchInput submits multiple normal media generation requests together.
 type GenerationBatchInput struct {
-	Kind              string                     `json:"kind,omitempty" jsonschema:"批次共用生成类型；指定 sessionId 时必填。"`
-	ConversationID    string                     `json:"sessionId,omitempty" jsonschema:"批次共用生成会话 ID。"`
-	ConversationTitle string                     `json:"conversationTitle,omitempty" jsonschema:"创建批次共用会话时使用的标题。"`
-	ProjectID         string                     `json:"projectId,omitempty" jsonschema:"项目 ID；项目级 MCP 可省略。"`
-	ScopeID           string                     `json:"scopeId,omitempty" jsonschema:"批次内请求缺省使用的会话作用域。"`
-	Items             []GenerationBatchItemInput `json:"items" jsonschema:"批次子请求，按输入顺序返回；最多 50 项。"`
+	ConfirmationSelectionID string                     `json:"confirmationSelectionId,omitempty" jsonschema:"批次级确认 ID；Agent 发起图片或视频批次时必填，一次确认授权一个完整有序批次，子项不得各自提供确认 ID。"`
+	Kind                    string                     `json:"kind,omitempty" jsonschema:"批次共用生成类型；指定 sessionId 时必填。"`
+	ConversationID          string                     `json:"sessionId,omitempty" jsonschema:"批次共用生成会话 ID。"`
+	ConversationTitle       string                     `json:"conversationTitle,omitempty" jsonschema:"创建批次共用会话时使用的标题。"`
+	ProjectID               string                     `json:"projectId,omitempty" jsonschema:"项目 ID；项目级 MCP 可省略。"`
+	ScopeID                 string                     `json:"scopeId,omitempty" jsonschema:"批次内请求缺省使用的会话作用域。"`
+	Items                   []GenerationBatchItemInput `json:"items" jsonschema:"批次子请求，按输入顺序返回；最多 50 项。"`
 }
 
 // GenerationBatchItemInput is one ordered child request in a generation batch.
 type GenerationBatchItemInput struct {
 	ID      string                 `json:"id,omitempty" jsonschema:"调用方用于匹配结果的唯一子项 ID；省略时服务端按顺序生成。"`
-	Request GenerationMessageInput `json:"request" jsonschema:"与 generate_media 相同的单项生成参数。"`
+	Request GenerationMessageInput `json:"request" jsonschema:"与 generate_media 相同的单项生成参数；Agent 图片或视频批次不得在子项设置 confirmationSelectionId，只能使用批次顶层确认 ID。"`
 }
 
 // GenerationBatchItemOutput reports one child submission result.
@@ -165,7 +125,7 @@ type GenerationNotificationTarget struct {
 	Section       GenerationNotificationSectionTarget `json:"section"`
 }
 
-// GenerationMessageOutput is returned by generation create/poll/retry calls.
+// GenerationMessageOutput is returned by generation create calls.
 type GenerationMessageOutput struct {
 	ID        string            `json:"id"`
 	Role      string            `json:"role"`
@@ -204,78 +164,4 @@ type GenerationUsage struct {
 	TotalTokens     int `json:"totalTokens"`
 	ReasoningTokens int `json:"reasoningTokens"`
 	CachedTokens    int `json:"cachedTokens"`
-}
-
-// GenerationTaskInput identifies one generation task.
-type GenerationTaskInput struct {
-	TaskID string `json:"taskId" jsonschema:"生成任务 ID。"`
-}
-
-// GenerationTaskListInput filters generation tasks.
-type GenerationTaskListInput struct {
-	BatchID        string `json:"batchId,omitempty" jsonschema:"可选：只返回指定批次的子任务。"`
-	ConversationID string `json:"sessionId,omitempty" jsonschema:"生成会话 ID。"`
-	Kind           string `json:"kind,omitempty" jsonschema:"生成类型。"`
-	ProjectID      string `json:"projectId,omitempty" jsonschema:"项目 ID；项目级 MCP 可省略。"`
-	ScopeID        string `json:"scopeId,omitempty" jsonschema:"会话作用域。"`
-	Limit          int    `json:"limit,omitempty" jsonschema:"分页大小。"`
-	Offset         int    `json:"offset,omitempty" jsonschema:"分页偏移。"`
-}
-
-// GenerationTaskRecord is a persisted generation task.
-type GenerationTaskRecord struct {
-	ID                string                        `json:"id"`
-	BatchID           string                        `json:"batchId,omitempty"`
-	BatchItemID       string                        `json:"batchItemId,omitempty"`
-	BatchIndex        int                           `json:"batchIndex,omitempty"`
-	ProviderTaskID    string                        `json:"providerTaskId,omitempty"`
-	ConversationID    string                        `json:"sessionId,omitempty"`
-	ProjectID         string                        `json:"projectId,omitempty"`
-	DocumentID        string                        `json:"documentId,omitempty"`
-	SectionID         string                        `json:"sectionId,omitempty"`
-	CapabilityID      string                        `json:"capabilityId,omitempty"`
-	ResourceType      string                        `json:"resourceType,omitempty"`
-	Kind              string                        `json:"kind"`
-	RouteID           string                        `json:"routeId"`
-	FamilyID          string                        `json:"familyId"`
-	VersionID         string                        `json:"versionId"`
-	Provider          string                        `json:"provider"`
-	ModelID           string                        `json:"modelId"`
-	Model             string                        `json:"model"`
-	Prompt            string                        `json:"prompt"`
-	ReferenceURLs     []string                      `json:"referenceUrls"`
-	ReferenceAssetIDs []string                      `json:"referenceAssetIds"`
-	Params            map[string]any                `json:"params"`
-	Status            string                        `json:"status"`
-	Message           string                        `json:"message"`
-	Text              string                        `json:"text,omitempty"`
-	Assets            []GenerationAsset             `json:"assets"`
-	DeletedAssetSlots []int                         `json:"deletedAssetSlots,omitempty"`
-	Usage             GenerationUsage               `json:"usage"`
-	Error             string                        `json:"error,omitempty"`
-	ErrorCode         string                        `json:"errorCode,omitempty"`
-	ErrorType         string                        `json:"errorType,omitempty"`
-	Retryable         bool                          `json:"retryable,omitempty"`
-	CreatedAt         string                        `json:"createdAt"`
-	UpdatedAt         string                        `json:"updatedAt"`
-	DurationMS        int64                         `json:"durationMs,omitempty"`
-	Attempts          []GenerationTaskAttemptRecord `json:"attempts,omitempty"`
-	RetryCount        int                           `json:"retryCount"`
-	LastAttemptAt     string                        `json:"lastAttemptAt,omitempty"`
-}
-
-// GenerationTaskAttemptRecord is a stored task attempt.
-type GenerationTaskAttemptRecord struct {
-	ID        string `json:"id"`
-	TaskID    string `json:"taskId"`
-	Action    string `json:"action"`
-	Status    string `json:"status"`
-	Message   string `json:"message,omitempty"`
-	Error     string `json:"error,omitempty"`
-	CreatedAt string `json:"createdAt"`
-}
-
-// GenerationTasksOutput lists generation tasks.
-type GenerationTasksOutput struct {
-	Tasks []GenerationTaskRecord `json:"tasks"`
 }

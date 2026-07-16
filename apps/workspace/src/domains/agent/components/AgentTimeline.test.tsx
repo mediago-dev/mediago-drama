@@ -1,29 +1,7 @@
-import type { Key, ReactNode } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { type AgentMessage, useAgentStore } from "@/domains/agent/stores";
 import { AgentTimeline } from "./AgentTimeline";
-
-vi.mock("react-virtuoso", () => ({
-	Virtuoso: ({ className, data = [], computeItemKey, itemContent }: MockVirtuosoProps) => (
-		<div className={className} data-testid="virtuoso">
-			{[{ index: -1, item: undefined }, ...data.map((item, index) => ({ index, item }))].map(
-				({ index, item }) => (
-					<div key={computeItemKey?.(index, item, undefined) ?? index}>
-						{itemContent(index, item, undefined)}
-					</div>
-				),
-			)}
-		</div>
-	),
-}));
-
-interface MockVirtuosoProps {
-	className?: string;
-	data?: unknown[];
-	computeItemKey?: (index: number, item: unknown, context: unknown) => Key;
-	itemContent: (index: number, item: unknown, context: unknown) => ReactNode;
-}
 
 describe("AgentTimeline", () => {
 	afterEach(() => {
@@ -36,7 +14,31 @@ describe("AgentTimeline", () => {
 		});
 	});
 
-	it("ignores transient empty rows emitted by the virtual list", () => {
+	it("uses real content height and bottom-aligns short conversations", () => {
+		useAgentStore.setState({ sessionId: "session-1" });
+
+		render(
+			<AgentTimeline
+				isRunning={false}
+				messages={[
+					userMessage({
+						content: "第一轮消息",
+					}),
+					userMessage({
+						id: "user-message-2",
+						content: "贴近输入框显示",
+					}),
+				]}
+			/>,
+		);
+
+		expect(screen.getByTestId("agent-timeline")).toHaveAttribute("data-agent-session", "session-1");
+		expect(screen.getByTestId("agent-timeline")).toHaveClass("overflow-y-auto");
+		expect(screen.getByTestId("agent-timeline-list")).toHaveClass("min-h-full", "justify-end");
+		expect(screen.getByText("第一轮消息").closest(".agent-timeline-row")).toHaveClass("w-full");
+	});
+
+	it("renders conversation rows without virtual placeholders", () => {
 		expect(() =>
 			render(
 				<AgentTimeline
@@ -293,7 +295,8 @@ describe("AgentTimeline", () => {
 		);
 
 		const heading = screen.getByText("第二章 · 分镜文档已生成");
-		expect(heading.closest(".agent-final-answer")).toBeInTheDocument();
+		expect(heading.closest(".agent-final-answer")).toHaveClass("w-full");
+		expect(heading.closest(".agent-turn-response")).toHaveClass("w-full");
 		expect(screen.getByText("共拆解 18 个镜头")).toBeTruthy();
 		expect(screen.queryByText("文档智能体")).not.toBeInTheDocument();
 		expect(screen.queryByText("最终回复")).not.toBeInTheDocument();
@@ -322,34 +325,36 @@ describe("AgentTimeline", () => {
 		expect(screen.getByText("需要先读取项目结构，再输出结论。")).toBeInTheDocument();
 	});
 
-	it("renders plan entries with progress state", () => {
-		render(
-			<AgentTimeline
-				isRunning={false}
-				messages={[
-					assistantMessage({
-						id: "plan-1",
-						kind: "plan",
-						content: "",
-						metadata: {
-							planEntries: [
-								{ content: "读取第二章剧本与角色设定", status: "completed" },
-								{ content: "匹配分镜模板与镜头规范", status: "completed" },
-								{ content: "逐场拆解镜头并撰写画面说明", status: "in_progress" },
-							],
-						},
-					}),
-				]}
-			/>,
-		);
+	it("settles plan progress and stops its spinner after the task completes", () => {
+		const messages = [
+			assistantMessage({
+				id: "plan-1",
+				kind: "plan",
+				content: "",
+				metadata: {
+					planEntries: [
+						{ content: "读取第二章剧本与角色设定", status: "completed" },
+						{ content: "匹配分镜模板与镜头规范", status: "completed" },
+						{ content: "逐场拆解镜头并撰写画面说明", status: "in_progress" },
+					],
+				},
+			}),
+		];
+		const view = render(<AgentTimeline isRunning messages={messages} />);
+
+		expect(screen.queryByText("2 / 3 完成")).not.toBeInTheDocument();
+		expect(document.querySelector(".agent-plan-status-icon.animate-spin")).toBeNull();
+
+		view.rerender(<AgentTimeline isRunning={false} messages={messages} />);
 
 		const disclosure = screen.getByRole("button", { name: /已处理/ });
 		expect(disclosure).toHaveAttribute("aria-expanded", "false");
 		fireEvent.click(disclosure);
 
-		expect(screen.getByText("2 / 3 完成")).toBeTruthy();
+		expect(screen.getByText("3 / 3 完成")).toBeTruthy();
 		expect(screen.getByText("读取第二章剧本与角色设定")).toBeTruthy();
 		expect(screen.getByText("逐场拆解镜头并撰写画面说明")).toBeTruthy();
+		expect(document.querySelector(".agent-plan-status-icon.animate-spin")).toBeNull();
 	});
 
 	it("renders tool group rows with localized status badges", () => {

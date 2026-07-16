@@ -324,6 +324,7 @@ type GenerationTaskRecord struct {
 	Model             string                        `json:"model"`
 	Prompt            string                        `json:"prompt"`
 	SourceRefs        []ContentSourceRef            `json:"sourceRefs,omitempty"`
+	AssetTitle        string                        `json:"assetTitle,omitempty"`
 	ReferenceURLs     []string                      `json:"referenceUrls"`
 	ReferenceAssetIDs []string                      `json:"referenceAssetIds"`
 	Params            map[string]any                `json:"params"`

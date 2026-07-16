@@ -63,6 +63,7 @@ export interface AgentSelection {
 	title: string;
 	prompt?: string;
 	options: AgentSelectionOption[];
+	intent?: AgentGenerationPlanIntent;
 	allowCustom: boolean;
 	status: string;
 	decision?: AgentSelectionDecision;
@@ -238,6 +239,7 @@ export interface AgentA2UIPayload {
 	version?: string;
 	surfaceId?: string;
 	messages: unknown;
+	intent?: AgentGenerationPlanIntent;
 }
 
 export interface AgentFormFieldOption {
@@ -258,8 +260,8 @@ export interface AgentFormField {
 		| "generation_params"
 		| "images"
 		| "prompt_optimization";
-	// generation_settings currently renders the complete image form;
-	// legacy generation_params uses this to choose the video catalog.
+	// generation_settings renders the complete image or video form;
+	// legacy generation_params keeps historical video cards readable.
 	kind?: "image" | "video" | "audio";
 	description?: string;
 	options?: AgentFormFieldOption[];
@@ -270,6 +272,56 @@ export interface AgentFormField {
 	required?: boolean;
 }
 
+export type AgentGenerationPlanOperation = "create_single" | "create_batch";
+
+export interface AgentGenerationPlanIntent {
+	version: number;
+	operation: AgentGenerationPlanOperation;
+	conversationTitle?: string;
+	items: AgentGenerationPlanIntentItem[];
+}
+
+export interface AgentGenerationPlanIntentItem {
+	id: string;
+	kind: "image" | "video";
+	prompt: string;
+	assetTitle?: string;
+	capabilityId?: string;
+	sessionId?: string;
+	scopeId?: string;
+	documentId?: string;
+	sectionId?: string;
+	documentContext?: AgentGenerationDocumentContext;
+	resourceType?: string;
+	referenceAssetIds?: string[];
+	notificationTarget?: AgentGenerationNotificationTarget;
+}
+
+export interface AgentGenerationDocumentContext {
+	projectId?: string;
+	documentId?: string;
+	sectionId?: string;
+}
+
+export interface AgentGenerationNotificationTarget {
+	kind: string;
+	projectId?: string;
+	documentId?: string;
+	documentTitle?: string;
+	section: AgentGenerationNotificationSectionTarget;
+}
+
+export interface AgentGenerationNotificationSectionTarget {
+	blockId: string;
+	documentId: string;
+	headingLevel: number;
+	headingOccurrence: number;
+	headingText: string;
+	markdown: string;
+	plainText: string;
+	prompt: string;
+}
+
 export interface AgentFormPayload {
 	selectionId: string;
 	projectId?: string;
@@ -277,6 +329,7 @@ export interface AgentFormPayload {
 	prompt?: string;
 	submitLabel?: string;
 	fields: AgentFormField[];
+	intent?: AgentGenerationPlanIntent;
 }
 
 export interface AgentACPEvent {

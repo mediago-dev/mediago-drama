@@ -38,6 +38,70 @@ func (repo *AgentSelectionRepository) CreateAgentSelection(model domain.AgentSel
 	return nil
 }
 
+// ClaimAgentSelectionGenerationUse atomically assigns an eligible, unclaimed
+// generation confirmation to one normalized request fingerprint. Rows outside
+// the exact project/session/run context, expired rows, empty-intent rows, and
+// prior claims are left unchanged.
+func (repo *AgentSelectionRepository) ClaimAgentSelectionGenerationUse(
+	projectID string,
+	sessionID string,
+	runID string,
+	selectionID string,
+	fingerprint string,
+	now time.Time,
+) (bool, error) {
+	result := repo.db.Model(&domain.AgentSelectionModel{}).
+		Where(
+			`project_id = ? AND session_id = ? AND run_id = ? AND id = ? AND intent_json <> ''
+				AND kind = ? AND status = ?
+				AND generation_claim_fingerprint = '' AND generation_claimed_at IS NULL
+				AND (expires_at IS NULL OR expires_at > ?)`,
+			strings.TrimSpace(projectID),
+			strings.TrimSpace(sessionID),
+			strings.TrimSpace(runID),
+			strings.TrimSpace(selectionID),
+			"generation_plan",
+			"submitted",
+			now.UTC(),
+		).
+		Updates(map[string]any{
+			"generation_claim_fingerprint": strings.TrimSpace(fingerprint),
+			"generation_claimed_at":        now.UTC(),
+		})
+	if result.Error != nil {
+		return false, fmt.Errorf("claiming agent selection generation use: %w", result.Error)
+	}
+	return result.RowsAffected == 1, nil
+}
+
+// CompleteAgentSelectionGenerationUse atomically stores the replayable outcome
+// for the fingerprint that owns a selection. A completed outcome is immutable.
+func (repo *AgentSelectionRepository) CompleteAgentSelectionGenerationUse(
+	projectID string,
+	selectionID string,
+	fingerprint string,
+	outcomeJSON string,
+	now time.Time,
+) (bool, error) {
+	result := repo.db.Model(&domain.AgentSelectionModel{}).
+		Where(
+			`project_id = ? AND id = ? AND generation_claim_fingerprint = ?
+				AND generation_claimed_at IS NOT NULL AND generation_outcome_json = ''
+				AND generation_completed_at IS NULL`,
+			strings.TrimSpace(projectID),
+			strings.TrimSpace(selectionID),
+			strings.TrimSpace(fingerprint),
+		).
+		Updates(map[string]any{
+			"generation_outcome_json": string(outcomeJSON),
+			"generation_completed_at": now.UTC(),
+		})
+	if result.Error != nil {
+		return false, fmt.Errorf("completing agent selection generation use: %w", result.Error)
+	}
+	return result.RowsAffected == 1, nil
+}
+
 // DecidePendingAgentSelection updates a pending selection and reports whether it changed.
 // The status guard makes the update idempotent: only the first decision on a
 // pending selection wins, so concurrent double-clicks cannot both succeed.

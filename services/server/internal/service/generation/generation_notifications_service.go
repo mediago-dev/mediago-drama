@@ -19,6 +19,10 @@ import (
 const (
 	generationNotificationCompletedEventType = "generation.notification.completed"
 	generationNotificationConnectedEventType = "generation.notification.connected"
+	// generationTaskStartedEventType announces that a persisted task entered an
+	// active state. Clients use it to discover tasks created by any entry point
+	// (Agent, direct UI, batch, or retry) without permanent global polling.
+	generationTaskStartedEventType = "generation.task.started"
 	// generationTaskCompletedEventType announces a task that finished in the
 	// background WITHOUT a tracked notification target, so clients can still
 	// revalidate resource covers/counts. It carries no notification record.
@@ -127,6 +131,26 @@ func (service *GenerationNotificationService) SyncTask(task GenerationTaskRecord
 		ProjectID:    record.ProjectID,
 		Notification: record,
 		CreatedAt:    record.UpdatedAt,
+	})
+}
+
+// AnnounceTaskStarted tells connected clients that a persisted generation task
+// has entered an active state. The task service invokes it only for a real
+// non-active→active transition, so active-state progress writes do not flood
+// the event stream and a terminal task retried later announces a new cycle.
+func (service *GenerationNotificationService) AnnounceTaskStarted(task GenerationTaskRecord) {
+	if service == nil || !IsActiveGenerationStatus(task.Status) {
+		return
+	}
+	projectID := GenerationProjectIDForRequest(task.ProjectID, "")
+	if projectID == "" {
+		return
+	}
+	service.broker.Publish(GenerationNotificationEvent{
+		ID:        "task-started-" + task.ID,
+		Type:      generationTaskStartedEventType,
+		ProjectID: projectID,
+		CreatedAt: firstNonEmpty(task.UpdatedAt, timestamp.NowRFC3339Nano()),
 	})
 }
 

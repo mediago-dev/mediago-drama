@@ -145,12 +145,13 @@ const finalizeTurnViewModel = (
 			? (explicitOutcome ?? inferredOutcome(turn.finalAnswerItems, turn.messages))
 			: null;
 	const timing = turnTiming(turn, lifecycle, projection, now);
-	const processSummary = summarizeProcess(turn.processItems, lifecycle, outcome, timing.durationMs);
+	const processItems = settleTerminalPlanEntries(turn.processItems, lifecycle, outcome);
+	const processSummary = summarizeProcess(processItems, lifecycle, outcome, timing.durationMs);
 
 	return {
 		id: turn.id,
 		userMessage: turn.userMessage,
-		processItems: turn.processItems,
+		processItems,
 		finalAnswerItems: turn.finalAnswerItems,
 		interactionItems: turn.interactionItems,
 		lifecycle,
@@ -160,6 +161,37 @@ const finalizeTurnViewModel = (
 		durationMs: timing.durationMs,
 		processSummary,
 	};
+};
+
+const settleTerminalPlanEntries = (
+	items: AgentMessage[],
+	lifecycle: AgentTurnLifecycle,
+	outcome: AgentTurnOutcome | null,
+) => {
+	if (lifecycle !== "completed") return items;
+
+	return items.map((message) => {
+		const entries = message.kind === "plan" ? message.metadata?.planEntries : undefined;
+		if (!entries?.some((entry) => entry.status === "pending" || entry.status === "in_progress")) {
+			return message;
+		}
+
+		const planEntries = entries.map((entry) => {
+			if (
+				outcome === "succeeded" &&
+				(entry.status === "pending" || entry.status === "in_progress")
+			) {
+				return { ...entry, status: "completed" };
+			}
+			if (entry.status === "in_progress") return { ...entry, status: "pending" };
+			return entry;
+		});
+
+		return {
+			...message,
+			metadata: { ...message.metadata, planEntries },
+		};
+	});
 };
 
 const explicitTurnLifecycle = (messages: AgentMessage[]) =>

@@ -34,6 +34,7 @@ export const resolvedSelectionFromRecord = (
 		status: record.status,
 		summary: selectionDecisionSummary(record),
 		title: record.title || "用户选择",
+		...(record.intent ? { intent: record.intent } : {}),
 		...(option?.imageUrl ? { imageUrl: option.imageUrl } : {}),
 	};
 };

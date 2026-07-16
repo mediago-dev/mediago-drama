@@ -3,12 +3,14 @@ package mcp
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
+	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
 	serviceselection "github.com/mediago-dev/mediago-drama/services/server/internal/service/selection"
 )
 
@@ -59,6 +61,18 @@ func sampleSelectionInput() mediamcp.AskUserSelectionInput {
 			{ID: "sweet", Label: "甜美粉彩", ImageURL: "https://x/1.png"},
 			{ID: "retro", Label: "复古线条", ImageURL: "https://x/2.png"},
 		},
+	}
+}
+
+func sampleGenerationIntentInput(kind string, prompt string) *mediamcp.GenerationPlanIntentInput {
+	return &mediamcp.GenerationPlanIntentInput{
+		Version:   1,
+		Operation: "create_single",
+		Items: []mediamcp.GenerationPlanIntentItemInput{{
+			ID:     "item-1",
+			Kind:   kind,
+			Prompt: prompt,
+		}},
 	}
 }
 
@@ -267,6 +281,7 @@ func TestReuseSelectionDoesNotCollapseDifferentFormDefaults(t *testing.T) {
 			Type:    serviceselection.FieldTypeNumber,
 			Default: float64(4),
 		}},
+		nil,
 		false,
 		30,
 	); reused {
@@ -341,8 +356,9 @@ func TestAskUserFormReturnsSubmittedValues(t *testing.T) {
 func TestAskUserFormRejectsNonCanonicalGenerationPlanFields(t *testing.T) {
 	adapter, _, projectID := newSelectionAdapter(t)
 	_, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
-		Title: "确认生成参数",
-		Kind:  serviceselection.KindGenerationPlan,
+		Title:  "确认生成参数",
+		Kind:   serviceselection.KindGenerationPlan,
+		Intent: sampleGenerationIntentInput("image", "一只猫"),
 		Fields: []mediamcp.FormFieldInput{
 			{ID: "generation", Label: "模型与参数", Type: serviceselection.FieldTypeGenerationParams},
 			{ID: "style", Label: "视觉风格", Type: serviceselection.FieldTypeSelect, Options: []mediamcp.FormFieldOptionInput{
@@ -370,8 +386,9 @@ func TestAskUserFormAcceptsImageGenerationSettingsContract(t *testing.T) {
 	})
 
 	output, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
-		Title: "确认图片生成设置",
-		Kind:  serviceselection.KindGenerationPlan,
+		Title:  "确认图片生成设置",
+		Kind:   serviceselection.KindGenerationPlan,
+		Intent: sampleGenerationIntentInput("image", "一只猫"),
 		Fields: []mediamcp.FormFieldInput{{
 			ID:       "settings",
 			Label:    "生成设置",
@@ -403,13 +420,252 @@ func TestAskUserFormAcceptsImageGenerationSettingsContract(t *testing.T) {
 	}
 }
 
+func TestAskUserFormRejectsMissingGenerationPlanIntent(t *testing.T) {
+	adapter, publisher, projectID := newSelectionAdapter(t)
+	_, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
+		Title: "确认图片生成设置",
+		Kind:  serviceselection.KindGenerationPlan,
+		Fields: []mediamcp.FormFieldInput{{
+			ID:       "settings",
+			Label:    "生成设置",
+			Type:     mediamcp.FieldTypeGenerationSettings,
+			Kind:     "image",
+			Required: true,
+		}},
+	})
+	if !errors.Is(err, serviceselection.ErrInvalidGenerationPlanIntent) {
+		t.Fatalf("AskUserForm() error = %v, want ErrInvalidGenerationPlanIntent", err)
+	}
+	if len(publisher.events) != 0 {
+		t.Fatalf("published events = %d, want none for invalid intent", len(publisher.events))
+	}
+}
+
+func TestAskUserFormPersistsNormalizedGenerationPlanIntent(t *testing.T) {
+	adapter, _, projectID := newSelectionAdapter(t)
+	value := map[string]any{
+		"kind":               "image",
+		"routeId":            "route-image",
+		"params":             map[string]any{"ratio": "3:4"},
+		"referenceAssetIds":  []any{},
+		"promptSupplements":  []any{},
+		"promptOptimization": map[string]any{"enabled": false},
+	}
+	intent := sampleGenerationIntentInput(" image ", " 一只猫 ")
+	intent.ConversationTitle = " 猫咪素材 "
+	intent.Items[0].ID = " shot-1 "
+	intent.Items[0].ConversationID = " generation-session-1 "
+	intent.Items[0].ReferenceAssetIDs = []string{" asset-a ", "asset-a", "", "asset-b"}
+	intent.Items[0].DocumentContext = &mediamcp.GenerationDocumentContext{DocumentID: " doc-1 ", SectionID: " section-1 "}
+	intent.Items[0].NotificationTarget = &mediamcp.GenerationNotificationTarget{
+		Kind:       " document_section ",
+		DocumentID: " doc-1 ",
+		Section: mediamcp.GenerationNotificationSectionTarget{
+			BlockID:     " block-1 ",
+			DocumentID:  " doc-1 ",
+			HeadingText: " 角色 ",
+		},
+	}
+	go decideWhenPending(t, adapter, projectID, serviceselection.DecisionRequest{
+		Values: map[string]any{"settings": value},
+	})
+
+	output, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
+		Title:  "确认图片生成设置",
+		Kind:   serviceselection.KindGenerationPlan,
+		Intent: intent,
+		Fields: []mediamcp.FormFieldInput{{
+			ID:       "settings",
+			Label:    "生成设置",
+			Type:     mediamcp.FieldTypeGenerationSettings,
+			Kind:     "image",
+			Default:  value,
+			Required: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("AskUserForm() error = %v", err)
+	}
+	record, ok, err := adapter.document.store.Selections.Get(projectID, output.SelectionID)
+	if err != nil || !ok {
+		t.Fatalf("Get() = %#v, ok=%v, error=%v", record, ok, err)
+	}
+	if record.Intent == nil || record.Intent.Operation != serviceselection.GenerationPlanOperationCreateSingle {
+		t.Fatalf("record.Intent = %#v, want normalized create_single", record.Intent)
+	}
+	item := record.Intent.Items[0]
+	if item.ID != "shot-1" || item.Kind != "image" || item.Prompt != "一只猫" || item.ConversationID != "generation-session-1" {
+		t.Fatalf("normalized item = %#v", item)
+	}
+	if len(item.ReferenceAssetIDs) != 2 || item.ReferenceAssetIDs[0] != "asset-a" || item.ReferenceAssetIDs[1] != "asset-b" {
+		t.Fatalf("normalized references = %#v", item.ReferenceAssetIDs)
+	}
+	if item.DocumentContext == nil || item.DocumentContext.ProjectID != projectID || item.DocumentContext.DocumentID != "doc-1" {
+		t.Fatalf("normalized document context = %#v", item.DocumentContext)
+	}
+	if item.NotificationTarget == nil || item.NotificationTarget.ProjectID != projectID || item.NotificationTarget.Section.BlockID != "block-1" {
+		t.Fatalf("normalized notification target = %#v", item.NotificationTarget)
+	}
+}
+
+func TestAskUserFormUsesDocumentResourcePromptForGenerationIntent(t *testing.T) {
+	adapter, _, projectID := newSelectionAdapter(t)
+	document, _, err := adapter.document.store.CreateWorkspaceDocument(
+		projectID,
+		servicedocument.CreateWorkspaceDocumentRequest{
+			ID:       "characters",
+			Title:    "角色设定",
+			Category: "character",
+			Content: strings.Join([]string{
+				"# 角色设定",
+				"",
+				"<!-- section-id: section_thunder -->",
+				"## 雷劫少年",
+				"",
+				"仙门域被雷劫击中的少年修士，身体边缘已被雷电数据化。",
+				"",
+				"![定稿图](/api/v1/media-assets/character-a/content)",
+			}, "\n"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateWorkspaceDocument() error = %v", err)
+	}
+
+	value := map[string]any{
+		"kind":               "image",
+		"routeId":            "route-image",
+		"params":             map[string]any{},
+		"referenceAssetIds":  []any{},
+		"promptSupplements":  []any{},
+		"promptOptimization": map[string]any{"enabled": false},
+	}
+	intent := sampleGenerationIntentInput("image", "Agent 自行改写的角色提示词")
+	intent.Items[0].DocumentID = document.ID
+	intent.Items[0].SectionID = "section_thunder"
+	intent.Items[0].DocumentContext = &mediamcp.GenerationDocumentContext{
+		DocumentID: document.ID,
+		SectionID:  "section_thunder",
+	}
+	go decideWhenPending(t, adapter, projectID, serviceselection.DecisionRequest{
+		Values: map[string]any{"generation": value},
+	})
+
+	output, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
+		Title:  "生成参数",
+		Kind:   serviceselection.KindGenerationPlan,
+		Intent: intent,
+		Fields: []mediamcp.FormFieldInput{{
+			ID:       "generation",
+			Label:    "生成设置",
+			Type:     mediamcp.FieldTypeGenerationSettings,
+			Kind:     "image",
+			Default:  value,
+			Required: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("AskUserForm() error = %v", err)
+	}
+	record, ok, err := adapter.document.store.Selections.Get(projectID, output.SelectionID)
+	if err != nil || !ok {
+		t.Fatalf("Get() = %#v, ok=%v, error=%v", record, ok, err)
+	}
+	if record.Intent == nil || len(record.Intent.Items) != 1 {
+		t.Fatalf("record.Intent = %#v, want one item", record.Intent)
+	}
+	wantPrompt := "## 雷劫少年\n\n仙门域被雷劫击中的少年修士，身体边缘已被雷电数据化。"
+	if got := record.Intent.Items[0].Prompt; got != wantPrompt {
+		t.Fatalf("intent prompt = %q, want document prompt %q", got, wantPrompt)
+	}
+	if strings.Contains(record.Intent.Items[0].Prompt, "Agent 自行改写") {
+		t.Fatalf("intent prompt retained agent rewrite: %q", record.Intent.Items[0].Prompt)
+	}
+}
+
+func TestAskUserFormRejectsMissingDocumentResourceSection(t *testing.T) {
+	adapter, publisher, projectID := newSelectionAdapter(t)
+	_, _, err := adapter.document.store.CreateWorkspaceDocument(
+		projectID,
+		servicedocument.CreateWorkspaceDocumentRequest{
+			ID:       "characters",
+			Title:    "角色设定",
+			Category: "character",
+			Content: strings.Join([]string{
+				"# 角色设定",
+				"",
+				"<!-- section-id: section_existing -->",
+				"## 已有角色",
+				"",
+				"已有角色提示词。",
+			}, "\n"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateWorkspaceDocument() error = %v", err)
+	}
+	intent := sampleGenerationIntentInput("image", "Agent 自行改写的角色提示词")
+	intent.Items[0].DocumentContext = &mediamcp.GenerationDocumentContext{
+		DocumentID: "characters",
+		SectionID:  "section_missing",
+	}
+
+	_, err = adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
+		Title:  "生成参数",
+		Kind:   serviceselection.KindGenerationPlan,
+		Intent: intent,
+		Fields: []mediamcp.FormFieldInput{{
+			ID:       "generation",
+			Label:    "生成设置",
+			Type:     mediamcp.FieldTypeGenerationSettings,
+			Kind:     "image",
+			Required: true,
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "does not match a generatable document resource section") {
+		t.Fatalf("AskUserForm() error = %v, want missing resource section error", err)
+	}
+	if len(publisher.events) != 0 {
+		t.Fatalf("published events = %d, want none", len(publisher.events))
+	}
+}
+
+func TestSelectionIntentFromMCPCopiesNestedFields(t *testing.T) {
+	input := &mediamcp.GenerationPlanIntentInput{
+		Version:   1,
+		Operation: "create_single",
+		Items: []mediamcp.GenerationPlanIntentItemInput{{
+			ID:                "item-1",
+			Kind:              "image",
+			Prompt:            "一只猫",
+			ReferenceAssetIDs: []string{"asset-a"},
+			DocumentContext:   &mediamcp.GenerationDocumentContext{ProjectID: "project-a", DocumentID: "doc-a"},
+			NotificationTarget: &mediamcp.GenerationNotificationTarget{
+				Kind: "document_section",
+				Section: mediamcp.GenerationNotificationSectionTarget{
+					BlockID: "block-a",
+				},
+			},
+		}},
+	}
+	converted := selectionIntentFromMCP(input)
+	input.Items[0].ReferenceAssetIDs[0] = "changed"
+	input.Items[0].DocumentContext.DocumentID = "changed"
+	input.Items[0].NotificationTarget.Section.BlockID = "changed"
+	item := converted.Items[0]
+	if item.ReferenceAssetIDs[0] != "asset-a" || item.DocumentContext.DocumentID != "doc-a" || item.NotificationTarget.Section.BlockID != "block-a" {
+		t.Fatalf("converted intent shares nested input state: %#v", item)
+	}
+}
+
 func TestAskUserFormRejectsUnsupportedGenerationSettingsKinds(t *testing.T) {
 	adapter, _, projectID := newSelectionAdapter(t)
-	for _, kind := range []string{"", "video", "audio"} {
+	for _, kind := range []string{"", "audio"} {
 		t.Run("kind="+kind, func(t *testing.T) {
 			_, err := adapter.AskUserForm(context.Background(), projectID, mediamcp.AskUserFormInput{
-				Title: "确认生成设置",
-				Kind:  serviceselection.KindGenerationPlan,
+				Title:  "确认生成设置",
+				Kind:   serviceselection.KindGenerationPlan,
+				Intent: sampleGenerationIntentInput("image", "一只猫"),
 				Fields: []mediamcp.FormFieldInput{{
 					ID:   "settings",
 					Type: mediamcp.FieldTypeGenerationSettings,

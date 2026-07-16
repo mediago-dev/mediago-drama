@@ -26,6 +26,7 @@ const testState = vi.hoisted(() => ({
 	runtimeMutate: vi.fn(),
 	runtimeSWRConfig: undefined as { shouldRetryOnError?: boolean } | undefined,
 	setSettingsTab: vi.fn(),
+	livePlanProps: undefined as { isRunning: boolean; messages: Array<{ id: string }> } | undefined,
 }));
 
 vi.mock("swr", () => ({
@@ -132,6 +133,13 @@ vi.mock("@/domains/agent/components/AgentTimeline", () => ({
 	AgentTimeline: () => <div data-testid="agent-timeline" />,
 }));
 
+vi.mock("@/domains/agent/components/chat/AgentLivePlan", () => ({
+	AgentLivePlan: (props: { isRunning: boolean; messages: Array<{ id: string }> }) => {
+		testState.livePlanProps = props;
+		return <div data-testid="agent-live-plan" />;
+	},
+}));
+
 vi.mock("@/domains/agent/components/PendingPermissionRequests", () => ({
 	PendingPermissionRequests: () => null,
 }));
@@ -220,7 +228,25 @@ describe("AgentChat runtime config persistence", () => {
 		testState.runtimeMutate.mockReset();
 		testState.runtimeSWRConfig = undefined;
 		testState.setSettingsTab.mockReset();
+		testState.livePlanProps = undefined;
 		vi.resetModules();
+	});
+
+	it("places the live plan between the timeline and composer", async () => {
+		vi.resetModules();
+		const { AgentChat } = await import("./AgentChat");
+		renderAgentChat(AgentChat);
+
+		const timeline = screen.getByTestId("agent-timeline");
+		const livePlan = screen.getByTestId("agent-live-plan");
+		const composer = screen.getByTestId("composer-form");
+		expect(
+			timeline.compareDocumentPosition(livePlan) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+		expect(
+			livePlan.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+		expect(testState.livePlanProps).toMatchObject({ isRunning: false, messages: [] });
 	});
 
 	it("uses the last saved model instead of the backend current value after reload", async () => {

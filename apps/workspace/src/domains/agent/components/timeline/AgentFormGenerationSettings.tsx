@@ -8,6 +8,7 @@ export interface AgentFormGenerationSettingsProps {
 	defaultValue?: unknown;
 	disabled: boolean;
 	fieldId: string;
+	kind: "image" | "video";
 	onBusyChange?: (busy: boolean) => void;
 	onChange: (value: GenerationSettingsValue) => void;
 	onValidityChange?: (valid: boolean) => void;
@@ -21,6 +22,7 @@ export const AgentFormGenerationSettings: React.FC<AgentFormGenerationSettingsPr
 	defaultValue,
 	disabled,
 	fieldId,
+	kind,
 	onBusyChange,
 	onChange,
 	onValidityChange,
@@ -29,7 +31,7 @@ export const AgentFormGenerationSettings: React.FC<AgentFormGenerationSettingsPr
 }) => {
 	const controller = useGenerationSettingsForm({
 		defaultValue,
-		kind: "image",
+		kind,
 		persist: true,
 		projectId,
 		uploadIdPrefix: `agent-generation-settings-${selectionId}-${fieldId}`,

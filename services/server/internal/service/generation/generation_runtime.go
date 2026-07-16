@@ -101,11 +101,11 @@ func (workflow *GenerationService) SetMediagoBaseURL(baseURL string) {
 }
 
 // SetGenerationNotifications sets the notification service used by generation
-// workflows and wires the task service's completion-transition listener to it,
-// so untracked background completions still reach connected clients.
+// workflows and wires task start/completion transitions to connected clients.
 func (workflow *GenerationService) SetGenerationNotifications(notifications *GenerationNotificationService) {
 	workflow.generationNotifications = notifications
 	if workflow.generationTasks != nil && notifications != nil {
+		workflow.generationTasks.SetTaskStartedListener(notifications.AnnounceTaskStarted)
 		workflow.generationTasks.SetTaskCompletionListener(notifications.AnnounceTaskCompletion)
 	}
 }

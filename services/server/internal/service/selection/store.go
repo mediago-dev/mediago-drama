@@ -1,6 +1,7 @@
 package selection
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -31,7 +32,19 @@ func (store *Service) Create(projectID string, request CreateRequest) (Record, e
 	if err := validateGenerationPlanFields(kind, fields); err != nil {
 		return Record{}, err
 	}
-	options, err := normalizeOptions(request.Options, len(fields) > 0)
+	options, err := normalizeOptions(
+		request.Options,
+		len(fields) > 0,
+	)
+	if err != nil {
+		return Record{}, err
+	}
+	intent, err := normalizeAndValidateSelectionIntent(
+		projectID,
+		kind,
+		fields,
+		request.Intent,
+	)
 	if err != nil {
 		return Record{}, err
 	}
@@ -47,6 +60,10 @@ func (store *Service) Create(projectID string, request CreateRequest) (Record, e
 		}
 		fieldsJSON = string(raw)
 	}
+	intentJSON, err := encodeGenerationPlanIntent(intent)
+	if err != nil {
+		return Record{}, err
+	}
 
 	now := time.Now().UTC()
 	expiresAt := now.Add(RetrieveTTL)
@@ -60,6 +77,7 @@ func (store *Service) Create(projectID string, request CreateRequest) (Record, e
 		Prompt:      strings.TrimSpace(request.Prompt),
 		OptionsJSON: string(optionsJSON),
 		FieldsJSON:  fieldsJSON,
+		IntentJSON:  intentJSON,
 		AllowCustom: request.AllowCustom,
 		Status:      StatusPending,
 		CreatedAt:   now,
@@ -369,12 +387,22 @@ func (store *Service) FindReusable(projectID string, request ReuseRequest) (Reco
 		return Record{}, false, store.initErr
 	}
 	runID := strings.TrimSpace(request.RunID)
+	sessionID := strings.TrimSpace(request.SessionID)
 	kind := strings.TrimSpace(request.Kind)
 	title := strings.TrimSpace(request.Title)
+	projectID = domain.CleanProjectID(projectID)
 	if runID == "" || title == "" {
+		// Generation asks are authorization boundaries. Validate them even when
+		// they cannot be reused so malformed or missing intent never degrades
+		// into an ordinary "not found" result.
+		if kind == KindGenerationPlan {
+			if _, err := reusableSelectionFingerprint(projectID, request); err != nil {
+				return Record{}, false, err
+			}
+		}
 		return Record{}, false, nil
 	}
-	expectedFingerprint, err := reusableSelectionFingerprint(request)
+	expectedFingerprint, err := reusableSelectionFingerprint(projectID, request)
 	if err != nil {
 		return Record{}, false, err
 	}
@@ -387,7 +415,7 @@ func (store *Service) FindReusable(projectID string, request ReuseRequest) (Reco
 	if err := store.sweepExpiredUnlocked(projectID, now); err != nil {
 		return Record{}, false, err
 	}
-	models, err := store.repo.ListAgentSelectionsByRun(domain.CleanProjectID(projectID), runID, 20)
+	models, err := store.repo.ListAgentSelectionsByRun(projectID, runID, 20)
 	if err != nil {
 		return Record{}, false, err
 	}
@@ -395,15 +423,26 @@ func (store *Service) FindReusable(projectID string, request ReuseRequest) (Reco
 		if strings.TrimSpace(model.Kind) != kind || strings.TrimSpace(model.Title) != title {
 			continue
 		}
+		if sessionID != "" && strings.TrimSpace(model.SessionID) != sessionID {
+			continue
+		}
+		if strings.TrimSpace(model.GenerationClaimFingerprint) != "" || model.GenerationClaimedAt != nil {
+			continue
+		}
+		if generationSelectionExpired(model, now) {
+			continue
+		}
 		record, err := recordFromModel(model)
 		if err != nil {
 			return Record{}, false, err
 		}
-		candidateFingerprint, err := reusableSelectionFingerprint(ReuseRequest{
+		candidateFingerprint, err := reusableSelectionFingerprint(projectID, ReuseRequest{
+			SessionID:   record.SessionID,
 			Kind:        kind,
 			Prompt:      record.Prompt,
 			Options:     record.Options,
 			Fields:      record.Fields,
+			Intent:      record.Intent,
 			AllowCustom: record.AllowCustom,
 		})
 		if err != nil || candidateFingerprint != expectedFingerprint {
@@ -421,30 +460,530 @@ func (store *Service) FindReusable(projectID string, request ReuseRequest) (Reco
 	return Record{}, false, nil
 }
 
-func reusableSelectionFingerprint(request ReuseRequest) (string, error) {
+func reusableSelectionFingerprint(projectID string, request ReuseRequest) (string, error) {
+	var interaction string
+	kind := strings.TrimSpace(request.Kind)
+	fields, err := normalizeFields(request.Fields)
+	if err != nil {
+		return "", fmt.Errorf("normalizing reusable form fields: %w", err)
+	}
+	if err := validateGenerationPlanFields(kind, fields); err != nil {
+		return "", fmt.Errorf("normalizing reusable generation plan: %w", err)
+	}
+	options := []Option{}
 	// ask_user_form permits domain-specific kind values in addition to "form"
 	// and generation_plan. Fields, rather than the label-like kind, are the
 	// reliable discriminator between a form and an option selection.
-	if len(request.Fields) > 0 {
-		return reusableFormFingerprint(request.Kind, request.Prompt, request.Fields)
+	if len(fields) > 0 {
+		fingerprint, err := reusableFormFingerprint(kind, request.Prompt, fields)
+		if err != nil {
+			return "", err
+		}
+		interaction = fingerprint
+	} else {
+		options, err = normalizeOptions(request.Options, false)
+		if err != nil {
+			return "", fmt.Errorf("normalizing reusable selection options: %w", err)
+		}
+		raw, err := json.Marshal(struct {
+			Prompt      string   `json:"prompt"`
+			Options     []Option `json:"options"`
+			AllowCustom bool     `json:"allowCustom"`
+		}{
+			Prompt:      strings.TrimSpace(request.Prompt),
+			Options:     options,
+			AllowCustom: request.AllowCustom,
+		})
+		if err != nil {
+			return "", fmt.Errorf("encoding reusable selection fingerprint: %w", err)
+		}
+		interaction = string(raw)
 	}
-	options, err := normalizeOptions(request.Options, false)
+	intent, err := normalizeAndValidateSelectionIntent(
+		projectID,
+		kind,
+		fields,
+		request.Intent,
+	)
 	if err != nil {
-		return "", fmt.Errorf("normalizing reusable selection options: %w", err)
+		return "", err
+	}
+	intentJSON, err := encodeGenerationPlanIntent(intent)
+	if err != nil {
+		return "", err
 	}
 	raw, err := json.Marshal(struct {
-		Prompt      string   `json:"prompt"`
-		Options     []Option `json:"options"`
-		AllowCustom bool     `json:"allowCustom"`
+		Interaction json.RawMessage `json:"interaction"`
+		Intent      json.RawMessage `json:"intent,omitempty"`
 	}{
-		Prompt:      strings.TrimSpace(request.Prompt),
-		Options:     options,
-		AllowCustom: request.AllowCustom,
+		Interaction: json.RawMessage(interaction),
+		Intent:      json.RawMessage(intentJSON),
 	})
 	if err != nil {
 		return "", fmt.Errorf("encoding reusable selection fingerprint: %w", err)
 	}
 	return string(raw), nil
+}
+
+func normalizeAndValidateSelectionIntent(
+	projectID string,
+	kind string,
+	fields []FormField,
+	intent *GenerationPlanIntent,
+) (*GenerationPlanIntent, error) {
+	normalized, err := normalizeGenerationPlanIntent(projectID, intent)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(kind) == KindGenerationPlan {
+		if normalized == nil {
+			return nil, fmt.Errorf("%w: generation_plan requires intent", ErrInvalidGenerationPlanIntent)
+		}
+		if normalized.Operation != GenerationPlanOperationCreateSingle &&
+			normalized.Operation != GenerationPlanOperationCreateBatch {
+			return nil, fmt.Errorf(
+				"%w: generation_plan requires operation %s or %s",
+				ErrInvalidGenerationPlanIntent,
+				GenerationPlanOperationCreateSingle,
+				GenerationPlanOperationCreateBatch,
+			)
+		}
+		confirmedKind, err := generationPlanFieldsKind(fields)
+		if err != nil {
+			return nil, err
+		}
+		for index, item := range normalized.Items {
+			if item.Kind != confirmedKind {
+				return nil, fmt.Errorf(
+					"%w: item %d kind %q does not match generation settings kind %q",
+					ErrInvalidGenerationPlanIntent,
+					index,
+					item.Kind,
+					confirmedKind,
+				)
+			}
+		}
+	}
+	return normalized, nil
+}
+
+func generationPlanFieldsKind(fields []FormField) (string, error) {
+	for _, field := range fields {
+		if field.Type == FieldTypeGenerationSettings {
+			return field.Kind, nil
+		}
+	}
+	for _, field := range fields {
+		if field.Type == FieldTypeGenerationParams {
+			return "video", nil
+		}
+	}
+	return "", fmt.Errorf("%w: generation plan fields do not declare a media kind", ErrInvalidGenerationPlanIntent)
+}
+
+func normalizeGenerationPlanIntent(projectID string, intent *GenerationPlanIntent) (*GenerationPlanIntent, error) {
+	if intent == nil {
+		return nil, nil
+	}
+	projectID = domain.CleanProjectID(projectID)
+	if intent.Version != GenerationPlanIntentVersion {
+		return nil, fmt.Errorf("%w: unsupported version %d", ErrInvalidGenerationPlanIntent, intent.Version)
+	}
+	normalized := &GenerationPlanIntent{
+		Version:           intent.Version,
+		Operation:         strings.TrimSpace(intent.Operation),
+		ConversationTitle: strings.TrimSpace(intent.ConversationTitle),
+		Items:             make([]GenerationPlanIntentItem, 0, len(intent.Items)),
+	}
+	switch normalized.Operation {
+	case GenerationPlanOperationCreateSingle:
+		if len(intent.Items) != 1 {
+			return nil, fmt.Errorf(
+				"%w: %s requires exactly one item (got %d)",
+				ErrInvalidGenerationPlanIntent,
+				GenerationPlanOperationCreateSingle,
+				len(intent.Items),
+			)
+		}
+	case GenerationPlanOperationCreateBatch:
+		if len(intent.Items) == 0 || len(intent.Items) > MaxGenerationPlanIntentItems {
+			return nil, fmt.Errorf(
+				"%w: %s requires 1-%d items (got %d)",
+				ErrInvalidGenerationPlanIntent,
+				GenerationPlanOperationCreateBatch,
+				MaxGenerationPlanIntentItems,
+				len(intent.Items),
+			)
+		}
+	default:
+		return nil, fmt.Errorf(
+			"%w: unsupported operation %q",
+			ErrInvalidGenerationPlanIntent,
+			normalized.Operation,
+		)
+	}
+
+	seenItemIDs := map[string]bool{}
+	for index, item := range intent.Items {
+		normalizedItem, err := normalizeGenerationPlanIntentItem(projectID, item)
+		if err != nil {
+			return nil, fmt.Errorf("%w: item %d: %v", ErrInvalidGenerationPlanIntent, index, err)
+		}
+		if seenItemIDs[normalizedItem.ID] {
+			return nil, fmt.Errorf(
+				"%w: duplicate item id %q",
+				ErrInvalidGenerationPlanIntent,
+				normalizedItem.ID,
+			)
+		}
+		seenItemIDs[normalizedItem.ID] = true
+		normalized.Items = append(normalized.Items, normalizedItem)
+	}
+	if _, err := encodeGenerationPlanIntent(normalized); err != nil {
+		return nil, err
+	}
+	return normalized, nil
+}
+
+func normalizeGenerationPlanIntentItem(
+	projectID string,
+	item GenerationPlanIntentItem,
+) (GenerationPlanIntentItem, error) {
+	normalized := GenerationPlanIntentItem{
+		ID:                strings.TrimSpace(item.ID),
+		Kind:              strings.TrimSpace(item.Kind),
+		Prompt:            strings.TrimSpace(item.Prompt),
+		AssetTitle:        strings.TrimSpace(item.AssetTitle),
+		CapabilityID:      strings.TrimSpace(item.CapabilityID),
+		ConversationID:    strings.TrimSpace(item.ConversationID),
+		ScopeID:           strings.TrimSpace(item.ScopeID),
+		DocumentID:        strings.TrimSpace(item.DocumentID),
+		SectionID:         strings.TrimSpace(item.SectionID),
+		ResourceType:      strings.TrimSpace(item.ResourceType),
+		ReferenceAssetIDs: normalizeGenerationIntentStrings(item.ReferenceAssetIDs),
+	}
+	if normalized.ID == "" {
+		return GenerationPlanIntentItem{}, fmt.Errorf("item id is required")
+	}
+	if normalized.Kind != "image" && normalized.Kind != "video" {
+		return GenerationPlanIntentItem{}, fmt.Errorf("kind must be image or video (got %q)", normalized.Kind)
+	}
+	if normalized.Prompt == "" {
+		return GenerationPlanIntentItem{}, fmt.Errorf("prompt is required")
+	}
+	if item.DocumentContext != nil {
+		contextProjectID, err := normalizeGenerationIntentProjectID(
+			projectID,
+			item.DocumentContext.ProjectID,
+			"documentContext",
+		)
+		if err != nil {
+			return GenerationPlanIntentItem{}, err
+		}
+		normalized.DocumentContext = &GenerationDocumentContext{
+			ProjectID:  contextProjectID,
+			DocumentID: strings.TrimSpace(item.DocumentContext.DocumentID),
+			SectionID:  strings.TrimSpace(item.DocumentContext.SectionID),
+		}
+	}
+	if item.NotificationTarget != nil {
+		targetProjectID, err := normalizeGenerationIntentProjectID(
+			projectID,
+			item.NotificationTarget.ProjectID,
+			"notificationTarget",
+		)
+		if err != nil {
+			return GenerationPlanIntentItem{}, err
+		}
+		normalized.NotificationTarget = &GenerationNotificationTarget{
+			Kind:          strings.TrimSpace(item.NotificationTarget.Kind),
+			ProjectID:     targetProjectID,
+			DocumentID:    strings.TrimSpace(item.NotificationTarget.DocumentID),
+			DocumentTitle: strings.TrimSpace(item.NotificationTarget.DocumentTitle),
+			Section: GenerationNotificationSectionTarget{
+				BlockID:           strings.TrimSpace(item.NotificationTarget.Section.BlockID),
+				DocumentID:        strings.TrimSpace(item.NotificationTarget.Section.DocumentID),
+				HeadingLevel:      item.NotificationTarget.Section.HeadingLevel,
+				HeadingOccurrence: item.NotificationTarget.Section.HeadingOccurrence,
+				HeadingText:       strings.TrimSpace(item.NotificationTarget.Section.HeadingText),
+				Markdown:          strings.TrimSpace(item.NotificationTarget.Section.Markdown),
+				PlainText:         strings.TrimSpace(item.NotificationTarget.Section.PlainText),
+				Prompt:            strings.TrimSpace(item.NotificationTarget.Section.Prompt),
+			},
+		}
+	}
+	return normalized, nil
+}
+
+func normalizeGenerationIntentProjectID(authoritativeProjectID string, rawProjectID string, field string) (string, error) {
+	rawProjectID = strings.TrimSpace(rawProjectID)
+	if rawProjectID != "" && rawProjectID != authoritativeProjectID {
+		return "", fmt.Errorf(
+			"%s.projectId %q does not match current project",
+			field,
+			domain.DiagnosticProjectID(rawProjectID),
+		)
+	}
+	return authoritativeProjectID, nil
+}
+
+func normalizeGenerationIntentStrings(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result
+}
+
+// ClaimGenerationUse atomically consumes one submitted generation plan for a
+// normalized request fingerprint. Only GenerationUseClaimed may proceed to
+// create a provider task.
+func (store *Service) ClaimGenerationUse(
+	projectID string,
+	sessionID string,
+	runID string,
+	selectionID string,
+	fingerprint string,
+) (GenerationUseClaimResult, error) {
+	if store.initErr != nil {
+		return GenerationUseClaimResult{}, store.initErr
+	}
+	projectID = domain.CleanProjectID(projectID)
+	sessionID = strings.TrimSpace(sessionID)
+	runID = strings.TrimSpace(runID)
+	selectionID = strings.TrimSpace(selectionID)
+	fingerprint = strings.TrimSpace(fingerprint)
+	if projectID == "" || sessionID == "" || runID == "" || selectionID == "" || fingerprint == "" {
+		return GenerationUseClaimResult{}, ErrGenerationUseNotAuthorized
+	}
+	if store.repo == nil {
+		return GenerationUseClaimResult{}, fmt.Errorf("agent selection repository is not initialized")
+	}
+
+	now := time.Now().UTC()
+	model, err := store.repo.GetAgentSelection(projectID, selectionID)
+	if isNotFound(err) {
+		return GenerationUseClaimResult{}, ErrGenerationUseNotAuthorized
+	}
+	if err != nil {
+		return GenerationUseClaimResult{}, err
+	}
+	if !generationSelectionAuthorizesUse(model, sessionID, runID) {
+		return GenerationUseClaimResult{}, ErrGenerationUseNotAuthorized
+	}
+	if result, claimed := classifyPersistedGenerationUse(model, fingerprint); claimed {
+		return result, nil
+	}
+	if generationSelectionExpired(model, now) {
+		return GenerationUseClaimResult{}, ErrGenerationUseNotAuthorized
+	}
+
+	claimed, err := store.repo.ClaimAgentSelectionGenerationUse(
+		projectID,
+		sessionID,
+		runID,
+		selectionID,
+		fingerprint,
+		now,
+	)
+	if err != nil {
+		return GenerationUseClaimResult{}, err
+	}
+	if claimed {
+		return GenerationUseClaimResult{Status: GenerationUseClaimed}, nil
+	}
+
+	// A concurrent caller may have won the CAS. Re-read and classify its claim;
+	// expiry no longer matters once a fingerprint is durably assigned.
+	model, err = store.repo.GetAgentSelection(projectID, selectionID)
+	if isNotFound(err) {
+		return GenerationUseClaimResult{}, ErrGenerationUseNotAuthorized
+	}
+	if err != nil {
+		return GenerationUseClaimResult{}, err
+	}
+	if !generationSelectionAuthorizesUse(model, sessionID, runID) {
+		return GenerationUseClaimResult{}, ErrGenerationUseNotAuthorized
+	}
+	if result, claimed := classifyPersistedGenerationUse(model, fingerprint); claimed {
+		return result, nil
+	}
+	return GenerationUseClaimResult{}, ErrGenerationUseNotAuthorized
+}
+
+func generationSelectionAuthorizesUse(model domain.AgentSelectionModel, sessionID string, runID string) bool {
+	if strings.TrimSpace(model.SessionID) != sessionID || strings.TrimSpace(model.RunID) != runID {
+		return false
+	}
+	record, fields, ok := validatedGenerationSelectionContract(model)
+	if !ok || record.Decision == nil {
+		return false
+	}
+	if record.Kind != KindGenerationPlan ||
+		record.Status != StatusSubmitted ||
+		record.Decision.Cancelled ||
+		strings.TrimSpace(record.Decision.OptionID) != "" ||
+		strings.TrimSpace(record.Decision.CustomText) != "" ||
+		len(record.Decision.Values) == 0 {
+		return false
+	}
+	_, err := validateFormValues(fields, record.Decision.Values)
+	return err == nil
+}
+
+func validatedGenerationSelectionContract(model domain.AgentSelectionModel) (Record, []FormField, bool) {
+	kind := strings.TrimSpace(model.Kind)
+	if kind != KindGenerationPlan {
+		return Record{}, nil, false
+	}
+	// Outcome corruption must remain fail-closed as an unknown completed claim,
+	// but it must not prevent us from independently validating the authorization
+	// contract and decision that preceded that claim.
+	contractModel := model
+	contractModel.GenerationOutcomeJSON = ""
+	record, err := recordFromModel(contractModel)
+	if err != nil || record.Intent == nil {
+		return Record{}, nil, false
+	}
+	fields, err := normalizeFields(record.Fields)
+	if err != nil || validateGenerationPlanFields(kind, fields) != nil {
+		return Record{}, nil, false
+	}
+	options, err := normalizeOptions(record.Options, len(fields) > 0)
+	if err != nil {
+		return Record{}, nil, false
+	}
+	intent, err := normalizeAndValidateSelectionIntent(
+		model.ProjectID,
+		kind,
+		fields,
+		record.Intent,
+	)
+	if err != nil {
+		return Record{}, nil, false
+	}
+	record.Kind = kind
+	record.Fields = fields
+	record.Options = options
+	record.Intent = intent
+	return record, fields, true
+}
+
+func classifyPersistedGenerationUse(model domain.AgentSelectionModel, fingerprint string) (GenerationUseClaimResult, bool) {
+	persistedFingerprint := strings.TrimSpace(model.GenerationClaimFingerprint)
+	if persistedFingerprint == "" || model.GenerationClaimedAt == nil {
+		return GenerationUseClaimResult{}, false
+	}
+	if persistedFingerprint != fingerprint {
+		return GenerationUseClaimResult{Status: GenerationUseConflict}, true
+	}
+	if strings.TrimSpace(model.GenerationOutcomeJSON) == "" {
+		return GenerationUseClaimResult{Status: GenerationUseInProgressOrUnknown}, true
+	}
+	outcome, err := normalizeGenerationOutcome(json.RawMessage(model.GenerationOutcomeJSON))
+	if err != nil {
+		// A corrupt persisted outcome is fail-closed. Treat it as unknown so a
+		// provider task is never submitted again under the same authorization.
+		return GenerationUseClaimResult{Status: GenerationUseInProgressOrUnknown}, true
+	}
+	return GenerationUseClaimResult{Status: GenerationUseReplay, Outcome: outcome}, true
+}
+
+// CompleteGenerationUse stores an immutable, versioned outcome for a claimed
+// selection. Repeating the same completion is idempotent.
+func (store *Service) CompleteGenerationUse(
+	projectID string,
+	selectionID string,
+	fingerprint string,
+	outcome json.RawMessage,
+) error {
+	if store.initErr != nil {
+		return store.initErr
+	}
+	projectID = domain.CleanProjectID(projectID)
+	selectionID = strings.TrimSpace(selectionID)
+	fingerprint = strings.TrimSpace(fingerprint)
+	if projectID == "" || selectionID == "" || fingerprint == "" {
+		return ErrGenerationUseNotAuthorized
+	}
+	normalizedOutcome, err := normalizeGenerationOutcome(outcome)
+	if err != nil {
+		return err
+	}
+	if store.repo == nil {
+		return fmt.Errorf("agent selection repository is not initialized")
+	}
+	completed, err := store.repo.CompleteAgentSelectionGenerationUse(
+		projectID,
+		selectionID,
+		fingerprint,
+		string(normalizedOutcome),
+		time.Now().UTC(),
+	)
+	if err != nil {
+		return err
+	}
+	if completed {
+		return nil
+	}
+	model, err := store.repo.GetAgentSelection(projectID, selectionID)
+	if isNotFound(err) {
+		return ErrGenerationUseNotAuthorized
+	}
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(model.GenerationClaimFingerprint) != fingerprint || model.GenerationClaimedAt == nil {
+		return ErrGenerationUseNotAuthorized
+	}
+	if strings.TrimSpace(model.GenerationOutcomeJSON) == string(normalizedOutcome) && model.GenerationCompletedAt != nil {
+		return nil
+	}
+	return ErrGenerationUseConflict
+}
+
+func normalizeGenerationOutcome(outcome json.RawMessage) (json.RawMessage, error) {
+	trimmed := bytes.TrimSpace(outcome)
+	if len(trimmed) == 0 {
+		return nil, fmt.Errorf("%w: outcome is required", ErrInvalidGenerationOutcome)
+	}
+	if len(trimmed) > MaxGenerationOutcomeJSONBytes {
+		return nil, fmt.Errorf(
+			"%w: encoded size %d exceeds %d bytes",
+			ErrInvalidGenerationOutcome,
+			len(trimmed),
+			MaxGenerationOutcomeJSONBytes,
+		)
+	}
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &envelope); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidGenerationOutcome, err)
+	}
+	if envelope == nil {
+		return nil, fmt.Errorf("%w: outcome must be a JSON object", ErrInvalidGenerationOutcome)
+	}
+	version := 0
+	if rawVersion, ok := envelope["version"]; !ok || json.Unmarshal(rawVersion, &version) != nil {
+		return nil, fmt.Errorf("%w: integer version is required", ErrInvalidGenerationOutcome)
+	}
+	if version != 1 {
+		return nil, fmt.Errorf("%w: unsupported version %d", ErrInvalidGenerationOutcome, version)
+	}
+	buffer := &bytes.Buffer{}
+	if err := json.Compact(buffer, trimmed); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidGenerationOutcome, err)
+	}
+	return json.RawMessage(buffer.Bytes()), nil
+}
+
+func generationSelectionExpired(model domain.AgentSelectionModel, now time.Time) bool {
+	return model.ExpiresAt != nil && !model.ExpiresAt.UTC().After(now.UTC())
 }
 
 func reusableFormFingerprint(kind string, prompt string, fields []FormField) (string, error) {
@@ -672,14 +1211,14 @@ func validateGenerationPlanFields(kind string, fields []FormField) error {
 	if settingsCount > 0 {
 		if settingsCount != 1 || len(fields) != 1 {
 			return fmt.Errorf(
-				"%w: image plans require exactly one %s field and cannot mix legacy or generic fields",
+				"%w: generation plans require exactly one %s field and cannot mix legacy or generic fields",
 				ErrInvalidGenerationPlan,
 				FieldTypeGenerationSettings,
 			)
 		}
-		if fields[0].Kind != "image" {
+		if fields[0].Kind != "image" && fields[0].Kind != "video" {
 			return fmt.Errorf(
-				"%w: %s field %q requires kind=image (got %q)",
+				"%w: %s field %q requires kind=image or kind=video (got %q)",
 				ErrInvalidGenerationPlan,
 				FieldTypeGenerationSettings,
 				fields[0].ID,
@@ -840,7 +1379,7 @@ func validateFormValue(field FormField, value any) (any, error) {
 	return nil, fmt.Errorf("form field %q has unsupported type %q", field.ID, field.Type)
 }
 
-// validateGenerationSettingsValue validates and normalizes the complete image
+// validateGenerationSettingsValue validates and normalizes the complete media
 // generation snapshot submitted by the shared settings form. Catalog-specific
 // route/param validity remains the generation service's responsibility.
 func validateGenerationSettingsValue(field FormField, value any) (any, error) {
@@ -849,8 +1388,9 @@ func validateGenerationSettingsValue(field FormField, value any) (any, error) {
 		return nil, fmt.Errorf("form field %q expects an object value", field.ID)
 	}
 	kind, ok := object["kind"].(string)
-	if !ok || strings.TrimSpace(kind) != "image" {
-		return nil, fmt.Errorf("form field %q requires kind=image", field.ID)
+	kind = strings.TrimSpace(kind)
+	if !ok || (field.Kind != "image" && field.Kind != "video") || kind != field.Kind {
+		return nil, fmt.Errorf("form field %q requires kind=%s", field.ID, field.Kind)
 	}
 	routeID, ok := object["routeId"].(string)
 	if !ok || strings.TrimSpace(routeID) == "" {
@@ -875,7 +1415,7 @@ func validateGenerationSettingsValue(field FormField, value any) (any, error) {
 	}
 
 	resolved := map[string]any{
-		"kind":               "image",
+		"kind":               kind,
 		"routeId":            strings.TrimSpace(routeID),
 		"params":             params,
 		"referenceAssetIds":  referenceAssetIDs,

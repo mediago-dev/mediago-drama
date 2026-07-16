@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +19,8 @@ import (
 
 const mediaGoDramaMCPServerName = MediaGoDramaMCPServerName
 
+const instructionFingerprintVersion = "instruction-v1"
+
 type documentMCPServerResolution = DocumentMCPServerResolution
 type agentRuntimeConfigResponse = AgentRuntimeConfigResponse
 type agentRunRequest = AgentRunRequest
@@ -32,14 +35,20 @@ type acpSessionConfigurator interface {
 }
 
 type acpAgentRunner struct {
-	commandFn             func() string
-	argvFn                func() []string
-	workspaceDir          string
-	documentMCPConfigPath string
-	buildPrompt           func(AgentRunRequest) string
-	buildSessionRecap     SessionRecapBuilder
-	processConfigProvider ProcessConfigProvider
-	activeClients         sync.Map
+	commandFn              func() string
+	argvFn                 func() []string
+	workspaceDir           string
+	documentMCPConfigPath  string
+	buildPrompt            func(AgentRunRequest) string
+	buildSessionRecap      SessionRecapBuilder
+	processConfigProvider  ProcessConfigProvider
+	activeClients          sync.Map
+	residentMu             sync.Mutex
+	residentSessions       map[string]*acpResidentSessionEntry
+	residentClosed         bool
+	residentCloseDone      chan struct{}
+	residentIdleTimeout    time.Duration
+	residentProcessFactory acpResidentProcessFactory
 }
 
 type permissionDecision struct {
@@ -130,29 +139,33 @@ func NewACPAgentRunnerWithDocumentMCPConfigPathAndArgv(
 		workspaceDir:          workspaceDir,
 		documentMCPConfigPath: strings.TrimSpace(documentMCPConfigPath),
 		buildPrompt:           buildPrompt,
+		residentSessions:      map[string]*acpResidentSessionEntry{},
+		residentCloseDone:     make(chan struct{}),
 	}
 }
 
 // ProcessConfigRequest describes one ACP child process launch.
 type ProcessConfigRequest struct {
-	AgentID        string
-	WorkspaceDir   string
-	ProjectID      string
-	ProjectDir     string
-	WorkingDir     string
-	PreferredModel string
+	AgentID           string
+	WorkspaceDir      string
+	ProjectID         string
+	ProjectDir        string
+	WorkingDir        string
+	PreferredModel    string
+	FixedInstructions string
 }
 
 // ProcessConfig contains extra environment for one ACP child process.
 type ProcessConfig struct {
-	ConfigDir             string
-	Env                   map[string]string
-	ProfileCount          int
-	DefaultProfileID      string
-	RestrictModelValues   bool
-	AllowedModelValues    []string
-	AllowedModelProviders []string
-	DiscoveredModelValues []string
+	ConfigDir                  string
+	Env                        map[string]string
+	ProfileCount               int
+	DefaultProfileID           string
+	RestrictModelValues        bool
+	AllowedModelValues         []string
+	AllowedModelProviders      []string
+	DiscoveredModelValues      []string
+	NativeInstructionsInjected bool
 }
 
 // ProcessConfigProvider prepares extra config for one ACP child process.
@@ -309,18 +322,31 @@ func (runner *acpAgentRunner) activeCommandArgv() (string, []string) {
 	return SplitCommand(commandFn())
 }
 
-func (runner *acpAgentRunner) prepareProcessConfig(ctx context.Context, command string, args []string, request agentRunRequest) (ProcessConfig, error) {
+func (runner *acpAgentRunner) prepareProcessConfig(
+	ctx context.Context,
+	command string,
+	args []string,
+	request agentRunRequest,
+	fixedInstructionsOverride ...string,
+) (ProcessConfig, error) {
 	agentID := acpAgentIDForCommand(command, args)
 	if runner == nil || runner.processConfigProvider == nil || agentID == "" {
 		return ProcessConfig{}, nil
 	}
+	fixedInstructions := ""
+	if len(fixedInstructionsOverride) > 0 {
+		fixedInstructions = strings.TrimSpace(fixedInstructionsOverride[0])
+	} else {
+		fixedInstructions = runner.fixedInstructions(request)
+	}
 	processConfig, err := runner.processConfigProvider.PrepareACPProcessConfig(ctx, ProcessConfigRequest{
-		AgentID:        agentID,
-		WorkspaceDir:   strings.TrimSpace(request.WorkspaceDir),
-		ProjectID:      strings.TrimSpace(request.ProjectID),
-		ProjectDir:     strings.TrimSpace(request.ProjectDir),
-		WorkingDir:     strings.TrimSpace(request.WorkingDir),
-		PreferredModel: strings.TrimSpace(request.Model.Value),
+		AgentID:           agentID,
+		WorkspaceDir:      strings.TrimSpace(request.WorkspaceDir),
+		ProjectID:         strings.TrimSpace(request.ProjectID),
+		ProjectDir:        strings.TrimSpace(request.ProjectDir),
+		WorkingDir:        strings.TrimSpace(request.WorkingDir),
+		PreferredModel:    strings.TrimSpace(request.Model.Value),
+		FixedInstructions: fixedInstructions,
 	})
 	if err != nil {
 		return ProcessConfig{}, fmt.Errorf("preparing %s config: %w", agentID, err)
@@ -341,6 +367,28 @@ func (runner *acpAgentRunner) prepareProcessConfig(ctx context.Context, command 
 		)
 	}
 	return processConfig, nil
+}
+
+func (runner *acpAgentRunner) fixedInstructions(request agentRunRequest) string {
+	if runner == nil || runner.buildPrompt == nil {
+		return ""
+	}
+	return strings.TrimSpace(runner.buildPrompt(request))
+}
+
+func instructionFingerprint(backendIdentity string, delivery string, fixedInstructions string) string {
+	payload := strings.Join([]string{
+		instructionFingerprintVersion,
+		strings.TrimSpace(backendIdentity),
+		strings.TrimSpace(delivery),
+		strings.TrimSpace(fixedInstructions),
+	}, "\x00")
+	sum := sha256.Sum256([]byte(payload))
+	return instructionFingerprintVersion + ":" + fmt.Sprintf("%x", sum)
+}
+
+func instructionHashMatches(stored string, current string) bool {
+	return strings.TrimSpace(stored) == strings.TrimSpace(current)
 }
 
 func cloneProcessConfigEnv(source map[string]string) map[string]string {
@@ -416,6 +464,17 @@ func acpAgentIDForCommand(command string, args []string) string {
 	default:
 		return ""
 	}
+}
+
+func acpBackendIdentity(command string, args []string) string {
+	if agentID := acpAgentIDForCommand(command, args); agentID != "" {
+		return agentID
+	}
+	parts := []string{strings.TrimSpace(command)}
+	for _, arg := range args {
+		parts = append(parts, strings.TrimSpace(arg))
+	}
+	return "custom:" + strings.Join(parts, "\x00")
 }
 
 func applyACPSessionSelections(ctx context.Context, conn acpSessionConfigurator, sessionID acp.SessionId, request agentRunRequest, logArgs []any) error {

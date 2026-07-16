@@ -149,6 +149,54 @@ func TestAgentRuntimeCloseLifecycle(t *testing.T) {
 			},
 		},
 		{
+			name: "close terminates a closable runner before waiting for its run",
+			run: func(t *testing.T) {
+				workspaceDir := t.TempDir()
+				sessions := NewSessionService(nil)
+				sessions.Create("session-1", "")
+				runner := &closableLifecycleAgentRunner{
+					started:     make(chan struct{}),
+					closeCalled: make(chan struct{}),
+					runExited:   make(chan struct{}),
+				}
+				runtime := NewAgentRuntime(
+					runtimeTestDocumentStore{dir: workspaceDir},
+					sessions,
+					runner,
+					func(AgentEvent) {},
+					AgentRuntimeConfig{WorkspaceDir: workspaceDir},
+				)
+
+				_, status, err := runtime.SubmitAgentMessage(AgentMessageRequest{SessionID: "session-1", Prompt: "hello"})
+				if err != nil || status != http.StatusOK {
+					t.Fatalf("SubmitAgentMessage() status = %d, err = %v", status, err)
+				}
+				waitForLifecycleSignal(t, runner.started, "runner start")
+
+				const closerCount = 8
+				var closers sync.WaitGroup
+				closers.Add(closerCount)
+				for range closerCount {
+					go func() {
+						defer closers.Done()
+						runtime.Close()
+					}()
+				}
+				allClosed := make(chan struct{})
+				go func() {
+					closers.Wait()
+					close(allClosed)
+				}()
+
+				waitForLifecycleSignal(t, runner.closeCalled, "runner Close")
+				waitForLifecycleSignal(t, runner.runExited, "runner exit after Close")
+				waitForLifecycleSignal(t, allClosed, "concurrent runtime Close calls")
+				if got := runner.CloseCount(); got != 1 {
+					t.Fatalf("runner Close calls = %d, want 1", got)
+				}
+			},
+		},
+		{
 			name: "submit after close is unavailable",
 			run: func(t *testing.T) {
 				workspaceDir := t.TempDir()
@@ -509,6 +557,43 @@ func (runner blockingLifecycleAgentRunner) Run(
 
 type notifyingLifecycleAgentRunner struct {
 	called chan struct{}
+}
+
+type closableLifecycleAgentRunner struct {
+	started      chan struct{}
+	closeCalled  chan struct{}
+	runExited    chan struct{}
+	closeSignal  sync.Once
+	closeCountMu sync.Mutex
+	closeCount   int
+}
+
+func (runner *closableLifecycleAgentRunner) Run(
+	ctx context.Context,
+	_ AgentRunRequest,
+	_ func(AgentEvent),
+) (AgentRunResult, error) {
+	close(runner.started)
+	<-ctx.Done()
+	<-runner.closeCalled
+	close(runner.runExited)
+	return AgentRunResult{}, ctx.Err()
+}
+
+func (runner *closableLifecycleAgentRunner) Close() error {
+	runner.closeCountMu.Lock()
+	runner.closeCount++
+	runner.closeCountMu.Unlock()
+	runner.closeSignal.Do(func() {
+		close(runner.closeCalled)
+	})
+	return nil
+}
+
+func (runner *closableLifecycleAgentRunner) CloseCount() int {
+	runner.closeCountMu.Lock()
+	defer runner.closeCountMu.Unlock()
+	return runner.closeCount
 }
 
 func (runner notifyingLifecycleAgentRunner) Run(

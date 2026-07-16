@@ -3,6 +3,7 @@ package settings
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -316,20 +318,36 @@ func (service *Settings) PrepareOpenCodeRuntimeConfig(ctx context.Context, works
 // PrepareOpenCodeRuntimeConfigForModel renders opencode config and resolves
 // process env, preferring the selected runtime model as opencode's default.
 func (service *Settings) PrepareOpenCodeRuntimeConfigForModel(ctx context.Context, workspaceDir string, preferredModel string) (OpenCodeRuntimeConfig, error) {
+	return service.PrepareOpenCodeRuntimeConfigForModelAndInstructions(ctx, workspaceDir, preferredModel, "")
+}
+
+// PrepareOpenCodeRuntimeConfigForModelAndInstructions renders OpenCode model
+// configuration and a managed native instruction file.
+func (service *Settings) PrepareOpenCodeRuntimeConfigForModelAndInstructions(
+	ctx context.Context,
+	workspaceDir string,
+	preferredModel string,
+	instructions string,
+) (OpenCodeRuntimeConfig, error) {
 	enabled, env, err := service.officialAgentRuntimeProfiles(ctx)
 	if err != nil {
 		return OpenCodeRuntimeConfig{}, err
 	}
-	if len(enabled) == 0 {
+	hasInstructions := strings.TrimSpace(instructions) != ""
+	if len(enabled) == 0 && !hasInstructions {
 		return OpenCodeRuntimeConfig{RestrictModelValues: true}, nil
 	}
-	configDir := filepath.Join(shared.WorkspacePathsFor(workspaceDir).GlobalMetadataDir(), "runtime", "agents", "opencode", "config")
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
+	configRoot := filepath.Join(shared.WorkspacePathsFor(workspaceDir).GlobalMetadataDir(), "runtime", "agents", "opencode", "config")
+	if err := ensurePrivateDirectory(configRoot); err != nil {
 		return OpenCodeRuntimeConfig{}, fmt.Errorf("creating opencode config directory: %w", err)
 	}
-	configPath := filepath.Join(configDir, "opencode.json")
 	defaultProfile := selectedAgentRuntimeDefaultProfile(enabled, preferredModel)
-	if err := writeOpenCodeConfig(configPath, renderOpenCodeConfig(enabled, defaultProfile)); err != nil {
+	rendered := renderOpenCodeConfig(enabled, defaultProfile)
+	if !hasInstructions {
+		instructions = ""
+	}
+	configDir, err := publishOpenCodeRuntimeConfig(configRoot, rendered, instructions)
+	if err != nil {
 		return OpenCodeRuntimeConfig{}, err
 	}
 	return OpenCodeRuntimeConfig{
@@ -1199,10 +1217,11 @@ func stringValue(value *string) string {
 }
 
 type openCodeConfigFile struct {
-	Schema   string                            `json:"$schema"`
-	Model    string                            `json:"model,omitempty"`
-	Agent    map[string]openCodeAgentConfig    `json:"agent,omitempty"`
-	Provider map[string]openCodeProviderConfig `json:"provider,omitempty"`
+	Schema       string                            `json:"$schema"`
+	Model        string                            `json:"model,omitempty"`
+	Instructions []string                          `json:"instructions,omitempty"`
+	Agent        map[string]openCodeAgentConfig    `json:"agent,omitempty"`
+	Provider     map[string]openCodeProviderConfig `json:"provider,omitempty"`
 }
 
 type openCodeAgentConfig struct {
@@ -1333,17 +1352,173 @@ func agentRuntimeModelValue(profile domainAgentModelProfile) string {
 }
 
 func writeOpenCodeConfig(path string, config openCodeConfigFile) error {
+	data, err := encodeOpenCodeConfig(config)
+	if err != nil {
+		return err
+	}
+	if err := writePrivateFile(path, data); err != nil {
+		return fmt.Errorf("writing opencode config: %w", err)
+	}
+	return nil
+}
+
+func encodeOpenCodeConfig(config openCodeConfigFile) ([]byte, error) {
 	var buffer bytes.Buffer
 	encoder := json.NewEncoder(&buffer)
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(config); err != nil {
-		return fmt.Errorf("encoding opencode config: %w", err)
+		return nil, fmt.Errorf("encoding opencode config: %w", err)
 	}
-	if err := os.WriteFile(path, buffer.Bytes(), 0o600); err != nil {
-		return fmt.Errorf("writing opencode config: %w", err)
+	return buffer.Bytes(), nil
+}
+
+func writeOpenCodeManagedInstructions(configDir string, instructions string) (string, error) {
+	instructionDir := filepath.Join(configDir, "instructions")
+	if err := ensurePrivateDirectory(instructionDir); err != nil {
+		return "", fmt.Errorf("creating opencode instruction directory: %w", err)
 	}
-	return nil
+	instructionPath, err := filepath.Abs(filepath.Join(instructionDir, "mediago-drama.md"))
+	if err != nil {
+		return "", fmt.Errorf("resolving opencode instruction path: %w", err)
+	}
+	if err := writePrivateFile(instructionPath, []byte(instructions)); err != nil {
+		return "", fmt.Errorf("writing opencode managed instructions: %w", err)
+	}
+	return instructionPath, nil
+}
+
+// publishOpenCodeRuntimeConfig writes a complete runtime config into a staging
+// directory and publishes it with one rename. The content ID uses the logical
+// config plus the instruction body; the generated absolute instruction path is
+// excluded because it contains the content ID itself.
+func publishOpenCodeRuntimeConfig(configRoot string, config openCodeConfigFile, instructions string) (string, error) {
+	contentID, err := openCodeRuntimeContentID(config, instructions)
+	if err != nil {
+		return "", err
+	}
+	configDir := filepath.Join(configRoot, contentID)
+	finalInstructionPath := ""
+	if instructions != "" {
+		finalInstructionPath, err = filepath.Abs(filepath.Join(configDir, "instructions", "mediago-drama.md"))
+		if err != nil {
+			return "", fmt.Errorf("resolving opencode instruction path: %w", err)
+		}
+		config.Instructions = []string{finalInstructionPath}
+	}
+	configData, err := encodeOpenCodeConfig(config)
+	if err != nil {
+		return "", err
+	}
+
+	matches, err := publishedOpenCodeRuntimeConfigMatches(configDir, configData, instructions)
+	if err != nil {
+		return "", err
+	}
+	if matches {
+		return configDir, nil
+	}
+
+	stagingDir, err := os.MkdirTemp(configRoot, ".tmp-"+contentID+"-")
+	if err != nil {
+		return "", fmt.Errorf("creating opencode staging directory: %w", err)
+	}
+	defer os.RemoveAll(stagingDir)
+	if err := securePrivatePath(stagingDir, 0o700); err != nil {
+		return "", fmt.Errorf("securing opencode staging directory: %w", err)
+	}
+	if instructions != "" {
+		if _, err := writeOpenCodeManagedInstructions(stagingDir, instructions); err != nil {
+			return "", err
+		}
+	}
+	if err := writeOpenCodeConfig(filepath.Join(stagingDir, "opencode.json"), config); err != nil {
+		return "", err
+	}
+
+	if err := os.Rename(stagingDir, configDir); err != nil {
+		// Another concurrent writer may have published the same content first.
+		matches, matchErr := publishedOpenCodeRuntimeConfigMatches(configDir, configData, instructions)
+		if matchErr != nil {
+			return "", matchErr
+		}
+		if !matches {
+			return "", fmt.Errorf("publishing opencode runtime config: %w", err)
+		}
+	}
+	return configDir, nil
+}
+
+func openCodeRuntimeContentID(config openCodeConfigFile, instructions string) (string, error) {
+	config.Instructions = nil
+	payload := struct {
+		Version      string             `json:"version"`
+		Config       openCodeConfigFile `json:"config"`
+		Instructions string             `json:"instructions,omitempty"`
+	}{
+		Version:      "mediago-opencode-runtime-v1",
+		Config:       config,
+		Instructions: instructions,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("encoding opencode runtime content identity: %w", err)
+	}
+	digest := sha256.Sum256(data)
+	return fmt.Sprintf("%x", digest), nil
+}
+
+func publishedOpenCodeRuntimeConfigMatches(configDir string, configData []byte, instructions string) (bool, error) {
+	info, err := os.Stat(configDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("checking opencode runtime config: %w", err)
+	}
+	if !info.IsDir() {
+		return false, fmt.Errorf("opencode runtime config path %q is not a directory", configDir)
+	}
+	existingConfig, err := os.ReadFile(filepath.Join(configDir, "opencode.json"))
+	if err != nil {
+		return false, fmt.Errorf("reading published opencode config: %w", err)
+	}
+	if !bytes.Equal(existingConfig, configData) {
+		return false, fmt.Errorf("published opencode config %q does not match its content identity", configDir)
+	}
+	if instructions == "" {
+		return true, nil
+	}
+	existingInstructions, err := os.ReadFile(filepath.Join(configDir, "instructions", "mediago-drama.md"))
+	if err != nil {
+		return false, fmt.Errorf("reading published opencode instructions: %w", err)
+	}
+	if !bytes.Equal(existingInstructions, []byte(instructions)) {
+		return false, fmt.Errorf("published opencode instructions %q do not match their content identity", configDir)
+	}
+	return true, nil
+}
+
+func ensurePrivateDirectory(path string) error {
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		return err
+	}
+	return securePrivatePath(path, 0o700)
+}
+
+func writePrivateFile(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	return securePrivatePath(path, 0o600)
+}
+
+func securePrivatePath(path string, mode os.FileMode) error {
+	if runtime.GOOS == "windows" {
+		// Windows does not expose POSIX ownership bits through os.FileMode.
+		return nil
+	}
+	return os.Chmod(path, mode)
 }
 
 func openCodeInputModalities(supportsImages bool) []string {

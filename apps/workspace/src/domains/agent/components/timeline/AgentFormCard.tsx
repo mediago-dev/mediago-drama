@@ -1,6 +1,11 @@
 import type React from "react";
 import { useCallback, useState } from "react";
-import type { AgentFormField, AgentFormPayload, AgentSelection } from "@/api/types/agent";
+import type {
+	AgentFormField,
+	AgentFormPayload,
+	AgentGenerationPlanIntent,
+	AgentSelection,
+} from "@/api/types/agent";
 import { decideAgentSelection } from "@/domains/agent/api/agent";
 import { useResolvedAgentSelection } from "@/domains/agent/lib/useResolvedAgentSelection";
 import type { AgentMessage } from "@/domains/agent/stores";
@@ -12,6 +17,7 @@ import {
 import { useProjectStore } from "@/domains/projects/stores";
 import { cn } from "@/shared/lib/utils";
 import { AgentFormGenerationParams } from "./AgentFormGenerationParams";
+import { AgentGenerationIntentSummary } from "./AgentGenerationIntentSummary";
 import { AgentFormImagesField, normalizeImageIds } from "./AgentFormImagesField";
 import {
 	AgentFormPromptOptimization,
@@ -40,7 +46,13 @@ export const AgentFormCard: React.FC<{ message: AgentMessage }> = ({ message }) 
 	const resolved = useResolvedAgentSelection(payload?.selectionId, payload?.projectId, mapRecord);
 	if (!payload) return null;
 	if (resolved) {
-		return <AgentFormCardResolved title={payload.title} summary={resolved.summary} />;
+		return (
+			<AgentFormCardResolved
+				payload={payload}
+				summary={resolved.summary}
+				intent={resolved.intent ?? payload.intent}
+			/>
+		);
 	}
 	return <AgentFormCardInner payload={payload} />;
 };
@@ -54,24 +66,35 @@ const resolvedFormFromRecord = (
 	if (record.status === "pending") return null;
 	const summary =
 		record.status === "submitted"
-			? `已提交：${formSummary(payload.fields, record.decision?.values ?? {})}`
+			? formSubmissionSummary(
+					payload.fields,
+					record.decision?.values ?? {},
+					payload.intent ?? record.intent,
+				)
 			: record.status === "cancelled"
 				? "已取消，请在对话中说明你的调整需求。"
 				: record.status === "expired"
 					? "该表单已过期，请让智能体重新发起。"
 					: `表单已处理（${record.status}）。`;
-	return { status: record.status, summary, title: payload.title };
+	return {
+		status: record.status,
+		summary,
+		title: payload.title,
+		intent: payload.intent ?? record.intent,
+	};
 };
 
-const AgentFormCardResolved: React.FC<{ title: string; summary: string }> = ({
-	title,
-	summary,
-}) => (
+const AgentFormCardResolved: React.FC<{
+	payload: AgentFormPayload;
+	summary: string;
+	intent?: AgentGenerationPlanIntent;
+}> = ({ payload, summary, intent }) => (
 	<article className="agent-form-card max-w-[var(--message-bubble-max-width)] rounded-sm border border-border bg-card px-3 py-3 text-xs shadow-sm">
-		<h5 className="m-0 text-sm font-semibold text-foreground">{title}</h5>
+		<h5 className="m-0 text-sm font-semibold text-foreground">{payload.title}</h5>
 		<p className="mt-1 whitespace-pre-wrap break-words leading-5 text-muted-foreground">
 			{summary || "该参数表单已处理。"}
 		</p>
+		<AgentGenerationIntentSummary intent={intent} className="mt-2" />
 	</article>
 );
 
@@ -112,7 +135,7 @@ const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }
 		[updateFieldRuntime],
 	);
 
-	const finish = (summary: string, status: string) => {
+	const finish = (summary: string, status: string, intent?: AgentGenerationPlanIntent) => {
 		// Record the decision in the persisted store rather than mutating the
 		// message: the in-memory chat store is rebuilt from the server on every
 		// transcript hydrate, so a local edit would be discarded and the form
@@ -120,6 +143,7 @@ const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }
 		useAgentPersistenceStore.getState().markSelectionResolved(payload.selectionId, {
 			status,
 			summary,
+			intent,
 		});
 	};
 
@@ -141,7 +165,11 @@ const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }
 			);
 			let summary: string;
 			if (record.status === "submitted") {
-				summary = `已提交：${formSummary(payload.fields, record.decision?.values ?? {})}`;
+				summary = formSubmissionSummary(
+					payload.fields,
+					record.decision?.values ?? {},
+					payload.intent ?? record.intent,
+				);
 			} else if (record.status === "cancelled") {
 				summary = "已取消，请在对话中说明你的调整需求。";
 			} else if (record.status === "expired") {
@@ -149,7 +177,7 @@ const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }
 			} else {
 				summary = `表单已处理（${record.status}）。`;
 			}
-			finish(summary, record.status);
+			finish(summary, record.status, payload.intent ?? record.intent);
 			const activityLabel =
 				record.status === "submitted"
 					? "参数已提交"
@@ -173,6 +201,7 @@ const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }
 					{payload.prompt}
 				</p>
 			) : null}
+			<AgentGenerationIntentSummary intent={payload.intent} className="mt-2" />
 			<div className="mt-2 space-y-3">
 				{payload.fields.map((field) => (
 					<FormFieldControl
@@ -256,6 +285,7 @@ const FormFieldControl: React.FC<{
 				defaultValue={field.default}
 				disabled={disabled}
 				fieldId={field.id}
+				kind={field.kind === "video" ? "video" : "image"}
 				onBusyChange={changeBusy}
 				onChange={change}
 				onValidityChange={changeValidity}
@@ -409,6 +439,18 @@ const formSummary = (fields: AgentFormField[], values: Record<string, unknown>) 
 		})
 		.filter(Boolean)
 		.join(" · ");
+
+const formSubmissionSummary = (
+	fields: AgentFormField[],
+	values: Record<string, unknown>,
+	intent?: AgentGenerationPlanIntent,
+) => {
+	const settingsSummary = formSummary(fields, values);
+	if (!intent) return `已提交：${settingsSummary}`;
+
+	const confirmedSummary = `已确认 ${intent.items.length} 项`;
+	return settingsSummary ? `${confirmedSummary} · ${settingsSummary}` : confirmedSummary;
+};
 
 const formatFormValue = (field: AgentFormField, value: unknown) => {
 	if (field.type === "generation_settings") {

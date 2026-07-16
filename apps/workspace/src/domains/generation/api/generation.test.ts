@@ -2,13 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import httpClient from "@/shared/lib/http";
 import {
 	agentGenerationConversationScopeId,
+	getGenerationModels,
+	getGenerationTasks,
 	projectGenerationConversation,
 	projectGenerationConversationId,
+	retryGenerationTask,
 	sendGenerationBatch,
+	updateGenerationTaskAsset,
 } from "@/domains/generation/api/generation";
 
 vi.mock("@/shared/lib/http", () => ({
 	default: {
+		get: vi.fn(),
+		patch: vi.fn(),
 		post: vi.fn(),
 	},
 }));
@@ -69,6 +75,66 @@ describe("sendGenerationBatch", () => {
 
 		expect(httpClient.post).toHaveBeenCalledWith("/generation/batches", request, {
 			timeout: 1_000_000,
+		});
+	});
+});
+
+describe("generation workbench HTTP boundaries", () => {
+	it("keeps the HTTP model catalog used by generation settings", async () => {
+		vi.mocked(httpClient.get).mockResolvedValue({
+			code: 0,
+			data: { routes: [] },
+			message: "ok",
+			success: true,
+		});
+
+		await getGenerationModels();
+
+		expect(httpClient.get).toHaveBeenCalledWith("/generation/models");
+	});
+
+	it("keeps project task queries outside the Agent MCP", async () => {
+		vi.mocked(httpClient.get).mockResolvedValue({
+			code: 0,
+			data: { tasks: [] },
+			message: "ok",
+			success: true,
+		});
+
+		await getGenerationTasks(undefined, "image", "studio", " project-a ");
+
+		expect(httpClient.get).toHaveBeenCalledWith("/generation/tasks", {
+			params: { kind: "image", projectId: "project-a" },
+		});
+	});
+
+	it("keeps the HTTP retry wrapper even though no Agent MCP retry tool exists", async () => {
+		vi.mocked(httpClient.post).mockResolvedValue({
+			code: 0,
+			data: { id: "task/1", status: "submitted" },
+			message: "ok",
+			success: true,
+		});
+
+		await retryGenerationTask("task/1");
+
+		expect(httpClient.post).toHaveBeenCalledWith("/generation/tasks/task%2F1/retry", undefined, {
+			timeout: 1_000_000,
+		});
+	});
+
+	it("keeps task asset updates for workbench selection", async () => {
+		vi.mocked(httpClient.patch).mockResolvedValue({
+			code: 0,
+			data: { id: "task-1", conversationId: "session-1", assets: [] },
+			message: "ok",
+			success: true,
+		});
+
+		await updateGenerationTaskAsset("task-1", 2, { selected: true });
+
+		expect(httpClient.patch).toHaveBeenCalledWith("/generation/tasks/task-1/assets/2", {
+			selected: true,
 		});
 	});
 });

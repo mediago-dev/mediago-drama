@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { mutate as mutateSWR } from "swr";
+import { useSWRConfig } from "swr";
 import {
 	createGenerationNotificationEventSource,
 	generationConversationsKey,
@@ -16,12 +16,16 @@ import { useGenerationNotificationStore } from "@/domains/generation/stores/gene
 import { mediaAssetsKey } from "@/domains/workspace/api/media";
 
 const generationNotificationCompletedEventType = "generation.notification.completed";
+const generationNotificationConnectedEventType = "generation.notification.connected";
+const generationTaskStartedEventType = "generation.task.started";
 // Fired for tasks that completed in the background without a tracked
 // notification target (e.g. agent-submitted image tasks): no notification
 // record, but resource covers/counts still need revalidating.
 const generationTaskCompletedEventType = "generation.task.completed";
 
 export const GenerationNotificationSync = () => {
+	const { mutate } = useSWRConfig();
+
 	useEffect(() => {
 		let closed = false;
 
@@ -42,8 +46,12 @@ export const GenerationNotificationSync = () => {
 			const payload = parseGenerationNotificationEvent(event.data);
 			if (!payload?.notification) return;
 
-			revalidateGenerationCaches();
-			refreshSelectedGenerationAssetDependents(payload.projectId || payload.notification.projectId);
+			revalidateGenerationCaches(mutate);
+			refreshSelectedGenerationAssetDependents(
+				payload.projectId || payload.notification.projectId,
+				undefined,
+				mutate,
+			);
 			const result = useGenerationNotificationStore
 				.getState()
 				.upsertNotificationFromServer(payload.notification);
@@ -54,20 +62,34 @@ export const GenerationNotificationSync = () => {
 		const handleTaskCompleted = (event: MessageEvent<string>) => {
 			const payload = parseGenerationNotificationEvent(event.data);
 			if (!payload) return;
-			revalidateGenerationCaches();
-			refreshSelectedGenerationAssetDependents(payload.projectId);
+			revalidateGenerationCaches(mutate);
+			refreshSelectedGenerationAssetDependents(payload.projectId, undefined, mutate);
 			void showGenerationTaskCompletedSystemNotification();
 		};
+		const handleTaskStarted = (event: MessageEvent<string>) => {
+			if (!parseGenerationNotificationEvent(event.data)) return;
+			revalidateGenerationTaskCaches(mutate);
+		};
+		const handleConnected = (event: MessageEvent<string>) => {
+			if (!parseGenerationNotificationEvent(event.data)) return;
+			// The broker has no replay buffer. Revalidate once after every connect
+			// so a task-start event missed during a disconnect is recovered.
+			revalidateGenerationTaskCaches(mutate);
+		};
 
+		source.addEventListener(generationNotificationConnectedEventType, handleConnected);
 		source.addEventListener(generationNotificationCompletedEventType, handleCompleted);
+		source.addEventListener(generationTaskStartedEventType, handleTaskStarted);
 		source.addEventListener(generationTaskCompletedEventType, handleTaskCompleted);
 		return () => {
 			closed = true;
+			source.removeEventListener(generationNotificationConnectedEventType, handleConnected);
 			source.removeEventListener(generationNotificationCompletedEventType, handleCompleted);
+			source.removeEventListener(generationTaskStartedEventType, handleTaskStarted);
 			source.removeEventListener(generationTaskCompletedEventType, handleTaskCompleted);
 			source.close();
 		};
-	}, []);
+	}, [mutate]);
 
 	return null;
 };
@@ -80,10 +102,16 @@ const parseGenerationNotificationEvent = (value: string): GenerationNotification
 	}
 };
 
-const revalidateGenerationCaches = () => {
-	void mutateSWR(isGenerationTasksCacheKey, undefined, { revalidate: true });
-	void mutateSWR(isGenerationConversationsCacheKey, undefined, { revalidate: true });
-	void mutateSWR(isMediaAssetsCacheKey, undefined, { revalidate: true });
+type SWRMutator = ReturnType<typeof useSWRConfig>["mutate"];
+
+const revalidateGenerationTaskCaches = (mutate: SWRMutator) => {
+	void mutate(isGenerationTasksCacheKey);
+	void mutate(isGenerationConversationsCacheKey);
+};
+
+const revalidateGenerationCaches = (mutate: SWRMutator) => {
+	revalidateGenerationTaskCaches(mutate);
+	void mutate(isMediaAssetsCacheKey);
 };
 
 const isGenerationTasksCacheKey = (key: unknown) =>

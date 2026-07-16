@@ -20,6 +20,7 @@ import { useResolvedAgentSelection } from "@/domains/agent/lib/useResolvedAgentS
 import type { AgentMessage } from "@/domains/agent/stores";
 import { ResolvedSelectionPreview } from "@/domains/agent/components/timeline/ResolvedSelectionPreview";
 import { cn } from "@/shared/lib/utils";
+import { AgentGenerationIntentSummary } from "./AgentGenerationIntentSummary";
 
 export const AgentA2UIMessage: React.FC<{
 	message: AgentMessage;
@@ -52,6 +53,7 @@ export const AgentA2UIMessage: React.FC<{
 					imageUrl={resolved.imageUrl}
 					alt={resolved.summary || resolved.title || "已选择的图片"}
 				/>
+				<AgentGenerationIntentSummary intent={resolved.intent} className="mt-2" />
 				<p className="mt-1 whitespace-pre-wrap break-words leading-5 text-muted-foreground">
 					{resolved.summary || "该选择已处理。"}
 				</p>
@@ -95,6 +97,7 @@ export const AgentA2UIMessage: React.FC<{
 				"[&_div[style*='flex-direction:_row']:has(img)>div_img]:max-h-80",
 			)}
 		>
+			<AgentGenerationIntentSummary intent={message.metadata?.a2ui?.intent} className="mb-2" />
 			<MarkdownContext.Provider value={renderA2UIMarkdown}>
 				<div className="space-y-2">
 					{result.surfaces.map((surface) => (

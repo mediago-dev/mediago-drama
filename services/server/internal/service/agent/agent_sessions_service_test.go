@@ -105,6 +105,61 @@ func TestSessionServiceRunStatusGuardSerializesCancellation(t *testing.T) {
 	}
 }
 
+func TestSessionServiceRepositoryReadsPreserveActiveRun(t *testing.T) {
+	tests := []struct {
+		name string
+		read func(t *testing.T, store *SessionService)
+	}{
+		{
+			name: "list sessions",
+			read: func(t *testing.T, store *SessionService) {
+				t.Helper()
+				summaries := store.List("project-1")
+				if len(summaries) != 1 || summaries[0].SessionID != "session-1" {
+					t.Fatalf("List() = %#v, want session-1", summaries)
+				}
+			},
+		},
+		{
+			name: "resolve latest project session",
+			read: func(t *testing.T, store *SessionService) {
+				t.Helper()
+				sessionID, ok := store.ProjectSessionID("project-1")
+				if !ok || sessionID != "session-1" {
+					t.Fatalf("ProjectSessionID() = %q, %v; want session-1, true", sessionID, ok)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := NewSessionService(newTestAgentSessionRepository(t))
+			store.create("session-1", "project-1")
+			if _, ok := store.StartRun(
+				"session-1",
+				"project-1",
+				"run-1",
+				func() {},
+				AgentRunStartOptions{},
+			); !ok {
+				t.Fatal("starting run failed")
+			}
+
+			tt.read(t, store)
+
+			if err := store.WithRunStatus("session-1", "run-1", func(status string, found bool) error {
+				if !found || status != "running" {
+					t.Fatalf("WithRunStatus() after repository read = %q, found=%v; want running", status, found)
+				}
+				return nil
+			}); err != nil {
+				t.Fatalf("WithRunStatus() error = %v", err)
+			}
+		})
+	}
+}
+
 func TestSessionServicePersistsAndReconcilesInterruptedRuns(t *testing.T) {
 	repo := newTestAgentSessionRepository(t)
 
@@ -154,6 +209,47 @@ func TestSessionServicePersistsGeneratedTitle(t *testing.T) {
 	summaries = restarted.List("project-1")
 	if len(summaries) != 1 || summaries[0].Title != "整理素材清单" {
 		t.Fatalf("restarted summaries = %#v, want persisted title", summaries)
+	}
+}
+
+func TestSessionServicePersistsAndClearsACPInstructionState(t *testing.T) {
+	repo := newTestAgentSessionRepository(t)
+	store := NewSessionService(repo)
+	store.create("session-1", "project-1")
+
+	initial, ok := store.StartRun("session-1", "project-1", "run-1", func() {}, AgentRunStartOptions{})
+	if !ok {
+		t.Fatal("starting first run failed")
+	}
+	if initial.SessionID != "" || initial.InstructionHash != "" {
+		t.Fatalf("initial ACP state = %#v, want empty", initial)
+	}
+
+	want := ACPSessionState{
+		SessionID:       "acp-session-1",
+		InstructionHash: "instruction-v1:abc123",
+	}
+	store.SetACPSessionState("session-1", "run-1", want)
+	run, ok := store.Run("session-1", "run-1")
+	if !ok || run.ACPSessionID != want.SessionID || run.ACPInstructionHash != want.InstructionHash {
+		t.Fatalf("run ACP state = %#v, want %#v", run, want)
+	}
+	store.FinishRun("session-1", "run-1", "completed", "done")
+
+	restarted := NewSessionService(repo)
+	loaded, ok := restarted.StartRun("session-1", "project-1", "run-2", func() {}, AgentRunStartOptions{})
+	if !ok || loaded != want {
+		t.Fatalf("loaded ACP state = %#v, ok=%v; want %#v", loaded, ok, want)
+	}
+	restarted.FinishRun("session-1", "run-2", "completed", "done")
+	restarted.ClearACPSessionID("session-1")
+
+	cleared, ok := restarted.StartRun("session-1", "project-1", "run-3", func() {}, AgentRunStartOptions{})
+	if !ok {
+		t.Fatal("starting run after clear failed")
+	}
+	if cleared.SessionID != "" || cleared.InstructionHash != "" {
+		t.Fatalf("cleared ACP state = %#v, want empty", cleared)
 	}
 }
 

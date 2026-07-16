@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,6 +46,725 @@ func sampleCreate() CreateRequest {
 		Title:       "选择风格",
 		Options:     []Option{{ID: "sweet", Label: "甜美粉彩", ImageURL: "https://x/1.png"}, {ID: "retro", Label: "复古线条"}},
 		AllowCustom: true,
+	}
+}
+
+func sampleGenerationIntent(prompt string) *GenerationPlanIntent {
+	return sampleGenerationIntentFor("image", GenerationPlanOperationCreateSingle, prompt)
+}
+
+func sampleGenerationIntentFor(kind string, operation string, prompt string) *GenerationPlanIntent {
+	return &GenerationPlanIntent{
+		Version:   GenerationPlanIntentVersion,
+		Operation: operation,
+		Items: []GenerationPlanIntentItem{{
+			ID:     "item-1",
+			Kind:   kind,
+			Prompt: prompt,
+		}},
+	}
+}
+
+func sampleGenerationSettingsField(kind string) FormField {
+	return FormField{ID: "settings", Type: FieldTypeGenerationSettings, Kind: kind}
+}
+
+func sampleGenerationPlanRequest(kind string, operation string) CreateRequest {
+	return CreateRequest{
+		SessionID: "session-generation-plan",
+		RunID:     "run-generation-plan",
+		Kind:      KindGenerationPlan,
+		Title:     "确认生成设置",
+		Fields:    []FormField{sampleGenerationSettingsField(kind)},
+		Intent:    sampleGenerationIntentFor(kind, operation, "生成一个画面"),
+	}
+}
+
+func createSubmittedSelection(t *testing.T, store *Service, projectID string) Record {
+	t.Helper()
+	request := sampleGenerationPlanRequest("image", GenerationPlanOperationCreateSingle)
+	request.SessionID = "session-generation"
+	request.RunID = "run-generation"
+	request.Intent.Items[0].Prompt = "一只猫"
+	created, err := store.Create(projectID, request)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	decided, err := store.Decide(projectID, created.ID, DecisionRequest{
+		Values: map[string]any{"settings": sampleImageGenerationSettingsValue()},
+	})
+	if err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+	if decided.Status != StatusSubmitted {
+		t.Fatalf("Decide() status = %q, want %q", decided.Status, StatusSubmitted)
+	}
+	return decided
+}
+
+func TestSelectionPersistsGenerationIntentAndValidatesVersion(t *testing.T) {
+	store, repo, projectID := newTestStore(t)
+	request := sampleCreate()
+	request.Intent = sampleGenerationIntent(" 一只猫 ")
+	created, err := store.Create(projectID, request)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if created.Intent == nil || created.Intent.Version != GenerationPlanIntentVersion || created.Intent.Items[0].Prompt != "一只猫" {
+		t.Fatalf("Create() intent = %#v, want normalized versioned intent", created.Intent)
+	}
+	model, err := repo.GetAgentSelection(projectID, created.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSelection() error = %v", err)
+	}
+	if model.IntentJSON == "" {
+		t.Fatal("persisted IntentJSON is empty")
+	}
+	reloaded, ok, err := store.Get(projectID, created.ID)
+	if err != nil || !ok {
+		t.Fatalf("Get() = %#v, ok=%v, error=%v", reloaded, ok, err)
+	}
+	if reloaded.Intent == nil || reloaded.Intent.Version != GenerationPlanIntentVersion || reloaded.Intent.Items[0].Prompt != "一只猫" {
+		t.Fatalf("Get() intent = %#v, want normalized persisted intent", reloaded.Intent)
+	}
+
+	invalid := sampleCreate()
+	invalid.Intent = &GenerationPlanIntent{Version: 2, Operation: "create_single"}
+	if _, err := store.Create(projectID, invalid); !errors.Is(err, ErrInvalidGenerationPlanIntent) {
+		t.Fatalf("Create(version=2) error = %v, want ErrInvalidGenerationPlanIntent", err)
+	}
+	now := time.Now().UTC()
+	expiresAt := now.Add(time.Hour)
+	if err := repo.CreateAgentSelection(domain.AgentSelectionModel{
+		ProjectID:   projectID,
+		ID:          "selection-invalid-intent-version",
+		SessionID:   "session-invalid-intent",
+		RunID:       "run-invalid-intent",
+		Kind:        "form",
+		Title:       "Invalid intent",
+		OptionsJSON: "[]",
+		IntentJSON:  `{"version":2,"operation":"create_single","items":[]}`,
+		Status:      StatusPending,
+		CreatedAt:   now,
+		ExpiresAt:   &expiresAt,
+	}); err != nil {
+		t.Fatalf("CreateAgentSelection(invalid intent) error = %v", err)
+	}
+	if _, _, err := store.Get(projectID, "selection-invalid-intent-version"); !errors.Is(err, ErrInvalidGenerationPlanIntent) {
+		t.Fatalf("Get(invalid intent version) error = %v, want ErrInvalidGenerationPlanIntent", err)
+	}
+	if err := repo.CreateAgentSelection(domain.AgentSelectionModel{
+		ProjectID:   projectID,
+		ID:          "selection-oversized-intent",
+		SessionID:   "session-oversized-intent",
+		RunID:       "run-oversized-intent",
+		Kind:        "form",
+		Title:       "Oversized intent",
+		OptionsJSON: "[]",
+		IntentJSON:  strings.Repeat("x", MaxGenerationPlanIntentJSONBytes+1),
+		Status:      StatusPending,
+		CreatedAt:   now,
+		ExpiresAt:   &expiresAt,
+	}); err != nil {
+		t.Fatalf("CreateAgentSelection(oversized intent) error = %v", err)
+	}
+	if _, _, err := store.Get(projectID, "selection-oversized-intent"); !errors.Is(err, ErrInvalidGenerationPlanIntent) {
+		t.Fatalf("Get(oversized intent) error = %v, want ErrInvalidGenerationPlanIntent", err)
+	}
+}
+
+func TestSelectionGenerationPlanRequiresIntentInCreateAndReuse(t *testing.T) {
+	store, _, projectID := newTestStore(t)
+	request := sampleGenerationPlanRequest("image", GenerationPlanOperationCreateSingle)
+	request.Intent = nil
+
+	if _, err := store.Create(projectID, request); !errors.Is(err, ErrInvalidGenerationPlanIntent) {
+		t.Fatalf("Create(missing intent) error = %v, want ErrInvalidGenerationPlanIntent", err)
+	}
+	if _, ok, err := store.FindReusable(projectID, ReuseRequest{
+		RunID:  request.RunID,
+		Kind:   request.Kind,
+		Title:  request.Title,
+		Fields: request.Fields,
+	}); !errors.Is(err, ErrInvalidGenerationPlanIntent) || ok {
+		t.Fatalf("FindReusable(missing intent) ok=%v, error=%v; want ErrInvalidGenerationPlanIntent", ok, err)
+	}
+	if _, ok, err := store.FindReusable(projectID, ReuseRequest{
+		Kind:   request.Kind,
+		Fields: request.Fields,
+	}); !errors.Is(err, ErrInvalidGenerationPlanIntent) || ok {
+		t.Fatalf("FindReusable(missing intent and metadata) ok=%v, error=%v; want ErrInvalidGenerationPlanIntent", ok, err)
+	}
+}
+
+func TestSelectionGenerationPlanIntentValidation(t *testing.T) {
+	makeBatchItems := func(count int) []GenerationPlanIntentItem {
+		items := make([]GenerationPlanIntentItem, 0, count)
+		for index := 0; index < count; index++ {
+			items = append(items, GenerationPlanIntentItem{
+				ID:     fmt.Sprintf("item-%d", index),
+				Kind:   "image",
+				Prompt: "生成画面",
+			})
+		}
+		return items
+	}
+	tests := []struct {
+		name   string
+		mutate func(*CreateRequest)
+	}{
+		{name: "unsupported version", mutate: func(request *CreateRequest) { request.Intent.Version = 2 }},
+		{name: "unknown operation", mutate: func(request *CreateRequest) { request.Intent.Operation = "create_many" }},
+		{name: "single has no items", mutate: func(request *CreateRequest) { request.Intent.Items = nil }},
+		{name: "single has two items", mutate: func(request *CreateRequest) { request.Intent.Items = makeBatchItems(2) }},
+		{name: "batch has no items", mutate: func(request *CreateRequest) {
+			request.Intent.Operation = GenerationPlanOperationCreateBatch
+			request.Intent.Items = nil
+		}},
+		{name: "batch exceeds limit", mutate: func(request *CreateRequest) {
+			request.Intent.Operation = GenerationPlanOperationCreateBatch
+			request.Intent.Items = makeBatchItems(MaxGenerationPlanIntentItems + 1)
+		}},
+		{name: "blank item id", mutate: func(request *CreateRequest) { request.Intent.Items[0].ID = "  " }},
+		{name: "duplicate normalized item id", mutate: func(request *CreateRequest) {
+			request.Intent.Operation = GenerationPlanOperationCreateBatch
+			request.Intent.Items = makeBatchItems(2)
+			request.Intent.Items[0].ID = " same "
+			request.Intent.Items[1].ID = "same"
+		}},
+		{name: "blank prompt", mutate: func(request *CreateRequest) { request.Intent.Items[0].Prompt = "  " }},
+		{name: "unsupported item kind", mutate: func(request *CreateRequest) { request.Intent.Items[0].Kind = "audio" }},
+		{name: "field kind mismatch", mutate: func(request *CreateRequest) { request.Intent.Items[0].Kind = "video" }},
+		{name: "retired retry operation", mutate: func(request *CreateRequest) { request.Intent.Operation = "retry" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store, _, projectID := newTestStore(t)
+			request := sampleGenerationPlanRequest("image", GenerationPlanOperationCreateSingle)
+			tt.mutate(&request)
+			if _, err := store.Create(projectID, request); !errors.Is(err, ErrInvalidGenerationPlanIntent) {
+				t.Fatalf("Create() error = %v, want ErrInvalidGenerationPlanIntent", err)
+			}
+		})
+	}
+}
+
+func TestSelectionNormalizesGenerationPlanIntentAndUsesAuthoritativeProject(t *testing.T) {
+	store, _, projectID := newTestStore(t)
+	request := sampleGenerationPlanRequest("image", GenerationPlanOperationCreateBatch)
+	request.Intent.ConversationTitle = " 批量角色图 "
+	request.Intent.Items = []GenerationPlanIntentItem{
+		{
+			ID:                " second ",
+			Kind:              " image ",
+			Prompt:            " 第二张 ",
+			AssetTitle:        " 角色乙 ",
+			CapabilityID:      " capability-image ",
+			ConversationID:    " session-batch ",
+			ScopeID:           " scope-a ",
+			DocumentID:        " doc-a ",
+			SectionID:         " section-a ",
+			ResourceType:      " character ",
+			ReferenceAssetIDs: []string{" asset-a ", "asset-a", "", "asset-b"},
+			DocumentContext: &GenerationDocumentContext{
+				DocumentID: " doc-a ", SectionID: " section-a ",
+			},
+			NotificationTarget: &GenerationNotificationTarget{
+				Kind: " document-section ", DocumentID: " doc-a ", DocumentTitle: " 第一集 ",
+				Section: GenerationNotificationSectionTarget{
+					BlockID: " section-a ", DocumentID: " doc-a ", HeadingText: " 角色乙 ",
+					Markdown: " ## 角色乙 ", PlainText: " 角色乙 ", Prompt: " 第二张 ",
+				},
+			},
+		},
+		{ID: " first ", Kind: "image", Prompt: " 第一张 "},
+	}
+	created, err := store.Create(projectID, request)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	intent := created.Intent
+	if intent == nil || intent.ConversationTitle != "批量角色图" || len(intent.Items) != 2 {
+		t.Fatalf("normalized intent = %#v", intent)
+	}
+	if intent.Items[0].ID != "second" || intent.Items[1].ID != "first" {
+		t.Fatalf("item order = %#v, want second then first", intent.Items)
+	}
+	first := intent.Items[0]
+	if first.Kind != "image" || first.Prompt != "第二张" || first.AssetTitle != "角色乙" || first.ConversationID != "session-batch" || first.ResourceType != "character" {
+		t.Fatalf("normalized item = %#v", first)
+	}
+	if got := first.ReferenceAssetIDs; len(got) != 2 || got[0] != "asset-a" || got[1] != "asset-b" {
+		t.Fatalf("referenceAssetIds = %#v, want ordered unique ids", got)
+	}
+	if first.DocumentContext == nil || first.DocumentContext.ProjectID != projectID || first.DocumentContext.DocumentID != "doc-a" {
+		t.Fatalf("documentContext = %#v, want authoritative project", first.DocumentContext)
+	}
+	if first.NotificationTarget == nil || first.NotificationTarget.ProjectID != projectID || first.NotificationTarget.Section.HeadingText != "角色乙" {
+		t.Fatalf("notificationTarget = %#v, want normalized authoritative project", first.NotificationTarget)
+	}
+	request.Intent.Items[0].Prompt = "mutated after create"
+	request.Intent.Items[0].ReferenceAssetIDs[0] = "mutated-asset"
+	if created.Intent.Items[0].Prompt != "第二张" || created.Intent.Items[0].ReferenceAssetIDs[0] != "asset-a" {
+		t.Fatalf("created intent aliases caller input: %#v", created.Intent.Items[0])
+	}
+}
+
+func TestSelectionRejectsConflictingGenerationIntentProject(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*GenerationPlanIntentItem)
+	}{
+		{name: "document context", mutate: func(item *GenerationPlanIntentItem) {
+			item.DocumentContext = &GenerationDocumentContext{ProjectID: "other-project", DocumentID: "doc-a"}
+		}},
+		{name: "notification target", mutate: func(item *GenerationPlanIntentItem) {
+			item.NotificationTarget = &GenerationNotificationTarget{ProjectID: "other-project"}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store, _, projectID := newTestStore(t)
+			request := sampleGenerationPlanRequest("image", GenerationPlanOperationCreateSingle)
+			tt.mutate(&request.Intent.Items[0])
+			if _, err := store.Create(projectID, request); !errors.Is(err, ErrInvalidGenerationPlanIntent) {
+				t.Fatalf("Create() error = %v, want ErrInvalidGenerationPlanIntent", err)
+			}
+		})
+	}
+}
+
+func TestSelectionGenerationPlanIntentRejectsOversizedPayload(t *testing.T) {
+	store, _, projectID := newTestStore(t)
+	request := sampleGenerationPlanRequest("image", GenerationPlanOperationCreateSingle)
+	request.Intent.Items[0].Prompt = strings.Repeat("x", MaxGenerationPlanIntentJSONBytes)
+	if _, err := store.Create(projectID, request); !errors.Is(err, ErrInvalidGenerationPlanIntent) {
+		t.Fatalf("Create(oversized intent) error = %v, want ErrInvalidGenerationPlanIntent", err)
+	}
+}
+
+func TestSelectionReadsHistoricalGenerationPlanWithoutIntent(t *testing.T) {
+	store, repo, projectID := newTestStore(t)
+	fieldsJSON, err := json.Marshal([]FormField{sampleGenerationSettingsField("image")})
+	if err != nil {
+		t.Fatalf("Marshal(fields) error = %v", err)
+	}
+	now := time.Now().UTC()
+	expiresAt := now.Add(time.Hour)
+	model := domain.AgentSelectionModel{
+		ProjectID: projectID, ID: "selection-historical-generation-plan", SessionID: "session-old", RunID: "run-old",
+		Kind: KindGenerationPlan, Title: "历史生成确认", OptionsJSON: "[]", FieldsJSON: string(fieldsJSON),
+		Status: StatusPending, CreatedAt: now, ExpiresAt: &expiresAt,
+	}
+	if err := repo.CreateAgentSelection(model); err != nil {
+		t.Fatalf("CreateAgentSelection() error = %v", err)
+	}
+	record, ok, err := store.Get(projectID, model.ID)
+	if err != nil || !ok {
+		t.Fatalf("Get() = %#v, ok=%v, error=%v", record, ok, err)
+	}
+	if record.Intent != nil {
+		t.Fatalf("historical record intent = %#v, want nil", record.Intent)
+	}
+	if _, found, findErr := store.FindReusable(projectID, ReuseRequest{
+		RunID: model.RunID, Kind: KindGenerationPlan, Title: model.Title, Fields: record.Fields,
+	}); !errors.Is(findErr, ErrInvalidGenerationPlanIntent) || found {
+		t.Fatalf("FindReusable(historical missing intent) found=%v, error=%v; want fail closed", found, findErr)
+	}
+}
+
+func TestSelectionFindReusableIncludesIntentAndSkipsClaimed(t *testing.T) {
+	store, _, projectID := newTestStore(t)
+	request := sampleGenerationPlanRequest("image", GenerationPlanOperationCreateSingle)
+	request.SessionID = "session-reuse-intent"
+	request.RunID = "run-reuse-intent"
+	request.Title = "确认生成"
+	request.Prompt = "确认以下生成"
+	request.Intent.Items[0].Prompt = "一只猫"
+	request.Intent.Items[0].ReferenceAssetIDs = []string{" asset-a ", "asset-a", "asset-b"}
+	request.Intent.Items[0].DocumentContext = &GenerationDocumentContext{DocumentID: " doc-a "}
+	created, err := store.Create(projectID, request)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	reuseIntent := sampleGenerationIntent("一只猫")
+	reuseIntent.Items[0].ReferenceAssetIDs = []string{"asset-a", "asset-b"}
+	reuseIntent.Items[0].DocumentContext = &GenerationDocumentContext{
+		ProjectID:  projectID,
+		DocumentID: "doc-a",
+	}
+	reuse := ReuseRequest{
+		SessionID: request.SessionID,
+		RunID:     request.RunID,
+		Kind:      request.Kind,
+		Title:     request.Title,
+		Prompt:    request.Prompt,
+		Fields:    request.Fields,
+		Intent:    reuseIntent,
+	}
+	if record, ok, findErr := store.FindReusable(projectID, reuse); findErr != nil || !ok || record.ID != created.ID {
+		t.Fatalf("FindReusable(same intent) = %#v, ok=%v, error=%v; want %s", record, ok, findErr, created.ID)
+	}
+	equivalent := reuse
+	equivalent.Intent = sampleGenerationIntent(" 一只猫 ")
+	equivalent.Intent.Operation = " create_single "
+	equivalent.Intent.Items[0].ID = " item-1 "
+	equivalent.Intent.Items[0].Kind = " image "
+	equivalent.Intent.Items[0].ReferenceAssetIDs = []string{" asset-a ", "asset-a", "", " asset-b "}
+	equivalent.Intent.Items[0].DocumentContext = &GenerationDocumentContext{DocumentID: " doc-a "}
+	if record, ok, findErr := store.FindReusable(projectID, equivalent); findErr != nil || !ok || record.ID != created.ID {
+		t.Fatalf("FindReusable(equivalent normalized intent) = %#v, ok=%v, error=%v; want %s", record, ok, findErr, created.ID)
+	}
+	otherSession := reuse
+	otherSession.SessionID = "session-other"
+	if record, ok, findErr := store.FindReusable(projectID, otherSession); findErr != nil || ok {
+		t.Fatalf("FindReusable(other session) = %#v, ok=%v, error=%v; want no reuse", record, ok, findErr)
+	}
+	different := reuse
+	different.Intent = sampleGenerationIntent("一只狗")
+	different.Intent.Items[0].ReferenceAssetIDs = []string{"asset-a", "asset-b"}
+	different.Intent.Items[0].DocumentContext = &GenerationDocumentContext{
+		ProjectID:  projectID,
+		DocumentID: "doc-a",
+	}
+	if record, ok, findErr := store.FindReusable(projectID, different); findErr != nil || ok {
+		t.Fatalf("FindReusable(different intent) = %#v, ok=%v, error=%v; want no reuse", record, ok, findErr)
+	}
+
+	decided, err := store.Decide(projectID, created.ID, DecisionRequest{Values: map[string]any{"settings": sampleImageGenerationSettingsValue()}})
+	if err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+	if record, ok, findErr := store.FindReusable(projectID, reuse); findErr != nil || !ok || record.ID != decided.ID {
+		t.Fatalf("FindReusable(submitted unclaimed) = %#v, ok=%v, error=%v; want %s", record, ok, findErr, decided.ID)
+	}
+	claim, err := store.ClaimGenerationUse(projectID, request.SessionID, request.RunID, decided.ID, "fingerprint-reuse")
+	if err != nil || claim.Status != GenerationUseClaimed {
+		t.Fatalf("ClaimGenerationUse() = %#v, error=%v; want claimed", claim, err)
+	}
+	if record, ok, findErr := store.FindReusable(projectID, reuse); findErr != nil || ok {
+		t.Fatalf("FindReusable(claimed) = %#v, ok=%v, error=%v; want no reuse", record, ok, findErr)
+	}
+}
+
+func TestSelectionFindReusablePreservesGenerationIntentItemOrder(t *testing.T) {
+	store, _, projectID := newTestStore(t)
+	request := sampleGenerationPlanRequest("image", GenerationPlanOperationCreateBatch)
+	request.Intent.Items = []GenerationPlanIntentItem{
+		{ID: "first", Kind: "image", Prompt: "第一张"},
+		{ID: "second", Kind: "image", Prompt: "第二张"},
+	}
+	created, err := store.Create(projectID, request)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	reuse := ReuseRequest{
+		RunID:  request.RunID,
+		Kind:   request.Kind,
+		Title:  request.Title,
+		Fields: request.Fields,
+		Intent: &GenerationPlanIntent{
+			Version:   GenerationPlanIntentVersion,
+			Operation: GenerationPlanOperationCreateBatch,
+			Items: []GenerationPlanIntentItem{
+				{ID: "first", Kind: "image", Prompt: "第一张"},
+				{ID: "second", Kind: "image", Prompt: "第二张"},
+			},
+		},
+	}
+	if record, ok, findErr := store.FindReusable(projectID, reuse); findErr != nil || !ok || record.ID != created.ID {
+		t.Fatalf("FindReusable(same ordered batch) = %#v, ok=%v, error=%v; want %s", record, ok, findErr, created.ID)
+	}
+	swapped := reuse
+	swapped.Intent = &GenerationPlanIntent{
+		Version:   GenerationPlanIntentVersion,
+		Operation: GenerationPlanOperationCreateBatch,
+		Items: []GenerationPlanIntentItem{
+			{ID: "second", Kind: "image", Prompt: "第二张"},
+			{ID: "first", Kind: "image", Prompt: "第一张"},
+		},
+	}
+	if record, ok, findErr := store.FindReusable(projectID, swapped); findErr != nil || ok {
+		t.Fatalf("FindReusable(reordered batch) = %#v, ok=%v, error=%v; want no reuse", record, ok, findErr)
+	}
+}
+
+func TestSelectionClaimGenerationUseLifecycle(t *testing.T) {
+	store, _, projectID := newTestStore(t)
+	selection := createSubmittedSelection(t, store, projectID)
+
+	first, err := store.ClaimGenerationUse(projectID, selection.SessionID, selection.RunID, selection.ID, "fingerprint-a")
+	if err != nil || first.Status != GenerationUseClaimed || len(first.Outcome) != 0 {
+		t.Fatalf("first ClaimGenerationUse() = %#v, error=%v; want claimed", first, err)
+	}
+	second, err := store.ClaimGenerationUse(projectID, selection.SessionID, selection.RunID, selection.ID, "fingerprint-a")
+	if err != nil || second.Status != GenerationUseInProgressOrUnknown {
+		t.Fatalf("second ClaimGenerationUse() = %#v, error=%v; want in_progress_or_unknown", second, err)
+	}
+	conflict, err := store.ClaimGenerationUse(projectID, selection.SessionID, selection.RunID, selection.ID, "fingerprint-b")
+	if err != nil || conflict.Status != GenerationUseConflict {
+		t.Fatalf("conflicting ClaimGenerationUse() = %#v, error=%v; want conflict", conflict, err)
+	}
+
+	outcome := json.RawMessage(`{"version":1,"result":{"taskId":"task-1"}}`)
+	if err := store.CompleteGenerationUse(projectID, selection.ID, "fingerprint-a", outcome); err != nil {
+		t.Fatalf("CompleteGenerationUse() error = %v", err)
+	}
+	// Completing the same result is idempotent, but a different result cannot
+	// overwrite the persisted replay value.
+	if err := store.CompleteGenerationUse(projectID, selection.ID, "fingerprint-a", outcome); err != nil {
+		t.Fatalf("second CompleteGenerationUse(same) error = %v", err)
+	}
+	if err := store.CompleteGenerationUse(projectID, selection.ID, "fingerprint-a", json.RawMessage(`{"version":1,"result":{"taskId":"task-2"}}`)); !errors.Is(err, ErrGenerationUseConflict) {
+		t.Fatalf("CompleteGenerationUse(different) error = %v, want ErrGenerationUseConflict", err)
+	}
+
+	replay, err := store.ClaimGenerationUse(projectID, selection.SessionID, selection.RunID, selection.ID, "fingerprint-a")
+	if err != nil || replay.Status != GenerationUseReplay || string(replay.Outcome) != string(outcome) {
+		t.Fatalf("replay ClaimGenerationUse() = %#v, error=%v; want saved outcome", replay, err)
+	}
+	persisted, ok, err := store.Get(projectID, selection.ID)
+	if err != nil || !ok {
+		t.Fatalf("Get(completed selection) = %#v, ok=%v, error=%v", persisted, ok, err)
+	}
+	if persisted.GenerationClaimFingerprint != "fingerprint-a" || persisted.GenerationClaimedAt == "" || persisted.GenerationCompletedAt == "" || string(persisted.GenerationOutcome) != string(outcome) {
+		t.Fatalf("completed record = %#v, want persisted claim metadata and outcome", persisted)
+	}
+}
+
+func TestSelectionClaimGenerationUseReplaysClaimAfterSelectionExpiry(t *testing.T) {
+	store, repo, projectID := newTestStore(t)
+	now := time.Now().UTC()
+	expiresAt := now.Add(-time.Minute)
+	claimedAt := now.Add(-time.Hour)
+	completedAt := now.Add(-30 * time.Minute)
+	base := domain.AgentSelectionModel{
+		ProjectID: projectID, SessionID: "session-expired-claim", RunID: "run-expired-claim",
+		Kind: KindGenerationPlan, Title: "Expired claimed generation", OptionsJSON: "[]",
+		FieldsJSON: `[{"id":"settings","type":"generation_settings","kind":"image","required":true}]`,
+		IntentJSON: `{"version":1,"operation":"create_single","items":[{"id":"item-1","kind":"image","prompt":"一只猫"}]}`,
+		Status:     StatusSubmitted, DecisionJSON: `{"values":{"settings":{"kind":"image","routeId":"route-image","params":{},"referenceAssetIds":[],"promptSupplements":[],"promptOptimization":{"enabled":false}}}}`,
+		CreatedAt: now.Add(-2 * time.Hour), DecidedAt: &claimedAt, ExpiresAt: &expiresAt,
+		GenerationClaimFingerprint: "fingerprint-expired", GenerationClaimedAt: &claimedAt,
+	}
+	unknown := base
+	unknown.ID = "selection-expired-unknown"
+	if err := repo.CreateAgentSelection(unknown); err != nil {
+		t.Fatalf("CreateAgentSelection(unknown) error = %v", err)
+	}
+	result, err := store.ClaimGenerationUse(projectID, unknown.SessionID, unknown.RunID, unknown.ID, "fingerprint-expired")
+	if err != nil || result.Status != GenerationUseInProgressOrUnknown {
+		t.Fatalf("ClaimGenerationUse(expired unknown) = %#v, error=%v", result, err)
+	}
+
+	outcome := `{"version":1,"result":{"taskId":"task-expired"}}`
+	completed := base
+	completed.ID = "selection-expired-completed"
+	completed.GenerationOutcomeJSON = outcome
+	completed.GenerationCompletedAt = &completedAt
+	if err := repo.CreateAgentSelection(completed); err != nil {
+		t.Fatalf("CreateAgentSelection(completed) error = %v", err)
+	}
+	result, err = store.ClaimGenerationUse(projectID, completed.SessionID, completed.RunID, completed.ID, "fingerprint-expired")
+	if err != nil || result.Status != GenerationUseReplay || string(result.Outcome) != outcome {
+		t.Fatalf("ClaimGenerationUse(expired replay) = %#v, error=%v", result, err)
+	}
+}
+
+func TestSelectionClaimGenerationUseIsAtomic(t *testing.T) {
+	store, _, projectID := newTestStore(t)
+	selection := createSubmittedSelection(t, store, projectID)
+
+	const callers = 20
+	results := make(chan GenerationUseClaimResult, callers)
+	errorsCh := make(chan error, callers)
+	start := make(chan struct{})
+	var group sync.WaitGroup
+	for index := 0; index < callers; index++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			result, err := store.ClaimGenerationUse(projectID, selection.SessionID, selection.RunID, selection.ID, "fingerprint-concurrent")
+			results <- result
+			errorsCh <- err
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(results)
+	close(errorsCh)
+
+	for err := range errorsCh {
+		if err != nil {
+			t.Fatalf("concurrent ClaimGenerationUse() error = %v", err)
+		}
+	}
+	claimed := 0
+	unknown := 0
+	for result := range results {
+		switch result.Status {
+		case GenerationUseClaimed:
+			claimed++
+		case GenerationUseInProgressOrUnknown:
+			unknown++
+		default:
+			t.Fatalf("concurrent ClaimGenerationUse() status = %q", result.Status)
+		}
+	}
+	if claimed != 1 || unknown != callers-1 {
+		t.Fatalf("concurrent claims: claimed=%d unknown=%d, want 1/%d", claimed, unknown, callers-1)
+	}
+}
+
+func TestSelectionClaimGenerationUseRejectsInvalidAuthorization(t *testing.T) {
+	store, repo, projectID := newTestStore(t)
+	submitted := createSubmittedSelection(t, store, projectID)
+	pending, err := store.Create(projectID, sampleCreate())
+	if err != nil {
+		t.Fatalf("Create(pending) error = %v", err)
+	}
+	now := time.Now().UTC()
+	expiresAt := now.Add(-time.Minute)
+	expired := domain.AgentSelectionModel{
+		ProjectID:    projectID,
+		ID:           "selection-expired-generation",
+		SessionID:    submitted.SessionID,
+		RunID:        submitted.RunID,
+		Kind:         KindGenerationPlan,
+		Title:        "Expired",
+		OptionsJSON:  "[]",
+		FieldsJSON:   `[{"id":"settings","type":"generation_settings","kind":"image","required":true}]`,
+		IntentJSON:   `{"version":1,"operation":"create_single","items":[{"id":"item-1","kind":"image","prompt":"expired"}]}`,
+		Status:       StatusSubmitted,
+		DecisionJSON: `{"values":{"settings":{"kind":"image","routeId":"route-image","params":{},"referenceAssetIds":[],"promptSupplements":[],"promptOptimization":{"enabled":false}}}}`,
+		CreatedAt:    now.Add(-time.Hour),
+		ExpiresAt:    &expiresAt,
+	}
+	if err := repo.CreateAgentSelection(expired); err != nil {
+		t.Fatalf("CreateAgentSelection(expired) error = %v", err)
+	}
+	ordinary, err := store.Create(projectID, CreateRequest{
+		SessionID: "session-ordinary-form",
+		RunID:     "run-ordinary-form",
+		Kind:      "form",
+		Title:     "普通表单",
+		Fields:    []FormField{{ID: "confirm", Type: FieldTypeText, Required: true}},
+	})
+	if err != nil {
+		t.Fatalf("Create(ordinary form) error = %v", err)
+	}
+	ordinary, err = store.Decide(projectID, ordinary.ID, DecisionRequest{Values: map[string]any{"confirm": "yes"}})
+	if err != nil {
+		t.Fatalf("Decide(ordinary form) error = %v", err)
+	}
+	validIntent := `{"version":1,"operation":"create_single","items":[{"id":"item-1","kind":"image","prompt":"test"}]}`
+	validFields := `[{"id":"settings","type":"generation_settings","kind":"image","required":true}]`
+	validDecision := `{"values":{"settings":{"kind":"image","routeId":"route-image","params":{},"referenceAssetIds":[],"promptSupplements":[],"promptOptimization":{"enabled":false}}}}`
+	corruptExpiresAt := now.Add(time.Hour)
+	corruptFixtures := []domain.AgentSelectionModel{
+		{
+			ProjectID: projectID, ID: "selection-corrupt-intent", SessionID: submitted.SessionID, RunID: submitted.RunID,
+			Kind: KindGenerationPlan, Title: "Corrupt intent", OptionsJSON: "[]", FieldsJSON: validFields,
+			IntentJSON: `{not-json`, Status: StatusSubmitted, DecisionJSON: validDecision, CreatedAt: now, ExpiresAt: &corruptExpiresAt,
+		},
+		{
+			ProjectID: projectID, ID: "selection-unsupported-intent", SessionID: submitted.SessionID, RunID: submitted.RunID,
+			Kind: KindGenerationPlan, Title: "Unsupported intent", OptionsJSON: "[]", FieldsJSON: validFields,
+			IntentJSON: `{"version":2,"operation":"create_single","items":[{"id":"item-1","kind":"image","prompt":"test"}]}`, Status: StatusSubmitted, DecisionJSON: validDecision, CreatedAt: now, ExpiresAt: &corruptExpiresAt,
+		},
+		{
+			ProjectID: projectID, ID: "selection-missing-decision", SessionID: submitted.SessionID, RunID: submitted.RunID,
+			Kind: KindGenerationPlan, Title: "Missing decision", OptionsJSON: "[]", FieldsJSON: validFields,
+			IntentJSON: validIntent, Status: StatusSubmitted, CreatedAt: now, ExpiresAt: &corruptExpiresAt,
+		},
+		{
+			ProjectID: projectID, ID: "selection-invalid-decision", SessionID: submitted.SessionID, RunID: submitted.RunID,
+			Kind: KindGenerationPlan, Title: "Invalid decision", OptionsJSON: "[]", FieldsJSON: validFields,
+			IntentJSON: validIntent, Status: StatusSubmitted, DecisionJSON: `{"values":{"settings":{"kind":"video"}}}`, CreatedAt: now, ExpiresAt: &corruptExpiresAt,
+		},
+	}
+	for _, fixture := range corruptFixtures {
+		if err := repo.CreateAgentSelection(fixture); err != nil {
+			t.Fatalf("CreateAgentSelection(%s) error = %v", fixture.ID, err)
+		}
+	}
+
+	tests := []struct {
+		name        string
+		projectID   string
+		sessionID   string
+		runID       string
+		selectionID string
+		fingerprint string
+	}{
+		{name: "wrong project", projectID: "other-project", sessionID: submitted.SessionID, runID: submitted.RunID, selectionID: submitted.ID, fingerprint: "fp"},
+		{name: "wrong session", projectID: projectID, sessionID: "other-session", runID: submitted.RunID, selectionID: submitted.ID, fingerprint: "fp"},
+		{name: "wrong run", projectID: projectID, sessionID: submitted.SessionID, runID: "other-run", selectionID: submitted.ID, fingerprint: "fp"},
+		{name: "pending", projectID: projectID, sessionID: pending.SessionID, runID: pending.RunID, selectionID: pending.ID, fingerprint: "fp"},
+		{name: "expired", projectID: projectID, sessionID: expired.SessionID, runID: expired.RunID, selectionID: expired.ID, fingerprint: "fp"},
+		{name: "ordinary submitted form", projectID: projectID, sessionID: ordinary.SessionID, runID: ordinary.RunID, selectionID: ordinary.ID, fingerprint: "fp"},
+		{name: "corrupt intent", projectID: projectID, sessionID: submitted.SessionID, runID: submitted.RunID, selectionID: "selection-corrupt-intent", fingerprint: "fp"},
+		{name: "unsupported intent", projectID: projectID, sessionID: submitted.SessionID, runID: submitted.RunID, selectionID: "selection-unsupported-intent", fingerprint: "fp"},
+		{name: "missing decision", projectID: projectID, sessionID: submitted.SessionID, runID: submitted.RunID, selectionID: "selection-missing-decision", fingerprint: "fp"},
+		{name: "invalid decision", projectID: projectID, sessionID: submitted.SessionID, runID: submitted.RunID, selectionID: "selection-invalid-decision", fingerprint: "fp"},
+		{name: "empty fingerprint", projectID: projectID, sessionID: submitted.SessionID, runID: submitted.RunID, selectionID: submitted.ID},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, claimErr := store.ClaimGenerationUse(tt.projectID, tt.sessionID, tt.runID, tt.selectionID, tt.fingerprint)
+			if !errors.Is(claimErr, ErrGenerationUseNotAuthorized) {
+				t.Fatalf("ClaimGenerationUse() = %#v, error=%v; want ErrGenerationUseNotAuthorized", result, claimErr)
+			}
+		})
+	}
+}
+
+func TestSelectionCompleteGenerationUseValidatesOutcomeEnvelope(t *testing.T) {
+	store, _, projectID := newTestStore(t)
+	selection := createSubmittedSelection(t, store, projectID)
+	if _, err := store.ClaimGenerationUse(projectID, selection.SessionID, selection.RunID, selection.ID, "fingerprint-outcome"); err != nil {
+		t.Fatalf("ClaimGenerationUse() error = %v", err)
+	}
+	for _, tt := range []struct {
+		name    string
+		outcome json.RawMessage
+	}{
+		{name: "malformed", outcome: json.RawMessage(`not-json`)},
+		{name: "unsupported version", outcome: json.RawMessage(`{"version":2,"result":{}}`)},
+		{name: "array", outcome: json.RawMessage(`[]`)},
+		{name: "null", outcome: json.RawMessage(`null`)},
+		{name: "oversized", outcome: json.RawMessage(`{"version":1,"result":"` + strings.Repeat("x", MaxGenerationOutcomeJSONBytes) + `"}`)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := store.CompleteGenerationUse(projectID, selection.ID, "fingerprint-outcome", tt.outcome); !errors.Is(err, ErrInvalidGenerationOutcome) {
+				t.Fatalf("CompleteGenerationUse() error = %v, want ErrInvalidGenerationOutcome", err)
+			}
+		})
+	}
+}
+
+func TestSelectionFindReusableSkipsExpiredDecidedSelection(t *testing.T) {
+	store, repo, projectID := newTestStore(t)
+	now := time.Now().UTC()
+	expiresAt := now.Add(-time.Minute)
+	model := domain.AgentSelectionModel{
+		ProjectID: projectID, ID: "selection-expired-decided-reuse", SessionID: "session-expired-reuse", RunID: "run-expired-reuse",
+		Kind: "image_style", Title: "选择风格", Prompt: "确认风格", OptionsJSON: `[{"id":"anime","label":"动漫"}]`,
+		Status: StatusSelected, DecisionJSON: `{"optionId":"anime"}`, CreatedAt: now.Add(-time.Hour), DecidedAt: &now, ExpiresAt: &expiresAt,
+	}
+	if err := repo.CreateAgentSelection(model); err != nil {
+		t.Fatalf("CreateAgentSelection() error = %v", err)
+	}
+	if record, ok, err := store.FindReusable(projectID, ReuseRequest{
+		SessionID: model.SessionID,
+		RunID:     model.RunID,
+		Kind:      model.Kind,
+		Title:     model.Title,
+		Prompt:    model.Prompt,
+		Options:   []Option{{ID: "anime", Label: "动漫"}},
+	}); err != nil || ok {
+		t.Fatalf("FindReusable(expired decided) = %#v, ok=%v, error=%v; want no reuse", record, ok, err)
 	}
 }
 
@@ -544,6 +1266,7 @@ func TestSelectionFindReusableGenerationPlanComparesDefaults(t *testing.T) {
 		Title:  "生成参数",
 		Prompt: "确认参数",
 		Fields: createdFields,
+		Intent: sampleGenerationIntentFor("video", GenerationPlanOperationCreateSingle, "生成视频"),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -557,6 +1280,7 @@ func TestSelectionFindReusableGenerationPlanComparesDefaults(t *testing.T) {
 		Title:  "生成参数",
 		Prompt: "确认参数",
 		Fields: createdFields,
+		Intent: sampleGenerationIntentFor("video", GenerationPlanOperationCreateSingle, "生成视频"),
 	}); findErr != nil || !ok || reused.ID != created.ID {
 		t.Fatalf("FindReusable(same generation plan) = %#v, ok=%v, error=%v; want %s", reused, ok, findErr, created.ID)
 	}
@@ -576,6 +1300,7 @@ func TestSelectionFindReusableGenerationPlanComparesDefaults(t *testing.T) {
 		Title:  "生成参数",
 		Prompt: "确认参数",
 		Fields: requestFields,
+		Intent: sampleGenerationIntentFor("video", GenerationPlanOperationCreateSingle, "生成视频"),
 	}); err != nil || ok {
 		t.Fatalf("FindReusable() = %#v, ok=%v, error=%v; want different generation plan", record, ok, err)
 	}
@@ -612,6 +1337,7 @@ func TestSelectionGenerationParamsField(t *testing.T) {
 			{ID: "generation", Label: "模型与参数", Type: FieldTypeGenerationParams, Kind: "video"},
 			{ID: "optimizePrompt", Label: "优化提示词", Type: FieldTypePromptOptimization, Default: true},
 		},
+		Intent: sampleGenerationIntentFor("video", GenerationPlanOperationCreateSingle, "生成视频"),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -718,6 +1444,7 @@ func TestSelectionGenerationPlanEnforcesCompositeFieldContract(t *testing.T) {
 				Kind:   KindGenerationPlan,
 				Title:  "确认生成参数",
 				Fields: tt.fields,
+				Intent: sampleGenerationIntentFor("video", GenerationPlanOperationCreateSingle, "生成视频"),
 			})
 			if !errors.Is(err, ErrInvalidGenerationPlan) {
 				t.Fatalf("Create() error = %v, want ErrInvalidGenerationPlan", err)
@@ -736,6 +1463,7 @@ func TestSelectionGenerationPlanAcceptsCanonicalFields(t *testing.T) {
 			{ID: "refs", Type: FieldTypeImages},
 			{ID: "optimize", Type: FieldTypePromptOptimization},
 		},
+		Intent: sampleGenerationIntentFor("video", GenerationPlanOperationCreateSingle, "生成视频"),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -759,6 +1487,7 @@ func TestSelectionGenerationPlanAcceptsSingleImageGenerationSettings(t *testing.
 			Kind:    "image",
 			Default: sampleImageGenerationSettingsValue(),
 		}},
+		Intent: sampleGenerationIntent("生成图片"),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -836,6 +1565,7 @@ func TestSelectionGenerationPlanKeepsLegacyVideoContract(t *testing.T) {
 			{ID: "refs", Type: FieldTypeImages},
 			{ID: "optimization", Type: FieldTypePromptOptimization},
 		},
+		Intent: sampleGenerationIntentFor("video", GenerationPlanOperationCreateSingle, "生成视频"),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -853,6 +1583,7 @@ func TestSelectionGenerationPlanRejectsNonVideoLegacyGenerationParams(t *testing
 				Kind:   KindGenerationPlan,
 				Title:  "确认生成参数",
 				Fields: []FormField{{ID: "generation", Type: FieldTypeGenerationParams, Kind: kind}},
+				Intent: sampleGenerationIntentFor("video", GenerationPlanOperationCreateSingle, "生成视频"),
 			})
 			if !errors.Is(err, ErrInvalidGenerationPlan) {
 				t.Fatalf("Create() error = %v, want ErrInvalidGenerationPlan", err)
@@ -898,7 +1629,10 @@ func TestSelectionGenerationPlanRejectsMixedGenerationContracts(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := store.Create(projectID, CreateRequest{Kind: KindGenerationPlan, Title: "生成设置", Fields: tt.fields})
+			_, err := store.Create(projectID, CreateRequest{
+				Kind: KindGenerationPlan, Title: "生成设置", Fields: tt.fields,
+				Intent: sampleGenerationIntent("生成图片"),
+			})
 			if !errors.Is(err, ErrInvalidGenerationPlan) {
 				t.Fatalf("Create() error = %v, want ErrInvalidGenerationPlan", err)
 			}
@@ -906,14 +1640,43 @@ func TestSelectionGenerationPlanRejectsMixedGenerationContracts(t *testing.T) {
 	}
 }
 
-func TestSelectionGenerationPlanRejectsVideoGenerationSettingsForNow(t *testing.T) {
+func TestSelectionGenerationPlanAcceptsVideoGenerationSettings(t *testing.T) {
 	store, _, projectID := newTestStore(t)
-	for _, kind := range []string{"", "video", "audio"} {
+	created, err := store.Create(projectID, CreateRequest{
+		Kind:   KindGenerationPlan,
+		Title:  "生成设置",
+		Fields: []FormField{{ID: "settings", Type: FieldTypeGenerationSettings, Kind: "video"}},
+		Intent: sampleGenerationIntentFor("video", GenerationPlanOperationCreateSingle, "生成视频"),
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if len(created.Fields) != 1 || !created.Fields[0].Required {
+		t.Fatalf("created.Fields = %#v, want one required video generation_settings", created.Fields)
+	}
+
+	value := sampleImageGenerationSettingsValue()
+	value["kind"] = "video"
+	value["routeId"] = "route-video"
+	decided, err := store.Decide(projectID, created.ID, DecisionRequest{Values: map[string]any{"settings": value}})
+	if err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+	settings := decided.Decision.Values["settings"].(map[string]any)
+	if settings["kind"] != "video" || settings["routeId"] != "route-video" {
+		t.Fatalf("settings = %#v, want normalized video settings", settings)
+	}
+}
+
+func TestSelectionGenerationPlanRejectsUnsupportedGenerationSettingsKind(t *testing.T) {
+	store, _, projectID := newTestStore(t)
+	for _, kind := range []string{"", "audio"} {
 		t.Run("kind="+kind, func(t *testing.T) {
 			_, err := store.Create(projectID, CreateRequest{
 				Kind:   KindGenerationPlan,
 				Title:  "生成设置",
 				Fields: []FormField{{ID: "settings", Type: FieldTypeGenerationSettings, Kind: kind}},
+				Intent: sampleGenerationIntent("生成图片"),
 			})
 			if !errors.Is(err, ErrInvalidGenerationPlan) {
 				t.Fatalf("Create() error = %v, want ErrInvalidGenerationPlan", err)
@@ -930,7 +1693,7 @@ func TestSelectionGenerationSettingsValidatesNestedValue(t *testing.T) {
 	}{
 		{name: "not object", value: "route-image"},
 		{name: "missing kind", value: map[string]any{"routeId": "route-image", "params": map[string]any{}, "referenceAssetIds": []any{}, "promptSupplements": []any{}, "promptOptimization": map[string]any{"enabled": false}}},
-		{name: "video value", value: generationSettingsValueWith("kind", "video")},
+		{name: "mismatched video value", value: generationSettingsValueWith("kind", "video")},
 		{name: "audio value", value: generationSettingsValueWith("kind", "audio")},
 		{name: "missing route", value: generationSettingsValueWith("routeId", "")},
 		{name: "params not object", value: generationSettingsValueWith("params", []any{})},
@@ -956,6 +1719,7 @@ func TestSelectionGenerationSettingsValidatesNestedValue(t *testing.T) {
 					Kind:    "image",
 					Default: tt.value,
 				}},
+				Intent: sampleGenerationIntent("生成图片"),
 			})
 			if err == nil {
 				t.Fatal("Create() accepted an invalid generation_settings default")
@@ -967,6 +1731,7 @@ func TestSelectionGenerationSettingsValidatesNestedValue(t *testing.T) {
 				Kind:   KindGenerationPlan,
 				Title:  "生成设置",
 				Fields: []FormField{{ID: "settings", Type: FieldTypeGenerationSettings, Kind: "image"}},
+				Intent: sampleGenerationIntent("生成图片"),
 			})
 			if err != nil {
 				t.Fatalf("Create() error = %v", err)
@@ -1026,6 +1791,7 @@ func TestSelectionGenerationParamsFieldRejectsMissingRoute(t *testing.T) {
 		Kind:      KindGenerationPlan,
 		Title:     "确认生成参数",
 		Fields:    []FormField{{ID: "generation", Label: "模型与参数", Type: FieldTypeGenerationParams, Kind: "video"}},
+		Intent:    sampleGenerationIntentFor("video", GenerationPlanOperationCreateSingle, "生成视频"),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)

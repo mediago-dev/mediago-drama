@@ -193,6 +193,7 @@ func run(args []string) error {
 		AgentBridgeURL:              internalAPIURL + "/api/v1/internal/agent/spawn",
 		AgentBridgeToken:            bridgeToken,
 		PromptMaxSectionChars:       config.Prompt.MaxSectionChars,
+		PromptDelivery:              config.Prompt.InstructionDelivery,
 		BillingPrices:               billingPrices,
 	}
 	if err := configureEdition(&appConfig); err != nil {

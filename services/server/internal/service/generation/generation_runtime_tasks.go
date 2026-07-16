@@ -112,6 +112,9 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		_ = workflow.generationTasks.RecordAttempt(task.ID, "retry", task.Status, "提示词包权益校验失败。", err)
 		return generationMessageResponse{}, status, err
 	}
+	// Promote a legacy result-derived title into the retry request so later
+	// status transitions keep the same user-facing task summary.
+	task.Params = generationParamsWithAssetTitle(task.Params, payload.AssetTitle)
 	payload.ProjectName = workflow.generationProjectName(payload.ProjectID)
 
 	route, err := ResolveGenerationRoute(payload)

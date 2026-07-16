@@ -204,6 +204,7 @@ type AgentFormPayload struct {
 	Prompt      string          `json:"prompt,omitempty"`
 	SubmitLabel string          `json:"submitLabel,omitempty"`
 	Fields      json.RawMessage `json:"fields"`
+	Intent      json.RawMessage `json:"intent,omitempty"`
 }
 
 // AgentA2UIPayload describes A2UI messages returned by an agent.
@@ -211,6 +212,7 @@ type AgentA2UIPayload struct {
 	Version   string          `json:"version,omitempty"`
 	SurfaceID string          `json:"surfaceId,omitempty"`
 	Messages  json.RawMessage `json:"messages"`
+	Intent    json.RawMessage `json:"intent,omitempty"`
 }
 
 // AgentACPEvent describes one ACP runtime event.
@@ -360,6 +362,7 @@ type AgentRunRequest struct {
 	SessionID             string
 	RunID                 string
 	ACPSessionID          string
+	ACPInstructionHash    string
 	ProjectID             string
 	Prompt                string
 	AgentTag              string
@@ -384,12 +387,13 @@ type AgentRunRequest struct {
 
 // AgentRunResult is returned by an agent runner.
 type AgentRunResult struct {
-	ACPSessionID     string
-	Message          string
-	MessageItemID    string
-	StreamedMessage  bool
-	DocumentProposal *AgentDocumentProposal
-	A2UI             *AgentA2UIPayload
+	ACPSessionID       string
+	ACPInstructionHash string
+	Message            string
+	MessageItemID      string
+	StreamedMessage    bool
+	DocumentProposal   *AgentDocumentProposal
+	A2UI               *AgentA2UIPayload
 }
 
 // AgentFinalResponse is the JSON shape an ACP agent may emit at the end of a turn.

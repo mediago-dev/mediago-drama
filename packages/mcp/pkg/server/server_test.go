@@ -42,6 +42,36 @@ func TestDocumentServerRegistersDocumentTools(t *testing.T) {
 	)
 }
 
+func TestDocumentServerPublishesGenerationIntentInputSchemas(t *testing.T) {
+	server, err := NewDocumentServer(Config{
+		ProjectID: "project-test",
+		Document: mediamcp.DocumentConfig{
+			SessionID: "session-1",
+			RunID:     "run-1",
+		},
+	}, testDeps{})
+	if err != nil {
+		t.Fatalf("creating document server: %v", err)
+	}
+
+	schemas := listMCPToolInputSchemaDocuments(t, server)
+	for _, toolName := range []string{"ask_user_form", "ask_user_selection"} {
+		root, ok := schemas[toolName]
+		if !ok {
+			t.Fatalf("input schema for %s is missing", toolName)
+		}
+		intent := requireSchemaProperty(t, root, root, toolName, "intent")
+		for _, propertyName := range []string{"version", "operation", "items"} {
+			requireSchemaProperty(t, root, intent, toolName+".intent", propertyName)
+		}
+		items := requireSchemaProperty(t, root, intent, toolName+".intent", "items")
+		item := requireSchemaArrayItems(t, root, items, toolName+".intent.items")
+		for _, propertyName := range []string{"sessionId", "prompt"} {
+			requireSchemaProperty(t, root, item, toolName+".intent.items[]", propertyName)
+		}
+	}
+}
+
 func TestExternalServerRegistersCrossProjectTools(t *testing.T) {
 	server, err := NewExternalServer(Config{}, testDeps{})
 	if err != nil {
@@ -65,17 +95,34 @@ func TestGenerationServerRegistersGenerationTools(t *testing.T) {
 		t.Fatalf("creating generation server: %v", err)
 	}
 
-	tools := listMCPTools(t, server, "生成工作台", "list_generation_models", "generate_media")
+	tools := listMCPTools(t, server, "生成工作台", "generate_media", "generate_media_batch")
 	assertMCPTools(t, tools,
-		"list_generation_models",
 		"generate_media",
 		"generate_media_batch",
+	)
+}
+
+func TestGenerationServerPublishesAuthorizationInputSchemas(t *testing.T) {
+	server, err := NewGenerationServer(Config{ProjectID: "project-test"}, testDeps{})
+	if err != nil {
+		t.Fatalf("creating generation server: %v", err)
+	}
+
+	toolSchemas := listMCPToolInputSchemas(t, server)
+	assertMCPToolProperties(t, toolSchemas, "generate_media", "confirmationSelectionId", "prompt")
+	assertMCPToolProperties(t, toolSchemas, "generate_media_batch", "confirmationSelectionId", "items")
+	for _, toolName := range []string{
+		"list_generation_models",
 		"get_generation_task",
 		"list_generation_tasks",
 		"retry_generation_task",
 		"poll_generation_task",
 		"select_generation_asset",
-	)
+	} {
+		if _, ok := toolSchemas[toolName]; ok {
+			t.Fatalf("removed generation tool %q still publishes an input schema", toolName)
+		}
+	}
 }
 
 func listMCPTools(t *testing.T, server *mcpsdk.Server, instructionFragments ...string) []string {
@@ -123,6 +170,148 @@ func listMCPTools(t *testing.T, server *mcpsdk.Server, instructionFragments ...s
 	}
 	sort.Strings(tools)
 	return tools
+}
+
+func listMCPToolInputSchemas(t *testing.T, server *mcpsdk.Server) map[string]map[string]any {
+	t.Helper()
+
+	documents := listMCPToolInputSchemaDocuments(t, server)
+	schemas := make(map[string]map[string]any, len(documents))
+	for name, inputSchema := range documents {
+		properties, _ := inputSchema["properties"].(map[string]any)
+		schemas[name] = properties
+	}
+	return schemas
+}
+
+func listMCPToolInputSchemaDocuments(t *testing.T, server *mcpsdk.Server) map[string]map[string]any {
+	t.Helper()
+
+	handler := NewStatelessHTTPHandler(func(*http.Request) *mcpsdk.Server {
+		return server
+	}, nil)
+	headers, _ := callMCP(t, handler, "", 1, "initialize", map[string]any{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]any{},
+		"clientInfo": map[string]any{
+			"name":    "server-schema-test",
+			"version": "0",
+		},
+	})
+	sessionID := headers.Get("Mcp-Session-Id")
+	if sessionID == "" {
+		t.Fatal("initialize response did not include Mcp-Session-Id")
+	}
+
+	_, message := callMCP(t, handler, sessionID, 2, "tools/list", map[string]any{})
+	result, ok := message["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("tools/list result = %#v, want object", message["result"])
+	}
+	rawTools, ok := result["tools"].([]any)
+	if !ok {
+		t.Fatalf("tools = %#v, want array", result["tools"])
+	}
+
+	schemas := make(map[string]map[string]any, len(rawTools))
+	for _, rawTool := range rawTools {
+		tool, ok := rawTool.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := tool["name"].(string)
+		inputSchema, _ := tool["inputSchema"].(map[string]any)
+		if name != "" {
+			schemas[name] = inputSchema
+		}
+	}
+	return schemas
+}
+
+func requireSchemaProperty(t *testing.T, root map[string]any, node map[string]any, owner string, propertyName string) map[string]any {
+	t.Helper()
+
+	object := resolveSchemaObject(t, root, node, owner)
+	properties, ok := object["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("%s schema has no properties: %#v", owner, object)
+	}
+	property, ok := properties[propertyName].(map[string]any)
+	if !ok {
+		t.Fatalf("%s schema missing %s: %#v", owner, propertyName, properties)
+	}
+	return property
+}
+
+func requireSchemaArrayItems(t *testing.T, root map[string]any, node map[string]any, owner string) map[string]any {
+	t.Helper()
+
+	resolved := resolveSchemaReference(t, root, node, owner)
+	items, ok := resolved["items"].(map[string]any)
+	if !ok {
+		t.Fatalf("%s schema has no array items: %#v", owner, resolved)
+	}
+	return resolveSchemaObject(t, root, items, owner+"[]")
+}
+
+func resolveSchemaObject(t *testing.T, root map[string]any, node map[string]any, owner string) map[string]any {
+	t.Helper()
+
+	resolved := resolveSchemaReference(t, root, node, owner)
+	if _, ok := resolved["properties"].(map[string]any); ok {
+		return resolved
+	}
+	for _, keyword := range []string{"allOf", "anyOf", "oneOf"} {
+		alternatives, _ := resolved[keyword].([]any)
+		for _, alternative := range alternatives {
+			candidate, ok := alternative.(map[string]any)
+			if !ok {
+				continue
+			}
+			candidate = resolveSchemaReference(t, root, candidate, owner)
+			if _, ok := candidate["properties"].(map[string]any); ok {
+				return candidate
+			}
+		}
+	}
+	t.Fatalf("%s schema does not resolve to an object: %#v", owner, resolved)
+	return nil
+}
+
+func resolveSchemaReference(t *testing.T, root map[string]any, node map[string]any, owner string) map[string]any {
+	t.Helper()
+
+	ref, _ := node["$ref"].(string)
+	if ref == "" {
+		return node
+	}
+	const definitionsPrefix = "#/$defs/"
+	if !strings.HasPrefix(ref, definitionsPrefix) {
+		t.Fatalf("%s schema uses unsupported reference %q", owner, ref)
+	}
+	definitions, ok := root["$defs"].(map[string]any)
+	if !ok {
+		t.Fatalf("%s schema references %q without $defs: %#v", owner, ref, root)
+	}
+	definition, ok := definitions[strings.TrimPrefix(ref, definitionsPrefix)].(map[string]any)
+	if !ok {
+		t.Fatalf("%s schema definition %q is missing: %#v", owner, ref, definitions)
+	}
+	return definition
+}
+
+func assertMCPToolProperties(t *testing.T, schemas map[string]map[string]any, toolName string, names ...string) {
+	t.Helper()
+
+	properties, ok := schemas[toolName]
+	if !ok {
+		t.Fatalf("input schema for %s is missing", toolName)
+	}
+	for _, name := range names {
+		if _, ok := properties[name]; !ok {
+			t.Fatalf("%s input schema missing %s: %#v", toolName, name, properties)
+		}
+	}
 }
 
 func assertMCPInstructions(t *testing.T, message map[string]any, fragments ...string) {
@@ -251,34 +440,10 @@ func (testDeps) AskUserForm(context.Context, string, mediamcp.AskUserFormInput) 
 	return mediamcp.AskUserSelectionOutput{}, nil
 }
 
-func (testDeps) ListGenerationModels(context.Context, mediamcp.GenerationListModelsInput) (mediamcp.GenerationModelsOutput, error) {
-	return mediamcp.GenerationModelsOutput{}, nil
-}
-
 func (testDeps) CreateGenerationMessage(context.Context, string, mediamcp.GenerationMessageInput) (mediamcp.GenerationMessageOutput, error) {
 	return mediamcp.GenerationMessageOutput{}, nil
 }
 
 func (testDeps) CreateGenerationBatch(context.Context, string, mediamcp.GenerationBatchInput) (mediamcp.GenerationBatchOutput, error) {
 	return mediamcp.GenerationBatchOutput{}, nil
-}
-
-func (testDeps) GetGenerationTask(context.Context, string, mediamcp.GenerationTaskInput) (mediamcp.GenerationTaskRecord, error) {
-	return mediamcp.GenerationTaskRecord{}, nil
-}
-
-func (testDeps) ListGenerationTasks(context.Context, string, mediamcp.GenerationTaskListInput) (mediamcp.GenerationTasksOutput, error) {
-	return mediamcp.GenerationTasksOutput{}, nil
-}
-
-func (testDeps) RetryGenerationTask(context.Context, string, mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error) {
-	return mediamcp.GenerationMessageOutput{}, nil
-}
-
-func (testDeps) PollGenerationTask(context.Context, string, mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error) {
-	return mediamcp.GenerationMessageOutput{}, nil
-}
-
-func (testDeps) SelectGenerationAsset(context.Context, string, mediamcp.GenerationSelectAssetInput) (mediamcp.GenerationTaskRecord, error) {
-	return mediamcp.GenerationTaskRecord{}, nil
 }

@@ -21,6 +21,7 @@ import {
 	AgentChatComposerForm,
 	type ComposerContext,
 } from "@/domains/agent/components/chat/AgentChatComposerForm";
+import { AgentLivePlan } from "@/domains/agent/components/chat/AgentLivePlan";
 import {
 	buildRuntimeConfigSelection,
 	getRuntimeConfigError,
@@ -347,6 +348,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				/>
 			</div>
 			<PendingPermissionRequests />
+			<AgentLivePlan isRunning={isRunning} messages={messages} />
 			<AgentChatComposerForm
 				attachments={attachments}
 				canSubmit={canSubmit}

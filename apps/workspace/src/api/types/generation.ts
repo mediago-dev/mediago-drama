@@ -415,6 +415,7 @@ export interface GenerationTaskRecord {
 	model: string;
 	prompt: string;
 	sourceRefs?: ContentSourceRef[];
+	assetTitle?: string;
 	referenceUrls: string[];
 	referenceAssetIds: string[];
 	params: Record<string, unknown>;
