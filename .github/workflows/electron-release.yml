@@ -268,7 +268,6 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.MEDIAGO_APPLE_TEAM_ID }}
           MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME: "1"
           MEDIAGO_PROMPT_PACK_POLICY: marketplace
-          MEDIAGO_VENDOR_TOOLS_OVERLAY: ${{ runner.temp }}/mediago-rights-marketplace-tools.json
           MEDIAGO_ELECTRON_CHANNEL: ${{ inputs.channel }}
           MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: ${{ vars.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL }}
           MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.github_release_type }}
@@ -285,7 +284,6 @@ jobs:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.MEDIAGO_WINDOWS_CSC_KEY_PASSWORD }}
           MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME: "1"
           MEDIAGO_PROMPT_PACK_POLICY: marketplace
-          MEDIAGO_VENDOR_TOOLS_OVERLAY: ${{ runner.temp }}/mediago-rights-marketplace-tools.json
           MEDIAGO_ELECTRON_CHANNEL: ${{ inputs.channel }}
           MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: ${{ vars.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL }}
           MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.github_release_type }}

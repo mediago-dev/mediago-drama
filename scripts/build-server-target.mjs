@@ -18,11 +18,6 @@ if (!target) {
 const outDir = join("bin", platform);
 mkdirSync(outDir, { recursive: true });
 
-const extraBuildTags = (process.env.MEDIAGO_GO_BUILD_TAGS ?? "")
-	.split(/[\s,]+/u)
-	.map((tag) => tag.trim())
-	.filter(Boolean);
-const obfuscateServer = process.env.MEDIAGO_GO_OBFUSCATE === "1";
 const promptPackPolicy = (process.env.MEDIAGO_PROMPT_PACK_POLICY ?? "marketplace")
 	.trim()
 	.toLowerCase();
@@ -30,15 +25,12 @@ if (!["marketplace", "partner"].includes(promptPackPolicy)) {
 	console.error("MEDIAGO_PROMPT_PACK_POLICY must be marketplace or partner");
 	process.exit(1);
 }
-const serverBuildCommand = obfuscateServer ? "garble" : "go";
 const serverBuildArgs = [
-	...(obfuscateServer ? ["-literals"] : []),
 	"build",
 	"-tags",
-	["workspace_dist", ...extraBuildTags].join(","),
+	"workspace_dist",
 ];
 const serverLDFlags = [
-	process.env.MEDIAGO_GO_LDFLAGS?.trim(),
 	`-X main.defaultPromptPackPolicy=${promptPackPolicy}`,
 	protectedPackRuntimeLDFlag(),
 ]
@@ -50,7 +42,7 @@ serverBuildArgs.push(
 	join(outDir, `mediago-server${target.exe}`),
 	"./services/server/cmd/mediago-server",
 );
-run(serverBuildCommand, serverBuildArgs);
+run("go", serverBuildArgs);
 run("go", [
 	"build",
 	"-o",

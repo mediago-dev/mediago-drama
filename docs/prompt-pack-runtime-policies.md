@@ -21,18 +21,31 @@ Official CI uses:
 ```bash
 MEDIAGO_PROMPT_PACK_POLICY=marketplace
 MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME=1
-MEDIAGO_VENDOR_TOOLS_OVERLAY=/path/to/mediago-rights-tools.json
 ```
+
+The release inputs have deliberately separate scopes:
+
+| Name                                     | Scope                                          | Purpose                                                                                           |
+| ---------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `MEDIAGO_PRIVATE_ARTIFACT_TOKEN`         | GitHub `official-release` environment secret   | Lets only the dedicated download step read the private Release assets.                            |
+| `MEDIAGO_RIGHTS_RELEASE_TAG`             | GitHub `official-release` environment variable | Pins the private Release tag downloaded by the workflow.                                          |
+| `MEDIAGO_PROMPT_PACK_POLICY`             | Build-step environment                         | Embeds `marketplace` or `partner` into `mediago-server`; changing it after build has no effect.   |
+| `MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME` | Build-step environment                         | Requires the already staged Runtime to be hashed and copied into Electron resources.              |
+| `MEDIAGO_PROMPT_PACK_IMPORTER_PATH`      | Local development process only                 | Points a locally built server at a Runtime whose SHA-256 was embedded when that server was built. |
+
+None of these values are read by `Taskfile.yml`. The open-source Task tasks build
+the ordinary server and cannot download private repository assets.
 
 The protected `official-release` environment exposes
 `MEDIAGO_PRIVATE_ARTIFACT_TOKEN` only to the dedicated GitHub Release download
 step. The token is not inherited by Task, Node, Go, or Electron build scripts.
-Local vendor preparation may use `MEDIAGO_VENDOR_GITHUB_TOKEN`, but official CI
-must not pass that variable into the build.
+That step downloads the pinned manifest and archive from
+`mediago-drama-private`. `scripts/stage-private-runtime.py` validates and stages
+the executable before the normal public build starts. The generic vendor tool
+preparer never receives private-repository credentials.
 
 The private release manifest pins the archive URL, size, SHA-256, binary path,
-version, and `marketplace` runtime policy. Vendor preparation requires that one
-runtime policy for both Drama build policies. The server binary also embeds the
+version, and `marketplace` runtime policy. The server binary also embeds the
 expected SHA-256 of the staged `mediago-rights` executable. Importer
 initialization checks it before protected import is enabled, and every protected
 import checks it again. If initialization fails, the rest of the local server
@@ -68,8 +81,7 @@ the only difference from the marketplace build.
 ```bash
 MEDIAGO_PROMPT_PACK_POLICY=partner \
 MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME=1 \
-MEDIAGO_VENDOR_TOOLS_OVERLAY=/path/to/mediago-rights-tools.json \
-task build:desktop
+node scripts/build-server-target.mjs darwin-arm64
 ```
 
 Protected v2 packages still use the shared marketplace `mediago-rights`
@@ -85,19 +97,27 @@ a cooperation build by setting a launch environment variable.
 
 ## Local private Runtime
 
-For local integration testing, build `mediago-rights` in the private repository
-and pass its absolute path while building/running the public server:
+For local integration testing, build `mediago-rights` in the private repository,
+embed its digest in a local server binary, and then run that binary directly:
 
 ```bash
-MEDIAGO_PROMPT_PACK_IMPORTER_PATH=/absolute/path/to/mediago-rights \
-MEDIAGO_PROMPT_PACK_POLICY=marketplace \
-task dev:server
+RUNTIME=/absolute/path/to/mediago-rights
+RUNTIME_SHA="$(shasum -a 256 "$RUNTIME" | awk '{print $1}')"
+
+go build \
+  -ldflags "-X main.defaultPromptPackPolicy=marketplace -X main.defaultProtectedPackImporterSHA256=$RUNTIME_SHA" \
+  -o bin/mediago-server \
+  ./services/server/cmd/mediago-server
+
+MEDIAGO_PROMPT_PACK_IMPORTER_PATH="$RUNTIME" \
+  bin/mediago-server --config services/server/configs/server.yaml
 ```
 
-`task build:server` embeds the SHA-256 of that local binary. The protected
-importer checks it during initialization and again before each import. This
-local override is not used by official CI; release builds stage the pinned
-GitHub Release asset.
+The protected importer checks the embedded digest during initialization and
+again before each import. `task build:server` intentionally remains a plain
+open-source build and does not consume private Runtime settings. Official
+release builds stage the pinned GitHub Release asset and inject its digest via
+`scripts/build-server-target.mjs`.
 
 ## Seat terminology
 
