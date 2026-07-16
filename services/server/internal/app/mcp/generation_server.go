@@ -14,41 +14,77 @@ import (
 
 // GenerationService supplies generation operations to the MCP adapter.
 type GenerationService interface {
-	ListGenerationModels() servicegeneration.GenerationModelsResponse
 	CreateGenerationMessage(ctx context.Context, payload servicegeneration.GenerationMessageRequest) (servicegeneration.GenerationMessageResponse, int, error)
 	CreateGenerationBatch(ctx context.Context, payload servicegeneration.GenerationBatchRequest) (servicegeneration.GenerationBatchResponse, int, error)
-	RetryGenerationTask(ctx context.Context, id string) (servicegeneration.GenerationMessageResponse, int, error)
-	ListGenerationTasks(query servicegeneration.GenerationTaskListQuery) (servicegeneration.GenerationTasksResponse, error)
-	GetGenerationTask(id string) (servicegeneration.GenerationTaskRecord, bool, error)
-	PollGenerationTask(ctx context.Context, task servicegeneration.GenerationTaskRecord)
-	UpdateGenerationTaskAsset(id string, assetIndex int, patch servicegeneration.UpdateGenerationTaskAssetRequest) (servicegeneration.GenerationTaskRecord, bool, error)
 	CreatePromptOptimizedGenerationMessage(ctx context.Context, payload servicegeneration.GenerationMessageRequest) (servicegeneration.GenerationOptimizeAndGenerateResponse, int, error)
-	GenerationPreferenceForProject(projectID string) (servicegeneration.GenerationPreferenceRecord, bool)
 }
 
-// NewGenerationServer creates a generation-scoped MCP server.
-func NewGenerationServer(workspaceDir string, projectID string, service GenerationService, transport string) (*mcp.Server, *GenerationServer, error) {
-	return NewGenerationServerForRun(
-		workspaceDir,
-		projectID,
-		service,
-		GenerationRunContext{},
-		transport,
-	)
-}
+// GenerationCallerMode identifies the trust boundary of a generation MCP
+// server. It must be selected explicitly when the server is constructed.
+type GenerationCallerMode string
 
-// NewGenerationServerForRun creates a generation MCP server scoped to an
-// agent run and its user-confirmation store.
-func NewGenerationServerForRun(
+const (
+	// GenerationCallerAgent requires a run-scoped user confirmation before an
+	// image or video create or batch can reach the generation service.
+	GenerationCallerAgent GenerationCallerMode = "agent"
+	// GenerationCallerTrustedManual is reserved for integrations where a
+	// direct user action is already the authorization boundary.
+	GenerationCallerTrustedManual GenerationCallerMode = "trusted_manual"
+)
+
+// NewAgentGenerationServer creates a generation MCP server scoped to an agent
+// run and its user-confirmation store.
+func NewAgentGenerationServer(
 	workspaceDir string,
 	projectID string,
 	service GenerationService,
 	run GenerationRunContext,
 	transport string,
 ) (*mcp.Server, *GenerationServer, error) {
+	return newGenerationServer(
+		workspaceDir,
+		projectID,
+		service,
+		GenerationCallerAgent,
+		run,
+		transport,
+	)
+}
+
+// NewTrustedManualGenerationServer creates a generation MCP server for an
+// integration whose direct user action is already the authorization boundary.
+// Agent HTTP and stdio factories must not use this constructor.
+func NewTrustedManualGenerationServer(
+	workspaceDir string,
+	projectID string,
+	service GenerationService,
+	transport string,
+) (*mcp.Server, *GenerationServer, error) {
+	return newGenerationServer(
+		workspaceDir,
+		projectID,
+		service,
+		GenerationCallerTrustedManual,
+		GenerationRunContext{},
+		transport,
+	)
+}
+
+func newGenerationServer(
+	workspaceDir string,
+	projectID string,
+	service GenerationService,
+	callerMode GenerationCallerMode,
+	run GenerationRunContext,
+	transport string,
+) (*mcp.Server, *GenerationServer, error) {
+	if callerMode != GenerationCallerAgent && callerMode != GenerationCallerTrustedManual {
+		return nil, nil, fmt.Errorf("generation caller mode %q is invalid", callerMode)
+	}
 	toolServer := &GenerationServer{
 		service:    service,
 		projectID:  domain.CleanProjectID(projectID),
+		callerMode: callerMode,
 		sessionID:  strings.TrimSpace(run.SessionID),
 		runID:      strings.TrimSpace(run.RunID),
 		selections: run.Selections,
@@ -56,6 +92,7 @@ func NewGenerationServerForRun(
 	slog.Debug(
 		"generation mcp server starting",
 		"project_id", toolServer.projectID,
+		"caller_mode", toolServer.callerMode,
 		"transport", transport,
 		"has_service", service != nil,
 	)
@@ -71,6 +108,7 @@ func NewGenerationServerForRun(
 	slog.Debug(
 		"generation mcp tools registered",
 		"project_id", toolServer.projectID,
+		"caller_mode", toolServer.callerMode,
 		"transport", transport,
 	)
 	return server, toolServer, nil
@@ -80,6 +118,7 @@ func NewGenerationServerForRun(
 type GenerationServer struct {
 	service    GenerationService
 	projectID  string
+	callerMode GenerationCallerMode
 	sessionID  string
 	runID      string
 	selections GenerationSelectionStore

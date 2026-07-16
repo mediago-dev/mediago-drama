@@ -119,7 +119,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		return server
 	}, func(request *http.Request, projectID string) *mcp.Server {
 		query := request.URL.Query()
-		server, _, err := appmcp.NewGenerationServerForRun(
+		server, _, err := appmcp.NewAgentGenerationServer(
 			api.workspaceState.Dir(),
 			projectID,
 			api.generation,

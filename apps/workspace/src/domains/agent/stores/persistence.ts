@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
+import type { AgentGenerationPlanIntent } from "@/api/types/agent";
 
 export type DocumentAgentRuntimeMode = "mock" | "remote";
 export type AgentRuntimeConfigField = "model" | "reasoning" | "permission";
@@ -17,6 +18,9 @@ export interface ResolvedAgentSelection {
 	// Preview of the picked option (e.g. the finalized image or style sample)
 	// so the frozen card still shows WHAT was chosen, not just its label.
 	imageUrl?: string;
+	// Preserve the immutable generation authorization summary even when the
+	// original timeline payload predates intent-carrying form events.
+	intent?: AgentGenerationPlanIntent;
 }
 
 // Cap the resolved map so it can't grow without bound across many sessions.

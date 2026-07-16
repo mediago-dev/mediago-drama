@@ -34,10 +34,25 @@ const (
 // Selection kinds with a server-enforced field contract.
 const (
 	// KindGenerationPlan is the canonical media-generation confirmation form.
-	// Image plans use one generation_settings snapshot. During the migration,
-	// video plans keep the legacy generation_params picker plus optional images
-	// and prompt_optimization controls. Generic fields are never accepted.
+	// Image and video plans use one generation_settings snapshot. Historical
+	// video plans may still use generation_params plus optional legacy fields.
 	KindGenerationPlan = "generation_plan"
+)
+
+// Generation intent protocol constants.
+const (
+	// GenerationPlanIntentVersion is the only intent schema version currently accepted.
+	GenerationPlanIntentVersion = 1
+	// GenerationPlanOperationCreateSingle authorizes one new media request.
+	GenerationPlanOperationCreateSingle = "create_single"
+	// GenerationPlanOperationCreateBatch authorizes one ordered media batch.
+	GenerationPlanOperationCreateBatch = "create_batch"
+	// MaxGenerationPlanIntentItems bounds one generation batch authorization.
+	MaxGenerationPlanIntentItems = 50
+	// MaxGenerationPlanIntentJSONBytes bounds the persisted canonical intent.
+	MaxGenerationPlanIntentJSONBytes = 1 << 20
+	// MaxGenerationOutcomeJSONBytes bounds one persisted replay outcome.
+	MaxGenerationOutcomeJSONBytes = 1 << 20
 )
 
 // Form field types renderable by the client form card.
@@ -46,7 +61,7 @@ const (
 	FieldTypeToggle = "toggle"
 	FieldTypeNumber = "number"
 	FieldTypeText   = "text"
-	// FieldTypeGenerationSettings is the complete image-generation form value:
+	// FieldTypeGenerationSettings is the complete media-generation form value:
 	// route/params, reference assets, prompt supplements, and prompt optimization
 	// are confirmed and submitted as one immutable snapshot.
 	FieldTypeGenerationSettings = "generation_settings"
@@ -97,6 +112,25 @@ var (
 	// ErrInvalidGenerationPlan reports a generation_plan form that does not use
 	// the catalog-backed composite field contract.
 	ErrInvalidGenerationPlan = errors.New("invalid generation_plan form")
+	// ErrInvalidGenerationPlanIntent reports a malformed or unsupported
+	// versioned generation intent attached to a selection.
+	ErrInvalidGenerationPlanIntent = errors.New("invalid generation plan intent")
+	// ErrGenerationUseNotAuthorized reports that a selection does not authorize
+	// a generation use in the supplied project/session/run context.
+	ErrGenerationUseNotAuthorized = errors.New("generation use is not authorized")
+	// ErrGenerationUseConflict reports an attempt to overwrite an outcome or
+	// otherwise reuse a claim with incompatible data.
+	ErrGenerationUseConflict = errors.New("generation use conflicts with the existing claim")
+	// ErrInvalidGenerationOutcome reports a non-versioned replay outcome.
+	ErrInvalidGenerationOutcome = errors.New("invalid generation outcome")
+)
+
+// Generation use claim results.
+const (
+	GenerationUseClaimed             = "claimed"
+	GenerationUseReplay              = "replay"
+	GenerationUseInProgressOrUnknown = "in_progress_or_unknown"
+	GenerationUseConflict            = "conflict"
 )
 
 // Option is one selectable choice presented to the user.
@@ -137,23 +171,93 @@ type FormField struct {
 	Required    bool              `json:"required,omitempty"`
 }
 
+// GenerationPlanIntent is the immutable, versioned generation operation shown
+// to the user alongside editable generation settings.
+type GenerationPlanIntent struct {
+	Version           int                        `json:"version"`
+	Operation         string                     `json:"operation"`
+	ConversationTitle string                     `json:"conversationTitle,omitempty"`
+	Items             []GenerationPlanIntentItem `json:"items"`
+}
+
+// GenerationPlanIntentItem is one ordered generation target authorized by a
+// generation plan.
+type GenerationPlanIntentItem struct {
+	ID                 string                        `json:"id"`
+	Kind               string                        `json:"kind"`
+	Prompt             string                        `json:"prompt"`
+	AssetTitle         string                        `json:"assetTitle,omitempty"`
+	CapabilityID       string                        `json:"capabilityId,omitempty"`
+	ConversationID     string                        `json:"sessionId,omitempty"`
+	ScopeID            string                        `json:"scopeId,omitempty"`
+	DocumentID         string                        `json:"documentId,omitempty"`
+	SectionID          string                        `json:"sectionId,omitempty"`
+	DocumentContext    *GenerationDocumentContext    `json:"documentContext,omitempty"`
+	ResourceType       string                        `json:"resourceType,omitempty"`
+	ReferenceAssetIDs  []string                      `json:"referenceAssetIds,omitempty"`
+	NotificationTarget *GenerationNotificationTarget `json:"notificationTarget,omitempty"`
+}
+
+// GenerationDocumentContext identifies a source document section bound to an
+// intent item.
+type GenerationDocumentContext struct {
+	ProjectID  string `json:"projectId,omitempty"`
+	DocumentID string `json:"documentId,omitempty"`
+	SectionID  string `json:"sectionId,omitempty"`
+}
+
+// GenerationNotificationSectionTarget identifies the document section opened
+// by a generation notification.
+type GenerationNotificationSectionTarget struct {
+	BlockID           string `json:"blockId"`
+	DocumentID        string `json:"documentId"`
+	HeadingLevel      int    `json:"headingLevel"`
+	HeadingOccurrence int    `json:"headingOccurrence"`
+	HeadingText       string `json:"headingText"`
+	Markdown          string `json:"markdown"`
+	PlainText         string `json:"plainText"`
+	Prompt            string `json:"prompt"`
+}
+
+// GenerationNotificationTarget identifies where a generation completion
+// notification should open.
+type GenerationNotificationTarget struct {
+	Kind          string                              `json:"kind"`
+	ProjectID     string                              `json:"projectId,omitempty"`
+	DocumentID    string                              `json:"documentId,omitempty"`
+	DocumentTitle string                              `json:"documentTitle,omitempty"`
+	Section       GenerationNotificationSectionTarget `json:"section"`
+}
+
+// GenerationUseClaimResult reports whether a generation request acquired the
+// single-use claim, should replay a completed result, or must not proceed.
+type GenerationUseClaimResult struct {
+	Status  string          `json:"status"`
+	Outcome json.RawMessage `json:"outcome,omitempty"`
+}
+
 // Record is the API/service shape of a persisted selection.
 type Record struct {
-	ID          string      `json:"id"`
-	ProjectID   string      `json:"projectId,omitempty"`
-	SessionID   string      `json:"sessionId,omitempty"`
-	RunID       string      `json:"runId,omitempty"`
-	Kind        string      `json:"kind,omitempty"`
-	Title       string      `json:"title"`
-	Prompt      string      `json:"prompt,omitempty"`
-	Options     []Option    `json:"options"`
-	Fields      []FormField `json:"fields,omitempty"`
-	AllowCustom bool        `json:"allowCustom"`
-	Status      string      `json:"status"`
-	Decision    *Decision   `json:"decision,omitempty"`
-	CreatedAt   string      `json:"createdAt"`
-	DecidedAt   string      `json:"decidedAt,omitempty"`
-	ExpiresAt   string      `json:"expiresAt,omitempty"`
+	ID                         string                `json:"id"`
+	ProjectID                  string                `json:"projectId,omitempty"`
+	SessionID                  string                `json:"sessionId,omitempty"`
+	RunID                      string                `json:"runId,omitempty"`
+	Kind                       string                `json:"kind,omitempty"`
+	Title                      string                `json:"title"`
+	Prompt                     string                `json:"prompt,omitempty"`
+	Options                    []Option              `json:"options"`
+	Fields                     []FormField           `json:"fields,omitempty"`
+	Intent                     *GenerationPlanIntent `json:"intent,omitempty"`
+	AllowCustom                bool                  `json:"allowCustom"`
+	Status                     string                `json:"status"`
+	Decision                   *Decision             `json:"decision,omitempty"`
+	GenerationClaimFingerprint string                `json:"-"`
+	GenerationClaimedAt        string                `json:"-"`
+	GenerationOutcome          json.RawMessage       `json:"-"`
+	GenerationCompletedAt      string                `json:"-"`
+	CreatedAt                  string                `json:"createdAt"`
+	DecidedAt                  string                `json:"decidedAt,omitempty"`
+	ExpiresAt                  string                `json:"expiresAt,omitempty"`
 }
 
 // CreateRequest describes a new selection prompt.
@@ -165,6 +269,7 @@ type CreateRequest struct {
 	Prompt         string
 	Options        []Option
 	Fields         []FormField
+	Intent         *GenerationPlanIntent
 	AllowCustom    bool
 	TimeoutSeconds int
 }
@@ -173,12 +278,14 @@ type CreateRequest struct {
 // It carries the full form or option contract so distinct questions never
 // collapse into one card merely because their run, kind, and title match.
 type ReuseRequest struct {
+	SessionID   string
 	RunID       string
 	Kind        string
 	Title       string
 	Prompt      string
 	Options     []Option
 	Fields      []FormField
+	Intent      *GenerationPlanIntent
 	AllowCustom bool
 }
 
@@ -242,18 +349,35 @@ func ClampTimeout(requested time.Duration) time.Duration {
 
 func recordFromModel(model domain.AgentSelectionModel) (Record, error) {
 	record := Record{
-		ID:          model.ID,
-		ProjectID:   model.ProjectID,
-		SessionID:   model.SessionID,
-		RunID:       model.RunID,
-		Kind:        model.Kind,
-		Title:       model.Title,
-		Prompt:      model.Prompt,
-		AllowCustom: model.AllowCustom,
-		Status:      model.Status,
-		CreatedAt:   domain.StringFromTime(model.CreatedAt),
-		DecidedAt:   domain.StringFromTime(timePtrValue(model.DecidedAt)),
-		ExpiresAt:   domain.StringFromTime(timePtrValue(model.ExpiresAt)),
+		ID:                         model.ID,
+		ProjectID:                  model.ProjectID,
+		SessionID:                  model.SessionID,
+		RunID:                      model.RunID,
+		Kind:                       model.Kind,
+		Title:                      model.Title,
+		Prompt:                     model.Prompt,
+		AllowCustom:                model.AllowCustom,
+		Status:                     model.Status,
+		GenerationClaimFingerprint: model.GenerationClaimFingerprint,
+		GenerationClaimedAt:        domain.StringFromTime(timePtrValue(model.GenerationClaimedAt)),
+		GenerationCompletedAt:      domain.StringFromTime(timePtrValue(model.GenerationCompletedAt)),
+		CreatedAt:                  domain.StringFromTime(model.CreatedAt),
+		DecidedAt:                  domain.StringFromTime(timePtrValue(model.DecidedAt)),
+		ExpiresAt:                  domain.StringFromTime(timePtrValue(model.ExpiresAt)),
+	}
+	if strings.TrimSpace(model.GenerationOutcomeJSON) != "" {
+		outcome, err := normalizeGenerationOutcome(json.RawMessage(model.GenerationOutcomeJSON))
+		if err != nil {
+			return Record{}, fmt.Errorf("decoding selection generation outcome: %w", err)
+		}
+		record.GenerationOutcome = outcome
+	}
+	if strings.TrimSpace(model.IntentJSON) != "" {
+		intent, err := decodeGenerationPlanIntent(model.IntentJSON, model.ProjectID)
+		if err != nil {
+			return Record{}, fmt.Errorf("decoding selection intent: %w", err)
+		}
+		record.Intent = intent
 	}
 	if strings.TrimSpace(model.OptionsJSON) != "" {
 		if err := json.Unmarshal([]byte(model.OptionsJSON), &record.Options); err != nil {
@@ -276,6 +400,47 @@ func recordFromModel(model domain.AgentSelectionModel) (Record, error) {
 		record.Decision = &decision
 	}
 	return record, nil
+}
+
+func encodeGenerationPlanIntent(intent *GenerationPlanIntent) (string, error) {
+	if intent == nil {
+		return "", nil
+	}
+	if intent.Version != GenerationPlanIntentVersion {
+		return "", fmt.Errorf("%w: unsupported version %d", ErrInvalidGenerationPlanIntent, intent.Version)
+	}
+	raw, err := json.Marshal(intent)
+	if err != nil {
+		return "", fmt.Errorf("%w: encoding: %v", ErrInvalidGenerationPlanIntent, err)
+	}
+	if len(raw) > MaxGenerationPlanIntentJSONBytes {
+		return "", fmt.Errorf(
+			"%w: encoded size %d exceeds %d bytes",
+			ErrInvalidGenerationPlanIntent,
+			len(raw),
+			MaxGenerationPlanIntentJSONBytes,
+		)
+	}
+	return string(raw), nil
+}
+
+func decodeGenerationPlanIntent(raw string, projectID string) (*GenerationPlanIntent, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	if len([]byte(raw)) > MaxGenerationPlanIntentJSONBytes {
+		return nil, fmt.Errorf(
+			"%w: encoded size %d exceeds %d bytes",
+			ErrInvalidGenerationPlanIntent,
+			len([]byte(raw)),
+			MaxGenerationPlanIntentJSONBytes,
+		)
+	}
+	intent := &GenerationPlanIntent{}
+	if err := json.Unmarshal([]byte(raw), intent); err != nil {
+		return nil, fmt.Errorf("%w: decoding: %v", ErrInvalidGenerationPlanIntent, err)
+	}
+	return normalizeGenerationPlanIntent(projectID, intent)
 }
 
 func timePtrValue(value *time.Time) time.Time {

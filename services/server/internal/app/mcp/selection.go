@@ -28,15 +28,19 @@ func (adapter *Adapter) AskUserSelection(ctx context.Context, projectID string, 
 	}
 	projectID = adapter.projectIDForAgentEvent(projectID)
 	options := selectionOptionsFromMCP(input.Options)
+	intent := selectionIntentFromMCP(input.Intent)
+	title := strings.TrimSpace(input.Title)
+	prompt := strings.TrimSpace(input.Prompt)
 
 	if reused, ok := adapter.reuseSelection(
 		ctx,
 		projectID,
 		input.Kind,
-		input.Title,
-		input.Prompt,
+		title,
+		prompt,
 		options,
 		nil,
+		intent,
 		input.AllowCustom,
 		input.TimeoutSeconds,
 	); ok {
@@ -47,9 +51,10 @@ func (adapter *Adapter) AskUserSelection(ctx context.Context, projectID string, 
 		SessionID:      adapter.document.config.SessionID,
 		RunID:          adapter.document.config.RunID,
 		Kind:           strings.TrimSpace(input.Kind),
-		Title:          strings.TrimSpace(input.Title),
-		Prompt:         strings.TrimSpace(input.Prompt),
+		Title:          title,
+		Prompt:         prompt,
 		Options:        options,
+		Intent:         intent,
 		AllowCustom:    input.AllowCustom,
 		TimeoutSeconds: input.TimeoutSeconds,
 	})
@@ -81,17 +86,20 @@ func (adapter *Adapter) reuseSelection(
 	prompt string,
 	options []serviceselection.Option,
 	fields []serviceselection.FormField,
+	intent *serviceselection.GenerationPlanIntent,
 	allowCustom bool,
 	timeoutSeconds int,
 ) (reusedSelectionResult, bool) {
 	service := adapter.document.store.Selections
 	existing, ok, err := service.FindReusable(projectID, serviceselection.ReuseRequest{
+		SessionID:   adapter.document.config.SessionID,
 		RunID:       adapter.document.config.RunID,
 		Kind:        strings.TrimSpace(kind),
 		Title:       strings.TrimSpace(title),
 		Prompt:      strings.TrimSpace(prompt),
 		Options:     options,
 		Fields:      fields,
+		Intent:      intent,
 		AllowCustom: allowCustom,
 	})
 	if err != nil || !ok {
@@ -118,6 +126,7 @@ func (adapter *Adapter) AskUserForm(ctx context.Context, projectID string, input
 	}
 	projectID = adapter.projectIDForAgentEvent(projectID)
 	fields := selectionFieldsFromMCP(input.Fields)
+	intent := selectionIntentFromMCP(input.Intent)
 
 	if reused, ok := adapter.reuseSelection(
 		ctx,
@@ -127,6 +136,7 @@ func (adapter *Adapter) AskUserForm(ctx context.Context, projectID string, input
 		input.Prompt,
 		nil,
 		fields,
+		intent,
 		false,
 		input.TimeoutSeconds,
 	); ok {
@@ -140,6 +150,7 @@ func (adapter *Adapter) AskUserForm(ctx context.Context, projectID string, input
 		Title:          strings.TrimSpace(input.Title),
 		Prompt:         strings.TrimSpace(input.Prompt),
 		Fields:         fields,
+		Intent:         intent,
 		TimeoutSeconds: input.TimeoutSeconds,
 	})
 	if err != nil {
@@ -161,6 +172,13 @@ func (adapter *Adapter) publishFormCard(projectID string, record serviceselectio
 	if err != nil {
 		return
 	}
+	var intentJSON json.RawMessage
+	if record.Intent != nil {
+		intentJSON, err = json.Marshal(record.Intent)
+		if err != nil {
+			return
+		}
+	}
 	publisher.PublishEvent(agentEvent{
 		ProjectID: projectID,
 		SessionID: adapter.document.config.SessionID,
@@ -174,6 +192,7 @@ func (adapter *Adapter) publishFormCard(projectID string, record serviceselectio
 			Prompt:      record.Prompt,
 			SubmitLabel: submitLabel,
 			Fields:      fieldsJSON,
+			Intent:      intentJSON,
 		},
 	})
 }
@@ -276,6 +295,13 @@ func (adapter *Adapter) publishSelectionCard(projectID string, record servicesel
 	if payload == nil {
 		return
 	}
+	if record.Intent != nil {
+		intentJSON, err := json.Marshal(record.Intent)
+		if err != nil {
+			return
+		}
+		payload.Intent = intentJSON
+	}
 	publisher.PublishEvent(agentEvent{
 		ProjectID: projectID,
 		SessionID: adapter.document.config.SessionID,
@@ -297,4 +323,67 @@ func selectionOptionsFromMCP(input []mediamcp.SelectionOptionInput) []servicesel
 		})
 	}
 	return options
+}
+
+func selectionIntentFromMCP(input *mediamcp.GenerationPlanIntentInput) *serviceselection.GenerationPlanIntent {
+	if input == nil {
+		return nil
+	}
+	items := make([]serviceselection.GenerationPlanIntentItem, 0, len(input.Items))
+	for _, item := range input.Items {
+		items = append(items, serviceselection.GenerationPlanIntentItem{
+			ID:                 item.ID,
+			Kind:               item.Kind,
+			Prompt:             item.Prompt,
+			AssetTitle:         item.AssetTitle,
+			CapabilityID:       item.CapabilityID,
+			ConversationID:     item.ConversationID,
+			ScopeID:            item.ScopeID,
+			DocumentID:         item.DocumentID,
+			SectionID:          item.SectionID,
+			DocumentContext:    selectionDocumentContextFromMCP(item.DocumentContext),
+			ResourceType:       item.ResourceType,
+			ReferenceAssetIDs:  append([]string(nil), item.ReferenceAssetIDs...),
+			NotificationTarget: selectionNotificationTargetFromMCP(item.NotificationTarget),
+		})
+	}
+	return &serviceselection.GenerationPlanIntent{
+		Version:           input.Version,
+		Operation:         input.Operation,
+		ConversationTitle: input.ConversationTitle,
+		Items:             items,
+	}
+}
+
+func selectionDocumentContextFromMCP(input *mediamcp.GenerationDocumentContext) *serviceselection.GenerationDocumentContext {
+	if input == nil {
+		return nil
+	}
+	return &serviceselection.GenerationDocumentContext{
+		ProjectID:  input.ProjectID,
+		DocumentID: input.DocumentID,
+		SectionID:  input.SectionID,
+	}
+}
+
+func selectionNotificationTargetFromMCP(input *mediamcp.GenerationNotificationTarget) *serviceselection.GenerationNotificationTarget {
+	if input == nil {
+		return nil
+	}
+	return &serviceselection.GenerationNotificationTarget{
+		Kind:          input.Kind,
+		ProjectID:     input.ProjectID,
+		DocumentID:    input.DocumentID,
+		DocumentTitle: input.DocumentTitle,
+		Section: serviceselection.GenerationNotificationSectionTarget{
+			BlockID:           input.Section.BlockID,
+			DocumentID:        input.Section.DocumentID,
+			HeadingLevel:      input.Section.HeadingLevel,
+			HeadingOccurrence: input.Section.HeadingOccurrence,
+			HeadingText:       input.Section.HeadingText,
+			Markdown:          input.Section.Markdown,
+			PlainText:         input.Section.PlainText,
+			Prompt:            input.Section.Prompt,
+		},
+	}
 }

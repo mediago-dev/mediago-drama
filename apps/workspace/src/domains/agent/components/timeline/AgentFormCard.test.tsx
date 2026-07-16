@@ -39,6 +39,7 @@ vi.mock("./AgentFormGenerationSettings", async () => {
 	return {
 		AgentFormGenerationSettings: (props: {
 			disabled: boolean;
+			kind: "image" | "video";
 			onBusyChange?: (busy: boolean) => void;
 			onChange: (value: unknown) => void;
 			onValidityChange?: (valid: boolean) => void;
@@ -246,6 +247,23 @@ describe("AgentFormCard", () => {
 		expect(screen.getByText(/1 张参考图/)).toBeTruthy();
 	});
 
+	it("routes video generation_settings through the shared video form", async () => {
+		const message = generationSettingsFormMessage();
+		message.metadata!.form!.fields[0]!.kind = "video";
+		message.metadata!.form!.fields[0]!.default = {
+			...mocks.generationSettingsRuntime.value,
+			kind: "video",
+		};
+		seedConversation(message);
+
+		render(<AgentFormCard message={message} />);
+
+		await waitFor(() => expect(mocks.agentFormGenerationSettings).toHaveBeenCalled());
+		expect(mocks.agentFormGenerationSettings).toHaveBeenLastCalledWith(
+			expect.objectContaining({ kind: "video" }),
+		);
+	});
+
 	it("keeps confirm disabled while generation settings are not ready, but cancel remains actionable", async () => {
 		mocks.generationSettingsRuntime = {
 			...mocks.generationSettingsRuntime,
@@ -362,9 +380,14 @@ describe("AgentFormCard", () => {
 		expect(screen.queryByText("确认生成")).toBeNull();
 		expect(screen.queryByText("取消")).toBeNull();
 		expect(screen.queryByRole("spinbutton")).toBeNull();
-		// A local terminal result disables the SWR key, so the pending-status
-		// refresh loop cannot keep issuing requests after this render.
-		expect(mocks.useSWR.mock.calls[0]?.[0]).toBeNull();
+		// A legacy local terminal result without intent performs one server
+		// hydration so the immutable create intent can be restored. The card stays
+		// frozen while that lookup runs, and terminal data does not poll.
+		expect(mocks.useSWR.mock.calls[0]?.[0]).toEqual([
+			"agent-selection-status",
+			"project-1",
+			"selection-1",
+		]);
 	});
 
 	it("keeps a pending form interactive when later process messages are appended", () => {

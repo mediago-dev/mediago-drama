@@ -142,6 +142,7 @@ const handleAgentSelectionAction = async (message: AgentMessage, action: A2uiCli
 			status: record.status,
 			summary: detail,
 			title: record.title || "用户选择",
+			...(record.intent ? { intent: record.intent } : {}),
 			...(pickedOption?.imageUrl ? { imageUrl: pickedOption.imageUrl } : {}),
 		});
 		const activityLabel =

@@ -92,9 +92,7 @@ func (store *SessionService) projectSessionID(projectID string) (string, bool) {
 	if store.repo != nil {
 		model, err := store.repo.FindLatestAgentSessionByProject(projectID)
 		if err == nil && strings.TrimSpace(model.SessionID) != "" {
-			if session, ok := store.loadSessionUnlocked(model.SessionID); ok {
-				store.sessions[model.SessionID] = session
-			}
+			store.cachePersistedSessionIfAbsentUnlocked(model.SessionID)
 			return model.SessionID, true
 		}
 		if err != nil && !repository.IsRecordNotFound(err) {
@@ -180,11 +178,25 @@ func (store *SessionService) sessionSummariesFromModelsUnlocked(models []agentSe
 			UpdatedAt:   domain.StringFromTime(model.UpdatedAt),
 			Running:     lastStatus != "" && !isTerminalRunStatus(lastStatus),
 		})
-		if session, ok := store.loadSessionUnlocked(sessionID); ok {
-			store.sessions[sessionID] = session
-		}
+		store.cachePersistedSessionIfAbsentUnlocked(sessionID)
 	}
 	return summaries
+}
+
+// cachePersistedSessionIfAbsentUnlocked hydrates a session only when this
+// process does not already own it. Existing entries carry process-local run
+// state that is intentionally absent from the persisted session record.
+func (store *SessionService) cachePersistedSessionIfAbsentUnlocked(sessionID string) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return
+	}
+	if session, ok := store.sessions[sessionID]; ok && session != nil {
+		return
+	}
+	if session, ok := store.loadSessionUnlocked(sessionID); ok {
+		store.sessions[sessionID] = session
+	}
 }
 
 // NeedsTitle reports whether a session can accept an auto-generated title.

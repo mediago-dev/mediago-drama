@@ -85,9 +85,9 @@ func TestToolsInstructionDelegatesImageWorkflowToSkill(t *testing.T) {
 		"图片专属的参数确认、参考图与异步提交流程以该 Skill 为准",
 		"图片或视频生成请求成功提交并取得任务 ID 后，当前 Agent run 的职责立即结束",
 		"不要在同一个 run 中等待图片或视频生成完成",
-		"不得在同一个 run 内调用 `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task` 或 `select_generation_asset`",
 		"不得展示结果选片卡，也不得把生成结果回写到文档",
 		"后台服务会继续执行任务、同步状态、落库结果并发送完成通知",
+		"后续任务状态、重试和选片由生成工作台承接",
 	} {
 		if !strings.Contains(instruction.Body, want) {
 			t.Fatalf("TOOLS instruction = %q, want image skill trigger %q", instruction.Body, want)
@@ -117,9 +117,9 @@ func TestToolsInstructionDelegatesVideoWorkflowToSkill(t *testing.T) {
 		"视频专属的模型选择、首帧参考、时长与分辨率参数和异步提交流程以该 Skill 为准",
 		"图片或视频生成请求成功提交并取得任务 ID 后，当前 Agent run 的职责立即结束",
 		"不要在同一个 run 中等待图片或视频生成完成",
-		"不得在同一个 run 内调用 `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task` 或 `select_generation_asset`",
 		"不得展示结果选片卡，也不得把生成结果回写到文档",
 		"后台服务会继续执行任务、同步状态、落库结果并发送完成通知",
+		"后续任务状态、重试和选片由生成工作台承接",
 	} {
 		if !strings.Contains(instruction.Body, want) {
 			t.Fatalf("TOOLS instruction = %q, want video skill trigger %q", instruction.Body, want)
@@ -136,27 +136,28 @@ func TestToolsInstructionDelegatesVideoWorkflowToSkill(t *testing.T) {
 	}
 }
 
-func TestToolsInstructionDefinesSplitGenerationPlanContracts(t *testing.T) {
+func TestToolsInstructionDefinesUnifiedGenerationPlanContract(t *testing.T) {
 	instruction, err := InstructionByID(context.Background(), "TOOLS")
 	if err != nil {
 		t.Fatalf("InstructionByID(%q) error = %v", "TOOLS", err)
 	}
 	for _, want := range []string{
+		"Generation MCP 只提供 `generate_media` 和 `generate_media_batch`",
 		"kind: \"generation_plan\"",
-		"图片表单必须恰好包含一个 required `generation_settings`",
+		"图片与视频表单都必须恰好包含一个 required",
 		"kind: \"image\"",
-		"不得混入 `generation_params`、`images` 或 `prompt_optimization`",
+		"kind: \"video\"",
+		"`generation_settings` 表单会通过实时 HTTP 目录自行加载",
+		"不得混入 `generation_params`、`images`",
 		"routeId、label、params、referenceAssetIds、promptSupplements、promptOptimization",
-		"视频表单本轮继续使用旧协议",
-		"一个 required `generation_params`（`kind: \"video\"`）",
-		"至多一个 `images` 和一个 `prompt_optimization`",
+		"与批量生成设置同源",
 		"`confirmationSelectionId`",
 		"`routeId`/`params`",
 		"参考图、补充提示词和提示词优化与用户确认值一致",
 		"传输心跳",
 		"对同一 `selectionId` 持续等待",
 		"等待期间不得调用其他工具、不得生成、不得结束回合或发送最终答复",
-		"只有状态明确为 `submitted` 才能继续生成",
+		"只有 `generation_plan` 状态明确为 `submitted` 才能继续生成",
 		"pending/timeout",
 		"关闭弹窗",
 		"cancelled 或 expired",
@@ -167,6 +168,29 @@ func TestToolsInstructionDefinesSplitGenerationPlanContracts(t *testing.T) {
 	}
 	if strings.Contains(instruction.Body, "循环 3-5 轮") {
 		t.Fatalf("TOOLS instruction must not cap selection waiting: %q", instruction.Body)
+	}
+}
+
+func TestToolsInstructionDoesNotExposeRemovedGenerationToolsOrRetryProtocol(t *testing.T) {
+	instruction, err := InstructionByID(context.Background(), "TOOLS")
+	if err != nil {
+		t.Fatalf("InstructionByID(%q) error = %v", "TOOLS", err)
+	}
+
+	for _, forbidden := range []string{
+		"list_generation_models",
+		"get_generation_task",
+		"list_generation_tasks",
+		"retry_generation_task",
+		"poll_generation_task",
+		"select_generation_asset",
+		"generation_retry_plan",
+		"confirm_retry",
+		"retryTaskId",
+	} {
+		if strings.Contains(instruction.Body, forbidden) {
+			t.Fatalf("TOOLS instruction contains removed generation contract %q:\n%s", forbidden, instruction.Body)
+		}
 	}
 }
 

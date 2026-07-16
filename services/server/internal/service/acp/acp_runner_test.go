@@ -1558,13 +1558,13 @@ func TestACPClientSessionUpdateIgnoresProviderErrorTextInCompletedToolResult(t *
 	}
 	client.setAcceptingSessionUpdates(true)
 
-	// A generation poll that succeeded after the user recharged: the images are
-	// present, but the task record still carries the earlier attempt's balance
-	// error as data. A completed tool call must not be treated as a run failure.
+	// A generation submission completed with images while its structured output
+	// still carries an earlier provider balance error as data. A completed tool
+	// call must not be treated as a run failure.
 	err := client.SessionUpdate(context.Background(), acp.SessionNotification{
 		Update: acp.UpdateToolCall(
 			"call-poll",
-			acp.WithUpdateTitle("Tool: mediago_drama_generation/poll_generation_task"),
+			acp.WithUpdateTitle("Tool: mediago_drama_generation/generate_media"),
 			acp.WithUpdateStatus(acp.ToolCallStatusCompleted),
 			acp.WithUpdateRawOutput(map[string]any{
 				"status": "succeeded",

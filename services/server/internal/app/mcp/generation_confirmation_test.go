@@ -141,35 +141,35 @@ func TestAuthorizeGenerationRejectsMalformedImageConfirmationContracts(t *testin
 			mutate: func(record *serviceselection.Record) {
 				record.Fields[0].Type = serviceselection.FieldTypeGenerationParams
 			},
-			wantErr: "kind=video",
+			wantErr: "no longer valid",
 		},
 		{
 			name: "mixed image fields",
 			mutate: func(record *serviceselection.Record) {
 				record.Fields = append(record.Fields, serviceselection.FormField{ID: "refs", Type: serviceselection.FieldTypeImages})
 			},
-			wantErr: "cannot mix",
+			wantErr: "no longer valid",
 		},
 		{
 			name: "value kind changed",
 			mutate: func(record *serviceselection.Record) {
 				record.Decision.Values["generation"].(map[string]any)["kind"] = "video"
 			},
-			wantErr: "kind=image",
+			wantErr: "no longer valid",
 		},
 		{
 			name: "missing prompt supplements",
 			mutate: func(record *serviceselection.Record) {
 				delete(record.Decision.Values["generation"].(map[string]any), "promptSupplements")
 			},
-			wantErr: "promptSupplements",
+			wantErr: "no longer valid",
 		},
 		{
 			name: "submitted without values",
 			mutate: func(record *serviceselection.Record) {
 				record.Decision.Values = nil
 			},
-			wantErr: "missing field",
+			wantErr: "no longer valid",
 		},
 	}
 
@@ -236,6 +236,24 @@ func TestAuthorizeGenerationKeepsLegacyVideoConfirmation(t *testing.T) {
 	}
 }
 
+func TestAuthorizeGenerationMatchesCompleteVideoSettingsSnapshot(t *testing.T) {
+	record, input := completeImageGenerationConfirmation()
+	record.ID = "selection-video-complete"
+	record.Fields[0].Kind = "video"
+	settings := record.Decision.Values["generation"].(map[string]any)
+	settings["kind"] = "video"
+	settings["routeId"] = "route-video"
+	settings["params"] = map[string]any{"duration": float64(5), "resolution": "720p"}
+	input.ConfirmationSelectionID = record.ID
+	input.Kind = "video"
+	input.RouteID = "route-video"
+	input.Params = map[string]any{"duration": 5, "resolution": "720p"}
+
+	if err := confirmedGenerationServer(record).authorizeGeneration(input, "video"); err != nil {
+		t.Fatalf("authorizeGeneration() error = %v", err)
+	}
+}
+
 func completeImageGenerationConfirmation() (serviceselection.Record, mediamcp.GenerationMessageInput) {
 	record := serviceselection.Record{
 		ID:        "selection-image-complete",
@@ -293,6 +311,7 @@ func completeImageGenerationConfirmation() (serviceselection.Record, mediamcp.Ge
 func confirmedGenerationServer(record serviceselection.Record) *GenerationServer {
 	return &GenerationServer{
 		projectID:  "project-a",
+		callerMode: GenerationCallerAgent,
 		sessionID:  "session-a",
 		runID:      "run-a",
 		selections: &generationSelectionStoreStub{record: record},

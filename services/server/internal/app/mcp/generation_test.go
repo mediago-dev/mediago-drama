@@ -16,7 +16,11 @@ import (
 
 func TestGenerationServerCreateUsesScopedProject(t *testing.T) {
 	service := &generationMCPServiceStub{}
-	server := &GenerationServer{service: service, projectID: "project-a"}
+	server := &GenerationServer{
+		service:    service,
+		projectID:  "project-a",
+		callerMode: GenerationCallerTrustedManual,
+	}
 
 	_, err := server.CreateGenerationMessage(context.Background(), "", mediamcp.GenerationMessageInput{
 		Prompt: "generate a scene",
@@ -70,19 +74,6 @@ func TestGenerationBatchRequestFromMCPPreservesPromptSupplements(t *testing.T) {
 	}
 }
 
-func TestGenerationModelsOutputOmitsAgentStylePresets(t *testing.T) {
-	output := generationModelsOutputFromService(servicegeneration.GenerationModelsResponse{
-		StylePresets: []servicegeneration.GenerationStylePreset{{ID: "style-anime"}},
-	})
-	payload, err := json.Marshal(output)
-	if err != nil {
-		t.Fatalf("json.Marshal(output) error = %v", err)
-	}
-	if strings.Contains(string(payload), "stylePresets") {
-		t.Fatalf("Agent generation catalog leaked stylePresets: %s", payload)
-	}
-}
-
 func TestGenerationServerRequiresSubmittedRunConfirmation(t *testing.T) {
 	baseRecord := confirmedGenerationSelectionRecord()
 	baseInput := mediamcp.GenerationMessageInput{
@@ -113,7 +104,7 @@ func TestGenerationServerRequiresSubmittedRunConfirmation(t *testing.T) {
 			wantErr: "confirmationSelectionId",
 		},
 		{name: "unknown selection", missing: true, wantErr: "was not found"},
-		{name: "lookup failure", lookupErr: fmt.Errorf("database offline"), wantErr: "database offline"},
+		{name: "lookup failure", lookupErr: fmt.Errorf("database offline"), wantErr: "reading generation confirmation"},
 		{
 			name: "pending",
 			mutate: func(record *serviceselection.Record, _ *mediamcp.GenerationMessageInput) {
@@ -159,42 +150,42 @@ func TestGenerationServerRequiresSubmittedRunConfirmation(t *testing.T) {
 					Type: serviceselection.FieldTypeSelect,
 				})
 			},
-			wantErr: "cannot mix",
+			wantErr: "no longer valid",
 		},
 		{
 			name: "different media kind",
 			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
 				input.Kind = "video"
 			},
-			wantErr: "does not match confirmed kind",
+			wantErr: "does not exactly match",
 		},
 		{
 			name: "route changed after confirmation",
 			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
 				input.RouteID = "route-b"
 			},
-			wantErr: "does not match confirmed route",
+			wantErr: "does not exactly match",
 		},
 		{
 			name: "legacy model override",
 			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
 				input.Model = "unconfirmed-model"
 			},
-			wantErr: "model overrides are not allowed",
+			wantErr: "does not exactly match",
 		},
 		{
 			name: "params changed after confirmation",
 			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
 				input.Params["n"] = 2
 			},
-			wantErr: "do not match",
+			wantErr: "does not exactly match",
 		},
 		{
 			name: "reference assets without images field",
 			mutate: func(_ *serviceselection.Record, input *mediamcp.GenerationMessageInput) {
 				input.ReferenceAssetIDs = []string{"asset-unconfirmed"}
 			},
-			wantErr: "reference assets do not match",
+			wantErr: "does not exactly match",
 		},
 		{
 			name: "optimization without prompt optimization field",
@@ -203,7 +194,7 @@ func TestGenerationServerRequiresSubmittedRunConfirmation(t *testing.T) {
 					ReferencePrompt: "unconfirmed",
 				}
 			},
-			wantErr: "was not enabled",
+			wantErr: "does not exactly match",
 		},
 	}
 
@@ -219,6 +210,7 @@ func TestGenerationServerRequiresSubmittedRunConfirmation(t *testing.T) {
 			server := &GenerationServer{
 				service:    service,
 				projectID:  "project-a",
+				callerMode: GenerationCallerAgent,
 				sessionID:  "session-a",
 				runID:      "run-a",
 				selections: &generationSelectionStoreStub{record: record, missing: test.missing, err: test.lookupErr},
@@ -247,6 +239,15 @@ func confirmedGenerationSelectionRecord() serviceselection.Record {
 		RunID:     "run-a",
 		Kind:      serviceselection.KindGenerationPlan,
 		Status:    serviceselection.StatusSubmitted,
+		Intent: &serviceselection.GenerationPlanIntent{
+			Version:   serviceselection.GenerationPlanIntentVersion,
+			Operation: serviceselection.GenerationPlanOperationCreateSingle,
+			Items: []serviceselection.GenerationPlanIntentItem{{
+				ID:     "item-1",
+				Kind:   "image",
+				Prompt: "generate a portrait",
+			}},
+		},
 		Fields: []serviceselection.FormField{{
 			ID:   "generation",
 			Type: serviceselection.FieldTypeGenerationSettings,
@@ -267,6 +268,152 @@ func confirmedGenerationSelectionRecord() serviceselection.Record {
 				},
 			},
 		}},
+	}
+}
+
+func confirmedGenerationInput() mediamcp.GenerationMessageInput {
+	return mediamcp.GenerationMessageInput{
+		ConfirmationSelectionID: "selection-confirmed",
+		Kind:                    "image",
+		RouteID:                 "route-a",
+		Prompt:                  "generate a portrait",
+		Params: map[string]any{
+			"aspectRatio": "3:4",
+			"n":           1,
+		},
+	}
+}
+
+func TestGenerationServerAgentCreateClaimsAndReplaysOutcome(t *testing.T) {
+	record := confirmedGenerationSelectionRecord()
+	input := confirmedGenerationInput()
+	firstStore := &generationSelectionStoreStub{record: record}
+	firstService := &generationMCPServiceStub{}
+	firstServer := &GenerationServer{
+		service:    firstService,
+		projectID:  "project-a",
+		callerMode: GenerationCallerAgent,
+		sessionID:  "session-a",
+		runID:      "run-a",
+		selections: firstStore,
+	}
+
+	first, err := firstServer.CreateGenerationMessage(context.Background(), "", input)
+	if err != nil {
+		t.Fatalf("first CreateGenerationMessage() error = %v", err)
+	}
+	if len(firstService.createRequests) != 1 || len(firstStore.claimedFingerprints) != 1 || len(firstStore.completedOutcomes) != 1 {
+		t.Fatalf(
+			"create=%d claims=%d outcomes=%d, want one of each",
+			len(firstService.createRequests),
+			len(firstStore.claimedFingerprints),
+			len(firstStore.completedOutcomes),
+		)
+	}
+
+	replayStore := &generationSelectionStoreStub{
+		record: record,
+		claimResult: serviceselection.GenerationUseClaimResult{
+			Status:  serviceselection.GenerationUseReplay,
+			Outcome: firstStore.completedOutcomes[0],
+		},
+	}
+	replayService := &generationMCPServiceStub{}
+	replayServer := &GenerationServer{
+		service:    replayService,
+		projectID:  "project-a",
+		callerMode: GenerationCallerAgent,
+		sessionID:  "session-a",
+		runID:      "run-a",
+		selections: replayStore,
+	}
+	replayed, err := replayServer.CreateGenerationMessage(context.Background(), "", input)
+	if err != nil {
+		t.Fatalf("replayed CreateGenerationMessage() error = %v", err)
+	}
+	if replayed.ID != first.ID || replayed.Status != first.Status {
+		t.Fatalf("replayed output = %+v, want %+v", replayed, first)
+	}
+	if len(replayService.createRequests) != 0 || len(replayStore.completedOutcomes) != 0 {
+		t.Fatalf(
+			"replay create=%d outcomes=%d, want no repeated side effect",
+			len(replayService.createRequests),
+			len(replayStore.completedOutcomes),
+		)
+	}
+}
+
+func TestGenerationServerAgentCreateBlocksUnsafeClaimStates(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  string
+		wantErr string
+	}{
+		{name: "different fingerprint", status: serviceselection.GenerationUseConflict, wantErr: "already been consumed"},
+		{name: "in progress", status: serviceselection.GenerationUseInProgressOrUnknown, wantErr: "processing or unknown"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service := &generationMCPServiceStub{}
+			store := &generationSelectionStoreStub{
+				record:      confirmedGenerationSelectionRecord(),
+				claimResult: serviceselection.GenerationUseClaimResult{Status: test.status},
+			}
+			server := &GenerationServer{
+				service:    service,
+				projectID:  "project-a",
+				callerMode: GenerationCallerAgent,
+				sessionID:  "session-a",
+				runID:      "run-a",
+				selections: store,
+			}
+
+			_, err := server.CreateGenerationMessage(context.Background(), "", confirmedGenerationInput())
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("CreateGenerationMessage() error = %v, want fragment %q", err, test.wantErr)
+			}
+			if len(service.createRequests) != 0 || len(store.completedOutcomes) != 0 {
+				t.Fatalf("create=%d outcomes=%d, want no side effect", len(service.createRequests), len(store.completedOutcomes))
+			}
+		})
+	}
+}
+
+func TestGenerationServerAgentCreateFailsClosedWithoutRunContext(t *testing.T) {
+	tests := []struct {
+		name       string
+		projectID  string
+		sessionID  string
+		runID      string
+		selections GenerationSelectionStore
+	}{
+		{name: "project", sessionID: "session-a", runID: "run-a", selections: &generationSelectionStoreStub{}},
+		{name: "session", projectID: "project-a", runID: "run-a", selections: &generationSelectionStoreStub{}},
+		{name: "run", projectID: "project-a", sessionID: "session-a", selections: &generationSelectionStoreStub{}},
+		{name: "selection store", projectID: "project-a", sessionID: "session-a", runID: "run-a"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service := &generationMCPServiceStub{}
+			server := &GenerationServer{
+				service:    service,
+				projectID:  test.projectID,
+				callerMode: GenerationCallerAgent,
+				sessionID:  test.sessionID,
+				runID:      test.runID,
+				selections: test.selections,
+			}
+
+			_, err := server.CreateGenerationMessage(context.Background(), "", confirmedGenerationInput())
+			if err == nil || !strings.Contains(err.Error(), string(GenerationConfirmationContextMissing)) {
+				t.Fatalf("CreateGenerationMessage() error = %v, want fail-closed context error", err)
+			}
+			if len(service.createRequests) != 0 {
+				t.Fatalf("create request count = %d, want 0", len(service.createRequests))
+			}
+		})
 	}
 }
 
@@ -357,6 +504,7 @@ func TestGenerationServerConfirmationCoversReferencesAndPromptOptimization(t *te
 			}
 			server := &GenerationServer{
 				projectID:  "project-a",
+				callerMode: GenerationCallerAgent,
 				sessionID:  "session-a",
 				runID:      "run-a",
 				selections: &generationSelectionStoreStub{record: record},
@@ -373,37 +521,44 @@ func TestGenerationServerConfirmationCoversReferencesAndPromptOptimization(t *te
 	}
 }
 
-func TestGenerationServerBatchReportsUnconfirmedItemWithoutRejectingSiblings(t *testing.T) {
+func TestGenerationServerBatchUsesOneConfirmedOrderedIntent(t *testing.T) {
 	record := confirmedGenerationSelectionRecord()
+	record.Intent.Operation = serviceselection.GenerationPlanOperationCreateBatch
+	record.Intent.Items = []serviceselection.GenerationPlanIntentItem{
+		{ID: "scene-1", Kind: "image", Prompt: "generate scene one"},
+		{ID: "scene-2", Kind: "image", Prompt: "generate scene two"},
+	}
 	service := &generationMCPServiceStub{}
+	store := &generationSelectionStoreStub{record: record}
 	server := &GenerationServer{
 		service:    service,
 		projectID:  "project-a",
+		callerMode: GenerationCallerAgent,
 		sessionID:  "session-a",
 		runID:      "run-a",
-		selections: &generationSelectionStoreStub{record: record},
+		selections: store,
 	}
 
 	output, err := server.CreateGenerationBatch(context.Background(), "", mediamcp.GenerationBatchInput{
-		Kind: "image",
+		ConfirmationSelectionID: record.ID,
+		Kind:                    "image",
 		Items: []mediamcp.GenerationBatchItemInput{
 			{
-				ID: "confirmed",
-				Request: mediamcp.GenerationMessageInput{
-					ConfirmationSelectionID: record.ID,
-					Kind:                    "image",
-					RouteID:                 "route-a",
-					Params:                  map[string]any{"aspectRatio": "3:4", "n": 1},
-					Prompt:                  "generate confirmed",
-				},
-			},
-			{
-				ID: "missing-confirmation",
+				ID: "scene-1",
 				Request: mediamcp.GenerationMessageInput{
 					Kind:    "image",
 					RouteID: "route-a",
 					Params:  map[string]any{"aspectRatio": "3:4", "n": 1},
-					Prompt:  "must not generate",
+					Prompt:  "generate scene one",
+				},
+			},
+			{
+				ID: "scene-2",
+				Request: mediamcp.GenerationMessageInput{
+					Kind:    "image",
+					RouteID: "route-a",
+					Params:  map[string]any{"aspectRatio": "3:4", "n": 1},
+					Prompt:  "generate scene two",
 				},
 			},
 		},
@@ -411,21 +566,23 @@ func TestGenerationServerBatchReportsUnconfirmedItemWithoutRejectingSiblings(t *
 	if err != nil {
 		t.Fatalf("CreateGenerationBatch() error = %v", err)
 	}
-	if output.Status != "partial" || output.Accepted != 1 || output.Failed != 1 {
-		t.Fatalf("output = %+v, want partial success", output)
+	if output.Status != "submitted" || output.Accepted != 2 || output.Failed != 0 {
+		t.Fatalf("output = %+v, want complete batch submission", output)
 	}
 	if len(service.batchRequests) != 1 || len(service.batchRequests[0].Items) != 2 {
-		t.Fatalf("batch requests = %+v, want both items passed to the batch service", service.batchRequests)
+		t.Fatalf("batch requests = %+v, want the complete ordered batch", service.batchRequests)
 	}
-	items := service.batchRequests[0].Items
-	if items[0].PreflightError != "" || !strings.Contains(items[1].PreflightError, "confirmationSelectionId") {
-		t.Fatalf("batch items = %+v, want only the unconfirmed item rejected", items)
+	if len(store.claimedFingerprints) != 1 || len(store.completedOutcomes) != 1 {
+		t.Fatalf("claims=%d outcomes=%d, want one of each", len(store.claimedFingerprints), len(store.completedOutcomes))
+	}
+	if service.batchRequests[0].Items[0].ID != "scene-1" || service.batchRequests[0].Items[1].ID != "scene-2" {
+		t.Fatalf("batch item order = %+v, want confirmed order", service.batchRequests[0].Items)
 	}
 }
 
 func TestGenerationServerCreateLibTVImageUsesExistingPayload(t *testing.T) {
 	service := &generationMCPServiceStub{}
-	server := &GenerationServer{service: service, projectID: "project-a"}
+	server := &GenerationServer{service: service, projectID: "project-a", callerMode: GenerationCallerTrustedManual}
 
 	_, err := server.CreateGenerationMessage(context.Background(), "", mediamcp.GenerationMessageInput{
 		Kind:          string(coregeneration.KindImage),
@@ -457,7 +614,7 @@ func TestGenerationServerCreateLibTVImageUsesExistingPayload(t *testing.T) {
 
 func TestGenerationServerCreateBatchUsesScopedProject(t *testing.T) {
 	service := &generationMCPServiceStub{}
-	server := &GenerationServer{service: service, projectID: "project-a"}
+	server := &GenerationServer{service: service, projectID: "project-a", callerMode: GenerationCallerTrustedManual}
 
 	output, err := server.CreateGenerationBatch(context.Background(), "", mediamcp.GenerationBatchInput{
 		Kind:              "image",
@@ -488,7 +645,7 @@ func TestGenerationServerCreateBatchUsesScopedProject(t *testing.T) {
 
 func TestGenerationServerCreateBatchRejectsNestedProjectOverride(t *testing.T) {
 	service := &generationMCPServiceStub{}
-	server := &GenerationServer{service: service, projectID: "project-a"}
+	server := &GenerationServer{service: service, projectID: "project-a", callerMode: GenerationCallerTrustedManual}
 
 	_, err := server.CreateGenerationBatch(context.Background(), "", mediamcp.GenerationBatchInput{
 		Items: []mediamcp.GenerationBatchItemInput{
@@ -541,7 +698,7 @@ func TestGenerationServerRejectsProjectScopeOverrides(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			service := &generationMCPServiceStub{}
-			server := &GenerationServer{service: service, projectID: "project-a"}
+			server := &GenerationServer{service: service, projectID: "project-a", callerMode: GenerationCallerTrustedManual}
 			if _, err := server.CreateGenerationMessage(context.Background(), "", tt.input); err == nil {
 				t.Fatal("CreateGenerationMessage returned nil error, want scope error")
 			}
@@ -552,104 +709,9 @@ func TestGenerationServerRejectsProjectScopeOverrides(t *testing.T) {
 	}
 }
 
-func TestGenerationServerListRejectsProjectScopeOverride(t *testing.T) {
-	service := &generationMCPServiceStub{}
-	server := &GenerationServer{service: service, projectID: "project-a"}
-
-	_, err := server.ListGenerationTasks(context.Background(), "", mediamcp.GenerationTaskListInput{
-		ProjectID: "project-b",
-	})
-	if err == nil {
-		t.Fatal("ListGenerationTasks returned nil error, want scope error")
-	}
-	if len(service.listQueries) != 0 {
-		t.Fatalf("list query count = %d, want 0", len(service.listQueries))
-	}
-}
-
-func TestGenerationServerAllowsUnscopedProjectInput(t *testing.T) {
-	service := &generationMCPServiceStub{}
-	server := &GenerationServer{service: service}
-
-	_, err := server.ListGenerationTasks(context.Background(), "", mediamcp.GenerationTaskListInput{
-		ProjectID: "project-b",
-	})
-	if err != nil {
-		t.Fatalf("ListGenerationTasks returned error: %v", err)
-	}
-	if len(service.listQueries) != 1 {
-		t.Fatalf("list query count = %d, want 1", len(service.listQueries))
-	}
-	if service.listQueries[0].ProjectID != "project-b" {
-		t.Fatalf("project id = %q, want project-b", service.listQueries[0].ProjectID)
-	}
-}
-
-func TestGenerationServerSelectAsset(t *testing.T) {
-	service := &generationMCPServiceStub{
-		tasks: map[string]servicegeneration.GenerationTaskRecord{
-			"task-1": {
-				ID:        "task-1",
-				ProjectID: "project-a",
-				Assets: []servicegeneration.GenerationAsset{
-					{Kind: "image", SlotIndex: 0},
-					{Kind: "image", SlotIndex: 1},
-				},
-			},
-		},
-	}
-	server := &GenerationServer{service: service, projectID: "project-a"}
-
-	record, err := server.SelectGenerationAsset(context.Background(), "", mediamcp.GenerationSelectAssetInput{
-		TaskID:    "task-1",
-		SlotIndex: 1,
-		Title:     "定稿",
-	})
-	if err != nil {
-		t.Fatalf("SelectGenerationAsset returned error: %v", err)
-	}
-	if len(record.Assets) != 2 || !record.Assets[1].Selected || record.Assets[1].Title != "定稿" {
-		t.Fatalf("record assets = %#v, want slot 1 selected with title", record.Assets)
-	}
-
-	if _, err := server.SelectGenerationAsset(context.Background(), "", mediamcp.GenerationSelectAssetInput{
-		TaskID:    "task-1",
-		SlotIndex: 9,
-	}); err == nil {
-		t.Fatal("SelectGenerationAsset returned nil error for missing slot")
-	}
-
-	if _, err := server.SelectGenerationAsset(context.Background(), "", mediamcp.GenerationSelectAssetInput{
-		TaskID:    "task-missing",
-		SlotIndex: 0,
-	}); err == nil {
-		t.Fatal("SelectGenerationAsset returned nil error for missing task")
-	}
-}
-
-func TestGenerationServerSelectAssetRespectsProjectScope(t *testing.T) {
-	service := &generationMCPServiceStub{
-		tasks: map[string]servicegeneration.GenerationTaskRecord{
-			"task-b": {
-				ID:        "task-b",
-				ProjectID: "project-b",
-				Assets:    []servicegeneration.GenerationAsset{{Kind: "image", SlotIndex: 0}},
-			},
-		},
-	}
-	server := &GenerationServer{service: service, projectID: "project-a"}
-
-	if _, err := server.SelectGenerationAsset(context.Background(), "", mediamcp.GenerationSelectAssetInput{
-		TaskID:    "task-b",
-		SlotIndex: 0,
-	}); err == nil {
-		t.Fatal("SelectGenerationAsset returned nil error for out-of-scope task")
-	}
-}
-
 func TestGenerationServerCreateWithPromptOptimization(t *testing.T) {
 	service := &generationMCPServiceStub{}
-	server := &GenerationServer{service: service, projectID: "project-a"}
+	server := &GenerationServer{service: service, projectID: "project-a", callerMode: GenerationCallerTrustedManual}
 
 	output, err := server.CreateGenerationMessage(context.Background(), "", mediamcp.GenerationMessageInput{
 		Prompt:             "generate a scene",
@@ -666,93 +728,21 @@ func TestGenerationServerCreateWithPromptOptimization(t *testing.T) {
 	}
 }
 
-func TestGenerationServerListModelsIncludesPreferences(t *testing.T) {
-	service := &generationMCPServiceStub{
-		preference: servicegeneration.GenerationPreferenceRecord{
-			RouteIDs:      map[string]string{"image": "jimeng.seedream-5.0"},
-			RouteParams:   map[string]map[string]any{"jimeng.seedream-5.0": {"aspectRatio": "3:4"}},
-			StylePresetID: "legacy-style-preset",
-		},
-		preferenceOK: true,
-	}
-	server := &GenerationServer{service: service, projectID: "project-a"}
-
-	output, err := server.ListGenerationModels(context.Background(), mediamcp.GenerationListModelsInput{})
-	if err != nil {
-		t.Fatalf("ListGenerationModels returned error: %v", err)
-	}
-	if output.Preferences == nil || output.Preferences.RouteIDs["image"] != "jimeng.seedream-5.0" {
-		t.Fatalf("preferences = %#v, want workbench route defaults", output.Preferences)
-	}
-	payload, err := json.Marshal(output)
-	if err != nil {
-		t.Fatalf("json.Marshal(output) error = %v", err)
-	}
-	if strings.Contains(string(payload), "stylePresetId") {
-		t.Fatalf("Agent generation preferences leaked legacy stylePresetId: %s", payload)
-	}
-
-	server.service = &generationMCPServiceStub{}
-	output, err = server.ListGenerationModels(context.Background(), mediamcp.GenerationListModelsInput{})
-	if err != nil {
-		t.Fatalf("ListGenerationModels returned error: %v", err)
-	}
-	if output.Preferences != nil {
-		t.Fatalf("preferences = %#v, want nil when unset", output.Preferences)
-	}
-}
-
-func TestGenerationServerListModelsIncludesLibTVImageRoutes(t *testing.T) {
-	routeIDs := []string{
-		coregeneration.RouteLibTVGPTImage2,
-		coregeneration.RouteLibTVNanoBanana31,
-		coregeneration.RouteLibTVSeedream5Lite,
-	}
-	routes := make([]coregeneration.ModelRoute, 0, len(routeIDs))
-	for _, routeID := range routeIDs {
-		route, ok := coregeneration.FindRoute(routeID)
-		if !ok {
-			t.Fatalf("route %q is missing from the core catalog", routeID)
-		}
-		route.Configured = true
-		routes = append(routes, route)
-	}
-	service := &generationMCPServiceStub{
-		models: servicegeneration.GenerationModelsResponse{Routes: routes},
-	}
-	server := &GenerationServer{service: service, projectID: "project-a"}
-
-	output, err := server.ListGenerationModels(context.Background(), mediamcp.GenerationListModelsInput{
-		Kind: string(coregeneration.KindImage),
-	})
-	if err != nil {
-		t.Fatalf("ListGenerationModels returned error: %v", err)
-	}
-	if len(output.Routes) != len(routeIDs) {
-		t.Fatalf("routes = %#v, want three LibTV image routes", output.Routes)
-	}
-	for index, route := range output.Routes {
-		if route.ID != routeIDs[index] || route.Kind != coregeneration.KindImage || !route.Configured {
-			t.Errorf("route[%d] = %+v, want configured LibTV image route %q", index, route, routeIDs[index])
-		}
-	}
-}
-
 type generationMCPServiceStub struct {
 	batchRequests    []servicegeneration.GenerationBatchRequest
 	createRequests   []servicegeneration.GenerationMessageRequest
 	optimizeRequests []servicegeneration.GenerationMessageRequest
-	listQueries      []servicegeneration.GenerationTaskListQuery
-	tasks            map[string]servicegeneration.GenerationTaskRecord
-	models           servicegeneration.GenerationModelsResponse
-	preference       servicegeneration.GenerationPreferenceRecord
-	preferenceOK     bool
 }
 
 type generationSelectionStoreStub struct {
-	record  serviceselection.Record
-	missing bool
-	err     error
+	record              serviceselection.Record
+	missing             bool
+	err                 error
+	claimResult         serviceselection.GenerationUseClaimResult
+	claimErr            error
+	completeErr         error
+	claimedFingerprints []string
+	completedOutcomes   []json.RawMessage
 }
 
 func (store *generationSelectionStoreStub) Get(string, string) (serviceselection.Record, bool, error) {
@@ -765,15 +755,38 @@ func (store *generationSelectionStoreStub) Get(string, string) (serviceselection
 	return store.record, true, nil
 }
 
+func (store *generationSelectionStoreStub) ClaimGenerationUse(
+	projectID string,
+	sessionID string,
+	runID string,
+	selectionID string,
+	fingerprint string,
+) (serviceselection.GenerationUseClaimResult, error) {
+	store.claimedFingerprints = append(store.claimedFingerprints, fingerprint)
+	if store.claimErr != nil {
+		return serviceselection.GenerationUseClaimResult{}, store.claimErr
+	}
+	if store.claimResult.Status == "" {
+		return serviceselection.GenerationUseClaimResult{Status: serviceselection.GenerationUseClaimed}, nil
+	}
+	return store.claimResult, nil
+}
+
+func (store *generationSelectionStoreStub) CompleteGenerationUse(
+	projectID string,
+	selectionID string,
+	fingerprint string,
+	outcome json.RawMessage,
+) error {
+	store.completedOutcomes = append(store.completedOutcomes, append(json.RawMessage(nil), outcome...))
+	return store.completeErr
+}
+
 func boolCount(value bool) int {
 	if value {
 		return 1
 	}
 	return 0
-}
-
-func (service *generationMCPServiceStub) ListGenerationModels() servicegeneration.GenerationModelsResponse {
-	return service.models
 }
 
 func (service *generationMCPServiceStub) CreateGenerationMessage(_ context.Context, payload servicegeneration.GenerationMessageRequest) (servicegeneration.GenerationMessageResponse, int, error) {
@@ -810,93 +823,10 @@ func (service *generationMCPServiceStub) CreateGenerationBatch(_ context.Context
 	return response, http.StatusOK, nil
 }
 
-func (service *generationMCPServiceStub) RetryGenerationTask(_ context.Context, id string) (servicegeneration.GenerationMessageResponse, int, error) {
-	return servicegeneration.GenerationMessageResponse{ID: id, Status: "submitted"}, http.StatusOK, nil
-}
-
-func (service *generationMCPServiceStub) ListGenerationTasks(query servicegeneration.GenerationTaskListQuery) (servicegeneration.GenerationTasksResponse, error) {
-	service.listQueries = append(service.listQueries, query)
-	return servicegeneration.GenerationTasksResponse{}, nil
-}
-
-func (service *generationMCPServiceStub) GetGenerationTask(id string) (servicegeneration.GenerationTaskRecord, bool, error) {
-	if service.tasks == nil {
-		return servicegeneration.GenerationTaskRecord{}, false, nil
-	}
-	task, ok := service.tasks[id]
-	return task, ok, nil
-}
-
-func (service *generationMCPServiceStub) PollGenerationTask(context.Context, servicegeneration.GenerationTaskRecord) {
-}
-
 func (service *generationMCPServiceStub) CreatePromptOptimizedGenerationMessage(_ context.Context, payload servicegeneration.GenerationMessageRequest) (servicegeneration.GenerationOptimizeAndGenerateResponse, int, error) {
 	service.optimizeRequests = append(service.optimizeRequests, payload)
 	return servicegeneration.GenerationOptimizeAndGenerateResponse{
 		Generation:      servicegeneration.GenerationMessageResponse{ID: "generation-optimized", Status: "submitted"},
 		OptimizedPrompt: "optimized: " + payload.Prompt,
 	}, http.StatusOK, nil
-}
-
-func (service *generationMCPServiceStub) GenerationPreferenceForProject(string) (servicegeneration.GenerationPreferenceRecord, bool) {
-	return service.preference, service.preferenceOK
-}
-
-func (service *generationMCPServiceStub) UpdateGenerationTaskAsset(id string, assetIndex int, patch servicegeneration.UpdateGenerationTaskAssetRequest) (servicegeneration.GenerationTaskRecord, bool, error) {
-	task, ok := service.tasks[id]
-	if !ok {
-		return servicegeneration.GenerationTaskRecord{}, false, nil
-	}
-	for index := range task.Assets {
-		if task.Assets[index].SlotIndex != assetIndex {
-			continue
-		}
-		if patch.Selected != nil {
-			task.Assets[index].Selected = *patch.Selected
-		}
-		if patch.Title != nil {
-			task.Assets[index].Title = *patch.Title
-		}
-		service.tasks[id] = task
-		return task, true, nil
-	}
-	return servicegeneration.GenerationTaskRecord{}, false, nil
-}
-
-func TestFilterGenerationModelsOutputByKind(t *testing.T) {
-	full := mediamcp.GenerationModelsOutput{
-		Families: []coregeneration.ModelFamily{
-			{ID: "img-family", Kind: coregeneration.KindImage},
-			{ID: "audio-family", Kind: coregeneration.KindAudio},
-		},
-		Versions: []coregeneration.ModelVersion{
-			{ID: "img-version", Kind: coregeneration.KindImage},
-			{ID: "audio-version", Kind: coregeneration.KindAudio},
-		},
-		Routes: []coregeneration.ModelRoute{
-			{ID: "img-route", Kind: coregeneration.KindImage},
-			{ID: "audio-route", Kind: coregeneration.KindAudio},
-		},
-		Models: []coregeneration.ModelSpec{
-			{ID: "img-model", Kind: coregeneration.KindImage},
-		},
-		VoicePreviews: []mediamcp.GenerationVoicePreviewAsset{{RouteID: "audio-route", VoiceID: "voice-1"}},
-	}
-
-	image := filterGenerationModelsOutputByKind(full, "image")
-	if len(image.Families) != 1 || image.Families[0].ID != "img-family" ||
-		len(image.Versions) != 1 || len(image.Routes) != 1 || len(image.Models) != 1 {
-		t.Fatalf("image filter = %+v, want image-only catalog", image)
-	}
-	if len(image.VoicePreviews) != 0 {
-		t.Fatal("image filter should drop voice previews")
-	}
-	audio := filterGenerationModelsOutputByKind(full, "audio")
-	if len(audio.Routes) != 1 || audio.Routes[0].ID != "audio-route" || len(audio.VoicePreviews) != 1 {
-		t.Fatalf("audio filter = %+v, want audio routes with voice previews", audio)
-	}
-	all := filterGenerationModelsOutputByKind(full, "")
-	if len(all.Routes) != 2 || len(all.VoicePreviews) != 1 {
-		t.Fatalf("empty kind should return the full catalog, got %+v", all)
-	}
 }

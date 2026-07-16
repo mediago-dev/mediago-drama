@@ -1856,6 +1856,7 @@ func normalizeGenerationDeletedAssetSlots(slots []int) []int {
 }
 
 func GenerationTaskForClient(task GenerationTaskRecord) GenerationTaskRecord {
+	task.AssetTitle = generationAssetTitleFromTask(task)
 	task.Params = generationParamsForClient(task.Params)
 	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
 	if len(deletedSlots) == 0 {

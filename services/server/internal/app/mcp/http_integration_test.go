@@ -225,14 +225,8 @@ func TestInternalGenerationMCPHTTPAuthAndTools(t *testing.T) {
 
 	_, toolsMessage := callMCPHTTP(t, handler, path, token, sessionID, 2, "tools/list", map[string]any{})
 	assertMCPTools(t, toolsMessage,
-		"list_generation_models",
 		"generate_media",
 		"generate_media_batch",
-		"get_generation_task",
-		"list_generation_tasks",
-		"retry_generation_task",
-		"poll_generation_task",
-		"select_generation_asset",
 	)
 }
 
@@ -271,10 +265,8 @@ func assertGenerationMCPInitializeInstructions(t *testing.T, message map[string]
 	instructions, _ := result["instructions"].(string)
 	for _, fragment := range []string{
 		"生成工作台",
-		"list_generation_models",
 		"generate_media",
 		"generate_media_batch",
-		"poll_generation_task",
 	} {
 		if !strings.Contains(instructions, fragment) {
 			t.Fatalf("instructions = %q, want fragment %q", instructions, fragment)

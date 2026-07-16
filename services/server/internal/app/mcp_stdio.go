@@ -29,7 +29,7 @@ func RunGenerationMCP(ctx context.Context, config Config, projectID string, inpu
 		_ = api.Close()
 	}()
 	runConfig := mediamcp.DocumentConfigFromEnvVars(os.Getenv)
-	server, _, err := appmcp.NewGenerationServerForRun(
+	server, _, err := appmcp.NewAgentGenerationServer(
 		api.workspaceState.Dir(),
 		projectID,
 		api.generation,

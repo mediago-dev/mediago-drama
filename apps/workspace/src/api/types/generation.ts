@@ -408,6 +408,7 @@ export interface GenerationTaskRecord {
 	modelId: string;
 	model: string;
 	prompt: string;
+	assetTitle?: string;
 	referenceUrls: string[];
 	referenceAssetIds: string[];
 	params: Record<string, unknown>;

@@ -73,12 +73,12 @@ func TestImageGenerationSkillOwnsAgentImageWorkflow(t *testing.T) {
 
 		body := entry.Description + "\n" + entry.Body
 		for _, fragment := range []string{
-			"list_generation_models",
 			"kind: \"image\"",
 			"ask_user_selection",
 			"ask_user_form",
 			"直接调用一次 `ask_user_form` 打开统一生成设置表单",
-			"不要在模型目录之后单独展示通用“风格选择”卡",
+			"统一生成设置表单会通过实时 HTTP 目录自行加载",
+			"不要在表单前单独展示通用“风格选择”卡",
 			"用户可维护的动态提示词包",
 			"名为 `style` 的参数",
 			"type: \"generation_settings\"",
@@ -107,10 +107,10 @@ func TestImageGenerationSkillOwnsAgentImageWorkflow(t *testing.T) {
 			"confirmationSelectionId",
 			"图片生成请求成功提交后，当前 Agent run 的职责立即结束",
 			"不要在同一个 run 中等待图片生成完成",
-			"不得在同一个 run 内调用 `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task` 或 `select_generation_asset`",
 			"不得展示结果选片卡",
 			"不得把生成结果回写到文档",
 			"后台服务会继续执行任务、同步状态、落库结果并发送完成通知",
+			"后续任务状态、重试和选片由生成工作台承接",
 			"携带 `documentContext` 的项目资源会在后台完成后自动选中本次第一张结果",
 		} {
 			if !strings.Contains(body, fragment) {
@@ -128,6 +128,15 @@ func TestImageGenerationSkillOwnsAgentImageWorkflow(t *testing.T) {
 			"### 5. 等待任务完成",
 			"### 6. 选片并回写",
 			"用户选定后，用对应资产的真实 `slotIndex` 调用 `select_generation_asset",
+			"list_generation_models",
+			"get_generation_task",
+			"list_generation_tasks",
+			"retry_generation_task",
+			"poll_generation_task",
+			"select_generation_asset",
+			"generation_retry_plan",
+			"confirm_retry",
+			"retryTaskId",
 		} {
 			if strings.Contains(body, fragment) {
 				t.Fatalf("image-generation should not contain obsolete workflow rule %q:\n%s", fragment, body)
@@ -155,25 +164,28 @@ func TestVideoGenerationSkillOwnsAgentVideoWorkflow(t *testing.T) {
 
 		body := entry.Description + "\n" + entry.Body
 		for _, fragment := range []string{
-			"list_generation_models",
 			"kind: \"video\"",
-			"不要在模型目录之后单独展示通用“风格选择”卡",
+			"统一生成设置表单会通过实时 HTTP 目录自行加载",
+			"不要在表单前单独展示通用“风格选择”卡",
 			"用户可维护的动态提示词包",
 			"名为 `style` 的参数",
 			"首帧",
 			"异步任务提交",
 			"ask_user_selection",
 			"ask_user_form",
-			"generation_params",
+			"type: \"generation_settings\"",
 			"required: true",
-			"本轮视频继续使用旧复合字段协议",
-			"不得改用 `generation_settings`",
+			"kind: \"video\"",
+			"不得再添加 `generation_params`、`images`、`prompt_optimization`",
+			"与批量生成视频设置共用字段、默认值和校验",
+			"没有本轮明确 override 时，不要传 `default`",
+			"promptSupplements",
+			"promptOptimization",
 			"kind: \"generation_plan\"",
 			"恰好一个",
-			"不要添加 `select`、`toggle`、`number`、`text`",
+			"任何 `select`、`toggle`、`number`、`text` 字段",
 			"传输心跳",
 			"不得调用其他工具",
-			"prompt_optimization",
 			"referenceAssetIds",
 			"generate_media",
 			"generate_media_batch",
@@ -184,10 +196,10 @@ func TestVideoGenerationSkillOwnsAgentVideoWorkflow(t *testing.T) {
 			"returnLastFrame",
 			"视频生成请求成功提交后，当前 Agent run 的职责立即结束",
 			"不要在同一个 run 中等待视频生成完成",
-			"不得在同一个 run 内调用 `get_generation_task`、`list_generation_tasks`、`poll_generation_task`、`retry_generation_task` 或 `select_generation_asset`",
 			"不得展示结果选片卡",
 			"不得把生成结果回写到文档",
 			"后台服务会继续执行任务、同步状态、落库结果并发送完成通知",
+			"后续任务状态、重试和选片由生成工作台承接",
 			"携带 `documentContext` 的项目资源会在后台完成后自动选中本次第一条视频",
 			"为分镜批量生成视频",
 			"第 0N 组",
@@ -201,10 +213,11 @@ func TestVideoGenerationSkillOwnsAgentVideoWorkflow(t *testing.T) {
 				t.Fatalf("video-generation missing workflow rule %q:\n%s", fragment, body)
 			}
 		}
-		if strings.Contains(body, "stylePresets") {
-			t.Fatalf("video-generation should not depend on standalone style presets:\n%s", body)
-		}
 		for _, fragment := range []string{
+			"stylePresets",
+			"本轮视频继续使用旧复合字段协议",
+			"不得改用 `generation_settings`",
+			"恰好一个 required `generation_params`",
 			"### 5. 等待任务完成",
 			"### 6. 交付并回写",
 			"需要在同一回合内跟进时",
@@ -212,6 +225,15 @@ func TestVideoGenerationSkillOwnsAgentVideoWorkflow(t *testing.T) {
 			"需要汇总时用 `list_generation_tasks",
 			"各镜头完成后按其 `documentContext` 回写",
 			"只总结实际结果：任务状态、定稿资产名、视频地址",
+			"list_generation_models",
+			"get_generation_task",
+			"list_generation_tasks",
+			"retry_generation_task",
+			"poll_generation_task",
+			"select_generation_asset",
+			"generation_retry_plan",
+			"confirm_retry",
+			"retryTaskId",
 		} {
 			if strings.Contains(body, fragment) {
 				t.Fatalf("video-generation should not contain same-run completion rule %q:\n%s", fragment, body)

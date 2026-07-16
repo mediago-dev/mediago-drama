@@ -30,9 +30,12 @@ export const useResolvedAgentSelection = (
 	const local = useAgentPersistenceStore((state) =>
 		id ? (state.resolvedSelections[id] ?? null) : null,
 	);
+	const needsServerHydration = !local || !local.intent;
 
 	const { data } = useSWR<SelectionStatusFetch>(
-		id && resolvedProjectId && !local ? ["agent-selection-status", resolvedProjectId, id] : null,
+		id && resolvedProjectId && needsServerHydration
+			? ["agent-selection-status", resolvedProjectId, id]
+			: null,
 		async () => {
 			try {
 				return { record: await getAgentSelection(id, resolvedProjectId) };
@@ -64,7 +67,8 @@ export const useResolvedAgentSelection = (
 	// Persist the server-derived resolution so later renders (and offline
 	// sessions) freeze without refetching.
 	useEffect(() => {
-		if (!id || local || !serverResolved) return;
+		if (!id || !serverResolved) return;
+		if (local && (local.intent || !serverResolved.intent)) return;
 		useAgentPersistenceStore.getState().markSelectionResolved(id, serverResolved);
 	}, [id, local, serverResolved]);
 

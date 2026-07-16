@@ -107,6 +107,9 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		ReferenceAssetIDs: task.ReferenceAssetIDs,
 		Params:            task.Params,
 	}
+	// Promote a legacy result-derived title into the retry request so later
+	// status transitions keep the same user-facing task summary.
+	task.Params = generationParamsWithAssetTitle(task.Params, payload.AssetTitle)
 	payload.ProjectName = workflow.generationProjectName(payload.ProjectID)
 
 	route, err := ResolveGenerationRoute(payload)

@@ -191,7 +191,7 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 				{items.map((item, index) => (
 					<div
 						key={timelineRenderItemKey(item, index)}
-						className={cn("agent-timeline-row px-4 pb-3", index === 0 && "pt-4")}
+						className={cn("agent-timeline-row w-full px-4 pb-3", index === 0 && "pt-4")}
 					>
 						{renderTimelineItem(item, onA2UIAction, disclosureOverrides, updateDisclosureOverride)}
 					</div>
@@ -306,8 +306,9 @@ const TimelineTurn: React.FC<{
 	onDisclosureOverrideChange: (override: ProcessDisclosureOverride) => void;
 	onA2UIAction?: AgentA2UIActionHandler;
 }> = memo(({ turn, disclosureOverride, onDisclosureOverrideChange, onA2UIAction }) => {
+	const processItems = visibleTimelineProcessItems(turn);
 	const showProcess =
-		turn.processItems.length > 0 ||
+		processItems.length > 0 ||
 		turn.lifecycle !== "completed" ||
 		(turn.outcome !== null && turn.outcome !== "succeeded");
 	const hasAssistantContent =
@@ -317,7 +318,7 @@ const TimelineTurn: React.FC<{
 		<section className="agent-turn space-y-3" data-agent-turn-id={turn.id}>
 			{turn.userMessage ? <TimelineUserTurn message={turn.userMessage} /> : null}
 			{hasAssistantContent ? (
-				<div className="agent-turn-response min-w-0 space-y-3 px-1">
+				<div className="agent-turn-response w-full min-w-0 space-y-3 px-1">
 					{showProcess ? (
 						<ProcessDisclosure
 							turnId={turn.id}
@@ -328,8 +329,8 @@ const TimelineTurn: React.FC<{
 							override={disclosureOverride}
 							onOverrideChange={onDisclosureOverrideChange}
 						>
-							{turn.processItems.length > 0 ? (
-								<TimelineProcessItems messages={turn.processItems} />
+							{processItems.length > 0 ? (
+								<TimelineProcessItems messages={processItems} />
 							) : (
 								<TimelineProcessEmpty lifecycle={turn.lifecycle} outcome={turn.outcome} />
 							)}
@@ -350,6 +351,11 @@ const TimelineTurn: React.FC<{
 		</section>
 	);
 });
+
+const visibleTimelineProcessItems = (turn: AgentTurnViewModel) =>
+	turn.lifecycle === "completed"
+		? turn.processItems
+		: turn.processItems.filter((message) => message.kind !== "plan");
 
 const TimelineUserTurn: React.FC<{ message: AgentMessage }> = memo(({ message }) => {
 	const legacyAttachments = legacyDisplayAttachments(message.content);
@@ -613,7 +619,7 @@ const TimelineFinalAnswer: React.FC<{ message: AgentMessage }> = memo(({ message
 	return (
 		<article
 			className={cn(
-				"agent-final-answer min-w-0 text-xs leading-5 text-foreground",
+				"agent-final-answer w-full min-w-0 text-xs leading-5 text-foreground",
 				message.status === "error" ? "text-error-foreground" : "text-foreground",
 			)}
 		>

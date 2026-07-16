@@ -3,66 +3,12 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
+	serviceselection "github.com/mediago-dev/mediago-drama/services/server/internal/service/selection"
 )
-
-func (server *GenerationServer) ListGenerationModels(ctx context.Context, input mediamcp.GenerationListModelsInput) (mediamcp.GenerationModelsOutput, error) {
-	_ = ctx
-	service, err := server.requireService()
-	if err != nil {
-		return mediamcp.GenerationModelsOutput{}, err
-	}
-	kind := strings.TrimSpace(input.Kind)
-	server.logToolInvocation(mediamcp.GenerationTools.ListModels.Name, "kind", kind)
-	output := generationModelsOutputFromService(service.ListGenerationModels())
-	output = filterGenerationModelsOutputByKind(output, kind)
-	if preference, ok := service.GenerationPreferenceForProject(server.scopedProjectID("")); ok {
-		output.Preferences = generationPreferencesFromService(preference)
-	}
-	return output, nil
-}
-
-// filterGenerationModelsOutputByKind narrows the catalog to one generation
-// kind. The full catalog is ~300KB (654 voice previews alone); an image-only
-// view is ~50KB, which matters because agents pay for the output in tokens.
-func filterGenerationModelsOutputByKind(output mediamcp.GenerationModelsOutput, kind string) mediamcp.GenerationModelsOutput {
-	if kind == "" {
-		return output
-	}
-	filtered := output
-	filtered.Families = nil
-	for _, family := range output.Families {
-		if string(family.Kind) == kind {
-			filtered.Families = append(filtered.Families, family)
-		}
-	}
-	filtered.Versions = nil
-	for _, version := range output.Versions {
-		if string(version.Kind) == kind {
-			filtered.Versions = append(filtered.Versions, version)
-		}
-	}
-	filtered.Routes = nil
-	for _, route := range output.Routes {
-		if string(route.Kind) == kind {
-			filtered.Routes = append(filtered.Routes, route)
-		}
-	}
-	filtered.Models = nil
-	for _, model := range output.Models {
-		if string(model.Kind) == kind {
-			filtered.Models = append(filtered.Models, model)
-		}
-	}
-	if kind != "audio" {
-		filtered.VoicePreviews = nil
-	}
-	return filtered
-}
 
 func (server *GenerationServer) CreateGenerationMessage(ctx context.Context, projectID string, input mediamcp.GenerationMessageInput) (mediamcp.GenerationMessageOutput, error) {
 	service, err := server.requireService()
@@ -73,25 +19,103 @@ func (server *GenerationServer) CreateGenerationMessage(ctx context.Context, pro
 	if err != nil {
 		return mediamcp.GenerationMessageOutput{}, err
 	}
-	if err := server.authorizeGeneration(input, input.Kind); err != nil {
+	prepared, authorizationRequired, err := server.prepareAgentGenerationMessage(input, defaultProjectID)
+	if err != nil {
 		return mediamcp.GenerationMessageOutput{}, err
 	}
-	request := generationMessageRequestFromMCP(input, defaultProjectID)
+	if !authorizationRequired {
+		request := generationMessageRequestFromMCP(input, defaultProjectID)
+		output, status, action, executionErr := server.executeGenerationMessage(ctx, service, request)
+		if executionErr != nil {
+			return mediamcp.GenerationMessageOutput{}, generationStatusError(action, status, executionErr)
+		}
+		return output, nil
+	}
+
+	claim, err := server.claimAgentGenerationUse(prepared.SelectionID, prepared.Fingerprint)
+	if err != nil {
+		return mediamcp.GenerationMessageOutput{}, err
+	}
+	switch claim.Status {
+	case serviceselection.GenerationUseReplay:
+		return replayGenerationMessageOutcome(claim.Outcome)
+	case serviceselection.GenerationUseInProgressOrUnknown:
+		return mediamcp.GenerationMessageOutput{}, generationConfirmationError(
+			GenerationConfirmationOutcomeUnknown,
+			"this confirmed generation was already submitted and its outcome is still processing or unknown",
+			nil,
+		)
+	case serviceselection.GenerationUseConflict:
+		return mediamcp.GenerationMessageOutput{}, generationConfirmationError(
+			GenerationConfirmationConsumed,
+			"this confirmation has already been consumed by another generation request",
+			nil,
+		)
+	case serviceselection.GenerationUseClaimed:
+		// The external side effect is permitted only after this atomic claim.
+	default:
+		return mediamcp.GenerationMessageOutput{}, generationConfirmationError(
+			GenerationConfirmationOutcomeUnknown,
+			"generation confirmation returned an unknown claim state",
+			nil,
+		)
+	}
+
+	output, status, action, executionErr := server.executeGenerationMessage(ctx, service, prepared.Request)
+	if executionErr != nil {
+		failure := stableGenerationExecutionFailure(action, status)
+		outcome, encodeErr := encodeGenerationMessageFailureOutcome(failure)
+		if encodeErr != nil {
+			return mediamcp.GenerationMessageOutput{}, generationConfirmationError(
+				GenerationConfirmationOutcomeUnknown,
+				"generation failed and its replay outcome could not be encoded",
+				encodeErr,
+			)
+		}
+		if err := server.completeAgentGenerationUse(prepared.SelectionID, prepared.Fingerprint, outcome); err != nil {
+			return mediamcp.GenerationMessageOutput{}, err
+		}
+		return mediamcp.GenerationMessageOutput{}, generationConfirmationError(
+			failure.Code,
+			failure.Message,
+			executionErr,
+		)
+	}
+
+	outcome, err := encodeGenerationMessageSuccessOutcome(output)
+	if err != nil {
+		return mediamcp.GenerationMessageOutput{}, generationConfirmationError(
+			GenerationConfirmationOutcomeUnknown,
+			"generation succeeded but its replay outcome could not be encoded",
+			err,
+		)
+	}
+	if err := server.completeAgentGenerationUse(prepared.SelectionID, prepared.Fingerprint, outcome); err != nil {
+		return mediamcp.GenerationMessageOutput{}, err
+	}
+	return output, nil
+}
+
+func (server *GenerationServer) executeGenerationMessage(
+	ctx context.Context,
+	service GenerationService,
+	request servicegeneration.GenerationMessageRequest,
+) (mediamcp.GenerationMessageOutput, int, string, error) {
 	server.logToolInvocation(mediamcp.GenerationTools.Generate.Name, "kind", request.Kind, "route_id", request.RouteID, "optimize", request.PromptOptimization != nil)
 	if request.PromptOptimization != nil {
 		response, status, err := service.CreatePromptOptimizedGenerationMessage(ctx, request)
 		if err != nil {
-			return mediamcp.GenerationMessageOutput{}, generationStatusError("optimize and generate", status, err)
+			return mediamcp.GenerationMessageOutput{}, status, "optimize and generate", err
 		}
 		output := generationMessageOutputFromService(response.Generation)
 		output.OptimizedPrompt = response.OptimizedPrompt
-		return output, nil
+		return output, status, "optimize and generate", nil
 	}
 	response, status, err := service.CreateGenerationMessage(ctx, request)
 	if err != nil {
-		return mediamcp.GenerationMessageOutput{}, generationStatusError("create generation message", status, err)
+		return mediamcp.GenerationMessageOutput{}, status, "create generation message", err
 	}
-	return generationMessageOutputFromService(response), nil
+	return generationMessageOutputFromService(response), status, "create generation message", nil
 }
 
 // CreateGenerationBatch submits multiple generation requests through the shared batch service.
@@ -104,159 +128,94 @@ func (server *GenerationServer) CreateGenerationBatch(ctx context.Context, proje
 	if err != nil {
 		return mediamcp.GenerationBatchOutput{}, err
 	}
-	request := generationBatchRequestFromMCP(input, defaultProjectID)
-	for index, item := range input.Items {
-		kind := firstNonEmpty(item.Request.Kind, input.Kind, "image")
-		if err := server.authorizeGeneration(item.Request, kind); err != nil {
-			request.Items[index].PreflightError = fmt.Sprintf(
-				"authorizing generation batch item %d (%s): %v",
-				index,
-				firstNonEmpty(item.ID, "unnamed"),
-				err,
+	prepared, authorizationRequired, err := server.prepareAgentGenerationBatch(input, defaultProjectID)
+	if err != nil {
+		return mediamcp.GenerationBatchOutput{}, err
+	}
+	if !authorizationRequired {
+		request := generationBatchRequestFromMCP(input, defaultProjectID)
+		output, status, action, executionErr := server.executeGenerationBatch(ctx, service, request)
+		if executionErr != nil {
+			return mediamcp.GenerationBatchOutput{}, generationStatusError(action, status, executionErr)
+		}
+		return output, nil
+	}
+
+	claim, err := server.claimAgentGenerationUse(prepared.SelectionID, prepared.Fingerprint)
+	if err != nil {
+		return mediamcp.GenerationBatchOutput{}, err
+	}
+	switch claim.Status {
+	case serviceselection.GenerationUseReplay:
+		return replayGenerationBatchOutcome(claim.Outcome)
+	case serviceselection.GenerationUseInProgressOrUnknown:
+		return mediamcp.GenerationBatchOutput{}, generationConfirmationError(
+			GenerationConfirmationOutcomeUnknown,
+			"this confirmed generation batch was already submitted and its outcome is still processing or unknown",
+			nil,
+		)
+	case serviceselection.GenerationUseConflict:
+		return mediamcp.GenerationBatchOutput{}, generationConfirmationError(
+			GenerationConfirmationConsumed,
+			"this confirmation has already been consumed by another generation request",
+			nil,
+		)
+	case serviceselection.GenerationUseClaimed:
+		// The complete ordered batch is permitted only after this atomic claim.
+	default:
+		return mediamcp.GenerationBatchOutput{}, generationConfirmationError(
+			GenerationConfirmationOutcomeUnknown,
+			"generation batch confirmation returned an unknown claim state",
+			nil,
+		)
+	}
+
+	output, status, action, executionErr := server.executeGenerationBatch(ctx, service, prepared.Request)
+	if executionErr != nil {
+		failure := stableGenerationExecutionFailure(action, status)
+		outcome, encodeErr := encodeGenerationBatchFailureOutcome(failure)
+		if encodeErr != nil {
+			return mediamcp.GenerationBatchOutput{}, generationConfirmationError(
+				GenerationConfirmationOutcomeUnknown,
+				"generation batch failed and its replay outcome could not be encoded",
+				encodeErr,
 			)
 		}
+		if err := server.completeAgentGenerationUse(prepared.SelectionID, prepared.Fingerprint, outcome); err != nil {
+			return mediamcp.GenerationBatchOutput{}, err
+		}
+		return mediamcp.GenerationBatchOutput{}, generationConfirmationError(
+			failure.Code,
+			failure.Message,
+			executionErr,
+		)
 	}
-	server.logToolInvocation(mediamcp.GenerationTools.GenerateBatch.Name, "item_count", len(request.Items), "project_id", defaultProjectID)
+
+	outcome, err := encodeGenerationBatchSuccessOutcome(output)
+	if err != nil {
+		return mediamcp.GenerationBatchOutput{}, generationConfirmationError(
+			GenerationConfirmationOutcomeUnknown,
+			"generation batch succeeded but its replay outcome could not be encoded",
+			err,
+		)
+	}
+	if err := server.completeAgentGenerationUse(prepared.SelectionID, prepared.Fingerprint, outcome); err != nil {
+		return mediamcp.GenerationBatchOutput{}, err
+	}
+	return output, nil
+}
+
+func (server *GenerationServer) executeGenerationBatch(
+	ctx context.Context,
+	service GenerationService,
+	request servicegeneration.GenerationBatchRequest,
+) (mediamcp.GenerationBatchOutput, int, string, error) {
+	server.logToolInvocation(mediamcp.GenerationTools.GenerateBatch.Name, "item_count", len(request.Items), "project_id", request.ProjectID)
 	response, status, err := service.CreateGenerationBatch(ctx, request)
 	if err != nil {
-		return mediamcp.GenerationBatchOutput{}, generationStatusError("create generation batch", status, err)
+		return mediamcp.GenerationBatchOutput{}, status, "create generation batch", err
 	}
-	return generationBatchOutputFromService(response), nil
-}
-
-func (server *GenerationServer) GetGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationTaskRecord, error) {
-	_ = ctx
-	service, err := server.requireService()
-	if err != nil {
-		return mediamcp.GenerationTaskRecord{}, err
-	}
-	taskID, err := cleanGenerationTaskID(input.TaskID)
-	if err != nil {
-		return mediamcp.GenerationTaskRecord{}, err
-	}
-	server.logToolInvocation(mediamcp.GenerationTools.GetTask.Name, "task_id", taskID)
-	task, ok, err := service.GetGenerationTask(taskID)
-	if err != nil {
-		return mediamcp.GenerationTaskRecord{}, err
-	}
-	effectiveProjectID, err := server.resolveProjectID(projectID)
-	if err != nil {
-		return mediamcp.GenerationTaskRecord{}, err
-	}
-	if !ok || !generationTaskVisibleToProject(task.ProjectID, effectiveProjectID) {
-		return mediamcp.GenerationTaskRecord{}, fmt.Errorf("generation task not found")
-	}
-	return generationTaskRecordFromService(task), nil
-}
-
-func (server *GenerationServer) ListGenerationTasks(ctx context.Context, projectID string, input mediamcp.GenerationTaskListInput) (mediamcp.GenerationTasksOutput, error) {
-	_ = ctx
-	service, err := server.requireService()
-	if err != nil {
-		return mediamcp.GenerationTasksOutput{}, err
-	}
-	effectiveProjectID, err := server.resolveProjectID(projectID, input.ProjectID)
-	if err != nil {
-		return mediamcp.GenerationTasksOutput{}, err
-	}
-	server.logToolInvocation(mediamcp.GenerationTools.ListTasks.Name, "batch_id", input.BatchID, "kind", input.Kind, "project_id", effectiveProjectID)
-	tasks, err := service.ListGenerationTasks(servicegeneration.GenerationTaskListQuery{
-		BatchID:        strings.TrimSpace(input.BatchID),
-		ConversationID: strings.TrimSpace(input.ConversationID),
-		Kind:           strings.TrimSpace(input.Kind),
-		ProjectID:      effectiveProjectID,
-		ScopeID:        strings.TrimSpace(input.ScopeID),
-		Limit:          input.Limit,
-		Offset:         input.Offset,
-	})
-	if err != nil {
-		return mediamcp.GenerationTasksOutput{}, err
-	}
-	return generationTasksOutputFromService(tasks), nil
-}
-
-func (server *GenerationServer) RetryGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error) {
-	service, task, err := server.serviceAndVisibleTask(projectID, input.TaskID)
-	if err != nil {
-		return mediamcp.GenerationMessageOutput{}, err
-	}
-	server.logToolInvocation(mediamcp.GenerationTools.RetryTask.Name, "task_id", task.ID)
-	response, status, err := service.RetryGenerationTask(ctx, task.ID)
-	if err != nil {
-		return mediamcp.GenerationMessageOutput{}, generationStatusError("retry generation task", status, err)
-	}
-	return generationMessageOutputFromService(response), nil
-}
-
-func (server *GenerationServer) PollGenerationTask(ctx context.Context, projectID string, input mediamcp.GenerationTaskInput) (mediamcp.GenerationMessageOutput, error) {
-	service, task, err := server.serviceAndVisibleTask(projectID, input.TaskID)
-	if err != nil {
-		return mediamcp.GenerationMessageOutput{}, err
-	}
-	server.logToolInvocation(mediamcp.GenerationTools.PollTask.Name, "task_id", task.ID)
-	service.PollGenerationTask(ctx, task)
-	latest, ok, err := service.GetGenerationTask(task.ID)
-	if err != nil {
-		return mediamcp.GenerationMessageOutput{}, err
-	}
-	if ok {
-		task = latest
-	}
-	return generationMessageOutputFromService(servicegeneration.GenerationResponseFromTask(task)), nil
-}
-
-func (server *GenerationServer) SelectGenerationAsset(ctx context.Context, projectID string, input mediamcp.GenerationSelectAssetInput) (mediamcp.GenerationTaskRecord, error) {
-	_ = ctx
-	service, task, err := server.serviceAndVisibleTask(projectID, input.TaskID)
-	if err != nil {
-		return mediamcp.GenerationTaskRecord{}, err
-	}
-	if input.SlotIndex < 0 {
-		return mediamcp.GenerationTaskRecord{}, fmt.Errorf("slotIndex must be >= 0")
-	}
-	server.logToolInvocation(mediamcp.GenerationTools.SelectAsset.Name, "task_id", task.ID, "slot_index", input.SlotIndex)
-	selected := true
-	patch := servicegeneration.UpdateGenerationTaskAssetRequest{Selected: &selected}
-	if title := strings.TrimSpace(input.Title); title != "" {
-		patch.Title = &title
-	}
-	if resourceType := strings.TrimSpace(input.ResourceType); resourceType != "" {
-		patch.ResourceType = resourceType
-	}
-	updated, ok, err := service.UpdateGenerationTaskAsset(task.ID, input.SlotIndex, patch)
-	if err != nil {
-		return mediamcp.GenerationTaskRecord{}, err
-	}
-	if !ok {
-		return mediamcp.GenerationTaskRecord{}, fmt.Errorf("generation asset slot %d not found", input.SlotIndex)
-	}
-	return generationTaskRecordFromService(updated), nil
-}
-
-func (server *GenerationServer) serviceAndVisibleTask(projectID string, rawTaskID string) (GenerationService, servicegeneration.GenerationTaskRecord, error) {
-	service, err := server.requireService()
-	if err != nil {
-		return nil, servicegeneration.GenerationTaskRecord{}, err
-	}
-	taskID, err := cleanGenerationTaskID(rawTaskID)
-	if err != nil {
-		return nil, servicegeneration.GenerationTaskRecord{}, err
-	}
-	task, ok, err := service.GetGenerationTask(taskID)
-	if err != nil {
-		return nil, servicegeneration.GenerationTaskRecord{}, err
-	}
-	if !ok {
-		return nil, servicegeneration.GenerationTaskRecord{}, fmt.Errorf("generation task not found")
-	}
-	effectiveProjectID, err := server.resolveProjectID(projectID)
-	if err != nil {
-		return nil, servicegeneration.GenerationTaskRecord{}, err
-	}
-	if !generationTaskVisibleToProject(task.ProjectID, effectiveProjectID) {
-		return nil, servicegeneration.GenerationTaskRecord{}, fmt.Errorf("generation task not found")
-	}
-	return service, task, nil
+	return generationBatchOutputFromService(response), status, "create generation batch", nil
 }
 
 func (server *GenerationServer) generationMessageProjectID(projectID string, input mediamcp.GenerationMessageInput) (string, error) {
@@ -312,21 +271,4 @@ func (server *GenerationServer) scopedProjectID(projectID string) string {
 		return domain.CleanProjectID(projectID)
 	}
 	return domain.CleanProjectID(firstNonEmpty(projectID, server.projectID))
-}
-
-func cleanGenerationTaskID(taskID string) (string, error) {
-	taskID = strings.TrimSpace(taskID)
-	if taskID == "" {
-		return "", fmt.Errorf("taskId is required")
-	}
-	return taskID, nil
-}
-
-func generationTaskVisibleToProject(taskProjectID string, projectID string) bool {
-	projectID = strings.TrimSpace(projectID)
-	if projectID == "" {
-		return true
-	}
-	taskProjectID = strings.TrimSpace(taskProjectID)
-	return taskProjectID == "" || taskProjectID == projectID
 }

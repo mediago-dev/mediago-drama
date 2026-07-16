@@ -6,6 +6,77 @@ import (
 	"testing"
 )
 
+func TestGenerationPlanIntentContract(t *testing.T) {
+	intentType := reflect.TypeOf(GenerationPlanIntentInput{})
+	assertJSONField(t, intentType, "Version", "version")
+	assertJSONField(t, intentType, "Operation", "operation")
+	assertJSONField(t, intentType, "ConversationTitle", "conversationTitle,omitempty")
+	itemsField := assertJSONField(t, intentType, "Items", "items")
+	if itemsField.Type != reflect.TypeOf([]GenerationPlanIntentItemInput{}) {
+		t.Fatalf("GenerationPlanIntentInput.Items type = %v, want []GenerationPlanIntentItemInput", itemsField.Type)
+	}
+
+	operationField, _ := intentType.FieldByName("Operation")
+	operationSchema := operationField.Tag.Get("jsonschema")
+	for _, fragment := range []string{"create_single", "create_batch"} {
+		if !strings.Contains(operationField.Tag.Get("jsonschema"), fragment) {
+			t.Fatalf("GenerationPlanIntentInput.Operation jsonschema missing %q: %q", fragment, operationField.Tag.Get("jsonschema"))
+		}
+	}
+	if strings.Contains(operationSchema, "retry") {
+		t.Fatalf("GenerationPlanIntentInput.Operation jsonschema still allows retry: %q", operationSchema)
+	}
+
+	itemType := reflect.TypeOf(GenerationPlanIntentItemInput{})
+	for fieldName, jsonName := range map[string]string{
+		"ID":                 "id",
+		"Kind":               "kind",
+		"Prompt":             "prompt",
+		"AssetTitle":         "assetTitle,omitempty",
+		"CapabilityID":       "capabilityId,omitempty",
+		"ConversationID":     "sessionId,omitempty",
+		"ScopeID":            "scopeId,omitempty",
+		"DocumentID":         "documentId,omitempty",
+		"SectionID":          "sectionId,omitempty",
+		"DocumentContext":    "documentContext,omitempty",
+		"ResourceType":       "resourceType,omitempty",
+		"ReferenceAssetIDs":  "referenceAssetIds,omitempty",
+		"NotificationTarget": "notificationTarget,omitempty",
+	} {
+		assertJSONField(t, itemType, fieldName, jsonName)
+	}
+	if _, ok := itemType.FieldByName("RetryTaskID"); ok {
+		t.Fatal("GenerationPlanIntentItemInput.RetryTaskID must not be published")
+	}
+	conversationField, _ := itemType.FieldByName("ConversationID")
+	for _, fragment := range []string{"生成会话 ID", "sessionId"} {
+		if !strings.Contains(conversationField.Tag.Get("jsonschema"), fragment) {
+			t.Fatalf("GenerationPlanIntentItemInput.ConversationID jsonschema missing %q: %q", fragment, conversationField.Tag.Get("jsonschema"))
+		}
+	}
+
+	formIntent := assertJSONField(t, reflect.TypeOf(AskUserFormInput{}), "Intent", "intent,omitempty")
+	selectionIntent := assertJSONField(t, reflect.TypeOf(AskUserSelectionInput{}), "Intent", "intent,omitempty")
+	wantIntentType := reflect.TypeOf((*GenerationPlanIntentInput)(nil))
+	if formIntent.Type != wantIntentType || selectionIntent.Type != wantIntentType {
+		t.Fatalf("intent field types = form %v, selection %v; want %v", formIntent.Type, selectionIntent.Type, wantIntentType)
+	}
+	if !strings.Contains(formIntent.Tag.Get("jsonschema"), "generation_plan") {
+		t.Fatalf("AskUserFormInput.Intent jsonschema = %q, want generation_plan requirement", formIntent.Tag.Get("jsonschema"))
+	}
+	selectionIntentSchema := selectionIntent.Tag.Get("jsonschema")
+	for _, fragment := range []string{"create_single", "create_batch"} {
+		if !strings.Contains(selectionIntentSchema, fragment) {
+			t.Fatalf("AskUserSelectionInput.Intent jsonschema missing %q: %q", fragment, selectionIntentSchema)
+		}
+	}
+	for _, forbidden := range []string{"generation_retry_plan", "retry"} {
+		if strings.Contains(selectionIntentSchema, forbidden) {
+			t.Fatalf("AskUserSelectionInput.Intent jsonschema still advertises %q: %q", forbidden, selectionIntentSchema)
+		}
+	}
+}
+
 func TestGenerationSettingsFieldContractIsAdvertised(t *testing.T) {
 	if FieldTypeGenerationSettings != "generation_settings" {
 		t.Fatalf("FieldTypeGenerationSettings = %q, want generation_settings", FieldTypeGenerationSettings)
@@ -18,6 +89,7 @@ func TestGenerationSettingsFieldContractIsAdvertised(t *testing.T) {
 	for _, fragment := range []string{
 		FieldTypeGenerationSettings,
 		"kind=image",
+		"video",
 		"routeId",
 		"referenceAssetIds",
 		"promptSupplements",
@@ -32,7 +104,7 @@ func TestGenerationSettingsFieldContractIsAdvertised(t *testing.T) {
 	if !ok {
 		t.Fatal("AskUserFormInput.Fields is missing")
 	}
-	for _, fragment := range []string{FieldTypeGenerationSettings, "generation_params", "kind=video"} {
+	for _, fragment := range []string{FieldTypeGenerationSettings, "kind=image|video", "历史视频"} {
 		if !strings.Contains(fields.Tag.Get("jsonschema"), fragment) {
 			t.Fatalf("AskUserFormInput.Fields jsonschema missing %q: %q", fragment, fields.Tag.Get("jsonschema"))
 		}
@@ -83,4 +155,17 @@ func TestSelectionSchemaUsesNeutralResourceExamples(t *testing.T) {
 			}
 		})
 	}
+}
+
+func assertJSONField(t *testing.T, owner reflect.Type, fieldName string, wantJSONTag string) reflect.StructField {
+	t.Helper()
+
+	field, ok := owner.FieldByName(fieldName)
+	if !ok {
+		t.Fatalf("%s.%s is missing", owner.Name(), fieldName)
+	}
+	if got := field.Tag.Get("json"); got != wantJSONTag {
+		t.Fatalf("%s.%s json tag = %q, want %q", owner.Name(), fieldName, got, wantJSONTag)
+	}
+	return field
 }

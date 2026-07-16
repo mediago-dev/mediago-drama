@@ -31,7 +31,7 @@ const AgentMCPInstructions = mcpWorkflowInstructions + `
 - update_project_config 当前仅用于更新 overview.categoryDefaults；style 风格分类会被忽略。
 - ask_user_selection 向用户展示可视化选项并阻塞等待选择，返回 selected/custom/cancelled/timeout。
 - ask_user_form 向用户展示参数表单，支持 select、toggle、number、text、generation_settings、generation_params、images 和 prompt_optimization 字段，提交后返回 values。
-- 图片生成参数确认必须用 kind=generation_plan，且只传一个 required generation_settings(kind=image)，其中一次性确认 route/params/references/prompt supplements/prompt optimization；不得再混用 generation_params、images、prompt_optimization 或通用字段。视频本轮兼容 generation_params(kind=video) 加可选 images/prompt_optimization。
+- 图片和视频生成参数确认必须用 kind=generation_plan，携带绑定本次单项或完整有序批次的 intent，且只传一个 required generation_settings(kind=image|video)，其中一次性确认 route/params/references/prompt supplements/prompt optimization；一次确认只授权一次完整请求。不得再混用 generation_params、images、prompt_optimization 或通用字段。历史视频表单继续兼容旧字段读取。
 - 两者返回 timeout 只表示一次 MCP 传输等待结束，不是用户决定。必须用 await_user_selection 对同一 selectionId 持续续等且不设轮数上限；pending/timeout 时不得调用其他工具、继续业务、结束回合或发送最终答复。返回 cancelled/expired 时停止；生成表单只有 status=submitted 才能继续，关闭弹窗不算提交。`
 
 // ExternalMCPInstructions describes the cross-project MCP server contract.
@@ -42,17 +42,15 @@ const ExternalMCPInstructions = mcpWorkflowInstructions + `
 // GenerationMCPInstructions describes the generation MCP server contract.
 const GenerationMCPInstructions = `MediaGo Drama Generation MCP 使用说明：
 - 本 MCP 只提供 MediaGo Drama 生成工作台能力，不提供文档正文读写。
-- list_generation_models 返回模型目录、routeId、参数 schema、configured 状态和 preferences；configured 表示当前路由是否可提交。视觉风格等补充内容来自用户本轮需求或统一生成设置表单中的动态提示词包，不存在单独的全局风格选择步骤。
-- generate_media 用于提交生成请求；kind 默认 image。prompt 必填，routeId/model/params 应来自模型目录或用户明确输入。Agent 发起图片或视频生成时必须传已提交 generation_plan 的 confirmationSelectionId，并只传表单确认的 routeId（不要再传 familyId/versionId/provider/modelId/model 覆盖模型）；服务端会核验当前 project/session/run 及已确认的 routeId、params、referenceAssetIds、promptSupplements 和 promptOptimization。
-- generate_media_batch 用于一次提交多个独立媒体生成请求；返回 batch id 和每项 taskId，单项失败不会取消其他项。Agent 的图片/视频批次中每个 request 都必须传 confirmationSelectionId，并逐项核验 routeId、params、referenceAssetIds、promptSupplements 和 promptOptimization。图片或视频批次返回各子项 taskId 后必须结束当前回合，不得继续查询或轮询等待图片或视频完成。
-- generate_media 返回的 id 即生成任务的 taskId；status 为 submitting/submitted 时任务在后台运行。图片或视频生成提交成功并取得 taskId 后，必须结束当前回合；不得调用 get_generation_task、list_generation_tasks、poll_generation_task、retry_generation_task 或 select_generation_asset，不得展示结果选片或回写文档。后台服务会继续执行任务、同步状态、落库并发送完成通知。
+- 本 MCP 只提供 generate_media 和 generate_media_batch；模型、参数、参考素材、提示词包与优化设置由统一生成设置表单加载并确认。
+- 图片或视频的一次确认只授权一次完整请求；相同工具调用的技术重试由服务端幂等处理，不得把 selectionId 用于另一请求。
+- generate_media 用于提交单项生成请求；kind 默认 image，prompt 必填。Agent 发起图片或视频生成时必须传已提交 generation_plan 的 confirmationSelectionId，并原样使用表单确认的 routeId、params、referenceAssetIds、promptSupplements 和 promptOptimization；不得再传 familyId/versionId/provider/modelId/model 覆盖模型。服务端会核验当前 project/session/run、完整 intent 与全部确认设置。
+- generate_media_batch 用于一次提交多个独立媒体生成请求；返回 batch id 和每项 taskId，单项失败不会取消其他项。Agent 的图片/视频批次必须传一个批次级 confirmationSelectionId；一次确认授权一个完整有序批次，子项不得各自提供确认 ID。服务端会整体核验 intent 以及 routeId、params、referenceAssetIds、promptSupplements 和 promptOptimization。图片或视频批次返回各子项 taskId 后必须结束当前回合，不得继续查询或轮询等待图片或视频完成。
+- generate_media 返回的 id 即生成任务的 taskId；status 为 submitting/submitted 时任务在后台运行。图片或视频生成提交成功并取得 taskId 后，必须结束当前回合，不得等待最终结果、展示结果选片或回写文档。后台服务会继续执行任务、同步状态、落库并发送完成通知，后续查询、重试和选片由通知与生成工作台承接。
 - referenceUrls/referenceAssetIds/referenceBindings 可用于传入参考图、参考素材或文档绑定。
 - documentContext（documentId + sectionId）把任务归入项目资源的生成历史与选中资产库；资源归属由服务端按目标文档类型自动判定。
 - notificationTarget 指定生成完成通知跳转的项目文档章节。
-- promptOptimization 请求服务端先优化提示词再生成，响应中的 optimizedPrompt 是实际生成提示词。
-- get_generation_task / list_generation_tasks 用于适用的音频或文本流程，或用户后续显式查询已有任务的状态和结果资产；不得用于当前回合等待刚提交的图片或视频。
-- poll_generation_task 用于适用的音频或文本流程，或用户后续显式查询已有任务并同步供应商状态；不得用于当前回合等待刚提交的图片或视频。
-- retry_generation_task 和 select_generation_asset 只用于适用的音频或文本流程，或用户后续显式处理；不得作为当前图片或视频生成提交回合的后置步骤。select_generation_asset 按 taskId 和 slotIndex 标记选中资产，未带 documentContext 的任务可补传 resourceType。`
+- promptOptimization 请求服务端先优化提示词再生成，响应中的 optimizedPrompt 是实际生成提示词。`
 
 const publicMCPBoundaryDescription = "MediaGo Drama MCP：Agent 当前工作目录已是项目 work 文档根目录；文档读写直接操作当前目录下的 Markdown 文件，不要再访问 work/ 子目录；项目配置通过 MCP 读取或更新，不要搜索 project.media.json。"
 
@@ -90,23 +88,11 @@ var ExternalTools = struct {
 
 // GenerationTools contains generation MCP tool definitions.
 var GenerationTools = struct {
-	ListModels    ToolDefinition
 	Generate      ToolDefinition
 	GenerateBatch ToolDefinition
-	GetTask       ToolDefinition
-	ListTasks     ToolDefinition
-	RetryTask     ToolDefinition
-	PollTask      ToolDefinition
-	SelectAsset   ToolDefinition
 }{
-	ListModels:    ToolDefinition{Name: "list_generation_models", Title: "列出生成模型", Description: "返回 MediaGo Drama 当前可用的生成模型目录、routeId、参数 schema、供应商配置状态和用户偏好。可传 kind（image/video/audio/text）只返回对应类型；视觉风格等补充内容由统一生成设置表单中的动态提示词包选择。", ReadOnly: true},
-	Generate:      ToolDefinition{Name: "generate_media", Title: "提交媒体生成", Description: "提交图片、视频、音频或文本生成请求；prompt 必填，kind 默认 image，routeId/model/params 应来自 list_generation_models。Agent 发起图片或视频生成时必须传已提交 generation_plan 的 confirmationSelectionId；服务端核验同 project/session/run 以及 routeId、params、referenceAssetIds、promptSupplements、promptOptimization 与确认值一致。图片或视频请求返回 taskId 后必须结束当前回合，不得继续查询或轮询等待图片或视频完成。"},
-	GenerateBatch: ToolDefinition{Name: "generate_media_batch", Title: "批量提交媒体生成", Description: "一次提交最多 50 个独立媒体生成请求；每项 request 与 generate_media 相同，Agent 图片/视频批次的每项都必须传 confirmationSelectionId，并逐项核验 routeId、params、referenceAssetIds、promptSupplements、promptOptimization；返回批次 ID、每项 taskId 或独立错误。图片或视频批次返回各子项 taskId 后必须结束当前回合，不得继续查询或轮询等待图片或视频完成。"},
-	GetTask:       ToolDefinition{Name: "get_generation_task", Title: "读取生成任务", Description: "按 taskId 读取生成任务的状态、结果资产、错误信息和尝试记录；用于适用的音频或文本流程，或用户后续显式查询，不得用于当前回合等待刚提交的图片或视频。", ReadOnly: true},
-	ListTasks:     ToolDefinition{Name: "list_generation_tasks", Title: "列出生成任务", Description: "按 batchId、projectId、sessionId、kind、limit、offset 列出生成任务；用于适用的音频或文本流程，或用户后续显式查询，不得用于当前回合等待刚提交的图片或视频。", ReadOnly: true},
-	RetryTask:     ToolDefinition{Name: "retry_generation_task", Title: "重试生成任务", Description: "按 taskId 重新提交失败或可重试的任务；用于适用的音频或文本流程，或用户后续显式处理，不得作为当前图片或视频生成提交回合的后置步骤。"},
-	PollTask:      ToolDefinition{Name: "poll_generation_task", Title: "轮询生成任务", Description: "按 taskId 轮询异步生成任务并同步最新状态；用于适用的音频或文本流程，或用户后续显式查询，不得用于当前回合等待刚提交的图片或视频。"},
-	SelectAsset:   ToolDefinition{Name: "select_generation_asset", Title: "选定生成结果", Description: "按 taskId + slotIndex 把某张生成结果标记为选中并返回更新后的任务；用于适用的音频或文本流程，或用户后续显式处理，不得作为当前图片或视频生成提交回合的后置步骤。"},
+	Generate:      ToolDefinition{Name: "generate_media", Title: "提交媒体生成", Description: "提交单项图片、视频、音频或文本生成请求；prompt 必填，kind 默认 image。Agent 发起图片或视频生成时必须传已提交 generation_plan 的 confirmationSelectionId，并原样使用 generation_settings 确认的 routeId、params、referenceAssetIds、promptSupplements、promptOptimization；一次确认只授权一次完整请求，服务端核验同 project/session/run 和完整 intent。图片或视频请求返回 taskId 后必须结束当前回合，后续状态与操作由通知和生成工作台承接。"},
+	GenerateBatch: ToolDefinition{Name: "generate_media_batch", Title: "批量提交媒体生成", Description: "一次提交最多 50 个独立媒体生成请求；Agent 图片/视频批次必须传一个批次级 confirmationSelectionId，一次确认授权一个完整有序批次，子项不得各自提供确认 ID；服务端整体核验 intent、routeId、params、referenceAssetIds、promptSupplements、promptOptimization；返回批次 ID、每项 taskId 或独立错误。图片或视频批次返回各子项 taskId 后必须结束当前回合，不得继续查询或轮询等待图片或视频完成。"},
 }
 
 // AgentDocumentTools is the public run-scoped MCP surface exposed to agents.
@@ -130,12 +116,12 @@ var AgentDocumentTools = struct {
 	AskUserSelection: ToolDefinition{
 		Name:        "ask_user_selection",
 		Title:       "请用户选择",
-		Description: "向用户展示一组可视化选项（如目标资源或生成结果）并阻塞等待其选择：返回所选 optionId（selected）、自定义描述（custom）、取消（cancelled）、过期（expired）或传输心跳（timeout）。options 必填，每项含 id/label，可带 imageUrl/description（自然语言，不要暴露内部字段名）。timeout 不是用户决定；必须用 await_user_selection 对同一 selectionId 持续等待且不设轮数上限，期间不得调用其他工具、结束回合或继续业务。",
+		Description: "向用户展示一组可视化选项（如目标资源）并阻塞等待其选择：返回所选 optionId（selected）、自定义描述（custom）、取消（cancelled）、过期（expired）或传输心跳（timeout）。options 必填，每项含 id/label，可带 imageUrl/description（自然语言，不要暴露内部字段名）。timeout 不是用户决定；必须用 await_user_selection 对同一 selectionId 持续等待且不设轮数上限，期间不得调用其他工具、结束回合或继续业务。",
 	},
 	AskUserForm: ToolDefinition{
 		Name:        "ask_user_form",
 		Title:       "请用户填写表单",
-		Description: "向用户展示一张参数表单卡并阻塞等待提交。图片生成确认必须传 kind=generation_plan，且只含一个 required generation_settings(kind=image)；它渲染与批量生成同源的完整设置，并提交 {kind,routeId,label,params,referenceAssetIds,promptSupplements,promptOptimization}。不得与 generation_params、images、prompt_optimization 或通用字段混用。视频本轮兼容一个 generation_params(kind=video) 加至多一个 images 和 prompt_optimization。结果为 status=submitted 与 values。timeout 只是传输心跳；必须对同一 selectionId 持续 await，pending/timeout 时不得生成、调用其他工具、结束回合或发送最终答复。",
+		Description: "向用户展示一张参数表单卡并阻塞等待提交。图片和视频生成确认必须传 kind=generation_plan、绑定单项或完整有序批次的 intent，且只含一个 required generation_settings(kind=image|video)；一次确认只授权一次完整请求。它渲染与批量生成同源的完整设置，并提交 {kind,routeId,label,params,referenceAssetIds,promptSupplements,promptOptimization}。不得与 generation_params、images、prompt_optimization 或通用字段混用。历史视频表单仅保留读取兼容。结果为 status=submitted 与 values。timeout 只是传输心跳；必须对同一 selectionId 持续 await，pending/timeout 时不得生成、调用其他工具、结束回合或发送最终答复。",
 	},
 	AwaitUserSelection: ToolDefinition{
 		Name:        "await_user_selection",

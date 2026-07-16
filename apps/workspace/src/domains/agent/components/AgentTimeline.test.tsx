@@ -35,6 +35,7 @@ describe("AgentTimeline", () => {
 		expect(screen.getByTestId("agent-timeline")).toHaveAttribute("data-agent-session", "session-1");
 		expect(screen.getByTestId("agent-timeline")).toHaveClass("overflow-y-auto");
 		expect(screen.getByTestId("agent-timeline-list")).toHaveClass("min-h-full", "justify-end");
+		expect(screen.getByText("第一轮消息").closest(".agent-timeline-row")).toHaveClass("w-full");
 	});
 
 	it("renders conversation rows without virtual placeholders", () => {
@@ -294,7 +295,8 @@ describe("AgentTimeline", () => {
 		);
 
 		const heading = screen.getByText("第二章 · 分镜文档已生成");
-		expect(heading.closest(".agent-final-answer")).toBeInTheDocument();
+		expect(heading.closest(".agent-final-answer")).toHaveClass("w-full");
+		expect(heading.closest(".agent-turn-response")).toHaveClass("w-full");
 		expect(screen.getByText("共拆解 18 个镜头")).toBeTruthy();
 		expect(screen.queryByText("文档智能体")).not.toBeInTheDocument();
 		expect(screen.queryByText("最终回复")).not.toBeInTheDocument();
@@ -340,8 +342,8 @@ describe("AgentTimeline", () => {
 		];
 		const view = render(<AgentTimeline isRunning messages={messages} />);
 
-		expect(screen.getByText("2 / 3 完成")).toBeTruthy();
-		expect(document.querySelector(".agent-plan-status-icon.animate-spin")).not.toBeNull();
+		expect(screen.queryByText("2 / 3 完成")).not.toBeInTheDocument();
+		expect(document.querySelector(".agent-plan-status-icon.animate-spin")).toBeNull();
 
 		view.rerender(<AgentTimeline isRunning={false} messages={messages} />);
 

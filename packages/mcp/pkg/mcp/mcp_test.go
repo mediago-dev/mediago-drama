@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -171,8 +172,8 @@ func TestDocumentToolDefinitions(t *testing.T) {
 	}
 	for _, fragment := range []string{
 		"kind=generation_plan",
-		"generation_settings(kind=image)",
-		"generation_params(kind=video)",
+		"generation_settings(kind=image|video)",
+		"历史视频表单继续兼容",
 		"timeout 只表示一次 MCP 传输等待结束",
 		"不设轮数上限",
 		"不得调用其他工具",
@@ -185,7 +186,7 @@ func TestDocumentToolDefinitions(t *testing.T) {
 		t.Fatalf("AgentMCPInstructions must not cap selection waiting: %q", AgentMCPInstructions)
 	}
 	if !strings.Contains(AgentDocumentTools.AskUserForm.Description, "不得与 generation_params") ||
-		!strings.Contains(AgentDocumentTools.AskUserForm.Description, "generation_settings(kind=image)") ||
+		!strings.Contains(AgentDocumentTools.AskUserForm.Description, "generation_settings(kind=image|video)") ||
 		!strings.Contains(AgentDocumentTools.AskUserForm.Description, "timeout 只是传输心跳") {
 		t.Fatalf("AskUserForm description = %q, want generation plan and timeout contracts", AgentDocumentTools.AskUserForm.Description)
 	}
@@ -200,15 +201,13 @@ func TestDocumentToolDefinitions(t *testing.T) {
 
 func TestMCPInstructionsKeepGenerationContractsWithoutImageWorkflow(t *testing.T) {
 	for _, fragment := range []string{
-		"list_generation_models",
 		"generate_media",
 		"generate_media_batch",
 		"referenceAssetIds",
 		"documentContext",
 		"notificationTarget",
 		"confirmationSelectionId",
-		"poll_generation_task",
-		"select_generation_asset",
+		"生成工作台承接",
 	} {
 		if !strings.Contains(GenerationMCPInstructions, fragment) {
 			t.Fatalf("GenerationMCPInstructions missing contract %q: %q", fragment, GenerationMCPInstructions)
@@ -235,6 +234,58 @@ func TestMCPInstructionsKeepGenerationContractsWithoutImageWorkflow(t *testing.T
 	}
 }
 
+func TestGenerationAuthorizationInputContracts(t *testing.T) {
+	single := GenerationMessageInput{ConfirmationSelectionID: "selection-single", Prompt: "prompt"}
+	rawSingle, err := json.Marshal(single)
+	if err != nil {
+		t.Fatalf("marshal GenerationMessageInput: %v", err)
+	}
+	if !strings.Contains(string(rawSingle), `"confirmationSelectionId":"selection-single"`) {
+		t.Fatalf("GenerationMessageInput JSON = %s, want single confirmationSelectionId", rawSingle)
+	}
+
+	batch := GenerationBatchInput{ConfirmationSelectionID: "selection-batch"}
+	rawBatch, err := json.Marshal(batch)
+	if err != nil {
+		t.Fatalf("marshal GenerationBatchInput: %v", err)
+	}
+	if !strings.Contains(string(rawBatch), `"confirmationSelectionId":"selection-batch"`) {
+		t.Fatalf("GenerationBatchInput JSON = %s, want batch-level confirmationSelectionId", rawBatch)
+	}
+}
+
+func TestGenerationAuthorizationDescriptions(t *testing.T) {
+	for name, contract := range map[string]struct {
+		value     string
+		fragments []string
+	}{
+		"AgentDocumentTools.AskUserForm": {
+			value:     AgentDocumentTools.AskUserForm.Description,
+			fragments: []string{"intent", "一次确认", "一次完整请求"},
+		},
+		"GenerationTools.Generate": {
+			value:     GenerationTools.Generate.Description,
+			fragments: []string{"一次确认", "一次完整请求"},
+		},
+		"GenerationTools.GenerateBatch": {
+			value:     GenerationTools.GenerateBatch.Description,
+			fragments: []string{"批次级 confirmationSelectionId", "一次确认", "完整有序批次"},
+		},
+	} {
+		for _, fragment := range contract.fragments {
+			if !strings.Contains(contract.value, fragment) {
+				t.Fatalf("%s missing authorization contract %q: %q", name, fragment, contract.value)
+			}
+		}
+	}
+
+	for _, fragment := range []string{"一次确认只授权一次完整请求", "批次级 confirmationSelectionId"} {
+		if !strings.Contains(GenerationMCPInstructions, fragment) {
+			t.Fatalf("GenerationMCPInstructions missing authorization contract %q: %q", fragment, GenerationMCPInstructions)
+		}
+	}
+}
+
 func TestGenerationToolsEndVisualMediaRunAfterSubmission(t *testing.T) {
 	for name, contract := range map[string]struct {
 		value     string
@@ -244,17 +295,16 @@ func TestGenerationToolsEndVisualMediaRunAfterSubmission(t *testing.T) {
 			value: GenerationMCPInstructions,
 			fragments: []string{
 				"图片或视频生成提交成功并取得 taskId 后，必须结束当前回合",
-				"不得调用 get_generation_task、list_generation_tasks、poll_generation_task、retry_generation_task 或 select_generation_asset",
-				"不得展示结果选片或回写文档",
+				"不得等待最终结果、展示结果选片或回写文档",
 				"后台服务会继续执行任务、同步状态、落库并发送完成通知",
-				"适用的音频或文本流程，或用户后续显式查询",
+				"后续查询、重试和选片由通知与生成工作台承接",
 			},
 		},
 		"GenerationTools.Generate": {
 			value: GenerationTools.Generate.Description,
 			fragments: []string{
 				"图片或视频请求返回 taskId 后必须结束当前回合",
-				"不得继续查询或轮询等待图片或视频完成",
+				"后续状态与操作由通知和生成工作台承接",
 			},
 		},
 		"GenerationTools.GenerateBatch": {
@@ -271,41 +321,11 @@ func TestGenerationToolsEndVisualMediaRunAfterSubmission(t *testing.T) {
 			}
 		}
 	}
-
-	for name, description := range map[string]string{
-		"GenerationTools.GetTask":   GenerationTools.GetTask.Description,
-		"GenerationTools.ListTasks": GenerationTools.ListTasks.Description,
-		"GenerationTools.PollTask":  GenerationTools.PollTask.Description,
-	} {
-		for _, fragment := range []string{
-			"适用的音频或文本流程，或用户后续显式查询",
-			"不得用于当前回合等待刚提交的图片或视频",
-		} {
-			if !strings.Contains(description, fragment) {
-				t.Fatalf("%s missing query boundary %q: %q", name, fragment, description)
-			}
-		}
-	}
-
-	for name, description := range map[string]string{
-		"GenerationTools.RetryTask":   GenerationTools.RetryTask.Description,
-		"GenerationTools.SelectAsset": GenerationTools.SelectAsset.Description,
-	} {
-		for _, fragment := range []string{
-			"适用的音频或文本流程，或用户后续显式处理",
-			"不得作为当前图片或视频生成提交回合的后置步骤",
-		} {
-			if !strings.Contains(description, fragment) {
-				t.Fatalf("%s missing post-submission boundary %q: %q", name, fragment, description)
-			}
-		}
-	}
 }
 
 func TestGenerationInstructionsDoNotAdvertiseStandaloneStylePresets(t *testing.T) {
 	for name, value := range map[string]string{
 		"GenerationMCPInstructions":           GenerationMCPInstructions,
-		"GenerationTools.ListModels":          GenerationTools.ListModels.Description,
 		"AgentDocumentTools.AskUserSelection": AgentDocumentTools.AskUserSelection.Description,
 	} {
 		for _, fragment := range []string{"stylePresets", "promptSuffix", "风格推荐网格"} {
@@ -314,11 +334,8 @@ func TestGenerationInstructionsDoNotAdvertiseStandaloneStylePresets(t *testing.T
 			}
 		}
 	}
-	if !strings.Contains(GenerationMCPInstructions, "统一生成设置表单中的动态提示词包") {
-		t.Fatalf("GenerationMCPInstructions should point to dynamic prompt packs: %q", GenerationMCPInstructions)
-	}
-	if !strings.Contains(GenerationTools.ListModels.Description, "动态提示词包") {
-		t.Fatalf("ListModels description should point to dynamic prompt packs: %q", GenerationTools.ListModels.Description)
+	if !strings.Contains(GenerationMCPInstructions, "统一生成设置表单加载并确认") {
+		t.Fatalf("GenerationMCPInstructions should delegate settings to the shared form: %q", GenerationMCPInstructions)
 	}
 	for name, value := range map[string]string{
 		"GenerationMCPInstructions":     GenerationMCPInstructions,

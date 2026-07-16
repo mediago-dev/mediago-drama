@@ -56,6 +56,7 @@ describe("AgentFormGenerationSettings", () => {
 				defaultValue={defaultValue}
 				disabled={false}
 				fieldId="settings"
+				kind="image"
 				onBusyChange={onBusyChange}
 				onChange={onChange}
 				onValidityChange={onValidityChange}
@@ -98,6 +99,7 @@ describe("AgentFormGenerationSettings", () => {
 		const props = {
 			disabled: false,
 			fieldId: "settings",
+			kind: "image" as const,
 			onBusyChange,
 			onChange,
 			onValidityChange,
@@ -124,7 +126,7 @@ describe("AgentFormGenerationSettings", () => {
 	});
 
 	it("uses a distinct reference upload id for each selection field", () => {
-		const common = { disabled: false, onChange: vi.fn() };
+		const common = { disabled: false, kind: "image" as const, onChange: vi.fn() };
 		render(
 			<>
 				<AgentFormGenerationSettings {...common} fieldId="settings-a" selectionId="selection-a" />
@@ -138,5 +140,21 @@ describe("AgentFormGenerationSettings", () => {
 			"agent-generation-settings-selection-a-settings-a",
 			"agent-generation-settings-selection-b-settings-b",
 		]);
+	});
+
+	it("uses the video catalog for a video generation_settings field", () => {
+		render(
+			<AgentFormGenerationSettings
+				disabled={false}
+				fieldId="settings"
+				kind="video"
+				onChange={vi.fn()}
+				selectionId="selection-video"
+			/>,
+		);
+
+		expect(mocks.useGenerationSettingsForm).toHaveBeenCalledWith(
+			expect.objectContaining({ kind: "video" }),
+		);
 	});
 });
