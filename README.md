@@ -185,4 +185,11 @@ MediaGo Drama 当前处于持续迭代阶段，已经具备本地项目管理、
 
 ## License
 
-源码采用 [PolyForm Noncommercial License 1.0.0](LICENSE) 许可。非商业用途可以使用、修改和分发；商业用途需要另行取得授权。
+仓库根目录源码采用 [Apache License 2.0](LICENSE)；部分子模块继续采用其目录内
+`LICENSE` 标明的 MIT License。上述开源许可证允许在遵守许可证条款的前提下进行
+商业使用、修改和分发。
+
+MediaGo 官方发行版可能组合本仓库之外的专有组件，并接入提示词包商城、托管、支付、
+加密和账户权益等商业服务。这些独立对象不属于本仓库开源许可证的授权范围，具体边界见
+[商业功能与服务说明](COMMERCIAL_FEATURES.md)。该说明不修改或限制 Apache-2.0、MIT
+已经授予的权利。

@@ -33,7 +33,7 @@ pkg/generation/openrouter/ # OpenRouter provider adapter facade
 pkg/multimodal/          # public multimodal provider contracts
 go.mod                   # module declaration
 Taskfile.yml             # go-task tasks (fmt / vet / test / tidy / check)
-LICENSE                  # PolyForm Noncommercial 1.0.0
+LICENSE                  # MIT
 ```
 
 ## Use as a dependency
@@ -52,4 +52,4 @@ func main() {
 
 ## License
 
-PolyForm Noncommercial 1.0.0 — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

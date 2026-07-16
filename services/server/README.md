@@ -46,7 +46,7 @@ internal/workspace/    # workspace embed layer
 configs/server.yaml    # example YAML config
 go.mod                 # module declaration
 Taskfile.yml           # go-task tasks (fmt / vet / test / tidy / check)
-LICENSE                # PolyForm Noncommercial 1.0.0
+LICENSE                # MIT
 ```
 
 `internal/workspace/dist` is a generated, ignored directory. Run the root
@@ -55,4 +55,4 @@ and compile the binary with the `workspace_dist` build tag.
 
 ## License
 
-PolyForm Noncommercial 1.0.0 — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
