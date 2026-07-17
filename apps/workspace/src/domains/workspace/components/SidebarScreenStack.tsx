@@ -1,30 +1,34 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/shared/lib/utils";
-import type { SidebarScreenId } from "./ProjectNavigatorTypes";
 
 const sidebarTransitionDurationMs = 300;
 type SidebarTransitionDirection = "push" | "pop";
 
 interface SidebarTransition {
-	activeId: SidebarScreenId;
+	activeId: string;
 	activeLevel: number;
 	direction: SidebarTransitionDirection;
-	previousId: SidebarScreenId;
+	previousId: string;
 	previousLevel: number;
 }
 
 interface SidebarScreenStackProps {
-	activeId: SidebarScreenId;
+	activeId: string;
+	screenClassName?: string;
 	screens: readonly {
-		id: SidebarScreenId;
+		id: string;
 		level: number;
 		node: React.ReactNode;
 	}[];
 }
 
-export const SidebarScreenStack: React.FC<SidebarScreenStackProps> = ({ activeId, screens }) => {
-	const previousActiveIdRef = useRef<SidebarScreenId>(activeId);
+export const SidebarScreenStack: React.FC<SidebarScreenStackProps> = ({
+	activeId,
+	screenClassName,
+	screens,
+}) => {
+	const previousActiveIdRef = useRef(activeId);
 	const previousActiveId = previousActiveIdRef.current;
 	const activeScreen = screens.find((screen) => screen.id === activeId);
 	const previousScreen = screens.find((screen) => screen.id === previousActiveId);
@@ -85,10 +89,12 @@ export const SidebarScreenStack: React.FC<SidebarScreenStackProps> = ({ activeId
 				return (
 					<section
 						key={screen.id}
+						data-sidebar-screen={screen.id}
 						className={cn(
 							"absolute inset-0 flex h-full w-full min-w-full flex-col bg-ide-sidebar px-2 py-3 will-change-transform",
 							skipTransition ? "transition-none" : "transition-transform duration-300 ease-in-out",
 							screenTransformClass(screen, activeId, activeLevel, activeTransition),
+							screenClassName,
 						)}
 						aria-hidden={!isActive}
 						inert={!isActive}
@@ -102,8 +108,8 @@ export const SidebarScreenStack: React.FC<SidebarScreenStackProps> = ({ activeId
 };
 
 export const screenTransformClass = (
-	screen: { id: SidebarScreenId; level: number },
-	activeId: SidebarScreenId,
+	screen: { id: string; level: number },
+	activeId: string,
 	activeLevel: number,
 	transition: SidebarTransition | null,
 ) => {
@@ -116,8 +122,8 @@ export const screenTransformClass = (
 };
 
 const transitionScreenTransformClass = (
-	screen: { id: SidebarScreenId; level: number },
-	activeId: SidebarScreenId,
+	screen: { id: string; level: number },
+	activeId: string,
 	activeLevel: number,
 	transition: SidebarTransition,
 ) => {

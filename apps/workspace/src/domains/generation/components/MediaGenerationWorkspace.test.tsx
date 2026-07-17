@@ -2150,7 +2150,7 @@ describe("MediaGenerationWorkspace", () => {
 			"原始角色提示词\n\ncinematic lighting, detailed composition",
 		);
 		expect(toastMocks.warning).toHaveBeenCalledWith("没有可用文本模型", {
-			description: "已追加提示词包内容。",
+			description: "已追加技能包内容。",
 		});
 		expect(generationApiMocks.streamGenerationText).not.toHaveBeenCalled();
 	});

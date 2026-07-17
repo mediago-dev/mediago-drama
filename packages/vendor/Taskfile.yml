@@ -41,6 +41,13 @@ tasks:
     cmds:
       - go run ./cmd/prepare-tool --tools "{{.GENERATION_CLIS}}" {{if .PLATFORM}}--platform "{{.PLATFORM}}"{{end}}
 
+  prepare:rights:
+    desc: Prepare the private mediago-rights Runtime when MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME=1
+    vars:
+      PLATFORM: '{{.PLATFORM | default ""}}'
+    cmds:
+      - go run ./cmd/prepare-rights {{if .PLATFORM}}--platform "{{.PLATFORM}}"{{end}}
+
   prepare:all:
     cmds:
       - task: prepare
@@ -51,6 +58,7 @@ tasks:
           AGENT: opencode
       - task: prepare:media-tools
       - task: prepare:generation-clis
+      - task: prepare:rights
 
   prepare:clean:
     cmds:

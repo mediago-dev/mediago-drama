@@ -20,7 +20,7 @@ type GenerationMessageInput struct {
 	ModelID                 string                             `json:"modelId,omitempty" jsonschema:"旧版模型 ID。"`
 	Model                   string                             `json:"model,omitempty" jsonschema:"供应商模型名。"`
 	Prompt                  string                             `json:"prompt" jsonschema:"生成提示词。"`
-	PromptSupplements       []GenerationPromptSupplementInput  `json:"promptSupplements,omitempty" jsonschema:"可选：按顺序追加到基础提示词的结构化提示词包快照；服务端负责去空、去重和拼接。"`
+	PromptSupplements       []GenerationPromptSupplementInput  `json:"promptSupplements,omitempty" jsonschema:"可选：按顺序追加到基础提示词的结构化技能包快照；服务端负责去空、去重和拼接。"`
 	AssetTitle              string                             `json:"assetTitle,omitempty" jsonschema:"生成资产标题。"`
 	ReferenceURLs           []string                           `json:"referenceUrls,omitempty" jsonschema:"参考资源 URL。"`
 	ReferenceAssetIDs       []string                           `json:"referenceAssetIds,omitempty" jsonschema:"参考媒体资产 ID。"`
@@ -31,9 +31,9 @@ type GenerationMessageInput struct {
 
 // GenerationPromptSupplementInput is one prompt-pack snapshot appended by the server.
 type GenerationPromptSupplementInput struct {
-	ReferenceID     string `json:"referenceId,omitempty" jsonschema:"可选：提示词包 ID，用于去重和追踪选择快照。"`
-	ReferenceName   string `json:"referenceName,omitempty" jsonschema:"可选：提示词包名称快照。"`
-	ReferencePrompt string `json:"referencePrompt" jsonschema:"追加到基础提示词的提示词包内容。"`
+	ReferenceID     string `json:"referenceId,omitempty" jsonschema:"可选：技能包 ID，用于去重和追踪选择快照。"`
+	ReferenceName   string `json:"referenceName,omitempty" jsonschema:"可选：技能包名称快照。"`
+	ReferencePrompt string `json:"referencePrompt" jsonschema:"追加到基础提示词的技能包内容。"`
 }
 
 // GenerationBatchInput submits multiple normal media generation requests together.

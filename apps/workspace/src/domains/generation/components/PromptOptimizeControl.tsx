@@ -120,7 +120,7 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 					variant="outline"
 					size="sm"
 					aria-label="优化提示词"
-					title={canOptimize ? "优化提示词" : "选择提示词包"}
+					title={canOptimize ? "优化提示词" : "选择技能包"}
 					disabled={unavailable}
 					className={cn(
 						generationComposerToolbarButtonClassName(),
@@ -139,7 +139,7 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 			<PopoverContent
 				side="top"
 				align="end"
-				aria-label="提示词包"
+				aria-label="技能包"
 				className="flex w-[min(26rem,var(--generation-popover-max-inline))] flex-col overflow-hidden rounded-[var(--generation-popover-radius)] border-border bg-popover p-[var(--generation-popover-padding)] text-popover-foreground shadow-xl"
 				style={{
 					maxHeight:

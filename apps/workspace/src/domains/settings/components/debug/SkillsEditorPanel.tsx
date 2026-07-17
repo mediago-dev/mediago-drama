@@ -253,7 +253,7 @@ export const SkillsEditorPanel: React.FC = () => {
 		if (!selectedSkill || !canReset) return;
 		void confirmDialog({
 			title: "恢复 Skill 默认？",
-			description: `将“${selectedSkill.title || selectedSkill.name}”恢复为当前提示词包中的默认内容。`,
+			description: `将“${selectedSkill.title || selectedSkill.name}”恢复为当前技能包中的默认内容。`,
 			confirmLabel: "恢复默认",
 			confirmIcon: <RotateCcw className="size-4" />,
 			variant: "default",
@@ -624,7 +624,7 @@ const SkillCreateDialog: React.FC<{
 							</Alert>
 						) : null}
 						<div className="grid gap-2">
-							<Label className="text-sm font-medium text-foreground">所属词包</Label>
+							<Label className="text-sm font-medium text-foreground">所属技能包</Label>
 							<Select value={packId} onValueChange={onPackChange}>
 								<SelectTrigger>
 									<SelectValue />

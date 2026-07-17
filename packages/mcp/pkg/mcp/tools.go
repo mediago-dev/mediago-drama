@@ -18,7 +18,7 @@ type ToolDefinition struct {
 const mcpWorkflowInstructions = `MediaGo Drama MCP 使用说明：
 - Agent 进程启动时当前工作目录已经是当前项目的文档根目录（项目的 work 文件夹）；当前目录树就是文档树，Markdown 文件就是文档。不要再访问或创建名为 work/ 的子目录。
 - 读取、创建、修改、移动和删除文档时，直接操作当前工作目录 . 下的本地文件；不要通过 MCP 读取或编辑文档正文。
-- 需要读取项目配置时调用 get_project_config；不要在当前工作目录或父目录中搜索 project.media.json。项目配置不再承载视觉风格，风格提示应来自用户本轮需求或提示词包。
+- 需要读取项目配置时调用 get_project_config；不要在当前工作目录或父目录中搜索 project.media.json。项目配置不再承载视觉风格，风格提示应来自用户本轮需求或技能包。
 - load_skill 用于按任务装载 screenplay、character、scene、prop、storyboard 等写作 Skill，以及 image-generation、video-generation 等工作流 Skill；核心文档规则仍由系统 prompt 注入，不依赖 Skill。
 - get_project_config 用于读取当前项目配置，例如提示词分类默认预设。
 - list_comments / get_comment / mutate_comment 用于读取和处理评论/批注；mutate_comment.op 支持 add、update、reply、resolve、unresolve、delete。
@@ -42,7 +42,7 @@ const ExternalMCPInstructions = mcpWorkflowInstructions + `
 // GenerationMCPInstructions describes the generation MCP server contract.
 const GenerationMCPInstructions = `MediaGo Drama Generation MCP 使用说明：
 - 本 MCP 只提供 MediaGo Drama 生成工作台能力，不提供文档正文读写。
-- 本 MCP 只提供 generate_media 和 generate_media_batch；模型、参数、参考素材、提示词包与优化设置由统一生成设置表单加载并确认。
+- 本 MCP 只提供 generate_media 和 generate_media_batch；模型、参数、参考素材、技能包与优化设置由统一生成设置表单加载并确认。
 - 图片或视频的一次确认只授权一次完整请求；相同工具调用的技术重试由服务端幂等处理，不得把 selectionId 用于另一请求。
 - generate_media 用于提交单项生成请求；kind 默认 image，prompt 必填。Agent 发起图片或视频生成时必须传已提交 generation_plan 的 confirmationSelectionId，并原样使用表单确认的 routeId、params、referenceAssetIds、promptSupplements 和 promptOptimization；不得再传 familyId/versionId/provider/modelId/model 覆盖模型。服务端会核验当前 project/session/run、完整 intent 与全部确认设置。
 - generate_media_batch 用于一次提交多个独立媒体生成请求；返回 batch id 和每项 taskId，单项失败不会取消其他项。Agent 的图片/视频批次必须传一个批次级 confirmationSelectionId；一次确认授权一个完整有序批次，子项不得各自提供确认 ID。服务端会整体核验 intent 以及 routeId、params、referenceAssetIds、promptSupplements 和 promptOptimization。图片或视频批次返回各子项 taskId 后必须结束当前回合，不得继续查询或轮询等待图片或视频完成。

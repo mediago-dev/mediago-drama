@@ -101,7 +101,7 @@ describe("GenerationSettingsForm", () => {
 		await screen.findByRole("combobox", { name: "模型名称" });
 		fireEvent.click(screen.getByRole("checkbox", { name: "生成时追加" }));
 
-		const trigger = screen.getByRole("button", { name: "补充提示词包" });
+		const trigger = screen.getByRole("button", { name: "补充技能包" });
 		fireEvent.click(trigger);
 		expect(screen.getByRole("button", { name: "风格 1 项" })).toBeTruthy();
 		fireEvent.click(screen.getByRole("option", { name: "用户自定义风格" }));
@@ -132,8 +132,8 @@ describe("GenerationSettingsForm", () => {
 
 		fireEvent.click(screen.getByRole("checkbox", { name: "优化并生成时使用" }));
 
-		expect(screen.getByText("需要可用的提示词包和文本模型后才能优化并生成。")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "优化提示词包" })).toBeDisabled();
+		expect(screen.getByText("需要可用的技能包和文本模型后才能优化并生成。")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "优化技能包" })).toBeDisabled();
 		expect(screen.getByRole("combobox", { name: "优化模型" })).toBeDisabled();
 	});
 

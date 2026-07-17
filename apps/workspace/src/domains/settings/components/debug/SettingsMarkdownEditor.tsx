@@ -12,6 +12,7 @@ export interface SettingsMarkdownEditorProps {
 	ariaLabel?: string;
 	ariaLabelledBy?: string;
 	className?: string;
+	editable?: boolean;
 	editorClassName?: string;
 	onChange: (value: string) => void;
 	placeholder?: string;
@@ -33,6 +34,7 @@ export const SettingsMarkdownEditor: React.FC<SettingsMarkdownEditorProps> = ({
 	ariaLabel = "Markdown 编辑器",
 	ariaLabelledBy,
 	className,
+	editable = true,
 	editorClassName,
 	onChange,
 	placeholder = "编写 Markdown...",
@@ -43,7 +45,7 @@ export const SettingsMarkdownEditor: React.FC<SettingsMarkdownEditorProps> = ({
 	const editor = useSettingsMarkdownEditor({
 		ariaLabel,
 		ariaLabelledBy,
-		editable: true,
+		editable,
 		editorClassName,
 		onChange,
 		placeholder,
@@ -58,9 +60,11 @@ export const SettingsMarkdownEditor: React.FC<SettingsMarkdownEditorProps> = ({
 					: "min-h-[560px] overflow-y-auto rounded-md border border-input bg-ide-editor px-4 py-3 text-sm leading-6 text-foreground shadow-sm transition-[border-color,box-shadow] focus-within:border-ring",
 				className,
 			)}
-			onClick={() => editor?.chain().focus().run()}
+			onClick={() => {
+				if (editable) editor?.chain().focus().run();
+			}}
 		>
-			{showToolbar ? <SettingsMarkdownToolbar editor={editor} /> : null}
+			{showToolbar && editable ? <SettingsMarkdownToolbar editor={editor} /> : null}
 			<div className={cn(variant === "document" && "pt-5")}>
 				<EditorContent editor={editor} />
 			</div>
@@ -306,7 +310,7 @@ const useSettingsMarkdownEditor = ({
 	}, [onChange]);
 
 	useEffect(() => {
-		if (!editor || value === emittedMarkdownRef.current) return;
+		if (!editor || editor.isDestroyed || value === emittedMarkdownRef.current) return;
 
 		emittedMarkdownRef.current = value;
 		editor.commands.setContent(value, {

@@ -92,7 +92,7 @@ export const PromptPacksPanel: React.FC = () => {
 		try {
 			const exported = await exportPromptPack(pack.id);
 			downloadBlob(exported.blob, exported.fileName || promptPackExportFileName(pack));
-			toast.success("提示词包已导出", {
+			toast.success("技能包已导出", {
 				description: "如需发布，请前往 MediaGo 官网上传并设置分发方式。",
 			});
 		} catch (error) {
@@ -122,7 +122,7 @@ export const PromptPacksPanel: React.FC = () => {
 				},
 				{ revalidate: false },
 			);
-			toast.success("提示词包已导入", { description: pack.name });
+			toast.success("技能包已导入", { description: pack.name });
 			refreshPromptDataInBackground();
 		} catch (error) {
 			toast.error("导入失败", { description: errorMessage(error) });
@@ -139,7 +139,7 @@ export const PromptPacksPanel: React.FC = () => {
 				revalidate: false,
 			});
 			await Promise.allSettled([mutatePacks(), mutate(isPromptPackContentCacheKey)]);
-			toast.success("提示词包已卸载", { description: pack.name });
+			toast.success("技能包已卸载", { description: pack.name });
 			return true;
 		} catch (error) {
 			toast.error("卸载失败", { description: errorMessage(error) });
@@ -161,7 +161,7 @@ export const PromptPacksPanel: React.FC = () => {
 			);
 			await setPromptPackEnabled(pack.id, enabled);
 			await Promise.all([mutatePacks(), mutate(isPromptPackContentCacheKey)]);
-			toast.success(enabled ? "提示词包已启用" : "提示词包已停用", {
+			toast.success(enabled ? "技能包已启用" : "技能包已停用", {
 				description: pack.name,
 			});
 		} catch (error) {
@@ -174,7 +174,7 @@ export const PromptPacksPanel: React.FC = () => {
 
 	const confirmRemovePack = (pack: PromptPack) => {
 		void confirmDialog({
-			title: "卸载提示词包？",
+			title: "卸载技能包？",
 			description: `确定要卸载“${pack.name}”吗？来自该包的技能和提示词预设将不可用。`,
 			confirmLabel: "卸载",
 			confirmIcon: <Trash2 className="size-4" />,
@@ -199,7 +199,7 @@ export const PromptPacksPanel: React.FC = () => {
 
 	const confirmResetPack = (pack: PromptPack) => {
 		void confirmDialog({
-			title: "恢复提示词包默认？",
+			title: "恢复技能包默认？",
 			description: `将恢复“${pack.name}”内的默认技能和提示词预设，用户新增内容会保留。`,
 			confirmLabel: "恢复默认",
 			confirmIcon: <RotateCcw className="size-4" />,
@@ -219,7 +219,7 @@ export const PromptPacksPanel: React.FC = () => {
 					<div className="min-w-0 flex-1" data-desktop-drag-region>
 						<div className="flex items-center gap-2">
 							<PackageOpen className="size-4 text-muted-foreground" />
-							<h2 className="truncate text-sm font-semibold text-foreground">提示词包</h2>
+							<h2 className="truncate text-sm font-semibold text-foreground">技能包</h2>
 						</div>
 						<p className="mt-1 text-xs text-muted-foreground">
 							导入并管理全局共享的技能和提示词预设。
@@ -231,7 +231,7 @@ export const PromptPacksPanel: React.FC = () => {
 							type="file"
 							accept=".mgpack"
 							className="sr-only"
-							aria-label="导入提示词包文件"
+							aria-label="导入技能包文件"
 							onChange={(event) => void importPackFile(event)}
 						/>
 						<Button
@@ -269,7 +269,7 @@ export const PromptPacksPanel: React.FC = () => {
 								}}
 							>
 								<div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
-									<div className="text-xs font-medium text-foreground">提示词包</div>
+									<div className="text-xs font-medium text-foreground">技能包</div>
 									<Button
 										type="button"
 										variant="ghost"
@@ -289,12 +289,10 @@ export const PromptPacksPanel: React.FC = () => {
 										{isLoading && packs.length === 0 ? (
 											<span className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
 												<Loader2 className="size-4 animate-spin" />
-												加载提示词包
+												加载技能包
 											</span>
 										) : packs.length === 0 ? (
-											<span className="block py-3 text-xs text-muted-foreground">
-												暂无提示词包。
-											</span>
+											<span className="block py-3 text-xs text-muted-foreground">暂无技能包。</span>
 										) : (
 											packs.map((pack) => (
 												<PromptPackPill
@@ -414,8 +412,8 @@ const PromptPackPill: React.FC<{
 					)}
 					aria-label={
 						isDefault
-							? `默认提示词包不可停用 ${pack.name}`
-							: `${enabled ? "停用" : "启用"}提示词包 ${pack.name}`
+							? `默认技能包不可停用 ${pack.name}`
+							: `${enabled ? "停用" : "启用"}技能包 ${pack.name}`
 					}
 					title={isDefault ? "默认包始终启用" : toggling ? "更新中" : enabled ? "停用" : "启用"}
 				/>

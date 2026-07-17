@@ -23,7 +23,7 @@ export const InstructionTemplatesPanel: React.FC = () => {
 							<h2 className="truncate text-sm font-semibold text-foreground">智能体指令</h2>
 						</div>
 						<p className="mt-1 text-xs text-muted-foreground">
-							编辑智能体系统指令；这些内容独立于提示词包，不会随包安装或卸载变化。
+							编辑智能体系统指令；这些内容独立于技能包，不会随包安装或卸载变化。
 						</p>
 					</div>
 					<div

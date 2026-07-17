@@ -27,7 +27,7 @@ import { assertTrustedIpcSender, normalizeDevelopmentRendererURL } from "./ipc-s
 import { showDesktopSystemNotification } from "./desktop-notifications.js";
 import { preloadPath, rendererDistDir } from "./paths.js";
 import { parsePromptPackSaveRequest } from "./prompt-pack-save.js";
-import { normalizeExternalURL } from "./navigation-security.js";
+import { normalizeExternalURL, resolveRendererNavigation } from "./navigation-security.js";
 import {
 	rendererContentSecurityPolicy,
 	rendererProtocolScheme,
@@ -180,14 +180,15 @@ const showMainWindow = () => {
 
 const secureRendererWindow = (window: BrowserWindow) => {
 	window.webContents.setWindowOpenHandler(({ url }) => {
-		const externalURL = normalizeExternalURL(url);
-		if (externalURL) void shell.openExternal(externalURL);
+		const navigation = resolveRendererNavigation(url, trustedRendererOptions);
+		if (navigation.action === "open-external") void shell.openExternal(navigation.url);
 		return { action: "deny" };
 	});
 	window.webContents.on("will-navigate", (event, url) => {
+		const navigation = resolveRendererNavigation(url, trustedRendererOptions);
+		if (navigation.action === "allow") return;
 		event.preventDefault();
-		const externalURL = normalizeExternalURL(url);
-		if (externalURL) void shell.openExternal(externalURL);
+		if (navigation.action === "open-external") void shell.openExternal(navigation.url);
 	});
 	window.webContents.on("will-attach-webview", (event) => event.preventDefault());
 };
@@ -225,7 +226,7 @@ const openPromptPackEditorWindow = async (options: PromptPackEditorOpenOptions =
 	}
 
 	promptPackEditorWindow = new BrowserWindow({
-		title: "提示词包编辑器",
+		title: "技能包编辑器",
 		width: 1180,
 		height: 820,
 		minWidth: 900,
@@ -388,9 +389,9 @@ ipcMain.handle(desktopIpcChannel.savePromptPack, async (event, value: unknown) =
 	authorizeDesktopIpc(event);
 	const request = parsePromptPackSaveRequest(value);
 	const dialogOptions: SaveDialogOptions = {
-		title: "导出提示词包",
+		title: "导出技能包",
 		defaultPath: request.filename,
-		filters: [{ name: "MediaGo 提示词包", extensions: ["mgpack"] }],
+		filters: [{ name: "MediaGo 技能包", extensions: ["mgpack"] }],
 	};
 	const owner = BrowserWindow.fromWebContents(event.sender);
 	const result = owner

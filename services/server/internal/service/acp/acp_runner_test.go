@@ -342,6 +342,7 @@ func TestOfficialCodexACPCompatibilityProbe(t *testing.T) {
 func TestMergedProcessEnvOverridesRuntimeConfigVariables(t *testing.T) {
 	t.Setenv("OPENCODE_CONFIG_DIR", "/old/config")
 	t.Setenv("MEDIAGO_AGENT_MODEL_MINIMAX_API_KEY", "old-key")
+	t.Setenv("NO_BROWSER", "0")
 
 	env := mergedProcessEnv(ProcessConfig{Env: map[string]string{
 		"OPENCODE_CONFIG_DIR":                 "/new/config",
@@ -353,6 +354,9 @@ func TestMergedProcessEnvOverridesRuntimeConfigVariables(t *testing.T) {
 	}
 	if got := envValue(env, "MEDIAGO_AGENT_MODEL_MINIMAX_API_KEY"); got != "new-key" {
 		t.Fatalf("profile key env = %q, want new-key", got)
+	}
+	if got := envValue(env, "NO_BROWSER"); got != "1" {
+		t.Fatalf("NO_BROWSER = %q, want 1", got)
 	}
 }
 

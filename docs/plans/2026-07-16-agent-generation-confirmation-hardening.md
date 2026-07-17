@@ -134,7 +134,7 @@ type GenerationPlanIntentItemInput struct {
 ```
 
 `operation` 首版只允许 `create_single`、`create_batch`。协议不接受 route、params、
-提示词包或优化设置进入 intent；这些只能来自用户提交的 `generation_settings`。
+技能包或优化设置进入 intent；这些只能来自用户提交的 `generation_settings`。
 
 **Step 3: 更新 dispatcher 接口与注册**
 
@@ -285,7 +285,7 @@ go test -race ./internal/app/mcp ./internal/service/selection
 - 批次明细可展开，长 prompt 可展开查看完整内容。
 
 不得提供局部修改 intent 的控件；用户需要修改时点击取消并在对话里说明。表单的模型、
-参数、公共参考图、提示词包和优化开关仍可编辑。
+参数、公共参考图、技能包和优化开关仍可编辑。
 
 **Step 3: 冻结态保留确认摘要**
 

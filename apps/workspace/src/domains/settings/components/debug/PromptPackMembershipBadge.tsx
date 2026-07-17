@@ -29,7 +29,7 @@ export const PromptPackMembershipBadge: React.FC<PromptPackMembershipBadgeProps>
 }) => {
 	const resolvedPackId = packId?.trim() || "builtin";
 	const pack = packs.find((entry) => entry.id === resolvedPackId);
-	const packName = pack?.source === "default" ? "默认词包" : (pack?.name ?? resolvedPackId);
+	const packName = pack?.source === "default" ? "默认技能包" : (pack?.name ?? resolvedPackId);
 	const packTitle = pack?.name ?? packName;
 	const toneClassName = promptPackMembershipToneClassName(
 		resolvedPackId,
@@ -40,7 +40,7 @@ export const PromptPackMembershipBadge: React.FC<PromptPackMembershipBadgeProps>
 		<Badge
 			variant="outline"
 			className={cn("min-w-0 max-w-full text-2xs", toneClassName, className)}
-			aria-label={`所属词包：${packName}`}
+			aria-label={`所属技能包：${packName}`}
 			title={`${packTitle} (${resolvedPackId})`}
 		>
 			<span className="truncate">{packName}</span>

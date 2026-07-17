@@ -248,7 +248,7 @@ func TestPromptPacksHandlerRejectsUnsupportedPackVersion(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
-	if envelope.Success || envelope.Message != "当前构建不支持此提示词包版本，请使用 MediaGo Drama 官方版导入" {
+	if envelope.Success || envelope.Message != "当前构建不支持此技能包版本，请使用 MediaGo Drama 官方版导入" {
 		t.Fatalf("body = %s, want unsupported-version guidance", response.Body.String())
 	}
 }

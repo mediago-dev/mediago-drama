@@ -191,7 +191,7 @@ export const CodexSkillsPanel: React.FC = () => {
 	return (
 		<SettingsPanelLayout
 			title="Codex 全局技能"
-			description="只读展示 MediaGo 服务进程所在设备检测到的 Codex Skill；Codex App/CLI 使用不同 CODEX_HOME 时结果可能不同，且本清单与提示词包相互独立。"
+			description="只读展示 MediaGo 服务进程所在设备检测到的 Codex Skill；Codex App/CLI 使用不同 CODEX_HOME 时结果可能不同，且本清单与技能包相互独立。"
 			icon={<Blocks className="size-4" />}
 			contentClassName="flex flex-col overflow-y-hidden"
 			actions={

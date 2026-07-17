@@ -60,7 +60,7 @@ type deleteSkillResponse struct {
 
 // HandleListSkills godoc
 // @Summary 获取 Skills 列表
-// @Description 返回来自提示词包和用户自定义的 Agent Skills。
+// @Description 返回来自技能包和用户自定义的 Agent Skills。
 // @Tags Skills
 // @Produce json
 // @Success 200 {object} SwaggerEnvelope
@@ -165,7 +165,7 @@ func (handler Skills) HandleDeleteSkill(context *gin.Context) {
 
 // HandleResetSkill godoc
 // @Summary 恢复 Skill
-// @Description 将一个包内 Skill 恢复为所属提示词包的默认内容。
+// @Description 将一个包内 Skill 恢复为所属技能包的默认内容。
 // @Tags Skills
 // @Produce json
 // @Param name path string true "Skill name"

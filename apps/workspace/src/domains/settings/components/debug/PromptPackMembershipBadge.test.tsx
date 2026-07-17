@@ -9,7 +9,7 @@ import {
 const packs: PromptPack[] = [
 	{
 		id: "builtin",
-		name: "MediaGo 默认词包",
+		name: "MediaGo 默认技能包",
 		version: "1.0.0",
 		source: "default",
 		enabled: true,
@@ -29,7 +29,7 @@ describe("PromptPackMembershipBadge", () => {
 	it("keeps the default pack neutral", () => {
 		render(<PromptPackMembershipBadge packId="builtin" packs={packs} />);
 
-		expect(screen.getByLabelText("所属词包：默认词包")).toHaveClass(
+		expect(screen.getByLabelText("所属技能包：默认技能包")).toHaveClass(
 			"bg-ide-toolbar",
 			"text-foreground",
 		);
@@ -41,7 +41,7 @@ describe("PromptPackMembershipBadge", () => {
 
 		expect(firstTone).toBe(secondTone);
 		render(<PromptPackMembershipBadge packId="local.ai-anime" packs={packs} />);
-		expect(screen.getByLabelText("所属词包：AI 动漫风格")).toHaveClass(...firstTone.split(" "));
+		expect(screen.getByLabelText("所属技能包：AI 动漫风格")).toHaveClass(...firstTone.split(" "));
 	});
 
 	it("uses the pack id when choosing tones", () => {

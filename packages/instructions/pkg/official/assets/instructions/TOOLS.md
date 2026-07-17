@@ -43,7 +43,7 @@ editable: true
 
 - 需要读取项目配置时，优先使用 MCP `get_project_config`；
   不要在当前工作目录或父目录里搜索 `project.media.json`。
-  项目配置不再承载视觉风格，风格提示应来自用户本轮需求或提示词包。
+  项目配置不再承载视觉风格，风格提示应来自用户本轮需求或技能包。
 - 生成角色、场景、道具等业务文档时，缺少视觉风格不得中断任务或先询问用户；
   先生成风格中性的基础设定。只有用户明确要求先选择风格时，才把风格选择作为前置步骤。
 - 编辑剧本、角色、场景、道具、分镜或小说资料等类型文档前，先调用 MCP `load_skill` 装载对应 Skill。
@@ -86,7 +86,7 @@ editable: true
   全部 item；顶层 `conversationTitle` 按需使用可读标题。每个 item 至少包含稳定唯一 `id`、`kind` 和
   将提交的非空基础 `prompt`，并按实际目标带上
   `assetTitle`、`capabilityId`、`sessionId`、scope/document/section 上下文、参考资产与通知目标；
-  不要把 `routeId`、`params`、提示词包或优化设置写入 intent，它们只来自用户提交的 `generation_settings`。
+  不要把 `routeId`、`params`、技能包或优化设置写入 intent，它们只来自用户提交的 `generation_settings`。
 - `ask_user_selection` / `ask_user_form` 返回 timeout 时，它只表示一次 MCP 阻塞等待结束，是传输心跳，
   不是用户决定。必须用 `await_user_selection` 对同一 `selectionId` 持续等待（每轮 ≤90 秒），不要重新弹卡，
   不要设置等待轮数上限；等待期间不得调用其他工具、不得生成、不得结束回合或发送最终答复。

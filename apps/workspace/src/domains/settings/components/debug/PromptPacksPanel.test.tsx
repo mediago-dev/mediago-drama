@@ -84,7 +84,7 @@ describe("PromptPacksPanel", () => {
 
 		expect(screen.getByRole("tab", { name: "技能" })).toHaveAttribute("data-state", "active");
 		expect(screen.getByText("Skills editor")).toBeInTheDocument();
-		expect(screen.queryByRole("tab", { name: "词包" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("tab", { name: "技能包" })).not.toBeInTheDocument();
 		expect(screen.getByRole("tab", { name: "提示词库" })).toBeInTheDocument();
 	});
 
@@ -99,7 +99,7 @@ describe("PromptPacksPanel", () => {
 		renderPanel(<PendingPromptPackCache />);
 
 		const file = new File(["MGPK"], "test.mgpack", { type: "application/octet-stream" });
-		fireEvent.change(screen.getByLabelText("导入提示词包文件"), {
+		fireEvent.change(screen.getByLabelText("导入技能包文件"), {
 			target: { files: [file] },
 		});
 
@@ -119,7 +119,7 @@ describe("PromptPacksPanel", () => {
 		renderPanel();
 		fireEvent.click(screen.getByRole("button", { name: /管理/ }));
 		const toggle = await screen.findByRole("switch", {
-			name: "默认提示词包不可停用 默认包",
+			name: "默认技能包不可停用 默认包",
 		});
 
 		expect(toggle).toBeChecked();
@@ -131,7 +131,7 @@ describe("PromptPacksPanel", () => {
 	it("allows non-default packs to be toggled", async () => {
 		renderPanel();
 		fireEvent.click(screen.getByRole("button", { name: /管理/ }));
-		const toggle = await screen.findByRole("switch", { name: "启用提示词包 本地草稿" });
+		const toggle = await screen.findByRole("switch", { name: "启用技能包 本地草稿" });
 		fireEvent.click(toggle);
 
 		await waitFor(() => expect(setPromptPackEnabled).toHaveBeenCalledWith("local.test-pack", true));
@@ -143,8 +143,8 @@ describe("PromptPacksPanel", () => {
 
 		expect(await screen.findAllByRole("switch")).toHaveLength(3);
 		expect(screen.getAllByRole("button", { name: /更多操作/ })).toHaveLength(3);
-		expect(screen.queryByRole("button", { name: "编辑提示词包 本地草稿" })).not.toBeInTheDocument();
-		expect(screen.queryByRole("button", { name: "导出提示词包 本地草稿" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "编辑技能包 本地草稿" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "导出技能包 本地草稿" })).not.toBeInTheDocument();
 
 		fireEvent.pointerDown(screen.getByRole("button", { name: "更多操作 本地草稿" }), {
 			button: 0,

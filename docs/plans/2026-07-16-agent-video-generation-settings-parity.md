@@ -2,7 +2,7 @@
 
 ## 目标
 
-Agent 发起视频生成时，不再展示由 `generation_params`、`images`、`prompt_optimization` 分散拼装的旧参数卡，而是与“批量生成视频设置”复用同一个 `GenerationSettingsForm`、同一套默认值恢复、提示词包、参考图、模型路由参数和校验逻辑。
+Agent 发起视频生成时，不再展示由 `generation_params`、`images`、`prompt_optimization` 分散拼装的旧参数卡，而是与“批量生成视频设置”复用同一个 `GenerationSettingsForm`、同一套默认值恢复、技能包、参考图、模型路由参数和校验逻辑。
 
 ## 方案
 

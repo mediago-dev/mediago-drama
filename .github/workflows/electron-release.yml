@@ -169,33 +169,17 @@ jobs:
           restore-keys: |
             electron-builder-${{ runner.os }}-${{ matrix.platform }}-
 
-      - name: Download private runtime assets
+      - uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa # v2
+
+      - name: Prepare private runtime with vendor tooling
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.MEDIAGO_PRIVATE_ARTIFACT_TOKEN }}
-          RIGHTS_RELEASE_TAG: ${{ vars.MEDIAGO_RIGHTS_RELEASE_TAG }}
+          MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME: "1"
+          MEDIAGO_PRIVATE_ARTIFACT_TOKEN: ${{ secrets.MEDIAGO_PRIVATE_ARTIFACT_TOKEN }}
+          MEDIAGO_RIGHTS_RELEASE_TAG: ${{ vars.MEDIAGO_RIGHTS_RELEASE_TAG }}
         run: |
           set -euo pipefail
-          test -n "${GH_TOKEN:-}" || { echo "MEDIAGO_PRIVATE_ARTIFACT_TOKEN is required" >&2; exit 1; }
-          test -n "${RIGHTS_RELEASE_TAG:-}" || { echo "MEDIAGO_RIGHTS_RELEASE_TAG is required" >&2; exit 1; }
-          gh release download "$RIGHTS_RELEASE_TAG" \
-            --repo mediago-dev/mediago-drama-private \
-            --pattern mediago-rights-marketplace-tools.json \
-            --pattern "mediago-rights-marketplace-${{ matrix.platform }}.zip" \
-            --dir "$RUNNER_TEMP"
-
-      - name: Verify and stage private runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/stage-private-runtime.py \
-            --manifest "$RUNNER_TEMP/mediago-rights-marketplace-tools.json" \
-            --archive "$RUNNER_TEMP/mediago-rights-marketplace-${{ matrix.platform }}.zip" \
-            --target "${{ matrix.platform }}" \
-            --release-tag "${{ vars.MEDIAGO_RIGHTS_RELEASE_TAG }}" \
-            --dist-root "$GITHUB_WORKSPACE/packages/vendor/dist"
-
-      - uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa # v2
+          task -d packages/vendor prepare:rights PLATFORM="${{ matrix.platform }}"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -227,61 +211,8 @@ jobs:
           }
           NODE
 
-      - name: Require macOS signing and notarization credentials
-        if: matrix.platform == 'darwin-arm64'
-        shell: bash
+      - name: Build ${{ matrix.label }}
         env:
-          CSC_LINK: ${{ secrets.MEDIAGO_MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MEDIAGO_MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.MEDIAGO_APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.MEDIAGO_APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
-          test -n "${CSC_LINK:-}" || { echo "MEDIAGO_MAC_CSC_LINK is required" >&2; exit 1; }
-          test -n "${CSC_KEY_PASSWORD:-}" || { echo "MEDIAGO_MAC_CSC_KEY_PASSWORD is required" >&2; exit 1; }
-          test -n "${APPLE_ID:-}" || { echo "MEDIAGO_APPLE_ID is required" >&2; exit 1; }
-          test -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" || { echo "MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD is required" >&2; exit 1; }
-          test -n "${APPLE_TEAM_ID:-}" || { echo "MEDIAGO_APPLE_TEAM_ID is required" >&2; exit 1; }
-
-      - name: Require Windows signing credentials
-        if: matrix.platform == 'windows-x64'
-        shell: bash
-        env:
-          WIN_CSC_LINK: ${{ secrets.MEDIAGO_WINDOWS_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.MEDIAGO_WINDOWS_CSC_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          test -n "${WIN_CSC_LINK:-}" || { echo "MEDIAGO_WINDOWS_CSC_LINK is required" >&2; exit 1; }
-          test -n "${WIN_CSC_KEY_PASSWORD:-}" || { echo "MEDIAGO_WINDOWS_CSC_KEY_PASSWORD is required" >&2; exit 1; }
-
-      - name: Build signed macOS ARM64 zip
-        if: matrix.platform == 'darwin-arm64'
-        env:
-          MEDIAGO_CODE_SIGN: "1"
-          MEDIAGO_MAC_SIGN: "1"
-          MEDIAGO_MAC_NOTARIZE: "1"
-          CSC_LINK: ${{ secrets.MEDIAGO_MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MEDIAGO_MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.MEDIAGO_APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.MEDIAGO_APPLE_TEAM_ID }}
-          MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME: "1"
-          MEDIAGO_PROMPT_PACK_POLICY: marketplace
-          MEDIAGO_ELECTRON_CHANNEL: ${{ inputs.channel }}
-          MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: ${{ vars.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL }}
-          MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.github_release_type }}
-          MODEL_PLATFORM: ${{ vars.MODEL_PLATFORM }}
-          VITE_MEDIAGO_APIKEY_URL: ${{ vars.VITE_MEDIAGO_APIKEY_URL }}
-          VITE_TALKINGDATA_APP_ID: ${{ vars.VITE_TALKINGDATA_APP_ID }}
-        run: task build:electron:target PLATFORM=${{ matrix.platform }} ELECTRON_SCRIPT=${{ matrix.electron_script }}
-
-      - name: Build signed Windows x64 installer
-        if: matrix.platform == 'windows-x64'
-        env:
-          MEDIAGO_CODE_SIGN: "1"
-          WIN_CSC_LINK: ${{ secrets.MEDIAGO_WINDOWS_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.MEDIAGO_WINDOWS_CSC_KEY_PASSWORD }}
           MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME: "1"
           MEDIAGO_PROMPT_PACK_POLICY: marketplace
           MEDIAGO_ELECTRON_CHANNEL: ${{ inputs.channel }}

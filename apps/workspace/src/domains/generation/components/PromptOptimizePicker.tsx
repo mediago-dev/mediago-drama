@@ -53,21 +53,21 @@ export const PromptOptimizePicker: React.FC<PromptOptimizePickerProps> = ({
 				<input
 					type="text"
 					value={query}
-					aria-label="搜索提示词包"
+					aria-label="搜索技能包"
 					onChange={(event) => setQuery(event.target.value)}
-					placeholder="搜索提示词包"
+					placeholder="搜索技能包"
 					className="h-[var(--generation-control-height)] w-full rounded-[var(--generation-control-radius)] border border-input bg-background pl-8 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 				/>
 			</div>
 			<div
-				aria-label="提示词包列表"
+				aria-label="技能包列表"
 				className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1"
 				role="region"
 				tabIndex={0}
 				onWheel={(event) => event.stopPropagation()}
 			>
 				{groups.length === 0 ? (
-					<p className="py-6 text-center text-xs text-muted-foreground">暂无可用提示词包</p>
+					<p className="py-6 text-center text-xs text-muted-foreground">暂无可用技能包</p>
 				) : (
 					groups.map((group) => {
 						const Icon = group.icon;

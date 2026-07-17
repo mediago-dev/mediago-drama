@@ -72,9 +72,9 @@ type deletePromptPackResponse struct {
 }
 
 // HandleCreatePack godoc
-// @Summary 创建本地提示词包
-// @Description 创建一个可编辑、可导出的本地提示词包。
-// @Tags Prompt Packs
+// @Summary 创建本地技能包
+// @Description 创建一个可编辑、可导出的本地技能包。
+// @Tags Skill Packs
 // @Accept json
 // @Produce json
 // @Param payload body SwaggerObject true "Prompt pack payload"
@@ -104,9 +104,9 @@ func (handler PromptPacks) HandleCreatePack(context *gin.Context) {
 }
 
 // HandleExportPack godoc
-// @Summary 导出提示词包
-// @Description 按 MediaGo .mgpack 格式导出一个完整提示词包。
-// @Tags Prompt Packs
+// @Summary 导出技能包
+// @Description 按 MediaGo .mgpack 格式导出一个完整技能包。
+// @Tags Skill Packs
 // @Produce octet-stream
 // @Param id path string true "Pack ID"
 // @Success 200 {file} file
@@ -127,9 +127,9 @@ func (handler PromptPacks) HandleExportPack(context *gin.Context) {
 }
 
 // HandleImportPack godoc
-// @Summary 导入用户提示词包
-// @Description 上传并安装一个 MediaGo .mgpack 提示词包。
-// @Tags Prompt Packs
+// @Summary 导入用户技能包
+// @Description 上传并安装一个 MediaGo .mgpack 技能包。
+// @Tags Skill Packs
 // @Accept multipart/form-data
 // @Produce json
 // @Param file formData file true "Prompt pack .mgpack file"
@@ -165,9 +165,9 @@ func (handler PromptPacks) HandleImportPack(context *gin.Context) {
 }
 
 // HandleListPacks godoc
-// @Summary 获取提示词包列表
-// @Description 返回已安装的全局提示词包。
-// @Tags Prompt Packs
+// @Summary 获取技能包列表
+// @Description 返回已安装的全局技能包。
+// @Tags Skill Packs
 // @Produce json
 // @Success 200 {object} SwaggerEnvelope
 // @Failure 500 {object} SwaggerEnvelope
@@ -182,9 +182,9 @@ func (handler PromptPacks) HandleListPacks(context *gin.Context) {
 }
 
 // HandleGetPackContents godoc
-// @Summary 获取提示词包内容
-// @Description 返回一个提示词包实际拥有的 Skill 和提示词条目。
-// @Tags Prompt Packs
+// @Summary 获取技能包内容
+// @Description 返回一个技能包实际拥有的 Skill 和提示词条目。
+// @Tags Skill Packs
 // @Produce json
 // @Param id path string true "Pack ID"
 // @Success 200 {object} SwaggerEnvelope
@@ -201,9 +201,9 @@ func (handler PromptPacks) HandleGetPackContents(context *gin.Context) {
 }
 
 // HandleCopyPackEntries godoc
-// @Summary 添加内容到本地提示词包
+// @Summary 添加内容到本地技能包
 // @Description 将选中的 Skill 和提示词作为同步引用加入目标本地包。
-// @Tags Prompt Packs
+// @Tags Skill Packs
 // @Accept json
 // @Produce json
 // @Param id path string true "Target pack ID"
@@ -229,9 +229,9 @@ func (handler PromptPacks) HandleCopyPackEntries(context *gin.Context) {
 }
 
 // HandleCreatePackEntry godoc
-// @Summary 新建词包草稿内容
-// @Description 在本地创作词包中创建一个可自动保存的空 Skill 或提示词草稿。
-// @Tags Prompt Packs
+// @Summary 新建技能包草稿内容
+// @Description 在本地创作技能包中创建一个可自动保存的空 Skill 或提示词草稿。
+// @Tags Skill Packs
 // @Accept json
 // @Produce json
 // @Param id path string true "Target pack ID"
@@ -263,9 +263,9 @@ func (handler PromptPacks) HandleCreatePackEntry(context *gin.Context) {
 }
 
 // HandlePutPackEntry godoc
-// @Summary 保存词包内指定内容
-// @Description 按词包 ID 和条目 ID 精确保存 Skill 或提示词，不使用全局 slug 解析。
-// @Tags Prompt Packs
+// @Summary 保存技能包内指定内容
+// @Description 按技能包 ID 和条目 ID 精确保存 Skill 或提示词，不使用全局 slug 解析。
+// @Tags Skill Packs
 // @Accept json
 // @Produce json
 // @Param id path string true "Target pack ID"
@@ -301,9 +301,9 @@ func (handler PromptPacks) HandlePutPackEntry(context *gin.Context) {
 }
 
 // HandleResetPackEntry godoc
-// @Summary 恢复词包内指定内容
-// @Description 按词包 ID 和条目 ID 精确恢复已导入正式包中的原始内容。
-// @Tags Prompt Packs
+// @Summary 恢复技能包内指定内容
+// @Description 按技能包 ID 和条目 ID 精确恢复已导入正式包中的原始内容。
+// @Tags Skill Packs
 // @Accept json
 // @Produce json
 // @Param id path string true "Target pack ID"
@@ -333,9 +333,9 @@ func (handler PromptPacks) HandleResetPackEntry(context *gin.Context) {
 }
 
 // HandleDetachPackEntry godoc
-// @Summary 将引用内容转为词包副本
-// @Description 将一个同步引用的 Skill 或提示词冻结为目标本地词包独立拥有的副本。
-// @Tags Prompt Packs
+// @Summary 将引用内容转为技能包副本
+// @Description 将一个同步引用的 Skill 或提示词冻结为目标本地技能包独立拥有的副本。
+// @Tags Skill Packs
 // @Accept json
 // @Produce json
 // @Param id path string true "Target pack ID"
@@ -365,9 +365,9 @@ func (handler PromptPacks) HandleDetachPackEntry(context *gin.Context) {
 }
 
 // HandleRemovePackEntry godoc
-// @Summary 从本地提示词包移除内容
-// @Description 从目标本地词包移除一个直接拥有或同步引用的 Skill 或提示词。
-// @Tags Prompt Packs
+// @Summary 从本地技能包移除内容
+// @Description 从目标本地技能包移除一个直接拥有或同步引用的 Skill 或提示词。
+// @Tags Skill Packs
 // @Accept json
 // @Produce json
 // @Param id path string true "Target pack ID"
@@ -396,9 +396,9 @@ func (handler PromptPacks) HandleRemovePackEntry(context *gin.Context) {
 }
 
 // HandleInstallPack godoc
-// @Summary 安装提示词包
-// @Description 从本地目录或 .mgpack 文件安装提示词包。
-// @Tags Prompt Packs
+// @Summary 安装技能包
+// @Description 从本地目录或 .mgpack 文件安装技能包。
+// @Tags Skill Packs
 // @Accept json
 // @Produce json
 // @Param payload body SwaggerObject true "Install payload"
@@ -421,9 +421,9 @@ func (handler PromptPacks) HandleInstallPack(context *gin.Context) {
 }
 
 // HandlePatchPack godoc
-// @Summary 更新提示词包
-// @Description 启用或禁用一个提示词包。
-// @Tags Prompt Packs
+// @Summary 更新技能包
+// @Description 启用或禁用一个技能包。
+// @Tags Skill Packs
 // @Accept json
 // @Produce json
 // @Param id path string true "Pack ID"
@@ -452,9 +452,9 @@ func (handler PromptPacks) HandlePatchPack(context *gin.Context) {
 }
 
 // HandleDeletePack godoc
-// @Summary 卸载提示词包
-// @Description 删除一个导入的提示词包；默认包不可卸载。
-// @Tags Prompt Packs
+// @Summary 卸载技能包
+// @Description 删除一个导入的技能包；默认包不可卸载。
+// @Tags Skill Packs
 // @Produce json
 // @Param id path string true "Pack ID"
 // @Success 200 {object} SwaggerEnvelope
@@ -471,9 +471,9 @@ func (handler PromptPacks) HandleDeletePack(context *gin.Context) {
 }
 
 // HandleResetPack godoc
-// @Summary 恢复提示词包默认内容
-// @Description 将提示词包内的默认技能和提示词预设恢复为安装包内容；用户新增内容会保留。
-// @Tags Prompt Packs
+// @Summary 恢复技能包默认内容
+// @Description 将技能包内的默认技能和提示词预设恢复为安装包内容；用户新增内容会保留。
+// @Tags Skill Packs
 // @Produce json
 // @Param id path string true "Pack ID"
 // @Success 200 {object} SwaggerEnvelope
@@ -496,31 +496,31 @@ func writePromptPackError(context *gin.Context, err error) {
 		httpresponse.Error(
 			context,
 			http.StatusForbidden,
-			"当前 MediaGo 账号没有该提示词包的导入权限，请先购买或使用分发席位兑换码",
+			"当前 MediaGo 账号没有该技能包的导入权限，请先购买或使用分发席位兑换码",
 		)
 	case errors.Is(err, promptpack.ErrProtectedPackAuthorizationExpired):
 		httpresponse.Error(
 			context,
 			http.StatusRequestTimeout,
-			"提示词包授权已过期，请重新导入并完成授权",
+			"技能包授权已过期，请重新导入并完成授权",
 		)
 	case errors.Is(err, promptpack.ErrProtectedPackUnavailable):
 		httpresponse.Error(
 			context,
 			http.StatusServiceUnavailable,
-			"提示词包授权服务暂时不可用，请稍后重试",
+			"技能包授权服务暂时不可用，请稍后重试",
 		)
 	case errors.Is(err, promptpack.ErrUnprotectedPackImportDenied):
 		httpresponse.Error(
 			context,
 			http.StatusUnprocessableEntity,
-			"未加密提示词包不能直接导入，请先前往 MediaGo 官网完成发布和加密",
+			"未加密技能包不能直接导入，请先前往 MediaGo 官网完成发布和加密",
 		)
 	case errors.Is(err, promptpack.ErrUnsupportedPackVersion):
 		httpresponse.Error(
 			context,
 			http.StatusUnprocessableEntity,
-			"当前构建不支持此提示词包版本，请使用 MediaGo Drama 官方版导入",
+			"当前构建不支持此技能包版本，请使用 MediaGo Drama 官方版导入",
 		)
 	case errors.Is(err, promptpack.ErrInvalidPack):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)

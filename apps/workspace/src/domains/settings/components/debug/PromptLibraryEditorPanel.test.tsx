@@ -50,7 +50,7 @@ describe("PromptLibraryEditorPanel", () => {
 		vi.mocked(listPromptPacks).mockResolvedValue([
 			{
 				id: "builtin",
-				name: "MediaGo 默认词包",
+				name: "MediaGo 默认技能包",
 				version: "1.0.0",
 				source: "default",
 				enabled: true,
@@ -92,7 +92,8 @@ describe("PromptLibraryEditorPanel", () => {
 		renderPanel();
 
 		await screen.findByText("2D动漫");
-		expect(screen.getAllByLabelText("所属词包：默认词包")).toHaveLength(2);
+		expect(screen.getAllByLabelText("所属技能包：默认技能包")).toHaveLength(2);
+		expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
 	});
 
 	afterEach(() => {

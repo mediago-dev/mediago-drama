@@ -19,7 +19,7 @@ export const debugTabs: {
 	},
 	{
 		value: "prompt-packs",
-		label: "提示词包",
+		label: "技能包",
 		description: "安装并管理技能与提示词",
 		icon: PackageOpen,
 	},

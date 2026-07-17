@@ -122,7 +122,7 @@ Expected: PASS；tools/list 只含两个工具。
 **Step 1: 先确认创建授权回归测试仍覆盖**
 
 - Agent mode 缺失 session/run/selection store 时 fail closed；
-- intent、route、params、参考资产、提示词包不一致时拒绝；
+- intent、route、params、参考资产、技能包不一致时拒绝；
 - selection 只能 claim 一次；
 - 同指纹结果可重放；
 - 不同指纹和处理中状态不得重复触发供应商；
@@ -357,6 +357,6 @@ Expected: 全部 PASS。
 **Step 5: 人工验收**
 
 1. Agent generation MCP tools/list 只出现 `generate_media` 和 `generate_media_batch`。
-2. 图片/视频 `generation_settings` 卡片仍能加载实时模型、configured route、偏好、参数、参考资产和提示词包。
+2. 图片/视频 `generation_settings` 卡片仍能加载实时模型、configured route、偏好、参数、参考资产和技能包。
 3. 单项、批次各提交一次，确认 single-use、结果重放和后台通知正常。
 4. 在生成工作台确认任务查询、后台轮询和选片仍可用；通过测试确认 HTTP retry endpoint 与前端 wrapper 仍保留，不宣称当前已有重试按钮。

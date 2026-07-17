@@ -413,6 +413,9 @@ func mergedProcessEnv(processConfig ProcessConfig) []string {
 			env[key] = value
 		}
 	}
+	// ACP agents run behind the MediaGo UI, so authentication failures must be
+	// reported through ACP instead of spawning browser tabs from a background process.
+	env["NO_BROWSER"] = "1"
 	for _, key := range []string{"NO_PROXY", "no_proxy"} {
 		env[key] = appendEnvListValues(env[key], "127.0.0.1", "localhost", "::1")
 	}

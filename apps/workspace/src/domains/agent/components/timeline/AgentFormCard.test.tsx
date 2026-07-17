@@ -502,7 +502,7 @@ describe("AgentFormCard", () => {
 
 		render(<AgentFormCard message={message} />);
 
-		// 默认开启：展示文本模型选择与提示词包列表，而不是裸开关。
+		// 默认开启：展示文本模型选择与技能包列表，而不是裸开关。
 		await waitFor(() => expect(screen.getByLabelText("优化模型")).toBeTruthy());
 		expect(screen.getByText("2D动漫")).toBeTruthy();
 		fireEvent.click(screen.getByText("2D动漫"));

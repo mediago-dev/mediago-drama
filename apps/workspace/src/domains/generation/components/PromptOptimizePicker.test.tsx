@@ -20,7 +20,7 @@ describe("PromptOptimizePicker", () => {
 			</div>,
 		);
 
-		const list = screen.getByRole("region", { name: "提示词包列表" });
+		const list = screen.getByRole("region", { name: "技能包列表" });
 
 		expect(list.parentElement?.getAttribute("style")).toContain("27.5rem");
 		expect(list.className).toContain("overflow-y-auto");

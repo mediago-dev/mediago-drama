@@ -16,7 +16,7 @@ import {
 	X,
 } from "lucide-react";
 import type React from "react";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import {
 	getPromptPackContents,
@@ -27,6 +27,7 @@ import {
 	type PromptPackEntry,
 	type PromptPackEntryKind,
 	removePromptPackEntry,
+	updatePromptPackEntry,
 } from "@/domains/settings/api/packs";
 import { isPromptPackContentCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
 import {
@@ -34,6 +35,7 @@ import {
 	useWorkspaceSidebarWidth,
 	workspaceSidebarWidth,
 } from "@/domains/workspace/components/SidebarContentLayout";
+import { SidebarScreenStack } from "@/domains/workspace/components/SidebarScreenStack";
 import { useToast } from "@/hooks/useToast";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
@@ -51,7 +53,14 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/lib/utils";
-import { PromptPackEntryEditor, type PromptPackEntryEditorHandle } from "./PromptPackContentEditor";
+import {
+	PromptPackEntryEditor,
+	type PromptPackEntryDraft,
+	promptPackEntryDraft,
+	promptPackEntryDraftEquals,
+	promptPackEntryUpdate,
+	validatePromptPackEntryDraft,
+} from "./PromptPackContentEditor";
 
 type WorkspaceView = { type: "idle" } | { entryID: string; type: "entry" };
 
@@ -59,11 +68,13 @@ interface PromptPackWorkspaceProps {
 	createError?: string;
 	creatingPack: boolean;
 	header?: React.ReactNode;
+	isEditing: boolean;
 	isCreatingPack: boolean;
 	isLoading?: boolean;
 	onCancelCreatePack: () => void;
 	onChanged: () => Promise<void>;
 	onCreatePack: (input: { description: string; name: string }) => Promise<void>;
+	onDirtyChange: (dirty: boolean) => void;
 	onSelectedPackChange: (packID?: string) => void;
 	onStartCreatePack: () => void;
 	packs: PromptPack[];
@@ -71,8 +82,10 @@ interface PromptPackWorkspaceProps {
 }
 
 export interface PromptPackWorkspaceHandle {
+	discard: () => void;
 	flush: () => Promise<boolean>;
 	openEntry: (entryID: string) => void;
+	save: () => Promise<boolean>;
 }
 
 export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptPackWorkspaceProps>(
@@ -81,11 +94,13 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 			createError,
 			creatingPack,
 			header,
+			isEditing,
 			isCreatingPack,
 			isLoading = false,
 			onCancelCreatePack,
 			onChanged,
 			onCreatePack,
+			onDirtyChange,
 			onSelectedPackChange,
 			onStartCreatePack,
 			packs,
@@ -111,14 +126,38 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		const [createEntryDialogOpen, setCreateEntryDialogOpen] = useState(false);
 		const [creatingEntry, setCreatingEntry] = useState(false);
 		const [deletingEntryID, setDeletingEntryID] = useState<string>();
-		const entryEditorRef = useRef<PromptPackEntryEditorHandle>(null);
+		const [drafts, setDrafts] = useState<Record<string, PromptPackEntryDraft>>({});
+		const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
 		const [navigatorWidth, setNavigatorWidth] = useWorkspaceSidebarWidth();
 
-		const entries = contents?.entries ?? [];
+		const entries = useMemo(() => contents?.entries ?? [], [contents]);
 		const skillEntries = entries.filter((entry) => entry.kind === "skill");
 		const promptEntries = entries.filter((entry) => entry.kind === "prompt");
 		const selectedEntry =
 			view.type === "entry" ? entries.find((entry) => entry.id === view.entryID) : undefined;
+		const changedEntries = useMemo(
+			() =>
+				entries.filter((entry) => {
+					const draft = drafts[entry.id];
+					return draft && !promptPackEntryDraftEquals(draft, promptPackEntryDraft(entry));
+				}),
+			[drafts, entries],
+		);
+
+		useEffect(() => {
+			if (!isEditing) {
+				setDrafts({});
+				setDraftErrors({});
+				return;
+			}
+			setDrafts(
+				Object.fromEntries(entries.map((entry) => [entry.id, promptPackEntryDraft(entry)])),
+			);
+		}, [isEditing]);
+
+		useEffect(() => {
+			onDirtyChange(changedEntries.length > 0);
+		}, [changedEntries.length, onDirtyChange]);
 
 		useEffect(() => {
 			setView({ type: "idle" });
@@ -147,39 +186,85 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 			return refreshed;
 		};
 
-		const saveActiveEntry = useCallback(async () => {
-			if (view.type !== "entry") return true;
-			return (await entryEditorRef.current?.flush()) !== false;
-		}, [view.type]);
-
-		const flushForExport = useCallback(() => saveActiveEntry(), [saveActiveEntry]);
 		const openEntry = useCallback((entryID: string) => {
 			setView({ entryID, type: "entry" });
 		}, []);
 
-		useImperativeHandle(ref, () => ({ flush: flushForExport, openEntry }), [
-			flushForExport,
+		const saveAll = async () => {
+			if (!isEditing || changedEntries.length === 0) return true;
+			const nextErrors: Record<string, string> = {};
+			for (const entry of changedEntries) {
+				const issue = validatePromptPackEntryDraft(entry.kind, drafts[entry.id]);
+				if (issue) nextErrors[entry.id] = issue;
+			}
+			if (Object.keys(nextErrors).length > 0) {
+				setDraftErrors(nextErrors);
+				const firstInvalidEntry = changedEntries.find((entry) => nextErrors[entry.id]);
+				if (firstInvalidEntry) setView({ entryID: firstInvalidEntry.id, type: "entry" });
+				return false;
+			}
+
+			setDraftErrors({});
+			try {
+				await Promise.all(
+					changedEntries.map((entry) =>
+						updatePromptPackEntry(
+							selectedPack?.id ?? "",
+							entry.id,
+							promptPackEntryUpdate(entry, drafts[entry.id]),
+						),
+					),
+				);
+				const refreshed = await refreshContents();
+				if (refreshed) {
+					setDrafts(
+						Object.fromEntries(
+							refreshed.entries.map((entry) => [entry.id, promptPackEntryDraft(entry)]),
+						),
+					);
+				}
+				toast.success("技能包已保存", {
+					description: `已保存 ${changedEntries.length} 项内容。`,
+				});
+				return true;
+			} catch (error) {
+				toast.error("技能包保存失败", { description: errorMessage(error) });
+				return false;
+			}
+		};
+
+		const discard = () => {
+			setDrafts({});
+			setDraftErrors({});
+		};
+
+		useImperativeHandle(ref, () => ({ discard, flush: saveAll, openEntry, save: saveAll }), [
 			openEntry,
+			saveAll,
 		]);
 
-		const leaveCurrentView = async (action: () => void) => {
-			if (!(await saveActiveEntry())) return;
-			action();
+		const navigate = (next: WorkspaceView) => {
+			setView(next);
 		};
 
-		const navigate = async (next: WorkspaceView) => {
-			await leaveCurrentView(() => setView(next));
+		const blockWhileEditing = () => {
+			if (!isEditing) return false;
+			toast.info("请先保存或取消编辑", { description: "当前操作会离开正在编辑的技能包。" });
+			return true;
 		};
 
-		const selectPack = async (packID: string) => {
-			await leaveCurrentView(() => onSelectedPackChange(packID));
+		const selectPack = (packID: string) => {
+			if (blockWhileEditing()) return;
+			onSelectedPackChange(packID);
 		};
 
-		const startCreatePack = async () => {
-			await leaveCurrentView(onStartCreatePack);
+		const startCreatePack = () => {
+			if (blockWhileEditing()) return;
+			onStartCreatePack();
 		};
 
 		const createEntry = async (kind: PromptPackEntryKind): Promise<boolean> => {
+			if (blockWhileEditing()) return false;
 			if (!selectedPack || creatingEntry) return false;
 			setCreatingEntry(true);
 			try {
@@ -220,9 +305,10 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		};
 
 		const confirmRemoveEntry = (entry: PromptPackEntry) => {
+			if (blockWhileEditing()) return;
 			void confirmDialog({
-				title: "删除词包内容？",
-				description: `将从“${selectedPack?.name ?? "当前词包"}”永久删除“${entryDisplayName(entry)}”。`,
+				title: "删除技能包内容？",
+				description: `将从“${selectedPack?.name ?? "当前技能包"}”永久删除“${entryDisplayName(entry)}”。`,
 				confirmLabel: "删除",
 				confirmIcon: <Trash2 className="size-4" />,
 				variant: "destructive",
@@ -239,7 +325,7 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 					maxSidebarWidth={workspaceSidebarWidth.max}
 					minSidebarWidth={workspaceSidebarWidth.min}
 					onSidebarWidthChange={setNavigatorWidth}
-					resizeLabel="调整词包编辑器侧边栏宽度"
+					resizeLabel="调整技能包编辑器侧边栏宽度"
 					resizeStep={workspaceSidebarWidth.resizeStep}
 					showDesktopDragRegion
 					sidebar={
@@ -249,17 +335,17 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 							entrySearch={entrySearch}
 							isLoading={isLoading}
 							navigatorMode={navigatorMode}
-							onBackToPacks={() => void selectPack("")}
+							onBackToPacks={() => selectPack("")}
 							onCancelCreatePack={onCancelCreatePack}
 							onCreateEntry={() => setCreateEntryDialogOpen(true)}
 							onEntrySearchChange={setEntrySearch}
 							onNavigatorModeChange={setNavigatorMode}
-							onOpenOverview={() => void navigate({ type: "idle" })}
+							onOpenOverview={() => navigate({ type: "idle" })}
 							onPackSearchChange={setPackSearch}
 							onRemoveEntry={confirmRemoveEntry}
-							onSelectEntry={(entryID) => void navigate({ entryID, type: "entry" })}
-							onSelectPack={(packID) => void selectPack(packID)}
-							onStartCreatePack={() => void startCreatePack()}
+							onSelectEntry={(entryID) => navigate({ entryID, type: "entry" })}
+							onSelectPack={selectPack}
+							onStartCreatePack={startCreatePack}
 							packs={packs}
 							packSearch={packSearch}
 							promptEntries={promptEntries}
@@ -276,14 +362,7 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 					<div className="flex h-full min-h-0 flex-col overflow-hidden bg-ide-editor text-ide-editor-foreground">
 						{header}
 						<div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-ide-editor">
-							{creatingPack ? (
-								<CreatePackCanvas
-									error={createError}
-									isCreating={isCreatingPack}
-									onCancel={onCancelCreatePack}
-									onCreate={onCreatePack}
-								/>
-							) : !selectedPackID ? (
+							{!selectedPackID ? (
 								<WorkspaceStart
 									isLoading={isLoading}
 									onSelectPack={(packID) => void selectPack(packID)}
@@ -291,15 +370,18 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 									search={packSearch}
 								/>
 							) : contentsLoading || !selectedPack || !contents ? (
-								<LoadingState label="加载词包内容" />
+								<LoadingState label="加载技能包内容" />
 							) : view.type === "entry" && selectedEntry ? (
 								<PromptPackEntryEditor
-									ref={entryEditorRef}
+									key={selectedEntry.id}
+									draft={drafts[selectedEntry.id] ?? promptPackEntryDraft(selectedEntry)}
 									entry={selectedEntry}
-									onChanged={async () => {
-										await refreshContents();
+									error={draftErrors[selectedEntry.id]}
+									isEditing={isEditing}
+									onChange={(draft) => {
+										setDrafts((current) => ({ ...current, [selectedEntry.id]: draft }));
+										setDraftErrors((current) => ({ ...current, [selectedEntry.id]: "" }));
 									}}
-									pack={selectedPack}
 								/>
 							) : (
 								<WorkspaceIdle contents={contents} pack={selectedPack} />
@@ -312,6 +394,13 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 					onCreate={createEntry}
 					onOpenChange={setCreateEntryDialogOpen}
 					open={createEntryDialogOpen}
+				/>
+				<CreatePackDialog
+					error={createError}
+					isCreating={isCreatingPack}
+					onCancel={onCancelCreatePack}
+					onCreate={onCreatePack}
+					open={creatingPack}
 				/>
 			</>
 		);
@@ -375,132 +464,149 @@ const PromptPackNavigator: React.FC<{
 
 	return (
 		<nav
-			aria-label="提示词包编辑器导航"
-			className="flex h-full min-h-0 w-full flex-col bg-ide-sidebar text-ide-sidebar-foreground"
+			aria-label="技能包编辑器导航"
+			className="relative h-full min-h-0 w-full overflow-hidden bg-ide-sidebar text-ide-sidebar-foreground"
 		>
-			{selectedPack && !creatingPack ? (
-				<>
-					<div className="shrink-0 px-2 pb-2 pt-3">
-						<div className="flex items-center justify-between gap-2">
-							<button
-								type="button"
-								className={sidebarToolbarIconButtonClassName}
-								onClick={onBackToPacks}
-								title="返回词包列表"
-								aria-label="返回词包列表"
-							>
-								<ChevronLeft className="size-3.5" />
-							</button>
-							<div className="flex min-w-0 items-center justify-end gap-1">
-								<button
-									type="button"
-									className={cn(
-										sidebarToolbarIconButtonClassName,
-										searchOpen && "bg-ide-list-active text-ide-list-active-foreground",
-									)}
-									onClick={() => onSearchOpenChange(!searchOpen)}
-									title="搜索当前词包"
-									aria-label="搜索当前词包"
-									aria-pressed={searchOpen}
-								>
-									<Search className="size-3.5" />
-								</button>
-								<CreateEntryButton onClick={onCreateEntry} />
-								<NavigatorViewModeSwitcher
-									mode={navigatorMode}
-									onSelectMode={onNavigatorModeChange}
-								/>
-							</div>
-						</div>
-						{searchOpen ? (
-							<div className="relative mt-2">
-								<Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-								<Input
-									autoFocus
-									aria-label="搜索词包内容"
-									value={entrySearch}
-									onChange={(event) => onEntrySearchChange(event.target.value)}
-									placeholder="搜索 Skill 或提示词"
-									className="h-8 pl-7 pr-7 text-xs"
-								/>
-								{entrySearch ? (
+			<SidebarScreenStack
+				activeId={selectedPack ? "pack-detail" : "pack-library"}
+				screenClassName="p-0"
+				screens={[
+					{
+						id: "pack-library",
+						level: 1,
+						node: (
+							<PackLibraryNavigator
+								creatingPack={creatingPack}
+								isLoading={isLoading}
+								onCancelCreatePack={onCancelCreatePack}
+								onSearchChange={onPackSearchChange}
+								onSelectPack={onSelectPack}
+								onStartCreatePack={onStartCreatePack}
+								packs={packs}
+								search={packSearch}
+							/>
+						),
+					},
+					{
+						id: "pack-detail",
+						level: 2,
+						node: selectedPack ? (
+							<>
+								<div className="shrink-0 px-2 pb-2 pt-3">
+									<div className="flex items-center justify-between gap-2">
+										<button
+											type="button"
+											className={sidebarToolbarIconButtonClassName}
+											onClick={onBackToPacks}
+											title="返回技能包列表"
+											aria-label="返回技能包列表"
+										>
+											<ChevronLeft className="size-3.5" />
+										</button>
+										<div className="flex min-w-0 items-center justify-end gap-1">
+											<button
+												type="button"
+												className={cn(
+													sidebarToolbarIconButtonClassName,
+													searchOpen && "bg-ide-list-active text-ide-list-active-foreground",
+												)}
+												onClick={() => onSearchOpenChange(!searchOpen)}
+												title="搜索当前技能包"
+												aria-label="搜索当前技能包"
+												aria-pressed={searchOpen}
+											>
+												<Search className="size-3.5" />
+											</button>
+											<CreateEntryButton onClick={onCreateEntry} />
+											<NavigatorViewModeSwitcher
+												mode={navigatorMode}
+												onSelectMode={onNavigatorModeChange}
+											/>
+										</div>
+									</div>
+									{searchOpen ? (
+										<div className="relative mt-2">
+											<Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+											<Input
+												autoFocus
+												aria-label="搜索技能包内容"
+												value={entrySearch}
+												onChange={(event) => onEntrySearchChange(event.target.value)}
+												placeholder="搜索 Skill 或提示词"
+												className="h-8 pl-7 pr-7 text-xs"
+											/>
+											{entrySearch ? (
+												<button
+													type="button"
+													className="absolute right-1.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground hover:bg-ide-list-hover hover:text-foreground"
+													onClick={() => onEntrySearchChange("")}
+													title="清除搜索"
+													aria-label="清除搜索"
+												>
+													<X className="size-3" />
+												</button>
+											) : null}
+										</div>
+									) : null}
+								</div>
+
+								<div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
 									<button
 										type="button"
-										className="absolute right-1.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground hover:bg-ide-list-hover hover:text-foreground"
-										onClick={() => onEntrySearchChange("")}
-										title="清除搜索"
-										aria-label="清除搜索"
+										onClick={onOpenOverview}
+										className={cn(
+											"flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-xs transition-colors",
+											view.type === "idle"
+												? "bg-ide-list-active text-ide-list-active-foreground"
+												: "text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+										)}
 									>
-										<X className="size-3" />
+										<LayoutDashboard className="size-3.5 shrink-0" />
+										<span className="min-w-0 flex-1 truncate">技能包概览</span>
 									</button>
-								) : null}
-							</div>
-						) : null}
-					</div>
 
-					<div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-						<button
-							type="button"
-							onClick={onOpenOverview}
-							className={cn(
-								"flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-xs transition-colors",
-								view.type === "idle"
-									? "bg-ide-list-active text-ide-list-active-foreground"
-									: "text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
-							)}
-						>
-							<LayoutDashboard className="size-3.5 shrink-0" />
-							<span className="min-w-0 flex-1 truncate">词包概览</span>
-						</button>
-
-						{navigatorMode === "grouped" ? (
-							<>
-								<NavigatorGroup icon={<BookOpenCheck className="size-4" />} label="Skills">
-									<EntryRows
-										deletingEntryID={deletingEntryID}
-										entries={filteredSkills}
-										onRemove={onRemoveEntry}
-										onSelect={onSelectEntry}
-										selectedEntryID={view.type === "entry" ? view.entryID : undefined}
-									/>
-								</NavigatorGroup>
-								<NavigatorGroup icon={<Library className="size-4" />} label="提示词">
-									<EntryRows
-										deletingEntryID={deletingEntryID}
-										entries={filteredPrompts}
-										onRemove={onRemoveEntry}
-										onSelect={onSelectEntry}
-										selectedEntryID={view.type === "entry" ? view.entryID : undefined}
-									/>
-								</NavigatorGroup>
+									{navigatorMode === "grouped" ? (
+										<>
+											<NavigatorGroup icon={<BookOpenCheck className="size-4" />} label="Skills">
+												<EntryRows
+													deletingEntryID={deletingEntryID}
+													entries={filteredSkills}
+													onRemove={onRemoveEntry}
+													onSelect={onSelectEntry}
+													selectedEntryID={view.type === "entry" ? view.entryID : undefined}
+												/>
+											</NavigatorGroup>
+											<NavigatorGroup icon={<Library className="size-4" />} label="提示词">
+												<EntryRows
+													deletingEntryID={deletingEntryID}
+													entries={filteredPrompts}
+													onRemove={onRemoveEntry}
+													onSelect={onSelectEntry}
+													selectedEntryID={view.type === "entry" ? view.entryID : undefined}
+												/>
+											</NavigatorGroup>
+										</>
+									) : (
+										<section className="mt-3">
+											<p className="mb-1 px-2 text-xs font-medium text-muted-foreground">
+												全部内容
+											</p>
+											<EntryRows
+												deletingEntryID={deletingEntryID}
+												entries={filteredEntries}
+												indented={false}
+												onRemove={onRemoveEntry}
+												onSelect={onSelectEntry}
+												selectedEntryID={view.type === "entry" ? view.entryID : undefined}
+											/>
+										</section>
+									)}
+								</div>
 							</>
-						) : (
-							<section className="mt-3">
-								<p className="mb-1 px-2 text-xs font-medium text-muted-foreground">全部内容</p>
-								<EntryRows
-									deletingEntryID={deletingEntryID}
-									entries={filteredEntries}
-									indented={false}
-									onRemove={onRemoveEntry}
-									onSelect={onSelectEntry}
-									selectedEntryID={view.type === "entry" ? view.entryID : undefined}
-								/>
-							</section>
-						)}
-					</div>
-				</>
-			) : (
-				<PackLibraryNavigator
-					creatingPack={creatingPack}
-					isLoading={isLoading}
-					onCancelCreatePack={onCancelCreatePack}
-					onSearchChange={onPackSearchChange}
-					onSelectPack={onSelectPack}
-					onStartCreatePack={onStartCreatePack}
-					packs={packs}
-					search={packSearch}
-				/>
-			)}
+						) : null,
+					},
+				]}
+			/>
 		</nav>
 	);
 };
@@ -550,7 +656,7 @@ const PackLibraryNavigator: React.FC<{
 					onClick={startCreatePack}
 				>
 					<PackagePlus className="size-4 shrink-0" />
-					<span className="min-w-0 flex-1 truncate">新建词包</span>
+					<span className="min-w-0 flex-1 truncate">新建技能包</span>
 				</button>
 				<button
 					type="button"
@@ -562,29 +668,29 @@ const PackLibraryNavigator: React.FC<{
 					aria-expanded={searchOpen}
 				>
 					<Search className="size-4 shrink-0" />
-					<span className="min-w-0 flex-1 truncate">搜索词包</span>
+					<span className="min-w-0 flex-1 truncate">搜索技能包</span>
 				</button>
 				{searchOpen ? (
 					<Input
 						autoFocus
-						aria-label="搜索本地词包"
+						aria-label="搜索本地技能包"
 						value={search}
 						onChange={(event) => onSearchChange(event.target.value)}
-						placeholder="输入词包名称"
+						placeholder="输入技能包名称"
 						className="h-8 text-xs"
 					/>
 				) : null}
 			</div>
 			<div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
-				<p className="mb-1 px-2 text-xs font-medium text-muted-foreground">词包</p>
+				<p className="mb-1 px-2 text-xs font-medium text-muted-foreground">技能包</p>
 				{isLoading ? (
 					<div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
 						<Loader2 className="size-3.5 animate-spin" />
-						<span>加载本地词包</span>
+						<span>加载本地技能包</span>
 					</div>
 				) : filteredPacks.length === 0 ? (
 					<p className="px-2 py-2 text-xs text-muted-foreground">
-						{search ? "没有匹配的词包" : "暂无本地词包"}
+						{search ? "没有匹配的技能包" : "暂无本地技能包"}
 					</p>
 				) : (
 					<div className="space-y-0.5">
@@ -667,11 +773,11 @@ const CreateEntryDialog: React.FC<{
 				}}
 			>
 				<AlertDialogHeader>
-					<AlertDialogTitle>新建词包内容</AlertDialogTitle>
+					<AlertDialogTitle>新建技能包内容</AlertDialogTitle>
 					<AlertDialogDescription>选择一种内容类型开始创作。</AlertDialogDescription>
 				</AlertDialogHeader>
 
-				<div role="radiogroup" aria-label="词包内容类型" className="grid gap-2 sm:grid-cols-2">
+				<div role="radiogroup" aria-label="技能包内容类型" className="grid gap-2 sm:grid-cols-2">
 					{createEntryOptions.map((option) => {
 						const OptionIcon = option.icon;
 						const optionSelected = option.kind === kind;
@@ -851,88 +957,109 @@ const EntryRows: React.FC<{
 	);
 };
 
-const CreatePackCanvas: React.FC<{
+const CreatePackDialog: React.FC<{
 	error?: string;
 	isCreating: boolean;
 	onCancel: () => void;
 	onCreate: (input: { description: string; name: string }) => Promise<void>;
-}> = ({ error, isCreating, onCancel, onCreate }) => {
+	open: boolean;
+}> = ({ error, isCreating, onCancel, onCreate, open }) => {
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
 
+	useEffect(() => {
+		if (!open) return;
+		setName("");
+		setDescription("");
+	}, [open]);
+
 	return (
-		<div className="h-full overflow-y-auto px-8 py-8">
-			<form
-				className="mx-auto w-full max-w-2xl"
-				onSubmit={(event) => {
+		<AlertDialog
+			open={open}
+			onOpenChange={(nextOpen) => {
+				if (!nextOpen && !isCreating) onCancel();
+			}}
+		>
+			<AlertDialogContent
+				className="max-w-lg gap-5 p-5"
+				onOpenAutoFocus={(event) => {
 					event.preventDefault();
-					if (!name.trim() || isCreating) return;
-					void onCreate({ description, name });
+					document.getElementById("prompt-pack-name")?.focus();
 				}}
 			>
-				<div className="border-b border-border pb-5">
-					<div className="flex items-center gap-2 text-xs font-medium text-primary">
-						<PackagePlus className="size-4" />
-						<span>新建词包</span>
-					</div>
-					<h2 className="mt-2 text-lg font-semibold text-foreground">创建一个本地词包</h2>
-					<p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-						创建后即可在左侧添加 Skill 和提示词。Package ID 和初始版本由系统生成。
-					</p>
-				</div>
+				<form
+					className="contents"
+					onSubmit={(event) => {
+						event.preventDefault();
+						if (!name.trim() || isCreating) return;
+						void onCreate({ description, name });
+					}}
+				>
+					<AlertDialogHeader>
+						<div className="flex items-center gap-2">
+							<span className="flex size-8 items-center justify-center rounded-sm bg-ide-toolbar text-primary">
+								<PackagePlus className="size-4" />
+							</span>
+							<AlertDialogTitle className="text-base">创建本地技能包</AlertDialogTitle>
+						</div>
+						<AlertDialogDescription className="text-sm leading-6">
+							创建后即可在左侧添加 Skill 和提示词。Package ID 和初始版本由系统生成。
+						</AlertDialogDescription>
+					</AlertDialogHeader>
 
-				{error ? (
-					<Alert variant="destructive" className="mt-6">
-						<AlertDescription>{error}</AlertDescription>
-					</Alert>
-				) : null}
+					{error ? (
+						<Alert variant="destructive">
+							<AlertDescription>{error}</AlertDescription>
+						</Alert>
+					) : null}
 
-				<div className="space-y-5 py-6">
-					<div className="space-y-2">
-						<Label htmlFor="prompt-pack-name" className="text-sm font-medium text-foreground">
-							名称
-						</Label>
-						<Input
-							id="prompt-pack-name"
-							autoFocus
-							value={name}
-							onChange={(event) => setName(event.target.value)}
-							placeholder="例如：角色视觉风格"
-							className="h-10 text-sm"
-						/>
+					<div className="space-y-4">
+						<div className="space-y-2">
+							<Label htmlFor="prompt-pack-name" className="text-sm font-medium text-foreground">
+								名称
+							</Label>
+							<Input
+								id="prompt-pack-name"
+								autoFocus
+								value={name}
+								onChange={(event) => setName(event.target.value)}
+								placeholder="例如：角色视觉风格"
+								className="h-10 text-sm"
+							/>
+						</div>
+						<div className="space-y-2">
+							<Label
+								htmlFor="prompt-pack-description"
+								className="text-sm font-medium text-foreground"
+							>
+								简介
+							</Label>
+							<Textarea
+								id="prompt-pack-description"
+								value={description}
+								onChange={(event) => setDescription(event.target.value)}
+								placeholder="说明这个技能包适合解决什么问题（选填）"
+								className="min-h-24 resize-y text-sm"
+							/>
+						</div>
 					</div>
-					<div className="space-y-2">
-						<Label
-							htmlFor="prompt-pack-description"
-							className="text-sm font-medium text-foreground"
-						>
-							简介
-						</Label>
-						<Textarea
-							id="prompt-pack-description"
-							value={description}
-							onChange={(event) => setDescription(event.target.value)}
-							placeholder="说明这个词包适合解决什么问题（选填）"
-							className="min-h-24 resize-y text-sm"
-						/>
-					</div>
-				</div>
 
-				<div className="flex justify-end gap-2 border-t border-border pt-5">
-					<Button type="button" variant="ghost" disabled={isCreating} onClick={onCancel}>
-						取消
-					</Button>
-					<Button type="submit" disabled={isCreating || !name.trim()}>
-						{isCreating ? (
-							<Loader2 className="size-4 animate-spin" />
-						) : (
-							<PackagePlus className="size-4" />
-						)}
-						<span>{isCreating ? "创建中" : "创建并开始编辑"}</span>
-					</Button>
-				</div>
-			</form>
-		</div>
+					<AlertDialogFooter className="border-t border-border pt-4">
+						<Button type="button" variant="ghost" disabled={isCreating} onClick={onCancel}>
+							取消
+						</Button>
+						<Button type="submit" disabled={isCreating || !name.trim()}>
+							{isCreating ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<PackagePlus className="size-4" />
+							)}
+							<span>{isCreating ? "创建中" : "创建并开始编辑"}</span>
+						</Button>
+					</AlertDialogFooter>
+				</form>
+			</AlertDialogContent>
+		</AlertDialog>
 	);
 };
 
@@ -942,14 +1069,14 @@ const WorkspaceStart: React.FC<{
 	packs: PromptPack[];
 	search: string;
 }> = ({ isLoading, onSelectPack, packs, search }) => {
-	if (isLoading) return <LoadingState label="加载本地词包" />;
+	if (isLoading) return <LoadingState label="加载本地技能包" />;
 	const filteredPacks = filterPacks(packs, search);
 
 	return (
 		<div className="h-full overflow-y-auto px-8 py-8">
 			<div className="mx-auto w-full max-w-5xl">
 				<div className="border-b border-border pb-5">
-					<h2 className="text-xl font-semibold text-foreground">词包管理</h2>
+					<h2 className="text-xl font-semibold text-foreground">技能包管理</h2>
 					<p className="mt-1 text-sm text-muted-foreground">本地草稿</p>
 				</div>
 
@@ -985,10 +1112,10 @@ const WorkspaceStart: React.FC<{
 					<div className="py-16 text-center">
 						<PackageOpen className="mx-auto size-8 text-muted-foreground" />
 						<h3 className="mt-4 text-sm font-medium text-foreground">
-							{search ? "没有匹配的词包" : "还没有本地词包"}
+							{search ? "没有匹配的技能包" : "还没有本地技能包"}
 						</h3>
 						<p className="mt-1 text-xs text-muted-foreground">
-							{search ? "请调整左侧搜索条件。" : "使用左侧的新建词包入口开始制作。"}
+							{search ? "请调整左侧搜索条件。" : "使用左侧的新建技能包入口开始制作。"}
 						</p>
 					</div>
 				)}
@@ -1015,7 +1142,7 @@ const WorkspaceIdle: React.FC<{ contents: PromptPackContents; pack: PromptPack }
 						</span>
 					</div>
 					<p className="mt-2 text-sm leading-6 text-muted-foreground">
-						{pack.description || "这个词包还没有简介。"}
+						{pack.description || "这个技能包还没有简介。"}
 					</p>
 				</div>
 			</div>

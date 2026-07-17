@@ -526,7 +526,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 
 			if (!ws.prompt.trim()) {
 				ws.setPrompt(referencePrompt);
-				toast.success("已填入提示词包", { description: item.name });
+				toast.success("已填入技能包", { description: item.name });
 				return;
 			}
 
@@ -534,7 +534,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				ws.setPrompt((currentPrompt) =>
 					appendPromptOptimizeReference(currentPrompt, referencePrompt),
 				);
-				toast.warning("没有可用文本模型", { description: "已追加提示词包内容。" });
+				toast.warning("没有可用文本模型", { description: "已追加技能包内容。" });
 				return;
 			}
 

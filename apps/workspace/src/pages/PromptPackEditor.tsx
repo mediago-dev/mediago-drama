@@ -1,6 +1,16 @@
-import { Download, ExternalLink, FolderOpen, Loader2, PackageOpen, Trash2 } from "lucide-react";
+import {
+	Download,
+	ExternalLink,
+	FolderOpen,
+	Loader2,
+	PackageOpen,
+	Pencil,
+	Save,
+	Trash2,
+	X,
+} from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import useSWR, { useSWRConfig } from "swr";
 import {
@@ -58,7 +68,15 @@ export const PromptPackEditor: React.FC = () => {
 	const [deletingPackID, setDeletingPackID] = useState<string>();
 	const [exportingPackID, setExportingPackID] = useState<string>();
 	const [exportCompletion, setExportCompletion] = useState<PromptPackExportCompletion>();
+	const [isEditing, setIsEditing] = useState(false);
+	const [isPackDirty, setIsPackDirty] = useState(false);
+	const [savingPack, setSavingPack] = useState(false);
 	const workspaceRef = useRef<PromptPackWorkspaceHandle>(null);
+
+	useEffect(() => {
+		setIsEditing(false);
+		setIsPackDirty(false);
+	}, [selectedPackID]);
 
 	useEffect(() => {
 		const desktop = window.mediagoDesktop;
@@ -74,7 +92,7 @@ export const PromptPackEditor: React.FC = () => {
 				try {
 					await desktop.completePromptPackEditorClose({ allow, requestId: request.requestId });
 				} catch (error) {
-					toast.error("无法关闭词包编辑器", { description: errorMessage(error) });
+					toast.error("无法关闭技能包编辑器", { description: errorMessage(error) });
 				}
 			})();
 		});
@@ -83,6 +101,40 @@ export const PromptPackEditor: React.FC = () => {
 	const refreshPromptData = async () => {
 		await Promise.all([mutatePacks(), mutateGlobal(isPromptPackContentCacheKey)]);
 	};
+
+	const cancelEditing = () => {
+		workspaceRef.current?.discard();
+		setIsEditing(false);
+		setIsPackDirty(false);
+	};
+
+	const savePack = useCallback(async () => {
+		setSavingPack(true);
+		try {
+			if ((await workspaceRef.current?.save()) === false) return;
+			setIsEditing(false);
+			setIsPackDirty(false);
+		} finally {
+			setSavingPack(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		const handleSaveShortcut = (event: KeyboardEvent) => {
+			if (
+				!isEditing ||
+				!isPackDirty ||
+				savingPack ||
+				!(event.metaKey || event.ctrlKey) ||
+				event.key.toLowerCase() !== "s"
+			)
+				return;
+			event.preventDefault();
+			void savePack();
+		};
+		window.addEventListener("keydown", handleSaveShortcut);
+		return () => window.removeEventListener("keydown", handleSaveShortcut);
+	}, [isEditing, isPackDirty, savePack, savingPack]);
 
 	const selectPack = (packID?: string) => {
 		setCreatingPack(false);
@@ -98,7 +150,6 @@ export const PromptPackEditor: React.FC = () => {
 		setCreateError("");
 		setCreatingPack(true);
 		const next = new URLSearchParams(searchParams);
-		next.delete("packId");
 		next.set("mode", "create");
 		setSearchParams(next, { replace: true });
 	};
@@ -123,7 +174,7 @@ export const PromptPackEditor: React.FC = () => {
 			});
 			await refreshPromptData();
 			selectPack(pack.id);
-			toast.success("词包草稿已创建", { description: pack.name });
+			toast.success("技能包草稿已创建", { description: pack.name });
 		} catch (error) {
 			setCreateError(errorMessage(error));
 		} finally {
@@ -135,7 +186,7 @@ export const PromptPackEditor: React.FC = () => {
 		const saved = await workspaceRef.current?.flush();
 		if (saved === false) {
 			toast.error("请完善当前内容", {
-				description: "请先填写当前条目的名称，再导出词包。",
+				description: "请先填写当前条目的名称，再导出技能包。",
 			});
 			return;
 		}
@@ -145,7 +196,7 @@ export const PromptPackEditor: React.FC = () => {
 			const validationIssue = findPromptPackExportIssue(contents.entries);
 			if (validationIssue) {
 				workspaceRef.current?.openEntry(validationIssue.entryID);
-				toast.error("请完善词包内容", { description: validationIssue.description });
+				toast.error("请完善技能包内容", { description: validationIssue.description });
 				return;
 			}
 			const exported = await exportPromptPack(pack.id);
@@ -175,7 +226,7 @@ export const PromptPackEditor: React.FC = () => {
 				revalidate: false,
 			});
 			await mutateGlobal(isPromptPackContentCacheKey);
-			toast.success("词包已删除", { description: pack.name });
+			toast.success("技能包已删除", { description: pack.name });
 			return true;
 		} catch (error) {
 			toast.error("删除失败", { description: errorMessage(error) });
@@ -187,9 +238,9 @@ export const PromptPackEditor: React.FC = () => {
 
 	const confirmDeletePack = (pack: PromptPack) => {
 		void confirmDialog({
-			title: "删除本地词包？",
+			title: "删除本地技能包？",
 			description: `“${pack.name}”及其中的全部 Skill 和提示词将从本机永久删除。`,
-			confirmLabel: "删除词包",
+			confirmLabel: "删除技能包",
 			confirmIcon: <Trash2 className="size-4" />,
 			variant: "destructive",
 			onConfirm: () => deletePack(pack),
@@ -199,7 +250,7 @@ export const PromptPackEditor: React.FC = () => {
 	const openPublishPage = async () => {
 		const url = promptPackPublishURL();
 		if (!url) {
-			toast.error("未配置词包发布地址", {
+			toast.error("未配置技能包发布地址", {
 				description: "请设置 VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL 后重试。",
 			});
 			return;
@@ -213,7 +264,7 @@ export const PromptPackEditor: React.FC = () => {
 		try {
 			await revealNativePath(exportCompletion.path);
 		} catch (error) {
-			toast.error("无法定位导出的词包", { description: errorMessage(error) });
+			toast.error("无法定位导出的技能包", { description: errorMessage(error) });
 		}
 	};
 
@@ -232,7 +283,7 @@ export const PromptPackEditor: React.FC = () => {
 						<div className="min-w-0" data-desktop-drag-region>
 							<div className="flex items-center gap-2">
 								<PackageOpen className="size-4 text-muted-foreground" />
-								<h1 className="truncate text-sm font-semibold text-foreground">提示词包编辑器</h1>
+								<h1 className="truncate text-sm font-semibold text-foreground">技能包编辑器</h1>
 							</div>
 							<p className="mt-1 text-xs text-muted-foreground">
 								在本机制作内容，完成后导出 .mgpack。
@@ -240,46 +291,80 @@ export const PromptPackEditor: React.FC = () => {
 						</div>
 						{selectedPack && !creatingPack ? (
 							<div className="flex items-center gap-2" data-desktop-no-drag>
-								<Button
-									type="button"
-									variant="outline"
-									disabled={
-										exportingPackID === selectedPack.id || deletingPackID === selectedPack.id
-									}
-									onClick={() => void exportPack(selectedPack)}
-								>
-									{exportingPackID === selectedPack.id ? (
-										<Loader2 className="size-4 animate-spin" />
-									) : (
-										<Download className="size-4" />
-									)}
-									<span>导出</span>
-								</Button>
-								<Button
-									type="button"
-									variant="outline"
-									className="text-destructive hover:bg-error-surface hover:text-error-foreground"
-									disabled={
-										deletingPackID === selectedPack.id || exportingPackID === selectedPack.id
-									}
-									onClick={() => confirmDeletePack(selectedPack)}
-								>
-									{deletingPackID === selectedPack.id ? (
-										<Loader2 className="size-4 animate-spin" />
-									) : (
-										<Trash2 className="size-4" />
-									)}
-									<span>删除词包</span>
-								</Button>
+								{isEditing ? (
+									<>
+										<Button
+											type="button"
+											variant="outline"
+											disabled={savingPack}
+											onClick={cancelEditing}
+										>
+											<X className="size-4" />
+											<span>取消</span>
+										</Button>
+										<Button
+											type="button"
+											disabled={!isPackDirty || savingPack}
+											onClick={() => void savePack()}
+										>
+											{savingPack ? (
+												<Loader2 className="size-4 animate-spin" />
+											) : (
+												<Save className="size-4" />
+											)}
+											<span>保存</span>
+										</Button>
+									</>
+								) : (
+									<>
+										<Button type="button" variant="outline" onClick={() => setIsEditing(true)}>
+											<Pencil className="size-4" />
+											<span>编辑</span>
+										</Button>
+										<Button
+											type="button"
+											variant="outline"
+											disabled={
+												exportingPackID === selectedPack.id || deletingPackID === selectedPack.id
+											}
+											onClick={() => void exportPack(selectedPack)}
+										>
+											{exportingPackID === selectedPack.id ? (
+												<Loader2 className="size-4 animate-spin" />
+											) : (
+												<Download className="size-4" />
+											)}
+											<span>导出</span>
+										</Button>
+										<Button
+											type="button"
+											variant="outline"
+											className="text-destructive hover:bg-error-surface hover:text-error-foreground"
+											disabled={
+												deletingPackID === selectedPack.id || exportingPackID === selectedPack.id
+											}
+											onClick={() => confirmDeletePack(selectedPack)}
+										>
+											{deletingPackID === selectedPack.id ? (
+												<Loader2 className="size-4 animate-spin" />
+											) : (
+												<Trash2 className="size-4" />
+											)}
+											<span>删除技能包</span>
+										</Button>
+									</>
+								)}
 							</div>
 						) : null}
 					</header>
 				}
 				isCreatingPack={createBusy}
+				isEditing={isEditing}
 				isLoading={packsLoading}
 				onCancelCreatePack={cancelCreatingPack}
 				onChanged={refreshPromptData}
 				onCreatePack={createPack}
+				onDirtyChange={setIsPackDirty}
 				onSelectedPackChange={selectPack}
 				onStartCreatePack={startCreatingPack}
 				packs={packs}
@@ -312,11 +397,11 @@ const PromptPackExportCompleteDialog: React.FC<{
 	<AlertDialog open={Boolean(completion)} onOpenChange={onOpenChange}>
 		<AlertDialogContent>
 			<AlertDialogHeader>
-				<AlertDialogTitle>词包已导出</AlertDialogTitle>
+				<AlertDialogTitle>技能包已导出</AlertDialogTitle>
 				<AlertDialogDescription>
 					{completion?.status === "download-started"
-						? `“${completion.fileName}”下载已开始。保存后前往 MediaGo「我的词包」上传，设置公开售卖或席位分发并提交审核。`
-						: `“${completion?.fileName ?? "词包"}”已保存。前往 MediaGo「我的词包」上传，设置公开售卖或席位分发并提交审核。`}
+						? `“${completion.fileName}”下载已开始。保存后前往 MediaGo「我的技能包」上传，设置公开售卖或席位分发并提交审核。`
+						: `“${completion?.fileName ?? "技能包"}”已保存。前往 MediaGo「我的技能包」上传，设置公开售卖或席位分发并提交审核。`}
 				</AlertDialogDescription>
 			</AlertDialogHeader>
 			<AlertDialogFooter className="sm:items-center">
@@ -418,25 +503,25 @@ const promptPackExportErrorNotice = (error: unknown) => {
 	if (/invalid prompt pack: skill [^\n]+ description is required/i.test(message)) {
 		return {
 			description: "当前 Skill 缺少用途描述，请补充后再导出。",
-			title: "请完善词包内容",
+			title: "请完善技能包内容",
 		};
 	}
 	if (/invalid prompt pack: skill [^\n]+ is incomplete/i.test(message)) {
 		return {
 			description: "当前 Skill 缺少名称或正文内容，请补充后再导出。",
-			title: "请完善词包内容",
+			title: "请完善技能包内容",
 		};
 	}
 	if (/invalid prompt pack: prompt [^\n]+ is incomplete/i.test(message)) {
 		return {
 			description: "当前提示词缺少名称或正文内容，请补充后再导出。",
-			title: "请完善词包内容",
+			title: "请完善技能包内容",
 		};
 	}
 	if (/invalid prompt pack/i.test(message)) {
 		return {
-			description: "词包中仍有内容未填写完整，请检查后再导出。",
-			title: "请完善词包内容",
+			description: "技能包中仍有内容未填写完整，请检查后再导出。",
+			title: "请完善技能包内容",
 		};
 	}
 	return { description: message, title: "导出失败" };

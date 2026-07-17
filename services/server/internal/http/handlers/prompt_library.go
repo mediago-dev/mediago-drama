@@ -46,7 +46,7 @@ type deletePromptLibraryResponse struct {
 
 // HandleListCategories godoc
 // @Summary 获取提示词分类
-// @Description 返回来自提示词包和用户自定义的提示词分类。
+// @Description 返回来自技能包和用户自定义的提示词分类。
 // @Tags Prompt Presets
 // @Produce json
 // @Success 200 {object} SwaggerEnvelope
@@ -89,7 +89,7 @@ func (handler PromptLibrary) HandlePostCategory(context *gin.Context) {
 
 // HandleListPrompts godoc
 // @Summary 获取提示词预设
-// @Description 返回来自提示词包和用户自定义的可复用生成提示词。
+// @Description 返回来自技能包和用户自定义的可复用生成提示词。
 // @Tags Prompt Presets
 // @Produce json
 // @Param category query string false "Prompt category"
@@ -208,7 +208,7 @@ func (handler PromptLibrary) HandleDeletePrompt(context *gin.Context) {
 
 // HandleResetPrompt godoc
 // @Summary 重置提示词预设
-// @Description 将一个提示词恢复到所属提示词包的默认内容。
+// @Description 将一个提示词恢复到所属技能包的默认内容。
 // @Tags Prompt Presets
 // @Produce json
 // @Param id path string true "Prompt preset ID"

@@ -8,7 +8,7 @@
 
 当前 Agent 在调用 `generate_media` 或 `generate_media_batch` 前，会要求用户提交
 `generation_plan`。服务端已经核验 selection 所属的 project/session/run，以及模型路由、
-参数、参考图、提示词包和提示词优化设置。
+参数、参考图、技能包和提示词优化设置。
 
 现有边界仍存在两类缺口：
 
@@ -49,7 +49,7 @@ Generation MCP 的调用方模式必须由构造器显式声明：
 
 实际 MCP 请求规范化后必须与授权完全一致。允许的动态合并只有：
 
-- 路由、params、公共参考图、提示词包和提示词优化来自用户提交的
+- 路由、params、公共参考图、技能包和提示词优化来自用户提交的
   `generation_settings`；
 - 每项 prompt、目标与固定参考图来自 `GenerationPlanIntent`；
 - 服务端生成的 task/batch ID 和纯后端默认值不参与比较。

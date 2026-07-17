@@ -26,6 +26,7 @@ task prepare:tool TOOL=libtv
 task prepare:tool TOOL=pippit
 task prepare:media-tools
 task prepare:generation-clis GENERATION_CLIS=dreamina,libtv,pippit
+task prepare:rights PLATFORM=darwin-arm64
 task prepare:all
 task prepare:clean
 ```
@@ -59,6 +60,25 @@ Tool entries store pinned release URLs instead of committing native binaries.
 When `sizeBytes` or `sha256` are present for a platform, they are checked before
 installation. Tools can be distributed as raw executables or archives; archived
 tools declare `archivePath` for the binary to extract.
+
+The private `mediago-rights` Runtime has a dedicated preparation task because
+its pinned tool manifest is stored in a protected GitHub Release instead of the
+public `tools.json`:
+
+```bash
+MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME=1 \
+MEDIAGO_PRIVATE_ARTIFACT_TOKEN=... \
+MEDIAGO_RIGHTS_RELEASE_TAG=... \
+task prepare:rights PLATFORM=darwin-arm64
+```
+
+The task downloads the release manifest and matching platform archive from
+`mediago-dev/mediago-drama-private`, verifies the pinned policy, version, URL,
+size, SHA-256, and archive member, then stages the standard tool layout at
+`dist/<platform>/tools/mediago-rights`. If
+`MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME` is unset or not `1`, the task succeeds
+without reading private credentials or preparing the Runtime. This is the
+default local-development behavior.
 
 `prepare:media-tools` always prepares the baseline media tools (`ffmpeg` and
 `ffprobe`). `prepare:generation-clis` prepares the optional generation CLIs

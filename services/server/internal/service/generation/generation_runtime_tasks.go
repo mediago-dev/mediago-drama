@@ -109,7 +109,7 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		Params:            task.Params,
 	}
 	if status, err := workflow.authorizeContentUse(ctx, "call", payload.SourceRefs); err != nil {
-		_ = workflow.generationTasks.RecordAttempt(task.ID, "retry", task.Status, "提示词包权益校验失败。", err)
+		_ = workflow.generationTasks.RecordAttempt(task.ID, "retry", task.Status, "技能包权益校验失败。", err)
 		return generationMessageResponse{}, status, err
 	}
 	// Promote a legacy result-derived title into the retry request so later

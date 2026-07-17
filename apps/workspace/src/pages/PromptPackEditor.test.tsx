@@ -115,6 +115,7 @@ describe("PromptPackEditor", () => {
 		renderEditor("/prompt-pack-editor?packId=local.test-pack");
 
 		fireEvent.click(await screen.findByRole("button", { name: "关闭前保存" }));
+		fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
 		fireEvent.change(await screen.findByLabelText("提示词名称"), {
 			target: { value: "已经保存" },
 		});
@@ -129,20 +130,157 @@ describe("PromptPackEditor", () => {
 		);
 	});
 
+	it("keeps an entry read-only until edit and saves only from the explicit action", async () => {
+		const skillEntry = {
+			body: "原始正文",
+			description: "原始描述",
+			id: "skill-explicit-save",
+			kind: "skill" as const,
+			name: "分镜写作",
+			packId: localPack.id,
+			slug: "storyboard-writer",
+			source: "user" as const,
+		};
+		vi.mocked(getPromptPackContents).mockResolvedValue({ pack: localPack, entries: [skillEntry] });
+		vi.mocked(updatePromptPackEntry).mockResolvedValue({
+			...skillEntry,
+			description: "更新后的描述",
+		});
+		renderEditor("/prompt-pack-editor?packId=local.test-pack");
+
+		fireEvent.click(await screen.findByRole("button", { name: "分镜写作" }));
+		const nameInput = await screen.findByLabelText("Skill 名称");
+		const descriptionInput = screen.getByLabelText("Skill 描述");
+		expect(nameInput).toHaveAttribute("readonly");
+		expect(descriptionInput).toHaveAttribute("readonly");
+		expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+
+		fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+		expect(nameInput).not.toHaveAttribute("readonly");
+		expect(descriptionInput).not.toHaveAttribute("readonly");
+		fireEvent.change(descriptionInput, { target: { value: "更新后的描述" } });
+		await new Promise((resolve) => window.setTimeout(resolve, 750));
+		expect(updatePromptPackEntry).not.toHaveBeenCalled();
+
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		await waitFor(() =>
+			expect(updatePromptPackEntry).toHaveBeenCalledWith(
+				localPack.id,
+				skillEntry.id,
+				expect.objectContaining({ description: "更新后的描述" }),
+			),
+		);
+		await waitFor(() => expect(screen.getByRole("button", { name: "编辑" })).toBeInTheDocument());
+	});
+
+	it("keeps drafts across entries and saves all prompt-pack changes together", async () => {
+		const firstSkill = {
+			body: "第一项正文",
+			description: "第一项描述",
+			id: "skill-first",
+			kind: "skill" as const,
+			name: "角色写作",
+			packId: localPack.id,
+			slug: "character-writer",
+			source: "user" as const,
+		};
+		const secondSkill = {
+			...firstSkill,
+			body: "第二项正文",
+			description: "第二项描述",
+			id: "skill-second",
+			name: "场景写作",
+			slug: "scene-writer",
+		};
+		vi.mocked(getPromptPackContents).mockResolvedValue({
+			pack: localPack,
+			entries: [firstSkill, secondSkill],
+		});
+		vi.mocked(updatePromptPackEntry).mockImplementation(async (_packId, entryId, input) => ({
+			...(entryId === firstSkill.id ? firstSkill : secondSkill),
+			...input,
+		}));
+		renderEditor("/prompt-pack-editor?packId=local.test-pack");
+
+		fireEvent.click(await screen.findByRole("button", { name: "角色写作" }));
+		await screen.findByLabelText("Skill 名称");
+		fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+		fireEvent.change(screen.getByLabelText("Skill 描述"), {
+			target: { value: "更新角色描述" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: "场景写作" }));
+		await waitFor(() => expect(screen.getByLabelText("Skill 名称")).toHaveValue("场景写作"));
+		fireEvent.change(screen.getByLabelText("Skill 描述"), {
+			target: { value: "更新场景描述" },
+		});
+
+		expect(updatePromptPackEntry).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+		await waitFor(() => expect(updatePromptPackEntry).toHaveBeenCalledTimes(2));
+		expect(updatePromptPackEntry).toHaveBeenCalledWith(
+			localPack.id,
+			firstSkill.id,
+			expect.objectContaining({ description: "更新角色描述" }),
+		);
+		expect(updatePromptPackEntry).toHaveBeenCalledWith(
+			localPack.id,
+			secondSkill.id,
+			expect.objectContaining({ description: "更新场景描述" }),
+		);
+	});
+
+	it("switches from a Skill to a prompt safely while the pack is editing", async () => {
+		const skillEntry = {
+			body: "Skill 正文",
+			description: "Skill 描述",
+			id: "skill-switch",
+			kind: "skill" as const,
+			name: "角色写作",
+			packId: localPack.id,
+			slug: "character-writer",
+			source: "user" as const,
+		};
+		const promptEntry = {
+			body: "提示词正文",
+			id: "prompt-switch",
+			kind: "prompt" as const,
+			metadata: { category: "other" },
+			name: "画面提示词",
+			packId: localPack.id,
+			slug: "image-prompt",
+			source: "user" as const,
+		};
+		vi.mocked(getPromptPackContents).mockResolvedValue({
+			pack: localPack,
+			entries: [skillEntry, promptEntry],
+		});
+		renderEditor("/prompt-pack-editor?packId=local.test-pack");
+
+		fireEvent.click(await screen.findByRole("button", { name: "角色写作" }));
+		await screen.findByLabelText("Skill 名称");
+		fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+		fireEvent.click(screen.getByRole("button", { name: "画面提示词" }));
+
+		expect(await screen.findByLabelText("提示词名称")).toHaveValue("画面提示词");
+		expect(screen.getByLabelText("编辑提示词内容")).toHaveTextContent("提示词正文");
+		expect(screen.queryByText(/Cannot read properties of null/)).not.toBeInTheDocument();
+	});
+
 	it("opens directly in pack creation mode from the route", async () => {
 		renderEditor("/prompt-pack-editor?mode=create");
 
-		expect(await screen.findByRole("heading", { name: "创建一个本地词包" })).toBeInTheDocument();
-		expect(screen.queryByRole("heading", { name: "词包管理" })).not.toBeInTheDocument();
+		expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+		expect(screen.getByRole("heading", { name: "创建本地技能包" })).toBeInTheDocument();
 	});
 
 	it("uses the shared resizable sidebar shell and keeps the title in the white content pane", async () => {
 		renderEditor();
 
-		const navigator = await screen.findByRole("navigation", { name: "提示词包编辑器导航" });
-		const title = screen.getByRole("heading", { name: "提示词包编辑器" });
+		const navigator = await screen.findByRole("navigation", { name: "技能包编辑器导航" });
+		const title = screen.getByRole("heading", { name: "技能包编辑器" });
 		const resizeHandle = screen.getByRole("separator", {
-			name: "调整词包编辑器侧边栏宽度",
+			name: "调整技能包编辑器侧边栏宽度",
 		});
 
 		expect(navigator).toHaveClass("bg-ide-sidebar");
@@ -158,13 +296,31 @@ describe("PromptPackEditor", () => {
 		fireEvent.pointerUp(window);
 	});
 
+	it("uses the main-window sidebar hierarchy animation for pack details", async () => {
+		renderEditor();
+
+		const navigator = await screen.findByRole("navigation", { name: "技能包编辑器导航" });
+		const libraryScreen = navigator.querySelector('[data-sidebar-screen="pack-library"]');
+		expect(libraryScreen).toHaveAttribute("aria-hidden", "false");
+
+		fireEvent.click(screen.getByRole("button", { name: "本地草稿" }));
+		await screen.findByRole("button", { name: "返回技能包列表" });
+		const detailScreen = navigator.querySelector('[data-sidebar-screen="pack-detail"]');
+		expect(detailScreen).toHaveAttribute("aria-hidden", "false");
+		expect(detailScreen).toHaveClass("transition-transform", "translate-x-0");
+
+		fireEvent.click(screen.getByRole("button", { name: "返回技能包列表" }));
+		await waitFor(() => expect(libraryScreen).toHaveAttribute("aria-hidden", "false"));
+		expect(detailScreen).toHaveClass("transition-transform", "translate-x-full", "z-20");
+	});
+
 	it("creates a local draft without asking for author or package ID", async () => {
 		vi.mocked(createPromptPack).mockResolvedValue(localPack);
 		renderEditor();
-		fireEvent.click(await screen.findByRole("button", { name: "新建词包" }));
+		fireEvent.click(await screen.findByRole("button", { name: "新建技能包" }));
 
-		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-		expect(await screen.findByRole("heading", { name: "创建一个本地词包" })).toBeInTheDocument();
+		expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+		expect(screen.getByRole("heading", { name: "创建本地技能包" })).toBeInTheDocument();
 		expect(screen.queryByLabelText("作者")).not.toBeInTheDocument();
 		expect(screen.queryByLabelText("Package ID")).not.toBeInTheDocument();
 		fireEvent.change(screen.getByLabelText("名称"), { target: { value: "新草稿" } });
@@ -183,35 +339,36 @@ describe("PromptPackEditor", () => {
 		);
 	});
 
-	it("keeps pack creation and search states mutually exclusive", async () => {
+	it("closes the creation dialog before searching and reopens it from the sidebar", async () => {
 		renderEditor();
 
-		fireEvent.click(await screen.findByRole("button", { name: "新建词包" }));
-		expect(await screen.findByRole("heading", { name: "创建一个本地词包" })).toBeInTheDocument();
+		fireEvent.click(await screen.findByRole("button", { name: "新建技能包" }));
+		expect(await screen.findByRole("heading", { name: "创建本地技能包" })).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: "取消" }));
+		await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
 
-		fireEvent.click(screen.getByRole("button", { name: "搜索词包" }));
-		expect(await screen.findByLabelText("搜索本地词包")).toBeInTheDocument();
-		expect(screen.queryByRole("heading", { name: "创建一个本地词包" })).not.toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: "搜索技能包" }));
+		expect(await screen.findByLabelText("搜索本地技能包")).toBeInTheDocument();
 
-		fireEvent.click(screen.getByRole("button", { name: "新建词包" }));
-		expect(screen.queryByLabelText("搜索本地词包")).not.toBeInTheDocument();
-		expect(await screen.findByRole("heading", { name: "创建一个本地词包" })).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: "新建技能包" }));
+		expect(screen.queryByLabelText("搜索本地技能包")).not.toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "创建本地技能包" })).toBeInTheDocument();
 	});
 
 	it("opens a type dialog from the single new-content toolbar action", async () => {
 		renderEditor("/prompt-pack-editor?packId=local.test-pack");
 
 		const createButton = await screen.findByRole("button", { name: "新建内容" });
-		expect(screen.getByRole("button", { name: "词包概览" })).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "返回词包列表" })).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "搜索当前词包" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "技能包概览" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "返回技能包列表" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "搜索当前技能包" })).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "列表视图" })).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "分组视图" })).toBeInTheDocument();
 		expect(screen.getAllByText("本地草稿").length).toBeGreaterThan(0);
 
 		fireEvent.click(createButton);
 		expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
-		expect(screen.getByRole("heading", { name: "新建词包内容" })).toBeInTheDocument();
+		expect(screen.getByRole("heading", { name: "新建技能包内容" })).toBeInTheDocument();
 		expect(screen.getByRole("radio", { name: /提示词/ })).toHaveAttribute("aria-checked", "true");
 		expect(screen.getByRole("radio", { name: /Skill/ })).toHaveAttribute("aria-checked", "false");
 		expect(screen.getByRole("button", { name: "创建提示词" })).toBeInTheDocument();
@@ -238,15 +395,15 @@ describe("PromptPackEditor", () => {
 				filename: "draft.mgpack",
 			}),
 		);
-		expect(toastSuccess).not.toHaveBeenCalledWith("词包已导出", expect.anything());
+		expect(toastSuccess).not.toHaveBeenCalledWith("技能包已导出", expect.anything());
 		completeSave?.({ canceled: false, path: "/tmp/draft.mgpack" });
 		const completionDialog = await screen.findByRole("alertdialog");
-		expect(screen.getByRole("heading", { name: "词包已导出" })).toBeInTheDocument();
+		expect(screen.getByRole("heading", { name: "技能包已导出" })).toBeInTheDocument();
 		expect(completionDialog).toHaveTextContent(
-			"“draft.mgpack”已保存。前往 MediaGo「我的词包」上传，设置公开售卖或席位分发并提交审核。",
+			"“draft.mgpack”已保存。前往 MediaGo「我的技能包」上传，设置公开售卖或席位分发并提交审核。",
 		);
 		expect(openExternal).not.toHaveBeenCalled();
-		expect(toastSuccess).not.toHaveBeenCalledWith("词包已导出", expect.anything());
+		expect(toastSuccess).not.toHaveBeenCalledWith("技能包已导出", expect.anything());
 
 		fireEvent.click(screen.getByRole("button", { name: "在文件夹中显示" }));
 		await waitFor(() => expect(revealPath).toHaveBeenCalledWith("/tmp/draft.mgpack"));
@@ -271,7 +428,7 @@ describe("PromptPackEditor", () => {
 
 		await waitFor(() => expect(savePromptPack).toHaveBeenCalled());
 		await waitFor(() => expect(screen.getByRole("button", { name: "导出" })).toBeEnabled());
-		expect(toastSuccess).not.toHaveBeenCalledWith("词包已导出", expect.anything());
+		expect(toastSuccess).not.toHaveBeenCalledWith("技能包已导出", expect.anything());
 		expect(toastInfo).not.toHaveBeenCalled();
 		expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 	});
@@ -320,7 +477,7 @@ describe("PromptPackEditor", () => {
 		fireEvent.click(await screen.findByRole("button", { name: "前往发布" }));
 
 		await waitFor(() =>
-			expect(toastError).toHaveBeenCalledWith("未配置词包发布地址", {
+			expect(toastError).toHaveBeenCalledWith("未配置技能包发布地址", {
 				description: "请设置 VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL 后重试。",
 			}),
 		);
@@ -348,7 +505,7 @@ describe("PromptPackEditor", () => {
 		fireEvent.click(await screen.findByRole("button", { name: "导出" }));
 
 		await waitFor(() =>
-			expect(toastError).toHaveBeenCalledWith("请完善词包内容", {
+			expect(toastError).toHaveBeenCalledWith("请完善技能包内容", {
 				description: "“未命名 Skill”缺少用途描述和正文内容，请补充后再导出。",
 			}),
 		);
@@ -378,7 +535,7 @@ describe("PromptPackEditor", () => {
 		fireEvent.click(await screen.findByRole("button", { name: "导出" }));
 
 		await waitFor(() =>
-			expect(toastError).toHaveBeenCalledWith("请完善词包内容", {
+			expect(toastError).toHaveBeenCalledWith("请完善技能包内容", {
 				description: "当前 Skill 缺少用途描述，请补充后再导出。",
 			}),
 		);
@@ -430,20 +587,20 @@ describe("PromptPackEditor", () => {
 		vi.mocked(uninstallPromptPack).mockResolvedValue();
 		renderEditor("/prompt-pack-editor?packId=local.test-pack");
 
-		fireEvent.click(await screen.findByRole("button", { name: "删除词包" }));
+		fireEvent.click(await screen.findByRole("button", { name: "删除技能包" }));
 
 		await waitFor(() => expect(uninstallPromptPack).toHaveBeenCalledWith(localPack.id));
 		expect(confirmDialog).toHaveBeenCalledWith(
 			expect.objectContaining({
-				confirmLabel: "删除词包",
-				title: "删除本地词包？",
+				confirmLabel: "删除技能包",
+				title: "删除本地技能包？",
 				variant: "destructive",
 			}),
 		);
 		await waitFor(() =>
-			expect(screen.getByRole("heading", { name: "词包管理" })).toBeInTheDocument(),
+			expect(screen.getByRole("heading", { name: "技能包管理" })).toBeInTheDocument(),
 		);
-		expect(screen.getByRole("heading", { name: "还没有本地词包" })).toBeInTheDocument();
+		expect(screen.getByRole("heading", { name: "还没有本地技能包" })).toBeInTheDocument();
 	});
 
 	it("keeps legacy prompt metadata while hiding category from the editor", async () => {
@@ -466,7 +623,9 @@ describe("PromptPackEditor", () => {
 
 		fireEvent.click(await screen.findByRole("button", { name: "旧提示词" }));
 		expect(screen.queryByLabelText("分类")).not.toBeInTheDocument();
-		fireEvent.change(await screen.findByLabelText("提示词名称"), {
+		const nameInput = await screen.findByLabelText("提示词名称");
+		fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+		fireEvent.change(nameInput, {
 			target: { value: "新名称" },
 		});
 		fireEvent.keyDown(window, { key: "s", metaKey: true });

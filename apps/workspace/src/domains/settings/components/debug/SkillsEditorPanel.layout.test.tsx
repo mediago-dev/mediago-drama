@@ -45,7 +45,7 @@ describe("SkillsEditorPanel layout", () => {
 		vi.mocked(listPromptPacks).mockResolvedValue([
 			{
 				id: "builtin",
-				name: "MediaGo 默认词包",
+				name: "MediaGo 默认技能包",
 				version: "1.0.0",
 				source: "default",
 				enabled: true,
@@ -85,7 +85,7 @@ describe("SkillsEditorPanel layout", () => {
 
 		const preview = await screen.findByLabelText("Skill Markdown 预览");
 		expect(screen.getByText("图片生成指导")).toBeInTheDocument();
-		expect(screen.getByLabelText("所属词包：默认词包")).toBeInTheDocument();
+		expect(screen.getByLabelText("所属技能包：默认技能包")).toBeInTheDocument();
 		expect(preview).toHaveClass("min-h-0", "flex-1", "overflow-y-auto");
 
 		const bodySection = preview.parentElement;
