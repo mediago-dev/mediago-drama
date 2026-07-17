@@ -115,6 +115,103 @@ func TestServiceCreatesLocalAuthoringPackAndExportsV1(t *testing.T) {
 	}
 }
 
+func TestServiceReturnsAndManagesPackScopedCategories(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	pack, err := store.CreatePack(ctx, Pack{
+		ID:      "company.category-pack",
+		Name:    "Category Pack",
+		Version: "1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+	if _, err := store.CreatePackCategory(ctx, pack.ID, Category{
+		ID:    "shots",
+		Label: "镜头",
+		Order: 2,
+	}); err != nil {
+		t.Fatalf("CreatePackCategory(shots) error = %v", err)
+	}
+	if _, err := store.CreatePackCategory(ctx, pack.ID, Category{
+		ID:    "looks",
+		Label: "造型",
+		Order: 1,
+	}); err != nil {
+		t.Fatalf("CreatePackCategory(looks) error = %v", err)
+	}
+
+	contents, err := store.GetPackContents(ctx, pack.ID)
+	if err != nil {
+		t.Fatalf("GetPackContents() error = %v", err)
+	}
+	if len(contents.Categories) != 2 || contents.Categories[0].ID != "looks" || contents.Categories[1].ID != "shots" {
+		t.Fatalf("categories = %#v, want pack-scoped categories in stored order", contents.Categories)
+	}
+	for _, category := range contents.Categories {
+		if category.PackID != pack.ID || category.Source != entrySourceUser {
+			t.Fatalf("category = %#v, want user category owned by %q", category, pack.ID)
+		}
+	}
+
+	updated, err := store.UpdatePackCategory(ctx, pack.ID, "shots", Category{
+		Label: "镜头语言",
+		Order: 0,
+	})
+	if err != nil {
+		t.Fatalf("UpdatePackCategory() error = %v", err)
+	}
+	if updated.ID != "shots" || updated.Label != "镜头语言" || updated.Order != 0 {
+		t.Fatalf("updated category = %#v", updated)
+	}
+
+	prompt, err := store.CreatePackEntryDraft(ctx, pack.ID, instructionpack.KindPrompt, "camera-prompt", "")
+	if err != nil {
+		t.Fatalf("CreatePackEntryDraft() error = %v", err)
+	}
+	prompt, err = store.SavePackEntry(ctx, pack.ID, prompt.ID, EntryUpdate{
+		Name:     "Camera Prompt",
+		Body:     "Use a long lens.",
+		Metadata: map[string]any{"category": "shots", "legacyFlag": "keep"},
+	})
+	if err != nil {
+		t.Fatalf("SavePackEntry() error = %v", err)
+	}
+	if err := store.DeletePackCategory(ctx, pack.ID, "shots", "looks"); err != nil {
+		t.Fatalf("DeletePackCategory() error = %v", err)
+	}
+	contents, err = store.GetPackContents(ctx, pack.ID)
+	if err != nil {
+		t.Fatalf("GetPackContents(after delete) error = %v", err)
+	}
+	if len(contents.Categories) != 1 || contents.Categories[0].ID != "looks" {
+		t.Fatalf("categories after delete = %#v, want only looks", contents.Categories)
+	}
+	prompt, ok := findEntry(contents.Entries, prompt.Slug)
+	if !ok || prompt.Metadata["category"] != "looks" || prompt.Metadata["legacyFlag"] != "keep" {
+		t.Fatalf("prompt after category delete = %#v, want reassigned metadata", prompt)
+	}
+
+	defaultContents, err := store.GetPackContents(ctx, DefaultPackID)
+	if err != nil {
+		t.Fatalf("GetPackContents(default) error = %v", err)
+	}
+	if len(defaultContents.Categories) == 0 || hasCategory(contents.Categories, "style", "风格") {
+		t.Fatalf("pack categories leaked across packs: local=%#v default=%#v", contents.Categories, defaultContents.Categories)
+	}
+	packageCategory := defaultContents.Categories[0]
+	if _, err := store.UpdatePackCategory(ctx, DefaultPackID, packageCategory.ID, Category{
+		Label: packageCategory.Label + " changed",
+		Order: packageCategory.Order,
+	}); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("UpdatePackCategory(package) error = %v, want ErrPackReadonly", err)
+	}
+	replacementCategory := defaultContents.Categories[1]
+	if err := store.DeletePackCategory(ctx, DefaultPackID, packageCategory.ID, replacementCategory.ID); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("DeletePackCategory(package) error = %v, want ErrPackReadonly", err)
+	}
+}
+
 func TestServiceCreatesPackDraftEntriesBeforeContentIsWritten(t *testing.T) {
 	ctx := context.Background()
 	store := newTestService(t)
@@ -126,13 +223,38 @@ func TestServiceCreatesPackDraftEntriesBeforeContentIsWritten(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePack() error = %v", err)
 	}
+	if _, err := store.CreatePackCategory(ctx, pack.ID, Category{
+		ID:    "storyboard",
+		Label: "分镜",
+		Order: 0,
+	}); err != nil {
+		t.Fatalf("CreatePackCategory() error = %v", err)
+	}
 
-	prompt, err := store.CreatePackEntryDraft(ctx, pack.ID, instructionpack.KindPrompt, "prompt-draft")
+	prompt, err := store.CreatePackEntryDraft(
+		ctx,
+		pack.ID,
+		instructionpack.KindPrompt,
+		"prompt-draft",
+		"storyboard",
+	)
 	if err != nil {
 		t.Fatalf("CreatePackEntryDraft(prompt) error = %v", err)
 	}
 	if prompt.Name != "未命名提示词" || prompt.Body != "" || prompt.Source != entrySourceUser {
 		t.Fatalf("prompt draft = %#v, want an empty user draft", prompt)
+	}
+	if prompt.Metadata["category"] != "storyboard" {
+		t.Fatalf("prompt category = %#v, want storyboard", prompt.Metadata)
+	}
+	if _, err := store.CreatePackEntryDraft(
+		ctx,
+		pack.ID,
+		instructionpack.KindPrompt,
+		"unknown-category",
+		"missing",
+	); !errors.Is(err, ErrCategoryNotFound) {
+		t.Fatalf("CreatePackEntryDraft(unknown category) error = %v, want ErrCategoryNotFound", err)
 	}
 	if _, err := store.ExportPack(ctx, pack.ID); !errors.Is(err, ErrInvalidPack) {
 		t.Fatalf("ExportPack(incomplete) error = %v, want ErrInvalidPack", err)
@@ -152,7 +274,7 @@ func TestServiceCreatesPackDraftEntriesBeforeContentIsWritten(t *testing.T) {
 		t.Fatalf("ExportPack(complete prompt) error = %v", err)
 	}
 
-	skill, err := store.CreatePackEntryDraft(ctx, pack.ID, instructionpack.KindSkill, "skill-draft")
+	skill, err := store.CreatePackEntryDraft(ctx, pack.ID, instructionpack.KindSkill, "skill-draft", "")
 	if err != nil {
 		t.Fatalf("CreatePackEntryDraft(skill) error = %v", err)
 	}
@@ -179,6 +301,7 @@ func TestServiceCreatesPackDraftEntriesBeforeContentIsWritten(t *testing.T) {
 		DefaultPackID,
 		instructionpack.KindPrompt,
 		"builtin-user-draft",
+		"",
 	)
 	if err != nil {
 		t.Fatalf("CreatePackEntryDraft(default) error = %v", err)

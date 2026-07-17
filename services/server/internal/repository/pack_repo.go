@@ -310,6 +310,20 @@ func (repo *PackRepository) UpsertCategory(model domain.PackCategoryModel) error
 	return nil
 }
 
+// DeleteCategory removes one category owned by a pack.
+func (repo *PackRepository) DeleteCategory(packID string, id string) error {
+	err := repo.db.Delete(
+		&domain.PackCategoryModel{},
+		"pack_id = ? AND id = ?",
+		strings.TrimSpace(packID),
+		strings.TrimSpace(id),
+	).Error
+	if err != nil {
+		return fmt.Errorf("deleting pack category: %w", err)
+	}
+	return nil
+}
+
 // DeleteCategoriesByPack removes every category owned by a pack.
 func (repo *PackRepository) DeleteCategoriesByPack(packID string) error {
 	err := repo.db.Delete(&domain.PackCategoryModel{}, "pack_id = ?", strings.TrimSpace(packID)).Error

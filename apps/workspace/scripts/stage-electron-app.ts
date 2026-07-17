@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 type WorkspacePackage = {
 	name?: string;
 	version?: string;
+	license?: string;
 	dependencies?: {
 		"electron-updater"?: string;
 	};
@@ -56,6 +57,7 @@ function main(): void {
 		version: workspacePackage.version ?? "0.0.0",
 		description: "MediaGo Drama desktop workspace",
 		author: "MediaGo Dev",
+		license: workspacePackage.license ?? "Apache-2.0",
 		repository: {
 			type: "git",
 			url: `https://github.com/${githubOwner}/${githubRepo}.git`,

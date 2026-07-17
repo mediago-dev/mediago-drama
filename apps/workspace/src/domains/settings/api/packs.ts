@@ -46,9 +46,19 @@ export interface PromptPackEntry {
 	referenceMissing?: boolean;
 }
 
+export interface PromptPackCategory {
+	id: string;
+	packId: string;
+	label: string;
+	order?: number;
+	source: "pack" | "user";
+	builtin?: boolean;
+}
+
 export interface PromptPackContents {
 	pack: PromptPack;
 	entries: PromptPackEntry[];
+	categories?: PromptPackCategory[];
 }
 
 export interface PromptPackEntryReference {
@@ -89,6 +99,48 @@ export const getPromptPackContents = async (id: string): Promise<PromptPackConte
 	return response.data;
 };
 
+export interface PromptPackCategoryInput {
+	id?: string;
+	label: string;
+	order: number;
+}
+
+const promptPackCategoriesKey = (packId: string) =>
+	`${promptPacksKey}/${encodeURIComponent(packId)}/categories`;
+
+export const createPromptPackCategory = async (
+	packId: string,
+	input: Required<Pick<PromptPackCategoryInput, "id">> & PromptPackCategoryInput,
+): Promise<PromptPackCategory> => {
+	const response = await httpClient.post<PromptPackCategory>(
+		promptPackCategoriesKey(packId),
+		input,
+	);
+	return response.data;
+};
+
+export const updatePromptPackCategory = async (
+	packId: string,
+	categoryId: string,
+	input: PromptPackCategoryInput,
+): Promise<PromptPackCategory> => {
+	const response = await httpClient.put<PromptPackCategory>(
+		`${promptPackCategoriesKey(packId)}/${encodeURIComponent(categoryId)}`,
+		input,
+	);
+	return response.data;
+};
+
+export const deletePromptPackCategory = async (
+	packId: string,
+	categoryId: string,
+	replacementCategoryId: string,
+): Promise<void> => {
+	await httpClient.delete(`${promptPackCategoriesKey(packId)}/${encodeURIComponent(categoryId)}`, {
+		data: { replacementCategoryId },
+	});
+};
+
 export const copyPromptPackEntries = async (
 	id: string,
 	entries: PromptPackEntryReference[],
@@ -119,6 +171,7 @@ export interface UpdatePromptPackEntryInput {
 }
 
 export interface CreatePromptPackEntryInput {
+	categoryId?: string;
 	kind: PromptPackEntryKind;
 	slug: string;
 }

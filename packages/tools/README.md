@@ -18,9 +18,9 @@ task test
 doc.go                 # placeholder package; no enabled processing backends
 go.mod                 # module declaration
 Taskfile.yml           # go-task tasks (fmt / vet / test / tidy / check)
-LICENSE                # MIT
+LICENSE                # Apache-2.0
 ```
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache-2.0 — see [LICENSE](LICENSE).

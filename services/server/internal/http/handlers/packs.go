@@ -55,8 +55,9 @@ type promptPackEntryRequest struct {
 }
 
 type createPromptPackEntryRequest struct {
-	Kind instructionpack.Kind `json:"kind"`
-	Slug string               `json:"slug"`
+	CategoryID string               `json:"categoryId"`
+	Kind       instructionpack.Kind `json:"kind"`
+	Slug       string               `json:"slug"`
 }
 
 type updatePromptPackEntryRequest struct {
@@ -65,6 +66,16 @@ type updatePromptPackEntryRequest struct {
 	Description string         `json:"description"`
 	Body        string         `json:"body"`
 	Metadata    map[string]any `json:"metadata"`
+}
+
+type promptPackCategoryRequest struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Order int    `json:"order"`
+}
+
+type deletePromptPackCategoryRequest struct {
+	ReplacementCategoryID string `json:"replacementCategoryId"`
 }
 
 type deletePromptPackResponse struct {
@@ -200,6 +211,82 @@ func (handler PromptPacks) HandleGetPackContents(context *gin.Context) {
 	httpresponse.OK(context, contents)
 }
 
+// HandleCreatePackCategory godoc
+// @Summary 新建技能包提示词分组
+// @Description 在指定技能包中创建一个提示词分组。
+// @Tags Skill Packs
+// @Accept json
+// @Produce json
+// @Router /api/v1/packs/{id}/categories [post]
+func (handler PromptPacks) HandleCreatePackCategory(context *gin.Context) {
+	payload, err := decodeJSON[promptPackCategoryRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	category, err := handler.store.CreatePackCategory(context.Request.Context(), context.Param("id"), promptpack.Category{
+		ID:    payload.ID,
+		Label: payload.Label,
+		Order: payload.Order,
+	})
+	if err != nil {
+		writePromptPackError(context, err)
+		return
+	}
+	httpresponse.OK(context, category)
+}
+
+// HandleUpdatePackCategory godoc
+// @Summary 更新技能包提示词分组
+// @Description 重命名或调整指定技能包中的提示词分组顺序。
+// @Tags Skill Packs
+// @Accept json
+// @Produce json
+// @Router /api/v1/packs/{id}/categories/{categoryId} [put]
+func (handler PromptPacks) HandleUpdatePackCategory(context *gin.Context) {
+	payload, err := decodeJSON[promptPackCategoryRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	category, err := handler.store.UpdatePackCategory(
+		context.Request.Context(),
+		context.Param("id"),
+		context.Param("categoryId"),
+		promptpack.Category{Label: payload.Label, Order: payload.Order},
+	)
+	if err != nil {
+		writePromptPackError(context, err)
+		return
+	}
+	httpresponse.OK(context, category)
+}
+
+// HandleDeletePackCategory godoc
+// @Summary 删除技能包提示词分组
+// @Description 删除分组并将其中的提示词移动到同一技能包中的替代分组。
+// @Tags Skill Packs
+// @Accept json
+// @Produce json
+// @Router /api/v1/packs/{id}/categories/{categoryId} [delete]
+func (handler PromptPacks) HandleDeletePackCategory(context *gin.Context) {
+	payload, err := decodeJSON[deletePromptPackCategoryRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	if err := handler.store.DeletePackCategory(
+		context.Request.Context(),
+		context.Param("id"),
+		context.Param("categoryId"),
+		payload.ReplacementCategoryID,
+	); err != nil {
+		writePromptPackError(context, err)
+		return
+	}
+	httpresponse.OK(context, deletePromptPackResponse{Deleted: true})
+}
+
 // HandleCopyPackEntries godoc
 // @Summary 添加内容到本地技能包
 // @Description 将选中的 Skill 和提示词作为同步引用加入目标本地包。
@@ -254,6 +341,7 @@ func (handler PromptPacks) HandleCreatePackEntry(context *gin.Context) {
 		context.Param("id"),
 		payload.Kind,
 		payload.Slug,
+		payload.CategoryID,
 	)
 	if err != nil {
 		writePromptPackError(context, err)
@@ -524,11 +612,11 @@ func writePromptPackError(context *gin.Context, err error) {
 		)
 	case errors.Is(err, promptpack.ErrInvalidPack):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
-	case errors.Is(err, promptpack.ErrPackExists), errors.Is(err, promptpack.ErrEntryExists):
+	case errors.Is(err, promptpack.ErrPackExists), errors.Is(err, promptpack.ErrEntryExists), errors.Is(err, promptpack.ErrCategoryExists):
 		httpresponse.ErrorFromStatus(context, http.StatusConflict, err)
 	case errors.Is(err, promptpack.ErrPackReadonly):
 		httpresponse.ErrorFromStatus(context, http.StatusForbidden, err)
-	case errors.Is(err, promptpack.ErrPackNotFound), errors.Is(err, promptpack.ErrEntryNotFound):
+	case errors.Is(err, promptpack.ErrPackNotFound), errors.Is(err, promptpack.ErrEntryNotFound), errors.Is(err, promptpack.ErrCategoryNotFound):
 		httpresponse.ErrorFromStatus(context, http.StatusNotFound, err)
 	default:
 		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)

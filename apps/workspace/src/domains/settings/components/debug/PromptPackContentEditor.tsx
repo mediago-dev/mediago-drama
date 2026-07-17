@@ -1,6 +1,7 @@
 import type React from "react";
 import { extraPromptCategory } from "@/domains/generation/lib/prompt-categories";
 import type {
+	PromptPackCategory,
 	PromptPackEntry,
 	PromptPackEntryKind,
 	UpdatePromptPackEntryInput,
@@ -18,41 +19,62 @@ export interface PromptPackEntryDraft {
 }
 
 interface PromptPackEntryEditorProps {
+	categories: PromptPackCategory[];
 	draft: PromptPackEntryDraft;
 	entry: PromptPackEntry;
 	error?: string;
 	isEditing: boolean;
+	isUpdatingCategory?: boolean;
+	onCategoryChange: (categoryID: string) => void;
 	onChange: (draft: PromptPackEntryDraft) => void;
 }
 
 export const PromptPackEntryEditor: React.FC<PromptPackEntryEditorProps> = ({
+	categories,
 	draft,
 	entry,
 	error,
 	isEditing,
+	isUpdatingCategory = false,
+	onCategoryChange,
 	onChange,
 }) => {
 	const updateDraft = (update: Partial<PromptPackEntryDraft>) => onChange({ ...draft, ...update });
+	const categoryOptions =
+		entry.kind === "prompt" && !categories.some((category) => category.id === draft.category)
+			? [
+					...categories,
+					{
+						id: draft.category,
+						label: draft.category || "未分类",
+						order: categories.length,
+						packId: entry.packId,
+						source: "user" as const,
+					},
+				]
+			: categories;
 
 	return (
 		<section className="h-full overflow-y-auto">
-			<div className="mx-auto w-full max-w-4xl px-10 py-8 xl:px-14">
-				<div className="flex min-h-9 items-center justify-between gap-4">
-					<Badge variant="outline">{entry.kind === "skill" ? "Skill" : "提示词"}</Badge>
-					{isEditing ? <span className="text-xs text-muted-foreground">技能包编辑中</span> : null}
-				</div>
+			<div className="mx-auto w-full max-w-4xl px-10 pb-8 pt-5 xl:px-14">
+				{entry.kind === "prompt" ? (
+					<div className="flex items-center justify-between gap-4">
+						<Badge variant="outline">提示词</Badge>
+						{isEditing ? <span className="text-xs text-muted-foreground">技能包编辑中</span> : null}
+					</div>
+				) : null}
 
 				<input
 					aria-label={entry.kind === "skill" ? "Skill 名称" : "提示词名称"}
 					readOnly={!isEditing}
 					value={draft.name}
 					onChange={(event) => updateDraft({ name: event.target.value })}
-					className="mt-4 w-full border-0 bg-transparent p-0 text-3xl font-semibold text-foreground outline-none placeholder:text-muted-foreground read-only:cursor-default"
+					className={`${entry.kind === "prompt" ? "mt-4 " : ""}w-full border-0 bg-transparent p-0 text-3xl font-semibold text-foreground outline-none placeholder:text-muted-foreground read-only:cursor-default`}
 					placeholder={entry.kind === "skill" ? "未命名 Skill" : "未命名提示词"}
 				/>
 
 				{entry.kind === "skill" ? (
-					<div className="mt-5 border-b border-border pb-5">
+					<div className="mt-5 pb-5">
 						<label
 							className="block text-xs font-medium text-muted-foreground"
 							htmlFor="skill-description"
@@ -68,7 +90,32 @@ export const PromptPackEntryEditor: React.FC<PromptPackEntryEditorProps> = ({
 							placeholder="简要说明这个 Skill 的用途"
 						/>
 					</div>
-				) : null}
+				) : (
+					<div className="mt-5 border-b border-border pb-5">
+						<label
+							className="block text-xs font-medium text-muted-foreground"
+							htmlFor={`prompt-category-${entry.id}`}
+						>
+							分类
+						</label>
+						<select
+							id={`prompt-category-${entry.id}`}
+							disabled={isUpdatingCategory}
+							value={draft.category}
+							onChange={(event) => {
+								if (isEditing) updateDraft({ category: event.target.value });
+								else onCategoryChange(event.target.value);
+							}}
+							className="mt-2 h-9 w-full max-w-xs rounded-sm border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-100"
+						>
+							{categoryOptions.map((category) => (
+								<option key={category.id || "uncategorized"} value={category.id}>
+									{category.label}
+								</option>
+							))}
+						</select>
+					</div>
+				)}
 
 				{error ? (
 					<Alert variant="destructive" className="mt-5">

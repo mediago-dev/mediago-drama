@@ -63,6 +63,10 @@ var (
 	ErrEntryNotFound = errors.New("prompt pack entry not found")
 	// ErrEntryExists reports attempts to create a duplicate entry.
 	ErrEntryExists = errors.New("prompt pack entry already exists")
+	// ErrCategoryNotFound reports a missing category owned by a pack.
+	ErrCategoryNotFound = errors.New("prompt pack category not found")
+	// ErrCategoryExists reports attempts to create a duplicate category in a pack.
+	ErrCategoryExists = errors.New("prompt pack category already exists")
 )
 
 var localPackIDPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}$`)
@@ -137,8 +141,9 @@ type EntryUpdate struct {
 
 // PackContents contains one pack and its direct or linked draft entries.
 type PackContents struct {
-	Pack    Pack    `json:"pack"`
-	Entries []Entry `json:"entries"`
+	Pack       Pack       `json:"pack"`
+	Entries    []Entry    `json:"entries"`
+	Categories []Category `json:"categories"`
 }
 
 // Service coordinates prompt pack persistence and built-in seeding.
@@ -374,6 +379,17 @@ func (store *Service) GetPackContents(ctx context.Context, packID string) (PackC
 	}
 	entries := resolvePackEntryModels(models, packID)
 	sortEntries(entries)
+	categoryModels, err := store.repo.ListCategories()
+	if err != nil {
+		return PackContents{}, err
+	}
+	categories := make([]Category, 0)
+	for _, categoryModel := range categoryModels {
+		if categoryModel.PackID == packID {
+			categories = append(categories, categoryFromModel(categoryModel))
+		}
+	}
+	sortPackCategories(categories)
 	pack := packFromModel(model)
 	for _, entry := range entries {
 		switch entry.Kind {
@@ -383,7 +399,7 @@ func (store *Service) GetPackContents(ctx context.Context, packID string) (PackC
 			pack.PromptCount++
 		}
 	}
-	return PackContents{Pack: pack, Entries: entries}, nil
+	return PackContents{Pack: pack, Entries: entries, Categories: categories}, nil
 }
 
 // CreatePack creates an empty local authoring pack.
@@ -430,6 +446,7 @@ func (store *Service) CreatePackEntryDraft(
 	packID string,
 	kind instructionpack.Kind,
 	slug string,
+	categoryID string,
 ) (Entry, error) {
 	if err := kind.Validate(); err != nil {
 		return Entry{}, fmt.Errorf("%w: %w", ErrInvalidPack, err)
@@ -439,6 +456,7 @@ func (store *Service) CreatePackEntryDraft(
 	}
 	packID = strings.TrimSpace(packID)
 	slug = strings.TrimSpace(slug)
+	categoryID = strings.TrimSpace(categoryID)
 	if err := validateEntrySlug(kind, slug); err != nil {
 		return Entry{}, err
 	}
@@ -459,12 +477,22 @@ func (store *Service) CreatePackEntryDraft(
 	}
 	switch kind {
 	case instructionpack.KindSkill:
+		if categoryID != "" {
+			return Entry{}, fmt.Errorf("%w: Skill drafts cannot select a prompt category", ErrInvalidPack)
+		}
 		entry.Name = slug
 		entry.Title = "未命名 Skill"
 	case instructionpack.KindPrompt:
+		if categoryID == "" {
+			categoryID = "extra"
+		} else if _, err := store.repo.GetCategory(packID, categoryID); repository.IsRecordNotFound(err) {
+			return Entry{}, fmt.Errorf("%w: %s", ErrCategoryNotFound, categoryID)
+		} else if err != nil {
+			return Entry{}, err
+		}
 		entry.Name = "未命名提示词"
 		entry.Title = entry.Name
-		entry.Metadata = map[string]any{"category": "extra"}
+		entry.Metadata = map[string]any{"category": categoryID}
 	}
 	if err := validateDraftEntryForWrite(entry); err != nil {
 		return Entry{}, err
@@ -1193,6 +1221,153 @@ func (store *Service) HideEntry(ctx context.Context, kind instructionpack.Kind, 
 	return nil
 }
 
+// CreatePackCategory creates a category inside one exact pack namespace.
+func (store *Service) CreatePackCategory(
+	ctx context.Context,
+	packID string,
+	category Category,
+) (Category, error) {
+	if err := store.ensureSeeded(ctx); err != nil {
+		return Category{}, err
+	}
+	packID = strings.TrimSpace(packID)
+	category.ID = strings.TrimSpace(category.ID)
+	category.Label = strings.TrimSpace(category.Label)
+	if err := validatePackCategory(category); err != nil {
+		return Category{}, err
+	}
+	if _, err := store.repo.GetPack(packID); repository.IsRecordNotFound(err) {
+		return Category{}, fmt.Errorf("%w: %s", ErrPackNotFound, packID)
+	} else if err != nil {
+		return Category{}, err
+	}
+	if _, err := store.repo.GetCategory(packID, category.ID); err == nil {
+		return Category{}, fmt.Errorf("%w: %s", ErrCategoryExists, category.ID)
+	} else if !repository.IsRecordNotFound(err) {
+		return Category{}, err
+	}
+	category.PackID = packID
+	category.Source = entrySourceUser
+	category.Builtin = false
+	if err := store.repo.UpsertCategory(categoryModelFromCategory(category)); err != nil {
+		return Category{}, err
+	}
+	return category, nil
+}
+
+// UpdatePackCategory renames or reorders one category owned by a pack.
+func (store *Service) UpdatePackCategory(
+	ctx context.Context,
+	packID string,
+	categoryID string,
+	update Category,
+) (Category, error) {
+	if err := store.ensureSeeded(ctx); err != nil {
+		return Category{}, err
+	}
+	packID = strings.TrimSpace(packID)
+	categoryID = strings.TrimSpace(categoryID)
+	model, err := store.repo.GetCategory(packID, categoryID)
+	if repository.IsRecordNotFound(err) {
+		return Category{}, fmt.Errorf("%w: %s", ErrCategoryNotFound, categoryID)
+	}
+	if err != nil {
+		return Category{}, err
+	}
+	if normalizeLegacyEntrySource(model.Source) != entrySourceUser {
+		return Category{}, fmt.Errorf("%w: package category %s cannot be changed", ErrPackReadonly, categoryID)
+	}
+	category := categoryFromModel(model)
+	category.Label = strings.TrimSpace(update.Label)
+	category.Order = update.Order
+	if err := validatePackCategory(category); err != nil {
+		return Category{}, err
+	}
+	if err := store.repo.UpsertCategory(categoryModelFromCategory(category)); err != nil {
+		return Category{}, err
+	}
+	return category, nil
+}
+
+// DeletePackCategory removes a category and atomically moves its prompts to a
+// replacement category in the same pack.
+func (store *Service) DeletePackCategory(
+	ctx context.Context,
+	packID string,
+	categoryID string,
+	replacementCategoryID string,
+) error {
+	if err := store.ensureSeeded(ctx); err != nil {
+		return err
+	}
+	packID = strings.TrimSpace(packID)
+	categoryID = strings.TrimSpace(categoryID)
+	replacementCategoryID = strings.TrimSpace(replacementCategoryID)
+	if packID == "" || categoryID == "" || replacementCategoryID == "" || categoryID == replacementCategoryID {
+		return fmt.Errorf("%w: pack, category, and distinct replacement category are required", ErrInvalidPack)
+	}
+	return store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
+		pack, err := tx.GetPack(packID)
+		if repository.IsRecordNotFound(err) {
+			return fmt.Errorf("%w: %s", ErrPackNotFound, packID)
+		}
+		if err != nil {
+			return err
+		}
+		categoryModel, err := tx.GetCategory(packID, categoryID)
+		if repository.IsRecordNotFound(err) {
+			return fmt.Errorf("%w: %s", ErrCategoryNotFound, categoryID)
+		} else if err != nil {
+			return err
+		}
+		if normalizeLegacyEntrySource(categoryModel.Source) != entrySourceUser {
+			return fmt.Errorf("%w: package category %s cannot be deleted", ErrPackReadonly, categoryID)
+		}
+		if _, err := tx.GetCategory(packID, replacementCategoryID); repository.IsRecordNotFound(err) {
+			return fmt.Errorf("%w: %s", ErrCategoryNotFound, replacementCategoryID)
+		} else if err != nil {
+			return err
+		}
+
+		models, err := tx.ListEntries()
+		if err != nil {
+			return err
+		}
+		for _, model := range models {
+			if model.PackID != packID || model.Kind != string(instructionpack.KindPrompt) {
+				continue
+			}
+			entry := entryFromModel(model)
+			if metadataText(entry.Metadata, "category") != categoryID {
+				continue
+			}
+			if entry.Linked {
+				return fmt.Errorf("%w: detach linked prompt %s before deleting its category", ErrPackReadonly, entry.ID)
+			}
+			entry.Metadata = cloneMetadata(entry.Metadata)
+			if entry.Metadata == nil {
+				entry.Metadata = map[string]any{}
+			}
+			entry.Metadata["category"] = replacementCategoryID
+			entry.Source = entrySourceUser
+			if entry.OverriddenFrom == "" && normalizeLegacyEntrySource(model.Source) != entrySourceUser {
+				entry.OverriddenFrom = entry.ID
+			}
+			validate := validateEntryForWrite
+			if normalizePackSource(pack.Source, pack.ID) == packSourceLocal {
+				validate = validateDraftEntryForWrite
+			}
+			if err := validate(entry); err != nil {
+				return err
+			}
+			if err := tx.UpsertEntry(entryModelFromEntry(entry)); err != nil {
+				return err
+			}
+		}
+		return tx.DeleteCategory(packID, categoryID)
+	})
+}
+
 // ListCategories returns resolved prompt categories from enabled packs.
 func (store *Service) ListCategories(ctx context.Context) ([]Category, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
@@ -1210,6 +1385,22 @@ func (store *Service) ListCategories(ctx context.Context) ([]Category, error) {
 		return categories[first].ID < categories[second].ID
 	})
 	return categories, nil
+}
+
+func validatePackCategory(category Category) error {
+	if category.ID == "" || category.Label == "" || len(category.ID) > 128 || len(category.Label) > 160 || category.Order < 0 {
+		return fmt.Errorf("%w: category id, label, or order is invalid", ErrInvalidPack)
+	}
+	return nil
+}
+
+func sortPackCategories(categories []Category) {
+	sort.SliceStable(categories, func(first, second int) bool {
+		if categories[first].Order != categories[second].Order {
+			return categories[first].Order < categories[second].Order
+		}
+		return categories[first].ID < categories[second].ID
+	})
 }
 
 // CreateCategory creates a user prompt category in the default pack namespace.

@@ -46,7 +46,7 @@ internal/workspace/    # workspace embed layer
 configs/server.yaml    # example YAML config
 go.mod                 # module declaration
 Taskfile.yml           # go-task tasks (fmt / vet / test / tidy / check)
-LICENSE                # MIT
+LICENSE                # Apache-2.0
 ```
 
 `internal/workspace/dist` is a generated, ignored directory. Run the root
@@ -55,4 +55,4 @@ and compile the binary with the `workspace_dist` build tag.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache-2.0 — see [LICENSE](LICENSE).

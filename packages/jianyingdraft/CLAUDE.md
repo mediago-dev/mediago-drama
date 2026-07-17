@@ -15,7 +15,7 @@ pkg/
 go.mod                       # module path = github.com/example/<name> — change before publishing
 Taskfile.yml                 # fmt / vet / test / tidy / check
 README.md
-LICENSE                      # MIT
+LICENSE                      # Apache-2.0
 ```
 
 The starter is intentionally minimal. The rest of the standard layout

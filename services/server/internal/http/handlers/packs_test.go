@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -179,13 +180,21 @@ func TestPromptPacksHandlerCreatesLocalDraftEntry(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreatePack() error = %v", err)
 	}
+	if _, err := store.CreatePackCategory(t.Context(), "company.handler-draft", promptpack.Category{
+		ID:    "storyboard",
+		Label: "分镜",
+		Order: 0,
+	}); err != nil {
+		t.Fatalf("CreatePackCategory() error = %v", err)
+	}
 
 	handler := NewPromptPacks(store)
 	router := gin.New()
 	router.POST("/packs/:id/entries", handler.HandleCreatePackEntry)
 	body, err := json.Marshal(createPromptPackEntryRequest{
-		Kind: instructionpack.KindPrompt,
-		Slug: "prompt-handler-draft",
+		CategoryID: "storyboard",
+		Kind:       instructionpack.KindPrompt,
+		Slug:       "prompt-handler-draft",
 	})
 	if err != nil {
 		t.Fatalf("Marshal() error = %v", err)
@@ -208,8 +217,98 @@ func TestPromptPacksHandlerCreatesLocalDraftEntry(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
-	if !envelope.Success || envelope.Data.Name != "未命名提示词" || envelope.Data.Body != "" {
+	if !envelope.Success || envelope.Data.Name != "未命名提示词" || envelope.Data.Body != "" || envelope.Data.Metadata["category"] != "storyboard" {
 		t.Fatalf("POST body = %s, want an empty prompt draft", response.Body.String())
+	}
+
+	body, err = json.Marshal(createPromptPackEntryRequest{
+		CategoryID: "missing",
+		Kind:       instructionpack.KindPrompt,
+		Slug:       "prompt-handler-missing-category",
+	})
+	if err != nil {
+		t.Fatalf("Marshal(missing category) error = %v", err)
+	}
+	request = httptest.NewRequest(
+		http.MethodPost,
+		"/packs/company.handler-draft/entries",
+		bytes.NewReader(body),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("missing category status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestPromptPacksHandlerManagesPackCategories(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	store := newPromptPackHandlerTestStore(t)
+	if _, err := store.CreatePack(t.Context(), promptpack.Pack{
+		ID:      "company.handler-categories",
+		Name:    "Handler Categories",
+		Version: "1.0.0",
+	}); err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+	handler := NewPromptPacks(store)
+	router := gin.New()
+	router.POST("/packs/:id/categories", handler.HandleCreatePackCategory)
+	router.PUT("/packs/:id/categories/:categoryId", handler.HandleUpdatePackCategory)
+	router.DELETE("/packs/:id/categories/:categoryId", handler.HandleDeletePackCategory)
+
+	for _, category := range []promptPackCategoryRequest{
+		{ID: "style", Label: "风格", Order: 0},
+		{ID: "extra", Label: "其他", Order: 1},
+	} {
+		body, err := json.Marshal(category)
+		if err != nil {
+			t.Fatalf("Marshal(create) error = %v", err)
+		}
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/packs/company.handler-categories/categories",
+			bytes.NewReader(body),
+		)
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("create status = %d, body = %s", response.Code, response.Body.String())
+		}
+	}
+
+	updateBody, err := json.Marshal(promptPackCategoryRequest{Label: "视觉风格", Order: 2})
+	if err != nil {
+		t.Fatalf("Marshal(update) error = %v", err)
+	}
+	request := httptest.NewRequest(
+		http.MethodPut,
+		"/packs/company.handler-categories/categories/style",
+		bytes.NewReader(updateBody),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "视觉风格") {
+		t.Fatalf("update status = %d, body = %s", response.Code, response.Body.String())
+	}
+
+	deleteBody, err := json.Marshal(deletePromptPackCategoryRequest{ReplacementCategoryID: "extra"})
+	if err != nil {
+		t.Fatalf("Marshal(delete) error = %v", err)
+	}
+	request = httptest.NewRequest(
+		http.MethodDelete,
+		"/packs/company.handler-categories/categories/style",
+		bytes.NewReader(deleteBody),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 
