@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -27,15 +28,67 @@ func (repo *AgentSelectionRepository) ListPendingAgentSelections(projectID strin
 		Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("listing agent selections: %w", err)
 	}
+	normalizeAgentSelectionModels(models)
 	return models, nil
 }
 
 // CreateAgentSelection inserts an agent selection.
 func (repo *AgentSelectionRepository) CreateAgentSelection(model domain.AgentSelectionModel) error {
+	normalizeAgentSelectionModel(&model)
 	if err := repo.db.Create(&model).Error; err != nil {
 		return fmt.Errorf("creating agent selection: %w", err)
 	}
 	return nil
+}
+
+// SupersedePendingByWorkflow atomically supersedes every pending selection in
+// a workflow. It is also exposed as a transaction-aware primitive to the
+// workflow unit of work.
+func (repo *AgentSelectionRepository) SupersedePendingByWorkflow(
+	ctx context.Context,
+	projectID string,
+	workflowID string,
+	reason string,
+	supersededByVersion string,
+	now time.Time,
+) (int64, error) {
+	return supersedePendingAgentSelectionsByWorkflow(
+		repo.db.WithContext(ctx),
+		projectID,
+		workflowID,
+		reason,
+		supersededByVersion,
+		now,
+	)
+}
+
+func supersedePendingAgentSelectionsByWorkflow(
+	db *gorm.DB,
+	projectID string,
+	workflowID string,
+	reason string,
+	supersededByVersion string,
+	now time.Time,
+) (int64, error) {
+	now = now.UTC()
+	result := db.Model(&domain.AgentSelectionModel{}).
+		Where(
+			"project_id = ? AND workflow_id = ? AND status = ?",
+			strings.TrimSpace(projectID),
+			strings.TrimSpace(workflowID),
+			"pending",
+		).
+		Updates(map[string]any{
+			"status":                "superseded",
+			"decided_at":            now,
+			"superseded_reason":     strings.TrimSpace(reason),
+			"superseded_by_version": strings.TrimSpace(supersededByVersion),
+			"superseded_at":         now,
+		})
+	if result.Error != nil {
+		return 0, fmt.Errorf("superseding pending agent selections by workflow: %w", result.Error)
+	}
+	return result.RowsAffected, nil
 }
 
 // ClaimAgentSelectionGenerationUse atomically assigns an eligible, unclaimed
@@ -207,6 +260,7 @@ func (repo *AgentSelectionRepository) ListAgentSelectionsByRun(projectID string,
 		Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("listing agent selections by run: %w", err)
 	}
+	normalizeAgentSelectionModels(models)
 	return models, nil
 }
 
@@ -231,6 +285,7 @@ func (repo *AgentSelectionRepository) ListDecidedAgentSelectionsBySession(projec
 	for left, right := 0, len(models)-1; left < right; left, right = left+1, right-1 {
 		models[left], models[right] = models[right], models[left]
 	}
+	normalizeAgentSelectionModels(models)
 	return models, nil
 }
 
@@ -244,5 +299,25 @@ func (repo *AgentSelectionRepository) GetAgentSelection(projectID string, select
 	if err != nil {
 		return domain.AgentSelectionModel{}, fmt.Errorf("getting agent selection: %w", err)
 	}
+	normalizeAgentSelectionModel(&model)
 	return model, nil
+}
+
+func normalizeAgentSelectionModels(models []domain.AgentSelectionModel) {
+	for index := range models {
+		normalizeAgentSelectionModel(&models[index])
+	}
+}
+
+func normalizeAgentSelectionModel(model *domain.AgentSelectionModel) {
+	if strings.TrimSpace(model.RetentionMode) == "" {
+		model.RetentionMode = "ephemeral"
+	}
+	if strings.TrimSpace(model.SubmissionOwner) == "" {
+		if strings.TrimSpace(model.Kind) == "generation_plan" {
+			model.SubmissionOwner = "agent_mcp"
+		} else {
+			model.SubmissionOwner = "none"
+		}
+	}
 }

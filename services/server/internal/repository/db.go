@@ -183,6 +183,11 @@ func ensureSchemaOnce(
 
 // EnsureWorkspaceSchema creates every project/workspace-owned table.
 func EnsureWorkspaceSchema(db *gorm.DB) error {
+	legacySelectionOwnerColumnMissing := db.Migrator().HasTable(&domain.AgentSelectionModel{}) &&
+		!db.Migrator().HasColumn(&domain.AgentSelectionModel{}, "submission_owner")
+	if err := normalizeLegacyAgentSelectionOwnership(db); err != nil {
+		return err
+	}
 	if err := db.AutoMigrate(
 		&domain.WorkspaceProjectModel{},
 		&domain.EpisodeTimelineModel{},
@@ -192,6 +197,15 @@ func EnsureWorkspaceSchema(db *gorm.DB) error {
 		&domain.DocumentEditStreamModel{},
 		&domain.DocumentSectionModel{},
 		&domain.AgentSessionModel{},
+		&domain.AgentWorkflowModel{},
+		&domain.AgentTaskModel{},
+		&domain.AgentInvocationModel{},
+		&domain.AgentArtifactModel{},
+		&domain.AgentWorkflowEventModel{},
+		&domain.AgentRootProposalModel{},
+		&domain.AgentRootFinalDeliveryModel{},
+		&domain.AgentWorkflowHandoffModel{},
+		&domain.AgentQueuedInputModel{},
 		&domain.AssetModel{},
 		&domain.GenerationConversationModel{},
 		&domain.GenerationTaskModel{},
@@ -203,6 +217,44 @@ func EnsureWorkspaceSchema(db *gorm.DB) error {
 		&domain.GenerationNotificationModel{},
 	); err != nil {
 		return fmt.Errorf("initializing workspace database: %w", err)
+	}
+	if legacySelectionOwnerColumnMissing {
+		if err := db.Exec(`UPDATE agent_selections
+			SET submission_owner = 'agent_mcp'
+			WHERE kind = 'generation_plan'`).Error; err != nil {
+			return fmt.Errorf("backfilling migrated legacy generation selection owners: %w", err)
+		}
+	}
+	if err := normalizeLegacyAgentSelectionOwnership(db); err != nil {
+		return err
+	}
+	return nil
+}
+
+// normalizeLegacyAgentSelectionOwnership is intentionally safe both before and
+// after AutoMigrate. The pre-pass makes nullable legacy columns compatible with
+// the new NOT NULL schema; the post-pass fills columns added by this migration.
+func normalizeLegacyAgentSelectionOwnership(db *gorm.DB) error {
+	migrator := db.Migrator()
+	if !migrator.HasTable(&domain.AgentSelectionModel{}) {
+		return nil
+	}
+	if migrator.HasColumn(&domain.AgentSelectionModel{}, "retention_mode") {
+		if err := db.Exec(`UPDATE agent_selections
+			SET retention_mode = 'ephemeral'
+			WHERE retention_mode IS NULL OR TRIM(retention_mode) = ''`).Error; err != nil {
+			return fmt.Errorf("backfilling agent selection retention mode: %w", err)
+		}
+	}
+	if migrator.HasColumn(&domain.AgentSelectionModel{}, "submission_owner") {
+		if err := db.Exec(`UPDATE agent_selections
+			SET submission_owner = CASE
+				WHEN kind = 'generation_plan' THEN 'agent_mcp'
+				ELSE 'none'
+			END
+			WHERE submission_owner IS NULL OR TRIM(submission_owner) = ''`).Error; err != nil {
+			return fmt.Errorf("backfilling agent selection submission owner: %w", err)
+		}
 	}
 	return nil
 }

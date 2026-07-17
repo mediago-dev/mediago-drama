@@ -10,21 +10,23 @@ import (
 )
 
 type legacyAgentSelectionModel struct {
-	ProjectID    string     `gorm:"column:project_id;primaryKey;default:''"`
-	ID           string     `gorm:"column:id;primaryKey"`
-	SessionID    string     `gorm:"column:session_id;not null;default:''"`
-	RunID        string     `gorm:"column:run_id;not null;default:''"`
-	Kind         string     `gorm:"column:kind;not null;default:''"`
-	Title        string     `gorm:"column:title;not null;default:''"`
-	Prompt       string     `gorm:"column:prompt;not null;default:''"`
-	OptionsJSON  string     `gorm:"column:options_json;not null;default:'[]'"`
-	FieldsJSON   string     `gorm:"column:fields_json;not null;default:''"`
-	AllowCustom  bool       `gorm:"column:allow_custom;not null;default:false"`
-	Status       string     `gorm:"column:status;not null"`
-	DecisionJSON string     `gorm:"column:decision_json;not null;default:''"`
-	CreatedAt    time.Time  `gorm:"column:created_at;not null"`
-	DecidedAt    *time.Time `gorm:"column:decided_at"`
-	ExpiresAt    *time.Time `gorm:"column:expires_at"`
+	ProjectID       string     `gorm:"column:project_id;primaryKey;default:''"`
+	ID              string     `gorm:"column:id;primaryKey"`
+	SessionID       string     `gorm:"column:session_id;not null;default:''"`
+	RunID           string     `gorm:"column:run_id;not null;default:''"`
+	Kind            string     `gorm:"column:kind;not null;default:''"`
+	Title           string     `gorm:"column:title;not null;default:''"`
+	Prompt          string     `gorm:"column:prompt;not null;default:''"`
+	OptionsJSON     string     `gorm:"column:options_json;not null;default:'[]'"`
+	FieldsJSON      string     `gorm:"column:fields_json;not null;default:''"`
+	AllowCustom     bool       `gorm:"column:allow_custom;not null;default:false"`
+	Status          string     `gorm:"column:status;not null"`
+	DecisionJSON    string     `gorm:"column:decision_json;not null;default:''"`
+	CreatedAt       time.Time  `gorm:"column:created_at;not null"`
+	DecidedAt       *time.Time `gorm:"column:decided_at"`
+	ExpiresAt       *time.Time `gorm:"column:expires_at"`
+	RetentionMode   *string    `gorm:"column:retention_mode"`
+	SubmissionOwner *string    `gorm:"column:submission_owner"`
 }
 
 func (legacyAgentSelectionModel) TableName() string {
@@ -247,7 +249,141 @@ func TestEnsureWorkspaceSchemaAddsGenerationClaimColumnsWithoutLosingSelections(
 	if err != nil {
 		t.Fatalf("GetAgentSelection() error = %v", err)
 	}
-	if persisted.Title != legacy.Title || persisted.SessionID != legacy.SessionID || persisted.IntentJSON != "" || persisted.GenerationClaimFingerprint != "" {
+	if persisted.Title != legacy.Title || persisted.SessionID != legacy.SessionID || persisted.IntentJSON != "" || persisted.GenerationClaimFingerprint != "" || persisted.RetentionMode != "ephemeral" || persisted.SubmissionOwner != "none" {
 		t.Fatalf("migrated selection = %#v, want preserved legacy data with empty additive fields", persisted)
+	}
+}
+
+func TestEnsureWorkspaceSchemaBackfillsLegacyAgentSelectionOwnership(t *testing.T) {
+	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "legacy-selection-ownership.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenGormSQLite() error = %v", err)
+	}
+	if err := db.AutoMigrate(&domain.WorkspaceProjectModel{}, &legacyAgentSelectionModel{}); err != nil {
+		t.Fatalf("creating legacy schema: %v", err)
+	}
+	now := domain.TimeFromString("2026-07-17T04:00:00Z")
+	projectID := "project-legacy-ownership"
+	if err := db.Create(&domain.WorkspaceProjectModel{ID: projectID, Name: "Legacy", Category: "drama", Status: "active", RelativeDir: projectID, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+		t.Fatalf("creating project: %v", err)
+	}
+	empty := ""
+	fixtures := []legacyAgentSelectionModel{
+		{ProjectID: projectID, ID: "legacy-generation-pending", SessionID: "session-legacy", RunID: "run-legacy", Kind: "generation_plan", Title: "Generation", OptionsJSON: "[]", Status: "pending", CreatedAt: now},
+		{ProjectID: projectID, ID: "legacy-form-decided", SessionID: "session-legacy", RunID: "run-legacy", Kind: "form", Title: "Form", OptionsJSON: "[]", Status: "selected", CreatedAt: now, RetentionMode: &empty, SubmissionOwner: &empty},
+	}
+	for index := range fixtures {
+		if err := db.Create(&fixtures[index]).Error; err != nil {
+			t.Fatalf("creating legacy fixture %q: %v", fixtures[index].ID, err)
+		}
+	}
+	if err := EnsureWorkspaceSchema(db); err != nil {
+		t.Fatalf("EnsureWorkspaceSchema() error = %v", err)
+	}
+	repo := NewAgentSelectionRepository(db)
+	tests := []struct {
+		id    string
+		owner string
+	}{
+		{id: "legacy-generation-pending", owner: "agent_mcp"},
+		{id: "legacy-form-decided", owner: "none"},
+	}
+	for _, tt := range tests {
+		got, err := repo.GetAgentSelection(projectID, tt.id)
+		if err != nil {
+			t.Fatalf("GetAgentSelection(%q) error = %v", tt.id, err)
+		}
+		if got.RetentionMode != "ephemeral" || got.SubmissionOwner != tt.owner {
+			t.Fatalf("selection %q retention/owner = %q/%q, want ephemeral/%q", tt.id, got.RetentionMode, got.SubmissionOwner, tt.owner)
+		}
+		var raw struct {
+			RetentionMode   *string
+			SubmissionOwner *string
+		}
+		if err := db.Raw("SELECT retention_mode, submission_owner FROM agent_selections WHERE project_id = ? AND id = ?", projectID, tt.id).Scan(&raw).Error; err != nil {
+			t.Fatalf("reading physical ownership %q: %v", tt.id, err)
+		}
+		if raw.RetentionMode == nil || *raw.RetentionMode != "ephemeral" || raw.SubmissionOwner == nil || *raw.SubmissionOwner != tt.owner {
+			t.Fatalf("physical selection %q = %#v, want non-null backfill", tt.id, raw)
+		}
+	}
+	if err := db.Model(&domain.AgentSelectionModel{}).Where("project_id = ? AND id = ?", projectID, "legacy-form-decided").Updates(map[string]any{"retention_mode": "", "submission_owner": ""}).Error; err != nil {
+		t.Fatalf("creating rolling-upgrade empty values: %v", err)
+	}
+	rolling, err := repo.GetAgentSelection(projectID, "legacy-form-decided")
+	if err != nil || rolling.RetentionMode != "ephemeral" || rolling.SubmissionOwner != "none" {
+		t.Fatalf("rolling reader selection = %#v, error=%v", rolling, err)
+	}
+}
+
+func TestEnsureWorkspaceSchemaBackfillsAgentSelectionWhenOwnershipColumnsAreAbsent(t *testing.T) {
+	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "legacy-selection-no-ownership.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenGormSQLite() error = %v", err)
+	}
+	if err := db.AutoMigrate(&domain.WorkspaceProjectModel{}); err != nil {
+		t.Fatalf("creating project schema: %v", err)
+	}
+	if err := db.Exec(`CREATE TABLE agent_selections (
+		project_id TEXT NOT NULL DEFAULT '',
+		id TEXT NOT NULL,
+		session_id TEXT NOT NULL DEFAULT '',
+		run_id TEXT NOT NULL DEFAULT '',
+		kind TEXT NOT NULL DEFAULT '',
+		title TEXT NOT NULL DEFAULT '',
+		prompt TEXT NOT NULL DEFAULT '',
+		options_json TEXT NOT NULL DEFAULT '[]',
+		fields_json TEXT NOT NULL DEFAULT '',
+		allow_custom NUMERIC NOT NULL DEFAULT false,
+		status TEXT NOT NULL,
+		decision_json TEXT NOT NULL DEFAULT '',
+		created_at DATETIME NOT NULL,
+		decided_at DATETIME,
+		expires_at DATETIME,
+		PRIMARY KEY (project_id, id)
+	)`).Error; err != nil {
+		t.Fatalf("creating pre-ownership selection table: %v", err)
+	}
+	now := domain.TimeFromString("2026-07-17T04:30:00Z")
+	projectID := "project-no-ownership-columns"
+	if err := db.Create(&domain.WorkspaceProjectModel{ID: projectID, Name: "Legacy", Category: "drama", Status: "active", RelativeDir: projectID, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+		t.Fatalf("creating project: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO agent_selections
+		(project_id, id, session_id, run_id, kind, title, options_json, status, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		projectID, "legacy-generation-without-columns", "session-legacy", "run-legacy", "generation_plan", "Generation", "[]", "pending", now,
+	).Error; err != nil {
+		t.Fatalf("creating legacy generation selection: %v", err)
+	}
+	if err := EnsureWorkspaceSchema(db); err != nil {
+		t.Fatalf("EnsureWorkspaceSchema() error = %v", err)
+	}
+	got, err := NewAgentSelectionRepository(db).GetAgentSelection(projectID, "legacy-generation-without-columns")
+	if err != nil {
+		t.Fatalf("GetAgentSelection() error = %v", err)
+	}
+	if got.RetentionMode != "ephemeral" || got.SubmissionOwner != "agent_mcp" || got.Status != "pending" {
+		t.Fatalf("migrated selection = %#v", got)
+	}
+	var columns []struct {
+		Name       string  `gorm:"column:name"`
+		NotNull    int     `gorm:"column:notnull"`
+		DefaultSQL *string `gorm:"column:dflt_value"`
+	}
+	if err := db.Raw("PRAGMA table_info(agent_selections)").Scan(&columns).Error; err != nil {
+		t.Fatalf("reading agent selection schema: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, column := range columns {
+		if column.Name == "retention_mode" || column.Name == "submission_owner" {
+			seen[column.Name] = true
+			if column.NotNull != 1 || column.DefaultSQL == nil {
+				t.Fatalf("column %q notnull/default = %d/%v, want non-null default", column.Name, column.NotNull, column.DefaultSQL)
+			}
+		}
+	}
+	if !seen["retention_mode"] || !seen["submission_owner"] {
+		t.Fatalf("ownership columns seen = %#v", seen)
 	}
 }

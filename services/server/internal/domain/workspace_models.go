@@ -85,19 +85,35 @@ type AgentSelectionModel struct {
 	ID                         string     `gorm:"column:id;primaryKey"`
 	SessionID                  string     `gorm:"column:session_id;not null;default:''"`
 	RunID                      string     `gorm:"column:run_id;not null;default:''"`
+	WorkflowID                 string     `gorm:"column:workflow_id;not null;default:'';index:agent_selections_workflow_status_idx,priority:1"`
+	RequesterTaskID            string     `gorm:"column:requester_task_id;not null;default:''"`
+	SourceInvocationID         string     `gorm:"column:source_invocation_id;not null;default:''"`
+	RelayTaskID                string     `gorm:"column:relay_task_id;not null;default:''"`
 	Kind                       string     `gorm:"column:kind;not null;default:''"`
+	DecisionKind               string     `gorm:"column:decision_kind;not null;default:''"`
 	Title                      string     `gorm:"column:title;not null;default:''"`
 	Prompt                     string     `gorm:"column:prompt;not null;default:''"`
 	OptionsJSON                string     `gorm:"column:options_json;not null;default:'[]'"`
 	FieldsJSON                 string     `gorm:"column:fields_json;not null;default:''"`
 	IntentJSON                 string     `gorm:"column:intent_json;not null;default:''"`
 	AllowCustom                bool       `gorm:"column:allow_custom;not null;default:false"`
-	Status                     string     `gorm:"column:status;not null;index:agent_selections_status_idx,priority:2"`
+	Status                     string     `gorm:"column:status;not null;index:agent_selections_status_idx,priority:2;index:agent_selections_workflow_status_idx,priority:2"`
 	DecisionJSON               string     `gorm:"column:decision_json;not null;default:''"`
 	GenerationClaimFingerprint string     `gorm:"column:generation_claim_fingerprint;not null;default:''"`
 	GenerationClaimedAt        *time.Time `gorm:"column:generation_claimed_at"`
 	GenerationOutcomeJSON      string     `gorm:"column:generation_outcome_json;not null;default:''"`
 	GenerationCompletedAt      *time.Time `gorm:"column:generation_completed_at"`
+	ArtifactID                 string     `gorm:"column:artifact_id;not null;default:''"`
+	ArtifactVersion            uint64     `gorm:"column:artifact_version;not null;default:0"`
+	ArtifactRefVersion         string     `gorm:"column:artifact_ref_version;not null;default:''"`
+	ArtifactRefFingerprint     string     `gorm:"column:artifact_ref_fingerprint;not null;default:''"`
+	ResumeToken                *string    `gorm:"column:resume_token;uniqueIndex:agent_selections_resume_token_uidx"`
+	RetentionMode              string     `gorm:"column:retention_mode;not null;default:'ephemeral'"`
+	RetryOfSelectionID         *string    `gorm:"column:retry_of_selection_id"`
+	SubmissionOwner            string     `gorm:"column:submission_owner;not null;default:'none'"`
+	SupersededReason           string     `gorm:"column:superseded_reason;not null;default:''"`
+	SupersededByVersion        string     `gorm:"column:superseded_by_version;not null;default:''"`
+	SupersededAt               *time.Time `gorm:"column:superseded_at"`
 	CreatedAt                  time.Time  `gorm:"column:created_at;not null;autoCreateTime:nano;index:agent_selections_status_idx,priority:3,sort:asc"`
 	DecidedAt                  *time.Time `gorm:"column:decided_at"`
 	ExpiresAt                  *time.Time `gorm:"column:expires_at"`

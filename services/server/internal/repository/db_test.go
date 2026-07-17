@@ -34,6 +34,15 @@ func TestOpenWorkspaceDBMigratesWorkspaceSchema(t *testing.T) {
 		&domain.ProjectSelectedAssetModel{},
 		&domain.ProjectReferenceAssetModel{},
 		&domain.GenerationNotificationModel{},
+		&domain.AgentWorkflowModel{},
+		&domain.AgentTaskModel{},
+		&domain.AgentInvocationModel{},
+		&domain.AgentArtifactModel{},
+		&domain.AgentWorkflowEventModel{},
+		&domain.AgentRootProposalModel{},
+		&domain.AgentRootFinalDeliveryModel{},
+		&domain.AgentWorkflowHandoffModel{},
+		&domain.AgentQueuedInputModel{},
 	}
 	for _, model := range models {
 		if !db.Migrator().HasTable(model) {
@@ -161,6 +170,9 @@ func TestOpenWorkspaceRepositoriesBuildsAllWorkspaceRepositories(t *testing.T) {
 		repos.MediaAssets == nil ||
 		repos.ProjectAssets == nil {
 		t.Fatalf("repositories = %#v, want all workspace repositories", repos)
+	}
+	if repos.AgentExecution == nil || repos.AgentWorkflowUoW == nil || repos.Selections == nil {
+		t.Fatalf("repositories = %#v, want agent execution repositories", repos)
 	}
 }
 
