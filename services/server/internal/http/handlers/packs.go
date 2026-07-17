@@ -365,8 +365,8 @@ func (handler PromptPacks) HandleDetachPackEntry(context *gin.Context) {
 }
 
 // HandleRemovePackEntry godoc
-// @Summary 从本地技能包移除内容
-// @Description 从目标本地技能包移除一个直接拥有或同步引用的 Skill 或提示词。
+// @Summary 从技能包移除内容
+// @Description 删除目标技能包中的用户内容，或以本地覆盖方式隐藏包自带的 Skill 或提示词。
 // @Tags Skill Packs
 // @Accept json
 // @Produce json

@@ -8,6 +8,8 @@ import {
 	exportPromptPack,
 	getPromptPackContents,
 	listPromptPacks,
+	resetPromptPackEntry,
+	setPromptPackEnabled,
 	uninstallPromptPack,
 	updatePromptPackEntry,
 } from "@/domains/settings/api/packs";
@@ -28,6 +30,9 @@ vi.mock("@/domains/settings/api/packs", () => ({
 	promptPackContentsKey: (id: string) => `/packs/${id}/contents`,
 	promptPacksKey: "/packs",
 	removePromptPackEntry: vi.fn(),
+	resetPromptPack: vi.fn(),
+	resetPromptPackEntry: vi.fn(),
+	setPromptPackEnabled: vi.fn(),
 	uninstallPromptPack: vi.fn(),
 	updatePromptPackEntry: vi.fn(),
 }));
@@ -277,10 +282,10 @@ describe("PromptPackEditor", () => {
 	it("uses the shared resizable sidebar shell and keeps the title in the white content pane", async () => {
 		renderEditor();
 
-		const navigator = await screen.findByRole("navigation", { name: "技能包编辑器导航" });
-		const title = screen.getByRole("heading", { name: "技能包编辑器" });
+		const navigator = await screen.findByRole("navigation", { name: "技能包管理导航" });
+		const title = screen.getByRole("heading", { name: "技能包管理" });
 		const resizeHandle = screen.getByRole("separator", {
-			name: "调整技能包编辑器侧边栏宽度",
+			name: "调整技能包管理侧边栏宽度",
 		});
 
 		expect(navigator).toHaveClass("bg-ide-sidebar");
@@ -296,10 +301,104 @@ describe("PromptPackEditor", () => {
 		fireEvent.pointerUp(window);
 	});
 
+	it("opens as management without a create dialog and lists every installed pack source", async () => {
+		vi.mocked(listPromptPacks).mockResolvedValue([
+			{
+				...localPack,
+				id: "builtin",
+				name: "默认技能包",
+				source: "default",
+			},
+			{
+				...localPack,
+				id: "marketplace.visual-pack",
+				name: "视觉增强包",
+				source: "imported",
+			},
+			localPack,
+		]);
+
+		renderEditor();
+
+		expect(await screen.findByRole("heading", { name: "技能包管理" })).toBeInTheDocument();
+		expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "默认技能包" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "视觉增强包" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "本地草稿" })).toBeInTheDocument();
+	});
+
+	it("manages pack enablement in the dedicated window", async () => {
+		vi.mocked(setPromptPackEnabled).mockResolvedValue({ ...localPack, enabled: false });
+		renderEditor("/prompt-pack-editor?packId=local.test-pack");
+
+		fireEvent.click(await screen.findByRole("switch", { name: "停用技能包 本地草稿" }));
+
+		await waitFor(() => expect(setPromptPackEnabled).toHaveBeenCalledWith(localPack.id, false));
+	});
+
+	it("restores an exact package-backed entry from the dedicated window", async () => {
+		const defaultPack = {
+			...localPack,
+			id: "builtin",
+			name: "默认技能包",
+			source: "default" as const,
+		};
+		const entry = {
+			body: "默认正文",
+			description: "默认说明",
+			id: "builtin:skill:character-writer",
+			kind: "skill" as const,
+			name: "character-writer",
+			packId: defaultPack.id,
+			slug: "character-writer",
+			source: "pack" as const,
+			title: "角色写作",
+		};
+		vi.mocked(listPromptPacks).mockResolvedValue([defaultPack]);
+		vi.mocked(getPromptPackContents).mockResolvedValue({ pack: defaultPack, entries: [entry] });
+		vi.mocked(resetPromptPackEntry).mockResolvedValue(entry);
+		vi.mocked(confirmDialog).mockImplementation(async (options) => {
+			await options.onConfirm?.();
+			return true;
+		});
+		renderEditor("/prompt-pack-editor?packId=builtin");
+
+		fireEvent.click(await screen.findByRole("button", { name: "恢复默认 角色写作" }));
+
+		await waitFor(() =>
+			expect(resetPromptPackEntry).toHaveBeenCalledWith(defaultPack.id, entry.id),
+		);
+	});
+
+	it("uses only the management page max width without horizontal page padding", async () => {
+		renderEditor();
+
+		const heading = await screen.findByRole("heading", { name: "选择技能包" });
+		const maxWidthContainer = heading.parentElement?.parentElement;
+		const scrollContainer = maxWidthContainer?.parentElement;
+
+		expect(maxWidthContainer).toHaveClass("max-w-5xl");
+		expect(scrollContainer).toHaveClass("py-8");
+		expect(scrollContainer).not.toHaveClass("px-8");
+	});
+
+	it("uses only the overview page max width without horizontal page padding", async () => {
+		renderEditor();
+
+		fireEvent.click(await screen.findByRole("button", { name: "本地草稿" }));
+		const heading = await screen.findByRole("heading", { name: localPack.name });
+		const maxWidthContainer = heading.parentElement?.parentElement?.parentElement?.parentElement;
+		const scrollContainer = maxWidthContainer?.parentElement;
+
+		expect(maxWidthContainer).toHaveClass("max-w-4xl");
+		expect(scrollContainer).toHaveClass("py-10");
+		expect(scrollContainer).not.toHaveClass("px-10", "xl:px-14");
+	});
+
 	it("uses the main-window sidebar hierarchy animation for pack details", async () => {
 		renderEditor();
 
-		const navigator = await screen.findByRole("navigation", { name: "技能包编辑器导航" });
+		const navigator = await screen.findByRole("navigation", { name: "技能包管理导航" });
 		const libraryScreen = navigator.querySelector('[data-sidebar-screen="pack-library"]');
 		expect(libraryScreen).toHaveAttribute("aria-hidden", "false");
 
@@ -348,10 +447,10 @@ describe("PromptPackEditor", () => {
 		await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
 
 		fireEvent.click(screen.getByRole("button", { name: "搜索技能包" }));
-		expect(await screen.findByLabelText("搜索本地技能包")).toBeInTheDocument();
+		expect(await screen.findByLabelText("搜索技能包")).toBeInTheDocument();
 
 		fireEvent.click(screen.getByRole("button", { name: "新建技能包" }));
-		expect(screen.queryByLabelText("搜索本地技能包")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("搜索技能包")).not.toBeInTheDocument();
 		expect(await screen.findByRole("heading", { name: "创建本地技能包" })).toBeInTheDocument();
 	});
 
@@ -600,7 +699,7 @@ describe("PromptPackEditor", () => {
 		await waitFor(() =>
 			expect(screen.getByRole("heading", { name: "技能包管理" })).toBeInTheDocument(),
 		);
-		expect(screen.getByRole("heading", { name: "还没有本地技能包" })).toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "还没有技能包" })).toBeInTheDocument();
 	});
 
 	it("keeps legacy prompt metadata while hiding category from the editor", async () => {

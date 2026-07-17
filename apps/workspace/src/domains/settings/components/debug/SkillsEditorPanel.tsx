@@ -42,7 +42,7 @@ import { PromptPackActions } from "./PromptPackActionsSlot";
 import { PromptPackMembershipBadge } from "./PromptPackMembershipBadge";
 import { SettingsMarkdownEditor, SettingsMarkdownPreview } from "./SettingsMarkdownEditor";
 
-export const SkillsEditorPanel: React.FC = () => {
+export const SkillsEditorPanel: React.FC<{ showActions?: boolean }> = ({ showActions = true }) => {
 	const toast = useToast();
 	const { mutate: mutateGlobal } = useSWRConfig();
 	const { data: skills = [], isLoading, mutate: mutateSkills } = useSWR(skillsKey, listSkills);
@@ -263,95 +263,101 @@ export const SkillsEditorPanel: React.FC = () => {
 
 	return (
 		<>
-			<PromptPackActions>
-				<>
-					<Button
-						type="button"
-						variant="outline"
-						onClick={() => {
+			{showActions ? (
+				<PromptPackActions>
+					<>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => {
+								setCreateError("");
+								setIsCreating(true);
+							}}
+						>
+							<Plus className="size-4" />
+							<span>新建</span>
+						</Button>
+						<Button type="button" onClick={openEditDialog} disabled={!selectedSkill}>
+							<Pencil className="size-4" />
+							<span>编辑</span>
+						</Button>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={confirmReset}
+							disabled={!selectedSkill || !canReset || isResetting}
+						>
+							{isResetting ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<RotateCcw className="size-4" />
+							)}
+							<span>{isResetting ? "恢复中" : "恢复默认"}</span>
+						</Button>
+						<Button
+							type="button"
+							variant="destructive"
+							onClick={confirmRemove}
+							disabled={!selectedSkill || !canDelete || isDeleting}
+						>
+							<Trash2 className="size-4" />
+							<span>{isDeleting ? "删除中" : "删除"}</span>
+						</Button>
+					</>
+				</PromptPackActions>
+			) : null}
+
+			{showActions ? (
+				<SkillCreateDialog
+					description={newSkillDescription}
+					error={createError}
+					isSaving={isSaving}
+					name={newSkillName}
+					packId={newSkillPackID}
+					packs={packs}
+					open={isCreating}
+					onCancel={cancelCreateSkill}
+					onNameChange={(value) => {
+						setNewSkillName(value);
+						setCreateError("");
+					}}
+					onPackChange={setNewSkillPackID}
+					onDescriptionChange={(value) => {
+						setNewSkillDescription(value);
+						setCreateError("");
+					}}
+					onOpenChange={(open) => {
+						if (open) {
 							setCreateError("");
 							setIsCreating(true);
-						}}
-					>
-						<Plus className="size-4" />
-						<span>新建</span>
-					</Button>
-					<Button type="button" onClick={openEditDialog} disabled={!selectedSkill}>
-						<Pencil className="size-4" />
-						<span>编辑</span>
-					</Button>
-					<Button
-						type="button"
-						variant="outline"
-						onClick={confirmReset}
-						disabled={!selectedSkill || !canReset || isResetting}
-					>
-						{isResetting ? (
-							<Loader2 className="size-4 animate-spin" />
-						) : (
-							<RotateCcw className="size-4" />
-						)}
-						<span>{isResetting ? "恢复中" : "恢复默认"}</span>
-					</Button>
-					<Button
-						type="button"
-						variant="destructive"
-						onClick={confirmRemove}
-						disabled={!selectedSkill || !canDelete || isDeleting}
-					>
-						<Trash2 className="size-4" />
-						<span>{isDeleting ? "删除中" : "删除"}</span>
-					</Button>
-				</>
-			</PromptPackActions>
+							return;
+						}
+						cancelCreateSkill();
+					}}
+					onSave={() => void createNewSkill()}
+				/>
+			) : null}
 
-			<SkillCreateDialog
-				description={newSkillDescription}
-				error={createError}
-				isSaving={isSaving}
-				name={newSkillName}
-				packId={newSkillPackID}
-				packs={packs}
-				open={isCreating}
-				onCancel={cancelCreateSkill}
-				onNameChange={(value) => {
-					setNewSkillName(value);
-					setCreateError("");
-				}}
-				onPackChange={setNewSkillPackID}
-				onDescriptionChange={(value) => {
-					setNewSkillDescription(value);
-					setCreateError("");
-				}}
-				onOpenChange={(open) => {
-					if (open) {
-						setCreateError("");
-						setIsCreating(true);
-						return;
-					}
-					cancelCreateSkill();
-				}}
-				onSave={() => void createNewSkill()}
-			/>
-
-			<SkillEditDialog
-				bodyDraft={bodyDraft}
-				descriptionDraft={descriptionDraft}
-				error={error}
-				isSaving={isSaving}
-				open={editDialogOpen}
-				onBodyChange={setBodyDraft}
-				onDescriptionChange={setDescriptionDraft}
-				onCancel={closeEditDialog}
-				onOpenChange={(open) => {
-					if (open) {
-						openEditDialog();
-						return;
-					}
-					closeEditDialog();
-				}}
-				onSave={() => void save()}
-			/>
+			{showActions ? (
+				<SkillEditDialog
+					bodyDraft={bodyDraft}
+					descriptionDraft={descriptionDraft}
+					error={error}
+					isSaving={isSaving}
+					open={editDialogOpen}
+					onBodyChange={setBodyDraft}
+					onDescriptionChange={setDescriptionDraft}
+					onCancel={closeEditDialog}
+					onOpenChange={(open) => {
+						if (open) {
+							openEditDialog();
+							return;
+						}
+						closeEditDialog();
+					}}
+					onSave={() => void save()}
+				/>
+			) : null}
 
 			<div className="flex h-full min-h-0 flex-col px-5 py-5">
 				<div className="flex h-full min-h-0 flex-col gap-3">

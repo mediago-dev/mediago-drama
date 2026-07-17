@@ -11,6 +11,7 @@ import {
 	Loader2,
 	PackageOpen,
 	PackagePlus,
+	RotateCcw,
 	Search,
 	Trash2,
 	X,
@@ -27,6 +28,7 @@ import {
 	type PromptPackEntry,
 	type PromptPackEntryKind,
 	removePromptPackEntry,
+	resetPromptPackEntry,
 	updatePromptPackEntry,
 } from "@/domains/settings/api/packs";
 import { isPromptPackContentCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
@@ -126,6 +128,7 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		const [createEntryDialogOpen, setCreateEntryDialogOpen] = useState(false);
 		const [creatingEntry, setCreatingEntry] = useState(false);
 		const [deletingEntryID, setDeletingEntryID] = useState<string>();
+		const [resettingEntryID, setResettingEntryID] = useState<string>();
 		const [drafts, setDrafts] = useState<Record<string, PromptPackEntryDraft>>({});
 		const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
 		const [navigatorWidth, setNavigatorWidth] = useWorkspaceSidebarWidth();
@@ -316,6 +319,34 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 			});
 		};
 
+		const resetEntry = async (entry: PromptPackEntry) => {
+			if (!selectedPack) return false;
+			setResettingEntryID(entry.id);
+			try {
+				await resetPromptPackEntry(selectedPack.id, entry.id);
+				await refreshContents();
+				toast.success("内容已恢复默认", { description: entryDisplayName(entry) });
+				return true;
+			} catch (error) {
+				toast.error("恢复失败", { description: errorMessage(error) });
+				return false;
+			} finally {
+				setResettingEntryID(undefined);
+			}
+		};
+
+		const confirmResetEntry = (entry: PromptPackEntry) => {
+			if (blockWhileEditing() || !entryCanReset(entry)) return;
+			void confirmDialog({
+				title: "恢复内容默认？",
+				description: `将撤销“${entryDisplayName(entry)}”的本地修改，并恢复技能包自带内容。`,
+				confirmLabel: "恢复默认",
+				confirmIcon: <RotateCcw className="size-4" />,
+				variant: "default",
+				onConfirm: () => resetEntry(entry),
+			});
+		};
+
 		return (
 			<>
 				<SidebarContentLayout
@@ -325,7 +356,7 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 					maxSidebarWidth={workspaceSidebarWidth.max}
 					minSidebarWidth={workspaceSidebarWidth.min}
 					onSidebarWidthChange={setNavigatorWidth}
-					resizeLabel="调整技能包编辑器侧边栏宽度"
+					resizeLabel="调整技能包管理侧边栏宽度"
 					resizeStep={workspaceSidebarWidth.resizeStep}
 					showDesktopDragRegion
 					sidebar={
@@ -343,12 +374,14 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 							onOpenOverview={() => navigate({ type: "idle" })}
 							onPackSearchChange={setPackSearch}
 							onRemoveEntry={confirmRemoveEntry}
+							onResetEntry={confirmResetEntry}
 							onSelectEntry={(entryID) => navigate({ entryID, type: "entry" })}
 							onSelectPack={selectPack}
 							onStartCreatePack={startCreatePack}
 							packs={packs}
 							packSearch={packSearch}
 							promptEntries={promptEntries}
+							resettingEntryID={resettingEntryID}
 							searchOpen={searchOpen}
 							selectedPack={selectedPack}
 							onSearchOpenChange={setSearchOpen}
@@ -421,6 +454,7 @@ const PromptPackNavigator: React.FC<{
 	onOpenOverview: () => void;
 	onPackSearchChange: (value: string) => void;
 	onRemoveEntry: (entry: PromptPackEntry) => void;
+	onResetEntry: (entry: PromptPackEntry) => void;
 	onSearchOpenChange: (open: boolean) => void;
 	onSelectEntry: (entryID: string) => void;
 	onSelectPack: (packID: string) => void;
@@ -428,6 +462,7 @@ const PromptPackNavigator: React.FC<{
 	packSearch: string;
 	packs: PromptPack[];
 	promptEntries: PromptPackEntry[];
+	resettingEntryID?: string;
 	searchOpen: boolean;
 	selectedPack?: PromptPack;
 	skillEntries: PromptPackEntry[];
@@ -446,6 +481,7 @@ const PromptPackNavigator: React.FC<{
 	onOpenOverview,
 	onPackSearchChange,
 	onRemoveEntry,
+	onResetEntry,
 	onSearchOpenChange,
 	onSelectEntry,
 	onSelectPack,
@@ -453,6 +489,7 @@ const PromptPackNavigator: React.FC<{
 	packSearch,
 	packs,
 	promptEntries,
+	resettingEntryID,
 	searchOpen,
 	selectedPack,
 	skillEntries,
@@ -464,7 +501,7 @@ const PromptPackNavigator: React.FC<{
 
 	return (
 		<nav
-			aria-label="技能包编辑器导航"
+			aria-label="技能包管理导航"
 			className="relative h-full min-h-0 w-full overflow-hidden bg-ide-sidebar text-ide-sidebar-foreground"
 		>
 			<SidebarScreenStack
@@ -572,7 +609,9 @@ const PromptPackNavigator: React.FC<{
 													deletingEntryID={deletingEntryID}
 													entries={filteredSkills}
 													onRemove={onRemoveEntry}
+													onReset={onResetEntry}
 													onSelect={onSelectEntry}
+													resettingEntryID={resettingEntryID}
 													selectedEntryID={view.type === "entry" ? view.entryID : undefined}
 												/>
 											</NavigatorGroup>
@@ -581,7 +620,9 @@ const PromptPackNavigator: React.FC<{
 													deletingEntryID={deletingEntryID}
 													entries={filteredPrompts}
 													onRemove={onRemoveEntry}
+													onReset={onResetEntry}
 													onSelect={onSelectEntry}
+													resettingEntryID={resettingEntryID}
 													selectedEntryID={view.type === "entry" ? view.entryID : undefined}
 												/>
 											</NavigatorGroup>
@@ -596,7 +637,9 @@ const PromptPackNavigator: React.FC<{
 												entries={filteredEntries}
 												indented={false}
 												onRemove={onRemoveEntry}
+												onReset={onResetEntry}
 												onSelect={onSelectEntry}
+												resettingEntryID={resettingEntryID}
 												selectedEntryID={view.type === "entry" ? view.entryID : undefined}
 											/>
 										</section>
@@ -673,7 +716,7 @@ const PackLibraryNavigator: React.FC<{
 				{searchOpen ? (
 					<Input
 						autoFocus
-						aria-label="搜索本地技能包"
+						aria-label="搜索技能包"
 						value={search}
 						onChange={(event) => onSearchChange(event.target.value)}
 						placeholder="输入技能包名称"
@@ -686,11 +729,11 @@ const PackLibraryNavigator: React.FC<{
 				{isLoading ? (
 					<div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
 						<Loader2 className="size-3.5 animate-spin" />
-						<span>加载本地技能包</span>
+						<span>加载技能包</span>
 					</div>
 				) : filteredPacks.length === 0 ? (
 					<p className="px-2 py-2 text-xs text-muted-foreground">
-						{search ? "没有匹配的技能包" : "暂无本地技能包"}
+						{search ? "没有匹配的技能包" : "暂无技能包"}
 					</p>
 				) : (
 					<div className="space-y-0.5">
@@ -698,11 +741,15 @@ const PackLibraryNavigator: React.FC<{
 							<button
 								key={pack.id}
 								type="button"
+								aria-label={pack.name}
 								className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-ide-sidebar-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground"
 								onClick={() => onSelectPack(pack.id)}
 							>
 								<PackageOpen className="size-3.5 shrink-0 text-muted-foreground" />
 								<span className="min-w-0 flex-1 truncate">{pack.name}</span>
+								<span className="shrink-0 text-2xs text-muted-foreground">
+									{packSourceLabel(pack.source)}
+								</span>
 							</button>
 						))}
 					</div>
@@ -904,9 +951,20 @@ const EntryRows: React.FC<{
 	entries: PromptPackEntry[];
 	indented?: boolean;
 	onRemove: (entry: PromptPackEntry) => void;
+	onReset: (entry: PromptPackEntry) => void;
 	onSelect: (entryID: string) => void;
+	resettingEntryID?: string;
 	selectedEntryID?: string;
-}> = ({ deletingEntryID, entries, indented = true, onRemove, onSelect, selectedEntryID }) => {
+}> = ({
+	deletingEntryID,
+	entries,
+	indented = true,
+	onRemove,
+	onReset,
+	onSelect,
+	resettingEntryID,
+	selectedEntryID,
+}) => {
 	if (entries.length === 0) {
 		return <p className="px-8 py-1 text-xs text-muted-foreground">暂无内容</p>;
 	}
@@ -936,6 +994,23 @@ const EntryRows: React.FC<{
 						)}
 						<span className="truncate">{entryDisplayName(entry)}</span>
 					</button>
+					{entryCanReset(entry) ? (
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="size-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+							aria-label={`恢复默认 ${entryDisplayName(entry)}`}
+							disabled={resettingEntryID === entry.id}
+							onClick={() => onReset(entry)}
+						>
+							{resettingEntryID === entry.id ? (
+								<Loader2 className="size-3.5 animate-spin" />
+							) : (
+								<RotateCcw className="size-3.5" />
+							)}
+						</Button>
+					) : null}
 					<Button
 						type="button"
 						size="icon"
@@ -1069,15 +1144,15 @@ const WorkspaceStart: React.FC<{
 	packs: PromptPack[];
 	search: string;
 }> = ({ isLoading, onSelectPack, packs, search }) => {
-	if (isLoading) return <LoadingState label="加载本地技能包" />;
+	if (isLoading) return <LoadingState label="加载技能包" />;
 	const filteredPacks = filterPacks(packs, search);
 
 	return (
-		<div className="h-full overflow-y-auto px-8 py-8">
+		<div className="h-full overflow-y-auto py-8">
 			<div className="mx-auto w-full max-w-5xl">
 				<div className="border-b border-border pb-5">
-					<h2 className="text-xl font-semibold text-foreground">技能包管理</h2>
-					<p className="mt-1 text-sm text-muted-foreground">本地草稿</p>
+					<h2 className="text-xl font-semibold text-foreground">选择技能包</h2>
+					<p className="mt-1 text-sm text-muted-foreground">全部已安装与本地创作</p>
 				</div>
 
 				{filteredPacks.length > 0 ? (
@@ -1091,7 +1166,7 @@ const WorkspaceStart: React.FC<{
 									<div className="flex flex-wrap items-center gap-2">
 										<h3 className="truncate text-sm font-semibold text-foreground">{pack.name}</h3>
 										<span className="rounded-sm border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">
-											本地草稿
+											{packSourceLabel(pack.source)}
 										</span>
 									</div>
 									<p className="mt-1 truncate text-xs text-muted-foreground">
@@ -1112,7 +1187,7 @@ const WorkspaceStart: React.FC<{
 					<div className="py-16 text-center">
 						<PackageOpen className="mx-auto size-8 text-muted-foreground" />
 						<h3 className="mt-4 text-sm font-medium text-foreground">
-							{search ? "没有匹配的技能包" : "还没有本地技能包"}
+							{search ? "没有匹配的技能包" : "还没有技能包"}
 						</h3>
 						<p className="mt-1 text-xs text-muted-foreground">
 							{search ? "请调整左侧搜索条件。" : "使用左侧的新建技能包入口开始制作。"}
@@ -1128,7 +1203,7 @@ const WorkspaceIdle: React.FC<{ contents: PromptPackContents; pack: PromptPack }
 	contents,
 	pack,
 }) => (
-	<div className="h-full overflow-y-auto px-10 py-10 xl:px-14">
+	<div className="h-full overflow-y-auto py-10">
 		<div className="mx-auto w-full max-w-4xl">
 			<div className="flex items-start gap-4 border-b border-border pb-6">
 				<span className="flex size-11 shrink-0 items-center justify-center rounded-md border border-border bg-ide-toolbar text-primary">
@@ -1138,7 +1213,7 @@ const WorkspaceIdle: React.FC<{ contents: PromptPackContents; pack: PromptPack }
 					<div className="flex flex-wrap items-center gap-2">
 						<h2 className="truncate text-2xl font-semibold text-foreground">{pack.name}</h2>
 						<span className="rounded-sm border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
-							本地草稿
+							{packSourceLabel(pack.source)}
 						</span>
 					</div>
 					<p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -1207,6 +1282,20 @@ const filterEntries = (entries: PromptPackEntry[], search: string) => {
 };
 
 const entryDisplayName = (entry: PromptPackEntry) => entry.title || entry.name || entry.slug;
+
+const entryCanReset = (entry: PromptPackEntry) =>
+	entry.source !== "user" || Boolean(entry.overriddenFrom);
+
+const packSourceLabel = (source: PromptPack["source"]) => {
+	switch (source) {
+		case "default":
+			return "默认技能包";
+		case "imported":
+			return "已导入";
+		case "local":
+			return "本地创作";
+	}
+};
 
 const errorMessage = (error: unknown) =>
 	error instanceof Error && error.message.trim() ? error.message : "请稍后重试。";

@@ -96,6 +96,19 @@ describe("PromptLibraryEditorPanel", () => {
 		expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
 	});
 
+	it("keeps the prompt name and right-aligned metadata on one row", async () => {
+		renderPanel();
+
+		const name = await screen.findByText("2D动漫");
+		const listItem = name.closest("button");
+		const membershipBadge = screen.getAllByLabelText("所属技能包：默认技能包")[0];
+		const metadata = membershipBadge.parentElement;
+
+		expect(listItem).toHaveClass("items-center");
+		expect(name).toHaveClass("flex-1", "truncate");
+		expect(metadata).toHaveClass("shrink-0");
+	});
+
 	afterEach(() => {
 		cleanup();
 	});

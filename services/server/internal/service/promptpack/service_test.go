@@ -174,8 +174,67 @@ func TestServiceCreatesPackDraftEntriesBeforeContentIsWritten(t *testing.T) {
 		t.Fatalf("ExportPack(complete entries) error = %v", err)
 	}
 
-	if _, err := store.CreatePackEntryDraft(ctx, DefaultPackID, instructionpack.KindPrompt, "blocked-draft"); !errors.Is(err, ErrPackReadonly) {
-		t.Fatalf("CreatePackEntryDraft(default) error = %v, want ErrPackReadonly", err)
+	builtinDraft, err := store.CreatePackEntryDraft(
+		ctx,
+		DefaultPackID,
+		instructionpack.KindPrompt,
+		"builtin-user-draft",
+	)
+	if err != nil {
+		t.Fatalf("CreatePackEntryDraft(default) error = %v", err)
+	}
+	if builtinDraft.PackID != DefaultPackID || builtinDraft.Source != entrySourceUser {
+		t.Fatalf("builtin draft = %#v, want a user overlay in the default pack", builtinDraft)
+	}
+}
+
+func TestServiceRemovesExactFormalPackEntryAsHiddenOverlay(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	contents, err := store.GetPackContents(ctx, DefaultPackID)
+	if err != nil {
+		t.Fatalf("GetPackContents(default) error = %v", err)
+	}
+	var target Entry
+	for _, entry := range contents.Entries {
+		if entry.Kind == instructionpack.KindSkill && entry.Slug == "character-writer" {
+			target = entry
+			break
+		}
+	}
+	if target.ID == "" {
+		t.Fatal("default character-writer entry not found")
+	}
+
+	if err := store.RemoveEntry(ctx, DefaultPackID, target.ID); err != nil {
+		t.Fatalf("RemoveEntry(default) error = %v", err)
+	}
+	hiddenContents, err := store.GetPackContents(ctx, DefaultPackID)
+	if err != nil {
+		t.Fatalf("GetPackContents(hidden default) error = %v", err)
+	}
+	for _, entry := range hiddenContents.Entries {
+		if entry.ID == target.ID {
+			t.Fatalf("hidden entry %q is still visible", target.ID)
+		}
+	}
+
+	if _, err := store.ResetPack(ctx, DefaultPackID); err != nil {
+		t.Fatalf("ResetPack(default) error = %v", err)
+	}
+	restoredContents, err := store.GetPackContents(ctx, DefaultPackID)
+	if err != nil {
+		t.Fatalf("GetPackContents(restored default) error = %v", err)
+	}
+	restored := false
+	for _, entry := range restoredContents.Entries {
+		if entry.ID == target.ID {
+			restored = true
+			break
+		}
+	}
+	if !restored {
+		t.Fatalf("reset did not restore %q", target.ID)
 	}
 }
 

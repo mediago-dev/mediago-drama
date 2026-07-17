@@ -62,7 +62,9 @@ const emptyDraft = (category: PromptPresetCategory): Draft => ({
 	packId: "builtin",
 });
 
-export const PromptLibraryEditorPanel: React.FC = () => {
+export const PromptLibraryEditorPanel: React.FC<{ showActions?: boolean }> = ({
+	showActions = true,
+}) => {
 	const toast = useToast();
 	const { mutate: mutateGlobal } = useSWRConfig();
 	const {
@@ -288,40 +290,42 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 
 	return (
 		<>
-			<PromptPackActions>
-				<Button type="button" variant="outline" onClick={startCreate}>
-					<Plus className="size-4" />
-					<span>新建</span>
-				</Button>
-				{canDeletePreset ? (
+			{showActions ? (
+				<PromptPackActions>
+					<Button type="button" variant="outline" onClick={startCreate}>
+						<Plus className="size-4" />
+						<span>新建</span>
+					</Button>
+					{canDeletePreset ? (
+						<Button
+							type="button"
+							variant="destructive"
+							onClick={confirmDeletePreset}
+							disabled={isDeleting}
+						>
+							{isDeleting ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<Trash2 className="size-4" />
+							)}
+							<span>{isDeleting ? "处理中" : "删除"}</span>
+						</Button>
+					) : null}
 					<Button
 						type="button"
-						variant="destructive"
-						onClick={confirmDeletePreset}
-						disabled={isDeleting}
+						variant="outline"
+						onClick={confirmResetPreset}
+						disabled={!selectedPreset || !canResetPreset || isResetting}
 					>
-						{isDeleting ? (
+						{isResetting ? (
 							<Loader2 className="size-4 animate-spin" />
 						) : (
-							<Trash2 className="size-4" />
+							<RotateCcw className="size-4" />
 						)}
-						<span>{isDeleting ? "处理中" : "删除"}</span>
+						<span>{isResetting ? "恢复中" : "恢复默认"}</span>
 					</Button>
-				) : null}
-				<Button
-					type="button"
-					variant="outline"
-					onClick={confirmResetPreset}
-					disabled={!selectedPreset || !canResetPreset || isResetting}
-				>
-					{isResetting ? (
-						<Loader2 className="size-4 animate-spin" />
-					) : (
-						<RotateCcw className="size-4" />
-					)}
-					<span>{isResetting ? "恢复中" : "恢复默认"}</span>
-				</Button>
-			</PromptPackActions>
+				</PromptPackActions>
+			) : null}
 
 			<div className="flex h-full min-h-0 flex-col overflow-hidden px-5 py-5">
 				<div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
@@ -356,25 +360,23 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 									type="button"
 									onClick={() => selectPreset(preset.id)}
 									className={cn(
-										"flex w-full items-start gap-2 border-l-2 px-3 py-2 text-left",
+										"flex w-full items-center gap-3 border-l-2 px-3 py-2 text-left",
 										preset.id === selectedId
 											? "border-primary bg-ide-list-hover"
 											: "border-transparent hover:bg-ide-list-hover",
 									)}
 								>
-									<span className="min-w-0 flex-1">
-										<span className="block truncate text-xs font-medium text-foreground">
-											{preset.name}
-										</span>
-										<span className="mt-1 flex min-w-0 items-center gap-1.5">
-											<PromptPackMembershipBadge
-												className="max-w-32 shrink-0"
-												packId={preset.packId}
-												packs={packs}
-											/>
-											<span className="min-w-0 truncate text-2xs text-muted-foreground">
-												{promptCategoryOptionLabel(preset.category, categoryOptions)}
-											</span>
+									<span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+										{preset.name}
+									</span>
+									<span className="flex shrink-0 items-center gap-1.5">
+										<PromptPackMembershipBadge
+											className="max-w-24 shrink-0"
+											packId={preset.packId}
+											packs={packs}
+										/>
+										<span className="whitespace-nowrap text-2xs text-muted-foreground">
+											{promptCategoryOptionLabel(preset.category, categoryOptions)}
 										</span>
 									</span>
 								</button>
@@ -437,51 +439,55 @@ export const PromptLibraryEditorPanel: React.FC = () => {
 				</div>
 			</div>
 
-			<PromptPresetCreateDialog
-				draft={createDraft}
-				error={createError}
-				isSaving={isSaving}
-				open={createDialogOpen}
-				categoryOptions={categoryOptions}
-				packs={packs}
-				valid={createDraftValid}
-				onCancel={cancelCreate}
-				onCreateCategory={openCategoryDialog}
-				onDraftChange={setCreateDraft}
-				onOpenChange={(open) => {
-					if (open) {
-						setCreateDialogOpen(true);
-						return;
-					}
-					cancelCreate();
-				}}
-				onSave={() => void saveCreate()}
-			/>
-			<CategoryCreateDialog
-				error={categoryError}
-				isSaving={isCategorySaving}
-				name={categoryDraftName}
-				open={categoryDialogOpen}
-				onNameChange={(value) => {
-					setCategoryDraftName(value);
-					setCategoryError("");
-				}}
-				onCancel={() => {
-					setCategoryDialogOpen(false);
-					setCategoryDraftName("");
-					setCategoryError("");
-				}}
-				onOpenChange={(open) => {
-					if (open) {
-						setCategoryDialogOpen(true);
-						return;
-					}
-					setCategoryDialogOpen(false);
-					setCategoryDraftName("");
-					setCategoryError("");
-				}}
-				onSave={() => void saveCategory()}
-			/>
+			{showActions ? (
+				<PromptPresetCreateDialog
+					draft={createDraft}
+					error={createError}
+					isSaving={isSaving}
+					open={createDialogOpen}
+					categoryOptions={categoryOptions}
+					packs={packs}
+					valid={createDraftValid}
+					onCancel={cancelCreate}
+					onCreateCategory={openCategoryDialog}
+					onDraftChange={setCreateDraft}
+					onOpenChange={(open) => {
+						if (open) {
+							setCreateDialogOpen(true);
+							return;
+						}
+						cancelCreate();
+					}}
+					onSave={() => void saveCreate()}
+				/>
+			) : null}
+			{showActions ? (
+				<CategoryCreateDialog
+					error={categoryError}
+					isSaving={isCategorySaving}
+					name={categoryDraftName}
+					open={categoryDialogOpen}
+					onNameChange={(value) => {
+						setCategoryDraftName(value);
+						setCategoryError("");
+					}}
+					onCancel={() => {
+						setCategoryDialogOpen(false);
+						setCategoryDraftName("");
+						setCategoryError("");
+					}}
+					onOpenChange={(open) => {
+						if (open) {
+							setCategoryDialogOpen(true);
+							return;
+						}
+						setCategoryDialogOpen(false);
+						setCategoryDraftName("");
+						setCategoryError("");
+					}}
+					onSave={() => void saveCategory()}
+				/>
+			) : null}
 		</>
 	);
 };

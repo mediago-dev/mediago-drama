@@ -1308,9 +1308,12 @@
 	display: block;
 	position: fixed;
 	top: 0;
-	left: 0;
+	left: var(--desktop-traffic-light-safe-area);
 	z-index: 50;
-	width: var(--workspace-sidebar-width, var(--workspace-sidebar-default-width));
+	width: calc(
+		var(--workspace-sidebar-width, var(--workspace-sidebar-default-width)) -
+			var(--desktop-traffic-light-safe-area)
+	);
 	height: var(--desktop-drag-region-height);
 	cursor: default;
 }

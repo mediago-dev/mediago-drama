@@ -5,12 +5,13 @@ import {
 	Loader2,
 	PackageOpen,
 	Pencil,
+	RotateCcw,
 	Save,
 	Trash2,
 	X,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import useSWR, { useSWRConfig } from "swr";
 import {
@@ -20,6 +21,8 @@ import {
 	listPromptPacks,
 	promptPackExportFileName,
 	promptPacksKey,
+	resetPromptPack,
+	setPromptPackEnabled,
 	type PromptPack,
 	type PromptPackEntry,
 	uninstallPromptPack,
@@ -42,6 +45,7 @@ import {
 	AlertDialogTitle,
 } from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
+import { Switch } from "@/shared/components/ui/switch";
 import { openExternalUrl, revealNativePath } from "@/shared/desktop/actions";
 
 export interface CreateLocalPromptPackInput {
@@ -60,13 +64,15 @@ export const PromptPackEditor: React.FC = () => {
 		isLoading: packsLoading,
 		mutate: mutatePacks,
 	} = useSWR(promptPacksKey, listPromptPacks);
-	const packs = useMemo(() => allPacks.filter((pack) => pack.source === "local"), [allPacks]);
+	const packs = allPacks;
 	const selectedPack = packs.find((pack) => pack.id === selectedPackID);
 	const [creatingPack, setCreatingPack] = useState(searchParams.get("mode") === "create");
 	const [createBusy, setCreateBusy] = useState(false);
 	const [createError, setCreateError] = useState("");
 	const [deletingPackID, setDeletingPackID] = useState<string>();
 	const [exportingPackID, setExportingPackID] = useState<string>();
+	const [resettingPackID, setResettingPackID] = useState<string>();
+	const [togglingPackID, setTogglingPackID] = useState<string>();
 	const [exportCompletion, setExportCompletion] = useState<PromptPackExportCompletion>();
 	const [isEditing, setIsEditing] = useState(false);
 	const [isPackDirty, setIsPackDirty] = useState(false);
@@ -238,13 +244,57 @@ export const PromptPackEditor: React.FC = () => {
 
 	const confirmDeletePack = (pack: PromptPack) => {
 		void confirmDialog({
-			title: "删除本地技能包？",
-			description: `“${pack.name}”及其中的全部 Skill 和提示词将从本机永久删除。`,
-			confirmLabel: "删除技能包",
+			title: pack.source === "local" ? "删除本地技能包？" : "卸载技能包？",
+			description:
+				pack.source === "local"
+					? `“${pack.name}”及其中的全部 Skill 和提示词将从本机永久删除。`
+					: `“${pack.name}”及其中的 Skill 和提示词将从本机卸载。`,
+			confirmLabel: pack.source === "local" ? "删除技能包" : "卸载技能包",
 			confirmIcon: <Trash2 className="size-4" />,
 			variant: "destructive",
 			onConfirm: () => deletePack(pack),
 		});
+	};
+
+	const resetPack = async (pack: PromptPack) => {
+		setResettingPackID(pack.id);
+		try {
+			await resetPromptPack(pack.id);
+			await refreshPromptData();
+			toast.success("技能包已恢复默认", { description: pack.name });
+			return true;
+		} catch (error) {
+			toast.error("恢复失败", { description: errorMessage(error) });
+			return false;
+		} finally {
+			setResettingPackID(undefined);
+		}
+	};
+
+	const confirmResetPack = (pack: PromptPack) => {
+		void confirmDialog({
+			title: "恢复技能包默认？",
+			description: `将恢复“${pack.name}”自带的 Skill 和提示词，保留用户新增内容。`,
+			confirmLabel: "恢复默认",
+			confirmIcon: <RotateCcw className="size-4" />,
+			variant: "default",
+			onConfirm: () => resetPack(pack),
+		});
+	};
+
+	const togglePack = async (pack: PromptPack, enabled: boolean) => {
+		setTogglingPackID(pack.id);
+		try {
+			await setPromptPackEnabled(pack.id, enabled);
+			await refreshPromptData();
+			toast.success(enabled ? "技能包已启用" : "技能包已停用", {
+				description: pack.name,
+			});
+		} catch (error) {
+			toast.error("更新失败", { description: errorMessage(error) });
+		} finally {
+			setTogglingPackID(undefined);
+		}
 	};
 
 	const openPublishPage = async () => {
@@ -283,10 +333,10 @@ export const PromptPackEditor: React.FC = () => {
 						<div className="min-w-0" data-desktop-drag-region>
 							<div className="flex items-center gap-2">
 								<PackageOpen className="size-4 text-muted-foreground" />
-								<h1 className="truncate text-sm font-semibold text-foreground">技能包编辑器</h1>
+								<h1 className="truncate text-sm font-semibold text-foreground">技能包管理</h1>
 							</div>
 							<p className="mt-1 text-xs text-muted-foreground">
-								在本机制作内容，完成后导出 .mgpack。
+								集中管理技能包及其中的 Skill 和提示词。
 							</p>
 						</div>
 						{selectedPack && !creatingPack ? (
@@ -317,41 +367,77 @@ export const PromptPackEditor: React.FC = () => {
 									</>
 								) : (
 									<>
+										<div className="flex items-center gap-2 px-1">
+											<span className="text-xs text-muted-foreground">
+												{selectedPack.enabled ? "已启用" : "已停用"}
+											</span>
+											<Switch
+												checked={selectedPack.enabled}
+												disabled={
+													selectedPack.source === "default" || togglingPackID === selectedPack.id
+												}
+												aria-label={`${selectedPack.enabled ? "停用" : "启用"}技能包 ${selectedPack.name}`}
+												onCheckedChange={(enabled) => void togglePack(selectedPack, enabled)}
+											/>
+										</div>
 										<Button type="button" variant="outline" onClick={() => setIsEditing(true)}>
 											<Pencil className="size-4" />
 											<span>编辑</span>
 										</Button>
-										<Button
-											type="button"
-											variant="outline"
-											disabled={
-												exportingPackID === selectedPack.id || deletingPackID === selectedPack.id
-											}
-											onClick={() => void exportPack(selectedPack)}
-										>
-											{exportingPackID === selectedPack.id ? (
-												<Loader2 className="size-4 animate-spin" />
-											) : (
-												<Download className="size-4" />
-											)}
-											<span>导出</span>
-										</Button>
-										<Button
-											type="button"
-											variant="outline"
-											className="text-destructive hover:bg-error-surface hover:text-error-foreground"
-											disabled={
-												deletingPackID === selectedPack.id || exportingPackID === selectedPack.id
-											}
-											onClick={() => confirmDeletePack(selectedPack)}
-										>
-											{deletingPackID === selectedPack.id ? (
-												<Loader2 className="size-4 animate-spin" />
-											) : (
-												<Trash2 className="size-4" />
-											)}
-											<span>删除技能包</span>
-										</Button>
+										{selectedPack.source !== "local" ? (
+											<Button
+												type="button"
+												variant="outline"
+												disabled={resettingPackID === selectedPack.id}
+												onClick={() => confirmResetPack(selectedPack)}
+											>
+												{resettingPackID === selectedPack.id ? (
+													<Loader2 className="size-4 animate-spin" />
+												) : (
+													<RotateCcw className="size-4" />
+												)}
+												<span>{resettingPackID === selectedPack.id ? "恢复中" : "恢复默认"}</span>
+											</Button>
+										) : null}
+										{selectedPack.source !== "default" ? (
+											<>
+												<Button
+													type="button"
+													variant="outline"
+													disabled={
+														exportingPackID === selectedPack.id ||
+														deletingPackID === selectedPack.id
+													}
+													onClick={() => void exportPack(selectedPack)}
+												>
+													{exportingPackID === selectedPack.id ? (
+														<Loader2 className="size-4 animate-spin" />
+													) : (
+														<Download className="size-4" />
+													)}
+													<span>导出</span>
+												</Button>
+												<Button
+													type="button"
+													variant="outline"
+													className="text-destructive hover:bg-error-surface hover:text-error-foreground"
+													disabled={
+														deletingPackID === selectedPack.id ||
+														exportingPackID === selectedPack.id
+													}
+													onClick={() => confirmDeletePack(selectedPack)}
+												>
+													{deletingPackID === selectedPack.id ? (
+														<Loader2 className="size-4 animate-spin" />
+													) : (
+														<Trash2 className="size-4" />
+													)}
+													<span>
+														{selectedPack.source === "local" ? "删除技能包" : "卸载技能包"}
+													</span>
+												</Button>
+											</>
+										) : null}
 									</>
 								)}
 							</div>

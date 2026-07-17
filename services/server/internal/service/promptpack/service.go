@@ -424,7 +424,7 @@ func (store *Service) CreatePack(ctx context.Context, pack Pack) (Pack, error) {
 	return store.GetPack(ctx, pack.ID)
 }
 
-// CreatePackEntryDraft creates an empty, editable entry inside a local authoring pack.
+// CreatePackEntryDraft creates an empty user-owned entry inside an installed pack.
 func (store *Service) CreatePackEntryDraft(
 	ctx context.Context,
 	packID string,
@@ -449,10 +449,6 @@ func (store *Service) CreatePackEntryDraft(
 	if err != nil {
 		return Entry{}, err
 	}
-	if normalizePackSource(pack.Source, pack.ID) != packSourceLocal {
-		return Entry{}, fmt.Errorf("%w: only local authoring packs accept draft entries", ErrPackReadonly)
-	}
-
 	entry := Entry{
 		ID:        instructionpack.EntryID(packID, kind, slug),
 		PackID:    packID,
@@ -681,7 +677,7 @@ func (store *Service) DetachEntry(ctx context.Context, packID string, entryID st
 	return entryFromModel(entryModelFromEntry(resolved)), nil
 }
 
-// RemoveEntry removes one direct or linked entry from a local authoring pack.
+// RemoveEntry removes one exact user entry or hides one exact package-backed entry.
 func (store *Service) RemoveEntry(ctx context.Context, packID string, entryID string) error {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return err
@@ -695,9 +691,6 @@ func (store *Service) RemoveEntry(ctx context.Context, packID string, entryID st
 	if err != nil {
 		return err
 	}
-	if normalizePackSource(pack.Source, pack.ID) != packSourceLocal {
-		return fmt.Errorf("%w: only local authoring packs can remove entries", ErrPackReadonly)
-	}
 	model, err := store.repo.GetEntry(entryID)
 	if repository.IsRecordNotFound(err) || model.PackID != packID {
 		return fmt.Errorf("%w: %s", ErrEntryNotFound, entryID)
@@ -706,10 +699,20 @@ func (store *Service) RemoveEntry(ctx context.Context, packID string, entryID st
 		return err
 	}
 	entry := entryFromModel(model)
-	if entry.Source != entrySourceUser || entry.OverriddenFrom != "" {
+	if entry.Source == entrySourceUser && entry.OverriddenFrom == "" {
+		return store.repo.DeleteEntry(entryID)
+	}
+	if normalizePackSource(pack.Source, pack.ID) == packSourceLocal {
 		return fmt.Errorf("%w: %s", ErrPackReadonly, entryID)
 	}
-	return store.repo.DeleteEntry(entryID)
+	entry.Source = entrySourceUser
+	entry.OverriddenFrom = nonEmpty(entry.OverriddenFrom, entry.ID)
+	entry.Metadata = cloneMetadata(entry.Metadata)
+	if entry.Metadata == nil {
+		entry.Metadata = map[string]any{}
+	}
+	entry.Metadata[entryMetadataHidden] = true
+	return store.repo.UpsertEntry(entryModelFromEntry(entry))
 }
 
 // SetEnabled enables or disables one installed pack. Packs are additive, so
