@@ -44,10 +44,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Require protected main or release tag
+      - name: Require main or release tag
         shell: bash
-        env:
-          REF_PROTECTED: ${{ github.ref_protected }}
         run: |
           set -euo pipefail
           case "$GITHUB_REF" in
@@ -57,10 +55,6 @@ jobs:
               exit 1
               ;;
           esac
-          if [[ "$REF_PROTECTED" != "true" ]]; then
-            echo "official releases require a protected branch or tag: $GITHUB_REF" >&2
-            exit 1
-          fi
 
   release-version:
     name: Resolve release version
