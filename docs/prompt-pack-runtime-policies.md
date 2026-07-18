@@ -57,22 +57,25 @@ token only `Contents: read` on `mediago-drama-private`. Do not use a personal
 token with organization-wide write access.
 
 Official desktop releases also fail closed unless platform signing credentials
-exist in the same protected environment. macOS requires
-`MEDIAGO_MAC_CSC_LINK`, `MEDIAGO_MAC_CSC_KEY_PASSWORD`, `MEDIAGO_APPLE_ID`,
-`MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD`, and `MEDIAGO_APPLE_TEAM_ID`; Windows
-requires `MEDIAGO_WINDOWS_CSC_LINK` and
-`MEDIAGO_WINDOWS_CSC_KEY_PASSWORD`. Local development builds do not require
-these secrets.
+exist in the same protected environment. macOS signing requires
+`MEDIAGO_MAC_CSC_LINK` and `MEDIAGO_MAC_CSC_KEY_PASSWORD`. Windows requires
+`MEDIAGO_WINDOWS_CSC_LINK` and `MEDIAGO_WINDOWS_CSC_KEY_PASSWORD`. Local
+development builds do not require these secrets.
 
 For macOS direct distribution, create a `Developer ID Application` certificate
 in the Apple Developer account, install it together with its private key, and
 export both as a password-protected `.p12`. Store the base64-encoded `.p12` as
 `MEDIAGO_MAC_CSC_LINK` and its export password as
-`MEDIAGO_MAC_CSC_KEY_PASSWORD`. Store the Apple developer account email,
-app-specific password, and ten-character team ID in the remaining three
-secrets. Never commit the certificate or any of these values to the repository.
-The release workflow maps the protected values to electron-builder's signing
-and notarization environment variables only for the macOS matrix entry.
+`MEDIAGO_MAC_CSC_KEY_PASSWORD`. Never commit the certificate or either value to
+the repository. The release workflow signs macOS artifacts by default and does
+not submit them for Apple notarization.
+
+Notarization is opt-in. Set the `official-release` environment variable
+`MEDIAGO_MAC_NOTARIZE` to `1` only after Apple has enabled notarization for the
+developer team. An enabled notarization build additionally requires the
+`MEDIAGO_APPLE_ID`, `MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD`, and
+`MEDIAGO_APPLE_TEAM_ID` environment secrets. When the variable is absent or is
+not `1`, those three secrets are not injected into the build.
 
 After downloading and unpacking an official macOS release, verify the app
 before publishing it:
@@ -80,13 +83,19 @@ before publishing it:
 ```bash
 codesign --verify --deep --strict --verbose=2 "/path/to/MediaGo Drama.app"
 codesign -dv --verbose=4 "/path/to/MediaGo Drama.app"
+```
+
+For a notarized release, additionally verify Gatekeeper acceptance and the
+stapled notarization ticket:
+
+```bash
 spctl --assess --verbose --type exec "/path/to/MediaGo Drama.app"
 xcrun stapler validate "/path/to/MediaGo Drama.app"
 ```
 
 The signature details must show the expected `Developer ID Application`
-authority and Apple team ID, Gatekeeper must report `accepted`, and stapler
-must report a valid notarization ticket.
+authority and Apple team ID. For notarized builds, Gatekeeper must report
+`accepted` and stapler must report a valid notarization ticket.
 
 Packaged Electron starts the local server with a fresh
 `MEDIAGO_SIDECAR_TOKEN` for each process and sends it in

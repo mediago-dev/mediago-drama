@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Make official macOS Electron releases fail closed unless they are signed with the MediaGo Developer ID certificate and notarized by Apple.
+**Goal:** Make official macOS Electron releases fail closed unless they are signed with the MediaGo Developer ID certificate, while keeping Apple notarization opt-in.
 
-**Architecture:** Keep credentials exclusively in the protected `official-release` GitHub Environment. The release workflow validates the five repository-specific secrets, maps them to the environment variables understood by electron-builder, and enables the signing/notarization switches already consumed by `stage-electron-app.ts`.
+**Architecture:** Keep credentials exclusively in the protected `official-release` GitHub Environment. The release workflow always validates the two signing secrets and enables the signing switch consumed by `stage-electron-app.ts`. Notarization and its three additional secrets are enabled only when the `MEDIAGO_MAC_NOTARIZE` environment variable is `1`.
 
 **Tech Stack:** GitHub Actions, electron-builder, Apple Developer ID signing, Apple notarization.
 
@@ -18,11 +18,11 @@
 
 **Step 1: Add a macOS-only credential preflight**
 
-Add a build step that runs only for `darwin-arm64`, receives the five `MEDIAGO_*` GitHub Environment secrets, and exits with a clear error listing only missing secret names. Never print secret values.
+Add a build step that runs only for `darwin-arm64`, receives the two signing secrets, and exits with a clear error listing only missing secret names. Add a separate notarization preflight that runs only when `MEDIAGO_MAC_NOTARIZE=1`. Never print secret values.
 
-**Step 2: Enable signing and notarization for the macOS matrix entry**
+**Step 2: Enable signing and make notarization opt-in for the macOS matrix entry**
 
-Set `MEDIAGO_MAC_SIGN=1` and `MEDIAGO_MAC_NOTARIZE=1` only for `darwin-arm64`. Map the repository-specific secrets to electron-builder's `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` variables.
+Set `MEDIAGO_MAC_SIGN=1` for `darwin-arm64`. Set `MEDIAGO_MAC_NOTARIZE=1` and inject `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` only when the matching GitHub Environment variable is `1`.
 
 **Step 3: Allow certificate identity discovery in the signed macOS build**
 
@@ -36,11 +36,11 @@ Override `CSC_IDENTITY_AUTO_DISCOVERY` to `true` for `darwin-arm64` while retain
 
 **Step 1: Document the expected certificate and GitHub Environment secrets**
 
-State that `MEDIAGO_MAC_CSC_LINK` contains a base64-encoded `.p12` exported with its private key from a `Developer ID Application` identity. Keep the existing secret names as the repository contract.
+State that `MEDIAGO_MAC_CSC_LINK` contains a base64-encoded `.p12` exported with its private key from a `Developer ID Application` identity. Document the notarization opt-in variable and its additional secrets.
 
 **Step 2: Document release verification commands**
 
-Add `codesign`, `spctl`, and `xcrun stapler` checks for the unpacked `.app`, including the expected signed/notarized outcomes.
+Add `codesign` checks for every signed `.app`, with `spctl` and `xcrun stapler` checks only for notarized releases.
 
 ### Task 3: Validate locally without credentials
 
@@ -63,4 +63,4 @@ Verify that no certificate, password, Apple ID, or Team ID value has been added 
 
 **Step 4: Perform the external release check after provisioning**
 
-After the user adds the five secrets to `official-release`, dispatch the release workflow from `main`. Download the macOS artifact and verify its signature, Gatekeeper assessment, notarization ticket, application icon, and notification click behavior.
+After the user adds the two signing secrets to `official-release`, dispatch the release workflow from `main`. Download the macOS artifact and verify its signature, application icon, and notification click behavior. When notarization is later enabled, also verify Gatekeeper assessment and the stapled ticket.
