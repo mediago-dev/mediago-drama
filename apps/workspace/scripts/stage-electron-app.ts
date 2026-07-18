@@ -103,7 +103,7 @@ function main(): void {
 			],
 			mac: {
 				category: "public.app-category.productivity",
-				target: electronTargetPlatform === "darwin-arm64" ? ["zip"] : ["dmg", "zip"],
+				target: ["dmg", "zip"],
 				icon: "../../build/icons/icon.icns",
 				// MEDIAGO_MAC_SIGN=1 (set by CI when the signing cert exists) enables Developer
 				// ID signing; MEDIAGO_MAC_NOTARIZE=1 (set only when the Apple notary secrets
