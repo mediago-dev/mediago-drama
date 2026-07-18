@@ -3,11 +3,6 @@ name: Electron Release
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: Base SemVer version for the release
-        required: true
-        default: 0.1.0
-        type: string
       channel:
         description: Release channel
         required: true
@@ -17,17 +12,21 @@ on:
           - alpha
           - beta
           - latest
-      prerelease_number:
-        description: Numeric suffix for alpha/beta releases
+      bump:
+        description: Version increment for latest releases (ignored for alpha/beta)
         required: true
-        default: "0"
-        type: string
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: read
 
 concurrency:
-  group: electron-release-${{ inputs.version }}-${{ inputs.channel }}-${{ inputs.prerelease_number }}
+  group: electron-release-${{ inputs.channel }}-${{ inputs.bump }}
   cancel-in-progress: false
 
 env:
@@ -65,44 +64,20 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
       github_release_type: ${{ steps.version.outputs.github_release_type }}
     steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Resolve channel version
         id: version
         env:
+          BUMP: ${{ inputs.bump }}
           CHANNEL: ${{ inputs.channel }}
-          PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "version must be a base SemVer value like 0.1.0" >&2
-            exit 1
-          fi
-
-          case "$CHANNEL" in
-            alpha|beta)
-              if [[ ! "$PRERELEASE_NUMBER" =~ ^[0-9]+$ ]]; then
-                echo "prerelease_number must be numeric for alpha/beta releases" >&2
-                exit 1
-              fi
-              app_version="${VERSION}-${CHANNEL}.${PRERELEASE_NUMBER}"
-              prerelease="true"
-              ;;
-            latest)
-              app_version="$VERSION"
-              prerelease="false"
-              ;;
-            *)
-              echo "unsupported channel: $CHANNEL" >&2
-              exit 1
-              ;;
-          esac
-
-          {
-            echo "app_version=$app_version"
-            echo "prerelease=$prerelease"
-            echo "github_release_type=draft"
-          } >> "$GITHUB_OUTPUT"
+        run: node .github/scripts/resolve-electron-release-version.ts
 
   build:
     name: Build ${{ matrix.label }}
@@ -179,83 +154,24 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Apply release version
-        shell: bash
         env:
           APP_VERSION: ${{ needs.release-version.outputs.app_version }}
-        run: |
-          node <<'NODE'
-          const { readFileSync, writeFileSync } = require("node:fs");
-
-          function writeJSON(path, value) {
-            writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
-          }
-
-          const version = process.env.APP_VERSION;
-          const workspacePackagePath = "apps/workspace/package.json";
-          const workspacePackage = JSON.parse(readFileSync(workspacePackagePath, "utf8"));
-          workspacePackage.version = version;
-          writeJSON(workspacePackagePath, workspacePackage);
-
-          const manifestPath = "one.manifest.json";
-          const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-          const workspaceProject = manifest.projects?.find((project) => project.name === "workspace");
-          if (workspaceProject) {
-            workspaceProject.buildVersion = version;
-            writeJSON(manifestPath, manifest);
-          }
-          NODE
+        run: node .github/scripts/apply-electron-release-version.ts
 
       - name: Validate macOS signing credentials
         if: matrix.platform == 'darwin-arm64'
-        shell: bash
         env:
           MEDIAGO_MAC_CSC_KEY_PASSWORD: ${{ secrets.MEDIAGO_MAC_CSC_KEY_PASSWORD }}
           MEDIAGO_MAC_CSC_LINK: ${{ secrets.MEDIAGO_MAC_CSC_LINK }}
-        run: |
-          set -euo pipefail
-
-          required=(
-            MEDIAGO_MAC_CSC_LINK
-            MEDIAGO_MAC_CSC_KEY_PASSWORD
-          )
-          missing=()
-          for variable in "${required[@]}"; do
-            if [[ -z "${!variable:-}" ]]; then
-              missing+=("$variable")
-            fi
-          done
-
-          if [[ "${#missing[@]}" -gt 0 ]]; then
-            echo "Missing required official-release secrets: ${missing[*]}" >&2
-            exit 1
-          fi
+        run: node .github/scripts/validate-electron-release-env.ts signing
 
       - name: Validate macOS notarization credentials
         if: matrix.platform == 'darwin-arm64' && vars.MEDIAGO_MAC_NOTARIZE == '1'
-        shell: bash
         env:
           MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD }}
           MEDIAGO_APPLE_ID: ${{ secrets.MEDIAGO_APPLE_ID }}
           MEDIAGO_APPLE_TEAM_ID: ${{ secrets.MEDIAGO_APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
-
-          required=(
-            MEDIAGO_APPLE_ID
-            MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD
-            MEDIAGO_APPLE_TEAM_ID
-          )
-          missing=()
-          for variable in "${required[@]}"; do
-            if [[ -z "${!variable:-}" ]]; then
-              missing+=("$variable")
-            fi
-          done
-
-          if [[ "${#missing[@]}" -gt 0 ]]; then
-            echo "Missing required official-release secrets: ${missing[*]}" >&2
-            exit 1
-          fi
+        run: node .github/scripts/validate-electron-release-env.ts notarization
 
       - name: Build ${{ matrix.label }}
         env:
@@ -279,19 +195,7 @@ jobs:
 
       - name: Verify macOS release bundle
         if: matrix.platform == 'darwin-arm64'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          app="apps/workspace/release/mac-arm64/MediaGo Drama.app"
-          codesign --verify --deep --strict --verbose=4 "$app"
-
-          fuse_state="$(pnpm --dir apps/workspace exec electron-fuses read --app "$app")"
-          echo "$fuse_state"
-          if ! grep -Fq "LoadBrowserProcessSpecificV8Snapshot is Disabled" <<< "$fuse_state"; then
-            echo "macOS release unexpectedly requires browser_v8_context_snapshot.bin" >&2
-            exit 1
-          fi
+        run: node .github/scripts/verify-macos-electron-release.ts
 
       - name: Upload ${{ matrix.label }} artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -319,59 +223,17 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           path: release-artifacts
 
       - name: Publish GitHub draft release
-        shell: bash
         env:
           APP_VERSION: ${{ needs.release-version.outputs.app_version }}
           GH_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ needs.release-version.outputs.prerelease }}
-        run: |
-          set -euo pipefail
-
-          tag="v${APP_VERSION}"
-          mapfile -t draft_release_ids < <(
-            gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate \
-              --jq ".[] | select(.draft and (.tag_name == \"${tag}\" or .name == \"${APP_VERSION}\")) | .id"
-          )
-          for release_id in "${draft_release_ids[@]}"; do
-            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${release_id}"
-          done
-
-          existing_tag_sha="$(git ls-remote --tags origin "refs/tags/${tag}" | awk 'NR == 1 {print $1}')"
-          if [[ -n "$existing_tag_sha" ]]; then
-            if [[ "$existing_tag_sha" != "$GITHUB_SHA" ]]; then
-              if [[ "${#draft_release_ids[@]}" -eq 0 ]]; then
-                echo "tag ${tag} already exists at ${existing_tag_sha}, expected ${GITHUB_SHA}" >&2
-                exit 1
-              fi
-              git push origin ":refs/tags/${tag}"
-              git tag -f "$tag" "$GITHUB_SHA"
-              git push origin "refs/tags/${tag}"
-            fi
-          else
-            git tag "$tag" "$GITHUB_SHA"
-            git push origin "refs/tags/${tag}"
-          fi
-
-          mapfile -t files < <(
-            find release-artifacts -type f \
-              \( -name "*.blockmap" -o -name "*.dmg" -o -name "*.exe" -o -name "*.yml" -o -name "*.zip" \) \
-              ! -name builder-debug.yml \
-              ! -name builder-effective-config.yaml |
-              sort
-          )
-          if [[ "${#files[@]}" -eq 0 ]]; then
-            echo "no release artifacts found" >&2
-            exit 1
-          fi
-
-          release_flags=(--repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$APP_VERSION" --notes "MediaGo Drama $APP_VERSION")
-          if [[ "$PRERELEASE" == "true" ]]; then
-            release_flags+=(--prerelease)
-          fi
-
-          gh release create "$tag" "${files[@]}" "${release_flags[@]}"
+        run: node .github/scripts/publish-electron-release.ts
