@@ -33,6 +33,7 @@ const buildsMacOS = electronTargetPlatform
 	: process.platform === "darwin";
 const requiresCodeSigning =
 	process.env.MEDIAGO_CODE_SIGN === "1" || process.env.MEDIAGO_MAC_SIGN === "1";
+const enablesElectronFuses = !buildsMacOS || requiresCodeSigning;
 
 function main(): void {
 	ensureDirectory(rendererDistDir, "missing renderer build output");
@@ -70,16 +71,23 @@ function main(): void {
 			appId: "team.torchstellar.mediagodrama",
 			productName: "MediaGo Drama",
 			asar: true,
-			electronFuses: {
-				runAsNode: false,
-				enableCookieEncryption: true,
-				enableNodeOptionsEnvironmentVariable: false,
-				enableNodeCliInspectArguments: false,
-				enableEmbeddedAsarIntegrityValidation: true,
-				onlyLoadAppFromAsar: true,
-				loadBrowserProcessSpecificV8Snapshot: true,
-				grantFileProtocolExtraPrivileges: false,
-			},
+			// Flipping Electron fuses mutates the macOS framework binary. Only do so when
+			// the build will be signed afterwards; otherwise its embedded signature becomes
+			// invalid and macOS terminates the app with CODESIGNING/Invalid Page at launch.
+			...(enablesElectronFuses
+				? {
+						electronFuses: {
+							runAsNode: false,
+							enableCookieEncryption: true,
+							enableNodeOptionsEnvironmentVariable: false,
+							enableNodeCliInspectArguments: false,
+							enableEmbeddedAsarIntegrityValidation: true,
+							onlyLoadAppFromAsar: true,
+							loadBrowserProcessSpecificV8Snapshot: true,
+							grantFileProtocolExtraPrivileges: false,
+						},
+					}
+				: {}),
 			...(requiresCodeSigning ? { forceCodeSigning: true } : {}),
 			// Keep the on-disk filename identical to electron-builder's updater YAML path.
 			// Spaces in productName otherwise trigger provider-specific safeArtifactName
