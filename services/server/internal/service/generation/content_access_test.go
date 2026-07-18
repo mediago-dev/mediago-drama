@@ -15,14 +15,14 @@ func TestAuthorizeContentUseAllowsCommunityContent(t *testing.T) {
 	}
 }
 
-func TestAuthorizeContentUseFailsClosedWithoutRuntime(t *testing.T) {
+func TestAuthorizeContentUseAllowsImportedContentWithoutRuntime(t *testing.T) {
 	workflow := &GenerationService{}
 	status, err := workflow.authorizeContentUse(context.Background(), "call", []ContentSourceRef{{
 		PackageID: "pack-1",
 		ReleaseID: "release-1",
 	}})
-	if status != http.StatusServiceUnavailable || !errors.Is(err, ErrContentUseUnavailable) {
-		t.Fatalf("authorizeContentUse() = (%d, %v), want unavailable", status, err)
+	if status != http.StatusOK || err != nil {
+		t.Fatalf("authorizeContentUse() = (%d, %v), want (200, nil)", status, err)
 	}
 }
 
@@ -52,9 +52,10 @@ func TestAuthorizeContentUseNormalizesAndDelegates(t *testing.T) {
 
 func TestAuthorizeContentUseMapsDenial(t *testing.T) {
 	workflow := &GenerationService{}
+	wantReason := "当前账号没有有效的发布者席位，请重新导入并确认加入"
 	workflow.SetContentUseAuthorizer(ContentUseAuthorizerFunc(
 		func(context.Context, string, []ContentSourceRef) error {
-			return &ContentUseDeniedError{Reason: "purchase required", NextAction: "purchase"}
+			return &ContentUseDeniedError{Reason: wantReason, NextAction: "import"}
 		},
 	))
 	status, err := workflow.authorizeContentUse(context.Background(), "call", []ContentSourceRef{{
@@ -63,5 +64,8 @@ func TestAuthorizeContentUseMapsDenial(t *testing.T) {
 	}})
 	if status != http.StatusForbidden || !errors.Is(err, ErrContentUseDenied) {
 		t.Fatalf("authorizeContentUse() = (%d, %v), want denied", status, err)
+	}
+	if err.Error() != wantReason {
+		t.Fatalf("authorizeContentUse() error = %q, want %q", err, wantReason)
 	}
 }

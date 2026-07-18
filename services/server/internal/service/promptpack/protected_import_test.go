@@ -23,7 +23,7 @@ func (stub *protectedImporterStub) Import(
 	return stub.result, stub.err
 }
 
-func TestInstallDataDelegatesOnlyUnsupportedVersions(t *testing.T) {
+func TestInstallDataPartnerPolicyStillDelegatesProtectedPack(t *testing.T) {
 	plainPath := writeTestMGPack(t)
 	payload, err := os.ReadFile(plainPath)
 	if err != nil {
@@ -36,6 +36,7 @@ func TestInstallDataDelegatesOnlyUnsupportedVersions(t *testing.T) {
 		Payload:   payload,
 	}}
 	store := newTestService(t)
+	store.SetUnprotectedImportAllowed(true)
 	store.SetProtectedImporter(stub)
 
 	pack, err := store.InstallData(context.Background(), "protected.mgpack", []byte("MGPK\x02opaque"))
@@ -74,6 +75,29 @@ func TestInstallDataRejectsUnprotectedPackWhenPolicyDisallowsIt(t *testing.T) {
 	_, err = store.InstallPath(context.Background(), plainPath)
 	if !errors.Is(err, ErrUnprotectedPackImportDenied) {
 		t.Fatalf("InstallPath(v1) error = %v, want ErrUnprotectedPackImportDenied", err)
+	}
+}
+
+func TestInstallDataPartnerPolicyImportsUnprotectedWithoutProtectedRuntime(t *testing.T) {
+	plainPath := writeTestMGPack(t)
+	payload, err := os.ReadFile(plainPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stub := &protectedImporterStub{err: errors.New("protected Runtime must not be called")}
+	store := newTestService(t)
+	store.SetUnprotectedImportAllowed(true)
+	store.SetProtectedImporter(stub)
+
+	pack, err := store.InstallData(context.Background(), filepath.Base(plainPath), payload)
+	if err != nil {
+		t.Fatalf("InstallData(partner v1) error = %v", err)
+	}
+	if stub.calls != 0 {
+		t.Fatalf("protected importer calls = %d, want 0", stub.calls)
+	}
+	if pack.ID == "" {
+		t.Fatal("InstallData(partner v1) returned an empty pack")
 	}
 }
 

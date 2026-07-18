@@ -162,6 +162,17 @@ release builds stage the pinned GitHub Release asset and inject its digest via
 ## Seat terminology
 
 `SEAT_DISTRIBUTION` is a ToC distribution model. A publisher buys reusable
-distribution capacity and sends one-time redemption codes to selected MediaGo
-accounts. Product and UI copy should use `分发席位`, not `企业席位`; it does not
-assert that either account belongs to an enterprise.
+distribution capacity and shares its protected package with selected MediaGo
+accounts. On an account's first explicit import, the MediaGo authorization page
+can bind that account to the package publisher and allocate one of that
+publisher's available seats. Another package from the same publisher reuses the
+active membership instead of consuming another seat. Membership is directional:
+it never grants the member any of the publisher's capacity. If that member
+publishes a package of their own, they must buy and allocate their own seats.
+
+Removing a member releases the allocation. Background update and protected
+content-use (`call`) never create or restore membership; only another explicit
+import confirmation can do that. In the MVP, a successfully imported package
+may be used locally without another online `call` entitlement check. Product and UI copy should use
+`分发席位`, not `企业席位`; it does not assert that either account belongs to an
+enterprise.

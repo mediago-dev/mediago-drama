@@ -56,7 +56,10 @@ func (workflow *GenerationService) authorizeContentUse(ctx context.Context, oper
 		return http.StatusOK, nil
 	}
 	if workflow == nil || workflow.contentUseAuthorizer == nil {
-		return http.StatusServiceUnavailable, ErrContentUseUnavailable
+		// A successful protected import is the current MVP trust boundary. The
+		// optional online authorizer may be installed by a future commercial
+		// runtime, but its absence must not make imported content unusable.
+		return http.StatusOK, nil
 	}
 	if err := workflow.contentUseAuthorizer.AuthorizeContentUse(ctx, operation, normalized); err != nil {
 		if errors.Is(err, ErrContentUseDenied) {

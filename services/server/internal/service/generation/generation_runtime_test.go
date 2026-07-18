@@ -1227,6 +1227,10 @@ func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(
 		ModelID: imageRoute.LegacyModelID,
 		Model:   imageRoute.Model,
 		Prompt:  "原始角色提示词",
+		SourceRefs: []ContentSourceRef{{
+			PackageID: "marketplace.style-pack",
+			ReleaseID: "release-1",
+		}},
 		PromptOptimization: &GenerationPromptOptimizationRequest{
 			ConversationID:  "prompt-optimize-session",
 			RouteID:         coregeneration.RouteDMXGPT41MiniText,
@@ -1832,6 +1836,10 @@ func TestStreamGenerationTextPersistsFinalText(t *testing.T) {
 		Kind:    string(coregeneration.KindText),
 		RouteID: coregeneration.RouteDMXGPT41MiniText,
 		Prompt:  "write",
+		SourceRefs: []ContentSourceRef{{
+			PackageID: "marketplace.style-pack",
+			ReleaseID: "release-1",
+		}},
 	}, func(event GenerationTextStreamEvent) error {
 		events = append(events, event)
 		return nil
