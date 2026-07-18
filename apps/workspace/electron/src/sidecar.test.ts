@@ -2,11 +2,7 @@ import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-	fileContents: new Map([
-		["mediago-server", "sidecar"],
-		["mediago-document-mcp", "sidecar"],
-		["mediago-generation-mcp", "sidecar"],
-	]),
+	exists: true,
 	isPackaged: false,
 	spawn: vi.fn(),
 }));
@@ -16,25 +12,8 @@ vi.mock("node:child_process", () => ({
 	spawn: mocks.spawn,
 }));
 vi.mock("node:fs", () => {
-	const existsSync = () => true;
-	const readFileSync = (path: string) => {
-		if (String(path).endsWith("sidecar-integrity.json")) {
-			return JSON.stringify({
-				algorithm: "sha256",
-				files: {
-					"mediago-server": "6c8b4535ccc87f19061c4646189e33d78f01c8b63dc4e3cb2f630b1796ee93b6",
-					"mediago-document-mcp":
-						"6c8b4535ccc87f19061c4646189e33d78f01c8b63dc4e3cb2f630b1796ee93b6",
-					"mediago-generation-mcp":
-						"6c8b4535ccc87f19061c4646189e33d78f01c8b63dc4e3cb2f630b1796ee93b6",
-				},
-				format: "mediago-sidecar-integrity",
-				version: 1,
-			});
-		}
-		const filename = String(path).split("/").at(-1) ?? "";
-		const contents = mocks.fileContents.get(filename);
-		if (contents !== undefined) return Buffer.from(contents);
+	const existsSync = () => mocks.exists;
+	const readFileSync = () => {
 		throw new Error("no packaged config in unit test");
 	};
 	return { default: { existsSync, readFileSync }, existsSync, readFileSync };
@@ -44,12 +23,6 @@ vi.mock("./paths.js", () => ({
 	isPackaged: () => mocks.isPackaged,
 	resourceRoot: () => "/resources",
 	serverBinaryPath: () => "/resources/bin/mediago-server",
-	serviceBinaryPaths: () => [
-		"/resources/bin/mediago-server",
-		"/resources/bin/mediago-document-mcp",
-		"/resources/bin/mediago-generation-mcp",
-	],
-	sidecarIntegrityManifestPath: () => "/app.asar/sidecar-integrity.json",
 	toolsDir: () => "/resources/tools",
 }));
 
@@ -70,11 +43,7 @@ class FakeChildProcess extends EventEmitter {
 describe("server sidecar lifecycle", () => {
 	beforeEach(() => {
 		vi.resetModules();
-		mocks.fileContents = new Map([
-			["mediago-server", "sidecar"],
-			["mediago-document-mcp", "sidecar"],
-			["mediago-generation-mcp", "sidecar"],
-		]);
+		mocks.exists = true;
 		mocks.spawn.mockReset();
 		mocks.isPackaged = false;
 		delete process.env.ELECTRON_RENDERER_URL;
@@ -85,7 +54,7 @@ describe("server sidecar lifecycle", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("starts the builtin server without bundle identity", async () => {
+	it("starts the builtin server without an integrity manifest", async () => {
 		const processChild = new FakeChildProcess();
 		mocks.spawn.mockReturnValue(processChild);
 		const sidecar = await import("./sidecar.js");
@@ -98,6 +67,16 @@ describe("server sidecar lifecycle", () => {
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_BUNDLE_REV");
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_SCHEMA_VERSION");
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_INSTANCE_TOKEN");
+	});
+
+	it("refuses to start when the server sidecar is missing", async () => {
+		mocks.exists = false;
+		const sidecar = await import("./sidecar.js");
+
+		expect(() => sidecar.startServerSidecar()).toThrow(
+			"missing server sidecar: /resources/bin/mediago-server",
+		);
+		expect(mocks.spawn).not.toHaveBeenCalled();
 	});
 
 	it("ignores process injection variables in a packaged application", async () => {
@@ -143,24 +122,6 @@ describe("server sidecar lifecycle", () => {
 		const sidecar = await import("./sidecar.js");
 
 		expect(sidecar.startServerSidecar()).toBeNull();
-		expect(mocks.spawn).not.toHaveBeenCalled();
-	});
-
-	it("refuses to start a modified server sidecar", async () => {
-		mocks.fileContents.set("mediago-server", "modified-sidecar");
-		const sidecar = await import("./sidecar.js");
-
-		expect(() => sidecar.startServerSidecar()).toThrow("server sidecar integrity check failed");
-		expect(mocks.spawn).not.toHaveBeenCalled();
-	});
-
-	it("refuses to start when a packaged MCP sidecar is modified", async () => {
-		mocks.fileContents.set("mediago-generation-mcp", "modified-sidecar");
-		const sidecar = await import("./sidecar.js");
-
-		expect(() => sidecar.startServerSidecar()).toThrow(
-			"server sidecar integrity check failed: mediago-generation-mcp",
-		);
 		expect(mocks.spawn).not.toHaveBeenCalled();
 	});
 

@@ -19,17 +19,5 @@ export const serverBinaryPath = () => {
 	return join(resourceRoot(), "bin", binary);
 };
 
-export const serviceBinaryPaths = () => {
-	const extension = process.platform === "win32" ? ".exe" : "";
-	return ["mediago-server", "mediago-document-mcp", "mediago-generation-mcp"].map((name) =>
-		join(resourceRoot(), "bin", `${name}${extension}`),
-	);
-};
-
-export const sidecarIntegrityManifestPath = () =>
-	isPackaged()
-		? join(app.getAppPath(), "sidecar-integrity.json")
-		: join(resourceRoot(), "sidecar-integrity.json");
-
 export const agentsDir = () => join(resourceRoot(), "agents");
 export const toolsDir = () => join(resourceRoot(), "tools");

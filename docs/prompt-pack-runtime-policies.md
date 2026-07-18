@@ -56,11 +56,18 @@ GitHub environment, require a reviewer for that environment, and grant the
 token only `Contents: read` on `mediago-drama-private`. Do not use a personal
 token with organization-wide write access.
 
-Official desktop releases also fail closed unless platform signing credentials
-exist in the same protected environment. macOS signing requires
-`MEDIAGO_MAC_CSC_LINK` and `MEDIAGO_MAC_CSC_KEY_PASSWORD`. Windows requires
-`MEDIAGO_WINDOWS_CSC_LINK` and `MEDIAGO_WINDOWS_CSC_KEY_PASSWORD`. Local
-development builds do not require these secrets.
+Official macOS releases fail closed unless signing credentials exist in the
+same protected environment. macOS signing requires `MEDIAGO_MAC_CSC_LINK` and
+`MEDIAGO_MAC_CSC_KEY_PASSWORD`. Local development builds do not require signing
+secrets.
+
+The desktop runtime does not maintain a separate sidecar checksum or signature
+manifest. On macOS, Electron Builder signs the application and
+`forceCodeSigning` makes a signing failure fail the build. The application only
+checks that the server sidecar exists and reports the real process launch error
+if execution fails. Windows releases are currently unsigned and therefore do
+not claim a cryptographically verified publisher identity; add Authenticode
+verification when a Windows signing certificate becomes available.
 
 For macOS direct distribution, create a `Developer ID Application` certificate
 in the Apple Developer account, install it together with its private key, and

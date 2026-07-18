@@ -21,12 +21,6 @@ const workspacePackagePath = join(workspaceDir, "package.json");
 const rendererDistDir = join(workspaceDir, "dist");
 const electronDistDir = join(workspaceDir, "electron", "dist");
 const electronAppDir = join(workspaceDir, "electron", "app");
-const sidecarIntegrityManifestPath = join(
-	workspaceDir,
-	"electron",
-	"resources",
-	"sidecar-integrity.json",
-);
 const electronTargetPlatform = process.env.MEDIAGO_ELECTRON_TARGET_PLATFORM?.trim();
 const buildsMacOS = electronTargetPlatform
 	? electronTargetPlatform.startsWith("darwin-")
@@ -39,7 +33,6 @@ function main(): void {
 	ensureDirectory(rendererDistDir, "missing renderer build output");
 	ensureDirectory(electronDistDir, "missing Electron main process build output");
 	ensureStagedServerBinary();
-	ensureFile(sidecarIntegrityManifestPath, "missing sidecar integrity manifest");
 
 	const workspacePackage = readWorkspacePackage();
 	const electronVersion = normalizeVersion(workspacePackage.devDependencies?.electron);
@@ -101,19 +94,11 @@ function main(): void {
 				output: "../../release",
 			},
 			publish: [githubPublisher],
-			files: [
-				"package.json",
-				"*.js",
-				"*.cjs",
-				"sidecar-integrity.json",
-				"renderer/**/*",
-				"!**/*.map",
-			],
+			files: ["package.json", "*.js", "*.cjs", "renderer/**/*", "!**/*.map"],
 			extraResources: [
 				{
 					from: "../resources",
 					to: ".",
-					filter: ["**/*", "!sidecar-integrity.json"],
 				},
 			],
 			mac: {
@@ -151,7 +136,6 @@ function main(): void {
 	writeFileSync(join(electronAppDir, "package.json"), `${JSON.stringify(appPackage, null, 2)}\n`);
 	cpSync(electronDistDir, electronAppDir, { recursive: true });
 	cpSync(rendererDistDir, join(electronAppDir, "renderer"), { recursive: true });
-	cpSync(sidecarIntegrityManifestPath, join(electronAppDir, "sidecar-integrity.json"));
 }
 
 function readWorkspacePackage(): WorkspacePackage {
@@ -159,12 +143,6 @@ function readWorkspacePackage(): WorkspacePackage {
 }
 
 function ensureDirectory(path: string, message: string): void {
-	if (!existsSync(path)) {
-		throw new Error(`${message}: ${path}`);
-	}
-}
-
-function ensureFile(path: string, message: string): void {
 	if (!existsSync(path)) {
 		throw new Error(`${message}: ${path}`);
 	}

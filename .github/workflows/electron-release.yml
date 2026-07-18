@@ -193,10 +193,6 @@ jobs:
           VITE_TALKINGDATA_APP_ID: ${{ vars.VITE_TALKINGDATA_APP_ID }}
         run: task build:electron:target PLATFORM=${{ matrix.platform }} ELECTRON_SCRIPT=${{ matrix.electron_script }}
 
-      - name: Verify macOS release bundle
-        if: matrix.platform == 'darwin-arm64'
-        run: node .github/scripts/verify-macos-electron-release.ts
-
       - name: Upload ${{ matrix.label }} artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
