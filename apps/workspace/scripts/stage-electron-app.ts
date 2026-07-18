@@ -83,7 +83,9 @@ function main(): void {
 							enableNodeCliInspectArguments: false,
 							enableEmbeddedAsarIntegrityValidation: true,
 							onlyLoadAppFromAsar: true,
-							loadBrowserProcessSpecificV8Snapshot: true,
+							// Electron does not ship browser_v8_context_snapshot.bin by default.
+							// Keep the browser process on the bundled architecture-specific snapshot.
+							loadBrowserProcessSpecificV8Snapshot: false,
 							grantFileProtocolExtraPrivileges: false,
 						},
 					}

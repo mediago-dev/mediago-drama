@@ -277,6 +277,22 @@ jobs:
           VITE_TALKINGDATA_APP_ID: ${{ vars.VITE_TALKINGDATA_APP_ID }}
         run: task build:electron:target PLATFORM=${{ matrix.platform }} ELECTRON_SCRIPT=${{ matrix.electron_script }}
 
+      - name: Verify macOS release bundle
+        if: matrix.platform == 'darwin-arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          app="apps/workspace/release/mac-arm64/MediaGo Drama.app"
+          codesign --verify --deep --strict --verbose=4 "$app"
+
+          fuse_state="$(pnpm --dir apps/workspace exec electron-fuses read --app "$app")"
+          echo "$fuse_state"
+          if ! grep -Fq "LoadBrowserProcessSpecificV8Snapshot is Disabled" <<< "$fuse_state"; then
+            echo "macOS release unexpectedly requires browser_v8_context_snapshot.bin" >&2
+            exit 1
+          fi
+
       - name: Upload ${{ matrix.label }} artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -290,6 +306,7 @@ jobs:
             !apps/workspace/release/builder-debug.yml
             !apps/workspace/release/builder-effective-config.yaml
           if-no-files-found: error
+          retention-days: 1
 
   publish-release:
     name: Publish draft release
