@@ -64,6 +64,30 @@ requires `MEDIAGO_WINDOWS_CSC_LINK` and
 `MEDIAGO_WINDOWS_CSC_KEY_PASSWORD`. Local development builds do not require
 these secrets.
 
+For macOS direct distribution, create a `Developer ID Application` certificate
+in the Apple Developer account, install it together with its private key, and
+export both as a password-protected `.p12`. Store the base64-encoded `.p12` as
+`MEDIAGO_MAC_CSC_LINK` and its export password as
+`MEDIAGO_MAC_CSC_KEY_PASSWORD`. Store the Apple developer account email,
+app-specific password, and ten-character team ID in the remaining three
+secrets. Never commit the certificate or any of these values to the repository.
+The release workflow maps the protected values to electron-builder's signing
+and notarization environment variables only for the macOS matrix entry.
+
+After downloading and unpacking an official macOS release, verify the app
+before publishing it:
+
+```bash
+codesign --verify --deep --strict --verbose=2 "/path/to/MediaGo Drama.app"
+codesign -dv --verbose=4 "/path/to/MediaGo Drama.app"
+spctl --assess --verbose --type exec "/path/to/MediaGo Drama.app"
+xcrun stapler validate "/path/to/MediaGo Drama.app"
+```
+
+The signature details must show the expected `Developer ID Application`
+authority and Apple team ID, Gatekeeper must report `accepted`, and stapler
+must report a valid notarization ticket.
+
 Packaged Electron starts the local server with a fresh
 `MEDIAGO_SIDECAR_TOKEN` for each process and sends it in
 `X-MediaGo-Sidecar-Token` on renderer API requests. The Go server rejects

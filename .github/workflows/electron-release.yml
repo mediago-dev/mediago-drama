@@ -205,9 +205,48 @@ jobs:
           }
           NODE
 
+      - name: Validate macOS signing credentials
+        if: matrix.platform == 'darwin-arm64'
+        shell: bash
+        env:
+          MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD }}
+          MEDIAGO_APPLE_ID: ${{ secrets.MEDIAGO_APPLE_ID }}
+          MEDIAGO_APPLE_TEAM_ID: ${{ secrets.MEDIAGO_APPLE_TEAM_ID }}
+          MEDIAGO_MAC_CSC_KEY_PASSWORD: ${{ secrets.MEDIAGO_MAC_CSC_KEY_PASSWORD }}
+          MEDIAGO_MAC_CSC_LINK: ${{ secrets.MEDIAGO_MAC_CSC_LINK }}
+        run: |
+          set -euo pipefail
+
+          required=(
+            MEDIAGO_MAC_CSC_LINK
+            MEDIAGO_MAC_CSC_KEY_PASSWORD
+            MEDIAGO_APPLE_ID
+            MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD
+            MEDIAGO_APPLE_TEAM_ID
+          )
+          missing=()
+          for variable in "${required[@]}"; do
+            if [[ -z "${!variable:-}" ]]; then
+              missing+=("$variable")
+            fi
+          done
+
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            echo "Missing required official-release secrets: ${missing[*]}" >&2
+            exit 1
+          fi
+
       - name: Build ${{ matrix.label }}
         env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'darwin-arm64' && secrets.MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.platform == 'darwin-arm64' && secrets.MEDIAGO_APPLE_ID || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'darwin-arm64' && secrets.MEDIAGO_APPLE_TEAM_ID || '' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.platform == 'darwin-arm64' && 'true' || 'false' }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'darwin-arm64' && secrets.MEDIAGO_MAC_CSC_KEY_PASSWORD || '' }}
+          CSC_LINK: ${{ matrix.platform == 'darwin-arm64' && secrets.MEDIAGO_MAC_CSC_LINK || '' }}
           MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME: "1"
+          MEDIAGO_MAC_NOTARIZE: ${{ matrix.platform == 'darwin-arm64' && '1' || '0' }}
+          MEDIAGO_MAC_SIGN: ${{ matrix.platform == 'darwin-arm64' && '1' || '0' }}
           MEDIAGO_PROMPT_PACK_POLICY: marketplace
           MEDIAGO_ELECTRON_CHANNEL: ${{ inputs.channel }}
           MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: ${{ vars.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL }}
