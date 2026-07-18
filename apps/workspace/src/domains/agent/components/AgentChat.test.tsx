@@ -359,7 +359,7 @@ describe("AgentChat runtime config persistence", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "Open runtime settings" }));
 
-		expect(testState.setSettingsTab).toHaveBeenCalledWith("codex-relay");
+		expect(testState.setSettingsTab).toHaveBeenCalledWith("codex-access");
 		expect(screen.getByTestId("location-probe")).toHaveTextContent("/settings");
 	});
 

@@ -129,6 +129,91 @@ func (handler Settings) HandlePutJianyingDraftSettings(context *gin.Context) {
 	httpresponse.OK(context, settings)
 }
 
+// HandleCodexAccount godoc
+// @Summary 获取全局 Codex 账号
+// @Description 返回内置 Codex 读取到的全局 ChatGPT 登录状态，不包含任何凭证。
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 503 {object} SwaggerEnvelope
+// @Router /api/v1/settings/codex-account [get]
+func (handler Settings) HandleCodexAccount(context *gin.Context) {
+	account, err := handler.service.GetCodexAccount(context.Request.Context())
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+	httpresponse.OK(context, account)
+}
+
+// HandlePostCodexAccountLogin godoc
+// @Summary 开始 ChatGPT 浏览器登录
+// @Description 使用内置 Codex app-server 发起共享全局 Codex 账号的浏览器 OAuth 登录。
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 503 {object} SwaggerEnvelope
+// @Router /api/v1/settings/codex-account/login [post]
+func (handler Settings) HandlePostCodexAccountLogin(context *gin.Context) {
+	login, err := handler.service.BeginCodexLogin(context.Request.Context())
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+	httpresponse.OK(context, login)
+}
+
+// HandleCodexAccountLogin godoc
+// @Summary 查询 Codex 登录状态
+// @Tags Settings
+// @Produce json
+// @Param loginId path string true "Login ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Router /api/v1/settings/codex-account/login/{loginId} [get]
+func (handler Settings) HandleCodexAccountLogin(context *gin.Context) {
+	login, err := handler.service.GetCodexLogin(context.Request.Context(), context.Param("loginId"))
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+	httpresponse.OK(context, login)
+}
+
+// HandleDeleteCodexAccountLogin godoc
+// @Summary 取消 Codex 登录
+// @Tags Settings
+// @Produce json
+// @Param loginId path string true "Login ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Router /api/v1/settings/codex-account/login/{loginId} [delete]
+func (handler Settings) HandleDeleteCodexAccountLogin(context *gin.Context) {
+	login, err := handler.service.CancelCodexLogin(context.Request.Context(), context.Param("loginId"))
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+	httpresponse.OK(context, login)
+}
+
+// HandleDeleteCodexAccount godoc
+// @Summary 退出全局 Codex 账号
+// @Description 退出共享该 CODEX_HOME 的 Codex CLI、IDE 和 MediaGo 登录态。
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 503 {object} SwaggerEnvelope
+// @Router /api/v1/settings/codex-account [delete]
+func (handler Settings) HandleDeleteCodexAccount(context *gin.Context) {
+	account, err := handler.service.LogoutCodexAccount(context.Request.Context())
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+	httpresponse.OK(context, account)
+}
+
 // HandleCodexRelaySettings godoc
 // @Summary 获取 Codex 中转配置
 // @Description 返回 Codex ACP 使用的中转配置和脱敏密钥状态。
@@ -632,6 +717,10 @@ func writeSettingsError(context *gin.Context, err error) {
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 	case errors.Is(err, service.ErrCodexRelayCheckFailed):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+	case errors.Is(err, service.ErrCodexLoginNotFound):
+		httpresponse.ErrorFromStatus(context, http.StatusNotFound, err)
+	case errors.Is(err, service.ErrCodexAccountUnavailable):
+		httpresponse.ErrorFromStatus(context, http.StatusServiceUnavailable, err)
 	case errors.Is(err, service.ErrJianyingDraftInvalid):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 	default:

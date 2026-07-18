@@ -35,7 +35,17 @@ interface CodexRelayProfileDraft {
 	apiKey?: CodexRelayProfile["apiKey"];
 }
 
-export const CodexRelayPanel: React.FC = () => {
+interface CodexRelayPanelProps {
+	beforeContent?: React.ReactNode;
+	description?: React.ReactNode;
+	title?: React.ReactNode;
+}
+
+export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
+	beforeContent,
+	description = "配置 Codex ACP 请求使用的本地中转代理。",
+	title = "Codex 中转",
+}) => {
 	const toast = useToast();
 	const { mutate: mutateGlobal } = useSWRConfig();
 	const { data, mutate, isLoading } = useSWR(codexRelaySettingsKey, getCodexRelaySettings);
@@ -282,8 +292,8 @@ export const CodexRelayPanel: React.FC = () => {
 
 	return (
 		<SettingsPanelLayout
-			title="Codex 中转"
-			description="配置 Codex ACP 请求使用的本地中转代理。"
+			title={title}
+			description={description}
 			icon={<Network className="size-4" />}
 			actions={
 				<HeaderEnableSwitch
@@ -294,6 +304,9 @@ export const CodexRelayPanel: React.FC = () => {
 				/>
 			}
 		>
+			{beforeContent ? (
+				<div className="mb-6 border-b border-border pb-6">{beforeContent}</div>
+			) : null}
 			<div className="grid gap-5 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
 				<div className="min-w-0 space-y-2">
 					<div className="mb-3 flex items-center justify-between gap-2">

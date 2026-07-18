@@ -131,6 +131,9 @@ func newAPIHandler(config Config) *apiHandler {
 	settings.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
 	settings.SetLibTVCLIPaths(config.LibTVBinPath, config.LibTVBinDir)
 	settings.SetPippitCLIPaths(config.PippitBinPath, config.PippitBinDir)
+	if codexPath, err := backendService.CodexExecutable(); err == nil {
+		settings.SetCodexCLIPath(codexPath)
+	}
 	settings.SetModelPlatforms(config.ModelPlatforms)
 	settings.SetGenerationCLIs(config.GenerationCLIs)
 	settings.SetMediagoBaseURL(config.MediagoBaseURL)

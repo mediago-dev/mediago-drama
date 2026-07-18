@@ -43,7 +43,7 @@ describe("SettingsSidebarPanel", () => {
 		expect(onSelectTab).toHaveBeenCalledWith("api-keys");
 	});
 
-	it("shows the Codex relay settings entry for Codex", () => {
+	it("shows the Codex access settings entry for Codex", () => {
 		const onSelectTab = vi.fn();
 
 		render(
@@ -56,9 +56,9 @@ describe("SettingsSidebarPanel", () => {
 			/>,
 		);
 
-		fireEvent.click(screen.getByRole("button", { name: "Codex 中转" }));
+		fireEvent.click(screen.getByRole("button", { name: "Codex 接入" }));
 
-		expect(onSelectTab).toHaveBeenCalledWith("codex-relay");
+		expect(onSelectTab).toHaveBeenCalledWith("codex-access");
 	});
 
 	it("shows Codex skills for every agent backend and selects its own tab", () => {
@@ -105,7 +105,7 @@ describe("SettingsSidebarPanel", () => {
 				.getAllByRole("button")
 				.map((button) => button.textContent)
 				.slice(0, 4),
-		).toEqual(["API 密钥", "Codex 中转", "Codex 技能", "智能体指令"]);
+		).toEqual(["API 密钥", "Codex 接入", "Codex 技能", "智能体指令"]);
 
 		rerender(
 			<SettingsSidebarPanel
@@ -160,7 +160,7 @@ describe("SettingsSidebarPanel", () => {
 		).toEqual(["基础设置", "快捷键", "用量与账单", "应用更新"]);
 	});
 
-	it("hides the Codex relay settings entry for non-Codex agents", () => {
+	it("hides the Codex access settings entry for non-Codex agents", () => {
 		render(
 			<SettingsSidebarPanel
 				activeAgentBackendId="opencode"
@@ -171,7 +171,7 @@ describe("SettingsSidebarPanel", () => {
 			/>,
 		);
 
-		expect(screen.queryByRole("button", { name: "Codex 中转" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "Codex 接入" })).toBeNull();
 	});
 
 	it("hides the Jianying draft settings entry while it is disabled", () => {

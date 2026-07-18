@@ -32,6 +32,8 @@ var (
 	ErrCodexRelayNotConfigured = errors.New("codex relay is not configured")
 	ErrCodexRelayCheckFailed   = errors.New("Codex 中转配置不可用")
 	ErrCodexRelayUnauthorized  = errors.New("codex relay request is unauthorized")
+	ErrCodexAccountUnavailable = errors.New("bundled Codex account service is unavailable")
+	ErrCodexLoginNotFound      = errors.New("Codex login attempt was not found")
 	ErrJianyingDraftInvalid    = errors.New("jianying draft settings are invalid")
 )
 
@@ -136,6 +138,7 @@ type Settings struct {
 	providerLoginMu          sync.Mutex
 	providerLoginSequence    uint64
 	activeProviderLogins     map[string]activeProviderLogin
+	codexAccount             *CodexAccountManager
 }
 
 // NewSettings creates a settings service.
@@ -169,6 +172,11 @@ func (service *Settings) SetLibTVCLIPaths(binPath string, binDir string) {
 func (service *Settings) SetPippitCLIPaths(binPath string, binDir string) {
 	service.pippitBinPath = strings.TrimSpace(binPath)
 	service.pippitBinDir = strings.TrimSpace(binDir)
+}
+
+// SetCodexCLIPath configures the bundled Codex executable used for account operations.
+func (service *Settings) SetCodexCLIPath(binPath string) {
+	service.codexAccount = NewCodexAccountManager(strings.TrimSpace(binPath))
 }
 
 const jianyingDraftRootSettingKey = "jianyingdraft.drafts_root"

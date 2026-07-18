@@ -625,7 +625,7 @@ const settingsNavGroups = (activeAgentBackendId = "codex"): SettingsNavGroup[] =
 		{ value: "api-keys", label: "API 密钥", icon: KeyRound },
 	];
 	if (activeAgentBackendId === "codex") {
-		generationItems.push({ value: "codex-relay", label: "Codex 中转", icon: Network });
+		generationItems.push({ value: "codex-access", label: "Codex 接入", icon: Network });
 	}
 	generationItems.push({ value: "codex-skills", label: "Codex 技能", icon: Blocks });
 	generationItems.push(debugNavItem("instructions"), debugNavItem("prompt-packs"));

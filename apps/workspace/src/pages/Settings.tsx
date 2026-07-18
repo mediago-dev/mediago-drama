@@ -43,7 +43,7 @@ import {
 	isAgentRuntimeConfigKey,
 } from "@/domains/agent/api/agent";
 import { generationModelsKey } from "@/domains/generation/api/generation";
-import { CodexRelayPanel } from "@/domains/settings/components/CodexRelayPanel";
+import { CodexAccessPanel } from "@/domains/settings/components/CodexAccessPanel";
 import { CodexSkillsPanel } from "@/domains/settings/components/CodexSkillsPanel";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
 import { BillingPanel } from "@/domains/billing/components/BillingPanel";
@@ -91,7 +91,7 @@ type SettingsTabValue =
 	| "appearance"
 	| "api-keys"
 	| "billing"
-	| "codex-relay"
+	| "codex-access"
 	| "codex-skills"
 	| "jianying-draft"
 	| "updates"
@@ -102,7 +102,7 @@ const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	value === "appearance" ||
 	value === "api-keys" ||
 	value === "billing" ||
-	value === "codex-relay" ||
+	value === "codex-access" ||
 	value === "codex-skills" ||
 	value === "updates" ||
 	(jianyingDraftSettingsEnabled && value === "jianying-draft") ||
@@ -110,13 +110,15 @@ const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	debugTabs.some((tab) => tab.value === value);
 
 const normalizeSettingsTab = (value: string) =>
-	value === "agent-model-profiles"
-		? "api-keys"
-		: value === "prompt-templates" || value === "instructions"
-			? "instructions"
-			: value === "prompts" || value === "skills" || value === "prompt-library"
-				? "prompt-packs"
-				: value;
+	value === "codex-relay"
+		? "codex-access"
+		: value === "agent-model-profiles"
+			? "api-keys"
+			: value === "prompt-templates" || value === "instructions"
+				? "instructions"
+				: value === "prompts" || value === "skills" || value === "prompt-library"
+					? "prompt-packs"
+					: value;
 
 export const Settings: React.FC = () => {
 	const location = useLocation();
@@ -128,7 +130,7 @@ export const Settings: React.FC = () => {
 	const { data: agentBackends } = useSWR(agentBackendsKey, getAgentBackends);
 	const isCodexActive = (agentBackends?.activeId ?? "codex") === "codex";
 	const visibleTab =
-		isSettingsTabValue(normalizedTab) && (normalizedTab !== "codex-relay" || isCodexActive)
+		isSettingsTabValue(normalizedTab) && (normalizedTab !== "codex-access" || isCodexActive)
 			? normalizedTab
 			: "appearance";
 
@@ -145,7 +147,7 @@ export const Settings: React.FC = () => {
 			) : null}
 			{visibleTab === "api-keys" ? <APIKeysPanel /> : null}
 			{visibleTab === "billing" ? <BillingPanel /> : null}
-			{visibleTab === "codex-relay" ? <CodexRelayPanel /> : null}
+			{visibleTab === "codex-access" ? <CodexAccessPanel /> : null}
 			{visibleTab === "codex-skills" ? <CodexSkillsPanel /> : null}
 			{visibleTab === "updates" ? <UpdatesPanel /> : null}
 			{visibleTab === "shortcuts" ? <ShortcutKeysPanel /> : null}

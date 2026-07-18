@@ -144,6 +144,21 @@ export interface CodexRelaySettingsMutation {
 	profiles: CodexRelayProfileMutation[];
 }
 
+export interface CodexAccountStatus {
+	status: "loggedIn" | "notLoggedIn" | "unavailable" | string;
+	email?: string;
+	planType?: string;
+	codexHome: string;
+	shared: boolean;
+}
+
+export interface CodexLoginAttempt {
+	loginId: string;
+	authUrl?: string;
+	status: "pending" | "completed" | "failed" | "canceled" | "expired" | string;
+	error?: string;
+}
+
 export interface JianyingDraftSettings {
 	draftsRoot: string;
 }
@@ -169,6 +184,7 @@ export const apiKeysKey = "/settings/api-keys";
 export const modelPlatformsKey = "/settings/model-platforms";
 export const agentModelProfilesKey = "/settings/agent-model-profiles";
 export const codexRelaySettingsKey = "/settings/codex-relay";
+export const codexAccountKey = "/settings/codex-account";
 export const jianyingDraftSettingsKey = "/settings/jianying-draft";
 
 export const getAPIKeys = async () => {
@@ -252,6 +268,35 @@ export const clearCodexRelayProfileAPIKey = async (profileID: string) => {
 	const response = await httpClient.delete<CodexRelaySettingsResponse>(
 		`${codexRelaySettingsKey}/profiles/${encodeURIComponent(profileID)}/api-key`,
 	);
+	return response.data;
+};
+
+export const getCodexAccount = async () => {
+	const response = await httpClient.get<CodexAccountStatus>(codexAccountKey);
+	return response.data;
+};
+
+export const beginCodexAccountLogin = async () => {
+	const response = await httpClient.post<CodexLoginAttempt>(`${codexAccountKey}/login`);
+	return response.data;
+};
+
+export const getCodexAccountLogin = async (loginID: string) => {
+	const response = await httpClient.get<CodexLoginAttempt>(
+		`${codexAccountKey}/login/${encodeURIComponent(loginID)}`,
+	);
+	return response.data;
+};
+
+export const cancelCodexAccountLogin = async (loginID: string) => {
+	const response = await httpClient.delete<CodexLoginAttempt>(
+		`${codexAccountKey}/login/${encodeURIComponent(loginID)}`,
+	);
+	return response.data;
+};
+
+export const logoutCodexAccount = async () => {
+	const response = await httpClient.delete<CodexAccountStatus>(codexAccountKey);
 	return response.data;
 };
 

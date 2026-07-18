@@ -127,6 +127,48 @@ func TestAgentBackendServiceResolvesVendoredCodexEnvironment(t *testing.T) {
 	}
 }
 
+func TestAgentBackendServiceCodexExecutable(t *testing.T) {
+	binDir := t.TempDir()
+	agentDir := filepath.Join(binDir, "codex")
+	codexPath := filepath.Join(agentDir, "vendor", "bin", "codex")
+	if err := os.MkdirAll(filepath.Dir(codexPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	manifest := `{"id":"codex","bin":"codex-acp","args":[],"version":"1.1.2","codexBin":"vendor/bin/codex"}`
+	if err := os.WriteFile(filepath.Join(agentDir, "agent.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("WriteFile(agent.json) error = %v", err)
+	}
+	if err := os.WriteFile(codexPath, []byte("binary"), 0o755); err != nil {
+		t.Fatalf("WriteFile(codex) error = %v", err)
+	}
+
+	store := NewAgentBackendServiceWithBinDir("", binDir, "opencode")
+	got, err := store.CodexExecutable()
+	if err != nil {
+		t.Fatalf("CodexExecutable() error = %v", err)
+	}
+	if got != codexPath {
+		t.Fatalf("CodexExecutable() = %q, want %q", got, codexPath)
+	}
+}
+
+func TestAgentBackendServiceCodexExecutableRejectsMissingBinary(t *testing.T) {
+	binDir := t.TempDir()
+	agentDir := filepath.Join(binDir, "codex")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	manifest := `{"id":"codex","bin":"codex-acp","args":[],"version":"1.1.2","codexBin":"vendor/bin/codex"}`
+	if err := os.WriteFile(filepath.Join(agentDir, "agent.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("WriteFile(agent.json) error = %v", err)
+	}
+
+	store := NewAgentBackendServiceWithBinDir("", binDir, "codex")
+	if _, err := store.CodexExecutable(); err == nil {
+		t.Fatal("CodexExecutable() error = nil, want missing binary error")
+	}
+}
+
 func TestLoadAgentManifestRejectsEscapingCodexPath(t *testing.T) {
 	binDir := t.TempDir()
 	agentDir := filepath.Join(binDir, "codex")

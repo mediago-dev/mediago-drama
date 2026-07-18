@@ -310,7 +310,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	};
 
 	const openRuntimeSettings = () => {
-		setSettingsTab((agentBackends?.activeId ?? "codex") === "codex" ? "codex-relay" : "api-keys");
+		setSettingsTab((agentBackends?.activeId ?? "codex") === "codex" ? "codex-access" : "api-keys");
 		navigate("/settings");
 	};
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -157,6 +158,37 @@ func (store *AgentBackendService) ActiveEnv() map[string]string {
 	return map[string]string{
 		"CODEX_PATH": filepath.Join(binDir, activeID, manifest.CodexBin),
 	}
+}
+
+// CodexExecutable returns the vendored Codex executable for the built-in Codex backend.
+func (store *AgentBackendService) CodexExecutable() (string, error) {
+	if store == nil {
+		return "", fmt.Errorf("agent backend service is unavailable")
+	}
+
+	store.mu.RLock()
+	binDir := store.binDir
+	store.mu.RUnlock()
+	if strings.TrimSpace(binDir) == "" {
+		return "", fmt.Errorf("agent bin dir is empty")
+	}
+
+	manifest, err := loadAgentManifest(binDir, defaultAgentBackendID)
+	if err != nil {
+		return "", err
+	}
+	if manifest.CodexBin == "" {
+		return "", fmt.Errorf("codex executable is missing from the agent manifest")
+	}
+	path := filepath.Join(binDir, defaultAgentBackendID, manifest.CodexBin)
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("checking codex executable %s: %w", path, err)
+	}
+	if info.IsDir() || (runtime.GOOS != "windows" && info.Mode()&0o111 == 0) {
+		return "", fmt.Errorf("codex executable %s is not executable", path)
+	}
+	return path, nil
 }
 
 func (store *AgentBackendService) activeCommandLocked() string {
