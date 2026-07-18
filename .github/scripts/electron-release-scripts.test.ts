@@ -7,7 +7,10 @@ import { describe, it } from "node:test";
 import { applyReleaseVersion } from "./apply-electron-release-version.ts";
 import { buildReleaseCreateArgs, collectReleaseArtifacts } from "./publish-electron-release.ts";
 import { findMissingVariables } from "./validate-electron-release-env.ts";
-import { assertSafeBrowserSnapshotFuse } from "./verify-macos-electron-release.ts";
+import {
+  assertSafeBrowserSnapshotFuse,
+  resolveMacAppPath,
+} from "./verify-macos-electron-release.ts";
 
 describe("applyReleaseVersion", () => {
   it("updates the workspace package and manifest without mutating its inputs", () => {
@@ -44,6 +47,17 @@ describe("assertSafeBrowserSnapshotFuse", () => {
     assert.throws(
       () => assertSafeBrowserSnapshotFuse("LoadBrowserProcessSpecificV8Snapshot is Enabled"),
       /browser_v8_context_snapshot/,
+    );
+  });
+});
+
+describe("resolveMacAppPath", () => {
+  it("keeps the release app path stable when pnpm changes its working directory", () => {
+    const repositoryRoot = join(tmpdir(), "mediago-drama");
+
+    assert.equal(
+      resolveMacAppPath("apps/workspace/release/mac-arm64/MediaGo Drama.app", repositoryRoot),
+      join(repositoryRoot, "apps/workspace/release/mac-arm64/MediaGo Drama.app"),
     );
   });
 });
