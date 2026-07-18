@@ -537,7 +537,7 @@ const savePromptPackBlob = async (blob: Blob, fileName: string): Promise<PromptP
 
 const fileNameFromPath = (path?: string) => path?.split(/[\\/]/).at(-1)?.trim();
 
-const DEFAULT_PROMPT_PACK_PUBLISH_URL = "https://mediago-api.torchstellar.com/account#promptPacks";
+const DEFAULT_PROMPT_PACK_PUBLISH_URL = "https://mediago.torchstellar.com/account#promptPacks";
 
 const promptPackPublishURL = () => {
 	const configured = import.meta.env.VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL?.trim();

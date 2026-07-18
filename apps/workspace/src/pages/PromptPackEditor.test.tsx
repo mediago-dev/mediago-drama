@@ -625,7 +625,7 @@ describe("PromptPackEditor", () => {
 
 		await waitFor(() =>
 			expect(openExternal).toHaveBeenCalledWith(
-				"https://mediago-api.torchstellar.com/account#promptPacks",
+				"https://mediago.torchstellar.com/account#promptPacks",
 			),
 		);
 	});
