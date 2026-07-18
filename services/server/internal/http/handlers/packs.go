@@ -584,7 +584,7 @@ func writePromptPackError(context *gin.Context, err error) {
 		httpresponse.Error(
 			context,
 			http.StatusForbidden,
-			"当前 MediaGo 账号没有该技能包的导入权限，请先购买或使用分发席位兑换码",
+			"当前 MediaGo 账号没有该技能包的导入权限，请在 MediaGo 授权页面完成购买或加入发布者席位后重新导入",
 		)
 	case errors.Is(err, promptpack.ErrProtectedPackAuthorizationExpired):
 		httpresponse.Error(
