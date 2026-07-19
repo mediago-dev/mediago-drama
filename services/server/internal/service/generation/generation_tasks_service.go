@@ -536,8 +536,8 @@ func (service *GenerationTaskService) deleteAssetRecord(id string, assetIndex in
 	if err != nil {
 		return GenerationTaskRecord{}, false, err
 	}
-	if _, ok := generationAssetAtSlot(task, assetIndex); !ok {
-		return GenerationTaskRecord{}, false, nil
+	if generationDeletedAssetSlotSet(task.DeletedAssetSlots)[assetIndex] {
+		return task, true, nil
 	}
 	if err := service.deleteProjectSelectedAssetRowForTaskAssetLocked(task, assetIndex); err != nil {
 		return task, true, err
@@ -1093,6 +1093,9 @@ func (service *GenerationTaskService) syncNormalizedTaskAssetRowsLocked(task Gen
 	if err := service.repo.ReplaceGenerationTaskAssetRows(task.ID, generationTaskAssetModelsFromRecord(task)); err != nil {
 		return err
 	}
+	if err := service.repo.ReplaceGenerationTaskDeletedSlotRows(task.ID, generationTaskDeletedSlotModelsFromRecord(task)); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1428,7 +1431,7 @@ func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRec
 	if task.Params == nil {
 		task.Params = map[string]any{}
 	}
-	task.Assets, task.DeletedAssetSlots = generationAssetsFromTaskAssetModels(model.ID, model.Assets)
+	task.Assets, task.DeletedAssetSlots = generationAssetsFromTaskAssetModels(model.ID, model.Assets, model.DeletedSlots)
 
 	return task, nil
 }
@@ -1486,20 +1489,22 @@ func generationTaskReferenceModelsFromRecord(task GenerationTaskRecord) []domain
 	return rows
 }
 
-func generationAssetsFromTaskAssetModels(taskID string, rows []domain.GenerationTaskAssetModel) ([]GenerationAsset, []int) {
-	if len(rows) == 0 {
-		return []GenerationAsset{}, []int{}
-	}
+func generationAssetsFromTaskAssetModels(taskID string, rows []domain.GenerationTaskAssetModel, deletedRows []domain.GenerationTaskDeletedSlotModel) ([]GenerationAsset, []int) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		return rows[i].SlotIndex < rows[j].SlotIndex
 	})
 	assets := make([]GenerationAsset, 0, len(rows))
-	deleted := []int{}
+	deleted := generationDeletedAssetSlotsFromModels(deletedRows)
+	explicitDeleted := generationDeletedAssetSlotSet(deleted)
 	nextSlot := 0
 	for _, row := range rows {
 		for nextSlot < row.SlotIndex {
 			deleted = append(deleted, nextSlot)
 			nextSlot++
+		}
+		if explicitDeleted[row.SlotIndex] {
+			nextSlot = row.SlotIndex + 1
+			continue
 		}
 		asset := row.Asset
 		assets = append(assets, GenerationAsset{
@@ -1519,6 +1524,17 @@ func generationAssetsFromTaskAssetModels(taskID string, rows []domain.Generation
 	return assets, normalizeGenerationDeletedAssetSlots(deleted)
 }
 
+func generationDeletedAssetSlotsFromModels(rows []domain.GenerationTaskDeletedSlotModel) []int {
+	if len(rows) == 0 {
+		return []int{}
+	}
+	deleted := make([]int, 0, len(rows))
+	for _, row := range rows {
+		deleted = append(deleted, row.SlotIndex)
+	}
+	return normalizeGenerationDeletedAssetSlots(deleted)
+}
+
 func generationTaskAssetModelsFromRecord(task GenerationTaskRecord) []domain.GenerationTaskAssetModel {
 	deletedSlots := generationDeletedAssetSlotSet(task.DeletedAssetSlots)
 	rows := make([]domain.GenerationTaskAssetModel, 0, len(task.Assets))
@@ -1532,6 +1548,20 @@ func generationTaskAssetModelsFromRecord(task GenerationTaskRecord) []domain.Gen
 			SlotIndex: slotIndex,
 			AssetID:   firstNonEmpty(asset.AssetID, libraryAssetIDFromGenerationAssetURL(asset.URL)),
 			Selected:  asset.Selected,
+			CreatedAt: domain.TimeFromString(task.CreatedAt),
+			UpdatedAt: domain.TimeFromString(task.UpdatedAt),
+		})
+	}
+	return rows
+}
+
+func generationTaskDeletedSlotModelsFromRecord(task GenerationTaskRecord) []domain.GenerationTaskDeletedSlotModel {
+	deletedSlots := normalizeGenerationDeletedAssetSlots(task.DeletedAssetSlots)
+	rows := make([]domain.GenerationTaskDeletedSlotModel, 0, len(deletedSlots))
+	for _, slotIndex := range deletedSlots {
+		rows = append(rows, domain.GenerationTaskDeletedSlotModel{
+			TaskID:    task.ID,
+			SlotIndex: slotIndex,
 			CreatedAt: domain.TimeFromString(task.CreatedAt),
 			UpdatedAt: domain.TimeFromString(task.UpdatedAt),
 		})

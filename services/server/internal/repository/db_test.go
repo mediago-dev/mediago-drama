@@ -31,6 +31,7 @@ func TestOpenWorkspaceDBMigratesWorkspaceSchema(t *testing.T) {
 		&domain.GenerationTaskAttemptModel{},
 		&domain.GenerationTaskReferenceModel{},
 		&domain.GenerationTaskAssetModel{},
+		&domain.GenerationTaskDeletedSlotModel{},
 		&domain.ProjectSelectedAssetModel{},
 		&domain.ProjectReferenceAssetModel{},
 		&domain.GenerationNotificationModel{},
@@ -211,6 +212,7 @@ func TestOpenSettingsRepositoriesMigratesOnlyGlobalSettingsSchemas(t *testing.T)
 		"assets",
 		"generation_tasks",
 		"generation_task_assets",
+		"generation_task_deleted_slots",
 		"project_selected_assets",
 		"project_reference_assets",
 		"generation_notifications",
@@ -322,6 +324,14 @@ func TestWorkspaceSchemaCascadesProjectOwnedRows(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("creating task asset fixture: %v", err)
 	}
+	if err := db.Create(&domain.GenerationTaskDeletedSlotModel{
+		TaskID:    taskID,
+		SlotIndex: 1,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("creating task deleted slot fixture: %v", err)
+	}
 	if err := db.Create(&domain.GenerationTaskAttemptModel{
 		ID:        "attempt-cascade",
 		TaskID:    taskID,
@@ -381,6 +391,7 @@ func TestWorkspaceSchemaCascadesProjectOwnedRows(t *testing.T) {
 		{name: "generation_tasks", model: &domain.GenerationTaskModel{}},
 		{name: "generation_task_references", model: &domain.GenerationTaskReferenceModel{}},
 		{name: "generation_task_assets", model: &domain.GenerationTaskAssetModel{}},
+		{name: "generation_task_deleted_slots", model: &domain.GenerationTaskDeletedSlotModel{}},
 		{name: "generation_task_attempts", model: &domain.GenerationTaskAttemptModel{}},
 		{name: "project_selected_assets", model: &domain.ProjectSelectedAssetModel{}},
 		{name: "project_reference_assets", model: &domain.ProjectReferenceAssetModel{}},
@@ -439,6 +450,9 @@ func TestEnsureWorkspaceSchemaUsesNormalizedGenerationTaskColumns(t *testing.T) 
 	}
 	if !db.Migrator().HasTable(&domain.GenerationTaskAssetModel{}) {
 		t.Fatal("generation_task_assets table should exist")
+	}
+	if !db.Migrator().HasTable(&domain.GenerationTaskDeletedSlotModel{}) {
+		t.Fatal("generation_task_deleted_slots table should exist")
 	}
 }
 

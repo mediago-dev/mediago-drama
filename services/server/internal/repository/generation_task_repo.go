@@ -42,7 +42,7 @@ func NewGenerationTaskRepositoryFromDB(db *gorm.DB) *GenerationTaskRepository {
 }
 
 func (repo *GenerationTaskRepository) generationTaskQuery() *gorm.DB {
-	return repo.db.Preload("References").Preload("Assets.Asset.Project")
+	return repo.db.Preload("References").Preload("Assets.Asset.Project").Preload("DeletedSlots")
 }
 
 // ListGenerationTasks returns generation tasks ordered by last update.
@@ -129,7 +129,7 @@ type GenerationSectionAssetCount struct {
 
 // CountGeneratedAssetsByProjectSection returns, per document section, the number of stored assets
 // produced by successful generation tasks of the given kind in the project. Counting the asset rows
-// (deleted slots are hard-deleted) yields the number of currently existing generated files.
+// yields the number of currently existing generated files.
 func (repo *GenerationTaskRepository) CountGeneratedAssetsByProjectSection(projectID string, kind string) ([]GenerationSectionAssetCount, error) {
 	projectID = domain.CleanProjectID(projectID)
 	kind = strings.TrimSpace(kind)
@@ -326,17 +326,68 @@ func (repo *GenerationTaskRepository) ReplaceGenerationTaskAssetRows(taskID stri
 	})
 }
 
+// ReplaceGenerationTaskDeletedSlotRows replaces normalized deleted slot rows for one task.
+func (repo *GenerationTaskRepository) ReplaceGenerationTaskDeletedSlotRows(taskID string, rows []domain.GenerationTaskDeletedSlotModel) error {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil
+	}
+	return repo.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&domain.GenerationTaskDeletedSlotModel{}, "task_id = ?", taskID).Error; err != nil {
+			return fmt.Errorf("deleting generation task deleted slot rows: %w", err)
+		}
+		filtered := make([]domain.GenerationTaskDeletedSlotModel, 0, len(rows))
+		for _, row := range rows {
+			if row.SlotIndex < 0 {
+				continue
+			}
+			row.TaskID = taskID
+			filtered = append(filtered, row)
+		}
+		if len(filtered) == 0 {
+			return nil
+		}
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&filtered).Error; err != nil {
+			return fmt.Errorf("creating generation task deleted slot rows: %w", err)
+		}
+		return nil
+	})
+}
+
 // DeleteGenerationTaskAssetSlot deletes one normalized generated output slot.
 func (repo *GenerationTaskRepository) DeleteGenerationTaskAssetSlot(taskID string, slotIndex int) (bool, error) {
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" || slotIndex < 0 {
 		return false, nil
 	}
-	result := repo.db.Delete(&domain.GenerationTaskAssetModel{}, "task_id = ? AND slot_index = ?", taskID, slotIndex)
-	if result.Error != nil {
-		return false, fmt.Errorf("deleting generation task asset slot: %w", result.Error)
+	deleted := false
+	err := repo.db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&domain.GenerationTaskModel{}).
+			Where("id = ?", taskID).
+			Limit(1).
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("checking generation task before deleting asset slot: %w", err)
+		}
+		if count == 0 {
+			return nil
+		}
+		if err := tx.Delete(&domain.GenerationTaskAssetModel{}, "task_id = ? AND slot_index = ?", taskID, slotIndex).Error; err != nil {
+			return fmt.Errorf("deleting generation task asset slot: %w", err)
+		}
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&domain.GenerationTaskDeletedSlotModel{
+			TaskID:    taskID,
+			SlotIndex: slotIndex,
+		}).Error; err != nil {
+			return fmt.Errorf("creating generation task deleted slot row: %w", err)
+		}
+		deleted = true
+		return nil
+	})
+	if err != nil {
+		return false, err
 	}
-	return result.RowsAffected > 0, nil
+	return deleted, nil
 }
 
 // ReplaceGenerationTaskReferenceRows replaces normalized input reference rows for one task.
@@ -591,6 +642,9 @@ func (repo *GenerationTaskRepository) DeleteGenerationConversation(id string) (b
 		if err := tx.Where("task_id IN (?)", taskIDs).Delete(&domain.GenerationTaskAssetModel{}).Error; err != nil {
 			return fmt.Errorf("deleting generation task assets by conversation: %w", err)
 		}
+		if err := tx.Where("task_id IN (?)", taskIDs).Delete(&domain.GenerationTaskDeletedSlotModel{}).Error; err != nil {
+			return fmt.Errorf("deleting generation task deleted slots by conversation: %w", err)
+		}
 		if err := tx.Where("task_id IN (?)", taskIDs).Delete(&domain.GenerationTaskAttemptModel{}).Error; err != nil {
 			return fmt.Errorf("deleting generation task attempts by conversation: %w", err)
 		}
@@ -734,6 +788,9 @@ func (repo *GenerationTaskRepository) DeleteGenerationTask(id string) (bool, err
 		}
 		if err := tx.Delete(&domain.GenerationTaskAssetModel{}, "task_id = ?", id).Error; err != nil {
 			return fmt.Errorf("deleting generation task assets: %w", err)
+		}
+		if err := tx.Delete(&domain.GenerationTaskDeletedSlotModel{}, "task_id = ?", id).Error; err != nil {
+			return fmt.Errorf("deleting generation task deleted slots: %w", err)
 		}
 		if err := tx.Delete(&domain.GenerationTaskAttemptModel{}, "task_id = ?", id).Error; err != nil {
 			return fmt.Errorf("deleting generation task attempts: %w", err)
