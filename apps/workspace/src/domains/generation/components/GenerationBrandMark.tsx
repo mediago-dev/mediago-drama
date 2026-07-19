@@ -195,7 +195,13 @@ const generationBrandFromTokens = (tokens: Array<string | undefined>): Generatio
 	if (/\bgpt\b|chatgpt|openai\/gpt|gpt-/.test(normalized)) return "gpt";
 	if (normalized.includes("gemini") || normalized.includes("nano-banana")) return "gemini";
 	if (normalized.includes("qwen")) return "qwen";
-	if (normalized.includes("wan2") || normalized.includes("万相")) return "aliyun";
+	if (
+		normalized.includes("wan2") ||
+		normalized.includes("万相") ||
+		normalized.includes("happyhorse")
+	) {
+		return "aliyun";
+	}
 	if (normalized.includes("glm") || normalized.includes("zhipu") || normalized.includes("智谱")) {
 		return "glm";
 	}

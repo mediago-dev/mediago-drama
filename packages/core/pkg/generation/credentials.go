@@ -66,10 +66,10 @@ func CredentialSpecs() []CredentialSpec {
 		{
 			ID:              ProviderAliyun,
 			Label:           "阿里云百炼",
-			Description:     "阿里云百炼万相图像生成与编辑路由",
+			Description:     "阿里云百炼万相图像与 HappyHorse 视频生成路由",
 			CredentialLabel: "百炼 API Key",
 			Placeholder:     "输入阿里云百炼 API Key",
-			Help:            "用于 wan2.7-image-pro 和 wan2.7-image 图像生成与编辑。",
+			Help:            "用于 wan2.7-image-pro、wan2.7-image 图像生成与编辑，以及 HappyHorse 1.1 视频生成。",
 		},
 		{
 			ID:             ProviderJimeng,

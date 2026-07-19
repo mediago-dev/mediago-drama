@@ -113,6 +113,8 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 		return provider.createVolcengineVideo(ctx, request)
 	case generation.AdapterOfficialAliyunWanImage:
 		return provider.generateAliyunWanImage(ctx, request)
+	case generation.AdapterOfficialAliyunHappyHorseVideo:
+		return provider.createAliyunHappyHorseVideo(ctx, request)
 	default:
 		return generation.Response{}, fmt.Errorf("unsupported official adapter %q", route.Adapter)
 	}
@@ -132,6 +134,8 @@ func (provider *Provider) Get(ctx context.Context, id string) (generation.Respon
 	switch route.Adapter {
 	case generation.AdapterOfficialVolcengineVideo:
 		return provider.getVolcengineVideo(ctx, route, taskID)
+	case generation.AdapterOfficialAliyunHappyHorseVideo:
+		return provider.getAliyunHappyHorseVideo(ctx, route, taskID)
 	default:
 		return generation.Response{}, fmt.Errorf("route %q does not expose async status", prefix)
 	}

@@ -11,6 +11,7 @@ const (
 	FamilyNanoBanana    = "nano-banana"
 	FamilyWanImage      = "wan-image"
 	FamilySeedance      = "seedance"
+	FamilyHappyHorse    = "happyhorse"
 
 	VersionSeedream5Lite           = "seedream-5-lite"
 	VersionSeedream47              = "seedream-4.7"
@@ -44,6 +45,7 @@ const (
 	VersionSeedance20VIP           = "seedance-2.0-vip"
 	VersionSeedance20MiniLite      = "seedance-2.0-mini-lite"
 	VersionSeedance15Pro           = "seedance-1.5-pro"
+	VersionHappyHorse11            = "happyhorse-1.1"
 
 	ModelSeedream5Lite           = "seedream-5-lite"
 	ModelSeedream50              = "seedream-5.0"
@@ -69,4 +71,7 @@ const (
 	ModelWan27Image              = "wan2.7-image"
 	ModelJimengSeedance2Fast     = "jimeng-seedance-2-fast"
 	ModelXiaoyunqueSeedance2Mini = "xiaoyunque-seedance-2-mini-lite"
+	ModelHappyHorse11            = "happyhorse-1.1"
+	ModelHappyHorse11R2V         = "happyhorse-1.1-r2v"
+	ModelHappyHorse11T2V         = "happyhorse-1.1-t2v"
 )
